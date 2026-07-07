@@ -228,17 +228,45 @@ export function dominantFaith(s) {
 }
 
 const MIX_K = 4;
-function normalizeMix(mix) {
+// True-ghost threshold for CONVERSION passes: mixFaithToward culls only
+// shares that have decayed to noise, so a minority growing at sub-floor
+// per-pass increments survives the passes it LOSES the pull (the dominant
+// faith's conformity call used to splice it right back to zero — conversion
+// in contested regions was secretly all-or-nothing). The full MIX_FLOOR
+// consolidation still applies on non-conversion normalizations (faith culls),
+// and losing minorities still fade: every conversion call scales them down,
+// so an abandoned creed decays through MIX_GHOST and is culled.
+const MIX_GHOST = 0.005;
+function normalizeMix(mix, keepId = -1) {
   mix.sort((a, b) => b[1] - a[1]);
   if (mix.length > MIX_K) {
+    // The K-truncation must not swallow the faith being actively
+    // converted-to: a fresh increment toward a 5th faith always sorts last,
+    // and folding it into mix[0] handed every conversion attempt to the
+    // DOMINANT faith at 4-faith settlements. Swap the convert up into the
+    // kept range (displacing the smallest kept entry into the fold) first.
+    if (keepId >= 0) {
+      for (let i = MIX_K; i < mix.length; i++) {
+        if (mix[i][0] === keepId) { const t = mix[MIX_K - 1]; mix[MIX_K - 1] = mix[i]; mix[i] = t; break; }
+      }
+    }
     let tail = 0;
     for (let i = MIX_K; i < mix.length; i++) tail += mix[i][1];
     mix.length = MIX_K;
     mix[0][1] += tail;
   }
-  // drop negligible tails so a settlement that has consolidated reads as a single
-  // faith rather than carrying a permanent 1-2% ghost minority.
-  while (mix.length > 1 && mix[mix.length - 1][1] < MIX_FLOOR) mix.pop();
+  // Drop negligible tails so a settlement that has consolidated reads as a
+  // single faith rather than carrying a permanent 1-2% ghost minority — but
+  // NEVER the entry actively being converted-to this call (keepId). Popping
+  // it made conversion all-or-nothing: every per-pass increment below the
+  // floor was inserted, immediately deleted, and renormalized back to the
+  // prior state — zero net conversion, forever, for any pull weaker than the
+  // floor. A growing minority now accumulates from zero like real conversion.
+  const floor = keepId >= 0 ? MIX_GHOST : MIX_FLOOR;      // conversion passes cull only true ghosts
+  for (let i = mix.length - 1; i >= 1 && mix.length > 1; i--) {
+    if (mix[i][1] >= floor) break;                        // sorted desc: everything above is larger
+    if (mix[i][0] !== keepId) mix.splice(i, 1);           // pop ghosts, never the growing convert
+  }
   let sum = 0;
   for (const e of mix) sum += e[1];
   if (sum > 0 && Math.abs(sum - 1) > 1e-9) for (const e of mix) e[1] /= sum;
@@ -251,7 +279,7 @@ function mixFaithToward(s, fid, frac) {
   let entry = null;
   for (const e of mix) { e[1] *= scale; if (e[0] === fid) entry = e; }
   if (entry) entry[1] += frac; else mix.push([fid, frac]);
-  normalizeMix(mix);
+  normalizeMix(mix, fid);
 }
 
 export function updateFaiths(world) {

@@ -14,16 +14,19 @@
 
 import { recordIn, recordOut, IN_AID, IN_TRIBUTE, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE, OUT_AID } from "./money.js";
 import { shockUnrest } from "./shocks.js";
-import { localEdgeCost } from "./transport.js";
+import { localEdgeCost, tileOpenness } from "./transport.js";
+import { TECHS } from "./tech.js";
+import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff, getWealthReserve } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
-import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
-import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
-import { T } from "./tuning.js";
+import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
+import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
+import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
+import { closeWar } from "./armies.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
 // (T.POLITY_INTERVAL); index.js gates the pass on it.
@@ -42,22 +45,49 @@ import { hash32 } from "./rng.js";
 // INSIDE the budget instead of instantly over-extending and seceding back
 // (the absorb↔secede oscillation that flipped whole swathes each pass).
 const ABSORB_HEADROOM  = 0.90;
-// Great-power engulfment of a weak STATELET: when a realm out-powers a
-// neighbour's WHOLE country by this much, it can absorb that neighbour's
-// settlements PAST its normal capacity headroom — up to LOPSIDED_HEADROOM ×
-// capacity (a great power over-extends to swallow tiny states) and at the faster
-// ENGULF_PROB rate. This is the consolidation force that pulls the late-game
-// splotch of tiny states into a few multi-city empires; it only fires on
-// lopsided matchups, so peer empires don't peel border villages off each other.
-const LOPSIDED_ENGULF  = 5.0;   // a realm must out-power a neighbour's WHOLE country by this much to engulf it past its normal admin headroom (the great-power consolidation that merges city-states into multi-city empires — the source of provinces)
-const ENGULF_PROB      = 0.35;  // per-pass engulf rate once lopsided
-// Capacity ceiling for lopsided engulfment: a great power may over-extend to
-// this MULTIPLE of its admin budget while engulfing statelets — enough to
-// consolidate a neighbourhood of city-states into a multi-city empire, but NOT
-// to swallow a continent. Past it, even a lopsided absorber must first shed an
-// over-extended province (the over-budget frontier secedes) before it can take
-// another — the boom-bust ceiling that stops one realm eating the whole map.
-const LOPSIDED_HEADROOM = 1.6;
+// ── Submission (vassalage) ────────────────────────────────────────────
+// A statelet facing hopeless odds SUBMITS to the dominant neighbour instead of
+// waiting to be ground down: it keeps its court, seat, faith and internal rule
+// but takes an overlord — entering the SAME dependency plumbing colonies use
+// (pol._overlord → tribute stream, bloc membership, no fronts inside the pair,
+// the independence line as the exit, full annexation only via the normal
+// absorb path once assimilation lowers identity resistance). This is the
+// consolidation force that organises the late-game map into suzerainty
+// networks — it replaces the old lopsided-engulfment override, which reached
+// past the admin-capacity mechanism to vacuum statelets off the map directly.
+const SUBMIT_RATIO = 5.0;  // odds (their whole network vs yours) past which a court chooses tribute over annihilation — resistance is demonstrably hopeless
+// Submission is a HAZARD per tick of history, not a per-pass roll — so the
+// POLITY_INTERVAL perf lever never changes how fast courts capitulate (per-pass
+// rolls would run 5× hotter at interval 30 than at 150). ≈ once per ~600 ticks
+// of sustained hopeless odds: a court holds out a generation or two, not forever.
+const SUBMIT_HAZARD   = 0.0017; // per-tick capitulation hazard under hopeless odds (converted to a per-pass probability by _passProb, which never saturates)
+const SUBMIT_REACH = 1.5;  // a suzerain overawes out to this multiple of its hold reach: a punitive expedition ranges past where a permanent garrison (direct administration) can sit, and a vassal costs no garrison — it administers itself
+// ── Nomad confederations (a polity MODE, derived every pass — see classifyNomads) ──
+// Riding is REAL past the chariot gate — the same mobility threshold the tech
+// tree itself uses (throws if the tree ever renames it, instead of silently
+// classifying nobody).
+const _chariotTech = TECHS.find(t => t.id === "chariots");
+if (!_chariotTech) throw new Error("conquest.js: TECHS has no 'chariots' — nomad classification needs its mobility gate");
+const CHARIOT_MOB = _chariotTech.gate[1];
+const NOMAD_OPEN_MIN   = 0.5;   // a tile is saddle-country when at least half the full riding discount is available there (transport.js tileOpenness: dry grass, low relief)
+const NOMAD_FERT_MAX   = 0.35;  // ...and too poor to farm: below this yield the herd beats the plough (floodplain agriculture is indexed from fert ≥ 0.25; 0.35 is marginal cropland at best)
+const NOMAD_HORSES_MIN = 0.05;  // herds must actually be reachable at the seat — the same floor the economy uses for horse wealth to exist at all
+const NOMAD_MOMENTUM   = 2;     // a confederation is a charisma-glued winning streak: banked conquest/raid momentum counts (and can carry) double for a nomadic realm — and evaporates on the same decay clock, so a stalled horde deflates fast
+// Post-khan shatter: a contested succession disputes the ONLY thing holding a
+// confederation together. Hazard per tick of history while a dynastic crisis is
+// live — ≈ even odds across one crisis window, because steppe confederations
+// rarely survived a contested succession intact.
+const NOMAD_SHATTER_HAZARD = 0.0023;
+// The raid economy (hordeRaids): what the steppe cannot grow it takes from the
+// sown. Per-tick hazard of a raid season against a given rich neighbour
+// (≈ one season per generation per target when undeterred); the take is the
+// same "portable, seizable share" logic as a sack's PLUNDER_FRAC, spread over
+// a season of border raids instead of one storm, scaled by the wealth gradient
+// and throttled by the defender's power.
+const RAID_REACH   = 2.0;    // a horde raids out to this multiple of its hold reach — raiding parties range far past what the khan governs
+const RAID_HAZARD  = 0.0017; // per-tick chance of a raid season against one target realm
+const RAID_TAKE    = 0.10;   // ceiling share of a reachable settlement's portable coin one season carries off (before gradient/defence scaling)
+const RAID_CAPTIVE = 0.03;   // ceiling share of a raided settlement's people swept into the captive trains (slave machinery; only when T.SLAVERY)
 // A realm's whole country must out-power a neighbour's whole country by
 // T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
 // frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor
@@ -173,7 +203,8 @@ const SPOILS_DECAY = 0.85;   // war-weariness relief (banked on conquest in armi
 // revenue/spend, momentum and tax state all live on it and survive capital
 // changes, conquest, and restoration.
 export function govOf(world, countryId) {
-  return ensurePolity(world, countryId, { silent: true });
+  // Lifecycle-neutral: fiscal bookkeeping must never resurrect a dead realm.
+  return getOrCreateRecord(world, countryId);
 }
 
 // Bank conquest momentum onto the conquering country (armies.js calls this
@@ -204,7 +235,7 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 // from its coercive POWER, not fixed dials. capacity = CAP_K · log2(1 + capPower
 // / POW_REF) + seat bonuses. A stronger capital (army + people + development)
 // holds more; war / insolvency sap it; circumscription eases it. Replaces the
-// old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials.
+// old count-forcing dials (CAP_BASE/CAP_POP/CAP_ORG — all removed).
 //
 // CAP_K is the coercion coefficient — how many reach-units of province a unit of
 // log-power holds. It sets the SUSTAINABLE empire size: the floor a realm
@@ -235,6 +266,22 @@ const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-la
 // lower base instead (see the domCeil derivation in updatePolities). Not a fixed
 // era-blind clamp — the most a hegemon can tower scales with its delegation tech.
 const CAP_DOM_CEIL_BASE = 4;   // primitive (capCoh→0) dominance ceiling — early hegemons stay bounded
+// CAP_MODEL (T.CAP_MODEL, W6-C R5) — the GROUNDED replacement for the fitted CAP_DOM_W/P
+// tail. Instead of asserting "capacity ∝ (relative power)^1.5" (a curve-fit exponent with
+// no mechanism), dominance is derived from Tilly's real levers: a realm towers over its
+// peers when it EXTRACTS more fiscal surplus than they do AND has the LOGISTICS to project
+// it — and the two COMPOUND: surplus funds the roads/administration that extend reach, which
+// holds more territory, which raises revenue. That compounding (a term in fiscalSurplus²) is
+// where the increasing-returns CONVEXITY now comes FROM — a mechanism, not an exponent — and
+// it correctly predicts that sprawling logistically-integrated empires only emerge once the
+// reach techs exist (bronze-age hegemons stay linear and small; the rail age towers). The two
+// weights are physical coefficients (provinces per unit fiscal surplus; reach gained per unit
+// logistics tech), each with independent meaning — not a shape dialled to an outcome. Same
+// emergent ceiling (domCeil). Reads world._refRevenue + gov._lastRevenue (see updatePolities).
+// The two coefficients live in tuning.js (T.CAP_FISC, T.CAP_LOG) so the grounded tail can be
+// A/B-calibrated against the size gates without a rebuild — CAP_FISC = capacity per unit of
+// above-median fiscal extraction; CAP_LOG = how strongly logistics tech multiplies the
+// surplus-funded reach (the compounding that makes the tail convex).
 // Imperial-hysteresis rates:
 const CAP_IMP_RISE  = 0.04;   // imperial-capacity stock rises toward live capacity (institutions accrete)
 const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (institutions persist → hysteresis)
@@ -334,6 +381,18 @@ export const BALANCE_W   = 1.1;   // how hard a coalition backs a member it defe
 export const BALANCE_CAP = 3.0;   // ceiling on that backing (a coalition deters, it doesn't make a member invincible)
 const ALLY_TRADE_REF = 6;     // cross-border money/tick at which two realms are "mutual-benefit" allies regardless of threat
 const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this often
+// Naive `world.step % EVERY === 0` is DEAD inside this phase-offset pass (it
+// froze the alliance map at its first build) — see passWindow (tuning.js).
+const _polityWindow = (world, every) => passWindow(world, T.POLITY_INTERVAL, every);
+// The polity pass's span in ticks — per-tick hazards multiply by this so a
+// per-history rate never varies with the POLITY_INTERVAL perf lever.
+const _passTicks = () => Math.max(1, Math.round(T.POLITY_INTERVAL * (T.SIM_GRANULARITY || 1)));
+// Per-pass probability of a per-tick HAZARD firing at least once across the
+// pass span — the EXACT compounding 1-(1-h)^ticks, which is cadence-invariant
+// AND can never reach 1 (a naive hazard×ticks saturates past 1 once the perf
+// lever is turned up, silently making the event fire every pass — a rate set by
+// the cadence, not the world). Used by every per-tick hazard in this pass.
+const _passProb = (hazard) => 1 - Math.pow(1 - hazard, _passTicks());
 
 // ── Colonial dependencies: a self-governing colony bound to an overlord ───────
 // An overseas colony (sea.js) is founded as its OWN realm — own capital, own LOCAL
@@ -983,7 +1042,11 @@ function shedPatch(world, c, members) {
 // regional successor states around their strongest cities. Called from
 // armies.js the moment a capital is stormed. The conqueror (excludeId) keeps
 // only the captured throne-city; everything else fragments.
-export function fragmentRealm(world, oldId, excludeId) {
+// `how` labels the polity.ended record: "conquest" (default — a stormed
+// capital, excludeId = the conqueror's settlement) or "succession" (the
+// post-khan shatter — no conqueror, excludeId -1, every member fragments and
+// the dead khan's chest stays on the record, buried with the house).
+export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
   // The conqueror sacks the treasury — the fallen state's war-chest is seized
   // into the victor's coffers (keeps the coin conserved + a great war prize).
   // Only zero the dead chest once it has actually been CREDITED somewhere; if
@@ -1003,7 +1066,7 @@ export function fragmentRealm(world, oldId, excludeId) {
   {
     const conq = world._byId ? world._byId.get(excludeId) : null;
     const by = conq && conq.countryId != null ? conq.countryId : -1;
-    endPolity(world, oldId, "conquest", by, by >= 0 ? realmName(world, by) : undefined);
+    endPolity(world, oldId, how, by, by >= 0 ? realmName(world, by) : undefined);
   }
   let survivors = [];
   for (const s of world.settlements) {
@@ -1036,6 +1099,14 @@ export function fragmentRealm(world, oldId, excludeId) {
   const capitals = [];
   for (const s of ranked) {
     if (capitals.length >= maxStates) break;
+    // Never re-anchor a successor on the DEAD realm's own id: country ids ARE
+    // settlement ids, so a successor whose seat is the founder settlement
+    // (s.id === oldId) would reuse oldId — and ensurePolity would REOPEN the
+    // record endPolity just closed, logging a spurious ended+restored pair and
+    // handing the "shattered" realm its own buried war-chest back (the succession
+    // shatter degrading to a self-rename). The founder settlement still joins its
+    // nearest successor below; the id dies with the house, as intended.
+    if (s.id === oldId) continue;
     let far = true;
     for (const cap of capitals) {
       if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
@@ -1128,7 +1199,7 @@ function rebel(world, c, seeds) {
       if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
       if ((m.unrest ?? 0) < UNREST_JOIN) continue;                    // content → doesn't rise
       const pacified = world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
-      const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (pacified || infant) continue;                              // garrison holds it down for now
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
       bloc.push(m);
@@ -1245,16 +1316,18 @@ function disburseTreasury(world, c, gov, warLevel) {
       gov.fineness = Math.min(1, f0 + DEBASE_RECOVER);
     }
   }
-  const armyPaid = Math.min(Math.max(0, gov.treasury), armyBill);
-  gov._solvency = armyBill > 0.01 ? armyPaid / armyBill : 1;   // 1 = fully paid; < 1 = arrears
-  if (armyPaid > 0 && totalArmy > 0) {
-    for (const s of members) {
-      if (s.countryId !== c.id || !(s.army > 0)) continue;
-      const share = armyPaid * (s.army / totalArmy);
-      s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
-    }
-    gov.treasury -= armyPaid; spent += armyPaid;
-  }
+  // CONTINUOUS PAY (review I93): financing decisions (loans, debasement) stay
+  // here — structural, periodic — but the CASH leaves on the muster cadence
+  // (armies.js payWages) at a per-tick rate. The old lump-sum pulsed up to
+  // ~78% of the whole money supply through treasuries and back in one tick
+  // every polity pass, whipsawing prices and the Hume flow at a fixed period.
+  // Solvency is refreshed by each pay tranche against what was actually due.
+  const passTicks = Math.max(1, Math.round(T.POLITY_INTERVAL * (T.SIM_GRANULARITY || 1)));
+  gov._wagePerTick = armyBill / passTicks;
+  spent += gov._wagePaidAccum || 0;   // wages the muster tranches actually paid since last pass (fiscal EMA input)
+  gov._wagePaidAccum = 0;
+  if (gov._lastWagePay === undefined) gov._lastWagePay = world.step;
+  if (gov._solvency === undefined) gov._solvency = 1;
 
   // ── 1.5 DEBT SERVICE ── interest on the crown's debt, paid to the financier city as
   // its 'war loans' income. Unpaid interest CAPITALISES (clamped to the ceiling): a
@@ -1493,13 +1566,19 @@ function capitalTransportCosts(world, c) {
 //   _allies         : countryId → Set of allied countryIds (won't attack each other)
 //   _blocMight      : hegemonId → total power of the coalition arrayed against it
 // and _countryPow (countryId → national coercive power) for the front-bar scaling.
-function updateAlliances(world) {
+export function updateAlliances(world) {
   const countries = world.countries, owner = world._territoryOwner, byId = world._byId;
   if (!countries || !owner || !byId) return;
   const { tw, th } = world;
   // Resolve a tile's SETTLEMENT owner to its COUNTRY — the war pass works on this
   // granular per-settlement territory map (_territoryOwner), not the sparse cored
   // _countryOwner (which barely touches between realms, so adjacency on it is empty).
+  // KNOWN LIMIT: tiles with no settlement catchment read as wilderness here, so a
+  // statelet ringed by an empire's unsettled MARCH feels no threat and never
+  // submits (absorbWeakNeighbors sees marches and still consolidates it). Widening
+  // this map to marches was tried and rejected: it inflates the balance-of-power
+  // deterrent world-wide and flattens the war-deadliness tail — the threat map
+  // wars calibrate against must not be quietly redefined by the vassalage pass.
   const ccAt = (i) => { const o = owner[i]; if (o < 0) return -1; const s = byId.get(o); return s ? s.countryId : -1; };
   // 1. national power = Σ settlementPower over every settled member of a realm (its whole
   //    coercive weight, not just the capital — a big multi-city empire is more threatening).
@@ -1525,6 +1604,7 @@ function updateAlliances(world) {
     tradePair.set(k, (tradePair.get(k) || 0) + Math.abs(net));
   }
   const tradeOf = (a, b) => tradePair.get(Math.min(a, b) + ":" + Math.max(a, b)) || 0;
+  world._tradePairs = tradePair;   // read by the truce pass: peace lasts while it pays (trade-scaled truce duration)
   // 4. each realm's dominant THREAT — the strongest neighbour that towers over it (but never
   //    its own overlord/dependency — a colony does not balance against its metropole).
   const ovT = world._overlordOf;
@@ -1564,6 +1644,9 @@ export function updatePolities(world) {
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
+  // Nomad classification first — everything downstream (momentum, raids, the
+  // post-khan shatter) reads this pass's fresh flags, never last pass's world.
+  classifyNomads(world, countries);
 
   // ── Colonial dependencies: wire new colonies, validate links, grant independence ──
   {
@@ -1576,56 +1659,38 @@ export function updatePolities(world) {
       const pol = getPolity(world, s.id);
       if (pol && pol._overlord == null && countries.has(over)) {
         pol._overlord = over;
+        pol._depKind = "colony";                                   // a planted dependency (vs a submitted vassal) — drives investment and map rendering
         inheritPersonality(world, over, s.id);                     // the colony carries the metropole's temperament
         snapClaim(world, s.id);                                    // it administers its own ground at once
         logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
           seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
       }
     }
-    // (b) Live overlord map + validation: an overlord whose realm has died frees its
-    //     dependencies; a self-referential or orphaned link is dropped.
-    const overlordOf = world._overlordOf = new Map();
-    for (const c of countries.values()) {
-      const pol = getPolity(world, c.id);
-      if (!pol || pol._overlord == null) continue;
-      if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; continue; }
-      overlordOf.set(c.id, pol._overlord);
-    }
-    // (b2) The metropole's naval REACH to each colony — how much force/supply it can project
-    //      across the distance, scaled by its naval-logistics tech. Governs protection, support
-    //      AND the independence line below, so nothing about the link is automatic or perfect.
-    const reachOf = world._overlordReach = new Map();
-    const tw = world.tw;
-    for (const [dep, over] of overlordOf) {
-      const dc = countries.get(dep), oc = countries.get(over);
-      if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
-      let dx = Math.abs(dc.capital.pos.x - oc.capital.pos.x); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
-      const dy = dc.capital.pos.y - oc.capital.pos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
-      const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
-      reachOf.set(dep, navalReach / (navalReach + dist));
-    }
+    // (b/b2) Live overlord map + naval reach — extracted so loadWorld can warm
+    //        the same state before its updateAlliances call (an overlord-blind
+    //        alliance map let colonies balance against their own metropole for
+    //        a whole post-load window).
+    const { overlordOf, reachOf } = rebuildOverlords(world, countries);
     // (c) INDEPENDENCE — emergent, never timed. A dependency cuts the apron strings once its own
     //     power exceeds the force the metropole can PROJECT to it (its power × naval reach), not
     //     the metropole's total: a DISTANT colony, which the navy can barely reach, breaks free at
     //     far less relative strength than a near one. This is the American/Latin-American arc —
     //     the metropole loses what it cannot hold across the sea, sooner the farther it is.
-    if (overlordOf.size && world.step % INDEPENDENCE_EVERY === 0) {
+    if (overlordOf.size && _polityWindow(world, INDEPENDENCE_EVERY)) {
       for (const [dep, over] of [...overlordOf]) {
         const dc = countries.get(dep), oc = countries.get(over);
         if (!dc || !oc) continue;
         const projForce = blocPow(oc) * (reachOf.get(dep) ?? 0);   // what the metropole can actually bring to bear
         if (blocPow(dc) >= INDEP_POWER_RATIO * projForce) {
-          const pol = getPolity(world, dep); if (pol) pol._overlord = undefined;
+          const pol = getPolity(world, dep); if (pol) { pol._overlord = undefined; pol._depKind = undefined; }
           overlordOf.delete(dep);
           logEvent(world, "colony.independent", { polity: dep, from: over,
             fromName: realmName(world, over), name: realmName(world, dep) });
         }
       }
     }
-    // (d) The colonial ECONOMY, both directions. The metropole INVESTS in a young or
-    //     struggling dependency — coin from its treasury, grain from its capital granary —
+    // (d) The colonial ECONOMY, both directions. The metropole INVESTS in a young
+    //     dependency — coin from its treasury, grain from its capital granary —
     //     so a raw frontier survives (the COLONY_SUPPLY that used to flow inside one country
     //     now flows ACROSS the overlord link, since a colony is its own realm). A MATURE,
     //     solvent dependency pays TRIBUTE home — a share of its treasury. The net flow
@@ -1636,15 +1701,22 @@ export function updatePolities(world) {
       const dc = countries.get(dep), oc = countries.get(over);
       if (!dpol || !opol || !dc || !oc || !dc.capital || !oc.capital) continue;
       const proj = reachOf.get(dep) ?? 0;   // how much the metropole can ship across the distance
-      const young = world.step - (dc.capital.foundedStep || 0) < COLONY_SUPPLY_TICKS;
-      if (young || (dpol.treasury || 0) < COLONY_SUPPLY_COIN) {
-        // Investment is limited by what the navy can carry — a colony beyond easy reach gets little.
+      const young = world.step - (dc.capital.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
+      if (young) {
+        // Investment flows only while the plantation is YOUNG — the metropole
+        // funds its own venture through its formative years. It does NOT flow to
+        // any mature dependency that happens to be poor: a submitted pauper
+        // vassal would otherwise draw a perpetual subsidy every pass (a hegemon
+        // with a ring of poor tributaries bled its treasury dry), inverting the
+        // tribute relationship submission exists to create.
         const coin = Math.min(COLONY_SUPPLY_COIN * proj, Math.max(0, opol.treasury));
         if (coin > 0) { opol.treasury -= coin; dpol.treasury += coin; recordIn(dc.capital, IN_AID, coin); recordOut(oc.capital, OUT_AID, coin); }
         const need = (dc.capital._foodDemand || 0) - (dc.capital.food || 0);
         const food = Math.min(COLONY_SUPPLY_FOOD * proj, Math.max(0, (oc.capital.food || 0) - 20));
         if (need > 0 && food > 0) { oc.capital.food -= food; dc.capital.food = (dc.capital.food || 0) + food; }
-      } else {
+      } else if ((dpol.treasury || 0) >= COLONY_SUPPLY_COIN) {
+        // A mature, solvent dependency pays tribute home; a poor one neither
+        // receives nor pays — tribute waits until its treasury can bear it.
         const trib = TRIBUTE_FRAC * Math.max(0, dpol.treasury);
         if (trib > 0) { dpol.treasury -= trib; opol.treasury += trib; recordOut(dc.capital, OUT_TRIBUTE, trib); recordIn(oc.capital, IN_TRIBUTE, trib); }
       }
@@ -1666,16 +1738,11 @@ export function updatePolities(world) {
   for (const s of world.settlements) {
     if (s.mode !== "settled" || (s._homeland ?? -1) < 0) continue;
     if (s._homeland === s.countryId
-        || ((s._homelandFell ?? -1) >= 0 && world.step - s._homelandFell > HOMELAND_MEMORY)) {
+        || ((s._homelandFell ?? -1) >= 0 && world.step - s._homelandFell > HOMELAND_MEMORY / (world._dt || 1))) {
       s._homeland = -1; s._homelandFell = -1;
     }
   }
 
-  // Era-weighted salience of the four identity layers (cohesion.js). One read per
-  // pass — the year is global — shared by the unrest grievance and the admin-load
-  // friction below. The axis of conflict it emphasises shifts with the calendar:
-  // faith in the medieval, language across the bureaucratic eras, peoples in the modern.
-  const idW = identityWeightsNow(world);
   // MEDIAN capital power across the REAL states (multi-member) this pass — the era
   // baseline the dominant-empire boost is measured against (see CAP_DOM_W). The median
   // (not the mean) is deliberate: it is robust to the hegemon's OWN outsized core, so a
@@ -1685,15 +1752,53 @@ export function updatePolities(world) {
     for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
     cps.sort((a, b) => a - b);
     world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
+  // CAP_MODEL: the MEDIAN fiscal extraction across real states — the peer baseline the
+  // grounded dominance tail is measured against (revenue is Tilly's real currency of
+  // administrative reach, and it differs from raw coercive power by extraction efficiency).
+  // Same robust-median rationale as _refCapPower. Only read when the lever is on.
+  if (T.CAP_MODEL) { const revs = [];
+    for (const c of countries.values()) if (c.capital && c.members.length > 1) revs.push(govOf(world, c.id)._lastRevenue || 0);
+    revs.sort((a, b) => a - b);
+    world._refRevenue = revs.length ? Math.max(1, revs[revs.length >> 1]) : 1; }
   // Balance of power: recompute the (slow-drifting) alliance map periodically — and
   // once on first run so the war pass never reads an undefined map. Self-calibrating,
   // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
-  if (!world._allianceTarget || world.step % ALLIANCE_EVERY === 0) updateAlliances(world);
+  if (!world._allianceTarget || _polityWindow(world, ALLIANCE_EVERY)) updateAlliances(world);
+  // Vassalage: hopelessly-outmatched statelets submit to the neighbour that
+  // towers over them (the threat map above), entering the dependency plumbing.
+  // Runs every polity pass on the (slow-drifting) alliance data; the new
+  // vassal's tribute/bloc wiring takes effect next pass via rebuildOverlords.
+  considerSubmissions(world, countries);
+  // The steppe collects: hordes raid the rich settled rim (or honour the
+  // treaties of those who submitted above). After submissions so a court that
+  // bent the knee this pass is spared this pass's raid season.
+  hordeRaids(world, countries);
   for (const c of countries.values()) {
-    if (c.members.length <= 1) { if (c.members[0]) c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
+    if (c.members.length <= 1) {
+      const solo = c.members[0];
+      if (solo) {
+        solo.loyalty = 1;   // a city-state is loyal to itself
+        // ...and its stocks keep LIVING: unrest cools here too (the relief
+        // used to live only in the multi-member loop, so a city-state born
+        // of a duress secession kept its pre-secession unrest forever), and
+        // the fiscal record recovers — disburseTreasury never runs for a
+        // lone town, so a stale _solvency snapshot from imperial days
+        // permanently deserted its garrison (BANKRUPT_DESERT every muster).
+        solo.unrest = Math.max(0, (solo.unrest || 0) - UNREST_RELIEF);
+        const soloGov = getPolity(world, c.id);
+        if (soloGov) { soloGov._solvency = 1; soloGov._taxRate = 0; }
+      }
+      continue;
+    }
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
+    // Era-weighted salience of the four identity layers, from THIS realm's own
+    // development (cohesion.js identityWeightsFor) — the axis of conflict each
+    // realm feels shifts as ITS society develops: faith in its medieval,
+    // language across its bureaucratic era, the national idea when IT (or a
+    // neighbour it faces) industrialises. Never the planet-wide leader.
+    const idW = identityWeightsFor(world, cap);
     // The realm's mustered force (sum of member garrisons) — its monopoly on
     // organised violence, the thing that actually SUPPRESSES a province's revolt.
     let natArmy = 0; for (const m of c.members) natArmy += (m.army || 0);
@@ -1776,7 +1881,19 @@ export function updatePolities(world) {
     // with an emergent bound — no anachronistic continent-eating chiefdom, and the
     // late-game ceiling still resolves to T.CAP_DOM_MAX as cohesion matures.
     const domCeil = CAP_DOM_CEIL_BASE + capCoh * (T.CAP_DOM_MAX - CAP_DOM_CEIL_BASE);
-    const dominance = Math.min(domCeil, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    let dominance;
+    if (T.CAP_MODEL) {
+      // GROUNDED tail (CAP_FISC/CAP_LOG): fiscal surplus over peers, its reach multiplied by
+      // logistics — the two compounding into convexity. relFisc = last pass's extraction vs the
+      // peer median (revenue, not raw power, is what funds administration). Logistics≈0 in the
+      // bronze age ⇒ the tail is near-linear and small; it steepens only as the reach techs
+      // (roads→rails) arrive ⇒ integrated mega-empires are a LATE, earned phenomenon.
+      const fiscalSurplus = Math.max(0, (govOf(world, c.id)._lastRevenue || 0) / (world._refRevenue || 1) - 1);
+      const logistics = capE.logistics || 0;
+      dominance = Math.min(domCeil, 1 + T.CAP_FISC * fiscalSurplus * (1 + T.CAP_LOG * logistics * fiscalSurplus));
+    } else {
+      dominance = Math.min(domCeil, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    }
     c._dominance = dominance;   // info panel: how far this realm out-cores the age
     // GEOGRAPHIC CORE (absolute, founding-location advantage): a capital on a rich
     // river-valley / floodplain heartland projects power further than one on marginal
@@ -1806,8 +1923,8 @@ export function updatePolities(world) {
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
     const fb = world._fronts && world._fronts.byCountry;
     const fronts = fb ? (fb.get(c.id) ? fb.get(c.id).size : 0) : 0;
-    const besiegedCap = world.step - (cap._siegeAt ?? -Infinity) < SIEGE_WINDOW;
-    const raidedCap   = world.step - (cap._warAt   ?? -Infinity) < SIEGE_WINDOW;
+    const besiegedCap = world.step - (cap._siegeAt ?? -Infinity) < SIEGE_WINDOW / (world._dt || 1);
+    const raidedCap   = world.step - (cap._warAt   ?? -Infinity) < SIEGE_WINDOW / (world._dt || 1);
     let duress = 1;
     if (fronts > 1) duress /= (1 + MULTIFRONT_PENALTY * Math.min(3, fronts - 1));   // split army/attention (capped)
     if (besiegedCap)     duress *= SIEGE_CAPACITY_MULT;                  // throne pinned
@@ -1832,8 +1949,12 @@ export function updatePolities(world) {
     // propped-up frontier sheds in a few passes (hard snap). Added on top of
     // the throttled budget so even a multi-front war-machine over-holds while
     // it's winning, then shatters when it stalls.
-    const momentum = Math.min(T.MOMENTUM_CAP, gov._momentum || 0);
-    gov._momentum = momentum * MOMENTUM_DECAY;     // decay each pass; conquest re-banks it (armies.js)
+    // For a NOMADIC realm the streak IS the state: charisma-glued confederations
+    // are held together by success, so momentum counts (and can carry) double —
+    // and rides the same decay clock, so a stalled horde deflates twice as hard.
+    const banked = Math.min(T.MOMENTUM_CAP, gov._momentum || 0);   // the bank stays clamped at the settled cap, as ever
+    const momentum = banked * (c._nomadic ? NOMAD_MOMENTUM : 1);   // ...but a horde RIDES it double
+    gov._momentum = banked * MOMENTUM_DECAY;     // decay each pass; conquest re-banks it (armies.js)
     const capacity = peaceCapacity * duress * fiscalDuress + momentum;
     c._capacity = capacity;        // (already duress-adjusted) for the info panel
     c._momentum = momentum;        // for the info panel
@@ -1983,7 +2104,7 @@ export function updatePolities(world) {
       cum += load;
       const covered  = cum <= capacity;
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
-      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (pacified || infant) {
         // Held by garrison / colonial project: nudge loyalty toward its base
         // but never secede yet.
@@ -2030,7 +2151,7 @@ export function updatePolities(world) {
       if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
       const seat = (s.tier | 0) >= CITY_TIER;    // must be a CITY (a province seat) — it takes its province with it
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
-      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       const ratio = settlementPower(s) / capPower;                    // strength vs the throne
       // Same blended distance as the hold load — a governor across a
       // mountain range is "farther" than its straight-line reading,
@@ -2061,7 +2182,7 @@ export function updatePolities(world) {
     for (const s of c.members) {
       if (s.id === c.capitalId || s.countryId !== c.id) continue;
       const youngColony = s.parentSettlementId >= 0 &&
-                          world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+                          world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (youngColony) {
         const food = Math.min(COLONY_SUPPLY_FOOD, Math.max(0, (c.capital.food || 0) - 20));
         if (food > 0) { c.capital.food -= food; s.food = (s.food || 0) + food; }
@@ -2108,6 +2229,7 @@ export function updatePolities(world) {
     disburseTreasury(world, c, gov, warLevel);
     c._treasury = gov.treasury;
     c._fineness = gov.fineness ?? 1;   // currency strength (1 = full metal; < 1 = debased) — for the UI
+    gov._lastRevenue = gov._revenue;                  // CAP_MODEL: carry this pass's total fiscal extraction to next pass's capacity calc (revenue isn't accumulated yet when capacity runs). Persistent on gov; inert unless CAP_MODEL reads it.
     c._govRevenue = gov._revenue; gov._revenue = 0;   // per-pass revenue, for the panel
     c._govSpend = gov._spend;
 
@@ -2129,10 +2251,339 @@ export function updatePolities(world) {
   absorbWeakNeighbors(world, countries);
   if (_pf) _pf.absorb = performance.now() - _pt;
 
+  // ── Post-khan shatter ──────────────────────────────────────────────
+  // A nomad confederation is a winning streak with a khan at its head, not an
+  // institutionalized state — and a CONTESTED succession (a live dynastic
+  // crisis) disputes the only thing holding it together. While the crisis
+  // runs, the whole confederation can shatter wholesale into successor hordes
+  // (fragmentRealm — the Diadochi machinery, entered by succession rather
+  // than by a stormed capital). Settled realms are untouched: they shatter
+  // only the ways they always could. Emergent both ways — a horde that
+  // sedentarizes (flag off) outgrows the shatter the same pass.
+  {
+    const shatterP = _passProb(NOMAD_SHATTER_HAZARD);
+    for (const c of [...countries.values()]) {
+      if (!c._nomadic || c.members.length < 3) continue;
+      if (!inCrisis(world, c.id)) continue;
+      const r = hash32(world.seed || 1, "hordeShatter", c.id, world.step) / 4294967296;
+      if (r > shatterP) continue;
+      fragmentRealm(world, c.id, -1, "succession");
+    }
+  }
+
   // Reconcile the persistent polity registry against the live view: register
   // substantial newcomers, close the records of realms that vanished. (No
   // pruning — fallen realms keep their record, history and temperament.)
   reconcilePolities(world, countries);
+}
+
+// ── Nomad confederations: a polity MODE, derived, never stored ─────────
+// A realm is NOMADIC when its SEAT sits in saddle-country (open riding
+// terrain — the same openness the transport core discounts for mounted
+// cultures — too poor to farm), its herds are real (horses reachable at the
+// seat) and its riding is real (mobility at the chariot gate). No steppe, no
+// horses, or no riding → never fires, on any map. The SEAT is the right
+// granularity, not a population majority: everything a realm IS in this
+// model — knowledge, personality, reach — reads from its capital, and
+// rebuildCountries seats the court at the strongest member, so a horde that
+// takes a rich farming city finds its court sitting in the sown next pass
+// and the flag flips off — sedentarization (the Yuan arc) falls out of seat
+// selection for free, while a farming empire that holds steppe marches never
+// reads as a horde. Recomputed from live state every polity pass.
+function classifyNomads(world, countries) {
+  const tw = world.tw, fert = world.fert;
+  for (const c of countries.values()) {
+    c._nomadic = false;
+    const cap = c.capital; if (!cap) continue;
+    if (((cap.knowledge && cap.knowledge.mobility) || 0) < CHARIOT_MOB) continue;  // no riding, no horde
+    // Herds gate reads the seat's OWN-GROUND deposits (localRes), not the
+    // trade-folded _effRes: a horde's herds are its own steppe, and localRes is
+    // load-stable (re-derived on load by rederiveSiteStatics) whereas _effRes is
+    // an unpersisted cache — keying a hard classification boolean on it forked
+    // save/load continuations for any capital near the horse floor.
+    const res = cap.localRes || {};
+    if ((res.horses || 0) < NOMAD_HORSES_MIN) continue;                            // no herds, no horde
+    const ti = (cap.pos.y | 0) * tw + (cap.pos.x | 0);
+    c._nomadic = tileOpenness(world, ti) >= NOMAD_OPEN_MIN && (fert[ti] || 0) < NOMAD_FERT_MAX;
+  }
+}
+
+// ── The raid economy of the steppe ─────────────────────────────────────
+// A nomadic realm farms little — its land can't. What the steppe yields is
+// force projection, and the horde converts it into the sown's wealth. Each
+// polity pass, a settled realm within a horde's raiding range faces the
+// steppe's terms: where tribute already flows (it SUBMITTED — the Xiongnu
+// treaty, handled by the same considerSubmissions machinery as any hopeless
+// matchup) or a truce holds, the treaty is honoured; otherwise the horde
+// raids — a conserved sweep of portable coin (and captives, into the slave
+// machinery) out of the victim's reachable settlements. Intensity rides the
+// WEALTH GRADIENT between steppe and sown (a poor rim breeds no hordes) and
+// is throttled by the defender's power (a strong empire suffers pinpricks; a
+// soft one bleeds). A good season banks the same momentum conquest does —
+// the confederation is glued together by success, so raiding snowballs
+// toward the submission line — and the borderlands' unrest carries the fear.
+function hordeRaids(world, countries) {
+  // Nothing to do on a world with no hordes — the common case. Skip the whole
+  // settlement sweep and Map builds rather than pay them every polity pass.
+  let anyNomad = false;
+  for (const c of countries.values()) if (c._nomadic) { anyNomad = true; break; }
+  if (!anyNomad) return;
+  // Per-realm live power / coin / heads, one sweep over the settlements. Coin
+  // folds in the polity TREASURY (where raid loot lands) so a horde that has
+  // grown rich reads as rich — the wealth GRADIENT the raid intensity rides
+  // then closes from both sides as the steppe enriches (self-limiting), instead
+  // of a one-way ratchet where looted coin is invisible to the gradient.
+  const pow = new Map(), coin = new Map(), heads = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId < 0) continue;
+    pow.set(s.countryId, (pow.get(s.countryId) || 0) + settlementPower(s));
+    coin.set(s.countryId, (coin.get(s.countryId) || 0) + (s.wealth || 0));
+    heads.set(s.countryId, (heads.get(s.countryId) || 0) + (s.people || 0));
+  }
+  for (const c of countries.values()) {
+    const gp = getPolity(world, c.id);
+    if (gp && gp.treasury > 0) coin.set(c.id, (coin.get(c.id) || 0) + gp.treasury);
+  }
+  const raidP = _passProb(RAID_HAZARD);
+  const ov = world._overlordOf, truces = world._truces;
+  const bondedPair = (a, b) => ov && (ov.get(a) === b || ov.get(b) === a);
+  const inTruce = (a, b) => {
+    if (!truces) return false;
+    const u = truces.get(Math.min(a, b) + ":" + Math.max(a, b));
+    return u !== undefined && u > world.step;
+  };
+  for (const N of countries.values()) {
+    if (!N._nomadic || !N.capital) continue;
+    const wN = (coin.get(N.id) || 0) / Math.max(1, heads.get(N.id) || 1);   // the steppe's own wealth per head
+    const reach = RAID_REACH * Math.max(1, N.holdReach);
+    const powN = pow.get(N.id) || 1;
+    for (const S of countries.values()) {
+      if (S === N || !S.capital || S._nomadic) continue;   // the horde milks the SOWN — steppe-on-steppe is war, not business
+      if (bondedPair(N.id, S.id) || inTruce(N.id, S.id)) continue;   // the treaty is honoured while it holds
+      if (dist(world, N.capital.pos.x, N.capital.pos.y, S.capital.pos.x, S.capital.pos.y) > reach) continue;
+      const wS = (coin.get(S.id) || 0) / Math.max(1, heads.get(S.id) || 1);
+      if (wS <= wN) continue;                              // a poor rim breeds no hordes
+      // Pair-unique deterministic key. hash32 takes two numeric args, so pass
+      // N.id and S.id as SEPARATE fields — the old N.id*65537+S.id packing
+      // collided once settlement ids passed 65537, correlating unrelated
+      // raid pairs; the tagged two-arg form is collision-free for any ids.
+      const r = hash32(world.seed || 1, "hordeRaid:" + N.id, S.id, world.step) / 4294967296;
+      if (r > raidP) continue;
+      const grad  = (wS - wN) / wS;                        // how much richer the sown is (0..1)
+      const evade = powN / (powN + (pow.get(S.id) || 1));  // the share of the season the defence fails to parry
+      const frac  = RAID_TAKE * grad * evade;
+      if (frac <= 0.001) continue;
+      let loot = 0, took = 0;
+      const hit = [];
+      for (const v of S.members) {
+        if (v.mode !== "settled" || v.countryId !== S.id) continue;
+        if (dist(world, N.capital.pos.x, N.capital.pos.y, v.pos.x, v.pos.y) > reach) continue;   // only what the riders can reach
+        const p = (v.wealth || 0) * frac;
+        if (p > 0) { v.wealth -= p; loot += p; }
+        if (T.SLAVERY) {
+          const g = Math.min((v.people || 0) * RAID_CAPTIVE * evade, (v.people || 0) * 0.2);
+          if (g >= 1) { v.people -= g; took += g; }
+        }
+        hit.push(v);
+      }
+      if (loot <= 0 && took < 1) continue;                 // a barren season leaves no mark — and no unrest (a raid that took nothing was no raid)
+      for (const v of hit) v.unrest = Math.min(1, (v.unrest || 0) + 0.05);   // the borderlands that actually felt the riders live in fear
+      if (loot > 0) { const npol = govOf(world, N.id); npol.treasury = (npol.treasury || 0) + loot; }   // conserved, like a sack's plunder
+      if (took >= 1) N.capital._captives = (N.capital._captives || 0) + took;   // the captive trains ride for the slave markets
+      // Prestige from a raid scales with how much it ENRICHED the horde relative
+      // to what it had — a season that lifted a fortune glues the confederation,
+      // a token skirmish barely registers (momentum ∝ achievement, like a sack's
+      // plunder-scaled bank, not a flat city-storm bounty per poor-rim pinprick).
+      const gain = Math.min(1, loot / Math.max(1, coin.get(N.id) || 1));
+      bankMomentum(world, N.id, MOMENTUM_PER_STORM * evade * gain);
+      logEvent(world, "horde.raid", { polity: S.id, name: realmName(world, S.id),
+        from: N.id, fromName: realmName(world, N.id), loot: Math.round(loot), captives: Math.round(took) });
+    }
+  }
+}
+
+// ── Submission: a statelet facing hopeless odds takes an overlord ─────
+// The vassalage entry point (see SUBMIT_* above). The alliance threat map
+// nominates the candidate pairs (who towers over whom, slow-drifting); the
+// DECISION is then made on live state — a court reads the odds it faces
+// TODAY, not the ones from the last alliance rebuild: live network power
+// (own settlements plus each side's direct dependencies — a metropole with a
+// mighty network is no statelet, however small its home province), the
+// suzerain's live reach, identity, and the coalition brake. On success the
+// pair's war (if any) ends in capitulation and the dependency wiring is
+// applied LIVE — the war pass must never sack a realm that has already knelt.
+function considerSubmissions(world, countries) {
+  const threat = world._allianceTarget;
+  if (!threat || !world._countryPow) return;
+  // Live power, network-inclusive (the same Σ settlementPower measure war uses;
+  // recomputed here like absorbWeakNeighbors does, because up to three polity
+  // passes roll between alliance rebuilds and courts don't submit to a hegemon
+  // that was shattered two passes ago).
+  const own = new Map();
+  for (const c of countries.values()) {
+    let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m);
+    own.set(c.id, p);
+  }
+  const ov = world._overlordOf;
+  const eff = new Map(own);
+  if (ov) for (const [dep, over] of ov) if (eff.has(over)) eff.set(over, (eff.get(over) || 0) + (own.get(dep) || 0));
+  // Cadence-invariant per-pass probability (exact compounding, never saturates).
+  const probBase = _passProb(SUBMIT_HAZARD);
+  for (const [sid, hid] of threat) {
+    if (hid < 0) continue;
+    const S = countries.get(sid), H = countries.get(hid);
+    if (!S || !H || !S.capital || !H.capital) continue;
+    const spol = getPolity(world, sid);                     // pure read — the record is only minted on an actual submission
+    if (spol && spol._overlord != null) continue;           // already someone's dependency
+    const powS = eff.get(sid) || 1, powH = eff.get(hid) || 1;
+    if (powH < powS * SUBMIT_RATIO) continue;               // resistance not yet hopeless
+    // The suzerain must be able to PROJECT force to S's seat — overawing needs a
+    // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
+    const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
+    if (d > SUBMIT_REACH * Math.max(1, H.holdReach)) continue;
+    // Deterministic per-(seed, settlement, step) roll — a pure function of its
+    // key, so rolling BEFORE the identity/coalition work is free rejection.
+    const r = hash32(world.seed || 1, "submit", sid, world.step) / 4294967296;
+    if (r > probBase) continue;
+    // No cycles: if H's own overlord chain leads back to S, S can't take H as
+    // suzerain (tribute pyramids — a vassal of a vassal — are fine; loops
+    // aren't). An acyclic chain can't be longer than the live polity count.
+    let up = hid, cyc = false;
+    if (ov) for (let hops = 0; hops < countries.size && ov.has(up); hops++) {
+      up = ov.get(up);
+      if (up === sid) { cyc = true; break; }
+    }
+    if (cyc) continue;
+    let prob = probBase;
+    // Kin submit, foreigners resist longer. Same era-weighted identity brake as
+    // peaceful absorption (T.ABSORB_IDENTITY) — it slows a wholly foreign court
+    // by the full lever weight but never to zero (absorbResistance saturates at
+    // exactly 1 for fully disjoint peoples; unscaled it made foreign submission
+    // impossible forever, the opposite of "eventually bends").
+    prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+    // Balance of power: a coalition arrayed against H guarantees the statelets
+    // it would overawe — the same deterrence that throttles peaceful absorption.
+    prob /= coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
+    if (r > prob) continue;
+    const rec = getOrCreateRecord(world, sid, { seat: S.capital });
+    if (!rec || rec._overlord != null) continue;
+    rec._overlord = hid;
+    rec._depKind = "vassal";                                // a submitted sovereign court, not a planted colony
+    // Wire the bond LIVE — rebuildOverlords/updateAlliances only refresh later,
+    // and in that window the war pass would read the old world: the suzerain
+    // still opening fronts on its fresh tributary, the vassal's power still
+    // counted in the coalition AGAINST its own overlord.
+    if (world._overlordOf) world._overlordOf.set(sid, hid);
+    if (world._allies) {
+      let sa = world._allies.get(sid); if (!sa) world._allies.set(sid, sa = new Set()); sa.add(hid);
+      let ha = world._allies.get(hid); if (!ha) world._allies.set(hid, ha = new Set()); ha.add(sid);
+    }
+    if (threat.get(sid) === hid) {
+      threat.set(sid, -1);
+      if (world._blocMight) {
+        const bm = world._blocMight.get(hid) || 0;
+        world._blocMight.set(hid, Math.max(0, bm - (world._countryPow.get(sid) || 0)));
+      }
+    }
+    // Submission IS the peace: any running war between the pair ends in
+    // capitulation (its dead are reckoned), and a truce binds the suzerain —
+    // a lord who accepts tribute does not sack the payer.
+    if (T.TRUCE_TICKS > 0) {
+      const truces = world._truces || (world._truces = new Map());
+      const key = Math.min(sid, hid) + ":" + Math.max(sid, hid);
+      truces.set(key, world.step + T.TRUCE_TICKS / (world._dt || 1));
+      if (world._warDead && world._warDead.has(key)) closeWar(world, key, "submission");
+    }
+    logEvent(world, "polity.submitted", { polity: sid, name: realmName(world, sid),
+      to: hid, toName: realmName(world, hid) });
+  }
+}
+
+// Connected-landmass labels (4-neighbour flood over elev>0, longitude wraps).
+// Elevation is written once at world init (state.js initTerrain) and never
+// mutated, so the labels are computed once and cached — deterministic and
+// identical after a save/load. Used to decide whether an ARMY can march
+// between two seats (same landmass) or only a NAVY can reach them.
+function landLabels(world) {
+  let lab = world._landLabel;
+  if (lab && lab.length === world.N) return lab;
+  const { tw, th, N, elev } = world;
+  lab = world._landLabel = new Int32Array(N).fill(-1);
+  const q = [];
+  let next = 0;
+  for (let start = 0; start < N; start++) {
+    if (lab[start] >= 0 || elev[start] <= 0) continue;
+    const id = next++;
+    lab[start] = id; q.length = 0; q.push(start);
+    while (q.length) {
+      const ti = q.pop();
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
+                  ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns[k];
+        if (ni >= 0 && lab[ni] < 0 && elev[ni] > 0) { lab[ni] = id; q.push(ni); }
+      }
+    }
+  }
+  return lab;
+}
+
+// Balance-of-power brake shared by peaceful absorption and submission: the
+// coalition arrayed against a hegemon (updateAlliances → _blocMight) props up
+// the statelets it would swallow or overawe. One definition so the two
+// consolidation paths can never drift apart — a statelet a coalition protects
+// from annexation must not quietly submit as a vassal instead.
+function coalitionBrake(world, hegemonId, hegemonPow) {
+  if (!world._blocMight) return 1;
+  const bm = world._blocMight.get(hegemonId) || 0;
+  if (!(bm > 0)) return 1;
+  return Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / Math.max(1, hegemonPow)));
+}
+
+// Live overlord map + validation (an overlord whose realm has died frees its
+// dependencies; self-referential/orphaned links drop) and the metropole's
+// naval REACH to each colony — how much force/supply it can project across
+// the distance, scaled by its naval-logistics tech. Governs protection,
+// support and the independence line. Called from updatePolities every pass
+// and from loadWorld to warm the maps before the post-load alliance rebuild.
+export function rebuildOverlords(world, countries) {
+  const overlordOf = world._overlordOf = new Map();
+  for (const c of countries.values()) {
+    const pol = getPolity(world, c.id);
+    if (!pol || pol._overlord == null) continue;
+    if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; pol._depKind = undefined; continue; }
+    overlordOf.set(c.id, pol._overlord);
+  }
+  const reachOf = world._overlordReach = new Map();
+  const tw = world.tw;
+  const lab = landLabels(world);
+  for (const [dep, over] of overlordOf) {
+    const dc = countries.get(dep), oc = countries.get(over);
+    if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
+    const d = dist(world, dc.capital.pos.x, dc.capital.pos.y, oc.capital.pos.x, oc.capital.pos.y);
+    const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
+    const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
+    // Projection is by whichever ARM reaches: the navy across water (naval
+    // reach), or the army over land — which marches out to the overlord's hold
+    // reach, the same operational range that let a land VASSAL submit in the
+    // first place. Without the land arm, an adjacent vassal's independence was
+    // judged by the overlord's NAVY (near-zero pre-sail), so a freshly-submitted
+    // statelet sat above the independence line and oscillated submit↔free.
+    // The army arm exists ONLY where an army can MARCH — both seats on the same
+    // landmass. Without that check the res-scaled hold reach dwarfed the raw
+    // naval reach and an army "marched" across open ocean to overseas colonies,
+    // silencing the very independence arc (remote colonies break free) the
+    // naval-projection model exists to produce.
+    const seaProj = navalReach / (navalReach + d);
+    const oTi = (oc.capital.pos.y | 0) * tw + (oc.capital.pos.x | 0);
+    const dTi = (dc.capital.pos.y | 0) * tw + (dc.capital.pos.x | 0);
+    const sameLand = lab[oTi] >= 0 && lab[oTi] === lab[dTi];
+    const hold = Math.max(1, oc.holdReach);
+    const landProj = sameLand ? hold / (hold + d) : 0;
+    reachOf.set(dep, Math.max(seaProj, landProj));
+  }
+  return { overlordOf, reachOf };
 }
 
 // Does this realm have administrative room for one more province? A realm
@@ -2146,11 +2597,11 @@ export function updatePolities(world) {
 // dozen villages at once and is massively over-extended next pass (the very
 // absorb↔secede oscillation this gate exists to stop). Charging each
 // absorption forward closes that hole — a pass fills only the real headroom.
-function hasAbsorbHeadroom(c, extra = 0, mult = ABSORB_HEADROOM) {
+function hasAbsorbHeadroom(c, extra = 0) {
   if (!c) return false;
   const cap = c._capacity, load = c._loadTotal;
   if (cap == null || load == null) return true;        // no budget data yet → allow
-  return load + extra < cap * mult;
+  return load + extra < cap * ABSORB_HEADROOM;
 }
 
 // Cheap estimate of the admin load a freshly-absorbed province adds to a realm
@@ -2160,9 +2611,7 @@ function hasAbsorbHeadroom(c, extra = 0, mult = ABSORB_HEADROOM) {
 // above; the real load is recomputed from scratch next polity pass.
 function estAbsorbLoad(world, c, m) {
   const cap = c.capital; if (!cap) return 1;
-  let dx = Math.abs(cap.pos.x - m.pos.x); if (dx > world.tw / 2) dx = world.tw - dx;
-  const dy = cap.pos.y - m.pos.y;
-  const eucl = Math.sqrt(dx * dx + dy * dy);
+  const eucl = dist(world, cap.pos.x, cap.pos.y, m.pos.x, m.pos.y);
   return Math.max(0.5, eucl / Math.max(1, c.holdReach || c.range));   // eucl is a map distance → res-scaled grip
 }
 
@@ -2244,9 +2693,6 @@ function absorbWeakNeighbors(world, countries) {
   // hasAbsorbHeadroom — without this the gate checks every candidate against
   // the same stale pre-pass load and the realm over-extends in one tick).
   const absorbedLoad = new Map();
-  // Era-weighted identity salience for the cultural-resistance gate below (one read
-  // per pass). See cohesion.js absorbResistance — keyed on emergent development.
-  const idW = identityWeightsNow(world);
   for (const [settId, scoreMap] of perSett) {
     const m = byId.get(settId);
     if (!m || m.mode !== "settled") continue;
@@ -2262,32 +2708,24 @@ function absorbWeakNeighbors(world, countries) {
     // counting what it has already taken on this pass.
     const target = countries.get(bestId);
     const committed = absorbedLoad.get(bestId) || 0;
-    // Lopsided: the absorber out-powers this settlement's WHOLE country by
-    // LOPSIDED_ENGULF — a great power vs a statelet. Then it engulfs even with no
-    // headroom (and faster, below); otherwise it must have spare capacity.
-    const myCountryPow = countryPower.get(m.countryId) || 1;
-    const lopsided = (countryPower.get(bestId) || 1) >= myCountryPow * LOPSIDED_ENGULF;
-    // Lopsided great powers may over-extend (up to LOPSIDED_HEADROOM × capacity)
-    // but are NOT exempt from the ceiling — without an upper bound a dominant
-    // realm engulfs the whole map. Past the ceiling it must shed before it grows.
-    if (!hasAbsorbHeadroom(target, committed, lopsided ? LOPSIDED_HEADROOM : ABSORB_HEADROOM)) continue;
+    if (!hasAbsorbHeadroom(target, committed)) continue;
     const myPower = Math.max(1, settlementPower(m));
-    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX normally; a
-    // lopsided great-power engulfment goes at the faster ENGULF_PROB so the
-    // splotch of tiny states is consolidated within a few passes, not never.
+    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX. (Hopelessly
+    // outmatched STATELETS are consolidated by the submission/vassalage pass in
+    // updatePolities, not by over-extending past the admin budget here.)
     const ratio = bestScore / myPower;
     let prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
-    if (lopsided) prob = Math.max(prob, ENGULF_PROB);
     // CULTURAL RESISTANCE: a city of the absorber's OWN people/tongue/faith slides
     // into its orbit (building a national core); a foreign one clings to independence
     // and must be taken by direct CONQUEST (armies.js) instead of peacefully defecting.
     // This is what stops one realm engulfing every neighbour it out-powers across two
-    // dozen cultures — realms coalesce into culturally-coherent nation-states. Applied
-    // AFTER the lopsided floor so even a great power can't peacefully vacuum up a wholly
-    // foreign city. Era-weighted (cohesion.js), so antiquity still permits multi-ethnic
+    // dozen cultures — realms coalesce into culturally-coherent nation-states.
+    // Era-weighted (cohesion.js), so antiquity still permits multi-ethnic
     // empires and the national age fractures them — emergent, never time-gated.
     if (T.ABSORB_IDENTITY > 0 && target && target.capital) {
-      prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(target.capital, m, idW);
+      // Salience from the two parties actually meeting (cohesion.js): the
+      // absorber's court and the absorbed community.
+      prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(target.capital, m, identityWeightsFor(world, target.capital, m));
     }
     // BALANCE OF POWER caps a hegemon's PEACEFUL growth too, not just its wars. If a
     // coalition is arrayed against the absorber (updateAlliances → _blocMight: the Σ
@@ -2302,10 +2740,7 @@ function absorbWeakNeighbors(world, countries) {
     // fragmented far-weaker pack — is unaffected and still consolidates (Russia into
     // Siberia). Emergent: the brake is the coalition's strength relative to the hegemon,
     // whatever the map makes it — never a size cap or a geography constant.
-    if (world._blocMight && world._countryPow) {
-      const bm = world._blocMight.get(bestId) || 0;
-      if (bm > 0) prob /= Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / Math.max(1, world._countryPow.get(bestId) || 1)));
-    }
+    if (world._countryPow) prob /= coalitionBrake(world, bestId, world._countryPow.get(bestId) || 1);
     // Deterministic per-(seed, settlement, step) roll via the shared avalanche
     // hash. Unlike the old linear-congruential hash it varies with the WORLD SEED
     // (defections used to be identical across every seed) and doesn't correlate
@@ -2440,9 +2875,19 @@ function eliminateEnclaves(world, countries) {
       if (oid < 0) continue;
       const s = byId.get(oid);
       if (s && s.countryId !== intoId) {
+        const oldCC = s.countryId;
         s.countryId = intoId;
         s.loyalty = 0.6;
         s._conqueredAt = world.step;
+        // Same bookkeeping as every other transfer channel: occupation
+        // memory (homeland identity, restoration claims) and the event log.
+        // An enclave swallowed silently left no trace in any chronicle and
+        // its people forgot their homeland instantly.
+        recordOccupation(s, oldCC, intoId, world.step);
+        logEvent(world, "settlement.annexed", { s: s.id, sName: s.name || "a settlement",
+          from: oldCC, fromName: oldCC >= 0 ? realmName(world, oldCC) : undefined,
+          to: intoId, toName: realmName(world, intoId),
+          x: s.pos.x | 0, y: s.pos.y | 0 });
       }
     }
   }

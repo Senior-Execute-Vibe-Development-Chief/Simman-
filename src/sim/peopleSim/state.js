@@ -261,11 +261,27 @@ function initRiverMag(world, w) {
   if (!w.rivers || !w.rivers.riverMag) return;
   const { tw, th, tileRes, N } = world;
   const rm = new Uint8Array(N);
+  const srcRm = w.rivers.riverMag;
+  // MAX-POOL over the worldgen block, exactly like fert and the tFlood OR:
+  // rivers are 1-pixel-wide D8 flow chains — the thinnest feature in the whole
+  // pipeline — so the old top-left POINT sample dropped ~64% of major/great
+  // river tiles at the app's TILE_RES 2, fragmenting the navigable spine that
+  // territory reach, roads, confluence bonuses and transport all read. A river
+  // crossing ANY sub-pixel of the block marks the tile. (At tileRes 1 — the
+  // tools/harness path — this is byte-identical to the old sampling.)
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
-      const px = Math.min(w.width - 1, tx * tileRes);
-      const py = Math.min(w.height - 1, ty * tileRes);
-      rm[ty * tw + tx] = w.rivers.riverMag[py * w.width + px] || 0;
+      let best = 0;
+      const py0 = ty * tileRes, px0 = tx * tileRes;
+      for (let dy = 0; dy < tileRes; dy++) {
+        const py = py0 + dy; if (py >= w.height) break;
+        for (let dx = 0; dx < tileRes; dx++) {
+          const px = px0 + dx; if (px >= w.width) break;
+          const v = srcRm[py * w.width + px] || 0;
+          if (v > best) best = v;
+        }
+      }
+      rm[ty * tw + tx] = best;
     }
   }
   world.riverMag = rm;
@@ -333,9 +349,20 @@ const EARTH_HEARTH_SITES = [
                                                             // at ~42–43°N (the Ordos loop / Inner Mongolia), seeding "China" in
                                                             // the steppe; this radius keeps it on the Central-Plain river.
 ];
+// Minimum separation between seeded hearths, as a fraction of map width —
+// resolution-scaled so nearby historical sites (Nile / Mesopotamia) stay
+// DISTINCT civilizations at any grid size. At coarse test resolutions their
+// search windows overlap and, without this, both snapped to the SAME best
+// river tile — two cradles superposed on one settlement site, no Fertile
+// Crescent civilization at all. ~0.02 of Earth's width ≈ 800 km, well under
+// the real Nile→Euphrates distance, so it never blocks legitimate seats.
+const HEARTH_MIN_SEP_FRAC = 0.02;
 function seedEarthHearths(world) {
   const { tw, th, elev, temp, moist, fert, riverMag } = world;
   let seeded = 0;
+  const picked = [];   // hearth tiles already seated this pass
+  const minSep = Math.max(3, Math.round(tw * HEARTH_MIN_SEP_FRAC));
+  const minSep2 = minSep * minSep;
   for (const site of EARTH_HEARTH_SITES) {
     const cx = Math.round(site.fx * tw), cy = Math.round(site.fy * th);
     const R = Math.max(6, Math.round(tw * (site.r ?? 0.04)));   // search radius (per-site override; default ~4% of map width)
@@ -348,6 +375,13 @@ function seedEarthHearths(world) {
         if (!isContinentalLand(world, ti) || elev[ti] > 0.30) continue;
         const t = temp[ti]; if (t < 0.62 || t > 0.92) continue;     // warm (a frozen river is no cradle)
         const f = fert[ti] || 0; if (f < 0.25) continue;            // fertile (river alluvium counts via tCrop)
+        let tooClose = false;
+        for (const pk of picked) {
+          const ddx = Math.min(Math.abs(nx - pk.x), tw - Math.abs(nx - pk.x));
+          const ddy = ny - pk.y;
+          if (ddx * ddx + ddy * ddy < minSep2) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
         const rm = riverMag ? riverMag[ti] : 0;
         const distPen = Math.sqrt(dx * dx + dy * dy) / R;
         // Prefer the major river, fertile, near the target site.
@@ -355,8 +389,12 @@ function seedEarthHearths(world) {
         if (score > bestScore) { bestScore = score; bestTi = ti; }
       }
     }
-    if (bestTi < 0) continue;
+    if (bestTi < 0) {
+      console.warn(`[peopleSim] hearth ${site.name}: no viable seat (window blocked or too near another hearth) — skipped`);
+      continue;
+    }
     const bx = bestTi % tw, by = (bestTi / tw) | 0;
+    picked.push({ x: bx, y: by });
     const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: 25, cradle: true });
     const name = born.name;
     const rm = riverMag ? riverMag[bestTi] : 0;
@@ -369,8 +407,9 @@ function seedEarthHearths(world) {
 
 function seedCradleVillage(world) {
   const { tw, elev, temp, moist, fert, coast, riverMag, N } = world;
-  // EARTH MAP: force the two historical hearths (Nile + Yangtze) instead of the
-  // algorithmic top-N, so the New World stays wild until colonisation. (T.EARTH_HEARTHS off = algorithmic.)
+  // EARTH MAP: force the three historical hearths (Nile, Mesopotamia, Yellow
+  // River) instead of the algorithmic top-N, so the New World stays wild until
+  // colonisation. (T.EARTH_HEARTHS off = algorithmic.)
   if (T.EARTH_HEARTHS && (world.preset === "earth_sim" || world.preset === "earth")) {
     if (seedEarthHearths(world)) return;
     console.warn("[peopleSim] earth hearths found no site — falling back to algorithmic cradles");

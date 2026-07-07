@@ -43,15 +43,21 @@ const EVENT_CAP = 200000, EVENT_KEEP = 150000;
 function compactEvents(world) {
   const events = world.events;
   events.splice(0, events.length - EVENT_KEEP);
-  for (let i = 0; i < events.length; i++) events[i].id = i;
+  // Ids are PERMANENT (never reassigned): historiography keys every
+  // deterministic know/rumor/burn roll on ev.id, so renumbering survivors
+  // re-randomized every realm's tradition after one compaction (and froze
+  // the worker's length-cursor ticker). Lookups map id → position via the
+  // id of events[0] (ids are contiguous ascending by construction).
   reindexEvents(world);
 }
+const evBase = (events) => (events.length ? events[0].id : 0);
 
 /** Append one event. Returns its id. `fields` is spread flat onto the record. */
 export function logEvent(world, type, fields) {
   const events = eventsOf(world);
   if (events.length >= EVENT_CAP) compactEvents(world);   // keep the live log bounded
-  const ev = { id: events.length, step: world.step | 0, type, ...fields };
+  if (world._nextEventId === undefined) world._nextEventId = events.length ? events[events.length - 1].id + 1 : 0;
+  const ev = { id: world._nextEventId++, step: world.step | 0, type, ...fields };
   events.push(ev);
   if (!world._evIndex) world._evIndex = new Map();
   for (const k of indexKeys(ev)) {
@@ -67,8 +73,9 @@ export function eventsFor(world, key, limit = 0) {
   const idx = world._evIndex && world._evIndex.get(key);
   if (!idx) return [];
   const events = eventsOf(world);
+  const base = evBase(events);
   const ids = limit > 0 && idx.length > limit ? idx.slice(-limit) : idx;
-  return ids.map(i => events[i]);
+  return ids.map(i => events[i - base]).filter(Boolean);   // compaction may have dropped the oldest
 }
 
 /** Rebuild the index from the log (used after loading a save). */
@@ -104,6 +111,7 @@ const NARRATE = {
     void as;
     if (ev.how === "conquest") return `Fell to ${ev.byName || "its conquerors"} and was erased from the map.`;
     if (ev.how === "absorbed") return `Was absorbed into ${ev.byName || "a neighbouring realm"}.`;
+    if (ev.how === "succession") return "Shattered over a contested succession — its hordes and provinces going their separate ways under rival heirs.";
     return "Dissolved — its last cities scattered or fell silent.";
   },
   "polity.restored"(ev) {
@@ -141,19 +149,48 @@ const NARRATE = {
       : `${ev.sName} declined to a ${ev.tierName}.`;
   },
   "colony.departed"(ev) { return `A colony fleet set sail from ${ev.sName}.`; },
+  "colony.founded"(ev) { return `${ev.sName || "A colony"} was planted overseas under the flag of ${ev.fromName || "its mother country"}.`; },
+  "colony.independent"(ev) { return `${ev.name || "The colony"} cast off ${ev.fromName || "its mother country"} and declared itself sovereign.`; },
+  "polity.submitted"(ev, as) {
+    return as === ev.to
+      ? `${ev.name || "A neighbouring statelet"} bent the knee and became a tributary of the realm.`
+      : `Facing hopeless odds, the court of ${ev.name || "the realm"} bowed to ${ev.toName || "a greater power"} — keeping its throne at the price of tribute.`;
+  },
+  "horde.raid"(ev, as) {
+    if (as === ev.from) return `A raid season against ${ev.name || "the settled lands"} paid richly — the wagons came home heavy.`;
+    const loot = ev.loot >= 1 ? ` ${ev.loot} in coin was carried off` : "";
+    const cap = ev.captives >= 1 ? `${loot ? ";" : ""} ${ev.captives} souls were driven into the captive trains` : "";
+    return `Riders out of the steppe — ${ev.fromName || "a horde"} — swept the borderlands.${loot}${cap}${loot || cap ? "." : ""}`;
+  },
+  "plague.virginSoil"(ev) { return `A pestilence unknown to ${ev.sName || "the people"} came ashore with the strangers, and they had no defence against it.`; },
+  "war.ended"(ev, as) {
+    const other = as === ev.polity ? (ev.toName || "its enemy") : (ev.name || "its enemy");
+    if (ev.dead >= 1) return `The war with ${other} ended; some ${ev.dead} soldiers never came home.`;
+    return `The war with ${other} ended.`;
+  },
+  "war.indemnity"(ev, as) {
+    if (as === ev.polity) return `Peace was bought dearly: a great indemnity was paid to ${ev.toName || "the victors"}.`;
+    return `${ev.name || "The beaten realm"} paid a heavy indemnity to ${ev.toName || "the victors"} at the peace.`;
+  },
   "famine.struck"(ev) { void ev; return "A famine gripped the land."; },
   "plague.outbreak"(ev) { return ev.sName ? `Plague broke out in ${ev.sName} and swept through the realm.` : "Plague swept through the realm."; },
   "era.reached"(ev) { return `Reached the ${ev.eraName} era.`; },
+  "arc.complete"(ev) { return ev.name ? `The world entered the ${ev.eraName} age — under ${ev.name}, civilisation climbed the last rung of the knowledge tree.` : `The world entered the ${ev.eraName} age — civilisation climbed the last rung of the knowledge tree.`; },
   "war.began"(ev, as) {
-    const why = ev.crisis ? " as the succession failed" : ev.faithClash ? " under the banner of the faith" : "";
+    const why = ev.claim ? " to press a claim to its throne" : ev.crisis ? " as the succession failed" : ev.faithClash ? " under the banner of the faith" : "";
     if (as === ev.to) return `${ev.name || "An enemy"} marched against the realm${why}.`;
     return `Marched to war against ${ev.defName || "a neighbour"}${why}.`;
+  },
+  "war.claimWon"(ev, as) {
+    if (as === ev.to) return `The war was lost — ${ev.personName} of ${ev.name || "a foreign house"} pressed a claim and took the throne; the realm passed under a foreign crown.`;
+    return `The war of succession was won: ${ev.personName} pressed the claim and was crowned in ${ev.toName || "the enemy realm"}, uniting the two crowns.`;
   },
   "ruler.crowned"(ev) {
     const t = ev.title || (ev.female ? "Queen" : "King");
     const h = ev.dynastyName || "?";
     if (ev.how === "first") return `${t} ${ev.personName} of house ${h} took the throne — the first recorded sovereign.`;
     if (ev.how === "crisis") return `Out of the interregnum, ${t} ${ev.personName} of the new house ${h} seized the throne.`;
+    if (ev.how === "claim") return `With the old line spent, ${t} ${ev.personName} of the foreign house ${h} pressed a blood claim and took the throne — a crown now shared with another realm.`;
     if (ev.how === "regency") return `The child ${ev.personName} took the throne of house ${h} at ${ev.age}, under a regency council.`;
     if (ev.how === "bastard") return `For want of a true-born heir, the bastard ${ev.personName} was raised to the throne of house ${h}.`;
     if (ev.how === "sibling") return `${t} ${ev.personName}, ${ev.female ? "sister" : "brother"} of the late sovereign, took up the crown of house ${h}.`;
@@ -262,6 +299,13 @@ export function categoryOf(ev, as = -1) {
     case "growth.cities": return "growth";
     case "wealth.milestone": return "wealth";
     case "settlement.founded": case "colony.departed": return "founding";
+    case "colony.founded": return "founding";
+    case "colony.independent": return as === ev.from ? "loss" : "secession";
+    case "polity.submitted": return as === ev.to ? "annex" : "loss";
+    case "horde.raid": return as === ev.from ? "wealth" : "loss";
+    case "plague.virginSoil": return "plague";
+    case "war.indemnity": return as === ev.polity ? "loss" : "wealth";
+    case "war.ended": return "war";
     case "culture.born": case "culture.diverged": return "founding";
     case "language.shift": return "growth";
     case "faith.founded": case "polity.adoptedFaith": case "faith.syncretized": return "discovery";

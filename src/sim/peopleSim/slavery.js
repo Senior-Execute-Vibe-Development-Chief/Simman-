@@ -25,7 +25,6 @@ const SLAVE_PRICE    = 8;             // coin per captive on the market (calibra
 export function updateSlaveTrade(world) {
   if (!T.SLAVERY) return;
   const setts = world.settlements;
-  const dt = world._dt || 1;
 
   // ── Phase A: SLAVE-RAIDING ──────────────────────────────────────────────────
   if (T.SLAVE_RAID > 0) {
@@ -38,7 +37,9 @@ export function updateSlaveTrade(world) {
         if (v === r || v.mode !== "settled") return;
         if (v.countryId === r.countryId && r.countryId >= 0) return;   // raid OUTSIDERS, not your own
         if (rPow < settlementPower(v) * RAID_DOMINANCE) return;        // only the clearly weaker
-        const grab = Math.min((v.people || 0) * T.SLAVE_RAID * dt, (v.people || 0) * 0.5);
+        // per-PASS rate, no ×dt: the pass interval is already G-stretched (index.js
+        // _ivl), so scaling by dt again halved/quartered raiding per unit of history
+        const grab = Math.min((v.people || 0) * T.SLAVE_RAID, (v.people || 0) * 0.5);
         if (grab < 1) return;
         v.people -= grab; took += grab;                                // the victim region bleeds
       });

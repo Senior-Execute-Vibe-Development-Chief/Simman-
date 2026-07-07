@@ -18,9 +18,11 @@
 // (plate-boundary adjustments, the young-soil discount), pull more of
 // createTerritory in.
 
-import { buildWorld } from "./_harness.mjs";
+import { buildWorld, buildSim } from "./_harness.mjs";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 import { settlementPower } from "../src/sim/peopleSim/conquest.js";
+import { ERAS } from "../src/sim/peopleSim/tech.js";
+import { displayYear } from "../src/sim/calendar.js";
 
 const STEPS = parseInt(process.argv[2] || "10000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);
@@ -36,6 +38,12 @@ const W = parseInt(process.env.EARTH_W || "1920", 10);
 const H = parseInt(process.env.EARTH_H || "960", 10);
 const RES = 1;
 const TW = Math.ceil(W / RES), TH = Math.ceil(H / RES);
+
+// Optional experimental-lever overrides (env unset = defaults = no-op), mirroring
+// tools/stylized.mjs — so long Earth runs can measure a lever's on-trajectory
+// (e.g. RES_INVARIANT_POP=1 for the resolution-invariance validation matrix).
+import { T } from "../src/sim/peopleSim/tuning.js";
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP", "ANCHOR_POP"]) if (process.env[k] != null) { T[k] = +process.env[k]; console.log(`[earthRun]   lever ${k}=${T[k]}`); }
 
 console.log(`[earthRun] seed=${SEED} steps=${STEPS} W=${W} H=${H}`);
 
@@ -57,7 +65,11 @@ for (const id in deposits) {
 }
 console.log(`[earthRun] deposits (richness>0.1):`, depCounts);
 t0 = performance.now();
-const world = initPeopleSim(w, { seed: w.seed, tCrop, tileRes: RES, deposits });
+// App-identical init via the harness (buildSim wires tFlood/tAncestry/tArrival
+// and the ancestry layer): the old hand-rolled initPeopleSim dropped the
+// floodplain mask, so every long-run report measured a floodplain-less world
+// the browser never simulates (review B63).
+const world = buildSim({ W, H, seed: SEED });
 console.log(`[earthRun] peopleSim init done in ${((performance.now() - t0) / 1000).toFixed(1)}s — cradle planted`);
 
 // ── 6. Step + report ─────────────────────────────────────────────────
@@ -113,6 +125,20 @@ for (let s = 1; s <= STEPS; s++) {
 }
 const dt = (performance.now() - t0) / 1000;
 console.log(`[earthRun] ${STEPS} steps in ${dt.toFixed(1)}s (${Math.round(STEPS / dt)} steps/s)`);
+
+// Emergent endgame: did the world climb the whole knowledge tree? (chronicle.js:
+// _eraAt[6] = the step the leading civ first reached the Modern era — the arc-complete
+// milestone. Never a date; a slow world simply never gets here.)
+{
+  const eraAt = world._eraAt || [0];
+  const FINAL = ERAS.length - 1;
+  if (eraAt.length > FINAL) {
+    const step = eraAt[FINAL];
+    console.log(`[earthRun] ARC COMPLETE — reached the ${ERAS[FINAL]} era at step ${step} (display year ~${Math.round(displayYear(eraAt, step))})`);
+  } else {
+    console.log(`[earthRun] arc incomplete — leading civ topped out at the ${ERAS[eraAt.length - 1]} era (never reached ${ERAS[FINAL]})`);
+  }
+}
 
 // ── 7. Event tally + verdict ─────────────────────────────────────────
 const ev = {};

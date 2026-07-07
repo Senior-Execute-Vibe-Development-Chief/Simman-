@@ -933,8 +933,19 @@ if(t.deposits)w.deposits=t.deposits;
 // Runs in a Web Worker (off the render thread); peopleRef.current becomes a
 // snapshot-fed mirror. Falls back to a main-thread sim if the worker fails.
 let usedWorker=false;
+// Real-wind saves must load on the MAIN thread: the NCEP wind data lives in
+// this bundle only, so the worker's loadWorld would rebuild sim-wind terrain
+// under a civilization that grew on real-wind terrain. Decide from the
+// save's PARSED meta — a string sniff broke on any re-serialized save.
+let _pendMeta=null;
+if(pendingSaveRef.current){try{_pendMeta=JSON.parse(pendingSaveRef.current).meta||null;}catch{/* malformed JSON: loadWorld below raises the real error */}}
+const _pendRW=!!(_pendMeta&&_pendMeta.realWind);
 try{
+  // Retire the previous sim worker FIRST, on every path: on the main-thread
+  // load route a surviving worker kept stepping the OLD world (the rAF loop
+  // defers to simWorkerRef) and its snapshots clobbered the loaded one.
   if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
+  if(_pendRW)throw new Error('real-wind save — loading on the main thread');
   const sw=new PeopleSimWorker();
   sw.onmessage=(e)=>{
     const d=e.data;
@@ -946,7 +957,8 @@ try{
       a.download=`simman-history-t${d.step??""}.json`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     }
-    else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);}
+    else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);
+      if(d.message&&d.message.indexOf('load failed')===0)alert('Could not load save: '+d.message.slice('load failed: '.length));}
   };
   sw.onerror=(err)=>{
     console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
@@ -966,7 +978,7 @@ try{
     windX:w.windX,windY:w.windY,
     rivers:(w.rivers&&w.rivers.riverMag)?{riverMag:w.rivers.riverMag}:null,
     deposits:w.deposits};
-  const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams};
+  const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams,realWind:!!w.realWindUsed};
   const _pend=pendingSaveRef.current;
   if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
   else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
@@ -979,8 +991,15 @@ try{
 }catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
 if(!usedWorker){
   const _pend2=pendingSaveRef.current;
-  if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2);}
-  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+  if(_pend2){pendingSaveRef.current=null;
+  try{peopleRef.current=loadWorld(_pend2,{realWindFns:{isRealWindAvailable,fillRealWind}});}
+  catch(err){
+    console.error("load failed:",err);
+    alert("Could not load save: "+(err&&err.message));
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+    peopleRef.current._realWindGen=!!w.realWindUsed;
+  }}
+  else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
@@ -1008,7 +1027,7 @@ finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));
 worker.postMessage({type:'generate',W,H,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
-finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}));},[finalizeWorld]);
+finalizeWorld(Object.assign(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
@@ -2117,10 +2136,12 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           let fs=fillByCountry.get(cc);
           if(fs===undefined){
-            // A colony is drawn in its METROPOLE's exact colour (striped below to mark it),
+            // A COLONY is drawn in its metropole's exact colour (striped below to mark it),
             // so it clearly reads as that empire's dependency, not an unrelated new state.
+            // A submitted VASSAL keeps its own colour — it is a sovereign court paying
+            // tribute, not a plantation (its suzerain shows in the realm inspector).
             const cobj=psw.countries&&psw.countries.get(cc);
-            const over=cobj&&cobj._overlord>=0?cobj._overlord:-1;
+            const over=cobj&&cobj._overlord>=0&&cobj._depKind!=="vassal"?cobj._overlord:-1;
             colonyByCC.set(cc,over>=0);
             const h=(over>=0?(hues.get(over)??((over*61)%360+360)%360):(hues.get(cc)??((cc*61)%360+360)%360))|0;
             fs=`hsl(${h},60%,50%)`;   // every realm drawn vibrant — no city-state muting
@@ -2154,7 +2175,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           if(L.tints){
             let fs=tintByCountry.get(cc);
-            if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const over=co&&co._overlord>=0?co._overlord:-1;colonyByCC.set(cc,over>=0);const h=(((over>=0?over:cc)*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
+            if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const over=co&&co._overlord>=0&&co._depKind!=="vassal"?co._overlord:-1;colonyByCC.set(cc,over>=0);const h=(((over>=0?over:cc)*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
             if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
             octx.fillRect(sx,sy,TR,TR);
             if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
@@ -2470,7 +2491,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,name:c.name,ruler:c.ruler,faithId:c.faithId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,name:c.name,ruler:c.ruler,faithId:c.faithId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality,_overlord:c._overlord,_depKind:c._depKind,_nomadic:c._nomadic});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -2793,6 +2814,10 @@ const _ys=yr(_step);
 // era) — the old ribbon averaged the dead tribe arrays and so sat frozen on
 // "Stone Age" forever.
 const _era=ERAS[psStats.leadingEra||0]||ERAS[0];
+// Emergent endgame: the leading civ has climbed the whole knowledge tree (reached
+// the final, Modern era). Read-only flag derived from the era timeline — celebrated
+// with a marker in the ribbon; nothing keys a mechanic off it.
+const _arcComplete=(psStats.leadingEra||0)>=ERAS.length-1;
 const _psw=peopleRef.current;
 const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
@@ -3157,22 +3182,28 @@ const renderInspect=()=>{
       {(()=>{
         const ctry=psw.countries&&psw.countries.get(s.countryId);
         const n=ctry?ctry.members.length:1;
-        // A colonial dependency takes its METROPOLE's hue (the map colours it as a shade of the
+        // A COLONIAL dependency takes its METROPOLE's hue (the map colours it as a shade of the
         // mother country), and is named as that country's colony rather than an independent state.
+        // A submitted VASSAL keeps its own hue and reads as a tributary court — internal
+        // sovereignty survives submission; only the suzerain line marks the bond.
         const overlord=(ctry&&ctry._overlord>=0)?ctry._overlord:-1;
+        const vassal=overlord>=0&&ctry._depKind==="vassal";
         const overCtry=overlord>=0&&psw.countries?psw.countries.get(overlord):null;
-        const overName=overlord>=0?((overCtry&&overCtry.name)||"its mother country"):null;
-        const hue=((((overlord>=0?overlord:s.countryId))*61)%360+360)%360;
+        const overName=overlord>=0?((overCtry&&overCtry.name)||(vassal?"its suzerain":"its mother country")):null;
+        const hue=((((overlord>=0&&!vassal?overlord:s.countryId))*61)%360+360)%360;
         const cap=ctry&&ctry.capital;
         const isCap=cap&&cap.id===s.id;
         const byId=psw._byId||(()=>{const m=new Map();for(const o of psw.settlements)m.set(o.id,o);return m;})();
         const liege=(!isCap&&s.liegeId>=0)?byId.get(s.liegeId):null;
         let label;
-        if(overlord>=0){
+        if(vassal){
+          label=(n<=1)?`tributary of ${overName}`:(isCap?`vassal capital · ${n} settlements · tributary of ${overName}`:`settlement · vassal realm of ${cap?cap.name:"?"}`);
+        }
+        else if(overlord>=0){
           label=(n<=1)?`colony of ${overName}`:(isCap?`colonial capital · ${n} settlements · answers to ${overName}`:`colonial settlement · realm of ${cap?cap.name:"?"}`);
         }
         else if(n<=1)label="independent city-state";
-        else if(isCap)label=`national capital · ${n} settlements`;
+        else if(isCap)label=`${ctry&&ctry._nomadic?"horde capital":"national capital"} · ${n} settlements`;
         else{
           const role=(s._vassalCount>0)?"provincial seat":(tierName||"settlement");
           label=`${role} · answers to ${liege?liege.name:(cap?cap.name:"?")}`;
@@ -3181,7 +3212,7 @@ const renderInspect=()=>{
         return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
             <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0,
-              backgroundImage:overlord>=0?"repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)":undefined}}/>
+              backgroundImage:overlord>=0&&!vassal?"repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)":undefined}}/>
             <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
           </div>
         );
@@ -3760,6 +3791,7 @@ return(
   </div>
   <span className="au-vrule" style={{height:20}}/>
   <span className="au-era" style={{fontSize:14}}>{_era}</span>
+  {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"#c9a227",fontWeight:700,letterSpacing:0.3}}>✦ Arc Complete</span>}
   <span className="au-year" style={{fontSize:13}}>{_ys}</span>
   <span className="au-fade" style={{fontSize:10}}>step {_step.toLocaleString()}</span>
   <span className="au-vrule" style={{height:20}}/>
@@ -3798,6 +3830,12 @@ return(
             pendingSaveRef.current=json;
             presetRef.current=meta.preset;setPreset(meta.preset);
             oceanLevelRef.current=meta.oceanLevel??0.78;
+            // The DISPLAYED terrain must be rebuilt with the save's own wind
+            // identity, not whatever the toggle happens to be — otherwise the
+            // rendered map and the simulated terrain diverge tile-by-tile,
+            // and the next save would be stamped with the wrong identity.
+            const _rw=!!meta.realWind;
+            if(useRealWindRef.current!==_rw){setUseRealWind(_rw);useRealWindRef.current=_rw;}
             if(meta.seed===seed)generate(seed);else setSeed(meta.seed);
           }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
         }}/>

@@ -13,6 +13,7 @@
 import { passRng } from "./rng.js";
 import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
+import { techEff } from "./settlement.js";
 
 // ── FAMINE — a regional bad-harvest event ──
 // Hits a geographic cluster of settlements for a window, slashing their land-
@@ -25,6 +26,26 @@ const FAMINE_MIN_DUR  = 400;
 const FAMINE_MAX_DUR  = 1200;
 const FAMINE_SEVERITY = 0.35;   // harvest multiplier during famine (0.35 = ~65% crop loss)
 const FAMINE_MIN_POP  = 30;     // only seed on a real settlement
+// Famine as VULNERABILITY, not a blind die-roll. A bad harvest becomes a FAMINE
+// where the society has no cushion — packed against its food ceiling, on
+// exhausted soil, with empty granaries, already running a shortfall. The famine
+// OCCURRENCE rate is left exactly as it was (so the long-run mean frequency the
+// world was validated at is preserved — no calibration risk), and only the SEED
+// PICK is weighted by fragility: when a famine strikes, it lands on the
+// over-extended, soil-mined, hungry region, not a slack well-stored one. The
+// distribution moves toward the fragile — and toward hungry EPOCHS, since a bad
+// climate/harvest window makes more of the map fragile at once, so the weighted
+// pick concentrates there — while the mean stays put. A vulnerability floor
+// keeps even a fat, well-fed world in the draw (no region is perfectly famine-
+// proof), so the pick never degenerates to a single hotspot.
+function famineVuln(s) {
+  const foodK = s._foodK || s._houseK || 1;
+  const pressure = Math.min(2.5, (s.people || 0) / Math.max(1, foodK));           // crowding toward the food ceiling (Malthus)
+  const soil     = 1 + (s._soilFatigue || 0);                                     // mined-out land yields a thinner margin
+  const granary  = 1 - 0.85 * Math.min(1, (s.food || 0) / (80 + (s.tier | 0) * 200));  // empty stores → no buffer (full stores still leave a 0.15 floor: no one is famine-proof)
+  const shortfall = Math.min(3, (s._foodDemand || 1) / Math.max(0.01, s._foodSupply));  // already short → a shock tips it over (also the climate/harvest signal). No `|| 1` on supply: a genuinely food-empty settlement (supply 0) must read as MOST short, not neutral — Math.max(0.01,…) already guards the divide.
+  return 0.05 + pressure * soil * granary * shortfall;                            // + a small absolute floor so the weighted draw always has support
+}
 
 // ── PLAGUE — an epidemic that SPREADS along the trade graph ──
 // Crashes population (worse in dense cities), then burns out leaving survivors
@@ -117,7 +138,7 @@ function contactEpidemic(world, rng) {
       let struck = 0;
       for (const n of world.settlements) {
         if (n.mode !== "settled" || n._contacted) continue;
-        if ((n._diseaseLoad || 0) >= sl + CONTACT_GAP) continue;        // only the unexposed pool
+        if ((hi._diseaseLoad || 0) - (n._diseaseLoad || 0) < CONTACT_GAP) continue;   // only pools genuinely naive to the ARRIVING diseases (comparing against the scanner's own load let a high-load port sweep in mid-load immune neighbours)
         if (torusDist(world, lo.pos.x, lo.pos.y, n.pos.x, n.pos.y) > VIRGIN_RADIUS) continue;
         n._contacted = true;
         n._virginUntil = world.step + (VIRGIN_DUR * sev) / _dt;
@@ -147,9 +168,26 @@ export function updateShocks(world) {
   // ── Famine spawn ──
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
   if (famineCheck && rng() < T.FAMINE_CHANCE * _dt) {
+    // NOTE (reviewed): the pool deliberately does NOT exclude settlements already under an
+    // active famine, even though their _harvestMul-cratered supply inflates famineVuln (so a
+    // famined region can be re-drawn, extending the famine). This is intentional — consecutive
+    // bad harvests compounding on a chronically-fragile region is the real multi-year-famine
+    // pattern (the Great Famine of 1315–17, recurrent Sahel drought). Crucially the
+    // concentration is SELF-LIMITING and STABILISING: it keeps famine damage on already-fragile
+    // ground instead of spreading it to healthy realms. Excluding active famines (mirroring the
+    // plague pool) was tried and measurably shortened the fallen-realm lifespan distribution
+    // below the validate floor — spreading famines onto fresh, healthier realms causes MORE
+    // collapse, not less — so the concentration is kept on purpose.
     const pool = world.settlements.filter(s => s.mode === "settled" && s.people >= FAMINE_MIN_POP);
     if (pool.length) {
-      const seed = pool[(rng() * pool.length) | 0];
+      // Same occurrence rate as ever (mean preserved); the SEED is drawn weighted
+      // by vulnerability, so the famine lands on the fragile region, not a random
+      // one. (Reduces to a uniform pick if every settlement is equally fragile.)
+      let totV = 0; const vs = new Float64Array(pool.length);
+      for (let i = 0; i < pool.length; i++) { const v = famineVuln(pool[i]); vs[i] = v; totV += v; }
+      let r = rng() * totV, si = pool.length - 1;
+      for (let i = 0; i < pool.length; i++) { r -= vs[i]; if (r <= 0) { si = i; break; } }
+      const seed = pool[si];
       const dur = ((FAMINE_MIN_DUR + rng() * (FAMINE_MAX_DUR - FAMINE_MIN_DUR)) / _dt) | 0;   // ×G ticks → same span in history-time
       const until = world.step + dur;
       const hitPolities = new Set();
@@ -186,7 +224,12 @@ export function updateShocks(world) {
   // ── Plague lifecycle + spread ──
   if (world._plagued.size) {
     const recovered = [];
-    for (const id of world._plagued) {
+    // Snapshot the infected set: infect() adds to world._plagued mid-loop, and JS Sets
+    // visit members added during iteration — so without the copy a settlement infected
+    // THIS tick would take a mortality hit and roll its own spread the same tick, letting
+    // an epidemic hop multiple links per tick and biasing the calibrated R0 (B69). The
+    // snapshot makes newly-infected nodes begin their lifecycle next tick.
+    for (const id of [...world._plagued]) {
       const s = world._byId ? world._byId.get(id) : null;
       if (!s || s.mode !== "settled") { recovered.push(id); continue; }
       if (world.step >= (s._plagueUntil || 0)) {            // burns out → immune
@@ -202,7 +245,13 @@ export function updateShocks(world) {
       // A virgin-soil people meets every disease of the connected world at once, with no
       // inherited immunity: mortality is multiplied while the wave burns (the Columbian collapse).
       const virgin = world.step < (s._virginUntil || 0) ? VIRGIN_MORT : 1;
-      const mort = T.PLAGUE_MORT * (1 + PLAGUE_URBAN * urban) * virgin * _dt;
+      // Health technology (tech.js health channel): sanitation blunts the
+      // CROWDING term (sewers attack exactly the density-borne burden) and
+      // medicine cuts base mortality — a society that never earns them keeps
+      // its plagues forever, one that does gets its mortality transition
+      // when IT does (review D36; germ_theory/medicine had no effects at all).
+      const relief = techEff(s).healthRelief || 0;
+      const mort = T.PLAGUE_MORT * (1 - relief) * (1 + PLAGUE_URBAN * urban * (1 - relief)) * virgin * _dt;
       s.people = Math.max(1, s.people * (1 - mort));
       // Spread along the trade graph (road reach + sea lanes). The very links
       // that carry grain and coin carry the contagion. Per-tick infection odds

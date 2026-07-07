@@ -126,11 +126,11 @@ export function agriGate(world, s) {
     // its settlements happen to own good crops — the Diamond isolation thesis
     // holds on BOTH branches, not only the default one.
     if (s._cropCeil === undefined) s._cropCeil = cropCeil(world, s);
-    if (!world._agriCeil) world._agriCeil = computeAgriCeiling(world);
+    if (!world._agriCeil || world._agriCeilKey !== T.AGRI_CEIL_FLOOR * 1000 + T.AGRI_TROPIC_PENALTY) { world._agriCeil = computeAgriCeiling(world); world._agriCeilKey = T.AGRI_CEIL_FLOOR * 1000 + T.AGRI_TROPIC_PENALTY; }   // recompute when either baked-in lever moves (B10 — honour the live-lever contract)
     const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
     ceil = Math.min(s._cropCeil, world._agriCeil[ti] || 0);
   } else {
-    if (!world._agriCeil) world._agriCeil = computeAgriCeiling(world);
+    if (!world._agriCeil || world._agriCeilKey !== T.AGRI_CEIL_FLOOR * 1000 + T.AGRI_TROPIC_PENALTY) { world._agriCeil = computeAgriCeiling(world); world._agriCeilKey = T.AGRI_CEIL_FLOOR * 1000 + T.AGRI_TROPIC_PENALTY; }   // recompute when either baked-in lever moves (B10 — honour the live-lever contract)
     const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
     ceil = world._agriCeil[ti] || 0;
   }

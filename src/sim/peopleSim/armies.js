@@ -19,13 +19,14 @@ import { coreRadiusFor } from "./territory.js";
 import { techEff, URBAN_BASE_RURAL } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
-import { identityWeightsNow, casusBelliMul } from "./cohesion.js";
+import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
 import { inCrisis } from "./dynasties.js";
 import { getPolity as _getPolity } from "./entities.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { T } from "./tuning.js";
+import { recordIn, IN_STATE_PAY } from "./money.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -46,6 +47,32 @@ const CONSCRIPT_DEF    = 0.5;  // mobilisation intensity per unit of DEFENSIVE l
 const CONSCRIPT_OFF    = 0.18; // mobilisation intensity per OFFENSIVE front (a campaign of choice mobilises less)
 const MOBILIZE_SPEED   = 4;    // the levy musters in / disbands ×this faster than peacetime recruitment
 const WAR_SPOILS    = 0.6;    // war-weariness relief a realm banks each time it storms a city (conquest.js)
+const PLUNDER_FRAC  = 0.30;   // share of a stormed city's coin that is portable and seizable — sacks pay (a conserved transfer to the victor's treasury)
+const INDEMNITY_FRAC = 0.25;  // max share of the beaten side's treasury paid as reparations at a truce (scaled by how one-sided the exhaustion is)
+const TRADE_PEACE_W  = 2.0;   // how much mutual trade LENGTHENS a truce: at pairTrade >= its own war-relief scale the peace holds ~3x as long (merchants fund the settlement)
+const CONGRESS_JOIN  = 0.75;  // a third belligerent already worn past this fraction of TRUCE_EXHAUST joins the settlement (wars end at conferences, not dyad by dyad)
+
+// ── War-dead ledger ─────────────────────────────────────────────────────
+// Military losses accumulated per warring PAIR (key "lo:hi"), emitted as a
+// war.ended event when the pair makes peace (truce) or the war fades from
+// memory. Feeds the Richardson war-deadliness validate gate and the
+// chronicle ("a war that killed ten thousand"). Persisted (persist.js).
+function tallyDead(world, ccA, ccB, n) {
+  if (!(n > 0) || ccA < 0 || ccB < 0 || ccA === ccB) return;
+  const m = world._warDead || (world._warDead = new Map());
+  const key = Math.min(ccA, ccB) + ":" + Math.max(ccA, ccB);
+  m.set(key, (m.get(key) || 0) + n);
+}
+// Exported: conquest.js settles a war the same way when a belligerent SUBMITS
+// (capitulation is a peace — the war's dead are reckoned at the knee-bending).
+export function closeWar(world, key, how) {
+  const m = world._warDead;
+  const dead = m ? m.get(key) || 0 : 0;
+  if (m) m.delete(key);
+  const [a, b] = key.split(":").map(Number);
+  logEvent(world, "war.ended", { polity: a, to: b, name: realmName(world, a), toName: realmName(world, b),
+    dead: Math.round(dead), how });
+}
 export const MUSTER_INTERVAL   = 100;
 // CONQUEST_INTERVAL (war-pass cadence) is a runtime lever — tuning.js
 // T.CONQUEST_INTERVAL; index.js gates advanceFronts on it.
@@ -70,6 +97,8 @@ export const MUSTER_INTERVAL   = 100;
 // (tuning.js). ATTACK_MIN_RATIO's old 1.12×1.05 re-anchored the 0.5-pivot
 // aggressionAttackMul — its tuning default (1.176) preserves that exactly.
 const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
+const CLAIM_BAR         = 0.62;        // CLAIMANT_WARS: a live succession claim on the defender cuts the claimant's
+                                       // attack bar to this — a real casus belli, so wars OF succession actually fire
 const DOM_ATTACK_P      = 0.45;        // a DOMINANT realm (conquest.js _dominance) attacks on a slimmer margin —
                                        // bar ÷ dominance^this — so a great power expands by conquest where the pack
                                        // stalls (Rome, the Mongols, the Ottomans). Bounded by the dominance cap.
@@ -79,7 +108,7 @@ const DOM_CAPTURE_P     = 0.4;         // …and BLITZES: its fronts take more c
 const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
 // Offensive throttle & strategic depth now live in the NATIONAL WAR CAPACITY block
-// inside advanceFronts (national field army × WAR_CONCENTRATION / WAR_DEFENSE_DRAG / WAR_DEF_SPLIT / war-exhaustion):
+// inside advanceFronts (national field army × WAR_CONCENTRATION / WAR_DEFENSE_DRAG / DEF_PRIORITY / war-exhaustion):
 // a realm has finite force split across its fronts, so it can't conquer on one while
 // overrun on another, nor knife many neighbours at once, and an established power
 // fields reserves a small upstart can't match.
@@ -135,10 +164,18 @@ function might(s) { return (s.army || 0) * techMul(s); }
 // of its paid garrison and the citizen militia its population can raise — the
 // militia weighted by the city's morale (a disloyal/rioting populace barely
 // defends the regime).
+// Fortification: the construction tree's defense channel (masonry → the
+// arch → castles/cathedral masons → star forts), which GUNPOWDER erodes
+// (tech.js: gunpowder carries negative defense fx — the end of the castle
+// age arrives per-theatre, when a neighbour's chemistry matures, never on a
+// date). Weight: a fully-fortified city is ~2.5x harder to storm — walls
+// decided sieges without making them unwinnable (starvation still works).
+const WALL_W = 1.5;
 function homeMight(s) {
   const morale = Math.max(MILITIA_MORALE_FLOOR, (s.loyalty ?? 1) - 0.5 * (s.unrest || 0));
   const militia = (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
-  return Math.max(s.army || 0, militia) * techMul(s);
+  const walls = 1 + WALL_W * Math.max(0, techEff(s).defenseLevel || 0);
+  return Math.max(s.army || 0, militia) * techMul(s) * walls;
 }
 
 // (The old marching-reinforcement columns — dispatchReinforcements/moveArmies
@@ -163,7 +200,36 @@ function armyCapFrac(world, s) {
 }
 
 // ── Periodic: grow + provision garrisons ──
+// Pay the standing armies the wages accrued since the last tranche (the rate
+// is set by the polity pass's fiscal block — see conquest.js). Solvency is
+// the tranche's paid/due, EMA-smoothed so one lean week doesn't read as
+// bankruptcy but sustained arrears does.
+function payWages(world) {
+  if (!world.countries || !world.polities) return;
+  for (const c of world.countries.values()) {
+    const gov = world.polities.get(c.id);
+    if (!gov || gov.endedStep >= 0 || !(gov._wagePerTick > 0)) continue;
+    const elapsed = world.step - (gov._lastWagePay ?? world.step);
+    gov._lastWagePay = world.step;
+    if (elapsed <= 0) continue;
+    const due = gov._wagePerTick * elapsed;
+    let totalArmy = 0;
+    for (const s of c.members) if (s.countryId === c.id && s.army > 0) totalArmy += s.army;
+    const paid = Math.min(Math.max(0, gov.treasury), due);
+    if (paid > 0 && totalArmy > 0) {
+      for (const s of c.members) {
+        if (s.countryId !== c.id || !(s.army > 0)) continue;
+        const share = paid * (s.army / totalArmy);
+        s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+      }
+      gov.treasury -= paid; gov._wagePaidAccum = (gov._wagePaidAccum || 0) + paid;   // folded into the fiscal EMA at the polity pass
+    }
+    if (due > 0.01) gov._solvency = 0.5 * (gov._solvency ?? 1) + 0.5 * (paid / due);
+  }
+}
+
 export function musterArmies(world) {
+  payWages(world);   // wages flow before the solvency-driven desertion below reads the result
   // National MANPOWER pool — the trained men a realm can field. It REGENERATES from
   // POPULATION (recruits coming of age) toward a ceiling (a fraction of national pop),
   // and is DRAINED by battle casualties (advanceFronts). The standing army can never
@@ -207,7 +273,7 @@ export function musterArmies(world) {
       // updateFood), and the levy demobilises in peace as the cap drops back to the professional core.
       let frac = armyCapFrac(world, s);
       const c = world.countries && world.countries.get(s.countryId);
-      const atWar = c && (world.step - (c._warStamp ?? -1e9)) < CONSCRIPT_WINDOW;
+      const atWar = c && (world.step - (c._warStamp ?? -1e9)) < CONSCRIPT_WINDOW / (world._dt || 1);   // history-span, like TRUCE_TICKS
       // Defence of the heartland is unconditional; the OFFENSIVE levy is gated by the
       // realm's value-vs-cost war commitment (advanceFronts) — it won't bleed its people
       // for a war it is losing or that isn't worth the cost, unless pride drives it on.
@@ -317,13 +383,27 @@ export function advanceFronts(world) {
   // / co-national kinship restrains it; a province of the attacker's OWN people under
   // foreign rule is eagerly liberated. Era-weighted → ~neutral in antiquity. The state
   // CORE is the capital's dominant identity, looked up per country once per pass.
-  const idW = identityWeightsNow(world);
   const capOf = new Map();
   if (world.countries) for (const c of world.countries.values()) if (c.capital) capOf.set(c.id, c.capital);
-  const casusOf = (attCC, defCC, tileOwner) => casusBelliMul(capOf.get(attCC), capOf.get(defCC), tileOwner, idW);
+  // Salience per PAIR of belligerents (cohesion.js): the more developed side
+  // brings its era's political question to the war — righteous religion
+  // between medieval courts, the national cause once either party
+  // industrialises — while two ancient rivals fight ancient wars.
+  const casusOf = (attCC, defCC, tileOwner) => {
+    const A = capOf.get(attCC), D = capOf.get(defCC);
+    return casusBelliMul(A, D, tileOwner, identityWeightsFor(world, A, D));
+  };
   // A dominant realm projects military power — it attacks on a slimmer margin, so a
   // great power expands by conquest where the pack stalls (Rome, the Mongols).
   const domBarOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return 1 / Math.pow(Math.max(1, d), DOM_ATTACK_P); };
+  // A live succession claim on the DEFENDER (dynasties.js world._succClaims) is a casus
+  // belli: the claimant's realm presses the throne on a slimmer margin — a war OF
+  // succession. Only that specific claimant realm gets the discount, only while the claim
+  // window holds; 1 (no effect) for everyone else and whenever CLAIMANT_WARS is off.
+  const claimBarOf = (attCC, defCC) => {
+    const cl = T.CLAIMANT_WARS && world._succClaims ? world._succClaims.get(defCC) : null;
+    return cl && cl.by === attCC && world.step <= cl.until ? CLAIM_BAR : 1;
+  };
   const domCaptureOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return Math.pow(Math.max(1, d), DOM_CAPTURE_P); };
 
   // ── Balance of power (conquest.js updateAlliances) ───────────────────────────
@@ -381,6 +461,12 @@ export function advanceFronts(world) {
     const u = truces.get(a < b ? a + ":" + b : b + ":" + a);
     return u !== undefined && u > world.step;
   };
+  // A suzerain and its dependency never open fronts on each other — read LIVE
+  // from the overlord map (a submission mid-window must stop the war NOW), not
+  // from the amortised _allies rebuild, whose staleness let a hegemon keep
+  // sacking a statelet that had already bent the knee.
+  const ovFr = world._overlordOf;
+  const bondedCC = (a, b) => !!ovFr && (ovFr.get(a) === b || ovFr.get(b) === a);
 
   const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   for (const s of world.settlements) {
@@ -445,7 +531,8 @@ export function advanceFronts(world) {
       const a = owner[ni]; if (a < 0 || a === d) continue;
       const A = byId.get(a);
       if (!A || A.mode !== "settled" || A.countryId === D.countryId
-          || inTruce(A.countryId, D.countryId)) continue;   // a signed peace holds
+          || inTruce(A.countryId, D.countryId)
+          || bondedCC(A.countryId, D.countryId)) continue;   // a signed peace holds; a suzerain-vassal bond holds harder
       if (A._M > bestM) { bestM = A._M; bestA = a; }
     }
     if (bestA < 0) continue;
@@ -512,7 +599,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * claimBarOf(A.countryId, D.countryId) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -554,11 +641,12 @@ export function advanceFronts(world) {
       for (const pid of A._seaReach.keys()) {
         const D = byId.get(pid);
         if (!D || D.mode !== "settled" || D.countryId === A.countryId
-            || inTruce(A.countryId, D.countryId)) continue;   // a signed peace holds at sea too
+            || inTruce(A.countryId, D.countryId)
+            || bondedCC(A.countryId, D.countryId)) continue;   // a signed peace holds at sea too; so does the suzerain-vassal bond
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
-        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * claimBarOf(A.countryId, D.countryId) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
         const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
         let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
         l.push(pc);
@@ -641,13 +729,17 @@ export function advanceFronts(world) {
         from: attId, to: defId,
         name: realmName(world, attId), defName: realmName(world, defId),
         crisis: inCrisis(world, defId) ? 1 : 0,
+        claim: (T.CLAIMANT_WARS && world._succClaims && (world._succClaims.get(defId) || {}).by === attId) ? 1 : 0,
         faithClash: fa >= 0 && fd >= 0 && fa !== fd ? 1 : 0,
         aggression: pers ? +(pers.aggression || 0).toFixed(2) : 0,
       });
       if (pa) pa._reignWars = (pa._reignWars || 0) + 1;   // a war of the reigning ruler's making (epithet deeds)
     }
     if (seen.size > 4000) {   // prune stale pairs so the map can't grow unbounded
-      for (const [k, st] of seen) if (world.step - st > (WAR_MEMORY * 3) / (world._dt || 1)) seen.delete(k);
+      for (const [k, st] of seen) if (world.step - st > (WAR_MEMORY * 3) / (world._dt || 1)) {
+        seen.delete(k);
+        if (world._warDead && world._warDead.has(k)) closeWar(world, k, "faded");   // no peace was signed — the war petered out (a side died, fronts dissolved)
+      }
     }
   }
   // (Siege relief is no longer a marching column — the conserved defensive allocation
@@ -713,13 +805,70 @@ export function advanceFronts(world) {
   // TRUCE_EXHAUST ends in a truce binding BOTH for T.TRUCE_TICKS (header above).
   // Stateless raiders (countryId < 0) sign nothing — the wild marches stay wild.
   if (T.TRUCE_TICKS > 0) {
+    // Peace terms are emergent state, not a flat cooldown:
+    //  * DURATION scales with the pair's mutual trade (world._tradePairs,
+    //    tallied from the live cross-border money flows): war between heavy
+    //    trading partners interrupts profitable exchange, so their merchants
+    //    fund a durable settlement — an integrated late-game world signs
+    //    LONG peaces while subsistence antiquity stays endemic-warlike.
+    //    This is the brake on late-game all-pairs war saturation.
+    //  * INDEMNITY: a clearly-beaten side (one-sided exhaustion) pays
+    //    reparations from its treasury — a conserved transfer, so losing a
+    //    war has a fiscal bill beyond the wage book.
+    //  * CONGRESS: when a pair settles, any third belligerent of either side
+    //    already worn near the truce bar joins the settlement — wars end at
+    //    conferences, not dyad by dyad.
+    const pairTrade = world._tradePairs;
+    // "Heavily interdependent" is measured against the era's OWN median
+    // pair-trade — self-calibrating across eras, maps and money supplies
+    // (an absolute coin threshold would mean nothing in both 3000 BC and 1900).
+    let tradeRef = 1e-6;
+    if (pairTrade && pairTrade.size) {
+      const vs = [...pairTrade.values()].sort((x, y) => x - y);
+      tradeRef = Math.max(1e-6, 2 * vs[vs.length >> 1]);
+    }
+    const signPeace = (a, b) => {
+      const key = Math.min(a, b) + ":" + Math.max(a, b);
+      if ((truces.get(key) || 0) > world.step) return false;   // already at peace
+      const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
+      const tradeW = Math.min(1, trade / tradeRef);
+      const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
+      truces.set(key, world.step + dur);
+      closeWar(world, key, "truce");   // the war's dead are reckoned at the peace
+      // reparations from the clearly-beaten side, proportional to how
+      // one-sided the exhaustion is and bounded by what it can actually pay
+      const eA2 = exh.get(a) || 0, eB2 = exh.get(b) || 0;
+      const gap = Math.abs(eA2 - eB2) / Math.max(1e-6, TRUCE_EXHAUST);
+      if (gap > 0.25) {
+        const loser = eA2 > eB2 ? a : b, winner = eA2 > eB2 ? b : a;
+        const lg = getPolity(world, loser), wg = getPolity(world, winner);
+        if (lg && wg && (lg.treasury || 0) > 0) {
+          const pay = Math.max(0, lg.treasury) * INDEMNITY_FRAC * Math.min(1, gap);
+          lg.treasury -= pay; wg.treasury = (wg.treasury || 0) + pay;
+          logEvent(world, "war.indemnity", { polity: loser, name: realmName(world, loser),
+            to: winner, toName: realmName(world, winner), amount: Math.round(pay) });
+        }
+      }
+      return true;
+    };
     for (const [cc, es] of allEnemies) {
       if (cc < 0) continue;
       const eA = exh.get(cc) || 0;
       for (const ecc of es) {
         if (ecc <= cc || ecc < 0) continue;          // each pair once
-        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST)
-          truces.set(cc + ":" + ecc, world.step + T.TRUCE_TICKS / (world._dt || 1));   // ×G ticks: same peace span in history-time
+        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST) {
+          if (!signPeace(cc, ecc)) continue;
+          // the congress: exhausted co-belligerents of either side settle too
+          for (const side of [cc, ecc]) {
+            const others = allEnemies.get(side);
+            if (!others) continue;
+            for (const third of others) {
+              if (third < 0 || third === cc || third === ecc) continue;
+              if ((exh.get(third) || 0) >= TRUCE_EXHAUST * CONGRESS_JOIN
+                  || (exh.get(side) || 0) >= TRUCE_EXHAUST) signPeace(side, third);
+            }
+          }
+        }
       }
     }
   }
@@ -851,8 +1000,13 @@ export function advanceFronts(world) {
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
         // Bombard: grind the garrison; the besiegers bleed against the defence
         // they actually face (the militia floor, not the melted garrison).
-        def.army = Math.max(0, (def.army || 0) - att._M * SIEGE_DMG);
-        att.army = Math.max(0, (att.army || 0) - defHome * T.ATTRITION / techMul(att));
+        {
+          const dDef = Math.min(def.army || 0, att._M * SIEGE_DMG);
+          const dAtt = Math.min(att.army || 0, defHome * T.ATTRITION / techMul(att));
+          def.army = (def.army || 0) - dDef;
+          att.army = (att.army || 0) - dAtt;
+          tallyDead(world, att.countryId, def.countryId, dDef + dAtt);
+        }
         // Defence as the siege grinds on: the garrison falls, but never below
         // the (morale-weighted) citizen militia — homeMight recomputed on the
         // now-reduced garrison returns exactly that floor.
@@ -894,6 +1048,17 @@ export function advanceFronts(world) {
           // Spoils of war ease the victor's war-weariness (conquest.js unrest).
           const ag = getPolity(world, att.countryId);
           if (ag) ag._spoils = Math.min(2, (ag._spoils || 0) + WAR_SPOILS);
+          // PLUNDER: a sack strips a share of the city's portable coin into the
+          // victor's war chest — a conserved TRANSFER (the old model left every
+          // stormed city's wealth untouched, so conquest paid nothing and war
+          // had no fiscal upside to weigh against its wage bill). The fraction
+          // means "the share of coin that is seizable in a sack"; the rest is
+          // hidden, buried, or not coin at all.
+          if (ag && (def.wealth || 0) > 0) {
+            const plunder = (def.wealth || 0) * PLUNDER_FRAC;
+            def.wealth -= plunder;
+            ag.treasury = (ag.treasury || 0) + plunder;
+          }
           // Sack: the storm burns institutions, records and workshops. A
           // stormed CAPITAL loses its whole administrative apparatus — the
           // classic dark-age trigger (the fall of Rome, the Bronze-Age
@@ -905,6 +1070,7 @@ export function advanceFronts(world) {
             def.knowledge.construction = Math.max(0, def.knowledge.construction * (1 - hit * 0.6));
           }
           bankMomentum(world, att.countryId, MOMENTUM_PER_STORM);   // a stormed city feeds the winning streak
+          tallyDead(world, att.countryId, oldId, (att.army || 0) * ASSAULT_ARMY_COST + (def.army || 0) * 0.7);
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);
           // If it was the capital, the leaderless empire shatters into
@@ -934,8 +1100,13 @@ export function advanceFronts(world) {
       }
       if (captured > 0) bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
     }
-    att.army = Math.max(0, (att.army || 0) - def._M * T.ATTRITION / techMul(att));
-    def.army = Math.max(0, (def.army || 0) - att._M * T.ATTRITION / techMul(def));
+    {
+      const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att));
+      const dDef = Math.min(def.army || 0, att._M * T.ATTRITION / techMul(def));
+      att.army = (att.army || 0) - dAtt;
+      def.army = (def.army || 0) - dDef;
+      tallyDead(world, att.countryId, def.countryId, dAtt + dDef);
+    }
   }
 
   // Expose each warring realm's strategic state — for the info panel and probes:

@@ -1,0 +1,510 @@
+[I0] simplify (war-conquest) files=['src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/armies.js']
+  Empire durability is held together by seven overlapping stabilizers — a documented patch stack
+  DESC: The hold-capacity path multiplies/floors through: instMul (T.CAP_INST), the dominance tail (CAP_DOM_W/P), geoMul (T.CAP_GEO, default 0 = dead), imperial hysteresis (CAP_IMP_RISE/DECAY + T.CAP_IMP_FLOOR), duress resilience (T.DURESS_RESILIENCE), momentum (T.MOMENTUM_CAP), and then on the loyalty side LOYAL_ORG_HOLD, OVER_DECAY_CAP, CONQUEST_GRACE, T
+  REC: Consolidate to two channels with independent physical meaning: (1) capacity from coercive power x institutional delegation (keep CAP_K·instMul·log2 + seats), (2) persistence from the hysteresis stock (institutions accrete/decay). Fold DURESS_RESILIENCE and LOYAL_ORG_HOLD into a single 'institutional
+
+[I1] cardinal-rule-violation (war-conquest) files=['src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/armies.js']
+  The dominance tail is calibrated to the target outcome and triple-dips
+  DESC: CAP_DOM_P's own comment says the convexity was chosen so 'the top core needs ~6-8x capacity to reach a Rome-scale share of the map' — the constant is dialed to produce the desired empire-size tail (the very statistic npm run validate scores), which is Rule-2 outcome fitting dressed as a mechanism: 'a capital far above the era's median projects disp
+  REC: Derive great-power over-performance from causes already in the sim instead of from relative rank: fiscal capacity (treasury/revenue per province), logistics reach, and the hysteresis stock all already scale with genuine hegemony. If the size tail then flattens, that is a finding about a missing mech
+
+[I2] restructure (war-conquest) files=['src/sim/peopleSim/conquest.js']
+  Lopsided engulfment is a parallel annexation channel licensed to break the capacity mechanism
+  DESC: LOPSIDED_ENGULF=5.0 / ENGULF_PROB=0.35 / LOPSIDED_HEADROOM=1.6 exist, per their own comments, to 'pull the late-game splotch of tiny states into a few multi-city empires' — a named map-appearance outcome. LOPSIDED_HEADROOM explicitly lets a great power absorb PAST the admin budget that the whole capacity system defines as sustainable (up to 1.6x), 
+  REC: Make all peaceful absorption respect hasAbsorbHeadroom at 1.0 and let the defection probability be purely pressure/identity/balance-driven. If tiny statelets then persist unrealistically, the missing mechanism is client-state submission: a statelet out-powered ~5x should PREFER vassalage/tribute to 
+
+[I3] mechanism-gap (war-conquest) files=['src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/armies.js']
+  Balance-of-power coalitions are phantom deterrence: they never fight, cost nothing, and cannot see sea powers
+  DESC: The coalition system (updateAlliances → _allianceTarget/_allies/_blocMight) only ever manifests as bar multipliers (coalitionBarOf, and the absorption divisor). Coalition members commit no forces, pay no exhaustion or treasure, and their 'backing' (BALANCE_W=1.1, BALANCE_CAP=3.0) deters at zero cost — so the brake works but produces no coalition WA
+  REC: Extend adjacency with the sea-lane graph (A._seaReach port pairs) so naval threats register; and make backing real: when a hegemon attacks a coalition member, allies with spare effPool acquire offensive weight against the hegemon in the conserved-allocation model and accrue the same exhaustion/manpo
+
+[I4] mechanism-gap (war-conquest) files=['src/sim/peopleSim/cohesion.js', 'src/sim/peopleSim/index.js', 'src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/armies.js']
+  Identity salience is keyed to the single most advanced capital on the planet — a global development clock with no locality
+  DESC: eraIdentityWeights correctly avoids the wall clock by reading world._civYear, but _civYear is computed from the GLOBAL leading capital's organisation (index.js:189-194). Every consumer in this subsystem — identityGrievance, adminFriction, absorbResistance, casusBelliMul — therefore applies the leader's development stage to every realm everywhere: t
+  REC: Key the weights to the development of the states involved: pass the capital's own organisation (or the max of the two capitals for casusBelliMul) through civYearFromOrg instead of the world maximum. Ideas genuinely do diffuse — but the sim already has a knowledge-diffusion channel; let nationalism a
+
+[I5] mechanism-gap (war-conquest) files=['src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/armies.js']
+  Offensive war is fiscally free: warLevel counts only defensive fronts
+  DESC: conquest.js derives warLevel from world._fronts.byCountry, which armies.js populates only via addFront(pc.def.countryId, ...) — the DEFENDER's ledger. A realm waging three offensive wars far from home has fronts=0, no besieged/raided capital, so warLevel=0: no WAR_SURCHARGE on the army bill, no TAX_WAR, no capacity duress, no war-fatigue grievance.
+  REC: Add the attacker's serious offensive fronts (c._offFronts / seriousOff, already computed in armies.js) into warLevel at a reduced weight (a war of choice mobilises less, mirroring CONSCRIPT_OFF vs CONSCRIPT_DEF), so sustained campaigning raises taxes, strains the treasury, and feeds the overtax→unre
+
+[I6] remove (war-conquest) files=['src/sim/peopleSim/tuning.js', 'src/sim/peopleSim/conquest.js']
+  T.CAP_BASE is a dead tuning lever
+  DESC: tuning.js exposes CAP_BASE ('Capital base reach', def 1.2) in the Levers panel, and conquest.js:200 still documents it as a runtime lever, but nothing reads T.CAP_BASE anywhere in src/sim — the coercive-capacity refactor (conquest.js:207: 'Replaces the old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials') removed the consumer and left the lever. A
+  REC: Delete the lever from tuning.js and the stale comment at conquest.js:200 (or, if a base capacity floor is wanted, add it as `T.CAP_BASE +` in the peaceCapacity expression — but the log2 formula was designed to not need it).
+
+[I7] mechanism-gap (demography-food) files=['src/sim/peopleSim/foodHierarchy.js', 'src/sim/peopleSim/settlement.js']
+  Grain moves only for coin — a strictly monetized food market makes pre-coinage cities impossible and contradicts the file's own stated design
+  DESC: aggregateFoodHierarchy is strict: `bought = min(offer, spare/price)` — no coin, no grain (line 173, and the comment at ~145: 'STRICT: no coin, no grain'). But settlements start at wealth 0 and specie enters ONLY via mining of precious/gem deposits (updateWealth), so for the pre-monetary millennia zero grain moves up the hierarchy anywhere: no city 
+  REC: Add an in-kind levy channel: a liege with sufficient organization (state capacity) may requisition a grain share of its subtree's offer without coin, bounded by a peasant-retention floor; coin purchase then EXTENDS the flow as money spreads. This is emergent (gated on org and the liege tree, never t
+
+[I8] restructure (demography-food) files=['src/sim/peopleSim/foodHierarchy.js', 'src/sim/peopleSim/settlement.js']
+  Food-market physics keyed to globally-relative tier labels and administered price ladders instead of local state
+  DESC: FOOD_RANGE_BY_TIER, SHIP_FRAC_BY_TIER, GRAIN_PRICE_BY_TIER and storageCap all index on s.tier — but tier is now a POPULATION-RELATIVE classification: the town bar scales with world population (TIER_SCALE_REF), the city bar scales under DISSOLVE_FARMS, and the metropolis bar floats at 0.8× the world's largest city (METRO_REL_FRAC). So two physically
+  REC: Key the market on continuous local state: haul range on the destination's own population/infrastructure/port status; ship fraction on the seller's surplus ratio (pool vs own demand); price on local scarcity (e.g. hunger/surplus gradient), letting the entrepôt margin EMERGE from buying where grain is
+
+[I9] simplify (demography-food) files=['src/sim/peopleSim/settlement.js', 'src/sim/peopleSim/tuning.js']
+  Four overlapping population-capacity models coexist; under the default (DISSOLVE_FARMS=1) the entire housing/development stack no longer caps population and its stated rationale references a removed mechanism
+  DESC: updatePopulation picks K = max(8, foodK) whenever LOCALITY_MODE || DISSOLVE_FARMS (line 2242) — and DISSOLVE_FARMS defaults to 1. So housingCapacity, spaceCapacity, computeBuildableArea, infrastructure, updateDevelopment's whole materials/coin/labour pipeline, HOUSE_ERA_POW, URBAN_ANTICIPATION and DENSITY_PER_CONSTR never constrain population in a 
+  REC: Pick the Locality/Dissolve model as canonical, delete or quarantine the legacy tier-0 and URBAN_NODES branches (they're flag-gated, so removal is mechanical), and either re-couple housing to K (min(foodK, houseK) with housing genuinely buildable) or strip the housing stack down to the one unrest sig
+
+[I10] mechanism-gap (demography-food) files=['src/sim/peopleSim/settlement.js', 'src/sim/peopleSim/tuning.js']
+  Constant intrinsic growth rate means the world is Malthusian forever — the escape only raises K, never bends r, so no demographic transition can occur
+  DESC: The Malthusian-to-industrial arc is half-built and properly emergent: _eraProd = BASE + SCALE·agri^POW·devGate (gated on the settlement's own agriculture knowledge and its state's organization — no time gates; the old calendar-anchored scar is fixed, ANCHOR_POP defaults to 0 and even the opt-in anchor keys on the org-derived _civYear). But populati
+  REC: Modulate the growth term by development state (see the demographic-transition idea): r falls with urban share, organization and food abundance per capita. Purely state-driven, self-calibrating on any map/seed.
+
+[I11] cardinal-rule-violation (money-economy) files=['src/sim/peopleSim/inflation.js']
+  Inflation baseline locks on a raw step count (world.step >= 5000) — a time gate on a live mechanic
+  DESC: updateInflation refuses to calibrate the price-level reference (and therefore holds ALL sim price levels at exactly 1, disabling Hume competitiveness) until `world.step >= 5000`. The comment says the intent is 'late enough that the world has a real economy' — i.e. the step count is standing in for a STATE condition the code even already half-tests 
+  REC: Replace the step threshold with emergent conditions on the thing being calibrated: e.g. total settlement coin above a floor expressed in physical terms (N× the wealth-reserve of the median settlement), at least K monetised components each with M/T above a de-minimis, and the population-weighted M/T 
+
+[I12] mechanism-gap (money-economy) files=['src/sim/peopleSim/conquest.js']
+  ravage() burns looted coin — rebellions, riots and failed revolts are an undocumented money sink that contradicts the no-burn constraint
+  DESC: The currency spec's hard constraint is 'No burn-sink... The money supply must find equilibrium without a kludge sink' — the only sanctioned drains are COIN_LOSS_RATE and finite mines. But `ravage(s, popMul, wealthMul, armyMul)` does `s.wealth = Math.max(0, (s.wealth||0) * wealthMul)` with REBEL_WEALTH=0.5, RIOT_WEALTH=0.65, FAILED_REVOLT_WEALTH=0.5
+  REC: Conserve the loot: transfer most of the ravaged wealth to the rebellion's seed settlement / the new rebel polity's treasury (plunder funds the rising — historically why rebellions could pay fighters), leaving at most a small genuinely-destroyed fraction folded conceptually into the wear channel. Sam
+
+[I13] mechanism-gap (money-economy) files=['src/sim/peopleSim/slavery.js']
+  The slave market clears globally and instantaneously at a flat price — no transport, no contact requirement, no price formation
+  DESC: Phase B pools ALL captives and ALL demand world-wide and clears them pro-rata at a fixed SLAVE_PRICE=8 (a constant the code itself labels '(calibration)' — the second-cardinal-rule tell). A plantation on an isolated continent can buy captives raided on another landmass it has never contacted, with zero freight, no middleman margin, and no ships — w
+  REC: Clear the market over the existing connectivity: a buyer can only source captives from sellers reachable via merged road/sea reach (transitively through slaver entrepôts), with a freight/toll discount using the same link costs as sellGoods, and let price rise with the local demand/supply imbalance i
+
+[I14] mechanism-gap (money-economy) files=['src/sim/peopleSim/conquest.js']
+  Debasement seigniorage is minted in proportion to the army bill, not to any physical coin stock — and restoring fineness is free
+  DESC: `seigniorage = (f0 - f1) * armyBill * DEBASE_SEIGN_SCALE` conjures treasury coin scaled by what the state NEEDS (its wage bill ×10), not by what physically exists to re-strike. Real debasement revenue is bounded by the coin that passes through the mint: (Δfineness/fineness) × the re-coined circulating stock. As coded, a tiny realm with a huge army 
+  REC: Base the mint on stock: seigniorage = (Δf/f) × (realm's settlement coin + treasury) × a mint-throughput fraction (gated on organisation — a weak chancery can't recall the coinage). Charge restoration: raising fineness consumes treasury proportional to the coin re-struck. Both constants then mean som
+
+[I15] remove (money-economy) files=['src/sim/peopleSim/inflation.js']
+  localPByCountry is dead code, and inflation.js's own commentary still describes the pre-(b) model
+  DESC: After the (b) nominal-inflation decision (grain, wages, building costs all at BASE prices), `localPByCountry` has no importer anywhere in src/ (only `displayPByCountry` is used, by the worker). Meanwhile the comments at inflation.js:24-25 and 102-104 still claim localP 'scales wages, food prices, building costs' and P_MAX's rationale (lines 34-39) 
+  REC: Delete localPByCountry and rewrite the header/P_MAX comments to state the (b) contract explicitly: localP feeds ONLY Hume competitiveness (roads.js) and the display ticker; real prices are base-denominated by design.
+
+[I16] mechanism-gap (trade-networks) files=['src/sim/peopleSim/sea.js', 'src/sim/peopleSim/roads.js']
+  Multi-hop sea relays pay no tolls or entrepôt brokerage — the Venice/Malacca mechanism only fires on land paths
+  DESC: entrepotShare and the IN_CARRY brokerage were built for 'the great market hubs... the brokerage that made Venice and Amsterdam rich' (roads.js:1041-1045), and the sea-lane design is explicitly a stepping-stone relay ('Lisbon→Cape→Goa→Indies', sea.js:379-381). But intermediaries are only ever computed for land reach links (intermediatesOnPath at roa
+  REC: During the transitive closure (sea.js:393-436), record the chain of relay PORTS on each multi-hop route (the Dijkstra already visits them) and store them as link.inter, so sellGoods' existing toll/brokerage machinery pays them. Emergent result: hub ports at chain junctions grow rich on carrying trad
+
+[I17] rebalance (trade-networks) files=['src/sim/peopleSim/roads.js', 'src/sim/peopleSim/sea.js', 'src/sim/peopleSim/tuning.js']
+  Per-tile cost field prices worn roads below river barges and near sea ships; volume multipliers patch the inversion in a second channel
+  DESC: QUALITY_MAX=0.08 (worn road), RIVER_STEP=0.10, SEA_STEP=0.24: a mature cart road is the cheapest transport per tile in the sim, cheaper than a navigable river and 3× cheaper than open sea — the inverse of the historical bulk-freight ratio (water haulage stayed ~5-30× cheaper than road until rail; SEA_STEP's own comment 'below road quality, so sea l
+  REC: Price the modes from one freight-cost model (e.g. river/sea per-tile cost well below any road, with the port-tax as the real counterweight), then shrink or retire the *_TRADE_MULT volume patches; validate against the maritime money-flow share the multipliers were tuned to restore.
+
+[I18] remove (trade-networks) files=['src/sim/peopleSim/sea.js']
+  SEA_WOBBLE injects cosmetic value-noise into a simulation cost input
+  DESC: The wobble field (sea.js:257-279) exists so lanes 'MEANDER like real sailing tracks instead of running dead straight' — an explicitly aesthetic goal — yet it multiplies the actual flood cost (line 327) that determines port range consumption, lane existence (budget cutoffs), edge costs, and therefore peer selection and colonisation reach. That is pa
+  REC: Move the wobble to the renderer (perturb the drawn polyline, not the cost field), or delete it and let wind/ice shape the tracks; if kept in-sim, default it to 0.
+
+[I19] restructure (trade-networks) files=['src/sim/peopleSim/roads.js', 'src/sim/peopleSim/sea.js']
+  Close-neighbour foot-path pass is unreachable for the villages it was written for, and stateless settlements are locked out of all trade infrastructure
+  DESC: linkCloseNeighbours documents itself as 'ever-present village foot traffic (kin visits, shared grazing, market days)... which produces paths between neighbours whether or not they have anything to trade' with its own lower bar MIN_POP_TO_LINK=30 (roads.js:166-174). But it is only invoked from inside the plan-queue loop (line 547), whose filter requ
+  REC: Either run the local-link pass over all settled settlements above MIN_POP_TO_LINK on its own stagger (dirt paths are cheap: it's grid-bounded), dropping the countryId gate for it while keeping state gates on trunk roads and sea lanes — or, if 'only states build roads' is now the intended model, dele
+
+[I20] simplify (territory-map) files=['src/sim/peopleSim/countryTerritory.js']
+  The political map is six stacked corrective passes, each fixing the previous one's artifact; under the default lever the merge throws most of recolorByCapital's work away
+  DESC: computeCountryTerritory now runs: per-settlement reach Voronoi (scalloped bubbles) → recolorByCapital (full-landmass capital Dijkstra to smooth the bubbles) → fillEnclosedWaste → closeRealmGaps (with its own inner distance-flood because the first cardinal-flank rule stamped rectilinear X/H shapes) → smoothCountryBorders → mergePersistentTerritory (
+  REC: With persistence on, invert the order: stamp worked-land cores from the ledger FIRST, then run the capital recolour/gap passes only over non-core (march) tiles, and drop the second smoothing by pinning cores (see the smoothing bug). Then measure which of fillEnclosedWaste / closeRealmGaps / noise-me
+
+[I21] restructure (territory-map) files=['src/sim/peopleSim/countryClaim.js', 'src/sim/peopleSim/countryTerritory.js', 'src/sim/peopleSim/crystallize.js']
+  Political history depends on the RENDER layer's animation cadence — the claim crawl speed is a load-bearing mechanic while documented as cosmetic
+  DESC: countryClaim.js:13 still says 'Render-only: nothing in the sim depends on _countryClaim', but adoptAndFound (village/town allegiance), the founding gate, and crystallize's birth-nationality all read grownOwnerAt → world._countryClaim. That means the rate constants of a drawing animation — CLAIM_RELAX_INTERVAL=12, RINGS_PER_RELAX with its width scal
+  REC: Split the two roles: keep _countryClaim purely cosmetic, and give adoption its own explicit integration front — e.g. a tile is 'administered' T ticks after entering _countryOwner, with T derived from the realm's logistics/organization tech (emergent, self-calibrating) — or adopt directly off the mer
+
+[I22] remove (territory-map) files=['src/sim/peopleSim/countryTerritory.js', 'src/sim/peopleSim/tuning.js']
+  T.CAPITAL_ANCHOR ('Country compactness', default 3.0) is a dead lever in every shippable configuration
+  DESC: The capital-anchor falloff is applied only inside `if (!_capitalOnly && anchor > 0)` (countryTerritory.js:449), and `_capitalOnly` is true unless the node-only env var SIM_CAPITAL_ONLY=0 is set — impossible in the browser, where `typeof process === "undefined"`. So the tuning lever exposed in the Levers panel as 'Country compactness' (tuning.js:125
+  REC: Either delete the anchor path and the lever, or make the lever meaningful in capital-colour mode (e.g. feed it into recolorByCapital's cost accumulation as a compactness bias). At minimum mark the lever headless-A/B-only in its tuning description.
+
+[I23] rebalance (territory-map) files=['src/sim/peopleSim/countryTerritory.js']
+  REALM_GAP_FILL distance ignores the file's own resolution-invariance rule
+  DESC: countryTerritory.js:172-189 establishes that every cumulative tile-DISTANCE quantity must be scaled by resScale (tw/240) so behavior matches across grid sizes, and applies it to reach budgets, INTEGRATE_MIN and ANCHOR_SCALE. But closeRealmGaps is called with the raw lever `T.REALM_GAP_FILL` (default 9 tiles, line 545): a 9-tile no-man's-land betwee
+  REC: Pass `T.REALM_GAP_FILL * resScaleFor(tw)` (rounded) to closeRealmGaps, and re-validate the lever's default at app resolution.
+
+[I24] cardinal-rule-violation (founding-state) files=['src/sim/peopleSim/crystallize.js']
+  COVERAGE_FLOOR/COVERAGE_RAMP is a step-count time gate on all settlement spread — a direct cardinal-rule-1 violation
+  DESC: crystallize.js:278 `const devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * (world.step * (world._dt || 1)) / COVERAGE_RAMP);` throttles BOTH the random crystallization sweep (line 437) and mother-country colonization (lines 290, 795) to 22% at step 0, ramping linearly to 100% over 17000 dt-weighted steps. The constant's own comment s
+  REC: Replace the step ramp with an emergent tempo: scale spread by the donor settlement's (or realm capital's) agriculture/construction/organization knowledge and local population pressure (people/_k), or at minimum by the already-computed world._leadOrg — the same de-pinning pattern index.js applied to 
+
+[I25] restructure (founding-state) files=['src/sim/peopleSim/crystallize.js']
+  FRONTIER_EXTEND_DIST 'calibration to the spacing model' (d8b7df5) is frozen against the wrong spacing model — the default DISSOLVE_FARMS multiplier already breaks its guarantee
+  DESC: The gate is half-mechanism: `FRONTIER_EXTEND_DIST = MIN_SETT_DIST * (1 + SPARSE_SPREAD) + MIN_SETT_DIST` (= 28, line 173) is derived from spacing constants rather than dialed to a named outcome, which is the right instinct. But it is derived from the COLONY spacing model (MIN_SETT_DIST=8 x capSp) and frozen at compile time, while the sweep it actua
+  REC: Compute the bound where it is used, from the same quantities the sweep just computed for the candidate: allow wilderness extension when donor distance <= baseSoft * capSp (* spMul where applicable) + one hop — i.e. one natural spacing at THIS site's effective density — instead of a global constant. 
+
+[I26] mechanism-gap (founding-state) files=['src/sim/peopleSim/crystallize.js', 'src/sim/peopleSim/state.js']
+  Independent overseas civilization genesis is dead code: OVERSEAS_INDEPENDENT_RATE can never do what its comment promises
+  DESC: OVERSEAS_INDEPENDENT_RATE (line 144) is documented as 'keeps the door open for the occasional independent overseas genesis (the Mesoamerica/Andes pattern)', and the culture block (lines 455-466) explains disconnected spawns found 'a fresh ROOT people ... what gives separate landmasses their own stocks'. But since the joinCountry gate was added (lin
+  REC: Either (a) delete OVERSEAS_INDEPENDENT_RATE and rewrite the comments to state that virgin landmasses are settled exclusively by colonization plus genesis-time cradles, or (b) restore a true independent-origin path gated on world state: on landmasses with no transport-reachable settlement, allow a sp
+
+[I27] restructure (founding-state) files=['src/sim/peopleSim/state.js', 'src/sim/peopleSim/tuning.js']
+  Earth hearth seeding: fixed coordinates are defensible initial conditions, but the per-site tuned radii patch a weakened scorer instead of fixing it
+  DESC: EARTH_HEARTH_SITES pins named real-Earth locations (Nile, Mesopotamia, Yellow River) — acceptable as initial conditions for the real-Earth preset (rule 2 governs mechanisms, not the starting map, and T.EARTH_HEARTHS=0 restores the algorithmic path). The rule-2 problem is HOW the snapping works: seedEarthHearths' score (state.js:354) is `rm * 2 + f 
+  REC: Score each hearth window with the SAME full cradle score as the algorithmic path (including landBarrier/seaFrac and the warm-valley band); with the real mechanism doing the discrimination, the per-site radius overrides can widen or disappear, and the same code stays correct at every resolution. Enfo
+
+[I28] cardinal-rule-violation (founding-state) files=['src/sim/peopleSim/crystallize.js', 'src/sim/peopleSim/state.js']
+  Floodplain spawn machinery: uncompensated oversampling is a hidden ~40x rate multiplier, and FLOOD_SPACING_MUL is documented as tuned to a settlement-share target
+  DESC: FLOOD_SAMPLE_FRAC=0.4 (line 36) draws 40% of sweep candidates from the fertile floodplain tile list (~1% of tiles). The comment claims 'Everything downstream (river magnet, spacing, quality) is unchanged' — but oversampling without an importance weight multiplies each floodplain tile's expected spawn TRIALS by roughly (0.4/nFlood)/(0.6/N) ~ 40-70x,
+  REC: If oversampling is kept for hit-rate on thin ribbons, divide the spawn probability p by the importance ratio so per-tile expected spawns are unchanged, and express the floodplain's genuine attractiveness as an explicit quality term (irrigable-alluvium yield, already partially encoded in fert/tFlood)
+
+[I29] rebalance (founding-state) files=['src/sim/peopleSim/crystallize.js']
+  DISSOLVE_FARMS spacing constant is explicitly 'tuned' to an urbanization share, and the lever forks the founding model in-place
+  DESC: The default-ON lever (tuning.js def=1) rewires founding at three points: sweep spacing `T.DISSOLVE_FARMS ? 2 // tuned: fewer/larger town-regions, but keeping a rural town layer so urbanisation stays realistic (~60%)` (line 314), forced `tier: T.DISSOLVE_FARMS ? 1 : 0` at every spawn site (lines 516, 858), and maybeUrbanGenesis disabled outright (li
+  REC: Derive town spacing under DISSOLVE from a quantity that exists in the model — e.g. the market/food catchment a town of tier 1 actually needs (MARKET_RANGE, transport cost, per-capita food) — so density follows from economics rather than a share-tuned multiplier, and apply the same effective spacing 
+
+[I30] cardinal-rule-violation (culture-faith) files=['src/sim/peopleSim/faiths.js', 'src/sim/peopleSim/cultures.js']
+  Faith/culture spatial and count constants are fitted to one map size — they do not self-calibrate
+  DESC: cultures.js deliberately makes its cohesion radius resolution-invariant (COHESION_BASE_FRAC × world.tw, 'Resolution-invariant (a fraction of map width)') and conquest.js res-scales holdReach — but the rest of the subsystem uses raw tile distances and absolute world counts: SCHISM_MIN_DIST = 95 tiles (faiths.js:58) makes schism roughly twice as easy
+  REC: Express distances as fractions of map width (like COHESION_BASE_FRAC) or in the realm-grip units already res-scaled in conquest.js; express bloc/people-size floors in population, not settlement count; scale the per-pass founding/schism caps with the count of eligible literate cities (or drop them an
+
+[I31] rebalance (culture-faith) files=['src/sim/peopleSim/personality.js', 'src/sim/peopleSim/faiths.js']
+  FAITH_SHAPE_RATE outweighs anchor reversion 3:1 — state-faith realms' personalities homogenize toward their creed (usually toward bland neutrality)
+  DESC: faithShapePersonality pulls every trait toward the faith's temperament at 0.03/pass while driftPersonality reverts to the intrinsic anchor at 0.01/pass (both on ~150-tick cadences), so any realm holding a state faith equilibrates at ~75% faith-temperament / 25% intrinsic anchor — the file's own comment confirms '~¾ of the way'. But faithTemperament
+  REC: Weight the shape pull per-axis by the faith's own pronouncedness (rate × |faithTemperament[t]|), so a militant creed genuinely hardens its realms but a neutral creed exerts ~no pull; or drop FAITH_SHAPE_RATE below DRIFT_REVERT so the anchor stays dominant as documented.
+
+[I32] mechanism-gap (culture-faith) files=['src/sim/peopleSim/cultures.js', 'src/sim/peopleSim/faiths.js', 'src/sim/peopleSim/sea.js', 'src/sim/peopleSim/settlement.js']
+  Newborn settlements and overseas colonies are born into their people's FOLK faith and ethnic tongue — organized religion and prestige language do not travel with settlers
+  DESC: makeSettlement/seedCulture only carry cultureId at birth: faithMix is left empty and langMix reset to the culture's native tongue (cultures.js:293-301), and updateFaiths step 1 then seeds every newborn from folkFaithOf (faiths.js:267-274). So a colony dispatched by a fervently organized-faith empire lands worshipping its people's ancient unnamed he
+  REC: At founding, copy the parent settlement's faithMix and langMix (the colonists ARE a sample of that population) instead of re-deriving both from the culture record; keep folk seeding only for true independents (cradles, fresh roots with no parent).
+
+[I33] restructure (culture-faith) files=['src/sim/peopleSim/cultures.js']
+  s._diverged is a permanent one-shot: a settlement that ever forked is exempt from all future ethnogenesis forever
+  DESC: All three divergence paths set s._diverged = true and all three skip settlements with it set (cultures.js:426, 513, 579), and nothing ever clears it (it is persisted, too). The flag sensibly prevents an isolated cluster from re-fissioning every DIVERGE_AFTER ticks, but as a permanent latch it freezes cultural evolution at exactly the old settlement
+  REC: Replace the boolean with a timestamp (s._divergedAt = world.step) and treat it as a refractory period — e.g. exempt for max(DIVERGE_AFTER, ETHNO_AFTER) ticks, granularity-scaled — so anti-churn protection is kept while deep-time re-differentiation stays possible.
+
+[I34] simplify (culture-faith) files=['src/sim/peopleSim/cultures.js', 'src/sim/language.js']
+  Dead peoples' tongues drift and log 'language.shift' events forever; the language registry only ever grows
+  DESC: The drift loop in updateCultures iterates every culture ever founded (cultures never die by design) and drifts + logEvents its tongue every ~LANG_DRIFT_EVERY ticks regardless of whether anyone still speaks it (cultures.js:327-339). National-standard languages additionally accumulate one registry record per qualifying realm ever (cultures.js:373) an
+  REC: The pass already tallies living settlements per people (pcount) — compute it first and skip drift/logging for cultures with zero settlements (a tongue no one speaks doesn't change); optionally mark speakerless languages ended, mirroring the faith cull, to bound the registry.
+
+[I35] simplify (dynasties) files=['src/sim/calendar.js', 'src/sim/peopleSim/dynasties.js']
+  Stale two-clock comments and dead machinery around the dynasty clock — a cardinal-rule-1 landmine
+  DESC: calendar.js:38-40 still claims 'the dynasty layer measures time on THIS [era-anchored display] calendar too, reigns and successions pace with the displayed years' — false: dynasties.js imports dynYear, a uniform tick clock. updateDynasties' comment (dynasties.js:800-803) likewise claims 'the step→year mapping compresses early eras … one pass can be
+  REC: Fix the calendar.js and dynasties.js comments to describe the actual uniform dyn clock (and its deliberate approximate relationship to the display calendar); collapse the constant `years` computation; delete fillThrone's dead monarchy branch and the unused `seen` set.
+
+[I36] mechanism-gap (dynasties) files=['src/sim/peopleSim/dynasties.js', 'src/sim/peopleSim/armies.js']
+  Royal kinship is politically inert — marriages, claims and shared blood shape no history
+  DESC: The subsystem builds real kin graphs and cross-court marriages, but the only political outputs are scalar: unrest/loyalty shocks, legitimacy drift, and the inCrisis war annotation. `dynasty.union` is logged and rendered as prose but read by no mechanic (grep: only events.js renders it). So the single most history-shaping dynastic machinery — claims
+  REC: Make wars/diplomacy read the kin graph: on succession crisis or contested accession, enumerate external claimants (foreign rulers married into or descended from the house) and convert the crisis into a claim casus belli or a personal union instead of always founding a fresh local house; bias war app
+
+[I37] restructure (dynasties) files=['src/sim/peopleSim/dynasties.js']
+  Person mortality and roster lifecycle are scattered across five sites with ad-hoc 'am I the ruler' exemptions
+  DESC: Deaths are applied in five places (reapHouse, reapIdleHouses, two maternal-hazard sites, the ruler death handler), each with its own partial protection for 'the ruler' — protections that only consider the polity currently being iterated. This structure is the shared root cause of three bugs above: the maternal hazard killing another realm's queen, 
+  REC: Centralize a `killPerson(world, p, cause)` that closes reign records, updates rosters/inlaws, and — if p is any polity's rulerId — defers the death to that polity's succession handler (or runs it inline); build one `sittingRulers` set per pass and consult it everywhere. Make roster caps gates on bre
+
+[I38] rebalance (events-history) files=['src/sim/peopleSim/historiography.js', 'src/sim/peopleSim/conquest.js']
+  Information horizon measured in raw tiles — traditions change with grid resolution, not world state
+  DESC: HORIZON_BASE = 70 and HORIZON_LIT = 80 are fixed tile distances, but the sim explicitly res-scales all comparable reach quantities (rebuildCountries' resScale note in conquest.js:531-539 documents that unscaled tile distances made big-map realms behave differently, and holdReach is multiplied by resScaleFor(world.tw)). distTo in historiography.js m
+  REC: Multiply the horizon by the same resScaleFor(world.tw) the hold-reach uses (a one-line fix), or better, derive it from an emergent quantity with physical meaning — e.g. the viewer capital's transport reach (c.range already encodes logistics/navigation tech) — so news range grows with the same techno
+
+[I39] restructure (events-history) files=['src/sim/peopleSim/entities.js', 'src/sim/peopleSim/personality.js', 'src/sim/peopleSim/chronicle.js', 'src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/countryTerritory.js']
+  Polity lifecycle authority is scattered across 11 ensurePolity call sites with dead reconcile branches
+  DESC: Lifecycle transitions are minted from five silent bookkeeping sites (personality.js:172, chronicle.js:55, personality.js:240, conquest.js:176/967/1091/1156) and six story sites (cradle, frontier x2, fragment x2, restored), with reconcilePolities nominally the authority of record — but its founding and restoration branches are unreachable (see bugs 
+  REC: Split the API: a read-only getOrCreateRecord for bookkeeping that can never change endedStep, and explicit foundPolity/endPolity/restorePolity that are the only lifecycle mutators and always log. Route reconcilePolities through those, delete its now-dead inline logic, and fix or delete the stale 'an
+
+[I40] rebalance (events-history) files=['src/sim/peopleSim/historiography.js']
+  World-bible traditions selected by current realm size — the great fallen empires are excluded
+  DESC: exportHistory picks the 12 traditions by live member count (`world.countries ... sort((a,b) => b.members.length - a.members.length)`, historiography.js:219-220). The realms with the richest traditions — long histories, sacks, burned archives, founding myths, the very features the historiography layer exists to produce — are disproportionately the F
+  REC: Rank candidates across the whole polity registry (alive or ended) by historical prominence — own-event count (eventsFor length) or peak city count from p.chron — and include the top N, marking each tradition alive/ended. The export then showcases exactly the traditions with the most seams to catch t
+
+[I41] mechanism-gap (tech) files=['src/sim/peopleSim/settlement.js', 'src/sim/peopleSim/roads.js', 'src/sim/peopleSim/sea.js']
+  Sea lanes carry trade, plague and language — but no knowledge, ore, or crops
+  DESC: Knowledge diffusion (settlement.js:1540-1591), effectiveLocalRes ore-merging (396-406), crop adoption (1604), and rival counting all iterate only s._tradeReach — the land road/river network (roads.js computeReach traverses road, river and settlement tiles only). Sea-lane peers live exclusively in s._seaReach; roads.js mergeReach (line 1124) exists 
+  REC: Diffuse knowledge/ore/crops over mergeReach(s) instead of s._tradeReach alone, weighting the rate by link cost (sea links already carry a cost) so a hard crossing diffuses slowly and a busy short lane diffuses fast — the channel then scales emergently with ship tech (seaSpeed/seaRange), no new const
+
+[I42] remove (tech) files=['src/sim/peopleSim/tech.js', 'src/sim/peopleSim/sea.js']
+  Dead tech outputs: defenseLevel, wealthMult and all five ability booleans are computed but consumed nowhere
+  DESC: techEffects builds defenseLevel, wealthMult (self-documented "not yet wired", tech.js:453) and the ability flags embark/ocean/colonize/walls/market — the header sells these as the Civ-style gates ("the tree is what gives the abilities"). Grep across src/ shows zero sim consumers; the only reference is a UI colour map. The real gates read raw contin
+  REC: Either wire these outputs (see ideas) or delete the channels and flags so the tree only advertises what the sim does. If keeping defense, normalise by the positive-contribution sum (or clamp lvl to 1) so a negative-fx tech can't push the level past 1.
+
+[I43] mechanism-gap (tech) files=['src/sim/peopleSim/shocks.js', 'src/sim/peopleSim/tech.js']
+  Industrial/Modern health tech is a pure label — plague mortality reads no tech or development at all
+  DESC: germ_theory and medicine have no TECH_FX entry (verified: stone_tools, fire, heliocentrism, germ_theory, medicine are the only FX-less techs), and shocks.js plague mortality is mort = T.PLAGUE_MORT * (1 + PLAGUE_URBAN*urban) * virgin * _dt (line 205) — crowding makes it WORSE with development and nothing ever makes it better. Spread probability lik
+  REC: Multiply plague mortality (and endemic disease load) by a relief factor read off the settlement's own discovered techs — aqueducts (sanitation), germ_theory, medicine — so epidemics fade exactly when and where a society earns the tech, and never in a world that stalls pre-industrial.
+
+[I44] rebalance (tech) files=['src/sim/peopleSim/settlement.js']
+  orgEraCap welds statecraft to ore access, and the cap is not enforced on the diffusion path
+  DESC: orgEraCap = clamp01(0.15 + metalCap*0.95 + k.construction*0.15) (line 1448) caps organisation INVENTION at 0.30 when no copper/iron is reachable even by trade — below the writing threshold (0.35). An ore-less region can therefore never independently develop writing, law, currency or calendars, however dense and confined: Mesoamerica (full writing, 
+  REC: Replace the metallurgy term with drivers that actually bound early statecraft — surplus agriculture, urban core size, confinement (already modelled) — and if a material-era ceiling is kept, derive it from construction/agriculture rather than ore, and apply it consistently to invention AND diffusion.
+
+[I45] restructure (tech) files=['src/sim/peopleSim/index.js', 'src/sim/peopleSim/cohesion.js']
+  The org→pseudo-year detour: fitted lookup tables reintroduce a year-shaped input keyed to the global leader
+  DESC: CIV_ORG_YEAR (index.js:134-137) maps the LEADING capital's organisation to a historical year, and eraIdentityWeights (cohesion.js:39-55) then ramps identity salience on that year (nationalism at "1750-1920", etc.); the opt-in demographic anchor (POP_ANCHORS, off by default) consumes it too. This passes the letter of rule 1 (state-derived, not clock
+  REC: Derive each salience axis from the affected realms' own state: nationalism from printing/literacy penetration + urbanisation of the two realms in contact; faith salience from organized-church share (faiths.js already tracks it); language friction from bureaucratic org. The historical dates then fall
+
+[I46] remove (core-loop) files=['src/sim/peopleSim/tuning.js', 'src/sim/peopleSim/armies.js']
+  WAR_DEF_SPLIT is a dead lever — defined and documented but read by no code
+  DESC: TUNING_SCHEMA (tuning.js:155) defines WAR_DEF_SPLIT with a long description promising a concrete mechanic ("a realm attacked by 3 defends each front at ~half... who takes ground is the national-army RATIO"). No code reads T.WAR_DEF_SPLIT anywhere in src/ (verified by grep over all 213 levers — it is the only one with zero code readers). The war-arm
+  REC: Either rewire the conservation split (defForceOf / DEF_PRIORITY at armies.js:752,777) to read T.WAR_DEF_SPLIT so the lever means something again, or delete the WAR_DEF_SPLIT schema entry and fix the stale comment at armies.js:82.
+
+[I47] cardinal-rule-violation (core-loop) files=['src/sim/peopleSim/tuning.js', 'src/sim/peopleSim/index.js', 'src/sim/peopleSim/settlement.js']
+  ANCHOR_POP default/description contradiction; the historical-population-curve anchor is off-by-default legacy
+  DESC: The ANCHOR_POP lever schema sets def: 0 (tuning.js:259) but its own description text repeatedly says "1 (default) = the demographic ANCHOR runs" (tuning.js:260), and the comment block above applyDemographicAnchor (index.js:56-70) and settlement.js:1751 also read as if the anchor is the live path. With the real default (0), index.js:181 forces world
+  REC: Fix the ANCHOR_POP description to state def=0 (fully emergent) is the default and ANCHOR_POP=1 pins totals to a historical curve. Update the index.js/settlement.js comments so the emergent ERA_PROD path is documented as primary. Consider whether the historical-curve anchor should remain at all given
+
+[I48] mechanism-gap (core-loop) files=['src/sim/peopleSim/invariants.js', 'src/sim/peopleSim/sea.js']
+  Money/population conservation watch has blind spots — in-transit ships and captives are uncounted
+  DESC: checkPeopleSimInvariants (invariants.js:50-95) tallies world.debug.totalCoin from settlement wealth + ALIVE polity treasuries, and totalPeople from settlement people. It ignores wealth and people riding on colony ships in world.ships (sea.js:521-532 removes COLONY_PEOPLE and an endowment from the founder onto a ship; sea.js:592-613 returns them on 
+  REC: Fold ships' sh.wealth/sh.people (and optionally captives) into the totalCoin/totalPeople accumulation so the closed-supply watch is actually closed; or document explicitly which pools are excluded and why. Add a NaN/finite check on world._eraProd, which multiplies every settlement's food and housing
+
+[I49] mechanism-gap (persistence) files=['src/sim/persist.js', 'tools/smoke.mjs']
+  The save/load smoke proof is much weaker than its claim — hashWorld covers a thin slice, so lost state passes CI silently
+  DESC: README and persist.js promise 'What round-trips EXACTLY: everything in the save (verified by the smoke test's save→load→save hash identity)', but hashWorld folds in only step, per-settlement core numerics + knowledge, four polity numerics, events.length and every-97th roadQuality sample. Cultures, faiths, languages, persons, dynasties, ships, all t
+  REC: Three cheap gates: (1) assert serialize(loadWorld(json)) === json byte-identity (catches any saved-but-mangled field); (2) extend hashWorld to sample _territoryOwner/_countryOwner/_countryClaim and fold in registry sizes + key entity numerics (culture pop, faith followers, polity faith/dynasty ids);
+
+[I50] restructure (persistence) files=['src/sim/persist.js', 'src/sim/peopleSim/settlement.js', 'src/sim/peopleSim/armies.js', 'src/sim/peopleSim/countryTerritory.js', 'src/sim/peopleSim/inflation.js', 'src/sim/peopleSim/faiths.js']
+  Manual persistence whitelists (SETT_FIELDS + hand-picked world tables) structurally drift behind new mechanisms
+  DESC: Every lost-state bug above has the same root cause: state is created wherever a mechanism lives (settlement.js, armies.js, inflation.js, countryTerritory.js, faiths.js) but must be remembered in a second place (persist.js's SETT_FIELDS array and the tables{}/maps{} literals). The comment 'new fields that carry real cross-tick state belong HERE' doc
+  REC: Make persistence declarative at the point of creation: a tiny registry module (e.g. `persistField("settlement","_orgApt")`, `persistWorldMap("_truces")`) that mechanism files call when they introduce state, with persist.js iterating the registry. Complement it with a dev audit in smoke: step a world
+
+[I51] mechanism-gap (persistence) files=['src/sim/persist.js']
+  No save-version migration path — any schema change bricks every existing save
+  DESC: loadWorld hard-throws on `data.v !== SAVE_VERSION` (persist.js:145-147). There is exactly one version and no migration ladder, so the first legitimate bump (which fixing the bugs above requires — new fields, new tables) will make every old save unloadable even though the loader already tolerates missing fields via `?? / || 1` defaults almost everyw
+  REC: Adopt an additive policy: keep SAVE_VERSION, but accept `data.v <= SAVE_VERSION` through a `migrate(data)` ladder (v1→v2→…), where each step fills new fields with the same defaults loadWorld already uses. Reject only versions NEWER than the code. This makes the persistence fixes above shippable with
+
+[I52] cardinal-rule-violation (persistence) files=['src/sim/peopleSim/inflation.js', 'src/sim/persist.js']
+  Inflation baseline locks on `world.step >= 5000` — a time gate on a mechanic (cardinal rule 1)
+  DESC: The M/T reference that defines price level 1 'forever after' is captured when `world.step >= 5000 && M.size >= 3`. The step floor is a content gate, not a cadence: before step 5000 no world can register inflation however monetised it is, and a slow world calibrates its permanent baseline at whatever arbitrary development it happens to have reached 
+  REC: Gate the calibration purely on world state, which the second condition already half-does: e.g. lock the baseline when ≥3 monetised network components exist AND cumulative mined coin (already tracked via depositReserve depletion) exceeds a floor proportional to world output — 'the economy is monetise
+
+[I53] mechanism-gap (worldgen-coupling) files=['src/sim/pipeline.js', 'src/sim/peopleSim/state.js']
+  River moisture boost is computed in the pipeline but never reaches the sim's moisture channel — only fert/tFlood carry it
+  DESC: buildTerritory raises tMoist along rivers (pipeline.js:346-358) so tCrop, biomes and deposits react to river water, and returns the boosted array as ter.tMoist. But peopleSim's initTerrain reads the ORIGINAL, un-boosted worldgen moisture (state.js:110-111 `m = w.moisture[wi]`), not ter.tMoist. The sim only recovers river wetness for tiles the pipel
+  REC: Either export the pipeline's boosted moisture as a first-class field (e.g. riverMoist / ter.tMoist) and MAX-POOL it into the sim's moist[ti] the way fert is pooled, or document that moist[ti] is intentionally the raw climatic value and that river wetness lives only in fert/tFlood. Prefer the former 
+
+[I54] mechanism-gap (tools-validation) files=['tools/stylized.mjs']
+  Every history-shape gate is soft — `npm run validate` cannot fail on shape, only on survival
+  DESC: Zipf, empire tail, lifespans, war rate/causes, diffusion, and urbanization are all scored with hardFail=false; only continuity (settlements>=20, wealth finite, countries>=3) is hard (stylized.mjs:145-147), and the process exits 0 unless a hard gate fails (line 155). The README sells validate as 'is the emergent history history-SHAPED?', but a run w
+  REC: Introduce a soft-warning budget as a hard gate (e.g. exit 1 if soft > 2), and promote individually-stable gates to hard once their statistics are corrected (see the Zipf/empire/lifespan items). This keeps flaky new gates soft while making the suite mean something in CI.
+
+[I55] rebalance (tools-validation) files=['tools/stylized.mjs']
+  Zipf pass band [-1.6, -0.5] is fitted to pass, not principled — a slope of -1.5 (missing mid-size cities) is 'ok'
+  DESC: Real urban systems cluster tightly around −1 (empirical range roughly −0.8 to −1.2 across countries and eras). The band at stylized.mjs:57 accepts −0.55 (near-uniform city sizes) through −1.59 (extreme primacy / hollow middle) — a width that exists to keep the gate green, since the focus case −1.50 passes. The constant has no independent meaning: n
+  REC: Fit log(size) on log(rank − 1/2) (Gabaix–Ibragimov, removes the OLS bias with independent statistical justification) over urban cores (see bug), and band at ≈ [−1.25, −0.75] — the empirical envelope, stated with a citation in the comment. If runs then warn, that is a true finding about the city-form
+
+[I56] rebalance (tools-validation) files=['tools/stylized.mjs']
+  Empire-tail gate's statistic (largest/median member count >= 2.5) accepts both near-uniform maps and total map-painters
+  DESC: The gate claims 'a few great powers, many small states, not uniform'. But: (a) the median is taken over all polities including 1-member ones, so median is typically 1-2 and the ratio degenerates to 'largest polity has >=3-5 settlements' — passing at 12.0 tells you almost nothing about tail shape; (b) member count is a poor size measure when territo
+  REC: Score the area distribution: e.g. top-1 share of claimed land in a band (a few percent to ~40%, the historical envelope for the largest empire's share of the settled world), plus a CCDF tail-exponent estimate over polity areas. Both derive from _countryOwner and have independent historical meaning (
+
+[I57] rebalance (tools-validation) files=['tools/stylized.mjs']
+  Lifespan gate bounds are coupled to run configuration (STEPS/2) and to raw ticks, not to any time unit with meaning
+  DESC: med >= 300 && med <= STEPS/2 (stylized.mjs:86): the upper bound loosens linearly with the argv step count — `node tools/stylized.mjs 8817 60000` accepts a median fallen-polity lifetime of 30000 ticks, four times what the default run would reject. The 300 floor is undocumented ticks (150 years on the 0.5y/step mechanic clock in calendar.js — plausib
+  REC: State the thresholds in years via the mechanic clock (calendar.js YEARS_PER_STEP) with the historical anchor written down (e.g. median fallen-state lifetime ~1-3 centuries), replace STEPS/2 with a censoring-aware statistic (median over polities that fell, noting the right-censored share), and replac
+
+[I58] rebalance (tools-validation) files=['tools/stylized.mjs']
+  War gates are near-vacuous: a 400x-wide rate band not normalized by polity count, and a 2% crisis-share bar
+  DESC: per1k in (1, 400) (stylized.mjs:97) spans 2.5 orders of magnitude and is denominated per step, not per polity: 30 wars/1000 steps is peaceful for a 200-state world and hyper-belligerent for a 5-state one, and the gate can't tell. The 'human causes' gate passes if crisis wars exceed 2% of wars (line 98) — statistical noise clears it, and the short-r
+  REC: Normalize to wars per polity-century (wars / mean-polity-count / years), banded against the historical great-power base rate, and test crisis correlation properly: compare P(war | defender in crisis) against P(war) and require a positive uplift, which is the actual claim ('wars correlate with succes
+
+[I59] mechanism-gap (tools-validation) files=['tools/stylized.mjs']
+  Urbanization band (2-65%) is unconditioned on development — the one gate that should read emergent state doesn't
+  DESC: The comment says 'pre-modern history: a minority in cities' but the band accepts 60% urban in a bronze-age world (a gross anachronism the suite exists to catch) and would warn on a legitimately industrial world at 70% (real post-1900 economies exceed the 65% cap). Real urbanization is a function of development: <10-15% through the agrarian era, ris
+  REC: Band urbanization conditional on emergent development: e.g. if leading era < Industrial require 2-25%, else 15-80%. Self-calibrates across seeds and paces because the reference is the run's own tech state, not the step count.
+
+[I60] restructure (tools-validation) files=['tools/stylized.mjs', 'tools/smoke.mjs', 'src/sim/peopleSim/state.js']
+  Validate runs one seed, one resolution, one preset — and at gate resolutions the Nile and Mesopotamia cradles fuse onto a single tile
+  DESC: Thresholds tuned against `node tools/stylized.mjs` defaults (seed 8817, 480x240, earth_sim) are indistinguishable from thresholds fitted to that one world — the second cardinal rule applied to the test suite itself. Worse, the low-res worlds the gates score are qualitatively degenerate at the start: in my smoke (320x160, seed 4242) and stylized (32
+  REC: Add a minimum-separation check in seedEarthHearths (skip a site whose best tile is within a few tiles of an already-seeded hearth, or widen its search), have smoke assert cradle tiles are distinct, and run the stylized suite over 2-3 seeds (gating on medians) — cheap at reduced STEPS — so bands must
+
+[I61] remove (tools-validation) files=['tools/smoke.mjs']
+  Smoke's DISSOLVE_FARMS block re-tests the default configuration against a fitted constant referencing a model that no longer runs
+  DESC: DISSOLVE_FARMS defaults to 1 (tuning.js:45 `def: 1`), so the entire preceding smoke suite (determinism, 4000-step invariant run, identity, save/load) already exercises the dissolve model. The final block (smoke.mjs:157-177) applies DISSOLVE_FARMS:1 — a no-op — and re-runs two 3000-step sims (~a third of smoke's runtime) to check properties the earl
+  REC: Either delete the block, or repurpose it to what is now the untested path: applyTuning({ DISSOLVE_FARMS: 0 }) to smoke-test the legacy farming-region model (determinism + invariants), dropping the '< 60' outcome constant.
+
+[I62] rebalance (tools-validation) files=['tools/smoke.mjs', 'src/sim/persist.js']
+  Determinism gate compares a ~15-number aggregate fingerprint when a full state hash already exists
+  DESC: smoke.mjs:59-62 judges 'same seed → same history' by JSON-equality of peopleSimStats after 600 steps — step, tier counts, rounded totals, claimed tiles. A nondeterminism that diverges names, event logs, culture/faith registries, dynasty state, or individual settlement fields while leaving rounded aggregates equal at that single checkpoint passes; 6
+  REC: In the determinism block, additionally require hashWorld(a) === hashWorld(b) (keep the stats diff for the failure message). Consider a mid-run hash at step 300 to localize divergence.
+
+[I63] cardinal-rule-violation (time-gates) files=['src/sim/peopleSim/crystallize.js']
+  Settlement-spread tempo (devFactor) ramps with elapsed step count, not development — Cardinal Rule 1 violation
+  DESC: crystallize.js:278 computes `devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * (world.step * (world._dt || 1)) / COVERAGE_RAMP)` with COVERAGE_RAMP = 17000 "steps over which the spread rate ramps to full (~renaissance)" (line 259). This multiplies BOTH the random crystallisation sweep and mother-country colonisation (maybeSendSettlers
+  REC: Key the tempo on emergent state. Either global — reuse world._leadOrg / world._civYear (already computed every tick for exactly these "de-pinned era gates", per index.js:125-133) — or better, local: scale each candidate's spawn odds by the nearby donor settlement's mobility+agriculture+organisation 
+
+[I64] cardinal-rule-violation (time-gates) files=['src/sim/peopleSim/inflation.js']
+  Inflation baseline locks at `world.step >= 5000` — a time gate on a sim-driving calibration, and it ignores SIM_GRANULARITY
+  DESC: inflation.js:82 `if (world._inflRef === undefined && world.step >= 5000 && M.size >= 3)` locks the permanent monetary reference (the denominator of every subsequent sim price level, which scales army wages, food prices and building costs via localP) after a fixed tick count. The intent — "late enough that the world has a real economy" — is a STATE 
+  REC: Replace the step floor with monetary-state conditions with physical meaning: e.g. lock when total coin exceeds a per-capita threshold AND >=N monetised components exist AND the leading component has reached currency tech — all already-available world state. At minimum, scale the floor by 1/world._dt
+
+[I65] mechanism-gap (time-gates) files=['src/sim/peopleSim/cohesion.js', 'src/sim/peopleSim/index.js', 'src/sim/peopleSim/shocks.js']
+  One GLOBAL leader signal (_civYear from max organisation) drives local identity salience — and, under ANCHOR_POP=1, every settlement's productivity
+  DESC: index.js:188-194 sets world._leadOrg to the maximum organisation across ALL capitals and maps it to world._civYear; cohesion.js:56 `identityWeightsNow(world) { return eraIdentityWeights(world._civYear ?? -9000); }` then applies the resulting faith/people/language salience to EVERY realm's unrest, admin friction, absorption resistance and casus bell
+  REC: Make modernity local: either read each realm's OWN capital organisation for its identity weights, or (richer) diffuse an "ideas" field along trade/sea reach exactly like _diseaseLoad, and have eraIdentityWeights read the local level. For the anchor, compute _eraProd per network component (world._net
+
+[I66] cardinal-rule-violation (outcome-fitting) files=['src/sim/peopleSim/inflation.js']
+  Inflation baseline is gated on a raw tick count (world.step >= 5000)
+  DESC: The moment the inflation reference locks — and thus whether inflation affects sim prices at all (localP returns 1 until _inflRef is set) — is gated on `world.step >= 5000`, a fixed tick warm-up, not on emergent economic state. This is the two-clock trap the cardinal rule warns about: on a fast-developing world the economy may be heavily monetized l
+  REC: Replace `world.step >= 5000` with an emergent monetary-scale condition: lock the baseline once the connected economy first reaches a real coin base — e.g. total minted/accumulated coin (an emergent stock from the mining faucet) exceeds a threshold, and/or aggregate trade volume (sum of exportValue*s
+
+[I67] mechanism-gap (outcome-fitting) files=['src/sim/peopleSim/cohesion.js', 'src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/armies.js']
+  Identity-era salience (nationalism/religion) is driven by a single GLOBAL development clock and applied to every realm
+  DESC: eraIdentityWeights ramps faith/people/language salience on world._civYear, and identityWeightsNow reads the ONE global _civYear = civYearFromOrg(leadOrg) where leadOrg is the MAX organization across all countries. These global weights are then applied uniformly to every realm in conquest.js (identityGrievance, absorbResistance at lines 1678/2249) a
+  REC: Key identity salience on each realm's OWN development: compute weights from that realm's capital organization via civYearFromOrg(localOrg) rather than the global _civYear. Then the axis of political conflict shifts with each society's own development — an ancient tributary empire still runs on faith
+
+[I68] cardinal-rule-violation (outcome-fitting) files=['src/sim/peopleSim/index.js']
+  Demographic anchor fits world population to a hardcoded historical curve
+  DESC: applyDemographicAnchor steers a global productivity index (_eraProd) via integral control so the world's TOTAL population tracks POP_ANCHORS (2M at 9000BC → 2520M at 1950). This is an outcome-fit in the cardinal-rule-2 sense: the SCALE of civilization is dialed to a target curve rather than emerging from land×tech carrying capacity (the tuning desc
+  REC: Follow the file's own stated plan: build the missing carrying-capacity mechanism — agriculture-knowledge → per-tile yield, plus an industrial input (synthetic nitrogen/mechanization gated on chemistry/industry tech) that multiplies yield — so the modern population boom emerges from development. Then
+
+[I69] mechanism-gap (determinism) files=['src/sim/persist.js', 'tools/smoke.mjs']
+  No save-completeness mechanism: cross-tick world state keeps leaking out of the persist schema
+  DESC: persist.js has a curated SETT_FIELDS list for settlements and hand-picked world tables, but nothing enforces that new world-level cross-tick state gets registered. The audit found five independent leaks (_soilFatigue, _truces, _tileCapturedAt via the _capturedAt rename fossil, _cBudgetRamp/_inheritReach, cooldown maps _warSeenAt/_schismAt/_lastSync
+  REC: Add a continuation-equivalence check to smoke (run N steps, save, load, run M more on both, compare hashWorld extended to cover soil/truces/capture clocks) and a debug 'state census' that fails when a world._X survives multiple passes without being either serialized or on an explicit re-warmable all
+
+[I70] restructure (determinism) files=['src/sim/worldgenUtils.js', 'src/sim/peopleSim/rng.js', 'src/sim/pipeline.js']
+  Two different generators both named mkRng, with a comment asserting they are the same
+  DESC: worldgenUtils.js mkRng is Park-Miller ('same as peopleSim/rng.js's mkRng' — false: rng.js mkRng is sfc32 seeded through splitmix32). pipeline.js imports the sfc32 one into the worldgen layer (ancestry) while worldgen.js uses the Park-Miller one — so within one pipeline the same name means two incompatible bit-streams. Any future import swap (easy, 
+  REC: Rename one (e.g. mkNoiseRng in worldgenUtils) and fix the comment; alternatively converge worldgen on the sfc32 generator behind a one-time compatibility decision, and pin a golden world-hash in smoke so accidental stream changes are caught.
+
+[I71] restructure (determinism) files=['src/sim/peopleSim/index.js', 'src/sim/persist.js', 'src/sim/peopleSim/conquest.js']
+  Per-tick logic reads world.countries, a per-pass view that is legitimately empty at load and before the first polity pass
+  DESC: entities.js correctly separates persistent polity records from the rebuilt countries view, but tick-frequency code (index.js _leadOrg/_civYear, peopleSimStats treasury/era, dynasties early-return, culture prestige) reads the view directly. The view's emptiness is treated as 'no civilization' rather than 'not computed yet', producing the post-load -
+  REC: Either rebuild the view whenever it is invalid (loadWorld and world-creation call rebuildCountries once), or derive _leadOrg/_civYear from a direct scan of capital settlements (cheap: capitals only) so the signal never depends on the polity pass cadence.
+
+[I72] cardinal-rule-violation (determinism) files=['src/sim/peopleSim/index.js', 'src/sim/peopleSim/cohesion.js']
+  Earth-history lookup tables (POP_ANCHORS, CIV_ORG_YEAR) as mechanic inputs — sanctioned outcome-fitting kept one lever from being live
+  DESC: The demographic anchor dials the WORLD TOTAL population onto recorded Earth history (POP_ANCHORS) via an integral controller, and CIV_ORG_YEAR maps leading-state organisation to 'the year a real civilisation at that stage would sit at'. The time-gate half was fixed (both key off development, not the clock), but the second cardinal rule is still str
+  REC: Keep ANCHOR_POP=0 canonical (and consider demoting the anchor to a validation overlay rather than a mechanic); migrate eraIdentityWeights to read org/print/communication levels directly with physically-meaningful thresholds, retiring the year mapping to display-only use.
+
+[I73] cardinal-rule-violation (conservation) files=['src/sim/peopleSim/inflation.js']
+  Inflation baseline calibration is time-gated on `world.step >= 5000` (first cardinal rule)
+  DESC: inflation.js:82 locks the reference M/T 'late enough that the world has a real economy' — but 'late enough' is expressed as a wall-clock step count, not world state. This is exactly the banned pattern: whether the inflation mechanism is allowed to start biting depends on WHEN it is, not WHAT the world has become. It also ignores SIM_GRANULARITY (no
+  REC: Replace `world.step >= 5000` with emergent monetisation conditions only — e.g. total coin above a physical floor (mines have actually produced), ≥3 monetised components (already there), and/or the leading capital's organisation past the currency-era threshold. Alternatively make the baseline a slow 
+
+[I74] cardinal-rule-violation (conservation) files=['src/sim/peopleSim/state.js', 'src/sim/peopleSim/tuning.js']
+  Hard-coded named Earth hearths (Nile/Mesopotamia/Yellow River) paint the outcome the cradle scorer exists to produce (second cardinal rule)
+  DESC: EARTH_HEARTH_SITES pins civilisation's birthplaces to three named lat/lon boxes, default-ON for the flagship Earth preset (T.EARTH_HEARTHS def 1), bypassing seedCradleVillage's mechanism — which already models exactly the causes (fertility, major-river bonus, warmth, Carneiro land-circumscription, sea penalty, minimum separation) that should make t
+  REC: Default EARTH_HEARTHS off and run the algorithmic scorer on Earth; where it picks 'wrong' sites, strengthen the mechanism (e.g. the circumscription radius, the warm-valley band, floodplain weighting) until the real cradles win on merit. Keep the fixed list only as an explicitly-labelled scenario tog
+
+[I75] mechanism-gap (conservation) files=['src/sim/peopleSim/conquest.js']
+  Rebellion/riot 'looting' destroys coin instead of transferring it — an undocumented drain competing with the designed sinks
+  DESC: ravage() (conquest.js:1106-1110) multiplies a town's wealth by REBEL_WEALTH=0.5 / RIOT_WEALTH=0.65 / FAILED_REVOLT_WEALTH=0.55 and the coin simply ceases to exist, though the comment says 'wealth is looted'. The money-supply design elsewhere is explicit that trade burns nothing and the supply is regulated ONLY by COIN_LOSS_RATE + depleting mines (r
+  REC: Make the loot a transfer: credit a share to the rebel bloc's members (a rising seizes the granaries and strongboxes — it funds the new state) and/or to an explicit logged 'war destruction' drain counter, so the closed-supply ledger stays attributable and rebellions have the historically-right fiscal
+
+[I76] mechanism-gap (conservation) files=['src/sim/peopleSim/roads.js']
+  Capitals are exempt from import duties — a stale artifact of the old tariff-to-capital design
+  DESC: customsCollector (roads.js:1020-1025) returns null when the buyer IS the capital, so the realm's usually-largest importer pays zero customs. That exemption made sense when the tariff was paid to the capital's own purse (paying yourself is a no-op), but the duty now goes to the STATE treasury (roads.js:1112) — a distinct pool the capital doesn't own
+  REC: Collect the tariff whenever seller.countryId !== buyer.countryId and a government exists — the buyer-is-capital special case should go; only the 'no polity' case needs the null.
+
+[I77] mechanism-gap (save-load) files=['tools/smoke.mjs', 'src/sim/persist.js']
+  The save/load verification loop is structurally unable to catch missing state — hash and roundtrip both look only at what was saved
+  DESC: The smoke test proves hashWorld(world) === hashWorld(loadWorld(serializeWorld(world))), but hashWorld covers only settlement core numbers, polity fiscal basics, events.LENGTH and a 1-in-97 sample of roadQuality. Any field missing from BOTH the save and the hash (this sweep found at least eight: _tileCapturedAt, _soilFatigue, _cBudgetRamp, _truces, 
+  REC: Add a divergence A/B to smoke.mjs: build one sim, step N, serialize; then (a) continue the original M more steps, (b) loadWorld(json) and step M; compare peopleSimStats and hashWorld (accept only documented warm-up deltas, ideally zero after aligning warm-up in loadWorld). Also compare serializeWorl
+
+[I78] restructure (save-load) files=['src/sim/persist.js', 'src/sim/peopleSim/settlement.js', 'src/sim/peopleSim/armies.js', 'src/sim/peopleSim/countryTerritory.js']
+  Whitelist persistence (SETT_FIELDS + hand-picked world tables) contradicts its own premise and rots as modules add state
+  DESC: persist.js asserts 'Everything else on a settlement object is a derived cache some pass rebuilds' — this sweep found that claim false for _orgApt, _credit, _lastBorrow and the creation-time statics, and the world-level table list similarly missed _truces, _soilFatigue, _tileCapturedAt, _cBudgetRamp, _schismAt, _warSeenAt, _inflRef/_inflP. Every new
+  REC: Invert or centralize the contract: either (a) each module exports its persistent field names/tables and persist.js aggregates them (a registration pattern, so state and its serialization live together), or (b) adopt a naming convention (e.g. caches prefixed __ are transient, everything else persists
+
+[I79] cardinal-rule-violation (save-load) files=['src/sim/peopleSim/inflation.js']
+  Inflation baseline locks on wall-clock step >= 5000 — a time gate on a monetary mechanic
+  DESC: inflation.js:82 gates the permanent M/T reference calibration on 'world.step >= 5000 && M.size >= 3'. The step term is a content gate, not a cadence: whether the baseline (and therefore all subsequent inflation pressure on wages/prices) may lock depends on WHEN it is, not what the economy has become. On a slow-developing world the clock passes 5000
+  REC: Gate the lock on emergent monetary state: e.g. total minted coin above a per-capita threshold and ≥K components whose M is non-trivial (the mining faucet and trade graph are the world-state signals). This self-calibrates across seeds/paces, and combined with persisting _inflRef (see bug) removes bot
+
+[I80] cardinal-rule-violation (performance) files=['src/sim/peopleSim/crystallize.js']
+  Cardinal-rule violation: settlement-spread rate ramps on world.step (COVERAGE_RAMP time gate)
+  DESC: crystallize.js computes devFactor = min(1, COVERAGE_FLOOR + (1-COVERAGE_FLOOR) * (world.step * dt) / COVERAGE_RAMP) with COVERAGE_RAMP=17000 commented '(~renaissance)', and multiplies it into every crystallisation roll AND colony-send chance. This is a content gate keyed on elapsed step count — settlement spread is allowed to accelerate because of 
+  REC: Replace the step ramp with an emergent driver the file already has ingredients for: scale spread with regional development/population pressure (e.g. donor-realm logistics/organisation, or local pop/K pressure as maybeSendSettlers already uses), so the wilderness recedes because civilisation has grow
+
+[I81] rebalance (performance) files=['src/sim/peopleSim/index.js']
+  All interval passes share phase 0 — heavy passes pile onto the same tick (worst ticks 465ms→1197ms and growing)
+  DESC: Every amortized pass gates on 'world.step % interval === 0' with no phase offset, and the intervals share factors (50, 100, 144, 150, 300, 600...). Every 600 ticks sea-lane rebuild + polity pass + culture + faith + pilgrimage + slavery + dynasty + muster + war pass + trade sweep + chronicle + border crawl ALL fire in one tick. Measured worst ticks:
+  REC: Give each pass a fixed deterministic phase (e.g. world.step % ivl === PHASE_k with distinct small primes per pass, or derive phase from a hash of the pass name) so at most one or two heavy passes share any tick. Pure scheduling change: same per-pass cadence, deterministic, no content effect beyond a
+
+[I82] restructure (performance) files=['src/sim/peopleSim/settlement.js']
+  The per-settlement per-tick economic recompute (~27% of all CPU) ignores the codebase's own stride pattern
+  DESC: updateFood, updatePopulation, updateWealth, updateCoercedLabour and computeLuxury run at full strength for every settlement every tick, recomputing dozens of slow-drifting or STATIC factors each time: seasonalSelect/livestockClimate/malariaSignal/aridSignal/cashSuit are pure functions of cached, immutable climate yet re-evaluated per tick; the work
+  REC: Split each updater into a slow part (climate-static terms cached once; knowledge-driven multipliers refreshed on the existing (step + s.id) % KNOW_INTERVAL stagger and stored on the settlement) and a fast per-tick integrator that just multiplies cached factors. This is a 3-5x cut to the dominant tic
+
+[I83] restructure (performance) files=['src/sim/peopleSim/territory.js', 'src/sim/peopleSim/countryTerritory.js', 'src/sim/peopleSim/countryClaim.js']
+  Residual stateless-recompute: the political-territory stack rebuilds every full-map layer from scratch each pass even when nothing changed
+  DESC: The persistent-territory spec made the DATA sticky, but the COMPUTE is still stateless: every TERRITORY_INTERVAL=144 ticks computeTerritory re-runs the full multi-source Dijkstra + owner.slice() (a fresh 1.8MB Int32Array per pass) + the O(claimed x 14 resources) tally, and computeCountryTerritory rebuilds the whole reach-Voronoi, then recolorByCapi
+  REC: Add a cheap dirty test: track a per-pass signature (settlement births/deaths, countryId flips, budget deltas above epsilon, capital moves). If clean, skip the Voronoi/recolor/smooth stack entirely (the persistent map is already correct); if only k settlements changed, re-flood only their basins' bou
+
+[I84] cardinal-rule-violation (integration-deadcode) files=['src/sim/peopleSim/inflation.js']
+  inflation.js locks its baseline behind a raw step-count gate (world.step >= 5000) — the codebase's single remaining hard time gate
+  DESC: The one-shot price-level reference REF is calibrated only when 'world.step >= 5000 && M.size >= 3'. Until then all sim prices are pinned to 1 (Hume flow disabled) purely because of WHEN it is, and at step 5000 the baseline becomes whatever M/T happens to be — path-dependent, resolution-dependent, and wrong under SIM_GRANULARITY (step 5000 is half t
+  REC: Replace the step threshold with a state condition with physical meaning — e.g. lock REF once total minted specie per capita and the number of monetised components cross thresholds that already exist as quantities (world coin stock from mining, component count), or better: define REF as a constant wi
+
+[I85] cardinal-rule-violation (integration-deadcode) files=['src/sim/peopleSim/state.js']
+  EARTH_HEARTH_SITES hard-codes named real-world outcomes (Nile/Mesopotamia/Yellow River coordinates with hand-fitted search radii), default-ON for Earth maps
+  DESC: state.js pins civilisation's birthplaces to fractional map coordinates named 'Nile', 'Mesopotamia', 'Yellow River', with per-site radii explicitly tightened to stop the mechanism picking somewhere else ('the wide default let it drift... seeding Mesopotamia on the Caspian'). This is rule 2 verbatim — detecting the case you want and granting it the r
+  REC: Default T.EARTH_HEARTHS to 0 and treat algorithmic cradles as canonical on Earth too; invest in whatever the scorer gets wrong (river magnitude on the Crescent, the steppe-river penalty) so the real hearths fall out. If the pinned mode is kept as an explicit presentation preset, document it as a scr
+
+[I86] remove (integration-deadcode) files=['src/sim/peopleSim/tuning.js', 'src/sim/peopleSim/armies.js']
+  WAR_DEF_SPLIT is a dead tuning lever: exposed in the UI with a long behavioural promise, read by nothing
+  DESC: Of 213 TUNING_SCHEMA keys, exactly one is never read anywhere: WAR_DEF_SPLIT ('Defensive split', def 0.5, a full paragraph describing how the defender's national army divides across fronts). The mechanism it describes was superseded by the conserved national-army allocation in armies.js (offForceOf/defForceOf with hardcoded DEF_PRIORITY=2.5), but t
+  REC: Delete the schema entry (or rewire it as the DEF_PRIORITY dial, which is what a user dragging 'Defensive split' would expect to move), and fix the stale defShareOf/WAR_DEF_SPLIT comments in armies.js.
+
+[I87] mechanism-gap (integration-deadcode) files=['src/sim/peopleSim/tech.js', 'src/sim/peopleSim/armies.js', 'src/sim/peopleSim/settlement.js']
+  Tech-tree effect channels 'defense', 'fish', 'wealth' and all five ability flags (embark/ocean/colonize/walls/market) are computed and advertised but consumed by nothing
+  DESC: techEffects() builds twelve channels and five booleans, and the tree tooltips label them ('defence', 'fishing', 'wealth', 'can embark', 'ocean-going ships', 'overseas colonies', 'city walls', 'markets'). Grep shows the sim reads only farmYield, military, buildLevel, reachLevel, cohesion, seaSpeed, seaRange, logisticsLevel, tradeMult. defenseLevel h
+  REC: Wire the cheap ones: homeMight and siege-break x (1 + defenseLevel * W) makes fortification tech real (one line in armies.js); multiply fish by fishFactor. Then either wire or strip the ability booleans and wealthMult from techEffects and the tooltip labels so displayed effects and simulated effects
+
+[I88] remove (integration-deadcode) files=['src/sim/peopleSim/money.js', 'src/sim/peopleSim/inflation.js', 'src/sim/peopleSim/conquest.js']
+  Dead money/inflation plumbing: OUT_MILITARY channel never recorded, localPByCountry never called, stale comments promising wage inflation that was deliberately disabled
+  DESC: money.js exports OUT_MILITARY=6 with label 'army upkeep', but no recordOut(s, OUT_MILITARY, ...) exists — army pay flows treasury->settlement as IN_STATE_PAY and the settlement-side outflow is OUT_TRIBUTE, so the info panel's upkeep channel is a permanent zero. inflation.js exports localPByCountry 'for state-level money (army wages, colony grants)'
+  REC: Delete OUT_MILITARY (+ its label slot) and localPByCountry, and rewrite the P_MAX/header comments to state the real coupling (Hume flow + display ticker only) — or, if the (b)-model decision is ever revisited, this is the wiring to restore.
+
+[I89] mechanism-gap (integration-deadcode) files=['src/sim/peopleSim/index.js', 'src/sim/peopleSim/tech.js']
+  The demographic anchor (ANCHOR_POP) is a documented outcome-fit standing in for a missing productivity-growth mechanism
+  DESC: applyDemographicAnchor integral-controls world._eraProd so TOTAL world population lands on the recorded Earth curve (POP_ANCHORS), keyed on the emergent pseudo-year. The time-gate half of this was already fixed (it reads _civYear, not the wall clock), but by the project's own second rule it remains painting the effect: the code admits the emergent 
+  REC: Keep the lever (it is opt-out, T.ANCHOR_POP=0 is 'FULLY EMERGENT') but treat it as scaffolding: grow the farm/fish/build channels of late tech (fertiliser, mechanisation — they already exist as techs) until the un-anchored run reproduces the explosion, then flip the default to 0. Track the gap in np
+
+[I90] simplify (integration-deadcode) files=['docs/coerced-labor.md', 'docs/farming-region-dissolution.md', 'docs/persistent-territory-spec.md', 'src/sim/calendar.js']
+  docs/ statuses contradict the shipped code: three specs marked 'proposal / not started' are implemented and default-ON
+  DESC: docs/coerced-labor.md says 'Status: proposal (not yet built)' — slavery.js + updateCoercedLabour ship it, default T.SLAVERY=1. docs/farming-region-dissolution.md says 'proposal / not started ... a design doc to decide against' — DISSOLVE_FARMS def 1 is the default model and the smoke test asserts it. docs/persistent-territory-spec.md says 'proposed
+  REC: Update the Status lines to 'implemented, default-on (lever X)' with a pointer to the code, and fix the calendar.js dynasty-clock comment; make doc-status a checklist item when a lever's default flips.
+
+[I91] cardinal-rule-violation (long-run) files=['src/sim/peopleSim/inflation.js']
+  Inflation reference baseline locks on `world.step >= 5000` — a cardinal-rule time gate
+  DESC: inflation.js:82: `if (world._inflRef === undefined && world.step >= 5000 && M.size >= 3)`. The permanent M/T reference that all subsequent inflation (army wages, building costs, wheat ticker) is measured against is gated on a raw step count, not world state. The comment itself states the intent is a state condition ('late enough that the world has 
+  REC: Replace the step gate with the emergent condition it stands for: lock the reference when the monetary economy is real — e.g. total coin above a per-capita threshold (M/pop), at least K monetised components each with M above a floor, or cumulative mined specie past a bound. The `M.size >= 3` clause a
+
+[I92] mechanism-gap (long-run) files=['src/sim/peopleSim/settlement.js', 'src/sim/peopleSim/tech.js']
+  The mobility knowledge track is dead content — chariots/cavalry/steppe-highway never fire in any run
+  DESC: Across all three seeds the world reaches leadingEra 6 (Modern, civYear ~1862) with every other track at 0.83–1.0 while mobility maxes at 0.312 (seed 4242, step 30000; 0.28 seed-typical). The tech tree gates Chariots at mobility>=0.45 (tech.js:55, a Bronze Age tech) and Cavalry at 0.70 (tech.js:70) — neither is EVER discovered by anyone, on any seed
+  REC: Recalibrate so a horse-holding culture's mobility keeps pace with the tree (the stated intent at line 1491: 'even modest horse country becomes cavalry country in step with the tree'): e.g. saturate the richness factor (min(1, horses/0.2)) as metallurgy does with thin ore ('you need SOME ore, not RIC
+
+[I93] rebalance (long-run) files=['src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/roads.js']
+  State fiscal cycle holds 22–78% of the entire money supply in treasuries and lumps it back every POLITY_INTERVAL
+  DESC: Probe (320x160, step ~15000, era 4): within each 150-tick window, per-tick tariffs (roads.js:1112, TARIFF_RATE 0.10) plus seigniorage drain civilian purses from ~380k down to ~112k while polity treasuries swell 109k→388k (78% of all coin), then disburseTreasury + the pass's tax/court/works flows dump it back in one tick. The civilian economy loses 
+  REC: Disburse continuously: pay army wages/works/dole pro-rata per tick (or per CONQUEST_INTERVAL) against accrued treasury instead of once per polity pass, or accrue tariffs into a per-tick redistributed stream. Alternatively cap the in-window hoard by spending down to the target balance whenever treasu
+
+[I94] cardinal-rule-violation (cradle-probe) files=['src/sim/peopleSim/state.js', 'src/sim/peopleSim/tuning.js']
+  EARTH_HEARTH_SITES is hand-seated real-Earth outcome-fitting — named historical answers with per-site radii tuned until the desired seat came out — and it is the DEFAULT path both CI gates measure
+  DESC: state.js:322-335 hard-codes named real-Earth coordinates ('Nile' fx 0.580, 'Mesopotamia' 0.622, 'Yellow River' 0.811) and the comments openly document fitting-to-the-answer: Mesopotamia's r=0.02 exists because 'the wide default let it drift ~14° NE ... the tight radius keeps it in the Crescent'; Yellow River's r=0.016 because 'the wide default drif
+  REC: Fix the algorithmic scorer's actual mis-ranking instead of pinning coordinates: weight candidates by arid-alluvium irrigation potential (the tFlood mask and moisture/aridity are already on the world) and circumscription rather than raw riverMag — the Crescent then outranks the Caspian river mechanis
+
+[I95] rebalance (cradle-probe) files=['src/sim/peopleSim/state.js']
+  Cradle-geometry constants are in absolute tile units, so cradle multiplicity and window size change with map resolution instead of self-calibrating
+  DESC: CRADLE_MIN_SEP = 60 (state.js:288) is tile-space: on the smoke grid (160x80 tiles) it is 37.5% of world circumference — at most ~2-3 cradles can fit on the planet — while on a 480x240-tile grid it is 12.5%, allowing far more. The same physical planet at different resolutions gets a different number of independent civilizations, and MAX_CRADLES=10 i
+  REC: Express both as fractions of map width (or derived km via world circumference) — e.g. CRADLE_MIN_SEP = SEP_FRAC * tw with SEP_FRAC chosen as a physical inter-hearth distance — so the number of cradles a landmass supports is resolution-invariant.
+
+[I96] mechanism-gap (history-shape) files=['tools/stylized.mjs', 'src/sim/peopleSim/entities.js', 'src/sim/peopleSim/conquest.js']
+  Lifespan validation measures a censored churn sample — the diagnosed cause of the max/median 2.4 warn
+  DESC: Reproduced exactly at validate config (seed 8817, 15000 steps): registry-fallen = 9 records, median 4400, max 10450 → ratio 2.4. Meanwhile 24 ALIVE records have median age 5400 and max 15000 — two cradles (Tulakthu, Tsowiozhio) never die in the whole run, so the heavy tail EXISTS but sits entirely in the censored alive set. At 30000 steps the same 
+  REC: Fix the two entities.js bugs first (they alone rewrite this statistic), then (a) measure per-LIFE spans from explicit open/close pairs, (b) include censored alive ages (treat them as lower bounds — even a simple 'max(alive age) / median(fallen)' would have found the Rome-shaped tail that already exi
+
+[I97] rebalance (history-shape) files=['src/sim/peopleSim/armies.js', 'src/sim/peopleSim/tuning.js']
+  War escalates to permanent, pair-saturated war (~80× rise; 1 new war per 3 ticks late-game)
+  DESC: war.began per 1000 steps by 3000-step window over the 30k run: 4, 12, 19, 25, 64, 255, 318, 255, 286, 333. The final window logged 998 new wars in 3000 steps among 31 states — at developmental year ~1900-1960, ~6+ new interstate wars per simulated year. Most of the growth is combinatorial (pairs grew 10→465) but the per-pair rate also doubled: ever
+  REC: Make peace a system-level state rather than a per-dyad cooldown: the alliance/bloc map (updateAlliances) plus war exhaustion and cross-border trade value are already computed — let a bloc whose mutual trade interdependence and exhaustion cross thresholds settle into a multi-realm treaty web whose du
+
+[I98] rebalance (history-shape) files=['src/sim/peopleSim/conquest.js', 'src/sim/peopleSim/tuning.js']
+  Late-game hegemon ossification: one cradle is #1 for 74% of the run and polity mortality collapses 7×
+  DESC: Hegemony rotates in antiquity (leaders 3↔12↔7 through step ~13000, 11 reigns) then locks in: polity 3 (the Yellow-River cradle) is #1 in 74/100 samples including one unbroken reign from step 13800 to 28500 (developmental years ~800→1950); only 6 distinct polities ever hold #1 in 30000 steps; the 10 oldest alive realms are all 17k-30k steps old; pol
+  REC: Add a counter-force that GROWS with maturity instead of dialing the hold constants down: e.g., elite competition/civil-war pressure scaling with realm size × dominance (the overmighty-governor path exists but caps at province secession — let a mature hegemon's succession crisis fork the whole realm)
+
+[I99] mechanism-gap (history-shape) files=['src/sim/peopleSim/settlement.js', 'src/sim/peopleSim/tech.js', 'src/sim/peopleSim/index.js']
+  Knowledge tracks saturate at 1.0 and history freezes into a perpetual-1960 endgame
+  DESC: Tech maxima follow a clean S-curve then hit the hard [0,1] ceiling: construction reaches 0.99 by step 15000 (half the run early — it races ahead of organization 0.58 at the same step, compressing the Bronze→Medieval transition into one window: leadingEra jumps 1→3 between steps 12000 and 15000), and organization/metallurgy/agriculture all reach 0.9
+  REC: Either give the knowledge tracks an open-ended diminishing-returns tail (log-scale above 1.0 with effects flattening, so 'modern' keeps inching forward), or make saturation an explicit, detectable end-state (validate/tools should report 'arc complete at step N' and treat post-saturation dynamics as 
+
+[I100] rebalance (history-shape) files=['src/sim/peopleSim/settlement.js', 'src/sim/peopleSim/tech.js']
+  Mobility track never activates: a Computing-era world where cavalry is never invented
+  DESC: On the validate seed, world-max mobility knowledge is 0.02 at step 3000 and only 0.322 at step 30000 — while navigation reaches 0.936 and every other track 0.99+. Chariots (req mobility 0.45), Cavalry (0.70) and Chivalry (0.80) are never discovered by ANY settlement in 9000 developmental years; the OPEN_RIDE steppe-highway discount, the RANGE_MOB r
+  REC: Audit horse-deposit prevalence/diffusion on generated maps and the mobility learn-rate relative to sibling tracks; if the validate map genuinely has near-zero horse access that is itself a worldgen calibration finding (Eurasia-like maps should usually carry a steppe-horse belt). The gate is the righ
+
+[I101] rebalance (history-shape) files=['src/sim/peopleSim/cultures.js', 'src/sim/peopleSim/faiths.js']
+  Identity layers churn at a constant rate to the end: ethnogenesis never slows, organized faiths are 91% stillborn
+  DESC: Culture records grow 18→68 over the run at an essentially constant ~5/3000-step rate (51→57→63→68 across the last four windows) — new peoples are born at developmental-1950 at the same rate as at 3000 BC, even though the design docs promise convergence overtaking drift ('most diversity early, fewer tongues later'); the consolidation forces exist (C
+  REC: For cultures: make the ethnogenesis/divergence thresholds (ETHNO_AFTER, DRIFT_AFTER, cohesion radius) respond more strongly to the standardization tech that exists (printing, telegraph in the cohesion channel), and add a live-diversity metric (population-weighted culture count from mixtures, not reg
+

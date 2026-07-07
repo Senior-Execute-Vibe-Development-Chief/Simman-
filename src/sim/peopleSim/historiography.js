@@ -53,7 +53,12 @@ function capitalOf(world, viewerId) {
 }
 
 function distTo(world, cap, ev) {
-  if (!cap || ev.x === undefined || ev.y === undefined) return 0;
+  // No vantage point (a fallen realm whose capital record was pruned) or no
+  // event location = the scribes never hear of it. The old 0 default made
+  // exactly these cases OMNISCIENT: every coordinate-less event was recorded
+  // planet-wide (132/132 measured), and a long-dead realm's tradition kept
+  // perfect knowledge of the world forever.
+  if (!cap || ev.x === undefined || ev.y === undefined) return Infinity;
   let dx = Math.abs(cap.pos.x - ev.x);
   if (dx > world.tw / 2) dx = world.tw - dx;
   const dy = cap.pos.y - ev.y;
@@ -140,9 +145,12 @@ export function perspectiveChronicle(world, viewerId, limit = 0) {
     world_.push(ev);
   }
   // a tradition has no scribes before the realm existed — foreign events
-  // older than the founding never entered any archive of OURS
+  // older than the founding never entered any archive of OURS — and a FALLEN
+  // realm's archive stops when its scribes do: nothing after endedStep enters
+  // the tradition (a restoration reopens the record and the archive with it).
   const born = p ? p.foundedStep : 0;
-  const all = own.concat(world_.filter(e => e.step >= born)).sort((a, b) => a.step - b.step || a.id - b.id);
+  const died = p && p.endedStep >= 0 ? p.endedStep : Infinity;
+  const all = own.concat(world_.filter(e => e.step >= born && e.step <= died)).sort((a, b) => a.step - b.step || a.id - b.id);
 
   // the realm's catastrophes: each sack of its story burns older records
   const sackSteps = own.filter(e => e.type === "polity.shattered" && e.polity === viewerId).map(e => e.step);
@@ -155,6 +163,7 @@ export function perspectiveChronicle(world, viewerId, limit = 0) {
     let rumor = false;
     if (!mine) {
       const d = distTo(world, cap, ev);
+      if (d === Infinity) continue;                 // no location / no vantage point: truly deaf (the 0.04 floor leaked ~4% of these planet-wide)
       const know = Math.max(0.04, Math.min(1, 1.35 - d / horizon));
       const r = roll(world, viewerId, ev.id, "know");
       if (r > know) continue;                       // never heard of it
@@ -216,8 +225,16 @@ export function perspectiveText(world, viewerId, limit = 0) {
 export function exportHistory(world, { traditions = 12 } = {}) {
   const polities = [];
   if (world.polities) for (const [id, p] of world.polities) polities.push({ id, ...p });
-  const realms = (world.countries ? [...world.countries.values()] : [])
-    .sort((a, b) => b.members.length - a.members.length).slice(0, traditions);
+  // Rank traditions by HISTORICAL PROMINENCE across the whole registry — alive AND ended —
+  // by own-event count, not by current live size (I40). The richest traditions (long
+  // histories, sacks, burned archives, founding myths) are disproportionately the great
+  // FALLEN empires; picking by live member count excluded exactly the realms the
+  // historiography layer exists to showcase.
+  const prom = new Map();
+  for (const p of polities) prom.set(p.id, eventsFor(world, "p:" + p.id).length);   // compute prominence ONCE per polity, not O(n log n)× rebuilding the event array inside the comparator
+  const realms = polities.slice()
+    .sort((a, b) => (prom.get(b.id) || 0) - (prom.get(a.id) || 0))
+    .slice(0, traditions);
   return {
     step: world.step,
     seed: world.seed,
@@ -231,6 +248,7 @@ export function exportHistory(world, { traditions = 12 } = {}) {
     traditions: realms.map(c => ({
       polity: c.id,
       name: realmName(world, c.id),
+      ended: c.endedStep >= 0,                                     // mark fallen traditions (I40 — the bible now includes great dead empires)
       trueChronicle: eventsFor(world, "p:" + c.id).map(ev => `[${ev.step}] ${narrate(world, ev, c.id)}`),
       asRecorded: perspectiveText(world, c.id),
     })),

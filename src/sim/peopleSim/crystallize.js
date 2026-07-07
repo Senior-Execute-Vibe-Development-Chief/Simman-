@@ -18,14 +18,15 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
-import { makeSettlement, dominantAnc } from "./settlement.js";
+import { makeSettlement, dominantAnc, livestockClimate } from "./settlement.js";
+import { tileOpenness } from "./transport.js";
 import { getPolity } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
-import { grownOwnerAt } from "./countryClaim.js";
-import { T } from "./tuning.js";
+import { grownLiveOwnerAt } from "./countryClaim.js";
+import { T, rNormPop } from "./tuning.js";
 import { settleHostility } from "./habitability.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
@@ -46,6 +47,7 @@ const FLOOD_SPACING_MUL         = 0.75;   // floodplain packs somewhat denser th
 // a desert spot spawns a tiny hamlet over millennia. Carrying
 // capacity (K ∝ farmland × fert) keeps marginal hamlets small.
 const MIN_FERT                  = 0.03;   // basically "is there any soil?"
+const PASTURE_SITE_W            = 0.9;    // site value of PEAK herding country ≈ middling rain-fed cropland (f≈0.55 worth) — the steppe fed real peoples off the herd, an order below the river valleys
 const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 // Tighter spacing → a lush continent fills with a denser web of
 // smaller settlements rather than a handful of ever-growing
@@ -92,6 +94,23 @@ const MARKET_PULL_WEIGHT        = 0.4;   // modest pull so clusters form but don
 // hard reject because mother-country colony parties already pick deliberately
 // (the founder doesn't accidentally plant at 4 tiles).
 const MIN_SETT_DIST             = 8;          // daughter-colony spacing floor (grid near-query radius)
+// ── Resolution-invariant spacing (T.RES_INVARIANT_POP — Phase 1 of ─────
+// docs/resolution-invariance-plan.md). Every founding-spacing rule in this file
+// is calibrated in TILES at the 480-wide reference grid. On any other grid a
+// fixed tile gap is a DIFFERENT real distance, so settlement density — and
+// through it total population — silently scales with the pixel count (measured:
+// ~2.1× total pop per 2× resolution at matched development; the full-Earth
+// 18-billion-at-Medieval artefact). rNorm converts each spacing back to constant
+// REAL distance: ×1 at the reference (byte-identical by construction), ×4 at the
+// 1920-pixel full Earth, ×0.67 at the 320-pixel probe grid — the same convention
+// territory reach / sea range / knowledge diffusion already use (resScaleFor).
+// NB world.tw is the SIM TILE grid — half the requested pixel width (the app and
+// tools/_harness run tileRes 2) — so the reference is 240 TILES (= the calibrated
+// 480-pixel world), the very same RES_REF_W countryTerritory.js normalises reach
+// against. This closes the DENSITY half of that inconsistency; the catchment-area /
+// per-tile-yield half lives in territory.js + settlement.js (Phase 2). The shared
+// factor is tuning.js rNormPop. Lever off ⇒ exactly 1.
+const rNormFor = rNormPop;
 // ── Density ∝ carrying capacity ───────────────────────────────────────
 // Without this, spacing was a fixed distance, so EVERY habitable tile filled
 // to the same settlement density — the low-capacity wet tropics (Congo, the
@@ -171,6 +190,20 @@ const BASE_RATE                 = 0.030;   // 3x — the world settles ~3x faste
 // else 4-7" divide. So set it one spacing PAST the barren maximum: contiguous frontier
 // extension works on every terrain at its own density, while true teleports are still cut.
 const FRONTIER_EXTEND_DIST      = MIN_SETT_DIST * (1 + SPARSE_SPREAD) + MIN_SETT_DIST;   // 20 (barren spacing) + 8 (one hop) = 28
+// A MOUNTED people's frontier reaches farther over OPEN country: to riders the
+// grass is a highway (transport.js tileOpenness — same openness the cost core
+// discounts), so the wave of advance that walks tile-by-tile through forest
+// LEAPS across steppe. At full mobility over fully open ground the extension
+// triples — a day's ride against a day's walk — which is what lets herding
+// peoples actually fill the steppe (the Yamnaya pattern) instead of the wave
+// stalling at the grass line for want of a donor within foot range.
+const RIDE_EXTEND               = 2;
+// A rode-away camp is born only on genuine steppe — the same "dry, open, too
+// poor to farm" test the nomad classifier uses (conquest.js NOMAD_FERT_MAX /
+// NOMAD_OPEN_MIN) — so the stateless-birth exemption can't leak into ordinary
+// open scrub off a mounted farm realm's frontier.
+const RIDE_AWAY_FERT_MAX        = 0.35;
+const RIDE_AWAY_OPEN_MIN        = 0.5;
 // A frontier village born INTO a realm shares that realm's DEVELOPMENT (its roads,
 // crops, administration, craft all diffuse to the new settlement), so it is never a
 // stone-age speck inside a developed empire. Floor its inherited knowledge at this
@@ -250,13 +283,31 @@ const RESOURCE_TIER_VALUE = {
 // (which is parent-driven and intentional) is NOT subject to this — the
 // mother country can still push outward into the frontier.
 const CRYSTAL_SATURATION_REF = 1500;  // density guard — much higher so the world keeps filling with villages (a denser, more alive map) instead of plateauing at a few hundred
-// Coverage tempo (applied as devFactor in maybeCrystallize): the habitable world
-// starts a SPARSE frontier and fills in gradually over the developmental arc,
-// instead of saturating at once. Ungated, crystallisation+colonisation grabbed all
-// the easy terrain by the classical era and then sat static; ramping the spread
-// rate up over the eras makes the wilderness recede the way it did historically.
-const COVERAGE_FLOOR = 0.22;   // stone-age frontier spread rate, as a fraction of full
-const COVERAGE_RAMP  = 17000;  // steps over which the spread rate ramps to full (~renaissance)
+// Coverage tempo (pioneerTempo below): the habitable world starts a SPARSE
+// frontier and fills in gradually over the developmental arc, instead of
+// saturating at once. Ungated, crystallisation+colonisation grabbed all the
+// easy terrain by the classical era and then sat static.
+const COVERAGE_FLOOR = 0.22;   // pre-agricultural (forager-margin) spread rate, as a fraction of full
+// The neolithic package a fresh independent village invents on its own —
+// shared with inheritKnowledgeAt's baseline so the tempo and the inherited
+// knowledge describe the same starting point.
+const NEOLITHIC_AGRI = 0.45;
+// Wave-of-advance pioneering tempo (replaces the old COVERAGE_RAMP step
+// clock, a cardinal-rule-1 violation: it let the wilderness recede because
+// of WHEN it was, not what the world had become). The real cause of slow
+// early spread is that pioneers can only settle as fast as their FARMING
+// CAPABILITY sustains new villages (the demic "wave of advance"): tempo
+// rises from the forager floor to full as the relevant people's agriculture
+// matures from the neolithic baseline to the maturity point the food model
+// already defines (T.AGRI_FULL_AT). Purely local state — a stalled
+// stone-age region keeps a sparse frontier forever, a precocious cradle
+// fills its valley early, a colonised coast spreads at the colonists' own
+// tempo — self-calibrating on any map, seed, or pace.
+const pioneerTempo = (agri) => {
+  const span = Math.max(0.05, T.AGRI_FULL_AT - NEOLITHIC_AGRI);   // T always carries the schema default
+  const dev = Math.min(1, Math.max(0, ((agri || 0) - NEOLITHIC_AGRI) / span));
+  return COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * dev;
+};
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -271,11 +322,6 @@ export function maybeCrystallize(world) {
   let _alive = 0;
   for (const s of world.settlements) if (s.mode === "settled") _alive++;
 
-  // Coverage tempo: settlement spreads GRADUALLY as civilisation matures rather
-  // than all at once (see COVERAGE_FLOOR / COVERAGE_RAMP). Scales both the random
-  // crystallisation sweep and mother-country colonisation, so the early map stays a
-  // sparse frontier and the wilderness recedes over the eras.
-  const devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * (world.step * (world._dt || 1)) / COVERAGE_RAMP);   // ramp over HISTORY, not raw ticks (SIM_GRANULARITY)
   // Spread is measured in TILES, so a finer-resolution map must scale it like the
   // territory reach does (countryTerritory's RES_REF_W = 240) — otherwise the
   // frontier crawls the same ABSOLUTE tiles/step and a big map fills a far smaller
@@ -287,12 +333,15 @@ export function maybeCrystallize(world) {
   // Mother-country expansion: pressed towns send settler parties (see
   // sendSettlers — this is the entire "population pressure → new colony"
   // axis, distinct from the random crystallisation sweep below).
-  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world, _alive, devFactor);
+  // Rate passes stretch their cadence with granularity (index.js convention),
+  // so settler parties and town genesis fire at the same HISTORY rate at any G.
+  const _ivlG = (base) => Math.max(1, Math.round(base * (T.SIM_GRANULARITY || 1)));
+  if (world.step % _ivlG(COLONY_CHECK_INTERVAL) === 0) maybeSendSettlers(world, _alive);
 
   // Urban genesis: a mature farming region births a TOWN within its catchment
   // (the rural→urban transition is a spawn, not an in-place relabel). Gated at a
   // multiple of CRYSTAL_INTERVAL so it actually fires past the early return above.
-  if (world.step % URBAN_CHECK_INTERVAL === 0) maybeUrbanGenesis(world);
+  if (world.step % _ivlG(URBAN_CHECK_INTERVAL) === 0) maybeUrbanGenesis(world);
 
   // Crystallisation saturation: settlement-count-dependent damper.
   const saturationDamper = 1 / (1 + (_alive / CRYSTAL_SATURATION_REF) ** 2);
@@ -313,9 +362,20 @@ export function maybeCrystallize(world) {
   const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3)
               : T.DISSOLVE_FARMS ? 2     // tuned: fewer/larger town-regions, but keeping a rural town layer so urbanisation stays realistic (~60%)
               : 1;
-  const hardFloor   = HARD_FLOOR * spMul;
-  const softDist    = SOFT_DIST  * spMul;
+  const rn = rNormFor(world);            // spacing in REAL distance, not tiles (RES_INVARIANT_POP)
+  const hardFloor   = HARD_FLOOR * spMul * rn;
+  const softDist    = SOFT_DIST  * spMul * rn;
   const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
+  // NB (RES_INVARIANT_POP, measured): scaling THIS candidate count by rn² — the
+  // dimensionally-obvious "founding pressure per real area" Phase-3 fix for the
+  // 3-seed-systematic ~0.5× EARLY-population undershoot at 2× resolution — was
+  // built and MEASURED to do nothing: with 4× the candidates, early settlement
+  // counts moved only ~5–10% and the population ratio not at all (0.46/0.44 vs
+  // 0.49/0.55 at org 0.25/0.35). Candidate throughput is NOT the binding early
+  // channel (spawn success is gated elsewhere — probability/fertility/colony
+  // cadence), so the rn²× per-tick cost (16× at full size) was unearned and it
+  // was reverted per the I82 precedent. The early undershoot remains OPEN — see
+  // docs/resolution-invariance-plan.md for the decomposition to run next.
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
     // Draw a share of candidates straight from the FLOODPLAIN ribbon so the arid
     // river valley actually fills — the uniform random sweep almost never lands on
@@ -373,8 +433,8 @@ export function maybeCrystallize(world) {
     // tighter still. Without the exemption spMul exactly cancels the dense-pack intent,
     // leaving the floodplain at ordinary density (the Nile/Indus stayed a lone cradle).
     const floodSp = onFlood ? FLOOD_SPACING_MUL : 1;
-    const baseFloor = onFlood ? HARD_FLOOR : hardFloor;
-    const baseSoft  = onFlood ? SOFT_DIST  : softDist;
+    const baseFloor = onFlood ? HARD_FLOOR * rn : hardFloor;
+    const baseSoft  = onFlood ? SOFT_DIST  * rn : softDist;
     const hf = baseFloor * capSp * floodSp, sd = baseSoft * capSp * floodSp;
     if (nearestSq < hf * hf) continue;             // hard reject — overlap
     // Linear ramp between hf and sd on actual distance (not squared, so it
@@ -401,7 +461,24 @@ export function maybeCrystallize(world) {
     // farmland) → 5–10 (river valley / coast) → 15+ (river-mouth port, pass,
     // confluence). The multiplicative form (rather than additive bonuses) is
     // what makes rivers/coasts dominate by enough to leave bad land empty.
-    const fertilityScore = 0.4 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
+    // PASTORAL PULL: open grassland converts to calories through the HERD — the
+    // same livestockClimate suitability the food model feeds herders by
+    // (settlement.js pastoral channel), times how open the country is
+    // (transport.js tileOpenness). Without this term a site's food potential
+    // was purely ARABLE, so the steppe scored near-zero and never founded the
+    // settlements its pastoral calories could actually feed — no steppe
+    // peoples, no hordes, on any map. Weighted so PEAK herding country scores
+    // like middling rain-fed cropland: the steppe carried real populations,
+    // but an order below the river valleys (which keep their ×6 magnet).
+    // Gated by the SAME domesticate-availability ceiling the food model applies
+    // to pastoral calories (settlement.js s._livestock = livestockClimate ×
+    // world._agriCeil): on an isolated continent or a tsetse belt where the
+    // ceiling is ~0, no large herds → the herd calories the site would be scored
+    // on are never delivered, so the site must not be scored for them either
+    // (else hamlets crystallise onto grass that cannot feed them).
+    const agriCeil = world._agriCeil ? (world._agriCeil[ti] || 0) : 1;
+    const pasture = livestockClimate(world.temp[ti], world.moist[ti]) * tileOpenness(world, ti) * agriCeil;
+    const fertilityScore = 0.4 + f * 1.5 + Math.min(2.0, areaFert * 0.1) + pasture * PASTURE_SITE_W;
     let locMul = 1;
     if (hasRiver) locMul *= 6;            // rivers were *the* historical magnet —
                                           // strong multiplier so river valleys
@@ -434,12 +511,29 @@ export function maybeCrystallize(world) {
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / (KNOWLEDGE_DECAY_SCALE * resScale)) * NEAR_RATE : 0;   // diffusion REACHES proportionally farther on a finer map
     const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * devFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
-    if (rng() < p) {
+    // One draw per candidate (stream-stable), tested twice: first against the
+    // full-tempo probability (cheap reject), then against the wave-of-advance
+    // tempo of the nearest people — the frontier advances at the pace of the
+    // farming capability actually arriving at it. No donor in the disk = a
+    // genuinely isolated site = forager-floor pace.
+    const _r = rng();
+    if (_r >= p) continue;
+    // One nearest-donor lookup, shared: the tempo gate reads its agriculture
+    // and, on accept, the SAME donor seeds inheritance (passing it as a hint
+    // avoids a second identical grid scan, and guarantees tempo and inherited
+    // knowledge describe the same people).
+    let _donor = null, _bd2 = Infinity;
+    forEachNear(world, tx, ty, INHERIT_NEAR_RADIUS, (s, d2) => {
+      if (d2 < _bd2) { _bd2 = d2; _donor = s; }
+    });
+    const _donorAgri = _donor && _donor.knowledge ? (_donor.knowledge.agriculture || NEOLITHIC_AGRI) : NEOLITHIC_AGRI;
+    if (_r >= p * pioneerTempo(_donorAgri)) continue;
+    { // ── accepted: found the settlement (block kept to avoid a 100-line reindent; no semantic scope) ──
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
-      const inherited = inheritKnowledgeAt(world, ti, td);
+      const inherited = inheritKnowledgeAt(world, ti, td, _donor);
       // A spawned village is NEVER its own country. It ADOPTS the country whose
       // border has actually GROWN over the tile it's founded on (grownOwnerAt →
       // world._countryClaim), or is born STATELESS (-1) if the front hasn't
@@ -450,7 +544,7 @@ export function maybeCrystallize(world) {
       // has merely projected toward from flying that flag ahead of the border.
       // This keeps the political map clean however many villages spawn: villages
       // add people, never countries/flecks.
-      const region = grownOwnerAt(world, ti);
+      const region = grownLiveOwnerAt(world, ti);
       // ── Culture by CONNECTION (independent origins) ────────────────────
       // Who these people ARE depends on whether they have a living link to an
       // existing people:
@@ -485,8 +579,8 @@ export function maybeCrystallize(world) {
       // seeded at world-gen, so the world still bootstraps. (Existing settlements may
       // still become stateless when their realm collapses — a separate path.)
       const donorCountry = connected && donor && donor.mode === "settled" ? donor.countryId : -1;
-      const joinCountry = region >= 0 ? region : donorCountry;
-      if (joinCountry < 0) continue;
+      let joinCountry = region >= 0 ? region : donorCountry;
+      let rodeAway = false;
       // Wilderness founding (region<0) must be a CONTIGUOUS frontier extension of the
       // donor's realm, not a detached tech-less exclave far out in the wild (see
       // FRONTIER_EXTEND_DIST). On the realm's OWN claimed land (region>=0) this doesn't
@@ -494,8 +588,36 @@ export function maybeCrystallize(world) {
       if (region < 0 && donor) {
         let ddx = Math.abs(donor.pos.x - (tx + 0.5)); if (ddx > tw / 2) ddx = tw - ddx;
         const ddy = donor.pos.y - (ty + 0.5);
-        if (ddx * ddx + ddy * ddy > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST) continue;
+        const dd2 = ddx * ddx + ddy * ddy;
+        // Mounted donors extend far over open country (see RIDE_EXTEND).
+        const ride = 1 + RIDE_EXTEND * ((donor.knowledge && donor.knowledge.mobility) || 0) * tileOpenness(world, ti);
+        const fed = FRONTIER_EXTEND_DIST * rn;   // frontier reach in REAL distance (RES_INVARIANT_POP)
+        const lim = fed * ride;
+        if (dd2 > lim * lim) continue;
+        // Beyond the FOOT frontier — ground only the RIDE made reachable — the
+        // camp is not an administered extension of the donor's realm: it is kin
+        // who RODE AWAY. The donor's court projects nothing three days' ride
+        // into the open grass, so the camp is born STATELESS and founds (or
+        // joins) a steppe polity when it matures — adoptAndFound's wilderness
+        // path, the same one collapsed realms' orphans use. This is how the
+        // steppe gets its OWN peoples instead of every camp flying the flag of
+        // a farming court that has never seen it. Two gates keep it honest:
+        //   • RIDABLE ground — the donor must be reachable overland (isFinite td),
+        //     so a rider cannot "ride away" across a strait or an impassable wall
+        //     and mint a fresh people on a landmass only ships reach.
+        //   • genuine STEPPE — dry, open, unfarmable (the classifier's own test):
+        //     without it any high-mobility FARM realm (mobility rises everywhere
+        //     via diffusion) would spray stateless camps into ordinary open scrub,
+        //     the detached-exclave confetti the never-stateless rule exists to kill.
+        if (dd2 > fed * fed
+            && isFinite(td)
+            && (world.fert[ti] || 0) < RIDE_AWAY_FERT_MAX
+            && tileOpenness(world, ti) >= RIDE_AWAY_OPEN_MIN) { rodeAway = true; joinCountry = -1; }
+        // Past the foot ring but NOT genuine ridable steppe → not a frontier
+        // extension the court can hold, and not a horde birth → no settlement.
+        if (dd2 > fed * fed && !rodeAway) continue;
       }
+      if (joinCountry < 0 && !rodeAway) continue;
       // Share the joining realm's development: floor the (distance-decayed) inherited
       // knowledge at NATION_TECH_FLOOR of the realm's capital, so a frontier village of
       // a developed empire is born developed, not neolithic. Cloned so we never mutate
@@ -509,7 +631,7 @@ export function maybeCrystallize(world) {
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: bornKnow,
-        countryId: joinCountry,   // born into the realm it sits in / extends — never stateless
+        countryId: joinCountry,   // born into the realm it sits in / extends — stateless (-1) only for a rode-away steppe camp
         parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below
         cultureId: (connected && !isBranch) ? dCul : -1,
@@ -759,13 +881,13 @@ function defensibilityFor(world, ti, tx, ty) {
 // founds a daughter joining the parent's realm. Cooldown stops a single town
 // from spamming colonies; settler-cost shaves the parent's population so
 // expansion has a real demographic cost (you trade headcount for territory).
-function maybeSendSettlers(world, alive, devFactor = 1) {
+function maybeSendSettlers(world, alive) {
   if (!world.transportDist) return;
   const rng = passRng(world, "settlers");
   for (const parent of world.settlements) {
     if (parent.mode !== "settled") continue;
     if (parent.people < COLONY_MIN_POP) continue;
-    if (world.step - (parent._lastColonySent ?? -Infinity) < COLONY_COOLDOWN) continue;
+    if (world.step - (parent._lastColonySent ?? -Infinity) < COLONY_COOLDOWN / (world._dt || 1)) continue;
     // Don't expand a realm that can't hold what it already governs. A young
     // colony is an UNSHEDDABLE, SUBSIDISED province (it pays no tribute and
     // draws food + coin for COLONY_SUPPLY_TICKS, and can't secede however
@@ -792,7 +914,9 @@ function maybeSendSettlers(world, alive, devFactor = 1) {
     let localN = -1;
     forEachNear(world, parent.pos.x, parent.pos.y, FRONTIER_RADIUS, () => { localN++; });
     const colonySat = 1 / (1 + (Math.max(0, localN) / COLONY_LOCAL_SAT_REF) ** 2);
-    if (rng() >= COLONY_CHANCE * colonySat * devFactor) continue;
+    // Wave-of-advance tempo from the PARENT's own agriculture: a mature
+    // farming people colonises at full rate, a marginal one trickles.
+    if (rng() >= COLONY_CHANCE * colonySat * pioneerTempo(parent.knowledge && parent.knowledge.agriculture)) continue;
     sendSettlers(world, parent);
   }
 }
@@ -806,9 +930,10 @@ function sendSettlers(world, parent) {
   let best = null, bestQ = -Infinity;
   for (let i = 0; i < COLONY_CANDIDATES; i++) {
     // Sample a tile in an annulus around the parent: random angle, random
-    // radius in [COLONY_MIN_RANGE, COLONY_RANGE].
+    // radius in [COLONY_MIN_RANGE, COLONY_RANGE] — in REAL distance (the rng
+    // draws are identical either way; RES_INVARIANT_POP only scales the radius).
     const ang = rng() * Math.PI * 2;
-    const r = COLONY_MIN_RANGE + rng() * (COLONY_RANGE - COLONY_MIN_RANGE);
+    const r = (COLONY_MIN_RANGE + rng() * (COLONY_RANGE - COLONY_MIN_RANGE)) * rNormFor(world);
     const tx = ((px + Math.round(Math.cos(ang) * r)) % tw + tw) % tw;
     const ty = py + Math.round(Math.sin(ang) * r);
     if (ty < 1 || ty >= th - 1) continue;
@@ -818,7 +943,7 @@ function sendSettlers(world, parent) {
     // Spacing check against existing settlements (grid-bounded near query — any
     // settled neighbour within the capacity-scaled spacing disqualifies the
     // site, so low-fertility frontier spreads its colonies far thinner).
-    const spacing = MIN_SETT_DIST * capacitySpacingMul(fert[ti], hostilityAt(world, ti));
+    const spacing = MIN_SETT_DIST * rNormFor(world) * capacitySpacingMul(fert[ti], hostilityAt(world, ti));
     let tooClose = false;
     forEachNear(world, tx, ty, spacing, () => { tooClose = true; });
     if (tooClose) continue;
@@ -903,7 +1028,7 @@ function maybeUrbanGenesis(world) {
     if (region.people < URBAN_MIN_POP) continue;           // cheap floor: too small to seed any town (the site discount can't go below this)
     // One market town per catchment: skip if an urban node already serves nearby.
     let served = false;
-    forEachNear(world, region.pos.x, region.pos.y, URBAN_CATCHMENT, (s) => { if ((s.tier | 0) >= 1) served = true; });
+    forEachNear(world, region.pos.x, region.pos.y, URBAN_CATCHMENT * rNormFor(world), (s) => { if ((s.tier | 0) >= 1) served = true; });
     if (served) continue;
     // Pick the best nearby site within the catchment — a ford, a harbour, a hill,
     // the richest farmland edge — where a village would thicken into a market or a
@@ -913,7 +1038,7 @@ function maybeUrbanGenesis(world) {
     let best = null, bestQ = -Infinity, bestSV = 0;
     for (let i = 0; i < URBAN_CANDIDATES; i++) {
       const ang = rng() * Math.PI * 2;
-      const r = URBAN_MIN_RANGE + rng() * (URBAN_RANGE - URBAN_MIN_RANGE);
+      const r = (URBAN_MIN_RANGE + rng() * (URBAN_RANGE - URBAN_MIN_RANGE)) * rNormFor(world);   // real-distance annulus (RES_INVARIANT_POP)
       const tx = ((px + Math.round(Math.cos(ang) * r)) % tw + tw) % tw;
       const ty = py + Math.round(Math.sin(ang) * r);
       if (ty < 1 || ty >= th - 1) continue;
@@ -922,7 +1047,7 @@ function maybeUrbanGenesis(world) {
       // Spacing: don't plant on top of another settlement (a looser floor than
       // the colony rule — a market town belongs INSIDE its dense countryside).
       let tooClose = false;
-      forEachNear(world, tx, ty, URBAN_SPACING, () => { tooClose = true; });
+      forEachNear(world, tx, ty, URBAN_SPACING * rNormFor(world), () => { tooClose = true; });
       if (tooClose) continue;
       // Trade + defence value of the site (commerce/stronghold potential).
       const siteVal = geoBonusFor(world, ti, tx, ty) + defensibilityFor(world, ti, tx, ty)
@@ -982,16 +1107,17 @@ function maybeUrbanGenesis(world) {
 // blend its knowledge with a baseline based on how isolated this site
 // is in transport terms. Settlements that crystallise right next to a
 // city inherit most of its tech; isolated cradles start near baseline.
-function inheritKnowledgeAt(world, ti, td) {
+function inheritKnowledgeAt(world, ti, td, nearestHint = null) {
   world._lastInheritDonor = null;
   const { tw } = world;
   const ty = (ti / tw) | 0, tx = ti - ty * tw;
-  let nearest = null, bestD2 = Infinity;
+  let nearest = nearestHint, bestD2 = Infinity;
   // Fast path via the spatial grid: the nearest settlement within a generous
   // radius IS the global nearest (nothing closer can exist outside the disk).
+  // A caller that already ran the disk scan passes the result as nearestHint.
   // Only when the disk is empty (a genuinely isolated spawn) do we fall back to
   // the full O(settlements) scan — so this is behaviour-identical, just cheaper.
-  forEachNear(world, tx, ty, INHERIT_NEAR_RADIUS, (s, d2) => {
+  if (!nearest) forEachNear(world, tx, ty, INHERIT_NEAR_RADIUS, (s, d2) => {
     if (d2 < bestD2) { bestD2 = d2; nearest = s; }
   });
   if (!nearest) {
@@ -1010,7 +1136,7 @@ function inheritKnowledgeAt(world, ti, td) {
   // navigation, and mobility stay at zero — they're resource-gated and
   // only kick in once the site touches ore / water / horses.
   const baseline = {
-    agriculture: 0.45,
+    agriculture: NEOLITHIC_AGRI,
     construction: 0.1,
     organization: 0.1,
   };

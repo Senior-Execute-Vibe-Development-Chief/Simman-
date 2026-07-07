@@ -15,7 +15,7 @@ import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
 import { computeCountryTerritory, adoptAndFound, nucleateFrontierStates } from "./countryTerritory.js";
 import { buildSettlementGrid } from "./spatialGrid.js";
-import { relaxClaim } from "./countryClaim.js";
+import { relaxClaim, updateAdminTenure } from "./countryClaim.js";
 
 // How often the drawn border crawls one ring toward the country-primary
 // territory target (world._countryOwner). Small so borders visibly creep
@@ -36,7 +36,7 @@ import { updateFaiths, FAITH_INTERVAL, updatePilgrimage, PILGRIM_INTERVAL } from
 import { updateSlaveTrade, SLAVE_INTERVAL } from "./slavery.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { diffuseIdentityField } from "./identityField.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
 // Per-tile identity field (identityField.js): mirror each settlement's
@@ -131,18 +131,8 @@ function applyDemographicAnchor(world, popTotal, capTotal) {
 // antiquity never closes it. The anchor points trace organisation against the
 // historical timeline, so a typical run still lines the gates up with real history —
 // but nothing is pinned to the calendar; it is the tech that drives the clock.
-const CIV_ORG_YEAR = [
-  [0.10, -6000], [0.18, -3300], [0.38, -800], [0.50, 200], [0.62, 1100],
-  [0.81, 1560], [0.88, 1680], [0.94, 1800], [0.98, 1875], [0.995, 1960],
-];
-export function civYearFromOrg(org) {
-  const A = CIV_ORG_YEAR;
-  if (org <= A[0][0]) return A[0][1];
-  if (org >= A[A.length - 1][0]) return A[A.length - 1][1];
-  let i = 1; while (i < A.length && org > A[i][0]) i++;
-  const a = A[i - 1], b = A[i], t = (org - a[0]) / (b[0] - a[0]);
-  return a[1] + (b[1] - a[1]) * t;
-}
+import { civYearFromOrg } from "./cohesion.js";
+export { civYearFromOrg };
 
 export function stepPeopleSim(world, n = 1) {
   // Optional per-pass timing (set world._dbgProfile to capture a breakdown of
@@ -165,6 +155,13 @@ export function stepPeopleSim(world, n = 1) {
     const _G = Math.max(1, T.SIM_GRANULARITY || 1);
     world._dt = 1 / _G;
     const _ivl = (base) => Math.max(1, Math.round(base * _G));
+    // Phase-offset a cadence: same interval, fired at a fixed offset so the
+    // heavy passes stop stacking on one tick. All intervals used to share
+    // phase 0 and their common factors made every multiple of 600 a
+    // sea+polity+culture+faith+war+dynasty mega-tick (measured worst ticks
+    // 174ms → 1197ms). Offsets are small distinct primes: pure scheduling —
+    // per-pass cadence, ordering-on-shared-ticks, and determinism unchanged.
+    const _at = (base, phase) => { const m = _ivl(base); return world.step % m === phase % m; };
     // Fast id → settlement lookup, refreshed each tick (the Map instance is
     // reused — clear+refill — so this allocates nothing per tick). Replaces
     // the O(n) linear scans the trade / knowledge passes would otherwise do
@@ -195,12 +192,21 @@ export function stepPeopleSim(world, n = 1) {
     // Dynamic climate: advance the slow global state + per-tile fertility overlay
     // BEFORE the territory pass tallies food (territory.js multiplies fert by climMod),
     // so a harsh century is felt across every realm's catchment at once.
-    if (world.step === 1 || world.step % CLIMATE_INTERVAL === 0) updateClimate(world);
+    if (world.step === 1 || world.step % _ivl(CLIMATE_INTERVAL) === 0) updateClimate(world);   // rate pass: walk/eruptions per unit of HISTORY
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
-    if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
+    // PERF CADENCE at large maps (RES_INVARIANT_POP): the territory flood's work grows
+    // ~rNorm² (same real catchments over rNorm²× tiles — measured 63-203 s per firing at
+    // 1920-pixel Modern, 97% of all compute), so its cadence stretches by rNorm to keep
+    // the amortized cost bounded. Cadence only — how OFTEN the same computation runs,
+    // never whether/what; clamped so the reference grid and anything below it (all byte-
+    // identity probes) keep the exact base interval. The real fix (B80-style budgeted
+    // incremental flood) is designed in docs/roadmap-wave-6.md.
+    const _terrIvl = Math.max(T.TERRITORY_INTERVAL, Math.round(T.TERRITORY_INTERVAL * rNormPop(world)));
+    if (world.step === 1 || world.step % _terrIvl === 0) {
       computeTerritory(world);          // per-settlement food catchments (economy)
       computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
+      if (T.ADOPT_ADMIN) updateAdminTenure(world);   // W6-G item 3 (exp.): stamp administered-tenure from _countryOwner changes before adoption reads it
       adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
       nucleateFrontierStates(world);    // primary state formation: a developed stateless frontier cluster mints a NEW country
     }
@@ -252,34 +258,34 @@ export function stepPeopleSim(world, n = 1) {
     // across borders, annexing a settlement when its heartland is stormed. Land
     // follows the cities: capturing a city flips it to the conqueror, and the
     // per-country Voronoi (computeCountryTerritory) re-draws its region cleanly.
-    if (world.step % _ivl(MUSTER_INTERVAL) === 0) musterArmies(world);
+    if (_at(MUSTER_INTERVAL, 23)) musterArmies(world);
     if (world.step % _ivl(T.CONQUEST_INTERVAL) === 0) advanceFronts(world);
     mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph
     // (sea trade peers) and overseas colonisation are rebuilt periodically.
     moveShips(world);
-    if (world.step % SEA_INTERVAL === 0) updateSea(world);
+    if (world.step % SEA_INTERVAL === 7 % SEA_INTERVAL) updateSea(world);
     mark("sea");
-    if (world.step % SOIL_INTERVAL === 0) updateSoil(world);   // soil exhaustion / salinisation (settlement.js)
+    if (_at(SOIL_INTERVAL, 11)) updateSoil(world);   // rate pass: fatigue accrual per unit of HISTORY
     mark("soil");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
-    if (world.step % _ivl(T.POLITY_INTERVAL) === 0) updatePolities(world);
+    if (_at(T.POLITY_INTERVAL, 37)) updatePolities(world);
     mark("polities");
     // Peoples: assimilation toward the ruler's culture, colonial divergence,
     // per-polity culture refresh (cultures.js).
-    if (world.step % _ivl(CULTURE_INTERVAL) === 0) updateCultures(world);
+    if (_at(CULTURE_INTERVAL, 41)) updateCultures(world);
     // Faiths: folk-faith seeding, organized genesis, trade-graph conversion,
     // state adoption + legitimacy, schisms (faiths.js).
-    if (world.step % _ivl(FAITH_INTERVAL) === 0) updateFaiths(world);
+    if (_at(FAITH_INTERVAL, 43)) updateFaiths(world);
     // Pilgrimage economy: the faithful send offerings to each creed's holy see
     // (faiths.js) — a holy city grows rich on devotion, no local production needed.
-    if (world.step % _ivl(PILGRIM_INTERVAL) === 0) updatePilgrimage(world);
+    if (_at(PILGRIM_INTERVAL, 47)) updatePilgrimage(world);
     // Slave trade: raiding captures people from weaker neighbours; the market clears
     // captives into coerced labour where it's demanded (slavery.js, coerced-labour step 2).
-    if (world.step % _ivl(SLAVE_INTERVAL) === 0) updateSlaveTrade(world);
+    if (_at(SLAVE_INTERVAL, 53)) updateSlaveTrade(world);
     // Thrones: rulers age/marry/die, succession + crises (dynasties.js).
-    if (world.step % _ivl(DYNASTY_INTERVAL) === 0) updateDynasties(world);
+    if (_at(DYNASTY_INTERVAL, 59)) updateDynasties(world);
     // Per-tile identity field (identityField.js): for the lens the user is
     // viewing, partition each realm into town COUNTIES and blur the seams into
     // gradients (Stage 2). Render-only: nothing in the sim reads the field, so it
@@ -347,9 +353,17 @@ export function peopleSimStats(world) {
   // computed worker-side). Capitals only, so it's a few dozen techState calls.
   let leadingEra = 0;
   if (world.countries) for (const c of world.countries.values()) {
-    treasury += c._treasury || 0;
     const k = c.capital && c.capital.knowledge;
     if (k) { const e = techState(k).era; if (e > leadingEra) leadingEra = e; }
+    // Sum the LIVE polity treasury (like invariants.js), not the per-pass
+    // c._treasury snapshot: between passes the per-tick flows (tariffs, mint
+    // seigniorage) drain purses into the live treasuries, so the snapshot sum
+    // counted that coin in NEITHER place — the world-gold readout sawtoothed
+    // ~50% at exactly the polity cadence. Reading through the countries view
+    // keeps this O(live realms); world.polities keeps every realm EVER (a
+    // ~30x/s snapshot path must not scale with total history).
+    const pol = world.polities ? world.polities.get(c.id) : null;
+    if (pol && pol.endedStep < 0) treasury += Math.max(0, pol.treasury || 0);
   }
   return {
     step: world.step,

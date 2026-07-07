@@ -1,6 +1,6 @@
 # Design: Dissolving Farming Regions — Towns as the Atomic Unit, Identity as a Field
 
-Status: **proposal / not started**. This is a design doc to decide against, not a commitment.
+Status: **implemented and DEFAULT-ON** (T.DISSOLVE_FARMS def 1; the smoke suite asserts the no-tier-0 model). Written as a design doc to decide against — the decision went the other way.
 
 ## 1. Motivation
 

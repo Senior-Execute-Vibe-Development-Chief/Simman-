@@ -50,12 +50,29 @@ const { w, rivers, tCrop, deposits } = buildWorld({ W, H, seed: SEED, preset: PR
   check("deposits placed", oreT > 30, `${oreT} iron/copper/timber tiles`);
 }
 
-console.log(`[smoke] determinism: 2 sims, same seed, ${DET_STEPS} steps`);
+console.log(`[smoke] cradles: distinct, separated seats`);
+{
+  const world = buildSim({ W, H, seed: SEED, preset: PRESET });
+  const cradles = world.settlements.map(s => ({ x: s.pos.x | 0, y: s.pos.y | 0, name: s.name }));
+  let minD2 = Infinity;
+  for (let i = 0; i < cradles.length; i++) for (let j = i + 1; j < cradles.length; j++) {
+    const ddx = Math.min(Math.abs(cradles[i].x - cradles[j].x), world.tw - Math.abs(cradles[i].x - cradles[j].x));
+    const ddy = cradles[i].y - cradles[j].y;
+    minD2 = Math.min(minD2, ddx * ddx + ddy * ddy);
+  }
+  check(`cradles distinct & separated (${cradles.length} seats, min gap ${minD2 === Infinity ? "n/a" : Math.sqrt(minD2).toFixed(1)} tiles)`,
+    cradles.length >= 2 && minD2 >= 9,
+    cradles.map(c => `(${c.x},${c.y})`).join(" "));
+}
+
+console.log(`[smoke] determinism: 2 sims, same seed, ${DET_STEPS} steps (stats + full state hash)`);
 {
   const a = buildSim({ W, H, seed: SEED, preset: PRESET });
   const b = buildSim({ W, H, seed: SEED, preset: PRESET });
   stepPeopleSim(a, DET_STEPS);
   stepPeopleSim(b, DET_STEPS);
+  const { hashWorld: _hw } = await import("../src/sim/persist.js");
+  check("determinism: full state hashes identical", _hw(a) === _hw(b), `${_hw(a)} vs ${_hw(b)}`);
   const sa = peopleSimStats(a), sb = peopleSimStats(b);
   delete sa.tickMs; delete sb.tickMs;   // wall-clock, legitimately differs
   const ja = JSON.stringify(sa), jb = JSON.stringify(sb);
@@ -145,13 +162,30 @@ console.log(`[smoke] save/load: roundtrip identity + functional resume`);
   const h1 = hashWorld(loaded);
   check("loaded state hashes identical", h0 === h1, `${h0} vs ${h1}`);
   check(`save size sane (${(json.length / 1024).toFixed(0)}KB)`, json.length < 30e6);
+  // Continuation equivalence: a loaded world's future must stay CLOSE to the
+  // uninterrupted run. Exact identity is not required (per-pass transients —
+  // trade reach, fronts, sea lanes — re-warm on their own cadence), but any
+  // cross-tick state dropped by persist.js shows up here as runaway drift
+  // (the pre-fix bug measured ~65% population divergence; the honest bound
+  // is ~2%). Tolerances are deliberately loose multiples of the observed
+  // residual so the gate only trips on real persistence regressions.
   loaded._checkInvariants = true;
-  stepPeopleSim(loaded, 500);
-  const st = peopleSimStats(loaded);
+  const M = 1000;
+  stepPeopleSim(world, M);
+  stepPeopleSim(loaded, M);
+  const stA = peopleSimStats(world), st = peopleSimStats(loaded);
   const hits = loaded.debug && loaded.debug.invariantHits;
   let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
   check("loaded world resumes cleanly", hitTotal === 0 && st.settlements > 0 && Number.isFinite(st.totalWealth),
     `${st.settlements} settlements, hits ${JSON.stringify(hits)}`);
+  const drift = (x, y) => Math.abs(x - y) / Math.max(1, Math.abs(x));
+  check(`loaded continuation tracks original (+${M} steps: pop ${(100 * drift(stA.totalPeople, st.totalPeople)).toFixed(1)}%, wealth ${(100 * drift(stA.totalWealth, st.totalWealth)).toFixed(1)}%)`,
+    drift(stA.totalPeople, st.totalPeople) < 0.10 &&
+    drift(stA.totalWealth, st.totalWealth) < 0.25 &&
+    Math.abs(stA.settlements - st.settlements) <= 3 &&
+    Math.abs(stA.countries - st.countries) <= 3 &&
+    Math.abs(stA.landPct - st.landPct) < 0.03,
+    `pop ${stA.totalPeople} vs ${st.totalPeople} · wealth ${stA.totalWealth} vs ${st.totalWealth} · setts ${stA.settlements} vs ${st.settlements} · countries ${stA.countries} vs ${st.countries} · land ${(stA.landPct * 100).toFixed(1)} vs ${(st.landPct * 100).toFixed(1)}%`);
 }
 
 console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);

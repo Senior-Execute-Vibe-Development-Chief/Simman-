@@ -252,6 +252,29 @@ Venice/Amsterdam layer. BUT it amplifies boom/bust volatility (pop 67k→49k,
 cities 11→7 — within the sim's chaotic band, but a real perturbation), so it's
 DEFAULT-OFF as the spec's "highest stability risk, build last" phase. Opt-in.
 
+**Re-test (post-Wave-6, whole economy now emergent) — STILL DEFAULT-OFF, but the
+verdict is refined.** Re-evaluated `CREDIT_RATE=0.1` on the current defaults to see if
+the matured economy (pre-coinage levy, scarcity prices, W6 trade graph) absorbs credit
+cleanly. Findings:
+- **Mechanically clean.** No invariant hits (no NaN, no negative wealth) at any scale;
+  the contraction guard holds. The banking layer works as intended — at 40k steps
+  (8817, 320×160) 62 hubs create credit and the economy runs ~14% richer (pop 2387k→
+  2725k), the Venice/Amsterdam money-beyond-specie effect.
+- **The volatility fear was overstated — it's chaos, not credit.** The doc's original
+  "pop 67k→49k" was a seed-like trajectory shift, not instability: the 2nd-half pop
+  coefficient of variation is *identical* off and on (38.4%), and cities track the same.
+  Credit shifts the LEVEL, not the variability.
+- **But it still isn't a clean 3-seed flip.** On the fragile 4242 seed it trips the
+  market-integration canary (−0.32 → 2 soft warnings, at-budget) — the same gate
+  `CROSS_REALM_HEIRS`/`ADOPT_ADMIN` perturb; 8817 & 31337 stay at 1. And over very long
+  runs the `_credit` *tag* drifts above the money actually co-located with its hub
+  (≈105% of wealth at 40k) because wear/trade-outflow don't decrement it — a bookkeeping
+  imperfection (the real coin stays conserved), but it means elastic contraction can't
+  fully unwind. So per the "flip only when all 3 seeds hold at 1 warning" rule it stays
+  **opt-in**; the honest blocker is now the 4242 market-integration gate + the `_credit`
+  wear-drift, not the (illusory) volatility. `tools/stylized.mjs` honours `CREDIT_RATE` /
+  `CREDIT_MAX_MULT` env for the re-check.
+
 ---
 
 ## 7. Tuning levers (all into `tuning.js T.*`)

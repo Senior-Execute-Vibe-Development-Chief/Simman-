@@ -116,6 +116,7 @@ self.onmessage = (e) => {
       genMeta = m.genMeta || {};
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
+      world._realWindGen = !!(genMeta && genMeta.realWind);   // terrain identity rides the WORLD (saves read it; caller meta is only a fallback)
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
       // are NOT reset (the main thread re-sends its current values right after
       // init) — but if a previous world was mid-play, keep stepping the new one
@@ -321,7 +322,9 @@ function buildSnapshot() {
       const dyn = ruler ? getDynasty(world, ruler.dynastyId) : null;
       countries.push({
         id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
-        _overlord: pol && pol._overlord != null ? pol._overlord : -1,   // colonial dependency → its metropole's countryId (-1 = sovereign)
+        _overlord: pol && pol._overlord != null ? pol._overlord : -1,   // dependency → its overlord's countryId (-1 = sovereign)
+        _depKind: pol && pol._overlord != null ? (pol._depKind || "colony") : null,   // "colony" (planted, drawn in the metropole's colour) vs "vassal" (submitted court, keeps its own)
+        _nomadic: !!c._nomadic,   // steppe confederation (derived each polity pass — conquest.js classifyNomads)
         ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null, title: ruler._title || null, gov: pol ? pol.gov || "monarchy" : "monarchy", trait: traitLabel(ruler.traits) } : null,
         faithId: pol ? pol.faithId : -1,
         memberIds: c.members.map(m => m.id),
@@ -374,13 +377,18 @@ function buildSnapshot() {
   let feed = null;
   {
     const evs = world.events || [];
-    if (evs.length > lastEvSent) {
+    // Cursor on permanent event IDS, not array length — compaction shortens
+    // the array without renumbering, which froze a length cursor forever.
+    const lastId = evs.length ? evs[evs.length - 1].id : -1;
+    if (lastId >= lastEvSent) {
       feed = [];
-      for (let i = Math.max(lastEvSent, evs.length - 40); i < evs.length; i++) {
+      const base = evs.length ? evs[0].id : 0;
+      for (let i = Math.max(lastEvSent - base, evs.length - 40); i < evs.length; i++) {
+        if (i < 0) continue;
         const ev = evs[i];
         feed.push({ step: ev.step, type: ev.type, text: narrate(world, ev, -1), x: ev.x, y: ev.y });
       }
-      lastEvSent = evs.length;
+      lastEvSent = lastId + 1;
     }
   }
 

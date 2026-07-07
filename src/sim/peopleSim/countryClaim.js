@@ -10,7 +10,11 @@
 //     LAND is re-coloured tile by tile, emanating outward, over many ticks. A
 //     brand-new realm is born from the single foothold of its main settlement.
 //
-// Render-only: nothing in the sim depends on _countryClaim.
+// Render-only GOAL: nothing in the sim should depend on _countryClaim — but today
+// adoption (grownOwnerAt below) still reads it. T.ADOPT_ADMIN is the experiment that
+// finishes the decoupling (adoption reads administered tenure instead; see W6-G item 3).
+
+import { T } from "./tuning.js";
 
 // Rings the drawn border advances toward the target per relax call. 1 = slowest,
 // smoothest crawl. index.js calls relaxClaim every CLAIM_RELAX_INTERVAL ticks.
@@ -55,12 +59,70 @@ function headScore(s) { return (s.tier | 0) * 1e7 + (s.people || 0); }
 // there" pathology). Falls back to the target only before the very first crawl
 // has run (step 1), when no claim array exists yet.
 const _adoptTarget = (typeof process !== "undefined" && process.env && +process.env.SIM_ADOPT_TARGET) || 0;
+// Adoption-safe variant: the crawled claim erodes over many relax passes, so
+// it can keep flying a DEAD realm's colours long after its last settlement
+// fell or seceded away. Villages adopting straight off the raw claim executed
+// s.countryId = <dead id>, resurrecting fallen realms as zombie states (~1 per
+// territory pass, measured). Resolve through the live-country set instead;
+// a dead id reads as wilderness (-1). The set is a per-step cached scan.
+export function grownLiveOwnerAt(world, ti) {
+  const id = grownOwnerAt(world, ti);
+  if (id < 0) return -1;
+  let alive = world._aliveCC;
+  if (!alive || world._aliveCCStep !== world.step) {
+    alive = world._aliveCC = alive || new Set(); alive.clear();
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) alive.add(s.countryId);
+    world._aliveCCStep = world.step;
+  }
+  return alive.has(id) ? id : -1;
+}
+
 export function grownOwnerAt(world, ti) {
+  if (T.ADOPT_ADMIN) return administeredOwnerAt(world, ti);   // W6-G item 3: adopt off ADMINISTERED tenure, not the render crawl
   if (_adoptTarget) { const co = world._countryOwner; return co ? co[ti] : -1; }   // A/B: adopt off the projected target (old behaviour)
   const claim = world._countryClaim;
   if (claim && claim.length === world.N) return claim[ti];
   const co = world._countryOwner;
   return co ? co[ti] : -1;
+}
+
+// ── Administered tenure (W6-G item 3, behind T.ADOPT_ADMIN) ─────────────────
+// A tile is ADMINISTERED — and only then may a settlement adopt its country from
+// it — once it has sat continuously in the projected target (_countryOwner) under
+// the same owner for a logistics-derived integration delay. This replaces the
+// render-crawl's implicit anti-runaway throttle (probe_adopt_ab: adopting straight
+// off the target balloons realms ~3×) with an explicit, emergent one paced by the
+// realm's ORGANISATION, and frees the crawl to be pure paint. Called from index.js
+// right after computeCountryTerritory (same cadence), guarded by the lever.
+// SPIKE: _ownerSince / _adminOwner are NOT yet persisted or hashed — productionise
+// per C1 (persist.js) before flipping the default.
+export function updateAdminTenure(world) {
+  const co = world._countryOwner; if (!co) return;
+  const N = co.length;
+  let since = world._ownerSince, ao = world._adminOwner;
+  if (!since || since.length !== N) {
+    since = world._ownerSince = new Float64Array(N).fill(-Infinity);
+    ao = world._adminOwner = new Int32Array(N).fill(-2);   // -2 ≠ any owner/-1, so tile 0's first owner still stamps
+  }
+  for (let ti = 0; ti < N; ti++) {
+    if (co[ti] !== ao[ti]) { ao[ti] = co[ti]; since[ti] = world.step; }   // owner changed → tenure clock resets
+  }
+  // Per-realm integration delay (history-units), refreshed each pass: a better-
+  // organised state administers newly-projected land faster. org∈[0,1] → delay
+  // shrinks with organisation; base is T.ADOPT_ADMIN_DELAY.
+  let dmap = world._adminDelay; if (!dmap) dmap = world._adminDelay = new Map(); else dmap.clear();
+  if (world.countries) for (const [cid, c] of world.countries) {
+    const org = (c.capital && c.capital.knowledge && c.capital.knowledge.organization) || 0;
+    dmap.set(cid, T.ADOPT_ADMIN_DELAY / (0.4 + 1.2 * org));
+  }
+}
+function administeredOwnerAt(world, ti) {
+  const co = world._countryOwner; const owner = co ? co[ti] : -1;
+  if (owner < 0) return -1;
+  const since = world._ownerSince; if (!since) return -1;
+  const delay = (world._adminDelay && world._adminDelay.get(owner)) ?? T.ADOPT_ADMIN_DELAY;
+  const held = (world.step - since[ti]) * (world._dt || 1);   // tenure in HISTORY-time (granularity-invariant)
+  return held >= delay ? owner : -1;
 }
 
 // Is this tile on the SAME LANDMASS as land country `cid` already claims? Land

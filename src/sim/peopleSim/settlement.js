@@ -8,15 +8,16 @@
 // knowledge from their nearest neighbour weighted by transport distance.
 
 import { seedLocalTerritory } from "./territory.js";
+import { mergeReach } from "./roads.js";
 import { techEffects } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
-import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
+import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
@@ -317,10 +318,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     const aptPar = (opts.parentId != null && opts.parentId >= 0) ? findSettlementById(world, opts.parentId) : null;
     s._orgApt = aptPar ? (aptPar._orgApt || 0) : 0;
   }
-  { const _wa = computeWaterAccess(world, x | 0, y | 0); s.waterAccess = _wa.wa; s._riverAcc = _wa.river; }
-  s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
-  s._confine = computeConfinement(world, x | 0, y | 0);   // circumscription (static terrain)
-  s._rugged  = computeRuggedness(world, x | 0, y | 0);    // broken terrain → fragmentation (static)
+  rederiveSiteStatics(world, s);
   s._rivalN = 0;                                           // distinct rival polities in contact (refreshed in updateKnowledge)
   world.settlements.push(s);
   seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
@@ -346,7 +344,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     parent: opts.parentId ?? -1, polity: opts.countryId ?? -1,
   });
   if (opts.cradle) ensurePolity(world, s.id, { how: "cradle", seat: s });
-  s._techEff = techEffects(s.knowledge, T.TECH_EFFECTS);   // tech bonuses available from tick 0 (refreshed in updateKnowledge)
+  // _techEff is left UNSET here: at creation _metalCap is undefined, so seeding it now
+  // (techEffects(s.knowledge, …)) would bake in an UNCAPPED metallurgy tier that ignores
+  // the reachable-ore cap (B51). The lazy techEff() path fills it — via practisedK, so it
+  // respects _metalCap — on first use, and the KNOW_INTERVAL refresh keeps it capped;
+  // direct readers (territory.js, countryTerritory.js) already fall back when it's unset.
   return s;
 }
 
@@ -354,6 +356,34 @@ export function makeSettlement(world, x, y, opts = {}) {
 // on a great river), scanned over the 3×3 block around home. Coast
 // contributes 0.5; river magnitude scales linearly: mag 1 → 0.2,
 // mag 3 → 0.6, mag 4 → 0.8. Capped at 1.
+// A dying settlement's coin doesn't evaporate (review B72 — the last silent
+// drain on the closed supply): it is STRANDED in the ground at its home tile
+// as a ruin hoard, recovered gradually by whoever later works that land
+// (territory.js reclaimRuins) — buried strongboxes, spolia, the classic
+// hoard archaeology. Conserved: the invariant watch counts hoards.
+export function bankRuinHoard(world, s) {
+  const w = s.wealth || 0;
+  if (!(w > 0)) return;
+  const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+  const m = world._ruinHoards || (world._ruinHoards = new Map());
+  m.set(ti, (m.get(ti) || 0) + w);
+  s.wealth = 0;
+}
+
+// Static site attributes — pure functions of position + immutable terrain,
+// computed once at founding. Exported so loadWorld can re-derive them for
+// settlements whose save predates their serialization (cheap and
+// deterministic, so recomputation is exact).
+export function rederiveSiteStatics(world, s) {
+  const x = s.pos.x | 0, y = s.pos.y | 0;
+  const _wa = computeWaterAccess(world, x, y);
+  s.waterAccess = _wa.wa;
+  s._riverAcc = _wa.river;                       // river component of water access (aridSignal input)
+  s._buildableArea = computeBuildableArea(world, x, y);
+  s._confine = computeConfinement(world, x, y);  // circumscription (static terrain)
+  s._rugged = computeRuggedness(world, x, y);    // broken terrain → fragmentation (static)
+}
+
 function computeWaterAccess(world, sx, sy) {
   const { tw, th, coast, riverMag } = world;
   let coastBit = 0, bestMag = 0;
@@ -393,9 +423,10 @@ function findSettlementById(world, id) {
 }
 function effectiveLocalRes(world, s) {
   const own = s.localRes || {};
-  if (!s._tradeReach || s._tradeReach.size === 0) return own;
+  const reach = mergeReach(s);   // road + sea: the tin trade crossed water (review I41)
+  if (!reach || reach.size === 0) return own;
   const out = { ...own };
-  for (const peerId of s._tradeReach.keys()) {
+  for (const peerId of reach.keys()) {
     const peer = findSettlementById(world, peerId);
     if (!peer || peer.mode !== "settled") continue;
     const peerRes = peer.localRes || {};
@@ -569,8 +600,8 @@ function updateWealth(world, s) {
     const reachF = s._tradeReach ? Math.min(1, s._tradeReach.size / 12) : 0;
     const bankF = Math.max(0, (org - 0.45) / 0.55) * reachF;             // needs Banking-era org + commerce
     const delta = (base * (T.CREDIT_MAX_MULT - 1) * bankF - cur) * T.CREDIT_RATE;
-    if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_GOODS, delta); }
-    else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_GOODS, take); } }
+    if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
+    else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_CREDIT, take); } }   // credit called in, not goods bought (B17)
   }
   // Luxury budgets refresh for EVERY settlement, every tick — supply from the
   // luxury resources its territory holds, demand from its spare coin. This must
@@ -630,7 +661,7 @@ function computeLuxury(s, world) {
   // the most skilled labour, so a sacked town's silk/dye/spice production
   // collapses harder than its grain (which the same sackPenalty above only
   // dents). Squaring takes 0.3 → 0.09 at the floor.
-  const sp = sackPenalty(s, world && world.step);
+  const sp = sackPenalty(s, world);
   s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF * sp * sp;
   const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
   // Luxury is URBAN / elite consumption — silks, spices, furs for a town's wealthy class. A
@@ -766,12 +797,15 @@ export function updateCoercedLabour(world, s) {
 // city long ago and re-took it — sacks always cost real productive value.
 // SACK_PRODUCTION_FLOOR -> runtime lever (tuning.js T.SACK_PRODUCTION_FLOOR)
 const CONQUEST_RECOVERY     = 5000;  // ticks to recover linearly to full output
-function sackPenalty(s, worldStep) {
-  if (s._sackedAt == null || worldStep == null) return 1;
-  const age = worldStep - s._sackedAt;
-  if (age >= CONQUEST_RECOVERY) return 1;
+function sackPenalty(s, world) {
+  if (s._sackedAt == null || !world || world.step == null) return 1;
+  // Recovery span in HISTORY time: same healing arc at any SIM_GRANULARITY
+  // (matches the wither/isolation windows in this file).
+  const recov = CONQUEST_RECOVERY / (world._dt || 1);
+  const age = world.step - s._sackedAt;
+  if (age >= recov) return 1;
   if (age < 0) return 1;
-  return T.SACK_PRODUCTION_FLOOR + (1 - T.SACK_PRODUCTION_FLOOR) * (age / CONQUEST_RECOVERY);
+  return T.SACK_PRODUCTION_FLOOR + (1 - T.SACK_PRODUCTION_FLOOR) * (age / recov);
 }
 export function computeExportValue(s, world) {
   const k = s.knowledge || {};
@@ -854,7 +888,7 @@ export function computeExportValue(s, world) {
   // Soldiers don't produce trade goods; a sacked settlement's output is depressed
   // for a while (sackPenalty); tech scales the lot.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
-  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world) * techEff(s).tradeMult;
   ag *= mult; man *= mult; agFood *= mult; agMat *= mult;
   const v = ag + man;
   s._exportFoodFrac = v > 0 ? agFood / v : 0;           // share booked as "food & farm goods"
@@ -916,7 +950,7 @@ export function getExportBreakdown(s, world) {
   const tier = s.tier | 0;
   const craftFrac = tier < 1 ? T.FARM_CRAFT_FRAC : 1;      // a village manufactures little (computeExportValue)
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
-  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world) * techEff(s).tradeMult;
   const out = [{ label: "Baseline", value: 1.0 * mult }];
   // Manufactured / service crafts — textiles (the universal town good), the
   // ore-gated metalwork specialty, pottery/leather, crafted wares and the
@@ -1249,7 +1283,9 @@ function computeRuggedness(world, x, y) {
 // range, tsetse, foot-rot) and frozen ground are not. Combined in updateFood with
 // the regional domesticate-availability gate (the agri ceiling — isolated New-World
 // landmasses and the wet tropics score low, Diamond's "no large domesticates").
-function livestockClimate(temp, moist) {
+// Exported: crystallize.js scores SITE quality with the same suitability the
+// food model feeds herders by — one definition of "herding country".
+export function livestockClimate(temp, moist) {
   const dryOK  = Math.min(1, Math.max(0, (moist - 0.10) / 0.18));   // not bare desert
   const wetOK  = Math.min(1, Math.max(0, (0.82 - moist) / 0.28));   // not rainforest / swamp
   // Grazing needs a real growing/warm season: cattle, horses and oxen are a COOL-
@@ -1488,11 +1524,42 @@ function updateKnowledge(world, s) {
       * (0.5 + 0.5 * wa) * (1 + k.construction * 0.6 + sciSqrt * 0.04));
   }
 
-  // Mobility — gated by horses, paced so even modest horse country becomes
-  // cavalry country in step with the tree.
+  // Mobility — gated by horses, paced like metallurgy's thin-ore rule: you
+  // need SOME horses to become a rider culture, not RICH herds (the steppe
+  // was never "rich" in the deposit sense — presence + practice is what
+  // builds horsemanship). The old rate scaled with raw richness and ran at
+  // ~60% of its siblings' pace, so chariots (0.45) and cavalry (0.70) were
+  // NEVER invented on any seed — the whole steppe branch was dead content.
+  // Saturates at modest herd size (0.2) and paces with the tree.
   if (horses > horsesThr) {
-    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 1.5 * sciMul * (1 - k.mobility)
-      * (0.5 + 0.5 * horses) * (1 + k.construction * 0.4 + metalEff * 0.6));   // metal bits/shoes/tack — capability, not awareness
+    const herd = Math.min(1, horses / 0.2);
+    // SADDLE-LIFE: a people whose FOOD is the herd (s._pastShare — the pastoral
+    // share of subsistence, from the food model) lives on horseback: children
+    // grow up riding, the camp moves with the grass. Horsemanship compounds
+    // accordingly — the steppe INVENTED riding and the sown adopted it a step
+    // behind (chariots reached the river valleys from the grass; China faced
+    // Xiongnu cavalry before it fielded its own). A fully pastoral camp
+    // practices at 3× the rate of a farm town that merely OWNS horses; a
+    // farming realm with a herding fringe gets a sliver. Without this
+    // differential every culture learned riding at the same resource-gated
+    // pace, mounted AGRARIAN empires swept the steppe before any steppe
+    // people could ride, and the nomad branch was unreachable on any map.
+    const saddleLife = 1 + 2 * (s._pastShare || 0);
+    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 2.2 * sciMul * (1 - k.mobility)
+      * (0.5 + 0.5 * herd) * saddleLife * (1 + k.construction * 0.4 + metalEff * 0.6 + sciSqrt * 0.04));   // metal bits/shoes/tack — capability, not awareness
+  }
+  // Industrial mobility — machines replace horses at the top of the tree:
+  // rail, steam haulage and the telegraph made land movement a MACHINE
+  // capability. Opens a horse-independent term in the same org+metallurgy
+  // industrial band that gates industrial agronomy above, so a horseless
+  // industrial nation still learns modern logistics — while a world stuck
+  // in antiquity never sees it. (Review idea D75.)
+  {
+    const indBand = Math.min(1, Math.max(0, (k.organization - 0.78) / 0.18))
+                  * Math.min(1, Math.max(0, (k.metallurgy   - 0.78) / 0.18));
+    if (indBand > 0) {
+      k.mobility = clamp01(k.mobility + T.LEARN_BASE * 2.0 * sciMul * (1 - k.mobility) * indBand);
+    }
   }
 
   // ── Dark ages: knowledge is lost when a society collapses ─────────────
@@ -1537,17 +1604,35 @@ function updateKnowledge(world, s) {
   // Diffusion is throttled to every KNOW_INTERVAL ticks (staggered by id),
   // with the rate scaled up to match — technique spreads over ~1700 ticks,
   // so an 8-tick cadence is indistinguishable while costing 8× less.
-  if (s._tradeReach && s._tradeReach.size > 0 && world._byId
-      && (world.step + s.id) % KNOW_INTERVAL === 0) {
+  // Ideas travel wherever GOODS travel: diffusion iterates the MERGED road +
+  // sea reach (review I41/D37) — sea lanes carried trade, plague and language
+  // but no knowledge, so island civilizations could never converge. Each
+  // track's pull is damped by the ROUTE COST of the partner holding the best
+  // level: a busy strait floods technique across, a hard ocean crossing
+  // trickles — the channel scales with the same emergent lanes and ship tech
+  // that built it. Land partners' costs are small, so the pre-sea calibration
+  // is preserved.
+  if (world._byId && (world.step + s.id) % KNOW_INTERVAL === 0) {
+    const reach = mergeReach(s);
+    if (!reach || reach.size === 0) {
+      s._rivalN = 0;   // no contact, no competition signal (used to go stale forever)
+    } else {
     const km = { agriculture:0, construction:0, organization:0,
                  metallurgy:0, navigation:0, mobility:0 };
     // Climate similarity to the partner that holds each track's best level —
     // 1 = same climate band, → 0 = opposite climate.
     const kmSim = { agriculture:1, construction:1, organization:1,
                     metallurgy:1, navigation:1, mobility:1 };
+    // Route-cost damping of the best-holder's pull. The scale means "the
+    // route cost at which contact is too thin to carry technique well" —
+    // ~3× a nav-0 port's whole sea range; a typical neighbourly land link
+    // costs a fraction of it (weight ≈ 1).
+    const DIFFUSE_COST_K = 30;
+    const kmCostW = { agriculture:1, construction:1, organization:1,
+                      metallurgy:1, navigation:1, mobility:1 };
     let any = false;
     const rivals = new Set();
-    for (const pid of s._tradeReach.keys()) {
+    for (const [pid, link] of reach) {
       const p = world._byId.get(pid);
       if (!p || p.mode !== "settled" || !p.knowledge) continue;
       any = true;
@@ -1560,7 +1645,8 @@ function updateKnowledge(world, s) {
       climateOf(world, p);
       const dLat = s._climLat - p._climLat, dT = s._climTemp - p._climTemp;
       const sim = Math.exp(-(dLat * dLat) / (2 * 0.22 * 0.22) - (dT * dT) / (2 * 0.10 * 0.10));
-      for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; } }
+      const costW = Math.exp(-((link && link.cost) || 0) / DIFFUSE_COST_K);
+      for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; kmCostW[t] = costW; } }
     }
     s._rivalN = rivals.size;   // distinct rival polities in contact → competition term in sciMul next pass
     if (any) {
@@ -1584,10 +1670,11 @@ function updateKnowledge(world, s) {
           const axisW = t === "agriculture"
             ? Math.max(0.05, 1 - T.AXIS_BIAS * (1 - kmSim[t]))
             : 1;
-          k[t] = clamp01(k[t] + rate * axisW * gap);
+          k[t] = clamp01(k[t] + rate * axisW * kmCostW[t] * gap);
         }
       }
     }
+    }   // reach else-branch (merged road+sea diffusion)
   }
 
   // ── Crop diffusion + domestication (T.CROP_AXIS) ──────────────────────
@@ -1673,7 +1760,13 @@ export function updateSoil(world) {
   // tile, so the farmed REGION degrades as a whole and an expanding frontier can't
   // dilute it away), and caches the catchment-mean fatigue on the settlement for
   // updateFood's cheap per-tick penalty read.
-  const th = world.th, elev = world.elev, R = SOIL_CATCH_R, R2 = R * R;
+  // Catchment radius in REAL distance (RES_INVARIANT_POP Phase 2): the farmed
+  // region a settlement tires is the same real land at any grid resolution
+  // (rounded — exact at the 240-tile reference where rNormPop is 1). Per-tile
+  // fatigue GAIN needs no area factor: it is an intensity (people per real area
+  // are already invariant), and the catchment MEAN read back is scale-free.
+  const _rnS = rNormPop(world);
+  const th = world.th, elev = world.elev, R = Math.max(1, Math.round(SOIL_CATCH_R * _rnS)), R2 = R * R;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     climateOf(world, s);
@@ -1731,10 +1824,13 @@ function updateFood(world, s) {
   // the NET food a region yields is (total fertility − area × floor) × yield, and land too
   // marginal to feed the people required to farm it (average fertility below the floor) yields
   // NOTHING and supports no settlement. The break-even fertility is exactly FARM_FERT_FLOOR.
-  // The labour floor is charged on WORKED tiles only (_terrWorkTiles — tiles the
-  // settlement can actually reach; territory.js): a fragment cut off by a war
-  // front grows nothing, so it costs no farmhands either.
-  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR);
+  // The labour floor is charged on FARMED tiles only (_terrFarmedWt — the
+  // falloff-weighted tiles that actually entered the harvest sum;
+  // territory.js): a fragment cut off by a war front grows nothing so it
+  // costs no farmhands, and barren desert/mountain claims cost nothing
+  // either (they used to bill a phantom workforce, so claiming worthless
+  // land actively DESTROYED food).
+  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrFarmedWt ?? s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR);
   // MODEL B: EVERY settlement's territory (its rural hinterland) is farmed by the country
   // folk who live on it — a city does not grow food in its packed urban core, but the land
   // it controls IS worked and feeds it. So land food is produced from a settlement's territory
@@ -1941,6 +2037,16 @@ function updateFood(world, s) {
     : 0;
   s._pastoral = pastoral;
   const landFood = landFarm + pastoral;
+  // The share of subsistence that comes OFF THE HERD — the emergent measure of
+  // saddle-life. Read by the mobility-learning pass: a people who EAT from the
+  // herd live on horseback, and horsemanship compounds accordingly. Measured
+  // against ACTUAL calories (landFood, post-harvest) on purpose: when the
+  // harvest fails a mixed farming-herding people leans on the flock (crisis
+  // transhumance — herds are the famine hedge, as the pastoral-food note above
+  // says), genuinely living more on horseback that season. The pastoral share
+  // rising in a dearth is a real behaviour, not an artefact to correct away —
+  // and it is what the emergent history validates against across seeds.
+  s._pastShare = landFood > 0 ? pastoral / landFood : 0;
 
   // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
   // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish
@@ -1967,7 +2073,11 @@ function updateFood(world, s) {
     const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
     const landPerTile = landFood / Math.max(1, tiles);
     const poor = Math.max(0, Math.min(1, 1 - landPerTile / FISH_LAND_REF));
-    fish = T.FISH_RATE * sea * seaRich * poor;
+    // Fishery technology (tech.js fishFactor: 0.3 pre-tech baseline rising
+    // with navigation + fishing techs) — normalized to that baseline so a
+    // tech-less shore fishes exactly as calibrated and technique multiplies
+    // upward from there. (The channel existed but was read by nothing.)
+    fish = T.FISH_RATE * sea * seaRich * poor * ((techEff(s).fishFactor || 0.3) / 0.3);
   }
   s._fishYield = fish;
 
@@ -2038,14 +2148,21 @@ function updateFood(world, s) {
 // mountains don't count. Cached on the settlement (terrain is static).
 function computeBuildableArea(world, sx, sy) {
   const { tw, th, elev } = world;
+  // Urban footprint in REAL distance, counted in REFERENCE tiles (RES_INVARIANT_POP
+  // Phase 2): spaceCapacity multiplies this area by a per-reference-tile density
+  // (DENSITY_BASE, calibrated at the 240-tile grid), so both the scan radius and the
+  // area unit must be resolution-invariant or a finer grid's cities hold rn²× fewer
+  // (smaller real footprint) people at rn²× the count. Off ⇒ radius 14, count raw.
+  const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
+  const rr = Math.max(1, Math.round(SPACE_RADIUS * _rn));
   let n = 0;
-  for (let dy = -SPACE_RADIUS; dy <= SPACE_RADIUS; dy++) {
+  for (let dy = -rr; dy <= rr; dy++) {
     const ny = sy + dy;
     if (ny < 0 || ny >= th) continue;
-    for (let dx = -SPACE_RADIUS; dx <= SPACE_RADIUS; dx++) {
+    for (let dx = -rr; dx <= rr; dx++) {
       const nx = ((sx + dx) % tw + tw) % tw;
       const e = elev[ny * tw + nx];
-      if (e > 0 && e < 0.6) n++;        // habitable land only
+      if (e > 0 && e < 0.6) n += _invA;        // habitable land only, in reference-tile units
     }
   }
   return n;
@@ -2239,6 +2356,14 @@ function updatePopulation(world, s) {
   // size cap — a locality IS its hinterland, so a rich-land centre simply holds
   // more people (→ a city) and a poor one stays a town. Money is a separate
   // closed layer (commerce/mining), unrelated to how big the place is.
+  // How far the demographic transition can depress intrinsic growth: at full
+  // modernity (urban majority + literate bureaucracy + secure food) fertility
+  // falls to ~15% of the Malthusian rate — near-replacement, not extinction.
+  const DEMO_TRANSITION = 0.85;
+  // Urban graveyard strength, RELATIVE to intrinsic growth: at full endemic
+  // load, full urbanity and zero sanitation, crowd disease slightly more than
+  // cancels natural increase (1.2x) — the city needs migrants to grow.
+  const URBAN_GRAVEYARD_W = 1.2;
   const K = (T.LOCALITY_MODE || T.DISSOLVE_FARMS)
     ? Math.max(K_MIN_VIABLE, foodK)
     : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
@@ -2250,10 +2375,45 @@ function updatePopulation(world, s) {
   if (s.food <= 0.01 && s.people > 1) {
     s.people *= Math.pow(0.985, _dt);                 // famine die-off, per-tick → granularity-scaled
   } else {
-    s.people = s.people + T.SETT_GROWTH * _dt * s.people * (1 - s.people / K);
+    // Exponential-form logistic: identical growth for small r·dt, but a
+    // carrying-capacity CRASH (war front severs the fields, famine guts the
+    // harvest, K collapses under people) declines smoothly instead of the
+    // raw Euler step killing a large city in ONE tick (or driving its
+    // population negative) — the granary/famine path gets time to bite.
+    //
+    // DEMOGRAPHIC TRANSITION (review D4): the intrinsic growth RATE itself
+    // bends as a society modernises — an urban, literate-bureaucratic,
+    // food-secure population chooses smaller families (every historical
+    // society that reached all three did). The escape from Malthus used to
+    // raise only K (via _eraProd), so the world stayed maximum-fertility
+    // forever. All three inputs are the settlement's own live state — a
+    // world that never industrialises never transitions, a region that
+    // modernises early transitions early, never a date anywhere.
+    const grow = 1 - s.people / K;
+    let r = T.SETT_GROWTH;
+    if (grow > 0) {
+      const urbShare = (s._urbanPop || 0) / Math.max(1, s.people);
+      const lit = Math.min(1, Math.max(0, (((s.knowledge && s.knowledge.organization) || 0) - 0.6) / 0.3));
+      const fed = Math.min(1, (s._foodSupply || 0) / Math.max(1, s._foodDemand || 1));
+      const modern = Math.min(1, urbShare / 0.5) * lit * fed;
+      r *= 1 - DEMO_TRANSITION * modern;
+    }
+    // THE URBAN GRAVEYARD (review D57): dense settlements carry a chronic
+    // crowd-disease mortality ∝ their endemic disease load × how urban they
+    // are, blunted by their own discovered health tech. At full endemic load
+    // an un-sanitized city's excess deaths roughly cancel natural increase —
+    // the historical pattern where great cities grew only by drawing people
+    // in — and the sink lifts exactly when aqueducts/germ theory arrive.
+    // Villages (low urban share) and clean-tech cities are untouched.
+    const urbShare2 = (s._urbanPop || 0) / Math.max(1, s.people);
+    const sink = T.SETT_GROWTH * URBAN_GRAVEYARD_W
+      * (s._diseaseLoad || 0) * Math.min(1, urbShare2 / 0.3)
+      * (1 - (techEff(s).healthRelief || 0));
+    s.people = s.people * Math.exp((r * grow - sink) * _dt);
   }
   if (s.people < 1.5) {
     s.mode = "dead";
+    bankRuinHoard(world, s);
     logEvent(world, "settlement.abandoned", { s: s.id, sName: s.name, polity: s.countryId });
     return;
   }
@@ -2264,6 +2424,7 @@ function updatePopulation(world, s) {
     if (s._witherSince === undefined) s._witherSince = world.step;
     if (world.step - s._witherSince > 2000 / _dt) {   // same wither-window in history-time at any granularity
       s.mode = "dead";
+      bankRuinHoard(world, s);
       logEvent(world, "settlement.withered", { s: s.id, sName: s.name, polity: s.countryId });
     }
   } else {

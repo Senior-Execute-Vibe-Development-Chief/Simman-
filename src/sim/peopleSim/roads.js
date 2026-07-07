@@ -252,7 +252,21 @@ function ensureRoadArrays(world) {
     const rq = world.roadQuality;
     for (let ti = 0; ti < rq.length; ti++) if (rq[ti] < 1.0) world._roadTiles.add(ti);
   }
-  if (!world._flowTiles) world._flowTiles = new Set();
+  if (!world._flowTiles) {
+    world._flowTiles = new Set();
+    const rf = world.roadFlow;
+    for (let ti = 0; ti < rf.length; ti++) if (rf[ti] >= FLOW_EPS) world._flowTiles.add(ti);
+  }
+}
+
+// After a state load replaces roadQuality/roadFlow wholesale, the sparse
+// indices (created empty at init) no longer match the arrays — the decay
+// and paving sweeps would then skip every loaded tile forever. Rebuild
+// both from the arrays they index.
+export function reindexRoads(world) {
+  world._roadTiles = null;
+  world._flowTiles = null;
+  ensureRoadArrays(world);
 }
 
 // Paint a single tile as a fresh road, keeping the sparse road-tile
@@ -865,18 +879,22 @@ function runTradePass(world, rf, flowTiles, stride) {
       // instead of being silently dropped (a peripheral breadbasket's grain
       // reaching a city used to hinge on arbitrary id ordering).
       if (peerId < s.id && reachHasPeer(peer, s.id)) continue;
+      const sBefore = s.wealth || 0;
       const peerBefore = peer.wealth || 0;
       runGeneralTradeBetween(world, s, peer, link, stride);
       runLuxuryTradeBetween(world, s, peer);
-      // Net coin that reached the peer this SWEEP, divided back to a per-tick rate
-      // so downstream reads (armies trade-peace, money overlay) are stride-neutral.
-      const net = ((peer.wealth || 0) - peerBefore) * invStride;
-      // Store under a canonical lo:hi key, oriented as "coin /tick that reached the
-      // HIGHER-id settlement" (the convention getTradeProfile + the money-flow
-      // overlay expect) — the pair can now be run from either side, so we can't
-      // assume s is the lower id.
+      // Store under a canonical lo:hi key, oriented as "coin /tick that reached
+      // the HIGHER-id settlement" (the convention getTradeProfile + the
+      // money-flow overlay expect). Measure the HIGHER-id side's own wealth
+      // delta directly: the pair is NOT zero-sum (tolls/brokerage/tariffs go
+      // to third parties), so negating the lower side's delta booked those
+      // third-party fees as coin that reached the higher settlement.
       const lo = s.id < peerId ? s.id : peerId, hi = s.id < peerId ? peerId : s.id;
-      linkMoney.set(lo + ":" + hi, peerId === hi ? net : -net);
+      const hiDelta = (peerId === hi ? (peer.wealth || 0) - peerBefore : (s.wealth || 0) - sBefore) * invStride;
+      linkMoney.set(lo + ":" + hi, hiDelta);
+      // Overlay animation is oriented along link.tiles (s → peer): use the
+      // PEER's own delta for direction/magnitude.
+      const peerNet = ((peer.wealth || 0) - peerBefore) * invStride;
       // Land trade wears its road path (flow drives paving + thickness);
       // sea trade leaves no road, but both animate on the money overlay.
       if (link.tiles && link.tiles.length > 0) {
@@ -884,8 +902,8 @@ function runTradePass(world, rf, flowTiles, stride) {
         // busy trunk shared by many pairs (and across ticks) is already in the
         // set, so the cheap rf===0 test skips almost every redundant Set.add.
         if (!link.sea) { for (const ti of link.tiles) { if (rf[ti] === 0) flowTiles.add(ti); rf[ti] += usage; } }
-        if (wantFlows && link.tiles.length > 1 && Math.abs(net) > MONEY_FLOW_EPS) {
-          moneyFlows.push({ tiles: link.tiles, mag: Math.abs(net), toEnd: net >= 0, sea: !!link.sea });
+        if (wantFlows && link.tiles.length > 1 && Math.abs(peerNet) > MONEY_FLOW_EPS) {
+          moneyFlows.push({ tiles: link.tiles, mag: Math.abs(peerNet), toEnd: peerNet >= 0, sea: !!link.sea });
         }
       }
     }
@@ -954,15 +972,26 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // scales with how cheap it is vs its trade partner. A specie-rich region has a
   // high price level (localP), so its goods are dear — it exports LESS and (as
   // the partner's cheap goods undersell it) imports MORE, bleeding specie until
-  // its prices fall back. The scaling is RECIPROCAL (compA·compB = 1), so it
-  // shifts the trade BALANCE without changing total volume: specie self-
-  // distributes across regions and none hoards unboundedly. (Self-correcting, so
+  // its prices fall back. The scaling is RECIPROCAL (compA·compB = 1) and then
+  // NORMALISED to compA + compB = 2, so it shifts the trade BALANCE without changing
+  // total volume: specie self-distributes across regions and none hoards unboundedly.
+  // (Self-correcting, so
   // it bounds the price-level spread rather than expanding the money supply —
   // which is why it doesn't need the inflation-neutrality work.)
   let compA = 1, compB = 1;
   if (T.HUME_ELASTICITY > 0) {
     const Pa = localP(world, a), Pb = localP(world, b);
-    if (Pa > 0 && Pb > 0 && Pa !== Pb) { compA = Math.pow(Pb / Pa, T.HUME_ELASTICITY); compB = 1 / compA; }
+    if (Pa > 0 && Pb > 0 && Pa !== Pb) {
+      compA = Math.pow(Pb / Pa, T.HUME_ELASTICITY); compB = 1 / compA;
+      // The raw reciprocal legs are summed into gross flow (evA·compA + evB·compB), and
+      // (x + 1/x)/2 >= 1, so a price gap systematically INFLATED total trade. Rescale so
+      // compA + compB = 2: the ratio (the balance shift) is preserved and the AVERAGE
+      // scaling is exactly 1, removing that bias. (Exactly volume-neutral for equal legs;
+      // for asymmetric flows a small SECOND-ORDER term remains — but signed, not the old
+      // one-way inflation.) (B14)
+      const norm = (compA + compB) / 2;
+      compA /= norm; compB /= norm;
+    }
   }
   // FX / exchange rate (Currency Phase 4): on a FOREIGN purchase the buyer pays
   // the exchange rate = seller's currency ÷ buyer's (their fineness ratio). A
@@ -1033,7 +1062,13 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // Each intermediate's toll scales with how much of a CROSSING it controls
   // (waterAccess — a ford, bridge, strait or port that trade must funnel through).
   let tollSum = 0, brokerSum = 0;
+  // Intermediates are object references captured when trade reach was built
+  // (a ~120-tick stagger) — a hub that died since then can neither charge nor
+  // collect (paying a dead record leaked coin out of the closed supply).
+  // Liveness is checked inline: sellGoods runs per trading pair on the hot
+  // path, so no per-sale array allocation.
   if (intermediates) for (const inter of intermediates) {
+    if (inter.mode !== "settled") continue;
     tollSum += 1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0);   // chokepoint transit toll
     brokerSum += entrepotShare(inter);                                    // market re-export brokerage (0..1 per hub)
   }
@@ -1098,6 +1133,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   recordOut(buyer, OUT_TOLLS, (freight + totalToll + totalBroker) * scale);
   if (intermediates) {
     for (const inter of intermediates) {
+      if (inter.mode !== "settled") continue;
       const tollPer = goodsValue * TOLL_RATE * (1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0)) * scale;
       inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer);
       // Re-export brokerage: the great market hubs (high entrepôt share) capture a
@@ -1121,7 +1157,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
 // sea-lane peers (sea.js, on s._seaReach). Returns the road map directly
 // when there's no sea reach (the common case — only ports sail), so we
 // only allocate a merged map for actual ports.
-function mergeReach(s) {
+export function mergeReach(s) {
   const road = s._tradeReach, sea = s._seaReach;
   if (!sea || sea.size === 0) return road;
   if (!road || road.size === 0) return sea;

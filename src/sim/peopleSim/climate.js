@@ -42,15 +42,28 @@ export function updateClimate(world) {
   let shock = (world._climShock || 0) * VOLC_DECAY;
   if (rng() < VOLC_CHANCE) shock += VOLC_MAG;
   world._climShock = shock;
-  // 3) recompute the per-tile multiplier. eff < 0 = a harsh (cold/dry) epoch; the
-  //    latitude weight rises toward the poles, so high latitudes swing most while
-  //    the equatorial cradles barely move.
-  const eff = (idx - shock) * (T.CLIMATE_AMP || 1);
+  // 3) recompute the per-tile multiplier from the advanced state.
+  recomputeClimMod(world);
+}
+
+// Rebuild world.climMod from the persisted state (_climIndex/_climShock)
+// WITHOUT advancing the walk — no rng draw. Called from updateClimate after
+// each advance, and from loadWorld so the territory warm-up tallies with the
+// saved climate instead of a neutral field. eff < 0 = a harsh (cold/dry)
+// epoch; the latitude weight rises toward the poles, so high latitudes swing
+// most while the equatorial cradles barely move.
+export function recomputeClimMod(world) {
+  const N = world.N, tw = world.tw, th = world.th;
+  let cm = world.climMod;
+  if (!cm || cm.length !== N) { cm = world.climMod = new Float32Array(N); cm.fill(1); }
+  const eff = ((world._climIndex || 0) - (world._climShock || 0)) * (T.CLIMATE_AMP || 1);
   const denom = th > 1 ? th - 1 : 1;
-  for (let ti = 0; ti < N; ti++) {
-    const ty = (ti / tw) | 0;
+  // The multiplier depends only on the ROW (latitude) and one global scalar —
+  // compute th values and fill row spans instead of N divisions/clamps.
+  for (let ty = 0; ty < th; ty++) {
     const latW = 0.10 + 0.30 * Math.abs(ty / denom - 0.5) * 2;   // 0.1 at the equator → 0.4 at the poles
-    const v = 1 + eff * latW;
-    cm[ti] = v < FLOOR ? FLOOR : v > CEIL ? CEIL : v;
+    let v = 1 + eff * latW;
+    v = v < FLOOR ? FLOOR : v > CEIL ? CEIL : v;
+    cm.fill(v, ty * tw, ty * tw + tw);
   }
 }
