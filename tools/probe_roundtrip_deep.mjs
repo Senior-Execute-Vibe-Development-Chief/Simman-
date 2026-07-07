@@ -7,12 +7,11 @@
 // work against a lossy/nondeterministic round-trip. Run it after any change to
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
-// Baseline (8000 steps, all defaults ON incl. RES_INVARIANT_POP, the real-width worldgen
-// floodplain ribbon, statecraft symmetry, empire mortality, ridge relief + the gated
-// enclave swallow, and REGION_SPACING 1.2): 8817 h=c4c527a1 (3967p/96d), 31337 h=81b0ff1d
-// (4293p/67d). (Prior: b4ad4366/d827e128 pre-granularity; a8c69cbd/78210a0b pre-relief;
-// 400fe557/e834530 pre-mortality; 67aeea45/2958a5c6 pre-symmetry; d8906420/29eec7f5
-// ribbon-scaling.) Recoveries via env:
+// Baseline (8000 steps, all defaults ON incl. FIELD POLITY — countries as tile blobs,
+// settlements as dressing): 8817 h=4e943a00 (4303p/117d), 31337 h=2367a388 (3879p/90d).
+// FIELD_POLITY=0 recovers the entity-model roundtrip. (Prior: c4c527a1/81b0ff1d
+// REGION_SPACING 1.2; b4ad4366/d827e128 pre-granularity; a8c69cbd/78210a0b pre-relief;
+// 400fe557/e834530 pre-mortality; 67aeea45/2958a5c6 pre-symmetry.) Recoveries via env:
 //   RES_INVARIANT_POP=0                 → f057635 / d489b985 (tile-unit density, CAP_MODEL era)
 //   CAP_MODEL=0                         → 28abc46d / ef4fc665 (the legacy fitted-tail size model)
 //   CROSS_REALM_HEIRS=0 CLAIMANT_WARS=0 → the throne-siloed dynasties (on the current size model)
