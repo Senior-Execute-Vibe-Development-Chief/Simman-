@@ -1802,6 +1802,35 @@ export function updatePolities(world) {
     // surplus while the peer median was still 0 — the early tail is bounded by domCeil
     // either way, but the graduated response is the honest one.
     world._refRevenue = revs.length ? Math.max(1, revs[revs.length >> 1]) : 1; }
+  // ── FIELD population as the coercive base (T.POP_FIELD) ─────────────────────
+  // Under the field model a realm's hold-capacity is funded by the population it
+  // actually GOVERNS — Tilly's real tax/manpower base is the whole region, not the
+  // size of one capital city — instead of settlementPower(capital). Sum the per-tile
+  // population field over each realm's owned ground, convert to power in the SAME
+  // units as settlementPower (× the capital's tech mil·org), and ANCHOR the median
+  // realm to the existing median capital-power (world._refCapPower). So the whole
+  // capacity / dominance / duress / hysteresis stack downstream is byte-unchanged at
+  // the median (backward-comparable) — only the DISTRIBUTION of the base power shifts
+  // from "capital size" to "governed population", the point of the rewrite. The
+  // reference is an emergent median (self-calibrating, like _refCapPower/_refRevenue),
+  // never a fitted absolute.
+  let regionPowOf = null, regionScale = 1;
+  if (T.POP_FIELD && world.popField && world._countryOwner) {
+    const pf = world.popField, co = world._countryOwner, elevA = world.elev, Nn = world.N;
+    const rpop = new Map();
+    for (let ti = 0; ti < Nn; ti++) { const cc = co[ti]; if (cc < 0 || !(elevA[ti] > 0)) continue; rpop.set(cc, (rpop.get(cc) || 0) + pf[ti]); }
+    regionPowOf = new Map(); const rpows = [];
+    for (const c of countries.values()) {
+      if (!c.capital || c.members.length <= 1) continue;
+      const cp = c.capital;
+      const milOrg = settlementPower(cp) / Math.max(1, cp.people || 0);   // strip the capital's own people → the realm's mil·org multiplier
+      const rp = (rpop.get(c.id) || 0) * milOrg;
+      regionPowOf.set(c.id, rp); rpows.push(rp);
+    }
+    rpows.sort((a, b) => a - b);
+    const refRegionPow = rpows.length ? Math.max(1e-6, rpows[rpows.length >> 1]) : 1;
+    regionScale = (world._refCapPower || 1) / refRegionPow;   // median governed-region power → median capital power
+  }
   // Balance of power: recompute the (slow-drifting) alliance map periodically — and
   // once on first run so the war pass never reads an undefined map. Self-calibrating,
   // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
@@ -1835,6 +1864,12 @@ export function updatePolities(world) {
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
+    // Base power feeding HOLD-CAPACITY only: the governed-region population under the
+    // field model (pre-pass above), else the capital's settlement power. Everything
+    // else — dominance (revenue), relPow, thronePower, the army/absorption maths — keeps
+    // reading capPower, so this swaps ONLY what funds administrative reach.
+    let capPowerCap = capPower;
+    if (regionPowOf) { const rp = regionPowOf.get(c.id); if (rp != null) capPowerCap = Math.max(1, rp * regionScale); }
     // Era-weighted salience of the four identity layers, from THIS realm's own
     // development (cohesion.js identityWeightsFor) — the axis of conflict each
     // realm feels shifts as ITS society develops: faith in its medieval,
@@ -1949,7 +1984,7 @@ export function updatePolities(world) {
                   + 0.5 * (world.tFlood && world.tFlood[capTi] ? 1 : 0)
                   + 0.3 * Math.min(1, (world.riverMag ? world.riverMag[capTi] || 0 : 0) / 3);
     const geoMul = 1 + T.CAP_GEO * geoCore;
-    let peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
+    let peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPowerCap / POW_REF)
                         + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul;
     // IMPERIAL HYSTERESIS (path dependence): the administrative reach, roads and
     // legitimacy a large realm accretes PERSIST after its raw power dips, so a once-
