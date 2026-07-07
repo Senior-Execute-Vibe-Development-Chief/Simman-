@@ -248,13 +248,37 @@ bright threads, coasts brighten, mountains thin. Byte-identity held (hashbase
 ed576254/92744c20). Agglomeration (increasing-returns cores) deferred to 2b/3, to be
 driven by the WIRED measurement (country size), not an eyeballed heatmap.
 
-### 2b — food & economy integrate the field (planned)
+### 2b — hold-capacity draws on governed-region population (IMPLEMENTED, `T.POP_FIELD`)
 
-Food and economic output integrate `capField`/`popField` over a polity's TILES instead of
-summing per-settlement catchments (`_territoryOwner`); country capacity (Tilly) reads
-region population/surplus, so extent scales with a dense core, not a settlement count.
-This is the first wiring that changes outcomes — lever-gated, measured against the empires
-probe (count ≥, max-size ≤ the entity model), where any need for sharper cores surfaces.
+First outcome-changing wire. The Tilly hold-capacity that bounds a country's territory
+(`target = FIELD_SPAN·capacity`) read `settlementPower(capital)` — one capital settlement.
+Under the lever the base coercive power feeding `peaceCapacity`'s log term becomes the
+population the realm actually GOVERNS: `popField` summed over its owned tiles ×
+capital `mil·org`, anchored to the existing median capital-power via an emergent median
+(conquest.js updatePolities pre-pass). Contained — only the capacity log-term reads it;
+dominance (revenue), relPow, thronePower, army/absorption keep `capPower`. Byte-identical
+off (hashbase ed576254/92744c20).
+
+**Measured (480 seed 8817 @20k, field-mode vs baseline):**
+
+| | realms | claimed | top-5 (M km²) |
+|---|---|---|---|
+| baseline (field off) | 41 | 66.8% | 17.1 · 14.8 · 7.3 · 6.3 · 5.1 |
+| field region-capacity | 42 | 63.5% | 12.1 · 11.3 · 10.9 · 8.6 · 5.0 |
+
+A real but PARTIAL win: the biggest empire shrank (17.1→12.1) and the northern-Eurasia
+megastate broke up, but count is flat (~42) and the upper-middle GREW (log-compression
+pulls the top down and the middle up). **Diagnosis:** region population is a SUM over
+tiles, so capacity still rises with AREA — a realm sprawling across sparse land keeps
+accumulating capacity and stays big. The wire fixes WHERE the base power comes from but
+not the sum-rewards-area failure mode. The remaining levers for "too big / too few":
+- **Sparse-sprawl:** empty land must not fund its own administration — the frontier
+  should stall where population thins (a growth/hold cost gated on carrying capacity that
+  does NOT fully fade with logistics, unlike the current fertility-hostility term).
+- **Dense-region fracture (Europe):** a broad fertile belt has no internal population
+  GAPS to stop a realm, so it coalesces — needs the field's terrain-driven structure
+  (relief/water gaps from 2a) to be sharp enough, plus competing-core nucleation. To be
+  validated at 960 where Europe is resolved (the resolution the complaint lives at).
 
 ## Phase 3 — settlements become emergent LABELS on the field (planned)
 
