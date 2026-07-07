@@ -224,13 +224,37 @@ never runs (byte-identical); with it on the settlement sim is untouched.
 - Byte-identity held: hashbase `ed576254/92744c20`, deep roundtrip `ff050141/cff49050`
   both unchanged with the lever off; with it on, popField save/loads array-exact.
 
-## Phase 2 — food & economy from the REGION (planned)
+## Phase 2 — capacity terms + food/economy from the REGION
 
-Carrying capacity gains its real terms (river/irrigation, coast, terrain, agglomeration
-increasing-returns) so the field CONCENTRATES into valley/coastal cores; food and
-economic output integrate `capField`/`popField` over a polity's TILES instead of summing
-per-settlement catchments (`_territoryOwner`). Country capacity (Tilly) then reads region
-population/surplus, so extent scales with a dense core, not a settlement count.
+### 2a — real carrying-capacity terms (IMPLEMENTED, still under `T.POP_FIELD`)
+
+Fertility alone made the field near-uniform WITHIN the fertile belts (top-decile share
+19%, pop↔fert ρ 0.991 — a pure function of fert). Real land doesn't feed people by crop
+suitability alone, so `capField` gained three genuine mechanisms (popField.js):
+- **Water-transport premium** (multiplicative on fert): a river/coast tile can import
+  food along water — irrigation, grain barges, sea trade — so it supports denser
+  settlement. `reach = 1 + (ACCESS_RIVER·min(1,mag/RM_FULL) + ACCESS_COAST·coast)·(ACCESS_DEV0
+  + ACCESS_DEVK·leadAgri)`. Multiplicative on fert, so it concentrates people onto FERTILE
+  valleys/shores and never blooms a barren bank. The premium GROWS with development (an
+  ancient valley ~doubles, an industrial port draws a continent's grain) — read from
+  leading agriculture, emergent, never a clock.
+- **Relief penalty**: `cap ×= 1/(1+RELIEF_PEN·relief)` — rugged land settles thin.
+
+Each constant has independent physical meaning (a transport premium, a ruggedness loss),
+none is a size fitted to a place — the great river valleys, deltas and coasts concentrate
+on their own. Measured (480 seed 8817 @12k): top-decile share 19%→**24%**, pop↔fert
+ρ 0.991→**0.906** (people now follow water+relief, not fert alone); river valleys read as
+bright threads, coasts brighten, mountains thin. Byte-identity held (hashbase
+ed576254/92744c20). Agglomeration (increasing-returns cores) deferred to 2b/3, to be
+driven by the WIRED measurement (country size), not an eyeballed heatmap.
+
+### 2b — food & economy integrate the field (planned)
+
+Food and economic output integrate `capField`/`popField` over a polity's TILES instead of
+summing per-settlement catchments (`_territoryOwner`); country capacity (Tilly) reads
+region population/surplus, so extent scales with a dense core, not a settlement count.
+This is the first wiring that changes outcomes — lever-gated, measured against the empires
+probe (count ≥, max-size ≤ the entity model), where any need for sharper cores surfaces.
 
 ## Phase 3 — settlements become emergent LABELS on the field (planned)
 

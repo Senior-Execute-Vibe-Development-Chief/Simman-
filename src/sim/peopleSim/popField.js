@@ -36,6 +36,24 @@ const POP_GROWTH = 0.03;    // logistic intrinsic growth per step (r in pop += r
 const POP_MIGRATE = 0.06;   // share of a tile's people that migrate toward spare capacity per step
 const SEED_POP = 0.4;       // people seeded per habitable tile (the spark logistic growth needs)
 
+// ── Carrying-capacity terms beyond raw fertility (phase 2) ──────────────────
+// Real land does not feed people in proportion to its crop suitability alone: a
+// river valley or a coast supports FAR denser settlement than the same soil
+// inland, because water carries food IN (irrigation + grain barges + sea trade —
+// the market/port premium), while rugged land supports LESS. Each term is a
+// genuine mechanism with independent physical meaning (never a size fitted to a
+// place): the great river valleys, deltas and coastal plains concentrate on their
+// own, and so does any map you never looked at.
+const RM_FULL = 4;          // river magnitude of a GREAT river (Nile/Yangtze) — the data's top bin; access ∝ min(1, mag/RM_FULL)
+const ACCESS_RIVER = 1.0;   // full-magnitude river's share of the transport-access premium
+const ACCESS_COAST = 0.35;  // a coast's share (fisheries + sea trade) — weaker than a great river
+// The premium GROWS with development: a neolithic landing imports little, an
+// industrial port draws grain from a continent. Emergent (reads leading
+// agriculture as the transport-tech proxy), never a clock. base (ancient
+// irrigation already ~doubles a great valley) → +ACCESS_DEVK at full tech.
+const ACCESS_DEV0 = 1.0, ACCESS_DEVK = 1.0;
+const RELIEF_PEN = 3.0;     // how sharply local ruggedness (relief 0..~0.54) cuts capacity: cap ×= 1/(1+RELIEF_PEN·relief)
+
 export function initPopField(world) {
   const N = world.N;
   const pop = world.popField = new Float32Array(N);
@@ -55,7 +73,7 @@ export function initPopField(world) {
 // Advance the population field one step: capacity → logistic growth → migration.
 export function stepPopField(world) {
   const N = world.N, tw = world.tw, th = world.th;
-  const { elev, fert } = world;
+  const { elev, fert, riverMag, relief, coast } = world;
   let pop = world.popField, cap = world.capField;
   if (!pop || pop.length !== N) { initPopField(world); pop = world.popField; cap = world.capField; }
 
@@ -69,8 +87,20 @@ export function stepPopField(world) {
   // per-tick-clock discipline the rest of the sim follows).
   const dt = Math.min(1, world._dt || 1);
 
-  // 1. Carrying capacity per tile.
-  for (let i = 0; i < N; i++) cap[i] = elev[i] > 0 ? fert[i] * CAP_PER_FERT * dev : 0;
+  // 1. Carrying capacity per tile = farmable yield (fert × development) lifted by
+  //    the water-transport PREMIUM (river/coast can import food → denser settlement)
+  //    and cut by rugged RELIEF. The premium is multiplicative on fert, so it
+  //    concentrates people onto FERTILE valleys and shores (a barren river bank
+  //    stays empty — you can't irrigate rock) rather than blooming deserts.
+  const accessDev = ACCESS_DEV0 + ACCESS_DEVK * leadAgri;   // transport premium grows with tech (emergent)
+  for (let i = 0; i < N; i++) {
+    if (!(elev[i] > 0)) { cap[i] = 0; continue; }
+    const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
+    const access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
+    const reach = 1 + access * accessDev;
+    const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i]) : 1;
+    cap[i] = fert[i] * CAP_PER_FERT * dev * reach * reliefMul;
+  }
 
   // 2. Logistic growth toward capacity (in place).
   for (let i = 0; i < N; i++) {
