@@ -6,11 +6,12 @@
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
 // Current baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
-//   8817=22b292be  31337=53cd01ed   (statecraft symmetry: ORG_STATE_MIN now gates donor-joins
-//   and stateless adoption — crystallize.js/countryTerritory.js. NOT lever-gated, so the
-//   RES_INVARIANT_POP=0 recovery moved too: be6365b/20b1faf3. Prior baselines: f2b5211b/
-//   2f83e5c5 (lever-off 5045e8aa/ef8e169b) under the real-width floodplain ribbon;
-//   316e19ea/9d292e22 under the ribbon rescale.)
+//   8817=38a440bb  31337=53cd01ed   (empire-mortality mechanisms, conquest.js: per-province
+//   fiscal dominance + functional provincial seats/governors. 31337 is unchanged at 2500
+//   steps — no realm there hits those paths that early. Lever-off (RES_INVARIANT_POP=0):
+//   5d220542/20b1faf3. Prior: 22b292be/53cd01ed + be6365b/20b1faf3 (statecraft symmetry);
+//   f2b5211b/2f83e5c5 + 5045e8aa/ef8e169b (real-width floodplain ribbon); 316e19ea/9d292e22
+//   (ribbon rescale).)
 //   (CAP_MODEL=0 recovers the legacy fitted-tail baseline 6df86092/82c7f3f — the grounded
 //   capacity model is the first change to move THIS 2500-step guard, since real states
 //   extract revenue and differentiate in capacity well before dynasties form. Earlier

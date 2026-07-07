@@ -131,3 +131,54 @@ market-integration correlation flips. Plausibly the longer stateless phase delay
 early market integration; within the suite's own tolerance, but worth watching if
 the growth gate tightens. Smoke green; deep roundtrip byte-identical; hash guards
 re-baselined in the probe headers.
+
+## Update: the supermassive-realm follow-up (empire MORTALITY) — IMPLEMENTED
+
+User re-report after the symmetry fix: counts better but winners still reach
+"all of Europe" size. A 24k-step anatomy probe found the giants IMMORTAL: the two
+oldest realms lived the entire run, secession fired 12 times in 24k steps against
+76 polity deaths (shed one-member orphans die and return to the giants), and the
+leader held capacity 225 against load 24 at 17 members. Three coupled defects, all
+in conquest.js:
+
+1. **The CAP_MODEL dominance tail rewarded SIZE, not efficiency.** fiscalSurplus
+   compared realm-TOTAL revenue to the peer-median realm — but total revenue is
+   member-count × per-province take, so a 17-province realm of ordinary provinces
+   read ~5× "dominant" and its capacity compounded on its own size (revenue →
+   capacity → members → revenue). Fixed: extraction measured PER PROVINCE against
+   the peer per-province median — the tail now pays for the efficiency the comment
+   always claimed it measured. Dominance multipliers fell 2.7–5.1× → 1.0–2.6×;
+   over-budget episodes now actually occur at the top.
+2. **The secession seat-bar was silently re-broken by the CITY_TIER raise.**
+   blocHasCity's own comment records that requiring a full city "was the bug that
+   made empires immortal" and documents the fix as tier ≥ CITY_TIER *when
+   CITY_TIER meant TOWN*; raising CITY_TIER 1→2 (the correct anti-swarm fix for
+   FOUNDING) dragged this bar and the overmighty-governor seat gate up with it —
+   and the floating city bar (finding 2 above) pins labelled cities to ~4 in the
+   world, so in a 17-member giant NO member could ever lead a breakaway. Founding
+   and secession need different bars: a successor inherits a working
+   administration.
+3. **Provincial seats didn't exist without the label.** assignProvinces seated
+   provinces on cities only, and buildHierarchy's strictly-higher-tier rule
+   concentrates vassals on the capital under DISSOLVE (everyone is tier 1), so
+   there was no functional route to a governor either. Fixed: a provincial seat is
+   the LOCALLY-STRONGEST member within a PROVINCE_SPAN (=9 ref tiles, the same
+   region scale as NUCLEATE_R) — label-free; blocHasSeat and the governor gate
+   accept it; and the governor's power base is his PROVINCE's aggregate power
+   (a satrap's strength was his satrapy), reducing to the old reading for size-1
+   provinces.
+
+Measured (480×240 seed 8817, 24k steps, vs pre-fix): realm count 13–18 →
+**25–26 mid-game** (19 at 24k — late consolidation at industrial logistics is
+earned); secessions 12→**39**, shattered 41→48; mid-game max realm 810–1066 →
+**545–755 tiles**; the top-5 leaderboard now TURNS OVER at every checkpoint
+(empires rise and fall) instead of two immortal realms sitting on it all run.
+Stylized gates: **3/3 seeds pass** (1/2/0 warnings — the pre-existing growth
+warning; the 4242 market warning eased −0.83→−0.47; 31337 fully clean), with the
+polity gates IMPROVED on the CI seed: 22 polities (was 14), largest-empire share
+15% (was 18%), fallen-lifespan median 887 steps. Smoke green; deep roundtrip
+byte-identical; hash guards re-baselined. Residual (recorded): the modern-era
+endpoint still consolidates toward ~19 realms with 20M-km² leaders — right order
+for industrial great powers, but decolonization-style dependency breakup and the
+settlement-count bound (finding 1) remain the next levers if more late-game
+granularity is wanted.
