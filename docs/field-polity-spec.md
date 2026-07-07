@@ -309,6 +309,37 @@ capacity/membership still flowed from settlements. The correct fix supplies thos
 FIELD: grow political territory from each realm's cores to cover the surrounding POPULATED
 land (popField) up to its region-capacity, with no economic-catchment stamp — phase 3.
 
+## Phase 3a — political territory decoupled from the catchment (IMPLEMENTED, `T.POP_FIELD`)
+
+Under the lever `fieldPolityTerritory` no longer stamps each member's worked food-catchment
+as political ground (the 84-89% that made size a settlement artifact). It stamps only a
+small pinned CORE per member (`CORE_R`, the stability floor); the rest of the realm's extent
+is grown by the capacity budget (`FIELD_SPAN·capacity`), with `POP_FILL` boosting the
+per-pass fill since there is no catchment bulk to seed coverage. Deliberately NO
+population-preferring growth (that would penalize low-pop steppe and break the intended big
+nomad empires); terrain cost + capacity shape it. The economic catchment (`_territoryOwner`)
+still feeds FOOD, unchanged. Byte-identical off (hashbase ed576254/92744c20).
+
+**Measured (480 seed 8817 @16k) vs baseline (38 realms, 57% claimed, top-5 22.3·8.6·5.3·5.1·3.8):**
+
+    Phase 3:  32 realms, 42.2% claimed, top-5  7.4 · 5.6 · 4.9 · 4.1 · 3.9 M km²
+
+The runaway megastate is GONE — the top empire collapsed **22.3 → 7.4M km²** and the top-5
+are a tight uniform great-power band, with the same rise/fall flows (captured 97, seceded 26,
+shattered 33). The map fractures into many moderate compact realms; Europe visibly breaks up.
+Removing the catchment stamp did what five rounds of capacity/reach/dominance tuning could not.
+
+Open items:
+- **`FIELD_SPAN` still doesn't bind** (6 ≡ 12): realms are GROWTH/reachability-limited, not
+  target-limited — capacity is high enough the target is still slack. Size is now set by how
+  far a realm grows from its cores within the run, not by capacity. To make capacity actually
+  govern size (so it is tunable), either the fill must reach the target (higher `POP_FILL`) or
+  the target must be tighter.
+- **Coverage 42% and still rising** (14.7%→26.2%→42.2% over 8-16k): the map fills gradually as
+  realms grow from cores (no instant catchment coverage). More realistic (frontier expands over
+  history) but reads emptier; equilibrium coverage TBD (24k run). May want a higher `POP_FILL`
+  or bigger `CORE_R` if the app should look filled sooner.
+
 ## Phase 3 — settlements become emergent LABELS on the field (planned)
 
 Settlements stop having any physical claim: no `s.pos`-anchored territory, no
