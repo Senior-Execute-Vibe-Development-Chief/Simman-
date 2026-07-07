@@ -89,7 +89,9 @@ const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = ol
 // capacity-bounded coverage builds up over a handful of passes (there is no catchment bulk
 // to seed it). The economic catchment (_territoryOwner) still feeds FOOD, unchanged.
 const CORE_R   = 1;   // half-width (tiles) of the pinned urban core stamped per member
-const POP_FILL = 6;   // rateCap multiplier under POP_FIELD (faster capacity-driven coverage)
+const POP_FILL = 12;  // rateCap multiplier under POP_FIELD: realms reach their (binding) capacity
+                      // target in fewer passes, so coverage fills sooner and size is capped by
+                      // FIELD_SPAN·capacity (not by how far growth got) — making size tunable.
 // Wet-tropic claim resistance: hot AND wet rainforest (the Congo, the Amazon, New
 // Guinea) was easy to walk through but near-impossible to ADMINISTER — disease,
 // no roads, leached soil, no storable surplus to tax or garrison. So it amplifies
