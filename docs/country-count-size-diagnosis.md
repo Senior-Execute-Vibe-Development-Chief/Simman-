@@ -97,3 +97,37 @@ by absorbing members.
 4. **The settlement count itself** (42–70 at 480; ~235 at the full-Earth 30k run) is
    the deep bound on any count target — that's crystallize spacing / DISSOLVE_FARMS
    territory, with sim-wide blast radius; treat as its own project.
+
+## Update: fix #2 (statecraft symmetry) — IMPLEMENTED
+
+`ORG_STATE_MIN` now gates territorial rule on BOTH sides. (1) crystallize.js: a
+mother settlement below the bar spreads PEOPLE, not rule — her daughter village is
+born STATELESS (the ride-away path's status) instead of auto-joining the donor's
+realm from outside its border; the demographic founding gate was decoupled from the
+flag (a connected daughter of any settled community may be BORN — previously
+`joinCountry < 0 → not founded`, which a first cut of this gate exposed: settlement
+count collapsed 24→4 by step 1000 and all births squeezed inside the three cradle
+borders, compounding them to 21 members — worse than the disease). (2)
+countryTerritory.js adoptAndFound: a realm whose best org is below the bar cannot
+annex an INDEPENDENT settlement its border crawls over; realm↔realm transfers and
+losses are untouched. Setting the existing `ORG_STATE_MIN` lever to 0 disables the
+symmetry (and the founding bars) together.
+
+Measured (480×240, seed 8817, 15k steps, vs the baseline table above): countries
+7→**13** at step 6000, 10→**17** at 12 000, 14→**19–21** at 15 000; stateless pop
+share at step 1000 47%→**84%** (a real archipelago phase, integrated as states form:
+5% by 8000); max realm at step 3000 **890→195 tiles / 18→3 members** (the org-0.11
+continental cradle is gone) while the late imperial tail survives (max 916 at
+14 000; max/median 6.7→4.5). probe_egypt: Old-Kingdom-era Egypt (org≈0.1–0.2) now
+claims 130–220% of modern Egypt's area (was 330–450%), growing to ~440% only as
+statecraft rises. At 960: countries 5→11 by step 8000, same shape. Frontier
+foundings 5→11 per 15k steps and — unlike the FRONTIER_FOUNDING=3 dial, which fed
+the extra statelets to a 40%-of-claimed-land hegemon and failed the gates — the
+stylized suite passes **3/3 seeds** (0/2/1 soft warnings, within budget 2). Honest
+caveat, verified side-by-side against baseline (which shows 0 warnings on the same
+seeds): the warnings are NEW to this change — on 2 of 3 seeds the growth-
+acceleration signature softens (e.g. 12.3% vs 20.1% per window) and on one the
+market-integration correlation flips. Plausibly the longer stateless phase delays
+early market integration; within the suite's own tolerance, but worth watching if
+the growth gate tightens. Smoke green; deep roundtrip byte-identical; hash guards
+re-baselined in the probe headers.

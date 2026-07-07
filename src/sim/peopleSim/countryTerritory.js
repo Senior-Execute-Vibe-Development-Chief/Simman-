@@ -995,6 +995,15 @@ function closeRealmGaps(world, co, D) {
 export function adoptAndFound(world) {
   const co = world._countryOwner, tw = world.tw, elev = world.elev, moist = world.moist;
   if (!co) return;   // territory pass hasn't run yet — nothing to adopt from
+  // Per-realm statecraft, for the STATECRAFT-SYMMETRY adoption gate below: the
+  // realm's most-organised settlement (the same fallback computeCountryTerritory
+  // uses when no political capital is known) carries its administrative capacity.
+  const realmOrg = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId < 0) continue;
+    const o = (s.knowledge && s.knowledge.organization) || 0;
+    if (o > (realmOrg.get(s.countryId) || 0)) realmOrg.set(s.countryId, o);
+  }
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
@@ -1040,7 +1049,21 @@ export function adoptAndFound(world) {
       }
       // otherwise village / town: follow the land (region), or stateless on the frontier
       if (s.countryId !== region) {
-        if (s.countryId < 0 && region >= 0) s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
+        if (s.countryId < 0 && region >= 0) {
+          // STATECRAFT SYMMETRY (docs/country-count-size-diagnosis.md): annexing an
+          // INDEPENDENT community is territorial administration, and takes the same
+          // organisation the founding bar demands of a people founding a state
+          // (T.ORG_STATE_MIN — "the statecraft for territorial rule", exactly the
+          // gate three lines up). A realm below it hasn't the records/bureaucracy
+          // to integrate outsiders: its border crawling over a stateless settlement
+          // does not make that settlement a subject — it stays independent
+          // (primary-state fuel) until a QUALIFIED state reaches it or it founds/
+          // joins one itself. Realm↔realm transfers (border shifts over already-
+          // stated settlements) and losses to statelessness are untouched — those
+          // are conquest/border dynamics, not primary adoption.
+          if ((realmOrg.get(region) || 0) < T.ORG_STATE_MIN) continue;
+          s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
+        }
         s.countryId = region;
       }
     }
