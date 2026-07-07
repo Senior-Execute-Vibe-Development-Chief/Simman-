@@ -71,7 +71,9 @@ export function initPopField(world) {
 }
 
 // Advance the population field one step: capacity → logistic growth → migration.
-export function stepPopField(world) {
+// `sub` = how many ticks this firing represents (POP_FIELD_STRIDE); the step size
+// scales by it so a strided field follows the same trajectory at ~1/sub the cost.
+export function stepPopField(world, sub = 1) {
   const N = world.N, tw = world.tw, th = world.th;
   const { elev, fert, riverMag, relief, coast } = world;
   let pop = world.popField, cap = world.capField;
@@ -82,10 +84,10 @@ export function stepPopField(world) {
   let leadAgri = 0;
   for (const s of world.settlements) if (s.mode === "settled") { const a = (s.knowledge && s.knowledge.agriculture) || 0; if (a > leadAgri) leadAgri = a; }
   const dev = DEV_BASE + DEV_TECH * leadAgri;
-  // Time-granularity dt: at G=2 the field advances half as much per tick over
-  // twice the ticks — same emergent trajectory, finer-grained (the cardinal
-  // per-tick-clock discipline the rest of the sim follows).
-  const dt = Math.min(1, world._dt || 1);
+  // Time-granularity dt × stride: a firing advances `sub` ticks of history at
+  // 1/G each (so it honours SIM_GRANULARITY), capped for integrator stability.
+  // At the default stride 4 / G 1 → dt 4, the field advances 4 ticks per firing.
+  const dt = Math.min(8, (world._dt || 1) * sub);
 
   // 1. Carrying capacity per tile = farmable yield (fert × development) lifted by
   //    the water-transport PREMIUM (river/coast can import food → denser settlement)

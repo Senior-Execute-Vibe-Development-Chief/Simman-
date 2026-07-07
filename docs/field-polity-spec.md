@@ -359,12 +359,25 @@ Validation for the flip:
   (growth-accel + settlement-clustering, the same regime-shape artifacts, consistent across
   seeds). Cleaner than the pre-field default (2 soft on 2/3). largest-empire share 10%, area
   tail 5.0, pop~development 0.96, wealth finite — core health solid and MORE historical.
-- **Roundtrip byte-identical** (8817=9f0ebe23, 31337=38b95edf at 8k) — field state save/loads.
+- **Roundtrip byte-identical** (8817=b3b25958, 31337=4ff0f7d5 at 8k) — field state save/loads.
 - **Smoke green**; determinism + save/load self-consistent.
 - **`POP_FIELD=0` recovers the pre-field settlement model byte-for-byte** (hashbase
   ed576254/92744c20, roundtrip ff050141/cff49050) — the fully-validated legacy layer is one
   lever away.
 - New default hashbase: 8817=809cfa67, 31337=8da625d2.
+
+### Perf — the field pass is strided (`POP_FIELD_STRIDE`, def 4)
+
+The population field is a SLOW diffusion, so it advances every N ticks at N× the step size
+(same trajectory, ~1/N the cost) rather than every tick. Measured (480, per tick): the field
+model was +0.9ms/tick (~29%) over the settlement model, almost all of it the per-tick field
+pass; striding by 4 cuts that to +0.26ms (~8%). The dominant cost is unchanged — the
+per-settlement passes (food, population, trade) are still ~70% of the tick, and the economic
+CATCHMENT flood (computeTerritory) still runs for food (cheap at 480, but the code's own
+profiling notes it dominates ~97% at 1920px). Making the sim materially cheaper needs the FOOD
+decoupling below (drop the per-settlement catchment), not just the field model.
+
+Roundtrip baseline shifted with striding (pre-stride field default was 9f0ebe23/38b95edf).
 
 ## Phase 3 — settlements become emergent LABELS on the field (planned)
 

@@ -224,12 +224,15 @@ export function stepPeopleSim(world, n = 1) {
     // whole hinterland (foodHierarchy.js). Produces _foodNet for next tick's
     // updateFood; runs here so it sees this tick's fresh production + housing.
     aggregateFoodHierarchy(world);
-    // Phase-1 population field (T.POP_FIELD, default off): advance the per-tile
-    // people/carrying-capacity substrate one step. Runs AFTER the settlement pass
-    // so it reads this tick's leading agriculture; a passive substrate in phase 1
-    // (nothing downstream reads it), so it can't perturb history when off it never
-    // runs. Honours SIM_GRANULARITY dt inside stepPopField.
-    if (T.POP_FIELD) stepPopField(world);
+    // Population field (T.POP_FIELD): advance the per-tile people/carrying-capacity
+    // substrate. It's a SLOW diffusion (logistic growth + capacity-seeking migration),
+    // so it runs on a STRIDE (POP_FIELD_STRIDE) at stride× the step size — same
+    // trajectory, ~1/stride the cost (the field pass is the whole field-model overhead).
+    // Runs after the settlement pass so it reads this tick's leading agriculture.
+    {
+      const _pfs = Math.max(1, T.POP_FIELD_STRIDE | 0);
+      if (T.POP_FIELD && world.step % _pfs === 0) stepPopField(world, _pfs);
+    }
     mark("settlements");
     // Exogenous shocks: regional famines (harvest crash) + epidemics that
     // spread along the trade graph (population crash). Both feed the unrest /

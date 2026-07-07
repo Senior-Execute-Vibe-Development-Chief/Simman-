@@ -9,9 +9,10 @@
 //   node tools/probe_roundtrip_deep.mjs [steps]
 // Baseline (8000 steps, all defaults ON incl. POP_FIELD — the field-simulation model:
 // people on a per-tile field, territory grown by governed-region capacity, not stamped from
-// settlement catchments): 8817 h=9f0ebe23 (4957p/101d), 31337 h=38b95edf (4320p/87d).
-// POP_FIELD=0 recovers the pre-field settlement roundtrip 8817=ff050141/31337=cff49050;
-// under it FIELD_POLITY=0 recovers the entity-model roundtrip. (Prior: c4c527a1/81b0ff1d
+// settlement catchments; field pass strided POP_FIELD_STRIDE=4): 8817 h=b3b25958 (4392p/99d),
+// 31337 h=4ff0f7d5 (4557p/89d). POP_FIELD=0 recovers the pre-field settlement roundtrip
+// 8817=ff050141/31337=cff49050; under it FIELD_POLITY=0 recovers the entity-model roundtrip.
+// (Pre-stride field default was 9f0ebe23/38b95edf. Prior: c4c527a1/81b0ff1d
 // REGION_SPACING 1.2; b4ad4366/d827e128 pre-granularity; a8c69cbd/78210a0b pre-relief;
 // 400fe557/e834530 pre-mortality; 67aeea45/2958a5c6 pre-symmetry.) Recoveries via env:
 //   RES_INVARIANT_POP=0                 → f057635 / d489b985 (tile-unit density, CAP_MODEL era)
