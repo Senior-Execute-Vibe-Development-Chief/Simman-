@@ -8,7 +8,7 @@
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
 // Baseline (8000 steps, all defaults ON incl. FIELD POLITY — countries as tile blobs,
-// settlements as dressing): 8817 h=4e943a00 (4303p/117d), 31337 h=2367a388 (3879p/90d).
+// settlements as dressing): 8817 h=ff050141 (4559p/95d), 31337 h=cff49050 (3596p/77d).
 // FIELD_POLITY=0 recovers the entity-model roundtrip. (Prior: c4c527a1/81b0ff1d
 // REGION_SPACING 1.2; b4ad4366/d827e128 pre-granularity; a8c69cbd/78210a0b pre-relief;
 // 400fe557/e834530 pre-mortality; 67aeea45/2958a5c6 pre-symmetry.) Recoveries via env:

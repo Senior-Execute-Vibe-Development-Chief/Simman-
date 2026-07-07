@@ -130,6 +130,32 @@ Smoke green; deep roundtrip byte-identical (4e943a00/2367a388); `FIELD_POLITY=0`
 the entity model byte-identically (hashbase 7a3afd73/7e8d33f), so the fully-validated
 legacy layer is one lever away.
 
+## Post-implementation review (14-agent adversarial workflow) — 6 confirmed, all fixed
+
+1-2, 4 (MAJOR): the connectivity release (step 3) was 4-connected while the catchment
+   stamp and frontier growth are 8-connected, and it did not pin worked land — so a tile
+   attached only diagonally or across a naval hop (and any actively-WORKED catchment tile
+   the economy farms across a strait) was released every pass, re-stamped, re-released:
+   no fixed point at ragged coasts / diagonal borders, and the growth budget leaked
+   re-claiming held ground. FIX: step 3 now floods 8-connected AND seeds from every worked
+   tile (never releases worked land — matching step 6's pin).
+5 (CRITICAL): a realm with no capacity yet (a newborn, or EVERY realm on the first
+   territory pass after a LOAD — capacity is recomputed in updatePolities, which the load
+   warm-up does not run) read target=0 and step 6 shed its entire frontier. FIX: realms
+   with capacity ≤ 0 are skipped from target/grow/shed — they HOLD their stamped field
+   until the next polity pass computes capacity. (Roundtrip stayed byte-identical because
+   it compares the hash at load, before the first post-load territory pass; this closes
+   the cold-start step-forward divergence.)
+3 (MINOR): growth relaxation lowered cost[ni] even when the claiming realm's budget was
+   exhausted, sterilising contested wild against a solvent competitor. FIX: cost[ni] is
+   lowered only when the tile is actually claimed.
+6 (MAJOR perf): step-6 shed was O(4N·overRealms) — a 4×-full-N scan nested per over-target
+   realm. FIX: one O(N) sweep collecting each realm's peripheral candidates.
+
+Post-fix: stylized 2/3 seeds pass (was 1/3 — the diagonal churn had been tripping extra
+warnings); 41 realms / 66.8% claimed at 480×20k; smoke green; roundtrip byte-identical
+(ff050141/cff49050); FIELD_POLITY=0 still byte-identical (7a3afd73/7e8d33f).
+
 ## Known v1 gaps (recorded, non-crashing — see the coupling survey)
 
 - **War/secession heal via the catchment stamp, gradually not instantly.** A stormed

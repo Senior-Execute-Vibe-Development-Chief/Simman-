@@ -364,12 +364,25 @@ function fieldPolityTerritory(world) {
     reach.fill(0);
     let q = world._fpQ; if (!q || q.length !== N) q = world._fpQ = new Int32Array(N);
     let qt = 0;
+    // Seed from home tiles AND every WORKED tile: a tile the realm's economy actively
+    // farms is held by definition and must never be released (step 6 shed honours the
+    // same worked-pin). Flood 8-CONNECTED to match the catchment stamp (territory.js,
+    // diagonal) and the frontier growth (step 5, diagonal): a 4-connected release would
+    // strip any tile attached only diagonally / across a naval hop — which the 8-connected
+    // stamp/growth re-add every pass — so co never reaches a fixed point at ragged coasts
+    // or inter-realm diagonal borders and the growth budget leaks re-claiming held ground.
     for (const arr of homeTiles.values()) for (const ti of arr) if (!reach[ti]) { reach[ti] = 1; q[qt++] = ti; }
+    for (let ti = 0; ti < N; ti++) if (worked[ti] && co[ti] >= 0 && !reach[ti]) { reach[ti] = 1; q[qt++] = ti; }
     for (let h = 0; h < qt; h++) {
       const ti = q[h], c = co[ti];
-      const y = (ti / tw) | 0, x = ti - y * tw;
-      const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
-      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && !reach[ni] && co[ni] === c) { reach[ni] = 1; q[qt++] = ni; } }
+      const ty2 = (ti / tw) | 0, tx2 = ti - ty2 * tw;
+      const xm = tx2 === 0 ? tw - 1 : tx2 - 1, xp = tx2 === tw - 1 ? 0 : tx2 + 1;
+      const ns = [
+        ty2 * tw + xm, ty2 * tw + xp, ty2 > 0 ? ti - tw : -1, ty2 < th - 1 ? ti + tw : -1,
+        ty2 > 0 ? (ty2 - 1) * tw + xm : -1, ty2 > 0 ? (ty2 - 1) * tw + xp : -1,
+        ty2 < th - 1 ? (ty2 + 1) * tw + xm : -1, ty2 < th - 1 ? (ty2 + 1) * tw + xp : -1,
+      ];
+      for (let k = 0; k < 8; k++) { const ni = ns[k]; if (ni >= 0 && !reach[ni] && co[ni] === c) { reach[ni] = 1; q[qt++] = ni; } }
     }
     for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) co[ti] = -1;
   }
@@ -393,6 +406,13 @@ function fieldPolityTerritory(world) {
   const target = new Map(), grow = new Map();
   const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale));
   for (const [cid, cp] of capOf) {
+    // A realm with NO real capacity yet — a newborn minted after the last polity pass,
+    // or every realm on the FIRST territory pass after a LOAD (capacity is recomputed in
+    // updatePolities, which the load warm-up does not run) — is left untouched: no target,
+    // so it neither grows nor sheds and simply HOLDS its stamped/anchored field until the
+    // next polity pass computes its capacity. Without this a capless realm reads target=0
+    // and step 6 sheds its ENTIRE frontier on that pass (the cold-start load divergence).
+    if (cp <= 0) continue;
     const t = Math.round(FIELD_SPAN * cp * r2);
     target.set(cid, t);
     const g = Math.min(Math.max(0, t - (held.get(cid) || 0)), rateCap);
@@ -442,37 +462,42 @@ function fieldPolityTerritory(world) {
         }
         ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);
         const nd = d + ec * mul[k];
-        if (nd < cost[ni]) {
-          cost[ni] = nd;
-          if ((budget.get(c) || 0) > 0) { co[ni] = c; budget.set(c, budget.get(c) - 1); heap.push(ni, nd, c); }
+        // Only lower cost[ni] when we actually CLAIM it (budget remains). Lowering it for
+        // an exhausted-budget realm would reserve the wild tile — a solvent competitor
+        // then needs to beat the lower cost and is locked out, sterilising contested land
+        // neither realm ends up holding. (Budget can drain to 0 mid-relaxation as earlier
+        // neighbours of this same pop are claimed, so the guard must be here, not only at pop.)
+        if (nd < cost[ni] && (budget.get(c) || 0) > 0) {
+          cost[ni] = nd; co[ni] = c; budget.set(c, budget.get(c) - 1); heap.push(ni, nd, c);
         }
       }
     }
   }
 
   // 6. SHED over-capacity marches: a realm holding more than its target releases its
-  //    most PERIPHERAL settlement-less tiles (wild-adjacent, no home tile) — so a
-  //    weakened realm's frontier recedes on the map, rise-and-fall without needing a
-  //    secession event for every lost march.
+  //    most PERIPHERAL settlement-less tiles (wild-adjacent, no home tile, not worked) —
+  //    so a weakened realm's frontier recedes on the map, rise-and-fall without needing a
+  //    secession event for every lost march. ONE O(N) sweep: collect each over-target
+  //    realm's peripheral candidates, then release up to its excess. (Only one ring recedes
+  //    per pass; a realm far over target keeps shedding over subsequent passes — gradual,
+  //    which is correct.) The old form nested a 4×-full-N scan inside a per-realm loop —
+  //    O(4N·overRealms), a real blowup at 960/1920 when many realms are over target.
   {
-    const over = [];
-    for (const [cid, t] of target) { const h = held.get(cid) || 0; if (h > t) over.push([cid, h - t]); }
-    if (over.length) {
+    const excess = new Map();
+    for (const [cid, t] of target) { const h = held.get(cid) || 0; if (h > t) excess.set(cid, h - t); }
+    if (excess.size) {
       let home = world._fpHome; if (!home || home.length !== N) home = world._fpHome = new Uint8Array(N);
       home.fill(0);
       for (const arr of homeTiles.values()) for (const ti of arr) home[ti] = 1;
-      for (const [cid, excess] of over) {
-        let shed = 0;
-        for (let pass = 0; pass < 4 && shed < excess; pass++) {
-          for (let ti = 0; ti < N && shed < excess; ti++) {
-            if (co[ti] !== cid || home[ti] || worked[ti]) continue;   // never shed a home or actively-WORKED tile — only empty admin marches recede
-            const y = (ti / tw) | 0, x = ti - y * tw;
-            const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
-            let edge = false;
-            for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { edge = true; break; } }
-            if (edge) { co[ti] = -1; shed++; }
-          }
-        }
+      for (let ti = 0; ti < N; ti++) {
+        const cid = co[ti];
+        if (cid < 0 || home[ti] || worked[ti]) continue;
+        const rem = excess.get(cid); if (!(rem > 0)) continue;   // realm not over target (or quota spent)
+        const y = (ti / tw) | 0, x = ti - y * tw;
+        const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
+        let edge = false;
+        for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { edge = true; break; } }
+        if (edge) { co[ti] = -1; excess.set(cid, rem - 1); }
       }
     }
   }

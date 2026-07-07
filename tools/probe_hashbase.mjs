@@ -6,7 +6,7 @@
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
 // Current baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
-//   8817=ed576254  31337=33af206c   (FIELD POLITY — countries are persistent tile blobs
+//   8817=ed576254  31337=92744c20   (FIELD POLITY — countries are persistent tile blobs
 //   that grow at their frontier by capacity, settlements are dressing; the whole political
 //   layer is re-keyed. FIELD_POLITY=0 recovers the ENTITY model byte-identically:
 //   7a3afd73/7e8d33f — so that hash is now the lever-off baseline too. Prior default
