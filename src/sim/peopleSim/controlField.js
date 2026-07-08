@@ -168,4 +168,13 @@ export function stepControlField(world) {
 
   world._ctrlOwner = no; world._ctrlHold = nh;
   world._ctrlOwnerNext = owner; world._ctrlHoldNext = hold;
+
+  // CTRL_LIVE: the field IS the political map — publish it as _countryOwner (land only;
+  // water carried the field only as a naval relay). The recompute (fieldPolityTerritory)
+  // is skipped, so this per-tick copy is the sole author of the political map.
+  if (T.CTRL_LIVE) {
+    let co = world._countryOwner;
+    if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N).fill(-1);
+    for (let t = 0; t < N; t++) co[t] = elev[t] > 0 ? no[t] : -1;
+  }
 }
