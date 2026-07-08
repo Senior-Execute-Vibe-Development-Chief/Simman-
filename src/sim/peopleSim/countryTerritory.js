@@ -333,15 +333,42 @@ function fieldPolityTerritory(world) {
     claimCap.set(cid, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
   }
 
-  // 1. ANCHOR every settled home tile to its country (seats AND subjects) — guarantees
+  // 1. ANCHOR home tiles. DEFAULT: every settled home tile (seats AND subjects) — guarantees
   //    the blob contains its cities and seeds a newborn polity's one-tile core.
+  //    TILE_POLITY: only the CAPITAL anchors. A polity's spatial identity becomes its capital
+  //    + the land it has grown and holds; non-capital cities ride the ground (they derive their
+  //    flag below) but never pin/seed/create territory — so the field stops JUMPING to where
+  //    settlements spawn or are captured. Steps 1b/3/6 all key off homeTiles, so this one change
+  //    makes the whole anchor/core/connectivity/shed stack capital-only.
   const homeTiles = new Map();
-  for (const s of world.settlements) {
-    if (s.mode !== "settled" || s.countryId < 0) continue;
-    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    if (elev[ti] <= 0) continue;
-    co[ti] = s.countryId;
-    let a = homeTiles.get(s.countryId); if (!a) homeTiles.set(s.countryId, a = []); a.push(ti);
+  if (T.TILE_POLITY) {
+    const anchored = new Set();
+    if (world.countries) for (const [cid, c] of world.countries) {
+      if (!alive.has(cid) || !c.capital || c.capital.mode !== "settled") continue;
+      const ti = (c.capital.pos.y | 0) * tw + (c.capital.pos.x | 0);
+      if (elev[ti] <= 0) continue;
+      co[ti] = cid;
+      homeTiles.set(cid, [ti]);
+      anchored.add(cid);
+    }
+    // Fallback: any alive country not yet capital-anchored (the territory pass runs before
+    // world.countries is built on step 1, and the post-load warm-up skips the polity pass)
+    // anchors its settlements, so its loaded/newborn land is never released for want of a seed.
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0 || anchored.has(s.countryId)) continue;
+      const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+      if (elev[ti] <= 0) continue;
+      co[ti] = s.countryId;
+      let a = homeTiles.get(s.countryId); if (!a) homeTiles.set(s.countryId, a = []); a.push(ti);
+    }
+  } else {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0) continue;
+      const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+      if (elev[ti] <= 0) continue;
+      co[ti] = s.countryId;
+      let a = homeTiles.get(s.countryId); if (!a) homeTiles.set(s.countryId, a = []); a.push(ti);
+    }
   }
 
   // 1b. STAMP economic catchments into the political field: a settled member's WORKED
