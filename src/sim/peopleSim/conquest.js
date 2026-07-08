@@ -305,6 +305,11 @@ const SIZE_REF      = 1000;  // population scale for the size term
 const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much extra...
 // RECENCY_TICKS -> runtime lever (tuning.js T.RECENCY_TICKS)
 const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty
+// CTRL_LIVE: a province is loyal while the field holds it at ≥ this fraction of the CAPITAL's
+// hold; below it (the weakly-held outer frontier) it bleeds loyalty and can secede — a
+// self-scaling fragmentation brake so a big empire sheds its far marches while a compact realm
+// holds firm. Env-tunable for the live-field balance.
+const CTRL_LOYAL_FRAC = (typeof process !== "undefined" && process.env && +process.env.SIM_CTRL_LOYAL) || 0.18;
 // LOYAL_DECAY -> runtime lever (tuning.js T.LOYAL_DECAY)
 // The deeper past the budget a province sits, the faster it bleeds loyalty —
 // but UNCAPPED that term is ruinous: a realm holding 6× its budget (which the
@@ -2179,9 +2184,26 @@ export function updatePolities(world) {
     loads.sort((a, b) => a.load - b.load);
     let cum = 0;
     const seeds = [];   // provinces whose loyalty collapsed this pass → revolt seeds
+    // CTRL_LIVE: loyalty keys on the FIELD's hold, not the old capacity budget (which no longer
+    // matches the field territory — that mismatch made the live map over-secede AND oscillate).
+    // A province the field holds FIRMLY (hold near the capital's) is loyal; one it holds WEAKLY
+    // (the far frontier, low control) is restless and bleeds loyalty — a self-consistent
+    // fragmentation brake that scales with each realm, so a big empire sheds its outer marches
+    // while a compact one holds firm, with no capacity stack.
+    const chArr = T.CTRL_LIVE ? world._ctrlHold : null;
+    const _cw = world.tw;
+    const holdAt = (s) => chArr ? (chArr[(s.pos.y | 0) * _cw + (((s.pos.x | 0) % _cw) + _cw) % _cw] || 0) : 0;
+    const capHold = chArr && cap ? Math.max(1e-3, holdAt(cap)) : 1;
     for (const { s, load } of loads) {
       cum += load;
-      const covered  = cum <= capacity;
+      let covered, overField = 0;
+      if (T.CTRL_LIVE) {
+        const frac = holdAt(s) / capHold;                 // this province's grip as a share of the core's
+        covered = frac >= CTRL_LOYAL_FRAC;
+        overField = covered ? 0 : Math.min(OVER_DECAY_CAP, (CTRL_LOYAL_FRAC - frac) / CTRL_LOYAL_FRAC);
+      } else {
+        covered = cum <= capacity;
+      }
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (pacified || infant) {
@@ -2194,10 +2216,10 @@ export function updatePolities(world) {
       if (covered) {
         s.loyalty = Math.min(1, (s.loyalty ?? 1) + LOYAL_RECOVER * (1 - (s.loyalty ?? 1)));
       } else {
-        // How deep past the budget — CAPPED so a wildly over-extended realm
-        // sheds gradually (ring by ring over passes) instead of its whole
-        // frontier collapsing in one tick (see OVER_DECAY_CAP).
-        const over = Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
+        // How deep past the line — CAPPED so a wildly over-extended realm sheds gradually
+        // (ring by ring over passes) instead of its whole frontier collapsing in one tick.
+        // CTRL_LIVE uses the field-hold deficit (overField); else the capacity overspend.
+        const over = T.CTRL_LIVE ? overField : Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
         // An ORGANISED empire's provinces are administratively STICKY — records,
         // garrisons, an integrated economy and roads bind a province to the
         // realm, so it bleeds loyalty slowly even while over-budget. This is the
