@@ -360,7 +360,7 @@ export function maybeCrystallize(world) {
   // fills with fewer, larger localities — each farming a bigger catchment —
   // instead of a dense village scatter.
   const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3)
-              : T.DISSOLVE_FARMS ? 2     // tuned: fewer/larger town-regions, but keeping a rural town layer so urbanisation stays realistic (~60%)
+              : T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2)   // the model's GRANULARITY constant: how much countryside one town-region entity abstracts (see tuning.js REGION_SPACING)
               : 1;
   const rn = rNormFor(world);            // spacing in REAL distance, not tiles (RES_INVARIANT_POP)
   const hardFloor   = HARD_FLOOR * spMul * rn;
@@ -568,17 +568,46 @@ export function maybeCrystallize(world) {
                   + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
       }
       const isBranch = connected && (td > 70 || (td > 38 && climDelta > 0.34));
-      // Found settlements only INSIDE a nation or as a nation's FRONTIER EXTENSION —
-      // never a stateless hamlet in the deep wilderness. A candidate is allowed if
-      // the tile already lies in a realm's drawn border (region ≥ 0), OR it is a
-      // CONNECTED extension of a nearby realm settlement (the donor), in which case
-      // it joins that realm and grows its frontier. A DISCONNECTED site (independent
-      // origin: another continent, across water, beyond reach) has no nation to join,
-      // so it is NOT founded — only a colony party (maybeSendSettlers, carrying its
-      // parent's flag) can plant the first settlement on virgin land. Cradles are
-      // seeded at world-gen, so the world still bootstraps. (Existing settlements may
-      // still become stateless when their realm collapses — a separate path.)
-      const donorCountry = connected && donor && donor.mode === "settled" ? donor.countryId : -1;
+      // Found settlements only INSIDE a nation or as a CONNECTED EXTENSION of a
+      // nearby settled community — never in the deep wilderness. A candidate is
+      // allowed if the tile already lies in a realm's drawn border (region ≥ 0), OR
+      // it is a CONNECTED extension of a nearby settled donor (state or stateless —
+      // people beget people regardless of politics; whether the daughter also
+      // inherits a FLAG is the separate statecraft question below). A DISCONNECTED
+      // site (independent origin: another continent, across water, beyond reach) is
+      // NOT founded — only a colony party (maybeSendSettlers, carrying its parent's
+      // flag) can plant the first settlement on virgin land. Cradles are seeded at
+      // world-gen, so the world still bootstraps. (Existing settlements may still
+      // become stateless when their realm collapses — a separate path.)
+      // STATECRAFT SYMMETRY (docs/country-count-size-diagnosis.md): binding a new
+      // village to a realm from OUTSIDE its drawn border is an act of territorial
+      // administration — records, tax rolls, delegated authority — and takes the
+      // SAME organisation the founding bar (T.ORG_STATE_MIN) demands of a people
+      // founding a state. A mother settlement below that bar spreads PEOPLE, not
+      // rule: her daughter is born STATELESS (kin beyond the chiefdom's
+      // administration — the same status the ride-away steppe path mints), and
+      // becomes primary-state fuel (nucleateFrontierStates) or is integrated later
+      // once a qualified state's border actually reaches her. Without this gate the
+      // org-0.1 cradle realms vacuumed their whole frontier from step one (measured:
+      // 20 sub-bar donor-joins by step 1000 — 9-member realms at org 0.11, the
+      // "wall-to-wall from genesis" anachronism), which both starved state founding
+      // of stateless fuel and made the earliest realms the largest. A village born
+      // ON administered ground (region ≥ 0) still joins — the chiefdom rules its
+      // own core; it is the LONG ARM beyond the border that needs statecraft.
+      // Two SEPARATE questions the old single `joinCountry` conflated:
+      //   • DEMOGRAPHY — may a settlement exist here? Yes if it is a connected
+      //     extension of ANY living settled community within frontier reach
+      //     (people beget people; statehood is irrelevant to spreading), or on
+      //     already-administered ground. Deep-wilderness/disconnected sites are
+      //     still never founded (colony ships only) — enforced by `connected`
+      //     here and the FRONTIER_EXTEND_DIST contiguity check below.
+      //   • POLITICS — whose flag, if any? Administered ground's owner; else the
+      //     donor's realm ONLY if the mother settlement has the statecraft to
+      //     bind a daughter to it (the symmetry gate above); else born stateless.
+      const donorOrg = donor && donor.knowledge ? (donor.knowledge.organization || 0) : 0;
+      const donorSettled = connected && donor && donor.mode === "settled";
+      const donorCountry = donorSettled && donorOrg >= T.ORG_STATE_MIN ? donor.countryId : -1;
+      const extension = region >= 0 || donorSettled;
       let joinCountry = region >= 0 ? region : donorCountry;
       let rodeAway = false;
       // Wilderness founding (region<0) must be a CONTIGUOUS frontier extension of the
@@ -617,7 +646,7 @@ export function maybeCrystallize(world) {
         // extension the court can hold, and not a horde birth → no settlement.
         if (dd2 > fed * fed && !rodeAway) continue;
       }
-      if (joinCountry < 0 && !rodeAway) continue;
+      if (!extension && !rodeAway) continue;   // demographic gate: connected extension or horde birth — a FLAG is not required to be born (see the statecraft symmetry above)
       // Share the joining realm's development: floor the (distance-decayed) inherited
       // knowledge at NATION_TECH_FLOOR of the realm's capital, so a frontier village of
       // a developed empire is born developed, not neolithic. Cloned so we never mutate
@@ -631,7 +660,7 @@ export function maybeCrystallize(world) {
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: bornKnow,
-        countryId: joinCountry,   // born into the realm it sits in / extends — stateless (-1) only for a rode-away steppe camp
+        countryId: joinCountry,   // born into the realm it sits in / extends — stateless (-1) for a rode-away steppe camp or a daughter of a sub-ORG_STATE_MIN mother (statecraft symmetry)
         parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below
         cultureId: (connected && !isBranch) ? dCul : -1,

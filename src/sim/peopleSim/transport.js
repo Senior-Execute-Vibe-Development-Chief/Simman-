@@ -168,6 +168,7 @@ function _paramsFromKnowledge(kn) {
     // Cost-per-tile by mode (base values), then tech-discounted.
     plain: Math.max(0.30, 1.0 - mob * 0.30 - cons * 0.10),    // wagons + roads
     harsh: Math.max(8,    35  - mob * 13   - cons * 10),       // slope coefficient (steep climbs)
+    ridge: Math.max(30,   130 - cons * 80),                    // local-RELIEF coefficient (gorge-and-ridge country); engineering (roads, bridges, tunnels) cuts it ~60%
     river: Math.max(0.15, 0.50 - cons * 0.30),                 // river-along (banded by mag)
     ride:  mob * T.OPEN_RIDE,                                  // open-country riding discount (steppe highway) — see land branch
     coast: Math.max(0.20, 0.70 - cons * 0.30 - nav * 0.25),    // coastal hop floor
@@ -249,6 +250,19 @@ function _edgeCost(world, fromTi, toTi, params, ignoreRoads, noPortTax) {
     let relief = e * 5 + e * e * 14;
     const slope = Math.abs(e - world.elev[fromTi]);
     if (slope > 0.02) relief += (slope - 0.02) * params.harsh;
+    // RIDGE RELIEF (worldgenUtils computeRelief): the local VERTICAL RANGE of the
+    // ground — the thing cell-mean altitude is blind to. A ridge-and-valley range
+    // (the Alps) averages to ~0.31 cells and slips under both altitude terms, while
+    // a flat plateau of the same mean reads as a wall. Measured: crossing the Alps
+    // cost the same as an equal-length plain march (37.7 vs 35.7 claim-frame units)
+    // while the Tibet edge read 143 — which is why sim-Europe soldered into one
+    // realm while China/India stayed properly bounded by their walls. Gorge-and-
+    // ridge country (relief past the 0.07 floor — plains p90 ≈ 0.06, Alps p50 ≈
+    // 0.15) now pays by its broken-ness; flat plateau INTERIORS (Tibet p50 ≈ 0.05)
+    // pay nothing extra — altitude already prices them, and once up, the going is
+    // flat. Engineering eases it (params.ridge), same as the slope term.
+    const rr = world.relief ? world.relief[toTi] : 0;
+    if (rr > 0.07) relief += (rr - 0.07) * params.ridge;
     base += relief * T.MOUNTAIN_COST_MULT;
     if (t > 0.55 && m < 0.25) base += (t - 0.55) * 5 + (0.25 - m) * 4;  // hot dry
     if (t < 0.18) base += (0.18 - t) * 8;                          // cold

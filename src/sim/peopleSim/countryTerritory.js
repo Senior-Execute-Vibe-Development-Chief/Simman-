@@ -80,6 +80,18 @@ const CLAIM_SOFT      = 0.12;
 // square of the shortfall, so only genuine wasteland resists hard.
 const CLAIM_FERT_REF  = 0.12;  // fertility below which hostility starts. Deliberately LOW: only TRUE wasteland (deep desert, bare rock, fert→0) resists. Steppe/savanna/dry marginal land claims at plain transport cost — historically that was LOW-resistance land (open, sparse, nobody to fight), how Russia/the khanates/Sahel states got huge. Fertility caps POPULATION, not political reach.
 const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = old isotropic blob, up = tighter river/coast ribbons
+// PHASE 3 (T.POP_FIELD): political territory is grown by CAPACITY, not stamped from the
+// economic food-catchment. The catchment stamp made realm area = member-count × catchment
+// and left the capacity target slack (the crux finding, docs/field-polity-spec.md), so no
+// size lever could bind. Under the lever a small pinned CORE per member is the only stamp
+// (stability floor); the rest of the realm's extent is grown toward FIELD_SPAN·capacity and
+// trimmed to it — so size finally tracks region-capacity. The fill rate is boosted so that
+// capacity-bounded coverage builds up over a handful of passes (there is no catchment bulk
+// to seed it). The economic catchment (_territoryOwner) still feeds FOOD, unchanged.
+const CORE_R   = 1;   // half-width (tiles) of the pinned urban core stamped per member
+const POP_FILL = 12;  // rateCap multiplier under POP_FIELD: realms reach their (binding) capacity
+                      // target in fewer passes, so coverage fills sooner and size is capped by
+                      // FIELD_SPAN·capacity (not by how far growth got) — making size tunable.
 // Wet-tropic claim resistance: hot AND wet rainforest (the Congo, the Amazon, New
 // Guinea) was easy to walk through but near-impossible to ADMINISTER — disease,
 // no roads, leached soil, no storable surplus to tax or garrison. So it amplifies
@@ -280,8 +292,290 @@ function claimNoise(world) {
   return noise;
 }
 
+// ── FIELD POLITY (T.FIELD_POLITY, docs/field-polity-spec.md) ────────────────
+// The political map is the AUTHORED, persistent ontology. A country's EXTENT is NOT
+// the union of its settlements' reach bubbles (the entity model below) — it is one
+// persistent blob on _countryOwner that GROWS at its own frontier into cheap adjacent
+// wilderness, bounded by the country's Tilly hold-capacity (conquest.js, the stack we
+// calibrated), and priced by the SAME terrain cost field (relief walls, deserts, seas,
+// fertility-hostility) the entity Voronoi used. Settlements are DRESSING: they anchor
+// their home tile and supply the capacity; they never each project territory, and a
+// subject's countryId is DERIVED from the ground (adoptAndFound). Cities change hands
+// only by the discrete events (war storm / secession / absorption), never by peaceful
+// field growth (growth enters WILD land only) — so every statecraft gate still holds.
+//   Size now flows capacity → area directly: a realm holds ≈ FIELD_SPAN·capacity tiles,
+// grown gradually and shed when capacity falls (rise-and-fall on the map itself), so
+// the country-size distribution IS the (validated) capacity distribution rather than a
+// settlement-count artefact. Tick order (index.js): this runs in computeCountryTerritory,
+// BEFORE adoptAndFound derives subject flags and BEFORE updatePolities recomputes
+// capacity — so cap/load read here are ≤1 polity-interval stale, which is fine (capacity
+// drifts slowly and has its own hysteresis).
+const FIELD_SPAN_DEF = 12.0;   // tiles a realm's administration holds per unit hold-capacity (calibrated against the empires probe; T.FIELD_SPAN overrides)
+function fieldPolityTerritory(world) {
+  const FIELD_SPAN = T.FIELD_SPAN || FIELD_SPAN_DEF;
+  const { N, tw, th, elev, fert, temp, moist } = world;
+  const resScale = resScaleFor(tw), r2 = resScale * resScale;
+  let co = world._countryOwner;
+  if (!co || co.length !== N) { co = world._countryOwner = new Int32Array(N); co.fill(-1); }
+
+  // Living polities + per-country capacity/knowledge (the Tilly stack from the last
+  // updatePolities; one-interval stale is acceptable).
+  const alive = new Set();
+  for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) alive.add(s.countryId);
+  const capOf = new Map(), knOf = new Map(), hostOf = new Map(), claimCap = new Map();
+  if (world.countries) for (const [cid, c] of world.countries) {
+    if (!alive.has(cid) || !c.capital) continue;
+    capOf.set(cid, Math.max(0, c._capacity || 0));
+    knOf.set(cid, c.capital.knowledge || {});
+    const cons = (c.capital.knowledge && c.capital.knowledge.construction) || 0;
+    const logi = (c.capital._techEff ? c.capital._techEff.logisticsLevel : cons * cons) || 0;
+    hostOf.set(cid, CLAIM_HOSTILITY * Math.max(0, 1 - logi));   // the modern partition of the wastes (fades with logistics)
+    claimCap.set(cid, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
+  }
+
+  // 1. ANCHOR home tiles. DEFAULT: every settled home tile (seats AND subjects) — guarantees
+  //    the blob contains its cities and seeds a newborn polity's one-tile core.
+  //    TILE_POLITY: only the CAPITAL anchors. A polity's spatial identity becomes its capital
+  //    + the land it has grown and holds; non-capital cities ride the ground (they derive their
+  //    flag below) but never pin/seed/create territory — so the field stops JUMPING to where
+  //    settlements spawn or are captured. Steps 1b/3/6 all key off homeTiles, so this one change
+  //    makes the whole anchor/core/connectivity/shed stack capital-only.
+  const homeTiles = new Map();
+  if (T.TILE_POLITY) {
+    const anchored = new Set();
+    if (world.countries) for (const [cid, c] of world.countries) {
+      if (!alive.has(cid) || !c.capital || c.capital.mode !== "settled") continue;
+      const ti = (c.capital.pos.y | 0) * tw + (c.capital.pos.x | 0);
+      if (elev[ti] <= 0) continue;
+      co[ti] = cid;
+      homeTiles.set(cid, [ti]);
+      anchored.add(cid);
+    }
+    // Fallback: any alive country not yet capital-anchored (the territory pass runs before
+    // world.countries is built on step 1, and the post-load warm-up skips the polity pass)
+    // anchors its settlements, so its loaded/newborn land is never released for want of a seed.
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0 || anchored.has(s.countryId)) continue;
+      const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+      if (elev[ti] <= 0) continue;
+      co[ti] = s.countryId;
+      let a = homeTiles.get(s.countryId); if (!a) homeTiles.set(s.countryId, a = []); a.push(ti);
+    }
+  } else {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0) continue;
+      const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+      if (elev[ti] <= 0) continue;
+      co[ti] = s.countryId;
+      let a = homeTiles.get(s.countryId); if (!a) homeTiles.set(s.countryId, a = []); a.push(ti);
+    }
+  }
+
+  // 1b. STAMP economic catchments into the political field: a settled member's WORKED
+  //    land (its _territoryOwner catchment — the real, bounded hinterland the economy
+  //    already computes) flies that member's flag. This is what makes a political EVENT
+  //    actually transfer TERRITORY on the map: war/secession/absorption all flip
+  //    s.countryId (never the field), so without this a stormed city is a lone enclave
+  //    and its countryside stays the defender's. Here the member's catchment follows its
+  //    flag every pass. `worked` also PINS this land against the shed/smooth below —
+  //    a realm never sheds land its people actively work. Marches BEYOND the worked land
+  //    are the capacity-driven frontier growth (steps 4-5), so extent = worked economy
+  //    + admin marches, NOT the old per-settlement reach-bubble union.
+  const terr = world._territoryOwner, byId = world._byId;
+  let worked = world._fpWorked; if (!worked || worked.length !== N) worked = world._fpWorked = new Uint8Array(N);
+  worked.fill(0);
+  if (T.POP_FIELD) {
+    // PHASE 3: stamp only a small pinned CORE per member (the stability floor) — NOT the
+    // economic catchment. Political extent beyond the cores is grown by capacity (steps
+    // 4-6), so realm size tracks region-capacity instead of the catchment union.
+    for (const [cid, arr] of homeTiles) {
+      for (const hti of arr) {
+        const hy = (hti / tw) | 0, hx = hti - hy * tw;
+        for (let dy = -CORE_R; dy <= CORE_R; dy++) {
+          const yy = hy + dy; if (yy < 0 || yy >= th) continue;
+          for (let dx = -CORE_R; dx <= CORE_R; dx++) {
+            const ni = yy * tw + ((hx + dx + tw) % tw);
+            if (elev[ni] <= 0) continue;
+            co[ni] = cid; worked[ni] = 1;
+          }
+        }
+      }
+    }
+  } else if (terr && byId) {
+    for (let ti = 0; ti < N; ti++) {
+      if (elev[ti] <= 0) continue;
+      const oid = terr[ti]; if (oid < 0) continue;
+      const s = byId.get(oid);
+      if (s && s.mode === "settled" && s.countryId >= 0) { co[ti] = s.countryId; worked[ti] = 1; }
+    }
+  }
+
+  // 2. RELEASE dead-owner land (a fallen realm's blob reverts to wilderness).
+  for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c >= 0 && !alive.has(c)) co[ti] = -1; }
+
+  // 3. CONNECTIVITY: release any tile not reachable from a home tile of its OWNER
+  //    through same-owner land (a fragment severed by conquest reverts to wild).
+  {
+    let reach = world._fpReach; if (!reach || reach.length !== N) reach = world._fpReach = new Uint8Array(N);
+    reach.fill(0);
+    let q = world._fpQ; if (!q || q.length !== N) q = world._fpQ = new Int32Array(N);
+    let qt = 0;
+    // Seed from home tiles AND every WORKED tile: a tile the realm's economy actively
+    // farms is held by definition and must never be released (step 6 shed honours the
+    // same worked-pin). Flood 8-CONNECTED to match the catchment stamp (territory.js,
+    // diagonal) and the frontier growth (step 5, diagonal): a 4-connected release would
+    // strip any tile attached only diagonally / across a naval hop — which the 8-connected
+    // stamp/growth re-add every pass — so co never reaches a fixed point at ragged coasts
+    // or inter-realm diagonal borders and the growth budget leaks re-claiming held ground.
+    for (const arr of homeTiles.values()) for (const ti of arr) if (!reach[ti]) { reach[ti] = 1; q[qt++] = ti; }
+    for (let ti = 0; ti < N; ti++) if (worked[ti] && co[ti] >= 0 && !reach[ti]) { reach[ti] = 1; q[qt++] = ti; }
+    for (let h = 0; h < qt; h++) {
+      const ti = q[h], c = co[ti];
+      const ty2 = (ti / tw) | 0, tx2 = ti - ty2 * tw;
+      const xm = tx2 === 0 ? tw - 1 : tx2 - 1, xp = tx2 === tw - 1 ? 0 : tx2 + 1;
+      const ns = [
+        ty2 * tw + xm, ty2 * tw + xp, ty2 > 0 ? ti - tw : -1, ty2 < th - 1 ? ti + tw : -1,
+        ty2 > 0 ? (ty2 - 1) * tw + xm : -1, ty2 > 0 ? (ty2 - 1) * tw + xp : -1,
+        ty2 < th - 1 ? (ty2 + 1) * tw + xm : -1, ty2 < th - 1 ? (ty2 + 1) * tw + xp : -1,
+      ];
+      for (let k = 0; k < 8; k++) { const ni = ns[k]; if (ni >= 0 && !reach[ni] && co[ni] === c) { reach[ni] = 1; q[qt++] = ni; } }
+    }
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) co[ti] = -1;
+  }
+
+  // 4. Held-tile counts (post-release) → grow/shed budgets vs the capacity target.
+  const held = new Map();
+  for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c >= 0) held.set(c, (held.get(c) || 0) + 1); }
+  // TARGET = FIELD_SPAN·capacity: the whole size limit lives in the (validated) Tilly
+  // capacity, which already collapses under war/insolvency (duress) and towers for a
+  // dominant fiscal-logistic power — so area tracks capacity directly. Growth toward
+  // the target is RATE-CAPPED per pass for gradualness; it is NOT also gated by spare
+  // capacity (that double-counted the limit and stalled every mature realm at
+  // load≈capacity → spare≈0). A realm whose capacity FELL below its held area sheds
+  // the excess in step 6.
+  //   RES-INVARIANT RATE: the target (FIELD_SPAN·capacity·r2) is already invariant in
+  //   real km² per unit capacity; the rate must be too, so the fill TRAJECTORY matches
+  //   across grids. Territory passes fire every TERRITORY_INTERVAL·rNorm ticks
+  //   (rNorm≈resScale) — resScale× LESS often at high res — so tiles/pass carries an
+  //   extra ×resScale (→ EXPAND_RATE·resScale³) to hold real-area-grown-per-step
+  //   constant. Calibrated at the 480-probe (resScale 2).
+  const target = new Map(), grow = new Map();
+  // Phase 3 fills coverage from cores (no catchment bulk), so the per-pass integration cap
+  // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
+  const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
+  for (const [cid, cp] of capOf) {
+    // A realm with NO real capacity yet — a newborn minted after the last polity pass,
+    // or every realm on the FIRST territory pass after a LOAD (capacity is recomputed in
+    // updatePolities, which the load warm-up does not run) — is left untouched: no target,
+    // so it neither grows nor sheds and simply HOLDS its stamped/anchored field until the
+    // next polity pass computes its capacity. Without this a capless realm reads target=0
+    // and step 6 sheds its ENTIRE frontier on that pass (the cold-start load divergence).
+    if (cp <= 0) continue;
+    const t = Math.round(FIELD_SPAN * cp * r2);
+    target.set(cid, t);
+    const g = Math.min(Math.max(0, t - (held.get(cid) || 0)), rateCap);
+    if (g > 0) grow.set(cid, g);
+  }
+
+  // 5. FRONTIER GROWTH — bounded multi-source Dijkstra from each blob's edge into WILD
+  //    land only, per-country budget = min(EXPAND_RATE·spare, target−held), terrain-
+  //    priced exactly like the entity Voronoi (soft-capped relief + fertility-hostility
+  //    ribbon-hug + wet-tropic + organic noise). Contested wild goes to whoever reaches
+  //    it cheaper.
+  if (grow.size) {
+    const noise = claimNoise(world);
+    let cost = world._fpCost; if (!cost || cost.length !== N) cost = world._fpCost = new Float64Array(N);
+    cost.fill(Infinity);
+    const heap = new MinHeap();
+    for (let ti = 0; ti < N; ti++) {
+      const c = co[ti]; if (c < 0 || !grow.has(c)) continue;
+      const y = (ti / tw) | 0, x = ti - y * tw;
+      const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
+      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && elev[ni] > 0 && co[ni] < 0) { cost[ti] = 0; heap.push(ti, 0, c); break; } }
+    }
+    const budget = new Map(grow);
+    while (heap.n > 0) {
+      const { ti, d, c } = heap.popMin();
+      if (d > cost[ti]) continue;
+      if ((budget.get(c) || 0) <= 0) continue;
+      const kn = knOf.get(c), cap = claimCap.get(c) || CLAIM_CAP_CEIL, host = hostOf.get(c) ?? CLAIM_HOSTILITY;
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const ns = [
+        ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1,
+        ty > 0 ? (ty - 1) * tw + xm : -1, ty > 0 ? (ty - 1) * tw + xp : -1,
+        ty < th - 1 ? (ty + 1) * tw + xm : -1, ty < th - 1 ? (ty + 1) * tw + xp : -1,
+      ];
+      const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
+      for (let k = 0; k < 8; k++) {
+        const ni = ns[k]; if (ni < 0) continue;
+        if (elev[ni] <= 0 || co[ni] >= 0) continue;        // grow into WILD land only (never sea, never another realm)
+        let ec = localEdgeCost(world, ti, ni, kn, true);
+        if (ec === Infinity) continue;
+        if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
+        if (host > 0) {
+          const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
+          if (fdef > 0) ec *= 1 + host * fdef * fdef;
+          if (temp && moist) { const wt = claimHostility(temp[ni], moist[ni]); if (wt > 0) ec *= 1 + host * WET_TROPIC_RESIST * wt; }
+        }
+        ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);
+        const nd = d + ec * mul[k];
+        // Only lower cost[ni] when we actually CLAIM it (budget remains). Lowering it for
+        // an exhausted-budget realm would reserve the wild tile — a solvent competitor
+        // then needs to beat the lower cost and is locked out, sterilising contested land
+        // neither realm ends up holding. (Budget can drain to 0 mid-relaxation as earlier
+        // neighbours of this same pop are claimed, so the guard must be here, not only at pop.)
+        if (nd < cost[ni] && (budget.get(c) || 0) > 0) {
+          cost[ni] = nd; co[ni] = c; budget.set(c, budget.get(c) - 1); heap.push(ni, nd, c);
+        }
+      }
+    }
+  }
+
+  // 6. SHED over-capacity marches: a realm holding more than its target releases its
+  //    most PERIPHERAL settlement-less tiles (wild-adjacent, no home tile, not worked) —
+  //    so a weakened realm's frontier recedes on the map, rise-and-fall without needing a
+  //    secession event for every lost march. ONE O(N) sweep: collect each over-target
+  //    realm's peripheral candidates, then release up to its excess. (Only one ring recedes
+  //    per pass; a realm far over target keeps shedding over subsequent passes — gradual,
+  //    which is correct.) The old form nested a 4×-full-N scan inside a per-realm loop —
+  //    O(4N·overRealms), a real blowup at 960/1920 when many realms are over target.
+  {
+    const excess = new Map();
+    for (const [cid, t] of target) { const h = held.get(cid) || 0; if (h > t) excess.set(cid, h - t); }
+    if (excess.size) {
+      let home = world._fpHome; if (!home || home.length !== N) home = world._fpHome = new Uint8Array(N);
+      home.fill(0);
+      for (const arr of homeTiles.values()) for (const ti of arr) home[ti] = 1;
+      for (let ti = 0; ti < N; ti++) {
+        const cid = co[ti];
+        if (cid < 0 || home[ti] || worked[ti]) continue;
+        const rem = excess.get(cid); if (!(rem > 0)) continue;   // realm not over target (or quota spent)
+        const y = (ti / tw) | 0, x = ti - y * tw;
+        const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
+        let edge = false;
+        for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { edge = true; break; } }
+        if (edge) { co[ti] = -1; excess.set(cid, rem - 1); }
+      }
+    }
+  }
+
+  // 7. Cartography (reused, pure _countryOwner ops): fill interior pockets, partition
+  //    the gaps between neighbours, smooth the border. Home tiles are pinned in the
+  //    smoother, so no realm is smoothed out of existence.
+  fillEnclosedWaste(world, co);
+  closeRealmGaps(world, co, T.REALM_GAP_FILL);
+  smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
+}
+
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
+  // FIELD POLITY (T.FIELD_POLITY, docs/field-polity-spec.md): the political map is
+  // the AUTHORED persistent state — countries grow at their own frontier and war
+  // moves tiles; settlements derive their flag from the ground. The seeded reach-
+  // Voronoi below (settlement bubbles → capital recolor → persistence merge) is the
+  // legacy entity model, kept byte-identical under lever-off.
+  if (T.FIELD_POLITY) { fieldPolityTerritory(world); return; }
   const { N, tw, th, elev, fert, temp, moist } = world;
   const resScale = resScaleFor(tw);   // tile budgets are res-relative → keep the same world-fraction at any grid size (see RES_REF_W)
   let co = world._countryOwner;
@@ -995,10 +1289,30 @@ function closeRealmGaps(world, co, D) {
 export function adoptAndFound(world) {
   const co = world._countryOwner, tw = world.tw, elev = world.elev, moist = world.moist;
   if (!co) return;   // territory pass hasn't run yet — nothing to adopt from
+  // Per-realm statecraft, for the STATECRAFT-SYMMETRY adoption gate below: the
+  // realm's most-organised settlement (the same fallback computeCountryTerritory
+  // uses when no political capital is known) carries its administrative capacity.
+  const realmOrg = new Map();
+  const alive = new Set();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId < 0) continue;
+    alive.add(s.countryId);
+    const o = (s.knowledge && s.knowledge.organization) || 0;
+    if (o > (realmOrg.get(s.countryId) || 0)) realmOrg.set(s.countryId, o);
+  }
+  // FIELD POLITY: a subject settlement derives its flag from the AUTHORED field
+  // (_countryOwner) directly — the field's frontier growth is already throttled by
+  // capacity, so there is no need for the render-crawl's implicit anti-runaway lag
+  // (grownLiveOwnerAt reads the crawl; that throttle is an entity-model artefact).
+  const fieldPolity = !!T.FIELD_POLITY;
+  const ownerAt = (ti) => {
+    if (fieldPolity) { const id = co[ti]; return id >= 0 && alive.has(id) ? id : -1; }
+    return grownLiveOwnerAt(world, ti);
+  };
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    const region = elev[ti] > 0 ? grownLiveOwnerAt(world, ti) : -1;
+    const region = elev[ti] > 0 ? ownerAt(ti) : -1;
     // A CITY is a sovereign anchor; so is a frontier SEAT minted by
     // nucleateFrontierStates (a regional-leader town that founded a state — it
     // never reaches city tier in isolation, so it carries sovereignty by flag).
@@ -1040,7 +1354,21 @@ export function adoptAndFound(world) {
       }
       // otherwise village / town: follow the land (region), or stateless on the frontier
       if (s.countryId !== region) {
-        if (s.countryId < 0 && region >= 0) s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
+        if (s.countryId < 0 && region >= 0) {
+          // STATECRAFT SYMMETRY (docs/country-count-size-diagnosis.md): annexing an
+          // INDEPENDENT community is territorial administration, and takes the same
+          // organisation the founding bar demands of a people founding a state
+          // (T.ORG_STATE_MIN — "the statecraft for territorial rule", exactly the
+          // gate three lines up). A realm below it hasn't the records/bureaucracy
+          // to integrate outsiders: its border crawling over a stateless settlement
+          // does not make that settlement a subject — it stays independent
+          // (primary-state fuel) until a QUALIFIED state reaches it or it founds/
+          // joins one itself. Realm↔realm transfers (border shifts over already-
+          // stated settlements) and losses to statelessness are untouched — those
+          // are conquest/border dynamics, not primary adoption.
+          if ((realmOrg.get(region) || 0) < T.ORG_STATE_MIN) continue;
+          s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
+        }
         s.countryId = region;
       }
     }

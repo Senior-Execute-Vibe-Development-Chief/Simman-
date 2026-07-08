@@ -74,7 +74,9 @@ for (let t = 0; t < STEPS; t += win) {
     if (s.knowledge && (s.knowledge.agriculture || 0) > leadAgri) leadAgri = s.knowledge.agriculture;
   }
   const co = world._countryOwner, elev = world.elev;
-  if (co && elev) for (let i = 0; i < co.length; i++) if (elev[i] > 0 && co[i] >= 0) area++;
+  const tilesBy = new Map();   // per-realm claimed tiles → the top-3 snapshot (empire-mortality gate)
+  if (co && elev) for (let i = 0; i < co.length; i++) if (elev[i] > 0 && co[i] >= 0) { area++; tilesBy.set(co[i], (tilesBy.get(co[i]) || 0) + 1); }
+  const top3 = [...tilesBy.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c);
   // trade intensity + component count + price dispersion (post-baseline)
   let flow = 0;
   if (world._linkMoney) for (const v of world._linkMoney.values()) flow += Math.abs(v);
@@ -87,7 +89,7 @@ for (let t = 0; t < STEPS; t += win) {
     pDisp = ps.reduce((a, b) => a + Math.abs(b - mean), 0) / ps.length;
   }
   samples.push({ step: world.step, leadAgri, pop, area, wealth, flow, comps: roots.size, pDisp,
-    cultures: world.cultures ? world.cultures.size : 0 });
+    cultures: world.cultures ? world.cultures.size : 0, top3 });
 }
 console.log(`[stylized] simulated in ${((performance.now() - t0) / 1000).toFixed(0)}s\n`);
 const pearson = (xs, ys) => {
@@ -149,6 +151,32 @@ const st = peopleSimStats(world);
     score("largest empire's share of claimed land", (top1 * 100).toFixed(0) + "%", top1 >= 0.04 && top1 <= 0.55, false, `${areas.length} polities on ${claimed} tiles`);
     score("empire area tail (largest/median)", (areas[0] / Math.max(1, med)).toFixed(1), areas[0] / Math.max(1, med) >= 3);
   } else score("empire land tail", "n/a", false, false, `${areas.length} landed polities`);
+}
+
+// ── 2b. Empire MORTALITY — reported, deliberately NOT scored ──
+// Every distributional gate above (share %, tail ratio, Zipf) passes a world whose
+// top realms are IMMORTAL — a frozen leaderboard of two eternal giants has a fine
+// heavy tail at every instant. The immortal-empire regression
+// (docs/country-count-size-diagnosis.md) survived every validation run exactly this
+// way; worse, it only freezes the leaderboard from ~step 16k, PAST this suite's 15k
+// horizon. Why there is no scored gate here (measured, so the next session doesn't
+// re-attempt it blind): at 15k the churn signal cannot separate a broken build
+// (top-3 union 9 vs 12, same seed — noise); at 24k it separates weakly (7 vs 10)
+// but every OTHER band here is calibrated at 15k and reads modern-era worlds as
+// off-shape (tech gradients legitimately flatten at modernity), so simply running
+// the suite longer produces false warnings. Any scalar bar fitted to those two
+// runs would be outcome-fitting applied to a test. The real instrument is
+// tools/probe_empires.mjs (24k-step anatomy: top-realm ages, capacity vs load,
+// war/absorb acquisition flows — the frozen regime reads two realms with
+// age == run length holding capacity ≫ load at every checkpoint). Here we PRINT
+// the numbers so a human eye catches a freeze in any deep manual run.
+{
+  const back = samples.filter(s => s.step > STEPS / 2 && s.top3 && s.top3.length);
+  const union = new Set();
+  for (const s of back) for (const c of s.top3) union.add(c);
+  let seceded = 0;
+  for (const ev of world.events || []) if (ev.type === "polity.seceded") seceded++;
+  console.log(`        (empire mortality, unscored: back-half top-3 union ${union.size} realms · ${seceded} secessions — deep check: node tools/probe_empires.mjs)`);
 }
 
 // ── 3. Polity lifespans — censoring-aware ──

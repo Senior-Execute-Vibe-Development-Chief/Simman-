@@ -677,21 +677,46 @@ function buildHierarchy(world, c) {
   }
 }
 
-// PROVINCES — assign every member to the nearest CITY of its realm (the capital
-// is always a seat, even if it's only a town): a city plus the settlements nearest
-// to it. Used by the GOVERNOR-revolt path (declareIndependence — an overmighty
+// The REGIONAL radius a provincial seat administers (reference tiles; res-scaled
+// like every other map distance): a province is the land within a region's span of
+// its seat. Numerically equal to countryTerritory's NUCLEATE_R at the 240 reference
+// — but NB NUCLEATE_R is used UNSCALED there (a latent res-invariance inconsistency,
+// noted, not this change's to fix), so the two diverge on larger grids.
+const PROVINCE_SPAN = 9;
+// PROVINCES — assign every member to the nearest SEAT of its realm: the capital,
+// any CITY, and any LOCALLY-STRONGEST member (no stronger realm-mate within a
+// PROVINCE_SPAN — the label-free regional centre). The functional clause matters:
+// the CITY label floats with the age's total population (settlement.js updateTier),
+// pinning labelled cities to the top handful of the world — so a tier test alone
+// left big town-built realms with NO provincial seats at all, which silently killed
+// the governor-breakaway channel (see blocHasSeat) and made over-extended empires
+// immortal. A local power maximum is a seat whatever the census calls it.
+// Used by the GOVERNOR-revolt path (declareIndependence — an overmighty
 // governor takes his whole province) and as a coarse admin grouping. NOTE:
 // over-extension secession no longer sheds by this unit — it's tile-driven now
 // (shedFrontier carves loose territory by the cities standing on it); and the
 // drawn Provinces overlay is its own territory-catchment + homeland partition.
 function assignProvinces(world, c) {
   const seats = [];
-  for (const m of c.members) if (m.id === c.capitalId || (m.tier | 0) >= CITY_TIER) seats.push(m);
+  const span = PROVINCE_SPAN * resScaleFor(world.tw);
+  const span2 = span * span, halfTw = world.tw / 2;
+  const pow = c.members.map(m => settlementPower(m));      // precomputed once — the pair loop below is O(n²)
+  const d2 = (a, b) => { let dx = Math.abs(a.pos.x - b.pos.x); if (dx > halfTw) dx = world.tw - dx; const dy = a.pos.y - b.pos.y; return dx * dx + dy * dy; };
+  for (let i = 0; i < c.members.length; i++) {
+    const m = c.members[i];
+    if (m.id === c.capitalId || (m.tier | 0) >= CITY_TIER) { seats.push(m); continue; }
+    let localTop = true;                                   // locally-strongest member = regional seat
+    for (let j = 0; j < c.members.length; j++) {
+      if (j === i) continue;
+      if (pow[j] > pow[i] && d2(m, c.members[j]) < span2) { localTop = false; break; }
+    }
+    if (localTop) seats.push(m);
+  }
   if (seats.length === 0 && c.capital) seats.push(c.capital);
   for (const s of c.members) {
     let best = seats[0], bd = Infinity;
     for (const seat of seats) {
-      const d = dist(world, s.pos.x, s.pos.y, seat.pos.x, seat.pos.y);
+      const d = d2(s, seat);
       if (d < bd) { bd = d; best = seat; }
     }
     s._provinceCity = best ? best.id : c.capitalId;
@@ -770,19 +795,22 @@ function hasOutsideBorder(world, parentCountryId, bloc) {
   return false;                                       // fully enclosed by parent
 }
 
-// A successor state needs a SEAT of government to carry sovereignty — the
-// same bar a stateless settlement must clear to FOUND a country in the first
-// place (adoptAndFound uses CITY_TIER: a town or above can anchor a realm; a
-// plain village is pure population and can't). Secession is held to that SAME
-// threshold, not a stricter one: any bloc containing a tier ≥ CITY_TIER seat
-// (town+) can break away as a country; a bloc of only villages has no seat and
-// fails (it riots and re-pacifies instead). Requiring a full CITY (tier 2)
-// here was the bug that made empires immortal — a realm built of towns and
-// villages (the normal case: a town capital ruling a sea of villages) had NO
-// member that could ever lead a breakaway, so its frontier revolts ALL failed
-// the gate, re-pacified, and stayed however far past the hold budget it sat.
-function blocHasCity(bloc) {
-  for (const m of bloc) if ((m.tier | 0) >= CITY_TIER) return true;
+// A successor state needs a SEAT of government to carry sovereignty: a CITY, or
+// any member that is its own PROVINCIAL seat (assignProvinces — a regional centre
+// with a working administration, whatever the census labels it). History note,
+// twice-learned: this gate once required a full CITY (tier 2) and that "was the
+// bug that made empires immortal — a realm built of towns and villages had NO
+// member that could ever lead a breakaway, so its frontier revolts ALL failed the
+// gate, re-pacified, and stayed however far past the hold budget it sat." It was
+// fixed by reading CITY_TIER when CITY_TIER meant TOWN — and silently re-broken
+// when CITY_TIER was raised to 2 to kill the founding micro-state swarm (a
+// correct change for FOUNDING, see countryTerritory.js), dragging this bar up
+// with it (measured at 24k steps: 12 secessions vs 76 polity deaths, capacity
+// slack ~200 on the leader). Founding and secession guard different pathologies
+// and need different bars: a successor INHERITS a functioning administration, so
+// the functional provincial-seat test — not the floating city label — is the bar.
+function blocHasSeat(bloc) {
+  for (const m of bloc) if ((m.tier | 0) >= CITY_TIER || m._provinceCity === m.id) return true;
   return false;
 }
 
@@ -1150,7 +1178,7 @@ function declareIndependence(world, c, seed) {
   // Even an ambitious governor can't carve out an enclave with no
   // outside border — his bid is crushed by the surrounding loyalists.
   // The plot still costs him (army loss, ambition reset, cooldown).
-  if (!hasOutsideBorder(world, c.id, bloc) || !blocHasCity(bloc)) {
+  if (!hasOutsideBorder(world, c.id, bloc) || !blocHasSeat(bloc)) {
     for (const m of bloc) {
       ravage(m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
       m._ambition = 0;
@@ -1214,7 +1242,7 @@ function rebel(world, c, seeds) {
     // sovereign state — the parent's loyal provinces surround and crush it.
     // The pressure still vents (unrest reset, towns damaged, grace), it
     // just doesn't produce a successor realm.
-    if (!hasOutsideBorder(world, c.id, bloc) || !blocHasCity(bloc)) {
+    if (!hasOutsideBorder(world, c.id, bloc) || !blocHasSeat(bloc)) {
       for (const m of bloc) {
         ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
         m.unrest = 0;
@@ -1752,14 +1780,57 @@ export function updatePolities(world) {
     for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
     cps.sort((a, b) => a - b);
     world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
-  // CAP_MODEL: the MEDIAN fiscal extraction across real states — the peer baseline the
-  // grounded dominance tail is measured against (revenue is Tilly's real currency of
-  // administrative reach, and it differs from raw coercive power by extraction efficiency).
+  // CAP_MODEL: the MEDIAN fiscal extraction PER MEMBER across real states — the peer
+  // baseline the grounded dominance tail is measured against (revenue is Tilly's real
+  // currency of administrative reach, and it differs from raw coercive power by
+  // extraction EFFICIENCY). Per MEMBER, not per realm — the member is the unit the
+  // load/capacity model counts slots in, so efficiency per member is the like-for-like
+  // normalization. A realm-total baseline paid the dominance tail for BULK: total
+  // revenue is member-count × per-member take, so a 17-member realm of ordinary
+  // members read ~5× "dominant" and its capacity compounded on its own size (measured:
+  // capacity 225 vs load 24 at 17 members — the immortal-juggernaut loop the log2 was
+  // built to prevent, reintroduced through the tail). Efficiency per unit ruled is
+  // what actually let Rome hold more than its peers.
   // Same robust-median rationale as _refCapPower. Only read when the lever is on.
   if (T.CAP_MODEL) { const revs = [];
-    for (const c of countries.values()) if (c.capital && c.members.length > 1) revs.push(govOf(world, c.id)._lastRevenue || 0);
+    for (const c of countries.values()) if (c.capital && c.members.length > 1) revs.push((govOf(world, c.id)._lastRevenue || 0) / c.members.length);
     revs.sort((a, b) => a - b);
+    // Floor at ONE COIN per member per pass — the same unit-ful "is fiscal extraction a
+    // real phenomenon yet?" quantum the old per-realm floor encoded (mature per-member
+    // revenue runs 10²-10³, so the floor is inert once coinage exists). A near-zero
+    // floor (1e-6) made the first realm to mine a sliver of silver read a ~10⁶ fiscal
+    // surplus while the peer median was still 0 — the early tail is bounded by domCeil
+    // either way, but the graduated response is the honest one.
     world._refRevenue = revs.length ? Math.max(1, revs[revs.length >> 1]) : 1; }
+  // ── FIELD population as the coercive base (T.POP_FIELD) ─────────────────────
+  // Under the field model a realm's hold-capacity is funded by the population it
+  // actually GOVERNS — Tilly's real tax/manpower base is the whole region, not the
+  // size of one capital city — instead of settlementPower(capital). Sum the per-tile
+  // population field over each realm's owned ground, convert to power in the SAME
+  // units as settlementPower (× the capital's tech mil·org), and ANCHOR the median
+  // realm to the existing median capital-power (world._refCapPower). So the whole
+  // capacity / dominance / duress / hysteresis stack downstream is byte-unchanged at
+  // the median (backward-comparable) — only the DISTRIBUTION of the base power shifts
+  // from "capital size" to "governed population", the point of the rewrite. The
+  // reference is an emergent median (self-calibrating, like _refCapPower/_refRevenue),
+  // never a fitted absolute.
+  let regionPowOf = null, regionScale = 1;
+  if (T.POP_FIELD && world.popField && world._countryOwner) {
+    const pf = world.popField, co = world._countryOwner, elevA = world.elev, Nn = world.N;
+    const rpop = new Map();
+    for (let ti = 0; ti < Nn; ti++) { const cc = co[ti]; if (cc < 0 || !(elevA[ti] > 0)) continue; rpop.set(cc, (rpop.get(cc) || 0) + pf[ti]); }
+    regionPowOf = new Map(); const rpows = [];
+    for (const c of countries.values()) {
+      if (!c.capital || c.members.length <= 1) continue;
+      const cp = c.capital;
+      const milOrg = settlementPower(cp) / Math.max(1, cp.people || 0);   // strip the capital's own people → the realm's mil·org multiplier
+      const rp = (rpop.get(c.id) || 0) * milOrg;
+      regionPowOf.set(c.id, rp); rpows.push(rp);
+    }
+    rpows.sort((a, b) => a - b);
+    const refRegionPow = rpows.length ? Math.max(1e-6, rpows[rpows.length >> 1]) : 1;
+    regionScale = (world._refCapPower || 1) / refRegionPow;   // median governed-region power → median capital power
+  }
   // Balance of power: recompute the (slow-drifting) alliance map periodically — and
   // once on first run so the war pass never reads an undefined map. Self-calibrating,
   // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
@@ -1793,6 +1864,12 @@ export function updatePolities(world) {
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
+    // Base power feeding HOLD-CAPACITY only: the governed-region population under the
+    // field model (pre-pass above), else the capital's settlement power. Everything
+    // else — dominance (revenue), relPow, thronePower, the army/absorption maths — keeps
+    // reading capPower, so this swaps ONLY what funds administrative reach.
+    let capPowerCap = capPower;
+    if (regionPowOf) { const rp = regionPowOf.get(c.id); if (rp != null) capPowerCap = Math.max(1, rp * regionScale); }
     // Era-weighted salience of the four identity layers, from THIS realm's own
     // development (cohesion.js identityWeightsFor) — the axis of conflict each
     // realm feels shifts as ITS society develops: faith in its medieval,
@@ -1884,11 +1961,13 @@ export function updatePolities(world) {
     let dominance;
     if (T.CAP_MODEL) {
       // GROUNDED tail (CAP_FISC/CAP_LOG): fiscal surplus over peers, its reach multiplied by
-      // logistics — the two compounding into convexity. relFisc = last pass's extraction vs the
-      // peer median (revenue, not raw power, is what funds administration). Logistics≈0 in the
-      // bronze age ⇒ the tail is near-linear and small; it steepens only as the reach techs
-      // (roads→rails) arrive ⇒ integrated mega-empires are a LATE, earned phenomenon.
-      const fiscalSurplus = Math.max(0, (govOf(world, c.id)._lastRevenue || 0) / (world._refRevenue || 1) - 1);
+      // logistics — the two compounding into convexity. relFisc = last pass's extraction PER
+      // MEMBER vs the peer per-member median (revenue, not raw power, is what funds
+      // administration — and it must be measured per unit ruled, or the tail rewards
+      // sheer SIZE and capacity compounds on itself; see the _refRevenue note). Logistics≈0
+      // in the bronze age ⇒ the tail is near-linear and small; it steepens only as the reach
+      // techs (roads→rails) arrive ⇒ integrated mega-empires are a LATE, earned phenomenon.
+      const fiscalSurplus = Math.max(0, ((govOf(world, c.id)._lastRevenue || 0) / Math.max(1, c.members.length)) / (world._refRevenue || 1) - 1);
       const logistics = capE.logistics || 0;
       dominance = Math.min(domCeil, 1 + T.CAP_FISC * fiscalSurplus * (1 + T.CAP_LOG * logistics * fiscalSurplus));
     } else {
@@ -1905,7 +1984,7 @@ export function updatePolities(world) {
                   + 0.5 * (world.tFlood && world.tFlood[capTi] ? 1 : 0)
                   + 0.3 * Math.min(1, (world.riverMag ? world.riverMag[capTi] || 0 : 0) / 3);
     const geoMul = 1 + T.CAP_GEO * geoCore;
-    let peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
+    let peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPowerCap / POW_REF)
                         + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul;
     // IMPERIAL HYSTERESIS (path dependence): the administrative reach, roads and
     // legitimacy a large realm accretes PERSIST after its raw power dips, so a once-
@@ -2147,12 +2226,32 @@ export function updatePolities(world) {
     // Independent of the budget: a strong, distant governor schemes and, when
     // his ambition matures, declares independence and takes his vassal branch
     // with him. A besieged throne emboldens him.
+    // The governor's POWER BASE is his whole PROVINCE (the members that follow
+    // him out — declareIndependence takes exactly this bloc), not his lone seat:
+    // a satrap's strength was his satrapy. For a size-1 province this reduces
+    // to the old seat-only reading, so small realms are unaffected.
+    const provPower = new Map();
+    for (const m of c.members) {
+      if (m.countryId !== c.id) continue;
+      const seatId = m._provinceCity ?? c.capitalId;
+      provPower.set(seatId, (provPower.get(seatId) || 0) + settlementPower(m));
+    }
     for (const s of c.members) {
       if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
-      const seat = (s.tier | 0) >= CITY_TIER;    // must be a CITY (a province seat) — it takes its province with it
+      // A province seat by FUNCTION: a city, or the regional seat assignProvinces
+      // chose (the locally-strongest member). The old CITY-only test starved big
+      // town-built realms of any possible breakaway leader — the floating city
+      // bar pins labelled cities to the age's top handful (see blocHasSeat).
+      const seat = (s.tier | 0) >= CITY_TIER || s._provinceCity === s.id;
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
-      const ratio = settlementPower(s) / capPower;                    // strength vs the throne
+      // Province vs PROVINCE, not province vs the capital city alone: the throne's
+      // strength is likewise its whole home province (court + the heartland around
+      // it). Aggregate-vs-solo let any 4-village frontier province out-"power" an
+      // imperial capital city and set every far seat scheming at once. Falls back
+      // to the raw capital power if the throne's bucket is missing this pass.
+      const thronePower = provPower.get(c.capitalId) || capPower;
+      const ratio = (provPower.get(s.id) || settlementPower(s)) / Math.max(1, thronePower);   // the province's strength vs the throne's province
       // Same blended distance as the hold load — a governor across a
       // mountain range is "farther" than its straight-line reading,
       // proportionally embolder.
@@ -2858,6 +2957,20 @@ function eliminateEnclaves(world, countries) {
     if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
     if (!into) continue;
+    // STATECRAFT + CAPACITY gate — the same bars every other peaceful-transfer
+    // channel pays (absorbWeakNeighbors): swallowing an engulfed community is an
+    // act of ADMINISTRATION, not geometry. Ungated, this was the largest single
+    // consolidation channel (measured: cradle realms at org 0.26-0.40 — BELOW
+    // T.ABSORB_ORG_MIN — logging 30-41 enclave annexations apiece), and the new
+    // ridge-relief walls made it worse: every mountain-pocket statelet pinched
+    // between a realm's marches and a range read as an "enclave" and was vacuumed.
+    // Historically those pockets are precisely where enclave statelets SURVIVE
+    // (Andorra, San Marino — both alive today inside their surrounders). A realm
+    // below the absorption bar, or already at its administrative budget, leaves
+    // the pocket be; it persists until a QUALIFIED administration reaches it (or
+    // it is taken by armies, which this never gated).
+    if (!into.capital || (techEff(into.capital).reachLevel || 0) < T.ABSORB_ORG_MIN) continue;
+    if (!hasAbsorbHeadroom(into)) continue;
     // Claim it POLITICALLY: flip the settlements in the region. The land
     // itself follows on the next territory pass — settlements that changed
     // country re-seed the country Voronoi, and computeTerritory grows the

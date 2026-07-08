@@ -674,9 +674,9 @@ function buildHistoryExport(H){
   const N=H.length,stride=Math.max(1,Math.ceil(N/40)),rows=[];
   for(let i=0;i<N;i+=stride)rows.push(H[i]);
   if(rows[rows.length-1]!==H[N-1])rows.push(H[N-1]);
-  const head="| step | population | gold | land % | countries | settlements | villages | towns | cities | metros | largest empire (tiles) | army |";
-  const sep ="|---|---|---|---|---|---|---|---|---|---|---|---|";
-  const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${r.towns} | ${r.cities} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
+  const head="| step | population | gold | land % | countries | settlements | villages | cities | metros | largest empire (tiles) | army |";
+  const sep ="|---|---|---|---|---|---|---|---|---|---|---|";
+  const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${(r.towns||0)+(r.cities||0)} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
   return `Simman — global stats over time (display units: 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
 }
 
@@ -1781,7 +1781,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // ── Tier filter (Layers panel): drop any component whose ONLY settlements
     // belong to hidden tiers, so only roads connecting the active tiers show.
     const _Lr=layersRef.current;
-    const tierShowR=[_Lr.village,_Lr.town,_Lr.city,_Lr.metropolis];
+    const tierShowR=[_Lr.village,_Lr.city,_Lr.city,_Lr.metropolis];   // tier 1 ("city") follows the city toggle
     const allTiers=tierShowR.every(Boolean);
     let compVisible=null;
     if(!allTiers){
@@ -2330,7 +2330,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // major cities/metropolises as landmarks.
     const tierShow=_identity
       ?[false,false,_L.icons&&_L.city,_L.icons&&_L.metropolis]
-      :[_L.icons&&_L.village,_L.icons&&_L.town,_L.icons&&_L.city,_L.icons&&_L.metropolis];
+      :[_L.icons&&_L.village,_L.icons&&_L.city,_L.icons&&_L.city,_L.icons&&_L.metropolis];
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       if(!tierShow[s.tier|0])continue;
@@ -2355,11 +2355,9 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.strokeStyle="rgba(20,15,5,0.95)";
       ctx.lineWidth=0.7*iconScale;
       // Tier glyph
-      if(tier===0){          // village — dot
+      if(tier===0){          // farming region — dot
         ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fill();ctx.stroke();
-      }else if(tier===1){    // town — square
-        ctx.fillRect(sx-r,sy-r,r*2,r*2);ctx.strokeRect(sx-r,sy-r,r*2,r*2);
-      }else{                 // city / metropolis — diamond
+      }else{                 // city / metropolis — diamond (tiers 1-3 are all "cities")
         ctx.beginPath();ctx.moveTo(sx,sy-r);ctx.lineTo(sx+r,sy);ctx.lineTo(sx,sy+r);ctx.lineTo(sx-r,sy);ctx.closePath();
         ctx.fill();ctx.stroke();
         // Metropolis gets a second concentric diamond for visual weight.
@@ -2875,7 +2873,7 @@ const renderRealmDetail=()=>{
         <span className="au-fade">Treasury</span><span>{fmtGoldKg(c._treasury||0)}{(c._solvency??1)<0.99?" · INSOLVENT":""}</span>
         <span className="au-fade">Tax rate</span><span>{Math.round((c._taxRate||0)*100)}%</span>
         <span className="au-fade">Army</span><span>{fmtPeople(army)}</span>
-        <span className="au-fade">Wealth (all towns)</span><span>{fmtGoldKg(wealth)}</span>
+        <span className="au-fade">Wealth (all cities)</span><span>{fmtGoldKg(wealth)}</span>
         {(c._fronts||0)>0&&<><span className="au-fade">At war</span><span>{c._fronts} front{c._fronts>1?"s":""}{c._capitalBesieged?" · capital besieged":""}</span></>}
       </div>
       {pers&&<div style={{marginBottom:8}}>
@@ -3038,7 +3036,7 @@ const renderInspect=()=>{
   if(!psw)return null;
   const s=psw.settlements.find(x=>x&&x.id===selectedSettlementId&&x.mode==="settled");
   if(!s)return null;
-  const tierName=["farming region","town","city","metropolis"][s.tier]||"settlement";
+  const tierName=["farming region","city","city","metropolis"][s.tier]||"settlement";
   // A farming region (tier 0) does NOT promote in place — it FOUNDS a town nearby
   // once it fills out (urban genesis). Only urban nodes climb, at the sim's
   // canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
@@ -3111,7 +3109,7 @@ const renderInspect=()=>{
   // breakdown below comes from s._mInRate / s._mOutRate).
   const wealthDelta=s._wealthDelta||0;
   const moneyCol=v=>v>0.02?"#3a7":v<-0.02?"#c44":"#8a8f9c";
-  const nextName=isRegion?null:["town","city","metropolis"][s.tier];
+  const nextName=isRegion?null:["larger city","larger city","metropolis"][s.tier];
 
   return(
     <div className="au-scroll"
@@ -3376,7 +3374,7 @@ const renderInspect=()=>{
           <span className="au-fade" style={{fontSize:9,marginLeft:3}}>gold treasury</span>
         </div>
         <span className="au-fade" style={{fontSize:9}}>
-          {isRegion?"rural · founds towns":nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
+          {isRegion?"rural · founds cities":nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
         </span>
       </div>
 
@@ -3756,7 +3754,7 @@ const renderCharts=()=>{
       <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
       <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
       <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
-      <MiniChart data={H} get={d=>d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>(d.towns||0)+d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
       <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
       <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
       <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
@@ -3911,7 +3909,7 @@ return(
   {ED_PFIELDS.map(([k,l])=><EdRow key={k} label={l} value={edParams.personality[k]} min={-1} max={1} step={0.05}
     onChange={v=>setEdParams(p=>({...p,personality:{...p.personality,[k]:v}}))} fmt={v=>v.toFixed(2)}/>)}
   <div className="au-fade" style={{fontSize:9,marginTop:7,fontStyle:"italic"}}>
-    Arm, then click a land tile: a fully-formed realm appears, filled with cities and towns out to the extent its tech allows it to hold. Drop several to compare. (Takes a moment to settle.)</div>
+    Arm, then click a land tile: a fully-formed realm appears, filled with cities out to the extent its tech allows it to hold. Drop several to compare. (Takes a moment to settle.)</div>
 </div>}
 
 {/* ─── Pico hover card ─── */}
@@ -4078,7 +4076,6 @@ return(
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
       <Row k="icons" label="Icons (master)" />
       <Row k="village" label="· Farming Regions" indent={10} />
-      <Row k="town" label="· Towns" indent={10} />
       <Row k="city" label="· Cities" indent={10} />
       <Row k="metropolis" label="· Metropolises" indent={10} />
       <Row k="shocks" label="Plague / famine outlines" />

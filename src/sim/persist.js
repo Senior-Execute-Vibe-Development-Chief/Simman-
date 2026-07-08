@@ -225,6 +225,11 @@ export function saveWorld(world, meta = {}) {
       countryOwner: b64FromTyped(world._countryOwner),
       territoryOwner: b64FromTyped(world._territoryOwner),
       claimPress: b64FromTyped(world._claimPress),
+      // Phase-1 population field (T.POP_FIELD). popField carries state (a
+      // migration integral), so it IS saved; capField is re-derived each step so
+      // it isn't. Absent unless the lever ran → undefined key, dropped by
+      // JSON.stringify, so a default (lever-off) save stays byte-identical.
+      popField: world.popField ? b64FromTyped(world.popField) : undefined,
       // sparse [tile, value] pairs — these arrays are near-empty and carry
       // non-JSON values (-Infinity) in their defaults
       tileCapturedAt: sparseFromTyped(world._tileCapturedAt, -Infinity),
@@ -259,11 +264,17 @@ export function loadWorld(data, opts = {}) {
   if (m.realWind && !opts.realWindFns) {
     throw new Error("This save uses real NCEP winds, which are unavailable in this context (worker). Load it from the main thread with realWindFns.");
   }
-  // Rebuild terrain + pipeline deterministically from the recorded identity.
-  const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
-  // Tuning first: granularity / cadence levers shape createWorld behavior.
+  // Tuning BEFORE terrain: the pipeline itself reads levers now (the floodplain
+  // ribbon is gated on T.RES_INVARIANT_POP), so the save's tuning is part of the
+  // TERRAIN IDENTITY. Applying it after pipelineBuild silently rebuilt different
+  // terrain under the saved civilization whenever the saving and loading sessions
+  // disagreed on a worldgen-facing lever (e.g. a lever-off save loaded in a fresh
+  // worker at default lever-on: different tFlood/fert, moved wasteland walls) —
+  // exactly the mismatch the preset/realWind guards above exist to prevent.
   resetTuning();
   applyTuning(data.tuning);
+  // Rebuild terrain + pipeline deterministically from the recorded identity.
+  const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
   const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.
@@ -316,6 +327,8 @@ export function loadWorld(data, opts = {}) {
     world._countryOwner = loadTyped(data.maps.countryOwner, Int32Array, N) || world._countryOwner;
     world._territoryOwner = loadTyped(data.maps.territoryOwner, Int32Array, N) || world._territoryOwner;
     world._claimPress = loadTyped(data.maps.claimPress, Float32Array, N) || world._claimPress;
+    const pf = loadTyped(data.maps.popField, Float32Array, N);
+    if (pf) { world.popField = pf; world.capField = new Float32Array(N); world._popNext = new Float32Array(N); }   // phase-1 pop field (capField re-derived next step)
     const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);
@@ -366,10 +379,30 @@ export function loadWorld(data, opts = {}) {
   // warm-up minted; the next polity pass re-mints them deterministically at
   // exactly the tick the uninterrupted run would have.
   const _polIds = new Set(world.polities.keys());
+  // Minting a polity record coins its realm NAME (entities.js ensurePolity →
+  // nameFor), which increments the coining culture's nameCounter — a persistent
+  // registry mutation the polity-record rollback below does not undo. Snapshot
+  // the counters and restore them too, or a load consumes a name the saved
+  // world never spent: the next real polity pass then names the statelet with
+  // counter n+1 instead of n, and the loaded trajectory (and the registry
+  // hash) silently diverges from the uninterrupted run.
+  const _nameCtrs = [];
+  for (const reg of [world.cultures, world.faiths, world.languages]) {
+    if (!reg) continue;
+    for (const e of reg.values()) if (e && e.nameCounter !== undefined) _nameCtrs.push([e, e.nameCounter]);
+  }
+  // rebuildOverlords prunes dangling pol._overlord/_depKind links (an overlord that
+  // died between the save's last polity pass and the save) — a persistent-record
+  // mutation the uninterrupted run wouldn't perform until its NEXT pass. Snapshot
+  // and restore those too, same contract as the polity/nameCounter rollback above.
+  const _overlords = [];
+  for (const p of world.polities.values()) _overlords.push([p, p._overlord, p._depKind]);
   rebuildCountries(world);
   rebuildOverlords(world, world.countries);   // colony↔metropole links must exist before the alliance map (else colonies balance against their own metropole until the next ALLIANCE_EVERY boundary)
   updateAlliances(world);
   for (const id of [...world.polities.keys()]) if (!_polIds.has(id)) world.polities.delete(id);
+  for (const [e, n] of _nameCtrs) e.nameCounter = n;
+  for (const [p, ov, dk] of _overlords) { p._overlord = ov; p._depKind = dk; }
   return world;
 }
 

@@ -352,7 +352,13 @@ const AMPHIB_NAV_MIN = 0.25;
 const TRUCE_EXHAUST = 0.4;
 
 export function advanceFronts(world) {
-  const owner = world._territoryOwner;
+  // TILE_POLITY (4c): war is fought COUNTRY vs COUNTRY over the political field
+  // (world._countryOwner). owner[ti] is then a COUNTRY id, resolved through a per-country
+  // war-ADAPTER (built after natMight below) instead of the per-settlement map — so the
+  // whole tactical layer (front scan, capture, storm, casualties) runs on tiles and a
+  // captured city just inherits the flag. Default: the per-settlement catchment map.
+  const TILE_WAR = !!T.TILE_POLITY;
+  const owner = TILE_WAR ? world._countryOwner : world._territoryOwner;
   const byId = world._byId;
   if (!owner || !byId) return;
   const { N, tw, th } = world;
@@ -469,12 +475,43 @@ export function advanceFronts(world) {
   const bondedCC = (a, b) => !!ovFr && (ovFr.get(a) === b || ovFr.get(b) === a);
 
   const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
+  const natArmy = new Map();    // countryId → Σ raw garrison (for the adapter's army + casualty reconcile)
+  const membersOf = TILE_WAR ? new Map() : null;   // countryId → member settlements (casualty distribution)
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     s._M = might(s);
     s._homeTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
     s._armyStart = s.army || 0; s._ccStart = s.countryId;   // snapshot for the manpower casualty tally (end of pass)
-    if (s.countryId >= 0) natMight.set(s.countryId, (natMight.get(s.countryId) || 0) + s._M);
+    if (s.countryId >= 0) {
+      natMight.set(s.countryId, (natMight.get(s.countryId) || 0) + s._M);
+      natArmy.set(s.countryId, (natArmy.get(s.countryId) || 0) + (s.army || 0));
+      if (membersOf) { let a = membersOf.get(s.countryId); if (!a) membersOf.set(s.countryId, a = []); a.push(s); }
+    }
+  }
+  // TILE_WAR: one combatant ADAPTER per alive country — a settlement-shaped object the
+  // existing (already country-keyed) front/force machinery drives, but whose id IS the
+  // country, whose might is the national army, and whose home/court is the capital tile.
+  // owner[ti] (a country id) resolves through `own`; capturing a tile flips _countryOwner;
+  // storming a capital fragments the realm; casualties on adapter.army reconcile to real
+  // garrisons after the pass. Non-TILE_WAR: `own` is just the settlement lookup, unchanged.
+  let own = byId;
+  const adapters = TILE_WAR ? new Map() : null;
+  if (TILE_WAR) {
+    if (world.countries) for (const [cc, c] of world.countries) {
+      const cap = c.capital;
+      if (!cap || cap.mode !== "settled" || cc < 0) continue;
+      adapters.set(cc, {
+        id: cc, countryId: cc, mode: "settled", _isAdapter: true, _capital: cap,
+        _M: natMight.get(cc) || 0, army: natArmy.get(cc) || 0,
+        _homeTi: (cap.pos.y | 0) * tw + (cap.pos.x | 0), pos: cap.pos, tier: cap.tier | 0,
+        knowledge: cap.knowledge, name: realmName(world, cc), _seaReach: cap._seaReach,
+        people: cap.people || 0, wealth: cap.wealth || 0,
+        loyalty: cap.loyalty ?? 1, unrest: cap.unrest || 0,
+        _conqueredAt: cap._conqueredAt ?? -Infinity, _ambition: cap._ambition || 0,
+        _armyStart: natArmy.get(cc) || 0,
+      });
+    }
+    own = adapters;
   }
 
   // Trade-dampened encroachment: a frontier with active cross-border trade
@@ -520,7 +557,7 @@ export function advanceFronts(world) {
   for (let ti = 0; ti < N; ti++) {
     const d = owner[ti];
     if (d < 0) continue;
-    const D = byId.get(d);
+    const D = own.get(d);
     if (!D || D.mode !== "settled") continue;
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
@@ -529,14 +566,14 @@ export function advanceFronts(world) {
     for (let k = 0; k < 4; k++) {
       const ni = ns[k]; if (ni < 0) continue;
       const a = owner[ni]; if (a < 0 || a === d) continue;
-      const A = byId.get(a);
+      const A = own.get(a);
       if (!A || A.mode !== "settled" || A.countryId === D.countryId
           || inTruce(A.countryId, D.countryId)
           || bondedCC(A.countryId, D.countryId)) continue;   // a signed peace holds; a suzerain-vassal bond holds harder
       if (A._M > bestM) { bestM = A._M; bestA = a; }
     }
     if (bestA < 0) continue;
-    const A = byId.get(bestA);
+    const A = own.get(bestA);
     // ── Thin-tile defence penalty ───────────────────────────────────
     // A tile's defensibility is proportional to how much of its
     // neighbourhood is the same country — heartland tiles (8/8 own-
@@ -630,7 +667,7 @@ export function advanceFronts(world) {
   // From the beachhead on, the normal front machinery — national field armies,
   // concentration, exhaustion, reinforcement sailing — grinds inland or is
   // thrown back, exactly as on land.
-  if (T.AMPHIB_BAR > 0) {
+  if (T.AMPHIB_BAR > 0 && !TILE_WAR) {   // TILE_WAR v1: amphibious is per-settlement (sea-reach) — restore in a later slice
     const amphibByDef = new Map();   // defender id → pending beachhead pairs onto it
     for (const A of world.settlements) {
       if (A.mode !== "settled" || !A._seaReach || A._seaReach.size === 0) continue;
@@ -941,7 +978,7 @@ export function advanceFronts(world) {
   // on most sides is surrounded. Geographic, so it doesn't matter whether one big
   // neighbour or several border it.
   const encMask = new Map();   // settlement id → bitmask of octants its land meets an enemy
-  if (ENCIRCLE > 0) {
+  if (ENCIRCLE > 0 && !TILE_WAR) {   // TILE_WAR v1: per-settlement octant scan — encMulOf returns 1 (no penalty) meanwhile
     for (let ti = 0; ti < N; ti++) {
       const d = owner[ti]; if (d < 0) continue;
       const D = byId.get(d); if (!D || D.mode !== "settled") continue;
@@ -1012,71 +1049,64 @@ export function advanceFronts(world) {
         // now-reduced garrison returns exactly that floor.
         const defNow = homeMight(def);
         if (defNow * em <= att._M * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
-          // Was this the capital of its realm? (Decide before the flip.)
-          const dc = world.countries && world.countries.get(def.countryId);
-          const defWasCapital = !!(dc && dc.capitalId === def.id);
-          const oldId = def.countryId;
+          // The SETTLEMENT that changes hands: under TILE_WAR `def` is a country adapter, so
+          // the storm falls on its real capital (which fragments the realm); otherwise on the
+          // settlement itself. Army mechanics below stay on `def`/`att` (the national pools).
+          const dS = TILE_WAR ? def._capital : def;
+          // Was this the capital of its realm? Under TILE_WAR the adapter IS the realm's seat.
+          const dc = world.countries && world.countries.get(dcc);
+          const defWasCapital = TILE_WAR ? true : !!(dc && dc.capitalId === dS.id);
+          const oldId = dcc;
           // Defence broken — the throne-city falls to the attacker.
-          def.countryId = att.countryId;
-          recordOccupation(def, oldId, att.countryId, world.step);   // remember the nation it just lost (homeland)
+          dS.countryId = acc;
+          recordOccupation(dS, oldId, acc, world.step);   // remember the nation it just lost (homeland)
           // Record the storm as a structured event. Names are captured at
           // event time so the log reads as contemporaries knew the actors.
           {
-            const dName = def.name || "a settlement";
-            const toName = realmName(world, att.countryId);
+            const dName = dS.name || "a settlement";
+            const toName = realmName(world, acc);
             if (defWasCapital && oldId >= 0) {
-              logEvent(world, "polity.shattered", { polity: oldId, to: att.countryId, toName,
-                s: def.id, sName: dName, x: def.pos.x | 0, y: def.pos.y | 0 });
+              logEvent(world, "polity.shattered", { polity: oldId, to: acc, toName,
+                s: dS.id, sName: dName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
             } else {
-              logEvent(world, "settlement.captured", { s: def.id, sName: dName, tier: def.tier | 0,
+              logEvent(world, "settlement.captured", { s: dS.id, sName: dName, tier: dS.tier | 0,
                 from: oldId, fromName: oldId >= 0 ? realmName(world, oldId) : undefined,
-                to: att.countryId, toName, x: def.pos.x | 0, y: def.pos.y | 0 });
+                to: acc, toName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
             }
           }
-          if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(att.countryId, (g.get(att.countryId) || 0) + 1); }
-          def._conqueredAt = world.step;
-          def._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
+          if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(acc, (g.get(acc) || 0) + 1); }
+          dS._conqueredAt = world.step;
+          dS._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
           // Captives: the sack of a city carries off part of its people into bondage —
           // war as the primary supply of the slave trade (the captor sells/works them).
-          if (T.SLAVERY && T.CAPTURE_FRAC > 0 && (def.people || 0) > 0) {
-            const taken = (def.people || 0) * T.CAPTURE_FRAC;
-            def.people -= taken; att._captives = (att._captives || 0) + taken;
+          if (T.SLAVERY && T.CAPTURE_FRAC > 0 && (dS.people || 0) > 0) {
+            const taken = (dS.people || 0) * T.CAPTURE_FRAC;
+            dS.people -= taken; att._captives = (att._captives || 0) + taken;
           }
-          def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
-          def._ambition = 0;    // a freshly subdued city isn't plotting (yet)
-          def.unrest = 0;       // the conquered populace is cowed for now
+          dS.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
+          dS._ambition = 0;    // a freshly subdued city isn't plotting (yet)
+          dS.unrest = 0;       // the conquered populace is cowed for now
           // Spoils of war ease the victor's war-weariness (conquest.js unrest).
-          const ag = getPolity(world, att.countryId);
+          const ag = getPolity(world, acc);
           if (ag) ag._spoils = Math.min(2, (ag._spoils || 0) + WAR_SPOILS);
-          // PLUNDER: a sack strips a share of the city's portable coin into the
-          // victor's war chest — a conserved TRANSFER (the old model left every
-          // stormed city's wealth untouched, so conquest paid nothing and war
-          // had no fiscal upside to weigh against its wage bill). The fraction
-          // means "the share of coin that is seizable in a sack"; the rest is
-          // hidden, buried, or not coin at all.
-          if (ag && (def.wealth || 0) > 0) {
-            const plunder = (def.wealth || 0) * PLUNDER_FRAC;
-            def.wealth -= plunder;
+          // PLUNDER: a sack strips a share of the city's portable coin into the victor's chest.
+          if (ag && (dS.wealth || 0) > 0) {
+            const plunder = (dS.wealth || 0) * PLUNDER_FRAC;
+            dS.wealth -= plunder;
             ag.treasury = (ag.treasury || 0) + plunder;
           }
-          // Sack: the storm burns institutions, records and workshops. A
-          // stormed CAPITAL loses its whole administrative apparatus — the
-          // classic dark-age trigger (the fall of Rome, the Bronze-Age
-          // collapse); a provincial city far less. (T.KNOW_DECAY gates the
-          // whole dark-age system; 0 = off.)
-          if (T.KNOW_DECAY > 0 && def.knowledge) {
+          // Sack: a stormed CAPITAL loses its administrative apparatus (the dark-age trigger).
+          if (T.KNOW_DECAY > 0 && dS.knowledge) {
             const hit = Math.min(0.5, (defWasCapital ? 0.22 : 0.10) * T.KNOW_DECAY);
-            def.knowledge.organization = Math.max(0, def.knowledge.organization * (1 - hit));
-            def.knowledge.construction = Math.max(0, def.knowledge.construction * (1 - hit * 0.6));
+            dS.knowledge.organization = Math.max(0, dS.knowledge.organization * (1 - hit));
+            dS.knowledge.construction = Math.max(0, dS.knowledge.construction * (1 - hit * 0.6));
           }
-          bankMomentum(world, att.countryId, MOMENTUM_PER_STORM);   // a stormed city feeds the winning streak
-          tallyDead(world, att.countryId, oldId, (att.army || 0) * ASSAULT_ARMY_COST + (def.army || 0) * 0.7);
+          bankMomentum(world, acc, MOMENTUM_PER_STORM);   // a stormed city feeds the winning streak
+          tallyDead(world, acc, oldId, (att.army || 0) * ASSAULT_ARMY_COST + (def.army || 0) * 0.7);
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);
-          // If it was the capital, the leaderless empire shatters into
-          // regional successor states rather than handing the conqueror the
-          // whole realm intact (conquest.js).
-          if (defWasCapital) fragmentRealm(world, oldId, def.id);
+          // Capital fallen → the leaderless realm shatters into regional successors.
+          if (defWasCapital) fragmentRealm(world, oldId, dS.id);
         }
       }
       continue;   // front's at the core — no countryside left to nibble here
@@ -1148,6 +1178,21 @@ export function advanceFronts(world) {
         const sunkBlind = Math.max(0, Math.min(1, 0.5 + 0.5 * (p.aggression || 0) - 0.4 * (p.commerce || 0)));
         c._warCommit = Math.max(0, Math.min(1.3, appetite * winning * (1 + 0.5 * mom) - weariness * (1 - sunkBlind)));
       } else c._warCommit = 1;
+    }
+  }
+
+  // TILE_WAR casualty RECONCILIATION: the pass fought with per-country ADAPTER armies (the
+  // national pool); the losses are real, so drain each realm's member garrisons by the same
+  // fraction the national army fell — so s.army reflects the battle below (manpower tally) and
+  // at the next muster. Distributes proportionally, so a bled-white realm can't refield fast.
+  if (TILE_WAR && adapters) {
+    for (const [cc, ad] of adapters) {
+      const start = ad._armyStart || 0;
+      const loss = start - (ad.army || 0);
+      if (loss <= 0 || start <= 0) continue;
+      const frac = Math.min(1, loss / start);
+      const mem = membersOf.get(cc);
+      if (mem) for (const s of mem) s.army = Math.max(0, (s.army || 0) * (1 - frac));
     }
   }
 
