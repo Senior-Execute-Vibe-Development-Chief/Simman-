@@ -722,7 +722,7 @@ export default function WorldSim(){
 const canvasRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
-const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
+const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
 const[depthFromSea,setDepthFromSea]=useState(false);
@@ -836,7 +836,17 @@ const[globeVer,setGlobeVer]=useState(0);          // bumps when the (reused) glo
 const globeBufScratchRef=useRef(null);            // the one 25MB texture buffer, reused across rebuilds
 const globeStampRef=useRef(0);                    // last globe rebuild time (throttle)
 const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
-const CH=useMercator?CH_MERC:CH_FLAT;
+// Map SCALE: the worldgen (and therefore sim) grid width in pixels. Lower = coarser coastlines
+// but FASTER, MORE-VARIED development (the sim develops per real-area, and at high resolution the
+// same Earth is spread over 4× the tiles, so ~half as many civilisations form per step — see the
+// resolution-invariance investigation). 1920 = "2×" (finest, current default), 960 = "1×",
+// 480 = "0.5×" (the calibration reference — most varied, quickest to fill). Canvas dims scale WITH
+// the world (RES stays 1, world == canvas), so the map keeps its screen size, just pixelated finer
+// or coarser. Changing this re-memoises `generate` (W/H are in its deps), which auto-regenerates
+// the SAME seed at the new resolution via the [seed,generate] effect.
+const[mapScale,setMapScale]=useState(1920);
+const W=mapScale,H=mapScale>>1,CW=mapScale;
+const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(true);
@@ -882,7 +892,7 @@ const [liveStep,setLiveStep]=useState(0);
 const psHistoryRef=useRef([]);
 const [statsCopied,setStatsCopied]=useState(false);
 const oceanLevelRef=useRef(0.78);const pendingSaveRef=useRef(null);const downloadSaveRef=useRef(null);const saveFileRef=useRef(null);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
-const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
+const presetRef=useRef("earth_sim");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -911,7 +921,7 @@ const baseLayerKey=useRef(null);
 const imgRef=useRef(null);
 // Wind particle animation state
 const windParticlesRef=useRef(null);
-const W=1920,H=960,CW=CW_FLAT;
+// W, H, CW, CH are derived from mapScale above (near the CH definition).
 const workerRef=useRef(null);
 // Helper: finalize a generated world (shared by worker + main thread paths)
 const finalizeWorld=useCallback((w)=>{
@@ -1027,7 +1037,7 @@ finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));
 worker.postMessage({type:'generate',W,H,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
-finalizeWorld(Object.assign(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld]);
+finalizeWorld(Object.assign(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld,W,H]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
@@ -2635,8 +2645,8 @@ if(panDragRef.current){
 const _sc=screenToCanvas(ev);if(!_sc)return;
 const sx=_sc.sx,sy=_sc.sy;
 const wx=Math.floor(sx)*RES,wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
-const w=worldRef.current,i=wy*1920+wx;
-if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
+const w=worldRef.current,i=wy*W+wx;
+if(wx<0||wx>=W||wy<0||wy>=H){setHoverInfo(null);return;}
 const elev=w.elevation[i]||0;
 const temp=w.temperature[i]||0;
 const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
@@ -2646,7 +2656,7 @@ const biome=getBiomeD(elev,moist,temp,0,isFlood);
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*100-60);// range: -60°C to +40°C
-const lat=Math.abs(wy/960-0.5)*2;
+const lat=Math.abs(wy/H-0.5)*2;
 const fertVal=elev>0?(terTi>=0&&terRef.current?terRef.current.tFert[terTi]:tileFert(temp,moist,elev)):0;
 const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
 const wspd=Math.sqrt(wdx*wdx+wdy*wdy);
@@ -4133,6 +4143,16 @@ return(
         <button onClick={()=>{setPresetAndGo("tectonic");setNewWorldOpen(false);}}
           className={"au-btn"+(preset==="tectonic"?" au-active":"")} style={{flex:1,padding:"10px 4px"}}>Tectonic</button>
       </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+        <span className="au-fade" style={{fontSize:11}}>scale</span>
+        {[{f:1920,l:"2×"},{f:960,l:"1×"},{f:480,l:"0.5×"}].map(o=>(
+          <button key={o.f} onClick={()=>setMapScale(o.f)}
+            className={"au-btn au-flat"+(mapScale===o.f?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
+            title={o.f===1920?"Finest coastlines — but slowest, least varied development":o.f===480?"Coarsest — but fastest and most varied (the calibration reference)":"Balanced detail vs development speed"}>{o.l}</button>
+        ))}
+      </div>
+      <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:6}}>
+        Lower scale = coarser map but faster, more-varied civilisations (regenerates this seed).</div>
       {preset==="earth_sim"&&
         <label style={{fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5,marginBottom:6}} className="au-fade">
           <input type="checkbox" checked={useRealWind}
