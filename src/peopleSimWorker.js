@@ -461,7 +461,13 @@ function buildSnapshot() {
     // borders — instead of the recompute crawl. The field is seeded by the SAME nations
     // (capitals) the sim's politics produce, so it draws the same realms with far nicer
     // borders, while the sim's AUTHORITATIVE _countryOwner is untouched (this is render-only).
-    countryClaim = world._ctrlOwner.slice();
+    // The field carries control ACROSS WATER as a naval relay (a thalassocracy projects across
+    // straits), so _ctrlOwner has owners on sea tiles — but water is never TERRITORY. Mask it
+    // to -1 (exactly as CTRL_LIVE does when it publishes _countryOwner) so the drawn border
+    // stops at the coast instead of bleeding into the ocean.
+    const src = world._ctrlOwner, elev = world.elev;
+    countryClaim = new Int32Array(src.length);
+    for (let i = 0; i < src.length; i++) countryClaim[i] = (elev && elev[i] > 0) ? src[i] : -1;
   } else if (sendStatic && world._countryClaim) {
     countryClaim = world._countryClaim.slice();
     // Catchment overlay: paint every WORKED tile (world._territoryOwner) with its
