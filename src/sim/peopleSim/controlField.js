@@ -68,17 +68,24 @@ const WATER_NAV  = _envNum("SIM_CTRL_WNAV", 5.0);  // − this × navigation (a 
 // so its control extends a bounded bulge into enemy land. Additive (not a multiply), so it
 // can't compound/inflate; re-stamped each war pass, the bulge advances toward the capital.
 const WAR_BONUS  = _envNum("SIM_CTRL_WARPUSH", 5.0);
-// PRETTY-MODE fidelity: the field is a re-rendering of the AUTHORITATIVE political map
-// (_countryOwner), so each realm should be DRAWN at its true size. We already KNOW that size
-// (the realm's owned-tile count), so we set reach FEED-FORWARD from it rather than chasing it
-// with a feedback loop: a max-plus budget P claims a region whose area grows ~P², so anchoring
-// P = K·√(area) draws each realm at ≈ its real footprint. Per-realm (a hegemon draws big, a
-// city-state small), no loop → nothing to oscillate: when the real map grows, P eases up and the
-// field tracks it continuously (a step in the target becomes a smooth ramp, since control moves
-// one hop/pass). K is a geometry constant (reach-budget ↔ enclosed-area on the cost grid), not a
-// per-place fit. A previous closed-loop global scale PULSED — a controller fighting the field's
-// one-hop transport delay overshot and reversed; feed-forward removes the loop entirely.
-const K_AREA = _envNum("SIM_CTRL_KAREA", 1.6);   // reach per √(realm tiles); geometry, not a fit
+// PRETTY-MODE (stepTrackingBounded): the field is a faithful, smoothed, continuously-moving
+// DRAWING of the authoritative _countryOwner — not an independent flood. A budget-flood (P=K√area)
+// was tried and drew big/isolated realms far too large: how far a flood spreads depends on how
+// much empty land is around it, not just its budget, so no single constant bounds it (a hegemon
+// on a sparse continent flooded ~2× its real size). Instead, control is SEEDED at capitals and is
+// CHEAP only on a realm's OWN real land, so it fills the real territory gradually (smooth) and
+// cannot escape it: a thin uniform band into wilderness, and BLOCKED from a neighbour's real land
+// (no overwrite). Reached own-land re-charges to SRC_HOLD (a uniform source, no distance decay),
+// so the band is the SAME width for a hegemon and a city-state — size- and resolution-independent.
+const SRC_HOLD   = _envNum("SIM_CTRL_SRC", 6.0);    // control level on reached own land (source ceiling)
+const CHARGE     = _envNum("SIM_CTRL_CHARGE", 1.0); // control gained/pass on own land (tops up the source)
+const WILD_COST  = _envNum("SIM_CTRL_WILD", 1.5);   // + this entering WILDERNESS → thin band ≈ SRC_HOLD/(cost+WILD) tiles
+const TRK_WATER  = _envNum("SIM_CTRL_TWATER", 3.0); // cost to bleed onto a water tile (short coastal relay; masked in render)
+// Recession is SLOWER than advance (hysteresis): the recompute's 144-tick correction cycle nudges
+// real borders in and out, and the band amplifies each wobble (a shed edge drops the band around it
+// too). Fading receded land slowly lets a transient dip heal before the band follows, so the drawn
+// area breathes far less while still tracking genuine growth. (Advance is one hop/pass, unchanged.)
+const TRK_FADE   = _envNum("SIM_CTRL_TFADE", 0.3);  // control lost/pass on un-owned land (< CHARGE ⇒ gentle recession)
 
 function powerOfCapital(c) {
   const cap = c.capital;
@@ -114,6 +121,13 @@ export function stepControlField(world) {
     world._ctrlOwnerNext = new Int32Array(N);
     world._ctrlHoldNext = new Float32Array(N);
   }
+  const cost = landCost(world);
+  const coMap = world._countryOwner;
+  // PRETTY MODE (default): faithfully DRAW the authoritative map, bounded + smoothed. CTRL_LIVE has
+  // no external truth to track (the field IS the map), so it keeps the emergent capital-flood below.
+  if (!T.CTRL_LIVE && coMap && coMap.length === N) { stepTrackingBounded(world, cost); return; }
+
+  // ── CTRL_LIVE: emergent capital-flood (the field authors _countryOwner) ──────────────────────
   // Sources + per-nation reach BUDGET (P, cost-units) and water navigation.
   const sources = new Map();     // cid → capital tile
   const alive = new Set();
@@ -123,16 +137,6 @@ export function stepControlField(world) {
     srcP = world._ctrlSrcP = new Float32Array(maxId);
     navById = world._ctrlNav = new Float32Array(maxId);
   }
-  // Feed-forward reach: tally each realm's REAL owned-tile count from the authoritative map, so a
-  // capital's budget can be set to draw ≈ that footprint (P = K·√area). Pretty mode only — under
-  // CTRL_LIVE the field IS _countryOwner, so anchoring to it would be circular (there we fall back
-  // to the logistics/power budget below).
-  let areaById = world._ctrlArea;
-  if (!areaById || areaById.length < maxId) areaById = world._ctrlArea = new Float32Array(maxId);
-  else areaById.fill(0);
-  const coMap = world._countryOwner;
-  const anchorArea = !T.CTRL_LIVE && coMap && coMap.length === N;
-  if (anchorArea) { for (let t = 0; t < N; t++) { const o = coMap[t]; if (o >= 0 && o < maxId) areaById[o]++; } }
   if (world.countries) {
     const raw = [], pows = [];
     for (const [cid, c] of world.countries) {
@@ -147,26 +151,16 @@ export function stepControlField(world) {
     if (raw.length) {
       pows.sort((a, b) => a - b); const med = Math.max(1e-6, pows[pows.length >> 1]);
       for (const r of raw) {
-        if (anchorArea) {
-          // PRETTY: draw the realm at its TRUE footprint — reach ∝ √(its real owned tiles). The
-          // area already encodes power, logistics and terrain (the recompute balanced them), so we
-          // don't re-multiply by power. REACH_BASE floors a nascent realm (near-zero area) to a
-          // small visible core so it grows out of a seed instead of flickering.
-          srcP[r.cid] = Math.max(REACH_BASE, K_AREA * Math.sqrt(areaById[r.cid] || 0));
-        } else {
-          // LIVE (CTRL_LIVE): no external area to anchor to → the emergent budget = (base +
-          // logistics reach) × a power multiplier around the median (a hegemon reaches past the
-          // midpoint; a weakling holds a core). √ so it compresses.
-          const powMul = Math.max(0.5, Math.min(2.0, 1 + POW_SPAN * (Math.sqrt(r.pow / med) - 1)));
-          srcP[r.cid] = (REACH_BASE + REACH_LOGI * Math.max(0, Math.min(1, r.logi))) * powMul;
-        }
+        // emergent budget = (base + logistics reach) × a power multiplier around the median (a
+        // hegemon reaches past the midpoint; a weakling holds a core). √ so it compresses.
+        const powMul = Math.max(0.5, Math.min(2.0, 1 + POW_SPAN * (Math.sqrt(r.pow / med) - 1)));
+        srcP[r.cid] = (REACH_BASE + REACH_LOGI * Math.max(0, Math.min(1, r.logi))) * powMul;
         navById[r.cid] = Math.max(0, Math.min(1, r.nav));
         sources.set(r.cid, r.ti); alive.add(r.cid);
       }
     }
   }
 
-  const cost = landCost(world);
   const no = world._ctrlOwnerNext, nh = world._ctrlHoldNext;
   // Decay pre-pass: standing control recedes by FADE each tick (DEAD_FADE for a dead realm's
   // orphaned land), so a march not reinforced by its source drops to wilderness over ~reach/
@@ -221,4 +215,62 @@ export function stepControlField(world) {
     if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N).fill(-1);
     for (let t = 0; t < N; t++) co[t] = elev[t] > 0 ? no[t] : -1;
   }
+}
+
+// PRETTY MODE: draw the authoritative _countryOwner, BOUNDED + SMOOTHED (see the header note by the
+// SRC_HOLD constants). Control seeds at capitals and spreads one hop/pass; it is cheap on a realm's
+// OWN real land (fills gradually → smooth), a bit dearer into WILDERNESS (a thin uniform band), and
+// BLOCKED from a neighbour's real land (never overwrites a weak realm). Reached own-land re-charges
+// to SRC_HOLD, so control doesn't deplete with distance — the whole realm fills at a uniform level
+// and the band width is identical for a hegemon and a city-state (size/resolution-independent). The
+// drawn extent is therefore the REAL extent plus a fixed thin band — no vast flood, no √area budget.
+function stepTrackingBounded(world, cost) {
+  const N = world.N, tw = world.tw, th = world.th, elev = world.elev, co = world._countryOwner;
+  const owner = world._ctrlOwner, hold = world._ctrlHold;
+  const no = world._ctrlOwnerNext, nh = world._ctrlHoldNext;
+  // 1) charge / decay: reached own-land (field owner == real owner) charges toward SRC_HOLD (a
+  //    uniform source); anything else recedes by FADE (lost land and the outer band fade smoothly,
+  //    turning the recompute's bursts into continuous motion).
+  for (let t = 0; t < N; t++) {
+    const o = owner[t];
+    if (o >= 0 && o === co[t]) { let v = hold[t] + CHARGE; if (v > SRC_HOLD) v = SRC_HOLD; no[t] = o; nh[t] = v; }
+    else if (o >= 0) { const v = hold[t] - TRK_FADE; if (v <= 0) { no[t] = -1; nh[t] = 0; } else { no[t] = o; nh[t] = v; } }
+    else { no[t] = -1; nh[t] = 0; }
+  }
+  // 2) propagate one hop (max-plus). Edge cost for neighbour-owner o entering tile t: cheap on o's
+  //    OWN real land (fills freely), +WILD_COST into wilderness (thin band), BLOCKED into another
+  //    realm's real land. Water is a short relay (masked in the render) so coasts/near-islands link.
+  //    Reads OLD owner/hold for neighbours → synchronous/deterministic.
+  for (let t = 0; t < N; t++) {
+    const ty = (t / tw) | 0, tx = t - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
+    const baseC = elev[t] <= 0 ? TRK_WATER : cost[t];
+    const realT = co[t];
+    let bh = nh[t], bo = no[t];
+    for (let k = 0; k < 4; k++) {
+      const nn = ns[k]; if (nn < 0) continue;
+      const o = owner[nn]; if (o < 0) continue;
+      let edge;
+      if (o === realT) edge = baseC;                 // o's own real land: fill freely
+      else if (realT < 0) edge = baseC + WILD_COST;  // wilderness: thin band
+      else continue;                                  // another realm's real land: blocked (no overwrite)
+      const cand = hold[nn] - edge;
+      if (cand > bh) { bh = cand; bo = o; }
+    }
+    nh[t] = bh; no[t] = bo;
+  }
+  // 3) seed / pin capitals at SRC_HOLD (bootstrap, and keep every realm at least its seat), threshold.
+  if (world.countries) {
+    for (const [cid, c] of world.countries) {
+      const cap = c.capital; if (!cap || cap.mode !== "settled") continue;
+      const ti = (cap.pos.y | 0) * tw + (((cap.pos.x | 0) % tw) + tw) % tw;
+      if (elev[ti] <= 0) continue;
+      if (SRC_HOLD > nh[ti]) nh[ti] = SRC_HOLD;
+      no[ti] = cid;
+    }
+  }
+  for (let t = 0; t < N; t++) { if (nh[t] <= 0) { no[t] = -1; nh[t] = 0; } }
+  world._ctrlOwner = no; world._ctrlHold = nh;
+  world._ctrlOwnerNext = owner; world._ctrlHoldNext = hold;
 }
