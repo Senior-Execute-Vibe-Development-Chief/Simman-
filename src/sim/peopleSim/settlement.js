@@ -1767,6 +1767,10 @@ export function updateSoil(world) {
   // are already invariant), and the catchment MEAN read back is scale-free.
   const _rnS = rNormPop(world);
   const th = world.th, elev = world.elev, R = Math.max(1, Math.round(SOIL_CATCH_R * _rnS)), R2 = R * R;
+  // CATCHMENT_CLIP: tire only the tiles the settlement actually WORKS (its clipped
+  // catchment, _territoryOwner === s.id) — "soil fatigue is fine if it does step one".
+  // Off ⇒ the disc scan below (byte-identical).
+  const terrClip = T.CATCHMENT_CLIP > 0 ? world._territoryOwner : null;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     climateOf(world, s);
@@ -1793,6 +1797,7 @@ export function updateSoil(world) {
         if (dx * dx + dy * dy > R2) continue;
         const x = ((x0 + dx) % tw + tw) % tw, ti = y * tw + x;
         if (elev[ti] <= 0) continue;                                    // farm soil only
+        if (terrClip && terrClip[ti] !== s.id) continue;                // CATCHMENT_CLIP: only the worked catchment (within borders)
         const v = f[ti] + gain; const fv = v > 1 ? 1 : v;
         f[ti] = fv; sum += fv; cnt++;
       }
