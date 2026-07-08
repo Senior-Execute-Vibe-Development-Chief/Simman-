@@ -2855,6 +2855,18 @@ function absorbWeakNeighbors(world, countries) {
     if (world.debug && world.debug.land) { world.debug.land.absorb++; const g = world.debug.land.gain; g.set(bestId, (g.get(bestId) || 0) + 1); }
     m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
     m._conqueredAt = world.step;              // brief grace to settle in
+    // FIELD-FOLLOW (TILE_POLITY): under capital-only anchoring a settlement's countryId
+    // is DERIVED from the ground each pass, so flipping only m.countryId is reverted by
+    // the next adoptAndFound (and a solo realm's absorbed capital is even stranded into
+    // statelessness). Move the POLITICAL FIELD too — stamp m's worked region into
+    // _countryOwner for its new realm — so the annexation actually TRANSFERS territory,
+    // exactly as war (owner[cti]=att.id) and secession do. Bounded to m's own catchment,
+    // which borders the absorber by construction, so the connectivity flood keeps it.
+    if (T.TILE_POLITY && co) {
+      for (let ti = 0; ti < N; ti++) if (owner[ti] === m.id) co[ti] = bestId;
+      const hti = (m.pos.y | 0) * tw + (((m.pos.x | 0) % tw) + tw) % tw;
+      if (world.elev[hti] > 0) co[hti] = bestId;
+    }
     absorbedLoad.set(bestId, committed + estAbsorbLoad(world, target, m));
   }
 

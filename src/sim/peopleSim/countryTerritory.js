@@ -92,6 +92,23 @@ const CORE_R   = 1;   // half-width (tiles) of the pinned urban core stamped per
 const POP_FILL = 12;  // rateCap multiplier under POP_FIELD: realms reach their (binding) capacity
                       // target in fewer passes, so coverage fills sooner and size is capped by
                       // FIELD_SPAN·capacity (not by how far growth got) — making size tunable.
+// ── TILE_POLITY coverage floor ──────────────────────────────────────────────
+// Under capital-only anchoring (TILE_POLITY) the per-settlement anchors no longer
+// paint the settled belt, so a realm's extent is ONLY its capacity-grown blob — and
+// the Tilly stack computes NO hold-capacity for a SOLO city-state (conquest.js sizes
+// MULTI-province holds and skips the lone realm), so `_capacity` is 0, the growth
+// target is 0, and the realm FREEZES at its capital core. It never covers its region,
+// never touches a neighbour, so war finds no fronts (captured=0) and nothing
+// consolidates — the measured 3-14%-claimed over-fragmentation. Fix the MECHANISM:
+// every realm is guaranteed a growth target of at least an ORG-scaled administrative
+// HINTERLAND around its capital — the coverage the settlement scatter used to give,
+// now emergent from the capital's reach (organisation tech, the same thing that sized
+// the entity-model catchment). Capacity still sets size ABOVE this floor (a great
+// power sprawls past its hinterland into low-pop marches, FIELD_SPAN·capacity), so the
+// size distribution is unchanged where capacity already binds; only the frozen small
+// realms grow to cover their own land, restoring fronts and consolidation.
+const COVER_BASE = _envNum("SIM_COVER_BASE", 25);   // ref-tiles a realm covers around its capital at organisation 0 (a chiefdom's core region)
+const COVER_ORG  = _envNum("SIM_COVER_ORG", 150);   // + this × capital organisation — an administered hinterland scales with statecraft
 // Wet-tropic claim resistance: hot AND wet rainforest (the Congo, the Amazon, New
 // Guinea) was easy to walk through but near-impossible to ADMINISTER — disease,
 // no roads, leached soil, no storable surplus to tax or garrison. So it amplifies
@@ -464,14 +481,29 @@ function fieldPolityTerritory(world) {
   // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
   const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
   for (const [cid, cp] of capOf) {
-    // A realm with NO real capacity yet — a newborn minted after the last polity pass,
-    // or every realm on the FIRST territory pass after a LOAD (capacity is recomputed in
-    // updatePolities, which the load warm-up does not run) — is left untouched: no target,
-    // so it neither grows nor sheds and simply HOLDS its stamped/anchored field until the
-    // next polity pass computes its capacity. Without this a capless realm reads target=0
-    // and step 6 sheds its ENTIRE frontier on that pass (the cold-start load divergence).
-    if (cp <= 0) continue;
-    const t = Math.round(FIELD_SPAN * cp * r2);
+    let t = Math.round(FIELD_SPAN * Math.max(0, cp) * r2);
+    if (T.TILE_POLITY) {
+      // COVERAGE FLOOR (capital-only anchoring): guarantee every realm a growth target
+      // of at least an org-scaled administrative hinterland, so a solo city-state whose
+      // Tilly capacity is 0 (conquest.js sizes only multi-province holds) still covers
+      // its region instead of freezing at its capital core. max() with the capacity
+      // target, so great powers (capacity-bound) are unchanged — only the frozen small
+      // realms grow. This also SUPERSEDES the cold-start guard below: a floor'd realm has
+      // a real target ≥ its held core, so step 6 never sheds a capless realm's frontier.
+      const kn = knOf.get(cid);
+      const org = (kn && kn.organization) || 0;
+      const floor = Math.round((COVER_BASE + COVER_ORG * org) * r2);
+      if (floor > t) t = floor;
+    } else if (cp <= 0) {
+      // A realm with NO real capacity yet — a newborn minted after the last polity pass,
+      // or every realm on the FIRST territory pass after a LOAD (capacity is recomputed in
+      // updatePolities, which the load warm-up does not run) — is left untouched: no target,
+      // so it neither grows nor sheds and simply HOLDS its stamped/anchored field until the
+      // next polity pass computes its capacity. Without this a capless realm reads target=0
+      // and step 6 sheds its ENTIRE frontier on that pass (the cold-start load divergence).
+      continue;
+    }
+    if (t <= 0) continue;
     target.set(cid, t);
     const g = Math.min(Math.max(0, t - (held.get(cid) || 0)), rateCap);
     if (g > 0) grow.set(cid, g);
