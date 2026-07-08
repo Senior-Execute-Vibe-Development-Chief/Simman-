@@ -389,3 +389,65 @@ Settlements stop having any physical claim: no `s.pos`-anchored territory, no
 per-settlement food. They are read OUT of the pop field as the names/dynasties/culture/
 trade/courts that sit on dense tiles — "abstract story and economic units, no PHYSICAL
 impact." Political territory is keyed entirely to region development.
+
+---
+
+# Phase 4 — settlement-INDEPENDENT political layer (TILE_POLITY)
+
+Goal (user): "other than the economy stuff, I should be able to entirely remove settlements
+and it wouldn't affect a country's growth, land, anything." The capital MAY be used as the
+seat. Three couplings remain (survey): anchor (jumping), birth (spawning), war (moving to
+take them). War is the dominant one — it runs on a SEPARATE per-settlement map.
+
+## 4a — capital-anchored territory (IMPLEMENTED, `T.TILE_POLITY`, default off)
+
+`fieldPolityTerritory` anchor/core/connectivity/shed key off the CAPITAL tile only (one
+change to the home-tile build, with a settlement fallback for the pre-first-polity/post-load
+pass). Non-capital cities ride the ground (derive their flag, carry economy) but never pin,
+seed, or create political land, so the field grows organically instead of jumping to
+settlement events. Byte-identical off (809cfa67/8da625d2). Measured on (480/16k): 33 realms,
+top-5 7.6/5.7/5.3/4.3/4.0M km² (healthy), claimed 31.7% (fills slower), captures 359 vs ~97.
+
+The capture churn IS the tell that 4c is required: war still fights on the per-settlement
+catchment map (`_territoryOwner`), which now diverges from the capital-anchored field, so
+non-capital cities flip constantly.
+
+## 4c — war on the tile field (DESIGNED, not yet implemented)
+
+**Design: country war-adapters.** The strategic layer (truces, coalitions, exhaustion, casus
+belli — armies.js:378-513) and the force model (`offForceOf`/`defForceOf`/concentration/
+`effPool` — 748-926) are ALREADY country-keyed and carry over unchanged. Only the tactical
+layer (front scan 515-617, capture 1085-1102, storm 985-1082, casualties 1103-1109,
+encirclement 928-966, amphibious 619-685) is per-settlement. Under `TILE_POLITY`:
+
+- `owner = world._countryOwner` (not `_territoryOwner`); the owner-resolution lookups
+  (`byId.get(owner[ti])`) use a per-country ADAPTER map, not the settlement map.
+- One adapter per alive country: `{id:cc, countryId:cc, mode:"settled", _M: natMight(cc),
+  army: Σ member garrisons, _homeTi: capital tile, pos/tier/knowledge/name/_seaReach from the
+  capital, people/wealth from the capital}`. So the front scan finds COUNTRY borders and the
+  strength is the national army.
+- **Distance decay (new):** national might must fall with distance from the capital, or a
+  realm projects full strength at every far border (unlimited reach). Effective might at a
+  front tile = `natMight · reachDecay(dist(capitalTile, ti) / c.range)`. This replaces the
+  per-settlement locality the old model got for free (the adjacent garrison was local).
+- **Capture:** `owner[cti] = att.id` already flips co (att.id = cc). Hold clocks unchanged.
+- **Storm (canStorm at the capital tile):** the ONLY storm is the capital's fall → the
+  existing `fragmentRealm(oldId, seat)` path, but the seat is a settlement, so pass the
+  capital settlement (adapter._capital). No per-city storm (cities inherit the flag from co).
+- **Casualties:** the pass mutates `adapter.army` (national pool). Reconcile AFTER the pass:
+  distribute each country's army delta across its real member garrisons proportionally, so
+  manpower/muster stay real. (musterArmies unchanged — garrisons are still per-settlement.)
+- **Encirclement (928-966):** the per-settlement octant scan becomes per-country (scan co,
+  octants around the capital) — or drop it in v1 and restore later.
+
+**This is one indivisible pass + a reconciliation, and it needs re-tuning** (distance decay,
+capture budget, storm bar) so wars stay episodic + decisive rather than stalemating or
+steamrolling. Build-measure-tune against probe_empires (turnover, sizes) + stylized
+(war-death gates), lever-gated throughout. Then 4b (birth at field peaks) is the last piece.
+
+## 4b — birth at population-field peaks (DESIGNED, not yet implemented)
+
+Under `TILE_POLITY`, `nucleateFrontierStates` seeds a new realm at an unclaimed popField
+MAXIMUM far from existing capitals (seat = that tile; a capital settlement may sit on it),
+not from a stateless settlement cluster; and a stateless non-capital city does NOT found a
+state (it stays stateless / joins its region) — so countries stop "spawning with" settlements.
