@@ -21,7 +21,7 @@ import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
 import { narrate } from "./sim/peopleSim/events.js";
 import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
-import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
+import { applyTuning, resetTuning, T } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
@@ -457,8 +457,18 @@ function buildSnapshot() {
   let countryClaim = null;
   if (sendStatic && world._countryClaim) {
     countryClaim = world._countryClaim.slice();
+    // Catchment overlay: paint every WORKED tile (world._territoryOwner) with its
+    // settlement's country, so a realm colours the land its settlements farm even
+    // while its capital's projected claim is still ~0. But this paints the RAW
+    // catchment — recomputed in a batch every territory pass, and reaching AHEAD of
+    // the smooth border CRAWL (_countryClaim) — so it makes the political map JUMP
+    // each pass. Under the reactive model (CATCHMENT_CLIP) the catchment is already
+    // clipped to _countryOwner, so the crawled border ALREADY covers it: skip the
+    // overlay and let the border be the political map, which creeps tile-by-tile
+    // instead of flickering (and a new realm no longer flashes a seed-catchment box
+    // that then clips away). Kept for the legacy free-catchment model (lever off).
     const towner = world._territoryOwner, byId = world._byId;
-    if (towner && byId) {
+    if (towner && byId && !T.CATCHMENT_CLIP) {
       for (let i = 0; i < countryClaim.length; i++) {
         const sid = towner[i];
         if (sid < 0) continue;
