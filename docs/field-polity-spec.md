@@ -479,3 +479,74 @@ Tuning directions (next focused effort, all lever-gated):
   field so weak neighbours are peacefully vacuumed, thinning the 62-realm proliferation.
 - Or: don't fight on the sparse field — grow realms into contact first (raise POP_FILL so co
   fills faster), then the tile-war has fronts.
+
+---
+
+# Reactive settlements — the catchment lives INSIDE the border (CATCHMENT_CLIP + coverage floor)
+
+Directive (user): "the economic catchment should be purely choosing the tiles WITHIN that
+country's boundaries, not EFFECTING those boundaries. Settlements should be entirely
+reactionary to the country's tiles and borders, never affecting them." (Except the CAPITAL,
+which seats the realm.) This completes the inversion the earlier phases began: `_countryOwner`
+is the authored, settlement-independent political map (capital-anchored under `TILE_POLITY`);
+`_territoryOwner` is now a REACTIVE read of it.
+
+## CATCHMENT_CLIP (experimental lever, default off) — the reactive catchment
+
+`territory.js computeTerritory`: under the lever every owner-writing site (the guaranteed core,
+the hinterland Voronoi, the multi-source Dijkstra claim) is clipped to `co === s.countryId`, and
+any catchment tile that fell outside its owner's country (borders shifted) is released. So a
+settlement CHOOSES which of its country's tiles it works but can never claim ground outside the
+border, and its catchment can never create or move one. The cost frontier still walks THROUGH
+out-of-country land (a member can reach its country's ground across a wild gap) but never works
+foreign/wild soil. A STATELESS settlement (countryId owns no ground) still works nearby WILDERNESS
+(`co<0`), a local food floor so primary state-formation still bootstraps. Clips to the LAST pass's
+`_countryOwner` (1-pass stale — borders drift slowly; inert before the first political pass).
+`settlement.js updateSoil` clips the same way — soil tires only the worked catchment. Byte-identical
+off (hashbase 809cfa67/8da625d2). Mining stays (it already reads the catchment's `_minableTiles`,
+now within the border).
+
+## Why capital-only borders needed two mechanism fixes first
+
+Turning on `TILE_POLITY` (capital-only anchoring) alone over-fragments: 480/16k gave **62 realms,
+14% claimed**, the tile-war consolidating nothing. Instrumentation (`tools/probe_coverage.mjs`) found
+the causes were real MECHANISM gaps, not tuning knobs:
+
+1. **Frozen solo realms.** Under capital-only anchoring a realm's extent is only its capacity-grown
+   blob, and `conquest.js` computes NO hold-capacity for a solo city-state (the Tilly stack sizes
+   MULTI-province holds and `continue`s past the lone realm) → target 0 → the realm freezes at its
+   9-tile capital core, never covers its region, never borders a neighbour → war finds no fronts →
+   nothing consolidates → settlements stay stateless and found their own realms without limit.
+   **Fix — coverage floor** (`fieldPolityTerritory`): guarantee every realm a growth target of at
+   least an ORG-scaled administrative HINTERLAND around its capital (`COVER_BASE + COVER_ORG·org`,
+   env-tunable `SIM_COVER_BASE/ORG`, default 25/150), `max()`'d with the capacity target so great
+   powers (capacity-bound) are unchanged and only the frozen small realms grow. This is the coverage
+   the per-settlement anchors used to provide, now emergent from the capital's reach.
+
+2. **Inert absorption.** `absorbWeakNeighbors` flipped only `s.countryId`; under field-derived flags
+   the next `adoptAndFound` reverted it (and stranded a solo realm's absorbed capital into
+   statelessness). **Fix**: under `TILE_POLITY` the annexation also stamps the settlement's worked
+   region into `_countryOwner`, so it transfers territory exactly as war and secession do.
+
+Both `TILE_POLITY`-gated → byte-identical off; the reactive mode itself round-trips byte-identical.
+
+## Result (480/16k, TILE_POLITY=1 + CATCHMENT_CLIP=1 vs baseline defaults)
+
+    baseline : 36 realms, 41.1% claimed, top-5 7.7/6.3/5.8/5.4/4.6 M km2, pop 188k, terr 54%
+    reactive : 40 realms, 47.7% claimed, top-5 5.8/5.3/5.3/5.2/4.7 M km2, pop 154k, terr 48%
+
+Healthy: a tight great-power band (no runaway megastate — the top empire is SMALLER than baseline),
+vigorous turnover (shattered 40, annexed 7, ended 37; realm ages span 3.8k–13.9k so they rise AND
+fall; the #29 realm topped the board at 12k then fell out of the top-5 by 16k), Europe/Asia
+partitioned. Population is lower BY DESIGN: the catchment is now bounded by the political border
+(`terr ≤ co`), which is the whole point — settlements farm only what their country holds.
+
+## Still lever-gated (not the shipped default)
+
+The reactive model is byte-identical off and lives behind `TILE_POLITY=1` + `CATCHMENT_CLIP=1`.
+Making it the DEFAULT is a separate decision: the stylized-fact pop band (169–221k) was calibrated
+on the free-catchment regime and wants re-derivation for the border-bounded one (pop ~154k is
+correct, not broken), and 960-resolution + a full 3-seed re-validation should precede the flip.
+Deeper follow-ups: the tile-war still consolidates only by capital-storm (`captured=0` non-capital
+storms — distance-decayed national might + a shrink-to-collapse path would make war more decisive);
+war/secession heal the field gradually (via growth) rather than instantly.
