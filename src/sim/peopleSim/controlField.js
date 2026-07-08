@@ -68,6 +68,16 @@ const WATER_NAV  = _envNum("SIM_CTRL_WNAV", 5.0);  // − this × navigation (a 
 // so its control extends a bounded bulge into enemy land. Additive (not a multiply), so it
 // can't compound/inflate; re-stamped each war pass, the bulge advances toward the capital.
 const WAR_BONUS  = _envNum("SIM_CTRL_WARPUSH", 5.0);
+// PRETTY-MODE fidelity: the field is a re-rendering of the AUTHORITATIVE political map
+// (_countryOwner), so its TOTAL drawn extent should MATCH that map's rather than drift to its
+// own scale. A single global reach SCALE (world._ctrlReachScale) is slewed each pass toward the
+// value that makes the field enclose the same total land the real map holds — under-draw ⇒ reach
+// grows, over-draw ⇒ shrinks. ONE aggregate scalar (never per-place, so it can't fit a named
+// region), clamped and slow, so it self-calibrates fill to the true extent on any seed/map with
+// no fitted constant. Area grows ~P², so the per-pass correction is √(realArea/fieldArea).
+const REACH_SLEW      = _envNum("SIM_CTRL_SLEW", 0.1);   // fraction of the gap closed per field pass
+const REACH_SCALE_MIN = _envNum("SIM_CTRL_SMIN", 0.5);
+const REACH_SCALE_MAX = _envNum("SIM_CTRL_SMAX", 4.0);
 
 function powerOfCapital(c) {
   const cap = c.capital;
@@ -103,6 +113,28 @@ export function stepControlField(world) {
     world._ctrlOwnerNext = new Int32Array(N);
     world._ctrlHoldNext = new Float32Array(N);
   }
+  // Fidelity feedback: slew the global reach SCALE so the field's total drawn land tracks the
+  // authoritative _countryOwner's. Measured from the LAST pass's owner (owner[] here) vs the real
+  // map; self-limiting (more field area ⇒ smaller ratio ⇒ less growth), converges to fieldArea ≈
+  // realArea. Pretty mode only — under CTRL_LIVE the field IS _countryOwner so the ratio is 1.
+  let reachScale = world._ctrlReachScale || 1;
+  {
+    const co = world._countryOwner;
+    if (co && co.length === N && !T.CTRL_LIVE) {
+      let realA = 0, fieldA = 0;
+      for (let t = 0; t < N; t++) {
+        if (elev[t] <= 0) continue;
+        if (co[t] >= 0) realA++;
+        if (owner[t] >= 0) fieldA++;
+      }
+      if (realA > 50 && fieldA > 50) {
+        const correction = Math.sqrt(realA / fieldA);   // area ∝ P² ⇒ move P by √(area ratio)
+        reachScale += (reachScale * correction - reachScale) * REACH_SLEW;
+        reachScale = Math.max(REACH_SCALE_MIN, Math.min(REACH_SCALE_MAX, reachScale));
+      }
+    }
+    world._ctrlReachScale = reachScale;
+  }
   // Sources + per-nation reach BUDGET (P, cost-units) and water navigation, anchored to the
   // median power (relative size, not a fitted absolute).
   const sources = new Map();     // cid → capital tile
@@ -130,7 +162,7 @@ export function stepControlField(world) {
         // budget = (base + logistics reach) × a power multiplier around the median (a hegemon
         // reaches past the midpoint; a weakling holds a core). √ so it compresses.
         const powMul = Math.max(0.5, Math.min(2.0, 1 + POW_SPAN * (Math.sqrt(r.pow / med) - 1)));
-        srcP[r.cid] = (REACH_BASE + REACH_LOGI * Math.max(0, Math.min(1, r.logi))) * powMul;
+        srcP[r.cid] = (REACH_BASE + REACH_LOGI * Math.max(0, Math.min(1, r.logi))) * powMul * reachScale;
         navById[r.cid] = Math.max(0, Math.min(1, r.nav));
         sources.set(r.cid, r.ti); alive.add(r.cid);
       }
