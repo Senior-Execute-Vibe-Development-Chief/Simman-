@@ -31,13 +31,18 @@ import { recomputeClimMod } from "./peopleSim/climate.js";
 import { rebuildCountries, updateAlliances, rebuildOverlords } from "./peopleSim/conquest.js";
 import { T, applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
 // (tileCapturedAt, soilFatigue), claimPress, and the realWind identity flag.
 // Loading is additive-tolerant: every new field has a load default (or is
 // re-derived), so v1 saves migrate by simply loading.
+// v2 → v3: the reactive-settlement model (TILE_POLITY + CATCHMENT_CLIP) became
+// default-ON. No new PAYLOAD — the bump exists only so loadWorld can tell a
+// pre-reactive world (made when both levers defaulted OFF and therefore stored NO
+// delta for them) from a modern one, and keep it in its original regime on load
+// instead of silently continuing it under the reactive default. See loadWorld.
 
 // Persistent per-settlement state. Everything else on a settlement object is
 // a derived cache some pass rebuilds (territory tallies, trade reach, money
@@ -273,6 +278,19 @@ export function loadWorld(data, opts = {}) {
   // exactly the mismatch the preset/realWind guards above exist to prevent.
   resetTuning();
   applyTuning(data.tuning);
+  // Default-flip compat (v2 → v3): TILE_POLITY + CATCHMENT_CLIP (the reactive-
+  // settlement model) became default-ON in v3. A pre-v3 world was made when both
+  // defaulted OFF, so — since a save only stores levers that DIFFER from the
+  // then-default — it carries NO delta for them, and a naive load would resetTuning
+  // them to the NEW default (ON) and silently continue the old world in the reactive
+  // regime (catchment suddenly clips, borders re-key to capitals). Restore the value
+  // those saves were made under, UNLESS the save explicitly set the lever (an
+  // experimental pre-v3 reactive save keeps its own choice).
+  if (data.v < 3) {
+    const tn = data.tuning || {};
+    if (!("TILE_POLITY" in tn)) T.TILE_POLITY = 0;
+    if (!("CATCHMENT_CLIP" in tn)) T.CATCHMENT_CLIP = 0;
+  }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
   const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });

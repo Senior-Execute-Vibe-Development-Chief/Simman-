@@ -553,14 +553,34 @@ one or two). The border-bounded population is NOT a broken economy — the alive
 at ~120–140k; only the magnitude is lower than the free-catchment 188k, correctly (settlements farm
 only what their country holds), and no gate depends on the absolute magnitude.
 
-## Still lever-gated (not the shipped default)
+## 960 spot-check — comparable to the entity model
 
-The reactive model is byte-identical off and lives behind `TILE_POLITY=1` + `CATCHMENT_CLIP=1`.
-Flipping the DEFAULT is a separate call with two open items: (1) 960-resolution re-validation (the
-country-size complaint historically lives at 960; the coverage floor is in ref-tiles ×r2 so it
-scales, but the regime is untested there); (2) save-compat — a save stores only levers that DIFFER
-from the default, so a world saved under the current default would load and CONTINUE in reactive
-mode after a flip, a visible behaviour change on old saves. Deeper follow-ups (not blocking): the
-tile-war consolidates only by capital-storm (`captured=0` non-capital storms — distance-decayed
-national might + a shrink-to-collapse path would make war more decisive); war/secession heal the
-field gradually (via growth) rather than instantly.
+`SIM_TUNE=TILE_POLITY=1,CATCHMENT_CLIP=1 node tools/probe_empires.mjs 16000 960 8817` vs the
+baseline at 960/16k:
+
+    baseline @960 : 35 realms, 35.5% claimed  (captured 40, shattered 16, ended 17)
+    reactive @960 : 32 realms, 31.3% claimed  (shattered 25, annexed 1, ended 24)
+
+Comparable — the reactive map is if anything slightly MORE consolidated (32 vs 35 realms), with
+vigorous turnover, not more fragmented. (960 develops slower per tick, so 16k is an earlier
+developmental stage than 480/16k — coverage is still climbing.) The coverage floor is in ref-tiles
+×r2, so it scales with resolution.
+
+## DEFAULT-ON — the reactive-settlement model is now the sim
+
+`TILE_POLITY` and `CATCHMENT_CLIP` flipped to default 1: settlements are reactionary to the
+political map everywhere. Validation for the flip:
+- **Stylized 3/3 seeds pass** (8817/4242/777) all hard gates at exactly 2 soft warnings (budget 2)
+  — the same score as the pre-reactive field default; largest-empire share 8–14% (no runaway).
+- **960 comparable** to the entity model (above).
+- **Smoke green** under the new default; new default hashbase 8817=d3acad98 31337=ffeab697.
+- **`TILE_POLITY=0` + `CATCHMENT_CLIP=0` recovers the pre-reactive field model byte-for-byte**
+  (809cfa67/8da625d2) — the fully-validated legacy layer is one lever-pair away.
+- **Save-compat (persist.js SAVE_VERSION 2→3):** a pre-v3 world (made when both levers defaulted
+  OFF, so it stored no delta for them) loads back into its ORIGINAL regime — loadWorld forces both
+  levers to 0 for `data.v < 3` unless the save set them explicitly — so old saves are NOT silently
+  continued under the reactive default. New saves are v3 and reactive.
+
+Deeper follow-ups (not blocking): the tile-war consolidates only by capital-storm (`captured=0`
+non-capital storms — distance-decayed national might + a shrink-to-collapse path would make war more
+decisive); war/secession heal the field gradually (via growth) rather than instantly.
