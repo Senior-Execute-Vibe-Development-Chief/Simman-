@@ -451,3 +451,31 @@ Under `TILE_POLITY`, `nucleateFrontierStates` seeds a new realm at an unclaimed 
 MAXIMUM far from existing capitals (seat = that tile; a capital settlement may sit on it),
 not from a stateless settlement cluster; and a stateless non-capital city does NOT found a
 state (it stays stateless / joins its region) — so countries stop "spawning with" settlements.
+
+## 4c v1 RESULT (implemented, lever-gated) — mechanically right, dynamics untuned
+
+Runs clean, byte-identical off. But the first measurement (480/16k, TILE_POLITY=1) shows it is
+NOT yet healthy: 43→52→62 realms with claimed 3.3%→6.4%→13.9% — an OVER-FRAGMENTED, sparse
+world that never consolidates (captured=0 city-storms; shattered rises to 24 only late).
+
+Diagnosis: the tile-war captures border tiles but rarely REACHES + storms an enemy CAPITAL —
+the only way a realm dies under this model. The old settlement-war consolidated because it
+fought on the DENSE economic-catchment map (~40-60% covered), so fronts and city-storms were
+everywhere; the tile-war fights on the SPARSE capital-anchored political field (co is 3-14%),
+so realms barely border each other's capitals → little conquest → realms proliferate (nucleation
+keeps adding, nothing removes). A bootstrapping problem: sparse co → few fronts → no
+consolidation → sparse co.
+
+Isolation: TILE_POLITY=1 with war OFF gives ~3% at 8k; the 4a-only commit gave 13.4% WITH the
+old war. So under the capital-anchor, coverage/consolidation depends on an effective war, and
+the tile-war v1 does not yet provide it.
+
+Tuning directions (next focused effort, all lever-gated):
+- Make the capital-assault path actually close: canStorm from further out, or a realm whose
+  territory is reduced below a floor auto-collapses (capital falls) — so shrinking realms die.
+- Distance decay of the national army (designed) so reach is finite but conquest is decisive
+  where a realm IS strong locally.
+- Consolidation without war: let absorption (conquest.js absorbWeakNeighbors) work on the tile
+  field so weak neighbours are peacefully vacuumed, thinning the 62-realm proliferation.
+- Or: don't fight on the sparse field — grow realms into contact first (raise POP_FILL so co
+  fills faster), then the tile-war has fronts.
