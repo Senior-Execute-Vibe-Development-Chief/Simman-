@@ -465,9 +465,19 @@ function buildSnapshot() {
     // straits), so _ctrlOwner has owners on sea tiles — but water is never TERRITORY. Mask it
     // to -1 (exactly as CTRL_LIVE does when it publishes _countryOwner) so the drawn border
     // stops at the coast instead of bleeding into the ocean.
-    const src = world._ctrlOwner, elev = world.elev;
+    // NEVER ABANDON SIM-OWNED LAND: the field fills a realm from its capital through its own
+    // land, so a lobe cut off from the capital (only reachable across a neighbour or water) is
+    // never reached and would be drawn empty — a "hole"/partial vanishing the sim never intended.
+    // So fall back to the authoritative _countryOwner wherever the field is wilderness on land the
+    // sim actually owns: the field prettifies the border where it reached, but a sim-owned tile is
+    // ALWAYS drawn as its realm (the field can never overwrite a tile onto the wrong realm — it is
+    // blocked from a neighbour's real land — so this only ever fills the field's own gaps).
+    const src = world._ctrlOwner, elev = world.elev, co = world._countryOwner;
     countryClaim = new Int32Array(src.length);
-    for (let i = 0; i < src.length; i++) countryClaim[i] = (elev && elev[i] > 0) ? src[i] : -1;
+    for (let i = 0; i < src.length; i++) {
+      if (!(elev && elev[i] > 0)) { countryClaim[i] = -1; continue; }         // water: never territory
+      countryClaim[i] = src[i] >= 0 ? src[i] : (co && co[i] >= 0 ? co[i] : -1);
+    }
   } else if (sendStatic && world._countryClaim) {
     countryClaim = world._countryClaim.slice();
     // Catchment overlay: paint every WORKED tile (world._territoryOwner) with its

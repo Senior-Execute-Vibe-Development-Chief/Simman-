@@ -81,11 +81,16 @@ const SRC_HOLD   = _envNum("SIM_CTRL_SRC", 6.0);    // control level on reached 
 const CHARGE     = _envNum("SIM_CTRL_CHARGE", 1.0); // control gained/pass on own land (tops up the source)
 const WILD_COST  = _envNum("SIM_CTRL_WILD", 1.5);   // + this entering WILDERNESS → thin band ≈ SRC_HOLD/(cost+WILD) tiles
 const TRK_WATER  = _envNum("SIM_CTRL_TWATER", 3.0); // cost to bleed onto a water tile (short coastal relay; masked in render)
-// Recession is SLOWER than advance (hysteresis): the recompute's 144-tick correction cycle nudges
-// real borders in and out, and the band amplifies each wobble (a shed edge drops the band around it
-// too). Fading receded land slowly lets a transient dip heal before the band follows, so the drawn
-// area breathes far less while still tracking genuine growth. (Advance is one hop/pass, unchanged.)
-const TRK_FADE   = _envNum("SIM_CTRL_TFADE", 0.3);  // control lost/pass on un-owned land (< CHARGE ⇒ gentle recession)
+// Recession is MUCH slower than advance (strong hysteresis). The authoritative recompute doesn't
+// only grow — every ~144 ticks it SHEDS then RE-CLAIMS land as its correction stack (shed /
+// connectivity / gap-fill) churns, so a tile can flip owned→wilderness→owned within a few hundred
+// ticks for no in-world reason. If the field fades as fast as that, borders visibly recede and then
+// re-advance — the "land abandoned for no reason" wobble. Fading slowly (over ~SRC_HOLD/TRK_FADE
+// passes ≈ 300+ ticks) lets a transient shed HEAL before the field follows it down, so the border
+// rides over the recompute's jitter. This does NOT slow genuine losses: land CONQUERED by a
+// neighbour fills with the conqueror's control fast (charge-driven, one hop/pass); only reversion
+// to WILDERNESS is held — exactly the transient the recompute keeps creating and undoing.
+const TRK_FADE   = _envNum("SIM_CTRL_TFADE", 0.08); // control lost/pass on un-owned land (≪ CHARGE ⇒ slow, hysteretic recession)
 
 function powerOfCapital(c) {
   const cap = c.capital;
