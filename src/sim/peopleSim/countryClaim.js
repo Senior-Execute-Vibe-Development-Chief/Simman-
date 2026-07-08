@@ -66,7 +66,17 @@ const _adoptTarget = (typeof process !== "undefined" && process.env && +process.
 // territory pass, measured). Resolve through the live-country set instead;
 // a dead id reads as wilderness (-1). The set is a per-step cached scan.
 export function grownLiveOwnerAt(world, ti) {
-  const id = grownOwnerAt(world, ti);
+  // Under the REACTIVE model (TILE_POLITY, capital-anchored borders) the AUTHORED
+  // territory (_countryOwner) IS the political border — capacity-grown, not a far
+  // projection — so read it directly, exactly as adoptAndFound does. Reading the render
+  // crawl (_countryClaim) instead tied a SIM decision (a new settlement's adoption) to
+  // the render cadence AND kept the crawl from being smoothed. With this, nothing in the
+  // reactive sim reads the crawl, so it is a pure, arbitrarily-fine render layer. (The
+  // pre-reactive models keep reading the crawl — byte-identical, and there the target
+  // can be a projected reach running ahead of the border.)
+  const id = T.TILE_POLITY
+    ? (world._countryOwner ? world._countryOwner[ti] : -1)
+    : grownOwnerAt(world, ti);
   if (id < 0) return -1;
   let alive = world._aliveCC;
   if (!alive || world._aliveCCStep !== world.step) {
@@ -166,7 +176,7 @@ function landComp(world) {
 // Crawl the drawn claim one (or RINGS_PER_RELAX) ring toward the target. A tile
 // only changes hands once the gaining country (or wilderness) already holds a
 // neighbour — so borders advance/retreat tile by tile, never jumping.
-export function relaxClaim(world) {
+export function relaxClaim(world, pressStep = 1) {
   const { N, tw, th, elev } = world;
   let claim = world._countryClaim;
   if (!claim || claim.length !== N) { claim = world._countryClaim = new Int32Array(N); claim.fill(-1); }
@@ -267,7 +277,11 @@ export function relaxClaim(world) {
       // quick on open ground, slow on high terrain, ragged via the coherent noise.
       const nv = noiseF ? noiseF[ti] : 0.5;
       const resist = 1 + ELEV_RESIST * Math.max(0, elev[ti] - 0.3) + NOISE_RESIST * nv;
-      if ((press[ti] += 1) >= resist) flips.push(ti);
+      // pressStep < 1 (a finer crawl cadence) makes a tile take proportionally more
+      // relaxes to break through, so the average advance PACE is unchanged — only the
+      // temporal resolution is finer (the front creeps a few tiles per call instead of a
+      // whole ring per 12 ticks). pressStep = 1 is the calibrated 12-tick behaviour.
+      if ((press[ti] += pressStep) >= resist) flips.push(ti);
     }
     if (flips.length === 0) break;
     for (const ti of flips) { claim[ti] = target[ti]; press[ti] = 0; }

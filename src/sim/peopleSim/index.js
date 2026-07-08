@@ -17,10 +17,17 @@ import { computeCountryTerritory, adoptAndFound, nucleateFrontierStates } from "
 import { buildSettlementGrid } from "./spatialGrid.js";
 import { relaxClaim, updateAdminTenure } from "./countryClaim.js";
 
-// How often the drawn border crawls one ring toward the country-primary
-// territory target (world._countryOwner). Small so borders visibly creep
-// tile-by-tile rather than snapping each territory pass.
+// How often the drawn border crawls toward the country-primary territory target
+// (world._countryOwner). Small so borders visibly creep tile-by-tile rather than
+// snapping each territory pass.
 const CLAIM_RELAX_INTERVAL = 12;
+// Under the REACTIVE model (TILE_POLITY) the crawl (_countryClaim) is a PURE RENDER
+// layer — nothing in the sim reads it (grownLiveOwnerAt reads _countryOwner) — so run it
+// on a FINE cadence for a continuously-moving border instead of a ring every 12 ticks.
+// The per-call pressure step is scaled by the cadence (relaxClaim's pressStep) so the
+// average advance PACE is unchanged; only the temporal resolution is finer. Pre-reactive
+// models keep the 12-tick cadence (there the crawl feeds adoption; byte-identical).
+const CLAIM_RELAX_FINE = 3;
 import { updatePolities } from "./conquest.js";
 import { musterArmies, advanceFronts, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
@@ -211,10 +218,16 @@ export function stepPeopleSim(world, n = 1) {
       adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
       nucleateFrontierStates(world);    // primary state formation: a developed stateless frontier cluster mints a NEW country
     }
-    // The drawn border CRAWLS toward that target a ring at a time, so land
-    // exchanges (conquest / secession / absorption) play out tile-by-tile over
-    // ticks instead of teleporting (see countryClaim.js relaxClaim).
-    if (world.step === 1 || world.step % CLAIM_RELAX_INTERVAL === 0) relaxClaim(world);
+    // The drawn border CRAWLS toward that target, so land exchanges (conquest /
+    // secession / absorption / growth) play out tile-by-tile over ticks instead of
+    // teleporting (see countryClaim.js relaxClaim). Under the reactive model the crawl is
+    // pure render, so run it FINELY (every CLAIM_RELAX_FINE ticks) at a pace-preserving
+    // pressure step for a continuously-moving border; pre-reactive models keep the 12-tick
+    // cadence (byte-identical, the crawl feeds adoption there).
+    {
+      const _relaxIvl = T.TILE_POLITY ? CLAIM_RELAX_FINE : CLAIM_RELAX_INTERVAL;
+      if (world.step === 1 || world.step % _relaxIvl === 0) relaxClaim(world, _relaxIvl / CLAIM_RELAX_INTERVAL);
+    }
     mark("territory");
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
