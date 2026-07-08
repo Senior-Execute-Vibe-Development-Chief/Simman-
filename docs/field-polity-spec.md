@@ -541,12 +541,26 @@ fall; the #29 realm topped the board at 12k then fell out of the top-5 by 16k), 
 partitioned. Population is lower BY DESIGN: the catchment is now bounded by the political border
 (`terr ≤ co`), which is the whole point — settlements farm only what their country holds.
 
+## Validation (480, 3 seeds) — stylized-clean at budget
+
+`SIM_TUNE=TILE_POLITY=1,CATCHMENT_CLIP=1 STYLIZED_SEEDS=8817,4242,777 node tools/stylized.mjs`:
+**all hard gates pass on 3/3 seeds at exactly 2 soft warnings each (budget 2)** — the same score
+as the current field-model default. largest-empire share 8/12/14% (no runaway; the free-catchment
+default runs 10–19%), pop 122/138/130k, pop~development monotone 0.93–0.95, wealth finite, polities
+28–38, fallen-lifespan heavy tail (rise AND fall). The soft warnings are the SAME regime artifacts
+the default already carries (growth-acceleration on all three; Zipf slope / market-integration on
+one or two). The border-bounded population is NOT a broken economy — the alive/monotone gates pass
+at ~120–140k; only the magnitude is lower than the free-catchment 188k, correctly (settlements farm
+only what their country holds), and no gate depends on the absolute magnitude.
+
 ## Still lever-gated (not the shipped default)
 
 The reactive model is byte-identical off and lives behind `TILE_POLITY=1` + `CATCHMENT_CLIP=1`.
-Making it the DEFAULT is a separate decision: the stylized-fact pop band (169–221k) was calibrated
-on the free-catchment regime and wants re-derivation for the border-bounded one (pop ~154k is
-correct, not broken), and 960-resolution + a full 3-seed re-validation should precede the flip.
-Deeper follow-ups: the tile-war still consolidates only by capital-storm (`captured=0` non-capital
-storms — distance-decayed national might + a shrink-to-collapse path would make war more decisive);
-war/secession heal the field gradually (via growth) rather than instantly.
+Flipping the DEFAULT is a separate call with two open items: (1) 960-resolution re-validation (the
+country-size complaint historically lives at 960; the coverage floor is in ref-tiles ×r2 so it
+scales, but the regime is untested there); (2) save-compat — a save stores only levers that DIFFER
+from the default, so a world saved under the current default would load and CONTINUE in reactive
+mode after a flip, a visible behaviour change on old saves. Deeper follow-ups (not blocking): the
+tile-war consolidates only by capital-storm (`captured=0` non-capital storms — distance-decayed
+national might + a shrink-to-collapse path would make war more decisive); war/secession heal the
+field gradually (via growth) rather than instantly.
