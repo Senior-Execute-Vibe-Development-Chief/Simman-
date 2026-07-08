@@ -28,6 +28,10 @@ const CLAIM_RELAX_INTERVAL = 12;
 // average advance PACE is unchanged; only the temporal resolution is finer. Pre-reactive
 // models keep the 12-tick cadence (there the crawl feeds adoption; byte-identical).
 const CLAIM_RELAX_FINE = 3;
+// Control-field cadence: the field is a slow render layer (pretty borders), so advancing it
+// one hop every few ticks instead of every tick cuts its cost ~this× for an imperceptible
+// change in how the border moves. (The field pass is ~half a tick if run every tick.)
+const CTRL_FIELD_STRIDE = 4;
 import { updatePolities } from "./conquest.js";
 import { musterArmies, advanceFronts, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
@@ -247,9 +251,12 @@ export function stepPeopleSim(world, n = 1) {
       const _pfs = Math.max(1, T.POP_FIELD_STRIDE | 0);
       if (T.POP_FIELD && world.step % _pfs === 0) stepPopField(world, _pfs);
     }
-    // PROTOTYPE: political control as a per-tick relaxing field (controlField.js). Runs
-    // ALONGSIDE _countryOwner into world._ctrlOwner for an honest A/B; off ⇒ never runs.
-    if (T.CONTROL_FIELD) stepControlField(world);
+    // Political control field (controlField.js). In PRETTY mode (CONTROL_FIELD, CTRL_LIVE off)
+    // it's a render-only layer (world._ctrlOwner is the drawn border; nothing in the sim reads
+    // it) — so STRIDE it (the border relaxes one hop per firing and moves slowly, and the
+    // render ships it only every few snapshots anyway) to keep its cost small. Live mode
+    // (CTRL_LIVE) authors _countryOwner, still on the same cheap cadence.
+    if (T.CONTROL_FIELD && world.step % CTRL_FIELD_STRIDE === 0) stepControlField(world);
     mark("settlements");
     // Exogenous shocks: regional famines (harvest crash) + epidemics that
     // spread along the trade graph (population crash). Both feed the unrest /

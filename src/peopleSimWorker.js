@@ -455,7 +455,14 @@ function buildSnapshot() {
   // settlement is never a bare dot on the map while its nascent capital's projected claim
   // is still ~0. Render-only (a per-tick slice; nothing in the sim reads this).
   let countryClaim = null;
-  if (sendStatic && world._countryClaim) {
+  if (sendStatic && T.CONTROL_FIELD && !T.CTRL_LIVE && world._ctrlOwner) {
+    // PRETTY MODE (control field as the drawn border): the political map is rendered from
+    // the control field (world._ctrlOwner) — coherent, terrain-following, continuously-moving
+    // borders — instead of the recompute crawl. The field is seeded by the SAME nations
+    // (capitals) the sim's politics produce, so it draws the same realms with far nicer
+    // borders, while the sim's AUTHORITATIVE _countryOwner is untouched (this is render-only).
+    countryClaim = world._ctrlOwner.slice();
+  } else if (sendStatic && world._countryClaim) {
     countryClaim = world._countryClaim.slice();
     // Catchment overlay: paint every WORKED tile (world._territoryOwner) with its
     // settlement's country, so a realm colours the land its settlements farm even
