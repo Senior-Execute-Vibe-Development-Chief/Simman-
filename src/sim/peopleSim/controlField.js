@@ -62,6 +62,12 @@ const NOISE_AMP  = _envNum("SIM_CTRL_NOISE", 0.5); // coherent ± on cost so bor
 // too wide for anyone (cost accumulates) — thalassocracies emerge.
 const WATER_COST = _envNum("SIM_CTRL_WATER", 6.0); // per-water-tile cost at zero navigation
 const WATER_NAV  = _envNum("SIM_CTRL_WNAV", 5.0);  // − this × navigation (a great fleet crosses cheaply)
+// War pressure: on a contested front (armies.js writes world._warFront = the winning
+// attacker, world._warAdv = its force margin), the attacker gets an ADDITIVE reach bonus
+// crossing into the defender there — extra cost-units of projection ∝ the winning margin —
+// so its control extends a bounded bulge into enemy land. Additive (not a multiply), so it
+// can't compound/inflate; re-stamped each war pass, the bulge advances toward the capital.
+const WAR_BONUS  = _envNum("SIM_CTRL_WARPUSH", 5.0);
 
 function powerOfCapital(c) {
   const cap = c.capital;
@@ -146,18 +152,27 @@ export function stepControlField(world) {
   // SOURCE nation's water-nav cost across a coast, else this tile's land cost. So control at t
   // = P − cheapest terrain path from the capital, and the border is where two realms' budgets
   // net out. Reads OLD hold/owner → synchronous/deterministic.
+  // WAR: a winning attacker (world._warFront[t] = attacker id, world._warAdv[t] = margin)
+  // gets an ADDITIVE reach bonus crossing INTO front tile t — its control there extends by
+  // WAR_BONUS×margin cost-units past its normal reach, so the border bulges into the enemy;
+  // additive + capped, so it can't inflate, and re-stamped each pass it advances the front
+  // toward the capital.
+  const wf = world._warFront, wa = world._warAdv, hasWar = !!(wf && wf.length === N);
   for (let t = 0; t < N; t++) {
     const ty = (t / tw) | 0, tx = t - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
     const toWater = elev[t] <= 0;
     const landC = toWater ? 0 : cost[t];
+    const wAtt = hasWar ? wf[t] : -1;                     // attacker assaulting t (else -1)
+    const wBonus = wAtt >= 0 ? WAR_BONUS * Math.max(0, Math.min(2, wa[t])) : 0;
     let bh = nh[t], bo = no[t];
     for (let k = 0; k < 4; k++) {
       const nn = ns[k]; if (nn < 0) continue;
       const o = owner[nn]; if (o < 0 || !alive.has(o)) continue;
       const edge = toWater ? Math.max(0.4, WATER_COST - WATER_NAV * navById[o]) : landC;   // crossing a coast costs the source's naval reach
-      const cand = hold[nn] - edge;
+      let cand = hold[nn] - edge;
+      if (o === wAtt) cand += wBonus;                    // this neighbour IS the attacker pushing into t → forward reach bonus
       if (cand > bh) { bh = cand; bo = o; }
     }
     nh[t] = bh; no[t] = bo;
