@@ -3896,7 +3896,11 @@ return(
     onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
     onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
     style={{display:"block",imageRendering:"pixelated",
-      maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
+      // width:100% (not auto) so the map fills the available width at ANY scale — a coarse 480-wide
+      // canvas upscales (pixelated) to the same on-screen size as the 1920 one, instead of sitting
+      // small. aspect-ratio (constant across scales) sets the height; box stays == displayed map so
+      // the mouse→canvas mapping (screenToCanvas) is unaffected.
+      maxWidth:"100%",maxHeight:"100%",width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
       boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
 }
 
@@ -4061,8 +4065,14 @@ return(
 {/* ══════════ PARAMS DRAWER ══════════ */}
 {layersOpen&&(()=>{
   const tog=(k)=>setLayers(L=>({...L,[k]:!L[k]}));
-  const Row=({k,label,indent})=>(
-    <button onClick={()=>tog(k)}
+  // `row` returns a PLAIN <button> element (not a component). Defining a component
+  // inside this render (the old `<Row/>`) made it a NEW type every render, so React
+  // remounted every layer button on each sim tick (WorldSim re-renders on every
+  // snapshot). A click whose mousedown/mouseup straddled a remount fired no `click`
+  // — the "have to press many times / related to the ticks" bug. As plain buttons at
+  // fixed positions with stable keys they reconcile in place and never remount.
+  const row=(k,label,indent)=>(
+    <button key={k} onClick={()=>tog(k)}
       className={"au-rail-tab"+(layers[k]?" au-active":"")}
       style={{paddingLeft:14+(indent||0),width:"100%",textAlign:"left",fontSize:12}}>{label}</button>
   );
@@ -4077,20 +4087,20 @@ return(
           style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
       </div>
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 14px 2px"}}>Map</div>
-      <Row k="tints" label="Country tints" />
-      <Row k="borders" label="Borders" />
-      <Row k="provinces" label="Province borders" />
-      <Row k="roads" label="Roads" />
-      <Row k="seaLanes" label="Sea lanes" />
-      <Row k="moneyFlow" label="Money flow" />
+      {row("tints","Country tints")}
+      {row("borders","Borders")}
+      {row("provinces","Province borders")}
+      {row("roads","Roads")}
+      {row("seaLanes","Sea lanes")}
+      {row("moneyFlow","Money flow")}
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
-      <Row k="icons" label="Icons (master)" />
-      <Row k="village" label="· Farming Regions" indent={10} />
-      <Row k="city" label="· Cities" indent={10} />
-      <Row k="metropolis" label="· Metropolises" indent={10} />
-      <Row k="shocks" label="Plague / famine outlines" />
+      {row("icons","Icons (master)")}
+      {row("village","· Farming Regions",10)}
+      {row("city","· Cities",10)}
+      {row("metropolis","· Metropolises",10)}
+      {row("shocks","Plague / famine outlines")}
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
-      <Row k="ships" label="Colony ships" />
+      {row("ships","Colony ships")}
     </aside>
   );
 })()}
