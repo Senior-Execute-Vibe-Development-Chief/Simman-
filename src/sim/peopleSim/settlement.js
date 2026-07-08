@@ -386,11 +386,16 @@ export function rederiveSiteStatics(world, s) {
 
 function computeWaterAccess(world, sx, sy) {
   const { tw, th, coast, riverMag } = world;
+  // The scan is a fixed 3×3 in tiles → a SHRINKING real area at high resolution, where a river
+  // channel is also thinner (1-D on 2-D). Under RES_INV_RIVER, cover the SAME REAL neighbourhood
+  // at any grid: radius = round(rNorm) tiles (rNorm=1 at the 480 reference ⇒ radius 1 ⇒ the
+  // original 3×3, byte-identical). So a settlement detects the same river valley regardless of grid.
+  const R = T.RES_INV_RIVER ? Math.max(1, Math.round(rNormPop(world))) : 1;
   let coastBit = 0, bestMag = 0;
-  for (let dy = -1; dy <= 1; dy++) {
+  for (let dy = -R; dy <= R; dy++) {
     const ny = sy + dy;
     if (ny < 0 || ny >= th) continue;
-    for (let dx = -1; dx <= 1; dx++) {
+    for (let dx = -R; dx <= R; dx++) {
       const nx = ((sx + dx) % tw + tw) % tw;
       const ni = ny * tw + nx;
       if (coast[ni]) coastBit = 1;
