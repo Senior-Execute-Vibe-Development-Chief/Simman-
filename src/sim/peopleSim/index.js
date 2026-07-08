@@ -44,6 +44,7 @@ import { updateSlaveTrade, SLAVE_INTERVAL } from "./slavery.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { diffuseIdentityField } from "./identityField.js";
 import { stepPopField } from "./popField.js";
+import { stepControlField } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
@@ -246,6 +247,9 @@ export function stepPeopleSim(world, n = 1) {
       const _pfs = Math.max(1, T.POP_FIELD_STRIDE | 0);
       if (T.POP_FIELD && world.step % _pfs === 0) stepPopField(world, _pfs);
     }
+    // PROTOTYPE: political control as a per-tick relaxing field (controlField.js). Runs
+    // ALONGSIDE _countryOwner into world._ctrlOwner for an honest A/B; off ⇒ never runs.
+    if (T.CONTROL_FIELD) stepControlField(world);
     mark("settlements");
     // Exogenous shocks: regional famines (harvest crash) + epidemics that
     // spread along the trade graph (population crash). Both feed the unrest /
