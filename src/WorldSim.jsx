@@ -929,6 +929,13 @@ const atlasCache=useRef(null);
 // re-rasterised ~460k tiles every frame. We render it to this canvas and only
 // regenerate every PS_OVERLAY_REGEN sim-steps, blitting it otherwise.
 const psOverlayRef=useRef(null);
+// Political TINTS render on their own MAP-resolution layer (psTintRef), separate from the
+// FEAT-resolution borders/roads (psOverlayRef/ov): tints are area fills that want to hug the
+// coastline crisply, so they're drawn 1px-per-sim-tile into psTintSrcRef, nearest-owned
+// flood-filled, then nearest-upscaled to the map grid + coast-clipped. Borders/roads/icons stay
+// as the smooth 1920-res vectors on the feature canvas.
+const psTintSrcRef=useRef(null);   // sim-res (tw×th) owner colours, 1px per tile
+const psTintRef=useRef(null);      // map-res (CW×CH) tint layer, coast-clipped
 const psOverlayMeta=useRef({step:-1,ch:0});
 const identityFillRef=useRef(null);   // cached nearest-settlement map for the people/faith/language overlays
 const ancRevealRef=useRef({start:0,active:false});   // deep-ancestry "peopling" replay: wavefront spread time + whether animating
@@ -2001,6 +2008,13 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       octx.setTransform(1,0,0,1,0,0);
       octx.clearRect(0,0,FEAT_W,FEAT_H);
       octx.setTransform(_k,0,0,_k,0,0);
+      // Sim-res tint buffer: the view fills below draw 1px per sim tile here (stctx) instead of a
+      // block into ov, so the tints can be flood-filled + upscaled crisply to map resolution.
+      const _tw=psw.tw,_th=psw.th;
+      let stint=psTintSrcRef.current;
+      if(!stint||stint.width!==_tw||stint.height!==_th){stint=psTintSrcRef.current=document.createElement('canvas');stint.width=_tw;stint.height=_th;}
+      const stctx=stint.getContext('2d');stctx.setTransform(1,0,0,1,0,0);stctx.clearRect(0,0,_tw,_th);
+      let _tintLastFs=null;
       // National territory tints + dotted borders. Prefer the SMOOTH national
       // CLAIM (countryId per tile, peopleSim/countryClaim.js) — country-centric
       // borders that follow terrain and enclose frontier hinterland; fall back
@@ -2120,8 +2134,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             keyOf[ti]=key;
             const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
             const fs=(c2&&((x+y)&1))?c2:c1;   // mixed unit → checkerboard top-two colours
-            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-            octx.fillRect(sx,sy,TR+0.7,TR+0.7);}
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(x,y,1,1);}
           // soft borders where the dominant GROUP changes (legible but not segmented)
           octx.strokeStyle="rgba(10,10,14,0.34)";octx.lineWidth=uiF;octx.beginPath();
           for(let ti=0;ti<N2;ti++){const k=keyOf[ti];if(k===-2147483648)continue;
@@ -2142,8 +2156,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           let lastFs=null;
           for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;
             const fs=coerceCol(sid);const y=(ti/tw)|0,x=ti-y*tw;
-            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-            octx.fillRect(x*TR,dataYtoScreenY(y*TR,H,CH),TR+0.7,TR+0.7);}
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(x,y,1,1);}
         }
       }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
@@ -2175,8 +2189,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
           const a=shown(px,py);if(a<0)continue;
           let fs=fill.get(a);if(fs===undefined){const h=hue?hue[a]|0:((a*2654435761)>>>0)%360;const l=light?light[a]|0:52;fs=`hsl(${h},53%,${l}%)`;fill.set(a,fs);}
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR+0.7,TR+0.7);
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(px,py,1,1);
         }
         octx.strokeStyle="rgba(8,8,12,0.34)";octx.lineWidth=uiF;octx.beginPath();
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
@@ -2221,8 +2235,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             fs=`hsl(${h},60%,50%)`;   // every realm drawn vibrant — no city-state muting
             fillByCountry.set(cc,fs);
           }
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(sx,sy,TR+0.6,TR+0.6);   // slight overdraw kills inter-tile seams
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(px,py,1,1);
           if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
         }
         // Black diagonal stripes over colonies (same colour as the metropole underneath).
@@ -2250,8 +2264,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(L.tints){
             let fs=tintByCountry.get(cc);
             if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const over=co&&co._overlord>=0&&co._depKind!=="vassal"?co._overlord:-1;colonyByCC.set(cc,over>=0);const h=(((over>=0?over:cc)*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
-            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-            octx.fillRect(sx,sy,TR,TR);
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(px,py,1,1);
             if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
           }
           if(!L.borders)continue;
@@ -2280,8 +2294,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const py=(ti/tw)|0,px=ti-py*tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           if(L.tints){
-            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-            octx.fillRect(sx,sy,TR,TR);
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(px,py,1,1);
           }
           if(!L.borders)continue;
           const co=ctryById[oid];
@@ -2386,11 +2400,40 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.drawImage(landMaskRef.current,0,0);
         octx.globalCompositeOperation=prevOp;octx.imageSmoothingEnabled=prevSm;
       }
+      // ── Political TINTS → MAP resolution ──────────────────────────────────────────────
+      // stint holds one colour per sim tile. Flood-fill unowned LAND tiles from the nearest owned
+      // tile (bounded to FILL_R tiles, so only the coastal fringe fills — deep unclaimed interior
+      // stays bare), then upscale NEAREST to the map grid and clip to the coast. The tint then hugs
+      // the real coastline at map resolution; its internal grain stays at the sim-tile size (the
+      // resolution the politics is actually simulated at). Borders/roads/icons remain the smooth
+      // 1920-res vectors on the feature canvas above.
+      {
+        const N2=_tw*_th, sd=stctx.getImageData(0,0,_tw,_th), sp=sd.data;
+        const el=w.elevation,_TR=psw.tileRes;                    // sim-tile land via the map elevation grid
+        const landAt=(x,y)=>el[Math.min(H-1,y*_TR)*W+Math.min(W-1,x*_TR)]>0;
+        const FILL_R=2, owner=new Int32Array(N2).fill(-1), q=new Int32Array(N2), dist=new Uint8Array(N2);
+        let head=0,tail=0;
+        for(let i=0;i<N2;i++)if(sp[i*4+3]>0){owner[i]=i;q[tail++]=i;}   // seed from every owned tile
+        while(head<tail){const i=q[head++];if(dist[i]>=FILL_R)continue;
+          const y=(i/_tw)|0,x=i-y*_tw;
+          const nb=[y>0?i-_tw:-1,y<_th-1?i+_tw:-1,x>0?i-1:-1,x<_tw-1?i+1:-1];
+          for(let n=0;n<4;n++){const j=nb[n];if(j<0||owner[j]>=0)continue;
+            const jy=(j/_tw)|0,jx=j-jy*_tw;if(!landAt(jx,jy))continue;   // stop at coasts (no cross-ocean bleed)
+            owner[j]=owner[i];dist[j]=dist[i]+1;q[tail++]=j;}}
+        for(let i=0;i<N2;i++)if(owner[i]>=0&&sp[i*4+3]===0){const s=owner[i]*4;sp[i*4]=sp[s];sp[i*4+1]=sp[s+1];sp[i*4+2]=sp[s+2];sp[i*4+3]=sp[s+3];}
+        stctx.putImageData(sd,0,0);
+        let mt=psTintRef.current;
+        if(!mt||mt.width!==CW||mt.height!==CH){mt=psTintRef.current=document.createElement('canvas');mt.width=CW;mt.height=CH;}
+        const mtx=mt.getContext('2d');mtx.setTransform(1,0,0,1,0,0);mtx.clearRect(0,0,CW,CH);
+        mtx.imageSmoothingEnabled=false;mtx.drawImage(stint,0,0,_tw,_th,0,0,CW,CH);   // nearest upscale → crisp
+        mtx.globalCompositeOperation='destination-in';mtx.drawImage(landMaskRef.current,0,0);mtx.globalCompositeOperation='source-over';
+      }
       meta.step=stepNow;meta.ch=CH;
     }
-    // Blit the fixed-resolution political overlay onto the feature canvas (crisp at any map scale;
-    // its transform already carries the pan/zoom, scaled by _k). Fall back to the map canvas
-    // (scaled down) only if the feature layer isn't mounted.
+    // Map-resolution political tints go on the MAP canvas, over terrain (ctx carries the pan/zoom;
+    // smoothing already off ⇒ crisp). Then the FEAT-resolution borders/roads blit onto the feature
+    // canvas above them, and icons on top. Cached tint layer (rebuilt with the overlay).
+    if(psTintRef.current)ctx.drawImage(psTintRef.current,0,0);
     if(fctx)fctx.drawImage(ov,0,0);
     else ctx.drawImage(ov,0,0,FEAT_W,FEAT_H,0,0,CW,CH);
     // ── Settlement glyphs ──
