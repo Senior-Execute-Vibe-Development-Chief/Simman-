@@ -1914,6 +1914,12 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
+    // Vector features (borders, roads, settlement icons) are drawn in CANVAS pixels, but the
+    // canvas is scaled to fill the SAME on-screen area at every map scale — so a fixed pixel
+    // size looks bigger at a coarse (480-wide) canvas than a fine (1920-wide) one. Multiply their
+    // dimensions by uiF = CW/1920 so they occupy a CONSTANT fraction of the map = constant
+    // on-screen size, matching the finest scale's look at every resolution.
+    const uiF=Math.max(0.4,CW/1920);
     // ── Territory tint + borders + roads ── cached to an offscreen canvas
     // and regenerated only every PS_OVERLAY_REGEN sim-steps (it's a pure
     // function of owner[]/roadQuality[], which change slowly), then blitted.
@@ -2177,7 +2183,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
       if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
-        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
+        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
@@ -2208,7 +2214,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(t===undefined){const h=((s.countryId*61)%360+360)%360;t=`hsla(${h},50%,50%,0.32)`;tintByCountry.set(s.countryId,t);}
           tintById[s.id]=t; ctryById[s.id]=s.countryId;
         }}
-        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
+        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<owner.length;ti++){
           const oid=owner[ti];if(oid<0)continue;
@@ -2293,7 +2299,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
-          const w=1.4+intensity*1.6,off=(TR-w)*0.5;
+          const w=(1.4+intensity*1.6)*uiF,off=(TR-w)*0.5;
           octx.fillStyle=`rgba(120,80,40,${(0.55+intensity*0.35).toFixed(2)})`;
           octx.fillRect(sx+off,sy+off,w,w);
         }
@@ -2319,7 +2325,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // because that's the point of zooming in — more detail). iconScale is
     // kept as a knob for fine-tuning but stays at 1 here so the visible
     // size scales 1:1 with the user's zoom level.
-    const iconScale=1;
+    const iconScale=uiF;
     // Pop → "weight" 0..1 (log scale across the population range).
     let _popMax=1;
     for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.people>_popMax)_popMax=s.people;}
