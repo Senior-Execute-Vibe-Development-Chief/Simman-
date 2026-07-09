@@ -1466,7 +1466,10 @@ if(_pz&&featRef.current){
   fctx=featRef.current.getContext("2d");
   fctx.setTransform(1,0,0,1,0,0);
   fctx.clearRect(0,0,FEAT_W,FEAT_H);
-  fctx.imageSmoothingEnabled=true;
+  // Smooth only when DOWN-scaling (zoomed out): bilinear antialiases the shrink. When zoomed IN
+  // (viewZ>1) it blurs the political tint BLOCKS into mush — draw those crisp (nearest) instead;
+  // the borders/icons are already 1920-res so nearest keeps them sharp too.
+  fctx.imageSmoothingEnabled=viewZRef.current<=1;
   fctx.setTransform(viewZRef.current,0,0,viewZRef.current,viewXRef.current*_k,viewYRef.current*_k);
 }
 if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
