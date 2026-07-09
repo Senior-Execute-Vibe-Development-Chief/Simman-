@@ -917,6 +917,10 @@ const moneyDotsRef=useRef(null);
 // the sim is off-thread.
 const baseLayerRef=useRef(null);
 const baseLayerKey=useRef(null);
+// Full-resolution LAND mask (opaque on land, transparent on ocean), used to clip the HALF-res
+// political overlay to the real coastline so coasts stay crisp while the interior stays coarse.
+const landMaskRef=useRef(null);
+const landMaskKey=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 // Wind particle animation state
@@ -2303,6 +2307,26 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           octx.fillStyle=`rgba(120,80,40,${(0.55+intensity*0.35).toFixed(2)})`;
           octx.fillRect(sx+off,sy+off,w,w);
         }
+      }
+      // ── Crisp coasts on a coarse overlay ── the political overlay is drawn at the HALF-res sim
+      // grid (TILE_RES=2 → 2×2-pixel blocks), so a coastal block spills over ocean at full map
+      // resolution. Clip the whole overlay to a FULL-resolution land mask (destination-in keeps
+      // overlay pixels only where the world is land): the interior stays coarse/blocky, but the
+      // coastline follows the map-resolution coast exactly — no political colour over the sea.
+      {
+        const mKey=(w._seed)+'|'+CW+'|'+CH+'|'+(_mercator?'m':'f');
+        if(landMaskKey.current!==mKey||!landMaskRef.current){
+          let mc=landMaskRef.current||(landMaskRef.current=document.createElement('canvas'));
+          if(mc.width!==CW||mc.height!==CH){mc.width=CW;mc.height=CH;}
+          const mctx=mc.getContext('2d');const mi=mctx.createImageData(CW,CH),md=mi.data,el=w.elevation;
+          for(let cy=0;cy<CH;cy++){const sy=Math.min(H-1,Math.round(screenYtoDataY(cy,CH,H)))*W;
+            for(let cx=0;cx<CW;cx++){if(el[sy+Math.min(W-1,cx)]>0)md[(cy*CW+cx)*4+3]=255;}}
+          mctx.putImageData(mi,0,0);landMaskKey.current=mKey;
+        }
+        const prevOp=octx.globalCompositeOperation;
+        octx.globalCompositeOperation='destination-in';
+        octx.drawImage(landMaskRef.current,0,0);
+        octx.globalCompositeOperation=prevOp;
       }
       meta.step=stepNow;meta.ch=CH;
     }
