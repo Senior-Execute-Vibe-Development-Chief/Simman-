@@ -2402,24 +2402,40 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
       // ── Political TINTS → MAP resolution ──────────────────────────────────────────────
       // stint holds one colour per sim tile. Flood-fill unowned LAND tiles from the nearest owned
-      // tile (bounded to FILL_R tiles, so only the coastal fringe fills — deep unclaimed interior
-      // stays bare), then upscale NEAREST to the map grid and clip to the coast. The tint then hugs
-      // the real coastline at map resolution; its internal grain stays at the sim-tile size (the
-      // resolution the politics is actually simulated at). Borders/roads/icons remain the smooth
-      // 1920-res vectors on the feature canvas above.
+      // tile — unbounded, but the flood only crosses LAND, so it can never leap the sea to an empty
+      // island; on a nation-bearing landmass every land tile takes its nearest nation, so the tint
+      // reaches the coast everywhere. Then upscale NEAREST to the map grid and clip to the coast.
+      // The tint hugs the real coastline at map resolution; its internal grain stays at the sim-tile
+      // size (the resolution the politics is actually simulated at). Borders/roads/icons remain the
+      // smooth 1920-res vectors on the feature canvas above.
       {
         const N2=_tw*_th, sd=stctx.getImageData(0,0,_tw,_th), sp=sd.data;
-        const el=w.elevation,_TR=psw.tileRes;                    // sim-tile land via the map elevation grid
-        const landAt=(x,y)=>el[Math.min(H-1,y*_TR)*W+Math.min(W-1,x*_TR)]>0;
-        const FILL_R=2, owner=new Int32Array(N2).fill(-1), q=new Int32Array(N2), dist=new Uint8Array(N2);
+        const el=w.elevation,_TR=psw.tileRes;
+        // Sim-tile land flag: a tile counts as LAND if ANY map-res pixel under it is land, so a
+        // mostly-ocean coastal sliver tile still fills (its little land nub gets the neighbouring
+        // nation's colour; the map-res coast clip trims the ocean part after). Sampling only the
+        // tile centre left those slivers bare — grey coastal specks. Precompute once over the whole
+        // elevation grid (O(land px)); the BFS then reads it O(1).
+        const tileLand=new Uint8Array(N2);
+        for(let ty=0;ty<_th;ty++)for(let tx=0;tx<_tw;tx++){
+          let has=0;
+          for(let dy=0;dy<_TR&&!has;dy++){const my=Math.min(H-1,ty*_TR+dy)*W;
+            for(let dx=0;dx<_TR;dx++){if(el[my+Math.min(W-1,tx*_TR+dx)]>0){has=1;break;}}}
+          tileLand[ty*_tw+tx]=has;
+        }
+        const landAt=(x,y)=>tileLand[y*_tw+x]===1;
+        const owner=new Int32Array(N2).fill(-1), q=new Int32Array(N2);
         let head=0,tail=0;
         for(let i=0;i<N2;i++)if(sp[i*4+3]>0){owner[i]=i;q[tail++]=i;}   // seed from every owned tile
-        while(head<tail){const i=q[head++];if(dist[i]>=FILL_R)continue;
-          const y=(i/_tw)|0,x=i-y*_tw;
+        // UNBOUNDED nearest-owned flood over LAND — it stops at ocean, so it can't leap to a
+        // separate island, but on a nation-bearing landmass every land tile takes its nearest
+        // nation. Tints therefore reach the coast everywhere instead of petering out a few tiles
+        // inland; a landmass with no nation on it stays bare.
+        while(head<tail){const i=q[head++];const y=(i/_tw)|0,x=i-y*_tw;
           const nb=[y>0?i-_tw:-1,y<_th-1?i+_tw:-1,x>0?i-1:-1,x<_tw-1?i+1:-1];
           for(let n=0;n<4;n++){const j=nb[n];if(j<0||owner[j]>=0)continue;
-            const jy=(j/_tw)|0,jx=j-jy*_tw;if(!landAt(jx,jy))continue;   // stop at coasts (no cross-ocean bleed)
-            owner[j]=owner[i];dist[j]=dist[i]+1;q[tail++]=j;}}
+            const jy=(j/_tw)|0,jx=j-jy*_tw;if(!landAt(jx,jy))continue;
+            owner[j]=owner[i];q[tail++]=j;}}
         for(let i=0;i<N2;i++)if(owner[i]>=0&&sp[i*4+3]===0){const s=owner[i]*4;sp[i*4]=sp[s];sp[i*4+1]=sp[s+1];sp[i*4+2]=sp[s+2];sp[i*4+3]=sp[s+3];}
         stctx.putImageData(sd,0,0);
         let mt=psTintRef.current;
