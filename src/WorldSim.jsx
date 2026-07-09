@@ -3972,18 +3972,19 @@ return(
   // overlay covers the map EXACTLY (both fill the wrapper; identical aspect ratio ⇒ perfect
   // registration). The map is pixelated (coarse terrain upscales blocky); the feature overlay is
   // smooth (crisp lines). pointer-events on the overlay pass through to the map for hit-testing.
-  // The WRAPPER carries the sizing: width:100% (fills the column at ANY scale) + aspect-ratio (sets
-  // the height, constant across scales) + maxWidth/Height:100%. Both canvases then fill the wrapper
-  // (width/height:100%), so a coarse 480-wide map upscales to the same on-screen box as a 1920 one
-  // instead of shrink-wrapping small. Identical aspect ratio ⇒ the fixed-res feature overlay covers
-  // the map EXACTLY. The map box stays == displayed map, so mouse→canvas mapping is unaffected.
+  // The WRAPPER carries the sizing AND the border/shadow: width:100% (fills the column at ANY scale)
+  // + aspect-ratio (sets the height, constant across scales) + maxWidth/Height:100%. Both canvases
+  // then fill the wrapper's identical content box (width/height:100%, borderless), so a coarse
+  // 480-wide map upscales to the same on-screen box as a 1920 one AND the fixed-res feature overlay
+  // registers pixel-exact over it. Putting the 1px border on a CANVAS instead (border-box) would
+  // shrink only that canvas by 2px — the overlay would then be 2px wider, diverging from the centre.
+  // The map box stays == displayed map, so mouse→canvas mapping is unaffected.
   <div style={{position:"relative",lineHeight:0,width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
-    maxWidth:"100%",maxHeight:"100%"}}>
+    maxWidth:"100%",maxHeight:"100%",boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}}>
   <canvas ref={canvasRef} width={CW} height={CH}
     onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
     onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-    style={{display:"block",imageRendering:"pixelated",width:"100%",height:"100%",
-      boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
+    style={{display:"block",imageRendering:"pixelated",width:"100%",height:"100%"}} />
   <canvas ref={featRef} width={FEAT_W} height={FEAT_H}
     style={{position:"absolute",left:0,top:0,width:"100%",height:"100%",pointerEvents:"none"}} />
   </div>
