@@ -850,7 +850,12 @@ const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
 // or coarser. Changing this re-memoises `generate` (W/H are in its deps), which auto-regenerates
 // the SAME seed at the new resolution via the [seed,generate] effect.
 const[mapScale,setMapScale]=useState(1920);
-const W=mapScale,H=mapScale>>1,CW=mapScale;
+const genW=mapScale,genH=mapScale>>1;   // REQUESTED scale — the size the NEXT world generates at
+// Render/data dimensions track the ACTUAL loaded world, never the requested mapScale. Worldgen is
+// async, so between the scale change and the new world arriving the two differ; keying the canvas /
+// terrain / sim-tile / overlay math off the loaded world keeps them all on ONE consistent resolution
+// (a desync made tw↔CW disagree and blanked the overlay). Falls back to mapScale before the first world.
+const W=world?world.width:mapScale, H=world?world.height:(mapScale>>1), CW=W;
 const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 // Feature overlay is a FIXED resolution (independent of mapScale) with the same aspect as the map,
 // so vector features render identically at every scale. CH/CW is constant across scales ⇒ FEAT_H fixed.
@@ -889,6 +894,11 @@ const peopleRef=useRef(null);
 // unchanged). If the worker can't start, we fall back to stepping on the main
 // thread (simWorkerRef stays null and the rAF loop steps as before).
 const simWorkerRef=useRef(null);
+// Monotonic id stamped on every generate() request. Worldgen runs in a worker, so a
+// slow result (e.g. the initial 1920-wide world, ~25s) can land AFTER the scale changed
+// — initialising the sim at a resolution that no longer matches the canvas (mapScale),
+// which desyncs tw↔CW and blanks the overlay. Results whose id isn't the latest are dropped.
+const genIdRef=useRef(0);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
@@ -1027,6 +1037,9 @@ if(!usedWorker){
 setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
+// Stamp this request; a worker result whose id has been superseded (the user changed
+// scale/seed again before it finished) is a wrong-resolution world and must be ignored.
+const _gid=++genIdRef.current;
 // Import path
 if(presetRef.current==="import"&&importedWorldRef.current){
 const w=importedWorldRef.current;importedWorldRef.current=null;finalizeWorld(w);return;}
@@ -1041,15 +1054,16 @@ try{
 if(workerRef.current)workerRef.current.terminate();
 const worker=new WorldGenWorker();workerRef.current=worker;
 worker.onmessage=(e)=>{
+if(_gid!==genIdRef.current)return;   // superseded by a newer generate → its world is the wrong scale now
 if(e.data.type==='result'){console.log(`[Worker] Done in ${e.data.time?.toFixed(0)}ms`);finalizeWorld(e.data.world);}
 else{console.warn('[Worker]',e.data.type,e.data.message||'');
-finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));}};
-worker.onerror=(err)=>{console.warn('[Worker] Error:',err.message);
-finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));};
-worker.postMessage({type:'generate',W,H,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
+finalizeWorld(generateWorld(genW,genH,s,presetRef.current,_ol,true,false,_tecParams));}};
+worker.onerror=(err)=>{if(_gid!==genIdRef.current)return;console.warn('[Worker] Error:',err.message);
+finalizeWorld(generateWorld(genW,genH,s,presetRef.current,_ol,true,false,_tecParams));};
+worker.postMessage({type:'generate',W:genW,H:genH,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
-finalizeWorld(Object.assign(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld,W,H]);
+finalizeWorld(Object.assign(generateWorld(genW,genH,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld,genW,genH]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
@@ -2676,23 +2690,23 @@ setImportStatus("Loading...");
 try{let w;
 if(file.name.endsWith(".json")||file.name.endsWith(".map")){
 const text=await file.text();const parsed=parseAzgaarJSON(text);
-w=rasterizeAzgaar(parsed,W,H);
+w=rasterizeAzgaar(parsed,genW,genH);
 setImportStatus(`Azgaar map loaded (${parsed.n} cells, ${parsed.stateSet.size} states)`);
 }else if(file.type.startsWith("image/")){
 const img=await loadImageFile(file);
-w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
+w=rasterizeHeightmap(img.data,img.width,img.height,genW,genH);
 setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 }else{setImportStatus("Unsupported file type");return;}
-const swamp=new Uint8Array(W*H);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+const swamp=new Uint8Array(genW*genH);
+for(let y=0;y<genH;y++)for(let x=0;x<genW;x++){const i=y*genW+x;
 if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35){
-const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
+const nv=fbm(x/genW*20+300,y/genH*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
 w.swamp=swamp;
 importedWorldRef.current=w;presetRef.current="import";setPreset("import");
 setSeed(Math.floor(Math.random()*999999));
 setTimeout(()=>setImportStatus(null),4000);
 }catch(err){setImportStatus("Import failed: "+err.message);setTimeout(()=>setImportStatus(null),5000);}
-},[seed]);
+},[seed,genW,genH]);
 // Screen → canvas-pixel-space (reversing the pan/zoom transform). Returns
 // {sx,sy} in the same coordinate system the existing hit-testing already uses.
 const screenToCanvas=useCallback((ev)=>{
