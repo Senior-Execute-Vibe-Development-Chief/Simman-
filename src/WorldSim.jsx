@@ -850,6 +850,11 @@ const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
 // or coarser. Changing this re-memoises `generate` (W/H are in its deps), which auto-regenerates
 // the SAME seed at the new resolution via the [seed,generate] effect.
 const[mapScale,setMapScale]=useState(1920);
+// Sim resolution is DECOUPLED from map resolution: simDiv is how many map pixels each
+// sim tile spans (1 = sim matches the land, 2 = half [default], 4 = quarter/faster). Map
+// resolution (mapScale) sets terrain/coast crispness; simDiv sets sim granularity — which
+// is speed AND emergent detail (a finer grid seeds more river cradles → a different world).
+const[simDiv,setSimDiv]=useState(2);
 const genW=mapScale,genH=mapScale>>1;   // REQUESTED scale — the size the NEXT world generates at
 // Render/data dimensions track the ACTUAL loaded world, never the requested mapScale. Worldgen is
 // async, so between the scale change and the new world arriving the two differ; keying the canvas /
@@ -899,6 +904,9 @@ const simWorkerRef=useRef(null);
 // — initialising the sim at a resolution that no longer matches the canvas (mapScale),
 // which desyncs tw↔CW and blanks the overlay. Results whose id isn't the latest are dropped.
 const genIdRef=useRef(0);
+// Sim tile resolution (simDiv) read by finalizeWorld — a ref so the async worldgen
+// finalize sees the value chosen at request time even though finalizeWorld is memoised.
+const simTileResRef=useRef(2);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
@@ -996,12 +1004,12 @@ try{
     console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
     try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
   // Empty mirror until the first snapshot arrives.
-  peopleRef.current={_isMirror:true,step:0,settlements:[],tw:t.tw||0,th:t.th||0,tileRes:RES,N:0,countries:new Map(),_byId:new Map()};
+  peopleRef.current={_isMirror:true,step:0,settlements:[],tw:t.tw||0,th:t.th||0,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,N:0,countries:new Map(),_byId:new Map()};
   // Send ONLY the fields createWorld reads (structured-clone copies them; the
   // main thread keeps its own w arrays for terrain rendering). Avoids cloning
   // the full worldgen object, which may carry non-cloneable extras.
@@ -1013,7 +1021,7 @@ try{
   const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams,realWind:!!w.realWindUsed};
   const _pend=pendingSaveRef.current;
   if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
-  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
@@ -1028,10 +1036,10 @@ if(!usedWorker){
   catch(err){
     console.error("load failed:",err);
     alert("Could not load save: "+(err&&err.message));
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
     peopleRef.current._realWindGen=!!w.realWindUsed;
   }}
-  else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
+  else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
@@ -4254,15 +4262,23 @@ return(
           className={"au-btn"+(preset==="tectonic"?" au-active":"")} style={{flex:1,padding:"10px 4px"}}>Tectonic</button>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
-        <span className="au-fade" style={{fontSize:11}}>scale</span>
+        <span className="au-fade" style={{fontSize:11,width:26}}>map</span>
         {[{f:1920,l:"2×"},{f:960,l:"1×"},{f:480,l:"0.5×"}].map(o=>(
           <button key={o.f} onClick={()=>setMapScale(o.f)}
             className={"au-btn au-flat"+(mapScale===o.f?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
-            title={o.f===1920?"Finest coastlines — but slowest, least varied development":o.f===480?"Coarsest — but fastest and most varied (the calibration reference)":"Balanced detail vs development speed"}>{o.l}</button>
+            title={o.f===1920?"Finest coastlines & terrain":o.f===480?"Coarsest map — fastest to generate":"Balanced map detail"}>{o.l}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+        <span className="au-fade" style={{fontSize:11,width:26}}>sim</span>
+        {[{d:1,l:"Full"},{d:2,l:"Half"},{d:4,l:"Quarter"}].map(o=>(
+          <button key={o.d} onClick={()=>{simTileResRef.current=o.d;setSimDiv(o.d);generate(seed);}}
+            className={"au-btn au-flat"+(simDiv===o.d?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
+            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms":"Half the map resolution (default)"}>{o.l}</button>
         ))}
       </div>
       <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:6}}>
-        Lower scale = coarser map but faster, more-varied civilisations (regenerates this seed).</div>
+        Map = coastline/terrain detail. Sim = simulation granularity: finer runs slower, seeds more &amp; smaller realms, and yields a different emergent world. Both regenerate this seed.</div>
       {preset==="earth_sim"&&
         <label style={{fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5,marginBottom:6}} className="au-fade">
           <input type="checkbox" checked={useRealWind}
