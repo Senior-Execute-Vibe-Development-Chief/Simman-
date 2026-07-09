@@ -214,7 +214,14 @@ const ANCHOR_SCALE = 40;
 // the same however fine the grid; only cumulative reach distances scale.)
 const RES_REF_W = 240;
 const _resScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_RES_SCALE) || 0;
-function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : Math.max(1, tw / RES_REF_W); }
+// tw/RES_REF_W keeps a realm's REACH at a constant world-FRACTION at any grid. The old
+// Math.max(1, …) floor left it un-scaled BELOW the reference (tw<240): reach stayed a fixed
+// tile count while the grid shrank, so a coarse sim (the new Quarter setting, or a small map)
+// claimed a far larger fraction — realms ~2.3× oversized at tw=120. Un-clamp below the reference
+// (matching rNormPop, which never clamped) so density and reach agree symmetrically both ways.
+// Byte-identical at/above 240 (the app default, the 480 validate grid); the RES_INVARIANT_POP=0
+// escape hatch keeps the legacy clamp for exact-legacy runs.
+function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : (T.RES_INVARIANT_POP ? tw / RES_REF_W : Math.max(1, tw / RES_REF_W)); }
 export { resScaleFor };
 // Capital colouring (DEFAULT ON): per-settlement coverage (every settlement holds its own
 // ground, so populated land is never abandoned) RECOLOURED by nearest capital, so the

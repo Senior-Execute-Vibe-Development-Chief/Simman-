@@ -326,9 +326,10 @@ export function maybeCrystallize(world) {
   // territory reach does (countryTerritory's RES_REF_W = 240) — otherwise the
   // frontier crawls the same ABSOLUTE tiles/step and a big map fills a far smaller
   // FRACTION per year (the "full-size map barely settles by 1900" bug: 24% claimed
-  // at 1950 vs ~40% on the quarter-width reference). resScale = 1 at/below the
-  // reference width, so small maps and the determinism tests are untouched.
-  const resScale = Math.max(1, world.tw / 240);
+  // at 1950 vs ~40% on the quarter-width reference). Symmetric with resScaleFor: under
+  // RES_INVARIANT_POP the clamp is dropped BELOW the reference too, so a coarse sim
+  // spreads over the same world-fraction instead of over-claiming (=0 keeps legacy).
+  const resScale = T.RES_INVARIANT_POP ? world.tw / 240 : Math.max(1, world.tw / 240);
 
   // Mother-country expansion: pressed towns send settler parties (see
   // sendSettlers — this is the entire "population pressure → new colony"
