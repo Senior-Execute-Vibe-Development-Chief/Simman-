@@ -720,6 +720,11 @@ function PsSection({ id, title, right, open, onToggle, children }) {
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);
+// Resolution-agnostic FEATURE overlay: a second canvas stacked over the map, always at a FIXED
+// resolution (FEAT_W) regardless of the map scale, so borders / roads / settlement icons are drawn
+// at a constant resolution and always look the same crisp size. The map (terrain + political tints)
+// stays at map resolution below it; this canvas carries only the vector features.
+const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
@@ -847,6 +852,9 @@ const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
 const[mapScale,setMapScale]=useState(1920);
 const W=mapScale,H=mapScale>>1,CW=mapScale;
 const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
+// Feature overlay is a FIXED resolution (independent of mapScale) with the same aspect as the map,
+// so vector features render identically at every scale. CH/CW is constant across scales ⇒ FEAT_H fixed.
+const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(true);
@@ -1426,6 +1434,19 @@ if(_pz){
   ctx.imageSmoothingEnabled=false;
   ctx.setTransform(viewZRef.current,0,0,viewZRef.current,viewXRef.current,viewYRef.current);
 }
+// FEATURE overlay context: fixed-resolution canvas for vector features (borders/roads/icons).
+// Cleared each frame; the pan/zoom transform is the map's, scaled by k=FEAT_W/CW so the overlay
+// registers exactly over the map (both canvases are CSS-scaled to the same box). Smoothing ON for
+// crisp antialiased lines. featX/featY map sim-tile coords into the fixed FEAT canvas.
+const _k=FEAT_W/CW;   // map-canvas px → fixed-overlay px; features render at FEAT resolution (crisp at any scale)
+let fctx=null;
+if(_pz&&featRef.current){
+  fctx=featRef.current.getContext("2d");
+  fctx.setTransform(1,0,0,1,0,0);
+  fctx.clearRect(0,0,FEAT_W,FEAT_H);
+  fctx.imageSmoothingEnabled=true;
+  fctx.setTransform(viewZRef.current,0,0,viewZRef.current,viewXRef.current*_k,viewYRef.current*_k);
+}
 if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
 const img=imgRef.current;const d=img.data;
 // Lake lookup for rendering
@@ -1918,21 +1939,24 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
-    // Vector features (borders, roads, settlement icons) are drawn in CANVAS pixels, but the
-    // canvas is scaled to fill the SAME on-screen area at every map scale — so a fixed pixel
-    // size looks bigger at a coarse (480-wide) canvas than a fine (1920-wide) one. Multiply their
-    // dimensions by uiF = CW/1920 so they occupy a CONSTANT fraction of the map = constant
-    // on-screen size, matching the finest scale's look at every resolution.
-    const uiF=Math.max(0.4,CW/1920);
+    // Vector features (borders, roads, settlement icons) are authored in MAP-canvas (CW) pixels but
+    // rasterised onto the fixed FEAT_W overlay (see the octx _k scale below), so a width of `w*uiF`
+    // becomes w*uiF*_k = w FEAT-px at EVERY map scale — one constant on-screen size, resolution-
+    // agnostic. uiF = CW/1920 (no floor: the overlay's fixed resolution keeps thin lines crisp, so
+    // the old 0.4 clamp — which made 0.5× features oversized — is no longer needed).
+    const uiF=CW/1920;
     // ── Territory tint + borders + roads ── cached to an offscreen canvas
     // and regenerated only every PS_OVERLAY_REGEN sim-steps (it's a pure
     // function of owner[]/roadQuality[], which change slowly), then blitted.
     // This took ~460k per-tile fillRect+Map.get ops off EVERY frame.
     const PS_OVERLAY_REGEN=30;
+    // The overlay is sized to the FIXED feature resolution (FEAT_W×FEAT_H), not the map canvas,
+    // so borders/roads/tints rasterise crisply regardless of map scale; it's blitted onto the
+    // feature canvas each frame. (meta.ch!==CH below still forces a rebuild on scale change.)
     let ov=psOverlayRef.current;
-    if(!ov||ov.width!==CW||ov.height!==CH){
-      ov=psOverlayRef.current=(typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(CW,CH):document.createElement('canvas'));
-      ov.width=CW;ov.height=CH;psOverlayMeta.current.step=-1;
+    if(!ov||ov.width!==FEAT_W||ov.height!==FEAT_H){
+      ov=psOverlayRef.current=(typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(FEAT_W,FEAT_H):document.createElement('canvas'));
+      ov.width=FEAT_W;ov.height=FEAT_H;psOverlayMeta.current.step=-1;
     }
     const meta=psOverlayMeta.current;
     const stepNow=psw.step||0;
@@ -1946,7 +1970,12 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     if(ancAnimating||meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
-      octx.clearRect(0,0,CW,CH);
+      // Draw in MAP-canvas (CW×CH) coordinate units but rasterise onto the fixed FEAT_W×FEAT_H
+      // overlay: a single uniform _k scale means every coordinate / width / dash below is reused
+      // VERBATIM (w*uiF → w FEAT-px) yet renders at the fixed resolution — crisp at any map scale.
+      octx.setTransform(1,0,0,1,0,0);
+      octx.clearRect(0,0,FEAT_W,FEAT_H);
+      octx.setTransform(_k,0,0,_k,0,0);
       // National territory tints + dotted borders. Prefer the SMOOTH national
       // CLAIM (countryId per tile, peopleSim/countryClaim.js) — country-centric
       // borders that follow terrain and enclose frontier hinterland; fall back
@@ -2069,7 +2098,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
             octx.fillRect(sx,sy,TR+0.7,TR+0.7);}
           // soft borders where the dominant GROUP changes (legible but not segmented)
-          octx.strokeStyle="rgba(10,10,14,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
+          octx.strokeStyle="rgba(10,10,14,0.34)";octx.lineWidth=uiF;octx.beginPath();
           for(let ti=0;ti<N2;ti++){const k=keyOf[ti];if(k===-2147483648)continue;
             const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
             const rk=keyOf[((x+1)%tw)+y*tw];if(rk!==-2147483648&&rk!==k){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
@@ -2124,7 +2153,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
           octx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR+0.7,TR+0.7);
         }
-        octx.strokeStyle="rgba(8,8,12,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
+        octx.strokeStyle="rgba(8,8,12,0.34)";octx.lineWidth=uiF;octx.beginPath();
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
           const a=shown(px,py);if(a<0)continue;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           const ra=shown((px+1)%tw,py);if(ra>=0&&ra!==a){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
@@ -2136,7 +2165,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(arr&&rv.active&&prog<1&&ter.ancOriginFx!=null){
           const ox=ter.ancOriginFx*tw*TR, oy=dataYtoScreenY(ter.ancOriginFy*th*TR,H,CH);
           const ph=(performance.now()/700)%1, rr=TR*1.5+ph*TR*7;
-          octx.strokeStyle=`rgba(255,244,210,${(0.75*(1-ph)).toFixed(3)})`;octx.lineWidth=Math.max(1.2,TR*0.7);
+          octx.strokeStyle=`rgba(255,244,210,${(0.75*(1-ph)).toFixed(3)})`;octx.lineWidth=1.4*uiF;
           octx.beginPath();octx.arc(ox,oy,rr,0,6.2832);octx.stroke();
           octx.fillStyle="rgba(255,248,224,0.95)";octx.beginPath();octx.arc(ox,oy,Math.max(1.6,TR*1.3),0,6.2832);octx.fill();
         }
@@ -2174,7 +2203,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         // Black diagonal stripes over colonies (same colour as the metropole underneath).
         stripeCells(octx,colonyCells,TR,0.62);
         // thick dark borders between neighbouring countries
-        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=Math.max(1.6,TR*1.1);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
+        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
           const py=(ti/tw)|0,px=ti-py*tw;
@@ -2291,8 +2320,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(py<th-1){const dti=ti+tw;if(claimArr[dti]===cc){const qv=prov[dti];if(qv!==pv&&((pv<0||qv<0)===heritage)){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
           }
         };
-        octx.strokeStyle="rgba(20,20,20,0.45)";octx.lineWidth=1;octx.setLineDash([1,2]);octx.beginPath();drawSeams(false);octx.stroke();
-        octx.strokeStyle="rgba(15,15,15,0.75)";octx.lineWidth=1;octx.setLineDash([3,2]);octx.beginPath();drawSeams(true);octx.stroke();
+        octx.strokeStyle="rgba(20,20,20,0.45)";octx.lineWidth=uiF;octx.setLineDash([uiF,2*uiF]);octx.beginPath();drawSeams(false);octx.stroke();
+        octx.strokeStyle="rgba(15,15,15,0.75)";octx.lineWidth=uiF;octx.setLineDash([3*uiF,2*uiF]);octx.beginPath();drawSeams(true);octx.stroke();
         octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
@@ -2323,14 +2352,22 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             for(let cx=0;cx<CW;cx++){if(el[sy+Math.min(W-1,cx)]>0)md[(cy*CW+cx)*4+3]=255;}}
           mctx.putImageData(mi,0,0);landMaskKey.current=mKey;
         }
-        const prevOp=octx.globalCompositeOperation;
+        // The mask is at MAP resolution (elevation grid); the octx _k scale upsamples it onto the
+        // FEAT overlay. Nearest-neighbour (smoothing off) keeps a hard 0/255 alpha edge so coasts
+        // stay crisp at map resolution with no semi-transparent tint halo bleeding over the sea.
+        const prevOp=octx.globalCompositeOperation, prevSm=octx.imageSmoothingEnabled;
         octx.globalCompositeOperation='destination-in';
+        octx.imageSmoothingEnabled=false;
         octx.drawImage(landMaskRef.current,0,0);
-        octx.globalCompositeOperation=prevOp;
+        octx.globalCompositeOperation=prevOp;octx.imageSmoothingEnabled=prevSm;
       }
       meta.step=stepNow;meta.ch=CH;
     }
-    ctx.drawImage(ov,0,0);
+    // Blit the fixed-resolution political overlay onto the feature canvas (crisp at any map scale;
+    // its transform already carries the pan/zoom, scaled by _k). Fall back to the map canvas
+    // (scaled down) only if the feature layer isn't mounted.
+    if(fctx)fctx.drawImage(ov,0,0);
+    else ctx.drawImage(ov,0,0,FEAT_W,FEAT_H,0,0,CW,CH);
     // ── Settlement glyphs ──
     // Compact single-glyph per settlement, much smaller than the old
     // building-cluster sprite. Tier picks the SHAPE (village=dot,
@@ -2371,6 +2408,14 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const tierShow=_identity
       ?[false,false,_L.icons&&_L.city,_L.icons&&_L.metropolis]
       :[_L.icons&&_L.village,_L.icons&&_L.city,_L.icons&&_L.city,_L.icons&&_L.metropolis];
+    // Glyphs render on the fixed-resolution feature canvas too (crisp, constant size at every map
+    // scale). fctx's transform is the map's pan/zoom scaled by _k, so the map-canvas coordinates and
+    // *iconScale sizes below are reused verbatim; `ctx` is shadowed to the feature context for the
+    // loop only, leaving the sea-lanes/ships (which live over open water, under the transparent
+    // overlay) on the map canvas below. Falls back to the map ctx when the feature layer is absent.
+    const _ictx=fctx||ctx;
+    if(fctx)fctx.setTransform(viewZRef.current*_k,0,0,viewZRef.current*_k,viewXRef.current*_k,viewYRef.current*_k);
+    { const ctx=_ictx;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       if(!tierShow[s.tier|0])continue;
@@ -2444,6 +2489,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         ctx.fillStyle="rgba(255,235,180,0.85)";ctx.fill();
         ctx.lineWidth=0.7*iconScale;ctx.strokeStyle="rgba(90,60,10,0.9)";ctx.stroke();
       }
+    }
     }
   }
   // ── Sea lanes ── faint dashed routes over open water connecting the
@@ -3922,16 +3968,25 @@ return(
   <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
     <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
   </div>:
+  // The map canvas and the fixed-resolution feature canvas share one wrapper so the feature
+  // overlay covers the map EXACTLY (both fill the wrapper; identical aspect ratio ⇒ perfect
+  // registration). The map is pixelated (coarse terrain upscales blocky); the feature overlay is
+  // smooth (crisp lines). pointer-events on the overlay pass through to the map for hit-testing.
+  // The WRAPPER carries the sizing: width:100% (fills the column at ANY scale) + aspect-ratio (sets
+  // the height, constant across scales) + maxWidth/Height:100%. Both canvases then fill the wrapper
+  // (width/height:100%), so a coarse 480-wide map upscales to the same on-screen box as a 1920 one
+  // instead of shrink-wrapping small. Identical aspect ratio ⇒ the fixed-res feature overlay covers
+  // the map EXACTLY. The map box stays == displayed map, so mouse→canvas mapping is unaffected.
+  <div style={{position:"relative",lineHeight:0,width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
+    maxWidth:"100%",maxHeight:"100%"}}>
   <canvas ref={canvasRef} width={CW} height={CH}
     onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
     onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-    style={{display:"block",imageRendering:"pixelated",
-      // width:100% (not auto) so the map fills the available width at ANY scale — a coarse 480-wide
-      // canvas upscales (pixelated) to the same on-screen size as the 1920 one, instead of sitting
-      // small. aspect-ratio (constant across scales) sets the height; box stays == displayed map so
-      // the mouse→canvas mapping (screenToCanvas) is unaffected.
-      maxWidth:"100%",maxHeight:"100%",width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
+    style={{display:"block",imageRendering:"pixelated",width:"100%",height:"100%",
       boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
+  <canvas ref={featRef} width={FEAT_W} height={FEAT_H}
+    style={{position:"absolute",left:0,top:0,width:"100%",height:"100%",pointerEvents:"none"}} />
+  </div>
 }
 
 {/* ─── Country editor panel ─── */}
