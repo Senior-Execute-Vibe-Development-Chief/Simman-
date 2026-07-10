@@ -53,6 +53,26 @@ function fieldAdminOn() {
   if (_fieldAdminEnv === "0") return false;
   return T.FIELD_ADMIN > 0;
 }
+// Naval-administration master switch (T.FIELD_NAVAL lever / SIM_FIELD_NAVAL env for headless
+// A/B): the admin-distance walk and the frontier growth may TRAVERSE (never claim) water at
+// the nav-gated sail cost, bounded per crossing by the navigation excursion budget below.
+// Requires FIELD_ADMIN: traversal is priced through cumulative distance, and the lever-off
+// BFS connectivity would maroon (release) every across-water march the growth claimed — so
+// without the admin walk this lever is inert rather than self-contradictory.
+const _fieldNavalEnv = (typeof process !== "undefined" && process.env && process.env.SIM_FIELD_NAVAL) || "";
+function fieldNavalOn() {
+  if (_fieldNavalEnv === "1") return true;
+  if (_fieldNavalEnv === "0") return false;
+  return T.FIELD_NAVAL > 0;
+}
+// Excursion budget: the most CONSECUTIVE water tiles one crossing may bridge, per realm —
+// none below the seafaring floor (the same T.NAV_EMBARK_THRESH that gates water in the
+// transport cost field, so traversal and pricing agree on who can put to sea), a strait's
+// width at coastal seafaring, a small sea for an ocean-going power. Ported intact from the
+// legacy merge's naval contiguity (see mergePersistentTerritory below) — same physical
+// meaning, resolution-scaled like every reach quantity. Beyond bounding WHO crosses WHAT,
+// it bounds the walk itself to the coastal fringe (never O(countries × ocean)).
+const NAVAL_HOP_PER_NAV = 7;
 // Units recalibration for the extent constants under FIELD_ADMIN: FIELD_SPAN and the
 // coverage floor were calibrated in TILES (flat model); under load pricing every tile
 // costs ≥1 load (measured mid-game average ≈ 1.18 at the validate grid), so the
@@ -294,12 +314,15 @@ const NOISE_AMP  = 0.30;       // ± fraction the claim cost wobbles (0.30 ⇒ �
 const CITY_TIER = 2;
 const SQRT2 = Math.SQRT2;
 
+// The 4th lane (w) is the WATER-RUN depth under FIELD_NAVAL — how many consecutive water
+// tiles the entry's path has been at sea (0 on land, reset at every landfall), checked
+// against the realm's navigation excursion budget. Land-only callers never pass it (0).
 class MinHeap {
-  constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.c = new Int32Array(cap); this.n = 0; this.cap = cap; }
-  _grow() { const k = this.cap * 2; const t = new Int32Array(k); t.set(this.ti); this.ti = t; const d = new Float64Array(k); d.set(this.d); this.d = d; const c = new Int32Array(k); c.set(this.c); this.c = c; this.cap = k; }
-  push(ti, d, c) { if (this.n >= this.cap) this._grow(); let i = this.n++; this.ti[i] = ti; this.d[i] = d; this.c[i] = c; while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break; this._sw(p, i); i = p; } }
-  _sw(a, b) { const t = this.ti[a]; this.ti[a] = this.ti[b]; this.ti[b] = t; const d = this.d[a]; this.d[a] = this.d[b]; this.d[b] = d; const c = this.c[a]; this.c[a] = this.c[b]; this.c[b] = c; }
-  popMin() { const ti = this.ti[0], d = this.d[0], c = this.c[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; this.c[0] = this.c[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; this._sw(b, i); i = b; } } return { ti, d, c }; }
+  constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.c = new Int32Array(cap); this.w = new Int32Array(cap); this.n = 0; this.cap = cap; }
+  _grow() { const k = this.cap * 2; const t = new Int32Array(k); t.set(this.ti); this.ti = t; const d = new Float64Array(k); d.set(this.d); this.d = d; const c = new Int32Array(k); c.set(this.c); this.c = c; const w = new Int32Array(k); w.set(this.w); this.w = w; this.cap = k; }
+  push(ti, d, c, w = 0) { if (this.n >= this.cap) this._grow(); let i = this.n++; this.ti[i] = ti; this.d[i] = d; this.c[i] = c; this.w[i] = w; while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break; this._sw(p, i); i = p; } }
+  _sw(a, b) { const t = this.ti[a]; this.ti[a] = this.ti[b]; this.ti[b] = t; const d = this.d[a]; this.d[a] = this.d[b]; this.d[b] = d; const c = this.c[a]; this.c[a] = this.c[b]; this.c[b] = c; const w = this.w[a]; this.w[a] = this.w[b]; this.w[b] = w; }
+  popMin() { const ti = this.ti[0], d = this.d[0], c = this.c[0], w = this.w[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; this.c[0] = this.c[this.n]; this.w[0] = this.w[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; this._sw(b, i); i = b; } } return { ti, d, c, w }; }
 }
 
 // Smooth value-noise field (≈NOISE_CELL-tile wavelength, longitude-wrapping),
@@ -384,7 +407,11 @@ function fieldPolityTerritory(world) {
     let ec = localEdgeCost(world, ti, ni, kn, true);
     if (ec === Infinity) return Infinity;
     if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
-    if (host > 0) {
+    // Fertility-hostility + wet-tropic amplify LAND claims only (they model land nobody
+    // can settle, tax or garrison). A WATER edge (naval traversal — elev ≤ 0 targets only
+    // ever reach here under FIELD_NAVAL) is priced purely by its nav-gated mode cost:
+    // fert=0 at sea would otherwise re-tax every sailed tile as if it were deep desert.
+    if (host > 0 && elev[ni] > 0) {
       const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
       if (fdef > 0) ec *= 1 + host * fdef * fdef;
       if (temp && moist) { const wt = claimHostility(temp[ni], moist[ni]); if (wt > 0) ec *= 1 + host * WET_TROPIC_RESIST * wt; }
@@ -410,6 +437,34 @@ function fieldPolityTerritory(world) {
   // radius grows emergently as roads/rail cut movement cost — never from an era gate —
   // and a steppe or sea-lane empire still sprawls where movement is genuinely cheap.
   const adminOn = fieldAdminOn();
+  // ── Naval administration (T.FIELD_NAVAL, default on) ─────────────────────────
+  // The two walks below (admin distance, frontier growth) may TRAVERSE water — never
+  // claim it — at the same nav-gated sail cost every mover pays (transport.js water
+  // mode: impassable below the embark floor, perilous hop just above it, undercutting
+  // the plains at full navigation; port tax on embark/landfall). So a realm that can
+  // sail administers and grows across straits and small seas, its far shore priced at
+  // its TRUE sea distance in admin load — the maritime empire as a consequence of the
+  // cost field, not a special case. Two bounds keep it honest and cheap:
+  //   • the EXCURSION BUDGET — at most (1+7·nav)·resScale consecutive water tiles per
+  //     crossing (0 below NAV_EMBARK_THRESH): pre-naval realms stay walled by water,
+  //     and the walk touches only the coastal fringe, never O(countries × ocean);
+  //   • PER-REALM water distances — a shared dist[] on water would hand a contested
+  //     strait to whichever realm relaxes it first and maroon the rival's far shore
+  //     every pass (the exact bug the legacy merge documents at its naval-contiguity
+  //     block), so sea distance is keyed (realm, tile) on the fringe.
+  const navalOn = adminOn && fieldNavalOn();
+  const hopOf = navalOn ? new Map() : null;   // cid → excursion budget (consecutive water tiles)
+  const hopBudget = (cid) => {
+    let h = hopOf.get(cid);
+    if (h === undefined) {
+      const kn = knOf.get(cid), nav = (kn && kn.navigation) || 0;
+      h = nav < (T.NAV_EMBARK_THRESH ?? 0.10) ? 0 : Math.round((1 + NAVAL_HOP_PER_NAV * nav) * resScale);
+      hopOf.set(cid, h);
+    }
+    return h;
+  };
+  const wDistAdmin = navalOn ? new Map() : null;   // (cid·N + water ti) → sea distance, admin walk
+  const wDistGrow = navalOn ? new Map() : null;    // (cid·N + water ti) → sea distance, growth walk
   const ADMIN_HALF_EFF = Math.max(1e-9, (T.ADMIN_HALF || 15) * resScale);   // cumulative distance → res-scaled like every reach quantity
   const loadOfD = (d) => 1 + d / ADMIN_HALF_EFF;   // admin load of a tile at travel-cost d from its realm's nearest seat
   const spanEff = FIELD_SPAN * (adminOn ? ADMIN_LOAD_RECAL : 1);   // tile-calibrated span → load units (see ADMIN_LOAD_RECAL)
@@ -515,8 +570,10 @@ function fieldPolityTerritory(world) {
     for (const arr of homeTiles.values()) for (const ti of arr) if (dist[ti] > 0) { dist[ti] = 0; dheap.push(ti, 0, co[ti]); }
     for (let ti = 0; ti < N; ti++) if (worked[ti] && co[ti] >= 0 && dist[ti] > 0) { dist[ti] = 0; dheap.push(ti, 0, co[ti]); }
     while (dheap.n > 0) {
-      const { ti, d, c } = dheap.popMin();
-      if (d > dist[ti]) continue;
+      const { ti, d, c, w } = dheap.popMin();
+      // Stale-entry check: a water tile's distance lives in the per-realm sea map
+      // (dist[] stays Infinity at sea — the sea is traversed, never held).
+      if (navalOn && elev[ti] <= 0 ? d > wDistAdmin.get(c * N + ti) : d > dist[ti]) continue;
       const kn = knOf.get(c), cap = claimCap.get(c) || CLAIM_CAP_CEIL, host = hostOf.get(c) ?? CLAIM_HOSTILITY;
       const ty2 = (ti / tw) | 0, tx2 = ti - ty2 * tw;
       const xm = tx2 === 0 ? tw - 1 : tx2 - 1, xp = tx2 === tw - 1 ? 0 : tx2 + 1;
@@ -527,11 +584,22 @@ function fieldPolityTerritory(world) {
       ];
       const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
       for (let k = 0; k < 8; k++) {
-        const ni = ns[k]; if (ni < 0 || co[ni] !== c || elev[ni] <= 0) continue;   // same-owner LAND — exactly the flood's edges
-        const ec = edgeCostFor(ti, ni, kn, cap, host);
-        if (ec === Infinity) continue;
-        const nd = d + ec * mul[k];
-        if (nd < dist[ni]) { dist[ni] = nd; dheap.push(ni, nd, c); }
+        const ni = ns[k]; if (ni < 0) continue;
+        if (elev[ni] > 0) {
+          if (co[ni] !== c) continue;   // same-owner LAND — exactly the flood's edges (landfall resets the water run)
+          const ec = edgeCostFor(ti, ni, kn, cap, host);
+          if (ec === Infinity) continue;
+          const nd = d + ec * mul[k];
+          if (nd < dist[ni]) { dist[ni] = nd; dheap.push(ni, nd, c); }
+        } else if (navalOn && w < hopBudget(c)) {
+          // At sea: authority sails on at the nav-gated water cost (Infinity below the
+          // embark floor), while the excursion budget bounds this water run.
+          const ec = edgeCostFor(ti, ni, kn, cap, host);
+          if (ec === Infinity) continue;
+          const nd = d + ec * mul[k];
+          const wk = c * N + ni, cur = wDistAdmin.get(wk);
+          if (cur === undefined || nd < cur) { wDistAdmin.set(wk, nd); dheap.push(ni, nd, c, w + 1); }
+        }
       }
     }
     for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) co[ti] = -1;
@@ -627,12 +695,17 @@ function fieldPolityTerritory(world) {
       // frontier near the realm's seats over the tip of a far tendril (which used to
       // restart at zero and grow as cheaply as the capital's suburbs), and contested
       // wild goes to whoever can actually administer it more cheaply.
-      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && elev[ni] > 0 && co[ni] < 0) { const d0 = adminOn ? dist[ti] : 0; cost[ti] = d0; heap.push(ti, d0, c); break; } }
+      // FIELD_NAVAL: a coastal tile is frontier too — an island realm whose land border
+      // is all sea would otherwise never seed, freezing it however naval it becomes.
+      // Only realms with a live excursion budget seed on water (pre-naval coasts stay inert).
+      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && ((elev[ni] > 0 && co[ni] < 0) || (navalOn && elev[ni] <= 0 && hopBudget(c) > 0))) { const d0 = adminOn ? dist[ti] : 0; cost[ti] = d0; heap.push(ti, d0, c); break; } }
     }
     const budget = new Map(grow);
     while (heap.n > 0) {
-      const { ti, d, c } = heap.popMin();
-      if (d > cost[ti]) continue;
+      const { ti, d, c, w } = heap.popMin();
+      // Water entries live in the per-realm sea map (cost[] is land-only here, and a
+      // shared sea entry would let one realm's cheap crossing block a rival's).
+      if (navalOn && elev[ti] <= 0 ? d > wDistGrow.get(c * N + ti) : d > cost[ti]) continue;
       if ((budget.get(c) || 0) <= 0) continue;
       const kn = knOf.get(c), cap = claimCap.get(c) || CLAIM_CAP_CEIL, host = hostOf.get(c) ?? CLAIM_HOSTILITY;
       const ty = (ti / tw) | 0, tx = ti - ty * tw;
@@ -645,7 +718,20 @@ function fieldPolityTerritory(world) {
       const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
       for (let k = 0; k < 8; k++) {
         const ni = ns[k]; if (ni < 0) continue;
-        if (elev[ni] <= 0 || co[ni] >= 0) continue;        // grow into WILD land only (never sea, never another realm)
+        // FIELD_NAVAL: the wave may SAIL over water (traverse only — the sea is never
+        // claimed, consumes no growth budget) within the excursion budget; the far
+        // shore then claims like any frontier tile, arriving at its true sea distance
+        // (so a distant landfall costs its full admin load — colonies are dear).
+        if (elev[ni] <= 0) {
+          if (!(navalOn && w < hopBudget(c))) continue;
+          const ec = edgeCostFor(ti, ni, kn, cap, host);
+          if (ec === Infinity) continue;
+          const nd = d + ec * mul[k];
+          const wk = c * N + ni, cur = wDistGrow.get(wk);
+          if (cur === undefined || nd < cur) { wDistGrow.set(wk, nd); heap.push(ni, nd, c, w + 1); }
+          continue;
+        }
+        if (co[ni] >= 0) continue;                         // grow into WILD land only (never another realm)
         const ec = edgeCostFor(ti, ni, kn, cap, host);
         if (ec === Infinity) continue;
         const nd = d + ec * mul[k];
