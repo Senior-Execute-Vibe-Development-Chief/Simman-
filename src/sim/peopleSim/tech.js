@@ -271,7 +271,7 @@ export function techEdgePath(a, b, dims, stag = 0) {
 //   build    +urban density level         cohesion +loyalty / stability
 //   trade    +trade & export              defense  +city defence (walls)
 //   wealth   +specie / treasury           seaSpeed/seaRange  naval
-//   abilities (booleans): embark · ocean · colonize · walls · market
+//   abilities (booleans): embark · ocean · colonize · walls · market · credit
 // Calibrated (see techEffects) so that with TECH_EFFECTS = 0 the OLD continuous
 // formulas are reproduced exactly, and = 1 is fully tech-driven.
 export const TECH_FX = {
@@ -374,14 +374,14 @@ export const TECH_FX = {
   // — economy / wealth / trade —
   currency:     { trade:0.18, wealth:0.15, market:true, reach:0.08 },
   guilds:       { trade:0.10, wealth:0.08, build:0.02 },
-  banking:      { trade:0.15, wealth:0.24 },
+  banking:      { trade:0.15, wealth:0.24, credit:true },   // the credit INSTITUTION: fractional money creation unlocks with the first banks (settlement.js updateWealth)
   economics:    { trade:0.20, wealth:0.20, reach:0.05 },
   alchemy:      { wealth:0.05 },
 };
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange", "logistics", "health"];
-const FX_ABIL = ["embark", "ocean", "colonize", "walls", "market"];
+const FX_ABIL = ["embark", "ocean", "colonize", "walls", "market", "credit"];
 // (health channel consumers: shocks.js plague mortality/spread and the
 // urban-mortality drag in settlement.js — epidemics fade exactly when and
 // where a society earns sanitation, never on a date.)
@@ -483,7 +483,7 @@ export function techEffects(k, blend = 1) {
 // Human-readable one-line summary of a tech's effect, for the tree tooltip.
 const FX_LABEL = { farm:"farm", fish:"fishing", build:"city size", military:"military", reach:"reach",
   cohesion:"stability", defense:"defence", trade:"trade", wealth:"wealth", seaSpeed:"ship speed", seaRange:"naval range", logistics:"empire reach",
-  embark:"can embark", ocean:"ocean-going ships", colonize:"overseas colonies", walls:"city walls", market:"markets" };
+  embark:"can embark", ocean:"ocean-going ships", colonize:"overseas colonies", walls:"city walls", market:"markets", credit:"bank credit" };
 export function techEffectText(id) {
   const fx = TECH_FX[id]; if (!fx) return "";
   return techEffectList(id).map(e => e.text).join(" · ");

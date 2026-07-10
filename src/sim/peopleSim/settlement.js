@@ -631,6 +631,12 @@ export { techEff };
 // (but goods-poor) mining towns are net buyers, spending their specie
 // outward — that's how mined money spreads to the rest of the economy.
 // MINING_RATE -> runtime lever (tuning.js T.MINING_RATE)
+// Credit contraction runs this multiple of the build-up easing rate: a run on the
+// bank is intrinsically faster than deposit growth (confidence compounds slowly,
+// evaporates at once — 1637, 1720, 1873). An asymmetry of the mechanism itself,
+// not a tunable outcome: expansion ~a generation to full depth at the default
+// CREDIT_RATE, a crunch ~a few years.
+const CREDIT_CRUNCH = 4;
 function updateWealth(world, s) {
   // Coin-loss drain (Phase 1 — the honest micro-sink replacing the freight burn):
   // a sliver of circulating specie leaves for good each tick — worn, shipwrecked,
@@ -638,20 +644,33 @@ function updateWealth(world, s) {
   // mining-only return) so the money supply settles at an equilibrium between
   // mint inflow and this realistic drain, instead of the freight burn.
   if (T.COIN_LOSS_RATE > 0 && s.wealth > 0) s.wealth -= s.wealth * T.COIN_LOSS_RATE * (world._dt || 1);   // per-tick specie drain → granularity-scaled
-  // CREDIT (Phase 5): a BANKING hub creates credit money on top of its specie —
-  // the fractional-reserve / bills-of-exchange layer that made Venice & Amsterdam
-  // rich with no mines. A settlement with Banking-era ORGANISATION and a wide
-  // TRADE network conjures credit up to CREDIT_MAX_MULT × its specie backing; when
-  // its commerce COLLAPSES the credit is called in and the money supply CONTRACTS
-  // (the dark-age crunch). Credit is tracked separately (s._credit) so it stays
-  // bounded — contraction never pushes wealth negative or unwinds money it lacks.
+  // CREDIT (Phase 5, default ON): a BANKING hub creates credit money on top of its
+  // specie — the fractional-reserve / bills-of-exchange layer that made Venice &
+  // Amsterdam rich with no mines. Gated on the banking INSTITUTION (the discrete
+  // banking tech's `credit` ability — bills of exchange need banks, exactly as the
+  // monetization gauge gates a cash economy on the currency tech's `market`; the
+  // old raw org>0.45 proxy fired half the organization track before anyone built
+  // one). Depth then grows with organization BEYOND the banking gate (0.70→1:
+  // goldsmith notes → giro banks → joint-stock finance) and with market breadth
+  // (trade partners — a bill of exchange needs correspondents to clear through),
+  // up to CREDIT_MAX_MULT × specie backing. When commerce COLLAPSES (a sack,
+  // severed trade, lost institution) the target falls and credit is CALLED IN at
+  // CREDIT_CRUNCH × the build-up rate — panics run faster than deposit growth —
+  // contracting the money supply (the dark-age crunch). Credit is tracked
+  // separately (s._credit) so it stays bounded — contraction never pushes wealth
+  // negative or unwinds money it lacks. Everything gates on the settlement's own
+  // emergent tech/commerce, never era/time; rates are dt-scaled like COIN_LOSS so
+  // SIM_GRANULARITY leaves the arc invariant.
   if (T.CREDIT_RATE > 0) {
     const cur = s._credit || 0;
     const base = Math.max(0, (s.wealth || 0) - cur);                      // specie backing the credit
     const org = (s.knowledge && s.knowledge.organization) || 0;
     const reachF = s._tradeReach ? Math.min(1, s._tradeReach.size / 12) : 0;
-    const bankF = Math.max(0, (org - 0.45) / 0.55) * reachF;             // needs Banking-era org + commerce
-    const delta = (base * (T.CREDIT_MAX_MULT - 1) * bankF - cur) * T.CREDIT_RATE;
+    const depth = 0.25 + 0.75 * Math.min(1, Math.max(0, (org - 0.70) / 0.30));   // a new bank multiplies modestly; finance deepens with statecraft
+    const bankF = techEff(s).credit ? depth * reachF : 0;
+    const gap = base * (T.CREDIT_MAX_MULT - 1) * bankF - cur;
+    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 ? CREDIT_CRUNCH : 1));
+    const delta = gap * rate;
     if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
     else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_CREDIT, take); } }   // credit called in, not goods bought (B17)
   }

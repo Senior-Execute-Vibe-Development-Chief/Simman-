@@ -1,7 +1,13 @@
 # Money & Currency System — design spec
 
-Status: **Phases 1-4 + the (b) model implemented (default-on); Phase 5 (credit)
-implemented but default-OFF (experimental).** The full currency arc is built.
+Status: **Phases 1-5 + the (b) model implemented (default-on).** Phase 5 (credit)
+flipped default-on after W6-E layered the emergent cash economy it sits on: credit
+is now gated on the discrete banking TECH (`credit` ability — the institution, like
+`market` for coinage; the old raw org>0.45 proxy fired half the organization track
+before anyone built a bank), deepens with organization past the banking gate and
+with trade breadth, and is called in at CREDIT_CRUNCH× the build-up rate when
+commerce collapses (a run is faster than deposit growth). The full currency arc is
+built.
 Goal agreed with owner: replace the current
 "money is dug out of the ground and regulated by nothing" model with a system
 where money is **created by mines + statecraft**, **regulated by trade and

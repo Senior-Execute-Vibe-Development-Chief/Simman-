@@ -450,6 +450,11 @@ B70 (agglomeration hash omits world seed) · I34 (dead tongues drift forever)
 4. **Credit default** (Phase-5 banking, currently OFF): revisit after W6-E,
    when monetization is layered — credit-on makes most sense once the cash
    economy is itself emergent.
+   > DONE (post-W6-E): CREDIT_RATE default 0→0.01, re-gated on the discrete
+   > banking tech's `credit` ability (institution, not raw org), depth grows
+   > with org past the banking gate × trade breadth, contraction runs at
+   > CREDIT_CRUNCH=4× build-up (runs are faster than deposit growth), dt-scaled.
+   > CREDIT_RATE=0 recovers the specie-only baseline byte-identically.
 
 ## Suggested session plan
 
