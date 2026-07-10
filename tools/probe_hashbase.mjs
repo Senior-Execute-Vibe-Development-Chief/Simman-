@@ -5,7 +5,10 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
+// Current baseline (2500 steps): 692c38be/2532b712 (SCI_COMPOUND 1.5 + LABOR_INNOV 0.6
+// defaults — the chronology repacing; LABOR_INNOV=0 gives 1c56993f/eeff4048,
+// SCI_COMPOUND=0 recovers the pre-chronology f4530e0a/18235178).
+// Older baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
 //   8817=d3acad98  31337=ffeab697   (REACTIVE-SETTLEMENT model, TILE_POLITY + CATCHMENT_CLIP
 //   default ON — settlements are reactionary to the political map: only the CAPITAL anchors a
 //   border, and the economic catchment is clipped to the tiles its country already holds, so a

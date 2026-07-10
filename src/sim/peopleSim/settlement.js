@@ -1538,6 +1538,23 @@ function updateKnowledge(world, s) {
     const idx = Math.max(0.02, sciSqrt / T.SCI_POP_REF) * Math.max(0.02, reachN / 18) * inst;
     sciMul *= Math.max(SCI_COMPOUND_FLOOR, Math.min(SCI_COMPOUND_CAP, Math.pow(idx / SCI_MED_IDX, T.SCI_COMPOUND)));
   }
+  // ── Labor cost → innovation demand (T.LABOR_INNOV) ──────────────────────────
+  // The classical-stagnation driver (docs: chronology wave, "driver 3"). When a
+  // machine competes with a slave, the slave wins: a society whose production
+  // runs on COERCED labor has little demand for labor-saving technique — Rome's
+  // aeolipile stayed a toy while Hero's world ran on chattel muscle; the serf
+  // manor likewise under-bought the mill. So the learning rate scales DOWN with
+  // the coerced share of the workforce (chattel headcount _unfree + serf tenure
+  // _serf, both live emergent stocks of the slavery/serfdom systems). The other
+  // half of the law — SCARCE labor is dear and compels invention (the post-plague
+  // wage revolution) — is already emergent here: mass death raises food-per-head
+  // (flow) and with it surplusF above. A fully free-labor settlement is exactly
+  // 1 (unchanged); a fully coerced one learns at 1 − LABOR_INNOV. No era, no
+  // date, no region is named — sim-Rome slows because of what its economy IS.
+  if (T.LABOR_INNOV > 0) {
+    const coerced = Math.min(1, (s._unfree || 0) / Math.max(1, s.people || 1) + (s._serf || 0));
+    if (coerced > 0) sciMul *= Math.max(0.1, 1 - T.LABOR_INNOV * coerced);
+  }
 
   // ── Environment specialization (climate-tied learning) ────────────────
   // Beyond the resource gates, the LOCAL CLIMATE biases which techniques a
