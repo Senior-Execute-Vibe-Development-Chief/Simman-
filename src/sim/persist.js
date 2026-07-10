@@ -210,6 +210,7 @@ export function saveWorld(world, meta = {}) {
     eraAt: world._eraAt,              // display-calendar timeline (step each era was reached)
     eraProd: world._eraProd,          // demographic anchor: global productivity index
     climIndex: world._climIndex, climShock: world._climShock,   // dynamic-climate state (climate.js)
+    refRevenue: world._refRevenue,    // CAP_MODEL smoothed fiscal peer baseline — carried state since REF_REV_SMOOTH (conquest.js); absent/0 reseeds at the next pass's median
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1, event: world._nextEventId ?? (world.events ? world.events.length : 0) },
     tuning,
@@ -306,6 +307,7 @@ export function loadWorld(data, opts = {}) {
   world.step = data.step | 0;
   world._eraProd = data.eraProd ?? 1;        // demographic anchor (index.js): restore so post-load ticks match
   world._climIndex = data.climIndex ?? 0; world._climShock = data.climShock ?? 0;   // dynamic-climate state
+  world._refRevenue = data.refRevenue ?? 0;   // smoothed fiscal peer baseline (0 / pre-field saves: reseeds at the next polity pass's median)
   world._popTotal = data.popTotal ?? 0;
   world._eraAt = data.eraAt || [0];
   world._nextSettlementId = data.counters.settlement;

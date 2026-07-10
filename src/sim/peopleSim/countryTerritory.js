@@ -44,6 +44,22 @@ function persistentTerritoryOn() {
   if (_persistEnv === "0") return false;
   return T.PERSISTENT_TERRITORY > 0;
 }
+// Admin-distance master switch (T.FIELD_ADMIN lever / SIM_FIELD_ADMIN env for headless A/B):
+// under the field polity, price territory in ADMINISTRATION units (load = 1 + d/ADMIN_HALF,
+// d = travel cost from the realm's nearest seat) instead of flat tiles. See fieldPolityTerritory.
+const _fieldAdminEnv = (typeof process !== "undefined" && process.env && process.env.SIM_FIELD_ADMIN) || "";
+function fieldAdminOn() {
+  if (_fieldAdminEnv === "1") return true;
+  if (_fieldAdminEnv === "0") return false;
+  return T.FIELD_ADMIN > 0;
+}
+// Units recalibration for the extent constants under FIELD_ADMIN: FIELD_SPAN and the
+// coverage floor were calibrated in TILES (flat model); under load pricing every tile
+// costs ≥1 load (measured mid-game average ≈ 1.18 at the validate grid), so the
+// unchanged constants would silently shrink every realm by that factor. This re-expresses
+// the SAME calibration per load unit — the pricing changes WHERE capacity is spent
+// (near, cheap land over remote, harsh land), not how much it administers on average.
+const ADMIN_LOAD_RECAL = 1.18;
 const COUNTRY_REACH_BASE = _envNum("SIM_REACH_BASE", 4);   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
 const COUNTRY_REACH_ORG  = _envNum("SIM_REACH_ORG", 14);   // reach per organisation tech (was 20 — empires were continental too early; a 14→26 trial over-inflated empires at APP resolution and was reverted — empire size is resolution-sensitive via the size-gate, so it must be calibrated at the shipped width, not the 240-wide gate)
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
@@ -357,6 +373,48 @@ function fieldPolityTerritory(world) {
     claimCap.set(cid, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
   }
 
+  // Per-edge CLAIM cost for a realm stepping from ti into land tile ni: the transport
+  // edge cost, soft-capped (engineering), amplified on barren / wet-tropic ground
+  // (hostility fades with the realm's logistics), wobbled by the organic-border noise.
+  // ONE function shared by the frontier growth AND the admin-distance walk below — if
+  // the two priced an edge differently, a tile's admin load would flip between the
+  // pass that claimed it and the next pass's re-walk.
+  const noise = claimNoise(world);
+  const edgeCostFor = (ti, ni, kn, cap, host) => {
+    let ec = localEdgeCost(world, ti, ni, kn, true);
+    if (ec === Infinity) return Infinity;
+    if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
+    if (host > 0) {
+      const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
+      if (fdef > 0) ec *= 1 + host * fdef * fdef;
+      if (temp && moist) { const wt = claimHostility(temp[ni], moist[ni]); if (wt > 0) ec *= 1 + host * WET_TROPIC_RESIST * wt; }
+    }
+    ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);
+    return ec;
+  };
+
+  // ── Administrative DISTANCE (T.FIELD_ADMIN, default on) ──────────────────────
+  // The tyranny of distance, restored to the field model. The legacy reach-Voronoi
+  // bounded every claim by cumulative travel cost from a settlement and pulled basins
+  // toward the capital (CAPITAL_ANCHOR); the field model replaced both with a flat
+  // AREA target, under which a tile at the tip of a 100-tile tendril costs the centre
+  // exactly as much as one beside the capital — so nothing preferred compact shapes,
+  // and long runs accreted contorted, overextended smears (measured: top-realm
+  // compactness 0.3 → 0.05 over 60k steps at the app grid). Under the lever each tile
+  // instead carries an admin LOAD of 1 + d/ADMIN_HALF — d being its travel cost from
+  // the realm's nearest SEAT (capital home tile / member cores), priced by the same
+  // tech-aware edge-cost field as movement — and held/target/growth/shed all trade in
+  // load, not tiles. Near, cheap land is administered at face value; far or harsh land
+  // consumes multiples of capacity; an over-target realm sheds its MOST REMOTE marches
+  // first. Because d is priced through the tech-discounted edge costs, the affordable
+  // radius grows emergently as roads/rail cut movement cost — never from an era gate —
+  // and a steppe or sea-lane empire still sprawls where movement is genuinely cheap.
+  const adminOn = fieldAdminOn();
+  const ADMIN_HALF_EFF = Math.max(1e-9, (T.ADMIN_HALF || 15) * resScale);   // cumulative distance → res-scaled like every reach quantity
+  const loadOfD = (d) => 1 + d / ADMIN_HALF_EFF;   // admin load of a tile at travel-cost d from its realm's nearest seat
+  const spanEff = FIELD_SPAN * (adminOn ? ADMIN_LOAD_RECAL : 1);   // tile-calibrated span → load units (see ADMIN_LOAD_RECAL)
+  let dist = null;   // per-tile d (Float64, Infinity = unreached), filled by the connectivity walk below
+
   // 1. ANCHOR home tiles. DEFAULT: every settled home tile (seats AND subjects) — guarantees
   //    the blob contains its cities and seeds a newborn polity's one-tile core.
   //    TILE_POLITY: only the CAPITAL anchors. A polity's spatial identity becomes its capital
@@ -437,20 +495,51 @@ function fieldPolityTerritory(world) {
   // 2. RELEASE dead-owner land (a fallen realm's blob reverts to wilderness).
   for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c >= 0 && !alive.has(c)) co[ti] = -1; }
 
-  // 3. CONNECTIVITY: release any tile not reachable from a home tile of its OWNER
-  //    through same-owner land (a fragment severed by conquest reverts to wild).
-  {
+  // 3. CONNECTIVITY (+ admin distance): release any tile not reachable from a home tile
+  //    of its OWNER through same-owner land (a fragment severed by conquest reverts to
+  //    wild). Seed from home tiles AND every WORKED tile: a tile the realm's economy
+  //    actively farms is held by definition and must never be released (step 6 shed
+  //    honours the same worked-pin). Walk 8-CONNECTED to match the catchment stamp
+  //    (territory.js, diagonal) and the frontier growth (step 5, diagonal): a
+  //    4-connected release would strip any tile attached only diagonally / across a
+  //    naval hop — which the 8-connected stamp/growth re-add every pass — so co never
+  //    reaches a fixed point at ragged coasts or inter-realm diagonal borders and the
+  //    growth budget leaks re-claiming held ground.
+  //    Under FIELD_ADMIN the same walk is a cost Dijkstra (same seeds, same edges, same
+  //    reachable set), so it ALSO yields d — each tile's travel cost from the realm's
+  //    nearest seat — which the load pricing below reads.
+  if (adminOn) {
+    dist = world._fpDist; if (!dist || dist.length !== N) dist = world._fpDist = new Float64Array(N);
+    dist.fill(Infinity);
+    const dheap = new MinHeap();
+    for (const arr of homeTiles.values()) for (const ti of arr) if (dist[ti] > 0) { dist[ti] = 0; dheap.push(ti, 0, co[ti]); }
+    for (let ti = 0; ti < N; ti++) if (worked[ti] && co[ti] >= 0 && dist[ti] > 0) { dist[ti] = 0; dheap.push(ti, 0, co[ti]); }
+    while (dheap.n > 0) {
+      const { ti, d, c } = dheap.popMin();
+      if (d > dist[ti]) continue;
+      const kn = knOf.get(c), cap = claimCap.get(c) || CLAIM_CAP_CEIL, host = hostOf.get(c) ?? CLAIM_HOSTILITY;
+      const ty2 = (ti / tw) | 0, tx2 = ti - ty2 * tw;
+      const xm = tx2 === 0 ? tw - 1 : tx2 - 1, xp = tx2 === tw - 1 ? 0 : tx2 + 1;
+      const ns = [
+        ty2 * tw + xm, ty2 * tw + xp, ty2 > 0 ? ti - tw : -1, ty2 < th - 1 ? ti + tw : -1,
+        ty2 > 0 ? (ty2 - 1) * tw + xm : -1, ty2 > 0 ? (ty2 - 1) * tw + xp : -1,
+        ty2 < th - 1 ? (ty2 + 1) * tw + xm : -1, ty2 < th - 1 ? (ty2 + 1) * tw + xp : -1,
+      ];
+      const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
+      for (let k = 0; k < 8; k++) {
+        const ni = ns[k]; if (ni < 0 || co[ni] !== c || elev[ni] <= 0) continue;   // same-owner LAND — exactly the flood's edges
+        const ec = edgeCostFor(ti, ni, kn, cap, host);
+        if (ec === Infinity) continue;
+        const nd = d + ec * mul[k];
+        if (nd < dist[ni]) { dist[ni] = nd; dheap.push(ni, nd, c); }
+      }
+    }
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) co[ti] = -1;
+  } else {
     let reach = world._fpReach; if (!reach || reach.length !== N) reach = world._fpReach = new Uint8Array(N);
     reach.fill(0);
     let q = world._fpQ; if (!q || q.length !== N) q = world._fpQ = new Int32Array(N);
     let qt = 0;
-    // Seed from home tiles AND every WORKED tile: a tile the realm's economy actively
-    // farms is held by definition and must never be released (step 6 shed honours the
-    // same worked-pin). Flood 8-CONNECTED to match the catchment stamp (territory.js,
-    // diagonal) and the frontier growth (step 5, diagonal): a 4-connected release would
-    // strip any tile attached only diagonally / across a naval hop — which the 8-connected
-    // stamp/growth re-add every pass — so co never reaches a fixed point at ragged coasts
-    // or inter-realm diagonal borders and the growth budget leaks re-claiming held ground.
     for (const arr of homeTiles.values()) for (const ti of arr) if (!reach[ti]) { reach[ti] = 1; q[qt++] = ti; }
     for (let ti = 0; ti < N; ti++) if (worked[ti] && co[ti] >= 0 && !reach[ti]) { reach[ti] = 1; q[qt++] = ti; }
     for (let h = 0; h < qt; h++) {
@@ -467,9 +556,12 @@ function fieldPolityTerritory(world) {
     for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) co[ti] = -1;
   }
 
-  // 4. Held-tile counts (post-release) → grow/shed budgets vs the capacity target.
+  // 4. Held ADMINISTRATION (post-release) → grow/shed budgets vs the capacity target.
+  //    Under FIELD_ADMIN a tile counts as its admin load (1 + d/ADMIN_HALF), so the same
+  //    capacity holds MORE near/cheap land than far/harsh land — the distance attenuation
+  //    of authority. Lever off: flat tile counts (the prior model, byte-identical).
   const held = new Map();
-  for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c >= 0) held.set(c, (held.get(c) || 0) + 1); }
+  for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c >= 0) held.set(c, (held.get(c) || 0) + (adminOn ? loadOfD(dist[ti]) : 1)); }
   // TARGET = FIELD_SPAN·capacity: the whole size limit lives in the (validated) Tilly
   // capacity, which already collapses under war/insolvency (duress) and towers for a
   // dominant fiscal-logistic power — so area tracks capacity directly. Growth toward
@@ -488,7 +580,7 @@ function fieldPolityTerritory(world) {
   // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
   const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
   for (const [cid, cp] of capOf) {
-    let t = Math.round(FIELD_SPAN * Math.max(0, cp) * r2);
+    let t = Math.round(spanEff * Math.max(0, cp) * r2);
     if (T.TILE_POLITY) {
       // COVERAGE FLOOR (capital-only anchoring): guarantee every realm a growth target
       // of at least an org-scaled administrative hinterland, so a solo city-state whose
@@ -497,9 +589,10 @@ function fieldPolityTerritory(world) {
       // target, so great powers (capacity-bound) are unchanged — only the frozen small
       // realms grow. This also SUPERSEDES the cold-start guard below: a floor'd realm has
       // a real target ≥ its held core, so step 6 never sheds a capless realm's frontier.
+      // (Under FIELD_ADMIN target and floor are load-denominated, like everything here.)
       const kn = knOf.get(cid);
       const org = (kn && kn.organization) || 0;
-      const floor = Math.round((COVER_BASE + COVER_ORG * org) * r2);
+      const floor = Math.round((COVER_BASE + COVER_ORG * org) * r2 * (adminOn ? ADMIN_LOAD_RECAL : 1));
       if (floor > t) t = floor;
     } else if (cp <= 0) {
       // A realm with NO real capacity yet — a newborn minted after the last polity pass,
@@ -522,7 +615,6 @@ function fieldPolityTerritory(world) {
   //    ribbon-hug + wet-tropic + organic noise). Contested wild goes to whoever reaches
   //    it cheaper.
   if (grow.size) {
-    const noise = claimNoise(world);
     let cost = world._fpCost; if (!cost || cost.length !== N) cost = world._fpCost = new Float64Array(N);
     cost.fill(Infinity);
     const heap = new MinHeap();
@@ -530,7 +622,12 @@ function fieldPolityTerritory(world) {
       const c = co[ti]; if (c < 0 || !grow.has(c)) continue;
       const y = (ti / tw) | 0, x = ti - y * tw;
       const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
-      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && elev[ni] > 0 && co[ni] < 0) { cost[ti] = 0; heap.push(ti, 0, c); break; } }
+      // Under FIELD_ADMIN a frontier tile seeds at its OWN distance-from-seat, so the
+      // expansion wave carries true cumulative distance: growth naturally prefers the
+      // frontier near the realm's seats over the tip of a far tendril (which used to
+      // restart at zero and grow as cheaply as the capital's suburbs), and contested
+      // wild goes to whoever can actually administer it more cheaply.
+      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && elev[ni] > 0 && co[ni] < 0) { const d0 = adminOn ? dist[ti] : 0; cost[ti] = d0; heap.push(ti, d0, c); break; } }
     }
     const budget = new Map(grow);
     while (heap.n > 0) {
@@ -549,23 +646,20 @@ function fieldPolityTerritory(world) {
       for (let k = 0; k < 8; k++) {
         const ni = ns[k]; if (ni < 0) continue;
         if (elev[ni] <= 0 || co[ni] >= 0) continue;        // grow into WILD land only (never sea, never another realm)
-        let ec = localEdgeCost(world, ti, ni, kn, true);
+        const ec = edgeCostFor(ti, ni, kn, cap, host);
         if (ec === Infinity) continue;
-        if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
-        if (host > 0) {
-          const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
-          if (fdef > 0) ec *= 1 + host * fdef * fdef;
-          if (temp && moist) { const wt = claimHostility(temp[ni], moist[ni]); if (wt > 0) ec *= 1 + host * WET_TROPIC_RESIST * wt; }
-        }
-        ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);
         const nd = d + ec * mul[k];
         // Only lower cost[ni] when we actually CLAIM it (budget remains). Lowering it for
         // an exhausted-budget realm would reserve the wild tile — a solvent competitor
         // then needs to beat the lower cost and is locked out, sterilising contested land
         // neither realm ends up holding. (Budget can drain to 0 mid-relaxation as earlier
         // neighbours of this same pop are claimed, so the guard must be here, not only at pop.)
+        // FIELD_ADMIN: a claimed tile consumes its admin LOAD from the budget (a remote
+        // or harsh tile spends multiples), and its distance is stamped so this pass's
+        // shed / next pass's walk read the same d the claim was priced at.
         if (nd < cost[ni] && (budget.get(c) || 0) > 0) {
-          cost[ni] = nd; co[ni] = c; budget.set(c, budget.get(c) - 1); heap.push(ni, nd, c);
+          cost[ni] = nd; co[ni] = c; budget.set(c, budget.get(c) - (adminOn ? loadOfD(nd) : 1)); heap.push(ni, nd, c);
+          if (adminOn) dist[ni] = nd;
         }
       }
     }
@@ -574,11 +668,14 @@ function fieldPolityTerritory(world) {
   // 6. SHED over-capacity marches: a realm holding more than its target releases its
   //    most PERIPHERAL settlement-less tiles (wild-adjacent, no home tile, not worked) —
   //    so a weakened realm's frontier recedes on the map, rise-and-fall without needing a
-  //    secession event for every lost march. ONE O(N) sweep: collect each over-target
-  //    realm's peripheral candidates, then release up to its excess. (Only one ring recedes
-  //    per pass; a realm far over target keeps shedding over subsequent passes — gradual,
-  //    which is correct.) The old form nested a 4×-full-N scan inside a per-realm loop —
-  //    O(4N·overRealms), a real blowup at 960/1920 when many realms are over target.
+  //    secession event for every lost march. ONE O(N) sweep collects each over-target
+  //    realm's peripheral candidates. (Only one ring recedes per pass; a realm far over
+  //    target keeps shedding over subsequent passes — gradual, which is correct.)
+  //    FIELD_ADMIN: candidates are released MOST REMOTE FIRST (by d, each refunding its
+  //    admin load) — the frontier a weakening centre actually loses grip on is its
+  //    farthest, dearest march, not whichever edge tile happens to scan first. The
+  //    per-realm sort is over edge candidates only (a perimeter, not N). Lever off:
+  //    the flat scan-order release, byte-identical.
   {
     const excess = new Map();
     for (const [cid, t] of target) { const h = held.get(cid) || 0; if (h > t) excess.set(cid, h - t); }
@@ -586,15 +683,34 @@ function fieldPolityTerritory(world) {
       let home = world._fpHome; if (!home || home.length !== N) home = world._fpHome = new Uint8Array(N);
       home.fill(0);
       for (const arr of homeTiles.values()) for (const ti of arr) home[ti] = 1;
-      for (let ti = 0; ti < N; ti++) {
-        const cid = co[ti];
-        if (cid < 0 || home[ti] || worked[ti]) continue;
-        const rem = excess.get(cid); if (!(rem > 0)) continue;   // realm not over target (or quota spent)
-        const y = (ti / tw) | 0, x = ti - y * tw;
-        const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
-        let edge = false;
-        for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { edge = true; break; } }
-        if (edge) { co[ti] = -1; excess.set(cid, rem - 1); }
+      if (adminOn) {
+        const cands = new Map();   // cid → edge-tile candidates (built in one O(N) sweep)
+        for (let ti = 0; ti < N; ti++) {
+          const cid = co[ti];
+          if (cid < 0 || home[ti] || worked[ti] || !excess.has(cid)) continue;
+          const y = (ti / tw) | 0, x = ti - y * tw;
+          const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
+          for (let k = 0; k < 4; k++) {
+            const ni = ns[k];
+            if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { let a = cands.get(cid); if (!a) cands.set(cid, a = []); a.push(ti); break; }
+          }
+        }
+        for (const [cid, arr] of cands) {
+          let rem = excess.get(cid);
+          arr.sort((a, b) => (dist[b] - dist[a]) || (a - b));   // most remote first (index tiebreak keeps it deterministic)
+          for (const ti of arr) { if (!(rem > 0)) break; co[ti] = -1; rem -= loadOfD(dist[ti]); }
+        }
+      } else {
+        for (let ti = 0; ti < N; ti++) {
+          const cid = co[ti];
+          if (cid < 0 || home[ti] || worked[ti]) continue;
+          const rem = excess.get(cid); if (!(rem > 0)) continue;   // realm not over target (or quota spent)
+          const y = (ti / tw) | 0, x = ti - y * tw;
+          const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
+          let edge = false;
+          for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { edge = true; break; } }
+          if (edge) { co[ti] = -1; excess.set(cid, rem - 1); }
+        }
       }
     }
   }

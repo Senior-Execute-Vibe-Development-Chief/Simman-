@@ -270,18 +270,28 @@ const CAP_DOM_CEIL_BASE = 4;   // primitive (capCoh→0) dominance ceiling — e
 // tail. Instead of asserting "capacity ∝ (relative power)^1.5" (a curve-fit exponent with
 // no mechanism), dominance is derived from Tilly's real levers: a realm towers over its
 // peers when it EXTRACTS more fiscal surplus than they do AND has the LOGISTICS to project
-// it — and the two COMPOUND: surplus funds the roads/administration that extend reach, which
-// holds more territory, which raises revenue. That compounding (a term in fiscalSurplus²) is
-// where the increasing-returns CONVEXITY now comes FROM — a mechanism, not an exponent — and
-// it correctly predicts that sprawling logistically-integrated empires only emerge once the
-// reach techs exist (bronze-age hegemons stay linear and small; the rail age towers). The two
-// weights are physical coefficients (provinces per unit fiscal surplus; reach gained per unit
-// logistics tech), each with independent meaning — not a shape dialled to an outcome. Same
-// emergent ceiling (domCeil). Reads world._refRevenue + gov._lastRevenue (see updatePolities).
-// The two coefficients live in tuning.js (T.CAP_FISC, T.CAP_LOG) so the grounded tail can be
-// A/B-calibrated against the size gates without a rebuild — CAP_FISC = capacity per unit of
-// above-median fiscal extraction; CAP_LOG = how strongly logistics tech multiplies the
-// surplus-funded reach (the compounding that makes the tail convex).
+// it — logistics multiplies what a unit of surplus BUYS (a bronze-age surplus hires runners,
+// a rail-age surplus governs a continent), so dominance = 1 + CAP_FISC·surplus·(1 +
+// CAP_LOG·logistics): LINEAR in surplus, with the convexity of the great-power tail carried
+// by the logistics channel rising late — sprawling integrated empires only emerge once the
+// reach techs exist. (The original form carried an extra ∝ fiscalSurplus² compounding term;
+// it had no physical derivation — surplus entered twice — and it turned any dip in the
+// small-sample peer median into a planet-scale mandate: the measured Renaissance capacity
+// spikes, ×4-8 in one polity pass, behind the late-game territorial blow-up. It also never
+// actually ran — it read capE.logistics, a field techEffects doesn't return, so the
+// compounding was silently 0 and CAP_LOG was a dead lever until this wiring fix.) The two
+// weights are physical coefficients (provinces per unit fiscal surplus; how much further a
+// unit of surplus reaches per unit of logistics tech), each with independent meaning — not a
+// shape dialled to an outcome. Same emergent ceiling (domCeil). Reads world._refRevenue +
+// gov._lastRevenue (see updatePolities). Both live in tuning.js (T.CAP_FISC, T.CAP_LOG) so
+// the grounded tail can be A/B-calibrated against the size gates without a rebuild.
+// The peer baseline is SMOOTHED (REF_REV_SMOOTH): the raw per-pass median whipsaws — it is
+// taken over the handful of multi-member realms, and one war-gutted entry moves it several-
+// fold (measured 276→126→49→179 across consecutive polity passes), which every solvent realm
+// then reads as suddenly out-taxing its peers. Peer expectations are institutional and move
+// over years, so the reference eases toward the fresh median like _impCapacity does for
+// capacity — an honest low-pass on a noisy emergent statistic, not a fitted floor.
+const REF_REV_SMOOTH = 0.25;  // per polity pass: reference ≈ the last ~4 passes' median
 // Imperial-hysteresis rates:
 const CAP_IMP_RISE  = 0.04;   // imperial-capacity stock rises toward live capacity (institutions accrete)
 const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (institutions persist → hysteresis)
@@ -1806,7 +1816,11 @@ export function updatePolities(world) {
     // floor (1e-6) made the first realm to mine a sliver of silver read a ~10⁶ fiscal
     // surplus while the peer median was still 0 — the early tail is bounded by domCeil
     // either way, but the graduated response is the honest one.
-    world._refRevenue = revs.length ? Math.max(1, revs[revs.length >> 1]) : 1; }
+    // Smoothed toward the fresh median (REF_REV_SMOOTH) so one gutted sample can't
+    // swing every realm's surplus reading several-fold in a single pass.
+    const medRev = revs.length ? Math.max(1, revs[revs.length >> 1]) : 1;
+    const prevRef = world._refRevenue;
+    world._refRevenue = prevRef > 0 ? prevRef + (medRev - prevRef) * REF_REV_SMOOTH : medRev; }
   // ── FIELD population as the coercive base (T.POP_FIELD) ─────────────────────
   // Under the field model a realm's hold-capacity is funded by the population it
   // actually GOVERNS — Tilly's real tax/manpower base is the whole region, not the
@@ -1965,16 +1979,18 @@ export function updatePolities(world) {
     const domCeil = CAP_DOM_CEIL_BASE + capCoh * (T.CAP_DOM_MAX - CAP_DOM_CEIL_BASE);
     let dominance;
     if (T.CAP_MODEL) {
-      // GROUNDED tail (CAP_FISC/CAP_LOG): fiscal surplus over peers, its reach multiplied by
-      // logistics — the two compounding into convexity. relFisc = last pass's extraction PER
-      // MEMBER vs the peer per-member median (revenue, not raw power, is what funds
-      // administration — and it must be measured per unit ruled, or the tail rewards
-      // sheer SIZE and capacity compounds on itself; see the _refRevenue note). Logistics≈0
-      // in the bronze age ⇒ the tail is near-linear and small; it steepens only as the reach
-      // techs (roads→rails) arrive ⇒ integrated mega-empires are a LATE, earned phenomenon.
+      // GROUNDED tail (CAP_FISC/CAP_LOG): fiscal surplus over peers, each unit of it worth
+      // more the better the LOGISTICS that project it (see the CAP_MODEL note above — linear
+      // in surplus; the convexity of the tail comes from logistics rising late). Surplus =
+      // last pass's extraction PER MEMBER vs the smoothed peer per-member median (revenue,
+      // not raw power, is what funds administration — and it must be measured per unit
+      // ruled, or the tail rewards sheer SIZE and capacity compounds on itself; see the
+      // _refRevenue note). Logistics≈0 in the bronze age ⇒ the tail is small and flat; it
+      // steepens as the reach techs (roads→rails) arrive ⇒ integrated mega-empires are a
+      // LATE, earned phenomenon.
       const fiscalSurplus = Math.max(0, ((govOf(world, c.id)._lastRevenue || 0) / Math.max(1, c.members.length)) / (world._refRevenue || 1) - 1);
-      const logistics = capE.logistics || 0;
-      dominance = Math.min(domCeil, 1 + T.CAP_FISC * fiscalSurplus * (1 + T.CAP_LOG * logistics * fiscalSurplus));
+      const logistics = capE.logisticsLevel || 0;   // (capE.logistics was a typo — that field doesn't exist, so the term was silently 0)
+      dominance = Math.min(domCeil, 1 + T.CAP_FISC * fiscalSurplus * (1 + T.CAP_LOG * logistics));
     } else {
       dominance = Math.min(domCeil, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
     }
