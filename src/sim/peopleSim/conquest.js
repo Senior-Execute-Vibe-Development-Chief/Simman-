@@ -248,15 +248,28 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 // (~a dozen-plus seats) while still being out-conquerable past its budget — so
 // great powers persist AND shed their over-extension.
 const CAP_K   = 2.6;
+// The relative-unit twin of CAP_K (T.CAP_RELATIVE; see the capacity-ruler note in
+// updatePolities): same physical meaning — provinces held per unit of log-relative
+// power — re-derived because the relative ruler's log2 argument is the era-median
+// ratio (≈1 for a median capital) where the legacy base was absolute-inflated
+// (≈3-4 at the classical era CAP_K was calibrated in). SIM_CAPK_REL overrides for
+// headless calibration sweeps.
+const CAP_K_REL = (typeof process !== "undefined" && process.env && +process.env.SIM_CAPK_REL) || 7.8;
+// Saturation scale of the fiscal-surplus → capacity response (CAP_MODEL): the surplus
+// level (in multiples of the peer mean) beyond which extra extraction buys almost no
+// additional administrative reach in the same era — absorptive capacity, Tilly's
+// bureaucracy as the bottleneck, not the treasury. ~linear below 1×-over-peers (the
+// calibrated regime), asymptoting at this value. SIM_FISC_SAT overrides for sweeps.
+const FISC_SAT = (typeof process !== "undefined" && process.env && +process.env.SIM_FISC_SAT) || 3.5;
 const POW_REF = 380;
 // Dominant-empire tail: a capital whose coercive power stands well ABOVE the typical
 // capital of its age projects authority over a disproportionately larger realm — the
 // few great powers (Rome, the Caliphate, the Mongol khans, Britain) that tower over a
 // fragmented pack instead of the log2 compressing everyone to one uniform ceiling.
-// Measured RELATIVE to the era's mean capital power (world._meanCapPower), so the
+// Measured RELATIVE to the era's median capital power (world._refCapPower), so the
 // global demographic scaling (index.js _eraProd) can't wash it out; bounded so the
 // hegemon is dominant, not all-consuming, and self-limiting — a rising giant lifts the
-// mean it is measured against.
+// median it is measured against.
 const CAP_DOM_W   = 0.9;   // extra capacity per (above-average power)^P
 const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-law tail of a few great
                            // powers, not a uniformly bigger pack (sustainable size ≈ capacity^⅔, so
@@ -1797,7 +1810,12 @@ export function updatePolities(world) {
   { const cps = [];
     for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
     cps.sort((a, b) => a - b);
-    world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
+    world._refCapPower = cps.length ? cps[cps.length >> 1] : 1;
+    // Smoothed copy for the CAP_RELATIVE capacity base (same low-pass rationale as
+    // _refRevenue: the raw median is a small-sample statistic that can move several-fold
+    // in one pass, and the capacity RULER must not).
+    const prevPS = world._refCapPowerS;
+    world._refCapPowerS = prevPS > 0 ? prevPS + (world._refCapPower - prevPS) * REF_REV_SMOOTH : world._refCapPower; }
   // CAP_MODEL: the MEDIAN fiscal extraction PER MEMBER across real states — the peer
   // baseline the grounded dominance tail is measured against (revenue is Tilly's real
   // currency of administrative reach, and it differs from raw coercive power by
@@ -1810,20 +1828,26 @@ export function updatePolities(world) {
   // built to prevent, reintroduced through the tail). Efficiency per unit ruled is
   // what actually let Rome hold more than its peers.
   // Same robust-median rationale as _refCapPower. Only read when the lever is on.
-  if (T.CAP_MODEL) { const revs = [];
-    for (const c of countries.values()) if (c.capital && c.members.length > 1) revs.push((govOf(world, c.id)._lastRevenue || 0) / c.members.length);
-    revs.sort((a, b) => a - b);
-    // Floor at ONE COIN per member per pass — the same unit-ful "is fiscal extraction a
-    // real phenomenon yet?" quantum the old per-realm floor encoded (mature per-member
-    // revenue runs 10²-10³, so the floor is inert once coinage exists). A near-zero
-    // floor (1e-6) made the first realm to mine a sliver of silver read a ~10⁶ fiscal
-    // surplus while the peer median was still 0 — the early tail is bounded by domCeil
-    // either way, but the graduated response is the honest one.
-    // Smoothed toward the fresh median (REF_REV_SMOOTH) so one gutted sample can't
-    // swing every realm's surplus reading several-fold in a single pass.
-    const medRev = revs.length ? Math.max(1, revs[revs.length >> 1]) : 1;
+  if (T.CAP_MODEL) {
+    // The peer baseline is the state system's MEMBER-WEIGHTED MEAN extraction —
+    // Σ revenue / Σ members across real (multi-member) states — not the median of
+    // the per-realm ratios. The median was a ~10-sample order statistic: one or two
+    // war-gutted entries moved it several-fold (measured 521→187 across checkpoints
+    // even under smoothing), and every solvent leader then read a 10-25× "surplus"
+    // that pinned dominance at its ceiling — planet-scale area mandates from a
+    // statistical artifact. The mean is a sum over the whole system: it only falls
+    // when the SYSTEM's extraction falls (a real depression — in which the leader's
+    // relative surplus reading stays honest), and the hegemon's own take lifts the
+    // average it is measured against (self-limiting, as the dominance note intends).
+    // Floor at ONE COIN per member per pass — the same unit-ful "is fiscal extraction
+    // a real phenomenon yet?" quantum as before (mature per-member revenue runs
+    // 10²-10³, so the floor is inert once coinage exists).
+    let totRev = 0, totMem = 0;
+    for (const c of countries.values()) if (c.capital && c.members.length > 1) { totRev += govOf(world, c.id)._lastRevenue || 0; totMem += c.members.length; }
+    const meanRev = totMem > 0 ? Math.max(1, totRev / totMem) : 1;
+    // Smoothed (REF_REV_SMOOTH) so even system-wide swings phase in over passes.
     const prevRef = world._refRevenue;
-    world._refRevenue = prevRef > 0 ? prevRef + (medRev - prevRef) * REF_REV_SMOOTH : medRev; }
+    world._refRevenue = prevRef > 0 ? prevRef + (meanRev - prevRef) * REF_REV_SMOOTH : meanRev; }
   // ── FIELD population as the coercive base (T.POP_FIELD) ─────────────────────
   // Under the field model a realm's hold-capacity is funded by the population it
   // actually GOVERNS — Tilly's real tax/manpower base is the whole region, not the
@@ -1991,7 +2015,14 @@ export function updatePolities(world) {
       // _refRevenue note). Logistics≈0 in the bronze age ⇒ the tail is small and flat; it
       // steepens as the reach techs (roads→rails) arrive ⇒ integrated mega-empires are a
       // LATE, earned phenomenon.
-      const fiscalSurplus = Math.max(0, ((govOf(world, c.id)._lastRevenue || 0) / Math.max(1, c.members.length)) / (world._refRevenue || 1) - 1);
+      const fiscalSurplusRaw = Math.max(0, ((govOf(world, c.id)._lastRevenue || 0) / Math.max(1, c.members.length)) / (world._refRevenue || 1) - 1);
+      // DIMINISHING ABSORPTION: capacity gained per marginal unit of surplus falls off —
+      // an administration can only convert so much extra coin into offices, roads and
+      // garrisons per era (bureaucratic absorptive capacity). Saturating response
+      // (linear below ~1×-over-peers, asymptote FISC_SAT): a genuinely out-taxing
+      // hegemon still towers, but a freak surplus reading (a mining bonanza, a peer
+      // system briefly impoverished) cannot mint a 20× administration overnight.
+      const fiscalSurplus = FISC_SAT * (1 - Math.exp(-fiscalSurplusRaw / FISC_SAT));
       const logistics = capE.logisticsLevel || 0;   // (capE.logistics was a typo — that field doesn't exist, so the term was silently 0)
       dominance = Math.min(domCeil, 1 + T.CAP_FISC * fiscalSurplus * (1 + T.CAP_LOG * logistics));
     } else {
@@ -2008,7 +2039,32 @@ export function updatePolities(world) {
                   + 0.5 * (world.tFlood && world.tFlood[capTi] ? 1 : 0)
                   + 0.3 * Math.min(1, (world.riverMag ? world.riverMag[capTi] || 0 : 0) / 3);
     const geoMul = 1 + T.CAP_GEO * geoCore;
-    let peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPowerCap / POW_REF)
+    // ── The capacity RULER (T.CAP_RELATIVE, default on) ─────────────────────────
+    // The log2 base is measured against the ERA'S OWN median capital power (smoothed,
+    // floored at POW_REF so genesis — when the median is tiny — is unchanged), not the
+    // fixed absolute POW_REF alone. With the fixed base, the world's absolute power
+    // inflation (population × tech multipliers: median capital power 380 → ~40,000
+    // over the arc) lifted EVERY realm's capacity ~×20-40 regardless of relative
+    // standing — the measured late-game incoherence where one capacity number was
+    // simultaneously several times too big for the FIELD area target (giants never
+    // shed by decline; the median realm targeted 4-6% of the planet) and several
+    // times too small for the admin-load line (everyone read over-stretched). A
+    // capacity of X now means "the administration to govern X median-realm-equivalents
+    // of coercive power" in EVERY era; capacity still GROWS with development, but only
+    // through the deliberate channels — institutions (instMul), delegated seats,
+    // fiscal-logistic dominance, the cohesion-scaled dominance ceiling — never as a
+    // windfall of the age's inflation. Self-calibrating, like _refCapPower/_refRevenue:
+    // an emergent median, never a fitted absolute. 0 = the legacy fixed-380 base.
+    const powRefEff = T.CAP_RELATIVE ? Math.max(POW_REF, world._refCapPowerS || 0) : POW_REF;
+    // CAP_K re-derived for the relative unit (CAP_K_REL): the legacy coefficient was
+    // calibrated with log2 arguments inflated by the era's absolute power (a median
+    // classical capital read log2(1+med/380) ≈ 3-4 where the relative ruler reads
+    // log2(2) = 1), so the same provinces-per-unit constant must be re-expressed in
+    // the new unit or every capacity silently shrinks ~×3 and the org coverage floor
+    // flattens the whole size distribution (measured: empire tail 5.4 → 1.8). One
+    // constant, one meaning: provinces held per median-realm-equivalent of power.
+    const capK = T.CAP_RELATIVE ? CAP_K_REL : CAP_K;
+    let peaceCapacity = (capK * instMul * Math.log2(1 + capPowerCap / powRefEff)
                         + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul;
     // IMPERIAL HYSTERESIS (path dependence): the administrative reach, roads and
     // legitimacy a large realm accretes PERSIST after its raw power dips, so a once-
