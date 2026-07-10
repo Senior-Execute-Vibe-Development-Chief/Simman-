@@ -2401,15 +2401,46 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.globalCompositeOperation=prevOp;octx.imageSmoothingEnabled=prevSm;
       }
       // ── Political TINTS → MAP resolution ──────────────────────────────────────────────
-      // stint holds one colour per sim tile — exactly the tiles the sim CLAIMS. Upscale it NEAREST
-      // to the map grid and clip to the coast. NO flood-fill: the tint shows only real claim, so
-      // genuinely-unclaimed frontier stays bare terrain instead of a nation ballooning to the
-      // nearest ocean. (The sim claims only ~45% of land in the agrarian era; most coast is
-      // unclaimed frontier, not a render gap — see tools/probe_coastclaim.mjs.) A claimed COASTAL
-      // tile still fills to the true shoreline because the coast clip trims its ocean half at map
-      // resolution; the internal grain stays at the sim-tile size. Borders/roads/icons remain the
-      // smooth 1920-res vectors on the feature canvas above.
+      // stint holds one colour per sim tile — exactly the tiles the sim CLAIMS. The sim runs on a
+      // COARSER grid than the map (each sim tile spans tileRes² map pixels), so the blocky claim
+      // and the fine map coastline don't line up: a nation sitting AT the coast can have its shore
+      // fall in the next sim tile over — a mostly-ocean coastal tile the sim never claimed — leaving
+      // a bare sub-tile strip between the claim and the true coast. Close JUST that quantization gap
+      // by dilating the claim outward over LAND, bounded to GAP_TILES sim tiles (≈ the sim→map tile
+      // size — the widest the gap can be). This is NOT a fill-to-ocean flood: genuinely-unclaimed
+      // frontier (many tiles from any claim) stays bare terrain; only the coastal seam is bridged.
+      // Then upscale NEAREST and clip to the coast so the bridged tint stops exactly at the shore.
       {
+        const N2=_tw*_th, sd=stctx.getImageData(0,0,_tw,_th), sp=sd.data;
+        const el=w.elevation,_TR=psw.tileRes;
+        // Classify each sim tile against the fine map grid it covers: does its tileRes² footprint
+        // hold any LAND, and is it ALL land? A tile with land but also some ocean is a COASTAL tile —
+        // the only place the coarse sim grid and the fine coastline disagree. Precompute once over
+        // the elevation grid; the BFS below reads it O(1).
+        const tileLand=new Uint8Array(N2), tileCoast=new Uint8Array(N2);
+        for(let ty=0;ty<_th;ty++)for(let tx=0;tx<_tw;tx++){
+          let land=0,sea=0;
+          for(let dy=0;dy<_TR;dy++){const my=Math.min(H-1,ty*_TR+dy)*W;
+            for(let dx=0;dx<_TR;dx++){if(el[my+Math.min(W-1,tx*_TR+dx)]>0)land=1;else sea=1;}}
+          const i=ty*_tw+tx;tileLand[i]=land;tileCoast[i]=land&&sea?1:0;
+        }
+        // Close ONLY the coast quantization gap: dilate the claim into adjacent UNCLAIMED COASTAL
+        // tiles (the mostly-ocean shore tiles the sim skipped), bounded to GAP_TILES sim tiles. It
+        // never enters a fully-land tile, so genuinely-unclaimed INTERIOR frontier is untouched —
+        // no ballooning, no fattened inland borders — only the blocky shore is pulled out to meet
+        // the true coastline (the coast clip then trims each tile's ocean half). Bound is in sim
+        // tiles, so it self-calibrates: a coarser sim needs the same 1–2 tiles to span its gap.
+        const GAP_TILES=2;
+        const owner=new Int32Array(N2).fill(-1), dist=new Int32Array(N2), q=new Int32Array(N2);
+        let head=0,tail=0;
+        for(let i=0;i<N2;i++)if(sp[i*4+3]>0){owner[i]=i;q[tail++]=i;}   // seed from every claimed tile
+        while(head<tail){const i=q[head++];if(dist[i]>=GAP_TILES)continue;const y=(i/_tw)|0,x=i-y*_tw;
+          const nb=[y>0?i-_tw:-1,y<_th-1?i+_tw:-1,x>0?i-1:-1,x<_tw-1?i+1:-1];
+          for(let n=0;n<4;n++){const j=nb[n];if(j<0||owner[j]>=0)continue;
+            if(tileCoast[j]!==1)continue;   // fill only coastal seam tiles, never interior frontier
+            owner[j]=owner[i];dist[j]=dist[i]+1;q[tail++]=j;}}
+        for(let i=0;i<N2;i++)if(owner[i]>=0&&sp[i*4+3]===0){const s=owner[i]*4;sp[i*4]=sp[s];sp[i*4+1]=sp[s+1];sp[i*4+2]=sp[s+2];sp[i*4+3]=sp[s+3];}
+        stctx.putImageData(sd,0,0);
         let mt=psTintRef.current;
         if(!mt||mt.width!==CW||mt.height!==CH){mt=psTintRef.current=document.createElement('canvas');mt.width=CW;mt.height=CH;}
         const mtx=mt.getContext('2d');mtx.setTransform(1,0,0,1,0,0);mtx.clearRect(0,0,CW,CH);
