@@ -356,21 +356,21 @@ export const TECH_FX = {
   //  order, so both track continuous organization closely — empire size & lifespan
   //  stay ≈ the same while the DRIVER becomes the visible admin techs.)
   mysticism:    { cohesion:0.18 },
-  writing:      { reach:0.35, trade:0.05 },
+  writing:      { reach:0.35, trade:0.05, sci:0.20 },
   code_of_laws: { reach:0.10, cohesion:0.22 },
   mathematics:  { trade:0.05, build:0.02 },
   philosophy:   { cohesion:0.04, reach:0.05 },
   feudalism:    { reach:0.06, cohesion:0.12, military:0.04 },
   the_wheel:    { trade:0.08, military:0.02, logistics:0.06 },
   roads:        { reach:0.03, trade:0.18, military:0.03, logistics:0.30 },
-  paper:        { reach:0.03, trade:0.04 },
-  university:   { reach:0.04 },
-  printing:     { reach:0.05, cohesion:0.04, logistics:0.08 },
-  sci_method:   { reach:0.04 },
+  paper:        { reach:0.03, trade:0.04, sci:0.15 },
+  university:   { reach:0.04, sci:0.40 },
+  printing:     { reach:0.05, cohesion:0.04, logistics:0.08, sci:0.50 },
+  sci_method:   { reach:0.04, sci:0.60 },
   democracy:    { reach:0.08, cohesion:0.10 },
   industrialism:{ reach:0.06, wealth:0.20, build:0.04 },
   telegraph:    { reach:0.04, cohesion:0.06, logistics:0.25 },
-  computing:    { reach:0.05, wealth:0.20, logistics:0.10 },
+  computing:    { reach:0.05, wealth:0.20, logistics:0.10, sci:0.80 },
   // — economy / wealth / trade —
   currency:     { trade:0.18, wealth:0.15, market:true, reach:0.08 },
   guilds:       { trade:0.10, wealth:0.08, build:0.02 },
@@ -380,7 +380,7 @@ export const TECH_FX = {
 };
 
 const lerp = (a, b, t) => a + (b - a) * t;
-const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange", "logistics", "health"];
+const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange", "logistics", "health", "sci"];
 const FX_ABIL = ["embark", "ocean", "colonize", "walls", "market", "credit"];
 // (health channel consumers: shocks.js plague mortality/spread and the
 // urban-mortality drag in settlement.js — epidemics fade exactly when and
@@ -474,6 +474,10 @@ export function techEffects(k, blend = 1) {
     // capped — aqueducts alone ≈ a quarter, germ theory the great leap.
     healthRelief: Math.min(0.9, ch.health),
     wealthMult: 1 + blend * lvl(ch.wealth, "wealth") * 0.5,     // exposed for later (treasury/mining); not yet wired
+    // Knowledge-INSTITUTION rate multiplier (raw sum, not normalised): writing →
+    // printing → universities → the scientific method multiply how fast ideas are
+    // produced and kept (settlement.js SCI_COMPOUND — the chronology rectification).
+    sciInst: 1 + ch.sci,
   };
   if (_fxCache.size >= _FX_CACHE_MAX) _fxCache.clear();
   _fxCache.set(_key, out);

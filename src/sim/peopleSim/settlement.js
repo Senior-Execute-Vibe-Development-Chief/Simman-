@@ -637,6 +637,12 @@ export { techEff };
 // not a tunable outcome: expansion ~a generation to full depth at the default
 // CREDIT_RATE, a crunch ~a few years.
 const CREDIT_CRUNCH = 4;
+// SCI_COMPOUND bounds: the medieval-typical hub's knowledge-production index (the
+// curve's =1 anchor — where the measured era pacing is already 1.0×), and the
+// floor/cap on the correction while the exponent is calibrated. Floor keeps a
+// fresh cradle learning (deep antiquity is already ~right); cap keeps a
+// discovery from teleporting a track in one tick.
+const SCI_MED_IDX = 1.4, SCI_COMPOUND_FLOOR = 0.35, SCI_COMPOUND_CAP = 6;
 function updateWealth(world, s) {
   // Coin-loss drain (Phase 1 — the honest micro-sink replacing the freight burn):
   // a sliver of circulating specie leaves for good each tick — worn, shipwrecked,
@@ -1507,9 +1513,31 @@ function updateKnowledge(world, s) {
   // (all five use sciMul as their rate multiplier), so tech develops 1/G as fast per
   // tick — paced with the granularity-slowed population. ×winterSci slows/speeds
   // the WHOLE tree for non-winter / winter peoples at once.
-  const sciMul = winterSci * (world._dt || 1) * Math.max(0.25, Math.min(2.2,
+  let sciMul = winterSci * (world._dt || 1) * Math.max(0.25, Math.min(2.2,
     1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization
       + T.COMPETE * competF - 0.45)));
+  // ── Compounding returns (T.SCI_COMPOUND, experimental default OFF) ──────────
+  // The chronology rectification (docs/roadmap: chronology wave). The factors
+  // above all CLAMP, so from the Iron Age on every hub learns at the same
+  // ceiling — the sim's pace is FLAT where history's was CURVED. Measured on the
+  // uniform human clock (tools/probe_erapace.mjs): Iron runs 0.3× its historical
+  // length, Renaissance 3.6×, Industrial 6.5×, Modern ~38× too long. This term
+  // replaces the flat ceiling with one smooth curve through the medieval-typical
+  // hub: the knowledge-production INDEX — connected minds × market breadth × the
+  // knowledge INSTITUTIONS actually discovered (writing → paper → printing →
+  // universities → the scientific method, techEff sciInst) — compounds the rate
+  // as (idx/SCI_MED_IDX)^α. =1 at the medieval anchor (the era row already
+  // pacing 1.0×, so the validated mid-game doesn't move), below it for a
+  // classical hub (their inputs are genuinely smaller — the flat cap was
+  // over-paying them), far above for an industrial world-city. Era durations
+  // become OUTPUTS of the world's own state — no era is ever named, no date is
+  // ever read. Floor/cap bound the correction while α is calibrated (the
+  // measured table is the thermometer, α the only knob — never a per-era value).
+  if (T.SCI_COMPOUND > 0) {
+    const inst = techEff(s).sciInst || 1;
+    const idx = Math.max(0.02, sciSqrt / T.SCI_POP_REF) * Math.max(0.02, reachN / 18) * inst;
+    sciMul *= Math.max(SCI_COMPOUND_FLOOR, Math.min(SCI_COMPOUND_CAP, Math.pow(idx / SCI_MED_IDX, T.SCI_COMPOUND)));
+  }
 
   // ── Environment specialization (climate-tied learning) ────────────────
   // Beyond the resource gates, the LOCAL CLIMATE biases which techniques a
