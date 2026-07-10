@@ -21,6 +21,12 @@
 // Bronze) — the classical plateau is a MISSING MECHANISM (institutional
 // stagnation), recorded as an honest gap, not to be dialled in. Iteration 2:
 // α=1.5, SCI_MED_IDX=1.6, floor 0.6, cap 12 — targets Ren/Ind → ~1x.
+// ITERATION 2 RESULT (α=1.5, seed 8817): Bronze 1.4x, Iron 0.4x (the named
+// classical gap), Medieval 0.9x, Renaissance 1.3x, Industrial 1.0x — the tail has
+// CONVERGED; historical era contraction is now an emergent output. Modern 37.5x
+// and Neolithic 5.5x are scoring artifacts (open-era accrual / start-up epoch).
+// α=1.5 is the flip candidate. Before default-on: score eras to ATTAINMENT,
+// 3-seed table, re-earn stylized at the new pacing, then delete displayYear.
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 const world = buildSim({ W: 480, H: 240, seed: 8817 });
