@@ -19,7 +19,7 @@ import { TECHS } from "./tech.js";
 import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
-import { techEff, getWealthReserve, recordCaptives } from "./settlement.js";
+import { techEff, getWealthReserve, recordCaptives, monetization } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
@@ -1347,8 +1347,22 @@ function disburseTreasury(world, c, gov, warLevel) {
   // a state under sustained or multi-front war.
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
-  const armyBill = totalArmy * wage * (1 + effSurcharge * (warLevel || 0));
+  let armyBill = totalArmy * wage * (1 + effSurcharge * (warLevel || 0));
   const debtCap = totalArmy * wage * DEBT_CAP_MULT;
+  // IN-KIND PROVISIONING (T.MONETIZE — the levy→coin arc's expenditure side): the
+  // harvest share collected in kind this pass (gov._inKind, the produce levy's
+  // unmonetized remainder) feeds the army DIRECTLY — levy hosts served for grain,
+  // land and obligation for millennia before coined wages. It offsets the wage
+  // bill up to all of it; only what the grain cannot cover must be found in COIN
+  // (loans / debasement below) — so a coinless bronze-age realm can EAT and
+  // garrison without the fiscal-military death spiral, but cannot HIRE beyond its
+  // levy: the standing professional army awaits monetization. Grain is consumed
+  // or spoils — the stock never hoards across passes the way coin does.
+  if (T.MONETIZE > 0 && (gov._inKind || 0) > 0) {
+    const provisioned = Math.min(armyBill, gov._inKind);
+    armyBill -= provisioned;
+    gov._inKind = 0;
+  }
   // WAR LOANS (the FIRST recourse when short): the crown borrows the gap from its
   // financier city (up to a debt ceiling) — war on credit. The lender's coin pays the
   // army now; the crown owes it back with interest (serviced below). Borrowing comes
@@ -2408,8 +2422,33 @@ export function updatePolities(world) {
         // Serfdom skims a HEAVIER share of the harvest — bound peasants kept at subsistence,
         // their surplus extracted as labour-rent up to the lord/state (the serf breadbasket).
         const serfMul = T.SERFDOM ? 1 + T.SERF_RENT * (s._serf || 0) : 1;
-        const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * serfMul * taxMul * T.POLITY_INTERVAL);
-        if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
+        const rentDue = (s._landFood || 0) * T.FARM_RENT * serfMul * taxMul * T.POLITY_INTERVAL;
+        if (T.MONETIZE > 0) {
+          // THE LEVY→COIN ARC (T.MONETIZE): the harvest share is taken IN THE HARVEST.
+          // The old form converted the whole produce levy to coin AND capped it by the
+          // peasant's own purse — so an unmonetized village owed the state only what
+          // little cash it happened to hold ("no coin, no state share": the same
+          // anachronism the foodHierarchy levy fixed for city-feeding, still alive on
+          // the fiscal side), while conversely the state's every income arrived as
+          // spendable coin from genesis. Now only the settlement's MONETIZED fraction
+          // of the rent is sold for cash into the treasury (still purse-capped — coin
+          // must exist to move); the remainder is delivered IN KIND (gov._inKind, the
+          // same value units) — grain that can feed soldiers and the court this pass
+          // but cannot hire, hoard, or fund the fiscal-dominance reach that COIN
+          // revenue projects (dominance reads gov._revenue, coin only). A realm of
+          // coinless countryside is a TRIBUTE empire — it eats, garrisons, and holds
+          // by coercion; the CASH empire, with its bankers and paid legions, emerges
+          // only as its provinces monetize. Never a date: monetization is coin stock ×
+          // market access per settlement (settlement.js monetization).
+          const mz = monetization(s);
+          const coinPart = Math.min(Math.max(0, s.wealth || 0), rentDue * mz);
+          if (coinPart > 0) { s.wealth -= coinPart; gov.treasury += coinPart; gov._revenue += coinPart; recordOut(s, OUT_TRIBUTE, coinPart); }
+          const inKind = rentDue * (1 - mz);
+          if (inKind > 0) gov._inKind = (gov._inKind || 0) + inKind;
+        } else {
+          const rent = Math.min(Math.max(0, s.wealth || 0), rentDue);
+          if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
+        }
       }
     }
     // COURT & CAPITAL: a share of this pass's tax revenue is consumed AT the seat —

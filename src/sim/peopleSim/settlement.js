@@ -1011,6 +1011,22 @@ export function getWealthReserve(s) {
   return 30 + Math.max(0, s.people || 0) * 0.3;
 }
 
+// ── Monetization: how much of a settlement's economy runs on COIN ────────────
+// The levy→coin arc's per-settlement gauge (T.MONETIZE, conquest.js fiscal pass):
+// a place is monetized to the degree it (a) actually HOLDS coin against its own
+// subsistence reserve (a village whose whole purse is below its hoarding floor
+// transacts in kind, whatever the era) and (b) touches MARKETS (trade partners —
+// coin is only worth holding where there is somewhere to spend it). Emergent on
+// both axes: mining, trade tech and currency->banking lift coin stocks and
+// connectivity over the arc, so the countryside monetizes centuries after the
+// entrepôts — never a date, never an era gate. 0 (a coinless, marketless
+// hamlet) → 1 (a cash economy).
+export function monetization(s) {
+  const coinF = Math.min(1, Math.max(0, s.wealth || 0) / (2 * getWealthReserve(s)));
+  const reachF = Math.min(1, (s._tradeReach ? s._tradeReach.size : 0) / 8);
+  return coinF * (0.25 + 0.75 * reachF);
+}
+
 // Decomposition of exportValue — returns a sorted list of
 // { label, value } for each contributor. Used by the settlement
 // info card to show WHAT the settlement actually exports, not
