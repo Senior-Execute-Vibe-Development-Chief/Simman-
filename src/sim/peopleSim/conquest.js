@@ -1633,6 +1633,54 @@ function capitalTransportCosts(world, c) {
   return { cost: out, cross };
 }
 
+// ── Field-grounded national power (T.POW_FIELD, default on) ─────────────────
+// The nation's coercive weight is its GOVERNED PEOPLE — the population field over
+// the land it actually holds — projected through its court's tech (the capital's
+// mil·org multiplier), not the sum of its member-settlement entities. The roster
+// sum made the census the SUBSTANCE of the state: national power jumped when a
+// village adopted or defected (a bookkeeping line moving), not when land or people
+// changed hands, and it under-counts realms whose people live outside catchment
+// towns — the steppe above all, which is why this precedes the nomad work.
+//   Applied as an OVERLAY: every consumer keeps its exact entity-summed baseline
+// (byte-identical when the lever is off, and float-order-identical — the sites sum
+// in different iteration orders, so funnelling them through one shared sum would
+// drift last bits), then field values replace entries the field can price. Realms
+// with no owned tiles this pass keep their entity sum — mixed entries share units
+// because the field measure is MEDIAN-ANCHORED to the entity measure over the same
+// realms in the same pass: the median realm's power is unchanged, only the
+// DISTRIBUTION shifts from "member headcount" to "governed population" (the same
+// grounding pattern as hold-capacity's governed-region power, extended from the
+// capacity ruler to the war/alliance ruler — and self-calibrating, never a fitted
+// constant). The O(N) field sweep is memoised per tick: alliances, submissions,
+// absorb, enclaves and raids all read it within one polity pass.
+function fieldPowerOverlay(world, countries, entPow) {
+  if (!(T.POW_FIELD > 0) || !T.POP_FIELD) return;
+  const pf = world.popField, co = world._countryOwner, elev = world.elev;
+  if (!pf || !co || !countries || !entPow.size) return;
+  let rpop = world._fpowRpop;
+  if (!rpop || world._fpowStep !== world.step) {
+    rpop = world._fpowRpop = new Map(); world._fpowStep = world.step;
+    const N = world.N;
+    for (let ti = 0; ti < N; ti++) { const cc = co[ti]; if (cc >= 0 && elev[ti] > 0) rpop.set(cc, (rpop.get(cc) || 0) + pf[ti]); }
+  }
+  const raw = new Map();
+  for (const id of entPow.keys()) {
+    const c = countries.get(id), cap = c && c.capital;
+    const gp = rpop.get(id) || 0;
+    if (!cap || !(gp > 0)) continue;                    // field can't price it → keeps its entity sum
+    raw.set(id, gp * (settlementPower(cap) / Math.max(1, cap.people || 0)));   // governed people × the court's mil·org
+  }
+  if (!raw.size) return;
+  // Median anchor over the SAME realm set in both measures (intersection), so the
+  // scale is a like-for-like exchange rate, not skewed by unpriceable newborns.
+  const ids = [...raw.keys()];
+  const medOf = (get) => { const a = ids.map(get).filter((v) => v > 0).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : 0; };
+  const eMed = medOf((id) => entPow.get(id) || 0), rMed = medOf((id) => raw.get(id) || 0);
+  if (!(eMed > 0) || !(rMed > 0)) return;
+  const scale = eMed / rMed;
+  for (const [id, v] of raw) entPow.set(id, v * scale);
+}
+
 // Recompute the balance-of-power alliance map (slow-drifting → amortised on
 // ALLIANCE_EVERY). Writes three world fields read by the war pass (armies.js):
 //   _allianceTarget : countryId → the hegemon it balances AGAINST (-1 = none)
@@ -1660,6 +1708,7 @@ export function updateAlliances(world) {
     if (s.mode !== "settled" || s.countryId < 0) continue;
     pow.set(s.countryId, (pow.get(s.countryId) || 0) + settlementPower(s));
   }
+  fieldPowerOverlay(world, countries, pow);   // POW_FIELD: governed people, not the member roster
   // 2. adjacency (shared-border length) from the granular territory map.
   const adj = new Map();   // id → Map(neighbourId → border tiles)
   const bump = (a, b) => { if (a === b || a < 0 || b < 0) return; let m = adj.get(a); if (!m) adj.set(a, m = new Map()); m.set(b, (m.get(b) || 0) + 1); };
@@ -1723,7 +1772,10 @@ export function updatePolities(world) {
 
   // ── Colonial dependencies: wire new colonies, validate links, grant independence ──
   {
-    const blocPow = (c) => { let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m); return p; };
+    const _depPow = new Map();
+    for (const c of countries.values()) { let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m); _depPow.set(c.id, p); }
+    fieldPowerOverlay(world, countries, _depPow);   // POW_FIELD: the independence line weighs governed people
+    const blocPow = (c) => _depPow.get(c.id) || 0;
     // (a) Wire the founding marker (sea.js) → the durable polity link, once.
     for (const s of world.settlements) {
       if (s._overlordCC == null) continue;
@@ -2575,6 +2627,9 @@ function hordeRaids(world, countries) {
     coin.set(s.countryId, (coin.get(s.countryId) || 0) + (s.wealth || 0));
     heads.set(s.countryId, (heads.get(s.countryId) || 0) + (s.people || 0));
   }
+  // POW_FIELD: a horde's might is its PEOPLE ON THE STEPPE, not its (few) towns —
+  // the raid gradient reads the same field-grounded power as the war/alliance stack.
+  fieldPowerOverlay(world, countries, pow);
   for (const c of countries.values()) {
     const gp = getPolity(world, c.id);
     if (gp && gp.treasury > 0) coin.set(c.id, (coin.get(c.id) || 0) + gp.treasury);
@@ -2659,6 +2714,7 @@ function considerSubmissions(world, countries) {
     let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m);
     own.set(c.id, p);
   }
+  fieldPowerOverlay(world, countries, own);   // POW_FIELD: courts submit to governed weight, not roster length
   const ov = world._overlordOf;
   const eff = new Map(own);
   if (ov) for (const [dep, over] of ov) if (eff.has(over)) eff.set(over, (eff.get(over) || 0) + (own.get(dep) || 0));
@@ -2871,6 +2927,7 @@ function absorbWeakNeighbors(world, countries) {
     let pow = 0; for (const m of c.members) pow += settlementPower(m);
     countryPower.set(c.id, pow);
   }
+  fieldPowerOverlay(world, countries, countryPower);   // POW_FIELD: dominance is over governed people
   // Per-settlement exposure to strong, organised foreign realms able to absorb a
   // settlement of its tier. Walk every tile once, crediting each qualifying
   // foreign neighbour to the settlement that owns the home tile (so a frontier
@@ -3039,6 +3096,7 @@ function eliminateEnclaves(world, countries) {
   // peacefully absorbs a small city-state it has engulfed).
   const cPow = new Map();
   for (const c of countries.values()) { let p = 0; for (const m of c.members) p += settlementPower(m); cPow.set(c.id, p); }
+  fieldPowerOverlay(world, countries, cPow);   // POW_FIELD: the annexation gate weighs governed people
   const region = [];                               // reused per flood
   const q = [];
   for (let start = 0; start < N; start++) {
