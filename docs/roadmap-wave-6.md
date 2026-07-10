@@ -167,6 +167,19 @@ new entity type — a POLITY MODE derived from what its people actually are.
   khanates. Measure: late-game hegemon tenure (#1-holder share) drops further;
   fallen-polity heavy tail widens; war deadliness gate (W6-A) shows horde-scale
   spikes.
+  > STATUS: stages 1-3 landed in earlier waves, but the classification was
+  > measured DEAD — 0 hordes over 24k steps on 2 seeds (tools/probe_nomads.mjs):
+  > the seat-tile test required the realm's strongest member to sit on saddle
+  > ground with a horse DEPOSIT in its own catchment, a ~zero-probability
+  > conjunction (courts seat in the sown; the deposit is a sparse trade
+  > commodity, median fert 0.70, barely overlapping the ~40% of land that is
+  > saddle-country). Fixed as T.NOMAD_FIELD (default on): nomadic = court rides
+  > (chariot-gate mobility, itself horse-gated at the knowledge source) AND the
+  > majority of GOVERNED PEOPLE (popField over held tiles — same substance as
+  > POW_FIELD/CAP grounding) live on saddle-country. Measured revival: 1-4
+  > hordes per world from ~t=15k, 28-29 raids by 24k (was 0 ever); shatter arm
+  > awaits a crisis coincidence. Sedentarization still emergent (people-majority
+  > flips off with conquest of the sown).
 
 ## Phase W6-E — The pre-coinage economy + prices + famine (M)
 

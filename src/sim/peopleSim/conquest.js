@@ -71,7 +71,8 @@ if (!_chariotTech) throw new Error("conquest.js: TECHS has no 'chariots' — nom
 const CHARIOT_MOB = _chariotTech.gate[1];
 const NOMAD_OPEN_MIN   = 0.5;   // a tile is saddle-country when at least half the full riding discount is available there (transport.js tileOpenness: dry grass, low relief)
 const NOMAD_FERT_MAX   = 0.35;  // ...and too poor to farm: below this yield the herd beats the plough (floodplain agriculture is indexed from fert ≥ 0.25; 0.35 is marginal cropland at best)
-const NOMAD_HORSES_MIN = 0.05;  // herds must actually be reachable at the seat — the same floor the economy uses for horse wealth to exist at all
+const NOMAD_HORSES_MIN = 0.05;  // herds must actually be reachable at the seat — the same floor the economy uses for horse wealth to exist at all (LEGACY seat-test only; the field test reads herds from the mobility gate itself — see classifyNomads)
+const NOMAD_PEOPLE_MAJ = 0.5;   // a realm is pastoral when the MAJORITY of its governed people live on saddle-country — the definition of the mode, not a dial
 const NOMAD_MOMENTUM   = 2;     // a confederation is a charisma-glued winning streak: banked conquest/raid momentum counts (and can carry) double for a nomadic realm — and evaporates on the same decay clock, so a stalled horde deflates fast
 // Post-khan shatter: a contested succession disputes the ONLY thing holding a
 // confederation together. Hazard per tick of history while a dynastic crisis is
@@ -2579,6 +2580,46 @@ export function updatePolities(world) {
 // reads as a horde. Recomputed from live state every polity pass.
 function classifyNomads(world, countries) {
   const tw = world.tw, fert = world.fert;
+  // ── Field classification (T.NOMAD_FIELD, default on) ────────────────────────
+  // The seat-tile test above was measured DEAD: 0 hordes over 24k steps on two
+  // seeds (tools/probe_nomads.mjs). Its funnel dies on a conjunction that never
+  // happens — the seat must be the realm's STRONGEST member (power ∝ people, so
+  // courts always sit in the sown), on a saddle tile (settlements crystallize on
+  // good land — only ~10 of ~110 ever sit there), with a horse DEPOSIT in its own
+  // catchment (162 sparse deposit tiles world-wide, median fertility 0.70 — the
+  // deposit models a horse-TRADE commodity, and barely overlaps the 40% of land
+  // that is saddle-country). Pastoralism is not a point resource: the herd is the
+  // GRASS, and the sim already encodes both halves — tileOpenness IS the pasture,
+  // and mobility knowledge is itself gated on horse access at its source
+  // (settlement.js: no horses, no mobility growth), so a court at the chariot
+  // gate has proven its herds through the knowledge pipeline.
+  //   So classify the MODE from what the realm's people actually are: nomadic
+  // when the court rides (mobility ≥ the chariot gate) and the MAJORITY of its
+  // GOVERNED PEOPLE (popField over its held tiles — same substance the power and
+  // capacity rulers now read) live on saddle-country: open riding ground too poor
+  // to farm. A realm whose people herd is a horde; one whose people plough is a
+  // state, however much steppe march it holds. Sedentarization stays free — take
+  // enough sown land and the people-majority flips the flag off next pass (the
+  // Yuan arc), exactly as seat-selection used to promise but at the granularity
+  // where it actually happens. Recomputed live every pass, never stored.
+  if (T.NOMAD_FIELD && T.POP_FIELD && world.popField && world._countryOwner) {
+    const pf = world.popField, co = world._countryOwner, elev = world.elev, N = world.N;
+    const tot = new Map(), sad = new Map();
+    for (let ti = 0; ti < N; ti++) {
+      const cc = co[ti]; if (cc < 0 || elev[ti] <= 0) continue;
+      const p = pf[ti]; if (!(p > 0)) continue;
+      tot.set(cc, (tot.get(cc) || 0) + p);
+      if (tileOpenness(world, ti) >= NOMAD_OPEN_MIN && (fert[ti] || 0) < NOMAD_FERT_MAX) sad.set(cc, (sad.get(cc) || 0) + p);
+    }
+    for (const c of countries.values()) {
+      c._nomadic = false;
+      const cap = c.capital; if (!cap) continue;
+      if (((cap.knowledge && cap.knowledge.mobility) || 0) < CHARIOT_MOB) continue;  // no riding, no horde
+      const t = tot.get(c.id) || 0;
+      c._nomadic = t > 0 && (sad.get(c.id) || 0) > t * NOMAD_PEOPLE_MAJ;
+    }
+    return;
+  }
   for (const c of countries.values()) {
     c._nomadic = false;
     const cap = c.capital; if (!cap) continue;
