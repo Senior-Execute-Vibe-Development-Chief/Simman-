@@ -473,6 +473,14 @@ export function advanceFronts(world) {
   // the marches stay restless, as they were — but the big wars become episodic.
   let truces = world._truces; if (!truces) truces = world._truces = new Map();
   if (truces.size) for (const [k, until] of truces) { if (until <= world.step) truces.delete(k); }
+  // Per-war MOVEMENT ledger ("lo:hi" pair key → last step the front actually moved:
+  // countryside captured or a city stormed, stamped where those happen below). Read by
+  // the STALEMATE settlement in the peace pass — a war that stops moving gets settled.
+  // Deliberately NOT persisted: on load an unseen warring pair lazily starts its clock
+  // at the current step (see the peace pass), so a loaded frozen conflict simply takes
+  // one full window to settle instead of settling spuriously at once.
+  let lastMove = world._warLastMove; if (!lastMove) lastMove = world._warLastMove = new Map();
+  const stampMove = (a, b) => { if (a >= 0 && b >= 0 && a !== b) lastMove.set(a < b ? a + ":" + b : b + ":" + a, world.step); };
   const inTruce = (a, b) => {
     if (truces.size === 0 || a < 0 || b < 0) return false;
     const u = truces.get(a < b ? a + ":" + b : b + ":" + a);
@@ -770,6 +778,7 @@ export function advanceFronts(world) {
       const last = seen.get(key);
       seen.set(key, world.step);
       if (last !== undefined && world.step - last < WAR_MEMORY / (world._dt || 1)) continue;
+      stampMove(attId, defId);   // a genuinely NEW war: the stalemate clock starts fresh (an ongoing front must NOT restamp here, or the clock never runs)
       const pa = _getPolity(world, attId), pd = _getPolity(world, defId);
       const fa = pa ? pa.faithId : -1, fd = pd ? pd.faithId : -1;
       const pers = pa && pa.personality;
@@ -875,14 +884,15 @@ export function advanceFronts(world) {
       const vs = [...pairTrade.values()].sort((x, y) => x - y);
       tradeRef = Math.max(1e-6, 2 * vs[vs.length >> 1]);
     }
-    const signPeace = (a, b) => {
+    const signPeace = (a, b, how = "truce") => {
       const key = Math.min(a, b) + ":" + Math.max(a, b);
       if ((truces.get(key) || 0) > world.step) return false;   // already at peace
       const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
       const tradeW = Math.min(1, trade / tradeRef);
       const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
       truces.set(key, world.step + dur);
-      closeWar(world, key, "truce");   // the war's dead are reckoned at the peace
+      lastMove.delete(key);            // the settled war's movement clock dies with it (a reopened war restamps at war.began)
+      closeWar(world, key, how);       // the war's dead are reckoned at the peace
       // reparations from the clearly-beaten side, proportional to how
       // one-sided the exhaustion is and bounded by what it can actually pay
       const eA2 = exh.get(a) || 0, eB2 = exh.get(b) || 0;
@@ -899,22 +909,55 @@ export function advanceFronts(world) {
       }
       return true;
     };
+    // WARS THAT STOP MOVING END (T.STALEMATE_TICKS — the frozen-front settlement).
+    // The exhaustion treaty above only ends HIGH-INTENSITY wars, and the measured
+    // late-game map is the opposite failure: dozens of smouldering fronts that never
+    // push anyone near the truce bar (measured at the app grid: 57 active wars at one
+    // Medieval checkpoint, endings collapsed to 0.7 per 1000 steps, mean exhaustion
+    // 0.09) — permanent background war that reads as noise, not history. What history
+    // actually has: most wars ended in a NEGOTIATED STATUS QUO once neither side could
+    // move the line — uti possidetis, not collapse. So a warring pair whose front has
+    // produced NO territorial movement (no countryside captured, no city under storm,
+    // by either side — the _warLastMove ledger) for a full window signs the same
+    // trade-scaled treaty, reparations only where the exhaustion gap is one-sided
+    // (signPeace already gates that). Gated purely on the war's OWN state — a war that
+    // is genuinely advancing never settles this way, however long it runs; a wall that
+    // holds for a generation is a peace nobody bothered to sign, so the scribes sign it.
+    // Ledger hygiene: drop movement clocks for pairs no longer at war this pass (ended
+    // by submission, realm death, or a faded front). A paused front that reappears
+    // within war-memory simply restarts its clock — strictly lenient, never spurious.
+    if (lastMove.size > 512) {
+      for (const k of [...lastMove.keys()]) {
+        const i = k.indexOf(":"); const a = +k.slice(0, i), b = +k.slice(i + 1);
+        const s = allEnemies.get(a);
+        if (!s || !s.has(b)) lastMove.delete(k);
+      }
+    }
+    const staleWin = T.STALEMATE_TICKS > 0 ? T.STALEMATE_TICKS / (world._dt || 1) : 0;
     for (const [cc, es] of allEnemies) {
       if (cc < 0) continue;
       const eA = exh.get(cc) || 0;
       for (const ecc of es) {
         if (ecc <= cc || ecc < 0) continue;          // each pair once
-        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST) {
-          if (!signPeace(cc, ecc)) continue;
-          // the congress: exhausted co-belligerents of either side settle too
-          for (const side of [cc, ecc]) {
-            const others = allEnemies.get(side);
-            if (!others) continue;
-            for (const third of others) {
-              if (third < 0 || third === cc || third === ecc) continue;
-              if ((exh.get(third) || 0) >= TRUCE_EXHAUST * CONGRESS_JOIN
-                  || (exh.get(side) || 0) >= TRUCE_EXHAUST) signPeace(side, third);
-            }
+        let how = null;
+        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST) how = "truce";
+        else if (staleWin > 0) {
+          const key = cc + ":" + ecc;                // cc < ecc by the guard above
+          const lm = lastMove.get(key);
+          if (lm === undefined) lastMove.set(key, world.step);   // first sight (loaded save / pre-ledger war): the clock starts now
+          else if (world.step - lm >= staleWin) how = "stalemate";
+        }
+        if (!how) continue;
+        if (!signPeace(cc, ecc, how)) continue;
+        // the congress: exhausted co-belligerents of either side settle too —
+        // wars end at conferences (a stalemate settlement convenes one just the same)
+        for (const side of [cc, ecc]) {
+          const others = allEnemies.get(side);
+          if (!others) continue;
+          for (const third of others) {
+            if (third < 0 || third === cc || third === ecc) continue;
+            if ((exh.get(third) || 0) >= TRUCE_EXHAUST * CONGRESS_JOIN
+                || (exh.get(side) || 0) >= TRUCE_EXHAUST) signPeace(side, third, how);
           }
         }
       }
@@ -1046,6 +1089,7 @@ export function advanceFronts(world) {
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
+        stampMove(att.countryId, def.countryId);   // a siege actively grinding toward a storm is a war still moving (a siege that can never reach the walls is not)
         // Bombard: grind the garrison; the besiegers bleed against the defence
         // they actually face (the militia floor, not the melted garrison).
         {
@@ -1131,6 +1175,7 @@ export function advanceFronts(world) {
       if (pc.tiles.length) {
         for (const p of pc.tiles) { const cti = p.ti; if (owner[cti] === def.id) { warFront[cti] = att.id; warAdv[cti] = adv - 1; } }
         bankMomentum(world, att.countryId, Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap) * MOMENTUM_PER_TILE);
+        stampMove(att.countryId, def.countryId);   // the field is bulging — this war is moving
       }
       { const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att)); const dDef = Math.min(def.army || 0, att._M * T.ATTRITION / techMul(def)); att.army = (att.army || 0) - dAtt; def.army = (def.army || 0) - dDef; tallyDead(world, att.countryId, def.countryId, dAtt + dDef); }
       continue;
@@ -1150,7 +1195,10 @@ export function advanceFronts(world) {
         if (owner[cti] !== def.id) continue;   // already taken earlier this pass
         owner[cti] = att.id; capturedAt[cti] = world.step; captured++;
       }
-      if (captured > 0) bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
+      if (captured > 0) {
+        bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
+        stampMove(att.countryId, def.countryId);                            // territory changed hands — this war is moving
+      }
     }
     {
       const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att));
