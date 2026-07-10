@@ -92,6 +92,23 @@ const CORE_R   = 1;   // half-width (tiles) of the pinned urban core stamped per
 const POP_FILL = 12;  // rateCap multiplier under POP_FIELD: realms reach their (binding) capacity
                       // target in fewer passes, so coverage fills sooner and size is capped by
                       // FIELD_SPAN·capacity (not by how far growth got) — making size tunable.
+// ── TILE_POLITY coverage floor ──────────────────────────────────────────────
+// Under capital-only anchoring (TILE_POLITY) the per-settlement anchors no longer
+// paint the settled belt, so a realm's extent is ONLY its capacity-grown blob — and
+// the Tilly stack computes NO hold-capacity for a SOLO city-state (conquest.js sizes
+// MULTI-province holds and skips the lone realm), so `_capacity` is 0, the growth
+// target is 0, and the realm FREEZES at its capital core. It never covers its region,
+// never touches a neighbour, so war finds no fronts (captured=0) and nothing
+// consolidates — the measured 3-14%-claimed over-fragmentation. Fix the MECHANISM:
+// every realm is guaranteed a growth target of at least an ORG-scaled administrative
+// HINTERLAND around its capital — the coverage the settlement scatter used to give,
+// now emergent from the capital's reach (organisation tech, the same thing that sized
+// the entity-model catchment). Capacity still sets size ABOVE this floor (a great
+// power sprawls past its hinterland into low-pop marches, FIELD_SPAN·capacity), so the
+// size distribution is unchanged where capacity already binds; only the frozen small
+// realms grow to cover their own land, restoring fronts and consolidation.
+const COVER_BASE = _envNum("SIM_COVER_BASE", 25);   // ref-tiles a realm covers around its capital at organisation 0 (a chiefdom's core region)
+const COVER_ORG  = _envNum("SIM_COVER_ORG", 150);   // + this × capital organisation — an administered hinterland scales with statecraft
 // Wet-tropic claim resistance: hot AND wet rainforest (the Congo, the Amazon, New
 // Guinea) was easy to walk through but near-impossible to ADMINISTER — disease,
 // no roads, leached soil, no storable surplus to tax or garrison. So it amplifies
@@ -197,7 +214,14 @@ const ANCHOR_SCALE = 40;
 // the same however fine the grid; only cumulative reach distances scale.)
 const RES_REF_W = 240;
 const _resScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_RES_SCALE) || 0;
-function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : Math.max(1, tw / RES_REF_W); }
+// tw/RES_REF_W keeps a realm's REACH at a constant world-FRACTION at any grid. The old
+// Math.max(1, …) floor left it un-scaled BELOW the reference (tw<240): reach stayed a fixed
+// tile count while the grid shrank, so a coarse sim (the new Quarter setting, or a small map)
+// claimed a far larger fraction — realms ~2.3× oversized at tw=120. Un-clamp below the reference
+// (matching rNormPop, which never clamped) so density and reach agree symmetrically both ways.
+// Byte-identical at/above 240 (the app default, the 480 validate grid); the RES_INVARIANT_POP=0
+// escape hatch keeps the legacy clamp for exact-legacy runs.
+function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : (T.RES_INVARIANT_POP ? tw / RES_REF_W : Math.max(1, tw / RES_REF_W)); }
 export { resScaleFor };
 // Capital colouring (DEFAULT ON): per-settlement coverage (every settlement holds its own
 // ground, so populated land is never abandoned) RECOLOURED by nearest capital, so the
@@ -464,14 +488,29 @@ function fieldPolityTerritory(world) {
   // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
   const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
   for (const [cid, cp] of capOf) {
-    // A realm with NO real capacity yet — a newborn minted after the last polity pass,
-    // or every realm on the FIRST territory pass after a LOAD (capacity is recomputed in
-    // updatePolities, which the load warm-up does not run) — is left untouched: no target,
-    // so it neither grows nor sheds and simply HOLDS its stamped/anchored field until the
-    // next polity pass computes its capacity. Without this a capless realm reads target=0
-    // and step 6 sheds its ENTIRE frontier on that pass (the cold-start load divergence).
-    if (cp <= 0) continue;
-    const t = Math.round(FIELD_SPAN * cp * r2);
+    let t = Math.round(FIELD_SPAN * Math.max(0, cp) * r2);
+    if (T.TILE_POLITY) {
+      // COVERAGE FLOOR (capital-only anchoring): guarantee every realm a growth target
+      // of at least an org-scaled administrative hinterland, so a solo city-state whose
+      // Tilly capacity is 0 (conquest.js sizes only multi-province holds) still covers
+      // its region instead of freezing at its capital core. max() with the capacity
+      // target, so great powers (capacity-bound) are unchanged — only the frozen small
+      // realms grow. This also SUPERSEDES the cold-start guard below: a floor'd realm has
+      // a real target ≥ its held core, so step 6 never sheds a capless realm's frontier.
+      const kn = knOf.get(cid);
+      const org = (kn && kn.organization) || 0;
+      const floor = Math.round((COVER_BASE + COVER_ORG * org) * r2);
+      if (floor > t) t = floor;
+    } else if (cp <= 0) {
+      // A realm with NO real capacity yet — a newborn minted after the last polity pass,
+      // or every realm on the FIRST territory pass after a LOAD (capacity is recomputed in
+      // updatePolities, which the load warm-up does not run) — is left untouched: no target,
+      // so it neither grows nor sheds and simply HOLDS its stamped/anchored field until the
+      // next polity pass computes its capacity. Without this a capless realm reads target=0
+      // and step 6 sheds its ENTIRE frontier on that pass (the cold-start load divergence).
+      continue;
+    }
+    if (t <= 0) continue;
     target.set(cid, t);
     const g = Math.min(Math.max(0, t - (held.get(cid) || 0)), rateCap);
     if (g > 0) grow.set(cid, g);
@@ -570,6 +609,12 @@ function fieldPolityTerritory(world) {
 
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
+  // CTRL_LIVE: the control field (controlField.js) authors _countryOwner every tick, so the
+  // periodic recompute is skipped entirely — the political map is the continuously-relaxing
+  // field, not a rebuilt Voronoi. (The field runs after the settlement pass; on the very
+  // first tick _countryOwner is briefly unset until it runs, which is fine — cradles carry a
+  // seeded countryId.)
+  if (T.CTRL_LIVE) return;
   // FIELD POLITY (T.FIELD_POLITY, docs/field-polity-spec.md): the political map is
   // the AUTHORED persistent state — countries grow at their own frontier and war
   // moves tiles; settlements derive their flag from the ground. The seeded reach-

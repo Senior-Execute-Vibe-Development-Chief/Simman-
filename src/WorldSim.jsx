@@ -720,9 +720,14 @@ function PsSection({ id, title, right, open, onToggle, children }) {
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);
+// Resolution-agnostic FEATURE overlay: a second canvas stacked over the map, always at a FIXED
+// resolution (FEAT_W) regardless of the map scale, so borders / roads / settlement icons are drawn
+// at a constant resolution and always look the same crisp size. The map (terrain + political tints)
+// stays at map resolution below it; this canvas carries only the vector features.
+const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
-const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
+const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
 const[depthFromSea,setDepthFromSea]=useState(false);
@@ -836,7 +841,30 @@ const[globeVer,setGlobeVer]=useState(0);          // bumps when the (reused) glo
 const globeBufScratchRef=useRef(null);            // the one 25MB texture buffer, reused across rebuilds
 const globeStampRef=useRef(0);                    // last globe rebuild time (throttle)
 const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
-const CH=useMercator?CH_MERC:CH_FLAT;
+// Map SCALE: the worldgen (and therefore sim) grid width in pixels. Lower = coarser coastlines
+// but FASTER, MORE-VARIED development (the sim develops per real-area, and at high resolution the
+// same Earth is spread over 4× the tiles, so ~half as many civilisations form per step — see the
+// resolution-invariance investigation). 1920 = "2×" (finest, current default), 960 = "1×",
+// 480 = "0.5×" (the calibration reference — most varied, quickest to fill). Canvas dims scale WITH
+// the world (RES stays 1, world == canvas), so the map keeps its screen size, just pixelated finer
+// or coarser. Changing this re-memoises `generate` (W/H are in its deps), which auto-regenerates
+// the SAME seed at the new resolution via the [seed,generate] effect.
+const[mapScale,setMapScale]=useState(1920);
+// Sim resolution is DECOUPLED from map resolution: simDiv is how many map pixels each
+// sim tile spans (1 = sim matches the land, 2 = half [default], 4 = quarter/faster). Map
+// resolution (mapScale) sets terrain/coast crispness; simDiv sets sim granularity — which
+// is speed AND emergent detail (a finer grid seeds more river cradles → a different world).
+const[simDiv,setSimDiv]=useState(2);
+const genW=mapScale,genH=mapScale>>1;   // REQUESTED scale — the size the NEXT world generates at
+// Render/data dimensions track the ACTUAL loaded world, never the requested mapScale. Worldgen is
+// async, so between the scale change and the new world arriving the two differ; keying the canvas /
+// terrain / sim-tile / overlay math off the loaded world keeps them all on ONE consistent resolution
+// (a desync made tw↔CW disagree and blanked the overlay). Falls back to mapScale before the first world.
+const W=world?world.width:mapScale, H=world?world.height:(mapScale>>1), CW=W;
+const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
+// Feature overlay is a FIXED resolution (independent of mapScale) with the same aspect as the map,
+// so vector features render identically at every scale. CH/CW is constant across scales ⇒ FEAT_H fixed.
+const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(true);
@@ -871,6 +899,14 @@ const peopleRef=useRef(null);
 // unchanged). If the worker can't start, we fall back to stepping on the main
 // thread (simWorkerRef stays null and the rAF loop steps as before).
 const simWorkerRef=useRef(null);
+// Monotonic id stamped on every generate() request. Worldgen runs in a worker, so a
+// slow result (e.g. the initial 1920-wide world, ~25s) can land AFTER the scale changed
+// — initialising the sim at a resolution that no longer matches the canvas (mapScale),
+// which desyncs tw↔CW and blanks the overlay. Results whose id isn't the latest are dropped.
+const genIdRef=useRef(0);
+// Sim tile resolution (simDiv) read by finalizeWorld — a ref so the async worldgen
+// finalize sees the value chosen at request time even though finalizeWorld is memoised.
+const simTileResRef=useRef(2);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
@@ -882,7 +918,7 @@ const [liveStep,setLiveStep]=useState(0);
 const psHistoryRef=useRef([]);
 const [statsCopied,setStatsCopied]=useState(false);
 const oceanLevelRef=useRef(0.78);const pendingSaveRef=useRef(null);const downloadSaveRef=useRef(null);const saveFileRef=useRef(null);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
-const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
+const presetRef=useRef("earth_sim");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -893,6 +929,13 @@ const atlasCache=useRef(null);
 // re-rasterised ~460k tiles every frame. We render it to this canvas and only
 // regenerate every PS_OVERLAY_REGEN sim-steps, blitting it otherwise.
 const psOverlayRef=useRef(null);
+// Political TINTS render on their own MAP-resolution layer (psTintRef), separate from the
+// FEAT-resolution borders/roads (psOverlayRef/ov): tints are area fills that want to hug the
+// coastline crisply, so they're drawn 1px-per-sim-tile into psTintSrcRef, nearest-owned
+// flood-filled, then nearest-upscaled to the map grid + coast-clipped. Borders/roads/icons stay
+// as the smooth 1920-res vectors on the feature canvas.
+const psTintSrcRef=useRef(null);   // sim-res (tw×th) owner colours, 1px per tile
+const psTintRef=useRef(null);      // map-res (CW×CH) tint layer, coast-clipped
 const psOverlayMeta=useRef({step:-1,ch:0});
 const identityFillRef=useRef(null);   // cached nearest-settlement map for the people/faith/language overlays
 const ancRevealRef=useRef({start:0,active:false});   // deep-ancestry "peopling" replay: wavefront spread time + whether animating
@@ -907,11 +950,15 @@ const moneyDotsRef=useRef(null);
 // the sim is off-thread.
 const baseLayerRef=useRef(null);
 const baseLayerKey=useRef(null);
+// Full-resolution LAND mask (opaque on land, transparent on ocean), used to clip the HALF-res
+// political overlay to the real coastline so coasts stay crisp while the interior stays coarse.
+const landMaskRef=useRef(null);
+const landMaskKey=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 // Wind particle animation state
 const windParticlesRef=useRef(null);
-const W=1920,H=960,CW=CW_FLAT;
+// W, H, CW, CH are derived from mapScale above (near the CH definition).
 const workerRef=useRef(null);
 // Helper: finalize a generated world (shared by worker + main thread paths)
 const finalizeWorld=useCallback((w)=>{
@@ -964,12 +1011,12 @@ try{
     console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
     try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
   // Empty mirror until the first snapshot arrives.
-  peopleRef.current={_isMirror:true,step:0,settlements:[],tw:t.tw||0,th:t.th||0,tileRes:RES,N:0,countries:new Map(),_byId:new Map()};
+  peopleRef.current={_isMirror:true,step:0,settlements:[],tw:t.tw||0,th:t.th||0,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,N:0,countries:new Map(),_byId:new Map()};
   // Send ONLY the fields createWorld reads (structured-clone copies them; the
   // main thread keeps its own w arrays for terrain rendering). Avoids cloning
   // the full worldgen object, which may carry non-cloneable extras.
@@ -981,7 +1028,7 @@ try{
   const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams,realWind:!!w.realWindUsed};
   const _pend=pendingSaveRef.current;
   if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
-  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
@@ -996,15 +1043,18 @@ if(!usedWorker){
   catch(err){
     console.error("load failed:",err);
     alert("Could not load save: "+(err&&err.message));
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
     peopleRef.current._realWindGen=!!w.realWindUsed;
   }}
-  else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
+  else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
+// Stamp this request; a worker result whose id has been superseded (the user changed
+// scale/seed again before it finished) is a wrong-resolution world and must be ignored.
+const _gid=++genIdRef.current;
 // Import path
 if(presetRef.current==="import"&&importedWorldRef.current){
 const w=importedWorldRef.current;importedWorldRef.current=null;finalizeWorld(w);return;}
@@ -1019,15 +1069,16 @@ try{
 if(workerRef.current)workerRef.current.terminate();
 const worker=new WorldGenWorker();workerRef.current=worker;
 worker.onmessage=(e)=>{
+if(_gid!==genIdRef.current)return;   // superseded by a newer generate → its world is the wrong scale now
 if(e.data.type==='result'){console.log(`[Worker] Done in ${e.data.time?.toFixed(0)}ms`);finalizeWorld(e.data.world);}
 else{console.warn('[Worker]',e.data.type,e.data.message||'');
-finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));}};
-worker.onerror=(err)=>{console.warn('[Worker] Error:',err.message);
-finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));};
-worker.postMessage({type:'generate',W,H,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
+finalizeWorld(generateWorld(genW,genH,s,presetRef.current,_ol,true,false,_tecParams));}};
+worker.onerror=(err)=>{if(_gid!==genIdRef.current)return;console.warn('[Worker] Error:',err.message);
+finalizeWorld(generateWorld(genW,genH,s,presetRef.current,_ol,true,false,_tecParams));};
+worker.postMessage({type:'generate',W:genW,H:genH,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
-finalizeWorld(Object.assign(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld]);
+finalizeWorld(Object.assign(generateWorld(genW,genH,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld,genW,genH]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
@@ -1411,6 +1462,22 @@ if(_pz){
   // zoomed in.
   ctx.imageSmoothingEnabled=false;
   ctx.setTransform(viewZRef.current,0,0,viewZRef.current,viewXRef.current,viewYRef.current);
+}
+// FEATURE overlay context: fixed-resolution canvas for vector features (borders/roads/icons).
+// Cleared each frame; the pan/zoom transform is the map's, scaled by k=FEAT_W/CW so the overlay
+// registers exactly over the map (both canvases are CSS-scaled to the same box). Smoothing ON for
+// crisp antialiased lines. featX/featY map sim-tile coords into the fixed FEAT canvas.
+const _k=FEAT_W/CW;   // map-canvas px → fixed-overlay px; features render at FEAT resolution (crisp at any scale)
+let fctx=null;
+if(_pz&&featRef.current){
+  fctx=featRef.current.getContext("2d");
+  fctx.setTransform(1,0,0,1,0,0);
+  fctx.clearRect(0,0,FEAT_W,FEAT_H);
+  // Smooth only when DOWN-scaling (zoomed out): bilinear antialiases the shrink. When zoomed IN
+  // (viewZ>1) it blurs the political tint BLOCKS into mush — draw those crisp (nearest) instead;
+  // the borders/icons are already 1920-res so nearest keeps them sharp too.
+  fctx.imageSmoothingEnabled=viewZRef.current<=1;
+  fctx.setTransform(viewZRef.current,0,0,viewZRef.current,viewXRef.current*_k,viewYRef.current*_k);
 }
 if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
 const img=imgRef.current;const d=img.data;
@@ -1904,15 +1971,24 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
+    // Vector features (borders, roads, settlement icons) are authored in MAP-canvas (CW) pixels but
+    // rasterised onto the fixed FEAT_W overlay (see the octx _k scale below), so a width of `w*uiF`
+    // becomes w*uiF*_k = w FEAT-px at EVERY map scale — one constant on-screen size, resolution-
+    // agnostic. uiF = CW/1920 (no floor: the overlay's fixed resolution keeps thin lines crisp, so
+    // the old 0.4 clamp — which made 0.5× features oversized — is no longer needed).
+    const uiF=CW/1920;
     // ── Territory tint + borders + roads ── cached to an offscreen canvas
     // and regenerated only every PS_OVERLAY_REGEN sim-steps (it's a pure
     // function of owner[]/roadQuality[], which change slowly), then blitted.
     // This took ~460k per-tile fillRect+Map.get ops off EVERY frame.
     const PS_OVERLAY_REGEN=30;
+    // The overlay is sized to the FIXED feature resolution (FEAT_W×FEAT_H), not the map canvas,
+    // so borders/roads/tints rasterise crisply regardless of map scale; it's blitted onto the
+    // feature canvas each frame. (meta.ch!==CH below still forces a rebuild on scale change.)
     let ov=psOverlayRef.current;
-    if(!ov||ov.width!==CW||ov.height!==CH){
-      ov=psOverlayRef.current=(typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(CW,CH):document.createElement('canvas'));
-      ov.width=CW;ov.height=CH;psOverlayMeta.current.step=-1;
+    if(!ov||ov.width!==FEAT_W||ov.height!==FEAT_H){
+      ov=psOverlayRef.current=(typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(FEAT_W,FEAT_H):document.createElement('canvas'));
+      ov.width=FEAT_W;ov.height=FEAT_H;psOverlayMeta.current.step=-1;
     }
     const meta=psOverlayMeta.current;
     const stepNow=psw.step||0;
@@ -1926,7 +2002,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     if(ancAnimating||meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
-      octx.clearRect(0,0,CW,CH);
+      // Draw in MAP-canvas (CW×CH) coordinate units but rasterise onto the fixed FEAT_W×FEAT_H
+      // overlay: a single uniform _k scale means every coordinate / width / dash below is reused
+      // VERBATIM (w*uiF → w FEAT-px) yet renders at the fixed resolution — crisp at any map scale.
+      octx.setTransform(1,0,0,1,0,0);
+      octx.clearRect(0,0,FEAT_W,FEAT_H);
+      octx.setTransform(_k,0,0,_k,0,0);
+      // Sim-res tint buffer: the view fills below draw 1px per sim tile here (stctx) instead of a
+      // block into ov, so the tints can be flood-filled + upscaled crisply to map resolution.
+      const _tw=psw.tw,_th=psw.th;
+      let stint=psTintSrcRef.current;
+      if(!stint||stint.width!==_tw||stint.height!==_th){stint=psTintSrcRef.current=document.createElement('canvas');stint.width=_tw;stint.height=_th;}
+      const stctx=stint.getContext('2d');stctx.setTransform(1,0,0,1,0,0);stctx.clearRect(0,0,_tw,_th);
+      let _tintLastFs=null;
       // National territory tints + dotted borders. Prefer the SMOOTH national
       // CLAIM (countryId per tile, peopleSim/countryClaim.js) — country-centric
       // borders that follow terrain and enclose frontier hinterland; fall back
@@ -2046,10 +2134,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             keyOf[ti]=key;
             const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
             const fs=(c2&&((x+y)&1))?c2:c1;   // mixed unit → checkerboard top-two colours
-            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-            octx.fillRect(sx,sy,TR+0.7,TR+0.7);}
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(x,y,1,1);}
           // soft borders where the dominant GROUP changes (legible but not segmented)
-          octx.strokeStyle="rgba(10,10,14,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
+          octx.strokeStyle="rgba(10,10,14,0.34)";octx.lineWidth=uiF;octx.beginPath();
           for(let ti=0;ti<N2;ti++){const k=keyOf[ti];if(k===-2147483648)continue;
             const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
             const rk=keyOf[((x+1)%tw)+y*tw];if(rk!==-2147483648&&rk!==k){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
@@ -2068,8 +2156,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           let lastFs=null;
           for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;
             const fs=coerceCol(sid);const y=(ti/tw)|0,x=ti-y*tw;
-            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-            octx.fillRect(x*TR,dataYtoScreenY(y*TR,H,CH),TR+0.7,TR+0.7);}
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(x,y,1,1);}
         }
       }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
@@ -2101,10 +2189,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
           const a=shown(px,py);if(a<0)continue;
           let fs=fill.get(a);if(fs===undefined){const h=hue?hue[a]|0:((a*2654435761)>>>0)%360;const l=light?light[a]|0:52;fs=`hsl(${h},53%,${l}%)`;fill.set(a,fs);}
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR+0.7,TR+0.7);
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(px,py,1,1);
         }
-        octx.strokeStyle="rgba(8,8,12,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
+        octx.strokeStyle="rgba(8,8,12,0.34)";octx.lineWidth=uiF;octx.beginPath();
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
           const a=shown(px,py);if(a<0)continue;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           const ra=shown((px+1)%tw,py);if(ra>=0&&ra!==a){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
@@ -2116,7 +2204,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(arr&&rv.active&&prog<1&&ter.ancOriginFx!=null){
           const ox=ter.ancOriginFx*tw*TR, oy=dataYtoScreenY(ter.ancOriginFy*th*TR,H,CH);
           const ph=(performance.now()/700)%1, rr=TR*1.5+ph*TR*7;
-          octx.strokeStyle=`rgba(255,244,210,${(0.75*(1-ph)).toFixed(3)})`;octx.lineWidth=Math.max(1.2,TR*0.7);
+          octx.strokeStyle=`rgba(255,244,210,${(0.75*(1-ph)).toFixed(3)})`;octx.lineWidth=1.4*uiF;
           octx.beginPath();octx.arc(ox,oy,rr,0,6.2832);octx.stroke();
           octx.fillStyle="rgba(255,248,224,0.95)";octx.beginPath();octx.arc(ox,oy,Math.max(1.6,TR*1.3),0,6.2832);octx.fill();
         }
@@ -2147,14 +2235,14 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             fs=`hsl(${h},60%,50%)`;   // every realm drawn vibrant — no city-state muting
             fillByCountry.set(cc,fs);
           }
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(sx,sy,TR+0.6,TR+0.6);   // slight overdraw kills inter-tile seams
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(px,py,1,1);
           if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
         }
         // Black diagonal stripes over colonies (same colour as the metropole underneath).
         stripeCells(octx,colonyCells,TR,0.62);
         // thick dark borders between neighbouring countries
-        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=Math.max(1.6,TR*1.1);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
+        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
           const py=(ti/tw)|0,px=ti-py*tw;
@@ -2167,7 +2255,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
       if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
-        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
+        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
@@ -2176,8 +2264,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(L.tints){
             let fs=tintByCountry.get(cc);
             if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const over=co&&co._overlord>=0&&co._depKind!=="vassal"?co._overlord:-1;colonyByCC.set(cc,over>=0);const h=(((over>=0?over:cc)*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
-            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-            octx.fillRect(sx,sy,TR,TR);
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(px,py,1,1);
             if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
           }
           if(!L.borders)continue;
@@ -2198,7 +2286,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(t===undefined){const h=((s.countryId*61)%360+360)%360;t=`hsla(${h},50%,50%,0.32)`;tintByCountry.set(s.countryId,t);}
           tintById[s.id]=t; ctryById[s.id]=s.countryId;
         }}
-        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
+        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<owner.length;ti++){
           const oid=owner[ti];if(oid<0)continue;
@@ -2206,8 +2294,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const py=(ti/tw)|0,px=ti-py*tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           if(L.tints){
-            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-            octx.fillRect(sx,sy,TR,TR);
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(px,py,1,1);
           }
           if(!L.borders)continue;
           const co=ctryById[oid];
@@ -2271,8 +2359,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(py<th-1){const dti=ti+tw;if(claimArr[dti]===cc){const qv=prov[dti];if(qv!==pv&&((pv<0||qv<0)===heritage)){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
           }
         };
-        octx.strokeStyle="rgba(20,20,20,0.45)";octx.lineWidth=1;octx.setLineDash([1,2]);octx.beginPath();drawSeams(false);octx.stroke();
-        octx.strokeStyle="rgba(15,15,15,0.75)";octx.lineWidth=1;octx.setLineDash([3,2]);octx.beginPath();drawSeams(true);octx.stroke();
+        octx.strokeStyle="rgba(20,20,20,0.45)";octx.lineWidth=uiF;octx.setLineDash([uiF,2*uiF]);octx.beginPath();drawSeams(false);octx.stroke();
+        octx.strokeStyle="rgba(15,15,15,0.75)";octx.lineWidth=uiF;octx.setLineDash([3*uiF,2*uiF]);octx.beginPath();drawSeams(true);octx.stroke();
         octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
@@ -2283,14 +2371,90 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
-          const w=1.4+intensity*1.6,off=(TR-w)*0.5;
+          const w=(1.4+intensity*1.6)*uiF,off=(TR-w)*0.5;
           octx.fillStyle=`rgba(120,80,40,${(0.55+intensity*0.35).toFixed(2)})`;
           octx.fillRect(sx+off,sy+off,w,w);
         }
       }
+      // ── Crisp coasts on a coarse overlay ── the political overlay is drawn at the HALF-res sim
+      // grid (TILE_RES=2 → 2×2-pixel blocks), so a coastal block spills over ocean at full map
+      // resolution. Clip the whole overlay to a FULL-resolution land mask (destination-in keeps
+      // overlay pixels only where the world is land): the interior stays coarse/blocky, but the
+      // coastline follows the map-resolution coast exactly — no political colour over the sea.
+      {
+        const mKey=(w._seed)+'|'+CW+'|'+CH+'|'+(_mercator?'m':'f');
+        if(landMaskKey.current!==mKey||!landMaskRef.current){
+          let mc=landMaskRef.current||(landMaskRef.current=document.createElement('canvas'));
+          if(mc.width!==CW||mc.height!==CH){mc.width=CW;mc.height=CH;}
+          const mctx=mc.getContext('2d');const mi=mctx.createImageData(CW,CH),md=mi.data,el=w.elevation;
+          for(let cy=0;cy<CH;cy++){const sy=Math.min(H-1,Math.round(screenYtoDataY(cy,CH,H)))*W;
+            for(let cx=0;cx<CW;cx++){if(el[sy+Math.min(W-1,cx)]>0)md[(cy*CW+cx)*4+3]=255;}}
+          mctx.putImageData(mi,0,0);landMaskKey.current=mKey;
+        }
+        // The mask is at MAP resolution (elevation grid); the octx _k scale upsamples it onto the
+        // FEAT overlay. Nearest-neighbour (smoothing off) keeps a hard 0/255 alpha edge so coasts
+        // stay crisp at map resolution with no semi-transparent tint halo bleeding over the sea.
+        const prevOp=octx.globalCompositeOperation, prevSm=octx.imageSmoothingEnabled;
+        octx.globalCompositeOperation='destination-in';
+        octx.imageSmoothingEnabled=false;
+        octx.drawImage(landMaskRef.current,0,0);
+        octx.globalCompositeOperation=prevOp;octx.imageSmoothingEnabled=prevSm;
+      }
+      // ── Political TINTS → MAP resolution ──────────────────────────────────────────────
+      // stint holds one colour per sim tile — exactly the tiles the sim CLAIMS. The sim runs on a
+      // COARSER grid than the map (each sim tile spans tileRes² map pixels), so the blocky claim
+      // and the fine map coastline don't line up: a nation sitting AT the coast can have its shore
+      // fall in the next sim tile over — a mostly-ocean coastal tile the sim never claimed — leaving
+      // a bare sub-tile strip between the claim and the true coast. Close JUST that quantization gap
+      // by dilating the claim outward over LAND, bounded to GAP_TILES sim tiles (≈ the sim→map tile
+      // size — the widest the gap can be). This is NOT a fill-to-ocean flood: genuinely-unclaimed
+      // frontier (many tiles from any claim) stays bare terrain; only the coastal seam is bridged.
+      // Then upscale NEAREST and clip to the coast so the bridged tint stops exactly at the shore.
+      {
+        const N2=_tw*_th, sd=stctx.getImageData(0,0,_tw,_th), sp=sd.data;
+        const el=w.elevation,_TR=psw.tileRes;
+        // Classify each sim tile against the fine map grid it covers: does its tileRes² footprint
+        // hold any LAND, and is it ALL land? A tile with land but also some ocean is a COASTAL tile —
+        // the only place the coarse sim grid and the fine coastline disagree. Precompute once over
+        // the elevation grid; the BFS below reads it O(1).
+        const tileLand=new Uint8Array(N2), tileCoast=new Uint8Array(N2);
+        for(let ty=0;ty<_th;ty++)for(let tx=0;tx<_tw;tx++){
+          let land=0,sea=0;
+          for(let dy=0;dy<_TR;dy++){const my=Math.min(H-1,ty*_TR+dy)*W;
+            for(let dx=0;dx<_TR;dx++){if(el[my+Math.min(W-1,tx*_TR+dx)]>0)land=1;else sea=1;}}
+          const i=ty*_tw+tx;tileLand[i]=land;tileCoast[i]=land&&sea?1:0;
+        }
+        // Close ONLY the coast quantization gap: dilate the claim into adjacent UNCLAIMED COASTAL
+        // tiles (the mostly-ocean shore tiles the sim skipped), bounded to GAP_TILES sim tiles. It
+        // never enters a fully-land tile, so genuinely-unclaimed INTERIOR frontier is untouched —
+        // no ballooning, no fattened inland borders — only the blocky shore is pulled out to meet
+        // the true coastline (the coast clip then trims each tile's ocean half). Bound is in sim
+        // tiles, so it self-calibrates: a coarser sim needs the same 1–2 tiles to span its gap.
+        const GAP_TILES=2;
+        const owner=new Int32Array(N2).fill(-1), dist=new Int32Array(N2), q=new Int32Array(N2);
+        let head=0,tail=0;
+        for(let i=0;i<N2;i++)if(sp[i*4+3]>0){owner[i]=i;q[tail++]=i;}   // seed from every claimed tile
+        while(head<tail){const i=q[head++];if(dist[i]>=GAP_TILES)continue;const y=(i/_tw)|0,x=i-y*_tw;
+          const nb=[y>0?i-_tw:-1,y<_th-1?i+_tw:-1,x>0?i-1:-1,x<_tw-1?i+1:-1];
+          for(let n=0;n<4;n++){const j=nb[n];if(j<0||owner[j]>=0)continue;
+            if(tileCoast[j]!==1)continue;   // fill only coastal seam tiles, never interior frontier
+            owner[j]=owner[i];dist[j]=dist[i]+1;q[tail++]=j;}}
+        for(let i=0;i<N2;i++)if(owner[i]>=0&&sp[i*4+3]===0){const s=owner[i]*4;sp[i*4]=sp[s];sp[i*4+1]=sp[s+1];sp[i*4+2]=sp[s+2];sp[i*4+3]=sp[s+3];}
+        stctx.putImageData(sd,0,0);
+        let mt=psTintRef.current;
+        if(!mt||mt.width!==CW||mt.height!==CH){mt=psTintRef.current=document.createElement('canvas');mt.width=CW;mt.height=CH;}
+        const mtx=mt.getContext('2d');mtx.setTransform(1,0,0,1,0,0);mtx.clearRect(0,0,CW,CH);
+        mtx.imageSmoothingEnabled=false;mtx.drawImage(stint,0,0,_tw,_th,0,0,CW,CH);   // nearest upscale → crisp
+        mtx.globalCompositeOperation='destination-in';mtx.drawImage(landMaskRef.current,0,0);mtx.globalCompositeOperation='source-over';
+      }
       meta.step=stepNow;meta.ch=CH;
     }
-    ctx.drawImage(ov,0,0);
+    // Map-resolution political tints go on the MAP canvas, over terrain (ctx carries the pan/zoom;
+    // smoothing already off ⇒ crisp). Then the FEAT-resolution borders/roads blit onto the feature
+    // canvas above them, and icons on top. Cached tint layer (rebuilt with the overlay).
+    if(psTintRef.current)ctx.drawImage(psTintRef.current,0,0);
+    if(fctx)fctx.drawImage(ov,0,0);
+    else ctx.drawImage(ov,0,0,FEAT_W,FEAT_H,0,0,CW,CH);
     // ── Settlement glyphs ──
     // Compact single-glyph per settlement, much smaller than the old
     // building-cluster sprite. Tier picks the SHAPE (village=dot,
@@ -2309,7 +2473,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // because that's the point of zooming in — more detail). iconScale is
     // kept as a knob for fine-tuning but stays at 1 here so the visible
     // size scales 1:1 with the user's zoom level.
-    const iconScale=1;
+    const iconScale=uiF;
     // Pop → "weight" 0..1 (log scale across the population range).
     let _popMax=1;
     for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.people>_popMax)_popMax=s.people;}
@@ -2331,6 +2495,14 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const tierShow=_identity
       ?[false,false,_L.icons&&_L.city,_L.icons&&_L.metropolis]
       :[_L.icons&&_L.village,_L.icons&&_L.city,_L.icons&&_L.city,_L.icons&&_L.metropolis];
+    // Glyphs render on the fixed-resolution feature canvas too (crisp, constant size at every map
+    // scale). fctx's transform is the map's pan/zoom scaled by _k, so the map-canvas coordinates and
+    // *iconScale sizes below are reused verbatim; `ctx` is shadowed to the feature context for the
+    // loop only, leaving the sea-lanes/ships (which live over open water, under the transparent
+    // overlay) on the map canvas below. Falls back to the map ctx when the feature layer is absent.
+    const _ictx=fctx||ctx;
+    if(fctx)fctx.setTransform(viewZRef.current*_k,0,0,viewZRef.current*_k,viewXRef.current*_k,viewYRef.current*_k);
+    { const ctx=_ictx;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       if(!tierShow[s.tier|0])continue;
@@ -2404,6 +2576,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         ctx.fillStyle="rgba(255,235,180,0.85)";ctx.fill();
         ctx.lineWidth=0.7*iconScale;ctx.strokeStyle="rgba(90,60,10,0.9)";ctx.stroke();
       }
+    }
     }
   }
   // ── Sea lanes ── faint dashed routes over open water connecting the
@@ -2590,23 +2763,23 @@ setImportStatus("Loading...");
 try{let w;
 if(file.name.endsWith(".json")||file.name.endsWith(".map")){
 const text=await file.text();const parsed=parseAzgaarJSON(text);
-w=rasterizeAzgaar(parsed,W,H);
+w=rasterizeAzgaar(parsed,genW,genH);
 setImportStatus(`Azgaar map loaded (${parsed.n} cells, ${parsed.stateSet.size} states)`);
 }else if(file.type.startsWith("image/")){
 const img=await loadImageFile(file);
-w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
+w=rasterizeHeightmap(img.data,img.width,img.height,genW,genH);
 setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 }else{setImportStatus("Unsupported file type");return;}
-const swamp=new Uint8Array(W*H);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+const swamp=new Uint8Array(genW*genH);
+for(let y=0;y<genH;y++)for(let x=0;x<genW;x++){const i=y*genW+x;
 if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35){
-const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
+const nv=fbm(x/genW*20+300,y/genH*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
 w.swamp=swamp;
 importedWorldRef.current=w;presetRef.current="import";setPreset("import");
 setSeed(Math.floor(Math.random()*999999));
 setTimeout(()=>setImportStatus(null),4000);
 }catch(err){setImportStatus("Import failed: "+err.message);setTimeout(()=>setImportStatus(null),5000);}
-},[seed]);
+},[seed,genW,genH]);
 // Screen → canvas-pixel-space (reversing the pan/zoom transform). Returns
 // {sx,sy} in the same coordinate system the existing hit-testing already uses.
 const screenToCanvas=useCallback((ev)=>{
@@ -2635,8 +2808,8 @@ if(panDragRef.current){
 const _sc=screenToCanvas(ev);if(!_sc)return;
 const sx=_sc.sx,sy=_sc.sy;
 const wx=Math.floor(sx)*RES,wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
-const w=worldRef.current,i=wy*1920+wx;
-if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
+const w=worldRef.current,i=wy*W+wx;
+if(wx<0||wx>=W||wy<0||wy>=H){setHoverInfo(null);return;}
 const elev=w.elevation[i]||0;
 const temp=w.temperature[i]||0;
 const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
@@ -2646,7 +2819,7 @@ const biome=getBiomeD(elev,moist,temp,0,isFlood);
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*100-60);// range: -60°C to +40°C
-const lat=Math.abs(wy/960-0.5)*2;
+const lat=Math.abs(wy/H-0.5)*2;
 const fertVal=elev>0?(terTi>=0&&terRef.current?terRef.current.tFert[terTi]:tileFert(temp,moist,elev)):0;
 const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
 const wspd=Math.sqrt(wdx*wdx+wdy*wdy);
@@ -3882,12 +4055,26 @@ return(
   <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
     <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
   </div>:
+  // The map canvas and the fixed-resolution feature canvas share one wrapper so the feature
+  // overlay covers the map EXACTLY (both fill the wrapper; identical aspect ratio ⇒ perfect
+  // registration). The map is pixelated (coarse terrain upscales blocky); the feature overlay is
+  // smooth (crisp lines). pointer-events on the overlay pass through to the map for hit-testing.
+  // The WRAPPER carries the sizing AND the border/shadow: width:100% (fills the column at ANY scale)
+  // + aspect-ratio (sets the height, constant across scales) + maxWidth/Height:100%. Both canvases
+  // then fill the wrapper's identical content box (width/height:100%, borderless), so a coarse
+  // 480-wide map upscales to the same on-screen box as a 1920 one AND the fixed-res feature overlay
+  // registers pixel-exact over it. Putting the 1px border on a CANVAS instead (border-box) would
+  // shrink only that canvas by 2px — the overlay would then be 2px wider, diverging from the centre.
+  // The map box stays == displayed map, so mouse→canvas mapping is unaffected.
+  <div style={{position:"relative",lineHeight:0,width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
+    maxWidth:"100%",maxHeight:"100%",boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}}>
   <canvas ref={canvasRef} width={CW} height={CH}
     onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
     onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-    style={{display:"block",imageRendering:"pixelated",
-      maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
-      boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
+    style={{display:"block",imageRendering:"pixelated",width:"100%",height:"100%"}} />
+  <canvas ref={featRef} width={FEAT_W} height={FEAT_H}
+    style={{position:"absolute",left:0,top:0,width:"100%",height:"100%",pointerEvents:"none"}} />
+  </div>
 }
 
 {/* ─── Country editor panel ─── */}
@@ -4051,8 +4238,14 @@ return(
 {/* ══════════ PARAMS DRAWER ══════════ */}
 {layersOpen&&(()=>{
   const tog=(k)=>setLayers(L=>({...L,[k]:!L[k]}));
-  const Row=({k,label,indent})=>(
-    <button onClick={()=>tog(k)}
+  // `row` returns a PLAIN <button> element (not a component). Defining a component
+  // inside this render (the old `<Row/>`) made it a NEW type every render, so React
+  // remounted every layer button on each sim tick (WorldSim re-renders on every
+  // snapshot). A click whose mousedown/mouseup straddled a remount fired no `click`
+  // — the "have to press many times / related to the ticks" bug. As plain buttons at
+  // fixed positions with stable keys they reconcile in place and never remount.
+  const row=(k,label,indent)=>(
+    <button key={k} onClick={()=>tog(k)}
       className={"au-rail-tab"+(layers[k]?" au-active":"")}
       style={{paddingLeft:14+(indent||0),width:"100%",textAlign:"left",fontSize:12}}>{label}</button>
   );
@@ -4067,20 +4260,20 @@ return(
           style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
       </div>
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 14px 2px"}}>Map</div>
-      <Row k="tints" label="Country tints" />
-      <Row k="borders" label="Borders" />
-      <Row k="provinces" label="Province borders" />
-      <Row k="roads" label="Roads" />
-      <Row k="seaLanes" label="Sea lanes" />
-      <Row k="moneyFlow" label="Money flow" />
+      {row("tints","Country tints")}
+      {row("borders","Borders")}
+      {row("provinces","Province borders")}
+      {row("roads","Roads")}
+      {row("seaLanes","Sea lanes")}
+      {row("moneyFlow","Money flow")}
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
-      <Row k="icons" label="Icons (master)" />
-      <Row k="village" label="· Farming Regions" indent={10} />
-      <Row k="city" label="· Cities" indent={10} />
-      <Row k="metropolis" label="· Metropolises" indent={10} />
-      <Row k="shocks" label="Plague / famine outlines" />
+      {row("icons","Icons (master)")}
+      {row("village","· Farming Regions",10)}
+      {row("city","· Cities",10)}
+      {row("metropolis","· Metropolises",10)}
+      {row("shocks","Plague / famine outlines")}
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
-      <Row k="ships" label="Colony ships" />
+      {row("ships","Colony ships")}
     </aside>
   );
 })()}
@@ -4133,6 +4326,24 @@ return(
         <button onClick={()=>{setPresetAndGo("tectonic");setNewWorldOpen(false);}}
           className={"au-btn"+(preset==="tectonic"?" au-active":"")} style={{flex:1,padding:"10px 4px"}}>Tectonic</button>
       </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+        <span className="au-fade" style={{fontSize:11,width:26}}>map</span>
+        {[{f:1920,l:"2×"},{f:960,l:"1×"},{f:480,l:"0.5×"}].map(o=>(
+          <button key={o.f} onClick={()=>setMapScale(o.f)}
+            className={"au-btn au-flat"+(mapScale===o.f?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
+            title={o.f===1920?"Finest coastlines & terrain":o.f===480?"Coarsest map — fastest to generate":"Balanced map detail"}>{o.l}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+        <span className="au-fade" style={{fontSize:11,width:26}}>sim</span>
+        {[{d:1,l:"Full"},{d:2,l:"Half"},{d:4,l:"Quarter"}].map(o=>(
+          <button key={o.d} onClick={()=>{simTileResRef.current=o.d;setSimDiv(o.d);generate(seed);}}
+            className={"au-btn au-flat"+(simDiv===o.d?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
+            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms":"Half the map resolution (default)"}>{o.l}</button>
+        ))}
+      </div>
+      <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:6}}>
+        Map = coastline/terrain detail. Sim = simulation granularity: finer runs slower, seeds more &amp; smaller realms, and yields a different emergent world. Both regenerate this seed.</div>
       {preset==="earth_sim"&&
         <label style={{fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5,marginBottom:6}} className="au-fade">
           <input type="checkbox" checked={useRealWind}

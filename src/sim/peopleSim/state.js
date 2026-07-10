@@ -38,15 +38,24 @@ function isContinentalLand(world, ti) {
 export { isContinentalLand };
 
 export function createWorld(w, opts = {}) {
-  const tw = Math.ceil(w.width / TILE_RES);
-  const th = Math.ceil(w.height / TILE_RES);
+  // Sim tile resolution — how many world PIXELS each sim tile spans. Configurable
+  // (opts.tileRes) so MAP resolution (terrain/coast crispness = w.width) and SIM
+  // resolution (tile granularity = speed + emergent detail) are chosen independently.
+  // Defaults to TILE_RES (2 = half the map). 1 makes the sim match the land at 4× the
+  // tiles; 4 runs coarser/faster. A positive integer; all downsampling below reads it.
+  // Read a DISTINCT opt name (not opts.tileRes): the probe/render tools historically pass
+  // tileRes:1 which the old code ignored (they actually ran at the module default), so honouring
+  // opts.tileRes would silently shift every recorded baseline. simTileRes is app-only; absent ⇒ 2.
+  const tileRes = Math.max(1, Math.round(opts.simTileRes || TILE_RES));
+  const tw = Math.ceil(w.width / tileRes);
+  const th = Math.ceil(w.height / tileRes);
   const N = tw * th;
 
   const world = {
     worldRef: w,
     preset: w.preset,
     width: w.width, height: w.height,
-    tw, th, N, tileRes: TILE_RES,
+    tw, th, N, tileRes,
 
     elev:  new Float32Array(N),
     temp:  new Float32Array(N),
@@ -95,7 +104,7 @@ export function createWorld(w, opts = {}) {
 }
 
 function initTerrain(world, w, tCrop, tFloodSrc) {
-  const { tw, th, elev, temp, moist, fert, coast } = world;
+  const { tw, th, tileRes, elev, temp, moist, fert, coast } = world;
   // Pixel-grid relief, max-pooled to sim tiles below (like fert): a one-pixel
   // ridge LINE is exactly the feature mean-sampling erases — the reason the Alps
   // never walled anything (see transport.js ridge term). Recomputed here, never
@@ -110,8 +119,8 @@ function initTerrain(world, w, tCrop, tFloodSrc) {
   if (tFloodSrc && tFloodSrc.length !== NPIX) throw new Error(`initTerrain: tFlood must be pixel-res (${NPIX}), got ${tFloodSrc.length}`);
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
-      const px = Math.min(w.width - 1, tx * TILE_RES);
-      const py = Math.min(w.height - 1, ty * TILE_RES);
+      const px = Math.min(w.width - 1, tx * tileRes);
+      const py = Math.min(w.height - 1, ty * tileRes);
       const wi = py * w.width + px;
       const ti = ty * tw + tx;
       const e = w.elevation[wi], t = w.temperature[wi], m = w.moisture[wi];
@@ -126,10 +135,10 @@ function initTerrain(world, w, tCrop, tFloodSrc) {
       // the overlay renders, so where you SEE green is where settlements thrive.
       if (tCrop) {
         let f = 0;
-        for (let oy = 0; oy < TILE_RES; oy++) {
-          const sy = Math.min(w.height - 1, ty * TILE_RES + oy);
-          for (let ox = 0; ox < TILE_RES; ox++) {
-            const sx = Math.min(w.width - 1, tx * TILE_RES + ox);
+        for (let oy = 0; oy < tileRes; oy++) {
+          const sy = Math.min(w.height - 1, ty * tileRes + oy);
+          for (let ox = 0; ox < tileRes; ox++) {
+            const sx = Math.min(w.width - 1, tx * tileRes + ox);
             const v = tCrop[sy * w.width + sx];
             if (v > f) f = v;
           }
@@ -139,10 +148,10 @@ function initTerrain(world, w, tCrop, tFloodSrc) {
       // RELIEF: max-pool like fert — the ridge line must survive downsampling.
       {
         let r = 0;
-        for (let oy = 0; oy < TILE_RES; oy++) {
-          const sy = Math.min(w.height - 1, ty * TILE_RES + oy);
-          for (let ox = 0; ox < TILE_RES; ox++) {
-            const sx = Math.min(w.width - 1, tx * TILE_RES + ox);
+        for (let oy = 0; oy < tileRes; oy++) {
+          const sy = Math.min(w.height - 1, ty * tileRes + oy);
+          for (let ox = 0; ox < tileRes; ox++) {
+            const sx = Math.min(w.width - 1, tx * tileRes + ox);
             const v = pixRelief[sy * w.width + sx];
             if (v > r) r = v;
           }
@@ -162,10 +171,10 @@ function initTerrain(world, w, tCrop, tFloodSrc) {
       let isFlood;
       if (tFloodSrc) {
         isFlood = false;
-        for (let oy = 0; oy < TILE_RES && !isFlood; oy++) {
-          const sy = Math.min(w.height - 1, ty * TILE_RES + oy);
-          for (let ox = 0; ox < TILE_RES; ox++) {
-            const sx = Math.min(w.width - 1, tx * TILE_RES + ox);
+        for (let oy = 0; oy < tileRes && !isFlood; oy++) {
+          const sy = Math.min(w.height - 1, ty * tileRes + oy);
+          for (let ox = 0; ox < tileRes; ox++) {
+            const sx = Math.min(w.width - 1, tx * tileRes + ox);
             if (tFloodSrc[sy * w.width + sx]) { isFlood = true; break; }
           }
         }
@@ -182,7 +191,7 @@ function initTerrain(world, w, tCrop, tFloodSrc) {
 // never mutates this field — it's the bedrock the faster layers drift away from.
 // −1 = no ancestry (sea / ice / polar). Robust to ter being a different grid.
 function initAncestry(world, w, opts) {
-  const { tw, th, N } = world;
+  const { tw, th, N, tileRes } = world;
   const anc = world.ancestry = new Int16Array(N); anc.fill(-1);
   world.ancestryCount = opts.ancestryCount || 0;
   // Per-lineage HUE (peoples take their deep-ancestry colour so the Peoples map relates to the
@@ -196,8 +205,8 @@ function initAncestry(world, w, opts) {
   const tArr = arr ? (world.tArrival = new Float32Array(N)) : null;
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
-      const ax = Math.min(stw - 1, ((tx * TILE_RES / w.width) * stw) | 0);
-      const ay = Math.min(sth - 1, ((ty * TILE_RES / w.height) * sth) | 0);
+      const ax = Math.min(stw - 1, ((tx * tileRes / w.width) * stw) | 0);
+      const ay = Math.min(sth - 1, ((ty * tileRes / w.height) * sth) | 0);
       const si = ay * stw + ax, di = ty * tw + tx;
       anc[di] = src[si];
       if (tArr) tArr[di] = arr[si];
@@ -221,15 +230,15 @@ function bellFert(t, m, e) {
 const TRACKED_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems','spices','furs','incense','dyes'];
 function initDeposits(world, w, deposits) {
   if (!deposits) return;
-  const { tw, th, N } = world;
+  const { tw, th, N, tileRes } = world;
   for (const id of TRACKED_RES) {
     const src = deposits[id];
     if (!src) continue;
     const dst = new Float32Array(N);
     for (let ty = 0; ty < th; ty++) {
       for (let tx = 0; tx < tw; tx++) {
-        const px = Math.min(w.width - 1, tx * TILE_RES);
-        const py = Math.min(w.height - 1, ty * TILE_RES);
+        const px = Math.min(w.width - 1, tx * tileRes);
+        const py = Math.min(w.height - 1, ty * tileRes);
         dst[ty * tw + tx] = src[py * w.width + px] || 0;
       }
     }

@@ -21,7 +21,7 @@ import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
 import { narrate } from "./sim/peopleSim/events.js";
 import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
-import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
+import { applyTuning, resetTuning, T } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
@@ -114,7 +114,7 @@ self.onmessage = (e) => {
   if (m.type === "init") {
     try {
       genMeta = m.genMeta || {};
-      world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
+      world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
       world._realWindGen = !!(genMeta && genMeta.realWind);   // terrain identity rides the WORLD (saves read it; caller meta is only a fallback)
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
@@ -455,10 +455,43 @@ function buildSnapshot() {
   // settlement is never a bare dot on the map while its nascent capital's projected claim
   // is still ~0. Render-only (a per-tick slice; nothing in the sim reads this).
   let countryClaim = null;
-  if (sendStatic && world._countryClaim) {
+  if (sendStatic && T.CONTROL_FIELD && !T.CTRL_LIVE && world._ctrlOwner) {
+    // PRETTY MODE (control field as the drawn border): the political map is rendered from
+    // the control field (world._ctrlOwner) — coherent, terrain-following, continuously-moving
+    // borders — instead of the recompute crawl. The field is seeded by the SAME nations
+    // (capitals) the sim's politics produce, so it draws the same realms with far nicer
+    // borders, while the sim's AUTHORITATIVE _countryOwner is untouched (this is render-only).
+    // The field carries control ACROSS WATER as a naval relay (a thalassocracy projects across
+    // straits), so _ctrlOwner has owners on sea tiles — but water is never TERRITORY. Mask it
+    // to -1 (exactly as CTRL_LIVE does when it publishes _countryOwner) so the drawn border
+    // stops at the coast instead of bleeding into the ocean.
+    // NEVER ABANDON SIM-OWNED LAND: the field fills a realm from its capital through its own
+    // land, so a lobe cut off from the capital (only reachable across a neighbour or water) is
+    // never reached and would be drawn empty — a "hole"/partial vanishing the sim never intended.
+    // So fall back to the authoritative _countryOwner wherever the field is wilderness on land the
+    // sim actually owns: the field prettifies the border where it reached, but a sim-owned tile is
+    // ALWAYS drawn as its realm (the field can never overwrite a tile onto the wrong realm — it is
+    // blocked from a neighbour's real land — so this only ever fills the field's own gaps).
+    const src = world._ctrlOwner, elev = world.elev, co = world._countryOwner;
+    countryClaim = new Int32Array(src.length);
+    for (let i = 0; i < src.length; i++) {
+      if (!(elev && elev[i] > 0)) { countryClaim[i] = -1; continue; }         // water: never territory
+      countryClaim[i] = src[i] >= 0 ? src[i] : (co && co[i] >= 0 ? co[i] : -1);
+    }
+  } else if (sendStatic && world._countryClaim) {
     countryClaim = world._countryClaim.slice();
+    // Catchment overlay: paint every WORKED tile (world._territoryOwner) with its
+    // settlement's country, so a realm colours the land its settlements farm even
+    // while its capital's projected claim is still ~0. But this paints the RAW
+    // catchment — recomputed in a batch every territory pass, and reaching AHEAD of
+    // the smooth border CRAWL (_countryClaim) — so it makes the political map JUMP
+    // each pass. Under the reactive model (CATCHMENT_CLIP) the catchment is already
+    // clipped to _countryOwner, so the crawled border ALREADY covers it: skip the
+    // overlay and let the border be the political map, which creeps tile-by-tile
+    // instead of flickering (and a new realm no longer flashes a seed-catchment box
+    // that then clips away). Kept for the legacy free-catchment model (lever off).
     const towner = world._territoryOwner, byId = world._byId;
-    if (towner && byId) {
+    if (towner && byId && !T.CATCHMENT_CLIP) {
       for (let i = 0; i < countryClaim.length; i++) {
         const sid = towner[i];
         if (sid < 0) continue;

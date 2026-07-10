@@ -204,6 +204,7 @@ export function computeTerritory(world) {
   const byId = new Map();
   const budget = new Map();
   const knOf = new Map();   // owner id → snapshot of its knowledge for localEdgeCost
+  const countryOf = new Map();   // owner id → its countryId (CATCHMENT_CLIP: the catchment may only cover its OWN country's ground)
   // The reach budget is in transport-cost units where a plain TILE costs ~1, so a
   // fixed budget is a fixed TILE radius — a smaller REAL catchment on a finer grid
   // (the second half of the Phase-2 resolution bug: the same settlement farmed ¼
@@ -218,7 +219,20 @@ export function computeTerritory(world) {
     byId.set(s.id, s);
     budget.set(s.id, reachBudget(s) * _rnB);
     knOf.set(s.id, s.knowledge || {});
+    countryOf.set(s.id, s.countryId);
   }
+
+  // ── CATCHMENT_CLIP (T.CATCHMENT_CLIP): the economic catchment is REACTIVE to the
+  // political map — a settlement may only work tiles its OWN country already holds
+  // (world._countryOwner === its countryId), so the catchment CHOOSES within the
+  // borders but never creates or moves one. A stateless settlement (countryId that
+  // owns no ground) still works nearby WILDERNESS (co<0 === its own -1 flag), a local
+  // food floor so state-formation bootstraps. Clips to the LAST pass's _countryOwner
+  // (this pass's is computed just after, in computeCountryTerritory — a 1-pass lag is
+  // immaterial as borders drift slowly). Off, or before the first political pass, the
+  // guards below are inert (byte-identical).
+  const clip = T.CATCHMENT_CLIP > 0 && world._countryOwner && world._countryOwner.length === N ? world._countryOwner : null;
+  const inCountry = (sid, ti) => !clip || clip[ti] === (countryOf.get(sid) ?? -1);
 
   // Release any tile whose owner is gone (died / unsettled) back to
   // wilderness, so neighbours can grow into the vacated land. Also
@@ -234,7 +248,8 @@ export function computeTerritory(world) {
     const o = owner[ti];
     if (o < 0) continue;
     if (!byId.has(o) || world.elev[ti] <= 0) { owner[ti] = -1; continue; }
-    if (releaseNodes) { const os = byId.get(o); if (os && (os.tier | 0) >= 1) owner[ti] = -1; }
+    if (releaseNodes) { const os = byId.get(o); if (os && (os.tier | 0) >= 1) { owner[ti] = -1; continue; } }
+    if (clip && clip[ti] !== (countryOf.get(o) ?? -1)) owner[ti] = -1;   // catchment tile no longer within its owner's country → release (borders shifted)
   }
 
   // Guarantee each settlement its (tier-sized) core block, carving it from a
@@ -255,6 +270,7 @@ export function computeTerritory(world) {
         const ti = ny * tw + nx;
         if (elev[ti] <= 0) continue;
         if (coreClaimed[ti] === stamp) continue;   // already core of an earlier settlement this pass
+        if (clip && clip[ti] !== s.countryId) continue;   // CATCHMENT_CLIP: the guaranteed core can't reach outside the country's own ground
         coreClaimed[ti] = stamp;
         owner[ti] = s.id;
       }
@@ -287,6 +303,7 @@ export function computeTerritory(world) {
         if (elev[ti] <= 0) continue;
         if (coreClaimed[ti] === stamp) continue;       // a settlement's core — sacred
         if (capAt && capAt[ti] > -Infinity) continue;  // conquered land — leave to the conqueror
+        if (clip && clip[ti] !== s.countryId) continue;   // CATCHMENT_CLIP: hinterland stays within the country's ground
         if (d2 < hintDist[ti]) { hintDist[ti] = d2; owner[ti] = s.id; }
       }
     }
@@ -364,8 +381,11 @@ export function computeTerritory(world) {
         // Walk THROUGH water (so a navy reaches the far shore) but don't
         // CLAIM water tiles — borders shouldn't bleed into the ocean.
         // Land tiles are claimed normally; water tiles just propagate
-        // the cost frontier.
-        if (lk < 0 && elev[ni] > 0) owner[ni] = oid;
+        // the cost frontier. CATCHMENT_CLIP: claim only tiles inside the
+        // claimant's own country (the cost frontier still walks THROUGH
+        // out-of-country land, so a member can reach its country's ground
+        // beyond a wild gap, but it never works foreign/wild soil).
+        if (lk < 0 && elev[ni] > 0 && inCountry(oid, ni)) owner[ni] = oid;
         heap.push(ni, nd);
       }
     }

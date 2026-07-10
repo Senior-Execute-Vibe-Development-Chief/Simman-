@@ -362,6 +362,17 @@ export function advanceFronts(world) {
   const byId = world._byId;
   if (!owner || !byId) return;
   const { N, tw, th } = world;
+  // CTRL_LIVE: the control field authors _countryOwner, so capturing tiles here washes out
+  // next tick. Instead a winning front writes FORWARD PRESSURE (world._warFront/_warAdv) that
+  // the field bulges into the defender toward its capital (controlField.js). Cleared each pass
+  // so ended wars / receded fronts stop pushing.
+  const CTRL_LIVE = !!T.CTRL_LIVE;
+  let warFront = null, warAdv = null;
+  if (CTRL_LIVE) {
+    warFront = world._warFront; warAdv = world._warAdv;
+    if (!warFront || warFront.length !== N) { warFront = world._warFront = new Int32Array(N); warAdv = world._warAdv = new Float32Array(N); }
+    warFront.fill(-1);
+  }
   // Per-tile "captured at step" clock for the post-capture hold (see
   // TILE_CAPTURE_GRACE). Cold (-Infinity) everywhere until a tile is flipped by
   // a front, so a stable border is never affected.
@@ -1113,6 +1124,16 @@ export function advanceFronts(world) {
     }
 
     const domCap = domCaptureOf(acc);   // a dominant realm sweeps more countryside per pass (Mongol-style blitz)
+    if (CTRL_LIVE) {
+      // War on the field: stamp forward pressure on the WHOLE contested front (the field
+      // decides how far the border bulges, ∝ the winning margin adv−1); no direct tile grab.
+      if (pc.tiles.length) {
+        for (const p of pc.tiles) { const cti = p.ti; if (owner[cti] === def.id) { warFront[cti] = att.id; warAdv[cti] = adv - 1; } }
+        bankMomentum(world, att.countryId, Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap) * MOMENTUM_PER_TILE);
+      }
+      { const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att)); const dDef = Math.min(def.army || 0, att._M * T.ATTRITION / techMul(def)); att.army = (att.army || 0) - dAtt; def.army = (def.army || 0) - dDef; tallyDead(world, att.countryId, def.countryId, dAtt + dDef); }
+      continue;
+    }
     const budget = Math.min(Math.round(T.MAX_CAPTURE * domCap), Math.floor((adv - 1) * CAPTURE_SCALE * domCap));
     if (budget >= 1 && pc.tiles.length) {
       // Advance the front BROADLY: take the outermost contested tiles first

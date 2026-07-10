@@ -386,11 +386,16 @@ export function rederiveSiteStatics(world, s) {
 
 function computeWaterAccess(world, sx, sy) {
   const { tw, th, coast, riverMag } = world;
+  // The scan is a fixed 3×3 in tiles → a SHRINKING real area at high resolution, where a river
+  // channel is also thinner (1-D on 2-D). Under RES_INV_RIVER, cover the SAME REAL neighbourhood
+  // at any grid: radius = round(rNorm) tiles (rNorm=1 at the 480 reference ⇒ radius 1 ⇒ the
+  // original 3×3, byte-identical). So a settlement detects the same river valley regardless of grid.
+  const R = T.RES_INV_RIVER ? Math.max(1, Math.round(rNormPop(world))) : 1;
   let coastBit = 0, bestMag = 0;
-  for (let dy = -1; dy <= 1; dy++) {
+  for (let dy = -R; dy <= R; dy++) {
     const ny = sy + dy;
     if (ny < 0 || ny >= th) continue;
-    for (let dx = -1; dx <= 1; dx++) {
+    for (let dx = -R; dx <= R; dx++) {
       const nx = ((sx + dx) % tw + tw) % tw;
       const ni = ny * tw + nx;
       if (coast[ni]) coastBit = 1;
@@ -1767,6 +1772,10 @@ export function updateSoil(world) {
   // are already invariant), and the catchment MEAN read back is scale-free.
   const _rnS = rNormPop(world);
   const th = world.th, elev = world.elev, R = Math.max(1, Math.round(SOIL_CATCH_R * _rnS)), R2 = R * R;
+  // CATCHMENT_CLIP: tire only the tiles the settlement actually WORKS (its clipped
+  // catchment, _territoryOwner === s.id) — "soil fatigue is fine if it does step one".
+  // Off ⇒ the disc scan below (byte-identical).
+  const terrClip = T.CATCHMENT_CLIP > 0 ? world._territoryOwner : null;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     climateOf(world, s);
@@ -1793,6 +1802,7 @@ export function updateSoil(world) {
         if (dx * dx + dy * dy > R2) continue;
         const x = ((x0 + dx) % tw + tw) % tw, ti = y * tw + x;
         if (elev[ti] <= 0) continue;                                    // farm soil only
+        if (terrClip && terrClip[ti] !== s.id) continue;                // CATCHMENT_CLIP: only the worked catchment (within borders)
         const v = f[ti] + gain; const fv = v > 1 ? 1 : v;
         f[ti] = fv; sum += fv; cnt++;
       }
