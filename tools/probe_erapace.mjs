@@ -12,10 +12,36 @@
 // anchor; (b) Iron unmoved at 0.3x → SCI_MED_IDX 1.4 likely sits at the CLASSICAL
 // hub's index, not the medieval one — add an idx-by-era diagnostic and re-anchor;
 // (c) the tail wants α≈1.0-1.2 once (a)/(b) decouple it from the early game.
+// idx-by-era (α=0.6 run): Bronze attained at leadIdx≈0.33, Iron≈1.1, Medieval≈1.6,
+// Renaissance≈2.2, Industrial≈6.9, Modern≈16→50. FINDINGS: (1) the Modern row is a
+// RUN-LENGTH artifact — the open final era accrues until step 42000; score eras to
+// ATTAINMENT only, the true tail = Renaissance 2.6x / Industrial 3.5x. (2) The
+// cap=6 binds from idx≈32 — raised to 12. (3) Iron 0.3x is NOT reachable by α alone
+// (idx 1.1 vs anchor 1.6 is too narrow a gap for a 3x slowdown without wrecking
+// Bronze) — the classical plateau is a MISSING MECHANISM (institutional
+// stagnation), recorded as an honest gap, not to be dialled in. Iteration 2:
+// α=1.5, SCI_MED_IDX=1.6, floor 0.6, cap 12 — targets Ren/Ind → ~1x.
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 const world = buildSim({ W: 480, H: 240, seed: 8817 });
-stepPeopleSim(world, 42000);
+// idx-by-era diagnostic: the leading hub's knowledge-production index (the same
+// formula as settlement.js SCI_COMPOUND) every 1500 steps — read it at each era's
+// attainment step to set SCI_MED_IDX (the =1 anchor) empirically.
+const idxLog = [];
+for (let t = 0; t < 42000; t += 1500) {
+  stepPeopleSim(world, 1500);
+  let best = 0;
+  for (const st of world.settlements) {
+    if (st.mode !== "settled") continue;
+    const sq = Math.sqrt(st._urbanPop != null ? st._urbanPop : Math.max(0, st.people || 0));
+    const reach = st._tradeReach ? st._tradeReach.size : 0;
+    const inst = (st._techEff && st._techEff.sciInst) || 1;
+    const idx = Math.max(0.02, sq / 28) * Math.max(0.02, reach / 18) * inst;
+    if (idx > best) best = idx;
+  }
+  idxLog.push(world.step + ":e" + ((world._eraAt || [0]).length - 1) + ":" + best.toFixed(2));
+}
+console.log("step:era:leadIdx  " + idxLog.join(" "));
 const NAMES = ["Neolithic", "Bronze", "Iron/Classical", "Medieval", "Renaissance", "Industrial", "Modern"];
 const HIST = [-3300, -3000, -700, 500, 1450, 1800, 1950, 2050];  // ERA_ANCHOR + endpoint
 const ea = world._eraAt || [0];

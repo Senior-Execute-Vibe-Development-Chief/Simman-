@@ -642,7 +642,7 @@ const CREDIT_CRUNCH = 4;
 // floor/cap on the correction while the exponent is calibrated. Floor keeps a
 // fresh cradle learning (deep antiquity is already ~right); cap keeps a
 // discovery from teleporting a track in one tick.
-const SCI_MED_IDX = 1.4, SCI_COMPOUND_FLOOR = 0.35, SCI_COMPOUND_CAP = 6;
+const SCI_MED_IDX = 1.6, SCI_COMPOUND_FLOOR = 0.6, SCI_COMPOUND_CAP = 12;
 function updateWealth(world, s) {
   // Coin-loss drain (Phase 1 — the honest micro-sink replacing the freight burn):
   // a sliver of circulating specie leaves for good each tick — worn, shipwrecked,
