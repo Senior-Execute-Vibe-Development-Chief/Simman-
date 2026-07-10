@@ -1747,7 +1747,26 @@ function updateKnowledge(world, s) {
           const axisW = t === "agriculture"
             ? Math.max(0.05, 1 - T.AXIS_BIAS * (1 - kmSim[t]))
             : 1;
-          k[t] = clamp01(k[t] + rate * axisW * kmCostW[t] * gap);
+          // ABSORPTIVE CAPACITY (T.ABSORB_STEP): technique transfers by contact only
+          // NEAR current practice — a society copies the next rung of what it can
+          // already use (a tool its workshops can reproduce, a method its
+          // institutions can run), never the frontier outright. The absorbed gap per
+          // contact is therefore capped at ~one tech-rung: within the window,
+          // diffusion is exactly the old exponential gap-closing (near-frontier
+          // neighbours track tightly, as before); beyond it, a distant laggard
+          // chases the moving frontier LINEARLY, at a speed still scaled by its own
+          // literacy (litMul — Abramovitz's "social capability": a literate,
+          // organised laggard absorbs ~3x faster, the Meiji pattern). This is what
+          // makes DIVERGENCE possible at all: with uncapped gap-closing the whole
+          // planet converged to within 0.10 of the frontier by the Modern era on
+          // every track (measured p10-p90 of capitals' org: 0.90-1.00) — no rising
+          // periphery, no stagnant empire, no Great Divergence, modernity arriving
+          // everywhere at once. Composes with the climate axis-gate above, the hard
+          // resource gates (no sea -> no seamanship), and KNOW_DECAY — a stressed,
+          // cut-off periphery can now regress NET even while in contact, a real
+          // dark age. 0 = off (the legacy uncapped pull, byte-identical).
+          const absGap = T.ABSORB_STEP > 0 ? Math.min(gap, T.ABSORB_STEP) : gap;
+          k[t] = clamp01(k[t] + rate * axisW * kmCostW[t] * absGap);
         }
       }
     }
