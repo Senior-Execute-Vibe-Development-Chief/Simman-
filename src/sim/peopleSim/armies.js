@@ -950,13 +950,38 @@ export function advanceFronts(world) {
     // stay bounded by the live war count.
     const staleWin = T.STALEMATE_TICKS > 0 ? T.STALEMATE_TICKS / (world._dt || 1) : 0;
     if (staleWin > 0) {
+      // Age + displacement fold for every pair CURRENTLY at the front, and a
+      // last-fronted stamp (warLastFront) for the de-facto closure sweep below.
+      let warLastFront = world._warLastFront; if (!warLastFront) warLastFront = world._warLastFront = new Map();
       for (const [cc, es] of allEnemies) {
         if (cc < 0) continue;
         for (const ecc of es) {
           if (ecc <= cc || ecc < 0) continue;
           const key = cc + ":" + ecc;
           if (!warBorn.has(key)) warBorn.set(key, world.step);   // loaded save / pre-ledger war: age starts now
+          warLastFront.set(key, world.step);
           moveEma.set(key, (moveEma.get(key) || 0) * MOVE_EMA_KEEP + (passNet.get(key) || 0));
+        }
+      }
+      // DE-FACTO ENDINGS: a war whose fronts have DISSOLVED (neither side has fielded a
+      // front for a full window) ended in fact — nobody is fighting it — but its
+      // casualty ledger sat open forever (_warDead pairs were only reckoned by the rare
+      // memory prune), so the map read as saturated with wars nobody was fighting. The
+      // measured stock: fronts dissolve when the attack calculus turns (bars rise,
+      // armies drain) without ever crossing a treaty threshold. Reckon them: the war
+      // ends "faded", its dead are recorded, and the pair's ledger clears. No truce is
+      // signed — nothing was agreed; hostilities may genuinely resume later as a NEW war.
+      if (world._warDead && world._warDead.size) {
+        for (const key of [...world._warDead.keys()]) {
+          const i = key.indexOf(":"); const a = +key.slice(0, i), b = +key.slice(i + 1);
+          const s = allEnemies.get(a);
+          if (s && s.has(b)) continue;                       // still being fought — the treaty loop below judges it
+          const lastF = warLastFront.get(key);
+          if (lastF === undefined) { warLastFront.set(key, world.step); continue; }   // first sight (load): clock starts
+          if (world.step - lastF >= staleWin) {
+            closeWar(world, key, "faded");
+            warBorn.delete(key); moveEma.delete(key); warLastFront.delete(key);
+          }
         }
       }
       if (warBorn.size > 512) {
@@ -965,6 +990,9 @@ export function advanceFronts(world) {
           const s = allEnemies.get(a);
           if (!s || !s.has(b)) { warBorn.delete(k); moveEma.delete(k); }
         }
+      }
+      if (warLastFront.size > 1024) {
+        for (const [k, st] of warLastFront) if (world.step - st >= staleWin * 2) warLastFront.delete(k);
       }
     }
     for (const [cc, es] of allEnemies) {
