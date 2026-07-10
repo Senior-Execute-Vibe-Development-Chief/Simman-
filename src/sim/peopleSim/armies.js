@@ -51,6 +51,13 @@ const PLUNDER_FRAC  = 0.30;   // share of a stormed city's coin that is portable
 const INDEMNITY_FRAC = 0.25;  // max share of the beaten side's treasury paid as reparations at a truce (scaled by how one-sided the exhaustion is)
 const TRADE_PEACE_W  = 2.0;   // how much mutual trade LENGTHENS a truce: at pairTrade >= its own war-relief scale the peace holds ~3x as long (merchants fund the settlement)
 const CONGRESS_JOIN  = 0.75;  // a third belligerent already worn past this fraction of TRUCE_EXHAUST joins the settlement (wars end at conferences, not dyad by dyad)
+// Frozen-front settlement (T.STALEMATE_TICKS, the status-quo peace): the war's front
+// DISPLACEMENT is a signed per-pass tile exchange folded into an EMA; the war reads
+// as frozen when that velocity sits under STALE_EPS for a full window. Signed on
+// purpose — a two-sided front trading the same border tiles nets to zero (the line
+// is not moving), while a persistent one-directional advance stays high.
+const MOVE_EMA_KEEP = 0.8;    // EMA memory per war pass (~5-pass ≈ a campaign season's smoothing)
+const STALE_EPS     = 0.75;   // displacement velocity (net tiles/pass, smoothed) below which the line reads as frozen
 
 // ── War-dead ledger ─────────────────────────────────────────────────────
 // Military losses accumulated per warring PAIR (key "lo:hi"), emitted as a
@@ -473,14 +480,28 @@ export function advanceFronts(world) {
   // the marches stay restless, as they were — but the big wars become episodic.
   let truces = world._truces; if (!truces) truces = world._truces = new Map();
   if (truces.size) for (const [k, until] of truces) { if (until <= world.step) truces.delete(k); }
-  // Per-war MOVEMENT ledger ("lo:hi" pair key → last step the front actually moved:
-  // countryside captured or a city stormed, stamped where those happen below). Read by
-  // the STALEMATE settlement in the peace pass — a war that stops moving gets settled.
-  // Deliberately NOT persisted: on load an unseen warring pair lazily starts its clock
-  // at the current step (see the peace pass), so a loaded frozen conflict simply takes
-  // one full window to settle instead of settling spuriously at once.
-  let lastMove = world._warLastMove; if (!lastMove) lastMove = world._warLastMove = new Map();
-  const stampMove = (a, b) => { if (a >= 0 && b >= 0 && a !== b) lastMove.set(a < b ? a + ":" + b : b + ":" + a, world.step); };
+  // Per-war MOVEMENT ledger, in two parts, read by the STALEMATE settlement below:
+  //   _warBornAt  ("lo:hi" → step)  — when the war opened (stamped at war.began; lazy
+  //                for a loaded save's ongoing wars, so nothing settles spuriously).
+  //   _warMoveEma ("lo:hi" → float) — the front's NET displacement velocity, low-passed:
+  //                each war pass accumulates the SIGNED tile exchange (lo-side captures
+  //                minus hi-side captures) and folds it into an EMA. The sign matters —
+  //                a two-sided front ping-ponging the same border tiles nets to ~zero
+  //                (the LINE is not moving: a stalemate), while a genuine advance keeps
+  //                a persistent signed velocity. A binary "any capture = movement" clock
+  //                was measured to wash out entirely by the Industrial era (active wars
+  //                identical to the no-fix baseline): dense late-game fronts always
+  //                trade SOME tiles, so only net displacement separates war from freeze.
+  // Deliberately NOT persisted — rebuilt within one window after load.
+  let warBorn = world._warBornAt; if (!warBorn) warBorn = world._warBornAt = new Map();
+  let moveEma = world._warMoveEma; if (!moveEma) moveEma = world._warMoveEma = new Map();
+  const passNet = new Map();   // this pass's signed tile exchange per pair ("lo:hi" → net toward lo)
+  const bumpMove = (att, def, n) => {
+    if (!(n > 0) || att < 0 || def < 0 || att === def) return;
+    const lo = Math.min(att, def), hi = Math.max(att, def);
+    const key = lo + ":" + hi;
+    passNet.set(key, (passNet.get(key) || 0) + (att === lo ? n : -n));
+  };
   const inTruce = (a, b) => {
     if (truces.size === 0 || a < 0 || b < 0) return false;
     const u = truces.get(a < b ? a + ":" + b : b + ":" + a);
@@ -778,7 +799,7 @@ export function advanceFronts(world) {
       const last = seen.get(key);
       seen.set(key, world.step);
       if (last !== undefined && world.step - last < WAR_MEMORY / (world._dt || 1)) continue;
-      stampMove(attId, defId);   // a genuinely NEW war: the stalemate clock starts fresh (an ongoing front must NOT restamp here, or the clock never runs)
+      warBorn.set(Math.min(attId, defId) + ":" + Math.max(attId, defId), world.step);   // a genuinely NEW war: its stalemate age starts here
       const pa = _getPolity(world, attId), pd = _getPolity(world, defId);
       const fa = pa ? pa.faithId : -1, fd = pd ? pd.faithId : -1;
       const pers = pa && pa.personality;
@@ -891,7 +912,7 @@ export function advanceFronts(world) {
       const tradeW = Math.min(1, trade / tradeRef);
       const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
       truces.set(key, world.step + dur);
-      lastMove.delete(key);            // the settled war's movement clock dies with it (a reopened war restamps at war.began)
+      warBorn.delete(key); moveEma.delete(key);   // the settled war's ledger dies with it (a reopened war re-registers at war.began)
       closeWar(world, key, how);       // the war's dead are reckoned at the peace
       // reparations from the clearly-beaten side, proportional to how
       // one-sided the exhaustion is and bounded by what it can actually pay
@@ -923,17 +944,29 @@ export function advanceFronts(world) {
     // (signPeace already gates that). Gated purely on the war's OWN state — a war that
     // is genuinely advancing never settles this way, however long it runs; a wall that
     // holds for a generation is a peace nobody bothered to sign, so the scribes sign it.
-    // Ledger hygiene: drop movement clocks for pairs no longer at war this pass (ended
-    // by submission, realm death, or a faded front). A paused front that reappears
-    // within war-memory simply restarts its clock — strictly lenient, never spurious.
-    if (lastMove.size > 512) {
-      for (const k of [...lastMove.keys()]) {
-        const i = k.indexOf(":"); const a = +k.slice(0, i), b = +k.slice(i + 1);
-        const s = allEnemies.get(a);
-        if (!s || !s.has(b)) lastMove.delete(k);
+    // Fold this pass's signed tile exchange into each active war's displacement EMA
+    // (MOVE_EMA_KEEP per war pass ≈ a few-pass memory), and age-track every pair.
+    // Ledger hygiene: entries for pairs no longer at war are dropped, so the maps
+    // stay bounded by the live war count.
+    const staleWin = T.STALEMATE_TICKS > 0 ? T.STALEMATE_TICKS / (world._dt || 1) : 0;
+    if (staleWin > 0) {
+      for (const [cc, es] of allEnemies) {
+        if (cc < 0) continue;
+        for (const ecc of es) {
+          if (ecc <= cc || ecc < 0) continue;
+          const key = cc + ":" + ecc;
+          if (!warBorn.has(key)) warBorn.set(key, world.step);   // loaded save / pre-ledger war: age starts now
+          moveEma.set(key, (moveEma.get(key) || 0) * MOVE_EMA_KEEP + (passNet.get(key) || 0));
+        }
+      }
+      if (warBorn.size > 512) {
+        for (const k of [...warBorn.keys()]) {
+          const i = k.indexOf(":"); const a = +k.slice(0, i), b = +k.slice(i + 1);
+          const s = allEnemies.get(a);
+          if (!s || !s.has(b)) { warBorn.delete(k); moveEma.delete(k); }
+        }
       }
     }
-    const staleWin = T.STALEMATE_TICKS > 0 ? T.STALEMATE_TICKS / (world._dt || 1) : 0;
     for (const [cc, es] of allEnemies) {
       if (cc < 0) continue;
       const eA = exh.get(cc) || 0;
@@ -943,9 +976,11 @@ export function advanceFronts(world) {
         if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST) how = "truce";
         else if (staleWin > 0) {
           const key = cc + ":" + ecc;                // cc < ecc by the guard above
-          const lm = lastMove.get(key);
-          if (lm === undefined) lastMove.set(key, world.step);   // first sight (loaded save / pre-ledger war): the clock starts now
-          else if (world.step - lm >= staleWin) how = "stalemate";
+          const born = warBorn.get(key) ?? world.step;
+          // Old enough to judge, and the LINE is not moving: the low-passed net
+          // displacement sits under a tile's worth of drift — ping-ponged border
+          // tiles cancel; only a persistent one-directional advance keeps it high.
+          if (world.step - born >= staleWin && Math.abs(moveEma.get(key) || 0) < STALE_EPS) how = "stalemate";
         }
         if (!how) continue;
         if (!signPeace(cc, ecc, how)) continue;
@@ -1089,7 +1124,6 @@ export function advanceFronts(world) {
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
-        stampMove(att.countryId, def.countryId);   // a siege actively grinding toward a storm is a war still moving (a siege that can never reach the walls is not)
         // Bombard: grind the garrison; the besiegers bleed against the defence
         // they actually face (the militia floor, not the melted garrison).
         {
@@ -1175,7 +1209,7 @@ export function advanceFronts(world) {
       if (pc.tiles.length) {
         for (const p of pc.tiles) { const cti = p.ti; if (owner[cti] === def.id) { warFront[cti] = att.id; warAdv[cti] = adv - 1; } }
         bankMomentum(world, att.countryId, Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap) * MOMENTUM_PER_TILE);
-        stampMove(att.countryId, def.countryId);   // the field is bulging — this war is moving
+        bumpMove(att.countryId, def.countryId, (adv - 1) * Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap));   // field pressure = signed displacement
       }
       { const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att)); const dDef = Math.min(def.army || 0, att._M * T.ATTRITION / techMul(def)); att.army = (att.army || 0) - dAtt; def.army = (def.army || 0) - dDef; tallyDead(world, att.countryId, def.countryId, dAtt + dDef); }
       continue;
@@ -1197,7 +1231,7 @@ export function advanceFronts(world) {
       }
       if (captured > 0) {
         bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
-        stampMove(att.countryId, def.countryId);                            // territory changed hands — this war is moving
+        bumpMove(att.countryId, def.countryId, captured);                    // signed displacement: nets against the counter-front's captures
       }
     }
     {
