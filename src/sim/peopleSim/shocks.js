@@ -253,6 +253,9 @@ export function updateShocks(world) {
       const relief = techEff(s).healthRelief || 0;
       const mort = T.PLAGUE_MORT * (1 - relief) * (1 + PLAGUE_URBAN * urban * (1 - relief)) * virgin * _dt;
       s.people = Math.max(1, s.people * (1 - mort));
+      // SLAVE_PEOPLE: the unfree live inside s.people — the pestilence takes its share
+      // of them too (slave quarters historically fared worse, not better).
+      if (T.SLAVERY && T.SLAVE_PEOPLE && (s._unfree || 0) > 0) s._unfree = Math.min((s._unfree || 0) * (1 - mort), Math.max(0, s.people - 1));
       // Spread along the trade graph (road reach + sea lanes). The very links
       // that carry grain and coin carry the contagion. Per-tick infection odds
       // are _dt-scaled for the same reason as mortality.

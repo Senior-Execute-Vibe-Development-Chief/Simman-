@@ -19,7 +19,7 @@ import { TECHS } from "./tech.js";
 import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
-import { techEff, getWealthReserve } from "./settlement.js";
+import { techEff, getWealthReserve, recordCaptives } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
@@ -1219,6 +1219,9 @@ function declareIndependence(world, c, seed) {
 // garrison mutinies.
 function ravage(s, popMul, wealthMul, armyMul) {
   s.people = Math.max(1, (s.people || 0) * popMul);
+  // SLAVE_PEOPLE: the unfree live inside s.people, so a ravaged town's losses fall on
+  // free and unfree alike (never more unfree than people).
+  if (T.SLAVERY && T.SLAVE_PEOPLE && (s._unfree || 0) > 0) s._unfree = Math.min((s._unfree || 0) * popMul, Math.max(0, s.people - 1));
   s.wealth = Math.max(0, (s.wealth || 0) * wealthMul);
   s.army   = Math.max(0, (s.army || 0) * armyMul);
 }
@@ -2519,7 +2522,7 @@ function hordeRaids(world, countries) {
         if (p > 0) { v.wealth -= p; loot += p; }
         if (T.SLAVERY) {
           const g = Math.min((v.people || 0) * RAID_CAPTIVE * evade, (v.people || 0) * 0.2);
-          if (g >= 1) { v.people -= g; took += g; }
+          if (g >= 1) { recordCaptives(N.capital, v, g); v.people -= g; took += g; }   // the captive trains carry who they are (SLAVE_PEOPLE)
         }
         hit.push(v);
       }

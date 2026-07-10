@@ -14,7 +14,7 @@ import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, getPolity } from "./entities.js";
-import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
+import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
@@ -213,6 +213,53 @@ function seedAncestry(world, s, opts) {
     localShare = localShare + (1 - localShare) * barrier * SETTLER_BARRIER;
   }
   s.ancMix = localShare > 0 ? blendAnc(par.ancMix, 1 - localShare, local, localShare) : par.ancMix.slice();
+}
+
+// ── Forced migration (T.SLAVE_PEOPLE): captives are PEOPLE, and people carry identity ──
+// Coerced flows (slave raids, the sack of cities, horde razzias) are demographic events,
+// not labour-stat transfers. Each captor keeps a count-weighted pool of its captives'
+// origin peoples (_captiveCul) and deep stocks (_captiveAnc); when captives ARRIVE
+// somewhere — bought on the market, or put to work by the captor itself — they join
+// s.people and admix the destination's culMix/langMix/ancMix exactly as founding
+// migration does. This is the THIRD admixture source after founding migration and
+// in-place drift (conquest still moves rulers, never peoples) — and it is what put
+// African-descended populations across the plantation belts of the Americas: bondage
+// moved PEOPLES. Under the lever the population ledger CONSERVES people the way the
+// money ledger already conserves coin (victim → captive in transit → resident unfree).
+function addPairsScaled(pool, pairs, n) {
+  const out = pool || [];
+  if (!pairs || !pairs.length || !(n > 0)) return out;
+  for (const [id, sh] of pairs) {
+    if (id == null || id < 0 || !(sh > 0)) continue;
+    let e = null; for (const p of out) if (p[0] === id) { e = p; break; }
+    if (e) e[1] += sh * n; else out.push([id, sh * n]);
+  }
+  return out;
+}
+/** Record `n` captives seized from `victim` into `captor`'s origin pools. */
+export function recordCaptives(captor, victim, n) {
+  if (!T.SLAVE_PEOPLE || !(n > 0)) return;
+  captor._captiveCul = addPairsScaled(captor._captiveCul, victim.culMix, n);
+  captor._captiveAnc = addPairsScaled(captor._captiveAnc, victim.ancMix, n);
+}
+/** Scale a captor's origin pools down when `taken` of its `stock` captives leave / are put to work. */
+export function drainCaptivePools(captor, taken, stock) {
+  if (!T.SLAVE_PEOPLE || !(taken > 0) || !(stock > 0)) return;
+  const keep = Math.max(0, 1 - taken / stock);
+  if (captor._captiveCul) { if (keep <= 0) captor._captiveCul = []; else for (const e of captor._captiveCul) e[1] *= keep; }
+  if (captor._captiveAnc) { if (keep <= 0) captor._captiveAnc = []; else for (const e of captor._captiveAnc) e[1] *= keep; }
+}
+/** `count` captives of origin mixture culPairs/ancPairs (count-weighted; may be null)
+    ARRIVE at `dest`: they join its population and admix its identity layers. */
+export function arriveCaptives(world, dest, count, culPairs, ancPairs) {
+  if (!T.SLAVE_PEOPLE || !(count > 0)) return;
+  dest.people = (dest.people || 0) + count;
+  const frac = count / Math.max(1, dest.people);
+  if (culPairs && culPairs.length) admixArrivals(world, dest, culPairs, frac);
+  if (ancPairs && ancPairs.length) {
+    const arriving = normAnc(ancPairs.map(e => [e[0], e[1]]));
+    if (arriving.length) dest.ancMix = blendAnc(dest.ancMix, 1 - frac, arriving, frac);
+  }
 }
 
 export function makeSettlement(world, x, y, opts = {}) {
@@ -718,39 +765,64 @@ export function updateCoercedLabour(world, s) {
   // Sized by the settlement's economy (people as the land/capital proxy), NOT sqrt — a
   // plantation/mine can hold MORE unfree than free (the Caribbean was ~80% enslaved); the
   // revolt cap below keeps the ratio from running to 100%.
-  const target = T.SLAVE_TARGET * labourDemand * Math.max(1, s.people || 0) * foodSec * afford;
+  // Under SLAVE_PEOPLE the unfree are INSIDE s.people, so the sizing proxy (and every
+  // "free population" term below) is the FREE headcount — otherwise buying slaves would
+  // inflate the very population the demand target is sized on (a runaway loop).
+  const freePop = T.SLAVE_PEOPLE ? Math.max(1, (s.people || 0) - (s._unfree || 0)) : Math.max(1, s.people || 0);
+  const target = T.SLAVE_TARGET * labourDemand * freePop * foodSec * afford;
   let u = s._unfree || 0;
   // The workforce comes from the slave TRADE (slavery.js), not thin air: work your OWN
   // captives first (a raider that also has plantations/mines uses what it seizes), then
   // post the residual as market DEMAND for slavery.js to fill from others' captives.
   const cap = s._captives || 0;
-  if (cap > 0 && u < target) { const useLocal = Math.min(cap, target - u); u += useLocal; s._captives = cap - useLocal; }
+  if (cap > 0 && u < target) {
+    const useLocal = Math.min(cap, target - u); u += useLocal; s._captives = cap - useLocal;
+    // The captor puts its own captives to WORK: they become resident population here,
+    // carrying their origin peoples into the local mixture (T.SLAVE_PEOPLE).
+    if (T.SLAVE_PEOPLE && useLocal > 0) {
+      arriveCaptives(world, s, useLocal, s._captiveCul, s._captiveAnc);
+      drainCaptivePools(s, useLocal, cap);
+    }
+  }
   // Attrition — the death sink: mines & plantations are lethal, so the unfree must be
   // resupplied (this is what sustains the slave trade); mild for domestic/mixed work.
+  // Under SLAVE_PEOPLE those deaths leave the population ledger too — they were people.
   const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine);
-  u *= (1 - T.SLAVE_DEATH * harsh * (world._dt || 1));
+  if (T.SLAVE_PEOPLE) {
+    const dead = u * T.SLAVE_DEATH * harsh * (world._dt || 1);
+    if (dead > 0) { u -= dead; s.people = Math.max(1, (s.people || 0) - dead); }
+  } else {
+    u *= (1 - T.SLAVE_DEATH * harsh * (world._dt || 1));
+  }
   // Revolt: a high unfree ratio with too little free population to police it boils over —
   // the estate is wrecked and most of the unfree are lost (Haiti, the Zanj rebellion).
-  const ratio = u / Math.max(1, (s.people || 0) + u);
+  const ratio = u / Math.max(1, (s.people || 0) + (T.SLAVE_PEOPLE ? 0 : u));
   s._unfreeRatio = ratio;
   if (ratio > 0.6 && u > 50) {
     const r = hash32(world.seed || 1, "slaveRevolt", s.id, world.step) / 4294967296;
     if (r < T.SLAVE_UNREST * (ratio - 0.6) * 0.02 * (world._dt || 1)) {
+      const lost = u * 0.75;
       u *= 0.25; s._sackedAt = world.step;                      // the revolt craters output
+      if (T.SLAVE_PEOPLE) s.people = Math.max(1, (s.people || 0) - lost);   // the dead and the fled leave the ledger
       logEvent(world, "slave.revolt", { s: s.id, sName: s.name || "a settlement" });
     }
   }
   s._unfree = Math.max(0, u);
-  s._slaveDemand = Math.max(0, target - u);   // residual demand → bought on the market (slavery.js)
+  // Safety clamp (SLAVE_PEOPLE): the unfree live inside s.people, so any population sink
+  // this file doesn't see (famine, missed shocks) must take its share of them too — never
+  // more unfree than people. Keeps the invariant against every current and future sink.
+  if (T.SLAVE_PEOPLE) s._unfree = Math.min(s._unfree, Math.max(0, (s.people || 0) - 1));
+  s._slaveDemand = Math.max(0, target - s._unfree);   // residual demand → bought on the market (slavery.js)
+  u = s._unfree;
   // Cash-crop land allocation drifts toward what's suitable, food-secure & labour-backed.
-  const labourBacked = Math.min(1, u / Math.max(1, 0.25 * (s.people || 1)));
+  const labourBacked = Math.min(1, u / Math.max(1, 0.25 * freePop));
   const cashTarget = cs > 0.05 ? Math.min(1, cs) * foodSec * labourBacked : 0;
   s._cashFrac = (s._cashFrac || 0) + 0.04 * (cashTarget - (s._cashFrac || 0));
   // Cash-crop OUTPUT → folded into the LUXURY supply (sugar/tobacco/coffee were the
   // colonial luxuries), so it trades as luxury income to the OWNER. Coerced labour
   // multiplies it into a real plantation; free peasants grow only a little.
   const arableScale = Math.min(1, (s._terrTiles || 0) / 120);
-  const coerceMul = T.COERCE_CASH * Math.min(2, u / Math.max(1, s.people || 1));
+  const coerceMul = T.COERCE_CASH * Math.min(2, u / freePop);
   const cashOut = T.CASHCROP_W * cs * (s._cashFrac || 0) * arableScale * (0.25 + coerceMul) * (s._eraProd || 1);
   s._cashOut = cashOut;
   if (cashOut > 0) { s._luxSupply = (s._luxSupply || 0) + cashOut; s._luxSupplyLeft = (s._luxSupplyLeft || 0) + cashOut; }
@@ -2118,7 +2190,11 @@ function updateFood(world, s) {
   //   pop 1000  → 1.30
   //   pop 10000 → 1.40
   const urbanFactor = 1 + Math.log10(Math.max(10, s.people)) / 10;
-  const civDemand = s.people * 0.0030 * urbanFactor;
+  // Under SLAVE_PEOPLE the unfree are inside the headcount but are fed at the owner's
+  // subsistence ration (the slaveFood line below), not the civic rate — split them out
+  // so they aren't fed twice.
+  const unfreeIn = (T.SLAVERY && T.SLAVE_PEOPLE) ? Math.min(s._unfree || 0, s.people) : 0;
+  const civDemand = (s.people - unfreeIn) * 0.0030 * urbanFactor;
   // The garrison eats too — extra rations/fodder above the civilian rate
   // (provisioning). This is the food cost of a standing army: a big garrison
   // burns the food surplus that would otherwise fill granaries / grow the
@@ -2419,7 +2495,15 @@ function updatePopulation(world, s) {
     const sink = T.SETT_GROWTH * URBAN_GRAVEYARD_W
       * (s._diseaseLoad || 0) * Math.min(1, urbShare2 / 0.3)
       * (1 - (techEff(s).healthRelief || 0));
-    s.people = s.people * Math.exp((r * grow - sink) * _dt);
+    const f = Math.exp((r * grow - sink) * _dt);
+    s.people = s.people * f;
+    // Hereditary bondage (SLAVE_PEOPLE): children born to the unfree are unfree, and the
+    // urban graveyard takes free and unfree alike — the unfree share rides the settlement's
+    // own demographic wave (its EXTRA plantation/mine mortality is SLAVE_DEATH, in
+    // updateCoercedLabour). Without this every birth was implicitly born free, so enslaved
+    // populations could never reproduce themselves — but natural increase (not only the
+    // trade) is how the North American enslaved population actually grew.
+    if (T.SLAVERY && T.SLAVE_PEOPLE && (s._unfree || 0) > 0) s._unfree = Math.min(s._unfree * f, Math.max(0, s.people - 1));
   }
   if (s.people < 1.5) {
     s.mode = "dead";

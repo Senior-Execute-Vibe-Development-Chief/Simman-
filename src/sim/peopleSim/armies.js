@@ -16,7 +16,7 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
-import { techEff, URBAN_BASE_RURAL } from "./settlement.js";
+import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
@@ -1092,6 +1092,7 @@ export function advanceFronts(world) {
           // war as the primary supply of the slave trade (the captor sells/works them).
           if (T.SLAVERY && T.CAPTURE_FRAC > 0 && (dS.people || 0) > 0) {
             const taken = (dS.people || 0) * T.CAPTURE_FRAC;
+            recordCaptives(att, dS, taken);   // the carried-off carry who they are (SLAVE_PEOPLE)
             dS.people -= taken; att._captives = (att._captives || 0) + taken;
           }
           dS.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)

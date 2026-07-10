@@ -60,6 +60,7 @@ const SETT_FIELDS = [
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
   "_unfree", "_cashFrac", "_captives",   // coerced labour: unfree workforce, cash-crop land, unsold captives
+  "_captiveCul", "_captiveAnc",          // captives' origin pools (SLAVE_PEOPLE): count-weighted [[id, n], ...]
   "_serf",                               // serfdom: land-tenure coercion level (0..1)
   "_chronFlags",                         // chronicle: which "became X" archetype events have fired
   "_peakTier",                           // chronicle: highest tier ever reached (so growth is announced once)
@@ -80,7 +81,7 @@ const SETT_FIELDS = [
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
 const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_orgApt", "_rivalN", "_ambition", "_diseaseLoad", "_specStr"];
-const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix"];
+const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
 // `polities`, minimally), so a determinism or save/load bug in the dynastic or

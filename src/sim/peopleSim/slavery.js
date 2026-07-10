@@ -10,11 +10,16 @@
 // Conserved: people are moved (victim → captive → the buyer's unfree), coin is moved
 // (buyer → seller). Nothing minted. Emergent — gated on military power, wealth and
 // labour demand, never on era.
+// Under T.SLAVE_PEOPLE (default) that conservation is DEMOGRAPHIC, not just a ledger
+// claim: bought captives join the buyer's s.people carrying their origin peoples,
+// stocks and tongues (settlement.js arriveCaptives), so forced migration reshapes the
+// destination's population the way it did the plantation Americas. Lever off = the
+// legacy accounting (victims depopulate; buyers gain only the _unfree workforce stat).
 
 import { forEachNear } from "./spatialGrid.js";
 import { settlementPower } from "./conquest.js";
 import { recordIn, recordOut, IN_SLAVE_TRADE, OUT_SLAVE } from "./money.js";
-import { getWealthReserve } from "./settlement.js";
+import { getWealthReserve, recordCaptives, drainCaptivePools, arriveCaptives } from "./settlement.js";
 import { T } from "./tuning.js";
 
 export const SLAVE_INTERVAL = 50;     // ticks between slave-trade passes (slow flow)
@@ -41,42 +46,82 @@ export function updateSlaveTrade(world) {
         // _ivl), so scaling by dt again halved/quartered raiding per unit of history
         const grab = Math.min((v.people || 0) * T.SLAVE_RAID, (v.people || 0) * 0.5);
         if (grab < 1) return;
+        recordCaptives(r, v, grab);                                    // the captives carry who they ARE (SLAVE_PEOPLE)
         v.people -= grab; took += grab;                                // the victim region bleeds
       });
       if (took > 0) r._captives = (r._captives || 0) + took;   // (a raider becoming a notable slaver is announced once, in chronicle.js)
     }
   }
 
-  // ── Phase B: THE MARKET (global clearing — the slave trade was long-distance) ──
-  let supply = 0;
-  const sellers = [];
-  for (const s of setts) { const c = s._captives || 0; if (c > 0.5) { sellers.push(s); supply += c; } }
-  if (supply <= 0.5) return;
-  let demandUnits = 0;
-  const buyers = [];
+  // ── Phase B: THE MARKET (long-distance, but along the trade network) ──────────
+  // Under SLAVE_PEOPLE clearing runs PER TRADE COMPONENT (world._networkComponents —
+  // the same connected road+sea graph the price level integrates over): a buyer can
+  // only be supplied from sellers its merchants can actually reach. Pre-navigation
+  // worlds run many small regional markets; as the components merge (roads, then
+  // ocean shipping) they integrate into the great long-distance systems — the
+  // Atlantic and Indian-Ocean trades emerge from CONNECTIVITY, never from an era —
+  // and each system pools its own regional origins. (The old single GLOBAL pool was
+  // a tolerable simplification for a labour stat, but once captives became PEOPLE it
+  // teleported population between unconnected continents.) Lever off: one global
+  // market, exactly the legacy clearing.
+  const comps = world._networkComponents;
+  const marketKey = T.SLAVE_PEOPLE
+    ? (s) => (comps && comps.has(s.id)) ? comps.get(s.id) : s.id
+    : () => 0;
+  const markets = new Map();   // key → { sellers, buyers, supply, demand }
+  const marketOf = (key) => { let m = markets.get(key); if (!m) markets.set(key, m = { sellers: [], buyers: [], supply: 0, demand: 0 }); return m; };
+  for (const s of setts) {
+    const c = s._captives || 0;
+    if (c > 0.5) { const m = marketOf(marketKey(s)); m.sellers.push(s); m.supply += c; }
+  }
+  if (!markets.size) return;
   for (const s of setts) {
     if (s.mode !== "settled") continue;
     const want = s._slaveDemand || 0;
     if (want <= 0.5) continue;
+    const key = marketKey(s);
+    if (!markets.has(key)) continue;                       // no reachable supply — demand goes unmet
     const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
     const buy = Math.min(want, spare / SLAVE_PRICE);
-    if (buy > 0.5) { buyers.push([s, buy]); demandUnits += buy; }
+    if (buy > 0.5) { const m = markets.get(key); m.buyers.push([s, buy]); m.demand += buy; }
   }
-  if (demandUnits <= 0.5) return;
-  const traded = Math.min(supply, demandUnits);
-  // Buyers receive captives in proportion to demand and pay the price; the captives
-  // become their unfree workforce.
-  for (const [s, buy] of buyers) {
-    const got = traded * (buy / demandUnits);
-    if (got <= 0) continue;
-    s.wealth = (s.wealth || 0) - got * SLAVE_PRICE; recordOut(s, OUT_SLAVE, got * SLAVE_PRICE);
-    s._unfree = (s._unfree || 0) + got;
-  }
-  // Sellers ship in proportion to their stock and earn the price.
-  for (const s of sellers) {
-    const shipped = traded * ((s._captives || 0) / supply);
-    if (shipped <= 0) continue;
-    s._captives = Math.max(0, (s._captives || 0) - shipped);
-    s.wealth = (s.wealth || 0) + shipped * SLAVE_PRICE; recordIn(s, IN_SLAVE_TRADE, shipped * SLAVE_PRICE);
+  for (const { sellers, buyers, supply, demand } of markets.values()) {
+    if (supply <= 0.5 || demand <= 0.5) continue;
+    const traded = Math.min(supply, demand);
+    // Pooled ORIGIN of this market's human cargo (SLAVE_PEOPLE): every seller ships in
+    // proportion to its stock, so the mixture is the stock-weighted union of the
+    // component's captive pools — mixed-origin cargoes, regionally coherent.
+    let poolCul = null, poolAnc = null;
+    if (T.SLAVE_PEOPLE) {
+      poolCul = []; poolAnc = [];
+      const addPool = (pool, id, n) => {
+        let e = null; for (const p of pool) if (p[0] === id) { e = p; break; }
+        if (e) e[1] += n; else pool.push([id, n]);
+      };
+      for (const s of sellers) {
+        const w = (s._captives || 0) / supply;
+        if (s._captiveCul) for (const [id, n] of s._captiveCul) if (id >= 0 && n > 0) addPool(poolCul, id, n * w);
+        if (s._captiveAnc) for (const [id, n] of s._captiveAnc) if (id >= 0 && n > 0) addPool(poolAnc, id, n * w);
+      }
+    }
+    // Buyers receive captives in proportion to demand and pay the price; the captives
+    // become their unfree workforce — and, under SLAVE_PEOPLE, their resident PEOPLE,
+    // admixing the buyer's culture/ancestry/language layers on arrival.
+    for (const [s, buy] of buyers) {
+      const got = traded * (buy / demand);
+      if (got <= 0) continue;
+      s.wealth = (s.wealth || 0) - got * SLAVE_PRICE; recordOut(s, OUT_SLAVE, got * SLAVE_PRICE);
+      s._unfree = (s._unfree || 0) + got;
+      arriveCaptives(world, s, got, poolCul, poolAnc);
+    }
+    // Sellers ship in proportion to their stock and earn the price.
+    for (const s of sellers) {
+      const stock = s._captives || 0;
+      const shipped = traded * (stock / supply);
+      if (shipped <= 0) continue;
+      s._captives = Math.max(0, stock - shipped);
+      drainCaptivePools(s, shipped, stock);
+      s.wealth = (s.wealth || 0) + shipped * SLAVE_PRICE; recordIn(s, IN_SLAVE_TRADE, shipped * SLAVE_PRICE);
+    }
   }
 }
