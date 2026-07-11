@@ -1899,14 +1899,28 @@ function updateKnowledge(world, s) {
       const rootOf = (cc) => { let c = cc, hops = 0; while (ov && ov.has(c) && hops++ < 64) c = ov.get(c); return c; };
       const myRoot = rootOf(s.countryId);
       const myPow = powM ? powM.get(s.countryId) : undefined;
-      let peerW = 0, subW = 0;
+      let peerW = 0;
       for (const cc of rivals) {
+        if (rootOf(cc) === myRoot) continue;                   // your own suzerainty network is not your competition
         const rp = powM ? powM.get(cc) : undefined;
-        const w = (myPow > 0 && rp !== undefined) ? Math.min(1, rp / (0.5 * myPow)) : 1;
-        if (rootOf(cc) === myRoot) subW += w; else peerW += w;
+        peerW += (myPow > 0 && rp !== undefined) ? Math.min(1, rp / (0.5 * myPow)) : 1;
       }
       s._rivalN = peerW;
-      s._hegF = (subW + peerW) > 0.5 ? subW / (subW + peerW) * Math.min(1, subW / 2) : 0;
+      // THE RATCHET — stagnation is the DEATH of once-present pressure, not mere
+      // solitude (measured, seed 8817: the leading hub's peer pressure RISES through
+      // the bronze arc as secondary states form — 0.7 → 2.2, the Amarna-club dynamic —
+      // then COLLAPSES to 0.34 exactly in the iron window as the leading realm
+      // outgrows everyone; formal vassalage stayed rare, so a subordination-share
+      // proxy never fired). Track the peak peer pressure this hub has ever felt;
+      // the hegemony fraction is the DECLINE from that peak, gated on a real peer
+      // system having existed (peak ≥ half of full pressure — two peer-equivalents).
+      // A lone pioneer kingdom never had a peak → 0; a fragmented peer world never
+      // declines → 0; and when a hegemony later shatters into successor states, the
+      // pressure recovers and learning resumes — the post-imperial revival, free.
+      const p = Math.min(1, peerW / COMPETE_REF);
+      const peak = Math.max(s._peerPeak || 0, p);
+      s._peerPeak = peak;
+      s._hegF = peak >= 0.5 ? Math.max(0, (peak - p) / peak) : 0;
     } else {
       s._rivalN = rivals.size;   // legacy: distinct rival polities in contact
       s._hegF = 0;
