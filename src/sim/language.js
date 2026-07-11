@@ -316,8 +316,8 @@ const finishName = (w, prof) => {
   if (prof.ortho !== "en") return w;
   return w
     .replace(/([aeiou])([aeiou])[aeiou]+/g, "$1$2")
-    .replace(/u$/i, () => ["ue", "ew", "o", "ow"][hash32(w, "u") % 4])
-    .replace(/oo$/i, () => ["ow", "ew", "o"][hash32(w, "oo") % 3])
+    .replace(/u$/i, () => ["ue", "ew", "o", "ow", "ue", "o", "ew", "oo"][hash32(w, "u") % 8])
+    .replace(/oo$/i, (m) => ["ow", "ew", "o", "oo"][hash32(w, "oo") % 4])   // names keep a rare Waterloo
     .replace(/ee$/i, () => ["ey", "y"][hash32(w, "ee") % 2])
     .replace(/([^yi])i$/i, "$1y")
     .replace(/([bdgkpt])([mn]y?)$/i, "$2")        // suffix-seam repair: -bmy → -my

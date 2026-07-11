@@ -442,9 +442,10 @@ export function renderWord(word, prof) {
       .replace(/(^|[^aeiou])([aeiou])k$/, "$1$2ck")
       .replace(/(^|[^aeiou])([aeiou])f$/, "$1$2ff")
       .replace(/([^aeiou][aeiou])ch$/, "$1tch");
-    // final short u respells as blue/few/go/how — NEVER -oo: a hydronym
-    // root landing on "boo" poisons every river name the map ever makes
-    if (/u$/.test(out)) out = out.slice(0, -1) + ["ue", "ew", "o", "ow"][hash32(out, "u") % 4];
+    // final short u respells as blue/few/go/how — with -oo as the RARITY it
+    // is in real English, where it marks borrowings and expressive words
+    // (Waterloo, igloo, moo): kept at ~1-in-8, never the default
+    if (/u$/.test(out)) out = out.slice(0, -1) + ["ue", "ew", "o", "ow", "ue", "o", "ew", "oo"][hash32(out, "u") % 8];
     if (/[^aeiouwy][aeiou][tdkmnprslgb]$/.test(out) && hash32(out, "sil") % 4 === 0) out += "e";
   }
   return out;
