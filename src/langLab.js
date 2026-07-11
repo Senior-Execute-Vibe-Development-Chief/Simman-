@@ -8,11 +8,12 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
-import { gramOf, closedOf, numeral } from "./sim/languageGrammar.js";
+import { gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies } from "./sim/languageGrammar.js";
+import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
-const S = { seed: 8817, preset: "random", divergence: 0.5, search: "" };
+const S = { seed: 8817, preset: "random", divergence: 0.5, search: "", noun: STONE, verb: VERBS[2] };
 
 function reset() {
   world = { seed: 1, step: 0, languages: new Map(), _nextLanguageId: 1 };
@@ -131,6 +132,37 @@ function grammarHTML(l) {
     <ul class="cols">${numsBig}</ul></section>`;
 }
 
+// ── paradigms: declension + conjugation tables ───────────────────────────
+const PARA_NOUNS = [STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT];
+const cellHTML = (x) => {
+  const toks = [...x.pre.map(t => t.w), x.text, ...x.post.map(t => t.w)].join(" ");
+  return `<td class="w${x.irr ? " irr" : ""}" title="${esc(x.gloss)}">${esc(toks)}</td>`;
+};
+function paradigmHTML(l) {
+  const shape = paradigmShape(l);
+  const nounSel = PARA_NOUNS.map(c => `<option value="${c}"${c === S.noun ? " selected" : ""}>${esc(glossOf(c))}</option>`).join("");
+  const verbSel = VERBS.map(c => `<option value="${c}"${c === S.verb ? " selected" : ""}>${esc(glossOf(c))}</option>`).join("");
+  const nounRows = shape.cases.map(cs =>
+    `<tr><td class="lbl">${esc(cs.g || "NOM")}</td>${shape.nums.map(n => cellHTML(inflectNoun(l, S.noun, { num: n, cas: cs.k }))).join("")}</tr>`).join("");
+  const persCols = shape.pers.length ? shape.pers : [[null, "sg"]];
+  const verbRows = shape.tam.map(t =>
+    `<tr><td class="lbl">${esc(t.g || "PRS")}</td>${persCols.map(([p, n]) => cellHTML(inflectVerb(l, S.verb, { tam: t.k, pers: p, num: n }))).join("")}</tr>`).join("");
+  const persHead = persCols.map(([p, n]) => `<th>${p ? p + n.toUpperCase().replace("SG", "sg").replace("PL", "pl") : ""}</th>`).join("");
+  const etys = affixEtymologies(l);
+  const etyLine = etys.length ? `<p class="note">Every ending is a worn-down word: ${etys.map(e => `<span class="w">-${esc(e.w)}</span> <span class="lbl">${esc(e.g)}</span> <span class="gloss">‹ ‘${esc(e.from)}’</span>`).join(" · ")}</p>` : "";
+  const isoNote = shape.iso ? `<p class="note">An isolating tongue: grammar rides on particles and word order — the words themselves never bend.</p>` : "";
+  return `<section class="card"><h2>Paradigms</h2>
+    ${isoNote}
+    <div class="paragrid">
+    <div><h3>Declension of <select id="paraNoun">${nounSel}</select></h3>
+    <div class="scroll"><table><thead><tr><th></th>${shape.nums.map(n => `<th>${n.toUpperCase()}</th>`).join("")}</tr></thead><tbody>${nounRows}</tbody></table></div></div>
+    <div><h3>Conjugation of <select id="paraVerb">${verbSel}</select></h3>
+    <div class="scroll"><table><thead><tr><th></th>${persHead}</tr></thead><tbody>${verbRows}</tbody></table></div></div>
+    </div>
+    <p class="note"><span class="irr sw"></span> irregular cells — suppletive stems, ablaut pasts, fossil fusions — cluster on the most-used verbs, the way they do in life. Hover any cell for its gloss.</p>
+    ${etyLine}</section>`;
+}
+
 const COGNATE_SET = (() => {
   const want = ["water", "river", "king", "stone", "mother", "god", "fire", "sun", "hand", "wolf"];
   return CONCEPTS.map((c, i) => ({ i, g: c.g })).filter(x => want.includes(x.g)).map(x => x.i);
@@ -215,11 +247,14 @@ function render() {
     ${loansHTML(l)}
   </section>
   ${grammarHTML(l)}
+  ${paradigmHTML(l)}
   ${cognatesHTML()}
   ${dictionaryHTML(l)}
   <footer>Deterministic: the same seed and history always speak the same words. · <span class="gloss">glosses in ochre are meanings</span> · build ${typeof __BUILD__ !== "undefined" ? __BUILD__ : "dev"}</footer>`;
 
   document.getElementById("reroll").onclick = () => { S.seed = Number(document.getElementById("seed").value) || 1; S.preset = document.getElementById("preset").value; reset(); render(); };
+  document.getElementById("paraNoun").onchange = (e) => { S.noun = Number(e.target.value); render(); };
+  document.getElementById("paraVerb").onchange = (e) => { S.verb = Number(e.target.value); render(); };
   document.getElementById("preset").onchange = (e) => { S.preset = e.target.value; reset(); render(); };
   document.getElementById("drift").onclick = () => { driftLanguage(world, active()); render(); };
   document.getElementById("div").oninput = (e) => { S.divergence = Number(e.target.value); };
@@ -282,6 +317,11 @@ ul.cols{columns:2;gap:2rem;margin:.2rem 0;padding-left:1.1rem}
 ul.cols li{margin:.12rem 0;break-inside:avoid}
 .cells{margin:.2rem 0;line-height:2}
 .cell{white-space:nowrap;background:var(--chipbg);border-radius:4px;padding:.1rem .45rem;margin-right:.2rem}
+.paragrid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+@media (max-width:720px){.paragrid{grid-template-columns:1fr}}
+td.irr{color:var(--gloss)}
+.irr.sw{display:inline-block;width:.7em;height:.7em;background:var(--gloss);border-radius:2px;vertical-align:baseline}
+.paragrid h3 select{font-size:.95rem;text-transform:none;letter-spacing:0}
 .controls{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center}
 .controls label{display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--muted)}
 .controls .divider{flex-basis:100%;height:0}

@@ -14,8 +14,8 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -298,6 +298,119 @@ console.log("\n── closed-class vocabulary ──");
   const sig = (l) => JSON.stringify([closedOf(l).prons.map(p => p.w), closedOf(l).adps.map(x => x.w),
     numeral(l, 123).text, numeral(l, 47).text]);
   check("closed class deterministic + JSON-roundtrip-stable", sig(a) === sig(b) && sig(a) === sig(c3));
+}
+
+// ── 6. INFLECTION: paradigms hold together ────────────────────────────────
+// Cells must be distinct where the language marks a distinction, citation
+// forms must not move, irregularity must live where frequency puts it, and
+// the whole layer must survive save/load byte-identical.
+console.log("\n── inflectional morphology ──");
+{
+  const world = mkWorld();
+  const langs = [];
+  for (let i = 0; i < 14; i++) langs.push(foundLanguage(world, { seed: 42000 + i * 511 }));
+  const fullV = (x) => [...x.pre.map(z => z.w), x.text, ...x.post.map(z => z.w)].join(" ");
+
+  // (a) citation stability: NOM/ABS singular is the dictionary word
+  let citeOK = true;
+  for (const l of langs) for (const cid of [STONE, RIVER, KING]) {
+    const cell = inflectNoun(l, cid, { num: "sg", cas: null });
+    if (cell.text !== wordOf(l, cid) || cell.post.length || cell.pre.length) citeOK = false;
+  }
+  check("citation forms are the dictionary forms (NOM.SG = wordOf)", citeOK);
+
+  // (b) paradigm contrast: the SINGULAR row must carry the case contrasts
+  // (plural obliques may honestly syncretize under erosion, like Latin -īs);
+  // the table overall stays mostly distinct
+  let nounBad = 0, verbBad = 0, nTested = 0;
+  for (const l of langs) {
+    const shape = paradigmShape(l);
+    if (shape.iso) continue;
+    nTested++;
+    const seen = new Map(), sgSeen = new Set();
+    for (const cs of shape.cases) for (const n of shape.nums) {
+      const w = fullV(inflectNoun(l, STONE, { num: n, cas: cs.k }));
+      seen.set(w, (seen.get(w) || 0) + 1);
+      if (n === "sg") sgSeen.add(w);
+    }
+    const cells = shape.cases.length * shape.nums.length;
+    if (sgSeen.size < shape.cases.length * 0.85 || [...seen.keys()].length < cells * 0.6) nounBad++;
+    const vSeen = new Map();
+    let vCells = 0;
+    for (const t of shape.tam) for (const [p, n] of (shape.pers.length ? shape.pers : [[null, "sg"]])) {
+      const w = fullV(inflectVerb(l, VERBS[5], { tam: t.k, pers: p, num: n }));   // 'say' (basic)
+      vSeen.set(w, (vSeen.get(w) || 0) + 1);
+      vCells++;
+    }
+    if ([...vSeen.keys()].length < vCells * 0.7) verbBad++;
+  }
+  check(`noun paradigms contrast (sg row ≥85%, table ≥60%: ${nTested - nounBad}/${nTested} langs)`, nounBad === 0);
+  check(`verb paradigms ≥70% distinct cells (${nTested - verbBad}/${nTested} langs)`, verbBad === 0);
+
+  // (c) irregularity lives where frequency puts it (b≥0.9 belt), and only there
+  let irrBasic = 0, basicTot = 0, irrRare = 0, rareTot = 0;
+  for (const l of langs) {
+    if (l.prof.morph === "iso") continue;
+    const shape = paradigmShape(l);
+    const marked = shape.tam.find(t => t.k === "pst") || shape.tam.find(t => t.k === "pfv");
+    if (!marked) continue;
+    for (const v of VERBS) {
+      const b = CONCEPTS[v].b;
+      const cell = inflectVerb(l, v, { tam: marked.k, pers: shape.pers.length ? "3" : null, num: "sg" });
+      if (b >= 0.95) { basicTot++; if (cell.irr) irrBasic++; }
+      if (b < 0.75 && l.prof.morph !== "tmpl") { rareTot++; if (cell.irr) irrRare++; }
+    }
+  }
+  check(`most-basic verbs carry irregular pasts (${Math.round(100 * irrBasic / Math.max(1, basicTot))}% of b≥0.95)`, irrBasic / Math.max(1, basicTot) >= 0.35);
+  check(`rare verbs stay regular (${irrRare}/${rareTot} irregular)`, irrRare === 0);
+
+  // (d) affixes are grammaticalized words — etymologies exist
+  const withEty = langs.filter(l => l.prof.morph !== "iso" && affixEtymologies(l).length >= 1).length;
+  const nonIso = langs.filter(l => l.prof.morph !== "iso").length;
+  check(`affixes trace to source words (${withEty}/${nonIso} non-isolating langs)`, withEty >= nonIso * 0.7);
+
+  // (e) vowel harmony reaches the affixes (-lar/-ler): plural endings vary.
+  // Front–back harmony specifically — rounding harmony rightly exempts the
+  // low vowels most plural markers wear.
+  let harm = null;
+  for (let i = 0; i < 400 && !harm; i++) {
+    const l = foundLanguage(world, { seed: 130000 + i * 71 });
+    if (l.prof.harmony === "fb" && l.prof.morph === "agg" && gramOf(l).pluralMark && gramOf(l).affixSide === "suf") harm = l;
+  }
+  if (harm) {
+    const sufs = new Set();
+    for (const cid of TOPO_HEAD.slice(0, 16)) {
+      const sg = inflectNoun(harm, cid, { num: "sg" }).text;
+      const pl = inflectNoun(harm, cid, { num: "pl" }).text;
+      if (pl.startsWith(sg)) sufs.add(pl.slice(sg.length));
+    }
+    check(`harmony reaches the affixes (plural endings: ${[...sufs].slice(0, 4).join(", ")})`, sufs.size >= 2);
+  } else check("harmony reaches the affixes (no harmony+agg language found in sweep)", false);
+
+  // (f) determinism + JSON roundtrip of whole paradigms
+  const w1 = mkWorld(), w2 = mkWorld();
+  const a = foundLanguage(w1, { seed: 5150 }), b2 = foundLanguage(w2, { seed: 5150 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => {
+    const shape = paradigmShape(l);
+    const out = [];
+    for (const cs of shape.cases) for (const n of shape.nums) out.push(fullV(inflectNoun(l, STONE, { num: n, cas: cs.k })));
+    for (const t of shape.tam) out.push(fullV(inflectVerb(l, VERBS[2], { tam: t.k, pers: shape.pers.length ? "1" : null, num: "sg" })));
+    return JSON.stringify(out);
+  };
+  check("paradigms deterministic + JSON-roundtrip-stable", sig(a) === sig(b2) && sig(a) === sig(c3));
+
+  // showcase: one declension + one conjugation
+  const l = langs.find(x => x.prof.morph === "fus" && gramOf(x).caseN >= 2) || langs.find(x => x.prof.morph !== "iso");
+  if (l && !quiet) {
+    const shape = paradigmShape(l);
+    say("\n   declension of '" + glossOf(STONE) + "' (" + l.prof.morph + ", " + gramOf(l).caseN + " cases):");
+    for (const cs of shape.cases.slice(0, 4)) say("     " + (cs.g || "NOM").padEnd(4) + " " + shape.nums.map(n => fullV(inflectNoun(l, STONE, { num: n, cas: cs.k }))).join(" / "));
+    const vb = VERBS[2];   // 'go'
+    say("   conjugation of '" + glossOf(vb) + "':");
+    for (const t of shape.tam) say("     " + (t.g || "PRS").padEnd(4) + " " + (shape.pers.length ? shape.pers : [[null, "sg"]]).slice(0, 3).map(([p, n]) => fullV(inflectVerb(l, vb, { tam: t.k, pers: p, num: n }))).join(" / "));
+    say("   endings: " + affixEtymologies(l).map(e => "-" + e.w + " " + e.g + " ‹ '" + e.from + "'").join("  "));
+  }
 }
 
 // ── determinism: same record → same names, always ─────────────────────────
