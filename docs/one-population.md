@@ -60,7 +60,32 @@ KNOWN LIMITS (accepted for A):
   demography and its rates become human ones (the census's demographic-
   transition machinery moves over with it).
 
-## Slice B — the city is a concentration OF the field (NOT BUILT)
+## Slice B — the city is a concentration OF the field (BUILT, lever off — T.ONE_POP)
+
+STATUS (measured, 480×240 / 21k / 3 seeds): mechanics complete and clean —
+determinism, save/load hash identity, +1000-step continuation 3.2%, smoke
+green, ALL hard stylized gates pass on 3/3 seeds. NOT default yet: two
+consistent soft warnings (2/2 budget — the bar is zero):
+  • Zipf slope −0.48..−0.66 (envelope −0.8..−1.2) — city sizes too uniform;
+  • urbanization 56–64% in the agrarian era (band 2–25%) — cores absorb
+    most of their region.
+ROOT CAUSE, identified: the urban spike is currently the RESIDUAL between
+two different food models (the economy's farm-model K minus the field's
+terrain capacity), which is mostly model mismatch × region size, not
+"imports" — so every core is overweight and near-uniform. THE FIX (next
+loop): build the spike from the import-backed share of the SAME food model
+— foodK × the settlement's own import share (s._foodImportRate /
+_foodSupply already exist) — so only genuinely fed-from-elsewhere cities
+concentrate beyond their land, and the heavy-tailed import economy gives
+the cores their Zipf tail back.
+
+What is already true under the lever: the field owns demography (human
+rates; the transition/graveyard bend stamped per core), the 3000 BC world
+starts at its Malthusian equilibrium (the peopling sparks were the wrong
+initial condition once rates are human), urbanise() and the census
+logistic retire, founders/colonists move ON the field, s.people and
+s._urbanPop are derived reads, and a settlement's death no longer erases
+its region's people.
 
 The heart of the unification:
 

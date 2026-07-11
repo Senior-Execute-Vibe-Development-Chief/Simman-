@@ -219,6 +219,7 @@ export function saveWorld(world, meta = {}) {
     refRealmPop: world._refRealmPop,  // GRIEV_LEDGER smoothed median realm population (what a "people" weighs); absent/0 reseeds at the next polity pass
     loyalScanAt: world._loyalScanAt,  // LOYAL_FIELD last owner-diff scan step (classifies force vs politics in transfer semantics)
     devWaveAt: world._devWaveAt,      // DEV_FIELD last wave firing step (the ~1 km/year cadence clock)
+    onePopScale: world._onePopScale,  // ONE_POP frozen bridge scalar (census units per field person; a unit conversion, never re-derived)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1, event: world._nextEventId ?? (world.events ? world.events.length : 0) },
     tuning,
@@ -332,6 +333,7 @@ export function loadWorld(data, opts = {}) {
   world._refRealmPop = data.refRealmPop ?? 0;     // smoothed median realm population (GRIEV_LEDGER read normalizer; 0 reseeds next pass)
   if (data.loyalScanAt != null) world._loyalScanAt = data.loyalScanAt;   // owner-diff scan clock (unset ≡ never scanned)
   if (data.devWaveAt != null) world._devWaveAt = data.devWaveAt;         // wave cadence clock (unset ≡ never fired)
+  if (data.onePopScale != null) world._onePopScale = data.onePopScale;   // ONE_POP bridge scalar (unset ≡ compute at first derive)
   world._popTotal = data.popTotal ?? 0;
   world._eraAt = data.eraAt || [0];
   world._nextSettlementId = data.counters.settlement;
@@ -546,6 +548,7 @@ export function hashWorld(world) {
   // DEV_FIELD: the regional development ratchet + its cadence clock (presence-normalized).
   { const df = world.devField; for (let i = 0; i < world.N; i += 97) mixNum(df ? df[i] : 0); }
   mixNum(world._devWaveAt ?? -1);
+  mixNum(world._onePopScale ?? -1);
   // popField — persisted state that predates the R1 hash-hygiene rule but was
   // never hashed; FIELD_DEMOG writes it from event sites, so a divergence or
   // round-trip bug must show. Presence-normalized, sampled on the road stride.

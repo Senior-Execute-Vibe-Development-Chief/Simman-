@@ -277,13 +277,59 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  // T.ONE_POP: the urban spikes land in the capacity field (each city core
+  // carries what its economy supports beyond its land), and the field's
+  // intrinsic rate becomes the census's HUMAN rate — the field owns demography
+  // now, so it grows like people, not like the phase-1 peopling wave. City
+  // cores use their own transition/graveyard-bent rate (saved before the bulk
+  // loop, re-integrated after with their stamped r).
+  const onePop = !!T.ONE_POP;
+  if (onePop) applyUrbanSpikes(world, cap);
+  const rBulk = onePop ? T.SETT_GROWTH : POP_GROWTH;
+  // ONE_POP activation: the world of 3000 BC was already peopled to its
+  // Malthusian equilibrium — the phase-1 peopling SPARKS (grow-from-cradles)
+  // are the wrong initial condition once the field grows at human rates (it
+  // would take tens of millennia to fill). Seed the field AT equilibrium —
+  // a residence-weighted fraction of local capacity (the late-reached
+  // frontier sits below it) — once, at activation (scale unset = first
+  // derive hasn't run). Idempotent via max(); the same skipped-history
+  // reasoning as the genesis seeds and the pre-map Neolithic wave.
+  if (onePop && !(world._onePopScale > 0)) {
+    const tArr = world.tArrival;
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const residence = tArr ? (1 - Math.min(1, Math.max(0, tArr[i]))) : 0.5;
+      const eq = cap[i] * (0.55 + 0.35 * residence);   // long-peopled land presses its ceiling; the frontier sits under it
+      if (eq > pop[i]) pop[i] = eq;
+    }
+  }
+  // City cores grow at their OWN transition/graveyard-bent rate: save their
+  // pre-growth values (a ~hundred entries), let the bulk loop run, then
+  // re-integrate them exactly from the saved value with the stamped r.
+  let corePre = null;
+  if (onePop && world._urbanSpike && world._urbanSpike.size) {
+    corePre = [];
+    for (const [ti, e] of world._urbanSpike) if (e.r !== undefined && (e.r !== rBulk || e.sink > 0)) corePre.push(ti, pop[ti]);
+  }
+
   // 2. Logistic growth toward capacity (in place).
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const k = cap[i];
     if (k <= 0) { pop[i] = 0; continue; }
     const p = pop[i];
-    if (p > 0) pop[i] = p + POP_GROWTH * dt * p * (1 - p / k);
+    if (p > 0) pop[i] = p + rBulk * dt * p * (1 - p / k);
+  }
+  if (corePre) {
+    for (let j = 0; j < corePre.length; j += 2) {
+      const ti = corePre[j], p = corePre[j + 1];
+      const k = cap[ti];
+      if (!(k > 0) || !(p > 0)) continue;
+      const e = world._urbanSpike.get(ti);
+      // the census's own form: bent logistic growth minus a FLAT graveyard
+      // sink (excess mortality does not ease as the city fills)
+      pop[ti] = Math.max(0, p + (e.r * (1 - p / k) - e.sink) * dt * p);
+    }
   }
 
   // 3. Capacity-seeking migration (double-buffered → deterministic). Each tile sends
@@ -340,6 +386,95 @@ export function popFieldTotal(world) {
   return s;
 }
 
+// ── T.ONE_POP: the city is a concentration of the field (one population, B) ──
+// docs/one-population.md slice B. The field takes OWNERSHIP of demography:
+//   • its intrinsic rate becomes the census's human rate (T.SETT_GROWTH, with
+//     the demographic-transition/urban-graveyard bend stamped at each city's
+//     core tile) instead of the phase-1 peopling rate;
+//   • each settlement's home tile carries an URBAN SPIKE of carrying capacity
+//     = what its ECONOMY supports beyond what its land feeds (imports, the
+//     granary, housing: s._k minus the catchment's terrain capacity) — the
+//     concentration cities ARE, and the field's own capacity-seeking
+//     migration into that spike IS urbanization (the census-side drift and
+//     the census logistic both retire);
+//   • s.people becomes a DERIVED READ: the field over the settlement's
+//     catchment, in census units via a FIXED bridge scalar computed once at
+//     activation (median census / median field-region — the POW_FIELD
+//     anchoring pattern, frozen and persisted so it is a unit conversion,
+//     never a second dynamic).
+// A settlement dying no longer erases people — the region's people outlive
+// the town, on the land, where they always were.
+
+/** Apply the urban spikes (built by deriveOnePop) into this pass's capField. */
+function applyUrbanSpikes(world, cap) {
+  const sp = world._urbanSpike;
+  if (!sp) return;
+  for (const [ti, e] of sp) cap[ti] += e.k;
+}
+
+/**
+ * The ONE_POP derive, called once per tick after the field pass (index.js):
+ * accumulate each settlement's catchment field people + terrain capacity,
+ * refresh the bridge scalar (once), set s.people from the field, and stamp
+ * next pass's urban spikes (economy-beyond-land capacity + the city core's
+ * transition-bent growth rate).
+ */
+export function deriveOnePop(world) {
+  if (!T.ONE_POP || !T.POP_FIELD || !world.popField) return;
+  const pf = world.popField, cap = world.capField, owner = world._territoryOwner, tw = world.tw;
+  if (!owner) return;
+  const spikes = world._urbanSpike || (world._urbanSpike = new Map());
+  const accP = new Map(), accC = new Map();
+  for (let i = 0; i < world.N; i++) {
+    const sid = owner[i];
+    if (sid < 0) continue;
+    if (pf[i] > 0) accP.set(sid, (accP.get(sid) || 0) + pf[i]);
+    // terrain capacity EXCLUDING the spike this pass stamped on a home tile
+    const sp = spikes.get(i);
+    const terr = (cap[i] || 0) - (sp ? sp.k : 0);
+    if (terr > 0) accC.set(sid, (accC.get(sid) || 0) + terr);
+  }
+  // The bridge scalar: median census per median field-region, frozen at
+  // activation (persisted). A pure unit conversion between the economy's
+  // calibrated census magnitudes and the field's people — the distribution
+  // and all dynamics are the field's.
+  if (!(world._onePopScale > 0)) {
+    const cs = [], fs = [];
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const f = accP.get(s.id) || 0;
+      if (f > 0 && s.people > 0) { cs.push(s.people); fs.push(f); }
+    }
+    cs.sort((a, b) => a - b); fs.sort((a, b) => a - b);
+    world._onePopScale = cs.length ? Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1])) : 1;
+  }
+  const scale = world._onePopScale;
+  spikes.clear();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (ti < 0 || ti >= world.N) continue;
+    const f = accP.get(s.id) || 0;
+    if (f > 0) s.people = Math.max(1, f * scale);
+    // The URBAN CORE is the concentration itself: the people on the city's
+    // own tile (where the spike is), in census units — the ruling made
+    // literal. This is what the urbanization share, the demographic
+    // transition, the graveyard and the Zipf statistics read; the region's
+    // rural remainder is everyone else on its land. (Overrides the census-
+    // side ruralShare heuristic each tick — derive runs after it.)
+    if (f > 0) {
+      s._urbanPop = Math.min(s.people, Math.max(0, pf[ti] * scale));
+      s._ruralPop = Math.max(0, s.people - s._urbanPop);
+    }
+    // else: no catchment tiles this pass (fresh founding / recompute lag) — keep the census value
+    // Next pass's spike: the economy's beyond-land capacity, in field units,
+    // plus the core's own transition/graveyard-bent growth rate (stamped by
+    // updatePop as s._rEff; plain human rate until it computes one).
+    const kBeyond = Math.max(0, ((s._k || 0) / scale) - (accC.get(s.id) || 0));
+    if (kBeyond > 0 || s._rEff !== undefined) spikes.set(ti, { k: kBeyond, r: s._rEff, sink: s._rSink || 0 });
+  }
+}
+
 // ── T.FIELD_DEMOG: demographic events live on the field (one population) ────
 // docs/one-population.md slice A. Every event that adds or removes PEOPLE in
 // the town census — plague, famine, the sack's captive trains, razzias,
@@ -359,7 +494,7 @@ export function popFieldTotal(world) {
 const FIELD_SHIFT_R = 6;   // max cascade radius (tiles): a town's demographic hinterland
 
 export function fieldShift(world, s, delta) {
-  if (!T.FIELD_DEMOG || !T.POP_FIELD || !world.popField || !s || !s.pos) return;
+  if ((!T.FIELD_DEMOG && !T.ONE_POP) || !T.POP_FIELD || !world.popField || !s || !s.pos) return;
   if (!(delta < 0 || delta > 0)) return;
   const pf = world.popField, tw = world.tw, th = world.th;
   const cx = s.pos.x | 0, cy = s.pos.y | 0;

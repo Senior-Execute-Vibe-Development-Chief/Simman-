@@ -267,6 +267,7 @@ export function arriveCaptives(world, dest, count, culPairs, ancPairs) {
 export function makeSettlement(world, x, y, opts = {}) {
   const id = world._nextSettlementId || 1;
   world._nextSettlementId = id + 1;
+  // (ONE_POP: the founders are placed onto the FIELD after the object exists — see below)
   const s = {
     id,
     kind: "settlement",
@@ -385,6 +386,7 @@ export function makeSettlement(world, x, y, opts = {}) {
   rederiveSiteStatics(world, s);
   s._rivalN = 0;                                           // distinct rival polities in contact (refreshed in updateKnowledge)
   world.settlements.push(s);
+  if (T.ONE_POP) fieldShift(world, s, s.people || 0);   // one population: the founders stand on this ground (their SOURCE was debited where they left)
   seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
   // Crop-package ownership (T.CROP_AXIS). Off → stays empty (unused). A cradle
   // domesticates its best local crop; a colony/daughter inherits its parent's
@@ -1266,6 +1268,9 @@ export function ruralShare(s) {
   return Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
 }
 export function urbanise(world) {
+  // ONE POPULATION (slice B): urbanization IS the field's capacity-seeking
+  // migration into each city's urban spike — the census-side drift retires.
+  if (T.ONE_POP) return;
   const byId = world._byId;
   if (!byId) return;
   for (const s of world.settlements) {
@@ -2682,6 +2687,23 @@ function updatePopulation(world, s) {
     const before = s.people;
     s.people *= Math.pow(0.985, _dt);                 // famine die-off, per-tick → granularity-scaled
     fieldShift(world, s, s.people - before);          // one population: hunger empties the LAND too (FIELD_DEMOG)
+  } else if (T.ONE_POP) {
+    // ONE POPULATION (docs/one-population.md slice B): the census logistic
+    // RETIRES — the field grows this region's people (at the human rate, its
+    // urban core at the bent rate below), and s.people is DERIVED from the
+    // field after the field pass (popField.js deriveOnePop). Here we only
+    // compute what the core's stamp needs: the demographic-transition bend
+    // and the urban-graveyard sink, from the settlement's own live state —
+    // the same inputs, the same never-a-date reasoning as the census form.
+    let r = T.SETT_GROWTH;
+    const urbShare = (s._urbanPop || 0) / Math.max(1, s.people);
+    const lit = Math.min(1, Math.max(0, (((s.knowledge && s.knowledge.organization) || 0) - 0.6) / 0.3));
+    const fed = Math.min(1, (s._foodSupply || 0) / Math.max(1, s._foodDemand || 1));
+    r *= 1 - DEMO_TRANSITION * Math.min(1, urbShare / 0.5) * lit * fed;
+    s._rEff = r;          // the core tile's intrinsic rate (popField re-integrates it)
+    s._rSink = T.SETT_GROWTH * URBAN_GRAVEYARD_W
+      * (s._diseaseLoad || 0) * Math.min(1, urbShare / 0.3)
+      * (1 - (techEff(s).healthRelief || 0));   // flat excess mortality — does NOT ease as the city fills
   } else {
     // Exponential-form logistic: identical growth for small r·dt, but a
     // carrying-capacity CRASH (war front severs the fields, famine guts the
