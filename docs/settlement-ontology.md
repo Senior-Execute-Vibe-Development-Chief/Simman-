@@ -1,7 +1,8 @@
 # Settlement ontology — what a settlement may and may not be
 
-Status: **rule adopted; violation 1 fixed (T.POW_FIELD, default on); violations
-2–4 specified below, not yet built.** Companion to docs/field-polity-spec.md,
+Status: **rule adopted; violation 1 fixed (T.POW_FIELD, default on); violation
+2 designed in full below (T.LOYAL_FIELD + T.GRIEV_LEDGER) and being built;
+3–4 specified, not yet built.** Companion to docs/field-polity-spec.md,
 which carried the same programme for territory.
 
 ## The rule
@@ -44,28 +45,85 @@ Seat-level power uses stay entity-based on purpose: capital selection,
 provincial governor weight (`provPower`), per-settlement coercion, casualty
 spread, fragmentation seat ranking — those measure the SEAT or the PERSON.
 
-### V2 — the populace's political feelings live on entities (NOT BUILT)
+### V2 — the populace's political feelings live on entities (IN PROGRESS)
 
-`s.loyalty`, `s.unrest`, `s._homeland` / `_homelandFell`, `s._conqueredAt`
-describe the PEOPLE OF A REGION, not a government office. They belong on the
-land/people layer:
+`s._homeland` / `_homelandFell` and the *popular* half of loyalty describe
+the PEOPLE OF A REGION, not a government office. The seat keeps what is
+genuinely the seat's: `s.loyalty` remains the ADMINISTRATIVE cohesion stock
+(records, garrisons, the governor's grip — role 2, all its write sites
+untouched), `s.unrest` the fast local temperature, `_ambition` the
+officeholder. What moves to the land/people layer is the slow stuff the
+roster kept mis-owning: WHOSE ground this is, and whether the people on it
+have accepted their ruler.
 
-- **Homeland memory** (land-anchored): a `_tileHomeland` Int32 field, sibling
-  of the existing `_tileCapturedAt` (armies.js:386 — the in-repo precedent
-  for tile-anchored political memory): which polity this ground last
-  belonged to, stamped on transfer. Irredentism reads the field.
-- **Allegiance/grievance** (people-anchored): carried in the population
-  field's admixture, exactly as ancestry/culture already travel under
-  T.SLAVE_PEOPLE — grievance moves with the deported; contentment grows
-  where people prosper in place. Follow identityField.js transport
-  semantics; do NOT invent a second advection scheme.
-- Governor AMBITION stays on the seat (`_ambition`) — that is genuinely
-  about the officeholder.
+**Full design (rates in dyn-years; 1 dyn-year = 4 steps, a polity pass =
+37.5 dyn-years at defaults):**
 
-Consumers to migrate: loyalty budget, rebellion seeding, restoration,
-identity grievance. Validation surface: rebellion/secession cadence, empire
-mortality, fallen-lifespan gates — the same soft gates POW_FIELD moved
-through. Lever + probe like every arc.
+- **Homeland memory** (land-anchored, `T.LOYAL_FIELD`): `_tileHomeland`
+  Int32 + `_tileFellAt` Float64, siblings of `_tileCapturedAt` (armies.js —
+  the in-repo precedent for tile-anchored political memory): which polity
+  this ground last belonged to, and when it fell. Stamped by ONE owner-diff
+  scan per polity pass (`recordOccupation` semantics on tiles: coming home
+  clears; a re-occupation keeps the ORIGINAL homeland), not by edits at the
+  dozen `_countryOwner` write sites. Memory attaches to ground, so it
+  outlives the member roster: a town founded on old-Poland ground inherits
+  the yearning; restoration no longer depends on the same settlements still
+  standing. `s._homeland`/`_homelandFell` become DERIVED (seat tile) under
+  the lever.
+- **Allegiance** (the tile-attachment continuum, `T.LOYAL_FIELD`):
+  `_allegiance` Float32 per tile — how far the people of this ground have
+  accepted their CURRENT ruler. It relaxes toward the administrative
+  condition its county lives under (the governing settlement's loyalty
+  stock) at a HABITUATION rate that is identity-coupled: base ~1/3 of the
+  administrative recovery pace (trust of the heart builds over generations,
+  τ ≈ 400–600 dyn-years covered), scaled down by `absorbResistance` (a
+  wholly foreign ruler is accepted ~5× slower) and by the pair ledger
+  (grievance freezes habituation; amity speeds it). Detachment (target
+  below current) runs faster than attachment. On transfer the people stay
+  put: attachment CARRIES a kin fraction (nothing resets to a constant) —
+  and coming home restores it. ASSIMILATION IS EMERGENT: when attachment
+  completes (≥0.9), the ground forgets its old flag — replacing the flat
+  HOMELAND_MEMORY timer under the lever. (At the median — covered, median
+  identity, no grievance — completion lands in the same ~1000–1500-dyn-year
+  band the old timer asserted; the tails now MEAN something: kin provinces
+  assimilate in centuries, grieved foreign ones never do.)
+- **Nation-pair grievance/amity ledger** (people-anchored,
+  `T.GRIEV_LEDGER`): `world._natGriev`, ordered-pair `"H:P"` → people-harmed
+  (H's people, harmed by P). Fed by the same owner-diff scan (war-captured
+  tiles weighted by popField — the people whose land was taken; war-fresh =
+  `_tileCapturedAt` since last scan, so peaceful absorption and border
+  smoothing never grieve), by city sacks (armies.js storm), and by razzias
+  on crowned towns (slavery.js). Amity: allied dyads (updateAlliances — the
+  alliance map already folds in trade) pay the ledger DOWN. Decays with
+  half-life ~120 dyn-years (two long generations — grievance renews or
+  fades). Read saturating against the era's median realm population
+  (smoothed, the `_refRevenue` pattern): G = h/(h + ref) — era-proof, no
+  absolute constant. Consumed by (a) habituation above, (b) a grievance
+  term in the unrest pass ("old wounds": a province whose ground remembers
+  H simmering under P ∝ G(H→P)).
+- Deportees already carry who they are (`_captiveCul`/`_captiveAnc` under
+  T.SLAVE_PEOPLE) — grievance follows them as the LEDGER is keyed by
+  nation, not by ground. No second advection scheme (identityField rule).
+
+**Consumers migrated under the levers:**
+
+1. **Secession seeding** (loyalty budget): a province seeds a revolt when
+   its administrative stock collapses AND its people have detached (county
+   allegiance ≤ bar) — hysteresis: a long-held CORE forced over budget by
+   one bad war stays restless but holds (its people carry the realm); a
+   fresh march (people never attached) sheds as before.
+2. **Restoration**: the restless pool reads ground memory (derived
+   homelands) + popular detachment instead of the roster's stock.
+3. **Identity grievance**: the unrest pass gains the ledger term — the
+   channel pure mixture-mismatch could never express (Poland grieved its
+   partitioners nationally, not confessionally).
+4. Irredentist war-targeting off `_tileHomeland` (casusBelliMul) is
+   designed but deferred with V3 (it wants the same per-pair remembered-
+   ground weights V3's geometry produces).
+
+Validation surface: rebellion/secession cadence, empire mortality,
+fallen-lifespan gates — the same soft gates POW_FIELD moved through.
+Lever + probe (tools/probe_loyalty.mjs) like every arc.
 
 ### V3 — political change transfers members, not regions (HALF BUILT)
 
