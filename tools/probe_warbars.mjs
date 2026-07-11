@@ -88,12 +88,12 @@ for (let t = 0; t < STEPS; t += 3000) {
     if (s.how !== "faded") { durS += s.dur || 0; ageS += s.age || 0; exhHiS += s.exhHi || 0; exhLoS += s.exhLo || 0; nTreaty++; }
   }
   const activeTruces = world._truces ? [...world._truces.values()].filter((u) => u > world.step).length : 0;
-  console.log(`step ${String(world.step).padStart(5)}: cand ${String(win.cand).padStart(4)} opened ${String(win.opened).padStart(4)} | rej: parity ${win.parity} agg ${win.agg} trade ${win.trade} exhaust ${win.war} casus ${win.casus} claim ${win.claim} dom ${win.dom} coalition ${win.coal} stack ${win.stack} | truce-blocked ${win.truceBlocked} (live truces ${activeTruces})`);
+  console.log(`step ${String(world.step).padStart(5)}: cand ${String(win.cand).padStart(4)} opened ${String(win.opened).padStart(4)} | rej: parity ${win.parity} agg ${win.agg} trade ${win.trade} amphib ${win.amphib || 0} exhaust ${win.war} casus ${win.casus} claim ${win.claim} dom ${win.dom} coalition ${win.coal} stack ${win.stack} | truce-blocked ${win.truceBlocked} (live truces ${activeTruces})`);
   console.log(`         wars started ${win.warsStarted}  ended ${sg.length} [${Object.entries(byHow).map(([k, v]) => k + " " + v).join(", ") || "-"}]`
     + (nTreaty ? `  treaty: mean peace ${Math.round(durS / nTreaty)}t, war age ${Math.round(ageS / nTreaty)}t, exhaustion winner/loser ${(exhLoS / nTreaty).toFixed(2)}/${(exhHiS / nTreaty).toFixed(2)}` : ""));
 }
 const T2 = W.tot;
 console.log(`\nTOTALS: candidates ${T2.cand}, opened ${T2.opened} (${(T2.opened / Math.max(1, T2.cand) * 100).toFixed(1)}%), truce-blocked ${T2.truceBlocked}`);
-const rej = { parity: T2.parity, agg: T2.agg, trade: T2.trade, exhaust: T2.war, casus: T2.casus, claim: T2.claim, dom: T2.dom, coalition: T2.coal, stack: T2.stack };
+const rej = { parity: T2.parity, agg: T2.agg, trade: T2.trade, amphib: T2.amphib || 0, exhaust: T2.war, casus: T2.casus, claim: T2.claim, dom: T2.dom, coalition: T2.coal, stack: T2.stack };
 const totRej = Object.values(rej).reduce((a, b) => a + b, 0) || 1;
 console.log("rejection attribution: " + Object.entries(rej).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / totRej * 100).toFixed(0)}%`).join("  "));

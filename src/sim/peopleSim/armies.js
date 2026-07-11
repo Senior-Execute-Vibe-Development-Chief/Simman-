@@ -93,7 +93,7 @@ export function closeWar(world, key, how) {
 export function mkWarDebug() {
   return { step: -1, pairs: new Map(), trucePairs: new Set(), signed: [],
            tot: { cand: 0, opened: 0, truceBlocked: 0, parity: 0, stack: 0,
-                  agg: 0, trade: 0, war: 0, casus: 0, claim: 0, dom: 0, coal: 0, warsStarted: 0 } };
+                  agg: 0, trade: 0, amphib: 0, war: 0, casus: 0, claim: 0, dom: 0, coal: 0, warsStarted: 0 } };
 }
 export function foldWarDebug(W) {
   if (!W || !W.pairs) return;
@@ -776,7 +776,93 @@ export function advanceFronts(world) {
   // From the beachhead on, the normal front machinery — national field armies,
   // concentration, exhaustion, reinforcement sailing — grinds inland or is
   // thrown back, exactly as on land.
-  if (T.AMPHIB_BAR > 0 && !TILE_WAR) {   // TILE_WAR v1: amphibious is per-settlement (sea-reach) — restore in a later slice
+  // TILE_WAR: the same doctrine at NATION level — a country can invade where any of
+  // its embarkable ports can sail (the port-level sea-lane web aggregated to a
+  // country-pair adjacency), the whole national field army fights the beachhead
+  // (adapters, exactly like a land front), and the landing beaches are the DEFENDER
+  // COUNTRY's water-edge tiles under the same home-distance / storm-radius / grace
+  // rules. This was the "restore in a later slice" gap: under the default tile-war
+  // mode populated enemy shores were simply unconquerable (no Punic Wars — a
+  // Mediterranean-shaped empire was structurally impossible), measured while
+  // attributing the no-hegemon bottleneck (tools/probe_warbars.mjs). AMPHIB_BAR=0
+  // recovers the sea-blind war byte-identically.
+  if (T.AMPHIB_BAR > 0 && TILE_WAR) {
+    // 1. Country-pair sea adjacency: any port with real seacraft that can sail to a
+    //    foreign port opens its COUNTRY's invasion lane to that port's COUNTRY.
+    const seaCC = new Map();   // attacker countryId → Set(defender countryId)
+    for (const P of world.settlements) {
+      if (P.mode !== "settled" || P.countryId < 0 || !P._seaReach || P._seaReach.size === 0) continue;
+      if (((P.knowledge && P.knowledge.navigation) || 0) < AMPHIB_NAV_MIN) continue;
+      for (const pid of P._seaReach.keys()) {
+        const Q = byId.get(pid);
+        if (!Q || Q.mode !== "settled" || Q.countryId < 0 || Q.countryId === P.countryId) continue;
+        let s = seaCC.get(P.countryId); if (!s) seaCC.set(P.countryId, s = new Set());
+        s.add(Q.countryId);
+      }
+    }
+    // 2. Bar-check each lane with the full land stack × AMPHIB_BAR (an opposed
+    //    landing wants overwhelming superiority) — national army vs national army.
+    const amphibByDef = new Map();   // defender countryId → pending beachhead pairs
+    for (const [acc, defs] of seaCC) {
+      const A = own.get(acc);
+      if (!A || !(A._M > 0)) continue;
+      const aCountry = world.countries && world.countries.get(acc);
+      const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
+      for (const dcc of defs) {
+        const D = own.get(dcc);
+        if (!D || inTruce(acc, dcc) || bondedCC(acc, dcc)) continue;
+        const key = acc + ":" + dcc;
+        if (pairs.has(key)) continue;                        // already met on land
+        const tf = tradeFactor(acc, dcc);
+        const _wb = warBarOf(acc), _cs = casusOf(acc, dcc, D), _cl = claimBarOf(acc, dcc),
+              _db = domBarOf(acc), _cb = coalitionBarOf(acc, dcc);
+        const bar = D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * _wb * _cs * _cl * _db * _cb;
+        if (WDBG) {
+          wdbgPass(WDBG, world.step);
+          let r = WDBG.pairs.get(key);
+          const f = { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, amphib: T.AMPHIB_BAR, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb };
+          if (!r) WDBG.pairs.set(key, r = { attM: A._M, base: D._M * T.ATTACK_MIN_RATIO, minBar: bar, f, passed: false });
+          else if (bar < r.minBar) { r.minBar = bar; r.base = D._M * T.ATTACK_MIN_RATIO; r.attM = A._M; r.f = f; }
+          if (A._M >= bar) r.passed = true;
+        }
+        if (A._M < bar) continue;
+        const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
+        let l = amphibByDef.get(dcc); if (!l) amphibByDef.set(dcc, l = []);
+        l.push(pc);
+      }
+    }
+    // 3. Landing beaches: the defender country's water-edge tiles (one owner scan,
+    //    same rules as the land scan; a beach near the capital storms it from the sea).
+    if (amphibByDef.size) {
+      const elevA = world.elev;
+      for (let ti = 0; ti < N; ti++) {
+        const d = owner[ti];
+        if (d < 0) continue;
+        const cands = amphibByDef.get(d); if (!cands) continue;
+        const ty = (ti / tw) | 0, tx = ti - ty * tw;
+        const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+        const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+        let beach = false;
+        for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && elevA[ni] <= 0) { beach = true; break; } }
+        if (!beach) continue;
+        const D = own.get(d);
+        if (!D) continue;
+        const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
+        let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
+        const ddy = ty - dhy;
+        const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
+        const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
+        for (const pc of cands) {
+          if (distHome <= assaultDist) pc.canStorm = true;   // the capital fronts the water — stormable from the sea
+          else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
+        }
+      }
+      for (const cands of amphibByDef.values())
+        for (const pc of cands)
+          if (pc.canStorm || pc.tiles.length) pairs.set(pc._key, pc);
+    }
+  }
+  if (T.AMPHIB_BAR > 0 && !TILE_WAR) {   // legacy per-settlement mode (non-tile war)
     const amphibByDef = new Map();   // defender id → pending beachhead pairs onto it
     for (const A of world.settlements) {
       if (A.mode !== "settled" || !A._seaReach || A._seaReach.size === 0) continue;
