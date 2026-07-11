@@ -17,6 +17,7 @@
 
 import { coreRadiusFor } from "./territory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
+import { slavePull } from "./slavery.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
@@ -1196,8 +1197,11 @@ export function advanceFronts(world) {
           dS._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
           // Captives: the sack of a city carries off part of its people into bondage —
           // war as the primary supply of the slave trade (the captor sells/works them).
+          // × √slavePull (slavery.js): the sack happens for war reasons, but how much of
+          // it is ENSLAVED rises with the victor's market — sub-linearly (the dealers who
+          // followed the legions bought what they could carry, not the whole city).
           if (T.SLAVERY && T.CAPTURE_FRAC > 0 && (dS.people || 0) > 0) {
-            const taken = (dS.people || 0) * T.CAPTURE_FRAC;
+            const taken = (dS.people || 0) * Math.min(0.5, T.CAPTURE_FRAC * Math.sqrt(slavePull(world, att)));
             recordCaptives(att, dS, taken);   // the carried-off carry who they are (SLAVE_PEOPLE)
             dS.people -= taken; att._captives = (att._captives || 0) + taken;
           }
@@ -1212,6 +1216,11 @@ export function advanceFronts(world) {
             const plunder = (dS.wealth || 0) * PLUNDER_FRAC;
             dS.wealth -= plunder;
             ag.treasury = (ag.treasury || 0) + plunder;
+            // Extraction income: plunder banks toward the victor elite's land-buying
+            // (latifundia, conquest.js) — the same sack that supplies the CAPTIVES above
+            // supplies the CASH that will demand them, so the whole estate complex rides
+            // military dominance through two channels the slave market then clears.
+            if (T.LATIFUNDIA) ag._conqFlow = (ag._conqFlow || 0) + plunder;
           }
           // Sack: a stormed CAPITAL loses its administrative apparatus (the dark-age trigger).
           if (T.KNOW_DECAY > 0 && dS.knowledge) {

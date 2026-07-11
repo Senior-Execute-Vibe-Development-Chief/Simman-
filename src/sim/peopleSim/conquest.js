@@ -199,6 +199,10 @@ const FAILED_REVOLT_POP    = 0.88;
 const FAILED_REVOLT_WEALTH = 0.55;
 const FAILED_REVOLT_ARMY   = 0.35;
 const SPOILS_DECAY = 0.85;   // war-weariness relief (banked on conquest in armies.js) fades per pass
+const ESTATE_DRIFT = 0.12;   // consolidation clock: elites with cash buy land FAST (~63% of the way per 8 polity passes ≈ 3 centuries — the Punic-Wars→Gracchi rise)
+const ESTATE_BREAK = 0.02;   // fragmentation clock: breaking estates means coercing the elite itself, so tenure unwinds on the slow institutional clock (serfdom's) — the ratchet the Gracchi died on
+const CONQ_DECAY = 0.92;     // a conquest fortune is spent down over ~2 generations (half-life ~10 passes) — real wealth seeking assets, not the 4-pass morale pulse _spoils models
+const CONQ_REV_FLOOR = 30;   // treasury income below which "share of state income" is noise (a petty band's one raid is not a fiscal-military state)
 
 // The fiscal record IS the persistent polity entity (entities.js): treasury,
 // revenue/spend, momentum and tax state all live on it and survive capital
@@ -1844,7 +1848,12 @@ export function updatePolities(world) {
         // A mature, solvent dependency pays tribute home; a poor one neither
         // receives nor pays — tribute waits until its treasury can bear it.
         const trib = TRIBUTE_FRAC * Math.max(0, dpol.treasury);
-        if (trib > 0) { dpol.treasury -= trib; opol.treasury += trib; recordOut(dc.capital, OUT_TRIBUTE, trib); recordIn(oc.capital, IN_TRIBUTE, trib); }
+        if (trib > 0) {
+          dpol.treasury -= trib; opol.treasury += trib; recordOut(dc.capital, OUT_TRIBUTE, trib); recordIn(oc.capital, IN_TRIBUTE, trib);
+          // Tribute is EXTRACTION income — coin taken by dominance, not raised at home.
+          // It banks toward the overlord elite's land-buying (latifundia, updatePolities).
+          if (T.LATIFUNDIA) opol._conqFlow = (opol._conqFlow || 0) + trib;
+        }
       }
       // TECH TRANSFER: the metropole sends engineers, books and administrators — but only as fast
       // as it can REACH the colony, so a colony just within range keeps pace while a remote one
@@ -2195,6 +2204,21 @@ export function updatePolities(world) {
     gov._spoils = (gov._spoils || 0) * SPOILS_DECAY;
     c._taxRate = gov._taxRate;
 
+    // ── LATIFUNDIA driver: the realm's EXTRACTION income share ──────────────
+    // _conqFlow banks coin taken by force — sack plunder (armies.js) and tribute
+    // received (dependency stream above) — and fades on the spoils clock, so it
+    // reads "recent conquest wealth", not an eternal ledger. Rescaled to a per-pass
+    // rate, its share against domestic revenue measures WHAT KIND of state this is:
+    // a conquest state (Rome mid-expansion) near 1, a tax state at peace near 0.
+    // That share — not any era or event — is what sends elite wealth into land below.
+    let conqShare = 0;
+    if (T.LATIFUNDIA) {
+      gov._conqFlow = (gov._conqFlow || 0) * CONQ_DECAY;
+      const ext = (1 - CONQ_DECAY) * gov._conqFlow;   // decayed bank → smoothed per-pass extraction income
+      conqShare = ext / (ext + Math.max(0, gov._lastRevenue || 0) + CONQ_REV_FLOOR);
+      c._conqShare = conqShare;   // info panel / probes
+    }
+
     // ── Popular unrest: hardship piles up; peace + plenty + light taxes cool it.
     // At the top it boils over into a rebellion (rebel(), fired after secession).
     const taxOver = Math.max(0, (gov._taxRate - T.TAX_BASE) / (T.TAX_MAX - T.TAX_BASE));
@@ -2224,9 +2248,26 @@ export function updatePolities(world) {
       // PLAGUE FORK: when a plague makes labour scarce, a strong-coercion realm binds the
       // survivors TIGHTER (the second serfdom — Eastern Europe) while a commercial/weak one
       // lets them bargain FREE (the West) — same shock, opposite institutions, never timed.
+      const exportPull = s._exportFoodFrac || 0;   // a grain producer — the commercial-farm pull both land-tenure institutions key on
+      // LATIFUNDIA (conquest estates): the elite's extraction income (conqShare, above)
+      // goes into LAND wherever the land's produce finds a market (exportPull) — the
+      // countryside consolidates into estates whose gang-labour demand the slave market
+      // clears (settlement.js updateCoercedLabour). It grows and fragments on the slow
+      // tenure clock, so when conquest stops the flow — and, generations later, the
+      // estates — recede, while the captive supply dries much faster: the surviving
+      // estates turn to bound tenants (the serfdom below) — the colonate, emergent.
+      // Which coerced institution a grain belt gets is the DRIVER's doing: conquest
+      // cash → slave estates (here); a strong lord where peasants can't exit → serfdom.
+      if (T.LATIFUNDIA) {
+        const estTarget = Math.min(1, T.ESTATE_FORM * conqShare * exportPull);
+        const cur = s._estates || 0;
+        // The tenure RATCHET: buying land is fast (cash meets a market); breaking
+        // estates up means coercing the elite itself, so concentration accumulates
+        // war by war and only unwinds on the slow institutional clock.
+        s._estates = Math.max(0, Math.min(1, cur + (estTarget > cur ? ESTATE_DRIFT : ESTATE_BREAK) * (estTarget - cur)));
+      }
       let gSerf = 0;
       if (T.SERFDOM) {
-        const exportPull = s._exportFoodFrac || 0;                          // a grain producer
         const coercion = Math.min(1, (c._dominance || 1) / 4);              // a strong realm can bind
         // EXIT: how easily peasants escape — to nearby towns/commerce. Weighted toward
         // LOCAL connectivity (trade reach) so it varies place-to-place, giving a spatial fork.

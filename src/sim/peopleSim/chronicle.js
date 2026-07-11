@@ -15,7 +15,7 @@ import { IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./m
 // Per-settlement "this city became X" milestone flags (s._chronFlags bitmask), so each
 // distinctive economy a city grows into is announced once.
 const CH_INDUSTRY = 1, CH_HOLY = 2, CH_ENTREPOT = 4, CH_FINANCIER = 8,
-      CH_SLAVER = 16, CH_PLANTATION = 32, CH_MINE = 64;
+      CH_SLAVER = 16, CH_PLANTATION = 32, CH_MINE = 64, CH_LATIFUNDIA = 128;
 
 /** A realm's chronicle as render-ready lines (oldest first). */
 export function getChronicle(world, countryId, limit = 0) {
@@ -92,6 +92,7 @@ export function chronicleTick(world) {
       };
       if ((s._specStr || 0) > 0.55 && s._specKey) mark(CH_INDUSTRY, "industry.specialty", { craft: s._specKey });
       if ((s._cashFrac || 0) > 0.25 && (s._unfree || 0) > 150) mark(CH_PLANTATION, "city.plantation", {});
+      if ((s._estates || 0) > 0.5 && (s._unfree || 0) > 150) mark(CH_LATIFUNDIA, "city.latifundia", {});
       if (a) {
         if ((a[IN_PILGRIM]      || 0) > 60)  mark(CH_HOLY,      "city.holy", {});
         if ((a[IN_CARRY]        || 0) > 40)  mark(CH_ENTREPOT,  "city.entrepot", {});

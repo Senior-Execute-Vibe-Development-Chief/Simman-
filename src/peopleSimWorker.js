@@ -293,7 +293,7 @@ function packSelected(s) {
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
     _specKey: s._specKey, _specStr: s._specStr,                          // agglomeration: locked-in craft specialty
     _unfree: s._unfree, _captives: s._captives, _unfreeRatio: s._unfreeRatio,   // coerced labour
-    _cashFrac: s._cashFrac, _cashSuit: s._cashSuit, _cashOut: s._cashOut, _serf: s._serf,
+    _cashFrac: s._cashFrac, _cashSuit: s._cashSuit, _cashOut: s._cashOut, _serf: s._serf, _estates: s._estates,
     foundedStep: s.foundedStep, parentSettlementId: s.parentSettlementId,
     _seaReachSize: s._seaReach ? s._seaReach.size : 0,
     _tradeProfile: getTradeProfile(s, world),

@@ -26,6 +26,56 @@ export const SLAVE_INTERVAL = 50;     // ticks between slave-trade passes (slow 
 const RAID_RANGE     = 28;            // tiles a slaver's raiding parties reach
 const RAID_DOMINANCE = 2.0;           // how much stronger a raider must be than its victim
 const SLAVE_PRICE    = 8;             // coin per captive on the market (calibration)
+const PULL_CAP       = 3;             // raiding capacity is bounded by military reach/logistics, however hungry the market — intensity saturates at 1+PULL_CAP×SLAVE_PULL
+
+// A settlement's slave-market: its trade-network component (SLAVE_PEOPLE), else the
+// single global pool — the same key phase B clears against.
+function marketKeyOf(world, s) {
+  if (!T.SLAVE_PEOPLE) return 0;
+  const comps = world._networkComponents;
+  return (comps && comps.has(s.id)) ? comps.get(s.id) : s.id;
+}
+
+// ── The market signal (T.SLAVE_PULL): ONE scarcity index drives price & effort ──
+// Per trade component, r = cash-backed demand / captive stocks. From it:
+//   PRICE  ×(1 + PULL×min(cap, r−1))  when starved; ×(1 − PULL×min(0.5, 1−r)) in glut
+//          — a starved market pays dear (rationing its own demand: the rich estate
+//          outbids the marginal buyer), a post-conquest glut dumps prices (Aemilius
+//          Paulus crashing the Delos market).
+//   EFFORT raiding intensity and (√, armies.js) wartime enslavement ride the same
+//          multiple — the razzia follows the price (Dahomey raided BECAUSE the coast
+//          paid; a glutted market isn't worth the risk of a raid).
+// The feedback closes itself: scarcity → price↑ → effective demand rationed AND
+// supply effort↑ → stocks recover → the signal dies. Derived per step from persisted
+// state (posted demand, wealth, captive stocks) — no save/load wiring needed.
+// SLAVE_PULL=0 → multiplier ≡ 1: the legacy fixed-price, fixed-rate trade, byte-identical.
+function buildScarcity(world) {
+  const want = new Map(), stock = new Map();
+  for (const s of world.settlements) {
+    const c = s._captives || 0;
+    if (c > 0.5) { const k = marketKeyOf(world, s); stock.set(k, (stock.get(k) || 0) + c); }
+    if (s.mode !== "settled" || (s._slaveDemand || 0) <= 0.5) continue;
+    const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
+    const eff = Math.min(s._slaveDemand, spare / SLAVE_PRICE);   // demand backed by coin, the only kind a raider gets paid for
+    if (eff > 0.5) { const k = marketKeyOf(world, s); want.set(k, (want.get(k) || 0) + eff); }
+  }
+  const r = new Map();
+  for (const [k, w] of want) r.set(k, w / Math.max(1, stock.get(k) || 0));
+  world._slaveScarcity = r;
+}
+function marketMulOf(world, key) {
+  if (!T.SLAVERY || T.SLAVE_PULL <= 0) return 1;
+  if (world._slaveScarcityStep !== world.step) { buildScarcity(world); world._slaveScarcityStep = world.step; }
+  const r = world._slaveScarcity.get(key);
+  if (r === undefined) return 1;   // no cash demand here — base price, base razzia
+  return 1 + T.SLAVE_PULL * (Math.min(PULL_CAP, Math.max(0, r - 1)) - Math.min(0.5, Math.max(0, 1 - r)));
+}
+// The market multiplier at a settlement's own component (raiders raid FOR their
+// market; the sack-capture site in armies.js reads it too).
+export function slavePull(world, s) {
+  if (!T.SLAVERY || T.SLAVE_PULL <= 0) return 1;
+  return marketMulOf(world, marketKeyOf(world, s));
+}
 
 export function updateSlaveTrade(world) {
   if (!T.SLAVERY) return;
@@ -43,8 +93,10 @@ export function updateSlaveTrade(world) {
         if (v.countryId === r.countryId && r.countryId >= 0) return;   // raid OUTSIDERS, not your own
         if (rPow < settlementPower(v) * RAID_DOMINANCE) return;        // only the clearly weaker
         // per-PASS rate, no ×dt: the pass interval is already G-stretched (index.js
-        // _ivl), so scaling by dt again halved/quartered raiding per unit of history
-        const grab = Math.min((v.people || 0) * T.SLAVE_RAID, (v.people || 0) * 0.5);
+        // _ivl), so scaling by dt again halved/quartered raiding per unit of history.
+        // × slavePull: the raider works for ITS market — the razzia follows the PRICE
+        // (harder when the market is starved, slack when it's glutted; header above).
+        const grab = Math.min((v.people || 0) * T.SLAVE_RAID * slavePull(world, r), (v.people || 0) * 0.5);
         if (grab < 1) return;
         recordCaptives(r, v, grab);                                    // the captives carry who they ARE (SLAVE_PEOPLE)
         v.people -= grab; took += grab;                                // the victim region bleeds
@@ -64,10 +116,7 @@ export function updateSlaveTrade(world) {
   // a tolerable simplification for a labour stat, but once captives became PEOPLE it
   // teleported population between unconnected continents.) Lever off: one global
   // market, exactly the legacy clearing.
-  const comps = world._networkComponents;
-  const marketKey = T.SLAVE_PEOPLE
-    ? (s) => (comps && comps.has(s.id)) ? comps.get(s.id) : s.id
-    : () => 0;
+  const marketKey = (s) => marketKeyOf(world, s);
   const markets = new Map();   // key → { sellers, buyers, supply, demand }
   const marketOf = (key) => { let m = markets.get(key); if (!m) markets.set(key, m = { sellers: [], buyers: [], supply: 0, demand: 0 }); return m; };
   for (const s of setts) {
@@ -81,11 +130,13 @@ export function updateSlaveTrade(world) {
     if (want <= 0.5) continue;
     const key = marketKey(s);
     if (!markets.has(key)) continue;                       // no reachable supply — demand goes unmet
+    const m = markets.get(key);
+    if (m.price === undefined) m.price = SLAVE_PRICE * marketMulOf(world, key);   // this component's scarcity price (see header)
     const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
-    const buy = Math.min(want, spare / SLAVE_PRICE);
-    if (buy > 0.5) { const m = markets.get(key); m.buyers.push([s, buy]); m.demand += buy; }
+    const buy = Math.min(want, spare / m.price);           // a dear market rations its own demand
+    if (buy > 0.5) { m.buyers.push([s, buy]); m.demand += buy; }
   }
-  for (const { sellers, buyers, supply, demand } of markets.values()) {
+  for (const { sellers, buyers, supply, demand, price = SLAVE_PRICE } of markets.values()) {
     if (supply <= 0.5 || demand <= 0.5) continue;
     const traded = Math.min(supply, demand);
     // Pooled ORIGIN of this market's human cargo (SLAVE_PEOPLE): every seller ships in
@@ -110,7 +161,7 @@ export function updateSlaveTrade(world) {
     for (const [s, buy] of buyers) {
       const got = traded * (buy / demand);
       if (got <= 0) continue;
-      s.wealth = (s.wealth || 0) - got * SLAVE_PRICE; recordOut(s, OUT_SLAVE, got * SLAVE_PRICE);
+      s.wealth = (s.wealth || 0) - got * price; recordOut(s, OUT_SLAVE, got * price);
       s._unfree = (s._unfree || 0) + got;
       arriveCaptives(world, s, got, poolCul, poolAnc);
     }
@@ -121,7 +172,7 @@ export function updateSlaveTrade(world) {
       if (shipped <= 0) continue;
       s._captives = Math.max(0, stock - shipped);
       drainCaptivePools(s, shipped, stock);
-      s.wealth = (s.wealth || 0) + shipped * SLAVE_PRICE; recordIn(s, IN_SLAVE_TRADE, shipped * SLAVE_PRICE);
+      s.wealth = (s.wealth || 0) + shipped * price; recordIn(s, IN_SLAVE_TRADE, shipped * price);
     }
   }
 }

@@ -3730,7 +3730,7 @@ const renderInspect=()=>{
           {/* ── Society & labour: economic archetype, craft specialty, coerced labour ── */}
           {(()=>{
             const a=s._mInRate; let topIdx=-1,topV=0; if(a)for(let i=0;i<a.length;i++)if(a[i]>topV){topV=a[i];topIdx=i;}
-            const unfree=Math.round(s._unfree||0),captives=Math.round(s._captives||0),serf=s._serf||0,cashFrac=s._cashFrac||0;
+            const unfree=Math.round(s._unfree||0),captives=Math.round(s._captives||0),serf=s._serf||0,cashFrac=s._cashFrac||0,estates=s._estates||0;
             let archetype=null;
             if(topIdx===IN_SLAVE_TRADE)archetype="Slaver city — sells captives";
             else if(topIdx===IN_PILGRIM)archetype="Holy city — lives on pilgrims";
@@ -3738,10 +3738,11 @@ const renderInspect=()=>{
             else if(topIdx===IN_FINANCE)archetype="Financier — lends to the crown";
             else if(unfree>200&&cashFrac>0.2)archetype="Plantation economy";
             else if(unfree>200&&topIdx===IN_MINING)archetype="Slave-worked mines";
+            else if(unfree>200&&estates>0.4)archetype="Latifundia — slave-gang estates";
             else if(topIdx===IN_MINING)archetype="Mining town";
             else if(serf>0.3)archetype="Serf estate";
             const spec=(s._specKey&&(s._specStr||0)>0.1)?[s._specKey,Math.round((s._specStr||0)*100)]:null;
-            if(!archetype&&!spec&&unfree<50&&captives<50&&serf<0.1)return null;
+            if(!archetype&&!spec&&unfree<50&&captives<50&&serf<0.1&&estates<0.15)return null;
             return(
               <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid var(--au-line,#0002)"}}>
                 <div className="au-fade" style={{fontSize:9}}>Society & labour</div>
@@ -3750,6 +3751,7 @@ const renderInspect=()=>{
                 {unfree>50&&<div style={{fontSize:10,marginTop:1,color:"#b06a4a"}}>Unfree labour: {unfree.toLocaleString()} <span className="au-fade">({Math.round((s._unfreeRatio||0)*100)}% of the population)</span></div>}
                 {cashFrac>0.1&&<div style={{fontSize:10,marginTop:1}}>Cash crops: {Math.round(cashFrac*100)}% of land <span className="au-fade">(grows for export, imports food)</span></div>}
                 {captives>50&&<div style={{fontSize:10,marginTop:1,color:"#b06a4a"}}>Captives held: {captives.toLocaleString()} <span className="au-fade">for the slave market</span></div>}
+                {estates>0.15&&<div style={{fontSize:10,marginTop:1}}>Latifundia: {Math.round(estates*100)}% <span className="au-fade">of the land in elite estates</span></div>}
                 {serf>0.1&&<div style={{fontSize:10,marginTop:1}}>Serfdom: {Math.round(serf*100)}% <span className="au-fade">bound peasantry</span></div>}
               </div>
             );

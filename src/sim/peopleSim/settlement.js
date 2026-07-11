@@ -17,7 +17,7 @@ import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
-import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
+import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
@@ -770,6 +770,7 @@ const CASHCROP_LAND   = 0.85;   // fraction of arable a fully-cash-cropped settl
 const ALLUVIUM_COAST  = 0.5;    // coastal lowland gets this share of a river floodplain's silt-fertility lift (delta/plain/polder farming)
 const FISH_LAND_REF   = 8.0;    // land-food-per-tile above which farming is rich enough that fish stops mattering (the cradles sit well above)
 const SLAVE_MINE_PULL = 0.6;    // mining's coerced-labour demand weight
+const ESTATE_PULL     = 1.0;    // latifundia gang-labour demand weight (a fully-consolidated estate belt pulls like full cash-crop suitability)
 
 // Evolve a settlement's coerced-labour stock, its cash-crop land allocation, and its
 // plantation output. Called once per tick from updateSettlement (after updateWealth, so
@@ -778,7 +779,32 @@ export function updateCoercedLabour(world, s) {
   if (!T.SLAVERY || s.mode !== "settled") { if (s._unfree) { s._unfree = 0; s._cashFrac = 0; } return; }
   const cs = cashSuit(s); s._cashSuit = cs;
   const hasMine = (s._minableTiles && s._minableTiles.length) ? 1 : 0;
-  const labourDemand = cs + SLAVE_MINE_PULL * hasMine;          // coerced labour this site could USE
+  // Latifundia (conquest.js): countryside consolidated into elite estates demands GANG
+  // labour — the classical demand engine, needing no cash-crop climate and no mine (Rome's
+  // temperate Italies). A stateless settlement's estates lose their grip — the lord class
+  // was the state's — receding on the same tenure clock they consolidated on.
+  let est = 0;
+  if (T.LATIFUNDIA && (s._estates || 0) > 0) {
+    if (s.countryId < 0) s._estates = Math.max(0, s._estates - 0.0008 * (world._dt || 1));
+    est = s._estates;
+  }
+  // The plantation is an EXPORT business, and it CONCENTRATES:
+  //  • CONVEX suitability (cs²/CS_MAX): fixed costs + comparative advantage meant
+  //    marginal cash land was never planted at all while prime land got everything —
+  //    the plantation economy lives in its best belts, not smeared over every warm
+  //    village (measured: linear cs put a diffuse ~20% coerced across the whole
+  //    subtropics once supply turned elastic).
+  //  • The MARKET gate: gang labour is only worth buying in proportion to how well
+  //    this place's luxuries actually SELL (smoothed realized income vs offered) —
+  //    a poor world buys no sugar, so the tropics wait for RICH BUYERS (the Atlantic
+  //    timing, via wealth, never a date), with a small speculative floor so the
+  //    first planters can trial prime cash ground.
+  // Before the price-responsive market (SLAVE_PULL) both were moot — chronic supply
+  // starvation hid them — so they ride that lever for byte-identical off.
+  const csDem = T.SLAVE_PULL > 0
+    ? (cs * cs / 1.5) * (0.15 + 0.85 * Math.min(1, ((s._mInRate && s._mInRate[IN_LUXURY]) || 0) / Math.max(0.5, s._luxSupply || 0)))
+    : cs;
+  const labourDemand = csDem + SLAVE_MINE_PULL * hasMine + ESTATE_PULL * est;   // coerced labour this site could USE
   // Food security: can it feed extra mouths AND afford to stop growing its own food?
   // surplus on hand + a trade link to import grain (a plantation must import food).
   const surplus = Math.max(0, (s._foodSupply || 0) - (s._foodDemand || 0));
@@ -812,7 +838,8 @@ export function updateCoercedLabour(world, s) {
   // Attrition — the death sink: mines & plantations are lethal, so the unfree must be
   // resupplied (this is what sustains the slave trade); mild for domestic/mixed work.
   // Under SLAVE_PEOPLE those deaths leave the population ledger too — they were people.
-  const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine);
+  // (estate gang labour is brutal — the chained ergastulum — though less lethal than sugar or Potosí)
+  const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine + 0.4 * est);
   if (T.SLAVE_PEOPLE) {
     const dead = u * T.SLAVE_DEATH * harsh * (world._dt || 1);
     if (dead > 0) { u -= dead; s.people = Math.max(1, (s.people || 0) - dead); }
