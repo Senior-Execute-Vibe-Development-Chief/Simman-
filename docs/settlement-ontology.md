@@ -1,8 +1,8 @@
 # Settlement ontology — what a settlement may and may not be
 
-Status: **rule adopted; violation 1 fixed (T.POW_FIELD, default on); violation
-2 designed in full below (T.LOYAL_FIELD + T.GRIEV_LEDGER) and being built;
-3–4 specified, not yet built.** Companion to docs/field-polity-spec.md,
+Status: **rule adopted; violations 1–2 fixed (T.POW_FIELD; T.LOYAL_FIELD +
+T.GRIEV_LEDGER — all default on); 3–4 specified, not yet built.** Companion
+to docs/field-polity-spec.md,
 which carried the same programme for territory.
 
 ## The rule
@@ -45,7 +45,7 @@ Seat-level power uses stay entity-based on purpose: capital selection,
 provincial governor weight (`provPower`), per-settlement coercion, casualty
 spread, fragmentation seat ranking — those measure the SEAT or the PERSON.
 
-### V2 — the populace's political feelings live on entities (IN PROGRESS)
+### V2 — the populace's political feelings live on entities ✅ FIXED
 
 `s._homeland` / `_homelandFell` and the *popular* half of loyalty describe
 the PEOPLE OF A REGION, not a government office. The seat keeps what is
@@ -74,14 +74,16 @@ have accepted their ruler.
   `_allegiance` Float32 per tile — how far the people of this ground have
   accepted their CURRENT ruler. It relaxes toward the administrative
   condition its county lives under (the governing settlement's loyalty
-  stock) at a HABITUATION rate that is identity-coupled: base ~1/3 of the
-  administrative recovery pace (trust of the heart builds over generations,
-  τ ≈ 400–600 dyn-years covered), scaled down by `absorbResistance` (a
-  wholly foreign ruler is accepted ~5× slower) and by the pair ledger
-  (grievance freezes habituation; amity speeds it). Detachment (target
-  below current) runs faster than attachment. On transfer the people stay
-  put: attachment CARRIES a kin fraction (nothing resets to a constant) —
-  and coming home restores it. ASSIMILATION IS EMERGENT: when attachment
+  stock) at a HABITUATION rate that is identity-coupled: base τ = 500
+  dyn-years (trust of the heart builds over generations), scaled down by
+  `absorbResistance` (a wholly foreign ruler is accepted ~×0.15 as fast)
+  and by the pair ledger (grievance freezes habituation; alliance speeds
+  it). Detachment (target below current) runs faster than attachment
+  (τ = 300). On transfer, FORCE DETACHES, POLITICS RE-POINTS: only ground
+  taken in war (a fresh `_tileCapturedAt`) suffers the ×0.25 attachment
+  carry-down; a peaceful transfer — secession (the people's own act),
+  absorption, restoration — keeps its attachment and habituation simply
+  re-targets. Coming home restores it. ASSIMILATION IS EMERGENT: when attachment
   completes (≥0.9), the ground forgets its old flag — replacing the flat
   HOMELAND_MEMORY timer under the lever. (At the median — covered, median
   identity, no grievance — completion lands in the same ~1000–1500-dyn-year
@@ -152,7 +154,8 @@ armies.js:329). Do LAST; mostly reads, falls out once V1–V3 exist.
 
 ## Order and discipline
 
-V1 ✅ → (W6-D revival ✅, consumed V1) → **V2 → V3 as a pair** → V4 cleanup.
+V1 ✅ → (W6-D revival ✅, consumed V1) → V2 ✅ → **V3 next** (consumes V2's
+geometry: the contiguous low-`_allegiance` patch) → V4 cleanup.
 
 Every arc: lever default-on only after gates hold; overlay/median-anchor
 where a distribution shifts (the CAP-grounding pattern, twice proven);

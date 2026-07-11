@@ -5,12 +5,20 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): 1c2e5537/a5c52317 (hegemonic stagnation —
+// Current baseline (2500 steps): 83ccc922/574e8595 (ontology V2 — LOYAL_FIELD
+// + GRIEV_LEDGER defaults: tile homeland memory, the attachment continuum,
+// the nation-pair grievance ledger; hashes the field + ledger + scan clock,
+// so the stream is re-keyed). LOYAL_FIELD=0,GRIEV_LEDGER=0 gives
+// bc3c6d97/e31009f7 — proven ≡ the hegemonic-stagnation world 86b86bd
+// (1c2e5537/a5c52317) in TRAJECTORY by full-serialize sha256 diff
+// (febc68db/82cf55df both builds, modulo the registered-but-empty natGriev
+// table key).
+// Prior baseline (2500 steps): 1c2e5537/a5c52317 (hegemonic stagnation —
 // PEER_COMPETE + HEGEMONY_STAG 0.75 defaults; also hashes _hegF/_peerPeak, so
 // the stream is re-keyed). PEER_COMPETE=0,HEGEMONY_STAG=0 recovers the 3000 BC
 // world d206d81 in TRAJECTORY (proven by state-digest diff — the hash pair
 // itself re-keyed with the new hashed fields).
-// Prior baseline (2500 steps): 17836a8b/c446da26 (the 3000 BC start — the
+// Older baseline (2500 steps): 17836a8b/c446da26 (the 3000 BC start — the
 // eve-of-states genesis seed + SCI_COMPOUND_FLOOR 0.7 antiquity rate). A GENESIS
 // change re-keys every trajectory from step 0, so all prior lever-off recovery
 // pairs below are ARCHIVED history (they described the stone-age-seed world);
@@ -56,7 +64,7 @@ const STEPS = parseInt(process.argv[2] || "2500", 10);
 const SEEDS = [8817, 31337];
 const W = 320, H = 160;
 // Env-overridable levers (unset = defaults): CAP_MODEL=0 recovers the fitted-tail baseline.
-for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP"]) if (process.env[k] != null) T[k] = +process.env[k];
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP", "LOYAL_FIELD", "GRIEV_LEDGER"]) if (process.env[k] != null) T[k] = +process.env[k];
 for (const seed of SEEDS) {
   const world = buildSim({ W, H, seed });
   stepPeopleSim(world, STEPS);

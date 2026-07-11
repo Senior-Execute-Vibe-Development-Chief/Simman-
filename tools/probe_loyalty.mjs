@@ -13,8 +13,28 @@
 //   node tools/probe_loyalty.mjs [steps] [W] [H] [seed]
 //   SIM_TUNE="LOYAL_FIELD=0,GRIEV_LEDGER=0" node tools/probe_loyalty.mjs   (the A/B)
 //
-// FINDINGS (480×240, 15000 steps — see git history for the calibration story):
-//   (appended after the calibration runs)
+// FINDINGS (480×240, 15000 steps, seeds 8817/31337/4242 — ON vs OFF):
+//   • The ground remembers ~2× the roster: occupied homelands 28/33/20 vs
+//     13/8/14 — memory survives the death and founding of settlements, the
+//     pool restoration draws from. Remembered tiles 267-594 per world;
+//     restoration fired where the roster path never did (31337: 1 vs 0).
+//   • The hysteresis geometry V3 needs exists: fresh-conquest counties read
+//     0.43-0.56 attachment vs 0.80-0.87 on old ground, every seed.
+//   • The ledger differentiates (G 0.04-0.68 across live war dyads) AFTER two
+//     measured corrections baked into loyaltyField.js: the read reference must
+//     be GOVERNED people (popField units, like the capture feed — a census-
+//     unit reference pinned every warring pair at G≈1.0 and the old-wounds
+//     revolt-ravage cycle consolidated the map 18→13 countries), and the
+//     saturation scale is one WHOLE median realm (G=0.5), not a quarter.
+//   • Cadence stays in-family, seed-noise scale, no systematic drift:
+//     countries 21/16/18 (off 18/15/13), secessions 5/6/10 (6/3/8), capital
+//     storms 27/54/34 (32/34/37), fallen-median 1360/725/875 dyn-years
+//     (1200/893/1441). "Old wounds" appears as a live unrest cause without
+//     dominating (famine/taxes still lead).
+//   • Transfer semantics matter: an early cut punished EVERY owner change
+//     with the ×0.25 attachment carry — a seceded province read 2.5% attached
+//     to its own revolution. Force detaches (war-fresh _tileCapturedAt),
+//     politics re-points (habituation follows the new ruler's condition).
 
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
