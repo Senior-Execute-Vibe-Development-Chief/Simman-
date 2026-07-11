@@ -42,8 +42,12 @@ const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 // ── rendering ────────────────────────────────────────────────────────────
 function chips(l) {
   const p = l.prof, inv = displayInv(l);
+  // count what the READER sees: unique rendered spellings, not feature
+  // bundles (ð and þ both write "th", so 23 bundles can be 21 letters)
+  const nC = new Set(inv.cons.map(b => romanizeC(b, p.romTaste, p.rom))).size;
+  const nV = new Set(inv.vows.map(b => romanizeV(b, p.rom))).size;
   const out = [MORPH[p.morph], SYL[p.sylC], TONE[p.tone], HARM[p.harmony],
-    `${inv.cons.length} consonants`, `${inv.vows.length} vowels`,
+    `${nC} consonants`, `${nV} vowels`,
     p.nasalCoda ? "nasal codas only" : null, p.gendered ? "gendered names" : null,
     p.patro !== "none" ? `patronymic (${p.patro === "suf" ? "suffix" : "prefix"})` : null,
     l.rules.length ? `${l.rules.length} sound changes` : "pristine",

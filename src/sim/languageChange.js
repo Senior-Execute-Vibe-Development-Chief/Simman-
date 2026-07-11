@@ -107,8 +107,25 @@ export function applyRule(rule, w) {
   return w;
 }
 
+/** Sound change creates wreckage (final-vowel loss can mint a -gn coda no
+ *  syllabary licenses); speakers repair it. Legalize after every replay:
+ *  coda clusters must fall strictly in sonority, gutturals don't cluster,
+ *  onsets cap at 3 / codas at 2. */
+export function legalizeWord(w) {
+  for (const s of w.syls) {
+    if (s.on.length > 3) s.on = s.on.slice(-3);
+    if (s.co.length > 2) s.co = s.co.slice(0, 2);
+    while (s.co.length >= 2) {
+      const [a, b] = s.co.slice(-2);
+      if (SONORITY[a.m] > SONORITY[b.m] && a.p < 6 && b.p < 6) break;
+      s.co.splice(s.co.length - 2, 1);           // drop the offender (the silent-g path)
+    }
+  }
+  return w;
+}
+
 /** Replay a rule log over a word (mutates and returns it). */
 export function applyRules(rules, w) {
   for (const r of rules) applyRule(r, w);
-  return w;
+  return legalizeWord(w);
 }

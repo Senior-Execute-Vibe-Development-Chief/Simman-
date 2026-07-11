@@ -442,9 +442,9 @@ export function renderWord(word, prof) {
       .replace(/(^|[^aeiou])([aeiou])k$/, "$1$2ck")
       .replace(/(^|[^aeiou])([aeiou])f$/, "$1$2ff")
       .replace(/([^aeiou][aeiou])ch$/, "$1tch");
-    // final short u: -oo exists in English but as a RARITY — spread the
-    // respelling across the real conventions (blue, few, go, too)
-    if (/u$/.test(out)) out = out.slice(0, -1) + ["ue", "ew", "o", "oo"][hash32(out, "u") % 4];
+    // final short u respells as blue/few/go/how — NEVER -oo: a hydronym
+    // root landing on "boo" poisons every river name the map ever makes
+    if (/u$/.test(out)) out = out.slice(0, -1) + ["ue", "ew", "o", "ow"][hash32(out, "u") % 4];
     if (/[^aeiouwy][aeiou][tdkmnprslgb]$/.test(out) && hash32(out, "sil") % 4 === 0) out += "e";
   }
   return out;

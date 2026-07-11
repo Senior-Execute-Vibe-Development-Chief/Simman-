@@ -278,14 +278,19 @@ function sufsOf(lang) {
   const vetted = (s) => lang.prof.ortho !== "en" || (EN_SUF.test(s) && /[bdfgklmnprstzy]$/i.test(s));
   const reduce = (cid) => {
     const w = internalOf(lang, cid);
+    let last = "an";
     for (let k = 0; k < 4; k++) {
       const s = k === 1 ? w.syls[0] : w.syls[w.syls.length - 1];
       const co = s.co.length ? s.co.slice(0, 1) : (k >= 2 ? [{ p: 1, m: 1, l: 1, s: 0 }] : []);   // borrow an -n if the root offers no coda
       const r = { syls: [{ on: s.on.slice(0, 1), nu: s.nu.slice(0, 1), co }] };
-      const out = renderWord(r, lang.prof);
+      let out = renderWord(r, lang.prof);
+      // a suffix is not a standalone word: strip the silent-e clothing the
+      // renderer may have dressed it in before judging it (-lune → -lun)
+      if (lang.prof.ortho === "en" && !vetted(out) && vetted(out.replace(/e$/, ""))) out = out.replace(/e$/, "");
       if (vetted(out)) return out;
+      last = out;
     }
-    return "n";                                                  // never expected
+    return last;
   };
   const femV = (() => { const v = c.inv.vows.find(v => v.h === 2) || c.inv.vows[0]; return renderWord({ syls: [{ on: [], nu: [v], co: [] }] }, lang.prof); })();
   c.sufs = {
@@ -311,10 +316,12 @@ const finishName = (w, prof) => {
   if (prof.ortho !== "en") return w;
   return w
     .replace(/([aeiou])([aeiou])[aeiou]+/g, "$1$2")
-    .replace(/u$/i, () => ["ue", "ew", "o", "oo"][hash32(w, "u") % 4])
+    .replace(/u$/i, () => ["ue", "ew", "o", "ow"][hash32(w, "u") % 4])
     .replace(/oo$/i, () => ["ow", "ew", "o"][hash32(w, "oo") % 3])
     .replace(/ee$/i, () => ["ey", "y"][hash32(w, "ee") % 2])
-    .replace(/([^yi])i$/i, "$1y");
+    .replace(/([^yi])i$/i, "$1y")
+    .replace(/([bdgkpt])([mn]y?)$/i, "$2")        // suffix-seam repair: -bmy → -my
+    .replace(/([bdgkmnprt])\1$/i, "$1");          // no doubled finals except ll/ss/ff (Klusinn → Klusin)
 };
 
 // ── name erosion ──────────────────────────────────────────────────────────
