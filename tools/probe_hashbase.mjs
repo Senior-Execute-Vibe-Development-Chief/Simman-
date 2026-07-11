@@ -5,7 +5,13 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): 6add39d2/edc95670 (regional development —
+// Current baseline (2500 steps): 3d0683ae/8dfe387d (one population slice A —
+// FIELD_DEMOG default: demographic events mirror onto the popField; also
+// hashes popField itself (R1 hygiene: it was persisted-but-unhashed), so the
+// stream is re-keyed). FIELD_DEMOG=0 recovers the DEV_FIELD world 34a5023
+// (6add39d2/edc95670) in TRAJECTORY — proven byte-exact by full-serialize
+// sha256 diff.
+// Prior baseline (2500 steps): 6add39d2/edc95670 (regional development —
 // DEV_FIELD default: popField capacity reads the LOCAL technique via the
 // Neolithic wave of advance + the pastoral rangeland term; hashes devField +
 // the wave clock, so the stream is re-keyed). DEV_FIELD=0 recovers the
@@ -70,7 +76,7 @@ const STEPS = parseInt(process.argv[2] || "2500", 10);
 const SEEDS = [8817, 31337];
 const W = 320, H = 160;
 // Env-overridable levers (unset = defaults): CAP_MODEL=0 recovers the fitted-tail baseline.
-for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP", "LOYAL_FIELD", "GRIEV_LEDGER", "DEV_FIELD"]) if (process.env[k] != null) T[k] = +process.env[k];
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP", "LOYAL_FIELD", "GRIEV_LEDGER", "DEV_FIELD", "FIELD_DEMOG"]) if (process.env[k] != null) T[k] = +process.env[k];
 for (const seed of SEEDS) {
   const world = buildSim({ W, H, seed });
   stepPeopleSim(world, STEPS);
