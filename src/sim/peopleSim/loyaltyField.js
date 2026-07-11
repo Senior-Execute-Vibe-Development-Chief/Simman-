@@ -101,10 +101,10 @@ export function feedGrievance(world, h, p, harmed) {
 export function grievOf(world, h, p) {
   if (!T.GRIEV_LEDGER || h < 0 || p < 0 || h === p) return 0;
   const m = world._natGriev;
-  if (!m) return 0;
+  if (!m || !(world._refRealmPop > 0)) return 0;   // no era reference yet → no calibrated reading (reseeds next pass)
   const raw = m.get(h + ":" + p);
   if (!(raw > 0)) return 0;
-  const ref = GRIEV_REF_FRAC * Math.max(1, world._refRealmPop || 0);
+  const ref = GRIEV_REF_FRAC * world._refRealmPop;
   return raw / (raw + ref);
 }
 
@@ -202,6 +202,17 @@ export function updateLoyaltyField(world, countries) {
 
   // 1. Owner-diff scan: one choke point for every transfer path (war capture,
   // absorption, secession, restoration, border smoothing, death-to-wilderness).
+  // FORCE DETACHES, POLITICS RE-POINTS: only ground taken in WAR (a fresh
+  // _tileCapturedAt — armies.js stamps it at its one tile-flip) suffers the
+  // attachment carry-down. A peaceful transfer — secession (the people's OWN
+  // act), absorption (a court's defection), restoration, border smoothing —
+  // keeps the ground's attachment as it stands and lets habituation re-target
+  // toward the new ruler's condition; the event's meaning already arrives
+  // through that target (a rebel province's stock is stamped 1, an absorbed
+  // one 0.6, a stormed city 0.35).
+  const capAt = world._tileCapturedAt;
+  const sinceScan = world.step - (world._loyalScanAt ?? -Infinity);
+  world._loyalScanAt = world.step;
   for (let ti = 0; ti < N; ti++) {
     const cur = co[ti], was = prev[ti];
     if (cur === was) continue;
@@ -219,7 +230,7 @@ export function updateLoyaltyField(world, countries) {
       // A foreign hand takes governed ground: keep the ORIGINAL homeland if
       // one is already remembered, else remember who just lost it.
       if (home[ti] < 0) { home[ti] = was; fell[ti] = world.step; }
-      alg[ti] *= ATTACH_CARRY;
+      if (capAt && world.step - capAt[ti] <= sinceScan) alg[ti] *= ATTACH_CARRY;   // taken by FORCE since the last scan
     } else {
       // Annexed from wilderness: frontier folk join at the garrison base —
       // unless this is remembered ground coming home (handled above).

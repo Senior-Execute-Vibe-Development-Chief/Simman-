@@ -217,6 +217,7 @@ export function saveWorld(world, meta = {}) {
     refRevenue: world._refRevenue,    // CAP_MODEL smoothed fiscal peer baseline — carried state since REF_REV_SMOOTH (conquest.js); absent/0 reseeds at the next pass's median
     refCapPowerS: world._refCapPowerS,   // CAP_RELATIVE smoothed median capital power (the capacity ruler's era base); absent/0 reseeds at the next polity pass
     refRealmPop: world._refRealmPop,  // GRIEV_LEDGER smoothed median realm population (what a "people" weighs); absent/0 reseeds at the next polity pass
+    loyalScanAt: world._loyalScanAt,  // LOYAL_FIELD last owner-diff scan step (classifies force vs politics in transfer semantics)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1, event: world._nextEventId ?? (world.events ? world.events.length : 0) },
     tuning,
@@ -325,6 +326,7 @@ export function loadWorld(data, opts = {}) {
   world._refRevenue = data.refRevenue ?? 0;   // smoothed fiscal peer baseline (0 / pre-field saves: reseeds at the next polity pass's median)
   world._refCapPowerS = data.refCapPowerS ?? 0;   // smoothed median capital power (CAP_RELATIVE ruler base; 0 reseeds next pass)
   world._refRealmPop = data.refRealmPop ?? 0;     // smoothed median realm population (GRIEV_LEDGER read normalizer; 0 reseeds next pass)
+  if (data.loyalScanAt != null) world._loyalScanAt = data.loyalScanAt;   // owner-diff scan clock (unset ≡ never scanned)
   world._popTotal = data.popTotal ?? 0;
   world._eraAt = data.eraAt || [0];
   world._nextSettlementId = data.counters.settlement;
@@ -533,6 +535,7 @@ export function hashWorld(world) {
   { const tf = world._tileFellAt; let n = 0, sum = 0; if (tf) for (let i = 0; i < tf.length; i++) if (Number.isFinite(tf[i])) { n++; sum += tf[i]; } mixNum(n); mixNum(sum); }
   if (world._natGriev && world._natGriev.size) { for (const k of [...world._natGriev.keys()].sort()) { mixStr(k); mixNum(world._natGriev.get(k)); } }
   mixNum(world._refRealmPop || -1);   // 0 ≡ unset ("reseed at the next pass") — a load default must hash like the pre-save undefined
+  mixNum(world._loyalScanAt ?? -1);
   mixNum(world._inflRef ?? -1);
   for (const k of WORLD_MAPS) mixNum(world[k] ? world[k].size : 0);   // registered world maps: presence + size (every one now covered, not just a hand-picked few)
   if (world._cBudgetRamp) { const ks = [...world._cBudgetRamp.keys()].sort((a, b) => a - b); for (const k of ks) { mixNum(k); mixNum(world._cBudgetRamp.get(k)); } }   // + cBudgetRamp full key/values
