@@ -108,7 +108,7 @@ console.log("\n── exact inventories ──");
   const e = pinnedEnglish(world, 333);
   const es = samples(e, 120);
   const withTh = es.filter(w => /th|dh/i.test(w));
-  const badE = es.filter(w => /kh|q|x|'/i.test(w));
+  const badE = es.filter(w => /q|x|'/i.test(w));   // (k·h across a syllable seam is fine — "workhouse")
   check("pinned English: th exists in output, charset clean (" + withTh.length + " with th: " + (withTh[0] || "") + ")", withTh.length >= 2 && badE.length === 0);
   say("   english sample: " + es.slice(0, 8).join(", "));
 }

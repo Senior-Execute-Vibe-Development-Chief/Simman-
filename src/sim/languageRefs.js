@@ -24,6 +24,7 @@ export function refProfile(kind, seed) {
     palatalized: false, uvular: false, pharyngeal: false, ejective: false, prenasal: false, dental: false,
     frontRound: true, harmony: "none", morph: "iso", sylMin: 1, sylMax: 2,
     nameOrder: "fg", patro: "none", gendered: false, diph: true, longV: false, nasalV: false,
+    romTaste: 0,
   });
   if (kind === "russian") Object.assign(p, {
     sylC: 3, onDepth: 3, coDepth: 3, sCluster: true, nasalCoda: false,
@@ -31,13 +32,15 @@ export function refProfile(kind, seed) {
     retroflex: false, uvular: false, pharyngeal: false, ejective: false, prenasal: false, dental: false,
     frontRound: false, harmony: "none", morph: "fus", stress: "mobile",
     sylMin: 1, sylMax: 3, patro: "suf", gendered: true, diph: false, longV: false, nasalV: false,
+    romTaste: 0,
   });
   if (kind === "english") Object.assign(p, {
     sylC: 3, onDepth: 3, coDepth: 3, sCluster: true, nasalCoda: false,
     tone: 0, consN: 24, vowelN: 11, palatalized: false, voiced: true, aspirated: false,
     retroflex: false, uvular: false, pharyngeal: false, ejective: false, prenasal: false, dental: true,
     frontRound: false, harmony: "none", morph: "fus", stress: "mobile",
-    sylMin: 1, sylMax: 3, patro: "suf", gendered: false, diph: true, longV: true, nasalV: false,
+    sylMin: 1, sylMax: 3, patro: "suf", gendered: false, diph: true, longV: false, nasalV: false,
+    romTaste: 0, c2LiqOnly: true,                 // pr/tr/fl/sl — never fn-/hn-/thn-
   });
   return p;
 }
@@ -46,14 +49,13 @@ export function refProfile(kind, seed) {
 export function refPin(kind) {
   if (kind === "mandarin") return {
     pin: {
-      cons: [B(0, 0, 0), B(0, 0, 2), B(0, 1, 1), B(0, 2, 0),        // b p m f
-        B(1, 0, 0), B(1, 0, 2), B(1, 1, 1), B(1, 4, 1),             // d t n l
-        B(4, 0, 0), B(4, 0, 2), B(4, 2, 0),                         // g k h
-        B(3, 3, 0), B(3, 3, 2), B(3, 2, 0),                         // j q x
-        B(2, 3, 0), B(2, 3, 2), B(2, 2, 0), B(2, 2, 1),             // zh ch sh r
-        B(1, 3, 0), B(1, 3, 2), B(1, 2, 0),                         // z c s
-        NB(4, 1, 1), B(0, 6, 1), B(3, 6, 1)],                       // ng w y
-      vows: [VB(2, 1, 0), VB(1, 2, 1), VB(1, 2, 0), VB(0, 0, 0), VB(0, 2, 1), VB(0, 0, 1)], // a o e i u ü
+      // ordered common→rare (picks are frequency-skewed toward the front)
+      cons: [B(1, 0, 0), B(3, 6, 1), B(2, 2, 0), B(3, 3, 0), B(4, 2, 0),      // d y sh j h
+        B(1, 4, 1), B(2, 3, 0), B(0, 6, 1), B(4, 0, 0), B(0, 0, 0),           // l zh w g b
+        B(3, 2, 0), B(1, 1, 1), B(0, 1, 1), B(1, 0, 2), B(3, 3, 2),           // x n m t q
+        B(2, 3, 2), B(1, 3, 0), B(1, 2, 0), B(0, 2, 0), B(4, 0, 2),           // ch z s f k
+        B(1, 3, 2), B(0, 0, 2), B(2, 2, 1), NB(4, 1, 1)],                     // c p r ng
+      vows: [VB(2, 1, 0), VB(0, 0, 0), VB(1, 2, 1), VB(0, 2, 1), VB(1, 2, 0), VB(0, 0, 1)], // a i o u e ü
     },
     rom: {
       "c:0,0,0": "b", "c:0,0,2": "p", "c:0,1,1": "m", "c:0,2,0": "f",
@@ -67,20 +69,27 @@ export function refPin(kind) {
     },
   };
   if (kind === "russian") {
-    const hard = [B(0, 0, 0), B(0, 0, 1), B(1, 0, 0), B(1, 0, 1), B(4, 0, 0), B(4, 0, 1),
-      B(0, 2, 0), B(0, 2, 1), B(1, 2, 0), B(1, 2, 1),
-      B(2, 2, 0), B(2, 2, 1), B(4, 2, 0), B(1, 3, 0), B(3, 3, 0),
-      B(0, 1, 1), B(1, 1, 1), B(1, 4, 1), B(1, 5, 1)];
+    // ordered common→rare: t n s r v l k d m p z b g ch sh f zh kh ts
+    const hard = [B(1, 0, 0), B(1, 1, 1), B(1, 2, 0), B(1, 5, 1), B(0, 2, 1),
+      B(1, 4, 1), B(4, 0, 0), B(1, 0, 1), B(0, 1, 1), B(0, 0, 0),
+      B(1, 2, 1), B(0, 0, 1), B(4, 0, 1), B(3, 3, 0), B(2, 2, 0),
+      B(0, 2, 0), B(2, 2, 1), B(4, 2, 0), B(1, 3, 0)];
     const soft = hard.filter(b => b.m <= 2 && b.p <= 1).map(b => ({ ...b, s: 1 }));
     return { pin: { cons: [...hard, ...soft],
-      vows: [VB(0, 0, 0), VB(1, 0, 0), VB(2, 1, 0), VB(1, 2, 1), VB(0, 2, 1)] }, rom: null };
+      vows: [VB(2, 1, 0), VB(1, 2, 1), VB(1, 0, 0), VB(0, 0, 0), VB(0, 2, 1)] }, rom: null };  // a o e i u
   }
   if (kind === "english") return {
-    pin: { cons: [B(0, 0, 0), B(0, 0, 1), B(1, 0, 0), B(1, 0, 1), B(4, 0, 0), B(4, 0, 1),
-      B(0, 2, 0), B(0, 2, 1), B(8, 2, 0), B(8, 2, 1), B(1, 2, 0), B(1, 2, 1),
-      B(2, 2, 0), B(2, 2, 1), B(3, 3, 0), B(3, 3, 1), B(7, 2, 0),
-      B(0, 1, 1), B(1, 1, 1), NB(4, 1, 1), B(1, 4, 1), B(1, 5, 1), B(0, 6, 1), B(3, 6, 1)],
-      vows: null }, rom: null };
+    // ordered common→rare: t n s d l r m k w b p h f v g y ng z ch j sh th dh zh
+    pin: { cons: [B(1, 0, 0), B(1, 1, 1), B(1, 2, 0), B(1, 0, 1), B(1, 4, 1), B(1, 5, 1),
+      B(0, 1, 1), B(4, 0, 0), B(0, 6, 1), B(0, 0, 1), B(0, 0, 0), B(7, 2, 0),
+      B(0, 2, 0), B(0, 2, 1), B(4, 0, 1), B(3, 6, 1), NB(4, 1, 1), B(1, 2, 1),
+      B(3, 3, 0), B(3, 3, 1), B(3, 2, 0), B(8, 2, 0), B(8, 2, 1), B(3, 2, 1)],
+      // 11 vowel QUALITIES, none front-rounded (English has no ü/ö) — the
+      // renderer collapses them onto plain aeiou, as English spelling does
+      vows: [VB(0, 0, 0), VB(0, 1, 0), VB(0, 2, 1), VB(0, 2, 0), VB(1, 0, 0), VB(1, 1, 0),
+        VB(1, 2, 1), VB(1, 2, 0), VB(2, 0, 0), VB(2, 1, 0), VB(2, 2, 1)] },
+    rom: { "c:8,2,1": "th" },                     // ð is SPELLED th, like þ (this/thin)
+  };
   return null;
 }
 

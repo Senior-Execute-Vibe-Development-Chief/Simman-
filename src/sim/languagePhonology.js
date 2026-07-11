@@ -52,6 +52,7 @@ export function rollProfile(seed) {
     onDepth: sylC >= 2 ? (sylC === 3 ? 3 : 2) : 1,
     coDepth: sylC >= 2 ? (sylC === 3 ? 3 : 2) : (sylC === 1 ? 1 : 0),
     sCluster: sylC >= 2 && rng() < 0.7,          // licensed s+stop exception
+    c2LiqOnly: rng() < 0.75,                     // most tongues restrict cluster 2nd member to liquid/glide (pr/kl, not fn/kn)
     voiced: rng() < 0.72, aspirated: rng() < 0.25, ejective: rng() < 0.10,
     prenasal: rng() < 0.10, palatalized: rng() < 0.12, labialized: rng() < 0.07,
     retroflex: rng() < 0.18, uvular: rng() < 0.20, pharyngeal: rng() < 0.07,
@@ -180,6 +181,13 @@ export function romanizeV(v, rom) {
 // A word is { syls: [{on:[C..], nu:[V..], co:[C..]}] } — clusters obey a
 // rising-sonority onset / falling-sonority coda slope with the s+stop
 // exception, which is what puts str- and CV-only in ONE parameter space.
+// Frequency-skewed pick: real phoneme frequencies are Zipf-like (t/n/s
+// everywhere, ʒ once a page), so picks favour the FRONT of the inventory
+// list quadratically — inventories are ordered common→rare (rolled ones by
+// construction: core series first; pinned ones by the real language's
+// frequency).
+const wpick = (rng, arr) => arr[Math.floor(arr.length * rng() * rng())];
+
 export function synthWord(rng, prof, inv, nSyl) {
   const cons = inv.cons, vows = inv.vows;
   const onCons = cons.filter(c => !c.noOn);      // ŋ-style coda-only phonemes
@@ -200,15 +208,16 @@ export function synthWord(rng, prof, inv, nSyl) {
     const depth = 1 + (prof.onDepth >= 2 && rng() < 0.28 ? 1 : 0) + (prof.onDepth >= 3 && rng() < 0.10 ? 1 : 0);
     if (depth >= 3 && prof.sCluster && sib.length) on.push({ ...rng.pick(sib) });
     if (!(i === 0 && rng() < 0.14 && depth === 1)) {              // vowel-initial words allowed
-      const c1 = rng() < 0.75 && obst.length ? rng.pick(obst) : rng.pick(onCons.length ? onCons : cons);
+      const c1 = rng() < 0.75 && obst.length ? wpick(rng, obst) : wpick(rng, onCons.length ? onCons : cons);
       on.push({ ...c1 });                                         // CLONE: rules mutate words, never the inventory
       if (depth >= 2 && i === 0 && son.length && c1.m !== 1 && c1.m <= 3) { // clusters word-initial, obstruent-led (no ml-/mr-)
-        const c2 = rng.pick(son);
+        const c2pool = prof.c2LiqOnly ? son.filter(c => c.m >= 4) : son;
+        const c2 = c2pool.length ? rng.pick(c2pool) : rng.pick(son);
         if (SONORITY[c2.m] > SONORITY[c1.m]) on.push({ ...c2 });
       }
     }
     // nucleus (diphthong chance)
-    const nu = [{ ...rng.pick(nucPool) }];
+    const nu = [{ ...wpick(rng, nucPool) }];
     if (prof.diph && rng() < 0.16) { const v2 = rng.pick(nucPool); if (v2.h !== nu[0].h || v2.b !== nu[0].b) nu.push({ ...v2 }); }
     if (prof.longV && rng() < 0.15) nu[0].lg = 1;
     // coda
@@ -219,7 +228,7 @@ export function synthWord(rng, prof, inv, nSyl) {
     } else if (prof.coDepth > 0) {
       const want = last ? 0.5 : 0.22;
       if (rng() < want) {
-        const c1 = rng.pick(cons.filter(c => c.m !== 6));
+        const c1 = wpick(rng, cons.filter(c => c.m !== 6));
         if (c1) co.push({ ...c1 });
         if (last && prof.coDepth >= 2 && rng() < 0.25 && obst.length) {
           const c2 = rng.pick(obst);
