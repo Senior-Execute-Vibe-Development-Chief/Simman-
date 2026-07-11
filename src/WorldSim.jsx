@@ -2210,19 +2210,29 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
       }
       // ── Population: the people-on-land field (popField, the canonical
-      // demographic substrate) as a log-scaled density heat — dim slate
-      // (empty) → deep blue → teal → amber → white-hot (the great basins). ──
+      // demographic substrate) as a density heat — near-empty subsistence land
+      // FADES into the base grey, the farmed countryside reads blue→teal, and
+      // the dense cores burn amber→white. The packed value is log-scaled (so
+      // the transport byte carries the full dynamic range); the RAW log read
+      // rendered a 20-people scrub tile at ~60% of a 7,000-people valley's
+      // brightness — the whole peopled planet glowed and the lens read as
+      // "livability". A cubic gamma on the log value re-allocates the colour
+      // range to the TOP decades (where the people actually are), so the map
+      // shows concentration relative to the era's densest region — a thin
+      // hunter-gatherer scatter is a faint haze, not a lit country. ──
       if(vmPopulation&&psw._popDens){
         const tw=psw.tw,th=psw.th,N2=Math.min(tw*th,psw._popDens.length);
         const dens=psw._popDens;let lastFs=null;
         const fsCache=new Array(251);
         const colAt=(v)=>{let fs=fsCache[v];if(fs)return fs;
-          const t=v/250;let r,g,b;
-          if(t<0.35){const s2=t/0.35;r=(28+s2*12)|0;g=(30+s2*30)|0;b=(36+s2*104)|0;}          // slate → deep blue
-          else if(t<0.65){const s2=(t-0.35)/0.3;r=(40+s2*10)|0;g=(60+s2*110)|0;b=(140-s2*10)|0;} // blue → teal
-          else if(t<0.88){const s2=(t-0.65)/0.23;r=(50+s2*190)|0;g=(170+s2*35)|0;b=(130-s2*70)|0;} // teal → amber
-          else{const s2=(t-0.88)/0.12;r=240;g=(205+s2*45)|0;b=(60+s2*165)|0;}                    // amber → white-hot
-          fs=`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};
+          const t0=v/250,t=t0*t0*t0;   // gamma 3 on the log-packed value: the top decades own the ramp
+          let r,g,b,a=1;
+          if(t<0.10){a=0.25+t/0.10*0.5;r=34;g=42;b=64;}                                          // subsistence scatter: a faint haze over the base
+          else if(t<0.35){const s2=(t-0.10)/0.25;r=(34+s2*6)|0;g=(42+s2*18)|0;b=(64+s2*76)|0;}   // thin countryside: slate → deep blue
+          else if(t<0.65){const s2=(t-0.35)/0.3;r=(40+s2*10)|0;g=(60+s2*110)|0;b=(140-s2*10)|0;} // farmed land: blue → teal
+          else if(t<0.88){const s2=(t-0.65)/0.23;r=(50+s2*190)|0;g=(170+s2*35)|0;b=(130-s2*70)|0;} // dense belts: teal → amber
+          else{const s2=(t-0.88)/0.12;r=240;g=(205+s2*45)|0;b=(60+s2*165)|0;}                    // the great basins: amber → white-hot
+          fs=a<1?`rgba(${r},${g},${b},${a.toFixed(2)})`:`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};
         for(let ti=0;ti<N2;ti++){
           const v=dens[ti];if(v<=0)continue;   // empty land / water → base
           const y=(ti/tw)|0,x=ti-y*tw;
@@ -4312,17 +4322,19 @@ return(
   <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>People on the land</div>
   <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
     <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:13,height:11,background:"rgb(34,45,72)"}}/>
-      <span style={{width:13,height:11,background:"rgb(45,120,135)"}}/>
-      <span style={{width:13,height:11,background:"rgb(180,190,80)"}}/>
-      <span style={{width:13,height:11,background:"rgb(245,225,140)"}}/>
+      <span style={{width:11,height:11,background:"rgba(34,42,64,0.4)"}}/>
+      <span style={{width:11,height:11,background:"rgb(40,60,140)"}}/>
+      <span style={{width:11,height:11,background:"rgb(50,170,130)"}}/>
+      <span style={{width:11,height:11,background:"rgb(200,190,85)"}}/>
+      <span style={{width:11,height:11,background:"rgb(245,235,160)"}}/>
     </span>
-    <span>empty → dense</span></div>
+    <span>scatter → farmed → dense</span></div>
   <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    The population field — where people actually live (log scale, so the
-    countryside shows alongside the great river basins). This is the sim's
-    canonical demographic substrate: national power, manpower and migration
-    all read it{peopleRef.current&&peopleRef.current._popMax?` · densest tile ≈ ${Math.round(peopleRef.current._popMax).toLocaleString()} people`:""}.
+    LIVE population — every person the sim carries, where they live. The
+    whole world holds a thin subsistence scatter (as it truly did by 3000 BC);
+    that haze stays faint, and the ramp belongs to where people CONCENTRATE —
+    the farmed countryside and the great basins. National power, manpower and
+    migration all read this field{peopleRef.current&&peopleRef.current._popMax?` · densest tile ≈ ${Math.round(peopleRef.current._popMax).toLocaleString()} people`:""}.
   </div>
 </div>}
 
