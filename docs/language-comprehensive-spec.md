@@ -1,7 +1,12 @@
 # Spec — Comprehensive language system: span the world's languages
 
-Status: **designed, not started.** Companion to the current generator in
-`src/sim/language.js` (phonotactic flavor profiles + drift/branch/borrow).
+Status: **L1–L4 BUILT** (see status note at bottom). L5 (writing systems)
+remains designed-not-started. Companion code: `src/sim/language.js` (records,
+lifecycle, name API), `src/sim/languagePhonology.js` (feature bundles,
+typological profiles, sonority syllable grammar, romanization),
+`src/sim/languageLexicon.js` (concept graph + name pools),
+`src/sim/languageChange.js` (rule-based sound change). Acceptance probe:
+`tools/probe_langfit.mjs`.
 
 ## Directive
 
@@ -264,3 +269,58 @@ contact machinery and lands independently after L2.
 4. **Script-shares-ease-diffusion coupling** (L5+): mechanism is plausible
    (shared script genuinely eased knowledge transfer) but touches validated
    history — separate lever, separate 3-seed run, or skip.
+
+---
+
+## Build status (session 7)
+
+**L1–L4 are BUILT in one coherent system**, public API unchanged (callers in
+cultures.js/faiths.js untouched). What shipped vs the plan above:
+
+- **L1/L2 (phonology)**: feature-bundle phonemes; typological-attractor
+  profiles (tone anti-correlates with cluster depth; Caucasus corner;
+  CV(N)-nasal-coda corner); sonority-slope syllable grammar with the s+stop
+  licence; palatalization/labialization; harmony (front-back / rounding);
+  tone + stress as profile dials (tone not yet rendered — no diacritics in
+  v1 rendering); per-language romanization taste bits. Capability bar
+  verified by `tools/probe_langfit.mjs`: Mandarin-shaped (nasal-only codas,
+  no clusters, contour tone dialled), Russian-shaped (onset clusters in
+  60% of words, palatalized series, patronymic dynasties), English-shaped
+  (3-deep onsets, 11-vowel dial, glossed compound toponyms) — all pass,
+  plus a determinism + JSON-roundtrip gate.
+- **L3 (lexicon)**: ~150-concept shared graph with domains, basicness,
+  derivation pairs, and CLICS-style colexification affinities
+  (languageLexicon.js — ids are persisted indices: APPEND ONLY). Virtual
+  dictionary `wordOf(lang, concept)` — loans win over native, colex
+  resolves recursively, derived concepts compound (or RE-VOWEL the root
+  skeleton under the templatic morphotype — maktab-style). Suffix fashions
+  are now MEANINGFUL: city suffixes are worn-down roots for town/fort/house
+  (-burg/-ton machine), realm suffixes the root for LAND (-stan machine),
+  patronymics the root for SON (-son/-ov machine); they shift with sound
+  change because they ARE words. `langPlaceNameEx` returns {name, gloss}
+  with a 20% lost-etymology class (gloss null). Person names draw meaning
+  compounds from a virtue/animal pool; gendered endings per profile.
+- **L4 (sound change)**: 12 rules over feature bundles (lenition,
+  palatalization, final-vowel loss, coda loss, devoice/voice, raising,
+  rhotacism, h-loss, cluster simplification, umlaut, vowel nasalization) —
+  ids persisted in the record's rule log, APPEND ONLY. Drift = append one
+  applicable rule; branch = inherit log + append ~divergence×4; every
+  native word replays the log ⇒ regular correspondences across families
+  (probe demo: root kekhe → daughters kikhi / keshe).
+- **Persistence/determinism**: records carry only plain-JSON state (seed,
+  famSeed, prof, rules, loans, xph); ALL derived state (inventory, colex
+  map, word cache, suffix fashions) lives in a WeakMap keyed by record and
+  invalidated on gen/loans/xph change, so save→load rebuilds byte-identical
+  names by construction. v1 records from old saves upgrade lazily
+  (ensureV2) — stored entity names untouched, new names differ (accepted:
+  open question 2). smoke + full validate green; probe_hashbase
+  re-baselines (names changed for every seed — expected, cosmetic).
+- **Loan strata**: borrowFrom now borrows a PHONEME (into `xph`) and, 80%
+  of the time, a prestige-domain WORD (frozen surface form at borrow time)
+  — the pig/pork machine, wired to the existing culture-contact call site.
+
+**Not built (parked)**: tone/diacritic RENDERING (dial exists, surface is
+plain ASCII); orthographic lag (needs archive-age input — small, do with
+L5); L5 writing systems entirely; UI surfacing of glosses/etymology
+(langPlaceNameEx exists, nothing calls the Ex form yet — natural first UI
+win: settlement inspector shows "Neuborg — 'new fort'").

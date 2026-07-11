@@ -1,325 +1,330 @@
-// ── Languages: procedurally-profiled, evolving tongues ──
+// ── Languages v2: typology-spanning phonology + a virtual lexicon ─────────
 //
-// Each language is generated from a coherent, POLARIZED phonological PROFILE
-// rather than a fixed menu of archetypes — and that's the whole trick. You
-// cannot get London-vs-Beijing distinctiveness by randomising every parameter
-// independently: independent rolls regress to the MEAN (medium clusters, medium
-// vowels, medium length), which is the generic-conlang mush. Distinctiveness
-// comes from pushing each language to a coherent CORNER of the space and
-// letting its features CO-VARY the way real languages do (a CV tongue has few
-// consonants AND no codas AND short syllables, together).
+// The comprehensive system (docs/language-comprehensive-spec.md, L1–L4).
+// A language record persists only its SEEDS and its HISTORY (rule log,
+// loans); everything else — inventory, syllable grammar, romanization, the
+// entire vocabulary — is derived on demand through pure functions and cached
+// in a WeakMap, so save/load round-trips byte-identical names by
+// construction. What the old generator got right survives: polarized
+// coherent profiles (now real typological attractors, languagePhonology.js),
+// descent-not-climate, and the exact public API — callers are untouched.
 //
-// So a language rolls a handful of latent dials — toward POLES, not uniformly:
-//   complexity  simple CV  ↔  onset clusters + coda clusters
-//   hardness    soft (liquids/nasals/glides)  ↔  hard (stops/fricatives/gutturals)
-//   length      short (1–2 syl)  ↔  long (3–4 syl)
-//   vowels      3 / 5 / 7,  diphthongs y/n
-//   + rare independent features: gutturals, aspiration, prenasalisation,
-//     affricates, prefixing, reduplication
-// and the consonant inventory, syllable templates, and recurring place-suffix
-// are BUILT from those dials. No climate input (there is no real climate→
-// structure law; regional resemblance instead comes from common DESCENT —
-// daughter tongues branch from their parent). The language then evolves:
-//   DRIFT  — sound change with the generations (within the tongue's character)
-//   BRANCH — a daughter, drifted by DISTANCE from its parent
-//   BORROW — adopt a neighbour's sound under heavy contact
+// What's new:
+//   · feature-bundle phonemes; sonority syllable grammar (CV-only through
+//     str-/vzgl- class clusters in ONE parameter space); tone/harmony/
+//     morphotype dials (languagePhonology.js)
+//   · sound change as a replayed RULE LOG — sister tongues differ by
+//     regular correspondences, so cognates are real (languageChange.js)
+//   · a shared concept graph with per-family colexification and derivation:
+//     wordOf(lang, concept) is the virtual dictionary; place/person names
+//     are meaningful compounds with recoverable glosses (languageLexicon.js)
+//   · loan strata: contact borrows prestige-domain VOCABULARY, not just
+//     sounds — conquest leaves pig/pork-style layers in the lexicon
 
 import { mkRng, hash32 } from "./peopleSim/rng.js";
+import { rollProfile, buildInventory, synthWord, renderWord, copyWord } from "./languagePhonology.js";
+import { applicableRules, applyRules } from "./languageChange.js";
+import { CONCEPTS, COLEX, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE } from "./languageLexicon.js";
 
-// Phoneme stock by category (onsets/codas hold whole strings; digraphs like
-// "sh","ng","mb" are single sounds; "st","pr" are clusters).
-const C_STOP   = ["p", "t", "k", "b", "d", "g"];
-const C_NAS    = ["m", "n", "ng", "ny"];
-const C_LIQ    = ["l", "r"];
-const C_GLIDE  = ["w", "y"];
-const C_FRIC   = ["s", "sh", "f", "v", "z", "zh", "th", "h", "x"];
-const C_GUTT   = ["q", "kh", "gh", "'"];
-const C_ASP    = ["ph", "th", "kh", "bh", "dh"];
-const C_AFFR   = ["ch", "j", "ts", "dz"];
-const C_PRENAS = ["mb", "nd", "ng", "nk", "mp"];
-const V_CORE   = ["a", "i", "u", "e", "o", "y"];
-const V_DIPH   = ["ai", "au", "ei", "ou", "ia", "ua", "ao", "io", "uo"];
-const CODA_SINGLE = ["n", "m", "ng", "r", "l", "s", "t", "k", "sh", "th"];
-const CODA_CLUSTER = ["nd", "nt", "rk", "rg", "st", "sk", "ld", "lm", "rn", " ts".trim()];
-
-function addN(rng, pool, n, into) {
-  const p = pool.filter(x => !into.includes(x));
-  for (let i = 0; i < n && p.length; i++) into.push(p.splice(rng.int(p.length), 1)[0]);
-}
-// roll toward a pole (0 / 0.5 / 1) with light jitter → languages cluster at
-// the extremes and the middle, not smeared uniformly (the anti-mush move).
-function polar(rng) {
-  return Math.max(0, Math.min(1, rng.int(3) * 0.5 + (rng() - 0.5) * 0.3));
-}
+const h01 = (...a) => hash32(...a) / 4294967296;
+const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
 
 export function languagesOf(world) { return world.languages || (world.languages = new Map()); }
 export function getLanguage(world, id) { return id >= 0 && world.languages ? world.languages.get(id) || null : null; }
 
-// Build a full coherent inventory from a fresh profile. Returns the language
-// record's phonology fields plus a _pool superset that drift draws from so
-// sound change stays in character.
-function buildPhonology(rng) {
-  const complexity = polar(rng);     // CV ↔ clusters
-  const hardness = polar(rng);       // soft ↔ hard
-  const soft = hardness < 0.38;
-  const vowelN = [3, 5, 5, 5, 7][rng.int(5)];
-  const diphthongs = rng() < 0.4;
-  const longWords = rng() < 0.42;
-  const guttural = rng() < 0.22;
-  const aspirated = rng() < 0.16;
-  const affricate = rng() < 0.30;
-  const prenasal = rng() < 0.16;
-  const prefixing = rng() < 0.16;
-  const reduplication = rng() < 0.22 && complexity < 0.5;
-
-  // consonant inventory (the POOL — the language's full character)
-  const cons = [];
-  addN(rng, C_STOP, 2 + Math.round(hardness * 4), cons);
-  addN(rng, C_NAS, soft ? 3 : 2, cons);
-  addN(rng, C_LIQ, soft ? 2 : 1, cons);
-  addN(rng, C_GLIDE, soft ? 2 : (rng() < 0.5 ? 1 : 0), cons);
-  addN(rng, C_FRIC, 1 + Math.round(hardness * 4), cons);
-  if (guttural) addN(rng, C_GUTT, 2 + rng.int(2), cons);
-  if (aspirated) addN(rng, C_ASP, 2 + rng.int(3), cons);
-  if (affricate) addN(rng, C_AFFR, 1 + rng.int(2), cons);
-  if (prenasal) addN(rng, C_PRENAS, 2 + rng.int(2), cons);
-
-  // onset pool: bare consonants (+ optional vowel-initial) + clusters if complex
-  const onPool = cons.slice();
-  if (rng() < 0.6) onPool.unshift("");
-  if (complexity > 0.6) {
-    const stops = cons.filter(c => C_STOP.includes(c));
-    const liqs = cons.filter(c => C_LIQ.includes(c));
-    const cl = [];
-    for (const st of stops) for (const l of liqs) {
-      if ((st === "t" || st === "d") && l === "l") continue;   // no tl/dl onset
-      if (rng() < 0.5) cl.push(st + l);                        // pr, kl, tr, gr…
-    }
-    if (cons.includes("s")) for (const st of ["p", "t", "k"]) if (stops.includes(st) && rng() < 0.5) cl.push("s" + st); // st/sk/sp only (voiceless)
-    addN(rng, cl, 1 + rng.int(3), onPool);
-  }
-
-  // vowels
-  const nucPool = V_CORE.slice(0, vowelN === 3 ? 3 : vowelN === 7 ? 6 : 5);
-  // (3 → a/i/u; 5 → a/i/u/e/o; 7 → all six + diphthongs)
-  if (vowelN === 3) nucPool.splice(0, nucPool.length, "a", "i", "u");
-  if (diphthongs) addN(rng, V_DIPH, 1 + rng.int(2), nucPool);
-
-  // codas by complexity
-  let codPool = [""];
-  if (complexity >= 0.34) addN(rng, CODA_SINGLE, complexity < 0.67 ? 1 + rng.int(2) : 2 + rng.int(3), codPool);
-  if (complexity >= 0.67) addN(rng, CODA_CLUSTER, 2 + rng.int(3), codPool);
-
-  const pool = { onsets: onPool, nuclei: nucPool, codas: codPool };
-  // active inventory = most of the pool (a little held back for drift to add)
-  const sub = (arr, keepMin) => {
-    if (arr.length <= keepMin) return arr.slice();
-    const keep = Math.max(keepMin, Math.round(arr.length * (0.75 + rng() * 0.2)));
-    const p = arr.slice(), out = [];
-    for (let i = 0; i < keep && p.length; i++) out.push(p.splice(rng.int(p.length), 1)[0]);
-    return out;
-  };
-  const active = {
-    onsets: sub(onPool, 4),
-    nuclei: sub(nucPool, 3),
-    codas: codPool.length > 1 ? sub(codPool, 2) : codPool.slice(),
-  };
-  if (!active.onsets.length) active.onsets = onPool.slice(0, 4);
-
-  const syl = longWords ? [2, 3] : [1, 2];
-  const prefix = prefixing ? genPrefixes(rng, active) : null;
-  return { active, pool, syl, redup: reduplication, prefix };
-}
-
-// recurring place / realm / dynasty suffixes, GENERATED from the language's own
-// sounds (so a region's cities read as kin — its own "-burg" — without a
-// hardcoded list). Some come up empty so suffixing strength varies.
-function genSuffix(rng, active, wantCoda) {
-  let s = "";
-  const ons = active.onsets.filter(c => c && c.length <= 2);
-  const nuc = active.nuclei.filter(v => v.length <= 2);
-  if (rng() < 0.7 && ons.length) s += ons[rng.int(ons.length)];
-  s += nuc.length ? nuc[rng.int(nuc.length)] : "a";
-  if (wantCoda && active.codas.length > 1 && rng() < 0.55) {
-    const cod = active.codas.filter(c => c && c.length <= 2);
-    if (cod.length) s += cod[rng.int(cod.length)];
-  }
-  return s;
-}
-function genSuffixSet(rng, active, n, wantCoda, emptyChance) {
-  const out = [];
-  for (let i = 0; i < n; i++) out.push(rng() < emptyChance ? "" : genSuffix(rng, active, wantCoda));
-  return [...new Set(out)];
-}
-function genPrefixes(rng, active) {
-  const out = [""];
-  const ons = active.onsets.filter(c => c && c.length <= 2);
-  const nuc = active.nuclei.filter(v => v.length === 1);
-  for (let i = 0; i < 2 + rng.int(2); i++) out.push((rng() < 0.5 && ons.length ? ons[rng.int(ons.length)] : "") + (nuc.length ? nuc[rng.int(nuc.length)] : "a"));
-  return [...new Set(out)];
-}
+// ── lifecycle ─────────────────────────────────────────────────────────────
 
 export function foundLanguage(world, { seed, parentId = -1 } = {}) {
   const id = world._nextLanguageId || 1;
   world._nextLanguageId = id + 1;
   const s = (seed ?? hash32(world.seed || 1, "lang", id)) >>> 0;
-  const rng = mkRng(s);
-  const ph = buildPhonology(rng);
-  const _ph = parentId >= 0 ? getLanguage(world, parentId) : null;
+  const parent = parentId >= 0 ? getLanguage(world, parentId) : null;
   const lang = {
-    id, seed: s, parentId, bornStep: world.step | 0, gen: 0,
-    rootId: parentId >= 0 ? ((_ph || {}).rootId ?? parentId) : id,   // language FAMILY (for the Languages map)
-    // Likeness colour: a daughter tongue drifts a little from its parent's hue; a fresh
-    // root family is golden-angle spread away. So one language family reads as one colour.
-    hue: _ph ? (((_ph.hue + (hash32(s, "lhue") / 4294967296 - 0.5) * 44) % 360) + 360) % 360 : (id * 137.508 + 80) % 360,
-    onsets: ph.active.onsets, nuclei: ph.active.nuclei, codas: ph.active.codas,
-    _pool: ph.pool, syl: ph.syl, redup: ph.redup, prefix: ph.prefix,
-    citySufs: genSuffixSet(rng, ph.active, 3, true, 0.3),
-    realmSufs: genSuffixSet(rng, ph.active, 3, false, 0.25),
-    dynSufs: genSuffixSet(rng, ph.active, 3, true, 0.15),
+    id, v: 2, seed: s, famSeed: parent ? (parent.famSeed ?? parent.seed) : s,
+    parentId, rootId: parent ? (parent.rootId ?? parentId) : id,
+    bornStep: world.step | 0, gen: 0,
+    hue: parent ? (((parent.hue + (h01(s, "lhue") - 0.5) * 44) % 360) + 360) % 360 : (id * 137.508 + 80) % 360,
+    prof: parent ? JSON.parse(JSON.stringify(parent.prof)) : rollProfile(s),
+    rules: parent ? parent.rules.slice() : [],
+    loans: parent ? parent.loans.slice() : [],
+    xph: parent && parent.xph ? parent.xph.map(b => ({ ...b })) : [],
   };
   languagesOf(world).set(id, lang);
-  if (parentId < 0) for (let i = 0; i < 1 + rng.int(2); i++) driftLanguage(world, lang);
+  // a fresh root tongue arrives with a little history already in its bones
+  if (!parent) { const n = 1 + (hash32(s, "age") % 2); for (let i = 0; i < n; i++) driftLanguage(world, lang); }
   return lang;
 }
 
-/** One step of sound change, WITHIN the tongue's character (its _pool). */
+/** One step of sound change: append a rule from the profile's applicable set. */
 export function driftLanguage(world, lang) {
-  const rng = mkRng(hash32(lang.seed, "drift", lang.gen + 1));
-  const pool = lang._pool || { onsets: lang.onsets, nuclei: lang.nuclei, codas: lang.codas };
-  const roll = rng();
-  if (roll < 0.30 && lang.onsets.length > 5) {
-    lang.onsets.splice(rng.int(lang.onsets.length), 1);
-  } else if (roll < 0.55) {
-    const c = pool.onsets.filter(x => !lang.onsets.includes(x));
-    if (c.length) lang.onsets.push(c[rng.int(c.length)]);
-  } else if (roll < 0.73) {
-    const c = pool.nuclei.filter(x => !lang.nuclei.includes(x));
-    if (c.length && rng() < 0.6) lang.nuclei.push(c[rng.int(c.length)]);
-    else if (lang.nuclei.length > 3) lang.nuclei.splice(rng.int(lang.nuclei.length), 1);
-  } else if (roll < 0.90 && pool.codas.length > 1) {
-    const c = pool.codas.filter(x => !lang.codas.includes(x));
-    if (c.length && rng() < 0.6) lang.codas.push(c[rng.int(c.length)]);
-    else if (lang.codas.length > 1) lang.codas.splice(rng.int(lang.codas.length), 1);
-  } else {
-    if (rng() < 0.5 && lang.syl[1] < lang.syl[0] + 3) lang.syl[1]++;
-    else if (lang.syl[1] > lang.syl[0]) lang.syl[1]--;
+  ensureV2(lang);
+  const ap = applicableRules(lang.prof);
+  lang.rules.push(ap[hash32(lang.seed, "rule", lang.gen) % ap.length]);
+  lang.gen++;
+}
+
+/** A daughter tongue: same family roots, drifted by DISTANCE from its parent. */
+export function branchLanguage(world, parent, divergence = 0.4) {
+  ensureV2(parent);
+  const id = world._nextLanguageId || 1;
+  world._nextLanguageId = id + 1;
+  // child id in the seed: two same-pass branches must not clone (see v1 scar)
+  const s = hash32(parent.seed, "branch", parent.gen, world.step, id) >>> 0;
+  const d = Math.max(0, Math.min(1, divergence));
+  const child = {
+    id, v: 2, seed: s, famSeed: parent.famSeed ?? parent.seed,
+    parentId: parent.id, rootId: parent.rootId ?? parent.id,
+    bornStep: world.step | 0, gen: 0,
+    hue: (((parent.hue ?? (parent.id * 137.508 + 80)) + (h01(s, "lhue") - 0.5) * 44 * Math.max(0.25, d)) % 360 + 360) % 360,
+    prof: JSON.parse(JSON.stringify(parent.prof)),
+    rules: parent.rules.slice(),
+    loans: parent.loans.slice(),
+    xph: parent.xph ? parent.xph.map(b => ({ ...b })) : [],
+  };
+  languagesOf(world).set(id, child);
+  const n = 1 + Math.round(d * 4);
+  for (let i = 0; i < n; i++) driftLanguage(world, child);
+  return child;
+}
+
+/** Areal contact: adopt a neighbour's SOUND, and — the deeper stratum — its
+ *  WORDS for prestige-domain concepts (law, faith, luxury: the pig/pork
+ *  machine; the native stock keeps kin, body, farm). */
+export function borrowFrom(world, lang, donor) {
+  ensureV2(lang); ensureV2(donor);
+  const rng = mkRng(hash32(lang.seed, "borrow", donor.id, lang.gen));
+  // (a) a phoneme crosses over
+  const dInv = compile(donor).inv;
+  const mine = compile(lang).inv;
+  const cand = dInv.cons.filter(dc => !mine.cons.some(c => c.p === dc.p && c.m === dc.m && c.l === dc.l && c.s === dc.s));
+  if (cand.length) lang.xph.push({ ...cand[rng.int(cand.length)] });
+  // (b) a prestige word crosses over (frozen at borrow time, foreign look kept)
+  if (rng() < 0.8) {
+    const cid = LOAN_POOL[rng.int(LOAN_POOL.length)];
+    lang.loans.push({ c: cid, w: wordOf(donor, cid), d: donor.id });
   }
   lang.gen++;
 }
 
-/** A daughter tongue: the parent, drifted by DISTANCE (0..1). */
-export function branchLanguage(world, parent, divergence = 0.4) {
-  const id = world._nextLanguageId || 1;
-  world._nextLanguageId = id + 1;
-  // The child id is part of the seed: two branches of the SAME parent in the
-  // same pass otherwise got identical seeds — byte-identical "different"
-  // tongues whose names collide forever (sibling nations speaking one clone).
-  const s = hash32(parent.seed, "branch", parent.gen, world.step, id) >>> 0;
-  const child = {
-    id, seed: s, parentId: parent.id, bornStep: world.step | 0, gen: 0,
-    rootId: parent.rootId ?? parent.id,                       // stays in the parent's language family
-    // drift the hue from the parent tongue, further the deeper the branch (likeness colour)
-    hue: (((parent.hue ?? (parent.id * 137.508 + 80)) + (hash32(s, "lhue") / 4294967296 - 0.5) * 44 * Math.max(0.25, Math.min(1, divergence))) % 360 + 360) % 360,
-    onsets: parent.onsets.slice(), nuclei: parent.nuclei.slice(), codas: parent.codas.slice(),
-    _pool: { onsets: parent._pool.onsets.slice(), nuclei: parent._pool.nuclei.slice(), codas: parent._pool.codas.slice() },
-    syl: parent.syl.slice(), redup: parent.redup, prefix: parent.prefix ? parent.prefix.slice() : null,
-    citySufs: parent.citySufs.slice(), realmSufs: parent.realmSufs.slice(), dynSufs: parent.dynSufs.slice(),
+// v1 records (old saves) upgrade lazily: profile re-rolled from the seed —
+// entity names already stored on settlements/realms are untouched; only
+// NEW names change, which is the accepted spec trade (open question 2).
+function ensureV2(lang) {
+  if (lang.v === 2) return lang;
+  lang.v = 2;
+  lang.famSeed = lang.famSeed ?? lang.seed;
+  lang.prof = lang.prof || rollProfile(lang.seed);
+  lang.rules = lang.rules || [];
+  lang.loans = lang.loans || [];
+  lang.xph = lang.xph || [];
+  return lang;
+}
+
+// ── compiled state (derived, WeakMap-cached, never persisted) ─────────────
+
+const COMPILED = new WeakMap();
+
+function compile(lang) {
+  ensureV2(lang);
+  const key = lang.gen * 1000003 + lang.loans.length * 101 + lang.xph.length;
+  let c = COMPILED.get(lang);
+  if (c && c.key === key) return c;
+  const inv = buildInventory(lang.famSeed, lang.prof);
+  for (const b of lang.xph) inv.cons.push({ ...b });
+  // family-level semantic structure: colexification + derive-vs-root choices
+  const colex = new Map();
+  COLEX.forEach(([a, b, p], i) => { if (h01(lang.famSeed, "colex", i) < p) colex.set(b, a); });
+  c = { key, inv, colex, words: new Map(), internals: new Map(), sufs: null };
+  COMPILED.set(lang, c);
+  return c;
+}
+
+// ── the virtual dictionary ────────────────────────────────────────────────
+
+/** Internal (feature-bundle) form for a concept's NATIVE word: family root
+ *  replayed through this language's rule log — cognates across the family
+ *  correspond regularly because they share the root and differ in the log. */
+function internalOf(lang, cid) {
+  const c = compile(lang);
+  const seen = c.internals.get(cid);
+  if (seen) return seen;
+  const con = CONCEPTS[cid];
+  const merged = c.colex.get(cid) ?? cid;
+  if (merged !== cid) { const w = internalOf(lang, merged); c.internals.set(cid, w); return w; }
+  let w;
+  if (con.dv && h01(lang.famSeed, "dv", cid) < 0.65) {
+    // derived concept: a compound of its parts (or a re-vowelled pattern of
+    // the head root, if the tongue is templatic — derivation by pattern)
+    const head = internalOf(lang, con.dv[0]);
+    if (lang.prof.morph === "tmpl") w = revowel(lang, head, cid);
+    else w = joinInternal(lang, internalOf(lang, con.dv[1]), head);
+  } else {
+    const rng = mkRng(hash32(lang.famSeed, "root", cid));
+    w = lang.prof.morph === "tmpl" ? synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed)
+      : synthWord(rng, lang.prof, c.inv, con.b >= 0.85 ? 1 + rng.int(2) : 2);
+    w = applyRules(lang.rules, w);
+  }
+  c.internals.set(cid, w);
+  return w;
+}
+
+/** The word for a concept, as a rendered string. Loans win over native. */
+export function wordOf(lang, cid) {
+  const c = compile(lang);
+  const seen = c.words.get(cid);
+  if (seen !== undefined) return seen;
+  let out = null;
+  for (let i = lang.loans.length - 1; i >= 0; i--) if (lang.loans[i].c === cid) { out = lang.loans[i].w; break; }
+  if (out === null) out = renderWord(internalOf(lang, cid), lang.prof);
+  c.words.set(cid, out);
+  return out;
+}
+
+/** The concept's gloss (shared across all languages). */
+export function glossOf(cid) { return CONCEPTS[cid] ? CONCEPTS[cid].g : ""; }
+
+// templatic roots: a consonant skeleton the patterns interleave (k-t-b style)
+function synthTemplatic(rng, prof, inv, cid, famSeed) {
+  const cons = inv.cons.filter(x => x.m <= 5);
+  const K = [{ ...rng.pick(cons) }, { ...rng.pick(cons) }, { ...rng.pick(cons) }];
+  const vs = inv.vows;
+  const pat = hash32(famSeed, "pat", cid) % 3;
+  const v1 = vs[pat % vs.length], v2 = vs[(pat + 2) % vs.length];
+  return { syls: [{ on: [K[0]], nu: [{ ...v1 }], co: [] }, { on: [K[1]], nu: [{ ...v2 }], co: [K[2]] }] };
+}
+// templatic derivation: keep the skeleton, change the vowel pattern (maktab)
+function revowel(lang, head, cid) {
+  const c = compile(lang);
+  const skel = [];
+  for (const s of head.syls) { for (const x of s.on) skel.push({ ...x }); for (const x of s.co) skel.push({ ...x }); }
+  while (skel.length < 3) skel.push({ ...c.inv.cons[hash32(lang.famSeed, "fill", cid, skel.length) % c.inv.cons.length] });
+  const vs = c.inv.vows;
+  const v = vs[hash32(lang.famSeed, "rv", cid) % vs.length];
+  const w = { syls: [{ on: [{ p: 0, m: 1, l: 1, s: 0 }], nu: [{ ...v }], co: [] },   // ma- style nominal prefix
+    { on: [skel[0]], nu: [{ ...v }], co: [] }, { on: [skel[1]], nu: [{ ...v }], co: [skel[2]] }] };
+  return w;
+}
+
+// compound joining per morphotype: modifier + head order (mod first), with a
+// linking vowel where an illegal cluster would form
+function joinInternal(lang, mod, head) {
+  const a = copyWord(mod), b = copyWord(head);
+  const lastA = a.syls[a.syls.length - 1], firstB = b.syls[0];
+  if (lang.prof.morph === "fus" && lastA.nu.length && !lastA.co.length && !firstB.on.length) {
+    lastA.nu = [];                                            // elide the seam vowel
+    if (!lastA.nu.length && !lastA.co.length && lastA.on.length) { firstB.on = [...lastA.on, ...firstB.on]; a.syls.pop(); }
+  } else if (lastA.co.length && firstB.on.length >= 2) {
+    firstB.on = firstB.on.slice(0, 1);                        // simplify the seam
+  }
+  // keep compounds speakable: cap at 4 syllables, favouring the head
+  const syls = [...a.syls, ...b.syls];
+  return { syls: syls.length > 4 ? [...a.syls.slice(0, 1), ...b.syls.slice(-2)] : syls };
+}
+
+// ── suffix fashions, DERIVED from meaning (the -burg/-stan/-son machine) ──
+// A place suffix is the worn-down root for town/fort/house; a realm suffix
+// the worn-down root for LAND; a patronymic the worn-down root for SON. So
+// the fashions aren't arbitrary strings — they are the language's own words,
+// reduced by use, and they shift when sound change reshapes the roots.
+function sufsOf(lang) {
+  const c = compile(lang);
+  if (c.sufs) return c.sufs;
+  const reduce = (cid) => {
+    const w = internalOf(lang, cid);
+    const s = w.syls[w.syls.length - 1];
+    const r = { syls: [{ on: s.on.slice(0, 1), nu: s.nu.slice(0, 1), co: s.co.slice(0, 1) }] };
+    return renderWord(r, lang.prof);
   };
-  languagesOf(world).set(id, child);
-  const d = Math.max(0, Math.min(1, divergence));
-  for (let i = 0; i < 1 + Math.round(d * 8); i++) driftLanguage(world, child);
-  // a far branch evolves its own naming FASHION (regenerated suffixes) — same
-  // family sound, shifted surface
-  if (d > 0.55) {
-    const rng = mkRng(hash32(s, "fashion"));
-    const active = { onsets: child.onsets, nuclei: child.nuclei, codas: child.codas };
-    if (rng() < 0.7) child.citySufs = genSuffixSet(rng, active, 3, true, 0.3);
-    if (rng() < 0.5) child.realmSufs = genSuffixSet(rng, active, 3, false, 0.25);
-  }
-  return child;
+  const femV = (() => { const v = c.inv.vows.find(v => v.h === 2) || c.inv.vows[0]; return renderWord({ syls: [{ on: [], nu: [v], co: [] }] }, lang.prof); })();
+  c.sufs = {
+    city: [reduce(TOWN), reduce(FORT), reduce(HOUSE), ""],
+    realm: [reduce(LAND), reduce(LAND) + femV, ""],
+    patro: reduce(SON),
+    fem: femV,
+  };
+  return c.sufs;
 }
 
-/** Areal contact: adopt a neighbour's sound (into pool + active). */
-export function borrowFrom(world, lang, donor) {
-  const rng = mkRng(hash32(lang.seed, "borrow", donor.id, lang.gen));
-  const cand = donor.onsets.filter(c => c && !lang.onsets.includes(c));
-  if (cand.length) {
-    const c = cand[rng.int(cand.length)];
-    lang.onsets.push(c);
-    if (lang._pool && !lang._pool.onsets.includes(c)) lang._pool.onsets.push(c);
-    lang.gen++;
-  }
+const joinSuf = (stem, suf) => {
+  if (!suf) return stem;
+  if (/[aeiou]$/i.test(stem) && /^[aeiou]/i.test(suf)) stem = stem.slice(0, -1);
+  return stem + suf;
+};
+
+// ── the public name API (signatures unchanged from v1) ────────────────────
+
+/** A generic word of the tongue (faith names, culture endonyms). */
+export function langWord(lang, n) {
+  ensureV2(lang);
+  const c = compile(lang);
+  const rng = mkRng(hash32(lang.seed, "w", lang.gen, n));
+  const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, 1 + rng.int(2)));
+  return cap(renderWord(w, lang.prof));
 }
 
-// ── word synthesis ───────────────────────────────────────────────────────
-// Phonotactics: clusters allowed but not PILED — an onset cluster only word-
-// initial, a coda cluster only word-final, never a coda before a cluster onset.
-const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
-
-function rawWord(lang, streamSeed) {
-  const rng = mkRng(streamSeed >>> 0);
-  const [lo, hi] = lang.syl;
-  const nS = lo + (hi > lo ? rng.int(hi - lo + 1) : 0);
-  const singles = lang.onsets.filter(c => c.length <= 1);
-  const shortCodas = lang.codas.filter(c => c.length <= 1);
-  let w = "";
-  if (lang.prefix && lang.prefix.length && rng() < 0.5) w += lang.prefix[rng.int(lang.prefix.length)];
-  let prevCoda = false;
-  for (let i = 0; i < nS; i++) {
-    const isLast = i === nS - 1;
-    let on;
-    if (prevCoda) on = singles.length ? singles[rng.int(singles.length)] : "";
-    else {
-      on = lang.onsets[rng.int(lang.onsets.length)];
-      if (i > 0 && on.length >= 3 && singles.length && rng() < 0.75) on = singles[rng.int(singles.length)];
-    }
-    let nu = lang.nuclei[rng.int(lang.nuclei.length)];
-    if (nu.length >= 2 && rng() < 0.55) { const m = lang.nuclei.filter(v => v.length === 1); if (m.length) nu = m[rng.int(m.length)]; }
-    let co = "";
-    if (lang.codas.length > 1) {
-      if (isLast) co = lang.codas[rng.int(lang.codas.length)];
-      else if (rng() < 0.26 && shortCodas.length) co = shortCodas[rng.int(shortCodas.length)];
-    }
-    prevCoda = co.length > 0;
-    w += on + nu + co;
-  }
-  if (lang.redup && nS <= 2 && rng() < 0.3) w += w;
-  return w.replace(/(.)\1\1+/g, "$1$1");
-}
-
-export function langWord(lang, n) { return cap(rawWord(lang, hash32(lang.seed, "w", lang.gen, n))); }
-
-/** A settlement name — word + (often) the family's place-suffix, which makes a
- *  region's cities read as kin. */
-export function langPlaceName(lang, n) {
+/** Settlement name + gloss: usually a meaningful compound ("black ford"),
+ *  sometimes head+suffix ("…ton"), sometimes a name whose meaning is lost. */
+export function langPlaceNameEx(lang, n) {
+  ensureV2(lang);
   const rng = mkRng(hash32(lang.seed, "place", lang.gen, n));
-  let w = rawWord(lang, hash32(lang.seed, "pw", lang.gen, n));
-  const suf = lang.citySufs[rng.int(lang.citySufs.length)];
-  if (suf && w.length <= 7) { if (/[aeiou]$/i.test(w) && /^[aeiou]/i.test(suf)) w = w.slice(0, -1); w += suf; }
-  return cap(w);
+  const sufs = sufsOf(lang);
+  const roll = rng();
+  let name, gloss;
+  if (roll < 0.55) {
+    const mod = TOPO_MOD[rng.int(TOPO_MOD.length)], head = TOPO_HEAD[rng.int(TOPO_HEAD.length)];
+    name = renderWord(joinInternal(lang, internalOf(lang, mod), internalOf(lang, head)), lang.prof);
+    gloss = glossOf(mod) + " " + glossOf(head);
+    if (name.length > 12) { name = wordOf(lang, head); gloss = glossOf(head); }
+  } else if (roll < 0.8) {
+    const head = TOPO_HEAD[rng.int(TOPO_HEAD.length)];
+    name = joinSuf(wordOf(lang, head), sufs.city[rng.int(sufs.city.length)]);
+    gloss = glossOf(head);
+  } else {
+    const c = compile(lang);
+    const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, 1 + rng.int(2)));
+    name = joinSuf(renderWord(w, lang.prof), sufs.city[rng.int(sufs.city.length)]);
+    gloss = null;                                             // meaning lost to time
+  }
+  return { name: cap(name.replace(/(.)\1\1+/g, "$1$1")), gloss };
 }
+export function langPlaceName(lang, n) { return langPlaceNameEx(lang, n).name; }
 
 export function langRealmName(lang, n, base) {
+  ensureV2(lang);
   const rng = mkRng(hash32(lang.seed, "r", lang.gen, n));
-  const suf = lang.realmSufs[rng.int(lang.realmSufs.length)];
-  let stem = base ? String(base) : rawWord(lang, hash32(lang.seed, "rw", lang.gen, n));
-  if (suf && /[aeiou]$/i.test(stem) && /^[aeiou]/i.test(suf)) stem = stem.slice(0, -1);
-  return cap(stem + suf);
+  const sufs = sufsOf(lang);
+  const stem = base ? String(base)
+    : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 1 + rng.int(2))), lang.prof);
+  return cap(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]));
 }
 
 export function langPersonName(lang, n, female) {
+  ensureV2(lang);
   const rng = mkRng(hash32(lang.seed, "p", lang.gen, n));
-  let w = rawWord(lang, hash32(lang.seed, "pn", lang.gen, n));
-  if (female) { if (!/[aeiou]$/i.test(w)) w += (lang.nuclei.filter(v => v.length === 1)[0] || "a"); }
-  else if (/[aeiou]$/i.test(w) && rng() < 0.6) { const c = lang.codas.filter(x => x && x.length === 1); if (c.length) w += c[rng.int(c.length)]; }
-  return cap(w);
+  let w;
+  if (rng() < 0.6) {
+    const a = PERSON_POOL[rng.int(PERSON_POOL.length)];
+    if (rng() < 0.4) {
+      const b = PERSON_POOL[rng.int(PERSON_POOL.length)];
+      w = renderWord(joinInternal(lang, internalOf(lang, a), internalOf(lang, b)), lang.prof);
+    } else w = wordOf(lang, a);
+  } else {
+    w = renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
+  }
+  if (w.length > 10) w = w.slice(0, 9).replace(/[^aeiou]+$/i, "");
+  const sufs = sufsOf(lang);
+  if (lang.prof.gendered && female && !/[aeiou]$/i.test(w)) w += sufs.fem;
+  else if (lang.prof.gendered && !female && w.length > 3 && /[aeiou]$/i.test(w) && rng() < 0.5) w = w.slice(0, -1);
+  return cap(w || "Ana");
 }
 
 export function langDynastyName(lang, n, founder) {
+  ensureV2(lang);
   const rng = mkRng(hash32(lang.seed, "d", lang.gen, n));
-  const suf = lang.dynSufs[rng.int(lang.dynSufs.length)] || "";
-  let stem = founder ? String(founder) : rawWord(lang, hash32(lang.seed, "dw", lang.gen, n));
-  if (suf && /[aeiou]$/i.test(stem)) stem = stem.slice(0, -1);
-  return cap(stem + suf);
+  const sufs = sufsOf(lang);
+  let stem = founder ? String(founder)
+    : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
+  if (lang.prof.patro === "pre") return cap(sufs.patro) + cap(stem);
+  if (lang.prof.patro === "suf") return cap(joinSuf(stem, sufs.patro));
+  return cap(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]));
 }
