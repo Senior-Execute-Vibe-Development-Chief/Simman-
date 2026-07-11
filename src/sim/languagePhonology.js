@@ -429,13 +429,17 @@ export function renderWord(word, prof) {
   if (prof.orthoStyle === 1) out = out.replace(/iu/g, "ü").replace(/oe/g, "ö");
   if (prof.ortho === "en") {
     out = out
+      .replace(/([aeiou])([aeiou])[aeiou]+/g, "$1$2")           // no triple-vowel runs
+      .replace(/^([^aeiou]{1,2})i$/, "$1ee")                    // bee/see shape, not bare "gy"
       .replace(/(.)i$/, "$1y").replace(/v$/, "ve").replace(/j$/, "dge").replace(/zh/g, "j")
       .replace(/ngk/g, "nk").replace(/z$/, "se").replace(/kw/g, "qu")
       .replace(/au$/, "aw").replace(/ou$/, "ow").replace(/oi$/, "oy").replace(/ai$/, "ay").replace(/ei$/, "ey")
-      .replace(/u$/, "oo")
       .replace(/(^|[^aeiou])([aeiou])k$/, "$1$2ck")
       .replace(/(^|[^aeiou])([aeiou])f$/, "$1$2ff")
       .replace(/([^aeiou][aeiou])ch$/, "$1tch");
+    // final short u: -oo exists in English but as a RARITY — spread the
+    // respelling across the real conventions (blue, few, go, too)
+    if (/u$/.test(out)) out = out.slice(0, -1) + ["ue", "ew", "o", "oo"][hash32(out, "u") % 4];
     if (/[^aeiouwy][aeiou][tdkmnprslgb]$/.test(out) && hash32(out, "sil") % 4 === 0) out += "e";
   }
   return out;
