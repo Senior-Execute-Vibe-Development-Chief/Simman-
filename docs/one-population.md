@@ -69,15 +69,20 @@ consistent soft warnings (2/2 budget — the bar is zero):
   • Zipf slope −0.48..−0.66 (envelope −0.8..−1.2) — city sizes too uniform;
   • urbanization 56–64% in the agrarian era (band 2–25%) — cores absorb
     most of their region.
-ROOT CAUSE, identified: the urban spike is currently the RESIDUAL between
-two different food models (the economy's farm-model K minus the field's
-terrain capacity), which is mostly model mismatch × region size, not
-"imports" — so every core is overweight and near-uniform. THE FIX (next
-loop): build the spike from the import-backed share of the SAME food model
-— foodK × the settlement's own import share (s._foodImportRate /
-_foodSupply already exist) — so only genuinely fed-from-elsewhere cities
-concentrate beyond their land, and the heavy-tailed import economy gives
-the cores their Zipf tail back.
+ROOT CAUSE, identified and FIXED in the same arc: the urban spike was the
+RESIDUAL between two different food models (farm-model K minus field
+terrain capacity) — mostly model mismatch × region size, so every core
+was overweight and near-uniform (56–64% agrarian urbanization, Zipf
+−0.48). Rebuilt as the IMPORT-FED share of one model (foodK × the
+hierarchy-grain share, _foodNet − _landFood over _foodSupply): a self-fed
+farm town concentrates nothing beyond its tile; a grain-importing hub
+concentrates exactly what it ships in. Measured after: urbanization
+26.2%/in-band/in-band (band 2–25%), city counts 18–23 (baseline-like),
+Zipf −0.60/−0.70/clean — 4242 at ZERO warnings, 31337 at one, 8817 at
+two. REMAINING before the flip (bar = zero on all three): the last of
+the Zipf flatness — likely the cores' fill dynamics against their spikes
+(migration into a spike is 4-neighbour-limited) or the top spikes' own
+distribution; measure core/spike fill ratios first.
 
 What is already true under the lever: the field owns demography (human
 rates; the transition/graveyard bend stamped per core), the 3000 BC world

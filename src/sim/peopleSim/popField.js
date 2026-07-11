@@ -424,15 +424,11 @@ export function deriveOnePop(world) {
   const pf = world.popField, cap = world.capField, owner = world._territoryOwner, tw = world.tw;
   if (!owner) return;
   const spikes = world._urbanSpike || (world._urbanSpike = new Map());
-  const accP = new Map(), accC = new Map();
+  const accP = new Map();
   for (let i = 0; i < world.N; i++) {
     const sid = owner[i];
     if (sid < 0) continue;
     if (pf[i] > 0) accP.set(sid, (accP.get(sid) || 0) + pf[i]);
-    // terrain capacity EXCLUDING the spike this pass stamped on a home tile
-    const sp = spikes.get(i);
-    const terr = (cap[i] || 0) - (sp ? sp.k : 0);
-    if (terr > 0) accC.set(sid, (accC.get(sid) || 0) + terr);
   }
   // The bridge scalar: median census per median field-region, frozen at
   // activation (persisted). A pure unit conversion between the economy's
@@ -467,10 +463,17 @@ export function deriveOnePop(world) {
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
     }
     // else: no catchment tiles this pass (fresh founding / recompute lag) — keep the census value
-    // Next pass's spike: the economy's beyond-land capacity, in field units,
-    // plus the core's own transition/graveyard-bent growth rate (stamped by
+    // Next pass's spike: the IMPORT-FED share of the settlement's carrying
+    // capacity, in field units — the people its market feeds from BEYOND its
+    // own land (hierarchy grain: _foodNet − _landFood, one food model, no
+    // residual of two). A self-fed farm town concentrates nothing beyond its
+    // tile; a grain-importing hub concentrates exactly what it ships in —
+    // the heavy-tailed import economy gives the cores their size order.
+    // Plus the core's own transition/graveyard-bent growth rate (stamped by
     // updatePop as s._rEff; plain human rate until it computes one).
-    const kBeyond = Math.max(0, ((s._k || 0) / scale) - (accC.get(s.id) || 0));
+    const importShare = Math.max(0, Math.min(1,
+      ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
+    const kBeyond = ((s._k || 0) * importShare) / scale;
     if (kBeyond > 0 || s._rEff !== undefined) spikes.set(ti, { k: kBeyond, r: s._rEff, sink: s._rSink || 0 });
   }
 }
