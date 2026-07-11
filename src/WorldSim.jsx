@@ -260,8 +260,8 @@ function TechTreeOverlay({k,title,onClose}){
 const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).has("dev");
 const LENSES=[
   {id:"terrain", label:"Terrain", subs:[["terrain","Map"],["atlas","Atlas"]]},
-  {id:"politics",label:"Politics",subs:[["country","Realms"]]},
-  {id:"peoples", label:"Peoples", subs:[["culture","Peoples"]]},
+  {id:"politics",label:"Politics",subs:[["country","Realms"],["loyalty","Loyalty"]]},
+  {id:"peoples", label:"Peoples", subs:[["culture","Peoples"],["population","Population"]]},
   {id:"ancestry",label:"Ancestry",subs:[["ancestry","Ancestry"]]},
   {id:"languages",label:"Languages",subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
@@ -1662,10 +1662,10 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 if(!atlasCache.current||atlasCache.current.seed!==w._seed||atlasCache.current.ch!==CH){
 atlasCache.current={img:buildAtlas(w,ter),seed:w._seed,ch:CH};}
 d.set(atlasCache.current.img.data);
-}else if(vm==="culture"||vm==="faith"||vm==="language"||vm==="ancestry"){
-// Neutral grey base for the people / faith / language overlays — dark grey
-// ocean, flat grey land — so the coloured identity regions read clearly
-// without the terrain colours competing. Faint elevation keeps coasts legible.
+}else if(vm==="culture"||vm==="faith"||vm==="language"||vm==="ancestry"||vm==="loyalty"||vm==="population"){
+// Neutral grey base for the people / faith / language / loyalty / population
+// overlays — dark grey ocean, flat grey land — so the coloured regions read
+// clearly without the terrain colours competing. Faint elevation keeps coasts legible.
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
 const e=w.elevation[sy*W+sx];const pi4=ti<<2;
@@ -1826,6 +1826,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmLanguage = viewRef.current === "language";
   const vmAncestry = viewRef.current === "ancestry";
   const vmSociety = viewRef.current === "society";
+  const vmLoyalty = viewRef.current === "loyalty";
+  const vmPopulation = viewRef.current === "population";
     if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -1995,7 +1997,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0);
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -2160,6 +2162,75 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             stctx.fillRect(x,y,1,1);}
         }
       }
+      // ── Loyalty: the attachment continuum + the ground's memory (ontology V2) ──
+      // Heat per GOVERNED tile: ember (the people are detached) → amber → green
+      // (attached) — the same hue ramp the inspect card's loyalty dot uses. Ground
+      // that still REMEMBERS a fallen nation checkerboards with that nation's own
+      // realm colour ((id·61)%360 — the sim's hue formula, so old Poland's ground
+      // wears old Poland's colour) and is outlined, so irredenta read as regions.
+      if(vmLoyalty&&psw._loyal){
+        const tw=psw.tw,th=psw.th,N2=Math.min(tw*th,psw._loyal.length);
+        const loyal=psw._loyal,home=psw._loyalHome;
+        const homeFs=new Map();let lastFs=null;
+        for(let ti=0;ti<N2;ti++){
+          const v=loyal[ti];if(v===255)continue;   // ungoverned → base grey
+          const y=(ti/tw)|0,x=ti-y*tw;
+          let fs;
+          const hm=home?home[ti]:-1;
+          if(hm>=0&&((x+y)&1)){
+            fs=homeFs.get(hm);
+            if(!fs){fs=`hsl(${((hm*61)%360+360)%360},62%,46%)`;homeFs.set(hm,fs);}
+          }else{
+            const a=v/250;
+            fs=`hsl(${(8+a*132)|0},${(64-a*18)|0}%,${(38+a*9)|0}%)`;
+          }
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(x,y,1,1);
+        }
+        if(home){
+          octx.strokeStyle="rgba(16,10,6,0.55)";octx.lineWidth=uiF;octx.beginPath();
+          for(let ti=0;ti<N2;ti++){const k=home[ti];if(k<0)continue;
+            const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
+            const rk=home[((x+1)%tw)+y*tw];if(rk!==k){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+            if(y<th-1){const dk=home[ti+tw];if(dk!==k){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+          octx.stroke();
+        }
+        // Dashed realm borders on top, so the heat reads as "inside WHOSE realm"
+        // (the same dashed style the terrain view's border layer uses).
+        const bArr=psw._countryClaim;
+        if(bArr){
+          octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();
+          for(let ti=0;ti<Math.min(N2,bArr.length);ti++){
+            const cc=bArr[ti];if(cc<0)continue;
+            const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
+            const ro=bArr[y*tw+(x===tw-1?0:x+1)];
+            if(ro>=0&&ro!==cc){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+            if(y<th-1){const dno=bArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+          octx.stroke();octx.setLineDash([]);
+        }
+      }
+      // ── Population: the people-on-land field (popField, the canonical
+      // demographic substrate) as a log-scaled density heat — dim slate
+      // (empty) → deep blue → teal → amber → white-hot (the great basins). ──
+      if(vmPopulation&&psw._popDens){
+        const tw=psw.tw,th=psw.th,N2=Math.min(tw*th,psw._popDens.length);
+        const dens=psw._popDens;let lastFs=null;
+        const fsCache=new Array(251);
+        const colAt=(v)=>{let fs=fsCache[v];if(fs)return fs;
+          const t=v/250;let r,g,b;
+          if(t<0.35){const s2=t/0.35;r=(28+s2*12)|0;g=(30+s2*30)|0;b=(36+s2*104)|0;}          // slate → deep blue
+          else if(t<0.65){const s2=(t-0.35)/0.3;r=(40+s2*10)|0;g=(60+s2*110)|0;b=(140-s2*10)|0;} // blue → teal
+          else if(t<0.88){const s2=(t-0.65)/0.23;r=(50+s2*190)|0;g=(170+s2*35)|0;b=(130-s2*70)|0;} // teal → amber
+          else{const s2=(t-0.88)/0.12;r=240;g=(205+s2*45)|0;b=(60+s2*165)|0;}                    // amber → white-hot
+          fs=`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};
+        for(let ti=0;ti<N2;ti++){
+          const v=dens[ti];if(v<=0)continue;   // empty land / water → base
+          const y=(ti/tw)|0,x=ti-y*tw;
+          const fs=colAt(v);
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(x,y,1,1);
+        }
+      }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
       // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
       if(vmAncestry&&ter&&ter.tAncestry){
@@ -2253,7 +2324,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
         let lastFs=null;
@@ -2276,7 +2347,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
-      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2645,6 +2716,8 @@ const applySnapshot=useCallback((snap)=>{
   // on the static cadence and only while an identity lens is up; keyed by the
   // layer it was built for, so a stale field from a previous lens is ignored.
   if(snap.fieldDom){psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
+  if(snap.loyal){psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
+  if(snap.popDens){psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
@@ -3486,6 +3559,22 @@ const renderInspect=()=>{
         );
       })()}
 
+      {/* ── The people's attachment (loyalty field, ontology V2) — the county's
+             slow popular stock, distinct from the seat's administrative loyalty
+             above. Ground that remembers a fallen nation shows the yearning. ── */}
+      {(()=>{
+        const a=s._attach;
+        if(a==null)return null;
+        const hue=a>0.66?140:a>0.33?42:8;
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},52%,46%)`,flexShrink:0}}/>
+            <span className="au-fade">the people's attachment {Math.round(a*100)}%
+              {s._homelandName?<> · remembers <span style={{color:"var(--au-ink)"}}>{s._homelandName}</span></>:""}</span>
+          </div>
+        );
+      })()}
+
       {/* ── Active shock (plague / famine) ── */}
       {(()=>{
         const sh=s._shock||0;
@@ -4193,6 +4282,47 @@ return(
     Dot density on each link is its share of THIS tick's total activity, so
     the busiest links pop and quiet ones go silent regardless of the world's
     absolute money supply. The world starts on barter (no coins shown).
+  </div>
+</div>}
+
+{viewMode==="loyalty"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:250}}>
+  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Loyalty of the land</div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
+    <span style={{display:"flex",flexShrink:0}}>
+      <span style={{width:16,height:11,background:"hsl(8,64%,38%)"}}/>
+      <span style={{width:16,height:11,background:"hsl(74,55%,43%)"}}/>
+      <span style={{width:16,height:11,background:"hsl(140,46%,47%)"}}/>
+    </span>
+    <span>detached → attached</span></div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
+    <span style={{width:32,height:11,flexShrink:0,background:
+      "repeating-linear-gradient(90deg,hsl(200,62%,46%) 0 3px,hsl(30,60%,42%) 3px 6px)"}}/>
+    <span>ground that remembers a fallen nation</span></div>
+  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
+    How far the people of each tile have accepted their current ruler.
+    Trust builds over generations — slower under a foreign ruler, frozen by
+    grievance — and conquest detaches it. Hatched ground still yearns for the
+    nation whose colour it wears; a revolt there restores that nation.
+  </div>
+</div>}
+
+{viewMode==="population"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:240}}>
+  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>People on the land</div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
+    <span style={{display:"flex",flexShrink:0}}>
+      <span style={{width:13,height:11,background:"rgb(34,45,72)"}}/>
+      <span style={{width:13,height:11,background:"rgb(45,120,135)"}}/>
+      <span style={{width:13,height:11,background:"rgb(180,190,80)"}}/>
+      <span style={{width:13,height:11,background:"rgb(245,225,140)"}}/>
+    </span>
+    <span>empty → dense</span></div>
+  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
+    The population field — where people actually live (log scale, so the
+    countryside shows alongside the great river basins). This is the sim's
+    canonical demographic substrate: national power, manpower and migration
+    all read it{peopleRef.current&&peopleRef.current._popMax?` · densest tile ≈ ${Math.round(peopleRef.current._popMax).toLocaleString()} people`:""}.
   </div>
 </div>}
 
