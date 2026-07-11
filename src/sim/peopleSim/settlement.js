@@ -14,10 +14,10 @@ import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, getPolity } from "./entities.js";
-import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
+import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
-import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
+import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
@@ -215,6 +215,53 @@ function seedAncestry(world, s, opts) {
   s.ancMix = localShare > 0 ? blendAnc(par.ancMix, 1 - localShare, local, localShare) : par.ancMix.slice();
 }
 
+// ── Forced migration (T.SLAVE_PEOPLE): captives are PEOPLE, and people carry identity ──
+// Coerced flows (slave raids, the sack of cities, horde razzias) are demographic events,
+// not labour-stat transfers. Each captor keeps a count-weighted pool of its captives'
+// origin peoples (_captiveCul) and deep stocks (_captiveAnc); when captives ARRIVE
+// somewhere — bought on the market, or put to work by the captor itself — they join
+// s.people and admix the destination's culMix/langMix/ancMix exactly as founding
+// migration does. This is the THIRD admixture source after founding migration and
+// in-place drift (conquest still moves rulers, never peoples) — and it is what put
+// African-descended populations across the plantation belts of the Americas: bondage
+// moved PEOPLES. Under the lever the population ledger CONSERVES people the way the
+// money ledger already conserves coin (victim → captive in transit → resident unfree).
+function addPairsScaled(pool, pairs, n) {
+  const out = pool || [];
+  if (!pairs || !pairs.length || !(n > 0)) return out;
+  for (const [id, sh] of pairs) {
+    if (id == null || id < 0 || !(sh > 0)) continue;
+    let e = null; for (const p of out) if (p[0] === id) { e = p; break; }
+    if (e) e[1] += sh * n; else out.push([id, sh * n]);
+  }
+  return out;
+}
+/** Record `n` captives seized from `victim` into `captor`'s origin pools. */
+export function recordCaptives(captor, victim, n) {
+  if (!T.SLAVE_PEOPLE || !(n > 0)) return;
+  captor._captiveCul = addPairsScaled(captor._captiveCul, victim.culMix, n);
+  captor._captiveAnc = addPairsScaled(captor._captiveAnc, victim.ancMix, n);
+}
+/** Scale a captor's origin pools down when `taken` of its `stock` captives leave / are put to work. */
+export function drainCaptivePools(captor, taken, stock) {
+  if (!T.SLAVE_PEOPLE || !(taken > 0) || !(stock > 0)) return;
+  const keep = Math.max(0, 1 - taken / stock);
+  if (captor._captiveCul) { if (keep <= 0) captor._captiveCul = []; else for (const e of captor._captiveCul) e[1] *= keep; }
+  if (captor._captiveAnc) { if (keep <= 0) captor._captiveAnc = []; else for (const e of captor._captiveAnc) e[1] *= keep; }
+}
+/** `count` captives of origin mixture culPairs/ancPairs (count-weighted; may be null)
+    ARRIVE at `dest`: they join its population and admix its identity layers. */
+export function arriveCaptives(world, dest, count, culPairs, ancPairs) {
+  if (!T.SLAVE_PEOPLE || !(count > 0)) return;
+  dest.people = (dest.people || 0) + count;
+  const frac = count / Math.max(1, dest.people);
+  if (culPairs && culPairs.length) admixArrivals(world, dest, culPairs, frac);
+  if (ancPairs && ancPairs.length) {
+    const arriving = normAnc(ancPairs.map(e => [e[0], e[1]]));
+    if (arriving.length) dest.ancMix = blendAnc(dest.ancMix, 1 - frac, arriving, frac);
+  }
+}
+
 export function makeSettlement(world, x, y, opts = {}) {
   const id = world._nextSettlementId || 1;
   world._nextSettlementId = id + 1;
@@ -229,14 +276,29 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Start at the tier-0 storage cap (see storageCap in updateFood);
     // a larger value would just be clamped away on the first tick.
     food: 80,
-    knowledge: opts.knowledge || {
-      agriculture: 0.50,        // cradle starts already farming (absorbs the old foraging track)
+    knowledge: opts.knowledge || (opts.cradle ? {
+      // A CRADLE seeds at the EVE OF STATES — the display epoch is 3000 BC
+      // (calendar.js DISP_START) and this is what 3000 BC WAS: proto-urban
+      // irrigation towns (late Uruk, Naqada III, Longshan) with temple
+      // administration on the verge of kingship, and copper metallurgy already
+      // millennia old. The old stone-age seed (agr .5 / org .1 / met 0) spent
+      // ~1600 displayed years growing INTO the state the start date already
+      // claims — the measured 5.3x "Neolithic" start-up row (probe_erapace).
+      // Initial CONDITIONS of the world at t=0, not a gate on anything.
+      agriculture: 0.55,        // mature floodplain/irrigation farming
+      construction: 0.20,       // mudbrick towns, the first monumental works
+      organization: 0.28,       // temple accounts / proto-writing — kingship at the door
+      metallurgy:  0.16,        // chalcolithic copper (ore access still gates practice)
+      navigation:  0.05,        // river craft
+      mobility:    0.05,        // pack animals
+    } : {
+      agriculture: 0.50,        // frontier starts already farming (absorbs the old foraging track)
       construction: 0.1,        // absorbs the old toolmaking track (wagons + bridges)
       organization: 0.1,        // absorbs the old literacy track (records + bureaucracy)
       metallurgy:  0,           // gated by ore access
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses
-    },
+    }),
     // Crop packages this settlement has (ids into src/cropPackages.js). Empty
     // unless T.CROP_AXIS is on; seeded at creation (cradle domestication /
     // parent inheritance) and grown by crop diffusion in updateKnowledge. The
@@ -584,6 +646,26 @@ export { techEff };
 // (but goods-poor) mining towns are net buyers, spending their specie
 // outward — that's how mined money spreads to the rest of the economy.
 // MINING_RATE -> runtime lever (tuning.js T.MINING_RATE)
+// Credit contraction runs this multiple of the build-up easing rate: a run on the
+// bank is intrinsically faster than deposit growth (confidence compounds slowly,
+// evaporates at once — 1637, 1720, 1873). An asymmetry of the mechanism itself,
+// not a tunable outcome: expansion ~a generation to full depth at the default
+// CREDIT_RATE, a crunch ~a few years.
+const CREDIT_CRUNCH = 4;
+// SCI_COMPOUND bounds: the medieval-typical hub's knowledge-production index (the
+// curve's =1 anchor — where the measured era pacing is already 1.0×), and the
+// floor/cap on the correction while the exponent is calibrated. Floor keeps a
+// fresh cradle learning (deep antiquity is already ~right); cap keeps a
+// discovery from teleporting a track in one tick.
+// FLOOR 0.7 (was 0.6): the floor is the antiquity learning rate — the whole
+// Bronze window sits below the anchor (idx 0.3-1.1 → (idx/1.6)^1.5 ≈ 0.09-0.57,
+// floored), so the Bronze SPAN ∝ 1/floor. The 3-seed table priced 0.6 at 1.6×
+// the historical span; with the eve-of-states genesis seed (makeSettlement) also
+// lifting the early window's inputs, the measured correction that lands Bronze
+// at ~1× is 0.7 (0.95 overshot to 0.7× — the two changes stack). Calibrated to
+// the SPAN, never to a date: the display epoch (calendar.js −3000) then simply
+// fits.
+const SCI_MED_IDX = 1.6, SCI_COMPOUND_FLOOR = 0.7, SCI_COMPOUND_CAP = 12;
 function updateWealth(world, s) {
   // Coin-loss drain (Phase 1 — the honest micro-sink replacing the freight burn):
   // a sliver of circulating specie leaves for good each tick — worn, shipwrecked,
@@ -591,20 +673,33 @@ function updateWealth(world, s) {
   // mining-only return) so the money supply settles at an equilibrium between
   // mint inflow and this realistic drain, instead of the freight burn.
   if (T.COIN_LOSS_RATE > 0 && s.wealth > 0) s.wealth -= s.wealth * T.COIN_LOSS_RATE * (world._dt || 1);   // per-tick specie drain → granularity-scaled
-  // CREDIT (Phase 5): a BANKING hub creates credit money on top of its specie —
-  // the fractional-reserve / bills-of-exchange layer that made Venice & Amsterdam
-  // rich with no mines. A settlement with Banking-era ORGANISATION and a wide
-  // TRADE network conjures credit up to CREDIT_MAX_MULT × its specie backing; when
-  // its commerce COLLAPSES the credit is called in and the money supply CONTRACTS
-  // (the dark-age crunch). Credit is tracked separately (s._credit) so it stays
-  // bounded — contraction never pushes wealth negative or unwinds money it lacks.
+  // CREDIT (Phase 5, default ON): a BANKING hub creates credit money on top of its
+  // specie — the fractional-reserve / bills-of-exchange layer that made Venice &
+  // Amsterdam rich with no mines. Gated on the banking INSTITUTION (the discrete
+  // banking tech's `credit` ability — bills of exchange need banks, exactly as the
+  // monetization gauge gates a cash economy on the currency tech's `market`; the
+  // old raw org>0.45 proxy fired half the organization track before anyone built
+  // one). Depth then grows with organization BEYOND the banking gate (0.70→1:
+  // goldsmith notes → giro banks → joint-stock finance) and with market breadth
+  // (trade partners — a bill of exchange needs correspondents to clear through),
+  // up to CREDIT_MAX_MULT × specie backing. When commerce COLLAPSES (a sack,
+  // severed trade, lost institution) the target falls and credit is CALLED IN at
+  // CREDIT_CRUNCH × the build-up rate — panics run faster than deposit growth —
+  // contracting the money supply (the dark-age crunch). Credit is tracked
+  // separately (s._credit) so it stays bounded — contraction never pushes wealth
+  // negative or unwinds money it lacks. Everything gates on the settlement's own
+  // emergent tech/commerce, never era/time; rates are dt-scaled like COIN_LOSS so
+  // SIM_GRANULARITY leaves the arc invariant.
   if (T.CREDIT_RATE > 0) {
     const cur = s._credit || 0;
     const base = Math.max(0, (s.wealth || 0) - cur);                      // specie backing the credit
     const org = (s.knowledge && s.knowledge.organization) || 0;
     const reachF = s._tradeReach ? Math.min(1, s._tradeReach.size / 12) : 0;
-    const bankF = Math.max(0, (org - 0.45) / 0.55) * reachF;             // needs Banking-era org + commerce
-    const delta = (base * (T.CREDIT_MAX_MULT - 1) * bankF - cur) * T.CREDIT_RATE;
+    const depth = 0.25 + 0.75 * Math.min(1, Math.max(0, (org - 0.70) / 0.30));   // a new bank multiplies modestly; finance deepens with statecraft
+    const bankF = techEff(s).credit ? depth * reachF : 0;
+    const gap = base * (T.CREDIT_MAX_MULT - 1) * bankF - cur;
+    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 ? CREDIT_CRUNCH : 1));
+    const delta = gap * rate;
     if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
     else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_CREDIT, take); } }   // credit called in, not goods bought (B17)
   }
@@ -698,6 +793,7 @@ const CASHCROP_LAND   = 0.85;   // fraction of arable a fully-cash-cropped settl
 const ALLUVIUM_COAST  = 0.5;    // coastal lowland gets this share of a river floodplain's silt-fertility lift (delta/plain/polder farming)
 const FISH_LAND_REF   = 8.0;    // land-food-per-tile above which farming is rich enough that fish stops mattering (the cradles sit well above)
 const SLAVE_MINE_PULL = 0.6;    // mining's coerced-labour demand weight
+const ESTATE_PULL     = 1.0;    // latifundia gang-labour demand weight (a fully-consolidated estate belt pulls like full cash-crop suitability)
 
 // Evolve a settlement's coerced-labour stock, its cash-crop land allocation, and its
 // plantation output. Called once per tick from updateSettlement (after updateWealth, so
@@ -706,7 +802,32 @@ export function updateCoercedLabour(world, s) {
   if (!T.SLAVERY || s.mode !== "settled") { if (s._unfree) { s._unfree = 0; s._cashFrac = 0; } return; }
   const cs = cashSuit(s); s._cashSuit = cs;
   const hasMine = (s._minableTiles && s._minableTiles.length) ? 1 : 0;
-  const labourDemand = cs + SLAVE_MINE_PULL * hasMine;          // coerced labour this site could USE
+  // Latifundia (conquest.js): countryside consolidated into elite estates demands GANG
+  // labour — the classical demand engine, needing no cash-crop climate and no mine (Rome's
+  // temperate Italies). A stateless settlement's estates lose their grip — the lord class
+  // was the state's — receding on the same tenure clock they consolidated on.
+  let est = 0;
+  if (T.LATIFUNDIA && (s._estates || 0) > 0) {
+    if (s.countryId < 0) s._estates = Math.max(0, s._estates - 0.0008 * (world._dt || 1));
+    est = s._estates;
+  }
+  // The plantation is an EXPORT business, and it CONCENTRATES:
+  //  • CONVEX suitability (cs²/CS_MAX): fixed costs + comparative advantage meant
+  //    marginal cash land was never planted at all while prime land got everything —
+  //    the plantation economy lives in its best belts, not smeared over every warm
+  //    village (measured: linear cs put a diffuse ~20% coerced across the whole
+  //    subtropics once supply turned elastic).
+  //  • The MARKET gate: gang labour is only worth buying in proportion to how well
+  //    this place's luxuries actually SELL (smoothed realized income vs offered) —
+  //    a poor world buys no sugar, so the tropics wait for RICH BUYERS (the Atlantic
+  //    timing, via wealth, never a date), with a small speculative floor so the
+  //    first planters can trial prime cash ground.
+  // Before the price-responsive market (SLAVE_PULL) both were moot — chronic supply
+  // starvation hid them — so they ride that lever for byte-identical off.
+  const csDem = T.SLAVE_PULL > 0
+    ? (cs * cs / 1.5) * (0.15 + 0.85 * Math.min(1, ((s._mInRate && s._mInRate[IN_LUXURY]) || 0) / Math.max(0.5, s._luxSupply || 0)))
+    : cs;
+  const labourDemand = csDem + SLAVE_MINE_PULL * hasMine + ESTATE_PULL * est;   // coerced labour this site could USE
   // Food security: can it feed extra mouths AND afford to stop growing its own food?
   // surplus on hand + a trade link to import grain (a plantation must import food).
   const surplus = Math.max(0, (s._foodSupply || 0) - (s._foodDemand || 0));
@@ -718,39 +839,65 @@ export function updateCoercedLabour(world, s) {
   // Sized by the settlement's economy (people as the land/capital proxy), NOT sqrt — a
   // plantation/mine can hold MORE unfree than free (the Caribbean was ~80% enslaved); the
   // revolt cap below keeps the ratio from running to 100%.
-  const target = T.SLAVE_TARGET * labourDemand * Math.max(1, s.people || 0) * foodSec * afford;
+  // Under SLAVE_PEOPLE the unfree are INSIDE s.people, so the sizing proxy (and every
+  // "free population" term below) is the FREE headcount — otherwise buying slaves would
+  // inflate the very population the demand target is sized on (a runaway loop).
+  const freePop = T.SLAVE_PEOPLE ? Math.max(1, (s.people || 0) - (s._unfree || 0)) : Math.max(1, s.people || 0);
+  const target = T.SLAVE_TARGET * labourDemand * freePop * foodSec * afford;
   let u = s._unfree || 0;
   // The workforce comes from the slave TRADE (slavery.js), not thin air: work your OWN
   // captives first (a raider that also has plantations/mines uses what it seizes), then
   // post the residual as market DEMAND for slavery.js to fill from others' captives.
   const cap = s._captives || 0;
-  if (cap > 0 && u < target) { const useLocal = Math.min(cap, target - u); u += useLocal; s._captives = cap - useLocal; }
+  if (cap > 0 && u < target) {
+    const useLocal = Math.min(cap, target - u); u += useLocal; s._captives = cap - useLocal;
+    // The captor puts its own captives to WORK: they become resident population here,
+    // carrying their origin peoples into the local mixture (T.SLAVE_PEOPLE).
+    if (T.SLAVE_PEOPLE && useLocal > 0) {
+      arriveCaptives(world, s, useLocal, s._captiveCul, s._captiveAnc);
+      drainCaptivePools(s, useLocal, cap);
+    }
+  }
   // Attrition — the death sink: mines & plantations are lethal, so the unfree must be
   // resupplied (this is what sustains the slave trade); mild for domestic/mixed work.
-  const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine);
-  u *= (1 - T.SLAVE_DEATH * harsh * (world._dt || 1));
+  // Under SLAVE_PEOPLE those deaths leave the population ledger too — they were people.
+  // (estate gang labour is brutal — the chained ergastulum — though less lethal than sugar or Potosí)
+  const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine + 0.4 * est);
+  if (T.SLAVE_PEOPLE) {
+    const dead = u * T.SLAVE_DEATH * harsh * (world._dt || 1);
+    if (dead > 0) { u -= dead; s.people = Math.max(1, (s.people || 0) - dead); }
+  } else {
+    u *= (1 - T.SLAVE_DEATH * harsh * (world._dt || 1));
+  }
   // Revolt: a high unfree ratio with too little free population to police it boils over —
   // the estate is wrecked and most of the unfree are lost (Haiti, the Zanj rebellion).
-  const ratio = u / Math.max(1, (s.people || 0) + u);
+  const ratio = u / Math.max(1, (s.people || 0) + (T.SLAVE_PEOPLE ? 0 : u));
   s._unfreeRatio = ratio;
   if (ratio > 0.6 && u > 50) {
     const r = hash32(world.seed || 1, "slaveRevolt", s.id, world.step) / 4294967296;
     if (r < T.SLAVE_UNREST * (ratio - 0.6) * 0.02 * (world._dt || 1)) {
+      const lost = u * 0.75;
       u *= 0.25; s._sackedAt = world.step;                      // the revolt craters output
+      if (T.SLAVE_PEOPLE) s.people = Math.max(1, (s.people || 0) - lost);   // the dead and the fled leave the ledger
       logEvent(world, "slave.revolt", { s: s.id, sName: s.name || "a settlement" });
     }
   }
   s._unfree = Math.max(0, u);
-  s._slaveDemand = Math.max(0, target - u);   // residual demand → bought on the market (slavery.js)
+  // Safety clamp (SLAVE_PEOPLE): the unfree live inside s.people, so any population sink
+  // this file doesn't see (famine, missed shocks) must take its share of them too — never
+  // more unfree than people. Keeps the invariant against every current and future sink.
+  if (T.SLAVE_PEOPLE) s._unfree = Math.min(s._unfree, Math.max(0, (s.people || 0) - 1));
+  s._slaveDemand = Math.max(0, target - s._unfree);   // residual demand → bought on the market (slavery.js)
+  u = s._unfree;
   // Cash-crop land allocation drifts toward what's suitable, food-secure & labour-backed.
-  const labourBacked = Math.min(1, u / Math.max(1, 0.25 * (s.people || 1)));
+  const labourBacked = Math.min(1, u / Math.max(1, 0.25 * freePop));
   const cashTarget = cs > 0.05 ? Math.min(1, cs) * foodSec * labourBacked : 0;
   s._cashFrac = (s._cashFrac || 0) + 0.04 * (cashTarget - (s._cashFrac || 0));
   // Cash-crop OUTPUT → folded into the LUXURY supply (sugar/tobacco/coffee were the
   // colonial luxuries), so it trades as luxury income to the OWNER. Coerced labour
   // multiplies it into a real plantation; free peasants grow only a little.
   const arableScale = Math.min(1, (s._terrTiles || 0) / 120);
-  const coerceMul = T.COERCE_CASH * Math.min(2, u / Math.max(1, s.people || 1));
+  const coerceMul = T.COERCE_CASH * Math.min(2, u / freePop);
   const cashOut = T.CASHCROP_W * cs * (s._cashFrac || 0) * arableScale * (0.25 + coerceMul) * (s._eraProd || 1);
   s._cashOut = cashOut;
   if (cashOut > 0) { s._luxSupply = (s._luxSupply || 0) + cashOut; s._luxSupplyLeft = (s._luxSupplyLeft || 0) + cashOut; }
@@ -937,6 +1084,30 @@ export function farmsLand(s) {
 // the user asked for ("don't buy horses when struggling").
 export function getWealthReserve(s) {
   return 30 + Math.max(0, s.people || 0) * 0.3;
+}
+
+// ── Monetization: how much of a settlement's economy runs on COIN ────────────
+// The levy→coin arc's per-settlement gauge (T.MONETIZE, conquest.js fiscal pass):
+// a place is monetized to the degree it (a) actually HOLDS coin against its own
+// subsistence reserve (a village whose whole purse is below its hoarding floor
+// transacts in kind, whatever the era) and (b) touches MARKETS (trade partners —
+// coin is only worth holding where there is somewhere to spend it). Emergent on
+// three axes: mining, trade tech and currency->banking lift coin stocks and
+// connectivity over the arc, so the countryside monetizes centuries after the
+// entrepôts — never a date, never an era gate. 0 (a coinless, marketless
+// hamlet) → 1 (a cash economy).
+// The third axis is the INSTITUTION: before a society unlocks coined money
+// (the currency tech's `market` ability, via its own tree — never a year),
+// exchange runs on weighed metal, barter and ledger credit (Ur's silver
+// shekels-by-weight), which monetizes an economy only partly however rich the
+// hoard — a hoard measures wealth, not a cash economy. Without this gate the
+// gauge saturated in the Bronze Age (measured median 1.00 at 15k steps: every
+// state a cash state again, just via the meter instead of the ledger).
+export function monetization(s) {
+  const coinF = Math.min(1, Math.max(0, s.wealth || 0) / (3 * getWealthReserve(s)));
+  const reachF = Math.min(1, (s._tradeReach ? s._tradeReach.size : 0) / 10);
+  const instF = techEff(s).market ? 1 : 0.3;
+  return coinF * (0.25 + 0.75 * reachF) * instF;
 }
 
 // Decomposition of exportValue — returns a sorted list of
@@ -1392,9 +1563,64 @@ function updateKnowledge(world, s) {
   // (all five use sciMul as their rate multiplier), so tech develops 1/G as fast per
   // tick — paced with the granularity-slowed population. ×winterSci slows/speeds
   // the WHOLE tree for non-winter / winter peoples at once.
-  const sciMul = winterSci * (world._dt || 1) * Math.max(0.25, Math.min(2.2,
+  let sciMul = winterSci * (world._dt || 1) * Math.max(0.25, Math.min(2.2,
     1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization
       + T.COMPETE * competF - 0.45)));
+  // ── Compounding returns (T.SCI_COMPOUND, experimental default OFF) ──────────
+  // The chronology rectification (docs/roadmap: chronology wave). The factors
+  // above all CLAMP, so from the Iron Age on every hub learns at the same
+  // ceiling — the sim's pace is FLAT where history's was CURVED. Measured on the
+  // uniform human clock (tools/probe_erapace.mjs): Iron runs 0.3× its historical
+  // length, Renaissance 3.6×, Industrial 6.5×, Modern ~38× too long. This term
+  // replaces the flat ceiling with one smooth curve through the medieval-typical
+  // hub: the knowledge-production INDEX — connected minds × market breadth × the
+  // knowledge INSTITUTIONS actually discovered (writing → paper → printing →
+  // universities → the scientific method, techEff sciInst) — compounds the rate
+  // as (idx/SCI_MED_IDX)^α. =1 at the medieval anchor (the era row already
+  // pacing 1.0×, so the validated mid-game doesn't move), below it for a
+  // classical hub (their inputs are genuinely smaller — the flat cap was
+  // over-paying them), far above for an industrial world-city. Era durations
+  // become OUTPUTS of the world's own state — no era is ever named, no date is
+  // ever read. Floor/cap bound the correction while α is calibrated (the
+  // measured table is the thermometer, α the only knob — never a per-era value).
+  if (T.SCI_COMPOUND > 0) {
+    const inst = techEff(s).sciInst || 1;
+    const idx = Math.max(0.02, sciSqrt / T.SCI_POP_REF) * Math.max(0.02, reachN / 18) * inst;
+    sciMul *= Math.max(SCI_COMPOUND_FLOOR, Math.min(SCI_COMPOUND_CAP, Math.pow(idx / SCI_MED_IDX, T.SCI_COMPOUND)));
+  }
+  // ── Labor cost → innovation demand (T.LABOR_INNOV) ──────────────────────────
+  // The classical-stagnation driver (docs: chronology wave, "driver 3"). When a
+  // machine competes with a slave, the slave wins: a society whose production
+  // runs on COERCED labor has little demand for labor-saving technique — Rome's
+  // aeolipile stayed a toy while Hero's world ran on chattel muscle; the serf
+  // manor likewise under-bought the mill. So the learning rate scales DOWN with
+  // the coerced share of the workforce (chattel headcount _unfree + serf tenure
+  // _serf, both live emergent stocks of the slavery/serfdom systems). The other
+  // half of the law — SCARCE labor is dear and compels invention (the post-plague
+  // wage revolution) — is already emergent here: mass death raises food-per-head
+  // (flow) and with it surplusF above. A fully free-labor settlement is exactly
+  // 1 (unchanged); a fully coerced one learns at 1 − LABOR_INNOV. No era, no
+  // date, no region is named — sim-Rome slows because of what its economy IS.
+  if (T.LABOR_INNOV > 0) {
+    const coerced = Math.min(1, (s._unfree || 0) / Math.max(1, s.people || 1) + (s._serf || 0));
+    if (coerced > 0) sciMul *= Math.max(0.1, 1 - T.LABOR_INNOV * coerced);
+  }
+  // ── Hegemonic stagnation (T.HEGEMONY_STAG) — the classical law's other half ──
+  // A state system that has ABSORBED its peers loses the competitive driver
+  // itself (Scheidel's Escape-from-Rome thesis): no rival that could beat you, no
+  // court to defect to, no war you might lose — the pressure that pays for
+  // technique is gone. Reads s._hegF (the peer-competition pass above): the
+  // power-weighted share of this settlement's contact world that its own political
+  // system has subordinated, scaled by having actually absorbed ≥2 peer-equivalents
+  // — so a lone pioneer kingdom on an empty frontier (nothing ever subordinated)
+  // and a fragmented peer system (nothing to subordinate) both read 0, while the
+  // hegemon that swallowed its neighbourhood reads ~1 exactly where the era-leading
+  // hubs live. Multiplicative like LABOR_INNOV — the additive COMPETE bonus term
+  // can only swing the rate ~10-15% (measured), never the classical row's ~2.5×.
+  // Fires purely from live political structure — no era, no date, no name.
+  if (T.HEGEMONY_STAG > 0 && (s._hegF || 0) > 0) {
+    sciMul *= Math.max(0.1, 1 - T.HEGEMONY_STAG * s._hegF);
+  }
 
   // ── Environment specialization (climate-tied learning) ────────────────
   // Beyond the resource gates, the LOCAL CLIMATE biases which techniques a
@@ -1653,7 +1879,52 @@ function updateKnowledge(world, s) {
       const costW = Math.exp(-((link && link.cost) || 0) / DIFFUSE_COST_K);
       for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; kmCostW[t] = costW; } }
     }
-    s._rivalN = rivals.size;   // distinct rival polities in contact → competition term in sciMul next pass
+    // ── PEER competition (T.PEER_COMPETE): rivals are independent PEERS ────────
+    // The competition-drives-innovation thesis (Hume, the warring states, fractious
+    // Europe) is about states that could genuinely BEAT you — not any foreign flag
+    // in trade reach. Two corrections, both measured necessities for the classical
+    // gap (the era clock follows the leading hubs, and only this pressure slows
+    // them): (a) SUBORDINATION — a vassal, an overlord, a co-dependency share your
+    // power system and are no rivals (the old count kept competF pinned at 1 inside
+    // a perfect suzerain network — hegemony was structurally invisible); (b) PEER
+    // WEIGHT — a rival presses in proportion to its power against yours (min(1,
+    // theirs/(0.5×mine)): a peer at half your power presses fully, a minnow barely —
+    // Rome felt no spur from Germanic villages). Alongside, the SUBORDINATED weight
+    // is tallied: how much of your contact world your system has absorbed — the
+    // hegemony fraction the stagnation law (sciMul, below) reads. Falls back to the
+    // legacy count where power is unpriceable (young states between alliance
+    // rebuilds). 0 = the legacy any-flag count (byte-identical).
+    if (T.PEER_COMPETE > 0 && s.countryId >= 0 && rivals.size) {
+      const powM = world._countryPow, ov = world._overlordOf;
+      const rootOf = (cc) => { let c = cc, hops = 0; while (ov && ov.has(c) && hops++ < 64) c = ov.get(c); return c; };
+      const myRoot = rootOf(s.countryId);
+      const myPow = powM ? powM.get(s.countryId) : undefined;
+      let peerW = 0;
+      for (const cc of rivals) {
+        if (rootOf(cc) === myRoot) continue;                   // your own suzerainty network is not your competition
+        const rp = powM ? powM.get(cc) : undefined;
+        peerW += (myPow > 0 && rp !== undefined) ? Math.min(1, rp / (0.5 * myPow)) : 1;
+      }
+      s._rivalN = peerW;
+      // THE RATCHET — stagnation is the DEATH of once-present pressure, not mere
+      // solitude (measured, seed 8817: the leading hub's peer pressure RISES through
+      // the bronze arc as secondary states form — 0.7 → 2.2, the Amarna-club dynamic —
+      // then COLLAPSES to 0.34 exactly in the iron window as the leading realm
+      // outgrows everyone; formal vassalage stayed rare, so a subordination-share
+      // proxy never fired). Track the peak peer pressure this hub has ever felt;
+      // the hegemony fraction is the DECLINE from that peak, gated on a real peer
+      // system having existed (peak ≥ half of full pressure — two peer-equivalents).
+      // A lone pioneer kingdom never had a peak → 0; a fragmented peer world never
+      // declines → 0; and when a hegemony later shatters into successor states, the
+      // pressure recovers and learning resumes — the post-imperial revival, free.
+      const p = Math.min(1, peerW / COMPETE_REF);
+      const peak = Math.max(s._peerPeak || 0, p);
+      s._peerPeak = peak;
+      s._hegF = peak >= 0.5 ? Math.max(0, (peak - p) / peak) : 0;
+    } else {
+      s._rivalN = rivals.size;   // legacy: distinct rival polities in contact
+      s._hegF = 0;
+    }
     if (any) {
       if (wa <= 0) km.navigation = 0;            // no sea → no naval technique to absorb
       if (horses <= horsesThr) km.mobility = 0;  // no horses → no cavalry technique to absorb
@@ -1675,7 +1946,26 @@ function updateKnowledge(world, s) {
           const axisW = t === "agriculture"
             ? Math.max(0.05, 1 - T.AXIS_BIAS * (1 - kmSim[t]))
             : 1;
-          k[t] = clamp01(k[t] + rate * axisW * kmCostW[t] * gap);
+          // ABSORPTIVE CAPACITY (T.ABSORB_STEP): technique transfers by contact only
+          // NEAR current practice — a society copies the next rung of what it can
+          // already use (a tool its workshops can reproduce, a method its
+          // institutions can run), never the frontier outright. The absorbed gap per
+          // contact is therefore capped at ~one tech-rung: within the window,
+          // diffusion is exactly the old exponential gap-closing (near-frontier
+          // neighbours track tightly, as before); beyond it, a distant laggard
+          // chases the moving frontier LINEARLY, at a speed still scaled by its own
+          // literacy (litMul — Abramovitz's "social capability": a literate,
+          // organised laggard absorbs ~3x faster, the Meiji pattern). This is what
+          // makes DIVERGENCE possible at all: with uncapped gap-closing the whole
+          // planet converged to within 0.10 of the frontier by the Modern era on
+          // every track (measured p10-p90 of capitals' org: 0.90-1.00) — no rising
+          // periphery, no stagnant empire, no Great Divergence, modernity arriving
+          // everywhere at once. Composes with the climate axis-gate above, the hard
+          // resource gates (no sea -> no seamanship), and KNOW_DECAY — a stressed,
+          // cut-off periphery can now regress NET even while in contact, a real
+          // dark age. 0 = off (the legacy uncapped pull, byte-identical).
+          const absGap = T.ABSORB_STEP > 0 ? Math.min(gap, T.ABSORB_STEP) : gap;
+          k[t] = clamp01(k[t] + rate * axisW * kmCostW[t] * absGap);
         }
       }
     }
@@ -2118,7 +2408,11 @@ function updateFood(world, s) {
   //   pop 1000  → 1.30
   //   pop 10000 → 1.40
   const urbanFactor = 1 + Math.log10(Math.max(10, s.people)) / 10;
-  const civDemand = s.people * 0.0030 * urbanFactor;
+  // Under SLAVE_PEOPLE the unfree are inside the headcount but are fed at the owner's
+  // subsistence ration (the slaveFood line below), not the civic rate — split them out
+  // so they aren't fed twice.
+  const unfreeIn = (T.SLAVERY && T.SLAVE_PEOPLE) ? Math.min(s._unfree || 0, s.people) : 0;
+  const civDemand = (s.people - unfreeIn) * 0.0030 * urbanFactor;
   // The garrison eats too — extra rations/fodder above the civilian rate
   // (provisioning). This is the food cost of a standing army: a big garrison
   // burns the food surplus that would otherwise fill granaries / grow the
@@ -2419,7 +2713,15 @@ function updatePopulation(world, s) {
     const sink = T.SETT_GROWTH * URBAN_GRAVEYARD_W
       * (s._diseaseLoad || 0) * Math.min(1, urbShare2 / 0.3)
       * (1 - (techEff(s).healthRelief || 0));
-    s.people = s.people * Math.exp((r * grow - sink) * _dt);
+    const f = Math.exp((r * grow - sink) * _dt);
+    s.people = s.people * f;
+    // Hereditary bondage (SLAVE_PEOPLE): children born to the unfree are unfree, and the
+    // urban graveyard takes free and unfree alike — the unfree share rides the settlement's
+    // own demographic wave (its EXTRA plantation/mine mortality is SLAVE_DEATH, in
+    // updateCoercedLabour). Without this every birth was implicitly born free, so enslaved
+    // populations could never reproduce themselves — but natural increase (not only the
+    // trade) is how the North American enslaved population actually grew.
+    if (T.SLAVERY && T.SLAVE_PEOPLE && (s._unfree || 0) > 0) s._unfree = Math.min(s._unfree * f, Math.max(0, s.people - 1));
   }
   if (s.people < 1.5) {
     s.mode = "dead";

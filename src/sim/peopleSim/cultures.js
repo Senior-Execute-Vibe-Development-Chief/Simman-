@@ -289,6 +289,46 @@ export function seedLangFromCulture(world, s) {
   if (lid >= 0) s.langMix = [[lid, 1]];
 }
 
+/** An ARRIVING population admixes a settlement's identity in one pass: `pairs` is the
+    arrivals' culture mixture ([[cultureId, weight], ...], any positive weighting) and
+    `frac` their share of the settlement's post-arrival population. The existing culMix
+    scales by (1−frac) and the arrivals add frac split by their weights; the arrivals'
+    native tongues enter langMix the same way (the substrate a creole grows from).
+    Single-pass on purpose — repeated mixToward calls would re-scale the residents by
+    (1−frac) once per arriving culture and overstate the newcomers. Used by forced
+    migration (T.SLAVE_PEOPLE, settlement.js arriveCaptives); any future voluntary
+    mass-migration flow should reuse it. */
+export function admixArrivals(world, s, pairs, frac) {
+  if (!(frac > 0) || !pairs || !pairs.length) return;
+  let tot = 0; for (const e of pairs) if (e[0] != null && e[0] >= 0 && e[1] > 0) tot += e[1];
+  if (!(tot > 0)) return;
+  if (!s.culMix || !s.culMix.length) s.culMix = s.cultureId != null && s.cultureId >= 0 ? [[s.cultureId, 1]] : [];
+  const scale = 1 - frac;
+  for (const e of s.culMix) e[1] *= scale;
+  const langAdd = [];
+  for (const [cid, w] of pairs) {
+    if (cid == null || cid < 0 || !(w > 0)) continue;
+    const add = frac * (w / tot);
+    let entry = null; for (const e of s.culMix) if (e[0] === cid) { entry = e; break; }
+    if (entry) entry[1] += add; else s.culMix.push([cid, add]);
+    const lid = langIdOfCulture(world, cid);
+    if (lid >= 0) langAdd.push([lid, add]);
+  }
+  normalizeMix(s.culMix);
+  if (s.culMix.length) s.cultureId = s.culMix[0][0];
+  if (langAdd.length) {
+    if (!s.langMix || !s.langMix.length) seedLangFromCulture(world, s);
+    if (s.langMix && s.langMix.length) {
+      for (const e of s.langMix) e[1] *= scale;
+      for (const [lid, add] of langAdd) {
+        let entry = null; for (const e of s.langMix) if (e[0] === lid) { entry = e; break; }
+        if (entry) entry[1] += add; else s.langMix.push([lid, add]);
+      }
+      normalizeMix(s.langMix);
+    }
+  }
+}
+
 /** Initialize a newborn settlement's culture (and spoken tongue) from its founder stock. */
 export function seedCulture(world, s, cultureId) {
   s.cultureId = cultureId ?? -1;

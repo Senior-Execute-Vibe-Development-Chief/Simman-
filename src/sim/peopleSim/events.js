@@ -154,6 +154,8 @@ const NARRATE = {
   "polity.submitted"(ev, as) {
     return as === ev.to
       ? `${ev.name || "A neighbouring statelet"} bent the knee and became a tributary of the realm.`
+      : ev.how === "capitulation"
+      ? `Beaten in the field, the court of ${ev.name || "the realm"} bent the knee to ${ev.toName || "the victor"} — a client crown under the conqueror's peace.`
       : `Facing hopeless odds, the court of ${ev.name || "the realm"} bowed to ${ev.toName || "a greater power"} — keeping its throne at the price of tribute.`;
   },
   "horde.raid"(ev, as) {
@@ -268,6 +270,7 @@ const NARRATE = {
   "city.financier"(ev) { return `The money-lenders of ${ev.sName} rose to bankroll the crown.`; },
   "city.slaver"(ev) { return `${ev.sName} grew rich as a market of the slave trade.`; },
   "city.plantation"(ev) { return `The fields of ${ev.sName} were given over to plantation, worked by the unfree.`; },
+  "city.latifundia"(ev) { return `The smallholds around ${ev.sName} were swallowed into great estates, worked by slave gangs.`; },
   "mine.boom"(ev) { return `Rich veins were struck at ${ev.sName} — a mining boom.`; },
   "society.serfdom"(ev) { void ev; return "The peasantry were bound to the land — serfdom took hold across the realm."; },
   "society.emancipation"(ev) { void ev; return "The old bonds were broken — the realm's serfs won their freedom."; },
@@ -322,7 +325,7 @@ export function categoryOf(ev, as = -1) {
     case "mine.boom": return "industry";
     case "city.entrepot": case "city.financier": return "trade";
     case "city.holy": return "faith";
-    case "city.slaver": case "city.plantation": case "society.serfdom":
+    case "city.slaver": case "city.plantation": case "city.latifundia": case "society.serfdom":
     case "society.emancipation": case "slave.revolt": return "society";
     case "crown.debt": return "loss";
     case "realm.monument": return "wealth";

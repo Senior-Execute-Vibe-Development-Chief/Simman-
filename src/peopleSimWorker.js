@@ -288,12 +288,16 @@ function packSelected(s) {
     _luxSupply: s._luxSupply, _luxDemand: s._luxDemand,
     army: s.army, loyalty: s.loyalty, _adminLoad: s._adminLoad, _ambition: s._ambition,
     unrest: s.unrest, _unrestCause: s._unrestCause,
+    // Loyalty field (ontology V2): the PEOPLE's attachment (county mean of
+    // _allegiance) and the nation their ground still remembers, if any.
+    _attach: s._attach,
+    _homelandName: (s._homeland ?? -1) >= 0 ? realmName(world, s._homeland) : null,
     _developRate: s._developRate, _devReason: s._devReason, _housingPressed: s._housingPressed,
     _houseK: s._houseK, _foodK: s._foodK,
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
     _specKey: s._specKey, _specStr: s._specStr,                          // agglomeration: locked-in craft specialty
     _unfree: s._unfree, _captives: s._captives, _unfreeRatio: s._unfreeRatio,   // coerced labour
-    _cashFrac: s._cashFrac, _cashSuit: s._cashSuit, _cashOut: s._cashOut, _serf: s._serf,
+    _cashFrac: s._cashFrac, _cashSuit: s._cashSuit, _cashOut: s._cashOut, _serf: s._serf, _estates: s._estates,
     foundedStep: s.foundedStep, parentSettlementId: s.parentSettlementId,
     _seaReachSize: s._seaReach ? s._seaReach.size : 0,
     _tradeProfile: getTradeProfile(s, world),
@@ -437,6 +441,30 @@ function buildSnapshot() {
     }
   }
 
+  // Loyalty view (ontology V2, loyaltyField.js): the attachment continuum and
+  // the ground's homeland memory, per tile. Packed for transfer: loyal is a
+  // Uint8 heat (0..250 = attachment ×250; 255 = ungoverned, no reading);
+  // loyalHome carries the remembered nation's id (-1 = none). Slow-changing
+  // (updates once per polity pass) → static cadence.
+  let loyal = null, loyalHome = null;
+  if (viewMode === "loyalty" && sendStatic && world._allegiance && world._countryOwner) {
+    const alg = world._allegiance, co = world._countryOwner, N = world.N;
+    loyal = new Uint8Array(N);
+    for (let ti = 0; ti < N; ti++) loyal[ti] = co[ti] >= 0 ? Math.min(250, Math.round(Math.max(0, alg[ti]) * 250)) : 255;
+    loyalHome = world._tileHomeland ? world._tileHomeland.slice() : null;
+  }
+  // Population view: the people-on-land field (popField — the canonical
+  // demographic substrate), log-packed to a Uint8 heat so one bright city
+  // basin doesn't flatten the countryside. popMax rides along for the legend.
+  let popDens = null, popMax = 0;
+  if (viewMode === "population" && sendStatic && world.popField) {
+    const pf = world.popField, N = world.N;
+    for (let ti = 0; ti < N; ti++) if (pf[ti] > popMax) popMax = pf[ti];
+    const logMax = Math.log1p(popMax);
+    popDens = new Uint8Array(N);
+    if (logMax > 0) for (let ti = 0; ti < N; ti++) popDens[ti] = pf[ti] > 0.01 ? Math.min(250, Math.round(Math.log1p(pf[ti]) / logMax * 250)) : 0;
+  }
+
   // Money view: the animated coin flows (change every tick → send each frame
   // while the view is open). Roads view: a clean per-tile component-root array
   // (changes slowly → gate with the static group).
@@ -508,6 +536,8 @@ function buildSnapshot() {
   if (tileComp) transfer.push(tileComp.buffer);
   if (countryClaim) transfer.push(countryClaim.buffer);
   if (fieldDom) { transfer.push(fieldDom.buffer); transfer.push(fieldSec.buffer); }
+  if (loyal) { transfer.push(loyal.buffer); if (loyalHome) transfer.push(loyalHome.buffer); }
+  if (popDens) transfer.push(popDens.buffer);
 
   // Global price-level summary for the HUD ticker — population-weighted
   // mean across all settlements, so it tracks "the average wheat price the
@@ -533,6 +563,8 @@ function buildSnapshot() {
     globalP,
     owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim,
     fieldDom, fieldSec, fieldLayer,   // per-tile identity field for the active culture/faith/language lens
+    loyal, loyalHome,                 // loyalty lens: attachment heat + the ground's remembered nation
+    popDens, popMax: popDens ? popMax : undefined,   // population lens: log-packed people-on-land
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last

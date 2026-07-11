@@ -16,8 +16,9 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
-import { techEff, URBAN_BASE_RURAL } from "./settlement.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP } from "./conquest.js";
+import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
+import { slavePull } from "./slavery.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
@@ -27,6 +28,7 @@ import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { T } from "./tuning.js";
 import { recordIn, IN_STATE_PAY } from "./money.js";
+import { feedGrievance, SACK_GRIEV_FRAC } from "./loyaltyField.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -51,6 +53,13 @@ const PLUNDER_FRAC  = 0.30;   // share of a stormed city's coin that is portable
 const INDEMNITY_FRAC = 0.25;  // max share of the beaten side's treasury paid as reparations at a truce (scaled by how one-sided the exhaustion is)
 const TRADE_PEACE_W  = 2.0;   // how much mutual trade LENGTHENS a truce: at pairTrade >= its own war-relief scale the peace holds ~3x as long (merchants fund the settlement)
 const CONGRESS_JOIN  = 0.75;  // a third belligerent already worn past this fraction of TRUCE_EXHAUST joins the settlement (wars end at conferences, not dyad by dyad)
+// Frozen-front settlement (T.STALEMATE_TICKS, the status-quo peace): the war's front
+// DISPLACEMENT is a signed per-pass tile exchange folded into an EMA; the war reads
+// as frozen when that velocity sits under STALE_EPS for a full window. Signed on
+// purpose — a two-sided front trading the same border tiles nets to zero (the line
+// is not moving), while a persistent one-directional advance stays high.
+const MOVE_EMA_KEEP = 0.8;    // EMA memory per war pass (~5-pass ≈ a campaign season's smoothing)
+const STALE_EPS     = 0.75;   // displacement velocity (net tiles/pass, smoothed) below which the line reads as frozen
 
 // ── War-dead ledger ─────────────────────────────────────────────────────
 // Military losses accumulated per warring PAIR (key "lo:hi"), emitted as a
@@ -73,6 +82,35 @@ export function closeWar(world, key, how) {
   logEvent(world, "war.ended", { polity: a, to: b, name: realmName(world, a), toName: realmName(world, b),
     dead: Math.round(dead), how });
 }
+// ── War-throughput instrumentation (opt-in — tools/probe_warbars.mjs) ────────
+// world.debug.war = mkWarDebug() turns on per-pass counters: each candidate
+// attacker→defender pair's most permissive tile is kept and, if rejected,
+// attributed to the single PIVOTAL bar factor (the largest one whose removal
+// alone would have let the front open) — or "parity" (raw power short even
+// bare) or "stack" (only the combination rejects). Truce-blocked pairs and
+// every war ending (how / duration / exhaustion / age) are tallied too.
+// Null by default: zero cost, and the instrumented bar product is hoisted
+// verbatim (same IEEE multiply chain), so normal runs are byte-identical.
+export function mkWarDebug() {
+  return { step: -1, pairs: new Map(), trucePairs: new Set(), signed: [],
+           tot: { cand: 0, opened: 0, truceBlocked: 0, parity: 0, stack: 0,
+                  agg: 0, trade: 0, amphib: 0, war: 0, casus: 0, claim: 0, dom: 0, coal: 0, warsStarted: 0 } };
+}
+export function foldWarDebug(W) {
+  if (!W || !W.pairs) return;
+  for (const r of W.pairs.values()) {
+    W.tot.cand++;
+    if (r.passed) { W.tot.opened++; continue; }
+    if (r.attM < r.base) { W.tot.parity++; continue; }
+    let piv = null, pivV = 1;
+    for (const k in r.f) { const v = r.f[k]; if (v > 1 && r.minBar / v <= r.attM && v > pivV) { piv = k; pivV = v; } }
+    if (piv) W.tot[piv]++; else W.tot.stack++;
+  }
+  W.tot.truceBlocked += W.trucePairs.size;
+  W.pairs.clear(); W.trucePairs.clear();
+}
+const wdbgPass = (W, step) => { if (W.step !== step) { foldWarDebug(W); W.step = step; } };
+
 export const MUSTER_INTERVAL   = 100;
 // CONQUEST_INTERVAL (war-pass cadence) is a runtime lever — tuning.js
 // T.CONQUEST_INTERVAL; index.js gates advanceFronts on it.
@@ -350,6 +388,23 @@ const AMPHIB_NAV_MIN = 0.25;
 // truce block in advanceFronts). Below it, low-grade border raiding never
 // formally "ends" — the marches stay restless; only real wars sign peaces.
 const TRUCE_EXHAUST = 0.4;
+// ── Capitulation (deditio): a decisively LOST war ends on the victor's terms ──
+// Measured (tools/probe_warbars.mjs): every treaty signed on the LOSER's
+// exhaustion — the beaten side paid a one-time indemnity, KEPT its land, and got
+// a 770-1125 dyn-year protective truce. Victory reset the board, the inverse of
+// how most ancient wars ended: the beaten court became a CLIENT whose weight
+// joined the victor's next war (Rome's socii — the road from victory to network
+// growth). So: when the exhaustion gap says the war was decisively lost, not
+// mutually bled, AND the victor's live network field-might clearly out-scales
+// the loser's, the loser bends the knee (conquest.js bendTheKnee — the existing
+// dependency wiring: tribute, bloc, no internal fronts, network power) instead
+// of taking the protective truce. The counterweights are already built: the
+// coalition arrayed against the victor raises the required edge (coalitionBarOf),
+// a vassal that outgrows its lord breaks free (independence), and the identity/
+// coalition brakes still govern peacetime cascades. T.CAPITULATE=0 recovers the
+// pure-truce treaty table byte-identically.
+const CAPIT_GAP   = 0.5;   // exhaustion gap (|eA−eB|/TRUCE_EXHAUST) past which a war reads as decisively lost
+const CAPIT_RATIO = 2.0;   // the victor's live network might must out-scale the loser's by this much — a pyrrhic near-peer war never vassalizes an equal
 
 export function advanceFronts(world) {
   // TILE_POLITY (4c): war is fought COUNTRY vs COUNTRY over the political field
@@ -358,6 +413,7 @@ export function advanceFronts(world) {
   // whole tactical layer (front scan, capture, storm, casualties) runs on tiles and a
   // captured city just inherits the flag. Default: the per-settlement catchment map.
   const TILE_WAR = !!T.TILE_POLITY;
+  const WDBG = (world.debug && world.debug.war) || null;   // opt-in throughput counters (probe_warbars) — null in normal runs
   const owner = TILE_WAR ? world._countryOwner : world._territoryOwner;
   const byId = world._byId;
   if (!owner || !byId) return;
@@ -473,6 +529,28 @@ export function advanceFronts(world) {
   // the marches stay restless, as they were — but the big wars become episodic.
   let truces = world._truces; if (!truces) truces = world._truces = new Map();
   if (truces.size) for (const [k, until] of truces) { if (until <= world.step) truces.delete(k); }
+  // Per-war MOVEMENT ledger, in two parts, read by the STALEMATE settlement below:
+  //   _warBornAt  ("lo:hi" → step)  — when the war opened (stamped at war.began; lazy
+  //                for a loaded save's ongoing wars, so nothing settles spuriously).
+  //   _warMoveEma ("lo:hi" → float) — the front's NET displacement velocity, low-passed:
+  //                each war pass accumulates the SIGNED tile exchange (lo-side captures
+  //                minus hi-side captures) and folds it into an EMA. The sign matters —
+  //                a two-sided front ping-ponging the same border tiles nets to ~zero
+  //                (the LINE is not moving: a stalemate), while a genuine advance keeps
+  //                a persistent signed velocity. A binary "any capture = movement" clock
+  //                was measured to wash out entirely by the Industrial era (active wars
+  //                identical to the no-fix baseline): dense late-game fronts always
+  //                trade SOME tiles, so only net displacement separates war from freeze.
+  // Deliberately NOT persisted — rebuilt within one window after load.
+  let warBorn = world._warBornAt; if (!warBorn) warBorn = world._warBornAt = new Map();
+  let moveEma = world._warMoveEma; if (!moveEma) moveEma = world._warMoveEma = new Map();
+  const passNet = new Map();   // this pass's signed tile exchange per pair ("lo:hi" → net toward lo)
+  const bumpMove = (att, def, n) => {
+    if (!(n > 0) || att < 0 || def < 0 || att === def) return;
+    const lo = Math.min(att, def), hi = Math.max(att, def);
+    const key = lo + ":" + hi;
+    passNet.set(key, (passNet.get(key) || 0) + (att === lo ? n : -n));
+  };
   const inTruce = (a, b) => {
     if (truces.size === 0 || a < 0 || b < 0) return false;
     const u = truces.get(a < b ? a + ":" + b : b + ":" + a);
@@ -580,7 +658,12 @@ export function advanceFronts(world) {
       const A = own.get(a);
       if (!A || A.mode !== "settled" || A.countryId === D.countryId
           || inTruce(A.countryId, D.countryId)
-          || bondedCC(A.countryId, D.countryId)) continue;   // a signed peace holds; a suzerain-vassal bond holds harder
+          || bondedCC(A.countryId, D.countryId)) {   // a signed peace holds; a suzerain-vassal bond holds harder
+        if (WDBG && A && A.mode === "settled" && A.countryId !== D.countryId && inTruce(A.countryId, D.countryId)) {
+          wdbgPass(WDBG, world.step); WDBG.trucePairs.add(A.countryId + ":" + D.countryId);
+        }
+        continue;
+      }
       if (A._M > bestM) { bestM = A._M; bestA = a; }
     }
     if (bestA < 0) continue;
@@ -647,7 +730,23 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * claimBarOf(A.countryId, D.countryId) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
+    // (factors hoisted verbatim — same call sequence, same IEEE product chain — so the
+    // throughput instrumentation below can attribute a rejection without re-deriving)
+    const _wb = warBarOf(A.countryId), _cs = casusOf(A.countryId, D.countryId, D),
+          _cl = claimBarOf(A.countryId, D.countryId), _db = domBarOf(A.countryId),
+          _cb = coalitionBarOf(A.countryId, D.countryId);
+    const bar = effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * _wb * _cs * _cl * _db * _cb;
+    if (WDBG) {
+      wdbgPass(WDBG, world.step);
+      const wk = A.countryId + ":" + D.countryId;
+      let r = WDBG.pairs.get(wk);
+      if (!r) WDBG.pairs.set(wk, r = { attM: A._M, base: effDef * T.ATTACK_MIN_RATIO, minBar: bar,
+        f: { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb }, passed: false });
+      else if (bar < r.minBar) { r.minBar = bar; r.base = effDef * T.ATTACK_MIN_RATIO; r.attM = A._M;
+        r.f = { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb }; }
+      if (A._M >= bar) r.passed = true;
+    }
+    if (A._M < bar) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -678,7 +777,93 @@ export function advanceFronts(world) {
   // From the beachhead on, the normal front machinery — national field armies,
   // concentration, exhaustion, reinforcement sailing — grinds inland or is
   // thrown back, exactly as on land.
-  if (T.AMPHIB_BAR > 0 && !TILE_WAR) {   // TILE_WAR v1: amphibious is per-settlement (sea-reach) — restore in a later slice
+  // TILE_WAR: the same doctrine at NATION level — a country can invade where any of
+  // its embarkable ports can sail (the port-level sea-lane web aggregated to a
+  // country-pair adjacency), the whole national field army fights the beachhead
+  // (adapters, exactly like a land front), and the landing beaches are the DEFENDER
+  // COUNTRY's water-edge tiles under the same home-distance / storm-radius / grace
+  // rules. This was the "restore in a later slice" gap: under the default tile-war
+  // mode populated enemy shores were simply unconquerable (no Punic Wars — a
+  // Mediterranean-shaped empire was structurally impossible), measured while
+  // attributing the no-hegemon bottleneck (tools/probe_warbars.mjs). AMPHIB_BAR=0
+  // recovers the sea-blind war byte-identically.
+  if (T.AMPHIB_BAR > 0 && TILE_WAR) {
+    // 1. Country-pair sea adjacency: any port with real seacraft that can sail to a
+    //    foreign port opens its COUNTRY's invasion lane to that port's COUNTRY.
+    const seaCC = new Map();   // attacker countryId → Set(defender countryId)
+    for (const P of world.settlements) {
+      if (P.mode !== "settled" || P.countryId < 0 || !P._seaReach || P._seaReach.size === 0) continue;
+      if (((P.knowledge && P.knowledge.navigation) || 0) < AMPHIB_NAV_MIN) continue;
+      for (const pid of P._seaReach.keys()) {
+        const Q = byId.get(pid);
+        if (!Q || Q.mode !== "settled" || Q.countryId < 0 || Q.countryId === P.countryId) continue;
+        let s = seaCC.get(P.countryId); if (!s) seaCC.set(P.countryId, s = new Set());
+        s.add(Q.countryId);
+      }
+    }
+    // 2. Bar-check each lane with the full land stack × AMPHIB_BAR (an opposed
+    //    landing wants overwhelming superiority) — national army vs national army.
+    const amphibByDef = new Map();   // defender countryId → pending beachhead pairs
+    for (const [acc, defs] of seaCC) {
+      const A = own.get(acc);
+      if (!A || !(A._M > 0)) continue;
+      const aCountry = world.countries && world.countries.get(acc);
+      const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
+      for (const dcc of defs) {
+        const D = own.get(dcc);
+        if (!D || inTruce(acc, dcc) || bondedCC(acc, dcc)) continue;
+        const key = acc + ":" + dcc;
+        if (pairs.has(key)) continue;                        // already met on land
+        const tf = tradeFactor(acc, dcc);
+        const _wb = warBarOf(acc), _cs = casusOf(acc, dcc, D), _cl = claimBarOf(acc, dcc),
+              _db = domBarOf(acc), _cb = coalitionBarOf(acc, dcc);
+        const bar = D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * _wb * _cs * _cl * _db * _cb;
+        if (WDBG) {
+          wdbgPass(WDBG, world.step);
+          let r = WDBG.pairs.get(key);
+          const f = { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, amphib: T.AMPHIB_BAR, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb };
+          if (!r) WDBG.pairs.set(key, r = { attM: A._M, base: D._M * T.ATTACK_MIN_RATIO, minBar: bar, f, passed: false });
+          else if (bar < r.minBar) { r.minBar = bar; r.base = D._M * T.ATTACK_MIN_RATIO; r.attM = A._M; r.f = f; }
+          if (A._M >= bar) r.passed = true;
+        }
+        if (A._M < bar) continue;
+        const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
+        let l = amphibByDef.get(dcc); if (!l) amphibByDef.set(dcc, l = []);
+        l.push(pc);
+      }
+    }
+    // 3. Landing beaches: the defender country's water-edge tiles (one owner scan,
+    //    same rules as the land scan; a beach near the capital storms it from the sea).
+    if (amphibByDef.size) {
+      const elevA = world.elev;
+      for (let ti = 0; ti < N; ti++) {
+        const d = owner[ti];
+        if (d < 0) continue;
+        const cands = amphibByDef.get(d); if (!cands) continue;
+        const ty = (ti / tw) | 0, tx = ti - ty * tw;
+        const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+        const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+        let beach = false;
+        for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && elevA[ni] <= 0) { beach = true; break; } }
+        if (!beach) continue;
+        const D = own.get(d);
+        if (!D) continue;
+        const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
+        let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
+        const ddy = ty - dhy;
+        const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
+        const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
+        for (const pc of cands) {
+          if (distHome <= assaultDist) pc.canStorm = true;   // the capital fronts the water — stormable from the sea
+          else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
+        }
+      }
+      for (const cands of amphibByDef.values())
+        for (const pc of cands)
+          if (pc.canStorm || pc.tiles.length) pairs.set(pc._key, pc);
+    }
+  }
+  if (T.AMPHIB_BAR > 0 && !TILE_WAR) {   // legacy per-settlement mode (non-tile war)
     const amphibByDef = new Map();   // defender id → pending beachhead pairs onto it
     for (const A of world.settlements) {
       if (A.mode !== "settled" || !A._seaReach || A._seaReach.size === 0) continue;
@@ -770,6 +955,8 @@ export function advanceFronts(world) {
       const last = seen.get(key);
       seen.set(key, world.step);
       if (last !== undefined && world.step - last < WAR_MEMORY / (world._dt || 1)) continue;
+      warBorn.set(Math.min(attId, defId) + ":" + Math.max(attId, defId), world.step);   // a genuinely NEW war: its stalemate age starts here
+      if (WDBG) WDBG.tot.warsStarted++;
       const pa = _getPolity(world, attId), pd = _getPolity(world, defId);
       const fa = pa ? pa.faithId : -1, fd = pd ? pd.faithId : -1;
       const pers = pa && pa.personality;
@@ -786,7 +973,10 @@ export function advanceFronts(world) {
     if (seen.size > 4000) {   // prune stale pairs so the map can't grow unbounded
       for (const [k, st] of seen) if (world.step - st > (WAR_MEMORY * 3) / (world._dt || 1)) {
         seen.delete(k);
-        if (world._warDead && world._warDead.has(k)) closeWar(world, k, "faded");   // no peace was signed — the war petered out (a side died, fronts dissolved)
+        if (world._warDead && world._warDead.has(k)) {
+          if (WDBG) WDBG.signed.push({ how: "faded", age: 0 });
+          closeWar(world, k, "faded");   // no peace was signed — the war petered out (a side died, fronts dissolved)
+        }
       }
     }
   }
@@ -875,14 +1065,17 @@ export function advanceFronts(world) {
       const vs = [...pairTrade.values()].sort((x, y) => x - y);
       tradeRef = Math.max(1e-6, 2 * vs[vs.length >> 1]);
     }
-    const signPeace = (a, b) => {
+    const signPeace = (a, b, how = "truce") => {
       const key = Math.min(a, b) + ":" + Math.max(a, b);
       if ((truces.get(key) || 0) > world.step) return false;   // already at peace
       const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
       const tradeW = Math.min(1, trade / tradeRef);
       const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
       truces.set(key, world.step + dur);
-      closeWar(world, key, "truce");   // the war's dead are reckoned at the peace
+      if (WDBG) WDBG.signed.push({ how, dur: Math.round(dur * (world._dt || 1)), age: world.step - (warBorn.get(key) ?? world.step),
+        exhHi: Math.max(exh.get(a) || 0, exh.get(b) || 0), exhLo: Math.min(exh.get(a) || 0, exh.get(b) || 0) });
+      warBorn.delete(key); moveEma.delete(key);   // the settled war's ledger dies with it (a reopened war re-registers at war.began)
+      closeWar(world, key, how);       // the war's dead are reckoned at the peace
       // reparations from the clearly-beaten side, proportional to how
       // one-sided the exhaustion is and bounded by what it can actually pay
       const eA2 = exh.get(a) || 0, eB2 = exh.get(b) || 0;
@@ -899,22 +1092,123 @@ export function advanceFronts(world) {
       }
       return true;
     };
+    // WARS THAT STOP MOVING END (T.STALEMATE_TICKS — the frozen-front settlement).
+    // The exhaustion treaty above only ends HIGH-INTENSITY wars, and the measured
+    // late-game map is the opposite failure: dozens of smouldering fronts that never
+    // push anyone near the truce bar (measured at the app grid: 57 active wars at one
+    // Medieval checkpoint, endings collapsed to 0.7 per 1000 steps, mean exhaustion
+    // 0.09) — permanent background war that reads as noise, not history. What history
+    // actually has: most wars ended in a NEGOTIATED STATUS QUO once neither side could
+    // move the line — uti possidetis, not collapse. So a warring pair whose front has
+    // produced NO territorial movement (no countryside captured, no city under storm,
+    // by either side — the _warLastMove ledger) for a full window signs the same
+    // trade-scaled treaty, reparations only where the exhaustion gap is one-sided
+    // (signPeace already gates that). Gated purely on the war's OWN state — a war that
+    // is genuinely advancing never settles this way, however long it runs; a wall that
+    // holds for a generation is a peace nobody bothered to sign, so the scribes sign it.
+    // Fold this pass's signed tile exchange into each active war's displacement EMA
+    // (MOVE_EMA_KEEP per war pass ≈ a few-pass memory), and age-track every pair.
+    // Ledger hygiene: entries for pairs no longer at war are dropped, so the maps
+    // stay bounded by the live war count.
+    const staleWin = T.STALEMATE_TICKS > 0 ? T.STALEMATE_TICKS / (world._dt || 1) : 0;
+    if (staleWin > 0) {
+      // Age + displacement fold for every pair CURRENTLY at the front, and a
+      // last-fronted stamp (warLastFront) for the de-facto closure sweep below.
+      let warLastFront = world._warLastFront; if (!warLastFront) warLastFront = world._warLastFront = new Map();
+      for (const [cc, es] of allEnemies) {
+        if (cc < 0) continue;
+        for (const ecc of es) {
+          if (ecc <= cc || ecc < 0) continue;
+          const key = cc + ":" + ecc;
+          if (!warBorn.has(key)) warBorn.set(key, world.step);   // loaded save / pre-ledger war: age starts now
+          warLastFront.set(key, world.step);
+          moveEma.set(key, (moveEma.get(key) || 0) * MOVE_EMA_KEEP + (passNet.get(key) || 0));
+        }
+      }
+      // DE-FACTO ENDINGS: a war whose fronts have DISSOLVED (neither side has fielded a
+      // front for a full window) ended in fact — nobody is fighting it — but its
+      // casualty ledger sat open forever (_warDead pairs were only reckoned by the rare
+      // memory prune), so the map read as saturated with wars nobody was fighting. The
+      // measured stock: fronts dissolve when the attack calculus turns (bars rise,
+      // armies drain) without ever crossing a treaty threshold. Reckon them: the war
+      // ends "faded", its dead are recorded, and the pair's ledger clears. No truce is
+      // signed — nothing was agreed; hostilities may genuinely resume later as a NEW war.
+      if (world._warDead && world._warDead.size) {
+        for (const key of [...world._warDead.keys()]) {
+          const i = key.indexOf(":"); const a = +key.slice(0, i), b = +key.slice(i + 1);
+          const s = allEnemies.get(a);
+          if (s && s.has(b)) continue;                       // still being fought — the treaty loop below judges it
+          const lastF = warLastFront.get(key);
+          if (lastF === undefined) { warLastFront.set(key, world.step); continue; }   // first sight (load): clock starts
+          if (world.step - lastF >= staleWin) {
+            if (WDBG) WDBG.signed.push({ how: "faded", age: world.step - (warBorn.get(key) ?? world.step) });
+            closeWar(world, key, "faded");
+            warBorn.delete(key); moveEma.delete(key); warLastFront.delete(key);
+          }
+        }
+      }
+      if (warBorn.size > 512) {
+        for (const k of [...warBorn.keys()]) {
+          const i = k.indexOf(":"); const a = +k.slice(0, i), b = +k.slice(i + 1);
+          const s = allEnemies.get(a);
+          if (!s || !s.has(b)) { warBorn.delete(k); moveEma.delete(k); }
+        }
+      }
+      if (warLastFront.size > 1024) {
+        for (const [k, st] of warLastFront) if (world.step - st >= staleWin * 2) warLastFront.delete(k);
+      }
+    }
     for (const [cc, es] of allEnemies) {
       if (cc < 0) continue;
       const eA = exh.get(cc) || 0;
       for (const ecc of es) {
         if (ecc <= cc || ecc < 0) continue;          // each pair once
-        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST) {
-          if (!signPeace(cc, ecc)) continue;
-          // the congress: exhausted co-belligerents of either side settle too
-          for (const side of [cc, ecc]) {
-            const others = allEnemies.get(side);
-            if (!others) continue;
-            for (const third of others) {
-              if (third < 0 || third === cc || third === ecc) continue;
-              if ((exh.get(third) || 0) >= TRUCE_EXHAUST * CONGRESS_JOIN
-                  || (exh.get(side) || 0) >= TRUCE_EXHAUST) signPeace(side, third);
+        let how = null;
+        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST) how = "truce";
+        else if (staleWin > 0) {
+          const key = cc + ":" + ecc;                // cc < ecc by the guard above
+          const born = warBorn.get(key) ?? world.step;
+          // Old enough to judge, and the LINE is not moving: the low-passed net
+          // displacement sits under a tile's worth of drift — ping-ponged border
+          // tiles cancel; only a persistent one-directional advance keeps it high.
+          if (world.step - born >= staleWin && Math.abs(moveEma.get(key) || 0) < STALE_EPS) how = "stalemate";
+        }
+        if (!how) continue;
+        // CAPITULATION intercepts the exhaustion treaty (header at CAPIT_GAP): a
+        // decisively beaten court bends the knee — the victor gains a tributary
+        // network instead of handing its victim a millennium of protection. The
+        // knee-bend IS this pair's settlement (no truce, no congress); the victor
+        // stays free to press its other wars — serial conquest, at last possible.
+        if (how === "truce" && T.CAPITULATE) {
+          const eB = exh.get(ecc) || 0;
+          const gap = Math.abs(eA - eB) / TRUCE_EXHAUST;
+          if (gap >= CAPIT_GAP) {
+            const loser = eA > eB ? cc : ecc, winner = eA > eB ? ecc : cc;
+            let wM = natMight.get(winner) || 0, lM = natMight.get(loser) || 0;
+            if (ovFr) for (const [dep, over] of ovFr) {   // live network might: a suzerain weighs with its clients
+              if (over === winner) wM += natMight.get(dep) || 0;
+              else if (over === loser) lM += natMight.get(dep) || 0;
             }
+            if (wM >= lM * CAPIT_RATIO * coalitionBarOf(winner, loser)
+                && bendTheKnee(world, loser, winner, "capitulation")) {
+              const key = cc + ":" + ecc;
+              if (WDBG) WDBG.signed.push({ how: "capitulation", dur: 0, age: world.step - (warBorn.get(key) ?? world.step),
+                exhHi: Math.max(eA, eB), exhLo: Math.min(eA, eB) });
+              warBorn.delete(key); moveEma.delete(key);
+              continue;
+            }
+          }
+        }
+        if (!signPeace(cc, ecc, how)) continue;
+        // the congress: exhausted co-belligerents of either side settle too —
+        // wars end at conferences (a stalemate settlement convenes one just the same)
+        for (const side of [cc, ecc]) {
+          const others = allEnemies.get(side);
+          if (!others) continue;
+          for (const third of others) {
+            if (third < 0 || third === cc || third === ecc) continue;
+            if ((exh.get(third) || 0) >= TRUCE_EXHAUST * CONGRESS_JOIN
+                || (exh.get(side) || 0) >= TRUCE_EXHAUST) signPeace(side, third, how);
           }
         }
       }
@@ -1088,10 +1382,18 @@ export function advanceFronts(world) {
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(acc, (g.get(acc) || 0) + 1); }
           dS._conqueredAt = world.step;
           dS._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
+          // GRIEV_LEDGER: the sack is the deepest wound a nation takes — the
+          // dead, the enslaved (the captives below), the scattered. Counted as
+          // a fraction of the city's people at the moment it fell.
+          feedGrievance(world, oldId, acc, (dS.people || 0) * SACK_GRIEV_FRAC);
           // Captives: the sack of a city carries off part of its people into bondage —
           // war as the primary supply of the slave trade (the captor sells/works them).
+          // × √slavePull (slavery.js): the sack happens for war reasons, but how much of
+          // it is ENSLAVED rises with the victor's market — sub-linearly (the dealers who
+          // followed the legions bought what they could carry, not the whole city).
           if (T.SLAVERY && T.CAPTURE_FRAC > 0 && (dS.people || 0) > 0) {
-            const taken = (dS.people || 0) * T.CAPTURE_FRAC;
+            const taken = (dS.people || 0) * Math.min(0.5, T.CAPTURE_FRAC * Math.sqrt(slavePull(world, att)));
+            recordCaptives(att, dS, taken);   // the carried-off carry who they are (SLAVE_PEOPLE)
             dS.people -= taken; att._captives = (att._captives || 0) + taken;
           }
           dS.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
@@ -1105,6 +1407,11 @@ export function advanceFronts(world) {
             const plunder = (dS.wealth || 0) * PLUNDER_FRAC;
             dS.wealth -= plunder;
             ag.treasury = (ag.treasury || 0) + plunder;
+            // Extraction income: plunder banks toward the victor elite's land-buying
+            // (latifundia, conquest.js) — the same sack that supplies the CAPTIVES above
+            // supplies the CASH that will demand them, so the whole estate complex rides
+            // military dominance through two channels the slave market then clears.
+            if (T.LATIFUNDIA) ag._conqFlow = (ag._conqFlow || 0) + plunder;
           }
           // Sack: a stormed CAPITAL loses its administrative apparatus (the dark-age trigger).
           if (T.KNOW_DECAY > 0 && dS.knowledge) {
@@ -1130,6 +1437,7 @@ export function advanceFronts(world) {
       if (pc.tiles.length) {
         for (const p of pc.tiles) { const cti = p.ti; if (owner[cti] === def.id) { warFront[cti] = att.id; warAdv[cti] = adv - 1; } }
         bankMomentum(world, att.countryId, Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap) * MOMENTUM_PER_TILE);
+        bumpMove(att.countryId, def.countryId, (adv - 1) * Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap));   // field pressure = signed displacement
       }
       { const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att)); const dDef = Math.min(def.army || 0, att._M * T.ATTRITION / techMul(def)); att.army = (att.army || 0) - dAtt; def.army = (def.army || 0) - dDef; tallyDead(world, att.countryId, def.countryId, dAtt + dDef); }
       continue;
@@ -1148,8 +1456,16 @@ export function advanceFronts(world) {
         const cti = pc.tiles[i].ti;
         if (owner[cti] !== def.id) continue;   // already taken earlier this pass
         owner[cti] = att.id; capturedAt[cti] = world.step; captured++;
+        // GRIEV_LEDGER: the people on the ground taken by force grieve the taker
+        // (popField — the land's people, the canonical count). Fed HERE, at the
+        // one tile-flip war writes, so peaceful absorption and border smoothing
+        // never grieve; conquest.js decays it over generations.
+        if (T.GRIEV_LEDGER && world.popField) feedGrievance(world, def.countryId, att.countryId, world.popField[cti]);
       }
-      if (captured > 0) bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
+      if (captured > 0) {
+        bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
+        bumpMove(att.countryId, def.countryId, captured);                    // signed displacement: nets against the counter-front's captures
+      }
     }
     {
       const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att));

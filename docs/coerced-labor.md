@@ -182,6 +182,42 @@ modifier).
 
 ---
 
+## 6b. Mechanic F — latifundia (the classical DEMAND engine) — BUILT
+
+Everything above gives slavery a demand only where cash-crop climate or mines pull it —
+which is why the measured classical world sat at ~10% coerced (probe_erapace header,
+e84780f) while Rome's core ran 30–40%: **temperate conquest cores had no reason to buy
+gang labour.** The missing cause was the latifundia loop (Finley/Hopkins):
+
+- **Extraction income** (`gov._conqFlow`): sack plunder (armies.js) + tribute received
+  (conquest.js) bank on the polity and are spent down over ~2 generations
+  (`CONQ_DECAY`). Its share of state income (`conqShare = ext / (ext + revenue)`)
+  measures *what kind of state this is* — a conquest state near 1, a tax state near 0.
+- **Land concentration** (`s._estates`): the enriched elite puts extraction wealth into
+  LAND where produce finds a market (`estTarget = ESTATE_FORM × conqShare ×
+  exportPull`). Tenure is a RATCHET: consolidation is fast (`ESTATE_DRIFT` — cash meets
+  a market), fragmentation slow (`ESTATE_BREAK` — breaking estates means coercing the
+  elite itself; the Gracchi died on that).
+- **Gang-labour demand** (settlement.js): `labourDemand += ESTATE_PULL × _estates` — the
+  estate belt posts slave demand with no cash-crop climate and no mine, and the same
+  market clears it. Estate attrition is moderate (`harsh += 0.4·est` — the ergastulum,
+  not Potosí).
+- **The price loop** (`T.SLAVE_PULL`, slavery.js): one scarcity index per trade
+  component drives the market PRICE (a starved market rations its own demand; a
+  post-conquest glut dumps prices — Delos) *and* the slaving EFFORT (razzia intensity,
+  √-scaled wartime enslavement) — supply responds to demand the way the Roman and
+  Atlantic systems actually scaled, and the loop self-balances. Measured: without it
+  the world market runs supply-starved ~10:1 and no demand mechanism can matter; a
+  price-blind effort response depopulates the frontier unchecked.
+- **The colonate falls out**: when expansion stops, plunder and captives dry together —
+  demand persists on the ratcheted estates but can't be filled, the unfree stock decays
+  through the death sink, and serfdom (Mechanic E) binds the same grain belts. Slavery
+  ages into serfdom with no era gate.
+
+Probe: `tools/probe_latifundia.mjs` (A/B via `SIM_TUNE="LATIFUNDIA=0,SLAVE_PULL=0"`).
+
+---
+
 ## 7. Emergent dynamics this unlocks (the payoff)
 
 - **Plantation economies** on tropical coasts: export-rich, food-importing, slave-importing,

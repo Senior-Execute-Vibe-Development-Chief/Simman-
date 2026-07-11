@@ -134,7 +134,7 @@ console.log(`[earthRun] ${STEPS} steps in ${dt.toFixed(1)}s (${Math.round(STEPS 
   const FINAL = ERAS.length - 1;
   if (eraAt.length > FINAL) {
     const step = eraAt[FINAL];
-    console.log(`[earthRun] ARC COMPLETE — reached the ${ERAS[FINAL]} era at step ${step} (display year ~${Math.round(displayYear(eraAt, step))})`);
+    console.log(`[earthRun] ARC COMPLETE — reached the ${ERAS[FINAL]} era at step ${step} (display year ~${Math.round(displayYear(step))})`);
   } else {
     console.log(`[earthRun] arc incomplete — leading civ topped out at the ${ERAS[eraAt.length - 1]} era (never reached ${ERAS[FINAL]})`);
   }

@@ -60,14 +60,17 @@ const SETT_FIELDS = [
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
   "_unfree", "_cashFrac", "_captives",   // coerced labour: unfree workforce, cash-crop land, unsold captives
+  "_captiveCul", "_captiveAnc",          // captives' origin pools (SLAVE_PEOPLE): count-weighted [[id, n], ...]
   "_serf",                               // serfdom: land-tenure coercion level (0..1)
+  "_estates",                            // latifundia: elite estate consolidation of the land (0..1)
   "_chronFlags",                         // chronicle: which "became X" archetype events have fired
   "_peakTier",                           // chronicle: highest tier ever reached (so growth is announced once)
   "_riverAcc", "_confine", "_rugged",    // static site attributes (re-derived on load if absent — v1 saves)
   "_orgApt",                             // heritable organisation aptitude (seasonal-selection ratchet)
   "_credit",                             // banking: how much of wealth is conjured credit (Phase 5)
   "_lastBorrow",                         // crop-package borrow cooldown (T.CROP_AXIS)
-  "_rivalN",                             // rival-polity contact count (competition signal)
+  "_rivalN",                             // peer-weighted rival contact (competition signal)
+  "_hegF", "_peerPeak",                  // hegemonic stagnation: decline-from-peak peer pressure + the peak ratchet
 ];
 
 // Load-bearing per-settlement DYNAMIC state that the hashWorld core loop omitted:
@@ -79,8 +82,8 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_orgApt", "_rivalN", "_ambition", "_diseaseLoad", "_specStr"];
-const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr"];
+const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
 // `polities`, minimally), so a determinism or save/load bug in the dynastic or
@@ -108,6 +111,7 @@ const DYN_HASH_NUM = ["id", "cultureId", "founderId", "foundedStep", "endedStep"
 const WORLD_MAPS = [
   "_warExhaust", "_linkMoney", "_inflRaw", "_inflP", "_manpower", "_plagueEvAt",
   "_truces", "_warSeenAt", "_warDead", "_ruinHoards", "_schismAt", "_cBudgetRamp",
+  "_natGriev",   // nation-pair grievance ledger (loyaltyField.js, T.GRIEV_LEDGER)
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────
@@ -210,6 +214,10 @@ export function saveWorld(world, meta = {}) {
     eraAt: world._eraAt,              // display-calendar timeline (step each era was reached)
     eraProd: world._eraProd,          // demographic anchor: global productivity index
     climIndex: world._climIndex, climShock: world._climShock,   // dynamic-climate state (climate.js)
+    refRevenue: world._refRevenue,    // CAP_MODEL smoothed fiscal peer baseline — carried state since REF_REV_SMOOTH (conquest.js); absent/0 reseeds at the next pass's median
+    refCapPowerS: world._refCapPowerS,   // CAP_RELATIVE smoothed median capital power (the capacity ruler's era base); absent/0 reseeds at the next polity pass
+    refRealmPop: world._refRealmPop,  // GRIEV_LEDGER smoothed median realm population (what a "people" weighs); absent/0 reseeds at the next polity pass
+    loyalScanAt: world._loyalScanAt,  // LOYAL_FIELD last owner-diff scan step (classifies force vs politics in transfer semantics)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1, event: world._nextEventId ?? (world.events ? world.events.length : 0) },
     tuning,
@@ -235,6 +243,15 @@ export function saveWorld(world, meta = {}) {
       // it isn't. Absent unless the lever ran → undefined key, dropped by
       // JSON.stringify, so a default (lever-off) save stays byte-identical.
       popField: world.popField ? b64FromTyped(world.popField) : undefined,
+      // The loyalty field (T.LOYAL_FIELD, loyaltyField.js): allegiance is a
+      // dense continuum (every governed tile carries a value), the owner-diff
+      // snapshot is dense ids; both absent unless the lever ran (undefined key
+      // → dropped by JSON.stringify → a lever-off save stays byte-identical).
+      // Homeland memory is near-empty → sparse pairs like tileCapturedAt.
+      allegiance: world._allegiance ? b64FromTyped(world._allegiance) : undefined,
+      tileOwnerPrev: world._tileOwnerPrev ? b64FromTyped(world._tileOwnerPrev) : undefined,
+      tileHomeland: sparseFromTyped(world._tileHomeland, -1) ?? undefined,
+      tileFellAt: sparseFromTyped(world._tileFellAt, -Infinity) ?? undefined,
       // sparse [tile, value] pairs — these arrays are near-empty and carry
       // non-JSON values (-Infinity) in their defaults
       tileCapturedAt: sparseFromTyped(world._tileCapturedAt, -Infinity),
@@ -306,6 +323,10 @@ export function loadWorld(data, opts = {}) {
   world.step = data.step | 0;
   world._eraProd = data.eraProd ?? 1;        // demographic anchor (index.js): restore so post-load ticks match
   world._climIndex = data.climIndex ?? 0; world._climShock = data.climShock ?? 0;   // dynamic-climate state
+  world._refRevenue = data.refRevenue ?? 0;   // smoothed fiscal peer baseline (0 / pre-field saves: reseeds at the next polity pass's median)
+  world._refCapPowerS = data.refCapPowerS ?? 0;   // smoothed median capital power (CAP_RELATIVE ruler base; 0 reseeds next pass)
+  world._refRealmPop = data.refRealmPop ?? 0;     // smoothed median realm population (GRIEV_LEDGER read normalizer; 0 reseeds next pass)
+  if (data.loyalScanAt != null) world._loyalScanAt = data.loyalScanAt;   // owner-diff scan clock (unset ≡ never scanned)
   world._popTotal = data.popTotal ?? 0;
   world._eraAt = data.eraAt || [0];
   world._nextSettlementId = data.counters.settlement;
@@ -351,6 +372,19 @@ export function loadWorld(data, opts = {}) {
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);
     if (soil) world._soilFatigue = soil;                // "the land remembers" (settlement.js)
+    // The loyalty field (loyaltyField.js). Allegiance is the presence marker
+    // (dense, always saved once the lever ran); the sparse memory arrays may
+    // legitimately be all-default in a young world, so materialize them at
+    // their defaults alongside it — a partial field would make ensure() skip
+    // the missing arrays and stamp memory against a null snapshot.
+    const alg = loadTyped(data.maps.allegiance, Float32Array, N);
+    if (alg) {
+      world._allegiance = alg;
+      world._tileOwnerPrev = loadTyped(data.maps.tileOwnerPrev, Int32Array, N)
+        || (world._countryOwner ? Int32Array.from(world._countryOwner) : new Int32Array(N).fill(-1));
+      world._tileHomeland = typedFromSparse(data.maps.tileHomeland, Int32Array, N, -1) || new Int32Array(N).fill(-1);
+      world._tileFellAt = typedFromSparse(data.maps.tileFellAt, Float64Array, N, -Infinity) || new Float64Array(N).fill(-Infinity);
+    }
   }
   // The road/flow sparse indices were created empty at init and no longer
   // match the loaded arrays — rebuild them or decay/paving skip every tile.
@@ -489,6 +523,19 @@ export function hashWorld(world) {
   // allocated all-default one (sparse serialization drops empty arrays).
   { const sf = world._soilFatigue; for (let i = 0; i < world.N; i += 97) mixNum(sf ? sf[i] : 0); }
   { const ca = world._tileCapturedAt; let n = 0, sum = 0; if (ca) for (let i = 0; i < ca.length; i++) if (Number.isFinite(ca[i])) { n++; sum += ca[i]; } mixNum(n); mixNum(sum); }
+  // The loyalty field (loyaltyField.js) — presence-normalized like the above:
+  // an unallocated (lever-off) field hashes as all-defaults. Allegiance and the
+  // owner snapshot sample on the road stride; the sparse memory pair mixes
+  // count+sum (the tileCapturedAt pattern); the grievance ledger mixes its full
+  // contents (sorted — the cBudgetRamp pattern), since a single divergent
+  // entry redirects habituation and unrest downstream.
+  { const al = world._allegiance; for (let i = 0; i < world.N; i += 97) mixNum(al ? al[i] : 0); }
+  { const op = world._tileOwnerPrev; for (let i = 0; i < world.N; i += 97) mixNum(op ? op[i] : -1); }
+  { const th = world._tileHomeland; let n = 0, sum = 0; if (th) for (let i = 0; i < th.length; i++) if (th[i] >= 0) { n++; sum += th[i]; } mixNum(n); mixNum(sum); }
+  { const tf = world._tileFellAt; let n = 0, sum = 0; if (tf) for (let i = 0; i < tf.length; i++) if (Number.isFinite(tf[i])) { n++; sum += tf[i]; } mixNum(n); mixNum(sum); }
+  if (world._natGriev && world._natGriev.size) { for (const k of [...world._natGriev.keys()].sort()) { mixStr(k); mixNum(world._natGriev.get(k)); } }
+  mixNum(world._refRealmPop || -1);   // 0 ≡ unset ("reseed at the next pass") — a load default must hash like the pre-save undefined
+  mixNum(world._loyalScanAt ?? -1);
   mixNum(world._inflRef ?? -1);
   for (const k of WORLD_MAPS) mixNum(world[k] ? world[k].size : 0);   // registered world maps: presence + size (every one now covered, not just a hand-picked few)
   if (world._cBudgetRamp) { const ks = [...world._cBudgetRamp.keys()].sort((a, b) => a - b); for (const k of ks) { mixNum(k); mixNum(world._cBudgetRamp.get(k)); } }   // + cBudgetRamp full key/values

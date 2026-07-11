@@ -5,7 +5,36 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
+// Current baseline (2500 steps): 83ccc922/574e8595 (ontology V2 — LOYAL_FIELD
+// + GRIEV_LEDGER defaults: tile homeland memory, the attachment continuum,
+// the nation-pair grievance ledger; hashes the field + ledger + scan clock,
+// so the stream is re-keyed). LOYAL_FIELD=0,GRIEV_LEDGER=0 gives
+// bc3c6d97/e31009f7 — proven ≡ the hegemonic-stagnation world 86b86bd
+// (1c2e5537/a5c52317) in TRAJECTORY by full-serialize sha256 diff
+// (febc68db/82cf55df both builds, modulo the registered-but-empty natGriev
+// table key).
+// Prior baseline (2500 steps): 1c2e5537/a5c52317 (hegemonic stagnation —
+// PEER_COMPETE + HEGEMONY_STAG 0.75 defaults; also hashes _hegF/_peerPeak, so
+// the stream is re-keyed). PEER_COMPETE=0,HEGEMONY_STAG=0 recovers the 3000 BC
+// world d206d81 in TRAJECTORY (proven by state-digest diff — the hash pair
+// itself re-keyed with the new hashed fields).
+// Older baseline (2500 steps): 17836a8b/c446da26 (the 3000 BC start — the
+// eve-of-states genesis seed + SCI_COMPOUND_FLOOR 0.7 antiquity rate). A GENESIS
+// change re-keys every trajectory from step 0, so all prior lever-off recovery
+// pairs below are ARCHIVED history (they described the stone-age-seed world);
+// lever A/Bs from here compare against THIS pair.
+// Pre-3000BC baseline (2500 steps): d1a9bd55/4d779574 (LATIFUNDIA + SLAVE_PULL
+// defaults — the classical demand engine + the price-responsive slave market
+// with the stateless-frontier razzia guard).
+// LATIFUNDIA=0,SLAVE_PULL=0 gives e38f1de/b17ee7b2 — NOT the pre-wave pair below,
+// because hashing `_estates` re-keyed the hash STREAM (the NB above); the lever-off
+// TRAJECTORY was proven identical to e84780f both by a 2500-step state-digest diff
+// and by a line-identical 42k probe_latifundia run against the pre-wave build.
+// Pre-latifundia baseline (2500 steps, old hash stream): 692c38be/2532b712
+// (SCI_COMPOUND 1.5 + LABOR_INNOV 0.6 defaults — the chronology repacing;
+// LABOR_INNOV=0 gives 1c56993f/eeff4048, SCI_COMPOUND=0 recovers the pre-chronology
+// f4530e0a/18235178).
+// Older baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
 //   8817=d3acad98  31337=ffeab697   (REACTIVE-SETTLEMENT model, TILE_POLITY + CATCHMENT_CLIP
 //   default ON — settlements are reactionary to the political map: only the CAPITAL anchors a
 //   border, and the economic catchment is clipped to the tiles its country already holds, so a
@@ -35,7 +64,7 @@ const STEPS = parseInt(process.argv[2] || "2500", 10);
 const SEEDS = [8817, 31337];
 const W = 320, H = 160;
 // Env-overridable levers (unset = defaults): CAP_MODEL=0 recovers the fitted-tail baseline.
-for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP"]) if (process.env[k] != null) T[k] = +process.env[k];
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP", "LOYAL_FIELD", "GRIEV_LEDGER"]) if (process.env[k] != null) T[k] = +process.env[k];
 for (const seed of SEEDS) {
   const world = buildSim({ W, H, seed });
   stepPeopleSim(world, STEPS);
