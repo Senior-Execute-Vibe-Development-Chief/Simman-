@@ -198,16 +198,33 @@ const wpick = (rng, arr) => arr[Math.floor(arr.length * rng() * rng())];
 // common→rare) and every word is built only from those. Cluster onsets
 // therefore RECUR, and coda clusters obey a STRICTLY falling sonority slope
 // (nt, rk, st — never vz).
-export function buildSyllabary(seed, prof, inv) {
+// near-universal cluster bans (real languages almost never license these):
+// coronal stop + lateral (tl-/dl-), labial + w (pw-/bw-/fw-), glottal/
+// pharyngeal leads (hl-/hr-/'r-)
+const bannedPair = (a, b) =>
+  (a.m === 0 && (a.p === 1 || a.p === 8) && b.m === 4) ||
+  (a.p === 0 && b.p === 0 && b.m === 6) ||
+  (a.p >= 6);
+
+export function buildSyllabary(seed, prof, inv, pin) {
   const rng = mkRng(hash32(seed, "syllab"));
   const cons = inv.cons;
   const onCons = cons.filter(c => !c.noOn);
+  // exact-syllabary pinning: a reference language may list its literal legal
+  // onsets/codas/diphthongs instead of deriving them from the dials
+  if (pin && pin.onsets) {
+    return {
+      onsets: pin.onsets,
+      codas: pin.codas || [],
+      diphs: pin.diphs || null,
+    };
+  }
   const onsets = onCons.map(c => [c]);                     // singles, freq-ordered
   if (prof.onDepth >= 2) {
     const leads = onCons.filter(c => (c.m === 0 || c.m === 2 || c.m === 3));
     const seconds = onCons.filter(c => prof.c2LiqOnly ? c.m >= 4 : SONORITY[c.m] >= 2);
     const cand = [];
-    for (const a of leads) for (const b of seconds) if (SONORITY[b.m] > SONORITY[a.m]) cand.push([a, b]);
+    for (const a of leads) for (const b of seconds) if (SONORITY[b.m] > SONORITY[a.m] && !bannedPair(a, b)) cand.push([a, b]);
     const K = 3 + 3 * (prof.onDepth - 1);
     for (let i = 0; i < K && cand.length; i++) onsets.push(cand.splice(rng.int(cand.length), 1)[0]);
     if (prof.sCluster) {
@@ -236,7 +253,19 @@ export function buildSyllabary(seed, prof, inv) {
       for (let i = 0; i < K && cand.length; i++) codas.push(cand.splice(rng.int(cand.length), 1)[0]);
     }
   }
-  return { onsets, codas };
+  // licensed diphthongs: a fixed small set (English has ~5), never free
+  // vowel combination — free combos are what produce uakur/paanio hiatus
+  let diphs = (pin && pin.diphs) || null;
+  if (!diphs && prof.diph) {
+    const vows = inv.vows;
+    const cand = [];
+    for (const a of vows) for (const b of vows)
+      if ((a.h !== b.h || a.b !== b.b) && a.h >= b.h && !a.lg && !b.lg) cand.push([a, b]); // falling-or-level height (ai, au, oi, ei class)
+    diphs = [];
+    const K = 2 + rng.int(3);
+    for (let i = 0; i < K && cand.length; i++) diphs.push(cand.splice(rng.int(cand.length), 1)[0]);
+  }
+  return { onsets, codas, diphs };
 }
 
 export function synthWord(rng, prof, inv, nSyl) {
@@ -261,13 +290,18 @@ export function synthWord(rng, prof, inv, nSyl) {
       const pick = wpick(rng, pool) || [];
       on = pick.map(c => ({ ...c }));                             // CLONE: rules mutate words, never the syllabary
     }
-    // nucleus (diphthong chance)
-    const nu = [{ ...wpick(rng, nucPool) }];
-    if (prof.diph && rng() < 0.16) { const v2 = rng.pick(nucPool); if (v2.h !== nu[0].h || v2.b !== nu[0].b) nu.push({ ...v2 }); }
-    if (prof.longV && rng() < 0.15) nu[0].lg = 1;
+    // nucleus: a single quality, or one of the LICENSED diphthongs
+    let nu;
+    if (syllab.diphs && syllab.diphs.length && rng() < 0.16) {
+      nu = syllab.diphs[rng.int(syllab.diphs.length)].map(v => ({ ...v }));
+    } else {
+      nu = [{ ...wpick(rng, nucPool) }];
+      if (prof.longV && rng() < 0.15) nu[0].lg = 1;
+    }
     // coda: licensed set only; cluster codas word-final
     let co = [];
-    if (codas.length && rng() < (last ? (prof.nasalCoda ? 0.45 : 0.5) : (prof.nasalCoda ? 0.2 : 0.22))) {
+    const codaBias = prof.codaBias || 1;
+    if (codas.length && rng() < codaBias * (last ? (prof.nasalCoda ? 0.45 : 0.5) : (prof.nasalCoda ? 0.2 : 0.22))) {
       const pool = last ? codas : (coSingles.length ? coSingles : codas);
       const pick = wpick(rng, pool) || [];
       co = pick.map(c => ({ ...c }));
@@ -290,7 +324,11 @@ export function renderWord(word, prof) {
   // Romanization cleanup: initial glottal stop is conventionally silent;
   // trailing apostrophes (final ejectives) read as typos; repeated digraphs
   // (ghgh, zhzh) collapse — all surface-only, the internal form keeps them.
-  return out.replace(/^'+/, "").replace(/'+$/, "").replace(/(..)\1+/g, "$1").replace(/(.)\1\1+/g, "$1$1");
+  out = out.replace(/^'+/, "").replace(/'+$/, "").replace(/(..)\1+/g, "$1").replace(/(.)\1\1+/g, "$1$1");
+  // orthographic finishing conventions (spelling, not sound): English never
+  // ends a word in -i/-v/-j and never writes zh
+  if (prof.ortho === "en") out = out.replace(/i$/, "y").replace(/v$/, "ve").replace(/j$/, "dge").replace(/zh/g, "j");
+  return out;
 }
 
 /** Deep-copy an internal word (sound change mutates copies). */

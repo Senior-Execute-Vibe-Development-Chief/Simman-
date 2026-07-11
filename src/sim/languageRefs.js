@@ -41,6 +41,8 @@ export function refProfile(kind, seed) {
     frontRound: false, harmony: "none", morph: "fus", stress: "mobile",
     sylMin: 1, sylMax: 3, patro: "suf", gendered: false, diph: true, longV: false, nasalV: false,
     romTaste: 0, c2LiqOnly: true,                 // pr/tr/fl/sl — never fn-/hn-/thn-
+    ortho: "en",                                  // spelling conventions: -y not -i, -ve, -dge
+    codaBias: 1.5,                                // stress-timed: closed syllables are the norm
   });
   return p;
 }
@@ -56,6 +58,10 @@ export function refPin(kind) {
         B(2, 3, 2), B(1, 3, 0), B(1, 2, 0), B(0, 2, 0), B(4, 0, 2),           // ch z s f k
         B(1, 3, 2), B(0, 0, 2), B(2, 2, 1), NB(4, 1, 1)],                     // c p r ng
       vows: [VB(2, 1, 0), VB(0, 0, 0), VB(1, 2, 1), VB(0, 2, 1), VB(1, 2, 0), VB(0, 0, 1)], // a i o u e ü
+      // exact pinyin finals: onsets are singles only; codas n/ng; the
+      // licensed diphthong set is real pinyin (ai ei ao ou ia ie ua uo)
+      diphs: [[VB(2, 1, 0), VB(0, 0, 0)], [VB(1, 2, 0), VB(0, 0, 0)], [VB(2, 1, 0), VB(1, 2, 1)], [VB(1, 2, 1), VB(0, 2, 1)],
+        [VB(0, 0, 0), VB(2, 1, 0)], [VB(0, 0, 0), VB(1, 2, 0)], [VB(0, 2, 1), VB(2, 1, 0)], [VB(0, 2, 1), VB(1, 2, 1)]],
     },
     rom: {
       "c:0,0,0": "b", "c:0,0,2": "p", "c:0,1,1": "m", "c:0,2,0": "f",
@@ -79,15 +85,36 @@ export function refPin(kind) {
       vows: [VB(2, 1, 0), VB(1, 2, 1), VB(1, 0, 0), VB(0, 0, 0), VB(0, 2, 1)] }, rom: null };  // a o e i u
   }
   if (kind === "english") return {
-    // ordered common→rare: t n s d l r m k w b p h f v g y ng z ch j sh th dh zh
-    pin: { cons: [B(1, 0, 0), B(1, 1, 1), B(1, 2, 0), B(1, 0, 1), B(1, 4, 1), B(1, 5, 1),
-      B(0, 1, 1), B(4, 0, 0), B(0, 6, 1), B(0, 0, 1), B(0, 0, 0), B(7, 2, 0),
-      B(0, 2, 0), B(0, 2, 1), B(4, 0, 1), B(3, 6, 1), NB(4, 1, 1), B(1, 2, 1),
-      B(3, 3, 0), B(3, 3, 1), B(3, 2, 0), B(8, 2, 0), B(8, 2, 1), B(3, 2, 1)],
-      // 11 vowel QUALITIES, none front-rounded (English has no ü/ö) — the
-      // renderer collapses them onto plain aeiou, as English spelling does
-      vows: [VB(0, 0, 0), VB(0, 1, 0), VB(0, 2, 1), VB(0, 2, 0), VB(1, 0, 0), VB(1, 1, 0),
-        VB(1, 2, 1), VB(1, 2, 0), VB(2, 0, 0), VB(2, 1, 0), VB(2, 2, 1)] },
+    // ordered common→rare: t n s d l r m k w b p h f v g y ng z ch j sh th dh
+    // (no ʒ — English basically never uses it in names)
+    pin: (() => {
+      const t = B(1, 0, 0), n = B(1, 1, 1), s = B(1, 2, 0), d = B(1, 0, 1), l = B(1, 4, 1), r = B(1, 5, 1),
+        m = B(0, 1, 1), k = B(4, 0, 0), w = B(0, 6, 1), b = B(0, 0, 1), p = B(0, 0, 0), h = B(7, 2, 0),
+        f = B(0, 2, 0), v = B(0, 2, 1), g = B(4, 0, 1), y = B(3, 6, 1), ng = NB(4, 1, 1), z = B(1, 2, 1),
+        ch = B(3, 3, 0), j = B(3, 3, 1), sh = B(3, 2, 0), th = B(8, 2, 0), dh = B(8, 2, 1);
+      return {
+        cons: [t, n, s, d, l, r, m, k, w, b, p, h, f, v, g, y, ng, z, ch, j, sh, th, dh],
+        vows: [VB(0, 0, 0), VB(0, 1, 0), VB(0, 2, 1), VB(0, 2, 0), VB(1, 0, 0), VB(1, 1, 0),
+          VB(1, 2, 1), VB(1, 2, 0), VB(2, 0, 0), VB(2, 1, 0), VB(2, 2, 1)],
+        // ENGLISH'S LITERAL LEGAL SYLLABARY — the real ~30 onsets, real
+        // codas, real five diphthongs. Nothing outside these ever appears.
+        onsets: [
+          [t], [n], [s], [d], [l], [r], [m], [k], [w], [b], [p], [h], [f], [v], [g], [y], [z], [ch], [j], [sh], [th], [dh],
+          [b, r], [t, r], [d, r], [k, r], [g, r], [p, r], [f, r], [th, r], [sh, r],
+          [b, l], [k, l], [g, l], [p, l], [f, l], [s, l],
+          [t, w], [k, w], [s, w],
+          [s, m], [s, n], [s, p], [s, t], [s, k],
+          [s, p, r], [s, t, r], [s, k, r], [s, p, l],
+        ],
+        codas: [
+          [t], [n], [d], [s], [l], [r], [k], [m], [p], [z], [ng], [th], [f], [ch], [g], [b], [sh],
+          [n, t], [n, d], [s, t], [s, k], [l, d], [l, t], [r, n], [r, d], [r, k], [r, t], [m, p], [ng, k], [t, s], [f, t], [k, t],
+        ],
+        // ai · ou · ei · au · oi — the actual English diphthong inventory
+        diphs: [[VB(2, 1, 0), VB(0, 0, 0)], [VB(1, 2, 1), VB(0, 2, 1)], [VB(1, 0, 0), VB(0, 0, 0)],
+          [VB(2, 1, 0), VB(0, 2, 1)], [VB(1, 2, 1), VB(0, 0, 0)]],
+      };
+    })(),
     rom: { "c:8,2,1": "th" },                     // ð is SPELLED th, like þ (this/thin)
   };
   return null;

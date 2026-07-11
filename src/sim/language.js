@@ -139,8 +139,9 @@ function compile(lang) {
   };
   for (const b of lang.xph) inv.cons.push({ ...b });
   // the licensed syllabary: THIS language's finite onset/coda inventory —
-  // family-seeded so sisters share their cluster fashions
-  inv.syllab = buildSyllabary(lang.famSeed, lang.prof, inv);
+  // family-seeded so sisters share their cluster fashions (pinned
+  // references may list their literal legal onsets/codas/diphthongs)
+  inv.syllab = buildSyllabary(lang.famSeed, lang.prof, inv, lang.pin);
   // family-level semantic structure: colexification + derive-vs-root choices
   const colex = new Map();
   COLEX.forEach(([a, b, p], i) => { if (h01(lang.famSeed, "colex", i) < p) colex.set(b, a); });
@@ -227,6 +228,11 @@ function joinInternal(lang, mod, head) {
     if (!lastA.nu.length && !lastA.co.length && lastA.on.length) { firstB.on = [...lastA.on, ...firstB.on]; a.syls.pop(); }
   } else if (lastA.co.length && firstB.on.length >= 2) {
     firstB.on = firstB.on.slice(0, 1);                        // simplify the seam
+  }
+  // hiatus repair: languages don't butt two full vowels together at a
+  // morpheme seam — insert a glide (y before front vowels, w otherwise)
+  if (lastA.nu.length && !lastA.co.length && !firstB.on.length && firstB.nu.length) {
+    firstB.on = [firstB.nu[0].b === 0 ? { p: 3, m: 6, l: 1, s: 0 } : { p: 0, m: 6, l: 1, s: 0 }];
   }
   // keep compounds speakable: cap at 4 syllables, favouring the head
   const syls = [...a.syls, ...b.syls];
