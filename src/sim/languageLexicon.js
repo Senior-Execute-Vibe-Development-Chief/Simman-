@@ -186,7 +186,71 @@ export const SWIFT = c("swift", "vrt", 0.6);
 export const BELOVED = c("beloved", "vrt", 0.5);
 export const GUARDIAN = c("guardian", "vrt", 0.4, [GUARD, MAN]);
 
+// ── M1/M2 appends: verbs, grammatical-source nouns, quantifiers, numerals ──
+// (append-only, as ever: ids are persisted in loan records and rule streams)
+// Verbs carry basicness like everything else — b ≥ 0.9 is the irregularity
+// belt: the verbs a speech community uses so often their paradigms fossilize.
+export const BE = c("be", "act", 1.0);
+export const HAVE = c("have", "act", 0.9);
+export const GO = c("go", "act", 1.0);
+export const COME = c("come", "act", 0.95);
+export const DO = c("do", "act", 0.95);
+export const SAY = c("say", "act", 0.95);
+export const SEE = c("see", "act", 0.95);
+export const HEAR = c("hear", "act", 0.85);
+export const KNOW = c("know", "act", 0.9);
+export const WANT = c("want", "act", 0.85);
+export const GIVE = c("give", "act", 0.9);
+export const TAKE = c("take", "act", 0.85);
+export const MAKE = c("make", "act", 0.8);
+export const EAT = c("eat", "act", 0.95);
+export const DRINK = c("drink", "act", 0.85);
+export const SLEEP = c("sleep", "act", 0.8);
+export const SIT = c("sit", "act", 0.8);
+export const STAND = c("stand", "act", 0.8);
+export const WALKV = c("walk", "act", 0.75);
+export const RUN = c("run", "act", 0.7);
+export const FALL = c("fall", "act", 0.7);
+export const DIE = c("die", "act", 0.9);
+export const KILL = c("kill", "act", 0.7);
+export const FIGHTV = c("fight", "act", 0.7);
+export const BURNV = c("burn", "act", 0.65);
+export const BUILDV = c("build", "act", 0.6);
+export const RULEV = c("rule", "act", 0.55);
+export const LOVEV = c("love", "act", 0.7);
+export const FEARV = c("fear", "act", 0.6);
+export const FINISH = c("finish", "act", 0.7);
+// body/space nouns — the classic grammaticalization quarry (belly→in,
+// head/back→on, foot→under, face→to, mouth→edge/from)
+export const BELLY = c("belly", "bod", 0.75);
+export const BACK = c("back", "bod", 0.75);
+export const FACE = c("face", "bod", 0.85);
+export const MOUTH = c("mouth", "bod", 0.85);
+export const FOOT = c("foot", "bod", 0.9);
+export const SIDE = c("side", "bod", 0.6);
+export const MIDDLE = c("middle", "bod", 0.6);
+// quantifiers (plural markers wear down from these)
+export const MANY = c("many", "qua", 0.95);
+export const ALL = c("all", "qua", 0.95);
+// numerals — atoms; composition is grammar (languageGrammar.js numeral())
+export const ONE = c("one", "num", 1.0);
+export const TWO = c("two", "num", 1.0);
+export const THREE = c("three", "num", 1.0);
+export const FOUR = c("four", "num", 0.95);
+export const FIVE = c("five", "num", 0.95);
+export const SIX = c("six", "num", 0.85);
+export const SEVEN = c("seven", "num", 0.85);
+export const EIGHT = c("eight", "num", 0.85);
+export const NINE = c("nine", "num", 0.85);
+export const TEN = c("ten", "num", 0.95);
+export const HUNDRED = c("hundred", "num", 0.65);
+
 export const CONCEPTS = D;
+
+// frame-able verbs for the sentence layer + Lab dropdowns
+export const VERBS = [BE, HAVE, GO, COME, DO, SAY, SEE, HEAR, KNOW, WANT, GIVE,
+  TAKE, MAKE, EAT, DRINK, SLEEP, SIT, STAND, WALKV, RUN, FALL, DIE, KILL,
+  FIGHTV, BURNV, BUILDV, RULEV, LOVEV, FEARV, FINISH];
 
 // ── CLICS-style colexification affinities ────────────────────────────────
 // [a, b, probability that ONE word covers both in a given family] — the
@@ -197,6 +261,8 @@ export const COLEX = [
   [RIVER, WATER, 0.2], [NIGHT, DARK, 0.3], [GOD, SKYC, 0.15], [KING, CHIEF, 0.4],
   [SEA, LAKE, 0.25], [PEOPLE, MAN, 0.2], [WAR, BATTLE, 0.35], [SPIRIT, WIND, 0.2],
   [FOREST, TREE, 0.25], [ROAD, CROSSING, 0.3], [CHILD, SON, 0.25], [GRAIN, BREAD, 0.25],
+  // verb colexification (append-only; indices are famSeed-hash streams)
+  [GO, WALKV, 0.25], [EAT, DRINK, 0.12], [WANT, LOVEV, 0.15], [SEE, HEAR, 0.08],
 ];
 
 // ── name-material pools (indices into CONCEPTS) ──────────────────────────

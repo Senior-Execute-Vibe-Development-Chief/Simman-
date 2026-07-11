@@ -8,6 +8,7 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
+import { gramOf, closedOf, numeral } from "./sim/languageGrammar.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
@@ -82,6 +83,52 @@ function namesHTML(l) {
     <h3>Houses &amp; realms</h3>
     <p><span class="lbl">dynasties</span> ${dyn.map(n => `<span class="w">${esc(n)}</span>`).join(", ")}
        <span class="lbl ind">realms</span> ${realms.map(n => `<span class="w">${esc(n)}</span>`).join(", ")}</p>`;
+}
+
+// ── the grammar card: syntax dials, closed classes, counting ─────────────
+const WO_NAME = { sov: "SOV", svo: "SVO", vso: "VSO", vos: "VOS", ovs: "OVS" };
+function grammarHTML(l) {
+  const g = gramOf(l);
+  const cl = closedOf(l);
+  const gchips = [
+    `${WO_NAME[g.wo]} order`,
+    g.adpSide === "pre" ? "prepositions" : "postpositions",
+    g.caseN ? `${g.caseN} case${g.caseN > 1 ? "s" : ""} (${g.align === "erg" ? "ergative" : "nom–acc"})` : "no case",
+    g.genders ? `${g.genders} noun classes` : null,
+    g.tenses > 1 ? `${g.tenses} tenses` : "tenseless",
+    g.aspect ? "aspect" : null,
+    g.agree !== "none" ? (g.agree === "both" ? "polypersonal agreement" : "person agreement") : null,
+    g.proDrop ? "pro-drop" : null,
+    g.numBase !== 10 ? `base-${g.numBase} counting` : "decimal counting",
+    g.clusiv ? "inclusive/exclusive we" : null,
+    g.dual ? "dual number" : null,
+    g.defArt ? "definite article" : null,
+    g.genN ? "genitive-first" : "noun-first genitive",
+  ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
+  const pron = cl.prons.map(p => `<span class="cell"><span class="lbl">${esc(p.g)}</span> <span class="w">${esc(p.w)}</span></span>`).join(" ");
+  const dems = cl.dems.map(d => `<span class="cell"><span class="lbl">${esc(d.g)}</span> <span class="w">${esc(d.w)}</span></span>`).join(" ");
+  const qs = cl.qs.map(q => `<span class="cell"><span class="lbl">${esc(q.g)}</span> <span class="w">${esc(q.w)}</span></span>`).join(" ");
+  const conj = cl.conj.map(x => `<span class="cell"><span class="lbl">${esc(x.k)}</span> <span class="w">${esc(x.w)}</span></span>`).join(" ");
+  const adps = cl.adps.map(a => `<span class="cell"><span class="lbl">${esc(a.m)}</span> <span class="w">${esc(a.w)}</span>${a.src != null ? `<span class="gloss"> ‹ ‘${esc(glossOf(a.src))}’</span>` : ""}</span>`).join(" ");
+  const arts = [cl.defArt ? `<span class="cell"><span class="lbl">the</span> <span class="w">${esc(cl.defArt.w)}</span><span class="gloss"> ‹ ‘${esc(cl.defArt.src)}’</span></span>` : "",
+    cl.indefArt ? `<span class="cell"><span class="lbl">a</span> <span class="w">${esc(cl.indefArt.w)}</span><span class="gloss"> ‹ ‘${esc(cl.indefArt.src)}’</span></span>` : ""].join(" ");
+  const nums1 = [];
+  for (let n = 1; n <= 10; n++) nums1.push(`<span class="cell"><span class="lbl">${n}</span> <span class="w">${esc(numeral(l, n).text)}</span></span>`);
+  const numsBig = [15, 23, 40, 87, 123].map(n => {
+    const x = numeral(l, n);
+    return `<li><span class="lbl">${n}</span> <span class="w">${esc(x.text)}</span> <span class="gloss">‘${esc(x.gloss)}’</span></li>`;
+  }).join("");
+  return `<section class="card"><h2>Grammar</h2>
+    <div class="chips">${gchips}</div>
+    <p class="note">Syntax dials are rolled with Greenberg's correlations at real frequencies (verb-final tongues take postpositions and suffixes; verb-first tongues take prepositions), and the little words are worn-down forms of the language's own vocabulary — the ‹ notes show what each one used to be.</p>
+    <h3>Pronouns</h3><p class="cells">${pron}</p>
+    <h3>Demonstratives &amp; negation</h3><p class="cells">${dems} <span class="cell"><span class="lbl">not</span> <span class="w">${esc(cl.neg.w)}</span></span> ${arts}</p>
+    <h3>Question words</h3><p class="cells">${qs}</p>
+    <h3>Adpositions</h3><p class="cells">${adps}</p>
+    <h3>Conjunctions</h3><p class="cells">${conj}</p>
+    <h3>Counting (base ${g.numBase})</h3>
+    <p class="cells">${nums1.join(" ")}</p>
+    <ul class="cols">${numsBig}</ul></section>`;
 }
 
 const COGNATE_SET = (() => {
@@ -167,6 +214,7 @@ function render() {
     ${namesHTML(l)}
     ${loansHTML(l)}
   </section>
+  ${grammarHTML(l)}
   ${cognatesHTML()}
   ${dictionaryHTML(l)}
   <footer>Deterministic: the same seed and history always speak the same words. · <span class="gloss">glosses in ochre are meanings</span> · build ${typeof __BUILD__ !== "undefined" ? __BUILD__ : "dev"}</footer>`;
@@ -232,6 +280,8 @@ h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.09em;color:var(--mut
 .inv .w{margin-left:.4rem}
 ul.cols{columns:2;gap:2rem;margin:.2rem 0;padding-left:1.1rem}
 ul.cols li{margin:.12rem 0;break-inside:avoid}
+.cells{margin:.2rem 0;line-height:2}
+.cell{white-space:nowrap;background:var(--chipbg);border-radius:4px;padding:.1rem .45rem;margin-right:.2rem}
 .controls{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center}
 .controls label{display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--muted)}
 .controls .divider{flex-basis:100%;height:0}

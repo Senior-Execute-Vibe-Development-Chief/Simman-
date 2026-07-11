@@ -13,6 +13,8 @@
 
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
+import { rollProfile } from "../src/sim/languagePhonology.js";
+import { rollGrammar, gramOf, closedOf, numeral } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -180,6 +182,122 @@ say("\n── family demo: cognates under sound change ──");
   const loaned = b.loans.length;
   check("loan stratum accumulates (" + loaned + " loans: " + b.loans.map(x => glossOf(x.c) + "=" + x.w).slice(0, 3).join(", ") + ")", loaned >= 3);
   say(`   ${langWord(b, 0)} now says '${glossOf(WINE)}' → ${wordOf(b, WINE)}, '${glossOf(LAW)}' → ${wordOf(b, LAW)} (native '${glossOf(MOTHER)}' → ${wordOf(b, MOTHER)})`);
+}
+
+// ── 4. GRAMMAR: Greenberg universals over the rolled population ───────────
+// Word order, adposition side, affix side, case richness etc. are rolled
+// CORRELATED (languageGrammar.js). This gate rolls a population and checks
+// that the correlations hold at real-world-shaped rates — the anti-mush
+// property, extended to syntax.
+console.log("\n── grammar: Greenberg universals ──");
+{
+  const N = 300;
+  const t = { sov: 0, svo: 0, v1: 0, ovPost: 0, ov: 0, v1Pre: 0, ovSuf: 0, postGenN: 0, post: 0,
+    sovCase: 0, svoCase: 0, svoN: 0, clusiv: 0, base: { 5: 0, 10: 0, 20: 0 }, erg: 0, caseLangs: 0 };
+  for (let i = 0; i < N; i++) {
+    const seed = 77000 + i * 991;
+    const prof = rollProfile(seed);
+    const g = rollGrammar(seed, prof);
+    const ov = g.wo === "sov" || g.wo === "ovs", v1 = g.wo === "vso" || g.wo === "vos";
+    if (g.wo === "sov") t.sov++;
+    if (g.wo === "svo") t.svo++;
+    if (v1) t.v1++;
+    if (ov) { t.ov++; if (g.adpSide === "post") t.ovPost++; if (g.affixSide === "suf") t.ovSuf++; }
+    if (v1 && g.adpSide === "pre") t.v1Pre++;
+    if (g.adpSide === "post") { t.post++; if (g.genN) t.postGenN++; }
+    if (g.wo === "sov" && g.caseN >= 2) t.sovCase++;
+    if (g.wo === "svo") { t.svoN++; if (g.caseN >= 2) t.svoCase++; }
+    if (g.clusiv) t.clusiv++;
+    t.base[g.numBase]++;
+    if (g.caseN >= 2) { t.caseLangs++; if (g.align === "erg") t.erg++; }
+  }
+  const pc = (x, n) => Math.round(100 * x / Math.max(1, n));
+  check(`word-order frequencies real-shaped (SOV ${pc(t.sov, N)}%, SVO ${pc(t.svo, N)}%, V1 ${pc(t.v1, N)}%)`,
+    t.sov / N > 0.33 && t.sov / N < 0.55 && t.svo / N > 0.3 && t.svo / N < 0.52 && t.v1 / N > 0.06 && t.v1 / N < 0.22);
+  check(`U4: OV ⇒ postpositions (${pc(t.ovPost, t.ov)}%)`, t.ovPost / t.ov >= 0.85);
+  check(`U3: V-initial ⇒ prepositions (${pc(t.v1Pre, t.v1)}%)`, t.v1Pre / Math.max(1, t.v1) >= 0.85);
+  check(`U27: OV ⇒ suffixing (${pc(t.ovSuf, t.ov)}%)`, t.ovSuf / t.ov >= 0.8);
+  check(`U2a: postpositional ⇒ genitive-first (${pc(t.postGenN, t.post)}%)`, t.postGenN / Math.max(1, t.post) >= 0.75);
+  check(`U41: SOV carries case more than SVO (${pc(t.sovCase, t.sov)}% vs ${pc(t.svoCase, t.svoN)}%)`,
+    t.sovCase / t.sov > t.svoCase / Math.max(1, t.svoN) + 0.1);
+  check(`clusivity in the human band (${pc(t.clusiv, N)}%)`, t.clusiv / N > 0.2 && t.clusiv / N < 0.5);
+  check(`numeral bases: decimal majority, real minorities (10:${pc(t.base[10], N)}% 20:${pc(t.base[20], N)}% 5:${pc(t.base[5], N)}%)`,
+    t.base[10] / N > 0.5 && t.base[20] / N > 0.1 && t.base[20] / N < 0.32 && t.base[5] / N > 0.05 && t.base[5] / N < 0.28);
+  check(`ergative alignment a real minority of case languages (${pc(t.erg, t.caseLangs)}%)`,
+    t.erg / Math.max(1, t.caseLangs) > 0.12 && t.erg / Math.max(1, t.caseLangs) < 0.42);
+}
+
+// ── 5. closed-class vocabulary ────────────────────────────────────────────
+console.log("\n── closed-class vocabulary ──");
+{
+  const world = mkWorld();
+  const langs = [];
+  for (let i = 0; i < 10; i++) langs.push(foundLanguage(world, { seed: 60000 + i * 313 }));
+  let pronDup = 0, qFam = 0, demDup = 0, numDup = 0;
+  for (const l of langs) {
+    const cl = closedOf(l);
+    const ws = cl.prons.map(p => p.w);
+    if (new Set(ws).size !== ws.length || ws.some(w => !w)) pronDup++;
+    const dw = cl.dems.map(d => d.w);
+    if (new Set(dw).size !== dw.length) demDup++;
+    const what = cl.qs.find(q => q.k === "what").w;
+    if (cl.qs.filter(q => q.k !== "what" && q.w[0] === what[0]).length >= 3) qFam++;
+    const atoms = [];
+    for (let n = 1; n <= 10; n++) atoms.push(numeral(l, n).text);
+    if (new Set(atoms).size !== atoms.length) numDup++;
+  }
+  check(`pronoun paradigm cells distinct in every tongue (${10 - pronDup}/10)`, pronDup === 0);
+  check(`demonstratives distinct (near≠far) in every tongue (${10 - demDup}/10)`, demDup === 0);
+  check(`question-word series shows family resemblance (shared onset, ${qFam}/10)`, qFam >= 7);
+  check(`numerals 1–10 distinct in every tongue (${10 - numDup}/10)`, numDup === 0);
+
+  // clusive tongues distinguish the two 'we's; dual tongues wear their 'two'
+  const clus = langs.filter(l => gramOf(l).clusiv);
+  const clOK = clus.every(l => {
+    const cl = closedOf(l);
+    return cl.prons.find(p => p.k === "1pi").w !== cl.prons.find(p => p.k === "1pe").w;
+  });
+  check(`inclusive ≠ exclusive 'we' in clusive tongues (${clus.length} sampled)`, clus.length > 0 && clOK);
+
+  // base formation rules do what they say (hunt examples across seeds)
+  let b5 = null, b20 = null, b10 = null;
+  for (let i = 0; i < 60 && !(b5 && b20 && b10); i++) {
+    const l = foundLanguage(world, { seed: 91000 + i * 127 });
+    const b = gramOf(l).numBase;
+    if (b === 5 && !b5) b5 = l;
+    if (b === 20 && !b20) b20 = l;
+    if (b === 10 && !b10) b10 = l;
+  }
+  check(`quinary: 7 decomposes as five-two (${b5 ? numeral(b5, 7).gloss : "none found"})`,
+    !!b5 && numeral(b5, 7).gloss.includes("five-two"));
+  check(`vigesimal: 40 is two-twenty (${b20 ? numeral(b20, 40).gloss : "none found"})`,
+    !!b20 && numeral(b20, 40).gloss.includes("two-twenty"));
+  check(`decimal: 23 is two-ten three (${b10 ? numeral(b10, 23).gloss : "none found"})`,
+    !!b10 && numeral(b10, 23).gloss.replace(" ", "-").includes("two-ten"));
+  say("   counting in " + langWord(b10, 0) + ": " + [1, 2, 3, 10, 23, 40, 123].map(n => n + "=" + numeral(b10, n).text).join(" · "));
+
+  // pinned Mandarin closed-class output stays legal pinyin
+  const m = foundLanguage(world, { seed: 445 });
+  m.prof = refProfile("mandarin", 445);
+  m.rules = [];
+  const rp = refPin("mandarin");
+  m.pin = rp.pin; m.prof.rom = rp.rom;
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const mc = closedOf(m);
+  const mWords = [...mc.prons.map(p => p.w), ...mc.dems.map(d => d.w), mc.neg.w,
+    ...mc.qs.map(q => q.w), ...mc.adps.map(a => a.w), ...[1, 5, 10, 23, 87].map(n => numeral(m, n).text.split(" ")).flat()];
+  const mBad = mWords.filter(w => !PINYIN.test(strip(w.toLowerCase())));
+  check(`pinned Mandarin closed class is legal pinyin (${mBad[0] || "0 illegal"}, n=${mWords.length})`, mBad.length === 0);
+  say("   mandarin pronouns: " + mc.prons.map(p => p.g + "=" + p.w).join(" "));
+
+  // determinism + JSON-roundtrip for the whole closed layer
+  const w1 = mkWorld(), w2 = mkWorld();
+  const a = foundLanguage(w1, { seed: 31313 }), b = foundLanguage(w2, { seed: 31313 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => JSON.stringify([closedOf(l).prons.map(p => p.w), closedOf(l).adps.map(x => x.w),
+    numeral(l, 123).text, numeral(l, 47).text]);
+  check("closed class deterministic + JSON-roundtrip-stable", sig(a) === sig(b) && sig(a) === sig(c3));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

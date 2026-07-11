@@ -175,13 +175,21 @@ function internalOf(lang, cid) {
     // speech community says a six-syllable word for "crossing" daily
     if (con.b >= 0.5 && w.syls.length > 3) w.syls = [w.syls[0], ...w.syls.slice(-2)];
   } else {
-    const rng = mkRng(hash32(lang.famSeed, "root", cid));
-    w = lang.prof.morph === "tmpl" ? synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed)
-      : synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, con.b >= 0.85));
-    w = applyRules(lang.rules, w);
+    w = applyRules(lang.rules, synthRoot(lang, cid));
   }
   c.internals.set(cid, w);
   return w;
+}
+
+// the PRE-sound-change family root for an atomic concept — the form the
+// grammar layer needs when an affix grammaticalized early and must replay
+// only the tail of the rule log
+function synthRoot(lang, cid) {
+  const c = compile(lang);
+  const con = CONCEPTS[cid];
+  const rng = mkRng(hash32(lang.famSeed, "root", cid));
+  return lang.prof.morph === "tmpl" ? synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed)
+    : synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, con.b >= 0.85));
 }
 
 /** The word for a concept, as a rendered string. Loans win over native. */
@@ -198,6 +206,34 @@ export function wordOf(lang, cid) {
 
 /** The concept's gloss (shared across all languages). */
 export function glossOf(cid) { return CONCEPTS[cid] ? CONCEPTS[cid].g : ""; }
+
+// ── grammar-layer access (languageGrammar.js) ─────────────────────────────
+// The grammar module derives closed-class words, paradigms and clauses from
+// the SAME compiled state the dictionary uses. These exports hand that state
+// over without exposing the caches: everything word-shaped is a deep copy
+// (sound-change rules mutate words in place; the caches must never bleed).
+
+/** The compiled inventory (with licensed syllabary). Treat as read-only. */
+export function compiledInv(lang) { ensureV2(lang); return compile(lang).inv; }
+
+/** Evolved native internal form for a concept (deep copy; loans ignored —
+ *  grammaticalized material fossilizes, borrowings never replace grammar). */
+export function nativeStemOf(lang, cid) { ensureV2(lang); return copyWord(internalOf(lang, cid)); }
+
+/** Pre-rule family root for a concept (deep copy). Falls back to the evolved
+ *  form for derived/compound concepts — pre:false tells the caller the rule
+ *  log is already baked in. Colexification resolves first, like internalOf. */
+export function rootFormOf(lang, cid) {
+  ensureV2(lang);
+  const c = compile(lang);
+  let id = cid, hops = 0;
+  while (c.colex.has(id) && hops++ < 4) id = c.colex.get(id);
+  const con = CONCEPTS[id];
+  const parts = con.dv && [internalOf(lang, con.dv[0]), internalOf(lang, con.dv[1])];
+  if (con.dv && parts[0] !== parts[1] && h01(lang.famSeed, "dv", id) < 0.65)
+    return { w: copyWord(internalOf(lang, id)), pre: false };
+  return { w: copyWord(synthRoot(lang, id)), pre: true };
+}
 
 // root length from the language's own distribution (Vietnamese-short
 // through Greenlandic-long); basic concepts run shorter, like real ones

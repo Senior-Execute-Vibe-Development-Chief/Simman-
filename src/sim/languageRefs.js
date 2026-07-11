@@ -27,6 +27,17 @@ export function refProfile(kind, seed) {
     orthoStyle: 0, sig: "none", compound: "hl", compErode: "trim", wordLen: 1.5, erodeNames: false, nameStyle: "plain",
     romTaste: 0, palatalFront: true,              // j/q/x only before front vowels; g/k/h never before i
     toneMarks: true, medialSonorant: true,
+    // grammar dials (every gram dial pinned — rolled values must not leak):
+    // SVO isolating, aspect not tense (le/guo), final polar particle (ma),
+    // wh in situ, clusive we (zánmen), affixal pronoun plural (wǒ-men)
+    gram: {
+      wo: "svo", adpSide: "pre", genN: true, adjN: true, affixSide: "suf",
+      caseN: 0, align: "acc", negPos: "pre", qPart: "final", whFront: false,
+      genders: 0, tenses: 1, agree: "none", aspect: true, pluralMark: false,
+      dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
+      proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
+      pronPl: "affix", declN: 1, conjN: 1,
+    },
   });
   if (kind === "russian") Object.assign(p, {
     sylC: 3, onDepth: 3, coDepth: 3, sCluster: true, nasalCoda: false,
@@ -36,6 +47,16 @@ export function refProfile(kind, seed) {
     sylMin: 1, sylMax: 3, patro: "suf", gendered: true, diph: false, longV: false, nasalV: false,
     orthoStyle: 0, sig: "none", compound: "hl", compErode: "trim", wordLen: 2.1, erodeNames: false, nameStyle: "plain",
     romTaste: 0,
+    // SVO fusional: six-case nom-acc, three genders, full TAM + agreement,
+    // preverbal ne, fronted wh, no articles — the Slavic corner
+    gram: {
+      wo: "svo", adpSide: "pre", genN: false, adjN: true, affixSide: "suf",
+      caseN: 5, align: "acc", negPos: "pre", qPart: "none", whFront: true,
+      genders: 3, tenses: 3, agree: "subj", aspect: true, pluralMark: true,
+      dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
+      proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
+      pronPl: "root", declN: 3, conjN: 2,
+    },
   });
   if (kind === "english") Object.assign(p, {
     sylC: 3, onDepth: 3, coDepth: 3, sCluster: true, nasalCoda: false,
@@ -49,6 +70,16 @@ export function refProfile(kind, seed) {
     codaBias: 1.5,                                // stress-timed: closed syllables are the norm
     medialSonorant: true,                         // win-ter, sil-ver — never shod-pug
     vInit: 0.05,                                  // English strongly prefers consonant onsets
+    // SVO analytic-fusional: possessive as the lone marked case ('s),
+    // gendered 3sg without noun gender (he/she), both articles, no agreement
+    gram: {
+      wo: "svo", adpSide: "pre", genN: true, adjN: true, affixSide: "suf",
+      caseN: 1, align: "acc", negPos: "pre", qPart: "none", whFront: true,
+      genders: 0, tenses: 3, agree: "none", aspect: false, pluralMark: true,
+      dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
+      proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
+      pronPl: "root", declN: 2, conjN: 2,
+    },
   });
   return p;
 }
