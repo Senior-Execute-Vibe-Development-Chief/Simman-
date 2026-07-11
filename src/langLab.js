@@ -165,7 +165,7 @@ function render() {
   </section>
   ${cognatesHTML()}
   ${dictionaryHTML(l)}
-  <footer>Deterministic: the same seed and history always speak the same words. · <span class="gloss">glosses in ochre are meanings</span></footer>`;
+  <footer>Deterministic: the same seed and history always speak the same words. · <span class="gloss">glosses in ochre are meanings</span> · build ${typeof __BUILD__ !== "undefined" ? __BUILD__ : "dev"}</footer>`;
 
   document.getElementById("reroll").onclick = () => { S.seed = Number(document.getElementById("seed").value) || 1; S.preset = document.getElementById("preset").value; reset(); render(); };
   document.getElementById("preset").onchange = (e) => { S.preset = e.target.value; reset(); render(); };

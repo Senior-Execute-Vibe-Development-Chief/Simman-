@@ -191,11 +191,7 @@ export function wordOf(lang, cid) {
   if (seen !== undefined) return seen;
   let out = null;
   for (let i = lang.loans.length - 1; i >= 0; i--) if (lang.loans[i].c === cid) { out = lang.loans[i].w; break; }
-  if (out === null) out = sanitized((k) => k === 0
-    ? renderWord(internalOf(lang, cid), lang.prof)
-    // collision fallback: coin a fresh root (real languages also avoid the
-    // compounds that come out wrong)
-    : renderWord(applyRules(lang.rules, synthWord(mkRng(hash32(lang.famSeed, "root", cid, k)), lang.prof, c.inv, 2)), lang.prof));
+  if (out === null) out = renderWord(internalOf(lang, cid), lang.prof);
   c.words.set(cid, out);
   return out;
 }
@@ -302,16 +298,6 @@ const finishName = (w, prof) => prof.ortho === "en"
   ? w.replace(/u$/i, (m) => ["ue", "ew", "o", "oo"][hash32(w, "u") % 4]).replace(/(..)i$/i, "$1y")
   : w;
 
-// ── the collision filter ──────────────────────────────────────────────────
-// A generator that can produce "rapist" for silk WILL, eventually, in a
-// shipped world bible. Any surface containing one of these re-synthesizes
-// deterministically (salted retry). Pleasant accidents (grin, sunny, dune)
-// are left alone — this list is only the never-acceptable.
-const BAD = /rape|rapist|piss|shit|fuck|cunt|cock|dick|tits|nigg|fagg|anus|arse|slut|whore|porn|nazi|penis|vagin|semen|boob|turd|wank|jizz|dildo|rectum|incest|pedo|molest|nipple|scrot|smegm|queef|twat|prick|pube/i;
-const sanitized = (make) => {
-  for (let k = 0; k < 5; k++) { const w = make(k); if (!BAD.test(w)) return w; }
-  return make(0).replace(BAD, "n");   // give up gracefully (never expected)
-};
 
 // ── the public name API (signatures unchanged from v1) ────────────────────
 
@@ -319,11 +305,9 @@ const sanitized = (make) => {
 export function langWord(lang, n) {
   ensureV2(lang);
   const c = compile(lang);
-  return cap(sanitized((k) => {
-    const rng = mkRng(hash32(lang.seed, "w", lang.gen, n, k));
-    const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, true)));
-    return renderWord(w, lang.prof);
-  }));
+  const rng = mkRng(hash32(lang.seed, "w", lang.gen, n));
+  const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, true)));
+  return cap(renderWord(w, lang.prof));
 }
 
 /** Settlement name + gloss: usually a meaningful compound ("black ford"),
@@ -331,74 +315,64 @@ export function langWord(lang, n) {
 export function langPlaceNameEx(lang, n) {
   ensureV2(lang);
   const sufs = sufsOf(lang);
-  for (let k = 0; k < 5; k++) {
-    const rng = mkRng(hash32(lang.seed, "place", lang.gen, n, k));
-    const roll = rng();
-    let name, gloss;
-    if (roll < 0.55) {
-      const mod = TOPO_MOD[rng.int(TOPO_MOD.length)], head = TOPO_HEAD[rng.int(TOPO_HEAD.length)];
-      name = renderWord(joinInternal(lang, internalOf(lang, mod), internalOf(lang, head)), lang.prof);
-      gloss = glossOf(mod) + " " + glossOf(head);
-      if (name.length > 12) { name = wordOf(lang, head); gloss = glossOf(head); }
-    } else if (roll < 0.8) {
-      const head = TOPO_HEAD[rng.int(TOPO_HEAD.length)];
-      name = joinSuf(wordOf(lang, head), sufs.city[rng.int(sufs.city.length)]);
-      gloss = glossOf(head);
-    } else {
-      const c = compile(lang);
-      const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, 1 + rng.int(2)));
-      name = joinSuf(renderWord(w, lang.prof), sufs.city[rng.int(sufs.city.length)]);
-      gloss = null;                                           // meaning lost to time
-    }
-    name = cap(finishName(name.replace(/(.)\1\1+/g, "$1$1"), lang.prof));
-    if (!BAD.test(name)) return { name, gloss };
+  const rng = mkRng(hash32(lang.seed, "place", lang.gen, n));
+  const roll = rng();
+  let name, gloss;
+  if (roll < 0.55) {
+    const mod = TOPO_MOD[rng.int(TOPO_MOD.length)], head = TOPO_HEAD[rng.int(TOPO_HEAD.length)];
+    name = renderWord(joinInternal(lang, internalOf(lang, mod), internalOf(lang, head)), lang.prof);
+    gloss = glossOf(mod) + " " + glossOf(head);
+    if (name.length > 12) { name = wordOf(lang, head); gloss = glossOf(head); }
+  } else if (roll < 0.8) {
+    const head = TOPO_HEAD[rng.int(TOPO_HEAD.length)];
+    name = joinSuf(wordOf(lang, head), sufs.city[rng.int(sufs.city.length)]);
+    gloss = glossOf(head);
+  } else {
+    const c = compile(lang);
+    const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, 1 + rng.int(2)));
+    name = joinSuf(renderWord(w, lang.prof), sufs.city[rng.int(sufs.city.length)]);
+    gloss = null;                                             // meaning lost to time
   }
-  return { name: "Ford", gloss: "ford" };                     // never expected
+  return { name: cap(finishName(name.replace(/(.)\1\1+/g, "$1$1"), lang.prof)), gloss };
 }
 export function langPlaceName(lang, n) { return langPlaceNameEx(lang, n).name; }
 
 export function langRealmName(lang, n, base) {
   ensureV2(lang);
   const sufs = sufsOf(lang);
-  return cap(sanitized((k) => {
-    const rng = mkRng(hash32(lang.seed, "r", lang.gen, n, k));
-    const stem = base ? String(base)
-      : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 1 + rng.int(2))), lang.prof);
-    return finishName(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]), lang.prof);
-  }));
+  const rng = mkRng(hash32(lang.seed, "r", lang.gen, n));
+  const stem = base ? String(base)
+    : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 1 + rng.int(2))), lang.prof);
+  return cap(finishName(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]), lang.prof));
 }
 
 export function langPersonName(lang, n, female) {
   ensureV2(lang);
   const sufs = sufsOf(lang);
-  return cap(sanitized((k) => {
-    const rng = mkRng(hash32(lang.seed, "p", lang.gen, n, k));
-    let w;
-    if (rng() < 0.6) {
-      const a = PERSON_POOL[rng.int(PERSON_POOL.length)];
-      if (rng() < 0.4) {
-        const b = PERSON_POOL[rng.int(PERSON_POOL.length)];
-        w = renderWord(joinInternal(lang, internalOf(lang, a), internalOf(lang, b)), lang.prof);
-      } else w = wordOf(lang, a);
-    } else {
-      w = renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
-    }
-    if (w.length > 10) w = w.slice(0, 9).replace(/[^aeiou]+$/i, "");
-    if (lang.prof.gendered && female && !/[aeiou]$/i.test(w)) w += sufs.fem;
-    else if (lang.prof.gendered && !female && w.length > 3 && /[aeiou]$/i.test(w) && rng() < 0.5) w = w.slice(0, -1);
-    return finishName(w, lang.prof) || "Ana";
-  }));
+  const rng = mkRng(hash32(lang.seed, "p", lang.gen, n));
+  let w;
+  if (rng() < 0.6) {
+    const a = PERSON_POOL[rng.int(PERSON_POOL.length)];
+    if (rng() < 0.4) {
+      const b = PERSON_POOL[rng.int(PERSON_POOL.length)];
+      w = renderWord(joinInternal(lang, internalOf(lang, a), internalOf(lang, b)), lang.prof);
+    } else w = wordOf(lang, a);
+  } else {
+    w = renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
+  }
+  if (w.length > 10) w = w.slice(0, 9).replace(/[^aeiou]+$/i, "");
+  if (lang.prof.gendered && female && !/[aeiou]$/i.test(w)) w += sufs.fem;
+  else if (lang.prof.gendered && !female && w.length > 3 && /[aeiou]$/i.test(w) && rng() < 0.5) w = w.slice(0, -1);
+  return cap(finishName(w, lang.prof) || "Ana");
 }
 
 export function langDynastyName(lang, n, founder) {
   ensureV2(lang);
   const sufs = sufsOf(lang);
-  return sanitized((k) => {
-    const rng = mkRng(hash32(lang.seed, "d", lang.gen, n, k));
-    const stem = founder ? String(founder)
-      : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
-    if (lang.prof.patro === "pre") return cap(sufs.patro) + cap(stem);
-    if (lang.prof.patro === "suf") return cap(finishName(joinSuf(stem, sufs.patro), lang.prof));
-    return cap(finishName(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]), lang.prof));
-  });
+  const rng = mkRng(hash32(lang.seed, "d", lang.gen, n));
+  const stem = founder ? String(founder)
+    : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
+  if (lang.prof.patro === "pre") return cap(sufs.patro) + cap(stem);
+  if (lang.prof.patro === "suf") return cap(finishName(joinSuf(stem, sufs.patro), lang.prof));
+  return cap(finishName(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]), lang.prof));
 }
