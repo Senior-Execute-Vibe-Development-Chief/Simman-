@@ -1605,6 +1605,22 @@ function updateKnowledge(world, s) {
     const coerced = Math.min(1, (s._unfree || 0) / Math.max(1, s.people || 1) + (s._serf || 0));
     if (coerced > 0) sciMul *= Math.max(0.1, 1 - T.LABOR_INNOV * coerced);
   }
+  // ── Hegemonic stagnation (T.HEGEMONY_STAG) — the classical law's other half ──
+  // A state system that has ABSORBED its peers loses the competitive driver
+  // itself (Scheidel's Escape-from-Rome thesis): no rival that could beat you, no
+  // court to defect to, no war you might lose — the pressure that pays for
+  // technique is gone. Reads s._hegF (the peer-competition pass above): the
+  // power-weighted share of this settlement's contact world that its own political
+  // system has subordinated, scaled by having actually absorbed ≥2 peer-equivalents
+  // — so a lone pioneer kingdom on an empty frontier (nothing ever subordinated)
+  // and a fragmented peer system (nothing to subordinate) both read 0, while the
+  // hegemon that swallowed its neighbourhood reads ~1 exactly where the era-leading
+  // hubs live. Multiplicative like LABOR_INNOV — the additive COMPETE bonus term
+  // can only swing the rate ~10-15% (measured), never the classical row's ~2.5×.
+  // Fires purely from live political structure — no era, no date, no name.
+  if (T.HEGEMONY_STAG > 0 && (s._hegF || 0) > 0) {
+    sciMul *= Math.max(0.1, 1 - T.HEGEMONY_STAG * s._hegF);
+  }
 
   // ── Environment specialization (climate-tied learning) ────────────────
   // Beyond the resource gates, the LOCAL CLIMATE biases which techniques a
@@ -1863,7 +1879,38 @@ function updateKnowledge(world, s) {
       const costW = Math.exp(-((link && link.cost) || 0) / DIFFUSE_COST_K);
       for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; kmCostW[t] = costW; } }
     }
-    s._rivalN = rivals.size;   // distinct rival polities in contact → competition term in sciMul next pass
+    // ── PEER competition (T.PEER_COMPETE): rivals are independent PEERS ────────
+    // The competition-drives-innovation thesis (Hume, the warring states, fractious
+    // Europe) is about states that could genuinely BEAT you — not any foreign flag
+    // in trade reach. Two corrections, both measured necessities for the classical
+    // gap (the era clock follows the leading hubs, and only this pressure slows
+    // them): (a) SUBORDINATION — a vassal, an overlord, a co-dependency share your
+    // power system and are no rivals (the old count kept competF pinned at 1 inside
+    // a perfect suzerain network — hegemony was structurally invisible); (b) PEER
+    // WEIGHT — a rival presses in proportion to its power against yours (min(1,
+    // theirs/(0.5×mine)): a peer at half your power presses fully, a minnow barely —
+    // Rome felt no spur from Germanic villages). Alongside, the SUBORDINATED weight
+    // is tallied: how much of your contact world your system has absorbed — the
+    // hegemony fraction the stagnation law (sciMul, below) reads. Falls back to the
+    // legacy count where power is unpriceable (young states between alliance
+    // rebuilds). 0 = the legacy any-flag count (byte-identical).
+    if (T.PEER_COMPETE > 0 && s.countryId >= 0 && rivals.size) {
+      const powM = world._countryPow, ov = world._overlordOf;
+      const rootOf = (cc) => { let c = cc, hops = 0; while (ov && ov.has(c) && hops++ < 64) c = ov.get(c); return c; };
+      const myRoot = rootOf(s.countryId);
+      const myPow = powM ? powM.get(s.countryId) : undefined;
+      let peerW = 0, subW = 0;
+      for (const cc of rivals) {
+        const rp = powM ? powM.get(cc) : undefined;
+        const w = (myPow > 0 && rp !== undefined) ? Math.min(1, rp / (0.5 * myPow)) : 1;
+        if (rootOf(cc) === myRoot) subW += w; else peerW += w;
+      }
+      s._rivalN = peerW;
+      s._hegF = (subW + peerW) > 0.5 ? subW / (subW + peerW) * Math.min(1, subW / 2) : 0;
+    } else {
+      s._rivalN = rivals.size;   // legacy: distinct rival polities in contact
+      s._hegF = 0;
+    }
     if (any) {
       if (wa <= 0) km.navigation = 0;            // no sea → no naval technique to absorb
       if (horses <= horsesThr) km.mobility = 0;  // no horses → no cavalry technique to absorb

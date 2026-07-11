@@ -69,7 +69,8 @@ const SETT_FIELDS = [
   "_orgApt",                             // heritable organisation aptitude (seasonal-selection ratchet)
   "_credit",                             // banking: how much of wealth is conjured credit (Phase 5)
   "_lastBorrow",                         // crop-package borrow cooldown (T.CROP_AXIS)
-  "_rivalN",                             // rival-polity contact count (competition signal)
+  "_rivalN",                             // peer-weighted rival contact (competition signal)
+  "_hegF",                               // hegemony fraction: subordinated share of the contact world (stagnation law)
 ];
 
 // Load-bearing per-settlement DYNAMIC state that the hashWorld core loop omitted:
@@ -81,7 +82,7 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_ambition", "_diseaseLoad", "_specStr"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_ambition", "_diseaseLoad", "_specStr"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
