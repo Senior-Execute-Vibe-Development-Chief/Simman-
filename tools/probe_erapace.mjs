@@ -35,8 +35,24 @@
 // 0.08→0.01 while serfs rise 0.03→0.05 — slavery aging into serfdom, as Rome did.
 // α=1.5 is the flip candidate. Before default-on: score eras to ATTAINMENT,
 // 3-seed table, re-earn stylized at the new pacing, then delete displayYear.
-// ── 3-SEED TABLE (42k, seeds 8817/31337/4242, all levers default incl. the
-// latifundia + capitulation + amphib waves) — attainment-scored:
+// ── 3-SEED TABLE, hegemonic-stagnation era (27k, 3000 BC calibration, all levers
+// default: latifundia/capitulation/amphib/PEER_COMPETE/HEGEMONY_STAG=0.75):
+//              8817   31337   4242
+//   Bronze     1.0x   1.2x    0.9x
+//   Iron       0.8x   0.4x    0.7x   ← was 0.3-0.6x pre-law; two seeds near 1x
+//   Medieval   1.1x   1.6x    1.0x
+//   Renaiss.   0.9x   1.5x    0.9x
+//   Industrial 1.0x   1.5x    1.0x
+// 31337 is the divergent world BOTH ways and CONSISTENTLY: its iron-era world
+// never consolidated (no pressure collapse → classical stays 0.4x) while its
+// late world DID (a peerless early-modern hegemon → 1.5-1.6x tail — a
+// Qing-world: consolidation delaying industry is the Scheidel counterfactual,
+// legitimate emergence, not error). At HEGEMONY_STAG 0.55 the same seeds read
+// Iron 0.6/0.4/0.5 with tails ~1x — 0.75 buys the classical row on worlds where
+// the collapse happens, at the price of stronger consolidation stories where it
+// happens late. Epoch fits −3395/−3770/−3215 (the 31337 outlier is its slow tail).
+// ── OLDER 3-SEED TABLE (42k, pre-3000BC-calibration, latifundia/capitulation/
+// amphib defaults) — attainment-scored:
 //              8817   31337   4242    mean
 //   Bronze     1.7x   1.7x    1.4x    1.6x
 //   Iron       0.4x   0.6x    0.3x    0.43x   ← THE CLASSICAL GAP persists

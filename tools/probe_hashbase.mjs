@@ -5,7 +5,12 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): 17836a8b/c446da26 (the 3000 BC start — the
+// Current baseline (2500 steps): 1c2e5537/a5c52317 (hegemonic stagnation —
+// PEER_COMPETE + HEGEMONY_STAG 0.75 defaults; also hashes _hegF/_peerPeak, so
+// the stream is re-keyed). PEER_COMPETE=0,HEGEMONY_STAG=0 recovers the 3000 BC
+// world d206d81 in TRAJECTORY (proven by state-digest diff — the hash pair
+// itself re-keyed with the new hashed fields).
+// Prior baseline (2500 steps): 17836a8b/c446da26 (the 3000 BC start — the
 // eve-of-states genesis seed + SCI_COMPOUND_FLOOR 0.7 antiquity rate). A GENESIS
 // change re-keys every trajectory from step 0, so all prior lever-off recovery
 // pairs below are ARCHIVED history (they described the stone-age-seed world);
