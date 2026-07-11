@@ -20,6 +20,7 @@
 // (both fields are re-derivable, but popField carries state so it IS saved — see persist).
 
 import { T } from "./tuning.js";
+import { tileOpenness } from "./transport.js";
 
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -71,6 +72,22 @@ const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neoli
 const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
 const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
 const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
+// ── Pastoral capacity (the mechanism DEV_FIELD un-masked) ────────────────────
+// The global scalar had been silently gifting the STEPPE farming-level capacity;
+// with capacity honest about local technique, the range thinned to nothing and
+// the nomad system starved (measured: hordes classified from t≈18k with 50 raids
+// under the scalar; first classification t≈24k and ZERO raids under the bare
+// wave). The missing CAUSE: herding converts grass — inedible to people — into
+// food, independent of crop technique. Rangeland capacity is openness-weighted
+// (transport.js tileOpenness: dry grass, low relief — the same saddle-country
+// measure the nomad system reads) at the historical pastoral density: ~1/10 of
+// what fert-1.0 cropland feeds at the pre-farming base. An economy uses the
+// better strategy locally (max), so the herd beats the plough exactly where the
+// ground is open and too poor to farm — the steppe carries real people again
+// without giving back the farming contrast. Sheep/goat pastoralism predates the
+// 3000 BC start wherever grass grows, so v1 is technique-free; scaling the range
+// with the mounted complex (mobility diffusion) is a noted follow-up.
+const PASTORAL_DENS = 0.10;         // people per openness-1 range tile, as a fraction of fert-1 cropland at CAP_PER_FERT
 
 // Firing interval (steps) for the wave at this grid: a tile is EARTH_KM/tw km
 // across and the wave crosses one tile per firing, so fire every
@@ -213,7 +230,7 @@ export function stepPopField(world, sub = 1) {
 
   // T.DEV_FIELD: keep the regional technique field current — stamp sources +
   // advance the wave one tile every devWaveIvl steps (~1 km/year at any grid).
-  let devF = null;
+  let devF = null, pasture = null;
   if (T.DEV_FIELD) {
     devF = ensureDevField(world, land);
     const ivl = devWaveIvl(world);
@@ -221,6 +238,12 @@ export function stepPopField(world, sub = 1) {
       world._devWaveAt = world.step;
       stampDevSources(world, devF);
       devF = relaxDevWave(world, devF, land);
+    }
+    // Static rangeland capacity (openness is pure terrain — built once).
+    pasture = world._pastureCap;
+    if (!pasture || pasture.length !== N) {
+      pasture = world._pastureCap = new Float32Array(N);
+      for (let li = 0; li < nLand; li++) { const i = land[li]; pasture[i] = tileOpenness(world, i) * CAP_PER_FERT * PASTORAL_DENS; }
     }
   }
 
@@ -242,7 +265,9 @@ export function stepPopField(world, sub = 1) {
     if (devF) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      cap[i] = fert[i] * CAP_PER_FERT * (DEV_BASE + DEV_TECH * a) * reach * reliefMul;
+      const crop = fert[i] * CAP_PER_FERT * (DEV_BASE + DEV_TECH * a) * reach * reliefMul;
+      const range = pasture[i];   // the herd or the plough — whichever feeds this ground better (openness already prices relief)
+      cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
       cap[i] = fert[i] * CAP_PER_FERT * dev * reach * reliefMul;
