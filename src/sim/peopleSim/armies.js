@@ -81,6 +81,35 @@ export function closeWar(world, key, how) {
   logEvent(world, "war.ended", { polity: a, to: b, name: realmName(world, a), toName: realmName(world, b),
     dead: Math.round(dead), how });
 }
+// ── War-throughput instrumentation (opt-in — tools/probe_warbars.mjs) ────────
+// world.debug.war = mkWarDebug() turns on per-pass counters: each candidate
+// attacker→defender pair's most permissive tile is kept and, if rejected,
+// attributed to the single PIVOTAL bar factor (the largest one whose removal
+// alone would have let the front open) — or "parity" (raw power short even
+// bare) or "stack" (only the combination rejects). Truce-blocked pairs and
+// every war ending (how / duration / exhaustion / age) are tallied too.
+// Null by default: zero cost, and the instrumented bar product is hoisted
+// verbatim (same IEEE multiply chain), so normal runs are byte-identical.
+export function mkWarDebug() {
+  return { step: -1, pairs: new Map(), trucePairs: new Set(), signed: [],
+           tot: { cand: 0, opened: 0, truceBlocked: 0, parity: 0, stack: 0,
+                  agg: 0, trade: 0, war: 0, casus: 0, claim: 0, dom: 0, coal: 0, warsStarted: 0 } };
+}
+export function foldWarDebug(W) {
+  if (!W || !W.pairs) return;
+  for (const r of W.pairs.values()) {
+    W.tot.cand++;
+    if (r.passed) { W.tot.opened++; continue; }
+    if (r.attM < r.base) { W.tot.parity++; continue; }
+    let piv = null, pivV = 1;
+    for (const k in r.f) { const v = r.f[k]; if (v > 1 && r.minBar / v <= r.attM && v > pivV) { piv = k; pivV = v; } }
+    if (piv) W.tot[piv]++; else W.tot.stack++;
+  }
+  W.tot.truceBlocked += W.trucePairs.size;
+  W.pairs.clear(); W.trucePairs.clear();
+}
+const wdbgPass = (W, step) => { if (W.step !== step) { foldWarDebug(W); W.step = step; } };
+
 export const MUSTER_INTERVAL   = 100;
 // CONQUEST_INTERVAL (war-pass cadence) is a runtime lever — tuning.js
 // T.CONQUEST_INTERVAL; index.js gates advanceFronts on it.
@@ -366,6 +395,7 @@ export function advanceFronts(world) {
   // whole tactical layer (front scan, capture, storm, casualties) runs on tiles and a
   // captured city just inherits the flag. Default: the per-settlement catchment map.
   const TILE_WAR = !!T.TILE_POLITY;
+  const WDBG = (world.debug && world.debug.war) || null;   // opt-in throughput counters (probe_warbars) — null in normal runs
   const owner = TILE_WAR ? world._countryOwner : world._territoryOwner;
   const byId = world._byId;
   if (!owner || !byId) return;
@@ -610,7 +640,12 @@ export function advanceFronts(world) {
       const A = own.get(a);
       if (!A || A.mode !== "settled" || A.countryId === D.countryId
           || inTruce(A.countryId, D.countryId)
-          || bondedCC(A.countryId, D.countryId)) continue;   // a signed peace holds; a suzerain-vassal bond holds harder
+          || bondedCC(A.countryId, D.countryId)) {   // a signed peace holds; a suzerain-vassal bond holds harder
+        if (WDBG && A && A.mode === "settled" && A.countryId !== D.countryId && inTruce(A.countryId, D.countryId)) {
+          wdbgPass(WDBG, world.step); WDBG.trucePairs.add(A.countryId + ":" + D.countryId);
+        }
+        continue;
+      }
       if (A._M > bestM) { bestM = A._M; bestA = a; }
     }
     if (bestA < 0) continue;
@@ -677,7 +712,23 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * claimBarOf(A.countryId, D.countryId) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
+    // (factors hoisted verbatim — same call sequence, same IEEE product chain — so the
+    // throughput instrumentation below can attribute a rejection without re-deriving)
+    const _wb = warBarOf(A.countryId), _cs = casusOf(A.countryId, D.countryId, D),
+          _cl = claimBarOf(A.countryId, D.countryId), _db = domBarOf(A.countryId),
+          _cb = coalitionBarOf(A.countryId, D.countryId);
+    const bar = effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * _wb * _cs * _cl * _db * _cb;
+    if (WDBG) {
+      wdbgPass(WDBG, world.step);
+      const wk = A.countryId + ":" + D.countryId;
+      let r = WDBG.pairs.get(wk);
+      if (!r) WDBG.pairs.set(wk, r = { attM: A._M, base: effDef * T.ATTACK_MIN_RATIO, minBar: bar,
+        f: { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb }, passed: false });
+      else if (bar < r.minBar) { r.minBar = bar; r.base = effDef * T.ATTACK_MIN_RATIO; r.attM = A._M;
+        r.f = { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb }; }
+      if (A._M >= bar) r.passed = true;
+    }
+    if (A._M < bar) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -801,6 +852,7 @@ export function advanceFronts(world) {
       seen.set(key, world.step);
       if (last !== undefined && world.step - last < WAR_MEMORY / (world._dt || 1)) continue;
       warBorn.set(Math.min(attId, defId) + ":" + Math.max(attId, defId), world.step);   // a genuinely NEW war: its stalemate age starts here
+      if (WDBG) WDBG.tot.warsStarted++;
       const pa = _getPolity(world, attId), pd = _getPolity(world, defId);
       const fa = pa ? pa.faithId : -1, fd = pd ? pd.faithId : -1;
       const pers = pa && pa.personality;
@@ -817,7 +869,10 @@ export function advanceFronts(world) {
     if (seen.size > 4000) {   // prune stale pairs so the map can't grow unbounded
       for (const [k, st] of seen) if (world.step - st > (WAR_MEMORY * 3) / (world._dt || 1)) {
         seen.delete(k);
-        if (world._warDead && world._warDead.has(k)) closeWar(world, k, "faded");   // no peace was signed — the war petered out (a side died, fronts dissolved)
+        if (world._warDead && world._warDead.has(k)) {
+          if (WDBG) WDBG.signed.push({ how: "faded", age: 0 });
+          closeWar(world, k, "faded");   // no peace was signed — the war petered out (a side died, fronts dissolved)
+        }
       }
     }
   }
@@ -913,6 +968,8 @@ export function advanceFronts(world) {
       const tradeW = Math.min(1, trade / tradeRef);
       const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
       truces.set(key, world.step + dur);
+      if (WDBG) WDBG.signed.push({ how, dur: Math.round(dur * (world._dt || 1)), age: world.step - (warBorn.get(key) ?? world.step),
+        exhHi: Math.max(exh.get(a) || 0, exh.get(b) || 0), exhLo: Math.min(exh.get(a) || 0, exh.get(b) || 0) });
       warBorn.delete(key); moveEma.delete(key);   // the settled war's ledger dies with it (a reopened war re-registers at war.began)
       closeWar(world, key, how);       // the war's dead are reckoned at the peace
       // reparations from the clearly-beaten side, proportional to how
@@ -980,6 +1037,7 @@ export function advanceFronts(world) {
           const lastF = warLastFront.get(key);
           if (lastF === undefined) { warLastFront.set(key, world.step); continue; }   // first sight (load): clock starts
           if (world.step - lastF >= staleWin) {
+            if (WDBG) WDBG.signed.push({ how: "faded", age: world.step - (warBorn.get(key) ?? world.step) });
             closeWar(world, key, "faded");
             warBorn.delete(key); moveEma.delete(key); warLastFront.delete(key);
           }
