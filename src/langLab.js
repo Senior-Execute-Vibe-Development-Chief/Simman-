@@ -149,7 +149,7 @@ function paradigmHTML(l) {
     `<tr><td class="lbl">${esc(t.g || "PRS")}</td>${persCols.map(([p, n]) => cellHTML(inflectVerb(l, S.verb, { tam: t.k, pers: p, num: n }))).join("")}</tr>`).join("");
   const persHead = persCols.map(([p, n]) => `<th>${p ? p + n.toUpperCase().replace("SG", "sg").replace("PL", "pl") : ""}</th>`).join("");
   const etys = affixEtymologies(l);
-  const etyLine = etys.length ? `<p class="note">Every ending is a worn-down word: ${etys.map(e => `<span class="w">-${esc(e.w)}</span> <span class="lbl">${esc(e.g)}</span> <span class="gloss">‹ ‘${esc(e.from)}’</span>`).join(" · ")}</p>` : "";
+  const etyLine = etys.length ? `<p class="note">Every ending is a worn-down word: ${etys.map(e => `<span class="w">-${esc(e.w)}</span> <span class="lbl">${esc(e.g)}</span>${e.from ? ` <span class="gloss">‹ ‘${esc(e.from)}’</span>` : ""}${e.renewed ? ` <span class="lbl">renewed</span>` : ""}`).join(" · ")}</p>` : "";
   const isoNote = shape.iso ? `<p class="note">An isolating tongue: grammar rides on particles and word order — the words themselves never bend.</p>` : "";
   return `<section class="card"><h2>Paradigms</h2>
     ${isoNote}
@@ -173,9 +173,20 @@ function cognatesHTML() {
   const cols = [...lineage];
   let rows = COGNATE_SET.map(cid =>
     `<tr><td class="lbl">${esc(glossOf(cid))}</td>${cols.map(l => `<td class="w">${esc(wordOf(l, cid))}</td>`).join("")}</tr>`).join("");
+  // M5: cognate CONJUGATIONS — the same paradigm cell down the family,
+  // built from shared sources at shared birth points, diverged by sound law
+  const cellTok = (x) => [...x.pre.map(t => t.w), x.text, ...x.post.map(t => t.w)].join(" ");
+  const infRow = (label, cell) =>
+    `<tr><td class="lbl">${esc(label)}</td>${cols.map(l => { const x = cell(l); return `<td class="w${x.irr ? " irr" : ""}" title="${esc(x.gloss)}">${esc(cellTok(x))}</td>`; }).join("")}</tr>`;
+  rows += infRow("stones (PL)", (l) => inflectNoun(l, STONE, { num: "pl" }));
+  rows += infRow("went (go+PST/PFV)", (l) => {
+    const shape = paradigmShape(l);
+    const marked = shape.tam.find(t => t.k === "pst") || shape.tam.find(t => t.k === "pfv") || shape.tam[0];
+    return inflectVerb(l, VERBS[2], { tam: marked.k, pers: shape.pers.length ? "3" : null, num: "sg" });
+  });
   const heads = cols.map((l, i) => `<th>${i === 0 ? "root" : "daughter " + i}<div class="sub">${esc(langWord(l, 0))} · ${l.rules.length} changes</div></th>`).join("");
   return `<section class="card"><h2>Cognates down the family</h2>
-    <p class="note">One family root, replayed through each tongue's own chain of sound changes — the correspondences are regular, like real sister languages.</p>
+    <p class="note">One family root, replayed through each tongue's own chain of sound changes — the correspondences are regular, like real sister languages. The last two rows are inflected: cognate <em>conjugations</em>, because affix sources and birth points are family property too.</p>
     <div class="scroll"><table><thead><tr><th></th>${heads}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 

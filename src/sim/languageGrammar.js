@@ -26,7 +26,7 @@ import { applyRule, applyRules, legalizeWord } from "./languageChange.js";
 import { compiledInv, nativeStemOf, rootFormOf, glossOf } from "./language.js";
 import {
   CONCEPTS, MANY, ALL, TWO, HAND, MAN, EARTH, DAY, ROAD,
-  BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC,
+  BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL,
 } from "./languageLexicon.js";
@@ -115,11 +115,26 @@ export function rollGrammar(famSeed, prof) {
 
 /** The language's grammar dials (lazy: old records roll them on first use —
  *  keyed off famSeed, so an upgraded parent and daughter agree, and the roll
- *  matches what fresh creation would have cloned down the family). */
+ *  matches what fresh creation would have cloned down the family).
+ *
+ *  M5: a daughter occasionally re-rolls its basic word order ONCE at birth
+ *  (Latin SOV → Romance SVO). Syntax moves faster than morphology, so the
+ *  adposition and affix dials deliberately LAG — the attested disharmonic
+ *  window, where a fresh SVO tongue still wears its inherited postpositions. */
 export function gramOf(lang) {
   const p = lang.prof;
   if (!p.gram) p.gram = rollGrammar(lang.famSeed ?? lang.seed, p);
-  return p.gram;
+  const g = p.gram;
+  if (g._fxid !== lang.id) {
+    if (lang.parentId >= 0 && !lang.pin && h01(lang.seed, "woflip") < 0.12) {
+      const ov = g.wo === "sov" || g.wo === "ovs";
+      g.wo = h01(lang.seed, "wonew") < 0.7 ? (ov ? "svo" : "sov")
+        : h01(lang.seed, "wonew2") < 0.5 ? "vso" : "svo";
+      g.whFront = h01(lang.seed, "whnew") < (g.wo === "sov" ? 0.3 : 0.7);
+    }
+    g._fxid = lang.id;
+  }
+  return g;
 }
 
 // ── derived-state cache (WeakMap keyed by record, like compile()) ─────────
@@ -569,18 +584,36 @@ export function paradigmSpec(lang) {
   births.pst = Math.max(births.pst, t0v);
   births.fut = Math.max(births.fut, t0v);
   births.agr = Math.max(births.agr, t0v, g.tenses >= 2 ? births.pst : 0, g.tenses >= 3 ? births.fut : 0);
-  const mkAff = (key, glossLabel, srcPoolKey) => {
-    const src = pickSrc(fam, key, AFF_SRC[srcPoolKey ?? key], taken);
+  // M5 — THE GRAMMATICALIZATION CYCLE. An affix born early can be ground to
+  // silence by the very sound laws it rides (codaLoss eats a final -t, the
+  // marked cell collapses into the bare stem). Speakers do not shrug: the
+  // category RENEWS — a fresh word (next quarry, or an opaque formative)
+  // grammaticalizes at a later point in the log. Case systems erode and
+  // re-form; a daughter that drifted further than her sister may carry a
+  // young transparent ending where the sister keeps the old worn one.
+  const audible = (aff) => {
+    if (iso) return true;
+    const bare = renderWord(onionBuild(lang, STONE, []), lang.prof);
+    const marked = renderWord(onionBuild(lang, STONE, [aff]), lang.prof);
+    return marked !== bare;
+  };
+  const mkAff = (key, glossLabel, srcPoolKey, poolOverride) => {
+    const pool = poolOverride ?? AFF_SRC[srcPoolKey ?? key];
+    const src = pickSrc(fam, key, pool, taken);
     const { syl, t: tEff } = wornAt(lang, inv, key, src, births[key]);
-    return { k: key, g: glossLabel, src, t: tEff, syl };
+    let aff = { k: key, g: glossLabel, src, t: tEff, syl };
+    for (let r = 1; r <= 2 && !audible(aff); r++) {
+      const t2 = r === 1 ? Math.ceil(len / 2) : len;
+      const src2 = pickSrc(fam, key + ":r" + r, pool, taken);
+      const w2 = wornAt(lang, inv, key + ":r" + r, src2, t2);
+      aff = { k: key, g: glossLabel, src: src2, t: w2.t, syl: w2.syl, renewed: r };
+    }
+    return aff;
   };
   // ── nominal ──
   const plSrc = h01(fam, "plsrc") < 0.6 ? MANY : ALL;    // same quarry the pronouns use
   const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, themes: [], vThemes: [], particles: {} };
-  if (g.pluralMark) {
-    const { syl, t: tEff } = wornAt(lang, inv, "pl", plSrc, births.pl);
-    spec.pl = { k: "pl", g: "PL", src: plSrc, t: tEff, syl };
-  }
+  if (g.pluralMark) spec.pl = mkAff("pl", "PL", null, [[plSrc, 1]]);
   if (g.dual) spec.du = mkAff("du", "DU");
   const caseKeys = g.caseN === 0 ? [] : g.caseN === 1 ? ["gen"]
     : [g.align === "erg" ? "erg" : "acc", ...CASE_ORDER.slice(1)].slice(0, g.caseN);
@@ -798,18 +831,29 @@ function onionBuild(lang, stemCid, events, { fuse = false, theme = null, pattern
 // ── irregularity by frequency ─────────────────────────────────────────────
 // The basicness belt (b ≥ 0.9) fossilizes: 'be'/'go' grade into suppletion,
 // fusional basics ablaut their past and shed the affix, agglutinative
-// basics syncopate the tense vowel into the stem. (M5 adds leveling: the
-// LESS basic irregulars regularize as the log grows.)
+// basics syncopate the tense vowel into the stem.
+//
+// M5 — ANALOGY LEVELING, the counter-pressure: every drift step is a hazard
+// roll, and the least-basic irregulars regularize first (dreamt→dreamed
+// while 'went' stays: b=1.0 verbs have hazard zero). The hazard is keyed on
+// (family, concept, rule INDEX), so sister languages share their leveling
+// history up to the branch point and diverge after it — one sister keeps
+// the strong verb her twin has already flattened.
 function irregularityOf(lang, cid) {
   const con = CONCEPTS[cid];
   const b = con ? con.b : 0;
   const fam = lang.famSeed ?? lang.seed;
   const morph = lang.prof.morph;
   if (morph === "iso" || b < 0.9) return null;
-  if (b >= 0.95 && h01(fam, "suppl", cid) < (b - 0.95) * 4 + 0.35) return "suppl";
-  if ((morph === "fus" || morph === "tmpl") && h01(fam, "abl", cid) < 0.45) return "ablaut";
-  if (morph === "agg" && h01(fam, "foss", cid) < 0.4) return "fossil";
-  return null;
+  let kind = null;
+  if (b >= 0.95 && h01(fam, "suppl", cid) < (b - 0.95) * 4 + 0.35) kind = "suppl";
+  else if ((morph === "fus" || morph === "tmpl") && h01(fam, "abl", cid) < 0.45) kind = "ablaut";
+  else if (morph === "agg" && h01(fam, "foss", cid) < 0.4) kind = "fossil";
+  if (kind) {
+    const hz = 0.35 * (1 - b);
+    for (let k = 1; k <= lang.rules.length; k++) if (h01(fam, "lvl", cid, k) < hz) return null;
+  }
+  return kind;
 }
 
 const isMarkedTam = (tam) => tam === "pst" || tam === "pfv";
@@ -971,11 +1015,17 @@ export function paradigmShape(lang) {
   return { nums, cases, tam, pers, iso: spec.iso };
 }
 
-/** Affix etymologies for the Lab: every ending explains itself. */
+/** Affix etymologies for the Lab: every ending explains itself — including
+ *  the renewed ones, where the old layer eroded to silence and a fresh word
+ *  stepped in (the grammaticalization cycle, visible). */
 export function affixEtymologies(lang) {
   const spec = paradigmSpec(lang);
   const out = [];
-  const add = (a) => { if (a && a.src != null) out.push({ g: a.g, w: renderAffix(lang, a.syl), from: glossOf(a.src) }); };
+  const add = (a) => {
+    if (!a) return;
+    if (a.src != null) out.push({ g: a.g, w: renderAffix(lang, a.syl), from: glossOf(a.src), renewed: !!a.renewed });
+    else if (a.renewed) out.push({ g: a.g, w: renderAffix(lang, a.syl), from: null, renewed: true });
+  };
   add(spec.pl); add(spec.du);
   for (const cse of spec.cases) add(cse);
   for (const k of Object.keys(spec.tam)) add(spec.tam[k]);

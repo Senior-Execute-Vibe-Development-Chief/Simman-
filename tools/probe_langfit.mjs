@@ -413,6 +413,93 @@ console.log("\n── inflectional morphology ──");
   }
 }
 
+// ── 7. GRAMMAR DIACHRONY: cycles, leveling, cognate conjugations ──────────
+console.log("\n── grammar diachrony ──");
+{
+  const world = mkWorld();
+  const fullV = (x) => [...x.pre.map(z => z.w), x.text, ...x.post.map(z => z.w)].join(" ");
+
+  // (a) the grammaticalization CYCLE: drift languages hard; every case must
+  // stay audible (eroded categories renew from fresh words), and the sweep
+  // must actually catch renewal happening
+  let silentCase = 0, renewals = 0, checked = 0;
+  for (let i = 0; i < 10; i++) {
+    const l = foundLanguage(world, { seed: 152000 + i * 419 });
+    for (let d = 0; d < 10; d++) driftLanguage(world, l);
+    const shape = paradigmShape(l);
+    if (shape.iso || !shape.cases.length) continue;
+    const bare = fullV(inflectNoun(l, STONE, { num: "sg", cas: null }));
+    for (const cs of shape.cases) {
+      if (!cs.k) continue;
+      checked++;
+      if (fullV(inflectNoun(l, STONE, { num: "sg", cas: cs.k })) === bare) silentCase++;
+    }
+    renewals += affixEtymologies(l).filter(e => e.renewed).length;
+  }
+  check(`case categories stay audible under heavy drift (${silentCase}/${checked} silent)`, checked > 0 && silentCase === 0);
+  check(`renewal actually fires somewhere in the sweep (${renewals} renewed affixes)`, renewals >= 1);
+
+  // (b) analogy leveling: monotone (drift only ever REMOVES irregularity),
+  // and at least one leveling event occurs across the sweep
+  let leveledEvents = 0, unlevelEvents = 0;
+  for (let i = 0; i < 12; i++) {
+    const l = foundLanguage(world, { seed: 163000 + i * 227 });
+    if (l.prof.morph === "iso") continue;
+    const shape0 = paradigmShape(l);
+    const marked = shape0.tam.find(t => t.k === "pst") || shape0.tam.find(t => t.k === "pfv");
+    if (!marked) continue;
+    const irrAt = () => new Set(VERBS.filter(v =>
+      inflectVerb(l, v, { tam: marked.k, pers: shape0.pers.length ? "3" : null, num: "sg" }).irr));
+    const before = irrAt();
+    for (let d = 0; d < 8; d++) driftLanguage(world, l);
+    const after = irrAt();
+    for (const v of before) if (!after.has(v)) leveledEvents++;
+    for (const v of after) if (!before.has(v)) unlevelEvents++;
+  }
+  check(`analogy leveling is monotone (no verb turns irregular mid-life: ${unlevelEvents})`, unlevelEvents === 0);
+  check(`leveling events occur across the sweep (${leveledEvents})`, leveledEvents >= 1);
+
+  // (c) cognate conjugations: daughters inherit the paradigm machinery and
+  // diverge by sound law — shared affix sources, differing surface cells
+  const root = foundLanguage(world, { seed: 171717 });
+  world.step = 2000;
+  const dA = branchLanguage(world, root, 0.4);
+  world.step = 4000;
+  const dB = branchLanguage(world, root, 0.8);
+  const srcSig = (l) => affixEtymologies(l).map(e => e.g + "<" + e.from).join("|");
+  const shared = srcSig(root) && (srcSig(dA) === srcSig(root) || srcSig(dB) === srcSig(root)
+    || srcSig(dA).split("|").filter(x => srcSig(root).includes(x)).length >= srcSig(root).split("|").length / 2);
+  check("daughters inherit affix sources (cognate endings)", !!shared);
+  const cellRow = (l) => {
+    const shape = paradigmShape(l);
+    const marked = shape.tam.find(t => t.k === "pst") || shape.tam.find(t => t.k === "pfv") || shape.tam[0];
+    const out = [];
+    for (const v of [VERBS[2], VERBS[6], VERBS[13]])   // go, see, eat
+      out.push(fullV(inflectVerb(l, v, { tam: marked.k, pers: shape.pers.length ? "3" : null, num: "sg" })));
+    out.push(fullV(inflectNoun(l, STONE, { num: "pl", cas: null })));
+    out.push(fullV(inflectNoun(l, KING, { num: "sg", cas: shape.cases[1] ? shape.cases[1].k : null })));
+    return out;
+  };
+  const rootRow = cellRow(root), aRow = cellRow(dA), bRow = cellRow(dB);
+  const nDiff = rootRow.filter((w, i) => w !== aRow[i] || w !== bRow[i]).length;
+  check(`inflected cells diverge across the family (${nDiff}/${rootRow.length} cells: go.PST ${rootRow[0]} → ${aRow[0]} / ${bRow[0]})`, nDiff >= 1);
+
+  // (d) word-order shift at branch: rare, and morphology LAGS (adpositions keep)
+  let flips = 0, lagOK = true, branches = 0;
+  for (let i = 0; i < 120; i++) {
+    const w2 = mkWorld();
+    const p = foundLanguage(w2, { seed: 190000 + i * 97 });
+    const pg = JSON.parse(JSON.stringify(gramOf(p)));
+    w2.step = 1000;
+    const d = branchLanguage(w2, p, 0.5);
+    const dg = gramOf(d);
+    branches++;
+    if (dg.wo !== pg.wo) { flips++; if (dg.adpSide !== pg.adpSide) lagOK = false; }
+  }
+  check(`word order shifts at branch rarely (${flips}/${branches})`, flips / branches > 0.03 && flips / branches < 0.25);
+  check("morphology lags a word-order shift (adpositions keep their side)", lagOK);
+}
+
 // ── determinism: same record → same names, always ─────────────────────────
 {
   const w1 = mkWorld(), w2 = mkWorld();
