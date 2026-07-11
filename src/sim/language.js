@@ -286,6 +286,9 @@ const joinSuf = (stem, suf) => {
   if (/[aeiou]$/i.test(stem) && /^[aeiou]/i.test(suf)) stem = stem.slice(0, -1);
   return stem + suf;
 };
+// name-level surgery (caps, suffixes, gender endings) can undo the final
+// orthographic conventions — re-apply the word-final ones afterwards
+const finishName = (w, prof) => prof.ortho === "en" ? w.replace(/u$/i, "oo").replace(/(..)i$/i, "$1y") : w;
 
 // ── the public name API (signatures unchanged from v1) ────────────────────
 
@@ -321,7 +324,7 @@ export function langPlaceNameEx(lang, n) {
     name = joinSuf(renderWord(w, lang.prof), sufs.city[rng.int(sufs.city.length)]);
     gloss = null;                                             // meaning lost to time
   }
-  return { name: cap(name.replace(/(.)\1\1+/g, "$1$1")), gloss };
+  return { name: cap(finishName(name.replace(/(.)\1\1+/g, "$1$1"), lang.prof)), gloss };
 }
 export function langPlaceName(lang, n) { return langPlaceNameEx(lang, n).name; }
 
@@ -331,7 +334,7 @@ export function langRealmName(lang, n, base) {
   const sufs = sufsOf(lang);
   const stem = base ? String(base)
     : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 1 + rng.int(2))), lang.prof);
-  return cap(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]));
+  return cap(finishName(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]), lang.prof));
 }
 
 export function langPersonName(lang, n, female) {
@@ -351,7 +354,7 @@ export function langPersonName(lang, n, female) {
   const sufs = sufsOf(lang);
   if (lang.prof.gendered && female && !/[aeiou]$/i.test(w)) w += sufs.fem;
   else if (lang.prof.gendered && !female && w.length > 3 && /[aeiou]$/i.test(w) && rng() < 0.5) w = w.slice(0, -1);
-  return cap(w || "Ana");
+  return cap(finishName(w, lang.prof) || "Ana");
 }
 
 export function langDynastyName(lang, n, founder) {
@@ -361,6 +364,6 @@ export function langDynastyName(lang, n, founder) {
   let stem = founder ? String(founder)
     : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
   if (lang.prof.patro === "pre") return cap(sufs.patro) + cap(stem);
-  if (lang.prof.patro === "suf") return cap(joinSuf(stem, sufs.patro));
-  return cap(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]));
+  if (lang.prof.patro === "suf") return cap(finishName(joinSuf(stem, sufs.patro), lang.prof));
+  return cap(finishName(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]), lang.prof));
 }

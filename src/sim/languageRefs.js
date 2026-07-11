@@ -45,9 +45,10 @@ export function refProfile(kind, seed) {
     sylMin: 1, sylMax: 3, patro: "suf", gendered: false, diph: true, longV: false, nasalV: false,
     orthoStyle: 0, sig: "none", compound: "hl", wordLen: 1.9,
     romTaste: 0, c2LiqOnly: true,                 // pr/tr/fl/sl — never fn-/hn-/thn-
-    ortho: "en",                                  // spelling conventions: -y not -i, -ve, -dge, -ck, -ff
+    ortho: "en",                                  // spelling conventions: -y not -i, -ve, -dge, -ck, -ff, silent -e
     codaBias: 1.5,                                // stress-timed: closed syllables are the norm
     medialSonorant: true,                         // win-ter, sil-ver — never shod-pug
+    vInit: 0.05,                                  // English strongly prefers consonant onsets
   });
   return p;
 }

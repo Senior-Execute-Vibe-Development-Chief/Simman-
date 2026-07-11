@@ -399,14 +399,21 @@ export function renderWord(word, prof) {
   // trailing apostrophes (final ejectives) read as typos; repeated digraphs
   // (ghgh, zhzh) collapse — all surface-only, the internal form keeps them.
   out = out.replace(/^'+/, "").replace(/'+$/, "").replace(/''+/g, "'").replace(/(..)\1+/g, "$1").replace(/(.)\1\1+/g, "$1$1");
-  // orthographic finishing conventions (spelling, not sound): English never
-  // ends a word in -i/-v/-j, never writes zh or ngk, doubles final f after
-  // a short vowel (cliff), spells short-vowel k as ck (rock), final z as se
-  if (prof.ortho === "en") out = out
-    .replace(/i$/, "y").replace(/v$/, "ve").replace(/j$/, "dge").replace(/zh/g, "j")
-    .replace(/ngk/g, "nk").replace(/z$/, "se")
-    .replace(/(^|[^aeiou])([aeiou])k$/, "$1$2ck")
-    .replace(/(^|[^aeiou])([aeiou])f$/, "$1$2ff");
+  // orthographic finishing conventions (spelling, not sound). English:
+  // no final -i/-v/-j/-u, no written zh/ngk/kw, final diphthongs respelled
+  // (law, how, boy, day), -ck/-ff/-tch after short vowels, and a seeded
+  // sprinkle of silent -e (stone/gate clothing).
+  if (prof.ortho === "en") {
+    out = out
+      .replace(/(.)i$/, "$1y").replace(/v$/, "ve").replace(/j$/, "dge").replace(/zh/g, "j")
+      .replace(/ngk/g, "nk").replace(/z$/, "se").replace(/kw/g, "qu")
+      .replace(/au$/, "aw").replace(/ou$/, "ow").replace(/oi$/, "oy").replace(/ai$/, "ay").replace(/ei$/, "ey")
+      .replace(/u$/, "oo")
+      .replace(/(^|[^aeiou])([aeiou])k$/, "$1$2ck")
+      .replace(/(^|[^aeiou])([aeiou])f$/, "$1$2ff")
+      .replace(/([^aeiou][aeiou])ch$/, "$1tch");
+    if (/[^aeiouwy][aeiou][tdkmnprslgb]$/.test(out) && hash32(out, "sil") % 4 === 0) out += "e";
+  }
   return out;
 }
 
