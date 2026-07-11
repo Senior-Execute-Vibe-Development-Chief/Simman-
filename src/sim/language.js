@@ -22,7 +22,7 @@
 //     sounds — conquest leaves pig/pork-style layers in the lexicon
 
 import { mkRng, hash32 } from "./peopleSim/rng.js";
-import { rollProfile, buildInventory, synthWord, renderWord, copyWord } from "./languagePhonology.js";
+import { rollProfile, buildInventory, buildSyllabary, synthWord, renderWord, copyWord } from "./languagePhonology.js";
 import { applicableRules, applyRules } from "./languageChange.js";
 import { CONCEPTS, COLEX, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE } from "./languageLexicon.js";
 
@@ -138,6 +138,9 @@ function compile(lang) {
     vows: (lang.pin && lang.pin.vows ? lang.pin.vows : rolled.vows).map(b => ({ ...b })),
   };
   for (const b of lang.xph) inv.cons.push({ ...b });
+  // the licensed syllabary: THIS language's finite onset/coda inventory —
+  // family-seeded so sisters share their cluster fashions
+  inv.syllab = buildSyllabary(lang.famSeed, lang.prof, inv);
   // family-level semantic structure: colexification + derive-vs-root choices
   const colex = new Map();
   COLEX.forEach(([a, b, p], i) => { if (h01(lang.famSeed, "colex", i) < p) colex.set(b, a); });
@@ -159,12 +162,14 @@ function internalOf(lang, cid) {
   const merged = c.colex.get(cid) ?? cid;
   if (merged !== cid) { const w = internalOf(lang, merged); c.internals.set(cid, w); return w; }
   let w;
-  if (con.dv && h01(lang.famSeed, "dv", cid) < 0.65) {
+  const parts = con.dv && [internalOf(lang, con.dv[0]), internalOf(lang, con.dv[1])];
+  // (if this family colexified the two parts into ONE lexeme, a compound
+  // would duplicate it — "water-water" — so coin a root instead)
+  if (con.dv && parts[0] !== parts[1] && h01(lang.famSeed, "dv", cid) < 0.65) {
     // derived concept: a compound of its parts (or a re-vowelled pattern of
     // the head root, if the tongue is templatic — derivation by pattern)
-    const head = internalOf(lang, con.dv[0]);
-    if (lang.prof.morph === "tmpl") w = revowel(lang, head, cid);
-    else w = joinInternal(lang, internalOf(lang, con.dv[1]), head);
+    if (lang.prof.morph === "tmpl") w = revowel(lang, parts[0], cid);
+    else w = joinInternal(lang, parts[1], parts[0]);
   } else {
     const rng = mkRng(hash32(lang.famSeed, "root", cid));
     w = lang.prof.morph === "tmpl" ? synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed)

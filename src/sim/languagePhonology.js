@@ -188,54 +188,91 @@ export function romanizeV(v, rom) {
 // frequency).
 const wpick = (rng, arr) => arr[Math.floor(arr.length * rng() * rng())];
 
+// ── The licensed syllabary ────────────────────────────────────────────────
+// A real language does not have a phonotactic SPACE, it has a phonotactic
+// INVENTORY: ~30 specific legal onsets and a handful of codas, reused
+// constantly (st- in a thousand English words). Sampling the whole legal
+// space fresh for every word makes each word phonotactically novel — the
+// signature of conlang mush. So each language COMPILES, once, a finite
+// licensed set of onsets and codas (sized by its complexity dials, ordered
+// common→rare) and every word is built only from those. Cluster onsets
+// therefore RECUR, and coda clusters obey a STRICTLY falling sonority slope
+// (nt, rk, st — never vz).
+export function buildSyllabary(seed, prof, inv) {
+  const rng = mkRng(hash32(seed, "syllab"));
+  const cons = inv.cons;
+  const onCons = cons.filter(c => !c.noOn);
+  const onsets = onCons.map(c => [c]);                     // singles, freq-ordered
+  if (prof.onDepth >= 2) {
+    const leads = onCons.filter(c => (c.m === 0 || c.m === 2 || c.m === 3));
+    const seconds = onCons.filter(c => prof.c2LiqOnly ? c.m >= 4 : SONORITY[c.m] >= 2);
+    const cand = [];
+    for (const a of leads) for (const b of seconds) if (SONORITY[b.m] > SONORITY[a.m]) cand.push([a, b]);
+    const K = 3 + 3 * (prof.onDepth - 1);
+    for (let i = 0; i < K && cand.length; i++) onsets.push(cand.splice(rng.int(cand.length), 1)[0]);
+    if (prof.sCluster) {
+      const s = onCons.find(c => c.m === 2 && c.p === 1 && c.l === 0);
+      const stops = onCons.filter(c => c.m === 0 && c.l === 0);
+      if (s) for (const st of stops) {
+        if (rng() < 0.6) onsets.push([s, st]);                          // st- sk- sp-
+        if (prof.onDepth >= 3 && rng() < 0.5) {
+          const liq = onCons.filter(c => c.m >= 4 && SONORITY[c.m] > 0);
+          if (liq.length) onsets.push([s, st, liq[rng.int(liq.length)]]); // str- spr-
+        }
+      }
+    }
+  }
+  let codas = [];
+  if (prof.nasalCoda) codas = cons.filter(c => c.m === 1 && (c.p === 1 || c.p === 4)).map(c => [c]);
+  else if (prof.coDepth > 0) {
+    const singles = cons.filter(c => c.m !== 6 && rng() < 0.7).map(c => [c]);
+    codas = singles;
+    if (prof.coDepth >= 2) {
+      const first = cons.filter(c => SONORITY[c.m] >= 1);               // fric/nasal/liquid
+      const second = cons.filter(c => c.m === 0 || c.m === 3);          // stop/affricate
+      const cand = [];
+      for (const a of first) for (const b of second) if (SONORITY[a.m] > SONORITY[b.m]) cand.push([a, b]);
+      const K = 2 + 2 * (prof.coDepth - 1);
+      for (let i = 0; i < K && cand.length; i++) codas.push(cand.splice(rng.int(cand.length), 1)[0]);
+    }
+  }
+  return { onsets, codas };
+}
+
 export function synthWord(rng, prof, inv, nSyl) {
-  const cons = inv.cons, vows = inv.vows;
-  const onCons = cons.filter(c => !c.noOn);      // ŋ-style coda-only phonemes
-  const obst = onCons.filter(c => c.m <= 3);
-  const son = onCons.filter(c => SONORITY[c.m] >= 2);
-  const sib = onCons.filter(c => c.m === 2 && c.p === 1 && c.l === 0);
-  const nasals = cons.filter(c => c.m === 1);
+  const vows = inv.vows;
+  const syllab = inv.syllab || buildSyllabary(1, prof, inv);      // compile() attaches; fallback for direct callers
+  const onsets = syllab.onsets, codas = syllab.codas;
+  const onSingles = onsets.filter(o => o.length === 1);
+  const coSingles = codas.filter(o => o.length === 1);
   // harmony: the whole word draws nuclei from one class
   let nucPool = vows;
   if (prof.harmony === "fb") { const front = rng() < 0.5; nucPool = vows.filter(v => (v.b === 0) === front || v.h === 2); }
   else if (prof.harmony === "round") { const rnd = rng() < 0.5; nucPool = vows.filter(v => (v.r === 1) === rnd || v.h === 2); }
   if (!nucPool.length) nucPool = vows;
   const syls = [];
+  let prevCoda = false;
   for (let i = 0; i < nSyl; i++) {
     const last = i === nSyl - 1;
-    // onset
-    const on = [];
-    const depth = 1 + (prof.onDepth >= 2 && rng() < 0.28 ? 1 : 0) + (prof.onDepth >= 3 && rng() < 0.10 ? 1 : 0);
-    if (depth >= 3 && prof.sCluster && sib.length) on.push({ ...rng.pick(sib) });
-    if (!(i === 0 && rng() < 0.14 && depth === 1)) {              // vowel-initial words allowed
-      const c1 = rng() < 0.75 && obst.length ? wpick(rng, obst) : wpick(rng, onCons.length ? onCons : cons);
-      on.push({ ...c1 });                                         // CLONE: rules mutate words, never the inventory
-      if (depth >= 2 && i === 0 && son.length && c1.m !== 1 && c1.m <= 3) { // clusters word-initial, obstruent-led (no ml-/mr-)
-        const c2pool = prof.c2LiqOnly ? son.filter(c => c.m >= 4) : son;
-        const c2 = c2pool.length ? rng.pick(c2pool) : rng.pick(son);
-        if (SONORITY[c2.m] > SONORITY[c1.m]) on.push({ ...c2 });
-      }
+    // onset: licensed set only; clusters word-initial; singles after a coda
+    let on = [];
+    if (!(i === 0 && rng() < 0.14)) {                             // vowel-initial words allowed
+      const pool = (i === 0 && !prevCoda) ? onsets : (onSingles.length ? onSingles : onsets);
+      const pick = wpick(rng, pool) || [];
+      on = pick.map(c => ({ ...c }));                             // CLONE: rules mutate words, never the syllabary
     }
     // nucleus (diphthong chance)
     const nu = [{ ...wpick(rng, nucPool) }];
     if (prof.diph && rng() < 0.16) { const v2 = rng.pick(nucPool); if (v2.h !== nu[0].h || v2.b !== nu[0].b) nu.push({ ...v2 }); }
     if (prof.longV && rng() < 0.15) nu[0].lg = 1;
-    // coda
-    const co = [];
-    if (prof.nasalCoda) {                                         // CV(N): only plain n/ŋ close a syllable
-      const nc = nasals.filter(c => c.p === 1 || c.p === 4);
-      if (rng() < (last ? 0.45 : 0.2) && nc.length) co.push({ ...rng.pick(nc) });
-    } else if (prof.coDepth > 0) {
-      const want = last ? 0.5 : 0.22;
-      if (rng() < want) {
-        const c1 = wpick(rng, cons.filter(c => c.m !== 6));
-        if (c1) co.push({ ...c1 });
-        if (last && prof.coDepth >= 2 && rng() < 0.25 && obst.length) {
-          const c2 = rng.pick(obst);
-          if (SONORITY[c2.m] <= SONORITY[c1.m]) co.push({ ...c2 }); // falling slope
-        }
-      }
+    // coda: licensed set only; cluster codas word-final
+    let co = [];
+    if (codas.length && rng() < (last ? (prof.nasalCoda ? 0.45 : 0.5) : (prof.nasalCoda ? 0.2 : 0.22))) {
+      const pool = last ? codas : (coSingles.length ? coSingles : codas);
+      const pick = wpick(rng, pool) || [];
+      co = pick.map(c => ({ ...c }));
     }
+    prevCoda = co.length > 0;
     syls.push({ on, nu, co });
   }
   return { syls };
