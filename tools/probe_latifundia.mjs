@@ -26,13 +26,29 @@
 //     3. Linear cash-suitability smeared a diffuse ~20% coerced across every warm
 //        village (bronze age!). Fix: convex suitability (cs²) + realized-luxury-sales
 //        gate — plantations concentrate in prime belts and wait for rich buyers.
-//   After fixes (21k diag): world pop back on the baseline track, share ~11% with
-//   STRUCTURE — slave-mine towns 40-60%, prime-cash belts, estate cores cycling with
-//   conquest (a Xinash at estates 0.24 held 31% coerced — the Rome band); estate belt
-//   readings est 0.05-0.25, conqShare pulses 5-26% with wars.
+//     4. The effort response then bled the mid-tier towns of ORGANIZED states
+//        (stylized 4242: 31 cities → 4). Fix: the stateless-frontier guard — a town
+//        under a crown takes a 3x greater edge to raid (slavery.js).
+//   DEFINITIVE (42k, seed 8817, all levers default): era ratios vs history
+//     Bronze 1.6x · IRON/CLASSICAL 0.3x → 0.6x (the named gap HALVED) · Medieval
+//     0.6x → 0.9x · Renaissance 0.9x · Industrial 1.0x — the whole mid-table
+//     tightened toward 1x; endgame pop 2.7M vs 2.6M baseline (demography intact).
+//     World coerced ~10-11.5% through the classical stretch with STRUCTURE (mine
+//     towns 40-60%, prime-cash belts, estate cores cycling with conqShare pulses
+//     5-26%); the full Rome band (30-40% core, e.g. Xinash 31% at estates 0.24)
+//     appears when a world grows a true conquest hegemon — not every seed does,
+//     which is as it should be. Colonate preserved and legible: slaves 7-10% in the
+//     classical stretch → 0.3% at 42k while serfs hold ~3.8% and estatesW recedes.
+//   STYLIZED (15k, 3 seeds, SOFT_BUDGET=2): levers-ON 2/3 seeds PASS vs 0/3 at the
+//     e84780f baseline (the chronology wave's "re-earn stylized" debt, confirmed by
+//     the identity A/B) — the wave IMPROVES the shape: Zipf slopes moved INTO the
+//     empirical envelope (the estate economy differentiates city sizes — antiquity's
+//     top-heavy urban systems); 31337 still 5 marginal warns (4 at baseline).
 //   IDENTITY: levers-off == e84780f exactly (2500-step state-digest diff AND a
 //   line-identical 42k probe run against the pre-wave build).
-//   (Definitive 3-seed 42k A/B tables land in the flip commit.)
+//   REMAINING (next mechanism, not a dial): Iron 0.6x → 1x wants the hegemonic
+//   competition channel — one power absorbing its classical rivals should also
+//   collapse the competitive pressure that drives learning (competF/_rivalN).
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
