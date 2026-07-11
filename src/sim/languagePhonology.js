@@ -53,6 +53,7 @@ export function rollProfile(seed) {
     coDepth: sylC >= 2 ? (sylC === 3 ? 3 : 2) : (sylC === 1 ? 1 : 0),
     sCluster: sylC >= 2 && rng() < 0.7,          // licensed s+stop exception
     c2LiqOnly: rng() < 0.75,                     // most tongues restrict cluster 2nd member to liquid/glide (pr/kl, not fn/kn)
+    medialSonorant: rng() < 0.6,                 // root-internal codas restricted to sonorants/s (win-ter, never shod-pug)
     voiced: rng() < 0.72, aspirated: rng() < 0.25, ejective: rng() < 0.10,
     prenasal: rng() < 0.10, palatalized: rng() < 0.12, labialized: rng() < 0.07,
     retroflex: rng() < 0.18, uvular: rng() < 0.20, pharyngeal: rng() < 0.07,
@@ -290,19 +291,33 @@ export function synthWord(rng, prof, inv, nSyl) {
       const pick = wpick(rng, pool) || [];
       on = pick.map(c => ({ ...c }));                             // CLONE: rules mutate words, never the syllabary
     }
-    // nucleus: a single quality, or one of the LICENSED diphthongs
+    // nucleus: a single quality, or one of the LICENSED diphthongs (an
+    // onsetless syllable never takes a diphthong — no bare "aupob" starts)
     let nu;
-    if (syllab.diphs && syllab.diphs.length && rng() < 0.16) {
+    if (on.length && syllab.diphs && syllab.diphs.length && rng() < 0.16) {
       nu = syllab.diphs[rng.int(syllab.diphs.length)].map(v => ({ ...v }));
     } else {
       nu = [{ ...wpick(rng, nucPool) }];
       if (prof.longV && rng() < 0.15) nu[0].lg = 1;
     }
-    // coda: licensed set only; cluster codas word-final
+    // palatal/velar co-occurrence (the pinyin rule): palatals (j/q/x) live
+    // only before front vowels; velars (g/k/h) never before i
+    if (prof.palatalFront && on.length) {
+      const o0 = on[on.length - 1];
+      if (o0.p === 3 && o0.m !== 6 && nu[0].b !== 0) { const f = nucPool.find(v => v.b === 0); if (f) nu = [{ ...f }]; }
+      else if (o0.p === 4 && nu[0].h === 0 && nu[0].b === 0) { const f = nucPool.find(v => !(v.h === 0 && v.b === 0)); if (f) nu = [{ ...f }]; }
+    }
+    // coda: licensed set only; cluster codas word-final; root-internal codas
+    // optionally restricted to sonorants/s so medial seams stay speakable
     let co = [];
     const codaBias = prof.codaBias || 1;
-    if (codas.length && rng() < codaBias * (last ? (prof.nasalCoda ? 0.45 : 0.5) : (prof.nasalCoda ? 0.2 : 0.22))) {
-      const pool = last ? codas : (coSingles.length ? coSingles : codas);
+    // (CV(N) languages never close a diphthong — pinyin has an/ang but no *ain)
+    if (codas.length && !(prof.nasalCoda && nu.length > 1) && rng() < codaBias * (last ? (prof.nasalCoda ? 0.45 : 0.5) : (prof.nasalCoda ? 0.2 : 0.22))) {
+      let pool = last ? codas : (coSingles.length ? coSingles : codas);
+      if (!last && prof.medialSonorant) {
+        const son = pool.filter(o => { const c = o[0]; return c.m === 1 || c.m === 4 || c.m === 5 || (c.m === 2 && c.p === 1 && c.l === 0); });
+        if (son.length) pool = son;
+      }
       const pick = wpick(rng, pool) || [];
       co = pick.map(c => ({ ...c }));
     }
@@ -313,21 +328,37 @@ export function synthWord(rng, prof, inv, nSyl) {
 }
 
 /** Render an internal word to its romanized surface. */
+const TONE_MARKS = ["̄", "́", "̌", "̀"];   // ā á ǎ à
+
 export function renderWord(word, prof) {
   let out = "";
   const rom = prof.rom;
-  for (const s of word.syls) {
-    for (const c of s.on) out += romanizeC(c, prof.romTaste, rom);
-    for (const v of s.nu) out += romanizeV(v, rom);
-    for (const c of s.co) out += romanizeC(c, prof.romTaste, rom);
+  for (let i = 0; i < word.syls.length; i++) {
+    const s = word.syls[i];
+    let syl = "";
+    for (const c of s.on) syl += romanizeC(c, prof.romTaste, rom);
+    for (const v of s.nu) syl += romanizeV(v, rom);
+    for (const c of s.co) syl += romanizeC(c, prof.romTaste, rom);
+    // tone marks (contour-tone languages, when the profile renders them):
+    // deterministic per syllable — a rendering of the melody, not a dial
+    if (prof.tone > 0 && prof.toneMarks && syl) {
+      const t = TONE_MARKS[hash32(syl, i) % 4];
+      syl = syl.replace(/[aeiou]/, (m) => m + t);
+    }
+    out += syl;
   }
   // Romanization cleanup: initial glottal stop is conventionally silent;
   // trailing apostrophes (final ejectives) read as typos; repeated digraphs
   // (ghgh, zhzh) collapse — all surface-only, the internal form keeps them.
   out = out.replace(/^'+/, "").replace(/'+$/, "").replace(/(..)\1+/g, "$1").replace(/(.)\1\1+/g, "$1$1");
   // orthographic finishing conventions (spelling, not sound): English never
-  // ends a word in -i/-v/-j and never writes zh
-  if (prof.ortho === "en") out = out.replace(/i$/, "y").replace(/v$/, "ve").replace(/j$/, "dge").replace(/zh/g, "j");
+  // ends a word in -i/-v/-j, never writes zh or ngk, doubles final f after
+  // a short vowel (cliff), spells short-vowel k as ck (rock), final z as se
+  if (prof.ortho === "en") out = out
+    .replace(/i$/, "y").replace(/v$/, "ve").replace(/j$/, "dge").replace(/zh/g, "j")
+    .replace(/ngk/g, "nk").replace(/z$/, "se")
+    .replace(/(^|[^aeiou])([aeiou])k$/, "$1$2ck")
+    .replace(/(^|[^aeiou])([aeiou])f$/, "$1$2ff");
   return out;
 }
 

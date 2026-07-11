@@ -24,7 +24,8 @@ export function refProfile(kind, seed) {
     palatalized: false, uvular: false, pharyngeal: false, ejective: false, prenasal: false, dental: false,
     frontRound: true, harmony: "none", morph: "iso", sylMin: 1, sylMax: 2,
     nameOrder: "fg", patro: "none", gendered: false, diph: true, longV: false, nasalV: false,
-    romTaste: 0,
+    romTaste: 0, palatalFront: true,              // j/q/x only before front vowels; g/k/h never before i
+    toneMarks: true, medialSonorant: true,
   });
   if (kind === "russian") Object.assign(p, {
     sylC: 3, onDepth: 3, coDepth: 3, sCluster: true, nasalCoda: false,
@@ -41,8 +42,9 @@ export function refProfile(kind, seed) {
     frontRound: false, harmony: "none", morph: "fus", stress: "mobile",
     sylMin: 1, sylMax: 3, patro: "suf", gendered: false, diph: true, longV: false, nasalV: false,
     romTaste: 0, c2LiqOnly: true,                 // pr/tr/fl/sl — never fn-/hn-/thn-
-    ortho: "en",                                  // spelling conventions: -y not -i, -ve, -dge
+    ortho: "en",                                  // spelling conventions: -y not -i, -ve, -dge, -ck, -ff
     codaBias: 1.5,                                // stress-timed: closed syllables are the norm
+    medialSonorant: true,                         // win-ter, sil-ver — never shod-pug
   });
   return p;
 }

@@ -33,7 +33,9 @@ function refLang(world, kind, seed) {
 
 function samples(l, n = 60) {
   const out = [];
-  for (let i = 0; i < n; i++) out.push(langPlaceName(l, i), langPersonName(l, i, i % 2 === 0));
+  // tone diacritics stripped: the shape checks test phonotactics, not melody
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  for (let i = 0; i < n; i++) out.push(strip(langPlaceName(l, i)), strip(langPersonName(l, i, i % 2 === 0)));
   return out;
 }
 
@@ -94,7 +96,8 @@ console.log("\n── exact inventories ──");
   const m = pinnedMandarin(world, 111);
   const ms = samples(m, 80);
   const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
-  const illegal = ms.filter(w => !PINYIN.test(w.toLowerCase()));
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");   // tone marks off before the legality gate
+  const illegal = ms.filter(w => !PINYIN.test(strip(w.toLowerCase())));
   check("pinned Mandarin: every word is legal pinyin syllables (" + (illegal[0] || "0 illegal") + ", n=" + ms.length + ")", illegal.length === 0);
   say("   mandarin sample: " + ms.slice(0, 8).join(", "));
 
