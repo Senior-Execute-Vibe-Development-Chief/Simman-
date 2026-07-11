@@ -22,7 +22,7 @@
 //     sounds — conquest leaves pig/pork-style layers in the lexicon
 
 import { mkRng, hash32 } from "./peopleSim/rng.js";
-import { rollProfile, buildInventory, buildSyllabary, synthWord, renderWord, copyWord } from "./languagePhonology.js";
+import { rollProfile, applySignature, buildInventory, buildSyllabary, synthWord, renderWord, copyWord } from "./languagePhonology.js";
 import { applicableRules, applyRules } from "./languageChange.js";
 import { CONCEPTS, COLEX, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE } from "./languageLexicon.js";
 
@@ -44,7 +44,7 @@ export function foundLanguage(world, { seed, parentId = -1 } = {}) {
     parentId, rootId: parent ? (parent.rootId ?? parentId) : id,
     bornStep: world.step | 0, gen: 0,
     hue: parent ? (((parent.hue + (h01(s, "lhue") - 0.5) * 44) % 360) + 360) % 360 : (id * 137.508 + 80) % 360,
-    prof: parent ? JSON.parse(JSON.stringify(parent.prof)) : rollProfile(s),
+    prof: parent ? JSON.parse(JSON.stringify(parent.prof)) : applySignature(rollProfile(s), s),
     rules: parent ? parent.rules.slice() : [],
     loans: parent ? parent.loans.slice() : [],
     xph: parent && parent.xph ? parent.xph.map(b => ({ ...b })) : [],
@@ -174,7 +174,7 @@ function internalOf(lang, cid) {
   } else {
     const rng = mkRng(hash32(lang.famSeed, "root", cid));
     w = lang.prof.morph === "tmpl" ? synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed)
-      : synthWord(rng, lang.prof, c.inv, con.b >= 0.85 ? 1 + rng.int(2) : 2);
+      : synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, con.b >= 0.85));
     w = applyRules(lang.rules, w);
   }
   c.internals.set(cid, w);
@@ -195,6 +195,13 @@ export function wordOf(lang, cid) {
 
 /** The concept's gloss (shared across all languages). */
 export function glossOf(cid) { return CONCEPTS[cid] ? CONCEPTS[cid].g : ""; }
+
+// root length from the language's own distribution (Vietnamese-short
+// through Greenlandic-long); basic concepts run shorter, like real ones
+function rootLen(rng, prof, basic) {
+  const n = Math.round((prof.wordLen || 2) + (rng() - 0.5) + (basic ? -0.6 : 0.3));
+  return Math.max(1, Math.min(5, n));
+}
 
 // templatic roots: a consonant skeleton the patterns interleave (k-t-b style)
 function synthTemplatic(rng, prof, inv, cid, famSeed) {
@@ -218,10 +225,19 @@ function revowel(lang, head, cid) {
   return w;
 }
 
-// compound joining per morphotype: modifier + head order (mod first), with a
-// linking vowel where an illegal cluster would form
+// compound joining per the language's STRATEGY: head-last (mod+head, the
+// default), head-first, or a linker morpheme between the parts (bati-na-piik)
 function joinInternal(lang, mod, head) {
-  const a = copyWord(mod), b = copyWord(head);
+  const strat = lang.prof.compound || "hl";
+  let a = copyWord(strat === "hf" ? head : mod), b = copyWord(strat === "hf" ? mod : head);
+  if (strat === "link") {
+    const c = compile(lang);
+    if (!c.linkSyl) {
+      const n = c.inv.cons.find(x => x.m === 1) || c.inv.cons[0];
+      c.linkSyl = { on: [{ ...n }], nu: [{ ...c.inv.vows[0] }], co: [] };
+    }
+    a.syls.push({ on: [{ ...c.linkSyl.on[0] }], nu: [{ ...c.linkSyl.nu[0] }], co: [] });
+  }
   const lastA = a.syls[a.syls.length - 1], firstB = b.syls[0];
   if (lang.prof.morph === "fus" && lastA.nu.length && !lastA.co.length && !firstB.on.length) {
     lastA.nu = [];                                            // elide the seam vowel
@@ -234,9 +250,11 @@ function joinInternal(lang, mod, head) {
   if (lastA.nu.length && !lastA.co.length && !firstB.on.length && firstB.nu.length) {
     firstB.on = [firstB.nu[0].b === 0 ? { p: 3, m: 6, l: 1, s: 0 } : { p: 0, m: 6, l: 1, s: 0 }];
   }
-  // keep compounds speakable: cap at 4 syllables, favouring the head
+  // keep compounds speakable: cap syllables, favouring the head (linker
+  // compounds get one more so the linker survives)
+  const cap = strat === "link" ? 5 : 4;
   const syls = [...a.syls, ...b.syls];
-  return { syls: syls.length > 4 ? [...a.syls.slice(0, 1), ...b.syls.slice(-2)] : syls };
+  return { syls: syls.length > cap ? [...a.syls.slice(0, strat === "link" ? 2 : 1), ...b.syls.slice(-2)] : syls };
 }
 
 // ── suffix fashions, DERIVED from meaning (the -burg/-stan/-son machine) ──
@@ -276,7 +294,7 @@ export function langWord(lang, n) {
   ensureV2(lang);
   const c = compile(lang);
   const rng = mkRng(hash32(lang.seed, "w", lang.gen, n));
-  const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, 1 + rng.int(2)));
+  const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, true)));
   return cap(renderWord(w, lang.prof));
 }
 

@@ -116,6 +116,32 @@ console.log("\n── exact inventories ──");
   say("   english sample: " + es.slice(0, 8).join(", "));
 }
 
+// ── 1c. the SHUFFLE TEST — cross-language distinctness ─────────────────────
+// Strip the meanings, pool words from six random tongues, and try to re-sort
+// them by language on sight. Automated stand-in for "sight": each language's
+// character-bigram profile classifies every word; if the languages blur, the
+// classifier can't beat chance (17%). Typology-level dials should make them
+// separable.
+console.log("\n── shuffle test ──");
+{
+  const world = mkWorld();
+  const langs = [];
+  for (let i = 0; i < 6; i++) langs.push(foundLanguage(world, { seed: 50000 + i * 131 }));
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const grams = (w) => { const g = []; const s = "^" + w + "$"; for (let i = 0; i + 1 < s.length; i++) g.push(s.slice(i, i + 2)); return g; };
+  const sets = langs.map(l => { const out = []; for (let n = 0; n < 30; n++) out.push(strip(langPlaceName(l, n))); return out; });
+  const cents = sets.map(ws => { const m = new Map(); let t = 0; for (const w of ws) for (const g of grams(w)) { m.set(g, (m.get(g) || 0) + 1); t++; } for (const [k, v] of m) m.set(k, v / t); return m; });
+  let hit = 0, tot = 0;
+  sets.forEach((ws, li) => { for (const w of ws) {
+    let best = -1, bs = -Infinity;
+    cents.forEach((c, ci) => { let s = 0; for (const g of grams(w)) s += Math.log((c.get(g) || 0) + 1e-4); if (s > bs) { bs = s; best = ci; } });
+    if (best === li) hit++; tot++;
+  } });
+  const acc = hit / tot;
+  check("shuffle test: words re-sort to their language (" + Math.round(acc * 100) + "% vs 17% chance)", acc >= 0.55);
+  say("   one word from each: " + langs.map(l => langPlaceName(l, 3)).join(" · "));
+}
+
 // ── 2. showcase ───────────────────────────────────────────────────────────
 say("\n── showcase: six random tongues ──");
 {

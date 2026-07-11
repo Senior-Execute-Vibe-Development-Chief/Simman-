@@ -24,6 +24,7 @@ export function refProfile(kind, seed) {
     palatalized: false, uvular: false, pharyngeal: false, ejective: false, prenasal: false, dental: false,
     frontRound: true, harmony: "none", morph: "iso", sylMin: 1, sylMax: 2,
     nameOrder: "fg", patro: "none", gendered: false, diph: true, longV: false, nasalV: false,
+    orthoStyle: 0, sig: "none", compound: "hl", wordLen: 1.5,
     romTaste: 0, palatalFront: true,              // j/q/x only before front vowels; g/k/h never before i
     toneMarks: true, medialSonorant: true,
   });
@@ -33,6 +34,7 @@ export function refProfile(kind, seed) {
     retroflex: false, uvular: false, pharyngeal: false, ejective: false, prenasal: false, dental: false,
     frontRound: false, harmony: "none", morph: "fus", stress: "mobile",
     sylMin: 1, sylMax: 3, patro: "suf", gendered: true, diph: false, longV: false, nasalV: false,
+    orthoStyle: 0, sig: "none", compound: "hl", wordLen: 2.1,
     romTaste: 0,
   });
   if (kind === "english") Object.assign(p, {
@@ -41,6 +43,7 @@ export function refProfile(kind, seed) {
     retroflex: false, uvular: false, pharyngeal: false, ejective: false, prenasal: false, dental: true,
     frontRound: false, harmony: "none", morph: "fus", stress: "mobile",
     sylMin: 1, sylMax: 3, patro: "suf", gendered: false, diph: true, longV: false, nasalV: false,
+    orthoStyle: 0, sig: "none", compound: "hl", wordLen: 1.9,
     romTaste: 0, c2LiqOnly: true,                 // pr/tr/fl/sl — never fn-/hn-/thn-
     ortho: "en",                                  // spelling conventions: -y not -i, -ve, -dge, -ck, -ff
     codaBias: 1.5,                                // stress-timed: closed syllables are the norm

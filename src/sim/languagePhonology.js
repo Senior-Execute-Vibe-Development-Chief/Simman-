@@ -32,8 +32,10 @@ const V = (h, b, r, n = 0, lg = 0) => ({ h, b, r, n, lg });
 // (inventory, syllable grammar, romanization) is derived from it.
 export function rollProfile(seed) {
   const rng = mkRng(hash32(seed, "prof"));
-  // syllable complexity attractor: 0 CV · 1 CV(C) · 2 clusters · 3 heavy
-  const sylC = rng.pick([0, 0, 1, 1, 1, 2, 2, 2, 3]);
+  // syllable complexity attractor: 0 CV · 1 CV(C) · 2 clusters · 3 heavy —
+  // weighted toward the POLES: this one dial does more for cross-language
+  // distinctness than everything else combined
+  const sylC = rng.pick([0, 0, 0, 1, 1, 2, 2, 3, 3]);
   // tone anti-correlates with cluster depth (the West-African/Sinitic corner
   // vs the European corner)
   const toneP = [0.55, 0.30, 0.10, 0.04][sylC];
@@ -72,7 +74,27 @@ export function rollProfile(seed) {
     redup: rng() < 0.2 && sylC <= 1,
     // romanization taste bits
     romTaste: rng.int(4),
+    // ── typology-level distinctness (the anti-blur dials) ──
+    // mean root length: Vietnamese-monosyllabic through Greenlandic-long
+    wordLen: rng.pick(morph === "iso" || tone > 0 ? [1.2, 1.4, 1.8] : morph === "agg" ? [2.2, 2.8, 3.4] : [1.6, 2, 2, 2.4, 3]),
+    // compounding strategy: head-last · head-first · linker morpheme
+    compound: rng.pick(["hl", "hl", "hl", "hf", "link"]),
+    // orthography style: same sounds, different clothes (sh/š/x/sy)
+    orthoStyle: rng.int(4),
+    // ONE loud signature feature per language, not many quiet seasonings
+    sig: rng.pick(["none", "none", "gem", "gem", "finalV", "noInitV", "tone", "heavy"]),
   };
+}
+
+/** Apply the rolled signature's side effects (kept out of the roll so pinned
+ *  reference profiles can override cleanly). */
+export function applySignature(p, seed) {
+  const rng = mkRng(hash32(seed, "sig"));
+  if (p.sig === "tone") { if (!p.tone && p.sylC <= 1) p.tone = 1 + (rng() < 0.4 ? 1 : 0); p.toneMarks = p.tone > 0; if (!p.tone) p.sig = "gem"; }
+  if (p.sig === "finalV" && p.sylC >= 2) p.sig = "gem";     // open-word law suits light syllables
+  if (p.sig === "heavy") { p.ejective = rng() < 0.5; p.guttural = true; p.freqPromote = 2; }
+  if (p.sig === "noInitV") p.vInit = 0;
+  return p;
 }
 
 // ── Inventory generation ─────────────────────────────────────────────────
@@ -130,6 +152,16 @@ export function buildInventory(seed, prof) {
   };
   for (const v of (ladder[prof.vowelN] || ladder[5])) vows.push({ ...v });
   if (prof.frontRound && !vows.some(v => v.b === 0 && v.r === 1)) vows.push(V(0, 0, 1));
+  // ── per-language FREQUENCY signature ──
+  // picks are order-weighted, and until now every rolled inventory led with
+  // the same core series — so t/n/s dominated every language and they all
+  // blurred. Promote 1–2 seeded consonants to the front (one language makes
+  // q its commonest sound, another leads with l), and rotate the vowel
+  // order (an a-heavy tongue vs a u-heavy one).
+  const promo = prof.freqPromote ?? (1 + (rng() < 0.4 ? 1 : 0));
+  for (let i = 0; i < promo && cons.length > 4; i++) cons.unshift(cons.splice(3 + rng.int(cons.length - 3), 1)[0]);
+  const rot = rng.int(vows.length);
+  vows.push(...vows.splice(0, rot));
   return { cons, vows };
 }
 
@@ -150,7 +182,14 @@ const VOICED = {
   "0,2": "v", "1,2": "z", "2,2": "zh", "3,2": "zh", "4,2": "gh", "8,2": "dh",
   "1,3": "dz", "2,3": "j", "3,3": "j",
 };
-export function romanizeC(b, taste, rom) {
+// orthography styles: the same sound wearing different clothes — cheap and
+// hugely effective for telling languages apart on sight
+const ORTHO_STYLE = [null,
+  { sh: "š", zh: "ž", ch: "č", ny: "ň", kh: "x", ts: "c" },      // háček (Czech-taste)
+  { sh: "x", ch: "q", zh: "j", kh: "h" },                        // iberian/pinyin-taste
+  { sh: "sy", ch: "ty", zh: "zy", j: "dy", ny: "ny" },           // austronesian-taste
+];
+export function romanizeC(b, taste, rom, style) {
   // exact-inventory languages may pin a per-phoneme surface (pinyin's b/p
   // for plain/aspirated, x for the palatal fricative…) — override wins;
   // the shorter c:p,m,l key form implies secondary articulation 0
@@ -161,6 +200,8 @@ export function romanizeC(b, taste, rom) {
   const k = b.p + "," + b.m;
   let s = (b.l === 1 ? VOICED[k] : PLAIN[k]) || PLAIN[k] || "t";
   if (b.p === 2 && b.m === 2 && (taste & 1)) s = "sr";           // retroflex taste
+  const st = style && ORTHO_STYLE[style];
+  if (st && st[s]) s = st[s];
   if (b.l === 2) s = s + "h";                                    // aspiration
   if (b.l === 3) s = s + "'";                                    // ejective
   if (b.l === 4) s = (b.p === 0 ? "m" : "n") + s;                // prenasalized
@@ -286,7 +327,7 @@ export function synthWord(rng, prof, inv, nSyl) {
     const last = i === nSyl - 1;
     // onset: licensed set only; clusters word-initial; singles after a coda
     let on = [];
-    if (!(i === 0 && rng() < 0.14)) {                             // vowel-initial words allowed
+    if (!(i === 0 && rng() < (prof.vInit ?? 0.14))) {             // vowel-initial words allowed (unless the signature forbids)
       const pool = (i === 0 && !prevCoda) ? onsets : (onSingles.length ? onSingles : onsets);
       const pick = wpick(rng, pool) || [];
       on = pick.map(c => ({ ...c }));                             // CLONE: rules mutate words, never the syllabary
@@ -324,6 +365,13 @@ export function synthWord(rng, prof, inv, nSyl) {
     prevCoda = co.length > 0;
     syls.push({ on, nu, co });
   }
+  // signature features, applied loudly (one per language, not seasoning):
+  if (prof.sig === "gem") {                                       // geminates: kissu, vikku
+    for (let i = 0; i + 1 < syls.length; i++)
+      if (!syls[i].co.length && syls[i + 1].on.length === 1 && rng() < 0.4) syls[i].co = [{ ...syls[i + 1].on[0] }];
+  } else if (prof.sig === "finalV") {                             // open-word law: every word ends in a vowel
+    syls[syls.length - 1].co = [];
+  }
   return { syls };
 }
 
@@ -336,9 +384,9 @@ export function renderWord(word, prof) {
   for (let i = 0; i < word.syls.length; i++) {
     const s = word.syls[i];
     let syl = "";
-    for (const c of s.on) syl += romanizeC(c, prof.romTaste, rom);
+    for (const c of s.on) syl += romanizeC(c, prof.romTaste, rom, prof.orthoStyle);
     for (const v of s.nu) syl += romanizeV(v, rom);
-    for (const c of s.co) syl += romanizeC(c, prof.romTaste, rom);
+    for (const c of s.co) syl += romanizeC(c, prof.romTaste, rom, prof.orthoStyle);
     // tone marks (contour-tone languages, when the profile renders them):
     // deterministic per syllable — a rendering of the melody, not a dial
     if (prof.tone > 0 && prof.toneMarks && syl) {
@@ -350,7 +398,7 @@ export function renderWord(word, prof) {
   // Romanization cleanup: initial glottal stop is conventionally silent;
   // trailing apostrophes (final ejectives) read as typos; repeated digraphs
   // (ghgh, zhzh) collapse — all surface-only, the internal form keeps them.
-  out = out.replace(/^'+/, "").replace(/'+$/, "").replace(/(..)\1+/g, "$1").replace(/(.)\1\1+/g, "$1$1");
+  out = out.replace(/^'+/, "").replace(/'+$/, "").replace(/''+/g, "'").replace(/(..)\1+/g, "$1").replace(/(.)\1\1+/g, "$1$1");
   // orthographic finishing conventions (spelling, not sound): English never
   // ends a word in -i/-v/-j, never writes zh or ngk, doubles final f after
   // a short vowel (cliff), spells short-vowel k as ck (rock), final z as se
