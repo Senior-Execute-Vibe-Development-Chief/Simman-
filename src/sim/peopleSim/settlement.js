@@ -13,6 +13,7 @@ import { techEffects } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
+import { fieldShift } from "./popField.js";
 import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
@@ -254,6 +255,7 @@ export function drainCaptivePools(captor, taken, stock) {
 export function arriveCaptives(world, dest, count, culPairs, ancPairs) {
   if (!T.SLAVE_PEOPLE || !(count > 0)) return;
   dest.people = (dest.people || 0) + count;
+  fieldShift(world, dest, count);   // one population: the forced arrivals stand on this ground now (FIELD_DEMOG)
   const frac = count / Math.max(1, dest.people);
   if (culPairs && culPairs.length) admixArrivals(world, dest, culPairs, frac);
   if (ancPairs && ancPairs.length) {
@@ -865,7 +867,7 @@ export function updateCoercedLabour(world, s) {
   const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine + 0.4 * est);
   if (T.SLAVE_PEOPLE) {
     const dead = u * T.SLAVE_DEATH * harsh * (world._dt || 1);
-    if (dead > 0) { u -= dead; s.people = Math.max(1, (s.people || 0) - dead); }
+    if (dead > 0) { u -= dead; const b = s.people; s.people = Math.max(1, (s.people || 0) - dead); fieldShift(world, s, s.people - b); }
   } else {
     u *= (1 - T.SLAVE_DEATH * harsh * (world._dt || 1));
   }
@@ -878,7 +880,7 @@ export function updateCoercedLabour(world, s) {
     if (r < T.SLAVE_UNREST * (ratio - 0.6) * 0.02 * (world._dt || 1)) {
       const lost = u * 0.75;
       u *= 0.25; s._sackedAt = world.step;                      // the revolt craters output
-      if (T.SLAVE_PEOPLE) s.people = Math.max(1, (s.people || 0) - lost);   // the dead and the fled leave the ledger
+      if (T.SLAVE_PEOPLE) { const b = s.people; s.people = Math.max(1, (s.people || 0) - lost); fieldShift(world, s, s.people - b); }   // the dead and the fled leave the ledger — and the land
       logEvent(world, "slave.revolt", { s: s.id, sName: s.name || "a settlement" });
     }
   }
@@ -2677,7 +2679,9 @@ function updatePopulation(world, s) {
 
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
   if (s.food <= 0.01 && s.people > 1) {
+    const before = s.people;
     s.people *= Math.pow(0.985, _dt);                 // famine die-off, per-tick → granularity-scaled
+    fieldShift(world, s, s.people - before);          // one population: hunger empties the LAND too (FIELD_DEMOG)
   } else {
     // Exponential-form logistic: identical growth for small r·dt, but a
     // carrying-capacity CRASH (war front severs the fields, famine guts the

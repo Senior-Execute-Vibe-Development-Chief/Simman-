@@ -339,3 +339,52 @@ export function popFieldTotal(world) {
   let s = 0; for (let i = 0; i < p.length; i++) s += p[i];
   return s;
 }
+
+// ── T.FIELD_DEMOG: demographic events live on the field (one population) ────
+// docs/one-population.md slice A. Every event that adds or removes PEOPLE in
+// the town census — plague, famine, the sack's captive trains, razzias,
+// revolt ravages, forced arrivals — is mirrored onto the people-on-land field
+// around the settlement it struck, so the land is the honest record of
+// demographic history (a devastating war EMPTIES countryside on the
+// Population lens) and the field consumers (national power, hold capacity,
+// nomads, the grievance reference) feel it. Losses drain the settlement's
+// home tile first, then cascade outward ring by ring — the countryside its
+// people lived in — clamped at zero and bounded (if the field carries fewer
+// people than the census lost, the remainder is dropped: the two numbers are
+// not yet reconciled to the person; slice B derives the census FROM the
+// field). Gains land on the home tile — arrivals concentrate where the
+// market that bought them is. Deterministic ring walk, no RNG; the field's
+// own logistic growth recovers a dent over generations, exactly as the
+// census does. No-op when the lever (or the field itself) is off.
+const FIELD_SHIFT_R = 6;   // max cascade radius (tiles): a town's demographic hinterland
+
+export function fieldShift(world, s, delta) {
+  if (!T.FIELD_DEMOG || !T.POP_FIELD || !world.popField || !s || !s.pos) return;
+  if (!(delta < 0 || delta > 0)) return;
+  const pf = world.popField, tw = world.tw, th = world.th;
+  const cx = s.pos.x | 0, cy = s.pos.y | 0;
+  const ti0 = cy * tw + cx;
+  if (ti0 < 0 || ti0 >= world.N) return;
+  if (delta > 0) { pf[ti0] += delta; return; }
+  let need = -delta;
+  for (let r = 0; r <= FIELD_SHIFT_R && need > 0; r++) {
+    // ring r around (cx,cy): fixed order (top row, bottom row, left col, right col)
+    for (let k = -r; k <= r && need > 0; k++) {
+      for (let e = 0; e < (r === 0 ? 1 : 4) && need > 0; e++) {
+        let x, y;
+        if (r === 0) { x = cx; y = cy; }
+        else if (e === 0) { x = cx + k; y = cy - r; }
+        else if (e === 1) { x = cx + k; y = cy + r; }
+        else if (e === 2) { x = cx - r; y = cy + k; if (k === -r || k === r) continue; }   // corners already visited
+        else { x = cx + r; y = cy + k; if (k === -r || k === r) continue; }
+        if (y < 0 || y >= th) continue;
+        const ti = ((x % tw) + tw) % tw + y * tw;
+        const have = pf[ti];
+        if (!(have > 0)) continue;
+        const take = have < need ? have : need;
+        pf[ti] = have - take;
+        need -= take;
+      }
+    }
+  }
+}

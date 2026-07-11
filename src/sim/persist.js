@@ -546,6 +546,10 @@ export function hashWorld(world) {
   // DEV_FIELD: the regional development ratchet + its cadence clock (presence-normalized).
   { const df = world.devField; for (let i = 0; i < world.N; i += 97) mixNum(df ? df[i] : 0); }
   mixNum(world._devWaveAt ?? -1);
+  // popField — persisted state that predates the R1 hash-hygiene rule but was
+  // never hashed; FIELD_DEMOG writes it from event sites, so a divergence or
+  // round-trip bug must show. Presence-normalized, sampled on the road stride.
+  { const pf = world.popField; for (let i = 0; i < world.N; i += 97) mixNum(pf ? pf[i] : 0); }
   mixNum(world._inflRef ?? -1);
   for (const k of WORLD_MAPS) mixNum(world[k] ? world[k].size : 0);   // registered world maps: presence + size (every one now covered, not just a hand-picked few)
   if (world._cBudgetRamp) { const ks = [...world._cBudgetRamp.keys()].sort((a, b) => a - b); for (const k of ks) { mixNum(k); mixNum(world._cBudgetRamp.get(k)); } }   // + cBudgetRamp full key/values
