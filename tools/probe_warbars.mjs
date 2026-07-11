@@ -55,6 +55,18 @@
 //     ends in the loser bending the knee (conquest.js bendTheKnee) instead of a
 //     protective truce. Secondary gaps still open: the truce-duration trade
 //     reference, and the amphib gap above.
+//   AMPHIB RESTORED (nation-level beachheads under TILE_WAR — armies.js): once
+//     navigation matures (~t=21k, seed 8817) the war system changes regime: the
+//     candidate stream goes ~10x (5271 pair-passes in one window), 238 wars start
+//     and 198 end in a single 3000-tick window (114 truces, 9 CAPITULATIONS — the
+//     deditio cascade now works at sea against island/coastal statelets), 117
+//     truces run live, and the landing bar is pivotal in 9% of rejections. The
+//     world stays coherent through the whole naval era: 42k endgame pop 2.0M,
+//     colonate intact, era anchors within the single-seed noise band (classical
+//     0.4-0.6x across builds). Stylized per-seed verdicts are IDENTICAL to the
+//     pre-amphib build (nav spreads after the 15k horizon). AMPHIB_BAR=0 recovers
+//     the sea-blind war byte-identically; the 2500-step hashbase pair is again
+//     unchanged at defaults (no port has real seacraft that early).
 //   CAPITULATION A/B (24k, seed 8817): capitulations are RARE AND DECISIVE — ~4
 //     per era-span, exactly the deditio rhythm — yet the landscape transforms:
 //     NETWORK top1 (suzerain + clients) reaches 27-29% of the claimed world with
