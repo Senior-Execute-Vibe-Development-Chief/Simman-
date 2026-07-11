@@ -17,7 +17,7 @@
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 
 // places: 0 labial · 1 alveolar · 2 retroflex · 3 palatal · 4 velar ·
-//         5 uvular · 6 pharyngeal · 7 glottal
+//         5 uvular · 6 pharyngeal · 7 glottal · 8 dental (θ/ð live here)
 // manners: 0 stop · 1 nasal · 2 fricative · 3 affricate · 4 lateral ·
 //          5 rhotic · 6 glide
 // laryngeal: 0 voiceless · 1 voiced · 2 aspirated · 3 ejective · 4 prenasalized
@@ -55,6 +55,7 @@ export function rollProfile(seed) {
     voiced: rng() < 0.72, aspirated: rng() < 0.25, ejective: rng() < 0.10,
     prenasal: rng() < 0.10, palatalized: rng() < 0.12, labialized: rng() < 0.07,
     retroflex: rng() < 0.18, uvular: rng() < 0.20, pharyngeal: rng() < 0.07,
+    dental: rng() < 0.10,                          // θ/ð — rare, as in life
     frontRound: vowelN >= 9 || rng() < 0.10,
     nasalV: rng() < 0.14, longV: rng() < 0.30, diph: rng() < 0.45,
     harmony: morph === "agg" && sylC <= 1 && rng() < 0.4
@@ -93,6 +94,7 @@ export function buildInventory(seed, prof) {
     if (p !== 4 || rng() < 0.5) push(C(Math.min(p, 4), 2, 0)); // fricatives
     if (prof.voiced && rng() < 0.5) push(C(Math.min(p, 4), 2, 1));
   }
+  if (prof.dental) { push(C(8, 2, 0)); if (prof.voiced && rng() < 0.6) push(C(8, 2, 1)); }
   push(C(0, 1, 1)); push(C(1, 1, 1));                     // m n — near-universal
   if (rng() < 0.5) push(C(4, 1, 1));                      // ŋ
   if (rng() < 0.4) push(C(3, 1, 1));                      // ñ
@@ -134,19 +136,26 @@ export function buildInventory(seed, prof) {
 // digraph conventions so two languages with the same phoneme can SPELL it
 // differently (sh vs x-style; pinyin-retroflex vs cluster-retroflex).
 const PLAIN = {
-  "0,0": "p", "1,0": "t", "2,0": "t", "3,0": "ky", "4,0": "k", "5,0": "q", "7,0": "'",
-  "0,2": "f", "1,2": "s", "2,2": "sh", "3,2": "sh", "4,2": "kh", "5,2": "kh", "6,2": "h", "7,2": "h",
+  "0,0": "p", "1,0": "t", "2,0": "t", "3,0": "ky", "4,0": "k", "5,0": "q", "7,0": "'", "8,0": "t",
+  "0,2": "f", "1,2": "s", "2,2": "sh", "3,2": "sh", "4,2": "kh", "5,2": "kh", "6,2": "h", "7,2": "h", "8,2": "th",
   "0,1": "m", "1,1": "n", "3,1": "ny", "4,1": "ng",
   "1,4": "l", "1,5": "r", "2,5": "r",
   "3,6": "y", "0,6": "w",
   "0,3": "pf", "1,3": "ts", "2,3": "ch", "3,3": "ch", "4,3": "kx",
 };
 const VOICED = {
-  "0,0": "b", "1,0": "d", "2,0": "d", "3,0": "gy", "4,0": "g", "5,0": "gh",
-  "0,2": "v", "1,2": "z", "2,2": "zh", "3,2": "zh", "4,2": "gh",
+  "0,0": "b", "1,0": "d", "2,0": "d", "3,0": "gy", "4,0": "g", "5,0": "gh", "8,0": "d",
+  "0,2": "v", "1,2": "z", "2,2": "zh", "3,2": "zh", "4,2": "gh", "8,2": "dh",
   "1,3": "dz", "2,3": "j", "3,3": "j",
 };
-export function romanizeC(b, taste) {
+export function romanizeC(b, taste, rom) {
+  // exact-inventory languages may pin a per-phoneme surface (pinyin's b/p
+  // for plain/aspirated, x for the palatal fricative…) — override wins;
+  // the shorter c:p,m,l key form implies secondary articulation 0
+  if (rom) {
+    const o = rom["c:" + b.p + "," + b.m + "," + b.l + "," + b.s] ?? (b.s === 0 ? rom["c:" + b.p + "," + b.m + "," + b.l] : undefined);
+    if (o !== undefined) return o;
+  }
   const k = b.p + "," + b.m;
   let s = (b.l === 1 ? VOICED[k] : PLAIN[k]) || PLAIN[k] || "t";
   if (b.p === 2 && b.m === 2 && (taste & 1)) s = "sr";           // retroflex taste
@@ -160,8 +169,8 @@ export function romanizeC(b, taste) {
 const VQ = { "0,0,0": "i", "0,1,0": "i", "0,2,0": "u", "0,0,1": "iu", "0,2,1": "u", "0,1,1": "u",
   "1,0,0": "e", "1,1,0": "e", "1,2,0": "o", "1,0,1": "oe", "1,2,1": "o", "1,1,1": "o",
   "2,0,0": "a", "2,1,0": "a", "2,2,0": "a", "2,2,1": "o", "2,0,1": "a", "2,1,1": "a" };
-export function romanizeV(v) {
-  let s = VQ[v.h + "," + v.b + "," + v.r] || "a";
+export function romanizeV(v, rom) {
+  let s = (rom && rom["v:" + v.h + "," + v.b + "," + v.r]) ?? (VQ[v.h + "," + v.b + "," + v.r] || "a");
   if (v.lg) s = s + s[s.length - 1];
   if (v.n) s = s + "n";
   return s;
@@ -173,9 +182,10 @@ export function romanizeV(v) {
 // exception, which is what puts str- and CV-only in ONE parameter space.
 export function synthWord(rng, prof, inv, nSyl) {
   const cons = inv.cons, vows = inv.vows;
-  const obst = cons.filter(c => c.m <= 3);
-  const son = cons.filter(c => SONORITY[c.m] >= 2);
-  const sib = cons.filter(c => c.m === 2 && c.p === 1 && c.l === 0);
+  const onCons = cons.filter(c => !c.noOn);      // ŋ-style coda-only phonemes
+  const obst = onCons.filter(c => c.m <= 3);
+  const son = onCons.filter(c => SONORITY[c.m] >= 2);
+  const sib = onCons.filter(c => c.m === 2 && c.p === 1 && c.l === 0);
   const nasals = cons.filter(c => c.m === 1);
   // harmony: the whole word draws nuclei from one class
   let nucPool = vows;
@@ -190,9 +200,9 @@ export function synthWord(rng, prof, inv, nSyl) {
     const depth = 1 + (prof.onDepth >= 2 && rng() < 0.28 ? 1 : 0) + (prof.onDepth >= 3 && rng() < 0.10 ? 1 : 0);
     if (depth >= 3 && prof.sCluster && sib.length) on.push({ ...rng.pick(sib) });
     if (!(i === 0 && rng() < 0.14 && depth === 1)) {              // vowel-initial words allowed
-      const c1 = rng() < 0.75 && obst.length ? rng.pick(obst) : rng.pick(cons);
+      const c1 = rng() < 0.75 && obst.length ? rng.pick(obst) : rng.pick(onCons.length ? onCons : cons);
       on.push({ ...c1 });                                         // CLONE: rules mutate words, never the inventory
-      if (depth >= 2 && i === 0 && son.length) {                  // clusters word-initial only
+      if (depth >= 2 && i === 0 && son.length && c1.m !== 1 && c1.m <= 3) { // clusters word-initial, obstruent-led (no ml-/mr-)
         const c2 = rng.pick(son);
         if (SONORITY[c2.m] > SONORITY[c1.m]) on.push({ ...c2 });
       }
@@ -225,10 +235,11 @@ export function synthWord(rng, prof, inv, nSyl) {
 /** Render an internal word to its romanized surface. */
 export function renderWord(word, prof) {
   let out = "";
+  const rom = prof.rom;
   for (const s of word.syls) {
-    for (const c of s.on) out += romanizeC(c, prof.romTaste);
-    for (const v of s.nu) out += romanizeV(v);
-    for (const c of s.co) out += romanizeC(c, prof.romTaste);
+    for (const c of s.on) out += romanizeC(c, prof.romTaste, rom);
+    for (const v of s.nu) out += romanizeV(v, rom);
+    for (const c of s.co) out += romanizeC(c, prof.romTaste, rom);
   }
   // Romanization cleanup: initial glottal stop is conventionally silent;
   // trailing apostrophes (final ejectives) read as typos; repeated digraphs

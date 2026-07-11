@@ -96,6 +96,85 @@ console.log("── capability bar ──");
   check("english-shaped: glossed compound toponyms (" + (withGloss[0] || "none") + ")", withGloss.length >= 10);
 }
 
+// ── 1b. exact inventories — the strongest form of "correct sounds" ────────
+// A pin lists the literal phoneme bundles + per-phoneme spellings, so every
+// generated word is built ONLY from the real language's sounds and rendered
+// in its real romanization. Mandarin gets the hardest gate: every word must
+// parse as a concatenation of legal pinyin syllables.
+const B = (p, m, l = 0, s = 0) => ({ p, m, l, s });
+const NB = (p, m, l = 0, s = 0) => ({ p, m, l, s, noOn: true });   // coda-only (ŋ)
+const VB = (h, b, r) => ({ h, b, r, n: 0, lg: 0 });
+
+function pinnedMandarin(world, seed) {
+  const l = refLang(world, "mandarin", seed);
+  l.pin = {
+    cons: [B(0, 0, 0), B(0, 0, 2), B(0, 1, 1), B(0, 2, 0),          // b p m f
+      B(1, 0, 0), B(1, 0, 2), B(1, 1, 1), B(1, 4, 1),               // d t n l
+      B(4, 0, 0), B(4, 0, 2), B(4, 2, 0),                           // g k h
+      B(3, 3, 0), B(3, 3, 2), B(3, 2, 0),                           // j q x
+      B(2, 3, 0), B(2, 3, 2), B(2, 2, 0), B(2, 2, 1),               // zh ch sh r
+      B(1, 3, 0), B(1, 3, 2), B(1, 2, 0),                           // z c s
+      NB(4, 1, 1), B(0, 6, 1), B(3, 6, 1)],                         // ng w y
+    vows: [VB(2, 1, 0), VB(1, 2, 1), VB(1, 2, 0), VB(0, 0, 0), VB(0, 2, 1), VB(0, 0, 1)], // a o e i u ü
+  };
+  l.prof.rom = {
+    "c:0,0,0": "b", "c:0,0,2": "p", "c:0,1,1": "m", "c:0,2,0": "f",
+    "c:1,0,0": "d", "c:1,0,2": "t", "c:1,1,1": "n", "c:1,4,1": "l",
+    "c:4,0,0": "g", "c:4,0,2": "k", "c:4,2,0": "h",
+    "c:3,3,0": "j", "c:3,3,2": "q", "c:3,2,0": "x",
+    "c:2,3,0": "zh", "c:2,3,2": "ch", "c:2,2,0": "sh", "c:2,2,1": "r",
+    "c:1,3,0": "z", "c:1,3,2": "c", "c:1,2,0": "s",
+    "c:4,1,1": "ng", "c:0,6,1": "w", "c:3,6,1": "y",
+    "v:2,1,0": "a", "v:1,2,1": "o", "v:1,2,0": "e", "v:0,0,0": "i", "v:0,2,1": "u", "v:0,0,1": "u",
+  };
+  return l;
+}
+function pinnedRussian(world, seed) {
+  const l = refLang(world, "russian", seed);
+  const hard = [B(0, 0, 0), B(0, 0, 1), B(1, 0, 0), B(1, 0, 1), B(4, 0, 0), B(4, 0, 1), // p b t d k g
+    B(0, 2, 0), B(0, 2, 1), B(1, 2, 0), B(1, 2, 1),                 // f v s z
+    B(2, 2, 0), B(2, 2, 1), B(4, 2, 0), B(1, 3, 0), B(3, 3, 0),     // sh zh kh ts ch
+    B(0, 1, 1), B(1, 1, 1), B(1, 4, 1), B(1, 5, 1)];                // m n l r
+  const soft = hard.filter(b => b.m <= 2 && b.p <= 1).map(b => ({ ...b, s: 1 }));  // palatalized pairs
+  l.pin = { cons: [...hard, ...soft],
+    vows: [VB(0, 0, 0), VB(1, 0, 0), VB(2, 1, 0), VB(1, 2, 1), VB(0, 2, 1)] };     // i e a o u
+  return l;
+}
+function pinnedEnglish(world, seed) {
+  const l = refLang(world, "english", seed);
+  l.pin = { cons: [B(0, 0, 0), B(0, 0, 1), B(1, 0, 0), B(1, 0, 1), B(4, 0, 0), B(4, 0, 1), // p b t d k g
+    B(0, 2, 0), B(0, 2, 1), B(8, 2, 0), B(8, 2, 1), B(1, 2, 0), B(1, 2, 1),        // f v th dh s z
+    B(2, 2, 0), B(2, 2, 1), B(3, 3, 0), B(3, 3, 1), B(7, 2, 0),                    // sh zh ch j h
+    B(0, 1, 1), B(1, 1, 1), NB(4, 1, 1), B(1, 4, 1), B(1, 5, 1), B(0, 6, 1), B(3, 6, 1)], // m n ng l r w y
+    vows: null };                                                    // 11-vowel dial stays rolled
+  return l;
+}
+
+console.log("\n── exact inventories ──");
+{
+  const world = mkWorld();
+  const m = pinnedMandarin(world, 111);
+  const ms = samples(m, 80);
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const illegal = ms.filter(w => !PINYIN.test(w.toLowerCase()));
+  check("pinned Mandarin: every word is legal pinyin syllables (" + (illegal[0] || "0 illegal") + ", n=" + ms.length + ")", illegal.length === 0);
+  say("   mandarin sample: " + ms.slice(0, 8).join(", "));
+
+  const r = pinnedRussian(world, 222);
+  const rs = samples(r, 80);
+  const badR = rs.filter(w => /th|q|x|'/i.test(w));
+  const softR = rs.filter(w => /[bdfmnpstvz]y/i.test(w));
+  check("pinned Russian: translit charset clean + soft consonants (" + softR.length + " soft, " + badR.length + " bad)", badR.length === 0 && softR.length >= 3);
+  say("   russian sample: " + rs.slice(0, 8).join(", "));
+
+  const e = pinnedEnglish(world, 333);
+  const es = samples(e, 120);
+  const withTh = es.filter(w => /th|dh/i.test(w));
+  const badE = es.filter(w => /kh|q|x|'/i.test(w));
+  check("pinned English: th exists in output, charset clean (" + withTh.length + " with th: " + (withTh[0] || "") + ")", withTh.length >= 2 && badE.length === 0);
+  say("   english sample: " + es.slice(0, 8).join(", "));
+}
+
 // ── 2. showcase ───────────────────────────────────────────────────────────
 say("\n── showcase: six random tongues ──");
 {

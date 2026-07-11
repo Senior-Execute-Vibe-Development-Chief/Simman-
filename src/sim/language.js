@@ -129,7 +129,14 @@ function compile(lang) {
   const key = lang.gen * 1000003 + lang.loans.length * 101 + lang.xph.length;
   let c = COMPILED.get(lang);
   if (c && c.key === key) return c;
-  const inv = buildInventory(lang.famSeed, lang.prof);
+  // exact-inventory pinning (labelled-scenario languages: a pin lists the
+  // literal phoneme bundles — cons and/or vows — instead of rolling them;
+  // per-phoneme surface spellings ride on prof.rom)
+  const rolled = buildInventory(lang.famSeed, lang.prof);
+  const inv = {
+    cons: (lang.pin && lang.pin.cons ? lang.pin.cons : rolled.cons).map(b => ({ ...b })),
+    vows: (lang.pin && lang.pin.vows ? lang.pin.vows : rolled.vows).map(b => ({ ...b })),
+  };
   for (const b of lang.xph) inv.cons.push({ ...b });
   // family-level semantic structure: colexification + derive-vs-root choices
   const colex = new Map();
