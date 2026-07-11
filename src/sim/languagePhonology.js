@@ -86,6 +86,11 @@ export function rollProfile(seed) {
     orthoStyle: rng.int(4),
     // ONE loud signature feature per language, not many quiet seasonings
     sig: rng.pick(["none", "none", "gem", "gem", "finalV", "noInitV", "tone", "heavy"]),
+    // old maps: placenames wear down to 1-3 syllable stumps (Oxenaforda →
+    // Oxford) — a per-language habit, ill-suited to tonal tongues
+    erodeNames: tone === 0 && rng() < 0.35,
+    // dithematic personal names (two welded meaning elements)
+    nameStyle: rng() < 0.25 ? "di" : "plain",
   };
 }
 

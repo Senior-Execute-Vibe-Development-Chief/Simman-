@@ -268,14 +268,24 @@ function joinInternal(lang, mod, head) {
 // the worn-down root for LAND; a patronymic the worn-down root for SON. So
 // the fashions aren't arbitrary strings — they are the language's own words,
 // reduced by use, and they shift when sound change reshapes the roots.
+// England's map runs on a tiny closed suffix set (-ton -ham -ford -wick),
+// used obsessively — so the suffix itself must be phonotactically VETTED,
+// not just whatever the lexicon rolled for 'town'
+const EN_SUF = /^[bdfghklmnprstw]?[aeiouy]{1,2}(th|ck|[bdfgklmnprstz])?$/i;
 function sufsOf(lang) {
   const c = compile(lang);
   if (c.sufs) return c.sufs;
+  const vetted = (s) => lang.prof.ortho !== "en" || (EN_SUF.test(s) && /[bdfgklmnprstzy]$/i.test(s));
   const reduce = (cid) => {
     const w = internalOf(lang, cid);
-    const s = w.syls[w.syls.length - 1];
-    const r = { syls: [{ on: s.on.slice(0, 1), nu: s.nu.slice(0, 1), co: s.co.slice(0, 1) }] };
-    return renderWord(r, lang.prof);
+    for (let k = 0; k < 4; k++) {
+      const s = k === 1 ? w.syls[0] : w.syls[w.syls.length - 1];
+      const co = s.co.length ? s.co.slice(0, 1) : (k >= 2 ? [{ p: 1, m: 1, l: 1, s: 0 }] : []);   // borrow an -n if the root offers no coda
+      const r = { syls: [{ on: s.on.slice(0, 1), nu: s.nu.slice(0, 1), co }] };
+      const out = renderWord(r, lang.prof);
+      if (vetted(out)) return out;
+    }
+    return "n";                                                  // never expected
   };
   const femV = (() => { const v = c.inv.vows.find(v => v.h === 2) || c.inv.vows[0]; return renderWord({ syls: [{ on: [], nu: [v], co: [] }] }, lang.prof); })();
   c.sufs = {
@@ -293,10 +303,34 @@ const joinSuf = (stem, suf) => {
   return stem + suf;
 };
 // name-level surgery (caps, suffixes, gender endings) can undo the final
-// orthographic conventions — re-apply the word-final ones afterwards
-const finishName = (w, prof) => prof.ortho === "en"
-  ? w.replace(/u$/i, (m) => ["ue", "ew", "o", "oo"][hash32(w, "u") % 4]).replace(/(..)i$/i, "$1y")
-  : w;
+// orthographic conventions — re-apply the word-final ones afterwards.
+// Names get EXTRA respelling beyond dictionary words: -oo and -ee finals
+// read fine in running vocabulary but poison a proper noun repeated fifty
+// times in a chronicle (King Yintoo of Chudree → King Yintow of Chudry).
+const finishName = (w, prof) => {
+  if (prof.ortho !== "en") return w;
+  return w
+    .replace(/([aeiou])([aeiou])[aeiou]+/g, "$1$2")
+    .replace(/u$/i, () => ["ue", "ew", "o", "oo"][hash32(w, "u") % 4])
+    .replace(/oo$/i, () => ["ow", "ew", "o"][hash32(w, "oo") % 3])
+    .replace(/ee$/i, () => ["ey", "y"][hash32(w, "ee") % 2])
+    .replace(/([^yi])i$/i, "$1y");
+};
+
+// ── name erosion ──────────────────────────────────────────────────────────
+// Placenames are OLD words: Oxford was Oxenaforda, York was Eoforwic. A
+// transparent four-syllable compound on a map is a young name; erosion
+// (middle syllables collapse, then syncope where the wreckage is speakable)
+// wears it to the 1–3 syllable stumps real maps are made of.
+function erodeName(lang, w) {
+  if (!lang.prof.erodeNames) return w;
+  while (w.syls.length > 3) w.syls.splice(1, 1);
+  if (w.syls.length === 3) {
+    const [a, b] = w.syls;
+    if (!a.co.length && b.on.length === 1 && !b.co.length) { a.co = b.on.map(c => ({ ...c })); w.syls.splice(1, 1); }
+  }
+  return w;
+}
 
 
 // ── the public name API (signatures unchanged from v1) ────────────────────
@@ -320,12 +354,12 @@ export function langPlaceNameEx(lang, n) {
   let name, gloss;
   if (roll < 0.55) {
     const mod = TOPO_MOD[rng.int(TOPO_MOD.length)], head = TOPO_HEAD[rng.int(TOPO_HEAD.length)];
-    name = renderWord(joinInternal(lang, internalOf(lang, mod), internalOf(lang, head)), lang.prof);
+    name = renderWord(erodeName(lang, joinInternal(lang, internalOf(lang, mod), internalOf(lang, head))), lang.prof);
     gloss = glossOf(mod) + " " + glossOf(head);
     if (name.length > 12) { name = wordOf(lang, head); gloss = glossOf(head); }
   } else if (roll < 0.8) {
     const head = TOPO_HEAD[rng.int(TOPO_HEAD.length)];
-    name = joinSuf(wordOf(lang, head), sufs.city[rng.int(sufs.city.length)]);
+    name = joinSuf(renderWord(erodeName(lang, copyWord(internalOf(lang, head))), lang.prof), sufs.city[rng.int(sufs.city.length)]);
     gloss = glossOf(head);
   } else {
     const c = compile(lang);
@@ -350,10 +384,13 @@ export function langPersonName(lang, n, female) {
   ensureV2(lang);
   const sufs = sufsOf(lang);
   const rng = mkRng(hash32(lang.seed, "p", lang.gen, n));
+  // dithematic naming cultures (the Germanic Æthel-red 'noble-counsel'
+  // pattern) weld two meaning elements nearly every time
+  const di = lang.prof.nameStyle === "di";
   let w;
-  if (rng() < 0.6) {
+  if (rng() < (di ? 0.9 : 0.6)) {
     const a = PERSON_POOL[rng.int(PERSON_POOL.length)];
-    if (rng() < 0.4) {
+    if (rng() < (di ? 0.85 : 0.4)) {
       const b = PERSON_POOL[rng.int(PERSON_POOL.length)];
       w = renderWord(joinInternal(lang, internalOf(lang, a), internalOf(lang, b)), lang.prof);
     } else w = wordOf(lang, a);
