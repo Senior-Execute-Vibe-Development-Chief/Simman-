@@ -5,8 +5,9 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): 56d1cbb9/ca17a985 (LATIFUNDIA + SLAVE_PULL defaults —
-// the classical demand engine + the price-responsive slave market).
+// Current baseline (2500 steps): d1a9bd55/4d779574 (LATIFUNDIA + SLAVE_PULL defaults —
+// the classical demand engine + the price-responsive slave market with the
+// stateless-frontier razzia guard).
 // LATIFUNDIA=0,SLAVE_PULL=0 gives e38f1de/b17ee7b2 — NOT the pre-wave pair below,
 // because hashing `_estates` re-keyed the hash STREAM (the NB above); the lever-off
 // TRAJECTORY was proven identical to e84780f both by a 2500-step state-digest diff

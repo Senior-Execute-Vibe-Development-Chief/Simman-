@@ -43,7 +43,7 @@ const world = buildSim({ W: 480, H: 240, seed: SEED });
 const NAMES = ["Neolithic", "Bronze", "Iron/Classical", "Medieval", "Renaissance", "Industrial", "Modern"];
 const eraCoercedPeak = [];   // per era index: peak pop-weighted coerced share seen while it was current
 
-function snapshot() {
+function snapshot(print) {
   let pop = 0, unfree = 0, captives = 0, coercedW = 0, serfW = 0, estW = 0, nEst = 0;
   const realmPop = new Map();
   for (const s of world.settlements) {
@@ -75,12 +75,15 @@ function snapshot() {
   const era = (world._eraAt || [0]).length - 1;
   const cw = coercedW / Math.max(1, pop);
   eraCoercedPeak[era] = Math.max(eraCoercedPeak[era] || 0, cw);
+  if (!print) return;
   const pf = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : (n / 1e3 | 0) + "k";
   console.log(`step ${String(world.step).padStart(5)} era ${era}: pop ${pf(pop)}  coercedW ${(cw * 100).toFixed(1)}%  (slaves ${(unfree / Math.max(1, pop) * 100).toFixed(1)}%  serfW ${(serfW / Math.max(1, pop) * 100).toFixed(1)}%)  estatesW ${(estW / Math.max(1, pop) * 100).toFixed(1)}%  est>.5 ${nEst}  captiveStock ${pf(captives)}`
     + (core ? `\n            top realm "${core.name}" (${pf(core.pop)}): coerced ${(core.coerced * 100).toFixed(0)}%  slaves ${(core.slaves * 100).toFixed(0)}%  estates ${(core.est * 100).toFixed(0)}%  conqShare ${(core.conq * 100).toFixed(0)}%` : ""));
 }
 
-for (let t = 0; t < STEPS; t += 3000) { stepPeopleSim(world, Math.min(3000, STEPS - t)); snapshot(); }
+// Sample era peaks every 1500 (a short classical window can fall between wider
+// checkpoints entirely), print every 3000.
+for (let t = 0; t < STEPS; t += 1500) { stepPeopleSim(world, Math.min(1500, STEPS - t)); snapshot(world.step % 3000 === 0 || world.step >= STEPS); }
 
 // Era pacing table (same scoring as probe_erapace) + the coerced-by-era summary the
 // classical gap is about: LABOR_INNOV's bite is 0.6 × coerced, so classical ~35%

@@ -91,7 +91,16 @@ export function updateSlaveTrade(world) {
       forEachNear(world, r.pos.x, r.pos.y, RAID_RANGE, (v) => {
         if (v === r || v.mode !== "settled") return;
         if (v.countryId === r.countryId && r.countryId >= 0) return;   // raid OUTSIDERS, not your own
-        if (rPow < settlementPower(v) * RAID_DOMINANCE) return;        // only the clearly weaker
+        // The razzia preys on the STATELESS frontier: a town under a crown is a hard
+        // target (walls, garrisons, retaliation — protection is what states are FOR),
+        // so it takes a far greater edge to raid one. This is where the Roman and
+        // Atlantic supplies actually came from — barbaricum and the decentralized
+        // zones, not rival states' town belts (measured: without this margin the
+        // demand-driven razzia bled the world's mid-tier towns and its city system
+        // collapsed, 31→4 cities). Rides SLAVE_PULL — the legacy base-rate razzia
+        // barely moved this margin — for byte-identical off.
+        const guard = (T.SLAVE_PULL > 0 && v.countryId >= 0) ? 3 : 1;
+        if (rPow < settlementPower(v) * RAID_DOMINANCE * guard) return;   // only the clearly weaker
         // per-PASS rate, no ×dt: the pass interval is already G-stretched (index.js
         // _ivl), so scaling by dt again halved/quartered raiding per unit of history.
         // × slavePull: the raider works for ITS market — the razzia follows the PRICE
