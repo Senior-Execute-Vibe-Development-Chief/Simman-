@@ -78,7 +78,14 @@ export const GRIEV_UNREST_W = 0.5; // peak "old wounds" unrest contribution (com
 // ── Ledger (dyn-years / people) ───────────────────────────────────────────
 const GRIEV_HALF     = 120;   // half-life of a grievance: two long generations, unless renewed
 const AMITY_HALF     = 40;    // half-life between ALLIED dyads: reconciliation forgets ~3× faster
-const GRIEV_REF_FRAC = 0.25;  // harm equal to a quarter of the era-median realm's people reads G = 0.5
+// Harm equal to ONE whole era-median realm's people reads G = 0.5. Measured at
+// 0.25 the read SATURATED: a single real conquest moves ~a nation's whole
+// people-on-land through the capture feed, so every warring pair pinned G≈1.0,
+// the old-wounds term ran at full amplitude for ~a dynasty, and the resulting
+// permanent revolt-ravage cycle consolidated the map (18→13 countries, 6→1
+// secessions on the 8817 A/B). At 1.0 a typical conquest reads G≈0.5 and only
+// the fall of a great power pins the scale. SIM_GRIEV_REF overrides for sweeps.
+const GRIEV_REF_FRAC = (typeof process !== "undefined" && process.env && +process.env.SIM_GRIEV_REF) || 1.0;
 const GRIEV_MIN      = 0.5;   // ledger entries below half a person are dropped (keeps the map small)
 const REF_POP_SMOOTH = 0.25;  // low-pass on the median-realm-pop reference (the _refRevenue pattern)
 export const SACK_GRIEV_FRAC = 0.15; // a stormed city: this fraction of its people count harmed (dead, enslaved, scattered)
@@ -115,15 +122,32 @@ export function grievOf(world, h, p) {
  */
 export function updateGrievLedger(world, countries) {
   if (!T.GRIEV_LEDGER) return;
-  // Era reference: median MULTI-member realm population (same robust-median +
-  // low-pass reasoning as _refCapPower/_refRevenue — one sacked hegemon must
-  // not swing what a "people" weighs).
+  // Era reference: the median MULTI-member realm's GOVERNED PEOPLE — the
+  // popField integral over its land, the SAME units the capture feed counts
+  // harm in (the two populations must never mix: s.people is the town census,
+  // popField the people-on-land — docs/settlement-ontology.md). Measured with
+  // a census-unit reference the read pinned G≈1.0 on every warring pair (land
+  // people outweigh the town census several-fold), which is what the ref-frac
+  // recalibration alone couldn't fix. Same robust-median + low-pass reasoning
+  // as _refCapPower/_refRevenue. Census-sum fallback when the popField lever
+  // is off (then the feeds are census-unit sacks/razzias too).
   const pops = [];
-  for (const c of countries.values()) {
-    if (c.members.length <= 1) continue;
-    let p = 0;
-    for (const s of c.members) if (s.countryId === c.id) p += Math.max(0, s.people || 0);
-    if (p > 0) pops.push(p);
+  if (world.popField && world._countryOwner) {
+    const gov = new Map();
+    const co = world._countryOwner, pf = world.popField;
+    for (let ti = 0; ti < world.N; ti++) { const cc = co[ti]; if (cc >= 0 && pf[ti] > 0) gov.set(cc, (gov.get(cc) || 0) + pf[ti]); }
+    for (const c of countries.values()) {
+      if (c.members.length <= 1) continue;
+      const p = gov.get(c.id) || 0;
+      if (p > 0) pops.push(p);
+    }
+  } else {
+    for (const c of countries.values()) {
+      if (c.members.length <= 1) continue;
+      let p = 0;
+      for (const s of c.members) if (s.countryId === c.id) p += Math.max(0, s.people || 0);
+      if (p > 0) pops.push(p);
+    }
   }
   pops.sort((a, b) => a - b);
   const med = pops.length ? pops[pops.length >> 1] : 0;
