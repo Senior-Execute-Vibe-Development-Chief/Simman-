@@ -79,6 +79,9 @@ export function rollProfile(seed) {
     wordLen: rng.pick(morph === "iso" || tone > 0 ? [1.2, 1.4, 1.8] : morph === "agg" ? [2.2, 2.8, 3.4] : [1.6, 2, 2, 2.4, 3]),
     // compounding strategy: head-last · head-first · linker morpheme
     compound: rng.pick(["hl", "hl", "hl", "hf", "link"]),
+    // compound erosion: full concatenation · trim overlong · blend (the
+    // modifier always wears down to one syllable — nkápìd-style)
+    compErode: rng.pick(["trim", "trim", "trim", "full", "blend", "blend"]),
     // orthography style: same sounds, different clothes (sh/š/x/sy)
     orthoStyle: rng.int(4),
     // ONE loud signature feature per language, not many quiet seasonings
@@ -94,6 +97,11 @@ export function applySignature(p, seed) {
   if (p.sig === "finalV" && p.sylC >= 2) p.sig = "gem";     // open-word law suits light syllables
   if (p.sig === "heavy") { p.ejective = rng() < 0.5; p.guttural = true; p.freqPromote = 2; }
   if (p.sig === "noInitV") p.vInit = 0;
+  // TONOGENESIS BY NECESSITY: a tiny syllable space (light syllables, small
+  // inventory, short roots) drowns in homophones — which is exactly why the
+  // real minimal-syllable languages carry tone. If the space is that small,
+  // tone usually emerges whether the signature rolled it or not.
+  if (p.sylC <= 1 && p.wordLen <= 1.6 && p.consN <= 16 && !p.tone && rng() < 0.7) { p.tone = 1 + (rng() < 0.5 ? 1 : 0); p.toneMarks = true; }
   return p;
 }
 
@@ -158,8 +166,15 @@ export function buildInventory(seed, prof) {
   // blurred. Promote 1–2 seeded consonants to the front (one language makes
   // q its commonest sound, another leads with l), and rotate the vowel
   // order (an a-heavy tongue vs a u-heavy one).
+  // (marked series — ejectives, prenasals — stay seasoning unless the
+  // language's SIGNATURE is heaviness: promoting them to dominant makes
+  // every word nkínkánkínk and the feature fatigues into a gimmick)
   const promo = prof.freqPromote ?? (1 + (rng() < 0.4 ? 1 : 0));
-  for (let i = 0; i < promo && cons.length > 4; i++) cons.unshift(cons.splice(3 + rng.int(cons.length - 3), 1)[0]);
+  for (let i = 0; i < promo && cons.length > 4; i++) {
+    const idx = 3 + rng.int(cons.length - 3);
+    if (cons[idx].l >= 3 && prof.sig !== "heavy") continue;
+    cons.unshift(cons.splice(idx, 1)[0]);
+  }
   const rot = rng.int(vows.length);
   vows.push(...vows.splice(0, rot));
   return { cons, vows };
@@ -287,10 +302,14 @@ export function buildSyllabary(seed, prof, inv, pin) {
     const singles = cons.filter(c => c.m !== 6 && rng() < 0.7).map(c => [c]);
     codas = singles;
     if (prof.coDepth >= 2) {
-      const first = cons.filter(c => SONORITY[c.m] >= 1);               // fric/nasal/liquid
-      const second = cons.filter(c => c.m === 0 || c.m === 3);          // stop/affricate
+      const first = cons.filter(c => SONORITY[c.m] >= 1 && c.p < 6);    // fric/nasal/liquid; no gutturals in clusters
+      const second = cons.filter(c => (c.m === 0 || c.m === 3) && c.p < 6 && c.l <= 1);
       const cand = [];
-      for (const a of first) for (const b of second) if (SONORITY[a.m] > SONORITY[b.m]) cand.push([a, b]);
+      for (const a of first) for (const b of second) {
+        if (SONORITY[a.m] <= SONORITY[b.m]) continue;
+        if (a.m === 1 && a.p !== b.p) continue;                         // nasal+stop clusters are HOMORGANIC (nt/mp/nk, never -ngph)
+        cand.push([a, b]);
+      }
       const K = 2 + 2 * (prof.coDepth - 1);
       for (let i = 0; i < K && cand.length; i++) codas.push(cand.splice(rng.int(cand.length), 1)[0]);
     }
@@ -372,7 +391,9 @@ export function synthWord(rng, prof, inv, nSyl) {
   } else if (prof.sig === "finalV") {                             // open-word law: every word ends in a vowel
     syls[syls.length - 1].co = [];
   }
-  return { syls };
+  // word-level tone salt: homophones carry DIFFERENT melodies (dí vs dì) —
+  // which is precisely how small-syllable-space languages keep functioning
+  return { syls, tseed: (rng() * 4294967296) >>> 0 };
 }
 
 /** Render an internal word to its romanized surface. */
@@ -390,7 +411,7 @@ export function renderWord(word, prof) {
     // tone marks (contour-tone languages, when the profile renders them):
     // deterministic per syllable — a rendering of the melody, not a dial
     if (prof.tone > 0 && prof.toneMarks && syl) {
-      const t = TONE_MARKS[hash32(syl, i) % 4];
+      const t = TONE_MARKS[hash32(syl, i, word.tseed || 0) % 4];
       syl = syl.replace(/[aeiou]/, (m) => m + t);
     }
     out += syl;
@@ -403,6 +424,9 @@ export function renderWord(word, prof) {
   // no final -i/-v/-j/-u, no written zh/ngk/kw, final diphthongs respelled
   // (law, how, boy, day), -ck/-ff/-tch after short vowels, and a seeded
   // sprinkle of silent -e (stone/gate clothing).
+  // vowel clothes: the háček style also writes its front-rounded vowels as
+  // umlauts — one more escape from the universal a/e/i/o/u undercoat
+  if (prof.orthoStyle === 1) out = out.replace(/iu/g, "ü").replace(/oe/g, "ö");
   if (prof.ortho === "en") {
     out = out
       .replace(/(.)i$/, "$1y").replace(/v$/, "ve").replace(/j$/, "dge").replace(/zh/g, "j")
@@ -419,5 +443,5 @@ export function renderWord(word, prof) {
 
 /** Deep-copy an internal word (sound change mutates copies). */
 export function copyWord(w) {
-  return { syls: w.syls.map(s => ({ on: s.on.map(c => ({ ...c })), nu: s.nu.map(v => ({ ...v })), co: s.co.map(c => ({ ...c })) })) };
+  return { syls: w.syls.map(s => ({ on: s.on.map(c => ({ ...c })), nu: s.nu.map(v => ({ ...v })), co: s.co.map(c => ({ ...c })) })), tseed: w.tseed };
 }

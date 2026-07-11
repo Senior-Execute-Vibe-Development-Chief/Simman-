@@ -171,6 +171,9 @@ function internalOf(lang, cid) {
     // the head root, if the tongue is templatic — derivation by pattern)
     if (lang.prof.morph === "tmpl") w = revowel(lang, parts[0], cid);
     else w = joinInternal(lang, parts[1], parts[0]);
+    // high-frequency EROSION: a common compound wears down with use — no
+    // speech community says a six-syllable word for "crossing" daily
+    if (con.b >= 0.5 && w.syls.length > 3) w.syls = [w.syls[0], ...w.syls.slice(-2)];
   } else {
     const rng = mkRng(hash32(lang.famSeed, "root", cid));
     w = lang.prof.morph === "tmpl" ? synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed)
@@ -200,7 +203,7 @@ export function glossOf(cid) { return CONCEPTS[cid] ? CONCEPTS[cid].g : ""; }
 // through Greenlandic-long); basic concepts run shorter, like real ones
 function rootLen(rng, prof, basic) {
   const n = Math.round((prof.wordLen || 2) + (rng() - 0.5) + (basic ? -0.6 : 0.3));
-  return Math.max(1, Math.min(5, n));
+  return Math.max(1, Math.min(4, n));   // no daily word is 5+ syllables — speech erodes them first
 }
 
 // templatic roots: a consonant skeleton the patterns interleave (k-t-b style)
@@ -230,6 +233,9 @@ function revowel(lang, head, cid) {
 function joinInternal(lang, mod, head) {
   const strat = lang.prof.compound || "hl";
   let a = copyWord(strat === "hf" ? head : mod), b = copyWord(strat === "hf" ? mod : head);
+  // blend languages wear the FIRST part down to one syllable in every
+  // compound (nkápìd-style truncation) — a per-language habit
+  if (lang.prof.compErode === "blend" && a.syls.length > 1) a.syls = a.syls.slice(0, 1);
   if (strat === "link") {
     const c = compile(lang);
     if (!c.linkSyl) {
