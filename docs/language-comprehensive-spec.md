@@ -319,8 +319,52 @@ cultures.js/faiths.js untouched). What shipped vs the plan above:
   of the time, a prestige-domain WORD (frozen surface form at borrow time)
   — the pig/pork machine, wired to the existing culture-contact call site.
 
-**Not built (parked)**: tone/diacritic RENDERING (dial exists, surface is
-plain ASCII); orthographic lag (needs archive-age input — small, do with
-L5); L5 writing systems entirely; UI surfacing of glosses/etymology
-(langPlaceNameEx exists, nothing calls the Ex form yet — natural first UI
-win: settlement inspector shows "Neuborg — 'new fort'").
+**Not built (parked)**: orthographic lag (needs archive-age input — small,
+do with L5); L5 writing systems entirely; UI surfacing of glosses/etymology
+in the SIM app (langPlaceNameEx exists; the Language Lab uses it — natural
+first sim-UI win: settlement inspector shows "Neuborg — 'new fort'").
+(Tone rendering DID land: contour-tone languages with toneMarks render
+diacritics, with word-level tone salt so homophones split — dí vs dì.)
+
+---
+
+## Toward full translation (M-phases, designed not started)
+
+The word layer above is done through eight rounds of external review
+(licensed syllabaries, name pipeline, shuffle-test 98%+). "Translates
+fully" is the SENTENCE layer. Dependency order:
+
+- **M1 — closed-class vocabulary**: pronouns (per-language person/number/
+  gender distinctions, incl. clusivity), demonstratives, negation, question
+  words, conjunctions, adpositions, NUMERALS (base-10/20/5 with formation
+  rules). Concept-graph data + a few dials.
+- **M2 — inflectional morphology** (the heart): nominal case (none →
+  nom-acc → erg-abs, 0–15), number, gender/noun classes (0–16),
+  definiteness; verbal TAM + person agreement. Realization style comes
+  from the EXISTING morphotype dial (iso: particles · agg: stacked regular
+  affixes · fus: fused portmanteaus + irregularity · tmpl: pattern change).
+  Two mechanisms keep it emergent: GRAMMATICALIZATION — affixes are
+  worn-down words via the existing reduce() machine (case endings from the
+  language's own 'at/go/finish'), and IRREGULARITY BY FREQUENCY — the most
+  basic verbs (basicness already on the graph) get suppletive paradigms.
+- **M3 — syntax dials with Greenberg correlations**: SOV/SVO/VSO (real
+  frequencies), adposition side, adjective/genitive order, negation,
+  questions — CORRELATED rolls (OV ⇒ postpositions) with a probe gate
+  checking the universals hold across rolled languages.
+- **M4 — the frame renderer (the scoping insight)**: the sim's EVENT LOG
+  already is the semantic-frame input format (war.began {attacker,
+  defender, cause} IS the parse of the sentence). Translation = frame →
+  inflect → order → render through the existing phonology/orthography,
+  plus an INTERLINEAR GLOSS line. Endgame artifact: chronicles written in
+  each realm's own tongue, scribes' version in-language, gloss beneath —
+  historiography and linguistics fused. Free-form English input is out of
+  scope until/unless a controlled-English parser is wanted; frames cover
+  every sentence a chronicle contains. Lab gets a Translate panel.
+- **M5 — diachrony reaches the grammar**: grammaticalization CYCLES (case
+  systems erode and re-form), analogy leveling, daughters inheriting
+  paradigms through the sound-change log — sister languages with COGNATE
+  CONJUGATIONS, which is what a real family is.
+
+Effort: M1 small · M2 large · M3 small · M4 medium (immediately demo-able)
+· M5 medium. The external-review loop (generate → hand to a fresh reader →
+convert complaints into gates) transfers directly to grammar.
