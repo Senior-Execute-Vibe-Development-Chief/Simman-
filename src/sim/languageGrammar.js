@@ -23,7 +23,7 @@
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { synthWord, renderWord, copyWord } from "./languagePhonology.js";
 import { applyRule, applyRules, legalizeWord } from "./languageChange.js";
-import { compiledInv, nativeStemOf, rootFormOf, glossOf } from "./language.js";
+import { compiledInv, nativeStemOf, rootFormOf, glossOf, wordOf } from "./language.js";
 import {
   CONCEPTS, MANY, ALL, TWO, HAND, MAN, EARTH, DAY, ROAD,
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
@@ -352,6 +352,9 @@ export function closedOf(lang) {
     }
     return { m: spec.m, src, form, w: rform(lang, form) };
   });
+  // source-worn adpositions may honestly colexify (French de = of/from),
+  // but two OPAQUE ones landing on the same syllable is just collision
+  dedupe(lang, inv, adps.filter(a => a.src == null));
 
   // ── conjunctions: 'and' is usually just 'with' (the comitative machine);
   // the rest are ancient little words of their own ──
@@ -364,10 +367,16 @@ export function closedOf(lang) {
     conj.push({ k, g: k, form: f, w: rform(lang, f), src: null });
   }
 
+  // ── the polar-question particle (Japanese ka, Mandarin ma) ──
+  const qp = g.qPart !== "none" ? (() => {
+    const f = legalizeWord(R(synthClosed(lang, inv, "qp")));
+    return { g: "Q", form: f, w: rform(lang, f) };
+  })() : null;
+
   // cross-class homophony collapses a small-inventory tongue into mush (one
   // 'pin' serving as what/this/of/because): one global sweep — pronouns keep
   // their forms, later classes shift; 'and' keeps its comitative identity
-  dedupe(lang, inv, [...prons, ...dems, neg, ...qs, ...conj.filter(x => !x.src)]);
+  dedupe(lang, inv, [...prons, ...dems, neg, ...qs, ...conj.filter(x => !x.src), ...(qp ? [qp] : [])]);
 
   // ── articles: the definite wears down from the distal demonstrative
   // (that→the), the indefinite from 'one' (one→a) — when the dials say so ──
@@ -381,7 +390,7 @@ export function closedOf(lang) {
     return { g: "INDF", form: f, w: rform(lang, f), src: "one" };
   })() : null;
 
-  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt };
+  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp };
   return c.closed;
 }
 
@@ -666,12 +675,15 @@ export function paradigmSpec(lang) {
 
 // affixes inside one paradigm must contrast: two sources can wear down to
 // the SAME syllable (fall→pi, sit→pi). In a fusional tongue the portmanteau
-// crush keeps only the CONSONANTAL SKELETON (theme vowels flatten nuclei),
-// so there the skeleton must be distinct and colliders walk the consonant
-// inventory — contrast maintenance, the same pressure that keeps real
-// paradigms apart. Everyone else contrasts whole syllables and walks vowels.
+// crush keeps only the CONSONANTAL SKELETON (theme vowels flatten nuclei) —
+// and in a HARMONY tongue the affix vowel is retinted by every stem, so a
+// vowel-only contrast is neutralized at attach time (-bi vs -bu both come
+// out -bu on a back stem). Both cases must contrast consonantally, and
+// colliders walk the consonant inventory — contrast maintenance, the same
+// pressure that keeps real paradigms apart. Everyone else contrasts whole
+// syllables and walks vowels.
 function dedupeAffixSet(lang, inv, affs) {
-  const fus = lang.prof.morph === "fus";
+  const fus = lang.prof.morph === "fus" || lang.prof.harmony !== "none";
   const seen = new Set();
   const sigOf = (a) => fus
     ? renderWord({ syls: [{ on: a.syl.on.map(x => ({ ...x })), nu: [], co: a.syl.co.map(x => ({ ...x })) }] }, lang.prof) || "∅"
@@ -936,8 +948,8 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -958,15 +970,21 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     const irr = tam && isMarkedTam(tam) ? irregularityOf(lang, cid) : null;
     const events = [], glosses = [];
     let rootOverride = null, pattern = null, ablaut = false;
+    if (neg && spec.negAff) {
+      // affixal negation sits innermost (the Turkish -me- slot)
+      events.push({ ...spec.negAff, t: 0 });
+      glosses.push("NEG");
+    }
+    let tamInStem = null;   // set when suppletion/ablaut/pattern folds TAM into the stem
     if (tamAff && irr === "suppl") {
       rootOverride = suppletiveStem(lang, cid);       // went: another verb's ghost
-      glosses.push(tamAff.g);
+      tamInStem = tamAff.g;
     } else if (tamAff && irr === "ablaut" && morph !== "tmpl") {
       ablaut = true;                                  // sang: the vowel is the tense
-      glosses.push(tamAff.g);
+      tamInStem = tamAff.g;
     } else if (tamAff && morph === "tmpl") {
       pattern = tam;                                  // pattern change IS the TAM
-      glosses.push(tamAff.g);
+      tamInStem = tamAff.g;
     } else if (tamAff) {
       if (irr === "fossil") {
         // syncope: the tense vowel vanishes into the stem's coda
@@ -990,7 +1008,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     // gloss: fused endings read STEM-PST.3SG, stacked ones STEM-PST-3SG,
     // pattern change reads STEM⟨PST⟩, suppletion and ablaut fold the TAM in
     let glossStr;
-    if (pattern || ablaut || rootOverride) glossStr = stemGloss + (glosses.length ? "⟨" + glosses[0] + "⟩" : "") + (glosses.length > 1 ? "-" + glosses.slice(1).join("-") : "");
+    if (tamInStem) glossStr = stemGloss + "⟨" + tamInStem + "⟩" + (glosses.length ? "-" + glosses.join("-") : "");
     else if (morph === "fus" && glosses.length > 1) glossStr = stemGloss + "-" + glosses.join(".");
     else glossStr = [stemGloss, ...glosses].join("-");
     out = { text: renderWord(form, lang.prof), gloss: glossStr, pre: [], post: [], irr: !!irr || !!pattern };
@@ -1038,6 +1056,130 @@ function renderAffix(lang, syl) {
   let s = renderWord({ syls: [syl] }, lang.prof);
   if (lang.prof.ortho === "en") s = s.replace(/([^aeiou][aeiou][^aeiou])e$/, "$1");
   return s;
+}
+
+// ══ The frame renderer: semantic frames → clauses with interlinear gloss ══
+//
+// A frame is the parse of a sentence — {subject, verb, object, tense…} —
+// which is exactly the shape of the sim's event-log entries (M4's insight;
+// the sim wiring itself is parked). Rendering = inflect the arguments per
+// the language's alignment, agree the verb, order everything by the syntax
+// dials, drop what the language drops, and keep a token-aligned gloss line.
+
+const WO_SEQ = { sov: ["s", "o", "v"], svo: ["s", "v", "o"], vso: ["v", "s", "o"], vos: ["v", "o", "s"], ovs: ["o", "v", "s"] };
+
+/** Resolve a requested TAM to what this language actually marks (a tense-
+ *  less tongue renders 'past' with its perfective, like life). */
+export function resolveTam(lang, wanted) {
+  const spec = paradigmSpec(lang);
+  if (!wanted) return null;
+  if (spec.tam[wanted]) return wanted;
+  if (wanted === "pst" && spec.tam.pfv) return "pfv";
+  if (wanted === "fut" && spec.tam.ipfv) return null;
+  return null;
+}
+
+/** Render a semantic frame as a clause.
+ *  frame = { s: {pron:{k,pers,num}} | {n,num,def,adj},
+ *            v: {c, tam, neg},
+ *            o: null | like s | {wh:true},
+ *            loc: null | {adp, n, def},
+ *            q: bool }
+ *  → { tokens: [{w, g, role}], text, gloss } */
+export function renderClause(lang, frame) {
+  const g = gramOf(lang);
+  const cl = closedOf(lang);
+  const spec = paradigmSpec(lang);
+  const trans = !!frame.o;
+  const sIsPron = frame.s && !!frame.s.pron;
+  const sPers = sIsPron ? frame.s.pron.pers : 3;
+  const sNum = frame.s ? (sIsPron ? frame.s.pron.num : (frame.s.num || "sg")) : "sg";
+  // core case marking per alignment: ERG on transitive subjects, ACC on
+  // objects, absolutive/nominative bare
+  const coreCase = spec.cases.length && spec.cases[0].k !== "gen" ? spec.cases[0].k : null;
+  const sCase = coreCase === "erg" && trans ? "erg" : null;
+  const oCase = coreCase === "acc" ? "acc" : null;
+  const np = (arg, cas, role) => {
+    if (!arg) return [];
+    if (arg.pron) {
+      // graceful degrade: a gendered request in a genderless tongue falls to
+      // plain 3sg; clusivity falls to the plain plural, and so on
+      const k = arg.pron.k;
+      const cell = cl.prons.find(p => p.k === k)
+        || cl.prons.find(p => p.k === k.replace(/[mf]$/, ""))                              // 3sgf → 3sg
+        || cl.prons.find(p => p.k === k.replace(/p[ie]$/, "pl"))                           // 1pi → 1pl
+        || (k.includes("p") ? cl.prons.find(p => p.k[0] === k[0] && /p[lie]/.test(p.k)) : null)   // 1pl → 1pe
+        || (k.endsWith("sg") ? cl.prons.find(p => p.k[0] === k[0] && p.k.includes("sg")) : null)  // 3sg → 3sgm
+        || cl.prons.find(p => p.k[0] === k[0])
+        || cl.prons[0];
+      return [{ w: cell.w, g: cell.g, role }];
+    }
+    if (arg.wh) {
+      const q = cl.qs.find(x => x.k === "what");
+      return [{ w: q.w, g: "what", role, wh: true }];
+    }
+    const x = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas });
+    let seq = [...x.pre.map(t => ({ ...t, role })), { w: x.text, g: x.gloss, role }, ...x.post.map(t => ({ ...t, role }))];
+    if (arg.adj != null) {
+      const adj = { w: wordOf(lang, arg.adj), g: glossOf(arg.adj), role };
+      seq = g.adjN ? [adj, ...seq] : [...seq, adj];
+    }
+    if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role }];
+    else if (arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role }];
+    return seq;
+  };
+  const toks = {
+    s: np(frame.s, sCase, "S"),
+    o: np(frame.o, oCase, "O"),
+    v: [],
+  };
+  // verb: agreement with the subject; object person when polypersonal
+  const tam = resolveTam(lang, frame.v.tam);
+  const agreePers = g.agree !== "none" ? String(sPers) : null;
+  const objPers = g.agree === "both" && trans && !frame.o.wh ? "3" : null;
+  const neg = !!frame.v.neg;
+  const vx = inflectVerb(lang, frame.v.c, {
+    tam, pers: agreePers, num: sNum === "du" ? "pl" : sNum, obj: objPers,
+    neg: neg && !!spec.negAff,
+  });
+  toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
+  // negation particle (when not an affix): before/after the verb, or clause-final
+  let negFinal = false;
+  if (neg && !spec.negAff) {
+    if (g.negPos === "pre") toks.v.unshift({ w: cl.neg.w, g: "NEG", role: "V" });
+    else if (g.negPos === "post") toks.v.push({ w: cl.neg.w, g: "NEG", role: "V" });
+    else negFinal = true;
+  }
+  // pro-drop: agreement carries the person, the pronoun stays home
+  if (sIsPron && g.proDrop && g.agree !== "none") toks.s = [];
+  // adpositional adjunct
+  const locToks = [];
+  if (frame.loc) {
+    const adp = cl.adps.find(a => a.m === frame.loc.adp) || cl.adps[0];
+    const nx = inflectNoun(lang, frame.loc.n, { num: "sg", cas: null });
+    const inner = [...(frame.loc.def && cl.defArt && g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : []),
+      { w: nx.text, g: nx.gloss, role: "X" },
+      ...(frame.loc.def && cl.defArt && !g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : [])];
+    locToks.push(...(g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X" }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X" }]));
+  }
+  // assemble by word order; adjuncts sit preverbally in OV, clause-late in VO
+  const ov = g.wo === "sov" || g.wo === "ovs";
+  const seq = [];
+  for (const slot of WO_SEQ[g.wo]) {
+    if (slot === "v" && ov && locToks.length) seq.push(...locToks);
+    seq.push(...toks[slot]);
+  }
+  if (!ov && locToks.length) seq.push(...locToks);
+  // wh-fronting: the question word moves to the clause edge when the dials say
+  const whIdx = seq.findIndex(t => t.wh);
+  if (whIdx > 0 && g.whFront) seq.unshift(...seq.splice(whIdx, 1));
+  if (negFinal) seq.push({ w: cl.neg.w, g: "NEG", role: "V" });
+  // polar-question particle (wh-questions carry their own interrogative)
+  if (frame.q && !frame.o?.wh && cl.qp) {
+    if (g.qPart === "final") seq.push({ w: cl.qp.w, g: "Q", role: "Q" });
+    else if (g.qPart === "init") seq.unshift({ w: cl.qp.w, g: "Q", role: "Q" });
+  }
+  return { tokens: seq, text: seq.map(t => t.w).join(" "), gloss: seq.map(t => t.g).join(" ") };
 }
 
 /** Etymology notes for the Lab: which closed forms are worn-down open words. */

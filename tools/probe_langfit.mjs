@@ -14,8 +14,8 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -498,6 +498,104 @@ console.log("\n── grammar diachrony ──");
   }
   check(`word order shifts at branch rarely (${flips}/${branches})`, flips / branches > 0.03 && flips / branches < 0.25);
   check("morphology lags a word-order shift (adpositions keep their side)", lagOK);
+}
+
+// ── 8. SENTENCES: frames render per the dials, gloss-aligned ──────────────
+console.log("\n── sentences (frame renderer) ──");
+{
+  const world = mkWorld();
+  const F = {
+    trans: { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } },
+    intrans: { s: { n: KING, def: true }, v: { c: SLEEP, tam: "pst" } },
+    negF: { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: GO, tam: "pst", neg: true } },
+    polar: { s: { pron: { k: "2sg", pers: 2, num: "sg" } }, v: { c: TAKE, tam: "pst" }, o: { n: HORSE, def: true }, q: true },
+    wh: { s: { pron: { k: "3sg", pers: 3, num: "sg" } }, v: { c: EAT, tam: "pst" }, o: { wh: true } },
+    loc: { s: { n: WOLF, def: true, adj: BLACK }, v: { c: SLEEP, tam: null }, loc: { adp: "in", n: TOWN, def: true } },
+  };
+  const langs = [];
+  for (let i = 0; i < 12; i++) langs.push(foundLanguage(world, { seed: 210000 + i * 379 }));
+  let alignOK = true, orderBad = 0, negBad = 0, qBad = 0, whBad = 0, ergBad = 0, dropBad = 0, dropSeen = 0;
+  for (const l of langs) {
+    const g = gramOf(l);
+    for (const f of Object.values(F)) {
+      const c = renderClause(l, f);
+      if (!c.tokens.length || c.text.split(" ").length !== c.gloss.split(" ").length) alignOK = false;
+    }
+    // verb position honors the word-order dial (frame without q/wh noise)
+    const c1 = renderClause(l, F.trans);
+    const roles = c1.tokens.map(t => t.role);
+    const vAt = roles.indexOf("V"), sAt = roles.indexOf("S"), oAt = roles.indexOf("O");
+    if (g.wo === "sov" && !(vAt > sAt && vAt > oAt)) orderBad++;
+    if (g.wo === "svo" && !(sAt < vAt && vAt < oAt)) orderBad++;
+    if ((g.wo === "vso" || g.wo === "vos") && vAt !== 0) orderBad++;
+    // negation is audible: a NEG token or NEG inside the verb gloss
+    const cn = renderClause(l, F.negF);
+    if (!/(^| |-)NEG( |-|$|\.)/.test(cn.gloss)) negBad++;
+    // polar-question particle sits at the dialled edge
+    const cq = renderClause(l, F.polar);
+    if (g.qPart === "final" && cq.tokens[cq.tokens.length - 1].g !== "Q") qBad++;
+    if (g.qPart === "init" && cq.tokens[0].g !== "Q") qBad++;
+    // wh-word fronts (or stays in situ) per the dial
+    const cw = renderClause(l, F.wh);
+    const whAt = cw.tokens.findIndex(t => t.g === "what");
+    if (whAt < 0) whBad++;
+    else if (g.whFront && whAt !== 0) whBad++;
+    // ergativity: ERG on transitive subjects only
+    if (g.align === "erg" && g.caseN >= 2) {
+      const sTok = c1.tokens.find(t => t.role === "S" && /ERG/.test(t.g));
+      const iTok = renderClause(l, F.intrans).tokens.find(t => /ERG/.test(t.g));
+      if (!sTok || iTok) ergBad++;
+    }
+    // pro-drop: pronoun subjects stay home when agreement carries them
+    if (g.proDrop && g.agree !== "none") {
+      dropSeen++;
+      if (cn.tokens.some(t => t.role === "S")) dropBad++;
+    }
+  }
+  check("every clause is gloss-aligned (token counts match)", alignOK);
+  check(`verb position honors the word-order dial (${langs.length - orderBad}/${langs.length})`, orderBad === 0);
+  check(`negation is always audible (${langs.length - negBad}/${langs.length})`, negBad === 0);
+  check(`question particles sit at the dialled edge (${langs.length - qBad}/${langs.length})`, qBad === 0);
+  check(`wh-fronting vs in-situ per dial (${langs.length - whBad}/${langs.length})`, whBad === 0);
+  check("ergative marks transitive subjects only", ergBad === 0);
+  check(`pro-drop drops the subject pronoun (${dropSeen} langs)`, dropBad === 0);
+
+  // pinned references speak in character
+  const m = foundLanguage(world, { seed: 445 });
+  m.prof = refProfile("mandarin", 445); m.rules = [];
+  const mp = refPin("mandarin"); m.pin = mp.pin; m.prof.rom = mp.rom;
+  const mc = renderClause(m, F.trans);
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const mLegal = mc.tokens.every(t => PINYIN.test(strip(t.w.toLowerCase())));
+  const mi = mc.tokens.findIndex(t => t.g === "see");
+  const mPfvAfterV = mi >= 0 && mc.tokens[mi + 1] && mc.tokens[mi + 1].g === "PFV";
+  check(`pinned Mandarin clause: legal pinyin, SVO, PFV particle after verb (${mc.text})`, mLegal && mPfvAfterV);
+  const cqm = renderClause(m, F.polar);
+  check(`pinned Mandarin polar question ends in the particle (${cqm.text})`, cqm.tokens[cqm.tokens.length - 1].g === "Q");
+
+  const e = foundLanguage(world, { seed: 446 });
+  e.prof = refProfile("english", 446); e.rules = [];
+  const ep = refPin("english"); e.pin = ep.pin; e.prof.rom = { ...(e.prof.rom || {}), ...ep.rom };
+  const ec = renderClause(e, F.trans);
+  const eRoles = ec.tokens.map(t => t.role);
+  check(`pinned English-shaped clause is Det-first SVO (${ec.text} = "${ec.gloss}")`,
+    ec.tokens[0].g === "DEF" && eRoles.indexOf("S") < eRoles.indexOf("V") && eRoles.indexOf("V") < eRoles.indexOf("O"));
+
+  // determinism + roundtrip of whole clauses
+  const w1 = mkWorld(), w2 = mkWorld();
+  const a = foundLanguage(w1, { seed: 8484 }), b2 = foundLanguage(w2, { seed: 8484 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => Object.values(F).map(f => renderClause(l, f).text).join("‖");
+  check("clauses deterministic + JSON-roundtrip-stable", sig(a) === sig(b2) && sig(a) === sig(c3));
+
+  if (!quiet) {
+    say("\n   the same frame in six tongues — [the king saw the river]:");
+    for (const l of [...langs.slice(0, 4), m, e]) {
+      const c = renderClause(l, F.trans);
+      say("     " + c.text.padEnd(34) + "  " + c.gloss);
+    }
+  }
 }
 
 // ── determinism: same record → same names, always ─────────────────────────
