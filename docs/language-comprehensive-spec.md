@@ -108,11 +108,11 @@ for words.
   (root-and-pattern, Semitic-style triconsonantal roots — a distinct
   synthesis mode where a root k-t-b interleaves with vowel patterns).
   Polysynthetic folds into agglutinative-with-long-words for our purposes.
-- **Semantic root lexicon**: each root language generates ~150 bound roots
-  over a fixed concept list (water, river, mountain, fort, king, god, new,
-  red, great, ford, bridge, market, home…). Daughters inherit roots through
-  the sound-change rules (cognates for free); borrowing copies roots across
-  contact (loanword strata for free).
+- **Semantic root lexicon**: each root language generates a root stock
+  (~800–2,000 roots) over the shared CONCEPT GRAPH (see "Lexicon at scale"
+  below). Daughters inherit roots through the sound-change rules (cognates
+  for free); borrowing copies roots across contact (loanword strata for
+  free).
 - **Compound toponymy**: place names become meaningful compounds —
   ⟨new⟩+⟨fort⟩, ⟨north⟩+⟨capital⟩, ⟨black⟩+⟨water⟩ — synthesized through the
   language's morphotype. The UI can show glosses ("Neuborg — 'new fort'").
@@ -123,6 +123,48 @@ for words.
   system (suffix -son/-ov | prefix Mac/ibn | none), gendered endings,
   theophoric/meaning compounds for personal names. Dynasty and person
   naming route through this instead of the current suffix-only fashion.
+
+### D2. Lexicon at scale — a virtual, language-sized dictionary
+
+The 150-concept toponym list is the seed of something much bigger, and the
+architecture that reaches "proper dictionary" size is NOT per-language
+dictionaries. The lexical-typology insight: meanings are (approximately)
+shared across humanity; languages differ in the FORM→MEANING MAPPING. So:
+
+1. **One shared concept graph (a data asset, like earthData).** ~3–5k
+   concepts with typed relations (is-a, part-of, associated-with, made-of),
+   curated toward the sim's world (nature, kinship, war, faith, crafts,
+   governance). Real scaffolding exists to curate from: Concepticon (~4k
+   standardized concept sets), CLICS (empirical cross-linguistic
+   colexification frequencies), WordNet (relation structure), and
+   basicness rankings (Swadesh / Leipzig-Jakarta) for deciding which
+   concepts get atomic roots. Packed size ~100–300 KB.
+2. **Per-language lexicalization map (generated, tiny).** Each language
+   rolls: a root stock (~800–2,000 roots) assigned to the most basic
+   concepts; COLEXIFICATION choices biased by the CLICS frequencies (does
+   this tongue share a word for tree/wood? hand/arm? blue/green?) — cheap,
+   empirically-calibrated semantic personality; and a derivation strategy
+   from its morphotype — compounds, affixes, metaphorical extension along
+   catalogued recurrent pathways ("grasp"→"understand"; DatSemShift-style).
+3. **The dictionary is VIRTUAL.** `wordOf(lang, conceptId)` is a pure
+   deterministic function of (language state, concept), computed on demand
+   and cacheable — exactly like names today. A language stores only its
+   root seeds + rule log; the full ~8–15k-word effective vocabulary exists
+   the way terrain exists before you look at it. Scaling to a bigger
+   dictionary is concept-graph DATA, not architecture.
+4. **Relations fall out, never authored per-word:** polysemy = the
+   colexification rolls; synonymy = native + borrowed forms on one concept;
+   etymology = the recorded derivation tree (every word can explain
+   itself); cognates = L4 sound-change rules over inherited roots; register
+   strata = domain-selective borrowing from prestige languages (conquest/
+   faith/trade contact — measurable from the sim's own graphs — donates
+   government/religion/luxury vocabulary while the native stock keeps body
+   parts, farm animals, kin). That last one IS the English pig/pork
+   phenomenon, generated from the sim's own conquests.
+5. **Scope line:** no grammar engine, no sentence generation/translation.
+   The payoff ceiling is: every name glossable, titles/mottos/epithets
+   renderable in-language, per-language dictionary export in the world
+   bible, and etymology as historiographic evidence.
 
 ### E. Orthographic lag (silent letters, emergently)
 
@@ -214,9 +256,11 @@ contact machinery and lands independently after L2.
    language record (`genVersion`, old languages keep old synthesis)?
    Leaning: accept for new worlds, keep saves' recorded names as-is (names
    are already stored on entities at creation).
-3. **How much lexicon**: 150 concepts is enough for toponyms + epithets.
-   Personal-name meaning compounds could reuse the same list. Going bigger
-   (full sentence generation) is out of scope — this is a NAME system.
+3. **Concept-graph curation**: which ~3–5k concepts, and who curates the
+   packed data asset (D2)? A minimal L3 can ship with a few hundred
+   concepts (toponyms + epithets + titles) and grow the graph as pure data
+   afterwards; the lexicalization architecture doesn't change with size.
+   Sentence generation stays out of scope at every size.
 4. **Script-shares-ease-diffusion coupling** (L5+): mechanism is plausible
    (shared script genuinely eased knowledge transfer) but touches validated
    history — separate lever, separate 3-seed run, or skip.
