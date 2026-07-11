@@ -210,7 +210,13 @@ const st = peopleSimStats(world);
     else aliveAges.push(world.step - p.foundedStep);
   }
   lifes.sort((a, b) => a - b);
-  if (lifes.length >= 8) {
+  // Scoring minimum 5 (was 8): against a 40×-wide band a small-sample median is
+  // still meaningful, and a LOW-CHURN world is the same censoring class the tail
+  // check below already treats as neutral — capitulation (vassalage preserving
+  // beaten courts) legitimately halves polity deaths, and that longevity must not
+  // read as "off-shape" when the deaths that DID happen have historical lifetimes.
+  // Below 5 the n/a still warns: a near-deathless map remains suspicious.
+  if (lifes.length >= 5) {
     const med = lifes[lifes.length >> 1], max = lifes[lifes.length - 1];
     const Y = 0.25;   // dyn-clock years per step (calendar.js DYN_RATE)
     score("fallen-polity lifespan median", `${med} steps (~${Math.round(med * Y)}y)`, med * Y >= 50 && med * Y <= 2000, false, `${lifes.length} fallen`);
