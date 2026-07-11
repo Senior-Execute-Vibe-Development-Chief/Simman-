@@ -1,12 +1,13 @@
 # Spec — Comprehensive language system: span the world's languages
 
-Status: **L1–L4 BUILT** (see status note at bottom). L5 (writing systems)
-remains designed-not-started. Companion code: `src/sim/language.js` (records,
-lifecycle, name API), `src/sim/languagePhonology.js` (feature bundles,
-typological profiles, sonority syllable grammar, romanization),
-`src/sim/languageLexicon.js` (concept graph + name pools),
-`src/sim/languageChange.js` (rule-based sound change). Acceptance probe:
-`tools/probe_langfit.mjs`.
+Status: **L1–L4 BUILT; M1/M2/M3/M5 BUILT, M4 built lab-side only** (see
+status notes at bottom). L5 (writing systems) remains designed-not-started.
+Companion code: `src/sim/language.js` (records, lifecycle, name API),
+`src/sim/languagePhonology.js` (feature bundles, typological profiles,
+sonority syllable grammar, romanization), `src/sim/languageLexicon.js`
+(concept graph + name pools), `src/sim/languageChange.js` (rule-based sound
+change), `src/sim/languageGrammar.js` (syntax dials, closed classes,
+inflection, clause renderer). Acceptance probe: `tools/probe_langfit.mjs`.
 
 ## Directive
 
@@ -368,3 +369,89 @@ fully" is the SENTENCE layer. Dependency order:
 Effort: M1 small · M2 large · M3 small · M4 medium (immediately demo-able)
 · M5 medium. The external-review loop (generate → hand to a fresh reader →
 convert complaints into gates) transfers directly to grammar.
+
+---
+
+## Build status (session 8) — the grammar layer
+
+**M1, M2, M3, M5 are BUILT** in `src/sim/languageGrammar.js`; **M4 is built
+as the Lab-side frame renderer only** (the owner wants the sim untouched —
+no chronicle wiring, no event-log reads; `renderClause` is ready for it).
+Everything follows the two house invariants: grammar dials live in
+`prof.gram` (plain JSON, famSeed-rolled from named substreams, pinned by
+every reference profile in languageRefs.js), and ALL derived forms —
+pronouns, numerals, paradigms, clauses — live in a WeakMap cache keyed by
+the record and invalidated on gen/loans/xph change, so save→load rebuilds
+byte-identical output by construction. What shipped vs the plan:
+
+- **M3 first, structurally**: syntax dials roll CORRELATED at real
+  frequencies (WALS-shaped SOV/SVO/V-initial split; OV ⇒ postpositions ⇒
+  genitive-first ⇒ suffixing; V-initial ⇒ prepositions + wh-fronting; SOV
+  carries case, morphotype scales its richness; ergativity a real minority
+  of case systems). A 300-language Greenberg gate holds the universals.
+- **M1 (closed classes) — grammaticalized, not invented**: adpositions wear
+  down from body parts (belly→in, foot→under, hand→with, face→to), plural
+  pronouns from 'many' (wǒ-men) or suppletive roots per morphotype, duals
+  from 'two', inclusive 'we' optionally welded from I+thou (yumi), definite
+  articles from the distal demonstrative, indefinite from 'one', question
+  words compound ONE interrogative root with man/earth/day/road (the wh-
+  series), demonstrative distance is vowel sound-symbolism (proximal i,
+  distal a), negators lean nasal. Numerals: base-10/20/5 with real formation
+  (five-two = 7; two-twenty = 40; quinary 'five' can BE 'hand', the score-
+  word can BE 'man'). Every closed form is a pre-rule synth replayed through
+  the whole rule log ⇒ cognate pronouns across families (mi/me/moi).
+- **M2 (inflection) — the onion**: an affix is a source word worn to a
+  clitic syllable at a birth point t in the rule log; the JOINED stem+affix
+  rides the rest of the log as one form. Erosion, seam sandhi, stem
+  alternations and case syncretism all fall out of the sound laws (codaLoss
+  really does eat a dative -t). Realization per the existing morph dial:
+  iso = particles; agg = stacked syllables with tier-clamped slot order
+  (number/aspect inner, case/tense middle, person outermost = youngest,
+  like life) and vowel harmony reaching the affixes (-lar/-ler incl. the
+  a~e low pair); fus = portmanteau crush (first affix keeps its body, the
+  rest leave ≤2 consonant traces: -m vs -mp) + theme-vowel declension
+  classes on fused endings; tmpl = pattern change (broken plurals, TAM
+  re-vowelling). Person agreement = the language's own pronouns cliticized;
+  3sg is often zero. Irregularity BY FREQUENCY: b≥0.95 draws suppletive
+  ghost-verb pasts ('went' is a verb the language otherwise forgot),
+  fusional b≥0.9 ablauts and sheds the affix (sang), agglutinative basics
+  syncopate. Contrast maintenance dedupes what actually survives (the
+  consonantal skeleton under fusion OR harmony — harmony retints affix
+  vowels per stem, so vowel-only person contrasts neutralize; learned from
+  the rendered page).
+- **M5 (diachrony)**: the grammaticalization CYCLE — an affix ground to
+  silence renews from a fresh quarry word at a later birth point, tested
+  against the language's own phonology (marked cell vs bare stem on a probe
+  noun), so case systems erode and re-form and sisters diverge in paradigm
+  structure. ANALOGY LEVELING as a hazard per rule-log index keyed on
+  (family, concept, index): least-basic irregulars level first, b=1.0 never
+  does, sisters share leveling history to the branch point. Word order can
+  flip once at branch (~12%) while adpositions/affix side LAG — the real
+  disharmonic window. Cognate conjugations fall out of family-shared
+  sources + births and per-language rule tails; the Lab cognate table shows
+  inflected rows.
+- **M4-lite (frames)**: `renderClause(lang, frame)` — frames are
+  {s, v: {c, tam, neg}, o, loc, q}, exactly the shape of a chronicle event.
+  Alignment-aware case marking (ERG on transitive subjects only),
+  agreement, pro-drop, negation (affix or particle at the dialled position
+  incl. clause-final), polar particles (ma/ka) at the dialled edge,
+  wh-front vs in-situ, adjective/article placement, adjuncts preverbal in
+  OV. Token-aligned interlinear gloss (Leipzig-style: PL, ACC, PST, ⟨PST⟩
+  for stem-internal marking, dots for fused). The Lab's Sentences card is
+  the demo: frame builder + canned frames, language line over gloss line.
+- **Gates added** (probe_langfit.mjs): Greenberg universals ×300; closed-
+  class distinctness/family-resemblance/base-formation; pinned-Mandarin
+  pinyin legality for the whole closed layer AND rendered clauses (SVO +
+  postverbal PFV particle + final Q particle); citation stability
+  (NOM.SG = wordOf, so the name layer is untouched); paradigm contrast
+  (sg-row ≥85% — plural-oblique syncretism is honest Latin); irregularity
+  in the basicness belt only; harmony-in-affixes; cycle audibility +
+  renewal occurrence; leveling monotone + occurring; cognate sources +
+  divergence; word-order shift rate + morphology lag; clause gloss
+  alignment, verb-position-per-dial, ergativity, pro-drop; determinism +
+  JSON-roundtrip for closed classes, paradigms and clauses.
+
+**Not built (parked, unchanged)**: sim/chronicle wiring for M4 (frame
+renderer is ready; wiring is a sim-side decision), politeness/T-V pronouns,
+object pronoun case forms, adjective agreement, L5 writing systems,
+orthographic lag.

@@ -379,11 +379,19 @@ export function closedOf(lang) {
   dedupe(lang, inv, [...prons, ...dems, neg, ...qs, ...conj.filter(x => !x.src), ...(qp ? [qp] : [])]);
 
   // ── articles: the definite wears down from the distal demonstrative
-  // (that→the), the indefinite from 'one' (one→a) — when the dials say so ──
+  // (that→the), the indefinite from 'one' (one→a) — when the dials say so.
+  // An article is UNSTRESSED: if wearing a one-syllable demonstrative left
+  // it identical to its parent, the vowel reduces (þæt vs þē) ──
   const far = dems[dems.length - 1];
   const defArt = g.defArt ? (() => {
     const f = legalizeWord({ syls: [wearSyl(prof, far.form)] });
-    return { g: "DEF", form: f, w: rform(lang, f), src: "that" };
+    let w = rform(lang, f);
+    if (w === far.w) {
+      retint(f, vowMid(inv.vows));
+      w = rform(lang, f);
+      if (w === far.w) { retint(f, vowNear(inv.vows)); w = rform(lang, f); }
+    }
+    return { g: "DEF", form: f, w, src: "that" };
   })() : null;
   const indefArt = g.indefArt ? (() => {
     const f = legalizeWord({ syls: [wearSyl(prof, lighten(nativeStemOf(lang, ONE)))] });
