@@ -218,6 +218,7 @@ export function saveWorld(world, meta = {}) {
     refCapPowerS: world._refCapPowerS,   // CAP_RELATIVE smoothed median capital power (the capacity ruler's era base); absent/0 reseeds at the next polity pass
     refRealmPop: world._refRealmPop,  // GRIEV_LEDGER smoothed median realm population (what a "people" weighs); absent/0 reseeds at the next polity pass
     loyalScanAt: world._loyalScanAt,  // LOYAL_FIELD last owner-diff scan step (classifies force vs politics in transfer semantics)
+    devWaveAt: world._devWaveAt,      // DEV_FIELD last wave firing step (the ~1 km/year cadence clock)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1, event: world._nextEventId ?? (world.events ? world.events.length : 0) },
     tuning,
@@ -243,6 +244,9 @@ export function saveWorld(world, meta = {}) {
       // it isn't. Absent unless the lever ran → undefined key, dropped by
       // JSON.stringify, so a default (lever-off) save stays byte-identical.
       popField: world.popField ? b64FromTyped(world.popField) : undefined,
+      // Regional development field (T.DEV_FIELD): the wave-of-advance ratchet is
+      // an integral of history, not re-derivable — absent unless the lever ran.
+      devField: world.devField ? b64FromTyped(world.devField) : undefined,
       // The loyalty field (T.LOYAL_FIELD, loyaltyField.js): allegiance is a
       // dense continuum (every governed tile carries a value), the owner-diff
       // snapshot is dense ids; both absent unless the lever ran (undefined key
@@ -327,6 +331,7 @@ export function loadWorld(data, opts = {}) {
   world._refCapPowerS = data.refCapPowerS ?? 0;   // smoothed median capital power (CAP_RELATIVE ruler base; 0 reseeds next pass)
   world._refRealmPop = data.refRealmPop ?? 0;     // smoothed median realm population (GRIEV_LEDGER read normalizer; 0 reseeds next pass)
   if (data.loyalScanAt != null) world._loyalScanAt = data.loyalScanAt;   // owner-diff scan clock (unset ≡ never scanned)
+  if (data.devWaveAt != null) world._devWaveAt = data.devWaveAt;         // wave cadence clock (unset ≡ never fired)
   world._popTotal = data.popTotal ?? 0;
   world._eraAt = data.eraAt || [0];
   world._nextSettlementId = data.counters.settlement;
@@ -368,6 +373,8 @@ export function loadWorld(data, opts = {}) {
     world._claimPress = loadTyped(data.maps.claimPress, Float32Array, N) || world._claimPress;
     const pf = loadTyped(data.maps.popField, Float32Array, N);
     if (pf) { world.popField = pf; world.capField = new Float32Array(N); world._popNext = new Float32Array(N); }   // phase-1 pop field (capField re-derived next step)
+    const df = loadTyped(data.maps.devField, Float32Array, N);
+    if (df) { world.devField = df; world._devNext = new Float32Array(N); }   // regional development ratchet (T.DEV_FIELD); absent old saves reseed via ensureDevField
     const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);
@@ -536,6 +543,9 @@ export function hashWorld(world) {
   if (world._natGriev && world._natGriev.size) { for (const k of [...world._natGriev.keys()].sort()) { mixStr(k); mixNum(world._natGriev.get(k)); } }
   mixNum(world._refRealmPop || -1);   // 0 ≡ unset ("reseed at the next pass") — a load default must hash like the pre-save undefined
   mixNum(world._loyalScanAt ?? -1);
+  // DEV_FIELD: the regional development ratchet + its cadence clock (presence-normalized).
+  { const df = world.devField; for (let i = 0; i < world.N; i += 97) mixNum(df ? df[i] : 0); }
+  mixNum(world._devWaveAt ?? -1);
   mixNum(world._inflRef ?? -1);
   for (const k of WORLD_MAPS) mixNum(world[k] ? world[k].size : 0);   // registered world maps: presence + size (every one now covered, not just a hand-picked few)
   if (world._cBudgetRamp) { const ks = [...world._cBudgetRamp.keys()].sort((a, b) => a - b); for (const k of ks) { mixNum(k); mixNum(world._cBudgetRamp.get(k)); } }   // + cBudgetRamp full key/values

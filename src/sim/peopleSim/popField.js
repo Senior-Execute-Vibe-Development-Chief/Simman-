@@ -36,6 +36,119 @@ const POP_GROWTH = 0.03;    // logistic intrinsic growth per step (r in pop += r
 const POP_MIGRATE = 0.06;   // share of a tile's people that migrate toward spare capacity per step
 const SEED_POP = 0.4;       // people seeded per habitable tile (the spark logistic growth needs)
 
+// ── T.DEV_FIELD: the REGIONAL development field (the phase the header promised:
+// "becomes a field in a later phase") ────────────────────────────────────────
+// world.devField[ti] = the agricultural TECHNIQUE known to the people ON that
+// ground (0..1). Settlements STAMP their own agriculture onto the land they
+// work (their catchments); from there the technique DIFFUSES over land as a
+// wave of advance — the Neolithic expansion's measured mechanism (Ammerman &
+// Cavalli-Sforza: farming crossed Europe at ~1 km/year, carried farmer-to-
+// forager and farmer-by-migration). Carrying capacity then reads the LOCAL
+// technique instead of one global scalar, so the civilized cores grow dense
+// while the deep frontier stays a thin subsistence scatter — and the contrast
+// between them WIDENS as regional development diverges and COLLAPSES as it
+// diffuses. Emergent everywhere: no clock, no named region, no cap on where
+// the wave may reach.
+//   • WAVE SPEED: one tile per firing, with the firing interval derived from
+//     DEV_WAVE_KMPY (km/year) and the grid's real tile size — so the same
+//     km/year at any resolution (÷rNormPop) and any SIM_GRANULARITY (×G, the
+//     _ivl pattern: dyn-years per step shrink 1/G while intervals stretch G).
+//   • THINNING: a package loses DEV_WAVE_LOSS_PLANET of its level across a
+//     full planet circumference of distance from where it is practiced —
+//     remote peoples work a degraded version until nearer sources arise
+//     (their own settlements then stamp the real local level). One
+//     planetary-scale constant, no per-place tuning.
+//   • RATCHET: the field only rises (techniques spread; forgetting is the
+//     settlement layer's KNOW_DECAY story, not the frontier's). Double-
+//     buffered relaxation — an in-place max sweep would cascade a whole row
+//     in one pass (infinite wave speed along the scan direction).
+//   • GENESIS: the map starts at 3000 BC, AFTER the real Neolithic expansion
+//     (~9000→3000 BC) — so a fresh (or newly-activated) field inherits that
+//     skipped history as an INITIAL CONDITION: the same wave, run from the
+//     cradle hearths for DEV_INIT_YEARS before the first step. An initial
+//     condition, not a gate (the genesis-seed philosophy).
+const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neolithic ~1 km/year)
+const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
+const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
+const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
+
+// Firing interval (steps) for the wave at this grid: a tile is EARTH_KM/tw km
+// across and the wave crosses one tile per firing, so fire every
+// tileKm/KMPY years = tileKm/KMPY/0.25 steps (dyn-years run 0.25/G per step,
+// intervals stretch ×G — the _ivl pattern). Resolution-invariant by
+// construction: a finer grid has smaller tiles and proportionally shorter
+// intervals, the same km/year everywhere.
+function devWaveIvl(world) {
+  const tileKm = EARTH_KM / world.tw;
+  const G = T.SIM_GRANULARITY || 1;
+  return Math.max(1, Math.round(tileKm / DEV_WAVE_KMPY / 0.25 * G));
+}
+const devWaveLoss = (world) => DEV_WAVE_LOSS_PLANET / world.tw;
+
+/** Stamp every settlement's own agriculture onto the land it works. */
+function stampDevSources(world, dev) {
+  const owner = world._territoryOwner, byId = world._byId, tw = world.tw;
+  if (owner && byId) {
+    for (let i = 0; i < world.N; i++) {
+      const sid = owner[i];
+      if (sid < 0) continue;
+      const s = byId.get(sid);
+      if (!s || s.mode !== "settled") continue;
+      const a = (s.knowledge && s.knowledge.agriculture) || 0;
+      if (a > dev[i]) dev[i] = a;
+    }
+  }
+  // Home tiles directly, so a settlement with no catchment yet still radiates.
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (ti < 0 || ti >= world.N) continue;
+    const a = (s.knowledge && s.knowledge.agriculture) || 0;
+    if (a > dev[ti]) dev[ti] = a;
+  }
+}
+
+/** One wave relaxation: each land tile rises toward its best neighbour − loss. */
+function relaxDevWave(world, dev, land) {
+  const tw = world.tw, th = world.th;
+  let nxt = world._devNext;
+  if (!nxt || nxt.length !== world.N) nxt = world._devNext = new Float32Array(world.N);
+  nxt.set(dev);
+  const loss = devWaveLoss(world);
+  for (let li = 0; li < land.length; li++) {
+    const i = land[li];
+    const y = (i / tw) | 0, x = i - y * tw;
+    let best = dev[y * tw + ((x + 1) % tw)];
+    const l = dev[y * tw + ((x - 1 + tw) % tw)];
+    if (l > best) best = l;
+    if (y > 0 && dev[i - tw] > best) best = dev[i - tw];
+    if (y < th - 1 && dev[i + tw] > best) best = dev[i + tw];
+    const v = best - loss;
+    if (v > nxt[i]) nxt[i] = v;
+  }
+  world._devNext = dev;
+  world.devField = nxt;
+  return nxt;
+}
+
+/**
+ * Allocate + seed the development field: stamp today's sources, then run the
+ * skipped pre-map Neolithic expansion (DEV_INIT_YEARS of the same wave) so a
+ * 3000 BC world starts with farming already spread around its hearths — the
+ * eve-of-states initial condition. Deterministic (a pure function of current
+ * state); also serves an old save on load (absent field → same seeding).
+ */
+function ensureDevField(world, land) {
+  if (world.devField && world.devField.length === world.N) return world.devField;
+  let dev = world.devField = new Float32Array(world.N);
+  world._devNext = new Float32Array(world.N);
+  stampDevSources(world, dev);
+  const tileKm = EARTH_KM / world.tw;
+  const iters = Math.max(0, Math.round(DEV_INIT_YEARS * DEV_WAVE_KMPY / tileKm));
+  for (let k = 0; k < iters; k++) dev = relaxDevWave(world, dev, land);
+  return dev;
+}
+
 // ── Carrying-capacity terms beyond raw fertility (phase 2) ──────────────────
 // Real land does not feed people in proportion to its crop suitability alone: a
 // river valley or a coast supports FAR denser settlement than the same soil
@@ -80,7 +193,8 @@ export function stepPopField(world, sub = 1) {
   if (!pop || pop.length !== N) { initPopField(world); pop = world.popField; cap = world.capField; }
 
   // Global agricultural development (emergent — phase 1 reads it from settlements'
-  // leading agriculture; a later phase makes tech a field of its own).
+  // leading agriculture; T.DEV_FIELD replaces this scalar with the REGIONAL
+  // technique field — see the wave-of-advance block above).
   let leadAgri = 0;
   for (const s of world.settlements) if (s.mode === "settled") { const a = (s.knowledge && s.knowledge.agriculture) || 0; if (a > leadAgri) leadAgri = a; }
   const dev = DEV_BASE + DEV_TECH * leadAgri;
@@ -89,12 +203,6 @@ export function stepPopField(world, sub = 1) {
   // At the default stride 4 / G 1 → dt 4, the field advances 4 ticks per firing.
   const dt = Math.min(8, (world._dt || 1) * sub);
 
-  // 1. Carrying capacity per tile = farmable yield (fert × development) lifted by
-  //    the water-transport PREMIUM (river/coast can import food → denser settlement)
-  //    and cut by rugged RELIEF. The premium is multiplicative on fert, so it
-  //    concentrates people onto FERTILE valleys and shores (a barren river bank
-  //    stays empty — you can't irrigate rock) rather than blooming deserts.
-  const accessDev = ACCESS_DEV0 + ACCESS_DEVK * leadAgri;   // transport premium grows with tech (emergent)
   // Iterate LAND tiles only. ~45% of the grid is ocean, where cap/pop are always 0
   // (water cap stays at its init 0, never written; nothing migrates into it) — so
   // skipping it is byte-identical, it just drops the field pass's dead iterations
@@ -102,13 +210,43 @@ export function stepPopField(world, sub = 1) {
   // static (terrain), built once.
   const land = world._popLand && world._popLand.length ? world._popLand : (world._popLand = buildLandList(world));
   const nLand = land.length;
+
+  // T.DEV_FIELD: keep the regional technique field current — stamp sources +
+  // advance the wave one tile every devWaveIvl steps (~1 km/year at any grid).
+  let devF = null;
+  if (T.DEV_FIELD) {
+    devF = ensureDevField(world, land);
+    const ivl = devWaveIvl(world);
+    if (world.step - (world._devWaveAt ?? -Infinity) >= ivl) {
+      world._devWaveAt = world.step;
+      stampDevSources(world, devF);
+      devF = relaxDevWave(world, devF, land);
+    }
+  }
+
+  // 1. Carrying capacity per tile = farmable yield (fert × development) lifted by
+  //    the water-transport PREMIUM (river/coast can import food → denser settlement)
+  //    and cut by rugged RELIEF. The premium is multiplicative on fert, so it
+  //    concentrates people onto FERTILE valleys and shores (a barren river bank
+  //    stays empty — you can't irrigate rock) rather than blooming deserts.
+  //    Under T.DEV_FIELD both development terms read the LOCAL technique — the
+  //    people of a tile farm (and build ports) with what has REACHED them, so
+  //    the civilized cores support dense settlement while the deep frontier
+  //    stays a thin subsistence scatter. Lever off: the global scalar, exactly.
+  const accessDev = ACCESS_DEV0 + ACCESS_DEVK * leadAgri;   // transport premium grows with tech (emergent)
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
     const access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
-    const reach = 1 + access * accessDev;
     const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i]) : 1;
-    cap[i] = fert[i] * CAP_PER_FERT * dev * reach * reliefMul;
+    if (devF) {
+      const a = devF[i];
+      const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
+      cap[i] = fert[i] * CAP_PER_FERT * (DEV_BASE + DEV_TECH * a) * reach * reliefMul;
+    } else {
+      const reach = 1 + access * accessDev;
+      cap[i] = fert[i] * CAP_PER_FERT * dev * reach * reliefMul;
+    }
   }
 
   // 2. Logistic growth toward capacity (in place).
