@@ -25,6 +25,14 @@
 // classical gap), Medieval 0.9x, Renaissance 1.3x, Industrial 1.0x — the tail has
 // CONVERGED; historical era contraction is now an emergent output. Modern 37.5x
 // and Neolithic 5.5x are scoring artifacts (open-era accrual / start-up epoch).
+// COERCED-SHARE DIAGNOSTIC (42k, seed 8817): classical-era world share ~10%
+// (slaves 8%, peak) vs Rome's ~30-40% core — LABOR_INNOV bites only ~6% there,
+// hence no plateau. The supply channel (raids/captives) works — individual
+// settlements reach 0.6-0.97 — but the DEMAND engine is missing: no latifundia
+// dynamic (conquest wealth → land concentration → gang-labor estates → slave
+// demand at scale). That mechanism is the remaining classical-gap work. NOTE the
+// sim already reproduces the COLONATE transition for free: late-game slaves fall
+// 0.08→0.01 while serfs rise 0.03→0.05 — slavery aging into serfdom, as Rome did.
 // α=1.5 is the flip candidate. Before default-on: score eras to ATTAINMENT,
 // 3-seed table, re-earn stylized at the new pacing, then delete displayYear.
 import { buildSim } from "./_harness.mjs";
