@@ -27,6 +27,7 @@ import { identityWeightsFor, identityGrievance, adminFriction, identityGrievance
 import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
 import { closeWar } from "./armies.js";
+import { updateLoyaltyField, updateGrievLedger, grievOf, ATTACH_SECEDE, GRIEV_UNREST_W } from "./loyaltyField.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
 // (T.POLITY_INTERVAL); index.js gates the pass on it.
@@ -982,8 +983,12 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
   const seededH = new Set();
   for (const sd of seeds) if (sd.countryId === c.id && (sd._homeland ?? -1) >= 0) seededH.add(sd._homeland);
   if (seededH.size) {
+    // LOYAL_FIELD: "restless" is the PEOPLE's detachment (county attachment),
+    // not the seat's administrative stock — the yearning that restores a nation
+    // lives on the ground, whose memory the derive already put in m._homeland.
     const restless = c.members.filter(m => m.countryId === c.id && seededH.has(m._homeland ?? -1)
-      && (m.loyalty ?? 1) <= REVOLT_JOIN_LOYALTY && world.step - (m._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE);
+      && (T.LOYAL_FIELD ? (m._attach ?? m.loyalty ?? 1) : (m.loyalty ?? 1)) <= REVOLT_JOIN_LOYALTY
+      && world.step - (m._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE);
     restoreNations(world, restless, c.id, true);
   }
   const co = world._countryOwner, owner = world._territoryOwner, localCost = world._countryCost;
@@ -1864,13 +1869,24 @@ export function updatePolities(world) {
     }
   }
 
+  // ── Ontology V2 (loyaltyField.js): the land remembers, the people attach ──
+  // One owner-diff scan stamps tile homeland memory, the attachment continuum
+  // habituates toward each county's administrative condition, and settlements
+  // DERIVE s._homeland/_attach from the ground. The grievance ledger decays
+  // (allied dyads reconcile faster) and refreshes its era-median reference.
+  updateGrievLedger(world, countries);
+  updateLoyaltyField(world, countries);
+
   // Assimilation: a people held beyond living memory (HOMELAND_MEMORY) lose their
   // old national identity and become natives of their current ruler — so a LATE
   // revolt there forms a NEW state on the administrative lines, not the old nation.
   // Home-by-any-path also clears: a secession that hands a settlement back its own
   // original nation-id (freshCountryId reusing it) is a homecoming too — drop the
   // now self-referential marker so it can't linger or re-trigger a restoration.
-  for (const s of world.settlements) {
+  // Under LOYAL_FIELD both jobs move to the ground: the flat timer is replaced by
+  // EMERGENT assimilation (attachment completing), and the homecoming clear is the
+  // scan's own transfer semantics — the derive above already rewrote s._homeland.
+  if (!T.LOYAL_FIELD) for (const s of world.settlements) {
     if (s.mode !== "settled" || (s._homeland ?? -1) < 0) continue;
     if (s._homeland === s.countryId
         || ((s._homelandFell ?? -1) >= 0 && world.step - s._homelandFell > HOMELAND_MEMORY / (world._dt || 1))) {
@@ -2242,6 +2258,13 @@ export function updatePolities(world) {
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
       const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
       const gI = identityGrievance(cap, s, idW);   // heterodox-faith / foreign-people grievance vs the state core (era-weighted, cohesion.js)
+      // OLD WOUNDS (GRIEV_LEDGER): a province whose ground remembers a fallen
+      // nation simmers under the ruler who harmed it, ∝ the pair ledger — the
+      // NATIONAL-memory channel identity-mixture mismatch can't express. Reads
+      // the ledger, which decays over generations, so it needs no era weight:
+      // its amplitude IS the recency of the harm. Gone once assimilation
+      // completes (the derive clears s._homeland).
+      const gG = (T.GRIEV_LEDGER && (s._homeland ?? -1) >= 0) ? GRIEV_UNREST_W * grievOf(world, s._homeland, c.id) : 0;
       // SERFDOM (land-tenure coercion): bound peasants owing heavy labour-rent. It forms
       // where a settlement's GRAIN is in demand (export pull) and a STRONG realm can bind
       // the peasants (coercion), set against their ability to EXIT to towns/commerce. The
@@ -2281,8 +2304,9 @@ export function updatePolities(world) {
         gSerf = T.SERF_UNREST * s._serf;
       }
       // a shrewd, firm ruler keeps better order; a foolish, weak one lets it fray (dynasties.js c._rulerRelief, ±)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf) * T.UNREST_GAIN - UNREST_RELIEF - monRelief - (c._rulerRelief || 0)));
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf + gG) * T.UNREST_GAIN - UNREST_RELIEF - monRelief - (c._rulerRelief || 0)));
       s._unrestCause = s._plagueActive ? "plague"
+                     : gG > gI && gG >= gH && gG >= gT && gG >= gW && gG >= gC ? "old wounds"
                      : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"
                      : gT >= gC && gT >= gW ? "taxes"
@@ -2412,7 +2436,14 @@ export function updatePolities(world) {
         // primitive realm (low org) has no such glue and fragments fast.
         const orgHold = 1 - capCoh * T.LOYAL_ORG_HOLD;
         s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over) * orgHold);
-        if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
+        // LOYAL_FIELD hysteresis: a collapsed ADMINISTRATION only seeds a revolt
+        // once its PEOPLE have detached too (county attachment past the restless
+        // line). A long-held core forced over budget by one bad war stays restless
+        // but holds — its people carry the realm; a fresh march (never attached)
+        // sheds exactly as before. Detachment follows the collapsed stock on the
+        // DETACH_TAU clock, so this delays a core's shedding, never prevents it.
+        if (s.loyalty <= 0 && (!T.LOYAL_FIELD || (s._attach ?? 0) <= ATTACH_SECEDE))
+          seeds.push(s);                                   // collapsed — defer (revolt is contagious)
       }
     }
     c._loadTotal = cum;   // total admin load drawn (vs c._capacity)

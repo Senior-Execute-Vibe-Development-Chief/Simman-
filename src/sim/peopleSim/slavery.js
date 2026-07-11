@@ -20,6 +20,7 @@ import { forEachNear } from "./spatialGrid.js";
 import { settlementPower } from "./conquest.js";
 import { recordIn, recordOut, IN_SLAVE_TRADE, OUT_SLAVE } from "./money.js";
 import { getWealthReserve, recordCaptives, drainCaptivePools, arriveCaptives } from "./settlement.js";
+import { feedGrievance } from "./loyaltyField.js";
 import { T } from "./tuning.js";
 
 export const SLAVE_INTERVAL = 50;     // ticks between slave-trade passes (slow flow)
@@ -109,6 +110,10 @@ export function updateSlaveTrade(world) {
         if (grab < 1) return;
         recordCaptives(r, v, grab);                                    // the captives carry who they ARE (SLAVE_PEOPLE)
         v.people -= grab; took += grab;                                // the victim region bleeds
+        // GRIEV_LEDGER: a razzia on a CROWNED town is a national wound the
+        // victim's realm remembers against the raider's (the stateless
+        // frontier has no court to keep the ledger).
+        feedGrievance(world, v.countryId, r.countryId, grab);
       });
       if (took > 0) r._captives = (r._captives || 0) + took;   // (a raider becoming a notable slaver is announced once, in chronicle.js)
     }

@@ -28,6 +28,7 @@ import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { T } from "./tuning.js";
 import { recordIn, IN_STATE_PAY } from "./money.js";
+import { feedGrievance, SACK_GRIEV_FRAC } from "./loyaltyField.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -1381,6 +1382,10 @@ export function advanceFronts(world) {
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(acc, (g.get(acc) || 0) + 1); }
           dS._conqueredAt = world.step;
           dS._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
+          // GRIEV_LEDGER: the sack is the deepest wound a nation takes — the
+          // dead, the enslaved (the captives below), the scattered. Counted as
+          // a fraction of the city's people at the moment it fell.
+          feedGrievance(world, oldId, acc, (dS.people || 0) * SACK_GRIEV_FRAC);
           // Captives: the sack of a city carries off part of its people into bondage —
           // war as the primary supply of the slave trade (the captor sells/works them).
           // × √slavePull (slavery.js): the sack happens for war reasons, but how much of
@@ -1451,6 +1456,11 @@ export function advanceFronts(world) {
         const cti = pc.tiles[i].ti;
         if (owner[cti] !== def.id) continue;   // already taken earlier this pass
         owner[cti] = att.id; capturedAt[cti] = world.step; captured++;
+        // GRIEV_LEDGER: the people on the ground taken by force grieve the taker
+        // (popField — the land's people, the canonical count). Fed HERE, at the
+        // one tile-flip war writes, so peaceful absorption and border smoothing
+        // never grieve; conquest.js decays it over generations.
+        if (T.GRIEV_LEDGER && world.popField) feedGrievance(world, def.countryId, att.countryId, world.popField[cti]);
       }
       if (captured > 0) {
         bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
