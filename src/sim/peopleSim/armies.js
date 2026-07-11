@@ -18,7 +18,7 @@
 import { coreRadiusFor } from "./territory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
@@ -387,6 +387,23 @@ const AMPHIB_NAV_MIN = 0.25;
 // truce block in advanceFronts). Below it, low-grade border raiding never
 // formally "ends" — the marches stay restless; only real wars sign peaces.
 const TRUCE_EXHAUST = 0.4;
+// ── Capitulation (deditio): a decisively LOST war ends on the victor's terms ──
+// Measured (tools/probe_warbars.mjs): every treaty signed on the LOSER's
+// exhaustion — the beaten side paid a one-time indemnity, KEPT its land, and got
+// a 770-1125 dyn-year protective truce. Victory reset the board, the inverse of
+// how most ancient wars ended: the beaten court became a CLIENT whose weight
+// joined the victor's next war (Rome's socii — the road from victory to network
+// growth). So: when the exhaustion gap says the war was decisively lost, not
+// mutually bled, AND the victor's live network field-might clearly out-scales
+// the loser's, the loser bends the knee (conquest.js bendTheKnee — the existing
+// dependency wiring: tribute, bloc, no internal fronts, network power) instead
+// of taking the protective truce. The counterweights are already built: the
+// coalition arrayed against the victor raises the required edge (coalitionBarOf),
+// a vassal that outgrows its lord breaks free (independence), and the identity/
+// coalition brakes still govern peacetime cascades. T.CAPITULATE=0 recovers the
+// pure-truce treaty table byte-identically.
+const CAPIT_GAP   = 0.5;   // exhaustion gap (|eA−eB|/TRUCE_EXHAUST) past which a war reads as decisively lost
+const CAPIT_RATIO = 2.0;   // the victor's live network might must out-scale the loser's by this much — a pyrrhic near-peer war never vassalizes an equal
 
 export function advanceFronts(world) {
   // TILE_POLITY (4c): war is fought COUNTRY vs COUNTRY over the political field
@@ -1070,6 +1087,31 @@ export function advanceFronts(world) {
           if (world.step - born >= staleWin && Math.abs(moveEma.get(key) || 0) < STALE_EPS) how = "stalemate";
         }
         if (!how) continue;
+        // CAPITULATION intercepts the exhaustion treaty (header at CAPIT_GAP): a
+        // decisively beaten court bends the knee — the victor gains a tributary
+        // network instead of handing its victim a millennium of protection. The
+        // knee-bend IS this pair's settlement (no truce, no congress); the victor
+        // stays free to press its other wars — serial conquest, at last possible.
+        if (how === "truce" && T.CAPITULATE) {
+          const eB = exh.get(ecc) || 0;
+          const gap = Math.abs(eA - eB) / TRUCE_EXHAUST;
+          if (gap >= CAPIT_GAP) {
+            const loser = eA > eB ? cc : ecc, winner = eA > eB ? ecc : cc;
+            let wM = natMight.get(winner) || 0, lM = natMight.get(loser) || 0;
+            if (ovFr) for (const [dep, over] of ovFr) {   // live network might: a suzerain weighs with its clients
+              if (over === winner) wM += natMight.get(dep) || 0;
+              else if (over === loser) lM += natMight.get(dep) || 0;
+            }
+            if (wM >= lM * CAPIT_RATIO * coalitionBarOf(winner, loser)
+                && bendTheKnee(world, loser, winner, "capitulation")) {
+              const key = cc + ":" + ecc;
+              if (WDBG) WDBG.signed.push({ how: "capitulation", dur: 0, age: world.step - (warBorn.get(key) ?? world.step),
+                exhHi: Math.max(eA, eB), exhLo: Math.min(eA, eB) });
+              warBorn.delete(key); moveEma.delete(key);
+              continue;
+            }
+          }
+        }
         if (!signPeace(cc, ecc, how)) continue;
         // the congress: exhausted co-belligerents of either side settle too —
         // wars end at conferences (a stalemate settlement convenes one just the same)

@@ -154,6 +154,8 @@ const NARRATE = {
   "polity.submitted"(ev, as) {
     return as === ev.to
       ? `${ev.name || "A neighbouring statelet"} bent the knee and became a tributary of the realm.`
+      : ev.how === "capitulation"
+      ? `Beaten in the field, the court of ${ev.name || "the realm"} bent the knee to ${ev.toName || "the victor"} — a client crown under the conqueror's peace.`
       : `Facing hopeless odds, the court of ${ev.name || "the realm"} bowed to ${ev.toName || "a greater power"} — keeping its throne at the price of tribute.`;
   },
   "horde.raid"(ev, as) {

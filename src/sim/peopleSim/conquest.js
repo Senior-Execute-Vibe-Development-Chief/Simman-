@@ -2838,38 +2838,51 @@ function considerSubmissions(world, countries) {
     // it would overawe — the same deterrence that throttles peaceful absorption.
     prob /= coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
     if (r > prob) continue;
-    const rec = getOrCreateRecord(world, sid, { seat: S.capital });
-    if (!rec || rec._overlord != null) continue;
-    rec._overlord = hid;
-    rec._depKind = "vassal";                                // a submitted sovereign court, not a planted colony
-    // Wire the bond LIVE — rebuildOverlords/updateAlliances only refresh later,
-    // and in that window the war pass would read the old world: the suzerain
-    // still opening fronts on its fresh tributary, the vassal's power still
-    // counted in the coalition AGAINST its own overlord.
-    if (world._overlordOf) world._overlordOf.set(sid, hid);
-    if (world._allies) {
-      let sa = world._allies.get(sid); if (!sa) world._allies.set(sid, sa = new Set()); sa.add(hid);
-      let ha = world._allies.get(hid); if (!ha) world._allies.set(hid, ha = new Set()); ha.add(sid);
-    }
-    if (threat.get(sid) === hid) {
-      threat.set(sid, -1);
-      if (world._blocMight) {
-        const bm = world._blocMight.get(hid) || 0;
-        world._blocMight.set(hid, Math.max(0, bm - (world._countryPow.get(sid) || 0)));
-      }
-    }
-    // Submission IS the peace: any running war between the pair ends in
-    // capitulation (its dead are reckoned), and a truce binds the suzerain —
-    // a lord who accepts tribute does not sack the payer.
-    if (T.TRUCE_TICKS > 0) {
-      const truces = world._truces || (world._truces = new Map());
-      const key = Math.min(sid, hid) + ":" + Math.max(sid, hid);
-      truces.set(key, world.step + T.TRUCE_TICKS / (world._dt || 1));
-      if (world._warDead && world._warDead.has(key)) closeWar(world, key, "submission");
-    }
-    logEvent(world, "polity.submitted", { polity: sid, name: realmName(world, sid),
-      to: hid, toName: realmName(world, hid) });
+    bendTheKnee(world, sid, hid);
   }
+}
+
+// Apply a court's submission — the dependency wiring shared by peacetime overawing
+// (considerSubmissions, above) and wartime CAPITULATION (armies.js treaty table):
+// mint the record, set the bond, wire the live maps, end the pair's war as a
+// peace, and announce it. Returns false if the court is already someone's
+// dependency or has no live seat — the caller falls back to an ordinary treaty.
+export function bendTheKnee(world, sid, hid, how = "submission") {
+  const S = world.countries && world.countries.get(sid);
+  if (!S || !S.capital) return false;
+  const rec = getOrCreateRecord(world, sid, { seat: S.capital });
+  if (!rec || rec._overlord != null) return false;
+  rec._overlord = hid;
+  rec._depKind = "vassal";                                // a submitted sovereign court, not a planted colony
+  // Wire the bond LIVE — rebuildOverlords/updateAlliances only refresh later,
+  // and in that window the war pass would read the old world: the suzerain
+  // still opening fronts on its fresh tributary, the vassal's power still
+  // counted in the coalition AGAINST its own overlord.
+  if (world._overlordOf) world._overlordOf.set(sid, hid);
+  if (world._allies) {
+    let sa = world._allies.get(sid); if (!sa) world._allies.set(sid, sa = new Set()); sa.add(hid);
+    let ha = world._allies.get(hid); if (!ha) world._allies.set(hid, ha = new Set()); ha.add(sid);
+  }
+  const threat = world._allianceTarget;
+  if (threat && threat.get(sid) === hid) {
+    threat.set(sid, -1);
+    if (world._blocMight && world._countryPow) {
+      const bm = world._blocMight.get(hid) || 0;
+      world._blocMight.set(hid, Math.max(0, bm - (world._countryPow.get(sid) || 0)));
+    }
+  }
+  // Submission IS the peace: any running war between the pair ends in
+  // capitulation (its dead are reckoned), and a truce binds the suzerain —
+  // a lord who accepts tribute does not sack the payer.
+  if (T.TRUCE_TICKS > 0) {
+    const truces = world._truces || (world._truces = new Map());
+    const key = Math.min(sid, hid) + ":" + Math.max(sid, hid);
+    truces.set(key, world.step + T.TRUCE_TICKS / (world._dt || 1));
+    if (world._warDead && world._warDead.has(key)) closeWar(world, key, how);
+  }
+  logEvent(world, "polity.submitted", { polity: sid, name: realmName(world, sid),
+    to: hid, toName: realmName(world, hid), how });
+  return true;
 }
 
 // Connected-landmass labels (4-neighbour flood over elev>0, longitude wraps).

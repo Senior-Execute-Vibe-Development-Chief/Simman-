@@ -49,13 +49,22 @@
 //   THE ROME-SHAPED HOLE, in one line: the incorporation flywheel exists (manpower,
 //     garrisons, TILE_WAR national armies, dependency power all count conquered/
 //     submitted members) but every revolution is braked to zero at the treaty
-//     table. Mechanism-shaped fix (not built here): CAPITULATION AT THE TREATY —
-//     a decisively one-sided war (the existing indemnity `gap`, plus live network
-//     dominance well above parity) ends in the loser bending the knee (dependency,
-//     the existing submission wiring) instead of a protective truce; the coalition
-//     brake, identity resistance and independence-on-outgrowing are the already-
-//     built counterweights. Secondary: the truce-duration trade reference, and the
-//     amphib gap above.
+//     table. Fix built from this finding: CAPITULATION (T.CAPITULATE, deditio) —
+//     a decisively one-sided exhaustion treaty (gap ≥ CAPIT_GAP) whose victor's
+//     live network might out-scales the loser ≥ CAPIT_RATIO × the coalition bar
+//     ends in the loser bending the knee (conquest.js bendTheKnee) instead of a
+//     protective truce. Secondary gaps still open: the truce-duration trade
+//     reference, and the amphib gap above.
+//   CAPITULATION A/B (24k, seed 8817): capitulations are RARE AND DECISIVE — ~4
+//     per era-span, exactly the deditio rhythm — yet the landscape transforms:
+//     NETWORK top1 (suzerain + clients) reaches 27-29% of the claimed world with
+//     3-4 vassals vs the baseline's flat 11-18% ceiling; top-realm capacity 26→58,
+//     and fiscal dominance breaks 2.0 for the first time in any measured run
+//     (vassal tribute feeding the treasury), waking the DOM great-power machinery
+//     that was pivotal in 0 rejections before. The balance answers emergently:
+//     coalition attribution rises 18%→25% of rejections (187 in the window the
+//     hegemon surged). Worlds are byte-identical until the first capitulation
+//     fires (~t=10k here; the 2500-step hashbase pair is unchanged at defaults).
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { mkWarDebug, foldWarDebug } from "../src/sim/peopleSim/armies.js";
