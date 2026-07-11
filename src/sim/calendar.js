@@ -45,7 +45,13 @@ export function dynStep(year){ return (year - DYN_START) / DYN_RATE; }
 // competition channel still unbuilt), which shows up as the Iron anchors
 // fitting ~−5500..−6100 while Bronze fits −4575. Still read-only: no mechanic
 // may consume it (CLAUDE.md — the calendar is cosmetic, never an input).
-const DISP_START = -4850, DISP_RATE = 0.25;
+// −3000: the map STARTS at 3000 BC — the genesis cradles are seeded at the eve
+// of states (proto-urban towns, temple administration, chalcolithic copper —
+// settlement.js makeSettlement), which is what 3000 BC was, so the first
+// kingdoms crystallize within the opening centuries and the display epoch and
+// the dynasty clock (DYN_START below) are now ONE clock. The former −4850
+// epoch existed to absorb a stone-age start-up prelude the seed no longer has.
+const DISP_START = -3000, DISP_RATE = 0.25;
 export function displayYear(step){ return DISP_START + Math.max(0, step) * DISP_RATE; }
 export function displayStep(year){ return (year - DISP_START) / DISP_RATE; }
 

@@ -5,9 +5,14 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): d1a9bd55/4d779574 (LATIFUNDIA + SLAVE_PULL defaults —
-// the classical demand engine + the price-responsive slave market with the
-// stateless-frontier razzia guard).
+// Current baseline (2500 steps): 17836a8b/c446da26 (the 3000 BC start — the
+// eve-of-states genesis seed + SCI_COMPOUND_FLOOR 0.7 antiquity rate). A GENESIS
+// change re-keys every trajectory from step 0, so all prior lever-off recovery
+// pairs below are ARCHIVED history (they described the stone-age-seed world);
+// lever A/Bs from here compare against THIS pair.
+// Pre-3000BC baseline (2500 steps): d1a9bd55/4d779574 (LATIFUNDIA + SLAVE_PULL
+// defaults — the classical demand engine + the price-responsive slave market
+// with the stateless-frontier razzia guard).
 // LATIFUNDIA=0,SLAVE_PULL=0 gives e38f1de/b17ee7b2 — NOT the pre-wave pair below,
 // because hashing `_estates` re-keyed the hash STREAM (the NB above); the lever-off
 // TRAJECTORY was proven identical to e84780f both by a 2500-step state-digest diff

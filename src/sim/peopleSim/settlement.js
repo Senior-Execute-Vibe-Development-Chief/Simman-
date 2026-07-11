@@ -276,14 +276,29 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Start at the tier-0 storage cap (see storageCap in updateFood);
     // a larger value would just be clamped away on the first tick.
     food: 80,
-    knowledge: opts.knowledge || {
-      agriculture: 0.50,        // cradle starts already farming (absorbs the old foraging track)
+    knowledge: opts.knowledge || (opts.cradle ? {
+      // A CRADLE seeds at the EVE OF STATES — the display epoch is 3000 BC
+      // (calendar.js DISP_START) and this is what 3000 BC WAS: proto-urban
+      // irrigation towns (late Uruk, Naqada III, Longshan) with temple
+      // administration on the verge of kingship, and copper metallurgy already
+      // millennia old. The old stone-age seed (agr .5 / org .1 / met 0) spent
+      // ~1600 displayed years growing INTO the state the start date already
+      // claims — the measured 5.3x "Neolithic" start-up row (probe_erapace).
+      // Initial CONDITIONS of the world at t=0, not a gate on anything.
+      agriculture: 0.55,        // mature floodplain/irrigation farming
+      construction: 0.20,       // mudbrick towns, the first monumental works
+      organization: 0.28,       // temple accounts / proto-writing — kingship at the door
+      metallurgy:  0.16,        // chalcolithic copper (ore access still gates practice)
+      navigation:  0.05,        // river craft
+      mobility:    0.05,        // pack animals
+    } : {
+      agriculture: 0.50,        // frontier starts already farming (absorbs the old foraging track)
       construction: 0.1,        // absorbs the old toolmaking track (wagons + bridges)
       organization: 0.1,        // absorbs the old literacy track (records + bureaucracy)
       metallurgy:  0,           // gated by ore access
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses
-    },
+    }),
     // Crop packages this settlement has (ids into src/cropPackages.js). Empty
     // unless T.CROP_AXIS is on; seeded at creation (cradle domestication /
     // parent inheritance) and grown by crop diffusion in updateKnowledge. The
@@ -642,7 +657,15 @@ const CREDIT_CRUNCH = 4;
 // floor/cap on the correction while the exponent is calibrated. Floor keeps a
 // fresh cradle learning (deep antiquity is already ~right); cap keeps a
 // discovery from teleporting a track in one tick.
-const SCI_MED_IDX = 1.6, SCI_COMPOUND_FLOOR = 0.6, SCI_COMPOUND_CAP = 12;
+// FLOOR 0.7 (was 0.6): the floor is the antiquity learning rate — the whole
+// Bronze window sits below the anchor (idx 0.3-1.1 → (idx/1.6)^1.5 ≈ 0.09-0.57,
+// floored), so the Bronze SPAN ∝ 1/floor. The 3-seed table priced 0.6 at 1.6×
+// the historical span; with the eve-of-states genesis seed (makeSettlement) also
+// lifting the early window's inputs, the measured correction that lands Bronze
+// at ~1× is 0.7 (0.95 overshot to 0.7× — the two changes stack). Calibrated to
+// the SPAN, never to a date: the display epoch (calendar.js −3000) then simply
+// fits.
+const SCI_MED_IDX = 1.6, SCI_COMPOUND_FLOOR = 0.7, SCI_COMPOUND_CAP = 12;
 function updateWealth(world, s) {
   // Coin-loss drain (Phase 1 — the honest micro-sink replacing the freight burn):
   // a sliver of circulating specie leaves for good each tick — worn, shipwrecked,
