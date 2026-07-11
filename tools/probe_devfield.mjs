@@ -7,7 +7,31 @@
 //   SIM_TUNE="DEV_FIELD=0" node tools/probe_devfield.mjs      (the A/B)
 // Ends with a lever-ON determinism + save/load round-trip check.
 //
-// FINDINGS (480×240, 15000 steps — appended after the calibration runs):
+// FINDINGS (480×240, 15000 steps, seeds 8817/31337 — ON vs OFF):
+//   • The user-visible defect confirmed at the root: under the GLOBAL scalar,
+//     fertility-normalized density on state land vs stateless wilderness was
+//     1.0x at EVERY checkpoint on BOTH seeds — the population field was a
+//     geography map. Under DEV_FIELD it is 2.0-2.3x and widens with
+//     development (technique owned 0.51→0.64 vs wild 0.22→0.29).
+//   • World field-total drops ~45% (10.4-10.6M → 5.9-6.1M): the frontier
+//     thins to its honest subsistence/pastoral density. ANCHOR_POP=0, so no
+//     anchor fights it.
+//   • The wave exposed a MASKED HOLE: the scalar had gifted the steppe
+//     farming-level capacity, and the nomad system (W6-D) was calibrated on
+//     it — the bare wave starved the hordes (classification t=18k→24k, raids
+//     50→0 on 8817/24k). The PASTORAL term (openness-weighted rangeland at
+//     ~1/10 of fert-1 neolithic cropland; the herd beats the plough where
+//     ground is open and too poor to farm) restores the classification onset
+//     to t=18k. The raid economy stays quieter than the inflated-steppe
+//     baseline — hordes now honestly ~1/10 the sown's people with
+//     pop-proportional raid weight; the honest companion (unbuilt, noted) is
+//     the horde force multiplier: every herder rides.
+//   • Cadence: 31337 near-neutral (countries 15 vs 16, secessions 6 vs 6);
+//     8817 consolidates harder (12 vs 21 at 15k — frontier statelets on thin
+//     land read weaker and absorb sooner, POW_FIELD's own philosophy).
+//     Stylized 3/3 seeds (8817/31337/4242, 21k): ALL hard gates, ZERO soft
+//     warnings — the pastoral term also healed the empire-tail warning the
+//     bare wave produced on 31337.
 
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";

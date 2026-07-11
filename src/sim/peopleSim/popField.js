@@ -2,7 +2,10 @@
 //
 // Population lives on the LAND, not on settlement entities. Two per-tile fields:
 //   world.capField[ti] — carrying capacity (people the tile can feed) = fertility ×
-//     a global agricultural-DEVELOPMENT multiplier (emergent, never a clock).
+//     the agricultural DEVELOPMENT available there (emergent, never a clock) —
+//     under T.DEV_FIELD (default) the LOCAL technique that has actually reached
+//     the tile (the wave-of-advance block below) plus a pastoral rangeland term;
+//     lever off, the phase-1 global scalar.
 //   world.popField[ti] — people actually living on the tile. Grows LOGISTICALLY
 //     toward the tile's capacity, and MIGRATES down the capacity gradient so a full
 //     cradle spills its surplus into empty fertile land (the peopling of the world
