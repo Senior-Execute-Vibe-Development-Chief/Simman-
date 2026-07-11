@@ -37,12 +37,15 @@
 // 3-seed table, re-earn stylized at the new pacing, then delete displayYear.
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
-const world = buildSim({ W: 480, H: 240, seed: 8817 });
+//   node tools/probe_erapace.mjs [seed=8817] [steps=42000]
+const SEED = parseInt(process.argv[2] || "8817", 10);
+const STEPS = parseInt(process.argv[3] || "42000", 10);
+const world = buildSim({ W: 480, H: 240, seed: SEED });
 // idx-by-era diagnostic: the leading hub's knowledge-production index (the same
 // formula as settlement.js SCI_COMPOUND) every 1500 steps — read it at each era's
 // attainment step to set SCI_MED_IDX (the =1 anchor) empirically.
 const idxLog = [];
-for (let t = 0; t < 42000; t += 1500) {
+for (let t = 0; t < STEPS; t += 1500) {
   stepPeopleSim(world, 1500);
   let best = 0;
   for (const st of world.settlements) {
@@ -57,13 +60,28 @@ for (let t = 0; t < 42000; t += 1500) {
 }
 console.log("step:era:leadIdx  " + idxLog.join(" "));
 const NAMES = ["Neolithic", "Bronze", "Iron/Classical", "Medieval", "Renaissance", "Industrial", "Modern"];
-const HIST = [-3300, -3000, -700, 500, 1450, 1800, 1950, 2050];  // ERA_ANCHOR + endpoint
+const HIST = [-3300, -3000, -700, 500, 1450, 1800, 1950, 2050];  // historical era-start years + endpoint
 const ea = world._eraAt || [0];
+// Eras are scored to ATTAINMENT: era e spans attained(e) → attained(e+1). The
+// final attained era has no successor, so it is OPEN — unscoreable, not "38x too
+// long" (the old accrue-to-run-end artifact). Neolithic is the start-up epoch
+// (the sim skips the forager phase, so its "duration" measures genesis, not
+// history) — printed, excluded from the epoch fit below.
 console.log("era            reached@step  dyn-years spent   historical-years   ratio");
+const fit = [];
 for (let e = 0; e < ea.length; e++) {
-  const end = e + 1 < ea.length ? ea[e + 1] : world.step;
-  const dynY = (end - ea[e]) * 0.25;
+  const open = e + 1 >= ea.length;
+  const dynY = open ? null : (ea[e + 1] - ea[e]) * 0.25;
   const histY = (HIST[e + 1] ?? 2050) - HIST[e];
-  console.log(`${(NAMES[e] || "era" + e).padEnd(15)} ${String(ea[e]).padStart(8)}    ${String(Math.round(dynY)).padStart(8)}          ${String(histY).padStart(6)}          ${(dynY / histY).toFixed(1)}x`);
+  console.log(`${(NAMES[e] || "era" + e).padEnd(15)} ${String(ea[e]).padStart(8)}    ${open ? "    open" : String(Math.round(dynY)).padStart(8)}          ${String(histY).padStart(6)}          ${open ? "  — " : (dynY / histY).toFixed(1) + "x"}`);
+  if (e >= 1 && !open) fit.push(HIST[e] - 0.25 * ea[e]);   // epoch each anchor implies (display year = epoch + 0.25·step)
 }
-console.log(`(run ends step ${world.step}, last era ${NAMES[ea.length - 1] || ea.length - 1}${ea.length < 7 ? " — later eras not reached" : ""})`);
+if (ea.length < 7) console.log(`(run ends step ${world.step}; later eras not reached)`);
+// Best-fit DISPLAY EPOCH: the constant that lines the measured attainments up
+// with their historical dates on the uniform 0.25y/step clock (calendar.js
+// DISP_START). Mean over the scored anchors (Bronze..last-closed), per-anchor
+// spread shown so a single outlier era is visible.
+if (fit.length) {
+  const mean = fit.reduce((a, b) => a + b, 0) / fit.length;
+  console.log(`best-fit display epoch: ${Math.round(mean)} (per-anchor: ${fit.map((v) => Math.round(v)).join(", ")})`);
+}
