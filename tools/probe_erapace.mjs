@@ -35,6 +35,25 @@
 // 0.08→0.01 while serfs rise 0.03→0.05 — slavery aging into serfdom, as Rome did.
 // α=1.5 is the flip candidate. Before default-on: score eras to ATTAINMENT,
 // 3-seed table, re-earn stylized at the new pacing, then delete displayYear.
+// ── 3-SEED TABLE (42k, seeds 8817/31337/4242, all levers default incl. the
+// latifundia + capitulation + amphib waves) — attainment-scored:
+//              8817   31337   4242    mean
+//   Bronze     1.7x   1.7x    1.4x    1.6x
+//   Iron       0.4x   0.6x    0.3x    0.43x   ← THE CLASSICAL GAP persists
+//   Medieval   0.9x   1.7x    0.9x    1.2x
+//   Renaiss.   1.1x   1.7x    0.9x    1.2x
+//   Industrial 0.5x   1.0x    1.0x    0.8x
+// The mid-table holds ~1x within seed noise. The residual is a consistent
+// SHAPE: Bronze long + Iron short with Medieval on schedule — the Bronze→Iron
+// attainment lands late and the classical span is squeezed from both sides.
+// The named missing mechanism stands: hegemonic competition (one power
+// absorbing the classical core should also collapse the competitive pressure
+// that drives learning — competF reads trade-contact rivals, settlement.js).
+// EPOCH: per-seed best fits −4790/−5345/−5825 STRADDLE the shipped −4850
+// (calendar.js DISP_START); the mean correction (~−5320) is smaller than the
+// per-world spread, so −4850 stands. The Iron anchors alone fit −5500..−6100 —
+// the classical gap expressed in calendar years (~700y late) — and should
+// converge to the rest once the competition channel lands.
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 //   node tools/probe_erapace.mjs [seed=8817] [steps=42000]

@@ -69,7 +69,7 @@ let _tecParams = {};
 // generateWorld extracted to ./worldgen.js so worldgen can run headlessly.
 import { generateWorld } from "./sim/worldgen.js";
 import { buildTerritory, tileFert } from "./sim/pipeline.js";
-import { yearStr, displayYearStr } from "./sim/calendar.js";
+import { displayYearStr } from "./sim/calendar.js";
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -252,7 +252,7 @@ function TechTreeOverlay({k,title,onClose}){
 
 // ── Chronicle overlay — a realm's full history in its own scrollable window ──
 // (the settlement card is too short to hold a long log; a modal escapes it).
-// `entries` are {step,type,text}; rendered newest-first, dated via yearStr and
+// `entries` are {step,type,text}; rendered newest-first, dated via the display clock and
 // colour-coded by event type (dark tones for contrast on the light parchment).
 // ── Map lenses ──────────────────────────────────────────────────────
 // Grouped views: each lens is one way of READING the world; sub-modes are
@@ -291,7 +291,7 @@ const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wea
   industry:"Industry",trade:"Trade",faith:"Faith",society:"Society"};
 function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose,eraAt}){
   const rows=(entries||[]).slice().reverse();   // newest first
-  const yr=(step)=>eraAt?displayYearStr(eraAt,step):yearStr(step);
+  const yr=(step)=>displayYearStr(step);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
@@ -2975,10 +2975,10 @@ useEffect(()=>{
 });
 
 // ── Aggregate world stats for the chronicle ribbon ──
-// The displayed year tracks the EMERGENT tech era (calendar.js displayYear),
-// pinned to history — not the runaway linear clock. `yr(step)` formats any step.
+// The displayed year is the uniform linear display clock (calendar.js
+// displayYear) — read-only, never an input. `yr(step)` formats any step.
 const _eraAt=(peopleRef.current&&peopleRef.current._eraAt)||null;
-const yr=(step)=>_eraAt?displayYearStr(_eraAt,step):yearStr(step);
+const yr=(step)=>displayYearStr(step);
 const _step=liveStep||(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
 const _ys=yr(_step);
 // Leading era comes from the WORKER stats (the most advanced capital's tech

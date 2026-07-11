@@ -32,20 +32,24 @@ export function dynYear(step){ return DYN_START + step * DYN_RATE; }
 export function dynStep(year){ return (year - DYN_START) / DYN_RATE; }
 
 // ── DISPLAY calendar: the UNIFORM clock ─────────────────────────────────────
-// One honest clock. With SCI_COMPOUND on, era durations emerge at ~their
-// historical lengths (tools/probe_erapace.mjs: Bronze 1.4×, Medieval 0.9×,
-// Renaissance 1.3×, Industrial 1.0×), so the displayed date is simply linear:
-// DISP_RATE years per step from DISP_START, chosen so the measured era
-// attainments line up with their historical dates (Bronze ≈ 3200 BC, Medieval
-// ≈ 500 AD, Industrial ≈ 1800 AD at the calibration run's steps). The old
-// era-anchored elastic clock — which stretched years-per-tick to hide the
-// flat-ceiling pacing this replaced — is gone; eraAt is accepted and ignored
-// for signature compatibility. Still read-only: no mechanic may consume it.
+// One honest clock: the displayed date is simply linear — DISP_RATE years per
+// step from DISP_START. The old era-anchored elastic clock (which stretched
+// years-per-tick to hide the flat-ceiling pacing) is gone, and so is its
+// vestigial eraAt parameter: the display clock takes a STEP, full stop.
+// DISP_START is calibrated so measured era attainments line up with their
+// historical dates on the 3-seed table (tools/probe_erapace.mjs prints each
+// run's best-fit epoch): the canon seeds fit −4790/−5345/−5825 — a spread that
+// STRADDLES −4850, so the mean correction (~−5320) is smaller than per-world
+// variance and −4850 stands. The residual systematic misfit is the CLASSICAL
+// GAP (Iron runs ~0.43× its historical span, 3-seed mean — the hegemonic-
+// competition channel still unbuilt), which shows up as the Iron anchors
+// fitting ~−5500..−6100 while Bronze fits −4575. Still read-only: no mechanic
+// may consume it (CLAUDE.md — the calendar is cosmetic, never an input).
 const DISP_START = -4850, DISP_RATE = 0.25;
-export function displayYear(eraAt, step){ return DISP_START + Math.max(0, step) * DISP_RATE; }
-export function displayStep(eraAt, year){ return (year - DISP_START) / DISP_RATE; }
+export function displayYear(step){ return DISP_START + Math.max(0, step) * DISP_RATE; }
+export function displayStep(year){ return (year - DISP_START) / DISP_RATE; }
 
-export function displayYearStr(eraAt, step){
-  const y = Math.round(displayYear(eraAt, step));
+export function displayYearStr(step){
+  const y = Math.round(displayYear(step));
   return y < 0 ? `${-y} BC` : `${y} AD`;
 }

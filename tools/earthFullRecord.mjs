@@ -83,7 +83,7 @@ function series(dt) {
     if (den > 0) globalP = num / den; }
   let fronts = 0, warring = 0; if (world._fronts && world._fronts.byCountry) { warring = world._fronts.byCountry.size; for (const v of world._fronts.byCountry.values()) fronts += v.size; }
   const row = {
-    step: world.step, year: Math.round(displayYear(world._eraAt || [0], world.step)),
+    step: world.step, year: Math.round(displayYear(world.step)),
     leadEra: ERAS[Math.max(0, eraH.reduce((m, v, i) => v > 0 ? i : m, 0))], leadOrg: r2(leadOrg),
     lead: Object.fromEntries(KTRK.map(k => [k.slice(0, 4), r2(lk[k] || 0)])),
     eras: eraH.join(","),
@@ -171,7 +171,7 @@ function writeHistory() {
   });
   fs.writeFileSync(OUT + ".history.json", JSON.stringify({
     step: world.step,
-    eraTimeline: eraAt.map((s, i) => ({ era: ERAS[i], step: s, year: Math.round(displayYear(eraAt, s)) })),
+    eraTimeline: eraAt.map((s, i) => ({ era: ERAS[i], step: s, year: Math.round(displayYear(s)) })),
     arcComplete: eraAt.length > ERAS.length - 1, arcStep: eraAt[ERAS.length - 1] ?? null,
     invariantHits: world.debug?.invariantHits || {},
     eventTypeTotals: evs.reduce((m, e) => (m[e.type] = (m[e.type] || 0) + 1, m), {}),
