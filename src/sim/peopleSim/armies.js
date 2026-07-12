@@ -788,17 +788,23 @@ export function advanceFronts(world) {
   // attributing the no-hegemon bottleneck (tools/probe_warbars.mjs). AMPHIB_BAR=0
   // recovers the sea-blind war byte-identically.
   if (T.AMPHIB_BAR > 0 && TILE_WAR) {
+    const _rsAmphib = Math.max(1, world.tw / 240);   // AMPHIB_REACH scale (sea cost is in res-scaled tile units)
     // 1. Country-pair sea adjacency: any port with real seacraft that can sail to a
-    //    foreign port opens its COUNTRY's invasion lane to that port's COUNTRY.
+    //    foreign port opens its COUNTRY's invasion lane to that port's COUNTRY. Also
+    //    record the SHORTEST sea-route cost per country pair (the cheapest invasion
+    //    lane) so AMPHIB_REACH can decay the projected force by the distance sailed.
     const seaCC = new Map();   // attacker countryId → Set(defender countryId)
+    const seaCost = new Map(); // "acc:dcc" → min sea-route cost among all port lanes
     for (const P of world.settlements) {
       if (P.mode !== "settled" || P.countryId < 0 || !P._seaReach || P._seaReach.size === 0) continue;
       if (((P.knowledge && P.knowledge.navigation) || 0) < AMPHIB_NAV_MIN) continue;
-      for (const pid of P._seaReach.keys()) {
+      for (const [pid, sr] of P._seaReach) {
         const Q = byId.get(pid);
         if (!Q || Q.mode !== "settled" || Q.countryId < 0 || Q.countryId === P.countryId) continue;
         let s = seaCC.get(P.countryId); if (!s) seaCC.set(P.countryId, s = new Set());
         s.add(Q.countryId);
+        const ck = P.countryId + ":" + Q.countryId, cc = sr && sr.cost || 0, ex = seaCost.get(ck);
+        if (ex === undefined || cc < ex) seaCost.set(ck, cc);
       }
     }
     // 2. Bar-check each lane with the full land stack × AMPHIB_BAR (an opposed
@@ -818,15 +824,20 @@ export function advanceFronts(world) {
         const _wb = warBarOf(acc), _cs = casusOf(acc, dcc, D), _cl = claimBarOf(acc, dcc),
               _db = domBarOf(acc), _cb = coalitionBarOf(acc, dcc);
         const bar = D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * _wb * _cs * _cl * _db * _cb;
+        // AMPHIB_REACH: the national army arrives depleted by the sea distance sailed —
+        // full strength to a near shore, a fraction across an ocean (half at AMPHIB_REACH
+        // res-scaled cost units). 0 = no decay → effM = A._M → byte-identical.
+        const reach = T.AMPHIB_REACH > 0 ? 1 / (1 + (seaCost.get(key) || 0) / (T.AMPHIB_REACH * _rsAmphib)) : 1;
+        const effM = A._M * reach;
         if (WDBG) {
           wdbgPass(WDBG, world.step);
           let r = WDBG.pairs.get(key);
-          const f = { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, amphib: T.AMPHIB_BAR, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb };
-          if (!r) WDBG.pairs.set(key, r = { attM: A._M, base: D._M * T.ATTACK_MIN_RATIO, minBar: bar, f, passed: false });
-          else if (bar < r.minBar) { r.minBar = bar; r.base = D._M * T.ATTACK_MIN_RATIO; r.attM = A._M; r.f = f; }
-          if (A._M >= bar) r.passed = true;
+          const f = { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, amphib: T.AMPHIB_BAR, reach, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb };
+          if (!r) WDBG.pairs.set(key, r = { attM: effM, base: D._M * T.ATTACK_MIN_RATIO, minBar: bar, f, passed: false });
+          else if (bar < r.minBar) { r.minBar = bar; r.base = D._M * T.ATTACK_MIN_RATIO; r.attM = effM; r.f = f; }
+          if (effM >= bar) r.passed = true;
         }
-        if (A._M < bar) continue;
+        if (effM < bar) continue;
         const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
         let l = amphibByDef.get(dcc); if (!l) amphibByDef.set(dcc, l = []);
         l.push(pc);
