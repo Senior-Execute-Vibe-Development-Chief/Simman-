@@ -96,8 +96,22 @@ for (const r of rows) { tot += r.people; urbTot += r.urban; }
 const urbPct = tot > 0 ? (urbTot / tot) * 100 : 0;
 console.log(`\nZipf slope (urban pop, all>0): ${zipf(rows.map(r => r.urban)).toFixed(3)}   (people): ${zipf(rows.map(r => r.people)).toFixed(3)}`);
 console.log(`SUITE Zipf (urban>50): ${zs.slope.toFixed(3)} over ${zs.n} cities   [gate -1.35..-0.70]   urbanization ${urbPct.toFixed(1)}%   [agrarian 2-25%]`);
+// ECONOMY Zipf: the raw import-fed capacity (s._k × importShare) over the same
+// urban>50 cores — the CEILING the size distribution can reach. If this is
+// itself shallow, no congestion compression can steepen the sizes past it.
+const econByCore = new Map();
+for (const s of world.settlements) {
+  if (s.mode !== "settled") continue;
+  const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+  const phi = Math.max(0, Math.min(1,
+    ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
+  econByCore.set(s.id, (s._k || 0) * phi);
+}
+const econOfUrban = rows.filter(r => r.urban > 50).map(r => econByCore.get(r.id) || 0);
+const ez = zipfSuite(econOfUrban);
 const K = process.env.SIM_TUNE || "";
-console.log(`\nSWEEP  K=[${K}]  medFill=${sf.med?.toFixed(3)}  suiteZipf=${zs.slope.toFixed(3)}(${zs.n})  urb%=${urbPct.toFixed(1)}  cities=${rows.length}  importers=${importers.length}`);
+console.log(`ECONOMY Zipf (kBeyond over urban>50 cores): ${ez.slope.toFixed(3)} over ${ez.n}   ← the ceiling the sizes can reach`);
+console.log(`\nSWEEP  K=[${K}]  medFill=${sf.med?.toFixed(3)}  suiteZipf=${zs.slope.toFixed(3)}(${zs.n})  urb%=${urbPct.toFixed(1)}  cities=${rows.length}  importers=${importers.length}  econZipf=${ez.slope.toFixed(3)}`);
 
 // ── Dry-run of the DERIVED per-tile import-density spike ──
 // spike = terrainCap[core] × φ/(1−φ), φ = importShare. Heavy tail from the
