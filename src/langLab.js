@@ -10,7 +10,7 @@
 // under `npm run dev`, which is why every read is typeof-guarded. Declared
 // here so ESLint's no-undef doesn't flag the injected identifier.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "./sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
@@ -312,12 +312,16 @@ const ABSTRACT_SHOW = (() => {
   return want.map(g => CONCEPTS.findIndex(c => c.g === g)).filter(i => i >= 0);
 })();
 function derivationsHTML(l) {
+  const loanSet = new Set((l.loans || []).map(x => x.c));
   const items = ABSTRACT_SHOW.map(cid => {
     const ety = etymologyOf(l, cid);
     const w = wordOf(l, cid);
-    return `<li><span class="lbl">${esc(glossOf(cid))}</span> <span class="w">${esc(w)}</span> ${
-      ety ? `<span class="gloss">‹ ‘${esc(ety.gloss)}’</span>`
-        : `<span class="gloss lost">opaque root</span>`}</li>`;
+    // a loan shadows the native coinage (etymologyOf is null under a loan), so
+    // the word is BORROWED, not an opaque native root — say so
+    const tail = ety ? `<span class="gloss">‹ ‘${esc(ety.gloss)}’</span>`
+      : loanSet.has(cid) ? `<span class="gloss lost">borrowed</span>`
+        : `<span class="gloss lost">opaque root</span>`;
+    return `<li><span class="lbl">${esc(glossOf(cid))}</span> <span class="w">${esc(w)}</span> ${tail}</li>`;
   }).join("");
   const nDerived = ABSTRACT_SHOW.filter(cid => etymologyOf(l, cid)).length;
   return `<section class="card"><h2>Coined abstractions <span class="count">(${nDerived}/${ABSTRACT_SHOW.length} derived on purpose)</span></h2>
@@ -350,19 +354,23 @@ function dictionaryHTML(l) {
   const rows = CONCEPTS.map((c, cid) => ({ cid, g: c.g, d: c.d, w: numeralConceptWord(l, cid) || wordOf(l, cid) }));
   for (const r of rows) byWord.set(r.w, (byWord.get(r.w) || 0) + 1);
   const loanSet = new Set((l.loans || []).map(x => x.c));
+  // words that two concepts share ON PURPOSE (colexification, tree=wood) vs by
+  // accident (an unrepaired homophone) — label them differently
+  const colexWords = new Set();
+  CONCEPTS.forEach((c, cid) => { if (colexPartner(l, cid) >= 0) colexWords.add(wordOf(l, cid)); });
   const q = S.search.trim().toLowerCase();
   const body = rows
     .filter(r => !q || r.g.includes(q) || r.w.toLowerCase().includes(q))
     .map(r => {
       const notes = [];
       if (loanSet.has(r.cid)) notes.push("loan");
-      if (byWord.get(r.w) > 1) notes.push("shared word");
+      if (byWord.get(r.w) > 1) notes.push(colexWords.has(r.w) ? "shared word" : "homophone");
       const ety = etymologyOf(l, r.cid);
       const from = ety ? `‹ ‘${esc(ety.gloss)}’` : "";
       return `<tr><td>${esc(r.g)}</td><td class="w">${esc(r.w)}</td><td class="gloss">${from}</td><td class="lbl">${esc(r.d)}</td><td class="gloss">${notes.join(" · ")}</td></tr>`;
     }).join("");
   return `<section class="card"><h2>Dictionary <span class="count">(${rows.length} concepts, virtual)</span></h2>
-    <p class="note">Every entry is computed on demand from the language's seed and history — nothing is stored. The <span class="gloss">‹ etymology</span> column shows words this family built from other concepts (ford ‹ ‘water river’, king ‹ ‘great man’). “Shared word” = two concepts this family colexifies (one word for tree&nbsp;and&nbsp;wood); “loan” = a word taken from a contact language, shadowing the native form.</p>
+    <p class="note">Every entry is computed on demand from the language's seed and history — nothing is stored. The <span class="gloss">‹ etymology</span> column shows words this family built from other concepts (ford ‹ ‘water river’, king ‹ ‘great man’). “Shared word” = two concepts this family colexifies on purpose (one word for tree&nbsp;and&nbsp;wood); “homophone” = an accidental sound-alike; “loan” = a word taken from a contact language, shadowing the native form.</p>
     <input id="dictSearch" type="search" placeholder="Search meaning or word…" value="${esc(S.search)}" />
     <div class="scroll tall"><table><thead><tr><th>meaning</th><th>word</th><th>etymology</th><th>domain</th><th>notes</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
 }

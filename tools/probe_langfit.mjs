@@ -919,6 +919,35 @@ console.log("\n── intentional abstract derivation ──");
   say(`   ${glossOf(cidOf("king"))}: ${wordOf(root, cidOf("king"))} → ${wordOf(dA, cidOf("king"))} / ${wordOf(dB, cidOf("king"))}` +
     (etymologyOf(root, cidOf("king")) ? ` ‹ '${etymologyOf(root, cidOf("king")).gloss}'` : ""));
 
+  // two distinct abstracts must never get the SAME coinage in one family (the
+  // repair would only mask it as B = A+syllable, reading as B‹A) — nor collide
+  // at the surface. And a templatic tongue must not render its whole abstract
+  // set as one m- rhyme: the pattern is the modifier's exponent, so different
+  // pathways give different words (2000-family sweep, incl. root-and-pattern).
+  let pairClash = 0, surfClash = 0, tmplLangs = 0, tmplVaried = 0;
+  for (let i = 0; i < 2000; i++) {
+    const l = foundLanguage(world, { seed: 420000 + i * 37 });
+    const pairs = new Set(), surfaces = new Set();
+    let derivedWords = [];
+    for (const t of ABS) {
+      const e = etymologyOf(l, t);
+      if (!e) continue;
+      const pk = e.head + "," + e.mod;
+      if (pairs.has(pk)) pairClash++; pairs.add(pk);
+      const w = wordOf(l, t);
+      if (surfaces.has(w)) surfClash++; surfaces.add(w);
+      derivedWords.push(w);
+    }
+    if (l.prof.morph === "tmpl" && derivedWords.length >= 4) {
+      tmplLangs++;
+      if (new Set(derivedWords.map(w => w[0])).size >= 2) tmplVaried++;   // not one prefix for all
+    }
+  }
+  check(`no two abstracts share a coinage in one family (${pairClash} pairs clash /2000)`, pairClash === 0);
+  check(`no two derived abstracts are surface homophones (${surfClash} /2000)`, surfClash === 0);
+  check(`templatic abstracts vary their pattern, not one m- rhyme (${tmplVaried}/${tmplLangs} langs ≥2 initials)`,
+    tmplLangs > 0 && tmplVaried >= tmplLangs * 0.9);
+
   // the colex CYCLE trap: when a family colexifies a source onto its target
   // (sky=god, wind=spirit), the pathway would loop — it must be dropped, not
   // hang, and the concept still renders (as a plain/other-pathway word)

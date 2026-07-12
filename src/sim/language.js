@@ -180,11 +180,15 @@ function compile(lang) {
 // only the post-rule form; the paradigm's citation cell and the counting
 // system then read the un-repaired root — the 'go=šüvep vs šüvepxik' and
 // '6=paxobe vs deqe' desyncs a fresh reader caught.)
-function growWord(lang, w, cid, attempt) {
+function growWord(lang, w, cid, attempt, allowLong = false) {
   const c = COMPILED.get(lang);
   const out = copyWord(w);
   const rng = mkRng(hash32(lang.famSeed, "homrep", cid, attempt));
-  if (attempt <= 2 && out.syls.length < 3) {
+  // a derived compound is already 3 syllables (its erosion cap), so the reshape
+  // path alone can fail to clear a rare collision; let the repair add ONE
+  // disambiguating syllable past the cap — exactly the 狮→狮子 lengthening this
+  // machine is modelled on (a homophone is worse than a slightly longer word)
+  if (attempt <= 2 && out.syls.length < (allowLong ? 4 : 3)) {
     out.syls.push(...synthWord(rng, lang.prof, c.inv, 1).syls);   // the -zi/-tou lengthening
   } else {
     const v = c.inv.vows[rng.int(c.inv.vows.length)];
@@ -199,6 +203,44 @@ function growWord(lang, w, cid, attempt) {
 // resolve a concept through this family's colexification merges (river→water)
 function colexResolve(c, id) { let x = id, h = 0; while (c.colex.has(x) && h++ < 6) x = c.colex.get(x); return x; }
 
+const weightedPick = (cands, r01) => {
+  let r = r01 * cands.reduce((s, p) => s + p.w, 0);
+  for (const p of cands) if ((r -= p.w) < 0) return p;
+  return cands[cands.length - 1];
+};
+const DERIV_TARGETS = [...DERIV_BY_TARGET.keys()].sort((a, b) => a - b);
+
+// Assign every abstract target its derivation pathway ONCE per family, so two
+// distinct abstracts never receive the SAME coinage. The DERIV table shares
+// source pairs on purpose ([MAN,OLD] → king/council/priest), and an
+// independent per-concept roll lets several land on one pair — the surface
+// homophony repair then only separates them by growing a syllable, so B reads
+// as A+suffix (oath ‹ law). This is the coinage-level analog of that repair:
+// walk targets in a fixed order, and if a target's weighted pick is a pair
+// another abstract already claimed, take its next free pathway. famSeed-only +
+// colex ⇒ deterministic and inherited down a family; cached on the compiled
+// state (rebuilt with the inventory, invalidated on gen/loans/xph change).
+function buildDerivMap(c, famSeed) {
+  const map = new Map();
+  const taken = new Set();
+  for (const cid of DERIV_TARGETS) {
+    if (h01(famSeed, "deriv", cid) >= DERIV_RATE) { map.set(cid, null); continue; }
+    const ok = DERIV_BY_TARGET.get(cid).filter(p => {
+      const rh = colexResolve(c, p.head), rm = colexResolve(c, p.mod);   // drop cyclic/duplicate pathways
+      return rh !== cid && rm !== cid && rh !== rm;
+    });
+    if (!ok.length) { map.set(cid, null); continue; }
+    const pick = weightedPick(ok, h01(famSeed, "derivpick", cid));
+    const key = (p) => p.head + "," + p.mod;
+    const chosen = taken.has(key(pick))
+      ? ([pick, ...ok.filter(p => p !== pick)].find(p => !taken.has(key(p))) || pick)
+      : pick;
+    taken.add(key(chosen));
+    map.set(cid, [chosen.head, chosen.mod]);
+  }
+  return map;
+}
+
 // The effective derivation source pair [head, mod] for a concept in THIS
 // family, or null if it lexicalizes as an opaque root. Two kinds of concept
 // derive, through the SAME machinery so the layers can never disagree:
@@ -206,25 +248,16 @@ function colexResolve(c, id) { let x = id, h = 0; while (c.colex.has(x) && h++ <
 //     rolls the long-standing "dv" stream at 65% (UNCHANGED, so existing names
 //     for these are byte-identical);
 //   · abstract concepts draw a per-family pathway from the curated DERIV table
-//     (king ‹ great+man) — the intentional-derivation machinery, on its own
-//     "deriv"/"derivpick" streams so it perturbs nothing above.
-// A pathway is dropped if a source has colexified onto the target (would cycle)
-// or the two sources have merged into one lexeme (would duplicate).
+//     (king ‹ great+man), assigned once per family with cross-target dedup —
+//     the intentional-derivation machinery, on its own "deriv"/"derivpick"
+//     streams so it perturbs nothing above.
 function derivParts(lang, cid) {
   const con = CONCEPTS[cid];
   if (con.dv) return h01(lang.famSeed, "dv", cid) < 0.65 ? con.dv : null;
-  const cands = DERIV_BY_TARGET.get(cid);
-  if (!cands || h01(lang.famSeed, "deriv", cid) >= DERIV_RATE) return null;
+  if (!DERIV_BY_TARGET.has(cid)) return null;
   const c = compile(lang);
-  const ok = cands.filter(p => {
-    const rh = colexResolve(c, p.head), rm = colexResolve(c, p.mod);
-    return rh !== cid && rm !== cid && rh !== rm;
-  });
-  if (!ok.length) return null;
-  const tot = ok.reduce((s, p) => s + p.w, 0);
-  let r = h01(lang.famSeed, "derivpick", cid) * tot;
-  for (const p of ok) if ((r -= p.w) < 0) return [p.head, p.mod];
-  return [ok[0].head, ok[0].mod];
+  if (!c.derivMap) c.derivMap = buildDerivMap(c, lang.famSeed);
+  return c.derivMap.get(cid) || null;
 }
 
 // is this concept lexicalized as a compound (derived) in this family?
@@ -245,7 +278,7 @@ function seedDictionary(lang, c) {
     const derived = isDerived(lang, cid);
     while (taken.has(surf) && guard++ < 6) {
       if (derived) {
-        c.internals.set(cid, legalizeWord(growWord(lang, internalOf(lang, cid), cid, guard)));
+        c.internals.set(cid, legalizeWord(growWord(lang, internalOf(lang, cid), cid, guard, true)));
       } else {
         const root = growWord(lang, rootOf(lang, cid), cid, guard);   // extend the ROOT
         c.roots.set(cid, root);
@@ -291,8 +324,10 @@ function internalOf(lang, cid) {
   // would duplicate it — "water-water" — so coin a root instead)
   if (pr && parts[0] !== parts[1]) {
     // derived concept: a compound of its parts (or a re-vowelled pattern of
-    // the head root, if the tongue is templatic — derivation by pattern)
-    if (lang.prof.morph === "tmpl") w = revowel(lang, parts[0], cid);
+    // the head root, if the tongue is templatic — derivation by pattern, where
+    // the pattern itself is the modifier's exponent: pass the mod so different
+    // pathways give different patterns, not one m-word for the whole abstract set)
+    if (lang.prof.morph === "tmpl") w = revowel(lang, parts[0], cid, pr[1]);
     else w = joinInternal(lang, parts[1], parts[0]);
     // EROSION: a transparent compound wears to a 1–3 syllable stump (the same
     // "no daily word is 5+ syllables" principle as rootLen/erodeName). Common
@@ -340,6 +375,15 @@ export function wordOf(lang, cid) {
 
 /** The concept's gloss (shared across all languages). */
 export function glossOf(cid) { return CONCEPTS[cid] ? CONCEPTS[cid].g : ""; }
+
+/** If this concept is colexified onto another in this family (the tree→wood
+ *  merge), the concept it shares its word with; else -1. Lets the UI tell an
+ *  INTENDED merge ("shared word") from an accidental homophone. */
+export function colexPartner(lang, cid) {
+  ensureV2(lang);
+  const c = compile(lang);
+  return c.colex.has(cid) ? c.colex.get(cid) : -1;
+}
 
 /** The recoverable etymology of a concept in THIS family, or null if it is an
  *  opaque root. `{ head, mod, gloss }` — head/mod are concept ids, gloss reads
@@ -407,17 +451,34 @@ function synthTemplatic(rng, prof, inv, cid, famSeed) {
   const v1 = vs[pat % vs.length], v2 = vs[(pat + 2) % vs.length];
   return { syls: [{ on: [K[0]], nu: [{ ...v1 }], co: [] }, { on: [K[1]], nu: [{ ...v2 }], co: [K[2]] }] };
 }
-// templatic derivation: keep the skeleton, change the vowel pattern (maktab)
-function revowel(lang, head, cid) {
+// templatic derivation: keep the HEAD's consonant skeleton, interleave a vowel
+// PATTERN (maktab-style). The pattern is the derivation's morpheme — a
+// discontinuous one — so it is keyed on the pathway (the modifier), not just
+// the target: king ‹ great+man and king ‹ old+man are DIFFERENT patterns of the
+// man-skeleton, so the pathway roll is audible and the "mod head" gloss names a
+// real (patterned) exponent. Several templates (varying the prefix and the
+// vowel melody) keep the abstract vocabulary from collapsing to one m- rhyme.
+function revowel(lang, head, cid, modCid = cid) {
   const c = compile(lang);
   const skel = [];
   for (const s of head.syls) { for (const x of s.on) skel.push({ ...x }); for (const x of s.co) skel.push({ ...x }); }
   while (skel.length < 3) skel.push({ ...c.inv.cons[hash32(lang.famSeed, "fill", cid, skel.length) % c.inv.cons.length] });
-  const vs = c.inv.vows;
-  const v = vs[hash32(lang.famSeed, "rv", cid) % vs.length];
-  const w = { syls: [{ on: [{ p: 0, m: 1, l: 1, s: 0 }], nu: [{ ...v }], co: [] },   // ma- style nominal prefix
-    { on: [skel[0]], nu: [{ ...v }], co: [] }, { on: [skel[1]], nu: [{ ...v }], co: [skel[2]] }] };
-  return w;
+  const vs = c.inv.vows, K = skel;
+  const v1 = { ...vs[hash32(lang.famSeed, "rv", cid, modCid) % vs.length] };
+  const v2 = { ...vs[hash32(lang.famSeed, "rv2", cid, modCid) % vs.length] };
+  // affix consonants drawn from the family's own inventory (fallback to the
+  // canonical m/t/n bundles) — no pattern invents a sound the tongue lacks
+  const pk = (m, p, dflt) => c.inv.cons.find(x => x.m === m && x.p === p) || dflt;
+  const M = pk(1, 0, { p: 0, m: 1, l: 1, s: 0 }), T = pk(0, 1, { p: 1, m: 0, l: 1, s: 0 }), N = pk(1, 1, { p: 1, m: 1, l: 1, s: 0 });
+  const pat = hash32(lang.famSeed, "tmplpat", cid, modCid) % 5;
+  const S = (on, nu, co = []) => ({ on: on ? [{ ...on }] : [], nu: [{ ...nu }], co: co.map(x => ({ ...x })) });
+  let syls;
+  if (pat === 0) syls = [S(M, v1), S(K[0], v1), S(K[1], v2, [K[2]])];        // maCaCiC
+  else if (pat === 1) syls = [S(K[0], v1), S(K[1], v2, [K[2]])];             // CaCiC (no affix)
+  else if (pat === 2) syls = [S(null, v1, [K[0]]), S(K[1], v2, [K[2]])];     // aCCiC (vowel-initial)
+  else if (pat === 3) syls = [S(T, v1), S(K[0], v2), S(K[1], v1, [K[2]])];   // taCaCiC
+  else syls = [S(N, v1), S(K[0], v2, [K[2]])];                               // naCiC (n- prefix, 2-syl)
+  return legalizeWord({ syls });
 }
 
 // compound joining per the language's STRATEGY: head-last (mod+head, the

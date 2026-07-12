@@ -288,7 +288,7 @@ export const COLEX = [
 export const DERIV = [
   // governance — the "one who sits on the throne" and its household
   [KING, MAN, GREAT, 3], [KING, MAN, OLD, 2], [KING, MAN, RULEV, 2], [KING, SIT, HIGH, 1],
-  [QUEEN, WOMAN, GREAT, 3], [QUEEN, WOMAN, KING, 2], [QUEEN, WOMAN, HIGH, 1],
+  [QUEEN, WOMAN, GREAT, 3], [QUEEN, KING, WOMAN, 2], [QUEEN, WOMAN, HIGH, 1],   // "woman king" = regnant, not consort
   [THRONE, SIT, KING, 3], [THRONE, SIT, HIGH, 2], [THRONE, SIT, STONE, 1],
   [CROWN, HEAD, GOLD, 3], [CROWN, HEAD, KING, 2], [CROWN, HEAD, HIGH, 1],
   [TAX, GIFT, KING, 3], [TAX, GRAIN, KING, 2], [TAX, GIVE, KING, 1],

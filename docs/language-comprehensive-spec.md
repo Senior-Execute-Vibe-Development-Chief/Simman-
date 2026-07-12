@@ -642,3 +642,44 @@ Built as a SYSTEM (cardinal rule 2), never a fitted output.
 Parked still: passive/causative voice, evidentiality (grammaticalize from see/
 hear/say — already in the graph), numeral classifiers, noun-class concord, the
 rarer alignments; L5 writing systems; orthographic lag.
+
+---
+
+## Build status (session 13) — derivation review rounds
+
+Two fresh-reader review passes over session 12, each complaint converted to a
+mechanism fix + gate (not a symptom patch). 106 probe checks green.
+
+- **Loan precedence (round 1).** `etymologyOf` reported the NATIVE derivation
+  even when the concept was borrowed (law loaned as 'toholu' still showed "‹
+  true say") — the dictionary would print a loan beside a gloss that doesn't
+  build it. It now prefers the loan exactly as `wordOf` does (returns null for
+  loaned concepts). Gate: loaned abstracts report no native etymology.
+- **Coinage-level dedup (round 2, the main fix).** The DERIV table shares
+  source pairs on purpose ([MAN,OLD] → king/council/priest), and an independent
+  per-concept roll let ~16% of families give two abstracts the SAME coinage —
+  the surface repair then only masked it as B = A+syllable (oath ‹ law). Fixed
+  at the source: `buildDerivMap` assigns every abstract its pathway ONCE per
+  family, walking targets in a fixed order and taking the next free pathway when
+  a pair is already claimed (famSeed-only ⇒ deterministic + inherited; cached on
+  the compiled state). Result: 0/20000 families with a shared coinage (was
+  16.1%). The rare residual surface homophone (king=tax, 1/20000) is cleared by
+  letting the repair add one disambiguating syllable past the erosion cap for
+  derived compounds — the 狮→狮子 lengthening the machine is modelled on.
+- **Templatic honesty (round 2).** Root-and-pattern families re-vowelled only
+  the HEAD skeleton and ignored the modifier, so the "mod head" gloss named a
+  morpheme with ZERO exponents AND all of king's MAN-headed pathways produced
+  one identical word. `revowel` now keys its vowel pattern AND its template
+  (five patterns, varying the prefix m-/t-/n-/∅/vowel-initial and the melody) on
+  the PATHWAY — the pattern IS the modifier's exponent, so different pathways
+  give different words and the abstract set no longer rhymes on one m- prefix.
+  Gates: no two abstracts share a coinage or a surface; templatic abstracts show
+  ≥2 distinct initial patterns (202/202 langs).
+- **Lab honesty (both rounds).** The "Coined abstractions" card now says
+  "borrowed" (not "opaque root") for loaned abstracts; the dictionary
+  distinguishes an intended colexification ("shared word") from an accidental
+  "homophone" (new `colexPartner` export). queen ‹ "woman king" (regnant), not
+  "king woman" (which read as consort).
+
+Parked unchanged: passive/causative, evidentiality, numeral classifiers,
+noun-class concord, rarer alignments; L5 writing systems; orthographic lag.
