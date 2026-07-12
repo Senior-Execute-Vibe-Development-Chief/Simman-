@@ -10,7 +10,7 @@
 // under `npm run dev`, which is why every read is typeof-guarded. Declared
 // here so ESLint's no-undef doesn't flag the injected identifier.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "./sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
@@ -331,16 +331,25 @@ function dictionaryHTML(l) {
   for (const r of rows) byWord.set(r.w, (byWord.get(r.w) || 0) + 1);
   const loanSet = new Set((l.loans || []).map(x => x.c));
   const q = S.search.trim().toLowerCase();
+  // designed etymologies for the intro: which abstract concepts THIS tongue
+  // built out of concrete ones (king ← 'sit'+'high'), a small showcase
+  const ders = [];
+  for (const c of CONCEPTS.keys()) { const e = etymologyOf(l, c); if (e) ders.push({ g: glossOf(c), w: wordOf(l, c), e }); }
+  const derShow = ders.slice(0, 6).map(d => `<span class="cell"><span class="w">${esc(d.w)}</span> <span class="gloss">${esc(d.g)} ‹ ‘${esc(d.e.glosses.join("’+‘"))}’</span></span>`).join(" ");
   const body = rows
     .filter(r => !q || r.g.includes(q) || r.w.toLowerCase().includes(q))
     .map(r => {
       const notes = [];
       if (loanSet.has(r.cid)) notes.push("loan");
       if (byWord.get(r.w) > 1) notes.push("shared word");
-      return `<tr><td>${esc(r.g)}</td><td class="w">${esc(r.w)}</td><td class="lbl">${esc(r.d)}</td><td class="gloss">${notes.join(" · ")}</td></tr>`;
+      const e = etymologyOf(l, r.cid);
+      // an etymology overrides the "shared word" clutter — it explains the tie
+      const ety = e ? `<span class="gloss">‹ ‘${esc(e.glosses.join("’+‘"))}’</span>` : "";
+      return `<tr><td>${esc(r.g)}</td><td class="w">${esc(r.w)}</td><td class="lbl">${esc(r.d)}</td><td class="gloss">${ety}${ety && notes.length ? " · " : ""}${notes.join(" · ")}</td></tr>`;
     }).join("");
   return `<section class="card"><h2>Dictionary <span class="count">(${rows.length} concepts, virtual)</span></h2>
-    <p class="note">Every entry is computed on demand from the language's seed and history — nothing is stored. “Shared word” = two concepts this family colexifies (one word for tree&nbsp;and&nbsp;wood); “loan” = a word taken from a contact language, shadowing the native form.</p>
+    <p class="note">Every entry is computed on demand from the language's seed and history — nothing is stored. “Shared word” = two concepts this family colexifies (one word for tree&nbsp;and&nbsp;wood); “loan” = a word taken from a contact language, shadowing the native form; “‹ …” = a designed <b>derivation</b> — an abstract concept this tongue built as a compound of concrete ones (‘king’ as the one who sits high). Etymologies ride the sound changes, so they stay legible while the surface drifts.</p>
+    ${ders.length ? `<p class="cells">${derShow}${ders.length > 6 ? ` <span class="lbl">+${ders.length - 6} more</span>` : ""}</p>` : `<p class="note">This tongue keeps its abstract vocabulary as opaque roots — its morphotype leans that way.</p>`}
     <input id="dictSearch" type="search" placeholder="Search meaning or word…" value="${esc(S.search)}" />
     <div class="scroll tall"><table><thead><tr><th>meaning</th><th>word</th><th>domain</th><th>notes</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
 }

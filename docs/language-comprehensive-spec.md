@@ -586,3 +586,63 @@ homophony repair not being threaded through one source of truth.
   ordinals (0/86 inconsistent).
 - 90 probe checks green; smoke + validate green. The reviewer's six seeds
   (8822–8827) all verified clean.
+
+---
+
+## Build status (session 12) — intentional abstract derivation
+
+The standing reviewer suggestion (parked at the end of session 10): now that
+accidental homophony is gone, turn the *accidental* etymologies the phonology
+used to throw off (Neteck's chance sit=king) into *designed* depth. Abstract
+concepts (king, god, law, temple, victory…) previously synthesized as bare
+roots; they can now DERIVE from concrete/basic ones on purpose — routed
+through the existing joinInternal / rule-log machinery, so the etymology is
+recoverable AND drifts under sound change like a real inherited compound
+(cyning → king). Built as a SYSTEM, never a fitted output.
+
+- **The DERIV table (languageLexicon.js).** A curated relations table, shaped
+  exactly like COLEX: `[target, [head, mod], probability]`. ~40 pathways over
+  15 abstract targets — king ← sit+high / great+man / old+man; god ←
+  sky+high / sky+great / sky-father; law ← say+true / say+strong; temple ←
+  holy+house; tomb ← death+house; victory ← war+finish; council ← many+men.
+  Sources are ALWAYS concrete concepts (never other targets), so the full
+  dv+DERIV graph is a DAG one morpheme deep — the etymology stays recoverable
+  and generation can't recurse forever. Append-only, like every id-bearing
+  table.
+- **Per-family adoption, morphotype-scaled (language.js compile()).** Each
+  family rolls adoption per entry from its own `aderiv` hash stream; a target
+  takes the FIRST pathway it adopts (one etymology per tongue) or stays an
+  opaque root. The whole table is scaled by the MORPHOTYPE — isolating/
+  agglutinative tongues compound abstract vocabulary heavily, fusional/
+  templatic ones lean on opaque roots (Chinese 国王 'country-king' vs Latin
+  rēx). That transparency co-variation reads the existing `morph` dial, so
+  nothing new is rolled into the profile and nothing leaks into the pinned
+  refs (Mandarin derives ~10/15 abstract concepts, Russian ~5 — the gradient,
+  on the references themselves). Measured: iso 71% · agg 58% · fus 40% ·
+  tmpl 32% of abstract concepts derived.
+- **One derivation decision, no desync (language.js `derivPair`).** Both
+  internalOf (dictionary) and isDerived (grammar/homophony repair) read ONE
+  function that returns a concept's source pair — its structural `dv`
+  (ford=river+water, roll unchanged) OR an adopted DERIV pathway OR null. So
+  making KING/GOD/LAW derivable can't split the dictionary word from the
+  paradigm's citation cell: gate holds citation ≡ wordOf at 0/3255 derived
+  concepts. Colexification resolves first everywhere (a chief colexified to
+  king wears king's word AND king's etymology, never a shadowed pathway).
+  Worn-compound erosion now fires for any adopted abstract compound that grows
+  long (throne, council are lexicalized institutional terms), while the `dv`
+  path stays byte-identical.
+- **Recoverable etymology (language.js `etymologyOf`).** New export:
+  `{ parts:[cid,cid], glosses:[g,g] }` or null. The Lab's dictionary card
+  shows the derivation (`king ‹ 'sit'+'high'`) and a per-tongue showcase row;
+  the etymology stays legible even after the surface wears down, because it is
+  read from the table, not parsed off the drifted word.
+- **Gates (probe §13, 12 new → 102 total).** The dv+DERIV graph is a DAG and
+  its sources are concrete/basic; derivation occurs at a human rate (48% of
+  concept·lang pairs) and WHICH concept derives varies by family; the
+  transparency gradient co-varies with morphotype; the reviewer's flagship
+  seed 8817 makes king ← sit+high, held stable; derived surfaces drift down a
+  family (631/894) while the etymology parts stay identical (894/894);
+  derived concepts still cite as the dictionary word; pinned Mandarin
+  compounds abstract vocab in legal pinyin and out-derives fusional Russian;
+  determinism + JSON-roundtrip. 102 probe checks green; smoke + validate
+  green. Public API unchanged (new export only); sim untouched.

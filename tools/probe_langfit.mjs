@@ -11,11 +11,12 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN,
+  DERIV, QUEEN, CHIEF, PRIEST, TEMPLE, TOMB, THRONE, CROWN, OATH, COUNCIL, ARMY, GUARD, VICTORY } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -834,6 +835,140 @@ console.log("\n── cross-layer consistency ──");
   check(`dynasties name consistently — one house rule per tongue (${dynBad}/${dynLangs} inconsistent)`, dynLangs > 0 && dynBad === 0);
 
   say("   go-citation now equals the dictionary; base-5 'six' reads the same in the counter and the lexicon.");
+}
+
+// ── 13. INTENTIONAL ABSTRACT DERIVATION (the "king ← sit/high" table) ─────
+// Abstract concepts (king, god, law, temple…) can DERIVE from concrete/basic
+// ones on purpose, routed through the same joinInternal/rule-log machinery as
+// every other word — so the etymology is recoverable AND drifts under sound
+// change. Built as a relations table (DERIV) rolled per family, never a
+// hard-coded output; sources are always concrete, so the graph is a DAG.
+console.log("\n── abstract derivation ──");
+{
+  const ABS = [KING, QUEEN, CHIEF, GOD, PRIEST, TEMPLE, TOMB, THRONE, CROWN, LAW, OATH, COUNCIL, ARMY, GUARD, VICTORY];
+  const TARGETS = new Set(DERIV.map(e => e[0]));
+
+  // (a) the full derivation graph (structural dv + DERIV) is a DAG — no
+  // concept can derive from itself transitively (would hang generation), and
+  // every DERIV source is a CONCRETE concept (never a target, and basic), so
+  // compounds stay one morpheme deep and recoverable
+  const edges = new Map();
+  const addE = (t, s) => { if (!edges.has(t)) edges.set(t, new Set()); edges.get(t).add(s); };
+  CONCEPTS.forEach((con, cid) => { if (con.dv) { addE(cid, con.dv[0]); addE(cid, con.dv[1]); } });
+  for (const [t, [a, b]] of DERIV) { addE(t, a); addE(t, b); }
+  const color = new Map();
+  const dfs = (u) => {
+    color.set(u, 1);
+    for (const v of (edges.get(u) || [])) {
+      if (color.get(v) === 1) return true;
+      if (color.get(v) !== 2 && dfs(v)) return true;
+    }
+    color.set(u, 2); return false;
+  };
+  let cyclic = false;
+  for (const t of edges.keys()) if (color.get(t) !== 2 && dfs(t)) { cyclic = true; break; }
+  const srcAlsoTarget = DERIV.some(([, [a, b]]) => TARGETS.has(a) || TARGETS.has(b));
+  const srcBasic = DERIV.every(([, [a, b]]) => CONCEPTS[a].b >= 0.6 && CONCEPTS[b].b >= 0.6);
+  check(`derivation graph is a DAG (no concept derives from itself)`, !cyclic);
+  check(`DERIV sources are concrete & basic (never targets, b≥0.6)`, !srcAlsoTarget && srcBasic);
+
+  // (b) derivation occurs at a real rate, and WHICH concept derives varies by
+  // family — not everything, not nothing (the anti-mush property for lexicon)
+  const world = mkWorld();
+  const N = 500;
+  let pairs = 0, derived = 0;
+  const perConcept = new Map(ABS.map(c => [c, 0]));
+  const byMorph = { iso: [0, 0], agg: [0, 0], fus: [0, 0], tmpl: [0, 0] };
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    const bm = byMorph[l.prof.morph];
+    for (const cid of ABS) { pairs++; bm[1]++; if (etymologyOf(l, cid)) { derived++; bm[0]++; perConcept.set(cid, perConcept.get(cid) + 1); } }
+  }
+  const rate = derived / pairs;
+  const varies = [...perConcept.values()].every(v => v > N * 0.08 && v < N * 0.92);
+  check(`abstract derivation occurs at a human rate (${Math.round(rate * 100)}% of concept·lang pairs)`, rate > 0.3 && rate < 0.65);
+  check(`which concept derives varies by family (each 8–92% of langs; min ${Math.min(...perConcept.values())}, max ${Math.max(...perConcept.values())})`, varies);
+
+  // (c) morphotype co-variation: isolating tongues compound abstract vocab far
+  // more than fusional ones (Chinese 国王 vs opaque Latin rēx) — the
+  // transparency gradient, grounded in the morph dial, not an independent roll
+  const mr = (m) => byMorph[m][1] ? byMorph[m][0] / byMorph[m][1] : 0;
+  check(`transparency co-varies with morphotype (iso ${Math.round(mr("iso") * 100)}% > fus ${Math.round(mr("fus") * 100)}%)`,
+    mr("iso") > mr("fus") + 0.15 && mr("agg") > mr("fus"));
+
+  // (d) flagship showcase — the reviewer's own example, held stable: seed 8817
+  // makes 'king' the one who SITS HIGH (the designed version of the old
+  // accidental sit=king), routed through a real compound
+  const l8 = foundLanguage(world, { seed: 8817 });
+  const e8 = etymologyOf(l8, KING);
+  check(`seed 8817: king ← 'sit'+'high' (${wordOf(l8, KING)} ‹ ${e8 ? e8.glosses.join("+") : "null"})`,
+    !!e8 && e8.glosses[0] === "sit" && e8.glosses[1] === "high");
+
+  // (e) recoverable AND shifts under sound change: down a family the derived
+  // SURFACE drifts (it rides the rule log like any word) while the etymology
+  // parts stay identical (the compound's morphemes are family property)
+  let shifted = 0, etyMoved = 0, tot = 0;
+  for (let i = 0; i < 120; i++) {
+    const w2 = mkWorld();
+    const root = foundLanguage(w2, { seed: 171000 + i * 91 });
+    w2.step = 4000;
+    const dau = branchLanguage(w2, root, 0.9);
+    for (const cid of ABS) {
+      const er = etymologyOf(root, cid), ed = etymologyOf(dau, cid);
+      if (!er) continue;
+      tot++;
+      if (wordOf(root, cid) !== wordOf(dau, cid)) shifted++;
+      if (!ed || ed.parts[0] !== er.parts[0] || ed.parts[1] !== er.parts[1]) etyMoved++;
+    }
+  }
+  check(`derived surfaces drift down the family (${shifted}/${tot} shifted)`, tot > 0 && shifted > tot * 0.3);
+  check(`etymology stays legible through drift (${tot - etyMoved}/${tot} parts stable)`, etyMoved === 0);
+
+  // (f) consistency preserved: making KING/GOD/LAW derivable must not break the
+  // citation≡dictionary invariant (the derived stem still cites as wordOf)
+  let citeBad = 0, citeTot = 0;
+  for (let i = 0; i < 500; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    if (l.prof.morph === "iso") continue;
+    for (const cid of ABS) {
+      if (!etymologyOf(l, cid)) continue;
+      const cell = inflectNoun(l, cid, { num: "sg", cas: null });
+      if (cell.pre.length || cell.post.length) continue;
+      citeTot++;
+      if (cell.text !== wordOf(l, cid)) citeBad++;
+    }
+  }
+  check(`derived abstract concepts still cite as the dictionary word (${citeBad}/${citeTot} desyncs)`, citeTot > 0 && citeBad === 0);
+
+  // (g) references speak the feature in character: isolating Mandarin compounds
+  // abstract vocab (and every derived form stays legal pinyin); fusional
+  // Russian leans opaque — the morphotype gradient, on the pinned tongues
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const m = foundLanguage(world, { seed: 445 });
+  m.prof = refProfile("mandarin", 445); m.rules = [];
+  const mp = refPin("mandarin"); m.pin = mp.pin; m.prof.rom = mp.rom;
+  const mDeriv = ABS.filter(c => etymologyOf(m, c));
+  const mLegal = mDeriv.every(c => PINYIN.test(strip(wordOf(m, c).toLowerCase())));
+  const ru = foundLanguage(world, { seed: 447 });
+  ru.prof = refProfile("russian", 447); ru.rules = [];
+  const rup = refPin("russian"); ru.pin = rup.pin;
+  const ruDeriv = ABS.filter(c => etymologyOf(ru, c));
+  check(`pinned Mandarin compounds abstract vocab, legal pinyin (${mDeriv.length}/15 derived, e.g. ${mDeriv[0] != null ? wordOf(m, mDeriv[0]) + " ‹ " + etymologyOf(m, mDeriv[0]).glosses.join("+") : "—"})`,
+    mDeriv.length >= 4 && mLegal);
+  check(`isolating Mandarin more transparent than fusional Russian (${mDeriv.length} vs ${ruDeriv.length})`, mDeriv.length > ruDeriv.length);
+
+  // (h) determinism + JSON roundtrip of etymology and derived surfaces
+  const w1 = mkWorld(), w2 = mkWorld();
+  const a = foundLanguage(w1, { seed: 9077 }), b = foundLanguage(w2, { seed: 9077 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => JSON.stringify(ABS.map(c => [wordOf(l, c), etymologyOf(l, c) && etymologyOf(l, c).parts]));
+  check("abstract derivation deterministic + JSON-roundtrip-stable", sig(a) === sig(b) && sig(a) === sig(c3));
+
+  if (!quiet) {
+    say("   designed etymologies in one tongue (" + langWord(l8, 0) + "):");
+    for (const cid of ABS) { const e = etymologyOf(l8, cid); if (e) say("     " + glossOf(cid).padEnd(9) + " " + wordOf(l8, cid).padEnd(14) + " ‹ " + e.glosses.join("+")); }
+  }
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

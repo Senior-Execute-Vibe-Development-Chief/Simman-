@@ -265,6 +265,47 @@ export const COLEX = [
   [GO, WALKV, 0.25], [EAT, DRINK, 0.12], [WANT, LOVEV, 0.15], [SEE, HEAR, 0.08],
 ];
 
+// ── INTENTIONAL abstract derivation (the "king ← sit/high" table) ─────────
+// Curated pathways by which an ABSTRACT concept can be lexicalized as a
+// COMPOUND of concrete/basic ones — "king" as the one who SITS HIGH, "law" as
+// a TRUE SAYING, "temple" as a HOLY HOUSE, "victory" as a WAR FINISHED. This
+// turns the happy accidents the phonology used to throw off (Neteck's chance
+// sit=king) into designed depth, now that accidental homophony is gone.
+//
+// Structured exactly like COLEX — [target, [head, mod], probability] — and
+// rolled PER FAMILY in language.js's compile(): each family rolls adoption per
+// entry, a target takes the FIRST pathway it adopts (a concept has ONE
+// etymology per tongue), or stays a bare opaque root. Routed through the very
+// same joinInternal / rule-log machinery every other word uses, so the
+// etymology is recoverable (etymologyOf) AND shifts under sound change like a
+// real inherited compound (cyning → king). No specific output is ever named:
+// the SYSTEM is the table + the roll; which tongue derives which concept, and
+// into what surface, falls out.
+//
+// INVARIANT — sources are always CONCRETE concepts, never other targets, so
+// the derivation graph is a DAG one morpheme deep (probe §13 asserts it).
+// Probabilities lean the way real languages do — the co-variation with
+// morphotype (isolating tongues compound abstract vocabulary far more than
+// fusional ones: Chinese 国王 'country-king' vs opaque Latin rēx) is applied
+// from the morph dial in language.js, so it is not baked into these numbers.
+export const DERIV = [
+  [KING, [SIT, HIGH], 0.24], [KING, [MAN, GREAT], 0.20], [KING, [MAN, OLD], 0.16],
+  [QUEEN, [WOMAN, GREAT], 0.24], [QUEEN, [WOMAN, HIGH], 0.20],
+  [CHIEF, [MAN, HEAD], 0.24], [CHIEF, [MAN, OLD], 0.20], [CHIEF, [MAN, STRONG], 0.16],
+  [GOD, [SKYC, HIGH], 0.24], [GOD, [SKYC, GREAT], 0.20], [GOD, [FATHER, SKYC], 0.16],
+  [PRIEST, [MAN, HOLY], 0.24], [PRIEST, [MAN, HIGH], 0.20], [PRIEST, [SAY, HOLY], 0.16],
+  [TEMPLE, [HOUSE, HOLY], 0.24], [TEMPLE, [HOUSE, HIGH], 0.20], [TEMPLE, [STONE, HOLY], 0.16],
+  [TOMB, [HOUSE, DIE], 0.24], [TOMB, [STONE, DIE], 0.20],
+  [THRONE, [SIT, HIGH], 0.24], [THRONE, [SIT, GREAT], 0.20], [THRONE, [SIT, STONE], 0.16],
+  [CROWN, [HEAD, GOLD], 0.24], [CROWN, [HEAD, HIGH], 0.20], [CROWN, [HEAD, GREAT], 0.16],
+  [LAW, [SAY, TRUE], 0.24], [LAW, [SAY, STRONG], 0.20], [LAW, [SAY, OLD], 0.16],
+  [OATH, [SAY, HOLY], 0.24], [OATH, [SAY, TRUE], 0.20], [OATH, [SAY, STRONG], 0.16],
+  [COUNCIL, [MAN, MANY], 0.24], [COUNCIL, [SAY, MANY], 0.20], [COUNCIL, [MAN, OLD], 0.16],
+  [ARMY, [MAN, MANY], 0.24], [ARMY, [MAN, WAR], 0.20], [ARMY, [SPEAR, MANY], 0.16],
+  [GUARD, [MAN, STAND], 0.24], [GUARD, [MAN, WAR], 0.20], [GUARD, [STAND, STRONG], 0.16],
+  [VICTORY, [WAR, FINISH], 0.24], [VICTORY, [WAR, GREAT], 0.20], [VICTORY, [FIGHTV, FINISH], 0.16],
+];
+
 // ── name-material pools (indices into CONCEPTS) ──────────────────────────
 export const TOPO_HEAD = [RIVER, FORD, LAKE, BAY, ISLAND, HILL, MOUNTAIN, VALLEY,
   PLAIN, STONE, CAVE, PASS, SPRING, MARSH, FOREST, FIELD, TOWN, FORT, WALL, BRIDGE,

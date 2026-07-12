@@ -24,7 +24,7 @@
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { rollProfile, applySignature, buildInventory, buildSyllabary, synthWord, renderWord, copyWord } from "./languagePhonology.js";
 import { applicableRules, applyRules, legalizeWord } from "./languageChange.js";
-import { CONCEPTS, COLEX, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE } from "./languageLexicon.js";
+import { CONCEPTS, COLEX, DERIV, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
 const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
@@ -145,10 +145,27 @@ function compile(lang) {
   // family-level semantic structure: colexification + derive-vs-root choices
   const colex = new Map();
   COLEX.forEach(([a, b, p], i) => { if (h01(lang.famSeed, "colex", i) < p) colex.set(b, a); });
-  c = { key, inv, colex, words: new Map(), internals: new Map(), roots: new Map(), sufs: null, seeded: false };
+  // INTENTIONAL abstract derivation (king ← sit/high): each family adopts, per
+  // entry, whether an abstract concept lexicalizes as a compound of concrete
+  // ones — a target takes the FIRST pathway it adopts (one etymology per
+  // tongue). The morphotype scales the whole table: isolating/agglutinative
+  // tongues compound abstract vocabulary heavily, fusional/templatic ones lean
+  // on opaque roots (the transparency co-variation, grounded in the morph
+  // dial — no separate rolled field, so nothing leaks into the pinned refs).
+  const deriv = new Map();
+  const tf = MORPH_TRANSPARENCY[lang.prof.morph] ?? 1;
+  DERIV.forEach(([target, pair, p], i) => {
+    if (deriv.has(target)) return;                           // first adopted pathway wins
+    if (h01(lang.famSeed, "aderiv", i) < p * tf) deriv.set(target, pair);
+  });
+  c = { key, inv, colex, deriv, words: new Map(), internals: new Map(), roots: new Map(), sufs: null, seeded: false };
   COMPILED.set(lang, c);
   return c;
 }
+// how strongly a morphotype builds abstract vocabulary by transparent
+// compounding vs opaque roots (Chinese/Vietnamese vs Latin/Russian)
+const MORPH_TRANSPARENCY = { iso: 1.4, agg: 1.15, fus: 0.72, tmpl: 0.6 };
+const MAXDERIV = 4;   // recursion backstop — the dv+DERIV graph is a gated DAG (probe §13)
 
 // ── homophony repair (the 狮→狮子 machine) ─────────────────────────────────
 // The saturation guard sizes a language so its vocabulary CAN fit, but the
@@ -183,14 +200,29 @@ function growWord(lang, w, cid, attempt) {
   return out;
 }
 
-// is this concept lexicalized as a compound (derived), given the family's
-// derive-vs-root rolls? (must match internalOf's branch exactly)
-function isDerived(lang, cid) {
+// The concept's derivation source in THIS family — its own STRUCTURAL dv pair
+// (ford = river+water, unchanged roll), or an abstract pathway ADOPTED from
+// the DERIV table (king = sit+high), or null (a bare opaque root). Both
+// internalOf and isDerived read this ONE function, so the dictionary word, the
+// paradigm's citation cell and the numeral system can never disagree about
+// whether a concept is a compound. The parts must differ — a tongue that
+// colexified the two source concepts can't compound them into "X-X".
+function derivPair(lang, cid, depth = 0) {
   const con = CONCEPTS[cid];
-  if (!con.dv) return false;
-  const p0 = internalOf(lang, con.dv[0]), p1 = internalOf(lang, con.dv[1]);
-  return p0 !== p1 && h01(lang.famSeed, "dv", cid) < 0.65;
+  if (con.dv) {
+    const p0 = internalOf(lang, con.dv[0], depth + 1), p1 = internalOf(lang, con.dv[1], depth + 1);
+    if (p0 !== p1 && h01(lang.famSeed, "dv", cid) < 0.65) return con.dv;
+  }
+  if (depth >= MAXDERIV) return null;                  // backstop; the graph is a gated DAG
+  const pair = compile(lang).deriv.get(cid);
+  if (pair) {
+    const p0 = internalOf(lang, pair[0], depth + 1), p1 = internalOf(lang, pair[1], depth + 1);
+    if (p0 !== p1) return pair;
+  }
+  return null;
 }
+// is this concept lexicalized as a compound (derived) in this family?
+function isDerived(lang, cid) { return derivPair(lang, cid) !== null; }
 
 function seedDictionary(lang, c) {
   if (c.seeded) return;
@@ -231,7 +263,7 @@ function rootOf(lang, cid) {
 /** Internal (feature-bundle) form for a concept's NATIVE word: family root
  *  replayed through this language's rule log — cognates across the family
  *  correspond regularly because they share the root and differ in the log. */
-function internalOf(lang, cid) {
+function internalOf(lang, cid, depth = 0) {
   const c = compile(lang);
   // first access seeds the whole dictionary in a fixed order with homophony
   // repair (seedDictionary sets c.seeded before re-entering, so this recurses
@@ -241,19 +273,27 @@ function internalOf(lang, cid) {
   if (seen) return seen;
   const con = CONCEPTS[cid];
   const merged = c.colex.get(cid) ?? cid;
-  if (merged !== cid) { const w = internalOf(lang, merged); c.internals.set(cid, w); return w; }
+  if (merged !== cid) { const w = internalOf(lang, merged, depth); c.internals.set(cid, w); return w; }
   let w;
-  const parts = con.dv && [internalOf(lang, con.dv[0]), internalOf(lang, con.dv[1])];
-  // (if this family colexified the two parts into ONE lexeme, a compound
-  // would duplicate it — "water-water" — so coin a root instead)
-  if (con.dv && parts[0] !== parts[1] && h01(lang.famSeed, "dv", cid) < 0.65) {
+  // structural dv (ford = river+water) OR an adopted abstract pathway
+  // (king = sit+high) — one function decides, so isDerived can't disagree.
+  // (if this family colexified the two parts into ONE lexeme, derivPair
+  // returns null and we coin a root instead — no "water-water")
+  const dp = derivPair(lang, cid, depth);
+  if (dp) {
+    const parts = [internalOf(lang, dp[0], depth + 1), internalOf(lang, dp[1], depth + 1)];
     // derived concept: a compound of its parts (or a re-vowelled pattern of
     // the head root, if the tongue is templatic — derivation by pattern)
     if (lang.prof.morph === "tmpl") w = revowel(lang, parts[0], cid);
     else w = joinInternal(lang, parts[1], parts[0]);
-    // high-frequency EROSION: a common compound wears down with use — no
-    // speech community says a six-syllable word for "crossing" daily
-    if (con.b >= 0.5 && w.syls.length > 3) w.syls = [w.syls[0], ...w.syls.slice(-2)];
+    // EROSION: a worn compound sheds middle syllables. A structural dv
+    // compound (ford, crossing) erodes only when common (b≥.5); an ADOPTED
+    // abstract compound is a lexicalized institutional term (king, throne,
+    // council) and univerbates whenever it grows long — the etymology stays
+    // legible through etymologyOf even after the surface wears down (cyning →
+    // king). dv === con.dv distinguishes the two paths, so dv stays untouched.
+    const isDv = dp === con.dv;
+    if (w.syls.length > 3 && (!isDv || con.b >= 0.5)) w.syls = [w.syls[0], ...w.syls.slice(-2)];
   } else {
     // atomic: evolve the (possibly homophony-repaired) root as one piece, so
     // wordOf and the grammar layer's rootFormOf never diverge
@@ -288,6 +328,25 @@ export function wordOf(lang, cid) {
 
 /** The concept's gloss (shared across all languages). */
 export function glossOf(cid) { return CONCEPTS[cid] ? CONCEPTS[cid].g : ""; }
+
+/** Recoverable etymology: if this tongue lexicalizes the concept as a compound
+ *  of concrete ones (king ← 'sit'+'high'; a structural dv OR an adopted DERIV
+ *  pathway), return { parts:[cid,cid], glosses:[g,g] }; null for a bare root.
+ *  Because the compound rides the rule log, the surface drifts while the
+ *  etymology stays legible — historiographic evidence, generated. */
+export function etymologyOf(lang, cid) {
+  ensureV2(lang);
+  // resolve colexification FIRST (like internalOf/rootFormOf): a concept that
+  // shares its word with another wears THAT word's etymology, never its own
+  // shadowed pathway (chief colexified to king shows king's story, not a
+  // man+head compound the tongue never actually coined)
+  const c = compile(lang);
+  let id = cid, hops = 0;
+  while (c.colex.has(id) && hops++ < 4) id = c.colex.get(id);
+  const dp = derivPair(lang, id);
+  if (!dp) return null;
+  return { parts: [dp[0], dp[1]], glosses: [glossOf(dp[0]), glossOf(dp[1])] };
+}
 
 // ── grammar-layer access (languageGrammar.js) ─────────────────────────────
 // The grammar module derives closed-class words, paradigms and clauses from
