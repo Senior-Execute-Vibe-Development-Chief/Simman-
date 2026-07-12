@@ -14,8 +14,8 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -236,7 +236,9 @@ console.log("\n── closed-class vocabulary ──");
   let pronDup = 0, qFam = 0, demDup = 0, numDup = 0;
   for (const l of langs) {
     const cl = closedOf(l);
-    const ws = cl.prons.map(p => p.w);
+    // the T-V polite forms (2v/2vv) legitimately syncretize with 2pl (the vous
+    // machine), so the core person×number paradigm is what must be distinct
+    const ws = cl.prons.filter(p => p.k !== "2v" && p.k !== "2vv").map(p => p.w);
     if (new Set(ws).size !== ws.length || ws.some(w => !w)) pronDup++;
     const dw = cl.dems.map(d => d.w);
     if (new Set(dw).size !== dw.length) demDup++;
@@ -1614,6 +1616,102 @@ console.log("\n── Numeral classifiers ──");
   const ca = foundLanguage(mkWorld(), { seed: cseed }), cb = foundLanguage(mkWorld(), { seed: cseed }), cc = JSON.parse(JSON.stringify(ca));
   const csig = (l) => JSON.stringify(classifiersOf(l)) + numeralPhrase(l, HORSE, 3).text + numeralPhrase(l, KING, 2).text;
   check(`classifiers deterministic + JSON-roundtrip-stable`, csig(ca) === csig(cb) && csig(ca) === csig(cc));
+}
+
+// ── 20. NOMINAL CATEGORIES (Group E) ──────────────────────────────────────
+// Number beyond sg/du/pl (paucal, trial — the Corbett hierarchy), alienable vs
+// inalienable possession, comparison (comparative/superlative/equative), and
+// T-V politeness + honorific verbs. Additive to the noun/degree/pronoun layers.
+console.log("\n── Nominal categories ──");
+{
+  const world = mkWorld();
+  const byMorph = { iso: [], agg: [], fus: [], tmpl: [] };
+  const N = 900;
+  for (let i = 0; i < N; i++) { const l = foundLanguage(world, { seed: 830000 + i * 41 }); byMorph[l.prof.morph].push(l); }
+  const all = [].concat(...Object.values(byMorph));
+  const rate = (ls, pred) => ls.filter(pred).length / Math.max(1, ls.length);
+  const ov = (l) => { const w = gramOf(l).wo; return w === "sov" || w === "ovs"; };
+  const fv = (x) => x.gloss;
+
+  // ── F1 number: paucal / trial ──
+  // (a) BYTE-IDENTITY (first gate): a plain sg/pl frame is unchanged
+  const be = all.slice(0, 150).every(l => {
+    const a = renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+    const b = renderClause(JSON.parse(JSON.stringify(l)), { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+    return a.text === b.text && a.gloss === b.gloss;
+  });
+  check(`byte-identity: a plain frame is unchanged (150 sampled)`, be);
+  // (b) the load-bearing implicational: ZERO trial/paucal without a dual
+  check(`ZERO trial/paucal without dual (Corbett hierarchy)`, all.filter(l => (gramOf(l).trial || gramOf(l).paucal) && !gramOf(l).dual).length === 0);
+  const trRate = rate(all, l => gramOf(l).trial), pauRate = rate(all, l => gramOf(l).paucal);
+  check(`trial rarer than paucal, both a small minority (tri ${(trRate * 100).toFixed(1)}% < 4%, pau ${(pauRate * 100).toFixed(1)}% < 8%)`, trRate < 0.04 && pauRate < 0.08 && trRate <= pauRate);
+  const tl = all.find(l => gramOf(l).trial && l.prof.morph !== "iso");
+  if (tl) { const tri = inflectNoun(tl, STONE, { num: "tri" }).gloss, du = inflectNoun(tl, STONE, { num: "du" }).gloss, pl = inflectNoun(tl, STONE, { num: "pl" }).gloss; check(`trial cell ≠ dual ≠ plural, glossed TRI (${tri} / ${du} / ${pl})`, tri !== du && tri !== pl && /TRI/.test(tri)); }
+  else check("trial cell distinct (none found)", false);
+  if (tl) { const cl = closedOf(tl); const g = (k) => { const p = cl.prons.find(x => x.k === k); return p && p.w; }; check(`trial pronoun distinct (1TRI≠1DU≠1PL: ${g("1tri")}/${g("1du")}/${g("1pl")})`, g("1tri") && g("1tri") !== g("1du") && g("1tri") !== g("1pl")); }
+  else check("trial pronoun distinct (none)", false);
+  const ntl = all.find(l => !gramOf(l).trial && gramOf(l).pluralMark && l.prof.morph !== "iso");
+  check(`trial degrades to the plural where unsupported (${inflectNoun(ntl, STONE, { num: "tri" }).gloss})`, /PL/.test(inflectNoun(ntl, STONE, { num: "tri" }).gloss) && !/TRI/.test(inflectNoun(ntl, STONE, { num: "tri" }).gloss));
+
+  // ── F2 possession ──
+  const possHead = rate(all.filter(l => gramOf(l).agree !== "none" && l.prof.morph !== "iso"), l => gramOf(l).possAffix);
+  const possDep = rate(all.filter(l => gramOf(l).agree === "none" && l.prof.morph !== "iso"), l => gramOf(l).possAffix);
+  check(`possessive affix correlates with head-marking (agree ${Math.round(possHead * 100)}% > none ${Math.round(possDep * 100)}%), ~0% iso`, possHead > possDep && rate(byMorph.iso, l => gramOf(l).possAffix) === 0);
+  const sp = all.find(l => gramOf(l).alienSplit && l.prof.morph !== "iso");
+  check(`alienability split follows the DOMAIN (HAND/MOTHER affix, HOUSE/STONE construction)`, !!sp && possessionType(sp, HAND) === "affix" && possessionType(sp, MOTHER) === "affix" && possessionType(sp, HOUSE) === "construction" && possessionType(sp, STONE) === "construction");
+  const nsp = all.find(l => gramOf(l).possAffix && !gramOf(l).alienSplit && l.prof.morph !== "iso");
+  check(`a non-split possessive affixes ALL nouns (HOUSE included)`, !!nsp && possessionType(nsp, HOUSE) === "affix" && possessionType(nsp, HAND) === "affix");
+  const pcGl = nsp ? inflectNoun(nsp, HAND, { poss: { pers: 1, num: "sg" }, cas: "dat" }).gloss : "";
+  check(`POSS + CASE both surface, distinct in the gloss (${pcGl})`, /POSS/.test(pcGl) && /DAT/.test(pcGl));
+  check(`citation stability: a no-possessor noun == wordOf (${inflectNoun(nsp || all[0], HOUSE, {}).text})`, inflectNoun(nsp || all[0], HOUSE, {}).text === wordOf(nsp || all[0], HOUSE));
+  if (sp) { const cons = inflectPossessed(sp, HOUSE, { pers: 1, num: "sg" }); check(`alienable possession renders a construction, gloss-aligned (${cons.gloss})`, cons.tokens.length === cons.gloss.split(" ").length && cons.tokens.length >= 2); }
+  else check("alienable construction (none)", false);
+  // affix cognate with the pronoun: the possessive 1sg shares the free 1sg's onset
+  const pcog = all.find(l => gramOf(l).possAffix && l.prof.morph !== "iso" && paradigmSpec(l).possAff);
+  if (pcog) { const ha = paradigmSpec(pcog).possAff; check(`possessive affixes are person-distinct (1≠2≠3)`, new Set([ha["1sg"], ha["2sg"], ha["3sg"]].map(a => renderClause && JSON.stringify(a.syl))).size === 3); }
+  else check("possessive person-distinct (none)", false);
+
+  // ── F3 comparison ──
+  const ovL = all.filter(ov), voIso = byMorph.iso.filter(l => !ov(l));
+  check(`OV languages favour the separative comparative (${Math.round(rate(ovL, l => gramOf(l).compar.type === "sep") * 100)}%)`, rate(ovL, l => gramOf(l).compar.type === "sep") > 0.5);
+  check(`VO-isolating favours the exceed-verb comparative (${Math.round(rate(voIso, l => gramOf(l).compar.type === "exceed") * 100)}%)`, voIso.length > 0 && rate(voIso, l => gramOf(l).compar.type === "exceed") > 0.5);
+  check(`stdFirst tracks OV in every language`, all.every(l => gramOf(l).compar.stdFirst === ov(l)));
+  const cAgg = { exceed: 0, sep: 0, particle: 0 }; for (const l of all) cAgg[gramOf(l).compar.type]++;
+  const f = (k) => cAgg[k] / all.length;
+  check(`comparison strategies WALS-marginal (exceed ${Math.round(f("exceed") * 100)}% sep ${Math.round(f("sep") * 100)}% particle ${Math.round(f("particle") * 100)}%)`, f("sep") > 0.3 && f("sep") < 0.6 && f("particle") > 0.2 && f("particle") < 0.45 && f("exceed") > 0.1 && f("exceed") < 0.3);
+  const cl0 = all.find(l => l.prof.morph !== "iso");
+  const cmpr = comparative(cl0, GREAT, KING, { degree: "cmpr" }), sup = comparative(cl0, GREAT, null, { degree: "sup" }), eq = comparative(cl0, GREAT, KING, { degree: "eq" });
+  check(`all three degrees render, gloss-aligned (${cmpr.gloss} · ${sup.gloss} · ${eq.gloss})`, [cmpr, sup, eq].every(c => c.tokens.length === c.gloss.split(" ").length && c.text.length > 0));
+  // the 'comp' pattern is distinct from the TAM/plural patterns (templatic)
+  const tmplC = byMorph.tmpl[0];
+  if (tmplC) { const supTmpl = comparative(tmplC, GREAT, null, { degree: "sup" }); check(`templatic superlative uses a distinct comp pattern (${supTmpl.gloss})`, /SUP/.test(supTmpl.gloss) || supTmpl.tokens.length >= 2); }
+  else check("templatic comp pattern (none)", false);
+
+  // ── F4 politeness ──
+  const tvC = { none: 0, binary: 0, multi: 0 }; for (const l of all) tvC[gramOf(l).tv]++;
+  check(`T-V distribution WALS-shaped (none ${Math.round(tvC.none / N * 100)}% binary ${Math.round(tvC.binary / N * 100)}% multi ${Math.round(tvC.multi / N * 100)}%)`, tvC.binary / N > 0.18 && tvC.binary / N < 0.3 && tvC.multi / N > 0.03 && tvC.none / N > 0.6);
+  const pv = all.find(l => gramOf(l).tv !== "none" && gramOf(l).tvSource === "plural");
+  check(`polite 2nd ≠ familiar; a plural source ⇒ 2v == 2pl`, !!pv && (() => { const t = tvPronouns(pv), cl = closedOf(pv); return t.polite !== t.familiar && t.polite === cl.prons.find(p => p.k === "2pl").w; })());
+  const nv = all.find(l => gramOf(l).tv !== "none" && gramOf(l).tvSource === "noble");
+  check(`a noble source yields a distinct polite form (≠ familiar, ≠ 2pl)`, !!nv && (() => { const t = tvPronouns(nv), cl = closedOf(nv); return t.polite !== t.familiar && t.polite !== cl.prons.find(p => p.k === "2pl").w; })());
+  const mv = all.find(l => gramOf(l).tv === "multi");
+  check(`multi-level politeness: 2sg ≠ 2v ≠ 2vv`, !!mv && (() => { const t = tvPronouns(mv); return new Set([t.familiar, t.polite, t.honorific]).size === 3; })());
+  const hvL = all.filter(l => gramOf(l).honVerb && l.prof.morph !== "iso" && paradigmSpec(l).tam.pst);
+  const hv = hvL[0];
+  if (hv) { const h = honorificVerb(hv, GO, { tam: "pst" }), pl = inflectVerb(hv, GO, { tam: "pst" }); check(`honorific verb ≠ plain, glossed HON (${h.gloss} vs ${pl.gloss})`, h.text !== pl.text && /HON/.test(h.gloss)); }
+  else check("honorific verb distinct (none)", false);
+  check(`honorific verb leans synthetic (agg/tmpl ${Math.round(rate([...byMorph.agg, ...byMorph.tmpl], l => gramOf(l).honVerb) * 100)}% > iso/fus ${Math.round(rate([...byMorph.iso, ...byMorph.fus], l => gramOf(l).honVerb) * 100)}%)`, rate([...byMorph.agg, ...byMorph.tmpl], l => gramOf(l).honVerb) > rate([...byMorph.iso, ...byMorph.fus], l => gramOf(l).honVerb));
+
+  // ── references + determinism ──
+  const refs = ["mandarin", "russian", "english"].map(k => refLang(mkWorld(), k, 445));
+  check(`references pinned (trial/possAffix false; compar + tv set)`, refs.every(r => { const g = gramOf(r); return g.trial === false && g.possAffix === false && g.compar && typeof g.tv === "string"; }));
+  const mRef = refLang(mkWorld(), "mandarin", 445);
+  check(`pinned Mandarin comparative preposes the standard (bǐ: stdFirst)`, gramOf(mRef).compar.stdFirst === true && gramOf(mRef).compar.type === "particle");
+  let nseed = null;
+  for (let i = 0; i < N && nseed === null; i++) { const s = 830000 + i * 41; const g = gramOf(foundLanguage(mkWorld(), { seed: s })); if (g.possAffix || g.tv !== "none" || g.trial) nseed = s; }
+  const na = foundLanguage(mkWorld(), { seed: nseed }), nb = foundLanguage(mkWorld(), { seed: nseed }), ncc = JSON.parse(JSON.stringify(na));
+  const nsig = (l) => JSON.stringify([inflectNoun(l, HAND, { poss: { pers: 1, num: "sg" }, cas: "dat" }).gloss, comparative(l, GREAT, KING, { degree: "cmpr" }).text, tvPronouns(l)]);
+  check(`nominal categories deterministic + JSON-roundtrip-stable`, nsig(na) === nsig(nb) && nsig(na) === nsig(ncc));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

@@ -38,6 +38,9 @@ export function refProfile(kind, seed) {
       remotePast: 0, remoteFuture: 0, perfect: true, progressive: true, habitual: false, moods: [], mirative: false, evid: null,
       genders: 0, classAssign: null, concord: null, tenses: 1, agree: "none", aspect: true, pluralMark: false,
       classif: { classes: ["gen", "hum", "anm", "long", "flat", "round"], obl: true, order: "pre" },
+      trial: false, paucal: false, possAffix: false, alienSplit: false,
+      compar: { type: "particle", more: "none", stdFirst: true },   // A bǐ B dà — VO with a preposed standard (sanctioned anomaly)
+      tv: "binary", tvSource: "plural", honVerb: false,             // nín ‹ 2PL
       dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
       proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "affix", declN: 1, conjN: 1, pronCase: "none",
@@ -65,6 +68,9 @@ export function refProfile(kind, seed) {
       remotePast: 0, remoteFuture: 0, perfect: false, progressive: false, habitual: false, moods: ["cond"], mirative: false, evid: null,
       genders: 3, classAssign: "mixed", concord: { adj: true, dem: true, art: false, verb: true, site: "fuse" }, tenses: 3, agree: "subj", aspect: true, pluralMark: true,
       classif: null,
+      trial: false, paucal: false, possAffix: false, alienSplit: false,
+      compar: { type: "particle", more: "affix", stdFirst: false },   // -ee / bolee … чем
+      tv: "binary", tvSource: "plural", honVerb: false,               // vy ‹ 2PL
       dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 3, conjN: 2, pronCase: "full",
@@ -95,6 +101,9 @@ export function refProfile(kind, seed) {
       caus: false, pass: true, passBy: "at", antip: false, appl: false, applOf: null,
       genders: 0, classAssign: null, concord: null, tenses: 3, agree: "none", aspect: false, pluralMark: true,
       classif: null,
+      trial: false, paucal: false, possAffix: false, alienSplit: false,
+      compar: { type: "particle", more: "affix", stdFirst: false },   // -er / more … than
+      tv: "none", tvSource: "plural", honVerb: false,
       dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 2, conjN: 2, pronCase: "acc",

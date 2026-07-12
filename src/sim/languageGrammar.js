@@ -31,6 +31,7 @@ import {
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, AGENTIVITY, MAKE, DO, EAT,
   BE, HAVE, KNOW, SEE, NEW, NIGHT, FAR, SEEM, HEAR, SAY,
   BODY, LEAF, PEOPLE, TREE, REED, SPEAR, ARM, SHIELD, WOOD, GRAIN, CLF_SENSE, CLF_AMBIG,
+  LITTLE, EXCEED, SAME, LORD, NOBLE, HIGH,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -148,6 +149,10 @@ export function rollGrammar(famSeed, prof) {
   // plural-marking dial, hoisted to a shared local so the classifier↔plural
   // complementarity (below) reads the SAME value the noun paradigm uses
   const plMark = m === "iso" ? H("pl") < 0.3 : H("pl") < 0.9;
+  // dual (hoisted: trial/paucal gate on it — the Corbett number hierarchy) and
+  // the possessive-affix dial (hoisted: alienSplit gates on it)
+  const dual = H("du") < 0.15;
+  const possAffix = m === "iso" ? false : agree !== "none" ? H("poss") < 0.7 : H("poss") < 0.4;
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
@@ -201,7 +206,32 @@ export function rollGrammar(famSeed, prof) {
       add("round", 0.45, "clfround");
       return { classes, obl: H("clfob") < 0.55, order: (adjN ? H("clford") < 0.8 : H("clford") < 0.2) ? "pre" : "post" };
     })(),
-    dual: H("du") < 0.15,
+    dual,
+    // NOMINAL NUMBER beyond sg/du/pl (Group E, Corbett hierarchy: trial ⊃ dual,
+    // paucal needs plural/usually dual) — both gate on the EXISTING dual, rare.
+    trial: dual && H("tri") < 0.12,
+    paucal: dual && H("pau") < 0.25,
+    // POSSESSION (Group E): head-marking languages affix the possessor (my-house);
+    // never isolating. An alienability split affixes only inalienable (kin/body)
+    // nouns and uses an 'of'-construction for the rest.
+    possAffix,
+    alienSplit: possAffix && H("alien") < 0.4,
+    // COMPARISON (Group E, Stassen): the comparative strategy tracks word order —
+    // OV favours the separative ('than' ‹ 'from'), VO-isolating the exceed-verb,
+    // the rest a particle. stdFirst (standard precedes the adjective) tracks OV;
+    // stored so a reference can pin the disharmonic corner (Mandarin bǐ).
+    compar: (() => {
+      const type = ov ? pickW("cmp", [["sep", 0.7], ["particle", 0.2], ["exceed", 0.1]])
+        : v1 ? pickW("cmp", [["exceed", 0.45], ["particle", 0.35], ["sep", 0.2]])
+        : m === "iso" ? pickW("cmp", [["exceed", 0.65], ["particle", 0.25], ["sep", 0.1]])
+        : pickW("cmp", [["particle", 0.5], ["sep", 0.3], ["exceed", 0.2]]);
+      return { type, more: pickW("cmpm", [["affix", 0.4], ["word", 0.35], ["none", 0.25]]), stdFirst: ov };
+    })(),
+    // POLITENESS (Group E, WALS 45A): a T-V distinction (tu/vous) worn from the
+    // plural pronoun or a noble address; an honorific verb form leans synthetic.
+    tv: (() => { const r = H("tv"); return r < 0.24 ? "binary" : r < 0.31 ? "multi" : "none"; })(),
+    tvSource: H("tvsrc") < 0.6 ? "plural" : "noble",
+    honVerb: (m === "agg" || m === "tmpl") ? H("hon") < 0.3 : H("hon") < 0.08,
     clusiv: H("cl") < 0.35,                          // inclusive/exclusive 'we'
     gender3: (genders ? H("g3") < 0.75 : H("g3") < 0.15),
     defArt: H("def") < 0.38,                         // the demonstrative-worn article
@@ -420,14 +450,20 @@ export function closedOf(lang) {
   const plSrc = h01(fam, "plsrc") < 0.6 ? MANY : ALL;
   const plMark = wearSyl(prof, lighten(rootFormOf(lang, plSrc).w));
   const duMark = wearSyl(prof, lighten(rootFormOf(lang, TWO).w));
+  const triMark = wearSyl(prof, lighten(rootFormOf(lang, THREE).w));
+  const pauMark = wearSyl(prof, lighten(rootFormOf(lang, h01(fam, "pausrc") < 0.7 ? LITTLE : MANY).w));
   const plOf = (root, key) => g.pronPl === "affix"
     ? joinSyls(root.syls, [plMark])
     : synthClosed(lang, inv, key);
   const duOf = (root) => joinSyls(root.syls, [duMark]);
+  const triOf = (root) => joinSyls(root.syls, [triMark]);   // trial pronoun ‹ 'three'
+  const pauOf = (root) => joinSyls(root.syls, [pauMark]);   // paucal pronoun ‹ 'few'
   const prons = [];
   const addP = (k, gl, form) => prons.push({ k, g: gl, form: legalizeWord(R(form)), w: null });
   addP("1sg", "1SG", copyWord(root1));
   if (g.dual) addP("1du", "1DU", duOf(root1));
+  if (g.trial) addP("1tri", "1TRI", triOf(root1));
+  if (g.paucal) addP("1pau", "1PAU", pauOf(root1));
   if (g.clusiv) {
     const incl = h01(fam, "yumi") < 0.55
       ? joinSyls([wearSyl(prof, root1)], [wearSyl(prof, root2)])   // the yumi weld
@@ -437,6 +473,8 @@ export function closedOf(lang) {
   } else addP("1pl", "1PL", plOf(root1, "pron1pl"));
   addP("2sg", "2SG", copyWord(root2));
   if (g.dual) addP("2du", "2DU", duOf(root2));
+  if (g.trial) addP("2tri", "2TRI", triOf(root2));
+  if (g.paucal) addP("2pau", "2PAU", pauOf(root2));
   addP("2pl", "2PL", plOf(root2, "pron2pl"));
   if (g.gender3) {
     addP("3sgm", "3SG.M", copyWord(root3));
@@ -574,6 +612,21 @@ export function closedOf(lang) {
   // their forms, later classes shift; 'and' keeps its comitative identity
   dedupe(lang, inv, [...prons, ...dems, neg, ...qs, ...conj.filter(x => !x.src),
     ...(qp ? [qp] : []), ...(impPart ? [impPart] : []), ...(prohibW ? [prohibW] : [])]);
+
+  // ── T-V POLITENESS (Group E, WALS 45A): the polite 2nd person is either the
+  // PLURAL pronoun (the vous machine — 2v == the FINAL 2pl, so built after the
+  // dedupes and kept OUT of them, like 'and' keeps its comitative identity) or
+  // worn from a noble address (the usted machine ‹ LORD/NOBLE); 'multi' adds 2vv ──
+  if (g.tv !== "none") {
+    const twoV = g.tvSource === "plural"
+      ? (() => { const p2 = prons.find(p => p.k === "2pl"); return { form: copyWord(p2.form), w: p2.w }; })()
+      : (() => { const f = legalizeWord({ syls: [wearSyl(prof, nativeStemOf(lang, h01(fam, "vsrc") < 0.5 ? LORD : NOBLE))] }); return { form: f, w: rform(lang, f) }; })();
+    prons.push({ k: "2v", g: "2SG.POL", form: twoV.form, w: twoV.w });
+    if (g.tv === "multi") {
+      const f = legalizeWord({ syls: [wearSyl(prof, nativeStemOf(lang, HIGH))] });
+      prons.push({ k: "2vv", g: "2SG.HON", form: f, w: rform(lang, f) });
+    }
+  }
 
   // ── articles: the definite wears down from the distal demonstrative
   // (that→the), the indefinite from 'one' (one→a) — when the dials say so.
@@ -750,7 +803,6 @@ function perturbNumeralText(lang, text, n, k) {
 export function numeral(lang, n) {
   if (n > 0 && n < 100) return numeralTable(lang).get(n);
   // 100+ : hundreds part composes with the deduped 1..99 table
-  const g = gramOf(lang);
   const atoms = numAtoms(lang);
   const h = Math.floor(n / 100), rest = n % 100;
   const parts = [];
@@ -863,6 +915,67 @@ export function numeralPhrase(lang, cid, n, { cas = null, useClf = true } = {}) 
   return { tokens: toks, text: toks.map(t => t.w).join(" "), gloss: toks.map(t => t.g).join(" ") };
 }
 
+// ── COMPARISON (Group E): comparative / superlative / equative ────────────
+// The standard marker is worn from the language's own stock: the separative
+// 'than' ‹ its own 'from' adposition, the exceed-verb ‹ EXCEED, the equative
+// ‹ SAME, 'more' ‹ MANY, 'most' ‹ ALL/MANY. Cached like closedOf.
+function degreeMarkers(lang) {
+  const c = gc(lang);
+  if (c.degm) return c.degm;
+  const g = gramOf(lang), inv = compiledInv(lang), cl = closedOf(lang), prof = lang.prof, fam = lang.famSeed ?? lang.seed;
+  const wear = (cid) => legalizeWord({ syls: [wearSyl(prof, nativeStemOf(lang, cid))] });
+  const more = g.compar.more === "none" ? null
+    : g.compar.more === "affix" ? { w: renderAffix(lang, wear(MANY).syls[0]), g: "more", affix: true }
+    : { w: rform(lang, wear(MANY)), g: "more", affix: false };
+  const most = { w: rform(lang, wear(h01(fam, "most") < 0.5 ? ALL : MANY)), g: "most" };
+  const than = g.compar.type === "sep" ? (() => { const a = cl.adps.find(x => x.m === "from") || cl.adps[0]; return { w: a.w, g: "than", sep: true }; })()
+    : g.compar.type === "exceed" ? { w: rform(lang, wear(EXCEED)), g: "exceed" }
+    : { w: rformNeutral(lang, legalizeWord(applyRules(lang.rules, synthClosed(lang, inv, "than")))), g: "than" };
+  const same = { w: rform(lang, wear(SAME)), g: "same" };
+  c.degm = { more, most, than, same };
+  return c.degm;
+}
+
+/** A comparison phrase (Group E): a standalone renderer (like intensive/numeral),
+ *  NOT a clause-frame change. degree: 'cmpr' (A more-tall than B) | 'sup' (most
+ *  tall) | 'eq' (tall as B). Word order tracks stdFirst (the standard precedes in
+ *  OV). → { tokens, text, gloss } */
+export function comparative(lang, adjCid, standardCid, { degree = "cmpr" } = {}) {
+  const g = gramOf(lang), dm = degreeMarkers(lang);
+  const pack = (ts) => ({ tokens: ts, text: ts.map(t => t.w).join(" "), gloss: ts.map(t => t.g).join(" ") });
+  const adjTok = { w: wordOf(lang, adjCid), g: glossOf(adjCid) };
+  const std = { w: wordOf(lang, standardCid != null ? standardCid : MANY), g: standardCid != null ? glossOf(standardCid) : "other" };
+  if (degree === "sup") {
+    if (lang.prof.morph === "tmpl") return pack([{ w: renderWord(legalizeWord(repattern(lang, copyWord(nativeStemOf(lang, adjCid)), "comp")), lang.prof), g: glossOf(adjCid) + "⟨SUP⟩" }]);
+    return pack([{ w: dm.most.w, g: "most" }, adjTok]);
+  }
+  if (degree === "eq") return pack([adjTok, { w: dm.same.w, g: "same" }, std]);
+  // comparative: the adjective, optionally carrying a 'more' marker
+  const adjMore = dm.more && dm.more.affix ? [{ w: adjTok.w + dm.more.w, g: adjTok.g + "-more" }]
+    : dm.more ? [{ w: dm.more.w, g: "more" }, adjTok] : [adjTok];
+  if (g.compar.type === "exceed") return pack([...adjMore, { w: dm.than.w, g: "exceed" }, std]);
+  // separative / particle: the standard carries 'than' (separative fuses to it)
+  const stdMarked = dm.than.sep
+    ? (g.adpSide === "post" ? [std, { w: dm.than.w, g: "than" }] : [{ w: dm.than.w, g: "than" }, std])
+    : [{ w: dm.than.w, g: "than" }, std];
+  return pack(g.compar.stdFirst ? [...stdMarked, ...adjMore] : [...adjMore, ...stdMarked]);
+}
+
+/** The T-V (politeness) pronoun set (Group E) — null for a language with no
+ *  distinction, else { tv, source, familiar, polite, honorific }. */
+export function tvPronouns(lang) {
+  const g = gramOf(lang);
+  if (g.tv === "none") return null;
+  const cl = closedOf(lang);
+  const at = (k) => { const p = cl.prons.find(x => x.k === k); return p ? p.w : null; };
+  const fam = at("2sg"), pol = at("2v") || fam;
+  return { tv: g.tv, source: g.tvSource, familiar: fam, polite: pol, honorific: at("2vv") || pol };
+}
+/** A verb in its honorific form (Group E) — null where the language marks none. */
+export function honorificVerb(lang, cid, { tam = null, pers = null } = {}) {
+  return gramOf(lang).honVerb ? inflectVerb(lang, cid, { tam, pers, hon: true }) : null;
+}
+
 // ══ M2: inflectional morphology ═══════════════════════════════════════════
 //
 // The heart. Every affix is a GRAMMATICALIZED word: a source word from the
@@ -930,6 +1043,10 @@ const AFF_SRC = {
   cond: [[GO, 0.3], [WANT, 0.2], [null, 0.5]],                  // conditional
   sbjv: [[COME, 0.2], [null, 0.8]],                             // subjunctive (mostly opaque)
   mir: [[SEE, 0.25], [FINISH, 0.25], [null, 0.5]],             // mirative
+  // nominal categories (Group E): extra number, honorific verb
+  tri: [[THREE, 1]],                                           // trial ‹ 'three' (parallel to dual ‹ 'two')
+  pau: [[LITTLE, 0.5], [MANY, 0.2], [null, 0.3]],              // paucal ‹ 'few/little'
+  hon: [[GIVE, 0.4], [null, 0.6]],                             // honorific/humble verb ‹ 'give' (benefactive)
 };
 const MOOD_ORDER = ["sbjv", "cond", "opt", "pot"];              // frequency ranking (like CASE_ORDER)
 const MOOD_GLOSS = { sbjv: "SBJV", cond: "COND", opt: "OPT", pot: "POT" };
@@ -1014,12 +1131,19 @@ export function paradigmSpec(lang) {
   // outermost layer. Clamping births to tiers gives both the fixed slot
   // order and the honest diachrony.
   const births = {};
-  for (const k of ["pl", "du", "pfv", "ipfv", "pst", "fut", "agr", "negaf", ...CASE_ORDER, "erg"]) births[k] = birthOf(fam, k, len);
-  const t0n = Math.max(g.pluralMark ? births.pl : 0, g.dual ? births.du : 0);
-  for (const k of [...CASE_ORDER, "erg"]) births[k] = Math.max(births[k], t0n);
+  for (const k of ["pl", "du", "tri", "pau", "pfv", "ipfv", "pst", "fut", "agr", "negaf", "poss", "hon", ...CASE_ORDER, "erg"]) births[k] = birthOf(fam, k, len);
+  // the number tier (innermost): pl/du + the Corbett extras (trial/paucal)
+  const t0n = Math.max(g.pluralMark ? births.pl : 0, g.dual ? births.du : 0, g.trial ? births.tri : 0, g.paucal ? births.pau : 0);
+  // possession sits BETWEEN number and case (number < poss < case), so a
+  // possAffix language's plain case paradigm is reordered by the POSS slot even
+  // absent a possessor (diachronically coherent — the slot exists regardless)
+  if (g.possAffix) births.poss = Math.max(births.poss, t0n);
+  const caseFloor = g.possAffix ? births.poss : t0n;
+  for (const k of [...CASE_ORDER, "erg"]) births[k] = Math.max(births[k], caseFloor);
   const t0v = g.aspect ? Math.max(births.pfv, births.ipfv) : 0;
   births.pst = Math.max(births.pst, t0v);
   births.fut = Math.max(births.fut, t0v);
+  births.hon = Math.max(births.hon, t0v);   // the honorific verb sits in the TAM tier
   births.agr = Math.max(births.agr, t0v, g.tenses >= 2 ? births.pst : 0, g.tenses >= 3 ? births.fut : 0);
   // M5 — THE GRAMMATICALIZATION CYCLE. An affix born early can be ground to
   // silence by the very sound laws it rides (codaLoss eats a final -t, the
@@ -1049,7 +1173,7 @@ export function paradigmSpec(lang) {
   };
   // ── nominal ──
   const plSrc = h01(fam, "plsrc") < 0.6 ? MANY : ALL;    // same quarry the pronouns use
-  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, dist: {}, moods: {}, mir: null, evid: null, themes: [], vThemes: [], particles: {} };
+  const spec = { iso, cases: [], pl: null, du: null, tri: null, pau: null, possAff: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, dist: {}, moods: {}, mir: null, evid: null, honAff: null, themes: [], vThemes: [], particles: {} };
   if (g.pluralMark) spec.pl = mkAff("pl", "PL", null, [[plSrc, 1]]);
   if (g.dual) spec.du = mkAff("du", "DU");
   // core case(s): active spends two slots on AGT/PAT, tripartite on ERG/ACC
@@ -1102,6 +1226,11 @@ export function paradigmSpec(lang) {
     spec.pers = persAff;
     spec.persObj = g.agree === "both";
   }
+  // NUMBER extras (Group E, Corbett): trial ‹ 'three', paucal ‹ 'few' — number-
+  // tier affixes parallel to the dual (a noun takes ONE number value). Claimed
+  // after every existing source-affix; THREE/LITTLE collide with nothing above.
+  if (g.trial) spec.tri = mkAff("tri", "TRI");
+  if (g.paucal) spec.pau = mkAff("pau", "PAU");
   // paradigm-internal contrast: number+case affixes against each other, TAM
   // affixes against each other (persons handled above)
   // one contrast pass over ALL bound affixes, nominal and verbal together —
@@ -1157,7 +1286,7 @@ export function paradigmSpec(lang) {
       evidAffs.push(ma);
     }
   }
-  dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases,
+  dedupeAffixSet(lang, inv, [spec.pl, spec.du, spec.tri, spec.pau, ...spec.cases,
     spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp, spec.inv,
     spec.voice.caus, spec.voice.pass, spec.voice.antip, spec.voice.appl,
     spec.dist.rem, spec.dist.rec, spec.dist.farfut, spec.tam.prf, spec.tam.prog, spec.tam.hab,
@@ -1168,6 +1297,37 @@ export function paradigmSpec(lang) {
   // into the cross-class sweep exhausts its single-syllable escape space (a
   // many-case language's ~20 endings) and collapses them — so keep them apart.
   if (evidAffs.length) dedupeAffixSet(lang, inv, evidAffs);
+  // POSSESSION (Group E): possessive affixes worn from the SAME pronoun roots as
+  // person agreement + the free pronouns (so my-house is cognate with I/me), at
+  // the poss tier (inner to case); 3sg is non-zero (a possessor is always overt).
+  // Built AFTER the main dedupe and deduped against the FINAL case forms (POSS +
+  // CASE co-occur on one noun), in its OWN pass (like person agreement).
+  if (g.possAffix) {
+    const t = births.poss;
+    const possAff = {};
+    const roots = { 1: synthClosed(lang, inv, "pron1"), 2: synthClosed(lang, inv, "pron2"), 3: synthClosed(lang, inv, "pron3") };
+    const plW = rootFormOf(lang, plSrc).w;
+    for (const p of [1, 2, 3]) {
+      const r = copyWord(roots[p]);
+      evolveSlice(lang.rules, 0, t, r);
+      const sg = wearSyl(lang.prof, legalizeWord(r));
+      possAff[p + "sg"] = { k: "poss" + p + "sg", g: p + "SG.POSS", src: null, t, syl: sg };
+      const plM = copyWord(plW);
+      evolveSlice(lang.rules, 0, t, plM);
+      const plSyl = wearSyl(lang.prof, legalizeWord(plM));
+      const fusedPl = { on: sg.on.map(x => ({ ...x })), nu: sg.nu.map(x => ({ ...x })), co: plSyl.on.length ? [{ ...plSyl.on[0] }] : plSyl.co.map(x => ({ ...x })) };
+      possAff[p + "pl"] = { k: "poss" + p + "pl", g: p + "PL.POSS", src: null, t, syl: fusedPl };
+    }
+    dedupeAffixSet(lang, inv, Object.values(possAff), [spec.pl, spec.du, spec.tri, spec.pau, ...spec.cases].filter(Boolean));
+    spec.possAff = possAff;
+  }
+  // POLITENESS (Group E): an honorific/humble verb affix ‹ 'give' (benefactive),
+  // a verbal exponent in the TAM tier, deduped against the finalized tense/imp
+  if (g.honVerb) {
+    const ha = mkAff("hon", "HON");
+    dedupeAffixSet(lang, inv, [ha], [spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp].filter(Boolean));
+    spec.honAff = ha;
+  }
   // mirative built AFTER the dedupe: it SHARES the perfect exponent (the -miş
   // syncretism) via a deep-cloned syl, or is its own small marker
   if (g.mirative) spec.mir = g.perfect && spec.tam.prf
@@ -1191,7 +1351,7 @@ export function paradigmSpec(lang) {
 // colliders walk the consonant inventory — contrast maintenance, the same
 // pressure that keeps real paradigms apart. Everyone else contrasts whole
 // syllables and walks vowels.
-function dedupeAffixSet(lang, inv, affs) {
+function dedupeAffixSet(lang, inv, affs, seed = []) {
   const fus = lang.prof.morph === "fus" || lang.prof.harmony !== "none";
   const seen = new Set();
   const sigOf = (a) => fus
@@ -1199,6 +1359,7 @@ function dedupeAffixSet(lang, inv, affs) {
     : renderWord({ syls: [a.syl] }, lang.prof);
   const consPool = inv.cons.filter(x => x.p < 6 && x.m <= 5);
   const codaPool = inv.cons.filter(x => x.p < 6 && (x.m === 1 || x.m === 4 || x.m === 5 || (x.m === 2 && x.l === 0)));
+  for (const a of seed) if (a) seen.add(sigOf(a));   // seed the collision set WITHOUT mutating the seed forms
   for (const a of affs) {
     if (!a) continue;
     let sig = sigOf(a);
@@ -1328,7 +1489,7 @@ function patternVowels(lang) {
   const seen = new Set();
   const rV = (v) => renderWord({ syls: [{ on: [], nu: [{ ...v, n: 0, lg: 0 }], co: [] }] }, lang.prof);
   const out = {};
-  for (const key of ["pst", "fut", "pfv", "ipfv", "pl"]) {
+  for (const key of ["pst", "fut", "pfv", "ipfv", "pl", "comp"]) {
     let idx = hash32(fam, "pat:" + key) % inv.vows.length;
     for (let k = 0; seen.has(rV(inv.vows[idx])) && k < inv.vows.length; k++) idx = (idx + 1) % inv.vows.length;
     seen.add(rV(inv.vows[idx]));
@@ -1616,44 +1777,53 @@ export function concordMarkers(lang) {
 
 /** Inflect a noun: { text, gloss, pre, post } — pre/post are the particle
  *  tokens an isolating tongue uses instead of affixes. */
-export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
-  const key = "n:" + cid + ":" + num + ":" + (cas || "");
+export function inflectNoun(lang, cid, { num = "sg", cas = null, poss = null } = {}) {
+  const key = "n:" + cid + ":" + num + ":" + (cas || "") + (poss ? ":p" + poss.pers + poss.num : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
   const spec = paradigmSpec(lang);
+  const g = gramOf(lang);
   const morph = lang.prof.morph;
   const stemGloss = glossOf(cid);
   const caseAff = cas ? spec.cases.find(x => x.k === cas) : null;
-  // reduplicative plural (orang-orang) — a strategy that REPLACES the plural
-  // affix/particle, available in every morphotype including isolating. It is
-  // a surface layer: the reduplicated stem carries any case as a trailing
-  // affix-string (transparent, no cross-seam sandhi)
-  const redupPl = num === "pl" && redupHas(lang, "plural");
+  // graceful degrade: trial/paucal fall to the plural where the language doesn't
+  // mark them (an honest gloss — the noun shows the plural it actually has)
+  const effNum = (num === "tri" && !spec.tri) || (num === "pau" && !spec.pau) ? "pl" : num;
+  const numAff = effNum === "du" ? spec.du : effNum === "tri" ? spec.tri : effNum === "pau" ? spec.pau : null;
+  const numGl = effNum === "du" ? "DU" : effNum === "tri" ? "TRI" : effNum === "pau" ? "PAU" : null;
+  // possession (Group E): the affix on nouns the language affixes — under an
+  // alienability split, only inalienable (kin/body) nouns; alienable ones use the
+  // inflectPossessed construction instead. Inner to case, outer to number.
+  const con = CONCEPTS[cid];
+  const affixThis = poss && spec.possAff && (!g.alienSplit || (con && (con.d === "kin" || con.d === "bod")));
+  const possAff = affixThis ? spec.possAff[poss.pers + poss.num] : null;
+  const redupPl = effNum === "pl" && redupHas(lang, "plural");
   let out;
   if (redupPl) {
-    let text = redupStemSurface(lang, cid, gramOf(lang).redup.type);
-    const post = [];
-    if (caseAff) { if (spec.iso) post.push({ w: renderWord({ syls: [caseAff.syl] }, lang.prof), g: caseAff.g }); else text += affixSurface(lang, caseAff.syl); }
-    out = { text, gloss: stemGloss + "~PL" + (caseAff && !spec.iso ? "-" + caseAff.g : ""), pre: [], post, irr: false };
+    let text = redupStemSurface(lang, cid, g.redup.type);
+    const post = [], gls = [];
+    if (possAff && !spec.iso) { text += affixSurface(lang, possAff.syl); gls.push(possAff.g); }
+    if (caseAff) { if (spec.iso) post.push({ w: renderWord({ syls: [caseAff.syl] }, lang.prof), g: caseAff.g }); else { text += affixSurface(lang, caseAff.syl); gls.push(caseAff.g); } }
+    out = { text, gloss: stemGloss + "~PL" + (gls.length ? "-" + gls.join("-") : ""), pre: [], post, irr: false };
   } else if (spec.iso) {
     // particles, not affixes: 'stone PL' — the words stay untouched
     const post = [];
-    if (num === "pl" && spec.pl) post.push({ w: renderWord({ syls: [spec.pl.syl] }, lang.prof), g: "PL" });
-    if (num === "du" && spec.du) post.push({ w: renderWord({ syls: [spec.du.syl] }, lang.prof), g: "DU" });
+    if (numAff) post.push({ w: renderWord({ syls: [numAff.syl] }, lang.prof), g: numGl });
+    else if (effNum === "pl" && spec.pl) post.push({ w: renderWord({ syls: [spec.pl.syl] }, lang.prof), g: "PL" });
     if (caseAff) post.push({ w: renderWord({ syls: [caseAff.syl] }, lang.prof), g: caseAff.g });
     out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss, pre: [], post, irr: false };
   } else {
     const events = [];
     const glosses = [];
     let pattern = null, irrPl = false;
-    if (num === "pl") {
-      const con = CONCEPTS[cid];
+    if (effNum === "pl") {
       if (morph === "tmpl" && h01(lang.famSeed ?? lang.seed, "brokenpl", cid) < 0.6) pattern = "pl";   // broken plural
       else if (morph === "fus" && con && con.b >= 0.9 && h01(lang.famSeed ?? lang.seed, "umlpl", cid) < 0.3) irrPl = true; // foot→feet
       else if (spec.pl) events.push(spec.pl);
       if (pattern || irrPl || spec.pl) glosses.push("PL");
-    } else if (num === "du" && spec.du) { events.push(spec.du); glosses.push("DU"); }
+    } else if (numAff) { events.push(numAff); glosses.push(numGl); }
+    if (possAff) { events.push(possAff); glosses.push(possAff.g); }
     if (caseAff) { events.push(caseAff); glosses.push(caseAff.g); }
     const th = themeFor(lang, spec, cid);
     const form = onionBuild(lang, cid, events, { fuse: morph === "fus", theme: th && events.length ? th.theme : null, pattern, ablaut: irrPl });
@@ -1667,11 +1837,42 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
   return out;
 }
 
+/** The full possessive noun phrase (Group E): the affixed noun for languages
+ *  that affix this noun (head-marking; under an alienability split only kin/body),
+ *  else the 'N of PRON' construction (the 'of' linker + genitive possessor).
+ *  → { tokens, text, gloss } */
+export function inflectPossessed(lang, cid, { pers = 3, num = "sg", cas = null } = {}) {
+  const g = gramOf(lang), cl = closedOf(lang);
+  if (possessionType(lang, cid) === "affix") {
+    const nx = inflectNoun(lang, cid, { poss: { pers, num }, cas });
+    const toks = [...nx.pre, { w: nx.text, g: nx.gloss }, ...nx.post];
+    return { tokens: toks, text: toks.map(t => t.w).join(" "), gloss: toks.map(t => t.g).join(" ") };
+  }
+  // construction: the 'of' adposition (neutral-tone) links the possessor pronoun
+  const nx = inflectNoun(lang, cid, { cas });
+  const of = cl.adps.find(a => a.m === "of") || cl.adps[0];
+  const pr = pronoun(lang, pers + (num === "pl" ? "pl" : "sg"), "gen");
+  const nTok = [...nx.pre, { w: nx.text, g: nx.gloss }, ...nx.post];
+  const link = { w: rformNeutral(lang, of.form), g: "of" }, poss = { w: pr.w, g: pr.g };
+  // genitive-first languages front the possessor (PRON of N); else N of PRON
+  const toks = g.genN ? [poss, link, ...nTok] : [...nTok, link, poss];
+  return { tokens: toks, text: toks.map(t => t.w).join(" "), gloss: toks.map(t => t.g).join(" ") };
+}
+/** Whether the language marks possession on this noun by an AFFIX (head-marking,
+ *  and — under an alienability split — only inalienable kin/body nouns) or by a
+ *  CONSTRUCTION (dependent-marking, or the alienable side of a split). */
+export function possessionType(lang, cid) {
+  const g = gramOf(lang);
+  if (!g.possAffix) return "construction";
+  const con = CONCEPTS[cid];
+  return (!g.alienSplit || (con && (con.d === "kin" || con.d === "bod"))) ? "affix" : "construction";
+}
+
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false, ev = null } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (ev ? ":e" + ev : "") + (mir ? ":mir" : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false, ev = null, hon = false } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (ev ? ":e" + ev : "") + (mir ? ":mir" : "") + (hon ? ":hon" : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -1706,6 +1907,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     if (evid && evid.mir === "dedicated" && spec.evid && spec.evid.mir) mirAff = spec.evid.mir;
     else mirAff = spec.mir;                 // TAM pathway (byte-identical when no evidential system)
   }
+  const honAff = !imperative && hon ? spec.honAff : null;   // honorific verb (Group E)
   const redupAsp = !imperative && tamEff === "ipfv" && redupHas(lang, "aspect");
   // imperative particle (all morphotypes) + prohibitive, shared pre/post
   const impExtras = (pre, post) => {
@@ -1733,6 +1935,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     }
     if (distAff) post.push({ w: rformNeutral(lang, { syls: [distAff.syl] }), g: distAff.g });
     if (irrMoodAff) pre.push({ w: rform(lang, { syls: [irrMoodAff.syl] }), g: irrMoodAff.g });   // preverbal modal 会/要/能
+    if (honAff) post.push({ w: rformNeutral(lang, { syls: [honAff.syl] }), g: "HON" });
     if (mirAff) post.push({ w: rformNeutral(lang, { syls: [mirAff.syl] }), g: "MIR" });
     if (evAff) post.push({ w: rformNeutral(lang, { syls: [evAff.syl] }), g: evGloss });   // evidential clause enclitic (outermost)
     impExtras(pre, post);
@@ -1765,6 +1968,8 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     }
     // graded tense: the distance affix rides outer of the base tense
     if (distAff) { events.push(distAff); glosses.push(distAff.g); }
+    // honorific verb (Group E): a TAM-tier politeness marker (‹ 'give')
+    if (honAff) { events.push(honAff); glosses.push("HON"); }
     // irrealis mood — unlike the imperative, it KEEPS the tam + person marking
     if (irrMoodAff) { events.push(irrMoodAff); glosses.push(irrMoodAff.g); }
     // imperative suffix (suffix-mode tongues); bare/particle add no affix
@@ -2050,13 +2255,18 @@ export function renderClause(lang, frame) {
     if (!arg) return [];
     if (arg.pron) {
       // graceful degrade: a gendered request in a genderless tongue falls to
-      // plain 3sg; clusivity falls to the plain plural, and so on
-      const k = arg.pron.k;
+      // plain 3sg; clusivity falls to the plain plural, and so on. POLITENESS
+      // (Group E): pol:'pol'|'hon' remaps a 2nd-person to the T-V cell, degrading
+      // 2vv → 2v → 2pl → 2sg where the language marks fewer levels.
+      const k = arg.pron.pol ? (arg.pron.pol === "hon" ? "2vv" : "2v") : arg.pron.k;
       const cell = cl.prons.find(p => p.k === k)
+        || (k === "2vv" ? cl.prons.find(p => p.k === "2v") : null)                         // 2vv → 2v
+        || (k === "2v" || k === "2vv" ? cl.prons.find(p => p.k === "2pl") : null)          // 2v → 2pl (or 2sg below)
         || cl.prons.find(p => p.k === k.replace(/[mf]$/, ""))                              // 3sgf → 3sg
         || cl.prons.find(p => p.k === k.replace(/p[ie]$/, "pl"))                           // 1pi → 1pl
         || (k.includes("p") ? cl.prons.find(p => p.k[0] === k[0] && /p[lie]/.test(p.k)) : null)   // 1pl → 1pe
         || (k.endsWith("sg") ? cl.prons.find(p => p.k[0] === k[0] && p.k.includes("sg")) : null)  // 3sg → 3sgm
+        || (arg.pron.pol ? cl.prons.find(p => p.k === "2sg") : null)                       // polite → 2sg (last resort)
         || cl.prons.find(p => p.k[0] === k[0])
         || cl.prons[0];
       // object/oblique pronouns take their case form (me/him); subjects stay
