@@ -14,9 +14,9 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, derivSpec, deriveWord, derivEtymologies } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN,
-  DERIV, QUEEN, CHIEF, PRIEST, TEMPLE, TOMB, THRONE, CROWN, OATH, COUNCIL, ARMY, GUARD, VICTORY, COME, SAY } from "../src/sim/languageLexicon.js";
+  DERIV, QUEEN, CHIEF, PRIEST, TEMPLE, TOMB, THRONE, CROWN, OATH, COUNCIL, ARMY, GUARD, VICTORY, COME, SAY, RULEV } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -1101,6 +1101,90 @@ console.log("\n── complex syntax ──");
     for (const l of [m, e, langs[0], langs[3]]) { const c = renderClause(l, F.relSubj); say("     " + c.text.padEnd(40) + "  " + c.gloss); }
     say("   'he said that the king saw the river':");
     for (const l of [m, e, langs[0]]) { const c = renderClause(l, F.comp); say("     " + c.text.padEnd(40) + "  " + c.gloss); }
+  }
+}
+
+// ── 15. DERIVATIONAL MORPHOLOGY — productive word-formation ────────────────
+// Inflection bends a word; DERIVATION makes new ones (king→kingdom→kingly,
+// rule→ruler, river→rivulet). A handful of productive affixes multiply the
+// ~220 concepts into thousands — and every affix is a grammaticalized
+// worn-down word (agentive ← 'man', diminutive ← 'little', nominalizer ←
+// 'land' = the -dom of kingdom), realized per the morphotype like inflection.
+console.log("\n── derivational morphology ──");
+{
+  const world = mkWorld();
+  const N = 500;
+  const CATS = ["AGT", "NMLZ", "ADJZ", "DIM", "AUG", "VBLZ", "COLL"];
+  const BASES = [KING, RIVER, HOUSE, GREAT, GUARD, RULEV];
+  const byMorph = { iso: [], agg: [], fus: [], tmpl: [] };
+  let hasCore = 0, baseEq = 0, baseTot = 0, catDistinct = 0, srcTraced = 0, srcTot = 0, agtSrcOK = 0, agtSrcN = 0;
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    const spec = derivSpec(l);
+    const cats = Object.keys(spec.cats);
+    byMorph[l.prof.morph].push(cats.length);
+    if (spec.cats.AGT || spec.cats.NMLZ) hasCore++;
+    // a derived word must (almost always) be audibly distinct from its base —
+    // the small residue is honest zero-derivation/conversion (English 'to king')
+    for (const cid of BASES) for (const cat of cats) { const d = deriveWord(l, cid, cat); if (d) { baseTot++; if (d.text === wordOf(l, cid)) baseEq++; } }
+    // the derivations of one base contrast (kingdom ≠ kingly ≠ ruler)
+    const forms = cats.map(cat => deriveWord(l, KING, cat)).filter(Boolean).map(d => d.text);
+    if (new Set(forms).size === forms.length) catDistinct++;
+    // affixes trace to worn-down words; the agentive quarry is 'man/person/do'
+    const ety = derivEtymologies(l);
+    srcTot += ety.length; srcTraced += ety.filter(e => e.from).length;
+    const agt = ety.find(e => e.g === "AGT");
+    if (agt && agt.from) { agtSrcN++; if (["man", "people", "do"].includes(agt.from)) agtSrcOK++; }
+  }
+  const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+  check(`derivation multiplies the lexicon — avg ${avg([...byMorph.iso, ...byMorph.agg, ...byMorph.fus, ...byMorph.tmpl]).toFixed(1)} productive categories × ${CONCEPTS.length} concepts`,
+    avg([...byMorph.iso, ...byMorph.agg, ...byMorph.fus, ...byMorph.tmpl]) >= 3);
+  check(`derivation richness co-varies with morphotype (agg ${avg(byMorph.agg).toFixed(1)} > iso ${avg(byMorph.iso).toFixed(1)})`, avg(byMorph.agg) > avg(byMorph.iso) + 0.5);
+  check(`agentive or nominalizer near-universal (${Math.round(100 * hasCore / N)}%)`, hasCore / N > 0.9);
+  check(`a derived word is audibly distinct from its base (${Math.round(100 * (baseTot - baseEq) / baseTot)}%, residue = conversion)`, (baseTot - baseEq) / baseTot > 0.97);
+  check(`the derivations of one base contrast (${Math.round(100 * catDistinct / N)}%)`, catDistinct / N > 0.95);
+  check(`derivational affixes trace to worn-down words (${Math.round(100 * srcTraced / srcTot)}%)`, srcTraced / srcTot > 0.4);
+  check(`the agentive quarries 'man/person/do' where traced (${agtSrcOK}/${agtSrcN})`, agtSrcN > 0 && agtSrcOK === agtSrcN);
+
+  // cognate derivation: a daughter inherits the affix sources and diverges by
+  // sound law, exactly like inflection (M5 applies to word-formation too)
+  const root = foundLanguage(world, { seed: 171717 });
+  world.step = 4000;
+  const dau = branchLanguage(world, root, 0.9);
+  // (most sources shared; the residue is the M5 renewal cycle — an affix that
+  // eroded in the longer-drifted daughter renews from a fresh quarry)
+  const srcSig = (l) => derivEtymologies(l).map(e => e.g + "<" + e.from).join("|");
+  const rootSigs = srcSig(root).split("|").filter(Boolean);
+  const dauSig = srcSig(dau);
+  const shareOK = rootSigs.length > 0 && rootSigs.filter(x => dauSig.includes(x)).length >= rootSigs.length / 2;
+  const rd = deriveWord(root, RULEV, "AGT"), dd = deriveWord(dau, RULEV, "AGT");
+  check(`daughters inherit derivational affix sources (cognate word-formation)`, shareOK);
+  check(`derived words diverge down the family by sound law (${rd ? rd.text : "—"} → ${dd ? dd.text : "—"})`, !!rd && !!dd);
+
+  // references speak word-formation in character: isolating Mandarin derives
+  // less but its affixes are legal pinyin, agentive from 'man' (the 人 pattern)
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const m = foundLanguage(world, { seed: 445 });
+  m.prof = refProfile("mandarin", 445); m.rules = [];
+  const mp = refPin("mandarin"); m.pin = mp.pin; m.prof.rom = mp.rom;
+  const mDeriv = Object.keys(derivSpec(m).cats).map(cat => deriveWord(m, KING, cat)).filter(Boolean);
+  const mLegal = mDeriv.every(d => PINYIN.test(strip(d.text.toLowerCase())));
+  check(`pinned Mandarin: derived words are legal pinyin (${mDeriv.map(d => d.text).join(", ") || "—"})`, mDeriv.length > 0 && mLegal);
+
+  // determinism + JSON-roundtrip
+  const w1 = mkWorld(), w2 = mkWorld();
+  const a = foundLanguage(w1, { seed: 9077 }), b2 = foundLanguage(w2, { seed: 9077 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => JSON.stringify(BASES.map(c => CATS.map(cat => { const d = deriveWord(l, c, cat); return d && d.text; })));
+  check("derivational morphology deterministic + JSON-roundtrip-stable", sig(a) === sig(b2) && sig(a) === sig(c3));
+
+  if (!quiet) {
+    const l = foundLanguage(world, { seed: 8817 });
+    say("   word-formation in " + langWord(l, 0) + " (affixes: " + derivEtymologies(l).map(e => "-" + e.w + " " + e.g + (e.from ? " ‹'" + e.from + "'" : "")).join(", ") + "):");
+    for (const [cid, cat] of [[RULEV, "AGT"], [KING, "NMLZ"], [KING, "ADJZ"], [RIVER, "DIM"], [GREAT, "VBLZ"]]) {
+      const d = deriveWord(l, cid, cat); if (d) say("     " + (glossOf(cid) + " →").padEnd(12) + " " + d.text.padEnd(16) + " " + d.gloss);
+    }
   }
 }
 

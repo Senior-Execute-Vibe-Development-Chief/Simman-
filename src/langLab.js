@@ -14,8 +14,8 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
-import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive } from "./sim/languageGrammar.js";
-import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, COME, SAY } from "./sim/languageLexicon.js";
+import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive, deriveWord, derivEtymologies } from "./sim/languageGrammar.js";
+import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, COME, SAY, RULEV, GUARD } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
@@ -324,6 +324,25 @@ function cognatesHTML() {
     <div class="scroll"><table><thead><tr><th></th>${heads}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
+// ── word formation: the derivational-morphology card ─────────────────────
+const WF_PAIRS = [[RULEV, "AGT", "ruler"], [GUARD, "AGT", "guardian"], [KING, "NMLZ", "kingdom"],
+  [KING, "ADJZ", "kingly"], [RIVER, "DIM", "little river"], [HOUSE, "AUG", "great house"],
+  [BLACK, "VBLZ", "to blacken"], [KING, "COLL", "royalty"]];
+function wordFormationHTML(l) {
+  const etys = derivEtymologies(l);
+  if (!etys.length) return "";
+  const affLine = etys.map(e => `<span class="cell"><span class="lbl">${esc(e.g)}</span> <span class="w">-${esc(e.w)}</span>${e.from ? ` <span class="gloss">‹ ‘${esc(e.from)}’</span>` : ""}${e.renewed ? ` <span class="lbl">renewed</span>` : ""}</span>`).join(" ");
+  const rows = WF_PAIRS.map(([cid, cat, en]) => {
+    const d = deriveWord(l, cid, cat);
+    if (!d) return "";
+    return `<tr><td class="lbl">${esc(glossOf(cid))} → ${esc(en)}</td><td class="w">${esc(d.text)}</td><td class="gloss">${esc(d.gloss)}</td></tr>`;
+  }).filter(Boolean).join("");
+  return `<section class="card"><h2>Word formation <span class="count">(derivational morphology)</span></h2>
+    <p class="note">Inflection bends a word; <b>derivation</b> makes new ones — a handful of productive affixes turn ${CONCEPTS.length} roots into thousands. Each affix is a worn-down word: the agentive from ‘man/do’ (rule → ruler), the diminutive from ‘little’, the nominalizer often from ‘land’ — the literal ‑dom of ‘kingdom’. Agglutinative tongues carry more of them than isolating ones, and the endings correspond down a family like any inflection.</p>
+    <p class="cells">${affLine}</p>
+    <div class="scroll"><table><thead><tr><th>derivation</th><th>word</th><th>gloss</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
 function loansHTML(l) {
   if (!l.loans.length) return "";
   const seen = new Set();
@@ -405,6 +424,7 @@ function render() {
   ${grammarHTML(l)}
   ${sentenceHTML(l)}
   ${paradigmHTML(l)}
+  ${wordFormationHTML(l)}
   ${cognatesHTML()}
   ${dictionaryHTML(l)}
   <footer>Deterministic: the same seed and history always speak the same words. · <span class="gloss">glosses in ochre are meanings</span> · build ${typeof __BUILD__ !== "undefined" ? __BUILD__ : "dev"}</footer>`;

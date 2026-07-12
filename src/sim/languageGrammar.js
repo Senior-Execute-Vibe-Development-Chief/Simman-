@@ -29,6 +29,7 @@ import {
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, SAY,
+  PEOPLE, DO, LAND, LITTLE, CHILD, GREAT, MAKE, HAVE,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -842,6 +843,83 @@ export function paradigmSpec(lang) {
   for (let k = 0; k < nvTheme; k++) spec.vThemes.push(inv.vows[hash32(fam, "vtheme", k) % inv.vows.length]);
   c.pspec = spec;
   return spec;
+}
+
+// ── Derivational morphology: productive WORD-FORMATION (M7) ────────────────
+// Inflection BENDS a word (king→kings); DERIVATION makes a NEW word from it
+// (king→kingdom→kingly, rule→ruler, river→rivulet). Real lexicons are mostly
+// derived, not root — a handful of productive affixes multiply the ~220
+// concepts into thousands, and turn a bare-root dictionary into a word-family
+// one. Same discipline as inflection and adpositions (cardinal rule 2): every
+// derivational affix is a grammaticalized worn-down WORD — agentive ← 'man/
+// person/do' (rule→rule-man), diminutive ← 'little/child', augmentative ←
+// 'great', verbalizer ← 'make/do' (hard→hard-make), nominalizer ← 'land/head'
+// (king→king-land, the literal etymology of -dom), collective ← 'all/many'.
+// It rides the SAME onion as inflection, so a derivational suffix erodes and
+// corresponds regularly down a family, and agglutinative tongues (the world's
+// great derivers) carry more of it than isolating ones.
+const DERIV_CATS = [
+  // key/gloss, expected input class (for sensible pairing), source quarry, base rate
+  { k: "AGT", in: "v", pool: [[MAN, 0.4], [PEOPLE, 0.25], [DO, 0.2], [null, 0.15]], rate: 0.85 },   // rule → ruler
+  { k: "NMLZ", in: "n", pool: [[LAND, 0.3], [HEAD, 0.15], [null, 0.55]], rate: 0.85 },              // king → kingdom
+  { k: "ADJZ", in: "n", pool: [[HAVE, 0.25], [null, 0.75]], rate: 0.7 },                            // king → kingly
+  { k: "DIM", in: "n", pool: [[LITTLE, 0.6], [CHILD, 0.2], [null, 0.2]], rate: 0.6 },               // river → rivulet
+  { k: "AUG", in: "n", pool: [[GREAT, 0.6], [null, 0.4]], rate: 0.4 },                              // house → mansion
+  { k: "VBLZ", in: "q", pool: [[MAKE, 0.45], [DO, 0.3], [null, 0.25]], rate: 0.65 },                // hard → harden
+  { k: "COLL", in: "n", pool: [[ALL, 0.4], [MANY, 0.3], [null, 0.3]], rate: 0.4 },                  // king → royalty
+];
+const DMORPH = { iso: 0.72, agg: 1.15, fus: 1.0, tmpl: 0.92 };   // agglutinative tongues derive most
+
+/** The language's DERIVATIONAL affix inventory: which productive word-formation
+ *  categories it has, and the worn-down word each affix descends from. Rolled
+ *  per family + scaled by morphotype, cached, nothing persisted — exactly like
+ *  paradigmSpec (its inflectional twin). */
+export function derivSpec(lang) {
+  const c = gc(lang);
+  if (c.dspec) return c.dspec;
+  const inv = compiledInv(lang);
+  const fam = lang.famSeed ?? lang.seed;
+  const len = lang.rules.length;
+  const mf = DMORPH[lang.prof.morph] ?? 1;
+  const taken = new Set();
+  // an eroded derivational affix renews from a fresh quarry, like inflection
+  const audible = (aff) => renderWord(onionBuild(lang, STONE, [aff]), lang.prof) !== renderWord(onionBuild(lang, STONE, []), lang.prof);
+  const cats = {}, list = [];
+  for (const cat of DERIV_CATS) {
+    if (h01(fam, "dcat", cat.k) >= Math.min(0.97, cat.rate * mf)) continue;   // this tongue lacks this derivation
+    const key = "d:" + cat.k;
+    const src = pickSrc(fam, key, cat.pool, taken);
+    const w = wornAt(lang, inv, key, src, birthOf(fam, key, len));
+    let aff = { k: cat.k, g: cat.k, in: cat.in, src, t: w.t, syl: w.syl };
+    for (let r = 1; r <= 2 && !audible(aff); r++) {
+      const src2 = pickSrc(fam, key + ":r" + r, cat.pool, taken);
+      const w2 = wornAt(lang, inv, key + ":r" + r, src2, r === 1 ? Math.ceil(len / 2) : len);
+      aff = { k: cat.k, g: cat.k, in: cat.in, src: src2, t: w2.t, syl: w2.syl, renewed: r };
+    }
+    cats[cat.k] = aff;
+    list.push(aff);
+  }
+  dedupeAffixSet(lang, inv, list);   // ruler ≠ kingdom ≠ kingly — one contrast pass
+  c.dspec = { cats, list };
+  return c.dspec;
+}
+
+/** Derive a NEW word from a base concept by a productive affix: king→kingdom
+ *  (NMLZ), rule→ruler (AGT), river→rivulet (DIM), hard→harden (VBLZ). Returns
+ *  { text, gloss, cat, src, affix } or null if the tongue lacks that
+ *  derivation. Built through the onion, so the affix erodes and corresponds
+ *  down the family like any bound form; a fusional tongue crushes it. */
+export function deriveWord(lang, cid, cat) {
+  const spec = derivSpec(lang);
+  const aff = spec.cats[cat];
+  if (!aff) return null;
+  const form = onionBuild(lang, cid, [aff], { fuse: lang.prof.morph === "fus" });
+  return { text: renderWord(form, lang.prof), gloss: glossOf(cid) + "-" + aff.g, cat, src: aff.src, affix: renderAffix(lang, aff.syl) };
+}
+
+/** Lab-facing: the derivational affixes with their worn-down etymologies. */
+export function derivEtymologies(lang) {
+  return derivSpec(lang).list.map(a => ({ g: a.g, w: renderAffix(lang, a.syl), from: a.src != null ? glossOf(a.src) : null, renewed: !!a.renewed }));
 }
 
 // affixes inside one paradigm must contrast: two sources can wear down to

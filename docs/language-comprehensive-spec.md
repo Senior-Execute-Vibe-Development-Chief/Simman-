@@ -706,3 +706,48 @@ write. (Renderer only; the sim stays unwired, per the standing constraint.)
   118 probe checks green; smoke + validate green. Public API unchanged;
   `renderClause` gains an optional depth arg (defaulted); sim untouched. The
   Lab's Sentences card gains a "Complex clauses" showcase.
+
+---
+
+## Build status (session 14) — M7: derivational morphology (word-formation)
+
+The reviewer's #2: the system had INFLECTION (king→kings, case, tense) but
+almost no WORD-FORMATION — no way to get kingdom from king, kingly from king,
+ruler from rule. Real lexicons are mostly derived, not root; five productive
+affixes turn the ~220 concepts into thousands, and make a bare-root dictionary
+feel like a word-family one. (This is the affixal half; session 12's
+abstract-derivation table was the compound half — king ← sit+high.)
+
+- **The mechanism reuses the onion (languageGrammar.js).** A new `derivSpec`
+  is the inflectional `paradigmSpec`'s twin: it rolls, per family and scaled by
+  morphotype, which productive derivational categories the tongue has and the
+  worn-down WORD each affix descends from — agentive ← 'man/person/do'
+  (rule→rule-man→ruler, the 人 pattern), diminutive ← 'little/child',
+  augmentative ← 'great', verbalizer ← 'make/do' (hard→hard-make→harden),
+  nominalizer ← 'land/head' (king→king-land — the literal etymology of -dom in
+  'kingdom'), collective ← 'all/many'. `deriveWord(lang, cid, cat)` attaches
+  the affix through the SAME `onionBuild` inflection rides, so a derivational
+  suffix erodes, sandhis and CORRESPONDS regularly down a family (cognate
+  word-formation — M5 reaches derivation too, renewal cycle included).
+- **Co-varies with morphotype.** Agglutinative tongues are the world's great
+  derivers and carry the most (~5.0 categories); isolating the fewest (~3.0,
+  the Chinese 人/化/性 corner) — measured iso 3.0 · tmpl 4.0 · fus 4.6 · agg
+  5.0. Agentive and nominalizer are near-universal (97%). The affix is deduped
+  against its siblings so kingdom ≠ kingly ≠ ruler.
+- **Realization per morphotype, references in character.** Fusional tongues
+  crush the derivational ending; every tongue's derived words are legal in its
+  phonology (pinned Mandarin's king→derivations are legal pinyin, agentive from
+  'man'). No new profile dial — `derivSpec` derives from famSeed + the pinned
+  morph dial, exactly like `paradigmSpec`, so nothing leaks into the refs.
+  New exports only (`deriveWord`, `derivSpec`, `derivEtymologies`); signatures
+  frozen; sim untouched.
+- **Gates (probe §15, 11 new → 129 total).** Derivation multiplies the lexicon
+  (~4.6 categories × 206 ≈ ×5.6); richness co-varies with morphotype (agg >
+  iso); agentive/nominalizer near-universal; a derived word is audibly distinct
+  from its base in 99% (the 1% residue is honest zero-derivation/conversion,
+  'to king'); a base's derivations contrast; affixes trace to worn-down words
+  (61%) and the agentive always quarries 'man/person/do'; daughters inherit the
+  affix sources and diverge by sound law; pinned Mandarin legal pinyin;
+  determinism + JSON-roundtrip. 129 probe checks green; smoke + validate green.
+  The Lab gains a "Word formation" card (affix etymologies + a derivation
+  table: ruler, kingdom, kingly, rivulet, to blacken).
