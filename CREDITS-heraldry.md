@@ -1,30 +1,35 @@
 # Heraldry charge art — attribution
 
-The figurative charges in the emergent heraldry system (beasts, birds, monsters,
-plants, objects) are drawn from **[game-icons.net](https://game-icons.net/)**.
+The heraldry system draws charges from two open collections, recoloured to each
+shield's tincture. Geometric/celestial charges (mullet, estoile, crescent, sun,
+roundel, annulet, lozenge, cross, crosslet, escallop) and all field treatments
+(partitions, ordinaries, lines, semé) are drawn procedurally and are original to
+this project.
 
-- **Authors:** Lorc ([lorc.github.io](https://lorc.github.io/)) and Delapouite
-  ([delapouite.com](https://delapouite.com/)).
-- **License:** Creative Commons Attribution 3.0 Unported (**CC BY 3.0**) —
-  <https://creativecommons.org/licenses/by/3.0/>.
-- **Modifications:** each icon's background square was removed and the foreground
-  path recoloured (filled with the shield's heraldic tincture) and scaled to fit;
-  the path geometry is otherwise unchanged. Preprocessed into
-  `src/sim/heraldryCharges.js`.
+## Detailed charges — DrawShield
 
-Geometric and celestial charges (mullet, estoile, crescent, sun, roundel,
-annulet, lozenge, cross, crosslet, escallop) and all field treatments
-(partitions, ordinaries, lines, semé) are drawn procedurally by the project and
-are original to it.
+The detailed, banner-quality figures (`src/sim/heraldryChargesDetailed.js`, built
+from `assets/charges-src/` by `tools/build_charges.mjs`) come from the
+**DrawShield** project:
 
-## Icons used
+- **Source:** <https://drawshield.net> · repo
+  [drawshield/Drawshield-Code](https://github.com/drawshield/Drawshield-Code)
+  (`stable` branch, `svg/charges/`).
+- **Author:** Karl Wilcox and DrawShield contributors.
+- **Licence:** the repository is **GPLv3**; the charge artwork is a mix of
+  public-domain and Creative Commons works (see drawshield.net for per-charge
+  detail). The SVGs carry no per-file licence tag. **Not guaranteed
+  commercial-safe** — retained here for a non-commercial/hobby project.
+- **Modifications:** background stripped, Inkscape metadata removed, DrawShield
+  tincture-slot colours (`#ffff00` etc.) recoloured to the shield's tincture,
+  coordinates rounded for size. Provenance per charge in
+  `assets/charges-src/SOURCES.tsv`.
 
-From game-icons.net, by Lorc and Delapouite (CC BY 3.0): lion, boar-tusks,
-wolf-head, bull-horns, horse-head, bear-head, ram, rabbit, elephant, hound,
-hollow-cat, eagle-head, falcon-moon, dove, raven, rooster, duck, bee, scorpion,
-dolphin, snake, sea-serpent, dragon-head, wyvern, griffin-symbol, unicorn,
-hydra, mermaid, centaur, minotaur, rose, wheat, pine-tree, palm-tree, oak,
-grapes, vine-leaf, acorn, corn, lotus, crown, key, anchor, broadsword,
-crossed-swords, battle-axe, bowie-knife, spears, trident, tower-flag, castle,
-lighthouse, dungeon-gate, checked-shield, anvil, hunting-horn, lyre, harp,
-book-cover, scroll-unfurled, scales, galleon, pierced-heart, sun.
+## Flat charges — game-icons.net (fallback)
+
+Charges without a DrawShield entry fall back to **game-icons.net** silhouettes
+(`src/sim/heraldryCharges.js`):
+
+- **Authors:** Lorc, Delapouite. **Licence:** CC BY 3.0
+  (<https://creativecommons.org/licenses/by/3.0/>). Background stripped and
+  recoloured to the tincture.

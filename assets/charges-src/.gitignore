@@ -1,0 +1,4 @@
+# Source charge SVGs are working files — the committed artifact is the generated
+# module src/sim/heraldryChargesDetailed.js (built by tools/build_charges.mjs).
+# Ignore the raw SVGs (large; provenance is recorded in SOURCES.tsv).
+*.svg

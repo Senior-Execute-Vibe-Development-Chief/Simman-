@@ -11,6 +11,7 @@ import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { armsForCountry, blazon, tinctureRGB } from "../src/sim/heraldry.js";
 import { CHARGE_ART } from "../src/sim/heraldryCharges.js";
+import { CHARGE_DETAIL } from "../src/sim/heraldryChargesDetailed.js";
 
 const STEP = +(process.argv[2] || 15000);
 const SEED = +(process.argv[3] || 8817);
@@ -36,6 +37,7 @@ process.stderr.write(`  drawing ${realms.length} realms\n`);
 // ── SVG plumbing ──
 const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const css = ([r, g, b]) => `rgb(${r},${g},${b})`;
+const shade = (rgb, f) => `rgb(${rgb.map(c => Math.max(0, Math.min(255, Math.round(c * f)))).join(",")})`;
 const C = id => css(tinctureRGB(id));
 const OUTLINE = "rgba(20,17,22,.82)";
 let uid = 0;
@@ -109,6 +111,19 @@ function ordinarySVG(w, h, O) {
 
 // ── Charges: real icon ART where we have it, procedural for geometric marks ──
 function G(kind, cx, cy, r, fill) {
+  // 1) detailed user-provided art (recolour the placeholder, keep linework) —
+  //    nested at its own viewBox so all internal shading survives
+  const det = CHARGE_DETAIL[kind];
+  if (det) {
+    const box = r * 2.2, F = css(fill);
+    // recolour the tincture SLOTS to the shield's tincture (with each slot's
+    // brightness factor for shading); #000 linework survives, and inherited
+    // (mono-silhouette) paths take the tincture via the container fill.
+    let body = det.body;
+    if (det.recolor) for (const [c, f] of det.recolor) body = body.split(c).join(shade(fill, f));
+    return `<svg x="${(cx - box / 2).toFixed(1)}" y="${(cy - box / 2).toFixed(1)}" width="${box.toFixed(1)}" height="${box.toFixed(1)}" viewBox="${det.vb}" preserveAspectRatio="xMidYMid meet" fill="${F}">${body}</svg>`;
+  }
+  // 2) flat game-icons silhouette
   const art = CHARGE_ART[kind];
   if (art) {
     // fit the 512-viewBox icon into a box of side ~2r, recoloured to the tincture
