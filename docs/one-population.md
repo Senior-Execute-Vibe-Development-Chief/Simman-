@@ -188,6 +188,56 @@ slope. Otherwise the clean queue stands (ontology V3 region-first secession;
 the horde force multiplier), and ONE_POP stays lever-off, byte-identical,
 with every non-Zipf gate already passing 3/3.
 
+### The agglomeration↔congestion mechanism (BUILT, lever off — T.URBAN_AGGLOM/URBAN_BETA)
+
+The breakthrough on the WHY: all four dead ends above fail because they get
+Zipf's actual generative mechanism half-right. Real rank-size law is not a
+fixed ceiling that cities fill — it emerges from INCREASING RETURNS (a bigger,
+denser city is more productive, so it attracts more — people flow UP the
+density gradient, the opposite of the field's peopling diffusion) balanced by
+CONGESTION (crowding cost rising super-linearly with density), the balance
+applied scale-independently (Gibrat) → a power law. The field diffuses people
+toward EMPTY land (down-gradient, throughput-limited); urbanization is
+anti-diffusive. Dead end 2 had the agglomeration pull with no congestion brake
+→ runaway; dead end 3 had a hard ceiling (a brake) with no pull → uniform.
+Neither is Zipf; Zipf is the EQUILIBRIUM of the two.
+
+Built as a CONSERVATIVE concentration (popField.js): each region moves people
+between its CORE tile and its own countryside (owned tiles only — no people
+created/destroyed, so this IS urbanization, the rural↔urban split) toward an
+agglomeration target. The total urban population is set by the ECONOMY
+(Σ import-fed capacity — how many non-farmers the food surplus supports, so
+urbanization is an OUTPUT, not a knob), and that total is DISTRIBUTED across
+cities by a β-COMPRESSED share of each one's import capacity: share_i =
+pull_i^β / Σ pull^β. β<1 is the congestion compression (β=1/γ, γ the
+congestion elasticity) — it turns the heavy-tailed (−1.5) import economy into
+a −β·1.5 city-size law WITHOUT changing the total (Σ share = 1 for any β).
+This is the one thing linear spike-scaling (dead end 3) mathematically could
+NOT do: a linear multiplier cannot change a power-law slope; only a sublinear
+power transform can. Capped at 90% of a region's own people (a city lives
+within its hinterland — bounds the feedback, no runaway).
+
+MEASURED (480×240 / 21k, real gate): it WORKS on the core blocker — it breaks
+the throughput clip (median core fill 0.18 → 0.83, the ceiling now binds) and
+β cleanly controls the slope. At URBAN_AGGLOM=0.13/β=0.72 the previously-STUCK
+seed 8817 finally lands its Zipf IN band on the real gate (the first mechanism
+to move it), and 4242 is clean at ZERO warnings. NOT flip-ready yet:
+  • seed 31337 is noisy — Zipf −0.54 where the same config gives 8817/4242
+    in-band (the share distribution is sensitive to each seed's importer
+    structure), and its urbanization rides high (~31%);
+  • the aggressive redistribution perturbs the POLITICAL gates (empire-area
+    tail 3.0, fallen-lifespan) via the settlement-lifecycle coupling
+    (drained cores → deaths → consolidation — watch-item a, now live);
+  • β is a free lever; its honest home is the urban-graveyard mortality-
+    density curve (settlement.js URBAN_GRAVEYARD_W is currently FLAT — make it
+    rise with density and β = the mortality elasticity, self-calibrating and
+    less seed-noisy).
+So the mechanism is the right shape (it generates the tail from the real
+cause, self-limiting) but needs a further arc: ground β in mortality, bound
+the flow so it stops destabilising the political layer, and damp the
+per-seed variance. Lever off = byte-identical (8817=f925a9f, 31337=fd5cb49c,
+proven vs clean src); URBAN_AGGLOM=0 recovers the pre-agglomeration ONE_POP.
+
 What is already true under the lever: the field owns demography (human
 rates; the transition/graveyard bend stamped per core), the 3000 BC world
 starts at its Malthusian equilibrium (the peopling sparks were the wrong

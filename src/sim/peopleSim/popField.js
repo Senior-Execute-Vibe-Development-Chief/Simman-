@@ -412,6 +412,73 @@ function applyUrbanSpikes(world, cap) {
   for (const [ti, e] of sp) cap[ti] += e.k;
 }
 
+// ── T.URBAN_AGGLOM: agglomeration↔congestion urban concentration (ONE_POP) ──
+// The Zipf blocker is that generic 4-neighbour diffusion is throughput-limited
+// AND flows the WRONG way (toward EMPTY land — the peopling of a frontier),
+// whereas urbanization is anti-diffusive: people concentrate UP the density
+// gradient into the productive city, braked by congestion. This moves a
+// region's people between its CORE tile and its own countryside toward an
+// agglomeration target (a bigger economy pulls harder), the target sublinear
+// in economic capacity because congestion cost rises super-linearly with
+// density — so equilibrium size ∝ capacity^β, β<1, which compresses the
+// heavy-tailed (−1.5) import economy toward the −0.8..−1.2 city envelope.
+// CONSERVATIVE: people are only ever moved town↔country within the SAME
+// region's owned tiles, never created or destroyed — the region's census total
+// is unchanged, only its rural/urban split. Deterministic box walk, no RNG.
+const URBAN_MAXSHARE = 0.9;  // a city holds at most this share of its region's people (the hinterland bound)
+const URBAN_CONC_R = 6;      // the urban hinterland radius (tiles) people draw in from
+const URBAN_CONC_LAMBDA = 0.2;  // relaxation toward the target per tick (convergence rate, not the equilibrium)
+const URBAN_CONC_MAXFRAC = 0.5; // cap per-tick flux at half the available side (no single-tick emptying)
+
+/** Move `delta` field-people between the core tile and its OWN countryside
+ *  (owner==sid, within the hinterland box), conservatively. +pull in, −push out. */
+function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta) {
+  const pf = world.popField, tw = world.tw, th = world.th;
+  const x0 = cx - URBAN_CONC_R, x1 = cx + URBAN_CONC_R;
+  const y0 = Math.max(0, cy - URBAN_CONC_R), y1 = Math.min(th - 1, cy + URBAN_CONC_R);
+  if (delta > 0) {
+    // AGGLOMERATION: pull the hinterland in. Sum owned countryside people, then
+    // drain the same fraction from each (proportional) up to the flux cap.
+    let avail = 0;
+    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
+      const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
+      if (ti === coreTi || owner[ti] !== sid) continue;
+      if (pf[ti] > 0) avail += pf[ti];
+    }
+    if (avail <= 0) return;
+    const take = Math.min(delta, avail * URBAN_CONC_MAXFRAC);
+    const frac = take / avail;
+    let moved = 0;
+    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
+      const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
+      if (ti === coreTi || owner[ti] !== sid || pf[ti] <= 0) continue;
+      const m = pf[ti] * frac; pf[ti] -= m; moved += m;
+    }
+    pf[coreTi] += moved;
+  } else if (delta < 0) {
+    // CONGESTION: push the crowd back out, spread over owned countryside
+    // proportional to each tile's SPARE capacity (people go where there is room).
+    const push = Math.min(-delta, pf[coreTi] * URBAN_CONC_MAXFRAC);
+    if (push <= 0) return;
+    const cap = world.capField;
+    let room = 0;
+    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
+      const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
+      if (ti === coreTi || owner[ti] !== sid) continue;
+      const s = cap[ti] - pf[ti]; if (s > 0) room += s;
+    }
+    if (room <= 0) return;
+    let moved = 0;
+    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
+      const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
+      if (ti === coreTi || owner[ti] !== sid) continue;
+      const s = cap[ti] - pf[ti]; if (s <= 0) continue;
+      const m = push * (s / room); pf[ti] += m; moved += m;
+    }
+    pf[coreTi] -= moved;
+  }
+}
+
 /**
  * The ONE_POP derive, called once per tick after the field pass (index.js):
  * accumulate each settlement's catchment field people + terrain capacity,
@@ -445,36 +512,82 @@ export function deriveOnePop(world) {
     world._onePopScale = cs.length ? Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1])) : 1;
   }
   const scale = world._onePopScale;
+  const agglom = T.URBAN_AGGLOM > 0;
+  // AGGLOMERATION↔CONGESTION distribution (T.URBAN_AGGLOM). The TOTAL urban
+  // population is set by the ECONOMY — Σ import-fed capacity, i.e. how many
+  // non-farmers the food surplus can support — so urbanization is an OUTPUT,
+  // not a knob. That total is DISTRIBUTED across cities by a β-COMPRESSED share
+  // of each one's import capacity: share_i = pull_i^β / Σ pull^β. β<1
+  // (congestion: crowding cost rising super-linearly with density) compresses
+  // the heavy-tailed (−1.5) import economy toward the −0.8..−1.2 city envelope
+  // WITHOUT changing the total (Σ share = 1 for any β) — so the slope (β) and
+  // the urbanization level (economy) cannot fight. Pre-pass sums the pulls.
+  let sumK = 0, sumKb = 0;
+  if (agglom) {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const isr = Math.max(0, Math.min(1,
+        ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
+      const kb = ((s._k || 0) * isr) / scale;
+      if (kb > 0) { sumK += kb; sumKb += Math.pow(kb, T.URBAN_BETA); }
+    }
+  }
   spikes.clear();
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (ti < 0 || ti >= world.N) continue;
     const f = accP.get(s.id) || 0;
+    // The IMPORT-FED share of the settlement's carrying capacity, in field
+    // units — what its market feeds from BEYOND its own land (hierarchy grain:
+    // _foodNet − _landFood, one food model). A self-fed farm town concentrates
+    // nothing; a grain-importing hub concentrates what it ships in — the
+    // heavy-tailed (−1.5) import economy gives the cores their size ORDER.
+    const importShare = Math.max(0, Math.min(1,
+      ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
+    const kBeyond = ((s._k || 0) * importShare) / scale;
+    // AGGLOMERATION↔CONGESTION (T.URBAN_AGGLOM): relax the core tile toward an
+    // agglomeration target that is SUBLINEAR in the economic pull (β<1, the
+    // congestion compression), conservatively concentrating the region's own
+    // countryside into (or back out of) its city. Runs BEFORE the core read so
+    // s._urbanPop sees the concentrated field. Non-importers (kBeyond=0) have
+    // no target — they stay rural, as the ontology says.
+    let uTarget = 0;
+    if (agglom && kBeyond > 0 && sumKb > 0) {
+      // This city's β-compressed share of the economy's total urban capacity.
+      const share = Math.pow(kBeyond, T.URBAN_BETA) / sumKb;
+      uTarget = T.URBAN_AGGLOM * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core
+      // A city lives WITHIN its hinterland: cap the target at a share of the
+      // region's own people. Since the countryside is terrain-capped, this
+      // bounds any feedback and is the real constraint that the largest cities
+      // can't outgrow the land that feeds them.
+      if (f > 0) uTarget = Math.min(uTarget, URBAN_MAXSHARE * f);
+      if (f > 0) {
+        const cx = s.pos.x | 0, cy = s.pos.y | 0;
+        const delta = URBAN_CONC_LAMBDA * (uTarget - pf[ti]);
+        if (delta > 1e-6 || delta < -1e-6) urbanConcentrate(world, owner, s.id, cx, cy, ti, delta);
+      }
+    }
     if (f > 0) s.people = Math.max(1, f * scale);
     // The URBAN CORE is the concentration itself: the people on the city's
-    // own tile (where the spike is), in census units — the ruling made
-    // literal. This is what the urbanization share, the demographic
-    // transition, the graveyard and the Zipf statistics read; the region's
-    // rural remainder is everyone else on its land. (Overrides the census-
-    // side ruralShare heuristic each tick — derive runs after it.)
+    // own tile, in census units — the ruling made literal. This is what the
+    // urbanization share, the demographic transition, the graveyard and the
+    // Zipf statistics read; the region's rural remainder is everyone else on
+    // its land. (Overrides the census-side ruralShare heuristic each tick.)
     if (f > 0) {
       s._urbanPop = Math.min(s.people, Math.max(0, pf[ti] * scale));
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
     }
     // else: no catchment tiles this pass (fresh founding / recompute lag) — keep the census value
-    // Next pass's spike: the IMPORT-FED share of the settlement's carrying
-    // capacity, in field units — the people its market feeds from BEYOND its
-    // own land (hierarchy grain: _foodNet − _landFood, one food model, no
-    // residual of two). A self-fed farm town concentrates nothing beyond its
-    // tile; a grain-importing hub concentrates exactly what it ships in —
-    // the heavy-tailed import economy gives the cores their size order.
-    // Plus the core's own transition/graveyard-bent growth rate (stamped by
-    // updatePop as s._rEff; plain human rate until it computes one).
-    const importShare = Math.max(0, Math.min(1,
-      ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
-    const kBeyond = ((s._k || 0) * importShare) / scale;
-    if (kBeyond > 0 || s._rEff !== undefined) spikes.set(ti, { k: kBeyond, r: s._rEff, sink: s._rSink || 0 });
+    // The spike (next pass's capacity + the core's transition/graveyard-bent
+    // growth rate stamped by updatePop). Under URBAN_AGGLOM the capacity spike
+    // is the agglomeration TARGET itself — just enough to HOLD what the
+    // concentration flow delivers (so the field pass's logistic and migration
+    // see pop≈cap and neither crash nor expel the crowd); the flow, not the
+    // throughput-limited diffusion, is what actually fills it. Otherwise it is
+    // the raw import ceiling (the pre-agglomeration behaviour).
+    const kCap = agglom ? uTarget : kBeyond;
+    if (kCap > 0 || s._rEff !== undefined) spikes.set(ti, { k: kCap, r: s._rEff, sink: s._rSink || 0 });
   }
 }
 
