@@ -55,25 +55,43 @@ function isBW(c) {                       // near-black or near-white (or a named
   const mx = Math.max(...rgb), mn = Math.min(...rgb);
   return mx < 45 || mn > 205;
 }
-// DrawShield tincture-SLOT palette → [placeholder colour, brightness factor vs
-// the shield's tincture]. #ffff00 is the primary tincture slot, #cccccc a shade,
-// #eeeeee a highlight, #00ff00/#ff0000 secondary slots.
-const DRAWSHIELD = [["#ffff00", 1], ["#00ff00", 1], ["#ff0000", 1], ["#cccccc", 0.72], ["#eeeeee", 1.22], ["#999999", 0.58]];
-// Which colours to recolour to the tincture, each with a brightness factor.
-// Returns [] for a plain black-silhouette charge (renderer just fills it).
+// The genome renders each charge as a MONOCHROME silhouette in one tincture: the
+// black linework and white highlights stay, and EVERY coloured fill folds into the
+// shield's tincture, scaled by a brightness factor so internal shading survives.
+// A charge must never leak a raw colour, whatever palette its source used — so we
+// don't special-case one placeholder; we map every colour we find.
+//
+//   · DrawShield tincture SLOTS (#ffff00 primary, #00ff00/#ff0000/#0000ff secondary
+//     slots) → the full tincture (factor 1). These are semantic "this is a tincture
+//     here" markers, not literal hues, so luminance would mis-shade them.
+//   · DrawShield SHADE slots (#cccccc shadow, #999999 deep shadow) → their designed
+//     factor, preserving the intended relief.
+//   · Armoria / WappenWiki single accent (#d7374a) → the full tincture.
+//   · any OTHER coloured fill → a shade of the tincture by its own relative
+//     luminance, so a dark detail stays dark and a light one stays light.
+// Returns [] for a plain black-silhouette charge (renderer fills it via the root).
+const SLOT = new Set(["#ffff00", "#00ff00", "#ff0000", "#0000ff"]);
+const SHADE = { "#cccccc": 0.72, "#999999": 0.58 };
+const expand = c => { c = norm(c).replace("#", ""); if (c.length === 3) c = c.split("").map(x => x + x).join(""); return "#" + c; };
+const relLum = c => { const rgb = hexRGB(c); if (!rgb) return 1; return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255; };
 function detectRecolor(inner, rootFill) {
-  const low = ((rootFill || "") + " " + inner).toLowerCase();
-  if (low.includes("#ffff00")) return DRAWSHIELD.filter(([c]) => low.includes(c));   // DrawShield slots
-  if (low.includes("#d7374a")) return [["#d7374a", 1]];                              // Armoria / WappenWiki
-  // else a solid single-tincture silhouette → recolour its dominant non-B/W fill
-  const counts = new Map();
-  const add = f => { f = norm(f); if (f !== "none") counts.set(f, (counts.get(f) || 0) + 1); };
+  const fills = new Set();
+  const add = f => { f = norm(f); if (f && f !== "none" && f[0] === "#") fills.add(f); };
   if (rootFill) add(rootFill);
-  for (const m of inner.matchAll(/fill="([^"]+)"/g)) add(m[1]);
-  for (const m of inner.matchAll(/fill:\s*([^;"'\s]+)/g)) add(m[1]);
-  let best = null, bestN = 0;
-  for (const [f, n] of counts) { if (isBW(f)) continue; if (n > bestN) { best = f; bestN = n; } }
-  return best ? [[best, 1]] : [];
+  // scan fills AND strokes AND gradient stops, as attributes and as CSS props
+  // (including inside <style> class rules) — any of them can carry a raw colour.
+  for (const m of inner.matchAll(/(?:fill|stroke|stop-color)="([^"]+)"/g)) add(m[1]);
+  for (const m of inner.matchAll(/(?:fill|stroke|stop-color)\s*:\s*([^;"'\s)]+)/g)) add(m[1]);
+  const list = [];
+  for (const f of fills) {
+    if (isBW(f)) continue;                                  // #000 linework / #fff highlight stay
+    const e = expand(f);
+    if (SLOT.has(e) || e === "#d7374a") { list.push([f, 1]); continue; }
+    if (SHADE[e] != null) { list.push([f, SHADE[e]]); continue; }
+    // arbitrary colour → a shade of the tincture tracking its luminance
+    list.push([f, +Math.max(0.28, Math.min(1.2, 0.32 + relLum(f) * 0.9)).toFixed(2)]);
+  }
+  return list;
 }
 
 const out = {};
@@ -98,6 +116,9 @@ for (const file of files) {
     // namespaced attributes, keeping only xml: and xlink:
     .replace(/\s+(?!xlink:|xml:)[a-zA-Z][\w]*:[\w.-]+="[^"]*"/g, "")
     .replace(/<!--[\s\S]*?-->/g, "")
+    // normalise rgb(r,g,b) → #rrggbb so every colour flows through one hex path
+    .replace(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/gi,
+      (_, r, g, b) => "#" + [r, g, b].map(n => Math.max(0, Math.min(255, +n)).toString(16).padStart(2, "0")).join(""))
     .trim();
   inner = stripBackground(inner, vb);
   const recolor = detectRecolor(inner, rootFill);
@@ -108,7 +129,9 @@ for (const file of files) {
   const rounded = vbMax >= 50
     ? inner.replace(/-?\d+\.\d+/g, m => String(Math.round(+m)))
     : inner.replace(/-?\d+\.\d{2,}/g, m => String(+(+m).toFixed(1)));
-  const body = rounded.replace(/\s+/g, " ").trim();
+  // lowercase every hex colour so the recolour swaps (also lowercased) always match
+  const lowered = rounded.replace(/#[0-9a-fA-F]{3,8}\b/g, m => m.toLowerCase());
+  const body = lowered.replace(/\s+/g, " ").trim();
   out[id] = { vb, recolor, body };
   meta.push({ id, recolor, bytes: body.length });
 }
