@@ -14,7 +14,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -1307,6 +1307,82 @@ console.log("\n── voice & valency ──");
   const vc3 = JSON.parse(JSON.stringify(va2));
   const vsig = (l) => renderClause(l, { s: { n: KING }, v: { c: GO, tam: "pst", voice: "caus" }, o: { n: TOWN } }).text + "|" + JSON.stringify(voiceEtymologies(l));
   check("voice deterministic + JSON-roundtrip-stable", vsig(va2) === vsig(vb2) && vsig(va2) === vsig(vc3));
+}
+
+// ── 17. TAM & MOOD DEPTH (Group C′) ───────────────────────────────────────
+// Graded tense, richer aspect (perfect/progressive/habitual — independent of
+// grammatical aspect), irrealis moods, mirativity — all deepening with the
+// morphotype ("synthetic tongues carry more distinctions").
+console.log("\n── TAM & mood depth ──");
+{
+  const world = mkWorld();
+  const fv = (x) => [...x.pre.map(t => t.g), x.gloss, ...x.post.map(t => t.g)].join(" ");
+  const byMorph = { iso: [], agg: [], fus: [], tmpl: [] };
+  const N = 800;
+  for (let i = 0; i < N; i++) { const l = foundLanguage(world, { seed: 560000 + i * 29 }); byMorph[l.prof.morph].push(l); }
+  const all = [].concat(...Object.values(byMorph));
+  const rate = (ls, pred) => ls.filter(pred).length / Math.max(1, ls.length);
+
+  // remoteness: a real minority, ZERO in isolating, past-grading > future
+  const remRate = rate(all, l => gramOf(l).remotePast >= 1);
+  check(`graded tense is a real minority (${Math.round(remRate * 100)}%)`, remRate > 0.05 && remRate < 0.2);
+  check(`graded tense never in isolating tongues (${byMorph.iso.filter(l => gramOf(l).remotePast >= 1).length})`, byMorph.iso.every(l => gramOf(l).remotePast === 0));
+  check(`past-grading more common than future-grading`, rate(all, l => gramOf(l).remotePast >= 1) > rate(all, l => gramOf(l).remoteFuture >= 1));
+  // graded cell distinct from plain past + carries the distance gloss; and needs the base tense
+  const gp = all.find(l => gramOf(l).remotePast >= 2 && l.prof.morph !== "iso");
+  if (gp) {
+    const plain = fv(inflectVerb(gp, GO, { tam: "pst" })), rem = fv(inflectVerb(gp, GO, { tam: "pstrem" }));
+    check(`graded past cell ≠ plain, glossed REM (${plain} vs ${rem})`, rem !== plain && /REM/.test(rem) && /PST/.test(rem));
+  } else check("graded past cell distinct (none found — unlikely)", false);
+  // resolveTam degrades a graded request on a non-grading language
+  const ng = all.find(l => gramOf(l).remotePast === 0 && paradigmSpec(l).tam.pst);
+  check(`graded request degrades to the base tense on a non-grading tongue (${ng ? resolveTam(ng, "pstrem") : "?"})`, !!ng && resolveTam(ng, "pstrem") === "pst");
+
+  // aspect: perfect/progressive/habitual, INDEPENDENT of grammatical aspect
+  check(`perfect at a real rate (${Math.round(rate(all, l => tamShape(l).perfect) * 100)}%)`, rate(all, l => tamShape(l).perfect) > 0.38 && rate(all, l => tamShape(l).perfect) < 0.58);
+  check(`progressive leans analytic (iso ${Math.round(rate(byMorph.iso, l => tamShape(l).progressive) * 100)}% > fus ${Math.round(rate(byMorph.fus, l => tamShape(l).progressive) * 100)}%)`, rate(byMorph.iso, l => tamShape(l).progressive) > rate(byMorph.fus, l => tamShape(l).progressive));
+  check(`habitual leans agglutinative (agg ${Math.round(rate(byMorph.agg, l => tamShape(l).habitual) * 100)}% > iso ${Math.round(rate(byMorph.iso, l => tamShape(l).habitual) * 100)}%)`, rate(byMorph.agg, l => tamShape(l).habitual) > rate(byMorph.iso, l => tamShape(l).habitual));
+  // PRF ≠ PST/PFV, PROG ≠ IPFV
+  const pl = all.find(l => tamShape(l).perfect && l.prof.morph !== "iso" && paradigmSpec(l).tam.pst);
+  if (pl) { const prf = fv(inflectVerb(pl, GO, { tam: "prf" })), pst = fv(inflectVerb(pl, GO, { tam: "pst" })); check(`perfect distinct from past (${prf} vs ${pst})`, prf !== pst && /PRF/.test(prf)); }
+  else check("perfect distinct from past (none found)", false);
+  // pinned Mandarin: PRF trails (post), PROG leads (pre)
+  const m = foundLanguage(world, { seed: 445 }); m.prof = refProfile("mandarin", 445); m.rules = []; const mp = refPin("mandarin"); m.pin = mp.pin; m.prof.rom = mp.rom;
+  const mPrf = inflectVerb(m, GO, { tam: "prf" }), mProg = inflectVerb(m, GO, { tam: "prog" });
+  check(`pinned Mandarin: perfect trails, progressive leads (${mPrf.post.map(t => t.g)} / ${mProg.pre.map(t => t.g)})`, mPrf.post.some(t => t.g === "PRF") && mProg.pre.some(t => t.g === "PROG"));
+
+  // irrealis moods: count deepens with synthesis (agg > fus/tmpl > iso), keep tam+person
+  const meanMoods = (ls) => ls.reduce((s, l) => s + gramOf(l).moods.length, 0) / Math.max(1, ls.length);
+  check(`mood count deepens with synthesis (agg ${meanMoods(byMorph.agg).toFixed(2)} > iso ${meanMoods(byMorph.iso).toFixed(2)})`, meanMoods(byMorph.agg) > meanMoods(byMorph.iso));
+  const md = all.find(l => gramOf(l).moods.includes("opt") && l.prof.morph !== "iso" && paradigmSpec(l).tam.pst);
+  if (md) {
+    const opt = fv(inflectVerb(md, GO, { tam: "pst", pers: "3", irrealisMood: "opt" })), ind = fv(inflectVerb(md, GO, { tam: "pst", pers: "3" }));
+    check(`irrealis keeps tense+person, differs from indicative (${opt} vs ${ind})`, opt !== ind && /OPT/.test(opt) && /PST/.test(opt));
+  } else check("irrealis keeps tense+person (none with opt found)", false);
+  // OPT ‹ want, POT ‹ know in most non-iso tongues that have them
+  // opt is only ever 'want' or opaque (opaque affixes don't appear in
+  // affixEtymologies) — so NONE should trace to a different source
+  const optLs = all.filter(l => l.prof.morph !== "iso" && gramOf(l).moods.includes("opt"));
+  const optBad = optLs.filter(l => { const e = affixEtymologies(l).find(x => x.g === "OPT"); return e && e.from !== "want"; }).length;
+  const optWant = optLs.filter(l => { const e = affixEtymologies(l).find(x => x.g === "OPT"); return e && e.from === "want"; }).length;
+  check(`optative only ever grammaticalizes from 'want' (${optWant} overt, ${optBad} wrong-source)`, optLs.length > 0 && optBad === 0 && optWant > 0);
+
+  // mirativity: small minority, boosted by the perfect, distinct from indicative
+  const mirRate = rate(all, l => gramOf(l).mirative);
+  check(`mirativity is a small minority (${Math.round(mirRate * 100)}%)`, mirRate > 0.03 && mirRate < 0.2);
+  const pMirPrf = rate(all.filter(l => tamShape(l).perfect), l => gramOf(l).mirative), pMirNo = rate(all.filter(l => !tamShape(l).perfect), l => gramOf(l).mirative);
+  check(`mirativity self-strengthens with the perfect (${(pMirPrf * 100).toFixed(1)}% > ${(pMirNo * 100).toFixed(1)}%)`, pMirPrf > pMirNo);
+  const mi = all.find(l => gramOf(l).mirative && l.prof.morph !== "iso" && paradigmSpec(l).tam.pst);
+  if (mi) { const mir = fv(inflectVerb(mi, GO, { tam: "pst", mir: true })), pln = fv(inflectVerb(mi, GO, { tam: "pst" })); check(`mirative cell ≠ indicative (${mir} vs ${pln})`, mir !== pln && /MIR/.test(mir)); }
+  else check("mirative distinct (none found)", false);
+
+  // determinism + JSON roundtrip
+  const wa = mkWorld(), wb = mkWorld();
+  const ta = foundLanguage(wa, { seed: 560029 }), tb = foundLanguage(wb, { seed: 560029 });
+  const tc3 = JSON.parse(JSON.stringify(ta));
+  const tsig = (l) => JSON.stringify(tamShape(l)) + fv(inflectVerb(l, GO, { tam: "pstrem", pers: "3" }));
+  check("TAM depth deterministic + JSON-roundtrip-stable", tsig(ta) === tsig(tb) && tsig(ta) === tsig(tc3));
+  void resolveMood;
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

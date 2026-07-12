@@ -29,6 +29,7 @@ import {
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, AGENTIVITY, MAKE, DO, EAT,
+  BE, HAVE, KNOW, SEE, NEW, NIGHT, FAR,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -113,11 +114,26 @@ export function rollGrammar(famSeed, prof) {
   const antip = m === "iso" ? false : align === "erg" ? H("apass") < 0.6 : agree === "both" ? H("apass") < 0.15 : H("apass") < 0.05;
   const appl = m === "iso" ? false : H("appl") < (0.1 + (agree === "both" ? 0.4 : 0) + (m === "agg" ? 0.15 : m === "tmpl" ? 0.05 : 0));
   const applOf = appl ? pickW("applk", [["ben", 0.55], ["ins", 0.25], ["loc", 0.2]]) : null;
+  // ── TAM & MOOD DEPTH (Group C′): synthetic tongues carry MORE distinctions,
+  // so every threshold reads the morphotype. Graded tense needs a base tense;
+  // aspect is INDEPENDENT of g.aspect (English marks perfect/progressive with
+  // no grammatical aspect); irrealis moods slice a frequency-ordered list. ──
+  const remotePast = m === "iso" || tenses < 2 ? 0 : pickW("rmp", m === "agg" ? [[0, 0.68], [1, 0.2], [2, 0.12]] : [[0, 0.82], [1, 0.12], [2, 0.06]]);
+  const remoteFuture = tenses < 3 ? 0 : (H("rmf") < 0.1 + (remotePast >= 1 ? 0.15 : 0) ? 1 : 0);   // Bantu symmetry
+  const perfect = H("prf") < 0.42 + (tenses === 1 ? 0.12 : 0) + (m === "iso" ? 0.06 : 0);
+  const progressive = H("prog") < (m === "iso" ? 0.62 : m === "fus" ? 0.42 : 0.5) + (tenses === 1 ? 0.1 : 0);
+  const habitual = H("hab") < (m === "agg" ? 0.42 : m === "iso" ? 0.18 : 0.26) + (tenses === 1 ? 0.1 : 0);   // leans agglutinative
+  const moodN = m === "iso" ? (H("moodn") < 0.72 ? 0 : 1)
+    : m === "agg" ? Math.floor(h01(famSeed, "g:moodn") * 4)
+    : Math.min(2, Math.floor(h01(famSeed, "g:moodn2") * 3));
+  const moods = MOOD_ORDER.slice(0, moodN);
+  const mirative = H("mir") < 0.04 + (perfect ? 0.1 : 0);   // (evidentiality boost added when Group C lands)
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
     activeFluid, ergSplit, hierSplit, invAgree, absAgree,   // alignment splits (Group F)
     caus, pass, passBy, antip, appl, applOf,                // voice & valency (Group B)
+    remotePast, remoteFuture, perfect, progressive, habitual, moods, mirative,   // TAM depth (Group C′)
     // noun-class ASSIGNMENT strategy (WALS 32A): 'semantic' (~35% — animacy/sex
     // decides class) vs 'mixed' (the rest — a phonological cue assigns the
     // abstract residue, Russian -a→fem). Meaningful only when genders≥2; the
@@ -762,7 +778,23 @@ const AFF_SRC = {
   caus: [[MAKE, 0.4], [DO, 0.25], [GIVE, 0.15], [null, 0.2]],   // 'make/do/give' → causative
   pass: [[FALL, 0.25], [COME, 0.2], [EAT, 0.15], [null, 0.4]],  // 'fall/come/be-eaten' → passive
   apass: [[DO, 0.3], [MAN, 0.2], [null, 0.5]],                  // antipassive (ergative mirror)
+  // TAM depth (Group C′): graded tense, richer aspect, irrealis moods, mirativity
+  rec: [[NEW, 0.35], [COME, 0.25], [null, 0.4]],                // recent past ‹ 'new/come'
+  rem: [[FAR, 0.4], [NIGHT, 0.2], [null, 0.4]],                 // remote past ‹ 'far/night'
+  farfut: [[FAR, 0.35], [GO, 0.25], [null, 0.4]],               // remote future ‹ 'far/go'
+  prf: [[FINISH, 0.4], [HAVE, 0.25], [null, 0.35]],             // perfect ‹ 'finish/have'
+  prog: [[SIT, 0.3], [STAND, 0.2], [BELLY, 0.15], [null, 0.35]], // progressive ‹ posture/locative
+  hab: [[GO, 0.3], [BE, 0.2], [null, 0.5]],                     // habitual
+  opt: [[WANT, 0.55], [null, 0.45]],                            // optative ‹ 'want'
+  pot: [[KNOW, 0.4], [TAKE, 0.2], [null, 0.4]],                 // potential ‹ 'know/can'
+  cond: [[GO, 0.3], [WANT, 0.2], [null, 0.5]],                  // conditional
+  sbjv: [[COME, 0.2], [null, 0.8]],                             // subjunctive (mostly opaque)
+  mir: [[SEE, 0.25], [FINISH, 0.25], [null, 0.5]],             // mirative
 };
+const MOOD_ORDER = ["sbjv", "cond", "opt", "pot"];              // frequency ranking (like CASE_ORDER)
+const MOOD_GLOSS = { sbjv: "SBJV", cond: "COND", opt: "OPT", pot: "POT" };
+const PRIMARY_TAM = new Set(["pst", "fut", "pfv", "ipfv"]);     // tmpl pattern-swaps ONLY these; secondary route through affixes
+const GRADE = { pstrec: ["pst", "rec"], pstrem: ["pst", "rem"], futrem: ["fut", "farfut"] };
 
 // evolve a form through rules[from:to] in place (the onion's inner loop)
 function evolveSlice(rules, from, to, w) {
@@ -852,7 +884,7 @@ export function paradigmSpec(lang) {
   };
   // ── nominal ──
   const plSrc = h01(fam, "plsrc") < 0.6 ? MANY : ALL;    // same quarry the pronouns use
-  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, themes: [], vThemes: [], particles: {} };
+  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, dist: {}, moods: {}, mir: null, themes: [], vThemes: [], particles: {} };
   if (g.pluralMark) spec.pl = mkAff("pl", "PL", null, [[plSrc, 1]]);
   if (g.dual) spec.du = mkAff("du", "DU");
   // core case(s): active spends two slots on AGT/PAT, tripartite on ERG/ACC
@@ -924,9 +956,25 @@ export function paradigmSpec(lang) {
   if (!iso && g.pass) spec.voice.pass = mkAff("pass", "PASS");
   if (g.antip) spec.voice.antip = mkAff("antip", "ANTIP", "apass");
   if (g.appl) spec.voice.appl = mkAff("appl", "APPL", null, [[adpSourceOf(lang, APPL_MEANING[g.applOf]), 1]]);
+  // ── TAM DEPTH (Group C′): graded tense (spec.dist), richer aspect
+  // (prf/prog/hab), irrealis moods (spec.moods) — all claimed AFTER voice ──
+  if (g.remotePast >= 1) spec.dist.rem = mkAff("rem", "REM");           // remote past ('long ago')
+  if (g.remotePast >= 2) spec.dist.rec = mkAff("rec", "REC");           // + recent past (hodiernal)
+  if (g.remoteFuture >= 1) spec.dist.farfut = mkAff("farfut", "REM");   // remote future
+  if (g.perfect) spec.tam.prf = mkAff("prf", "PRF");
+  if (g.progressive) spec.tam.prog = mkAff("prog", "PROG");
+  if (g.habitual) spec.tam.hab = mkAff("hab", "HAB");
+  for (const mk of g.moods) spec.moods[mk] = mkAff(mk, MOOD_GLOSS[mk]);
   dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases,
     spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp, spec.inv,
-    spec.voice.caus, spec.voice.pass, spec.voice.antip, spec.voice.appl].filter(Boolean));
+    spec.voice.caus, spec.voice.pass, spec.voice.antip, spec.voice.appl,
+    spec.dist.rem, spec.dist.rec, spec.dist.farfut, spec.tam.prf, spec.tam.prog, spec.tam.hab,
+    ...Object.values(spec.moods)].filter(Boolean));
+  // mirative built AFTER the dedupe: it SHARES the perfect exponent (the -miş
+  // syncretism) via a deep-cloned syl, or is its own small marker
+  if (g.mirative) spec.mir = g.perfect && spec.tam.prf
+    ? { k: "mir", g: "MIR", src: spec.tam.prf.src, t: spec.tam.prf.t, syl: cloneMarkSyl(spec.tam.prf.syl) }
+    : mkAff("mir", "MIR");
   // ── fusional theme vowels: declension/conjugation classes ──
   const nTheme = lang.prof.morph === "fus" || lang.prof.morph === "tmpl" ? g.declN : 1;
   for (let k = 0; k < nTheme; k++) spec.themes.push(inv.vows[hash32(fam, "theme", k) % inv.vows.length]);
@@ -1418,8 +1466,8 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (mir ? ":mir" : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -1429,9 +1477,14 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
   const stemGloss = glossOf(cid);
   const imperative = mood === "imp";
   // imperatives carry no tense; the ITERATIVE/continuative imperfective is
-  // often reduplication (every morphotype, Chinese kàn-kan included)
-  const tamEff = imperative ? null : tam;
+  // often reduplication (every morphotype, Chinese kàn-kan included). GRADED
+  // tense expands to base-tense + a distance affix (so it inherits the base's
+  // irregularity), and the extra aspects (prf/prog/hab) ride spec.tam directly.
+  const tamEff = imperative ? null : (GRADE[tam] ? GRADE[tam][0] : tam);
+  const distAff = imperative || !GRADE[tam] ? null : spec.dist[GRADE[tam][1]];
   const tamAff = tamEff ? spec.tam[tamEff] : null;
+  const irrMoodAff = !imperative && irrealisMood ? spec.moods[irrealisMood] : null;
+  const mirAff = !imperative && mir ? spec.mir : null;
   const redupAsp = !imperative && tamEff === "ipfv" && redupHas(lang, "aspect");
   // imperative particle (all morphotypes) + prohibitive, shared pre/post
   const impExtras = (pre, post) => {
@@ -1452,10 +1505,14 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
   } else if (spec.iso) {
     const post = [], pre = [];
     if (tamAff) {
-      // aspect/tense particles are enclitics — neutral tone (le, guo, ma)
+      // aspect/tense particles are enclitics — neutral tone (le, guo, ma);
+      // the progressive leads (the 在 pattern), le/guo trail, future leads
       const tok = { w: rformNeutral(lang, { syls: [tamAff.syl] }), g: tamAff.g };
-      if (tamEff === "fut") pre.push(tok); else post.push(tok);   // le trails, future auxiliaries lead
+      if (tamEff === "fut" || tamEff === "prog") pre.push(tok); else post.push(tok);
     }
+    if (distAff) post.push({ w: rformNeutral(lang, { syls: [distAff.syl] }), g: distAff.g });
+    if (irrMoodAff) pre.push({ w: rform(lang, { syls: [irrMoodAff.syl] }), g: irrMoodAff.g });   // preverbal modal 会/要/能
+    if (mirAff) post.push({ w: rformNeutral(lang, { syls: [mirAff.syl] }), g: "MIR" });
     impExtras(pre, post);
     out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss + (imperative && g.imp !== "particle" ? ".IMP" : ""), pre, post, irr: false };
   } else {
@@ -1474,16 +1531,20 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     } else if (tamAff && irr === "ablaut" && morph !== "tmpl") {
       ablaut = true;                                  // sang: the vowel is the tense
       tamInStem = tamAff.g;
-    } else if (tamAff && morph === "tmpl") {
-      pattern = tamEff;                               // pattern change IS the TAM
+    } else if (tamAff && morph === "tmpl" && PRIMARY_TAM.has(tamEff)) {
+      pattern = tamEff;                               // pattern change IS the TAM (primary only)
       tamInStem = tamAff.g;
-    } else if (tamAff) {
+    } else if (tamAff) {                              // secondary aspects route through an affix, even in tmpl
       if (irr === "fossil") {
         // syncope: the tense vowel vanishes into the stem's coda
         events.push({ ...tamAff, syl: { on: tamAff.syl.on, nu: [], co: [] } });
       } else events.push(tamAff);
       glosses.push(tamAff.g);
     }
+    // graded tense: the distance affix rides outer of the base tense
+    if (distAff) { events.push(distAff); glosses.push(distAff.g); }
+    // irrealis mood — unlike the imperative, it KEEPS the tam + person marking
+    if (irrMoodAff) { events.push(irrMoodAff); glosses.push(irrMoodAff.g); }
     // imperative suffix (suffix-mode tongues); bare/particle add no affix
     if (imperative && g.imp === "suffix" && spec.imp) { events.push(spec.imp); glosses.push("IMP"); }
     // person agreement — imperatives, being addressee-directed, don't agree
@@ -1495,6 +1556,8 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       const oAff = spec.pers[obj + "sg"];
       if (oAff) { events.push({ ...oAff, g: oAff.g + ".O" }); glosses.push(oAff.g + ".O"); }
     }
+    // mirativity — the OUTERMOST marker (shares the perfect exponent, or its own)
+    if (mirAff) { events.push({ ...mirAff, t: lang.rules.length }); glosses.push("MIR"); }
     const vTheme = spec.vThemes.length > 1 ? spec.vThemes[hash32(lang.famSeed ?? lang.seed, "conjpick", cid) % spec.vThemes.length] : null;
     const form = onionBuild(lang, cid, events, {
       fuse: morph === "fus", theme: vTheme && events.length ? vTheme : null,
@@ -1557,8 +1620,12 @@ export function paradigmShape(lang) {
   if (spec.tam.fut) tam.push({ k: "fut", g: "FUT" });
   if (spec.tam.pfv) tam.push({ k: "pfv", g: "PFV" });
   if (spec.tam.ipfv) tam.push({ k: "ipfv", g: "IPFV" });
+  if (spec.tam.prf) tam.push({ k: "prf", g: "PRF" });
+  if (spec.tam.prog) tam.push({ k: "prog", g: "PROG" });
+  if (spec.tam.hab) tam.push({ k: "hab", g: "HAB" });
   const pers = spec.pers ? [["1", "sg"], ["2", "sg"], ["3", "sg"], ["1", "pl"], ["2", "pl"], ["3", "pl"]] : [];
-  return { nums, cases, tam, pers, iso: spec.iso, imp: g.imp, redup: g.redup };
+  const moods = g.moods.map(k => ({ k, g: MOOD_GLOSS[k] }));
+  return { nums, cases, tam, pers, moods, iso: spec.iso, imp: g.imp, redup: g.redup };
 }
 
 /** Affix etymologies for the Lab: every ending explains itself — including
@@ -1575,6 +1642,8 @@ export function affixEtymologies(lang) {
   add(spec.pl); add(spec.du);
   for (const cse of spec.cases) add(cse);
   for (const k of Object.keys(spec.tam)) add(spec.tam[k]);
+  for (const k of Object.keys(spec.dist)) add(spec.dist[k]);
+  for (const k of Object.keys(spec.moods)) add(spec.moods[k]);
   return out;
 }
 
@@ -1601,10 +1670,46 @@ const WO_SEQ = { sov: ["s", "o", "v"], svo: ["s", "v", "o"], vso: ["v", "s", "o"
 export function resolveTam(lang, wanted) {
   const spec = paradigmSpec(lang);
   if (!wanted) return null;
+  // graded tense: keep it only if the distance affix exists, else degrade to
+  // the base tense (pstrem→pst→pfv→null)
+  if (GRADE[wanted]) return spec.dist[GRADE[wanted][1]] ? wanted : resolveTam(lang, GRADE[wanted][0]);
   if (spec.tam[wanted]) return wanted;
+  // the extra aspects degrade toward the base ones
+  if (wanted === "prf") return spec.tam.pfv ? "pfv" : resolveTam(lang, "pst");
+  if ((wanted === "prog" || wanted === "hab") && spec.tam.ipfv) return "ipfv";
   if (wanted === "pst" && spec.tam.pfv) return "pfv";
   if (wanted === "fut" && spec.tam.ipfv) return null;
   return null;
+}
+
+/** Degrade a requested irrealis mood to what the language marks, else null
+ *  (the indicative). */
+export function resolveMood(lang, wanted) {
+  if (!wanted) return null;
+  return paradigmSpec(lang).moods[wanted] ? wanted : null;
+}
+
+/** The shared MIRATIVITY seam (§0.9): decides how a clause's surprise value is
+ *  realized. The TAM branch (this file) fires the language's mirative marker
+ *  (the perfect-syncretism / SEE·FINISH pathway); Evidentiality (Group C) later
+ *  extends this to prefer an EXTEND-of-the-inferred exponent when a system
+ *  exists. Returns { mir } — whether to flag mirativity on the verb. */
+export function resolveMir(lang, frame) {
+  const g = gramOf(lang);
+  if (!frame || !frame.v || !frame.v.mir || frame.v.mood === "imp") return { mir: false };
+  return { mir: !!g.mirative };
+}
+
+/** The TAM inventory this language marks (Group C′) — for the Lab + gates. */
+export function tamShape(lang) {
+  const g = gramOf(lang), spec = paradigmSpec(lang);
+  return {
+    tenses: g.tenses, aspect: g.aspect,
+    remotePast: g.remotePast, remoteFuture: g.remoteFuture,
+    perfect: !!spec.tam.prf, progressive: !!spec.tam.prog, habitual: !!spec.tam.hab,
+    moods: g.moods.slice(), mirative: !!spec.mir,
+    graded: Object.keys(spec.dist),
+  };
 }
 
 // ── alignment resolver (Group F): ONE per-argument core-case function, used by
@@ -1758,10 +1863,15 @@ export function renderClause(lang, frame) {
   const neg = !!frame.v.neg;
   // subject class-concord on the verb (Bantu ki-, Russian past -l/-la)
   const vClass = g.concord && g.concord.verb && sArg && !sIsPron && sArg.n != null && g.genders ? genderOf(lang, sArg.n) : null;
+  // irrealis mood (subjunctive/conditional/optative/potential) rides v.mood
+  // when it isn't the imperative; mirativity rides the shared resolveMir seam
+  const irrealisMood = !imperative && frame.v.mood && frame.v.mood !== "imp" ? resolveMood(lang, frame.v.mood) : null;
+  const mirOn = resolveMir(lang, frame).mir;
   const vx = inflectVerb(lang, frame.v.c, {
     tam, pers: agreePers, num: agNum === "du" ? "pl" : agNum, obj: objPers,
     neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, sclass: vClass, dir: direction,
     voice: voice && !spec.iso ? voice : null,   // synthetic voice affix (iso uses a light verb below)
+    irrealisMood, mir: mirOn,
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
   // isolating VOICE is periphrastic: a light verb / marker leads the verb
