@@ -245,12 +245,28 @@ export const NINE = c("nine", "num", 0.85);
 export const TEN = c("ten", "num", 0.95);
 export const HUNDRED = c("hundred", "num", 0.65);
 
+// ── typology-completion appends (spec: language-typology-completion-spec.md) ──
+// APPEND-ONLY: new ids seed the dictionary LAST and only ever bump themselves.
+// SEEM — perception/appearance verb; the inferential-evidential quarry ("it
+//   seems/appears"). BODY — classifier source (human/animate/general) + the
+//   inalienable-possession anchor. LEAF — the flat-thing classifier source.
+//   EXCEED — the comparative verb ("A exceeds B in tallness" → the 'than' mark).
+//   SAME — the equative standard ("tall AS"). LORD — the honorific/T-V source
+//   (respect from a noble address term).
+export const SEEM = c("seem", "act", 0.7);
+export const BODY = c("body", "bod", 0.9);
+export const LEAF = c("leaf", "plt", 0.7);
+export const EXCEED = c("exceed", "act", 0.5);
+export const SAME = c("same", "qua", 0.6);
+export const LORD = c("lord", "gov", 0.55);
+
 export const CONCEPTS = D;
 
-// frame-able verbs for the sentence layer + Lab dropdowns
+// frame-able verbs for the sentence layer + Lab dropdowns (append-only: existing
+// indices are referenced by position in the probe, so new verbs go at the END)
 export const VERBS = [BE, HAVE, GO, COME, DO, SAY, SEE, HEAR, KNOW, WANT, GIVE,
   TAKE, MAKE, EAT, DRINK, SLEEP, SIT, STAND, WALKV, RUN, FALL, DIE, KILL,
-  FIGHTV, BURNV, BUILDV, RULEV, LOVEV, FEARV, FINISH];
+  FIGHTV, BURNV, BUILDV, RULEV, LOVEV, FEARV, FINISH, SEEM, EXCEED];
 
 // ── CLICS-style colexification affinities ────────────────────────────────
 // [a, b, probability that ONE word covers both in a given family] — the
