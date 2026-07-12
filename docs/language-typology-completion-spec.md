@@ -1,19 +1,50 @@
 # Spec — Completing the typological coverage: the grammar frontier
 
-Status: **DESIGNED, not started.** Companion to `docs/language-comprehensive-spec.md`
-(read that first — L1–L5 + M1–M5 build history, the two house invariants, the
-reference-profile capability bar). That doc took the language system through
-phonology, lexicon, sound change, and a single-clause grammar/sentence layer
-(sessions 1–13). This doc is the **completion pass**: the eight grammatical
-clusters the audits kept parking — the ones that make the parameter space
-actually *span* the world's languages instead of covering the common ~80%.
+Status: **BUILT — all nine phases shipped, gated green.** Companion to
+`docs/language-comprehensive-spec.md` (read that first — L1–L5 + M1–M5 build
+history, the two house invariants, the reference-profile capability bar). That doc
+took the language system through phonology, lexicon, sound change, and a
+single-clause grammar/sentence layer (sessions 1–13). This doc is the **completion
+pass**: the eight grammatical clusters the audits kept parking — the ones that make
+the parameter space actually *span* the world's languages instead of covering the
+common ~80%.
+
+> ### Build status (all 8 clusters / 35 features implemented)
+> The 9-phase plan of §9 is complete and pushed. `tools/probe_langfit.mjs` grew
+> **106 → 261 checks**; `npm test` (smoke), `npm run validate` (stylized facts),
+> and lint stay green at every commit. Each phase kept the prior checks green (the
+> byte-identity regression) and added a `§14+` section.
+>
+> | Phase | Cluster | Ships |
+> |-------|---------|-------|
+> | P1 | Concept + side-table appends | `SEEM/BODY/LEAF/EXCEED/SAME/LORD`, `AGENTIVITY`, `CLF_SENSE` |
+> | P2 | Concord (A) | emergent noun class, concord propagation, `inflectAdj`, pronoun case |
+> | P3 | Alignment (F) | the `coreCaseOf` resolver + active / tripartite / split-erg / direct-inverse |
+> | P4 | Voice (B) | causative / passive / antipassive / applicative |
+> | P5 | TAM (C′) | graded tense, perfect/prog/hab, irrealis moods, mirativity, the `resolveMir` seam |
+> | P6 | Evidentiality (C) | the `evid` system + SEE/HEAR/SAY/SEEM exponents + evidential mirativity |
+> | P7 | Classifiers (D) | sortal numeral classifiers, `CLF_SENSE` assignment, `numeralPhrase` |
+> | P8 | Nominal (E) | paucal/trial, alienable possession, comparison, T-V + honorifics |
+> | P9 | Multi-clause (G) | `renderClauseTree` — coordination, complement / adverbial / relative clauses, chaining + switch-reference |
+>
+> **Corrections applied during the build** (beyond the per-cluster critique notes):
+> (P6) evidentials dedupe in their OWN pass, not the shared cross-class sweep,
+> which exhausts the single-syllable escape space on a many-case language and
+> collapses them; the outer evidential tier is dash-glossed even in fusional
+> paradigms. (P8) the T-V polite form is built AFTER the closed-class dedupes and
+> kept out of them, so the plural syncretism (`2v == 2pl`) survives; `dedupe`/
+> `dedupeAffixSet` gained a non-mutating `seed` param so possessive/honorific/
+> linker affixes dedupe against the finalized cases/TAM without a re-baseline.
+> (P9) `renderClause` gained a third `opts` argument (medial / gap / nfVerb) and
+> `renderClause`'s `seq` became reassignable for the adverbial wrap.
 
 Code surface: `src/sim/languageGrammar.js` (dials, closed classes, paradigms,
 `renderClause`), `src/sim/languageLexicon.js` (concept graph + side tables),
 `src/sim/language.js` (records, `wordOf`, `nativeStemOf`), `src/sim/languageRefs.js`
-(the three pinned profiles), `tools/probe_langfit.mjs` (acceptance gates, currently
-~106 checks). **No `src/sim/peopleSim/` or chronicle wiring** — this stays a pure
-generator + Language-Lab capability, exactly as M4 shipped "Lab-side only."
+(the three pinned profiles), `tools/probe_langfit.mjs` (acceptance gates, 106 →
+**261** checks after the build). **No `src/sim/peopleSim/` or chronicle wiring** —
+this stays a pure generator + Language-Lab capability, exactly as M4 shipped
+"Lab-side only."
 
 ## Directive
 
