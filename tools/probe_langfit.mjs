@@ -14,8 +14,8 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -1383,6 +1383,125 @@ console.log("\n── TAM & mood depth ──");
   const tsig = (l) => JSON.stringify(tamShape(l)) + fv(inflectVerb(l, GO, { tam: "pstrem", pers: "3" }));
   check("TAM depth deterministic + JSON-roundtrip-stable", tsig(ta) === tsig(tb) && tsig(ta) === tsig(tc3));
   void resolveMood;
+}
+
+// ── 18. EVIDENTIALITY & EPISTEMIC MARKING (Group C) ───────────────────────
+// Grammatical marking of information source (WALS 78A), worn from perception/
+// speech verbs (SEE/HEAR/SAY/SEEM) — the OUTERMOST, youngest verbal layer,
+// skewing synthetic + verb-final. Mirativity rides the shared resolveMir seam:
+// an evidential system EXTENDs the inferred host or grammaticalizes a DEDICATED
+// exponent, else the TAM pathway fires.
+console.log("\n── Evidentiality ──");
+{
+  const world = mkWorld();
+  const fv = (x) => [...x.pre.map(t => t.g), x.gloss, ...x.post.map(t => t.g)].join(" ");
+  const byMorph = { iso: [], agg: [], fus: [], tmpl: [] };
+  const N = 900;
+  for (let i = 0; i < N; i++) { const l = foundLanguage(world, { seed: 640000 + i * 31 }); byMorph[l.prof.morph].push(l); }
+  const all = [].concat(...Object.values(byMorph));
+  const rate = (ls, pred) => ls.filter(pred).length / Math.max(1, ls.length);
+  const evLangs = all.filter(l => gramOf(l).evid);
+  const srcOf = (l, val) => { const f = evidentialSystem(l).forms.find(x => x.value === val); return f ? f.from : undefined; };
+  const withVal = (val) => evLangs.filter(l => evidentialSystem(l).forms.some(f => f.value === val && !f.zero));
+
+  // (a) BYTE-IDENTITY REGRESSION (first gate): the opt-in v.ev frame field is a
+  // no-op on a NON-evidential language — the frozen frame held (v.mir is the
+  // pre-existing P5 field and legitimately fires on a mirative language)
+  const nonEv = all.filter(l => !gramOf(l).evid).slice(0, 200);
+  const beOK = nonEv.every(l => {
+    const a = renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+    const b = renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst", ev: "rept" }, o: { n: RIVER } });
+    return a.text === b.text && a.gloss === b.gloss;
+  });
+  check(`byte-identity: v.ev is a no-op on non-evidential langs (${nonEv.length} sampled)`, nonEv.length > 0 && beOK);
+
+  // (b) presence in the WALS 78A band (~43%), skewing synthetic (agg > iso)
+  const presence = rate(all, l => !!gramOf(l).evid);
+  check(`evidentiality presence in the WALS band (${Math.round(presence * 100)}%)`, presence > 0.22 && presence < 0.50);
+  const pAgg = rate(byMorph.agg, l => !!gramOf(l).evid), pIso = rate(byMorph.iso, l => !!gramOf(l).evid);
+  check(`evidentiality skews synthetic (agg ${Math.round(pAgg * 100)}% > iso ${Math.round(pIso * 100)}%)`, pAgg > pIso);
+
+  // (c) size skew: 2-term the plurality, 4-term the rarest
+  const sz = { 2: 0, 3: 0, 4: 0 };
+  for (const l of evLangs) sz[gramOf(l).evid.n]++;
+  check(`2-term is the plurality, 4-term rarest (n2 ${sz[2]} > n3 ${sz[3]} > n4 ${sz[4]})`, sz[2] > sz[3] && sz[3] > sz[4]);
+
+  // (d) descent: a branched daughter inherits the whole evidential system
+  world.step = 3000;
+  const evParent = evLangs.find(l => l.prof.morph !== "iso");
+  const daughter = branchLanguage(world, evParent, 0.6);
+  check(`evidentiality inherited down a family (deep-equal)`, JSON.stringify(gramOf(daughter).evid) === JSON.stringify(gramOf(evParent).evid));
+
+  // (e) exponents grammaticalize from the right perception/speech quarries
+  const reptLs = withVal("rept"), sensLs = withVal("sens"), visLs = withVal("vis");
+  check(`reportative worn from 'say' in a majority (${Math.round(rate(reptLs, l => srcOf(l, "rept") === "say") * 100)}%, n=${reptLs.length})`, reptLs.length > 0 && rate(reptLs, l => srcOf(l, "rept") === "say") > 0.5);
+  check(`sensory worn from 'hear' in a majority (${Math.round(rate(sensLs, l => srcOf(l, "sens") === "hear") * 100)}%, n=${sensLs.length})`, sensLs.length > 0 && rate(sensLs, l => srcOf(l, "sens") === "hear") > 0.5);
+  check(`visual worn from 'see' in a majority (${Math.round(rate(visLs, l => srcOf(l, "vis") === "see") * 100)}%, n=${visLs.length})`, visLs.length > 0 && rate(visLs, l => srcOf(l, "vis") === "see") > 0.5);
+  const infrSrcs = new Set(evLangs.map(l => srcOf(l, "infr")).filter(Boolean));
+  check(`inferred drawn from ≥2 sources across families (${[...infrSrcs].join("/")})`, infrSrcs.size >= 2);
+
+  // (f) the overt exponents within a system are pairwise-distinct
+  const distinctOK = evLangs.every(l => { const ws = evidentialSystem(l).forms.filter(f => !f.zero).map(f => f.w); return new Set(ws).size === ws.length; });
+  check(`a system's overt evidentials are pairwise-distinct`, distinctOK);
+
+  // (g) cognate-under-drift on a synthetic lang: sisters share the source, the
+  // inflected surface diverges under sound law
+  let driftRoot = null;
+  for (let s = 0; s < 4000 && !driftRoot; s++) { const w = mkWorld(); const r = foundLanguage(w, { seed: 250000 + s * 7 }); if (r.prof.morph !== "iso" && gramOf(r).evid && evidentialSystem(r).forms.some(f => !f.zero && f.from)) driftRoot = { w, r }; }
+  if (driftRoot) {
+    const { w, r } = driftRoot;
+    const val = evidentialSystem(r).forms.find(f => !f.zero && f.from).value;
+    w.step = 4000; let d = branchLanguage(w, r, 0.9); w.step = 8000; d = branchLanguage(w, d, 0.9); w.step = 12000; d = branchLanguage(w, d, 0.9);
+    const rawV = (l) => { const x = inflectVerb(l, SEE, { tam: "pst", ev: val }); return [...x.pre.map(t => t.w), x.text, ...x.post.map(t => t.w)].join(" "); };
+    check(`evidentials are cognate across sisters but DRIFT (${val}‹${srcOf(r, val)}: ${rawV(r)} → ${rawV(d)})`, srcOf(d, val) === srcOf(r, val) && rawV(d) !== rawV(r));
+  } else check("cognate-under-drift (no synthetic evidential family found)", false);
+
+  // (h) append-only integrity of the SEEM concept (the inferential quarry)
+  check(`append-only: CONCEPTS[SEEM] intact + a verb (${glossOf(SEEM)})`, glossOf(SEEM) === "seem" && VERBS.includes(SEEM));
+
+  // (i) mirativity on the evidential slot: EXTEND re-reads the inferred host,
+  // suppressed under the imperative
+  const ext = evLangs.find(l => gramOf(l).evid.mir === "extend" && l.prof.morph !== "iso");
+  if (ext) { const c = fv(inflectVerb(ext, SEE, { tam: "pst", mir: true })); const host = gramOf(ext).evid.n >= 3 ? "INFR" : "INDIR"; check(`EXTEND mirativity re-reads the inferred host as surprise (${c})`, new RegExp(host + "\\.MIR").test(c)); }
+  else check("EXTEND mirativity host (none found)", false);
+  const anyEv = evLangs.find(l => l.prof.morph !== "iso");
+  const impC = renderClause(anyEv, { s: { pron: { k: "2s", pers: 2, num: "sg" } }, v: { c: GO, mood: "imp", ev: "rept", mir: true } });
+  check(`evidential + mirativity suppressed under the imperative (${impC.gloss})`, !/VIS|SENS|INFR|REP|MIR/.test(impC.gloss));
+
+  // (j) graceful cross-size degrade (evidMap): sensory on a 4-term stays SENS,
+  // a reportative on a 2-term collapses to the indirect
+  const n4 = evLangs.find(l => gramOf(l).evid.n === 4);
+  const n2 = evLangs.find(l => gramOf(l).evid.n === 2 && l.prof.morph !== "iso");
+  check(`4-term marks the sensory distinctly (${n4 ? fv(inflectVerb(n4, SEE, { tam: "pst", ev: "sens" })) : "?"})`, !!n4 && /SENS/.test(fv(inflectVerb(n4, SEE, { tam: "pst", ev: "sens" }))));
+  const g2 = n2 ? renderClause(n2, { s: { n: KING }, v: { c: SEE, tam: "pst", ev: "rept" }, o: { n: RIVER } }).gloss : "?";
+  check(`reportative degrades to INDIR on a 2-term system (${g2})`, !!n2 && /INDIR/.test(g2));
+
+  // (k) per-morphotype realization: iso enclitic · fusional separate outer element
+  const isoRept = byMorph.iso.find(l => gramOf(l).evid && evidentialSystem(l).forms.some(f => f.value === "rept" && !f.zero));
+  check(`iso reportative is a toneless post-verbal particle glossed REP`, !!isoRept && inflectVerb(isoRept, SEE, { tam: "pst", ev: "rept" }).post.some(t => t.g === "REP"));
+  const fusRept = byMorph.fus.find(l => gramOf(l).evid && evidentialSystem(l).forms.some(f => f.value === "rept" && !f.zero));
+  const fusGl = fusRept ? fv(inflectVerb(fusRept, SEE, { tam: "pst", pers: "3", ev: "rept" })) : "?";
+  check(`fusional REP is a SEPARATE trailing element, not fused into the portmanteau (${fusGl})`, !!fusRept && /-REP/.test(fusGl));
+
+  // (l) evidentialSystem well-formed; all three references non-evidential;
+  // pinned Mandarin + v.ev stays byte-identical legal pinyin
+  check(`evidentialSystem returns null for a non-evidential language`, evidentialSystem(nonEv[0]) === null);
+  const refs = ["mandarin", "russian", "english"].map(k => refLang(mkWorld(), k, 445));
+  check(`all three references are non-evidential (evid: null)`, refs.every(r => gramOf(r).evid === null && evidentialSystem(r) === null));
+  const mRef = refLang(world, "mandarin", 445); const mp = refPin("mandarin"); mRef.pin = mp.pin; mRef.prof.rom = mp.rom;
+  const mBase = renderClause(mRef, { s: { n: KING }, v: { c: SEE, tam: "pfv" }, o: { n: RIVER } });
+  const mEv = renderClause(mRef, { s: { n: KING }, v: { c: SEE, tam: "pfv", ev: "rept" }, o: { n: RIVER } });
+  const stripT = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  check(`pinned Mandarin + v.ev is byte-identical legal pinyin (${mEv.text})`, mEv.text === mBase.text && mEv.tokens.every(t => PINYIN.test(stripT(t.w))));
+
+  // (m) determinism + JSON-roundtrip of the evidential layer
+  let eseed = null;
+  for (let i = 0; i < N && eseed === null; i++) { const s = 640000 + i * 31; if (gramOf(foundLanguage(mkWorld(), { seed: s })).evid) eseed = s; }
+  const ea = foundLanguage(mkWorld(), { seed: eseed }), eb = foundLanguage(mkWorld(), { seed: eseed });
+  const ec = JSON.parse(JSON.stringify(ea));
+  const esig = (l) => JSON.stringify(evidentialSystem(l)) + fv(inflectVerb(l, SEE, { tam: "pst", ev: "rept", mir: true }));
+  check(`evidentiality deterministic + JSON-roundtrip-stable`, esig(ea) === esig(eb) && esig(ea) === esig(ec));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

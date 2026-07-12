@@ -29,7 +29,7 @@ import {
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, AGENTIVITY, MAKE, DO, EAT,
-  BE, HAVE, KNOW, SEE, NEW, NIGHT, FAR,
+  BE, HAVE, KNOW, SEE, NEW, NIGHT, FAR, SEEM, HEAR, SAY,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -127,13 +127,30 @@ export function rollGrammar(famSeed, prof) {
     : m === "agg" ? Math.floor(h01(famSeed, "g:moodn") * 4)
     : Math.min(2, Math.floor(h01(famSeed, "g:moodn2") * 3));
   const moods = MOOD_ORDER.slice(0, moodN);
-  const mirative = H("mir") < 0.04 + (perfect ? 0.1 : 0);   // (evidentiality boost added when Group C lands)
+  // ── EVIDENTIALITY (Group C): grammatical marking of information source
+  // (WALS 78A, ~43% of languages). Skews SYNTHETIC + verb-final — presence rate
+  // by morphotype (agg > tmpl > fus > iso) × an OV boost. Size skews small
+  // (2-term commonest, then 3, then 4; synthetic tongues carry the larger
+  // systems). Computed ABOVE the mir dial so the mirativity boost can read
+  // evid.infer — a dedicated inferential is the canonical bridge to surprise. ──
+  const synth = m === "agg" || m === "tmpl";
+  const evidRate = (m === "agg" ? 0.5 : m === "tmpl" ? 0.42 : m === "fus" ? 0.3 : 0.16) * (ov ? 1.2 : v1 ? 0.8 : 1);
+  const evid = (() => {
+    if (H("ev") >= evidRate) return null;
+    const r = H("evn");
+    const n = r < (synth ? 0.34 : 0.56) ? 2 : r < (synth ? 0.72 : 0.87) ? 3 : 4;
+    const em = H("evmir");   // ~40% mark mirativity on the evidential slot; EXTEND outnumbers DEDICATED
+    const mir = em < 0.26 ? "extend" : em < 0.4 ? "dedicated" : null;
+    return { n, mir, zeroDirect: H("evzd") < 0.72, infer: n >= 3 };   // infer = has a dedicated inferential term
+  })();
+  const mirative = H("mir") < 0.04 + (perfect ? 0.1 : 0) + (evid && evid.infer ? 0.14 : 0);
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
     activeFluid, ergSplit, hierSplit, invAgree, absAgree,   // alignment splits (Group F)
     caus, pass, passBy, antip, appl, applOf,                // voice & valency (Group B)
     remotePast, remoteFuture, perfect, progressive, habitual, moods, mirative,   // TAM depth (Group C′)
+    evid,                                                    // evidentiality (Group C)
     // noun-class ASSIGNMENT strategy (WALS 32A): 'semantic' (~35% — animacy/sex
     // decides class) vs 'mixed' (the rest — a phonological cue assigns the
     // abstract residue, Russian -a→fem). Meaningful only when genders≥2; the
@@ -795,6 +812,31 @@ const MOOD_ORDER = ["sbjv", "cond", "opt", "pot"];              // frequency ran
 const MOOD_GLOSS = { sbjv: "SBJV", cond: "COND", opt: "OPT", pot: "POT" };
 const PRIMARY_TAM = new Set(["pst", "fut", "pfv", "ipfv"]);     // tmpl pattern-swaps ONLY these; secondary route through affixes
 const GRADE = { pstrec: ["pst", "rec"], pstrem: ["pst", "rem"], futrem: ["fut", "farfut"] };
+// ── EVIDENTIALITY (Group C): the source-of-information quarries. Each overt
+// value is a worn-down perception/speech verb (SEE→visual, HEAR→other-sensory,
+// SAY→reportative, SEEM→inferential), replayed through the onion so sisters
+// share cognate evidentials that drift. `dir` (firsthand) is zero under the
+// zeroDirect norm; when overt it is mostly opaque (an old bleached formative).
+// AFF_SRC-shaped: [concept, weight] with null = an opaque own formative. ──
+const EVID_SRC = {
+  vis: [[SEE, 0.7], [null, 0.3]],                              // visual (I saw it)
+  sens: [[HEAR, 0.75], [null, 0.25]],                          // non-visual sensory (I heard/felt it)
+  infr: [[SEEM, 0.4], [KNOW, 0.25], [SEE, 0.15], [null, 0.2]], // inferred (it seems / from traces)
+  rept: [[SAY, 0.65], [MOUTH, 0.1], [null, 0.25]],             // reported (they say)
+  indir: [[SEEM, 0.3], [SAY, 0.2], [HEAR, 0.2], [null, 0.3]],  // 2-term non-firsthand catch-all
+  dir: [[SEE, 0.3], [null, 0.7]],                              // firsthand, overt only when !zeroDirect
+  mir: [[SEEM, 0.35], [SEE, 0.2], [FALL, 0.15], [null, 0.3]],  // dedicated mirative (F3)
+};
+const EVID_VALUES = { 2: ["dir", "indir"], 3: ["dir", "infr", "rept"], 4: ["vis", "sens", "infr", "rept"] };
+const EVID_GLOSS = { dir: "DIR", vis: "VIS", indir: "INDIR", sens: "SENS", infr: "INFR", rept: "REP", mir: "MIR" };
+// map a requested frame evidential onto what a system of size n actually marks
+// (graceful cross-size degrade; mirrors the pronoun degrade in renderClause)
+function evidMap(n, ev) {
+  if (!ev) return null;
+  if (n === 4) return ev === "dir" ? "vis" : ev;                                // firsthand → visual
+  if (n === 3) return (ev === "vis" || ev === "sens") ? "dir" : ev;             // sensory collapses to firsthand
+  return (ev === "vis" || ev === "sens" || ev === "dir") ? "dir" : "indir";     // n===2: firsthand vs not
+}
 
 // evolve a form through rules[from:to] in place (the onion's inner loop)
 function evolveSlice(rules, from, to, w) {
@@ -884,7 +926,7 @@ export function paradigmSpec(lang) {
   };
   // ── nominal ──
   const plSrc = h01(fam, "plsrc") < 0.6 ? MANY : ALL;    // same quarry the pronouns use
-  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, dist: {}, moods: {}, mir: null, themes: [], vThemes: [], particles: {} };
+  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, dist: {}, moods: {}, mir: null, evid: null, themes: [], vThemes: [], particles: {} };
   if (g.pluralMark) spec.pl = mkAff("pl", "PL", null, [[plSrc, 1]]);
   if (g.dual) spec.du = mkAff("du", "DU");
   // core case(s): active spends two slots on AGT/PAT, tripartite on ERG/ACC
@@ -965,11 +1007,44 @@ export function paradigmSpec(lang) {
   if (g.progressive) spec.tam.prog = mkAff("prog", "PROG");
   if (g.habitual) spec.tam.hab = mkAff("hab", "HAB");
   for (const mk of g.moods) spec.moods[mk] = mkAff(mk, MOOD_GLOSS[mk]);
+  // ── EVIDENTIALITY affixes (Group C): the OUTERMOST, youngest verbal layer,
+  // worn from perception/speech verbs. Claimed AFTER every existing affix (the
+  // shared-`taken` landmine, §0.3) so no upstream pick shifts; firsthand is
+  // zero under the zeroDirect norm. `outer:true` keeps them out of the fusional
+  // crush (a young peripheral tier). BLOCKING FIX: register births.ev ≥ births.agr
+  // BEFORE mkAff (else wornAt reads undefined → NaN poisons the onion). ──
+  const evidAffs = [];
+  if (g.evid) {
+    spec.evid = {};
+    const claim = (key, gloss, pool) => {
+      births["ev:" + key] = Math.max(birthOf(fam, "ev:" + key, len), births.agr);
+      const aff = mkAff("ev:" + key, gloss, null, pool);
+      aff.outer = true;
+      return aff;
+    };
+    for (const val of EVID_VALUES[g.evid.n]) {
+      if (val === "dir" && g.evid.zeroDirect) continue;   // firsthand zero-marked (the norm)
+      const aff = claim(val, EVID_GLOSS[val], EVID_SRC[val]);
+      spec.evid[val] = aff;
+      evidAffs.push(aff);
+    }
+    if (g.evid.mir === "dedicated") {   // a fresh mirative exponent on the evidential slot (F3)
+      const ma = claim("mir", "MIR", EVID_SRC.mir);
+      spec.evid.mir = ma;
+      evidAffs.push(ma);
+    }
+  }
   dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases,
     spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp, spec.inv,
     spec.voice.caus, spec.voice.pass, spec.voice.antip, spec.voice.appl,
     spec.dist.rem, spec.dist.rec, spec.dist.farfut, spec.tam.prf, spec.tam.prog, spec.tam.hab,
     ...Object.values(spec.moods)].filter(Boolean));
+  // evidentials are their OWN outer paradigm (like person agreement, deduped
+  // separately above): they contrast among THEMSELVES with a fresh `seen`, and
+  // may legitimately echo a case/tam marker in a different slot. Folding them
+  // into the cross-class sweep exhausts its single-syllable escape space (a
+  // many-case language's ~20 endings) and collapses them — so keep them apart.
+  if (evidAffs.length) dedupeAffixSet(lang, inv, evidAffs);
   // mirative built AFTER the dedupe: it SHARES the perfect exponent (the -miş
   // syncretism) via a deep-cloned syl, or is its own small marker
   if (g.mirative) spec.mir = g.perfect && spec.tam.prf
@@ -1185,10 +1260,16 @@ function onionBuild(lang, stemCid, events, { fuse = false, theme = null, pattern
     // the earliest birth — and the theme vowel that marks the declension
     // class colours exactly these fused endings (-am/-em/-um). A lone affix
     // keeps its own vowel, so the etymology stays audible in the singular.
-    const t0 = list[0].t;
-    const stack = crush(list.map(e => e.syl));
-    if (theme != null && stack.length) stack[0].nu = [{ ...theme, n: 0, lg: 0 }];
-    list = [{ t: t0, syl: stack[0], g: list.map(e => e.g).join(".") }];
+    // OUTER affixes (a young peripheral tier — the evidential) stay OUT of the
+    // crush and re-attach after it in birth order (a no-op when none exist, so
+    // every pre-evidential call stays byte-identical).
+    const inner = list.filter(e => !e.outer), outer = list.filter(e => e.outer);
+    if (inner.length > 1) {
+      const t0 = inner[0].t;
+      const stack = crush(inner.map(e => e.syl));
+      if (theme != null && stack.length) stack[0].nu = [{ ...theme, n: 0, lg: 0 }];
+      list = [{ t: t0, syl: stack[0], g: inner.map(e => e.g).join(".") }, ...outer];
+    }
   }
   let cursor = 0;
   for (const e of list) {
@@ -1466,8 +1547,8 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (mir ? ":mir" : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false, ev = null } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (ev ? ":e" + ev : "") + (mir ? ":mir" : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -1484,7 +1565,24 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
   const distAff = imperative || !GRADE[tam] ? null : spec.dist[GRADE[tam][1]];
   const tamAff = tamEff ? spec.tam[tamEff] : null;
   const irrMoodAff = !imperative && irrealisMood ? spec.moods[irrealisMood] : null;
-  const mirAff = !imperative && mir ? spec.mir : null;
+  // ── EVIDENTIALITY + MIRATIVITY (Group C / the shared resolveMir seam): the
+  // evidential is the youngest, outermost verbal layer. Mirativity either
+  // EXTENDs the inferred host (the surprise IS the indirect evidential, glossed
+  // e.g. INFR.MIR — a reportative request collapses to it, the v1 limitation),
+  // uses a DEDICATED evidential exponent, or falls back to the TAM marker. ──
+  const evid = g.evid;
+  let evVal = imperative ? null : ev, evExtend = false;
+  if (!imperative && mir && evid && evid.mir === "extend") {
+    evVal = evid.n >= 3 ? "infr" : "indir";   // re-read the inferred host as surprise
+    evExtend = true;
+  }
+  const evAff = evVal && spec.evid ? spec.evid[evVal] : null;
+  const evGloss = evAff ? EVID_GLOSS[evVal] + (evExtend ? ".MIR" : "") : null;
+  let mirAff = null;
+  if (!imperative && mir && !evExtend) {   // EXTEND folds mirativity into evAff; else a separate marker
+    if (evid && evid.mir === "dedicated" && spec.evid && spec.evid.mir) mirAff = spec.evid.mir;
+    else mirAff = spec.mir;                 // TAM pathway (byte-identical when no evidential system)
+  }
   const redupAsp = !imperative && tamEff === "ipfv" && redupHas(lang, "aspect");
   // imperative particle (all morphotypes) + prohibitive, shared pre/post
   const impExtras = (pre, post) => {
@@ -1513,11 +1611,12 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     if (distAff) post.push({ w: rformNeutral(lang, { syls: [distAff.syl] }), g: distAff.g });
     if (irrMoodAff) pre.push({ w: rform(lang, { syls: [irrMoodAff.syl] }), g: irrMoodAff.g });   // preverbal modal 会/要/能
     if (mirAff) post.push({ w: rformNeutral(lang, { syls: [mirAff.syl] }), g: "MIR" });
+    if (evAff) post.push({ w: rformNeutral(lang, { syls: [evAff.syl] }), g: evGloss });   // evidential clause enclitic (outermost)
     impExtras(pre, post);
     out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss + (imperative && g.imp !== "particle" ? ".IMP" : ""), pre, post, irr: false };
   } else {
     const irr = tamAff && isMarkedTam(tamEff) ? irregularityOf(lang, cid) : null;
-    const events = [], glosses = [];
+    const events = [], glosses = [], outerGlosses = [];   // outerGlosses: the young agglutinated tier (evidential) — dash-joined even in fusional glosses
     let rootOverride = null, pattern = null, ablaut = false;
     if (neg && !imperative && spec.negAff) {
       // affixal negation sits innermost (the Turkish -me- slot)
@@ -1556,8 +1655,13 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       const oAff = spec.pers[obj + "sg"];
       if (oAff) { events.push({ ...oAff, g: oAff.g + ".O" }); glosses.push(oAff.g + ".O"); }
     }
-    // mirativity — the OUTERMOST marker (shares the perfect exponent, or its own)
-    if (mirAff) { events.push({ ...mirAff, t: lang.rules.length }); glosses.push("MIR"); }
+    // evidentiality — a young outer affix (drifts with the stem across sisters);
+    // `outer:true` keeps it out of the fusional crush and its gloss dash-joined
+    // (a separate agglutinated layer, never part of the portmanteau)
+    if (evAff) { events.push(evAff); outerGlosses.push(evGloss); }
+    // mirativity — the TAM marker rides the OUTERMOST slot (fuses into a fusional
+    // ending, byte-identically); a DEDICATED evidential-mir is a separate outer affix
+    if (mirAff) { events.push(mirAff.outer ? mirAff : { ...mirAff, t: lang.rules.length }); (mirAff.outer ? outerGlosses : glosses).push("MIR"); }
     const vTheme = spec.vThemes.length > 1 ? spec.vThemes[hash32(lang.famSeed ?? lang.seed, "conjpick", cid) % spec.vThemes.length] : null;
     const form = onionBuild(lang, cid, events, {
       fuse: morph === "fus", theme: vTheme && events.length ? vTheme : null,
@@ -1570,6 +1674,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     else if (morph === "fus" && glosses.length > 1) glossStr = stemGloss + "-" + glosses.join(".");
     else glossStr = [stemGloss, ...glosses].join("-");
     if (imperative && (g.imp === "bare" || g.imp === "particle") && !glosses.length) glossStr = stemGloss + (g.imp === "bare" ? ".IMP" : "");
+    glossStr += outerGlosses.map(gl => "-" + gl).join("");   // the outer evidential tier, always dash-separated
     const pre = [], post = [];
     impExtras(pre, post);
     out = { text: renderWord(form, lang.prof), gloss: glossStr, pre, post, irr: !!irr || !!pattern };
@@ -1697,7 +1802,8 @@ export function resolveMood(lang, wanted) {
 export function resolveMir(lang, frame) {
   const g = gramOf(lang);
   if (!frame || !frame.v || !frame.v.mir || frame.v.mood === "imp") return { mir: false };
-  return { mir: !!g.mirative };
+  if (g.evid && g.evid.mir) return { mir: true };   // an evidential system's mirativity wins (EXTEND / DEDICATED)
+  return { mir: !!g.mirative };                      // else the TAM pathway (perfect-syncretism / SEE·FINISH)
 }
 
 /** The TAM inventory this language marks (Group C′) — for the Lab + gates. */
@@ -1710,6 +1816,23 @@ export function tamShape(lang) {
     moods: g.moods.slice(), mirative: !!spec.mir,
     graded: Object.keys(spec.dist),
   };
+}
+
+/** The evidential system this language marks (Group C) — for the Lab + gates.
+ *  Each overt form is worn from its perception/speech quarry (reads `.src` for
+ *  `from`); the firsthand is zero under the zeroDirect norm. `mir` is how the
+ *  system marks surprise (extend/dedicated/null). Null for non-evidential langs. */
+export function evidentialSystem(lang) {
+  const g = gramOf(lang);
+  if (!g.evid) return null;
+  const spec = paradigmSpec(lang);
+  const forms = EVID_VALUES[g.evid.n].map((val) => {
+    const aff = spec.evid && spec.evid[val];
+    return aff
+      ? { value: val, gloss: EVID_GLOSS[val], w: renderAffix(lang, aff.syl), from: aff.src != null ? glossOf(aff.src) : null, zero: false }
+      : { value: val, gloss: EVID_GLOSS[val], w: "", from: null, zero: true };   // firsthand, zero-marked
+  });
+  return { n: g.evid.n, values: EVID_VALUES[g.evid.n].slice(), mir: g.evid.mir, forms };
 }
 
 // ── alignment resolver (Group F): ONE per-argument core-case function, used by
@@ -1867,11 +1990,15 @@ export function renderClause(lang, frame) {
   // when it isn't the imperative; mirativity rides the shared resolveMir seam
   const irrealisMood = !imperative && frame.v.mood && frame.v.mood !== "imp" ? resolveMood(lang, frame.v.mood) : null;
   const mirOn = resolveMir(lang, frame).mir;
+  // evidentiality (Group C): map the requested information-source onto what this
+  // system actually marks (graceful cross-size degrade); null for imperatives and
+  // non-evidential languages, so the resolveMir seam alone decides surprise
+  const evOn = !imperative && g.evid && frame.v.ev ? evidMap(g.evid.n, frame.v.ev) : null;
   const vx = inflectVerb(lang, frame.v.c, {
     tam, pers: agreePers, num: agNum === "du" ? "pl" : agNum, obj: objPers,
     neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, sclass: vClass, dir: direction,
     voice: voice && !spec.iso ? voice : null,   // synthetic voice affix (iso uses a light verb below)
-    irrealisMood, mir: mirOn,
+    irrealisMood, mir: mirOn, ev: evOn,
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
   // isolating VOICE is periphrastic: a light verb / marker leads the verb
