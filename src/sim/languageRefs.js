@@ -33,6 +33,7 @@ export function refProfile(kind, seed) {
     gram: {
       wo: "svo", adpSide: "pre", genN: true, adjN: true, affixSide: "suf",
       caseN: 0, align: "acc", negPos: "pre", qPart: "final", whFront: false,
+      activeFluid: false, ergSplit: null, hierSplit: null, invAgree: false, absAgree: false,
       genders: 0, classAssign: null, concord: null, tenses: 1, agree: "none", aspect: true, pluralMark: false,
       dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
       proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
@@ -56,6 +57,7 @@ export function refProfile(kind, seed) {
     gram: {
       wo: "svo", adpSide: "pre", genN: false, adjN: true, affixSide: "suf",
       caseN: 5, align: "acc", negPos: "pre", qPart: "none", whFront: true,
+      activeFluid: false, ergSplit: null, hierSplit: null, invAgree: false, absAgree: false,
       genders: 3, classAssign: "mixed", concord: { adj: true, dem: true, art: false, verb: true, site: "fuse" }, tenses: 3, agree: "subj", aspect: true, pluralMark: true,
       dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
@@ -82,6 +84,7 @@ export function refProfile(kind, seed) {
     gram: {
       wo: "svo", adpSide: "pre", genN: true, adjN: true, affixSide: "suf",
       caseN: 1, align: "acc", negPos: "pre", qPart: "none", whFront: true,
+      activeFluid: false, ergSplit: null, hierSplit: null, invAgree: false, absAgree: false,
       genders: 0, classAssign: null, concord: null, tenses: 3, agree: "none", aspect: false, pluralMark: true,
       dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,

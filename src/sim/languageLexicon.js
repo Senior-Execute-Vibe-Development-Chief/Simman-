@@ -268,6 +268,21 @@ export const VERBS = [BE, HAVE, GO, COME, DO, SAY, SEE, HEAR, KNOW, WANT, GIVE,
   TAKE, MAKE, EAT, DRINK, SLEEP, SIT, STAND, WALKV, RUN, FALL, DIE, KILL,
   FIGHTV, BURNV, BUILDV, RULEV, LOVEV, FEARV, FINISH, SEEM, EXCEED];
 
+// ── AGENTIVITY: proto-agent score over verb ids (Dowty) — the analogue of
+// basicness `b`, for alignment (Group F). A verb's lone argument (intransitive
+// S) patterns with the transitive AGENT when it scores high (control/volition:
+// run, go), with the PATIENT when low (fall, die) — the split-S / active
+// alignment. A world-knowledge dimension, not a language's answer (cardinal
+// rule 2). Absent verb → patientive default (documented). Append-only, keys on
+// existing verb ids.
+export const AGENTIVITY = new Map([
+  [GO, 0.9], [RUN, 0.9], [WALKV, 0.85], [COME, 0.85], [DO, 0.85],
+  [SAY, 0.8], [EAT, 0.8], [DRINK, 0.8], [MAKE, 0.8], [RULEV, 0.8], [BUILDV, 0.8], [FIGHTV, 0.8], [KILL, 0.8],
+  [STAND, 0.6], [SEE, 0.6], [WANT, 0.6], [TAKE, 0.7], [GIVE, 0.7], [SIT, 0.55], [FINISH, 0.52],
+  [HAVE, 0.4], [KNOW, 0.4], [HEAR, 0.4], [LOVEV, 0.4], [FEARV, 0.4], [SEEM, 0.2],
+  [SLEEP, 0.3], [BE, 0.3], [BURNV, 0.25], [FALL, 0.1], [DIE, 0.05],
+]);
+
 // ── CLICS-style colexification affinities ────────────────────────────────
 // [a, b, probability that ONE word covers both in a given family] — the
 // probabilities echo the real cross-linguistic frequencies in spirit.

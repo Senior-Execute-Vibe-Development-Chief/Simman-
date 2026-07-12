@@ -103,7 +103,7 @@ function grammarHTML(l) {
   const gchips = [
     `${WO_NAME[g.wo]} order`,
     g.adpSide === "pre" ? "prepositions" : "postpositions",
-    g.caseN ? `${g.caseN} case${g.caseN > 1 ? "s" : ""} (${g.align === "erg" ? "ergative" : "nom–acc"})` : "no case",
+    g.caseN ? `${g.caseN} case${g.caseN > 1 ? "s" : ""} (${ { erg: "ergative", active: "active-stative", tripartite: "tripartite" }[g.align] || "nom–acc" })` : "no case",
     g.genders ? `${g.genders} noun classes` : null,
     g.tenses > 1 ? `${g.tenses} tenses` : "tenseless",
     g.aspect ? "aspect" : null,

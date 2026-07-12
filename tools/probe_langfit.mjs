@@ -14,7 +14,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -1129,6 +1129,110 @@ console.log("\n── concord: noun-class assignment ──");
   const csig = (l) => concordMarkers(l).map(m => m.w).join("|") + "##" + inflectAdj(l, cidF("black"), { cls: 1 }).text;
   check("concord deterministic + JSON-roundtrip-stable", csig(ca) === csig(cb) && csig(ca) === csig(cc3));
   if (bantu[0]) say(`   a ${gramOf(bantu[0]).genders}-class tongue's alliteration: ${concordMarkers(bantu[0]).map(m => m.g + "=" + (m.w || "∅")).join(" ")}`);
+}
+
+// ── 15. ALIGNMENT REFINEMENTS & SPLITS (Group F) ──────────────────────────
+// One coreCaseOf resolver reproduces plain nom-acc / erg byte-identically and
+// adds the minority systems: active-stative (split-S by AGENTIVITY), tripartite,
+// tam- and hierarchy-conditioned split ergativity, direct-inverse.
+console.log("\n── alignment refinements & splits ──");
+{
+  const world = mkWorld();
+  const cidF = (g2) => CONCEPTS.findIndex(c => c.g === g2);
+  const RUN = cidF("run"), FALLc = cidF("fall"), SLEEPc = cidF("sleep");
+  const tokOf = (c, role) => c.tokens.filter(x => x.role === role).map(x => x.g).join(" ");   // all tokens of a role (iso case is a separate particle)
+  const find = (pred, base = 600000) => { for (let i = 0; i < 14000; i++) { const l = foundLanguage(world, { seed: base + i * 13 }); if (pred(gramOf(l))) return l; } return null; };
+
+  // REGRESSION: the resolver reproduces the old core-case block exactly
+  let accBad = 0, ergBad = 0, accN = 0, ergN = 0;
+  for (let i = 0; i < 500; i++) {
+    const l = foundLanguage(world, { seed: 520000 + i * 41 });
+    const g = gramOf(l);
+    if (g.align === "acc" && g.caseN >= 2) {
+      accN++;
+      const c = renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+      // accusative: subject bare (no core case gloss), object ACC (caseN≥2 has it)
+      if (/\b(ERG|AGT)\b/.test(tokOf(c, "S")) || !/ACC/.test(tokOf(c, "O"))) accBad++;
+    } else if (g.align === "erg") {
+      ergN++;
+      const ct = renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+      const ci = renderClause(l, { s: { n: KING }, v: { c: SLEEPc, tam: "pst" } });
+      // ergative: transitive subject ERG, intransitive subject bare (no split reroute)
+      if (!g.ergSplit && (!/ERG/.test(tokOf(ct, "S")) || /ERG/.test(tokOf(ci, "S")))) ergBad++;
+    }
+  }
+  check(`nom-acc resolver unchanged: subject bare, object ACC (${accN} langs, ${accBad} bad)`, accN > 0 && accBad === 0);
+  check(`ergative resolver unchanged: A→ERG, S bare (${ergN} langs, ${ergBad} bad)`, ergN > 0 && ergBad === 0);
+  // inflectVerb byte-identical with no dir/sclass (default path)
+  const wv1 = mkWorld(), wv2 = mkWorld();
+  const va = foundLanguage(wv1, { seed: 8484 }), vb = foundLanguage(wv2, { seed: 8484 });
+  check("inflectVerb(no dir/sclass) byte-identical + default agree=subject",
+    inflectVerb(va, GO, { tam: "pst" }).text === inflectVerb(vb, GO, { tam: "pst" }).text && !clauseAlignment(va, { v: { c: GO, tam: "pst" }, o: null }).direction);
+
+  // ACTIVE-STATIVE: split-S — control verb S=AGT, non-control S=PAT
+  const act = find(g => g.align === "active");
+  if (act) {
+    const runS = tokOf(renderClause(act, { s: { n: KING }, v: { c: RUN, tam: "pst" } }), "S");
+    const fallS = tokOf(renderClause(act, { s: { n: KING }, v: { c: FALLc, tam: "pst" } }), "S");
+    check(`active split-S: control S=AGT (run→${runS}), non-control S=PAT (fall→${fallS})`, /AGT/.test(runS) && /PAT/.test(fallS));
+    // fluid-S: an explicit volition flag flips a mid verb (only in fluid langs)
+    if (gramOf(act).activeFluid) {
+      const volS = tokOf(renderClause(act, { s: { n: KING }, v: { c: SLEEPc, tam: "pst", vol: true } }), "S");
+      const novS = tokOf(renderClause(act, { s: { n: KING }, v: { c: SLEEPc, tam: "pst", vol: false } }), "S");
+      check(`fluid-S: v.vol flips the intransitive subject (${novS} vs ${volS})`, volS !== novS);
+    } else check("fluid-S: (found lang is fixed split-S, not fluid — ok)", true);
+  } else check("active-stative alignment occurs in the sweep", false);
+  const actRate = (() => { let a = 0, cn = 0; for (let i = 0; i < 1500; i++) { const g = gramOf(foundLanguage(world, { seed: 610000 + i * 13 })); if (g.caseN >= 2) { cn++; if (g.align === "active") a++; } } return a / Math.max(1, cn); })();
+  check(`active is a small minority of case languages (${(actRate * 100).toFixed(1)}%)`, actRate > 0 && actRate < 0.08);
+
+  // TRIPARTITE: A/O/S all distinct
+  const tri = find(g => g.align === "tripartite");
+  if (tri) {
+    const t = renderClause(tri, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+    const iC = renderClause(tri, { s: { n: KING }, v: { c: SLEEPc, tam: "pst" } });
+    const A = tokOf(t, "S"), O = tokOf(t, "O"), S = tokOf(iC, "S");
+    check(`tripartite: A/O/S three-way distinct (A=${A} O=${O} S=${S})`, /ERG/.test(A) && /ACC/.test(O) && !/ERG|ACC/.test(S));
+  } else check("tripartite alignment occurs in the sweep", false);
+
+  // SPLIT-ERG by TAM: A marked ERG in the perfective/past, bare in the imperfective
+  const tsp = find(g => g.ergSplit === "tam");
+  if (tsp) {
+    const g = gramOf(tsp);
+    const ergP = tokOf(g.aspect ? renderClause(tsp, { s: { n: KING }, v: { c: SEE, tam: "pfv" }, o: { n: RIVER } }) : renderClause(tsp, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }), "S");
+    const accP = tokOf(renderClause(tsp, { s: { n: KING }, v: { c: SEE, tam: null }, o: { n: RIVER } }), "S");
+    check(`split-erg by TAM: A is ERG in the perfective/past, bare elsewhere (${ergP} → ${accP})`, /ERG/.test(ergP) && !/ERG/.test(accP));
+  } else check("tam-split ergativity occurs in the sweep", false);
+
+  // SPLIT-ERG by hierarchy (Dyirbal): noun-A takes ERG, 1sg-A is unmarked
+  const hier = find(g => g.ergSplit === "hier");
+  if (hier) {
+    const nounA = tokOf(renderClause(hier, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }), "S");
+    const pronA = tokOf(renderClause(hier, { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }), "S");
+    check(`Silverstein split: noun-A takes ERG (${nounA}), SAP-A unmarked (${pronA || "∅"})`, /ERG/.test(nounA) && !/ERG/.test(pronA));
+  } else check("hierarchy-split ergativity occurs in the sweep", false);
+
+  // DIRECT-INVERSE: 1→3 direct (no INV), 3→1 inverse (verb carries INV)
+  const invL = find(g => g.invAgree);
+  if (invL) {
+    const dir = renderClause(invL, { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: SEE, tam: "pst" }, o: { n: KING } });
+    const invc = renderClause(invL, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { pron: { k: "1sg", pers: 1, num: "sg" } } });
+    check(`direct-inverse: 1→3 direct (no INV), 3→1 marked INV (${tokOf(dir, "V")} | ${tokOf(invc, "V")})`, !/INV/.test(dir.gloss) && /INV/.test(invc.gloss));
+  } else check("direct-inverse occurs in the sweep", false);
+
+  // ABS-AGREE: the transitive verb agrees with the absolutive (object), not A
+  const absL = find(g => g.absAgree);
+  if (absL) {
+    const c1 = renderClause(absL, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { pron: { k: "1sg", pers: 1, num: "sg" } } });
+    check(`abs-agree: transitive verb indexes the absolutive/object (${c1.tokens.find(t => t.role === "V").g})`, /1SG/.test(c1.tokens.find(t => t.role === "V").g));
+  } else check("abs-agree occurs in the sweep", false);
+
+  // determinism
+  const wa = mkWorld(), wb = mkWorld();
+  const da = foundLanguage(wa, { seed: 600013 }), db = foundLanguage(wb, { seed: 600013 });
+  const dc3 = JSON.parse(JSON.stringify(da));
+  const asig = (l) => JSON.stringify(alignmentOf(l)) + renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }).text;
+  check("alignment deterministic + JSON-roundtrip-stable", asig(da) === asig(db) && asig(da) === asig(dc3));
+  void agentivityOf;
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

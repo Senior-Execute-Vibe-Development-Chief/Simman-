@@ -28,7 +28,7 @@ import {
   CONCEPTS, MANY, ALL, TWO, HAND, MAN, WOMAN, EARTH, DAY, ROAD,
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
-  TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL,
+  TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, AGENTIVITY,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -69,7 +69,7 @@ export function rollGrammar(famSeed, prof) {
   else caseN = pickW("case", ov ? [[2, 0.2], [4, 0.2], [5, 0.2], [6, 0.25], [7, 0.15]]
     : [[0, 0.3], [1, 0.1], [2, 0.15], [3, 0.15], [4, 0.12], [5, 0.1], [6, 0.08]]);
   // alignment: ergative systems are a real minority of case languages
-  const align = caseN >= 2 && H("align") < 0.27 ? "erg" : "acc";
+  let align = caseN >= 2 && H("align") < 0.27 ? "erg" : "acc";   // let: splits carve below
   // negation position: preverbal is the world default; verb-final languages
   // license clause-final negators
   const negPos = ov ? pickW("neg", [["pre", 0.45], ["final", 0.4], ["post", 0.15]])
@@ -89,9 +89,24 @@ export function rollGrammar(famSeed, prof) {
   const agree = m === "iso" ? (H("agr") < 0.9 ? "none" : "subj")
     : H("agr") < 0.28 ? "none"
     : H("agr2") < (m === "agg" ? 0.3 : 0.12) ? "both" : "subj";
+  const aspect = tenses === 1 ? true : H("asp") < 0.45;   // tenseless ⇒ aspect carries time
+  // ── ALIGNMENT SPLITS (Group F): the rarer real systems, carved AFTER agree/
+  // aspect are known, each on its OWN stream so base `align` (above) stays
+  // byte-identical. Active-stative (split-S), tripartite, tam- and hierarchy-
+  // conditioned split ergativity, direct-inverse. ──
+  let activeFluid = false, ergSplit = null, hierSplit = null, invAgree = false, absAgree = false;
+  if (align === "acc" && caseN >= 2 && m !== "iso" && H("actv") < 0.06) { align = "active"; activeFluid = H("afl") < 0.3; }
+  else if (caseN >= 3 && (m === "agg" || m === "fus") && H("trip") < 0.05) align = "tripartite";   // erg→trip too (rare)
+  if (align === "erg") {
+    if ((tenses >= 2 || aspect) && H("esp") < 0.40) ergSplit = "tam";        // erg in perfective/past (Dixon)
+    else if (H("esp") < 0.75) { ergSplit = "hier"; hierSplit = H("hsp") < 0.7 ? "sap" : "pron"; }  // Silverstein
+  }
+  invAgree = agree !== "none" && caseN <= 1 && H("inv") < 0.06;              // direction-marking verb
+  absAgree = align === "erg" && agree !== "none" && H("aba") < 0.6;          // agrees with the absolutive
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
+    activeFluid, ergSplit, hierSplit, invAgree, absAgree,   // alignment splits (Group F)
     // noun-class ASSIGNMENT strategy (WALS 32A): 'semantic' (~35% — animacy/sex
     // decides class) vs 'mixed' (the rest — a phonological cue assigns the
     // abstract residue, Russian -a→fem). Meaningful only when genders≥2; the
@@ -119,7 +134,7 @@ export function rollGrammar(famSeed, prof) {
       if (!adj && !dem && !verb) adj = true;                          // an inert gender system isn't one
       return { adj, dem, art: false, verb, site: m === "tmpl" ? "suffix" : "fuse" };
     })(),
-    aspect: tenses === 1 ? true : H("asp") < 0.45,   // tenseless ⇒ aspect carries time
+    aspect,   // tenseless ⇒ aspect carries time (hoisted for the alignment carve)
     pluralMark: m === "iso" ? H("pl") < 0.3 : H("pl") < 0.9,
     dual: H("du") < 0.15,
     clusiv: H("cl") < 0.35,                          // inclusive/exclusive 'we'
@@ -689,7 +704,7 @@ export function numeralConceptWord(lang, cid) {
 // pasts that shed their affix, plurals by umlaut alone.
 
 const CASE_ORDER = ["acc", "gen", "dat", "loc", "abl", "ins", "all", "com", "ess", "term", "ade", "ela"];
-const CASE_GLOSS = { acc: "ACC", erg: "ERG", gen: "GEN", dat: "DAT", loc: "LOC", abl: "ABL", ins: "INS", all: "ALL", com: "COM", ess: "ESS", term: "TERM", ade: "ADE", ela: "ELA" };
+const CASE_GLOSS = { acc: "ACC", erg: "ERG", gen: "GEN", dat: "DAT", loc: "LOC", abl: "ABL", ins: "INS", all: "ALL", com: "COM", ess: "ESS", term: "TERM", ade: "ADE", ela: "ELA", agt: "AGT", pat: "PAT" };
 // grammaticalization quarries per category — [concept, weight] with null =
 // an opaque ancient formative of the language's own
 const AFF_SRC = {
@@ -709,6 +724,10 @@ const AFF_SRC = {
   fut: [[WANT, 0.4], [GO, 0.3], [COME, 0.15], [null, 0.15]],
   pfv: [[FINISH, 0.5], [FALL, 0.2], [null, 0.3]],
   ipfv: [[SIT, 0.3], [STAND, 0.2], [null, 0.5]],
+  // alignment (Group F): active AGT/PAT core cases + the inverse marker
+  agt: [[HAND, 0.4], [null, 0.6]],                 // agentive S/A — like the ergative
+  pat: [[TAKE, 0.5], [GO, 0.2], [null, 0.3]],      // patientive S/O — like the accusative
+  inv: [[BACK, 0.5], [null, 0.5]],                 // the inverse-direction verb marker
 };
 
 // evolve a form through rules[from:to] in place (the onion's inner loop)
@@ -799,12 +818,18 @@ export function paradigmSpec(lang) {
   };
   // ── nominal ──
   const plSrc = h01(fam, "plsrc") < 0.6 ? MANY : ALL;    // same quarry the pronouns use
-  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, themes: [], vThemes: [], particles: {} };
+  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, themes: [], vThemes: [], particles: {} };
   if (g.pluralMark) spec.pl = mkAff("pl", "PL", null, [[plSrc, 1]]);
   if (g.dual) spec.du = mkAff("du", "DU");
+  // core case(s): active spends two slots on AGT/PAT, tripartite on ERG/ACC
+  // (the second core displaces the genitive, per the caseN=2 note); nom-acc and
+  // erg keep ONE core, so their caseKeys — and every existing paradigm — are
+  // byte-identical
+  const coreKeys = g.align === "active" ? ["agt", "pat"]
+    : g.align === "tripartite" ? ["erg", "acc"] : [g.align === "erg" ? "erg" : "acc"];
   const caseKeys = g.caseN === 0 ? [] : g.caseN === 1 ? ["gen"]
-    : [g.align === "erg" ? "erg" : "acc", ...CASE_ORDER.slice(1)].slice(0, g.caseN);
-  for (const k of caseKeys) spec.cases.push(mkAff(k, CASE_GLOSS[k], k === "erg" ? "erg" : k));
+    : [...coreKeys, ...CASE_ORDER.slice(1)].slice(0, g.caseN);
+  for (const k of caseKeys) spec.cases.push(mkAff(k, CASE_GLOSS[k], k));
   // ── verbal ──
   if (g.tenses >= 2) spec.tam.pst = mkAff("pst", "PST");
   if (g.tenses >= 3) spec.tam.fut = mkAff("fut", "FUT");
@@ -853,8 +878,12 @@ export function paradigmSpec(lang) {
   // exactly that) makes the interlinear gloss read two ways, so the later
   // affix shifts. Person markers are their own agreement paradigm, deduped
   // above; they may legitimately echo a case marker and are left alone.
+  // direct-inverse: the inverse-direction marker (BACK) — an outer late
+  // formative, claimed AFTER every existing affix so the shared `taken` set and
+  // the dedupe below stay byte-identical for every language that lacks it
+  if (g.invAgree) spec.inv = mkAff("inv", "INV");
   dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases,
-    spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp].filter(Boolean));
+    spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp, spec.inv].filter(Boolean));
   // ── fusional theme vowels: declension/conjugation classes ──
   const nTheme = lang.prof.morph === "fus" || lang.prof.morph === "tmpl" ? g.declN : 1;
   for (let k = 0; k < nTheme; k++) spec.themes.push(inv.vows[hash32(fam, "theme", k) % inv.vows.length]);
@@ -1346,8 +1375,8 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -1450,6 +1479,12 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
         : { ...out, text: out.text + mw, gloss: out.gloss + "-" + classGloss(lang, sclass) };
     }
   }
+  // direct-inverse: the INVERSE-direction marker rides the outer tier (direct is
+  // zero, like the unmarked firsthand evidential); imperatives carry no direction
+  if (dir === "inverse" && spec.inv && !imperative) {
+    const mw = renderWord({ syls: [cloneMarkSyl(spec.inv.syl)] }, lang.prof);
+    out = { ...out, text: out.text + mw, gloss: out.gloss + "-INV" };
+  }
   c.cells.set(key, out);
   return out;
 }
@@ -1523,9 +1558,51 @@ export function resolveTam(lang, wanted) {
   return null;
 }
 
+// ── alignment resolver (Group F): ONE per-argument core-case function, used by
+// renderClause for every system — and byte-identical to the old block for plain
+// nom-acc / ergative. "S" is the grammatical subject (A when transitive, S when
+// intransitive); the token role string stays "S" so the word-order gates hold. ──
+const rankOf = (a) => (!a ? 0 : a.pron ? (a.pron.pers === 3 ? 2 : 3) : 1);   // SAP > 3rd-pron > noun
+function coreCaseOf(lang, role, ctx) {
+  const { trans, effAlign, hier, arg, sAgentive } = ctx;
+  const pick = (k) => (paradigmSpec(lang).cases.some(x => x.k === k) ? k : null);
+  if (role === "S") {
+    if (effAlign === "active") return trans ? pick("agt") : (sAgentive ? pick("agt") : pick("pat"));
+    if (effAlign === "tripartite") return trans ? pick("erg") : null;                     // A→ERG, S→bare
+    if (effAlign === "erg") return !trans ? null : hier ? (rankOf(arg) < 3 ? pick("erg") : null) : pick("erg");
+    return null;                                                                          // accusative: nom is bare
+  }
+  if (effAlign === "active") return pick("pat");
+  if (effAlign === "tripartite") return pick("acc");
+  if (effAlign === "erg") return hier ? (rankOf(arg) >= 3 ? pick("acc") : null) : null;    // Dyirbal: only SAP-O marked
+  return pick("acc");                                                                      // accusative: object marked
+}
+
+/** A verb's proto-agent score (0..1); a verb absent from the table defaults
+ *  patientive (documented). Feeds active-stative split-S. */
+export function agentivityOf(cid) { return AGENTIVITY.has(cid) ? AGENTIVITY.get(cid) : 0.3; }
+/** The language's alignment + split configuration (routes the old `g.align`
+ *  consumers through one accessor). */
+export function alignmentOf(lang) {
+  const g = gramOf(lang);
+  return { align: g.align, ergSplit: g.ergSplit, hierSplit: g.hierSplit, activeFluid: g.activeFluid, invAgree: g.invAgree, absAgree: g.absAgree };
+}
+/** The effective alignment applied to a SPECIFIC clause (after the TAM-split)
+ *  and the verb direction for direct-inverse systems. */
+export function clauseAlignment(lang, frame) {
+  const g = gramOf(lang);
+  const imperative = !!(frame.v && frame.v.mood === "imp");
+  const tam = imperative ? null : resolveTam(lang, frame.v.tam);
+  let effAlign = g.align;
+  if (g.align === "erg" && g.ergSplit === "tam") effAlign = (tam === "pst" || tam === "pfv") ? "erg" : "acc";
+  const trans = !!frame.o;
+  const direction = g.invAgree && trans ? (rankOf(frame.s) >= rankOf(frame.o) ? "direct" : "inverse") : null;
+  return { effAlign, hier: g.align === "erg" && g.ergSplit === "hier", direction, tam, imperative };
+}
+
 /** Render a semantic frame as a clause.
  *  frame = { s: {pron:{k,pers,num}} | {n,num,def,adj},
- *            v: {c, tam, neg},
+ *            v: {c, tam, neg, vol},
  *            o: null | like s | {wh:true},
  *            loc: null | {adp, n, def},
  *            q: bool }
@@ -1536,13 +1613,14 @@ export function renderClause(lang, frame) {
   const spec = paradigmSpec(lang);
   const trans = !!frame.o;
   const sIsPron = frame.s && !!frame.s.pron;
-  const sPers = sIsPron ? frame.s.pron.pers : 3;
-  const sNum = frame.s ? (sIsPron ? frame.s.pron.num : (frame.s.num || "sg")) : "sg";
-  // core case marking per alignment: ERG on transitive subjects, ACC on
-  // objects, absolutive/nominative bare
-  const coreCase = spec.cases.length && spec.cases[0].k !== "gen" ? spec.cases[0].k : null;
-  const sCase = coreCase === "erg" && trans ? "erg" : null;
-  const oCase = coreCase === "acc" ? "acc" : null;
+  // TAM resolves first (the tam-split reads it), then the effective alignment
+  // decides the core cases through the ONE resolver (nom-acc/erg byte-identical,
+  // plus active AGT/PAT, tripartite, and hierarchy-conditioned ergativity)
+  const { effAlign, hier, direction, tam, imperative } = clauseAlignment(lang, frame);
+  const sAgentive = effAlign === "active" && !trans
+    ? (g.activeFluid && frame.v.vol != null ? frame.v.vol : agentivityOf(frame.v.c) >= 0.5) : false;
+  const sCase = coreCaseOf(lang, "S", { trans, effAlign, hier, arg: frame.s, sAgentive });
+  const oCase = coreCaseOf(lang, "O", { trans, effAlign, hier, arg: frame.o, sAgentive });
   const np = (arg, cas, role) => {
     if (!arg) return [];
     if (arg.pron) {
@@ -1590,17 +1668,25 @@ export function renderClause(lang, frame) {
     o: np(frame.o, oCase, "O"),
     v: [],
   };
-  // verb: agreement with the subject; object person when polypersonal
-  const imperative = frame.v.mood === "imp";
-  const tam = imperative ? null : resolveTam(lang, frame.v.tam);
-  const agreePers = !imperative && g.agree !== "none" ? String(sPers) : null;
-  const objPers = !imperative && g.agree === "both" && trans && !frame.o.wh ? "3" : null;
+  // verb agreement: with the SUBJECT by default, but with the ABSOLUTIVE (O of a
+  // transitive) under abs-agree, or the HIGHEST-RANKED argument under direct-
+  // inverse (the verb also carries the direction marker there)
+  let agreeArg = frame.s;
+  if (g.absAgree && trans) agreeArg = frame.o;
+  else if (g.invAgree && trans && rankOf(frame.o) > rankOf(frame.s)) agreeArg = frame.o;
+  const argPers = (a) => (a && a.pron ? a.pron.pers : 3);
+  const argNum = (a) => (a ? (a.pron ? a.pron.num : (a.num || "sg")) : "sg");
+  const agreePers = !imperative && g.agree !== "none" ? String(argPers(agreeArg)) : null;
+  const agNum = argNum(agreeArg);
+  // polypersonal object index — but don't ALSO index O when agreement already
+  // went to O (abs-agree / inverse)
+  const objPers = !imperative && g.agree === "both" && trans && !frame.o.wh && agreeArg === frame.s ? "3" : null;
   const neg = !!frame.v.neg;
   // subject class-concord on the verb (Bantu ki-, Russian past -l/-la)
   const vClass = g.concord && g.concord.verb && frame.s && !sIsPron && frame.s.n != null && g.genders ? genderOf(lang, frame.s.n) : null;
   const vx = inflectVerb(lang, frame.v.c, {
-    tam, pers: agreePers, num: sNum === "du" ? "pl" : sNum, obj: objPers,
-    neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, sclass: vClass,
+    tam, pers: agreePers, num: agNum === "du" ? "pl" : agNum, obj: objPers,
+    neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, sclass: vClass, dir: direction,
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
   // negation particle (when not an affix): before/after the verb, or clause-final.
