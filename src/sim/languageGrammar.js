@@ -29,7 +29,7 @@ import {
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, SAY,
-  PEOPLE, DO, LAND, LITTLE, CHILD, GREAT, MAKE, HAVE,
+  PEOPLE, DO, LAND, LITTLE, CHILD, GREAT, MAKE, HAVE, BE,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -290,6 +290,7 @@ const ADP_SPECS = [
   { m: "with", pool: [[HAND, 0.45], [null, 0.55]] },
   { m: "at", pool: [[EARTH, 0.3], [null, 0.7]] },
   { m: "of", pool: [[KINC, 0.3], [HOUSE, 0.25], [null, 0.45]] },
+  { m: "by", pool: [[HAND, 0.3], [BACK, 0.2], [null, 0.5]] },   // the passive agent (instrument→agent, Latin ablative)
 ];
 
 /** Every closed-class form of the language: pronouns (with the language's own
@@ -690,6 +691,12 @@ const AFF_SRC = {
   fut: [[WANT, 0.4], [GO, 0.3], [COME, 0.15], [null, 0.15]],
   pfv: [[FINISH, 0.5], [FALL, 0.2], [null, 0.3]],
   ipfv: [[SIT, 0.3], [STAND, 0.2], [null, 0.5]],
+  // voice / valency (M8): causative ← 'make/do/give' (the commonest source);
+  // passive ← 'fall/undergo', 'be', 'get/receive'; antipassive is usually an
+  // opaque or 'do'-based detransitivizer
+  caus: [[MAKE, 0.4], [DO, 0.25], [GIVE, 0.2], [null, 0.15]],
+  pass: [[FALL, 0.3], [BE, 0.25], [TAKE, 0.2], [null, 0.25]],
+  antip: [[DO, 0.3], [null, 0.7]],
 };
 
 // evolve a form through rules[from:to] in place (the onion's inner loop)
@@ -746,6 +753,9 @@ export function paradigmSpec(lang) {
   // order and the honest diachrony.
   const births = {};
   for (const k of ["pl", "du", "pfv", "ipfv", "pst", "fut", "agr", "negaf", ...CASE_ORDER, "erg"]) births[k] = birthOf(fam, k, len);
+  // voice/valency is INNERMOST — valency-changing morphology is derivational,
+  // closer to the root than tense or agreement (STEM-CAUS-PST-3SG)
+  births.caus = births.pass = births.antip = 0;
   const t0n = Math.max(g.pluralMark ? births.pl : 0, g.dual ? births.du : 0);
   for (const k of [...CASE_ORDER, "erg"]) births[k] = Math.max(births[k], t0n);
   const t0v = g.aspect ? Math.max(births.pfv, births.ipfv) : 0;
@@ -790,6 +800,15 @@ export function paradigmSpec(lang) {
   if (g.tenses >= 2) spec.tam.pst = mkAff("pst", "PST");
   if (g.tenses >= 3) spec.tam.fut = mkAff("fut", "FUT");
   if (g.aspect) { spec.tam.pfv = mkAff("pfv", "PFV"); spec.tam.ipfv = mkAff("ipfv", "IPFV"); }
+  // ── voice / valency (M8): the machinery the case labels exist for ──
+  // Causative (add a causer, 'make X do') is the commonest; PASSIVE demotes the
+  // agent (~43%, WALS 107A); ANTIPASSIVE is the ergative mirror (demote the
+  // patient) — rare in accusative tongues, common in ergative ones, which is
+  // exactly why ergative case has something to do.
+  spec.voice = {};
+  if (h01(fam, "vc:caus") < 0.6) spec.voice.caus = mkAff("caus", "CAUS");     // 让/-dir; the commonest
+  if (h01(fam, "vc:pass") < (iso ? 0.5 : 0.43)) spec.voice.pass = mkAff("pass", "PASS");   // 被/-il
+  if (g.align === "erg" ? h01(fam, "vc:antip") < 0.55 : h01(fam, "vc:antip") < 0.08) spec.voice.antip = mkAff("antip", "ANTIP");
   if (g.negAffix) {
     const t = births.negaf;
     const negRoot = synthClosed(lang, inv, "neg");
@@ -835,7 +854,8 @@ export function paradigmSpec(lang) {
   // affix shifts. Person markers are their own agreement paradigm, deduped
   // above; they may legitimately echo a case marker and are left alone.
   dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases,
-    spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp].filter(Boolean));
+    spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp,
+    spec.voice.caus, spec.voice.pass, spec.voice.antip].filter(Boolean));
   // ── fusional theme vowels: declension/conjugation classes ──
   const nTheme = lang.prof.morph === "fus" || lang.prof.morph === "tmpl" ? g.declN : 1;
   for (let k = 0; k < nTheme; k++) spec.themes.push(inv.vows[hash32(fam, "theme", k) % inv.vows.length]);
@@ -1308,8 +1328,8 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, voice = null } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (voice ? ":V" + voice : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -1318,6 +1338,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
   const morph = lang.prof.morph;
   const stemGloss = glossOf(cid);
   const imperative = mood === "imp";
+  const voiceAff = voice && spec.voice ? spec.voice[voice] : null;   // CAUS/PASS/ANTIP marker (innermost)
   // imperatives carry no tense; the ITERATIVE/continuative imperfective is
   // often reduplication (every morphotype, Chinese kàn-kan included)
   const tamEff = imperative ? null : tam;
@@ -1341,6 +1362,8 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     out = { text, gloss: stemGloss + "~IPFV" + (glosses.length ? "-" + glosses.join("-") : ""), pre: [], post: [], irr: false };
   } else if (spec.iso) {
     const post = [], pre = [];
+    // voice is a preverbal particle in an isolating tongue (Mandarin 被/让)
+    if (voiceAff) pre.push({ w: rform(lang, { syls: [voiceAff.syl] }), g: voiceAff.g });
     if (tamAff) {
       // aspect/tense particles are enclitics — neutral tone (le, guo, ma)
       const tok = { w: rformNeutral(lang, { syls: [tamAff.syl] }), g: tamAff.g };
@@ -1352,6 +1375,9 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     const irr = tamAff && isMarkedTam(tamEff) ? irregularityOf(lang, cid) : null;
     const events = [], glosses = [];
     let rootOverride = null, pattern = null, ablaut = false;
+    // voice/valency is INNERMOST — pushed first so a t-tie keeps it inner of
+    // negation and everything else (STEM-CAUS-NEG-PST-3SG)
+    if (voiceAff) { events.push({ ...voiceAff, t: 0 }); glosses.push(voiceAff.g); }
     if (neg && !imperative && spec.negAff) {
       // affixal negation sits innermost (the Turkish -me- slot)
       events.push({ ...spec.negAff, t: 0 });
@@ -1554,15 +1580,35 @@ function renderCore(lang, frame, depth, opts) {
   const spec = paradigmSpec(lang);
   const participle = !!(opts && opts.participle);
   const ov = g.wo === "sov" || g.wo === "ovs";
-  const trans = !!frame.o;
-  const sIsPron = frame.s && !!frame.s.pron;
-  const sPers = sIsPron ? frame.s.pron.pers : 3;
-  const sNum = frame.s ? (sIsPron ? frame.s.pron.num : (frame.s.num || "sg")) : "sg";
-  // core case marking per alignment: ERG on transitive subjects, ACC on
-  // objects, absolutive/nominative bare
+  // ── VOICE / VALENCY rearranges the arguments — the machinery ergative case
+  // exists for. PASSIVE promotes the patient to subject and demotes the agent
+  // to a by-phrase (or drops it, the agentless passive); ANTIPASSIVE (the
+  // ergative mirror) keeps the agent as subject but strips its ergative to
+  // ABSOLUTIVE and demotes the patient to an oblique; CAUSATIVE adds a causer
+  // and (re)transitivizes. A frame with no voice reads exactly as before; a
+  // tongue that lacks the requested voice marker falls back to the active (no
+  // marker, no rearrangement — we don't fake a valency op it can't say).
+  const voice = frame.v.voice && spec.voice && spec.voice[frame.v.voice] ? frame.v.voice : null;
+  let subjArg = frame.s, objArg = frame.o, oblArg = null, oblAdp = null;
+  let trans = !!frame.o;
+  if (voice === "pass") {
+    subjArg = frame.o || null; objArg = null; trans = false;      // patient → subject, intransitive
+    if (frame.s && !frame.v.agentless) { oblArg = frame.s; oblAdp = "by"; }
+  } else if (voice === "antip") {
+    objArg = null; trans = false;                                 // agent stays subject but ABSOLUTIVE
+    if (frame.o && frame.v.keepPatient) { oblArg = frame.o; oblAdp = "at"; }
+  } else if (voice === "caus") {
+    trans = true;                                                 // causer + causee
+  }
+  const sIsPron = subjArg && !!subjArg.pron;
+  const sPers = sIsPron ? subjArg.pron.pers : 3;
+  const sNum = subjArg ? (sIsPron ? subjArg.pron.num : (subjArg.num || "sg")) : "sg";
+  // core case per alignment: ERG on transitive subjects, ACC on objects,
+  // absolutive/nominative bare — so a passive/antipassive subject is
+  // intransitive and goes BARE, and the ergative visibly disappears
   const coreCase = spec.cases.length && spec.cases[0].k !== "gen" ? spec.cases[0].k : null;
   const sCase = coreCase === "erg" && trans ? "erg" : null;
-  const oCase = coreCase === "acc" ? "acc" : null;
+  const oCase = coreCase === "acc" && trans ? "acc" : null;
   const np = (arg, cas, role) => {
     if (!arg) return [];
     if (arg.pron) {
@@ -1613,20 +1659,20 @@ function renderCore(lang, frame, depth, opts) {
     return seq;
   };
   const toks = {
-    s: np(frame.s, sCase, "S"),
-    o: np(frame.o, oCase, "O"),
+    s: np(subjArg, sCase, "S"),
+    o: np(objArg, oCase, "O"),
     v: [],
   };
-  // verb: agreement with the subject; object person when polypersonal. A
-  // participle (for a participial RC) sheds agreement and glosses PTCP.
+  // verb: agreement with the (effective) subject; object person when
+  // polypersonal. A participle (for a participial RC) sheds agreement.
   const imperative = frame.v.mood === "imp";
   const tam = imperative ? null : resolveTam(lang, frame.v.tam);
   const agreePers = !imperative && !participle && g.agree !== "none" ? String(sPers) : null;
-  const objPers = !imperative && !participle && g.agree === "both" && trans && !frame.o.wh ? "3" : null;
+  const objPers = !imperative && !participle && g.agree === "both" && trans && objArg && !objArg.wh ? "3" : null;
   const neg = !!frame.v.neg;
   const vx = inflectVerb(lang, frame.v.c, {
     tam, pers: agreePers, num: sNum === "du" ? "pl" : sNum, obj: objPers,
-    neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null,
+    neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, voice,
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss + (participle ? ".PTCP" : ""), role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
   // verb COMPLEMENT clause (v.comp): "said [that S saw river]" — the embedded
@@ -1662,13 +1708,23 @@ function renderCore(lang, frame, depth, opts) {
       ...(frame.loc.def && cl.defArt && !g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : [])];
     locToks.push(...(g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X" }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X" }]));
   }
+  // voice oblique: the passive by-agent ('seen BY the king') or the
+  // antipassive's demoted patient — an adpositional phrase, placed like any
+  // adjunct
+  const oblToks = [];
+  if (oblArg) {
+    const adp = cl.adps.find(a => a.m === oblAdp) || cl.adps.find(a => a.m === "with") || cl.adps[0];
+    const inner = np(oblArg, null, "X");
+    oblToks.push(...(g.adpSide === "pre" ? [{ w: adp.w, g: oblAdp, role: "X" }, ...inner] : [...inner, { w: adp.w, g: oblAdp, role: "X" }]));
+  }
   // assemble by word order; adjuncts sit preverbally in OV, clause-late in VO
+  const adjToks = [...oblToks, ...locToks];
   const seq = [];
   for (const slot of WO_SEQ[g.wo]) {
-    if (slot === "v" && ov && locToks.length) seq.push(...locToks);
+    if (slot === "v" && ov && adjToks.length) seq.push(...adjToks);
     seq.push(...toks[slot]);
   }
-  if (!ov && locToks.length) seq.push(...locToks);
+  if (!ov && adjToks.length) seq.push(...adjToks);
   // wh-fronting: the question word moves to the clause edge when the dials say
   const whIdx = seq.findIndex(t => t.wh);
   if (whIdx > 0 && g.whFront) seq.unshift(...seq.splice(whIdx, 1));

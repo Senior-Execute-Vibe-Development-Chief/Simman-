@@ -775,3 +775,46 @@ staying fixed — the real test). Two flags, both converted to mechanism + gate:
   isolating stays fully transparent (Chinese 国王), agglutinative keeps its
   legitimately-long stacks with only a safety cap. Over-16-char derived words
   fell from 1.3% to ~0.5%. Gate added. 132 probe checks green.
+
+---
+
+## Build status (session 15) — M8: voice & valency (what ergative case is FOR)
+
+The reviewer's #3: "ergativity is *about* how valency is marked — right now you
+have the case labels without the machinery they exist for." This adds the three
+core voice/valency operations — passive, causative, antipassive — as
+grammaticalized markers that REARRANGE a clause's arguments, and the payoff is
+that ergative case finally does something: the antipassive strips it.
+
+- **Voice markers (languageGrammar.js paradigmSpec).** `spec.voice` rolls
+  causative (~58%, the commonest — from 'make/do/give'), passive (~46%, WALS
+  107A — from 'fall/undergo', 'be', 'get/receive'), and antipassive, each a
+  grammaticalized affix built through the same onion as TAM and case. Voice is
+  INNERMOST (births = 0) — it is derivational, closer to the root than tense or
+  agreement (STEM-CAUS-PST-3SG), gated. Realized per morphotype: a suffix
+  (agg), fused (fus), a preverbal particle in an isolating tongue (Mandarin
+  被/让). Deduped against the other bound affixes so PASS ≠ PST.
+- **Antipassive clusters with ergativity.** Antipassive is a real minority
+  overall (~18%) but STRONGLY tied to ergative alignment — ~55% of ergative
+  tongues have it vs ~9% of accusative ones — because it is the ergative
+  language's detransitivizer. Gated.
+- **Argument rearrangement (renderCore).** Voice reshapes the clause and the
+  case falls out of the existing alignment code: PASSIVE promotes the patient
+  to subject (bare) and demotes the agent to a by-phrase (a new 'by'
+  adposition, instrument→agent) or drops it (the agentless passive); CAUSATIVE
+  adds a causer and (re)transitivizes, so an intransitive base gains an ERG
+  causer (ergative) or an ACC causee (accusative); ANTIPASSIVE keeps the agent
+  as subject but, being intransitive now, STRIPS its ergative to absolutive and
+  demotes the patient to an oblique. A tongue that lacks a requested voice
+  falls back to the active — no faked valency. New `voice` arg on `inflectVerb`
+  and in the frame's verb; simple frames byte-identical.
+- **Gates (probe §16, 12 new → 144 total).** Voice at real rates (caus > pass >
+  antip, WALS-shaped); antipassive clusters with ergative alignment; causative
+  quarries make/do/give; every voice clause gloss-aligned; **the antipassive
+  strips the ergative from the subject (373/373 — the crown jewel)**; passive
+  promotes the patient and marks the by-phrase; causative (re)transitivizes;
+  voice is innermost; agentless passive drops the agent; pinned Mandarin voice
+  is a legal-pinyin particle; determinism + JSON-roundtrip. 144 probe checks
+  green; smoke + validate green. Public API adds a `voice` option only; sim
+  untouched. The Lab's Sentences card gains a Voice control and a voice
+  showcase (in an ergative tongue, the ERG visibly appears and vanishes).

@@ -14,14 +14,14 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
-import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive, deriveWord, derivEtymologies } from "./sim/languageGrammar.js";
+import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, resolveTam, intensive, deriveWord, derivEtymologies } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, COME, SAY, RULEV, GUARD } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
 const S = {
   seed: 8817, preset: "random", divergence: 0.5, search: "", noun: STONE, verb: VERBS[2],
-  sent: { s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl" },
+  sent: { s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl", voice: "active" },
 };
 
 function reset() {
@@ -118,6 +118,7 @@ function grammarHTML(l) {
     `${g.imp} imperative`,
     `${g.relPos === "pre" ? "prenominal" : "postnominal"} relatives (${g.relStrat === "part" ? "participle" : g.relStrat === "pron" ? "resumptive" : "gap"})`,
     g.compz !== "none" ? `${g.compz === "say" ? "quotative" : "demonstrative"} complementizer` : "bare complements",
+    (() => { const v = Object.keys(paradigmSpec(l).voice); return v.length ? v.map(k => ({ caus: "causative", pass: "passive", antip: "antipassive" }[k])).join(" · ") + " voice" : null; })(),
   ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
   const pron = cl.prons.map(p => `<span class="cell"><span class="lbl">${esc(p.g)}</span> <span class="w">${esc(p.w)}</span></span>`).join(" ");
   const dems = cl.dems.map(d => `<span class="cell"><span class="lbl">${esc(d.g)}</span> <span class="w">${esc(d.w)}</span></span>`).join(" ");
@@ -188,6 +189,7 @@ const SENT_NOUNS = [KING, QUEEN, WOLF, MOTHER, RIVER, STONE, HORSE, SHIP];
 const SENT_OBJS = [RIVER, HORSE, BREAD, SWORD, HOUSE, STONE, WOLF];
 const PRON_EN = { "1sg": "I", "2sg": "thou", "3sg": "he", "3sgm": "he", "3sgf": "she", "1du": "we two", "2du": "you two", "1pl": "we", "1pi": "we (incl.)", "1pe": "we (excl.)", "2pl": "you", "3pl": "they" };
 const EN_PAST = { go: "went", see: "saw", eat: "ate", be: "was", have: "had", come: "came", do: "did", say: "said", know: "knew", give: "gave", take: "took", make: "made", drink: "drank", sit: "sat", stand: "stood", run: "ran", fall: "fell", fight: "fought", hear: "heard", sleep: "slept" };
+const EN_PP = { see: "seen", take: "taken", eat: "eaten", make: "made", give: "given", do: "done", go: "gone", know: "known", say: "said", build: "built", drink: "drunk", hear: "heard" };
 
 // canned NESTED frames (englishOf doesn't gloss recursion — the interlinear is
 // the truth, these carry a hand-written English label): a relative clause on
@@ -214,9 +216,10 @@ function frameFromState(l) {
     return { n: +code.slice(2), def: true, adj: code.slice(2) === String(WOLF) ? BLACK : undefined };
   };
   const imp = st.mood === "imp";
+  const voice = !imp && st.voice && st.voice !== "active" ? st.voice : null;
   return {
     s: imp ? { pron: { k: "2sg", pers: 2, num: "sg" } } : (mkArg(st.s) || { n: KING, def: true }),
-    v: { c: st.v, tam: st.tam === "none" ? null : st.tam, neg: st.neg, mood: imp ? "imp" : null },
+    v: { c: st.v, tam: st.tam === "none" ? null : st.tam, neg: st.neg, mood: imp ? "imp" : null, voice },
     o: mkArg(st.o),
     loc: st.loc === "none" ? null : { adp: st.loc, n: TOWN, def: true },
     q: imp ? false : st.q,
@@ -228,6 +231,17 @@ function englishOf(frame, l) {
   const npEn = (a) => !a ? "" : a.wh ? "what" : a.pron ? (PRON_EN[a.pron.k] || "they")
     : "the " + (a.adj != null ? glossOf(a.adj) + " " : "") + glossOf(a.n);
   const vG = glossOf(frame.v.c);
+  const tamV = resolveTam(l, frame.v.tam);
+  // voice rearranges the English echo too (the gloss is still the truth)
+  if (frame.v.voice === "pass") {
+    const was = (tamV === "pst" || tamV === "pfv") ? "was" : "is";
+    return (frame.o ? npEn(frame.o) : "it") + " " + was + " " + (EN_PP[vG] || vG + "ed") + (frame.v.agentless || !frame.s ? "" : " by " + npEn(frame.s)) + (frame.q ? "?" : "");
+  }
+  if (frame.v.voice === "caus") return npEn(frame.s) + " made " + (frame.o ? npEn(frame.o) + " " : "") + vG + (frame.q ? "?" : "");
+  if (frame.v.voice === "antip") {
+    const v = (tamV === "pst" || tamV === "pfv") ? (EN_PAST[vG] || vG + "ed") : vG + "s";
+    return npEn(frame.s) + " " + v + (frame.o ? " (at " + npEn(frame.o) + ")" : "") + (frame.q ? "?" : "");
+  }
   // imperative: "(Don't) VERB (the object)!" — no subject, no tense
   if (frame.v.mood === "imp") {
     let out = (frame.v.neg ? "Don't " : "") + vG + (frame.o ? " " + npEn(frame.o) : "");
@@ -262,6 +276,7 @@ function sentenceHTML(l) {
   const tamOpts = [["none", "present"], ...shape.tam.filter(t => t.k).map(t => [t.k, { pst: "past", fut: "future", pfv: "perfective", ipfv: "imperfective" }[t.k] || t.k])];
   const locOpts = [["none", "—"], ["in", "in the town"], ["at", "at the town"], ["under", "under the town"]];
   const moodOpts = [["decl", "statement"], ["imp", "command (imperative)"]];
+  const voiceOpts = [["active", "active"], ["pass", "passive"], ["caus", "causative (made…)"], ["antip", "antipassive"]];
   const sel = (id, opts, cur) => `<select id="${id}">${opts.map(([v, lab]) => `<option value="${esc(v)}"${String(v) === String(cur) ? " selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
   const frame = frameFromState(l);
   const clause = renderClause(l, frame);
@@ -283,6 +298,7 @@ function sentenceHTML(l) {
       <label>Verb ${sel("sentV", VERBS.map(c => [c, glossOf(c)]), st.v)}</label>
       <label${imp ? ' class="off"' : ""}>Tense ${sel("sentT", tamOpts, imp ? "none" : st.tam)}</label>
       <label>Object ${sel("sentO", oOpts, st.o)}</label>
+      <label${imp ? ' class="off"' : ""}>Voice ${sel("sentVc", voiceOpts, imp ? "active" : st.voice)}</label>
       <label${imp ? ' class="off"' : ""}>Place ${sel("sentL", locOpts, imp ? "none" : st.loc)}</label>
       <label><input type="checkbox" id="sentNeg"${st.neg ? " checked" : ""}/> ${imp ? "prohibitive (don't!)" : "negated"}</label>
       <label${imp ? ' class="off"' : ""}><input type="checkbox" id="sentQ"${st.q && !imp ? " checked" : ""}/> question</label>
@@ -294,8 +310,30 @@ function sentenceHTML(l) {
     <h3>Complex clauses — the sentence beyond one verb</h3>
     <p class="note">A frame can nest: a noun can carry a <b>relative clause</b>, a verb a <b>complement clause</b>, the whole clause an <b>adverbial</b> or a <b>coordinate</b> twin — placed and marked the way this tongue's dials (${g.relPos === "pre" ? "prenominal" : "postnominal"} relatives, ${g.relStrat} strategy) say. This is the shape a real chronicle sentence needs.</p>
     ${COMPLEX.map(([label, f]) => `<p class="ensent dim">“${esc(label)}”</p>` + interHTML(renderClause(l, f))).join("")}
+    ${voiceShowHTML(l)}
   </section>`;
 }
+
+// voice & valency showcase: the same event through each voice the tongue has —
+// in an ergative language, watch the ergative appear (transitive/causative) and
+// vanish (antipassive)
+const VOICE_SHOW = [
+  ["the king saw the river", { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } }],
+  ["the river was seen by the king (passive)", { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "pass" }, o: { n: RIVER, def: true } }],
+  ["the king made the wolf sleep (causative)", { s: { n: KING, def: true }, v: { c: SLEEP, tam: "pst", voice: "caus" }, o: { n: WOLF, def: true } }],
+  ["the king saw (antipassive)", { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "antip" }, o: { n: RIVER, def: true } }],
+];
+function voiceShowHTML(l) {
+  const rows = VOICE_SHOW.filter(([, f]) => !f.v.voice || require_voice(l, f.v.voice))
+    .map(([label, f]) => `<p class="ensent dim">“${esc(label)}”</p>` + interHTML(renderClause(l, f)));
+  if (rows.length < 2) return "";
+  const erg = gramOf(l).align === "erg";
+  return `<h3>Voice &amp; valency${erg ? " — the ergative payoff" : ""}</h3>
+    <p class="note">The same event through each voice this tongue marks. Passive demotes the doer; causative adds one; antipassive is the ergative mirror. ${erg ? "This is an <b>ergative</b> language: watch the <span class=\"w\">ERG</span> on the subject appear in the transitive and causative and <em>vanish</em> under the antipassive — the machinery the case exists for." : "Voice is innermost on the verb (STEM‑VOICE‑TAM); it rearranges the arguments and the case marking follows."}</p>
+    ${rows.join("")}`;
+}
+// does this language actually mark the given voice?
+function require_voice(l, v) { try { return !!paradigmSpec(l).voice[v]; } catch { return false; } }
 
 const COGNATE_SET = (() => {
   const want = ["water", "river", "king", "stone", "mother", "god", "fire", "sun", "hand", "wolf"];
@@ -437,6 +475,7 @@ function render() {
   document.getElementById("sentV").onchange = (e) => { S.sent.v = Number(e.target.value); render(); };
   document.getElementById("sentT").onchange = (e) => { S.sent.tam = e.target.value; render(); };
   document.getElementById("sentO").onchange = (e) => { S.sent.o = e.target.value; render(); };
+  document.getElementById("sentVc").onchange = (e) => { S.sent.voice = e.target.value; render(); };
   document.getElementById("sentL").onchange = (e) => { S.sent.loc = e.target.value; render(); };
   document.getElementById("sentNeg").onchange = (e) => { S.sent.neg = e.target.checked; render(); };
   document.getElementById("sentQ").onchange = (e) => { S.sent.q = e.target.checked; render(); };

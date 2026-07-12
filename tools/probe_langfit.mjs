@@ -1218,6 +1218,127 @@ console.log("\n── derivational morphology ──");
   }
 }
 
+// ── 16. VOICE & VALENCY — the machinery ergative case exists for ──────────
+// Passive (demote the agent), causative (add a causer), antipassive (the
+// ergative mirror — demote the patient). Each is a grammaticalized affix or
+// particle that REARRANGES the arguments: the payoff is that ergative case
+// finally does something — the antipassive strips it.
+console.log("\n── voice & valency ──");
+{
+  const world = mkWorld();
+  const N = 600;
+  const trans = { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } };
+  const passF = { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "pass" }, o: { n: RIVER, def: true } };
+  const passAgentless = { v: { c: SEE, tam: "pst", voice: "pass", agentless: true }, o: { n: RIVER, def: true } };
+  const antipF = { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "antip" }, o: { n: RIVER, def: true } };
+  const causF = { s: { n: KING, def: true }, v: { c: SLEEP, tam: "pst", voice: "caus" }, o: { n: WOLF, def: true } };
+
+  // (a) voice presence at real rates: causative commonest, passive ~WALS 44%,
+  // antipassive a minority — and antipassive CLUSTERS with ergative alignment
+  let caus = 0, pass = 0, antip = 0, ergTot = 0, ergAntip = 0, accTot = 0, accAntip = 0, causSrcOK = 0, causSrcN = 0;
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    const g = gramOf(l), v = paradigmSpec(l).voice;
+    if (v.caus) { caus++; if (v.caus.src != null) { causSrcN++; if (["make", "do", "give"].includes(glossOf(v.caus.src))) causSrcOK++; } }
+    if (v.pass) pass++;
+    if (v.antip) antip++;
+    if (g.align === "erg") { ergTot++; if (v.antip) ergAntip++; } else { accTot++; if (v.antip) accAntip++; }
+  }
+  check(`voice present at real rates (caus ${Math.round(100 * caus / N)}%, pass ${Math.round(100 * pass / N)}%, antip ${Math.round(100 * antip / N)}%)`,
+    caus / N > 0.45 && caus / N > pass / N && pass / N > 0.35 && pass / N < 0.6 && antip / N > 0.08 && antip / N < 0.3);
+  check(`antipassive clusters with ergative alignment (erg ${Math.round(100 * ergAntip / ergTot)}% vs acc ${Math.round(100 * accAntip / accTot)}%)`,
+    ergAntip / ergTot > 0.35 && accAntip / accTot < 0.2 && ergAntip / ergTot > accAntip / accTot + 0.2);
+  check(`causative quarries 'make/do/give' where traced (${causSrcOK}/${causSrcN})`, causSrcN > 0 && causSrcOK === causSrcN);
+
+  // (b) THE ergative payoff + the argument rearrangements, over the population
+  let stripOK = 0, stripN = 0, passOK = 0, passN = 0, byOK = 0, causOK = 0, causN = 0, alignBad = 0, alignN = 0, innerBad = 0, innerN = 0;
+  for (let i = 0; i < 3000; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    const g = gramOf(l), v = paradigmSpec(l).voice;
+    for (const f of [passF, antipF, causF]) { if (!v[f.v.voice]) continue; const c = renderClause(l, f); alignN++; if (c.text.split(" ").length !== c.gloss.split(" ").length) alignBad++; }
+    // antipassive STRIPS the ergative from the subject (the crown jewel) —
+    // check ALL subject tokens (the NP is DEF + king-ERG), not just the first
+    if (g.align === "erg" && g.caseN >= 2 && v.antip) {
+      stripN++;
+      const transErg = renderClause(l, trans).tokens.filter(t => t.role === "S").some(t => /ERG/.test(t.g));
+      const antipErg = renderClause(l, antipF).tokens.filter(t => t.role === "S").some(t => /ERG/.test(t.g));
+      if (transErg && !antipErg) stripOK++;
+    }
+    // passive promotes the patient to subject and (with an agent) marks a by-phrase
+    if (v.pass) {
+      passN++;
+      const c = renderClause(l, passF);
+      if (c.tokens.some(t => t.role === "S" && /river/.test(t.g))) passOK++;
+      if (/(^| )by( |$)/.test(c.gloss)) byOK++;
+    }
+    // causative (re)transitivizes: an intransitive base gains an ERG causer
+    // (ergative) or an ACC causee (accusative)
+    if (v.caus && g.caseN >= 2 && (g.align === "erg" || g.align === "acc")) {
+      causN++;
+      const c = renderClause(l, causF);
+      if (g.align === "erg" ? c.tokens.some(t => t.role === "S" && /ERG/.test(t.g)) : c.tokens.some(t => t.role === "O" && /ACC/.test(t.g))) causOK++;
+    }
+    // voice is INNERMOST: CAUS precedes an AFFIXAL past (STEM-CAUS-PST). Skip
+    // stem-internal TAM (⟨PST⟩ ablaut/pattern), where linear order is moot.
+    if (v.caus && l.prof.morph !== "iso") {
+      const gl = inflectVerb(l, SLEEP, { tam: "pst", voice: "caus" }).gloss;
+      const ci = gl.indexOf("CAUS"), pm = gl.match(/[-.](PST|PFV)/);
+      if (ci >= 0 && pm) { innerN++; if (ci > pm.index) innerBad++; }
+    }
+  }
+  check(`every voice clause is gloss-aligned (${alignBad}/${alignN})`, alignBad === 0);
+  check(`ANTIPASSIVE strips the ergative from the subject — case earns its keep (${stripOK}/${stripN})`, stripN > 0 && stripOK === stripN);
+  check(`passive promotes the patient to subject (${passOK}/${passN})`, passN > 0 && passOK === passN);
+  check(`passive marks the demoted agent with a by-phrase (${byOK}/${passN})`, byOK > passN * 0.8);
+  check(`causative (re)transitivizes — ERG causer / ACC causee (${causOK}/${causN})`, causN > 0 && causOK === causN);
+  check(`voice is innermost — CAUS inside TAM (STEM-CAUS-PST) in ${innerN - innerBad}/${innerN}`, innerN > 0 && innerBad === 0);
+
+  // (c) agentless passive drops the agent entirely (no by-phrase, no subject
+  // agent) — the commonest passive cross-linguistically
+  let aglOK = 0, aglN = 0;
+  for (let i = 0; i < 200; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    if (!paradigmSpec(l).voice.pass) continue;
+    aglN++;
+    const c = renderClause(l, passAgentless);
+    if (!/(^| )by( |$)/.test(c.gloss)) aglOK++;
+  }
+  check(`agentless passive drops the agent (${aglOK}/${aglN})`, aglN > 0 && aglOK === aglN);
+
+  // (d) references speak voice in character: isolating Mandarin uses a
+  // PREVERBAL particle (被/让), legal pinyin
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const m = foundLanguage(world, { seed: 445 });
+  m.prof = refProfile("mandarin", 445); m.rules = [];
+  const mp = refPin("mandarin"); m.pin = mp.pin; m.prof.rom = mp.rom;
+  const mv = paradigmSpec(m).voice;
+  const someVoice = mv.pass ? "pass" : mv.caus ? "caus" : null;
+  if (someVoice) {
+    const mc = renderClause(m, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: someVoice }, o: { n: RIVER, def: true } });
+    const mLegal = mc.tokens.every(t => PINYIN.test(strip(t.w.toLowerCase())));
+    check(`pinned Mandarin voice is a legal-pinyin particle (${mc.text})`, mLegal);
+  } else check(`pinned Mandarin voice (none rolled — skipped)`, true);
+
+  // (e) determinism + JSON roundtrip
+  const w1 = mkWorld(), w2 = mkWorld();
+  const a = foundLanguage(w1, { seed: 8484 }), b2 = foundLanguage(w2, { seed: 8484 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => [passF, antipF, causF].map(f => renderClause(l, f).text).join("‖");
+  check("voice clauses deterministic + JSON-roundtrip-stable", sig(a) === sig(b2) && sig(a) === sig(c3));
+
+  if (!quiet) {
+    let erg = null;
+    for (let i = 0; i < 3000 && !erg; i++) { const l = foundLanguage(world, { seed: 8000 + i * 11 }); const g = gramOf(l), v = paradigmSpec(l).voice; if (g.align === "erg" && g.caseN >= 2 && v.antip && v.pass) erg = l; }
+    if (erg) {
+      say("\n   voice in an ergative tongue (" + langWord(erg, 0) + ") — watch the ergative appear and vanish:");
+      for (const [lab, f] of [["[the king saw the river]", trans], ["passive", passF], ["antipassive", antipF], ["causative", causF]]) {
+        const c = renderClause(erg, f); say("     " + lab.padEnd(28) + " " + c.text.padEnd(34) + "  " + c.gloss);
+      }
+    }
+  }
+}
+
 // ── determinism: same record → same names, always ─────────────────────────
 {
   const w1 = mkWorld(), w2 = mkWorld();
