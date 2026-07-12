@@ -14,8 +14,8 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, intensive } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -594,6 +594,131 @@ console.log("\n── sentences (frame renderer) ──");
     for (const l of [...langs.slice(0, 4), m, e]) {
       const c = renderClause(l, F.trans);
       say("     " + c.text.padEnd(34) + "  " + c.gloss);
+    }
+  }
+}
+
+// ── 9. REDUPLICATION — a productive process across morphotypes ────────────
+console.log("\n── reduplication ──");
+{
+  const world = mkWorld();
+  const N = 400;
+  let withRedup = 0, plOK = 0, plTot = 0, aspOK = 0, aspTot = 0, isoRedup = 0;
+  const fullTok = (x) => [...x.pre.map(z => z.w), x.text, ...x.post.map(z => z.w)].join(" ");
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 300000 + i * 53 });
+    const g = gramOf(l);
+    if (!g.redup) continue;
+    withRedup++;
+    if (l.prof.morph === "iso") isoRedup++;
+    if (g.redup.fns.includes("plural")) {
+      plTot++;
+      const sg = inflectNoun(l, HOUSE, { num: "sg" }).text;
+      const pl = inflectNoun(l, HOUSE, { num: "pl" });
+      // a reduplicated plural must be longer than the singular and its gloss
+      // carries the tilde
+      if (pl.text.length > sg.length && /~PL/.test(pl.gloss)) plOK++;
+    }
+    if (g.redup.fns.includes("aspect")) {
+      aspTot++;
+      const base = fullTok(inflectVerb(l, WALKV));
+      const ipf = inflectVerb(l, WALKV, { tam: "ipfv" });
+      if (fullTok(ipf).length > base.length && /~IPFV/.test(ipf.gloss)) aspOK++;
+    }
+  }
+  const frac = withRedup / N;
+  check(`reduplication occurs at a real rate (${Math.round(frac * 100)}% of rolled langs)`, frac > 0.35 && frac < 0.7);
+  check(`reduplication crosses into isolating tongues (${isoRedup} iso langs — Chinese/Malay corner)`, isoRedup >= 3);
+  check(`reduplicative plural actually copies the stem (${plOK}/${plTot})`, plTot > 0 && plOK === plTot);
+  check(`reduplicative aspect actually copies the stem (${aspOK}/${aspTot})`, aspTot > 0 && aspOK === aspTot);
+
+  // pinned Mandarin: verb reduplication is legal pinyin (kàn-kan → hyphenated
+  // copies, each a legal syllable)
+  const m = foundLanguage(world, { seed: 445 });
+  m.prof = refProfile("mandarin", 445); m.rules = [];
+  const mp = refPin("mandarin"); m.pin = mp.pin; m.prof.rom = mp.rom;
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const redVerb = inflectVerb(m, SEE, { tam: "ipfv" }).text;
+  const parts = strip(redVerb.toLowerCase()).split("-");
+  check(`pinned Mandarin verb reduplication is hyphenated legal pinyin (${redVerb})`, parts.length === 2 && parts.every(p => PINYIN.test(p)));
+
+  // intensive reduplication (adjectival)
+  let intenseFound = null;
+  for (let i = 0; i < 200 && !intenseFound; i++) {
+    const l = foundLanguage(world, { seed: 340000 + i * 37 });
+    if (intensive(l, GREAT)) intenseFound = l;
+  }
+  check(`intensive reduplication renders (great → ${intenseFound ? intensive(intenseFound, GREAT).text : "none"})`,
+    !!intenseFound && intensive(intenseFound, GREAT).text.length > 0);
+
+  // determinism + JSON roundtrip
+  const w1 = mkWorld(), w2 = mkWorld();
+  let a = null, b2 = null;
+  for (let i = 0; i < 60 && !a; i++) { const x = foundLanguage(w1, { seed: 300000 + i * 53 }); if (gramOf(x).redup) a = x; }
+  for (let i = 0; i < 60 && !b2; i++) { const x = foundLanguage(w2, { seed: 300000 + i * 53 }); if (gramOf(x).redup) b2 = x; }
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => inflectNoun(l, HOUSE, { num: "pl" }).text + "|" + inflectVerb(l, WALKV, { tam: "ipfv" }).text;
+  check("reduplication deterministic + JSON-roundtrip-stable", sig(a) === sig(b2) && sig(a) === sig(c3));
+}
+
+// ── 10. IMPERATIVE + MOOD — a near-universal category ─────────────────────
+console.log("\n── imperative & mood ──");
+{
+  const world = mkWorld();
+  const N = 200;
+  const fullTok = (x) => [...x.pre.map(z => z.w), x.text, ...x.post.map(z => z.w)].join(" ");
+  const strat = { bare: 0, suffix: 0, particle: 0 };
+  let hasImp = 0, bareIsStem = 0, bareTot = 0, markedDiffers = 0, markedTot = 0, prohibNeg = 0;
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 320000 + i * 61 });
+    const g = gramOf(l);
+    strat[g.imp]++;
+    const imp = inflectVerb(l, GO, { mood: "imp" });
+    if (fullTok(imp)) hasImp++;
+    // bare imperative equals the citation stem; suffix/particle differ from it
+    const cite = inflectVerb(l, GO).text;
+    if (g.imp === "bare") { bareTot++; if (imp.text === cite) bareIsStem++; }
+    else { markedTot++; if (fullTok(imp) !== cite) markedDiffers++; }
+    // prohibitive is a negated imperative — a NEG or PROH token appears
+    const proh = inflectVerb(l, GO, { mood: "imp", neg: true });
+    if (/(^| )(NEG|PROH)( |$)/.test((proh.gloss + " " + proh.pre.concat(proh.post).map(t => t.g).join(" ")))) prohibNeg++;
+  }
+  check(`every language has an imperative (${hasImp}/${N})`, hasImp === N);
+  check(`imperative strategies at real rates (bare ${strat.bare}, suffix ${strat.suffix}, particle ${strat.particle})`,
+    strat.bare / N > 0.3 && strat.suffix / N > 0.25 && strat.particle / N > 0.08);
+  check(`bare imperative is the citation stem (${bareIsStem}/${bareTot})`, bareTot > 0 && bareIsStem === bareTot);
+  check(`marked imperatives differ from the citation stem (${markedDiffers}/${markedTot})`, markedTot > 0 && markedDiffers >= markedTot * 0.9);
+  check(`prohibitive is a negated command (${prohibNeg}/${N})`, prohibNeg === N);
+
+  // clause-level: imperative drops the 2nd-person subject (universal)
+  let dropped = 0, impN = 0;
+  for (let i = 0; i < 40; i++) {
+    const l = foundLanguage(world, { seed: 321000 + i * 71 });
+    const c = renderClause(l, { s: { pron: { k: "2sg", pers: 2, num: "sg" } }, v: { c: GO, mood: "imp" } });
+    impN++;
+    if (!c.tokens.some(t => t.role === "S")) dropped++;
+  }
+  check(`imperative drops the addressee subject (${dropped}/${impN})`, dropped === impN);
+
+  // pinned refs speak commands in character: English/Chinese bare, Russian suffix
+  const e = foundLanguage(world, { seed: 446 });
+  e.prof = refProfile("english", 446); e.rules = [];
+  const ep = refPin("english"); e.pin = ep.pin; e.prof.rom = { ...(e.prof.rom || {}), ...ep.rom };
+  check(`English-shaped imperative is the bare stem (Go! = ${inflectVerb(e, GO, { mood: "imp" }).text}, cf. ${inflectVerb(e, GO).text})`,
+    inflectVerb(e, GO, { mood: "imp" }).text === inflectVerb(e, GO).text);
+  const ru = foundLanguage(world, { seed: 447 });
+  ru.prof = refProfile("russian", 447); ru.rules = [];
+  const rup = refPin("russian"); ru.pin = rup.pin;
+  check(`Russian-shaped imperative takes a suffix (${fullTok(inflectVerb(ru, GO, { mood: "imp" }))})`,
+    fullTok(inflectVerb(ru, GO, { mood: "imp" })) !== inflectVerb(ru, GO).text);
+
+  if (!quiet) {
+    say("   commands in five tongues — [Don't take the horse!]:");
+    for (const seed of [320061, 320122, 320183]) {
+      const l = foundLanguage(world, { seed });
+      const c = renderClause(l, { s: { pron: { k: "2sg", pers: 2, num: "sg" } }, v: { c: TAKE, mood: "imp", neg: true }, o: { n: HORSE, def: true } });
+      say("     " + c.text.padEnd(30) + "  " + c.gloss);
     }
   }
 }

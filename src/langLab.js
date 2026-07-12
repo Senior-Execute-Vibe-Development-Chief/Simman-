@@ -14,14 +14,14 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
-import { gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam } from "./sim/languageGrammar.js";
-import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD } from "./sim/languageLexicon.js";
+import { gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive } from "./sim/languageGrammar.js";
+import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
 const S = {
   seed: 8817, preset: "random", divergence: 0.5, search: "", noun: STONE, verb: VERBS[2],
-  sent: { s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none" },
+  sent: { s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl" },
 };
 
 function reset() {
@@ -114,6 +114,8 @@ function grammarHTML(l) {
     g.dual ? "dual number" : null,
     g.defArt ? "definite article" : null,
     g.genN ? "genitive-first" : "noun-first genitive",
+    g.redup ? `${g.redup.type} reduplication (${g.redup.fns.join("/")})` : null,
+    `${g.imp} imperative`,
   ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
   const pron = cl.prons.map(p => `<span class="cell"><span class="lbl">${esc(p.g)}</span> <span class="w">${esc(p.w)}</span></span>`).join(" ");
   const dems = cl.dems.map(d => `<span class="cell"><span class="lbl">${esc(d.g)}</span> <span class="w">${esc(d.w)}</span></span>`).join(" ");
@@ -154,12 +156,18 @@ function paradigmHTML(l) {
   const nounRows = shape.cases.map(cs =>
     `<tr><td class="lbl">${esc(cs.g || "NOM")}</td>${shape.nums.map(n => cellHTML(inflectNoun(l, S.noun, { num: n, cas: cs.k }))).join("")}</tr>`).join("");
   const persCols = shape.pers.length ? shape.pers : [[null, "sg"]];
-  const verbRows = shape.tam.map(t =>
+  let verbRows = shape.tam.map(t =>
     `<tr><td class="lbl">${esc(t.g || "PRS")}</td>${persCols.map(([p, n]) => cellHTML(inflectVerb(l, S.verb, { tam: t.k, pers: p, num: n }))).join("")}</tr>`).join("");
+  // the imperative row (a category ~every language marks) spans the persons
+  verbRows += `<tr><td class="lbl">IMP</td><td class="w" colspan="${persCols.length}" title="addressee-directed command">${
+    esc((x => [...x.pre.map(t => t.w), x.text, ...x.post.map(t => t.w)].join(" "))(inflectVerb(l, S.verb, { mood: "imp" })))
+  } <span class="gloss">‘${esc(glossOf(S.verb))}!’</span></td></tr>`;
   const persHead = persCols.map(([p, n]) => `<th>${p ? p + n.toUpperCase().replace("SG", "sg").replace("PL", "pl") : ""}</th>`).join("");
   const etys = affixEtymologies(l);
   const etyLine = etys.length ? `<p class="note">Every ending is a worn-down word: ${etys.map(e => `<span class="w">-${esc(e.w)}</span> <span class="lbl">${esc(e.g)}</span>${e.from ? ` <span class="gloss">‹ ‘${esc(e.from)}’</span>` : ""}${e.renewed ? ` <span class="lbl">renewed</span>` : ""}`).join(" · ")}</p>` : "";
-  const isoNote = shape.iso ? `<p class="note">An isolating tongue: grammar rides on particles and word order — the words themselves never bend.</p>` : "";
+  const isoNote = shape.iso ? `<p class="note">An isolating tongue: grammar rides on particles and word order — the words themselves never bend.${shape.redup ? " (But it still reduplicates — a process even isolating languages keep.)" : ""}</p>` : "";
+  const inten = intensive(l, GREAT);
+  const redupNote = shape.redup ? `<p class="note"><b>Reduplication</b> (${shape.redup.type}, for ${shape.redup.fns.join(" &amp; ")}): a copied stem${inten ? `, e.g. ‘great’ → <span class="w">${esc(inten.text)}</span> <span class="gloss">‘very great’</span>` : ""}. Watch the ${shape.redup.fns.includes("plural") ? "plural column" : ""}${shape.redup.fns.includes("plural") && shape.redup.fns.includes("aspect") ? " and " : ""}${shape.redup.fns.includes("aspect") ? "IPFV row" : ""} above.</p>` : "";
   return `<section class="card"><h2>Paradigms</h2>
     ${isoNote}
     <div class="paragrid">
@@ -169,6 +177,7 @@ function paradigmHTML(l) {
     <div class="scroll"><table><thead><tr><th></th>${persHead}</tr></thead><tbody>${verbRows}</tbody></table></div></div>
     </div>
     <p class="note"><span class="irr sw"></span> irregular cells — suppletive stems, ablaut pasts, fossil fusions — cluster on the most-used verbs, the way they do in life. Hover any cell for its gloss.</p>
+    ${redupNote}
     ${etyLine}</section>`;
 }
 
@@ -189,12 +198,13 @@ function frameFromState(l) {
     }
     return { n: +code.slice(2), def: true, adj: code.slice(2) === String(WOLF) ? BLACK : undefined };
   };
+  const imp = st.mood === "imp";
   return {
-    s: mkArg(st.s) || { n: KING, def: true },
-    v: { c: st.v, tam: st.tam === "none" ? null : st.tam, neg: st.neg },
+    s: imp ? { pron: { k: "2sg", pers: 2, num: "sg" } } : (mkArg(st.s) || { n: KING, def: true }),
+    v: { c: st.v, tam: st.tam === "none" ? null : st.tam, neg: st.neg, mood: imp ? "imp" : null },
     o: mkArg(st.o),
     loc: st.loc === "none" ? null : { adp: st.loc, n: TOWN, def: true },
-    q: st.q,
+    q: imp ? false : st.q,
   };
 }
 
@@ -203,6 +213,11 @@ function englishOf(frame, l) {
   const npEn = (a) => !a ? "" : a.wh ? "what" : a.pron ? (PRON_EN[a.pron.k] || "they")
     : "the " + (a.adj != null ? glossOf(a.adj) + " " : "") + glossOf(a.n);
   const vG = glossOf(frame.v.c);
+  // imperative: "(Don't) VERB (the object)!" — no subject, no tense
+  if (frame.v.mood === "imp") {
+    let out = (frame.v.neg ? "Don't " : "") + vG + (frame.o ? " " + npEn(frame.o) : "");
+    return out.charAt(0).toUpperCase() + out.slice(1) + "!";
+  }
   const tam = resolveTam(l, frame.v.tam);
   let v;
   if (frame.v.neg) v = (tam === "pst" || tam === "pfv" ? "did not " : tam === "fut" ? "will not " : "does not ") + vG;
@@ -230,26 +245,31 @@ function sentenceHTML(l) {
   const oOpts = [["none", "—"], ["wh", "what?"], ...SENT_OBJS.map(c => [`n:${c}`, "the " + glossOf(c)])];
   const tamOpts = [["none", "present"], ...shape.tam.filter(t => t.k).map(t => [t.k, { pst: "past", fut: "future", pfv: "perfective", ipfv: "imperfective" }[t.k] || t.k])];
   const locOpts = [["none", "—"], ["in", "in the town"], ["at", "at the town"], ["under", "under the town"]];
+  const moodOpts = [["decl", "statement"], ["imp", "command (imperative)"]];
   const sel = (id, opts, cur) => `<select id="${id}">${opts.map(([v, lab]) => `<option value="${esc(v)}"${String(v) === String(cur) ? " selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
   const frame = frameFromState(l);
   const clause = renderClause(l, frame);
+  const imp = st.mood === "imp";
   const canned = [
     { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } },
     { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: GO, tam: "pst", neg: true } },
     { s: { pron: { k: "2sg", pers: 2, num: "sg" } }, v: { c: TAKE, tam: "pst" }, o: { n: HORSE, def: true }, q: true },
     { s: { pron: { k: "3sgf", pers: 3, num: "sg" } }, v: { c: EAT, tam: "pst" }, o: { wh: true } },
     { s: { n: WOLF, def: true, adj: BLACK }, v: { c: SLEEP, tam: null }, loc: { adp: "in", n: TOWN, def: true } },
+    { v: { c: GO, mood: "imp" } },
+    { v: { c: TAKE, mood: "imp", neg: true }, o: { n: HORSE, def: true } },
   ];
   return `<section class="card"><h2>Sentences</h2>
     <p class="note">A semantic frame — who did what to whom, when — rendered through the language's own grammar: arguments take their cases, the verb agrees and carries tense, everything lands where the word-order dials put it, and the interlinear gloss beneath shows the machinery. This is the shape of a chronicle entry.</p>
     <div class="controls sent">
-      <label>Subject ${sel("sentS", sOpts, st.s)}</label>
+      <label>Mood ${sel("sentM", moodOpts, st.mood)}</label>
+      <label${imp ? ' class="off"' : ""}>Subject ${sel("sentS", sOpts, imp ? "p:2sg" : st.s)}</label>
       <label>Verb ${sel("sentV", VERBS.map(c => [c, glossOf(c)]), st.v)}</label>
-      <label>Tense ${sel("sentT", tamOpts, st.tam)}</label>
+      <label${imp ? ' class="off"' : ""}>Tense ${sel("sentT", tamOpts, imp ? "none" : st.tam)}</label>
       <label>Object ${sel("sentO", oOpts, st.o)}</label>
-      <label>Place ${sel("sentL", locOpts, st.loc)}</label>
-      <label><input type="checkbox" id="sentNeg"${st.neg ? " checked" : ""}/> negated</label>
-      <label><input type="checkbox" id="sentQ"${st.q ? " checked" : ""}/> question</label>
+      <label${imp ? ' class="off"' : ""}>Place ${sel("sentL", locOpts, imp ? "none" : st.loc)}</label>
+      <label><input type="checkbox" id="sentNeg"${st.neg ? " checked" : ""}/> ${imp ? "prohibitive (don't!)" : "negated"}</label>
+      <label${imp ? ' class="off"' : ""}><input type="checkbox" id="sentQ"${st.q && !imp ? " checked" : ""}/> question</label>
     </div>
     <p class="ensent">“${esc(englishOf(frame, l))}”</p>
     ${interHTML(clause)}
@@ -362,6 +382,7 @@ function render() {
   document.getElementById("reroll").onclick = () => { S.seed = Number(document.getElementById("seed").value) || 1; S.preset = document.getElementById("preset").value; reset(); render(); };
   document.getElementById("paraNoun").onchange = (e) => { S.noun = Number(e.target.value); render(); };
   document.getElementById("paraVerb").onchange = (e) => { S.verb = Number(e.target.value); render(); };
+  document.getElementById("sentM").onchange = (e) => { S.sent.mood = e.target.value; render(); };
   document.getElementById("sentS").onchange = (e) => { S.sent.s = e.target.value; render(); };
   document.getElementById("sentV").onchange = (e) => { S.sent.v = Number(e.target.value); render(); };
   document.getElementById("sentT").onchange = (e) => { S.sent.tam = e.target.value; render(); };
@@ -438,6 +459,7 @@ td.irr{color:var(--gloss)}
 .paragrid h3 select{font-size:.95rem;text-transform:none;letter-spacing:0}
 .controls.sent{margin:.4rem 0 .8rem}
 .controls.sent label{gap:.3rem}
+.controls.sent label.off{opacity:.4}
 .ensent{color:var(--muted);font-style:italic;margin:.6rem 0 .15rem}
 .ensent.dim{margin-top:1rem}
 .inter{display:flex;flex-wrap:wrap;gap:.15rem .9rem;align-items:flex-start;margin:.15rem 0 .4rem}

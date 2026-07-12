@@ -110,6 +110,29 @@ export function rollGrammar(famSeed, prof) {
       : m === "tmpl" ? 2 + Math.floor(h01(famSeed, "g:decl") * 2) : 1,
     conjN: m === "fus" ? 2 + Math.floor(h01(famSeed, "g:conj") * 2)
       : m === "tmpl" ? 2 + Math.floor(h01(famSeed, "g:conj") * 2) : 1,
+    // REDUPLICATION — a productive process ORTHOGONAL to the morphotype:
+    // isolating Chinese (kàn-kan 'take a look'), agglutinative Malay
+    // (orang-orang 'people') and fusional tongues all reduplicate. ~85% of
+    // the world's languages do it for some grammatical function; it leans
+    // heaviest in the isolating/agglutinative (SE-Asian, Austronesian)
+    // corner. `full` copies the stem (orang-orang), `partial` prefixes a
+    // CV- copy of the first syllable (Tagalog sulat → su-sulat).
+    redup: (() => {
+      const on = H("rd") < (m === "iso" ? 0.62 : m === "agg" ? 0.55 : 0.34);
+      if (!on) return null;
+      const fns = [];
+      if (H("rdpl") < 0.5) fns.push("plural");        // orang-orang
+      if (H("rdasp") < 0.6) fns.push("aspect");       // iterative/continuative
+      if (H("rdint") < 0.55) fns.push("intensive");   // big → very big
+      if (!fns.length) fns.push("intensive");
+      return { type: H("rdt") < (m === "iso" ? 0.7 : 0.45) ? "full" : "partial", fns };
+    })(),
+    // IMPERATIVE — a category ~every language has; the bare stem is the
+    // commonest exponent (English/Chinese "Go!"), then a dedicated suffix
+    // (Russian idi), then a particle. PROHIBITIVE (negative command) is
+    // usually plain negation, sometimes a special negator (Latin nolī).
+    imp: pickW("imp", [["bare", 0.42], ["suffix", 0.4], ["particle", 0.18]]),
+    prohib: H("proh") < 0.25 ? "special" : "neg",
   };
 }
 
@@ -373,10 +396,22 @@ export function closedOf(lang) {
     return { g: "Q", form: f, w: rform(lang, f) };
   })() : null;
 
+  // ── imperative particle (hortative-like: "let…!") and the special
+  // prohibitive negator (a distinct "don't!" — Latin nolī, Mandarin bié) ──
+  const impPart = g.imp === "particle" ? (() => {
+    const f = legalizeWord(R(synthClosed(lang, inv, "impp")));
+    return { g: "IMP", form: f, w: rform(lang, f) };
+  })() : null;
+  const prohibW = g.prohib === "special" ? (() => {
+    const f = legalizeWord(R(synthClosed(lang, inv, "proh")));
+    return { g: "PROH", form: f, w: rform(lang, f) };
+  })() : null;
+
   // cross-class homophony collapses a small-inventory tongue into mush (one
   // 'pin' serving as what/this/of/because): one global sweep — pronouns keep
   // their forms, later classes shift; 'and' keeps its comitative identity
-  dedupe(lang, inv, [...prons, ...dems, neg, ...qs, ...conj.filter(x => !x.src), ...(qp ? [qp] : [])]);
+  dedupe(lang, inv, [...prons, ...dems, neg, ...qs, ...conj.filter(x => !x.src),
+    ...(qp ? [qp] : []), ...(impPart ? [impPart] : []), ...(prohibW ? [prohibW] : [])]);
 
   // ── articles: the definite wears down from the distal demonstrative
   // (that→the), the indefinite from 'one' (one→a) — when the dials say so.
@@ -398,7 +433,7 @@ export function closedOf(lang) {
     return { g: "INDF", form: f, w: rform(lang, f), src: "one" };
   })() : null;
 
-  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp };
+  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW };
   return c.closed;
 }
 
@@ -629,7 +664,7 @@ export function paradigmSpec(lang) {
   };
   // ── nominal ──
   const plSrc = h01(fam, "plsrc") < 0.6 ? MANY : ALL;    // same quarry the pronouns use
-  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, themes: [], vThemes: [], particles: {} };
+  const spec = { iso, cases: [], pl: null, du: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, themes: [], vThemes: [], particles: {} };
   if (g.pluralMark) spec.pl = mkAff("pl", "PL", null, [[plSrc, 1]]);
   if (g.dual) spec.du = mkAff("du", "DU");
   const caseKeys = g.caseN === 0 ? [] : g.caseN === 1 ? ["gen"]
@@ -644,6 +679,14 @@ export function paradigmSpec(lang) {
     const negRoot = synthClosed(lang, inv, "neg");
     evolveSlice(lang.rules, 0, t, negRoot);
     spec.negAff = { k: "neg", g: "NEG", src: null, t, syl: wearSyl(lang.prof, legalizeWord(negRoot)) };
+  }
+  // imperative suffix (only in suffix-mode tongues; bare/particle carry no
+  // affix) — an opaque late formative, as imperatives usually are
+  if (!iso && g.imp === "suffix") {
+    const t = Math.max(birthOf(fam, "imp", len), t0v);
+    const impRoot = synthClosed(lang, inv, "impaf");
+    evolveSlice(lang.rules, 0, t, impRoot);
+    spec.imp = { k: "imp", g: "IMP", src: null, t, syl: wearSyl(lang.prof, legalizeWord(impRoot)) };
   }
   // person agreement: cliticized pronouns, the classic route — worn at their
   // own birth; plural persons crush the person root with the plural marker
@@ -671,7 +714,7 @@ export function paradigmSpec(lang) {
   // paradigm-internal contrast: number+case affixes against each other, TAM
   // affixes against each other (persons handled above)
   dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases].filter(Boolean));
-  dedupeAffixSet(lang, inv, [spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv].filter(Boolean));
+  dedupeAffixSet(lang, inv, [spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp].filter(Boolean));
   // ── fusional theme vowels: declension/conjugation classes ──
   const nTheme = lang.prof.morph === "fus" || lang.prof.morph === "tmpl" ? g.declN : 1;
   for (let k = 0; k < nTheme; k++) spec.themes.push(inv.vows[hash32(fam, "theme", k) % inv.vows.length]);
@@ -761,6 +804,45 @@ function crush(syls) {
   }
   return [out];
 }
+
+// REDUPLICATION as a SURFACE process: full copies the whole stem, written
+// with a hyphen (Malay orang-orang); partial prefixes a light CV- copy of
+// the first syllable (Tagalog su-sulat). Rendering each part SEPARATELY is
+// deliberate — it keeps renderWord's accidental-digraph collapse (ghgh→gh)
+// from eating a genuine reduplication (sisin→sin), the reduplication-vs-
+// haplology tension every generator has to resolve one way or the other.
+function redupStemSurface(lang, cid, type) {
+  const stem = nativeStemOf(lang, cid);
+  return redupFormSurface(lang, stem, type);
+}
+function redupFormSurface(lang, stem, type) {
+  const base = renderWord(stem, lang.prof);
+  const s0 = stem.syls[0];
+  // partial reduplication of a vowel-initial stem would just prefix a bare
+  // vowel (i-iu, a lengthening the reader can't parse as reduplication) —
+  // fall back to the unambiguous hyphenated full copy, as many languages do
+  if (type === "full" || !s0 || !s0.on.length) return base + "-" + base;
+  const red = renderWord({ syls: [{ on: s0.on.map(c => ({ ...c })), nu: s0.nu.slice(0, 1).map(v => ({ ...v, lg: 0 })), co: [] }] }, lang.prof);
+  return red ? red + base : base + "-" + base;
+}
+
+/** Intensive/emphatic reduplication of any word (big → very-big, the
+ *  adjectival use — Chinese hóng-hóng, Malay besar-besar). Available when the
+ *  language reduplicates for intensity; returns null otherwise. */
+export function intensive(lang, cid) {
+  if (!redupHas(lang, "intensive")) return null;
+  return { text: redupStemSurface(lang, cid, gramOf(lang).redup.type), gloss: glossOf(cid) + "~INTENS" };
+}
+// render an affix syllable as an attached surface suffix (reduplication is a
+// late transparent layer; other affixes append after it, sans cross-seam
+// sandhi — which is honest for a productive surface process)
+function affixSurface(lang, syl) {
+  let s = renderWord({ syls: [syl] }, lang.prof);
+  if (lang.prof.ortho === "en") s = s.replace(/([^aeiou][aeiou][^aeiou])e$/, "$1");
+  return s;
+}
+// which grammatical functions this language's reduplication serves
+const redupHas = (lang, fn) => { const r = gramOf(lang).redup; return !!r && r.fns.includes(fn); };
 
 // templatic pattern change: swap every nucleus for the pattern vowel — the
 // broken-plural / TAM-ablaut machine of root-and-pattern morphology. The
@@ -921,8 +1003,18 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
   const morph = lang.prof.morph;
   const stemGloss = glossOf(cid);
   const caseAff = cas ? spec.cases.find(x => x.k === cas) : null;
+  // reduplicative plural (orang-orang) — a strategy that REPLACES the plural
+  // affix/particle, available in every morphotype including isolating. It is
+  // a surface layer: the reduplicated stem carries any case as a trailing
+  // affix-string (transparent, no cross-seam sandhi)
+  const redupPl = num === "pl" && redupHas(lang, "plural");
   let out;
-  if (spec.iso) {
+  if (redupPl) {
+    let text = redupStemSurface(lang, cid, gramOf(lang).redup.type);
+    const post = [];
+    if (caseAff) { if (spec.iso) post.push({ w: renderWord({ syls: [caseAff.syl] }, lang.prof), g: caseAff.g }); else text += affixSurface(lang, caseAff.syl); }
+    out = { text, gloss: stemGloss + "~PL" + (caseAff && !spec.iso ? "-" + caseAff.g : ""), pre: [], post, irr: false };
+  } else if (spec.iso) {
     // particles, not affixes: 'stone PL' — the words stay untouched
     const post = [];
     if (num === "pl" && spec.pl) post.push({ w: renderWord({ syls: [spec.pl.syl] }, lang.prof), g: "PL" });
@@ -956,29 +1048,50 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
   const spec = paradigmSpec(lang);
+  const g = gramOf(lang);
   const morph = lang.prof.morph;
   const stemGloss = glossOf(cid);
-  const tamAff = tam ? spec.tam[tam] : null;
+  const imperative = mood === "imp";
+  // imperatives carry no tense; the ITERATIVE/continuative imperfective is
+  // often reduplication (every morphotype, Chinese kàn-kan included)
+  const tamEff = imperative ? null : tam;
+  const tamAff = tamEff ? spec.tam[tamEff] : null;
+  const redupAsp = !imperative && tamEff === "ipfv" && redupHas(lang, "aspect");
+  // imperative particle (all morphotypes) + prohibitive, shared pre/post
+  const impExtras = (pre, post) => {
+    if (imperative && g.imp === "particle" && closedOf(lang).impPart) post.push({ w: closedOf(lang).impPart.w, g: "IMP" });
+    if (imperative && neg) (g.negPos === "post" ? post : pre).push(prohToken(lang));
+  };
   let out;
-  if (spec.iso) {
+  if (redupAsp) {
+    // surface reduplication carries the aspect; person marking (if any)
+    // appends as a transparent suffix-string
+    let text = redupStemSurface(lang, cid, g.redup.type);
+    const glosses = [];
+    if (pers && !spec.iso && spec.pers) {
+      const persAff = spec.pers[pers + num];
+      if (persAff) { text += affixSurface(lang, persAff.syl); glosses.push(persAff.g); }
+    }
+    out = { text, gloss: stemGloss + "~IPFV" + (glosses.length ? "-" + glosses.join("-") : ""), pre: [], post: [], irr: false };
+  } else if (spec.iso) {
     const post = [], pre = [];
     if (tamAff) {
       const tok = { w: renderWord({ syls: [tamAff.syl] }, lang.prof), g: tamAff.g };
-      // aspect particles trail the verb (le); future auxiliaries tend to lead
-      if (tam === "fut") pre.push(tok); else post.push(tok);
+      if (tamEff === "fut") pre.push(tok); else post.push(tok);   // le trails, future auxiliaries lead
     }
-    out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss, pre, post, irr: false };
+    impExtras(pre, post);
+    out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss + (imperative && g.imp !== "particle" ? ".IMP" : ""), pre, post, irr: false };
   } else {
-    const irr = tam && isMarkedTam(tam) ? irregularityOf(lang, cid) : null;
+    const irr = tamAff && isMarkedTam(tamEff) ? irregularityOf(lang, cid) : null;
     const events = [], glosses = [];
     let rootOverride = null, pattern = null, ablaut = false;
-    if (neg && spec.negAff) {
+    if (neg && !imperative && spec.negAff) {
       // affixal negation sits innermost (the Turkish -me- slot)
       events.push({ ...spec.negAff, t: 0 });
       glosses.push("NEG");
@@ -991,7 +1104,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       ablaut = true;                                  // sang: the vowel is the tense
       tamInStem = tamAff.g;
     } else if (tamAff && morph === "tmpl") {
-      pattern = tam;                                  // pattern change IS the TAM
+      pattern = tamEff;                               // pattern change IS the TAM
       tamInStem = tamAff.g;
     } else if (tamAff) {
       if (irr === "fossil") {
@@ -1000,11 +1113,14 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       } else events.push(tamAff);
       glosses.push(tamAff.g);
     }
-    if (pers && spec.pers) {
+    // imperative suffix (suffix-mode tongues); bare/particle add no affix
+    if (imperative && g.imp === "suffix" && spec.imp) { events.push(spec.imp); glosses.push("IMP"); }
+    // person agreement — imperatives, being addressee-directed, don't agree
+    if (pers && !imperative && spec.pers) {
       const persAff = spec.pers[pers + num];
       if (persAff) { events.push(persAff); glosses.push(persAff.g); }
     }
-    if (obj && spec.persObj && spec.pers) {
+    if (obj && !imperative && spec.persObj && spec.pers) {
       const oAff = spec.pers[obj + "sg"];
       if (oAff) { events.push({ ...oAff, g: oAff.g + ".O" }); glosses.push(oAff.g + ".O"); }
     }
@@ -1014,15 +1130,25 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       pattern, rootOverride, ablaut,
     });
     // gloss: fused endings read STEM-PST.3SG, stacked ones STEM-PST-3SG,
-    // pattern change reads STEM⟨PST⟩, suppletion and ablaut fold the TAM in
+    // pattern change reads STEM⟨PST⟩, suppletion/ablaut fold the TAM in
     let glossStr;
     if (tamInStem) glossStr = stemGloss + "⟨" + tamInStem + "⟩" + (glosses.length ? "-" + glosses.join("-") : "");
     else if (morph === "fus" && glosses.length > 1) glossStr = stemGloss + "-" + glosses.join(".");
     else glossStr = [stemGloss, ...glosses].join("-");
-    out = { text: renderWord(form, lang.prof), gloss: glossStr, pre: [], post: [], irr: !!irr || !!pattern };
+    if (imperative && (g.imp === "bare" || g.imp === "particle") && !glosses.length) glossStr = stemGloss + (g.imp === "bare" ? ".IMP" : "");
+    const pre = [], post = [];
+    impExtras(pre, post);
+    out = { text: renderWord(form, lang.prof), gloss: glossStr, pre, post, irr: !!irr || !!pattern };
   }
   c.cells.set(key, out);
   return out;
+}
+
+// the negator a prohibitive ("don't!") uses — a special word where the
+// language has one (bié/nolī), otherwise ordinary negation
+function prohToken(lang) {
+  const cl = closedOf(lang);
+  return cl.prohibW ? { w: cl.prohibW.w, g: "PROH" } : { w: cl.neg.w, g: "NEG" };
 }
 
 /** Table shape for the Lab: which rows/columns this language's paradigms
@@ -1038,7 +1164,7 @@ export function paradigmShape(lang) {
   if (spec.tam.pfv) tam.push({ k: "pfv", g: "PFV" });
   if (spec.tam.ipfv) tam.push({ k: "ipfv", g: "IPFV" });
   const pers = spec.pers ? [["1", "sg"], ["2", "sg"], ["3", "sg"], ["1", "pl"], ["2", "pl"], ["3", "pl"]] : [];
-  return { nums, cases, tam, pers, iso: spec.iso };
+  return { nums, cases, tam, pers, iso: spec.iso, imp: g.imp, redup: g.redup };
 }
 
 /** Affix etymologies for the Lab: every ending explains itself — including
@@ -1142,24 +1268,29 @@ export function renderClause(lang, frame) {
     v: [],
   };
   // verb: agreement with the subject; object person when polypersonal
-  const tam = resolveTam(lang, frame.v.tam);
-  const agreePers = g.agree !== "none" ? String(sPers) : null;
-  const objPers = g.agree === "both" && trans && !frame.o.wh ? "3" : null;
+  const imperative = frame.v.mood === "imp";
+  const tam = imperative ? null : resolveTam(lang, frame.v.tam);
+  const agreePers = !imperative && g.agree !== "none" ? String(sPers) : null;
+  const objPers = !imperative && g.agree === "both" && trans && !frame.o.wh ? "3" : null;
   const neg = !!frame.v.neg;
   const vx = inflectVerb(lang, frame.v.c, {
     tam, pers: agreePers, num: sNum === "du" ? "pl" : sNum, obj: objPers,
-    neg: neg && !!spec.negAff,
+    neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null,
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
-  // negation particle (when not an affix): before/after the verb, or clause-final
+  // negation particle (when not an affix): before/after the verb, or clause-final.
+  // imperatives already carry their own prohibitive marker in vx.pre/post
   let negFinal = false;
-  if (neg && !spec.negAff) {
+  if (neg && !imperative && !spec.negAff) {
     if (g.negPos === "pre") toks.v.unshift({ w: cl.neg.w, g: "NEG", role: "V" });
     else if (g.negPos === "post") toks.v.push({ w: cl.neg.w, g: "NEG", role: "V" });
     else negFinal = true;
   }
+  // imperatives address "you": the 2nd-person subject is dropped by default
+  // (universal tendency), and any explicit subject pronoun goes with it
+  if (imperative && (!frame.s || sIsPron)) toks.s = [];
   // pro-drop: agreement carries the person, the pronoun stays home
-  if (sIsPron && g.proDrop && g.agree !== "none") toks.s = [];
+  else if (sIsPron && g.proDrop && g.agree !== "none") toks.s = [];
   // adpositional adjunct
   const locToks = [];
   if (frame.loc) {

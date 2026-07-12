@@ -455,3 +455,48 @@ byte-identical output by construction. What shipped vs the plan:
 renderer is ready; wiring is a sim-side decision), politeness/T-V pronouns,
 object pronoun case forms, adjective agreement, L5 writing systems,
 orthographic lag.
+
+---
+
+## Build status (session 9) — reduplication + imperative/mood
+
+Two of the commonest cross-linguistic features the M-phases had skipped —
+picked because a frequency audit showed them MORE common than several
+things already built (reduplication ~85% of languages, imperative
+~universal). Both roll per family from named substreams, are pinned in all
+three references, and touch nothing outside the grammar layer.
+
+- **Reduplication** — a productive process ORTHOGONAL to the morphotype
+  (isolating Chinese kàn-kan, agglutinative Malay orang-orang, and fusional
+  tongues all reduplicate). Dial `prof.gram.redup = {type: full|partial,
+  fns: [plural, aspect, intensive]}`, ~45% of rolled languages, leaning
+  isolating/agglutinative. `full` copies the whole stem written with a
+  hyphen (orang-orang); `partial` prefixes a light CV- copy (Tagalog
+  su-sulat), falling back to hyphenated-full for vowel-initial stems.
+  Rendered as a SURFACE process (each copy rendered separately) so
+  renderWord's accidental-digraph collapse (ghgh→gh) can't eat a genuine
+  reduplication (sisin→sin) — the reduplication-vs-haplology tension,
+  resolved. Reduplicative plural REPLACES the plural affix (inflectNoun);
+  reduplicative aspect is the iterative imperfective (inflectVerb);
+  `intensive(lang, cid)` covers the adjectival use (big → big-big).
+- **Imperative + mood** — `prof.gram.imp = bare|suffix|particle` (~42/40/18%,
+  bare-stem commonest, English/Chinese "Go!") and `prohib = neg|special`
+  (a dedicated prohibitive negator, Latin nolī / Mandarin bié, ~25%).
+  `inflectVerb(…, {mood:"imp"})`: bare = citation stem, suffix = a late
+  opaque affix, particle = a hortative-like word; imperatives are
+  addressee-directed so they carry no tense and the frame renderer drops
+  the 2nd-person subject. Prohibitive = negated imperative (special negator
+  where the language has one).
+- **Gates** (probe_langfit.mjs §9–10): reduplication occurrence rate,
+  crossing into isolating tongues, plural/aspect actually copying the stem,
+  pinned-Mandarin hyphenated legal-pinyin verb reduplication, intensive
+  rendering, determinism; every language has an imperative, strategy
+  frequencies, bare = citation stem, marked ≠ stem, prohibitive is negated,
+  subject-drop, pinned English bare / Russian suffix, determinism. Lab:
+  reduplication + imperative chips, an IMP row in the conjugation table, a
+  reduplication note with a live intensive example, and a Mood control +
+  two command frames in the Sentences panel.
+
+Coverage lift: the two most common gaps from the typological audit closed;
+still parked are voice (passive/antipassive/causative), evidentiality,
+numeral classifiers, noun-class concord, and the rarer alignments.

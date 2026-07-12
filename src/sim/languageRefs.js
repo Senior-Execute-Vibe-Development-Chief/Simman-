@@ -37,6 +37,10 @@ export function refProfile(kind, seed) {
       dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
       proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "affix", declN: 1, conjN: 1,
+      // verb/adjective reduplication (kàn-kan, hóng-hóng); bare imperative;
+      // 别-style dedicated prohibitive
+      redup: { type: "full", fns: ["aspect", "intensive"] },
+      imp: "bare", prohib: "special",
     },
   });
   if (kind === "russian") Object.assign(p, {
@@ -56,6 +60,9 @@ export function refProfile(kind, seed) {
       dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 3, conjN: 2,
+      // no productive grammatical reduplication; suffixal imperative (idi);
+      // prohibitive is plain ne + imperative
+      redup: null, imp: "suffix", prohib: "neg",
     },
   });
   if (kind === "english") Object.assign(p, {
@@ -79,6 +86,9 @@ export function refProfile(kind, seed) {
       dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 2, conjN: 2,
+      // no productive grammatical reduplication; bare imperative ("Go!");
+      // prohibitive is "do not" + bare stem
+      redup: null, imp: "bare", prohib: "neg",
     },
   });
   return p;
