@@ -351,6 +351,10 @@ export function etymologyOf(lang, cid) {
   ensureV2(lang);
   const c = compile(lang);
   if (!c.seeded) seedDictionary(lang, c);
+  // a loan shadows the native form (wordOf returns the borrowed surface), so
+  // the native etymology no longer describes the DISPLAYED word — report none,
+  // exactly as wordOf prefers the loan (the Lab shows the loan stratum apart)
+  for (let i = lang.loans.length - 1; i >= 0; i--) if (lang.loans[i].c === cid) return null;
   if (c.colex.has(cid)) return null;                 // a merged concept borrows, doesn't derive
   const pr = derivParts(lang, cid);
   if (!pr || internalOf(lang, pr[0]) === internalOf(lang, pr[1])) return null;

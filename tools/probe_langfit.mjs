@@ -931,6 +931,22 @@ console.log("\n── intentional abstract derivation ──");
   }
   check(`colex cycles are broken, not hung (${cycleSeen} sky=god / wind=spirit families rendered clean)`, cycleSeen > 0 && cycleSafe);
 
+  // a LOAN shadows the native word (wordOf returns the borrowed form), so the
+  // native etymology must not be reported for the displayed word — otherwise
+  // the dictionary shows a borrowed surface beside a gloss that doesn't build
+  // it ('law' loaned as 'toholu' with a spurious "‹ true say")
+  {
+    const lw = mkWorld();
+    const bl = foundLanguage(lw, { seed: 9001 });
+    const donor = foundLanguage(lw, { seed: 55555 });
+    for (let i = 0; i < 40; i++) borrowFrom(lw, bl, donor);
+    const loanCids = new Set(bl.loans.map(x => x.c));
+    const derivLoans = ABS.filter(t => loanCids.has(t));
+    const lying = derivLoans.filter(t => etymologyOf(bl, t) !== null);
+    check(`loaned abstracts report no native etymology (${lying.length}/${derivLoans.length} lie, of ${loanCids.size} loans)`,
+      derivLoans.length > 0 && lying.length === 0);
+  }
+
   // pinned Mandarin: every abstract, derived or not, stays legal pinyin
   const m = foundLanguage(world, { seed: 445 });
   m.prof = refProfile("mandarin", 445); m.rules = [];
