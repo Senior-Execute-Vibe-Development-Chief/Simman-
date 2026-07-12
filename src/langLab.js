@@ -4,6 +4,12 @@
 // the React app so it can be served as /langlab.html in dev or bundled into
 // a single self-contained page, without touching the world sim at all.
 
+/* global __BUILD__ */
+// __BUILD__ is a build-time constant injected by esbuild's --define at bundle
+// time (the short commit hash on the footer); it is absent in raw source and
+// under `npm run dev`, which is why every read is typeof-guarded. Declared
+// here so ESLint's no-undef doesn't flag the injected identifier.
+
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
