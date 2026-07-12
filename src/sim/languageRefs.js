@@ -37,6 +37,9 @@ export function refProfile(kind, seed) {
       dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
       proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "affix", declN: 1, conjN: 1,
+      // complex syntax: Chinese-style PRENOMINAL relatives ([… gap] 的 N) and
+      // preposed adverbials; Dem/Num before the noun; 说-quotative complements
+      demN: true, numN: true, relPos: "pre", relStrat: "gap", compz: "say", advPos: "pre",
       // verb/adjective reduplication (kàn-kan, hóng-hóng); bare imperative;
       // 别-style dedicated prohibitive
       redup: { type: "full", fns: ["aspect", "intensive"] },
@@ -60,6 +63,9 @@ export function refProfile(kind, seed) {
       dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 3, conjN: 2,
+      // complex syntax: POSTNOMINAL relatives (N kotoryj … gap), что-complements
+      // from the demonstrative, Dem/Num before the noun, postposed adverbials
+      demN: true, numN: true, relPos: "post", relStrat: "gap", compz: "dem", advPos: "post",
       // no productive grammatical reduplication; suffixal imperative (idi);
       // prohibitive is plain ne + imperative
       redup: null, imp: "suffix", prohib: "neg",
@@ -86,6 +92,9 @@ export function refProfile(kind, seed) {
       dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 2, conjN: 2,
+      // complex syntax: POSTNOMINAL relatives (N that/who … gap), that-complements
+      // from the demonstrative, Dem/Num before the noun, postposed adverbials
+      demN: true, numN: true, relPos: "post", relStrat: "gap", compz: "dem", advPos: "post",
       // no productive grammatical reduplication; bare imperative ("Go!");
       // prohibitive is "do not" + bare stem
       redup: null, imp: "bare", prohib: "neg",

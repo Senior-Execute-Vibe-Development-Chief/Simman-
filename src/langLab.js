@@ -15,7 +15,7 @@ import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive } from "./sim/languageGrammar.js";
-import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT } from "./sim/languageLexicon.js";
+import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, COME, SAY } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
@@ -116,6 +116,8 @@ function grammarHTML(l) {
     g.genN ? "genitive-first" : "noun-first genitive",
     g.redup ? `${g.redup.type} reduplication (${g.redup.fns.join("/")})` : null,
     `${g.imp} imperative`,
+    `${g.relPos === "pre" ? "prenominal" : "postnominal"} relatives (${g.relStrat === "part" ? "participle" : g.relStrat === "pron" ? "resumptive" : "gap"})`,
+    g.compz !== "none" ? `${g.compz === "say" ? "quotative" : "demonstrative"} complementizer` : "bare complements",
   ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
   const pron = cl.prons.map(p => `<span class="cell"><span class="lbl">${esc(p.g)}</span> <span class="w">${esc(p.w)}</span></span>`).join(" ");
   const dems = cl.dems.map(d => `<span class="cell"><span class="lbl">${esc(d.g)}</span> <span class="w">${esc(d.w)}</span></span>`).join(" ");
@@ -187,6 +189,19 @@ const SENT_OBJS = [RIVER, HORSE, BREAD, SWORD, HOUSE, STONE, WOLF];
 const PRON_EN = { "1sg": "I", "2sg": "thou", "3sg": "he", "3sgm": "he", "3sgf": "she", "1du": "we two", "2du": "you two", "1pl": "we", "1pi": "we (incl.)", "1pe": "we (excl.)", "2pl": "you", "3pl": "they" };
 const EN_PAST = { go: "went", see: "saw", eat: "ate", be: "was", have: "had", come: "came", do: "did", say: "said", know: "knew", give: "gave", take: "took", make: "made", drink: "drank", sit: "sat", stand: "stood", run: "ran", fall: "fell", fight: "fought", hear: "heard", sleep: "slept" };
 
+// canned NESTED frames (englishOf doesn't gloss recursion — the interlinear is
+// the truth, these carry a hand-written English label): a relative clause on
+// the subject, then on the object, a complement clause, an adverbial, a
+// coordinate twin, and a demonstrative+numeral noun phrase
+const COMPLEX = [
+  ["the king who saw the river slept", { s: { n: KING, def: true, rel: { headRole: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } } }, v: { c: SLEEP, tam: "pst" } }],
+  ["the river that the king saw went dry", { s: { n: RIVER, def: true, rel: { headRole: "o", s: { n: KING, def: true }, v: { c: SEE, tam: "pst" } } }, v: { c: GO, tam: "pst" } }],
+  ["he said that the king saw the river", { s: { pron: { k: "3sg", pers: 3, num: "sg" } }, v: { c: SAY, tam: "pst", comp: { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } } } }],
+  ["when the wolf came, the king slept", { sub: { con: "when", frame: { s: { n: WOLF, def: true }, v: { c: COME, tam: "pst" } } }, s: { n: KING, def: true }, v: { c: SLEEP, tam: "pst" } }],
+  ["the king slept and the wolf came", { s: { n: KING, def: true }, v: { c: SLEEP, tam: "pst" }, coord: { con: "and", frame: { s: { n: WOLF, def: true }, v: { c: COME, tam: "pst" } } } }],
+  ["those three black horses sleep", { s: { n: HORSE, def: true, dem: "far", card: 3, adj: BLACK }, v: { c: SLEEP, tam: null } }],
+];
+
 function frameFromState(l) {
   const st = S.sent;
   const mkArg = (code) => {
@@ -239,6 +254,7 @@ function interHTML(clause) {
 
 function sentenceHTML(l) {
   const cl = closedOf(l);
+  const g = gramOf(l);
   const shape = paradigmShape(l);
   const st = S.sent;
   const sOpts = [...cl.prons.map(p => [`p:${p.k}`, PRON_EN[p.k] || p.g]), ...SENT_NOUNS.map(c => [`n:${c}`, "the " + glossOf(c)])];
@@ -275,6 +291,9 @@ function sentenceHTML(l) {
     ${interHTML(clause)}
     <h3>More of the tongue</h3>
     ${canned.map(f => `<p class="ensent dim">“${esc(englishOf(f, l))}”</p>` + interHTML(renderClause(l, f))).join("")}
+    <h3>Complex clauses — the sentence beyond one verb</h3>
+    <p class="note">A frame can nest: a noun can carry a <b>relative clause</b>, a verb a <b>complement clause</b>, the whole clause an <b>adverbial</b> or a <b>coordinate</b> twin — placed and marked the way this tongue's dials (${g.relPos === "pre" ? "prenominal" : "postnominal"} relatives, ${g.relStrat} strategy) say. This is the shape a real chronicle sentence needs.</p>
+    ${COMPLEX.map(([label, f]) => `<p class="ensent dim">“${esc(label)}”</p>` + interHTML(renderClause(l, f))).join("")}
   </section>`;
 }
 

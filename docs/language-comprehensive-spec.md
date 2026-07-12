@@ -646,3 +646,63 @@ recoverable AND drifts under sound change like a real inherited compound
   compounds abstract vocab in legal pinyin and out-derives fusional Russian;
   determinism + JSON-roundtrip. 102 probe checks green; smoke + validate
   green. Public API unchanged (new export only); sim untouched.
+
+---
+
+## Build status (session 13) — M6: complex syntax (the clause beyond one verb)
+
+The external reviewer's #1 gap: every clause the renderer could produce was a
+single verb with flat arguments — "the black wolf sleeps in the town." Real
+chronicle sentences subordinate and relativize. This adds the whole package —
+relative clauses, complement clauses, adverbial subordination, clause
+coordination, and demonstrative/numeral order in the noun phrase — as
+Greenberg-correlated dials feeding a recursive `renderClause`. It is the M4
+frame renderer finally able to express a sentence a scribe would actually
+write. (Renderer only; the sim stays unwired, per the standing constraint.)
+
+- **Frames nest (languageGrammar.js).** The frame — already the shape of a
+  chronicle event — gained four additive, backward-compatible slots: a noun
+  arg's `rel` (a relative clause the head is a participant in), the verb's
+  `comp` (a complement clause), the frame's `sub` (an adverbial clause) and
+  `coord` (a coordinate twin), plus NP modifiers `dem`/`card`. A frame that
+  sets none renders byte-identically to before — the §8 clause gates and the
+  three references never moved. `renderClause` was refactored into a thin
+  wrapper (coordination/subordination) over `renderCore` (the old body, now
+  returning the token sequence); relatives recurse through `renderCore`,
+  complements through `renderClause`, all depth-guarded.
+- **Relative clauses, Greenberg-correlated (WALS 90A/122).** New dials
+  `relPos` (pre/postnominal) and `relStrat` (gap · resumptive pronoun ·
+  participle) roll CORRELATED with word order: OV tongues take prenominal
+  relatives at a real rate (~54%), VO tongues postnominal strongly (~92%);
+  the participial strategy (a de-verbal V.PTCP, no relativizer) leans
+  prenominal. The **relativizer** is a new closed-class word grammaticalized
+  from the 'who' interrogative or the distal demonstrative, placed at the RC
+  edge ADJACENT to the head — so English 'king WHO saw…' and Chinese '[saw
+  river] DE king' both fall out of one placement rule. Resumptive pronouns
+  mark object relatives (subject resumptives are rare and pro-dropped anyway).
+- **Complement & adverbial clauses.** A **complementizer** wears from the
+  distal demonstrative (that→'that') or the SAY verb (quotative→complementizer,
+  the African/Asian path) or is absent (bare juxtaposition), and sits at the
+  matrix-verb edge — prehead in VO ('said THAT…'), final in OV ('…that,
+  said'). Adverbial clauses ('when…', from the temporal interrogative doubling
+  as a subordinator) prepose in OV (~74%), postpose in VO. Clause coordination
+  reuses the closed-class 'and'/'but'/'or'.
+- **NP-internal order (Greenberg U18).** `demN`/`numN` place the demonstrative
+  and numeral, leaning prenominal (~76%) even where the adjective follows
+  (Romance 'ces trois livres rouges'), head-final tongues stacking everything
+  before the noun. A demonstrative suppresses the article (no "that the
+  horse").
+- **References in character.** Mandarin builds Chinese-style PRENOMINAL
+  relatives ([… gap] 的 N) with preposed adverbials, all legal pinyin;
+  English/Russian postnominal ('king REL saw…'), что/that complements from the
+  demonstrative. Every new dial pinned in all three (rolled values can't leak).
+- **Gates (probe §14, 16 new → 118 total).** Every nested clause stays token-
+  aligned to its interlinear gloss (0/1200 misaligned — the property that
+  makes it trustworthy chronicle output); relatives are always marked (REL or
+  V.PTCP); OV⇒prenominal / VO⇒postnominal hold; all three relativization
+  strategies occur; complements carry their complementizer; adverbials and
+  coordination render; the demonstrative suppresses the article; the
+  references speak complex clauses in character; determinism + JSON-roundtrip.
+  118 probe checks green; smoke + validate green. Public API unchanged;
+  `renderClause` gains an optional depth arg (defaulted); sim untouched. The
+  Lab's Sentences card gains a "Complex clauses" showcase.

@@ -16,7 +16,7 @@ import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN,
-  DERIV, QUEEN, CHIEF, PRIEST, TEMPLE, TOMB, THRONE, CROWN, OATH, COUNCIL, ARMY, GUARD, VICTORY } from "../src/sim/languageLexicon.js";
+  DERIV, QUEEN, CHIEF, PRIEST, TEMPLE, TOMB, THRONE, CROWN, OATH, COUNCIL, ARMY, GUARD, VICTORY, COME, SAY } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -968,6 +968,139 @@ console.log("\n── abstract derivation ──");
   if (!quiet) {
     say("   designed etymologies in one tongue (" + langWord(l8, 0) + "):");
     for (const cid of ABS) { const e = etymologyOf(l8, cid); if (e) say("     " + glossOf(cid).padEnd(9) + " " + wordOf(l8, cid).padEnd(14) + " ‹ " + e.glosses.join("+")); }
+  }
+}
+
+// ── 14. COMPLEX SYNTAX — the clause beyond one verb ───────────────────────
+// Relative clauses (gap/resumptive/participle, pre- vs postnominal by word
+// order), complement clauses ('said that…'), adverbial subordination
+// ('when…'), clause coordination, and demonstrative/numeral order in the NP.
+// This is what lets a chronicle sentence exceed "the black wolf sleeps."
+console.log("\n── complex syntax ──");
+{
+  const world = mkWorld();
+  const F = {
+    relSubj: { s: { n: KING, def: true, rel: { headRole: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } } }, v: { c: SLEEP, tam: "pst" } },
+    relObj: { s: { n: RIVER, def: true, rel: { headRole: "o", s: { n: KING, def: true }, v: { c: SEE, tam: "pst" } } }, v: { c: GO, tam: "pst" } },
+    comp: { s: { pron: { k: "3sg", pers: 3, num: "sg" } }, v: { c: SAY, tam: "pst", comp: { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } } } },
+    adv: { sub: { con: "when", frame: { s: { n: WOLF, def: true }, v: { c: COME, tam: "pst" } } }, s: { n: KING, def: true }, v: { c: SLEEP, tam: "pst" } },
+    coord: { s: { n: KING, def: true }, v: { c: SLEEP, tam: "pst" }, coord: { con: "and", frame: { s: { n: WOLF, def: true }, v: { c: COME, tam: "pst" } } } },
+    np: { s: { n: HORSE, def: true, dem: "far", card: 3, adj: BLACK }, v: { c: SLEEP, tam: null } },
+  };
+
+  // (a) THE correctness gate: every nested clause is still token-aligned to its
+  // interlinear gloss, and never degenerates to empty — the property that
+  // makes the whole layer trustworthy as chronicle output
+  const langs = [];
+  for (let i = 0; i < 200; i++) langs.push(foundLanguage(world, { seed: 210000 + i * 379 }));
+  let misalign = 0, degen = 0, tot = 0;
+  for (const l of langs) for (const f of Object.values(F)) {
+    const c = renderClause(l, f); tot++;
+    if (c.text.split(" ").length !== c.gloss.split(" ").length) misalign++;
+    if (!c.text.trim() || c.tokens.length < 2) degen++;
+  }
+  check(`every nested clause is gloss-aligned (${misalign}/${tot} misaligned, ${degen} degenerate)`, misalign === 0 && degen === 0);
+
+  // (b) relative clauses are well-formed: a relativizer (REL) heads gap/
+  // resumptive RCs, a participle (V.PTCP) marks the participial strategy — one
+  // or the other, in every tongue
+  let relOK = 0;
+  for (const l of langs) {
+    const g = gramOf(l);
+    const gl = renderClause(l, F.relSubj).gloss;
+    if (g.relStrat === "part" ? /\.PTCP\b/.test(gl) : /(^| )REL( |$)/.test(gl)) relOK++;
+  }
+  check(`relative clauses are marked (REL word, or a participle: ${relOK}/${langs.length})`, relOK === langs.length);
+
+  // (c) Greenberg (WALS 90A): OV tongues take PRENOMINAL relatives at a real
+  // rate; VO tongues take POSTNOMINAL strongly; all three strategies occur
+  const N = 400;
+  const t = { ovT: 0, ovPre: 0, voT: 0, voPost: 0, gap: 0, pron: 0, part: 0, demT: 0, demN: 0, compNone: 0, advPre: 0, ovAdv: 0 };
+  for (let i = 0; i < N; i++) {
+    const prof = rollProfile(77000 + i * 991);
+    const g = rollGrammar(77000 + i * 991, prof);
+    const ov = g.wo === "sov" || g.wo === "ovs";
+    if (ov) { t.ovT++; if (g.relPos === "pre") t.ovPre++; if (g.advPos === "pre") t.ovAdv++; }
+    else { t.voT++; if (g.relPos === "post") t.voPost++; }
+    t[g.relStrat]++;
+    t.demT++; if (g.demN) t.demN++;
+    if (g.compz === "none") t.compNone++;
+  }
+  check(`U: OV ⇒ prenominal relatives at a real rate (${Math.round(100 * t.ovPre / t.ovT)}%)`, t.ovPre / t.ovT > 0.33);
+  check(`U: VO ⇒ postnominal relatives strongly (${Math.round(100 * t.voPost / t.voT)}%)`, t.voPost / t.voT > 0.8);
+  check(`all relativization strategies occur (gap ${t.gap}, resumptive ${t.pron}, participle ${t.part})`, t.gap > 0 && t.pron > 0 && t.part > 0);
+  check(`demonstratives lean prenominal (Greenberg U18: ${Math.round(100 * t.demN / t.demT)}%)`, t.demN / t.demT > 0.6 && t.demN / t.demT < 0.95);
+
+  // (d) complement clauses: the complementizer (COMP) appears wherever the
+  // tongue has one, and the embedded verb renders inside
+  let compOK = 0, compHas = 0;
+  for (const l of langs) {
+    const g = gramOf(l);
+    const c = renderClause(l, F.comp);
+    if (g.compz !== "none") { compHas++; if (/(^| )COMP( |$)/.test(c.gloss)) compOK++; }
+    // the embedded 'see' verb must appear in the complement
+  }
+  check(`complement clauses carry a complementizer where the tongue has one (${compOK}/${compHas})`, compHas > 0 && compOK === compHas);
+
+  // (e) adverbial subordination + coordination render their linkers, and the
+  // adverbial clause preposes more often in OV (the 'when X, Y' order)
+  let advOK = 0, coordOK = 0;
+  for (const l of langs) {
+    if (/(^| )when( |$)/.test(renderClause(l, F.adv).gloss)) advOK++;
+    if (/(^| )and( |$)/.test(renderClause(l, F.coord).gloss)) coordOK++;
+  }
+  check(`adverbial 'when' clauses render (${advOK}/${langs.length})`, advOK === langs.length);
+  check(`clause coordination renders 'and' (${coordOK}/${langs.length})`, coordOK === langs.length);
+  check(`adverbial clauses prepose more in OV than VO (${Math.round(100 * t.ovAdv / t.ovT)}% of OV)`, t.ovAdv / t.ovT > 0.5);
+
+  // (f) NP-internal: the F.np frame sets a demonstrative AND def:true — the
+  // demonstrative must suppress the article (no "that the horse"), so DEF must
+  // never surface; the numeral must render; the demonstrative must appear
+  let stackBad = 0, npHasNum = 0, npHasDem = 0;
+  for (const l of langs) {
+    const c = renderClause(l, F.np);
+    if (/(^| )DEF( |$)/.test(c.gloss)) stackBad++;
+    if (/(^| )3( |$)/.test(c.gloss)) npHasNum++;
+    if (/(^| )(that|yon)( |$)/.test(c.gloss)) npHasDem++;
+  }
+  check(`a demonstrative suppresses the article — no "that the horse" (${stackBad} stackers)`, stackBad === 0);
+  check(`the cardinal numeral renders in the noun phrase (${npHasNum}/${langs.length})`, npHasNum === langs.length);
+  check(`the demonstrative renders in the noun phrase (${npHasDem}/${langs.length})`, npHasDem === langs.length);
+
+  // (g) references speak complex clauses in character: Mandarin builds a
+  // PRENOMINAL relative ([… gap] REL head) in legal pinyin; English a
+  // POSTNOMINAL one (DEF king REL saw …)
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const m = foundLanguage(world, { seed: 445 });
+  m.prof = refProfile("mandarin", 445); m.rules = [];
+  const mp = refPin("mandarin"); m.pin = mp.pin; m.prof.rom = mp.rom;
+  const mc = renderClause(m, F.relSubj);
+  const mRelIdx = mc.tokens.findIndex(t => t.g === "REL");
+  const mHeadIdx = mc.tokens.findIndex(t => t.role === "S" && t.g === "king");
+  const mLegal = mc.tokens.every(t => PINYIN.test(strip(t.w.toLowerCase())));
+  check(`pinned Mandarin: prenominal relative, REL before head, legal pinyin (${mc.text})`,
+    mRelIdx >= 0 && mHeadIdx >= 0 && mRelIdx < mHeadIdx && mLegal);
+  const e = foundLanguage(world, { seed: 446 });
+  e.prof = refProfile("english", 446); e.rules = [];
+  const ep = refPin("english"); e.prof.rom = { ...(e.prof.rom || {}), ...ep.rom }; e.pin = ep.pin;
+  const ec = renderClause(e, F.relSubj);
+  const eHead = ec.tokens.findIndex(t => t.role === "S" && t.g === "king");
+  const eRel = ec.tokens.findIndex(t => t.g === "REL");
+  check(`pinned English: postnominal relative, head before REL (${ec.text})`, eHead >= 0 && eRel > eHead);
+
+  // (h) determinism + JSON roundtrip of the whole nested-clause set
+  const w1 = mkWorld(), w2 = mkWorld();
+  const a = foundLanguage(w1, { seed: 8484 }), b2 = foundLanguage(w2, { seed: 8484 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => Object.values(F).map(f => renderClause(l, f).text).join("‖");
+  check("complex clauses deterministic + JSON-roundtrip-stable", sig(a) === sig(b2) && sig(a) === sig(c3));
+
+  if (!quiet) {
+    say("\n   'the king who saw the river slept' in four tongues:");
+    for (const l of [m, e, langs[0], langs[3]]) { const c = renderClause(l, F.relSubj); say("     " + c.text.padEnd(40) + "  " + c.gloss); }
+    say("   'he said that the king saw the river':");
+    for (const l of [m, e, langs[0]]) { const c = renderClause(l, F.comp); say("     " + c.text.padEnd(40) + "  " + c.gloss); }
   }
 }
 

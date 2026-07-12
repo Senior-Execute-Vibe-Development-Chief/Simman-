@@ -28,7 +28,7 @@ import {
   CONCEPTS, MANY, ALL, TWO, HAND, MAN, EARTH, DAY, ROAD,
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
-  TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL,
+  TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, SAY,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -89,9 +89,33 @@ export function rollGrammar(famSeed, prof) {
   const agree = m === "iso" ? (H("agr") < 0.9 ? "none" : "subj")
     : H("agr") < 0.28 ? "none"
     : H("agr2") < (m === "agg" ? 0.3 : 0.12) ? "both" : "subj";
+  // ── COMPLEX SYNTAX (M6): the clause beyond one verb ──
+  // Relative-clause position (WALS 90A): postnominal is the world majority;
+  // prenominal clusters in verb-final tongues (Japanese/Turkish [Ø saw river]
+  // king). NRel dominates VO strongly.
+  const relPos = ov ? (H("relpos") < 0.5 ? "pre" : "post") : (H("relpos") < 0.1 ? "pre" : "post");
+  // Relativization strategy (WALS 122/123): the GAP is commonest; a resumptive
+  // PRONOUN is a real minority (Semitic/Celtic 'the man that I saw him'); the
+  // PARTICIPLE (a de-verbal modifier, no relativizer) clusters prenominally.
+  const relStrat = relPos === "pre"
+    ? (H("relstr") < 0.58 ? "part" : H("relstr") < 0.85 ? "gap" : "pron")
+    : (H("relstr") < 0.6 ? "gap" : H("relstr") < 0.82 ? "pron" : "part");
+  // Complementizer origin: worn from the distal demonstrative (that→'that',
+  // the European path), from the SAY verb (quotative→complementizer, the
+  // African/Asian path), or none at all (bare juxtaposition). Its side tracks
+  // headedness: prehead in VO (said THAT …), final in OV (… that, said).
+  const compz = H("compz") < 0.4 ? "dem" : H("compz") < 0.75 ? "say" : "none";
+  // Adverbial clauses ('when X, Y') preposed in OV, postposed in VO.
+  const advPos = ov ? (H("advpos") < 0.8 ? "pre" : "post") : (H("advpos") < 0.35 ? "pre" : "post");
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
+    // Greenberg U18: demonstratives and numerals track the adjective's side
+    // but lean prenominal even where the adjective follows (Romance 'ces trois
+    // livres rouges'); head-final tongues stack everything before the noun
+    demN: H("dord") < (adjN ? 0.9 : v1 ? 0.35 : 0.72),
+    numN: H("nord") < (adjN ? 0.9 : v1 ? 0.4 : 0.72),
+    relPos, relStrat, compz, advPos,
     aspect: tenses === 1 ? true : H("asp") < 0.45,   // tenseless ⇒ aspect carries time
     pluralMark: m === "iso" ? H("pl") < 0.3 : H("pl") < 0.9,
     dual: H("du") < 0.15,
@@ -437,7 +461,29 @@ export function closedOf(lang) {
     return { g: "INDF", form: f, w: rform(lang, f), src: "one" };
   })() : null;
 
-  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW };
+  // ── relativizer + complementizer (M6 complex syntax) ──
+  // The relativizer heads a relative clause under the gap/resumptive
+  // strategies (the participle strategy needs none — the verb-form IS the
+  // mark). It wears from the 'who' interrogative (relative-pronoun path) or
+  // the distal demonstrative (that→which/that, the commonest source), and
+  // surfaces at the RC edge ADJACENT to the head — so English 'king WHO…' and
+  // Chinese '…gap DE king' both fall out of one placement rule.
+  const relz = g.relStrat === "part" ? null : (() => {
+    const fromWho = h01(fam, "relsrc") < 0.4;
+    const base = fromWho ? qs.find(q => q.k === "who").form : far.form;
+    const f = legalizeWord({ syls: [wearSyl(prof, base)] });
+    return { g: "REL", form: f, w: rform(lang, f), src: fromWho ? "who" : "that" };
+  })();
+  // The complementizer ('that' of "said that…") wears from the distal
+  // demonstrative or the SAY verb (the quotative→complementizer path), or is
+  // absent (bare juxtaposition). Toneless, like the other grammatical enclitics.
+  const compr = g.compz === "none" ? null : (() => {
+    const base = g.compz === "say" ? lighten(rootFormOf(lang, SAY).w) : far.form;
+    const f = legalizeWord({ syls: [wearSyl(prof, base)] });
+    return { g: "COMP", form: f, w: rformNeutral(lang, f), src: g.compz === "say" ? "say" : "that" };
+  })();
+
+  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, relz, compr };
   return c.closed;
 }
 
@@ -1300,17 +1346,86 @@ export function resolveTam(lang, wanted) {
   return null;
 }
 
-/** Render a semantic frame as a clause.
- *  frame = { s: {pron:{k,pers,num}} | {n,num,def,adj},
- *            v: {c, tam, neg},
+/** Render a semantic frame as a clause. The frame IS the shape of a chronicle
+ *  event; M6 lets it nest — a noun argument can carry a relative clause, a
+ *  verb a complement clause, the whole clause an adverbial subordinate or a
+ *  coordinate twin.
+ *  frame = { s: {pron:{k,pers,num}} | {n,num,def,adj,dem,card,rel},
+ *            v: {c, tam, neg, mood, comp},
  *            o: null | like s | {wh:true},
  *            loc: null | {adp, n, def},
- *            q: bool }
+ *            q: bool,
+ *            sub: {con, frame} | undefined,      // 'when X, Y'
+ *            coord: {con, frame} | undefined }    // 'X and Y'
+ *  where a relative arg.rel = { headRole:"s"|"o", v, s?/o? } is a clause the
+ *  head noun is a participant in.
  *  → { tokens: [{w, g, role}], text, gloss } */
-export function renderClause(lang, frame) {
+export function renderClause(lang, frame, depth = 0) {
+  const g = gramOf(lang);
+  const cl = closedOf(lang);
+  const join = (seq) => ({ tokens: seq, text: seq.map(t => t.w).join(" "), gloss: seq.map(t => t.g).join(" ") });
+  // clause COORDINATION: "S1 and/but/or S2" — the conjunction between whole
+  // clauses, not just nouns (reuses the closed-class 'and'/'but'/'or')
+  if (frame.coord && depth < 6) {
+    const a = renderClause(lang, { ...frame, coord: undefined }, depth + 1);
+    const b = renderClause(lang, frame.coord.frame, depth + 1);
+    const con = cl.conj.find(x => x.k === frame.coord.con) || cl.conj.find(x => x.k === "and") || cl.conj[0];
+    return join([...a.tokens, { w: con.w, g: con.g, role: "CONJ" }, ...b.tokens]);
+  }
+  // adverbial SUBORDINATION: "when/if/because S1, S2" — the subordinate clause
+  // preposes in OV (the 'when X, Y' order), postposes in VO, per advPos
+  if (frame.sub && depth < 6) {
+    const subr = subordinatorFor(lang, frame.sub.con);
+    const inner = renderClause(lang, frame.sub.frame, depth + 1).tokens.map(t => ({ ...t, role: "SUB" }));
+    const subClause = [{ w: subr.w, g: subr.g, role: "SUB" }, ...inner];
+    const main = renderClause(lang, { ...frame, sub: undefined }, depth + 1).tokens;
+    return join(g.advPos === "pre" ? [...subClause, ...main] : [...main, ...subClause]);
+  }
+  return join(renderCore(lang, frame, depth, {}));
+}
+
+// A subordinator for an adverbial clause: 'when' is the temporal interrogative
+// (the wh-series doubling as a relativizer/subordinator, English who/when), the
+// rest are the language's own little conjunctions ('if', 'because').
+function subordinatorFor(lang, con) {
+  const cl = closedOf(lang);
+  if (con === "when") { const q = cl.qs.find(x => x.k === "when"); return { w: q.w, g: "when" }; }
+  const c = cl.conj.find(x => x.k === con) || cl.conj.find(x => x.k === "because") || cl.conj[0];
+  return { w: c.w, g: c.g };
+}
+
+// A relative clause modifying a head noun. rel = { headRole:"s"|"o",
+// v:{c,tam,neg}, s?/o?:otherArg }: the head is the headRole participant of the
+// embedded clause, realized as a GAP (absent), a resumptive PRONOUN (objects
+// only — subject resumptives are rare and pro-dropped anyway), or the head of
+// a PARTICIPLE (no relativizer — the verb-form is the mark). Returns tokens
+// (role "REL"); the caller places them pre/post the head per relPos.
+function renderRelative(lang, rel, depth) {
+  const g = gramOf(lang), cl = closedOf(lang);
+  const part = g.relStrat === "part";
+  const otherRole = rel.headRole === "s" ? "o" : "s";
+  const sub = { v: { c: rel.v.c, tam: rel.v.tam, neg: rel.v.neg } };
+  sub[otherRole] = rel[otherRole] || null;
+  if (g.relStrat === "pron" && rel.headRole === "o") sub.o = { pron: { k: "3sg", pers: 3, num: "sg" } };
+  let toks = renderCore(lang, sub, depth + 1, { participle: part }).map(t => ({ ...t, role: "REL" }));
+  if (!part && cl.relz) {
+    const rz = { w: cl.relz.w, g: "REL", role: "REL" };
+    toks = g.relPos === "post" ? [rz, ...toks] : [...toks, rz];   // relativizer at the head-adjacent edge
+  }
+  return toks;
+}
+
+// The clause core: one verb, its arguments, ordered by the syntax dials. This
+// is the pre-M6 renderClause body verbatim, now returning the token sequence
+// (the wrapper joins it) plus three additive hooks that a simple frame never
+// triggers: NP modifiers (rel/dem/card), a verb complement clause (v.comp),
+// and a participle rendering of the verb (opts.participle, for participial RCs).
+function renderCore(lang, frame, depth, opts) {
   const g = gramOf(lang);
   const cl = closedOf(lang);
   const spec = paradigmSpec(lang);
+  const participle = !!(opts && opts.participle);
+  const ov = g.wo === "sov" || g.wo === "ovs";
   const trans = !!frame.o;
   const sIsPron = frame.s && !!frame.s.pron;
   const sPers = sIsPron ? frame.s.pron.pers : 3;
@@ -1345,8 +1460,28 @@ export function renderClause(lang, frame) {
       const adj = { w: wordOf(lang, arg.adj), g: glossOf(arg.adj), role };
       seq = g.adjN ? [adj, ...seq] : [...seq, adj];
     }
-    if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role }];
-    else if (arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role }];
+    // a demonstrative is itself a definite determiner — it suppresses the
+    // article (no "that the horse"); a simple frame never sets arg.dem, so
+    // this leaves existing output byte-identical
+    if (!arg.dem && arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role }];
+    else if (!arg.dem && arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role }];
+    // NP-internal modifiers (M6, additive — a simple frame sets none): the
+    // NUMERAL and DEMONSTRATIVE take their Greenberg-correlated side (numN,
+    // demN), a RELATIVE clause wraps outermost per relPos
+    if (arg.card != null) {
+      const nm = numeral(lang, arg.card);
+      const ct = { w: nm.text, g: String(arg.card), role };
+      seq = g.numN ? [ct, ...seq] : [...seq, ct];
+    }
+    if (arg.dem) {
+      const d = cl.dems.find(x => x.k === arg.dem) || cl.dems[cl.dems.length - 1];
+      const dt = { w: d.w, g: d.g, role };
+      seq = g.demN ? [dt, ...seq] : [...seq, dt];
+    }
+    if (arg.rel) {
+      const relToks = renderRelative(lang, arg.rel, depth);
+      seq = g.relPos === "pre" ? [...relToks, ...seq] : [...seq, ...relToks];
+    }
     return seq;
   };
   const toks = {
@@ -1354,17 +1489,28 @@ export function renderClause(lang, frame) {
     o: np(frame.o, oCase, "O"),
     v: [],
   };
-  // verb: agreement with the subject; object person when polypersonal
+  // verb: agreement with the subject; object person when polypersonal. A
+  // participle (for a participial RC) sheds agreement and glosses PTCP.
   const imperative = frame.v.mood === "imp";
   const tam = imperative ? null : resolveTam(lang, frame.v.tam);
-  const agreePers = !imperative && g.agree !== "none" ? String(sPers) : null;
-  const objPers = !imperative && g.agree === "both" && trans && !frame.o.wh ? "3" : null;
+  const agreePers = !imperative && !participle && g.agree !== "none" ? String(sPers) : null;
+  const objPers = !imperative && !participle && g.agree === "both" && trans && !frame.o.wh ? "3" : null;
   const neg = !!frame.v.neg;
   const vx = inflectVerb(lang, frame.v.c, {
     tam, pers: agreePers, num: sNum === "du" ? "pl" : sNum, obj: objPers,
     neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null,
   });
-  toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
+  toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss + (participle ? ".PTCP" : ""), role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
+  // verb COMPLEMENT clause (v.comp): "said [that S saw river]" — the embedded
+  // clause fills the object slot, with the complementizer at the matrix-verb
+  // edge (prehead in VO 'said THAT…', final in OV '…that, said')
+  if (frame.v.comp && depth < 6) {
+    const inner = renderClause(lang, frame.v.comp, depth + 1).tokens.map(t => ({ ...t, role: "C" }));
+    if (cl.compr) {
+      const cz = { w: cl.compr.w, g: "COMP", role: "C" };
+      toks.o = ov ? [...inner, cz] : [cz, ...inner];
+    } else toks.o = inner;
+  }
   // negation particle (when not an affix): before/after the verb, or clause-final.
   // imperatives already carry their own prohibitive marker in vx.pre/post
   let negFinal = false;
@@ -1377,7 +1523,7 @@ export function renderClause(lang, frame) {
   // (universal tendency), and any explicit subject pronoun goes with it
   if (imperative && (!frame.s || sIsPron)) toks.s = [];
   // pro-drop: agreement carries the person, the pronoun stays home
-  else if (sIsPron && g.proDrop && g.agree !== "none") toks.s = [];
+  else if (sIsPron && g.proDrop && g.agree !== "none" && !participle) toks.s = [];
   // adpositional adjunct
   const locToks = [];
   if (frame.loc) {
@@ -1389,7 +1535,6 @@ export function renderClause(lang, frame) {
     locToks.push(...(g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X" }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X" }]));
   }
   // assemble by word order; adjuncts sit preverbally in OV, clause-late in VO
-  const ov = g.wo === "sov" || g.wo === "ovs";
   const seq = [];
   for (const slot of WO_SEQ[g.wo]) {
     if (slot === "v" && ov && locToks.length) seq.push(...locToks);
@@ -1405,7 +1550,7 @@ export function renderClause(lang, frame) {
     if (g.qPart === "final") seq.push({ w: cl.qp.w, g: "Q", role: "Q" });
     else if (g.qPart === "init") seq.unshift({ w: cl.qp.w, g: "Q", role: "Q" });
   }
-  return { tokens: seq, text: seq.map(t => t.w).join(" "), gloss: seq.map(t => t.g).join(" ") };
+  return seq;
 }
 
 /** Etymology notes for the Lab: which closed forms are worn-down open words. */
