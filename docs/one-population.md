@@ -246,6 +246,95 @@ logistic retire, founders/colonists move ON the field, s.people and
 s._urbanPop are derived reads, and a settlement's death no longer erases
 its region's people.
 
+### Grounding the slope in the urban graveyard (BUILT, lever off — T.URBAN_GAMMA)
+
+The next-step above (ground β in the mortality-density curve, bound the flow,
+damp the per-seed variance) was built and measured on the REAL gate. It is a
+genuine advance on two of the three axes and STILL SHORT on the third; it is
+NOT flipped (the bar is zero soft warnings, and the Zipf remains one warning
+per seed). Lever off = byte-identical (8817=f925a9f, 31337=fd5cb49c, proven vs
+clean src at 2500 steps).
+
+THE MECHANISM (T.URBAN_GAMMA, popField.js deriveOnePop). When γ>0 the free β
+lever is retired: the flow chases each core's RAW import economy (β=1, the
+target undivided), and the LIMITER becomes excess mortality rising super-
+linearly with the core's own density — the sink stamped for the field pass is
+scaled `×= (coreDensity / medianCoreDensity)^γ` (median over the importing
+cores, recomputed per tick — scale-free, no persisted state, no fitted
+constant). A denser-than-typical core is deadlier (the historical urban
+graveyard: great pre-modern cities grew only by in-migration because crowd
+disease outran births), so the equilibrium where in-migration = excess deaths
+is intrinsically SUBLINEAR in economy — size ∝ economy^(1/(1+γ)) falls out of a
+real death rate rather than being imposed by a compression exponent. Because
+the limiter is the core's OWN density (not the uniform 0.9·hinterland cap,
+loosened to 0.97 as a pure conservation guard under γ, with a gentler per-tick
+concentration flux so the raw target can't strip the countryside in a rush),
+economies differentiate again where the hard cap flattened them, and the per-
+city feedback self-calibrates the slope instead of one β dialed to the gate.
+
+MEASURED (real gate, 480×240/21k, URBAN_AGGLOM=0.13/URBAN_GAMMA=0.5):
+  • **The self-calibration WORKS.** The three seeds' Zipf slopes CONVERGE —
+    −0.68 / −0.66 / −0.65 (8817/31337/4242) — from a spread that had 31337
+    stuck at −0.54 (capped) while 8817 sat at −0.82. The density feedback pulls
+    the over-concentrated seed off the cap and toward the pack: exactly the
+    grounding the doc predicted.
+  • **The political coupling is RESOLVED.** Every empire-area-tail (3.7/3.1/5.5,
+    all ≥3), fallen-lifespan (216/438/128 y), lifespan-heavy-tail and
+    urbanization gate PASSES on all 3 seeds — where the free-β agglomeration had
+    perturbed the empire tail and fallen-lifespan via the settlement-lifecycle
+    coupling. The gentler flow drains hinterlands less, so more cores survive
+    (106–120 cities) and the political layer stays intact.
+  • **Urbanization returns to band** (19.5/23.4/14.2%, agrarian 2–25%) as an
+    output on all three.
+  • **3/3 seeds pass the soft budget** — but at ONE warning each, the Zipf:
+    −0.65..−0.68, ~0.03–0.05 SHORT of the −0.70 flip threshold. Not zero.
+
+WHY IT IS SHORT — the economy diagnostic (tools/probe_onepop_fill.mjs now prints
+`econZipf`, the raw kBeyond tail over the urban>50 cores). This REFUTES the
+tempting "31337's economy is uniform" story: the economies are all steep enough
+to be in-band on their own — 8817 −0.93, 4242 −0.93, and 31337 the STEEPEST at
+−1.08. The blocker is that the density mortality OVER-COMPRESSES, and unevenly:
+31337's cores are the most concentrated (urbanShare 0.75–0.84, all near the
+hinterland cap), so the density penalty hits them hardest and grinds −1.08 down
+to −0.66. The deeper cause is structural: 31337's import-heavy cores WANT to be
+primates (their economies exceed their regions), but the conservative flow can
+only draw people from a core's OWN region — a city cannot exceed its hinterland
+without INTER-REGIONAL migration, which is dead end #2 (runaway). So its steep
+economy is HINTERLAND-THROTTLED into a shallower size law than it implies, and
+the mortality that differentiates the throttled cores below the cap is the same
+force that over-flattens them. 31337 is also genuinely CHAOTIC across γ (the
+settlement-lifecycle coupling reshapes which cores survive → its econZipf itself
+swings −0.82..−1.08 between γ=0.3 and 0.4): the doc's long-standing "31337 noise"
+is this coupling, and the probe mispredicts it by ~0.12 besides.
+
+TWO STEEPENERS TRIED, both measured to fail (do not re-walk):
+  1. **Amplify the target (β>1, agglomeration returns).** β=1.2 steepens the
+     well-behaved seeds into band on the real gate (8817 −0.73, 4242 −0.79) but
+     SHATTERS the over-concentrated one — 31337 → −0.43, urbanization over 25%,
+     empire tail wobbling — because amplifying a near-uniform-at-the-cap economy
+     fragments the >50 city set. A single β cannot serve both.
+  2. **Crowding×concentration graveyard (density = corePop²/region = corePop ×
+     urbanShare).** This SPARES the honestly-large-but-spread core (8817's cid 11
+     is 199k people yet only 36% of its region) and hits the hinterland-swallowing
+     core hardest — physically the better story. It frees 8817 to −0.76 (CLEAN,
+     zero warnings) but over-compresses the already-concentrated 31337 to −0.61
+     AND re-triggers the political coupling (4242's empire-area tail 5.5→2.8, into
+     warn) because the concentration weighting drains hinterlands harder. Kept the
+     ABSOLUTE-density form (converges, politically clean) as the committed
+     checkpoint; the crowding×concentration variant is the measured next lead.
+
+HONEST CHECKPOINT: the grounding + convergence + political-coupling fix are real
+and byte-identical off; the last ~0.04 of Zipf on the over-concentrated seed is
+the hinterland-throttle (a missing mechanism — bounded inter-regional urban
+migration), not a tuning miss, and closing it with a per-seed γ would be a fitted
+outcome (cardinal rule 2). NOT flipped. The clean next arc is EITHER the
+crowding×concentration graveyard with the flow bounded hard enough to keep the
+political layer intact (re-measure empire tail AND city count, not just slope),
+OR the bounded inter-regional migration the throttle asks for — the primate city
+that outgrows its own hinterland by drawing people across regions, braked by the
+very graveyard built here (the brake dead end #2 lacked). Until one lands 3/3 at
+zero warnings, ONE_POP stays lever-off, byte-identical.
+
 The heart of the unification:
 
 1. **Urban capacity**: a city tile's carrying capacity stops being cropland

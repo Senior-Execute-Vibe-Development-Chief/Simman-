@@ -426,13 +426,17 @@ function applyUrbanSpikes(world, cap) {
 // region's owned tiles, never created or destroyed — the region's census total
 // is unchanged, only its rural/urban split. Deterministic box walk, no RNG.
 const URBAN_MAXSHARE = 0.9;  // a city holds at most this share of its region's people (the hinterland bound)
+const URBAN_GMAXSHARE = 0.97; // under γ the hinterland bound is a pure CONSERVATION guard (the graveyard, not the cap, limits)
+const GRAVEYARD_PMAX = 12;   // cap on the density-graded graveyard multiplier (a transient spike can't kill a core in one pass)
 const URBAN_CONC_R = 6;      // the urban hinterland radius (tiles) people draw in from
 const URBAN_CONC_LAMBDA = 0.2;  // relaxation toward the target per tick (convergence rate, not the equilibrium)
 const URBAN_CONC_MAXFRAC = 0.5; // cap per-tick flux at half the available side (no single-tick emptying)
+const URBAN_CONC_MAXFRAC_G = 0.12; // under γ the target is the RAW economy (large) → a gentler per-tick flux so the flow can't strip the countryside in a rush toward it (the graveyard equilibrium is reached over many ticks)
 
 /** Move `delta` field-people between the core tile and its OWN countryside
  *  (owner==sid, within the hinterland box), conservatively. +pull in, −push out. */
-function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta) {
+function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta, maxFrac) {
+  if (maxFrac === undefined) maxFrac = URBAN_CONC_MAXFRAC;
   const pf = world.popField, tw = world.tw, th = world.th;
   const x0 = cx - URBAN_CONC_R, x1 = cx + URBAN_CONC_R;
   const y0 = Math.max(0, cy - URBAN_CONC_R), y1 = Math.min(th - 1, cy + URBAN_CONC_R);
@@ -446,7 +450,7 @@ function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta) {
       if (pf[ti] > 0) avail += pf[ti];
     }
     if (avail <= 0) return;
-    const take = Math.min(delta, avail * URBAN_CONC_MAXFRAC);
+    const take = Math.min(delta, avail * maxFrac);
     const frac = take / avail;
     let moved = 0;
     for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
@@ -458,7 +462,7 @@ function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta) {
   } else if (delta < 0) {
     // CONGESTION: push the crowd back out, spread over owned countryside
     // proportional to each tile's SPARE capacity (people go where there is room).
-    const push = Math.min(-delta, pf[coreTi] * URBAN_CONC_MAXFRAC);
+    const push = Math.min(-delta, pf[coreTi] * maxFrac);
     if (push <= 0) return;
     const cap = world.capField;
     let room = 0;
@@ -513,6 +517,25 @@ export function deriveOnePop(world) {
   }
   const scale = world._onePopScale;
   const agglom = T.URBAN_AGGLOM > 0;
+  // GROUNDED SLOPE (T.URBAN_GAMMA): the size↔economy elasticity is set by the
+  // urban graveyard, not a free lever. Excess mortality rises super-linearly
+  // with the core's own density (sink ×= (density/medianDensity)^γ below), so a
+  // city's equilibrium — where in-migration balances excess deaths — is
+  // intrinsically SUBLINEAR in economic capacity: size ∝ capacity^(1/(1+γ)),
+  // the same −1.5→envelope compression β used to IMPOSE, now falling out of a
+  // real death rate. So the flow chases the RAW economy (βeff=1, the target
+  // undivided) and the density mortality does the compressing — a density-
+  // graded SOFT limiter in place of the hard 90%-hinterland cap that pinned
+  // over-concentrated seeds to one uniform ceiling.
+  const gamma = agglom ? Math.max(0, T.URBAN_GAMMA) : 0;
+  const useGamma = gamma > 0;
+  // The target's economy exponent. Off γ it is the β-SHARE compression (β<1,
+  // the pre-graveyard mechanism). Under γ the flow chases the RAW economy
+  // (β=1, the target undivided) and the density graveyard — not this exponent —
+  // does the compressing, so the slope has ONE home (the mortality elasticity),
+  // not a β dialed to the gate. (Measured: amplifying the target β>1 to steepen
+  // the well-behaved seeds shatters the over-concentrated one — see docs.)
+  const betaEff = useGamma ? 1 : T.URBAN_BETA;
   // AGGLOMERATION↔CONGESTION distribution (T.URBAN_AGGLOM). The TOTAL urban
   // population is set by the ECONOMY — Σ import-fed capacity, i.e. how many
   // non-farmers the food surplus can support — so urbanization is an OUTPUT,
@@ -521,17 +544,33 @@ export function deriveOnePop(world) {
   // (congestion: crowding cost rising super-linearly with density) compresses
   // the heavy-tailed (−1.5) import economy toward the −0.8..−1.2 city envelope
   // WITHOUT changing the total (Σ share = 1 for any β) — so the slope (β) and
-  // the urbanization level (economy) cannot fight. Pre-pass sums the pulls.
+  // the urbanization level (economy) cannot fight. Pre-pass sums the pulls, and
+  // (under γ) collects the importing cores' densities for the median reference.
   let sumK = 0, sumKb = 0;
+  const coreDens = useGamma ? [] : null;
   if (agglom) {
     for (const s of world.settlements) {
       if (s.mode !== "settled") continue;
       const isr = Math.max(0, Math.min(1,
         ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
       const kb = ((s._k || 0) * isr) / scale;
-      if (kb > 0) { sumK += kb; sumKb += Math.pow(kb, T.URBAN_BETA); }
+      if (kb > 0) {
+        sumK += kb; sumKb += Math.pow(kb, betaEff);
+        if (coreDens) {
+          const cti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+          if (cti >= 0 && cti < world.N && pf[cti] > 0) coreDens.push(pf[cti]);
+        }
+      }
     }
   }
+  // Median importing-core density — the scale-free reference the graveyard
+  // penalty is measured against (a mean-field congestion term, recomputed each
+  // tick, no persisted state and no fitted constant). A denser-than-typical core
+  // pays >1× the excess mortality, so its equilibrium size is sublinear in its
+  // economy — which is what pulls the over-concentrated seed's cores off the
+  // hinterland cap and lets their economies differentiate again.
+  let medDens = 0;
+  if (coreDens && coreDens.length) { coreDens.sort((a, b) => a - b); medDens = coreDens[coreDens.length >> 1]; }
   spikes.clear();
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -554,18 +593,22 @@ export function deriveOnePop(world) {
     // no target — they stay rural, as the ontology says.
     let uTarget = 0;
     if (agglom && kBeyond > 0 && sumKb > 0) {
-      // This city's β-compressed share of the economy's total urban capacity.
-      const share = Math.pow(kBeyond, T.URBAN_BETA) / sumKb;
+      // This city's β-compressed share of the economy's total urban capacity
+      // (βeff=1 under γ: the target is the RAW economy — the density graveyard,
+      // not this exponent, does the compressing).
+      const share = Math.pow(kBeyond, betaEff) / sumKb;
       uTarget = T.URBAN_AGGLOM * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core
       // A city lives WITHIN its hinterland: cap the target at a share of the
-      // region's own people. Since the countryside is terrain-capped, this
-      // bounds any feedback and is the real constraint that the largest cities
-      // can't outgrow the land that feeds them.
-      if (f > 0) uTarget = Math.min(uTarget, URBAN_MAXSHARE * f);
+      // region's own people. Under β-share this is the binding limiter (and, for
+      // over-concentrated seeds, a UNIFORMISING one — the whole top set pins to
+      // 0.9·f). Under γ it is only the conservation ceiling: the density
+      // graveyard holds most cores well below it, so economies differentiate
+      // (each core settles at its own capacity^(1/(1+γ))) instead of flattening.
+      if (f > 0) uTarget = Math.min(uTarget, (useGamma ? URBAN_GMAXSHARE : URBAN_MAXSHARE) * f);
       if (f > 0) {
         const cx = s.pos.x | 0, cy = s.pos.y | 0;
         const delta = URBAN_CONC_LAMBDA * (uTarget - pf[ti]);
-        if (delta > 1e-6 || delta < -1e-6) urbanConcentrate(world, owner, s.id, cx, cy, ti, delta);
+        if (delta > 1e-6 || delta < -1e-6) urbanConcentrate(world, owner, s.id, cx, cy, ti, delta, useGamma ? URBAN_CONC_MAXFRAC_G : URBAN_CONC_MAXFRAC);
       }
     }
     if (f > 0) s.people = Math.max(1, f * scale);
@@ -587,7 +630,19 @@ export function deriveOnePop(world) {
     // throughput-limited diffusion, is what actually fills it. Otherwise it is
     // the raw import ceiling (the pre-agglomeration behaviour).
     const kCap = agglom ? uTarget : kBeyond;
-    if (kCap > 0 || s._rEff !== undefined) spikes.set(ti, { k: kCap, r: s._rEff, sink: s._rSink || 0 });
+    // THE URBAN GRAVEYARD, density-graded (T.URBAN_GAMMA): the base excess
+    // mortality (settlement.js: disease load × urbanity × unhealed) is scaled by
+    // how dense this core is versus the typical importing core, raised to γ —
+    // super-linear, so a great city is disproportionately deadlier (its crowd
+    // disease outruns its births; it grows only by pulling people in). This is
+    // what makes the equilibrium size sublinear in economy and re-differentiates
+    // cores the hard cap would have flattened. γ=0 ⇒ ×1 (the flat sink, byte-
+    // identical). Clamped so a transient spike can't kill a core in one pass.
+    let sink = s._rSink || 0;
+    if (useGamma && sink > 0 && medDens > 0 && pf[ti] > 0) {
+      sink *= Math.min(GRAVEYARD_PMAX, Math.pow(pf[ti] / medDens, gamma));
+    }
+    if (kCap > 0 || s._rEff !== undefined) spikes.set(ti, { k: kCap, r: s._rEff, sink });
   }
 }
 
