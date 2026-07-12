@@ -1,0 +1,192 @@
+<title>Emblem Genome — a heraldic genetics lab</title>
+<style>
+  :root{
+    --ground:#e7e1d1; --surface:#f1ece0; --raised:#f7f3e8; --ink:#262a31; --muted:#6b6559;
+    --accent:#9c7716; --accent-2:#2f4f96; --rule:#cec5af; --plate:#20242c;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --ground:#171a21; --surface:#1f242e; --raised:#262c38; --ink:#e8e3d5; --muted:#938d80;
+           --accent:#cca24e; --accent-2:#7f9bd8; --rule:#323a46; }
+  }
+  :root[data-theme="dark"]{ --ground:#171a21; --surface:#1f242e; --raised:#262c38; --ink:#e8e3d5; --muted:#938d80; --accent:#cca24e; --accent-2:#7f9bd8; --rule:#323a46; }
+  :root[data-theme="light"]{ --ground:#e7e1d1; --surface:#f1ece0; --raised:#f7f3e8; --ink:#262a31; --muted:#6b6559; --accent:#9c7716; --accent-2:#2f4f96; --rule:#cec5af; }
+
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); line-height:1.5; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:clamp(20px,3vw,36px); }
+  .masthead{ margin-bottom:22px; }
+  .eyebrow{ font-size:.68rem; text-transform:uppercase; letter-spacing:.2em; font-weight:700; color:var(--accent); margin:0 0 8px; }
+  h1{ font-family:var(--serif); font-weight:500; font-size:clamp(1.7rem,3.6vw,2.5rem); margin:0 0 8px; letter-spacing:-.01em; }
+  .sub{ color:var(--muted); max-width:64ch; margin:0; font-size:.96rem; }
+
+  .workbench{ display:grid; grid-template-columns:230px minmax(0,1fr) 230px; gap:16px; align-items:start; }
+  @media (max-width:900px){ .workbench{ grid-template-columns:1fr; } }
+  .rail{ background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:16px; }
+  .rail h2{ font-family:var(--sans); font-size:.7rem; text-transform:uppercase; letter-spacing:.16em; color:var(--accent); margin:0 0 4px; font-weight:700; }
+  .rail p.hint{ font-size:.74rem; color:var(--muted); margin:0 0 14px; }
+
+  .ctrl{ margin-bottom:13px; }
+  .ctrl label{ display:flex; justify-content:space-between; font-size:.78rem; margin-bottom:4px; color:var(--ink); }
+  .ctrl label b{ font-weight:600; }
+  .ctrl label .val{ color:var(--muted); font-family:var(--mono); font-size:.72rem; font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; accent-color:var(--accent); height:18px; }
+
+  .stage{ background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:20px; display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .plate{ background:var(--plate); border:1px solid var(--accent); border-radius:4px; padding:16px; box-shadow:0 14px 34px -20px rgba(0,0,0,.6); }
+  .plate svg{ display:block; width:min(360px,74vw); height:auto; }
+  @media (prefers-reduced-motion:no-preference){ .plate svg{ transition:opacity .12s; } .swap{ opacity:0; } }
+  .name{ font-family:var(--serif); font-size:1.35rem; text-align:center; margin:0; }
+  .blazon{ font-size:.86rem; color:var(--muted); text-align:center; margin:-6px 0 0; font-family:var(--mono); letter-spacing:.02em; }
+  .gentag{ font-size:.7rem; color:var(--accent); text-transform:uppercase; letter-spacing:.12em; }
+
+  .genes{ width:100%; }
+  .genes .cap{ font-size:.66rem; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); margin:6px 0 6px; display:flex; justify-content:space-between; }
+  .bars{ display:flex; gap:2px; height:48px; align-items:flex-end; }
+  .bars .bar{ flex:1; background:var(--rule); border-radius:1px 1px 0 0; cursor:pointer; position:relative; min-width:3px; transition:background .1s; }
+  .bars .bar>i{ display:block; background:linear-gradient(var(--accent),var(--accent-2)); border-radius:1px 1px 0 0; width:100%; }
+  .bars .bar:hover{ background:var(--accent); }
+
+  .btn{ display:block; width:100%; text-align:left; background:var(--raised); color:var(--ink); border:1px solid var(--rule); border-radius:6px; padding:9px 12px; font:inherit; font-size:.82rem; cursor:pointer; margin-bottom:8px; transition:border-color .12s, transform .04s; }
+  .btn:hover{ border-color:var(--accent); }
+  .btn:active{ transform:translateY(1px); }
+  .btn.primary{ background:var(--accent); color:#1a150a; border-color:var(--accent); font-weight:600; }
+  .btn:focus-visible{ outline:2px solid var(--accent-2); outline-offset:2px; }
+  .btn small{ display:block; color:var(--muted); font-size:.68rem; margin-top:1px; }
+  .btn.primary small{ color:#4a3d18; }
+  .divider{ height:1px; background:var(--rule); margin:14px 0; }
+
+  .breed{ display:flex; gap:8px; margin-bottom:8px; }
+  .slot{ flex:1; background:var(--plate); border:1px dashed var(--rule); border-radius:5px; aspect-ratio:1; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .slot.filled{ border-style:solid; border-color:var(--accent); }
+  .slot svg{ width:100%; height:100%; }
+  .slot .empty{ font-size:.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+
+  .lineage{ margin-top:16px; background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:14px 16px; }
+  .lineage h2{ font-size:.7rem; text-transform:uppercase; letter-spacing:.16em; color:var(--accent); margin:0 0 10px; font-weight:700; }
+  .strip{ display:flex; gap:10px; overflow-x:auto; padding-bottom:6px; }
+  .cell{ flex:0 0 auto; cursor:pointer; text-align:center; }
+  .cell .box{ width:76px; height:76px; background:var(--plate); border:1px solid var(--rule); border-radius:4px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .cell.cur .box{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+  .cell .box svg{ width:100%; height:100%; }
+  .cell span{ display:block; font-size:.62rem; color:var(--muted); margin-top:3px; font-family:var(--mono); }
+  footer{ margin-top:22px; font-size:.74rem; color:var(--muted); border-top:1px solid var(--rule); padding-top:14px; }
+  footer b{ color:var(--ink); }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">A heraldic genetics lab</p>
+    <h1>Emblem Genome</h1>
+    <p class="sub">One gene vector, expressed as a flat banner. Shape it with the design axes, then evolve it — reroll, mutate, breed. Every emblem is the phenotype of its genes; drift them and the design drifts with them. No pattern is locked to a "kind of realm" — every tradition is reachable by any genome.</p>
+  </header>
+
+  <div class="workbench">
+    <aside class="rail traits">
+      <h2>Design axes</h2>
+      <p class="hint">Abstract dials — they bias the genome without locking any pattern to a kind of realm. Move one and the emblem re-forms.</p>
+      <div id="sliders"></div>
+    </aside>
+
+    <section class="stage">
+      <span class="gentag" id="gentag">generation 0</span>
+      <div class="plate"><div id="emblem"></div></div>
+      <p class="name" id="name">—</p>
+      <p class="blazon" id="blazon">—</p>
+      <div class="genes">
+        <div class="cap"><span>Gene vector · 26 alleles</span><span>click a bar to mutate that gene</span></div>
+        <div class="bars" id="bars"></div>
+      </div>
+    </section>
+
+    <aside class="rail actions">
+      <h2>Evolve</h2>
+      <p class="hint">Descent with modification.</p>
+      <button class="btn primary" id="reroll">Reroll <small>new seed, same traits</small></button>
+      <button class="btn" id="mutate">Mutate <small>drift this genome one step</small></button>
+      <button class="btn" id="inherit">Inherit <small>a successor, lightly drifted</small></button>
+      <button class="btn" id="random">Randomize <small>a genome from nowhere</small></button>
+      <div class="divider"></div>
+      <h2>Breeding</h2>
+      <p class="hint">A union recombines two genomes.</p>
+      <div class="breed">
+        <div class="slot" id="slotA"><span class="empty">Pin A</span></div>
+        <div class="slot" id="slotB"><span class="empty">Pin B</span></div>
+      </div>
+      <button class="btn" id="pinA">Pin as A</button>
+      <button class="btn" id="pinB">Pin as B</button>
+      <button class="btn" id="cross">Cross A × B <small>marshal a child</small></button>
+    </aside>
+  </div>
+
+  <section class="lineage">
+    <h2>Lineage — your descent so far</h2>
+    <div class="strip" id="strip"></div>
+  </section>
+
+  <footer>
+    From <b>Simman</b>, an emergent civilisation simulator. Each realm gets a genome from its own seed and evolves it — no pattern is tied to a real-world culture, and there is no real religious iconography. Charge art from <b>DrawShield</b> (Karl Wilcox &amp; contributors); geometry, calligraphy and the brand glyph are procedural.
+  </footer>
+</div>
+
+<script>
+const CHARGE_DETAIL = __CHARGE_DETAIL__;
+
+/* ═══ emblem genome — inlined from src/sim/emblemGenome.js at build ═══ */
+__EMBLEM_GENOME__
+
+/* ═══ emblem renderer — inlined from src/sim/emblemRender.js at build ═══ */
+__EMBLEM_RENDER__
+
+/* ─────────── app ─────────── */
+const TRAITS=[["figuration","Figuration","abstract → living figures"],["ornateness","Ornateness","plain → divided & bordered"],["boldness","Charge size","small → dominant"],["saturation","Saturation","muted → vivid"],["symmetry","Symmetry","free → mirrored"],["tone","Tone","dark → light"],["hue","Base hue","the field's colour"],["format","Format","shield → banner → badge"]];
+const NAMES_A=["Vale","Sable","Celestial","Iron","Azure","Gilded","Ashen","Vermilion","Hollow","Verdant","Storm","Amber","Onyx","Coral","Ivory"];
+const NAMES_B=["Court","Dominion","League","Marches","Reach","Hold","Confederacy","Throne","Compact","Banner","Realm","Crown","Union","Order"];
+let state={ seed:(Math.random()*2e9)>>>0, traits:{}, genome:null, lineage:[], pinA:null, pinB:null };
+TRAITS.forEach(([k])=>state.traits[k]=0.5);
+
+const $=s=>document.querySelector(s);
+function nameFor(gm){ const r=rrng((gm.seed*7+ (gm.gen||0)*13)>>>0); return NAMES_A[Math.floor(r()*NAMES_A.length)]+" "+NAMES_B[Math.floor(r()*NAMES_B.length)]; }
+
+function buildSliders(){ const box=$("#sliders");
+  box.innerHTML=TRAITS.map(([k,label,hint])=>`<div class="ctrl"><label><b>${label}</b><span class="val" id="v_${k}">0.50</span></label><input type="range" min="0" max="100" value="50" id="s_${k}" aria-label="${label}"></div>`).join("");
+  TRAITS.forEach(([k])=>{ const s=$("#s_"+k); s.addEventListener("input",()=>{ state.traits[k]=s.value/100; $("#v_"+k).textContent=(s.value/100).toFixed(2); state.genome=foundGenome(state.seed,state.traits); paint(true); }); }); }
+
+function paintEmblem(el,gm,W,H){ el.innerHTML=emblemSVG(gm,W,H); }
+function paint(swap){ const gm=state.genome; const em=$("#emblem");
+  if(swap){ em.firstChild&&em.firstChild.classList&&em.firstChild.classList.add("swap"); }
+  paintEmblem(em,gm,300,300);
+  $("#name").textContent=nameFor(gm);
+  $("#blazon").textContent=describeGenome(gm);
+  $("#gentag").textContent="generation "+(gm.gen||0);
+  // gene bars
+  $("#bars").innerHTML=gm.genes.map((v,i)=>`<div class="bar" title="${GENES[i]} = ${v.toFixed(2)}" data-i="${i}"><i style="height:${(v*100).toFixed(0)}%"></i></div>`).join("");
+  $("#bars").querySelectorAll(".bar").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.i; state.genome.genes[i]=Math.random(); paint(true); }));
+}
+function pushLineage(){ state.lineage.push(state.genome); if(state.lineage.length>40) state.lineage.shift(); renderStrip(); }
+function renderStrip(){ const strip=$("#strip");
+  strip.innerHTML=state.lineage.map((gm,i)=>`<div class="cell ${gm===state.genome?"cur":""}" data-i="${i}"><div class="box">${emblemSVG(gm,80,80)}</div><span>g${gm.gen||0}</span></div>`).join("");
+  strip.querySelectorAll(".cell").forEach(c=>c.addEventListener("click",()=>{ state.genome=state.lineage[+c.dataset.i]; paint(true); renderStrip(); }));
+  strip.scrollLeft=strip.scrollWidth;
+}
+function setSlot(which,gm){ const el=$("#slot"+which); if(!gm){ el.className="slot"; el.innerHTML=`<span class="empty">Pin ${which}</span>`; return; } el.className="slot filled"; el.innerHTML=emblemSVG(gm,80,80); }
+
+$("#reroll").addEventListener("click",()=>{ state.seed=(Math.random()*2e9)>>>0; state.genome=foundGenome(state.seed,state.traits); paint(true); pushLineage(); });
+$("#mutate").addEventListener("click",()=>{ state.genome=mutateGenome(state.genome,(Math.random()*2e9)>>>0); paint(true); pushLineage(); });
+$("#inherit").addEventListener("click",()=>{ state.genome=inheritGenome(state.genome,(Math.random()*2e9)>>>0); paint(true); pushLineage(); });
+$("#random").addEventListener("click",()=>{ const s=(Math.random()*2e9)>>>0; state.genome={genes:GENES.map((_,i)=>prng((s+i*2654435761)>>>0)()),gen:0,seed:s}; paint(true); pushLineage(); });
+$("#pinA").addEventListener("click",()=>{ state.pinA=state.genome; setSlot("A",state.pinA); });
+$("#pinB").addEventListener("click",()=>{ state.pinB=state.genome; setSlot("B",state.pinB); });
+$("#cross").addEventListener("click",()=>{ if(!state.pinA||!state.pinB){ (state.pinA?$("#pinB"):$("#pinA")).style.borderColor="var(--accent-2)"; return; } state.genome=crossGenome(state.pinA,state.pinB,(Math.random()*2e9)>>>0); paint(true); pushLineage(); });
+
+// opening frame: draw seeds until one expresses a charge, so the lab opens on
+// something with a figure rather than a bare field. Every seed is a valid roll —
+// this just picks a representative one to greet you (Reroll stays pure-random).
+function seedWithMotif(traits){ let s=(Math.random()*2e9)>>>0; for(let i=0;i<48;i++){ if(expressGenome(foundGenome(s,traits)).motif) return s; s=(s*1664525+1013904223)>>>0; } return s; }
+buildSliders();
+state.seed=seedWithMotif(state.traits);
+state.genome=foundGenome(state.seed,state.traits);
+paint(false); pushLineage();
+</script>

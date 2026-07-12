@@ -70,6 +70,8 @@ const MOTIF_CATS  = ["beast", "insect", "bird", "mythic", "sea", "plant", "objec
 const LIVING_CATS = new Set(["beast", "insect", "bird", "mythic", "sea"]);
 const NONLIVING_CATS = ["plant", "object", "architecture", "natural", "celestial", "geometric"];
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
+// @INJECT:MOTIFS-START — the lab build (tools/build_lab.mjs) replaces this whole
+// block with the size-filtered subset so the artifact's pools match its bundled art.
 const MOTIFS = {
   beast:  ["lion", "wolf", "boar", "bull", "bear", "horse", "ram", "stag", "elephant", "rabbit", "antelope", "camel", "tiger", "leopard", "fox", "greyhound", "hedgehog", "badger", "otter", "squirrel", "ass", "cow"],
   insect: ["bee", "butterfly", "spider", "ant", "grasshopper", "dragonfly", "stagbeetle", "snail", "moth", "hornet"],
@@ -83,6 +85,7 @@ const MOTIFS = {
   celestial: ["sun", "moon", "estoile", "comet"],
   geometric: ["lozenge", "fusil", "roundel", "billet", "fret", "triskele"],
 };
+// @INJECT:MOTIFS-END
 
 const pickEnum = (v, arr) => arr[Math.min(arr.length - 1, Math.floor(v * arr.length))];
 
