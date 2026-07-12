@@ -23,7 +23,7 @@
 
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { rollProfile, applySignature, buildInventory, buildSyllabary, synthWord, renderWord, copyWord } from "./languagePhonology.js";
-import { applicableRules, applyRules } from "./languageChange.js";
+import { applicableRules, applyRules, legalizeWord } from "./languageChange.js";
 import { CONCEPTS, COLEX, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -145,7 +145,7 @@ function compile(lang) {
   // family-level semantic structure: colexification + derive-vs-root choices
   const colex = new Map();
   COLEX.forEach(([a, b, p], i) => { if (h01(lang.famSeed, "colex", i) < p) colex.set(b, a); });
-  c = { key, inv, colex, words: new Map(), internals: new Map(), sufs: null, seeded: false };
+  c = { key, inv, colex, words: new Map(), internals: new Map(), roots: new Map(), sufs: null, seeded: false };
   COMPILED.set(lang, c);
   return c;
 }
@@ -159,23 +159,37 @@ function compile(lang) {
 // fixed order and, when a fresh word's surface collides with one already
 // taken by an UNRELATED concept, extend/reshape it until it clears.
 // Colexified pairs (tree/wood) are intended merges and are skipped.
-function extendRoot(lang, w, cid, attempt) {
+//
+// CRITICAL: the repair targets the PRE-RULE ROOT of an atomic concept, not
+// the evolved surface — so the grammar layer (which builds paradigms and
+// numerals from rootFormOf) and the dictionary (wordOf/internalOf) draw from
+// the SAME repaired root and can never disagree. (An early version repaired
+// only the post-rule form; the paradigm's citation cell and the counting
+// system then read the un-repaired root — the 'go=šüvep vs šüvepxik' and
+// '6=paxobe vs deqe' desyncs a fresh reader caught.)
+function growWord(lang, w, cid, attempt) {
   const c = COMPILED.get(lang);
   const out = copyWord(w);
-  // append a distinct light syllable coined from the concept + attempt (the
-  // -zi/-tou disambiguating suffix), or on later tries reshape the nucleus
   const rng = mkRng(hash32(lang.famSeed, "homrep", cid, attempt));
   if (attempt <= 2 && out.syls.length < 3) {
-    const add = synthWord(rng, lang.prof, c.inv, 1);
-    out.syls.push(...add.syls);
+    out.syls.push(...synthWord(rng, lang.prof, c.inv, 1).syls);   // the -zi/-tou lengthening
   } else {
     const v = c.inv.vows[rng.int(c.inv.vows.length)];
     const s = out.syls[out.syls.length - 1];
     if (s.nu.length) s.nu = [{ ...v, n: s.nu[0].n, lg: 0 }];
     if (!s.co.length && c.inv.cons.length) s.co = [{ ...c.inv.cons[rng.int(Math.min(8, c.inv.cons.length))] }];
   }
-  out.tseed = (out.tseed ^ hash32(lang.famSeed, "homtseed", cid, attempt)) >>> 0;   // fresh tone melody too
-  return applyRules(lang.rules, out);
+  out.tseed = (out.tseed ^ hash32(lang.famSeed, "homtseed", cid, attempt)) >>> 0;   // fresh tone melody
+  return out;
+}
+
+// is this concept lexicalized as a compound (derived), given the family's
+// derive-vs-root rolls? (must match internalOf's branch exactly)
+function isDerived(lang, cid) {
+  const con = CONCEPTS[cid];
+  if (!con.dv) return false;
+  const p0 = internalOf(lang, con.dv[0]), p1 = internalOf(lang, con.dv[1]);
+  return p0 !== p1 && h01(lang.famSeed, "dv", cid) < 0.65;
 }
 
 function seedDictionary(lang, c) {
@@ -184,16 +198,32 @@ function seedDictionary(lang, c) {
   const taken = new Map();                             // rendered surface → owning cid
   for (let cid = 0; cid < CONCEPTS.length; cid++) {
     if (c.colex.has(cid)) continue;                    // intended merge, not a collision
-    let w = internalOf(lang, cid);
-    let surf = renderWord(w, lang.prof);
+    let surf = renderWord(internalOf(lang, cid), lang.prof);
     let guard = 0;
-    while (taken.has(surf) && guard++ < 5) {
-      w = extendRoot(lang, w, cid, guard);
-      c.internals.set(cid, w);
-      surf = renderWord(w, lang.prof);
+    const derived = isDerived(lang, cid);
+    while (taken.has(surf) && guard++ < 6) {
+      if (derived) {
+        c.internals.set(cid, legalizeWord(growWord(lang, internalOf(lang, cid), cid, guard)));
+      } else {
+        const root = growWord(lang, rootOf(lang, cid), cid, guard);   // extend the ROOT
+        c.roots.set(cid, root);
+        c.internals.set(cid, applyRules(lang.rules, copyWord(root)));  // re-evolve as one piece
+      }
+      surf = renderWord(internalOf(lang, cid), lang.prof);
     }
     taken.set(surf, cid);
   }
+}
+
+// the (possibly repaired) PRE-rule root of an atomic concept — the single
+// source of truth both internalOf and the grammar layer build from
+function rootOf(lang, cid) {
+  const c = compile(lang);
+  const r = c.roots.get(cid);
+  if (r) return r;
+  const w = synthRoot(lang, cid);
+  c.roots.set(cid, w);
+  return w;
 }
 
 // ── the virtual dictionary ────────────────────────────────────────────────
@@ -225,7 +255,9 @@ function internalOf(lang, cid) {
     // speech community says a six-syllable word for "crossing" daily
     if (con.b >= 0.5 && w.syls.length > 3) w.syls = [w.syls[0], ...w.syls.slice(-2)];
   } else {
-    w = applyRules(lang.rules, synthRoot(lang, cid));
+    // atomic: evolve the (possibly homophony-repaired) root as one piece, so
+    // wordOf and the grammar layer's rootFormOf never diverge
+    w = applyRules(lang.rules, copyWord(rootOf(lang, cid)));
   }
   c.internals.set(cid, w);
   return w;
@@ -272,17 +304,19 @@ export function nativeStemOf(lang, cid) { ensureV2(lang); return copyWord(intern
 
 /** Pre-rule family root for a concept (deep copy). Falls back to the evolved
  *  form for derived/compound concepts — pre:false tells the caller the rule
- *  log is already baked in. Colexification resolves first, like internalOf. */
+ *  log is already baked in. Colexification resolves first, like internalOf.
+ *  For atomic concepts this returns the SAME homophony-repaired root that
+ *  internalOf evolves, so the grammar layer's citation forms and numerals
+ *  match the dictionary exactly. */
 export function rootFormOf(lang, cid) {
   ensureV2(lang);
   const c = compile(lang);
+  if (!c.seeded) seedDictionary(lang, c);
   let id = cid, hops = 0;
   while (c.colex.has(id) && hops++ < 4) id = c.colex.get(id);
-  const con = CONCEPTS[id];
-  const parts = con.dv && [internalOf(lang, con.dv[0]), internalOf(lang, con.dv[1])];
-  if (con.dv && parts[0] !== parts[1] && h01(lang.famSeed, "dv", id) < 0.65)
+  if (isDerived(lang, id))
     return { w: copyWord(internalOf(lang, id)), pre: false };
-  return { w: copyWord(synthRoot(lang, id)), pre: true };
+  return { w: copyWord(rootOf(lang, id)), pre: true };
 }
 
 // root length from the language's own distribution (Vietnamese-short
@@ -379,11 +413,19 @@ function sufsOf(lang) {
     return last;
   };
   const femV = (() => { const v = c.inv.vows.find(v => v.h === 2) || c.inv.vows[0]; return renderWord({ syls: [{ on: [], nu: [v], co: [] }] }, lang.prof); })();
+  // a dynasty names CONSISTENTLY within a language (a cultural constant, not a
+  // per-name coin flip that yielded Efatucheta beside a bare Edo): the house
+  // suffix is chosen once per family — either a fixed land-style ending, or
+  // consistently bare (the toponymic Habsburg pattern), never a mix.
+  const realmSufs = [reduce(LAND), reduce(LAND) + femV].filter(Boolean);
+  const dyn = h01(lang.famSeed, "dynbare") < 0.3 || !realmSufs.length ? ""
+    : realmSufs[hash32(lang.famSeed, "dynidx") % realmSufs.length];
   c.sufs = {
     city: [reduce(TOWN), reduce(FORT), reduce(HOUSE), ""],
     realm: [reduce(LAND), reduce(LAND) + femV, ""],
     patro: reduce(SON),
     fem: femV,
+    dyn,
   };
   return c.sufs;
 }
@@ -504,5 +546,5 @@ export function langDynastyName(lang, n, founder) {
     : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
   if (lang.prof.patro === "pre") return cap(sufs.patro) + cap(stem);
   if (lang.prof.patro === "suf") return cap(finishName(joinSuf(stem, sufs.patro), lang.prof));
-  return cap(finishName(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]), lang.prof));
+  return cap(finishName(joinSuf(stem, sufs.dyn), lang.prof));   // consistent house suffix
 }

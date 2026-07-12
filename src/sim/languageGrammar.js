@@ -467,9 +467,13 @@ function numAtoms(lang) {
     else form = applyRules(lang.rules, synthClosed(lang, inv, "num20", 2));
     atoms.set(20, { form, ety });
   }
-  // counting cannot survive homophones: dedupe the atom row deterministically
+  // the atomic numerals 1-10/100 come straight from the DEDUPED dictionary
+  // (nativeStemOf → the homophony-repaired root), so they already match
+  // wordOf and are mutually distinct — no second dedupe (which would retint
+  // them and desync counting from the dictionary). The opaque vigesimal
+  // score-word is the only free form; numeralTable's final hard-dedup over
+  // the whole 1..99 range catches any residual collision it causes.
   const list = [...atoms.entries()].map(([n, a]) => ({ n, form: a.form, ety: a.ety, w: rform(lang, a.form) }));
-  dedupe(lang, inv, list);
   c.atoms = new Map(list.map(x => [x.n, x]));
   return c.atoms;
 }
@@ -579,6 +583,18 @@ export function numeral(lang, n) {
 }
 const NUM_GLOSS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 function numGloss(k) { return k === 100 ? "hundred" : k === 20 ? "twenty" : NUM_GLOSS[k] || String(k); }
+
+// numeral CONCEPTS (ONE..TEN, HUNDRED) map to a count, so a consumer can show
+// the counting-system form instead of the bare dictionary root — in a base-5
+// tongue the word for 'six' IS 'five-one', not a separate morpheme.
+const NUM_CONCEPT = new Map([[ONE, 1], [TWO, 2], [THREE, 3], [FOUR, 4], [FIVE, 5],
+  [SIX, 6], [SEVEN, 7], [EIGHT, 8], [NINE, 9], [TEN, 10], [HUNDRED, 100]]);
+/** If cid is a numeral concept, its counting-system word (consistent with
+ *  numeral()); otherwise null. Lets the dictionary agree with the counter. */
+export function numeralConceptWord(lang, cid) {
+  const n = NUM_CONCEPT.get(cid);
+  return n == null ? null : numeral(lang, n).text;
+}
 
 // ══ M2: inflectional morphology ═══════════════════════════════════════════
 //
@@ -766,8 +782,13 @@ export function paradigmSpec(lang) {
   }
   // paradigm-internal contrast: number+case affixes against each other, TAM
   // affixes against each other (persons handled above)
-  dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases].filter(Boolean));
-  dedupeAffixSet(lang, inv, [spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp].filter(Boolean));
+  // one contrast pass over ALL bound affixes, nominal and verbal together —
+  // a suffix serving as both PL and PST (a fresh reader caught -fe doing
+  // exactly that) makes the interlinear gloss read two ways, so the later
+  // affix shifts. Person markers are their own agreement paradigm, deduped
+  // above; they may legitimately echo a case marker and are left alone.
+  dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases,
+    spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp].filter(Boolean));
   // ── fusional theme vowels: declension/conjugation classes ──
   const nTheme = lang.prof.morph === "fus" || lang.prof.morph === "tmpl" ? g.declN : 1;
   for (let k = 0; k < nTheme; k++) spec.themes.push(inv.vows[hash32(fam, "theme", k) % inv.vows.length]);
@@ -793,12 +814,24 @@ function dedupeAffixSet(lang, inv, affs) {
     ? renderWord({ syls: [{ on: a.syl.on.map(x => ({ ...x })), nu: [], co: a.syl.co.map(x => ({ ...x })) }] }, lang.prof) || "∅"
     : renderWord({ syls: [a.syl] }, lang.prof);
   const consPool = inv.cons.filter(x => x.p < 6 && x.m <= 5);
+  const codaPool = inv.cons.filter(x => x.p < 6 && (x.m === 1 || x.m === 4 || x.m === 5 || (x.m === 2 && x.l === 0)));
   for (const a of affs) {
     if (!a) continue;
     let sig = sigOf(a);
-    for (let t = 0; seen.has(sig) && t < inv.vows.length + consPool.length; t++) {
-      if (fus && consPool.length) a.syl.on = [{ ...consPool[t % consPool.length] }];
-      else a.syl.nu = [{ ...inv.vows[t % inv.vows.length], n: 0, lg: 0 }];
+    // walk the escape space (vowels × onset/coda consonants) until distinct.
+    // a small-vowel tongue with many cases exhausts vowels alone, so the
+    // walk also varies the CONSONANT — DAT and TERM must not collide just
+    // because the language has three vowels and ten cases.
+    const span = fus ? consPool.length * 2 : inv.vows.length * (codaPool.length + 1);
+    for (let t = 0; seen.has(sig) && t < span; t++) {
+      if (fus && consPool.length) {
+        a.syl.on = [{ ...consPool[t % consPool.length] }];
+        if (t >= consPool.length && codaPool.length) a.syl.co = [{ ...codaPool[t % codaPool.length] }];
+      } else {
+        a.syl.nu = [{ ...inv.vows[t % inv.vows.length], n: 0, lg: 0 }];
+        const cw = Math.floor(t / inv.vows.length);
+        if (cw > 0 && codaPool.length) a.syl.co = [{ ...codaPool[(cw - 1) % codaPool.length] }];
+      }
       sig = sigOf(a);
     }
     seen.add(sig);

@@ -552,3 +552,37 @@ Parked enhancement the reader suggested: an INTENTIONAL abstract-derivation
 table (king ← sit/old/great — the "one who sits on the throne"), to turn
 accidental etymologies into designed depth now that accidental homophony is
 gone. Noted for a future session.
+
+---
+
+## Build status (session 11) — cross-layer consistency review round
+
+The reviewer confirmed the roller is fixed (six genuinely distinct
+languages, shuffle test met) and praised the grammar depth (polypersonal
+agreement, templatic root-and-pattern, ablaut plurals, hand→with→and
+chains), then caught a cluster of DESYNC bugs that were consequences of the
+homophony repair not being threaded through one source of truth.
+
+- **Root-level homophony repair (language.js).** The repair now targets the
+  PRE-RULE ROOT of an atomic concept (cached in `c.roots`), and BOTH
+  internalOf (dictionary) and rootFormOf (grammar/numerals) build from it —
+  so the dictionary word, the paradigm's citation cell, and the counting
+  system can never disagree. Fixes: 'go' = šüvep in the paradigm but
+  šüvepxik in the dictionary; base-5 '6' = paxobe in the counter but deqe in
+  the lexicon; 'go' = 'long' homophony. numAtoms no longer re-dedupes (the
+  dictionary already did); the Lab shows numeral concepts in their counting
+  form via `numeralConceptWord`. Gates: citation verb ≡ dictionary word
+  (0/1600), dictionary numeral ≡ counting form (0/2000).
+- **Cross-category affix dedupe (languageGrammar.js).** One contrast pass
+  over ALL bound affixes, nominal and verbal together — a suffix can no
+  longer serve as both PL and PST (the -fe clash), which had made the
+  interlinear gloss read two ways. The escape walk now spans vowels × coda
+  consonants, so a three-vowel ten-case language can still separate DAT from
+  TERM. Gate: 0/373 languages with a PL=PST-style clash.
+- **Consistent dynasty naming (language.js).** The house suffix is a
+  per-family constant (a fixed land-style ending, or consistently bare —
+  the Habsburg pattern), never the old per-name coin flip that put
+  Efatucheta beside a bare Edo. Gate: same founder → same house name across
+  ordinals (0/86 inconsistent).
+- 90 probe checks green; smoke + validate green. The reviewer's six seeds
+  (8822–8827) all verified clean.

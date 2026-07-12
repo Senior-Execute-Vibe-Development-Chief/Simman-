@@ -14,7 +14,7 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
-import { gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive } from "./sim/languageGrammar.js";
+import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
@@ -325,7 +325,9 @@ function renderNative(l, cid) {
 
 function dictionaryHTML(l) {
   const byWord = new Map();
-  const rows = CONCEPTS.map((c, cid) => ({ cid, g: c.g, d: c.d, w: wordOf(l, cid) }));
+  // numeral concepts show their COUNTING form (base-5 'six' is 'five-one',
+  // not a separate root) so the dictionary agrees with the Grammar card
+  const rows = CONCEPTS.map((c, cid) => ({ cid, g: c.g, d: c.d, w: numeralConceptWord(l, cid) || wordOf(l, cid) }));
   for (const r of rows) byWord.set(r.w, (byWord.get(r.w) || 0) + 1);
   const loanSet = new Set((l.loans || []).map(x => x.c));
   const q = S.search.trim().toLowerCase();

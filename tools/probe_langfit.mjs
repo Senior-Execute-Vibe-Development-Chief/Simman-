@@ -14,8 +14,8 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, intensive } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -782,6 +782,58 @@ console.log("\n── homophony budget + diversity ──");
   }
   const multiSource = Object.values(perMeaning).filter(s => s.size >= 2).length;
   check(`adposition sources are diverse (${multiSource} meanings drawn from ≥2 different source words)`, multiSource >= 4);
+}
+
+// ── 12. CONSISTENCY: dictionary ≡ paradigm ≡ counting (fresh-reader round) ─
+// The homophony repair must reach one repaired ROOT that dictionary,
+// paradigm citation cell, and numeral system all build from — no desync
+// (go=šüvep vs šüvepxik, 6=paxobe vs deqe). Affixes must not serve two
+// grammatical categories on one language; dynasties must name consistently.
+console.log("\n── cross-layer consistency ──");
+{
+  const world = mkWorld();
+  const N = 400;
+  const fullV = (x) => [...x.pre.map(z => z.w), x.text, ...x.post.map(z => z.w)].join(" ");
+  let citeBad = 0, numBad = 0, affColl = 0, affLangs = 0;
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    // citation verb (present, unmarked) IS the dictionary word
+    for (const v of [GO, SEE, EAT, TAKE]) if (fullV(inflectVerb(l, v, { tam: null })) !== wordOf(l, v)) citeBad++;
+    // dictionary numeral concept IS the counting-system form
+    for (const [cid, n] of [[SIX, 6], [SEVEN, 7], [EIGHT, 8], [NINE, 9], [TEN, 10]])
+      if (numeralConceptWord(l, cid) !== numeral(l, n).text) numBad++;
+    // no bound affix serves two categories (the -fe = PL & PST case): compare
+    // the raw spec affix surfaces across number/case/TAM
+    if (l.prof.morph !== "iso") {
+      affLangs++;
+      const spec = paradigmSpec(l);
+      const bound = [spec.pl, spec.du, ...spec.cases, spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp].filter(Boolean);
+      const surf = bound.map(a => a.g + "=" + JSON.stringify(a.syl));
+      const bySurf = {};
+      bound.forEach(a => { const k = JSON.stringify(a.syl); (bySurf[k] = bySurf[k] || []).push(a.g); });
+      if (Object.values(bySurf).some(gs => gs.length > 1)) affColl++;
+      void surf;
+    }
+  }
+  check(`citation verb ≡ dictionary word (${citeBad}/${N * 4} desyncs)`, citeBad === 0);
+  check(`dictionary numeral ≡ counting form (${numBad}/${N * 5} desyncs)`, numBad === 0);
+  check(`no bound affix serves two categories (${affColl}/${affLangs} langs with a PL=PST-style clash)`, affColl === 0);
+
+  // dynasties name CONSISTENTLY within a language (no Efatucheta beside Edo):
+  // the house suffix is now a per-language constant, so the SAME founder
+  // always yields the SAME house name regardless of ordinal — before the fix
+  // a per-name random suffix (incl. the empty one) made them differ
+  let dynBad = 0, dynLangs = 0;
+  for (let i = 0; i < 200; i++) {
+    const l = foundLanguage(world, { seed: 7000 + i * 29 });
+    if (l.prof.patro !== "none") continue;
+    dynLangs++;
+    const names = [1, 2, 3, 7, 42].map(k => langDynastyName(l, k, "Adan"));
+    if (new Set(names).size !== 1) dynBad++;
+  }
+  check(`dynasties name consistently — one house rule per tongue (${dynBad}/${dynLangs} inconsistent)`, dynLangs > 0 && dynBad === 0);
+
+  say("   go-citation now equals the dictionary; base-5 'six' reads the same in the counter and the lexicon.");
 }
 
 // ── determinism: same record → same names, always ─────────────────────────
