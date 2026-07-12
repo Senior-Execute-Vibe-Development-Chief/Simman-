@@ -56,32 +56,74 @@ function fieldSVG(w, h, p) {
   }
 }
 
-// ── procedural aniconic script band ──
+// ── aniconic calligraphy: pseudo-script from letterform primitives on a baseline
+// (upright alif, sin teeth, nun bowls, connectors, terminal flourish), cartouche-framed ──
 function calligraphy(x, y, w, rows, color, rng) {
-  let s = "";
+  const col = css(color), rh = 30, ch = rows * rh + 34;
+  const P = (d, sw) => `<path d="${d}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  let s = `<rect x="${(x - 8).toFixed(1)}" y="${(y - 22).toFixed(1)}" width="${(w + 16).toFixed(1)}" height="${ch.toFixed(1)}" rx="${(ch * 0.3).toFixed(1)}" fill="none" stroke="${col}" stroke-width="2.5"/>`;
+  const right = x + w - 14;
   for (let r = 0; r < rows; r++) {
-    const by = y + r * 26; let px = x, d = `M${px} ${by}`;
-    const words = 3 + Math.floor(rng() * 3);
-    for (let i = 0; i < words; i++) { const seg = 26 + rng() * 22; d += ` q ${seg / 2} ${(rng() - 0.5) * 34} ${seg} 0`; px += seg + 6; if (rng() < 0.5) d += ` m 6 0`; }
-    s += `<path d="${d}" fill="none" stroke="${css(color)}" stroke-width="3.4" stroke-linecap="round"/>`;
-    for (let i = 0; i < words; i++) s += `<circle cx="${(x + 20 + i * 34).toFixed(1)}" cy="${(by - 16).toFixed(1)}" r="2.2" fill="${css(color)}"/>`;
+    const base = y + r * rh + rh * 0.6;
+    let px = x + 14;
+    while (px < right - 18) {
+      const t = rng(), F = n => (+n).toFixed(1);
+      if (t < 0.3) { s += P(`M${F(px)} ${F(base)} V${F(base - rh * 0.7)}`, 5); if (rng() < 0.4) s += `<circle cx="${F(px)}" cy="${F(base - rh * 0.85)}" r="2.6" fill="${col}"/>`; px += 11; }
+      else if (t < 0.56) { let dd = `M${F(px)} ${F(base)}`; for (let k = 0; k < 3; k++) dd += ` q 4 -9 8 0`; s += P(dd, 4.5); if (rng() < 0.5) s += `<circle cx="${F(px + 12)}" cy="${F(base - 15)}" r="2.4" fill="${col}"/>`; px += 26; }
+      else if (t < 0.82) { s += P(`M${F(px)} ${F(base)} q 9 19 19 0`, 5); if (rng() < 0.7) s += `<circle cx="${F(px + 9.5)}" cy="${F(base - 14)}" r="2.6" fill="${col}"/>`; px += 23; }
+      else { s += P(`M${F(px)} ${F(base)} h 15`, 4.5); px += 17; }
+      px += 3;
+    }
+    s += P(`M${px.toFixed(1)} ${base.toFixed(1)} q 11 7 4 17`, 5);   // terminal flourish
   }
   return s;
 }
 
-// ── procedural steppe tamga (abstract clan brand) ──
+// ── steppe tamga (bold abstract clan brand) ──
 function tamga(cx, cy, S, seed, color) {
-  const rng = rrng(seed); const st = `stroke="${css(color)}" stroke-width="${(S * 0.16).toFixed(1)}" fill="none" stroke-linecap="round" stroke-linejoin="round"`;
-  let s = `<path d="M${cx} ${cy - S} V${cy + S}" ${st}/>`;              // stem
+  const rng = rrng(seed); const st = `stroke="${css(color)}" stroke-width="${(S * 0.22).toFixed(1)}" fill="none" stroke-linecap="round" stroke-linejoin="round"`;
+  let s = `<path d="M${cx} ${cy - S * 1.15} V${cy + S * 1.15}" ${st}/>`;              // stem
   const crown = Math.floor(rng() * 3);
-  if (crown === 0) s += `<path d="M${cx - S * 0.7} ${cy - S * 0.6} A${S * 0.7} ${S * 0.7} 0 0 0 ${cx + S * 0.7} ${cy - S * 0.6}" ${st}/>`;
-  else if (crown === 1) s += `<path d="M${cx - S * 0.6} ${cy - S} L${cx} ${cy - S * 0.5} L${cx + S * 0.6} ${cy - S}" ${st}/>`;
-  else s += `<circle cx="${cx}" cy="${cy - S * 0.7}" r="${S * 0.35}" ${st}/>`;
+  if (crown === 0) s += `<path d="M${cx - S * 0.8} ${cy - S * 0.55} A${S * 0.8} ${S * 0.8} 0 0 0 ${cx + S * 0.8} ${cy - S * 0.55}" ${st}/>`;
+  else if (crown === 1) s += `<path d="M${cx - S * 0.7} ${cy - S * 1.1} L${cx} ${cy - S * 0.5} L${cx + S * 0.7} ${cy - S * 1.1}" ${st}/>`;
+  else s += `<circle cx="${cx}" cy="${cy - S * 0.75}" r="${S * 0.4}" ${st}/>`;
   const feet = Math.floor(rng() * 3);
-  if (feet === 0) s += `<path d="M${cx} ${cy + S} l${-S * 0.6} ${S * 0.5} M${cx} ${cy + S} l${S * 0.6} ${S * 0.5}" ${st}/>`;
-  else if (feet === 1) s += `<path d="M${cx - S * 0.6} ${cy + S} H${cx + S * 0.6}" ${st}/>`;
-  if (rng() < 0.6) s += `<circle cx="${cx}" cy="${cy}" r="${S * 0.4}" ${st}/>`;
-  if (rng() < 0.5) s += `<path d="M${cx - S * 0.8} ${cy - S * 0.1} H${cx - S * 0.3} M${cx + S * 0.3} ${cy - S * 0.1} H${cx + S * 0.8}" ${st}/>`;
+  if (feet === 0) s += `<path d="M${cx} ${cy + S * 1.1} l${-S * 0.7} ${S * 0.55} M${cx} ${cy + S * 1.1} l${S * 0.7} ${S * 0.55}" ${st}/>`;
+  else if (feet === 1) s += `<path d="M${cx - S * 0.7} ${cy + S * 1.1} H${cx + S * 0.7}" ${st}/>`;
+  else s += `<path d="M${cx - S * 0.55} ${cy + S * 1.1} A${S * 0.55} ${S * 0.55} 0 0 0 ${cx + S * 0.55} ${cy + S * 1.1}" ${st}/>`;
+  if (rng() < 0.55) s += `<circle cx="${cx}" cy="${cy}" r="${S * 0.42}" ${st}/>`;
+  if (rng() < 0.5) s += `<path d="M${cx - S * 0.95} ${cy - S * 0.05} H${cx - S * 0.35} M${cx + S * 0.35} ${cy - S * 0.05} H${cx + S * 0.95}" ${st}/>`;
+  return s;
+}
+
+// ── aniconic geometric tilework (girih rosette / khatam star lattice) ──
+function starN(cx, cy, R, n, r, rot, fill, stroke, sw) {
+  const p = []; for (let i = 0; i < 2 * n; i++) { const a = rot - Math.PI / 2 + i * Math.PI / n, rad = i % 2 ? r : R; p.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]); }
+  return `<polygon points="${p.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw}"` : ""}/>`;
+}
+function khatam(cx, cy, R, fill) {          // 8-point star from two overlaid squares
+  const sq = a => { const p = []; for (let i = 0; i < 4; i++) { const ang = a + i * Math.PI / 2; p.push([cx + Math.cos(ang) * R, cy + Math.sin(ang) * R]); } return `<polygon points="${p.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="${fill}"/>`; };
+  return sq(-Math.PI / 2) + sq(-Math.PI / 4);
+}
+function geometry(w, h, spec, fig, ground, accent) {
+  const cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.44, F = css(fig), G = css(ground), A = css(accent);
+  let s = "";
+  if (spec.mode === "lattice") {
+    const cols = 3, rows = 4, sx = w / cols, sy = h / rows, r = Math.min(sx, sy) * 0.46;
+    for (let ry = 0; ry < rows; ry++) for (let c = 0; c < cols; c++) {
+      const x = (c + 0.5) * sx, y = (ry + 0.5) * sy;
+      s += khatam(x, y, r, F) + `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r * 0.32).toFixed(1)}" fill="${G}"/>`;
+    }
+    return s;
+  }
+  const n = spec.points;
+  s += `<circle cx="${cx}" cy="${cy}" r="${R.toFixed(1)}" fill="none" stroke="${A}" stroke-width="${(R * 0.05).toFixed(1)}"/>`;
+  s += `<circle cx="${cx}" cy="${cy}" r="${(R * 0.9).toFixed(1)}" fill="none" stroke="${A}" stroke-width="${(R * 0.018).toFixed(1)}"/>`;
+  s += starN(cx, cy, R * 0.86, n, R * 0.52, 0, F);
+  s += starN(cx, cy, R * 0.86, n, R * 0.52, Math.PI / n, "none", A, (R * 0.02).toFixed(1));
+  s += `<circle cx="${cx}" cy="${cy}" r="${(R * 0.36).toFixed(1)}" fill="${G}" stroke="${A}" stroke-width="${(R * 0.02).toFixed(1)}"/>`;
+  s += starN(cx, cy, R * 0.32, n, R * 0.14, 0, F);
+  for (let i = 0; i < n; i++) { const a = i * 2 * Math.PI / n; s += `<circle cx="${(cx + Math.cos(a) * R * 0.96).toFixed(1)}" cy="${(cy + Math.sin(a) * R * 0.96).toFixed(1)}" r="${(R * 0.035).toFixed(1)}" fill="${A}"/>`; }
   return s;
 }
 
@@ -122,18 +164,16 @@ function drawEmblem(gp, cx, cy, cw, ch) {
       content += `<circle cx="${cxm}" cy="${cym}" r="${base * 0.4}" fill="none" stroke="${css(C.charge)}" stroke-width="${base * 0.03}"/>`;
       content += motif(p.motif.id, cxm - base * 0.3, cym - base * 0.3, base * 0.6, C.charge);
     } else if (p.composition === "script") {
-      content += calligraphy(w * 0.12, h * 0.34, w * 0.76, 2, C.accent, rng);
-      if (p.ornaments.crescent) content += crescent(w * 0.82, h * 0.24, 12, C.accent);
+      content += calligraphy(w * 0.13, h * 0.32, w * 0.74, 2, C.accent, rng);
     } else if (p.composition === "brand") {
-      content += tamga(cxm, cym, base * 0.28, p.ornaments.brandSeed, C.charge);
+      content += tamga(cxm, cym, base * 0.26, p.ornaments.brandSeed, C.charge);
     } else if (p.composition === "seme" && p.motif) {
       for (let ry = 0; ry < 4; ry++) for (let cxi = 0; cxi < 3; cxi++) {
         const mx = (cxi + (ry % 2 ? 0.5 : 0)) * w / 3, my = (ry + 0.5) * h / 4;
         content += motif(p.motif.id, mx - base * 0.09, my - base * 0.09, base * 0.18, p.motif.tincture);
       }
-    } else { // plain
-      if (p.ornaments.crescent) content += crescent(cxm, cym, base * 0.22, C.charge);
-      else content += `<rect x="${w * 0.32}" y="${h * 0.28}" width="${w * 0.36}" height="${h * 0.44}" fill="${css(C.companion)}"/>`;
+    } else if (p.composition === "plain" && p.geometry) {   // aniconic tilework
+      content += geometry(w, h, p.geometry, C.charge, C.field, C.accent);
     }
     if (p.ornaments.sunDisc && p.composition !== "central") content += sunDisc(w * 0.5, h * 0.5, base * 0.12, C.accent);
     if (p.ornaments.star) content += star(w * 0.8, h * 0.24, base * 0.09, C.accent);

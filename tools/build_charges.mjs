@@ -81,7 +81,7 @@ function detectRecolor(inner, rootFill) {
   // scan fills AND strokes AND gradient stops, as attributes and as CSS props
   // (including inside <style> class rules) — any of them can carry a raw colour.
   for (const m of inner.matchAll(/(?:fill|stroke|stop-color)="([^"]+)"/g)) add(m[1]);
-  for (const m of inner.matchAll(/(?:fill|stroke|stop-color)\s*:\s*([^;"'\s)]+)/g)) add(m[1]);
+  for (const m of inner.matchAll(/(?:fill|stroke|stop-color)\s*:\s*([^;"'\s){}]+)/g)) add(m[1]);
   const list = [];
   for (const f of fills) {
     if (isBW(f)) continue;                                  // #000 linework / #fff highlight stay

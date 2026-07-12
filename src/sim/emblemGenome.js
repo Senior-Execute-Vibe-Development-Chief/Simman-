@@ -52,15 +52,24 @@ const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
 const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly"];
 const LINES       = ["straight", "straight", "wavy", "engrailed", "embattled", "indented"];
 const ARRANGES    = ["single", "single", "three", "inPale", "seme"];
-const MOTIF_CATS  = ["beast", "bird", "mythic", "sea", "plant", "object"];
+// Motif categories split into LIVING (figures a strict aniconism forbids) and
+// NON-LIVING (celestial, cross, geometry, plant, object — borne even by aniconic
+// faiths: a crescent, a cross, an arabesque). This split is what lets aniconism
+// mean "no living figures" rather than "no charge at all".
+const MOTIF_CATS  = ["beast", "bird", "mythic", "sea", "plant", "object", "celestial", "cross", "geometric"];
+const LIVING_CATS = new Set(["beast", "bird", "mythic", "sea"]);
+const NONLIVING_CATS = ["celestial", "cross", "geometric", "plant", "object"];
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 const MOTIFS = {
-  beast:  ["lion", "wolf", "boar", "bull", "bear", "horse", "ram", "stag", "elephant", "rabbit"],
-  bird:   ["eagle", "falcon", "dove", "raven", "rooster"],
-  mythic: ["dragon", "wyvern", "griffin", "unicorn", "pegasus", "hydra"],
-  sea:    ["dolphin", "serpent", "mermaid"],
-  plant:  ["rose", "tree", "lotus", "thistle", "garb"],
-  object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "tower", "castle"],
+  beast:  ["lion", "wolf", "boar", "bull", "bear", "horse", "ram", "stag", "elephant", "rabbit", "antelope", "camel", "tiger", "leopard", "fox", "greyhound", "hedgehog", "badger", "otter", "squirrel", "bee"],
+  bird:   ["eagle", "falcon", "dove", "raven", "rooster", "crane", "swan", "owl", "peacock", "pelican", "martlet"],
+  mythic: ["dragon", "wyvern", "griffin", "unicorn", "pegasus", "hydra", "phoenix", "cockatrice", "basilisk", "sphinx", "salamander", "seadragon", "sealion"],
+  sea:    ["dolphin", "serpent", "mermaid", "fish", "pike", "salmon", "whale", "crab", "lobster", "shark", "escallop"],
+  plant:  ["rose", "tree", "lotus", "thistle", "garb", "oak", "oakleaf", "olive", "palm", "lily", "cinquefoil", "quatrefoil", "trefoil", "sunflower", "iris", "poppy", "shamrock", "acorn", "vine", "grapes", "bamboo", "pineapple", "fleur"],
+  object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "tower", "castle", "bell", "bugle", "clarion", "lute", "drum", "chalice", "amphora", "anvil", "hammer", "millrind", "scythe", "compass", "lantern", "lamp", "scroll", "mirror", "shears", "quill", "distaff", "axe", "halberd", "arrow", "arrows", "pheon", "trident", "spear", "bow", "cannon", "mace", "catherinewheel"],
+  celestial: ["sun", "moon", "crescent", "estoile", "comet"],
+  cross:  ["cross", "celticcross", "taucross", "patriarchal", "lorraine", "orthodox", "saltire", "ankh", "calatrava", "santiago", "triquetra"],
+  geometric: ["lozenge", "fusil", "roundel", "billet", "fret", "triskele", "valknut"],
 };
 
 const pickEnum = (v, arr) => arr[Math.min(arr.length - 1, Math.floor(v * arr.length))];
@@ -198,12 +207,8 @@ export function expressGenome(genome) {
   const iconism = get("iconism");
 
   let composition = pickEnum(get("composition"), COMPOSITIONS);
-  // ANICONISM gates the figurative compositions off — an aniconic culture cannot
-  // express a beast, so its genes route to script / brand / plain / geometry.
-  if (iconism < 0.34 && ["heraldic", "central", "radial", "seme"].includes(composition)) {
-    composition = ["script", "brand", "plain"][Math.floor(get("brandSeed") * 3) % 3];
-  }
-  // …and the reverse: a strongly figurative culture won't fly pure calligraphy.
+  const aniconic = iconism < 0.34;
+  // A strongly figurative culture won't fly pure calligraphy / tamga.
   if (iconism > 0.72 && (composition === "script" || composition === "brand")) composition = "heraldic";
   let substrate = pickEnum(get("substrate"), SUBSTRATES);
   if (composition === "radial") substrate = "roundel";                 // a badge wants a round field
@@ -217,11 +222,18 @@ export function expressGenome(genome) {
   const field = { partition, tinctures: [pal.field, pal.companion],
     line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
 
-  // motif (only where figures are expressed)
+  // motif — a figurative composition carries a charge. ANICONISM does NOT empty
+  // the field; it forbids LIVING figures. So an aniconic realm keeps its charge
+  // but a living category (beast/bird/mythic/sea) is remapped to a non-living one
+  // — a crescent, a cross, a star, an arabesque, an object — exactly as aniconic
+  // heraldry actually works. Only the abstract compositions carry no charge.
   let motif = null;
-  const figurative = iconism >= 0.34 && ["heraldic", "central", "radial", "seme"].includes(composition);
-  if (figurative) {
-    const cat = pickEnum(get("motifCat"), MOTIF_CATS);
+  const figuralComp = ["heraldic", "central", "radial", "seme"].includes(composition);
+  if (figuralComp) {
+    let cat = pickEnum(get("motifCat"), MOTIF_CATS);
+    if (aniconic && LIVING_CATS.has(cat)) {
+      cat = NONLIVING_CATS[Math.floor(get("motifCount") * NONLIVING_CATS.length) % NONLIVING_CATS.length];
+    }
     const pool = MOTIFS[cat];
     const id = pool[Math.min(pool.length - 1, Math.floor(get("motifIdx") * pool.length))];
     let arrange = composition === "central" || composition === "radial" ? "single"
@@ -231,17 +243,29 @@ export function expressGenome(genome) {
       scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5) * (0.75 + get("motifScale") * 0.5) };
   }
 
+  // geometry — the "plain" composition is not a bare field: it is aniconic
+  // TILEWORK (a girih rosette or a star lattice), the geometric tradition that
+  // stands in for a figure where figures are shunned.
+  let geometry = null;
+  if (composition === "plain") {
+    geometry = {
+      mode: get("symmetry") > 0.5 ? "lattice" : "rosette",
+      points: [8, 8, 6, 12, 8, 10][Math.floor(get("motifCount") * 6) % 6],
+      seed: Math.floor(get("brandSeed") * 1e6),
+    };
+  }
+
   const ornaments = {
-    border: get("border") > 0.5 || composition === "central" || composition === "plain",
+    border: get("border") > 0.5 || composition === "central",
     pearl: composition === "central" && get("pearl") > 0.5,
-    sunDisc: get("sunDisc") > 0.62,
-    star: get("star") > 0.6,
-    crescent: (composition === "script" || composition === "plain") && get("crescent") > 0.45,
+    sunDisc: get("sunDisc") > 0.62 && composition !== "plain",
+    star: get("star") > 0.6 && composition !== "plain",
+    crescent: composition === "script" && get("crescent") > 0.45,
     scriptDensity: 0.4 + get("scriptDensity") * 0.6,
     brandSeed: Math.floor(get("brandSeed") * 1e6),
   };
 
-  return { substrate, composition, symmetry, iconism, colors: pal, field, motif, ornaments,
+  return { substrate, composition, symmetry, iconism, colors: pal, field, motif, geometry, ornaments,
     gen: genome.gen || 0 };
 }
 
@@ -252,6 +276,7 @@ export function describeGenome(genome) {
   if (p.motif) bits.push(p.motif.id + (p.motif.count > 1 ? `×${p.motif.count}` : ""));
   else if (p.composition === "script") bits.push("calligraphy");
   else if (p.composition === "brand") bits.push("tamga");
+  else if (p.composition === "plain") bits.push(p.geometry.mode === "lattice" ? "star-lattice" : "rosette");
   return bits.join(" · ");
 }
 
