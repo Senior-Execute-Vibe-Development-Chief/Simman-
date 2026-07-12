@@ -12,6 +12,7 @@ const OUT = process.argv[3] || "/tmp/claude-0/-home-user-Simman-/0dce9194-9863-5
 
 const css = ([r, g, b]) => `rgb(${r},${g},${b})`;
 const shade = (rgb, f) => rgb.map(c => Math.max(0, Math.min(255, Math.round(c * f))));
+const F = n => (+n).toFixed(1);
 const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 let uid = 0;
 // deterministic per-panel rng from a seed (no Math.random)
@@ -134,6 +135,69 @@ function sunDisc(cx, cy, r, color) {
 function star(cx, cy, r, color) { const p = []; for (let i = 0; i < 10; i++) { const a = -1.571 + i * 0.628, rad = i % 2 ? r * 0.42 : r; p.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]); } return `<polygon points="${p.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="${css(color)}"/>`; }
 function crescent(cx, cy, r, color) { return `<path d="M${cx + r * 0.25} ${cy - r} A${r} ${r} 0 1 0 ${cx + r * 0.25} ${cy + r} A${r * 0.78} ${r * 0.78} 0 1 1 ${cx + r * 0.25} ${cy - r} Z" fill="${css(color)}"/>`; }
 
+// ── procedural SACRED SIGIL — our own religious iconography ──
+function sigilArm(cx, cy, len, sw, style, C) {
+  const tip = cy - len, line = (x1, y1, x2, y2, w = sw) => `<line x1="${F(x1)}" y1="${F(y1)}" x2="${F(x2)}" y2="${F(y2)}" stroke="${C}" stroke-width="${F(w)}" stroke-linecap="round"/>`;
+  switch (style) {
+    case "bar": return line(cx, cy, cx, tip);
+    case "taper": return `<polygon points="${F(cx - sw * 0.85)},${F(cy)} ${F(cx)},${F(tip)} ${F(cx + sw * 0.85)},${F(cy)}" fill="${C}"/>`;
+    case "budded": return line(cx, cy, cx, tip) + `<circle cx="${F(cx)}" cy="${F(tip)}" r="${F(sw * 1.15)}" fill="${C}"/>`;
+    case "flared": return `<polygon points="${F(cx - sw * 0.5)},${F(cy)} ${F(cx + sw * 0.5)},${F(cy)} ${F(cx + sw * 1.5)},${F(tip)} ${F(cx - sw * 1.5)},${F(tip)}" fill="${C}"/>`;
+    case "forked": return line(cx, cy, cx, tip + sw * 1.1) + line(cx, tip + sw * 1.1, cx - sw * 1.4, tip - sw * 0.2) + line(cx, tip + sw * 1.1, cx + sw * 1.4, tip - sw * 0.2);
+    case "crescent": return line(cx, cy, cx, tip + sw) + `<path d="M${F(cx - sw * 1.3)} ${F(tip)} A${F(sw * 1.3)} ${F(sw * 1.3)} 0 1 1 ${F(cx + sw * 1.3)} ${F(tip)}" fill="none" stroke="${C}" stroke-width="${F(sw * 0.8)}" stroke-linecap="round"/>`;
+    case "looped": return line(cx, cy, cx, tip + sw * 1.8) + `<circle cx="${F(cx)}" cy="${F(tip)}" r="${F(sw * 1.4)}" fill="none" stroke="${C}" stroke-width="${F(sw * 0.8)}"/>`;
+    case "petal": return `<path d="M${F(cx)} ${F(cy)} Q${F(cx - sw * 1.4)} ${F((cy + tip) / 2)} ${F(cx)} ${F(tip)} Q${F(cx + sw * 1.4)} ${F((cy + tip) / 2)} ${F(cx)} ${F(cy)} Z" fill="${C}"/>`;
+    case "trefoil": return line(cx, cy, cx, tip + sw * 1.2) + [[0, -1.1], [-1, -0.1], [1, -0.1]].map(([dx, dy]) => `<circle cx="${F(cx + dx * sw * 1.2)}" cy="${F(tip + dy * sw * 1.2)}" r="${F(sw * 0.85)}" fill="${C}"/>`).join("");
+  }
+  return "";
+}
+function sigilCore(cx, cy, r, kind, C) {
+  switch (kind) {
+    case "orb": return `<circle cx="${F(cx)}" cy="${F(cy)}" r="${F(r)}" fill="${C}"/>`;
+    case "ring": return `<circle cx="${F(cx)}" cy="${F(cy)}" r="${F(r)}" fill="none" stroke="${C}" stroke-width="${F(r * 0.4)}"/>`;
+    case "eye": return `<path d="M${F(cx - r * 1.3)} ${F(cy)} Q${F(cx)} ${F(cy - r * 0.95)} ${F(cx + r * 1.3)} ${F(cy)} Q${F(cx)} ${F(cy + r * 0.95)} ${F(cx - r * 1.3)} ${F(cy)} Z" fill="none" stroke="${C}" stroke-width="${F(r * 0.32)}"/><circle cx="${F(cx)}" cy="${F(cy)}" r="${F(r * 0.42)}" fill="${C}"/>`;
+    case "triangle": return `<polygon points="${F(cx)},${F(cy - r)} ${F(cx + r * 0.87)},${F(cy + r * 0.5)} ${F(cx - r * 0.87)},${F(cy + r * 0.5)}" fill="${C}"/>`;
+    case "star": { const p = []; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r; p.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]); } return `<polygon points="${p.map(q => F(q[0]) + "," + F(q[1])).join(" ")}" fill="${C}"/>`; }
+    case "flame": return `<path d="M${F(cx)} ${F(cy - r * 1.3)} Q${F(cx + r * 0.9)} ${F(cy)} ${F(cx)} ${F(cy + r * 0.7)} Q${F(cx - r * 0.9)} ${F(cy)} ${F(cx)} ${F(cy - r * 1.3)} Z" fill="${C}"/>`;
+    case "gem": return `<polygon points="${F(cx)},${F(cy - r)} ${F(cx + r)},${F(cy)} ${F(cx)},${F(cy + r)} ${F(cx - r)},${F(cy)}" fill="${C}"/>`;
+    case "void": return `<circle cx="${F(cx)}" cy="${F(cy)}" r="${F(r * 0.5)}" fill="none" stroke="${C}" stroke-width="${F(r * 0.3)}"/>`;
+  }
+  return "";
+}
+function sigilEnc(cx, cy, R, kind, C, sw) {
+  switch (kind) {
+    case "ring": return `<circle cx="${F(cx)}" cy="${F(cy)}" r="${F(R)}" fill="none" stroke="${C}" stroke-width="${F(sw * 0.8)}"/>`;
+    case "double": return `<circle cx="${F(cx)}" cy="${F(cy)}" r="${F(R)}" fill="none" stroke="${C}" stroke-width="${F(sw * 0.7)}"/><circle cx="${F(cx)}" cy="${F(cy)}" r="${F(R * 0.82)}" fill="none" stroke="${C}" stroke-width="${F(sw * 0.35)}"/>`;
+    case "vesica": return `<path d="M${F(cx)} ${F(cy - R)} Q${F(cx + R * 0.9)} ${F(cy)} ${F(cx)} ${F(cy + R)} Q${F(cx - R * 0.9)} ${F(cy)} ${F(cx)} ${F(cy - R)} Z" fill="none" stroke="${C}" stroke-width="${F(sw * 0.7)}"/>`;
+    case "triangle": { const p = [[cx, cy - R], [cx + R * 0.87, cy + R * 0.55], [cx - R * 0.87, cy + R * 0.55]]; return `<polygon points="${p.map(q => F(q[0]) + "," + F(q[1])).join(" ")}" fill="none" stroke="${C}" stroke-width="${F(sw * 0.7)}" stroke-linejoin="round"/>`; }
+  }
+  return "";
+}
+function sigilBase(cx, cy, r, kind, C, sw) {
+  switch (kind) {
+    case "steps": { let s = ""; for (let i = 0; i < 3; i++) { const w = r * (1 - i * 0.28); s += `<rect x="${F(cx - w)}" y="${F(cy + i * r * 0.3)}" width="${F(w * 2)}" height="${F(r * 0.26)}" fill="${C}"/>`; } return s; }
+    case "lotus": { let s = ""; for (let i = -2; i <= 2; i++) { const x = cx + i * r * 0.4; s += `<path d="M${F(x)} ${F(cy)} Q${F(x - r * 0.22)} ${F(cy - r * 0.5)} ${F(x)} ${F(cy - r * 0.7)} Q${F(x + r * 0.22)} ${F(cy - r * 0.5)} ${F(x)} ${F(cy)} Z" fill="${C}"/>`; } return s; }
+    case "cradle": return `<path d="M${F(cx - r)} ${F(cy - r * 0.4)} A${F(r)} ${F(r)} 0 0 0 ${F(cx + r)} ${F(cy - r * 0.4)}" fill="none" stroke="${C}" stroke-width="${F(sw * 0.8)}" stroke-linecap="round"/>`;
+  }
+  return "";
+}
+function drawSigil(cx, cy, R, spec, colRGB, accentRGB) {
+  const C = css(colRGB), sw = R * 0.12, ringed = spec.enclosure !== "none", vesica = spec.enclosure === "vesica";
+  const armLen = R * (vesica ? 0.66 : ringed ? 0.72 : 0.94);
+  const arm = (spec.fold >= 8 && (spec.arm === "flared" || spec.arm === "petal")) ? "taper" : spec.arm;
+  let s = "";
+  if (ringed) s += sigilEnc(cx, cy, R, spec.enclosure, C, sw);
+  for (let i = 0; i < spec.fold; i++) {
+    let len = armLen;
+    if (spec.axis && spec.fold % 2 === 0) { const down = i === spec.fold / 2, horiz = i % (spec.fold / 2) !== 0; len *= down ? 1.28 : horiz ? 0.8 : 1; }
+    s += `<g transform="rotate(${F(i * 360 / spec.fold)} ${F(cx)} ${F(cy)})">${sigilArm(cx, cy, len, sw, arm, C)}</g>`;
+  }
+  if (spec.inter !== "none") { const rr = R * (ringed ? 0.55 : 0.5); for (let i = 0; i < spec.fold; i++) { const a = (-90 + (i + 0.5) * 360 / spec.fold) * Math.PI / 180, x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr; if (spec.inter === "dots") s += `<circle cx="${F(x)}" cy="${F(y)}" r="${F(sw * 0.6)}" fill="${C}"/>`; else if (spec.inter === "pips") s += `<circle cx="${F(x)}" cy="${F(y)}" r="${F(sw * 0.5)}" fill="none" stroke="${C}" stroke-width="${F(sw * 0.3)}"/>`; else if (spec.inter === "rays") s += `<line x1="${F(cx + Math.cos(a) * rr * 0.7)}" y1="${F(cy + Math.sin(a) * rr * 0.7)}" x2="${F(cx + Math.cos(a) * rr * 1.15)}" y2="${F(cy + Math.sin(a) * rr * 1.15)}" stroke="${C}" stroke-width="${F(sw * 0.5)}" stroke-linecap="round"/>`; } }
+  s += sigilCore(cx, cy, R * 0.2, spec.core, C);
+  if (spec.base !== "none") s += sigilBase(cx, cy + R * (ringed ? 0.98 : 0.78), R * 0.42, spec.base, C, sw);
+  return s;
+}
+
 // fit a central device inside a substrate's DRAWABLE area (so a shield's point
 // or a lozenge's corners never clip it)
 function centralFit(substrate, w, h, base) {
@@ -194,6 +258,9 @@ function drawEmblem(gp, cx, cy, cw, ch) {
       }
     } else if (p.composition === "plain" && p.geometry) {   // geometric tilework
       content += geometry(w, h, p.geometry, C.charge, C.field, C.accent);
+    } else if (p.composition === "sacred" && p.sigil) {      // procedural faith sigil
+      const f = centralFit(p.substrate, w, h, base);
+      content += drawSigil(f.cx, f.cy - base * 0.04, f.box * 0.46, p.sigil, C.charge, C.accent);
     }
     // a single small canton mark, contrast-guaranteed, clear of the device
     if (p.ornaments.canton) content += canton(w, h, base, p.ornaments.cantonKind, p.ornaments.cantonColor);

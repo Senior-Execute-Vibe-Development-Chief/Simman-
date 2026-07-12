@@ -116,6 +116,11 @@ for (const file of files) {
     // namespaced attributes, keeping only xml: and xlink:
     .replace(/\s+(?!xlink:|xml:)[a-zA-Z][\w]*:[\w.-]+="[^"]*"/g, "")
     .replace(/<!--[\s\S]*?-->/g, "")
+    // drop raster <image> elements (not clean silhouettes) and neutralise xlink:
+    // href → href, so an embedded charge never needs the xlink namespace declared
+    .replace(/<image\b[^>]*\/>/gi, "")
+    .replace(/<image\b[^>]*>[\s\S]*?<\/image>/gi, "")
+    .replace(/xlink:href=/gi, "href=")
     // normalise rgb(r,g,b) → #rrggbb so every colour flows through one hex path
     .replace(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/gi,
       (_, r, g, b) => "#" + [r, g, b].map(n => Math.max(0, Math.min(255, +n)).toString(16).padStart(2, "0")).join(""))

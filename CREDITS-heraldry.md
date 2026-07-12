@@ -1,11 +1,14 @@
 # Heraldry charge art — attribution
 
-The heraldry system draws ~130 charges from two open collections, recoloured to
-each shield's tincture. The set is deliberately free of real-world **religious
-iconography** (no crosses, crescent, ankh, valknut, &c.). All field treatments
-(partitions, ordinaries, lines, semé), the geometric tilework (rosettes, star
-lattices), the calligraphic bands and the abstract brand glyph are drawn
-procedurally and are original to this project.
+The heraldry system draws ~185 charges (across beasts, insects, birds, mythic,
+sea, plant, object, architecture, natural, celestial and geometric categories)
+from two open collections, recoloured to each shield's tincture. The set is
+deliberately free of real-world **religious iconography** (no crosses, crescent,
+ankh, valknut, &c.). All field treatments (partitions, ordinaries, lines, semé),
+the geometric tilework (rosettes, star lattices), the calligraphic bands, the
+abstract brand glyph, and the **procedural sacred sigils** — our own emergent
+religious iconography, composed from sacred primitives under symmetry, copying no
+real faith — are drawn procedurally and are original to this project.
 
 ## Detailed charges — DrawShield
 

@@ -46,27 +46,40 @@ const IDX = {}; GENES.forEach((g, i) => (IDX[g] = i));
 
 // enums the genes decode into
 const SUBSTRATES  = ["shield", "banner", "roundel", "pennon", "gonfalon", "lozenge"];
-const COMPOSITIONS = ["heraldic", "central", "radial", "script", "brand", "plain", "seme"];
+const COMPOSITIONS = ["heraldic", "central", "radial", "script", "brand", "plain", "seme", "sacred"];
+// procedural SACRED SIGIL vocabulary — sacred primitives combined under symmetry.
+// This is our OWN religious iconography: no real faith's symbol, but the visual
+// grammar (radial/bilateral symmetry, radiating arms, a core, an enclosure, a
+// base) that makes a glyph read as sacred. A faith gets a unique, evolvable one.
+const SIGIL_FOLDS = [3, 4, 4, 4, 5, 6, 6, 8, 12];
+const SIGIL_ARMS  = ["bar", "taper", "budded", "flared", "forked", "crescent", "looped", "petal", "trefoil"];
+const SIGIL_CORES = ["orb", "ring", "eye", "triangle", "star", "void", "flame", "gem"];
+const SIGIL_ENC   = ["none", "none", "ring", "ring", "double", "vesica", "triangle"];
+const SIGIL_BASES = ["none", "none", "none", "steps", "lotus", "cradle"];
+const SIGIL_INTER = ["none", "none", "dots", "rays", "pips"];
 const SYMMETRIES  = ["none", "bilateral", "radial", "quarterly"];
 const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
 const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly"];
 const LINES       = ["straight", "straight", "wavy", "engrailed", "embattled", "indented"];
 const ARRANGES    = ["single", "single", "three", "inPale", "seme"];
 // Motif categories split into LIVING (figures a strict aniconism forbids) and
-// NON-LIVING (celestial, cross, geometry, plant, object — borne even by aniconic
-// faiths: a crescent, a cross, an arabesque). This split is what lets aniconism
-// mean "no living figures" rather than "no charge at all".
-const MOTIF_CATS  = ["beast", "bird", "mythic", "sea", "plant", "object", "celestial", "geometric"];
-const LIVING_CATS = new Set(["beast", "bird", "mythic", "sea"]);
-const NONLIVING_CATS = ["celestial", "geometric", "plant", "object"];
+// NON-LIVING (plant, object, architecture, natural, celestial, geometry — borne
+// even by aniconic faiths as arabesque / device / phenomenon). This split is what
+// lets low iconism mean "no living figures" rather than "no charge at all".
+const MOTIF_CATS  = ["beast", "insect", "bird", "mythic", "sea", "plant", "object", "architecture", "natural", "celestial", "geometric"];
+const LIVING_CATS = new Set(["beast", "insect", "bird", "mythic", "sea"]);
+const NONLIVING_CATS = ["plant", "object", "architecture", "natural", "celestial", "geometric"];
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 const MOTIFS = {
-  beast:  ["lion", "wolf", "boar", "bull", "bear", "horse", "ram", "stag", "elephant", "rabbit", "antelope", "camel", "tiger", "leopard", "fox", "greyhound", "hedgehog", "badger", "otter", "squirrel", "bee"],
+  beast:  ["lion", "wolf", "boar", "bull", "bear", "horse", "ram", "stag", "elephant", "rabbit", "antelope", "camel", "tiger", "leopard", "fox", "greyhound", "hedgehog", "badger", "otter", "squirrel", "ass", "cow"],
+  insect: ["bee", "butterfly", "spider", "ant", "grasshopper", "dragonfly", "stagbeetle", "snail", "moth", "hornet"],
   bird:   ["eagle", "falcon", "dove", "raven", "rooster", "crane", "swan", "owl", "peacock", "pelican", "martlet"],
-  mythic: ["dragon", "wyvern", "griffin", "unicorn", "pegasus", "hydra", "phoenix", "cockatrice", "basilisk", "sphinx", "salamander", "seadragon", "sealion"],
-  sea:    ["dolphin", "serpent", "mermaid", "fish", "pike", "salmon", "whale", "crab", "lobster", "shark", "escallop"],
+  mythic: ["dragon", "wyvern", "griffin", "unicorn", "pegasus", "hydra", "phoenix", "cockatrice", "basilisk", "sphinx", "salamander", "seadragon", "sealion", "harpy", "centaur", "chimera", "manticore"],
+  sea:    ["dolphin", "serpent", "mermaid", "fish", "pike", "salmon", "whale", "crab", "lobster", "shark", "escallop", "octopus", "narwhal", "shrimp", "whelk"],
   plant:  ["rose", "tree", "lotus", "thistle", "garb", "oak", "oakleaf", "olive", "palm", "lily", "cinquefoil", "quatrefoil", "trefoil", "sunflower", "iris", "poppy", "shamrock", "acorn", "vine", "grapes", "bamboo", "pineapple", "fleur"],
-  object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "tower", "castle", "bell", "bugle", "clarion", "lute", "drum", "chalice", "amphora", "anvil", "hammer", "millrind", "scythe", "compass", "lantern", "lamp", "scroll", "mirror", "shears", "quill", "distaff", "axe", "halberd", "arrow", "arrows", "pheon", "trident", "spear", "bow", "cannon", "mace", "catherinewheel"],
+  object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "bell", "bugle", "clarion", "lute", "drum", "chalice", "amphora", "anvil", "hammer", "millrind", "millstone", "scythe", "sickle", "plough", "pitchfork", "compass", "lantern", "lamp", "scroll", "mirror", "shears", "quill", "distaff", "axe", "halberd", "arrow", "arrows", "pheon", "trident", "spear", "bow", "crossbow", "flail", "club", "cannon", "mace", "warhammer", "catherinewheel", "cartwheel", "cogwheel", "helmet", "gauntlet", "breastplate", "mailedfist", "horseshoe", "spur", "stirrup", "saddle", "wagon", "beehive", "beacon", "brazier", "torch", "grenade", "chest"],
+  architecture: ["tower", "castle", "bridge", "gate", "arch", "house", "city"],
+  natural: ["cloud", "lightning", "snowflake", "teardrop", "flint", "flames", "fireball"],
   celestial: ["sun", "moon", "estoile", "comet"],
   geometric: ["lozenge", "fusil", "roundel", "billet", "fret", "triskele"],
 };
@@ -255,6 +268,10 @@ export function expressGenome(genome) {
     };
   }
 
+  // sacred sigil — our OWN religious iconography, procedural. A non-figural
+  // device (abstract), so it is aniconism-safe and reachable by any genome.
+  const sigil = composition === "sacred" ? sigilFromGenes(get) : null;
+
   // ornaments — a single small CANTON mark (top-dexter), only on compositions with
   // room for it, in a contrast-guaranteed colour so it never vanishes into the
   // field. No centred disc (it used to cover the device); no figure over a figure.
@@ -269,8 +286,38 @@ export function expressGenome(genome) {
     brandSeed: Math.floor(get("brandSeed") * 1e6),
   };
 
-  return { substrate, composition, symmetry, iconism, colors: pal, field, motif, geometry, ornaments,
+  return { substrate, composition, symmetry, iconism, colors: pal, field, motif, geometry, sigil, ornaments,
     gen: genome.gen || 0 };
+}
+
+// A sacred sigil spec from a gene reader (each aspect on its own gene, so it
+// evolves legibly — a schism drifts the arms, a core, an enclosure…).
+const pick = (v, arr) => arr[Math.floor(v * arr.length) % arr.length];
+function sigilFromGenes(get) {
+  return {
+    fold: pick(get("motifCount"), SIGIL_FOLDS),
+    arm: pick(get("motifIdx"), SIGIL_ARMS),
+    core: pick(get("pearl"), SIGIL_CORES),
+    enclosure: pick(get("border"), SIGIL_ENC),
+    base: pick(get("sunDisc"), SIGIL_BASES),
+    inter: pick(get("secondary"), SIGIL_INTER),
+    axis: get("symmetry") > 0.5,
+  };
+}
+/** sigilFromSeed(seed) — a faith's sacred sigil straight from a numeric seed,
+ *  for use independent of a full emblem (each religion gets its own, evolvable
+ *  by re-seeding a schism / recombining a syncretism). */
+export function sigilFromSeed(seed) {
+  const r = prng(seed >>> 0);
+  return {
+    fold: SIGIL_FOLDS[Math.floor(r() * SIGIL_FOLDS.length)],
+    arm: SIGIL_ARMS[Math.floor(r() * SIGIL_ARMS.length)],
+    core: SIGIL_CORES[Math.floor(r() * SIGIL_CORES.length)],
+    enclosure: SIGIL_ENC[Math.floor(r() * SIGIL_ENC.length)],
+    base: SIGIL_BASES[Math.floor(r() * SIGIL_BASES.length)],
+    inter: SIGIL_INTER[Math.floor(r() * SIGIL_INTER.length)],
+    axis: r() < 0.4,
+  };
 }
 
 // A short human description of what a genome became.
@@ -281,6 +328,7 @@ export function describeGenome(genome) {
   else if (p.composition === "script") bits.push("calligraphy");
   else if (p.composition === "brand") bits.push("tamga");
   else if (p.composition === "plain") bits.push(p.geometry.mode === "lattice" ? "star-lattice" : "rosette");
+  else if (p.composition === "sacred") bits.push(`sigil·${p.sigil.fold}·${p.sigil.arm}`);
   return bits.join(" · ");
 }
 
