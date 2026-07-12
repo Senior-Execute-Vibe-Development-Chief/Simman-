@@ -25,7 +25,7 @@ import { synthWord, renderWord, copyWord } from "./languagePhonology.js";
 import { applyRule, applyRules, legalizeWord } from "./languageChange.js";
 import { compiledInv, nativeStemOf, rootFormOf, glossOf, wordOf } from "./language.js";
 import {
-  CONCEPTS, MANY, ALL, TWO, HAND, MAN, EARTH, DAY, ROAD,
+  CONCEPTS, MANY, ALL, TWO, HAND, MAN, WOMAN, EARTH, DAY, ROAD,
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL,
@@ -106,6 +106,19 @@ export function rollGrammar(famSeed, prof) {
       : caseN >= 1 ? (H("prc") < 0.5 ? "acc-dat" : "acc")
       : m === "iso" ? (H("prc") < 0.15 ? "acc" : "none")
       : (H("prc") < 0.55 ? "acc" : "none"),
+    // CONCORD: which dependents agree with the head noun's class, and where the
+    // exponent sits. A gender system with no agreement is inert, so given
+    // genders≥2 the adjective agrees near-universally, the demonstrative next,
+    // the verb when the language already agrees in person. The many-class
+    // (Bantu) corner turns ALL targets on with an alliterating class PREFIX —
+    // there, subject class-concord IS the agreement. Own streams cadj/cdem/cvb.
+    concord: (() => {
+      if (genders < 2) return null;
+      if (genders >= 4) return { adj: true, dem: true, art: false, verb: true, site: "prefix" };
+      let adj = H("cadj") < 0.95, dem = H("cdem") < 0.7, verb = agree !== "none" && H("cvb") < 0.7;
+      if (!adj && !dem && !verb) adj = true;                          // an inert gender system isn't one
+      return { adj, dem, art: false, verb, site: m === "tmpl" ? "suffix" : "fuse" };
+    })(),
     aspect: tenses === 1 ? true : H("asp") < 0.45,   // tenseless ⇒ aspect carries time
     pluralMark: m === "iso" ? H("pl") < 0.3 : H("pl") < 0.9,
     dual: H("du") < 0.15,
@@ -1197,6 +1210,86 @@ export function nounClassInfo(lang, cid) {
     by: !g.genders ? "none" : (core || g.classAssign === "semantic") ? "semantic" : "formal" };
 }
 
+// ── concord propagation (F2/F3): one per-class marker carried by every
+// dependent of a class-c head — so an NP+verb alliterates (Bantu ki-tu ki-kubwa
+// ki-le ki-anguka), the fem class quarries WOMAN (feminine ‹ woman), the rest
+// are per-class cognate formatives that drift under the log. ──
+// semantically-honest class gloss (fem/masc/neut vs CLn for many-class)
+function classGloss(lang, cls) {
+  const g = gramOf(lang);
+  if (g.genders <= 3) { if (cls === genderOf(lang, WOMAN)) return "F"; if (cls === genderOf(lang, MAN)) return "M"; return "N"; }
+  return "CL" + cls;
+}
+const cloneMarkSyl = (m) => ({ on: m.on.map(x => ({ ...x })), nu: m.nu.map(x => ({ ...x })), co: m.co.map(x => ({ ...x })) });
+function concordMarks(lang) {
+  const c = gc(lang);
+  if (c.cmarks) return c.cmarks;
+  const g = gramOf(lang);
+  const marks = new Array(g.genders || 0).fill(null);
+  if (g.concord) {
+    const inv = compiledInv(lang), prof = lang.prof;
+    const femCls = genderOf(lang, WOMAN), mascCls = genderOf(lang, MAN);
+    for (let cls = 0; cls < g.genders; cls++) {
+      if (g.concord.site === "fuse") {
+        // a vowel ending distinguishes the classes; masc is the unmarked one
+        marks[cls] = cls === mascCls ? null
+          : { on: [], nu: [{ ...(cls === femCls ? vowFar(inv.vows) : vowMid(inv.vows)), n: 0, lg: 0 }], co: [] };
+      } else if (cls === femCls) {
+        marks[cls] = wearSyl(prof, lighten(rootFormOf(lang, WOMAN).w));          // fem ‹ woman
+      } else if (cls === mascCls && g.genders <= 3) {
+        marks[cls] = null;                                                       // masc unmarked
+      } else {
+        marks[cls] = wearSyl(prof, legalizeWord(applyRules(lang.rules, synthClosed(lang, inv, "cmark:" + cls))));
+      }
+    }
+  }
+  c.cmarks = marks;
+  return marks;
+}
+// attach the class marker to a word form per the concord site (prefix vs suffix)
+function applyConcord(lang, form, cls) {
+  const m = concordMarks(lang)[cls];
+  if (!m) return form;
+  if (gramOf(lang).concord.site === "prefix") { form.syls.unshift(cloneMarkSyl(m)); return legalizeWord(form); }
+  // suffix/fuse: append. A bare-vowel exponent landing on a vowel-final stem
+  // (fem -a onto 'etya') would collapse and go inaudible — buffer with a glide
+  // (-a → -ya), the same hiatus repair the compound joiner uses, so the class
+  // is always heard
+  const syl = cloneMarkSyl(m), last = form.syls[form.syls.length - 1];
+  if (!syl.on.length && syl.nu.length && last && !last.co.length && last.nu.length)
+    syl.on = [last.nu[0].b === 0 ? { ...GLIDE_Y } : { ...GLIDE_W }];
+  attachSyl(lang.prof, form, syl, "suf");
+  return legalizeWord(form);
+}
+
+/** An attributive adjective agreeing with its head's noun class (concord F3).
+ *  Invariant (== wordOf) in genderless / non-concording tongues. */
+export function inflectAdj(lang, cid, { cls = 0, num = "sg", cas = null } = {}) {
+  const key = "adj:" + cid + ":" + cls + ":" + num + ":" + (cas || "");
+  const c = gc(lang);
+  const hit = c.cells.get(key); if (hit) return hit;
+  const g = gramOf(lang);
+  let out;
+  if (!g.genders || !g.concord || !g.concord.adj) out = { text: wordOf(lang, cid), gloss: glossOf(cid), pre: [], post: [] };
+  else {
+    const form = applyConcord(lang, copyWord(nativeStemOf(lang, cid)), cls);
+    out = { text: renderWord(form, lang.prof), gloss: glossOf(cid) + "." + classGloss(lang, cls), pre: [], post: [] };
+  }
+  c.cells.set(key, out);
+  return out;
+}
+
+/** Which dependents agree with the noun class (concord F2), or null. */
+export function agreementTargets(lang) {
+  const g = gramOf(lang);
+  if (!g.concord) return null;
+  return Object.keys(g.concord).filter(k => k !== "site" && g.concord[k]);
+}
+/** The per-class agreement exponents as rendered strings ("" = unmarked). */
+export function concordMarkers(lang) {
+  return concordMarks(lang).map((m, cls) => ({ cls, g: classGloss(lang, cls), w: m ? renderWord({ syls: [cloneMarkSyl(m)] }, lang.prof) : "" }));
+}
+
 /** Inflect a noun: { text, gloss, pre, post } — pre/post are the particle
  *  tokens an isolating tongue uses instead of affixes. */
 export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
@@ -1253,8 +1346,8 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -1345,6 +1438,17 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     const pre = [], post = [];
     impExtras(pre, post);
     out = { text: renderWord(form, lang.prof), gloss: glossStr, pre, post, irr: !!irr || !!pattern };
+  }
+  // subject class-concord (verb agrees with the subject's noun class — Bantu
+  // ki-anguka, Russian past upa-l/upa-la). Additive: only when asked + concord.verb.
+  if (sclass != null && g.concord && g.concord.verb && !imperative) {
+    const m = concordMarks(lang)[sclass];
+    if (m) {
+      const mw = renderWord({ syls: [cloneMarkSyl(m)] }, lang.prof);
+      out = g.concord.site === "prefix"
+        ? { ...out, text: mw + out.text, gloss: classGloss(lang, sclass) + "-" + out.gloss }
+        : { ...out, text: out.text + mw, gloss: out.gloss + "-" + classGloss(lang, sclass) };
+    }
   }
   c.cells.set(key, out);
   return out;
@@ -1462,11 +1566,20 @@ export function renderClause(lang, frame) {
       const q = cl.qs.find(x => x.k === "what");
       return [{ w: q.w, g: "what", role, wh: true }];
     }
+    const headCls = g.genders ? genderOf(lang, arg.n) : 0;
     const x = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas });
     let seq = [...x.pre.map(t => ({ ...t, role })), { w: x.text, g: x.gloss, role }, ...x.post.map(t => ({ ...t, role }))];
     if (arg.adj != null) {
-      const adj = { w: wordOf(lang, arg.adj), g: glossOf(arg.adj), role };
+      const a = inflectAdj(lang, arg.adj, { cls: headCls, num: arg.num || "sg", cas });   // agrees with head class
+      const adj = { w: a.text, g: a.gloss, role };
       seq = g.adjN ? [adj, ...seq] : [...seq, adj];
+    }
+    // demonstrative (optional frame field): agrees with the head class too
+    if (arg.dem) {
+      const d = cl.dems.find(z => z.k === arg.dem) || cl.dems[cl.dems.length - 1];
+      let dw = d.w, dg = d.g;
+      if (g.concord && g.concord.dem && g.genders) { dw = renderWord(applyConcord(lang, copyWord(d.form), headCls), lang.prof); dg = d.g + "." + classGloss(lang, headCls); }
+      seq = [{ w: dw, g: dg, role }, ...seq];
     }
     if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role }];
     else if (arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role }];
@@ -1483,9 +1596,11 @@ export function renderClause(lang, frame) {
   const agreePers = !imperative && g.agree !== "none" ? String(sPers) : null;
   const objPers = !imperative && g.agree === "both" && trans && !frame.o.wh ? "3" : null;
   const neg = !!frame.v.neg;
+  // subject class-concord on the verb (Bantu ki-, Russian past -l/-la)
+  const vClass = g.concord && g.concord.verb && frame.s && !sIsPron && frame.s.n != null && g.genders ? genderOf(lang, frame.s.n) : null;
   const vx = inflectVerb(lang, frame.v.c, {
     tam, pers: agreePers, num: sNum === "du" ? "pl" : sNum, obj: objPers,
-    neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null,
+    neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, sclass: vClass,
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
   // negation particle (when not an affix): before/after the verb, or clause-final.

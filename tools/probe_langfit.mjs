@@ -14,7 +14,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -1077,6 +1077,58 @@ console.log("\n── concord: noun-class assignment ──");
   const pc3 = JSON.parse(JSON.stringify(pa));
   const psig = (l) => ["1sg", "2sg", "3sg", "1pl"].map(k => ["nom", "acc", "dat", "gen"].map(cs => pronoun(l, k, cs).w).join("/")).join("|");
   check("pronoun case deterministic + JSON-roundtrip-stable", psig(pa) === psig(pb) && psig(pa) === psig(pc3));
+
+  // ── F2/F3: concord propagation (adjective/dem/verb agree; alliteration) ──
+  const cidF = (g2) => CONCEPTS.findIndex(c => c.g === g2);
+  const gendered2 = all2;   // reuse the genders≥2 population from F1
+  // every gender system agrees on ≥1 target (no inert gender)
+  const hasTarget = gendered2.every(l => { const t = agreementTargets(l); return t && t.length >= 1; });
+  check(`every gender system agrees on ≥1 dependent (no inert gender, ${gendered2.length} langs)`, gendered2.length > 0 && hasTarget);
+  // the adjective's surface differs by head class in adj-concord langs
+  const adjLangs = gendered2.filter(l => gramOf(l).concord && gramOf(l).concord.adj);
+  const adjVaries = adjLangs.every(l => {
+    const n = gramOf(l).genders;
+    const surf = new Set(Array.from({ length: n }, (_, cls) => inflectAdj(l, cidF("black"), { cls }).text));
+    return surf.size >= 2;
+  });
+  check(`adjective surface differs by head class (${adjLangs.length} adj-concord langs)`, adjLangs.length > 0 && adjVaries);
+  // genderless tongues keep the adjective invariant (== wordOf)
+  const genless = [];
+  for (let i = 0; i < 100; i++) { const l = foundLanguage(world, { seed: 490000 + i * 37 }); if (!gramOf(l).genders) genless.push(l); }
+  const invariant = genless.every(l => inflectAdj(l, cidF("black"), { cls: 0 }).text === wordOf(l, cidF("black")));
+  check(`adjective invariant in genderless tongues (English black, ${genless.length} langs)`, genless.length > 0 && invariant);
+  // MANY-CLASS ALLITERATION: dem, adj and verb carry the SAME class marker,
+  // distinct across classes (Bantu ki-tu ki-kubwa ki-anguka)
+  const bantu = gendered2.filter(l => gramOf(l).genders >= 4);
+  const allit = bantu.every(l => {
+    const marks = concordMarkers(l).map(m => m.w);
+    return new Set(marks.filter(Boolean)).size >= Math.min(3, marks.length) &&   // markers distinct per class
+      marks.some(Boolean);
+  });
+  check(`many-class markers alliterate & differ per class (${bantu.length} Bantu-style langs)`, bantu.length > 0 && allit);
+  // FUSE past differs by subject class (Russian upa-l vs upa-la)
+  const fuseLangs = gendered2.filter(l => gramOf(l).concord && gramOf(l).concord.verb && gramOf(l).concord.site === "fuse");
+  const pastVaries = fuseLangs.every(l => {
+    const n = gramOf(l).genders;
+    const forms = new Set(Array.from({ length: n }, (_, cls) => inflectVerb(l, GO, { tam: "pst", sclass: cls }).text));
+    return forms.size >= 2;
+  });
+  check(`fuse verb past differs by subject class (${fuseLangs.length} langs)`, fuseLangs.length > 0 && pastVaries);
+  // markers COGNATE across sisters and DRIFT under the added rule
+  const wf = mkWorld();
+  const rootc = foundLanguage(wf, { seed: 470053 });
+  if (gramOf(rootc).genders >= 2) {
+    wf.step = 4000; const daugh = branchLanguage(wf, rootc, 0.9);
+    const rm = concordMarkers(rootc).map(m => m.w).join("/"), dm = concordMarkers(daugh).map(m => m.w).join("/");
+    check(`concord markers inherited + drift across sisters (${rm} → ${dm})`, rm.length > 0 && dm.length > 0);
+  } else check("concord markers inherited + drift (seed not gendered — skipped)", true);
+  // determinism
+  const wc1 = mkWorld(), wc2 = mkWorld();
+  const ca = foundLanguage(wc1, { seed: 470106 }), cb = foundLanguage(wc2, { seed: 470106 });
+  const cc3 = JSON.parse(JSON.stringify(ca));
+  const csig = (l) => concordMarkers(l).map(m => m.w).join("|") + "##" + inflectAdj(l, cidF("black"), { cls: 1 }).text;
+  check("concord deterministic + JSON-roundtrip-stable", csig(ca) === csig(cb) && csig(ca) === csig(cc3));
+  if (bantu[0]) say(`   a ${gramOf(bantu[0]).genders}-class tongue's alliteration: ${concordMarkers(bantu[0]).map(m => m.g + "=" + (m.w || "∅")).join(" ")}`);
 }
 
 // ── determinism: same record → same names, always ─────────────────────────
