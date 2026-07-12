@@ -82,6 +82,20 @@ Zipf −0.60/−0.70/clean — 4242 at ZERO warnings, 31337 at one, 8817 at
 two. REMAINING before the flip (bar = zero on all three): the last of
 the Zipf flatness.
 
+UPDATE (binding-ceiling attempt measured — see "dead end 3" below): the
+documented "tightly-binding ceiling / calibrate spike so median fill → 1"
+next-step was built and swept, and it does NOT get there. Magnitude scaling
+can't drive median fill to 1 (pop falls with cap; binding and a heavy tail
+are in tension), the heavy tail lives only in the region-scale economic
+import capacity that a single field tile throughput-clips, and the economic
+ceiling (−1.5) is steeper than the target (−0.8..−1.2) so the solution is a
+noise-dominated partial bind — seed 8817's Zipf sticks at −0.56..−0.65 for
+every spike scale. Best measured (K≈0.50) fixes urbanization on all three
+and reaches ZERO warnings on 31337 & 4242 but leaves 8817's Zipf warning,
+and any passing value would be fitted. STILL lever-off, byte-identical. The
+one untried mechanism (multi-tile urban footprint) and the pivot options are
+at the bottom of the dead-ends section.
+
 ### The Zipf tail: diagnosis + the dead ends (measured, do not re-walk)
 
 The blocker is the city-size Zipf slope (suite reads −0.56/−0.67/−0.69;
@@ -117,6 +131,62 @@ heavy-tailed ceilings become the heavy-tailed sizes). The current spikes
 are ~2–14× too large to bind, which is why fill ratios sit at 0.07–0.51
 and nothing caps the primate pull. Calibrate the spike magnitude first
 (so median fill → ~1), THEN a gentle preferential pull is self-limiting.
+
+### The binding-ceiling attempt: measured, and why it is stubborn (dead end 3)
+
+Built the calibration (`URBAN_SPIKE_K`, a multiplier on the spike magnitude)
+and swept it against the REAL stylized gate, 3 seeds. Two hard results:
+
+1. **Magnitude scaling cannot make median fill → 1.** Shrinking the spike
+   shrinks the tile ceiling, but the field's single-tile diffusion inflow
+   drops WITH it (a smaller ceiling has less spare, so it pulls fewer
+   migrants and its logistic saturates sooner) — so `pop` falls almost as
+   fast as `cap`, and the fill ratio barely moves (median 0.18 at K=1 →
+   0.20–0.37 across the whole sweep; only K≈0.05 reaches ~0.75, and there
+   the economy is so unconcentrated the ceilings compress to ~12× and Zipf
+   goes SHALLOW, −0.60). The "median fill → 1" target is unreachable by
+   magnitude alone: binding and a heavy tail are in direct tension.
+2. **No spike scale passes 3/3 at zero warnings; a value that came close is
+   fitted.** Real-gate Zipf (urban cores, the flip statistic):
+   K=1.0 → −0.56 / −0.67 / −0.69;  K=0.65 → −0.65 / −0.65 / −0.67 (all
+   fail); K=0.50 → **−0.56 / −0.76 / −0.72** (31337 & 4242 hit ZERO
+   warnings, and urbanization returns to band on all three — a real gain
+   over K=1's 26% overshoot — but **seed 8817 is stuck at −0.56..−0.65 for
+   every K tried**). Its city sizes are genuinely more uniform; no spike
+   magnitude moves it, because the limiter is the single-tile THROUGHPUT
+   CLIP, not the ceiling magnitude. Picking K to pass would be a fitted
+   constant (median fill still ~0.2 → the "binding ceiling" physical story
+   never actually holds) — cardinal rule 2. Not flipped.
+
+**Where the tail actually lives (measured), and why the tile can't hold it.**
+The heavy tail is ONLY in `s._k × importShare` — the economic import
+capacity (census units, Zipf −1.5). importShare *alone* is a modest fraction
+(median 0.13, max 0.45 → `φ/(1−φ)` never exceeds ~0.8, no tail), and core
+terrainCap is near-uniform (~3700, bar fertility artifacts). So the derived
+per-tile density spike `terrainCap × φ/(1−φ)` — the one formulation with no
+fitted constant — FAILS: it lands ~100× too small to bind (median 517 vs a
+reachable core pop ~94k) and carries no tail. The tail is a REGION-scale
+economic quantity; 4-neighbour diffusion can only deliver it to ONE tile,
+where it throughput-clips (the −1.5 ceiling flattens to the −0.6 the gate
+reads). And the economic ceiling being STEEPER (−1.5) than the target
+envelope (−0.8..−1.2) means the honest answer is a PARTIAL bind between
+full-clip (−0.6) and full-bind (−1.5) — a balance point that is
+lifecycle-noise-dominated (±0.1–0.15 across seeds), which is exactly why
+8817 won't hold still. (Diagnostic: `tools/probe_onepop_fill.mjs`.)
+
+**The one untried mechanism that could un-clip without runaway** (if ONE_POP's
+Zipf is pursued further): a MULTI-TILE urban footprint — a metropolis
+occupies more tiles than a town (real sprawl), so the region-scale economic
+ceiling binds PER TILE across a size-proportional footprint instead of
+piling onto one throughput-clipped tile. Distinct from both documented dead
+ends (catchment pull spread over the whole Voronoi territory → uniform;
+preferential inter-city pull → runaway) and from magnitude scaling. Risk: it
+conserves the ceiling total, so it may over-steepen toward −1.5 unless the
+footprint is geographically bounded, and it couples to the settlement
+lifecycle (drained neighbours → deaths) — re-measure city COUNT, not just
+slope. Otherwise the clean queue stands (ontology V3 region-first secession;
+the horde force multiplier), and ONE_POP stays lever-off, byte-identical,
+with every non-Zipf gate already passing 3/3.
 
 What is already true under the lever: the field owns demography (human
 rates; the transition/graveyard bend stamped per core), the 3000 BC world
