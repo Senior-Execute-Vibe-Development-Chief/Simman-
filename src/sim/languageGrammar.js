@@ -234,6 +234,10 @@ const vowMid = (vows) => vows.find(v => v.h === 1 && !v.r) || vows.find(v => v.h
 // render a closed form; affixes/particles are never dressed in name-grade
 // orthography, but renderWord's language-wide conventions still apply
 const rform = (lang, w) => renderWord(w, lang.prof);
+// grammatical ENCLITIC particles (the 吗/了/ka slots) go NEUTRAL-tone in a
+// tone language — real particles shed their melody, unlike pronouns and
+// negators (bù, bié) which keep theirs. Render with tone marks suppressed.
+const rformNeutral = (lang, w) => renderWord(w, lang.prof.tone ? { ...lang.prof, toneMarks: false } : lang.prof);
 
 // keep a set of forms mutually distinct: cycle the nucleus through the vowel
 // inventory until the collision clears (deterministic walk, tiny and rare)
@@ -390,17 +394,17 @@ export function closedOf(lang) {
     conj.push({ k, g: k, form: f, w: rform(lang, f), src: null });
   }
 
-  // ── the polar-question particle (Japanese ka, Mandarin ma) ──
+  // ── the polar-question particle (Japanese ka, Mandarin ma) — toneless ──
   const qp = g.qPart !== "none" ? (() => {
     const f = legalizeWord(R(synthClosed(lang, inv, "qp")));
-    return { g: "Q", form: f, w: rform(lang, f) };
+    return { g: "Q", form: f, w: rformNeutral(lang, f) };
   })() : null;
 
   // ── imperative particle (hortative-like: "let…!") and the special
   // prohibitive negator (a distinct "don't!" — Latin nolī, Mandarin bié) ──
   const impPart = g.imp === "particle" ? (() => {
     const f = legalizeWord(R(synthClosed(lang, inv, "impp")));
-    return { g: "IMP", form: f, w: rform(lang, f) };
+    return { g: "IMP", form: f, w: rformNeutral(lang, f) };   // enclitic → toneless
   })() : null;
   const prohibW = g.prohib === "special" ? (() => {
     const f = legalizeWord(R(synthClosed(lang, inv, "proh")));
@@ -479,31 +483,33 @@ function numCompound(lang, a, b, capSyl = 3) {
   return legalizeWord(w);
 }
 
-/** The numeral phrase for n (1..999) in this language's own counting system:
- *  decimal, vigesimal (two-score-and-ten shapes) or quinary (five-two = 7).
- *  Returns { parts: [{w, g}], text, gloss }. */
-export function numeral(lang, n) {
+// build the numeral phrase for n; `wear` false keeps the multiplier's FULL
+// form (uncontracted "three-ten") instead of wearing it to one syllable —
+// the collision escape the table builder reaches for
+function buildNumeral(lang, n, wear = true) {
   const g = gramOf(lang);
   const atoms = numAtoms(lang);
   const parts = [];
   const atom = (k) => { const a = atoms.get(k); return { w: a.w, g: a.ety ? `${numGloss(k)}(${a.ety})` : numGloss(k) }; };
   const push = (p) => parts.push(p);
+  const combine = (mulForm, baseForm) => wear ? numCompound(lang, mulForm, baseForm)
+    : legalizeWord(joinSyls(mulForm.syls, baseForm.syls));    // full multiplier
   const unitPart = (u) => {
     if (g.numBase === 5 && u > 5 && u < 10) {
       const five = atoms.get(5), rest = atoms.get(u - 5);
-      return { w: rform(lang, numCompound(lang, five.form, rest.form)), g: `five-${numGloss(u - 5)}` };
+      return { w: rform(lang, combine(five.form, rest.form)), g: `five-${numGloss(u - 5)}` };
     }
     return atom(u);
   };
   const tensPart = (t) => {
     if (t === 1) return atom(10);
     const mul = atoms.get(t), ten = atoms.get(10);
-    return { w: rform(lang, numCompound(lang, mul.form, ten.form)), g: `${numGloss(t)}-ten` };
+    return { w: rform(lang, combine(mul.form, ten.form)), g: `${numGloss(t)}-ten` };
   };
   const scorePart = (v) => {
     if (v === 1) return atom(20);
     const mul = atoms.get(v), sc = atoms.get(20);
-    return { w: rform(lang, numCompound(lang, mul.form, sc.form)), g: `${numGloss(v)}-twenty` };
+    return { w: rform(lang, combine(mul.form, sc.form)), g: `${numGloss(v)}-twenty` };
   };
   const h = Math.floor(n / 100), rest = n % 100;
   if (h > 0) { if (h > 1) push(unitPart(h)); push(atom(100)); }
@@ -522,6 +528,53 @@ export function numeral(lang, n) {
       else { if (tp) push(tp); if (up) push(up); }
     }
   }
+  return { parts, text: parts.map(p => p.w).join(" "), gloss: parts.map(p => p.g).join(" ") };
+}
+
+// HARD numeral uniqueness: build 1..99 in order and force every form
+// distinct — no language on earth tolerates homophonous numerals (a market
+// would seize up). The escapes, in order of realism: uncontract the
+// multiplier (three-ten, not thir-ty), then irregularize the last atom's
+// vowel (the same pressure that makes 'eleven' not 'one-teen').
+function numeralTable(lang) {
+  const c = gc(lang);
+  if (c.numTable) return c.numTable;
+  const table = new Map();
+  const taken = new Set();
+  for (let n = 1; n < 100; n++) {
+    let r = buildNumeral(lang, n, true);
+    if (taken.has(r.text)) { const alt = buildNumeral(lang, n, false); if (!taken.has(alt.text)) r = alt; }
+    let guard = 0;
+    while (taken.has(r.text) && guard++ < 8) {
+      // last-ditch: shift the final vowel of the phrase (irregular numeral)
+      r = { ...r, text: perturbNumeralText(lang, r.text, n, guard) };
+    }
+    taken.add(r.text);
+    table.set(n, r);
+  }
+  c.numTable = table;
+  return table;
+}
+// deterministic final-vowel shift on a rendered numeral phrase (rare repair)
+function perturbNumeralText(lang, text, n, k) {
+  const inv = compiledInv(lang);
+  const v = renderWord({ syls: [{ on: [], nu: [{ ...inv.vows[(n + k) % inv.vows.length], n: 0, lg: 0 }], co: [] }] }, lang.prof);
+  return text.replace(/[aeiouáàǎāéèíìóòúùü]+(?=[^aeiouáàǎāéèíìóòúùü]*$)/i, v) || text + v;
+}
+
+/** The numeral phrase for n (1..999) in this language's own counting system:
+ *  decimal, vigesimal (two-score-and-ten shapes) or quinary (five-two = 7).
+ *  Guaranteed distinct across the counting range. Returns { parts, text, gloss }. */
+export function numeral(lang, n) {
+  if (n > 0 && n < 100) return numeralTable(lang).get(n);
+  // 100+ : hundreds part composes with the deduped 1..99 table
+  const g = gramOf(lang);
+  const atoms = numAtoms(lang);
+  const h = Math.floor(n / 100), rest = n % 100;
+  const parts = [];
+  if (h > 1) parts.push(...numeralTable(lang).get(h).parts);
+  if (h > 0) { const a = atoms.get(100); parts.push({ w: a.w, g: numGloss(100) }); }
+  if (rest > 0) parts.push(...numeralTable(lang).get(rest).parts);
   return { parts, text: parts.map(p => p.w).join(" "), gloss: parts.map(p => p.g).join(" ") };
 }
 const NUM_GLOSS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
@@ -1082,7 +1135,8 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
   } else if (spec.iso) {
     const post = [], pre = [];
     if (tamAff) {
-      const tok = { w: renderWord({ syls: [tamAff.syl] }, lang.prof), g: tamAff.g };
+      // aspect/tense particles are enclitics — neutral tone (le, guo, ma)
+      const tok = { w: rformNeutral(lang, { syls: [tamAff.syl] }), g: tamAff.g };
       if (tamEff === "fut") pre.push(tok); else post.push(tok);   // le trails, future auxiliaries lead
     }
     impExtras(pre, post);

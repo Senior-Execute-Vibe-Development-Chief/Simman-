@@ -500,3 +500,55 @@ three references, and touch nothing outside the grammar layer.
 Coverage lift: the two most common gaps from the typological audit closed;
 still parked are voice (passive/antipassive/causative), evidentiality,
 numeral classifiers, noun-class concord, and the rarer alignments.
+
+---
+
+## Build status (session 10) — the homophony/diversity review round
+
+A fresh reader stress-tested the random roller and caught a real regression
+plus a diversity collapse; both converted to mechanisms + gates, not
+symptom patches (cardinal rule 2).
+
+- **The saturation guard (languagePhonology.applySignature)** — THE fix. A
+  language must be able to FIT its vocabulary: the distinct-monosyllable
+  count is ≈ onsets × nuclei × codas × tone-levels, and the forms it can
+  mint is syllSpace^wordLen. When that falls short of the ~220-concept
+  vocabulary (with birthday-paradox headroom, aiming space^len ≫ vocab²),
+  the language pays the REAL price — TONE (Sinitic: tone multiplies the
+  space, words stay short) or LENGTH (Japanese/Polynesian: atonal, words
+  grow). Rolling which SPLITS the CV cell into distinct looks instead of one
+  monosyllabic-tonal-nasal blur (the "four flavors of the same island"),
+  and it is the same mechanism that kills the pathological homophony. WALS-
+  recalibrated sylC (CV ~30%→~20%, a real minority).
+- **Homophony repair (language.seedDictionary)** — the 狮→狮子 machine. The
+  guard sizes the space, but the licensed syllabary + frequency skew still
+  let unrelated basics collide. So the dictionary is assigned in a fixed cid
+  order and a fresh word whose surface collides with one already taken by an
+  UNRELATED concept is extended/reshaped until it clears (colexified pairs
+  are intended merges, skipped). Result: 0/400 languages over 12% core
+  homophony (worst was 59%), ~2.6 ms/lang, JSON-round-trip-stable. The
+  reported regression (seed 8817: three=four=five=a) now speaks a distinct
+  vocabulary.
+- **Hard numeral uniqueness (languageGrammar.numeralTable)** — no market
+  tolerates homophonous numerals. 1..99 built in order, forced distinct;
+  the escapes in order of realism are uncontracting the multiplier
+  (three-ten, not thir-ty) then irregularizing the last vowel (why 'eleven'
+  isn't 'one-teen'). 0/500 languages have a collision in 1–40.
+- **Toneless enclitic particles** — the 吗/了 slots go neutral-tone in a tone
+  language (rformNeutral), while pronouns and negators (bù, bié) keep their
+  melody.
+- **Diversified grammaticalization pathways** (already landed in M2's AFF_SRC
+  pools; gated this round): in←house/belly, on←back/head, under←earth/foot,
+  from←back/mouth, of←house/kin, to←face/go, with←hand — no single pathway
+  monopolizes.
+- **Gates** (probe §11): core-homophony budget (<18%, checked 500 langs),
+  numeral distinctness 1–10 and 1–40, the specific regression seed, WALS-
+  shaped syllable distribution, CV-cell flavor spread (≥3), neutral-tone
+  particles vs tone-keeping content words, adposition-source diversity.
+  86 probe checks green; shuffle test rose to 99% (more varied phonology =
+  more separable). Names re-baseline (accepted, cosmetic).
+
+Parked enhancement the reader suggested: an INTENTIONAL abstract-derivation
+table (king ← sit/old/great — the "one who sits on the throne"), to turn
+accidental etymologies into designed depth now that accidental homophony is
+gone. Noted for a future session.

@@ -145,9 +145,55 @@ function compile(lang) {
   // family-level semantic structure: colexification + derive-vs-root choices
   const colex = new Map();
   COLEX.forEach(([a, b, p], i) => { if (h01(lang.famSeed, "colex", i) < p) colex.set(b, a); });
-  c = { key, inv, colex, words: new Map(), internals: new Map(), sufs: null };
+  c = { key, inv, colex, words: new Map(), internals: new Map(), sufs: null, seeded: false };
   COMPILED.set(lang, c);
   return c;
+}
+
+// ── homophony repair (the 狮→狮子 machine) ─────────────────────────────────
+// The saturation guard sizes a language so its vocabulary CAN fit, but the
+// licensed syllabary + frequency skew still let unrelated basic words
+// collide by accident. Real languages don't tolerate that in core vocabulary
+// — a homophone that arises gets DISAMBIGUATED, classically by lengthening
+// (Mandarin adds 子 to a bare monosyllable). So: assign the dictionary in a
+// fixed order and, when a fresh word's surface collides with one already
+// taken by an UNRELATED concept, extend/reshape it until it clears.
+// Colexified pairs (tree/wood) are intended merges and are skipped.
+function extendRoot(lang, w, cid, attempt) {
+  const c = COMPILED.get(lang);
+  const out = copyWord(w);
+  // append a distinct light syllable coined from the concept + attempt (the
+  // -zi/-tou disambiguating suffix), or on later tries reshape the nucleus
+  const rng = mkRng(hash32(lang.famSeed, "homrep", cid, attempt));
+  if (attempt <= 2 && out.syls.length < 3) {
+    const add = synthWord(rng, lang.prof, c.inv, 1);
+    out.syls.push(...add.syls);
+  } else {
+    const v = c.inv.vows[rng.int(c.inv.vows.length)];
+    const s = out.syls[out.syls.length - 1];
+    if (s.nu.length) s.nu = [{ ...v, n: s.nu[0].n, lg: 0 }];
+    if (!s.co.length && c.inv.cons.length) s.co = [{ ...c.inv.cons[rng.int(Math.min(8, c.inv.cons.length))] }];
+  }
+  out.tseed = (out.tseed ^ hash32(lang.famSeed, "homtseed", cid, attempt)) >>> 0;   // fresh tone melody too
+  return applyRules(lang.rules, out);
+}
+
+function seedDictionary(lang, c) {
+  if (c.seeded) return;
+  c.seeded = true;                                     // set first: internalOf below must not re-enter
+  const taken = new Map();                             // rendered surface → owning cid
+  for (let cid = 0; cid < CONCEPTS.length; cid++) {
+    if (c.colex.has(cid)) continue;                    // intended merge, not a collision
+    let w = internalOf(lang, cid);
+    let surf = renderWord(w, lang.prof);
+    let guard = 0;
+    while (taken.has(surf) && guard++ < 5) {
+      w = extendRoot(lang, w, cid, guard);
+      c.internals.set(cid, w);
+      surf = renderWord(w, lang.prof);
+    }
+    taken.set(surf, cid);
+  }
 }
 
 // ── the virtual dictionary ────────────────────────────────────────────────
@@ -157,6 +203,10 @@ function compile(lang) {
  *  correspond regularly because they share the root and differ in the log. */
 function internalOf(lang, cid) {
   const c = compile(lang);
+  // first access seeds the whole dictionary in a fixed order with homophony
+  // repair (seedDictionary sets c.seeded before re-entering, so this recurses
+  // exactly once); after that every form is served from the deduped cache
+  if (!c.seeded) seedDictionary(lang, c);
   const seen = c.internals.get(cid);
   if (seen) return seen;
   const con = CONCEPTS[cid];

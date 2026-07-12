@@ -723,6 +723,67 @@ console.log("\n── imperative & mood ──");
   }
 }
 
+// ── 11. HOMOPHONY BUDGET + PHONOLOGY DIVERSITY (fresh-reader review) ───────
+// A small syllable space must not drown the vocabulary in homophones (the
+// "three = four = five = a" collapse); the CV cell must VARY, not blur into
+// one Polynesian silhouette; and no language may have homophonous numerals.
+console.log("\n── homophony budget + diversity ──");
+{
+  const world = mkWorld();
+  const N = 500;
+  let worstHom = 0, worstSeed = 0, overBudget = 0, numBad10 = 0, numBad40 = 0;
+  const sylDist = { 0: 0, 1: 0, 2: 0, 3: 0 };
+  const cvFlavors = {};
+  for (let i = 0; i < N; i++) {
+    const seed = 8000 + i * 11;
+    const l = foundLanguage(world, { seed });
+    sylDist[l.prof.sylC]++;
+    if (l.prof.sylC === 0) { const f = (l.prof.tone ? "tone" : "atonal") + "+" + (l.prof.nasalCoda ? "nasal" : "open"); cvFlavors[f] = (cvFlavors[f] || 0) + 1; }
+    const words = CONCEPTS.map((c, cid) => wordOf(l, cid));
+    const hom = 1 - new Set(words).size / words.length;
+    if (hom > worstHom) { worstHom = hom; worstSeed = seed; }
+    if (hom > 0.18) overBudget++;
+    const n10 = []; for (let n = 1; n <= 10; n++) n10.push(numeral(l, n).text);
+    if (new Set(n10).size !== 10) numBad10++;
+    const n40 = []; for (let n = 1; n <= 40; n++) n40.push(numeral(l, n).text);
+    if (new Set(n40).size !== 40) numBad40++;
+  }
+  check(`core homophony within budget (worst ${Math.round(worstHom * 100)}% @ seed ${worstSeed}, ${overBudget}/${N} over 18%)`, overBudget === 0);
+  check(`numerals 1–10 pairwise distinct in EVERY language (${numBad10}/${N} bad)`, numBad10 === 0);
+  check(`numerals 1–40 distinct in every language (${numBad40}/${N} bad)`, numBad40 === 0);
+  // the flagged regression seed itself
+  const wi = foundLanguage(world, { seed: 8817 });
+  const wiWords = CONCEPTS.map((c, cid) => wordOf(wi, cid));
+  const wiHom = 1 - new Set(wiWords).size / wiWords.length;
+  const wi345 = [numeral(wi, 3).text, numeral(wi, 4).text, numeral(wi, 5).text];
+  check(`seed 8817 (the reported regression) no longer collapses (${Math.round(wiHom * 100)}% hom, 3/4/5 = ${wi345.join("/")})`, wiHom < 0.15 && new Set(wi345).size === 3);
+  // WALS-shaped syllable distribution: CV a real minority, not a third
+  check(`syllable complexity WALS-shaped (CV ${Math.round(100 * sylDist[0] / N)}%, not over-weighted)`, sylDist[0] / N > 0.1 && sylDist[0] / N < 0.26);
+  // the CV cell must show ≥3 distinct flavors (tone×coda), not collapse to one
+  check(`CV languages vary (${Object.keys(cvFlavors).length} flavors: ${Object.entries(cvFlavors).map(([k, v]) => k + " " + v).join(", ")})`, Object.keys(cvFlavors).length >= 3);
+  say("   worst-homophony language now speaks distinct core words; the island has more than one shape.");
+
+  // grammatical enclitic particles go NEUTRAL-tone in a tone language
+  // (吗/了), while pronouns and negators keep their melody
+  const m2 = foundLanguage(world, { seed: 445 });
+  m2.prof = refProfile("mandarin", 445); m2.rules = [];
+  const mp2 = refPin("mandarin"); m2.pin = mp2.pin; m2.prof.rom = mp2.rom;
+  const toneMark = (s) => /[̀́̄̌]/.test(s.normalize("NFD"));
+  const cl2 = closedOf(m2);
+  const particleToneless = !toneMark(cl2.qp.w) && inflectVerb(m2, SEE, { tam: "pfv" }).post.every(t => !toneMark(t.w));
+  const contentTone = toneMark(cl2.prons[0].w) || toneMark(cl2.neg.w);
+  check(`tonal particles go neutral, content words keep tone (Q=${cl2.qp.w}, 1SG=${cl2.prons[0].w})`, particleToneless && contentTone);
+
+  // grammaticalization pathways stay DIVERSE (not belly→in / face→to for all)
+  const perMeaning = {};
+  for (let i = 0; i < 80; i++) {
+    const l = foundLanguage(world, { seed: 5000 + i * 97 });
+    for (const a of closedOf(l).adps) if (a.src != null) (perMeaning[a.m] = perMeaning[a.m] || new Set()).add(glossOf(a.src));
+  }
+  const multiSource = Object.values(perMeaning).filter(s => s.size >= 2).length;
+  check(`adposition sources are diverse (${multiSource} meanings drawn from ≥2 different source words)`, multiSource >= 4);
+}
+
 // ── determinism: same record → same names, always ─────────────────────────
 {
   const w1 = mkWorld(), w2 = mkWorld();

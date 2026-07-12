@@ -32,10 +32,13 @@ const V = (h, b, r, n = 0, lg = 0) => ({ h, b, r, n, lg });
 // (inventory, syllable grammar, romanization) is derived from it.
 export function rollProfile(seed) {
   const rng = mkRng(hash32(seed, "prof"));
-  // syllable complexity attractor: 0 CV · 1 CV(C) · 2 clusters · 3 heavy —
-  // weighted toward the POLES: this one dial does more for cross-language
-  // distinctness than everything else combined
-  const sylC = rng.pick([0, 0, 0, 1, 1, 2, 2, 3, 3]);
+  // syllable complexity attractor: 0 CV · 1 CV(C) · 2 clusters · 3 heavy.
+  // Weighted to WALS 12A shape — SIMPLE (CV) syllables are a real MINORITY
+  // (~15-20%), not a third of the world; moderately-complex (CVC) is the
+  // plurality. Over-weighting CV was collapsing the lab onto "the same
+  // island" (fresh-reader review); the CV cell also has to VARY internally,
+  // handled by the saturation-driven prosody in applySignature.
+  const sylC = rng.pick([0, 0, 1, 1, 1, 2, 2, 2, 3, 3]);
   // tone anti-correlates with cluster depth (the West-African/Sinitic corner
   // vs the European corner)
   const toneP = [0.55, 0.30, 0.10, 0.04][sylC];
@@ -102,11 +105,36 @@ export function applySignature(p, seed) {
   if (p.sig === "finalV" && p.sylC >= 2) p.sig = "gem";     // open-word law suits light syllables
   if (p.sig === "heavy") { p.ejective = rng() < 0.5; p.guttural = true; p.freqPromote = 2; }
   if (p.sig === "noInitV") p.vInit = 0;
-  // TONOGENESIS BY NECESSITY: a tiny syllable space (light syllables, small
-  // inventory, short roots) drowns in homophones — which is exactly why the
-  // real minimal-syllable languages carry tone. If the space is that small,
-  // tone usually emerges whether the signature rolled it or not.
-  if (p.sylC <= 1 && p.wordLen <= 1.6 && p.consN <= 16 && !p.tone && rng() < 0.7) { p.tone = 1 + (rng() < 0.5 ? 1 : 0); p.toneMarks = true; }
+  // ── SATURATION: a language must be able to FIT its vocabulary ──
+  // A word layer of ~220 concepts needs enough distinct forms to name them
+  // without homophone soup. The distinct-monosyllable count is roughly
+  // (onsets × nuclei × codas × tone-levels); the number of forms a language
+  // can mint is syllSpace^wordLen. If that falls short, the language pays the
+  // REAL typological price — either TONE (Sinitic: tone multiplies the space
+  // so words stay short) or LENGTH (Japanese/Polynesian: atonal, so words
+  // grow). Rolling which one is what SPLITS the CV cell into two distinct
+  // looks instead of one monosyllabic-tonal-nasal blur, and it is the same
+  // mechanism that kills the 59%-homophony pathological cases the fresh
+  // reader caught. (Birthday-paradox headroom: aim for space^len ≫ vocab².)
+  const codaFactor = p.nasalCoda ? 2.4 : p.coDepth === 0 ? 1 : p.coDepth === 1 ? 1 + p.consN * 0.35 : 1 + p.consN * 0.8;
+  const toneLevels = p.tone === 2 ? 4 : p.tone === 1 ? 2.4 : 1;
+  const diphFactor = p.diph ? 1.5 : 1;
+  const syllSpace = Math.max(3, p.consN * 1.15 * (p.vowelN * diphFactor) * codaFactor * toneLevels);
+  const VOCAB = 240;
+  const needLen = Math.log(VOCAB * VOCAB * 4) / Math.log(syllSpace);   // forms ≫ vocab² for low collision
+  if (p.wordLen < needLen) {
+    // a light-syllable tongue can still stay short by GAINING tone; otherwise
+    // (or by the dice) it lengthens. Heavier-syllable tongues just lengthen.
+    if (p.sylC <= 1 && !p.tone && rng() < 0.55) {
+      p.tone = rng() < 0.45 ? 2 : 1; p.toneMarks = true;
+      // re-evaluate: even with tone a tiny space may still need a little length
+      const s2 = syllSpace * (p.tone === 2 ? 4 : 2.4);
+      const need2 = Math.log(VOCAB * VOCAB * 4) / Math.log(s2);
+      if (p.wordLen < need2) p.wordLen = Math.min(3.4, need2);
+    } else {
+      p.wordLen = Math.min(3.6, needLen);
+    }
+  }
   return p;
 }
 
