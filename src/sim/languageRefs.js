@@ -36,7 +36,7 @@ export function refProfile(kind, seed) {
       genders: 0, classAssign: null, tenses: 1, agree: "none", aspect: true, pluralMark: false,
       dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
       proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
-      pronPl: "affix", declN: 1, conjN: 1,
+      pronPl: "affix", declN: 1, conjN: 1, pronCase: "none",
       // verb/adjective reduplication (kàn-kan, hóng-hóng); bare imperative;
       // 别-style dedicated prohibitive
       redup: { type: "full", fns: ["aspect", "intensive"] },
@@ -59,7 +59,7 @@ export function refProfile(kind, seed) {
       genders: 3, classAssign: "mixed", tenses: 3, agree: "subj", aspect: true, pluralMark: true,
       dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
-      pronPl: "root", declN: 3, conjN: 2,
+      pronPl: "root", declN: 3, conjN: 2, pronCase: "full",
       // no productive grammatical reduplication; suffixal imperative (idi);
       // prohibitive is plain ne + imperative
       redup: null, imp: "suffix", prohib: "neg",
@@ -85,7 +85,7 @@ export function refProfile(kind, seed) {
       genders: 0, classAssign: null, tenses: 3, agree: "none", aspect: false, pluralMark: true,
       dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
-      pronPl: "root", declN: 2, conjN: 2,
+      pronPl: "root", declN: 2, conjN: 2, pronCase: "acc",
       // no productive grammatical reduplication; bare imperative ("Go!");
       // prohibitive is "do not" + bare stem
       redup: null, imp: "bare", prohib: "neg",

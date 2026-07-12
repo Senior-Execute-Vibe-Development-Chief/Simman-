@@ -98,6 +98,14 @@ export function rollGrammar(famSeed, prof) {
     // many-class corner is biased 'mixed' (its high classes are shape buckets).
     // Own stream 'clsasg' — reads nothing existing.
     classAssign: genders < 2 ? null : genders >= 4 ? "mixed" : (H("clsasg") < 0.4 ? "semantic" : "mixed"),
+    // pronoun CASE series (English me/him is a case system the nouns lost):
+    // pronouns sit atop the animacy hierarchy, so they keep case even when the
+    // noun paradigm is thin — correlated with caseN. none|acc|acc-dat|full.
+    // Own stream 'prc'. (Under noun ergativity this stays nom-acc: split-erg.)
+    pronCase: caseN >= 3 ? (H("prc") < 0.85 ? "full" : "acc-dat")
+      : caseN >= 1 ? (H("prc") < 0.5 ? "acc-dat" : "acc")
+      : m === "iso" ? (H("prc") < 0.15 ? "acc" : "none")
+      : (H("prc") < 0.55 ? "acc" : "none"),
     aspect: tenses === 1 ? true : H("asp") < 0.45,   // tenseless ⇒ aspect carries time
     pluralMark: m === "iso" ? H("pl") < 0.3 : H("pl") < 0.9,
     dual: H("du") < 0.15,
@@ -324,6 +332,33 @@ export function closedOf(lang) {
   for (const p of prons) p.w = rform(lang, p.form);
   dedupe(lang, inv, prons);
 
+  // ── pronoun CASE series (concord F4): object/oblique forms (me/him/mine).
+  // Each case affix is grammaticalized from its own AFF_SRC quarry (acc←TAKE/
+  // GO, dat←GIVE/GO, gen←KINC/HOUSE, obl←BELLY/EARTH) — a RECENT bound layer
+  // attached to the evolved pronoun (own 'pc:'/'afsrc pc:' streams + own taken
+  // Set, so nothing in the noun paradigm shifts). Pronouns are nom-acc even
+  // when the nouns are ergative (they sit atop the animacy hierarchy), which is
+  // where split ergativity comes from for free. ──
+  const pcSet = g.pronCase === "full" ? ["acc", "dat", "gen", "obl"]
+    : g.pronCase === "acc-dat" ? ["acc", "dat"] : g.pronCase === "acc" ? ["acc"] : [];
+  if (pcSet.length) {
+    const pcTaken = new Set();
+    const pcAff = {};
+    for (const cs of pcSet) {
+      const src = pickSrc(fam, "pc:" + cs, AFF_SRC[cs === "obl" ? "loc" : cs], pcTaken);
+      pcAff[cs] = wornAt(lang, inv, "pc:" + cs, src, birthOf(fam, "pc:" + cs, lang.rules.length)).syl;
+    }
+    for (const p of prons) {
+      p.cases = {};
+      for (const cs of pcSet) {
+        const form = copyWord(p.form);
+        attachSyl(prof, form, { on: pcAff[cs].on.map(x => ({ ...x })), nu: pcAff[cs].nu.map(x => ({ ...x })), co: pcAff[cs].co.map(x => ({ ...x })) }, g.affixSide);
+        legalizeWord(form);
+        p.cases[cs] = { w: rform(lang, form), g: p.g + "." + CASE_GLOSS[cs === "obl" ? "loc" : cs] };
+      }
+    }
+  }
+
   // ── demonstratives: distance lives in the vowel (proximal high-front,
   // distal low/back — the this/that, kore/are sound-symbolism corner) ──
   const demRoot = synthClosed(lang, inv, "dem");
@@ -445,6 +480,18 @@ export function closedOf(lang) {
 
   c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW };
   return c.closed;
+}
+
+/** A pronoun in a given case (concord F4). `cas ∈ nom|acc|dat|gen|obl`;
+ *  falls back to the nominative where the language lacks that case (or lacks a
+ *  case system). `{ w, g }`. Graceful key degrade like renderClause. */
+export function pronoun(lang, k, cas = "nom") {
+  const cl = closedOf(lang);
+  const cell = cl.prons.find(p => p.k === k)
+    || cl.prons.find(p => p.k === String(k).replace(/[mf]$/, ""))
+    || cl.prons.find(p => p.k[0] === String(k)[0]) || cl.prons[0];
+  if (cas !== "nom" && cell.cases && cell.cases[cas]) return { w: cell.cases[cas].w, g: cell.cases[cas].g };
+  return { w: cell.w, g: cell.g };
 }
 
 // ── M1: numerals — base-10/20/5 systems with real formation rules ─────────
@@ -1405,6 +1452,10 @@ export function renderClause(lang, frame) {
         || (k.endsWith("sg") ? cl.prons.find(p => p.k[0] === k[0] && p.k.includes("sg")) : null)  // 3sg → 3sgm
         || cl.prons.find(p => p.k[0] === k[0])
         || cl.prons[0];
+      // object/oblique pronouns take their case form (me/him); subjects stay
+      // bare — nom-acc even under noun ergativity (split ergativity for free)
+      const pcKey = role === "O" ? "acc" : role === "X" ? "obl" : null;
+      if (pcKey && cell.cases && cell.cases[pcKey]) return [{ w: cell.cases[pcKey].w, g: cell.cases[pcKey].g, role }];
       return [{ w: cell.w, g: cell.g, role }];
     }
     if (arg.wh) {

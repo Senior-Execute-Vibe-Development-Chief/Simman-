@@ -14,7 +14,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -1042,6 +1042,41 @@ console.log("\n── concord: noun-class assignment ──");
   check("noun-class assignment deterministic + JSON-roundtrip-stable", sig(a) === sig(b) && sig(a) === sig(c3));
   if (manyClass[0]) { const inv = classInventory(manyClass[0]); say(`   a ${inv.length}-class tongue: ${inv.map(c => "C" + c.cls + "×" + c.n).join(" ")}`); }
   void nounClassInfo;
+
+  // ── F4: object/oblique pronoun case (me≠I), split ergativity for free ──
+  const withCase = [], noCase = [];
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 480000 + i * 47 });
+    (gramOf(l).pronCase === "none" ? noCase : withCase).push(l);
+  }
+  // acc ≠ nom for ≥1 person in every case-bearing tongue
+  const accDiffers = withCase.every(l => ["1sg", "2sg", "3sg"].some(k => pronoun(l, k, "acc").w !== pronoun(l, k, "nom").w));
+  check(`object pronoun differs from subject (me≠I) in every pronCase tongue (${withCase.length} langs)`, withCase.length > 0 && accDiffers);
+  // 'none' tongues: acc collapses to nom (Mandarin wǒ everywhere)
+  const noneFlat = noCase.every(l => pronoun(l, "1sg", "acc").w === pronoun(l, "1sg", "nom").w);
+  check(`caseless-pronoun tongues use one form for S and O (${noCase.length} langs)`, noCase.length > 0 && noneFlat);
+  // pronCase correlates with caseN (rich case ⇒ richer pronoun series)
+  const rich = withCase.filter(l => gramOf(l).caseN >= 3), full = rich.filter(l => ["full", "acc-dat"].includes(gramOf(l).pronCase));
+  check(`case-rich tongues carry a richer pronoun series (${full.length}/${rich.length})`, rich.length > 0 && full.length / rich.length > 0.8);
+  // SPLIT ERGATIVITY: pronouns stay nom-acc even when the nouns are ergative —
+  // a pronoun object takes ACC, a pronoun subject stays bare (never ERG)
+  let ergLang = null;
+  for (let i = 0; i < 2000 && !ergLang; i++) { const l = foundLanguage(world, { seed: 481000 + i * 31 }); if (gramOf(l).align === "erg" && gramOf(l).pronCase !== "none") ergLang = l; }
+  if (ergLang) {
+    const oClause = renderClause(ergLang, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { pron: { k: "1sg", pers: 1, num: "sg" } } });
+    const oTok = oClause.tokens.find(t => t.role === "O");
+    const sClause = renderClause(ergLang, { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: GO, tam: "pst" } });
+    const sTok = sClause.tokens.find(t => t.role === "S");
+    const objAcc = oTok && /\.ACC$/.test(oTok.g);
+    const subjBare = !sTok || !/ERG/.test(sTok.g);
+    check(`split ergativity: pronoun object ACC, subject bare in an ergative tongue (${oTok ? oTok.w + "/" + oTok.g : "?"})`, objAcc && subjBare);
+  } else check("split ergativity: (no ergative pronCase tongue found in sweep)", false);
+  // determinism
+  const wa2 = mkWorld(), wb2 = mkWorld();
+  const pa = foundLanguage(wa2, { seed: 480047 }), pb = foundLanguage(wb2, { seed: 480047 });
+  const pc3 = JSON.parse(JSON.stringify(pa));
+  const psig = (l) => ["1sg", "2sg", "3sg", "1pl"].map(k => ["nom", "acc", "dat", "gen"].map(cs => pronoun(l, k, cs).w).join("/")).join("|");
+  check("pronoun case deterministic + JSON-roundtrip-stable", psig(pa) === psig(pb) && psig(pa) === psig(pc3));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────
