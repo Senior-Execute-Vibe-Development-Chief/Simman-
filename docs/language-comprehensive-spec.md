@@ -751,3 +751,27 @@ abstract-derivation table was the compound half — king ← sit+high.)
   determinism + JSON-roundtrip. 129 probe checks green; smoke + validate green.
   The Lab gains a "Word formation" card (affix etymologies + a derivation
   table: ruler, kingdom, kingly, rivulet, to blacken).
+
+**Review round (same session).** A fresh reader confirmed the affix inventories
+and grammaticalization sources vary correctly per language, and that the name
+layer reads the derivation layer under a schema change (the desync class
+staying fixed — the real test). Two flags, both converted to mechanism + gate:
+
+- **Affix position now clusters with inflection, with designed mixing.**
+  Derivation reads the SAME `affixSide` dial inflection reads (it always did,
+  through `onionBuild`), but was 100% lockstep — too rigid. Now the dominant
+  side is `affixSide` and a MINORITY of categories may take the other side (the
+  attested English `-ness` / `un-` mix), with core categories (agentive,
+  nominalizer) tracking the dominant side tightly and peripheral ones (dim/aug/
+  coll) mixing more. A hard floor caps flips at a third, so a whole set NEVER
+  flips (the exact thing the reader flagged). Gates: 0 wholesale flips, mixing
+  in ~53% of tongues.
+- **Derived words now ERODE like compounds** (`erodeDerived`). A derived word
+  is a lexicalized unit and wears down hardest of all morphology (kingdom, not
+  king-dominion) — a fusional tongue chews the open seam (the awaru-style
+  coalescence), and long forms shed interior syllables, protecting both edges
+  so the derivation stays legible while the middle erodes toward the opacity
+  that makes daughters feel old once Drift runs. Morphotype-sensitive:
+  isolating stays fully transparent (Chinese 国王), agglutinative keeps its
+  legitimately-long stacks with only a safety cap. Over-16-char derived words
+  fell from 1.3% to ~0.5%. Gate added. 132 probe checks green.

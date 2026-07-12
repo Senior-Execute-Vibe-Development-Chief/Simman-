@@ -1161,6 +1161,36 @@ console.log("\n── derivational morphology ──");
   check(`daughters inherit derivational affix sources (cognate word-formation)`, shareOK);
   check(`derived words diverge down the family by sound law (${rd ? rd.text : "—"} → ${dd ? dd.text : "—"})`, !!rd && !!dd);
 
+  // (fresh-reader review) POSITION reads the same affixSide dial inflection
+  // reads (Greenberg: suffixing/prefixing tongues cluster) — the dominant side
+  // is always affixSide, never a wholesale flip — while a MINORITY of affixes
+  // may mix (English -ness but un-), the designed heterogeneity real languages
+  // show
+  let wholesaleFlip = 0, mixLangs = 0, posN = 0;
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    if (l.prof.morph === "iso") continue;
+    const g = gramOf(l), ety = derivEtymologies(l);
+    if (ety.length < 2) continue;
+    posN++;
+    const onSide = ety.filter(e => e.side === g.affixSide).length;
+    if (onSide < ety.length / 2) wholesaleFlip++;        // majority on the WRONG side = the flagged bug
+    if (onSide < ety.length && onSide > 0) mixLangs++;    // a designed minority mix
+  }
+  check(`derivation position clusters with inflection — no wholesale flip (${wholesaleFlip}/${posN})`, wholesaleFlip === 0);
+  check(`but a minority of affixes may mix sides (un-/-ness), in ${Math.round(100 * mixLangs / posN)}% of tongues`, mixLangs / posN > 0.15 && mixLangs / posN < 0.85);
+
+  // (fresh-reader review) derived words ERODE like compounds — a lexicalized
+  // unit wears down (kingdom not king-dominion), so they stay word-length
+  // rather than glued Lego; the fusional seam chews (awaru-style)
+  let over = 0, derTot = 0;
+  for (let i = 0; i < 200; i++) {
+    const l = foundLanguage(world, { seed: 8000 + i * 11 });
+    const cats = Object.keys(derivSpec(l).cats);
+    for (let cid = 0; cid < CONCEPTS.length; cid++) for (const cat of cats) { const d = deriveWord(l, cid, cat); if (d) { derTot++; if (d.text.length > 16) over++; } }
+  }
+  check(`derived words wear down to word length, not glued morphemes (${(100 * over / derTot).toFixed(2)}% over 16 chars, was 1.3% un-eroded)`, over / derTot < 0.009);
+
   // references speak word-formation in character: isolating Mandarin derives
   // less but its affixes are legal pinyin, agentive from 'man' (the 人 pattern)
   const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;

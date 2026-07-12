@@ -859,14 +859,18 @@ export function paradigmSpec(lang) {
 // corresponds regularly down a family, and agglutinative tongues (the world's
 // great derivers) carry more of it than isolating ones.
 const DERIV_CATS = [
-  // key/gloss, expected input class (for sensible pairing), source quarry, base rate
-  { k: "AGT", in: "v", pool: [[MAN, 0.4], [PEOPLE, 0.25], [DO, 0.2], [null, 0.15]], rate: 0.85 },   // rule → ruler
-  { k: "NMLZ", in: "n", pool: [[LAND, 0.3], [HEAD, 0.15], [null, 0.55]], rate: 0.85 },              // king → kingdom
-  { k: "ADJZ", in: "n", pool: [[HAVE, 0.25], [null, 0.75]], rate: 0.7 },                            // king → kingly
-  { k: "DIM", in: "n", pool: [[LITTLE, 0.6], [CHILD, 0.2], [null, 0.2]], rate: 0.6 },               // river → rivulet
-  { k: "AUG", in: "n", pool: [[GREAT, 0.6], [null, 0.4]], rate: 0.4 },                              // house → mansion
-  { k: "VBLZ", in: "q", pool: [[MAKE, 0.45], [DO, 0.3], [null, 0.25]], rate: 0.65 },                // hard → harden
-  { k: "COLL", in: "n", pool: [[ALL, 0.4], [MANY, 0.3], [null, 0.3]], rate: 0.4 },                  // king → royalty
+  // key/gloss, input class (for sensible pairing), source quarry, base rate,
+  // flip = chance of taking the MINORITY affix side: core derivation (agentive,
+  // nominalizer) tracks the dominant side tightly (Chinese 人-agentive is a
+  // suffix); peripheral/evaluative categories (diminutive, augmentative,
+  // negative-flavoured) mix more freely (English un-/re-)
+  { k: "AGT", in: "v", pool: [[MAN, 0.4], [PEOPLE, 0.25], [DO, 0.2], [null, 0.15]], rate: 0.85, flip: 0.05 },   // rule → ruler
+  { k: "NMLZ", in: "n", pool: [[LAND, 0.3], [HEAD, 0.15], [null, 0.55]], rate: 0.85, flip: 0.05 },              // king → kingdom
+  { k: "ADJZ", in: "n", pool: [[HAVE, 0.25], [null, 0.75]], rate: 0.7, flip: 0.2 },                             // king → kingly
+  { k: "DIM", in: "n", pool: [[LITTLE, 0.6], [CHILD, 0.2], [null, 0.2]], rate: 0.6, flip: 0.28 },               // river → rivulet
+  { k: "AUG", in: "n", pool: [[GREAT, 0.6], [null, 0.4]], rate: 0.4, flip: 0.3 },                               // house → mansion
+  { k: "VBLZ", in: "q", pool: [[MAKE, 0.45], [DO, 0.3], [null, 0.25]], rate: 0.65, flip: 0.22 },                // hard → harden
+  { k: "COLL", in: "n", pool: [[ALL, 0.4], [MANY, 0.3], [null, 0.3]], rate: 0.4, flip: 0.25 },                  // king → royalty
 ];
 const DMORPH = { iso: 0.72, agg: 1.15, fus: 1.0, tmpl: 0.92 };   // agglutinative tongues derive most
 
@@ -877,49 +881,95 @@ const DMORPH = { iso: 0.72, agg: 1.15, fus: 1.0, tmpl: 0.92 };   // agglutinativ
 export function derivSpec(lang) {
   const c = gc(lang);
   if (c.dspec) return c.dspec;
+  const g = gramOf(lang);
   const inv = compiledInv(lang);
   const fam = lang.famSeed ?? lang.seed;
   const len = lang.rules.length;
   const mf = DMORPH[lang.prof.morph] ?? 1;
+  const other = g.affixSide === "suf" ? "pre" : "suf";
   const taken = new Set();
   // an eroded derivational affix renews from a fresh quarry, like inflection
-  const audible = (aff) => renderWord(onionBuild(lang, STONE, [aff]), lang.prof) !== renderWord(onionBuild(lang, STONE, []), lang.prof);
+  const audible = (aff) => renderWord(onionBuild(lang, STONE, [aff], { side: aff.side }), lang.prof) !== renderWord(onionBuild(lang, STONE, [], { side: aff.side }), lang.prof);
   const cats = {}, list = [];
   for (const cat of DERIV_CATS) {
     if (h01(fam, "dcat", cat.k) >= Math.min(0.97, cat.rate * mf)) continue;   // this tongue lacks this derivation
     const key = "d:" + cat.k;
     const src = pickSrc(fam, key, cat.pool, taken);
     const w = wornAt(lang, inv, key, src, birthOf(fam, key, len));
-    let aff = { k: cat.k, g: cat.k, in: cat.in, src, t: w.t, syl: w.syl };
+    // POSITION reads the same affixSide dial inflection reads (Greenberg:
+    // suffixing and prefixing tongues cluster), so a suffixing language
+    // suffixes its derivation too — but a MINORITY of categories may take the
+    // other side, the designed mix real languages show (English suffixes -ness
+    // but prefixes un-/re-). A whole set never flips (probe §15 gates it).
+    const side = h01(fam, "dside", cat.k) < cat.flip ? other : g.affixSide;
+    let aff = { k: cat.k, g: cat.k, in: cat.in, src, t: w.t, syl: w.syl, side };
     for (let r = 1; r <= 2 && !audible(aff); r++) {
       const src2 = pickSrc(fam, key + ":r" + r, cat.pool, taken);
       const w2 = wornAt(lang, inv, key + ":r" + r, src2, r === 1 ? Math.ceil(len / 2) : len);
-      aff = { k: cat.k, g: cat.k, in: cat.in, src: src2, t: w2.t, syl: w2.syl, renewed: r };
+      aff = { k: cat.k, g: cat.k, in: cat.in, src: src2, t: w2.t, syl: w2.syl, side, renewed: r };
     }
     cats[cat.k] = aff;
     list.push(aff);
   }
+  // enforce the Greenberg clustering as a HARD floor: the dominant side is
+  // affixSide, and at most a third of a tongue's derivational affixes may take
+  // the minority side — a designed mix (un- among -ness/-er/-dom), never the
+  // wholesale flip a fresh reader rightly flagged. Excess flips (deterministic
+  // order) revert to affixSide.
+  const flipCap = Math.floor(list.length / 3);
+  const flipped = list.filter(a => a.side === other);
+  for (const a of flipped.slice(flipCap)) a.side = g.affixSide;
   dedupeAffixSet(lang, inv, list);   // ruler ≠ kingdom ≠ kingly — one contrast pass
   c.dspec = { cats, list };
   return c.dspec;
 }
 
+// Derived words are LEXICALIZED units and wear down HARDEST of all morphology
+// (king+dom → kingdom, not king-dominion; ruler, not rule-er) — that erosion
+// is what makes derived vocabulary read as vocabulary rather than glued Lego,
+// and, once Drift runs, what turns transparent derivations into the opaque,
+// unanalyzable words that make a daughter language feel old. Chew the seam in
+// a tightly-fusing tongue and shed interior syllables when the whole grows
+// long, protecting both EDGES (the stem's onset and the affix) so the
+// derivation stays legible while the middle erodes toward opacity.
+function erodeDerived(lang, form, side) {
+  const m = lang.prof.morph;
+  // isolating morphology stays TRANSPARENT — Chinese 国王 / gōng-rén keep every
+  // morpheme; there is nothing to wear down
+  if (m === "iso") return legalizeWord(form);
+  if (m === "fus" && form.syls.length >= 3) {
+    const si = side === "pre" ? 1 : form.syls.length - 2;   // the stem-edge syllable at the seam
+    const seam = form.syls[si];
+    if (seam && seam.nu.length && !seam.co.length) {         // open seam → lose its vowel, the awaru chew
+      const nb = form.syls[side === "pre" ? 0 : form.syls.length - 1];
+      if (nb && nb.on.length) { seam.nu = []; if (!seam.co.length && seam.on.length) { nb.on = side === "pre" ? [...nb.on, ...seam.on] : [...seam.on, ...nb.on]; form.syls.splice(si, 1); } }
+    }
+  }
+  // shed interior syllables when long — fusional wears HARDEST (kingdom, not
+  // king-dominion); agglutinative words are legitimately longer (Turkish -lık
+  // stacks), so only a mild absurd-length safety there
+  const cap = m === "fus" ? 3 : 4;
+  while (form.syls.length > cap) form.syls.splice(Math.floor(form.syls.length / 2), 1);
+  return legalizeWord(form);
+}
+
 /** Derive a NEW word from a base concept by a productive affix: king→kingdom
  *  (NMLZ), rule→ruler (AGT), river→rivulet (DIM), hard→harden (VBLZ). Returns
- *  { text, gloss, cat, src, affix } or null if the tongue lacks that
- *  derivation. Built through the onion, so the affix erodes and corresponds
- *  down the family like any bound form; a fusional tongue crushes it. */
+ *  { text, gloss, cat, src, affix, side } or null if the tongue lacks that
+ *  derivation. Built through the onion (the affix rides the rule log, so it
+ *  erodes and corresponds down the family), then worn down as a lexicalized
+ *  unit; a fusional tongue crushes the seam. */
 export function deriveWord(lang, cid, cat) {
   const spec = derivSpec(lang);
   const aff = spec.cats[cat];
   if (!aff) return null;
-  const form = onionBuild(lang, cid, [aff], { fuse: lang.prof.morph === "fus" });
-  return { text: renderWord(form, lang.prof), gloss: glossOf(cid) + "-" + aff.g, cat, src: aff.src, affix: renderAffix(lang, aff.syl) };
+  const form = erodeDerived(lang, onionBuild(lang, cid, [aff], { fuse: lang.prof.morph === "fus", side: aff.side }), aff.side);
+  return { text: renderWord(form, lang.prof), gloss: glossOf(cid) + "-" + aff.g, cat, src: aff.src, affix: renderAffix(lang, aff.syl), side: aff.side };
 }
 
 /** Lab-facing: the derivational affixes with their worn-down etymologies. */
 export function derivEtymologies(lang) {
-  return derivSpec(lang).list.map(a => ({ g: a.g, w: renderAffix(lang, a.syl), from: a.src != null ? glossOf(a.src) : null, renewed: !!a.renewed }));
+  return derivSpec(lang).list.map(a => ({ g: a.g, w: renderAffix(lang, a.syl), from: a.src != null ? glossOf(a.src) : null, renewed: !!a.renewed, side: a.side }));
 }
 
 // affixes inside one paradigm must contrast: two sources can wear down to
@@ -1104,9 +1154,9 @@ function ablautNu(lang, form) {
 // and the whole inflected word rides the tail of the log as one piece — so
 // a language's endings erode, sandhi across the seam, and stems alternate
 // exactly as far as its own sound laws push them.
-function onionBuild(lang, stemCid, events, { fuse = false, theme = null, pattern = null, rootOverride = null, ablaut = false } = {}) {
+function onionBuild(lang, stemCid, events, { fuse = false, theme = null, pattern = null, rootOverride = null, ablaut = false, side: sideOverride = null } = {}) {
   const prof = lang.prof;
-  const side = gramOf(lang).affixSide;
+  const side = sideOverride || gramOf(lang).affixSide;   // derivation may mix (un-/-ness); inflection follows the dial
   const src = rootOverride ? { w: copyWord(rootOverride), pre: true } : rootFormOf(lang, stemCid);
   let form = src.w;                                  // deep copy already
   const rules = lang.rules;

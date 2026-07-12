@@ -331,14 +331,14 @@ const WF_PAIRS = [[RULEV, "AGT", "ruler"], [GUARD, "AGT", "guardian"], [KING, "N
 function wordFormationHTML(l) {
   const etys = derivEtymologies(l);
   if (!etys.length) return "";
-  const affLine = etys.map(e => `<span class="cell"><span class="lbl">${esc(e.g)}</span> <span class="w">-${esc(e.w)}</span>${e.from ? ` <span class="gloss">‹ ‘${esc(e.from)}’</span>` : ""}${e.renewed ? ` <span class="lbl">renewed</span>` : ""}</span>`).join(" ");
+  const affLine = etys.map(e => `<span class="cell"><span class="lbl">${esc(e.g)}</span> <span class="w">${e.side === "pre" ? esc(e.w) + "-" : "-" + esc(e.w)}</span>${e.from ? ` <span class="gloss">‹ ‘${esc(e.from)}’</span>` : ""}${e.renewed ? ` <span class="lbl">renewed</span>` : ""}</span>`).join(" ");
   const rows = WF_PAIRS.map(([cid, cat, en]) => {
     const d = deriveWord(l, cid, cat);
     if (!d) return "";
     return `<tr><td class="lbl">${esc(glossOf(cid))} → ${esc(en)}</td><td class="w">${esc(d.text)}</td><td class="gloss">${esc(d.gloss)}</td></tr>`;
   }).filter(Boolean).join("");
   return `<section class="card"><h2>Word formation <span class="count">(derivational morphology)</span></h2>
-    <p class="note">Inflection bends a word; <b>derivation</b> makes new ones — a handful of productive affixes turn ${CONCEPTS.length} roots into thousands. Each affix is a worn-down word: the agentive from ‘man/do’ (rule → ruler), the diminutive from ‘little’, the nominalizer often from ‘land’ — the literal ‑dom of ‘kingdom’. Agglutinative tongues carry more of them than isolating ones, and the endings correspond down a family like any inflection.</p>
+    <p class="note">Inflection bends a word; <b>derivation</b> makes new ones — a handful of productive affixes turn ${CONCEPTS.length} roots into thousands. Each affix is a worn-down word: the agentive from ‘man/do’ (rule → ruler), the diminutive from ‘little’, the nominalizer often from ‘land’ — the literal ‑dom of ‘kingdom’. They take the language’s own affix side (mostly — with the odd un‑/‑ness mix), correspond down a family like any inflection, and, because a derived word lexicalizes, wear down like a compound (a fusional tongue chews the seam). Agglutinative tongues carry the most; isolating ones keep every morpheme transparent.</p>
     <p class="cells">${affLine}</p>
     <div class="scroll"><table><thead><tr><th>derivation</th><th>word</th><th>gloss</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
