@@ -1,336 +1,336 @@
-// ── Heraldry: a realm's visual identity, PROJECTED from what it has become ──
+// ── Heraldry: a generative armorial grammar, seeded by house and lineage ──
 //
-// This module invents NOTHING. A coat of arms / banner here is a deterministic
-// READOUT of state the world already grew — the same discipline as every other
-// subsystem: build the cause, read the effect, never paint it.
+// Real arms are NOT a semantic readout of a realm's economy — England's lions
+// are not "aggression", France's fleurs-de-lis are not agriculture. Heraldry is
+// a mostly-ABSTRACT visual language whose meaning lives in three real places:
 //
-//   • TINCTURES (the palette) fall out of MATERIAL: which dye/pigment resources a
-//     realm's territory and trade actually give it — the reason Tyrian purple
-//     meant "imperial" is that murex was ruinously expensive, so only a rich
-//     realm could fly purpure. Personality and the state faith then BIAS the
-//     palette (a warlike people reddens; a mercantile one gilds; an ascetic
-//     creed strips it toward austere metal).
-//   • The CHARGE (the emblem) is drawn from the salient facts of the realm's life
-//     — the beasts of its ground, its economy (a maritime power shows a ship, an
-//     agrarian one a sheaf), its martial history, its faith's own holy device.
-//   • The LAYOUT (division, quartering, ornateness) reads political STRUCTURE and
-//     DEVELOPMENT: a single people on one land is plain; a realm marshalling many
-//     peoples quarters them; a developed, literate state carries more detail.
-//   • Whether it reads as a dynastic COAT OF ARMS or a simplified national FLAG is
-//     itself emergent: identity vested in the ruling HOUSE (ornate arms) until
-//     development is high AND the identity has BROADENED to the nation (a bold,
-//     few-colour flag). Driven by state — never by the calendar/era.
+//   1. LINEAGE — a house's arms are inherited and DIFFERENCED down its branches,
+//      and a stock shares an aesthetic TRADITION, so kin rhyme and strangers
+//      diverge. (This is why heraldry clusters at all.)
+//   2. MARSHALLING — union and conquest COMBINE arms (impaling, quartering), so a
+//      shield becomes a compressed record of who joined or absorbed whom.
+//   3. A few genuine ANCHORS — the state faith's holy device (real iconography),
+//      and CANTING: a visual pun on the realm's own NAME (ties to the language
+//      system, which is deep, rather than the thin temperament vector).
 //
-// CLUSTERING & DIVERGENCE come for free through REAL channels, not a shared
-// display colour: a stock shares an intrinsic aesthetic seed (entityRng on the
-// culture FAMILY), co-religionists share their faith's own liturgical tincture
-// and holy device (seeded on the faith's ROOT), and neighbours sharing dyes and
-// biome share a regional look. So related realms look related and rivals of a
-// different stock/creed look distinct — the pan-colour effect, caused by descent
-// and faith rather than scripted.
+// Everything ELSE — the partition, the ordinary and its line, the charges, their
+// attitudes and arrangement — is GENERATED from a large grammar, seeded per house
+// so it is unique, plausible, and reproducible. The old "maritime → a ship" map
+// is gone: that was painting a literal effect (the very thing the second cardinal
+// rule forbids). We build the SYSTEM; a distinct coat falls out for every house,
+// on any seed, and the connection to the world is genealogy + faith + name, used
+// only where it actually carries meaning.
 //
-// PURE: armsOf() only READS the world (personalityOf lazily fills a polity's
-// temperament exactly as every other reader does; nothing else mutates). It is a
-// projection, so it can be recomputed any time, on any seed, and replays
-// identically.
+// PURE + DETERMINISTIC: reads the world, mutates nothing, draws all randomness
+// from seeded entityRng streams (never Math.random), so a world replays identically.
 
 import { personalityOf } from "./peopleSim/personality.js";
-import { getFaith, faithTemperament } from "./peopleSim/faiths.js";
+import { getFaith } from "./peopleSim/faiths.js";
 import { getCulture, familyOf, dominantCulture } from "./peopleSim/cultures.js";
 import { dominantFaith } from "./peopleSim/faiths.js";
 import { getPolity } from "./peopleSim/entities.js";
+import { getDynasty } from "./peopleSim/dynasties.js";
 import { entityRng, hash32 } from "./peopleSim/rng.js";
 
-// ── Tinctures ─────────────────────────────────────────────────────────────
-// The heraldic palette: two METALS (or, argent) and the COLOURS. The rule of
-// tincture — never colour-on-colour or metal-on-metal — is a real contrast
-// constraint (arms had to read at a distance), so we honour it when picking what
-// sits on what. RGBs are muted, aged-pigment tones (not primary screen colours),
-// which is what makes a sheet of these read as heraldry rather than a palette.
+// ── Tinctures ───────────────────────────────────────────────────────────────
 export const TINCTURES = {
-  or:      { rgb: [0xd7, 0xb0, 0x45], metal: true,  label: "or" },       // gold
-  argent:  { rgb: [0xe9, 0xe7, 0xdd], metal: true,  label: "argent" },   // silver / white
-  gules:   { rgb: [0xa6, 0x2b, 0x2f], metal: false, label: "gules" },    // red
-  azure:   { rgb: [0x28, 0x4b, 0x93], metal: false, label: "azure" },    // blue
-  vert:    { rgb: [0x2f, 0x74, 0x42], metal: false, label: "vert" },     // green
-  purpure: { rgb: [0x6d, 0x2e, 0x7e], metal: false, label: "purpure" },  // purple
-  sable:   { rgb: [0x27, 0x25, 0x2b], metal: false, label: "sable" },    // black
-  tenne:   { rgb: [0xb4, 0x5d, 0x2b], metal: false, label: "tenné" },    // orange-tan
+  or:      { rgb: [0xd7, 0xb0, 0x45], metal: true,  label: "or" },
+  argent:  { rgb: [0xe9, 0xe7, 0xdd], metal: true,  label: "argent" },
+  gules:   { rgb: [0xa6, 0x2b, 0x2f], metal: false, label: "gules" },
+  azure:   { rgb: [0x28, 0x4b, 0x93], metal: false, label: "azure" },
+  vert:    { rgb: [0x2f, 0x74, 0x42], metal: false, label: "vert" },
+  purpure: { rgb: [0x6d, 0x2e, 0x7e], metal: false, label: "purpure" },
+  sable:   { rgb: [0x31, 0x2e, 0x38], metal: false, label: "sable" },
+  tenne:   { rgb: [0xb4, 0x5d, 0x2b], metal: false, label: "tenné" },
+  murrey:  { rgb: [0x7a, 0x24, 0x3e], metal: false, label: "murrey" },
 };
-const TINCTURE_IDS = Object.keys(TINCTURES);
+export function tinctureRGB(id) { return (TINCTURES[id] || TINCTURES.sable).rgb; }
+const METALS = ["or", "argent"];
+const COLOURS = ["gules", "azure", "vert", "purpure", "sable", "tenne", "murrey"];
+const isMetal = t => !!(TINCTURES[t] && TINCTURES[t].metal);
 
-function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
-function pos(x) { return x > 0 ? x : 0; }
+// ── Vocabulary ──────────────────────────────────────────────────────────────
+// Field partitions. `n` marks the striped/checky ones (barry, paly, …) whose
+// count varies. The renderer knows how to draw each; an unknown one degrades to
+// a plain field.
+const PARTITIONS = [
+  "plain", "plain", "perPale", "perFess", "perBend", "perBendSinister",
+  "perChevron", "perSaltire", "quarterly", "gyronny", "barry", "paly",
+  "bendy", "chevronny", "chequy", "lozengy", "perCross",
+];
+// Ordinaries — the broad geometric bands, each drawable with a fancy edge.
+const ORDINARIES = ["chief", "fess", "pale", "bend", "bendSinister", "chevron", "cross", "saltire", "pile", "bordure", "canton"];
+const LINES = ["straight", "straight", "straight", "wavy", "engrailed", "embattled", "indented", "dovetailed"];
+const ATTITUDES = ["rampant", "passant", "statant", "salient"];
+const ARRANGEMENTS = ["single", "single", "three", "inPale", "seme"];
 
-// ── Material signature ──────────────────────────────────────────────────────
-// Mean local resources across the realm's settled members (capital weighted
-// double — a realm's heart supplies its court), plus the capital's water access
-// and development. This is the physical substrate the palette and charge read.
-function realmSignature(world, c) {
-  const cap = c.capital;
-  const mat = {};
-  let n = 0;
-  const add = (s, w) => {
-    if (!s || s.mode !== "settled") return;
-    const lr = s.localRes || {};
-    for (const k in lr) mat[k] = (mat[k] || 0) + (lr[k] || 0) * w;
-    n += w;
-  };
-  add(cap, 2);
-  if (c.members) for (const s of c.members) if (s !== cap) add(s, 1);
-  if (n > 0) for (const k in mat) mat[k] /= n;
-  const K = (cap && cap.knowledge) || {};
-  const water = (cap && cap.waterAccess) || 0;
-  const navigation = K.navigation || 0;
-  // MARITIME ≠ riverside. Nearly every capital sits on water (settlements need
-  // it), so waterAccess alone is no signal for a SEA power. What sets a Phoenicia
-  // apart is real seafaring: navigation tech and an actual sea-trade network
-  // (_seaReach), with only a true coast (very high water) adding to it. This is
-  // what earns the azure field and the ship — a river town gets neither.
-  const seaReach = cap && cap._seaReach ? cap._seaReach.size : 0;
-  const maritime = clamp01(navigation * 0.8 + Math.min(1, seaReach / 6) * 0.8 + pos(water - 0.85) * 0.6);
-  return { mat, water, maritime, org: K.organization || 0, metallurgy: K.metallurgy || 0, navigation };
+// Charges, grouped so a stock can lean toward a CATEGORY (one people loves beasts,
+// another geometry) — the kind of coherence real regional heraldry has.
+const CHARGES = {
+  // beasts (take an attitude)
+  lion:{cat:"beast"}, boar:{cat:"beast"}, stag:{cat:"beast"}, wolf:{cat:"beast"},
+  bull:{cat:"beast"}, horse:{cat:"beast"}, bear:{cat:"beast"},
+  eagle:{cat:"beast",fixed:"displayed"}, martlet:{cat:"beast",fixed:"close"},
+  dolphin:{cat:"beast",fixed:"naiant"}, serpent:{cat:"beast",fixed:"glissant"},
+  // mythic
+  dragon:{cat:"mythic"}, griffin:{cat:"mythic"}, wyvern:{cat:"mythic"},
+  // plants
+  fleur:{cat:"plant"}, rose:{cat:"plant"}, garb:{cat:"plant"}, tree:{cat:"plant"}, thistle:{cat:"plant"},
+  // objects
+  tower:{cat:"object"}, key:{cat:"object"}, sword:{cat:"object"}, crown:{cat:"object"},
+  anchor:{cat:"object"}, horn:{cat:"object"}, hammer:{cat:"object"}, bell:{cat:"object"},
+  // geometric / celestial
+  mullet:{cat:"geom"}, estoile:{cat:"geom"}, crescent:{cat:"geom"}, sun:{cat:"geom"},
+  roundel:{cat:"geom"}, annulet:{cat:"geom"}, lozenge:{cat:"geom"}, escallop:{cat:"geom"}, crosslet:{cat:"geom"},
+};
+const CHARGE_IDS = Object.keys(CHARGES);
+const BY_CAT = {};
+for (const id of CHARGE_IDS) (BY_CAT[CHARGES[id].cat] || (BY_CAT[CHARGES[id].cat] = [])).push(id);
+const CATEGORIES = Object.keys(BY_CAT);
+// Charges that make good NAME-puns (concrete, recognisable things).
+const CANTABLE = ["tower", "lion", "rose", "tree", "key", "sword", "garb", "boar", "stag",
+  "escallop", "crescent", "mullet", "bell", "horn", "anchor", "hammer", "fleur", "eagle", "crown"];
+// Small charges that read well strewn (semé) or in threes.
+const SMALL = new Set(["mullet", "estoile", "crescent", "roundel", "annulet", "lozenge", "escallop",
+  "crosslet", "fleur", "martlet", "rose", "bell", "billet"]);
+
+// ── seeded rng helpers ──
+const pick = (rng, arr) => arr[Math.floor(rng() * arr.length) % arr.length];
+const chance = (rng, p) => rng() < p;
+
+// ── Stock aesthetic tradition ────────────────────────────────────────────────
+// Seeded on the culture FAMILY: a coherent house-style shared by every people of
+// the stock — its favoured colours, whether it leans to beasts or geometry, how
+// busy its fields run. This is the channel that makes kin realms look related
+// WITHOUT copying a display colour: they draw from one tradition, then each house
+// varies within it.
+function stockTradition(world, familyId) {
+  const r = entityRng(world, "arms.stock", familyId >= 0 ? familyId : 0);
+  const primary = pick(r, COLOURS);
+  let accent = pick(r, METALS);
+  const secondary = chance(r, 0.5) ? pick(r, COLOURS.filter(c => c !== primary)) : accent;
+  const catLean = [pick(r, CATEGORIES), pick(r, CATEGORIES)];   // one or two favoured charge families
+  const partLean = pick(r, PARTITIONS);
+  const lineLean = pick(r, LINES);
+  const busy = 0.25 + r() * 0.6;                                // how ornate the tradition runs
+  return { primary, accent, secondary, catLean, partLean, lineLean, busy };
 }
 
-// A realm's dominant people share (population-weighted) and how many distinct
-// peoples it holds — the "one nation vs a marshalled patchwork" reading that
-// sets both the flag/arms form and the quartering.
-function peoplesOf(world, c) {
-  const pop = new Map();
-  let total = 0;
-  if (c.members) for (const s of c.members) {
-    if (s.mode !== "settled") continue;
-    const cid = dominantCulture(s);
-    if (cid < 0) continue;
-    const p = Math.max(1, s.people || 0);
-    pop.set(cid, (pop.get(cid) || 0) + p);
-    total += p;
-  }
-  let domId = -1, domPop = 0;
-  for (const [cid, p] of pop) if (p > domPop) { domPop = p; domId = cid; }
-  let distinct = 0;
-  for (const [, p] of pop) if (p / Math.max(1, total) >= 0.12) distinct++;   // a people worth marshalling
-  return { domId, domShare: total > 0 ? domPop / total : 1, distinct: Math.max(1, distinct) };
-}
-
-// ── The faith's own emblem: a liturgical tincture + a holy device ───────────
-// Seeded on the faith FAMILY (rootFaithId) and shaped by doctrine, so EVERY
-// realm of that religion carries the same sacred colour/device — the cross-and-
-// crescent, pan-Islamic-green channel — while a schism (its own root band) reads
-// as a related shade. Returns null for folk / stateless faith (no organized
-// device to fly).
-function faithEmblem(world, faithId) {
+// ── Faith device: real religious iconography, shared by a communion ──────────
+// Seeded on the faith FAMILY (rootFaithId) + shaped by doctrine, so every realm of
+// a religion tends to the same holy sign — the cross/crescent/wheel channel — and
+// a schism (its own root) reads as a related sign. Also yields the creed's
+// liturgical tincture, offered to the palette.
+function faithDevice(world, faithId) {
   const f = getFaith(world, faithId);
   if (!f || f.kind !== "organized") return null;
   const root = f.rootFaithId ?? f.id;
   const d = f.doctrine || {};
-  // Liturgical tincture: doctrine decides the FAMILY of colour; the root seed
-  // picks the exact one, so sibling creeds of one root share a band.
+  const devices = (d.hierarchy || 0) > 0.55 ? ["cross", "crosslet", "key"]
+                : (d.militancy || 0) > 0.55 ? ["sword", "mullet", "sun"]
+                : (d.asceticism || 0) > 0.55 ? ["roundel", "crescent", "annulet"]
+                : ["estoile", "crescent", "rose", "sun"];
+  const device = devices[hash32(root, "hdev") % devices.length];
   let liturg;
-  if ((d.asceticism || 0) > 0.6) liturg = "argent";                 // renunciation → white
-  else if ((d.militancy || 0) > 0.55) liturg = "gules";             // holy war → red
-  else if ((d.worldliness || 0) > 0.6) liturg = "or";               // engaged, rich → gold
-  else if ((d.hierarchy || 0) > 0.6) liturg = "azure";              // ordered church → blue
-  else liturg = ["vert", "purpure", "azure", "or"][hash32(root, "liturg") % 4];
-  // Holy device: hierarchy → an ordered cross; militancy → a mullet (star);
-  // low hierarchy / mystical → a crescent; ascetic → a plain roundel (a disc).
-  let device;
-  if ((d.asceticism || 0) > 0.6) device = "roundel";
-  else if ((d.hierarchy || 0) > 0.6) device = "cross";
-  else if ((d.militancy || 0) > 0.5) device = "star";
-  else device = ["crescent", "cross", "star"][hash32(root, "device") % 3];
-  return { liturg, device, zeal: d.zeal || 0.4, militancy: d.militancy || 0, hierarchy: d.hierarchy || 0 };
+  if ((d.asceticism || 0) > 0.6) liturg = "argent";
+  else if ((d.militancy || 0) > 0.55) liturg = "gules";
+  else if ((d.worldliness || 0) > 0.6) liturg = "or";
+  else if ((d.hierarchy || 0) > 0.6) liturg = "azure";
+  else liturg = COLOURS[hash32(root, "hlit") % COLOURS.length];
+  return { device, liturg, zeal: d.zeal || 0.4 };
 }
 
-// ── Palette: pigment availability, biased by character and creed ────────────
-function pigmentScores(world, c, sig, pers, emblem) {
-  const m = sig.mat;
-  const water = sig.water;
-  // Base availability — what the ground and trade actually yield. Small floors
-  // where a pigment is near-universal (ochre red, charcoal black, leaf green) so
-  // no realm is left with an empty palette.
-  const s = {
-    purpure: (m.dyes || 0) * 1.2 + (m.gems || 0) * 0.7,                     // murex / gemstone dye — rare, prestige
-    or:      (m.precious || 0) * 1.2 + (m.incense || 0) * 0.5,              // gold, gilding
-    gules:   (m.iron || 0) * 0.5 + (m.copper || 0) * 0.5 + 0.18,           // red earth / ochre — common
-    azure:   sig.maritime * 0.9 + (m.dyes || 0) * 0.3,                      // a SEA power's blue + woad/indigo dye
-    vert:    (m.timber || 0) * 0.8 + 0.10,                                  // forest green
-    argent:  (m.salt || 0) * 0.9 + (m.furs || 0) * 0.6 + 0.12,             // salt, snow, winter pelts
-    sable:   (m.coal || 0) * 1.0 + (m.iron || 0) * 0.2 + 0.10,             // coal, charcoal
-    tenne:   (m.copper || 0) * 0.6 + (m.spices || 0) * 0.5,                 // copper, warm spice-lands
+// A loose visual pun on a name — canting arms, extremely common historically
+// (Castile→castle, Barcelona's…). Deterministic from the name string.
+function cantingCharge(name) {
+  if (!name) return null;
+  return CANTABLE[hash32(name, "cant") % CANTABLE.length];
+}
+
+// ── Palette: choose tinctures within the stock tradition, rule of tincture ──
+function buildPalette(trad, faith, rng) {
+  // field: a colour + a metal (rule of tincture); occasionally metal-primary.
+  let a = trad.primary, b = trad.accent;
+  if (chance(rng, 0.28)) { a = trad.accent; b = chance(rng, 0.5) ? trad.secondary : trad.primary; }   // metal field, colour companion
+  if (a === b) b = isMetal(a) ? pick(rng, COLOURS) : pick(rng, METALS);
+  // faith tilts ONE slot toward its liturgical colour sometimes (a devout house
+  // wears its creed's colour) — a tilt, never a takeover.
+  if (faith && chance(rng, 0.5)) { if (isMetal(a) === isMetal(faith.liturg)) b = faith.liturg; else a = faith.liturg; }
+  const field = [a, b];
+  const contrast = base => {
+    const wantMetal = !isMetal(base);
+    const poolHouse = [trad.primary, trad.accent, trad.secondary].filter(t => isMetal(t) === wantMetal);
+    if (poolHouse.length && chance(rng, 0.7)) return pick(rng, poolHouse);
+    return pick(rng, wantMetal ? METALS : COLOURS);
   };
-  // Prestige gate: purple and gold are EXPENSIVE — a realm flies them only if it
-  // has the materials AND the commerce/development to afford the display. This is
-  // the whole reason those two colours read as royal.
-  const wealth = clamp01(0.45 + 0.4 * pos(pers.commerce) + 0.4 * sig.org);
-  s.purpure *= 0.25 + 0.75 * wealth;
-  s.or *= 0.4 + 0.6 * wealth;
-  // Character bias — projecting the realm's real temperament onto its colours.
-  s.gules *= 1 + pos(pers.aggression) * 0.9;
-  s.sable *= 1 + pos(pers.aggression) * 0.5;
-  s.or *= 1 + pos(pers.commerce) * 0.6;
-  s.purpure *= 1 + pos(pers.commerce) * 0.5;
-  s.vert *= 1 + pos(-pers.aggression) * 0.3;               // a peaceable people greens
-  // Faith's liturgical colour — the shared channel that clusters co-religionists.
-  // A TILT, not an override: it multiplies the realm toward the creed's colour,
-  // so a devout realm with no loud material voice drifts to the faith default
-  // (a whole communion trends one colour), while a realm whose GROUND speaks
-  // plainly — a maritime azure, a gold-rich trading or, a warlike gules — still
-  // overrides it. Faith colours the default; the land and character override it.
-  if (emblem) {
-    s[emblem.liturg] = (s[emblem.liturg] || 0) * (1.35 + 0.5 * emblem.zeal) + 0.06;
+  return { field, contrast };
+}
+
+// ── Generate one house's arms ────────────────────────────────────────────────
+function generateArms(world, seedId, meta, trad) {
+  const rng = entityRng(world, "arms.house", seedId);
+  const faith = meta.faith;
+  const pal = buildPalette(trad, faith, rng);
+  const [f0, f1] = pal.field;
+
+  // Field partition — the tradition leans, the house decides. `n` stripes vary.
+  let partition = chance(rng, 0.34) ? trad.partLean : pick(rng, PARTITIONS);
+  const striped = { barry: 1, paly: 1, bendy: 1, chevronny: 1, chequy: 1, lozengy: 1 }[partition];
+  const count = striped ? (partition === "chequy" || partition === "lozengy" ? 5 : (chance(rng, 0.5) ? 6 : 8)) : 2;
+  const line = chance(rng, 0.35) ? (chance(rng, 0.5) ? trad.lineLean : pick(rng, LINES)) : "straight";
+  const field = { partition, tinctures: [f0, f1], count, line };
+
+  // An ordinary, often — the single strongest driver of a heraldic silhouette.
+  let ordinary = null, onOrdinary = null;
+  if (chance(rng, 0.55)) {
+    const kind = pick(rng, ORDINARIES);
+    const otinc = pal.contrast(f0);
+    ordinary = { kind, tincture: otinc, line: chance(rng, 0.4) ? pick(rng, LINES) : "straight" };
+    // sometimes charge the ordinary (three mullets on a chief, etc.) — only the
+    // clean BAND ordinaries carry charges legibly; a pile/chevron/saltire doesn't.
+    if (["chief", "fess", "base", "pale"].includes(kind) && chance(rng, 0.42)) {
+      const smalls = CHARGE_IDS.filter(c => SMALL.has(c));
+      onOrdinary = { charge: pick(rng, smalls), tincture: pal.contrast(otinc), count: pick(rng, [3, 3, 5]) };
+    }
   }
+
+  // The primary charge — the heart of the shield. Source, in order:
+  //   faith device (devout) → canting on the name → a tradition-led generative pick.
+  let charge = null, fromFaith = false, canting = false;
+  // The faith's device LEADS the shield only for a genuinely devout realm; for
+  // everyone else the creed shows in the TINCTURE (buildPalette), not as the main
+  // charge — otherwise one world-religion stamps its symbol on half the map. Most
+  // houses cant on their name or take a tradition-led generative charge.
+  if (faith && meta.devout) { charge = faith.device; fromFaith = true; }
+  else if (meta.name && chance(rng, 0.32)) { charge = cantingCharge(meta.name); canting = true; }
+  if (!charge) {
+    const cat = pick(rng, chance(rng, 0.7) ? trad.catLean : CATEGORIES);
+    const poolC = BY_CAT[cat] || CHARGE_IDS;
+    charge = pick(rng, poolC);
+  }
+  // A faint temperament whisper (NOT a hard map): a martial house leans to beasts
+  // and blades, a mercantile one to order and geometry — only nudges an otherwise
+  // free pick, and only sometimes.
+  if (!fromFaith && !canting && meta.pers) {
+    if (meta.pers.aggression > 0.45 && chance(rng, 0.4)) charge = pick(rng, [...(BY_CAT.beast || []), "sword", "hammer", ...(BY_CAT.mythic || [])]);
+    else if (meta.pers.commerce > 0.45 && chance(rng, 0.35)) charge = pick(rng, [...(BY_CAT.geom || []), "key", "crown", "tower"]);
+  }
+
+  const spec = CHARGES[charge] || { cat: "geom" };
+  const beast = spec.cat === "beast" || spec.cat === "mythic";
+  let arrangement = spec.fixed === "displayed" ? "single"
+    : (SMALL.has(charge) ? pick(rng, ARRANGEMENTS) : (chance(rng, 0.22) ? "three" : "single"));
+  if (arrangement === "seme" && !SMALL.has(charge)) arrangement = "single";
+  const attitude = beast ? (spec.fixed || pick(rng, ATTITUDES)) : null;
+  const chargeTinc = pal.contrast(ordinary && arrangement !== "seme" ? f0 : f0);
+  const primary = { charge, tincture: chargeTinc, arrangement, attitude,
+    count: arrangement === "three" ? 3 : arrangement === "inPale" ? pick(rng, [2, 3]) : 1 };
+
+  // Semé (a strewn powdering) instead of a single charge — a distinctive, busy look.
+  let seme = null;
+  if (primary.arrangement === "seme") { seme = { charge, tincture: pal.contrast(f0) }; }
+
+  // Cadency: a difference mark for this house's rank within its stock — the real
+  // mechanism that distinguishes branches. Cheap proxy: the house's index in the
+  // family, so siblings of a tradition carry different brisures.
+  let cadency = null;
+  if (meta.cadetIndex > 0 && chance(rng, 0.8)) {
+    const marks = ["label", "crescent", "mullet", "annulet", "martlet", "bordure"];
+    cadency = { mark: marks[meta.cadetIndex % marks.length], tincture: pal.contrast(f0) };
+  }
+
+  return {
+    field, ordinary, onOrdinary,
+    primary: seme ? null : primary,
+    seme,
+    cadency,
+    marshalling: null,      // structure is ready; union/conquest marshalling is the next layer
+    _pal: pal,
+  };
+}
+
+// ── Public: the arms a realm bears (its ruling house's) ─────────────────────
+export function armsForCountry(world, c) {
+  if (!c || !c.capital) return null;
+  const polity = getPolity(world, c.id);
+  const cultureId = polity && polity.cultureId >= 0 ? polity.cultureId : dominantCulture(c.capital);
+  const cul = getCulture(world, cultureId);
+  const familyId = cul ? familyOf(world, cul.id) : c.id;
+  const trad = stockTradition(world, familyId);
+
+  const faithId = polity && polity.faithId >= 0 ? polity.faithId : dominantFaith(c.capital);
+  const faith = faithId >= 0 ? faithDevice(world, faithId) : null;
+  const pers = personalityOf(world, c) || null;
+
+  // Arms belong to the ruling HOUSE; a realm with no recorded dynasty (folk /
+  // pre-literate) bears a people's device seeded on its culture instead.
+  const dyn = polity && polity.dynastyId >= 0 ? getDynasty(world, polity.dynastyId) : null;
+  const houseName = dyn ? dyn.name : (cul ? cul.name : null);
+  const seedId = dyn ? (1e6 + dyn.id) : (cultureId >= 0 ? (2e6 + cultureId) : c.id);
+  const cadetIndex = polity && polity.houses ? Math.max(0, polity.houses.length - 1) : 0;
+
+  const gov = polity ? polity.gov : null;
+  // Only a THEOCRACY — where the priesthood itself rules — leads its shield with
+  // the holy device. For every other realm the faith is worn in the TINCTURE, not
+  // stamped as the charge, so one zealous world-religion can't key-stamp the map.
+  const devout = gov === "theocracy";
+
+  const meta = { name: houseName, realmName: (polity && polity.name) || c.name || `#${c.id}`,
+    faith, pers, devout, cadetIndex, house: dyn ? dyn.name : null,
+    people: cul ? cul.name : "?", gov };
+
+  const arms = generateArms(world, seedId, meta, trad);
+
+  // Emergent FORM: dynastic arms vs national flag — vested in the house until the
+  // realm is developed AND its identity has broadened to one nation. State-driven,
+  // never the calendar.
+  let pop = new Map(), total = 0;
+  for (const s of (c.members || [])) {
+    if (s.mode !== "settled") continue;
+    const cid = dominantCulture(s); if (cid < 0) continue;
+    const p = Math.max(1, s.people || 0); pop.set(cid, (pop.get(cid) || 0) + p); total += p;
+  }
+  let dom = 0; for (const [, p] of pop) if (p > dom) dom = p;
+  const org = (c.capital.knowledge && c.capital.knowledge.organization) || 0;
+  const domShare = total > 0 ? dom / total : 1;
+  arms.style = (org > 0.5 && domShare > 0.6) ? "flag" : "arms";
+
+  arms.meta = {
+    realm: meta.realmName, house: meta.house, people: meta.people,
+    faith: faith ? (getFaith(world, faithId) || {}).name : null,
+    gov, canting: null, tradition: `${trad.primary}/${trad.accent}`,
+    domShare, org,
+  };
+  return arms;
+}
+
+// ── Blazon (terse, for labels) ──────────────────────────────────────────────
+export function blazon(arms) {
+  if (!arms) return "";
+  const T = id => (TINCTURES[id] ? TINCTURES[id].label : id);
+  const up = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  const f = arms.field;
+  const partWord = {
+    plain: "", perPale: "per pale", perFess: "per fess", perBend: "per bend",
+    perBendSinister: "per bend sinister", perChevron: "per chevron", perSaltire: "per saltire",
+    quarterly: "quarterly", perCross: "quarterly", gyronny: "gyronny", barry: "barry",
+    paly: "paly", bendy: "bendy", chevronny: "chevronny", chequy: "chequy", lozengy: "lozengy",
+  }[f.partition] || "";
+  let s;
+  if (!partWord) s = up(T(f.tinctures[0]));
+  else s = `${up(partWord)} ${T(f.tinctures[0])} and ${T(f.tinctures[1])}`;
+  const lw = arms.ordinary && arms.ordinary.line !== "straight" ? ` ${arms.ordinary.line}` : "";
+  if (arms.ordinary) s += `, a ${arms.ordinary.kind}${lw} ${T(arms.ordinary.tincture)}`;
+  if (arms.seme) s += `, semé of ${arms.seme.charge}s ${T(arms.seme.tincture)}`;
+  else if (arms.primary) {
+    const p = arms.primary;
+    const n = p.count > 1 ? `${p.count} ${p.charge}s` : `a ${p.charge}`;
+    const att = p.attitude && p.attitude !== "close" ? ` ${p.attitude}` : "";
+    s += `, ${n}${att} ${T(p.tincture)}`;
+  }
+  if (arms.cadency) s += ` (${arms.cadency.mark})`;
   return s;
 }
 
-// Rank tinctures and choose a scheme that respects the rule of tincture: a FIELD,
-// a COMPANION of the opposite class (for a divided field), and a CHARGE tincture
-// that contrasts the field. A fine fimbriation (outline) is applied at render
-// time so a charge stays legible even where it crosses a division.
-function choosePalette(scores, rng) {
-  const ranked = TINCTURE_IDS.slice().sort((a, b) => scores[b] - scores[a]);
-  const field = ranked[0];
-  const fieldMetal = TINCTURES[field].metal;
-  const opposite = ranked.filter(t => TINCTURES[t].metal !== fieldMetal);
-  const sameClass = ranked.filter(t => t !== field && TINCTURES[t].metal === fieldMetal);
-  const companion = opposite[0] || sameClass[0] || field;
-  // charge contrasts the field: opposite class, and not the same tincture as the
-  // companion when we can avoid it (so a charged, divided shield reads in 3 tones)
-  const charge = opposite.find(t => t !== companion) || opposite[0] || companion;
-  const detail = sameClass[0] || (fieldMetal ? "sable" : "or");   // small accents (pips, outlines)
-  return { field, companion, charge, detail };
-}
-
-// ── Charge: the primary emblem, weighted by the realm's life ────────────────
-function chooseCharge(world, c, sig, pers, emblem, peoples, gov, rng) {
-  const m = sig.mat;
-  const water = sig.water;
-  // arid signal — no biome array here, so read it off the ground: incense &
-  // spice come from hot dry/exotic lands, timber & water from wet ones.
-  const arid = clamp01((m.incense || 0) * 0.7 + (m.spices || 0) * 0.4 + (0.35 - water - (m.timber || 0)));
-  const cold = clamp01((m.furs || 0) * 0.9);
-  const ore = Math.max(m.iron || 0, m.copper || 0, m.tin || 0);
-
-  const cand = [
-    ["lion",     pos(pers.aggression) * 0.9 + sig.metallurgy * 0.3 + 0.10],   // beast of valour
-    ["eagle",    pos(pers.expansionism) * 0.9 + sig.org * 0.35],              // imperial reach
-    ["wolf",     pos(pers.aggression) * 0.5 + cold * 0.6],                    // the wild frontier
-    ["ship",     sig.maritime * 1.2],                                         // a genuine sea power
-    ["anchor",   sig.maritime * 0.7 + pos(pers.commerce) * 0.4],              // a trading port
-    ["grain",    (m.timber || 0) * 0.2 + pos(-pers.aggression) * 0.3 + 0.25], // an agrarian heartland
-    ["tree",     (m.timber || 0) * 0.9],                                      // a forest people
-    ["sun",      arid * 1.0 + (m.incense || 0) * 0.4],                        // the burning south
-    ["mountain", ore * 0.8 + 0.1],                                            // a mining / highland realm
-    ["tower",    pos(pers.commerce) * 0.5 + sig.org * 0.6],                   // a civic, built-up state
-    ["star",     0.18 + pos(pers.expansionism) * 0.2],                       // a modest celestial default
-  ];
-  // The faith's holy device LEADS the shield only where the priesthood itself
-  // rules (a theocracy) or a fiercely militant/hierarchical creed dominates —
-  // the crusading order, the temple-state. Elsewhere a realm's MAIN charge stays
-  // secular/dynastic (the lion, the eagle, the ship) and the faith is carried by
-  // the tincture instead; the device is still available, but rarely wins. This is
-  // why one religion can blanket a map yet every realm's arms still differ.
-  if (emblem) {
-    const theo = gov === "theocracy";
-    const zealous = emblem.militancy > 0.6 && emblem.zeal > 0.6;
-    const w = theo ? 1.6 : zealous ? 0.9 : 0.22;
-    cand.push([emblem.device, w]);
-  }
-
-  // Intrinsic aesthetic: a stock leans toward a motif family (seeded on the
-  // culture FAMILY), so kin realms rhyme even when their circumstances differ.
-  for (const e of cand) e[1] *= 0.75 + rng() * 0.5;
-
-  cand.sort((a, b) => b[1] - a[1]);
-  return cand[0][0];
-}
-
-// ── The genome ──────────────────────────────────────────────────────────────
-/**
- * armsOf(world, country) → the realm's heraldic identity, projected from state.
- * Pure read. Deterministic: same world + same realm → same arms, every run.
- */
-export function armsOf(world, c) {
-  if (!c || !c.capital) return null;
-  const polity = getPolity(world, c.id);
-  const pers = personalityOf(world, c) || { aggression: 0, commerce: 0, expansionism: 0, _label: "Insular" };
-  const sig = realmSignature(world, c);
-  const peoples = peoplesOf(world, c);
-
-  const faithId = polity && polity.faithId >= 0 ? polity.faithId : dominantFaith(c.capital);
-  const emblem = faithId >= 0 ? faithEmblem(world, faithId) : null;
-
-  // Two RNG streams, both reproducible from the world seed:
-  //   • family stream — the stock's shared aesthetic (kin rhyme)
-  //   • realm stream  — this realm's own differencing off that stock
-  const cul = getCulture(world, polity ? polity.cultureId : dominantCulture(c.capital));
-  const familyId = cul ? familyOf(world, cul.id) : c.id;
-  const famRng = entityRng(world, "heraldry.family", familyId);
-  const rng = entityRng(world, "heraldry.realm", c.id);
-
-  const scores = pigmentScores(world, c, sig, pers, emblem);
-  const palette = choosePalette(scores, rng);
-  const charge = chooseCharge(world, c, sig, pers, emblem, peoples, polity ? polity.gov : null, famRng);
-
-  // ── Form: dynastic ARMS vs national FLAG — emergent, never era-gated ──
-  // A flag is the mass, national symbol of a developed state whose identity has
-  // broadened from the ruling house to one people; below that, identity is vested
-  // in the dynasty and reads as a coat of arms.
-  const national = sig.org > 0.5 && peoples.domShare > 0.6;
-  const style = national ? "flag" : "arms";
-
-  // ── Division & ornateness ──
-  // A realm marshalling several peoples quarters them; a developed single-people
-  // realm takes a clean ordinary (pale/fess/bend/chief); the plainest is a lone
-  // charge on a plain field. Flags simplify — at most a two-tincture party field.
-  let division;
-  if (!national && peoples.distinct >= 2) {
-    division = peoples.distinct >= 3 ? "quarterly" : "perPale";       // marshalled
-  } else {
-    const ordinaries = style === "flag"
-      ? ["plain", "perPale", "perFess"]
-      : ["plain", "chief", "perFess", "perPale", "bend"];
-    division = ordinaries[Math.floor(famRng() * ordinaries.length)];
-  }
-  // ornateness: development + how many houses have ruled (an old aristocratic line
-  // accretes detail); flags stay spare regardless.
-  const houses = polity && polity.houses ? polity.houses.length : 1;
-  const complexity = style === "flag" ? 0
-    : clamp01(sig.org * 0.6 + Math.min(1, houses / 6) * 0.4);
-
-  return {
-    style, division, charge, complexity,
-    tinctures: palette,
-    // provenance — the drivers, surfaced so a preview can be eyeballed / audited
-    provenance: {
-      realm: (polity && polity.name) || c.name || `#${c.id}`,
-      people: cul ? cul.name : "?",
-      familyId,
-      personality: pers._label,
-      faith: emblem ? (getFaith(world, faithId) || {}).name : null,
-      gov: polity ? polity.gov : null,
-      domShare: peoples.domShare, distinctPeoples: peoples.distinct,
-      org: sig.org,
-    },
-  };
-}
-
-// A terse blazon-ish description for labels/tooltips.
-export function blazon(arms) {
-  if (!arms) return "";
-  const t = arms.tinctures;
-  const T = id => (TINCTURES[id] ? TINCTURES[id].label : id);
-  const divWord = {
-    plain: "", perPale: "party per pale", perFess: "party per fess",
-    bend: "a bend", chief: "a chief", quarterly: "quarterly", saltire: "a saltire",
-  }[arms.division] || "";
-  const parts = [];
-  parts.push(T(t.field).replace(/^\w/, ch => ch.toUpperCase()));
-  if (divWord && arms.division !== "plain") parts.push(divWord + " " + T(t.companion));
-  parts.push(`a ${arms.charge} ${T(t.charge)}`);
-  return parts.join(", ");
-}
-
-export function tinctureRGB(id) {
-  return (TINCTURES[id] || TINCTURES.sable).rgb;
-}
+// exported for the renderer
+export { CHARGES, LINES, PARTITIONS };
