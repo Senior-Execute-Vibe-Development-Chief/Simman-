@@ -10,7 +10,7 @@
 // under `npm run dev`, which is why every read is typeof-guarded. Declared
 // here so ESLint's no-undef doesn't flag the injected identifier.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "./sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
@@ -305,6 +305,26 @@ function cognatesHTML() {
     <div class="scroll"><table><thead><tr><th></th>${heads}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
+// ── coined abstractions: the intentional-derivation showcase ─────────────
+const ABSTRACT_SHOW = (() => {
+  const want = ["king", "queen", "god", "spirit", "holy", "priest", "law", "oath",
+    "throne", "crown", "tax", "council", "victory", "army", "guard", "noble"];
+  return want.map(g => CONCEPTS.findIndex(c => c.g === g)).filter(i => i >= 0);
+})();
+function derivationsHTML(l) {
+  const items = ABSTRACT_SHOW.map(cid => {
+    const ety = etymologyOf(l, cid);
+    const w = wordOf(l, cid);
+    return `<li><span class="lbl">${esc(glossOf(cid))}</span> <span class="w">${esc(w)}</span> ${
+      ety ? `<span class="gloss">‹ ‘${esc(ety.gloss)}’</span>`
+        : `<span class="gloss lost">opaque root</span>`}</li>`;
+  }).join("");
+  const nDerived = ABSTRACT_SHOW.filter(cid => etymologyOf(l, cid)).length;
+  return `<section class="card"><h2>Coined abstractions <span class="count">(${nDerived}/${ABSTRACT_SHOW.length} derived on purpose)</span></h2>
+    <p class="note">Abstract words needn't be opaque roots: most tongues <em>build</em> them out of concrete ones, along a curated table of plausible pathways rolled once per family — <span class="w">king</span> from “great man”, <span class="w">god</span> from “sky father”, <span class="w">law</span> from “old saying”, <span class="w">victory</span> from “war's end”. The etymology is recoverable and drifts with the rest of the language (branch a daughter and watch it shift); a different family coins the same idea from different parts, and some keep an opaque root. Same machine that gives ‘ford’ its ‘water’.</p>
+    <ul class="cols">${items}</ul></section>`;
+}
+
 function loansHTML(l) {
   if (!l.loans.length) return "";
   const seen = new Set();
@@ -337,12 +357,14 @@ function dictionaryHTML(l) {
       const notes = [];
       if (loanSet.has(r.cid)) notes.push("loan");
       if (byWord.get(r.w) > 1) notes.push("shared word");
-      return `<tr><td>${esc(r.g)}</td><td class="w">${esc(r.w)}</td><td class="lbl">${esc(r.d)}</td><td class="gloss">${notes.join(" · ")}</td></tr>`;
+      const ety = etymologyOf(l, r.cid);
+      const from = ety ? `‹ ‘${esc(ety.gloss)}’` : "";
+      return `<tr><td>${esc(r.g)}</td><td class="w">${esc(r.w)}</td><td class="gloss">${from}</td><td class="lbl">${esc(r.d)}</td><td class="gloss">${notes.join(" · ")}</td></tr>`;
     }).join("");
   return `<section class="card"><h2>Dictionary <span class="count">(${rows.length} concepts, virtual)</span></h2>
-    <p class="note">Every entry is computed on demand from the language's seed and history — nothing is stored. “Shared word” = two concepts this family colexifies (one word for tree&nbsp;and&nbsp;wood); “loan” = a word taken from a contact language, shadowing the native form.</p>
+    <p class="note">Every entry is computed on demand from the language's seed and history — nothing is stored. The <span class="gloss">‹ etymology</span> column shows words this family built from other concepts (ford ‹ ‘water river’, king ‹ ‘great man’). “Shared word” = two concepts this family colexifies (one word for tree&nbsp;and&nbsp;wood); “loan” = a word taken from a contact language, shadowing the native form.</p>
     <input id="dictSearch" type="search" placeholder="Search meaning or word…" value="${esc(S.search)}" />
-    <div class="scroll tall"><table><thead><tr><th>meaning</th><th>word</th><th>domain</th><th>notes</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
+    <div class="scroll tall"><table><thead><tr><th>meaning</th><th>word</th><th>etymology</th><th>domain</th><th>notes</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
 }
 
 function render() {
@@ -378,6 +400,7 @@ function render() {
   ${sentenceHTML(l)}
   ${paradigmHTML(l)}
   ${cognatesHTML()}
+  ${derivationsHTML(l)}
   ${dictionaryHTML(l)}
   <footer>Deterministic: the same seed and history always speak the same words. · <span class="gloss">glosses in ochre are meanings</span> · build ${typeof __BUILD__ !== "undefined" ? __BUILD__ : "dev"}</footer>`;
 

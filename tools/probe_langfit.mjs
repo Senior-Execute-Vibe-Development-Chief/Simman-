@@ -11,7 +11,7 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive } from "../src/sim/languageGrammar.js";
@@ -834,6 +834,122 @@ console.log("\n── cross-layer consistency ──");
   check(`dynasties name consistently — one house rule per tongue (${dynBad}/${dynLangs} inconsistent)`, dynLangs > 0 && dynBad === 0);
 
   say("   go-citation now equals the dictionary; base-5 'six' reads the same in the counter and the lexicon.");
+}
+
+// ── 13. INTENTIONAL ABSTRACT DERIVATION (the reviewer's parked ask) ────────
+// Abstract concepts (king, god, law…) may DERIVE on purpose from concrete ones
+// via a curated relations table rolled per family (king ‹ "great man", god ‹
+// "sky father"). It must be a SYSTEM, not a fitted output — different tongues
+// build the same idea from different parts, some keep an opaque root — and the
+// etymology must agree with the actual word (no desync), stay a family property
+// down a lineage, and drift with the sound-change log.
+console.log("\n── intentional abstract derivation ──");
+{
+  const world = mkWorld();
+  const cidOf = (g) => CONCEPTS.findIndex(c => c.g === g);
+  const ABS = ["king", "queen", "god", "spirit", "holy", "priest", "law", "oath",
+    "throne", "crown", "tax", "council", "victory", "army", "guard", "noble"].map(cidOf);
+  const N = 300;
+  // syllable proxy: maximal vowel-groups, tone diacritics stripped
+  const sylCount = (w) => (w.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().match(/[aeiouü]+/g) || []).length;
+  let opportunities = 0, derived = 0, glossBad = 0, blankWord = 0, tooLong = 0;
+  let citeBad = 0, citeTot = 0;
+  const paths = {}; ABS.forEach(t => paths[t] = new Set());
+  const derivedCount = {}; ABS.forEach(t => derivedCount[t] = 0);
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 400000 + i * 97 });
+    for (const t of ABS) {
+      opportunities++;
+      const ety = etymologyOf(l, t);
+      const w = wordOf(l, t);
+      if (!w) blankWord++;
+      // citation stability extends to derived abstracts: the noun's NOM/ABS.sg
+      // cell IS the dictionary word (the one-repaired-root invariant)
+      const cell = inflectNoun(l, t, { num: "sg", cas: null });
+      citeTot++;
+      if (cell.text !== w || cell.pre.length || cell.post.length) citeBad++;
+      if (ety) {
+        derived++; derivedCount[t]++;
+        paths[t].add(ety.gloss);
+        // etymology must be well-formed AND agree with the word (isDerived):
+        // a non-null etymology means the word is a compound, so it can't equal
+        // the pristine one-root synthesis the concept would have as an atom
+        if (!ety.gloss || ety.head == null || ety.mod == null || ety.head === ety.mod) glossBad++;
+        // transparent compounds wear to 1–3 syllable stumps — even the rare,
+        // nested ones (throne ‹ king+sit) must not run to four-heavy-syllable
+        // mouthfuls (the erosion mechanism, not gated on the target's frequency)
+        if (sylCount(w) > 3) tooLong++;
+      }
+    }
+  }
+  const rate = derived / opportunities;
+  check(`abstracts derive at a real rate, not all-or-nothing (${Math.round(rate * 100)}% of ${opportunities} chances)`,
+    rate > 0.45 && rate < 0.85);
+  check(`every derived concept renders a non-empty word (${blankWord} blanks)`, blankWord === 0);
+  check(`derived abstracts wear to ≤3-syllable stumps (${tooLong}/${derived} over three, <1%)`, tooLong / Math.max(1, derived) < 0.01);
+  check(`derived abstracts keep citation ≡ dictionary (${citeBad}/${citeTot} desyncs)`, citeBad === 0);
+  check(`etymologies are well-formed (${glossBad} malformed)`, glossBad === 0);
+  // anti-fitting: the SAME idea is coined from different parts across families,
+  // and both derived AND opaque outcomes occur — proof it is rolled, not fixed
+  const kingP = paths[cidOf("king")].size, godP = paths[cidOf("god")].size,
+    lawP = paths[cidOf("law")].size, vicP = paths[cidOf("victory")].size;
+  check(`no fitted outcome: king/god/law/victory each coined ≥2 ways (${kingP}/${godP}/${lawP}/${vicP} pathways)`,
+    kingP >= 3 && godP >= 2 && lawP >= 3 && vicP >= 2);
+  const kd = derivedCount[cidOf("king")];
+  check(`both outcomes occur — some tongues derive 'king', some keep a root (${kd}/${N} derive)`, kd > 0 && kd < N);
+  say(`   'king' across the sample: ${[...paths[cidOf("king")]].join(" · ")}`);
+
+  // recoverable + drifts: the pathway is a FAMILY property (inherited to the
+  // daughter), and the derived word actually shifts down the lineage
+  const w2 = mkWorld();
+  const root = foundLanguage(w2, { seed: 4242 });
+  w2.step = 3000; const dA = branchLanguage(w2, root, 0.5);
+  w2.step = 6000; const dB = branchLanguage(w2, root, 0.9);
+  let pathKept = true, pathTot = 0, shifted = 0;
+  for (const t of ABS) {
+    const er = etymologyOf(root, t);
+    if (!er) continue;
+    pathTot++;
+    const ea = etymologyOf(dA, t);
+    if (!ea || ea.head !== er.head || ea.mod !== er.mod) pathKept = false;
+    if (wordOf(dA, t) !== wordOf(dB, t)) shifted++;
+  }
+  check(`derivation pathway is inherited down the family (${pathTot} derived roots)`, pathTot > 0 && pathKept);
+  check(`derived abstracts drift apart across daughters (${shifted}/${pathTot} shifted)`, shifted >= 1);
+  say(`   ${glossOf(cidOf("king"))}: ${wordOf(root, cidOf("king"))} → ${wordOf(dA, cidOf("king"))} / ${wordOf(dB, cidOf("king"))}` +
+    (etymologyOf(root, cidOf("king")) ? ` ‹ '${etymologyOf(root, cidOf("king")).gloss}'` : ""));
+
+  // the colex CYCLE trap: when a family colexifies a source onto its target
+  // (sky=god, wind=spirit), the pathway would loop — it must be dropped, not
+  // hang, and the concept still renders (as a plain/other-pathway word)
+  let cycleSafe = true, cycleSeen = 0;
+  const GOD = cidOf("god"), SKY = cidOf("sky"), SPIRIT = cidOf("spirit"), WIND = cidOf("wind");
+  for (let i = 0; i < 400; i++) {
+    const l = foundLanguage(world, { seed: 410000 + i * 53 });
+    if (wordOf(l, SKY) === wordOf(l, GOD)) { cycleSeen++; if (!wordOf(l, GOD)) cycleSafe = false; }
+    if (wordOf(l, WIND) === wordOf(l, SPIRIT)) { cycleSeen++; if (!wordOf(l, SPIRIT)) cycleSafe = false; }
+  }
+  check(`colex cycles are broken, not hung (${cycleSeen} sky=god / wind=spirit families rendered clean)`, cycleSeen > 0 && cycleSafe);
+
+  // pinned Mandarin: every abstract, derived or not, stays legal pinyin
+  const m = foundLanguage(world, { seed: 445 });
+  m.prof = refProfile("mandarin", 445); m.rules = [];
+  const mp = refPin("mandarin"); m.pin = mp.pin; m.prof.rom = mp.rom;
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const strip = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const mBad = ABS.map(t => wordOf(m, t)).filter(w => !PINYIN.test(strip(w.toLowerCase())));
+  check(`derived abstracts stay legal pinyin in pinned Mandarin (${mBad[0] || "0 illegal"})`, mBad.length === 0);
+
+  // determinism + JSON roundtrip of the derivation layer
+  const wa = mkWorld(), wb = mkWorld();
+  const a = foundLanguage(wa, { seed: 424242 }), b = foundLanguage(wb, { seed: 424242 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => JSON.stringify(ABS.map(t => { const e = etymologyOf(l, t); return [wordOf(l, t), e && [e.head, e.mod]]; }));
+  check("derivation deterministic + JSON-roundtrip-stable", sig(a) === sig(b) && sig(a) === sig(c3));
+
+  say("   the same abstractions, coined per family: " + [cidOf("god"), cidOf("law"), cidOf("victory")].map(t => {
+    const e = etymologyOf(a, t); return glossOf(t) + "=" + wordOf(a, t) + (e ? " ‹ " + e.gloss : "");
+  }).join(" · "));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

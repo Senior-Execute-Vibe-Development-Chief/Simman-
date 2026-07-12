@@ -586,3 +586,59 @@ homophony repair not being threaded through one source of truth.
   ordinals (0/86 inconsistent).
 - 90 probe checks green; smoke + validate green. The reviewer's six seeds
   (8822–8827) all verified clean.
+
+---
+
+## Build status (session 12) — intentional abstract derivation
+
+The reviewer's standing parked ask (session 10, above): now that accidental
+homophony is gone, turn the *accidental* etymologies (Neteck's sit=king) into
+*designed* depth — let abstract concepts DERIVE on purpose from concrete ones.
+Built as a SYSTEM (cardinal rule 2), never a fitted output.
+
+- **The curated relations table (`DERIV`, languageLexicon.js).** A table exactly
+  like `COLEX`: rows `[target, head, mod, weight]` listing PLAUSIBLE derivation
+  pathways for 16 abstract concepts — king ‹ "great man" / "old man" / "high
+  sit", god ‹ "sky father" / "high sky", law ‹ "old say" / "true say" / "king
+  say" (the reviewer's "say+bind"), victory ‹ "war's end" / "war stand", plus
+  queen, throne, crown, tax, council, priest, oath, holy, spirit, army, guard,
+  noble. Sources are always more basic than the target; the only cross-abstract
+  references are to KING and GOD (which draw solely on concrete roots), so the
+  graph is a shallow DAG.
+- **Rolled per family, never hard-coded (language.js `derivParts`).** Each
+  family rolls, per concept, whether to derive (`DERIV_RATE`, its own "deriv"
+  stream) and — if so — which pathway (weighted, "derivpick" stream). Different
+  tongues coin the same idea from different parts; ~28% keep an opaque root. The
+  concrete `dv` field (FORD ‹ river+water) keeps its old "dv" roll UNCHANGED, so
+  its names are byte-identical; the abstract layer rides new streams and perturbs
+  nothing above it. Routed through the SAME joinInternal/revowel machinery, so
+  the etymology is recoverable (you can see `king` inside `law` when law ‹ king+
+  say) and it drifts with the sound-change log; templatic tongues derive by
+  re-vowelling the head skeleton (maktab-style), as they already did for `dv`.
+- **Cycle safety.** When a family has colexified a source ONTO its target
+  (sky=god at 15%, wind=spirit at 20%), that pathway would loop; `derivParts`
+  drops it and the family keeps a plain root — semantically exact (if wind IS
+  spirit, "spirit" needs no derivation). Robust across 138 such families in the
+  sweep, no hang.
+- **Consistency + erosion.** The derived compound is legalized so `wordOf` is
+  byte-identical to the grammar layer's `rootFormOf` (the session-11 one-root
+  invariant, extended to derived concepts — citation ≡ dictionary, 0/4800).
+  Transparent compounds wear to 1–3 syllable stumps even when rare and nested
+  (throne ‹ king+sit): the erosion that was gated on frequency (b≥0.5) now
+  always fires for the curated abstracts, so no four-heavy-syllable mouthfuls
+  (>3 syllables: 2/3426).
+- **New exports:** `etymologyOf(lang, cid)` → `{head, mod, gloss}` or null
+  (covers both the abstract and concrete `dv` derivations). The Lab gains a
+  "Coined abstractions" card and an etymology column in the dictionary.
+- **Gates** (probe §13, +12 checks → 102 total): derivation rate in the human
+  band and not all-or-nothing; every derived word non-empty and ≤3 syllables;
+  citation ≡ dictionary for derived abstracts; etymologies well-formed;
+  anti-fitting (king/god/law/victory each coined ≥2 ways, both derived AND
+  opaque outcomes occur); pathway inherited down a lineage AND drifts across
+  daughters; colex cycles broken not hung; pinned-Mandarin abstracts stay legal
+  pinyin; determinism + JSON-roundtrip. smoke + validate green; names
+  re-baseline (accepted, cosmetic).
+
+Parked still: passive/causative voice, evidentiality (grammaticalize from see/
+hear/say — already in the graph), numeral classifiers, noun-class concord, the
+rarer alignments; L5 writing systems; orthographic lag.

@@ -265,6 +265,48 @@ export const COLEX = [
   [GO, WALKV, 0.25], [EAT, DRINK, 0.12], [WANT, LOVEV, 0.15], [SEE, HEAR, 0.08],
 ];
 
+// ── intentional abstract derivation (the curated relations table) ─────────
+// Abstract concepts (king, god, law, victory…) don't have to be opaque roots:
+// most real languages BUILD them out of concrete ones — king ‹ "great man",
+// god ‹ "sky father", law ‹ "old saying", victory ‹ "war's end". This is a
+// relations table exactly like COLEX: a curated set of PLAUSIBLE derivation
+// pathways, from which each family rolls one (or keeps an opaque root). It is a
+// SYSTEM, not a fitted outcome — no row names a specific output; different
+// families coin the same idea from different parts, and the etymology is
+// recoverable and drifts with the rest of the language because the word IS the
+// compound of these parts, replayed through the sound-change log (the machinery
+// language.js already uses for the `dv` field on concrete concepts like FORD).
+//
+// Row = [target, HEAD, MOD, weight]. The word is the compound MOD+HEAD (per the
+// family's compound strategy) and its gloss reads "‹ MOD HEAD" ("great man").
+// Sources are always MORE basic than the target; the only cross-abstract
+// references are to KING and GOD (which draw solely on concrete roots), so the
+// graph is a shallow DAG — no cycles. A source that a family has colexified
+// onto the target (sky=god, wind=spirit) would loop, so language.js drops that
+// pathway and the family keeps the plain root — semantically right (if wind IS
+// spirit, "spirit" needs no derivation).
+export const DERIV = [
+  // governance — the "one who sits on the throne" and its household
+  [KING, MAN, GREAT, 3], [KING, MAN, OLD, 2], [KING, MAN, RULEV, 2], [KING, SIT, HIGH, 1],
+  [QUEEN, WOMAN, GREAT, 3], [QUEEN, WOMAN, KING, 2], [QUEEN, WOMAN, HIGH, 1],
+  [THRONE, SIT, KING, 3], [THRONE, SIT, HIGH, 2], [THRONE, SIT, STONE, 1],
+  [CROWN, HEAD, GOLD, 3], [CROWN, HEAD, KING, 2], [CROWN, HEAD, HIGH, 1],
+  [TAX, GIFT, KING, 3], [TAX, GRAIN, KING, 2], [TAX, GIVE, KING, 1],
+  [COUNCIL, MAN, WISE, 3], [COUNCIL, MAN, OLD, 2], [COUNCIL, SAY, MANY, 1],
+  [LAW, SAY, OLD, 3], [LAW, SAY, TRUE, 2], [LAW, SAY, KING, 2], [LAW, SAY, STRONG, 1],
+  // faith — the sky-father and those who serve it
+  [GOD, FATHER, SKYC, 3], [GOD, SKYC, HIGH, 2], [GOD, SUN, GREAT, 1],
+  [SPIRIT, WIND, GOD, 2], [SPIRIT, WIND, HIGH, 2], [SPIRIT, WIND, MAN, 1],
+  [HOLY, HIGH, GOD, 2], [HOLY, TRUE, GOD, 2], [HOLY, GIFT, GOD, 1],
+  [PRIEST, MAN, GOD, 3], [PRIEST, MAN, OLD, 2], [PRIEST, SAY, GOD, 1],
+  [OATH, SAY, TRUE, 3], [OATH, HAND, GOD, 2], [OATH, HAND, TRUE, 1],
+  // war — "war's end", "the many men", "the wall-watcher"
+  [VICTORY, FINISH, WAR, 3], [VICTORY, STAND, WAR, 2], [VICTORY, WAR, GREAT, 1],
+  [ARMY, MAN, MANY, 3], [ARMY, MAN, WAR, 2], [ARMY, SPEAR, MANY, 1],
+  [GUARD, SEE, WALL, 2], [GUARD, STAND, GATE, 2], [GUARD, MAN, WALL, 1],
+  [NOBLE, BLOOD, HIGH, 3], [NOBLE, KINC, GREAT, 2], [NOBLE, BLOOD, OLD, 1],
+];
+
 // ── name-material pools (indices into CONCEPTS) ──────────────────────────
 export const TOPO_HEAD = [RIVER, FORD, LAKE, BAY, ISLAND, HILL, MOUNTAIN, VALLEY,
   PLAIN, STONE, CAVE, PASS, SPRING, MARSH, FOREST, FIELD, TOWN, FORT, WALL, BRIDGE,
