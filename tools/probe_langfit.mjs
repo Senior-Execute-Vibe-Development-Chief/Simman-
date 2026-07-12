@@ -14,7 +14,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -995,6 +995,53 @@ console.log("\n── intentional abstract derivation ──");
   say("   the same abstractions, coined per family: " + [cidOf("god"), cidOf("law"), cidOf("victory")].map(t => {
     const e = etymologyOf(a, t); return glossOf(t) + "=" + wordOf(a, t) + (e ? " ‹ " + e.gloss : "");
   }).join(" · "));
+}
+
+// ── 14. CONCORD & AGREEMENT (Group A) ─────────────────────────────────────
+// F1: noun class is assigned by a universal animacy SCALE (not a bare hash) —
+// a famSeed bijection maps tiers→classes, so labels vary but structure is
+// universal, fem/masc split the human tier, and no class is ever empty.
+console.log("\n── concord: noun-class assignment ──");
+{
+  const world = mkWorld();
+  const cidOf = (g) => CONCEPTS.findIndex(c => c.g === g);
+  const N = 600;
+  let gendered = [], manyClass = [], all2 = [];
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 470000 + i * 53 });
+    const g = gramOf(l);
+    if (g.genders >= 2) { all2.push(l); if (g.genders <= 3) gendered.push(l); else manyClass.push(l); }
+  }
+  // no empty class anywhere
+  const emptyLangs = all2.filter(l => classInventory(l).some(c => c.n === 0)).length;
+  check(`no noun class is ever empty (${all2.length} gendered langs, ${emptyLangs} with a gap)`, all2.length > 0 && emptyLangs === 0);
+  // fem-gloss share a class distinct from masc-gloss in small systems (not random)
+  const femC = ["woman", "queen", "mother", "daughter"].map(cidOf);
+  const mascC = ["man", "king", "father", "son"].map(cidOf);
+  const sexOK = gendered.every(l => {
+    const fs = new Set(femC.map(c => genderOf(l, c))), ms = new Set(mascC.map(c => genderOf(l, c)));
+    return fs.size === 1 && ms.size === 1 && [...fs][0] !== [...ms][0];
+  });
+  check(`fem-gloss share a class distinct from masc (${gendered.length} small-gender langs)`, gendered.length > 0 && sexOK);
+  // human and animal each land in ≤2 classes (a semantic tier, not scattered)
+  const humanC = ["man", "woman", "king", "queen", "child", "mother", "father", "priest"].map(cidOf);
+  const anmSet = CONCEPTS.map((c, i) => [c, i]).filter(([c]) => c.d === "anm").map(([, i]) => i);
+  const tierTight = all2.every(l => new Set(humanC.map(c => genderOf(l, c))).size <= 2 && new Set(anmSet.map(c => genderOf(l, c))).size <= 2);
+  check(`human & animal tiers each span ≤2 classes (all ${all2.length} langs)`, tierTight);
+  // same tier → different class index across families (structure universal, label rolled)
+  const stoneClasses = new Set(all2.slice(0, 40).map(l => genderOf(l, cidOf("stone")) + ":" + gramOf(l).genders));
+  check(`same concept lands in different class indices across families (${stoneClasses.size} distinct)`, stoneClasses.size >= 3);
+  // classAssign frequency WALS-shaped (semantic ~35%) over genders≥2 langs
+  const semRate = all2.filter(l => gramOf(l).classAssign === "semantic").length / Math.max(1, all2.length);
+  check(`classAssign 'semantic' in the WALS band (${Math.round(semRate * 100)}% of gendered langs)`, semRate > 0.2 && semRate < 0.45);
+  // determinism + JSON roundtrip
+  const wa = mkWorld(), wb = mkWorld();
+  const a = foundLanguage(wa, { seed: 470053 }), b = foundLanguage(wb, { seed: 470053 });
+  const c3 = JSON.parse(JSON.stringify(a));
+  const sig = (l) => JSON.stringify(CONCEPTS.map((c, i) => genderOf(l, i)));
+  check("noun-class assignment deterministic + JSON-roundtrip-stable", sig(a) === sig(b) && sig(a) === sig(c3));
+  if (manyClass[0]) { const inv = classInventory(manyClass[0]); say(`   a ${inv.length}-class tongue: ${inv.map(c => "C" + c.cls + "×" + c.n).join(" ")}`); }
+  void nounClassInfo;
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

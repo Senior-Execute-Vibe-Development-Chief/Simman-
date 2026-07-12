@@ -92,6 +92,12 @@ export function rollGrammar(famSeed, prof) {
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
+    // noun-class ASSIGNMENT strategy (WALS 32A): 'semantic' (~35% — animacy/sex
+    // decides class) vs 'mixed' (the rest — a phonological cue assigns the
+    // abstract residue, Russian -a→fem). Meaningful only when genders≥2; the
+    // many-class corner is biased 'mixed' (its high classes are shape buckets).
+    // Own stream 'clsasg' — reads nothing existing.
+    classAssign: genders < 2 ? null : genders >= 4 ? "mixed" : (H("clsasg") < 0.4 ? "semantic" : "mixed"),
     aspect: tenses === 1 ? true : H("asp") < 0.45,   // tenseless ⇒ aspect carries time
     pluralMark: m === "iso" ? H("pl") < 0.3 : H("pl") < 0.9,
     dual: H("du") < 0.15,
@@ -1065,17 +1071,83 @@ const themeFor = (lang, spec, cid) => {
   return { theme: spec.themes[k], k };
 };
 
+// ── noun-class assignment (Group A / concord F1) ──────────────────────────
+// Class is assigned by a universal animacy/semantic SCALE, not a bare hash: a
+// famSeed Fisher-Yates maps the tiers onto the used class indices (a bijection,
+// so no class is empty and no two tiers collide), and the family LABELS differ
+// while the STRUCTURE is universal. Small (2-3) systems split the human tier by
+// natural gender (the fem/masc core); many-class (Bantu-style) systems lock
+// human/animal/plant to their tiers and distribute the abstract/artifact/mass
+// residue across the remaining classes by a phonological cue (mixed) — exactly
+// the shape/abstract high-class buckets of a real many-class language.
+const FEM_GLOSS = new Set(["mother", "woman", "queen", "daughter"]);
+const MASC_GLOSS = new Set(["father", "man", "king", "son", "brother", "lord"]);
+const HUMAN_GLOSS = new Set(["man", "woman", "king", "queen", "chief", "priest",
+  "people", "guard", "child", "mother", "father", "son", "daughter", "brother", "kin", "lord"]);
+function semTier(con) {
+  if (!con) return 5;
+  if (con.d === "kin" || HUMAN_GLOSS.has(con.g)) return 0;               // human
+  if (con.d === "anm") return 1;                                         // animal
+  if (con.d === "plt") return 2;                                         // plant
+  if (con.d === "hab" || con.d === "crf") return 3;                      // made/artifact
+  if (con.d === "wat" || con.d === "sky" || con.d === "lnd") return 4;   // nature/mass
+  return 5;                                                              // abstract/quality
+}
+// per-family bijection tiers→classes (Fisher-Yates on famSeed), cached
+function classPermFor(lang) {
+  const c = gc(lang);
+  if (c.clsperm) return c.clsperm;
+  const n = gramOf(lang).genders || 1;
+  const fam = lang.famSeed ?? lang.seed;
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) { const j = hash32(fam, "clsperm", i) % (i + 1); const t = a[i]; a[i] = a[j]; a[j] = t; }
+  c.clsperm = a;
+  return a;
+}
+// the phonological cue: a per-family final-segment→class map distributing the
+// non-core residue across the classes the low semantic tiers don't lock.
+// fus/tmpl read the final rime (Russian -a→fem); agg buckets the whole word.
+function formalClass(lang, cid, con) {
+  const g = gramOf(lang), perm = classPermFor(lang), n = g.genders;
+  const lo = Math.min(3, n), span = n - lo;
+  if (span <= 0) return perm[semTier(con) % n];              // 2-3 gender: no residue band
+  const w = wordOf(lang, cid);
+  const seg = lang.prof.morph === "agg" ? w : (w.match(/[aeiouy]+[^aeiouy]*$/i) || [w])[0];
+  const bucket = (hash32(lang.famSeed ?? lang.seed, "clsform", seg) >>> 0) % span;
+  return perm[lo + bucket];
+}
+
 /** Noun class / gender of a concept in this language (0 when genderless). */
 export function genderOf(lang, cid) {
   const g = gramOf(lang);
   if (!g.genders) return 0;
   const con = CONCEPTS[cid];
-  const fem = ["mother", "woman", "queen", "daughter"], masc = ["father", "man", "king", "son", "brother"];
-  if (con && g.genders >= 2) {
-    if (fem.includes(con.g)) return 1;
-    if (masc.includes(con.g)) return 0;
+  const perm = classPermFor(lang), n = g.genders, tier = semTier(con);
+  if (con) {
+    if (n <= 3) { if (FEM_GLOSS.has(con.g)) return perm[1 % n]; if (MASC_GLOSS.has(con.g)) return perm[0]; }
+    if (tier <= (n >= 4 ? 2 : 4)) return perm[tier % n];     // semantic core locks the animate tiers
   }
-  return hash32(lang.famSeed ?? lang.seed, "gender", cid) % g.genders;
+  if (g.classAssign === "semantic") return perm[tier % n];   // else the residue: semantic keeps the tier class
+  return formalClass(lang, cid, con);                        // mixed: the phonological cue
+}
+
+/** The noun classes this language actually uses, with member counts + samples
+ *  (empty when genderless). No class is ever empty by construction. */
+export function classInventory(lang) {
+  const g = gramOf(lang);
+  if (!g.genders) return [];
+  const by = Array.from({ length: g.genders }, () => []);
+  for (let cid = 0; cid < CONCEPTS.length; cid++) by[genderOf(lang, cid)].push(cid);
+  return by.map((concepts, cls) => ({ cls, n: concepts.length, sample: concepts.slice(0, 6) }));
+}
+
+/** A concept's class + its semantic tier + how it was assigned (semantic vs the
+ *  phonological cue). */
+export function nounClassInfo(lang, cid) {
+  const g = gramOf(lang), tier = semTier(CONCEPTS[cid]);
+  const core = tier <= (g.genders >= 4 ? 2 : 4);
+  return { cls: genderOf(lang, cid), tier, n: g.genders,
+    by: !g.genders ? "none" : (core || g.classAssign === "semantic") ? "semantic" : "formal" };
 }
 
 /** Inflect a noun: { text, gloss, pre, post } — pre/post are the particle
