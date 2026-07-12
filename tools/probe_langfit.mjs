@@ -14,7 +14,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -1233,6 +1233,80 @@ console.log("\n── alignment refinements & splits ──");
   const asig = (l) => JSON.stringify(alignmentOf(l)) + renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }).text;
   check("alignment deterministic + JSON-roundtrip-stable", asig(da) === asig(db) && asig(da) === asig(dc3));
   void agentivityOf;
+}
+
+// ── 16. VOICE & VALENCY (Group B) ─────────────────────────────────────────
+// Causative/passive/antipassive/applicative — each a grammaticalized verbal
+// marker (onion) AND a relation remap in renderClause, riding the P3 resolver.
+console.log("\n── voice & valency ──");
+{
+  const world = mkWorld();
+  const cidF = (g2) => CONCEPTS.findIndex(c => c.g === g2);
+  const TOWN = cidF("town");
+  const roleG = (c, role) => c.tokens.filter(t => t.role === role).map(t => t.g).join(" ");
+  const roleW = (c, role) => c.tokens.filter(t => t.role === role).map(t => t.w).join(" ");
+  const refLang = (kind, seed) => { const l = foundLanguage(world, { seed }); l.prof = refProfile(kind, seed); l.rules = []; const r = refPin(kind); l.pin = r.pin; if (r.rom) l.prof.rom = { ...(l.prof.rom || {}), ...r.rom }; return l; };
+  const N = 500;
+  const pop = Array.from({ length: N }, (_, i) => foundLanguage(world, { seed: 530000 + i * 37 }));
+
+  // causative: near-universal, and grammaticalized from make/do/give
+  const causRate = pop.filter(l => voicesOf(l).caus).length / N;
+  check(`causative is near-universal (${Math.round(causRate * 100)}%)`, causRate > 0.78 && causRate < 0.92);
+  const nonIsoCaus = pop.filter(l => l.prof.morph !== "iso" && voicesOf(l).caus);
+  const causGood = nonIsoCaus.filter(l => { const e = voiceEtymologies(l).find(x => x.k === "caus"); return e && ["make", "do", "give"].includes(e.from); }).length;
+  check(`causative source ∈ {make,do,give} in most non-iso tongues (${causGood}/${nonIsoCaus.length})`, nonIsoCaus.length > 0 && causGood / nonIsoCaus.length >= 0.65);
+
+  // passive is an ACCUSATIVE property (much rarer in ergative languages)
+  const accP = pop.filter(l => gramOf(l).align === "acc"), ergP = pop.filter(l => gramOf(l).align === "erg");
+  const passAcc = accP.filter(l => voicesOf(l).pass).length / Math.max(1, accP.length);
+  const passErg = ergP.filter(l => voicesOf(l).pass).length / Math.max(1, ergP.length);
+  check(`passive is an accusative property (acc ${Math.round(passAcc * 100)}% − erg ${Math.round(passErg * 100)}% ≥ 25pts)`, passAcc - passErg >= 0.25);
+
+  // passive REMAP: patient→subject, agent→by-phrase, derived subject not ERG
+  const e = refLang("english", 303);
+  const pc = renderClause(e, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "pass" }, o: { n: RIVER } });
+  const subjIsPatient = roleW(pc, "S").includes(renderClause(e, { s: { n: RIVER } , v: { c: SEE, tam: null } }).tokens.find(t => t.role === "S").w);
+  check(`passive promotes the patient to subject, agent to a by-phrase (${pc.text} = "${pc.gloss}")`,
+    /PASS/.test(pc.gloss) && subjIsPatient && /king/.test(roleG(pc, "X")) && pc.tokens.some(t => t.role === "X"));
+  // ergative passive subject carries NO ergative
+  const ergPass = (() => { for (let i = 0; i < 6000; i++) { const l = foundLanguage(world, { seed: 540000 + i * 29 }); if (gramOf(l).align === "erg" && voicesOf(l).pass) return l; } return null; })();
+  if (ergPass) { const c = renderClause(ergPass, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "pass" }, o: { n: RIVER } }); check(`ergative passive subject drops ERG (${c.gloss})`, !/ERG/.test(roleG(c, "S")) && /PASS/.test(c.gloss)); }
+  else check("ergative passive subject drops ERG (none in sweep — rare, ok)", true);
+
+  // antipassive: ergative-skewed, agent loses ERG (surfaces ABS), needs a demotion target
+  const antipRateErg = ergP.filter(l => voicesOf(l).antip).length / Math.max(1, ergP.length);
+  const antipRateAcc = accP.filter(l => voicesOf(l).antip).length / Math.max(1, accP.length);
+  check(`antipassive is ergative-skewed (erg ${Math.round(antipRateErg * 100)}% vs acc ${Math.round(antipRateAcc * 100)}%)`, antipRateErg >= 0.35 && antipRateAcc < 0.12);
+  const antipL = (() => { for (let i = 0; i < 8000; i++) { const l = foundLanguage(world, { seed: 550000 + i * 23 }); if (gramOf(l).antip && gramOf(l).align === "erg") return l; } return null; })();
+  if (antipL) {
+    const plain = renderClause(antipL, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+    const antip = renderClause(antipL, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "antip" }, o: { n: RIVER } });
+    check(`antipassive: A loses ERG, P demoted to oblique (${roleG(plain, "S")} → ${roleG(antip, "S")}; ${antip.text})`,
+      /ERG/.test(roleG(plain, "S")) && !/ERG/.test(roleG(antip, "S")) && /ANTIP/.test(antip.gloss) && antip.tokens.some(t => t.role === "X"));
+  } else check("antipassive drop of ERG (none in sweep — ok)", true);
+
+  // applicative: COGNATE with the language's own adposition (shares the source)
+  const applLs = pop.filter(l => voicesOf(l).appl);
+  const APPLM = { ben: "to", ins: "with", loc: "in" };
+  const cognate = applLs.filter(l => {
+    const e2 = voiceEtymologies(l).find(x => x.k === "appl");
+    const adp = closedOf(l).adps.find(a => a.m === APPLM[gramOf(l).applOf]);
+    return e2 && adp && (e2.from === (adp.src != null ? glossOf(adp.src) : null));
+  }).length;
+  check(`applicative is cognate with the matching adposition (${cognate}/${applLs.length})`, applLs.length > 0 && cognate / applLs.length >= 0.6);
+
+  // opt-in: a plain frame (no voice) never leaks a voice gloss
+  const noLeak = pop.slice(0, 100).every(l => !/(CAUS|PASS|ANTIP|APPL)/.test(renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }).gloss));
+  check("voice is opt-in: a plain clause never carries a voice gloss (byte-identity)", noLeak);
+
+  // branch inherits + drifts; determinism
+  const wf = mkWorld(); const rootc = foundLanguage(wf, { seed: 530037 }); wf.step = 4000; const daugh = branchLanguage(wf, rootc, 0.9);
+  check("voice inventory inherited down the family", JSON.stringify(voicesOf(rootc)) === JSON.stringify(voicesOf(daugh)));
+  const wa = mkWorld(), wb = mkWorld();
+  const va2 = foundLanguage(wa, { seed: 530074 }), vb2 = foundLanguage(wb, { seed: 530074 });
+  const vc3 = JSON.parse(JSON.stringify(va2));
+  const vsig = (l) => renderClause(l, { s: { n: KING }, v: { c: GO, tam: "pst", voice: "caus" }, o: { n: TOWN } }).text + "|" + JSON.stringify(voiceEtymologies(l));
+  check("voice deterministic + JSON-roundtrip-stable", vsig(va2) === vsig(vb2) && vsig(va2) === vsig(vc3));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

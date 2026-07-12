@@ -28,7 +28,7 @@ import {
   CONCEPTS, MANY, ALL, TWO, HAND, MAN, WOMAN, EARTH, DAY, ROAD,
   BELLY, HOUSE, HEAD, BACK, FOOT, GO, FACE, MOUTH, KINC, STONE,
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
-  TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, AGENTIVITY,
+  TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, AGENTIVITY, MAKE, DO, EAT,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -103,10 +103,21 @@ export function rollGrammar(famSeed, prof) {
   }
   invAgree = agree !== "none" && caseN <= 1 && H("inv") < 0.06;              // direction-marking verb
   absAgree = align === "erg" && agree !== "none" && H("aba") < 0.6;          // agrees with the absolutive
+  // ── VOICE & VALENCY (Group B): valency-changing verbal operations, each on
+  // its own stream. Passive is an accusative property (WALS 107, rare in erg);
+  // the antipassive is the ergative mirror; iso does neither antip nor appl
+  // (no bound exponent — it stays periphrastic). ──
+  const caus = H("cau") < 0.85;                                             // ~85%, near-universal
+  const pass = align === "erg" ? H("pass") < 0.12 : H("pass") < 0.5;
+  const passBy = pickW("passby", [["with", 0.4], ["from", 0.35], ["at", 0.25]]);
+  const antip = m === "iso" ? false : align === "erg" ? H("apass") < 0.6 : agree === "both" ? H("apass") < 0.15 : H("apass") < 0.05;
+  const appl = m === "iso" ? false : H("appl") < (0.1 + (agree === "both" ? 0.4 : 0) + (m === "agg" ? 0.15 : m === "tmpl" ? 0.05 : 0));
+  const applOf = appl ? pickW("applk", [["ben", 0.55], ["ins", 0.25], ["loc", 0.2]]) : null;
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
     activeFluid, ergSplit, hierSplit, invAgree, absAgree,   // alignment splits (Group F)
+    caus, pass, passBy, antip, appl, applOf,                // voice & valency (Group B)
     // noun-class ASSIGNMENT strategy (WALS 32A): 'semantic' (~35% — animacy/sex
     // decides class) vs 'mixed' (the rest — a phonological cue assigns the
     // abstract residue, Russian -a→fem). Meaningful only when genders≥2; the
@@ -308,6 +319,17 @@ const ADP_SPECS = [
   { m: "at", pool: [[EARTH, 0.3], [null, 0.7]] },
   { m: "of", pool: [[KINC, 0.3], [HOUSE, 0.25], [null, 0.45]] },
 ];
+// the concept a given adposition wears down from in THIS family — replays the
+// closedOf ADP_SPECS roll so the applicative (Group B) is COGNATE with the
+// language's own adposition (benefactive applicative ‹ its own 'to', etc.)
+function adpSourceOf(lang, meaning) {
+  const s = ADP_SPECS.find(x => x.m === meaning);
+  if (!s) return null;
+  let r = h01(lang.famSeed ?? lang.seed, "adps", meaning), src = null;
+  for (const [cid, p] of s.pool) { r -= p; if (r < 0) { src = cid; break; } }
+  return src;
+}
+const APPL_MEANING = { ben: "to", ins: "with", loc: "in" };   // applicative flavour → adposition
 
 /** Every closed-class form of the language: pronouns (with the language's own
  *  person/number distinctions), demonstratives, negation, the question-word
@@ -506,7 +528,15 @@ export function closedOf(lang) {
     return { g: "INDF", form: f, w: rform(lang, f), src: "one" };
   })() : null;
 
-  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW };
+  // ── isolating VOICE (Group B): periphrastic light verbs — a causative
+  // 让/使, a passive 被-style marker — the exponent a non-affixing tongue uses ──
+  const voiceLV = {};
+  if (lang.prof.morph === "iso") {
+    if (g.caus) { const f = legalizeWord(R(synthClosed(lang, inv, "voice:caus"))); voiceLV.caus = { g: "CAUS", w: rform(lang, f) }; }
+    if (g.pass) { const f = legalizeWord(R(synthClosed(lang, inv, "voice:pass"))); voiceLV.pass = { g: "PASS", w: rform(lang, f) }; }
+  }
+
+  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, voice: voiceLV };
   return c.closed;
 }
 
@@ -728,6 +758,10 @@ const AFF_SRC = {
   agt: [[HAND, 0.4], [null, 0.6]],                 // agentive S/A — like the ergative
   pat: [[TAKE, 0.5], [GO, 0.2], [null, 0.3]],      // patientive S/O — like the accusative
   inv: [[BACK, 0.5], [null, 0.5]],                 // the inverse-direction verb marker
+  // voice (Group B): valency-changing verbal markers
+  caus: [[MAKE, 0.4], [DO, 0.25], [GIVE, 0.15], [null, 0.2]],   // 'make/do/give' → causative
+  pass: [[FALL, 0.25], [COME, 0.2], [EAT, 0.15], [null, 0.4]],  // 'fall/come/be-eaten' → passive
+  apass: [[DO, 0.3], [MAN, 0.2], [null, 0.5]],                  // antipassive (ergative mirror)
 };
 
 // evolve a form through rules[from:to] in place (the onion's inner loop)
@@ -882,8 +916,17 @@ export function paradigmSpec(lang) {
   // formative, claimed AFTER every existing affix so the shared `taken` set and
   // the dedupe below stay byte-identical for every language that lacks it
   if (g.invAgree) spec.inv = mkAff("inv", "INV");
+  // ── VOICE affixes (Group B): valency markers, claimed AFTER every existing
+  // affix (the shared-`taken` landmine); iso stays periphrastic (no bound
+  // exponent). The applicative source is COGNATE with the matching adposition. ──
+  spec.voice = {};
+  if (!iso && g.caus) spec.voice.caus = mkAff("caus", "CAUS");
+  if (!iso && g.pass) spec.voice.pass = mkAff("pass", "PASS");
+  if (g.antip) spec.voice.antip = mkAff("antip", "ANTIP", "apass");
+  if (g.appl) spec.voice.appl = mkAff("appl", "APPL", null, [[adpSourceOf(lang, APPL_MEANING[g.applOf]), 1]]);
   dedupeAffixSet(lang, inv, [spec.pl, spec.du, ...spec.cases,
-    spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp, spec.inv].filter(Boolean));
+    spec.tam.pst, spec.tam.fut, spec.tam.pfv, spec.tam.ipfv, spec.imp, spec.inv,
+    spec.voice.caus, spec.voice.pass, spec.voice.antip, spec.voice.appl].filter(Boolean));
   // ── fusional theme vowels: declension/conjugation classes ──
   const nTheme = lang.prof.morph === "fus" || lang.prof.morph === "tmpl" ? g.declN : 1;
   for (let k = 0; k < nTheme; k++) spec.themes.push(inv.vows[hash32(fam, "theme", k) % inv.vows.length]);
@@ -1375,8 +1418,8 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null } = {}) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -1484,6 +1527,12 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
   if (dir === "inverse" && spec.inv && !imperative) {
     const mw = renderWord({ syls: [cloneMarkSyl(spec.inv.syl)] }, lang.prof);
     out = { ...out, text: out.text + mw, gloss: out.gloss + "-INV" };
+  }
+  // VOICE (Group B): the valency marker (synthetic tongues; iso adds a light
+  // verb in renderClause). Attached as a verbal exponent with its gloss.
+  if (voice && spec.voice && spec.voice[voice]) {
+    const va = spec.voice[voice];
+    out = { ...out, text: out.text + renderWord({ syls: [cloneMarkSyl(va.syl)] }, lang.prof), gloss: out.gloss + "-" + va.g };
   }
   c.cells.set(key, out);
   return out;
@@ -1600,6 +1649,24 @@ export function clauseAlignment(lang, frame) {
   return { effAlign, hier: g.align === "erg" && g.ergSplit === "hier", direction, tam, imperative };
 }
 
+/** The valency-changing voices this language has (Group B). */
+export function voicesOf(lang) {
+  const g = gramOf(lang);
+  return { caus: g.caus, pass: g.pass, antip: g.antip, appl: g.appl, applOf: g.applOf, passBy: g.passBy };
+}
+/** Where each voice marker grammaticalized from (the applicative is cognate
+ *  with the language's own adposition; iso light verbs read opaque). */
+export function voiceEtymologies(lang) {
+  const spec = paradigmSpec(lang), g = gramOf(lang);
+  const out = [];
+  for (const k of ["caus", "pass", "antip", "appl"]) {
+    const a = spec.voice[k];
+    if (a) out.push({ k, g: a.g, from: a.src != null ? glossOf(a.src) : null });
+    else if (g[k] && lang.prof.morph === "iso" && closedOf(lang).voice[k]) out.push({ k, g: k.toUpperCase(), from: null });
+  }
+  return out;
+}
+
 /** Render a semantic frame as a clause.
  *  frame = { s: {pron:{k,pers,num}} | {n,num,def,adj},
  *            v: {c, tam, neg, vol},
@@ -1611,16 +1678,23 @@ export function renderClause(lang, frame) {
   const g = gramOf(lang);
   const cl = closedOf(lang);
   const spec = paradigmSpec(lang);
-  const trans = !!frame.o;
-  const sIsPron = frame.s && !!frame.s.pron;
+  // ── VOICE prepass (Group B): remap the grammatical relations BEFORE case and
+  // agreement resolve, so the P3 resolver sees the DERIVED valency ──
+  const voice = frame.v.voice || null;
+  let sArg = frame.s, oArg = frame.o, byArg = null, oblArg = null, locArg = frame.loc;
+  if (voice === "pass") { sArg = frame.o; oArg = null; byArg = frame.s; }             // P→subj, A→by-phrase
+  else if (voice === "antip") { sArg = frame.s; oArg = null; oblArg = frame.o; }      // A stays subj (ABS), P→oblique
+  else if (voice === "appl" && frame.loc) { oArg = { n: frame.loc.n, def: frame.loc.def, num: frame.loc.num || "sg" }; locArg = null; }  // oblique→object
+  const trans = !!oArg;
+  const sIsPron = sArg && !!sArg.pron;
   // TAM resolves first (the tam-split reads it), then the effective alignment
   // decides the core cases through the ONE resolver (nom-acc/erg byte-identical,
   // plus active AGT/PAT, tripartite, and hierarchy-conditioned ergativity)
-  const { effAlign, hier, direction, tam, imperative } = clauseAlignment(lang, frame);
+  const { effAlign, hier, direction, tam, imperative } = clauseAlignment(lang, { ...frame, s: sArg, o: oArg });
   const sAgentive = effAlign === "active" && !trans
     ? (g.activeFluid && frame.v.vol != null ? frame.v.vol : agentivityOf(frame.v.c) >= 0.5) : false;
-  const sCase = coreCaseOf(lang, "S", { trans, effAlign, hier, arg: frame.s, sAgentive });
-  const oCase = coreCaseOf(lang, "O", { trans, effAlign, hier, arg: frame.o, sAgentive });
+  const sCase = coreCaseOf(lang, "S", { trans, effAlign, hier, arg: sArg, sAgentive });
+  const oCase = coreCaseOf(lang, "O", { trans, effAlign, hier, arg: oArg, sAgentive });
   const np = (arg, cas, role) => {
     if (!arg) return [];
     if (arg.pron) {
@@ -1664,31 +1738,35 @@ export function renderClause(lang, frame) {
     return seq;
   };
   const toks = {
-    s: np(frame.s, sCase, "S"),
-    o: np(frame.o, oCase, "O"),
+    s: np(sArg, sCase, "S"),
+    o: np(oArg, oCase, "O"),
     v: [],
   };
-  // verb agreement: with the SUBJECT by default, but with the ABSOLUTIVE (O of a
-  // transitive) under abs-agree, or the HIGHEST-RANKED argument under direct-
-  // inverse (the verb also carries the direction marker there)
-  let agreeArg = frame.s;
-  if (g.absAgree && trans) agreeArg = frame.o;
-  else if (g.invAgree && trans && rankOf(frame.o) > rankOf(frame.s)) agreeArg = frame.o;
+  // verb agreement: with the (derived) SUBJECT by default, but with the
+  // ABSOLUTIVE (O of a transitive) under abs-agree, or the HIGHEST-RANKED
+  // argument under direct-inverse (the verb also carries the direction marker)
+  let agreeArg = sArg;
+  if (g.absAgree && trans) agreeArg = oArg;
+  else if (g.invAgree && trans && rankOf(oArg) > rankOf(sArg)) agreeArg = oArg;
   const argPers = (a) => (a && a.pron ? a.pron.pers : 3);
   const argNum = (a) => (a ? (a.pron ? a.pron.num : (a.num || "sg")) : "sg");
   const agreePers = !imperative && g.agree !== "none" ? String(argPers(agreeArg)) : null;
   const agNum = argNum(agreeArg);
   // polypersonal object index — but don't ALSO index O when agreement already
   // went to O (abs-agree / inverse)
-  const objPers = !imperative && g.agree === "both" && trans && !frame.o.wh && agreeArg === frame.s ? "3" : null;
+  const objPers = !imperative && g.agree === "both" && trans && !oArg.wh && agreeArg === sArg ? "3" : null;
   const neg = !!frame.v.neg;
   // subject class-concord on the verb (Bantu ki-, Russian past -l/-la)
-  const vClass = g.concord && g.concord.verb && frame.s && !sIsPron && frame.s.n != null && g.genders ? genderOf(lang, frame.s.n) : null;
+  const vClass = g.concord && g.concord.verb && sArg && !sIsPron && sArg.n != null && g.genders ? genderOf(lang, sArg.n) : null;
   const vx = inflectVerb(lang, frame.v.c, {
     tam, pers: agreePers, num: agNum === "du" ? "pl" : agNum, obj: objPers,
     neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, sclass: vClass, dir: direction,
+    voice: voice && !spec.iso ? voice : null,   // synthetic voice affix (iso uses a light verb below)
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
+  // isolating VOICE is periphrastic: a light verb / marker leads the verb
+  // (让 causative, 被 passive) — the synthetic exponent lives on vx instead
+  if (spec.iso && voice && cl.voice && cl.voice[voice]) toks.v.unshift({ w: cl.voice[voice].w, g: cl.voice[voice].g, role: "V" });
   // negation particle (when not an affix): before/after the verb, or clause-final.
   // imperatives already carry their own prohibitive marker in vx.pre/post
   let negFinal = false;
@@ -1699,19 +1777,29 @@ export function renderClause(lang, frame) {
   }
   // imperatives address "you": the 2nd-person subject is dropped by default
   // (universal tendency), and any explicit subject pronoun goes with it
-  if (imperative && (!frame.s || sIsPron)) toks.s = [];
+  if (imperative && (!sArg || sIsPron)) toks.s = [];
   // pro-drop: agreement carries the person, the pronoun stays home
   else if (sIsPron && g.proDrop && g.agree !== "none") toks.s = [];
-  // adpositional adjunct
-  const locToks = [];
-  if (frame.loc) {
-    const adp = cl.adps.find(a => a.m === frame.loc.adp) || cl.adps[0];
-    const nx = inflectNoun(lang, frame.loc.n, { num: "sg", cas: null });
-    const inner = [...(frame.loc.def && cl.defArt && g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : []),
-      { w: nx.text, g: nx.gloss, role: "X" },
-      ...(frame.loc.def && cl.defArt && !g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : [])];
-    locToks.push(...(g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X" }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X" }]));
-  }
+  // adpositional adjuncts: the locative, the passive BY-phrase (demoted agent),
+  // and the antipassive OBLIQUE (demoted patient) — all X-role
+  const adjunct = (arg, adpM) => {
+    if (!arg) return [];
+    const adp = cl.adps.find(a => a.m === adpM) || cl.adps[0];
+    let inner;
+    if (arg.pron) { const pc = pronoun(lang, arg.pron.k, "obl"); inner = [{ w: pc.w, g: pc.g, role: "X" }]; }
+    else {
+      const nx = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas: null });
+      inner = [...(arg.def && cl.defArt && g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : []),
+        { w: nx.text, g: nx.gloss, role: "X" },
+        ...(arg.def && cl.defArt && !g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : [])];
+    }
+    return g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X" }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X" }];
+  };
+  const locToks = [
+    ...(locArg ? adjunct({ n: locArg.n, def: locArg.def, num: locArg.num }, locArg.adp) : []),
+    ...adjunct(byArg, g.passBy),      // passive agent
+    ...adjunct(oblArg, "with"),       // antipassive patient
+  ];
   // assemble by word order; adjuncts sit preverbally in OV, clause-late in VO
   const ov = g.wo === "sov" || g.wo === "ovs";
   const seq = [];
@@ -1725,7 +1813,7 @@ export function renderClause(lang, frame) {
   if (whIdx > 0 && g.whFront) seq.unshift(...seq.splice(whIdx, 1));
   if (negFinal) seq.push({ w: cl.neg.w, g: "NEG", role: "V" });
   // polar-question particle (wh-questions carry their own interrogative)
-  if (frame.q && !frame.o?.wh && cl.qp) {
+  if (frame.q && !oArg?.wh && cl.qp) {
     if (g.qPart === "final") seq.push({ w: cl.qp.w, g: "Q", role: "Q" });
     else if (g.qPart === "init") seq.unshift({ w: cl.qp.w, g: "Q", role: "Q" });
   }
