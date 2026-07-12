@@ -80,9 +80,43 @@ concentrates exactly what it ships in. Measured after: urbanization
 26.2%/in-band/in-band (band 2–25%), city counts 18–23 (baseline-like),
 Zipf −0.60/−0.70/clean — 4242 at ZERO warnings, 31337 at one, 8817 at
 two. REMAINING before the flip (bar = zero on all three): the last of
-the Zipf flatness — likely the cores' fill dynamics against their spikes
-(migration into a spike is 4-neighbour-limited) or the top spikes' own
-distribution; measure core/spike fill ratios first.
+the Zipf flatness.
+
+### The Zipf tail: diagnosis + the dead ends (measured, do not re-walk)
+
+The blocker is the city-size Zipf slope (suite reads −0.56/−0.67/−0.69;
+envelope −0.8..−1.2 — city sizes not heavy-tailed enough). Confirmed root
+cause: the great cores are chronically UNDERFILLED — generic 4-neighbour
+field diffusion fills a city core at fill ratios 0.07–0.51 of its capacity,
+so spike SIZE (which carries the heavy-tailed import economy) decouples
+from population; every big city fills at the same throughput-limited rate →
+flat distribution. Two dead ends explored and rejected:
+
+1. **Catchment urban pull** (each core draws field-people from its whole
+   territory toward `(1−ruralShare)×catchmentPop`): STABLE, fixes the
+   underfill, urbanization tracks the calibrated ruralShare (19–27%, good)
+   — but the target is ~uniform (territory is Voronoi-even) so it does NOT
+   create the tail (Zipf −0.56/−0.67/−0.69, a wash vs generic diffusion,
+   and a slight regression on 4242). Correct mechanism, wrong for the tail.
+2. **Preferential inter-city concentration** (cores shed surplus along
+   trade routes to the biggest hub — the primate-city dynamic): creates the
+   tail but is UNSTABLE at every rate tried (even 0.002) — driven by hub
+   size it runs away (Zipf −1.8..−2.5, the pack consolidating into 2–3
+   metropoles) because the import-fed ceilings never bind; driven by the
+   source ratio it death-spirals small cities to zero. Chaotic across seeds
+   (couples to the settlement lifecycle: drained cores → deaths →
+   consolidation).
+
+KEY POSITIVE finding: the import-fed spike CEILINGS are themselves Zipf
+(−1.5, census units 13600→50 over 18 importing cities). The tail EXISTS in
+the economy; the unsolved problem is translating it to population WITHOUT
+runaway. THE MECHANISM TO BUILD NEXT: a tightly-BINDING urban ceiling —
+scale the spike so a city's real import capacity is reached and STOPS
+growth there (the ceiling then brakes any concentration flow, and the
+heavy-tailed ceilings become the heavy-tailed sizes). The current spikes
+are ~2–14× too large to bind, which is why fill ratios sit at 0.07–0.51
+and nothing caps the primate pull. Calibrate the spike magnitude first
+(so median fill → ~1), THEN a gentle preferential pull is self-limiting.
 
 What is already true under the lever: the field owns demography (human
 rates; the transition/graveyard bend stamped per core), the 3000 BC world
