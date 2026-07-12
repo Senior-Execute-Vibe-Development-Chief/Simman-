@@ -61,38 +61,54 @@ const PARTITIONS = [
 // Ordinaries — the broad geometric bands, each drawable with a fancy edge.
 const ORDINARIES = ["chief", "fess", "pale", "bend", "bendSinister", "chevron", "cross", "saltire", "pile", "bordure", "canton"];
 const LINES = ["straight", "straight", "straight", "wavy", "engrailed", "embattled", "indented", "dovetailed"];
-const ATTITUDES = ["rampant", "passant", "statant", "salient"];
 const ARRANGEMENTS = ["single", "single", "three", "inPale", "seme"];
 
-// Charges, grouped so a stock can lean toward a CATEGORY (one people loves beasts,
-// another geometry) — the kind of coherence real regional heraldry has.
+// Charges — a large vocabulary the generator samples. `cat` lets a stock lean to
+// a family (one people loves beasts, another geometry — the coherence real
+// regional heraldry has). FIGURATIVE charges are drawn from real icon ART
+// (heraldryCharges.js, game-icons.net); CELESTIAL/GEOMETRIC ones the renderer
+// draws procedurally. Any id here must resolve to one or the other.
 const CHARGES = {
-  // beasts (take an attitude)
-  lion:{cat:"beast"}, boar:{cat:"beast"}, stag:{cat:"beast"}, wolf:{cat:"beast"},
-  bull:{cat:"beast"}, horse:{cat:"beast"}, bear:{cat:"beast"},
-  eagle:{cat:"beast",fixed:"displayed"}, martlet:{cat:"beast",fixed:"close"},
-  dolphin:{cat:"beast",fixed:"naiant"}, serpent:{cat:"beast",fixed:"glissant"},
+  // beasts
+  lion:{cat:"beast"}, boar:{cat:"beast"}, wolf:{cat:"beast"}, bull:{cat:"beast"},
+  horse:{cat:"beast"}, bear:{cat:"beast"}, ram:{cat:"beast"}, rabbit:{cat:"beast"},
+  elephant:{cat:"beast"}, hound:{cat:"beast"}, cat:{cat:"beast"},
+  // birds
+  eagle:{cat:"bird"}, falcon:{cat:"bird"}, dove:{cat:"bird"}, raven:{cat:"bird"},
+  rooster:{cat:"bird"}, duck:{cat:"bird"},
+  // sea & creeping things
+  dolphin:{cat:"sea"}, serpent:{cat:"sea"}, seaSerpent:{cat:"sea"},
+  bee:{cat:"insect"}, scorpion:{cat:"insect"},
   // mythic
-  dragon:{cat:"mythic"}, griffin:{cat:"mythic"}, wyvern:{cat:"mythic"},
+  dragon:{cat:"mythic"}, wyvern:{cat:"mythic"}, griffin:{cat:"mythic"}, unicorn:{cat:"mythic"},
+  hydra:{cat:"mythic"}, mermaid:{cat:"mythic"}, centaur:{cat:"mythic"}, minotaur:{cat:"mythic"},
   // plants
-  fleur:{cat:"plant"}, rose:{cat:"plant"}, garb:{cat:"plant"}, tree:{cat:"plant"}, thistle:{cat:"plant"},
+  rose:{cat:"plant"}, garb:{cat:"plant"}, tree:{cat:"plant"}, palm:{cat:"plant"}, oak:{cat:"plant"},
+  grapes:{cat:"plant"}, vine:{cat:"plant"}, acorn:{cat:"plant"}, corn:{cat:"plant"}, lotus:{cat:"plant"},
+  thistle:{cat:"plant"}, fleur:{cat:"plant"},
   // objects
-  tower:{cat:"object"}, key:{cat:"object"}, sword:{cat:"object"}, crown:{cat:"object"},
-  anchor:{cat:"object"}, horn:{cat:"object"}, hammer:{cat:"object"}, bell:{cat:"object"},
-  // geometric / celestial
-  mullet:{cat:"geom"}, estoile:{cat:"geom"}, crescent:{cat:"geom"}, sun:{cat:"geom"},
-  roundel:{cat:"geom"}, annulet:{cat:"geom"}, lozenge:{cat:"geom"}, escallop:{cat:"geom"}, crosslet:{cat:"geom"},
+  crown:{cat:"object"}, key:{cat:"object"}, anchor:{cat:"object"}, sword:{cat:"object"},
+  crossedSwords:{cat:"object"}, axe:{cat:"object"}, dagger:{cat:"object"}, spear:{cat:"object"},
+  trident:{cat:"object"}, tower:{cat:"object"}, castle:{cat:"object"}, lighthouse:{cat:"object"},
+  gate:{cat:"object"}, shield:{cat:"object"}, anvil:{cat:"object"}, horn:{cat:"object"},
+  lyre:{cat:"object"}, harp:{cat:"object"}, book:{cat:"object"}, scroll:{cat:"object"},
+  scales:{cat:"object"}, ship:{cat:"object"}, heart:{cat:"object"}, hammer:{cat:"object"}, bell:{cat:"object"},
+  // celestial & geometric (procedural)
+  sun:{cat:"celestial"}, mullet:{cat:"celestial"}, estoile:{cat:"celestial"}, crescent:{cat:"celestial"},
+  roundel:{cat:"geom"}, annulet:{cat:"geom"}, lozenge:{cat:"geom"}, crosslet:{cat:"geom"},
+  cross:{cat:"geom"}, escallop:{cat:"geom"},
 };
 const CHARGE_IDS = Object.keys(CHARGES);
 const BY_CAT = {};
 for (const id of CHARGE_IDS) (BY_CAT[CHARGES[id].cat] || (BY_CAT[CHARGES[id].cat] = [])).push(id);
 const CATEGORIES = Object.keys(BY_CAT);
 // Charges that make good NAME-puns (concrete, recognisable things).
-const CANTABLE = ["tower", "lion", "rose", "tree", "key", "sword", "garb", "boar", "stag",
-  "escallop", "crescent", "mullet", "bell", "horn", "anchor", "hammer", "fleur", "eagle", "crown"];
-// Small charges that read well strewn (semé) or in threes.
-const SMALL = new Set(["mullet", "estoile", "crescent", "roundel", "annulet", "lozenge", "escallop",
-  "crosslet", "fleur", "martlet", "rose", "bell", "billet"]);
+const CANTABLE = ["tower", "lion", "rose", "tree", "key", "sword", "garb", "boar", "crown", "anchor",
+  "horn", "eagle", "castle", "ship", "harp", "book", "elephant", "dove", "heart", "bull", "wolf",
+  "bear", "dragon", "crescent", "mullet", "escallop", "lyre", "bell"];
+// Small charges that read well strewn (semé) or in threes — geometric marks + a few tiny figures.
+const SMALL = new Set(["mullet", "estoile", "crescent", "roundel", "annulet", "lozenge", "crosslet",
+  "escallop", "fleur", "bee", "cross"]);
 
 // ── seeded rng helpers ──
 const pick = (rng, arr) => arr[Math.floor(rng() * arr.length) % arr.length];
@@ -216,14 +232,13 @@ function generateArms(world, seedId, meta, trad) {
     else if (meta.pers.commerce > 0.45 && chance(rng, 0.35)) charge = pick(rng, [...(BY_CAT.geom || []), "key", "crown", "tower"]);
   }
 
-  const spec = CHARGES[charge] || { cat: "geom" };
-  const beast = spec.cat === "beast" || spec.cat === "mythic";
-  let arrangement = spec.fixed === "displayed" ? "single"
-    : (SMALL.has(charge) ? pick(rng, ARRANGEMENTS) : (chance(rng, 0.22) ? "three" : "single"));
+  // Arrangement: small marks may strew (semé), stack (in pale) or group in threes;
+  // a big figurative charge sits singly (or occasionally three). Icon art carries
+  // its own fixed pose, so there is no separate "attitude" to roll.
+  let arrangement = SMALL.has(charge) ? pick(rng, ARRANGEMENTS) : (chance(rng, 0.2) ? "three" : "single");
   if (arrangement === "seme" && !SMALL.has(charge)) arrangement = "single";
-  const attitude = beast ? (spec.fixed || pick(rng, ATTITUDES)) : null;
-  const chargeTinc = pal.contrast(ordinary && arrangement !== "seme" ? f0 : f0);
-  const primary = { charge, tincture: chargeTinc, arrangement, attitude,
+  const chargeTinc = pal.contrast(f0);
+  const primary = { charge, tincture: chargeTinc, arrangement,
     count: arrangement === "three" ? 3 : arrangement === "inPale" ? pick(rng, [2, 3]) : 1 };
 
   // Semé (a strewn powdering) instead of a single charge — a distinctive, busy look.
@@ -235,7 +250,7 @@ function generateArms(world, seedId, meta, trad) {
   // family, so siblings of a tradition carry different brisures.
   let cadency = null;
   if (meta.cadetIndex > 0 && chance(rng, 0.8)) {
-    const marks = ["label", "crescent", "mullet", "annulet", "martlet", "bordure"];
+    const marks = ["crescent", "mullet", "annulet", "roundel", "estoile"];   // small brisures the renderer can draw
     cadency = { mark: marks[meta.cadetIndex % marks.length], tincture: pal.contrast(f0) };
   }
 
@@ -321,12 +336,12 @@ export function blazon(arms) {
   else s = `${up(partWord)} ${T(f.tinctures[0])} and ${T(f.tinctures[1])}`;
   const lw = arms.ordinary && arms.ordinary.line !== "straight" ? ` ${arms.ordinary.line}` : "";
   if (arms.ordinary) s += `, a ${arms.ordinary.kind}${lw} ${T(arms.ordinary.tincture)}`;
-  if (arms.seme) s += `, semé of ${arms.seme.charge}s ${T(arms.seme.tincture)}`;
+  const nm = id => id.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  if (arms.seme) s += `, semé of ${nm(arms.seme.charge)}s ${T(arms.seme.tincture)}`;
   else if (arms.primary) {
     const p = arms.primary;
-    const n = p.count > 1 ? `${p.count} ${p.charge}s` : `a ${p.charge}`;
-    const att = p.attitude && p.attitude !== "close" ? ` ${p.attitude}` : "";
-    s += `, ${n}${att} ${T(p.tincture)}`;
+    const n = p.count > 1 ? `${p.count} ${nm(p.charge)}s` : `a ${nm(p.charge)}`;
+    s += `, ${n} ${T(p.tincture)}`;
   }
   if (arms.cadency) s += ` (${arms.cadency.mark})`;
   return s;

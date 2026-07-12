@@ -9,7 +9,8 @@
 import { writeFileSync } from "node:fs";
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
-import { armsForCountry, blazon, tinctureRGB, CHARGES } from "../src/sim/heraldry.js";
+import { armsForCountry, blazon, tinctureRGB } from "../src/sim/heraldry.js";
+import { CHARGE_ART } from "../src/sim/heraldryCharges.js";
 
 const STEP = +(process.argv[2] || 15000);
 const SEED = +(process.argv[3] || 8817);
@@ -106,8 +107,16 @@ function ordinarySVG(w, h, O) {
   }
 }
 
-// ── Charges ──
-function G(kind, cx, cy, r, fill, attitude) {
+// ── Charges: real icon ART where we have it, procedural for geometric marks ──
+function G(kind, cx, cy, r, fill) {
+  const art = CHARGE_ART[kind];
+  if (art) {
+    // fit the 512-viewBox icon into a box of side ~2r, recoloured to the tincture
+    const box = r * 2.05, sc = box / 512, Fa = css(fill);
+    let s = `<g transform="translate(${(cx - box / 2).toFixed(1)},${(cy - box / 2).toFixed(1)}) scale(${sc.toFixed(4)})">`;
+    for (const d of art) s += `<path d="${d}" fill="${Fa}" stroke="${OUTLINE}" stroke-width="${(2.2 / sc).toFixed(1)}" stroke-linejoin="round" paint-order="stroke"/>`;
+    return s + `</g>`;
+  }
   const F = css(fill), st = `stroke="${OUTLINE}" stroke-width="${(r * 0.06).toFixed(2)}" stroke-linejoin="round"`;
   const P = d => `<path d="${d}" fill="${F}" ${st}/>`;
   const poly = pts => `<polygon points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}" fill="${F}" ${st}/>`;
@@ -152,7 +161,7 @@ function G(kind, cx, cy, r, fill, attitude) {
     case "serpent": return `<path d="M${cx - r} ${cy + r * .7} Q${cx - r * 1.1} ${cy - r * .1} ${cx - r * .2} ${cy - r * .1} Q${cx + r * .7} ${cy - r * .1} ${cx + r * .5} ${cy - r * .8} Q${cx + r * .3} ${cy - r * 1.2} ${cx + r} ${cy - r}" fill="none" stroke="${F}" stroke-width="${r * .28}" stroke-linecap="round"/>`;
     // ── quadruped & mythic beasts (shared silhouette + feature flags) ──
     default: {
-      const rampant = attitude === "rampant" || attitude === "salient" || !attitude;
+      const rampant = true;   // fallback silhouette only (real beasts come from CHARGE_ART)
       const wings = kind === "dragon" || kind === "griffin" || kind === "wyvern";
       const antlers = kind === "stag";
       const horns = kind === "bull";
