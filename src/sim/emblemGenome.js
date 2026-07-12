@@ -62,6 +62,9 @@ const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
 const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly"];
 const LINES       = ["straight", "straight", "wavy", "engrailed", "embattled", "indented"];
 const ARRANGES    = ["single", "single", "three", "inPale", "seme"];
+// ordinaries — the bold geometric charges of heraldry, laid over the field (with
+// the field's line-style on their edges). "none" weighted so a plain field stays common.
+const ORDINARIES  = ["none", "none", "none", "none", "none", "none", "none", "none", "none", "fess", "pale", "bend", "bendSinister", "chevron", "cross", "saltire", "pile", "pall"];
 // Motif categories split into LIVING (figures a strict aniconism forbids) and
 // NON-LIVING (plant, object, architecture, natural, celestial, geometry — borne
 // even by aniconic faiths as arabesque / device / phenomenon). This split is what
@@ -230,17 +233,38 @@ export function expressGenome(genome) {
   const pal = decodePalette(get);
   const symmetry = composition === "radial" ? "radial" : pickEnum(get("symmetry"), SYMMETRIES);
 
-  // field
-  const partition = composition === "heraldic" ? pickEnum(get("partition"), PARTITIONS) : "plain";
-  const field = { partition, tinctures: [pal.field, pal.companion],
-    line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
+  // field — a heraldic field can be divided (partition), draped in a FUR, laid with
+  // an ORDINARY, and topped by a CHIEF / bounded by a BORDURE, all with a line-style
+  // on their edges, and optionally COUNTERCHANGED across a partition. These reuse the
+  // otherwise-idle genes in heraldic composition (hueC, pearl, border, crescent,
+  // symmetry) so no genome grows — the depth was latent in the vector.
+  let partition = composition === "heraldic" ? pickEnum(get("partition"), PARTITIONS) : "plain";
+  const tinctures = [pal.field, pal.companion];
+  const field = { partition, tinctures, line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
+  if (composition === "heraldic") {
+    // a fur drapes the WHOLE field (so no partition/counterchange under it)
+    if (get("crescent") > 0.74) { field.fur = get("value") > 0.5 ? "ermine" : "vair"; field.partition = partition = "plain"; }
+    // an ordinary / chief / bordure in a tincture that reads over BOTH field tinctures
+    const ordTinc = minDist(pal.charge, tinctures) >= 0.3 ? pal.charge
+      : [INK, BONE, GOLD].reduce((best, c) => minDist(c, tinctures) > minDist(best, tinctures) ? c : best);
+    field.ordinary = pickEnum(get("hueC"), ORDINARIES);
+    field.ordinaryTincture = ordTinc;
+    field.chief = get("pearl") > 0.66;
+    field.bordure = get("border") > 0.62;
+    field.subTincture = ordTinc;                       // chief/bordure share the reading tincture
+    // counterchange the ordinary across a two-region partition (per pale/fess/bend)
+    field.counterchange = !field.fur && ["perPale", "perFess", "perBend"].includes(partition) && get("symmetry") > 0.6;
+  }
 
   // motif — a figurative composition carries a charge. Low iconism forbids LIVING
   // figures, so a living category (beast/bird/mythic/sea) is remapped to a
   // non-living one (celestial / geometric / plant / object). Only the abstract
   // compositions carry no charge.
   let motif = null;
-  const figuralComp = ["heraldic", "central", "radial", "seme"].includes(composition);
+  // an ordinary IS the design ("Azure, a fess Or") — it takes the field, so no charge
+  // sits over it (avoids a same-tincture charge vanishing on the ordinary).
+  const hasOrdinary = composition === "heraldic" && field.ordinary && field.ordinary !== "none";
+  const figuralComp = !hasOrdinary && ["heraldic", "central", "radial", "seme"].includes(composition);
   if (figuralComp) {
     let cat = pickEnum(get("motifCat"), MOTIF_CATS);
     if (aniconic && LIVING_CATS.has(cat)) {
@@ -327,6 +351,14 @@ export function sigilFromSeed(seed) {
 export function describeGenome(genome) {
   const p = expressGenome(genome);
   const bits = [p.composition, p.substrate, p.colors.mode];
+  if (p.composition === "heraldic") {
+    const f = p.field;
+    if (f.fur) bits.push(f.fur);
+    if (f.partition !== "plain") bits.push(f.partition);
+    if (f.ordinary && f.ordinary !== "none") bits.push((f.counterchange ? "counterchanged " : "") + f.ordinary + (f.line !== "straight" ? " " + f.line : ""));
+    if (f.chief) bits.push("chief");
+    if (f.bordure) bits.push("bordure");
+  }
   if (p.motif) bits.push(p.motif.id + (p.motif.count > 1 ? `×${p.motif.count}` : ""));
   else if (p.composition === "script") bits.push("calligraphy");
   else if (p.composition === "brand") bits.push("tamga");
@@ -335,4 +367,4 @@ export function describeGenome(genome) {
   return bits.join(" · ");
 }
 
-export { SUBSTRATES, COMPOSITIONS, PALETTES, MOTIFS, MOTIF_CATS };
+export { SUBSTRATES, COMPOSITIONS, PALETTES, MOTIFS, MOTIF_CATS, INK, BONE, GOLD };

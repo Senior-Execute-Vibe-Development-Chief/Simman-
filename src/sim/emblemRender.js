@@ -12,7 +12,7 @@
 //   drawEmblem(genome, x, y, cw, ch) → a <g> placing that emblem at (x,y) in a cw×ch cell
 //   rrng(seed)                       → the deterministic per-emblem PRNG (exported for callers)
 import { CHARGE_DETAIL } from "./heraldryChargesDetailed.js";
-import { expressGenome } from "./emblemGenome.js";
+import { expressGenome, INK, BONE } from "./emblemGenome.js";
 
 const css = ([r, g, b]) => `rgb(${r},${g},${b})`;
 const shade = (rgb, f) => rgb.map(c => Math.max(0, Math.min(255, Math.round(c * f))));
@@ -41,15 +41,60 @@ function shape(kind, w, h) {
   }
 }
 
-// ── field: heraldic partition, else a plain fill ──
+const AZURE = [0x2b, 0x4a, 0x8f];
+// ── a styled edge from (x1,y1) to (x2,y2): straight/wavy/engrailed/embattled/
+// indented/dancetty. Returns path commands continuing from (x1,y1), ending at
+// (x2,y2). The decoration bulges toward the segment's left (perp), into the band. ──
+function styledEdge(x1, y1, x2, y2, style, amp) {
+  if (!style || style === "straight") return `L${F(x2)} ${F(y2)}`;
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len, px = -uy, py = ux;
+  const period = style === "dancetty" ? amp * 3.4 : amp * 2.2;
+  const n = Math.max(2, Math.round(len / period));
+  const P = (a, o) => `${F(x1 + ux * a + px * o)} ${F(y1 + uy * a + py * o)}`;
+  let d = "";
+  for (let i = 1; i <= n; i++) {
+    const a0 = (i - 1) / n * len, a1 = i / n * len, am = (a0 + a1) / 2;
+    if (style === "wavy") d += `Q${P(am, i % 2 ? amp : -amp)} ${P(a1, 0)}`;
+    else if (style === "engrailed") d += `A${F((a1 - a0) / 2)} ${F((a1 - a0) / 2)} 0 0 1 ${P(a1, 0)}`;
+    else if (style === "embattled") d += `L${P(a0, amp)}L${P(am, amp)}L${P(am, 0)}L${P(a1, 0)}`;
+    else d += `L${P(am, amp)}L${P(a1, 0)}`;   // indented / dancetty (sawtooth)
+  }
+  return d;
+}
+
+// ── heraldic FURS as field fills ──
+function furFill(w, h, kind) {
+  if (kind === "vair") {                          // rows of azure "bells" on argent, offset
+    let s = `<rect width="${w}" height="${h}" fill="${css(BONE)}"/>`;
+    const cols = 4, cw = w / cols, rh = h / 4;
+    for (let r = 0; r < 5; r++) for (let c = -1; c <= cols; c++) {
+      const x = c * cw + (r % 2 ? cw / 2 : 0), y = r * rh, A = css(AZURE);
+      s += `<path d="M${F(x)} ${F(y)} L${F(x)} ${F(y + rh * 0.55)} Q${F(x + cw / 2)} ${F(y + rh * 1.05)} ${F(x + cw)} ${F(y + rh * 0.55)} L${F(x + cw)} ${F(y)} Z" fill="${A}"/>`;
+    }
+    return s;
+  }
+  // ermine: bone field strewn with ink ermine-spots (a dart + three dots)
+  let s = `<rect width="${w}" height="${h}" fill="${css(BONE)}"/>`;
+  const I = css(INK), cols = 4, rows = 5, cw = w / cols, ch = h / rows;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = (c + (r % 2 ? 0.75 : 0.25)) * cw, y = (r + 0.5) * ch, u = Math.min(cw, ch) * 0.16;
+    s += `<path d="M${F(x)} ${F(y - u)} Q${F(x + u)} ${F(y + u * 0.5)} ${F(x)} ${F(y + u * 1.4)} Q${F(x - u)} ${F(y + u * 0.5)} ${F(x)} ${F(y - u)} Z" fill="${I}"/>`;
+    for (const dxp of [-0.7, 0, 0.7]) s += `<circle cx="${F(x + dxp * u)}" cy="${F(y - u * 1.5)}" r="${F(u * 0.22)}" fill="${I}"/>`;
+  }
+  return s;
+}
+
+// ── field: fur, else a heraldic partition (edges in the field's line-style) ──
 function fieldSVG(w, h, p) {
-  const a = css(p.tinctures[0]), b = css(p.tinctures[1]), n = p.stripes;
+  if (p.fur) return furFill(w, h, p.fur);
+  const a = css(p.tinctures[0]), b = css(p.tinctures[1]), n = p.stripes, amp = Math.min(w, h) * 0.03, ln = p.line;
   const R = `<rect width="${w}" height="${h}" fill="${a}"/>`;
   const tri = (pts, f) => `<polygon points="${pts.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="${f}"/>`;
   switch (p.partition) {
-    case "perPale": return R + `<rect x="${w / 2}" width="${w / 2}" height="${h}" fill="${b}"/>`;
-    case "perFess": return R + `<rect y="${h / 2}" width="${w}" height="${h / 2}" fill="${b}"/>`;
-    case "perBend": return R + tri([[w, 0], [w, h], [0, h]], b);
+    case "perPale": return R + `<path d="M${F(w / 2)} 0 ${styledEdge(w / 2, 0, w / 2, h, ln, amp)} L${w} ${h} L${w} 0 Z" fill="${b}"/>`;
+    case "perFess": return R + `<path d="M0 ${F(h / 2)} ${styledEdge(0, h / 2, w, h / 2, ln, amp)} L${w} ${h} L0 ${h} Z" fill="${b}"/>`;
+    case "perBend": return R + `<path d="M0 0 ${styledEdge(0, 0, w, h, ln, amp)} L${w} 0 Z" fill="${b}"/>`;
     case "quarterly": return R + `<rect x="${w / 2}" width="${w / 2}" height="${h / 2}" fill="${b}"/><rect y="${h / 2}" width="${w / 2}" height="${h / 2}" fill="${b}"/>`;
     case "perSaltire": return R + tri([[0, 0], [w / 2, h / 2], [w, 0]], b) + tri([[0, h], [w / 2, h / 2], [w, h]], b);
     case "gyronny": { let s = R; for (let i = 0; i < 8; i += 2) { const a0 = i / 8 * 6.283 - 1.571, a1 = (i + 1) / 8 * 6.283 - 1.571, RR = Math.hypot(w, h); s += tri([[w / 2, h / 2], [w / 2 + Math.cos(a0) * RR, h / 2 + Math.sin(a0) * RR], [w / 2 + Math.cos(a1) * RR, h / 2 + Math.sin(a1) * RR]], b); } return s; }
@@ -58,6 +103,49 @@ function fieldSVG(w, h, p) {
     case "paly": { let s = ""; for (let i = 0; i < n; i++) s += `<rect x="${(i * w / n).toFixed(1)}" width="${(w / n + 1).toFixed(1)}" height="${h}" fill="${i % 2 ? b : a}"/>`; return s; }
     default: return R;
   }
+}
+
+// ── an ordinary as a fill path (long edges in the given line-style) ──
+function ordinaryPath(type, w, h, ln, amp) {
+  switch (type) {
+    case "fess": { const y0 = h * 0.4, y1 = h * 0.6; return `M0 ${F(y0)} ${styledEdge(0, y0, w, y0, ln, amp)} L${w} ${F(y1)} ${styledEdge(w, y1, 0, y1, ln, amp)} Z`; }
+    case "pale": { const x0 = w * 0.4, x1 = w * 0.6; return `M${F(x1)} 0 ${styledEdge(x1, 0, x1, h, ln, amp)} L${F(x0)} ${h} ${styledEdge(x0, h, x0, 0, ln, amp)} Z`; }
+    case "bend": { const bw = w * 0.3; return `M0 0 ${styledEdge(0, 0, w - bw, h, ln, amp)} L${w} ${h} ${styledEdge(w, h, bw, 0, ln, amp)} Z`; }
+    case "bendSinister": { const bw = w * 0.3; return `M${w} 0 ${styledEdge(w, 0, bw, h, ln, amp)} L0 ${h} ${styledEdge(0, h, w - bw, 0, ln, amp)} Z`; }
+    case "chevron": { const t = h * 0.16; return `M0 ${h} L${F(w / 2)} ${F(h * 0.42)} L${w} ${h} L${F(w - t)} ${h} L${F(w / 2)} ${F(h * 0.42 + t * 1.3)} L${F(t)} ${h} Z`; }
+    case "cross": return ordinaryPath("fess", w, h, "straight", amp) + ordinaryPath("pale", w, h, "straight", amp);
+    case "saltire": return ordinaryPath("bend", w, h, "straight", amp) + ordinaryPath("bendSinister", w, h, "straight", amp);
+    case "pile": return `M${F(w * 0.18)} 0 L${F(w * 0.82)} 0 L${F(w / 2)} ${F(h * 0.86)} Z`;
+    case "pall": { const cx = w / 2, cy = h * 0.44, t = w * 0.11; return `M${F(-t)} ${F(-t)} L${F(t)} ${F(-t)} L${F(cx + t)} ${F(cy)} L${F(cx + t)} ${h} L${F(cx - t)} ${h} L${F(cx - t)} ${F(cy + t)} L${F(w - t)} ${F(t)} L${F(w + t)} ${F(t)} L${F(w + t)} ${F(-t)} Z`; }
+  }
+  return "";
+}
+// clip region of a two-part partition (for counterchange)
+function partitionRegion(part, w, h, which) {
+  if (part === "perPale") return which === 0 ? `M0 0 H${w / 2} V${h} H0 Z` : `M${w / 2} 0 H${w} V${h} H${w / 2} Z`;
+  if (part === "perFess") return which === 0 ? `M0 0 H${w} V${h / 2} H0 Z` : `M0 ${h / 2} H${w} V${h} H0 Z`;
+  return which === 0 ? `M0 0 H${w} L0 ${h} Z` : `M${w} 0 V${h} H0 Z`;   // perBend
+}
+// the ordinary + chief + bordure, optionally counterchanged across the partition
+function heraldicOverlay(w, h, f, sh, base) {
+  const ln = f.line, amp = Math.min(w, h) * 0.032, ord = f.ordinary, oc = css(f.ordinaryTincture), sub = css(f.subTincture);
+  let s = "";
+  if (ord && ord !== "none") {
+    const path = ordinaryPath(ord, w, h, ln, amp);
+    if (f.counterchange) {                       // swap tinctures across the partition
+      const A = css(f.tinctures[0]), B = css(f.tinctures[1]);
+      const cA = `cc${uid++}`, cB = `cc${uid++}`;
+      s += `<clipPath id="${cA}"><path d="${partitionRegion(f.partition, w, h, 0)}"/></clipPath>`
+        + `<clipPath id="${cB}"><path d="${partitionRegion(f.partition, w, h, 1)}"/></clipPath>`
+        + `<g clip-path="url(#${cA})"><path d="${path}" fill="${B}"/></g>`
+        + `<g clip-path="url(#${cB})"><path d="${path}" fill="${A}"/></g>`;
+    } else {
+      s += `<path d="${path}" fill="${oc}"/>`;
+    }
+  }
+  if (f.chief) s += `<path d="M0 0 L${w} 0 L${w} ${F(h * 0.26)} ${styledEdge(w, h * 0.26, 0, h * 0.26, ln, amp)} Z" fill="${sub}"/>`;
+  if (f.bordure) s += `<path d="${sh.d}" fill="none" stroke="${sub}" stroke-width="${(base * 0.09).toFixed(1)}"/>`;
+  return s;
 }
 
 // ── aniconic calligraphy: pseudo-script from letterform primitives on a baseline
@@ -242,6 +330,7 @@ function emblemInner(genome, aw, ah) {
   let content = "";
   if (p.composition === "heraldic") {
     content += fieldSVG(w, h, p.field);
+    content += heraldicOverlay(w, h, p.field, sh, base);
     if (p.motif) content += placeMotif(p.motif, w, h, p.substrate);
   } else {
     content += `<rect width="${w}" height="${h}" fill="${css(C.field)}"/>`;
