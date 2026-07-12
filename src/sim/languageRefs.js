@@ -41,6 +41,10 @@ export function refProfile(kind, seed) {
       trial: false, paucal: false, possAffix: false, alienSplit: false,
       compar: { type: "particle", more: "none", stdFirst: true },   // A bǐ B dà — VO with a preposed standard (sanctioned anomaly)
       tv: "binary", tvSource: "plural", honVerb: false,             // nín ‹ 2PL
+      // multi-clause: SVO but RelN (的) — the sanctioned disharmonic corner
+      coordFinal: false, compzSrc: "say", compzPos: "init", compFinite: true,
+      advPos: "init", advAffix: false, relPre: true, relStrat: "gap", relzSrc: "dem",
+      chaining: false, switchRef: false,
       dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
       proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "affix", declN: 1, conjN: 1, pronCase: "none",
@@ -71,6 +75,9 @@ export function refProfile(kind, seed) {
       trial: false, paucal: false, possAffix: false, alienSplit: false,
       compar: { type: "particle", more: "affix", stdFirst: false },   // -ee / bolee … чем
       tv: "binary", tvSource: "plural", honVerb: false,               // vy ‹ 2PL
+      coordFinal: false, compzSrc: "wh", compzPos: "init", compFinite: true,   // что
+      advPos: "init", advAffix: false, relPre: false, relStrat: "relpron", relzSrc: "wh",   // который
+      chaining: false, switchRef: false,
       dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 3, conjN: 2, pronCase: "full",
@@ -104,6 +111,9 @@ export function refProfile(kind, seed) {
       trial: false, paucal: false, possAffix: false, alienSplit: false,
       compar: { type: "particle", more: "affix", stdFirst: false },   // -er / more … than
       tv: "none", tvSource: "plural", honVerb: false,
+      coordFinal: false, compzSrc: "dem", compzPos: "init", compFinite: true,   // that
+      advPos: "init", advAffix: false, relPre: false, relStrat: "relpron", relzSrc: "wh",   // who/that (invariant, caseN:1)
+      chaining: false, switchRef: false,
       dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 2, conjN: 2, pronCase: "acc",

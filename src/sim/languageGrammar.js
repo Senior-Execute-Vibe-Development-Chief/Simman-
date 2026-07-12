@@ -153,6 +153,13 @@ export function rollGrammar(famSeed, prof) {
   // the possessive-affix dial (hoisted: alienSplit gates on it)
   const dual = H("du") < 0.15;
   const possAffix = m === "iso" ? false : agree !== "none" ? H("poss") < 0.7 : H("poss") < 0.4;
+  // MULTI-CLAUSE (Group G) hoists: relPre feeds relStrat (no prenominal relative
+  // pronoun — the universal), chaining feeds switchRef. These LAG a word-order
+  // flip (gramOf re-rolls only wo/whFront at branch), the attested disharmonic
+  // window (a fresh SVO tongue keeps its inherited prenominal relatives).
+  const relPre = ov ? H("relp") < 0.55 : H("relp") < 0.12;   // prenominal relative (OV-skewed, ~28%)
+  const chaining = m !== "iso" && ov && affixSide === "suf" ? H("chn") < (m === "agg" ? 0.5 : 0.2)
+    : m === "iso" && ov ? H("chn") < 0.3 : false;            // clause-chaining is a verb-final property (VO → 0)
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
@@ -232,6 +239,25 @@ export function rollGrammar(famSeed, prof) {
     tv: (() => { const r = H("tv"); return r < 0.24 ? "binary" : r < 0.31 ? "multi" : "none"; })(),
     tvSource: H("tvsrc") < 0.6 ? "plural" : "noble",
     honVerb: (m === "agg" || m === "tmpl") ? H("hon") < 0.3 : H("hon") < 0.08,
+    // ── MULTI-CLAUSE (Group G): coordination, complement/adverbial/relative
+    // clauses, clause chaining. The linkers grammaticalize from existing words
+    // (SAY→complementizer, DAY→'when', dem/wh→relativizer) and LAG a word-order
+    // flip, so a daughter that flips OV→SVO keeps prenominal relatives + clause-
+    // final complementizers — the attested disharmonic corner (Mandarin SVO+RelN).
+    coordFinal: ov && affixSide === "suf" ? H("coordf") < 0.14 : false,   // enclitic -que (OV-suffixing edge, ~7%)
+    compzSrc: m === "iso" ? pickW("cmpz", [["say", 0.6], ["dem", 0.25], ["wh", 0.15]])   // iso favours the SAY-quotative
+      : pickW("cmpz", [["dem", 0.45], ["wh", 0.4], ["say", 0.15]]),
+    compzPos: ov ? "final" : (H("cmpzp") < 0.85 ? "init" : "final"),      // OV ⇒ clause-final complementizer
+    compFinite: m === "agg" ? H("cmpzf") < 0.5 : true,                    // agglutinative nominalizes complements
+    advPos: ov ? "final" : (H("advp") < 0.85 ? "init" : "final"),         // subordinator-within-clause (WALS 94)
+    advAffix: (m === "agg" || m === "tmpl") && ov && affixSide === "suf" ? H("advaf") < 0.5 : false,   // Turkic/Japanese converb
+    relPre,
+    relStrat: relPre ? (H("rels") < 0.72 ? "gap" : "resump")                        // prenominal: NEVER a relative pronoun (the universal)
+      : caseN >= 1 ? pickW("rels", [["relpron", 0.5], ["gap", 0.35], ["resump", 0.15]])   // postnominal + case: relpron possible
+      : (H("rels") < 0.75 ? "gap" : "resump"),
+    relzSrc: H("relz") < 0.55 ? "dem" : "wh",
+    chaining,
+    switchRef: chaining && m !== "iso" ? H("sr") < 0.55 : false,          // SS/DS reference tracking ⊂ chaining, never iso
     clusiv: H("cl") < 0.35,                          // inclusive/exclusive 'we'
     gender3: (genders ? H("g3") < 0.75 : H("g3") < 0.15),
     defArt: H("def") < 0.38,                         // the demonstrative-worn article
@@ -378,8 +404,8 @@ const rformNeutral = (lang, w) => renderWord(w, lang.prof.tone ? { ...lang.prof,
 
 // keep a set of forms mutually distinct: cycle the nucleus through the vowel
 // inventory until the collision clears (deterministic walk, tiny and rare)
-function dedupe(lang, inv, forms) {
-  const seen = new Set();
+function dedupe(lang, inv, forms, seed = []) {
+  const seen = new Set(seed.map(f => f && f.w).filter(Boolean));   // seed WITHOUT mutating the seed forms
   for (const f of forms) {
     for (let t = 0; seen.has(f.w) && t < inv.vows.length; t++) {
       retint(f.form, inv.vows[t]);
@@ -656,7 +682,32 @@ export function closedOf(lang) {
     if (g.pass) { const f = legalizeWord(R(synthClosed(lang, inv, "voice:pass"))); voiceLV.pass = { g: "PASS", w: rform(lang, f) }; }
   }
 
-  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, voice: voiceLV };
+  // ── MULTI-CLAUSE LINKERS (Group G): the complementizer / relativizer / 'when'
+  // subordinator, grammaticalized from existing words (SAY / distal dem / wh /
+  // DAY). Built LAST with a FRESH `seen` seeded from the finalized closed classes
+  // (never the line-~640 cross-class array, which would retint the pinned Q
+  // particle). A linker may stay HOMOPHONOUS with its own source (that/that) but
+  // must not collide with an unrelated form; the 'when' subordinator must differ
+  // from the interrogative 'when' (both ‹ DAY, distinct grammaticalizations). ──
+  const whatQ = qs.find(q => q.k === "what");
+  const compz = (() => {
+    const [form, src] = g.compzSrc === "say" ? [legalizeWord({ syls: [wearSyl(prof, nativeStemOf(lang, SAY))] }), "say"]
+      : g.compzSrc === "dem" ? [copyWord(far.form), "that"] : [copyWord(whatQ.form), "what"];
+    return { k: "comp", g: "COMP", form, w: rformNeutral(lang, form), src };
+  })();
+  const relz = (() => {
+    const [form, src] = g.relzSrc === "dem" ? [copyWord(far.form), "that"] : [copyWord(whatQ.form), "what"];
+    return { k: "rel", g: "REL", form, w: rformNeutral(lang, form), src };
+  })();
+  const whenSub = { k: "when", g: "when", form: legalizeWord({ syls: [wearSyl(prof, nativeStemOf(lang, DAY))] }), w: null, src: "day" };
+  whenSub.w = rformNeutral(lang, whenSub.form);
+  const closedForms = [...prons, ...dems, ...qs, ...conj, ...(qp ? [qp] : [])];
+  const seedMinus = (srcForm) => closedForms.filter(x => x !== srcForm);
+  dedupe(lang, inv, [compz], seedMinus(g.compzSrc === "dem" ? far : g.compzSrc === "wh" ? whatQ : null));
+  dedupe(lang, inv, [relz], seedMinus(g.relzSrc === "dem" ? far : whatQ));
+  dedupe(lang, inv, [whenSub], closedForms);   // ≠ the interrogative 'when' (and every other closed form)
+
+  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, voice: voiceLV, links: { comp: compz, rel: relz, when: whenSub } };
   return c.closed;
 }
 
@@ -1173,7 +1224,7 @@ export function paradigmSpec(lang) {
   };
   // ── nominal ──
   const plSrc = h01(fam, "plsrc") < 0.6 ? MANY : ALL;    // same quarry the pronouns use
-  const spec = { iso, cases: [], pl: null, du: null, tri: null, pau: null, possAff: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, dist: {}, moods: {}, mir: null, evid: null, honAff: null, themes: [], vThemes: [], particles: {} };
+  const spec = { iso, cases: [], pl: null, du: null, tri: null, pau: null, possAff: null, tam: {}, pers: null, persObj: null, negAff: null, imp: null, inv: null, dist: {}, moods: {}, mir: null, evid: null, honAff: null, conv: null, nf: null, partcp: null, ssAff: null, dsAff: null, themes: [], vThemes: [], particles: {} };
   if (g.pluralMark) spec.pl = mkAff("pl", "PL", null, [[plSrc, 1]]);
   if (g.dual) spec.du = mkAff("du", "DU");
   // core case(s): active spends two slots on AGT/PAT, tripartite on ERG/ACC
@@ -1333,6 +1384,23 @@ export function paradigmSpec(lang) {
   if (g.mirative) spec.mir = g.perfect && spec.tam.prf
     ? { k: "mir", g: "MIR", src: spec.tam.prf.src, t: spec.tam.prf.t, syl: cloneMarkSyl(spec.tam.prf.syl) }
     : mkAff("mir", "MIR");
+  // ── MULTI-CLAUSE affixes (Group G): converb (adverbial/chaining medial verb),
+  // nominalizer (agglutinative complement), participle (relative gap), switch-
+  // reference SS/DS. Opaque late formatives, built LAST in their OWN dedupe pass
+  // (never the shared taken/cross-class sweep, §0.3), only where dials call. ──
+  if (!iso) {
+    const tv = Math.max(births.agr, t0v);
+    const mkSyn = (key, gloss) => { const root = synthClosed(lang, inv, "mc:" + key); evolveSlice(lang.rules, 0, tv, root); return { k: key, g: gloss, src: null, t: tv, syl: wearSyl(lang.prof, legalizeWord(root)) }; };
+    const mcAffs = [];
+    if (g.advAffix || g.chaining) {   // the shared converb form (reused by adverbial + chaining)
+      spec.conv = { temp: mkSyn("cvtemp", "when.CVB"), cond: mkSyn("cvcond", "if.CVB"), caus: mkSyn("cvcaus", "because.CVB") };
+      mcAffs.push(...Object.values(spec.conv));
+    }
+    if (g.compFinite === false) { spec.nf = mkSyn("nf", "NMLZ"); mcAffs.push(spec.nf); }
+    spec.partcp = mkSyn("partcp", "PTCP"); mcAffs.push(spec.partcp);
+    if (g.switchRef) { spec.ssAff = mkSyn("ss", "SS"); spec.dsAff = mkSyn("ds", "DS"); mcAffs.push(spec.ssAff, spec.dsAff); }
+    dedupeAffixSet(lang, inv, mcAffs, [...spec.cases, ...Object.values(spec.tam), spec.imp, spec.honAff].filter(Boolean));
+  }
   // ── fusional theme vowels: declension/conjugation classes ──
   const nTheme = lang.prof.morph === "fus" || lang.prof.morph === "tmpl" ? g.declN : 1;
   for (let k = 0; k < nTheme; k++) spec.themes.push(inv.vows[hash32(fam, "theme", k) % inv.vows.length]);
@@ -1871,8 +1939,8 @@ export function possessionType(lang, cid) {
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
  *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false, ev = null, hon = false } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (ev ? ":e" + ev : "") + (mir ? ":mir" : "") + (hon ? ":hon" : "");
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false, ev = null, hon = false, nf = false, conv = null, rel = false } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (ev ? ":e" + ev : "") + (mir ? ":mir" : "") + (hon ? ":hon" : "") + (nf ? ":nf" : "") + (conv ? ":cv" + conv : "") + (rel ? ":rel" : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
@@ -1908,6 +1976,11 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     else mirAff = spec.mir;                 // TAM pathway (byte-identical when no evidential system)
   }
   const honAff = !imperative && hon ? spec.honAff : null;   // honorific verb (Group E)
+  // MULTI-CLAUSE nonfinite markers (Group G): a converb (medial/adverbial), a
+  // nominalizer (agglutinative complement), or a participle (relative gap)
+  const convAff = !imperative && conv && spec.conv ? spec.conv[conv] : null;
+  const nfAff = !imperative && nf && spec.nf ? spec.nf : null;
+  const relAff = !imperative && rel && spec.partcp ? spec.partcp : null;
   const redupAsp = !imperative && tamEff === "ipfv" && redupHas(lang, "aspect");
   // imperative particle (all morphotypes) + prohibitive, shared pre/post
   const impExtras = (pre, post) => {
@@ -1983,6 +2056,10 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       const oAff = spec.pers[obj + "sg"];
       if (oAff) { events.push({ ...oAff, g: oAff.g + ".O" }); glosses.push(oAff.g + ".O"); }
     }
+    // multi-clause nonfinite markers (Group G): converb / nominalizer / participle
+    if (convAff) { events.push(convAff); glosses.push(convAff.g); }
+    if (nfAff) { events.push(nfAff); glosses.push("NMLZ"); }
+    if (relAff) { events.push(relAff); glosses.push("PTCP"); }
     // evidentiality — a young outer affix (drifts with the stem across sisters);
     // `outer:true` keeps it out of the fusional crush and its gloss dash-joined
     // (a separate agglutinated layer, never part of the portmanteau)
@@ -2230,23 +2307,27 @@ export function voiceEtymologies(lang) {
  *            loc: null | {adp, n, def},
  *            q: bool }
  *  → { tokens: [{w, g, role}], text, gloss } */
-export function renderClause(lang, frame) {
+export function renderClause(lang, frame, opts = {}) {
   const g = gramOf(lang);
   const cl = closedOf(lang);
   const spec = paradigmSpec(lang);
+  // MULTI-CLAUSE (Group G): a clausal object (o.comp) is routed AROUND the NP
+  // case/agreement logic; opts.gap suppresses a role's overt tokens (a relative
+  // gap); opts.medial/nfVerb make the verb a converb/nominalized (nonfinite).
+  const oComp = (frame.o && frame.o.comp) || null;
   // ── VOICE prepass (Group B): remap the grammatical relations BEFORE case and
   // agreement resolve, so the P3 resolver sees the DERIVED valency ──
   const voice = frame.v.voice || null;
-  let sArg = frame.s, oArg = frame.o, byArg = null, oblArg = null, locArg = frame.loc;
+  let sArg = frame.s, oArg = oComp ? null : frame.o, byArg = null, oblArg = null, locArg = frame.loc;
   if (voice === "pass") { sArg = frame.o; oArg = null; byArg = frame.s; }             // P→subj, A→by-phrase
   else if (voice === "antip") { sArg = frame.s; oArg = null; oblArg = frame.o; }      // A stays subj (ABS), P→oblique
   else if (voice === "appl" && frame.loc) { oArg = { n: frame.loc.n, def: frame.loc.def, num: frame.loc.num || "sg" }; locArg = null; }  // oblique→object
-  const trans = !!oArg;
+  const trans = !!oArg || !!oComp;
   const sIsPron = sArg && !!sArg.pron;
   // TAM resolves first (the tam-split reads it), then the effective alignment
   // decides the core cases through the ONE resolver (nom-acc/erg byte-identical,
   // plus active AGT/PAT, tripartite, and hierarchy-conditioned ergativity)
-  const { effAlign, hier, direction, tam, imperative } = clauseAlignment(lang, { ...frame, s: sArg, o: oArg });
+  const { effAlign, hier, direction, tam, imperative } = clauseAlignment(lang, { ...frame, s: sArg, o: oArg || (oComp ? { clause: true } : null) });
   const sAgentive = effAlign === "active" && !trans
     ? (g.activeFluid && frame.v.vol != null ? frame.v.vol : agentivityOf(frame.v.c) >= 0.5) : false;
   const sCase = coreCaseOf(lang, "S", { trans, effAlign, hier, arg: sArg, sAgentive });
@@ -2305,11 +2386,40 @@ export function renderClause(lang, frame) {
     }
     if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role }];
     else if (arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role }];
+    // relative clause (Group G): the head plays arg.rel.role INSIDE, rendered
+    // with a GAP; the strategy is gap (an invariant relativizer, or an agg
+    // participle), relpron (postnominal + caseN≥1 only — the universal), or
+    // resump (an ordinary pronoun fills the gap). relPre lags a word-order flip.
+    if (arg.rel) {
+      const rel = arg.rel, strat = g.relStrat;
+      const gapRole = rel.role === "s" ? "S" : rel.role === "o" ? "O" : null;
+      const innerFrame = { ...rel, v: rel.v };
+      const rOpts = { gap: strat === "resump" ? null : gapRole };
+      if (strat === "resump" && gapRole) innerFrame[rel.role] = { pron: { k: "3sg", pers: 3, num: "sg" } };  // resumptive pronoun
+      if (strat === "gap" && lang.prof.morph === "agg" && spec.partcp) rOpts.relGap = true;                 // participial relative
+      const inner = renderClause(lang, innerFrame, rOpts);
+      const innerToks = inner.tokens.map(t => ({ ...t, role }));
+      // gap/relpron take an overt relativizer; the participial gap (agg) IS its
+      // own strategy marker (the PTCP), so it needs no separate relativizer;
+      // resump fills the gap with a pronoun and takes neither
+      const relMark = strat === "resump" || rOpts.relGap ? null : { w: cl.links.rel.w, g: "REL", role };
+      const relSeq = relMark ? (g.relPre ? [...innerToks, relMark] : [relMark, ...innerToks]) : innerToks;
+      seq = g.relPre ? [...relSeq, ...seq] : [...seq, ...relSeq];
+    }
     return seq;
   };
+  // a clausal complement (o.comp): render the inner clause + the complementizer,
+  // routed AROUND the NP case/agreement logic. Agglutinative compFinite=false
+  // nominalizes the inner verb.
+  const complementTokens = (comp) => {
+    const inner = renderClauseTree(lang, comp, { nfVerb: g.compFinite === false });
+    const compTok = { w: cl.links.comp.w, g: "COMP", role: "O" };
+    const innerToks = inner.tokens.map(t => ({ ...t, role: "O" }));
+    return g.compzPos === "init" ? [compTok, ...innerToks] : [...innerToks, compTok];
+  };
   const toks = {
-    s: np(sArg, sCase, "S"),
-    o: np(oArg, oCase, "O"),
+    s: opts.gap === "S" ? [] : np(sArg, sCase, "S"),
+    o: opts.gap === "O" ? [] : oComp ? complementTokens(oComp) : np(oArg, oCase, "O"),
     v: [],
   };
   // verb agreement: with the (derived) SUBJECT by default, but with the
@@ -2336,13 +2446,20 @@ export function renderClause(lang, frame) {
   // system actually marks (graceful cross-size degrade); null for imperatives and
   // non-evidential languages, so the resolveMir seam alone decides surprise
   const evOn = !imperative && g.evid && frame.v.ev ? evidMap(g.evid.n, frame.v.ev) : null;
+  // MULTI-CLAUSE (Group G): a medial verb is a converb (nonfinite); a nominalized
+  // complement / relative gap likewise drop finiteness
+  const medial = opts.medial || null;
   const vx = inflectVerb(lang, frame.v.c, {
     tam, pers: agreePers, num: agNum === "du" ? "pl" : agNum, obj: objPers,
     neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, sclass: vClass, dir: direction,
     voice: voice && !spec.iso ? voice : null,   // synthetic voice affix (iso uses a light verb below)
     irrealisMood, mir: mirOn, ev: evOn,
+    conv: medial === "cvb" ? "temp" : opts.conv || null, nf: !!opts.nfVerb, rel: !!opts.relGap,
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
+  // switch-reference: the medial verb carries an SS/DS marker (synthetic; iso has no switchRef)
+  if (medial === "ss" && spec.ssAff) toks.v.push({ w: renderWord({ syls: [spec.ssAff.syl] }, lang.prof), g: "SS", role: "V" });
+  else if (medial === "ds" && spec.dsAff) toks.v.push({ w: renderWord({ syls: [spec.dsAff.syl] }, lang.prof), g: "DS", role: "V" });
   // isolating VOICE is periphrastic: a light verb / marker leads the verb
   // (让 causative, 被 passive) — the synthetic exponent lives on vx instead
   if (spec.iso && voice && cl.voice && cl.voice[voice]) toks.v.unshift({ w: cl.voice[voice].w, g: cl.voice[voice].g, role: "V" });
@@ -2381,7 +2498,7 @@ export function renderClause(lang, frame) {
   ];
   // assemble by word order; adjuncts sit preverbally in OV, clause-late in VO
   const ov = g.wo === "sov" || g.wo === "ovs";
-  const seq = [];
+  let seq = [];
   for (const slot of WO_SEQ[g.wo]) {
     if (slot === "v" && ov && locToks.length) seq.push(...locToks);
     seq.push(...toks[slot]);
@@ -2396,7 +2513,82 @@ export function renderClause(lang, frame) {
     if (g.qPart === "final") seq.push({ w: cl.qp.w, g: "Q", role: "Q" });
     else if (g.qPart === "init") seq.unshift({ w: cl.qp.w, g: "Q", role: "Q" });
   }
+  // adverbial clauses (Group G): when/if/because — each an inner clause plus a
+  // subordinator (WALS 94: advPos; OV⇒final), or a converb suffix in the Turkic/
+  // Japanese corner. Conditionals prepose (a ~85% render correlate).
+  if (frame.adv && frame.adv.length) {
+    for (const av of frame.adv) {
+      let advToks;
+      if (g.advAffix && spec.conv) {   // converb suffix on the subordinate verb, no free subordinator
+        advToks = renderClause(lang, av, { conv: av.sub === "if" ? "cond" : av.sub === "because" ? "caus" : "temp" }).tokens.map(t => ({ ...t, role: "ADV" }));
+      } else {
+        const inner = renderClauseTree(lang, av).tokens.map(t => ({ ...t, role: "ADV" }));
+        const sub = av.sub === "when" ? { w: cl.links.when.w, g: "when", role: "ADV" }
+          : (() => { const c = cl.conj.find(x => x.k === av.sub) || cl.conj.find(x => x.k === "if"); return { w: c.w, g: av.sub, role: "ADV" }; })();
+        advToks = g.advPos === "init" ? [sub, ...inner] : [...inner, sub];
+      }
+      const prepose = av.sub === "if" ? true : g.advPos === "init";   // conditionals prepose
+      seq = prepose ? [...advToks, ...seq] : [...seq, ...advToks];
+    }
+  }
   return { tokens: seq, text: seq.map(t => t.w).join(" "), gloss: seq.map(t => t.g).join(" ") };
+}
+
+/** Render a clause TREE (Group G): dispatch coordination / chaining, else a leaf
+ *  frame (which may itself contain nested arg.rel / o.comp / frame.adv). Every
+ *  combinator returns the same { tokens, text, gloss } shape, so gloss-alignment
+ *  holds at any depth; recursion terminates (each nested node is strictly smaller). */
+export function renderClauseTree(lang, node, opts = {}) {
+  if (node.coord) return renderCoordination(lang, node);
+  if (node.chain) return renderChain(lang, node);
+  return renderClause(lang, node, opts);
+}
+const packTree = (toks) => ({ tokens: toks, text: toks.map(t => t.w).join(" "), gloss: toks.map(t => t.g).join(" ") });
+// F1 — coordination: clauses joined by a conjunction (and/but/or). An enclitic
+// coordinator (coordFinal, the -que edge) joins the PRECEDING clause's last token
+// (.w AND .g) instead of standing as its own token.
+function renderCoordination(lang, node) {
+  const g = gramOf(lang), cl = closedOf(lang);
+  const conj = cl.conj.find(c => c.k === node.coord) || cl.conj.find(c => c.k === "and");
+  const toks = [];
+  node.clauses.forEach((c, i) => {
+    if (i > 0) {
+      if (g.coordFinal && toks.length) { const prev = toks[toks.length - 1]; prev.w += conj.w; prev.g += "-" + conj.g.toUpperCase(); }
+      else toks.push({ w: conj.w, g: conj.g.toUpperCase(), role: "CONJ" });
+    }
+    toks.push(...renderClauseTree(lang, c).tokens.map(t => ({ ...t })));
+  });
+  return packTree(toks);
+}
+// F5 — clause chaining: medial verbs become converbs (only the last is finite);
+// switch-reference marks SS (drop the shared subject) vs DS. A chain in a non-
+// chaining language degrades bit-for-bit to a coordination.
+function renderChain(lang, node) {
+  const g = gramOf(lang);
+  if (!g.chaining) return renderCoordination(lang, { coord: "and", clauses: node.chain });
+  const clauses = node.chain;
+  const subjKey = (c) => (c.s ? (c.s.pron ? "p" + c.s.pron.k : "n" + c.s.n) : null);
+  const toks = [];
+  clauses.forEach((c, i) => {
+    if (i === clauses.length - 1) { toks.push(...renderClauseTree(lang, c).tokens); return; }
+    const same = g.switchRef && subjKey(c) != null && subjKey(c) === subjKey(clauses[i + 1]);
+    const mf = same ? { ...c, s: null } : c;   // SS drops the shared subject
+    toks.push(...renderClause(lang, mf, { medial: g.switchRef ? (same ? "ss" : "ds") : "cvb" }).tokens);
+  });
+  return packTree(toks);
+}
+/** The subordinating / coordinating linkers this language uses (Group G). */
+export function clauseLinkersOf(lang) {
+  const g = gramOf(lang), cl = closedOf(lang);
+  return {
+    coord: cl.conj.filter(c => ["and", "but", "or"].includes(c.k)).map(c => ({ k: c.k, w: c.w })),
+    coordFinal: g.coordFinal,
+    comp: { w: cl.links.comp.w, from: cl.links.comp.src, pos: g.compzPos, finite: g.compFinite },
+    rel: { w: cl.links.rel.w, from: cl.links.rel.src, pre: g.relPre, strat: g.relStrat },
+    when: { w: cl.links.when.w, from: cl.links.when.src },
+    adv: { pos: g.advPos, affix: g.advAffix },
+    chaining: g.chaining, switchRef: g.switchRef,
+  };
 }
 
 /** Etymology notes for the Lab: which closed forms are worn-down open words. */

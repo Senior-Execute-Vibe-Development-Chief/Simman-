@@ -14,7 +14,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -1712,6 +1712,97 @@ console.log("\n── Nominal categories ──");
   const na = foundLanguage(mkWorld(), { seed: nseed }), nb = foundLanguage(mkWorld(), { seed: nseed }), ncc = JSON.parse(JSON.stringify(na));
   const nsig = (l) => JSON.stringify([inflectNoun(l, HAND, { poss: { pers: 1, num: "sg" }, cas: "dat" }).gloss, comparative(l, GREAT, KING, { degree: "cmpr" }).text, tvPronouns(l)]);
   check(`nominal categories deterministic + JSON-roundtrip-stable`, nsig(na) === nsig(nb) && nsig(na) === nsig(ncc));
+}
+
+// ── 21. MULTI-CLAUSE: COORDINATION & SUBORDINATION (Group G) ───────────────
+// The flat frame becomes a TREE: coordination, complement clauses, adverbial
+// clauses, relative clauses, clause chaining with switch-reference. Every
+// combinator returns the same {tokens,text,gloss} shape (gloss-aligned at any
+// depth); the linkers grammaticalize from existing words and LAG a word-order flip.
+console.log("\n── Multi-clause ──");
+{
+  const world = mkWorld();
+  const byMorph = { iso: [], agg: [], fus: [], tmpl: [] };
+  const N = 900;
+  for (let i = 0; i < N; i++) { const l = foundLanguage(world, { seed: 850000 + i * 43 }); byMorph[l.prof.morph].push(l); }
+  const all = [].concat(...Object.values(byMorph));
+  const rate = (ls, pred) => ls.filter(pred).length / Math.max(1, ls.length);
+  const ov = (l) => { const w = gramOf(l).wo; return w === "sov" || w === "ovs"; };
+  const A = (x) => x.tokens.length === x.gloss.split(" ").length;
+  const l0 = all.find(l => l.prof.morph !== "iso");
+
+  // ── F1 coordination ──
+  // (a) BYTE-IDENTITY (first gate): a single-clause tree == renderClause
+  const single = { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } };
+  check(`byte-identity: a single-clause tree == renderClause`, all.slice(0, 150).every(l => renderClauseTree(l, single).text === renderClause(l, single).text));
+  const co = renderClauseTree(l0, { coord: "and", clauses: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] });
+  check(`coordination joins clauses with a conjunction, gloss-aligned (${co.gloss})`, A(co) && /AND/.test(co.gloss) && co.tokens.length >= 5);
+  const cf = all.find(l => gramOf(l).coordFinal);
+  if (cf) { const c = renderClauseTree(cf, { coord: "and", clauses: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF }, v: { c: GO, tam: "pst" } }] }); check(`enclitic coordinator joins a token (no stray CONJ token), gloss-aligned (${c.gloss})`, A(c) && /AND/.test(c.gloss)); }
+  else check(`enclitic coordinator (none rolled — OV-suffixing edge)`, rate(all, l => gramOf(l).coordFinal) < 0.1);
+
+  // ── F2 complement clauses ──
+  const comp = renderClause(l0, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { comp: { s: { n: WOLF }, v: { c: GO, tam: "pst" }, o: { n: RIVER } } } });
+  check(`complement clause: a COMP token in the object slot, gloss-aligned (${comp.gloss})`, A(comp) && /COMP/.test(comp.gloss));
+  check(`clause-final complementizer implies OV (${Math.round(rate(all.filter(l => gramOf(l).compzPos === "final"), ov) * 100)}%)`, rate(all.filter(l => gramOf(l).compzPos === "final"), ov) >= 0.8);
+  const cS = rate(all, l => gramOf(l).compzSrc === "say"), cD = rate(all, l => gramOf(l).compzSrc === "dem"), cW = rate(all, l => gramOf(l).compzSrc === "wh");
+  check(`complementizer sources say/dem/wh each occur, SAY over-represented in iso (say ${Math.round(cS * 100)}% dem ${Math.round(cD * 100)}% wh ${Math.round(cW * 100)}%)`, cS > 0.08 && cD > 0.08 && cW > 0.08 && rate(byMorph.iso, l => gramOf(l).compzSrc === "say") > cS);
+  const aggNf = byMorph.agg.find(l => gramOf(l).compFinite === false);
+  if (aggNf) { const c = renderClause(aggNf, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { comp: { s: { n: WOLF }, v: { c: GO, tam: "pst" } } } }); check(`agglutinative compFinite=false nominalizes the inner verb (${c.gloss})`, /NMLZ/.test(c.gloss)); }
+  else check(`agglutinative nominalized complement (none found)`, true);
+
+  // ── F3 adverbial clauses ──
+  const adv = renderClause(l0, { s: { n: KING }, v: { c: GO, tam: "pst" }, adv: [{ sub: "if", s: { n: WOLF }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] });
+  check(`adverbial clause: a subordinator + inner clause, conditional preposed, gloss-aligned (${adv.gloss})`, A(adv) && adv.tokens.length >= 6);
+  check(`clause-final subordinator implies OV (${Math.round(rate(all.filter(l => gramOf(l).advPos === "final"), ov) * 100)}%)`, rate(all.filter(l => gramOf(l).advPos === "final"), ov) >= 0.8);
+  check(`the 'when' subordinator ≠ the interrogative 'when'`, all.slice(0, 40).every(l => closedOf(l).links.when.w !== closedOf(l).qs.find(q => q.k === "when").w));
+  const advAf = all.find(l => gramOf(l).advAffix);
+  if (advAf) { const c = renderClause(advAf, { s: { n: KING }, v: { c: GO, tam: "pst" }, adv: [{ sub: "because", s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] }); check(`converb adverbial attaches to the subordinate verb (${c.gloss})`, /CVB/.test(c.gloss) && A(c)); }
+  else check(`converb adverbial (none rolled — Turkic/Japanese corner)`, true);
+
+  // ── F4 relative clauses ──
+  check(`ZERO languages have a prenominal relative PRONOUN (the universal)`, all.filter(l => gramOf(l).relStrat === "relpron" && gramOf(l).relPre).length === 0);
+  check(`the gap strategy is the plurality (${Math.round(rate(all, l => gramOf(l).relStrat === "gap") * 100)}%)`, rate(all, l => gramOf(l).relStrat === "gap") > 0.45);
+  check(`a relative pronoun only appears postnominal + case-marked`, all.every(l => gramOf(l).relStrat !== "relpron" || (!gramOf(l).relPre && gramOf(l).caseN >= 1)));
+  const gapL = all.find(l => gramOf(l).relStrat === "gap" && l.prof.morph !== "iso");
+  const rg = renderClause(gapL, { s: { n: KING, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } });
+  check(`gap relative: the head appears once + a strategy marker (REL / participle), gloss-aligned (${rg.gloss})`, A(rg) && /REL|PTCP/.test(rg.gloss) && rg.tokens.filter(t => t.g === "king").length === 1);
+  const rsL = all.find(l => gramOf(l).relStrat === "resump");
+  if (rsL) { const r = renderClause(rsL, { s: { n: KING, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } }); check(`resumptive relative retains a pronoun in the gap (${r.gloss})`, /3SG/.test(r.gloss) && A(r)); }
+  else check(`resumptive relative (none found)`, false);
+  // LAG: an OV→SVO branch keeps the (inherited) prenominal relative
+  world.step = 3000;
+  let lagP = null;
+  for (let i = 0; i < 400 && !lagP; i++) { const p = foundLanguage(mkWorld(), { seed: 700000 + i * 53 }); if (ov(p) && gramOf(p).relPre) lagP = p; }
+  let lagOK = true;
+  if (lagP) { const w2 = mkWorld(); w2.step = 3000; const p = foundLanguage(w2, { seed: lagP.seed }); for (let k = 0; k < 40; k++) { const d = branchLanguage(w2, p, 0.6); if (gramOf(d).relPre !== gramOf(p).relPre) lagOK = false; } }
+  check(`relative order LAGS a word-order flip (a daughter keeps prenominal)`, !!lagP && lagOK);
+
+  // ── F5 clause chaining ──
+  const chN = rate(all, l => gramOf(l).chaining);
+  check(`clause chaining is WALS-shaped, every chaining language verb-final (${Math.round(chN * 100)}%)`, chN > 0.03 && chN < 0.25 && all.filter(l => gramOf(l).chaining).every(ov));
+  check(`switch-reference ⊂ chaining, never isolating`, all.filter(l => gramOf(l).switchRef).every(l => gramOf(l).chaining && l.prof.morph !== "iso"));
+  const ch = all.find(l => gramOf(l).chaining && gramOf(l).switchRef);
+  if (ch) {
+    const ss = renderClauseTree(ch, { chain: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] });
+    const ds = renderClauseTree(ch, { chain: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF }, v: { c: SEE, tam: "pst" } }] });
+    check(`SS drops the shared subject + marks SS; DS retains it + marks DS (${ss.gloss} // ${ds.gloss})`, /SS/.test(ss.gloss) && /DS/.test(ds.gloss) && ss.tokens.filter(t => t.g === "king").length === 1 && A(ss) && A(ds));
+  } else check(`switch-reference SS/DS (none rolled)`, false);
+  const ncL = all.find(l => !gramOf(l).chaining);
+  check(`a chain degrades to a coordination in a non-chaining language`, /AND/.test(renderClauseTree(ncL, { chain: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF }, v: { c: GO, tam: "pst" } }] }).gloss));
+  // a chained/coordinated clause containing a nested relative stays aligned
+  const nested = renderClauseTree(l0, { coord: "and", clauses: [{ s: { n: KING, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF }, v: { c: GO, tam: "pst" } }] });
+  check(`a coordinated clause containing a nested relative stays gloss-aligned (${nested.tokens.length} toks)`, A(nested));
+
+  // ── references + determinism ──
+  const refL = ["mandarin", "russian", "english"].map(k => refLang(mkWorld(), k, 445));
+  check(`references pinned (Mandarin gap+RelN; Russian/English relpron; chaining off)`, (() => { const [m, r, e] = refL.map(clauseLinkersOf); return m.rel.strat === "gap" && m.rel.pre === true && r.rel.strat === "relpron" && e.rel.strat === "relpron" && refL.every(x => !gramOf(x).chaining); })());
+  check(`pinned Mandarin is the disharmonic SVO + prenominal-relative corner`, gramOf(refLang(mkWorld(), "mandarin", 445)).wo === "svo" && gramOf(refLang(mkWorld(), "mandarin", 445)).relPre === true);
+  let mseed = null;
+  for (let i = 0; i < N && mseed === null; i++) { const s = 850000 + i * 43; const g = gramOf(foundLanguage(mkWorld(), { seed: s })); if (g.chaining || g.compzSrc === "say") mseed = s; }
+  const ma = foundLanguage(mkWorld(), { seed: mseed }), mb = foundLanguage(mkWorld(), { seed: mseed }), mc2 = JSON.parse(JSON.stringify(ma));
+  const msig = (l) => JSON.stringify(clauseLinkersOf(l)) + renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { comp: { s: { n: WOLF }, v: { c: GO, tam: "pst" } } } }).text;
+  check(`multi-clause deterministic + JSON-roundtrip-stable`, msig(ma) === msig(mb) && msig(ma) === msig(mc2));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────
