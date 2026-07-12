@@ -91,8 +91,12 @@ for (const file of files) {
   let inner = raw.replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
   inner = inner
     .replace(/<metadata[\s\S]*?<\/metadata>/gi, "")
-    .replace(/<sodipodi:namedview[\s\S]*?(?:\/>|<\/sodipodi:namedview>)/gi, "")
-    .replace(/\s+(?:sodipodi|inkscape):[\w-]+="[^"]*"/gi, "")   // strip Inkscape namespaced attrs (invalid once embedded)
+    // paired namespaced elements (Inkscape/RDF/Office cruft that breaks XML once embedded)
+    .replace(/<(sodipodi|inkscape|rdf|cc|dc|v|o|w|x):[\w-]+[^>]*>[\s\S]*?<\/\1:[\w-]+>/gi, "")
+    // self-closing namespaced elements (e.g. <v:documentProperties langID=.../>)
+    .replace(/<(?:sodipodi|inkscape|rdf|cc|dc|v|o|w|x):[\w-]+[^>]*\/>/gi, "")
+    // namespaced attributes, keeping only xml: and xlink:
+    .replace(/\s+(?!xlink:|xml:)[a-zA-Z][\w]*:[\w.-]+="[^"]*"/g, "")
     .replace(/<!--[\s\S]*?-->/g, "")
     .trim();
   inner = stripBackground(inner, vb);
