@@ -338,6 +338,32 @@ export const DERIV = [
   [NOBLE, BLOOD, HIGH, 3], [NOBLE, KINC, GREAT, 2], [NOBLE, BLOOD, OLD, 1],
 ];
 
+// ── CLF_SENSE: the sortal classifier sense of a noun (Group D) ────────────
+// Shape/animacy is a world-knowledge dimension (like AGENTIVITY), NOT a
+// language's answer (cardinal rule 2): a noun is assigned its classifier by its
+// SENSE, and each language supplies the exponent for that sense. Humans → 'hum',
+// long/rigid things → 'long', flat things → 'flat', round/compact → 'round';
+// ANIMALS come free from the 'anm' domain (so no anm-domain concept is listed
+// here — that would break the "every animal reads 'anm'" invariant); everything
+// else falls back to 'gen'. Append-only, keys on existing concept ids.
+export const CLF_SENSE = new Map([
+  [MAN, "hum"], [WOMAN, "hum"], [KING, "hum"], [QUEEN, "hum"], [CHIEF, "hum"],
+  [PRIEST, "hum"], [CHILD, "hum"], [MOTHER, "hum"], [FATHER, "hum"], [SON, "hum"],
+  [DAUGHTER, "hum"], [BROTHER, "hum"], [PEOPLE, "hum"], [GUARD, "hum"], [LORD, "hum"], [NOBLE, "hum"],
+  [TREE, "long"], [REED, "long"], [SPEAR, "long"], [SWORD, "long"], [ROAD, "long"],
+  [RIVER, "long"], [ARM, "long"], [BRIDGE, "long"],
+  [LEAF, "flat"], [SHIELD, "flat"], [FIELD, "flat"], [WALL, "flat"],
+  [STONE, "round"], [GRAIN, "round"], [HEAD, "round"], [SUN, "round"], [MOON, "round"],
+  [STAR, "round"], [GOLD, "round"], [SILVER, "round"],
+]);
+// A few nouns are GENUINELY ambiguous: a fish is animal AND long, a coin flat
+// AND round, a ship long AND just-a-thing. These carry a [candidate, candidate]
+// pair and each FAMILY rolls its salient sense (the COLEX/DERIV per-family idiom)
+// — so classifier ASSIGNMENT varies across languages, not just the exponent.
+export const CLF_AMBIG = new Map([
+  [FISH, ["anm", "long"]], [SHIP, ["long", "gen"]], [COIN, ["round", "flat"]],
+]);
+
 // ── name-material pools (indices into CONCEPTS) ──────────────────────────
 export const TOPO_HEAD = [RIVER, FORD, LAKE, BAY, ISLAND, HILL, MOUNTAIN, VALLEY,
   PLAIN, STONE, CAVE, PASS, SPRING, MARSH, FOREST, FIELD, TOWN, FORT, WALL, BRIDGE,

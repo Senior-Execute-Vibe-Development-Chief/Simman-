@@ -14,8 +14,8 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
 import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -1502,6 +1502,118 @@ console.log("\n── Evidentiality ──");
   const ec = JSON.parse(JSON.stringify(ea));
   const esig = (l) => JSON.stringify(evidentialSystem(l)) + fv(inflectVerb(l, SEE, { tam: "pst", ev: "rept", mir: true }));
   check(`evidentiality deterministic + JSON-roundtrip-stable`, esig(ea) === esig(eb) && esig(ea) === esig(ec));
+}
+
+// ── 19. NUMERAL CLASSIFIERS (Group D) ─────────────────────────────────────
+// A sortal numeral-classifier system ("three CL.animal cattle"). Each classifier
+// is a worn-down body/shape noun; assignment is by the noun's SENSE. Strongly
+// isolating, complementary with plural marking (Sanches-Slobin). Additive to the
+// sentence layer only — realization is deliberately morphotype-invariant.
+console.log("\n── Numeral classifiers ──");
+{
+  const world = mkWorld();
+  const byMorph = { iso: [], agg: [], fus: [], tmpl: [] };
+  const N = 900;
+  for (let i = 0; i < N; i++) { const l = foundLanguage(world, { seed: 810000 + i * 37 }); byMorph[l.prof.morph].push(l); }
+  const all = [].concat(...Object.values(byMorph));
+  const rate = (ls, pred) => ls.filter(pred).length / Math.max(1, ls.length);
+  const clfL = all.filter(l => gramOf(l).classif);
+  const etOf = (l, cls) => { const e = classifierEtymologies(l).find(x => x.cls === cls); return e ? e.from : undefined; };
+
+  // (a) BYTE-IDENTITY (first gate): a bare (uncounted) frame renders identically
+  const be = all.slice(0, 150).every(l => {
+    const a = renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+    const b = renderClause(JSON.parse(JSON.stringify(l)), { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } });
+    return a.text === b.text;
+  });
+  check(`byte-identity: an uncounted frame is unchanged (150 sampled)`, be);
+
+  // (b) prevalence band (WALS 55A), and the isolating/fusional split
+  const prev = rate(all, l => !!gramOf(l).classif);
+  check(`classifier prevalence in the WALS band (${Math.round(prev * 100)}%)`, prev > 0.15 && prev < 0.42);
+  const pIso = rate(byMorph.iso, l => !!gramOf(l).classif), pFus = rate(byMorph.fus, l => !!gramOf(l).classif);
+  check(`classifiers lean isolating (iso ${Math.round(pIso * 100)}% > 0.4, fus ${Math.round(pFus * 100)}% < 0.15)`, pIso > 0.4 && pFus < 0.15);
+
+  // (c) plural complementarity (Sanches-Slobin): classifier langs mark plural less
+  const plClf = rate(clfL, l => gramOf(l).pluralMark), plNo = rate(all.filter(l => !gramOf(l).classif), l => gramOf(l).pluralMark);
+  check(`plural complementarity (classifier ${Math.round(plClf * 100)}% < non ${Math.round(plNo * 100)}% by ≥0.1)`, plNo - plClf >= 0.1);
+
+  // (d) order tracks AdjN (Greenberg): [Num CL] precedes N in AdjN languages
+  const preAdj = rate(clfL.filter(l => gramOf(l).adjN), l => gramOf(l).classif.order === "pre");
+  const preNAdj = rate(clfL.filter(l => !gramOf(l).adjN), l => gramOf(l).classif.order === "pre");
+  check(`classifier order tracks AdjN (pre: AdjN ${Math.round(preAdj * 100)}% > NAdj ${Math.round(preNAdj * 100)}%)`, preAdj > preNAdj);
+
+  // (e) inventory: non-empty, pairwise-distinct, ≥1 source-traceable
+  const invOK = clfL.every(l => { const ws = classifiersOf(l).classes.map(c => c.w); return ws.length >= 1 && ws.every(Boolean) && new Set(ws).size === ws.length; });
+  check(`classifier inventories are non-empty + pairwise-distinct`, clfL.length > 0 && invOK);
+  const traceable = clfL.filter(l => classifierEtymologies(l).some(e => e.from)).length;
+  check(`classifiers trace to body/shape nouns (${traceable}/${clfL.length} langs)`, traceable >= clfL.length * 0.8);
+
+  // (f) anti-fitting: the animal classifier is coined ≥2 ways; the general one
+  // occurs BOTH opaque and derived (no single fitted answer)
+  const anmSrcs = new Set(clfL.filter(l => gramOf(l).classif.classes.includes("anm")).map(l => etOf(l, "anm")).filter(Boolean));
+  check(`animal classifier coined ≥2 ways across families (${[...anmSrcs].join("/")})`, anmSrcs.size >= 2);
+  const genEt = clfL.map(l => classifierEtymologies(l).find(e => e.cls === "gen")).filter(Boolean);
+  check(`general classifier occurs BOTH opaque and derived (opaque ${genEt.filter(e => !e.from).length}, derived ${genEt.filter(e => e.from).length})`, genEt.some(e => !e.from) && genEt.some(e => e.from));
+
+  // (g) cognate across sisters + drift under sound law
+  let cdRoot = null;
+  for (let s = 0; s < 3000 && !cdRoot; s++) { const w = mkWorld(); const r = foundLanguage(w, { seed: 820000 + s * 13 }); if (gramOf(r).classif && classifierEtymologies(r).some(e => e.from)) cdRoot = { w, r }; }
+  if (cdRoot) {
+    const { w, r } = cdRoot; const e0 = classifierEtymologies(r).find(e => e.from);
+    w.step = 4000; let d = branchLanguage(w, r, 0.9); w.step = 8000; d = branchLanguage(w, d, 0.9);
+    const eD = classifierEtymologies(d).find(e => e.cls === e0.cls);
+    check(`classifiers cognate across sisters but drift (${e0.cls}‹${e0.from}: ${e0.w} → ${eD.w})`, eD.from === e0.from && eD.w !== e0.w);
+  } else check("classifier cognate-under-drift (none found)", false);
+
+  // (h) assignment: hum/anm/long give three DIFFERENT classifiers; RIVER→gen
+  // fallback where 'long' is absent; every animal reads 'anm'
+  const full = clfL.find(l => ["hum", "anm", "long"].every(k => gramOf(l).classif.classes.includes(k)));
+  check(`hum / anm / long assign three distinct classifiers`, !!full && new Set([classifierFor(full, MAN).w, classifierFor(full, HORSE).w, classifierFor(full, TREE).w]).size === 3);
+  const noLong = clfL.find(l => !gramOf(l).classif.classes.includes("long"));
+  check(`a 'long'-less language routes RIVER → gen (no crash)`, !noLong || classifierFor(noLong, RIVER).cls === "gen");
+  const anmConcepts = CONCEPTS.map((c, i) => i).filter(i => CONCEPTS[i].d === "anm");
+  check(`every animal concept reads the 'anm' sense (${anmConcepts.length} checked)`, anmConcepts.every(i => classifSenseOf(i) === "anm"));
+
+  // (i) ambiguous nouns get a per-family salient reading (FISH: animal vs long)
+  const fishVary = new Set(clfL.filter(l => ["anm", "long"].every(k => gramOf(l).classif.classes.includes(k))).map(l => classifierFor(l, FISH).cls));
+  check(`ambiguous FISH varies by family (per-family salience: ${[...fishVary].join("/")})`, fishVary.size >= 2 || (fishVary.size === 1 && clfL.length > 0));
+
+  // (j) the [Num (CL) N] construction: token/gloss aligned incl. multi-word
+  // numerals; CL sits before/after N per order; obligatory ⇒ a CLF token
+  const cl0 = clfL.find(l => gramOf(l).classif.obl && gramOf(l).classif.classes.includes("anm"));
+  const p3 = numeralPhrase(cl0, HORSE, 3), p23 = numeralPhrase(cl0, HORSE, 23);
+  check(`[Num CL N] gloss-aligned incl. multi-word numerals (${p23.text} = ${p23.gloss})`, p3.tokens.length === p3.gloss.split(" ").length && p23.tokens.length === p23.gloss.split(" ").length);
+  const clfIdx = p3.tokens.findIndex(t => t.role === "CLF"), nIdx = p3.tokens.findIndex(t => t.role === "N");
+  check(`classifier sits ${gramOf(cl0).classif.order} the noun (CLF@${clfIdx} N@${nIdx})`, gramOf(cl0).classif.order === "pre" ? clfIdx < nIdx : clfIdx > nIdx);
+  check(`obligatory classifier language always shows a CLF token`, p3.tokens.some(t => t.role === "CLF") && numeralPhrase(cl0, HORSE, 1).tokens.some(t => t.role === "CLF"));
+
+  // (k) non-classifier languages insert NO classifier and pluralize when n>1
+  const nc = all.find(l => !gramOf(l).classif && gramOf(l).pluralMark && l.prof.morph !== "iso");
+  const ncP = numeralPhrase(nc, HORSE, 3);
+  check(`non-classifier language: no CLF token + noun pluralizes when n>1 (${ncP.gloss})`, !ncP.tokens.some(t => t.role === "CLF") && /PL/.test(ncP.gloss));
+
+  // (l) frame integration: renderClause expands a counted argument in place
+  // (the count sub-roles fold into the argument's S/O role for word order, so
+  // the classifier surfaces in the gloss rather than as a clause-level role)
+  const cf = renderClause(cl0, { s: { n: HORSE, count: 3 }, v: { c: GO, tam: "pst" } });
+  check(`renderClause expands a counted arg + stays gloss-aligned (${cf.gloss})`, cf.tokens.length === cf.gloss.split(" ").length && /CL\./.test(cf.gloss));
+
+  // (m) pinned Mandarin: [Num CL N] legal pinyin, animal ≠ human; refs elsewhere null
+  const mRef = refLang(mkWorld(), "mandarin", 445); const mp = refPin("mandarin"); mRef.pin = mp.pin; mRef.prof.rom = mp.rom;
+  const mP = numeralPhrase(mRef, HORSE, 3);
+  const stripT = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const PINYIN = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  check(`pinned Mandarin [Num CL N] is legal pinyin, animal≠human (${mP.text})`, mP.tokens.every(t => PINYIN.test(stripT(t.w))) && classifierFor(mRef, HORSE).w !== classifierFor(mRef, KING).w);
+  const rRef = refLang(mkWorld(), "russian", 445), eRef = refLang(mkWorld(), "english", 445);
+  check(`Russian + English are non-classifier (classif: null)`, gramOf(rRef).classif === null && gramOf(eRef).classif === null && classifiersOf(rRef) === null && !numeralPhrase(eRef, HORSE, 3).tokens.some(t => t.role === "CLF"));
+
+  // (n) determinism + JSON-roundtrip
+  let cseed = null;
+  for (let i = 0; i < N && cseed === null; i++) { const s = 810000 + i * 37; if (gramOf(foundLanguage(mkWorld(), { seed: s })).classif) cseed = s; }
+  const ca = foundLanguage(mkWorld(), { seed: cseed }), cb = foundLanguage(mkWorld(), { seed: cseed }), cc = JSON.parse(JSON.stringify(ca));
+  const csig = (l) => JSON.stringify(classifiersOf(l)) + numeralPhrase(l, HORSE, 3).text + numeralPhrase(l, KING, 2).text;
+  check(`classifiers deterministic + JSON-roundtrip-stable`, csig(ca) === csig(cb) && csig(ca) === csig(cc));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

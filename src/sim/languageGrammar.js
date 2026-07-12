@@ -30,6 +30,7 @@ import {
   ONE, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, HUNDRED,
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, AGENTIVITY, MAKE, DO, EAT,
   BE, HAVE, KNOW, SEE, NEW, NIGHT, FAR, SEEM, HEAR, SAY,
+  BODY, LEAF, PEOPLE, TREE, REED, SPEAR, ARM, SHIELD, WOOD, GRAIN, CLF_SENSE, CLF_AMBIG,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -144,6 +145,9 @@ export function rollGrammar(famSeed, prof) {
     return { n, mir, zeroDirect: H("evzd") < 0.72, infer: n >= 3 };   // infer = has a dedicated inferential term
   })();
   const mirative = H("mir") < 0.04 + (perfect ? 0.1 : 0) + (evid && evid.infer ? 0.14 : 0);
+  // plural-marking dial, hoisted to a shared local so the classifier↔plural
+  // complementarity (below) reads the SAME value the noun paradigm uses
+  const plMark = m === "iso" ? H("pl") < 0.3 : H("pl") < 0.9;
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
@@ -179,7 +183,24 @@ export function rollGrammar(famSeed, prof) {
       return { adj, dem, art: false, verb, site: m === "tmpl" ? "suffix" : "fuse" };
     })(),
     aspect,   // tenseless ⇒ aspect carries time (hoisted for the alignment carve)
-    pluralMark: m === "iso" ? H("pl") < 0.3 : H("pl") < 0.9,
+    pluralMark: plMark,
+    // NUMERAL CLASSIFIERS (WALS 55A): a sortal system ("three CL cattle").
+    // Strongly isolating (Chinese/SE-Asian corner), complementary with plural
+    // marking (Sanches-Slobin — a language that obligatorily pluralizes rarely
+    // also sorts by classifier). Own streams; re-reads plMark read-only. The
+    // inventory always has a general classifier + shape/animacy buckets by
+    // frequency. Order tracks AdjN (Greenberg): [Num CL] pre-N in AdjN tongues.
+    classif: (() => {
+      const base = m === "iso" ? 0.7 : m === "agg" ? 0.5 : m === "fus" ? 0.07 : 0.04;
+      if (H("clf") >= base * (plMark ? 0.65 : 1.25)) return null;
+      const classes = ["gen"];
+      const add = (k, p, s) => { if (H(s) < p) classes.push(k); };
+      add("hum", 0.8, "clfhum"); add("anm", 0.7, "clfanm");
+      add("long", m === "iso" ? 0.65 : 0.4, "clflong");
+      add("flat", m === "iso" ? 0.6 : 0.35, "clfflat");
+      add("round", 0.45, "clfround");
+      return { classes, obl: H("clfob") < 0.55, order: (adjN ? H("clford") < 0.8 : H("clford") < 0.2) ? "pre" : "post" };
+    })(),
     dual: H("du") < 0.15,
     clusiv: H("cl") < 0.35,                          // inclusive/exclusive 'we'
     gender3: (genders ? H("g3") < 0.75 : H("g3") < 0.15),
@@ -362,6 +383,19 @@ function adpSourceOf(lang, meaning) {
   for (const [cid, p] of s.pool) { r -= p; if (r < 0) { src = cid; break; } }
   return src;
 }
+// ── NUMERAL CLASSIFIERS (Group D): each sortal classifier is a worn-down
+// body-part / shape noun (頭 head-of-cattle, 條 long-thing‹twig, 顆 round‹grain),
+// replayed through this language's rule tail so sisters are cognate. The general
+// classifier frequently bleaches to an opaque formative (個, via synthClosed).
+// AFF_SRC-shaped: [concept, weight] with null = an opaque own formative. ──
+const CLF_SRC = {
+  hum: [[MAN, 0.4], [PEOPLE, 0.3], [BODY, 0.3]],
+  anm: [[HEAD, 0.55], [BODY, 0.45]],                          // 頭 (head-of-cattle)
+  long: [[TREE, 0.35], [REED, 0.3], [SPEAR, 0.2], [ARM, 0.15]],
+  flat: [[LEAF, 0.5], [SHIELD, 0.25], [WOOD, 0.25]],          // Thai bai (‹ leaf)
+  round: [[STONE, 0.4], [GRAIN, 0.35], [HEAD, 0.25]],         // 顆/粒 (‹ grain/kernel)
+  gen: [[BODY, 0.35], [STONE, 0.2], [null, 0.45]],            // 個 — frequently opaque
+};
 const APPL_MEANING = { ben: "to", ins: "with", loc: "in" };   // applicative flavour → adposition
 
 /** Every closed-class form of the language: pronouns (with the language's own
@@ -738,6 +772,95 @@ const NUM_CONCEPT = new Map([[ONE, 1], [TWO, 2], [THREE, 3], [FOUR, 4], [FIVE, 5
 export function numeralConceptWord(lang, cid) {
   const n = NUM_CONCEPT.get(cid);
   return n == null ? null : numeral(lang, n).text;
+}
+
+// ── NUMERAL CLASSIFIERS (Group D) ─────────────────────────────────────────
+// The inventory mirrors the adposition block: each classifier is worn from a
+// body/shape noun over the EVOLVED stem (a recent grammatical layer, no extra
+// replay — sisters cognate for free because nativeStemOf is already carried
+// through this language's rule tail). Realization is deliberately morphotype-
+// INVARIANT: a classifier is always a free light word, never an affix.
+function classifierInventory(lang) {
+  const c = gc(lang);
+  if (c.clf !== undefined) return c.clf;   // null (non-classifier) is a valid cached value
+  const g = gramOf(lang);
+  if (!g.classif) { c.clf = null; return null; }
+  const inv = compiledInv(lang), prof = lang.prof, fam = lang.famSeed ?? lang.seed;
+  const usedSrc = new Map();       // one quarry worn to two grains for two classes
+  const classes = {}, forms = [];
+  for (const cls of g.classif.classes) {
+    let r = h01(fam, "clf", cls), src = null;
+    for (const [cid, p] of CLF_SRC[cls]) { r -= p; if (r < 0) { src = cid; break; } }
+    let form;
+    if (src == null) form = legalizeWord(synthClosed(lang, inv, "clf:" + cls));
+    else {
+      form = legalizeWord({ syls: [wearSyl(prof, nativeStemOf(lang, src))] });
+      const reuse = usedSrc.get(src) || 0; usedSrc.set(src, reuse + 1);
+      if (reuse > 0) { retint(form, vowFar(inv.vows)); legalizeWord(form); }
+    }
+    const e = { cls, src, form, w: rform(lang, form), g: "CL." + cls };
+    classes[cls] = e; forms.push(e);
+  }
+  dedupe(lang, inv, forms);        // pairwise-distinct (mutates .form/.w)
+  c.clf = { classes, order: g.classif.order, obl: g.classif.obl };
+  return c.clf;
+}
+
+/** The language's sortal classifiers (Group D) — null for a non-classifier
+ *  language, else { order, obl, classes:[{cls,w}] }. */
+export function classifiersOf(lang) {
+  const inv = classifierInventory(lang);
+  return inv ? { order: inv.order, obl: inv.obl, classes: Object.values(inv.classes).map(e => ({ cls: e.cls, w: e.w })) } : null;
+}
+/** Where each classifier grammaticalized from (the body/shape noun, or opaque). */
+export function classifierEtymologies(lang) {
+  const inv = classifierInventory(lang);
+  return inv ? Object.values(inv.classes).map(e => ({ cls: e.cls, w: e.w, from: e.src != null ? glossOf(e.src) : null })) : [];
+}
+/** A noun's sortal SENSE (world-knowledge, language-independent): humans →
+ *  'hum', shapes → 'long'/'flat'/'round', animals free from the 'anm' domain,
+ *  the rest → 'gen'. Ambiguous nouns keep their domain sense here; the per-family
+ *  salient reading is resolved in classifierFor. */
+export function classifSenseOf(cid) {
+  if (CLF_SENSE.has(cid)) return CLF_SENSE.get(cid);
+  const con = CONCEPTS[cid];
+  return con && con.d === "anm" ? "anm" : "gen";
+}
+/** The classifier this language uses for a noun: its sense (with a per-family
+ *  salience roll for genuinely ambiguous nouns) mapped onto the inventory, with
+ *  the general classifier as the fallback. Null for a non-classifier language. */
+export function classifierFor(lang, cid) {
+  const inv = classifierInventory(lang);
+  if (!inv) return null;
+  let sense = classifSenseOf(cid);
+  const amb = CLF_AMBIG.get(cid);
+  if (amb) sense = amb[h01(lang.famSeed ?? lang.seed, "clfsense", cid) < 0.5 ? 0 : 1];
+  const e = inv.classes[sense] || inv.classes.gen;
+  return { cls: e.cls, w: e.w, g: e.g, form: e.form };
+}
+
+/** The [Num (CL) N] numeral phrase (Group D). In a classifier language the
+ *  classifier sits between numeral and noun (per classif.order) and the noun
+ *  stays caseless; otherwise the noun pluralizes (n≠1 and the language marks
+ *  plural) and the numeral orders by AdjN (Greenberg U18). Owns the COUNT core
+ *  only — np() wraps it with adjective/article. `useClf:false` drops an optional
+ *  classifier; an obligatory system keeps it. → { tokens, text, gloss } */
+export function numeralPhrase(lang, cid, n, { cas = null, useClf = true } = {}) {
+  const g = gramOf(lang);
+  const numToks = numeral(lang, n).parts.map(p => ({ w: p.w, g: p.g, role: "NUM" }));
+  const nounToks = (num, cs) => {
+    const nx = inflectNoun(lang, cid, { num, cas: cs });
+    return [...nx.pre, { w: nx.text, g: nx.gloss }, ...nx.post].map(t => ({ w: t.w, g: t.g, role: "N" }));
+  };
+  if (g.classif) {
+    const count = (g.classif.obl || useClf) ? [...numToks, (() => { const clf = classifierFor(lang, cid); return { w: clf.w, g: clf.g, role: "CLF" }; })()] : numToks;
+    const nt = nounToks("sg", null);   // classifier languages keep the noun caseless + number-neutral
+    const toks = g.classif.order === "pre" ? [...count, ...nt] : [...nt, ...count];
+    return { tokens: toks, text: toks.map(t => t.w).join(" "), gloss: toks.map(t => t.g).join(" ") };
+  }
+  const nt = nounToks(n !== 1 && g.pluralMark ? "pl" : "sg", cas);
+  const toks = g.adjN ? [...numToks, ...nt] : [...nt, ...numToks];
+  return { tokens: toks, text: toks.map(t => t.w).join(" "), gloss: toks.map(t => t.g).join(" ") };
 }
 
 // ══ M2: inflectional morphology ═══════════════════════════════════════════
@@ -1947,10 +2070,19 @@ export function renderClause(lang, frame) {
       return [{ w: q.w, g: "what", role, wh: true }];
     }
     const headCls = g.genders ? genderOf(lang, arg.n) : 0;
-    const x = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas });
-    let seq = [...x.pre.map(t => ({ ...t, role })), { w: x.text, g: x.gloss, role }, ...x.post.map(t => ({ ...t, role }))];
+    // count core (Group D): a counted arg expands to [Num (CL) N] in place —
+    // `count` wins over `num`; numeralPhrase owns the count, np keeps adj/dem/art
+    const counted = arg.count != null;
+    const numForAdj = counted ? (g.classif ? "sg" : (arg.count !== 1 && g.pluralMark ? "pl" : "sg")) : (arg.num || "sg");
+    let seq;
+    if (counted) {
+      seq = numeralPhrase(lang, arg.n, arg.count, { cas, useClf: arg.useClf !== false }).tokens.map(t => ({ ...t, role }));
+    } else {
+      const x = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas });
+      seq = [...x.pre.map(t => ({ ...t, role })), { w: x.text, g: x.gloss, role }, ...x.post.map(t => ({ ...t, role }))];
+    }
     if (arg.adj != null) {
-      const a = inflectAdj(lang, arg.adj, { cls: headCls, num: arg.num || "sg", cas });   // agrees with head class
+      const a = inflectAdj(lang, arg.adj, { cls: headCls, num: numForAdj, cas: counted && g.classif ? null : cas });   // agrees with head class
       const adj = { w: a.text, g: a.gloss, role };
       seq = g.adjN ? [adj, ...seq] : [...seq, adj];
     }
