@@ -331,15 +331,6 @@ const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (ins
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
 // SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
 const SIZE_REF      = 1000;  // population scale for the size term
-// AREA_LOAD -> runtime lever (tuning.js T.AREA_LOAD). Territorial twin of SIZE_LOAD:
-// a province's administered LAND AREA draws hold-capacity, so a realm holding vast
-// ground overextends and sheds far provinces. AREA_REF is the reference province area
-// in 240-grid (reference-resolution) tiles — one "unit" of area burden, the SIZE_REF
-// analog; _terrTiles is normalised to that grid (÷ resScale²) so the burden is
-// resolution-invariant. Capped like the over-extension term so one huge province
-// can't blow the load in a single pass.
-const AREA_REF      = 30;    // ref-grid tiles a province administers at unit area burden
-const AREA_LOAD_CAP = 4;     // max area-burden contribution (a province tops out at 4 units)
 const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much extra...
 // RECENCY_TICKS -> runtime lever (tuning.js T.RECENCY_TICKS)
 const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty
@@ -2327,9 +2318,6 @@ export function updatePolities(world) {
 
     // ── Per-member admin load (cost to hold) ──────────────────────────
     const loads = [];
-    // Resolution factor for the area term: _terrTiles is in sim tiles (×resScale²),
-    // normalise to the 240-grid so AREA_REF means the same real area at any resolution.
-    const _r2Load = (() => { const rs = Math.max(1, world.tw / 240); return rs * rs; })();
     for (const s of c.members) {
       if (s.id === c.capitalId) { s.loyalty = 1; s._ambition = 0; s._capCost = 0; s._capCostId = c.id; continue; }
       // Distance the CENTRE must project authority across. Start from the
@@ -2385,17 +2373,9 @@ export function updatePolities(world) {
         ? Math.min(COERCE_CAP, Math.sqrt((armyAvail * (holdRange / (holdRange + d)) + 1) / Math.max(1, provForce)))
         : Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
-      // Big-TERRITORY burden: a province administering a large LAND AREA draws extra
-      // hold-capacity — so a realm sprawling across a continent with few provinces
-      // overextends and sheds its far provinces (as successors, via the loyalty/
-      // secession machinery below), instead of holding unlimited ground for free.
-      // AREA_LOAD=0 → areaMul=1 → byte-identical (the existing calibrated regime).
-      const areaMul = T.AREA_LOAD > 0
-        ? 1 + T.AREA_LOAD * Math.min(AREA_LOAD_CAP, ((s._terrTiles || 0) / _r2Load) / AREA_REF)
-        : 1;
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
       const langMul = 1 + adminFriction(cap, s, idW);   // a foreign-tongue province is costlier to govern → polyglot empires overreach sooner (cohesion.js)
-      const load = (d / holdRange) * sizeMul * areaMul * recMul * langMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
+      const load = (d / holdRange) * sizeMul * recMul * langMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
       s._langFriction = langMul - 1;   // info panel: administrative friction from tongue mismatch
       s._adminLoad = load;            // for the info panel
       loads.push({ s, load });
