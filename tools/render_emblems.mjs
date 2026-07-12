@@ -134,6 +134,24 @@ function sunDisc(cx, cy, r, color) {
 function star(cx, cy, r, color) { const p = []; for (let i = 0; i < 10; i++) { const a = -1.571 + i * 0.628, rad = i % 2 ? r * 0.42 : r; p.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]); } return `<polygon points="${p.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="${css(color)}"/>`; }
 function crescent(cx, cy, r, color) { return `<path d="M${cx + r * 0.25} ${cy - r} A${r} ${r} 0 1 0 ${cx + r * 0.25} ${cy + r} A${r * 0.78} ${r * 0.78} 0 1 1 ${cx + r * 0.25} ${cy - r} Z" fill="${css(color)}"/>`; }
 
+// fit a central device inside a substrate's DRAWABLE area (so a shield's point
+// or a lozenge's corners never clip it)
+function centralFit(substrate, w, h, base) {
+  switch (substrate) {
+    case "shield":   return { cx: w / 2, cy: h * 0.42, box: base * 0.64 };
+    case "lozenge":  return { cx: w / 2, cy: h / 2, box: base * 0.52 };
+    case "pennon":   return { cx: w * 0.40, cy: h * 0.5, box: h * 0.66 };
+    case "roundel":  return { cx: w / 2, cy: h / 2, box: base * 0.66 };
+    case "gonfalon": return { cx: w / 2, cy: h * 0.44, box: base * 0.7 };
+    default:         return { cx: w / 2, cy: h * 0.48, box: base * 0.72 };  // banner
+  }
+}
+// a single small canton mark (top-dexter), in a contrast-guaranteed colour
+function canton(w, h, base, kind, color) {
+  const cx = w * 0.8, cy = h * 0.2, r = base * 0.1;
+  return kind === "sun" ? sunDisc(cx, cy, r * 0.7, color) : star(cx, cy, r, color);
+}
+
 // ── draw one emblem from its phenotype, into a cell ──
 function drawEmblem(gp, cx, cy, cw, ch) {
   const p = expressGenome(gp);
@@ -154,15 +172,17 @@ function drawEmblem(gp, cx, cy, cw, ch) {
 
   if (p.composition === "heraldic") {
     content += fieldSVG(w, h, p.field);
-    if (p.motif) content += placeMotif(p.motif, w, h);
+    if (p.motif) content += placeMotif(p.motif, w, h, p.substrate);
   } else {
     content += `<rect width="${w}" height="${h}" fill="${css(bg)}"/>`;
     if (p.composition === "central" && p.motif) {
-      content += motif(p.motif.id, cxm - base * 0.43, cym - base * 0.43, base * 0.86, p.motif.tincture);
-      if (p.ornaments.pearl) content += sunDisc(w * 0.82, h * 0.22, 7, C.accent);
+      const f = centralFit(p.substrate, w, h, base);
+      content += motif(p.motif.id, f.cx - f.box / 2, f.cy - f.box / 2, f.box, p.motif.tincture);
+      if (p.ornaments.cornerAccent) content += sunDisc(w * 0.82, h * 0.2, base * 0.05, C.accent);
     } else if (p.composition === "radial" && p.motif) {
-      content += `<circle cx="${cxm}" cy="${cym}" r="${base * 0.4}" fill="none" stroke="${css(C.charge)}" stroke-width="${base * 0.03}"/>`;
-      content += motif(p.motif.id, cxm - base * 0.3, cym - base * 0.3, base * 0.6, C.charge);
+      // ring in the COMPANION tincture so the device (charge tincture) reads against it
+      content += `<circle cx="${cxm}" cy="${cym}" r="${base * 0.4}" fill="none" stroke="${css(C.companion)}" stroke-width="${base * 0.035}"/>`;
+      content += motif(p.motif.id, cxm - base * 0.28, cym - base * 0.28, base * 0.56, p.motif.tincture);
     } else if (p.composition === "script") {
       content += calligraphy(w * 0.13, h * 0.32, w * 0.74, 2, C.accent, rng);
     } else if (p.composition === "brand") {
@@ -172,11 +192,11 @@ function drawEmblem(gp, cx, cy, cw, ch) {
         const mx = (cxi + (ry % 2 ? 0.5 : 0)) * w / 3, my = (ry + 0.5) * h / 4;
         content += motif(p.motif.id, mx - base * 0.09, my - base * 0.09, base * 0.18, p.motif.tincture);
       }
-    } else if (p.composition === "plain" && p.geometry) {   // aniconic tilework
+    } else if (p.composition === "plain" && p.geometry) {   // geometric tilework
       content += geometry(w, h, p.geometry, C.charge, C.field, C.accent);
     }
-    if (p.ornaments.sunDisc && p.composition !== "central") content += sunDisc(w * 0.5, h * 0.5, base * 0.12, C.accent);
-    if (p.ornaments.star) content += star(w * 0.8, h * 0.24, base * 0.09, C.accent);
+    // a single small canton mark, contrast-guaranteed, clear of the device
+    if (p.ornaments.canton) content += canton(w, h, base, p.ornaments.cantonKind, p.ornaments.cantonColor);
   }
 
   const frame = sh.round
@@ -193,13 +213,15 @@ function drawEmblem(gp, cx, cy, cw, ch) {
     + `<g clip-path="url(#${clip})">${content}${bd}</g>${tails}${frame}</g>`;
 }
 
-function placeMotif(m, w, h) {
-  const base = Math.min(w, h), box = base * (m.arrange === "three" ? 0.34 : 0.62) * m.scale / 0.5;
+function placeMotif(m, w, h, substrate) {
+  const base = Math.min(w, h), tap = substrate === "shield" || substrate === "pennon" || substrate === "lozenge";
+  let box = base * (m.arrange === "three" ? 0.34 : 0.6) * m.scale / 0.5;
+  if (tap) box *= 0.85;                                  // leave room inside the taper
   const one = (mx, my, b) => motif(m.id, mx - b / 2, my - b / 2, b, m.tincture);
-  if (m.arrange === "three") return one(w * 0.3, h * 0.3, box) + one(w * 0.7, h * 0.3, box) + one(w * 0.5, h * 0.72, box);
-  if (m.arrange === "inPale") return one(w / 2, h * 0.32, box * 0.8) + one(w / 2, h * 0.68, box * 0.8);
+  if (m.arrange === "three") return one(w * 0.3, h * (tap ? 0.34 : 0.32), box) + one(w * 0.7, h * (tap ? 0.34 : 0.32), box) + one(w * 0.5, h * (tap ? 0.63 : 0.7), box * 0.9);
+  if (m.arrange === "inPale") return one(w / 2, h * 0.3, box * 0.8) + one(w / 2, h * (tap ? 0.6 : 0.66), box * 0.8);
   if (m.arrange === "seme") { let s = ""; for (let ry = 0; ry < 3; ry++) for (let c = 0; c < 3; c++) s += one((c + 0.5) * w / 3, (ry + 0.5) * h / 3, base * 0.16); return s; }
-  return one(w / 2, h * 0.46, box);
+  return one(w / 2, h * (substrate === "shield" ? 0.42 : 0.46), box);
 }
 
 // ── build sheets ──
@@ -211,32 +233,32 @@ function labelRow(title) { return { title }; }
 if (MODE === "evolve" || MODE === "both") {
   sections.push({ head: "A lineage evolving — founder, then five generations of drift" });
   const founders = [
-    ["House of the Vale", { aniconism: 0.1, martial: 0.7, develop: 0.35, hue: 0.02 }, 1011],
-    ["The Sable Khanate", { aniconism: 0.75, nomad: 0.9, hue: 0.09 }, 2027],
-    ["Celestial Court", { aniconism: 0.2, centralised: 0.85, develop: 0.7, hue: 0.13 }, 3041],
+    ["House Vermeil", { figuration: 0.92, boldness: 0.7, hue: 0.02 }, 1011],
+    ["The Grey Compact", { figuration: 0.2, saturation: 0.18, hue: 0.6 }, 2027],
+    ["Sunreach", { figuration: 0.6, symmetry: 0.85, tone: 0.82, hue: 0.13 }, 3041],
   ];
-  for (const [name, tr, seed] of founders) {
-    const chain = [foundGenome(seed, tr)];
+  for (const [name, ax, seed] of founders) {
+    const chain = [foundGenome(seed, ax)];
     for (let i = 1; i <= 5; i++) chain.push(inheritGenome(chain[i - 1], (seed * 31 + i * 7) >>> 0));
     sections.push({ row: chain, name });
   }
   // marshalling: cross two lineages
-  const a = foundGenome(1011, { aniconism: 0.1, martial: 0.7, hue: 0.02 });
-  const b = foundGenome(4059, { aniconism: 0.15, commerce: 0.7, hue: 0.55 });
+  const a = foundGenome(1011, { figuration: 0.92, boldness: 0.7, hue: 0.02 });
+  const b = foundGenome(4059, { figuration: 0.85, saturation: 0.7, hue: 0.55 });
   sections.push({ row: [a, b, crossGenome(a, b, 777)], name: "Union → marshalled child", labels: ["parent A", "parent B", "child"] });
 }
 
 if (MODE === "range" || MODE === "both") {
-  sections.push({ head: "One genome, every tradition — seeded from emergent state" });
+  sections.push({ head: "One abstract style-space — every pattern reachable by any realm, no cultural label" });
   const presets = [
-    ["Feudal", { aniconism: 0.08, martial: 0.7, develop: 0.3, hue: 0.02 }],
-    ["Aniconic", { aniconism: 0.92, develop: 0.6, hue: 0.34 }],
-    ["Steppe", { aniconism: 0.7, nomad: 0.9, hue: 0.08 }],
-    ["Divine empire", { aniconism: 0.15, centralised: 0.9, develop: 0.7, hue: 0.13 }],
-    ["Courtly badge", { aniconism: 0.3, refined: 0.92, develop: 0.8, hue: 0.55 }],
-    ["Maritime", { aniconism: 0.2, commerce: 0.8, develop: 0.6, hue: 0.55 }],
-    ["Martial horde", { aniconism: 0.12, martial: 0.9, nomad: 0.5, hue: 0.0 }],
-    ["Merchant republic", { aniconism: 0.25, commerce: 0.9, refined: 0.5, hue: 0.13 }],
+    ["Figured · ornate", { figuration: 0.9, ornateness: 0.8, hue: 0.02 }],
+    ["Abstract · muted", { figuration: 0.1, saturation: 0.15, hue: 0.6 }],
+    ["Bold · vivid", { figuration: 0.82, boldness: 0.95, saturation: 0.9, hue: 0.08 }],
+    ["Minimal · badge", { figuration: 0.5, ornateness: 0.1, format: 0.42, hue: 0.13 }],
+    ["Symmetric · light", { figuration: 0.6, symmetry: 0.9, tone: 0.85, hue: 0.55 }],
+    ["Dark · spare", { figuration: 0.4, tone: 0.1, saturation: 0.3, hue: 0.0 }],
+    ["Vivid · banner", { figuration: 0.72, format: 0.2, saturation: 0.85, hue: 0.45 }],
+    ["Muted · plain", { figuration: 0.22, saturation: 0.2, ornateness: 0.2, hue: 0.13 }],
   ];
   const row = [];
   presets.forEach(([nm, tr], i) => row.push({ g: foundGenome(5000 + i * 101, tr), nm }));

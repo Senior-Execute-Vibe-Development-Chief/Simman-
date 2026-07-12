@@ -1,10 +1,11 @@
 # Heraldry charge art — attribution
 
-The heraldry system draws ~140 charges from two open collections, recoloured to
-each shield's tincture. All field treatments (partitions, ordinaries, lines,
-semé), the aniconic geometric tilework (girih rosettes, khatam star lattices),
-the calligraphic bands and the steppe tamga are drawn procedurally and are
-original to this project.
+The heraldry system draws ~130 charges from two open collections, recoloured to
+each shield's tincture. The set is deliberately free of real-world **religious
+iconography** (no crosses, crescent, ankh, valknut, &c.). All field treatments
+(partitions, ordinaries, lines, semé), the geometric tilework (rosettes, star
+lattices), the calligraphic bands and the abstract brand glyph are drawn
+procedurally and are original to this project.
 
 ## Detailed charges — DrawShield
 

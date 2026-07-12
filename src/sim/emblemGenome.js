@@ -56,9 +56,9 @@ const ARRANGES    = ["single", "single", "three", "inPale", "seme"];
 // NON-LIVING (celestial, cross, geometry, plant, object — borne even by aniconic
 // faiths: a crescent, a cross, an arabesque). This split is what lets aniconism
 // mean "no living figures" rather than "no charge at all".
-const MOTIF_CATS  = ["beast", "bird", "mythic", "sea", "plant", "object", "celestial", "cross", "geometric"];
+const MOTIF_CATS  = ["beast", "bird", "mythic", "sea", "plant", "object", "celestial", "geometric"];
 const LIVING_CATS = new Set(["beast", "bird", "mythic", "sea"]);
-const NONLIVING_CATS = ["celestial", "cross", "geometric", "plant", "object"];
+const NONLIVING_CATS = ["celestial", "geometric", "plant", "object"];
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 const MOTIFS = {
   beast:  ["lion", "wolf", "boar", "bull", "bear", "horse", "ram", "stag", "elephant", "rabbit", "antelope", "camel", "tiger", "leopard", "fox", "greyhound", "hedgehog", "badger", "otter", "squirrel", "bee"],
@@ -67,9 +67,8 @@ const MOTIFS = {
   sea:    ["dolphin", "serpent", "mermaid", "fish", "pike", "salmon", "whale", "crab", "lobster", "shark", "escallop"],
   plant:  ["rose", "tree", "lotus", "thistle", "garb", "oak", "oakleaf", "olive", "palm", "lily", "cinquefoil", "quatrefoil", "trefoil", "sunflower", "iris", "poppy", "shamrock", "acorn", "vine", "grapes", "bamboo", "pineapple", "fleur"],
   object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "tower", "castle", "bell", "bugle", "clarion", "lute", "drum", "chalice", "amphora", "anvil", "hammer", "millrind", "scythe", "compass", "lantern", "lamp", "scroll", "mirror", "shears", "quill", "distaff", "axe", "halberd", "arrow", "arrows", "pheon", "trident", "spear", "bow", "cannon", "mace", "catherinewheel"],
-  celestial: ["sun", "moon", "crescent", "estoile", "comet"],
-  cross:  ["cross", "celticcross", "taucross", "patriarchal", "lorraine", "orthodox", "saltire", "ankh", "calatrava", "santiago", "triquetra"],
-  geometric: ["lozenge", "fusil", "roundel", "billet", "fret", "triskele", "valknut"],
+  celestial: ["sun", "moon", "estoile", "comet"],
+  geometric: ["lozenge", "fusil", "roundel", "billet", "fret", "triskele"],
 };
 
 const pickEnum = (v, arr) => arr[Math.min(arr.length - 1, Math.floor(v * arr.length))];
@@ -82,46 +81,39 @@ function randomGenes(seed) {
 }
 
 /**
- * foundGenome(seed, traits) — seed a genome from a realm's emergent state.
- * `traits` are 0..1 signals (any may be omitted → that gene stays random):
- *   aniconism   — a faith's aversion to figures  → drives iconism DOWN, toward
- *                 script/brand/geometry (the single biggest tradition divider)
- *   nomad       — pastoral/mobile subsistence     → toward the brand (tamga) look
- *   develop     — literacy/organisation            → toward banners & calligraphy,
- *                 away from the bare shield
- *   centralised — one divine monarchy vs many lords→ toward one central sacred beast
- *   refined     — a courtly, ordered aesthetic     → toward the radial monochrome badge
- *   martial, commerce — temperament               → palette & motif-category lean
- *   hue         — the stock's base hue (0..1)      → seeds the palette
- * The genes are the world's fingerprint; everything after is evolution.
+ * foundGenome(seed, axes) — a genome from a realm's seed, biased by ABSTRACT
+ * visual axes (all 0..1; any omitted → that gene stays seed-random).
+ *
+ * Deliberately, NO axis picks a composition or a charge CATEGORY: which tradition
+ * a realm expresses (heraldic beast, central device, radial badge, calligraphy,
+ * tamga, geometry, semé …) and which charge it bears come purely from the
+ * `composition`/`motifCat` genes and later evolution — so EVERY pattern is
+ * reachable by EVERY realm. There is no "nomads get a tamga", no cultural
+ * stereotype baked into the seed. The axes only shade abstract properties:
+ *   figuration — abstract ↔ living figures   → the iconism gene
+ *   ornateness — plain ↔ divided & bordered   → partition / border / stripes / arrange
+ *   boldness   — small ↔ dominant charge      → motif scale
+ *   saturation — muted ↔ vivid (mono at 0)    → chroma / secondary / palette mode
+ *   symmetry   — free ↔ mirrored              → the symmetry gene
+ *   tone       — dark ↔ light                 → the value gene
+ *   hue        — the field's base hue          → hueA / hueB
+ *   format     — shield ↔ banner ↔ badge      → substrate
  */
-export function foundGenome(seed, traits = {}) {
+export function foundGenome(seed, axes = {}) {
   const g = randomGenes(seed);
   const rng = prng((seed ^ 0x9e3779b9) >>> 0);
   const set = (name, v) => (g[IDX[name]] = clamp01(v));
   const nudge = (name, v, w) => (g[IDX[name]] = clamp01(g[IDX[name]] * (1 - w) + v * w));
-  const t = traits;
+  const a = axes;
 
-  if (t.aniconism != null) set("iconism", clamp01(1 - t.aniconism + bell(rng) * 0.12));
-  // composition lean, by priority: aniconic → script/brand/plain; centralised →
-  // one central beast; refined → radial badge; iconic → heraldic; nomad → brand.
-  let comp = null;
-  if (t.aniconism != null && t.aniconism > 0.6) comp = 0.43 + rng() * 0.4;              // script..plain
-  else if (t.centralised != null && t.centralised > 0.6) comp = 0.16 + rng() * 0.1;     // central
-  else if (t.refined != null && t.refined > 0.6) comp = 0.30 + rng() * 0.1;             // radial
-  else if (t.aniconism != null && t.aniconism < 0.4) comp = rng() < 0.85 ? rng() * 0.14 : 0.87 + rng() * 0.12; // heraldic/seme
-  if (t.nomad != null && t.nomad > 0.55) comp = 0.58 + rng() * 0.12;                    // brand (overrides)
-  if (comp != null) set("composition", comp);
-  // substrate: developed realms fly banners; refined ones a roundel badge
-  if (t.develop != null) nudge("substrate", t.develop > 0.5 ? 0.2 : 0.02, 0.5);            // banner / shield
-  if (t.refined != null && t.refined > 0.6) set("substrate", 0.36);                        // roundel
-  // palette mode: aniconic→often monochrome/earth; centralised→imperial
-  if (t.aniconism != null && t.aniconism > 0.6) nudge("paletteMode", t.refined > 0.5 ? 0.3 : 0.85, 0.6); // mono / earth
-  if (t.centralised != null && t.centralised > 0.6) set("paletteMode", 0.6);               // imperial
-  if (t.hue != null) { set("hueA", wrap01(t.hue + bell(rng) * 0.05)); set("hueB", wrap01(t.hue + 0.5 + bell(rng) * 0.1)); }
-  // temperament: martial → beasts + bold; commerce → objects + gold
-  if (t.martial != null && t.martial > 0.55) { nudge("motifCat", 0.05, 0.5); nudge("value", 0.35, 0.3); }
-  if (t.commerce != null && t.commerce > 0.55) nudge("motifCat", 0.95, 0.4);               // object
+  if (a.figuration != null) set("iconism", clamp01(a.figuration + bell(rng) * 0.12));
+  if (a.ornateness != null) { nudge("partition", a.ornateness, 0.55); nudge("border", a.ornateness, 0.4); nudge("stripes", a.ornateness, 0.3); nudge("arrange", a.ornateness * 0.85, 0.4); }
+  if (a.boldness != null) nudge("motifScale", 0.35 + a.boldness * 0.6, 0.6);
+  if (a.saturation != null) { set("chroma", clamp01(a.saturation + bell(rng) * 0.1)); nudge("secondary", a.saturation, 0.4); if (a.saturation < 0.18) nudge("paletteMode", 0.3, 0.55); }
+  if (a.symmetry != null) nudge("symmetry", a.symmetry, 0.6);
+  if (a.tone != null) set("value", clamp01(a.tone + bell(rng) * 0.1));
+  if (a.hue != null) { set("hueA", wrap01(a.hue + bell(rng) * 0.05)); set("hueB", wrap01(a.hue + 0.5 + bell(rng) * 0.1)); }
+  if (a.format != null) nudge("substrate", a.format, 0.6);
 
   return { genes: g, gen: 0, seed: seed >>> 0 };
 }
@@ -180,6 +172,11 @@ function hsl(h, s, l) {
 const GOLD = [0xd7, 0xb0, 0x45], SILVER = [0xe9, 0xe7, 0xdd], INK = [0x22, 0x1f, 0x27], BONE = [0xf1, 0xec, 0xdd];
 
 const lum = rgb => (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+// pick, from options, the colour whose luminance is furthest from a background —
+// so an overlaid mark or charge always READS (never same-on-same).
+function contrastPick(bg, options) { let best = options[0], bd = -1; for (const c of options) { const d = Math.abs(lum(bg) - lum(c)); if (d > bd) { bd = d; best = c; } } return best; }
+// nearest-luminance distance to any of a set of backgrounds
+const minDist = (c, bgs) => Math.min(...bgs.map(b => Math.abs(lum(b) - lum(c))));
 function decodePalette(get) {
   const mode = pickEnum(get("paletteMode"), PALETTES);
   const hA = get("hueA"), hB = get("hueB"), chroma = get("chroma"), val = get("value");
@@ -222,11 +219,10 @@ export function expressGenome(genome) {
   const field = { partition, tinctures: [pal.field, pal.companion],
     line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
 
-  // motif — a figurative composition carries a charge. ANICONISM does NOT empty
-  // the field; it forbids LIVING figures. So an aniconic realm keeps its charge
-  // but a living category (beast/bird/mythic/sea) is remapped to a non-living one
-  // — a crescent, a cross, a star, an arabesque, an object — exactly as aniconic
-  // heraldry actually works. Only the abstract compositions carry no charge.
+  // motif — a figurative composition carries a charge. Low iconism forbids LIVING
+  // figures, so a living category (beast/bird/mythic/sea) is remapped to a
+  // non-living one (celestial / geometric / plant / object). Only the abstract
+  // compositions carry no charge.
   let motif = null;
   const figuralComp = ["heraldic", "central", "radial", "seme"].includes(composition);
   if (figuralComp) {
@@ -238,14 +234,18 @@ export function expressGenome(genome) {
     const id = pool[Math.min(pool.length - 1, Math.floor(get("motifIdx") * pool.length))];
     let arrange = composition === "central" || composition === "radial" ? "single"
       : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
-    motif = { id, cat, tincture: pal.charge,
+    // charge tincture must READ over EVERY tincture it sits on — for a DIVIDED
+    // heraldic field that means both halves, not just the base (no metal-on-metal).
+    let tincture = pal.charge;
+    const bgs = partition !== "plain" ? field.tinctures : [pal.field];
+    if (minDist(tincture, bgs) < 0.3) tincture = [INK, BONE, GOLD].reduce((best, c) => minDist(c, bgs) > minDist(best, bgs) ? c : best);
+    motif = { id, cat, tincture,
       count: arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
       scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5) * (0.75 + get("motifScale") * 0.5) };
   }
 
-  // geometry — the "plain" composition is not a bare field: it is aniconic
-  // TILEWORK (a girih rosette or a star lattice), the geometric tradition that
-  // stands in for a figure where figures are shunned.
+  // geometry — the "plain" composition is not a bare field: it is geometric
+  // TILEWORK (a rosette or a star lattice).
   let geometry = null;
   if (composition === "plain") {
     geometry = {
@@ -255,12 +255,16 @@ export function expressGenome(genome) {
     };
   }
 
+  // ornaments — a single small CANTON mark (top-dexter), only on compositions with
+  // room for it, in a contrast-guaranteed colour so it never vanishes into the
+  // field. No centred disc (it used to cover the device); no figure over a figure.
+  const cantonOK = composition === "heraldic" || composition === "brand" || composition === "script";
   const ornaments = {
     border: get("border") > 0.5 || composition === "central",
-    pearl: composition === "central" && get("pearl") > 0.5,
-    sunDisc: get("sunDisc") > 0.62 && composition !== "plain",
-    star: get("star") > 0.6 && composition !== "plain",
-    crescent: composition === "script" && get("crescent") > 0.45,
+    cornerAccent: composition === "central" && get("pearl") > 0.5,           // small disc, clear of the device
+    canton: cantonOK && get("star") > 0.62,
+    cantonKind: get("sunDisc") > 0.5 ? "sun" : "star",
+    cantonColor: contrastPick(pal.field, [pal.accent, pal.charge, GOLD, BONE, INK]),
     scriptDensity: 0.4 + get("scriptDensity") * 0.6,
     brandSeed: Math.floor(get("brandSeed") * 1e6),
   };
