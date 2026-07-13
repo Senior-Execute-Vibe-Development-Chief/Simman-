@@ -190,29 +190,126 @@ function hsl(h, s, l) {
 }
 const GOLD = [0xd7, 0xb0, 0x45], SILVER = [0xe9, 0xe7, 0xdd], INK = [0x22, 0x1f, 0x27], BONE = [0xf1, 0xec, 0xdd];
 
-const lum = rgb => (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
-// pick, from options, the colour whose luminance is furthest from a background —
-// so an overlaid mark or charge always READS (never same-on-same).
-function contrastPick(bg, options) { let best = options[0], bd = -1; for (const c of options) { const d = Math.abs(lum(bg) - lum(c)); if (d > bd) { bd = d; best = c; } } return best; }
-// nearest-luminance distance to any of a set of backgrounds
-const minDist = (c, bgs) => Math.min(...bgs.map(b => Math.abs(lum(b) - lum(c))));
+// ── the TINCTURE system ──────────────────────────────────────────────────────
+// Heraldry's palette is TYPED: metals are the light class, colours the dark,
+// stains the dark off-hues. The rule of tincture — no colour on colour, no
+// metal on metal — is at bottom a lightness-class opposition that guarantees
+// any mark reads on its ground. So contrast is never CHECKED after the fact:
+// it is CONSTRUCTED — a mark's tincture is picked from the class opposite
+// whatever it lies on — and the small, well-spread named palette makes any
+// two named tinctures mutually distinct for free.
+export const TINCTURES = {
+  or:       { kind: "metal",  rgb: GOLD },
+  argent:   { kind: "metal",  rgb: SILVER },
+  gules:    { kind: "colour", rgb: [0xa5, 0x1d, 0x2d] },
+  azure:    { kind: "colour", rgb: [0x2b, 0x4a, 0x8f] },
+  vert:     { kind: "colour", rgb: [0x2d, 0x6e, 0x41] },
+  sable:    { kind: "colour", rgb: INK },
+  purpure:  { kind: "colour", rgb: [0x6b, 0x37, 0x80] },
+  murrey:   { kind: "stain",  rgb: [0x73, 0x2b, 0x4b] },
+  sanguine: { kind: "stain",  rgb: [0x86, 0x31, 0x2a] },
+  tenne:    { kind: "stain",  rgb: [0xa8, 0x67, 0x25] },
+};
+const T_NAMES = Object.keys(TINCTURES);
+const METALS = T_NAMES.filter(n => TINCTURES[n].kind === "metal");
+const DARKS = T_NAMES.filter(n => TINCTURES[n].kind !== "metal");   // colours + stains
+
+// OKLab — perceptual colour space, so distances match what the eye sees
+function oklab([r, g, b]) {
+  const f = u => { u /= 255; return u <= 0.04045 ? u / 12.92 : ((u + 0.055) / 1.055) ** 2.4; };
+  const R = f(r), G = f(g), B = f(b);
+  const l = Math.cbrt(0.41222147 * R + 0.53633254 * G + 0.05144599 * B);
+  const m = Math.cbrt(0.2119035 * R + 0.68069955 * G + 0.10739696 * B);
+  const s = Math.cbrt(0.08830246 * R + 0.28171884 * G + 0.6299787 * B);
+  return [0.21045426 * l + 0.79361779 * m - 0.00407205 * s,
+    1.9779985 * l - 2.42859221 * m + 0.45059371 * s,
+    0.02590404 * l + 0.78277177 * m - 0.80867577 * s];
+}
+const dE = (a, b) => { const A = oklab(a), B = oklab(b); return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]); };
+const T_LAB = {}; for (const n of T_NAMES) T_LAB[n] = oklab(TINCTURES[n].rgb);
+
+function nearestTincture(rgb, names) {
+  const p = oklab(rgb); let best = names[0], bd = Infinity;
+  for (const n of names) { const L = T_LAB[n], d = Math.hypot(p[0] - L[0], p[1] - L[1], p[2] - L[2]); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+const T = name => ({ name, kind: TINCTURES[name].kind, rgb: TINCTURES[name].rgb });
+// the light/dark boundary the palette itself implies (midway, in OKLab
+// lightness, between the darkest metal and the lightest non-metal) — used to
+// type the CONTINUOUS colours of the non-heraldic palette modes
+const CLASS_L = (Math.min(...METALS.map(n => T_LAB[n][0])) + Math.max(...DARKS.map(n => T_LAB[n][0]))) / 2;
+const P = rgb => ({ name: nearestTincture(rgb, T_NAMES), kind: oklab(rgb)[0] > CLASS_L ? "metal" : "colour", rgb });
+const classOf = t => (t.kind === "metal" ? "metal" : "dark");
+
+// What a mark WEARS follows from what it LIES ON — the rule of tincture as a
+// constructive rule, not a post-hoc contrast fix:
+//  · a uniform-class ground of GENUINE named tinctures: pick from the OPPOSITE
+//    class — the hue gene chooses freely inside the pool, because the named
+//    palette's classes are well-separated by design, so opposition alone
+//    guarantees the mark reads;
+//  · anything else (a party of colour and metal, where the rule is silent, or
+//    a CONTINUOUS colour from a non-heraldic mode, where the class boundary
+//    proves nothing): pick the candidate farthest, in OKLab, from its nearest
+//    ground tincture. An argmax needs no threshold, and a candidate equal to a
+//    ground scores zero, so it can never be picked over a distinct one.
+// `poles` lets a two-pole tradition offer its own colours as first-preference
+// candidates (ties break to them), so its marks stay mode-coherent whenever
+// its poles genuinely read.
+function tinctureOn(grounds, hue, val, poles = []) {
+  const genuine = grounds.every(g => TINCTURES[g.name] && TINCTURES[g.name].rgb === g.rgb);
+  if (genuine && new Set(grounds.map(classOf)).size === 1) {
+    const pool = classOf(grounds[0]) === "metal" ? DARKS : METALS;
+    return T(nearestTincture(hsl(hue, 0.55, 0.25 + val * 0.5), pool));
+  }
+  let best = null, bd = -1;
+  for (const c of [...poles, ...T_NAMES.map(T)]) {
+    const d = Math.min(...grounds.map(g => dE(c.rgb, g.rgb)));
+    if (d > bd) { bd = d; best = c; }
+  }
+  return best;
+}
+
 function decodePalette(get) {
   const mode = pickEnum(get("paletteMode"), PALETTES);
   const hA = get("hueA"), hB = get("hueB"), chroma = get("chroma"), val = get("value");
-  let field, companion, charge, accent = GOLD;
+  // a mark in a two-pole tradition takes whichever pole sits farther from the
+  // field — the same constructive pick, over a two-member palette
+  const farPole = (bg, a, b) => (dE(bg, a.rgb) >= dE(bg, b.rgb) ? a : b);
+  let fieldT, companionT, chargeT, accentT, poles = [];
   if (mode === "monochrome") {
-    const inv = val > 0.5; field = inv ? INK : BONE; companion = inv ? BONE : INK; charge = inv ? BONE : INK;
+    // ink and bone are, in tincture terms, sable and argent — typed so the
+    // class rules see them
+    const inkT = P(INK), boneT = P(BONE), inv = val > 0.5;
+    fieldT = inv ? inkT : boneT; companionT = chargeT = accentT = inv ? boneT : inkT;
+    poles = [inkT, boneT];
   } else if (mode === "imperial") {
-    field = hsl(hA, 0.55 + chroma * 0.35, 0.42 + val * 0.12); companion = GOLD; charge = GOLD; accent = [0xc0, 0x39, 0x2b];
+    fieldT = P(hsl(hA, 0.55 + chroma * 0.35, 0.42 + val * 0.12));
+    poles = [T("or"), P(INK)];
+    chargeT = companionT = farPole(fieldT.rgb, poles[0], poles[1]);   // gold on silk; ink if the silk runs light
+    accentT = P([0xc0, 0x39, 0x2b]);
   } else if (mode === "earth") {
-    field = hsl(0.06 + hA * 0.12, 0.25 + chroma * 0.2, 0.46 + val * 0.14); companion = [0x3a, 0x2e, 0x22]; charge = [0x2b, 0x24, 0x1c]; accent = BONE;
-  } else {                                       // heraldic: a colour field + a metal
-    field = hsl(hA, 0.5 + chroma * 0.35, 0.34 + val * 0.14); const metal = val > 0.5 ? GOLD : SILVER;
-    companion = get("secondary") > 0.5 ? hsl(hB, 0.5 + chroma * 0.3, 0.36) : metal; charge = metal; accent = metal;
+    fieldT = P(hsl(0.06 + hA * 0.12, 0.25 + chroma * 0.2, 0.46 + val * 0.14));
+    companionT = P([0x3a, 0x2e, 0x22]);
+    poles = [P([0x2b, 0x24, 0x1c]), P(BONE)];
+    chargeT = farPole(fieldT.rgb, poles[0], poles[1]);
+    accentT = P(BONE);
+  } else {
+    // heraldic: the genome's continuous colour INTENT, quantised to the nearest
+    // named tincture — a pale dull intent lands argent, a warm light one or, so
+    // METAL FIELDS (bearing colour charges) emerge exactly where the genes
+    // imply them; stains sit in narrow off-hue pockets and stay naturally rare
+    fieldT = T(nearestTincture(hsl(hA, 0.25 + chroma * 0.65, 0.18 + val * 0.62), T_NAMES));
+    chargeT = tinctureOn([fieldT], hB, val);
+    // the partition companion: a second dark beside a dark field when the
+    // secondary gene asks for one (colour-and-colour parties are lawful), else
+    // the opposite class — the classic party of colour and metal
+    companionT = classOf(fieldT) === "dark" && get("secondary") > 0.5
+      ? T(nearestTincture(hsl(hB, 0.55, 0.25 + val * 0.4), DARKS.filter(n => n !== fieldT.name)))
+      : chargeT;
+    accentT = chargeT;
   }
-  // contrast guard — the motif must READ on the field (no gold-on-gold)
-  if (Math.abs(lum(field) - lum(charge)) < 0.32) charge = lum(field) > 0.5 ? INK : SILVER;
-  return { mode, field, companion, charge, accent, ink: INK };
+  return { mode, field: fieldT.rgb, companion: companionT.rgb, charge: chargeT.rgb, accent: accentT.rgb,
+    ink: INK, fieldT, companionT, chargeT, accentT, poles };
 }
 
 // ── genotype → phenotype ─────────────────────────────────────────────────────
@@ -240,20 +337,34 @@ export function expressGenome(genome) {
   // symmetry) so no genome grows — the depth was latent in the vector.
   let partition = composition === "heraldic" ? pickEnum(get("partition"), PARTITIONS) : "plain";
   const tinctures = [pal.field, pal.companion];
-  const field = { partition, tinctures, line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
+  const field = { partition, tinctures, names: [pal.fieldT.name, pal.companionT.name],
+    line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
+  // the typed GROUND any mark over this field lies on
+  let grounds = partition === "plain" ? [pal.fieldT] : [pal.fieldT, pal.companionT];
+  const TWO_REGION = ["perPale", "perFess", "perBend"];
+  // a fur drapes the WHOLE field (so no partition/counterchange under it) — and
+  // it IS the ground: ermine reads as argent strewn with sable, vair as
+  // argent-and-azure, so marks pick against those, not the colour they replaced
+  if (composition === "heraldic" && get("crescent") > 0.74) {
+    field.fur = get("value") > 0.5 ? "ermine" : "vair";
+    field.partition = partition = "plain";
+    grounds = field.fur === "ermine" ? [T("argent")] : [T("argent"), T("azure")];
+    field.names = grounds.length === 2 ? [grounds[0].name, grounds[1].name] : [grounds[0].name, grounds[0].name];
+  }
+  // the tincture any mark lying on this field wears — chargeT was constructed
+  // against the plain field; every other ground (a party, a fur) re-derives
+  const markT = grounds.length === 1 && grounds[0] === pal.fieldT ? pal.chargeT
+    : tinctureOn(grounds, get("hueB"), get("value"), pal.poles);
+  const mixedGround = new Set(grounds.map(g => g.kind === "metal" ? "metal" : "dark")).size > 1;
   if (composition === "heraldic") {
-    // a fur drapes the WHOLE field (so no partition/counterchange under it)
-    if (get("crescent") > 0.74) { field.fur = get("value") > 0.5 ? "ermine" : "vair"; field.partition = partition = "plain"; }
-    // an ordinary / chief / bordure in a tincture that reads over BOTH field tinctures
-    const ordTinc = minDist(pal.charge, tinctures) >= 0.3 ? pal.charge
-      : [INK, BONE, GOLD].reduce((best, c) => minDist(c, tinctures) > minDist(best, tinctures) ? c : best);
     field.ordinary = pickEnum(get("hueC"), ORDINARIES);
-    field.ordinaryTincture = ordTinc;
+    field.ordinaryTincture = markT.rgb;
+    field.ordinaryName = markT.name;
     field.chief = get("pearl") > 0.66;
     field.bordure = get("border") > 0.62;
-    field.subTincture = ordTinc;                       // chief/bordure share the reading tincture
+    field.subTincture = markT.rgb;                     // chief/bordure share the reading tincture
     // counterchange the ordinary across a two-region partition (per pale/fess/bend)
-    field.counterchange = !field.fur && ["perPale", "perFess", "perBend"].includes(partition) && get("symmetry") > 0.6;
+    field.counterchange = !field.fur && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
   }
 
   // motif — a figurative composition carries a charge. Low iconism forbids LIVING
@@ -274,12 +385,13 @@ export function expressGenome(genome) {
     const id = pool[Math.min(pool.length - 1, Math.floor(get("motifIdx") * pool.length))];
     let arrange = composition === "central" || composition === "radial" ? "single"
       : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
-    // charge tincture must READ over EVERY tincture it sits on — for a DIVIDED
-    // heraldic field that means both halves, not just the base (no metal-on-metal).
-    let tincture = pal.charge;
-    const bgs = partition !== "plain" ? field.tinctures : [pal.field];
-    if (minDist(tincture, bgs) < 0.3) tincture = [INK, BONE, GOLD].reduce((best, c) => minDist(c, bgs) > minDist(best, bgs) ? c : best);
-    motif = { id, cat, tincture,
+    // the charge WEARS what its ground dictates (tinctureOn — the rule of
+    // tincture, constructed); over a mixed two-region party it may instead be
+    // COUNTERCHANGED — painted in the field's own tinctures, swapped across
+    // the line, heraldry's own answer to a ground no one tincture can read on
+    const counterchange = composition === "heraldic" && !field.fur && mixedGround
+      && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
+    motif = { id, cat, tincture: markT.rgb, tinctureName: markT.name, counterchange,
       count: arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
       scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5) * (0.75 + get("motifScale") * 0.5) };
   }
@@ -308,7 +420,8 @@ export function expressGenome(genome) {
     cornerAccent: composition === "central" && get("pearl") > 0.5,           // small disc, clear of the device
     canton: cantonOK && get("star") > 0.62,
     cantonKind: get("sunDisc") > 0.5 ? "sun" : "star",
-    cantonColor: contrastPick(pal.field, [pal.accent, pal.charge, GOLD, BONE, INK]),
+    cantonColor: markT.rgb,                     // the canton lies on the field: it wears markT
+
     scriptDensity: 0.4 + get("scriptDensity") * 0.6,
     brandSeed: Math.floor(get("brandSeed") * 1e6),
   };
@@ -353,13 +466,12 @@ export function describeGenome(genome) {
   const bits = [p.composition, p.substrate, p.colors.mode];
   if (p.composition === "heraldic") {
     const f = p.field;
-    if (f.fur) bits.push(f.fur);
-    if (f.partition !== "plain") bits.push(f.partition);
-    if (f.ordinary && f.ordinary !== "none") bits.push((f.counterchange ? "counterchanged " : "") + f.ordinary + (f.line !== "straight" ? " " + f.line : ""));
+    bits.push(f.fur ? f.fur : f.partition !== "plain" ? `${f.partition} ${f.names[0]}·${f.names[1]}` : f.names[0]);
+    if (f.ordinary && f.ordinary !== "none") bits.push((f.counterchange ? "counterchanged " : "") + f.ordinary + " " + f.ordinaryName + (f.line !== "straight" ? " " + f.line : ""));
     if (f.chief) bits.push("chief");
     if (f.bordure) bits.push("bordure");
   }
-  if (p.motif) bits.push(p.motif.id + (p.motif.count > 1 ? `×${p.motif.count}` : ""));
+  if (p.motif) bits.push(p.motif.id + (p.motif.count > 1 ? `×${p.motif.count}` : "") + " " + (p.motif.counterchange ? "counterchanged" : p.motif.tinctureName));
   else if (p.composition === "script") bits.push("calligraphy");
   else if (p.composition === "brand") bits.push("tamga");
   else if (p.composition === "plain") bits.push(p.geometry.mode === "lattice" ? "star-lattice" : "rosette");

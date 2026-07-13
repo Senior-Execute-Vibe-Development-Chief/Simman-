@@ -331,7 +331,18 @@ function emblemInner(genome, aw, ah) {
   if (p.composition === "heraldic") {
     content += fieldSVG(w, h, p.field);
     content += heraldicOverlay(w, h, p.field, sh, base);
-    if (p.motif) content += placeMotif(p.motif, w, h, p.substrate);
+    if (p.motif && p.motif.counterchange) {
+      // a counterchanged charge wears the field's own tinctures SWAPPED across
+      // the partition line — each half of the charge in the other half's tincture
+      const [ta, tb] = p.field.tinctures;
+      const cA = `mc${uid++}`, cB = `mc${uid++}`;
+      content += `<clipPath id="${cA}"><path d="${partitionRegion(p.field.partition, w, h, 0)}"/></clipPath>`
+        + `<clipPath id="${cB}"><path d="${partitionRegion(p.field.partition, w, h, 1)}"/></clipPath>`
+        + `<g clip-path="url(#${cA})">${placeMotif({ ...p.motif, tincture: tb }, w, h, p.substrate)}</g>`
+        + `<g clip-path="url(#${cB})">${placeMotif({ ...p.motif, tincture: ta }, w, h, p.substrate)}</g>`;
+    } else if (p.motif) {
+      content += placeMotif(p.motif, w, h, p.substrate);
+    }
   } else {
     content += `<rect width="${w}" height="${h}" fill="${css(C.field)}"/>`;
     if (p.composition === "central" && p.motif) {
