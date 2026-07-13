@@ -1422,6 +1422,11 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
 function closeRealmGaps(world, co, D) {
   if (!(D > 0)) return;
   const { N, tw, th, elev } = world;
+  // T.REALM_GAP_FILL is REFERENCE-tiles: the fillable no-man's-land is a real
+  // width, so it scales like every other distance here (×resScale; audit 2026-07 —
+  // it was raw tiles, so the shipped 960 grid closed gaps of only HALF the real
+  // width the validated 240-tile reference did). ×1 exactly at the reference.
+  D = D * resScaleFor(tw);
   // Per tile, the nearest country AND its distance looking W / E / N / S — with
   // wilderness transparent and water opaque (a ray dies at the coast).
   let buf = world._gapBuf;

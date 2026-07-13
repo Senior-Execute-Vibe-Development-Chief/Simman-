@@ -594,6 +594,7 @@ export function advanceFronts(world) {
 
   const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   const natArmy = new Map();    // countryId → Σ raw garrison (for the adapter's army + casualty reconcile)
+  const natNomadW = new Map();  // countryId → Σ garrison × _nomad (army-weighted cavalry share, for the adapter's techMul)
   const membersOf = TILE_WAR ? new Map() : null;   // countryId → member settlements (casualty distribution)
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -603,6 +604,7 @@ export function advanceFronts(world) {
     if (s.countryId >= 0) {
       natMight.set(s.countryId, (natMight.get(s.countryId) || 0) + s._M);
       natArmy.set(s.countryId, (natArmy.get(s.countryId) || 0) + (s.army || 0));
+      natNomadW.set(s.countryId, (natNomadW.get(s.countryId) || 0) + (s.army || 0) * (s._nomad || 0));
       if (membersOf) { let a = membersOf.get(s.countryId); if (!a) membersOf.set(s.countryId, a = []); a.push(s); }
     }
   }
@@ -627,6 +629,10 @@ export function advanceFronts(world) {
         loyalty: cap.loyalty ?? 1, unrest: cap.unrest || 0,
         _conqueredAt: cap._conqueredAt ?? -Infinity, _ambition: cap._ambition || 0,
         _armyStart: natArmy.get(cc) || 0,
+        // Army-weighted cavalry share, so techMul(adapter) keeps the steppe
+        // multiplier its own _M already bakes in per member (it silently read
+        // `adapter._nomad` as undefined → nomad realms bled extra attrition).
+        _nomad: (natArmy.get(cc) || 0) > 0 ? (natNomadW.get(cc) || 0) / natArmy.get(cc) : 0,
       });
     }
     own = adapters;
@@ -646,6 +652,17 @@ export function advanceFronts(world) {
       ad._projHalf = WAR_REACH * (1 + PROJ_LOGI * logi) * rs;
     }
   }
+  // War-rate resolution invariance (audit 2026-07): the tile-capture budget is an
+  // AREA rate. The war pass fires at a FIXED tick cadence (index.js — unlike the
+  // territory pass, which thins by rNorm), so holding real km² conquered per unit
+  // history constant across grids needs exactly ×resScale² on the budget — the
+  // missing peer of EXPAND_RATE's ×resScale³ (which also absorbs its thinned
+  // cadence). Momentum banked and front-displacement (stalemate EMA) are then
+  // ÷r2War back into REFERENCE-tile units, so MOMENTUM_CAP and STALE_EPS keep one
+  // meaning at every grid. r2War = 1 at the validated 240-tile reference (480px
+  // probes) — byte-identical there; corrects the shipped 960 (war swept real area
+  // at ¼ the validated rate) and the 320 smoke grid (9/4× — re-keys those hashes).
+  const r2War = resScaleFor(tw) ** 2;
   const projOf = (S, ti) => {
     const H = S._projHalf;
     if (!(WAR_REACH > 0) || !(H > 0)) return 1;
@@ -788,6 +805,13 @@ export function advanceFronts(world) {
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
     // (factors hoisted verbatim — same call sequence, same IEEE product chain — so the
     // throughput instrumentation below can attribute a rejection without re-deriving)
+    // NB (audit 2026-07): under TILE_WAR the tileOwner arg is the country ADAPTER,
+    // which has no culMix — casusBelliMul's IRREDENTIST term (the contested
+    // province's own people are the attacker's nation) reads 0, i.e. that term is
+    // INERT in the default mode. The honest local read needs the per-tile identity
+    // field, which today is a render-only lens mirror (identityField.js "nothing
+    // reads the field") — wiring it in is an open item; passing the defender's
+    // capital instead would be linearly redundant with the base people term.
     const _wb = warBarOf(A.countryId), _cs = casusOf(A.countryId, D.countryId, D),
           _cl = claimBarOf(A.countryId, D.countryId), _db = domBarOf(A.countryId),
           _cb = coalitionBarOf(A.countryId, D.countryId);
@@ -876,6 +900,8 @@ export function advanceFronts(world) {
         const key = acc + ":" + dcc;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(acc, dcc);
+        // (tileOwner = adapter here too — the irredentist casus term is inert under
+        // TILE_WAR; see the land-scan note above.)
         const _wb = warBarOf(acc), _cs = casusOf(acc, dcc, D), _cl = claimBarOf(acc, dcc),
               _db = domBarOf(acc), _cb = coalitionBarOf(acc, dcc);
         const bar = D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * _wb * _cs * _cl * _db * _cb;
@@ -1496,9 +1522,17 @@ export function advanceFronts(world) {
           // it is ENSLAVED rises with the victor's market — sub-linearly (the dealers who
           // followed the legions bought what they could carry, not the whole city).
           if (T.SLAVERY && T.CAPTURE_FRAC > 0 && (dS.people || 0) > 0) {
-            const taken = (dS.people || 0) * Math.min(0.5, T.CAPTURE_FRAC * Math.sqrt(slavePull(world, att)));
-            recordCaptives(att, dS, taken);   // the carried-off carry who they are (SLAVE_PEOPLE)
-            dS.people -= taken; att._captives = (att._captives || 0) + taken;
+            // The CAPTOR is a real settlement — under TILE_WAR `att` is the transient
+            // per-pass adapter, and writing the captives to it discarded them at end of
+            // pass: war supplied ZERO slaves and ~CAPTURE_FRAC of every stormed
+            // capital's people vanished (a conservation leak). Mirror the dS pattern
+            // (def→def._capital): the victor's CAPITAL takes the captives, and the
+            // slave-market pull is read at that capital's own trade component (the
+            // adapter's id is a countryId — the wrong key space for _slaveScarcity).
+            const captor = TILE_WAR ? att._capital : att;
+            const taken = (dS.people || 0) * Math.min(0.5, T.CAPTURE_FRAC * Math.sqrt(slavePull(world, captor)));
+            recordCaptives(captor, dS, taken);   // the carried-off carry who they are (SLAVE_PEOPLE)
+            dS.people -= taken; captor._captives = (captor._captives || 0) + taken;
           }
           dS.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
           dS._ambition = 0;    // a freshly subdued city isn't plotting (yet)
@@ -1540,13 +1574,14 @@ export function advanceFronts(world) {
       // decides how far the border bulges, ∝ the winning margin adv−1); no direct tile grab.
       if (pc.tiles.length) {
         for (const p of pc.tiles) { const cti = p.ti; if (owner[cti] === def.id) { warFront[cti] = att.id; warAdv[cti] = adv - 1; } }
-        bankMomentum(world, att.countryId, Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap) * MOMENTUM_PER_TILE);
-        bumpMove(att.countryId, def.countryId, (adv - 1) * Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap));   // field pressure = signed displacement
+        const capT = Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap * r2War);
+        bankMomentum(world, att.countryId, (capT / r2War) * MOMENTUM_PER_TILE);
+        bumpMove(att.countryId, def.countryId, (adv - 1) * (capT / r2War));   // field pressure = signed displacement (reference-tile units)
       }
       { const dAtt = Math.min(att.army || 0, def._M * pjD * T.ATTRITION / techMul(att)); const dDef = Math.min(def.army || 0, att._M * pjA * T.ATTRITION / techMul(def)); att.army = (att.army || 0) - dAtt; def.army = (def.army || 0) - dDef; tallyDead(world, att.countryId, def.countryId, dAtt + dDef); }
       continue;
     }
-    const budget = Math.min(Math.round(T.MAX_CAPTURE * domCap), Math.floor((adv - 1) * CAPTURE_SCALE * domCap));
+    const budget = Math.min(Math.round(T.MAX_CAPTURE * domCap * r2War), Math.floor((adv - 1) * CAPTURE_SCALE * domCap * r2War));
     if (budget >= 1 && pc.tiles.length) {
       // Advance the front BROADLY: take the outermost contested tiles first
       // so the defender's countryside erodes ring by ring (visible) instead
@@ -1567,8 +1602,8 @@ export function advanceFronts(world) {
         if (T.GRIEV_LEDGER && world.popField) feedGrievance(world, def.countryId, att.countryId, world.popField[cti]);
       }
       if (captured > 0) {
-        bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
-        bumpMove(att.countryId, def.countryId, captured);                    // signed displacement: nets against the counter-front's captures
+        bankMomentum(world, att.countryId, (captured / r2War) * MOMENTUM_PER_TILE);   // captured countryside feeds the streak (reference-tile units)
+        bumpMove(att.countryId, def.countryId, captured / r2War);                      // signed displacement: nets against the counter-front's captures
       }
     }
     {
