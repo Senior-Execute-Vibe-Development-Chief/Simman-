@@ -1744,6 +1744,10 @@ console.log("\n── Multi-clause ──");
   // ── F2 complement clauses ──
   const comp = renderClause(l0, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { comp: { s: { n: WOLF }, v: { c: GO, tam: "pst" }, o: { n: RIVER } } } });
   check(`complement clause: a COMP token in the object slot, gloss-aligned (${comp.gloss})`, A(comp) && /COMP/.test(comp.gloss));
+  // a clausal complement makes the verb transitive but leaves NO NP object — a
+  // polypersonal (agree:"both") language must not try to index it
+  const bothL = all.filter(l => gramOf(l).agree === "both").slice(0, 40);
+  check(`a clausal complement never crashes object agreement (${bothL.length} polypersonal langs)`, bothL.length > 0 && bothL.every(l => { const c = renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { comp: { s: { n: WOLF }, v: { c: GO, tam: "pst" } } } }); return A(c) && /COMP/.test(c.gloss); }));
   check(`clause-final complementizer implies OV (${Math.round(rate(all.filter(l => gramOf(l).compzPos === "final"), ov) * 100)}%)`, rate(all.filter(l => gramOf(l).compzPos === "final"), ov) >= 0.8);
   const cS = rate(all, l => gramOf(l).compzSrc === "say"), cD = rate(all, l => gramOf(l).compzSrc === "dem"), cW = rate(all, l => gramOf(l).compzSrc === "wh");
   check(`complementizer sources say/dem/wh each occur, SAY over-represented in iso (say ${Math.round(cS * 100)}% dem ${Math.round(cD * 100)}% wh ${Math.round(cW * 100)}%)`, cS > 0.08 && cD > 0.08 && cW > 0.08 && rate(byMorph.iso, l => gramOf(l).compzSrc === "say") > cS);

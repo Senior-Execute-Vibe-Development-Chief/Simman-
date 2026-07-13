@@ -2433,8 +2433,9 @@ export function renderClause(lang, frame, opts = {}) {
   const agreePers = !imperative && g.agree !== "none" ? String(argPers(agreeArg)) : null;
   const agNum = argNum(agreeArg);
   // polypersonal object index — but don't ALSO index O when agreement already
-  // went to O (abs-agree / inverse)
-  const objPers = !imperative && g.agree === "both" && trans && !oArg.wh && agreeArg === sArg ? "3" : null;
+  // went to O (abs-agree / inverse), and never index a CLAUSAL object (o.comp,
+  // where oArg is null even though the verb is transitive)
+  const objPers = !imperative && g.agree === "both" && trans && oArg && !oArg.wh && agreeArg === sArg ? "3" : null;
   const neg = !!frame.v.neg;
   // subject class-concord on the verb (Bantu ki-, Russian past -l/-la)
   const vClass = g.concord && g.concord.verb && sArg && !sIsPron && sArg.n != null && g.genders ? genderOf(lang, sArg.n) : null;
