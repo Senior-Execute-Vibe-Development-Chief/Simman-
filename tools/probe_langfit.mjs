@@ -1960,6 +1960,23 @@ console.log("\n── §23 functional load (review-loop) ──");
     const ssig = (l) => JSON.stringify(synchronicPhonology(l));
     check("synchronic phonology deterministic + JSON-roundtrip-stable", ssig(s1) === ssig(JSON.parse(JSON.stringify(s1))));
   }
+
+  // ── the minimal-name floor (review-loop: a language named 'Ā', a woman
+  // named 'Ǐ') — sub-minimal proper names are augmented, as in life ──
+  {
+    const w6 = mkWorld();
+    let tiny = 0, n6 = 0;
+    const stripM = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const tinyEx = [];
+    for (let i = 0; i < 300; i++) {
+      const l = foundLanguage(w6, { seed: 740000 + i * 149 });
+      for (const nm of [langWord(l, 0), langWord(l, 1), langPersonName(l, 1, false), langPersonName(l, 4, true), langRealmName(l, 1)]) {
+        n6++;
+        if (stripM(nm).length < 2) { tiny++; if (tinyEx.length < 4) tinyEx.push(l.seed + ":'" + nm + "'"); }
+      }
+    }
+    check(`minimal-name floor: no single-letter proper names (${tiny}/${n6}${tinyEx.length ? " — " + tinyEx.join(", ") : ""})`, tiny === 0);
+  }
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

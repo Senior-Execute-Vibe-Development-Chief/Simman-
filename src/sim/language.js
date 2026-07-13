@@ -601,6 +601,24 @@ function erodeName(lang, w) {
 }
 
 
+// ── the MINIMAL-NAME floor (McCarthy & Prince's minimal word) ─────────────
+// Content words — and proper names above all — need phonological weight;
+// languages AUGMENT a word that erodes below the floor rather than speak it.
+// Strict-CV tongues were collapsing coined names to a single bare vowel
+// (a language named 'Ā', a woman named 'Ǐ' — a fresh reader caught both), so
+// a name whose rendered surface strips to fewer than two letters grows a
+// fresh syllable. Only the offending corner pays; the rng is consumed only
+// on repair, so every well-formed name is byte-identical.
+const stripMarks = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+function minimalNameRepair(lang, rng, w) {
+  const c = compile(lang);
+  for (let guard = 0; guard < 3 && stripMarks(renderWord(w, lang.prof)).length < 2; guard++) {
+    w.syls.push(...synthWord(rng, lang.prof, c.inv, 1).syls);
+    legalizeWord(w);
+  }
+  return w;
+}
+
 // ── the public name API (signatures unchanged from v1) ────────────────────
 
 /** A generic word of the tongue (faith names, culture endonyms). */
@@ -608,7 +626,7 @@ export function langWord(lang, n) {
   ensureV2(lang);
   const c = compile(lang);
   const rng = mkRng(hash32(lang.seed, "w", lang.gen, n));
-  const w = applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, true)));
+  const w = minimalNameRepair(lang, rng, applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, true))));
   return cap(renderWord(w, lang.prof));
 }
 
@@ -644,7 +662,7 @@ export function langRealmName(lang, n, base) {
   const sufs = sufsOf(lang);
   const rng = mkRng(hash32(lang.seed, "r", lang.gen, n));
   const stem = base ? String(base)
-    : renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 1 + rng.int(2))), lang.prof);
+    : renderWord(minimalNameRepair(lang, rng, applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 1 + rng.int(2)))), lang.prof);
   return cap(finishName(joinSuf(stem, sufs.realm[rng.int(sufs.realm.length)]), lang.prof));
 }
 
@@ -661,9 +679,17 @@ export function langPersonName(lang, n, female) {
     if (rng() < (di ? 0.85 : 0.4)) {
       const b = PERSON_POOL[rng.int(PERSON_POOL.length)];
       w = renderWord(joinInternal(lang, internalOf(lang, a), internalOf(lang, b)), lang.prof);
-    } else w = wordOf(lang, a);
+    } else {
+      w = wordOf(lang, a);
+      // minimal-name floor: a single-letter word cannot serve as a person's
+      // name — weld a second meaning element, as name-givers do
+      if (stripMarks(w).length < 2) {
+        const b = PERSON_POOL[rng.int(PERSON_POOL.length)];
+        w = renderWord(joinInternal(lang, internalOf(lang, a), internalOf(lang, b)), lang.prof);
+      }
+    }
   } else {
-    w = renderWord(applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2)), lang.prof);
+    w = renderWord(minimalNameRepair(lang, rng, applyRules(lang.rules, synthWord(rng, lang.prof, compile(lang).inv, 2))), lang.prof);
   }
   if (w.length > 10) w = w.slice(0, 9).replace(/[^aeiou]+$/i, "");
   if (lang.prof.gendered && female && !/[aeiou]$/i.test(w)) w += sufs.fem;
