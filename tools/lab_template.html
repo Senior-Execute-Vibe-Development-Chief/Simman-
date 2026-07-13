@@ -39,7 +39,7 @@
   .plate svg{ display:block; width:min(360px,74vw); height:auto; }
   @media (prefers-reduced-motion:no-preference){ .plate svg{ transition:opacity .12s; } .swap{ opacity:0; } }
   .name{ font-family:var(--serif); font-size:1.35rem; text-align:center; margin:0; }
-  .blazon{ font-size:.86rem; color:var(--muted); text-align:center; margin:-6px 0 0; font-family:var(--mono); letter-spacing:.02em; }
+  .blazon{ font-size:.84rem; color:var(--muted); text-align:center; margin:-6px 0 0; font-family:var(--mono); letter-spacing:.02em; max-width:62ch; overflow-wrap:break-word; }
   .gentag{ font-size:.7rem; color:var(--accent); text-transform:uppercase; letter-spacing:.12em; }
 
   .genes{ width:100%; }
@@ -48,6 +48,18 @@
   .bars .bar{ flex:1; background:var(--rule); border-radius:1px 1px 0 0; cursor:pointer; position:relative; min-width:3px; transition:background .1s; }
   .bars .bar>i{ display:block; background:linear-gradient(var(--accent),var(--accent-2)); border-radius:1px 1px 0 0; width:100%; }
   .bars .bar:hover{ background:var(--accent); }
+  .bars .bar.sel{ outline:2px solid var(--accent-2); outline-offset:1px; }
+  .geneedit{ display:flex; gap:10px; align-items:center; width:100%; margin-top:8px; }
+  .geneedit label{ display:flex; gap:8px; font-size:.78rem; align-items:baseline; white-space:nowrap; }
+  .geneedit label b{ font-family:var(--mono); font-weight:600; }
+  .geneedit .val{ color:var(--muted); font-family:var(--mono); font-size:.72rem; }
+  .geneedit input[type=range]{ flex:1; }
+  .mini{ background:var(--raised); border:1px solid var(--rule); border-radius:6px; color:var(--ink); cursor:pointer; font:inherit; font-size:.74rem; padding:5px 9px; }
+  .mini:hover{ border-color:var(--accent); }
+  .toolrow{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .seedrow{ display:flex; gap:6px; margin-bottom:8px; }
+  .seedrow input{ flex:1; min-width:0; font:inherit; font-size:.76rem; font-family:var(--mono); background:var(--raised); color:var(--ink); border:1px solid var(--rule); border-radius:6px; padding:7px 9px; }
+  .seedrow .mini{ flex:0 0 auto; }
 
   .btn{ display:block; width:100%; text-align:left; background:var(--raised); color:var(--ink); border:1px solid var(--rule); border-radius:6px; padding:9px 12px; font:inherit; font-size:.82rem; cursor:pointer; margin-bottom:8px; transition:border-color .12s, transform .04s; }
   .btn:hover{ border-color:var(--accent); }
@@ -100,7 +112,7 @@
   <div class="workbench">
     <aside class="rail traits">
       <h2>Design axes</h2>
-      <p class="hint">Abstract dials — they bias the genome without locking any pattern to a kind of realm. Move one and the emblem re-forms.</p>
+      <p class="hint">Abstract dials — they bias the genome without locking any pattern to a kind of realm. Move one and the emblem re-forms. <b>Note:</b> axes re-found the genome from its seed, so shape first, then evolve.</p>
       <div id="sliders"></div>
     </aside>
 
@@ -109,20 +121,35 @@
       <div class="plate"><div id="emblem"></div></div>
       <p class="name" id="name">—</p>
       <p class="blazon" id="blazon">—</p>
+      <div class="toolrow">
+        <button class="mini" id="copyblazon" title="copy the blazon text">Copy blazon</button>
+        <button class="mini" id="copygenome" title="copy this genome as JSON — paste it back later to reproduce the emblem exactly">Copy genome</button>
+        <button class="mini" id="pastegenome" title="load a genome from JSON">Paste genome</button>
+        <button class="mini" id="dlsvg" title="download the emblem as an SVG file">Download SVG</button>
+      </div>
       <div class="genes">
-        <div class="cap"><span>Gene vector · 26 alleles</span><span>click a bar to mutate that gene</span></div>
+        <div class="cap"><span>Gene vector · 26 alleles</span><span id="genelabel">click a bar to edit that gene · blue bars changed last step</span></div>
         <div class="bars" id="bars"></div>
-        <div class="cap" id="genelabel">hover a bar to read its gene · blue bars changed in the last step</div>
+        <div class="geneedit" id="geneedit" hidden>
+          <label><b id="ge_name">—</b><span class="val" id="ge_val">0.50</span></label>
+          <input type="range" id="ge_slider" min="0" max="1000" value="500" aria-label="gene value">
+          <button class="mini" id="ge_dice" title="randomize this gene">🎲</button>
+        </div>
       </div>
     </section>
 
     <aside class="rail actions">
+      <h2>Seed</h2>
+      <p class="hint">Every genome replays exactly from its seed — paste one to reproduce an emblem.</p>
+      <div class="seedrow"><input id="seedbox" type="text" inputmode="numeric" aria-label="seed"><button class="mini" id="loadseed">Load</button></div>
       <h2>Evolve</h2>
       <p class="hint">Descent with modification.</p>
       <button class="btn primary" id="reroll">Reroll <small>new seed, same traits</small></button>
       <button class="btn" id="mutate">Mutate <small>drift this genome one step</small></button>
       <button class="btn" id="inherit">Inherit <small>a successor, lightly drifted</small></button>
       <button class="btn" id="random">Randomize <small>a genome from nowhere</small></button>
+      <div class="ctrl" style="margin-top:10px"><label><b>Mutation strength</b><span class="val" id="v_strength">1.00</span></label>
+        <input type="range" id="strength" min="25" max="200" value="100" aria-label="mutation strength"></div>
       <div class="divider"></div>
       <h2>Breeding</h2>
       <p class="hint">A union recombines two genomes.</p>
@@ -145,12 +172,28 @@
     <h2>Living population — drift &amp; selection</h2>
     <p class="hint" style="font-size:.74rem;color:var(--muted);margin:0 0 10px">Seed a herd from the stage emblem, then let it breed. <b>Drift</b> is pure chance; <b>Select</b> measures fitness as closeness (genome distance) to Pin&nbsp;A — or to the stage emblem if nothing is pinned — and the fittest leave more heirs. Unions marshal: watch quarterings accumulate. Click any individual to put it on the stage and trace its ancestry.</p>
     <div class="popbar">
-      <button class="btn" id="popseed">Seed population <small>12 heirs of the stage emblem</small></button>
+      <button class="btn" id="popseed">Seed population <small>heirs of the stage emblem</small></button>
       <button class="btn" id="popstep">Step</button>
       <button class="btn" id="popplay">Play</button>
       <select id="popmode" aria-label="selection mode">
         <option value="drift">Drift (no selection)</option>
         <option value="select">Select toward Pin A</option>
+      </select>
+      <select id="popsize" aria-label="population size">
+        <option value="8">8 individuals</option>
+        <option value="12" selected>12 individuals</option>
+        <option value="20">20 individuals</option>
+      </select>
+      <select id="popspeed" aria-label="generation speed">
+        <option value="1200">slow</option>
+        <option value="700" selected>steady</option>
+        <option value="350">fast</option>
+      </select>
+      <select id="popunion" aria-label="union rate">
+        <option value="0">unions: none</option>
+        <option value="0.1">unions: rare</option>
+        <option value="0.22" selected>unions: some</option>
+        <option value="0.4">unions: many</option>
       </select>
       <span class="gentag" id="popgen">generation —</span>
     </div>
@@ -188,20 +231,37 @@ function buildSliders(){ const box=$("#sliders");
   TRAITS.forEach(([k])=>{ const s=$("#s_"+k); s.addEventListener("input",()=>{ state.traits[k]=s.value/100; $("#v_"+k).textContent=(s.value/100).toFixed(2); state.genome=foundGenome(state.seed,state.traits); paint(true); }); }); }
 
 function paintEmblem(el,gm,W,H){ el.innerHTML=emblemSVG(gm,W,H); }
-function paint(swap,prevGenes){ const gm=state.genome; const em=$("#emblem");
+// keep the editor row's slider untouched while it is the thing driving the
+// repaint (rebuilding it mid-drag would break the drag)
+function syncEditor(keepSlider){
+  const ge=$("#geneedit");
+  if(state.editGene==null){ ge.hidden=true; return; }
+  ge.hidden=false;
+  const v=state.genome.genes[state.editGene];
+  $("#ge_name").textContent=GENES[state.editGene];
+  $("#ge_val").textContent=v.toFixed(3);
+  if(!keepSlider) $("#ge_slider").value=Math.round(v*1000);
+}
+function paint(swap,prevGenes,keepSlider){ const gm=state.genome; const em=$("#emblem");
   if(swap){ em.firstChild&&em.firstChild.classList&&em.firstChild.classList.add("swap"); }
   paintEmblem(em,gm,300,300);
   $("#name").textContent=nameFor(gm);
   $("#blazon").textContent=blazonGenome(gm);
   $("#blazon").title=describeGenome(gm);
   $("#gentag").textContent="generation "+(gm.gen||0)+(gm.quarters&&gm.quarters.length>1?" · quarterly of "+gm.quarters.length:"");
+  $("#seedbox").value=gm.seed;
   // gene bars — blue marks the alleles that moved in the last step
   $("#bars").innerHTML=gm.genes.map((v,i)=>{ const chg=prevGenes&&Math.abs(v-prevGenes[i])>0.03;
-    return `<div class="bar${chg?" chg":""}" title="${GENES[i]} = ${v.toFixed(2)}" data-i="${i}"><i style="height:${(v*100).toFixed(0)}%"></i></div>`; }).join("");
+    return `<div class="bar${chg?" chg":""}${i===state.editGene?" sel":""}" title="${GENES[i]} = ${v.toFixed(2)}" data-i="${i}"><i style="height:${(v*100).toFixed(0)}%"></i></div>`; }).join("");
   $("#bars").querySelectorAll(".bar").forEach(b=>{
-    b.addEventListener("click",()=>{ const i=+b.dataset.i; const before=state.genome.genes.slice(); state.genome.genes[i]=Math.random(); paint(true,before); });
+    b.addEventListener("click",()=>{ state.editGene=+b.dataset.i;
+      $("#bars").querySelectorAll(".bar").forEach(x=>x.classList.toggle("sel",+x.dataset.i===state.editGene));
+      $("#genelabel").textContent="editing "+GENES[state.editGene];
+      syncEditor(false); });
     b.addEventListener("mouseenter",()=>{ const i=+b.dataset.i; $("#genelabel").textContent=GENES[i]+" = "+state.genome.genes[i].toFixed(2); });
   });
+  if(state.editGene==null) $("#genelabel").textContent="click a bar to edit that gene · blue bars changed last step";
+  syncEditor(keepSlider);
 }
 function pushLineage(){ state.lineage.push(state.genome); if(state.lineage.length>40) state.lineage.shift(); renderStrip(); }
 function renderStrip(){ const strip=$("#strip");
@@ -212,9 +272,50 @@ function renderStrip(){ const strip=$("#strip");
 function setSlot(which,gm){ const el=$("#slot"+which); if(!gm){ el.className="slot"; el.innerHTML=`<span class="empty">Pin ${which}</span>`; return; } el.className="slot filled"; el.innerHTML=emblemSVG(gm,80,80); }
 
 $("#reroll").addEventListener("click",()=>{ state.seed=(Math.random()*2e9)>>>0; state.genome=foundGenome(state.seed,state.traits); paint(true); pushLineage(); });
-$("#mutate").addEventListener("click",()=>{ const before=state.genome.genes; state.genome=mutateGenome(state.genome,(Math.random()*2e9)>>>0); paint(true,before); pushLineage(); });
+$("#mutate").addEventListener("click",()=>{ const before=state.genome.genes; state.genome=mutateGenome(state.genome,(Math.random()*2e9)>>>0,state.strength); paint(true,before); pushLineage(); });
 $("#inherit").addEventListener("click",()=>{ const before=state.genome.genes; state.genome=inheritGenome(state.genome,(Math.random()*2e9)>>>0); paint(true,before); pushLineage(); });
 $("#random").addEventListener("click",()=>{ const s=(Math.random()*2e9)>>>0; state.genome={genes:GENES.map((_,i)=>prng((s+i*2654435761)>>>0)()),gen:0,seed:s}; paint(true); pushLineage(); });
+
+/* seed, strength, gene editor, and export tools */
+$("#loadseed").addEventListener("click",()=>{
+  const v=parseInt($("#seedbox").value,10);
+  if(!Number.isFinite(v)){ alert("Seed must be a number."); return; }
+  state.seed=v>>>0; state.genome=foundGenome(state.seed,state.traits); state.editGene=null; paint(true); pushLineage();
+});
+$("#seedbox").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#loadseed").click(); });
+$("#strength").addEventListener("input",()=>{ state.strength=$("#strength").value/100; $("#v_strength").textContent=state.strength.toFixed(2); });
+$("#ge_slider").addEventListener("input",()=>{
+  if(state.editGene==null) return;
+  const before=state.genome.genes.slice();
+  state.genome.genes[state.editGene]=+$("#ge_slider").value/1000;
+  paint(false,before,true);
+});
+$("#ge_dice").addEventListener("click",()=>{
+  if(state.editGene==null) return;
+  const before=state.genome.genes.slice();
+  state.genome.genes[state.editGene]=Math.random();
+  paint(true,before);
+});
+async function toClipboard(t){ try{ await navigator.clipboard.writeText(t); }catch(e){ window.prompt("Copy this:",t); } }
+$("#copyblazon").addEventListener("click",()=>toClipboard(blazonGenome(state.genome)));
+$("#copygenome").addEventListener("click",()=>toClipboard(JSON.stringify(state.genome)));
+$("#pastegenome").addEventListener("click",()=>{
+  const t=window.prompt("Paste a genome JSON (from Copy genome):"); if(!t) return;
+  try{
+    const g=JSON.parse(t);
+    if(!Array.isArray(g.genes)||g.genes.length!==GENES.length) throw new Error("bad genes");
+    g.genes=g.genes.map(v=>Math.max(0,Math.min(1,+v||0)));
+    g.seed=(g.seed>>>0)||1; g.gen=g.gen||0;
+    state.genome=g; state.editGene=null; paint(true); pushLineage();
+  }catch(e){ alert("That didn't parse as a genome — expected JSON with "+GENES.length+" genes."); }
+});
+$("#dlsvg").addEventListener("click",()=>{
+  const b=new Blob([emblemSVG(state.genome,480,480)],{type:"image/svg+xml"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(b);
+  a.download=nameFor(state.genome).toLowerCase().replace(/\s+/g,"-")+".svg";
+  a.click(); URL.revokeObjectURL(a.href);
+});
 $("#pinA").addEventListener("click",()=>{ state.pinA=state.genome; setSlot("A",state.pinA); });
 $("#pinB").addEventListener("click",()=>{ state.pinB=state.genome; setSlot("B",state.pinB); });
 $("#cross").addEventListener("click",()=>{ if(!state.pinA||!state.pinB){ (state.pinA?$("#pinB"):$("#pinA")).style.borderColor="var(--accent-2)"; return; } const before=state.genome.genes; state.genome=crossGenome(state.pinA,state.pinB,(Math.random()*2e9)>>>0); paint(true,before); pushLineage(); });
@@ -224,12 +325,13 @@ const pop={ list:[], gen:0, timer:null };
 const rnd32=()=> (Math.random()*2e9)>>>0;
 function fitTarget(){ return state.pinA||state.genome; }
 function seedPop(){
-  pop.list=Array.from({length:12},()=>{ const g=inheritGenome(state.genome,rnd32()); g._p=state.genome; return g; });
+  const n=+$("#popsize").value;
+  pop.list=Array.from({length:n},()=>{ const g=inheritGenome(state.genome,rnd32()); g._p=state.genome; return g; });
   pop.gen=0; renderPop();
 }
 function stepPop(){
   if(!pop.list.length) return;
-  const drift=$("#popmode").value==="drift", target=fitTarget();
+  const drift=$("#popmode").value==="drift", target=fitTarget(), uRate=+$("#popunion").value;
   const ranked=pop.list.slice().sort((a,b)=>genomeDistance(a,target)-genomeDistance(b,target));
   const pickParent=()=>{
     if(drift) return pop.list[(Math.random()*pop.list.length)|0];
@@ -240,8 +342,8 @@ function stepPop(){
   while(next.length<pop.list.length){
     const p1=pickParent();
     let child;
-    if(Math.random()<0.22){ const p2=pickParent(); child=crossGenome(p1,p2,rnd32()); child._p=p1; child._p2=p2; }
-    else{ child=inheritGenome(p1,rnd32()); child._p=p1; }
+    if(Math.random()<uRate){ const p2=pickParent(); child=crossGenome(p1,p2,rnd32()); child._p=p1; child._p2=p2; }
+    else{ child=mutateGenome(p1,rnd32(),0.5*state.strength); child._p=p1; }
     next.push(child);
   }
   pop.list=next; pop.gen++; renderPop();
@@ -266,12 +368,16 @@ function renderAncestry(g){
 }
 $("#popseed").addEventListener("click",seedPop);
 $("#popstep").addEventListener("click",stepPop);
+function startPlay(){ pop.timer=setInterval(stepPop,+$("#popspeed").value); $("#popplay").textContent="Pause"; }
+function stopPlay(){ clearInterval(pop.timer); pop.timer=null; $("#popplay").textContent="Play"; }
 $("#popplay").addEventListener("click",()=>{
-  if(pop.timer){ clearInterval(pop.timer); pop.timer=null; $("#popplay").textContent="Play"; return; }
+  if(pop.timer){ stopPlay(); return; }
   if(!pop.list.length) seedPop();
-  pop.timer=setInterval(stepPop,700); $("#popplay").textContent="Pause";
+  startPlay();
 });
+$("#popspeed").addEventListener("change",()=>{ if(pop.timer){ stopPlay(); startPlay(); } });
 $("#popmode").addEventListener("change",()=>renderPop());
+$("#popsize").addEventListener("change",()=>{ if(pop.list.length) seedPop(); });
 
 // opening frame: draw seeds until one expresses a charge, so the lab opens on
 // something with a figure rather than a bare field. Every seed is a valid roll —
