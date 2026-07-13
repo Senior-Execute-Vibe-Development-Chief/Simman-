@@ -1837,6 +1837,52 @@ console.log("\n── §23 functional load (review-loop) ──");
   const a1 = foundLanguage(mkWorld(), { seed: 700331 }), a2 = foundLanguage(mkWorld(), { seed: 700331 });
   const qsig = (l) => JSON.stringify(closedOf(l).qs.map(q => q.w).concat(closedOf(l).adps.map(x => x.w)));
   check("q-series + adpositions deterministic + JSON-roundtrip-stable", qsig(a1) === qsig(a2) && qsig(a1) === qsig(JSON.parse(JSON.stringify(a1))));
+
+  // ── the object index is a REAL exponent (review-loop: the silent 3SG.O) ──
+  // agree='both' verbs used to reuse the subject series for the object, so
+  // 3SG+3SG.O stacked one syllable twice, renderWord's haplology ate it, and
+  // the gloss claimed an exponent the surface never showed. Now: own series
+  // (outer, Semitic-clitic style), zero cells never glossed.
+  let bothN = 0, overt1 = 0, lies = 0, zero3 = 0, seriesDiffer = 0, seriesBoth = 0;
+  let pil = null;
+  const w2 = mkWorld();
+  for (let i = 0; i < 500 && bothN < 40; i++) {
+    const l = foundLanguage(w2, { seed: 710000 + i * 97 });
+    const g = gramOf(l);
+    if (g.agree !== "both" || l.prof.morph === "iso") continue;
+    bothN++;
+    const shape = paradigmShape(l);
+    const marked = shape.tam.find(t => t.k === "pst") || shape.tam.find(t => t.k === "pfv") || shape.tam[0];
+    const base = inflectVerb(l, SEE, { tam: marked.k, pers: "3", num: "sg" });
+    for (const o of ["1", "2", "3"]) {
+      const ox = inflectVerb(l, SEE, { tam: marked.k, pers: "3", num: "sg", obj: o });
+      const claimed = new RegExp(o + "SG\\.O").test(ox.gloss);
+      if (ox.text === base.text && claimed) lies++;
+      if (o === "1" && ox.text !== base.text && claimed) overt1++;
+      if (o === "3" && ox.text === base.text && !claimed) zero3++;
+    }
+    const spec = paradigmSpec(l);
+    if (spec.persObj && spec.persObj["1sg"] && spec.pers && spec.pers["1sg"]) {
+      seriesBoth++;
+      if (JSON.stringify(spec.persObj["1sg"].syl) !== JSON.stringify(spec.pers["1sg"].syl)) seriesDiffer++;
+    }
+    if (!pil && !g.absAgree && !g.invAgree && spec.persObj && spec.persObj["1sg"]) pil = l;
+  }
+  check(`object index surfaces as a distinct 1SG.O exponent (${overt1}/${bothN} agree-both langs)`, bothN >= 10 && overt1 >= bothN * 0.85);
+  check(`the gloss never claims a silent .O (${lies} lies)`, lies === 0);
+  check(`zero 3sg.O exists and is honestly unglossed (${zero3}/${bothN})`, zero3 >= 1);
+  check(`object series is its own paradigm, not the subject set reused (${seriesDiffer}/${seriesBoth} differ)`, seriesBoth >= 5 && seriesDiffer === seriesBoth);
+  // a pronoun object is indexed by ITS person, not a hard-coded 3rd
+  if (pil) {
+    const c = renderClause(pil, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { pron: { k: "1sg", pers: 1, num: "sg" } } });
+    check(`pronoun object person-indexed on the verb (${c.tokens.find(t => t.role === "V").g})`, /1SG\.O/.test(c.tokens.find(t => t.role === "V").g));
+  } else check("pronoun object person-indexed on the verb (no candidate lang rolled)", false);
+  // determinism + JSON-roundtrip of the object-indexed cell
+  if (pil) {
+    const pj = JSON.parse(JSON.stringify(pil));
+    const cell = (l) => { const sh = paradigmShape(l); const mk = sh.tam.find(t => t.k === "pst") || sh.tam[0]; const x = inflectVerb(l, SEE, { tam: mk.k, pers: "3", num: "sg", obj: "1" }); return x.text + "|" + x.gloss; };
+    check("object-indexed cell deterministic + JSON-roundtrip-stable", cell(pil) === cell(pj));
+  }
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

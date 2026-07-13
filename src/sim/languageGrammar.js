@@ -1308,7 +1308,31 @@ export function paradigmSpec(lang) {
     }
     dedupeAffixSet(lang, inv, Object.values(persAff).filter(Boolean));
     spec.pers = persAff;
-    spec.persObj = g.agree === "both";
+    // OBJECT INDEX (agree === 'both'): its OWN affix series, worn from
+    // independent object-pronoun roots on their own streams — real
+    // polypersonal paradigms keep the A-set and O-set distinct (Swahili
+    // a-/m-, Quechua -n/-yki, Semitic -hu/-ka). The old shortcut reused the
+    // subject set, so 3SG+3SG.O stacked the same syllable twice and
+    // renderWord's haplology ATE it while the gloss kept claiming 3SG.O (a
+    // fresh reader caught the identical transitive/intransitive forms). The
+    // series is OUTER, like the Semitic object clitics — it rides outside
+    // the fusional crush, so the portmanteau can never silently drop it.
+    // 3sg.O is frequently ZERO, like life ('he saw (it)'); a zero or
+    // ground-to-silence cell is null and simply never glossed. Deduped in
+    // its OWN pass against the finalized subject set — nothing upstream
+    // shifts, and the two series can never collide.
+    if (g.agree === "both") {
+      const oAffs = {};
+      const oRoots = { 1: synthClosed(lang, inv, "opron1"), 2: synthClosed(lang, inv, "opron2"), 3: synthClosed(lang, inv, "opron3") };
+      for (const p of [1, 2, 3]) {
+        const r = copyWord(oRoots[p]);
+        evolveSlice(lang.rules, 0, t, r);
+        const cand = { k: "o" + p + "sg", g: p + "SG.O", src: null, t, syl: wearSyl(lang.prof, legalizeWord(r)), outer: true };
+        oAffs[p + "sg"] = (p === 3 && h01(fam, "z3o") < 0.5) || !audible(cand) ? null : cand;
+      }
+      dedupeAffixSet(lang, inv, Object.values(oAffs).filter(Boolean), Object.values(persAff).filter(Boolean));
+      spec.persObj = oAffs;
+    }
   }
   // NUMBER extras (Group E, Corbett): trial ‹ 'three', paucal ‹ 'few' — number-
   // tier affixes parallel to the dual (a noun takes ONE number value). Claimed
@@ -2085,14 +2109,18 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       const persAff = spec.pers[pers + num];
       if (persAff) { events.push(persAff); glosses.push(persAff.g); }
     }
-    if (obj && !imperative && spec.persObj && spec.pers) {
-      const oAff = spec.pers[obj + "sg"];
-      if (oAff) { events.push({ ...oAff, g: oAff.g + ".O" }); glosses.push(oAff.g + ".O"); }
-    }
     // multi-clause nonfinite markers (Group G): converb / nominalizer / participle
     if (convAff) { events.push(convAff); glosses.push(convAff.g); }
     if (nfAff) { events.push(nfAff); glosses.push("NMLZ"); }
     if (relAff) { events.push(relAff); glosses.push("PTCP"); }
+    // object index — the OUTER object-clitic series (spec.persObj); a null
+    // cell (zero 3sg.O, or one ground to silence) adds no event AND no gloss:
+    // the gloss line only ever claims what the surface shows
+    let oAffUsed = null;
+    if (obj && !imperative && spec.persObj) {
+      const oAff = spec.persObj[obj + "sg"];
+      if (oAff) { events.push(oAff); outerGlosses.push(oAff.g); oAffUsed = oAff; }
+    }
     // evidentiality — a young outer affix (drifts with the stem across sisters);
     // `outer:true` keeps it out of the fusional crush and its gloss dash-joined
     // (a separate agglutinated layer, never part of the portmanteau)
@@ -2105,6 +2133,19 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       fuse: morph === "fus", theme: vTheme && events.length ? vTheme : null,
       pattern, rootOverride, ablaut,
     });
+    const text = renderWord(form, lang.prof);
+    // HONEST GLOSS, per cell: even the outer clitic can be eaten at the very
+    // surface (renderWord's haplology, when it echoes the syllable it lands
+    // on). The gloss claims only what the reader can see — render the
+    // counterfactual without the object event and drop the .O if identical.
+    if (oAffUsed) {
+      const evs2 = events.filter(e => e !== oAffUsed);
+      const bare = renderWord(onionBuild(lang, cid, evs2, {
+        fuse: morph === "fus", theme: vTheme && evs2.length ? vTheme : null,
+        pattern, rootOverride, ablaut,
+      }), lang.prof);
+      if (bare === text) outerGlosses.splice(outerGlosses.indexOf(oAffUsed.g), 1);
+    }
     // gloss: fused endings read STEM-PST.3SG, stacked ones STEM-PST-3SG,
     // pattern change reads STEM⟨PST⟩, suppletion/ablaut fold the TAM in
     let glossStr;
@@ -2115,7 +2156,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     glossStr += outerGlosses.map(gl => "-" + gl).join("");   // the outer evidential tier, always dash-separated
     const pre = [], post = [];
     impExtras(pre, post);
-    out = { text: renderWord(form, lang.prof), gloss: glossStr, pre, post, irr: !!irr || !!pattern };
+    out = { text, gloss: glossStr, pre, post, irr: !!irr || !!pattern };
   }
   // subject class-concord (verb agrees with the subject's noun class — Bantu
   // ki-anguka, Russian past upa-l/upa-la). Additive: only when asked + concord.verb.
@@ -2468,7 +2509,7 @@ export function renderClause(lang, frame, opts = {}) {
   // polypersonal object index — but don't ALSO index O when agreement already
   // went to O (abs-agree / inverse), and never index a CLAUSAL object (o.comp,
   // where oArg is null even though the verb is transitive)
-  const objPers = !imperative && g.agree === "both" && trans && oArg && !oArg.wh && agreeArg === sArg ? "3" : null;
+  const objPers = !imperative && g.agree === "both" && trans && oArg && !oArg.wh && agreeArg === sArg ? String(argPers(oArg)) : null;
   const neg = !!frame.v.neg;
   // subject class-concord on the verb (Bantu ki-, Russian past -l/-la)
   const vClass = g.concord && g.concord.verb && sArg && !sIsPron && sArg.n != null && g.genders ? genderOf(lang, sArg.n) : null;
