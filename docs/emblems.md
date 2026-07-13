@@ -124,7 +124,9 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
   bear charges **on** the band; or a semé field lies beneath it. Placement
   slots live in the phenotype (`motif.slots`) — one source for renderer and
   blazon.
-- **Charges**: 186 recoloured silhouettes in 11 categories + 17 vector
+- **Charges**: ~480 recoloured silhouettes in 11 categories (weighted by
+  rough armorial frequency — beasts/objects/geometric common, insects and
+  naturalia the rarities they really were) + 17 vector
   primitives (mullets, roundel, annulet, lozenge, fusil, mascle, billet,
   delf, crosses, goutte, …) that counterchange and semé crisply. Aniconism
   (low `iconism`) remaps living categories to non-living ones. Rare
