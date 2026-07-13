@@ -693,7 +693,7 @@ Lab reviews (the three pinned shapes + six random seeds) came back with the
 verdict "the roll layer is healthy; the remaining work is all synchronization
 — notes, labels, and inventories describing the language as ROLLED rather
 than as it stands after history has happened to it." Every complaint became a
-mechanism + a §23 probe gate (106 → **315** checks). Fittingly for a
+mechanism + a §23 probe gate (261 → **284** checks). Fittingly for a
 diachronics engine: the documentation was more conservative than the speech.
 
 - **Functional load in the closed classes.** 'what'=='why' where the dedupe
