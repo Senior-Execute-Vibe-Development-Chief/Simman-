@@ -119,7 +119,9 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
 - **Substrates**: shield (heater / Iberian / French / kite outlines), banner,
   roundel, pennon, gonfalon, lozenge. Flag substrates get vexillological
   grammar: Nordic cross toward the hoist (equal arm thickness, the true
-  construction), hoist-pointing pile, true rectangular canton,
+  construction), hoist-pointing pile, COUCHED pall and chevron (the Y and
+  the wedge-band lie on their sides, arms from the hoist corners — a
+  shield's upright pall doesn't exist on cloth), true rectangular canton,
   **fimbriation** (a separating outline on an ordinary or around a charge,
   tincture chosen by the same argmax rule against *everything it touches*),
   and **device panels** (a disc, lozenge, or **inescutcheon** — the small
@@ -149,7 +151,10 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     algorithm), a ring, an arc, or a seeded constellation (the idle brand
     gene seeds the sky exactly as it seeds a tamga; the idle script gene
     picks the pattern; the count gene counts members, 2–13, each pattern
-    imposing its own geometric floor). Blazoned "five mullets in annulo".
+    imposing its own geometric floor) — or as SATELLITES: one greater
+    device toward the hoist, the rest attending in an arc ("in majesty").
+    Blazoned "five mullets in annulo". The celestial pool carries the
+    conjoined STAR AND CRESCENT as a single classic device.
   - **The flag device vocabulary** — repeated, housed, or band-riding
     devices are cut from folded cloth many times over: only the simple
     silhouettes survive (mullets, discs, crescents, suns…); the ornate
