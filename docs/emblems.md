@@ -86,9 +86,17 @@ tails set a charge's attitude. The depth is latent in the vector.
 
 Tinctures are **typed**: metals (or, argent — the light class), colours
 (gules, azure, vert, sable, purpure — dark), stains (murrey, sanguine, tenné —
-dark off-hues). The genome's continuous colour intent is quantised to the
-nearest named tincture in **OKLab**; metal fields and rare stains emerge from
-the geometry of colour space, not from weights.
+dark off-hues). The genome's colour intent walks the **dyer's wheel**
+(`DYE_VATS`): hue availability follows the great dyestuffs — madder reds,
+weld golds, woad blues wide; purples and tawnies princely slivers — the same
+way `MOTIF_CATS` windows model armorial frequency. Naming is a *vat* question
+first: each vat lists the names it can be called, and **OKLab** nearness only
+ranks within that family (a plain 3D nearest-colour match fails — a vivid
+green intent matches muted tinctures on lightness and comes out "tenné").
+Each vat also carries the depth its dyestuff can reach (weld is a light dye,
+woad a deep one); the value gene picks depth *within* the vat. Argent and
+sable join every field's candidates — undyed cloth and the soot vat are
+always on the shelf — so metal fields still emerge from pale, dull intents.
 
 **The rule of tincture is constructed, not checked.** What a mark wears
 follows from what it lies on (`tinctureOn`):

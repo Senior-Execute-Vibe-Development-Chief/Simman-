@@ -304,6 +304,62 @@ function nearestTincture(rgb, names) {
   return best;
 }
 const T = name => ({ name, kind: TINCTURES[name].kind, rgb: TINCTURES[name].rgb });
+// ── the DYER'S WHEEL: a colour intent is a dye-vat, not a spectrometer.
+// Hue availability follows the great dyestuffs — madder and kermes reds, weld
+// and saffron golds, woad and indigo blues, copper and sap greens — while true
+// purples and hot magentas were princely rarities. A uniform gene walks this
+// wheel; vat WIDTHS are the availability model, exactly the way the MOTIF_CATS
+// windows model armorial frequency. Each vat's end is the next vat's start, so
+// the map is continuous and monotonic (mod 1) and a small mutation still
+// drifts hue smoothly.
+//
+// Naming dyed cloth is a VAT question first: hue names the family, and only
+// then do depth and purity pick the member. A plain 3D nearest-colour fails
+// here — a vivid green intent matches muted tinctures on LIGHTNESS and comes
+// out "tenné" — so each vat lists the names it can be CALLED, and OKLab
+// nearness only ranks within that family (argent and sable join a field's
+// candidates: undyed cloth and the soot vat are always on the shelf).
+// lightLo..lightHi is the depth the dyestuff can actually reach — weld is a
+// light dye, woad a deep one; the value gene picks the depth WITHIN the vat,
+// it cannot ask weld for black.
+const DYE_VATS = [ // [share, hue0, hue1, callable names, lightLo, lightHi]
+  [24, 0.960, 1.010, ["gules", "sanguine"], 0.22, 0.62],  // madder / kermes
+  [ 3, 0.010, 0.055, ["gules", "tenne"], 0.30, 0.65],     // scarlet-orange
+  [ 4, 0.055, 0.100, ["tenne"], 0.30, 0.60],              // tawny
+  [17, 0.100, 0.150, ["or", "tenne"], 0.42, 0.78],        // weld / saffron
+  [ 4, 0.150, 0.260, ["or", "vert"], 0.35, 0.70],         // yellow-greens
+  [14, 0.260, 0.400, ["vert"], 0.25, 0.60],               // copper / sap green
+  [ 4, 0.400, 0.560, ["vert", "azure"], 0.25, 0.60],      // teals
+  [22, 0.560, 0.680, ["azure"], 0.22, 0.58],              // woad / indigo
+  [ 4, 0.680, 0.820, ["purpure"], 0.25, 0.58],            // purple (princely)
+  [ 4, 0.820, 0.960, ["murrey", "purpure"], 0.22, 0.55],  // mulberry
+];
+const DYE_TOTAL = DYE_VATS.reduce((s, w) => s + w[0], 0);
+function vatAt(u) {
+  let t = (u - Math.floor(u)) * DYE_TOTAL;
+  for (const [w, h0, h1, members, lo, hi] of DYE_VATS) {
+    if (t <= w) return { hue: (h0 + (t / w) * (h1 - h0)) % 1, members, lo, hi };
+    t -= w;
+  }
+  const [, h0, , members, lo, hi] = DYE_VATS[0];
+  return { hue: h0 % 1, members, lo, hi };
+}
+const dyeHue = u => vatAt(u).hue;
+// a FIELD from the wheel: the vat's family plus the two ever-present
+// achromatics (a pale dull intent comes out argent, a deep dull one sable)
+function namedDyeField(u, sat, val) {
+  const v = vatAt(u);
+  return nearestTincture(hsl(v.hue, sat, v.lo + val * (v.hi - v.lo)), [...v.members, "argent", "sable"]);
+}
+// a DARK mark from the wheel (the rule-of-tincture pick on a metal ground):
+// the vat's non-metal members plus the soot vat, at the vat's own saturation
+function namedDyeDark(u, val, exclude) {
+  const v = vatAt(u);
+  let cands = [...v.members.filter(n => TINCTURES[n].kind !== "metal"), "sable"];
+  if (exclude) cands = cands.filter(n => n !== exclude);
+  if (!cands.length) cands = DARKS.filter(n => n !== exclude);
+  return nearestTincture(hsl(v.hue, 0.75, v.lo + val * (v.hi - v.lo)), cands);
+}
 // the light/dark boundary the palette itself implies (midway, in OKLab
 // lightness, between the darkest metal and the lightest non-metal) — used to
 // type the CONTINUOUS colours of the non-heraldic palette modes
@@ -328,8 +384,12 @@ const classOf = t => (t.kind === "metal" ? "metal" : "dark");
 function tinctureOn(grounds, hue, val, poles = []) {
   const genuine = grounds.every(g => TINCTURES[g.name] && TINCTURES[g.name].rgb === g.rgb);
   if (genuine && new Set(grounds.map(classOf)).size === 1) {
-    const pool = classOf(grounds[0]) === "metal" ? DARKS : METALS;
-    return T(nearestTincture(hsl(hue, 0.55, 0.25 + val * 0.5), pool));
+    // on a metal ground the mark is DYED cloth — named by its vat; on a dark
+    // ground it is METAL thread — gilt when the intent runs warm, silver when
+    // pale or cool
+    return classOf(grounds[0]) === "metal"
+      ? T(namedDyeDark(hue, val))
+      : T(nearestTincture(hsl(dyeHue(hue), 0.3, 0.62 + val * 0.3), METALS));
   }
   let best = null, bd = -1;
   for (const c of [...poles, ...T_NAMES.map(T)]) {
@@ -356,11 +416,11 @@ function decodePalette(get) {
     // mode would — the renderer engraves them as hatching on heraldic coats
     // (dots or, vertical gules, horizontal azure…), so a mono coat still
     // CARRIES its colour genome, the way an engraver's plate does
-    const hF = T(nearestTincture(hsl(hA, 0.25 + chroma * 0.65, 0.18 + val * 0.62), T_NAMES));
+    const hF = T(namedDyeField(hA, 0.25 + chroma * 0.65, val));
     const hC = tinctureOn([hF], hB, val);
     hatch = { field: hF.name, charge: hC.name,
       companion: classOf(hF) === "dark" && get("secondary") > 0.5
-        ? nearestTincture(hsl(hB, 0.55, 0.25 + val * 0.4), DARKS.filter(n => n !== hF.name))
+        ? namedDyeDark(hB, val, hF.name)
         : hC.name };
   } else if (mode === "imperial") {
     fieldT = P(hsl(hA, 0.55 + chroma * 0.35, 0.42 + val * 0.12));
@@ -374,17 +434,17 @@ function decodePalette(get) {
     chargeT = farPole(fieldT.rgb, poles[0], poles[1]);
     accentT = P(BONE);
   } else {
-    // heraldic: the genome's continuous colour INTENT, quantised to the nearest
-    // named tincture — a pale dull intent lands argent, a warm light one or, so
-    // METAL FIELDS (bearing colour charges) emerge exactly where the genes
-    // imply them; stains sit in narrow off-hue pockets and stay naturally rare
-    fieldT = T(nearestTincture(hsl(hA, 0.25 + chroma * 0.65, 0.18 + val * 0.62), T_NAMES));
+    // heraldic: the genome's colour INTENT walks the dyer's wheel and is named
+    // by its vat — a bright weld intent lands or, a pale dull one argent, a
+    // deep dull one sable, so METAL FIELDS emerge exactly where the genes
+    // imply them; stains only ever claim their own narrow vats
+    fieldT = T(namedDyeField(hA, 0.25 + chroma * 0.65, val));
     chargeT = tinctureOn([fieldT], hB, val);
     // the partition companion: a second dark beside a dark field when the
     // secondary gene asks for one (colour-and-colour parties are lawful), else
     // the opposite class — the classic party of colour and metal
     companionT = classOf(fieldT) === "dark" && get("secondary") > 0.5
-      ? T(nearestTincture(hsl(hB, 0.55, 0.25 + val * 0.4), DARKS.filter(n => n !== fieldT.name)))
+      ? T(namedDyeDark(hB, val, fieldT.name))
       : chargeT;
     accentT = chargeT;
   }
