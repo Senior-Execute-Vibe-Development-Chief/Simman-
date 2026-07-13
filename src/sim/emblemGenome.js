@@ -57,6 +57,18 @@ const FLAG_SUBSTRATES = new Set(["banner", "gonfalon", "pennon"]);
 // half of all emblems; these windows put charged compositions first.
 const COMPOSITIONS = ["heraldic", "heraldic", "heraldic", "central", "central",
   "radial", "script", "brand", "plain", "seme", "sacred"];
+// on FLAG cloth the composition gene decodes through corpus-weighted windows
+// (the FLAG_PARTITIONS idiom): the vexillological grammar — stripes, crosses,
+// cantons, arrays, a lone central device — is what a national flag almost
+// always is, so it DOMINATES; the calligraphic, sacred-sigil, tamga and
+// tilework traditions are the rare institutional banners they are on real
+// flagpoles. Every composition stays REACHABLE on cloth (reachability is the
+// decoupling constraint, not equal odds); radial is a roundel badge by
+// nature and simply isn't flown as cloth.
+const FLAG_COMPOSITIONS = [
+  ...Array(20).fill("heraldic"), ...Array(5).fill("central"),
+  "seme", "script", "sacred", "brand", "plain",
+];
 // procedural SACRED SIGIL vocabulary — sacred primitives combined under symmetry.
 // This is our OWN religious iconography: no real faith's symbol, but the visual
 // grammar (radial/bilateral symmetry, radiating arms, a core, an enclosure, a
@@ -69,6 +81,16 @@ const SIGIL_BASES = ["none", "none", "none", "steps", "lotus", "cradle"];
 const SIGIL_INTER = ["none", "none", "dots", "rays", "pips"];
 const SYMMETRIES  = ["none", "bilateral", "radial", "quarterly"];
 const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
+// on FLAG cloth the palette gene is corpus-weighted too (the FLAG_PARTITIONS
+// idiom): a modern flag is DYED BUNTING — the "heraldic" bright-bolt palette —
+// so it dominates. Imperial silk and earth pigment are old banner and cloth
+// traditions (they even remap the hue away from the bunting bolts), and pure
+// ink monochrome is the engraver's; all stay reachable on cloth but become
+// the rarities they are. This is what lets the dyer's-wheel hue (and the blue
+// rescue) actually reach most flags instead of being overridden by a silk.
+const FLAG_PALETTES = [
+  ...Array(16).fill("heraldic"), "monochrome", "monochrome", "imperial", "earth",
+];
 const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly", "chequy", "lozengy", "tiercedPale", "tiercedFess"];
 // on CLOTH the SAME gene decodes through corpus-weighted windows instead
 // (the DYE_VATS / MOTIF_CATS idiom): horizontal stripes dominate real
@@ -435,7 +457,21 @@ function namedDyeField(u, sat, val, bunting) {
     members = members.filter(n => TINCTURES[n].kind !== "stain");
     if (!members.length) return nearestTincture(rgb, BOLTS);
   }
-  return nearestTincture(rgb, [...members, "argent", "sable"]);
+  const name = nearestTincture(rgb, [...members, "argent", "sable"]);
+  if (!bunting) return name;
+  // BLUE and GREEN don't collapse to grey. A saturated colour order is
+  // DYED, not left near-neutral: a real-chroma intent whose vat carries a
+  // colour keeps that colour instead of falling through to undyed cloth or
+  // soot on lightness alone (the mill stocks the flag-blue and flag-green
+  // bolts, not a dusty near-neutral). Only a genuinely DULL order — below
+  // the dullest dyed bolt — ships undyed or soot.
+  if (name === "argent" || name === "sable") {
+    const colours = members.filter(n => TINCTURES[n].kind === "colour");
+    const ab = oklab(rgb);
+    if (colours.length && Math.hypot(ab[1], ab[2]) >= DYE_CHROMA_MIN)
+      return nearestTincture(rgb, colours);
+  }
+  return name;
 }
 // a DARK mark from the wheel (the rule-of-tincture pick on a metal ground):
 // the vat's non-metal members plus the soot vat, at the vat's own saturation
@@ -523,9 +559,17 @@ function tinctureOn(grounds, hue, val, poles = [], opts = {}) {
   return best;
 }
 
-function decodePalette(get, bunting) {
-  const mode = pickEnum(get("paletteMode"), PALETTES);
+function decodePalette(get, bunting, solidGround) {
+  const mode = pickEnum(get("paletteMode"), bunting ? FLAG_PALETTES : PALETTES);
   const hA = get("hueA"), hB = get("hueB"), chroma = get("chroma"), val = get("value");
+  // GOLD grounds a flag only rarely, and only when it stands ALONE. On cloth
+  // the metal that grounds a whole flag is undyed (argent, the default bolt);
+  // gold is a device-and-stripe metal — the rule of tincture's charge-metal —
+  // and a solid gold ground reads weak at distance. So a SOLID gold field
+  // from any but the most saturated intent grounds as undyed cloth instead;
+  // gold as a STRIPE, charge or canton (a partitioned field) is untouched,
+  // because a gold band is common (Germany, Colombia, Lithuania).
+  const groundGold = t => (bunting && solidGround && t.name === "or" && chroma < 0.877 ? T("argent") : t);
   // a mark in a two-pole tradition takes whichever pole sits farther from the
   // field — the same constructive pick, over a two-member palette
   const farPole = (bg, a, b) => (dE(bg, a.rgb) >= dE(bg, b.rgb) ? a : b);
@@ -562,7 +606,7 @@ function decodePalette(get, bunting) {
     // by its vat — a bright weld intent lands or, a pale dull one argent, a
     // deep dull one sable, so METAL FIELDS emerge exactly where the genes
     // imply them; stains only ever claim their own narrow vats
-    fieldT = T(namedDyeField(hA, 0.25 + chroma * 0.65, val, bunting));
+    fieldT = groundGold(T(namedDyeField(hA, 0.25 + chroma * 0.65, val, bunting)));
     chargeT = tinctureOn([fieldT], hB, val, [], { bunting, chroma });
     // the partition companion: a second dark beside a dark field when the
     // secondary gene asks for one (colour-and-colour parties are lawful), else
@@ -582,7 +626,7 @@ function decodePalette(get, bunting) {
   // heraldic mode uses (a raw-space pick snapped after the fact can land on
   // its own ground; a bolt-space derivation cannot)
   if (bunting && (mode === "imperial" || mode === "earth")) {
-    fieldT = toBolt(fieldT);
+    fieldT = groundGold(toBolt(fieldT));   // gold grounds rarely, every tradition
     chargeT = tinctureOn([fieldT], hB, val, [], { bunting, chroma });
     companionT = classOf(fieldT) === "dark" && get("secondary") > 0.75
       ? T(namedDyeDark(hB, val, fieldT.name, true))
@@ -607,11 +651,15 @@ export function expressGenome(genome) {
   const get = name => G[IDX[name]];
   const iconism = get("iconism");
 
-  let composition = pickEnum(get("composition"), COMPOSITIONS);
+  // the substrate gene names the ground first; a FLAG then reads its
+  // composition through the corpus-weighted window (the vexillological
+  // grammar dominates cloth), a shield or roundel through the general one
+  let substrate = pickEnum(get("substrate"), SUBSTRATES);
+  const baseIsFlag = FLAG_SUBSTRATES.has(substrate);
+  let composition = pickEnum(get("composition"), baseIsFlag ? FLAG_COMPOSITIONS : COMPOSITIONS);
   const aniconic = iconism < 0.34;
   // A strongly figurative culture won't fly pure calligraphy / tamga.
   if (iconism > 0.72 && (composition === "script" || composition === "brand")) composition = "heraldic";
-  let substrate = pickEnum(get("substrate"), SUBSTRATES);
   if (composition === "radial") substrate = "roundel";                 // a badge wants a round field
   if (composition === "script" && substrate === "roundel") substrate = "banner";
   // a shield's outline — the brandSeed gene is idle on shields, so it picks
@@ -626,7 +674,14 @@ export function expressGenome(genome) {
   const flagRatio = substrate === "banner" ? 0.5 + (sWin - Math.floor(sWin)) * 0.167
     : substrate === "pennon" ? 0.6 : 0.62;
 
-  const pal = decodePalette(get, isFlag);
+  // the field's partition is settled first — the palette needs to know whether
+  // the field will be a SOLID ground (a whole flag one colour) or a striped
+  // one, because gold grounds a whole flag only rarely but stripes freely
+  let partition = composition === "heraldic"
+    ? pickEnum(get("partition"), isFlag ? FLAG_PARTITIONS : PARTITIONS)
+    : "plain";
+  const solidGround = partition === "plain";
+  const pal = decodePalette(get, isFlag, solidGround);
   const symmetry = composition === "radial" ? "radial" : pickEnum(get("symmetry"), SYMMETRIES);
 
   // field — a heraldic field can be divided (partition), draped in a FUR, laid with
@@ -634,9 +689,6 @@ export function expressGenome(genome) {
   // on their edges, and optionally COUNTERCHANGED across a partition. These reuse the
   // otherwise-idle genes in heraldic composition (hueC, pearl, border, crescent,
   // symmetry) so no genome grows — the depth was latent in the vector.
-  let partition = composition === "heraldic"
-    ? pickEnum(get("partition"), isFlag ? FLAG_PARTITIONS : PARTITIONS)
-    : "plain";
   const tinctures = [pal.field, pal.companion];
   const field = { partition, tinctures, names: [pal.fieldT.name, pal.companionT.name],
     line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };

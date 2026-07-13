@@ -170,6 +170,30 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
   - **The Spanish fess** — the thickness gene (the diminutive-splitter,
     same windows) may double a tierced band: middle (1:2:1) or first
     (2:1:1).
+  - **Corpus-weighted composition & palette** — the composition and palette
+    genes decode through flag-specific windows on cloth (the FLAG_PARTITIONS
+    idiom): the vexillological grammar (~84% heraldic + central device) and
+    the bright dyed-bunting palette (~80%) dominate, because that is what a
+    modern flag almost always IS. Calligraphy, sacred sigils, tamgas and
+    tilework — and the imperial-silk and earth-pigment palettes — stay
+    REACHABLE but become the rare institutional banners they are (every
+    composition and palette is still reachable on cloth: reachability is the
+    decoupling constraint, not equal odds). This is also what lets the
+    dyer's-wheel hue reach most flags instead of being overridden by a silk
+    that remaps it.
+  - **Gold grounds a flag only rarely** — on cloth the metal that grounds a
+    whole flag is undyed (argent, the default bolt); gold is a device-and-
+    stripe metal (the rule of tincture's charge-metal) and a solid gold
+    ground reads weak at distance, so a SOLID gold field from any but the
+    most saturated intent grounds as undyed cloth. Gold as a STRIPE, charge
+    or canton is untouched (a gold band is common — Germany, Colombia). Solid
+    gold fields fell 26% → 6%; white leads presence 52%, the Earth ordering.
+  - **Blue and green don't collapse to grey** — a saturated colour order is
+    DYED, not left near-neutral: a real-chroma field intent whose vat carries
+    a colour keeps that colour instead of falling through to undyed cloth or
+    soot on lightness alone (the mill stocks the flag-blue and flag-green
+    bolts). Blue presence recovered 15% → 25%, now proportional to its
+    dye-availability share of the wheel.
   - **The bunting shelf** — flags are sewn from the seven fast single-vat
     bolts; the overdyed stains stay on shields and silks (a stain-intent
     comes back as its vat's fast recipe or the nearest standard bolt; a
