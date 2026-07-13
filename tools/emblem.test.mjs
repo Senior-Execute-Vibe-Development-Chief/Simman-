@@ -43,7 +43,7 @@ let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
   array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, housed: 0,
-  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0 };
+  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0 };
 const STAINS = new Set(names.filter(n => TINCTURES[n].kind === "stain"));
 // the compact device categories — the only ones a flag repeats or strews
 const COMPACT = new Set(["celestial", "geometric"]);
@@ -161,6 +161,7 @@ function audit(g) {
         if (!["perPale", "perFess", "perBend"].includes(f.partition)) fail("counterchange on non-2-region partition", g);
       } else if (m.panel) {
         seen.panel++;
+        if (m.panel.shape === "escutcheon") seen.inescutcheon++;
         checkMark(m.panel.tincture, grounds, "panel", g, strict);
         checkMark(m.tincture, [m.panel.tincture], "charge-on-panel", g, false);
       } else checkMark(m.tincture, grounds, "charge", g, strict);
@@ -228,7 +229,16 @@ for (let i = 0; i < 60; i++) {
     const svg = emblemSVG(g, 160, 160);
     if (!svg.includes("<svg") || svg.length < 400) fail("marshalled emblem failed to render");
   }
-  if (!blazonGenome(abc).startsWith("Quarterly:")) fail("marshalled blazon should enumerate quarters");
+  // the marshalled display is substrate-specific: a SHIELD quarters its
+  // coats, CLOTH flies an ensign (the senior coat in the canton)
+  const SUB = GENES.indexOf("substrate"), COMP = GENES.indexOf("composition");
+  const asShield = { ...abc, genes: abc.genes.slice() };
+  asShield.genes[SUB] = 0.05; asShield.genes[COMP] = 0.1;
+  if (!blazonGenome(asShield).startsWith("Quarterly:")) fail("marshalled shield blazon should enumerate quarters");
+  const asFlag = { ...abc, genes: abc.genes.slice() };
+  asFlag.genes[SUB] = 0.25; asFlag.genes[COMP] = 0.1;
+  if (!blazonGenome(asFlag).includes("in the canton the union:")) fail("marshalled cloth should blazon as an ensign");
+  if (emblemSVG(asFlag, 160, 160).length < 400) fail("ensign failed to render");
 }
 
 // ── 6: cadency ──

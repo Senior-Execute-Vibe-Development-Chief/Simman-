@@ -12,7 +12,8 @@
 //   drawEmblem(genome, x, y, cw, ch) → a <g> placing that emblem at (x,y) in a cw×ch cell
 //   rrng(seed)                       → the deterministic per-emblem PRNG (exported for callers)
 import { CHARGE_DETAIL } from "./heraldryChargesDetailed.js";
-import { expressGenome, INK, BONE } from "./emblemGenome.js";
+import { expressGenome, GENES, INK, BONE } from "./emblemGenome.js";
+const SUBSTRATE_IDX = GENES.indexOf("substrate");
 
 // a tincture may be an [r,g,b] array or a pre-built fill string (a hatch
 // pattern url) — strings pass through untouched
@@ -76,10 +77,15 @@ const oriented = (m, s, cx, cy) => !m.attitude ? s
 function deviceAt(m, mx, my, b) {
   let s = "";
   if (m.panel) {
-    s += m.panel.shape === "disc"
-      ? `<circle cx="${F(mx)}" cy="${F(my)}" r="${F(b * 0.62)}" fill="${css(m.panel.tincture)}"/>`
-      : `<polygon points="${F(mx)},${F(my - b * 0.68)} ${F(mx + b * 0.68)},${F(my)} ${F(mx)},${F(my + b * 0.68)} ${F(mx - b * 0.68)},${F(my)}" fill="${css(m.panel.tincture)}"/>`;
-    b *= 0.78;
+    if (m.panel.shape === "disc")
+      s += `<circle cx="${F(mx)}" cy="${F(my)}" r="${F(b * 0.62)}" fill="${css(m.panel.tincture)}"/>`;
+    else if (m.panel.shape === "escutcheon") {
+      // the INESCUTCHEON: a small heater shield — the state-arms panel
+      const pw = b * 1.08, ph = pw * 1.12, x0 = mx - pw / 2, y0 = my - ph * 0.44;
+      s += `<path d="M${F(x0)} ${F(y0)} H${F(x0 + pw)} V${F(y0 + ph * 0.6)} Q${F(x0 + pw)} ${F(y0 + ph * 0.87)} ${F(x0 + pw / 2)} ${F(y0 + ph)} Q${F(x0)} ${F(y0 + ph * 0.87)} ${F(x0)} ${F(y0 + ph * 0.6)} Z" fill="${css(m.panel.tincture)}"/>`;
+    } else
+      s += `<polygon points="${F(mx)},${F(my - b * 0.68)} ${F(mx + b * 0.68)},${F(my)} ${F(mx)},${F(my + b * 0.68)} ${F(mx - b * 0.68)},${F(my)}" fill="${css(m.panel.tincture)}"/>`;
+    b *= m.panel.shape === "escutcheon" ? 0.66 : 0.78;
   }
   if (m.fimbriation) s += motif(m.id, mx - b * 0.545, my - b * 0.545, b * 1.09, m.fimbriation);
   s += motif(m.id, mx - b / 2, my - b / 2, b, m.tincture);
@@ -699,7 +705,26 @@ function emblemInner(genome, aw, ah) {
 
   let content = "";
   const qs = genome.quarters;
-  if (qs && qs.length > 1) {
+  if (qs && qs.length > 1 && p.isFlag) {
+    // THE ENSIGN GRAMMAR: marshalled CLOTH never quarters four coats like a
+    // shield — the union flies the SENIOR coat as a canton at the hoist-top
+    // while the house's own style fills the fly (the colonial-ensign
+    // construction). Same quarters data, substrate-specific display.
+    content = coatContent(p, w, h, rng);
+    const q = qs[0];
+    const qSeed = q.seed != null ? q.seed : genome.seed;
+    // the union's coat is SEWN when it boards cloth: express it on the
+    // parent's own substrate so it comes off the bunting shelf and keeps
+    // flag grammar inside the canton
+    const qGenes = q.genes.slice();
+    qGenes[SUBSTRATE_IDX] = genome.genes[SUBSTRATE_IDX];
+    const qp = expressGenome({ genes: qGenes, gen: q.gen || 0, seed: qSeed });
+    const qrng = rrng(((qSeed ^ ((q.gen || 0) * 2654435761)) + 1013904223) >>> 0);
+    const cw2 = w * 0.36, ch2 = h * 0.52, qc = `en${uid++}`;
+    content += `<clipPath id="${qc}"><rect width="${F(cw2)}" height="${F(ch2)}"/></clipPath>`
+      + `<g clip-path="url(#${qc})">${coatContent(qp, cw2, ch2, qrng)}</g>`
+      + `<path d="M${F(cw2)} 0 V${F(ch2)} H0" fill="none" stroke="#12100f" stroke-width="1.2"/>`;
+  } else if (qs && qs.length > 1) {
     // a MARSHALLED shield: the accumulated quarterings, each a full coat
     // rendered recursively into its quarter — two coats sit 1&4 / 2&3, three
     // repeat the senior coat in IV

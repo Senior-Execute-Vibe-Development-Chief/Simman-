@@ -131,6 +131,10 @@ const COMPACT_CATS = new Set(["celestial", "geometric"]);
 // Weighted like every other frequency window: rows and rings common, the
 // arc and the sky map rarer.
 const ARRAY_PATTERNS = ["rows", "rows", "ring", "ring", "arc", "constellation"];
+// what bounds a lone device on cloth: the disc dominates real flags, the
+// small armorial shield (the INESCUTCHEON — a state-arms panel) is the
+// serious rarity, the lozenge the odd one out
+const PANEL_SHAPES = ["lozenge", "disc", "disc", "escutcheon"];
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 // @INJECT:MOTIFS-START — the lab build (tools/build_lab.mjs) replaces this whole
 // block with the size-filtered subset so the artifact's pools match its bundled art.
@@ -729,7 +733,9 @@ export function expressGenome(genome) {
       // a lone FIGURE wants a ground of its own to sit on — its panel window
       // opens wide; a compact device (a disc, a star) flies bare more often
       if (arrange === "single" && get("crescent") > (compact ? 0.56 : 0.38) && get("crescent") <= 0.74) {
-        panel = { shape: get("symmetry") > 0.5 ? "disc" : "lozenge", tincture: markT.rgb, name: markT.name };
+        // the panel may be a disc, a lozenge, or an INESCUTCHEON — the small
+        // state-arms shield modern flags carry at their centre
+        panel = { shape: pickEnum(get("symmetry"), PANEL_SHAPES), tincture: markT.rgb, name: markT.name };
         tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds });
       } else if (arrange === "single" && get("motifCount") > 0.6) {
         fimb = tinctureOn([...grounds, tincture], get("hueA"), get("value"), pal.poles, { bunting: true });
@@ -891,6 +897,13 @@ function fieldPhrase(f, m) {
  *  are not blazonable and get an honest plain-language line instead. */
 export function blazonGenome(genome) {
   if (genome.quarters && genome.quarters.length > 1) {
+    // marshalled CLOTH blazons as an ensign — the senior coat in the canton,
+    // the house's own style as the field; shields enumerate their quarters
+    if (expressGenome(genome).isFlag) {
+      const own = blazonGenome({ genes: genome.genes, gen: genome.gen, seed: genome.seed, cadency: genome.cadency });
+      const un = blazonGenome({ genes: genome.quarters[0].genes, gen: genome.quarters[0].gen, seed: genome.quarters[0].seed });
+      return `${own}; in the canton the union: ${un}`;
+    }
     const qs = genome.quarters.map(q => blazonGenome({ genes: q.genes, gen: q.gen, seed: q.seed }));
     const ROMAN = ["I", "II", "III", "IV"];
     return `Quarterly: ${qs.map((q, i) => `${ROMAN[i]}. ${q}`).join("; ")}`;
@@ -936,7 +949,8 @@ export function blazonGenome(genome) {
       else if (m.arrange === "three") clause = `three ${pluralize(mName)} ${mT}${mFimb}`;
       else if (m.arrange === "inPale") clause = `two ${pluralize(mName)} in pale ${mT}${mFimb}`;
       else if (p.composition === "radial") clause = `${art(mName)} ${mName} ${mT} within an annulet`;
-      else if (m.panel) clause = `a ${m.panel.shape === "disc" ? "roundel" : "lozenge"} ${tName(m.panel.name)} charged with ${art(mName)} ${mName} ${mT}`;
+      else if (m.panel) { const pn = m.panel.shape === "disc" ? "roundel" : m.panel.shape === "escutcheon" ? "inescutcheon" : "lozenge";
+        clause = `${art(pn)} ${pn} ${tName(m.panel.name)} charged with ${art(mName)} ${mName} ${mT}`; }
       else clause = `${art(mName)} ${mName} ${mT}${mFimb}`;
       parts.push(m.inCanton ? `on a canton ${tName(p.ornaments.cantonName)} ${clause}` : clause);
     }
@@ -966,7 +980,7 @@ export function genomeDistance(a, b) {
 export function describeGenome(genome) {
   const p = expressGenome(genome);
   const bits = [p.composition, p.substrate, p.colors.mode];
-  if (genome.quarters && genome.quarters.length > 1) bits.unshift(`quarterly of ${genome.quarters.length}`);
+  if (genome.quarters && genome.quarters.length > 1) bits.unshift(p.isFlag ? `ensign of ${genome.quarters.length}` : `quarterly of ${genome.quarters.length}`);
   if (p.cadency) bits.push(`diff·${p.cadency.mark}`);
   if (p.composition === "heraldic") {
     const f = p.field;
