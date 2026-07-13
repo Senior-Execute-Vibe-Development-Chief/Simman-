@@ -60,6 +60,10 @@
   .seedrow{ display:flex; gap:6px; margin-bottom:8px; }
   .seedrow input{ flex:1; min-width:0; font:inherit; font-size:.76rem; font-family:var(--mono); background:var(--raised); color:var(--ink); border:1px solid var(--rule); border-radius:6px; padding:7px 9px; }
   .seedrow .mini{ flex:0 0 auto; }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+  .chip{ font:inherit; font-size:.72rem; padding:5px 10px; border:1px solid var(--rule); border-radius:999px; background:var(--raised); color:var(--ink); cursor:pointer; transition:border-color .12s; }
+  .chip:hover{ border-color:var(--accent); }
+  .chip small{ display:block; font-size:.62rem; color:var(--muted); }
 
   .btn{ display:block; width:100%; text-align:left; background:var(--raised); color:var(--ink); border:1px solid var(--rule); border-radius:6px; padding:9px 12px; font:inherit; font-size:.82rem; cursor:pointer; margin-bottom:8px; transition:border-color .12s, transform .04s; }
   .btn:hover{ border-color:var(--accent); }
@@ -111,6 +115,9 @@
 
   <div class="workbench">
     <aside class="rail traits">
+      <h2>Style presets</h2>
+      <p class="hint">Bookmarks into style-space, named for the historical traditions they evoke. They only set genes — nothing is locked to a culture: evolve freely from any of them, and any genome can still become anything.</p>
+      <div class="chips" id="presets"></div>
       <h2>Design axes</h2>
       <p class="hint">Abstract dials — they bias the genome without locking any pattern to a kind of realm. Move one and the emblem re-forms. <b>Note:</b> axes re-found the genome from its seed, so shape first, then evolve.</p>
       <div id="sliders"></div>
@@ -229,6 +236,40 @@ function nameFor(gm){ const r=rrng((gm.seed*7+ (gm.gen||0)*13)>>>0); return NAME
 function buildSliders(){ const box=$("#sliders");
   box.innerHTML=TRAITS.map(([k,label,hint])=>`<div class="ctrl"><label><b>${label}</b><span class="val" id="v_${k}">0.50</span></label><input type="range" min="0" max="100" value="50" id="s_${k}" aria-label="${label}"></div>`).join("");
   TRAITS.forEach(([k])=>{ const s=$("#s_"+k); s.addEventListener("input",()=>{ state.traits[k]=s.value/100; $("#v_"+k).textContent=(s.value/100).toFixed(2); state.genome=foundGenome(state.seed,state.traits); paint(true); }); }); }
+
+/* ── style presets: named bookmarks into style-space. Each just sets the axis
+   sliders and a handful of genes, then hunts a seed whose EXPRESSION matches
+   the shape it promises — the engine underneath stays fully decoupled. ── */
+const PRESETS=[
+  ["Europe","heraldic shield",{figuration:.9,saturation:.65,format:.02,ornateness:.55},
+    {composition:.06,paletteMode:.1,substrate:.08,iconism:.88},p=>p.composition==="heraldic"&&p.motif],
+  ["China","imperial silk",{figuration:.85,boldness:.8,saturation:.7,format:.4},
+    {composition:.19,paletteMode:.62,substrate:.25,motifCat:.318,iconism:.8},p=>p.motif],
+  ["Japan","mon roundel",{symmetry:.85,ornateness:.3,saturation:.15},
+    {composition:.31,paletteMode:.37,iconism:.6,motifCat:.5},p=>p.motif],
+  ["Mongols","steppe tamga",{figuration:.15,saturation:.35,format:.6},
+    {composition:.56,paletteMode:.87,substrate:.58,iconism:.25},null],
+  ["West Africa","mudcloth field",{symmetry:.6,tone:.35,saturation:.5},
+    {composition:.81,paletteMode:.87,substrate:.25,motifCat:.954,iconism:.3},p=>p.motif],
+  ["Calligraphy","aniconic banner",{figuration:.06,ornateness:.5},
+    {composition:.44,paletteMode:.1,substrate:.25,iconism:.1,scriptDensity:.85},null],
+];
+function applyPreset(ps){
+  const [,,axes,genes,need]=ps;
+  for(const [k,v] of Object.entries(axes||{})){ state.traits[k]=v; const s=$("#s_"+k); if(s){ s.value=Math.round(v*100); $("#v_"+k).textContent=v.toFixed(2); } }
+  let s=(Math.random()*2e9)>>>0, g;
+  for(let i=0;i<64;i++){
+    g=foundGenome(s,state.traits);
+    for(const [k,v] of Object.entries(genes||{})) g.genes[IDX[k]]=v;
+    if(!need||need(expressGenome(g))) break;
+    s=(s*1664525+1013904223)>>>0;
+  }
+  state.seed=s; state.genome=g; state.editGene=null; paint(true); pushLineage();
+}
+function buildPresets(){
+  $("#presets").innerHTML=PRESETS.map((ps,i)=>`<button class="chip" data-i="${i}" title="${ps[1]} — a starting point, not a lock"><b>${ps[0]}</b><small>${ps[1]}</small></button>`).join("");
+  $("#presets").querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>applyPreset(PRESETS[+c.dataset.i])));
+}
 
 function paintEmblem(el,gm,W,H){ el.innerHTML=emblemSVG(gm,W,H); }
 // keep the editor row's slider untouched while it is the thing driving the
@@ -384,6 +425,7 @@ $("#popsize").addEventListener("change",()=>{ if(pop.list.length) seedPop(); });
 // this just picks a representative one to greet you (Reroll stays pure-random).
 function seedWithMotif(traits){ let s=(Math.random()*2e9)>>>0; for(let i=0;i<48;i++){ if(expressGenome(foundGenome(s,traits)).motif) return s; s=(s*1664525+1013904223)>>>0; } return s; }
 buildSliders();
+buildPresets();
 state.seed=seedWithMotif(state.traits);
 state.genome=foundGenome(state.seed,state.traits);
 paint(false); pushLineage();
