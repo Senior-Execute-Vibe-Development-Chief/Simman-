@@ -519,6 +519,41 @@ on the reference.
    water-access premium (mag/RM_FULL) shrinks exactly where the apex cities
    live (apex 0.39× at 12k). A prototype lever already exists —
    `RES_INV_RIVER`, def 0 — this is its own arc, worldgen-side.
+
+   **INVESTIGATED (same day, follow-up session) — three layers, measured:**
+   - *Classification is CORRECT*: the absolute km² catchment bars scale
+     exactly (avgRunoff 0.2302 vs 0.2263 across 480/1920 — SIM_RIVER_DIAG in
+     riverGen.js), and the mag≥1/mag≥2 network's REAL length per real area
+     is invariant (1.00/1.08/1.14 and 1.00/0.99/1.04 across the three grids
+     — probe_river_density; NB the raw TILE fraction halving per 2× is 1-D
+     representation, not a defect).
+   - *Drainage fragmentation is the flow-side driver and is largely
+     IRREDUCIBLE*: the top river accumulates only 0.79× its bar-relative
+     flow at rs=4, Great-class real length 0.66×, mag≥3 corridor 0.78× —
+     while total ocean discharge per land holds within 7% and terminal land
+     grows just 39.0→42.3%. The water is REDISTRIBUTED across more, smaller
+     mouths: the terrain noise is a fixed-spectrum continuous field
+     (tectonicGen uses absolute normalized frequencies), so the coarse
+     reference LOW-PASSES it while fine grids resolve real divides that
+     split the great basins. Transmission loss is exonerated for the
+     cradles (it applies to TERMINAL-draining tiles only; the Nile is
+     exorheic). A reference-Nyquist hydrological-elevation field would fix
+     it at the cost of fine-grid terrain honesty — a product trade-off,
+     deliberately not taken here.
+   - *Consumer DETECTION was the actionable layer*: computeWaterAccess
+     (settlement.js) scans a fixed 3×3 — at rs=4 a settlement misses the
+     river it sits beside ~26% of the time. The existing `RES_INV_RIVER`
+     prototype (real-distance scan radius, byte-identical at/below the
+     reference by construction) was A/B'd at both grids (12k/8817):
+     at 1920 it RECOVERS the political map — realms 12→22 (ref 21), claimed
+     12.7→18.9% (ref 19.2%), org p50 0.99× of ref, apex city 0.50×→0.83× —
+     but at BOTH fine grids it also inflates FOUNDING (settlements 87→98 at
+     960; census 1.49×→1.88× of ref) because water access feeds site
+     viability, not just existing-city capacity. VERDICT: detection fix
+     validated, default flip PENDING a windowed multi-seed battery under
+     the lever and possibly a split of the mechanism (capacity read vs
+     founding-site scoring). The lever remains def 0; flip evidence lives
+     here and in the plan doc.
 3. The 12k snapshot exaggerates TIMING (a state-birth wave at 13k vs 11k reads
    as 12 vs 21 realms); the windowed probe_empires battery below is the
    product judge.
