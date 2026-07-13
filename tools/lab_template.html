@@ -257,6 +257,9 @@ const PRESETS=[
     {composition:.86,paletteMode:.87,substrate:.25,motifCat:.85,iconism:.3},p=>p.motif],
   ["Calligraphy","aniconic banner",{figuration:.06,ornateness:.5},
     {composition:.59,paletteMode:.1,substrate:.25,iconism:.1,scriptDensity:.85},null],
+  ["Modern flag","tricolour & canton",{ornateness:.15,saturation:.85,figuration:.45,format:.35},
+    {composition:.1,paletteMode:.1,substrate:.25,partition:.9,line:.1,hueC:.2,crescent:.3,pearl:.3,border:.3},
+    p=>p.isFlag&&p.composition==="heraldic"&&p.field.partition!=="plain"&&!p.field.fur],
 ];
 function applyPreset(ps){
   const [,,axes,genes,need]=ps;

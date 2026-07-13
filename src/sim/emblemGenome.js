@@ -69,7 +69,7 @@ const SIGIL_BASES = ["none", "none", "none", "steps", "lotus", "cradle"];
 const SIGIL_INTER = ["none", "none", "dots", "rays", "pips"];
 const SYMMETRIES  = ["none", "bilateral", "radial", "quarterly"];
 const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
-const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly", "chequy", "lozengy"];
+const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly", "chequy", "lozengy", "tiercedPale", "tiercedFess"];
 // field TREATMENTS (the crescent gene's high window): the two furs, plus the
 // lattice treatments — fretty (interlaced bendlets) and masoned (brickwork)
 const TREATMENTS  = ["ermine", "vair", "fretty", "masoned"];
@@ -417,6 +417,16 @@ export function expressGenome(genome) {
   // the typed GROUND any mark over this field lies on
   let grounds = partition === "plain" ? [pal.fieldT] : [pal.fieldT, pal.companionT];
   const TWO_REGION = ["perPale", "perFess", "perBend"];
+  // a TIERCED field bears three bands: the middle wears the class-opposed
+  // chargeT (the bright centre of a tricolour), and the far band is the second
+  // companion when one exists (A-B-C, the French pattern) or the field again
+  // (A-B-A, the Austrian) — the secondary gene already decides which
+  if (partition === "tiercedPale" || partition === "tiercedFess") {
+    const t3 = pal.companionT.name !== pal.chargeT.name ? pal.companionT : pal.fieldT;
+    field.tinctures = [pal.field, pal.chargeT.rgb, t3.rgb];
+    field.names = [pal.fieldT.name, pal.chargeT.name, t3.name];
+    grounds = [pal.fieldT, pal.chargeT, t3];
+  }
   // a field TREATMENT drapes the WHOLE field (so no partition/counterchange
   // under it). A fur IS the ground — ermine reads as argent strewn with
   // sable, vair as argent-and-azure — so marks pick against those; the
@@ -637,6 +647,8 @@ function fieldPhrase(f, m) {
     case "paly": s = `Paly${ln} of ${NUMWORD[f.stripes]} ${a} and ${b}`; break;
     case "chequy": s = `Chequy ${a} and ${b}`; break;
     case "lozengy": s = `Lozengy ${a} and ${b}`; break;
+    case "tiercedPale": s = `Tierced in pale ${a}, ${b} and ${tName(f.names[2])}`; break;
+    case "tiercedFess": s = `Tierced in fess ${a}, ${b} and ${tName(f.names[2])}`; break;
     default: s = a;
   }
   if (m && m.arrange === "seme")
@@ -716,7 +728,7 @@ export function describeGenome(genome) {
   if (p.cadency) bits.push(`diff·${p.cadency.mark}`);
   if (p.composition === "heraldic") {
     const f = p.field;
-    bits.push(f.fur ? f.fur : f.partition !== "plain" ? `${f.partition} ${f.names[0]}·${f.names[1]}` : f.names[0]);
+    bits.push(f.fur ? f.fur : f.partition !== "plain" ? `${f.partition} ${f.names.join("·")}` : f.names[0]);
     if (f.ordinary && f.ordinary !== "none") bits.push((f.counterchange ? "counterchanged " : "") + f.ordinary + " " + f.ordinaryName + (f.line !== "straight" ? " " + f.line : ""));
     if (f.chief) bits.push("chief");
     if (f.bordure) bits.push("bordure");

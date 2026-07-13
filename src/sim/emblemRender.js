@@ -180,6 +180,8 @@ function fieldSVG(w, h, p) {
     case "chequy": { const cols = Math.max(4, Math.min(9, n + 2)), cw = w / cols, rows = Math.ceil(h / cw); let s = R;
       for (let r = 0; r <= rows; r++) for (let c = 0; c < cols; c++) if ((r + c) % 2) s += `<rect x="${F(c * cw)}" y="${F(r * cw)}" width="${F(cw + 0.5)}" height="${F(cw + 0.5)}" fill="${b}"/>`;
       return s; }
+    case "tiercedPale": { let s = ""; for (let i = 0; i < 3; i++) s += `<rect x="${F(i * w / 3)}" width="${F(w / 3 + 1)}" height="${h}" fill="${css(p.tinctures[Math.min(i, p.tinctures.length - 1)])}"/>`; return s; }
+    case "tiercedFess": { let s = ""; for (let i = 0; i < 3; i++) s += `<rect y="${F(i * h / 3)}" width="${w}" height="${F(h / 3 + 1)}" fill="${css(p.tinctures[Math.min(i, p.tinctures.length - 1)])}"/>`; return s; }
     case "lozengy": { const cols = Math.max(4, Math.min(8, n + 2)), cw = w / cols, hh = cw * 0.7; let s = R;
       for (let j = -1; j <= Math.ceil(h / hh) + 1; j++) { if (!(j % 2)) continue;
         for (let i = -1; i <= cols; i++) { const cx = i * cw + cw / 2, cy = j * hh;
@@ -511,6 +513,9 @@ function coatContent(p, w, h, rng) {
     } else if (mot) {
       content += placeMotif(mot, w, h, p.substrate);
     }
+    // a FLAG may carry a true canton block over its field — stripes-and-canton
+    // is the modern grammar's backbone
+    if (p.isFlag && p.ornaments.canton) content += canton(w, h, base, p.ornaments.cantonKind, p.ornaments.cantonColor, true, C.field);
   } else {
     content += `<rect width="${w}" height="${h}" fill="${css(C.field)}"/>`;
     if (p.composition === "central" && p.motif) {

@@ -41,7 +41,7 @@ const ARGENT = TINCTURES.argent.rgb, AZURE = TINCTURES.azure.rgb;
 
 let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
-const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0 };
+const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0 };
 const fail = (msg, g) => { if (fails++ < 10) console.error(`  FAIL ${msg}${g ? `\n       ${describeGenome(g)}` : ""}`); };
 
 function checkMark(mark, grounds, what, g, strict) {
@@ -62,6 +62,10 @@ function audit(g) {
     if (p.colors.mode === "heraldic") fieldNames.add(f.names[0]);
     if (seen[f.partition] != null) seen[f.partition]++;
     if (seen[f.fur] != null) seen[f.fur]++;
+    if (f.partition.startsWith("tierced")) {
+      if (f.names[0] === f.names[1] || f.names[1] === f.names[2]) fail("tierced: adjacent bands share a tincture", g);
+      if (f.tinctures.length !== 3) fail("tierced: needs three band tinctures", g);
+    }
     if ((f.ordinaryCount || 1) > 1) seen.diminutive++;
     if (p.motif && p.motif.attitude) seen.attitude++;
     const grounds = f.fur === "ermine" ? [ARGENT] : f.fur === "vair" ? [ARGENT, AZURE]
@@ -71,6 +75,7 @@ function audit(g) {
       || f.fur === "ermine" || f.fur === "vair";
     const hasOrd = f.ordinary && f.ordinary !== "none";
     if (hasOrd && !f.counterchange) checkMark(f.ordinaryTincture, grounds, "ordinary", g, strict);
+    if (p.isFlag && p.ornaments.canton) checkMark(p.ornaments.cantonColor, grounds, "canton-flag", g, strict);
     if (f.chief) checkMark(f.subTincture, grounds, "chief", g, strict);
     if (f.bordure) checkMark(f.subTincture, grounds, "bordure", g, strict);
     const m = p.motif;
