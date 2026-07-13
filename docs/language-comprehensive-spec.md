@@ -1227,3 +1227,54 @@ byte-identically (gated first).
   builder TYPE control (event / description / existential / possession).
 - Parked: predicate-nominal case (Russian instrumental); expletive
   subjects ('there/il'); SVC beyond two verbs; reflexive possessives.
+
+## Build status (session 16, second phase) — typology completion II: the lexicon
+
+The lexicon becomes typological: not just WHICH words exist but how the
+semantic space is CARVED — colors, kin, and motion, the three domains
+where cross-linguistic carving is best charted. Probe 410 → **440**
+checks (§30). Everything is colexification/derivation of APPENDED
+concepts onto older ones (new→old only), so no pre-existing surface
+moves and no name pool grows — the append-only integrity gates lead.
+
+- **Berlin–Kay color terms.** Five appended meanings (yellow, brown,
+  purple, pink, orange) above the pre-existing six-term floor. The split
+  rolls are IMPLICATIONAL by construction: brown only after yellow, the
+  stage-VII terms only after brown, and never past a GRUE anchor — the
+  long-standing green=blue colex row, read here as the stage it always
+  was. An unsplit term colexifies onto its hierarchy parent and resolves
+  through the chain (orange = yellow = red), so "how many basic color
+  terms" is a per-family fact (5–11, modal 6–7) with the order built in.
+- **Kinship systems.** Eight appended genealogical positions (sister,
+  the four uncle/aunt slots, cousin, grandparents) and ONE roll: which
+  of Morgan's classic types the family speaks — generational (uncle =
+  father), bifurcate-merging (father's brother = father, mother's
+  brother his OWN word — the Iroquois signature), lineal (one 'uncle'),
+  bifurcate-collateral (every position named), at ~Murdock rates. The
+  type IS a colex merge-list; whether MB = FB is typology, not
+  translation. Grandparents mostly derive ('great father' — the
+  grand-père machine, through the ordinary dv pathway).
+- **Motion typology (Talmy).** Four appended path verbs (enter, exit,
+  ascend, descend) and the three real types: SATELLITE-framed keeps the
+  manner verb and hangs path on the adposition ('ran in the town') —
+  and its path verbs are GO-COMPOUNDS quarried from the family's OWN
+  adposition source ('house-go' where 'in' ‹ house — cognate with the
+  satellite it echoes); VERB-framed puts path in the verb and
+  BACKGROUNDS manner (the run is gone — Talmy's trade, gated);
+  EQUIPOLLENT serializes both ('ran entered'), and every equipollent
+  language is a serializing one — phase 1's SVC machinery is the
+  renderer. One stream + rate shared by the lexical and clause layers;
+  frame field `frame.path`.
+- **New colexification domains:** mind-as-heart (with a head minority),
+  tongue=language (the classic), bark ‹ 'tree-skin' / bark=skin — all
+  new-concept takers on appended COLEX rows.
+- References pin the lot as scenario data (`prof.lex`): Mandarin
+  equipollent + every-uncle-distinct + 11 colors; Russian/English
+  satellite + lineal (дядя) + 11 colors.
+- 22 appended concepts (position-stable, none in any name pool); new
+  exports `colorTermsOf`, `kinshipOf`, `motionTypologyOf` (+
+  `adpSourceOf` now public for the satellite compound); Lab: "The
+  lexicon's shape" card — swatches with their merges, the kin table,
+  the motion example with its go-compound etymology.
+- Parked: Omaha/Crow generational skewing (needs gendered ego); elder/
+  younger sibling ranking; mensural color modifiers ('light/dark X').

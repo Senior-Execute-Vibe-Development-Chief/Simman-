@@ -29,6 +29,10 @@ export function refProfile(kind, seed) {
     romTaste: 0, palatalFront: true,              // j/q/x only before front vowels; g/k/h never before i
     toneMarks: true, medialSonorant: true,
     script: { type: "logo", dir: "ltr" },         // pinned writing system (scenario data, like the gram literal)
+    // lexical typology (phase 2, scenario data): equipollent motion (跑进 —
+    // the serializing third type), every uncle distinct (sudanese-like, as
+    // Chinese kin terms are), the full 11-term color set
+    lex: { motion: "equi", kin: "sudanese", bk: "full" },
     // grammar dials (every gram dial pinned — rolled values must not leak):
     // SVO isolating, aspect not tense (le/guo), final polar particle (ma),
     // wh in situ, clusive we (zánmen), affixal pronoun plural (wǒ-men)
@@ -70,6 +74,9 @@ export function refProfile(kind, seed) {
     sylMin: 1, sylMax: 3, patro: "suf", gendered: true, diph: false, longV: false, nasalV: false,
     orthoStyle: 0, sig: "none", compound: "hl", compErode: "trim", wordLen: 2.1, erodeNames: false, nameStyle: "plain",
     romTaste: 0, script: { type: "alphabet", dir: "ltr" },
+    // lexical typology (phase 2): satellite-framed (the Slavic prefix machine),
+    // one 'uncle' (дядя — lineal/eskimo), the full color set
+    lex: { motion: "sat", kin: "eskimo", bk: "full" },
     // SVO fusional: six-case nom-acc, three genders, full TAM + agreement,
     // preverbal ne, fronted wh, no articles — the Slavic corner
     gram: {
@@ -108,6 +115,9 @@ export function refProfile(kind, seed) {
     orthoStyle: 0, sig: "none", compound: "hl", compErode: "trim", wordLen: 1.9, erodeNames: true, nameStyle: "di",
     romTaste: 0, c2LiqOnly: true,                 // pr/tr/fl/sl — never fn-/hn-/thn-
     script: { type: "alphabet", dir: "ltr" },
+    // lexical typology (phase 2): satellite-framed ('go in'), lineal kin
+    // (one uncle), the full 11-term color set
+    lex: { motion: "sat", kin: "eskimo", bk: "full" },
     ortho: "en",                                  // spelling conventions: -y not -i, -ve, -dge, -ck, -ff, silent -e
     codaBias: 1.5,                                // stress-timed: closed syllables are the norm
     medialSonorant: true,                         // win-ter, sil-ver — never shod-pug

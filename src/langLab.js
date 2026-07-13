@@ -10,7 +10,7 @@
 // under `npm run dev`, which is why every read is typeof-guarded. Declared
 // here so ESLint's no-undef doesn't flag the injected identifier.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf } from "./sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf, colorTermsOf, kinshipOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
 import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME } from "./sim/languageScript.js";
@@ -20,8 +20,9 @@ import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
   alignmentOf, voicesOf, voiceEtymologies, tamShape, evidentialSystem, classInventory, concordMarkers, agreementTargets, inflectAdj,
   classifiersOf, classifierEtymologies, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns,
-  renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf } from "./sim/languageGrammar.js";
-import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, OLD, GRAIN } from "./sim/languageLexicon.js";
+  renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf } from "./sim/languageGrammar.js";
+import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, OLD, GRAIN,
+  RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
@@ -759,6 +760,42 @@ function nounFrontierHTML(l) {
   return `<section class="card"><h2>Nouns, phrases &amp; clauses <span class="count">— agreement, counting, subordination</span></h2>${secs.join("")}</section>`;
 }
 
+// ── the lexicon's shape (phase 2): colors, kinship, motion typology ───────
+const BK_SWATCH = { white: "#f2f0e8", black: "#26241f", red: "#b3362e", green: "#3d7a44", yellow: "#d9a821", blue: "#33619e", brown: "#7a5230", purple: "#7a4f8f", pink: "#d98aa3", orange: "#d06f27", grey: "#8a8578" };
+function lexTypologyHTML(l) {
+  const secs = [];
+  // Berlin–Kay colors: one swatch per basic MEANING; unsplit terms sit inside
+  // their parent's word (yellow reading as red)
+  const ct = colorTermsOf(l);
+  const sw = ct.terms.map(t => {
+    const merged = t.mergedInto >= 0;
+    return `<span class="cell"><span style="display:inline-block;width:0.8em;height:0.8em;border-radius:50%;background:${BK_SWATCH[t.g] || "#999"};border:1px solid rgba(0,0,0,.25);vertical-align:-0.05em"></span> <span class="lbl">${esc(t.g)}</span> ${merged ? `<span class="gloss">= ${esc(glossOf(t.mergedInto))}</span>` : `<span class="w">${esc(t.w)}</span>`}</span>`;
+  }).join(" ");
+  secs.push(`<h3>Color terms <span class="count">(${ct.n} basic${ct.grue ? ", grue" : ""})</span></h3>
+    <p class="note">Berlin &amp; Kay's hierarchy: color vocabularies grow in a fixed order (dark/light → red → yellow/green → blue → brown → the late terms). A term this family hasn't split yet simply IS its parent — one word covers both.</p>
+    <p class="cells">${sw}</p>`);
+  // kinship
+  const kt = kinshipOf(l);
+  const kName = { hawaiian: "generational — Hawaiian-type", iroquois: "bifurcate merging — Iroquois-type", eskimo: "lineal — Eskimo-type", sudanese: "bifurcate collateral — Sudanese-type" };
+  const kCells = kt.terms.map(t => `<span class="cell"><span class="lbl">${esc(t.g)}</span> ${t.sameAs >= 0 ? `<span class="gloss">= ${esc(glossOf(t.sameAs))}</span>` : `<span class="w">${esc(t.w)}</span>`}</span>`).join(" ");
+  secs.push(`<h3>Kinship <span class="count">(${esc(kName[kt.type] || kt.type)})</span></h3>
+    <p class="note">Whether mother's-brother shares father's-brother's word — or father's own — is the family's SYSTEM, not a translation choice: generational merges the whole parent generation, bifurcate-merging keeps only the cross-relatives distinct, lineal has one 'uncle', bifurcate-collateral names every position.</p>
+    <p class="cells">${kCells}</p>`);
+  // motion typology
+  const mt = motionTypologyOf(l);
+  const mName = { sat: "satellite-framed — path on the adposition", verb: "verb-framed — path in the verb", equi: "equipollent — both verbs, serialized" };
+  const mEx = clauseEx("‘the king ran into the town’", renderClause(l, { s: { n: KING, def: true }, v: { c: RUN, tam: "pst" }, path: { p: ENTER, n: TOWN, def: true } }));
+  const eEty = etymologyOf(l, ENTER);
+  secs.push(`<h3>Motion <span class="count">(${esc(mName[mt])})</span></h3>
+    <p class="note">Talmy's split: where the PATH of motion lives. A satellite-framed tongue keeps the manner verb and says ‘ran in’ — its ‘enter’ is a go-compound${eEty ? ` (here ${esc(wordOf(l, ENTER))} ‹ ‘${esc(eEty.gloss)}’)` : ""}; a verb-framed one says ‘entered’ and lets the running go unsaid; a serializing one says both.</p>
+    ${mEx}`);
+  // the new colex domains, only where they fired (emergent card)
+  const pairs = [[MIND, HEART, "one word for heart & mind"], [MIND, HEAD, "one word for head & mind"], [LANGUAGE_C, TONGUE, "the tongue IS the language"], [BARK, SKIN, "bark is just ‘skin’"]];
+  const fired = pairs.filter(([a, b]) => wordOf(l, a) === wordOf(l, b)).map(([a, b, lab]) => `<span class="cell"><span class="w">${esc(wordOf(l, a))}</span> <span class="gloss">${esc(lab)}</span></span>`);
+  if (fired.length) secs.push(`<h3>Shared words</h3><p class="cells">${fired.join(" ")}</p>`);
+  return `<section class="card"><h2>The lexicon's shape <span class="count">— colors, kin, motion</span></h2>${secs.join("")}</section>`;
+}
+
 // ── paradigms: declension + conjugation tables ───────────────────────────
 const PARA_NOUNS = [STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT];
 const cellHTML = (x) => {
@@ -1202,6 +1239,7 @@ function render() {
   ${grammarHTML(l)}
   ${verbFrontierHTML(l)}
   ${nounFrontierHTML(l)}
+  ${lexTypologyHTML(l)}
   ${sentenceHTML(l)}
   ${paradigmHTML(l)}
   ${cognatesHTML()}

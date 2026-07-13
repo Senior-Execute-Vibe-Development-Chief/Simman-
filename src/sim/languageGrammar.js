@@ -32,6 +32,7 @@ import {
   BE, HAVE, KNOW, SEE, NEW, NIGHT, FAR, SEEM, HEAR, SAY,
   BODY, LEAF, PEOPLE, TREE, REED, SPEAR, ARM, SHIELD, WOOD, GRAIN, CLF_SENSE, CLF_AMBIG,
   LITTLE, EXCEED, SAME, LORD, NOBLE, HIGH, VERBS,
+  MOTION_PATH_ADP, MOTION_SAT_RATE,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -512,8 +513,10 @@ const ADP_SPECS = [
 ];
 // the concept a given adposition wears down from in THIS family — replays the
 // closedOf ADP_SPECS roll so the applicative (Group B) is COGNATE with the
-// language's own adposition (benefactive applicative ‹ its own 'to', etc.)
-function adpSourceOf(lang, meaning) {
+// language's own adposition (benefactive applicative ‹ its own 'to', etc.),
+// and (phase 2) so a satellite-framed family's path-verb compound quarries
+// the SAME source its satellite wears (exported for language.js derivParts)
+export function adpSourceOf(lang, meaning) {
   const s = ADP_SPECS.find(x => x.m === meaning);
   if (!s) return null;
   let r = h01(lang.famSeed ?? lang.seed, "adps", meaning), src = null;
@@ -539,6 +542,20 @@ const APPL_MEANING = { ben: "to", ins: "with", loc: "in" };   // applicative fla
 // the locative copula and the posture existential, as in life where a single
 // verb serves both be-at jobs (the estar ‹ stare road)
 function postureVerbOf(lang) { return h01(lang.famSeed ?? lang.seed, "postv") < 0.55 ? SIT : STAND; }
+
+// ── MOTION TYPOLOGY (Talmy, phase 2): how a motion event packages its PATH.
+// Satellite-framed keeps the manner verb and hangs path on an adposition
+// ('ran INTO the house' — and its path VERBS are go-compounds, see
+// derivParts); verb-framed puts path in the verb and backgrounds manner
+// ('entered'); a serializing tongue keeps both verbs — Talmy's equipollent
+// third type, which is exactly what the SVC machinery renders. One stream +
+// rate shared with the lexical layer; pinnable via prof.lex (scenario data).
+export function motionTypologyOf(lang) {
+  const pin = lang.prof.lex && lang.prof.lex.motion;
+  if (pin) return pin;
+  if (h01(lang.famSeed ?? lang.seed, "motion") < MOTION_SAT_RATE) return "sat";
+  return gramOf(lang).svc ? "equi" : "verb";
+}
 
 /** Every closed-class form of the language: pronouns (with the language's own
  *  person/number distinctions), demonstratives, negation, the question-word
@@ -2676,6 +2693,20 @@ export function renderClause(lang, frame, opts = {}) {
   // frame fields — a bare verbal frame never enters these branches) ──
   if (frame.poss) return renderPossessionClause(lang, frame, opts);
   if (frame.ex) return renderExistentialClause(lang, frame, opts);
+  // ── MOTION TYPOLOGY (Talmy, phase 2): frame.path = { p, n, def } rewrites
+  // by the family's type. Satellite: manner verb + path adposition ('ran in
+  // the house'); verb-framed: the path CONCEPT becomes the verb and manner is
+  // BACKGROUNDED — dropped, exactly Talmy's trade ('entered the house');
+  // equipollent: both verbs serialize, ground as the path verb's object
+  // ('ran entered the house' — the Mandarin 跑进 shape). ──
+  if (frame.path) {
+    const ty = motionTypologyOf(lang);
+    const { path, ...rest } = frame;
+    const ground = path.n != null ? { adp: MOTION_PATH_ADP.get(path.p) || "in", n: path.n, def: path.def, num: path.num } : null;
+    if (ty === "sat") return renderClause(lang, { ...rest, v: { c: GO, ...rest.v }, loc: ground || rest.loc }, opts);
+    if (ty === "equi") return renderClause(lang, { ...rest, v: { c: GO, ...rest.v }, v2: { c: path.p, o: path.n != null ? { n: path.n, def: path.def } : null } }, opts);
+    return renderClause(lang, { ...rest, v: { ...rest.v, c: path.p }, loc: ground || rest.loc }, opts);
+  }
   // SERIAL-VERB degrade: a non-serializing language coordinates instead
   // ('took the knife AND cut the meat'), pronominalizing the second subject
   if (frame.v2 && !g.svc) {

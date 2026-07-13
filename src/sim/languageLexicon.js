@@ -260,13 +260,108 @@ export const EXCEED = c("exceed", "act", 0.5);
 export const SAME = c("same", "qua", 0.6);
 export const LORD = c("lord", "gov", 0.55);
 
+// ── lexical-typology appends (typology completion, phase 2) ──────────────
+// APPEND-ONLY as ever, and none of these enter a name pool (appending to a
+// pool would re-roll every name). Three families of concept:
+//
+// COLORS — the five Berlin–Kay terms above the pre-existing core (black/
+// white/red/green/blue/grey are already universal here; the hierarchy
+// governs everything above that floor). A term a family hasn't SPLIT yet
+// colexifies onto its hierarchy parent (yellow→red, orange→yellow→…), so
+// "how many basic color terms" is a per-family fact with the implicational
+// order built in (language.js compile()).
+export const YELLOW = c("yellow", "col", 0.75);
+export const BROWN = c("brown", "col", 0.55);
+export const PURPLE = c("purple", "col", 0.4);
+export const PINK = c("pink", "col", 0.35);
+export const ORANGE = c("orange", "col", 0.35);
+// KIN TYPES — the distinct genealogical positions (world knowledge, not any
+// language's answer): whether mother's-brother shares father's-brother's
+// word — or father's — is the family's KINSHIP SYSTEM (Morgan's classic
+// types, rolled per family in compile()). Grandparents usually derive
+// ('great father' — the grand-père machine, via the ordinary dv pathway).
+export const SISTER = c("sister", "kin", 0.9);
+export const UNCLE_F = c("father's brother", "kin", 0.5);
+export const UNCLE_M = c("mother's brother", "kin", 0.5);
+export const AUNT_F = c("father's sister", "kin", 0.45);
+export const AUNT_M = c("mother's sister", "kin", 0.45);
+export const COUSIN = c("cousin", "kin", 0.45);
+export const GRANDFATHER = c("grandfather", "kin", 0.55, [FATHER, GREAT]);
+export const GRANDMOTHER = c("grandmother", "kin", 0.55, [MOTHER, GREAT]);
+// PATH VERBS (Talmy) — a verb-framed family lexicalizes these as opaque
+// roots (entrar); a satellite-framed one DERIVES them from GO + the same
+// body-part sources its adpositions wear ('belly-go' = in-go, eingehen) —
+// the derivation is conditioned on the family's motion type (language.js).
+export const ENTER = c("enter", "act", 0.7);
+export const EXIT = c("exit", "act", 0.65);
+export const ASCEND = c("ascend", "act", 0.5);
+export const DESCEND = c("descend", "act", 0.5);
+// new colexification domains: heart/mind, tongue/language, skin/bark
+export const MIND = c("mind", "bod", 0.7);
+export const TONGUE = c("tongue", "bod", 0.9);
+export const LANGUAGE_C = c("language", "gov", 0.6);
+export const SKIN = c("skin", "bod", 0.85);
+export const BARK = c("bark", "plt", 0.5, [SKIN, TREE]);
+
 export const CONCEPTS = D;
+
+// ── Berlin–Kay hierarchy data (shared world-structure, cardinal rule 2) ──
+// The colexification PARENT of each unsplit term — yellow reads as (macro-)
+// red, orange as yellow (resolving through the chain when yellow is unsplit
+// too), purple as blue-or-black, pink as red, brown as black-or-red. The
+// per-family split rolls live in language.js compile(); the eleven BASIC
+// terms counted are exactly Berlin & Kay's: white black red green yellow
+// blue brown purple pink orange grey.
+export const BK_TERMS = [WHITE, BLACK, RED, GREEN, YELLOW, BLUE, BROWN, PURPLE, PINK, ORANGE, GREY];
+export const BK_PARENT = new Map([
+  [YELLOW, [[RED, 0.75], [GREEN, 0.25]]],
+  [BROWN, [[BLACK, 0.5], [RED, 0.5]]],
+  [PURPLE, [[BLUE, 0.55], [BLACK, 0.45]]],
+  [PINK, [[RED, 1]]],
+  [ORANGE, [[YELLOW, 1]]],
+]);
+
+// ── kinship systems (Morgan's classic types) — merge lists per type ──────
+// Each entry [newKin, target]: the family's word for newKin IS its word for
+// target (colex, new→old only, so no pre-existing surface ever moves).
+//   hawaiian — generational: all same-generation kin merge (uncle=father)
+//   iroquois — bifurcate merging: parallel kin merge (FB=F, MZ=M), CROSS
+//              kin (MB, FZ) keep their own words; cousin reads cross-cousin
+//   eskimo   — lineal: one 'uncle', one 'aunt', distinct from the parents
+//   sudanese — bifurcate collateral: every position its own word
+export const KIN_TYPES = ["hawaiian", "iroquois", "eskimo", "sudanese"];
+export const KIN_MERGES = {
+  hawaiian: [[UNCLE_F, FATHER], [UNCLE_M, FATHER], [AUNT_F, MOTHER], [AUNT_M, MOTHER], [COUSIN, BROTHER]],
+  iroquois: [[UNCLE_F, FATHER], [AUNT_M, MOTHER]],
+  eskimo: [[UNCLE_M, UNCLE_F], [AUNT_M, AUNT_F]],
+  sudanese: [],
+};
+export const KIN_SLOTS = [FATHER, MOTHER, BROTHER, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER];
+
+// ── motion typology (Talmy) — the satellite-framed derivation pathways ──
+// [head, fallbackMod]: 'belly-go' = in-go, read by derivParts when the
+// family is satellite-framed — and the modifier is the family's OWN
+// adposition source (adpSourceOf, so the path verb is COGNATE with the
+// satellite it echoes: a tongue whose 'in' wore down from 'house' says
+// house-go), falling back to the canonical body source when the adposition
+// is opaque. MOTION_PATH_ADP maps each path concept to the adposition
+// meaning it rides — one table shared by the lexical layer, the clause
+// renderer, and the satellite compound. The satellite share of the roll is
+// here so both layers read ONE number.
+export const MOTION_DV = new Map([
+  [ENTER, [GO, BELLY]], [EXIT, [GO, MOUTH]], [ASCEND, [GO, HIGH]], [DESCEND, [GO, LOW]],
+]);
+export const MOTION_PATH_ADP = new Map([
+  [ENTER, "in"], [EXIT, "from"], [ASCEND, "on"], [DESCEND, "under"],
+]);
+export const MOTION_SAT_RATE = 0.45;   // satellite-framed share (Talmy: roughly half the world packages path outside the verb)
 
 // frame-able verbs for the sentence layer + Lab dropdowns (append-only: existing
 // indices are referenced by position in the probe, so new verbs go at the END)
 export const VERBS = [BE, HAVE, GO, COME, DO, SAY, SEE, HEAR, KNOW, WANT, GIVE,
   TAKE, MAKE, EAT, DRINK, SLEEP, SIT, STAND, WALKV, RUN, FALL, DIE, KILL,
-  FIGHTV, BURNV, BUILDV, RULEV, LOVEV, FEARV, FINISH, SEEM, EXCEED];
+  FIGHTV, BURNV, BUILDV, RULEV, LOVEV, FEARV, FINISH, SEEM, EXCEED,
+  ENTER, EXIT, ASCEND, DESCEND];
 
 // ── AGENTIVITY: proto-agent score over verb ids (Dowty) — the analogue of
 // basicness `b`, for alignment (Group F). A verb's lone argument (intransitive
@@ -281,6 +376,7 @@ export const AGENTIVITY = new Map([
   [STAND, 0.6], [SEE, 0.6], [WANT, 0.6], [TAKE, 0.7], [GIVE, 0.7], [SIT, 0.55], [FINISH, 0.52],
   [HAVE, 0.4], [KNOW, 0.4], [HEAR, 0.4], [LOVEV, 0.4], [FEARV, 0.4], [SEEM, 0.2],
   [SLEEP, 0.3], [BE, 0.3], [BURNV, 0.25], [FALL, 0.1], [DIE, 0.05],
+  [ENTER, 0.85], [EXIT, 0.85], [ASCEND, 0.85], [DESCEND, 0.8],   // volitional motion (phase-2 appends)
 ]);
 
 // ── CLICS-style colexification affinities ────────────────────────────────
@@ -294,6 +390,10 @@ export const COLEX = [
   [FOREST, TREE, 0.25], [ROAD, CROSSING, 0.3], [CHILD, SON, 0.25], [GRAIN, BREAD, 0.25],
   // verb colexification (append-only; indices are famSeed-hash streams)
   [GO, WALKV, 0.25], [EAT, DRINK, 0.12], [WANT, LOVEV, 0.15], [SEE, HEAR, 0.08],
+  // phase-2 domains (the taker is always the NEW concept, so no pre-existing
+  // surface moves): heart-as-mind (with a head-as-mind minority — a later row
+  // that fires overrides), tongue=language (THE classic), bark=skin
+  [HEART, MIND, 0.45], [HEAD, MIND, 0.18], [TONGUE, LANGUAGE_C, 0.6], [SKIN, BARK, 0.3],
 ];
 
 // ── intentional abstract derivation (the curated relations table) ─────────
@@ -355,6 +455,10 @@ export const CLF_SENSE = new Map([
   [LEAF, "flat"], [SHIELD, "flat"], [FIELD, "flat"], [WALL, "flat"],
   [STONE, "round"], [GRAIN, "round"], [HEAD, "round"], [SUN, "round"], [MOON, "round"],
   [STAR, "round"], [GOLD, "round"], [SILVER, "round"],
+  // phase-2 appends (new ids only — existing assignments never move)
+  [SISTER, "hum"], [UNCLE_F, "hum"], [UNCLE_M, "hum"], [AUNT_F, "hum"], [AUNT_M, "hum"],
+  [COUSIN, "hum"], [GRANDFATHER, "hum"], [GRANDMOTHER, "hum"],
+  [TONGUE, "long"], [SKIN, "flat"], [BARK, "flat"],
 ]);
 // A few nouns are GENUINELY ambiguous: a fish is animal AND long, a coin flat
 // AND round, a ship long AND just-a-thing. These carry a [candidate, candidate]

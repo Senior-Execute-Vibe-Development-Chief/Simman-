@@ -11,14 +11,17 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf, colorTermsOf, kinshipOf } from "../src/sim/language.js";
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
 import { scriptOf, writeWord, writeForm, writeName, formFromSurface, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
 import { runHistory } from "../src/sim/languageHistory.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND, QUEEN, OLD, GRAIN, BREAD, SWORD, BE, SIT, STAND, HAVE } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, adpSourceOf } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND, QUEEN, OLD, GRAIN, BREAD, SWORD, BE, SIT, STAND, HAVE,
+  TOPO_MOD, PERSON_POOL, LOAN_POOL, RUN, FATHER, BROTHER, RED, GREEN, BLUE, HEART, HEAD,
+  YELLOW, BROWN, PURPLE, PINK, ORANGE, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER,
+  ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK, LORD } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -2974,6 +2977,130 @@ console.log("\n── §29 syntax completion ──");
         + " there-is-grain: " + renderClause(l, { ex: { n: GRAIN }, v: {} }).text.padEnd(18)
         + " king-has-horse: " + renderClause(l, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE } }, v: {} }).text);
     }
+  }
+}
+
+// ── §30 LEXICAL TYPOLOGY: Berlin–Kay color terms, kinship systems, motion
+// typology, new colexification domains. All of it is colexification /
+// derivation of APPENDED concepts onto older ones (new→old only), so no
+// pre-existing surface ever moves — the append-only integrity gates lead. ──
+console.log("\n── §30 lexical typology ──");
+{
+  const world = mkWorld();
+  const N = 500;
+  const pop = Array.from({ length: N }, (_, i) => foundLanguage(world, { seed: 930000 + i * 71 }));
+  const rate = (ls, pred) => ls.filter(pred).length / Math.max(1, ls.length);
+  const pct = (x) => Math.round(x * 100) + "%";
+  const A = (x) => x.tokens.length === x.gloss.split(" ").length;
+  const refL = (kind, seed) => { const l = foundLanguage(mkWorld(), { seed }); l.prof = refProfile(kind, seed); l.rules = []; const r = refPin(kind); l.pin = r.pin; if (r.rom) l.prof.rom = { ...(l.prof.rom || {}), ...r.rom }; return l; };
+
+  // append-only integrity (first gates): ids fixed, nothing entered a name pool
+  check("append-only: BARK is the last concept, LORD unmoved, VERBS tail is the path set",
+    BARK === CONCEPTS.length - 1 && CONCEPTS[LORD].g === "lord" && VERBS.slice(-4).join() === [ENTER, EXIT, ASCEND, DESCEND].join());
+  const pools = [TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL];
+  const newCids = [YELLOW, BROWN, PURPLE, PINK, ORANGE, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER, ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK];
+  check("no phase-2 concept entered a name/loan pool (names never re-baseline)",
+    newCids.every(cid => pools.every(p => !p.includes(cid))));
+
+  // ── Berlin–Kay ──
+  const cts = pop.map(l => colorTermsOf(l));
+  const basicIn = (ct, cid) => ct.terms.find(t => t.cid === cid).mergedInto === -1;
+  check("the hierarchy is implicational: brown only after yellow, late terms only after brown, never past a grue anchor",
+    cts.every(ct => (!basicIn(ct, BROWN) || basicIn(ct, YELLOW)) &&
+      ([PURPLE, PINK, ORANGE].every(c2 => !basicIn(ct, c2) || basicIn(ct, BROWN))) &&
+      (!ct.grue || !basicIn(ct, BROWN))));
+  const yRate = rate(cts, ct => basicIn(ct, YELLOW));
+  check(`yellow is near-universal, the stage-VII terms minority (yellow ${pct(yRate)}, orange ${pct(rate(cts, ct => basicIn(ct, ORANGE)))})`,
+    yRate > 0.65 && yRate < 0.9 && rate(cts, ct => basicIn(ct, ORANGE)) < 0.25);
+  const nDist = cts.map(ct => ct.n);
+  check(`basic-term counts span the range (min ${Math.min(...nDist)}, max ${Math.max(...nDist)}, modal 6–7)`,
+    Math.min(...nDist) <= 6 && Math.max(...nDist) === 11 && rate(cts, ct => ct.n === 6 || ct.n === 7) > 0.4);
+  const unsplitL = pop.find(l => { const ct = colorTermsOf(l); return !basicIn(ct, YELLOW); });
+  check("an unsplit term IS its parent's word (orange resolving through yellow to red)",
+    wordOf(unsplitL, YELLOW) === wordOf(unsplitL, RED) || wordOf(unsplitL, YELLOW) === wordOf(unsplitL, GREEN));
+  const chainL = pop.find(l => { const ct = colorTermsOf(l); return !basicIn(ct, YELLOW) && !basicIn(ct, ORANGE); });
+  check("the colex chain resolves transitively (orange = yellow = red)", wordOf(chainL, ORANGE) === wordOf(chainL, YELLOW));
+  check("a grue language reads green = blue in its color card", (() => { const g2 = cts.find(ct => ct.grue); return !g2 || g2.terms.find(t => t.cid === GREEN).mergedInto === BLUE; })());
+
+  // ── kinship ──
+  const kts = pop.map(l => kinshipOf(l));
+  const kRate = (k) => rate(kts, x => x.type === k);
+  check(`Morgan's four types at ~Murdock rates (haw ${pct(kRate("hawaiian"))} iro ${pct(kRate("iroquois"))} esk ${pct(kRate("eskimo"))} sud ${pct(kRate("sudanese"))})`,
+    kRate("hawaiian") > 0.22 && kRate("iroquois") > 0.2 && kRate("eskimo") > 0.15 && kRate("sudanese") > 0.08 && kRate("sudanese") < 0.25);
+  const kL = (k) => pop.find(l => kinshipOf(l).type === k);
+  const haw = kL("hawaiian"), iro = kL("iroquois"), esk = kL("eskimo"), sud = kL("sudanese");
+  check("hawaiian (generational): uncle = father, aunt = mother, cousin = sibling",
+    wordOf(haw, UNCLE_F) === wordOf(haw, FATHER) && wordOf(haw, UNCLE_M) === wordOf(haw, FATHER) &&
+    wordOf(haw, AUNT_M) === wordOf(haw, MOTHER) && wordOf(haw, COUSIN) === wordOf(haw, BROTHER));
+  check("iroquois (bifurcate merging): father's brother = father, mother's brother his OWN word",
+    wordOf(iro, UNCLE_F) === wordOf(iro, FATHER) && wordOf(iro, UNCLE_M) !== wordOf(iro, FATHER) && wordOf(iro, UNCLE_M) !== wordOf(iro, UNCLE_F));
+  check("eskimo (lineal): one 'uncle' for both sides, distinct from father",
+    wordOf(esk, UNCLE_M) === wordOf(esk, UNCLE_F) && wordOf(esk, UNCLE_F) !== wordOf(esk, FATHER));
+  check("sudanese (bifurcate collateral): every position its own word",
+    new Set([FATHER, UNCLE_F, UNCLE_M, MOTHER, AUNT_F, AUNT_M, COUSIN].map(c2 => wordOf(sud, c2))).size === 7);
+  check("whether MB = FB is typology, not translation (both answers exist in one world)",
+    pop.some(l => wordOf(l, UNCLE_M) === wordOf(l, UNCLE_F)) && pop.some(l => wordOf(l, UNCLE_M) !== wordOf(l, UNCLE_F)));
+  check(`grandparents mostly derive — 'great father' (${pct(rate(pop, l => !!etymologyOf(l, GRANDFATHER)))})`,
+    rate(pop, l => !!etymologyOf(l, GRANDFATHER)) > 0.5);
+
+  // ── motion typology ──
+  const mt = (k) => rate(pop, l => motionTypologyOf(l) === k);
+  check(`Talmy's three types (sat ${pct(mt("sat"))} verb ${pct(mt("verb"))} equi ${pct(mt("equi"))})`,
+    mt("sat") > 0.35 && mt("sat") < 0.55 && mt("verb") > 0.35 && mt("equi") > 0.02 && mt("equi") < 0.15);
+  check("every equipollent language serializes (the SVC tie)", pop.filter(l => motionTypologyOf(l) === "equi").every(l => gramOf(l).svc));
+  const mFrame = { s: { n: KING, def: true }, v: { c: RUN, tam: "pst" }, path: { p: ENTER, n: TOWN, def: true } };
+  const satL = pop.find(l => motionTypologyOf(l) === "sat");
+  const vfL = pop.find(l => motionTypologyOf(l) === "verb");
+  const eqL = pop.find(l => motionTypologyOf(l) === "equi");
+  const satC = renderClause(satL, JSON.parse(JSON.stringify(mFrame)));
+  const vfC = renderClause(vfL, JSON.parse(JSON.stringify(mFrame)));
+  check(`satellite-framed keeps MANNER in the verb, path on the adposition (${satC.gloss})`,
+    /run/.test(satC.gloss) && /(^| )in( |$)/.test(satC.gloss) && !/enter/.test(satC.gloss) && A(satC));
+  check(`verb-framed puts PATH in the verb and backgrounds manner — the run is gone (${vfC.gloss})`,
+    /enter/.test(vfC.gloss) && !/run/.test(vfC.gloss) && A(vfC));
+  if (eqL) { const c = renderClause(eqL, JSON.parse(JSON.stringify(mFrame))); check(`equipollent serializes both verbs in ONE clause (${c.gloss})`, /run/.test(c.gloss) && /enter/.test(c.gloss) && !/AND/.test(c.gloss) && A(c)); }
+  else check("equipollent render (none in sweep)", false);
+  check("a satellite-framed family's path verb is a GO-compound cognate with its own satellite ('house-go' where 'in' ‹ house)",
+    (() => { const e2 = etymologyOf(satL, ENTER); if (!e2 || e2.head !== GO) return false; const src = adpSourceOf(satL, "in"); return src == null || e2.mod === src; })());
+  check("a verb-framed family's path verb is an opaque root (no etymology)", etymologyOf(vfL, ENTER) === null);
+
+  // ── new colexification domains ──
+  check(`heart(/head)-as-mind is a real pattern (${pct(rate(pop, l => wordOf(l, MIND) === wordOf(l, HEART) || wordOf(l, MIND) === wordOf(l, HEAD)))})`,
+    rate(pop, l => wordOf(l, MIND) === wordOf(l, HEART) || wordOf(l, MIND) === wordOf(l, HEAD)) > 0.35);
+  check(`tongue = language in the classic share (${pct(rate(pop, l => wordOf(l, LANGUAGE_C) === wordOf(l, TONGUE)))})`,
+    rate(pop, l => wordOf(l, LANGUAGE_C) === wordOf(l, TONGUE)) > 0.4);
+  check("bark is 'tree-skin' (derived) or skin itself (colexified) somewhere, opaque elsewhere",
+    pop.some(l => { const e2 = etymologyOf(l, BARK); return e2 && e2.head === SKIN; }) &&
+    pop.some(l => wordOf(l, BARK) === wordOf(l, SKIN)) && pop.some(l => !etymologyOf(l, BARK) && wordOf(l, BARK) !== wordOf(l, SKIN)));
+
+  // ── the pinned references ──
+  const m2 = refL("mandarin", 445), r2 = refL("russian", 445), e2r = refL("english", 447);
+  check("pinned Mandarin: equipollent motion ('ran enter house', one clause) + every uncle distinct + 11 colors",
+    (() => { const c = renderClause(m2, { s: { n: KING, def: true }, v: { c: RUN, tam: "pst" }, path: { p: ENTER, n: HOUSE, def: true } }); return /run/.test(c.gloss) && /enter/.test(c.gloss) && !/AND/.test(c.gloss); })() &&
+    kinshipOf(m2).type === "sudanese" && wordOf(m2, UNCLE_F) !== wordOf(m2, UNCLE_M) && colorTermsOf(m2).n === 11);
+  check("pinned Russian/English: satellite-framed (path verbs are go-compounds) + one 'uncle' (lineal)",
+    [r2, e2r].every(l => { const e3 = etymologyOf(l, ENTER); return motionTypologyOf(l) === "sat" && e3 && e3.head === GO && kinshipOf(l).type === "eskimo" && wordOf(l, UNCLE_F) === wordOf(l, UNCLE_M) && wordOf(l, UNCLE_F) !== wordOf(l, FATHER); }));
+
+  // ── totality + determinism + inheritance ──
+  const w9 = mkWorld();
+  const drifted = foundLanguage(w9, { seed: 931234 });
+  for (let d = 0; d < 8; d++) driftLanguage(w9, drifted);
+  check("every phase-2 concept translates, speaks, and writes on a drifted language",
+    newCids.every(cid => { const w2x = wordOf(drifted, cid); const st = nativeStemOf(drifted, cid); const plan = phoneticPlan(drifted, st); const sc = scriptOf(drifted); const gl = sc ? writeWord(drifted, cid) : { glyphs: [1] }; return !!w2x && plan.syls.length > 0 && gl && gl.glyphs.length > 0; }));
+  const dsig2 = (l) => JSON.stringify([colorTermsOf(l), kinshipOf(l), motionTypologyOf(l)]);
+  const da = foundLanguage(mkWorld(), { seed: 930071 }), db = foundLanguage(mkWorld(), { seed: 930071 });
+  check("lexical typology deterministic + JSON-roundtrip-stable", dsig2(da) === dsig2(db) && dsig2(da) === dsig2(JSON.parse(JSON.stringify(da))));
+  const wIn2 = mkWorld();
+  const par2 = foundLanguage(wIn2, { seed: 930142 });
+  wIn2.step = 4000;
+  const dau2 = branchLanguage(wIn2, par2, 0.7);
+  check("colors/kinship/motion inherited down the family (famSeed streams)",
+    kinshipOf(par2).type === kinshipOf(dau2).type && colorTermsOf(par2).n === colorTermsOf(dau2).n && motionTypologyOf(par2) === motionTypologyOf(dau2));
+
+  if (!quiet) {
+    const ct = colorTermsOf(da), kt = kinshipOf(da);
+    say("\n   seed " + da.seed + ": " + ct.n + " basic color terms" + (ct.grue ? " (grue)" : "") + ", " + kt.type + " kinship, " + motionTypologyOf(da) + "-framed motion");
+    say("   " + ct.terms.map(t => t.g + (t.mergedInto >= 0 ? "→" + glossOf(t.mergedInto) : "")).join(" · "));
   }
 }
 

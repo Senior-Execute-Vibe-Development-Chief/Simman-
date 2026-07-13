@@ -24,8 +24,10 @@
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { rollProfile, applySignature, buildInventory, buildSyllabary, synthWord, renderWord, copyWord } from "./languagePhonology.js";
 import { applicableRules, applyRules, legalizeWord } from "./languageChange.js";
-import { bequeathGrammar } from "./languageGrammar.js";
-import { CONCEPTS, COLEX, DERIV, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE } from "./languageLexicon.js";
+import { bequeathGrammar, adpSourceOf } from "./languageGrammar.js";
+import { CONCEPTS, COLEX, DERIV, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE,
+  BK_TERMS, BK_PARENT, KIN_MERGES, KIN_SLOTS, MOTION_DV, MOTION_PATH_ADP, MOTION_SAT_RATE,
+  GREEN, BLUE, YELLOW, BROWN, PURPLE, PINK, ORANGE } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
 const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
@@ -184,6 +186,47 @@ function compile(lang) {
   const colex = new Map();
   COLEX.forEach(([a, b, p], i) => { if (h01(lang.famSeed, "colex", i) < p) colex.set(b, a); });
   c = { key, inv, colex, words: new Map(), internals: new Map(), roots: new Map(), sufs: null, seeded: false };
+  // ── LEXICAL TYPOLOGY (phase 2): the Berlin–Kay color hierarchy and the
+  // kinship system, both expressed as colexification of the APPENDED concepts
+  // onto older ones (new→old only, so no pre-existing surface ever moves).
+  //
+  // COLORS: the split rolls are IMPLICATIONAL by construction — brown can
+  // only split after yellow, the late terms (purple/pink/orange) only after
+  // brown, and a grue family (green=blue, the pre-existing colex read here
+  // as the stage anchor) never splits past yellow: blue precedes brown in
+  // the hierarchy. An unsplit term colexifies onto its BK_PARENT, resolving
+  // through the chain (orange→yellow→red when yellow is unsplit too).
+  // Split rates are the hierarchy's cross-linguistic shape (yellow near-
+  // universal, the stage-VII terms minority), on own bk:* streams.
+  //
+  // KINSHIP: one of Morgan's classic types per family (rates ~Murdock:
+  // generational and bifurcate-merging commonest, bifurcate-collateral
+  // rarest) — the type IS a merge list (KIN_MERGES) applied as colex, so
+  // whether mother's-brother shares father's word is typology, not
+  // translation. References pin all of this via prof.lex (scenario data).
+  {
+    const fam = lang.famSeed;
+    const lex = lang.prof.lex || null;
+    const grue = colex.get(GREEN) === BLUE;
+    const full = !!lex && lex.bk === "full";
+    const split = {
+      [YELLOW]: full || h01(fam, "bk:yellow") < 0.78,
+    };
+    split[BROWN] = full || (split[YELLOW] && !grue && h01(fam, "bk:brown") < 0.55);
+    split[PURPLE] = full || (split[BROWN] && h01(fam, "bk:purple") < 0.5);
+    split[PINK] = full || (split[BROWN] && h01(fam, "bk:pink") < 0.45);
+    split[ORANGE] = full || (split[BROWN] && h01(fam, "bk:orange") < 0.42);
+    for (const [cid, pool] of BK_PARENT) {
+      if (split[cid]) continue;
+      let r = h01(fam, "bk:src", cid), parent = pool[pool.length - 1][0];
+      for (const [p, w] of pool) { r -= w; if (r < 0) { parent = p; break; } }
+      colex.set(cid, parent);
+    }
+    const kr = h01(fam, "kintype");
+    c.kinType = lex && lex.kin ? lex.kin
+      : kr < 0.3 ? "hawaiian" : kr < 0.6 ? "iroquois" : kr < 0.85 ? "eskimo" : "sudanese";
+    for (const [nk, tgt] of KIN_MERGES[c.kinType]) colex.set(nk, tgt);
+  }
   COMPILED.set(lang, c);
   return c;
 }
@@ -278,6 +321,22 @@ function buildDerivMap(c, famSeed) {
 //     streams so it perturbs nothing above.
 function derivParts(lang, cid) {
   const con = CONCEPTS[cid];
+  // MOTION TYPOLOGY (Talmy, phase 2): a satellite-framed family DERIVES its
+  // path verbs from GO + the same body sources its adpositions wear
+  // ('belly-go' = in-go, the eingehen shape); a verb-framed (or equipollent)
+  // one lexicalizes them as opaque roots (entrar). One shared stream/rate
+  // with the clause layer (MOTION_SAT_RATE), pinnable via prof.lex.
+  if (MOTION_DV.has(cid)) {
+    const pin = lang.prof.lex && lang.prof.lex.motion;
+    const sat = pin ? pin === "sat" : h01(lang.famSeed, "motion") < MOTION_SAT_RATE;
+    if (!sat) return null;
+    // the compound's modifier is the family's OWN adposition source, so the
+    // path verb is cognate with the satellite it echoes ('house-go' where
+    // 'in' ‹ house); the canonical body source when the adposition is opaque
+    const [head, dflt] = MOTION_DV.get(cid);
+    const src = adpSourceOf(lang, MOTION_PATH_ADP.get(cid));
+    return [head, src != null ? src : dflt];
+  }
   if (con.dv) return h01(lang.famSeed, "dv", cid) < 0.65 ? con.dv : null;
   if (!DERIV_BY_TARGET.has(cid)) return null;
   const c = compile(lang);
@@ -737,4 +796,36 @@ export function langDynastyName(lang, n, founder) {
   if (lang.prof.patro === "pre") return cap(sufs.patro) + cap(stem);
   if (lang.prof.patro === "suf") return cap(finishName(joinSuf(stem, sufs.patro), lang.prof));
   return cap(finishName(joinSuf(stem, sufs.dyn), lang.prof));   // consistent house suffix
+}
+
+// ── lexical typology (phase 2): color terms and kinship, as this family
+// actually carves them ─────────────────────────────────────────────────────
+
+/** The Berlin–Kay picture: the eleven basic color meanings, each with this
+ *  language's word and — where the family hasn't split the term — the older
+ *  term it colexifies onto (yellow reading as red, orange as yellow…).
+ *  `n` counts the BASIC terms (distinct words); `grue` is the green=blue
+ *  stage anchor. */
+export function colorTermsOf(lang) {
+  ensureV2(lang);
+  const c = compile(lang);
+  if (!c.seeded) { wordOf(lang, BK_TERMS[0]); }   // force the dictionary (colex map is already built)
+  const terms = BK_TERMS.map(cid => {
+    const m = c.colex.has(cid) ? colexResolve(c, cid) : cid;
+    return { cid, g: glossOf(cid), w: wordOf(lang, cid), mergedInto: m !== cid ? m : -1 };
+  });
+  return { n: new Set(terms.map(t => t.w)).size, grue: c.colex.get(GREEN) === BLUE, terms };
+}
+
+/** The kinship system: one of Morgan's classic types, and each genealogical
+ *  slot with this language's word and the slot it shares it with (whether
+ *  mother's-brother = father's-brother — or = father — is the TYPE). */
+export function kinshipOf(lang) {
+  ensureV2(lang);
+  const c = compile(lang);
+  const terms = KIN_SLOTS.map(cid => {
+    const m = c.colex.has(cid) ? colexResolve(c, cid) : cid;
+    return { cid, g: glossOf(cid), w: wordOf(lang, cid), sameAs: m !== cid ? m : -1 };
+  });
+  return { type: c.kinType, terms };
 }
