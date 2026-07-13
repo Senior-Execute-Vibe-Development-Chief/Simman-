@@ -403,12 +403,22 @@ const rform = (lang, w) => renderWord(w, lang.prof);
 const rformNeutral = (lang, w) => renderWord(w, lang.prof.tone ? { ...lang.prof, toneMarks: false } : lang.prof);
 
 // keep a set of forms mutually distinct: cycle the nucleus through the vowel
-// inventory until the collision clears (deterministic walk, tiny and rare)
+// inventory until the collision clears (deterministic walk, tiny and rare).
+// The walk must not give up when the vowels run out — a three-vowel tongue
+// whose romanization collapses qualities can exhaust the nucleus dimension
+// with the collision standing ('what' == 'why', a fresh reader caught it) —
+// so past the vowels it varies a CODA too, like dedupeAffixSet. The first
+// inv.vows.length steps are byte-identical to the old walk, so every form
+// that cleared before still clears the same way.
 function dedupe(lang, inv, forms, seed = []) {
   const seen = new Set(seed.map(f => f && f.w).filter(Boolean));   // seed WITHOUT mutating the seed forms
+  const codaPool = inv.cons.filter(x => x.p < 6 && (x.m === 1 || x.m === 4 || x.m === 5 || (x.m === 2 && x.l === 0)));
   for (const f of forms) {
-    for (let t = 0; seen.has(f.w) && t < inv.vows.length; t++) {
-      retint(f.form, inv.vows[t]);
+    const span = inv.vows.length * (codaPool.length + 1);
+    for (let t = 0; seen.has(f.w) && t < span; t++) {
+      retint(f.form, inv.vows[t % inv.vows.length]);
+      const cw = Math.floor(t / inv.vows.length);
+      if (cw > 0 && f.form.syls[0]) f.form.syls[0].co = [{ ...codaPool[(cw - 1) % codaPool.length] }];
       legalizeWord(f.form);
       f.w = rform(lang, f.form);
     }
@@ -594,7 +604,14 @@ export function closedOf(lang) {
       usedSrc.set(src, reuse + 1);
       if (reuse === 0 ? stem.syls.length >= 2 && h01(fam, "adp2", spec.m) < 0.3 : stem.syls.length >= 2)
         form = legalizeWord(lighten({ syls: stem.syls.slice(0, 2).map(cloneSyl) }));
-      else {
+      // THE GRAMMATICALIZATION TAX (review-loop): a function word may stay
+      // cognate with its source, but a polysyllabic form IDENTICAL to the
+      // living content word has paid nothing — usage frequency wears the
+      // function word first ('with' kab ‹ kabuh 'hand', never 'with' kabuh;
+      // a fresh reader caught 'and' = 'with' = the full word 'hand'). Only
+      // the identity case reduces, so every clean language is byte-identical.
+      if (form && form.syls.length >= 2 && rform(lang, form) === rform(lang, stem)) form = null;
+      if (!form) {
         form = legalizeWord({ syls: [wearSyl(prof, stem)] });
         if (reuse > 0) { retint(form, vowFar(inv.vows)); legalizeWord(form); }
       }
@@ -637,6 +654,22 @@ export function closedOf(lang) {
   // 'pin' serving as what/this/of/because): one global sweep — pronouns keep
   // their forms, later classes shift; 'and' keeps its comitative identity
   dedupe(lang, inv, [...prons, ...dems, neg, ...qs, ...conj.filter(x => !x.src),
+    ...(qp ? [qp] : []), ...(impPart ? [impPart] : []), ...(prohibW ? [prohibW] : [])]);
+
+  // ── INTERROGATIVE FUNCTIONAL LOAD (review-loop): the q-series is the one
+  // closed class real languages keep clear of content homophones — a 'what'
+  // that is also 'man' garden-paths every clause (and REL ‹ 'what' spreads
+  // the soup to relatives). Interrogative answers are disjoint, so the
+  // pressure is absolute there; pronoun/noun homophones (I/eye) stay — life
+  // has those. Re-dedupe the q-words against the HIGH-FREQUENCY content
+  // surfaces (b ≥ 0.8, as displayed — loans included) and the finalized
+  // closed classes; only colliding forms move, so every clean language is
+  // byte-identical. Runs BEFORE compz/relz copy 'what', keeping them cognate
+  // with the FINAL form. ──
+  const hiFreqSeed = [];
+  for (let cid = 0; cid < CONCEPTS.length; cid++)
+    if (CONCEPTS[cid].b >= 0.8) hiFreqSeed.push({ w: wordOf(lang, cid) });
+  dedupe(lang, inv, qs, [...hiFreqSeed, ...prons, ...dems, neg, ...conj, ...adps,
     ...(qp ? [qp] : []), ...(impPart ? [impPart] : []), ...(prohibW ? [prohibW] : [])]);
 
   // ── T-V POLITENESS (Group E, WALS 45A): the polite 2nd person is either the

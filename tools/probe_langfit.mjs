@@ -1809,6 +1809,36 @@ console.log("\n── Multi-clause ──");
   check(`multi-clause deterministic + JSON-roundtrip-stable`, msig(ma) === msig(mb) && msig(ma) === msig(mc2));
 }
 
+// ── §23 review-loop honesty: functional load in the closed classes ────────
+// Fresh-reader findings (session: two adversarial Lab reviews): 'what'=='why'
+// in exhausted-dedupe tongues; q-words homophonous with core nouns ('what' =
+// 'man' → relative-clause soup); adpositions/conjunctions IDENTICAL to their
+// full polysyllabic source word ('and' = 'with' = 'hand', the unpaid
+// grammaticalization tax). Each complaint is now a named constraint.
+console.log("\n── §23 functional load (review-loop) ──");
+{
+  const world = mkWorld();
+  const HIFREQ = CONCEPTS.map((c, i) => ({ b: c.b, i })).filter(x => x.b >= 0.8).map(x => x.i);
+  let qDup = 0, qContent = 0, adpIdent = 0;
+  const exQ = [], exA = [];
+  for (let i = 0; i < 300; i++) {
+    const l = foundLanguage(world, { seed: 700000 + i * 331 });
+    const cl = closedOf(l);
+    const seen = new Set();
+    for (const q of cl.qs) { if (seen.has(q.w)) { qDup++; exQ.push(q.k + "=" + q.w); } seen.add(q.w); }
+    const content = new Set(HIFREQ.map(cid => wordOf(l, cid)));
+    for (const q of cl.qs) if (content.has(q.w)) { qContent++; exQ.push(q.k + "=" + q.w); break; }
+    for (const a of cl.adps) if (a.src != null && a.form.syls.length >= 2 && a.w === wordOf(l, a.src)) { adpIdent++; exA.push(a.m + "=" + a.w); break; }
+  }
+  check(`interrogatives pairwise distinct across 300 langs (${qDup} dups${exQ.length ? ": " + exQ.slice(0, 3).join(", ") : ""})`, qDup === 0);
+  check(`no q-word homophonous with a b≥0.8 content word (${qContent}/300 offenders)`, qContent === 0);
+  check(`source-worn adpositions pay the grammaticalization tax (${adpIdent} full-word identities${exA.length ? ": " + exA.slice(0, 3).join(", ") : ""})`, adpIdent === 0);
+  // determinism of the guarded closed layer (the re-dedupe is state-pure)
+  const a1 = foundLanguage(mkWorld(), { seed: 700331 }), a2 = foundLanguage(mkWorld(), { seed: 700331 });
+  const qsig = (l) => JSON.stringify(closedOf(l).qs.map(q => q.w).concat(closedOf(l).adps.map(x => x.w)));
+  check("q-series + adpositions deterministic + JSON-roundtrip-stable", qsig(a1) === qsig(a2) && qsig(a1) === qsig(JSON.parse(JSON.stringify(a1))));
+}
+
 // ── determinism: same record → same names, always ─────────────────────────
 {
   const w1 = mkWorld(), w2 = mkWorld();
