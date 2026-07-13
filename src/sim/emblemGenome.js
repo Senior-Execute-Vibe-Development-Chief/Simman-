@@ -70,6 +70,11 @@ const SIGIL_INTER = ["none", "none", "dots", "rays", "pips"];
 const SYMMETRIES  = ["none", "bilateral", "radial", "quarterly"];
 const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
 const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly", "chequy", "lozengy", "tiercedPale", "tiercedFess"];
+// on a FLAG substrate the engraver-only partitions express as their sewn
+// analogues (same gene, substrate-specific phenotype — exactly how the cross
+// goes Nordic): rotational wedges → the four sewn triangles, grids → stripes,
+// and per-chevron cants onto the hoist (the wedge real flags fly at the mast)
+const FLAG_PARTITION = { gyronny: "perSaltire", chequy: "paly", lozengy: "barry", chevron: "hoistTriangle" };
 // field TREATMENTS (the crescent gene's high window): the two furs, plus the
 // lattice treatments — fretty (interlaced bendlets) and masoned (brickwork)
 const TREATMENTS  = ["ermine", "vair", "fretty", "masoned"];
@@ -115,6 +120,9 @@ const MOTIF_CATS  = ["beast", "beast", "beast", "bird", "bird", "mythic", "mythi
   "geometric", "geometric", "geometric", "insect"];
 const LIVING_CATS = new Set(["beast", "insect", "bird", "mythic", "sea"]);
 const NONLIVING_CATS = ["plant", "object", "architecture", "natural", "celestial", "geometric"];
+// the COMPACT categories — stars, discs, crescents — are the only devices
+// flag cloth repeats or strews; everything else is a FIGURE there
+const COMPACT_CATS = new Set(["celestial", "geometric"]);
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 // @INJECT:MOTIFS-START — the lab build (tools/build_lab.mjs) replaces this whole
 // block with the size-filtered subset so the artifact's pools match its bundled art.
@@ -411,6 +419,7 @@ export function expressGenome(genome) {
   // otherwise-idle genes in heraldic composition (hueC, pearl, border, crescent,
   // symmetry) so no genome grows — the depth was latent in the vector.
   let partition = composition === "heraldic" ? pickEnum(get("partition"), PARTITIONS) : "plain";
+  if (isFlag) partition = FLAG_PARTITION[partition] || partition;
   const tinctures = [pal.field, pal.companion];
   const field = { partition, tinctures, names: [pal.fieldT.name, pal.companionT.name],
     line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
@@ -433,13 +442,22 @@ export function expressGenome(genome) {
   // lattice treatments (fretty, masoned) are thin lines over the field
   // colour, so the field stays the ground.
   if (composition === "heraldic" && get("crescent") > 0.74) {
-    field.fur = pickEnum((get("crescent") - 0.74) / 0.26, TREATMENTS);
-    field.partition = partition = "plain";
-    if (field.fur === "ermine") grounds = [T("argent")];
-    else if (field.fur === "vair") grounds = [T("argent"), T("azure")];
-    else grounds = [pal.fieldT];                   // fretty / masoned: thin lines over the field colour
-    field.names = grounds.length === 2 ? [grounds[0].name, grounds[1].name] : [grounds[0].name, grounds[0].name];
+    const fur = pickEnum((get("crescent") - 0.74) / 0.26, TREATMENTS);
+    // cloth takes ermine (Brittany flies it) but not vair bells or the
+    // engraver's lattices — on a flag the other treatments don't express
+    if (!isFlag || fur === "ermine") {
+      field.fur = fur;
+      field.partition = partition = "plain";
+      if (field.fur === "ermine") grounds = [T("argent")];
+      else if (field.fur === "vair") grounds = [T("argent"), T("azure")];
+      else grounds = [pal.fieldT];                 // fretty / masoned: thin lines over the field colour
+      field.names = grounds.length === 2 ? [grounds[0].name, grounds[1].name] : [grounds[0].name, grounds[0].name];
+    }
   }
+  // sewn edges run straight; the one fancy line flags DO fly is the serrated
+  // hoist seam (an indented per-pale line keeps its teeth, Bahrain-fashion).
+  // Sits after the fur override so a fur's plain field can't smuggle one in.
+  if (isFlag && !(field.line === "indented" && field.partition === "perPale")) field.line = "straight";
   // the tincture any mark lying on this field wears — chargeT was constructed
   // against the plain field; every other ground (a party, a fur) re-derives
   const markT = grounds.length === 1 && grounds[0] === pal.fieldT ? pal.chargeT
@@ -488,6 +506,13 @@ export function expressGenome(genome) {
     if (aniconic && LIVING_CATS.has(cat)) {
       cat = NONLIVING_CATS[Math.floor(get("motifCount") * NONLIVING_CATS.length) % NONLIVING_CATS.length];
     }
+    // a strewing on a FLAG remaps its category to a compact pick (the
+    // star-spangled rule), exactly the way aniconism remaps a living one
+    const strewn = composition === "seme"
+      || (composition === "heraldic" && pickEnum(get("arrange"), ARRANGES) === "seme");
+    if (isFlag && strewn && !COMPACT_CATS.has(cat))
+      cat = get("motifCount") > 0.5 ? "celestial" : "geometric";
+    const compact = COMPACT_CATS.has(cat);
     const pool = MOTIFS[cat];
     const id = pool[Math.min(pool.length - 1, Math.floor(get("motifIdx") * pool.length))];
     // the charge WEARS what its ground dictates (tinctureOn — the rule of
@@ -527,19 +552,29 @@ export function expressGenome(genome) {
       counterchange = composition === "heraldic" && !field.fur && mixedGround
         && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
     }
+    // ON A FLAG A FIGURE STEPS BACK: no herds of beasts across the cloth —
+    // multiples collapse to a lone device, and in an ordinary's company it
+    // keeps a single station, the hoist-most one
+    if (isFlag && !compact) {
+      if (arrange === "three" || arrange === "inPale") arrange = "single";
+      if (slots && slots.length > 1) slots = [slots[0]];
+    }
     // a heraldic semé is a FIELD treatment: it lies beneath chief, bordure and
     // ordinary, not over them
     behind = arrange === "seme" && composition === "heraldic";
     // ATTITUDE: rarely a charge is borne INVERTED or turned TO SINISTER —
-    // the tails of the sunDisc gene, otherwise idle for charges
-    const attitude = get("sunDisc") < 0.12 ? "inverted" : get("sunDisc") > 0.88 ? "sinister" : null;
+    // the tails of the sunDisc gene, otherwise idle for charges. An armorial
+    // abatement is a shield's business: a flag flies its device upright.
+    const attitude = isFlag ? null : get("sunDisc") < 0.12 ? "inverted" : get("sunDisc") > 0.88 ? "sinister" : null;
     // FLAG DETAILING: a single device may sit on a bounded PANEL (disc or
     // lozenge — the charge then dresses against the panel, the tincture rule
     // applied recursively), or wear a FIMBRIATION halo; both are how modern
     // flags separate a figure from a busy ground
     let panel = null, fimb = null;
     if (isFlag && !hasOrdinary && !counterchange && (composition === "heraldic" || composition === "central")) {
-      if (arrange === "single" && get("crescent") > 0.56 && get("crescent") <= 0.74) {
+      // a lone FIGURE wants a ground of its own to sit on — its panel window
+      // opens wide; a compact device (a disc, a star) flies bare more often
+      if (arrange === "single" && get("crescent") > (compact ? 0.56 : 0.38) && get("crescent") <= 0.74) {
         panel = { shape: get("symmetry") > 0.5 ? "disc" : "lozenge", tincture: markT.rgb, name: markT.name };
         tincture = tinctureOn([markT], get("hueA"), get("value"));
       } else if (arrange !== "seme" && get("motifCount") > 0.6) {
@@ -549,7 +584,10 @@ export function expressGenome(genome) {
     if (arrange) motif = { id, cat, tincture: tincture.rgb, tinctureName: tincture.name, counterchange, behind,
       slots, tilt, attitude, panel, fimbriation: fimb ? fimb.rgb : null, fimbName: fimb ? fimb.name : null,
       count: slots ? slots.length : arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
-      scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5) * (0.75 + get("motifScale") * 0.5) };
+      // on a flag a figure sits like a badge, not an armorial beast filling
+      // the cloth — it rides at roughly three-quarter size
+      scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5)
+        * (0.75 + get("motifScale") * 0.5) * (isFlag && !compact ? 0.72 : 1) };
   }
 
   // geometry — the "plain" composition is not a bare field: it is geometric
@@ -663,6 +701,7 @@ function fieldPhrase(f, m) {
     case "quarterly": s = `Quarterly ${a} and ${b}`; break;
     case "gyronny": s = `Gyronny of eight ${a} and ${b}`; break;
     case "chevron": s = `Per chevron ${a} and ${b}`; break;
+    case "hoistTriangle": s = `${a}, a wedge issuant from the hoist ${b}`; break;
     case "barry": s = `Barry${ln} of ${NUMWORD[f.stripes]} ${a} and ${b}`; break;
     case "paly": s = `Paly${ln} of ${NUMWORD[f.stripes]} ${a} and ${b}`; break;
     case "chequy": s = `Chequy ${a} and ${b}`; break;

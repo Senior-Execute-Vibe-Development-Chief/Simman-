@@ -191,6 +191,8 @@ function fieldSVG(w, h, p) {
     case "perSaltire": return R + tri([[0, 0], [w / 2, h / 2], [w, 0]], b) + tri([[0, h], [w / 2, h / 2], [w, h]], b);
     case "gyronny": { let s = R; for (let i = 0; i < 8; i += 2) { const a0 = i / 8 * 6.283 - 1.571, a1 = (i + 1) / 8 * 6.283 - 1.571, RR = Math.hypot(w, h); s += tri([[w / 2, h / 2], [w / 2 + Math.cos(a0) * RR, h / 2 + Math.sin(a0) * RR], [w / 2 + Math.cos(a1) * RR, h / 2 + Math.sin(a1) * RR]], b); } return s; }
     case "chevron": return R + `<path d="M0 ${h} L${w / 2} ${h * 0.4} L${w} ${h} Z" fill="${b}"/>`;
+    // the flag substrate's per-chevron: the sewn wedge canted at the mast
+    case "hoistTriangle": return R + `<polygon points="0,0 ${F(w * 0.44)},${F(h / 2)} 0,${F(h)}" fill="${b}"/>`;
     case "barry": { let s = ""; for (let i = 0; i < n; i++) s += `<rect y="${(i * h / n).toFixed(1)}" width="${w}" height="${(h / n + 1).toFixed(1)}" fill="${i % 2 ? b : a}"/>`; return s; }
     case "paly": { let s = ""; for (let i = 0; i < n; i++) s += `<rect x="${(i * w / n).toFixed(1)}" width="${(w / n + 1).toFixed(1)}" height="${h}" fill="${i % 2 ? b : a}"/>`; return s; }
     case "chequy": { const cols = Math.max(4, Math.min(9, n + 2)), cw = w / cols, rows = Math.ceil(h / cw); let s = R;
@@ -500,7 +502,9 @@ function coatContent(p, w, h, rng) {
   let content = "";
   if (p.composition === "heraldic") {
     let f = p.field, mot = p.motif;
-    if (C.hatch && !f.fur) {
+    // petra sancta is the ENGRAVER'S convention — plates and seals carry it,
+    // sewn cloth never does: a monochrome flag flies honest ink-and-bone
+    if (C.hatch && !f.fur && !p.isFlag) {
       // engrave the implied hues as hatch-pattern fills
       const ids = {}, defs = [];
       const pat = n => { if (!ids[n]) { ids[n] = `ht${uid++}`; defs.push(hatchPattern(n, ids[n])); } return `url(#${ids[n]})`; };

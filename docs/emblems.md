@@ -115,7 +115,15 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
   or around a charge, tincture chosen by the same argmax rule against
   *everything it touches*), and **device panels** (a disc or lozenge ground
   bounding the charge, the charge re-derived against the panel — the
-  tincture rule applied recursively).
+  tincture rule applied recursively). Flag cloth is *sewn, not engraved*:
+  seams run straight (the serrated per-pale hoist line excepted), the
+  engraver-only partitions express as their sewn analogues (gyronny → per
+  saltire, grids → stripes, per chevron → the **hoist wedge**), petra
+  sancta hatching, vair and the lattice treatments stay on shields (ermine
+  flies — Brittany), attitudes don't express, and a FIGURE steps back —
+  never in multiples or strewn (only compact devices, stars and discs,
+  repeat), rides at reduced size, and takes a bounding panel more often.
+  Same genes throughout — the substrate reinterprets them.
 - **Partitions**: per pale/fess/bend, quarterly, gyronny, per saltire, per
   chevron, barry, paly, **chequy**, **lozengy**, **tierced** (in pale /
   in fess — the tricolour, third tincture constructed against both

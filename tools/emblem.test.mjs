@@ -41,7 +41,9 @@ const ARGENT = TINCTURES.argent.rgb, AZURE = TINCTURES.azure.rgb;
 
 let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
-const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0 };
+const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0 };
+// the compact device categories — the only ones a flag repeats or strews
+const COMPACT = new Set(["celestial", "geometric"]);
 const fail = (msg, g) => { if (fails++ < 10) console.error(`  FAIL ${msg}${g ? `\n       ${describeGenome(g)}` : ""}`); };
 
 function checkMark(mark, grounds, what, g, strict) {
@@ -58,6 +60,20 @@ function checkMark(mark, grounds, what, g, strict) {
 function audit(g) {
   const p = expressGenome(g);
   const f = p.field;
+  // FLAG substrate grammar: sewn geometry only (straight seams save the
+  // serrated hoist), no engraver partitions, and figures step back — never
+  // in multiples, never strewn
+  if (p.isFlag) {
+    if (["gyronny", "chequy", "lozengy", "chevron"].includes(f.partition)) fail(`flag flying an engraver partition (${f.partition})`, g);
+    if (f.line !== "straight" && !(f.line === "indented" && f.partition === "perPale")) fail(`flag with a fancy seam (${f.line})`, g);
+    if (f.fur && f.fur !== "ermine") fail(`flag draped in ${f.fur}`, g);
+    const fm = p.motif;
+    if (fm && fm.attitude) fail("flag charge with an attitude", g);
+    if (fm && !COMPACT.has(fm.cat)) {
+      if ((fm.count || 1) > 1) fail("figure in multiples on a flag", g);
+      if (fm.arrange === "seme") fail("strewn figure on a flag", g);
+    }
+  }
   if (p.composition === "heraldic") {
     if (p.colors.mode === "heraldic") fieldNames.add(f.names[0]);
     if (seen[f.partition] != null) seen[f.partition]++;
