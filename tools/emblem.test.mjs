@@ -73,7 +73,7 @@ function audit(g) {
   if (p.isFlag) {
     if (["gyronny", "chequy", "lozengy", "chevron"].includes(f.partition)) fail(`flag flying an engraver partition (${f.partition})`, g);
     if (f.line !== "straight" && !(f.line === "indented" && f.partition === "perPale")) fail(`flag with a fancy seam (${f.line})`, g);
-    if (f.fur && f.fur !== "ermine") fail(`flag draped in ${f.fur}`, g);
+    if (f.fur) fail(`flag draped in a fur (${f.fur})`, g);
     const fm = p.motif;
     if (fm && fm.attitude) fail("flag charge with an attitude", g);
     if (fm && !COMPACT.has(fm.cat)) {

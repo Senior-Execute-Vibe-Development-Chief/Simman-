@@ -188,7 +188,7 @@ const MOTIFS = {
   object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "bell", "bugle", "clarion", "lute", "drum", "chalice", "amphora", "anvil", "hammer", "millrind", "millstone", "scythe", "sickle", "plough", "pitchfork", "compass", "lantern", "lamp", "scroll", "mirror", "shears", "quill", "distaff", "axe", "halberd", "arrow", "arrows", "pheon", "trident", "spear", "bow", "crossbow", "flail", "club", "cannon", "mace", "warhammer", "catherinewheel", "cartwheel", "cogwheel", "helmet", "gauntlet", "breastplate", "mailedfist", "horseshoe", "spur", "stirrup", "saddle", "wagon", "beehive", "beacon", "brazier", "torch", "grenade", "chest", "wolfiron", "staple", "musicalNote", "noteQuarter", "noteEighth", "fireSteel", "comb", "bookModernClosed", "candlestick", "vallary", "saxon", "palisado", "antique", "earl", "duke", "helmetKnight", "helmetEsquire", "helmetNorman", "helmetPeer", "helmetKnightAffronty", "archeryTarget", "lance", "dagger", "rapier", "swordstpaul", "sabre", "seax", "slaughterAxe", "pickAxe", "addice", "waterBouget", "mug", "barrel", "scoop", "funnel", "table", "flag", "frenchGemstoneInProfile", "arrowBroad", "spearHeadImbrued", "oar", "rudderPole", "oarInsaltire2", "fishingBoat", "crowsNest", "barge", "lymphadFurled", "lymphadSailsSet", "buckle", "maunche", "stirrupLeathered", "hawkbell", "farmingFlail", "fishhook", "farmingFlailInsaltire2", "shepherdsCrook", "butterChurn", "ploughshare", "chessPawn", "chessRook", "chessKing"],
   architecture: ["tower", "castle", "bridge", "gate", "arch", "house", "city", "keystoneCouped", "pyramid", "obelisk", "fountainNatural", "pillar", "bridgeThreeArches", "keystone", "lighthouse"],
   natural: ["cloud", "teardrop", "flint", "flames", "fireball"],
-  celestial: ["sun", "moon", "estoile", "comet", "moonIncrescent", "moonPendant", "estoileInflamed", "moonDecrescent", "moonCrescent", "rainbow", "sunOutline", "sunRays", "starAndCrescent"],
+  celestial: ["sun", "moon", "estoile", "moonIncrescent", "moonPendant", "estoileInflamed", "moonDecrescent", "moonCrescent", "sunOutline", "sunRays", "starAndCrescent"],
   geometric: ["mullet", "mullet6", "mullet8", "rowel", "roundel", "annulet", "lozenge", "fusil", "mascle", "billet", "delf", "crossCouped", "crossPattee", "crosslet", "goutte", "fret", "triskele", "knot", "suffolkKnot", "carolingianKnot", "hungerfordKnot", "triangle", "shakefork", "saltire", "mulletOf5VoidedInterlaced", "mulletOf7VoidedInterlaced", "mulletOf8MasclesInterlaced", "annuletConcentricOf2", "annuletConcentricOf3", "takedaClanSymbol", "tokikikyoClanSymbol", "moriClanSymbol", "chosokabeClanSymbol"],
 };
 // @INJECT:MOTIFS-END
@@ -336,11 +336,15 @@ const T_NAMES = Object.keys(TINCTURES);
 const METALS = T_NAMES.filter(n => TINCTURES[n].kind === "metal");
 const DARKS = T_NAMES.filter(n => TINCTURES[n].kind !== "metal");   // colours + stains
 // THE BUNTING SHELF: mass-sewn flag cloth comes off standard bolts — the
-// seven fast single-vat tinctures. The overdyed STAINS (tawny, murrey,
-// sanguine) are engraver's and livery colours: they stay on shields and
-// silks; on cloth a stain-intent comes back as its vat's fast recipe, or
-// failing that as the mill's nearest standard bolt.
-const BOLTS = T_NAMES.filter(n => TINCTURES[n].kind !== "stain");
+// six fast, cheap colours (or, argent, gules, azure, vert, sable). The
+// overdyed STAINS (tawny, murrey, sanguine) are engraver's and livery
+// colours, and PURPURE is the princely dye — Tyrian purple was the rarest,
+// costliest dyestuff in history, never mass-produced as bunting (which is
+// why real modern flags almost never fly purple). All four stay on shields
+// and silks; on cloth such an intent comes back as its vat's fast recipe,
+// or failing that as the mill's nearest standard bolt.
+const BOLTS = T_NAMES.filter(n => TINCTURES[n].kind !== "stain" && n !== "purpure");
+const BUNTING = new Set(BOLTS);   // what the mill actually sews
 // THE BUNTING RECIPES: the same named bolts, the mill's own dye lots.
 // A painter's tincture is aged pigment on vellum; industrial fast dyes run
 // VIVID — real flags fly the saturated end of each name (the "Olympic"
@@ -451,10 +455,10 @@ function namedDyeField(u, sat, val, bunting) {
   const rgb = hsl(v.hue, sat, v.lo + val * (v.hi - v.lo));
   let members = v.members;
   if (bunting) {
-    // a vat LED by an overdye stain is an overdye lot — not milled as
-    // bunting at all: the order comes back as the nearest standard bolt
-    if (TINCTURES[members[0]].kind === "stain") return nearestTincture(rgb, BOLTS);
-    members = members.filter(n => TINCTURES[n].kind !== "stain");
+    // a vat LED by a non-bunting dye (a stain, or princely purpure) is not
+    // milled as bunting at all: the order comes back as the nearest bolt
+    if (!BUNTING.has(members[0])) return nearestTincture(rgb, BOLTS);
+    members = members.filter(n => BUNTING.has(n));
     if (!members.length) return nearestTincture(rgb, BOLTS);
   }
   const name = nearestTincture(rgb, [...members, "argent", "sable"]);
@@ -478,8 +482,8 @@ function namedDyeField(u, sat, val, bunting) {
 function namedDyeDark(u, val, exclude, bunting) {
   const v = vatAt(u);
   let members = v.members;
-  if (bunting) members = TINCTURES[members[0]].kind === "stain" ? []
-    : members.filter(n => TINCTURES[n].kind !== "stain");
+  if (bunting) members = !BUNTING.has(members[0]) ? []
+    : members.filter(n => BUNTING.has(n));
   // the painter keeps soot beside every vat; the MILL dyes the intended
   // colour when it has one — soot is the fallback, not a rival
   let cands = [...members.filter(n => TINCTURES[n].kind !== "metal"), ...(bunting ? [] : ["sable"])];
@@ -716,9 +720,11 @@ export function expressGenome(genome) {
   // colour, so the field stays the ground.
   if (composition === "heraldic" && get("crescent") > 0.74) {
     const fur = pickEnum((get("crescent") - 0.74) / 0.26, TREATMENTS);
-    // cloth takes ermine (Brittany flies it) but not vair bells or the
-    // engraver's lattices — on a flag the other treatments don't express
-    if (!isFlag || fur === "ermine") {
+    // FURS are the engraver's and the herald's, never the mill's: a field
+    // strewn with ermine spots or vair bells reads as scattered noise at
+    // flag distance, and no modern flag is furred. All four treatments stay
+    // on shields and silks; cloth simply doesn't express them.
+    if (!isFlag) {
       field.fur = fur;
       field.partition = partition = "plain";
       delete field.tiercedWide;                  // the fur drapes the WHOLE field
@@ -803,6 +809,12 @@ export function expressGenome(genome) {
     if (isFlag && iconism <= 0.72 && LIVING_CATS.has(cat)) {
       cat = NONLIVING_CATS[Math.floor(get("motifCount") * NONLIVING_CATS.length) % NONLIVING_CATS.length];
     }
+    // WEATHER AND ROCK don't fly: the natural category (flint, fireball,
+    // cloud, flames, teardrop) reads as an unclear blob at flag distance,
+    // not an emblem — so on cloth it remaps to a clean celestial or
+    // geometric device (the same remap idiom as aniconism and the figure
+    // window). It stays a legitimate charge on shields and silks.
+    if (isFlag && cat === "natural") cat = get("motifCount") > 0.5 ? "celestial" : "geometric";
     // a strewing on a FLAG remaps its category to a compact pick (the
     // star-spangled rule), exactly the way aniconism remaps a living one
     const strewn = composition === "seme"
@@ -827,6 +839,11 @@ export function expressGenome(genome) {
       // sewn cloth never wallpapers UNDER a band: on a flag the semé company
       // doesn't express — the bare band IS the design (the commonest real case)
       if (isFlag && slot === "seme") slot = "none";
+      // THE BARE ORDINARY IS THE FLAG: a cross, saltire, pile or Y almost
+      // always flies alone (Scandinavia, Greece, Cuba, South Africa carry no
+      // charge on the band) — so on cloth an ordinary sheds its company
+      // unless the arrange gene genuinely calls for it
+      if (isFlag && get("arrange") < 0.6) slot = "none";
       // no single band to sit ON: a chevron, a counterchanged ordinary, or a
       // diminutive group keep their company BETWEEN instead
       if (slot === "on" && (field.ordinary === "chevron" || field.counterchange || field.ordinaryCount > 1)) slot = "between";
@@ -855,11 +872,16 @@ export function expressGenome(genome) {
         : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
       counterchange = composition === "heraldic" && !field.fur && mixedGround
         && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
-      // THE FIELD IS THE FLAG: on partitioned cloth the arrange gene's first
-      // window flies the geometry ALONE — a tricolour needs no badge (about
-      // 40% of real flags carry no device at all; the stripes do the identity
-      // work at any distance). A plain field always speaks through its device.
-      if (isFlag && composition === "heraldic" && partition !== "plain" && get("arrange") < 0.2) arrange = null;
+      // THE FIELD IS THE FLAG: on partitioned cloth most flags fly the
+      // geometry ALONE — a tricolour needs no badge (~60% of real flags carry
+      // no device at all; the stripes do the identity work at any distance).
+      // A device appears only from the arrange gene's upper band, and it is a
+      // LONE central emblem (compact multiples still organize into an array).
+      // A plain field (no stripes, no ordinary) always speaks through its device.
+      if (isFlag && composition === "heraldic" && partition !== "plain") {
+        arrange = get("arrange") < 0.6 ? null
+          : (compact && get("arrange") >= 0.82) ? "seme" : "single";
+      }
     }
     // ON A FLAG A FIGURE STEPS BACK: no herds of beasts across the cloth —
     // multiples collapse to a lone device, and in an ordinary's company it

@@ -194,7 +194,21 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     soot on lightness alone (the mill stocks the flag-blue and flag-green
     bolts). Blue presence recovered 15% → 25%, now proportional to its
     dye-availability share of the wheel.
-  - **The bunting shelf** — flags are sewn from the seven fast single-vat
+  - **No purple, no furs, no weather on cloth** — PURPURE joins the stains
+    off the bunting shelf (Tyrian purple was history's rarest, costliest
+    dye, never mass-produced — which is why real modern flags almost never
+    fly it; a purple intent comes back as its nearest bolt). FURS don't fly
+    (a field of ermine spots or vair bells reads as scattered noise at flag
+    distance). The NATURAL category (flint, fireball, cloud, flames,
+    teardrop) remaps to a clean celestial/geometric device — a weather blob
+    isn't an emblem at distance. All three stay on shields and silks.
+  - **The field is the flag (strengthened)** — most partitioned cloth flies
+    the geometry ALONE (~60%, the Earth rate); a device appears only from the
+    arrange gene's upper band and is a lone central emblem (compact multiples
+    still organize into an array), and an ordinary (cross, pile, Y) sheds its
+    company unless the gene calls for it. Device rate fell 61% → 42% (Earth
+    ~40%); when a device flies it's geometric/celestial 55% of the time.
+  - **The bunting shelf** — flags are sewn from the six fast single-vat
     bolts; the overdyed stains stay on shields and silks (a stain-intent
     comes back as its vat's fast recipe or the nearest standard bolt; a
     vat LED by an overdye stain isn't milled as bunting at all), and the
