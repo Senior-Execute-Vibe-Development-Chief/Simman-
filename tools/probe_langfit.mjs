@@ -17,8 +17,8 @@ import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhon
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
 import { scriptOf, writeWord, writeForm, writeName, formFromSurface, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
 import { runHistory } from "../src/sim/languageHistory.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
-import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf } from "../src/sim/languageGrammar.js";
+import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND, QUEEN, OLD, GRAIN, BREAD, SWORD, BE, SIT, STAND, HAVE } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -2738,6 +2738,243 @@ console.log("\n── §28 the areal simulation (history harness) ──");
     check("history-grown records JSON-roundtrip byte-stable",
       JSON.stringify([scriptOf(round), writeWord(round, STONE)]) === JSON.stringify([scriptOf(pick.lang), writeWord(pick.lang, STONE)]));
   } else check("history-grown records JSON-roundtrip byte-stable (no loan-bearing survivor at this seed)", false);
+}
+
+// ── §29 SYNTAX COMPLETION: nonverbal predication, existentials, predicative
+// possession, serial verbs, correlatives, reflexives, the completed
+// applicative. Every construction is a thin remap onto existing machinery
+// (copula = the language's own BE; possession = five remaps onto the
+// existential/copular/transitive paths; SVC degrade = coordination), and all
+// of it is opt-in — a bare verbal frame never enters these branches. ────────
+console.log("\n── §29 syntax completion ──");
+{
+  const world = mkWorld();
+  const N = 700;
+  const pop = Array.from({ length: N }, (_, i) => foundLanguage(world, { seed: 910000 + i * 61 }));
+  const rate = (ls, pred) => ls.filter(pred).length / Math.max(1, ls.length);
+  const A = (x) => x.tokens.length === x.gloss.split(" ").length;
+  const pct = (x) => Math.round(x * 100) + "%";
+  const refL = (kind, seed) => { const l = foundLanguage(mkWorld(), { seed }); l.prof = refProfile(kind, seed); l.rules = []; const r = refPin(kind); l.pin = r.pin; if (r.rom) l.prof.rom = { ...(l.prof.rom || {}), ...r.rom }; return l; };
+
+  // (first gate) OPT-IN BYTE-IDENTITY: a plain verbal frame never leaks the new machinery
+  const plain = pop.slice(0, 120).map(l => renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } }));
+  check("byte-identity: a plain clause never carries COP/NEG.EX/REFL/RECP/TOP glosses", plain.every(c => !/COP|NEG\.EX|REFL|RECP|TOP/.test(c.gloss)));
+
+  // ── copulas (WALS 120A / Stassen 1997) ──
+  const cN = (k) => rate(pop, l => gramOf(l).copN === k);
+  check(`copula strategies WALS-shaped (verb ${pct(cN("verb"))} zero ${pct(cN("zero"))} pron ${pct(cN("pron"))})`,
+    cN("verb") > 0.45 && cN("verb") < 0.62 && cN("zero") + cN("pron") > 0.38 && cN("pron") > 0.06 && cN("pron") < 0.2);
+  const zeroL = pop.find(l => gramOf(l).copN === "zero" && gramOf(l).tenses >= 2 && gramOf(l).copA === "cop");
+  const zPres = renderClause(zeroL, { s: { n: KING }, pred: { adj: OLD }, v: {} });
+  const zPast = renderClause(zeroL, { s: { n: KING }, pred: { adj: OLD }, v: { tam: "pst" } });
+  check(`zero copula is TENSED: present bare, past grows BE (${zPres.text} / ${zPast.text})`,
+    !zPres.tokens.some(t => t.role === "V") && zPast.tokens.some(t => t.role === "V" && t.c === BE) && A(zPres) && A(zPast));
+  const pronL = pop.find(l => gramOf(l).copN === "pron");
+  const pCop = renderClause(pronL, { s: { n: KING }, pred: { n: WOLF }, v: {} });
+  const p3c = closedOf(pronL).prons.find(p => p.k === "3sg") || closedOf(pronL).prons.find(p => p.k === "3sgm");
+  check(`the pronoun copula IS the 3sg pronoun re-used (${pCop.text})`, pCop.tokens.some(t => t.g === "COP" && t.w === p3c.w) && A(pCop));
+  const vAdjL = pop.find(l => gramOf(l).copA === "verb" && gramOf(l).tenses >= 2);
+  const vAdj = renderClause(vAdjL, { s: { n: KING }, pred: { adj: OLD }, v: { tam: "pst" } });
+  check(`'verby' adjectives take TAM directly, no copula (${vAdj.gloss})`,
+    /old/.test(vAdj.gloss) && /PST|PFV/.test(vAdj.gloss) && !/COP/.test(vAdj.gloss) && !vAdj.tokens.some(t => t.c === BE));
+  const agrL = pop.find(l => { const g = gramOf(l); return g.copA === "cop" && g.concord && g.concord.adj && g.genders >= 2 && genderOf(l, KING) !== genderOf(l, QUEEN); });
+  if (agrL) {
+    const aM = renderClause(agrL, { s: { n: KING }, pred: { adj: OLD }, v: {} });
+    const aF = renderClause(agrL, { s: { n: QUEEN }, pred: { adj: OLD }, v: {} });
+    const adjOf = (c) => c.tokens.find(t => t.c === OLD);
+    check(`predicative adjectives AGREE with the subject's class (${adjOf(aM).w} vs ${adjOf(aF).w})`, adjOf(aM).w !== adjOf(aF).w);
+  } else check("predicative adjective agreement (no concording copular language in the sweep)", false);
+  const postL = pop.find(l => gramOf(l).copLoc === "posture");
+  const pLoc = renderClause(postL, { s: { n: KING }, pred: { loc: { adp: "in", n: TOWN, def: true } }, v: {} });
+  check(`a posture verb owns the locative predicate ('the king sits in the town') (${pLoc.gloss})`,
+    pLoc.tokens.some(t => t.role === "V" && (t.c === SIT || t.c === STAND)) && A(pLoc));
+
+  // ── existentials ──
+  const eV = (k) => rate(pop, l => gramOf(l).existV === k);
+  check(`existential predicates split be/have/posture (${pct(eV("be"))}/${pct(eV("have"))}/${pct(eV("posture"))})`,
+    eV("be") > 0.45 && eV("be") < 0.65 && eV("have") > 0.15 && eV("have") < 0.34 && eV("posture") > 0.12 && eV("posture") < 0.3);
+  check("the transpossessive tie: have-existentials cluster on have-possession (Mandarin yǒu)",
+    rate(pop.filter(l => gramOf(l).possPred === "have"), l => gramOf(l).existV === "have") >
+    rate(pop.filter(l => gramOf(l).possPred !== "have"), l => gramOf(l).existV === "have") + 0.15);
+  const haveExL = pop.find(l => gramOf(l).existV === "have");
+  const hEx = renderClause(haveExL, { ex: { n: GRAIN }, v: {} });
+  check(`a have-existential is a subjectless transitive: the pivot sits in the O slot (${hEx.gloss})`,
+    hEx.tokens.some(t => t.role === "O" && t.c === GRAIN) && !hEx.tokens.some(t => t.role === "S") && A(hEx));
+  const beExL = pop.find(l => gramOf(l).existV === "be");
+  check("a be-existential seats the pivot as subject",
+    renderClause(beExL, { ex: { n: GRAIN }, v: {} }).tokens.some(t => t.role === "S" && t.c === GRAIN));
+  const lInv = renderClause(beExL, { ex: { n: GRAIN }, loc: { adp: "in", n: TOWN, def: true }, v: {} });
+  check(`a located existential fronts the place — locative inversion (${lInv.text})`, lInv.tokens[0].role === "X" && A(lInv));
+  check(`the fused negative existential is WALS-shaped (${pct(rate(pop, l => gramOf(l).negEx === "special"))})`,
+    rate(pop, l => gramOf(l).negEx === "special") > 0.32 && rate(pop, l => gramOf(l).negEx === "special") < 0.52);
+  const nxL = pop.find(l => gramOf(l).negEx === "special" && gramOf(l).tenses >= 2);
+  const nx1 = renderClause(nxL, { ex: { n: GRAIN }, v: { neg: true } });
+  const nx2 = renderClause(nxL, { ex: { n: GRAIN }, v: { neg: true, tam: "pst" } });
+  check(`NEG.EX is ONE fused word ≠ the plain negator, present-only — the net / ne-bylo split (${nx1.text} / ${nx2.text})`,
+    nx1.tokens.some(t => t.g === "NEG.EX" && t.w !== closedOf(nxL).neg.w) && !nx2.tokens.some(t => t.g === "NEG.EX") && /NEG/.test(nx2.gloss) && A(nx1) && A(nx2));
+
+  // ── predicative possession (WALS 117A / Stassen 2009) ──
+  const pP = (k) => rate(pop, l => gramOf(l).possPred === k);
+  check(`possession strategies at the WALS marginals (loc ${pct(pP("loc"))} have ${pct(pP("have"))} topic ${pct(pP("topic"))} gen ${pct(pP("gen"))} com ${pct(pP("com"))})`,
+    pP("loc") > 0.22 && pP("loc") < 0.38 && pP("have") > 0.18 && pP("have") < 0.34 && pP("topic") > 0.1 && pP("topic") < 0.24 && pP("gen") > 0.04 && pP("gen") < 0.15 && pP("com") > 0.12 && pP("com") < 0.28);
+  check("have-possession leans fusional/templatic (Stassen's transitivization)",
+    rate(pop.filter(l => l.prof.morph === "fus" || l.prof.morph === "tmpl"), l => gramOf(l).possPred === "have") >
+    rate(pop.filter(l => l.prof.morph === "iso"), l => gramOf(l).possPred === "have"));
+  const locPL = pop.find(l => gramOf(l).possPred === "loc");
+  const lPoss = renderClause(locPL, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE } }, v: {} });
+  check(`locational possession: 'at the king is a horse' (${lPoss.gloss})`,
+    lPoss.tokens.some(t => t.role === "X" && t.c === KING) && lPoss.tokens.some(t => t.g === "at") && A(lPoss));
+  const havePL = pop.find(l => gramOf(l).possPred === "have" && gramOf(l).caseN >= 2 && gramOf(l).align === "acc");
+  const hPoss = renderClause(havePL, { poss: { possessor: { n: KING }, possessed: { n: HORSE } }, v: {} });
+  check(`have-possession is a real transitive: the possessed takes the object case (${hPoss.gloss})`,
+    hPoss.tokens.some(t => t.role === "O" && /ACC/.test(t.g)) && A(hPoss));
+  const topPL = pop.find(l => gramOf(l).possPred === "topic");
+  const tPoss = renderClause(topPL, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE } }, v: {} });
+  check(`topic possession fronts the possessor bare (${tPoss.gloss})`, tPoss.tokens[0].role === "TOP" && tPoss.tokens.some(t => t.role === "TOP" && t.c === KING) && A(tPoss));
+  const genPL = pop.find(l => gramOf(l).possPred === "gen");
+  const gPoss = renderClause(genPL, { poss: { possessor: { n: KING }, possessed: { n: HORSE } }, v: {} });
+  check(`genitive possession: 'the king's horse exists' (${gPoss.gloss})`, /GEN|of/.test(gPoss.gloss) && A(gPoss));
+  const comPL = pop.find(l => gramOf(l).possPred === "com");
+  const cPoss = renderClause(comPL, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE } }, v: {} });
+  check(`comitative possession: 'the king is with a horse' (${cPoss.gloss})`, cPoss.tokens.some(t => t.g === "with") && A(cPoss));
+  const genCL = pop.find(l => paradigmSpec(l).cases.some(x => x.k === "gen"));
+  const pNP = renderClause(genCL, { s: { n: HORSE, poss: { n: KING } }, v: { c: GO, tam: "pst" } });
+  check(`a possessed NP rides any clause — 'the king's horse went' (${pNP.gloss})`,
+    /GEN|of/.test(pNP.gloss) && pNP.tokens.some(t => t.c === KING) && pNP.tokens.some(t => t.c === HORSE) && A(pNP));
+  const pposL = pop.find(l => gramOf(l).possAffix && !gramOf(l).alienSplit && l.prof.morph !== "iso");
+  if (pposL) {
+    const pnp2 = renderClause(pposL, { s: { n: HORSE, poss: { pron: { k: "1sg", pers: 1, num: "sg" } } }, v: { c: GO, tam: "pst" } });
+    check(`a pronominal possessor rides the head-marking affix in an affixing language (${pnp2.gloss})`, /POSS/.test(pnp2.gloss) && A(pnp2));
+  } else check("head-marked possessed NP (no affixing language in sweep)", false);
+
+  // ── serial verbs ──
+  const svcF = { s: { n: KING }, v: { c: TAKE, tam: "pst" }, o: { n: SWORD }, v2: { c: EAT, o: { n: BREAD } } };
+  check(`serialization is analytic-skewed (iso ${pct(rate(pop.filter(l => l.prof.morph === "iso"), l => gramOf(l).svc))} ≫ fus ${pct(rate(pop.filter(l => l.prof.morph === "fus"), l => gramOf(l).svc))})`,
+    rate(pop.filter(l => l.prof.morph === "iso"), l => gramOf(l).svc) > 0.3 && rate(pop.filter(l => l.prof.morph === "fus"), l => gramOf(l).svc) < 0.1);
+  const svoSvcL = pop.find(l => gramOf(l).svc && gramOf(l).wo === "svo");
+  const sv1 = renderClause(svoSvcL, JSON.parse(JSON.stringify(svcF)));
+  const svR = sv1.tokens.map(t => t.role);
+  check(`an SVC is ONE clause, no conjunction, subject once, S V O V₂ O₂ (${sv1.gloss})`,
+    !/AND/.test(sv1.gloss) && sv1.tokens.filter(t => t.c === KING).length === 1 &&
+    svR.indexOf("V") < svR.indexOf("O") && svR.indexOf("O") < svR.indexOf("V2") && svR.indexOf("V2") < svR.indexOf("O2") && A(sv1));
+  const sovSvcL = pop.find(l => gramOf(l).svc && gramOf(l).wo === "sov");
+  if (sovSvcL) {
+    const sv2 = renderClause(sovSvcL, JSON.parse(JSON.stringify(svcF)));
+    const r2 = sv2.tokens.map(t => t.role);
+    check(`a verb-final SVC stacks the verb cluster — S O O₂ V V₂ (${sv2.gloss})`,
+      r2.indexOf("O2") < r2.indexOf("V") && r2.lastIndexOf("V2") > r2.indexOf("V") && A(sv2));
+  } else check("verb-final SVC (none in sweep — rare, ok)", true);
+  const firstL = pop.find(l => gramOf(l).svc && gramOf(l).svcTam === "first" && gramOf(l).tenses >= 2);
+  const bothL2 = pop.find(l => gramOf(l).svc && gramOf(l).svcTam === "both" && gramOf(l).tenses >= 2);
+  if (firstL) { const c = renderClause(firstL, JSON.parse(JSON.stringify(svcF))); check(`svcTam 'first' marks TAM once (${c.gloss})`, (c.gloss.match(/PST|PFV/g) || []).length === 1); }
+  else check("svcTam 'first' (none tensed in sweep)", false);
+  if (bothL2) { const c = renderClause(bothL2, JSON.parse(JSON.stringify(svcF))); check(`svcTam 'both' marks TAM concordantly on both verbs (${c.gloss})`, (c.gloss.match(/PST|PFV/g) || []).length === 2); }
+  else check("svcTam 'both' (none tensed in sweep — rare, ok)", true);
+  const noSvcL = pop.find(l => !gramOf(l).svc);
+  check("a non-serializing language coordinates instead ('took the knife AND cut the meat')",
+    /AND/.test(renderClause(noSvcL, JSON.parse(JSON.stringify(svcF))).gloss));
+
+  // ── correlatives + the inflected relative pronoun ──
+  const corrs = pop.filter(l => gramOf(l).relStrat === "corr");
+  check(`the correlative strategy exists as a verb-final postnominal minority (${pct(corrs.length / N)})`,
+    corrs.length / N > 0.02 && corrs.length / N < 0.14 && corrs.every(l => { const g = gramOf(l); return !g.relPre && (g.wo === "sov" || g.wo === "ovs"); }));
+  const cRel = renderClause(corrs[0], { s: { n: KING, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } });
+  check(`correlative: REL opens the detached clause, the head appears TWICE, a demonstrative resumes (${cRel.gloss})`,
+    cRel.tokens[0].g === "REL" && cRel.tokens.filter(t => t.c === KING).length === 2 && cRel.tokens.some(t => t.g === "that" || t.g === "yon") && A(cRel));
+  const nestCorr = renderClauseTree(corrs[0], { coord: "and", clauses: [{ s: { n: KING, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF }, v: { c: GO, tam: "pst" } }] });
+  check("a coordinated correlative stays gloss-aligned", A(nestCorr));
+  const rpL = pop.find(l => gramOf(l).relStrat === "relpron" && paradigmSpec(l).cases.some(x => x.k === "acc"));
+  const rpS = renderClause(rpL, { s: { n: KING, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } });
+  const rpO = renderClause(rpL, { s: { n: KING, rel: { role: "o", v: { c: SEE, tam: "pst" }, s: { n: WOLF } } }, v: { c: GO, tam: "pst" } });
+  check(`the relative PRONOUN inflects for the gap's case — REL vs REL.ACC (${rpO.gloss})`,
+    /(^| )REL( |$)/.test(rpS.gloss) && /REL\.ACC/.test(rpO.gloss) && A(rpS) && A(rpO));
+  check("pinned English relpron stays invariant (caseN=1)",
+    /(^| )REL( |$)/.test(renderClause(refL("english", 446), { s: { n: KING, rel: { role: "o", v: { c: SEE, tam: "pst" }, s: { n: WOLF } } }, v: { c: GO, tam: "pst" } }).gloss));
+
+  // ── reflexive / reciprocal + the completed applicative ──
+  check("the verbal reflexive is never isolating", pop.filter(l => gramOf(l).refl === "verb").every(l => l.prof.morph !== "iso"));
+  const rvL = pop.find(l => gramOf(l).refl === "verb" && gramOf(l).align === "erg" && gramOf(l).caseN >= 2) || pop.find(l => gramOf(l).refl === "verb");
+  const rv = renderClause(rvL, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "refl" } });
+  check(`the verbal reflexive detransitivizes — REFL on the verb, no object, no ERG (${rv.gloss})`,
+    /REFL/.test(rv.gloss) && !rv.tokens.some(t => t.role === "O") && !/ERG/.test(rv.gloss) && A(rv));
+  const rpnL = pop.find(l => gramOf(l).refl === "pron");
+  const rvp = renderClause(rpnL, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "refl" } });
+  check(`the pronoun reflexive fills the object slot (${rvp.gloss})`, rvp.tokens.some(t => t.g === "REFL" && t.role === "O") && A(rvp));
+  check("reflexive pronouns trace 'body'/'head' (the classic grammaticalization)",
+    pop.filter(l => gramOf(l).refl === "pron").some(l => ["body", "head"].includes(predicationOf(l).refl.from)));
+  const sameL = pop.find(l => gramOf(l).refl === "pron" && gramOf(l).recpSame);
+  const diffL = pop.find(l => gramOf(l).refl === "pron" && !gramOf(l).recpSame);
+  check("the reciprocal SHARES the reflexive exponent where recpSame rolled (the Romance se), else differs",
+    predicationOf(sameL).refl.recpW === predicationOf(sameL).refl.w && predicationOf(diffL).refl.recpW !== predicationOf(diffL).refl.w);
+  const applL = pop.find(l => gramOf(l).appl);
+  const aTh = renderClause(applL, { s: { n: KING }, v: { c: EAT, tam: "pst", voice: "appl" }, o: { n: BREAD }, loc: { adp: "to", n: QUEEN } });
+  check(`the applicative of a transitive keeps its theme as a second object (${aTh.gloss})`,
+    /APPL/.test(aTh.gloss) && aTh.tokens.some(t => t.c === QUEEN && t.role === "O") && aTh.tokens.some(t => t.c === BREAD && t.role === "O2") && A(aTh));
+
+  // ── the pinned references speak in character ──
+  const m2 = refL("mandarin", 445);
+  const strip29 = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const PINYIN29 = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+  const mAdj = renderClause(m2, { s: { n: KING, def: true }, pred: { adj: OLD }, v: {} });
+  const mNom = renderClause(m2, { s: { n: KING, def: true }, pred: { n: WOLF }, v: {} });
+  const m3sg = closedOf(m2).prons.find(p => p.k === "3sg");
+  check(`pinned Mandarin: verbal adjective (tā lǎo — no copula) + shì-style pronoun copula for nominals (${mAdj.text} / ${mNom.text})`,
+    !/COP/.test(mAdj.gloss) && !mAdj.tokens.some(t => t.c === BE) && mNom.tokens.some(t => t.g === "COP" && t.w === m3sg.w));
+  const mEx = renderClause(m2, { ex: { n: GRAIN }, v: {} });
+  const mPoss = renderClause(m2, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE } }, v: {} });
+  const vTok = (c) => c.tokens.find(t => t.role === "V" && t.c != null);
+  check(`pinned Mandarin: ONE verb (yǒu) serves existence and possession (${vTok(mEx).w} == ${vTok(mPoss).w})`, vTok(mEx).w === vTok(mPoss).w);
+  const mNx = renderClause(m2, { ex: { n: GRAIN }, v: { neg: true } });
+  check(`pinned Mandarin: the fused negative existential — méiyǒu (${mNx.text})`, mNx.tokens.some(t => t.g === "NEG.EX"));
+  const mSv = renderClause(m2, { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: SWORD, def: true }, v2: { c: EAT, o: { n: BREAD, def: true } } });
+  const mR = mSv.tokens.map(t => t.role);
+  check(`pinned Mandarin serializes S V O V₂ O₂ in legal pinyin, TAM once (${mSv.text})`,
+    mR.indexOf("V") < mR.indexOf("O") && mR.indexOf("O") < mR.indexOf("V2") && (mSv.gloss.match(/PFV|PST/g) || []).length === 1 &&
+    mSv.tokens.every(t => PINYIN29.test(strip29(t.w.toLowerCase()))) && !/AND/.test(mSv.gloss));
+  const r2 = refL("russian", 445);
+  const rPres = renderClause(r2, { s: { n: KING }, pred: { adj: OLD }, v: {} });
+  const rPast = renderClause(r2, { s: { n: KING }, pred: { adj: OLD }, v: { tam: "pst" } });
+  check(`pinned Russian: TENSED zero copula — present bare, past BE⟨PST⟩ (${rPres.text} / ${rPast.text})`,
+    !rPres.tokens.some(t => t.role === "V") && rPast.tokens.some(t => t.role === "V" && t.c === BE));
+  const rPoss = renderClause(r2, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE } }, v: {} });
+  check(`pinned Russian: locational possession — u menya est' (${rPoss.gloss})`,
+    rPoss.tokens.some(t => t.g === "at") && rPoss.tokens.some(t => t.role === "X" && t.c === KING));
+  check(`pinned Russian: the fused negative existential (net) + -sja verbal reflexive`,
+    renderClause(r2, { ex: { n: GRAIN }, v: { neg: true } }).tokens.some(t => t.g === "NEG.EX") &&
+    /REFL/.test(renderClause(r2, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "refl" } }).gloss));
+  const e2 = refL("english", 447);
+  const ePred = renderClause(e2, { s: { n: KING, def: true }, pred: { adj: OLD }, v: {} });
+  check(`pinned English: the copula is always overt (${ePred.text})`, ePred.tokens.some(t => t.role === "V" && t.c === BE));
+  check("pinned English: himself-style pronoun reflexive + have-possession",
+    renderClause(e2, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "refl" } }).tokens.some(t => t.g === "REFL" && t.role === "O") &&
+    renderClause(e2, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE, def: false } }, v: {} }).tokens.some(t => t.c === HAVE));
+
+  // ── determinism + inheritance ──
+  const d1 = foundLanguage(mkWorld(), { seed: 910061 }), d2 = foundLanguage(mkWorld(), { seed: 910061 });
+  const d3 = JSON.parse(JSON.stringify(d1));
+  const dsig = (l) => [
+    renderClause(l, { s: { n: KING }, pred: { adj: OLD }, v: { tam: "pst" } }).text,
+    renderClause(l, { ex: { n: GRAIN }, v: { neg: true } }).text,
+    renderClause(l, { poss: { possessor: { n: KING }, possessed: { n: HORSE } }, v: {} }).text,
+    renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "refl" } }).text,
+    JSON.stringify(predicationOf(l)),
+  ].join("‖");
+  check("syntax-completion layer deterministic + JSON-roundtrip-stable", dsig(d1) === dsig(d2) && dsig(d1) === dsig(d3));
+  const wIn = mkWorld();
+  const par = foundLanguage(wIn, { seed: 910122 });
+  wIn.step = 4000;
+  const dau = branchLanguage(wIn, par, 0.8);
+  const dials = (l) => { const g = gramOf(l); return JSON.stringify([g.copN, g.copA, g.copLoc, g.possPred, g.existV, g.negEx, g.svc, g.svcTam, g.refl, g.recpSame]); };
+  check("predication dials inherited down the family", dials(par) === dials(dau));
+
+  if (!quiet) {
+    say("\n   the same nonverbal frames in three tongues:");
+    for (const [k, l] of [["mandarin", m2], ["russian", r2], ["english", e2]]) {
+      say("     " + k.padEnd(9) + " king-is-old: " + renderClause(l, { s: { n: KING, def: true }, pred: { adj: OLD }, v: {} }).text.padEnd(24)
+        + " there-is-grain: " + renderClause(l, { ex: { n: GRAIN }, v: {} }).text.padEnd(18)
+        + " king-has-horse: " + renderClause(l, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE } }, v: {} }).text);
+    }
+  }
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

@@ -47,6 +47,12 @@ export function refProfile(kind, seed) {
       coordFinal: false, compzSrc: "say", compzPos: "init", compFinite: true,
       advPos: "init", advAffix: false, relPre: true, relStrat: "gap", relzSrc: "dem",
       chaining: false, switchRef: false,
+      // predication: shì-style pronoun copula for nominals, verbal adjectives
+      // (tā lǎo), a posture locative (zài), the yǒu machine — ONE verb for
+      // existence and possession — with the fused negative (méiyǒu), full
+      // serialization (ná dāo qiē ròu), pronominal reflexive (zìjǐ ≠ hùxiāng)
+      copN: "pron", copA: "verb", copLoc: "posture", possPred: "have", existV: "have",
+      negEx: "special", svc: true, svcTam: "first", refl: "pron", recpSame: false,
       dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
       proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "affix", declN: 1, conjN: 1, pronCase: "none",
@@ -80,6 +86,11 @@ export function refProfile(kind, seed) {
       coordFinal: false, compzSrc: "wh", compzPos: "init", compFinite: true,   // что
       advPos: "init", advAffix: false, relPre: false, relStrat: "relpron", relzSrc: "wh",   // который
       chaining: false, switchRef: false,
+      // predication: the Slavic corner — TENSED zero copula (on starik / on
+      // byl starik), locational possession (u menya est'), the fused negative
+      // existential (net), verbal reflexive (-sja, doubling as reciprocal)
+      copN: "zero", copA: "cop", copLoc: "cop", possPred: "loc", existV: "be",
+      negEx: "special", svc: false, svcTam: "first", refl: "verb", recpSame: true,
       dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 3, conjN: 2, pronCase: "full",
@@ -117,6 +128,11 @@ export function refProfile(kind, seed) {
       coordFinal: false, compzSrc: "dem", compzPos: "init", compFinite: true,   // that
       advPos: "init", advAffix: false, relPre: false, relStrat: "relpron", relzSrc: "wh",   // who/that (invariant, caseN:1)
       chaining: false, switchRef: false,
+      // predication: the SAE corner — an always-overt BE copula, have-
+      // possession, a plain negated existential, pronominal reflexive
+      // (himself ≠ each other), no serialization
+      copN: "verb", copA: "cop", copLoc: "cop", possPred: "have", existV: "be",
+      negEx: "neg", svc: false, svcTam: "first", refl: "pron", recpSame: false,
       dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 2, conjN: 2, pronCase: "acc",

@@ -160,6 +160,66 @@ export function rollGrammar(famSeed, prof) {
   const relPre = ov ? H("relp") < 0.55 : H("relp") < 0.12;   // prenominal relative (OV-skewed, ~28%)
   const chaining = m !== "iso" && ov && affixSide === "suf" ? H("chn") < (m === "agg" ? 0.5 : 0.2)
     : m === "iso" && ov ? H("chn") < 0.3 : false;            // clause-chaining is a verb-final property (VO → 0)
+  // relative strategy (hoisted so the CORRELATIVE can carve below): prenominal
+  // relatives never use a relative pronoun (the universal); the pronoun needs
+  // postnominal order + case to inflect for; the gap is the world default.
+  const relStrat0 = relPre ? (H("rels") < 0.72 ? "gap" : "resump")
+    : caseN >= 1 ? pickW("rels", [["relpron", 0.5], ["gap", 0.35], ["resump", 0.15]])
+    : (H("rels") < 0.75 ? "gap" : "resump");
+  // the CORRELATIVE (Hindi jo…vo — the fourth real strategy, syntax completion):
+  // a left-detached relative with the head INSIDE it, resumed by a demonstrative
+  // in the main clause. A verb-final, non-prenominal phenomenon (the South-Asian
+  // corner); carved on its OWN stream from the postnominal-OV languages, so every
+  // other language's roll is untouched.
+  const relStrat = !relPre && ov && H("corr") < 0.35 ? "corr" : relStrat0;
+  // ── SYNTAX COMPLETION — nonverbal predication, existentials, predicative
+  // possession, serial verbs, reflexives. Every dial on its own stream. ──
+  // How 'X is Y' is said (WALS 120A, Stassen 1997): a verbal copula (the
+  // language's own BE, inflecting and suppleting like any basic verb), a
+  // PRONOUN copula (the Hebrew hu / Mandarin shì machine — the 3sg pronoun
+  // re-used, ~a third of the zero-ish languages), or ZERO — and zero is
+  // TENSED: under past/future the BE verb steps in (Russian byl, Hebrew
+  // haya), the near-universal pattern the renderer hard-wires.
+  const copRoll = H("copn");
+  const copN = copRoll < 0.5 ? "verb" : copRoll < 0.85 ? "zero" : "pron";
+  // adjectives predicate VERBALLY (stative property verbs, no copula — the
+  // Mandarin/SE-Asian + Amerind half of Stassen's split, leaning isolating/
+  // tenseless) or take the nominal copula (the 'nouny' European half).
+  const copA = (m === "iso" || tenses === 1 ? H("copa") < 0.62 : H("copa") < 0.28) ? "verb" : "cop";
+  const copLoc = H("locv") < 0.3 ? "posture" : "cop";   // a posture verb owns location (sit/stand-at — the estar ‹ stare road)
+  // predicative possession (WALS 117A / Stassen 2009): five real strategies,
+  // at the attested marginals — locational ('at the king is a horse', the
+  // world's commonest), the transitive HAVE verb (leaning fusional Europe),
+  // the topic existential ('the king — a horse exists', leaning East-Asian
+  // isolating), the genitive existential, the comitative copular.
+  const possPred = (() => {
+    const r = H("pposs");
+    const have = m === "fus" || m === "tmpl" ? 0.34 : 0.2, topic = m === "iso" ? 0.3 : 0.14;
+    return r < 0.3 ? "loc" : r < 0.3 + have ? "have" : r < 0.3 + have + topic ? "topic" : r < 0.4 + have + topic ? "gen" : "com";
+  })();
+  // the existential verb ('there is grain'): BE, the transpossessive HAVE
+  // (Mandarin yǒu / Spanish hay — strongly tied to have-possession, where it
+  // is literally the same verb), or a posture verb ('grain sits')
+  const existV = (() => {
+    const r = H("exv");
+    const haveP = possPred === "have" ? 0.45 : 0.16;
+    return r < haveP ? "have" : r < haveP + 0.54 ? "be" : "posture";
+  })();
+  // the negative existential ('there is no…'): plain negation, or a single
+  // FUSED word (méiyǒu, net, yok — Croft's negative-existential cycle, ~40%)
+  const negEx = H("negex") < 0.42 ? "special" : "neg";
+  // SERIAL VERBS ('take knife cut meat'): one clause, two verbs, no linker —
+  // an analytic-VO phenomenon (West Africa, SE Asia, creoles), suppressed
+  // where converb chaining already does the job. TAM marks once (on the
+  // first verb) or concordantly on both.
+  const svc = H("svc") < (m === "iso" ? 0.55 : m === "agg" ? 0.22 : 0.05) * (chaining ? 0.25 : 1) * (ov ? 0.6 : 1.1);
+  const svcTam = H("svctam") < 0.7 ? "first" : "both";
+  // REFLEXIVE strategy: a detransitivizing verbal affix (Russian -sja,
+  // Turkish -In- — never isolating) or a reflexive pronoun ('self' ‹
+  // body/head, the classic grammaticalization). The reciprocal SHARES the
+  // reflexive exponent in the Romance-se corner (recpSame) or wears its own.
+  const refl = m === "iso" ? "pron" : H("refl") < 0.42 ? "verb" : "pron";
+  const recpSame = H("rcpsame") < 0.45;
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
@@ -252,11 +312,11 @@ export function rollGrammar(famSeed, prof) {
     advPos: ov ? "final" : (H("advp") < 0.85 ? "init" : "final"),         // subordinator-within-clause (WALS 94)
     advAffix: (m === "agg" || m === "tmpl") && ov && affixSide === "suf" ? H("advaf") < 0.5 : false,   // Turkic/Japanese converb
     relPre,
-    relStrat: relPre ? (H("rels") < 0.72 ? "gap" : "resump")                        // prenominal: NEVER a relative pronoun (the universal)
-      : caseN >= 1 ? pickW("rels", [["relpron", 0.5], ["gap", 0.35], ["resump", 0.15]])   // postnominal + case: relpron possible
-      : (H("rels") < 0.75 ? "gap" : "resump"),
+    relStrat,   // gap | relpron | resump | corr (hoisted above; corr carved from postnominal-OV)
     relzSrc: H("relz") < 0.55 ? "dem" : "wh",
     chaining,
+    // syntax completion (predication / existence / possession / serialization)
+    copN, copA, copLoc, possPred, existV, negEx, svc, svcTam, refl, recpSame,
     switchRef: chaining && m !== "iso" ? H("sr") < 0.55 : false,          // SS/DS reference tracking ⊂ chaining, never iso
     clusiv: H("cl") < 0.35,                          // inclusive/exclusive 'we'
     gender3: (genders ? H("g3") < 0.75 : H("g3") < 0.15),
@@ -474,6 +534,11 @@ const CLF_SRC = {
   gen: [[BODY, 0.35], [STONE, 0.2], [null, 0.45]],            // 個 — frequently opaque
 };
 const APPL_MEANING = { ben: "to", ins: "with", loc: "in" };   // applicative flavour → adposition
+
+// the language's posture/locational verb (SIT or STAND) — ONE roll shared by
+// the locative copula and the posture existential, as in life where a single
+// verb serves both be-at jobs (the estar ‹ stare road)
+function postureVerbOf(lang) { return h01(lang.famSeed ?? lang.seed, "postv") < 0.55 ? SIT : STAND; }
 
 /** Every closed-class form of the language: pronouns (with the language's own
  *  person/number distinctions), demonstratives, negation, the question-word
@@ -751,7 +816,44 @@ export function closedOf(lang) {
   dedupe(lang, inv, [relz], seedMinus(g.relzSrc === "dem" ? far : whatQ));
   dedupe(lang, inv, [whenSub], closedForms);   // ≠ the interrogative 'when' (and every other closed form)
 
-  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, voice: voiceLV, links: { comp: compz, rel: relz, when: whenSub } };
+  // ── PREDICATION forms (syntax completion), built LAST like the linkers:
+  // the pronoun-copula is the 3sg pronoun RE-USED (Hebrew hu, Mandarin shì ‹
+  // demonstrative — identity is the point, so it is copied after the dedupes
+  // and kept out of them, like 2v keeps its plural identity); the fused
+  // negative existential welds NEG onto the existential verb's salient
+  // syllable (the méiyǒu/net machine); the reflexive pronoun wears from
+  // BODY/HEAD ('self' ‹ body), the reciprocal either SHARES it (the Romance
+  // se colexification) or welds 'one-one' ('each other'). Each new opaque
+  // form dedupes against the finalized closed classes with a fresh seed. ──
+  const closedAll = [...closedForms, neg, ...adps, ...(impPart ? [impPart] : []), ...(prohibW ? [prohibW] : []), compz, relz, whenSub];
+  let copP = null;
+  if (g.copN === "pron") {
+    const p3 = prons.find(p => p.k === "3sg") || prons.find(p => p.k === "3sgm") || prons[prons.length - 1];
+    copP = { g: "COP", form: copyWord(p3.form), w: p3.w, src: "3sg" };
+  }
+  let negExP = null;
+  if (g.negEx === "special") {
+    const exC = g.existV === "have" ? HAVE : g.existV === "posture" ? postureVerbOf(lang) : BE;
+    const f = legalizeWord(joinSyls(neg.form.syls, [wearSyl(prof, nativeStemOf(lang, exC))]));
+    negExP = { g: "NEG.EX", form: f, w: rform(lang, f), src: glossOf(exC) };
+    dedupe(lang, inv, [negExP], closedAll);
+  }
+  let reflP = null, recpP = null;
+  if (g.refl === "pron") {
+    const rsrc = h01(fam, "reflsrc") < 0.6 ? BODY : HEAD;
+    const rf = legalizeWord({ syls: [wearSyl(prof, nativeStemOf(lang, rsrc))] });
+    reflP = { g: "REFL", form: rf, w: rform(lang, rf), src: glossOf(rsrc) };
+    dedupe(lang, inv, [reflP], closedAll);
+    if (g.recpSame) recpP = { g: "RECP", form: copyWord(reflP.form), w: reflP.w, src: reflP.src };
+    else {
+      const oneS = wearSyl(prof, lighten(rootFormOf(lang, ONE).w));
+      const rc = legalizeWord(joinSyls([oneS], [oneS]));
+      recpP = { g: "RECP", form: rc, w: rform(lang, rc), src: "one-one" };
+      dedupe(lang, inv, [recpP], [...closedAll, reflP]);
+    }
+  }
+
+  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, voice: voiceLV, links: { comp: compz, rel: relz, when: whenSub }, cop: copP, negEx: negExP, refl: reflP, recp: recpP };
   return c.closed;
 }
 
@@ -1142,6 +1244,9 @@ const AFF_SRC = {
   tri: [[THREE, 1]],                                           // trial ‹ 'three' (parallel to dual ‹ 'two')
   pau: [[LITTLE, 0.5], [MANY, 0.2], [null, 0.3]],              // paucal ‹ 'few/little'
   hon: [[GIVE, 0.4], [null, 0.6]],                             // honorific/humble verb ‹ 'give' (benefactive)
+  // voice completion (syntax phase): the verbal reflexive/reciprocal
+  refl: [[BODY, 0.35], [HEAD, 0.2], [null, 0.45]],             // 'self' ‹ body/head — the classic road
+  recp: [[ONE, 0.25], [null, 0.75]],                           // 'each other' ‹ 'one(-one)'
 };
 const MOOD_ORDER = ["sbjv", "cond", "opt", "pot"];              // frequency ranking (like CASE_ORDER)
 const MOOD_GLOSS = { sbjv: "SBJV", cond: "COND", opt: "OPT", pot: "POT" };
@@ -1452,6 +1557,28 @@ export function paradigmSpec(lang) {
   if (g.mirative) spec.mir = g.perfect && spec.tam.prf
     ? { k: "mir", g: "MIR", src: spec.tam.prf.src, t: spec.tam.prf.t, syl: cloneMarkSyl(spec.tam.prf.syl) }
     : mkAff("mir", "MIR");
+  // ── REFLEXIVE/RECIPROCAL voice (syntax completion): the verbal strategy
+  // (Russian -sja, Turkish -In-) — a detransitivizing affix worn from
+  // BODY/HEAD ('self' ‹ body) in the voice tier. Claimed AFTER every existing
+  // category (shared-taken discipline) and deduped in its OWN pass against
+  // the finalized TAM/voice/imperative set. The reciprocal SHARES the
+  // reflexive exponent where recpSame rolled (the Romance se colexification —
+  // cloned after the dedupe so the shared syl is never double-walked), else
+  // wears its own ('each other' ‹ 'one'). ──
+  if (!iso && g.refl === "verb") {
+    const vSeed = [...Object.values(spec.tam), spec.voice.caus, spec.voice.pass, spec.voice.antip, spec.voice.appl, spec.imp, spec.honAff].filter(Boolean);
+    births.refl = Math.max(birthOf(fam, "refl", len), t0v);
+    const ra = mkAff("refl", "REFL");
+    dedupeAffixSet(lang, inv, [ra], vSeed);
+    spec.voice.refl = ra;
+    if (g.recpSame) spec.voice.recp = { ...ra, g: "RECP", syl: cloneMarkSyl(ra.syl) };
+    else {
+      births.recp = Math.max(birthOf(fam, "recp", len), t0v);
+      const rc = mkAff("recp", "RECP");
+      dedupeAffixSet(lang, inv, [rc], [ra, ...vSeed]);
+      spec.voice.recp = rc;
+    }
+  }
   // ── MULTI-CLAUSE affixes (Group G): converb (adverbial/chaining medial verb),
   // nominalizer (agglutinative complement), participle (relative gap), switch-
   // reference SS/DS. Opaque late formatives, built LAST in their OWN dedupe pass
@@ -2508,20 +2635,27 @@ export function clauseAlignment(lang, frame) {
   return { effAlign, hier: g.align === "erg" && g.ergSplit === "hier", direction, tam, imperative };
 }
 
-/** The valency-changing voices this language has (Group B). */
+/** The valency-changing voices this language has (Group B; refl/recpSame are
+ *  the syntax-completion additions — additive fields on the frozen shape). */
 export function voicesOf(lang) {
   const g = gramOf(lang);
-  return { caus: g.caus, pass: g.pass, antip: g.antip, appl: g.appl, applOf: g.applOf, passBy: g.passBy };
+  return { caus: g.caus, pass: g.pass, antip: g.antip, appl: g.appl, applOf: g.applOf, passBy: g.passBy, refl: g.refl, recpSame: g.recpSame };
 }
 /** Where each voice marker grammaticalized from (the applicative is cognate
  *  with the language's own adposition; iso light verbs read opaque). */
 export function voiceEtymologies(lang) {
   const spec = paradigmSpec(lang), g = gramOf(lang);
   const out = [];
-  for (const k of ["caus", "pass", "antip", "appl"]) {
+  for (const k of ["caus", "pass", "antip", "appl", "refl", "recp"]) {
     const a = spec.voice[k];
     if (a) out.push({ k, g: a.g, from: a.src != null ? glossOf(a.src) : null });
     else if (g[k] && lang.prof.morph === "iso" && closedOf(lang).voice[k]) out.push({ k, g: k.toUpperCase(), from: null });
+  }
+  // the pronoun-strategy reflexive/reciprocal live in the closed classes
+  const cl = closedOf(lang);
+  if (g.refl === "pron" && cl.refl) {
+    out.push({ k: "refl", g: "REFL", from: cl.refl.src });
+    if (cl.recp && !out.some(x => x.k === "recp")) out.push({ k: "recp", g: "RECP", from: g.recpSame ? cl.refl.src : "one" });
   }
   return out;
 }
@@ -2537,29 +2671,34 @@ export function renderClause(lang, frame, opts = {}) {
   const g = gramOf(lang);
   const cl = closedOf(lang);
   const spec = paradigmSpec(lang);
+  // ── SYNTAX-COMPLETION dispatch: predicative possession and existentials are
+  // thin remaps onto the copular/existential/verbal machinery below (opt-in
+  // frame fields — a bare verbal frame never enters these branches) ──
+  if (frame.poss) return renderPossessionClause(lang, frame, opts);
+  if (frame.ex) return renderExistentialClause(lang, frame, opts);
+  // SERIAL-VERB degrade: a non-serializing language coordinates instead
+  // ('took the knife AND cut the meat'), pronominalizing the second subject
+  if (frame.v2 && !g.svc) {
+    const { v2, ...rest } = frame;
+    const s2 = frame.s && frame.s.pron ? frame.s
+      : frame.s ? { pron: { k: frame.s.num === "pl" ? "3pl" : "3sg", pers: 3, num: frame.s.num || "sg" } } : null;
+    return renderCoordination(lang, { coord: "and", clauses: [rest, { s: s2, v: { c: v2.c, tam: frame.v.tam }, o: v2.o || null }] });
+  }
   // MULTI-CLAUSE (Group G): a clausal object (o.comp) is routed AROUND the NP
   // case/agreement logic; opts.gap suppresses a role's overt tokens (a relative
   // gap); opts.medial/nfVerb make the verb a converb/nominalized (nonfinite).
   const oComp = (frame.o && frame.o.comp) || null;
-  // ── VOICE prepass (Group B): remap the grammatical relations BEFORE case and
-  // agreement resolve, so the P3 resolver sees the DERIVED valency ──
-  const voice = frame.v.voice || null;
-  let sArg = frame.s, oArg = oComp ? null : frame.o, byArg = null, oblArg = null, locArg = frame.loc;
-  if (voice === "pass") { sArg = frame.o; oArg = null; byArg = frame.s; }             // P→subj, A→by-phrase
-  else if (voice === "antip") { sArg = frame.s; oArg = null; oblArg = frame.o; }      // A stays subj (ABS), P→oblique
-  else if (voice === "appl" && frame.loc) { oArg = { n: frame.loc.n, def: frame.loc.def, num: frame.loc.num || "sg" }; locArg = null; }  // oblique→object
-  const trans = !!oArg || !!oComp;
-  const sIsPron = sArg && !!sArg.pron;
-  // TAM resolves first (the tam-split reads it), then the effective alignment
-  // decides the core cases through the ONE resolver (nom-acc/erg byte-identical,
-  // plus active AGT/PAT, tripartite, and hierarchy-conditioned ergativity)
-  const { effAlign, hier, direction, tam, imperative } = clauseAlignment(lang, { ...frame, s: sArg, o: oArg || (oComp ? { clause: true } : null) });
-  const sAgentive = effAlign === "active" && !trans
-    ? (g.activeFluid && frame.v.vol != null ? frame.v.vol : agentivityOf(frame.v.c) >= 0.5) : false;
-  const sCase = coreCaseOf(lang, "S", { trans, effAlign, hier, arg: sArg, sAgentive });
-  const oCase = coreCaseOf(lang, "O", { trans, effAlign, hier, arg: oArg, sAgentive });
+  // CORRELATIVES detach their relative clause to the clause's left edge — np()
+  // collects the detached tokens here and the finish tail prepends them (empty
+  // for every other strategy, so the assembly is untouched when none occur)
+  const detachedRel = [];
   const np = (arg, cas, role) => {
     if (!arg) return [];
+    if (arg.reflTok) {
+      // the reflexive/reciprocal PRONOUN strategy: 'self' fills the object slot
+      const t = arg.reflTok === "recp" ? (cl.recp || cl.refl) : cl.refl;
+      return t ? [{ w: t.w, g: t.g, role, f: t.form }] : [];
+    }
     if (arg.pron) {
       // graceful degrade: a gendered request in a genderless tongue falls to
       // plain 3sg; clusivity falls to the plain plural, and so on. POLITENESS
@@ -2591,11 +2730,18 @@ export function renderClause(lang, frame, opts = {}) {
     // `count` wins over `num`; numeralPhrase owns the count, np keeps adj/dem/art
     const counted = arg.count != null;
     const numForAdj = counted ? (g.classif ? "sg" : (arg.count !== 1 && g.pluralMark ? "pl" : "sg")) : (arg.num || "sg");
+    // adnominal POSSESSOR (syntax completion): a pronominal possessor rides the
+    // head-marking affix where the language affixes this noun (my-house); every
+    // other pairing is analytic — a genitive pronoun/noun, or the 'of' linker —
+    // built after the head below. Definiteness rides the possessor (the head
+    // drops its own article, as possessed NPs do).
+    const possPron = arg.poss && arg.poss.pron ? arg.poss.pron : null;
+    const possAffixed = !counted && !!possPron && possessionType(lang, arg.n) === "affix";
     let seq;
     if (counted) {
       seq = numeralPhrase(lang, arg.n, arg.count, { cas, useClf: arg.useClf !== false }).tokens.map(t => ({ ...t, role }));
     } else {
-      const x = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas });
+      const x = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas, poss: possAffixed ? { pers: possPron.pers, num: possPron.num === "pl" ? "pl" : "sg" } : null });
       seq = [...x.pre.map(t => ({ ...t, role })), { w: x.text, g: x.gloss, role, f: x.form, c: arg.n, seam: x.seam }, ...x.post.map(t => ({ ...t, role }))];
     }
     if (arg.adj != null) {
@@ -2610,7 +2756,31 @@ export function renderClause(lang, frame, opts = {}) {
       if (g.concord && g.concord.dem && g.genders) { df = applyConcord(lang, copyWord(d.form), headCls); dw = renderWord(df, lang.prof); dg = d.g + "." + classGloss(lang, headCls); }
       seq = [{ w: dw, g: dg, role, f: df }, ...seq];
     }
-    if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role, f: cl.defArt.form }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role, f: cl.defArt.form }];
+    // the analytic possessor phrase: a genitive-cased noun needs no linker
+    // (дом короля), a genitive pronoun stands bare (его дом); everything else
+    // takes the 'of' linker, ordered by genN — the same construction
+    // inflectPossessed uses, so the two layers can never disagree
+    if (arg.poss && !possAffixed) {
+      const of = cl.adps.find(a => a.m === "of") || cl.adps[0];
+      let pToks, useLink;
+      if (possPron) {
+        const k = possPron.k || possPron.pers + (possPron.num === "pl" ? "pl" : "sg");
+        let pc = pronoun(lang, k, "gen");
+        // no genitive series: the 'of' phrase governs the object form ('of me')
+        if (!/GEN/.test(pc.g)) { const a2 = pronoun(lang, k, "acc"); if (/ACC/.test(a2.g)) pc = a2; }
+        pToks = [{ w: pc.w, g: pc.g, role, f: pc.form }];
+        useLink = !/GEN/.test(pc.g);          // a real genitive pronoun needs no linker
+      } else {
+        const hasGen = spec.cases.some(x => x.k === "gen");
+        const px = inflectNoun(lang, arg.poss.n, { cas: hasGen ? "gen" : null });
+        pToks = [...px.pre.map(t => ({ ...t, role })), { w: px.text, g: px.gloss, role, f: px.form, c: arg.poss.n, seam: px.seam }, ...px.post.map(t => ({ ...t, role }))];
+        useLink = !hasGen;
+      }
+      const linkTok = useLink ? [{ w: rformNeutral(lang, of.form), g: "of", role, f: of.form }] : [];
+      seq = g.genN ? [...pToks, ...linkTok, ...seq] : [...seq, ...linkTok, ...pToks];
+    }
+    if (arg.poss) { /* definiteness rides the possessor — no article on the head */ }
+    else if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role, f: cl.defArt.form }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role, f: cl.defArt.form }];
     else if (arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role, f: cl.indefArt.form }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role, f: cl.indefArt.form }];
     // relative clause (Group G): the head plays arg.rel.role INSIDE, rendered
     // with a GAP; the strategy is gap (an invariant relativizer, or an agg
@@ -2618,6 +2788,20 @@ export function renderClause(lang, frame, opts = {}) {
     // resump (an ordinary pronoun fills the gap). relPre lags a word-order flip.
     if (arg.rel) {
       const rel = arg.rel, strat = g.relStrat;
+      if (strat === "corr") {
+        // CORRELATIVE (the Hindi jo…vo shape, syntax completion): the relative
+        // clause is LEFT-DETACHED with the head OVERT inside it, opened by the
+        // relativizer ('REL king the-river saw…'), and a distal demonstrative
+        // RESUMES the head in the matrix ('…that king went'). The detached
+        // block is collected clause-level; the finish tail prepends it.
+        const innerFrame = { ...rel, v: rel.v };
+        if (rel.role === "s" || rel.role === "o") innerFrame[rel.role] = { n: arg.n, num: arg.num };
+        const inner = renderClause(lang, innerFrame, {});
+        detachedRel.push({ w: cl.links.rel.w, g: "REL", role, f: cl.links.rel.form }, ...inner.tokens.map(t => ({ ...t, role })));
+        const d = cl.dems[cl.dems.length - 1];
+        seq = [{ w: d.w, g: d.g, role, f: d.form }, ...seq];
+        return seq;
+      }
       const gapRole = rel.role === "s" ? "S" : rel.role === "o" ? "O" : null;
       const innerFrame = { ...rel, v: rel.v };
       const rOpts = { gap: strat === "resump" ? null : gapRole };
@@ -2628,7 +2812,21 @@ export function renderClause(lang, frame, opts = {}) {
       // gap/relpron take an overt relativizer; the participial gap (agg) IS its
       // own strategy marker (the PTCP), so it needs no separate relativizer;
       // resump fills the gap with a pronoun and takes neither
-      const relMark = strat === "resump" || rOpts.relGap ? null : { w: cl.links.rel.w, g: "REL", role, f: cl.links.rel.form };
+      let relMark = strat === "resump" || rOpts.relGap ? null : { w: cl.links.rel.w, g: "REL", role, f: cl.links.rel.form };
+      // the relative PRONOUN inflects for the head's role inside the relative
+      // (который-ACC when the head is the inner object) — what makes relpron a
+      // distinct strategy rather than a costume on the gap. Needs a real core
+      // case: caseN=1 (genitive-only English) stays invariant, as pinned.
+      if (relMark && strat === "relpron" && rel.role !== "s") {
+        const csK = rel.role === "o" ? "acc" : spec.cases.some(x => x.k === "loc") ? "loc" : "dat";
+        const csAff = spec.cases.find(x => x.k === csK);
+        if (csAff) {
+          const rf = copyWord(cl.links.rel.form);
+          attachSyl(lang.prof, rf, csAff.syl, g.affixSide);
+          legalizeWord(rf);
+          relMark = { w: rformNeutral(lang, rf), g: "REL." + csAff.g, role, f: rf };
+        }
+      }
       const relSeq = relMark ? (g.relPre ? [...innerToks, relMark] : [relMark, ...innerToks]) : innerToks;
       seq = g.relPre ? [...relSeq, ...seq] : [...seq, ...relSeq];
     }
@@ -2643,6 +2841,142 @@ export function renderClause(lang, frame, opts = {}) {
     const innerToks = inner.tokens.map(t => ({ ...t, role: "O" }));
     return g.compzPos === "init" ? [compTok, ...innerToks] : [...innerToks, compTok];
   };
+  // adpositional adjuncts: the locative, the passive BY-phrase (demoted agent),
+  // the antipassive OBLIQUE (demoted patient), the locational possessor — X-role
+  const adjunct = (arg, adpM) => {
+    if (!arg) return [];
+    const adp = cl.adps.find(a => a.m === adpM) || cl.adps[0];
+    let inner;
+    if (arg.pron) { const pc = pronoun(lang, arg.pron.k, "obl"); inner = [{ w: pc.w, g: pc.g, role: "X", f: pc.form }]; }
+    else {
+      const nx = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas: null });
+      inner = [...(arg.def && cl.defArt && g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X", f: cl.defArt.form }] : []),
+        { w: nx.text, g: nx.gloss, role: "X", f: nx.form, c: arg.n, seam: nx.seam },
+        ...(arg.def && cl.defArt && !g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X", f: cl.defArt.form }] : [])];
+    }
+    return g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X", f: adp.form }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X", f: adp.form }];
+  };
+  // an existential's TOPIC possessor ('the king — a horse exists'), leftmost
+  const topicToks = opts.topic ? np(opts.topic, null, "TOP") : [];
+  // the shared clause TAIL — question particle, adverbial clauses, then the
+  // left-detached blocks (correlative, topic): ONE exit for the verbal and
+  // copular paths, so ordering and gloss alignment can never drift apart
+  const finish = (seq, qOn) => {
+    if (qOn && cl.qp) {
+      if (g.qPart === "final") seq.push({ w: cl.qp.w, g: "Q", role: "Q", f: cl.qp.form });
+      else if (g.qPart === "init") seq.unshift({ w: cl.qp.w, g: "Q", role: "Q", f: cl.qp.form });
+    }
+    // adverbial clauses (Group G): when/if/because — each an inner clause plus a
+    // subordinator (WALS 94: advPos; OV⇒final), or a converb suffix in the Turkic/
+    // Japanese corner. Conditionals prepose (a ~85% render correlate).
+    if (frame.adv && frame.adv.length) {
+      for (const av of frame.adv) {
+        let advToks;
+        if (g.advAffix && spec.conv) {   // converb suffix on the subordinate verb, no free subordinator
+          advToks = renderClause(lang, av, { conv: av.sub === "if" ? "cond" : av.sub === "because" ? "caus" : "temp" }).tokens.map(t => ({ ...t, role: "ADV" }));
+        } else {
+          const inner = renderClauseTree(lang, av).tokens.map(t => ({ ...t, role: "ADV" }));
+          const sub = av.sub === "when" ? { w: cl.links.when.w, g: "when", role: "ADV", f: cl.links.when.form }
+            : (() => { const c = cl.conj.find(x => x.k === av.sub) || cl.conj.find(x => x.k === "if"); return { w: c.w, g: av.sub, role: "ADV", f: c.form }; })();
+          advToks = g.advPos === "init" ? [sub, ...inner] : [...inner, sub];
+        }
+        const prepose = av.sub === "if" ? true : g.advPos === "init";   // conditionals prepose
+        seq = prepose ? [...advToks, ...seq] : [...seq, ...advToks];
+      }
+    }
+    if (detachedRel.length) seq = [...detachedRel, ...seq];
+    if (topicToks.length) seq = [...topicToks, ...seq];
+    return { tokens: seq, text: seq.map(t => t.w).join(" "), gloss: seq.map(t => t.g).join(" ") };
+  };
+  // ── NONVERBAL PREDICATION (syntax completion): 'the king is old / is a
+  // wolf / is in the town'. Adjectives may predicate VERBALLY (stative
+  // property verbs — TAM straight on the property word, no copula: the
+  // Mandarin/Amerind half of Stassen's split); nominal predicates take the
+  // verbal copula (the language's own BE — inflecting, agreeing, suppleting
+  // like the basic verb it is), the PRONOUN copula (the 3sg pronoun re-used:
+  // Hebrew hu, Mandarin shì), or ZERO — and zero is TENSED: under an overt
+  // past/future the BE verb steps in (Russian byl, Hebrew haya), the
+  // near-universal pattern. A spatial locative predicate may take a posture
+  // verb instead ('the king sits in the town' = is-at, the estar ‹ stare
+  // road). Predicative adjectives AGREE with the subject's class where the
+  // language concords (Russian star / stara). ──
+  if (frame.pred) {
+    const fv = frame.v || {};
+    const pred = frame.pred;
+    if (pred.adj != null && g.copA === "verb")
+      return renderClause(lang, { s: frame.s, v: { c: pred.adj, tam: fv.tam, neg: fv.neg, mood: fv.mood }, q: frame.q, adv: frame.adv }, opts);
+    const tam = resolveTam(lang, fv.tam);
+    const sIsPr = !!(frame.s && frame.s.pron);
+    const sNum0 = frame.s ? (frame.s.pron ? frame.s.pron.num : frame.s.num || "sg") : "sg";
+    const sNum = sNum0 === "du" ? "pl" : sNum0;
+    const spatial = pred.loc && ["in", "on", "under", "at"].includes(pred.loc.adp);
+    const strat = spatial && g.copLoc === "posture" ? "posture" : g.copN;
+    const overt = strat === "posture" || strat === "verb" || tam != null;   // zero is TENSED
+    const agreeP = g.agree !== "none" && overt ? String(frame.s && frame.s.pron ? frame.s.pron.pers : 3) : null;
+    let vToks = [];
+    if (overt) {
+      const vc = strat === "posture" ? postureVerbOf(lang) : BE;
+      const vx = inflectVerb(lang, vc, { tam, pers: agreeP, num: sNum, neg: !!fv.neg && !!spec.negAff });
+      vToks = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V", f: vx.form, c: vc, seam: vx.seam }, ...vx.post.map(t => ({ ...t, role: "V" }))];
+    } else if (strat === "pron" && cl.cop) {
+      vToks = [{ w: cl.cop.w, g: "COP", role: "V", f: cl.cop.form }];
+    }
+    // negation: the affix rode the copula above; otherwise the particle stands
+    // by the copula slot — alone in it under a zero copula ('he NEG old')
+    let negFin = false;
+    if (fv.neg && !(overt && spec.negAff)) {
+      if (g.negPos === "pre") vToks.unshift({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
+      else if (g.negPos === "post") vToks.push({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
+      else negFin = true;
+    }
+    let pToks;
+    if (pred.loc) pToks = adjunct({ n: pred.loc.n, pron: pred.loc.pron, def: pred.loc.def, num: pred.loc.num }, pred.loc.adp).map(t => ({ ...t, role: "P" }));
+    else if (pred.adj != null) {
+      const cls = g.genders && frame.s && frame.s.n != null ? genderOf(lang, frame.s.n) : 0;
+      const a = inflectAdj(lang, pred.adj, { cls, num: sNum });   // predicative agreement
+      pToks = [{ w: a.text, g: a.gloss, role: "P", f: a.form, c: pred.adj }];
+    } else pToks = np({ ...pred }, null, "P");                    // predicate nominal, bare
+    // pro-drop only when an overt copula carries the agreement — a zero-copula
+    // clause keeps its pronoun (Russian 'on starik'), there is nothing to agree
+    const sToks = opts.gap === "S" ? [] : sIsPr && g.proDrop && agreeP ? [] : np(frame.s, null, "S");
+    const slots = { s: sToks, o: pToks, v: vToks };
+    let seq = [];
+    for (const slot of WO_SEQ[g.wo]) seq.push(...slots[slot]);
+    const whI = seq.findIndex(t => t.wh);
+    if (whI > 0 && g.whFront) seq.unshift(...seq.splice(whI, 1));
+    if (negFin) seq.push({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
+    return finish(seq, !!frame.q && !pred.wh);
+  }
+  // ── VOICE prepass (Group B): remap the grammatical relations BEFORE case and
+  // agreement resolve, so the P3 resolver sees the DERIVED valency ──
+  const voice = frame.v.voice || null;
+  let sArg = frame.s, oArg = oComp ? null : frame.o, byArg = null, oblArg = null, locArg = frame.loc, applTheme = null;
+  if (voice === "pass") { sArg = frame.o; oArg = null; byArg = frame.s; }             // P→subj, A→by-phrase
+  else if (voice === "antip") { sArg = frame.s; oArg = null; oblArg = frame.o; }      // A stays subj (ABS), P→oblique
+  else if (voice === "appl" && frame.loc) {
+    // the applicative PROMOTES the oblique to primary object — and an already-
+    // transitive base keeps its theme as the bare SECOND object (the Bantu
+    // double-object: 'cut-APPL the king the meat'); it used to vanish
+    applTheme = oComp ? null : frame.o || null;
+    oArg = { n: frame.loc.n, def: frame.loc.def, num: frame.loc.num || "sg" }; locArg = null;
+  } else if (voice === "refl" || voice === "recp") {
+    // REFLEXIVE/RECIPROCAL (syntax completion): the verbal strategy
+    // DETRANSITIVIZES (the object IS the subject — Russian -sja; the subject
+    // surfaces ABS under ergativity); the pronoun strategy keeps a transitive
+    // clause with the reflexive pronoun in the object slot ('saw self')
+    if (g.refl === "verb") oArg = null;
+    else oArg = { reflTok: voice };
+  }
+  const trans = !!oArg || !!oComp;
+  const sIsPron = sArg && !!sArg.pron;
+  // TAM resolves first (the tam-split reads it), then the effective alignment
+  // decides the core cases through the ONE resolver (nom-acc/erg byte-identical,
+  // plus active AGT/PAT, tripartite, and hierarchy-conditioned ergativity)
+  const { effAlign, hier, direction, tam, imperative } = clauseAlignment(lang, { ...frame, s: sArg, o: oArg || (oComp ? { clause: true } : null) });
+  const sAgentive = effAlign === "active" && !trans
+    ? (g.activeFluid && frame.v.vol != null ? frame.v.vol : agentivityOf(frame.v.c) >= 0.5) : false;
+  const sCase = coreCaseOf(lang, "S", { trans, effAlign, hier, arg: sArg, sAgentive });
+  const oCase = coreCaseOf(lang, "O", { trans, effAlign, hier, arg: oArg, sAgentive });
   const toks = {
     s: opts.gap === "S" ? [] : np(sArg, sCase, "S"),
     o: opts.gap === "O" ? [] : oComp ? complementTokens(oComp) : np(oArg, oCase, "O"),
@@ -2660,8 +2994,8 @@ export function renderClause(lang, frame, opts = {}) {
   const agNum = argNum(agreeArg);
   // polypersonal object index — but don't ALSO index O when agreement already
   // went to O (abs-agree / inverse), and never index a CLAUSAL object (o.comp,
-  // where oArg is null even though the verb is transitive)
-  const objPers = !imperative && g.agree === "both" && trans && oArg && !oArg.wh && agreeArg === sArg ? String(argPers(oArg)) : null;
+  // where oArg is null even though the verb is transitive) or a reflexive
+  const objPers = !imperative && g.agree === "both" && trans && oArg && !oArg.wh && !oArg.reflTok && agreeArg === sArg ? String(argPers(oArg)) : null;
   const neg = !!frame.v.neg;
   // subject class-concord on the verb (Bantu ki-, Russian past -l/-la)
   const vClass = g.concord && g.concord.verb && sArg && !sIsPron && sArg.n != null && g.genders ? genderOf(lang, sArg.n) : null;
@@ -2703,62 +3037,131 @@ export function renderClause(lang, frame, opts = {}) {
   if (imperative && (!sArg || sIsPron)) toks.s = [];
   // pro-drop: agreement carries the person, the pronoun stays home
   else if (sIsPron && g.proDrop && g.agree !== "none") toks.s = [];
-  // adpositional adjuncts: the locative, the passive BY-phrase (demoted agent),
-  // and the antipassive OBLIQUE (demoted patient) — all X-role
-  const adjunct = (arg, adpM) => {
-    if (!arg) return [];
-    const adp = cl.adps.find(a => a.m === adpM) || cl.adps[0];
-    let inner;
-    if (arg.pron) { const pc = pronoun(lang, arg.pron.k, "obl"); inner = [{ w: pc.w, g: pc.g, role: "X", f: pc.form }]; }
-    else {
-      const nx = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas: null });
-      inner = [...(arg.def && cl.defArt && g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X", f: cl.defArt.form }] : []),
-        { w: nx.text, g: nx.gloss, role: "X", f: nx.form, c: arg.n, seam: nx.seam },
-        ...(arg.def && cl.defArt && !g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X", f: cl.defArt.form }] : [])];
-    }
-    return g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X", f: adp.form }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X", f: adp.form }];
-  };
   const locToks = [
-    ...(locArg ? adjunct({ n: locArg.n, def: locArg.def, num: locArg.num }, locArg.adp) : []),
+    ...(locArg ? adjunct({ n: locArg.n, pron: locArg.pron, def: locArg.def, num: locArg.num }, locArg.adp) : []),
     ...adjunct(byArg, g.passBy),      // passive agent
     ...adjunct(oblArg, "with"),       // antipassive patient
   ];
+  // SERIAL VERBS (syntax completion): a second verb (+ its own object) inside
+  // ONE clause — no linker, shared subject, TAM once (svcTam 'first') or on
+  // both verbs ('both', concordant). VO interleaves (S V O V₂ O₂ — the
+  // take-knife-cut-meat shape); verb-final orders stack the verb cluster
+  // (S O O₂ V V₂); verb-initial orders cluster initially (V V₂ S O O₂).
+  let svcVToks = [], svcOToks = [];
+  if (frame.v2 && g.svc) {
+    const vx2 = inflectVerb(lang, frame.v2.c, g.svcTam === "both" ? { tam, pers: agreePers, num: agNum === "du" ? "pl" : agNum } : { tam: null });
+    svcVToks = [...vx2.pre.map(t => ({ ...t, role: "V2" })), { w: vx2.text, g: vx2.gloss, role: "V2", f: vx2.form, c: frame.v2.c, seam: vx2.seam }, ...vx2.post.map(t => ({ ...t, role: "V2" }))];
+    svcOToks = frame.v2.o ? np(frame.v2.o, null, "O2") : [];
+  }
+  const themeToks = applTheme ? np(applTheme, null, "O2") : [];   // the applicative's retained theme, bare
   // assemble by word order; adjuncts sit preverbally in OV, clause-late in VO
   const ov = g.wo === "sov" || g.wo === "ovs";
+  const v1c = g.wo === "vso" || g.wo === "vos";
   let seq = [];
   for (const slot of WO_SEQ[g.wo]) {
-    if (slot === "v" && ov && locToks.length) seq.push(...locToks);
+    if (slot === "v" && ov) {
+      if (locToks.length) seq.push(...locToks);
+      if (svcOToks.length) seq.push(...svcOToks);                   // OV: the serial object joins the preverbal stack
+    }
     seq.push(...toks[slot]);
+    if (slot === "v" && (ov || v1c) && svcVToks.length) seq.push(...svcVToks);   // the verb cluster (S O V V₂ / V V₂ S O)
+    if (slot === "o") {
+      if (themeToks.length) seq.push(...themeToks);                 // applicative theme, right after the applied object
+      if (!ov && !v1c && svcVToks.length) seq.push(...svcVToks);    // SVO: S V O V₂ O₂
+      if (!ov && svcOToks.length) seq.push(...svcOToks);
+    }
   }
   if (!ov && locToks.length) seq.push(...locToks);
   // wh-fronting: the question word moves to the clause edge when the dials say
   const whIdx = seq.findIndex(t => t.wh);
   if (whIdx > 0 && g.whFront) seq.unshift(...seq.splice(whIdx, 1));
   if (negFinal) seq.push({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
-  // polar-question particle (wh-questions carry their own interrogative)
-  if (frame.q && !oArg?.wh && cl.qp) {
-    if (g.qPart === "final") seq.push({ w: cl.qp.w, g: "Q", role: "Q", f: cl.qp.form });
-    else if (g.qPart === "init") seq.unshift({ w: cl.qp.w, g: "Q", role: "Q", f: cl.qp.form });
+  // polar-question particle (wh-questions carry their own interrogative), the
+  // adverbial clauses, and the detached blocks — the shared tail
+  return finish(seq, !!(frame.q && !oArg?.wh));
+}
+
+// ── EXISTENTIALS (syntax completion): 'there is grain (in the town)'. The
+// pivot rides the language's own existential predicate: its BE verb, its
+// HAVE verb (the Mandarin yǒu / Spanish hay transpossessive — the pivot is
+// then the OBJECT of a subjectless transitive), or a posture verb ('grain
+// sits in the town'). A located existential is PRESENTATIONAL: the place
+// fronts (locative inversion, the there-construction shape). The negative
+// existential may be a single FUSED word (méiyǒu, net — Croft's cycle),
+// used in the unmarked present; a tensed negative falls back to plain
+// negation, exactly the Russian net / ne bylo split.
+function renderExistentialClause(lang, frame, opts = {}) {
+  const g = gramOf(lang), cl = closedOf(lang);
+  const fv = frame.v || {};
+  const ex = frame.ex;
+  const tam = resolveTam(lang, fv.tam);
+  const vC = g.existV === "have" ? HAVE : g.existV === "posture" ? postureVerbOf(lang) : BE;
+  const useNegEx = !!fv.neg && g.negEx === "special" && tam == null && cl.negEx;
+  const pivot = { n: ex.n, num: ex.num, count: ex.count, adj: ex.adj, poss: ex.poss, def: ex.def };
+  const f2 = g.existV === "have"
+    ? { v: { c: vC, tam: fv.tam, neg: !!fv.neg && !useNegEx }, o: pivot, loc: frame.loc, q: frame.q, adv: frame.adv }
+    : { s: pivot, v: { c: vC, tam: fv.tam, neg: !!fv.neg && !useNegEx }, loc: frame.loc, q: frame.q, adv: frame.adv };
+  const r = renderClause(lang, f2, opts);
+  let toks = r.tokens.slice();
+  if (useNegEx) {
+    // ONE fused word stands where [NEG + the existential verb] would
+    // (the inner frame was rendered unnegated, so the verb token just swaps)
+    toks = toks.map(t => (t.role === "V" && t.c === vC ? { w: cl.negEx.w, g: "NEG.EX", role: "V", f: cl.negEx.form } : t));
   }
-  // adverbial clauses (Group G): when/if/because — each an inner clause plus a
-  // subordinator (WALS 94: advPos; OV⇒final), or a converb suffix in the Turkic/
-  // Japanese corner. Conditionals prepose (a ~85% render correlate).
-  if (frame.adv && frame.adv.length) {
-    for (const av of frame.adv) {
-      let advToks;
-      if (g.advAffix && spec.conv) {   // converb suffix on the subordinate verb, no free subordinator
-        advToks = renderClause(lang, av, { conv: av.sub === "if" ? "cond" : av.sub === "because" ? "caus" : "temp" }).tokens.map(t => ({ ...t, role: "ADV" }));
-      } else {
-        const inner = renderClauseTree(lang, av).tokens.map(t => ({ ...t, role: "ADV" }));
-        const sub = av.sub === "when" ? { w: cl.links.when.w, g: "when", role: "ADV", f: cl.links.when.form }
-          : (() => { const c = cl.conj.find(x => x.k === av.sub) || cl.conj.find(x => x.k === "if"); return { w: c.w, g: av.sub, role: "ADV", f: c.form }; })();
-        advToks = g.advPos === "init" ? [sub, ...inner] : [...inner, sub];
-      }
-      const prepose = av.sub === "if" ? true : g.advPos === "init";   // conditionals prepose
-      seq = prepose ? [...advToks, ...seq] : [...seq, ...advToks];
-    }
+  if (frame.loc) {
+    // presentational locative inversion: the place fronts, after any topic
+    const tops = toks.filter(t => t.role === "TOP"), xs = toks.filter(t => t.role === "X");
+    const rest = toks.filter(t => t.role !== "X" && t.role !== "TOP");
+    toks = [...tops, ...xs, ...rest];
   }
-  return { tokens: seq, text: seq.map(t => t.w).join(" "), gloss: seq.map(t => t.g).join(" ") };
+  return { tokens: toks, text: toks.map(t => t.w).join(" "), gloss: toks.map(t => t.g).join(" ") };
+}
+
+// ── PREDICATIVE POSSESSION (syntax completion): 'the king has a horse'
+// (WALS 117A / Stassen 2009). Five real strategies, each a thin remap onto
+// machinery that already exists — the transitive HAVE verb, the LOCATIONAL
+// existential ('at the king is a horse', the u-menya-est' shape), the TOPIC
+// existential ('the king — a horse exists'), the GENITIVE existential ('the
+// king's horse exists'), and the COMITATIVE copular ('the king is with a
+// horse'). The construction IS the strategy; nothing possession-specific
+// exists to fit.
+function renderPossessionClause(lang, frame, opts = {}) {
+  const g = gramOf(lang);
+  const P = frame.poss, fv = frame.v || {};
+  const owned = { ...P.possessed };
+  switch (g.possPred) {
+    case "have":
+      return renderClause(lang, { s: P.possessor, v: { c: HAVE, tam: fv.tam, neg: fv.neg }, o: owned, q: frame.q, adv: frame.adv }, opts);
+    case "com":
+      return renderClause(lang, { s: P.possessor, pred: { loc: { adp: "with", n: owned.n, num: owned.num, def: owned.def } }, v: fv, q: frame.q, adv: frame.adv }, opts);
+    case "gen":
+      return renderExistentialClause(lang, { ex: { ...owned, poss: P.possessor.pron ? { pron: P.possessor.pron } : { n: P.possessor.n } }, v: fv, q: frame.q, adv: frame.adv }, opts);
+    case "topic":
+      return renderExistentialClause(lang, { ex: owned, v: fv, q: frame.q, adv: frame.adv }, { ...opts, topic: P.possessor });
+    default:   // 'loc' — the world's commonest: the possessor is an 'at'-phrase on the existential
+      return renderExistentialClause(lang, { ex: owned, v: fv, q: frame.q, adv: frame.adv, loc: { adp: "at", n: P.possessor.n, pron: P.possessor.pron, def: P.possessor.def, num: P.possessor.num } }, opts);
+  }
+}
+
+/** The predication complex (syntax completion) — how this language says
+ *  'X is Y', 'there is X', 'X has Y', how it serializes verbs and marks
+ *  reflexives; for the Lab + gates. */
+export function predicationOf(lang) {
+  const g = gramOf(lang), cl = closedOf(lang);
+  const pv = postureVerbOf(lang);
+  const exC = g.existV === "have" ? HAVE : g.existV === "posture" ? pv : BE;
+  return {
+    cop: {
+      nominal: g.copN, adjectival: g.copA, locative: g.copLoc,
+      w: g.copN === "pron" && cl.cop ? cl.cop.w : wordOf(lang, BE),
+      be: wordOf(lang, BE),
+      posture: g.copLoc === "posture" ? { w: wordOf(lang, pv), g: glossOf(pv) } : null,
+    },
+    exist: { v: g.existV, w: wordOf(lang, exC), from: glossOf(exC), negEx: g.negEx, negExW: cl.negEx ? cl.negEx.w : null },
+    poss: g.possPred,
+    svc: g.svc ? { tam: g.svcTam } : null,
+    refl: { strategy: g.refl, w: cl.refl ? cl.refl.w : null, from: cl.refl ? cl.refl.src : null, recpSame: g.recpSame, recpW: cl.recp ? cl.recp.w : null },
+  };
 }
 
 /** Render a clause TREE (Group G): dispatch coordination / chaining, else a leaf

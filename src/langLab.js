@@ -20,14 +20,14 @@ import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
   alignmentOf, voicesOf, voiceEtymologies, tamShape, evidentialSystem, classInventory, concordMarkers, agreementTargets, inflectAdj,
   classifiersOf, classifierEtymologies, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns,
-  renderClauseTree, clauseLinkersOf, synchronicPhonology } from "./sim/languageGrammar.js";
-import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT } from "./sim/languageLexicon.js";
+  renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf } from "./sim/languageGrammar.js";
+import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, OLD, GRAIN } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
 const S = {
   seed: 8817, preset: "random", divergence: 0.5, search: "", noun: STONE, verb: VERBS[2],
-  sent: { s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl" },
+  sent: { type: "plain", s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl", pred: "adj" },
   hist: { seed: 9917, eras: 14, english: true, russian: true, mandarin: true, random: 3 },
 };
 let HIST = null;                                      // the running areal history (module state)
@@ -615,18 +615,51 @@ function verbFrontierHTML(l) {
     ${clauseEx("the wolf went", renderClause(l, { s: { n: WOLF, def: true }, v: { c: GO, tam: "pst" } }))}
     ${splitEx}`);
 
-  // ── Voice & valency (Group B) ──
+  // ── Voice & valency (Group B + the syntax-completion reflexive/reciprocal) ──
   const voices = voicesOf(l), vet = voiceEtymologies(l);
   const vkeys = ["caus", "pass", "antip", "appl"].filter(k => voices[k]);
-  if (vkeys.length) {
+  {
     const vname = { caus: "causative", pass: "passive", antip: "antipassive", appl: "applicative" };
-    const vchips = vkeys.map(k => { const e = vet.find(x => x.k === k); return `<span class="chip">${vname[k]}${e && e.from ? ` ‹ ‘${esc(e.from)}’` : ""}</span>`; }).join("");
+    const vchips = vkeys.map(k => { const e = vet.find(x => x.k === k); return `<span class="chip">${vname[k]}${e && e.from ? ` ‹ ‘${esc(e.from)}’` : ""}</span>`; });
+    const rEt = vet.find(x => x.k === "refl");
+    vchips.push(`<span class="chip">reflexive: ${voices.refl === "verb" ? "verbal (-sja-style)" : "pronoun"}${rEt && rEt.from ? ` ‹ ‘${esc(rEt.from)}’` : ""}</span>`);
+    if (voices.recpSame) vchips.push(`<span class="chip">reciprocal = reflexive</span>`);
     const exs = [];
     if (voices.caus) exs.push(clauseEx("causative — ‘the king made the wolf go’", renderClause(l, { s: { n: KING, def: true }, v: { c: GO, tam: "pst", voice: "caus" }, o: { n: WOLF, def: true } })));
     if (voices.pass) exs.push(clauseEx("passive — ‘the river was seen (by the king)’", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "pass" }, o: { n: RIVER, def: true } })));
     if (voices.antip) exs.push(clauseEx("antipassive — ‘the king saw (at the river)’", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "antip" }, o: { n: RIVER, def: true } })));
-    secs.push(`<h3>Voice &amp; valency</h3><div class="chips">${vchips}</div>
-      <p class="note">Re-casting who-did-what: promote or demote an argument. Each marker is a worn-down verb (‘make’, ‘fall’) — the ‹ notes show which.</p>${exs.join("")}`);
+    if (voices.appl) exs.push(clauseEx("applicative — ‘the king ate the queen the bread’ (for-her, promoted)", renderClause(l, { s: { n: KING, def: true }, v: { c: EAT, tam: "pst", voice: "appl" }, o: { n: BREAD, def: true }, loc: { adp: "to", n: QUEEN, def: true } })));
+    exs.push(clauseEx("reflexive — ‘the king saw himself’", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "refl" } })));
+    exs.push(clauseEx("reciprocal — ‘they saw each other’", renderClause(l, { s: { pron: { k: "3pl", pers: 3, num: "pl" } }, v: { c: SEE, tam: "pst", voice: "recp" } })));
+    secs.push(`<h3>Voice &amp; valency</h3><div class="chips">${vchips.join("")}</div>
+      <p class="note">Re-casting who-did-what: promote or demote an argument. Each marker is a worn-down verb or noun (‘make’, ‘fall’, ‘body’) — the ‹ notes show which.</p>${exs.join("")}`);
+  }
+
+  // ── Predication, existence & possession (syntax completion) ──
+  {
+    const pr = predicationOf(l);
+    const copName = { verb: "verbal (BE inflects)", zero: "zero — tensed (past grows BE)", pron: "pronoun copula (‹ 3sg)" };
+    const possName = { have: "‘have’ (transitive)", loc: "locational (‘at the king is…’)", topic: "topic (‘the king — there is…’)", gen: "genitive (‘the king's horse exists’)", com: "comitative (‘is with…’)" };
+    const chips = [
+      `nominal: ${copName[pr.cop.nominal]}`,
+      `adjectives: ${pr.cop.adjectival === "verb" ? "predicate like verbs" : "take the copula"}`,
+      pr.cop.posture ? `location ‹ ‘${esc(pr.cop.posture.g)}’` : null,
+      `existential ‹ ‘${esc(pr.exist.from)}’`,
+      pr.exist.negEx === "special" ? `fused ‘there-is-no’ (${esc(pr.exist.negExW)})` : null,
+      `possession: ${possName[pr.poss]}`,
+      pr.svc ? `serial verbs (TAM on ${pr.svc.tam === "first" ? "the first" : "both"})` : null,
+    ].filter(Boolean).map(t => `<span class="chip">${t}</span>`).join("");
+    const exs = [
+      clauseEx("‘the king is old’", renderClause(l, { s: { n: KING, def: true }, pred: { adj: OLD }, v: {} })),
+      clauseEx("‘the king was old’ (watch a zero copula grow its BE)", renderClause(l, { s: { n: KING, def: true }, pred: { adj: OLD }, v: { tam: "pst" } })),
+      clauseEx("‘the king is a wolf’", renderClause(l, { s: { n: KING, def: true }, pred: { n: WOLF, def: false }, v: {} })),
+      clauseEx("‘there is grain in the town’", renderClause(l, { ex: { n: GRAIN }, loc: { adp: "in", n: TOWN, def: true }, v: {} })),
+      clauseEx("‘there is no grain’", renderClause(l, { ex: { n: GRAIN }, v: { neg: true } })),
+      clauseEx("‘the king has a horse’", renderClause(l, { poss: { possessor: { n: KING, def: true }, possessed: { n: HORSE, def: false } }, v: {} })),
+    ];
+    if (pr.svc) exs.push(clauseEx("serial verbs — ‘the king took the sword (and) ate the bread’, one clause", renderClause(l, { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: SWORD, def: true }, v2: { c: EAT, o: { n: BREAD, def: true } } })));
+    secs.push(`<h3>Being, having, existing</h3><div class="chips">${chips}</div>
+      <p class="note">How ‘X is Y’, ‘there is X’ and ‘X has Y’ are said — a verbal, pronominal or TENSED-ZERO copula; a be/have/posture existential (locative fronts, presentationally); possession as one of the five real strategies. All thin remaps of machinery the language already has.</p>${exs.join("")}`);
   }
 
   // ── Tense · aspect · mood depth (Group C′) ──
@@ -788,7 +821,7 @@ function paradigmHTML(l) {
 
 // ── the sentence panel: semantic frames → interlinear clauses ────────────
 const SENT_NOUNS = [KING, QUEEN, WOLF, MOTHER, RIVER, STONE, HORSE, SHIP];
-const SENT_OBJS = [RIVER, HORSE, BREAD, SWORD, HOUSE, STONE, WOLF];
+const SENT_OBJS = [RIVER, HORSE, BREAD, SWORD, HOUSE, STONE, WOLF, GRAIN];
 const PRON_EN = { "1sg": "I", "2sg": "thou", "3sg": "he", "3sgm": "he", "3sgf": "she", "1du": "we two", "2du": "you two", "1pl": "we", "1pi": "we (incl.)", "1pe": "we (excl.)", "2pl": "you", "3pl": "they" };
 const EN_PAST = { go: "went", see: "saw", eat: "ate", be: "was", have: "had", come: "came", do: "did", say: "said", know: "knew", give: "gave", take: "took", make: "made", drink: "drank", sit: "sat", stand: "stood", run: "ran", fall: "fell", fight: "fought", hear: "heard", sleep: "slept" };
 
@@ -803,9 +836,26 @@ function frameFromState(l) {
     }
     return { n: +code.slice(2), def: true, adj: code.slice(2) === String(WOLF) ? BLACK : undefined };
   };
+  const v = { tam: st.tam === "none" ? null : st.tam, neg: st.neg };
+  const subj = mkArg(st.s) || { n: KING, def: true };
+  // the nonverbal / existential / possession frame types (syntax completion)
+  if (st.type === "cop") return {
+    s: subj,
+    pred: st.pred === "nom" ? { n: WOLF, def: false } : st.pred === "loc" ? { loc: { adp: "in", n: TOWN, def: true } } : { adj: OLD },
+    v, q: st.q,
+  };
+  if (st.type === "ex") return {
+    ex: st.o.startsWith("n:") ? { n: +st.o.slice(2) } : { n: GRAIN },
+    loc: st.loc === "none" ? null : { adp: st.loc, n: TOWN, def: true },
+    v, q: st.q,
+  };
+  if (st.type === "poss") return {
+    poss: { possessor: subj, possessed: st.o.startsWith("n:") ? { n: +st.o.slice(2) } : { n: HORSE } },
+    v, q: st.q,
+  };
   const imp = st.mood === "imp";
   return {
-    s: imp ? { pron: { k: "2sg", pers: 2, num: "sg" } } : (mkArg(st.s) || { n: KING, def: true }),
+    s: imp ? { pron: { k: "2sg", pers: 2, num: "sg" } } : subj,
     v: { c: st.v, tam: st.tam === "none" ? null : st.tam, neg: st.neg, mood: imp ? "imp" : null },
     o: mkArg(st.o),
     loc: st.loc === "none" ? null : { adp: st.loc, n: TOWN, def: true },
@@ -817,6 +867,25 @@ function frameFromState(l) {
 function englishOf(frame, l) {
   const npEn = (a) => !a ? "" : a.wh ? "what" : a.pron ? (PRON_EN[a.pron.k] || "they")
     : "the " + (a.adj != null ? glossOf(a.adj) + " " : "") + glossOf(a.n);
+  // the nonverbal frame types (syntax completion)
+  const persOf = (a) => !a || !a.pron ? "3sg" : a.pron.pers + (a.pron.num === "sg" ? "sg" : "pl");
+  if (frame.pred) {
+    const fv = frame.v || {}, pk = persOf(frame.s);
+    const be = resolveTam(l, fv.tam) ? (pk === "1sg" || pk === "3sg" ? "was" : "were") : pk === "1sg" ? "am" : pk === "3sg" ? "is" : "are";
+    const p = frame.pred.adj != null ? glossOf(frame.pred.adj) : frame.pred.loc ? frame.pred.loc.adp + " the " + glossOf(frame.pred.loc.n) : "a " + glossOf(frame.pred.n);
+    return npEn(frame.s) + " " + be + (fv.neg ? " not" : "") + " " + p + (frame.q ? "?" : "");
+  }
+  if (frame.ex) {
+    const fv = frame.v || {};
+    let out = "there " + (resolveTam(l, fv.tam) ? "was" : "is") + (fv.neg ? " no" : "") + " " + glossOf(frame.ex.n);
+    if (frame.loc) out += " " + frame.loc.adp + " the " + glossOf(frame.loc.n);
+    return out + (frame.q ? "?" : "");
+  }
+  if (frame.poss) {
+    const fv = frame.v || {}, pk = persOf(frame.poss.possessor);
+    const has = resolveTam(l, fv.tam) ? "had" : pk === "3sg" ? "has" : "have";
+    return npEn(frame.poss.possessor) + " " + has + (fv.neg ? " no" : " a") + " " + glossOf(frame.poss.possessed.n) + (frame.q ? "?" : "");
+  }
   const vG = glossOf(frame.v.c);
   // imperative: "(Don't) VERB (the object)!" — no subject, no tense
   if (frame.v.mood === "imp") {
@@ -854,28 +923,35 @@ function sentenceHTML(l) {
   const tamOpts = [["none", "present"], ...shape.tam.filter(t => t.k).map(t => [t.k, { pst: "past", fut: "future", pfv: "perfective", ipfv: "imperfective" }[t.k] || t.k])];
   const locOpts = [["none", "—"], ["in", "in the town"], ["at", "at the town"], ["under", "under the town"]];
   const moodOpts = [["decl", "statement"], ["imp", "command (imperative)"]];
+  const typeOpts = [["plain", "event (verb)"], ["cop", "description (X is Y)"], ["ex", "existential (there is X)"], ["poss", "possession (X has Y)"]];
+  const predOpts = [["adj", "old"], ["nom", "a wolf"], ["loc", "in the town"]];
   const sel = (id, opts, cur) => `<select id="${id}">${opts.map(([v, lab]) => `<option value="${esc(v)}"${String(v) === String(cur) ? " selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
   const frame = frameFromState(l);
   const clause = renderClause(l, frame);
-  const imp = st.mood === "imp";
+  const imp = st.mood === "imp" && st.type === "plain";
+  const ty = st.type;
   const canned = [
     { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } },
     { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: GO, tam: "pst", neg: true } },
     { s: { pron: { k: "2sg", pers: 2, num: "sg" } }, v: { c: TAKE, tam: "pst" }, o: { n: HORSE, def: true }, q: true },
     { s: { pron: { k: "3sgf", pers: 3, num: "sg" } }, v: { c: EAT, tam: "pst" }, o: { wh: true } },
     { s: { n: WOLF, def: true, adj: BLACK }, v: { c: SLEEP, tam: null }, loc: { adp: "in", n: TOWN, def: true } },
+    { s: { n: MOTHER, def: true }, pred: { adj: OLD }, v: {} },
+    { ex: { n: GRAIN }, loc: { adp: "in", n: TOWN, def: true }, v: {} },
+    { poss: { possessor: { pron: { k: "1sg", pers: 1, num: "sg" } }, possessed: { n: HORSE } }, v: {} },
     { v: { c: GO, mood: "imp" } },
     { v: { c: TAKE, mood: "imp", neg: true }, o: { n: HORSE, def: true } },
   ];
   return `<section class="card"><h2>Sentences</h2>
     <p class="note">A semantic frame — who did what to whom, when — rendered through the language's own grammar: arguments take their cases, the verb agrees and carries tense, everything lands where the word-order dials put it, and the interlinear gloss beneath shows the machinery. This is the shape of a chronicle entry.</p>
     <div class="controls sent">
-      <label>Mood ${sel("sentM", moodOpts, st.mood)}</label>
-      <label${imp ? ' class="off"' : ""}>Subject ${sel("sentS", sOpts, imp ? "p:2sg" : st.s)}</label>
-      <label>Verb ${sel("sentV", VERBS.map(c => [c, glossOf(c)]), st.v)}</label>
+      <label>Type ${sel("sentTy", typeOpts, ty)}</label>
+      <label${ty !== "plain" ? ' class="off"' : ""}>Mood ${sel("sentM", moodOpts, st.mood)}</label>
+      <label${imp || ty === "ex" ? ' class="off"' : ""}>${ty === "poss" ? "Owner" : "Subject"} ${sel("sentS", sOpts, imp ? "p:2sg" : st.s)}</label>
+      ${ty === "cop" ? `<label>Predicate ${sel("sentP", predOpts, st.pred)}</label>` : ty === "plain" ? `<label>Verb ${sel("sentV", VERBS.map(c => [c, glossOf(c)]), st.v)}</label>` : ""}
       <label${imp ? ' class="off"' : ""}>Tense ${sel("sentT", tamOpts, imp ? "none" : st.tam)}</label>
-      <label>Object ${sel("sentO", oOpts, st.o)}</label>
-      <label${imp ? ' class="off"' : ""}>Place ${sel("sentL", locOpts, imp ? "none" : st.loc)}</label>
+      <label${ty === "cop" ? ' class="off"' : ""}>${ty === "ex" ? "Thing" : ty === "poss" ? "Owned" : "Object"} ${sel("sentO", ty === "plain" ? oOpts : oOpts.filter(([v]) => String(v).startsWith("n:")), st.o)}</label>
+      <label${imp || ty === "cop" || ty === "poss" ? ' class="off"' : ""}>Place ${sel("sentL", locOpts, imp ? "none" : st.loc)}</label>
       <label><input type="checkbox" id="sentNeg"${st.neg ? " checked" : ""}/> ${imp ? "prohibitive (don't!)" : "negated"}</label>
       <label${imp ? ' class="off"' : ""}><input type="checkbox" id="sentQ"${st.q && !imp ? " checked" : ""}/> question</label>
     </div>
@@ -1136,9 +1212,13 @@ function render() {
   document.getElementById("reroll").onclick = () => { S.seed = Number(document.getElementById("seed").value) || 1; S.preset = document.getElementById("preset").value; reset(); render(); };
   document.getElementById("paraNoun").onchange = (e) => { S.noun = Number(e.target.value); render(); };
   document.getElementById("paraVerb").onchange = (e) => { S.verb = Number(e.target.value); render(); };
+  document.getElementById("sentTy").onchange = (e) => { S.sent.type = e.target.value; if (S.sent.type !== "plain" && !S.sent.o.startsWith("n:")) S.sent.o = "n:" + (S.sent.type === "ex" ? GRAIN : HORSE); render(); };
   document.getElementById("sentM").onchange = (e) => { S.sent.mood = e.target.value; render(); };
   document.getElementById("sentS").onchange = (e) => { S.sent.s = e.target.value; render(); };
-  document.getElementById("sentV").onchange = (e) => { S.sent.v = Number(e.target.value); render(); };
+  const sentV = document.getElementById("sentV");
+  if (sentV) sentV.onchange = (e) => { S.sent.v = Number(e.target.value); render(); };
+  const sentP = document.getElementById("sentP");
+  if (sentP) sentP.onchange = (e) => { S.sent.pred = e.target.value; render(); };
   document.getElementById("sentT").onchange = (e) => { S.sent.tam = e.target.value; render(); };
   document.getElementById("sentO").onchange = (e) => { S.sent.o = e.target.value; render(); };
   document.getElementById("sentL").onchange = (e) => { S.sent.loc = e.target.value; render(); };

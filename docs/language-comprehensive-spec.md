@@ -1146,3 +1146,84 @@ Probe 349 → **359** checks.
   total pop NaN-poisoned the pool (guarded).
 - **Boundary guards:** out-of-range cid, numeralGlyphs(0), malformed
   forms → null instead of throwing, gated.
+
+## Build status (session 16) — typology completion I: syntax
+
+The typology-completion effort (five phases: syntax → lexical typology →
+polysynthesis → phonological rarities → diglossia). Phase 1 closes the
+clause-level gaps: the constructions a chronicle can't do without —
+being, having, existing — plus the strategies the relative/voice systems
+still lacked. Probe 359 → **410** checks (§29). Everything is opt-in
+frame fields riding the existing machinery; a bare verbal frame renders
+byte-identically (gated first).
+
+- **Nonverbal predication** (`frame.pred`, WALS 120A / Stassen 1997).
+  Nominal predicates take a VERBAL copula (the language's own BE —
+  inflecting, agreeing, and suppleting like the basic verb it is, so
+  was/were-style irregular copulas fall out free), a PRONOUN copula (the
+  3sg pronoun re-used — the Hebrew hu / Mandarin 是 road; kept identical
+  by construction, like 2v), or ZERO — and zero is TENSED: under overt
+  past/future the BE verb steps in (Russian byl), hard-wired as the
+  near-universal it is. Adjectives split Stassen's way: 'verby' tongues
+  (isolating/tenseless-leaning, rolled ~37%) predicate the property word
+  AS a verb (他老了 = old-PFV), 'nouny' ones route it through the copula
+  — where predicative adjectives AGREE with the subject's class (the
+  parked predicative-agreement item, now real: star/stara). A spatial
+  locative predicate may take a POSTURE verb (SIT/STAND, one family
+  roll shared with the posture existential — the estar ‹ stare road).
+- **Existentials** (`frame.ex`): the pivot rides BE, the transpossessive
+  HAVE (subjectless transitive — the pivot is the OBJECT, 有/hay), or
+  the posture verb. A located existential FRONTS its place (locative
+  inversion, presentational). The negative existential is a single
+  FUSED word in ~42% (NEG welded to the existential verb's salient
+  syllable — méiyǒu/нет, Croft's cycle), used in the unmarked present;
+  tensed negatives fall back to plain negation (нет vs не было, exact).
+- **Predicative possession** (`frame.poss`, WALS 117A / Stassen 2009):
+  five real strategies at the attested marginals — locational ('at the
+  king is a horse', possessor an oblique on the existential, pronoun in
+  its oblique case: у меня есть), transitive HAVE (fusional-leaning;
+  the possessed takes ACC — a real transitive), topic ('the king — a
+  horse exists', isolating-leaning), genitive ('the king's horse
+  exists'), comitative ('the king is with a horse', a copular remap).
+  Each is a thin REMAP onto the existential/copular/verbal paths — no
+  possession-specific syntax exists to fit. The have-existential tie is
+  rolled (a have-possessing tongue's existential is usually the same
+  verb — one 有 for both, gated on the pinned Mandarin).
+- **Serial verbs** (`frame.v2`): one clause, two verbs, no linker,
+  shared subject; TAM once on V₁ or concordantly on both (svcTam). VO
+  interleaves S V O V₂ O₂ (take-knife-cut-meat), verb-final stacks the
+  cluster S O O₂ V V₂, V-initial clusters initially. Analytic-skewed
+  (iso ~49%, fus ~4%), suppressed under converb chaining (competing
+  strategies). A non-serializing language degrades the frame to a
+  coordination with a pronominalized second subject.
+- **Correlatives** — the missing fourth relative strategy (Hindi jo…vo):
+  carved on its own stream from postnominal verb-final languages (~8%
+  overall); the relative clause is LEFT-DETACHED with the head overt
+  inside it, opened by REL, and a distal demonstrative resumes the head
+  in the matrix (head appears twice — gated). Rides `relStrat`, so it
+  LAGS a word-order flip like the rest.
+- **The relative pronoun now INFLECTS** for the head's role inside the
+  relative (который-ACC when the head is the inner object) — what makes
+  relpron a strategy rather than a costume on the gap; needs a real
+  core case, so caseN=1 English stays invariant (gated).
+- **Voice completion**: REFLEXIVE as a verbal detransitivizing affix
+  (-sja; worn from BODY/HEAD at the voice tier, claimed after every
+  existing category) or a reflexive PRONOUN ('self' ‹ body/head; always
+  the strategy in isolating tongues); the RECIPROCAL shares the
+  reflexive exponent where recpSame rolled (the Romance se
+  colexification) or wears its own ('one-one'). The APPLICATIVE of a
+  transitive now keeps its theme as a bare second object (the Bantu
+  double object — it used to vanish).
+- **Possessed NPs everywhere**: `arg.poss` on any argument — pronominal
+  possessors ride the head-marking affix where the language affixes,
+  else the genitive series (its own case, no linker) or the 'of'
+  construction (mirroring inflectPossessed exactly); definiteness rides
+  the possessor. Feeds the genitive possession strategy for free.
+- Ten new dials (copN/copA/copLoc · existV/negEx · possPred ·
+  svc/svcTam · refl/recpSame), all own-stream, pinned in all three
+  references in the same commit; new exports `predicationOf` (+
+  additive refl fields on `voicesOf`); Lab: a "Being, having, existing"
+  frontier section, reflexive/reciprocal in Voice, and a sentence-
+  builder TYPE control (event / description / existential / possession).
+- Parked: predicate-nominal case (Russian instrumental); expletive
+  subjects ('there/il'); SVC beyond two verbs; reflexive possessives.
