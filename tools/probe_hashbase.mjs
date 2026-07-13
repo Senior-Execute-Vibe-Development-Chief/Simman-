@@ -5,11 +5,14 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): fcb58415/7e78c085 (ORG_APT_CAP wired into the
-// field-model hold capacity — the aptitude payout finally fires; 8817 is unchanged
-// at this horizon because no capital has accrued aptitude by 2500 steps.
-// SIM_TUNE="ORG_APT_CAP=0" recovers the prior pair below EXACTLY. ALLY_FRONT
-// (coalition war) added at default 0 — byte-transparent off.)
+// Current baseline (2500 steps): fcb58415/2fc112a5 — same pair as the cities-only
+// purge below: ORG_APT_CAP was WIRED into the field capacity (the dead payout
+// finally fires) but then measured at 0.15 AND 0.4 to fatten the biggest realm
+// ~+50% (a rich-get-richer multiplier), so it ships DEFAULT 0 (opt-in variance,
+// the CAP_GEO precedent) — aptMul ×1 exactly, so defaults stay on the prior
+// trajectory. ORG_APT_CAP=0.4 gives fcb58415/7e78c085 (8817 unchanged at this
+// horizon — no capital aptitude accrues by 2500). ALLY_FRONT (defensive-only
+// coalition relief) at default 0 — byte-transparent off.
 // Prior baseline (2500 steps): fcb58415/2fc112a5 (cities-only census purge —
 // MUSTER_FIELD/PROV_FIELD/BIRTH_FIELD default ON: manpower from governed popField,
 // the admin-load ledger reads each province's governed catchment people, frontier
