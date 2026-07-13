@@ -31,7 +31,7 @@ import {
   TAKE, GIVE, FINISH, WANT, COME, SIT, STAND, FALL, AGENTIVITY, MAKE, DO, EAT,
   BE, HAVE, KNOW, SEE, NEW, NIGHT, FAR, SEEM, HEAR, SAY,
   BODY, LEAF, PEOPLE, TREE, REED, SPEAR, ARM, SHIELD, WOOD, GRAIN, CLF_SENSE, CLF_AMBIG,
-  LITTLE, EXCEED, SAME, LORD, NOBLE, HIGH,
+  LITTLE, EXCEED, SAME, LORD, NOBLE, HIGH, VERBS,
 } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -2214,20 +2214,104 @@ export function paradigmShape(lang) {
 
 /** Affix etymologies for the Lab: every ending explains itself — including
  *  the renewed ones, where the old layer eroded to silence and a fresh word
- *  stepped in (the grammaticalization cycle, visible). */
+ *  stepped in (the grammaticalization cycle, visible).
+ *
+ *  REVIEW-LOOP HONESTY: the notes are generated FROM the surviving paradigm,
+ *  never from the pre-sound-change roll — three fresh readers in a row caught
+ *  notes citing dead morphology (a -ik PL beside fully-reduplicated plurals; a
+ *  -zyīgh PST whose tone matched no living cell, because the stored affix is
+ *  the BIRTH-time shape while the surface kept evolving). Each entry carries a
+ *  `mode`:
+ *    affix   — the exponent segments cleanly off a regular diagnostic cell;
+ *              `w` is the surface string exactly as the tables show it
+ *    fused   — the category survives only as a non-segmentable alternation
+ *              (portmanteau crush / seam sandhi); `ex` shows one real cell pair
+ *    redup   — the category is carried by reduplication (no affix to cite)
+ *    pattern — templatic primary TAM: a vowel pattern, not an affix
+ *  `side` says which edge an affix-mode exponent attaches to. */
 export function affixEtymologies(lang) {
   const spec = paradigmSpec(lang);
+  const g = gramOf(lang);
   const out = [];
-  const add = (a) => {
-    if (!a) return;
-    if (a.src != null) out.push({ g: a.g, w: renderAffix(lang, a.syl), from: glossOf(a.src), renewed: !!a.renewed });
-    else if (a.renewed) out.push({ g: a.g, w: renderAffix(lang, a.syl), from: null, renewed: true });
+  const meta = (a) => ({ from: a.src != null ? glossOf(a.src) : null, renewed: !!a.renewed });
+  const want = (a) => !!a && (a.src != null || a.renewed);
+  if (spec.iso) {
+    // isolating: the "endings" are free particles rendered straight from the
+    // spec syllables — for particles the direct rendering IS the truth
+    const add = (a) => { if (want(a)) out.push({ g: a.g, w: renderAffix(lang, a.syl), ...meta(a), mode: "affix", side: "post" }); };
+    add(spec.pl); add(spec.du); add(spec.tri); add(spec.pau);
+    for (const cse of spec.cases) add(cse);
+    for (const k of Object.keys(spec.tam)) add(spec.tam[k]);
+    for (const k of Object.keys(spec.dist)) add(spec.dist[k]);
+    for (const k of Object.keys(spec.moods)) add(spec.moods[k]);
+    return out;
+  }
+  const side = g.affixSide;
+  const seg = (base, marked) => side === "pre"
+    ? (marked.length > base.length && marked.endsWith(base) ? marked.slice(0, marked.length - base.length) : null)
+    : (marked.length > base.length && marked.startsWith(base) ? marked.slice(base.length) : null);
+  // diagnostic cells on REGULAR stems (irregulars fold the category into the
+  // stem — that is what the ⟨…⟩ glosses in the tables are for, not the notes)
+  const DIAG_N = [STONE, HOUSE, TREE, HAND];
+  const diagN = (opts) => {
+    let ex = null;
+    for (const cid of DIAG_N) {
+      const b = inflectNoun(lang, cid, {});
+      const m = inflectNoun(lang, cid, opts);
+      if (m.irr || m.text === b.text) continue;
+      const s = seg(b.text, m.text);
+      if (s) return { s, ex: null };
+      if (!ex) ex = b.text + " → " + m.text;
+    }
+    return { s: null, ex };
   };
-  add(spec.pl); add(spec.du);
-  for (const cse of spec.cases) add(cse);
-  for (const k of Object.keys(spec.tam)) add(spec.tam[k]);
-  for (const k of Object.keys(spec.dist)) add(spec.dist[k]);
-  for (const k of Object.keys(spec.moods)) add(spec.moods[k]);
+  const diagV = (opts, baseOpts = {}) => {
+    let ex = null;
+    for (const v of VERBS) {
+      const b = inflectVerb(lang, v, baseOpts);
+      const m = inflectVerb(lang, v, opts);
+      if (b.irr || m.irr || m.text === b.text) continue;
+      const s = seg(b.text, m.text);
+      if (s) return { s, ex: null };
+      if (!ex) ex = b.text + " → " + m.text;
+    }
+    return { s: null, ex };
+  };
+  const push = (a, d) => {
+    if (d.s) out.push({ g: a.g, w: d.s, ...meta(a), mode: "affix", side });
+    else out.push({ g: a.g, w: null, ...meta(a), mode: "fused", ex: d.ex });
+  };
+  // number: reduplicated plurals carry no affix — say so instead of citing one
+  if (redupHas(lang, "plural")) out.push({ g: "PL", w: null, from: null, renewed: false, mode: "redup" });
+  else if (want(spec.pl)) push(spec.pl, diagN({ num: "pl" }));
+  if (want(spec.du)) push(spec.du, diagN({ num: "du" }));
+  if (want(spec.tri)) push(spec.tri, diagN({ num: "tri" }));
+  if (want(spec.pau)) push(spec.pau, diagN({ num: "pau" }));
+  for (const cse of spec.cases) if (want(cse)) push(cse, diagN({ cas: cse.k }));
+  // TAM: templatic PRIMARY tenses are vowel patterns, never affixes; a
+  // reduplicated imperfective likewise has no ending to cite
+  for (const k of Object.keys(spec.tam)) {
+    const a = spec.tam[k];
+    if (!a) continue;
+    if (lang.prof.morph === "tmpl" && PRIMARY_TAM.has(k)) {
+      const pv = patternVowels(lang)[k];
+      out.push({ g: a.g, w: pv ? renderWord({ syls: [{ on: [], nu: [{ ...pv, n: 0, lg: 0 }], co: [] }] }, lang.prof) : null, from: null, renewed: false, mode: "pattern" });
+      continue;
+    }
+    if (k === "ipfv" && redupHas(lang, "aspect")) { out.push({ g: a.g, w: null, from: null, renewed: false, mode: "redup" }); continue; }
+    if (want(a)) push(a, diagV({ tam: k }));
+  }
+  // graded tense rides OUTER of its base tense — segment against the base cell
+  const DIST_TAM = { rec: "pstrec", rem: "pstrem", farfut: "futrem" };
+  const DIST_BASE = { rec: "pst", rem: "pst", farfut: "fut" };
+  for (const k of Object.keys(spec.dist)) {
+    const a = spec.dist[k];
+    if (want(a)) push(a, diagV({ tam: DIST_TAM[k] }, { tam: DIST_BASE[k] }));
+  }
+  for (const k of Object.keys(spec.moods)) {
+    const a = spec.moods[k];
+    if (want(a)) push(a, diagV({ irrealisMood: k }));
+  }
   return out;
 }
 

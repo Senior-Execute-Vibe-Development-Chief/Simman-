@@ -411,7 +411,9 @@ console.log("\n── inflectional morphology ──");
     const vb = VERBS[2];   // 'go'
     say("   conjugation of '" + glossOf(vb) + "':");
     for (const t of shape.tam) say("     " + (t.g || "PRS").padEnd(4) + " " + (shape.pers.length ? shape.pers : [[null, "sg"]]).slice(0, 3).map(([p, n]) => fullV(inflectVerb(l, vb, { tam: t.k, pers: p, num: n }))).join(" / "));
-    say("   endings: " + affixEtymologies(l).map(e => "-" + e.w + " " + e.g + " ‹ '" + e.from + "'").join("  "));
+    say("   endings: " + affixEtymologies(l).map(e =>
+      (e.mode === "redup" ? "~redup" : e.mode === "pattern" ? "⟨" + (e.w || "") + "⟩" : e.mode === "fused" ? "(fused" + (e.ex ? ": " + e.ex : "") + ")" : (e.side === "pre" ? e.w + "-" : "-" + e.w))
+      + " " + e.g + (e.from ? " ‹ '" + e.from + "'" : "")).join("  "));
   }
 }
 
@@ -1882,6 +1884,51 @@ console.log("\n── §23 functional load (review-loop) ──");
     const pj = JSON.parse(JSON.stringify(pil));
     const cell = (l) => { const sh = paradigmShape(l); const mk = sh.tam.find(t => t.k === "pst") || sh.tam[0]; const x = inflectVerb(l, SEE, { tam: mk.k, pers: "3", num: "sg", obj: "1" }); return x.text + "|" + x.gloss; };
     check("object-indexed cell deterministic + JSON-roundtrip-stable", cell(pil) === cell(pj));
+  }
+
+  // ── the fossil notes describe the SURVIVING paradigm (review-loop) ──
+  // Three builds running, fresh readers caught etymology notes citing dead
+  // morphology: a -ik PL beside fully-reduplicated plurals, templatic tense
+  // "affixes" that are really vowel patterns, affix strings whose tone/vowel
+  // matched no living cell (the stored shape is the BIRTH-time form). Notes
+  // are now generated from diagnostic cells; these gates lock the contract.
+  {
+    const w3 = mkWorld();
+    let redupBad = 0, tmplBad = 0, recon = 0, reconBad = 0, withEty = 0, nonIso = 0;
+    const DIAG_N = [STONE, HOUSE, TREE, HAND];
+    for (let i = 0; i < 200; i++) {
+      const l = foundLanguage(w3, { seed: 720000 + i * 211 });
+      if (l.prof.morph === "iso") continue;
+      nonIso++;
+      const g = gramOf(l);
+      const etys = affixEtymologies(l);
+      if (etys.length) withEty++;
+      if (g.redup && g.redup.fns.includes("plural")) {
+        const e = etys.find(x => x.g === "PL");
+        if (e && e.mode !== "redup") redupBad++;
+      }
+      if (l.prof.morph === "tmpl")
+        for (const e of etys) if (["PST", "FUT", "PFV", "IPFV"].includes(e.g) && e.mode === "affix") tmplBad++;
+      // every affix-mode PL note must reconstruct from a REGULAR plural cell
+      const pe = etys.find(x => x.g === "PL" && x.mode === "affix");
+      if (pe) {
+        recon++;
+        const ok = DIAG_N.some(cid => {
+          const b = inflectNoun(l, cid, {}), m = inflectNoun(l, cid, { num: "pl" });
+          if (m.irr) return false;
+          return pe.side === "pre" ? m.text === pe.w + b.text : m.text === b.text + pe.w;
+        });
+        if (!ok) reconBad++;
+      }
+    }
+    check(`PL notes under reduplication-plural are honest (${redupBad} dash-affix claims)`, redupBad === 0);
+    check(`templatic primary-TAM notes are pattern-mode, never affix claims (${tmplBad})`, tmplBad === 0);
+    check(`every affix-mode PL note reconstructs a real regular cell (${reconBad}/${recon} bad)`, recon >= 20 && reconBad === 0);
+    check(`etymology notes still exist for most non-iso langs (${withEty}/${nonIso})`, withEty >= nonIso * 0.7);
+    // determinism + JSON-roundtrip of the note layer itself
+    const e1 = foundLanguage(mkWorld(), { seed: 720211 });
+    const esig = (l) => JSON.stringify(affixEtymologies(l));
+    check("etymology notes deterministic + JSON-roundtrip-stable", esig(e1) === esig(JSON.parse(JSON.stringify(e1))));
   }
 }
 

@@ -301,7 +301,15 @@ function paradigmHTML(l) {
   } <span class="gloss">‘${esc(glossOf(S.verb))}!’</span></td></tr>`;
   const persHead = persCols.map(([p, n]) => `<th>${p ? p + n.toUpperCase().replace("SG", "sg").replace("PL", "pl") : ""}</th>`).join("");
   const etys = affixEtymologies(l);
-  const etyLine = etys.length ? `<p class="note">Every ending is a worn-down word: ${etys.map(e => `<span class="w">-${esc(e.w)}</span> <span class="lbl">${esc(e.g)}</span>${e.from ? ` <span class="gloss">‹ ‘${esc(e.from)}’</span>` : ""}${e.renewed ? ` <span class="lbl">renewed</span>` : ""}`).join(" · ")}</p>` : "";
+  // the notes describe the SURVIVING paradigm (mode: affix / fused / redup /
+  // pattern) — never a birth-time form the tables no longer show
+  const etyItem = (e) => {
+    if (e.mode === "redup") return `<span class="lbl">${esc(e.g)}</span> <span class="gloss">by reduplication</span>`;
+    if (e.mode === "pattern") return `<span class="lbl">${esc(e.g)}</span> <span class="gloss">a vowel pattern${e.w ? ` ⟨${esc(e.w)}⟩` : ""}</span>`;
+    if (e.mode === "fused") return `<span class="lbl">${esc(e.g)}</span> <span class="gloss">fused into the stem${e.ex ? ` (${esc(e.ex)})` : ""}${e.from ? `, ‹ ‘${esc(e.from)}’` : ""}</span>`;
+    return `<span class="w">${e.side === "pre" ? esc(e.w) + "-" : "-" + esc(e.w)}</span> <span class="lbl">${esc(e.g)}</span>${e.from ? ` <span class="gloss">‹ ‘${esc(e.from)}’</span>` : ""}${e.renewed ? ` <span class="lbl">renewed</span>` : ""}`;
+  };
+  const etyLine = etys.length ? `<p class="note">Every ending is a worn-down word: ${etys.map(etyItem).join(" · ")}</p>` : "";
   const isoNote = shape.iso ? `<p class="note">An isolating tongue: grammar rides on particles and word order — the words themselves never bend.${shape.redup ? " (But it still reduplicates — a process even isolating languages keep.)" : ""}</p>` : "";
   const inten = intensive(l, GREAT);
   const redupNote = shape.redup ? `<p class="note"><b>Reduplication</b> (${shape.redup.type}, for ${shape.redup.fns.join(" &amp; ")}): a copied stem${inten ? `, e.g. ‘great’ → <span class="w">${esc(inten.text)}</span> <span class="gloss">‘very great’</span>` : ""}. Watch the ${shape.redup.fns.includes("plural") ? "plural column" : ""}${shape.redup.fns.includes("plural") && shape.redup.fns.includes("aspect") ? " and " : ""}${shape.redup.fns.includes("aspect") ? "IPFV row" : ""} above.</p>` : "";
