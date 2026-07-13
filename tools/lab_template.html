@@ -72,6 +72,20 @@
   .cell.cur .box{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
   .cell .box svg{ width:100%; height:100%; }
   .cell span{ display:block; font-size:.62rem; color:var(--muted); margin-top:3px; font-family:var(--mono); }
+  .bar.chg>i{ background:var(--accent-2); }
+  #genelabel{ min-height:1.1em; }
+
+  .popbar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+  .popbar .btn{ width:auto; display:inline-block; margin:0; }
+  .popbar select{ font:inherit; font-size:.78rem; background:var(--raised); color:var(--ink); border:1px solid var(--rule); border-radius:6px; padding:8px 10px; }
+  .popbar .gentag{ margin-left:auto; }
+  .popgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:10px; margin-bottom:12px; }
+  .popgrid .box{ width:100%; aspect-ratio:1; background:var(--plate); border:1px solid var(--rule); border-radius:4px; overflow:hidden; }
+  .popgrid .cell{ cursor:pointer; }
+  .popgrid .cell:hover .box{ border-color:var(--accent); }
+  .popgrid .box svg{ width:100%; height:100%; }
+  .popgrid span{ display:block; font-size:.6rem; color:var(--muted); margin-top:2px; font-family:var(--mono); text-align:center; }
+
   footer{ margin-top:22px; font-size:.74rem; color:var(--muted); border-top:1px solid var(--rule); padding-top:14px; }
   footer b{ color:var(--ink); }
 </style>
@@ -98,6 +112,7 @@
       <div class="genes">
         <div class="cap"><span>Gene vector · 26 alleles</span><span>click a bar to mutate that gene</span></div>
         <div class="bars" id="bars"></div>
+        <div class="cap" id="genelabel">hover a bar to read its gene · blue bars changed in the last step</div>
       </div>
     </section>
 
@@ -124,6 +139,24 @@
   <section class="lineage">
     <h2>Lineage — your descent so far</h2>
     <div class="strip" id="strip"></div>
+  </section>
+
+  <section class="lineage">
+    <h2>Living population — drift &amp; selection</h2>
+    <p class="hint" style="font-size:.74rem;color:var(--muted);margin:0 0 10px">Seed a herd from the stage emblem, then let it breed. <b>Drift</b> is pure chance; <b>Select</b> measures fitness as closeness (genome distance) to Pin&nbsp;A — or to the stage emblem if nothing is pinned — and the fittest leave more heirs. Unions marshal: watch quarterings accumulate. Click any individual to put it on the stage and trace its ancestry.</p>
+    <div class="popbar">
+      <button class="btn" id="popseed">Seed population <small>12 heirs of the stage emblem</small></button>
+      <button class="btn" id="popstep">Step</button>
+      <button class="btn" id="popplay">Play</button>
+      <select id="popmode" aria-label="selection mode">
+        <option value="drift">Drift (no selection)</option>
+        <option value="select">Select toward Pin A</option>
+      </select>
+      <span class="gentag" id="popgen">generation —</span>
+    </div>
+    <div class="popgrid" id="popgrid"></div>
+    <h2 style="margin-top:6px">Ancestry of the selected individual — self → founder</h2>
+    <div class="strip" id="ancestry"></div>
   </section>
 
   <footer>
@@ -155,15 +188,20 @@ function buildSliders(){ const box=$("#sliders");
   TRAITS.forEach(([k])=>{ const s=$("#s_"+k); s.addEventListener("input",()=>{ state.traits[k]=s.value/100; $("#v_"+k).textContent=(s.value/100).toFixed(2); state.genome=foundGenome(state.seed,state.traits); paint(true); }); }); }
 
 function paintEmblem(el,gm,W,H){ el.innerHTML=emblemSVG(gm,W,H); }
-function paint(swap){ const gm=state.genome; const em=$("#emblem");
+function paint(swap,prevGenes){ const gm=state.genome; const em=$("#emblem");
   if(swap){ em.firstChild&&em.firstChild.classList&&em.firstChild.classList.add("swap"); }
   paintEmblem(em,gm,300,300);
   $("#name").textContent=nameFor(gm);
-  $("#blazon").textContent=describeGenome(gm);
-  $("#gentag").textContent="generation "+(gm.gen||0);
-  // gene bars
-  $("#bars").innerHTML=gm.genes.map((v,i)=>`<div class="bar" title="${GENES[i]} = ${v.toFixed(2)}" data-i="${i}"><i style="height:${(v*100).toFixed(0)}%"></i></div>`).join("");
-  $("#bars").querySelectorAll(".bar").forEach(b=>b.addEventListener("click",()=>{ const i=+b.dataset.i; state.genome.genes[i]=Math.random(); paint(true); }));
+  $("#blazon").textContent=blazonGenome(gm);
+  $("#blazon").title=describeGenome(gm);
+  $("#gentag").textContent="generation "+(gm.gen||0)+(gm.quarters&&gm.quarters.length>1?" · quarterly of "+gm.quarters.length:"");
+  // gene bars — blue marks the alleles that moved in the last step
+  $("#bars").innerHTML=gm.genes.map((v,i)=>{ const chg=prevGenes&&Math.abs(v-prevGenes[i])>0.03;
+    return `<div class="bar${chg?" chg":""}" title="${GENES[i]} = ${v.toFixed(2)}" data-i="${i}"><i style="height:${(v*100).toFixed(0)}%"></i></div>`; }).join("");
+  $("#bars").querySelectorAll(".bar").forEach(b=>{
+    b.addEventListener("click",()=>{ const i=+b.dataset.i; const before=state.genome.genes.slice(); state.genome.genes[i]=Math.random(); paint(true,before); });
+    b.addEventListener("mouseenter",()=>{ const i=+b.dataset.i; $("#genelabel").textContent=GENES[i]+" = "+state.genome.genes[i].toFixed(2); });
+  });
 }
 function pushLineage(){ state.lineage.push(state.genome); if(state.lineage.length>40) state.lineage.shift(); renderStrip(); }
 function renderStrip(){ const strip=$("#strip");
@@ -174,12 +212,66 @@ function renderStrip(){ const strip=$("#strip");
 function setSlot(which,gm){ const el=$("#slot"+which); if(!gm){ el.className="slot"; el.innerHTML=`<span class="empty">Pin ${which}</span>`; return; } el.className="slot filled"; el.innerHTML=emblemSVG(gm,80,80); }
 
 $("#reroll").addEventListener("click",()=>{ state.seed=(Math.random()*2e9)>>>0; state.genome=foundGenome(state.seed,state.traits); paint(true); pushLineage(); });
-$("#mutate").addEventListener("click",()=>{ state.genome=mutateGenome(state.genome,(Math.random()*2e9)>>>0); paint(true); pushLineage(); });
-$("#inherit").addEventListener("click",()=>{ state.genome=inheritGenome(state.genome,(Math.random()*2e9)>>>0); paint(true); pushLineage(); });
+$("#mutate").addEventListener("click",()=>{ const before=state.genome.genes; state.genome=mutateGenome(state.genome,(Math.random()*2e9)>>>0); paint(true,before); pushLineage(); });
+$("#inherit").addEventListener("click",()=>{ const before=state.genome.genes; state.genome=inheritGenome(state.genome,(Math.random()*2e9)>>>0); paint(true,before); pushLineage(); });
 $("#random").addEventListener("click",()=>{ const s=(Math.random()*2e9)>>>0; state.genome={genes:GENES.map((_,i)=>prng((s+i*2654435761)>>>0)()),gen:0,seed:s}; paint(true); pushLineage(); });
 $("#pinA").addEventListener("click",()=>{ state.pinA=state.genome; setSlot("A",state.pinA); });
 $("#pinB").addEventListener("click",()=>{ state.pinB=state.genome; setSlot("B",state.pinB); });
-$("#cross").addEventListener("click",()=>{ if(!state.pinA||!state.pinB){ (state.pinA?$("#pinB"):$("#pinA")).style.borderColor="var(--accent-2)"; return; } state.genome=crossGenome(state.pinA,state.pinB,(Math.random()*2e9)>>>0); paint(true); pushLineage(); });
+$("#cross").addEventListener("click",()=>{ if(!state.pinA||!state.pinB){ (state.pinA?$("#pinB"):$("#pinA")).style.borderColor="var(--accent-2)"; return; } const before=state.genome.genes; state.genome=crossGenome(state.pinA,state.pinB,(Math.random()*2e9)>>>0); paint(true,before); pushLineage(); });
+
+/* ─────────── living population — drift & measured-fitness selection ─────────── */
+const pop={ list:[], gen:0, timer:null };
+const rnd32=()=> (Math.random()*2e9)>>>0;
+function fitTarget(){ return state.pinA||state.genome; }
+function seedPop(){
+  pop.list=Array.from({length:12},()=>{ const g=inheritGenome(state.genome,rnd32()); g._p=state.genome; return g; });
+  pop.gen=0; renderPop();
+}
+function stepPop(){
+  if(!pop.list.length) return;
+  const drift=$("#popmode").value==="drift", target=fitTarget();
+  const ranked=pop.list.slice().sort((a,b)=>genomeDistance(a,target)-genomeDistance(b,target));
+  const pickParent=()=>{
+    if(drift) return pop.list[(Math.random()*pop.list.length)|0];
+    return ranked[Math.min(ranked.length-1,Math.floor(ranked.length*(1-Math.sqrt(Math.random()))))]; // rank-weighted toward the fittest
+  };
+  const next=[];
+  if(!drift) next.push(ranked[0]);                       // elitism: the fittest survives unchanged
+  while(next.length<pop.list.length){
+    const p1=pickParent();
+    let child;
+    if(Math.random()<0.22){ const p2=pickParent(); child=crossGenome(p1,p2,rnd32()); child._p=p1; child._p2=p2; }
+    else{ child=inheritGenome(p1,rnd32()); child._p=p1; }
+    next.push(child);
+  }
+  pop.list=next; pop.gen++; renderPop();
+}
+function renderPop(){
+  const drift=$("#popmode").value==="drift", target=fitTarget();
+  $("#popgrid").innerHTML=pop.list.map((g,i)=>{
+    const d=genomeDistance(g,target);
+    const q=g.quarters&&g.quarters.length>1?" ⛨"+g.quarters.length:"";
+    return `<div class="cell pcell" data-i="${i}"><div class="box">${emblemSVG(g,92,92)}</div><span>g${g.gen||0}${q}${drift?"":" · d "+d.toFixed(2)}</span></div>`;
+  }).join("");
+  $("#popgen").textContent=pop.list.length?"generation "+pop.gen:"generation —";
+  document.querySelectorAll(".pcell").forEach(c=>c.addEventListener("click",()=>{
+    const g=pop.list[+c.dataset.i]; state.genome=g; paint(true); pushLineage(); renderAncestry(g);
+  }));
+}
+function renderAncestry(g){
+  const chain=[]; let cur=g;
+  while(cur&&chain.length<10){ chain.push(cur); cur=cur._p; }
+  $("#ancestry").innerHTML=chain.map((gm,i)=>
+    `<div class="cell"><div class="box">${emblemSVG(gm,76,76)}</div><span>${i===0?"self":"g"+(gm.gen||0)}${gm._p2?" ⊗":""}</span></div>`).join("");
+}
+$("#popseed").addEventListener("click",seedPop);
+$("#popstep").addEventListener("click",stepPop);
+$("#popplay").addEventListener("click",()=>{
+  if(pop.timer){ clearInterval(pop.timer); pop.timer=null; $("#popplay").textContent="Play"; return; }
+  if(!pop.list.length) seedPop();
+  pop.timer=setInterval(stepPop,700); $("#popplay").textContent="Pause";
+});
+$("#popmode").addEventListener("change",()=>renderPop());
 
 // opening frame: draw seeds until one expresses a charge, so the lab opens on
 // something with a figure rather than a bare field. Every seed is a valid roll —
