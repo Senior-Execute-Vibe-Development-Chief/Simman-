@@ -16,6 +16,7 @@ import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
 import { scriptOf, writeWord, writeForm, writeName, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
+import { runHistory } from "../src/sim/languageHistory.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
@@ -2593,6 +2594,63 @@ console.log("\n── §27 totality (translate · speak · write) ──");
   const lx = pool[0];
   const wsig = (l) => JSON.stringify(CONCEPTS.map((c, cid) => [wordOf(l, cid), writeWord(l, cid)]));
   check("loan-bearing records deterministic + JSON-roundtrip-stable", wsig(lx) === wsig(JSON.parse(JSON.stringify(lx))));
+}
+
+// ── §28 the areal simulation: spawn → breed · evolve · spread · die ───────
+// The history harness drives the same public APIs the world sim will, from
+// stand-in population state: cohesion splits, prestige-downhill borrowing
+// and script adoption, viability deaths, steady drift. Gated: determinism,
+// event coverage, prestige directionality, pinned shapes holding, and
+// every survivor still translating/writing.
+console.log("\n── §28 the areal simulation (history harness) ──");
+{
+  const roots = ["english", "russian", "mandarin", "random", "random", "random"];
+  const h = runHistory(4242, roots, 14);
+  const h2 = runHistory(4242, roots, 14);
+  check("history deterministic (same seed → same event log)", JSON.stringify(h.events) === JSON.stringify(h2.events));
+  const counts = {};
+  for (const e of h.events) counts[e.type] = (counts[e.type] || 0) + 1;
+  check(`the four verbs all fire (branch ${counts.branch || 0} · drift ${counts.drift || 0} · borrow ${counts.borrow || 0} · adopt ${counts.adopt || 0} · death ${counts.death || 0})`,
+    (counts.branch || 0) >= 2 && (counts.drift || 0) >= 30 && (counts.borrow || 0) >= 5 && (counts.adopt || 0) >= 1 && (counts.death || 0) >= 1);
+  // prestige directionality: at adoption the borrower took the donor's look
+  const byId = new Map(h.lineages.map(L => [L.id, L]));
+  let adOK = true;
+  for (const e of h.events) {
+    if (e.type !== "adopt") continue;
+    const a = scriptOf(byId.get(e.id).lang);
+    if (!a.borrowed && !a.invented) adOK = false;     // adopted (may later invent its way out)
+  }
+  check("script adoption leaves the borrowed (or later invented) tradition on the record", adOK);
+  // pinned reference shapes hold their costumes through deep history
+  let refBad = 0;
+  for (const L of h.lineages) {
+    if (L.kind === "mandarin" && scriptOf(L.lang).type !== "logo") refBad++;
+    if ((L.kind === "english" || L.kind === "russian") && scriptOf(L.lang).type !== "alphabet") refBad++;
+  }
+  check(`reference lineages keep their pinned shapes through ${h.era} eras (${refBad} bad)`, refBad === 0);
+  // every survivor still speaks and writes (totality holds under history)
+  let survBad = 0, surv = 0;
+  for (const L of h.lineages.filter(x => x.deadEra === null)) {
+    surv++;
+    const w = writeWord(L.lang, STONE);
+    const f = nativeStemOf(L.lang, STONE);
+    if (!w || !w.glyphs.length || !phoneticPlan(L.lang, f).syls.length) survBad++;
+  }
+  check(`every survivor still translates, speaks, writes (${surv} living, ${survBad} bad)`, surv >= 5 && survBad === 0);
+  // daughters belong to their parents' families (hue/famSeed inheritance)
+  let famBad = 0;
+  for (const L of h.lineages) {
+    if (L.parent === null) continue;
+    if (L.lang.famSeed !== byId.get(L.parent).lang.famSeed) famBad++;
+  }
+  check(`daughters stay in the family (${famBad} strays)`, famBad === 0);
+  // the harness's records survive the persistence path mid-history
+  const pick = h.lineages.find(x => x.deadEra === null && x.lang.loans.length);
+  if (pick) {
+    const round = JSON.parse(JSON.stringify(pick.lang));
+    check("history-grown records JSON-roundtrip byte-stable",
+      JSON.stringify([scriptOf(round), writeWord(round, STONE)]) === JSON.stringify([scriptOf(pick.lang), writeWord(pick.lang, STONE)]));
+  } else check("history-grown records JSON-roundtrip byte-stable (no loan-bearing survivor at this seed)", false);
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

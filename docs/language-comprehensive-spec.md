@@ -1068,3 +1068,37 @@ boustrophedon gates).
 - **Parked (sim wiring only):** cultures owning languages, map names,
   literacy-tech script birth, adoption along real trade/faith routes,
   chronicle entries in the realm's own script.
+
+## Build status (session 15, ninth phase) — the areal simulation
+
+`src/sim/languageHistory.js` + the Lab's History card: a linguistic
+history in miniature, the dress rehearsal for sim wiring. Probe 342 →
+**349** checks (§28).
+
+- A cast of root tongues spawns (pinned reference shapes beside random
+  typological rolls), then the four verbs run: communities past a
+  cohesion ceiling SPLIT (branchLanguage), sound change accumulates
+  steadily (driftLanguage), prestige pushes words and whole scripts
+  downhill from bigger neighbours (borrowFrom / adoptScriptFrom), and a
+  tongue starved below viability DIES into its neighbour. Population is
+  zero-sum with a Matthew effect (bigger communities absorb speakers
+  faster) — which is what actually produces hegemons and dying tongues.
+- **THE INTEGRATION SEAM** is documented in the module head: the
+  population/position model is a stand-in; when the sim wires in,
+  culture populations replace `pop`, trade/faith adjacency replaces
+  `pos`, and the sim's own events call the same four verbs — thresholds
+  keep their meaning (cohesion, prestige, viability), only the state
+  feeding them becomes real.
+- Every event fires from population STATE, never the era number (the era
+  loop is only the clock that advances state) — cardinal-rule clean.
+- Lab: era-timeline SVG (lineage lanes colored by family hue, branch
+  connectors, borrow dots, adoption squares, death marks), a chronicle
+  feed, and a living-tongues table (share, script incl. borrowed/
+  invented, changes, loans) whose **inspect** button opens any survivor
+  — with its ancestor chain as the Lab's family, so the cognates card
+  lights up.
+- §28 gates: deterministic event logs; all verbs fire; adoption leaves
+  the borrowed (or later invented) tradition on the record; pinned
+  reference lineages hold their costumes through deep history; every
+  survivor still translates/speaks/writes; daughters stay in the family;
+  history-grown records JSON-roundtrip byte-stable.

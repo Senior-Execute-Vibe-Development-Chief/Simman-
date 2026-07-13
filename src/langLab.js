@@ -14,6 +14,7 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
 import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME } from "./sim/languageScript.js";
+import { foundHistory, stepHistory, ancestryOf } from "./sim/languageHistory.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
@@ -27,7 +28,9 @@ let world, lineage, donor;
 const S = {
   seed: 8817, preset: "random", divergence: 0.5, search: "", noun: STONE, verb: VERBS[2],
   sent: { s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl" },
+  hist: { seed: 9917, eras: 14, english: true, russian: true, mandarin: true, random: 3 },
 };
+let HIST = null;                                      // the running areal history (module state)
 
 function reset() {
   world = { seed: 1, step: 0, languages: new Map(), _nextLanguageId: 1 };
@@ -1013,6 +1016,76 @@ function dictionaryHTML(l) {
     <div class="scroll tall"><table><thead><tr><th>meaning</th><th>word</th><th>IPA</th><th>etymology</th><th>domain</th><th>notes</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
 }
 
+// ── the History card: an areal simulation over the same public APIs the
+// world sim will drive — spawn a cast, watch it breed/evolve/spread/die ──
+function historyHTML() {
+  const h = S.hist;
+  const controls = `<div class="controls sent">
+      <label>Seed <input id="histSeed" type="number" value="${h.seed}" style="width:6.5rem"/></label>
+      <label>Eras <input id="histEras" type="number" min="4" max="40" value="${h.eras}" style="width:4rem"/></label>
+      <label><input type="checkbox" id="histEng"${h.english ? " checked" : ""}/> English-shaped</label>
+      <label><input type="checkbox" id="histRus"${h.russian ? " checked" : ""}/> Russian-shaped</label>
+      <label><input type="checkbox" id="histMan"${h.mandarin ? " checked" : ""}/> Mandarin-shaped</label>
+      <label>Random roots <select id="histRand">${[1, 2, 3, 4, 5].map(n => `<option value="${n}"${h.random === n ? " selected" : ""}>${n}</option>`).join("")}</select></label>
+      <button id="histRun">Run history</button>
+      ${HIST ? `<button id="histStep">+1 era</button>` : ""}
+    </div>`;
+  if (!HIST) return `<section class="card"><h2>History <span class="count">— an areal simulation</span></h2>
+    <p class="note">Spawn a cast of tongues — pinned reference shapes beside random typological rolls — and let the dynamics run: communities grow and split (<b>breed</b>), sound change accumulates (<b>evolve</b>), prestige pushes words and whole scripts downhill from bigger neighbours (<b>spread</b>), and a starved tongue dies into its neighbour. Every event fires from population state, never from the clock — the same four verbs the world sim will drive with its real cultures. Inspect any survivor below to open it in the Lab.</p>
+    ${controls}</section>`;
+  // lanes: depth-first from the roots so daughters sit beside their parents
+  const kids = new Map();
+  HIST.lineages.forEach(L => { if (L.parent !== null) { if (!kids.has(L.parent)) kids.set(L.parent, []); kids.get(L.parent).push(L); } });
+  const order = [];
+  const visit = (L) => { order.push(L); (kids.get(L.id) || []).forEach(visit); };
+  HIST.lineages.filter(L => L.parent === null).forEach(visit);
+  const lane = new Map(order.map((L, i) => [L.id, i]));
+  const exW = 34, rowH = 26, padL = 10, padT = 14, labW = 130;
+  const X = (era) => padL + era * exW;
+  const Y = (id) => padT + lane.get(id) * rowH;
+  const W = X(HIST.era) + labW, Hgt = padT + order.length * rowH + 22;
+  const hue = (L) => `hsl(${L.lang.hue | 0} 55% 45%)`;
+  let svg = "";
+  for (const L of order) {
+    const x0 = X(L.bornEra), x1 = X(L.deadEra ?? HIST.era), y = Y(L.id);
+    if (L.parent !== null) svg += `<path d="M ${x0} ${Y(L.parent)} L ${x0} ${y}" stroke="${hue(L)}" stroke-width="1.6" fill="none" opacity="0.7"/>`;
+    svg += `<path d="M ${x0} ${y} L ${x1} ${y}" stroke="${hue(L)}" stroke-width="${L.deadEra ? 2 : 3}" fill="none"${L.deadEra ? ` opacity="0.55"` : ""}/>`;
+    svg += L.deadEra
+      ? `<text x="${x1 + 3}" y="${y + 4}" font-size="11" fill="${hue(L)}" opacity="0.8">✕</text>`
+      : `<text x="${x1 + 6}" y="${y + 4}" font-size="11" fill="${hue(L)}">${esc(langWord(L.lang, 0))}${L.parent === null && L.kind !== "random" ? " · " + esc(L.kind) : ""}</text>`;
+  }
+  const byId = new Map(HIST.lineages.map(L => [L.id, L]));
+  for (const e of HIST.events) {
+    if (e.type === "borrow") svg += `<circle cx="${X(e.era)}" cy="${Y(e.id)}" r="2.6" fill="${hue(byId.get(e.from))}" opacity="0.75"><title>borrows from ${esc(langWord(byId.get(e.from).lang, 0))}</title></circle>`;
+    if (e.type === "adopt") svg += `<rect x="${X(e.era) - 3.5}" y="${Y(e.id) - 3.5}" width="7" height="7" fill="${hue(byId.get(e.from))}"><title>adopts the script of ${esc(langWord(byId.get(e.from).lang, 0))}</title></rect>`;
+  }
+  for (let er = 0; er <= HIST.era; er += 2) svg += `<text x="${X(er)}" y="${Hgt - 6}" font-size="9" fill="currentColor" opacity="0.45" text-anchor="middle">${er}</text>`;
+  const nameOf = (id) => langWord(byId.get(id).lang, 0);
+  const feed = HIST.events.filter(e => e.type !== "drift" && e.type !== "spawn").slice(-12).reverse().map(e =>
+    `<li><span class="lbl">era ${e.era}</span> ${e.type === "branch" ? `<span class="w">${esc(nameOf(e.id))}</span> splits from <span class="w">${esc(nameOf(e.from))}</span>`
+      : e.type === "borrow" ? `<span class="w">${esc(nameOf(e.id))}</span> borrows from <span class="w">${esc(nameOf(e.from))}</span> <span class="gloss">(prestige flows downhill)</span>`
+      : e.type === "adopt" ? `<span class="w">${esc(nameOf(e.id))}</span> adopts the script of <span class="w">${esc(nameOf(e.from))}</span>`
+      : `<span class="w">${esc(nameOf(e.id))}</span> dies, absorbed into <span class="w">${esc(nameOf(e.into))}</span>`}</li>`).join("");
+  const liv = HIST.lineages.filter(L => L.deadEra === null).sort((a, b) => b.pop - a.pop);
+  const totPop = liv.reduce((a, L) => a + L.pop, 0);
+  const rows = liv.map(L => {
+    const sc = scriptOf(L.lang);
+    return `<tr><td class="w">${esc(langWord(L.lang, 0))}</td><td class="lbl">${esc(L.kind)}</td>
+      <td>${esc(MORPH[L.lang.prof.morph])}</td>
+      <td>${esc(SCRIPT_NAME[sc.type].split(" ")[0])}${sc.borrowed ? " (borrowed)" : sc.invented ? " (invented)" : ""}</td>
+      <td>${Math.round(100 * L.pop / totPop)}%</td><td>${L.lang.rules.length}</td><td>${L.lang.loans.length}</td>
+      <td><button class="spk" data-inspect="${L.id}">inspect</button></td></tr>`;
+  }).join("");
+  return `<section class="card"><h2>History <span class="count">— ${HIST.era} eras · ${HIST.lineages.length} tongues, ${liv.length} living</span></h2>
+    <p class="note">Every event fires from population state, never the clock: a community past cohesion <b>splits</b>, prestige pushes words (•) and whole scripts (▪) downhill from bigger neighbours, a starved tongue <b>dies</b> (✕) into its neighbour — and every living tongue keeps drifting. The reference shapes hold their pinned costumes; everything else is free. <b>Inspect</b> a survivor to open it (and its ancestors) in the Lab below.</p>
+    ${controls}
+    <div class="scroll"><svg viewBox="0 0 ${W} ${Hgt}" width="${W}" height="${Hgt}" style="max-width:none">${svg}</svg></div>
+    <h3>Chronicle</h3><ul class="cols">${feed}</ul>
+    <h3>Living tongues</h3>
+    <div class="scroll"><table><thead><tr><th>tongue</th><th>root</th><th>morphology</th><th>script</th><th>share</th><th>changes</th><th>loans</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  </section>`;
+}
+
 function render() {
   const l = active();
   PLANS = []; CLAUSES = [];                          // registries are per-render; data-p/-cp indices point here
@@ -1037,6 +1110,7 @@ function render() {
     <button id="borrow" title="Contact with a foreign tongue: borrow a sound and a prestige word">Borrow from a neighbour</button>
     <button id="adopt" title="A neighbour's script arrives: keep its letterforms whole, spell this tongue by ear — the way most scripts actually spread">Adopt a script</button>
   </section>
+  ${historyHTML()}
   <section class="card">
     <h2>Specimen: <span class="w big">${esc(langWord(l, 0))}</span>${lineage.length > 1 ? `<span class="count"> — daughter ${lineage.length - 1} of the family</span>` : ""}</h2>
     <div class="chips">${chips(l)}</div>
@@ -1082,6 +1156,27 @@ function render() {
     }
     adoptScriptFrom(active(), donor); render();
   };
+  // ── history controls ──
+  const hv = (id) => document.getElementById(id);
+  const readHist = () => {
+    S.hist.seed = Number(hv("histSeed").value) >>> 0;
+    S.hist.eras = Math.max(4, Math.min(40, Number(hv("histEras").value) || 14));
+    S.hist.english = hv("histEng").checked; S.hist.russian = hv("histRus").checked; S.hist.mandarin = hv("histMan").checked;
+    S.hist.random = Number(hv("histRand").value);
+  };
+  hv("histRun").onclick = () => {
+    readHist();
+    const roots = [];
+    if (S.hist.english) roots.push("english");
+    if (S.hist.russian) roots.push("russian");
+    if (S.hist.mandarin) roots.push("mandarin");
+    for (let i = 0; i < S.hist.random; i++) roots.push("random");
+    if (!roots.length) roots.push("random");
+    HIST = foundHistory(S.hist.seed, roots);
+    for (let i = 0; i < S.hist.eras; i++) stepHistory(HIST);
+    render();
+  };
+  if (hv("histStep")) hv("histStep").onclick = () => { readHist(); stepHistory(HIST); render(); };
   const ds = document.getElementById("dictSearch");
   ds.oninput = (e) => {
     S.search = e.target.value;
@@ -1210,7 +1305,21 @@ export function mount() {
     const cp = e.target.closest("[data-cp]");
     if (cp) { const c = CLAUSES[+cp.dataset.cp]; if (c) speakClause(c.groups, c.contour); return; }
     const el = e.target.closest("[data-p]");
-    if (el) { const p = PLANS[+el.dataset.p]; if (p) speakPlan(p); }
+    if (el) { const p = PLANS[+el.dataset.p]; if (p) speakPlan(p); return; }
+    // inspect a tongue from the History card: it becomes the Lab's
+    // specimen, with its ancestor chain as the family (cognates light up)
+    const ins = e.target.closest("[data-inspect]");
+    if (ins && HIST) {
+      const chain = ancestryOf(HIST, Number(ins.dataset.inspect));
+      if (chain.length) {
+        world = HIST.world;
+        lineage = chain.map(x => x.lang);
+        donor = null;
+        render();
+        const spec = [...document.querySelectorAll("section.card h2")].find(h => h.textContent.startsWith("Specimen"));
+        if (spec) spec.scrollIntoView({ behavior: "smooth" });
+      }
+    }
   });
   reset();
   render();
