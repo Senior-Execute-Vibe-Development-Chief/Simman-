@@ -248,6 +248,36 @@ for (let i = 0; i < 60; i++) {
   if (emblemSVG(asFlag, 160, 160).length < 400) fail("ensign failed to render");
 }
 
+// ── 5b: the continuum — a shield can still WALK into a modern flag under
+// mutation + selection (mini greedy walk; guards the banner→flag bridge) ──
+{
+  let src = null, tgt = null;
+  for (let seed = 100; !src && seed < 99999; seed++) {
+    const p = expressGenome(foundGenome(seed));
+    if (p.substrate === "shield" && p.composition === "heraldic" && p.motif) src = foundGenome(seed);
+  }
+  for (let seed = 4200; !tgt && seed < 999999; seed++) {
+    const p = expressGenome(foundGenome(seed));
+    if (p.isFlag && p.motif && p.motif.array && p.motif.inCanton) tgt = foundGenome(seed);
+  }
+  if (!src || !tgt) fail("continuum: endpoints not found in seed sweep");
+  else {
+    let cur = src;
+    for (let s = 0; s < 14; s++) {
+      const strength = 1.0 - 0.8 * (s / 13);
+      let best = null, bd = Infinity;
+      for (let k = 0; k < 40; k++) {
+        const prop = mutateGenome(cur, (s * 7919 + k * 131 + 17) >>> 0, strength);
+        const d = genomeDistance(prop, tgt);
+        if (d < bd) { bd = d; best = prop; }
+      }
+      cur = best;
+      if (emblemSVG(cur, 120, 120).length < 300) fail(`continuum: step ${s} failed to render`);
+    }
+    if (genomeDistance(cur, tgt) > 0.15) fail(`continuum: walk stalled at distance ${genomeDistance(cur, tgt).toFixed(3)}`);
+  }
+}
+
 // ── 6: cadency ──
 {
   let g = foundGenome(2024), marked = 0, cleared = 0, prev = 0;

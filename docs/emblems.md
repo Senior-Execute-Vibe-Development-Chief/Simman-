@@ -118,25 +118,63 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
 
 - **Substrates**: shield (heater / Iberian / French / kite outlines), banner,
   roundel, pennon, gonfalon, lozenge. Flag substrates get vexillological
-  grammar: Nordic cross toward the hoist, hoist-pointing pile, true
-  rectangular canton, **fimbriation** (a separating outline on an ordinary
-  or around a charge, tincture chosen by the same argmax rule against
-  *everything it touches*), and **device panels** (a disc or lozenge ground
-  bounding the charge, the charge re-derived against the panel — the
-  tincture rule applied recursively). Flag cloth is *sewn, not engraved*:
-  seams run straight (the serrated per-pale hoist line excepted), the
-  engraver-only partitions express as their sewn analogues (gyronny → per
-  saltire, grids → stripes, per chevron → the **hoist wedge**), petra
-  sancta hatching, vair and the lattice treatments stay on shields (ermine
-  flies — Brittany), attitudes don't express, and a FIGURE steps back —
-  never in multiples or strewn (only compact devices, stars and discs,
-  repeat), rides at reduced size, and takes a bounding panel more often.
-  Same genes throughout — the substrate reinterprets them.
+  grammar: Nordic cross toward the hoist (equal arm thickness, the true
+  construction), hoist-pointing pile, true rectangular canton,
+  **fimbriation** (a separating outline on an ordinary or around a charge,
+  tincture chosen by the same argmax rule against *everything it touches*),
+  and **device panels** (a disc, lozenge, or **inescutcheon** — the small
+  state-arms shield — bounding the charge, the charge re-derived against
+  the panel: the tincture rule applied recursively). Flag cloth is *sewn,
+  not engraved*: seams run straight (the serrated per-pale hoist line
+  excepted), the engraver-only partitions express as their sewn analogues
+  (gyronny → per saltire, grids → stripes, per chevron → the **hoist
+  wedge**), petra sancta hatching, vair and the lattice treatments stay on
+  shields (ermine flies — Brittany), attitudes don't express, and a FIGURE
+  steps back — never in multiples or strewn, at reduced size, panel-bounded
+  more often. Same genes throughout — the substrate reinterprets them.
+  See `docs/flag-realism-research.md` for the research behind the modern
+  grammar (sources inside). The realism mechanisms, all substrate-keyed:
+  - **The constellation grammar** — cloth never wallpapers a repeated
+    compact device: the multiple-intent (three / in-pale / semé) expresses
+    as an organized **array** — offset rows (the staggered long-flag
+    algorithm), a ring, an arc, or a seeded constellation (the idle brand
+    gene seeds the sky exactly as it seeds a tamga; the idle script gene
+    picks the pattern; the count gene counts members, 2–13, each pattern
+    imposing its own geometric floor). Blazoned "five mullets in annulo".
+  - **The canton houses the device** — the canton is the position of
+    honour, not a second device: a compact device or its whole array moves
+    INTO the canton and dresses against it; a figure never boards it; the
+    hoist-top stays free (no canton over an ordinary); the canton edge
+    SEAMS to a stripe or band boundary whenever one lies near.
+  - **The cloth cut** — a banner's ratio (1:2 … 2:3, the real spread)
+    comes from the substrate gene's position within its own window.
+  - **The Spanish fess** — the thickness gene (the diminutive-splitter,
+    same windows) may double a tierced band: middle (1:2:1) or first
+    (2:1:1).
+  - **The bunting shelf** — flags are sewn from the seven fast single-vat
+    bolts; the overdyed stains stay on shields and silks (a stain-intent
+    comes back as its vat's fast recipe or the nearest standard bolt), and
+    the continuous silk/pigment palettes snap to named bolts. Measured:
+    flag fields run gules 26 / or 19 / azure 19 / argent 12 / vert 12 —
+    the real corpus ordering — while shields keep their stains.
+  - **The sewing economy** — a mark lying on another mark reuses a bolt
+    already flying whenever it reads (class opposition on a uniform
+    ground; at least the palette's own metal↔dark minimum on a mixed one).
+    Flags run 2 bolts 59% / 3 32% / 4 8% — NAVA's "two or three basic
+    colours" as economics, not decree.
+  - **The ensign grammar** — marshalled CLOTH never quarters: the senior
+    coat flies as a canton (sewn — expressed on the parent's substrate)
+    over the house's own field; shields keep true quartering. Blazoned
+    "…; in the canton the union: …".
+  - **The legibility window** — a LIVING figure flies only from a strongly
+    figural tradition (the same 0.72 iconism boundary that forces heraldic
+    composition); weaker figuration sews the non-living pick. Flags carry
+    a beast ~11% vs shields ~31% — the real gradient.
 - **Partitions**: per pale/fess/bend, quarterly, gyronny, per saltire, per
   chevron, barry, paly, **chequy**, **lozengy**, **tierced** (in pale /
   in fess — the tricolour, third tincture constructed against both
-  neighbours) — edges in line-styles (wavy, engrailed, embattled,
-  indented).
+  neighbours, one band optionally doubled: the Spanish fess) — edges in
+  line-styles (wavy, engrailed, embattled, indented).
 - **Field treatments**: ermine, vair (real grounds — marks pick against
   argent / argent+azure), **fretty**, **masoned**.
 - **Ordinaries**: fess, pale, bend, bend sinister, chevron, cross, saltire,
@@ -174,15 +212,24 @@ honest plain-language line for the non-blazonable traditions.
 
 1. Rule of tincture holds for every mark on every ground (strict class
    opposition on genuine named grounds; measured min-dE bound ≥ 0.1 on mixed
-   or continuous grounds — observed minimum ≈ 0.21).
+   or continuous grounds — observed minimum ≈ 0.19). Housed devices audit
+   against the canton block; panel charges against the panel.
 2. Every motif id in every pool resolves to art (primitive or raster).
 3. express/mutate/inherit/cross replay deterministically.
 4. Marshalling: self-cross stays simple; unions accumulate deduped quarters
-   capped at 4; quarters persist under drift; marshalled coats render.
+   capped at 4; quarters persist under drift; marshalled coats render;
+   shields blazon "Quarterly: …", cloth "…; in the canton the union: …".
 5. Cadency: appears down inherit chains, clears eventually, caps at six,
    survives mutation, clears on cross; blazoned "for difference".
 6. Reachability: all ten tinctures appear as fields; chequy/lozengy/fretty/
-   masoned/diminutives/attitudes all expressed in an 8k sample.
+   masoned/diminutives/attitudes all expressed in an 8k sample — plus all
+   four array patterns, housing, both Spanish-fess forms, both cloth-cut
+   extremes, the inescutcheon, bolt reuse, and a figure on cloth.
+7. Flag grammar: no unorganized multiple (semé/three/in-pale) on cloth;
+   array counts bounded with per-pattern floors; a housed device implies
+   its canton, a canton implies a free hoist; banner cuts stay in
+   [1:2, 2:3]; no stain ever flies; ≤ 5 bolts per flag; a living figure
+   implies the figural tradition (iconism > 0.72).
 
 ## The lab
 
