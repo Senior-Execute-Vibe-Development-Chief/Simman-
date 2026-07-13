@@ -43,10 +43,11 @@ let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
   array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, housed: 0,
-  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0 };
+  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0, flagFigure: 0 };
 const STAINS = new Set(names.filter(n => TINCTURES[n].kind === "stain"));
 // the compact device categories — the only ones a flag repeats or strews
 const COMPACT = new Set(["celestial", "geometric"]);
+const LIVING = new Set(["beast", "insect", "bird", "mythic", "sea"]);
 const fail = (msg, g) => { if (fails++ < 10) console.error(`  FAIL ${msg}${g ? `\n       ${describeGenome(g)}` : ""}`); };
 
 function checkMark(mark, grounds, what, g, strict) {
@@ -75,6 +76,12 @@ function audit(g) {
     if (fm && !COMPACT.has(fm.cat)) {
       if ((fm.count || 1) > 1) fail("figure in multiples on a flag", g);
       if (fm.arrange === "seme") fail("strewn figure on a flag", g);
+    }
+    // a LIVING figure flies only from a strongly figural tradition (the
+    // same 0.72 boundary that forces heraldic composition)
+    if (fm && LIVING.has(fm.cat)) {
+      if (p.iconism <= 0.72) fail("a beast flying from a weakly figural tradition", g);
+      seen.flagFigure++;
     }
     // THE CONSTELLATION GRAMMAR: cloth never wallpapers or shield-stations a
     // repeated device — multiples come only as organized arrays (or an

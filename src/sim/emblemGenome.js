@@ -635,6 +635,14 @@ export function expressGenome(genome) {
     if (aniconic && LIVING_CATS.has(cat)) {
       cat = NONLIVING_CATS[Math.floor(get("motifCount") * NONLIVING_CATS.length) % NONLIVING_CATS.length];
     }
+    // A LIVING FIGURE flies only from a strongly FIGURAL tradition — the same
+    // iconism boundary that already forces a heraldic composition (0.72).
+    // Weaker figuration keeps its beasts on shields and silks but sews a
+    // non-living device on cloth: the distance-legibility economics that
+    // emptied real flags of beasts (~5% of flags carry one, vs ~45% of arms).
+    if (isFlag && iconism <= 0.72 && LIVING_CATS.has(cat)) {
+      cat = NONLIVING_CATS[Math.floor(get("motifCount") * NONLIVING_CATS.length) % NONLIVING_CATS.length];
+    }
     // a strewing on a FLAG remaps its category to a compact pick (the
     // star-spangled rule), exactly the way aniconism remaps a living one
     const strewn = composition === "seme"
