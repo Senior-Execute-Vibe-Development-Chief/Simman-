@@ -200,8 +200,8 @@ const STEP = 0.14;        // drift size
  *  the same house, diverging over generations. CADENCY: the heir bears a mark
  *  of difference (label, crescent, mullet, …), and the marks accumulate down a
  *  cadet line; when a branch succeeds AS the house itself, they clear. */
-export function inheritGenome(parent, seed) {
-  const child = mutateGenome(parent, seed, 0.5);
+export function inheritGenome(parent, seed, strength = 0.5) {
+  const child = mutateGenome(parent, seed, strength);
   const headship = prng((seed ^ 0xcadec) >>> 0)() < 0.3;   // the heir takes the house outright
   const n = headship ? 0 : Math.min(CADENCY_MARKS.length, (parent.cadency || 0) + 1);
   if (n) child.cadency = n; else delete child.cadency;
