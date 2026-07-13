@@ -10,8 +10,9 @@
 // under `npm run dev`, which is why every read is typeof-guarded. Declared
 // here so ESLint's no-undef doesn't flag the injected identifier.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner } from "./sim/language.js";
-import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf } from "./sim/language.js";
+import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
+import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
@@ -61,6 +62,154 @@ function sylLabel(l) {
   if (sp.maxOn === 2 || sp.maxCo === 2) return "clustered";
   if (sp.maxCo === 1) return sp.nasalOnlyCodas ? "CV(N) — nasal codas only" : "CV(C)";
   return "strict CV";
+}
+
+// ── the vocalizer: a tiny formant synthesizer over phonetic plans ─────────
+// A sketch of the sound, not a native speaker — but the structure is real:
+// every segment's acoustics derive from the SAME feature bundles the
+// phonology stores, the tone contours are the plan's own melody indices
+// (parity with the written marks by construction), and stress falls where
+// the profile says. Dependency-free Web Audio; playback only — nothing here
+// persists, so the engine stays pure and deterministic.
+let PLANS = [];                                     // per-render plan registry (data-p indices)
+const regPlan = (p) => PLANS.push(p) - 1;
+let AC = null, NOISE = null;
+function ac() {
+  if (!AC) {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const n = AC.sampleRate;
+    NOISE = AC.createBuffer(1, n, AC.sampleRate);   // 1s of noise, reused by every burst
+    const d = NOISE.getChannelData(0);
+    let x = 22222;                                  // seeded LCG — no Math.random anywhere
+    for (let i = 0; i < n; i++) { x = (x * 1664525 + 1013904223) >>> 0; d[i] = (x / 2147483648 - 1) * 0.5; }
+  }
+  if (AC.state === "suspended") AC.resume();
+  return AC;
+}
+const VOWEL_F = (v) => {
+  const F1 = [300, 480, 720][v.h] || 480;
+  let F2 = v.b === 0 ? 2150 - v.h * 150 : v.b === 1 ? 1400 : 950 + v.h * 100;
+  if (v.r) F2 -= v.b === 0 ? 300 : 100; else if (v.b === 2) F2 += 350;
+  return [F1, F2, v.r ? 2500 : 2700];
+};
+const GLIDE_V = { 0: { h: 0, b: 2, r: 1 }, 3: { h: 0, b: 0, r: 0 }, 4: { h: 0, b: 2, r: 0 } };   // w→u, j→i, ɰ→ɯ
+const BURST_F = [700, 4000, 2600, 3300, 1600, 1100, 900, 1400, 3800];    // stop burst centre, by place
+const FRIC_F = [1400, 5200, 3400, 4200, 1900, 1300, 1000, 1100, 1300];   // frication centre, by place
+const NASAL_F2 = [1100, 1450, 1700, 2000, 2300, 1250, 1300, 1300, 1450]; // murmur colour, by place
+const SIB = (p) => p >= 1 && p <= 3;
+const F0 = 118;
+
+function vNoise(ctx, out, t, dur, freq, q, gain) {
+  const src = ctx.createBufferSource(); src.buffer = NOISE; src.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = q;
+  const g = ctx.createGain(); g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + Math.min(0.012, dur / 3));
+  g.gain.setValueAtTime(gain, t + Math.max(dur - 0.02, dur / 2));
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  src.connect(f); f.connect(g); g.connect(out);
+  src.start(t); src.stop(t + dur + 0.02);
+}
+// a voiced resonant segment: sawtooth source through three parallel formant
+// filters; frs may be [from, to] pairs for a diphthong/glide transition
+function vVoiced(ctx, out, t, dur, frs, gains, f0pts, opts = {}) {
+  const osc = ctx.createOscillator(); osc.type = "sawtooth";
+  const n = f0pts.length;
+  f0pts.forEach((k, i) => { const tt = t + (dur * i) / Math.max(1, n - 1); i === 0 ? osc.frequency.setValueAtTime(F0 * k, tt) : osc.frequency.linearRampToValueAtTime(F0 * k, tt); });
+  const seg = ctx.createGain(); seg.gain.setValueAtTime(0, t);
+  const peak = opts.peak ?? 1;
+  seg.gain.linearRampToValueAtTime(peak, t + 0.018);
+  seg.gain.setValueAtTime(peak, t + Math.max(dur - 0.03, dur / 2));
+  seg.gain.linearRampToValueAtTime(0, t + dur);
+  if (opts.trill) {                                  // amplitude flutter for trills
+    const lfo = ctx.createOscillator(); lfo.frequency.value = opts.trill;
+    const lg = ctx.createGain(); lg.gain.value = 0.45;
+    lfo.connect(lg); lg.connect(seg.gain); lfo.start(t); lfo.stop(t + dur);
+  }
+  for (let i = 0; i < 3; i++) {
+    const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 9;
+    const fr = frs[i];
+    if (Array.isArray(fr)) { f.frequency.setValueAtTime(fr[0], t); f.frequency.linearRampToValueAtTime(fr[1], t + dur); }
+    else f.frequency.value = fr;
+    const g = ctx.createGain(); g.gain.value = gains[i];
+    osc.connect(f); f.connect(g); g.connect(seg);
+  }
+  if (opts.nasal) {                                  // nasal murmur branch
+    const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 280; f.Q.value = 4;
+    const g = ctx.createGain(); g.gain.value = 0.5;
+    osc.connect(f); f.connect(g); g.connect(seg);
+  }
+  seg.connect(out);
+  osc.start(t); osc.stop(t + dur + 0.02);
+}
+// one consonant segment; returns its duration. `final` softens codas.
+function consSeg(ctx, out, t, c, f0pts, final) {
+  const p = Math.min(c.p, 8);
+  if (c.m === 1) {                                   // nasal murmur
+    vVoiced(ctx, out, t, 0.085, [250, NASAL_F2[p], 2500], [0.9, 0.16, 0.05], f0pts, { nasal: true, peak: 0.8 });
+    return 0.085;
+  }
+  if (c.m === 2) {                                   // fricative
+    const dur = final ? 0.13 : 0.105;
+    const breathy = p >= 6;
+    vNoise(ctx, out, t, dur, FRIC_F[p], breathy ? 0.35 : SIB(p) ? 3 : 0.7, SIB(p) ? 0.3 : breathy ? 0.13 : 0.17);
+    if (c.l === 1) vVoiced(ctx, out, t, dur, [300, FRIC_F[p] * 0.5, 2500], [0.5, 0.15, 0.04], f0pts, { peak: 0.5 });
+    return dur;
+  }
+  if (c.m === 4) {                                   // lateral
+    vVoiced(ctx, out, t, 0.075, [360, 1150, 2600], [0.85, 0.3, 0.1], f0pts, { peak: 0.85 });
+    return 0.075;
+  }
+  if (c.m === 5) {                                   // rhotic: trill/flap by place
+    if (p === 2) { vVoiced(ctx, out, t, 0.04, [420, 1500, 1900], [0.8, 0.3, 0.12], f0pts, { peak: 0.7 }); return 0.04; }
+    vVoiced(ctx, out, t, 0.09, [420, p === 5 ? 1100 : 1300, p === 5 ? 1900 : 2000], [0.85, 0.3, 0.12], f0pts, { trill: p === 5 ? 30 : 26 });
+    return 0.09;
+  }
+  if (c.m === 6) {                                   // glide: its vowel colour
+    const gv = GLIDE_V[p] || GLIDE_V[3];
+    vVoiced(ctx, out, t, 0.06, p === 1 ? [430, 1300, 1650] : VOWEL_F(gv), [0.8, 0.45, 0.15], f0pts, { peak: 0.8 });
+    return 0.06;
+  }
+  // stops & affricates: closure → burst (→ frication tail / aspiration)
+  let dt = 0;
+  const closure = c.m === 3 ? 0.03 : 0.045;
+  if (c.l === 4) { vVoiced(ctx, out, t, 0.055, [250, NASAL_F2[p], 2500], [0.9, 0.16, 0.05], f0pts, { nasal: true, peak: 0.7 }); dt += 0.055; }   // prenasalized
+  if (c.l === 1) vVoiced(ctx, out, t + dt, closure, [130, 300, 2500], [0.5, 0.08, 0], [1, 0.95], { peak: 0.35 });   // voice bar
+  dt += closure;
+  if (c.p !== 7) vNoise(ctx, out, t + dt, 0.018, BURST_F[p], 1.2, c.l === 3 ? 0.5 : final ? 0.18 : 0.32);   // burst (glottal stop = silence)
+  dt += 0.02;
+  if (c.m === 3) { vNoise(ctx, out, t + dt, 0.07, FRIC_F[p], SIB(p) ? 3 : 0.8, SIB(p) ? 0.26 : 0.15); dt += 0.07; }   // affricate tail
+  if (c.l === 2) { vNoise(ctx, out, t + dt, 0.055, 1600, 0.4, 0.16); dt += 0.055; }   // aspiration
+  if (c.l === 3) dt += 0.04;                          // ejective: a beat of silence
+  return dt;
+}
+function speakPlan(plan) {
+  const ctx = ac();
+  let t = ctx.currentTime + 0.06;
+  const master = ctx.createGain(); master.gain.value = 0.24;
+  const soften = ctx.createBiquadFilter(); soften.type = "lowpass"; soften.frequency.value = 6800;
+  master.connect(soften); soften.connect(ctx.destination);
+  const nSyl = plan.syls.length;
+  plan.syls.forEach((syl, i) => {
+    // pitch: the syllable's own tone melody, or stress + declination
+    const f0pts = plan.tone > 0 && syl.tone != null ? TONE_SHAPES[syl.tone]
+      : (() => { const k = 1 + (i === plan.stress ? 0.13 : 0) - 0.1 * (i / Math.max(1, nSyl)); return [k, k * 0.96]; })();
+    const secondary = (c, after) => {                 // ʲ/ʷ: a short on-glide after the consonant
+      if (!c.s) return 0;
+      const gv = c.s === 1 ? GLIDE_V[3] : GLIDE_V[0];
+      vVoiced(ctx, master, after, 0.035, VOWEL_F(gv), [0.7, 0.4, 0.12], f0pts, { peak: 0.6 });
+      return 0.035;
+    };
+    for (const c of syl.on) { const d = consSeg(ctx, master, t, c, f0pts, false); t += d + secondary(c, t + d) + 0.004; }
+    if (syl.nu.length) {                              // nucleus (diphthongs glide)
+      let dur = (i === plan.stress ? 0.19 : 0.15) * (syl.nu[0].lg ? 1.5 : 1) * (i === nSyl - 1 ? 1.12 : 1);
+      const A = VOWEL_F(syl.nu[0]), B = syl.nu.length > 1 ? VOWEL_F(syl.nu[1]) : null;
+      const frs = B ? A.map((f, k) => [f, B[k]]) : A;
+      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], f0pts, { nasal: !!syl.nu[0].n });
+      t += dur + 0.004;
+    }
+    for (const c of syl.co) { const d = consSeg(ctx, master, t, c, f0pts, true); t += d + 0.004; }
+    t += 0.015;                                       // syllable seam
+  });
 }
 
 const MORPH = { iso: "isolating", agg: "agglutinative", fus: "fusional", tmpl: "templatic (root-and-pattern)" };
@@ -118,6 +267,47 @@ function namesHTML(l) {
     <h3>Houses &amp; realms</h3>
     <p><span class="lbl">dynasties</span> ${dyn.map(n => `<span class="w">${esc(n)}</span>`).join(", ")}
        <span class="lbl ind">realms</span> ${realms.map(n => `<span class="w">${esc(n)}</span>`).join(", ")}</p>`;
+}
+
+// ── the Sound card: IPA + the vocalizer (phonemes and words you can hear) ─
+function soundHTML(l) {
+  const inv = displayInv(l);
+  const prof = l.prof;
+  const demoV = inv.vows.find(v => v.h === 2 && !v.n && !v.lg) || inv.vows[0];
+  const seenC = new Set();
+  const cChips = inv.cons.map(b => {
+    const sym = ipaC(b);
+    if (seenC.has(sym)) return "";
+    seenC.add(sym);
+    const idx = regPlan(phoneticPlan(l, { syls: [{ on: [{ ...b }], nu: [{ ...demoV }], co: [] }], tseed: 0 }));
+    return `<button class="cell spk" data-p="${idx}" title="hear it"><span class="w">${esc(romanizeC(b, prof.romTaste, prof.rom, prof.orthoStyle))}</span> <span class="gloss">${esc(sym)}</span></button>`;
+  }).filter(Boolean).join(" ");
+  const seenV = new Set();
+  const vChips = inv.vows.map(v => {
+    const sym = ipaV(v);
+    if (seenV.has(sym)) return "";
+    seenV.add(sym);
+    const idx = regPlan(phoneticPlan(l, { syls: [{ on: [], nu: [{ ...v }], co: [] }], tseed: 0 }));
+    return `<button class="cell spk" data-p="${idx}" title="hear it"><span class="w">${esc(romanizeV(v, prof.rom))}</span> <span class="gloss">${esc(sym)}</span></button>`;
+  }).filter(Boolean).join(" ");
+  const loanSet = new Set((l.loans || []).map(x => x.c));
+  const rows = [];
+  const addRow = (label, surface, form) => rows.push(`<tr><td class="lbl">${esc(label)}</td><td class="w">${esc(surface)}</td><td class="gloss ipa">[${esc(ipaOf(l, form))}]</td><td><button class="spk play" data-p="${regPlan(phoneticPlan(l, form))}" title="speak">▶</button></td></tr>`);
+  addRow("the language", langWord(l, 0), langWordForm(l, 0));
+  for (const cid of [STONE, KING, RIVER, MOTHER, HAND, WOLF, HORSE, MOUNTAIN]) {
+    if (loanSet.has(cid)) continue;                   // a loan's surface has no native plan
+    const form = nativeStemOf(l, cid);
+    addRow(glossOf(cid), renderWord(form, prof), form);
+  }
+  return `<section class="card"><h2>Sound <span class="count">— IPA &amp; a rough voice</span></h2>
+    <p class="note">The same feature bundles the phonology stores, rendered two more ways: IPA for the linguist, and a small formant synthesizer for the ear — a sketch of the sound, not a native speaker, but the clusters, codas, vowel qualities and ${prof.tone ? "tone melodies (matching the written marks exactly)" : "stress placement"} are the real ones. Click a phoneme to hear it; ▶ speaks a word. Spelling and speech may honestly disagree — the romanization drops what convention drops (initial glottal stops, collapsed digraphs); the IPA keeps it.</p>
+    <h3>Phonemes</h3>
+    <p class="cells">${cChips}</p>
+    <p class="cells">${vChips}</p>
+    <h3>Hear the words</h3>
+    <div class="scroll"><table><thead><tr><th>meaning</th><th>word</th><th>IPA</th><th></th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
+    <p class="note">Every native entry in the dictionary below is speakable too — click its word. Whole sentences are parked: the clause renderer hands back strings, not forms, and the vocalizer refuses to guess.</p>
+  </section>`;
 }
 
 // ── the grammar card: syntax dials, closed classes, counting ─────────────
@@ -484,8 +674,13 @@ const COGNATE_SET = (() => {
 function cognatesHTML() {
   if (lineage.length < 2 && !donor) return "";
   const cols = [...lineage];
+  // cognate cells are speakable — HEAR the regular correspondence, not just
+  // read it (loans shadow the native form and stay silent)
   let rows = COGNATE_SET.map(cid =>
-    `<tr><td class="lbl">${esc(glossOf(cid))}</td>${cols.map(l => `<td class="w">${esc(wordOf(l, cid))}</td>`).join("")}</tr>`).join("");
+    `<tr><td class="lbl">${esc(glossOf(cid))}</td>${cols.map(l => {
+      if ((l.loans || []).some(x => x.c === cid)) return `<td class="w">${esc(wordOf(l, cid))}</td>`;
+      return `<td class="w spkw" data-p="${regPlan(phoneticPlan(l, nativeStemOf(l, cid)))}" title="click to hear">${esc(wordOf(l, cid))}</td>`;
+    }).join("")}</tr>`).join("");
   // M5: cognate CONJUGATIONS — the same paradigm cell down the family,
   // built from shared sources at shared birth points, diverged by sound law
   const cellTok = (x) => [...x.pre.map(t => t.w), x.text, ...x.post.map(t => t.w)].join(" ");
@@ -549,7 +744,7 @@ function dictionaryHTML(l) {
   const byWord = new Map();
   // numeral concepts show their COUNTING form (base-5 'six' is 'five-one',
   // not a separate root) so the dictionary agrees with the Grammar card
-  const rows = CONCEPTS.map((c, cid) => ({ cid, g: c.g, d: c.d, w: numeralConceptWord(l, cid) || wordOf(l, cid) }));
+  const rows = CONCEPTS.map((c, cid) => { const numW = numeralConceptWord(l, cid); return { cid, g: c.g, d: c.d, w: numW || wordOf(l, cid), num: !!numW }; });
   for (const r of rows) byWord.set(r.w, (byWord.get(r.w) || 0) + 1);
   const loanSet = new Set((l.loans || []).map(x => x.c));
   // words that two concepts share ON PURPOSE (colexification, tree=wood) vs by
@@ -565,16 +760,24 @@ function dictionaryHTML(l) {
       if (byWord.get(r.w) > 1) notes.push(colexWords.has(r.w) ? "shared word" : "homophone");
       const ety = etymologyOf(l, r.cid);
       const from = ety ? `‹ ‘${esc(ety.gloss)}’` : "";
-      return `<tr><td>${esc(r.g)}</td><td class="w">${esc(r.w)}</td><td class="gloss">${from}</td><td class="lbl">${esc(r.d)}</td><td class="gloss">${notes.join(" · ")}</td></tr>`;
+      // native entries speak (a loan surface and a compound counting form
+      // have no single internal form — those stay silent)
+      const speakable = !loanSet.has(r.cid) && !r.num;
+      const form = speakable ? nativeStemOf(l, r.cid) : null;
+      const wCell = form
+        ? `<td class="w spkw" data-p="${regPlan(phoneticPlan(l, form))}" title="click to hear">${esc(r.w)}</td>`
+        : `<td class="w">${esc(r.w)}</td>`;
+      return `<tr><td>${esc(r.g)}</td>${wCell}<td class="gloss ipa">${form ? esc("[" + ipaOf(l, form) + "]") : ""}</td><td class="gloss">${from}</td><td class="lbl">${esc(r.d)}</td><td class="gloss">${notes.join(" · ")}</td></tr>`;
     }).join("");
   return `<section class="card"><h2>Dictionary <span class="count">(${rows.length} concepts, virtual)</span></h2>
-    <p class="note">Every entry is computed on demand from the language's seed and history — nothing is stored. The <span class="gloss">‹ etymology</span> column shows words this family built from other concepts (ford ‹ ‘water river’, king ‹ ‘great man’). “Shared word” = two concepts this family colexifies on purpose (one word for tree&nbsp;and&nbsp;wood); “homophone” = an accidental sound-alike; “loan” = a word taken from a contact language, shadowing the native form.</p>
+    <p class="note">Every entry is computed on demand from the language's seed and history — nothing is stored. The <span class="gloss">‹ etymology</span> column shows words this family built from other concepts (ford ‹ ‘water river’, king ‹ ‘great man’). “Shared word” = two concepts this family colexifies on purpose (one word for tree&nbsp;and&nbsp;wood); “homophone” = an accidental sound-alike; “loan” = a word taken from a contact language, shadowing the native form. Click a word to hear it.</p>
     <input id="dictSearch" type="search" placeholder="Search meaning or word…" value="${esc(S.search)}" />
-    <div class="scroll tall"><table><thead><tr><th>meaning</th><th>word</th><th>etymology</th><th>domain</th><th>notes</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
+    <div class="scroll tall"><table><thead><tr><th>meaning</th><th>word</th><th>IPA</th><th>etymology</th><th>domain</th><th>notes</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
 }
 
 function render() {
   const l = active();
+  PLANS = [];                                        // plans are per-render; data-p indices point here
   document.getElementById("app").innerHTML = `
   <header>
     <h1>Simman <em>Language Lab</em></h1>
@@ -602,6 +805,7 @@ function render() {
     ${namesHTML(l)}
     ${loansHTML(l)}
   </section>
+  ${soundHTML(l)}
   ${grammarHTML(l)}
   ${verbFrontierHTML(l)}
   ${nounFrontierHTML(l)}
@@ -710,6 +914,12 @@ button{font:inherit;font-size:.9rem;background:var(--accent);color:var(--accent-
   border:none;border-radius:4px;padding:.42rem .9rem;cursor:pointer}
 button:hover{filter:brightness(1.08)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.spk{background:var(--chipbg);color:var(--ink);border:1px solid var(--line);padding:.08rem .45rem;font-size:.85rem;cursor:pointer}
+button.spk:hover{filter:none;border-color:var(--accent);color:var(--accent)}
+button.spk.play{border-radius:999px;line-height:1.2;font-size:.72rem;color:var(--accent)}
+td.spkw{cursor:pointer}
+td.spkw:hover{color:var(--accent)}
+.ipa{font-size:.78rem;white-space:nowrap;font-style:normal}
 .slider input{accent-color:var(--accent)}
 .note{color:var(--muted);font-size:.85rem;margin:.1rem 0 .6rem;max-width:46rem}
 .scroll{overflow-x:auto}
@@ -732,6 +942,13 @@ export function mount() {
     div.id = "app";
     document.body.appendChild(div);
   }
+  // one delegated listener survives every re-render: anything carrying a
+  // data-p index speaks its registered phonetic plan (a click is the user
+  // gesture the AudioContext needs)
+  document.getElementById("app").addEventListener("click", (e) => {
+    const el = e.target.closest("[data-p]");
+    if (el) { const p = PLANS[+el.dataset.p]; if (p) speakPlan(p); }
+  });
   reset();
   render();
 }

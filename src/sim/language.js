@@ -621,13 +621,19 @@ function minimalNameRepair(lang, rng, w) {
 
 // ── the public name API (signatures unchanged from v1) ────────────────────
 
-/** A generic word of the tongue (faith names, culture endonyms). */
-export function langWord(lang, n) {
+/** The INTERNAL form langWord renders (deep copy) — the vocalizer/IPA layer
+ *  reads this so speech and spelling come from one build; langWord itself
+ *  routes through here, so the two can never drift apart. */
+export function langWordForm(lang, n) {
   ensureV2(lang);
   const c = compile(lang);
   const rng = mkRng(hash32(lang.seed, "w", lang.gen, n));
-  const w = minimalNameRepair(lang, rng, applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, true))));
-  return cap(renderWord(w, lang.prof));
+  return minimalNameRepair(lang, rng, applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, true))));
+}
+
+/** A generic word of the tongue (faith names, culture endonyms). */
+export function langWord(lang, n) {
+  return cap(renderWord(langWordForm(lang, n), lang.prof));
 }
 
 /** Settlement name + gloss: usually a meaningful compound ("black ford"),

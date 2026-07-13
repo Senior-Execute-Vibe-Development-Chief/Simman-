@@ -747,3 +747,39 @@ orthography romanizer (the "cursed English" king='sleep' finding — a display
 politeness that would re-baseline every pinned-English surface; revisit
 beside orthographic lag); grammar-word/content homophony beyond the
 interrogative series; L5 writing systems + orthographic lag, unchanged.
+
+## Build status (session 15, second phase) — the vocalizer
+
+The user opted into the parked "vocalizer" thread (IPA + a voice), eyes
+open about formant synthesis being a sketch. Shipped Lab-side; the sim
+stays silent; probe 284 → **292** checks (§24).
+
+- **`src/sim/languagePhonetics.js`** (new, pure): `ipaC`/`ipaV` render the
+  stored feature bundles to IPA — total, and injective over every
+  inventory the generator or its sound laws can mint (the intervocalic
+  voicing law's "voiced glottal stop" wears an honest ʔ̬). `phoneticPlan`
+  emits per-syllable segments + stress + the tone-melody index, and
+  `ipaOf` prints [ˈsaŋ.gʷa] / [ɕi˨˩˦.san˥]-style transcriptions.
+- **DISPLAY PARITY is the load-bearing property:** the plan rebuilds the
+  exact pre-tone romanized syllable renderWord hashes for its mark
+  (`hash32(rsyl, i, tseed) % 4`), so the contour you hear and the tone
+  letters ipaOf prints can never disagree with the ā/á/ǎ/à the page shows
+  (gated on marked monosyllables). Stress is the profile dial the
+  spelling never writes — audible here, exactly as in life.
+- **`langWordForm`** (language.js): the internal form langWord renders,
+  exported so speech and spelling come from one build; langWord routes
+  through it (parity gated).
+- **The Lab's "Sound" card**: every phoneme as a romanized/IPA pair,
+  clickable to hear; sample words + the endonym with transcriptions and
+  ▶; every native dictionary entry and every cognate-table cell is
+  click-to-speak (loans and compound counting forms stay silent — no
+  internal form, no guessing). The synthesizer is ~150 lines of
+  dependency-free Web Audio: formant filters over a sawtooth for
+  sonorants (diphthongs glide, nasals carry a murmur branch), place-keyed
+  noise bursts/frication for obstruents (aspiration, ejective beats,
+  prenasal murmurs, trill flutter, ʲ/ʷ on-glides), tone contours from the
+  plan's own melody indices, declination + stress otherwise. A sketch of
+  the sound, not a native speaker — sold as exactly that in the card copy.
+- **Parked:** sentence audio (renderClause hands back strings, not forms —
+  the vocalizer refuses to guess; a future additive `forms` field on
+  clause tokens would unlock it), and any use of audio by the sim.

@@ -11,9 +11,10 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf } from "../src/sim/language.js";
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
-import { rollProfile, buildInventory } from "../src/sim/languagePhonology.js";
+import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
+import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
@@ -1996,6 +1997,89 @@ console.log("\n── §23 functional load (review-loop) ──");
     const bad = ws.filter(w => !PINYIN2.test(stripT(w.toLowerCase())));
     check(`the shape famSeed keeps the pinned phonology (Mandarin legal pinyin: ${bad[0] || "0 illegal"})`, bad.length === 0);
   }
+}
+
+// ── §24 the vocalizer layer: IPA + phonetic plans ─────────────────────────
+// Pure second renderings of the SAME feature bundles the phonology stores.
+// The load-bearing property is DISPLAY PARITY: the plan's per-syllable tone
+// melody is the exact index renderWord hashes for its written mark, so what
+// the Lab speaks can never disagree with what it prints.
+console.log("\n── §24 vocalizer (IPA + phonetic plans) ──");
+{
+  const world = mkWorld();
+  // (a) IPA is total + injective over every observed inventory
+  let collide = 0, empty = 0, nB = 0;
+  for (let i = 0; i < 200; i++) {
+    const l = foundLanguage(world, { seed: 760000 + i * 137 });
+    for (let d = 0; d < i % 3; d++) driftLanguage(world, l);
+    const sp = synchronicPhonology(l);
+    const seen = new Set();
+    for (const b of sp.cons) { const s = ipaC(b); nB++; if (!s) empty++; if (seen.has(s)) collide++; seen.add(s); }
+    const seenV = new Set();
+    for (const v of sp.vows) { const s = ipaV(v); nB++; if (!s) empty++; if (seenV.has(s)) collide++; seenV.add(s); }
+  }
+  check(`IPA total + injective over observed inventories (${nB} bundles, ${collide} collisions, ${empty} empty)`, collide === 0 && empty === 0);
+
+  // (b) transcriptions well-formed: syllable-count parity, tone letters
+  // exactly on tonal languages, nothing malformed
+  let sylBad = 0, undef = 0, toneBad = 0, tChecked = 0;
+  for (let i = 0; i < 120; i++) {
+    const l = foundLanguage(world, { seed: 770000 + i * 211 });
+    for (const cid of [STONE, KING, RIVER]) {
+      const form = nativeStemOf(l, cid);
+      const ipa = ipaOf(l, form);
+      tChecked++;
+      if (!ipa.length || ipa.includes("undefined")) undef++;
+      if (ipa.split(".").length !== form.syls.length) sylBad++;
+      if (/[˥˧˨˩]/.test(ipa) !== l.prof.tone > 0) toneBad++;
+    }
+  }
+  check(`transcriptions well-formed (${tChecked}: ${sylBad} syllable-count mismatches, ${undef} malformed)`, sylBad === 0 && undef === 0);
+  check(`tone letters appear exactly on tonal languages (${toneBad} bad)`, toneBad === 0);
+
+  // (c) TONE PARITY — the plan's melody index == the mark renderWord writes
+  // (checked on marked monosyllables, where the romanization's surface
+  // cleanup can never have moved or eaten a mark)
+  const MARK2IDX = { "̄": 0, "́": 1, "̌": 2, "̀": 3 };   // ā á ǎ à
+  let parityChecked = 0, parityBad = 0;
+  for (let i = 0; i < 400 && parityChecked < 60; i++) {
+    const l = foundLanguage(world, { seed: 780000 + i * 97 });
+    if (!(l.prof.tone > 0 && l.prof.toneMarks)) continue;
+    let got = 0;
+    for (let cid = 0; cid < CONCEPTS.length && got < 3; cid++) {
+      const form = nativeStemOf(l, cid);
+      if (form.syls.length !== 1) continue;
+      const marks = [...renderWord(form, l.prof).normalize("NFD")].filter(ch => MARK2IDX[ch] !== undefined).map(ch => MARK2IDX[ch]);
+      if (marks.length !== 1) continue;
+      got++; parityChecked++;
+      if (marks[0] !== phoneticPlan(l, form).syls[0].tone) parityBad++;
+    }
+  }
+  check(`tone parity: the plan's melody == the written mark (${parityChecked} syllables, ${parityBad} mismatches)`, parityChecked >= 30 && parityBad === 0);
+
+  // (d) langWordForm is the exact form langWord renders — the two can't drift
+  let wfBad = 0;
+  for (let i = 0; i < 60; i++) {
+    const l = foundLanguage(world, { seed: 790000 + i * 61 });
+    for (let k = 0; k < 3; k++) {
+      const r = renderWord(langWordForm(l, k), l.prof);
+      if (langWord(l, k) !== r.charAt(0).toUpperCase() + r.slice(1)) wfBad++;
+    }
+  }
+  check(`langWordForm parity with langWord (${wfBad} drift)`, wfBad === 0);
+
+  // (e) pinned Mandarin: a tone letter on every syllable; the retroflex and
+  // palatal series wear their IPA (ʂ, ɕ)
+  const mV = pinnedMandarin(mkWorld(), 111);
+  const mAll = [STONE, KING, RIVER, MOTHER].map(cid => ipaOf(mV, nativeStemOf(mV, cid)));
+  check(`pinned Mandarin IPA carries a tone letter on every syllable (${mAll[2]})`, mAll.every(s => s.split(".").every(x => /[˥˧˨˩]/.test(x))));
+  const mSp = synchronicPhonology(mV);
+  check("pinned Mandarin retroflex/palatal series render ʂ/ɕ", mSp.cons.some(b => ipaC(b) === "ʂ") && mSp.cons.some(b => ipaC(b) === "ɕ"));
+
+  // (f) determinism + JSON roundtrip
+  const d1 = foundLanguage(mkWorld(), { seed: 795001 });
+  const dsig = (l) => [STONE, KING].map(cid => ipaOf(l, nativeStemOf(l, cid))).join("|") + JSON.stringify(phoneticPlan(l, nativeStemOf(l, STONE)));
+  check("IPA + phonetic plans deterministic + JSON-roundtrip-stable", dsig(d1) === dsig(JSON.parse(JSON.stringify(d1))));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────
