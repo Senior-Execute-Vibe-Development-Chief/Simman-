@@ -13,7 +13,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
-import { scriptOf, glyphInventory, writeWord, silentLetterSample, numeralGlyphs, SCRIPT_NAME, HAND_NAME } from "./sim/languageScript.js";
+import { scriptOf, glyphInventory, writeWord, writeForm, silentLetterSample, numeralGlyphs, SCRIPT_NAME, HAND_NAME } from "./sim/languageScript.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
@@ -73,7 +73,9 @@ function sylLabel(l) {
 // the profile says. Dependency-free Web Audio; playback only — nothing here
 // persists, so the engine stays pure and deterministic.
 let PLANS = [];                                     // per-render plan registry (data-p indices)
+let CLAUSES = [];                                   // per-render clause registry (data-cp indices)
 const regPlan = (p) => PLANS.push(p) - 1;
+const regClause = (plans, contour) => CLAUSES.push({ plans, contour }) - 1;
 let AC = null, NOISE = null;
 function ac() {
   if (!AC) {
@@ -183,17 +185,19 @@ function consSeg(ctx, out, t, c, f0pts, final) {
   if (c.l === 3) dt += 0.04;                          // ejective: a beat of silence
   return dt;
 }
-function speakPlan(plan) {
-  const ctx = ac();
-  let t = ctx.currentTime + 0.06;
-  const master = ctx.createGain(); master.gain.value = 0.24;
-  const soften = ctx.createBiquadFilter(); soften.type = "lowpass"; soften.frequency.value = 6800;
-  master.connect(soften); soften.connect(ctx.destination);
+// schedule one word's plan at time t; `mod` carries the clause prosody —
+// a declination scale and, on the clause's last word, a boundary tone
+// (statements FALL, questions RISE — the near-universal pair)
+function scheduleWord(ctx, master, plan, t, mod = {}) {
+  const scale = mod.scale || 1;
   const nSyl = plan.syls.length;
   plan.syls.forEach((syl, i) => {
     // pitch: the syllable's own tone melody, or stress + declination
-    const f0pts = plan.tone > 0 && syl.tone != null ? TONE_SHAPES[syl.tone]
-      : (() => { const k = 1 + (i === plan.stress ? 0.13 : 0) - 0.1 * (i / Math.max(1, nSyl)); return [k, k * 0.96]; })();
+    let f0pts = plan.tone > 0 && syl.tone != null ? TONE_SHAPES[syl.tone].map(k => k * scale)
+      : (() => { const k = (1 + (i === plan.stress ? 0.13 : 0) - 0.1 * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
+    if (mod.boundary && i === nSyl - 1) {
+      f0pts = mod.boundary === "rise" ? [...f0pts, f0pts[f0pts.length - 1] * 1.35] : [...f0pts, f0pts[f0pts.length - 1] * 0.72];
+    }
     const secondary = (c, after) => {                 // ʲ/ʷ: a short on-glide after the consonant
       if (!c.s) return 0;
       const gv = c.s === 1 ? GLIDE_V[3] : GLIDE_V[0];
@@ -210,6 +214,32 @@ function speakPlan(plan) {
     }
     for (const c of syl.co) { const d = consSeg(ctx, master, t, c, f0pts, true); t += d + 0.004; }
     t += 0.015;                                       // syllable seam
+  });
+  return t;
+}
+function mkMaster(ctx) {
+  const master = ctx.createGain(); master.gain.value = 0.24;
+  const soften = ctx.createBiquadFilter(); soften.type = "lowpass"; soften.frequency.value = 6800;
+  master.connect(soften); soften.connect(ctx.destination);
+  return master;
+}
+function speakPlan(plan) {
+  const ctx = ac();
+  scheduleWord(ctx, mkMaster(ctx), plan, ctx.currentTime + 0.06);
+}
+// a whole clause: word plans in sequence under one intonation phrase —
+// pitch declines across the clause and the final word carries the
+// boundary tone (fall for statements/commands, rise for questions)
+function speakClause(plans, contour = "fall") {
+  const ctx = ac();
+  const master = mkMaster(ctx);
+  let t = ctx.currentTime + 0.06;
+  const N = plans.length;
+  plans.forEach((p, i) => {
+    t = scheduleWord(ctx, master, p, t, {
+      scale: 1.05 - 0.12 * (i / Math.max(1, N - 1)),
+      boundary: i === N - 1 ? contour : null,
+    }) + 0.08;                                        // inter-word gap
   });
 }
 
@@ -743,8 +773,11 @@ function englishOf(frame, l) {
 }
 
 function interHTML(clause) {
-  return `<div class="inter">${clause.tokens.map(t =>
-    `<span class="tok"><span class="w">${esc(t.w)}</span><span class="tg">${esc(t.g)}</span></span>`).join("")}</div>`;
+  const l = active();
+  return `<div class="inter">${clause.tokens.map(t => {
+    const idx = t.f ? regPlan(phoneticPlan(l, t.f)) : -1;
+    return `<span class="tok${t.f ? " spkt" : ""}"${t.f ? ` data-p="${idx}" title="click to hear"` : ""}><span class="w">${esc(t.w)}</span><span class="tg">${esc(t.g)}</span></span>`;
+  }).join("")}</div>`;
 }
 
 function sentenceHTML(l) {
@@ -781,8 +814,23 @@ function sentenceHTML(l) {
       <label><input type="checkbox" id="sentNeg"${st.neg ? " checked" : ""}/> ${imp ? "prohibitive (don't!)" : "negated"}</label>
       <label${imp ? ' class="off"' : ""}><input type="checkbox" id="sentQ"${st.q && !imp ? " checked" : ""}/> question</label>
     </div>
-    <p class="ensent">“${esc(englishOf(frame, l))}”</p>
+    <p class="ensent">“${esc(englishOf(frame, l))}”${(() => {
+      // the whole clause, spoken: one intonation phrase — statements and
+      // commands FALL, questions RISE (the near-universal boundary tones)
+      if (!clause.tokens.every(t => t.f)) return "";
+      const contour = frame.q || (frame.o && frame.o.wh) ? "rise" : "fall";
+      return ` <button class="spk play" data-cp="${regClause(clause.tokens.map(t => phoneticPlan(l, t.f)), contour)}" title="speak the sentence">▶</button>`;
+    })()}</p>
     ${interHTML(clause)}
+    ${(() => {
+      // …and written, in the language's own script (its separation habit,
+      // its direction; spelled by ear — the frozen spellings live above)
+      const sc = scriptOf(l);
+      if (!sc || !clause.tokens.every(t => t.f)) return "";
+      const words = clause.tokens.map(t => `<span class="glyphword${sc.dir === "rtl" ? " rtl" : sc.dir === "ttb" ? " ttb" : ""}${sc.headline || sc.join ? " tight" : ""}">${(writeForm(l, t.f, t.c ?? null) || []).map(g => glyphSVG(g, 20, { hand: sc.hand, headline: sc.headline, join: sc.join })).join("")}</span>`);
+      const sep = sc.sep === "space" ? `<span class="wsep"></span>` : sc.sep === "dot" ? `<span class="wsep dot">·</span>` : "";
+      return `<p class="cells glyphline${sc.dir === "ttb" ? " ttb" : ""}">${words.join(sep)} <span class="gloss">— in its own hand${sc.sep === "continua" ? ", run together" : ""}</span></p>`;
+    })()}
     <h3>More of the tongue</h3>
     ${canned.map(f => `<p class="ensent dim">“${esc(englishOf(f, l))}”</p>` + interHTML(renderClause(l, f))).join("")}
   </section>`;
@@ -899,7 +947,7 @@ function dictionaryHTML(l) {
 
 function render() {
   const l = active();
-  PLANS = [];                                        // plans are per-render; data-p indices point here
+  PLANS = []; CLAUSES = [];                          // registries are per-render; data-p/-cp indices point here
   document.getElementById("app").innerHTML = `
   <header>
     <h1>Simman <em>Language Lab</em></h1>
@@ -1026,6 +1074,8 @@ td.irr{color:var(--gloss)}
 .tok{display:inline-flex;flex-direction:column;align-items:flex-start}
 .tok .w{font-size:1.02em}
 .tok .tg{font-size:.68rem;color:var(--gloss);letter-spacing:.02em;margin-top:.05rem}
+.tok.spkt{cursor:pointer}
+.tok.spkt:hover .w{color:var(--accent)}
 .controls{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center}
 .controls label{display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--muted)}
 .controls .divider{flex-basis:100%;height:0}
@@ -1080,6 +1130,8 @@ export function mount() {
   // data-p index speaks its registered phonetic plan (a click is the user
   // gesture the AudioContext needs)
   document.getElementById("app").addEventListener("click", (e) => {
+    const cp = e.target.closest("[data-cp]");
+    if (cp) { const c = CLAUSES[+cp.dataset.cp]; if (c) speakClause(c.plans, c.contour); return; }
     const el = e.target.closest("[data-p]");
     if (el) { const p = PLANS[+el.dataset.p]; if (p) speakPlan(p); }
   });

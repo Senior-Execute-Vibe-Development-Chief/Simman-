@@ -15,7 +15,7 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
-import { scriptOf, writeWord, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs } from "../src/sim/languageScript.js";
+import { scriptOf, writeWord, writeForm, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs } from "../src/sim/languageScript.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
@@ -2256,6 +2256,75 @@ console.log("\n── §25 writing systems ──");
   for (let d = 0; d < 6; d++) driftLanguage(wD, d1);
   const ssig = (l) => JSON.stringify([scriptOf(l), writeWord(l, STONE), writtenWordOf(l, RIVER)]);
   check("scripts deterministic + JSON-roundtrip-stable", ssig(d1) === ssig(JSON.parse(JSON.stringify(d1))));
+}
+
+// ── §26 the full clause: token forms for the voice and script layers ──────
+// renderClause tokens now carry `f` (the internal form) and `c` (the concept
+// id where known) so a whole sentence can be SPOKEN and WRITTEN. Non-seam
+// tokens must render byte-parity with their own text (modulo tone marks the
+// particle convention strips); string-assembled cells (reduplication,
+// concord prefixes, voice/inverse/enclitic welds) are flagged `seam` and
+// their mirrored forms speak the uncollapsed truth.
+console.log("\n── §26 the full clause (token forms) ──");
+{
+  const world = mkWorld();
+  const stripT3 = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "").normalize("NFC");
+  const FRAMES = [
+    { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } },
+    { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: GO, tam: "pst", neg: true } },
+    { s: { n: WOLF, def: true, adj: BLACK }, v: { c: SLEEP, tam: null }, loc: { adp: "in", n: TOWN, def: true }, q: true },
+    { v: { c: TAKE, mood: "imp", neg: true }, o: { n: HORSE, def: true } },
+  ];
+  let toks = 0, missing = 0, parityBad = 0, seamToks = 0;
+  const badEx = [];
+  for (let i = 0; i < 120; i++) {
+    const l = foundLanguage(world, { seed: 880000 + i * 191 });
+    for (const fr of FRAMES) {
+      const c = renderClause(l, JSON.parse(JSON.stringify(fr)));
+      for (const t of c.tokens) {
+        toks++;
+        if (!t.f) { missing++; if (badEx.length < 4) badEx.push("no-f:" + l.seed + ":" + t.g); continue; }
+        if (t.seam) { seamToks++; continue; }
+        // particles render neutral-tone (the 吗/了 convention), and a tone
+        // mark can block an orthographic substitution — accept either dress
+        const plain = stripT3(renderWord(t.f, l.prof));
+        const neutral = stripT3(renderWord(t.f, l.prof.tone ? { ...l.prof, toneMarks: false } : l.prof));
+        if (plain !== stripT3(t.w) && neutral !== stripT3(t.w)) { parityBad++; if (badEx.length < 4) badEx.push(l.seed + ": '" + t.w + "' vs '" + renderWord(t.f, l.prof) + "' (" + t.g + ")"); }
+      }
+    }
+  }
+  check(`every clause token carries a form (${missing}/${toks} missing${badEx.length ? " — " + badEx[0] : ""})`, missing === 0);
+  check(`non-seam token forms render byte-parity with their text (${parityBad} bad${badEx.length ? " — " + badEx.join("; ") : ""})`, parityBad === 0);
+  check(`seam cells are the minority (${seamToks}/${toks})`, seamToks < toks * 0.4);
+  // spoken: a plan per token; written: glyphs per token in a literate lang,
+  // and a logography gives its cid-less grammar words DISTINCT own signs
+  let planBad = 0, writBad = 0, gramSigns = false;
+  const w7 = mkWorld();
+  for (let i = 0; i < 40; i++) {
+    const l = foundLanguage(w7, { seed: 890000 + i * 223 });
+    for (let d = 0; d < 8; d++) driftLanguage(w7, l);
+    const c = renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } });
+    for (const t of c.tokens) {
+      if (!t.f) continue;
+      const plan = phoneticPlan(l, t.f);
+      if (!plan.syls.length) planBad++;
+      const sc = scriptOf(l);
+      if (sc) { const gl = writeForm(l, t.f, t.c ?? null); if (!gl || !gl.length) writBad++; }
+    }
+    const sc = scriptOf(l);
+    if (sc && sc.type === "logo" && !gramSigns) {
+      const cl2 = closedOf(l);
+      const a = writeForm(l, cl2.neg.form, null), b = writeForm(l, cl2.qs[0].form, null);
+      if (a && b && JSON.stringify(a) !== JSON.stringify(b)) gramSigns = true;
+    }
+  }
+  check(`every formed token yields a non-empty phonetic plan (${planBad} bad)`, planBad === 0);
+  check(`every formed token writes in a literate language (${writBad} bad)`, writBad === 0);
+  check(`a logography gives its grammar words distinct own signs (the 的/了 pattern)`, gramSigns);
+  // determinism + JSON roundtrip of the token-form layer
+  const t1 = foundLanguage(mkWorld(), { seed: 880191 });
+  const tsig = (l) => JSON.stringify(renderClause(l, FRAMES[0]).tokens.map(t => [t.w, t.f, t.c ?? null]));
+  check("clause token forms deterministic + JSON-roundtrip-stable", tsig(t1) === tsig(JSON.parse(JSON.stringify(t1))));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

@@ -545,7 +545,7 @@ export function closedOf(lang) {
         const form = copyWord(p.form);
         attachSyl(prof, form, { on: pcAff[cs].on.map(x => ({ ...x })), nu: pcAff[cs].nu.map(x => ({ ...x })), co: pcAff[cs].co.map(x => ({ ...x })) }, g.affixSide);
         legalizeWord(form);
-        p.cases[cs] = { w: rform(lang, form), g: p.g + "." + CASE_GLOSS[cs === "obl" ? "loc" : cs] };
+        p.cases[cs] = { w: rform(lang, form), g: p.g + "." + CASE_GLOSS[cs === "obl" ? "loc" : cs], form };
       }
     }
   }
@@ -711,8 +711,8 @@ export function closedOf(lang) {
   // 让/使, a passive 被-style marker — the exponent a non-affixing tongue uses ──
   const voiceLV = {};
   if (lang.prof.morph === "iso") {
-    if (g.caus) { const f = legalizeWord(R(synthClosed(lang, inv, "voice:caus"))); voiceLV.caus = { g: "CAUS", w: rform(lang, f) }; }
-    if (g.pass) { const f = legalizeWord(R(synthClosed(lang, inv, "voice:pass"))); voiceLV.pass = { g: "PASS", w: rform(lang, f) }; }
+    if (g.caus) { const f = legalizeWord(R(synthClosed(lang, inv, "voice:caus"))); voiceLV.caus = { g: "CAUS", w: rform(lang, f), form: f }; }
+    if (g.pass) { const f = legalizeWord(R(synthClosed(lang, inv, "voice:pass"))); voiceLV.pass = { g: "PASS", w: rform(lang, f), form: f }; }
   }
 
   // ── MULTI-CLAUSE LINKERS (Group G): the complementizer / relativizer / 'when'
@@ -752,8 +752,8 @@ export function pronoun(lang, k, cas = "nom") {
   const cell = cl.prons.find(p => p.k === k)
     || cl.prons.find(p => p.k === String(k).replace(/[mf]$/, ""))
     || cl.prons.find(p => p.k[0] === String(k)[0]) || cl.prons[0];
-  if (cas !== "nom" && cell.cases && cell.cases[cas]) return { w: cell.cases[cas].w, g: cell.cases[cas].g };
-  return { w: cell.w, g: cell.g };
+  if (cas !== "nom" && cell.cases && cell.cases[cas]) return { w: cell.cases[cas].w, g: cell.cases[cas].g, form: cell.cases[cas].form };
+  return { w: cell.w, g: cell.g, form: cell.form };
 }
 
 // ── M1: numerals — base-10/20/5 systems with real formation rules ─────────
@@ -1880,10 +1880,15 @@ export function inflectAdj(lang, cid, { cls = 0, num = "sg", cas = null } = {}) 
   const hit = c.cells.get(key); if (hit) return hit;
   const g = gramOf(lang);
   let out;
-  if (!g.genders || !g.concord || !g.concord.adj) out = { text: wordOf(lang, cid), gloss: glossOf(cid), pre: [], post: [] };
-  else {
+  if (!g.genders || !g.concord || !g.concord.adj) {
+    // form rides along for the vocalizer/script layers — null when a loan
+    // shadows the native word (a loan surface has no internal form)
+    const f = nativeStemOf(lang, cid);
+    const t = wordOf(lang, cid);
+    out = { text: t, gloss: glossOf(cid), pre: [], post: [], form: t === renderWord(f, lang.prof) ? f : null };
+  } else {
     const form = applyConcord(lang, copyWord(nativeStemOf(lang, cid)), cls);
-    out = { text: renderWord(form, lang.prof), gloss: glossOf(cid) + "." + classGloss(lang, cls), pre: [], post: [] };
+    out = { text: renderWord(form, lang.prof), gloss: glossOf(cid) + "." + classGloss(lang, cls), pre: [], post: [], form };
   }
   c.cells.set(key, out);
   return out;
@@ -1928,16 +1933,24 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null, poss = null } =
   if (redupPl) {
     let text = redupStemSurface(lang, cid, g.redup.type);
     const post = [], gls = [];
-    if (possAff && !spec.iso) { text += affixSurface(lang, possAff.syl); gls.push(possAff.g); }
-    if (caseAff) { if (spec.iso) post.push({ w: renderWord({ syls: [caseAff.syl] }, lang.prof), g: caseAff.g }); else { text += affixSurface(lang, caseAff.syl); gls.push(caseAff.g); } }
-    out = { text, gloss: stemGloss + "~PL" + (gls.length ? "-" + gls.join("-") : ""), pre: [], post, irr: false };
+    // the MIRRORED form for the vocalizer/script layers: the text above is
+    // string-assembled (hyphens, rendered-part concatenation), so the form
+    // is built by honest syllable append and the cell is flagged `seam`
+    const stem = nativeStemOf(lang, cid);
+    const red = g.redup.type === "full" || !stem.syls[0] || !stem.syls[0].on.length
+      ? stem.syls.map(cloneSyl)
+      : [{ on: stem.syls[0].on.map(x => ({ ...x })), nu: stem.syls[0].nu.slice(0, 1).map(v => ({ ...v, lg: 0 })), co: [] }];
+    const form = { syls: [...red, ...stem.syls.map(cloneSyl)], tseed: stem.tseed };
+    if (possAff && !spec.iso) { text += affixSurface(lang, possAff.syl); gls.push(possAff.g); form.syls.push(cloneSyl(possAff.syl)); }
+    if (caseAff) { if (spec.iso) post.push({ w: renderWord({ syls: [caseAff.syl] }, lang.prof), g: caseAff.g, f: { syls: [caseAff.syl] } }); else { text += affixSurface(lang, caseAff.syl); gls.push(caseAff.g); form.syls.push(cloneSyl(caseAff.syl)); } }
+    out = { text, gloss: stemGloss + "~PL" + (gls.length ? "-" + gls.join("-") : ""), pre: [], post, irr: false, form, seam: true };
   } else if (spec.iso) {
     // particles, not affixes: 'stone PL' — the words stay untouched
     const post = [];
-    if (numAff) post.push({ w: renderWord({ syls: [numAff.syl] }, lang.prof), g: numGl });
-    else if (effNum === "pl" && spec.pl) post.push({ w: renderWord({ syls: [spec.pl.syl] }, lang.prof), g: "PL" });
-    if (caseAff) post.push({ w: renderWord({ syls: [caseAff.syl] }, lang.prof), g: caseAff.g });
-    out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss, pre: [], post, irr: false };
+    if (numAff) post.push({ w: renderWord({ syls: [numAff.syl] }, lang.prof), g: numGl, f: { syls: [numAff.syl] } });
+    else if (effNum === "pl" && spec.pl) post.push({ w: renderWord({ syls: [spec.pl.syl] }, lang.prof), g: "PL", f: { syls: [spec.pl.syl] } });
+    if (caseAff) post.push({ w: renderWord({ syls: [caseAff.syl] }, lang.prof), g: caseAff.g, f: { syls: [caseAff.syl] } });
+    out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss, pre: [], post, irr: false, form: nativeStemOf(lang, cid) };
   } else {
     const events = [];
     const glosses = [];
@@ -1956,7 +1969,7 @@ export function inflectNoun(lang, cid, { num = "sg", cas = null, poss = null } =
     if (pattern || irrPl) glossStr = stemGloss + "⟨" + glosses[0] + "⟩" + (glosses.length > 1 ? "-" + glosses.slice(1).join("-") : "");
     else if (morph === "fus" && glosses.length > 1) glossStr = stemGloss + "-" + glosses.join(".");
     else glossStr = [stemGloss, ...glosses].join("-");
-    out = { text: renderWord(form, lang.prof), gloss: glossStr, pre: [], post: [], irr: irrPl || !!pattern };
+    out = { text: renderWord(form, lang.prof), gloss: glossStr, pre: [], post: [], irr: irrPl || !!pattern, form };
   }
   c.cells.set(key, out);
   return out;
@@ -2041,35 +2054,41 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
   const redupAsp = !imperative && tamEff === "ipfv" && redupHas(lang, "aspect");
   // imperative particle (all morphotypes) + prohibitive, shared pre/post
   const impExtras = (pre, post) => {
-    if (imperative && g.imp === "particle" && closedOf(lang).impPart) post.push({ w: closedOf(lang).impPart.w, g: "IMP" });
+    if (imperative && g.imp === "particle" && closedOf(lang).impPart) post.push({ w: closedOf(lang).impPart.w, g: "IMP", f: closedOf(lang).impPart.form });
     if (imperative && neg) (g.negPos === "post" ? post : pre).push(prohToken(lang));
   };
   let out;
   if (redupAsp) {
     // surface reduplication carries the aspect; person marking (if any)
-    // appends as a transparent suffix-string
+    // appends as a transparent suffix-string. The MIRRORED form (honest
+    // syllable append; cell flagged `seam`) rides for the voice/script layers.
     let text = redupStemSurface(lang, cid, g.redup.type);
     const glosses = [];
+    const stem = nativeStemOf(lang, cid);
+    const red = g.redup.type === "full" || !stem.syls[0] || !stem.syls[0].on.length
+      ? stem.syls.map(cloneSyl)
+      : [{ on: stem.syls[0].on.map(x => ({ ...x })), nu: stem.syls[0].nu.slice(0, 1).map(v => ({ ...v, lg: 0 })), co: [] }];
+    const mform = { syls: [...red, ...stem.syls.map(cloneSyl)], tseed: stem.tseed };
     if (pers && !spec.iso && spec.pers) {
       const persAff = spec.pers[pers + num];
-      if (persAff) { text += affixSurface(lang, persAff.syl); glosses.push(persAff.g); }
+      if (persAff) { text += affixSurface(lang, persAff.syl); glosses.push(persAff.g); mform.syls.push(cloneSyl(persAff.syl)); }
     }
-    out = { text, gloss: stemGloss + "~IPFV" + (glosses.length ? "-" + glosses.join("-") : ""), pre: [], post: [], irr: false };
+    out = { text, gloss: stemGloss + "~IPFV" + (glosses.length ? "-" + glosses.join("-") : ""), pre: [], post: [], irr: false, form: mform, seam: true };
   } else if (spec.iso) {
     const post = [], pre = [];
     if (tamAff) {
       // aspect/tense particles are enclitics — neutral tone (le, guo, ma);
       // the progressive leads (the 在 pattern), le/guo trail, future leads
-      const tok = { w: rformNeutral(lang, { syls: [tamAff.syl] }), g: tamAff.g };
+      const tok = { w: rformNeutral(lang, { syls: [tamAff.syl] }), g: tamAff.g, f: { syls: [tamAff.syl] } };
       if (tamEff === "fut" || tamEff === "prog") pre.push(tok); else post.push(tok);
     }
-    if (distAff) post.push({ w: rformNeutral(lang, { syls: [distAff.syl] }), g: distAff.g });
-    if (irrMoodAff) pre.push({ w: rform(lang, { syls: [irrMoodAff.syl] }), g: irrMoodAff.g });   // preverbal modal 会/要/能
-    if (honAff) post.push({ w: rformNeutral(lang, { syls: [honAff.syl] }), g: "HON" });
-    if (mirAff) post.push({ w: rformNeutral(lang, { syls: [mirAff.syl] }), g: "MIR" });
-    if (evAff) post.push({ w: rformNeutral(lang, { syls: [evAff.syl] }), g: evGloss });   // evidential clause enclitic (outermost)
+    if (distAff) post.push({ w: rformNeutral(lang, { syls: [distAff.syl] }), g: distAff.g, f: { syls: [distAff.syl] } });
+    if (irrMoodAff) pre.push({ w: rform(lang, { syls: [irrMoodAff.syl] }), g: irrMoodAff.g, f: { syls: [irrMoodAff.syl] } });   // preverbal modal 会/要/能
+    if (honAff) post.push({ w: rformNeutral(lang, { syls: [honAff.syl] }), g: "HON", f: { syls: [honAff.syl] } });
+    if (mirAff) post.push({ w: rformNeutral(lang, { syls: [mirAff.syl] }), g: "MIR", f: { syls: [mirAff.syl] } });
+    if (evAff) post.push({ w: rformNeutral(lang, { syls: [evAff.syl] }), g: evGloss, f: { syls: [evAff.syl] } });   // evidential clause enclitic (outermost)
     impExtras(pre, post);
-    out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss + (imperative && g.imp !== "particle" ? ".IMP" : ""), pre, post, irr: false };
+    out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss + (imperative && g.imp !== "particle" ? ".IMP" : ""), pre, post, irr: false, form: nativeStemOf(lang, cid) };
   } else {
     const irr = tamAff && isMarkedTam(tamEff) ? irregularityOf(lang, cid) : null;
     const events = [], glosses = [], outerGlosses = [];   // outerGlosses: the young agglutinated tier (evidential) — dash-joined even in fusional glosses
@@ -2156,7 +2175,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     glossStr += outerGlosses.map(gl => "-" + gl).join("");   // the outer evidential tier, always dash-separated
     const pre = [], post = [];
     impExtras(pre, post);
-    out = { text, gloss: glossStr, pre, post, irr: !!irr || !!pattern };
+    out = { text, gloss: glossStr, pre, post, irr: !!irr || !!pattern, form };
   }
   // subject class-concord (verb agrees with the subject's noun class — Bantu
   // ki-anguka, Russian past upa-l/upa-la). Additive: only when asked + concord.verb.
@@ -2164,22 +2183,23 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     const m = concordMarks(lang)[sclass];
     if (m) {
       const mw = renderWord({ syls: [cloneMarkSyl(m)] }, lang.prof);
+      const dec = (f) => f && { syls: g.concord.site === "prefix" ? [cloneMarkSyl(m), ...f.syls.map(cloneSyl)] : [...f.syls.map(cloneSyl), cloneMarkSyl(m)], tseed: f.tseed };
       out = g.concord.site === "prefix"
-        ? { ...out, text: mw + out.text, gloss: classGloss(lang, sclass) + "-" + out.gloss }
-        : { ...out, text: out.text + mw, gloss: out.gloss + "-" + classGloss(lang, sclass) };
+        ? { ...out, text: mw + out.text, gloss: classGloss(lang, sclass) + "-" + out.gloss, form: dec(out.form), seam: true }
+        : { ...out, text: out.text + mw, gloss: out.gloss + "-" + classGloss(lang, sclass), form: dec(out.form), seam: true };
     }
   }
   // direct-inverse: the INVERSE-direction marker rides the outer tier (direct is
   // zero, like the unmarked firsthand evidential); imperatives carry no direction
   if (dir === "inverse" && spec.inv && !imperative) {
     const mw = renderWord({ syls: [cloneMarkSyl(spec.inv.syl)] }, lang.prof);
-    out = { ...out, text: out.text + mw, gloss: out.gloss + "-INV" };
+    out = { ...out, text: out.text + mw, gloss: out.gloss + "-INV", form: out.form && { syls: [...out.form.syls.map(cloneSyl), cloneMarkSyl(spec.inv.syl)], tseed: out.form.tseed }, seam: true };
   }
   // VOICE (Group B): the valency marker (synthetic tongues; iso adds a light
   // verb in renderClause). Attached as a verbal exponent with its gloss.
   if (voice && spec.voice && spec.voice[voice]) {
     const va = spec.voice[voice];
-    out = { ...out, text: out.text + renderWord({ syls: [cloneMarkSyl(va.syl)] }, lang.prof), gloss: out.gloss + "-" + va.g };
+    out = { ...out, text: out.text + renderWord({ syls: [cloneMarkSyl(va.syl)] }, lang.prof), gloss: out.gloss + "-" + va.g, form: out.form && { syls: [...out.form.syls.map(cloneSyl), cloneMarkSyl(va.syl)], tseed: out.form.tseed }, seam: true };
   }
   c.cells.set(key, out);
   return out;
@@ -2189,7 +2209,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
 // language has one (bié/nolī), otherwise ordinary negation
 function prohToken(lang) {
   const cl = closedOf(lang);
-  return cl.prohibW ? { w: cl.prohibW.w, g: "PROH" } : { w: cl.neg.w, g: "NEG" };
+  return cl.prohibW ? { w: cl.prohibW.w, g: "PROH", f: cl.prohibW.form } : { w: cl.neg.w, g: "NEG", f: cl.neg.form };
 }
 
 /** Table shape for the Lab: which rows/columns this language's paradigms
@@ -2548,12 +2568,12 @@ export function renderClause(lang, frame, opts = {}) {
       // object/oblique pronouns take their case form (me/him); subjects stay
       // bare — nom-acc even under noun ergativity (split ergativity for free)
       const pcKey = role === "O" ? "acc" : role === "X" ? "obl" : null;
-      if (pcKey && cell.cases && cell.cases[pcKey]) return [{ w: cell.cases[pcKey].w, g: cell.cases[pcKey].g, role }];
-      return [{ w: cell.w, g: cell.g, role }];
+      if (pcKey && cell.cases && cell.cases[pcKey]) return [{ w: cell.cases[pcKey].w, g: cell.cases[pcKey].g, role, f: cell.cases[pcKey].form }];
+      return [{ w: cell.w, g: cell.g, role, f: cell.form }];
     }
     if (arg.wh) {
       const q = cl.qs.find(x => x.k === "what");
-      return [{ w: q.w, g: "what", role, wh: true }];
+      return [{ w: q.w, g: "what", role, wh: true, f: q.form }];
     }
     const headCls = g.genders ? genderOf(lang, arg.n) : 0;
     // count core (Group D): a counted arg expands to [Num (CL) N] in place —
@@ -2565,22 +2585,22 @@ export function renderClause(lang, frame, opts = {}) {
       seq = numeralPhrase(lang, arg.n, arg.count, { cas, useClf: arg.useClf !== false }).tokens.map(t => ({ ...t, role }));
     } else {
       const x = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas });
-      seq = [...x.pre.map(t => ({ ...t, role })), { w: x.text, g: x.gloss, role }, ...x.post.map(t => ({ ...t, role }))];
+      seq = [...x.pre.map(t => ({ ...t, role })), { w: x.text, g: x.gloss, role, f: x.form, c: arg.n, seam: x.seam }, ...x.post.map(t => ({ ...t, role }))];
     }
     if (arg.adj != null) {
       const a = inflectAdj(lang, arg.adj, { cls: headCls, num: numForAdj, cas: counted && g.classif ? null : cas });   // agrees with head class
-      const adj = { w: a.text, g: a.gloss, role };
+      const adj = { w: a.text, g: a.gloss, role, f: a.form, c: arg.adj };
       seq = g.adjN ? [adj, ...seq] : [...seq, adj];
     }
     // demonstrative (optional frame field): agrees with the head class too
     if (arg.dem) {
       const d = cl.dems.find(z => z.k === arg.dem) || cl.dems[cl.dems.length - 1];
-      let dw = d.w, dg = d.g;
-      if (g.concord && g.concord.dem && g.genders) { dw = renderWord(applyConcord(lang, copyWord(d.form), headCls), lang.prof); dg = d.g + "." + classGloss(lang, headCls); }
-      seq = [{ w: dw, g: dg, role }, ...seq];
+      let dw = d.w, dg = d.g, df = d.form;
+      if (g.concord && g.concord.dem && g.genders) { df = applyConcord(lang, copyWord(d.form), headCls); dw = renderWord(df, lang.prof); dg = d.g + "." + classGloss(lang, headCls); }
+      seq = [{ w: dw, g: dg, role, f: df }, ...seq];
     }
-    if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role }];
-    else if (arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role }];
+    if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role, f: cl.defArt.form }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role, f: cl.defArt.form }];
+    else if (arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role, f: cl.indefArt.form }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role, f: cl.indefArt.form }];
     // relative clause (Group G): the head plays arg.rel.role INSIDE, rendered
     // with a GAP; the strategy is gap (an invariant relativizer, or an agg
     // participle), relpron (postnominal + caseN≥1 only — the universal), or
@@ -2597,7 +2617,7 @@ export function renderClause(lang, frame, opts = {}) {
       // gap/relpron take an overt relativizer; the participial gap (agg) IS its
       // own strategy marker (the PTCP), so it needs no separate relativizer;
       // resump fills the gap with a pronoun and takes neither
-      const relMark = strat === "resump" || rOpts.relGap ? null : { w: cl.links.rel.w, g: "REL", role };
+      const relMark = strat === "resump" || rOpts.relGap ? null : { w: cl.links.rel.w, g: "REL", role, f: cl.links.rel.form };
       const relSeq = relMark ? (g.relPre ? [...innerToks, relMark] : [relMark, ...innerToks]) : innerToks;
       seq = g.relPre ? [...relSeq, ...seq] : [...seq, ...relSeq];
     }
@@ -2608,7 +2628,7 @@ export function renderClause(lang, frame, opts = {}) {
   // nominalizes the inner verb.
   const complementTokens = (comp) => {
     const inner = renderClauseTree(lang, comp, { nfVerb: g.compFinite === false });
-    const compTok = { w: cl.links.comp.w, g: "COMP", role: "O" };
+    const compTok = { w: cl.links.comp.w, g: "COMP", role: "O", f: cl.links.comp.form };
     const innerToks = inner.tokens.map(t => ({ ...t, role: "O" }));
     return g.compzPos === "init" ? [compTok, ...innerToks] : [...innerToks, compTok];
   };
@@ -2652,19 +2672,19 @@ export function renderClause(lang, frame, opts = {}) {
     irrealisMood, mir: mirOn, ev: evOn,
     conv: medial === "cvb" ? "temp" : opts.conv || null, nf: !!opts.nfVerb, rel: !!opts.relGap,
   });
-  toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V" }, ...vx.post.map(t => ({ ...t, role: "V" }))];
+  toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V", f: vx.form, c: frame.v.c, seam: vx.seam }, ...vx.post.map(t => ({ ...t, role: "V" }))];
   // switch-reference: the medial verb carries an SS/DS marker (synthetic; iso has no switchRef)
-  if (medial === "ss" && spec.ssAff) toks.v.push({ w: renderWord({ syls: [spec.ssAff.syl] }, lang.prof), g: "SS", role: "V" });
-  else if (medial === "ds" && spec.dsAff) toks.v.push({ w: renderWord({ syls: [spec.dsAff.syl] }, lang.prof), g: "DS", role: "V" });
+  if (medial === "ss" && spec.ssAff) toks.v.push({ w: renderWord({ syls: [spec.ssAff.syl] }, lang.prof), g: "SS", role: "V", f: { syls: [spec.ssAff.syl] } });
+  else if (medial === "ds" && spec.dsAff) toks.v.push({ w: renderWord({ syls: [spec.dsAff.syl] }, lang.prof), g: "DS", role: "V", f: { syls: [spec.dsAff.syl] } });
   // isolating VOICE is periphrastic: a light verb / marker leads the verb
   // (让 causative, 被 passive) — the synthetic exponent lives on vx instead
-  if (spec.iso && voice && cl.voice && cl.voice[voice]) toks.v.unshift({ w: cl.voice[voice].w, g: cl.voice[voice].g, role: "V" });
+  if (spec.iso && voice && cl.voice && cl.voice[voice]) toks.v.unshift({ w: cl.voice[voice].w, g: cl.voice[voice].g, role: "V", f: cl.voice[voice].form });
   // negation particle (when not an affix): before/after the verb, or clause-final.
   // imperatives already carry their own prohibitive marker in vx.pre/post
   let negFinal = false;
   if (neg && !imperative && !spec.negAff) {
-    if (g.negPos === "pre") toks.v.unshift({ w: cl.neg.w, g: "NEG", role: "V" });
-    else if (g.negPos === "post") toks.v.push({ w: cl.neg.w, g: "NEG", role: "V" });
+    if (g.negPos === "pre") toks.v.unshift({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
+    else if (g.negPos === "post") toks.v.push({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
     else negFinal = true;
   }
   // imperatives address "you": the 2nd-person subject is dropped by default
@@ -2678,14 +2698,14 @@ export function renderClause(lang, frame, opts = {}) {
     if (!arg) return [];
     const adp = cl.adps.find(a => a.m === adpM) || cl.adps[0];
     let inner;
-    if (arg.pron) { const pc = pronoun(lang, arg.pron.k, "obl"); inner = [{ w: pc.w, g: pc.g, role: "X" }]; }
+    if (arg.pron) { const pc = pronoun(lang, arg.pron.k, "obl"); inner = [{ w: pc.w, g: pc.g, role: "X", f: pc.form }]; }
     else {
       const nx = inflectNoun(lang, arg.n, { num: arg.num || "sg", cas: null });
-      inner = [...(arg.def && cl.defArt && g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : []),
-        { w: nx.text, g: nx.gloss, role: "X" },
-        ...(arg.def && cl.defArt && !g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X" }] : [])];
+      inner = [...(arg.def && cl.defArt && g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X", f: cl.defArt.form }] : []),
+        { w: nx.text, g: nx.gloss, role: "X", f: nx.form, c: arg.n, seam: nx.seam },
+        ...(arg.def && cl.defArt && !g.adjN ? [{ w: cl.defArt.w, g: "DEF", role: "X", f: cl.defArt.form }] : [])];
     }
-    return g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X" }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X" }];
+    return g.adpSide === "pre" ? [{ w: adp.w, g: adp.m, role: "X", f: adp.form }, ...inner] : [...inner, { w: adp.w, g: adp.m, role: "X", f: adp.form }];
   };
   const locToks = [
     ...(locArg ? adjunct({ n: locArg.n, def: locArg.def, num: locArg.num }, locArg.adp) : []),
@@ -2703,11 +2723,11 @@ export function renderClause(lang, frame, opts = {}) {
   // wh-fronting: the question word moves to the clause edge when the dials say
   const whIdx = seq.findIndex(t => t.wh);
   if (whIdx > 0 && g.whFront) seq.unshift(...seq.splice(whIdx, 1));
-  if (negFinal) seq.push({ w: cl.neg.w, g: "NEG", role: "V" });
+  if (negFinal) seq.push({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
   // polar-question particle (wh-questions carry their own interrogative)
   if (frame.q && !oArg?.wh && cl.qp) {
-    if (g.qPart === "final") seq.push({ w: cl.qp.w, g: "Q", role: "Q" });
-    else if (g.qPart === "init") seq.unshift({ w: cl.qp.w, g: "Q", role: "Q" });
+    if (g.qPart === "final") seq.push({ w: cl.qp.w, g: "Q", role: "Q", f: cl.qp.form });
+    else if (g.qPart === "init") seq.unshift({ w: cl.qp.w, g: "Q", role: "Q", f: cl.qp.form });
   }
   // adverbial clauses (Group G): when/if/because — each an inner clause plus a
   // subordinator (WALS 94: advPos; OV⇒final), or a converb suffix in the Turkic/
@@ -2719,8 +2739,8 @@ export function renderClause(lang, frame, opts = {}) {
         advToks = renderClause(lang, av, { conv: av.sub === "if" ? "cond" : av.sub === "because" ? "caus" : "temp" }).tokens.map(t => ({ ...t, role: "ADV" }));
       } else {
         const inner = renderClauseTree(lang, av).tokens.map(t => ({ ...t, role: "ADV" }));
-        const sub = av.sub === "when" ? { w: cl.links.when.w, g: "when", role: "ADV" }
-          : (() => { const c = cl.conj.find(x => x.k === av.sub) || cl.conj.find(x => x.k === "if"); return { w: c.w, g: av.sub, role: "ADV" }; })();
+        const sub = av.sub === "when" ? { w: cl.links.when.w, g: "when", role: "ADV", f: cl.links.when.form }
+          : (() => { const c = cl.conj.find(x => x.k === av.sub) || cl.conj.find(x => x.k === "if"); return { w: c.w, g: av.sub, role: "ADV", f: c.form }; })();
         advToks = g.advPos === "init" ? [sub, ...inner] : [...inner, sub];
       }
       const prepose = av.sub === "if" ? true : g.advPos === "init";   // conditionals prepose
@@ -2749,8 +2769,12 @@ function renderCoordination(lang, node) {
   const toks = [];
   node.clauses.forEach((c, i) => {
     if (i > 0) {
-      if (g.coordFinal && toks.length) { const prev = toks[toks.length - 1]; prev.w += conj.w; prev.g += "-" + conj.g.toUpperCase(); }
-      else toks.push({ w: conj.w, g: conj.g.toUpperCase(), role: "CONJ" });
+      if (g.coordFinal && toks.length) {
+        const prev = toks[toks.length - 1];
+        prev.w += conj.w; prev.g += "-" + conj.g.toUpperCase();
+        prev.f = prev.f && conj.form ? { syls: [...prev.f.syls.map(cloneSyl), ...conj.form.syls.map(cloneSyl)], tseed: prev.f.tseed } : null;
+        prev.seam = true;
+      } else toks.push({ w: conj.w, g: conj.g.toUpperCase(), role: "CONJ", f: conj.form });
     }
     toks.push(...renderClauseTree(lang, c).tokens.map(t => ({ ...t })));
   });

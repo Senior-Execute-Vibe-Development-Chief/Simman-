@@ -48,6 +48,7 @@ import { hash32 } from "./peopleSim/rng.js";
 import { compiledInv, nativeStemOf, etymologyOf, wordOf } from "./language.js";
 import { renderWord, romanizeC, romanizeV } from "./languagePhonology.js";
 import { CONCEPTS } from "./languageLexicon.js";
+import { phoneticPlan } from "./languagePhonetics.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
 
@@ -412,31 +413,31 @@ function logoGlyph(lang, cid, depth = 0) {
 // the language's own inventory supplies them where it can
 function materKey(lang, v) { return v.b === 0 ? "mater:front" : "mater:back"; }
 
-/** Write one concept in the language's own script.
- *  → { glyphs: [{strokes, mark?}], translit, silent } | null — translit is
- *  the FROZEN spelling romanized (sans tone where the script leaves tone
- *  unwritten); silent flags a spelling the sound has since left behind. */
-export function writeWord(lang, cid) {
+/** Write ONE internal form in the language's script — the clause layer's
+ *  entry point. `cid`, when known, lets a logography use its morpheme sign
+ *  (compound radicals, phono-semantics); a cid-less form in a logography
+ *  earns its own grammar sign keyed on the form's segment signature — the
+ *  了/的 pattern, where the function words carry dedicated signs. Tone
+ *  diacritics (when the script writes tone) use the SAME melody index the
+ *  vocalizer speaks and the romanization marks. → [{strokes, mark?}] */
+export function writeForm(lang, form, cid = null) {
   const s = scriptOf(lang);
-  if (!s) return null;
-  if ((lang.loans || []).some(x => x.c === cid)) return null;   // a loan has no native tradition (v1)
-  const frozen = writtenFormOf(lang, cid);
-  const translit = writtenWordOf(lang, cid);
-  const saidNow = renderWord(nativeStemOf(lang, cid), lang.prof);
-  const said = s.toneWritten || !lang.prof.tone ? saidNow : stripTone(saidNow);
+  if (!s || !form) return null;
   const glyphs = [];
   const G = (key) => ({ strokes: bandStrokes(s, key, 0) });
   const pos = s.type === "abugida" ? markPosOf(s) : null;
-  const toneMark = (sylIdx) => {                                 // written tone: a small diacritic per syllable
-    if (!s.toneWritten || !glyphs.length) return;
-    const m = rawStrokes(s, "tone:" + (hash32(sylkey(frozen.syls[sylIdx]), sylIdx, frozen.tseed || 0) % 4), 0).slice(0, 1);
+  const plan = s.toneWritten ? phoneticPlan(lang, form) : null;
+  const toneMark = (sylIdx) => {
+    if (!plan || !glyphs.length || plan.syls[sylIdx].tone == null) return;
+    const m = rawStrokes(s, "tone:" + plan.syls[sylIdx].tone, 0).slice(0, 1);
     const g = glyphs[glyphs.length - 1];
     if (!g.mark) g.mark = { strokes: m, pos: "above" };
   };
   if (s.type === "logo") {
-    glyphs.push({ strokes: logoGlyph(lang, cid).strokes });
+    if (cid != null) glyphs.push({ strokes: logoGlyph(lang, cid).strokes });
+    else glyphs.push(G("w:" + form.syls.map(sylkey).join("+")));
   } else if (s.type === "syll") {
-    frozen.syls.forEach((syl, i) => {
+    form.syls.forEach((syl) => {
       const bare = { on: syl.on, nu: syl.nu, co: [] };
       glyphs.push(G(sylkey(syl.co.length ? bare : syl)));
       for (const c of syl.co) {                                  // the three attested coda treatments
@@ -444,10 +445,9 @@ export function writeWord(lang, cid) {
         else if (s.codaMode === "echo") glyphs.push(G(sylkey({ on: [c], nu: syl.nu.slice(0, 1), co: [] })));   // ko-no-so
         // drop: unwritten
       }
-      void i;
     });
   } else if (s.type === "abjad") {
-    frozen.syls.forEach((syl, i) => {
+    form.syls.forEach((syl, i) => {
       if (i === 0 && !syl.on.length && s.matres === "long") glyphs.push(G("carrier"));   // initial vowel needs a seat
       for (const c of syl.on) glyphs.push(G(ckey(c)));
       if (s.matres === "long" && syl.nu.some(v => v.lg)) glyphs.push(G(materKey(lang, syl.nu[0])));
@@ -457,7 +457,7 @@ export function writeWord(lang, cid) {
   } else if (s.type === "abugida") {
     const inv = compiledInv(lang);
     const inherent = vkey(inv.vows[0]);
-    frozen.syls.forEach((syl, i) => {
+    form.syls.forEach((syl, i) => {
       const base = syl.on.length ? G(ckey(syl.on[0])) : G("vc:carrier");
       const v = syl.nu[0];
       if (v && vkey(v) !== inherent) base.mark = { strokes: rawStrokes(s, "vd:" + vkey(v), 0).slice(0, 1), pos };
@@ -470,14 +470,29 @@ export function writeWord(lang, cid) {
       toneMark(i);
     });
   } else {
-    frozen.syls.forEach((syl, i) => {
+    form.syls.forEach((syl, i) => {
       for (const c of syl.on) glyphs.push(G(ckey(c)));
       for (const v of syl.nu) glyphs.push(G(vkey(v)));
       for (const c of syl.co) glyphs.push(G(ckey(c)));
       toneMark(i);
     });
   }
-  return { glyphs, translit, silent: translit !== said };
+  return glyphs;
+}
+
+/** Write one concept in the language's own script.
+ *  → { glyphs: [{strokes, mark?}], translit, silent } | null — translit is
+ *  the FROZEN spelling romanized (sans tone where the script leaves tone
+ *  unwritten); silent flags a spelling the sound has since left behind. */
+export function writeWord(lang, cid) {
+  const s = scriptOf(lang);
+  if (!s) return null;
+  if ((lang.loans || []).some(x => x.c === cid)) return null;   // a loan has no native tradition (v1)
+  const frozen = writtenFormOf(lang, cid);
+  const translit = writtenWordOf(lang, cid);
+  const saidNow = renderWord(nativeStemOf(lang, cid), lang.prof);
+  const said = s.toneWritten || !lang.prof.tone ? saidNow : stripTone(saidNow);
+  return { glyphs: writeForm(lang, frozen, cid), translit, silent: translit !== said };
 }
 
 /** Numeral signs: the low digits are TALLY marks in the script's own

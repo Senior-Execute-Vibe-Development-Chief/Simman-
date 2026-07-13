@@ -882,3 +882,38 @@ Probe 305 → **313** checks (§25 extended).
   a numerals row, and "a written line" — three words under the script's
   own separation habit, headline-joined or cursive-joined where the hand
   says so.
+
+## Build status (session 15, fifth phase) — the full clause
+
+The two "strings, not forms" parked notes are closed: renderClause tokens
+now carry `f` (the internal form) and `c` (the concept id where known) —
+additive fields, every prior surface byte-identical — so a whole sentence
+can be SPOKEN and WRITTEN. Probe 313 → **320** checks (§26).
+
+- **Token forms everywhere.** inflectNoun/inflectVerb/inflectAdj expose
+  the internal form they render (isolating particles carry their own
+  syllable forms); the string-assembled cells — reduplication,
+  class-concord prefixes, voice/inverse markers, enclitic coordinator
+  welds — build a MIRRORED form by honest syllable append and are flagged
+  `seam`: their speech says the uncollapsed truth the collapsed spelling
+  hides (the same haplology honesty as the dictionary). Non-seam tokens
+  are gated byte-parity: render(form) === token text, modulo the
+  neutral-tone particle dress.
+- **Spoken sentences with real prosody.** The Lab's `speakClause`
+  schedules the word plans as ONE intonation phrase: pitch declines
+  across the clause and the final word carries the boundary tone —
+  statements and commands FALL, questions RISE (the near-universal pair;
+  the question checkbox audibly flips it). Every interlinear token in
+  every card is click-to-speak.
+- **Written sentences.** New export `writeForm(lang, form, cid?)` (the
+  writeWord machinery, refactored through it): the Sentences card writes
+  the whole clause in the language's own script under its own separation
+  habit and direction. A logography writes cid-less grammar words with
+  DISTINCT dedicated signs keyed on the form — the 的/了 pattern (gated).
+  Tone diacritics, where written, now use the SAME melody index the
+  vocalizer speaks and the romanization marks. The running line is
+  spelled by ear; the frozen fossil spellings live in the Writing card.
+- **Parked:** frozen-stem spelling for inflected clause tokens (real
+  traditions freeze the stem and spell inflection by ear — ours spells
+  the whole running line by ear, noted in the card copy); loanword
+  writing; sim/chronicle wiring, unchanged.
