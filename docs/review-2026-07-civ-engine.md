@@ -16,10 +16,21 @@ evidence is code-cited but unattacked).
 > checked: the inflation `step >= 5000` gate (now org-gated, inflation.js), the
 > `COVERAGE_RAMP` step-ramp (now a wave-of-advance tempo, crystallize.js), the
 > Nile/Mesopotamia same-tile seat (now `HEARTH_MIN_SEP_FRAC`, state.js), and the
-> `capE.logistics` dead read (now `logisticsLevel`, conquest.js). Other items —
-> notably the save/load family (B19 road-flow decay, B42 reconcile-vs-pass-start,
-> B52/B75 `_riverAcc` lost on load) — have NOT been re-verified either way. Check the
+> `capE.logistics` dead read (now `logisticsLevel`, conquest.js). Check the
 > code before re-opening OR trusting any item here.
+>
+> **Load-persistence re-verification (2026-07-13, follow-up session):** the flagged
+> save/load family is FIXED on HEAD, verified against the code paths:
+> **B19** — `reindexRoads()` (roads.js:266) rebuilds `_roadTiles`/`_flowTiles` from the
+> loaded arrays and IS called on the load path (persist.js:395), so flow decay and road
+> abandonment survive a load; **B42** — `reconcilePolities` (entities.js:130) recomputes
+> the live id set from settlements mid-pass instead of trusting the pass-start view, so
+> same-pass secessions are no longer closed "Dissolved" at birth; **B52/B75** —
+> `_riverAcc`/`_confine`/`_rugged` are in the v2 SAVE_FIELDS whitelist (persist.js:68)
+> and v1 saves re-derive them on load (`rederiveSiteStatics`, persist.js:356). The smoke
+> gate also now includes a CONTINUATION-EQUIVALENCE check (load, step both worlds +1000,
+> compare pop/wealth/settlements/countries within tolerances), not just hash identity —
+> so persistence regressions of this family trip CI, they don't accumulate silently.
 Full per-finding detail (descriptions, failure scenarios, suggested fixes) is in the
 appendix: `docs/review-2026-07-appendix/`.
 
