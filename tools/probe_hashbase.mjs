@@ -5,7 +5,11 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): d8fc9f8f/bab1ad19 (comboE empire-consolidation
+// Current baseline (2500 steps): e2f4dd54/6cb39c4d (WAR_REACH 15 default — war
+// force projection decays exp(−d/H) from the capital, the immortal-giants fix;
+// docs/empire-consolidation-2026-07.md). SIM_TUNE="WAR_REACH=0" recovers the
+// prior pair below EXACTLY (the projection-blind war, one lever away).
+// Prior baseline (2500 steps): d8fc9f8f/bab1ad19 (comboE empire-consolidation
 // defaults — FIELD_SPAN 6, COVER_ORG 260, EXPAND_RATE 8, REGION_SPACING 1.0, with
 // COVER_BASE/COVER_ORG newly exposed as live levers;
 // docs/empire-consolidation-2026-07.md). The exposure itself is byte-TRANSPARENT:

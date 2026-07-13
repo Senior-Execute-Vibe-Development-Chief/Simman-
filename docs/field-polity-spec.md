@@ -588,3 +588,11 @@ political map everywhere. Validation for the flip:
 Deeper follow-ups (not blocking): the tile-war consolidates only by capital-storm (`captured=0`
 non-capital storms — distance-decayed national might + a shrink-to-collapse path would make war more
 decisive); war/secession heal the field gradually (via growth) rather than instantly.
+**Update (2026-07-13): the §4c distance decay is BUILT and default-on** (`T.WAR_REACH`, armies.js;
+exp(−d/H) from the capital, H logistics-stretched — corrected from the designed hyperbolic to
+exponential, since per-march-day supply loss is multiplicative and no hyperbolic tail inverts a
+10-20× might gap at this grid). It also localises the storm: attacker projected at the capital's
+distance, fortress = the capital settlement's OWN homeMight (the adapter had accidentally garrisoned
+the walls with the whole national pool, double-counted with the relief share). Measured: every map
+axis improves, the frozen top-5 finally churns, stylized 3/3 at 1 warning —
+docs/empire-consolidation-2026-07.md "THE IMMORTAL-GIANTS FIX".

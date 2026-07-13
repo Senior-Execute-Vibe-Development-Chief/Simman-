@@ -128,15 +128,69 @@ current HEAD a plain run IS comboE.
   - Save/load roundtrip identity + determinism + invariants all pass at the new
     defaults (same smoke run).
 
+## THE IMMORTAL-GIANTS FIX (2026-07-13) — WAR_REACH (force projection is LOCAL)
+
+The follow-up session took the "deeper open question" and closed it. Measured diagnosis
+first (probe_empires 24k, seeds 8817+4242, comboE defaults): the immortality is
+OVER-DETERMINED —
+
+1. Under TILE_WAR every combatant is a NATION adapter whose might is the WHOLE national
+   army, so a realm defends (and attacks) every tile of its frontier at full strength
+   simultaneously — nobody clears the front bar against a 10-20× giant ANYWHERE, so the
+   top realms sit at zero defensive fronts (`captured=0` at every checkpoint; the same
+   giants top every board with age == run length, while war shatters 265 SMALL realms).
+2. Capture eats the periphery outermost-first (the anti-salient ring order), so a giant's
+   capital is never even approached.
+3. The storm gate is a national-ratio (`CITY_STORM_RATIO`) a dominant realm auto-wins.
+4. The TILE_WAR adapter accidentally garrisons the capital's WALLS with the whole
+   national pool (`homeMight(adapter)`), double-counted with the relief army — an
+   adapter-refactor artifact contradicting the code's own intent comment.
+5. The only non-war realm death (post-khan succession shatter) is nomad-only.
+
+**The fix is the §4c-designed, never-built locality** (armies.js, `T.WAR_REACH`,
+default 15): effective might at a battlefield = national might × **exp(−d/H)**, d =
+distance from the realm's own capital, H = WAR_REACH ref-tiles (res-scaled) ×
+(1 + 2.2·logisticsLevel) — the same roads→rail channel as administrative reach.
+EXPONENTIAL, not hyperbolic: supply loss is per-march-day multiplicative, and at this
+grid (a 10M-km² realm is ~600 tiles, rim ~14 tiles out) no hyperbolic tail can let a
+modest power at its doorstep out-project a many-times-larger empire's far frontier.
+Applied symmetrically at every war site: the front bar (both sides, per tile), the
+countryside resolution (per-pair mean projection per side), amphibious landings (the
+bar moves per-LANE → per-BEACH, so a giant's far coast decays like its far land rim),
+attrition, and the STORM — fought at the capital's distance, with the fortress now the
+capital's OWN garrison/militia/walls (fix for #4; rides the lever).
+
+Measured (all windowed 16k–30k probe_avg + probe_empires 24k, 2 seeds; stylized 3-seed):
+
+| | default (WR off) | WR=15 (shipped) | WR=8 |
+|---|---|---|---|
+| realms 8817/4242 | 20.4 / 29.4 | **29.0 / 36.9** | 33.5 / 33.0 |
+| claimed | 29.9 / 37.7% | **41.9 / 44.6%** | 45.7 / 52.0% |
+| biggest | 7.3 / 7.3M | **6.1 / 6.5M** | 4.7 / **8.2M** (regressed!) |
+| top-5 at 24k | frozen, ages ≈ run | **churns — young realms reach #1** | churns |
+| fallen @21k gate | 41 @824y | 32 @275y | 20 @176y (thin) |
+
+- WR=15 improves EVERY axis on both seeds and the leaderboard finally turns over; war
+  stays lethal. Stylized 3/3 seeds pass at 1 soft warning each (the flat empire-area
+  tail — the capped giants themselves; same class comboE carries).
+- WR=8: locality so strong that distance-blind PEACEFUL absorption becomes the dominant
+  consolidator (biggest realm regressed on 4242) and death flows thin. Not shipped.
+- The remaining longevity is the DEFENSIBLE-SIZE equilibrium: realms shrink to what they
+  can militarily project over, and a compact realm at that size is legitimately durable
+  (an Egypt/China, not a bug). True deaths still occur when exhaustion/insolvency/
+  secession align — rarer, as in history.
+- `WAR_REACH=0` recovers the projection-blind war byte-identically.
+
 ## OPEN / NEXT
 
-- **The deeper root remains the immortal giants**: nothing kills a great power
-  (`captured=0` — the tile-war never storms capitals; `field-polity-spec.md §4c`
-  designed distance-decayed capital-storm but it was never built). comboE bounds
-  giant SIZE and fills the map, but great powers still rarely FALL. A real
-  rise-and-fall would need the capital-storm path to actually close, OR a
-  non-multiplicative fall mechanism (giants overwhelm every ratio gate).
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
   (not just capped via comboE): it needs a **NON-multiplicative** limiter — e.g.
   amphibious requires NAVAL DOMINANCE (control of the sea), a separate axis giants
-  don't auto-win — since every multiplicative approach (bar, reach-decay) is proven inert.
+  don't auto-win — since every multiplicative approach (bar, reach-decay) is proven
+  inert. (WAR_REACH decays the short-hop channel barely at all, by design.)
+- Coalition armies still don't COMBINE on a shared front — the other historical
+  hegemon-killer. defForce/offForce are per-dyad; allies each fight alone.
+- Provincial force projection: WAR_REACH projects from the CAPITAL only; a realm with
+  regional seats (CAP_SEAT) could plausibly project from its nearest seat — would let
+  well-administered empires defend far provinces better, at the cost of re-opening
+  some giant durability.
