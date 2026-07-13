@@ -269,7 +269,9 @@ function styleOf(script) {
   const s = script.styleSeed;
   return {
     hand: script.hand,
-    slant: script.hand === "pen" ? (h01(s, "slant") - 0.3) * 0.4 : (h01(s, "slant") - 0.5) * 0.16,
+    // the pen slants FORWARD and mildly (the near-universal cursive habit);
+    // other hands sit near upright
+    slant: script.hand === "pen" ? 0.03 + h01(s, "slant") * 0.13 : (h01(s, "slant") - 0.5) * 0.16,
     aspect: 0.78 + h01(s, "aspect") * 0.36,
     chain: script.hand === "pen" ? 0.8 : script.hand === "round" ? 0.5 : 0.3,
     nMin: script.type === "logo" ? 3 : script.type === "syll" ? 2 : 1,
@@ -346,47 +348,66 @@ function anatomyStrokes(script, key, salt, attMin, attMax) {
   const st = styleOf(script);
   const hand = st.hand;
   const H = (...a) => hash32(script.styleSeed, "a:" + key, salt, ...a);
+  // the DUCTUS: one hand wrote this whole script, so stroke conventions are
+  // properties of the SCRIPT, rolled once from styleSeed — one bow
+  // chirality, one arm-angle habit — never re-rolled per letter. Letter
+  // identity lives in STRUCTURE (which joints carry which attachments),
+  // exactly as in real alphabets, where E F H K read as siblings.
+  const chir = hash32(script.styleSeed, "duct:chir") % 2 ? 1 : -1;
+  const armSlope = (hash32(script.styleSeed, "duct:arm") % 3) * 0.08;       // level / shallow / steep — the script's habit
+  const midDir = hash32(script.styleSeed, "duct:mid") % 2 ? 1 : -1;
   const strokes = [];
   const stemLeft = H("side") % 100 < 62;
   const sx = stemLeft ? 0.3 : 0.7;
   const ox = stemLeft ? 1 : -1;                    // attachments open away from the stem
   const W = hand === "clay" ? "wedge" : undefined;
   const line = (x1, y1, x2, y2, bow = 0, kind = W) => ({ pts: [{ x: x1, y: y1 }, { x: x2, y: y2 }], bow, ...(kind ? { kind } : {}) });
-  // the spine
+  // the spine — attachments must MEET it, so track where it passes; bowed
+  // and diagonal spines take end attachments only (C G, never a floating B)
   const stemKind = H("stem") % 100;
-  if (hand === "round") strokes.push(line(sx, 0.04, sx, 0.96, (H("sb") % 2 ? 1 : -1) * 0.3, undefined));
-  else if (stemKind < 66 || hand === "clay") strokes.push(line(sx, 0.04, sx, 0.96, hand === "pen" ? 0.06 : hand === "brush" ? 0.04 : 0));
-  else if (stemKind < 85) strokes.push(line(sx, 0.04, sx + ox * 0.3, 0.96, 0));   // diagonal spine
-  else strokes.push(line(sx, 0.04, sx, 0.96, (H("sb") % 2 ? 1 : -1) * (hand === "pen" ? 0.22 : 0.12)));   // arched spine
+  let spineX = () => sx;
+  let endOnly = false;
+  if (hand === "round") { strokes.push(line(sx, 0.04, sx, 0.96, chir * 0.3, undefined)); endOnly = true; }
+  else if (stemKind < 66 || hand === "clay") strokes.push(line(sx, 0.04, sx, 0.96, hand === "pen" ? chir * 0.06 : hand === "brush" ? chir * 0.04 : 0));
+  else if (stemKind < 85) { strokes.push(line(sx, 0.04, sx + ox * 0.3, 0.96, 0)); spineX = (jy) => sx + ox * 0.3 * ((jy - 0.04) / 0.92); }   // diagonal spine — attachments follow it
+  else { strokes.push(line(sx, 0.04, sx, 0.96, chir * (hand === "pen" ? 0.22 : 0.12))); endOnly = true; }   // arched spine
   const joints = [0.08, 0.5, 0.92];
   const nAtt = attMin + H("n") % (attMax - attMin + 1);
   const usedJ = new Set();
   for (let i = 0; i < nAtt; i++) {
     let j = H("j", i) % 3;
+    if (endOnly && j === 1) j = H("j2", i) % 2 ? 0 : 2;
     if (usedJ.has(j)) j = (j + 1) % 3;
+    if (endOnly && j === 1) j = usedJ.has(0) ? 2 : 0;
+    if (usedJ.has(j)) continue;                    // both ends taken — never float an attachment
     usedJ.add(j);
     const jy = joints[j];
+    const ax = spineX(jy);
+    const far = ax + ox * 0.42;
+    // the hand's part repertoire: pen and palm-leaf hands favor BOWLS and
+    // curved arms (b d p q — the minim-and-bowl economy); brush and chisel
+    // favor bars — observed letterform typology, not tuning
     const kind = H("k", i) % 100;
-    const far = sx + ox * 0.42;
-    if (kind < 30) {                               // BOWL at the joint (opens away from the nearest edge)
+    const bowlCut = hand === "pen" || hand === "round" ? 45 : 30;
+    if (kind < bowlCut) {                          // BOWL at the joint (opens away from the nearest edge)
       const bd = jy > 0.7 ? -1 : 1;
-      if (hand === "carved") { strokes.push(line(sx, jy, far, jy + bd * 0.18)); strokes.push(line(far, jy + bd * 0.18, sx, jy + bd * 0.36)); }
-      else if (hand === "clay") { strokes.push(line(sx, jy, far, jy + bd * 0.15)); strokes.push(line(far, jy + bd * 0.15, sx, jy + bd * 0.3)); }
-      else strokes.push({ pts: [{ x: sx + ox * 0.19, y: jy + bd * 0.14 }], bow: 0, kind: "loop", r: 0.17 });
-    } else if (kind < 55) {                        // ARM from the joint
-      let dy = hand === "carved" ? (j === 2 ? -0.24 : 0.24) : hand === "round" ? 0.1 : (H("ad", i) % 3 - 1) * 0.18;
+      if (hand === "carved") { strokes.push(line(ax, jy, far, jy + bd * 0.18)); strokes.push(line(far, jy + bd * 0.18, ax, jy + bd * 0.36)); }
+      else if (hand === "clay") { strokes.push(line(ax, jy, far, jy + bd * 0.15)); strokes.push(line(far, jy + bd * 0.15, ax, jy + bd * 0.3)); }
+      else strokes.push({ pts: [{ x: ax + ox * 0.14, y: jy + bd * 0.14 }], bow: 0, kind: "loop", r: 0.17 });   // overlaps the stem, as b d p do
+    } else if (kind < bowlCut + 25) {              // ARM from the joint — the script's own slope habit
+      let dy = hand === "carved" ? (j === 2 ? -0.24 : 0.24) : j === 0 ? armSlope : j === 2 ? -armSlope : midDir * armSlope;
       if (jy + dy > 0.96 || jy + dy < 0.02) dy = -dy;
-      strokes.push(line(sx, jy, far, jy + dy, hand === "round" ? 0.32 : hand === "pen" ? 0.12 : 0));
-    } else if (kind < 72) {                        // LEG to the baseline (k R)
-      strokes.push(line(sx, jy === 0.92 ? 0.5 : jy, far, 0.94, hand === "round" ? 0.26 : 0));
-    } else if (kind < 88) {                        // CROSSBAR (carved keeps it off-grain: diagonal)
-      if (hand === "carved") strokes.push(line(sx - ox * 0.16, Math.max(0.03, jy - 0.14), sx + ox * 0.3, Math.min(0.95, jy + 0.14)));
-      else strokes.push(line(sx - ox * 0.14, jy, far, jy, hand === "round" ? 0.3 : hand === "pen" ? 0.08 : 0));
+      strokes.push(line(ax, jy, far, jy + dy, hand === "round" ? chir * 0.32 : hand === "pen" ? chir * 0.12 : 0));
+    } else if (kind < bowlCut + 42) {              // LEG to the baseline (k R)
+      strokes.push(line(ax, jy === 0.92 ? 0.5 : jy, far, 0.94, hand === "round" ? chir * 0.26 : 0));
+    } else if (kind < bowlCut + 58) {              // CROSSBAR (carved keeps it off-grain: diagonal)
+      if (hand === "carved") strokes.push(line(ax - ox * 0.16, Math.max(0.03, jy - 0.14), ax + ox * 0.3, Math.min(0.95, jy + 0.14)));
+      else strokes.push(line(ax - ox * 0.14, jy, far, jy, hand === "round" ? chir * 0.3 : hand === "pen" ? chir * 0.08 : 0));
     } else {                                       // SECOND STEM + connector (H N И)
       const s2 = sx + ox * 0.4;
-      strokes.push(line(s2, 0.06, s2, 0.94, hand === "round" ? (H("s2b", i) % 2 ? 1 : -1) * 0.3 : 0));
-      if (hand === "carved" || H("conn", i) % 2) strokes.push(line(sx, 0.1, s2, 0.9, hand === "round" ? 0.24 : 0));
-      else strokes.push(line(sx, jy, s2, jy === 0.92 ? 0.5 : jy + 0.14, hand === "round" ? 0.28 : 0));
+      strokes.push(line(s2, 0.06, s2, 0.94, hand === "round" ? chir * 0.3 : 0));
+      if (hand === "carved" || H("conn", i) % 2) strokes.push(line(spineX(0.1), 0.1, s2, 0.9, hand === "round" ? chir * 0.24 : 0));
+      else strokes.push(line(ax, jy, s2, jy === 0.92 ? 0.5 : jy + 0.14, hand === "round" ? chir * 0.28 : 0));
     }
   }
   const cl = (v) => Math.max(0.02, Math.min(0.98, v));
