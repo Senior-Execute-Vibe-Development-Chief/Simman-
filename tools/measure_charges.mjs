@@ -61,12 +61,17 @@ for (const [id, e] of Object.entries(D)) {
   svg.remove();
   if (!boxes.length) { out[id] = null; continue; }
   boxes.sort((a, b) => b.w * b.h - a.w * a.h);
+  // dominant cluster, TIGHT: seed with the largest element and absorb only
+  // elements that overlap it or sit within 3% of its diagonal. Legitimate
+  // detail (an eye, a tongue, a crossing part) overlaps or touches the body;
+  // junk — crop marks, guide dashes, variant-sheet spares — sits at a visible
+  // distance and gets left OUT of the frame, so the charge centres cleanly.
   const U = { ...boxes[0] };
   const used = new Set([0]);
   let grew = true;
   while (grew) {
     grew = false;
-    const gap = Math.hypot(U.w, U.h) * 0.12;
+    const gap = Math.hypot(U.w, U.h) * 0.03;
     boxes.forEach((b, i) => {
       if (used.has(i)) return;
       if (b.x < U.x + U.w + gap && b.x + b.w > U.x - gap && b.y < U.y + U.h + gap && b.y + b.h > U.y - gap) {
