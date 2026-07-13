@@ -477,6 +477,14 @@ export function expressGenome(genome) {
   // a shield's outline — the brandSeed gene is idle on shields, so it picks
   const shieldShape = substrate === "shield" ? pickEnum(get("brandSeed"), SHIELD_SHAPES) : "heater";
   const isFlag = FLAG_SUBSTRATES.has(substrate);
+  // THE CLOTH CUT: a banner's ratio comes from the substrate gene's position
+  // WITHIN its own window — the same gene that picked the cloth picks the
+  // cut, and it drifts smoothly under mutation. The span covers the real
+  // spread of rectangular flags, 1:2 (long) … 2:3 (stocky); the traditional
+  // tailed substrates keep their fixed cuts.
+  const sWin = get("substrate") * SUBSTRATES.length;
+  const flagRatio = substrate === "banner" ? 0.5 + (sWin - Math.floor(sWin)) * 0.167
+    : substrate === "pennon" ? 0.6 : 0.62;
 
   const pal = decodePalette(get);
   const symmetry = composition === "radial" ? "radial" : pickEnum(get("symmetry"), SYMMETRIES);
@@ -503,6 +511,10 @@ export function expressGenome(genome) {
     field.tinctures = [pal.field, pal.chargeT.rgb, t3.rgb];
     field.names = [pal.fieldT.name, pal.chargeT.name, t3.name];
     grounds = [pal.fieldT, pal.chargeT, t3];
+    // the SPANISH-FESS system: the thickness gene — the same one that splits
+    // an ordinary into diminutives, same windows — may double one band:
+    // the middle (1:2:1) or, at the gene's top, the first (2:1:1)
+    if (get("stripes") > 0.62) field.tiercedWide = get("stripes") > 0.86 ? 0 : 1;
   }
   // a field TREATMENT drapes the WHOLE field (so no partition/counterchange
   // under it). A fur IS the ground — ermine reads as argent strewn with
@@ -516,6 +528,7 @@ export function expressGenome(genome) {
     if (!isFlag || fur === "ermine") {
       field.fur = fur;
       field.partition = partition = "plain";
+      delete field.tiercedWide;                  // the fur drapes the WHOLE field
       if (field.fur === "ermine") grounds = [T("argent")];
       else if (field.fur === "vair") grounds = [T("argent"), T("azure")];
       else grounds = [pal.fieldT];                 // fretty / masoned: thin lines over the field colour
@@ -731,7 +744,7 @@ export function expressGenome(genome) {
       tincture: pal.chargeT.rgb, tinctureName: pal.chargeT.name }
     : null;
 
-  return { substrate, shieldShape, isFlag, composition, symmetry, iconism, colors: pal, field, motif, geometry, sigil, ornaments,
+  return { substrate, shieldShape, isFlag, flagRatio, composition, symmetry, iconism, colors: pal, field, motif, geometry, sigil, ornaments,
     cadency, gen: genome.gen || 0 };
 }
 
@@ -776,16 +789,22 @@ const CHARGE_NAME = {
   seadragon: "sea-dragon", sealion: "sea-lion", fleur: "fleur-de-lys",
 };
 const chargeName = id => CHARGE_NAME[id] || id;
+const plural1 = w => /(s|x|z|ch|sh)$/.test(w) ? w + "es"
+  : /[^aeiou]y$/.test(w) ? w.slice(0, -1) + "ies"
+  : /[^f]f$/.test(w) ? w.slice(0, -1) + "ves"                       // leaf → leaves, wolf → wolves
+  : w + "s";
+// heraldic French-order names pluralize their HEAD ("crosses couped",
+// "mullets of six points", "fleurs-de-lys"); English compounds their tail
+// ("pierced mullets", "oak leaves", "sea-dragons")
+const NOUN_FIRST = /^(cross |mullet |fleur-)/;
 const pluralize = name => {
-  const parts = name.split(" ");
-  let w = parts[0];
-  if (w.includes("-")) w = w.replace(/^([^-]+)/, "$1s");            // fleur-de-lys → fleurs-de-lys
-  else if (/(s|x|z|ch|sh)$/.test(w)) w += "es";
-  else if (/[^aeiou]y$/.test(w)) w = w.slice(0, -1) + "ies";
-  else w += "s";
-  parts[0] = w;
-  return parts.join(" ");
+  const sep = name.includes("-") && !name.includes(" ") ? "-" : " ";
+  const parts = name.split(sep);
+  const i = NOUN_FIRST.test(name) ? 0 : parts.length - 1;
+  parts[i] = plural1(parts[i]);
+  return parts.join(sep);
 };
+const art = name => (/^[aeiou]/i.test(name) ? "an" : "a");
 const tName = n => { const s = n === "tenne" ? "tenné" : n; return s[0].toUpperCase() + s.slice(1); };
 const ORD_NAME = { bendSinister: "bend sinister" };
 const ordName = o => ORD_NAME[o] || o;
@@ -811,8 +830,10 @@ function fieldPhrase(f, m) {
     case "paly": s = `Paly${ln} of ${NUMWORD[f.stripes]} ${a} and ${b}`; break;
     case "chequy": s = `Chequy ${a} and ${b}`; break;
     case "lozengy": s = `Lozengy ${a} and ${b}`; break;
-    case "tiercedPale": s = `Tierced in pale ${a}, ${b} and ${tName(f.names[2])}`; break;
-    case "tiercedFess": s = `Tierced in fess ${a}, ${b} and ${tName(f.names[2])}`; break;
+    case "tiercedPale": s = `Tierced in pale ${a}, ${b} and ${tName(f.names[2])}`
+      + (f.tiercedWide === 0 ? ", the hoist band doubled" : f.tiercedWide === 1 ? ", the middle band doubled" : ""); break;
+    case "tiercedFess": s = `Tierced in fess ${a}, ${b} and ${tName(f.names[2])}`
+      + (f.tiercedWide === 0 ? ", the upper band doubled" : f.tiercedWide === 1 ? ", the middle band doubled" : ""); break;
     default: s = a;
   }
   if (m && m.arrange === "seme")
@@ -853,9 +874,9 @@ export function blazonGenome(genome) {
   const ordClause = nOrd > 1 ? `${NUMWORD[nOrd]} ${pluralize(DIM_NAME[f.ordinary])}${oLn} ${oT}${oFimb}`
     : hasOrd ? `a ${ordName(f.ordinary)}${oLn} ${oT}${oFimb}` : "";
   if (hasOrd && m && m.arrange === "between") {
-    parts.push(`${ordClause} between ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+    parts.push(`${ordClause} between ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
   } else if (hasOrd && m && m.arrange === "onOrdinary") {
-    parts.push(`on a ${ordName(f.ordinary)}${oLn} ${oT}${oFimb} ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+    parts.push(`on a ${ordName(f.ordinary)}${oLn} ${oT}${oFimb} ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
   } else {
     if (hasOrd) parts.push(ordClause);
     if (m && m.arrange !== "seme") {
@@ -870,15 +891,15 @@ export function blazonGenome(genome) {
       }
       else if (m.arrange === "three") clause = `three ${pluralize(mName)} ${mT}${mFimb}`;
       else if (m.arrange === "inPale") clause = `two ${pluralize(mName)} in pale ${mT}${mFimb}`;
-      else if (p.composition === "radial") clause = `a ${mName} ${mT} within an annulet`;
-      else if (m.panel) clause = `a ${m.panel.shape === "disc" ? "roundel" : "lozenge"} ${tName(m.panel.name)} charged with a ${mName} ${mT}`;
-      else clause = `a ${mName} ${mT}${mFimb}`;
+      else if (p.composition === "radial") clause = `${art(mName)} ${mName} ${mT} within an annulet`;
+      else if (m.panel) clause = `a ${m.panel.shape === "disc" ? "roundel" : "lozenge"} ${tName(m.panel.name)} charged with ${art(mName)} ${mName} ${mT}`;
+      else clause = `${art(mName)} ${mName} ${mT}${mFimb}`;
       parts.push(m.inCanton ? `on a canton ${tName(p.ornaments.cantonName)} ${clause}` : clause);
     }
   }
   if (f.chief) parts.push(`a chief${f.line !== "straight" ? ` ${f.line}` : ""} ${tName(f.ordinaryName)}`);
   if (f.bordure) parts.push(`a bordure ${tName(f.ordinaryName)}`);
-  if (p.cadency) parts.push(`a ${chargeName(p.cadency.mark)} ${tName(p.cadency.tinctureName)} for difference`);
+  if (p.cadency) parts.push(`${art(chargeName(p.cadency.mark))} ${chargeName(p.cadency.mark)} ${tName(p.cadency.tinctureName)} for difference`);
   return parts.join(", ") + (p.substrate !== "shield" ? ` — on a ${p.substrate}` : "");
 }
 

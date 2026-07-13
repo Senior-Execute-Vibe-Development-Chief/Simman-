@@ -177,6 +177,15 @@ function furFill(w, h, p) {
   return s;
 }
 
+// the tierced bands' widths as fractions — one band may be DOUBLED (the
+// Spanish-fess system: tiercedWide indexes it)
+function tiercedWeights(p) {
+  const wt = [1, 1, 1];
+  if (p.tiercedWide != null) wt[p.tiercedWide] = 2;
+  const tot = wt[0] + wt[1] + wt[2];
+  return wt.map(v => v / tot);
+}
+
 // ── field: treatment, else a heraldic partition (edges in the field's line-style) ──
 function fieldSVG(w, h, p) {
   if (p.fur) return furFill(w, h, p);
@@ -198,8 +207,10 @@ function fieldSVG(w, h, p) {
     case "chequy": { const cols = Math.max(4, Math.min(9, n + 2)), cw = w / cols, rows = Math.ceil(h / cw); let s = R;
       for (let r = 0; r <= rows; r++) for (let c = 0; c < cols; c++) if ((r + c) % 2) s += `<rect x="${F(c * cw)}" y="${F(r * cw)}" width="${F(cw + 0.5)}" height="${F(cw + 0.5)}" fill="${b}"/>`;
       return s; }
-    case "tiercedPale": { let s = ""; for (let i = 0; i < 3; i++) s += `<rect x="${F(i * w / 3)}" width="${F(w / 3 + 1)}" height="${h}" fill="${css(p.tinctures[Math.min(i, p.tinctures.length - 1)])}"/>`; return s; }
-    case "tiercedFess": { let s = ""; for (let i = 0; i < 3; i++) s += `<rect y="${F(i * h / 3)}" width="${w}" height="${F(h / 3 + 1)}" fill="${css(p.tinctures[Math.min(i, p.tinctures.length - 1)])}"/>`; return s; }
+    case "tiercedPale": { const wt = tiercedWeights(p); let s = "", xx = 0;
+      for (let i = 0; i < 3; i++) { const ww = w * wt[i]; s += `<rect x="${F(xx)}" width="${F(ww + 1)}" height="${h}" fill="${css(p.tinctures[Math.min(i, p.tinctures.length - 1)])}"/>`; xx += ww; } return s; }
+    case "tiercedFess": { const wt = tiercedWeights(p); let s = "", yy = 0;
+      for (let i = 0; i < 3; i++) { const hh = h * wt[i]; s += `<rect y="${F(yy)}" width="${w}" height="${F(hh + 1)}" fill="${css(p.tinctures[Math.min(i, p.tinctures.length - 1)])}"/>`; yy += hh; } return s; }
     case "lozengy": { const cols = Math.max(4, Math.min(8, n + 2)), cw = w / cols, hh = cw * 0.7; let s = R;
       for (let j = -1; j <= Math.ceil(h / hh) + 1; j++) { if (!(j % 2)) continue;
         for (let i = -1; i <= cols; i++) { const cx = i * cw + cw / 2, cy = j * hh;
@@ -220,7 +231,11 @@ function ordinaryPath(type, w, h, ln, amp, flag) {
     case "bendSinister": { const bw = w * 0.3; return `M${w} 0 ${styledEdge(w, 0, bw, h, ln, amp)} L0 ${h} ${styledEdge(0, h, w - bw, 0, ln, amp)} Z`; }
     case "chevron": { const t = h * 0.16; return `M0 ${h} L${F(w / 2)} ${F(h * 0.42)} L${w} ${h} L${F(w - t)} ${h} L${F(w / 2)} ${F(h * 0.42 + t * 1.3)} L${F(t)} ${h} Z`; }
     case "cross": {
-      const vert = flag ? `M${F(w * 0.42)} 0 V${h} H${F(w * 0.26)} V0 Z` : ordinaryPath("pale", w, h, "straight", amp);
+      // flag: the NORDIC construction — both arms equally thick in absolute
+      // cloth units (the fess arm is 0.2h, so the vertical matches it), the
+      // crossing offset toward the hoist
+      const vert = flag ? `M${F(w * 0.34 + h * 0.1)} 0 V${h} H${F(w * 0.34 - h * 0.1)} V0 Z`
+        : ordinaryPath("pale", w, h, "straight", amp);
       return ordinaryPath("fess", w, h, "straight", amp) + vert;
     }
     case "saltire": return ordinaryPath("bend", w, h, "straight", amp) + ordinaryPath("bendSinister", w, h, "straight", amp);
@@ -613,7 +628,20 @@ function coatContent(p, w, h, rng) {
     // its own lone symbol.
     if (p.isFlag && p.ornaments.canton) {
       if (mot && mot.inCanton) {
-        const cw2 = w * 0.36, ch2 = h * 0.52;
+        let cw2 = w * 0.36, ch2 = h * 0.52;
+        // the union block SEAMS to the cloth it rides on: a canton edge lands
+        // on a stripe or band boundary (the sewn construction of real
+        // striped flags), whenever one lies near
+        if (f.partition === "barry") ch2 = h * Math.max(1, Math.round(0.52 * f.stripes)) / f.stripes;
+        else if (f.partition === "paly") cw2 = w * Math.max(1, Math.round(0.36 * f.stripes)) / f.stripes;
+        else if (f.partition === "perFess") ch2 = h * 0.5;
+        else if (f.partition === "tiercedFess") {
+          const wt = tiercedWeights(f);
+          for (const e of [wt[0], wt[0] + wt[1]]) if (Math.abs(e - 0.52) < 0.16) ch2 = h * e;
+        } else if (f.partition === "tiercedPale") {
+          const wt = tiercedWeights(f);
+          for (const e of [wt[0], wt[0] + wt[1]]) if (Math.abs(e - 0.36) < 0.16) cw2 = w * e;
+        }
         content += `<rect width="${F(cw2)}" height="${F(ch2)}" fill="${css(p.ornaments.cantonColor)}"/>`;
         if (mot.array) content += placeArray(mot, cw2 * 0.07, ch2 * 0.07, cw2 * 0.86, ch2 * 0.86);
         else {
@@ -664,7 +692,7 @@ function emblemInner(genome, aw, ah) {
   let w, h;
   if (p.substrate === "roundel") { w = h = Math.min(aw, ah) * 0.92; }
   else if (p.substrate === "shield" || p.substrate === "lozenge") { h = ah * 0.94; w = h * (p.substrate === "lozenge" ? 0.8 : 0.9); }
-  else { w = aw * 0.94; h = w * (p.substrate === "pennon" ? 0.6 : 0.62); }
+  else { w = aw * 0.94; h = w * (p.flagRatio || (p.substrate === "pennon" ? 0.6 : 0.62)); }
   const ox = (aw - w) / 2, oy = (ah - h) / 2;
   const sh = shape(p.substrate, w, h, p.shieldShape), clip = `e${uid++}`, C = p.colors, base = Math.min(w, h);
   const rng = rrng((genome.seed ^ (genome.gen * 2654435761)) >>> 0);

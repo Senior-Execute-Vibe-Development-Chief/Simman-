@@ -42,7 +42,8 @@ const ARGENT = TINCTURES.argent.rgb, AZURE = TINCTURES.azure.rgb;
 let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
-  array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, housed: 0 };
+  array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, housed: 0,
+  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0 };
 // the compact device categories — the only ones a flag repeats or strews
 const COMPACT = new Set(["celestial", "geometric"]);
 const fail = (msg, g) => { if (fails++ < 10) console.error(`  FAIL ${msg}${g ? `\n       ${describeGenome(g)}` : ""}`); };
@@ -95,6 +96,18 @@ function audit(g) {
       if (f.ordinary && f.ordinary !== "none") fail("canton over an ordinary on a flag", g);
       if (fm && !fm.inCanton) fail("canton beside a free device on a flag", g);
     }
+    // THE CLOTH CUT: banners span the real ratio spread (1:2 … 2:3), smooth
+    if (p.substrate === "banner") {
+      if (!(p.flagRatio >= 0.5 && p.flagRatio <= 0.667)) fail(`banner cut out of range (${p.flagRatio})`, g);
+      if (p.flagRatio < 0.53) seen.cutLong++;
+      if (p.flagRatio > 0.64) seen.cutStocky++;
+    }
+  }
+  // the Spanish-fess system: tierced bands may double the middle or the first
+  if (f.tiercedWide != null) {
+    if (!f.partition.startsWith("tierced")) fail("tiercedWide off a tierced field", g);
+    if (f.tiercedWide === 1) seen.spanishMid++; else if (f.tiercedWide === 0) seen.spanishFirst++;
+    else fail(`tiercedWide out of range (${f.tiercedWide})`, g);
   }
   if (p.composition === "heraldic") {
     if (p.colors.mode === "heraldic") fieldNames.add(f.names[0]);
