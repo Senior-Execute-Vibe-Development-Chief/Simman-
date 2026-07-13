@@ -1679,6 +1679,26 @@ export function nucleateFrontierStates(world) {
   const caps = [];
   if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
   const fert = world.fert, moist = world.moist;
+  // ── BIRTH_FIELD (§4b, field-polity-spec): states are born of the PEOPLED LAND ──
+  // Cluster viability was the summed CENSUS of nearby stateless settlements — but
+  // under cities-only entities the census is the urban network, not the people, so
+  // state birth was gated on URBAN density (countries "spawn with" settlement
+  // clusters). Under the lever a candidate seat's viability is the STATELESS BASIN's
+  // people: the popField mass over unclaimed land within the founding radius,
+  // expressed in census units through the global census↔field exchange rate (both
+  // totals exist from genesis — no realm-median needed before realms exist). The
+  // seat itself stays a real city with the org/size gates (a court needs a seat);
+  // what changed is WHOSE substance carries statehood — a lone town amid a dense
+  // peopled valley founds the state its basin can carry, a cluster of towns on
+  // empty land no longer manufactures one. 0 = the census cluster (byte-identical).
+  let f2c = 0;
+  if (T.BIRTH_FIELD > 0 && T.POP_FIELD && world.popField && world._countryOwner) {
+    let cenT = 0, pfT = 0;
+    for (const s of world.settlements) if (s.mode === "settled") cenT += s.people || 0;
+    const pfA = world.popField, elevA = world.elev, Nn = world.N;
+    for (let ti = 0; ti < Nn; ti++) if (elevA[ti] > 0) pfT += pfA[ti];
+    if (cenT > 0 && pfT > 0) f2c = cenT / pfT;
+  }
   const cand = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId >= 0) continue;
@@ -1722,6 +1742,23 @@ export function nucleateFrontierStates(world) {
       const op = o.people || 0, sp = s.people || 0;
       if (op > sp || (op === sp && o.id < s.id)) isLeader = false;
     });
+    if (f2c > 0) {
+      // BIRTH_FIELD: viability = the stateless basin's people (see the header note).
+      // Leadership stays census-ranked — the seat is the leading CITY around (role 2).
+      const pfA = world.popField, coA = world._countryOwner, elevA = world.elev, thh = world.th;
+      const sy = s.pos.y | 0, sx = s.pos.x | 0;
+      let mass = 0;
+      for (let dy = -NUCLEATE_R; dy <= NUCLEATE_R; dy++) {
+        const yy = sy + dy; if (yy < 0 || yy >= thh) continue;
+        for (let dx = -NUCLEATE_R; dx <= NUCLEATE_R; dx++) {
+          if (dx * dx + dy * dy > NUCLEATE_R * NUCLEATE_R) continue;
+          const ti2 = yy * tw + (((sx + dx) % tw) + tw) % tw;
+          if (!(elevA[ti2] > 0) || coA[ti2] >= 0) continue;   // claimed ground already carries a state
+          mass += pfA[ti2];
+        }
+      }
+      cp = mass * f2c;
+    }
     if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp });
   }
   if (!cand.length) return;

@@ -307,6 +307,33 @@ export function musterArmies(world) {
   const natPop = new Map();
   if (T.MANPOWER_FRAC > 0) {
     for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) natPop.set(s.countryId, (natPop.get(s.countryId) || 0) + (s.people || 0));
+    // T.MUSTER_FIELD: the recruitment base is the realm's GOVERNED PEOPLE — the
+    // popField over the land it holds — not the sum of its city censuses. Armies
+    // were the countryside under arms; under cities-only entities (DISSOLVE_FARMS)
+    // the census sum systematically under-counts every realm whose people live
+    // outside catchment towns (the steppe, the marches, the agrarian valley) — the
+    // SAME under-count POW_FIELD fixed for coercive power, applied to the manpower
+    // pool. Median-anchored (median census-sum ÷ median governed-people, low-passed
+    // like _refRevenue) so MANPOWER_FRAC keeps its calibration at the median realm:
+    // war still costs the same men where it always did, but the DISTRIBUTION is the
+    // land's — an agrarian empire out-musters a merchant league of the same city
+    // count. Garrison caps and the per-city rural levy structure stay urban (cities
+    // HOST troops); only the national pool re-bases. 0 = the census sum (byte-identical).
+    if (T.MUSTER_FIELD > 0 && T.POP_FIELD && world.popField && world._countryOwner) {
+      const pf = world.popField, co = world._countryOwner, elevA = world.elev, Nn = world.N;
+      const gov = new Map();
+      for (let ti = 0; ti < Nn; ti++) { const cc = co[ti]; if (cc >= 0 && elevA[ti] > 0) gov.set(cc, (gov.get(cc) || 0) + pf[ti]); }
+      const cen = [], gv = [];
+      for (const [cc, p] of natPop) { const g = gov.get(cc) || 0; if (g > 0 && p > 0) { cen.push(p); gv.push(g); } }
+      if (cen.length >= 5) {
+        cen.sort((a, b) => a - b); gv.sort((a, b) => a - b);
+        const r = cen[cen.length >> 1] / Math.max(1e-9, gv[gv.length >> 1]);
+        const prev = world._musterRatio || 0;
+        world._musterRatio = prev > 0 ? prev + (r - prev) * 0.25 : r;   // the _refRevenue low-pass reasoning
+      }
+      const mr = world._musterRatio || 0;
+      if (mr > 0) for (const [cc] of natPop) { const g = gov.get(cc) || 0; if (g > 0) natPop.set(cc, g * mr); }
+    }
     const seen = new Set();
     for (const [cc, pop] of natPop) {
       const cap = T.MANPOWER_FRAC * pop;

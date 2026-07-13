@@ -1969,6 +1969,41 @@ export function updatePolities(world) {
     const refRegionPow = rpows.length ? Math.max(1e-6, rpows[rpows.length >> 1]) : 1;
     regionScale = (world._refCapPower || 1) / refRegionPow;   // median governed-region power → median capital power
   }
+  // ── PROV_FIELD: a PROVINCE weighs its GOVERNED PEOPLE, not its city census ──────
+  // Under cities-only entities (DISSOLVE_FARMS — every settlement is an urban node)
+  // the member roster no longer contains the nation's people, so every census read in
+  // the admin-load ledger under-counts the countryside: the load a province puts on
+  // the centre (sizeMul), the militia it raises when it rises (provForce's levy — the
+  // PEASANT revolt), and the heterogeneity that spreads the army thin (natForeign)
+  // all read s.people. Under the lever each settled province carries s._govPeople —
+  // the popField integral over its worked catchment (_territoryOwner; ⊆ the realm's
+  // land under CATCHMENT_CLIP) — median-anchored to the census (median province
+  // census ÷ median province governed-people, low-passed like _refRevenue) so
+  // SIZE_REF / REBEL_LEVY / NAT_OVERREACH keep their calibration at the MEDIAN
+  // province and only the DISTRIBUTION shifts: a small city administering a dense
+  // valley weighs (and rebels) like the populous province it is, a walled town on
+  // empty march like the outpost it is. Marches outside any catchment stay
+  // province-unattributed (they price through the territorial admin load instead).
+  // 0 = the city census (byte-identical).
+  let provRatio = 0;
+  if (T.PROV_FIELD > 0 && T.POP_FIELD && world.popField && world._territoryOwner && world._byId) {
+    const pf = world.popField, terr = world._territoryOwner, elevA = world.elev, byId = world._byId, Nn = world.N;
+    for (const s of world.settlements) if (s.mode === "settled") s._govPeople = 0;
+    for (let ti = 0; ti < Nn; ti++) {
+      const oid = terr[ti]; if (oid < 0 || !(elevA[ti] > 0)) continue;
+      const s = byId.get(oid); if (!s || s.mode !== "settled") continue;
+      s._govPeople += pf[ti];
+    }
+    const cen = [], gov = [];
+    for (const s of world.settlements) if (s.mode === "settled" && (s._govPeople || 0) > 0 && (s.people || 0) > 0) { cen.push(s.people); gov.push(s._govPeople); }
+    if (cen.length >= 8) {   // a real sample; below it keep the last smoothed ratio (or stay off pre-seed)
+      cen.sort((a, b) => a - b); gov.sort((a, b) => a - b);
+      const r = cen[cen.length >> 1] / Math.max(1e-9, gov[gov.length >> 1]);
+      const prev = world._provRatio || 0;
+      world._provRatio = prev > 0 ? prev + (r - prev) * REF_REV_SMOOTH : r;   // same low-pass reasoning as _refRevenue
+    }
+    provRatio = world._provRatio || 0;
+  }
   // Balance of power: recompute the (slow-drifting) alliance map periodically — and
   // once on first run so the war pass never reads an undefined map. Self-calibrating,
   // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
@@ -2025,8 +2060,24 @@ export function updatePolities(world) {
     // holds firm. Era-weighted off emergent development (absorbResistance/cohesion.js):
     // near-silent in antiquity (multi-ethnic empires hold), cresting in the national age.
     let natForeign = 0;
+    // PROV_FIELD: a province's weight in the realm's heterogeneity is its GOVERNED
+    // people, mean-normalised within the realm (Σ weights = member count, so
+    // NAT_OVERREACH keeps its calibration at uniform provinces) — a foreign-identity
+    // province of a million weighs like the mass nationalist problem it is, a foreign
+    // frontier fort like a garrison detail. provWMean also scales each province's OWN
+    // share subtracted back in the load loop (armyAvail), keeping the two consistent.
+    let provWMean = 0;
+    if (provRatio > 0) {
+      let wSum = 0, wN = 0;
+      for (const m of c.members) { if (m.id === c.capitalId) continue; wSum += (m._govPeople || 0) * provRatio; wN++; }
+      if (wN > 0 && wSum > 0) provWMean = wSum / wN;
+    }
     if (T.HOLD_ARMY && T.NAT_OVERREACH > 0) {
-      for (const m of c.members) { if (m.id === c.capitalId) continue; natForeign += absorbResistance(cap, m, idW); }
+      if (provWMean > 0) {
+        for (const m of c.members) { if (m.id === c.capitalId) continue; natForeign += absorbResistance(cap, m, idW) * (((m._govPeople || 0) * provRatio) / provWMean); }
+      } else {
+        for (const m of c.members) { if (m.id === c.capitalId) continue; natForeign += absorbResistance(cap, m, idW); }
+      }
     }
     // (The raw hold-distance c.range bounds the Dijkstra search inside
     // capitalTransportCosts; everything HERE compares against the res-scaled grip.)
@@ -2363,16 +2414,24 @@ export function updatePolities(world) {
       // development (cohesion.js) — silent in antiquity (multi-ethnic empires hold),
       // cresting in the national age — never time-gated.
       const natRes = (T.HOLD_ARMY && (T.REBEL_IDENTITY > 0 || T.NAT_OVERREACH > 0)) ? absorbResistance(cap, s, idW) : 0;
-      const provForce = (s.army || 0) + (s.people || 0) * T.REBEL_LEVY * (1 + T.REBEL_IDENTITY * natRes);
+      // PROV_FIELD: the province's PEOPLE are its governed catchment population
+      // (anchored to census units), not the city census — so the rebel levy is the
+      // countryside in revolt (the peasant rising the census could never raise) and
+      // the size burden is the real administrative mass. At lever 0 provPeople is
+      // exactly (s.people || 0) — the original expressions, byte-identical.
+      const provPeople = provRatio > 0 && (s._govPeople || 0) > 0 ? s._govPeople * provRatio : (s.people || 0);
+      const provForce = (s.army || 0) + provPeople * T.REBEL_LEVY * (1 + T.REBEL_IDENTITY * natRes);
       // The army that can actually be brought to bear HERE is the national force minus
       // what's tied down suppressing the realm's OTHER foreign provinces (natForeign −
       // this one's own share): a unified realm concentrates its whole army on each
-      // revolt, a polyglot empire divides it across every restive march.
-      const armyAvail = natArmy / (1 + T.NAT_OVERREACH * Math.max(0, natForeign - natRes));
+      // revolt, a polyglot empire divides it across every restive march. (Under
+      // PROV_FIELD the share subtracted is people-weighted, matching natForeign.)
+      const natResW = provWMean > 0 ? natRes * ((s._govPeople || 0) * provRatio / provWMean) : natRes;
+      const armyAvail = natArmy / (1 + T.NAT_OVERREACH * Math.max(0, natForeign - natResW));
       const coerce = T.HOLD_ARMY
         ? Math.min(COERCE_CAP, Math.sqrt((armyAvail * (holdRange / (holdRange + d)) + 1) / Math.max(1, provForce)))
         : Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
-      const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
+      const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + provPeople / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
       const langMul = 1 + adminFriction(cap, s, idW);   // a foreign-tongue province is costlier to govern → polyglot empires overreach sooner (cohesion.js)
       const load = (d / holdRange) * sizeMul * recMul * langMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach

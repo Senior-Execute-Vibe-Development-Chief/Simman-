@@ -447,6 +447,14 @@ function deriveTarget(world, c, polity) {
   // tempers a sprawling realm toward a crown.
   let totalPop = 0, capPop = cap ? (cap.people || 0) : 0;
   if (c.members) for (const s of c.members) { if (s.mode === "settled") totalPop += s.people || 0; }
+  // PROV_FIELD: primacy is the capital's share of the NATION'S people — each
+  // province's governed catchment population (conquest.js s._govPeople, ≤1 polity
+  // pass stale) — not its share of the urban census, which read a one-big-city
+  // realm with a vast countryside as maximally primate. A pure ratio: no anchor.
+  if (T.PROV_FIELD > 0 && cap && (cap._govPeople || 0) > 0 && c.members) {
+    let tg = 0; for (const s of c.members) if (s.mode === "settled") tg += s._govPeople || 0;
+    if (tg > 0) { capPop = cap._govPeople; totalPop = tg; }
+  }
   const primacy = totalPop > 0 ? capPop / totalPop : 1;
   let repScore = (0.6 * comm01 + 0.4 * (1 - aggr01)) * (0.85 + 0.15 * (1 - primacy));
 
