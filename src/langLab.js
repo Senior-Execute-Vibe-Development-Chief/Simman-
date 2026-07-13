@@ -17,7 +17,7 @@ import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
   alignmentOf, voicesOf, voiceEtymologies, tamShape, evidentialSystem, classInventory, concordMarkers, agreementTargets, inflectAdj,
   classifiersOf, classifierEtymologies, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns,
-  renderClauseTree, clauseLinkersOf } from "./sim/languageGrammar.js";
+  renderClauseTree, clauseLinkersOf, synchronicPhonology } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
@@ -36,19 +36,34 @@ function reset() {
 }
 const active = () => lineage[lineage.length - 1];
 
-// display inventory = the same derivation compile() uses
+// display inventory = the rolled/pinned chart UNIONED with what history
+// actually minted — sound change creates segments the roll never listed
+// (a fresh reader caught q-words beside a q-less chart)
 function displayInv(l) {
   const rolled = buildInventory(l.famSeed, l.prof);
-  const inv = {
-    cons: (l.pin && l.pin.cons ? l.pin.cons : rolled.cons).slice(),
-    vows: (l.pin && l.pin.vows ? l.pin.vows : rolled.vows).slice(),
-  };
-  for (const b of l.xph || []) inv.cons.push(b);
-  return inv;
+  const cons = (l.pin && l.pin.cons ? l.pin.cons : rolled.cons).slice();
+  const vows = (l.pin && l.pin.vows ? l.pin.vows : rolled.vows).slice();
+  for (const b of l.xph || []) cons.push(b);
+  const sp = synchronicPhonology(l);
+  const ck = new Set(cons.map(b => `${b.p},${b.m},${b.l},${b.s}`));
+  for (const b of sp.cons) if (!ck.has(`${b.p},${b.m},${b.l},${b.s}`)) cons.push(b);
+  const vk = new Set(vows.map(b => `${b.h},${b.b},${b.r}`));
+  for (const b of sp.vows) if (!vk.has(`${b.h},${b.b},${b.r}`)) vows.push(b);
+  return { cons, vows };
+}
+
+// syllable-structure label from the OBSERVED surfaces, not the proto roll —
+// two sound changes can grow codas on a rolled strict-CV tongue, and the
+// label must describe the language as it stands
+function sylLabel(l) {
+  const sp = synchronicPhonology(l);
+  if (sp.maxOn >= 3 || sp.maxCo >= 3) return "heavy clusters";
+  if (sp.maxOn === 2 || sp.maxCo === 2) return "clustered";
+  if (sp.maxCo === 1) return sp.nasalOnlyCodas ? "CV(N) — nasal codas only" : "CV(C)";
+  return "strict CV";
 }
 
 const MORPH = { iso: "isolating", agg: "agglutinative", fus: "fusional", tmpl: "templatic (root-and-pattern)" };
-const SYL = ["strict CV", "CV(C)", "clustered", "heavy clusters"];
 const TONE = ["no tone", "register tone", "contour tone"];
 const HARM = { none: null, fb: "front–back harmony", round: "rounding harmony" };
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -60,9 +75,9 @@ function chips(l) {
   // bundles (ð and þ both write "th", so 23 bundles can be 21 letters)
   const nC = new Set(inv.cons.map(b => romanizeC(b, p.romTaste, p.rom))).size;
   const nV = new Set(inv.vows.map(b => romanizeV(b, p.rom))).size;
-  const out = [MORPH[p.morph], SYL[p.sylC], TONE[p.tone], HARM[p.harmony],
+  const out = [MORPH[p.morph], sylLabel(l), TONE[p.tone], HARM[p.harmony],
     `${nC} consonants`, `${nV} vowels`,
-    p.nasalCoda ? "nasal codas only" : null, p.gendered ? "gendered names" : null,
+    p.gendered ? "gendered names" : null,
     p.patro !== "none" ? `patronymic (${p.patro === "suf" ? "suffix" : "prefix"})` : null,
     l.rules.length ? `${l.rules.length} sound changes` : "pristine",
     l.loans.length ? `${l.loans.length} loanwords` : null,

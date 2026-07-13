@@ -2315,6 +2315,43 @@ export function affixEtymologies(lang) {
   return out;
 }
 
+/** The SYNCHRONIC phonology: what the language's evolved words actually
+ *  contain, not what the proto-profile rolled. Sound change mints segments
+ *  the rolled inventory never listed (palatalization → palatal affricates,
+ *  lenition → fresh fricatives, nasalization → nasal vowels) — a fresh
+ *  reader caught the Lab charting an inventory with no q beside words full
+ *  of q, and a 'strict CV' label over cluster-grown surfaces. Scans the
+ *  whole evolved dictionary + the closed classes; consonants dedupe by
+ *  feature bundle, vowels by QUALITY (length/nasality are prosodic layers,
+ *  not chart rows). Also reports observed syllable-shape maxima so labels
+ *  can describe the language as it stands after history happened to it.
+ *  → { cons, vows, maxOn, maxCo, codaRate, nasalOnlyCodas } (cached) */
+export function synchronicPhonology(lang) {
+  const c = gc(lang);
+  if (c.synchPhon) return c.synchPhon;
+  const consM = new Map(), vowM = new Map();
+  let maxOn = 0, maxCo = 0, codaN = 0, sylN = 0, nasalOnly = true;
+  const scan = (w) => {
+    if (!w || !w.syls) return;
+    for (const s of w.syls) {
+      sylN++;
+      maxOn = Math.max(maxOn, s.on.length);
+      maxCo = Math.max(maxCo, s.co.length);
+      if (s.co.length) { codaN++; if (!s.co.every(x => x.m === 1)) nasalOnly = false; }
+      for (const x of [...s.on, ...s.co]) consM.set(x.p + ":" + x.m + ":" + x.l + ":" + x.s, { p: x.p, m: x.m, l: x.l, s: x.s });
+      for (const v of s.nu) vowM.set(v.h + ":" + v.b + ":" + v.r, { h: v.h, b: v.b, r: v.r, n: 0, lg: 0 });
+    }
+  };
+  for (let cid = 0; cid < CONCEPTS.length; cid++) scan(nativeStemOf(lang, cid));
+  const cl = closedOf(lang);
+  for (const f of [...cl.prons, ...cl.dems, cl.neg, ...cl.qs, ...cl.conj, ...cl.adps]) scan(f.form);
+  c.synchPhon = {
+    cons: [...consM.values()], vows: [...vowM.values()],
+    maxOn, maxCo, codaRate: sylN ? codaN / sylN : 0, nasalOnlyCodas: nasalOnly && codaN > 0,
+  };
+  return c.synchPhon;
+}
+
 // affixes rendered standalone must shed the silent-e clothing renderWord
 // dresses free words in (the -lune→-lun lesson from the name suffixes)
 function renderAffix(lang, syl) {

@@ -13,8 +13,8 @@
 
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
 import { refProfile, refPin } from "../src/sim/languageRefs.js";
-import { rollProfile } from "../src/sim/languagePhonology.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf } from "../src/sim/languageGrammar.js";
+import { rollProfile, buildInventory } from "../src/sim/languagePhonology.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -1929,6 +1929,36 @@ console.log("\n── §23 functional load (review-loop) ──");
     const e1 = foundLanguage(mkWorld(), { seed: 720211 });
     const esig = (l) => JSON.stringify(affixEtymologies(l));
     check("etymology notes deterministic + JSON-roundtrip-stable", esig(e1) === esig(JSON.parse(JSON.stringify(e1))));
+  }
+
+  // ── the displayed phonology matches the spoken one (review-loop) ──
+  // Sound change mints segments the rolled inventory never listed; a fresh
+  // reader caught q-words beside a q-less chart, and 'strict CV' labels over
+  // cluster-grown surfaces. synchronicPhonology scans the evolved words.
+  {
+    const w4 = mkWorld();
+    const key = (b) => `${b.p},${b.m},${b.l},${b.s}`;
+    let minted = 0, phantoms = 0, langsN = 0;
+    for (let i = 0; i < 50; i++) {
+      const l = foundLanguage(w4, { seed: 730000 + i * 173 });
+      const rolled = new Set(buildInventory(l.famSeed, l.prof).cons.map(key));
+      for (const b of l.xph || []) rolled.add(key(b));
+      // pristine first: the scan may contain nothing the synthesis can't use
+      if (!l.rules.length && synchronicPhonology(l).cons.some(b => !rolled.has(key(b)))) phantoms++;
+      for (let d = 0; d < 6; d++) driftLanguage(w4, l);
+      langsN++;
+      if (synchronicPhonology(l).cons.some(b => !rolled.has(key(b)))) minted++;
+    }
+    check(`sound change mints observable segments beyond the roll (${minted}/${langsN} drifted langs)`, minted >= 3);
+    check(`a pristine language shows no phantom segments (${phantoms})`, phantoms === 0);
+    const world5 = mkWorld();
+    const m5 = pinnedMandarin(world5, 111);
+    const sp5 = synchronicPhonology(m5);
+    const pinSet = new Set(refPin("mandarin").pin.cons.map(key));
+    check(`pinned Mandarin synchronic chart ⊆ the pin (${sp5.cons.length} bundles) + nasal-only codas`, sp5.cons.every(b => pinSet.has(key(b))) && sp5.nasalOnlyCodas && sp5.maxOn <= 1);
+    const s1 = foundLanguage(mkWorld(), { seed: 730173 });
+    const ssig = (l) => JSON.stringify(synchronicPhonology(l));
+    check("synchronic phonology deterministic + JSON-roundtrip-stable", ssig(s1) === ssig(JSON.parse(JSON.stringify(s1))));
   }
 }
 
