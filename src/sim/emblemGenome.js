@@ -67,6 +67,21 @@ const ARRANGES    = ["single", "single", "three", "inPale", "seme"];
 // common case), charges BETWEEN it in the free field, charges ON the band
 // itself, or a semé field strewn beneath it.
 const ORD_COMPANY = ["none", "none", "between", "on", "seme"];
+// where an ordinary's company SITS — unit positions of each ordinary's open
+// regions (between) and of the band itself (on; a bend's riders tilt with it).
+// Lives in the phenotype so the renderer just draws it and the blazon can
+// count it — one source of truth.
+const ORD_SLOTS = {
+  fess:         { between: [[0.28, 0.2], [0.72, 0.2], [0.5, 0.81]], on: [[0.28, 0.5], [0.5, 0.5], [0.72, 0.5]] },
+  pale:         { between: [[0.2, 0.42], [0.8, 0.42]], on: [[0.5, 0.26], [0.5, 0.5], [0.5, 0.74]] },
+  bend:         { between: [[0.74, 0.26], [0.26, 0.74]], on: [[0.3, 0.3], [0.5, 0.5], [0.7, 0.7]], tilt: 45 },
+  bendSinister: { between: [[0.26, 0.26], [0.74, 0.74]], on: [[0.7, 0.3], [0.5, 0.5], [0.3, 0.7]], tilt: -45 },
+  chevron:      { between: [[0.26, 0.3], [0.74, 0.3], [0.5, 0.8]] },
+  cross:        { between: [[0.24, 0.26], [0.76, 0.26], [0.24, 0.74], [0.76, 0.74]], on: [[0.5, 0.5]] },
+  saltire:      { between: [[0.5, 0.19], [0.19, 0.5], [0.81, 0.5], [0.5, 0.81]], on: [[0.5, 0.5]] },
+  pile:         { between: [[0.19, 0.62], [0.81, 0.62]], on: [[0.5, 0.32]] },
+  pall:         { between: [[0.5, 0.19], [0.24, 0.72], [0.76, 0.72]], on: [[0.5, 0.46]] },
+};
 // ordinaries — the bold geometric charges of heraldry, laid over the field (with
 // the field's line-style on their edges). "none" weighted so a plain field stays common.
 const ORDINARIES  = ["none", "none", "none", "none", "none", "none", "none", "none", "none", "fess", "pale", "bend", "bendSinister", "chevron", "cross", "saltire", "pile", "pall"];
@@ -391,7 +406,7 @@ export function expressGenome(genome) {
     // tincture, constructed); over a mixed two-region party it may instead be
     // COUNTERCHANGED — painted in the field's own tinctures, swapped across
     // the line, heraldry's own answer to a ground no one tincture can read on
-    let arrange = null, tincture = markT, counterchange = false, behind = false;
+    let arrange = null, tincture = markT, counterchange = false, behind = false, slots = null, tilt = 0;
     if (hasOrdinary) {
       // an ordinary no longer suppresses the charge — the arrange gene decides
       // its company. Charges ON the band derive their tincture against the
@@ -400,9 +415,18 @@ export function expressGenome(genome) {
       // both keep their company BETWEEN instead.
       let slot = pickEnum(get("arrange"), ORD_COMPANY);
       if (slot === "on" && (field.ordinary === "chevron" || field.counterchange)) slot = "between";
-      if (slot === "between") arrange = "between";
-      else if (slot === "on") { arrange = "onOrdinary"; tincture = tinctureOn([markT], get("hueA"), get("value")); }
-      else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value")); }
+      if (slot === "between" || slot === "on") {
+        const spec = ORD_SLOTS[field.ordinary];
+        // a chief owns the top band: company positions under it are dropped
+        let pts = (slot === "on" ? spec.on : spec.between) || spec.between;
+        if (field.chief) pts = pts.filter(([, uy]) => uy > 0.34);
+        if (pts.length) {
+          arrange = slot === "on" ? "onOrdinary" : "between";
+          slots = pts;
+          tilt = (slot === "on" && spec.tilt) || 0;
+          if (slot === "on") tincture = tinctureOn([markT], get("hueA"), get("value"));
+        }
+      } else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value")); }
     } else {
       arrange = composition === "central" || composition === "radial" ? "single"
         : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
@@ -413,7 +437,8 @@ export function expressGenome(genome) {
     // ordinary, not over them
     behind = arrange === "seme" && composition === "heraldic";
     if (arrange) motif = { id, cat, tincture: tincture.rgb, tinctureName: tincture.name, counterchange, behind,
-      count: arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
+      slots, tilt,
+      count: slots ? slots.length : arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
       scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5) * (0.75 + get("motifScale") * 0.5) };
   }
 
@@ -479,6 +504,111 @@ export function sigilFromSeed(seed) {
     inter: SIGIL_INTER[Math.floor(r() * SIGIL_INTER.length)],
     axis: r() < 0.4,
   };
+}
+
+// ── BLAZON — the formal heraldic sentence for a phenotype ────────────────────
+const NUMWORD = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight"];
+const CHARGE_NAME = {
+  mullet6: "mullet of six points", mullet8: "mullet of eight points", rowel: "pierced mullet",
+  crossCouped: "cross couped", crossPattee: "cross pattée", crosslet: "cross crosslet",
+  oakleaf: "oak leaf", stagbeetle: "stag beetle", mailedfist: "mailed fist",
+  catherinewheel: "Catherine wheel", cartwheel: "cart wheel", cogwheel: "cog wheel",
+  seadragon: "sea-dragon", sealion: "sea-lion", fleur: "fleur-de-lys",
+};
+const chargeName = id => CHARGE_NAME[id] || id;
+const pluralize = name => {
+  const parts = name.split(" ");
+  let w = parts[0];
+  if (w.includes("-")) w = w.replace(/^([^-]+)/, "$1s");            // fleur-de-lys → fleurs-de-lys
+  else if (/(s|x|z|ch|sh)$/.test(w)) w += "es";
+  else if (/[^aeiou]y$/.test(w)) w = w.slice(0, -1) + "ies";
+  else w += "s";
+  parts[0] = w;
+  return parts.join(" ");
+};
+const tName = n => { const s = n === "tenne" ? "tenné" : n; return s[0].toUpperCase() + s.slice(1); };
+const ORD_NAME = { bendSinister: "bend sinister" };
+const ordName = o => ORD_NAME[o] || o;
+
+// the field clause — partition (with its line-style), fur, and any semé
+function fieldPhrase(f, m) {
+  const [a, b] = f.names.map(tName);
+  const ln = f.line !== "straight" ? ` ${f.line}` : "";
+  let s;
+  if (f.fur) s = tName(f.fur);
+  else switch (f.partition) {
+    case "perPale": s = `Per pale${ln} ${a} and ${b}`; break;
+    case "perFess": s = `Per fess${ln} ${a} and ${b}`; break;
+    case "perBend": s = `Per bend${ln} ${a} and ${b}`; break;
+    case "perSaltire": s = `Per saltire ${a} and ${b}`; break;
+    case "quarterly": s = `Quarterly ${a} and ${b}`; break;
+    case "gyronny": s = `Gyronny of eight ${a} and ${b}`; break;
+    case "chevron": s = `Per chevron ${a} and ${b}`; break;
+    case "barry": s = `Barry${ln} of ${NUMWORD[f.stripes]} ${a} and ${b}`; break;
+    case "paly": s = `Paly${ln} of ${NUMWORD[f.stripes]} ${a} and ${b}`; break;
+    default: s = a;
+  }
+  if (m && m.arrange === "seme")
+    s += ` semé of ${pluralize(chargeName(m.id))} ${m.counterchange ? "counterchanged" : tName(m.tinctureName)}`;
+  return s;
+}
+
+/** blazonGenome(genome) → the formal blazon of the expressed design.
+ *  Heraldic-grammar compositions (heraldic / central / radial / semé) get a
+ *  true blazon; the other traditions (calligraphy, tamga, tilework, sigil)
+ *  are not blazonable and get an honest plain-language line instead. */
+export function blazonGenome(genome) {
+  if (genome.quarters && genome.quarters.length > 1) {
+    const qs = genome.quarters.map(q => blazonGenome({ genes: q.genes, gen: q.gen, seed: q.seed }));
+    const ROMAN = ["I", "II", "III", "IV"];
+    return `Quarterly: ${qs.map((q, i) => `${ROMAN[i]}. ${q}`).join("; ")}`;
+  }
+  const p = expressGenome(genome);
+  const f = p.field, m = p.motif;
+  if (!["heraldic", "central", "radial", "seme"].includes(p.composition)) {
+    const what = p.composition === "script" ? "inscribed with devotional script"
+      : p.composition === "brand" ? "charged with a clan tamga"
+      : p.composition === "plain" ? "diapered with geometric tilework"
+      : "bearing a sacred sigil";
+    return `A ${p.substrate} ${tName(p.colors.fieldT.name).toLowerCase()}, ${what}`;
+  }
+  const parts = [fieldPhrase(f, m)];
+  const mT = m ? (m.counterchange ? "counterchanged" : tName(m.tinctureName)) : "";
+  const mName = m ? chargeName(m.id) : "";
+  const hasOrd = f.ordinary && f.ordinary !== "none";
+  const oLn = hasOrd && f.line !== "straight" ? ` ${f.line}` : "";
+  const oT = hasOrd ? (f.counterchange ? "counterchanged" : tName(f.ordinaryName)) : "";
+  if (hasOrd && m && m.arrange === "between") {
+    parts.push(`a ${ordName(f.ordinary)}${oLn} ${oT} between ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+  } else if (hasOrd && m && m.arrange === "onOrdinary") {
+    parts.push(`on a ${ordName(f.ordinary)}${oLn} ${oT} ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+  } else {
+    if (hasOrd) parts.push(`a ${ordName(f.ordinary)}${oLn} ${oT}`);
+    if (m && m.arrange !== "seme") {
+      if (m.arrange === "three") parts.push(`three ${pluralize(mName)} ${mT}`);
+      else if (m.arrange === "inPale") parts.push(`two ${pluralize(mName)} in pale ${mT}`);
+      else if (p.composition === "radial") parts.push(`a ${mName} ${mT} within an annulet`);
+      else parts.push(`a ${mName} ${mT}`);
+    }
+  }
+  if (f.chief) parts.push(`a chief${f.line !== "straight" ? ` ${f.line}` : ""} ${tName(f.ordinaryName)}`);
+  if (f.bordure) parts.push(`a bordure ${tName(f.ordinaryName)}`);
+  return parts.join(", ") + (p.substrate !== "shield" ? ` — on a ${p.substrate}` : "");
+}
+
+// ── genome distance — cheap design-space metric ──────────────────────────────
+/** genomeDistance(a, b) → 0 (identical) … ~1 (maximally different). The hue
+ *  genes are circular (0 and 1 are the same hue); every other gene is a plain
+ *  interval. One pass over the vector, no expression — cheap enough for
+ *  dedup, fitness, and phylogeny. */
+const CIRCULAR = new Set(["hueA", "hueB", "hueC"]);
+export function genomeDistance(a, b) {
+  let s = 0;
+  for (let i = 0; i < GENES.length; i++) {
+    const d = Math.abs(a.genes[i] - b.genes[i]);
+    s += CIRCULAR.has(GENES[i]) ? Math.min(d, 1 - d) * 2 : d;
+  }
+  return s / GENES.length;
 }
 
 // A short human description of what a genome became.

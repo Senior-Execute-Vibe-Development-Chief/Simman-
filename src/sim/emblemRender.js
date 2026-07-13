@@ -342,33 +342,17 @@ function canton(w, h, base, kind, color) {
   const cx = w * 0.8, cy = h * 0.2, r = base * 0.1;
   return kind === "sun" ? sunDisc(cx, cy, r * 0.7, color) : star(cx, cy, r, color);
 }
-// ── charges accompanying an ordinary: BETWEEN sits in the free field around
-// it, ON sits on the band itself (tilting along a bend). Positions are unit
-// coordinates of each ordinary's open regions; a chief owns the top band, so
-// positions that fall under it are dropped rather than drawn over it. ──
-const ORD_SLOTS = {
-  fess:         { between: [[0.28, 0.2], [0.72, 0.2], [0.5, 0.81]], on: [[0.28, 0.5], [0.5, 0.5], [0.72, 0.5]] },
-  pale:         { between: [[0.2, 0.42], [0.8, 0.42]], on: [[0.5, 0.26], [0.5, 0.5], [0.5, 0.74]] },
-  bend:         { between: [[0.74, 0.26], [0.26, 0.74]], on: [[0.3, 0.3], [0.5, 0.5], [0.7, 0.7]], tilt: 45 },
-  bendSinister: { between: [[0.26, 0.26], [0.74, 0.74]], on: [[0.7, 0.3], [0.5, 0.5], [0.3, 0.7]], tilt: -45 },
-  chevron:      { between: [[0.26, 0.3], [0.74, 0.3], [0.5, 0.8]] },
-  cross:        { between: [[0.24, 0.26], [0.76, 0.26], [0.24, 0.74], [0.76, 0.74]], on: [[0.5, 0.5]] },
-  saltire:      { between: [[0.5, 0.19], [0.19, 0.5], [0.81, 0.5], [0.5, 0.81]], on: [[0.5, 0.5]] },
-  pile:         { between: [[0.19, 0.62], [0.81, 0.62]], on: [[0.5, 0.32]] },
-  pall:         { between: [[0.5, 0.19], [0.24, 0.72], [0.76, 0.72]], on: [[0.5, 0.46]] },
-};
-function placeAround(m, w, h, f, substrate) {
-  const spec = ORD_SLOTS[f.ordinary]; if (!spec) return "";
-  const kind = m.arrange === "onOrdinary" ? "on" : "between";
-  let pts = spec[kind] || spec.between;
-  if (f.chief) pts = pts.filter(([, uy]) => uy > 0.34);
+// ── charges accompanying an ordinary: the phenotype supplies the slot
+// positions (motif.slots, unit coords) and any tilt (charges riding a bend);
+// this just draws them. ──
+function placeAround(m, w, h, substrate) {
   const base = Math.min(w, h), tap = substrate === "shield" || substrate === "pennon" || substrate === "lozenge";
   const sq = v => (tap ? 0.5 + (v - 0.5) * 0.9 : v);       // pull inside a tapered substrate
-  const box = base * (kind === "on" ? 0.36 : 0.5) * m.scale;
-  return pts.map(([ux, uy]) => {
+  const box = base * (m.arrange === "onOrdinary" ? 0.36 : 0.5) * m.scale;
+  return m.slots.map(([ux, uy]) => {
     const mx = sq(ux) * w, my = sq(uy) * h;
     const s = motif(m.id, mx - box / 2, my - box / 2, box, m.tincture);
-    return spec.tilt && kind === "on" ? `<g transform="rotate(${spec.tilt} ${F(mx)} ${F(my)})">${s}</g>` : s;
+    return m.tilt ? `<g transform="rotate(${m.tilt} ${F(mx)} ${F(my)})">${s}</g>` : s;
   }).join("");
 }
 
@@ -404,7 +388,7 @@ function emblemInner(genome, aw, ah) {
     if (p.motif && p.motif.behind) {
       // already drawn beneath
     } else if (p.motif && (p.motif.arrange === "between" || p.motif.arrange === "onOrdinary")) {
-      content += placeAround(p.motif, w, h, p.field, p.substrate);
+      content += placeAround(p.motif, w, h, p.substrate);
     } else if (p.motif && p.motif.counterchange) {
       // a counterchanged charge wears the field's own tinctures SWAPPED across
       // the partition line — each half of the charge in the other half's tincture
