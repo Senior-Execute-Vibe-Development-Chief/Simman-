@@ -14,8 +14,10 @@
 import { CHARGE_DETAIL } from "./heraldryChargesDetailed.js";
 import { expressGenome, INK, BONE } from "./emblemGenome.js";
 
-const css = ([r, g, b]) => `rgb(${r},${g},${b})`;
-const shade = (rgb, f) => rgb.map(c => Math.max(0, Math.min(255, Math.round(c * f))));
+// a tincture may be an [r,g,b] array or a pre-built fill string (a hatch
+// pattern url) — strings pass through untouched
+const css = c => (typeof c === "string" ? c : `rgb(${c[0]},${c[1]},${c[2]})`);
+const shade = (c, f) => (typeof c === "string" ? c : c.map(v => Math.max(0, Math.min(255, Math.round(v * f)))));
 const F = n => (+n).toFixed(1);
 let uid = 0;
 // deterministic per-emblem rng from a seed (no Math.random)
@@ -67,10 +69,16 @@ function motif(id, x, y, box, colRGB) {
   return `<svg x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${box.toFixed(1)}" height="${box.toFixed(1)}" viewBox="${det.vb}" preserveAspectRatio="xMidYMid meet" fill="${css(colRGB)}">${body}</svg>`;
 }
 
-// ── substrate shapes (flat) ──
-function shape(kind, w, h) {
+// ── substrate shapes (flat); a shield may take one of several escutcheon
+// outlines (variant comes from the phenotype's shieldShape) ──
+function shape(kind, w, h, variant) {
   switch (kind) {
-    case "shield": return { d: `M0 0 H${w} V${h * 0.6} Q${w} ${h * 0.87} ${w / 2} ${h} Q0 ${h * 0.87} 0 ${h * 0.6} Z`, round: false };
+    case "shield": switch (variant) {
+      case "iberian": return { d: `M0 0 H${w} V${F(h * 0.52)} A${F(w / 2)} ${F(h * 0.48)} 0 0 1 0 ${F(h * 0.52)} Z`, round: false };
+      case "french": return { d: `M0 0 H${w} V${F(h * 0.72)} C${w} ${F(h * 0.92)} ${F(w * 0.58)} ${F(h * 0.92)} ${F(w / 2)} ${h} C${F(w * 0.42)} ${F(h * 0.92)} 0 ${F(h * 0.92)} 0 ${F(h * 0.72)} Z`, round: false };
+      case "kite": return { d: `M${F(w / 2)} 0 Q0 0 0 ${F(h * 0.3)} Q0 ${F(h * 0.62)} ${F(w / 2)} ${h} Q${w} ${F(h * 0.62)} ${w} ${F(h * 0.3)} Q${w} 0 ${F(w / 2)} 0 Z`, round: false };
+      default: return { d: `M0 0 H${w} V${h * 0.6} Q${w} ${h * 0.87} ${w / 2} ${h} Q0 ${h * 0.87} 0 ${h * 0.6} Z`, round: false };
+    }
     case "roundel": return { d: `M${w / 2} 0 A${w / 2} ${w / 2} 0 1 0 ${w / 2} ${w} A${w / 2} ${w / 2} 0 1 0 ${w / 2} 0 Z`, round: true };
     case "pennon": return { d: `M0 0 H${w} L${w - h * 0.42} ${h / 2} L${w} ${h} H0 Z`, round: false };
     case "lozenge": return { d: `M${w / 2} 0 L${w} ${h / 2} L${w / 2} ${h} L0 ${h / 2} Z`, round: false };
@@ -143,17 +151,23 @@ function fieldSVG(w, h, p) {
   }
 }
 
-// ── an ordinary as a fill path (long edges in the given line-style) ──
-function ordinaryPath(type, w, h, ln, amp) {
+// ── an ordinary as a fill path (long edges in the given line-style). On a
+// FLAG the grammar goes vexillological: the cross sits Nordic (crossing
+// toward the hoist) and the pile points from the hoist. ──
+function ordinaryPath(type, w, h, ln, amp, flag) {
   switch (type) {
     case "fess": { const y0 = h * 0.4, y1 = h * 0.6; return `M0 ${F(y0)} ${styledEdge(0, y0, w, y0, ln, amp)} L${w} ${F(y1)} ${styledEdge(w, y1, 0, y1, ln, amp)} Z`; }
     case "pale": { const x0 = w * 0.4, x1 = w * 0.6; return `M${F(x1)} 0 ${styledEdge(x1, 0, x1, h, ln, amp)} L${F(x0)} ${h} ${styledEdge(x0, h, x0, 0, ln, amp)} Z`; }
     case "bend": { const bw = w * 0.3; return `M0 0 ${styledEdge(0, 0, w - bw, h, ln, amp)} L${w} ${h} ${styledEdge(w, h, bw, 0, ln, amp)} Z`; }
     case "bendSinister": { const bw = w * 0.3; return `M${w} 0 ${styledEdge(w, 0, bw, h, ln, amp)} L0 ${h} ${styledEdge(0, h, w - bw, 0, ln, amp)} Z`; }
     case "chevron": { const t = h * 0.16; return `M0 ${h} L${F(w / 2)} ${F(h * 0.42)} L${w} ${h} L${F(w - t)} ${h} L${F(w / 2)} ${F(h * 0.42 + t * 1.3)} L${F(t)} ${h} Z`; }
-    case "cross": return ordinaryPath("fess", w, h, "straight", amp) + ordinaryPath("pale", w, h, "straight", amp);
+    case "cross": {
+      const vert = flag ? `M${F(w * 0.42)} 0 V${h} H${F(w * 0.26)} V0 Z` : ordinaryPath("pale", w, h, "straight", amp);
+      return ordinaryPath("fess", w, h, "straight", amp) + vert;
+    }
     case "saltire": return ordinaryPath("bend", w, h, "straight", amp) + ordinaryPath("bendSinister", w, h, "straight", amp);
-    case "pile": return `M${F(w * 0.18)} 0 L${F(w * 0.82)} 0 L${F(w / 2)} ${F(h * 0.86)} Z`;
+    case "pile": return flag ? `M0 ${F(h * 0.16)} L${F(w * 0.74)} ${F(h / 2)} L0 ${F(h * 0.84)} Z`
+      : `M${F(w * 0.18)} 0 L${F(w * 0.82)} 0 L${F(w / 2)} ${F(h * 0.86)} Z`;
     case "pall": { const cx = w / 2, cy = h * 0.44, t = w * 0.11; return `M${F(-t)} ${F(-t)} L${F(t)} ${F(-t)} L${F(cx + t)} ${F(cy)} L${F(cx + t)} ${h} L${F(cx - t)} ${h} L${F(cx - t)} ${F(cy + t)} L${F(w - t)} ${F(t)} L${F(w + t)} ${F(t)} L${F(w + t)} ${F(-t)} Z`; }
   }
   return "";
@@ -165,11 +179,11 @@ function partitionRegion(part, w, h, which) {
   return which === 0 ? `M0 0 H${w} L0 ${h} Z` : `M${w} 0 V${h} H0 Z`;   // perBend
 }
 // the ordinary + chief + bordure, optionally counterchanged across the partition
-function heraldicOverlay(w, h, f, sh, base) {
+function heraldicOverlay(w, h, f, sh, base, flag) {
   const ln = f.line, amp = Math.min(w, h) * 0.032, ord = f.ordinary, oc = css(f.ordinaryTincture), sub = css(f.subTincture);
   let s = "";
   if (ord && ord !== "none") {
-    const path = ordinaryPath(ord, w, h, ln, amp);
+    const path = ordinaryPath(ord, w, h, ln, amp, flag);
     if (f.counterchange) {                       // swap tinctures across the partition
       const A = css(f.tinctures[0]), B = css(f.tinctures[1]);
       const cA = `cc${uid++}`, cB = `cc${uid++}`;
@@ -188,8 +202,10 @@ function heraldicOverlay(w, h, f, sh, base) {
 
 // ── aniconic calligraphy: pseudo-script from letterform primitives on a baseline
 // (upright alif, sin teeth, nun bowls, connectors, terminal flourish), cartouche-framed ──
-function calligraphy(x, y, w, rows, color, rng) {
+function calligraphy(x, y, w, rows, color, rng, dens = 0.7) {
   const col = css(color), rh = 30, ch = rows * rh + 34;
+  // density packs the glyphs: a sparse plaque at low density, dense text at high
+  const adv = 1.35 - dens * 0.6;
   const P = (d, sw) => `<path d="${d}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
   let s = `<rect x="${(x - 8).toFixed(1)}" y="${(y - 22).toFixed(1)}" width="${(w + 16).toFixed(1)}" height="${ch.toFixed(1)}" rx="${(ch * 0.3).toFixed(1)}" fill="none" stroke="${col}" stroke-width="2.5"/>`;
   const right = x + w - 14;
@@ -198,11 +214,11 @@ function calligraphy(x, y, w, rows, color, rng) {
     let px = x + 14;
     while (px < right - 18) {
       const t = rng(), f = n => (+n).toFixed(1);
-      if (t < 0.3) { s += P(`M${f(px)} ${f(base)} V${f(base - rh * 0.7)}`, 5); if (rng() < 0.4) s += `<circle cx="${f(px)}" cy="${f(base - rh * 0.85)}" r="2.6" fill="${col}"/>`; px += 11; }
-      else if (t < 0.56) { let dd = `M${f(px)} ${f(base)}`; for (let k = 0; k < 3; k++) dd += ` q 4 -9 8 0`; s += P(dd, 4.5); if (rng() < 0.5) s += `<circle cx="${f(px + 12)}" cy="${f(base - 15)}" r="2.4" fill="${col}"/>`; px += 26; }
-      else if (t < 0.82) { s += P(`M${f(px)} ${f(base)} q 9 19 19 0`, 5); if (rng() < 0.7) s += `<circle cx="${f(px + 9.5)}" cy="${f(base - 14)}" r="2.6" fill="${col}"/>`; px += 23; }
-      else { s += P(`M${f(px)} ${f(base)} h 15`, 4.5); px += 17; }
-      px += 3;
+      if (t < 0.3) { s += P(`M${f(px)} ${f(base)} V${f(base - rh * 0.7)}`, 5); if (rng() < 0.4) s += `<circle cx="${f(px)}" cy="${f(base - rh * 0.85)}" r="2.6" fill="${col}"/>`; px += 11 * adv; }
+      else if (t < 0.56) { let dd = `M${f(px)} ${f(base)}`; for (let k = 0; k < 3; k++) dd += ` q 4 -9 8 0`; s += P(dd, 4.5); if (rng() < 0.5) s += `<circle cx="${f(px + 12)}" cy="${f(base - 15)}" r="2.4" fill="${col}"/>`; px += 26 * adv; }
+      else if (t < 0.82) { s += P(`M${f(px)} ${f(base)} q 9 19 19 0`, 5); if (rng() < 0.7) s += `<circle cx="${f(px + 9.5)}" cy="${f(base - 14)}" r="2.6" fill="${col}"/>`; px += 23 * adv; }
+      else { s += P(`M${f(px)} ${f(base)} h 15`, 4.5); px += 17 * adv; }
+      px += 3 * adv;
     }
     s += P(`M${px.toFixed(1)} ${base.toFixed(1)} q 11 7 4 17`, 5);   // terminal flourish
   }
@@ -337,8 +353,14 @@ function centralFit(substrate, w, h, base) {
     default:         return { cx: w / 2, cy: h * 0.48, box: base * 0.72 };  // banner
   }
 }
-// a single small canton mark (top-dexter), in a contrast-guaranteed colour
-function canton(w, h, base, kind, color) {
+// a single small canton mark — on a FLAG it becomes a true rectangular canton
+// block at the hoist-top, its symbol counterchanged in the field's own colour
+function canton(w, h, base, kind, color, flag, fieldC) {
+  if (flag) {
+    const cw = w * 0.36, chh = h * 0.52, r = base * 0.11;
+    return `<rect width="${F(cw)}" height="${F(chh)}" fill="${css(color)}"/>`
+      + (kind === "sun" ? sunDisc(cw / 2, chh / 2, r * 0.7, fieldC) : star(cw / 2, chh / 2, r, fieldC));
+  }
   const cx = w * 0.8, cy = h * 0.2, r = base * 0.1;
   return kind === "sun" ? sunDisc(cx, cy, r * 0.7, color) : star(cx, cy, r, color);
 }
@@ -367,33 +389,68 @@ function placeMotif(m, w, h, substrate) {
   return one(w / 2, h * (substrate === "shield" ? 0.42 : 0.46), box);
 }
 
+// ── petra sancta hatching: a monochrome heraldic coat still CARRIES its
+// colour genome — the renderer engraves the implied tinctures as the
+// engraver's hatching (dots or, plain argent, vertical gules, horizontal
+// azure, diagonals vert/purpure, grid sable…) ──
+const HATCH_TILE = {
+  or: `<circle cx="3.5" cy="3.5" r="1" fill="%I"/>`,
+  argent: ``,
+  gules: `<path d="M3.5 -1 V8" stroke="%I" stroke-width="1"/>`,
+  azure: `<path d="M-1 3.5 H8" stroke="%I" stroke-width="1"/>`,
+  vert: `<path d="M0 7 L7 0 M-3.5 3.5 L3.5 -3.5 M3.5 10.5 L10.5 3.5" stroke="%I" stroke-width="1"/>`,
+  purpure: `<path d="M0 0 L7 7 M3.5 -3.5 L10.5 3.5 M-3.5 3.5 L3.5 10.5" stroke="%I" stroke-width="1"/>`,
+  sable: `<path d="M3.5 -1 V8 M-1 3.5 H8" stroke="%I" stroke-width="1"/>`,
+  murrey: `<path d="M0 0 L7 7 M0 7 L7 0" stroke="%I" stroke-width="0.9"/>`,
+  sanguine: `<path d="M3.5 -1 V8 M0 7 L7 0" stroke="%I" stroke-width="0.9"/>`,
+  tenne: `<path d="M-1 3.5 H8 M0 0 L7 7" stroke="%I" stroke-width="0.9"/>`,
+};
+function hatchPattern(name, id) {
+  return `<pattern id="${id}" width="7" height="7" patternUnits="userSpaceOnUse">`
+    + `<rect width="7" height="7" fill="${css(BONE)}"/>`
+    + (HATCH_TILE[name] || "").split("%I").join(css(INK)) + `</pattern>`;
+}
+
 // ── ONE COAT's content filling a w×h area (no substrate frame/clip): the
 // composition dispatch shared by a whole emblem and by each QUARTER of a
 // marshalled shield, which is what makes quartering recursive for free. ──
 function coatContent(p, w, h, rng) {
-  const sh = shape(p.substrate, w, h), C = p.colors, base = Math.min(w, h);
+  const sh = shape(p.substrate, w, h, p.shieldShape), C = p.colors, base = Math.min(w, h);
   const cxm = w / 2, cym = h * (p.substrate === "shield" ? 0.46 : 0.5);
   let content = "";
   if (p.composition === "heraldic") {
-    content += fieldSVG(w, h, p.field);
+    let f = p.field, mot = p.motif;
+    if (C.hatch && !f.fur) {
+      // engrave the implied hues as hatch-pattern fills
+      const ids = {}, defs = [];
+      const pat = n => { if (!ids[n]) { ids[n] = `ht${uid++}`; defs.push(hatchPattern(n, ids[n])); } return `url(#${ids[n]})`; };
+      f = { ...f, tinctures: [pat(C.hatch.field), pat(C.hatch.companion)],
+        ordinaryTincture: f.ordinaryTincture && pat(C.hatch.charge),
+        subTincture: f.subTincture && pat(C.hatch.charge) };
+      // an ink charge stays readable on a hatched band; everywhere else the
+      // charge is hatched with its own implied tincture
+      if (mot) mot = { ...mot, tincture: mot.arrange === "onOrdinary" ? C.ink : pat(C.hatch.charge) };
+      content += `<defs>${defs.join("")}</defs>`;
+    }
+    content += fieldSVG(w, h, f);
     // a semé is a field treatment — strewn BENEATH the ordinary/chief/bordure
-    if (p.motif && p.motif.behind) content += placeMotif(p.motif, w, h, p.substrate);
-    content += heraldicOverlay(w, h, p.field, sh, base);
-    if (p.motif && p.motif.behind) {
+    if (mot && mot.behind) content += placeMotif(mot, w, h, p.substrate);
+    content += heraldicOverlay(w, h, f, sh, base, p.isFlag);
+    if (mot && mot.behind) {
       // already drawn beneath
-    } else if (p.motif && (p.motif.arrange === "between" || p.motif.arrange === "onOrdinary")) {
-      content += placeAround(p.motif, w, h, p.substrate);
-    } else if (p.motif && p.motif.counterchange) {
+    } else if (mot && (mot.arrange === "between" || mot.arrange === "onOrdinary")) {
+      content += placeAround(mot, w, h, p.substrate);
+    } else if (mot && mot.counterchange) {
       // a counterchanged charge wears the field's own tinctures SWAPPED across
       // the partition line — each half of the charge in the other half's tincture
-      const [ta, tb] = p.field.tinctures;
+      const [ta, tb] = f.tinctures;
       const cA = `mc${uid++}`, cB = `mc${uid++}`;
-      content += `<clipPath id="${cA}"><path d="${partitionRegion(p.field.partition, w, h, 0)}"/></clipPath>`
-        + `<clipPath id="${cB}"><path d="${partitionRegion(p.field.partition, w, h, 1)}"/></clipPath>`
-        + `<g clip-path="url(#${cA})">${placeMotif({ ...p.motif, tincture: tb }, w, h, p.substrate)}</g>`
-        + `<g clip-path="url(#${cB})">${placeMotif({ ...p.motif, tincture: ta }, w, h, p.substrate)}</g>`;
-    } else if (p.motif) {
-      content += placeMotif(p.motif, w, h, p.substrate);
+      content += `<clipPath id="${cA}"><path d="${partitionRegion(f.partition, w, h, 0)}"/></clipPath>`
+        + `<clipPath id="${cB}"><path d="${partitionRegion(f.partition, w, h, 1)}"/></clipPath>`
+        + `<g clip-path="url(#${cA})">${placeMotif({ ...mot, tincture: tb }, w, h, p.substrate)}</g>`
+        + `<g clip-path="url(#${cB})">${placeMotif({ ...mot, tincture: ta }, w, h, p.substrate)}</g>`;
+    } else if (mot) {
+      content += placeMotif(mot, w, h, p.substrate);
     }
   } else {
     content += `<rect width="${w}" height="${h}" fill="${css(C.field)}"/>`;
@@ -405,7 +462,11 @@ function coatContent(p, w, h, rng) {
       content += `<circle cx="${cxm}" cy="${cym}" r="${base * 0.4}" fill="none" stroke="${css(C.companion)}" stroke-width="${base * 0.035}"/>`;
       content += motif(p.motif.id, cxm - base * 0.28, cym - base * 0.28, base * 0.56, p.motif.tincture);
     } else if (p.composition === "script") {
-      content += calligraphy(w * 0.13, h * 0.32, w * 0.74, 2, C.accent, rng);
+      // the scriptDensity gene sets how much is written: rows and glyph packing
+      const dens = p.ornaments.scriptDensity;
+      const rows = dens > 0.78 ? 3 : dens > 0.52 ? 2 : 1;
+      const cartH = rows * 30 + 34;
+      content += calligraphy(w * 0.13, h / 2 - cartH / 2 + 22, w * 0.74, rows, C.accent, rng, dens);
     } else if (p.composition === "brand") {
       content += tamga(cxm, cym, base * 0.26, p.ornaments.brandSeed, C.charge);
     } else if (p.composition === "seme" && p.motif) {
@@ -419,7 +480,7 @@ function coatContent(p, w, h, rng) {
       const f = centralFit(p.substrate, w, h, base);
       content += drawSigil(f.cx, f.cy - base * 0.04, f.box * 0.46, p.sigil, C.charge);
     }
-    if (p.ornaments.canton) content += canton(w, h, base, p.ornaments.cantonKind, p.ornaments.cantonColor);
+    if (p.ornaments.canton) content += canton(w, h, base, p.ornaments.cantonKind, p.ornaments.cantonColor, p.isFlag, C.field);
   }
   return content;
 }
@@ -432,7 +493,7 @@ function emblemInner(genome, aw, ah) {
   else if (p.substrate === "shield" || p.substrate === "lozenge") { h = ah * 0.94; w = h * (p.substrate === "lozenge" ? 0.8 : 0.9); }
   else { w = aw * 0.94; h = w * (p.substrate === "pennon" ? 0.6 : 0.62); }
   const ox = (aw - w) / 2, oy = (ah - h) / 2;
-  const sh = shape(p.substrate, w, h), clip = `e${uid++}`, C = p.colors, base = Math.min(w, h);
+  const sh = shape(p.substrate, w, h, p.shieldShape), clip = `e${uid++}`, C = p.colors, base = Math.min(w, h);
   const rng = rrng((genome.seed ^ (genome.gen * 2654435761)) >>> 0);
 
   let content = "";

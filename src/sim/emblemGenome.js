@@ -46,6 +46,10 @@ const IDX = {}; GENES.forEach((g, i) => (IDX[g] = i));
 
 // enums the genes decode into
 const SUBSTRATES  = ["shield", "banner", "roundel", "pennon", "gonfalon", "lozenge"];
+// escutcheon outlines a shield substrate can take (an idle gene picks — the
+// heater stays the common silhouette)
+const SHIELD_SHAPES = ["heater", "heater", "iberian", "french", "kite"];
+const FLAG_SUBSTRATES = new Set(["banner", "gonfalon", "pennon"]);
 const COMPOSITIONS = ["heraldic", "central", "radial", "script", "brand", "plain", "seme", "sacred"];
 // procedural SACRED SIGIL vocabulary — sacred primitives combined under symmetry.
 // This is our OWN religious iconography: no real faith's symbol, but the visual
@@ -309,13 +313,23 @@ function decodePalette(get) {
   // a mark in a two-pole tradition takes whichever pole sits farther from the
   // field — the same constructive pick, over a two-member palette
   const farPole = (bg, a, b) => (dE(bg, a.rgb) >= dE(bg, b.rgb) ? a : b);
-  let fieldT, companionT, chargeT, accentT, poles = [];
+  let fieldT, companionT, chargeT, accentT, poles = [], hatch = null;
   if (mode === "monochrome") {
     // ink and bone are, in tincture terms, sable and argent — typed so the
     // class rules see them
     const inkT = P(INK), boneT = P(BONE), inv = val > 0.5;
     fieldT = inv ? inkT : boneT; companionT = chargeT = accentT = inv ? boneT : inkT;
     poles = [inkT, boneT];
+    // petra sancta: the hues the genes IMPLY, decoded exactly as the heraldic
+    // mode would — the renderer engraves them as hatching on heraldic coats
+    // (dots or, vertical gules, horizontal azure…), so a mono coat still
+    // CARRIES its colour genome, the way an engraver's plate does
+    const hF = T(nearestTincture(hsl(hA, 0.25 + chroma * 0.65, 0.18 + val * 0.62), T_NAMES));
+    const hC = tinctureOn([hF], hB, val);
+    hatch = { field: hF.name, charge: hC.name,
+      companion: classOf(hF) === "dark" && get("secondary") > 0.5
+        ? nearestTincture(hsl(hB, 0.55, 0.25 + val * 0.4), DARKS.filter(n => n !== hF.name))
+        : hC.name };
   } else if (mode === "imperial") {
     fieldT = P(hsl(hA, 0.55 + chroma * 0.35, 0.42 + val * 0.12));
     poles = [T("or"), P(INK)];
@@ -343,7 +357,7 @@ function decodePalette(get) {
     accentT = chargeT;
   }
   return { mode, field: fieldT.rgb, companion: companionT.rgb, charge: chargeT.rgb, accent: accentT.rgb,
-    ink: INK, fieldT, companionT, chargeT, accentT, poles };
+    ink: INK, fieldT, companionT, chargeT, accentT, poles, hatch };
 }
 
 // ── genotype → phenotype ─────────────────────────────────────────────────────
@@ -360,6 +374,9 @@ export function expressGenome(genome) {
   let substrate = pickEnum(get("substrate"), SUBSTRATES);
   if (composition === "radial") substrate = "roundel";                 // a badge wants a round field
   if (composition === "script" && substrate === "roundel") substrate = "banner";
+  // a shield's outline — the brandSeed gene is idle on shields, so it picks
+  const shieldShape = substrate === "shield" ? pickEnum(get("brandSeed"), SHIELD_SHAPES) : "heater";
+  const isFlag = FLAG_SUBSTRATES.has(substrate);
 
   const pal = decodePalette(get);
   const symmetry = composition === "radial" ? "radial" : pickEnum(get("symmetry"), SYMMETRIES);
@@ -428,7 +445,11 @@ export function expressGenome(genome) {
       let slot = pickEnum(get("arrange"), ORD_COMPANY);
       if (slot === "on" && (field.ordinary === "chevron" || field.counterchange)) slot = "between";
       if (slot === "between" || slot === "on") {
-        const spec = ORD_SLOTS[field.ordinary];
+        let spec = ORD_SLOTS[field.ordinary];
+        // on a FLAG the cross sits Nordic (crossing toward the hoist) and the
+        // pile points from the hoist — the company follows the band
+        if (isFlag && field.ordinary === "cross") spec = { between: [[0.13, 0.24], [0.63, 0.25], [0.13, 0.76], [0.63, 0.75]], on: [[0.34, 0.5]] };
+        if (isFlag && field.ordinary === "pile") spec = { between: [[0.8, 0.26], [0.8, 0.74]], on: [[0.28, 0.5]] };
         // a chief owns the top band: company positions under it are dropped
         let pts = (slot === "on" ? spec.on : spec.between) || spec.between;
         if (field.chief) pts = pts.filter(([, uy]) => uy > 0.34);
@@ -484,7 +505,7 @@ export function expressGenome(genome) {
     brandSeed: Math.floor(get("brandSeed") * 1e6),
   };
 
-  return { substrate, composition, symmetry, iconism, colors: pal, field, motif, geometry, sigil, ornaments,
+  return { substrate, shieldShape, isFlag, composition, symmetry, iconism, colors: pal, field, motif, geometry, sigil, ornaments,
     gen: genome.gen || 0 };
 }
 
