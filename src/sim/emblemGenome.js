@@ -62,6 +62,11 @@ const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
 const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly"];
 const LINES       = ["straight", "straight", "wavy", "engrailed", "embattled", "indented"];
 const ARRANGES    = ["single", "single", "three", "inPale", "seme"];
+// when an ordinary is present, the SAME arrange gene instead decides the
+// ordinary's COMPANY: nothing (the bare ordinary is the design — still the
+// common case), charges BETWEEN it in the free field, charges ON the band
+// itself, or a semé field strewn beneath it.
+const ORD_COMPANY = ["none", "none", "between", "on", "seme"];
 // ordinaries — the bold geometric charges of heraldry, laid over the field (with
 // the field's line-style on their edges). "none" weighted so a plain field stays common.
 const ORDINARIES  = ["none", "none", "none", "none", "none", "none", "none", "none", "none", "fess", "pale", "bend", "bendSinister", "chevron", "cross", "saltire", "pile", "pall"];
@@ -374,26 +379,40 @@ export function expressGenome(genome) {
   // non-living one (celestial / geometric / plant / object). Only the abstract
   // compositions carry no charge.
   let motif = null;
-  // an ordinary IS the design ("Azure, a fess Or") — it takes the field, so no charge
-  // sits over it (avoids a same-tincture charge vanishing on the ordinary).
   const hasOrdinary = composition === "heraldic" && field.ordinary && field.ordinary !== "none";
-  const figuralComp = !hasOrdinary && ["heraldic", "central", "radial", "seme"].includes(composition);
-  if (figuralComp) {
+  if (["heraldic", "central", "radial", "seme"].includes(composition)) {
     let cat = pickEnum(get("motifCat"), MOTIF_CATS);
     if (aniconic && LIVING_CATS.has(cat)) {
       cat = NONLIVING_CATS[Math.floor(get("motifCount") * NONLIVING_CATS.length) % NONLIVING_CATS.length];
     }
     const pool = MOTIFS[cat];
     const id = pool[Math.min(pool.length - 1, Math.floor(get("motifIdx") * pool.length))];
-    let arrange = composition === "central" || composition === "radial" ? "single"
-      : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
     // the charge WEARS what its ground dictates (tinctureOn — the rule of
     // tincture, constructed); over a mixed two-region party it may instead be
     // COUNTERCHANGED — painted in the field's own tinctures, swapped across
     // the line, heraldry's own answer to a ground no one tincture can read on
-    const counterchange = composition === "heraldic" && !field.fur && mixedGround
-      && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
-    motif = { id, cat, tincture: markT.rgb, tinctureName: markT.name, counterchange,
+    let arrange = null, tincture = markT, counterchange = false, behind = false;
+    if (hasOrdinary) {
+      // an ordinary no longer suppresses the charge — the arrange gene decides
+      // its company. Charges ON the band derive their tincture against the
+      // band (the same constructive rule, applied one layer up); a chevron has
+      // no room on it and a counterchanged ordinary is no single ground, so
+      // both keep their company BETWEEN instead.
+      let slot = pickEnum(get("arrange"), ORD_COMPANY);
+      if (slot === "on" && (field.ordinary === "chevron" || field.counterchange)) slot = "between";
+      if (slot === "between") arrange = "between";
+      else if (slot === "on") { arrange = "onOrdinary"; tincture = tinctureOn([markT], get("hueA"), get("value")); }
+      else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value")); }
+    } else {
+      arrange = composition === "central" || composition === "radial" ? "single"
+        : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
+      counterchange = composition === "heraldic" && !field.fur && mixedGround
+        && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
+    }
+    // a heraldic semé is a FIELD treatment: it lies beneath chief, bordure and
+    // ordinary, not over them
+    behind = arrange === "seme" && composition === "heraldic";
+    if (arrange) motif = { id, cat, tincture: tincture.rgb, tinctureName: tincture.name, counterchange, behind,
       count: arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
       scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5) * (0.75 + get("motifScale") * 0.5) };
   }
@@ -473,7 +492,11 @@ export function describeGenome(genome) {
     if (f.chief) bits.push("chief");
     if (f.bordure) bits.push("bordure");
   }
-  if (p.motif) bits.push(p.motif.id + (p.motif.count > 1 ? `×${p.motif.count}` : "") + " " + (p.motif.counterchange ? "counterchanged" : p.motif.tinctureName));
+  if (p.motif) {
+    const m = p.motif, t = m.counterchange ? "counterchanged" : m.tinctureName;
+    const head = m.arrange === "between" ? "between: " : m.arrange === "onOrdinary" ? "on it: " : m.behind ? "semé " : "";
+    bits.push(head + m.id + (m.count > 1 ? `×${m.count}` : "") + " " + t);
+  }
   else if (p.composition === "script") bits.push("calligraphy");
   else if (p.composition === "brand") bits.push("tamga");
   else if (p.composition === "plain") bits.push(p.geometry.mode === "lattice" ? "star-lattice" : "rosette");
