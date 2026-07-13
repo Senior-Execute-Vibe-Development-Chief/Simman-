@@ -19,13 +19,23 @@
 // deterministic (double-buffered migration), never persisted-vs-recomputed ambiguous
 // (both fields are re-derivable, but popField carries state so it IS saved — see persist).
 
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 // Carrying capacity: people per unit (fertility × development) on one tile at
 // saturation. A calibration constant — its absolute value sets total world
 // population; the DISTRIBUTION (the point of phase 1) is set by fertility alone.
+// PER REAL AREA, not per tile (res-invariance 2026-07): calibrated on the
+// 240-tile reference, so each tile carries cap (and seed) ÷rNormPop² — a finer
+// grid divides the same real land among more tiles instead of multiplying the
+// world's people by the tile count (measured 3.15× total people at tw=480
+// before this; the median-anchors absorbed the LEVEL for their consumers, but
+// the field's own dynamics and any raw read did not). ×1 exactly at the
+// reference. The GROWTH/MIGRATE rates below are per-capita/share and stay
+// unscaled (NB: POP_MIGRATE's implied diffusion coefficient D ∝ rate·Δx² is
+// still res-variant — second-order here, since every habitable tile is seeded
+// and fills by LOCAL logistic growth; a true fix needs sub-stepped migration).
 const CAP_PER_FERT = 1200;
 // Development multiplier: local carrying capacity rises with AGRICULTURAL tech —
 // a hunter-gatherer land feeds a thin scatter, an irrigated-plough society feeds a
@@ -60,13 +70,15 @@ export function initPopField(world) {
   world.capField = new Float32Array(N);
   world._popNext = new Float32Array(N);
   const { elev, fert, tArrival } = world;
+  const rn = rNormPop(world);
+  const seedPop = SEED_POP / (rn * rn);   // per REAL area (÷1 exactly at the reference)
   for (let i = 0; i < N; i++) {
     if (!(elev[i] > 0) || !(fert[i] > 0.03)) continue;
     // Residence: 1 in the long-settled cradle of humanity (tArrival→0), →0 on the
     // late-reached frontier (tArrival→1). Long-peopled land starts with a real seed
     // population; the frontier starts near-empty and fills by migration.
     const residence = tArrival ? (1 - Math.min(1, Math.max(0, tArrival[i]))) : 0.5;
-    pop[i] = SEED_POP * (0.15 + 0.85 * residence);
+    pop[i] = seedPop * (0.15 + 0.85 * residence);
   }
 }
 
@@ -102,13 +114,15 @@ export function stepPopField(world, sub = 1) {
   // static (terrain), built once.
   const land = world._popLand && world._popLand.length ? world._popLand : (world._popLand = buildLandList(world));
   const nLand = land.length;
+  const _rnF = rNormPop(world);
+  const capPerFert = CAP_PER_FERT / (_rnF * _rnF);   // per REAL area (÷1 exactly at the reference)
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
     const access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
     const reach = 1 + access * accessDev;
     const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i]) : 1;
-    cap[i] = fert[i] * CAP_PER_FERT * dev * reach * reliefMul;
+    cap[i] = fert[i] * capPerFert * dev * reach * reliefMul;
   }
 
   // 2. Logistic growth toward capacity (in place).

@@ -5,7 +5,21 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): fcb58415/2fc112a5 — same pair as the cities-only
+// Current baseline (2500 steps): 36e38967/f57f0ddd (development-clock
+// res-invariance, 2026-07: popField cap/seed are per REAL area (÷rNormPop²),
+// and the remaining unscaled cumulative-cost thresholds ride the grid —
+// DIFFUSE_COST_K, trade freight, reach/pathfind search budgets, the admin-flood
+// search bound (now sharing holdReach's scale). This probe's 320 grid sits
+// BELOW the reference (rn≈0.67) so the factors re-key it — its previously
+// UNDER-populated field (0.44× the reference level) now matches the reference,
+// and its diffusion/freight scales tightened to match its cheaper raw costs.
+// The 480 grid (tw=240 = the reference) is BYTE-IDENTICAL by construction
+// (verified b9c264b9/100239cd pre AND post, 2500 steps, seeds 8817/31337) —
+// every ×/÷ factor is exactly 1 there, so all documented 480 numbers stand.
+// There is NO lever: like the audit's war-rate/gap-fill fixes, correctness at
+// non-reference grids is not opt-in; the reference is the invariant.
+// docs/empire-consolidation-2026-07.md "RES-INVARIANCE ARC".)
+// Prior baseline (2500 steps): fcb58415/2fc112a5 — same pair as the cities-only
 // purge below: ORG_APT_CAP was WIRED into the field capacity (the dead payout
 // finally fires) but then measured at 0.15 AND 0.4 to fatten the biggest realm
 // ~+50% (a rich-get-richer multiplier), so it ships DEFAULT 0 (opt-in variance,

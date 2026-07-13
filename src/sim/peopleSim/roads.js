@@ -44,7 +44,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { getPolity } from "./entities.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
@@ -403,7 +403,12 @@ function computeReach(world, s, stMap) {
   dist[startTi] = 0; seen[startTi] = stamp; prev[startTi] = -1;
   heap.push(startTi, 0);
   let visited = 0;
-  while (heap.n > 0 && visited++ < MAX_REACH_VISITS) {
+  // The visit cap bounds a REAL search area: tiles-per-real-area is ×rNormPop²
+  // on a finer grid, so the cap rides along or the reach Dijkstra covers ¼ the
+  // real disk at tw=480 and frontier settlements lose their far partners
+  // (audit OPEN #5b). ×1 exactly at the 240-tile reference.
+  const maxVisits = MAX_REACH_VISITS * rNormPop(world) ** 2;
+  while (heap.n > 0 && visited++ < maxVisits) {
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;                 // stale heap entry
     const peer = stMap.get(ti);
@@ -965,7 +970,12 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
     ? Math.max((a._techEff && a._techEff.seaSpeed) || 0, (b._techEff && b._techEff.seaSpeed) || 0) : 0;
   const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (world._dt || 1)   // granularity: finer trade per tick
     * (link.sea ? T.SEA_TRADE_MULT * (1 + SEA_TECH_VOL * shipTech) : link.river ? T.RIVER_TRADE_MULT : 1);
-  const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
+  // Freight is paid per REAL distance, not per tile: link.cost is a cumulative
+  // per-tile path cost, so the same real route reads ×rNormPop on a finer grid —
+  // uncorrected, fine-grid trade paid double freight (tw=480) and city wealth
+  // starved (part of the development-clock res-variance, audit OPEN #5b). ÷1
+  // exactly at the 240-tile reference.
+  const transport = link.cost / rNormPop(world) * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
   // HUME price-specie-flow (Currency Phase 2): a region's export COMPETITIVENESS
@@ -1239,7 +1249,12 @@ export function findPath(world, s, t, opts) {
   let dgx=Math.abs((start%tw)-gx); if(dgx>tw/2)dgx=tw-dgx;
   const dgy=((start/tw)|0)-gy;
   const dHint=Math.sqrt(dgx*dgx+dgy*dgy);
-  const limit = Math.min(12000, 1500 + ((dHint*dHint*6)|0));
+  // Node budget bounds a REAL search area (the dHint² term self-scales — dHint
+  // is in raw tiles — but the floor and the hard cap don't): ×rNormPop² keeps
+  // the longest buildable road a constant REAL length at any grid (raw, the cap
+  // halved it at tw=480; audit OPEN #5b). ×1 exactly at the reference.
+  const _rr = rNormPop(world) ** 2;
+  const limit = Math.min(12000 * _rr, 1500 * _rr + ((dHint*dHint*6)|0));
   let visited = 0;
   while (heap.n > 0) {
     if (visited++ > limit) return null;

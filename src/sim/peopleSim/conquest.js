@@ -667,14 +667,17 @@ export function rebuildCountries(world) {
     // environment the first time it's read.
     c.personality = personalityOf(world, c);
     c.range *= expansionReachMul(c.personality);
-    // GRIP (hold reach): c.range is the realm's hold-distance in raw tile-cost — it
-    // stays unscaled so it remains the Dijkstra SEARCH bound (maxCost = range×25),
-    // which must not blow up with the map size (a ×4 there floods 16× the area and
-    // froze the polity pass for seconds). The GRIP that's compared against actual
-    // map distances — the admin load (d/grip) and the secession reach (effReach) —
-    // is res-scaled so a big-map realm holds the same FRACTION it claims (the
-    // territorial reach is res-scaled too; without this the surplus frontier reads
-    // as chronically "loose" and sheds in scattered patches — see resScale note).
+    // GRIP (hold reach): c.range is the realm's hold-distance in raw tile-cost.
+    // The GRIP that's compared against actual map distances — the admin load
+    // (d/grip) and the secession reach (effReach) — is res-scaled so a big-map
+    // realm holds the same FRACTION it claims (the territorial reach is
+    // res-scaled too; without this the surplus frontier reads as chronically
+    // "loose" and sheds in scattered patches — see resScale note). The Dijkstra
+    // SEARCH bound (capitalTransportCosts' maxCost = range×25) carries the SAME
+    // scale since the res-invariance pass (2026-07): raw, it truncated the
+    // flood at 1/resScale of the real admin radius and the outer belt of every
+    // big fine-grid realm read "unreachable → secede". The old blow-up fear is
+    // handled by the flood's pending-members early-exit, not by under-searching.
     c.holdReach = c.range * resScale;
     c.hue = ((c.id * 61) % 360 + 360) % 360;
     buildHierarchy(world, c);
@@ -1587,7 +1590,17 @@ function capitalTransportCosts(world, c) {
   }
   if (pending === 0) return { cost: out, cross };
   const co = world._countryOwner;   // for the contiguity toll (crossing foreign land)
-  const maxCost = Math.max(50, c.range * 25);
+  // The search bound covers the same REAL radius at any grid (×the same scale
+  // holdReach carries, so the bound and reachCeil = holdReach×25 are one
+  // quantity again): raw, it reached only 1/resScale of the real admin radius
+  // at fine grids, so the outer half of every big realm's real reach read
+  // "unreachable" (load ceiling → secede) — a driver of the measured fine-grid
+  // fragmentation excess (audit OPEN #5b). Perf is bounded: the loop
+  // early-exits when every member is found (pending), so the wider bound only
+  // extends searches that were genuinely truncating. ×1 exactly at the
+  // reference.
+  const _hrs = _holdScaleEnv > 0 ? _holdScaleEnv : resScaleFor(world.tw);
+  const maxCost = Math.max(50, c.range * 25) * _hrs;
   // Persistent, GENERATION-STAMPED scratch (was per-call Maps — this Dijkstra
   // runs once per country every polity pass and was the single biggest sim
   // hitch). A tile's dist[]/crossB[] count only while stamp[ti] === gen, so a
@@ -2090,7 +2103,7 @@ export function updatePolities(world) {
     const _tt = _pf ? performance.now() : 0;
     const { cost: tcosts, cross: tcross } = capitalTransportCosts(world, c);
     if (_pf) _pf.transport += performance.now() - _tt;
-    const reachCeil = holdRange * 25;   // load-space ceiling for an unreachable member (grip frame, like the load → load≈25 ⇒ secede); the Dijkstra SEARCH bound (maxCost) stays raw for perf
+    const reachCeil = holdRange * 25;   // load-space ceiling for an unreachable member (grip frame, like the load → load≈25 ⇒ secede); the Dijkstra SEARCH bound (maxCost) now spans the same real radius (×holdReach's scale — res-invariance 2026-07), so "unreachable" once again means beyond-the-grip, not beyond-a-raw-tile-budget
 
     // ── Control budget: what the centre can administer (reach-units) ──
     // The capital projects a base budget that grows with its own size; loyal

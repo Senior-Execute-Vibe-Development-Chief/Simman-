@@ -286,16 +286,75 @@ the visible symptoms — ship both in one designed arc, not piecemeal.
 - A 960 probe_empires 24k run is ~15 min; a 960 probe_avg to 40k ~35 min (4
   concurrent on 4 cores). Budget accordingly.
 
-## OPEN / NEXT
+## THE RES-INVARIANCE ARC (2026-07-13, same follow-up session) — the development clock joins the political clock
 
-- **The development-clock res-invariance arc** (from the 960 loop-closure above):
-  normalize the demographic field level (÷resScale² on `CAP_PER_FERT`/`SEED_POP`)
-  and the transport cost field (consumer-by-consumer — see the double-compensation
-  caution) so the development clock joins the political clock in res-invariance.
-  Expected effect at 960: org dispersion tightens → the late-window runaway giant
-  (17–20 Mkm² peaks) pulls back toward the 480 equilibrium (~6.6M), and the
-  kill/fragment loop cools (count toward ~40). Validate with
-  tools/probe_res_dev.mjs at matched steps + this doc's full 960 battery.
+The arc queued by the loop-closure above, built the same day. The consumer-by-
+consumer design pass settled the direction the codebase itself had already
+established (countryTerritory.js: **edge costs stay per-tile raw; cumulative
+budgets/thresholds scale**), so the fix is the six sites that were missed, plus
+the demographic base:
+
+1. **popField.js** — `CAP_PER_FERT` and `SEED_POP` are per REAL area (÷rNormPop²):
+   a finer grid divides the same land among more tiles instead of multiplying the
+   world's people (pre-fix: 3.15× total field at tw=480). The anchors re-base
+   transparently; NOMAD_FIELD reads a ratio; grievance saturates against a
+   median that shifts coherently — all consumers verified anchor/ratio-based.
+2. **settlement.js** — `DIFFUSE_COST_K` ×rNormPop: technique diffuses over the
+   same REAL reach at any grid (this was the tech-dispersion driver).
+3. **roads.js** — trade freight `link.cost/rNormPop × TRANSPORT_PER_PATHCOST`
+   (freight per real distance); `MAX_REACH_VISITS` ×rNormPop² and findPath's
+   node budget ×rNormPop² (search areas are real areas).
+4. **sea.js** — `SEA_FREIGHT_K` reads `cost/resScale` (sea budgets were already
+   scaled; the peer-selection discount wasn't).
+5. **conquest.js** — the admin-flood search bound `maxCost` now carries
+   holdReach's own scale, so the bound and `reachCeil = holdReach×25` are one
+   quantity again. Raw, the flood truncated at 1/resScale of the real admin
+   radius: the OUTER HALF of every big fine-grid realm read "unreachable →
+   secede" — a direct driver of the fragmentation excess. Perf is safe: the
+   flood early-exits when all members are found.
+6. Deliberately NOT scaled: `POP_MIGRATE` (its implied diffusion coefficient is
+   res-variant but second-order — every habitable tile is seeded and fills by
+   local logistic growth; a true fix needs sub-stepped migration and its own
+   measurement), and the per-EDGE costs themselves (the established convention).
+
+**No lever.** Like the audit's war-rate/gap-fill fixes: every factor is exactly
+1 at the 240-tile reference, verified — the 480 grid is BYTE-IDENTICAL pre/post
+(b9c264b9/100239cd, 2500 steps, seeds 8817/31337), so every documented 480
+number (comboE, WAR_REACH, cities-only, stylized) stands without re-running.
+The 320 smoke/hashbase grid re-keys (rn≈0.67 — its field was 0.44× the
+reference level, now matched): new pair 36e38967/f57f0ddd in the hashbase
+chain. Smoke green at the new 320 trajectory (110.5s, all checks incl.
+roundtrip + functional resume). NB the app's actual DEFAULT grid is W=1920 →
+tw=960 → resScale=4 (the "2×" UI setting; the loop-closure's tw=480 battery is
+the "1×" setting) — so the shipped default had these distortions at double the
+measured strength.
+
+### Measured effect at tw=480 (post-fix battery, same instruments)
+
+Matched-step development snapshot (tools/probe_res_dev.mjs, step 12k, seed
+8817; the 480 column is byte-identical pre/post so it doubles as the reference):
+
+| | 480 ref | 960 PRE-fix | 960 POST-fix |
+|---|---|---|---|
+| settlements | 79 | 87 | 86 |
+| census pop | 39,364 | 29,902 (0.76×) | **41,908 (1.06×)** |
+| popField total | 9.98M | 31.4M (**3.15×**) | **8.29M (0.83×)** |
+| city pop mean / max | 498 / 9,483 | 344 / 4,376 | **487** / 5,220 |
+| org mean / max | .382 / .489 | .321 / .432 | .337 / .450 |
+| realms / claimed | 21 / 19.2% | 24 / 15.9% | 27 / 20.1% |
+
+The demographic base and the urban economy now TRACK THE REFERENCE step-for-step
+(field 0.83×, census 1.06×, mean city 0.98× — the residuals are within
+world-realization noise: the grids are different terrain realizations, e.g. the
+960 Yellow-River cradle reads moist 0.46 vs 0.82 at 480 on this seed). The org
+clock NARROWED (mean 0.84×→0.88×, max 0.88×→0.92×) but retains a ~10% lag at
+this probe — some or all realization noise (the apex city halves, the p90 city
+RISES; where the biggest hub lands differs per realization). The windowed
+political battery below is the product-level judge of what remains.
+
+<!-- BATTERY_RESULTS -->
+
+## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
   (not just capped via comboE): it needs a **NON-multiplicative** limiter — e.g.
   amphibious requires NAVAL DOMINANCE (control of the sea), a separate axis giants
