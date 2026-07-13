@@ -288,7 +288,7 @@ at 24k, absorb=27 in the last window; the off-lever top is 7.0M and YOUNG at
 
 **(b) The kinship-restraint counterweight — BUILT, MEASURED, and it
 BACKFIRES.** Under the lever the people-axis of casusBelliMul now reads the
-DEFENDER REALM's governed people (towns + countryside, people-weighted — the
+DEFENDER REALM's governed people (member cities + their governed countryside field people — the
 absorbResistance blend; armies.js realmCulOf → cohesion.js) instead of its
 capital city's census mix. No new constants: only the read moves onto the
 land, completing the lever's semantics (both casus sides on the same field).

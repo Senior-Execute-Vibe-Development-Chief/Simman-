@@ -39,8 +39,8 @@ const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 // and the exact original expression chain at the reference). Shipped SECOND
 // in the 2026-07 rs=4 arc, deliberately: A/B'd alone it was REFUTED as the
 // dev-clock driver and even shrank the urban economy (census −34% at 1920/12k
-// — fast diffusion drains cradle catchments that an UNWIRED world can't
-// urbanise); on top of the road-wiring fix (roads.js) the same patch measured
+// — fast diffusion drains cradle catchments faster than an UNWIRED world's
+// cities can urbanise the flow); on top of the road-wiring fix (roads.js) the same patch measured
 // census +22% (0.69×→0.84× of the reference), city mean 0.90×, politics
 // neutral. Order matters: the wiring is the mechanism, this is the substrate —
 // docs/empire-consolidation-2026-07.md "THE rs=4 ARC".

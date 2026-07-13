@@ -432,7 +432,7 @@ the reference — hash480 held at b9c264b9/100239cd; stable at rs=4, 2×0.48
 substeps). Measured at 1920/12k: **org .236→.235 (flat), claimed 8.5→9.7%,
 census 25.3k→16.8k (0.64×→0.43× — WORSE), p50 city 49→37.** At 960/12k:
 neutral (org .337→.333). D×16 field diffusion does not drive the dev clock —
-it drains cradle catchments faster than towns urbanise them in an UNWIRED
+it drains cradle catchments faster than cities urbanise them in an UNWIRED
 world. The hypothesis about the CLOCK was wrong; the physics (D ∝ share·Δx²
 is res-variant) was right — see §3b for the flip once the wiring existed.
 
@@ -443,7 +443,7 @@ or settlement tiles (roads.js computeReach) — partners REQUIRE built roads;
 rivers are free corridors (why the river-cradle leaders always near-tracked).
 Two raw-tile radii under-wired the road mesh at fine grids:
 
-- **`CLOSE_NEIGHBOUR_DIST` (20 raw)** — the guaranteed village↔neighbour
+- **`CLOSE_NEIGHBOUR_DIST` (20 raw)** — the guaranteed city↔neighbour
   wiring, calibrated "just above MIN_SETT_DIST (12)". But founding spacing
   scales ×rn (crystallize.js) while the 20 did not: at rs=4 neighbours sit
   ~48 tiles apart — **the local road mesh never formed at the shipped
@@ -453,8 +453,8 @@ Two raw-tile radii under-wired the road mesh at fine grids:
   ×rNormPop.
 
 The trap that amplified both: stateless settlements neither lay nor receive
-roads, and MIN_POP_TO_PLAN=60 is out of reach for a starved town — no roads →
-no partners → no diffusion/trade → towns stay small → still no roads. The
+roads, and MIN_POP_TO_PLAN=60 is out of reach for a starved city — no roads →
+no partners → no diffusion/trade → cities stay small → still no roads. The
 DIFFUSE_COST_K fix from the res-invariance arc never got an EDGE to act on.
 
 Measured (each grid vs the byte-identical 480 reference at matched step 12k):
@@ -489,7 +489,7 @@ With the road wiring fixed, the §1 patch was re-measured on top (same cell,
 1920/12k/8817): **census 27.0k→33.0k (+22%: 0.69×→0.84× of the reference),
 city mean 370→446 (0.90× ref), p90 city 763→1,075, max 3,745→4,701; org and
 realms/claimed neutral (.330→.326, 12/12.9→12/12.7).** The same D×16 that
-DRAINED the unwired world (§1) FEEDS it once towns have the trade net to
+DRAINED the unwired world (§1) FEEDS it once cities have the trade net to
 urbanise the flow — the roads are the mechanism, the field is the substrate,
 and the ORDER of the two fixes was the whole story. Shipped as its own
 commit; the reference stays byte-identical (hash480 re-verified with the
@@ -511,7 +511,7 @@ on the reference.
    The trap exists at every grid; the reference tail escapes it faster (its
    marginal rivers carry more of the map — below). Candidate mechanisms if it
    needs closing: pedlar/foot diffusion off the road net (a faiths.js-style
-   near-radius knowledge trickle), or roads to organized-but-stateless towns.
+   near-radius knowledge trickle), or roads to organized-but-stateless cities.
 2. **River magnitude is grid-variant in worldgen**: the same seed's Nile
    hearth reads river(mag4) at tw=240 AND tw=480 but river(mag3) at tw=960
    (founding logs) — flow accumulation classifies lower per-tile on finer

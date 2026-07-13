@@ -167,8 +167,9 @@ export function casusBelliMul(aCap, dCap, tileOwner, w, tileCulShare, dRealmCulM
   // signed per axis: +1 wholly foreign (righteous), −1 same identity (kin → restraint)
   const sgn = (coreMix, otherMix) => { const id = dom(coreMix); return id < 0 ? 0 : 1 - 2 * mixShare(otherMix, id); };
   // The PEOPLE axis reads the defender REALM's governed people when the caller
-  // provides it (T.TILE_IDENTITY, armies.js: towns + countryside people-weighted)
-  // — the kinship-restraint counterweight to the irredentist term below. A
+  // provides it (T.TILE_IDENTITY, armies.js: member cities + their governed
+  // countryside field people, people-weighted) — the kinship-restraint
+  // counterweight to the irredentist term below. A
   // nation-state's assimilated ground is authentically kin (spared); an empire
   // of unassimilated conquests reads foreign however cosmopolitan its capital
   // (invites the liberator). Absent (lever off / unregistered realm) → the

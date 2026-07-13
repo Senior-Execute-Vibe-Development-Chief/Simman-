@@ -627,8 +627,10 @@ function linkCloseNeighbours(world, s) {
   // the reference founding spacing (MIN_SETT_DIST 12) so closest pairs always
   // qualify — but the spacing scales ×rn with the grid (crystallize.js) while a
   // raw 20 does not, so at the shipped 1920 default (rn=4, spacing ~48 tiles)
-  // the guaranteed village↔neighbour wiring found NOBODY and the local road
-  // mesh never formed. ×1 exactly at the 240-tile reference.
+  // the guaranteed city↔neighbour wiring found NOBODY and the local road
+  // mesh never formed (under cities-only defaults every settlement entity is
+  // an urban centre — the countryside is the popField, not an entity).
+  // ×1 exactly at the 240-tile reference.
   forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST * rNormPop(world), (peer, dAB2) => {
     if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
     if (peer.countryId < 0) return;   // don't road to a stateless neighbour

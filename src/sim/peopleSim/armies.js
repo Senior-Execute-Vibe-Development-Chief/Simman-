@@ -516,8 +516,9 @@ export function advanceFronts(world) {
   const capOf = new Map();
   if (world.countries) for (const c of world.countries.values()) if (c.capital) capOf.set(c.id, c.capital);
   // T.TILE_IDENTITY: the kinship-RESTRAINT side of the casus reads the DEFENDER
-  // REALM's PEOPLE — the people-weighted culture of its towns AND countryside
-  // (the absorbResistance blend, cohesion.js) — instead of its capital city's
+  // REALM's PEOPLE — the people-weighted culture of its member CITIES plus their
+  // governed COUNTRYSIDE (the field people via the _rurCulMix stamps — the
+  // absorbResistance blend, cohesion.js) — instead of its capital city's
   // census mix. This is the counterweight to the irredentist term (Stage 2
   // wired only the righteous side to the ground, which tilted the balance:
   // biggest realm +17–30% in the windowed A/B). A long-settled nation-state's
