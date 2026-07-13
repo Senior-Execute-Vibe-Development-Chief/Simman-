@@ -16,6 +16,7 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
+import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee } from "./conquest.js";
@@ -215,6 +216,34 @@ function homeMight(s) {
   const walls = 1 + WALL_W * Math.max(0, techEff(s).defenseLevel || 0);
   return Math.max(s.army || 0, militia) * techMul(s) * walls;
 }
+
+// ── Force projection decays with distance (T.WAR_REACH, TILE_WAR only) ────────
+// The §4c-designed locality the tile-war launched without: under TILE_WAR every
+// combatant is a NATION whose whole field army meets every battle — so a realm
+// projects FULL national might at every tile of its frontier simultaneously,
+// however far from its capital. Measured consequence (probe_empires,
+// docs/empire-consolidation-2026-07.md): nobody ever clears the front bar
+// against a 10-20×-dominant realm anywhere on its border, the top realms sit at
+// ZERO defensive fronts, their capitals are never approached, and the top-5 are
+// IMMORTAL over whole runs. With projection decay, strength is local: effective
+// might at a battlefield = national might × exp(−d/H), d = distance from the
+// realm's own capital, H = WAR_REACH reference-tiles (resolution-scaled),
+// stretched by logistics tech ×(1 + PROJ_LOGI·logisticsLevel) — the same
+// roads→rail channel (and weight) that stretches administrative reach
+// (countryTerritory.js LOGI_REACH), so armies and administration ride one
+// logistics truth, emergently, never a date. EXPONENTIAL because supply-line
+// loss is per-march-day MULTIPLICATIVE: each day out, the train consumes/loses
+// a constant FRACTION of what it can deliver (the classical logistics of the
+// Macedonian army), so deliverable force compounds down with distance — the
+// only shape that lets a modest power at its own doorstep out-project a
+// many-times-larger empire's far frontier (a ratio gate that a hyperbolic tail
+// never inverts). A giant's far periphery is then defended (and attacked) at a
+// small fraction of its might: neighbours bite it there, decline becomes
+// territorial, and a realm ground back to its heartland meets its besiegers at
+// parity — great powers can FALL. Not a cliff: a Macedon CAN march on
+// Persepolis — it pays per march-day, and the e-folding distance grows with
+// logistics (a rail-age power projects across a continent).
+const PROJ_LOGI = 2.2;
 
 // (The old marching-reinforcement columns — dispatchReinforcements/moveArmies
 // and world.armies — were removed: nothing called them since siege relief moved
@@ -603,6 +632,30 @@ export function advanceFronts(world) {
     own = adapters;
   }
 
+  // Force-projection decay (T.WAR_REACH; PROJ_LOGI comment above homeMight). Each
+  // nation's halving distance is stamped once per pass from its capital's logistics;
+  // projOf(S, ti) = S's effective-might multiplier fighting at tile ti. Lever 0
+  // (default) → projOf is exactly 1 everywhere (×1.0 is IEEE-exact: byte-identical).
+  const WAR_REACH = TILE_WAR ? Math.max(0, T.WAR_REACH || 0) : 0;
+  if (WAR_REACH > 0 && adapters) {
+    const rs = resScaleFor(tw);
+    for (const ad of adapters.values()) {
+      const cap = ad._capital;
+      const cons = (cap.knowledge && cap.knowledge.construction) || 0;
+      const logi = (cap._techEff ? cap._techEff.logisticsLevel : cons * cons) || 0;   // the countryTerritory.js:401 idiom — one logistics truth
+      ad._projHalf = WAR_REACH * (1 + PROJ_LOGI * logi) * rs;
+    }
+  }
+  const projOf = (S, ti) => {
+    const H = S._projHalf;
+    if (!(WAR_REACH > 0) || !(H > 0)) return 1;
+    const h = S._homeTi, hy = (h / tw) | 0, hx = h - hy * tw;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    let dx = Math.abs(tx - hx); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
+    const dy = ty - hy;
+    return Math.exp(-Math.sqrt(dx * dx + dy * dy) / H);   // per-march-day multiplicative supply loss (see PROJ_LOGI comment)
+  };
+
   // Trade-dampened encroachment: a frontier with active cross-border trade
   // sees less opportunistic encroachment (it's bad business to grab tiles
   // from a profitable peer). Build a country-pair → recent inter-country
@@ -664,7 +717,10 @@ export function advanceFronts(world) {
         }
         continue;
       }
-      if (A._M > bestM) { bestM = A._M; bestA = a; }
+      // Candidates rank (and later clear the bar) by PROJECTED might at THIS tile —
+      // a nearby modest power can out-project a distant giant (T.WAR_REACH; ×1 off).
+      const am = A._M * projOf(A, ti);
+      if (am > bestM) { bestM = am; bestA = a; }
     }
     if (bestA < 0) continue;
     const A = own.get(bestA);
@@ -719,7 +775,7 @@ export function advanceFronts(world) {
     // Even a vastly-stronger attacker is CHANNELLED by terrain: a river/mountain
     // tile resists ~up to 6× a plain, so fronts snap to ridges and rivers and
     // pour through the passes/valleys between, rather than advancing as a wall.
-    const effDef = D._M * thinFactor * terrainDef;
+    const effDef = D._M * projOf(D, ti) * thinFactor * terrainDef;   // the defender projects to its own frontier too (×1 at lever 0)
     // Trade peace raises the bar: between two countries with a profitable
     // trade link, opportunistic encroachment is suppressed (it's bad
     // business). A saturated trade peer requires ~2× the normal advantage
@@ -740,13 +796,13 @@ export function advanceFronts(world) {
       wdbgPass(WDBG, world.step);
       const wk = A.countryId + ":" + D.countryId;
       let r = WDBG.pairs.get(wk);
-      if (!r) WDBG.pairs.set(wk, r = { attM: A._M, base: effDef * T.ATTACK_MIN_RATIO, minBar: bar,
+      if (!r) WDBG.pairs.set(wk, r = { attM: bestM, base: effDef * T.ATTACK_MIN_RATIO, minBar: bar,
         f: { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb }, passed: false });
-      else if (bar < r.minBar) { r.minBar = bar; r.base = effDef * T.ATTACK_MIN_RATIO; r.attM = A._M;
+      else if (bar < r.minBar) { r.minBar = bar; r.base = effDef * T.ATTACK_MIN_RATIO; r.attM = bestM;
         r.f = { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb }; }
-      if (A._M >= bar) r.passed = true;
+      if (bestM >= bar) r.passed = true;
     }
-    if (A._M < bar) continue;
+    if (bestM < bar) continue;   // projected attacker vs projected defender (raw vs raw at lever 0)
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -755,12 +811,17 @@ export function advanceFronts(world) {
     const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;   // scales with the city's size
     const key = bestA + ":" + d;
     let pc = pairs.get(key);
-    if (!pc) { pc = { att: A, def: D, tiles: [], canStorm: false }; pairs.set(key, pc); }
+    if (!pc) { pc = { att: A, def: D, tiles: [], canStorm: false, _pjA: 0, _pjD: 0, _pjN: 0 }; pairs.set(key, pc); }
     if (distHome <= assaultDist) pc.canStorm = true;         // front at the heartland
     // capturable countryside — unless this tile was just flipped and is still
     // in its post-capture hold, which keeps a stalled front from ping-ponging
     // the same border tiles back and forth every pass.
-    else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
+    else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) {
+      pc.tiles.push({ ti, distHome });
+      // Mean battlefield projection per side (T.WAR_REACH): the countryside fight
+      // below is resolved at the contested tiles' average projection.
+      if (WAR_REACH > 0) { pc._pjA += projOf(A, ti); pc._pjD += projOf(D, ti); pc._pjN++; }
+    }
   }
 
   // ── Amphibious assault (nav-gated beachheads) ──────────────────────────
@@ -826,8 +887,21 @@ export function advanceFronts(world) {
           else if (bar < r.minBar) { r.minBar = bar; r.base = D._M * T.ATTACK_MIN_RATIO; r.attM = A._M; r.f = f; }
           if (A._M >= bar) r.passed = true;
         }
+        // T.WAR_REACH: the landing bar is PER BEACH — both armies project to the
+        // actual shore (step 3), so a giant's far coast is as biteable as its far
+        // land frontier and a landing near ITS OWN ports is cheap. The lane-level
+        // test would price every beach at full national might on both sides (the
+        // exact locality bug the lever exists to fix), so it is deferred; carry the
+        // bar FACTORS (bar ÷ D._M) for the per-tile test. Lever 0: the original
+        // lane-level rejection, byte-identical.
+        if (WAR_REACH > 0) {
+          const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key, _pjA: 0, _pjD: 0, _pjN: 0, _tileBar: bar / Math.max(1e-12, D._M) };
+          let l = amphibByDef.get(dcc); if (!l) amphibByDef.set(dcc, l = []);
+          l.push(pc);
+          continue;
+        }
         if (A._M < bar) continue;
-        const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
+        const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key, _pjA: 0, _pjD: 0, _pjN: 0 };
         let l = amphibByDef.get(dcc); if (!l) amphibByDef.set(dcc, l = []);
         l.push(pc);
       }
@@ -854,6 +928,18 @@ export function advanceFronts(world) {
         const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
         const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
         for (const pc of cands) {
+          // Deferred per-beach bar (T.WAR_REACH; lane-level at lever 0, see step 2):
+          // each side projects to THIS shore.
+          if (WAR_REACH > 0) {
+            const pjD = projOf(D, ti);
+            if (pc.att._M * projOf(pc.att, ti) < D._M * pjD * pc._tileBar) continue;
+            if (distHome <= assaultDist) { pc.canStorm = true; continue; }
+            if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) {
+              pc.tiles.push({ ti, distHome });
+              pc._pjA += projOf(pc.att, ti); pc._pjD += pjD; pc._pjN++;
+            }
+            continue;
+          }
           if (distHome <= assaultDist) pc.canStorm = true;   // the capital fronts the water — stormable from the sea
           else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
         }
@@ -1319,9 +1405,16 @@ export function advanceFronts(world) {
     // main effort, worn by war-weariness, sapped while pinned defending. The defender meets
     // it with its OWN national army, split across the fronts it defends and the directions
     // it is pressed from. Who takes the countryside is the national-army ratio here.
-    const attForce = offForceOf(acc, dcc);             // A's share of its finite army on THIS front
+    const attForce0 = offForceOf(acc, dcc);            // A's share of its finite army on THIS front
     const em = encMulOf(def);                          // <1 if the defender is pressed from several sides
-    const defForce = defForceOf(dcc, acc);             // D's share of its finite army defending THIS front
+    const defForce0 = defForceOf(dcc, acc);            // D's share of its finite army defending THIS front
+    // T.WAR_REACH: both armies project to the BATTLEFIELD. The countryside fight is
+    // resolved at the contested tiles' mean projection per side; the storm below is
+    // fought at the defender's capital (attacker decayed by that distance, defender
+    // at home). ×1 exactly at lever 0 (_pjN stays 0), so the ratios are unchanged.
+    const pjA = pc._pjN > 0 ? pc._pjA / pc._pjN : 1, pjD = pc._pjN > 0 ? pc._pjD / pc._pjN : 1;
+    const attForce = attForce0 * pjA;
+    const defForce = defForce0 * pjD;
     const adv = attForce / Math.max(1, defForce * em);
 
     if (pc.canStorm) {
@@ -1335,15 +1428,24 @@ export function advanceFronts(world) {
       // own fortress — garrison or citizen-militia behind the walls (homeMight). So a
       // relieved capital holds against a far larger invader; an isolated one (its field army
       // spent or pinned elsewhere) falls to its walls alone.
-      const defHome = homeMight(def);
-      const advCity = attForce / Math.max(1, (defForce + defHome) * em);
+      // T.WAR_REACH: the storm is fought AT the capital — the attacker projects at the
+      // capital's distance from ITS home; the defending field army IS home (undecayed
+      // defForce0). And the FORTRESS is the capital's OWN garrison/militia/walls: under
+      // TILE_WAR the adapter's `army` is the NATIONAL pool, which both put the whole
+      // army on the walls and double-counted it with the relief share (defForce) — so a
+      // giant's capital was unstormable even with its field army pinned elsewhere. The
+      // localization rides the lever (one measured change: war strength is local);
+      // lever 0 keeps the adapter-pool fortress byte-identically.
+      const pjCap = WAR_REACH > 0 ? projOf(att, def._homeTi) : 1;
+      const defHome = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def);
+      const advCity = (attForce0 * pjCap) / Math.max(1, (defForce0 + defHome) * em);
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
         // Bombard: grind the garrison; the besiegers bleed against the defence
         // they actually face (the militia floor, not the melted garrison).
         {
-          const dDef = Math.min(def.army || 0, att._M * SIEGE_DMG);
+          const dDef = Math.min(def.army || 0, att._M * pjCap * SIEGE_DMG);   // the besieger grinds at PROJECTED strength (×1 at lever 0)
           const dAtt = Math.min(att.army || 0, defHome * T.ATTRITION / techMul(att));
           def.army = (def.army || 0) - dDef;
           att.army = (att.army || 0) - dAtt;
@@ -1351,9 +1453,11 @@ export function advanceFronts(world) {
         }
         // Defence as the siege grinds on: the garrison falls, but never below
         // the (morale-weighted) citizen militia — homeMight recomputed on the
-        // now-reduced garrison returns exactly that floor.
-        const defNow = homeMight(def);
-        if (defNow * em <= att._M * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
+        // now-reduced garrison returns exactly that floor. (Under WAR_REACH the
+        // fortress is the capital settlement's own garrison, whose grind lands via
+        // the post-pass reconciliation — the siege wears it down pass over pass.)
+        const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def);
+        if (defNow * em <= att._M * pjCap * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
           // The SETTLEMENT that changes hands: under TILE_WAR `def` is a country adapter, so
           // the storm falls on its real capital (which fragments the realm); otherwise on the
           // settlement itself. Army mechanics below stay on `def`/`att` (the national pools).
@@ -1439,7 +1543,7 @@ export function advanceFronts(world) {
         bankMomentum(world, att.countryId, Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap) * MOMENTUM_PER_TILE);
         bumpMove(att.countryId, def.countryId, (adv - 1) * Math.min(pc.tiles.length, T.MAX_CAPTURE * domCap));   // field pressure = signed displacement
       }
-      { const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att)); const dDef = Math.min(def.army || 0, att._M * T.ATTRITION / techMul(def)); att.army = (att.army || 0) - dAtt; def.army = (def.army || 0) - dDef; tallyDead(world, att.countryId, def.countryId, dAtt + dDef); }
+      { const dAtt = Math.min(att.army || 0, def._M * pjD * T.ATTRITION / techMul(att)); const dDef = Math.min(def.army || 0, att._M * pjA * T.ATTRITION / techMul(def)); att.army = (att.army || 0) - dAtt; def.army = (def.army || 0) - dDef; tallyDead(world, att.countryId, def.countryId, dAtt + dDef); }
       continue;
     }
     const budget = Math.min(Math.round(T.MAX_CAPTURE * domCap), Math.floor((adv - 1) * CAPTURE_SCALE * domCap));
@@ -1468,8 +1572,8 @@ export function advanceFronts(world) {
       }
     }
     {
-      const dAtt = Math.min(att.army || 0, def._M * T.ATTRITION / techMul(att));
-      const dDef = Math.min(def.army || 0, att._M * T.ATTRITION / techMul(def));
+      const dAtt = Math.min(att.army || 0, def._M * pjD * T.ATTRITION / techMul(att));   // casualties dealt at range fall with projection (×1 at lever 0)
+      const dDef = Math.min(def.army || 0, att._M * pjA * T.ATTRITION / techMul(def));
       att.army = (att.army || 0) - dAtt;
       def.army = (def.army || 0) - dDef;
       tallyDead(world, att.countryId, def.countryId, dAtt + dDef);
