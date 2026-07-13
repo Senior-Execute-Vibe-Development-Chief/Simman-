@@ -380,7 +380,7 @@ function claimNoise(world) {
 // BEFORE adoptAndFound derives subject flags and BEFORE updatePolities recomputes
 // capacity — so cap/load read here are ≤1 polity-interval stale, which is fine (capacity
 // drifts slowly and has its own hysteresis).
-const FIELD_SPAN_DEF = 12.0;   // tiles a realm's administration holds per unit hold-capacity (calibrated against the empires probe; T.FIELD_SPAN overrides)
+const FIELD_SPAN_DEF = 6.0;   // tiles a realm's administration holds per unit hold-capacity (T.FIELD_SPAN lever; 6 since comboE — was 12, see docs/empire-consolidation-2026-07.md)
 function fieldPolityTerritory(world) {
   const FIELD_SPAN = T.FIELD_SPAN || FIELD_SPAN_DEF;
   const { N, tw, th, elev, fert, temp, moist } = world;
@@ -653,10 +653,10 @@ function fieldPolityTerritory(world) {
   const target = new Map(), grow = new Map();
   // Phase 3 fills coverage from cores (no catchment bulk), so the per-pass integration cap
   // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
-  const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
+  const rateCap = Math.max(1, Math.round((T.EXPAND_RATE ?? 8) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
   const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
-  const coverOrg  = Number.isFinite(COVER_ORG_ENV)  ? COVER_ORG_ENV  : (T.COVER_ORG ?? 150);
+  const coverOrg  = Number.isFinite(COVER_ORG_ENV)  ? COVER_ORG_ENV  : (T.COVER_ORG ?? 260);
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * Math.max(0, cp) * r2);
     if (T.TILE_POLITY) {

@@ -7,9 +7,12 @@
 // over a LATE WINDOW and report the MEAN — the only trustworthy way to judge a
 // lever's effect on the political map. Run 2+ seeds.
 //
-//   node tools/probe_avg.mjs                     # seed 8817, 480
+//   node tools/probe_avg.mjs                     # seed 8817, 480 (defaults = comboE since the flip)
 //   SEED=4242 W=480 node tools/probe_avg.mjs
-//   SIM_TUNE="FIELD_SPAN=6,EXPAND_RATE=8" SIM_COVER_ORG=260 node tools/probe_avg.mjs
+//   SIM_TUNE="COVER_ORG=300,FIELD_SPAN=8" node tools/probe_avg.mjs        # any lever sweep
+//   SIM_TUNE="FIELD_SPAN=12,COVER_ORG=150,EXPAND_RATE=1.5,REGION_SPACING=1.2" \
+//     node tools/probe_avg.mjs                   # recovers the pre-comboE baseline
+// (COVER_BASE/COVER_ORG are live levers now; SIM_COVER_* envs still force-override them.)
 //
 // count = world.countries.size ; claimed% + biggest from _countryOwner.
 import { buildSim } from "./_harness.mjs";

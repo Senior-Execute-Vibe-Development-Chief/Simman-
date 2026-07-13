@@ -77,7 +77,9 @@ Measured (windowed 16k–30k, both seeds), amphibious ON:
   largest-empire share 10%** (baseline 26% — comboE is MORE historical), Zipf −0.87,
   fallen lifespan ~824y, urbanization 10%. So it's not a hack — it stays history-shaped.
 
-Set `SIM_COVER_ORG=260 SIM_TUNE="REGION_SPACING=1.0,FIELD_SPAN=6,EXPAND_RATE=8"` to reproduce.
+Set `SIM_COVER_ORG=260 SIM_TUNE="REGION_SPACING=1.0,FIELD_SPAN=6,EXPAND_RATE=8"` to reproduce
+on a pre-flip build. **comboE is now the shipped default** (see PACKAGED below), so on
+current HEAD a plain run IS comboE.
 
 ## MEASUREMENT GOTCHAS (these cost real time — read before measuring)
 
@@ -88,16 +90,46 @@ Set `SIM_COVER_ORG=260 SIM_TUNE="REGION_SPACING=1.0,FIELD_SPAN=6,EXPAND_RATE=8"`
 2. **`FIELD_SPAN` was NOT in the tuning schema**, so `applyTuning`/`SIM_TUNE` silently
    ignored it (`applyTuning` does `if (!(k in DEFAULTS)) continue`). Now exposed
    (commit on branch). Any lever you sweep via `SIM_TUNE` MUST be in `TUNING_SCHEMA`.
-3. **`COVER_ORG`/`COVER_BASE` are env consts** (`_envNum("SIM_COVER_ORG",150)`), NOT
-   `T.*` levers — set via env, not `SIM_TUNE`. **Next step: expose them as levers.**
+3. **`COVER_ORG`/`COVER_BASE` are live levers now** (exposed while packaging comboE —
+   set via `SIM_TUNE` like everything else). The `SIM_COVER_*` envs still work and
+   FORCE-override the levers in headless runs. (Historically they were env-only consts
+   that `SIM_TUNE` silently ignored — the same trap as gotcha 2.)
 4. **`buildSim({W:480})` → sim grid `tw=240` (tileRes 2), so `NG = world.tw*world.th`,
    not `W*H`.** Iterating `W*H` reads phantom tiles (the 899%-claimed bug).
 5. Later steps get slow (settlement/link count); a 960→50k run is ~10 min.
 
+## PACKAGED (2026-07-13) — comboE is now the DEFAULT
+
+- **`COVER_BASE`/`COVER_ORG` are live levers** ("Empire size & cohesion", def 25/260).
+  The `SIM_COVER_*` envs still work and FORCE-override the levers for headless sweeps
+  (the SIM_PERSIST_TERR pattern). Verified lever path ≡ env path: `SIM_TUNE=
+  "COVER_ORG=260"` and `SIM_COVER_ORG=260` hash identically (d6eeee6e/d449827a on the
+  pre-flip build), and the exposure alone at old defaults is byte-identical
+  (83ccc922/574e8595, the documented pair).
+- **The four defaults flipped**: `FIELD_SPAN` 12→6, `COVER_ORG` 150→260, `EXPAND_RATE`
+  1.5→8, `REGION_SPACING` 1.2→1.0. Plain `node tools/probe_avg.mjs` now measures comboE.
+  Reversible in one line: setting the four levers back
+  (`SIM_TUNE="FIELD_SPAN=12,COVER_ORG=150,EXPAND_RATE=1.5,REGION_SPACING=1.2"`)
+  recovers the pre-flip trajectory BYTE-FOR-BYTE (probe_hashbase 83ccc922/574e8595);
+  the new-defaults pair is d8fc9f8f/bab1ad19.
+- **Validation at the new defaults** (this session):
+  - comboE reproduced via the env recipe first, both seeds, windowed 16k–30k:
+    8817 → 20.4 realms [18–25] / 29.9% / 7.3 Mkm²; 4242 → 29.4 [23–34] / 37.7% / 7.3 —
+    the numbers above, exactly.
+  - **Stylized 3-seed (8817/4242/777, 480×21k): ALL hard gates pass; soft warnings
+    1/0/0 (budget 2).** The one warning (8817) is the empire-area tail reading FLAT
+    (largest/median 2.3) — the capped giants, the fix working, not a pathology.
+    Largest-empire share 10/12/13%. Perf fine: ~190 s/run even three-concurrent
+    (EXPAND_RATE 8 + spacing 1.0 don't blow the budget; 136–143 settlements at 21k).
+  - **Smoke green** after replacing its one FITTED constant — the dissolve section's
+    `settlements < 60` — with the measured legacy-model comparison it always meant
+    (REGION_SPACING 1.0 makes 64 towns at 320, tripping the stale snapshot; the
+    second-cardinal-rule fix is to measure the alternative, not re-fit the number).
+  - Save/load roundtrip identity + determinism + invariants all pass at the new
+    defaults (same smoke run).
+
 ## OPEN / NEXT
 
-- **Package comboE**: expose `COVER_ORG`+`COVER_BASE` as levers; run 3-seed stylized +
-  smoke + byte-identical roundtrip; then flip the four defaults (or ship as a preset).
 - **The deeper root remains the immortal giants**: nothing kills a great power
   (`captured=0` — the tile-war never storms capitals; `field-polity-spec.md §4c`
   designed distance-decayed capital-storm but it was never built). comboE bounds

@@ -5,7 +5,16 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): 83ccc922/574e8595 (ontology V2 — LOYAL_FIELD
+// Current baseline (2500 steps): d8fc9f8f/bab1ad19 (comboE empire-consolidation
+// defaults — FIELD_SPAN 6, COVER_ORG 260, EXPAND_RATE 8, REGION_SPACING 1.0, with
+// COVER_BASE/COVER_ORG newly exposed as live levers;
+// docs/empire-consolidation-2026-07.md). The exposure itself is byte-TRANSPARENT:
+// SIM_TUNE="FIELD_SPAN=12,COVER_ORG=150,EXPAND_RATE=1.5,REGION_SPACING=1.2"
+// recovers the prior pair below EXACTLY (same hash stream — the flip is purely the
+// four values), and setting COVER_ORG=260 via SIM_TUNE vs via the legacy
+// SIM_COVER_ORG env gives the SAME pair (d6eeee6e/d449827a on the pre-flip build) —
+// lever path ≡ env path.
+// Prior baseline (2500 steps): 83ccc922/574e8595 (ontology V2 — LOYAL_FIELD
 // + GRIEV_LEDGER defaults: tile homeland memory, the attachment continuum,
 // the nation-pair grievance ledger; hashes the field + ledger + scan clock,
 // so the stream is re-keyed). LOYAL_FIELD=0,GRIEV_LEDGER=0 gives

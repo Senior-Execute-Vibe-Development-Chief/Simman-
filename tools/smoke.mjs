@@ -191,6 +191,19 @@ console.log(`[smoke] save/load: roundtrip identity + functional resume`);
 console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
 {
   const { applyTuning, resetTuning } = await import("../src/sim/peopleSim/tuning.js");
+  // The "fewer entities" guarantee is judged against the MEASURED legacy
+  // farming-region model (DISSOLVE_FARMS=0) under the same defaults — not a
+  // hardcoded snapshot, which went stale the moment REGION_SPACING's default
+  // changed the dissolve model's town density (the comboE flip: 64 towns vs a
+  // fitted "< 60"). The legacy world's entity count is towns + the tier-0
+  // farming-region swarm, so dissolve must come in under it at any granularity.
+  let legacyN = 0;
+  applyTuning({ DISSOLVE_FARMS: 0 });
+  try {
+    const l = buildSim({ W, H, seed: SEED, preset: PRESET });
+    stepPeopleSim(l, 3000);
+    legacyN = peopleSimStats(l).settlements;
+  } finally { resetTuning(); }
   applyTuning({ DISSOLVE_FARMS: 1 });
   try {
     const a = buildSim({ W, H, seed: SEED, preset: PRESET }); a._checkInvariants = true;
@@ -204,7 +217,7 @@ console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
     const hits = a.debug && a.debug.invariantHits; let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
     check("dissolve: zero invariant violations", hitTotal === 0, hits ? JSON.stringify(hits) : "");
     check(`dissolve: civilization alive (${sa.settlements} settlements)`, sa.settlements >= 5 && sa.totalPeople > 500);
-    check(`dissolve: fewer entities than farming-region model (${sa.settlements})`, sa.settlements < 60, `${sa.settlements} settlements`);
+    check(`dissolve: fewer entities than farming-region model (${sa.settlements} vs ${legacyN})`, sa.settlements < legacyN, `${sa.settlements} vs legacy ${legacyN}`);
   } finally {
     resetTuning();   // restore defaults so nothing downstream sees the lever
   }

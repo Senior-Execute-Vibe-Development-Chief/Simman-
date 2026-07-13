@@ -108,7 +108,8 @@ Three mechanisms landed the field model:
    over-capacity marches (never worked/home land) → reused cartography.
 2. **adoptAndFound inverted** — a subject derives `countryId` from `_countryOwner`
    directly (growth is already capacity-throttled, no render-crawl lag needed).
-3. **Levers** — `FIELD_POLITY` (def 1), `FIELD_SPAN` (12), `EXPAND_RATE` (1.5).
+3. **Levers** — `FIELD_POLITY` (def 1), `FIELD_SPAN` (def 6; was 12 until the comboE
+   consolidation fix, docs/empire-consolidation-2026-07.md), `EXPAND_RATE` (def 8; was 1.5, same fix).
 
 Measured (480 seed 8817): realms **46** at step 20k (entity model ~19-26), 65% claimed,
 top-5 13.7/9.5/9.1/8.1/7.2M km² (heavy-tailed great-power set, no continent-spanner);
@@ -519,9 +520,12 @@ the causes were real MECHANISM gaps, not tuning knobs:
    nothing consolidates → settlements stay stateless and found their own realms without limit.
    **Fix — coverage floor** (`fieldPolityTerritory`): guarantee every realm a growth target of at
    least an ORG-scaled administrative HINTERLAND around its capital (`COVER_BASE + COVER_ORG·org`,
-   env-tunable `SIM_COVER_BASE/ORG`, default 25/150), `max()`'d with the capacity target so great
-   powers (capacity-bound) are unchanged and only the frozen small realms grow. This is the coverage
-   the per-settlement anchors used to provide, now emergent from the capital's reach.
+   live levers `T.COVER_BASE`/`T.COVER_ORG`, default 25/260 — COVER_ORG was 150 until the comboE
+   consolidation fix made it the map-filling default, docs/empire-consolidation-2026-07.md; the
+   `SIM_COVER_BASE/ORG` envs force-override the levers for headless sweeps), `max()`'d with the
+   capacity target so great powers (capacity-bound) are unchanged and only the frozen small realms
+   grow. This is the coverage the per-settlement anchors used to provide, now emergent from the
+   capital's reach.
 
 2. **Inert absorption.** `absorbWeakNeighbors` flipped only `s.countryId`; under field-derived flags
    the next `adoptAndFound` reverted it (and stranded a solo realm's absorbed capital into
