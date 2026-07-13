@@ -115,7 +115,10 @@ export const HAND_NAME = {
 
 const SCRIPTS = new WeakMap();
 
-/** The language's script, or null while the tradition is preliterate.
+/** The language's script — every record-keeping people writes, so this is
+ *  non-null for every language record (a newborn record is a young
+ *  logography with zero lag; null is reserved for future sim-side
+ *  preliterate wiring).
  *  → { type, dir, hand, born, adoptedAt, frozenAt, reformed, lag, sep,
  *      matres, virama, codaMode, toneWritten, headline, join,
  *      styleSeed, glyphBudget } */
@@ -133,10 +136,13 @@ export function scriptOf(lang) {
     const p = lang.prof.script;
     script = { type: p.type, dir: p.dir || "ltr", born: 0, adoptedAt: 0, frozenAt: 0, reformed: false, hand: p.hand || (p.type === "logo" ? "brush" : "pen") };
   } else {
-    // the records tradition consolidates after a little accumulated history
-    // (rule-log index = emergent state, never wall-clock)
-    const born = 1 + hash32(fam, "scr:born") % 3;
-    if (len >= born) {
+    // the record IS the tradition: every language here belongs to a
+    // record-keeping people, so writing begins with the record itself —
+    // logographic, the accounting-token origin of every primary invention.
+    // (Truly preliterate tongues return with sim-side literacy wiring,
+    // parked; everything downstream still keys on accumulated history.)
+    const born = 0;
+    {
       let type = "logo", adoptedAt = born;
       // re-learning junctures: each is a chance to simplify one ladder step
       // toward whatever fits THIS language best — or to keep what works

@@ -2101,10 +2101,15 @@ console.log("\n── §25 writing systems ──");
   // the corpus AS IT STOOD, so a syllabary can only have been adopted while
   // the attested syllable count sat inside the type's own learnable bands
   const byMorph = {};
-  let prelitFresh = 0, syllBad = 0, syllN = 0;
+  let bornLit = 0, bornBad = 0, syllBad = 0, syllN = 0;
   for (let i = 0; i < 300; i++) {
     const l = foundLanguage(world, { seed: 820000 + i * 331 });
-    if (!scriptOf(l) && l.rules.length <= 2) prelitFresh++;
+    // the record IS the tradition: every record has a script — no language
+    // ever shows "too young". A record founded with NO history is a newborn
+    // logography with zero lag; one founded with initial rule history is
+    // already an older tradition (its junctures may already have fired)
+    const s0 = scriptOf(l);
+    if (s0) { bornLit++; if (l.rules.length === 0 && (s0.type !== "logo" || s0.lag !== 0)) bornBad++; }
     for (let d = 0; d < 8; d++) driftLanguage(world, l);
     const s = scriptOf(l);
     if (!s) continue;
@@ -2127,7 +2132,7 @@ console.log("\n── §25 writing systems ──");
   check(`atonal agglutinative/fusional lands segmental (alphabet+abugida ${Math.round((share("agg", "alphabet") + share("agg", "abugida")) * 100)}% / ${Math.round((share("fus", "alphabet") + share("fus", "abugida")) * 100)}%)`,
     share("agg", "alphabet") + share("agg", "abugida") >= 0.6 && share("fus", "alphabet") + share("fus", "abugida") >= 0.6);
   check(`syllabaries occur and only where the corpus at adoption allowed (${syllN} rolled, ${syllBad} oversize)`, syllN >= 1 && syllBad === 0);
-  check(`fresh roots can be preliterate (${prelitFresh}/300 before drift)`, prelitFresh >= 10);
+  check(`every record is born literate; zero-history records are newborn logographies (${bornLit}/300, ${bornBad} bad)`, bornLit === 300 && bornBad === 0);
   // (b) refs pinned
   const refT = ["mandarin", "russian", "english"].map(k => scriptOf(refLang(mkWorld(), k, 445)).type);
   check(`references pinned (mandarin logographic; russian/english alphabetic)`, refT[0] === "logo" && refT[1] === "alphabet" && refT[2] === "alphabet");

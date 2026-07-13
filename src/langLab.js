@@ -427,9 +427,11 @@ function writingHTML(l) {
     ? `Invented whole at court — the Sejong move: centuries of sound change had left the old script's fit behind, so the replacement draws each sound's own FEATURES. Place gives the base shape, manner modifies it, and a laryngeal series just adds a stroke — related sounds look related, and one letter covers a voicing pair the way Hangul's ㄱ covers k and g.`
     : s.adoptedAt > s.born
       ? `Born logographic (every primary tradition is), then re-learned and simplified — the current type won because it fits this language's own structure.`
-      : s.type === "logo"
-        ? `Still logographic: phonographic writing would collapse this language's short, homophone-heavy morphemes, so simplification never paid.`
-        : `Adopted in its current form when the tradition consolidated.`;
+      : s.type === "logo" && l.rules.length < 2
+        ? `A newborn tradition: writing begins, as every primary invention did, with accounting-token logographs — one sign per morpheme. Its first re-learning juncture is still ahead: <b>Drift</b> the language and watch the script simplify toward whatever fits.`
+        : s.type === "logo"
+          ? `Still logographic: phonographic writing would collapse this language's short, homophone-heavy morphemes, so simplification never paid.`
+          : `Adopted in its current form when the tradition consolidated.`;
   const handStory = s.type === "featural"
     ? "Drawn with the designer's ruler, not the scribe's wear: geometric components compose each syllable into a block — onset beside or above the vowel bar, coda beneath."
     : { carved: "The hand is carved: cuts along the grain split the wood, so no stroke runs level.",

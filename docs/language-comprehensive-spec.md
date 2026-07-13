@@ -984,3 +984,34 @@ three now emerge; probe 320 → **327** checks (§25 e2).
   Sejong precondition — Korea wrote CHINESE; needs sim-side neighbors);
   hand-styled featural letters (real Hangul took brush styling);
   boustrophedon; loanword writing; sim/chronicle wiring, unchanged.
+
+## Build status (session 15, seventh phase) — ductus, gestalt, born literate
+
+Three visual-quality/product rounds on the script layer:
+
+- **DUCTUS.** Stroke conventions (bow chirality, arm-slope habit) are
+  rolled once per script from styleSeed, never per letter — one hand
+  writes the whole script, so E F H K read as siblings. Attachments
+  anchor ON the spine (diagonal spines carry them along their own line;
+  bowed spines take end attachments only), bowls overlap the stem as
+  b d p do, and the pen slants forward and mildly. Pen and palm-leaf
+  hands favor bowls and curved arms (the minim-and-bowl economy); the
+  carved hand keeps its angular futhark look — there, "runic" is the
+  grain rule working.
+- **GESTALT DISTINCTNESS.** The fine signature (twelfth-of-box) kept
+  signs distinct to the renderer while leaving near-twins for the eye.
+  Segmental letters now dedup at the READER's grain too (thirds-of-box
+  gestalt); near-twins get walked apart or POINTED apart on the joined
+  pen (more i'jam — the same pressure that split ب ت ث). Dense scripts
+  skip the coarse test, as hanzi readers legitimately read fine detail.
+  Gated: 0 near-twins across the sweep.
+- **BORN LITERATE.** The record IS the tradition: every language record
+  belongs to a record-keeping people, so writing begins with the record
+  itself — born = 0, always logographic (the accounting-token origin),
+  zero lag on a zero-history record. Everything downstream still keys on
+  accumulated history; records founded WITH initial history are already
+  older traditions. No Lab reroll ever says "too young" again. Truly
+  preliterate tongues return with sim-side literacy wiring (parked).
+
+Probe 327 → **329** checks (gestalt gate + born-literate gate replacing
+the preliterate one; the featural laryngeal gate is now non-vacuous).
