@@ -41,6 +41,7 @@ const ARGENT = TINCTURES.argent.rgb, AZURE = TINCTURES.azure.rgb;
 
 let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
+const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0 };
 const fail = (msg, g) => { if (fails++ < 10) console.error(`  FAIL ${msg}${g ? `\n       ${describeGenome(g)}` : ""}`); };
 
 function checkMark(mark, grounds, what, g, strict) {
@@ -59,9 +60,15 @@ function audit(g) {
   const f = p.field;
   if (p.composition === "heraldic") {
     if (p.colors.mode === "heraldic") fieldNames.add(f.names[0]);
-    const grounds = f.fur ? (f.fur === "ermine" ? [ARGENT] : [ARGENT, AZURE])
-      : f.partition === "plain" ? [p.colors.field] : f.tinctures;
-    const strict = p.colors.mode === "heraldic" || p.colors.mode === "monochrome" || !!f.fur;
+    if (seen[f.partition] != null) seen[f.partition]++;
+    if (seen[f.fur] != null) seen[f.fur]++;
+    if ((f.ordinaryCount || 1) > 1) seen.diminutive++;
+    if (p.motif && p.motif.attitude) seen.attitude++;
+    const grounds = f.fur === "ermine" ? [ARGENT] : f.fur === "vair" ? [ARGENT, AZURE]
+      : f.fur ? [p.colors.field]                       // fretty / masoned: thin lines, the field stays the ground
+        : f.partition === "plain" ? [p.colors.field] : f.tinctures;
+    const strict = p.colors.mode === "heraldic" || p.colors.mode === "monochrome"
+      || f.fur === "ermine" || f.fur === "vair";
     const hasOrd = f.ordinary && f.ordinary !== "none";
     if (hasOrd && !f.counterchange) checkMark(f.ordinaryTincture, grounds, "ordinary", g, strict);
     if (f.chief) checkMark(f.subTincture, grounds, "chief", g, strict);
@@ -103,6 +110,7 @@ for (let i = 0; i < N; i++) {
   }
 }
 for (const n of names) if (!fieldNames.has(n)) fail(`reachability: "${n}" never a heraldic field in ${N} samples`);
+for (const [k, v] of Object.entries(seen)) if (!v) fail(`reachability: ${k} never expressed in ${N} samples`);
 
 // ── 2: art coverage ──
 for (const [cat, pool] of Object.entries(MOTIFS))
@@ -137,6 +145,27 @@ for (let i = 0; i < 60; i++) {
     if (!svg.includes("<svg") || svg.length < 400) fail("marshalled emblem failed to render");
   }
   if (!blazonGenome(abc).startsWith("Quarterly:")) fail("marshalled blazon should enumerate quarters");
+}
+
+// ── 6: cadency ──
+{
+  let g = foundGenome(2024), marked = 0, cleared = 0, prev = 0;
+  for (let i = 0; i < 60; i++) {
+    g = inheritGenome(g, 9000 + i * 13);
+    const c = g.cadency || 0;
+    if (c > 0) marked++;
+    if (prev > 0 && c === 0) cleared++;
+    if (c > 6) fail("cadency beyond the six marks");
+    prev = c;
+  }
+  if (!marked) fail("cadency never appears down an inherit chain");
+  if (!cleared) fail("cadency never clears (no branch ever succeeds as head)");
+  const withMark = { ...foundGenome(31), cadency: 3 };
+  if (!expressGenome(withMark).cadency) fail("phenotype missing cadency");
+  if (!blazonGenome(withMark).includes("for difference")) fail("blazon missing 'for difference'");
+  if ((mutateGenome(withMark, 5).cadency || 0) !== 3) fail("mutate should preserve cadency (same bearer)");
+  if (crossGenome(withMark, foundGenome(32), 7).cadency) fail("a union founds a new house: cadency must clear");
+  if (emblemSVG(withMark, 120, 120).length < 400) fail("cadency emblem failed to render");
 }
 
 console.log(`[emblem] ${checks} tincture checks over ${N} genomes, min measured dE ${minMeasured.toFixed(3)}; `

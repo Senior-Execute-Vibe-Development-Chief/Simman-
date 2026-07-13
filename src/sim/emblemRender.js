@@ -57,7 +57,18 @@ export const PRIMITIVES = {
       + R(cx - o - t / 2, cy - s, t, 2 * s) + R(cx + o - t / 2, cy - s, t, 2 * s); },
   goutte: (x, y, b, C) => { const cx = x + b / 2, r = b * 0.26, top = y + b * 0.04, bl = y + b * 0.7;
     return `<path d="M${F(cx)} ${F(top)} C${F(cx + r * 0.5)} ${F(bl - r * 1.5)} ${F(cx + r)} ${F(bl - r * 0.6)} ${F(cx + r)} ${F(bl)} A${F(r)} ${F(r)} 0 1 1 ${F(cx - r)} ${F(bl)} C${F(cx - r)} ${F(bl - r * 0.6)} ${F(cx - r * 0.5)} ${F(bl - r * 1.5)} ${F(cx)} ${F(top)} Z" fill="${C}"/>`; },
+  // cadency marks
+  label: (x, y, b, C) => { const t = b * 0.13, Y = y + b * 0.24;
+    let s = `<rect x="${F(x + b * 0.06)}" y="${F(Y)}" width="${F(b * 0.88)}" height="${F(t)}" fill="${C}"/>`;
+    for (const u of [0.2, 0.5, 0.8]) s += `<rect x="${F(x + b * u - t * 0.45)}" y="${F(Y + t)}" width="${F(t * 0.9)}" height="${F(b * 0.3)}" fill="${C}"/>`;
+    return s; },
+  crescent: (x, y, b, C) => { const cx = x + b / 2, cy = y + b * 0.5;
+    return `<path d="${ringPath(cx, cy, b * 0.42)} ${ringPath(cx, cy - b * 0.1, b * 0.31)}" fill="${C}" fill-rule="evenodd"/>`; },
 };
+
+// a charge borne INVERTED turns about its own centre; TO SINISTER mirrors it
+const oriented = (m, s, cx, cy) => !m.attitude ? s
+  : `<g transform="${m.attitude === "inverted" ? `rotate(180 ${F(cx)} ${F(cy)})` : `translate(${F(2 * cx)},0) scale(-1,1)`}">${s}</g>`;
 
 // ── a motif: a vector primitive if one owns the id, else recoloured charge art ──
 function motif(id, x, y, box, colRGB) {
@@ -109,8 +120,27 @@ function styledEdge(x1, y1, x2, y2, style, amp) {
   return d;
 }
 
-// ── heraldic FURS as field fills ──
-function furFill(w, h, kind) {
+// ── heraldic FURS and lattice TREATMENTS as field fills ──
+function furFill(w, h, p) {
+  const kind = p.fur, base = Math.min(w, h);
+  if (kind === "fretty") {                        // interlaced bendlets over the field colour
+    let s = `<rect width="${w}" height="${h}" fill="${css(p.tinctures[0])}"/>`;
+    const T = css(p.treatTincture), sp = base * 0.26, sw = base * 0.05, ext = w + h;
+    s += `<g stroke="${T}" stroke-width="${F(sw)}">`;
+    for (let x = -ext; x < ext; x += sp) s += `<line x1="${F(x)}" y1="0" x2="${F(x + h)}" y2="${h}"/>`;
+    for (let x = -ext; x < ext; x += sp) s += `<line x1="${F(x + h)}" y1="0" x2="${F(x)}" y2="${h}"/>`;
+    return s + `</g>`;
+  }
+  if (kind === "masoned") {                       // brick courses in mortar lines
+    let s = `<rect width="${w}" height="${h}" fill="${css(p.tinctures[0])}"/>`;
+    const T = css(p.treatTincture), rh = base * 0.16, bw = base * 0.34, sw = Math.max(1.1, base * 0.016);
+    s += `<g stroke="${T}" stroke-width="${F(sw)}">`;
+    for (let r = 0; r * rh < h + rh; r++) {
+      s += `<line x1="0" y1="${F(r * rh)}" x2="${w}" y2="${F(r * rh)}"/>`;
+      for (let x = (r % 2) * bw / 2; x < w; x += bw) s += `<line x1="${F(x)}" y1="${F(r * rh)}" x2="${F(x)}" y2="${F((r + 1) * rh)}"/>`;
+    }
+    return s + `</g>`;
+  }
   if (kind === "vair") {                          // rows of azure "bells" on argent, offset
     let s = `<rect width="${w}" height="${h}" fill="${css(BONE)}"/>`;
     const cols = 4, cw = w / cols, rh = h / 4;
@@ -131,9 +161,9 @@ function furFill(w, h, kind) {
   return s;
 }
 
-// ── field: fur, else a heraldic partition (edges in the field's line-style) ──
+// ── field: treatment, else a heraldic partition (edges in the field's line-style) ──
 function fieldSVG(w, h, p) {
-  if (p.fur) return furFill(w, h, p.fur);
+  if (p.fur) return furFill(w, h, p);
   const a = css(p.tinctures[0]), b = css(p.tinctures[1]), n = p.stripes, amp = Math.min(w, h) * 0.03, ln = p.line;
   const R = `<rect width="${w}" height="${h}" fill="${a}"/>`;
   const tri = (pts, f) => `<polygon points="${pts.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="${f}"/>`;
@@ -147,6 +177,14 @@ function fieldSVG(w, h, p) {
     case "chevron": return R + `<path d="M0 ${h} L${w / 2} ${h * 0.4} L${w} ${h} Z" fill="${b}"/>`;
     case "barry": { let s = ""; for (let i = 0; i < n; i++) s += `<rect y="${(i * h / n).toFixed(1)}" width="${w}" height="${(h / n + 1).toFixed(1)}" fill="${i % 2 ? b : a}"/>`; return s; }
     case "paly": { let s = ""; for (let i = 0; i < n; i++) s += `<rect x="${(i * w / n).toFixed(1)}" width="${(w / n + 1).toFixed(1)}" height="${h}" fill="${i % 2 ? b : a}"/>`; return s; }
+    case "chequy": { const cols = Math.max(4, Math.min(9, n + 2)), cw = w / cols, rows = Math.ceil(h / cw); let s = R;
+      for (let r = 0; r <= rows; r++) for (let c = 0; c < cols; c++) if ((r + c) % 2) s += `<rect x="${F(c * cw)}" y="${F(r * cw)}" width="${F(cw + 0.5)}" height="${F(cw + 0.5)}" fill="${b}"/>`;
+      return s; }
+    case "lozengy": { const cols = Math.max(4, Math.min(8, n + 2)), cw = w / cols, hh = cw * 0.7; let s = R;
+      for (let j = -1; j <= Math.ceil(h / hh) + 1; j++) { if (!(j % 2)) continue;
+        for (let i = -1; i <= cols; i++) { const cx = i * cw + cw / 2, cy = j * hh;
+          s += `<polygon points="${F(cx)},${F(cy - hh)} ${F(cx + cw / 2)},${F(cy)} ${F(cx)},${F(cy + hh)} ${F(cx - cw / 2)},${F(cy)}" fill="${b}"/>`; } }
+      return s; }
     default: return R;
   }
 }
@@ -178,12 +216,32 @@ function partitionRegion(part, w, h, which) {
   if (part === "perFess") return which === 0 ? `M0 0 H${w} V${h / 2} H0 Z` : `M0 ${h / 2} H${w} V${h} H0 Z`;
   return which === 0 ? `M0 0 H${w} L0 ${h} Z` : `M${w} 0 V${h} H0 Z`;   // perBend
 }
+// DIMINUTIVES: a linear ordinary in its thinner plural form — n parallel
+// strips (bars, pallets, bendlets, chevronels) spread about its own position
+function diminutivePaths(type, w, h, ln, amp, n) {
+  let s = "";
+  for (let i = 0; i < n; i++) {
+    const off = (i - (n - 1) / 2) * (n === 2 ? 0.26 : 0.23);
+    if (type === "fess") { const y0 = h * (0.45 + off), y1 = y0 + h * 0.1; s += `M0 ${F(y0)} ${styledEdge(0, y0, w, y0, ln, amp)} L${w} ${F(y1)} ${styledEdge(w, y1, 0, y1, ln, amp)} Z`; }
+    else if (type === "pale") { const x0 = w * (0.45 + off), x1 = x0 + w * 0.1; s += `M${F(x1)} 0 ${styledEdge(x1, 0, x1, h, ln, amp)} L${F(x0)} ${h} ${styledEdge(x0, h, x0, 0, ln, amp)} Z`; }
+    else if (type === "chevron") { const t = h * 0.09, dy = off * h, by = h + dy, ay = h * 0.42 + dy; s += `M0 ${F(by)} L${F(w / 2)} ${F(ay)} L${w} ${F(by)} L${F(w - t)} ${F(by)} L${F(w / 2)} ${F(ay + t * 1.3)} L${F(t)} ${F(by)} Z`; }
+    else {  // bendlets / scarpes: thin bands parallel to the diagonal, over-extended into the clip
+      const bw = w * 0.13, dx = off * w * 1.3, dy = (type === "bend" ? -1 : 1) * off * h * 1.3;
+      const ex = w * 0.25, ey = h * 0.25;
+      s += type === "bend"
+        ? `M${F(dx - ex)} ${F(dy - ey)} L${F(w - bw + dx + ex)} ${F(h + dy + ey)} L${F(w + dx + ex)} ${F(h + dy + ey)} L${F(bw + dx - ex)} ${F(dy - ey)} Z`
+        : `M${F(w + dx + ex)} ${F(dy - ey)} L${F(bw + dx - ex)} ${F(h + dy + ey)} L${F(dx - ex)} ${F(h + dy + ey)} L${F(w - bw + dx + ex)} ${F(dy - ey)} Z`;
+    }
+  }
+  return s;
+}
 // the ordinary + chief + bordure, optionally counterchanged across the partition
 function heraldicOverlay(w, h, f, sh, base, flag) {
   const ln = f.line, amp = Math.min(w, h) * 0.032, ord = f.ordinary, oc = css(f.ordinaryTincture), sub = css(f.subTincture);
   let s = "";
   if (ord && ord !== "none") {
-    const path = ordinaryPath(ord, w, h, ln, amp, flag);
+    const path = (f.ordinaryCount || 1) > 1 ? diminutivePaths(ord, w, h, ln, amp, f.ordinaryCount)
+      : ordinaryPath(ord, w, h, ln, amp, flag);
     if (f.counterchange) {                       // swap tinctures across the partition
       const A = css(f.tinctures[0]), B = css(f.tinctures[1]);
       const cA = `cc${uid++}`, cB = `cc${uid++}`;
@@ -373,8 +431,9 @@ function placeAround(m, w, h, substrate) {
   const box = base * (m.arrange === "onOrdinary" ? 0.36 : 0.5) * m.scale;
   return m.slots.map(([ux, uy]) => {
     const mx = sq(ux) * w, my = sq(uy) * h;
-    const s = motif(m.id, mx - box / 2, my - box / 2, box, m.tincture);
-    return m.tilt ? `<g transform="rotate(${m.tilt} ${F(mx)} ${F(my)})">${s}</g>` : s;
+    let s = motif(m.id, mx - box / 2, my - box / 2, box, m.tincture);
+    if (m.tilt) s = `<g transform="rotate(${m.tilt} ${F(mx)} ${F(my)})">${s}</g>`;
+    return oriented(m, s, mx, my);
   }).join("");
 }
 
@@ -382,7 +441,7 @@ function placeMotif(m, w, h, substrate) {
   const base = Math.min(w, h), tap = substrate === "shield" || substrate === "pennon" || substrate === "lozenge";
   let box = base * (m.arrange === "three" ? 0.34 : 0.6) * m.scale / 0.5;
   if (tap) box *= 0.85;                                  // leave room inside the taper
-  const one = (mx, my, b) => motif(m.id, mx - b / 2, my - b / 2, b, m.tincture);
+  const one = (mx, my, b) => oriented(m, motif(m.id, mx - b / 2, my - b / 2, b, m.tincture), mx, my);
   if (m.arrange === "three") return one(w * 0.3, h * (tap ? 0.34 : 0.32), box) + one(w * 0.7, h * (tap ? 0.34 : 0.32), box) + one(w * 0.5, h * (tap ? 0.63 : 0.7), box * 0.9);
   if (m.arrange === "inPale") return one(w / 2, h * 0.3, box * 0.8) + one(w / 2, h * (tap ? 0.6 : 0.66), box * 0.8);
   if (m.arrange === "seme") { let s = ""; for (let ry = 0; ry < 3; ry++) for (let c = 0; c < 3; c++) s += one((c + 0.5) * w / 3, (ry + 0.5) * h / 3, base * 0.16); return s; }
@@ -456,11 +515,11 @@ function coatContent(p, w, h, rng) {
     content += `<rect width="${w}" height="${h}" fill="${css(C.field)}"/>`;
     if (p.composition === "central" && p.motif) {
       const f = centralFit(p.substrate, w, h, base);
-      content += motif(p.motif.id, f.cx - f.box / 2, f.cy - f.box / 2, f.box, p.motif.tincture);
+      content += oriented(p.motif, motif(p.motif.id, f.cx - f.box / 2, f.cy - f.box / 2, f.box, p.motif.tincture), f.cx, f.cy);
       if (p.ornaments.cornerAccent) content += sunDisc(w * 0.82, h * 0.2, base * 0.05, C.accent);
     } else if (p.composition === "radial" && p.motif) {
       content += `<circle cx="${cxm}" cy="${cym}" r="${base * 0.4}" fill="none" stroke="${css(C.companion)}" stroke-width="${base * 0.035}"/>`;
-      content += motif(p.motif.id, cxm - base * 0.28, cym - base * 0.28, base * 0.56, p.motif.tincture);
+      content += oriented(p.motif, motif(p.motif.id, cxm - base * 0.28, cym - base * 0.28, base * 0.56, p.motif.tincture), cxm, cym);
     } else if (p.composition === "script") {
       // the scriptDensity gene sets how much is written: rows and glyph packing
       const dens = p.ornaments.scriptDensity;
@@ -472,7 +531,7 @@ function coatContent(p, w, h, rng) {
     } else if (p.composition === "seme" && p.motif) {
       for (let ry = 0; ry < 4; ry++) for (let ci = 0; ci < 3; ci++) {
         const mx = (ci + (ry % 2 ? 0.5 : 0)) * w / 3 + w / 6, my = (ry + 0.5) * h / 4;
-        content += motif(p.motif.id, mx - base * 0.09, my - base * 0.09, base * 0.18, p.motif.tincture);
+        content += oriented(p.motif, motif(p.motif.id, mx - base * 0.09, my - base * 0.09, base * 0.18, p.motif.tincture), mx, my);
       }
     } else if (p.composition === "plain" && p.geometry) {
       content += geometry(w, h, p.geometry, C.charge, C.field, C.accent);
@@ -515,6 +574,12 @@ function emblemInner(genome, aw, ah) {
       + `<line x1="0" y1="${F(ch)}" x2="${F(w)}" y2="${F(ch)}" stroke="#12100f" stroke-width="1.2"/>`;
   } else {
     content = coatContent(p, w, h, rng);
+  }
+  if (p.cadency) {
+    // the mark of difference rides in chief, over everything — even a
+    // marshalled display (the heir differences the whole achievement)
+    const cb = base * 0.2;
+    content += motif(p.cadency.mark, w / 2 - cb / 2, h * 0.05, cb, p.cadency.tincture);
   }
 
   const bd = p.ornaments.border && p.composition !== "heraldic"

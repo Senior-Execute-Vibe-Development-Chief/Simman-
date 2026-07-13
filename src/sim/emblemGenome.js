@@ -63,7 +63,12 @@ const SIGIL_BASES = ["none", "none", "none", "steps", "lotus", "cradle"];
 const SIGIL_INTER = ["none", "none", "dots", "rays", "pips"];
 const SYMMETRIES  = ["none", "bilateral", "radial", "quarterly"];
 const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
-const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly"];
+const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly", "chequy", "lozengy"];
+// field TREATMENTS (the crescent gene's high window): the two furs, plus the
+// lattice treatments — fretty (interlaced bendlets) and masoned (brickwork)
+const TREATMENTS  = ["ermine", "vair", "fretty", "masoned"];
+// cadency — the marks of difference a cadet line accumulates, in order
+const CADENCY_MARKS = ["label", "crescent", "mullet", "martlet", "annulet", "fleur"];
 const LINES       = ["straight", "straight", "wavy", "engrailed", "embattled", "indented"];
 const ARRANGES    = ["single", "single", "three", "inPale", "seme"];
 // when an ordinary is present, the SAME arrange gene instead decides the
@@ -176,6 +181,7 @@ export function mutateGenome(genome, seed, strength = 1) {
     return clamp01(nv);
   });
   const out = { genes, gen: (genome.gen || 0) + 1, seed: genome.seed };
+  if (genome.cadency) out.cadency = genome.cadency;   // drift is the same bearer: the difference stays
   // quarterings persist down a line, drifting gently with it; rarely a branch
   // SIMPLIFIES — resumes its own single coat and lets the accumulation go
   if (genome.quarters && genome.quarters.length > 1 && rng() >= MACRO_RATE * strength) {
@@ -191,9 +197,15 @@ const MACRO_RATE = 0.03;  // per-gene chance of a wholesale jump
 const STEP = 0.14;        // drift size
 
 /** A successor inherits the parent's genome with a little drift — recognisably
- *  the same house, diverging over generations. */
+ *  the same house, diverging over generations. CADENCY: the heir bears a mark
+ *  of difference (label, crescent, mullet, …), and the marks accumulate down a
+ *  cadet line; when a branch succeeds AS the house itself, they clear. */
 export function inheritGenome(parent, seed) {
-  return mutateGenome(parent, seed, 0.5);
+  const child = mutateGenome(parent, seed, 0.5);
+  const headship = prng((seed ^ 0xcadec) >>> 0)() < 0.3;   // the heir takes the house outright
+  const n = headship ? 0 : Math.min(CADENCY_MARKS.length, (parent.cadency || 0) + 1);
+  if (n) child.cadency = n; else delete child.cadency;
+  return child;
 }
 
 /** Recombination — a union or conquest MARSHALS two genomes. Per-gene the child
@@ -393,13 +405,17 @@ export function expressGenome(genome) {
   // the typed GROUND any mark over this field lies on
   let grounds = partition === "plain" ? [pal.fieldT] : [pal.fieldT, pal.companionT];
   const TWO_REGION = ["perPale", "perFess", "perBend"];
-  // a fur drapes the WHOLE field (so no partition/counterchange under it) — and
-  // it IS the ground: ermine reads as argent strewn with sable, vair as
-  // argent-and-azure, so marks pick against those, not the colour they replaced
+  // a field TREATMENT drapes the WHOLE field (so no partition/counterchange
+  // under it). A fur IS the ground — ermine reads as argent strewn with
+  // sable, vair as argent-and-azure — so marks pick against those; the
+  // lattice treatments (fretty, masoned) are thin lines over the field
+  // colour, so the field stays the ground.
   if (composition === "heraldic" && get("crescent") > 0.74) {
-    field.fur = get("value") > 0.5 ? "ermine" : "vair";
+    field.fur = pickEnum((get("crescent") - 0.74) / 0.26, TREATMENTS);
     field.partition = partition = "plain";
-    grounds = field.fur === "ermine" ? [T("argent")] : [T("argent"), T("azure")];
+    if (field.fur === "ermine") grounds = [T("argent")];
+    else if (field.fur === "vair") grounds = [T("argent"), T("azure")];
+    else grounds = [pal.fieldT];                   // fretty / masoned: thin lines over the field colour
     field.names = grounds.length === 2 ? [grounds[0].name, grounds[1].name] : [grounds[0].name, grounds[0].name];
   }
   // the tincture any mark lying on this field wears — chargeT was constructed
@@ -407,8 +423,22 @@ export function expressGenome(genome) {
   const markT = grounds.length === 1 && grounds[0] === pal.fieldT ? pal.chargeT
     : tinctureOn(grounds, get("hueB"), get("value"), pal.poles);
   const mixedGround = new Set(grounds.map(g => g.kind === "metal" ? "metal" : "dark")).size > 1;
+  if (field.fur === "fretty") {
+    // the lattice is a mark on the field: it wears what reads there
+    field.treatTincture = markT.rgb; field.treatName = markT.name;
+  } else if (field.fur === "masoned") {
+    // mortar lines: whichever of ink/bone sits farther from the field
+    field.treatTincture = dE(pal.field, INK) >= dE(pal.field, BONE) ? INK : BONE;
+    field.treatName = field.treatTincture === INK ? "sable" : "argent";
+  }
   if (composition === "heraldic") {
     field.ordinary = pickEnum(get("hueC"), ORDINARIES);
+    // DIMINUTIVES: with the stripes gene otherwise idle, a linear ordinary
+    // may split into its thinner plural form — bars, pallets, bendlets,
+    // chevronels — two of them, or three at the gene's top
+    field.ordinaryCount = ["fess", "pale", "bend", "bendSinister", "chevron"].includes(field.ordinary)
+      && !["barry", "paly"].includes(partition) && get("stripes") > 0.62
+      ? (get("stripes") > 0.86 ? 3 : 2) : 1;
     field.ordinaryTincture = markT.rgb;
     field.ordinaryName = markT.name;
     field.chief = get("pearl") > 0.66;
@@ -443,7 +473,9 @@ export function expressGenome(genome) {
       // no room on it and a counterchanged ordinary is no single ground, so
       // both keep their company BETWEEN instead.
       let slot = pickEnum(get("arrange"), ORD_COMPANY);
-      if (slot === "on" && (field.ordinary === "chevron" || field.counterchange)) slot = "between";
+      // no single band to sit ON: a chevron, a counterchanged ordinary, or a
+      // diminutive group keep their company BETWEEN instead
+      if (slot === "on" && (field.ordinary === "chevron" || field.counterchange || field.ordinaryCount > 1)) slot = "between";
       if (slot === "between" || slot === "on") {
         let spec = ORD_SLOTS[field.ordinary];
         // on a FLAG the cross sits Nordic (crossing toward the hoist) and the
@@ -469,8 +501,11 @@ export function expressGenome(genome) {
     // a heraldic semé is a FIELD treatment: it lies beneath chief, bordure and
     // ordinary, not over them
     behind = arrange === "seme" && composition === "heraldic";
+    // ATTITUDE: rarely a charge is borne INVERTED or turned TO SINISTER —
+    // the tails of the sunDisc gene, otherwise idle for charges
+    const attitude = get("sunDisc") < 0.12 ? "inverted" : get("sunDisc") > 0.88 ? "sinister" : null;
     if (arrange) motif = { id, cat, tincture: tincture.rgb, tinctureName: tincture.name, counterchange, behind,
-      slots, tilt,
+      slots, tilt, attitude,
       count: slots ? slots.length : arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
       scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5) * (0.75 + get("motifScale") * 0.5) };
   }
@@ -505,8 +540,15 @@ export function expressGenome(genome) {
     brandSeed: Math.floor(get("brandSeed") * 1e6),
   };
 
+  // cadency — the inherited mark of difference, worn small in chief in a
+  // tincture that reads on the field (chargeT, by construction)
+  const cadency = genome.cadency
+    ? { mark: CADENCY_MARKS[Math.min(CADENCY_MARKS.length, genome.cadency) - 1],
+      tincture: pal.chargeT.rgb, tinctureName: pal.chargeT.name }
+    : null;
+
   return { substrate, shieldShape, isFlag, composition, symmetry, iconism, colors: pal, field, motif, geometry, sigil, ornaments,
-    gen: genome.gen || 0 };
+    cadency, gen: genome.gen || 0 };
 }
 
 // A sacred sigil spec from a gene reader (each aspect on its own gene, so it
@@ -568,7 +610,9 @@ function fieldPhrase(f, m) {
   const [a, b] = f.names.map(tName);
   const ln = f.line !== "straight" ? ` ${f.line}` : "";
   let s;
-  if (f.fur) s = tName(f.fur);
+  if (f.fur === "fretty") s = `${a} fretty ${tName(f.treatName)}`;
+  else if (f.fur === "masoned") s = `${a} masoned`;
+  else if (f.fur) s = tName(f.fur);
   else switch (f.partition) {
     case "perPale": s = `Per pale${ln} ${a} and ${b}`; break;
     case "perFess": s = `Per fess${ln} ${a} and ${b}`; break;
@@ -579,6 +623,8 @@ function fieldPhrase(f, m) {
     case "chevron": s = `Per chevron ${a} and ${b}`; break;
     case "barry": s = `Barry${ln} of ${NUMWORD[f.stripes]} ${a} and ${b}`; break;
     case "paly": s = `Paly${ln} of ${NUMWORD[f.stripes]} ${a} and ${b}`; break;
+    case "chequy": s = `Chequy ${a} and ${b}`; break;
+    case "lozengy": s = `Lozengy ${a} and ${b}`; break;
     default: s = a;
   }
   if (m && m.arrange === "seme")
@@ -607,16 +653,21 @@ export function blazonGenome(genome) {
   }
   const parts = [fieldPhrase(f, m)];
   const mT = m ? (m.counterchange ? "counterchanged" : tName(m.tinctureName)) : "";
-  const mName = m ? chargeName(m.id) : "";
+  const ATT = { inverted: " inverted", sinister: " contourné" };
+  const mName = m ? chargeName(m.id) + (ATT[m.attitude] || "") : "";
   const hasOrd = f.ordinary && f.ordinary !== "none";
   const oLn = hasOrd && f.line !== "straight" ? ` ${f.line}` : "";
   const oT = hasOrd ? (f.counterchange ? "counterchanged" : tName(f.ordinaryName)) : "";
+  const DIM_NAME = { fess: "bar", pale: "pallet", bend: "bendlet", bendSinister: "scarpe", chevron: "chevronel" };
+  const nOrd = (hasOrd && f.ordinaryCount) || 1;
+  const ordClause = nOrd > 1 ? `${NUMWORD[nOrd]} ${pluralize(DIM_NAME[f.ordinary])}${oLn} ${oT}`
+    : hasOrd ? `a ${ordName(f.ordinary)}${oLn} ${oT}` : "";
   if (hasOrd && m && m.arrange === "between") {
-    parts.push(`a ${ordName(f.ordinary)}${oLn} ${oT} between ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+    parts.push(`${ordClause} between ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
   } else if (hasOrd && m && m.arrange === "onOrdinary") {
     parts.push(`on a ${ordName(f.ordinary)}${oLn} ${oT} ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
   } else {
-    if (hasOrd) parts.push(`a ${ordName(f.ordinary)}${oLn} ${oT}`);
+    if (hasOrd) parts.push(ordClause);
     if (m && m.arrange !== "seme") {
       if (m.arrange === "three") parts.push(`three ${pluralize(mName)} ${mT}`);
       else if (m.arrange === "inPale") parts.push(`two ${pluralize(mName)} in pale ${mT}`);
@@ -626,6 +677,7 @@ export function blazonGenome(genome) {
   }
   if (f.chief) parts.push(`a chief${f.line !== "straight" ? ` ${f.line}` : ""} ${tName(f.ordinaryName)}`);
   if (f.bordure) parts.push(`a bordure ${tName(f.ordinaryName)}`);
+  if (p.cadency) parts.push(`a ${chargeName(p.cadency.mark)} ${tName(p.cadency.tinctureName)} for difference`);
   return parts.join(", ") + (p.substrate !== "shield" ? ` — on a ${p.substrate}` : "");
 }
 
@@ -649,6 +701,7 @@ export function describeGenome(genome) {
   const p = expressGenome(genome);
   const bits = [p.composition, p.substrate, p.colors.mode];
   if (genome.quarters && genome.quarters.length > 1) bits.unshift(`quarterly of ${genome.quarters.length}`);
+  if (p.cadency) bits.push(`diff·${p.cadency.mark}`);
   if (p.composition === "heraldic") {
     const f = p.field;
     bits.push(f.fur ? f.fur : f.partition !== "plain" ? `${f.partition} ${f.names[0]}·${f.names[1]}` : f.names[0]);
