@@ -547,13 +547,27 @@ on the reference.
      reference by construction) was A/B'd at both grids (12k/8817):
      at 1920 it RECOVERS the political map — realms 12→22 (ref 21), claimed
      12.7→18.9% (ref 19.2%), org p50 0.99× of ref, apex city 0.50×→0.83× —
-     but at BOTH fine grids it also inflates FOUNDING (settlements 87→98 at
-     960; census 1.49×→1.88× of ref) because water access feeds site
-     viability, not just existing-city capacity. VERDICT: detection fix
-     validated, default flip PENDING a windowed multi-seed battery under
-     the lever and possibly a split of the mechanism (capacity read vs
-     founding-site scoring). The lever remains def 0; flip evidence lives
-     here and in the plan doc.
+     but at BOTH fine grids it also inflates the settlement count and census
+     (settlements 87→98 at 960; census 1.49×→1.88× of ref). VERDICT: detection
+     fix validated, default flip PENDING a windowed multi-seed battery + a
+     stylized gate under the lever. The lever remains def 0; flip evidence
+     lives here and in the plan doc.
+
+     **Follow-up (same day): the "split capacity from founding-site scoring"
+     idea is NOT viable — traced and dropped.** The inflation is not a
+     separate scoring path to fence off: crystallize's founding scorer reads
+     `riverMag` DIRECTLY (the ×6 river-valley magnet, the FLOOD_SAMPLE_FRAC
+     floodplain candidate draw, the confluence bonus) and never routes
+     through `computeWaterAccess` — the one function `RES_INV_RIVER` widens.
+     So the wider scan touches only CAPACITY (fishing income, alluvial
+     fertility, aridity relief), and the extra settlements are the correct
+     downstream consequence of fine-grid river sites finally getting their
+     water-fed food, not an artefact of a mis-wired founding read. The flip
+     is therefore a straight measurement call (windowed + stylized), with no
+     intervening mechanism change. That battery was attempted this session
+     and BLOCKED by the same container instability as the rs=4 validation
+     battery above (1920 runs out-live the restart cycle); the single-cell
+     A/B stands, the lever stays def 0, and the flip is a stable-box decision.
 3. The 12k snapshot exaggerates TIMING (a state-birth wave at 13k vs 11k reads
    as 12 vs 21 realms); the windowed probe_empires battery below is the
    product judge.
@@ -604,6 +618,18 @@ fallback), MINE_RANGE (URBAN_NODES experimental path only, def 0).
   windows), queued as the next 1920 session's battery. Perf envelope
   unchanged (1920/12k probes ~25 min, 24k empires ~65–70 min under parallel
   load).
+
+  **STATUS (2026-07-13, follow-up): the 1920 windowed battery was ATTEMPTED
+  and remains BLOCKED by infrastructure, not by the finding.** The four-way
+  A/B (lever-off × 2 seeds, RES_INV_RIVER=1 × 2 seeds, 16k–30k at 1920) was
+  launched twice; the execution container cycled every ~20–30 min while a
+  single 1920→30k run needs ~60 min, so nothing reached its sample window.
+  The shipped default does NOT hinge on this: the development clock was
+  already validated (the rs=4 arc), the matched-step probe_empires table
+  above stands, and the count/giant residuals stay exactly as characterised —
+  a windowed refinement that a stable box can close in one session, not an
+  open correctness question. No number here changed; only the confirmation is
+  deferred.
 
 ## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
