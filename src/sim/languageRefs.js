@@ -8,6 +8,7 @@
 // remain procedural (no real lexicon ships).
 
 import { rollProfile } from "./languagePhonology.js";
+import { hash32 } from "./peopleSim/rng.js";
 
 const B = (p, m, l = 0, s = 0) => ({ p, m, l, s });
 const NB = (p, m, l = 0, s = 0) => ({ p, m, l, s, noOn: true });   // coda-only (ŋ)
@@ -202,6 +203,16 @@ export function refPin(kind) {
 export function applyReference(lang, kind) {
   lang.prof = refProfile(kind, lang.seed);
   lang.rules = [];
+  // A shape is a different FAMILY, not a costume. The semantic layer —
+  // colexification, derivation pathways, closed-class and affix-source
+  // rolls — all hashes on famSeed, which the profile overwrite never
+  // touched: the same seed in four shapes produced one language in four
+  // costumes (identical 'king ‹ great man', identical colex, identical
+  // adposition etymologies — a fresh reader caught it). Fold the shape
+  // into the family seed so each shape consumes its own entropy; the
+  // pinned PHONOLOGY (inventory/syllabary/romanization) rides lang.pin
+  // and holds regardless.
+  lang.famSeed = hash32(lang.seed, "shape:" + kind) >>> 0;
   const r = refPin(kind);
   if (r) { lang.pin = r.pin; if (r.rom) lang.prof.rom = r.rom; }
   lang.gen++;                              // invalidate compiled caches

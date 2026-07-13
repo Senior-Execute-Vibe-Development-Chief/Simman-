@@ -12,7 +12,7 @@
 //   node tools/probe_langfit.mjs [--quiet]
 
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf } from "../src/sim/language.js";
-import { refProfile, refPin } from "../src/sim/languageRefs.js";
+import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory } from "../src/sim/languagePhonology.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
@@ -1976,6 +1976,25 @@ console.log("\n── §23 functional load (review-loop) ──");
       }
     }
     check(`minimal-name floor: no single-letter proper names (${tiny}/${n6}${tinyEx.length ? " — " + tinyEx.join(", ") : ""})`, tiny === 0);
+  }
+
+  // ── shapes are FAMILIES, not costumes (review-loop) ──
+  // The same seed in four Lab shapes shared every derivation pathway,
+  // colexification, and adposition etymology — the profile overwrite never
+  // touched famSeed. applyReference now folds the shape into the family
+  // seed; the pinned PHONOLOGY still holds (Mandarin stays legal pinyin).
+  {
+    const mkShape = (kind) => { const l = foundLanguage(mkWorld(), { seed: 9911 }); applyReference(l, kind); return l; };
+    const semSig = (l) => JSON.stringify([KING, GOD, LAW, WINE, STONE, RIVER].map(cid => { const e = etymologyOf(l, cid); return e ? e.gloss : "opaque:" + wordOf(l, cid); }));
+    const sigs = ["mandarin", "russian", "english"].map(k => semSig(mkShape(k)));
+    check(`same seed, different shape → different semantic layer (${new Set(sigs).size}/3 distinct)`, new Set(sigs).size >= 2);
+    const mS = mkShape("mandarin");
+    const PINYIN2 = /^((zh|ch|sh|[bpmfdtnlgkhjqxrzcswy])?[aeiou]{1,3}(ng|n)?)+$/;
+    const stripT = (w) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const ws = [];
+    for (let i = 0; i < 30; i++) ws.push(langPlaceName(mS, i), langPersonName(mS, i, i % 2 === 0));
+    const bad = ws.filter(w => !PINYIN2.test(stripT(w.toLowerCase())));
+    check(`the shape famSeed keeps the pinned phonology (Mandarin legal pinyin: ${bad[0] || "0 illegal"})`, bad.length === 0);
   }
 }
 

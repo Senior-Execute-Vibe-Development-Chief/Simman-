@@ -94,9 +94,16 @@ function inventoryHTML(l) {
 }
 
 function namesHTML(l) {
+  // a sample list of ten shows ten DIFFERENT places: skip exact duplicates
+  // (real maps repeat a generic as Caveford/Caveton — distinct specifics on
+  // a shared head — not three bare 'cave's; a fresh reader caught the
+  // bare-duplicate pair)
   const topo = [];
-  for (let i = 0; i < 10; i++) {
+  const seenTopo = new Set();
+  for (let i = 0; i < 24 && topo.length < 10; i++) {
     const { name, gloss } = langPlaceNameEx(l, i);
+    if (seenTopo.has(name)) continue;
+    seenTopo.add(name);
     topo.push(`<li><span class="w">${esc(name)}</span>${gloss ? ` <span class="gloss">‘${esc(gloss)}’</span>` : ` <span class="gloss lost">meaning lost</span>`}</li>`);
   }
   const men = [1, 2, 3].map(i => langPersonName(l, i, false));
@@ -118,10 +125,18 @@ const WO_NAME = { sov: "SOV", svo: "SVO", vso: "VSO", vos: "VOS", ovs: "OVS" };
 function grammarHTML(l) {
   const g = gramOf(l);
   const cl = closedOf(l);
+  // the case chip must match the declension table it sits above (a fresh
+  // reader caught "1 case (nom–acc)" over a NOM+GEN table): name the marked
+  // cases the paradigm actually shows
+  const markedCases = paradigmShape(l).cases.filter(c => c.k).map(c => c.g);
+  const alignName = { erg: "ergative", active: "active-stative", tripartite: "tripartite" }[g.align] || "nom–acc";
+  const caseChip = !markedCases.length ? "no case"
+    : markedCases.length === 1 && markedCases[0] === "GEN" ? "genitive only — no core case"
+    : `${markedCases.length} marked case${markedCases.length > 1 ? "s" : ""} (${alignName})`;
   const gchips = [
     `${WO_NAME[g.wo]} order`,
     g.adpSide === "pre" ? "prepositions" : "postpositions",
-    g.caseN ? `${g.caseN} case${g.caseN > 1 ? "s" : ""} (${ { erg: "ergative", active: "active-stative", tripartite: "tripartite" }[g.align] || "nom–acc" })` : "no case",
+    caseChip,
     g.genders ? `${g.genders} noun classes` : null,
     g.tenses > 1 ? `${g.tenses} tenses` : "tenseless",
     g.aspect ? "aspect" : null,
@@ -179,10 +194,19 @@ function verbFrontierHTML(l) {
     al.activeFluid ? "fluid-S (volition flips it)" : null,
     al.invAgree ? "direct–inverse marking" : null, al.absAgree ? "absolutive agreement" : null,
   ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
+  // a split-ergative claim must be DEMONSTRATED on both sides of its split
+  // (a fresh reader caught the header claiming a tense split while every
+  // example sat in the past) — show the other half when a split is live
+  const splitEx = al.ergSplit === "tam"
+    ? clauseEx("the king sees the river (present — the accusative side of the split)", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: null }, o: { n: RIVER, def: true } }))
+    : al.ergSplit === "hier"
+      ? clauseEx("I saw the river (a pronoun subject sits atop the hierarchy — no ERG)", renderClause(l, { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } }))
+      : "";
   secs.push(`<h3>Alignment</h3><div class="chips">${alChips}</div>
     <p class="note">Which arguments get flagged. Compare the subject of the transitive clause with the intransitive — under ergativity it is the OBJECT that patterns with the lone subject.</p>
-    ${clauseEx("the king saw the river", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }))}
-    ${clauseEx("the wolf went", renderClause(l, { s: { n: WOLF }, v: { c: GO, tam: "pst" } }))}`);
+    ${clauseEx("the king saw the river", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } }))}
+    ${clauseEx("the wolf went", renderClause(l, { s: { n: WOLF, def: true }, v: { c: GO, tam: "pst" } }))}
+    ${splitEx}`);
 
   // ── Voice & valency (Group B) ──
   const voices = voicesOf(l), vet = voiceEtymologies(l);
@@ -191,9 +215,9 @@ function verbFrontierHTML(l) {
     const vname = { caus: "causative", pass: "passive", antip: "antipassive", appl: "applicative" };
     const vchips = vkeys.map(k => { const e = vet.find(x => x.k === k); return `<span class="chip">${vname[k]}${e && e.from ? ` ‹ ‘${esc(e.from)}’` : ""}</span>`; }).join("");
     const exs = [];
-    if (voices.caus) exs.push(clauseEx("causative — ‘the king made the wolf go’", renderClause(l, { s: { n: KING }, v: { c: GO, tam: "pst", voice: "caus" }, o: { n: WOLF } })));
-    if (voices.pass) exs.push(clauseEx("passive — ‘the river was seen (by the king)’", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "pass" }, o: { n: RIVER } })));
-    if (voices.antip) exs.push(clauseEx("antipassive — ‘the king saw (at the river)’", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "antip" }, o: { n: RIVER } })));
+    if (voices.caus) exs.push(clauseEx("causative — ‘the king made the wolf go’", renderClause(l, { s: { n: KING, def: true }, v: { c: GO, tam: "pst", voice: "caus" }, o: { n: WOLF, def: true } })));
+    if (voices.pass) exs.push(clauseEx("passive — ‘the river was seen (by the king)’", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "pass" }, o: { n: RIVER, def: true } })));
+    if (voices.antip) exs.push(clauseEx("antipassive — ‘the king saw (at the river)’", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", voice: "antip" }, o: { n: RIVER, def: true } })));
     secs.push(`<h3>Voice &amp; valency</h3><div class="chips">${vchips}</div>
       <p class="note">Re-casting who-did-what: promote or demote an argument. Each marker is a worn-down verb (‘make’, ‘fall’) — the ‹ notes show which.</p>${exs.join("")}`);
   }
@@ -218,7 +242,7 @@ function verbFrontierHTML(l) {
     secs.push(`<h3>Evidentiality <span class="count">(${ev.n}-term${ev.mir ? " + mirativity" : ""})</span></h3>
       <p class="note">The verb marks HOW the speaker knows — saw it, heard it, inferred it, was told. Each exponent is a worn-down perception or speech verb; the firsthand is often ∅.</p>
       <p class="cells">${cells}</p>
-      ${clauseEx("‘the king saw the river, they say’", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst", ev: "rept" }, o: { n: RIVER } }))}`);
+      ${clauseEx("‘the king saw the river, they say’", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst", ev: "rept" }, o: { n: RIVER, def: true } }))}`);
   }
 
   return `<section class="card"><h2>The verb <span class="count">— argument structure, tense, evidence</span></h2>${secs.join("")}</section>`;
@@ -283,11 +307,11 @@ function nounFrontierHTML(l) {
   // ── Multi-clause syntax (Group G) ──
   const lk = clauseLinkersOf(l);
   const mc = [];
-  mc.push(clauseEx("coordination — ‘the king went and the wolf saw the river’", renderClauseTree(l, { coord: "and", clauses: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] })));
-  mc.push(clauseEx("complement — ‘the king saw that the wolf went’", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { comp: { s: { n: WOLF }, v: { c: GO, tam: "pst" } } } })));
-  mc.push(clauseEx("relative — ‘the king who saw the river went’", renderClause(l, { s: { n: KING, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } })));
-  mc.push(clauseEx("adverbial — ‘the king went when the wolf saw the river’", renderClause(l, { s: { n: KING }, v: { c: GO, tam: "pst" }, adv: [{ sub: "when", s: { n: WOLF }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] })));
-  if (lk.chaining) mc.push(clauseEx("clause chain (switch-reference)", renderClauseTree(l, { chain: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] })));
+  mc.push(clauseEx("coordination — ‘the king went and the wolf saw the river’", renderClauseTree(l, { coord: "and", clauses: [{ s: { n: KING, def: true }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } }] })));
+  mc.push(clauseEx("complement — ‘the king saw that the wolf went’", renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { comp: { s: { n: WOLF, def: true }, v: { c: GO, tam: "pst" } } } })));
+  mc.push(clauseEx("relative — ‘the king who saw the river went’", renderClause(l, { s: { n: KING, def: true, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } } }, v: { c: GO, tam: "pst" } })));
+  mc.push(clauseEx("adverbial — ‘the king went when the wolf saw the river’", renderClause(l, { s: { n: KING, def: true }, v: { c: GO, tam: "pst" }, adv: [{ sub: "when", s: { n: WOLF, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } }] })));
+  if (lk.chaining) mc.push(clauseEx("clause chain (switch-reference)", renderClauseTree(l, { chain: [{ s: { n: KING, def: true }, v: { c: GO, tam: "pst" } }, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } }] })));
   const lkChips = [`complementizer ‹ ‘${esc(lk.comp.from || "opaque")}’ (${lk.comp.pos})`, `relative: ${lk.rel.strat}, ${lk.rel.pre ? "prenominal" : "postnominal"}`, lk.chaining ? "clause-chaining" : null, lk.coordFinal ? "enclitic ‘and’" : null].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
   secs.push(`<h3>Multi-clause</h3><div class="chips">${lkChips}</div>
     <p class="note">Clauses combine into a tree — coordinated, embedded as a complement, relativised onto a noun, chained. The subordinators grammaticalize from existing words (‘that’ ‹ ‘say’ or a demonstrative, ‘when’ ‹ ‘day’), and lag a word-order flip.</p>${mc.join("")}`);
@@ -305,11 +329,25 @@ function paradigmHTML(l) {
   const shape = paradigmShape(l);
   const nounSel = PARA_NOUNS.map(c => `<option value="${c}"${c === S.noun ? " selected" : ""}>${esc(glossOf(c))}</option>`).join("");
   const verbSel = VERBS.map(c => `<option value="${c}"${c === S.verb ? " selected" : ""}>${esc(glossOf(c))}</option>`).join("");
-  const nounRows = shape.cases.map(cs =>
-    `<tr><td class="lbl">${esc(cs.g || "NOM")}</td>${shape.nums.map(n => cellHTML(inflectNoun(l, S.noun, { num: n, cas: cs.k }))).join("")}</tr>`).join("");
+  // identical rows are real SYNCRETISM (one form serving two cells — a
+  // Slavic-style past that IS the old perfective); annotate them instead of
+  // printing silent duplicates a reader must diff by eye
+  const rowStr = (cells) => cells.map(x => [...x.pre.map(z => z.w), x.text, ...x.post.map(z => z.w)].join(" ")).join("|");
+  const markRows = (rows) => {
+    const seen = new Map();
+    return rows.map(({ lbl, cells }) => {
+      const k = rowStr(cells);
+      const first = seen.get(k);
+      if (!first) seen.set(k, lbl);
+      const lblHTML = esc(lbl) + (first ? ` <span class="gloss">= ${esc(first)} (syncretic)</span>` : "");
+      return `<tr><td class="lbl">${lblHTML}</td>${cells.map(cellHTML).join("")}</tr>`;
+    }).join("");
+  };
+  const nounRows = markRows(shape.cases.map(cs =>
+    ({ lbl: cs.g || "NOM", cells: shape.nums.map(n => inflectNoun(l, S.noun, { num: n, cas: cs.k })) })));
   const persCols = shape.pers.length ? shape.pers : [[null, "sg"]];
-  let verbRows = shape.tam.map(t =>
-    `<tr><td class="lbl">${esc(t.g || "PRS")}</td>${persCols.map(([p, n]) => cellHTML(inflectVerb(l, S.verb, { tam: t.k, pers: p, num: n }))).join("")}</tr>`).join("");
+  let verbRows = markRows(shape.tam.map(t =>
+    ({ lbl: t.g || "PRS", cells: persCols.map(([p, n]) => inflectVerb(l, S.verb, { tam: t.k, pers: p, num: n })) })));
   // the imperative row (a category ~every language marks) spans the persons
   verbRows += `<tr><td class="lbl">IMP</td><td class="w" colspan="${persCols.length}" title="addressee-directed command">${
     esc((x => [...x.pre.map(t => t.w), x.text, ...x.post.map(t => t.w)].join(" "))(inflectVerb(l, S.verb, { mood: "imp" })))
