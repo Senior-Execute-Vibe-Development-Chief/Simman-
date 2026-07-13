@@ -2207,8 +2207,16 @@ export function updatePolities(world) {
     // flattens the whole size distribution (measured: empire tail 5.4 → 1.8). One
     // constant, one meaning: provinces held per median-realm-equivalent of power.
     const capK = T.CAP_RELATIVE ? CAP_K_REL : CAP_K;
+    // ORG_APT_CAP (audit 2026-07 wiring): the ruling stock's heritable organisation
+    // aptitude multiplies the centre's hold capacity — the institutional edge made
+    // territorial. This is the aptitude system's PAYOUT half, which was wired only
+    // into the legacy reach-Voronoi (dead under FIELD_POLITY) while the learning
+    // half ran — the lever read 0.4 and did nothing. Same gate and shape as the
+    // legacy path (countryTerritory.js:929); ORG_APT_CAP=0 recovers the unwired
+    // capacity byte-identically (×1 exact).
+    const aptMul = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_CAP * ((cap._orgApt || 0)) : 1;
     let peaceCapacity = (capK * instMul * Math.log2(1 + capPowerCap / powRefEff)
-                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul;
+                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul * aptMul;
     // IMPERIAL HYSTERESIS (path dependence): the administrative reach, roads and
     // legitimacy a large realm accretes PERSIST after its raw power dips, so a once-
     // great empire holds together longer than its live strength alone would justify.

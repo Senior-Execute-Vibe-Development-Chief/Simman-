@@ -1399,12 +1399,70 @@ export function advanceFronts(world) {
   const addW = (cc, w) => totW.set(cc, (totW.get(cc) || 0) + w);
   for (const [k, w] of offW) addW(+k.slice(0, k.indexOf(":")), w);
   for (const [k, w] of defW) addW(+k.slice(0, k.indexOf(":")), w);
+  // ── Coalition war (T.ALLY_FRONT): the bloc FIGHTS its common threat ──────────
+  // The balance-of-power layer already forms blocs against a hegemon
+  // (updateAlliances: _allianceTarget) and prices their DETERRENCE into the attack
+  // bar (coalitionBarOf) — but in the actual fighting every realm stood alone, so
+  // deterrence had no teeth: a hegemon that shrugged the bar met each member one at
+  // a time (no War of the Grand Alliance, no coalition that breaks a Napoleon).
+  // Under the lever, a SERIOUS front (a storm) between a bloc member and the bloc's
+  // TARGET draws the rest of the bloc in, both ways: allies reinforce a member the
+  // hegemon is storming, and join a member's push on the hegemon's own heartland —
+  // the offensive half is the giant-killer. Each ally commits T.ALLY_FRONT of
+  // conserved allocation weight (a real slice of its one pool — its own fronts
+  // weaken while it campaigns, the same conservation as everything here) and its
+  // force ARRIVES at its WAR_REACH projection at the theatre (the stormed capital):
+  // a neighbour marches an army, a distant ally sends a token — coalition reach is
+  // the same physics as every other reach, never a diplomatic teleport. v1 scope:
+  // storms only (allies mass for the decisive battle; border grinding stays
+  // bilateral), the assist joins the FIELD battle (advCity's relief side or the
+  // attacker's siege army), not the wall-breaking grind, and assisting realms pay
+  // pool-commitment but not attrition/exhaustion yet. 0 = off (byte-identical).
+  const ASSIST = TILE_WAR ? Math.max(0, T.ALLY_FRONT || 0) : 0;
+  if (ASSIST > 0 && allianceTarget) {
+    const blocOf = new Map();   // target hegemon → bloc member ids
+    for (const [cc, tgt] of allianceTarget) { if (tgt >= 0 && own.get(cc)) { let a = blocOf.get(tgt); if (!a) blocOf.set(tgt, a = []); a.push(cc); } }
+    for (const pc of pairs.values()) {
+      if (!pc.canStorm) continue;
+      const acc = pc.att.countryId, dcc = pc.def.countryId; if (acc === dcc) continue;
+      // defensive: the stormed member balances against its attacker → the bloc relieves it;
+      // offensive: the attacker balances against the defender → the bloc joins the push.
+      const hg = allianceTarget.get(dcc) === acc ? acc : (allianceTarget.get(acc) === dcc ? dcc : -1);
+      if (hg < 0) continue;
+      const members = blocOf.get(hg); if (!members) continue;
+      const side = hg === acc ? "_assistDef" : "_assistAtt";
+      for (const ally of members) {
+        if (ally === acc || ally === dcc) continue;
+        if (inTruce(ally, hg) || bondedCC(ally, hg)) continue;   // a signed peace with the hegemon holds
+        let l = pc[side + "Ids"]; if (!l) l = pc[side + "Ids"] = [];
+        l.push(ally);
+        addW(ally, ASSIST);   // the committed slice of the ally's one pool
+      }
+    }
+  }
   // Effective pool: the national field army, worn down by war-exhaustion.
   const effPool = (cc) => (natMight.get(cc) || 0) * (1 - Math.min(0.9, exh.get(cc) || 0));
   // The force a realm actually commits to one front — its pool × that front's share of its
   // total weight. Sum over a realm's fronts = its whole pool (the conservation).
   const offForceOf = (acc, dcc) => { const W = totW.get(acc) || 0; if (W <= 0) return 0; return ((offW.get(acc + ":" + dcc) || 0) / W) * effPool(acc); };
   const defForceOf = (dcc, acc) => { const W = totW.get(dcc) || 0; if (W <= 0) return effPool(dcc); return ((defW.get(dcc + ":" + acc) || 0) / W) * effPool(dcc); };
+  // Coalition assists resolved into THEATRE-LOCAL force — after totW is final, so
+  // each ally's contribution is its committed share of its whole (exhaustion-worn)
+  // pool, projected to the stormed capital (T.WAR_REACH physics).
+  if (ASSIST > 0) {
+    for (const pc of pairs.values()) {
+      for (const side of ["_assistAtt", "_assistDef"]) {
+        const ids = pc[side + "Ids"]; if (!ids) continue;
+        let sum = 0;
+        for (const ally of ids) {
+          const A2 = own.get(ally); if (!A2) continue;
+          const W = totW.get(ally) || 0; if (!(W > 0)) continue;
+          sum += (ASSIST / W) * effPool(ally) * projOf(A2, pc.def._homeTi);
+        }
+        pc[side] = sum;
+      }
+    }
+  }
 
   // ── Encirclement ─────────────────────────────────────────────────────
   // A settlement assaulted from many DIRECTIONS must split its defence across
@@ -1491,7 +1549,10 @@ export function advanceFronts(world) {
       // lever 0 keeps the adapter-pool fortress byte-identically.
       const pjCap = WAR_REACH > 0 ? projOf(att, def._homeTi) : 1;
       const defHome = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def);
-      const advCity = (attForce0 * pjCap) / Math.max(1, (defForce0 + defHome) * em);
+      // T.ALLY_FRONT: coalition contingents join the field battle at the walls —
+      // the bloc's relief army stands with the defender, or the bloc's joint push
+      // swells the besieger (already theatre-projected; +0 exactly at lever 0).
+      const advCity = (attForce0 * pjCap + (pc._assistAtt || 0)) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
