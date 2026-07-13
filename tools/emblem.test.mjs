@@ -42,11 +42,11 @@ const ARGENT = TINCTURES.argent.rgb, AZURE = TINCTURES.azure.rgb;
 let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
-  array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, housed: 0,
+  array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, array_satellites: 0, housed: 0, couched: 0,
   cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0, flagFigure: 0, flagBare: 0 };
 // the flag device vocabulary: what a repeated/housed/band-riding device may be
 const FLAG_VOCAB = new Set(["mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle",
-  "sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline"]);
+  "sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline", "starAndCrescent"]);
 const STAINS = new Set(names.filter(n => TINCTURES[n].kind === "stain"));
 // the compact device categories — the only ones a flag repeats or strews
 const COMPACT = new Set(["celestial", "geometric"]);
@@ -90,6 +90,7 @@ function audit(g) {
     // repeated device — multiples come only as organized arrays (or an
     // ordinary's company), and a housed device implies its canton
     if (fm && ["seme", "three", "inPale"].includes(fm.arrange)) fail(`unorganized multiple on a flag (${fm.arrange})`, g);
+    if (p.composition === "heraldic" && ["pall", "chevron"].includes(f.ordinary)) seen.couched++;
     if (fm && fm.array) {
       seen["array_" + fm.array.pattern] = (seen["array_" + fm.array.pattern] || 0) + 1;
       if (!COMPACT.has(fm.cat)) fail("figurative array on a flag", g);

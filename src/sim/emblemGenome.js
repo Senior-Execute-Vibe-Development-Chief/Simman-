@@ -138,7 +138,7 @@ const COMPACT_CATS = new Set(["celestial", "geometric"]);
 // star-field), or a seeded constellation (a literal little sky map).
 // Weighted like every other frequency window: rows and rings common, the
 // arc and the sky map rarer.
-const ARRAY_PATTERNS = ["rows", "rows", "ring", "ring", "arc", "constellation"];
+const ARRAY_PATTERNS = ["rows", "rows", "ring", "ring", "arc", "constellation", "satellites"];
 // what bounds a lone device on cloth: the disc dominates real flags, the
 // small armorial shield (the INESCUTCHEON — a state-arms panel) is the
 // serious rarity, the lozenge the odd one out
@@ -151,22 +151,22 @@ const PANEL_SHAPES = ["lozenge", "disc", "disc", "escutcheon"];
 // fly one strange thing, never five).
 const FLAG_SIMPLE = {
   geometric: ["mullet", "mullet", "mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle"],
-  celestial: ["sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline"],
+  celestial: ["sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline", "starAndCrescent", "starAndCrescent"],
 };
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 // @INJECT:MOTIFS-START — the lab build (tools/build_lab.mjs) replaces this whole
 // block with the size-filtered subset so the artifact's pools match its bundled art.
 const MOTIFS = {
-  beast: ["lion", "wolf", "boar", "bull", "bear", "horse", "ram", "stag", "elephant", "rabbit", "antelope", "camel", "tiger", "leopard", "fox", "greyhound", "hedgehog", "badger", "otter", "squirrel", "ass", "cow", "lizardStatant", "kangarooSalient", "rhinoceros", "llama", "reindeerHead", "reindeerSalient", "hippo", "jerboa", "reindeer", "elephantHead", "rat", "squirrelRampant", "ferret", "weasel", "weaselRampant", "wolfHeadAffronty", "cat", "cockHead", "sheep", "cowHead", "horseSalient", "pig", "lionHeadReguardant", "lionHeadGuardant", "lionLegCouped", "lionLegErased", "lionCouchant", "lionHeadErased", "lionHead", "lionDormant", "lionSejant", "greyhoundSalient", "greyhoundCourant", "dog", "dogHead", "dogCouchantGuardant", "polarBear", "bearSejant", "bearStatantErect"],
+  beast: ["lion", "wolf", "boar", "bull", "bear", "horse", "ram", "stag", "elephant", "rabbit", "antelope", "camel", "tiger", "leopard", "fox", "greyhound", "hedgehog", "badger", "otter", "squirrel", "ass", "cow", "lizardStatant", "kangarooSalient", "rhinoceros", "llama", "reindeerSalient", "hippo", "jerboa", "reindeer", "elephantHead", "rat", "squirrelRampant", "ferret", "weasel", "weaselRampant", "wolfHeadAffronty", "cat", "cockHead", "sheep", "cowHead", "horseSalient", "pig", "lionHeadReguardant", "lionHeadGuardant", "lionLegCouped", "lionLegErased", "lionCouchant", "lionHeadErased", "lionHead", "lionDormant", "lionSejant", "greyhoundSalient", "greyhoundCourant", "dog", "dogHead", "dogCouchantGuardant", "polarBear", "bearSejant", "bearStatantErect"],
   insect: ["bee", "butterfly", "spider", "ant", "grasshopper", "dragonfly", "stagbeetle", "snail", "moth", "hornet", "beetle", "fly", "wasp", "cricket", "cicada"],
   bird: ["eagle", "falcon", "dove", "raven", "rooster", "crane", "swan", "owl", "peacock", "pelican", "martlet", "crowReguardant", "blackbird", "magpieVolantEnArriere", "storkVolant", "seagullVolant", "shoveller", "starling", "crowHead", "doveFondant", "wing", "ravenHead", "feather", "eagleClaw", "germanEagle", "eagleNatural", "alerionDisplayedTowardsBase", "alerionDisplayed", "alerion", "eagleKleestengel", "eagleLeg", "duck", "falconReguardant", "falconJessed", "falconVolant"],
-  mythic: ["dragon", "wyvern", "griffin", "unicorn", "pegasus", "hydra", "phoenix", "cockatrice", "basilisk", "sphinx", "salamander", "seadragon", "sealion", "harpy", "centaur", "chimera", "manticore", "ouroboros", "fishtailGriffin", "griffinHead", "bagwyn", "unicornHeadErased", "amphiptere", "chatloup", "mermaidInHerModesty", "chatloupWingedSejant", "dragonHead", "tribalDragon", "dragonHeadCouped", "dragonHeadCaboshed", "minotaur"],
-  sea: ["dolphin", "serpent", "mermaid", "fish", "pike", "salmon", "whale", "lobster", "shark", "escallop", "octopus", "narwhal", "shrimp", "whelk", "seaTurtle", "turtle", "zydrach", "polypus", "dolphinWinged", "manatee", "carpEmbowed", "roachNaissant", "roach", "catfishEmbowed", "luceEmbowed", "catfishHaurientEmbowed", "luce", "snakeGlissant", "snake", "serpentNowed", "serpentErect", "serpentErectTailNowed", "seaSerpent"],
+  mythic: ["dragon", "wyvern", "griffin", "unicorn", "pegasus", "hydra", "phoenix", "cockatrice", "basilisk", "sphinx", "salamander", "seadragon", "sealion", "harpy", "centaur", "chimera", "manticore", "ouroboros", "fishtailGriffin", "griffinHead", "bagwyn", "unicornHeadErased", "amphiptere", "chatloup", "mermaidInHerModesty", "chatloupWingedSejant", "dragonHead", "tribalDragon", "dragonHeadCouped", "dragonHeadCaboshed"],
+  sea: ["dolphin", "serpent", "mermaid", "fish", "pike", "salmon", "whale", "lobster", "shark", "escallop", "octopus", "narwhal", "shrimp", "whelk", "seaTurtle", "zydrach", "polypus", "dolphinWinged", "manatee", "carpEmbowed", "roachNaissant", "roach", "catfishEmbowed", "luceEmbowed", "luce", "snakeGlissant", "snake", "serpentNowed", "serpentErect", "serpentErectTailNowed", "seaSerpent"],
   plant: ["rose", "tree", "lotus", "thistle", "garb", "oak", "oakleaf", "olive", "palm", "lily", "cinquefoil", "quatrefoil", "trefoil", "sunflower", "iris", "poppy", "shamrock", "acorn", "vine", "grapes", "pineapple", "fleur", "crocus", "sexfoil", "tulip", "octofoil", "violet", "geranium", "tulipBundle3", "periwinkleFlower", "forgetMeNot", "pear", "lemon", "mapleLeaf", "lindenLeaf", "mapleLeafConjoined3", "pineNewEnglandTree", "apple", "lemonSlippedLeaved", "yewTree", "limeLeaf", "seeblatt", "cloverLeaf", "clover", "reedBundle3", "vineLeaf", "cactus", "pepper", "aubergine", "onion", "pumpkin"],
-  object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "bell", "bugle", "clarion", "lute", "drum", "chalice", "amphora", "anvil", "hammer", "millrind", "millstone", "scythe", "sickle", "plough", "pitchfork", "compass", "lantern", "lamp", "scroll", "mirror", "shears", "quill", "distaff", "axe", "halberd", "arrow", "arrows", "pheon", "trident", "spear", "bow", "crossbow", "flail", "club", "cannon", "mace", "warhammer", "catherinewheel", "cartwheel", "cogwheel", "helmet", "gauntlet", "breastplate", "mailedfist", "horseshoe", "spur", "stirrup", "saddle", "wagon", "beehive", "beacon", "brazier", "torch", "grenade", "chest", "wolfiron", "staple", "musicalNote", "noteQuarter", "noteEighth", "fireSteel", "comb", "bookModernClosed", "candlestick", "vallary", "saxon", "palisado", "antique", "earl", "duke", "helmetKnight", "helmetEsquire", "helmetNorman", "helmetPeer", "helmetKnightAffronty", "caltrap", "archeryTarget", "lance", "dagger", "rapier", "swordstpaul", "sabre", "seax", "slaughterAxe", "pickAxe", "addice", "waterBouget", "mug", "barrel", "scoop", "funnel", "table", "flag", "frenchGemstoneInProfile", "arrowBroad", "spearHeadImbrued", "oar", "rudderPole", "oarInsaltire2", "fishingBoat", "crowsNest", "barge", "lymphadFurled", "lymphadSailsSet", "buckle", "maunche", "stirrupLeathered", "hawkbell", "farmingFlail", "fishhook", "farmingFlailInsaltire2", "shepherdsCrook", "butterChurn", "ploughshare", "chessPawn", "chessRook", "chessKing", "horn", "heart"],
-  architecture: ["tower", "castle", "bridge", "gate", "arch", "house", "city", "keystoneCouped", "pyramid", "obelisk", "millwheel", "waterwheel", "fountainNatural", "pillar", "bridgeThreeArches", "keystone", "lighthouse"],
-  natural: ["cloud", "lightning", "teardrop", "flint", "flames", "fireball", "lightningBoltModern"],
-  celestial: ["sun", "moon", "estoile", "comet", "moonIncrescent", "moonPendant", "estoileInflamed", "moonDecrescent", "moonCrescent", "rainbow", "sunOutline", "sunRays"],
+  object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "bell", "bugle", "clarion", "lute", "drum", "chalice", "amphora", "anvil", "hammer", "millrind", "millstone", "scythe", "sickle", "plough", "pitchfork", "compass", "lantern", "lamp", "scroll", "mirror", "shears", "quill", "distaff", "axe", "halberd", "arrow", "arrows", "pheon", "trident", "spear", "bow", "crossbow", "flail", "club", "cannon", "mace", "warhammer", "catherinewheel", "cartwheel", "cogwheel", "helmet", "gauntlet", "breastplate", "mailedfist", "horseshoe", "spur", "stirrup", "saddle", "wagon", "beehive", "beacon", "brazier", "torch", "grenade", "chest", "wolfiron", "staple", "musicalNote", "noteQuarter", "noteEighth", "fireSteel", "comb", "bookModernClosed", "candlestick", "vallary", "saxon", "palisado", "antique", "earl", "duke", "helmetKnight", "helmetEsquire", "helmetNorman", "helmetPeer", "helmetKnightAffronty", "archeryTarget", "lance", "dagger", "rapier", "swordstpaul", "sabre", "seax", "slaughterAxe", "pickAxe", "addice", "waterBouget", "mug", "barrel", "scoop", "funnel", "table", "flag", "frenchGemstoneInProfile", "arrowBroad", "spearHeadImbrued", "oar", "rudderPole", "oarInsaltire2", "fishingBoat", "crowsNest", "barge", "lymphadFurled", "lymphadSailsSet", "buckle", "maunche", "stirrupLeathered", "hawkbell", "farmingFlail", "fishhook", "farmingFlailInsaltire2", "shepherdsCrook", "butterChurn", "ploughshare", "chessPawn", "chessRook", "chessKing"],
+  architecture: ["tower", "castle", "bridge", "gate", "arch", "house", "city", "keystoneCouped", "pyramid", "obelisk", "fountainNatural", "pillar", "bridgeThreeArches", "keystone", "lighthouse"],
+  natural: ["cloud", "teardrop", "flint", "flames", "fireball"],
+  celestial: ["sun", "moon", "estoile", "comet", "moonIncrescent", "moonPendant", "estoileInflamed", "moonDecrescent", "moonCrescent", "rainbow", "sunOutline", "sunRays", "starAndCrescent"],
   geometric: ["mullet", "mullet6", "mullet8", "rowel", "roundel", "annulet", "lozenge", "fusil", "mascle", "billet", "delf", "crossCouped", "crossPattee", "crosslet", "goutte", "fret", "triskele", "knot", "suffolkKnot", "carolingianKnot", "hungerfordKnot", "triangle", "shakefork", "saltire", "mulletOf5VoidedInterlaced", "mulletOf7VoidedInterlaced", "mulletOf8MasclesInterlaced", "annuletConcentricOf2", "annuletConcentricOf3", "takedaClanSymbol", "tokikikyoClanSymbol", "moriClanSymbol", "chosokabeClanSymbol"],
 };
 // @INJECT:MOTIFS-END
@@ -729,6 +729,10 @@ export function expressGenome(genome) {
         // pile points from the hoist — the company follows the band
         if (isFlag && field.ordinary === "cross") spec = { between: [[0.13, 0.24], [0.63, 0.25], [0.13, 0.76], [0.63, 0.75]], on: [[0.34, 0.5]] };
         if (isFlag && field.ordinary === "pile") spec = { between: [[0.8, 0.26], [0.8, 0.74]], on: [[0.28, 0.5]] };
+        // the couched Y and chevron: company sits in the hoist wedge and the
+        // fly panels; the pall's stem carries the "on" station
+        if (isFlag && field.ordinary === "pall") spec = { between: [[0.14, 0.5], [0.66, 0.24], [0.66, 0.76]], on: [[0.68, 0.5]] };
+        if (isFlag && field.ordinary === "chevron") spec = { between: [[0.16, 0.5], [0.74, 0.28], [0.74, 0.72]] };
         // a chief owns the top band: company positions under it are dropped
         let pts = (slot === "on" ? spec.on : spec.between) || spec.between;
         if (field.chief) pts = pts.filter(([, uy]) => uy > 0.34);
@@ -772,6 +776,7 @@ export function expressGenome(genome) {
       if (pattern === "ring") count = Math.max(4, count);
       else if (pattern === "arc") count = Math.min(9, Math.max(3, count));
       else if (pattern === "constellation") count = Math.min(9, Math.max(4, count));
+      else if (pattern === "satellites") count = Math.min(8, Math.max(3, count));   // one greater, the rest attend
       array = { pattern, count, seed: Math.floor(get("brandSeed") * 1e6), sizeF: 0.75 + get("motifScale") * 0.5 };
       arrange = "array";
       counterchange = false;                     // an array is appliqué from one bolt
@@ -910,6 +915,7 @@ const CHARGE_NAME = {
   oakleaf: "oak leaf", stagbeetle: "stag beetle", mailedfist: "mailed fist",
   catherinewheel: "Catherine wheel", cartwheel: "cart wheel", cogwheel: "cog wheel",
   seadragon: "sea-dragon", sealion: "sea-lion", fleur: "fleur-de-lys",
+  starAndCrescent: "star and crescent",
 };
 const chargeName = id => CHARGE_NAME[id] || id;
 const plural1 = w => /(s|x|z|ch|sh)$/.test(w) ? w + "es"
@@ -1001,15 +1007,17 @@ export function blazonGenome(genome) {
   const oLn = hasOrd && f.line !== "straight" ? ` ${f.line}` : "";
   const oT = hasOrd ? (f.counterchange ? "counterchanged" : tName(f.ordinaryName)) : "";
   const DIM_NAME = { fess: "bar", pale: "pallet", bend: "bendlet", bendSinister: "scarpe", chevron: "chevronel" };
+  // on cloth the pall and the chevron lie COUCHED (issuing from the hoist)
+  const couch = o => (p.isFlag && (o === "pall" || o === "chevron") ? `${ordName(o)} couched` : ordName(o));
   const nOrd = (hasOrd && f.ordinaryCount) || 1;
   const oFimb = hasOrd && f.fimbriation ? ` fimbriated ${tName(f.fimbName)}` : "";
   const mFimb = m && m.fimbriation ? ` fimbriated ${tName(m.fimbName)}` : "";
   const ordClause = nOrd > 1 ? `${NUMWORD[nOrd]} ${pluralize(DIM_NAME[f.ordinary])}${oLn} ${oT}${oFimb}`
-    : hasOrd ? `a ${ordName(f.ordinary)}${oLn} ${oT}${oFimb}` : "";
+    : hasOrd ? `a ${couch(f.ordinary)}${oLn} ${oT}${oFimb}` : "";
   if (hasOrd && m && m.arrange === "between") {
     parts.push(`${ordClause} between ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
   } else if (hasOrd && m && m.arrange === "onOrdinary") {
-    parts.push(`on a ${ordName(f.ordinary)}${oLn} ${oT}${oFimb} ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+    parts.push(`on a ${couch(f.ordinary)}${oLn} ${oT}${oFimb} ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
   } else {
     if (hasOrd) parts.push(ordClause);
     if (m && m.arrange !== "seme") {
@@ -1019,7 +1027,8 @@ export function blazonGenome(genome) {
       if (m.arrange === "array") {
         const A = m.array;
         const ph = A.pattern === "ring" ? "in annulo" : A.pattern === "arc" ? "in arc"
-          : A.pattern === "constellation" ? "in constellation" : A.count <= 4 ? "in fess" : "in rows";
+          : A.pattern === "constellation" ? "in constellation"
+          : A.pattern === "satellites" ? "in majesty" : A.count <= 4 ? "in fess" : "in rows";
         clause = `${NUMWORD[A.count]} ${pluralize(mName)} ${ph} ${mT}`;
       }
       else if (m.arrange === "three") clause = `three ${pluralize(mName)} ${mT}${mFimb}`;

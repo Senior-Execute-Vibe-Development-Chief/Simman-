@@ -65,6 +65,11 @@ export const PRIMITIVES = {
     return s; },
   crescent: (x, y, b, C) => { const cx = x + b / 2, cy = y + b * 0.5;
     return `<path d="${ringPath(cx, cy, b * 0.42)} ${ringPath(cx, cy - b * 0.1, b * 0.31)}" fill="${C}" fill-rule="evenodd"/>`; },
+  // the STAR AND CRESCENT — vexillology's classic conjoined device: a
+  // crescent opening to the fly, the star riding in its mouth
+  starAndCrescent: (x, y, b, C) => { const cx = x + b * 0.4, cy = y + b / 2;
+    return `<path d="${ringPath(cx, cy, b * 0.4)} ${ringPath(cx + b * 0.115, cy, b * 0.3)}" fill="${C}" fill-rule="evenodd"/>`
+      + poly(starPts(x + b * 0.76, cy, b * 0.17, 5, b * 0.068, Math.PI / 2), C); },
 };
 
 // a charge borne INVERTED turns about its own centre; TO SINISTER mirrors it
@@ -121,6 +126,14 @@ function shape(kind, w, h, variant) {
 }
 
 const AZURE = [0x2b, 0x4a, 0x8f];
+// a straight BAND from (x1,y1) to (x2,y2) of half-thickness t, as a filled
+// quad — the couched ordinaries of flag cloth are unions of these (the same
+// overlap trick the cross and saltire already use)
+function bandQuad(x1, y1, x2, y2, t) {
+  const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
+  const nx = -dy / L * t, ny = dx / L * t;
+  return `M${F(x1 + nx)} ${F(y1 + ny)} L${F(x2 + nx)} ${F(y2 + ny)} L${F(x2 - nx)} ${F(y2 - ny)} L${F(x1 - nx)} ${F(y1 - ny)} Z`;
+}
 // ── a styled edge from (x1,y1) to (x2,y2): straight/wavy/engrailed/embattled/
 // indented/dancetty. Returns path commands continuing from (x1,y1), ending at
 // (x2,y2). The decoration bulges toward the segment's left (perp), into the band. ──
@@ -235,7 +248,13 @@ function ordinaryPath(type, w, h, ln, amp, flag) {
     case "pale": { const x0 = w * 0.4, x1 = w * 0.6; return `M${F(x1)} 0 ${styledEdge(x1, 0, x1, h, ln, amp)} L${F(x0)} ${h} ${styledEdge(x0, h, x0, 0, ln, amp)} Z`; }
     case "bend": { const bw = w * 0.3; return `M0 0 ${styledEdge(0, 0, w - bw, h, ln, amp)} L${w} ${h} ${styledEdge(w, h, bw, 0, ln, amp)} Z`; }
     case "bendSinister": { const bw = w * 0.3; return `M${w} 0 ${styledEdge(w, 0, bw, h, ln, amp)} L0 ${h} ${styledEdge(0, h, w - bw, 0, ln, amp)} Z`; }
-    case "chevron": { const t = h * 0.16; return `M0 ${h} L${F(w / 2)} ${F(h * 0.42)} L${w} ${h} L${F(w - t)} ${h} L${F(w / 2)} ${F(h * 0.42 + t * 1.3)} L${F(t)} ${h} Z`; }
+    case "chevron": {
+      // on CLOTH a chevron is COUCHED: it issues from the hoist and points
+      // into the fly (a shield's upward chevron doesn't exist on flags)
+      if (flag) { const ax = w * 0.52, ay = h / 2, t = h * 0.105;
+        return bandQuad(-t, -t, ax, ay, t) + bandQuad(-t, h + t, ax, ay, t); }
+      const t = h * 0.16; return `M0 ${h} L${F(w / 2)} ${F(h * 0.42)} L${w} ${h} L${F(w - t)} ${h} L${F(w / 2)} ${F(h * 0.42 + t * 1.3)} L${F(t)} ${h} Z`;
+    }
     case "cross": {
       // flag: the NORDIC construction — both arms equally thick in absolute
       // cloth units (the fess arm is 0.2h, so the vertical matches it), the
@@ -247,7 +266,14 @@ function ordinaryPath(type, w, h, ln, amp, flag) {
     case "saltire": return ordinaryPath("bend", w, h, "straight", amp) + ordinaryPath("bendSinister", w, h, "straight", amp);
     case "pile": return flag ? `M0 ${F(h * 0.16)} L${F(w * 0.74)} ${F(h / 2)} L0 ${F(h * 0.84)} Z`
       : `M${F(w * 0.18)} 0 L${F(w * 0.82)} 0 L${F(w / 2)} ${F(h * 0.86)} Z`;
-    case "pall": { const cx = w / 2, cy = h * 0.44, t = w * 0.11; return `M${F(-t)} ${F(-t)} L${F(t)} ${F(-t)} L${F(cx + t)} ${F(cy)} L${F(cx + t)} ${h} L${F(cx - t)} ${h} L${F(cx - t)} ${F(cy + t)} L${F(w - t)} ${F(t)} L${F(w + t)} ${F(t)} L${F(w + t)} ${F(-t)} Z`; }
+    case "pall": {
+      // on CLOTH the pall is COUCHED: the Y lies on its side, arms from the
+      // hoist corners, stem running to the fly (the unity-Y of real flags);
+      // upright it stays the shield's pall
+      if (flag) { const jx = w * 0.36, jy = h / 2, t = h * 0.1;
+        return bandQuad(-t, -t, jx, jy, t) + bandQuad(-t, h + t, jx, jy, t) + bandQuad(jx - t, jy, w + t, jy, t); }
+      const cx = w / 2, cy = h * 0.44, t = w * 0.11; return `M${F(-t)} ${F(-t)} L${F(t)} ${F(-t)} L${F(cx + t)} ${F(cy)} L${F(cx + t)} ${h} L${F(cx - t)} ${h} L${F(cx - t)} ${F(cy + t)} L${F(w - t)} ${F(t)} L${F(w + t)} ${F(t)} L${F(w + t)} ${F(-t)} Z`;
+    }
   }
   return "";
 }
@@ -513,6 +539,17 @@ function placeArray(m, x0, y0, bw, bh) {
       left -= inRow;
     }
     b = Math.min(sx, sy) * 0.72;
+  } else if (a.pattern === "satellites") {
+    // one GREATER device toward the hoist, the rest attending in an arc
+    // about its fly-side shoulder (the principal-and-satellites grammar)
+    const gx = x0 + bw * 0.3, gy = y0 + bh * 0.46, gb = Math.min(bw, bh) * 0.5;
+    pts.push([gx, gy, gb / (Math.min(bw, bh) * 0.16)]);
+    const n = a.count - 1, R = gb * 0.82;
+    for (let i = 0; i < n; i++) {
+      const th = -0.9 + (n === 1 ? 0.5 : i / (n - 1)) * 1.5;
+      pts.push([gx + Math.cos(th) * R + bw * 0.12, gy + Math.sin(th) * R]);
+    }
+    b = Math.min(bw, bh) * 0.16;
   } else {
     // constellation — a seeded sky map (the same idle gene that brands a
     // tamga seeds the sky): min-separation scatter, sizes gently varied
