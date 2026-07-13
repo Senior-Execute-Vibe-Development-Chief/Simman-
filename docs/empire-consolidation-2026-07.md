@@ -533,12 +533,42 @@ radius). Verified CLEAN: MARKET_CUTOFF (rides mktR×rn), cohesionRadius
 (fraction of tw), INHERIT_NEAR_RADIUS (perf fast-path, identical full-scan
 fallback), MINE_RANGE (URBAN_NODES experimental path only, def 0).
 
-### Validation (the F-class recipe)
+### Validation (the F-class recipe, complete)
 
-hash480 UNCHANGED pre/post across every increment (b9c264b9/100239cd — the
-radii are ×1.0 at the reference by construction); hashbase 320 re-keys (new
-pair + recipe in its header chain); smoke green; probe_empires 1920/24k
-re-run — numbers in the battery addendum below.
+- **hash480 UNCHANGED after every increment** (roads → +nucleation →
+  +migration): b9c264b9/100239cd — every factor ×1.0 at the reference by
+  construction, verified empirically four times.
+- **hashbase 320 re-keys twice**, both recorded with recipes in its header
+  chain: 85674ac7/2db3bf8 (wiring radii tighten below the reference), then
+  f9eb7306/8d66ed8d (migration share drops — 320's D was 2.25× fast).
+- **Smoke green twice** (80.2s on the wiring commit, 85.2s on the final
+  state) — determinism, invariants, save/load roundtrip + continuation.
+- **probe_empires 1920/24k, BOTH states** (same seed 8817; pre-arc baseline
+  was 63 realms / 45.6% / biggest 10.8M / org 0.59–0.64):
+
+| step | roads-only | full set (shipped) |
+|---|---|---|
+| 8k  | 13 / 10.1% | 11 / 8.6% |
+| 12k | 12 / 12.9% | 12 / 12.7% |
+| 16k | 23 / 21.2% | 19 / 16.4% |
+| 20k | 50 / 42.6% | 43 / 33.0% |
+| 24k | 94 / 57.0% / 6.3M | 82 / 53.3% / 11.4M |
+
+  The 12k snapshot's "realms low" was TIMING, as diagnosed: the state-birth
+  wave arrives ~14k–24k and **coverage lands on the reference track** (53–57%
+  vs the reference's 55.0% at 24k — pre-arc it reached only 45.6%). Leader
+  org 0.59–0.66 at 24k with HALF the world claimed more than pre-arc. Churn
+  vigorous in both states (full set: shattered 200, annexed 75, a 6.1k-age
+  realm in the top-5; captured=0 is structural under tile-war). Residual
+  axes, honestly: the realm COUNT reads 82–94 vs the reference's 30 at
+  matched step (the volatile attractor + a finer grid resolving more small
+  realms mid-churn + nucleation now firing at the real basin rate) and the
+  top giant is noisy (6.3M/11.4M across the two cells; reference equilibrium
+  6.6M matched-step, growing to 8.7–10.4M in its own late window) — both are
+  windowed-multi-seed questions (probe_avg at 1920, both seeds, both
+  windows), queued as the next 1920 session's battery. Perf envelope
+  unchanged (1920/12k probes ~25 min, 24k empires ~65–70 min under parallel
+  load).
 
 ## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
