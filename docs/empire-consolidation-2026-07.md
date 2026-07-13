@@ -352,7 +352,54 @@ this probe — some or all realization noise (the apex city halves, the p90 city
 RISES; where the biggest hub lands differs per realization). The windowed
 political battery below is the product-level judge of what remains.
 
-<!-- BATTERY_RESULTS -->
+Windowed political battery, BOTH windows at BOTH grids (probe_avg; the two
+480@24k–40k cells were never measured before — running them reframed the
+loop-closure's giant verdict, see below):
+
+| window | axis | 480/8817 | 960/8817 | 480/4242 | 960/4242 |
+|---|---|---|---|---|---|
+| 16k–30k | realms | 32.6 | 48.3 (1.48×) | 39.4 | 45.9 (1.16×) |
+| | claimed | 50.6% | 53.5% ✓ | 55.5% | 49.5% ✓ |
+| | biggest | 6.6 M | 8.7 (1.32×) | 6.6 M | 5.9 (0.89×) ✓ |
+| 24k–40k | realms | 44.8 | **46.8 (1.04×)** ✓ | 45.7 | **47.6 (1.04×)** ✓ |
+| | claimed | 66.4% | 68.3% ✓ | 68.2% | 66.5% ✓ |
+| | biggest | 10.4 M | 14.9 (1.43×) | 8.7 M | 9.8 (1.13×) ✓ |
+
+probe_empires 960/24k post-fix: churn healthy on both seeds (young realms in
+every top-5; 8817's top realm at org 0.84 vs pre-fix 0.63 — the development
+clock caught up), flows alive (annexed 130/139, shattered 153/124), and the
+run was FASTER than pre-fix (10m24s vs ~13–15m) — the wider admin-flood bound
+costs nothing (the early-exit absorbs it), it only stops mislabeling the
+outer belt "unreachable".
+
+### Verdict — and a correction to the loop-closure's giant reading
+
+**The 960 grid now tracks the 480 reference on essentially every axis.** Late
+window: realm count within 4% on both seeds, coverage within 2pp, giants
+1.13×/1.43×. Early window: coverage matched, giants 0.89×/1.32×, count
+1.16×/1.48×. The residual scatter is the same order as the reference's own
+seed-to-seed variance (480's two seeds differ 1.2× on count and 1.2× on
+late-window biggest), so no further mechanism claims are warranted from a
+2-seed battery.
+
+The never-measured reference cells also CORRECT the loop-closure verdict
+above: **the 480 reference's own late window grows 8.7–10.4 M giants and
+~45 realms** (the defensible-size equilibrium expands as logistics extends
+force projection — the WAR_REACH roads→rail channel, by design; and the count
+rises with development everywhere). So a large share of the "runaway giants
+✗" reading came from judging 960's late window against 480's EARLY window —
+the genuinely res-variant part (the development clock, the 3.15× field, double
+freight, the halved admin radius) is what this arc fixed; the rest was window
+mismatch. With the clock aligned, step-for-step windows now correspond across
+grids and that class of confusion is gone.
+
+**Remaining residuals, honestly stated:** the ~10% org lag at matched step
+(partly world-realization noise — the grids are different terrain draws);
+8817's early-window count (1.48× — state-birth wave timing); POP_MIGRATE's
+res-variant diffusion coefficient (documented in popField.js, needs sub-
+stepped migration); the raw storm radius + flat-tile city footprint (audit
+OPEN #5, topological). All second-order next to what shipped; measure at
+resScale=4 (the app's 1920 default) before hunting them further.
 
 ## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
