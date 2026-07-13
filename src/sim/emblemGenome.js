@@ -70,11 +70,19 @@ const SIGIL_INTER = ["none", "none", "dots", "rays", "pips"];
 const SYMMETRIES  = ["none", "bilateral", "radial", "quarterly"];
 const PALETTES    = ["heraldic", "monochrome", "imperial", "earth"];
 const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly", "chequy", "lozengy", "tiercedPale", "tiercedFess"];
-// on a FLAG substrate the engraver-only partitions express as their sewn
-// analogues (same gene, substrate-specific phenotype — exactly how the cross
-// goes Nordic): rotational wedges → the four sewn triangles, grids → stripes,
-// and per-chevron cants onto the hoist (the wedge real flags fly at the mast)
-const FLAG_PARTITION = { gyronny: "perSaltire", chequy: "paly", lozengy: "barry", chevron: "hoistTriangle" };
+// on CLOTH the SAME gene decodes through corpus-weighted windows instead
+// (the DYE_VATS / MOTIF_CATS idiom): horizontal stripes dominate real
+// flags, vertical bands next, diagonals and the hoist wedge present, the
+// rotational cuts genuine rarities — and the engraver-only partitions
+// (gyronny, grids) don't exist here at all, only their sewn kin.
+const FLAG_PARTITIONS = [
+  "plain", "plain", "plain",
+  "perFess", "perFess", "perFess", "tiercedFess", "tiercedFess", "tiercedFess", "tiercedFess", "tiercedFess",
+  "barry", "barry", "barry",
+  "perPale", "perPale", "tiercedPale", "tiercedPale", "tiercedPale", "paly",
+  "perBend", "perBend", "hoistTriangle", "hoistTriangle",
+  "quarterly", "perSaltire",
+];
 // field TREATMENTS (the crescent gene's high window): the two furs, plus the
 // lattice treatments — fretty (interlaced bendlets) and masoned (brickwork)
 const TREATMENTS  = ["ermine", "vair", "fretty", "masoned"];
@@ -135,6 +143,16 @@ const ARRAY_PATTERNS = ["rows", "rows", "ring", "ring", "arc", "constellation"];
 // small armorial shield (the INESCUTCHEON — a state-arms panel) is the
 // serious rarity, the lozenge the odd one out
 const PANEL_SHAPES = ["lozenge", "disc", "disc", "escutcheon"];
+// THE FLAG DEVICE VOCABULARY: a repeated, housed, or band-riding device is
+// cut from folded cloth many times over — only the simple silhouettes
+// survive mass sewing and distance (stars, discs, crescents, suns). The
+// ornate interlace — knots, frets, clan marks — stays a shield's and a
+// mon's business; a LONE central device keeps the full pool (a flag may
+// fly one strange thing, never five).
+const FLAG_SIMPLE = {
+  geometric: ["mullet", "mullet", "mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle"],
+  celestial: ["sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline"],
+};
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 // @INJECT:MOTIFS-START — the lab build (tools/build_lab.mjs) replaces this whole
 // block with the size-filtered subset so the artifact's pools match its bundled art.
@@ -301,6 +319,36 @@ const DARKS = T_NAMES.filter(n => TINCTURES[n].kind !== "metal");   // colours +
 // silks; on cloth a stain-intent comes back as its vat's fast recipe, or
 // failing that as the mill's nearest standard bolt.
 const BOLTS = T_NAMES.filter(n => TINCTURES[n].kind !== "stain");
+// THE BUNTING RECIPES: the same named bolts, the mill's own dye lots.
+// A painter's tincture is aged pigment on vellum; industrial fast dyes run
+// VIVID — real flags fly the saturated end of each name (the "Olympic"
+// gamut). Names, classes and every derivation stay in the painter's space
+// (the blazon never changes); only the woven cloth's rgb does. Classes and
+// pairwise legibility re-verified: the recipes' metal-dark floor (0.397)
+// exceeds the paint's own (0.152).
+const BUNTING_RGB = {
+  or:      [0xfc, 0xd1, 0x16],
+  argent:  [0xf2, 0xf2, 0xed],
+  gules:   [0xce, 0x11, 0x26],
+  azure:   [0x00, 0x55, 0xa4],
+  vert:    [0x00, 0x7a, 0x3d],
+  sable:   [0x14, 0x14, 0x14],
+  purpure: [0x63, 0x30, 0x92],
+};
+const BUNTING_BY_REF = new Map(BOLTS.map(n => [TINCTURES[n].rgb, BUNTING_RGB[n]]));
+// swap every canonical bolt rgb in an assembled flag phenotype for its
+// bunting recipe (identity lookup — on cloth every colour IS a named bolt)
+function clothDye(o, seenSet) {
+  const seen = seenSet || new Set();
+  if (!o || typeof o !== "object" || seen.has(o)) return o;
+  seen.add(o);
+  for (const k of Object.keys(o)) {
+    const v = o[k];
+    if (Array.isArray(v) && BUNTING_BY_REF.has(v)) o[k] = BUNTING_BY_REF.get(v);
+    else if (v && typeof v === "object") clothDye(v, seen);
+  }
+  return o;
+}
 
 // OKLab — perceptual colour space, so distances match what the eye sees
 function oklab([r, g, b]) {
@@ -372,6 +420,9 @@ function namedDyeField(u, sat, val, bunting) {
   const rgb = hsl(v.hue, sat, v.lo + val * (v.hi - v.lo));
   let members = v.members;
   if (bunting) {
+    // a vat LED by an overdye stain is an overdye lot — not milled as
+    // bunting at all: the order comes back as the nearest standard bolt
+    if (TINCTURES[members[0]].kind === "stain") return nearestTincture(rgb, BOLTS);
     members = members.filter(n => TINCTURES[n].kind !== "stain");
     if (!members.length) return nearestTincture(rgb, BOLTS);
   }
@@ -382,7 +433,8 @@ function namedDyeField(u, sat, val, bunting) {
 function namedDyeDark(u, val, exclude, bunting) {
   const v = vatAt(u);
   let members = v.members;
-  if (bunting) members = members.filter(n => TINCTURES[n].kind !== "stain");
+  if (bunting) members = TINCTURES[members[0]].kind === "stain" ? []
+    : members.filter(n => TINCTURES[n].kind !== "stain");
   let cands = [...members.filter(n => TINCTURES[n].kind !== "metal"), "sable"];
   if (exclude) cands = cands.filter(n => n !== exclude);
   if (!cands.length) cands = (bunting ? BOLTS : DARKS).filter(n => TINCTURES[n].kind !== "metal" && n !== exclude);
@@ -542,8 +594,9 @@ export function expressGenome(genome) {
   // on their edges, and optionally COUNTERCHANGED across a partition. These reuse the
   // otherwise-idle genes in heraldic composition (hueC, pearl, border, crescent,
   // symmetry) so no genome grows — the depth was latent in the vector.
-  let partition = composition === "heraldic" ? pickEnum(get("partition"), PARTITIONS) : "plain";
-  if (isFlag) partition = FLAG_PARTITION[partition] || partition;
+  let partition = composition === "heraldic"
+    ? pickEnum(get("partition"), isFlag ? FLAG_PARTITIONS : PARTITIONS)
+    : "plain";
   const tinctures = [pal.field, pal.companion];
   const field = { partition, tinctures, names: [pal.fieldT.name, pal.companionT.name],
     line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
@@ -651,7 +704,7 @@ export function expressGenome(genome) {
       cat = get("motifCount") > 0.5 ? "celestial" : "geometric";
     const compact = COMPACT_CATS.has(cat);
     const pool = MOTIFS[cat];
-    const id = pool[Math.min(pool.length - 1, Math.floor(get("motifIdx") * pool.length))];
+    let id = pool[Math.min(pool.length - 1, Math.floor(get("motifIdx") * pool.length))];
     // the charge WEARS what its ground dictates (tinctureOn — the rule of
     // tincture, constructed); over a mixed two-region party it may instead be
     // COUNTERCHANGED — painted in the field's own tinctures, swapped across
@@ -691,6 +744,11 @@ export function expressGenome(genome) {
         : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
       counterchange = composition === "heraldic" && !field.fur && mixedGround
         && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
+      // THE FIELD IS THE FLAG: on partitioned cloth the arrange gene's first
+      // window flies the geometry ALONE — a tricolour needs no badge (about
+      // 40% of real flags carry no device at all; the stripes do the identity
+      // work at any distance). A plain field always speaks through its device.
+      if (isFlag && composition === "heraldic" && partition !== "plain" && get("arrange") < 0.2) arrange = null;
     }
     // ON A FLAG A FIGURE STEPS BACK: no herds of beasts across the cloth —
     // multiples collapse to a lone device, and in an ordinary's company it
@@ -732,6 +790,11 @@ export function expressGenome(genome) {
     const housed = isFlag && composition === "heraldic" && !hasOrdinary && compact
       && get("star") > 0.62 && (arrange === "single" || arrange === "array");
     if (housed) tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds });
+    // repeated / housed / band-riding devices draw from the flag vocabulary
+    if (isFlag && compact && (array || housed || slots) && FLAG_SIMPLE[cat]) {
+      const p2 = FLAG_SIMPLE[cat];
+      id = p2[Math.min(p2.length - 1, Math.floor(get("motifIdx") * p2.length))];
+    }
     // FLAG DETAILING: a single device may sit on a bounded PANEL (disc or
     // lozenge — the charge then dresses against the panel, the tincture rule
     // applied recursively), or wear a FIMBRIATION halo; both are how modern
@@ -802,8 +865,10 @@ export function expressGenome(genome) {
       tincture: pal.chargeT.rgb, tinctureName: pal.chargeT.name }
     : null;
 
-  return { substrate, shieldShape, isFlag, flagRatio, composition, symmetry, iconism, colors: pal, field, motif, geometry, sigil, ornaments,
+  const phen = { substrate, shieldShape, isFlag, flagRatio, composition, symmetry, iconism, colors: pal, field, motif, geometry, sigil, ornaments,
     cadency, gen: genome.gen || 0 };
+  // woven cloth takes the mill's vivid dye lots — names untouched
+  return isFlag ? clothDye(phen) : phen;
 }
 
 // A sacred sigil spec from a gene reader (each aspect on its own gene, so it
@@ -926,6 +991,9 @@ export function blazonGenome(genome) {
     return `A ${p.substrate} ${tName(p.colors.fieldT.name).toLowerCase()}, ${what}`;
   }
   const parts = [fieldPhrase(f, m)];
+  // a canton flying its lone symbol (no other device on the cloth)
+  if (!m && p.isFlag && p.ornaments.canton)
+    parts.push(`on a canton ${tName(p.ornaments.cantonName)} a ${p.ornaments.cantonKind === "sun" ? "sun" : "mullet"} ${tName(f.names[0])}`);
   const mT = m ? (m.counterchange ? "counterchanged" : tName(m.tinctureName)) : "";
   const ATT = { inverted: " inverted", sinister: " contourné" };
   const mName = m ? chargeName(m.id) + (ATT[m.attitude] || "") : "";

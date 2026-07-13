@@ -43,7 +43,10 @@ let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
   array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, housed: 0,
-  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0, flagFigure: 0 };
+  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0, flagFigure: 0, flagBare: 0 };
+// the flag device vocabulary: what a repeated/housed/band-riding device may be
+const FLAG_VOCAB = new Set(["mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle",
+  "sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline"]);
 const STAINS = new Set(names.filter(n => TINCTURES[n].kind === "stain"));
 // the compact device categories — the only ones a flag repeats or strews
 const COMPACT = new Set(["celestial", "geometric"]);
@@ -104,6 +107,18 @@ function audit(g) {
       if (f.ordinary && f.ordinary !== "none") fail("canton over an ordinary on a flag", g);
       if (fm && !fm.inCanton) fail("canton beside a free device on a flag", g);
     }
+    // THE FIELD IS THE FLAG: pure geometry flies (reachable), an unmarked
+    // PLAIN cloth never does, and every repeated/housed/band-riding device
+    // is cut from the flag vocabulary
+    if (p.composition === "heraldic") {
+      const hasOrd2 = f.ordinary && f.ordinary !== "none";
+      if (!fm && !hasOrd2) {
+        if (f.partition === "plain" && !f.fur) fail("empty plain cloth", g);
+        else seen.flagBare++;
+      }
+    }
+    if (fm && COMPACT.has(fm.cat) && (fm.array || fm.inCanton || fm.slots) && !FLAG_VOCAB.has(fm.id))
+      fail(`ornate device sewn in repeat (${fm.id})`, g);
     // THE CLOTH CUT: banners span the real ratio spread (1:2 … 2:3), smooth
     if (p.substrate === "banner") {
       if (!(p.flagRatio >= 0.5 && p.flagRatio <= 0.667)) fail(`banner cut out of range (${p.flagRatio})`, g);

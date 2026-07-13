@@ -134,6 +134,15 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
   more often. Same genes throughout — the substrate reinterprets them.
   See `docs/flag-realism-research.md` for the research behind the modern
   grammar (sources inside). The realism mechanisms, all substrate-keyed:
+  - **Corpus-weighted partitions** — on cloth the partition gene decodes
+    through its own frequency windows (the DYE_VATS idiom): horizontal
+    stripes dominate, vertical bands next, diagonals and the hoist wedge
+    present, quarterly and per-saltire genuine rarities; the engraver
+    partitions don't exist here at all.
+  - **The field is the flag** — on partitioned cloth the arrange gene's
+    first window flies the geometry ALONE (no device): pure tricolours and
+    striped fields, ~38% of heraldic cloth, matching the real ~40%. A
+    plain field always speaks through its device.
   - **The constellation grammar** — cloth never wallpapers a repeated
     compact device: the multiple-intent (three / in-pale / semé) expresses
     as an organized **array** — offset rows (the staggered long-flag
@@ -141,6 +150,11 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     gene seeds the sky exactly as it seeds a tamga; the idle script gene
     picks the pattern; the count gene counts members, 2–13, each pattern
     imposing its own geometric floor). Blazoned "five mullets in annulo".
+  - **The flag device vocabulary** — repeated, housed, or band-riding
+    devices are cut from folded cloth many times over: only the simple
+    silhouettes survive (mullets, discs, crescents, suns…); the ornate
+    interlace (knots, frets, clan marks) stays a shield's and a mon's
+    business. A LONE central device keeps the full pool.
   - **The canton houses the device** — the canton is the position of
     honour, not a second device: a compact device or its whole array moves
     INTO the canton and dresses against it; a figure never boards it; the
@@ -153,10 +167,17 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     (2:1:1).
   - **The bunting shelf** — flags are sewn from the seven fast single-vat
     bolts; the overdyed stains stay on shields and silks (a stain-intent
-    comes back as its vat's fast recipe or the nearest standard bolt), and
-    the continuous silk/pigment palettes snap to named bolts. Measured:
-    flag fields run gules 26 / or 19 / azure 19 / argent 12 / vert 12 —
-    the real corpus ordering — while shields keep their stains.
+    comes back as its vat's fast recipe or the nearest standard bolt; a
+    vat LED by an overdye stain isn't milled as bunting at all), and the
+    continuous silk/pigment palettes snap to named bolts. Measured: flag
+    fields run gules 27 / azure 19 / or 19 / argent 12 / vert 12 — the
+    real corpus ordering — while shields keep their stains.
+  - **The bunting recipes** — the same named bolts, the mill's own dye
+    lots: painter's tinctures are aged pigment, industrial fast dyes run
+    VIVID (the "Olympic" gamut real flags fly). Every derivation and the
+    blazon stay in the painter's space; only the woven cloth's rgb swaps
+    (classes and legibility re-verified: the recipes' metal↔dark floor,
+    0.397, exceeds the paint's own 0.152).
   - **The sewing economy** — a mark lying on another mark reuses a bolt
     already flying whenever it reads (class opposition on a uniform
     ground; at least the palette's own metal↔dark minimum on a mixed one).
