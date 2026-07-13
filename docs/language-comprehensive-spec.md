@@ -1368,3 +1368,51 @@ green is the regression proof.
   aspirated; register-conditioned SPLIT tonogenesis (two-register →
   two-tone-class splits of existing tone systems); ATR dominance
   reversals (dominant-recessive systems).
+
+## Build status (session 16, fifth phase) — typology completion V: diglossia + dialects
+
+The capstone, and the cheapest: both fall out of machinery that already
+exists. Probe 472 → **485** checks (§33). The five-phase typology
+completion is done.
+
+- **Diglossia** (`registerOf` / `highRegister` / `registerWords`): a stable
+  HIGH/LOW register split — Classical vs Colloquial Arabic, Katharevousa vs
+  Demotic, literary vs spoken Chinese/Tamil. The HIGH (chronicle) register
+  IS the frozen ghost the writing layer already computes — the language as
+  its spelling froze it, pronounced by READING the conservative form. Three
+  things fall out with NO new mechanism: conservative phonology (the ghost
+  replays only rules[0..frozenAt), so the sound changes that eroded the
+  modern word never touched the reading pronunciation), un-eroded morphology
+  (endings later drift ate are still audible in the ghost's paradigms — the
+  fuller classical case system), and a native lexicon (the ghost carries
+  loans:[], so the H register keeps the inherited word where L took the
+  borrowing — the classical-purism inversion, gated). STATE-gated (cardinal
+  rule 1): present only where the lag runs deep enough that H and L audibly
+  differ (rule-log depth ≥ 4 since freeze), then a per-family roll decides
+  whether the community grammaticalized the split (Ferguson diglossia is
+  cultural — English has the lag but not the register split). The chronicle
+  voice renders through the ordinary renderClause(highRegister(l)); ~27% of
+  literate tongues are diglossic. References (pristine) are never diglossic.
+- **Dialect continua** (`dialectsOf`): a CHAIN of low-divergence sisters —
+  each lect adds exactly ONE more sound change to the one before it, so
+  adjacent lects are mutually intelligible (avg edit-similarity 0.94) and
+  the endpoints drift apart (the defining continuum gradient, gated). All
+  share the ancestor (famSeed → shared root stock and grammar; word order
+  preserved — no fresh flip), so a given word surfaces as a bundle of
+  REGULAR correspondences (the s→r and final-vowel-loss isoglosses a dialect
+  atlas maps). The load-bearing fix: a lect picks a NOVEL sound change (one
+  not already in its log) — re-applying a spent change is a no-op, which was
+  producing identical "dialects"; a real isogloss needs a change the lect
+  has not yet undergone. Pure and deterministic (no world); each lect is a
+  full language the ordinary API renders, speaks, and writes.
+- Lab: a "Registers & dialects" card — the chronicle/street word pairs and
+  both clause voices (each ▶-speakable), and the isogloss table across the
+  continuum (surfacing whichever words the chain's changes actually touch).
+- Parked: register-specific GRAMMAR beyond the phonological/lexical split
+  (classical-only moods, the Arabic case-vowel iʿrab); a true geographic
+  dialect MAP (needs sim-side space); koineization (dialect levelling back
+  into a standard).
+
+**The typology-completion effort is complete: five phases, probe 359 →
+485, all four gates green at every commit. The adversarial review round
+is the remaining step.**

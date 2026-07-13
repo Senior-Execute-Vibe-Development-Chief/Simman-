@@ -320,6 +320,62 @@ export function writtenWordOf(lang, cid) {
   return s.toneWritten || !lang.prof.tone ? w : stripTone(w);
 }
 
+// ── DIGLOSSIA (phase 5): the literary register IS the frozen ghost ─────────
+// A stable HIGH/LOW register split — Ferguson diglossia: Classical vs
+// Colloquial Arabic, Katharevousa vs Demotic Greek, Literary vs spoken
+// Tamil/Sinhala/Chinese. The generator gets it almost free, because the HIGH
+// (chronicle) register IS the language as of the writing tradition's FREEZE
+// point — the frozen ghost the orthography already computes, pronounced by
+// READING the conservative spelling. Three things fall out of the ghost with
+// no new mechanism:
+//   · conservative PHONOLOGY — the ghost replays only rules[0..frozenAt), so
+//     the sound changes that wore down the modern spoken word never happened
+//     to the reading pronunciation (⟨knight⟩ read [kniçt], not [naɪt]);
+//   · un-eroded MORPHOLOGY — endings later drift ate (codaLoss / finalVLoss)
+//     are still audible in the ghost's paradigms: the fuller classical case
+//     system, for free;
+//   · native LEXICON — the ghost carries loans:[] , so the H register keeps
+//     the inherited word where L took the borrowing (the classical-purism
+//     inversion — 'street' word borrowed, 'chronicle' word native, free).
+// STATE-GATED (cardinal rule 1): present only where the lag runs deep enough
+// that H and L audibly differ — an emergent measurement of accumulated
+// change since the freeze (rule-log depth ≥ DIGLOSSIA_DEPTH), never wall-
+// clock — and then a per-family roll (own stream) decides whether the speech
+// community grammaticalized the split into two registers. Ferguson diglossia
+// is cultural, not automatic: English carries the orthographic lag but not
+// the register split, so the roll is the honest model.
+const DIGLOSSIA_DEPTH = 4;   // sound changes since freeze at which a reading pronunciation becomes a distinct register
+const DIGLOSSIA_RATE = 0.5;  // share of deep-lag literate families that grammaticalize the split
+
+/** Whether this language has a diglossic H/L register split, and how deep —
+ *  null when the lag is too shallow, the language preliterate, or the family
+ *  never developed the split. `{ lag }` is the rule-log depth since freeze. */
+export function registerOf(lang) {
+  const s = scriptOf(lang);
+  if (!s || s.lag < DIGLOSSIA_DEPTH) return null;
+  if (h01(lang.famSeed ?? lang.seed, "digl") >= DIGLOSSIA_RATE) return null;
+  return { diglossic: true, lag: s.lag, frozenAt: s.frozenAt };
+}
+
+/** The HIGH-register (literary / chronicle) lens on a diglossic language: the
+ *  frozen ghost, a full language record renderable through the ordinary
+ *  grammar API — renderClause(highRegister(lang), frame) is the chronicle
+ *  voice, renderClause(lang, frame) the street voice. Null when not diglossic
+ *  (the language has ONE register — pass it directly). */
+export function highRegister(lang) {
+  return registerOf(lang) ? frozenLang(lang, scriptOf(lang).frozenAt) : null;
+}
+
+/** A concept in each register: the L (colloquial, drift-complete, loans win)
+ *  and H (frozen reading pronunciation, native) spoken forms, and whether
+ *  they actually differ. Non-diglossic languages return `low === high`. */
+export function registerWords(lang, cid) {
+  const low = wordOf(lang, cid);
+  const g = highRegister(lang);
+  const high = g ? renderWord(nativeStemOf(g, cid), lang.prof) : low;
+  return { low, high, differ: low !== high, loanInLow: !!loanOf(lang, cid) };
+}
+
 // ── glyphs: a stroke grammar in the script's own HAND ─────────────────────
 // A glyph is strokes over a normalized box; each medium constrains WHAT a
 // stroke may be, exactly as the material does in life. Letters live in a

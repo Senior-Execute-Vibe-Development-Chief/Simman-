@@ -10,10 +10,10 @@
 // under `npm run dev`, which is why every read is typeof-guarded. Declared
 // here so ESLint's no-undef doesn't flag the injected identifier.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf, colorTermsOf, kinshipOf } from "./sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf, colorTermsOf, kinshipOf, dialectsOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
-import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME } from "./sim/languageScript.js";
+import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME, registerOf, highRegister, registerWords } from "./sim/languageScript.js";
 import { foundHistory, stepHistory, ancestryOf } from "./sim/languageHistory.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
@@ -22,7 +22,7 @@ import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb
   classifiersOf, classifierEtymologies, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns,
   renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, polysynthesisOf } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, OLD, GRAIN,
-  RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN, FISH } from "./sim/languageLexicon.js";
+  RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN, FISH, WATER, GOD, WINE } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
@@ -843,6 +843,47 @@ function lexTypologyHTML(l) {
   return `<section class="card"><h2>The lexicon's shape <span class="count">— colors, kin, motion</span></h2>${secs.join("")}</section>`;
 }
 
+// ── diglossia + dialects (phase 5): register split + the isogloss bundle ──
+const REG_WORDS = [KING, RIVER, STONE, HOUSE, WATER, MOTHER, GOD, WINE];
+const DIAL_WORDS = [WATER, RIVER, STONE, KING, WOLF, HOUSE, MOTHER, HAND];
+function registerDialectHTML(l) {
+  const secs = [];
+  // ── diglossia: the H (chronicle) vs L (street) split, only where the lag
+  // has grown deep enough to support it ──
+  const reg = registerOf(l);
+  if (reg) {
+    const hi = highRegister(l);
+    const wordRows = REG_WORDS.map(cid => ({ cid, rw: registerWords(l, cid) })).filter(x => x.rw.differ).slice(0, 6)
+      .map(({ cid, rw }) => `<span class="cell"><span class="lbl">${esc(glossOf(cid))}</span> <span class="w">${esc(rw.low)}</span> <span class="gloss">/ ${esc(rw.high)}${rw.loanInLow ? " (native)" : ""}</span></span>`).join(" ");
+    const F = { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } };
+    secs.push(`<h3>Diglossia <span class="count">(lag ${reg.lag} — a high/low split)</span></h3>
+      <p class="note">Where the written form has drifted far from speech, a stable HIGH register survives: the CHRONICLE voice, the language as its spelling froze it — read with a conservative pronunciation, its old case-endings intact, its inherited words kept where the street took a loan. It is the frozen ghost the writing layer already computes, spoken.</p>
+      <p class="cells"><span class="cell"><span class="lbl">street / chronicle</span></span> ${wordRows}</p>
+      ${clauseEx("street voice — ‘the king saw the river’", renderClause(l, F))}
+      ${clauseEx("chronicle voice — the same, read in the high register", renderClause(hi, F))}`);
+  }
+  // ── dialects: a chain of low-divergence lects, the isogloss bundle ──
+  // scan a broad, RECOGNISABLE pool and surface the words that actually vary
+  // across the chain (a given chain's isoglosses touch some words, not others
+  // — so a fixed short list can miss them all); prefer the common concepts.
+  const dls = dialectsOf(l, 5);
+  const POOL = [...DIAL_WORDS, ...Array.from({ length: 90 }, (_, i) => i)];
+  const seen = new Set(), varied = [];
+  for (const cid of POOL) {
+    if (seen.has(cid) || cid >= CONCEPTS.length) continue;
+    seen.add(cid);
+    if (new Set(dls.map(d => wordOf(d, cid))).size > 1) varied.push(cid);
+    if (varied.length >= 7) break;
+  }
+  const shown = varied.length ? varied : DIAL_WORDS.slice(0, 6);
+  const isoRows = shown.map(cid =>
+    `<tr><td class="lbl">${esc(glossOf(cid))}</td>${dls.map(d => `<td class="w">${esc(wordOf(d, cid))}</td>`).join("")}</tr>`).join("");
+  secs.push(`<h3>Dialect continuum <span class="count">(${dls.length} lects, one isogloss apart)</span></h3>
+    <p class="note">Sub-branch variation: a chain of lects, each one sound change further than the last, so neighbours are mutually intelligible and the ends drift apart — the same word surfaces as a bundle of regular correspondences (the map a dialect atlas draws). All descend from this tongue.</p>
+    <table class="paradigm"><thead><tr><th></th>${dls.map((_, i) => `<th>${i === 0 ? "standard" : "lect " + i}</th>`).join("")}</tr></thead><tbody>${isoRows}</tbody></table>`);
+  return `<section class="card"><h2>Registers &amp; dialects <span class="count">— chronicle voice, street voice, the continuum</span></h2>${secs.join("")}</section>`;
+}
+
 // ── paradigms: declension + conjugation tables ───────────────────────────
 const PARA_NOUNS = [STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT];
 const cellHTML = (x) => {
@@ -1287,6 +1328,7 @@ function render() {
   ${verbFrontierHTML(l)}
   ${nounFrontierHTML(l)}
   ${lexTypologyHTML(l)}
+  ${registerDialectHTML(l)}
   ${sentenceHTML(l)}
   ${paradigmHTML(l)}
   ${cognatesHTML()}

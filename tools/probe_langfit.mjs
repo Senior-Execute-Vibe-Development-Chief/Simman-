@@ -11,19 +11,19 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf, colorTermsOf, kinshipOf } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf, colorTermsOf, kinshipOf, dialectsOf } from "../src/sim/language.js";
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord, copyWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
 import { applicableRules, applyRule } from "../src/sim/languageChange.js";
 import { hash32 } from "../src/sim/peopleSim/rng.js";
-import { scriptOf, writeWord, writeForm, writeName, formFromSurface, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
+import { scriptOf, writeWord, writeForm, writeName, formFromSurface, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom, registerOf, highRegister, registerWords } from "../src/sim/languageScript.js";
 import { runHistory } from "../src/sim/languageHistory.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, adpSourceOf, polysynthesisOf } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND, QUEEN, OLD, GRAIN, BREAD, SWORD, BE, SIT, STAND, HAVE,
   TOPO_MOD, PERSON_POOL, LOAN_POOL, RUN, FATHER, BROTHER, RED, GREEN, BLUE, HEART, HEAD,
   YELLOW, BROWN, PURPLE, PINK, ORANGE, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER,
-  ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK, LORD } from "../src/sim/languageLexicon.js";
+  ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK, LORD, NIGHT } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -3338,6 +3338,113 @@ console.log("\n── §32 phonological rarities ──");
     say("   ATR:       " + atrWords.slice(0, 6).join("  "));
     say("   registers: " + phWords.split(" ").slice(0, 6).join("  "));
     say("   tonogen →  " + tgWords.normalize("NFC").split(" ").slice(0, 6).join("  "));
+  }
+}
+
+// ── §33 DIGLOSSIA + DIALECTS: the literary register IS the frozen ghost the
+// writing layer already computes; dialects are a chain of low-divergence
+// sisters. Both fall out of existing machinery — the capstone. ─────────────
+console.log("\n── §33 diglossia + dialects ──");
+{
+  const world = mkWorld();
+  const N = 400;
+  const pop = [];
+  for (let i = 0; i < N; i++) { const l = foundLanguage(world, { seed: 960000 + i * 53 }); for (let d = 0; d < 9; d++) driftLanguage(world, l); pop.push(l); }
+  const literate = pop.filter(l => scriptOf(l));
+  const digl = pop.filter(l => registerOf(l));
+  const pct = (x) => Math.round(x * 100) + "%";
+
+  // ── diglossia ──
+  check(`diglossia is a real minority of literate tongues (${digl.length}/${literate.length} = ${pct(digl.length / literate.length)})`,
+    digl.length / literate.length > 0.12 && digl.length / literate.length < 0.42);
+  check("diglossia is STATE-gated: every diglossic tongue has deep lag (≥4 changes since freeze), and deep lag is a precondition",
+    digl.every(l => scriptOf(l).lag >= 4) && pop.filter(l => scriptOf(l) && scriptOf(l).lag >= 4).length > digl.length);
+  const dg = digl[0];
+  // the HIGH register: conservative pronunciation (the frozen reading) — H and L differ, and H is never SHORTER (drift erodes; the classical form is fuller)
+  const SAMPLE = [KING, RIVER, STONE, HOUSE, WATER, TREE, HAND, MOTHER, WOLF, HORSE, GOD, LAW, WINE];
+  let differ = 0, hLen = 0, lLen = 0;
+  for (const cid of SAMPLE) { const rw = registerWords(dg, cid); if (rw.differ) differ++; hLen += rw.high.length; lLen += rw.low.length; }
+  check(`the H (chronicle) register is the conservative reading — it differs from the L (street) form and is never eroded shorter (${differ}/${SAMPLE.length} differ)`,
+    differ >= 3 && hLen >= lLen);
+  // the chronicle CLAUSE renders through the ordinary grammar API, differing from the street clause (fuller, un-eroded endings)
+  const F = { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } };
+  const hi = highRegister(dg);
+  const streetC = renderClause(dg, F), chronC = renderClause(hi, F);
+  check(`the chronicle voice renders through renderClause(highRegister(l)) — a fuller, distinct sentence (${chronC.text} vs ${streetC.text})`,
+    chronC.text !== streetC.text && chronC.tokens.length === chronC.gloss.split(" ").length && chronC.text.length >= streetC.text.length - 1);
+  // the classical-purism LOAN INVERSION: after contact, the street register takes the loan, the chronicle keeps the native word (the ghost drops loans)
+  let inv = null;
+  for (let i = 0; i < 300 && !inv; i++) {
+    const l = foundLanguage(world, { seed: 971000 + i * 41 });
+    for (let d = 0; d < 9; d++) driftLanguage(world, l);
+    if (!registerOf(l)) continue;
+    const donor = foundLanguage(world, { seed: 989000 + i });
+    for (let k = 0; k < 24; k++) borrowFrom(world, l, donor);
+    for (const cid of [KING, LAW, WINE, GOD]) { const rw = registerWords(l, cid); if (rw.loanInLow && rw.differ) { inv = { rw, cid }; break; } }
+  }
+  check(`the loan inversion: street register borrows, chronicle keeps the native word${inv ? ` (${glossOf(inv.cid)}: ${inv.rw.low} vs ${inv.rw.high})` : ""}`,
+    !!inv && inv.rw.low !== inv.rw.high);
+  // non-diglossic languages: ONE register (a shallow-lag or reference tongue) — highRegister null, registerWords equal
+  const pristineRef = (k) => { const l = foundLanguage(mkWorld(), { seed: 445 }); l.prof = refProfile(k, 445); l.rules = []; return l; };
+  const nonDig = pop.find(l => !registerOf(l));
+  check("a non-diglossic tongue has ONE register (highRegister null, L===H) — and the pristine references never diglossic",
+    highRegister(nonDig) === null && registerWords(nonDig, KING).low === registerWords(nonDig, KING).high &&
+    ["mandarin", "russian", "english"].every(k => registerOf(pristineRef(k)) === null));
+  // determinism
+  const wA = mkWorld(), wB = mkWorld();
+  const dgA = foundLanguage(wA, { seed: dg.seed }), dgB = foundLanguage(wB, { seed: dg.seed });
+  for (let d = 0; d < 9; d++) { driftLanguage(wA, dgA); driftLanguage(wB, dgB); }
+  const rsig = (l) => { const g = highRegister(l); return SAMPLE.map(c => registerWords(l, c).high).join() + (g ? renderClause(g, F).text : ""); };
+  check("diglossia deterministic + JSON-roundtrip-stable", rsig(dgA) === rsig(dgB) && rsig(dgA) === rsig(JSON.parse(JSON.stringify(dgA))));
+
+  // ── dialects ──
+  const sim = (a, b) => { const m = a.length, n = b.length; if (!m && !n) return 1; const d = Array.from({ length: m + 1 }, (_, ii) => [ii, ...Array(n).fill(0)]); for (let j = 0; j <= n; j++) d[0][j] = j; for (let ii = 1; ii <= m; ii++) for (let j = 1; j <= n; j++) d[ii][j] = Math.min(d[ii - 1][j] + 1, d[ii][j - 1] + 1, d[ii - 1][j - 1] + (a[ii - 1] === b[j - 1] ? 0 : 1)); return 1 - d[m][n] / Math.max(m, n); };
+  const wD = mkWorld();
+  let chainOK = true, famOK = true, woOK = true, adjSum = 0, adjN = 0, endSum = 0, endN = 0, gradientOK = true;
+  const CN = 100;
+  for (let i = 0; i < 60; i++) {
+    const base = foundLanguage(wD, { seed: 40000 + i * 97 });
+    for (let d = 0; d < 6; d++) driftLanguage(wD, base);
+    const dls = dialectsOf(base, 5);
+    for (let k = 1; k < dls.length; k++) {
+      if (dls[k].rules.length !== dls[k - 1].rules.length + 1) chainOK = false;         // each lect = previous + ONE isogloss
+      if (dls[k].rules.slice(0, dls[k - 1].rules.length).join() !== dls[k - 1].rules.join()) chainOK = false;
+    }
+    if (!dls.every(x => x.famSeed === base.famSeed)) famOK = false;                       // shared ancestor
+    if (!dls.every(x => gramOf(x).wo === gramOf(base).wo)) woOK = false;                  // grammar preserved (no fresh word-order flip)
+    const W = dls.map(l => Array.from({ length: CN }, (_, c) => wordOf(l, c)));
+    let adj = 0, cnt = 0; for (let k = 1; k < W.length; k++) for (let c = 0; c < CN; c++) { adj += sim(W[k][c], W[k - 1][c]); cnt++; }
+    const aAvg = adj / cnt; adjSum += aAvg; adjN++;
+    let end = 0; for (let c = 0; c < CN; c++) end += sim(W[0][c], W[W.length - 1][c]); const eAvg = end / CN; endSum += eAvg; endN++;
+    if (eAvg > aAvg + 1e-9) gradientOK = false;                                           // the continuum: ends no more intelligible than neighbours
+  }
+  check("a dialect continuum is a CHAIN — each lect adds exactly one isogloss to the last (nested rule logs)", chainOK);
+  check("every lect shares the ancestor (same famSeed → regular correspondences) and keeps the parent's word order", famOK && woOK);
+  check(`adjacent lects are mutually intelligible (avg edit-similarity ${(adjSum / adjN).toFixed(2)}), endpoints LESS so — the gradient`,
+    adjSum / adjN >= 0.85 && endSum / endN < adjSum / adjN && gradientOK);
+  // a concrete continuum shows an isogloss bundle (a shared word varying across the chain)
+  const wE = mkWorld();
+  const demo = foundLanguage(wE, { seed: 42424 });
+  for (let d = 0; d < 6; d++) driftLanguage(wE, demo);
+  const demoD = dialectsOf(demo, 5);
+  const isoWords = [WATER, RIVER, STONE, KING, WOLF, HOUSE, TREE, MOTHER, HAND, NIGHT].filter(cid => new Set(demoD.map(l => wordOf(l, cid))).size > 1);
+  check(`a concrete continuum draws its isoglosses — a shared word surfaces as a bundle of related forms (${isoWords.length} vary; e.g. king ${demoD.map(l => wordOf(l, KING)).join("/")})`,
+    isoWords.length >= 1 && demoD[0].id !== demo.id);
+  // every lect is a full language — translates, speaks, writes
+  const lect = demoD[demoD.length - 1];
+  check("a dialect is a full language: it translates, speaks (a plan), and writes",
+    !!wordOf(lect, KING) && phoneticPlan(lect, nativeStemOf(lect, KING)).syls.length > 0 && (() => { const sc = scriptOf(lect); return !sc || (writeWord(lect, KING) || {}).glyphs; })());
+  // determinism + roundtrip
+  const dA = dialectsOf(foundLanguage(mkWorld(), { seed: 42424 }), 5);   // note: fresh base, drifted 0 → still deterministic per seed
+  const wF = mkWorld(); const demo2 = foundLanguage(wF, { seed: 42424 }); for (let d = 0; d < 6; d++) driftLanguage(wF, demo2);
+  const dsig = (l) => dialectsOf(l, 5).map(x => Array.from({ length: 20 }, (_, c) => wordOf(x, c)).join()).join("‖");
+  check("dialects deterministic + JSON-roundtrip-stable", dsig(demo) === dsig(demo2) && dsig(demo) === dsig(JSON.parse(JSON.stringify(demo))));
+
+  if (!quiet) {
+    say("\n   diglossia — 'the king saw the river':");
+    say("     street:    " + streetC.text);
+    say("     chronicle: " + chronC.text);
+    say("   a dialect continuum (king across 5 lects): " + demoD.map(l => wordOf(l, KING)).join(" · "));
   }
 }
 

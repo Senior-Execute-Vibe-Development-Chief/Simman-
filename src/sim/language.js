@@ -24,7 +24,7 @@
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { rollProfile, applySignature, buildInventory, buildSyllabary, synthWord, renderWord, copyWord } from "./languagePhonology.js";
 import { applicableRules, applyRules, legalizeWord } from "./languageChange.js";
-import { bequeathGrammar, adpSourceOf } from "./languageGrammar.js";
+import { bequeathGrammar, adpSourceOf, gramOf } from "./languageGrammar.js";
 import { CONCEPTS, COLEX, DERIV, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE,
   BK_TERMS, BK_PARENT, KIN_MERGES, KIN_SLOTS, MOTION_DV, MOTION_PATH_ADP, MOTION_SAT_RATE,
   GREEN, BLUE, YELLOW, BROWN, PURPLE, PINK, ORANGE } from "./languageLexicon.js";
@@ -850,4 +850,46 @@ export function kinshipOf(lang) {
     return { cid, g: glossOf(cid), w: wordOf(lang, cid), sameAs: m !== cid ? m : -1 };
   });
   return { type: c.kinType, terms };
+}
+
+// ── DIALECTS (phase 5): sub-branch variation, a continuum from one tongue ──
+// A dialect continuum is a CHAIN of low-divergence lects: each adds ONE more
+// sound change to the one before it, so adjacent dialects differ by a single
+// isogloss and the endpoints differ by the whole bundle — the defining
+// property of a real continuum (adjacent lects mutually intelligible, the
+// ends less so; the Dutch–German or Romance chain). They all descend from the
+// SAME ancestor (shared famSeed → shared root stock and grammar), so a given
+// ancestral word surfaces as a bundle of REGULAR correspondences across the
+// chain (ik/ich, [baθ]/[bɑːθ]) — the map a dialect atlas draws. Pure and
+// deterministic: no world, no mutation of the parent; each lect is a fresh
+// record the ordinary API (wordOf, renderClause, scriptOf…) renders like any
+// language. Dialect 0 is the standard itself (zero extra change).
+export function dialectsOf(lang, n = 5) {
+  ensureV2(lang);
+  gramOf(lang);                                   // materialize the parent's grammar dials before cloning
+  const out = [];
+  let prevRules = lang.rules.slice(), prevProf = lang.prof;
+  for (let d = 0; d < n; d++) {
+    const seed = hash32(lang.seed, "dialect", d) >>> 0;
+    const prof = JSON.parse(JSON.stringify(prevProf));   // isolate each step: a lect's own drift (tonogenesis) must not leak up-chain
+    const rules = prevRules.slice();
+    if (d > 0) {                                   // each lect adds exactly ONE isogloss to the previous
+      const ap = applicableRules(prof);
+      // prefer a NOVEL change: a rule already in the log has spent its input
+      // (re-palatalizing an already-palatalized tongue is a no-op — the very
+      // reason a naive pick produced identical "dialects"), so a real isogloss
+      // needs a change this lect has not yet undergone; fall back to any
+      // applicable rule only when the phonology is fully saturated.
+      const unused = ap.filter(r => !rules.includes(r));
+      const pool = unused.length ? unused : ap;
+      const rule = pool[hash32(seed, "drule") % pool.length];
+      rules.push(rule);
+      if (rule === 12 && !prof.tone) { prof.tone = 1; prof.toneMarks = true; }   // a lect may tonogenize partway down the chain
+    }
+    const dl = { ...lang, id: lang.id * 101 + d + 1, seed, prof, rules, loans: lang.loans.slice(), gen: lang.gen + d, parentId: lang.id, rootId: lang.rootId ?? lang.id };
+    if (prof.gram) prof.gram._fxid = dl.id;        // a dialect keeps the parent's word order — never a fresh flip
+    out.push(dl);
+    prevRules = rules; prevProf = prof;
+  }
+  return out;
 }
