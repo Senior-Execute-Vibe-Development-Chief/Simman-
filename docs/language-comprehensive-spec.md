@@ -683,3 +683,67 @@ mechanism fix + gate (not a symptom patch). 106 probe checks green.
 
 Parked unchanged: passive/causative, evidentiality, numeral classifiers,
 noun-class concord, rarer alignments; L5 writing systems; orthographic lag.
+
+## Build status (session 15) — the synchronization review round
+
+(The 9-phase typological completion — voice, evidentiality, classifiers,
+concord, alignments, multi-clause — landed between sessions 13 and 15 and is
+logged in `docs/language-typology-completion-spec.md`.) Two fresh adversarial
+Lab reviews (the three pinned shapes + six random seeds) came back with the
+verdict "the roll layer is healthy; the remaining work is all synchronization
+— notes, labels, and inventories describing the language as ROLLED rather
+than as it stands after history has happened to it." Every complaint became a
+mechanism + a §23 probe gate (106 → **315** checks). Fittingly for a
+diachronics engine: the documentation was more conservative than the speech.
+
+- **Functional load in the closed classes.** 'what'=='why' where the dedupe
+  walk's vowel dimension exhausted (three-vowel tongues with collapsing
+  romanization) — the walk now grows a coda dimension past the vowels, first
+  N steps byte-identical. Q-words were homophonous with core nouns in 40% of
+  languages ('what'='man' garden-paths every relative, REL ‹ 'what') — the
+  q-series re-dedupes against b≥0.8 content surfaces, collision-triggered
+  only; I/eye-style pronoun homophones deliberately stay. Adpositions
+  identical to their full polysyllabic source in 37% ('and'='with'='hand') —
+  the grammaticalization tax: an identity-with-living-word form ≥2 syllables
+  wears to its salient syllable (cognate, never homophone; the monosyllabic
+  Mandarin-跟 identity stays).
+- **A real object-agreement series.** agree='both' reused the SUBJECT affix
+  for the object index; 3SG+3SG.O stacked one syllable twice, renderWord's
+  haplology ate it, and the gloss claimed an exponent that never surfaced
+  (79% of polypersonal languages). Now: own series ‹ independent object-
+  pronoun roots (opron streams), OUTER like Semitic object clitics (outside
+  the fusional crush), audibility-guarded, own dedupe pass against the
+  subject set; zero 3sg.O is common and never glossed; a per-cell
+  counterfactual keeps the gloss honest against surface haplology; pronoun
+  objects index by THEIR person.
+- **Fossil notes describe the surviving paradigm.** `affixEtymologies` now
+  generates every note FROM diagnostic cells on regular stems (mode `affix`
+  with the exact surface string, `fused` with a real alternation, `redup`,
+  `pattern` for templatic primary TAM) — never the birth-time shape whose
+  tone matched no living cell.
+- **Synchronic phonology.** New export `synchronicPhonology(lang)` scans the
+  evolved dictionary + closed classes; the Lab charts the union of the
+  roll and what sound change minted (the q-less-chart-with-q-words bug), and
+  the syllable-structure chip derives from OBSERVED onset/coda maxima (a
+  drifted 'strict CV' roll now honestly reads CV(C)).
+- **The minimal-name floor** (McCarthy & Prince): proper names that erode
+  below two rendered letters augment a syllable (a language named 'Ā', a
+  woman named 'Ǐ'); single-vowel dictionary WORDS stay.
+- **Shapes are families, not costumes.** `applyReference` folds the shape
+  into famSeed, so the same seed in four shapes no longer shares every
+  derivation pathway/colexification/adposition etymology; pinned phonology
+  rides `lang.pin` and holds (gated legal pinyin).
+- **Lab truth pass.** Frontier example frames carry the articles their
+  labels claim; a split-ergativity header is demonstrated on BOTH sides of
+  its split; the case chip derives from the declension table ("genitive only
+  — no core case" for the English shape); cell-identical paradigm rows are
+  annotated as syncretism; the ten-place sample skips exact duplicates.
+- **Verified, no change needed:** the ergativity roll is live (24% erg, 3%
+  active, 2.5% tripartite over 400 seeds — the review's 0/5 was luck);
+  'God' as a man's name and compound tone sandhi are kept as features.
+
+Parked from these reviews: a real-English-lexeme filter for the English-
+orthography romanizer (the "cursed English" king='sleep' finding — a display
+politeness that would re-baseline every pinned-English surface; revisit
+beside orthographic lag); grammar-word/content homophony beyond the
+interrogative series; L5 writing systems + orthographic lag, unchanged.
