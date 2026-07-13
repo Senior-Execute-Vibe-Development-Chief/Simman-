@@ -11,10 +11,11 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv } from "../src/sim/language.js";
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
+import { scriptOf, writeWord, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample } from "../src/sim/languageScript.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
@@ -2080,6 +2081,114 @@ console.log("\n── §24 vocalizer (IPA + phonetic plans) ──");
   const d1 = foundLanguage(mkWorld(), { seed: 795001 });
   const dsig = (l) => [STONE, KING].map(cid => ipaOf(l, nativeStemOf(l, cid))).join("|") + JSON.stringify(phoneticPlan(l, nativeStemOf(l, STONE)));
   check("IPA + phonetic plans deterministic + JSON-roundtrip-stable", dsig(d1) === dsig(JSON.parse(JSON.stringify(d1))));
+}
+
+// ── §25 writing systems: emergent script type, orthographic lag, glyphs ───
+// The L5 thread, Lab-side. Type walks the transmission ladder (primary =
+// logographic, simplification only where a simpler type FITS the language);
+// spelling freezes at adoption and lags while speech drifts; glyphs come
+// from a per-script stroke grammar. All derived, all famSeed streams.
+console.log("\n── §25 writing systems ──");
+{
+  const world = mkWorld();
+  // (a) type follows structure, never fiat
+  const byMorph = {};
+  let prelitFresh = 0, syllBad = 0, syllN = 0;
+  for (let i = 0; i < 300; i++) {
+    const l = foundLanguage(world, { seed: 820000 + i * 331 });
+    if (!scriptOf(l) && l.rules.length <= 2) prelitFresh++;
+    for (let d = 0; d < 8; d++) driftLanguage(world, l);
+    const s = scriptOf(l);
+    if (!s) continue;
+    const k = l.prof.morph + (l.prof.tone ? "+tone" : "");
+    (byMorph[k] = byMorph[k] || {})[s.type] = (byMorph[k][s.type] || 0) + 1;
+    if (s.type === "syll") {
+      syllN++;
+      const inv = compiledInv(l);
+      const sp = (inv.syllab.onsets.length + 1) * (inv.vows.length + (inv.syllab.diphs ? inv.syllab.diphs.length : 0)) * (inv.syllab.codas.length + 1);
+      if (sp > 220) syllBad++;
+    }
+  }
+  const share = (k, t) => { const m = byMorph[k] || {}; const tot = Object.values(m).reduce((a, b) => a + b, 0); return tot ? (m[t] || 0) / tot : 0; };
+  check(`templatic languages write abjads (${Math.round(share("tmpl", "abjad") * 100)}%)`, share("tmpl", "abjad") >= 0.9);
+  check(`isolating tonal languages keep logography (${Math.round(share("iso+tone", "logo") * 100)}%)`, share("iso+tone", "logo") >= 0.9);
+  check(`atonal agglutinative/fusional lands segmental (alphabet+abugida ${Math.round((share("agg", "alphabet") + share("agg", "abugida")) * 100)}% / ${Math.round((share("fus", "alphabet") + share("fus", "abugida")) * 100)}%)`,
+    share("agg", "alphabet") + share("agg", "abugida") >= 0.6 && share("fus", "alphabet") + share("fus", "abugida") >= 0.6);
+  check(`syllabaries occur and only where the licensed syllable space allows (${syllN} rolled, ${syllBad} oversize)`, syllN >= 1 && syllBad === 0);
+  check(`fresh roots can be preliterate (${prelitFresh}/300 before drift)`, prelitFresh >= 10);
+  // (b) refs pinned
+  const refT = ["mandarin", "russian", "english"].map(k => scriptOf(refLang(mkWorld(), k, 445)).type);
+  check(`references pinned (mandarin logographic; russian/english alphabetic)`, refT[0] === "logo" && refT[1] === "alphabet" && refT[2] === "alphabet");
+  // (c) orthographic lag: drift a pinned shape → spelling fossilizes
+  const wE = mkWorld();
+  const e = foundLanguage(wE, { seed: 31337 });
+  applyReference(e, "english");
+  for (let d = 0; d < 3; d++) driftLanguage(wE, e);
+  const sE = scriptOf(e);
+  const sil = silentLetterSample(e, 3);
+  check(`orthographic lag grows under drift on a pinned shape (lag ${sE.lag}, ${sil.length} fossil spellings: ${sil[0] ? "⟨" + sil[0].written + "⟩ /" + sil[0].said + "/" : "-"})`, sE.lag === 3 && sil.length >= 1);
+  let lagBad = 0, silentSomewhere = 0;
+  for (let i = 0; i < 60; i++) {
+    const l = foundLanguage(wE, { seed: 840000 + i * 149 });
+    for (let d = 0; d < 9; d++) driftLanguage(wE, l);
+    const s = scriptOf(l);
+    if (!s) continue;
+    if (s.lag !== l.rules.length - s.frozenAt || s.lag < 0) lagBad++;
+    if (s.lag && silentLetterSample(l, 1).length) silentSomewhere++;
+  }
+  check(`lag is exactly the unreplayed tail of the rule log (${lagBad} bad)`, lagBad === 0);
+  check(`fossil spellings emerge across the sweep (${silentSomewhere} langs)`, silentSomewhere >= 5);
+  // (d) glyphs: distinct within a script, sane strokes
+  let dup = 0, badG = 0, nG = 0;
+  for (let i = 0; i < 60; i++) {
+    const l = foundLanguage(wE, { seed: 830000 + i * 173 });
+    for (let d = 0; d < 6; d++) driftLanguage(wE, l);
+    const inv = glyphInventory(l, 40);
+    if (!inv) continue;
+    const seen = new Set();
+    for (const g of inv) {
+      nG++;
+      const sig = JSON.stringify(g.strokes.map(st => st.pts.map(pp => [Math.round(pp.x * 20), Math.round(pp.y * 20)])));
+      if (seen.has(sig)) dup++;
+      seen.add(sig);
+      if (!g.strokes.length || g.strokes.length > 12) badG++;
+      for (const st of g.strokes) for (const pp of st.pts) if (!Number.isFinite(pp.x) || !Number.isFinite(pp.y) || pp.x < 0 || pp.x > 1 || pp.y < 0 || pp.y > 1) badG++;
+    }
+  }
+  check(`glyphs pairwise distinct within each script + sane strokes (${nG} signs, ${dup} dups, ${badG} bad)`, nG >= 500 && dup === 0 && badG === 0);
+  // (e) writeWord counts match the type's own logic
+  let cntBad = 0, cntN = 0, logoCompound = false;
+  for (let i = 0; i < 80; i++) {
+    const l = foundLanguage(wE, { seed: 850000 + i * 211 });
+    for (let d = 0; d < 8; d++) driftLanguage(wE, l);
+    const s = scriptOf(l);
+    if (!s) continue;
+    const w = writeWord(l, STONE);
+    if (!w) continue;
+    cntN++;
+    const f = writtenFormOf(l, STONE);
+    const segs = f.syls.reduce((a, sy) => a + sy.on.length + sy.nu.length + sy.co.length, 0);
+    const cons = f.syls.reduce((a, sy) => a + sy.on.length + sy.co.length, 0);
+    if (s.type === "alphabet" && w.glyphs.length !== segs) cntBad++;
+    if (s.type === "abjad" && w.glyphs.length !== cons) cntBad++;
+    if (s.type === "syll" && w.glyphs.length !== f.syls.length) cntBad++;
+    if (s.type === "logo") {
+      if (w.glyphs.length !== 1) cntBad++;
+      for (let cid = 0; cid < CONCEPTS.length && !logoCompound; cid++) {
+        if (!etymologyOf(l, cid)) continue;
+        const wd = writeWord(l, cid);
+        if (wd && wd.glyphs[0].strokes.length >= 6) logoCompound = true;
+      }
+    }
+  }
+  check(`written glyph counts follow the type's own logic (${cntBad}/${cntN} bad)`, cntN >= 30 && cntBad === 0);
+  check(`a logography compounds a derived word's radicals`, logoCompound);
+  // (f) determinism + JSON roundtrip
+  const wD = mkWorld();
+  const d1 = foundLanguage(wD, { seed: 860001 });
+  for (let d = 0; d < 6; d++) driftLanguage(wD, d1);
+  const ssig = (l) => JSON.stringify([scriptOf(l), writeWord(l, STONE), writtenWordOf(l, RIVER)]);
+  check("scripts deterministic + JSON-roundtrip-stable", ssig(d1) === ssig(JSON.parse(JSON.stringify(d1))));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

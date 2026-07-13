@@ -783,3 +783,56 @@ stays silent; probe 284 → **292** checks (§24).
 - **Parked:** sentence audio (renderClause hands back strings, not forms —
   the vocalizer refuses to guess; a future additive `forms` field on
   clause tokens would unlock it), and any use of audio by the sim.
+
+## Build status (session 15, third phase) — the script generator (L5, Lab-side)
+
+The user opted into the writing-system thread next. §E/§F's design ships
+Lab-side in `src/sim/languageScript.js` (pure, derived, cached; the sim
+stays unwired — script birth from literacy tech and spread along faith/
+trade channels remain the sim-side plan). Probe 292 → **305** checks (§25).
+
+- **Type walks the real transmission ladder.** A tradition consolidates
+  after a little accumulated history (rule-log index, famSeed streams
+  `scr:*`) and is born LOGOGRAPHIC, like every attested primary invention.
+  At re-learning junctures it may simplify one attested step (logo →
+  syllabary/abjad → alphabet/abugida) — and only when the simpler type
+  FITS this language's own structure better: fit constants are
+  learnability/typology priors (a comfortable syllabary is ~60 signs,
+  ~220 the practical ceiling; logography's base is low and earns its keep
+  only on isolable, short, homophone-heavy-under-tone morphemes; a
+  templatic morphology writes consonant skeletons; clusters force
+  segments). Measured over 300 drifted languages: templatic → abjad 100%,
+  isolating+tonal → logography 100% (the Chinese corner, never named in
+  code), atonal agg/fus → segmental 87/79%, syllabaries rare and only
+  where the licensed syllable space allows. Fresh roots are preliterate
+  until history accumulates — drift a Lab language and watch its script
+  be born.
+- **Orthographic lag.** Spelling freezes where the tradition consolidated
+  (`frozenAt`); the written form is the dictionary machinery replayed
+  over `rules[0..frozenAt)` via a memoized ghost record. Old stable
+  traditions accumulate deep lag; a re-learning IS the spelling reform
+  that resets it. Fossil spellings are emergent: drift the pinned English
+  shape and ⟨nithelrule⟩ is now said `niilrule` — a silent th nobody
+  authored. Exports: `writtenFormOf`, `writtenWordOf`,
+  `silentLetterSample`.
+- **Glyphs from a seeded stroke grammar.** Per-script style (curviness,
+  slant, chaining, aspect, stroke budget — logographs dense, letters
+  light), deterministic per (styleSeed, key), pairwise-distinct by a
+  points-signature walk (bow amount alone never carries distinctness).
+  A derived word's logograph COMPOUNDS its parts' glyphs — the engine's
+  own etymologies surface as semantic radicals. Abugidas mark non-inherent
+  vowels with one-stroke diacritics (inherent = the frequency-ordered
+  first vowel); direction (ltr/rtl/ttb) is a family roll. Engine emits
+  stroke DATA; the Lab draws SVG.
+- **References pinned** as scenario data (`prof.script`): Mandarin-shape
+  logographic, Russian/English-shape alphabetic — and because a pinned
+  tradition is as old as the record, drifting a pinned shape grows real
+  lag.
+- **The Lab's "Writing" card**: type/direction/lag chips with the
+  mechanism story, the sign table, six words written in-script beside
+  their frozen spelling ⟨…⟩, today's pronunciation, and IPA, plus the
+  fossil-spelling line. Preliterate languages say so and invite a drift.
+- **Parked:** sim coupling (scripts as cultural artifacts that spread and
+  gate knowledge diffusion — the §F plan); glyph aesthetics beyond v1
+  (visual look-alike avoidance is signature-level only); writing
+  loanwords (a loan has no native tradition and stays unwritten in v1).
