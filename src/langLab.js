@@ -53,8 +53,8 @@ function displayInv(l) {
   const sp = synchronicPhonology(l);
   const ck = new Set(cons.map(b => `${b.p},${b.m},${b.l},${b.s}`));
   for (const b of sp.cons) if (!ck.has(`${b.p},${b.m},${b.l},${b.s}`)) cons.push(b);
-  const vk = new Set(vows.map(b => `${b.h},${b.b},${b.r}`));
-  for (const b of sp.vows) if (!vk.has(`${b.h},${b.b},${b.r}`)) vows.push(b);
+  const vk = new Set(vows.map(b => `${b.h},${b.b},${b.r},${b.atr || 0}`));
+  for (const b of sp.vows) if (!vk.has(`${b.h},${b.b},${b.r},${b.atr || 0}`)) vows.push(b);
   return { cons, vows };
 }
 
@@ -151,6 +151,22 @@ function vVoiced(ctx, out, t, dur, frs, gains, f0pts, opts = {}) {
 // one consonant segment; returns its duration. `final` softens codas.
 function consSeg(ctx, out, t, c, f0pts, final) {
   const p = Math.min(c.p, 8);
+  if (c.m === 7) {                                   // CLICK (phase 4): its own burst model —
+    // a nasal/voice lead where the accompaniment says so, then a sharp
+    // double transient (release + rarefaction snap), centre keyed to the
+    // click type: dental high hiss, alveolar sharp pop, lateral broad slush
+    let dt = 0;
+    const CK_F = { 8: 4200, 1: 2600, 4: 2000, 3: 3400, 0: 900 };
+    const fq = CK_F[c.p] || 2600;
+    if (c.l === 4) { vVoiced(ctx, out, t, 0.05, [250, NASAL_F2[Math.min(c.p, 8)], 2500], [0.9, 0.14, 0.04], f0pts, { nasal: true, peak: 0.6 }); dt += 0.05; }
+    if (c.l === 1) vVoiced(ctx, out, t + dt, 0.03, [130, 300, 2500], [0.5, 0.08, 0], [1, 0.95], { peak: 0.3 });
+    dt += 0.012;
+    vNoise(ctx, out, t + dt, 0.012, fq, c.p === 4 ? 0.8 : 2.5, 0.85);            // the click snap
+    vNoise(ctx, out, t + dt + 0.014, 0.01, fq * 0.72, 1.5, 0.35);                // rarefaction echo
+    dt += 0.035;
+    if (c.l === 2) { vNoise(ctx, out, t + dt, 0.05, 1600, 0.4, 0.14); dt += 0.05; }
+    return dt;
+  }
   if (c.m === 1) {                                   // nasal murmur
     vVoiced(ctx, out, t, 0.085, [250, NASAL_F2[p], 2500], [0.9, 0.16, 0.05], f0pts, { nasal: true, peak: 0.8 });
     return 0.085;
@@ -208,15 +224,29 @@ function scheduleWord(ctx, master, plan, t, mod = {}) {
       vVoiced(ctx, master, after, 0.035, VOWEL_F(gv), [0.7, 0.4, 0.12], f0pts, { peak: 0.6 });
       return 0.035;
     };
+    // PITCH ACCENT (phase 4): the accent is pitch, not loudness — a high
+    // target on the accented syllable and a fall off it (the Japanese shape)
+    if (plan.pitchAccent && i === plan.stress) f0pts = f0pts.map(k => k * 1.22);
     for (const c of syl.on) { const d = consSeg(ctx, master, t, c, f0pts, false); t += d + secondary(c, t + d) + 0.004; }
     if (syl.nu.length) {                              // nucleus (diphthongs glide)
-      let dur = (i === plan.stress ? 0.19 : 0.15) * (syl.nu[0].lg ? 1.5 : 1) * (i === nSyl - 1 ? 1.12 : 1);
-      const A = VOWEL_F(syl.nu[0]), B = syl.nu.length > 1 ? VOWEL_F(syl.nu[1]) : null;
+      const v0 = syl.nu[0];
+      let dur = (i === plan.stress ? 0.19 : 0.15) * (v0.lg ? 1.5 : 1) * (i === nSyl - 1 ? 1.12 : 1);
+      const A = VOWEL_F(v0), B = syl.nu.length > 1 ? VOWEL_F(syl.nu[1]) : null;
       const frs = B ? A.map((f, k) => [f, B[k]]) : A;
-      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], f0pts, { nasal: !!syl.nu[0].n });
+      // PHONATION (phase 4): creaky voice drops the pitch and pulses it;
+      // breathy voice mixes an aspiration wash over the vowel
+      const vf0 = v0.ph === 2 ? f0pts.map(k => k * 0.72) : f0pts;
+      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], vf0, { nasal: !!v0.n, trill: v0.ph === 2 ? 42 : 0 });
+      if (v0.ph === 1) vNoise(ctx, master, t, dur, 1500, 0.35, 0.12);
       t += dur + 0.004;
     }
-    for (const c of syl.co) { const d = consSeg(ctx, master, t, c, f0pts, true); t += d + 0.004; }
+    for (const c of syl.co) {
+      // GEMINATE hold (phase 4): an identical coda+onset pair across the seam
+      // is one long consonant — hold the closure instead of re-articulating
+      const nx = plan.syls[i + 1];
+      const gem = nx && nx.on.length && ["p", "m", "l", "s"].every(k => nx.on[0][k] === c[k]);
+      const d = consSeg(ctx, master, t, c, f0pts, true); t += d + (gem ? 0.055 : 0) + 0.004;
+    }
     t += 0.015;                                       // syllable seam
   });
   return t;
@@ -269,7 +299,7 @@ function planGroups(l, tokens) {
 
 const MORPH = { iso: "isolating", agg: "agglutinative", fus: "fusional", tmpl: "templatic (root-and-pattern)" };
 const TONE = ["no tone", "register tone", "contour tone"];
-const HARM = { none: null, fb: "front–back harmony", round: "rounding harmony" };
+const HARM = { none: null, fb: "front–back harmony", round: "rounding harmony", atr: "ATR harmony (±tongue root)" };
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
 // ── rendering ────────────────────────────────────────────────────────────
@@ -279,7 +309,13 @@ function chips(l) {
   // bundles (ð and þ both write "th", so 23 bundles can be 21 letters)
   const nC = new Set(inv.cons.map(b => romanizeC(b, p.romTaste, p.rom))).size;
   const nV = new Set(inv.vows.map(b => romanizeV(b, p.rom))).size;
-  const out = [MORPH[p.morph], sylLabel(l), TONE[p.tone], HARM[p.harmony],
+  const tonogenized = p.phonation && p.tone > 0;
+  const out = [MORPH[p.morph] + (gramOf(l).poly ? " (polysynthetic)" : ""), sylLabel(l),
+    tonogenized ? "tone ‹ born of registers (tonogenesis)" : TONE[p.tone], HARM[p.harmony],
+    inv.cons.some(b => b.m === 7) ? "CLICKS" : null,
+    p.phonation && !p.tone ? "phonation registers (breathy/creaky)" : null,
+    p.pitchAccent && !p.tone ? "pitch accent" : null,
+    p.sig === "gem" ? "geminates" : null,
     `${nC} consonants`, `${nV} vowels`,
     p.gendered ? "gendered names" : null,
     p.patro !== "none" ? `patronymic (${p.patro === "suf" ? "suffix" : "prefix"})` : null,

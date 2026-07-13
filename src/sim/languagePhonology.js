@@ -22,7 +22,7 @@ import { mkRng, hash32 } from "./peopleSim/rng.js";
 //          5 rhotic · 6 glide
 // laryngeal: 0 voiceless · 1 voiced · 2 aspirated · 3 ejective · 4 prenasalized
 // secondary: 0 none · 1 palatalized · 2 labialized
-export const SONORITY = { 0: 0, 3: 0.5, 2: 1, 1: 2, 4: 3, 5: 3, 6: 4 };
+export const SONORITY = { 0: 0, 3: 0.5, 2: 1, 1: 2, 4: 3, 5: 3, 6: 4, 7: 0 };   // 7 = click (stop-like; onset-only)
 
 const C = (p, m, l = 0, s = 0) => ({ p, m, l, s });
 const V = (h, b, r, n = 0, lg = 0) => ({ h, b, r, n, lg });
@@ -50,7 +50,7 @@ export function rollProfile(seed) {
   const morph = tone > 0 && sylC === 0 && rng() < 0.6 ? "iso"
     : rng() < 0.15 && sylC >= 1 && tone === 0 ? "tmpl"
     : rng() < 0.5 ? "agg" : "fus";
-  return {
+  const p = {
     sylC, tone, consN, vowelN,
     // CV(N): the Mandarin/Japanese nasal-only coda corner
     nasalCoda: sylC === 0 && rng() < 0.5,
@@ -95,6 +95,27 @@ export function rollProfile(seed) {
     // dithematic personal names (two welded meaning elements)
     nameStyle: rng() < 0.25 ? "di" : "plain",
   };
+  // ── PHONOLOGICAL RARITIES (phase 4) — each on an INDEPENDENT hash stream:
+  // the sequential rng above must never gain a call, or every existing
+  // profile would shift. Only the languages that ROLL a rarity re-baseline
+  // (they become the new corner); everyone else is byte-identical.
+  const rare = (k) => hash32(seed, "rare:" + k) / 4294967296;
+  // CLICKS — the rare airstream series (Khoisan and its Bantu borrowers):
+  // ~2% of roots; family-clustered by inheritance, and it spreads by contact
+  // exactly as the real one did (borrowFrom can carry a click across).
+  p.clicks = rare("clicks") < 0.02;
+  // ATR HARMONY — the third harmony type (cross-height, Niger-Congo):
+  // an agglutinating, atonal, harmonyless profile may instead harmonize by
+  // tongue-root, doubling its non-low vowels into ±ATR pairs.
+  if (p.harmony === "none" && p.morph === "agg" && p.tone === 0 && rare("atr") < 0.18) p.harmony = "atr";
+  // PHONATION REGISTERS — breathy/creaky syllables (the Mon-Khmer/Otomanguean
+  // corner), atonal only: registers are exactly the state TONOGENESIS feeds
+  // on (languageChange rule 12 — drift can turn the contrast into tone).
+  p.phonation = p.tone === 0 && rare("reg") < 0.05 ? 1 : 0;
+  // PITCH ACCENT — the stress/tone middle ground (one marked syllable per
+  // word, realized as pitch, WRITTEN like tone, POSITIONAL like stress).
+  p.pitchAccent = p.tone === 0 && !p.phonation && rare("pacc") < 0.07;
+  return p;
 }
 
 /** Apply the rolled signature's side effects (kept out of the roll so pinned
@@ -210,6 +231,31 @@ export function buildInventory(seed, prof) {
   }
   const rot = rng.int(vows.length);
   vows.push(...vows.splice(0, rot));
+  // ── PHASE-4 RARITIES, appended after every sequential roll so no other
+  // inventory shifts a byte. CLICKS: manner 7, with the p field carrying the
+  // click TYPE (8 dental ǀ · 1 alveolar ǃ · 4 lateral ǁ · 3 palatal ǂ ·
+  // 0 bilabial ʘ); a nasal series (l=4, ŋǃ) rides half the time. Appended
+  // last = frequency-rare, as clicks are. ATR HARMONY: the −ATR (lax)
+  // counterparts of the non-low vowels (i u e o → ɪ ʊ ɛ ɔ); low a stays
+  // neutral, as in the Niger-Congo heartland.
+  if (prof.clicks) {
+    const CLICK_TYPES = [8, 1, 4, 3, 0];
+    const nCk = 2 + hash32(seed, "rare:ckn") % 3;
+    const nasalCk = hash32(seed, "rare:cknas") % 2 === 0;
+    const first = cons.length;
+    for (let i = 0; i < nCk; i++) {
+      push(C(CLICK_TYPES[i], 7, 0));
+      if (nasalCk) push(C(CLICK_TYPES[i], 7, 4));
+    }
+    // a click LANGUAGE uses its clicks constantly (Khoisan words lead with
+    // them; even Zulu's borrowings are everywhere) — promote one click into
+    // the dominant front region, or the frequency-weighted picker would
+    // treat the whole series as exotic seasoning
+    if (cons.length > first) cons.splice(2 + hash32(seed, "rare:ckpos") % 5, 0, cons.splice(first + hash32(seed, "rare:cklead") % (cons.length - first), 1)[0]);
+  }
+  if (prof.harmony === "atr") {
+    for (const v of vows.slice()) if (v.h < 2 && !v.atr) vows.push({ ...v, atr: 1 });
+  }
   return { cons, vows };
 }
 
@@ -224,6 +270,9 @@ const PLAIN = {
   "1,4": "l", "1,5": "r", "2,5": "r",
   "3,6": "y", "0,6": "w",
   "0,3": "pf", "1,3": "ts", "2,3": "ch", "3,3": "ch", "4,3": "kx",
+  // clicks (phase 4): the Khoekhoe letters — ǀ dental, ǃ alveolar, ǁ lateral,
+  // ǂ palatal, ʘ bilabial (m=7; the p field carries the click type)
+  "8,7": "ǀ", "1,7": "ǃ", "4,7": "ǁ", "3,7": "ǂ", "0,7": "ʘ",
 };
 const VOICED = {
   "0,0": "b", "1,0": "d", "2,0": "d", "3,0": "gy", "4,0": "g", "5,0": "gh", "8,0": "d",
@@ -250,6 +299,12 @@ export function romanizeC(b, taste, rom, style) {
   if (b.p === 2 && b.m === 2 && (taste & 1)) s = "sr";           // retroflex taste
   const st = style && ORTHO_STYLE[style];
   if (st && st[s]) s = st[s];
+  if (b.m === 7) {                                               // clicks: g-/n- accompaniment prefixes (gǃ, nǃ)
+    if (b.l === 1) return "g" + s;
+    if (b.l === 4) return (b.p === 0 ? "m" : "n") + s;
+    if (b.l === 2) return s + "h";
+    return s;
+  }
   if (b.l === 2) s = s + "h";                                    // aspiration
   if (b.l === 3) s = s + "'";                                    // ejective
   if (b.l === 4) s = (b.p === 0 ? "m" : "n") + s;                // prenasalized
@@ -263,6 +318,9 @@ const VQ = { "0,0,0": "i", "0,1,0": "i", "0,2,0": "u", "0,0,1": "iu", "0,2,1": "
 export function romanizeV(v, rom) {
   let s = (rom && rom["v:" + v.h + "," + v.b + "," + v.r]) ?? (VQ[v.h + "," + v.b + "," + v.r] || "a");
   if (v.lg) s = s + s[s.length - 1];
+  if (v.atr) s = s + "̣";        // −ATR (lax): dot-below, the Igbo ị ẹ ọ ụ convention
+  if (v.ph === 1) s = s + "̤";   // breathy: diaeresis-below (a̤)
+  else if (v.ph === 2) s = s + "̰";   // creaky: tilde-below (a̰)
   if (v.n) s = s + "n";
   return s;
 }
@@ -332,7 +390,9 @@ export function buildSyllabary(seed, prof, inv, pin) {
   let codas = [];
   if (prof.nasalCoda) codas = cons.filter(c => c.m === 1 && (c.p === 1 || c.p === 4)).map(c => [c]);
   else if (prof.coDepth > 0) {
-    const singles = cons.filter(c => c.m !== 6 && rng() < 0.7).map(c => [c]);
+    // (clicks are onset-only, as in life — excluded BEFORE the rng call so a
+    // click language's coda dice stay in the same order)
+    const singles = cons.filter(c => c.m !== 6 && c.m !== 7 && rng() < 0.7).map(c => [c]);
     codas = singles;
     if (prof.coDepth >= 2) {
       const first = cons.filter(c => SONORITY[c.m] >= 1 && c.p < 6);    // fric/nasal/liquid; no gutturals in clusters
@@ -368,10 +428,12 @@ export function synthWord(rng, prof, inv, nSyl) {
   const onsets = syllab.onsets, codas = syllab.codas;
   const onSingles = onsets.filter(o => o.length === 1);
   const coSingles = codas.filter(o => o.length === 1);
-  // harmony: the whole word draws nuclei from one class
+  // harmony: the whole word draws nuclei from one class. ATR (phase 4) is the
+  // third type: a word is +ATR or −ATR throughout, low a neutral (Akan-style).
   let nucPool = vows;
   if (prof.harmony === "fb") { const front = rng() < 0.5; nucPool = vows.filter(v => (v.b === 0) === front || v.h === 2); }
   else if (prof.harmony === "round") { const rnd = rng() < 0.5; nucPool = vows.filter(v => (v.r === 1) === rnd || v.h === 2); }
+  else if (prof.harmony === "atr") { const lax = rng() < 0.5; nucPool = vows.filter(v => !!v.atr === lax || v.h === 2); }
   if (!nucPool.length) nucPool = vows;
   const syls = [];
   let prevCoda = false;
@@ -392,6 +454,14 @@ export function synthWord(rng, prof, inv, nSyl) {
     } else {
       nu = [{ ...wpick(rng, nucPool) }];
       if (prof.longV && rng() < 0.15) nu[0].lg = 1;
+    }
+    // PHONATION REGISTERS (phase 4): a register language's syllables carry
+    // breathy (ph 1) or creaky (ph 2) voice — the contrast tonogenesis feeds
+    // on. Rolled only for register languages, so no other word shifts a byte.
+    if (prof.phonation) {
+      const rr = rng();
+      if (rr < 0.2) nu[0].ph = 1;
+      else if (rr < 0.38) nu[0].ph = 2;
     }
     // palatal/velar co-occurrence (the pinyin rule): palatals (j/q/x) live
     // only before front vowels; velars (g/k/h) never before i
@@ -446,6 +516,12 @@ export function renderWord(word, prof) {
     if (prof.tone > 0 && prof.toneMarks && syl) {
       const t = TONE_MARKS[hash32(syl, i, word.tseed || 0) % 4];
       syl = syl.replace(/[aeiou]/, (m) => m + t);
+    } else if (prof.pitchAccent && syl && word.syls.length > 1
+      && i === hash32(word.tseed || 0, "pacc") % word.syls.length) {
+      // PITCH ACCENT (phase 4): ONE marked syllable per word, written with the
+      // acute — positional like stress, written like tone. Same tseed recipe
+      // the phonetic plan uses, so mark and melody can never disagree.
+      syl = syl.replace(/[aeiou]/, (m) => m + "́");
     }
     out += syl;
   }

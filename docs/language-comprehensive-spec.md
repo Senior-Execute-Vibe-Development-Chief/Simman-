@@ -1312,3 +1312,59 @@ language lives — ~5% of the population. Probe 440 → **451** checks (§31).
 - Parked: incorporation types II–IV (oblique promotion, discourse
   backgrounding, classificatory NI); noun-incorporation-fed word
   formation (lexicalized incorporations entering the dictionary).
+
+## Build status (session 16, fourth phase) — typology completion IV: phonological rarities
+
+The sound systems reach the rare corners: clicks, ATR harmony, phonation
+registers with EMERGENT TONOGENESIS, pitch accent, geminates. Probe 451
+→ **472** checks (§32). Every new dial rides an INDEPENDENT hash stream
+(`rare:*`) — the sequential profile rng never gained a call, so only the
+languages that roll a rarity re-baseline; the 451 prior checks staying
+green is the regression proof.
+
+- **Clicks** (~2.4% of roots): manner 7, the p field carrying click TYPE
+  (ǀ ǃ ǁ ǂ ʘ — written with the real Khoekhoe letters, IPA injective and
+  disjoint from every non-click bundle, accompaniments as g-/n- prefixes).
+  Appended after every sequential inventory roll; one click PROMOTED into
+  the dominant-frequency region (a click language USES its clicks — ~23%
+  of vocabulary, names included). Onset-only and never clustering, with
+  legalizeWord repairing any coda click that sound-change wreckage mints.
+  Family-clustered by inheritance and SPREADS BY CONTACT — borrowFrom
+  carries a click into a neighbour's inventory, the Khoisan→Bantu story,
+  gated. The vocalizer gives clicks their own burst model (double
+  transient keyed to click type, nasal/voiced leads).
+- **ATR harmony** — the third harmony type (~5%, agglutinative atonal):
+  the non-low vowels double into ±ATR pairs (ɪ ʊ ɛ ɔ, written with the
+  Igbo dot-below), whole words draw one class, low a is NEUTRAL and
+  TRANSPARENT (harmonize() reads back past it — the Akan behaviour), and
+  case affixes take the stem's tongue-root class. The homophony-repair
+  syllable now takes the host word's class in EVERY harmony type — a
+  pre-existing wrinkle (fb/round repairs could be disharmonic) fixed at
+  the mechanism.
+- **Phonation registers** (~3%, atonal): breathy (a̤) and creaky (a̰)
+  syllables, written and transcribed, synthesized (aspiration wash /
+  pitch-dropped pulse). And the payoff —
+- **TONOGENESIS as a sound change** (rule 12, `tonogen`): offered by
+  applicableRules EXACTLY to register languages without tone (state-
+  gated, cardinal rule 1). When drift picks it, registers strip at
+  replay and each word's register pattern folds into its melody seed —
+  ex-breathy and ex-modal words that once contrasted by voice quality
+  KEEP their contrast, now carried by pitch (minimal pairs survive,
+  gated) — and the record BECOMES tonal (prof.tone flips at drift time;
+  prof.phonation stays, describing the proto-language the replayed rule
+  keeps stripping). The rule is spent once tone exists. The Lab chip
+  reads "tone ‹ born of registers".
+- **Pitch accent** (~5%, atonal): ONE marked syllable per word — written
+  with the acute (tone-like), positional (stress-like), realized as pure
+  pitch by the synth. Plan and mark share one tseed recipe (parity by
+  construction, gated).
+- **Geminates**: already shipped as the `gem` signature — now gated
+  (identical coda+onset pairs mint) and HELD by the vocalizer (one long
+  closure across the seam, not a re-articulation).
+- All three references pin every rarity OFF. Lab: chips for each rarity
+  + the tonogenesis lineage chip; displayInv/synchronicPhonology carry
+  ±ATR as distinct qualities.
+- Parked: click accompaniment inventories beyond plain/voiced/nasal/
+  aspirated; register-conditioned SPLIT tonogenesis (two-register →
+  two-tone-class splits of existing tone systems); ATR dominance
+  reversals (dominant-recessive systems).

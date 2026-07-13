@@ -80,7 +80,14 @@ export function foundLanguage(world, { seed, parentId = -1 } = {}) {
 export function driftLanguage(world, lang) {
   ensureV2(lang);
   const ap = applicableRules(lang.prof);
-  lang.rules.push(ap[hash32(lang.seed, "rule", lang.gen) % ap.length]);
+  const rule = ap[hash32(lang.seed, "rule", lang.gen) % ap.length];
+  lang.rules.push(rule);
+  // TONOGENESIS (phase 4): when the register→tone rule fires, the language
+  // BECOMES tonal — a persisted profile change, like the rule that caused it.
+  // prof.phonation stays (it describes the proto-language whose registers the
+  // replayed rule keeps stripping); the tone flag alone stops the rule being
+  // offered again. Daughters branched after this inherit the tonal profile.
+  if (rule === 12 && !lang.prof.tone) { lang.prof.tone = 1; lang.prof.toneMarks = true; }
   lang.gen++;
 }
 
@@ -257,7 +264,22 @@ function growWord(lang, w, cid, attempt, allowLong = false) {
   // disambiguating syllable past the cap — exactly the 狮→狮子 lengthening this
   // machine is modelled on (a homophone is worse than a slightly longer word)
   if (attempt <= 2 && out.syls.length < (allowLong ? 4 : 3)) {
-    out.syls.push(...synthWord(rng, lang.prof, c.inv, 1).syls);   // the -zi/-tou lengthening
+    const grown = synthWord(rng, lang.prof, c.inv, 1).syls;
+    // a HARMONY language's repair syllable takes the host word's class —
+    // speakers don't append a disharmonic tail (the appended syllable rolled
+    // its own class above; retint the non-low nuclei to match the host)
+    const H = lang.prof.harmony;
+    if (H && H !== "none") {
+      let host = null;
+      for (const s of out.syls) { for (const v of s.nu) if (v.h !== 2) { host = v; break; } if (host) break; }
+      if (host) for (const s of grown) for (const v of s.nu) {
+        if (v.h === 2) continue;
+        if (H === "fb") v.b = host.b === 0 ? 0 : 2;
+        else if (H === "round") v.r = host.r;
+        else if (H === "atr") v.atr = host.atr ? 1 : 0;
+      }
+    }
+    out.syls.push(...grown);   // the -zi/-tou lengthening
   } else {
     const v = c.inv.vows[rng.int(c.inv.vows.length)];
     const s = out.syls[out.syls.length - 1];

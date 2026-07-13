@@ -13,8 +13,10 @@
 
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf, colorTermsOf, kinshipOf } from "../src/sim/language.js";
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
-import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
+import { rollProfile, buildInventory, renderWord, copyWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
+import { applicableRules, applyRule } from "../src/sim/languageChange.js";
+import { hash32 } from "../src/sim/peopleSim/rng.js";
 import { scriptOf, writeWord, writeForm, writeName, formFromSurface, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
 import { runHistory } from "../src/sim/languageHistory.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, adpSourceOf, polysynthesisOf } from "../src/sim/languageGrammar.js";
@@ -3167,6 +3169,176 @@ console.log("\n── §31 polysynthesis ──");
   check("polysynthesis inherited down the family, the incorporated word drifting under the daughter's own laws",
     gramOf(dauP).poly === true && renderClause(dauP, JSON.parse(JSON.stringify(incF))).gloss.includes("fish-take"));
   if (!quiet) say("\n   " + P.seed + ": " + cPlain.text + "  →(incorporated)→  " + cInc.text + "   ·   'I saw it' = " + oneC.text);
+}
+
+// ── §32 PHONOLOGICAL RARITIES: clicks, ATR harmony, phonation registers,
+// TONOGENESIS (a sound change born of state), pitch accent, geminates. Every
+// dial rides an independent hash stream — only the languages that roll a
+// rarity re-baseline; the 451 prior checks staying green IS the regression. ──
+console.log("\n── §32 phonological rarities ──");
+{
+  const world = mkWorld();
+  const N = 1500;
+  const found = { ck: null, atr: null, ph: null, pa: null, gem: null };
+  let nCk = 0, nAtr = 0, nPh = 0, nPa = 0;
+  for (let i = 0; i < N; i++) {
+    const l = foundLanguage(world, { seed: 950000 + i * 31 });
+    if (l.prof.clicks) { nCk++; if (!found.ck) found.ck = l; }
+    if (l.prof.harmony === "atr") { nAtr++; if (!found.atr) found.atr = l; }
+    if (l.prof.phonation && !l.prof.tone) { nPh++; if (!found.ph) found.ph = l; }
+    if (l.prof.pitchAccent && !l.prof.tone) { nPa++; if (!found.pa) found.pa = l; }
+    if (!found.gem && l.prof.sig === "gem") found.gem = l;
+  }
+  const pctN = (x) => Math.round(x / N * 1000) / 10 + "%";
+  check(`the rarities are RARE (clicks ${pctN(nCk)}, ATR ${pctN(nAtr)}, registers ${pctN(nPh)}, pitch accent ${pctN(nPa)})`,
+    nCk / N > 0.008 && nCk / N < 0.045 && nAtr / N > 0.02 && nAtr / N < 0.1 && nPh / N > 0.012 && nPh / N < 0.06 && nPa / N > 0.025 && nPa / N < 0.1);
+
+  // ── clicks ──
+  const ck = found.ck;
+  const ckWords = Array.from({ length: 30 }, (_, i) => wordOf(ck, i * 7 + 1));
+  const ckRate = ckWords.filter(w => /[ǀǃǁǂʘ]/.test(w)).length / 30;
+  check(`a click language USES its clicks (${Math.round(ckRate * 100)}% of a vocabulary sample)`, ckRate >= 0.15);
+  let ckBad = 0;
+  for (let i = 0; i < 40; i++) {
+    const plan = phoneticPlan(ck, nativeStemOf(ck, i * 5 + 2));
+    for (const s of plan.syls) {
+      if (s.co.some(x => x.m === 7)) ckBad++;                        // never a coda
+      if (s.on.some(x => x.m === 7) && s.on.length > 1) ckBad++;     // never in a cluster
+    }
+  }
+  check("clicks are onset-only and never cluster (40 stems scanned)", ckBad === 0);
+  const ckIPA = [{ p: 8, m: 7, l: 0, s: 0 }, { p: 1, m: 7, l: 0, s: 0 }, { p: 4, m: 7, l: 0, s: 0 }, { p: 3, m: 7, l: 0, s: 0 }, { p: 0, m: 7, l: 0, s: 0 }].map(ipaC);
+  const nonCkIPA = new Set();
+  for (let p = 0; p <= 8; p++) for (let m = 0; m <= 6; m++) for (let l2 = 0; l2 <= 4; l2++) nonCkIPA.add(ipaC({ p, m, l: l2, s: 0 }));
+  check(`click IPA is injective (${ckIPA.join(" ")}) and disjoint from every non-click bundle`,
+    new Set(ckIPA).size === 5 && ckIPA.every(s => !nonCkIPA.has(s)) &&
+    ipaC({ p: 1, m: 7, l: 1, s: 0 }) !== ipaC({ p: 1, m: 7, l: 0, s: 0 }) && ipaC({ p: 1, m: 7, l: 4, s: 0 }) !== ipaC({ p: 1, m: 7, l: 0, s: 0 }));
+  const wCk = mkWorld();
+  const ckPar = foundLanguage(wCk, { seed: ck.seed });
+  wCk.step = 3000;
+  const ckDau = branchLanguage(wCk, ckPar, 0.6);
+  check("clicks are family-clustered (a daughter inherits the series)",
+    ckDau.prof.clicks === true && Array.from({ length: 20 }, (_, i) => wordOf(ckDau, i * 11 + 3)).some(w => /[ǀǃǁǂʘ]/.test(w)));
+  // the areal story: a click can cross a contact edge, exactly as Bantu borrowed Khoisan's
+  const nb = foundLanguage(wCk, { seed: 951777 });
+  let crossed = false;
+  for (let i = 0; i < 40 && !crossed; i++) { borrowFrom(wCk, nb, ckPar); crossed = nb.xph.some(b => b.m === 7); }
+  check("a click can spread by CONTACT (borrowFrom carries it into a neighbour's inventory)", crossed);
+  const wCk2 = mkWorld();
+  const ckDr = foundLanguage(wCk2, { seed: ck.seed });
+  for (let d = 0; d < 8; d++) driftLanguage(wCk2, ckDr);
+  const ckW = writeWord(ckDr, STONE);
+  check("a drifted click language still writes (script layer carries the series)", !!scriptOf(ckDr) && !!ckW && ckW.glyphs.length > 0);
+
+  // ── ATR harmony ──
+  const atr = found.atr;
+  let mixed = 0, atomicN = 0, lax = 0, tense = 0, aLax = false, aTense = false;
+  for (let cid = 0; cid < CONCEPTS.length; cid++) {
+    if (etymologyOf(atr, cid)) continue;               // compounds may straddle classes, as real compounds do
+    const st = nativeStemOf(atr, cid);
+    atomicN++;
+    const vs = st.syls.flatMap(s => s.nu).filter(v => v.h < 2);
+    const lo = st.syls.flatMap(s => s.nu).some(v => v.h === 2);
+    if (vs.length >= 2 && new Set(vs.map(v => v.atr ? 1 : 0)).size > 1) mixed++;
+    if (vs.some(v => v.atr)) { lax++; if (lo) aLax = true; } else if (vs.length) { tense++; if (lo) aTense = true; }
+  }
+  check(`ATR harmony holds inside atomic roots (${mixed}/${atomicN} mixed), both classes live, low a neutral in both`,
+    mixed === 0 && lax >= 5 && tense >= 5 && aLax && aTense);
+  const atrWords = Array.from({ length: 20 }, (_, i) => wordOf(atr, i * 9 + 2));
+  check("the lax class is WRITTEN (dot-below, the Igbo convention) and TRANSCRIBED (ɪ ɛ ɔ ʊ)",
+    atrWords.some(w => /̣/.test(w.normalize("NFD"))) && /[ɪɛɔʊ]/.test(Array.from({ length: 20 }, (_, i) => ipaOf(atr, nativeStemOf(atr, i * 9 + 2))).join("")));
+  // the AFFIX harmonizes: one case ending, two tongue-root dresses
+  const atrCase = paradigmSpec(atr).cases[0];
+  if (atrCase) {
+    let seenLax = null, seenTense = null;
+    for (let cid = 0; cid < CONCEPTS.length && !(seenLax != null && seenTense != null); cid++) {
+      if (etymologyOf(atr, cid)) continue;
+      const st = nativeStemOf(atr, cid);
+      // classify the stem by its LAST non-low vowel (a is transparent)
+      let cls = null;
+      for (let i = st.syls.length - 1; i >= 0 && cls == null; i--)
+        for (let j = st.syls[i].nu.length - 1; j >= 0; j--)
+          if (st.syls[i].nu[j].h !== 2) { cls = st.syls[i].nu[j].atr ? 1 : 0; break; }
+      if (cls == null) continue;
+      const x = inflectNoun(atr, cid, { cas: atrCase.k });
+      if (x.irr || !x.form) continue;
+      const affV = x.form.syls[x.form.syls.length - 1].nu.filter(v => v.h < 2);
+      if (!affV.length) continue;
+      if (cls === 1 && seenLax == null) seenLax = affV[affV.length - 1].atr ? 1 : 0;
+      if (cls === 0 && seenTense == null) seenTense = affV[affV.length - 1].atr ? 1 : 0;
+    }
+    check(`the case affix takes the stem's tongue-root class (lax stems → lax affix, tense → tense)`,
+      seenLax === 1 && seenTense === 0);
+  } else check("ATR affix harmony (caseless ATR language in sweep — ok)", true);
+
+  // ── phonation registers + TONOGENESIS ──
+  const ph = found.ph;
+  const phWords = Array.from({ length: 24 }, (_, i) => wordOf(ph, i * 7 + 1)).join(" ");
+  check("a register language writes its breathy/creaky syllables (̤ / ̰) and transcribes them",
+    /̤/.test(phWords.normalize("NFD")) && /̰/.test(phWords.normalize("NFD")));
+  check("tonogenesis is offered EXACTLY to register languages without tone (state-gated, cardinal rule 1)",
+    applicableRules(ph.prof).includes(12) && !applicableRules(found.atr.prof).includes(12) && !applicableRules(refProfile("mandarin", 445)).includes(12));
+  const wT = mkWorld();
+  const tg = foundLanguage(wT, { seed: ph.seed });
+  let fired = false;
+  for (let d = 0; d < 60 && !fired; d++) { driftLanguage(wT, tg); fired = tg.rules[tg.rules.length - 1] === 12; }
+  const tgWords = Array.from({ length: 24 }, (_, i) => wordOf(tg, i * 7 + 1)).join(" ").normalize("NFD");
+  check("TONOGENESIS: registers die, tone is born — marks swap on the same record",
+    fired && tg.prof.tone === 1 && !/[̤̰]/.test(tgWords) && /[̀́̄̌]/.test(tgWords));
+  check("after tonogenesis the rule is never offered again (the state that fed it is spent)", !applicableRules(tg.prof).includes(12));
+  // the CONTRAST SURVIVES: two forms identical but for register part ways in melody
+  const mkF = (ph2) => ({ syls: [{ on: [{ p: 1, m: 0, l: 0, s: 0 }], nu: [{ h: 2, b: 1, r: 0, n: 0, lg: 0, ...(ph2 ? { ph: ph2 } : {}) }], co: [] }, { on: [{ p: 0, m: 1, l: 1, s: 0 }], nu: [{ h: 0, b: 2, r: 1, n: 0, lg: 0 }], co: [] }], tseed: 777 });
+  const fMod = applyRule(12, mkF(0)), fBre = applyRule(12, mkF(1)), fCre = applyRule(12, mkF(2));
+  check("minimal pairs survive the transition as tone (ex-breathy ≠ ex-modal ≠ ex-creaky melodies)",
+    fMod.tseed !== fBre.tseed && fBre.tseed !== fCre.tseed && fMod.tseed === 777 &&
+    fBre.syls.every(s => s.nu.every(v => !v.ph)));
+  const tg2 = JSON.parse(JSON.stringify(tg));
+  check("a tonogenized record JSON-roundtrips byte-stable", Array.from({ length: 10 }, (_, i) => wordOf(tg, i * 13 + 2)).join() === Array.from({ length: 10 }, (_, i) => wordOf(tg2, i * 13 + 2)).join());
+
+  // ── pitch accent ──
+  const pa = found.pa;
+  let paBad = 0, paSeen = 0, parityBad = 0;
+  for (let i = 0; i < 30; i++) {
+    const st = nativeStemOf(pa, i * 5 + 2);
+    if (st.syls.length < 2) continue;
+    paSeen++;
+    const w = renderWord(st, pa.prof).normalize("NFD");
+    const marks = (w.match(/́/g) || []).length;
+    if (marks !== 1) paBad++;
+    // PARITY: the plan's accent index uses the SAME tseed recipe the mark does
+    const plan = phoneticPlan(pa, st);
+    if (!plan.pitchAccent || plan.stress !== hash32(st.tseed || 0, "pacc") % st.syls.length) parityBad++;
+  }
+  check(`pitch accent: ONE acute per polysyllable (${paSeen - paBad}/${paSeen}), plan and mark share a recipe`, paSeen >= 10 && paBad === 0 && parityBad === 0);
+  check("pitch-accent languages are atonal (the middle ground, not tone)", pa.prof.tone === 0);
+
+  // ── geminates ──
+  const gem = found.gem;
+  let gemSeen = false;
+  for (let i = 0; i < 60 && !gemSeen; i++) {
+    const st = nativeStemOf(gem, i * 3 + 1);
+    for (let k = 0; k + 1 < st.syls.length; k++) {
+      const co = st.syls[k].co, on = st.syls[k + 1].on;
+      if (co.length === 1 && on.length === 1 && ["p", "m", "l", "s"].every(f => co[0][f] === on[0][f])) gemSeen = true;
+    }
+  }
+  check("a geminating language mints real double consonants (identical coda+onset across the seam)", gemSeen);
+
+  // ── the references stay clean ──
+  check("all three references pin the rarities OFF (no clicks, registers, ATR, or accent marks)",
+    ["mandarin", "russian", "english"].every(k => { const p = refProfile(k, 445); return p.clicks === false && p.phonation === 0 && p.pitchAccent === false && p.harmony === "none"; }));
+
+  // ── determinism ──
+  const da = foundLanguage(mkWorld(), { seed: ck.seed }), db = foundLanguage(mkWorld(), { seed: ck.seed });
+  const sig9 = (l) => Array.from({ length: 8 }, (_, i) => wordOf(l, i * 19 + 4)).join() + ipaOf(l, nativeStemOf(l, 7));
+  check("rarity layers deterministic + JSON-roundtrip-stable", sig9(da) === sig9(db) && sig9(da) === sig9(JSON.parse(JSON.stringify(da))));
+
+  if (!quiet) {
+    say("\n   clicks:    " + ckWords.slice(0, 6).join("  "));
+    say("   ATR:       " + atrWords.slice(0, 6).join("  "));
+    say("   registers: " + phWords.split(" ").slice(0, 6).join("  "));
+    say("   tonogen →  " + tgWords.normalize("NFC").split(" ").slice(0, 6).join("  "));
+  }
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

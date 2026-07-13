@@ -24,6 +24,7 @@ export const RULES = [
   "simplify",      // 9: onset clusters lose their first member
   "umlaut",        // 10: back vowels front before a front-vowel syllable
   "nasalizeV",     // 11: vowel + nasal coda → nasal vowel, coda drops
+  "tonogen",       // 12: TONOGENESIS — phonation registers become tone (phase 4)
 ];
 
 /** Which rules make sense for this profile (keeps drift in character). */
@@ -31,6 +32,11 @@ export function applicableRules(prof) {
   const out = [0, 1, 4, 5, 6, 7, 8, 10];
   if (prof.coDepth > 0 || prof.nasalCoda) out.push(2, 3, 11);
   if (prof.onDepth >= 2) out.push(9);
+  // TONOGENESIS is STATE-gated (cardinal rule 1): only a language that HAS
+  // phonation registers and does NOT yet have tone can undergo it — the
+  // register contrast is the raw material the tone is born from. Once it
+  // fires, driftLanguage flips prof.tone, and the rule stops being offered.
+  if (prof.phonation && !prof.tone) out.push(12);
   return out;
 }
 
@@ -101,6 +107,16 @@ export function applyRule(rule, w) {
       }
       break;
     }
+    case 12: { // TONOGENESIS (phase 4): the phonation contrast becomes tone.
+      // Registers strip off, and each word's register PATTERN folds into its
+      // melody seed — so ex-breathy and ex-modal words that once contrasted
+      // by voice quality KEEP their contrast, now carried by pitch (the
+      // Vietnamese/Sinitic road: minimal pairs survive the transition).
+      let reg = 0;
+      for (const s of syls) for (const v of s.nu) if (v.ph) { reg = (reg * 3 + v.ph) >>> 0; v.ph = 0; }
+      if (reg) w.tseed = ((w.tseed || 0) ^ ((reg * 2654435761) >>> 0)) >>> 0;
+      break;
+    }
   }
   // guard: never let a word lose every syllable
   if (!w.syls.length || w.syls.every(s => !s.nu.length)) w.syls = [{ on: [], nu: [{ h: 2, b: 1, r: 0, n: 0, lg: 0 }], co: [] }];
@@ -113,6 +129,10 @@ export function applyRule(rule, w) {
  *  onsets cap at 3 / codas at 2. */
 export function legalizeWord(w) {
   for (const s of w.syls) {
+    // clicks are onset-only in life — wreckage that lands one in a coda
+    // (final-vowel loss pushing an onset rightward) is repaired by dropping
+    // it, the way speakers actually resolve an unsyllabifiable click
+    if (s.co.length && s.co.some(c => c.m === 7)) s.co = s.co.filter(c => c.m !== 7);
     if (s.on.length > 3) s.on = s.on.slice(-3);
     if (s.co.length > 2) s.co = s.co.slice(0, 2);
     while (s.co.length >= 2) {

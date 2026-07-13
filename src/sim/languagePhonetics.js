@@ -40,7 +40,18 @@ const IPA_VOICED = {
 
 /** IPA for one consonant bundle. Total (falls back sanely off-grid) and
  *  injective over any inventory the generator or its sound laws can mint. */
+const IPA_CLICK = { 8: "ǀ", 1: "ǃ", 4: "ǁ", 3: "ǂ", 0: "ʘ" };   // p carries the click TYPE under m=7
 export function ipaC(b) {
+  if (b.m === 7) {
+    // clicks (phase 4): the pipe letters, with their accompaniments as
+    // prefixes/suffixes — ɡ͡ǃ voiced, ŋ͡ǃ nasal, ǃʰ aspirated. Injective:
+    // no non-click bundle ever renders a pipe letter.
+    let s = IPA_CLICK[b.p] || "ǃ";
+    if (b.l === 1) s = "ɡ͡" + s;
+    else if (b.l === 4) s = "ŋ͡" + s;
+    else if (b.l === 2) s = s + "ʰ";
+    return s;
+  }
   const k = b.p + "," + b.m;
   let s = (b.l === 1 || b.l === 4 || b.m === 1 || b.m >= 4) && IPA_VOICED[k] ? IPA_VOICED[k]
     : (IPA_PLAIN[k] ?? IPA_VOICED[k] ?? "ʔ");
@@ -62,9 +73,15 @@ const IPA_V = {
   "2,0,0": "æ", "2,0,1": "ɶ", "2,1,0": "a", "2,1,1": "ɔ", "2,2,0": "ɑ", "2,2,1": "ɒ",
 };
 
-/** IPA for one vowel bundle (quality + nasal tilde + length mark). */
+// −ATR (lax) counterparts of the tense qualities (phase 4); off-table lax
+// vowels wear the retracted-tongue-root diacritic so the pair stays distinct
+const IPA_LAX = { i: "ɪ", y: "ʏ", ɨ: "ɪ̈", ɯ: "ɯ̽", u: "ʊ", e: "ɛ", ø: "œ", ə: "ɜ", ɵ: "ɞ", ɤ: "ʌ", o: "ɔ" };
+/** IPA for one vowel bundle (quality + ATR + phonation + nasal + length). */
 export function ipaV(v) {
   let s = IPA_V[v.h + "," + v.b + "," + v.r] || "ə";
+  if (v.atr) s = IPA_LAX[s] || s + "̙";                     // −ATR: ɪ ʊ ɛ ɔ
+  if (v.ph === 1) s += "̤";                                  // breathy voice
+  else if (v.ph === 2) s += "̰";                             // creaky voice
   if (v.n) s += "̃";                                         // nasalized ṽ
   if (v.lg) s += "ː";
   return s;
@@ -83,7 +100,7 @@ export const TONE_SHAPES = [[1.3, 1.3], [0.95, 1.3], [1.05, 0.8, 1.15], [1.35, 0
 export function phoneticPlan(lang, form) {
   const prof = lang.prof;
   const seg = (c) => ({ ipa: ipaC(c), p: c.p, m: c.m, l: c.l, s: c.s });
-  const vseg = (v) => ({ ipa: ipaV(v), h: v.h, b: v.b, r: v.r, n: v.n || 0, lg: v.lg || 0 });
+  const vseg = (v) => ({ ipa: ipaV(v), h: v.h, b: v.b, r: v.r, n: v.n || 0, lg: v.lg || 0, ph: v.ph || 0, atr: v.atr || 0 });
   const syls = form.syls.map((s, i) => {
     // the SAME pre-tone romanized syllable renderWord hashes for its melody
     let rsyl = "";
@@ -96,14 +113,19 @@ export function phoneticPlan(lang, form) {
     };
   });
   // stress: tone languages carry melody instead; monosyllables need none;
-  // mobile stress is fixed per WORD off the same melody seed (deterministic)
+  // mobile stress is fixed per WORD off the same melody seed (deterministic).
+  // PITCH ACCENT (phase 4): the accented syllable is the prominence — SAME
+  // tseed recipe renderWord marks with the acute, so mark and melody agree
+  // by construction; the flag tells the synthesizer to realize it as pitch.
   const n = syls.length;
-  const stress = prof.tone > 0 || n < 2 ? -1
+  const pacc = !prof.tone && prof.pitchAccent && n > 1 ? hash32(form.tseed || 0, "pacc") % n : -1;
+  const stress = pacc >= 0 ? pacc
+    : prof.tone > 0 || n < 2 ? -1
     : prof.stress === "init" ? 0
     : prof.stress === "final" ? n - 1
     : prof.stress === "penult" ? Math.max(0, n - 2)
     : hash32(form.tseed || 0, "stress", n) % n;
-  return { syls, stress, tone: prof.tone || 0 };
+  return { syls, stress, tone: prof.tone || 0, pitchAccent: pacc >= 0 };
 }
 
 /** IPA transcription of an internal form: ˈstress, syllable dots, tone

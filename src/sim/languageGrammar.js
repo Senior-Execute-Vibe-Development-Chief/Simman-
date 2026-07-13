@@ -1688,6 +1688,16 @@ function harmonize(prof, stemSyls, affSyl) {
       if (v.h === 2) { v.h = back ? 2 : 1; v.b = back ? 1 : 0; }
       else v.b = back ? 2 : 0;
     } else if (prof.harmony === "round" && v.h !== 2) v.r = st.r;
+    else if (prof.harmony === "atr" && v.h !== 2) {
+      // ATR (phase 4): the affix takes the stem's tongue-root class. The low
+      // neutral a is TRANSPARENT — harmony reads back past it to the last
+      // non-low vowel, exactly the Akan behaviour.
+      let src = null;
+      for (let i = stemSyls.length - 1; i >= 0 && !src; i--)
+        for (let j = stemSyls[i].nu.length - 1; j >= 0; j--)
+          if (stemSyls[i].nu[j].h !== 2) { src = stemSyls[i].nu[j]; break; }
+      v.atr = src && src.atr ? 1 : 0;
+    }
   }
   return affSyl;
 }
@@ -2538,7 +2548,7 @@ export function synchronicPhonology(lang) {
       maxCo = Math.max(maxCo, s.co.length);
       if (s.co.length) { codaN++; if (!s.co.every(x => x.m === 1)) nasalOnly = false; }
       for (const x of [...s.on, ...s.co]) consM.set(x.p + ":" + x.m + ":" + x.l + ":" + x.s, { p: x.p, m: x.m, l: x.l, s: x.s });
-      for (const v of s.nu) vowM.set(v.h + ":" + v.b + ":" + v.r, { h: v.h, b: v.b, r: v.r, n: 0, lg: 0 });
+      for (const v of s.nu) vowM.set(v.h + ":" + v.b + ":" + v.r + ":" + (v.atr || 0), { h: v.h, b: v.b, r: v.r, n: 0, lg: 0, ...(v.atr ? { atr: 1 } : {}) });   // ±ATR are distinct QUALITIES (phase 4); phonation/length stay prosodic
     }
   };
   for (let cid = 0; cid < CONCEPTS.length; cid++) scan(nativeStemOf(lang, cid));
