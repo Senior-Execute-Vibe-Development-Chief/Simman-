@@ -161,13 +161,20 @@ export function identityGrievanceCause(cap, s, w) {
 // axis with the calendar exactly like the loyalty/unrest hooks.
 const CASUS_W = 0.30;   // strength of the righteous-war / kinship-restraint bar shift
 const IRRED_W = 0.25;   // extra eagerness to "liberate" a co-national province held by a foreign state
-export function casusBelliMul(aCap, dCap, tileOwner, w, tileCulShare) {
+export function casusBelliMul(aCap, dCap, tileOwner, w, tileCulShare, dRealmCulMix) {
   if (!aCap || !dCap) return 1;
   const dom = (mix) => (mix && mix.length ? mix[0][0] : -1);
   // signed per axis: +1 wholly foreign (righteous), −1 same identity (kin → restraint)
   const sgn = (coreMix, otherMix) => { const id = dom(coreMix); return id < 0 ? 0 : 1 - 2 * mixShare(otherMix, id); };
+  // The PEOPLE axis reads the defender REALM's governed people when the caller
+  // provides it (T.TILE_IDENTITY, armies.js: towns + countryside people-weighted)
+  // — the kinship-restraint counterweight to the irredentist term below. A
+  // nation-state's assimilated ground is authentically kin (spared); an empire
+  // of unassimilated conquests reads foreign however cosmopolitan its capital
+  // (invites the liberator). Absent (lever off / unregistered realm) → the
+  // capital's census mix, the exact legacy expression.
   let R = w.faith  * sgn(aCap.faithMix, dCap.faithMix)
-        + w.people * sgn(aCap.culMix,   dCap.culMix)
+        + w.people * sgn(aCap.culMix,   (dRealmCulMix && dRealmCulMix.length) ? dRealmCulMix : dCap.culMix)
         + w.anc    * sgn(aCap.ancMix,   dCap.ancMix);
   // irredentist pull: the contested province's OWN people are the attacker's nation
   // under foreign rule — eagerly reclaimed in the national age. `tileCulShare`
