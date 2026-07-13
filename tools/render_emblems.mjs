@@ -29,10 +29,13 @@ if (MODE === "evolve" || MODE === "both") {
     for (let i = 1; i <= 5; i++) chain.push(inheritGenome(chain[i - 1], (seed * 31 + i * 7) >>> 0));
     sections.push({ row: chain, name });
   }
-  // marshalling: cross two lineages
+  // marshalling: unions ACCUMULATE quarterings across generations
   const a = foundGenome(1011, { figuration: 0.92, boldness: 0.7, hue: 0.02 });
   const b = foundGenome(4059, { figuration: 0.85, saturation: 0.7, hue: 0.55 });
-  sections.push({ row: [a, b, crossGenome(a, b, 777)], name: "Union → marshalled child", labels: ["parent A", "parent B", "child"] });
+  const ab = crossGenome(a, b, 777);
+  const c = foundGenome(8123, { figuration: 0.7, saturation: 0.6, hue: 0.33 });
+  const abc = crossGenome(ab, c, 888);
+  sections.push({ row: [a, b, ab, c, abc], name: "Unions accumulate quarterings", labels: ["house A", "house B", "A⊕B (quarterly)", "house C", "(A⊕B)⊕C — three coats"] });
 }
 
 if (MODE === "range" || MODE === "both") {

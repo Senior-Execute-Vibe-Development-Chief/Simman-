@@ -367,18 +367,12 @@ function placeMotif(m, w, h, substrate) {
   return one(w / 2, h * (substrate === "shield" ? 0.42 : 0.46), box);
 }
 
-// ── the core: an emblem centred inside an aw×ah area, as a positioned <g> ──
-function emblemInner(genome, aw, ah) {
-  const p = expressGenome(genome);
-  let w, h;
-  if (p.substrate === "roundel") { w = h = Math.min(aw, ah) * 0.92; }
-  else if (p.substrate === "shield" || p.substrate === "lozenge") { h = ah * 0.94; w = h * (p.substrate === "lozenge" ? 0.8 : 0.9); }
-  else { w = aw * 0.94; h = w * (p.substrate === "pennon" ? 0.6 : 0.62); }
-  const ox = (aw - w) / 2, oy = (ah - h) / 2;
-  const sh = shape(p.substrate, w, h), clip = `e${uid++}`, C = p.colors, base = Math.min(w, h);
+// ── ONE COAT's content filling a w×h area (no substrate frame/clip): the
+// composition dispatch shared by a whole emblem and by each QUARTER of a
+// marshalled shield, which is what makes quartering recursive for free. ──
+function coatContent(p, w, h, rng) {
+  const sh = shape(p.substrate, w, h), C = p.colors, base = Math.min(w, h);
   const cxm = w / 2, cym = h * (p.substrate === "shield" ? 0.46 : 0.5);
-  const rng = rrng((genome.seed ^ (genome.gen * 2654435761)) >>> 0);
-
   let content = "";
   if (p.composition === "heraldic") {
     content += fieldSVG(w, h, p.field);
@@ -426,6 +420,40 @@ function emblemInner(genome, aw, ah) {
       content += drawSigil(f.cx, f.cy - base * 0.04, f.box * 0.46, p.sigil, C.charge);
     }
     if (p.ornaments.canton) content += canton(w, h, base, p.ornaments.cantonKind, p.ornaments.cantonColor);
+  }
+  return content;
+}
+
+// ── the core: an emblem centred inside an aw×ah area, as a positioned <g> ──
+function emblemInner(genome, aw, ah) {
+  const p = expressGenome(genome);
+  let w, h;
+  if (p.substrate === "roundel") { w = h = Math.min(aw, ah) * 0.92; }
+  else if (p.substrate === "shield" || p.substrate === "lozenge") { h = ah * 0.94; w = h * (p.substrate === "lozenge" ? 0.8 : 0.9); }
+  else { w = aw * 0.94; h = w * (p.substrate === "pennon" ? 0.6 : 0.62); }
+  const ox = (aw - w) / 2, oy = (ah - h) / 2;
+  const sh = shape(p.substrate, w, h), clip = `e${uid++}`, C = p.colors, base = Math.min(w, h);
+  const rng = rrng((genome.seed ^ (genome.gen * 2654435761)) >>> 0);
+
+  let content = "";
+  const qs = genome.quarters;
+  if (qs && qs.length > 1) {
+    // a MARSHALLED shield: the accumulated quarterings, each a full coat
+    // rendered recursively into its quarter — two coats sit 1&4 / 2&3, three
+    // repeat the senior coat in IV
+    const order = qs.length === 2 ? [0, 1, 1, 0] : qs.length === 3 ? [0, 1, 2, 0] : [0, 1, 2, 3];
+    const cw = w / 2, ch = h / 2;
+    for (let i = 0; i < 4; i++) {
+      const q = qs[order[i]];
+      const qSeed = q.seed != null ? q.seed : genome.seed;
+      const qp = expressGenome({ genes: q.genes, gen: q.gen || 0, seed: qSeed });
+      const qrng = rrng(((qSeed ^ ((q.gen || 0) * 2654435761)) + i * 1013904223) >>> 0);
+      content += `<g transform="translate(${F((i % 2) * cw)},${F(((i / 2) | 0) * ch)})">${coatContent(qp, cw, ch, qrng)}</g>`;
+    }
+    content += `<line x1="${F(cw)}" y1="0" x2="${F(cw)}" y2="${F(h)}" stroke="#12100f" stroke-width="1.2"/>`
+      + `<line x1="0" y1="${F(ch)}" x2="${F(w)}" y2="${F(ch)}" stroke="#12100f" stroke-width="1.2"/>`;
+  } else {
+    content = coatContent(p, w, h, rng);
   }
 
   const bd = p.ornaments.border && p.composition !== "heraldic"

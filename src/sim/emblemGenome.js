@@ -171,7 +171,16 @@ export function mutateGenome(genome, seed, strength = 1) {
     if (rng() < MACRO_RATE * strength) nv = rng();     // macro-mutation: a fresh allele
     return clamp01(nv);
   });
-  return { genes, gen: (genome.gen || 0) + 1, seed: genome.seed };
+  const out = { genes, gen: (genome.gen || 0) + 1, seed: genome.seed };
+  // quarterings persist down a line, drifting gently with it; rarely a branch
+  // SIMPLIFIES — resumes its own single coat and lets the accumulation go
+  if (genome.quarters && genome.quarters.length > 1 && rng() >= MACRO_RATE * strength) {
+    out.quarters = genome.quarters.map(q => ({
+      genes: q.genes.map(v => (rng() < MICRO_RATE * 0.4 * strength ? clamp01(wrap01(v + bell(rng) * STEP * 0.5 * strength)) : v)),
+      gen: (q.gen || 0) + 1, seed: q.seed,
+    }));
+  }
+  return out;
 }
 const MICRO_RATE = 0.5;   // fraction of genes that drift a little each step
 const MACRO_RATE = 0.03;  // per-gene chance of a wholesale jump
@@ -185,20 +194,23 @@ export function inheritGenome(parent, seed) {
 
 /** Recombination — a union or conquest MARSHALS two genomes. Per-gene the child
  *  takes one parent's allele (classic uniform crossover), with light mutation.
- *  When both parents are heraldic, the child leans to a QUARTERED field — the
- *  literal marshalling of two coats. */
+ *  And the union's SHIELD accumulates: each parent contributes its quarter
+ *  list (itself, if it is a simple coat), duplicates collapse (the same coat
+ *  is never quartered twice), and the four most senior survive. The child's
+ *  own genes remain its house STYLE, carried beneath the marshalled display
+ *  and expressed again if a descendant line ever simplifies. */
 export function crossGenome(a, b, seed) {
   const rng = prng(seed >>> 0);
   const genes = GENES.map((_, i) => (rng() < 0.5 ? a.genes[i] : b.genes[i]));
   // small post-cross mutation
   for (let i = 0; i < genes.length; i++) if (rng() < 0.15) genes[i] = clamp01(genes[i] + bell(rng) * STEP);
-  const compA = pickEnum(a.genes[IDX.composition], COMPOSITIONS);
-  const compB = pickEnum(b.genes[IDX.composition], COMPOSITIONS);
-  if (compA === "heraldic" && compB === "heraldic") {
-    genes[IDX.composition] = 0.02;             // heraldic
-    genes[IDX.partition] = 0.42;               // quarterly — marshalled
-  }
-  return { genes, gen: Math.max(a.gen || 0, b.gen || 0) + 1, seed: a.seed };
+  const coats = g => (g.quarters && g.quarters.length ? g.quarters : [{ genes: g.genes, gen: g.gen || 0, seed: g.seed }]);
+  const merged = [];
+  for (const q of [...coats(a), ...coats(b)])
+    if (!merged.some(m => genomeDistance(m, q) < 0.02)) merged.push(q);
+  const out = { genes, gen: Math.max(a.gen || 0, b.gen || 0) + 1, seed: a.seed };
+  if (merged.length > 1) out.quarters = merged.slice(0, 4);
+  return out;
 }
 
 // ── colour ──────────────────────────────────────────────────────────────────
@@ -615,6 +627,7 @@ export function genomeDistance(a, b) {
 export function describeGenome(genome) {
   const p = expressGenome(genome);
   const bits = [p.composition, p.substrate, p.colors.mode];
+  if (genome.quarters && genome.quarters.length > 1) bits.unshift(`quarterly of ${genome.quarters.length}`);
   if (p.composition === "heraldic") {
     const f = p.field;
     bits.push(f.fur ? f.fur : f.partition !== "plain" ? `${f.partition} ${f.names[0]}·${f.names[1]}` : f.names[0]);
