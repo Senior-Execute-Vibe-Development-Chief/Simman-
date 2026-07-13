@@ -246,17 +246,17 @@ function buildSliders(){ const box=$("#sliders");
    the shape it promises — the engine underneath stays fully decoupled. ── */
 const PRESETS=[
   ["Europe","heraldic shield",{figuration:.9,saturation:.65,format:.02,ornateness:.55},
-    {composition:.06,paletteMode:.1,substrate:.08,iconism:.88},p=>p.composition==="heraldic"&&p.motif],
+    {composition:.1,paletteMode:.1,substrate:.08,iconism:.88},p=>p.composition==="heraldic"&&p.motif],
   ["China","imperial silk",{figuration:.85,boldness:.8,saturation:.7,format:.4},
-    {composition:.19,paletteMode:.62,substrate:.25,motifCat:.3,iconism:.8},p=>p.motif],
+    {composition:.36,paletteMode:.62,substrate:.25,motifCat:.3,iconism:.8},p=>p.motif],
   ["Japan","mon roundel",{symmetry:.85,ornateness:.3,saturation:.15},
-    {composition:.31,paletteMode:.37,iconism:.6,motifCat:.45},p=>p.motif],
+    {composition:.5,paletteMode:.37,iconism:.6,motifCat:.45},p=>p.motif],
   ["Mongols","steppe tamga",{figuration:.15,saturation:.35,format:.6},
-    {composition:.56,paletteMode:.87,substrate:.58,iconism:.25},null],
+    {composition:.68,paletteMode:.87,substrate:.58,iconism:.25},null],
   ["West Africa","mudcloth field",{symmetry:.6,tone:.35,saturation:.5},
-    {composition:.81,paletteMode:.87,substrate:.25,motifCat:.85,iconism:.3},p=>p.motif],
+    {composition:.86,paletteMode:.87,substrate:.25,motifCat:.85,iconism:.3},p=>p.motif],
   ["Calligraphy","aniconic banner",{figuration:.06,ornateness:.5},
-    {composition:.44,paletteMode:.1,substrate:.25,iconism:.1,scriptDensity:.85},null],
+    {composition:.59,paletteMode:.1,substrate:.25,iconism:.1,scriptDensity:.85},null],
 ];
 function applyPreset(ps){
   const [,,axes,genes,need]=ps;

@@ -81,7 +81,18 @@ for (const [id, e] of Object.entries(D)) {
       }
     });
   }
-  out[id] = [U.x, U.y, U.w, U.h, boxes.length - used.size];
+  // COHESION: how much of the painted area is one piece? Fragmented art —
+  // detached claws, scattered variant crumbs, specks that still land inside
+  // the frame — scores low and gets reported for culling.
+  let mainA = 0, outA = 0, inStray = 0;
+  boxes.forEach((b, i) => {
+    const a = b.w * b.h;
+    if (used.has(i)) { mainA += a; return; }
+    outA += a;
+    if (b.x < U.x + U.w && b.x + b.w > U.x && b.y < U.y + U.h && b.y + b.h > U.y) inStray += a;
+  });
+  const cohesion = mainA / (mainA + outA * 0.5 + inStray * 4);   // in-frame strays weigh heaviest: they stay visible
+  out[id] = [U.x, U.y, U.w, U.h, boxes.length - used.size, +cohesion.toFixed(3)];
 }
 document.body.textContent = "@@" + JSON.stringify(out) + "@@";
 <\/script></body>`;
@@ -126,3 +137,7 @@ writeFileSync(new URL("../src/sim/heraldryChargesDetailed.js", import.meta.url),
   `${header}export const CHARGE_DETAIL = {\n${bodyStr}\n};\n`);
 
 console.log(`measured ${ids.length} charges: re-anchored ${fixed}, already true ${kept}, unmeasurable ${failed}; stray elements dropped: ${strays}`);
+const frag = ids.filter(id => boxes[id] && boxes[id][5] != null && boxes[id][5] < 0.9)
+  .sort((a, b) => boxes[a][5] - boxes[b][5]);
+if (frag.length) console.log("FRAGMENTED (cohesion < 0.9 — review for culling):\n  "
+  + frag.map(id => `${id} ${boxes[id][5]}`).join("\n  "));
