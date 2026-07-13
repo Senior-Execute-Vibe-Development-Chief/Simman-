@@ -2151,25 +2151,38 @@ console.log("\n── §25 writing systems ──");
   check(`lag is exactly the unreplayed tail of the rule log (${lagBad} bad)`, lagBad === 0);
   check(`fossil spellings emerge across the sweep (${silentSomewhere} langs)`, silentSomewhere >= 5);
   // (d) glyphs: distinct within a script (the engine's own metric — stroke
-  // kind + twelfth-of-box points), sane strokes
+  // kind + twelfth-of-box points), sane strokes — and segmental LETTERS
+  // must be distinct at the READER's grain too (thirds-of-box gestalt):
+  // near-twins like two triangle-bowl letters one joint apart confuse a
+  // human even when every point sits in a different fine bin
   const sigG = (ss) => JSON.stringify(ss.map(st => [(st.kind || ""), st.pts.map(pp => [Math.round(pp.x * 12), Math.round(pp.y * 12)])]));
-  let dup = 0, badG = 0, nG = 0;
+  const gesG = (ss) => ss.map(st => (st.kind || "") + st.pts.map(pp => Math.round(pp.x * 3) + "," + Math.round(pp.y * 3)).join(";")).sort().join("|");
+  let dup = 0, badG = 0, nG = 0, gdup = 0, gN = 0;
   for (let i = 0; i < 60; i++) {
     const l = foundLanguage(wE, { seed: 830000 + i * 173 });
     for (let d = 0; d < 6; d++) driftLanguage(wE, l);
     const inv = glyphInventory(l, 40);
     if (!inv) continue;
-    const seen = new Set();
+    const s = scriptOf(l);
+    const segmental = s.type === "abjad" || s.type === "abugida" || s.type === "alphabet";
+    const seen = new Set(), seenGs = new Set();
     for (const g of inv) {
       nG++;
       const sig = sigG(g.strokes);
       if (seen.has(sig)) dup++;
       seen.add(sig);
+      if (segmental && g.strokes.length >= 2) {
+        gN++;
+        const ge = gesG(g.strokes);
+        if (seenGs.has(ge)) gdup++;
+        seenGs.add(ge);
+      }
       if (!g.strokes.length || g.strokes.length > 18) badG++;
       for (const st of g.strokes) for (const pp of st.pts) if (!Number.isFinite(pp.x) || !Number.isFinite(pp.y) || pp.x < 0 || pp.x > 1 || pp.y < 0 || pp.y > 1) badG++;
     }
   }
   check(`glyphs pairwise distinct within each script + sane strokes (${nG} signs, ${dup} dups, ${badG} bad)`, nG >= 500 && dup === 0 && badG === 0);
+  check(`segmental letters distinct at the reader's gestalt grain (${gN} letters, ${gdup} near-twins)`, gN >= 300 && gdup === 0);
   // (e) writeWord counts match the type's own orthography — including the
   // real machinery: abjad matres lectionis, abugida virama, the three
   // attested syllabary coda treatments (moraic / echo-vowel / unwritten)

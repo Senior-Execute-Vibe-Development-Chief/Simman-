@@ -436,6 +436,12 @@ function bandStrokes(script, key, salt) {
 // COARSE (a twelfth of the box) — two wedges 3% apart are the same wedge
 // to any reader, so the walk must move further than that
 const sigOfStrokes = (ss) => ss.map(s => (s.kind || "") + s.pts.map(p => Math.round(p.x * 12) + "," + Math.round(p.y * 12)).join(";")).join("|");
+// …but the READER's eye clusters coarser: a bowl that slid one joint down
+// is a new sign to the fine signature and the same letter to a human. The
+// gestalt signature quantizes to THIRDS of the box, so near-twins collide
+// and get walked (or pointed) apart — the confusability pressure that
+// actually shaped alphabets
+const gestaltOf = (ss) => ss.map(s => (s.kind || "") + s.pts.map(p => Math.round(p.x * 3) + "," + Math.round(p.y * 3)).join(";")).sort().join("|");
 
 // keys: segments by feature signature; syllables by their segment signatures
 const ckey = (c) => "c" + c.p + "." + c.m + "." + c.l + "." + c.s;
@@ -550,16 +556,24 @@ function glyphMapOf(lang) {
   const entries = [];
   // marks (vowel diacritics, virama) draw from the free stroke grammar, not
   // the letter anatomy — a sliced spine is too stereotyped to keep a dozen
-  // marks apart, and real diacritics are small free shapes anyway
+  // marks apart, and real diacritics are small free shapes anyway.
+  // Segmental LETTERS dedup at both grains: the fine sig (rendering
+  // identity) and the reader's gestalt — dense scripts (syllabaries,
+  // logographies) are legitimately read by fine detail and skip the coarse
+  // test, exactly as hanzi readers do
+  const seenG = new Set();
+  const gestaltOn = s.type === "abjad" || s.type === "abugida" || s.type === "alphabet";
+  const collides = (st) => seen.has(sigOfStrokes(st)) || (gestaltOn && st.length >= 2 && seenG.has(gestaltOf(st)));
   const reg = (key, label, markPos = null, post = (x) => x, base = bandStrokes) => {
     let st = post(base(s, key, 0));
-    if (seen.has(sigOfStrokes(st)) && s.hand === "pen" && s.join && s.type !== "featural") {
+    if (collides(st) && s.hand === "pen" && s.join && s.type !== "featural") {
       // i'jam: keep the worn skeleton, point it apart
-      for (const [n, pos] of DOTS) { const d = withDots(st, n, pos); if (!seen.has(sigOfStrokes(d))) { st = d; break; } }
+      for (const [n, pos] of DOTS) { const d = withDots(st, n, pos); if (!collides(d)) { st = d; break; } }
     }
     let salt = 0;
-    while (seen.has(sigOfStrokes(st)) && salt < 24) st = post(base(s, key, ++salt));
+    while (collides(st) && salt < 24) st = post(base(s, key, ++salt));
     seen.add(sigOfStrokes(st));
+    if (gestaltOn && st.length >= 2) seenG.add(gestaltOf(st));
     const e = { key, label, strokes: st, mark: markPos };
     map.set(key, e); entries.push(e);
     return e;
