@@ -13,7 +13,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
-import { scriptOf, glyphInventory, writeWord, silentLetterSample, SCRIPT_NAME } from "./sim/languageScript.js";
+import { scriptOf, glyphInventory, writeWord, silentLetterSample, numeralGlyphs, SCRIPT_NAME, HAND_NAME } from "./sim/languageScript.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
@@ -313,20 +313,42 @@ function soundHTML(l) {
 
 // ── the Writing card: script type, glyphs, orthographic lag ───────────────
 // Glyphs arrive as stroke data (languageScript.js); this renders them as
-// SVG paths. An abugida's vowel mark draws in a reserved band above/below/
-// beside its base sign.
-function glyphSVG(g, size = 26) {
+// SVG in the script's own HAND: carved strokes take square-cut ends, the
+// brush writes heavy, clay presses filled wedges, the pen loops, the round
+// hand arcs. A word-level headline bar (the Devanagari look) or a cursive
+// baseline (the joined-pen look) is drawn per glyph and meets its
+// neighbours when the word closes its gaps.
+const HAND_PEN = {
+  carved: { w: 5.5, cap: "square" }, clay: { w: 3.5, cap: "butt" }, brush: { w: 9, cap: "round" },
+  pen: { w: 5, cap: "round" }, round: { w: 5.5, cap: "round" },
+};
+function glyphSVG(g, size = 26, opts = {}) {
   const W = 100, H = 115;
+  const pen = HAND_PEN[opts.hand] || HAND_PEN.pen;
   let baseT = { sx: 1, sy: 1, ox: 0, oy: 0 }, markT = null;
-  // a drawable mark is {strokes, pos} (writeWord's abugida vowels); the
-  // inventory's standalone diacritic entries carry only a position STRING
+  // a drawable mark is {strokes, pos} (vowel diacritics, viramas, tone);
+  // the inventory's standalone diacritic entries carry only a position STRING
   if (g.mark && g.mark.strokes) {
     if (g.mark.pos === "above") { baseT = { sx: 1, sy: 0.72, ox: 0, oy: 0.28 }; markT = { sx: 0.44, sy: 0.2, ox: 0.28, oy: 0.02 }; }
     else if (g.mark.pos === "below") { baseT = { sx: 1, sy: 0.72, ox: 0, oy: 0 }; markT = { sx: 0.44, sy: 0.2, ox: 0.28, oy: 0.78 }; }
     else { baseT = { sx: 0.7, sy: 1, ox: 0, oy: 0 }; markT = { sx: 0.26, sy: 0.42, ox: 0.72, oy: 0.29 }; }
   }
-  const path = (strokes, T, bowK) => strokes.map(st => {
-    const P = st.pts.map(p => ({ x: ((T.ox + p.x * T.sx) * 0.92 + 0.04) * W, y: ((T.oy + p.y * T.sy) * 0.9 + 0.05) * H }));
+  const XY = (p, T) => ({ x: ((T.ox + p.x * T.sx) * 0.92 + 0.04) * W, y: ((T.oy + p.y * T.sy) * 0.9 + 0.05) * H });
+  const parts = (strokes, T, bowK, sw) => strokes.map(st => {
+    const P = st.pts.map(p => XY(p, T));
+    if (st.kind === "loop") {
+      const r = (st.r || 0.12) * W * T.sx * 0.92;
+      return `<circle cx="${P[0].x.toFixed(1)}" cy="${P[0].y.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="currentColor" stroke-width="${sw}"/>`;
+    }
+    if (st.kind === "wedge") {
+      // a pressed wedge: filled triangular head, thin drag tail
+      const a = P[0], b = P[1];
+      const dx = b.x - a.x, dy = b.y - a.y, ln = Math.hypot(dx, dy) || 1;
+      const hx = a.x + dx / ln * 16, hy = a.y + dy / ln * 16;
+      const px = -dy / ln * 7, py = dx / ln * 7;
+      return `<path d="M ${(a.x + px).toFixed(1)} ${(a.y + py).toFixed(1)} L ${(a.x - px).toFixed(1)} ${(a.y - py).toFixed(1)} L ${hx.toFixed(1)} ${hy.toFixed(1)} Z" fill="currentColor"/>`
+        + `<path d="M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${b.x.toFixed(1)} ${b.y.toFixed(1)}" fill="none" stroke="currentColor" stroke-width="${sw}"/>`;
+    }
     let d = `M ${P[0].x.toFixed(1)} ${P[0].y.toFixed(1)}`;
     for (let i = 1; i < P.length; i++) {
       const a = P[i - 1], b = P[i];
@@ -335,11 +357,13 @@ function glyphSVG(g, size = 26) {
       const cx = (a.x + b.x) / 2 - (dy / ln) * st.bow * bowK, cy = (a.y + b.y) / 2 + (dx / ln) * st.bow * bowK;
       d += ` Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
     }
-    return d;
-  }).join(" ");
-  let m = "";
-  if (markT) m = `<path d="${path(g.mark.strokes, markT, 30)}" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>`;
-  return `<svg class="glyph" viewBox="0 0 ${W} ${H}" width="${size}" height="${Math.round(size * 1.15)}" aria-hidden="true"><path d="${path(g.strokes, baseT, 70)}" fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>${m}</svg>`;
+    return `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="${pen.cap}" stroke-linejoin="round"/>`;
+  }).join("");
+  let extra = "";
+  if (markT) extra += parts(g.mark.strokes, markT, 30, 5);
+  if (opts.headline) extra += `<path d="M 0 ${(H * 0.1).toFixed(1)} L ${W} ${(H * 0.1).toFixed(1)}" stroke="currentColor" stroke-width="5" fill="none"/>`;
+  if (opts.join) extra += `<path d="M 0 ${(H * 0.71).toFixed(1)} L ${W} ${(H * 0.71).toFixed(1)}" stroke="currentColor" stroke-width="4" fill="none" opacity="0.85"/>`;
+  return `<svg class="glyph" viewBox="0 0 ${W} ${H}" width="${size}" height="${Math.round(size * 1.15)}" aria-hidden="true">${parts(g.strokes, baseT, 70, pen.w)}${extra}</svg>`;
 }
 
 function writingHTML(l) {
@@ -348,37 +372,63 @@ function writingHTML(l) {
     <p class="note">No written tradition yet — this tongue is young. Records consolidate only after a little history: <b>Drift</b> the language and a script will be born (logographic first, the way every primary invention was).</p></section>`;
   const dirName = { ltr: "left → right", rtl: "right → left", ttb: "top → bottom" }[s.dir];
   const chips = [SCRIPT_NAME[s.type],
+    HAND_NAME[s.hand],
     s.type === "logo" ? "one sign per morpheme (open set)" : `${s.glyphBudget} signs`,
     `written ${dirName}`,
-    s.lag ? `spelling frozen ${s.lag} sound change${s.lag > 1 ? "s" : ""} ago` : "shallow orthography (young or freshly reformed)",
-  ].map(t => `<span class="chip">${esc(t)}</span>`).join("");
+    s.sep === "space" ? "words spaced" : s.sep === "dot" ? "words split by interpunct" : "scriptio continua",
+    s.matres === "long" ? "matres lectionis (long vowels written)" : null,
+    s.virama ? "virama kills the inherent vowel" : null,
+    s.codaMode === "moraic" ? "moraic coda sign" : s.codaMode === "echo" ? "codas echo their vowel (ko-no-so)" : s.codaMode === "drop" ? "codas unwritten" : null,
+    l.prof.tone ? (s.toneWritten ? "tone written (diacritics)" : "tone unwritten") : null,
+    s.headline ? "headline bar joins the word" : null,
+    s.join ? "cursive: letters join" : null,
+    s.lag ? `spelling frozen ${s.lag} sound change${s.lag > 1 ? "s" : ""} ago` : s.reformed ? "spelling reformed (shallow again)" : "shallow orthography (young)",
+  ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
   const story = s.adoptedAt > s.born
     ? `Born logographic (every primary tradition is), then re-learned and simplified — the current type won because it fits this language's own structure.`
     : s.type === "logo"
       ? `Still logographic: phonographic writing would collapse this language's short, homophone-heavy morphemes, so simplification never paid.`
       : `Adopted in its current form when the tradition consolidated.`;
+  const handStory = { carved: "The hand is carved: cuts along the grain split the wood, so no stroke runs level.",
+    clay: "The hand presses wedges into clay — heads and drag-tails, the cuneiform economy.",
+    brush: "The hand is a brush: heavy, boxy, stroke-ordered signs.",
+    pen: "The hand is a reed pen: strokes chain and loop" + (s.join ? ", and the letters of a word join along the baseline" : "") + ".",
+    round: "The hand is rounded: a straight cut splits the palm leaf, so every stroke arcs." }[s.hand];
+  const gOpts = { hand: s.hand, headline: s.headline, join: s.join };
+  const gOptsPlain = { hand: s.hand };
   const inv = glyphInventory(l, 24) || [];
-  const invCells = inv.map(g => `<span class="glyphcell">${glyphSVG(g, 26)}<span class="lbl">${esc(g.label)}</span></span>`).join("");
+  const invCells = inv.map(g => `<span class="glyphcell">${glyphSVG(g, 26, gOptsPlain)}<span class="lbl">${esc(g.label)}</span></span>`).join("");
+  const wordHTML = (w) => `<span class="glyphword${s.dir === "rtl" ? " rtl" : s.dir === "ttb" ? " ttb" : ""}${s.headline || s.join ? " tight" : ""}">${w.glyphs.map(g => glyphSVG(g, 22, gOpts)).join("")}</span>`;
   const rows = [];
   for (const cid of [STONE, KING, RIVER, MOTHER, WOLF, HORSE]) {
     const w = writeWord(l, cid);
     if (!w) continue;
-    const said = wordOf(l, cid);
     rows.push(`<tr><td class="lbl">${esc(glossOf(cid))}</td>
-      <td><span class="glyphword${s.dir === "rtl" ? " rtl" : s.dir === "ttb" ? " ttb" : ""}">${w.glyphs.map(g => glyphSVG(g, 22)).join("")}</span></td>
-      <td class="w">⟨${esc(w.translit)}⟩</td><td class="w">${esc(said)}</td>
+      <td>${wordHTML(w)}</td>
+      <td class="w">⟨${esc(w.translit)}⟩</td><td class="w">${esc(wordOf(l, cid))}</td>
       <td class="gloss ipa">[${esc(ipaOf(l, nativeStemOf(l, cid)))}]</td></tr>`);
   }
+  // a written LINE: three words under the script's own separation habit
+  const lineWords = [KING, SEE, RIVER].map(cid => writeWord(l, cid)).filter(Boolean);
+  const sepHTML = s.sep === "space" ? `<span class="wsep"></span>` : s.sep === "dot" ? `<span class="wsep dot">·</span>` : "";
+  const lineHTML = lineWords.length === 3
+    ? `<p class="cells glyphline${s.dir === "ttb" ? " ttb" : ""}">${lineWords.map(w => wordHTML(w)).join(sepHTML)} <span class="gloss">‘king · see · river’${s.sep === "continua" ? " — run together, as old traditions did" : ""}</span></p>` : "";
+  // numerals: tally marks for the low digits, own signs above
+  const nums = [1, 2, 3, 4, 7, 10].map(n => { const g = numeralGlyphs(l, n); return g ? `<span class="glyphcell">${g.map(x => glyphSVG(x, 26, gOptsPlain)).join("")}<span class="lbl">${n}</span></span>` : ""; }).join("");
   const silent = silentLetterSample(l, 3);
   const silentLine = silent.length
     ? `<p class="note"><b>Orthographic lag</b> — the tradition still spells the older tongue, and the fossil letters show: ${silent.map(x => `⟨${esc(x.written)}⟩ now said <span class="w">${esc(x.said)}</span>`).join(" · ")}. Drift the language further and the gap deepens; a script re-learning is the spelling reform that closes it.</p>` : "";
   return `<section class="card"><h2>Writing <span class="count">— an emergent script</span></h2>
     <div class="chips">${chips}</div>
-    <p class="note">${story} Signs are drawn by a per-script stroke grammar — logographs dense, letters light — and a derived word's logograph compounds its parts (the etymology becomes a semantic radical). ⟨brackets⟩ show the frozen spelling romanized; beside it, how the word is said today.</p>
+    <p class="note">${story} ${handStory} A derived word's logograph compounds its parts in a radical slot, and a homophone is written phono-semantically — a domain radical beside the sign it sounds like, the machine that built most of the hanzi. ⟨brackets⟩ show the frozen spelling romanized; beside it, how the word is said today.</p>
     <h3>Signs</h3>
     <p class="cells glyphrow">${invCells}</p>
+    <h3>Numerals</h3>
+    <p class="cells glyphrow">${nums}</p>
     <h3>Written words</h3>
     <div class="scroll"><table><thead><tr><th>meaning</th><th>written</th><th>spelled</th><th>said</th><th>IPA</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
+    <h3>A written line</h3>
+    ${lineHTML}
     ${silentLine}</section>`;
 }
 
@@ -999,6 +1049,11 @@ td.spkw:hover{color:var(--accent)}
 .glyphword{display:inline-flex;gap:3px;align-items:flex-start}
 .glyphword.rtl{flex-direction:row-reverse}
 .glyphword.ttb{flex-direction:column}
+.glyphword.tight{gap:0}
+.glyphline{display:flex;flex-wrap:wrap;align-items:center;gap:.15rem}
+.glyphline.ttb{flex-direction:column;align-items:flex-start}
+.wsep{display:inline-block;width:.7rem}
+.wsep.dot{width:auto;padding:0 .25rem;color:var(--muted)}
 .slider input{accent-color:var(--accent)}
 .note{color:var(--muted);font-size:.85rem;margin:.1rem 0 .6rem;max-width:46rem}
 .scroll{overflow-x:auto}

@@ -836,3 +836,49 @@ trade channels remain the sim-side plan). Probe 292 → **305** checks (§25).
   gate knowledge diffusion — the §F plan); glyph aesthetics beyond v1
   (visual look-alike avoidance is signature-level only); writing
   loanwords (a loan has no native tradition and stays unwritten in v1).
+
+## Build status (session 15, fourth phase) — the script generator, deepened
+
+"Make it deeper: real-life accuracy, more advanced, different shapes."
+Probe 305 → **313** checks (§25 extended).
+
+- **THE HAND — glyph shape follows the writing medium, as in life.** A
+  family's material-culture roll (re-rolled at adoption, so a re-learned
+  script can change its whole look): CARVED cuts no stroke along the
+  grain (the runic futhark rule — every stroke carries a vertical
+  component, gated); CLAY presses only wedges — filled heads with drag
+  tails snapped to the four cuneiform directions (gated); the BRUSH
+  builds boxy, axis-dominant, stroke-ordered signs; the reed PEN chains
+  and loops, and its words may JOIN along a cursive baseline; the ROUND
+  hand arcs every stroke because a straight cut splits the palm leaf
+  (the Burmese/Odia rule — zero straight strokes, gated). Letters live
+  in a body band with rolled ascenders/descenders (the x-height rhythm);
+  logographs compose in radical SLOTS (left-right, top-bottom,
+  enclosure). Distinctness is enforced on coarse kind+points bins — a
+  wedge 3% away is the same wedge, so the walk must genuinely move.
+- **Real orthography per type.** Abjads grow matres lectionis (long
+  vowels + initial carrier written with glide letters, ~70%); abugidas
+  may kill the inherent vowel with a virama mark (~70%) and can wear the
+  Devanagari headline bar; syllabaries treat codas the three attested
+  ways — moraic nasal sign (kana, when the language is CV(N)),
+  echo-vowel (Linear B ko-no-so), or simply unwritten; segmental scripts
+  of tonal languages usually leave tone UNwritten (transliteration drops
+  the marks — gated no-leak) with a Vietnamese-style diacritic minority;
+  word separation rolls space / scriptio continua / interpunct;
+  direction is weighted by type (abjads mostly rtl with their lineage,
+  logographies/syllabaries take columns at real rates).
+- **Phono-semantic compounds** — the 形声 machine: a morpheme whose
+  frozen surface is homophonous with an earlier one writes as its DOMAIN
+  RADICAL beside the glyph of the word it sounds like, so homophones
+  sound alike and write differently (gated).
+- **Numerals**: the low digits are tally marks in the script's own
+  medium — one, two, three repeated units (wedges in clay, arcs in the
+  round hand) — higher digits their own signs (gated 1×/2×/3×).
+- **Spelling reforms**: a tradition drifted ≥5 changes into lag may
+  reform WITHOUT changing type at a state-gated juncture (the Turkish
+  move; ~45% take it, the rest fossilize toward -ough). Reform incidence
+  gated.
+- Lab Writing card grew hand/orthography chips with the mechanism story,
+  a numerals row, and "a written line" — three words under the script's
+  own separation habit, headline-joined or cursive-joined where the hand
+  says so.

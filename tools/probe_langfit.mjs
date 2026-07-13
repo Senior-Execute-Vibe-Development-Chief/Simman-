@@ -15,7 +15,7 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
-import { scriptOf, writeWord, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample } from "../src/sim/languageScript.js";
+import { scriptOf, writeWord, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs } from "../src/sim/languageScript.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
@@ -2151,18 +2151,23 @@ console.log("\n── §25 writing systems ──");
       const sig = JSON.stringify(g.strokes.map(st => st.pts.map(pp => [Math.round(pp.x * 20), Math.round(pp.y * 20)])));
       if (seen.has(sig)) dup++;
       seen.add(sig);
-      if (!g.strokes.length || g.strokes.length > 12) badG++;
+      if (!g.strokes.length || g.strokes.length > 18) badG++;
       for (const st of g.strokes) for (const pp of st.pts) if (!Number.isFinite(pp.x) || !Number.isFinite(pp.y) || pp.x < 0 || pp.x > 1 || pp.y < 0 || pp.y > 1) badG++;
     }
   }
   check(`glyphs pairwise distinct within each script + sane strokes (${nG} signs, ${dup} dups, ${badG} bad)`, nG >= 500 && dup === 0 && badG === 0);
-  // (e) writeWord counts match the type's own logic
-  let cntBad = 0, cntN = 0, logoCompound = false;
+  // (e) writeWord counts match the type's own orthography — including the
+  // real machinery: abjad matres lectionis, abugida virama, the three
+  // attested syllabary coda treatments (moraic / echo-vowel / unwritten)
+  let cntBad = 0, cntN = 0, logoCompound = false, phonoSem = false;
+  const HANDSEEN = {};
+  let carvedFlat = 0, clayNonWedge = 0, roundStraight = 0, roundStrokes = 0;
   for (let i = 0; i < 80; i++) {
     const l = foundLanguage(wE, { seed: 850000 + i * 211 });
     for (let d = 0; d < 8; d++) driftLanguage(wE, l);
     const s = scriptOf(l);
     if (!s) continue;
+    HANDSEEN[s.hand] = 1;
     const w = writeWord(l, STONE);
     if (!w) continue;
     cntN++;
@@ -2170,8 +2175,26 @@ console.log("\n── §25 writing systems ──");
     const segs = f.syls.reduce((a, sy) => a + sy.on.length + sy.nu.length + sy.co.length, 0);
     const cons = f.syls.reduce((a, sy) => a + sy.on.length + sy.co.length, 0);
     if (s.type === "alphabet" && w.glyphs.length !== segs) cntBad++;
-    if (s.type === "abjad" && w.glyphs.length !== cons) cntBad++;
-    if (s.type === "syll" && w.glyphs.length !== f.syls.length) cntBad++;
+    if (s.type === "abjad") {
+      const maters = s.matres === "long"
+        ? f.syls.reduce((a, sy) => a + (sy.nu.some(v => v.lg) ? 1 : 0), 0) + (!f.syls[0].on.length ? 1 : 0) : 0;
+      if (w.glyphs.length !== cons + maters) cntBad++;
+    }
+    if (s.type === "syll") {
+      const codas = f.syls.reduce((a, sy) => a + sy.co.length, 0);
+      const nasalCodas = f.syls.reduce((a, sy) => a + sy.co.filter(c => c.m === 1).length, 0);
+      const extra = s.codaMode === "echo" ? codas : s.codaMode === "moraic" ? nasalCodas : 0;
+      if (w.glyphs.length !== f.syls.length + extra) cntBad++;
+    }
+    if (s.type === "abugida") {
+      // every coda/cluster consonant is its own sign; virama only adds a MARK
+      const bases = f.syls.length + f.syls.reduce((a, sy) => a + Math.max(0, sy.on.length - 1) + sy.co.length, 0);
+      if (w.glyphs.length !== bases) cntBad++;
+      if (s.virama) {
+        const codaGlyph = w.glyphs.find(g => g.mark && g.mark.pos === "below");
+        if (f.syls.some(sy => sy.co.length) && !codaGlyph) cntBad++;
+      }
+    }
     if (s.type === "logo") {
       if (w.glyphs.length !== 1) cntBad++;
       for (let cid = 0; cid < CONCEPTS.length && !logoCompound; cid++) {
@@ -2179,10 +2202,54 @@ console.log("\n── §25 writing systems ──");
         const wd = writeWord(l, cid);
         if (wd && wd.glyphs[0].strokes.length >= 6) logoCompound = true;
       }
+      // phono-semantic: two concepts sharing a frozen surface write DIFFERENTLY
+      if (!phonoSem) {
+        const seen = new Map();
+        for (let cid = 0; cid < CONCEPTS.length && !phonoSem; cid++) {
+          const ww = writtenWordOf(l, cid);
+          if (!ww) continue;
+          if (seen.has(ww)) {
+            const a = writeWord(l, seen.get(ww)), b = writeWord(l, cid);
+            if (a && b && JSON.stringify(a.glyphs) !== JSON.stringify(b.glyphs)) phonoSem = true;
+          } else seen.set(ww, cid);
+        }
+      }
+    }
+    // THE HAND constrains the strokes, exactly as the material does
+    const inv25 = glyphInventory(l, 20) || [];
+    for (const g of inv25) for (const st of g.strokes) {
+      if (s.hand === "carved" && !st.kind && st.pts.every((pp, k) => k === 0 || Math.abs(pp.y - st.pts[k - 1].y) < 0.02)) carvedFlat++;
+      if (s.hand === "clay" && st.kind !== "wedge") clayNonWedge++;
+      if (s.hand === "round") { roundStrokes++; if (!st.kind && Math.abs(st.bow) < 0.2) roundStraight++; }
     }
   }
-  check(`written glyph counts follow the type's own logic (${cntBad}/${cntN} bad)`, cntN >= 30 && cntBad === 0);
+  check(`written glyph counts follow the type's own orthography (${cntBad}/${cntN} bad)`, cntN >= 30 && cntBad === 0);
   check(`a logography compounds a derived word's radicals`, logoCompound);
+  check(`homophones write phono-semantically in a logography (distinct signs, shared sound)`, phonoSem);
+  check(`all five hands occur (${Object.keys(HANDSEEN).sort().join(", ")})`, Object.keys(HANDSEEN).length === 5);
+  check(`the carved hand cuts no stroke along the grain (${carvedFlat} level strokes)`, carvedFlat === 0);
+  check(`the clay hand presses only wedges (${clayNonWedge} non-wedges)`, clayNonWedge === 0);
+  check(`the round hand arcs (${roundStraight}/${roundStrokes} straight)`, roundStrokes > 0 && roundStraight === 0);
+  // tone stays unwritten unless the script writes it; tally numerals
+  let toneLeak = 0, tallyBad = 0, reformSeen = 0;
+  for (let i = 0; i < 60; i++) {
+    const l = foundLanguage(wE, { seed: 870000 + i * 257 });
+    for (let d = 0; d < 9; d++) driftLanguage(wE, l);
+    const s = scriptOf(l);
+    if (!s) continue;
+    if (l.prof.tone && !s.toneWritten && s.type !== "logo") {
+      const t = writtenWordOf(l, STONE);
+      if (t && /[̀-ͯ]/.test(t.normalize("NFD"))) toneLeak++;
+    }
+    for (const n of [1, 2, 3]) {
+      const g = numeralGlyphs(l, n);
+      if (!g || g[0].strokes.length !== n * numeralGlyphs(l, 1)[0].strokes.length) tallyBad++;
+    }
+    if (s.reformed) reformSeen++;
+  }
+  check(`unwritten tone never leaks into the transliteration (${toneLeak})`, toneLeak === 0);
+  check(`the low numerals are tally marks (1/2/3 = 1×/2×/3× the unit, ${tallyBad} bad)`, tallyBad === 0);
+  check(`spelling reforms fire on deep-lag traditions (${reformSeen} reformed)`, reformSeen >= 3);
   // (f) determinism + JSON roundtrip
   const wD = mkWorld();
   const d1 = foundLanguage(wD, { seed: 860001 });
