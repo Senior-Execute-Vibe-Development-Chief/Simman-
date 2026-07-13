@@ -291,6 +291,12 @@ export const TINCTURES = {
 const T_NAMES = Object.keys(TINCTURES);
 const METALS = T_NAMES.filter(n => TINCTURES[n].kind === "metal");
 const DARKS = T_NAMES.filter(n => TINCTURES[n].kind !== "metal");   // colours + stains
+// THE BUNTING SHELF: mass-sewn flag cloth comes off standard bolts — the
+// seven fast single-vat tinctures. The overdyed STAINS (tawny, murrey,
+// sanguine) are engraver's and livery colours: they stay on shields and
+// silks; on cloth a stain-intent comes back as its vat's fast recipe, or
+// failing that as the mill's nearest standard bolt.
+const BOLTS = T_NAMES.filter(n => TINCTURES[n].kind !== "stain");
 
 // OKLab — perceptual colour space, so distances match what the eye sees
 function oklab([r, g, b]) {
@@ -354,18 +360,28 @@ function vatAt(u) {
 }
 const dyeHue = u => vatAt(u).hue;
 // a FIELD from the wheel: the vat's family plus the two ever-present
-// achromatics (a pale dull intent comes out argent, a deep dull one sable)
-function namedDyeField(u, sat, val) {
+// achromatics (a pale dull intent comes out argent, a deep dull one sable).
+// On BUNTING the vat offers only its fast members; a pure-stain vat sends
+// the order to the mill's nearest standard bolt.
+function namedDyeField(u, sat, val, bunting) {
   const v = vatAt(u);
-  return nearestTincture(hsl(v.hue, sat, v.lo + val * (v.hi - v.lo)), [...v.members, "argent", "sable"]);
+  const rgb = hsl(v.hue, sat, v.lo + val * (v.hi - v.lo));
+  let members = v.members;
+  if (bunting) {
+    members = members.filter(n => TINCTURES[n].kind !== "stain");
+    if (!members.length) return nearestTincture(rgb, BOLTS);
+  }
+  return nearestTincture(rgb, [...members, "argent", "sable"]);
 }
 // a DARK mark from the wheel (the rule-of-tincture pick on a metal ground):
 // the vat's non-metal members plus the soot vat, at the vat's own saturation
-function namedDyeDark(u, val, exclude) {
+function namedDyeDark(u, val, exclude, bunting) {
   const v = vatAt(u);
-  let cands = [...v.members.filter(n => TINCTURES[n].kind !== "metal"), "sable"];
+  let members = v.members;
+  if (bunting) members = members.filter(n => TINCTURES[n].kind !== "stain");
+  let cands = [...members.filter(n => TINCTURES[n].kind !== "metal"), "sable"];
   if (exclude) cands = cands.filter(n => n !== exclude);
-  if (!cands.length) cands = DARKS.filter(n => n !== exclude);
+  if (!cands.length) cands = (bunting ? BOLTS : DARKS).filter(n => TINCTURES[n].kind !== "metal" && n !== exclude);
   return nearestTincture(hsl(v.hue, 0.75, v.lo + val * (v.hi - v.lo)), cands);
 }
 // the light/dark boundary the palette itself implies (midway, in OKLab
@@ -374,6 +390,12 @@ function namedDyeDark(u, val, exclude) {
 const CLASS_L = (Math.min(...METALS.map(n => T_LAB[n][0])) + Math.max(...DARKS.map(n => T_LAB[n][0]))) / 2;
 const P = rgb => ({ name: nearestTincture(rgb, T_NAMES), kind: oklab(rgb)[0] > CLASS_L ? "metal" : "colour", rgb });
 const classOf = t => (t.kind === "metal" ? "metal" : "dark");
+// what strict class opposition itself GUARANTEES: the smallest OKLab distance
+// between any metal and any dark. A reused bolt that clears this bar reads at
+// least as well as the rule of tincture ever promises.
+const OPPOSITION_FLOOR = Math.min(...METALS.flatMap(m => DARKS.map(d => dE(TINCTURES[m].rgb, TINCTURES[d].rgb))));
+// a flag is sewn from named bolts: the nearest standard one to any colour
+const toBolt = t => T(nearestTincture(t.rgb, BOLTS));
 
 // What a mark WEARS follows from what it LIES ON — the rule of tincture as a
 // constructive rule, not a post-hoc contrast fix:
@@ -389,25 +411,38 @@ const classOf = t => (t.kind === "metal" ? "metal" : "dark");
 // `poles` lets a two-pole tradition offer its own colours as first-preference
 // candidates (ties break to them), so its marks stay mode-coherent whenever
 // its poles genuinely read.
-function tinctureOn(grounds, hue, val, poles = []) {
+// `opts.bunting` restricts every named pick to the bunting bolts (flags);
+// `opts.flying` is the SEWING ECONOMY: tinctures already on the table, in
+// seniority order — a mark reuses one whenever it reads on its ground (the
+// class opposition on a uniform ground; at least the OPPOSITION_FLOOR on a
+// mixed one) instead of cutting a fresh bolt. Real flags run 2–4 colours
+// not because anyone counts, but because a new colour is a new bolt.
+function tinctureOn(grounds, hue, val, poles = [], opts = {}) {
   const genuine = grounds.every(g => TINCTURES[g.name] && TINCTURES[g.name].rgb === g.rgb);
-  if (genuine && new Set(grounds.map(classOf)).size === 1) {
+  const uniform = genuine && new Set(grounds.map(classOf)).size === 1;
+  if (opts.flying) {
+    for (const c of opts.flying) {
+      const d = Math.min(...grounds.map(g => dE(c.rgb, g.rgb)));
+      if (uniform ? classOf(c) !== classOf(grounds[0]) : d >= OPPOSITION_FLOOR) return { name: c.name, kind: c.kind, rgb: c.rgb };
+    }
+  }
+  if (uniform) {
     // on a metal ground the mark is DYED cloth — named by its vat; on a dark
     // ground it is METAL thread — gilt when the intent runs warm, silver when
     // pale or cool
     return classOf(grounds[0]) === "metal"
-      ? T(namedDyeDark(hue, val))
+      ? T(namedDyeDark(hue, val, null, opts.bunting))
       : T(nearestTincture(hsl(dyeHue(hue), 0.3, 0.62 + val * 0.3), METALS));
   }
   let best = null, bd = -1;
-  for (const c of [...poles, ...T_NAMES.map(T)]) {
+  for (const c of [...poles, ...(opts.bunting ? BOLTS : T_NAMES).map(T)]) {
     const d = Math.min(...grounds.map(g => dE(c.rgb, g.rgb)));
     if (d > bd) { bd = d; best = c; }
   }
   return best;
 }
 
-function decodePalette(get) {
+function decodePalette(get, bunting) {
   const mode = pickEnum(get("paletteMode"), PALETTES);
   const hA = get("hueA"), hB = get("hueB"), chroma = get("chroma"), val = get("value");
   // a mark in a two-pole tradition takes whichever pole sits farther from the
@@ -446,15 +481,24 @@ function decodePalette(get) {
     // by its vat — a bright weld intent lands or, a pale dull one argent, a
     // deep dull one sable, so METAL FIELDS emerge exactly where the genes
     // imply them; stains only ever claim their own narrow vats
-    fieldT = T(namedDyeField(hA, 0.25 + chroma * 0.65, val));
-    chargeT = tinctureOn([fieldT], hB, val);
+    fieldT = T(namedDyeField(hA, 0.25 + chroma * 0.65, val, bunting));
+    chargeT = tinctureOn([fieldT], hB, val, [], { bunting });
     // the partition companion: a second dark beside a dark field when the
     // secondary gene asks for one (colour-and-colour parties are lawful), else
     // the opposite class — the classic party of colour and metal
     companionT = classOf(fieldT) === "dark" && get("secondary") > 0.5
-      ? T(namedDyeDark(hB, val, fieldT.name))
+      ? T(namedDyeDark(hB, val, fieldT.name, bunting))
       : chargeT;
     accentT = chargeT;
+  }
+  // a FLAG is sewn from the bunting shelf whatever the tradition: the silk's
+  // and the pigment's continuous colours come back as their nearest standard
+  // bolts (ink and bone are already sable and argent), the same substrate
+  // reinterpretation that keeps vair off cloth
+  if (bunting) {
+    fieldT = toBolt(fieldT); companionT = toBolt(companionT);
+    chargeT = toBolt(chargeT); accentT = toBolt(accentT);
+    poles = poles.map(toBolt);
   }
   return { mode, field: fieldT.rgb, companion: companionT.rgb, charge: chargeT.rgb, accent: accentT.rgb,
     ink: INK, fieldT, companionT, chargeT, accentT, poles, hatch };
@@ -486,7 +530,7 @@ export function expressGenome(genome) {
   const flagRatio = substrate === "banner" ? 0.5 + (sWin - Math.floor(sWin)) * 0.167
     : substrate === "pennon" ? 0.6 : 0.62;
 
-  const pal = decodePalette(get);
+  const pal = decodePalette(get, isFlag);
   const symmetry = composition === "radial" ? "radial" : pickEnum(get("symmetry"), SYMMETRIES);
 
   // field — a heraldic field can be divided (partition), draped in a FUR, laid with
@@ -542,7 +586,7 @@ export function expressGenome(genome) {
   // the tincture any mark lying on this field wears — chargeT was constructed
   // against the plain field; every other ground (a party, a fur) re-derives
   const markT = grounds.length === 1 && grounds[0] === pal.fieldT ? pal.chargeT
-    : tinctureOn(grounds, get("hueB"), get("value"), pal.poles);
+    : tinctureOn(grounds, get("hueB"), get("value"), pal.poles, { bunting: isFlag });
   const mixedGround = new Set(grounds.map(g => g.kind === "metal" ? "metal" : "dark")).size > 1;
   if (field.fur === "fretty") {
     // the lattice is a mark on the field: it wears what reads there
@@ -571,7 +615,7 @@ export function expressGenome(genome) {
     // white edge) — its tincture picked to read against EVERYTHING it
     // separates, band and field bands alike
     if (isFlag && field.ordinary !== "none" && !field.counterchange && get("motifCount") > 0.6) {
-      const fb = tinctureOn([...grounds, markT], get("hueA"), get("value"), pal.poles);
+      const fb = tinctureOn([...grounds, markT], get("hueA"), get("value"), pal.poles, { bunting: isFlag });
       field.fimbriation = fb.rgb; field.fimbName = fb.name;
     }
   }
@@ -627,9 +671,9 @@ export function expressGenome(genome) {
           arrange = slot === "on" ? "onOrdinary" : "between";
           slots = pts;
           tilt = (slot === "on" && spec.tilt) || 0;
-          if (slot === "on") tincture = tinctureOn([markT], get("hueA"), get("value"));
+          if (slot === "on") tincture = tinctureOn([markT], get("hueA"), get("value"), [], isFlag ? { bunting: true, flying: grounds } : {});
         }
-      } else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value")); }
+      } else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value"), [], { bunting: isFlag }); }
     } else {
       arrange = composition === "central" || composition === "radial" ? "single"
         : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
@@ -675,7 +719,7 @@ export function expressGenome(genome) {
     // (the tincture rule, one layer up). A figure never boards the canton.
     const housed = isFlag && composition === "heraldic" && !hasOrdinary && compact
       && get("star") > 0.62 && (arrange === "single" || arrange === "array");
-    if (housed) tincture = tinctureOn([markT], get("hueA"), get("value"));
+    if (housed) tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds });
     // FLAG DETAILING: a single device may sit on a bounded PANEL (disc or
     // lozenge — the charge then dresses against the panel, the tincture rule
     // applied recursively), or wear a FIMBRIATION halo; both are how modern
@@ -686,9 +730,9 @@ export function expressGenome(genome) {
       // opens wide; a compact device (a disc, a star) flies bare more often
       if (arrange === "single" && get("crescent") > (compact ? 0.56 : 0.38) && get("crescent") <= 0.74) {
         panel = { shape: get("symmetry") > 0.5 ? "disc" : "lozenge", tincture: markT.rgb, name: markT.name };
-        tincture = tinctureOn([markT], get("hueA"), get("value"));
+        tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds });
       } else if (arrange === "single" && get("motifCount") > 0.6) {
-        fimb = tinctureOn([...grounds, tincture], get("hueA"), get("value"), pal.poles);
+        fimb = tinctureOn([...grounds, tincture], get("hueA"), get("value"), pal.poles, { bunting: true });
       }
     }
     if (arrange) motif = { id, cat, tincture: tincture.rgb, tinctureName: tincture.name, counterchange, behind,

@@ -43,7 +43,8 @@ let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
   array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, housed: 0,
-  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0 };
+  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0 };
+const STAINS = new Set(names.filter(n => TINCTURES[n].kind === "stain"));
 // the compact device categories — the only ones a flag repeats or strews
 const COMPACT = new Set(["celestial", "geometric"]);
 const fail = (msg, g) => { if (fails++ < 10) console.error(`  FAIL ${msg}${g ? `\n       ${describeGenome(g)}` : ""}`); };
@@ -101,6 +102,20 @@ function audit(g) {
       if (!(p.flagRatio >= 0.5 && p.flagRatio <= 0.667)) fail(`banner cut out of range (${p.flagRatio})`, g);
       if (p.flagRatio < 0.53) seen.cutLong++;
       if (p.flagRatio > 0.64) seen.cutStocky++;
+    }
+    // THE BUNTING SHELF: no stain flies on cloth, and the sewing economy
+    // keeps a flag to a few bolts (the mechanism lands 2–4; 5 is the
+    // structural ceiling)
+    {
+      const worn = new Set(f.names);
+      if (f.ordinary && f.ordinary !== "none") worn.add(f.ordinaryName);
+      if (f.fimbName) worn.add(f.fimbName);
+      if (f.treatName) worn.add(f.treatName);
+      if (fm) { worn.add(fm.tinctureName); if (fm.panel) worn.add(fm.panel.name); if (fm.fimbName) worn.add(fm.fimbName); }
+      if (p.ornaments.canton) worn.add(p.ornaments.cantonName);
+      for (const n of worn) if (STAINS.has(n)) fail(`a stain flies on cloth (${n})`, g);
+      if (worn.size > 5) fail(`flag runs ${worn.size} tinctures`, g);
+      if (fm && (fm.inCanton || fm.panel || fm.arrange === "onOrdinary") && f.names.includes(fm.tinctureName)) seen.boltReuse++;
     }
   }
   // the Spanish-fess system: tierced bands may double the middle or the first
