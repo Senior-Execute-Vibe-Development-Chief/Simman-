@@ -14,7 +14,10 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { buildInventory, romanizeC, romanizeV } from "./sim/languagePhonology.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
-import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive } from "./sim/languageGrammar.js";
+import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
+  alignmentOf, voicesOf, voiceEtymologies, tamShape, evidentialSystem, classInventory, concordMarkers, agreementTargets, inflectAdj,
+  classifiersOf, classifierEtymologies, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns,
+  renderClauseTree, clauseLinkersOf } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
@@ -141,6 +144,140 @@ function grammarHTML(l) {
     <h3>Counting (base ${g.numBase})</h3>
     <p class="cells">${nums1.join(" ")}</p>
     <ul class="cols">${numsBig}</ul></section>`;
+}
+
+// ── the grammar frontier: the rarer-but-real typology (clusters A–G) ──────
+// Each subsection is EMERGENT — it appears only when this language's dials
+// rolled the feature, so a plain SVO tongue shows a short card and an
+// Amazonian-shaped one a long one. Every example is rendered live.
+const clauseEx = (label, cl) => `<p class="ensent dim">${esc(label)}</p>${interHTML(cl)}`;
+const cellStr = (x) => esc([...x.pre.map(t => t.w), x.text, ...x.post.map(t => t.w)].join(" "));
+
+function verbFrontierHTML(l) {
+  const secs = [];
+
+  // ── Alignment (Group F) ──
+  const al = alignmentOf(l);
+  const alName = { acc: "nominative–accusative", erg: "ergative–absolutive", active: "active–stative", tripartite: "tripartite" }[al.align] || al.align;
+  const alChips = [alName,
+    al.ergSplit === "tam" ? "split-ergative by tense/aspect" : al.ergSplit === "hier" ? "split-ergative by hierarchy" : null,
+    al.activeFluid ? "fluid-S (volition flips it)" : null,
+    al.invAgree ? "direct–inverse marking" : null, al.absAgree ? "absolutive agreement" : null,
+  ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
+  secs.push(`<h3>Alignment</h3><div class="chips">${alChips}</div>
+    <p class="note">Which arguments get flagged. Compare the subject of the transitive clause with the intransitive — under ergativity it is the OBJECT that patterns with the lone subject.</p>
+    ${clauseEx("the king saw the river", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }))}
+    ${clauseEx("the wolf went", renderClause(l, { s: { n: WOLF }, v: { c: GO, tam: "pst" } }))}`);
+
+  // ── Voice & valency (Group B) ──
+  const voices = voicesOf(l), vet = voiceEtymologies(l);
+  const vkeys = ["caus", "pass", "antip", "appl"].filter(k => voices[k]);
+  if (vkeys.length) {
+    const vname = { caus: "causative", pass: "passive", antip: "antipassive", appl: "applicative" };
+    const vchips = vkeys.map(k => { const e = vet.find(x => x.k === k); return `<span class="chip">${vname[k]}${e && e.from ? ` ‹ ‘${esc(e.from)}’` : ""}</span>`; }).join("");
+    const exs = [];
+    if (voices.caus) exs.push(clauseEx("causative — ‘the king made the wolf go’", renderClause(l, { s: { n: KING }, v: { c: GO, tam: "pst", voice: "caus" }, o: { n: WOLF } })));
+    if (voices.pass) exs.push(clauseEx("passive — ‘the river was seen (by the king)’", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "pass" }, o: { n: RIVER } })));
+    if (voices.antip) exs.push(clauseEx("antipassive — ‘the king saw (at the river)’", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst", voice: "antip" }, o: { n: RIVER } })));
+    secs.push(`<h3>Voice &amp; valency</h3><div class="chips">${vchips}</div>
+      <p class="note">Re-casting who-did-what: promote or demote an argument. Each marker is a worn-down verb (‘make’, ‘fall’) — the ‹ notes show which.</p>${exs.join("")}`);
+  }
+
+  // ── Tense · aspect · mood depth (Group C′) ──
+  const ts = tamShape(l), forms = [];
+  const vf = (label, opts) => forms.push(`<span class="cell"><span class="lbl">${esc(label)}</span> <span class="w">${cellStr(inflectVerb(l, SEE, opts))}</span></span>`);
+  if (ts.perfect) vf("perfect", { tam: "prf" });
+  if (ts.progressive) vf("progressive", { tam: "prog" });
+  if (ts.habitual) vf("habitual", { tam: "hab" });
+  if (ts.remotePast >= 1) vf("remote past", { tam: "pstrem" });
+  for (const m of ts.moods) vf({ sbjv: "subjunctive", cond: "conditional", opt: "optative", pot: "potential" }[m] || m, { tam: "pst", pers: "3", irrealisMood: m });
+  if (ts.mirative) vf("mirative", { tam: "pst", mir: true });
+  if (forms.length) secs.push(`<h3>Tense · aspect · mood</h3>
+    <p class="note">Beyond a plain past: ${ts.tenses} tense${ts.tenses > 1 ? "s" : ""}${ts.aspect ? ", grammatical aspect" : ""}${ts.remotePast ? ", graded remoteness" : ""}. Synthetic tongues carry more of these — all on the verb ‘see’.</p>
+    <p class="cells">${forms.join(" ")}</p>`);
+
+  // ── Evidentiality (Group C) ──
+  const ev = evidentialSystem(l);
+  if (ev) {
+    const cells = ev.forms.map(f => `<span class="cell"><span class="lbl">${esc(f.gloss)}</span> <span class="w">${f.zero ? "∅" : esc(f.w)}</span>${f.from ? `<span class="gloss"> ‹ ‘${esc(f.from)}’</span>` : ""}</span>`).join(" ");
+    secs.push(`<h3>Evidentiality <span class="count">(${ev.n}-term${ev.mir ? " + mirativity" : ""})</span></h3>
+      <p class="note">The verb marks HOW the speaker knows — saw it, heard it, inferred it, was told. Each exponent is a worn-down perception or speech verb; the firsthand is often ∅.</p>
+      <p class="cells">${cells}</p>
+      ${clauseEx("‘the king saw the river, they say’", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst", ev: "rept" }, o: { n: RIVER } }))}`);
+  }
+
+  return `<section class="card"><h2>The verb <span class="count">— argument structure, tense, evidence</span></h2>${secs.join("")}</section>`;
+}
+
+function nounFrontierHTML(l) {
+  const g = gramOf(l), secs = [];
+
+  // ── Noun classes & concord (Group A) ──
+  if (g.genders >= 2) {
+    const inv = classInventory(l), marks = concordMarkers(l), targets = agreementTargets(l) || [];
+    const classRows = inv.map(ci => {
+      const m = marks[ci.cls];
+      const samples = ci.sample.slice(0, 4).map(cid => esc(glossOf(cid))).join(", ");
+      return `<li><span class="lbl">${esc(m.g)}</span>${m.w ? ` <span class="w">${esc(m.w)}-</span>` : ""} <span class="gloss">${samples}</span></li>`;
+    }).join("");
+    // adjective agreement on two heads of different classes
+    const two = inv.filter(ci => ci.sample.length).slice(0, 2);
+    const agr = two.map(ci => { const head = ci.sample[0]; const a = inflectAdj(l, GREAT, { cls: ci.cls }); return `<span class="cell"><span class="w">${esc(a.text)} ${esc(wordOf(l, head))}</span> <span class="gloss">‘great ${esc(glossOf(head))}’</span></span>`; }).join(" ");
+    secs.push(`<h3>Noun classes <span class="count">(${g.genders}; agree on ${targets.join(", ") || "—"})</span></h3>
+      <p class="note">Every noun belongs to a class, assigned by meaning (animacy, sex) with a phonological cue for the residue. Dependents then AGREE — the adjective takes the head's class, so an NP alliterates.</p>
+      <ul class="cols">${classRows}</ul>
+      ${agr ? `<p class="cells">${agr}</p>` : ""}`);
+  }
+
+  // ── Numeral classifiers (Group D) ──
+  const clf = classifiersOf(l);
+  if (clf) {
+    const cells = classifierEtymologies(l).map(e => `<span class="cell"><span class="lbl">${esc(e.cls)}</span> <span class="w">${esc(e.w)}</span>${e.from ? `<span class="gloss"> ‹ ‘${esc(e.from)}’</span>` : ""}</span>`).join(" ");
+    const exs = [KING, HORSE, RIVER].map(cid => clauseEx(`three ${glossOf(cid)}${cid === RIVER ? "s" : "s"}`, numeralPhrase(l, cid, 3))).join("");
+    secs.push(`<h3>Numeral classifiers <span class="count">(${clf.obl ? "obligatory" : "optional"}, ${clf.order}-N)</span></h3>
+      <p class="note">Counting takes a sortal classifier keyed to the noun's shape or animacy (a human one, a long-thing one…), each worn from a body/shape noun.</p>
+      <p class="cells">${cells}</p>${exs}`);
+  }
+
+  // ── Nominal categories (Group E) ──
+  const nsecs = [];
+  if (g.possAffix) {
+    const p1 = inflectPossessed(l, HAND, { pers: 1, num: "sg" }), p2 = inflectPossessed(l, HOUSE, { pers: 1, num: "sg" });
+    nsecs.push(`<p class="cells"><span class="cell"><span class="lbl">possession${g.alienSplit ? " (split)" : ""}</span></span>
+      <span class="cell"><span class="w">${esc(p1.text)}</span> <span class="gloss">‘my hand’ (${possessionType(l, HAND)})</span></span>
+      <span class="cell"><span class="w">${esc(p2.text)}</span> <span class="gloss">‘my house’ (${possessionType(l, HOUSE)})</span></span></p>`);
+  }
+  const cmp = comparative(l, GREAT, KING, { degree: "cmpr" }), sup = comparative(l, GREAT, null, { degree: "sup" });
+  nsecs.push(`<p class="cells"><span class="cell"><span class="lbl">comparison (${g.compar.type})</span></span>
+    <span class="cell"><span class="w">${esc(cmp.text)}</span> <span class="gloss">‘greater than the king’</span></span>
+    <span class="cell"><span class="w">${esc(sup.text)}</span> <span class="gloss">‘greatest’</span></span></p>`);
+  if (g.tv !== "none") {
+    const tv = tvPronouns(l);
+    nsecs.push(`<p class="cells"><span class="cell"><span class="lbl">politeness (${tv.tv}, ‹ ${tv.source})</span></span>
+      <span class="cell"><span class="lbl">familiar</span> <span class="w">${esc(tv.familiar)}</span></span>
+      <span class="cell"><span class="lbl">polite</span> <span class="w">${esc(tv.polite)}</span></span>${tv.tv === "multi" ? `<span class="cell"><span class="lbl">honorific</span> <span class="w">${esc(tv.honorific)}</span></span>` : ""}</p>`);
+  }
+  if (g.trial || g.paucal) {
+    const extra = [g.paucal ? ["paucal", "pau"] : null, g.trial ? ["trial", "tri"] : null].filter(Boolean)
+      .map(([lab, num]) => `<span class="cell"><span class="lbl">${lab}</span> <span class="w">${cellStr(inflectNoun(l, STONE, { num }))}</span></span>`).join(" ");
+    nsecs.push(`<p class="cells"><span class="cell"><span class="lbl">number</span></span> ${extra}</p>`);
+  }
+  secs.push(`<h3>Nominal categories</h3>
+    <p class="note">Possession (whose?), comparison (more than), politeness (tu/vous), and number beyond the singular/plural — each built from the language's own words.</p>${nsecs.join("")}`);
+
+  // ── Multi-clause syntax (Group G) ──
+  const lk = clauseLinkersOf(l);
+  const mc = [];
+  mc.push(clauseEx("coordination — ‘the king went and the wolf saw the river’", renderClauseTree(l, { coord: "and", clauses: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: WOLF }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] })));
+  mc.push(clauseEx("complement — ‘the king saw that the wolf went’", renderClause(l, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { comp: { s: { n: WOLF }, v: { c: GO, tam: "pst" } } } })));
+  mc.push(clauseEx("relative — ‘the king who saw the river went’", renderClause(l, { s: { n: KING, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } })));
+  mc.push(clauseEx("adverbial — ‘the king went when the wolf saw the river’", renderClause(l, { s: { n: KING }, v: { c: GO, tam: "pst" }, adv: [{ sub: "when", s: { n: WOLF }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] })));
+  if (lk.chaining) mc.push(clauseEx("clause chain (switch-reference)", renderClauseTree(l, { chain: [{ s: { n: KING }, v: { c: GO, tam: "pst" } }, { s: { n: KING }, v: { c: SEE, tam: "pst" }, o: { n: RIVER } }] })));
+  const lkChips = [`complementizer ‹ ‘${esc(lk.comp.from || "opaque")}’ (${lk.comp.pos})`, `relative: ${lk.rel.strat}, ${lk.rel.pre ? "prenominal" : "postnominal"}`, lk.chaining ? "clause-chaining" : null, lk.coordFinal ? "enclitic ‘and’" : null].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
+  secs.push(`<h3>Multi-clause</h3><div class="chips">${lkChips}</div>
+    <p class="note">Clauses combine into a tree — coordinated, embedded as a complement, relativised onto a noun, chained. The subordinators grammaticalize from existing words (‘that’ ‹ ‘say’ or a demonstrative, ‘when’ ‹ ‘day’), and lag a word-order flip.</p>${mc.join("")}`);
+
+  return `<section class="card"><h2>Nouns, phrases &amp; clauses <span class="count">— agreement, counting, subordination</span></h2>${secs.join("")}</section>`;
 }
 
 // ── paradigms: declension + conjugation tables ───────────────────────────
@@ -405,6 +542,8 @@ function render() {
     ${loansHTML(l)}
   </section>
   ${grammarHTML(l)}
+  ${verbFrontierHTML(l)}
+  ${nounFrontierHTML(l)}
   ${sentenceHTML(l)}
   ${paradigmHTML(l)}
   ${cognatesHTML()}
