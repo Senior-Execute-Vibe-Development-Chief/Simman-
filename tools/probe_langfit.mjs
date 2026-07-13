@@ -2091,7 +2091,15 @@ console.log("\n── §24 vocalizer (IPA + phonetic plans) ──");
 console.log("\n── §25 writing systems ──");
 {
   const world = mkWorld();
-  // (a) type follows structure, never fiat
+  // segment/syllable keys, mirroring the engine's own (string builders only)
+  const K = {
+    c: (c) => "c" + c.p + "." + c.m + "." + c.l + "." + c.s,
+    v: (v) => "v" + v.h + "." + v.b + "." + v.r,
+    syl: (sy) => [...sy.on.map((x) => K.c(x)), ...sy.nu.map((x) => K.v(x)), ...sy.co.map((x) => K.c(x))].join("-"),
+  };
+  // (a) type follows structure, never fiat — and a juncture's verdict reads
+  // the corpus AS IT STOOD, so a syllabary can only have been adopted while
+  // the attested syllable count sat inside the type's own learnable bands
   const byMorph = {};
   let prelitFresh = 0, syllBad = 0, syllN = 0;
   for (let i = 0; i < 300; i++) {
@@ -2104,9 +2112,13 @@ console.log("\n── §25 writing systems ──");
     (byMorph[k] = byMorph[k] || {})[s.type] = (byMorph[k][s.type] || 0) + 1;
     if (s.type === "syll") {
       syllN++;
-      const inv = compiledInv(l);
-      const sp = (inv.syllab.onsets.length + 1) * (inv.vows.length + (inv.syllab.diphs ? inv.syllab.diphs.length : 0)) * (inv.syllab.codas.length + 1);
-      if (sp > 220) syllBad++;
+      const ghost = { ...l, rules: l.rules.slice(0, s.adoptedAt), loans: [] };
+      const types = new Set();
+      for (let cid = 0; cid < CONCEPTS.length; cid++) {
+        const f = nativeStemOf(ghost, cid);
+        if (f && f.syls) for (const sy of f.syls) types.add(K.syl(sy));
+      }
+      if (types.size > 220) syllBad++;
     }
   }
   const share = (k, t) => { const m = byMorph[k] || {}; const tot = Object.values(m).reduce((a, b) => a + b, 0); return tot ? (m[t] || 0) / tot : 0; };
@@ -2114,7 +2126,7 @@ console.log("\n── §25 writing systems ──");
   check(`isolating tonal languages keep logography (${Math.round(share("iso+tone", "logo") * 100)}%)`, share("iso+tone", "logo") >= 0.9);
   check(`atonal agglutinative/fusional lands segmental (alphabet+abugida ${Math.round((share("agg", "alphabet") + share("agg", "abugida")) * 100)}% / ${Math.round((share("fus", "alphabet") + share("fus", "abugida")) * 100)}%)`,
     share("agg", "alphabet") + share("agg", "abugida") >= 0.6 && share("fus", "alphabet") + share("fus", "abugida") >= 0.6);
-  check(`syllabaries occur and only where the licensed syllable space allows (${syllN} rolled, ${syllBad} oversize)`, syllN >= 1 && syllBad === 0);
+  check(`syllabaries occur and only where the corpus at adoption allowed (${syllN} rolled, ${syllBad} oversize)`, syllN >= 1 && syllBad === 0);
   check(`fresh roots can be preliterate (${prelitFresh}/300 before drift)`, prelitFresh >= 10);
   // (b) refs pinned
   const refT = ["mandarin", "russian", "english"].map(k => scriptOf(refLang(mkWorld(), k, 445)).type);
@@ -2138,7 +2150,9 @@ console.log("\n── §25 writing systems ──");
   }
   check(`lag is exactly the unreplayed tail of the rule log (${lagBad} bad)`, lagBad === 0);
   check(`fossil spellings emerge across the sweep (${silentSomewhere} langs)`, silentSomewhere >= 5);
-  // (d) glyphs: distinct within a script, sane strokes
+  // (d) glyphs: distinct within a script (the engine's own metric — stroke
+  // kind + twelfth-of-box points), sane strokes
+  const sigG = (ss) => JSON.stringify(ss.map(st => [(st.kind || ""), st.pts.map(pp => [Math.round(pp.x * 12), Math.round(pp.y * 12)])]));
   let dup = 0, badG = 0, nG = 0;
   for (let i = 0; i < 60; i++) {
     const l = foundLanguage(wE, { seed: 830000 + i * 173 });
@@ -2148,7 +2162,7 @@ console.log("\n── §25 writing systems ──");
     const seen = new Set();
     for (const g of inv) {
       nG++;
-      const sig = JSON.stringify(g.strokes.map(st => st.pts.map(pp => [Math.round(pp.x * 20), Math.round(pp.y * 20)])));
+      const sig = sigG(g.strokes);
       if (seen.has(sig)) dup++;
       seen.add(sig);
       if (!g.strokes.length || g.strokes.length > 18) badG++;
@@ -2184,7 +2198,12 @@ console.log("\n── §25 writing systems ──");
       const codas = f.syls.reduce((a, sy) => a + sy.co.length, 0);
       const nasalCodas = f.syls.reduce((a, sy) => a + sy.co.filter(c => c.m === 1).length, 0);
       const extra = s.codaMode === "echo" ? codas : s.codaMode === "moraic" ? nasalCodas : 0;
-      if (w.glyphs.length !== f.syls.length + extra) cntBad++;
+      // exact on the plain-CV class; clusters may decompose into CV signs
+      // (su-to-ra-i-ku) and diphthong off-glides take the bare vowel sign,
+      // so complex words are gated as a lower bound
+      const simple = f.syls.every(sy => sy.on.length <= 1 && sy.nu.length === 1);
+      if (simple && w.glyphs.length !== f.syls.length + extra) cntBad++;
+      if (!simple && w.glyphs.length < f.syls.length + extra) cntBad++;
     }
     if (s.type === "abugida") {
       // every coda/cluster consonant is its own sign; virama only adds a MARK
@@ -2215,8 +2234,10 @@ console.log("\n── §25 writing systems ──");
         }
       }
     }
-    // THE HAND constrains the strokes, exactly as the material does
-    const inv25 = glyphInventory(l, 20) || [];
+    // THE HAND constrains the strokes, exactly as the material does — but
+    // an INVENTED featural script is drawn with the designer's ruler, not
+    // the scribe's wear, and is exempt
+    const inv25 = (s.type === "featural" ? [] : glyphInventory(l, 20)) || [];
     for (const g of inv25) for (const st of g.strokes) {
       if (s.hand === "carved" && !st.kind && st.pts.every((pp, k) => k === 0 || Math.abs(pp.y - st.pts[k - 1].y) < 0.02)) carvedFlat++;
       if (s.hand === "clay" && st.kind !== "wedge") clayNonWedge++;
@@ -2250,7 +2271,90 @@ console.log("\n── §25 writing systems ──");
   check(`unwritten tone never leaks into the transliteration (${toneLeak})`, toneLeak === 0);
   check(`the low numerals are tally marks (1/2/3 = 1×/2×/3× the unit, ${tallyBad} bad)`, tallyBad === 0);
   check(`spelling reforms fire on deep-lag traditions (${reformSeen} reformed)`, reformSeen >= 3);
-  // (f) determinism + JSON roundtrip
+  // (e2) the missing classes — deep-drift sweep (misfit needs accumulated
+  // history): featural invention under the Sejong condition, i'jam pointing
+  // on the joined pen hand, headline hanging, and the ONE shared sign table
+  // (a word's signs ⊆ the displayed map — desync impossible by construction)
+  const sigS = (ss) => ss.filter(x => x.kind !== "tail").map(x => (x.kind || "") + x.pts.map(pp => Math.round(pp.x * 12) + "," + Math.round(pp.y * 12)).join(";")).join("|");
+  const skelS = (ss) => ss.filter(x => x.kind !== "tail" && x.kind !== "dot").map(x => (x.kind || "") + x.pts.map(pp => Math.round(pp.x * 12) + "," + Math.round(pp.y * 12)).join(";")).join("|");
+  const w25 = mkWorld();
+  const featurals = [];
+  let ijamLangs = 0, hangN = 0, hangBad = 0, mapN = 0, mapMiss = 0, litN = 0;
+  for (let i = 0; i < 300; i++) {
+    const l = foundLanguage(w25, { seed: 820000 + i * 331 });
+    for (let d = 0; d < 12; d++) driftLanguage(w25, l);
+    const s = scriptOf(l);
+    if (!s) continue;
+    litN++;
+    if (s.type === "featural") featurals.push(l);
+    const inv = glyphInventory(l, 10000) || [];
+    if (s.hand === "pen" && s.join && s.type !== "featural") {
+      // i'jam attested: two signs share a non-dot skeleton yet differ by
+      // pointing (the ب ت ث condition)
+      const bySkel = new Map();
+      let pointed = false;
+      for (const g of inv) {
+        const sk = skelS(g.strokes);
+        if (bySkel.has(sk) && bySkel.get(sk) !== sigS(g.strokes) && g.strokes.some(x => x.kind === "dot")) pointed = true;
+        if (!bySkel.has(sk)) bySkel.set(sk, sigS(g.strokes));
+      }
+      if (pointed) ijamLangs++;
+    }
+    if (s.headline) {
+      // letters HANG from the bar: no letter reaches above the hanging line
+      hangN++;
+      for (const g of inv) {
+        if (g.key[0] !== "c") continue;
+        for (const st of g.strokes) { if (st.kind === "dot") continue; for (const pp of st.pts) if (pp.y < 0.1) hangBad++; }
+      }
+    }
+    // words read from the same table the display shows (first 60 langs:
+    // the map builds are the expensive part of this section)
+    if (i < 60 && s.type !== "logo" && s.type !== "featural") {
+      const sigs = new Set(inv.map(g => sigS(g.strokes)));
+      for (let cid = 0; cid < 25; cid++) {
+        const w = writeWord(l, cid);
+        if (!w || !w.glyphs) continue;
+        for (const g of w.glyphs) { mapN++; if (!sigs.has(sigS(g.strokes))) mapMiss++; }
+      }
+    }
+  }
+  check(`the featural class is INVENTED under misfit — rare, like the record (${featurals.length}/${litN} at drift 12)`, featurals.length >= 1 && featurals.length <= litN * 0.08);
+  check(`i'jam pointing keeps worn pen skeletons apart (${ijamLangs} joined-pen traditions attest it)`, ijamLangs >= 3);
+  check(`headline letters hang from the bar (${hangN} headline scripts, ${hangBad} strokes above the line)`, hangN >= 3 && hangBad === 0);
+  check(`a word's signs come from the displayed table — no desync (${mapMiss}/${mapN} strays)`, mapN >= 2000 && mapMiss === 0);
+  // featural anatomy: blocks are syllables; letters merge what Hangul merges
+  // (one component covers k/g); a laryngeal series ADDS strokes to the plain
+  // letter (ㄱ→ㅋ), so related sounds look related
+  let blockBad = 0, blockN = 0, mergeSeen = false, addBad = 0, addSeen = 0;
+  for (const l of featurals) {
+    const s = scriptOf(l);
+    if (s.dir === "rtl" || s.join || s.headline) blockBad++;     // designed: row/column, unjoined, no inherited bar
+    for (let cid = 0; cid < 30; cid++) {
+      const w = writeWord(l, cid);
+      const f = writtenFormOf(l, cid);
+      if (!w || !w.glyphs || !f) continue;
+      blockN++;
+      if (w.glyphs.length !== f.syls.length) blockBad++;
+    }
+    const inv = glyphInventory(l, 200) || [];
+    if (inv.some(g => g.key[0] === "f" && g.label.includes("/"))) mergeSeen = true;
+    const byBase = new Map();
+    for (const g of inv) {
+      const m = g.key.match(/^f(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+      if (!m) continue;
+      const bk = m[1] + "." + m[2] + "." + m[4];
+      if (!byBase.has(bk)) byBase.set(bk, []);
+      byBase.get(bk).push([+m[3], g.strokes.length]);
+    }
+    for (const rows of byBase.values()) {
+      const plain = rows.find(r => r[0] === 0);
+      for (const r of rows) if (plain && r[0] >= 2) { addSeen++; if (r[1] <= plain[1]) addBad++; }
+    }
+  }
+  check(`featural blocks are syllables, unjoined, in rows or columns (${blockBad} bad over ${blockN} words)`, blockN >= 20 && blockBad === 0);
+  check(`featural letters merge what the features merge (a k/g component exists)`, mergeSeen);
+  check(`a laryngeal series adds strokes to the plain letter (${addSeen} pairs, ${addBad} bad)`, addBad === 0);
   const wD = mkWorld();
   const d1 = foundLanguage(wD, { seed: 860001 });
   for (let d = 0; d < 6; d++) driftLanguage(wD, d1);

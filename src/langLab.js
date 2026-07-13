@@ -370,6 +370,10 @@ function glyphSVG(g, size = 26, opts = {}) {
       const r = (st.r || 0.12) * W * T.sx * 0.92;
       return `<circle cx="${P[0].x.toFixed(1)}" cy="${P[0].y.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="currentColor" stroke-width="${sw}"/>`;
     }
+    if (st.kind === "dot") {
+      // an i'jam point — the dot that keeps worn skeletons apart (ب ت ث)
+      return `<circle cx="${P[0].x.toFixed(1)}" cy="${P[0].y.toFixed(1)}" r="${(sw * 0.85).toFixed(1)}" fill="currentColor"/>`;
+    }
     if (st.kind === "wedge") {
       // a pressed wedge: filled triangular head, thin drag tail
       const a = P[0], b = P[1];
@@ -379,6 +383,7 @@ function glyphSVG(g, size = 26, opts = {}) {
       return `<path d="M ${(a.x + px).toFixed(1)} ${(a.y + py).toFixed(1)} L ${(a.x - px).toFixed(1)} ${(a.y - py).toFixed(1)} L ${hx.toFixed(1)} ${hy.toFixed(1)} Z" fill="currentColor"/>`
         + `<path d="M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${b.x.toFixed(1)} ${b.y.toFixed(1)}" fill="none" stroke="currentColor" stroke-width="${sw}"/>`;
     }
+    const swl = st.kind === "tail" ? Math.max(2, sw * 0.7) : sw;   // the final-form swash thins as it sweeps
     let d = `M ${P[0].x.toFixed(1)} ${P[0].y.toFixed(1)}`;
     for (let i = 1; i < P.length; i++) {
       const a = P[i - 1], b = P[i];
@@ -387,12 +392,14 @@ function glyphSVG(g, size = 26, opts = {}) {
       const cx = (a.x + b.x) / 2 - (dy / ln) * st.bow * bowK, cy = (a.y + b.y) / 2 + (dx / ln) * st.bow * bowK;
       d += ` Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
     }
-    return `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="${pen.cap}" stroke-linejoin="round"/>`;
+    return `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${swl}" stroke-linecap="${pen.cap}" stroke-linejoin="round"/>`;
   }).join("");
   let extra = "";
   if (markT) extra += parts(g.mark.strokes, markT, 30, 5);
   if (opts.headline) extra += `<path d="M 0 ${(H * 0.1).toFixed(1)} L ${W} ${(H * 0.1).toFixed(1)}" stroke="currentColor" stroke-width="5" fill="none"/>`;
-  if (opts.join) extra += `<path d="M 0 ${(H * 0.71).toFixed(1)} L ${W} ${(H * 0.71).toFixed(1)}" stroke="currentColor" stroke-width="4" fill="none" opacity="0.85"/>`;
+  if (opts.join) extra += opts.dir === "ttb"
+    ? `<path d="M ${(W * 0.5).toFixed(1)} 0 L ${(W * 0.5).toFixed(1)} ${H}" stroke="currentColor" stroke-width="4" fill="none" opacity="0.85"/>`
+    : `<path d="M 0 ${(H * 0.71).toFixed(1)} L ${W} ${(H * 0.71).toFixed(1)}" stroke="currentColor" stroke-width="4" fill="none" opacity="0.85"/>`;
   return `<svg class="glyph" viewBox="0 0 ${W} ${H}" width="${size}" height="${Math.round(size * 1.15)}" aria-hidden="true">${parts(g.strokes, baseT, 70, pen.w)}${extra}</svg>`;
 }
 
@@ -402,7 +409,7 @@ function writingHTML(l) {
     <p class="note">No written tradition yet — this tongue is young. Records consolidate only after a little history: <b>Drift</b> the language and a script will be born (logographic first, the way every primary invention was).</p></section>`;
   const dirName = { ltr: "left → right", rtl: "right → left", ttb: "top → bottom" }[s.dir];
   const chips = [SCRIPT_NAME[s.type],
-    HAND_NAME[s.hand],
+    s.type === "featural" ? "designed geometry (ruler-drawn)" : HAND_NAME[s.hand],
     s.type === "logo" ? "one sign per morpheme (open set)" : `${s.glyphBudget} signs`,
     `written ${dirName}`,
     s.sep === "space" ? "words spaced" : s.sep === "dot" ? "words split by interpunct" : "scriptio continua",
@@ -411,20 +418,26 @@ function writingHTML(l) {
     s.codaMode === "moraic" ? "moraic coda sign" : s.codaMode === "echo" ? "codas echo their vowel (ko-no-so)" : s.codaMode === "drop" ? "codas unwritten" : null,
     l.prof.tone ? (s.toneWritten ? "tone written (diacritics)" : "tone unwritten") : null,
     s.headline ? "headline bar joins the word" : null,
-    s.join ? "cursive: letters join" : null,
+    s.join ? "cursive: letters join + final swash" : null,
+    s.invented ? "invented whole (the Sejong move)" : null,
+    s.type === "featural" ? "syllables stack into blocks" : null,
     s.lag ? `spelling frozen ${s.lag} sound change${s.lag > 1 ? "s" : ""} ago` : s.reformed ? "spelling reformed (shallow again)" : "shallow orthography (young)",
   ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
-  const story = s.adoptedAt > s.born
-    ? `Born logographic (every primary tradition is), then re-learned and simplified — the current type won because it fits this language's own structure.`
-    : s.type === "logo"
-      ? `Still logographic: phonographic writing would collapse this language's short, homophone-heavy morphemes, so simplification never paid.`
-      : `Adopted in its current form when the tradition consolidated.`;
-  const handStory = { carved: "The hand is carved: cuts along the grain split the wood, so no stroke runs level.",
-    clay: "The hand presses wedges into clay — heads and drag-tails, the cuneiform economy.",
-    brush: "The hand is a brush: heavy, boxy, stroke-ordered signs.",
-    pen: "The hand is a reed pen: strokes chain and loop" + (s.join ? ", and the letters of a word join along the baseline" : "") + ".",
-    round: "The hand is rounded: a straight cut splits the palm leaf, so every stroke arcs." }[s.hand];
-  const gOpts = { hand: s.hand, headline: s.headline, join: s.join };
+  const story = s.invented
+    ? `Invented whole at court — the Sejong move: centuries of sound change had left the old script's fit behind, so the replacement draws each sound's own FEATURES. Place gives the base shape, manner modifies it, and a laryngeal series just adds a stroke — related sounds look related, and one letter covers a voicing pair the way Hangul's ㄱ covers k and g.`
+    : s.adoptedAt > s.born
+      ? `Born logographic (every primary tradition is), then re-learned and simplified — the current type won because it fits this language's own structure.`
+      : s.type === "logo"
+        ? `Still logographic: phonographic writing would collapse this language's short, homophone-heavy morphemes, so simplification never paid.`
+        : `Adopted in its current form when the tradition consolidated.`;
+  const handStory = s.type === "featural"
+    ? "Drawn with the designer's ruler, not the scribe's wear: geometric components compose each syllable into a block — onset beside or above the vowel bar, coda beneath."
+    : { carved: "The hand is carved: cuts along the grain split the wood, so no stroke runs level.",
+      clay: "The hand presses wedges into clay — heads and drag-tails, the cuneiform economy.",
+      brush: "The hand is a brush: heavy, boxy, stroke-ordered signs.",
+      pen: "The hand is a reed pen: strokes chain and loop" + (s.join ? ", and the letters of a word join along the baseline, the last sweeping out in a final swash. Letters worn into the same skeleton are kept apart by POINTING — dots above or below, the i'jam solution that split ب ت ث" : "") + ".",
+      round: "The hand is rounded: a straight cut splits the palm leaf, so every stroke arcs." }[s.hand];
+  const gOpts = { hand: s.hand, headline: s.headline, join: s.join, dir: s.dir };
   const gOptsPlain = { hand: s.hand };
   const inv = glyphInventory(l, 24) || [];
   const invCells = inv.map(g => `<span class="glyphcell">${glyphSVG(g, 26, gOptsPlain)}<span class="lbl">${esc(g.label)}</span></span>`).join("");
@@ -827,7 +840,7 @@ function sentenceHTML(l) {
       // its direction; spelled by ear — the frozen spellings live above)
       const sc = scriptOf(l);
       if (!sc || !clause.tokens.every(t => t.f)) return "";
-      const words = clause.tokens.map(t => `<span class="glyphword${sc.dir === "rtl" ? " rtl" : sc.dir === "ttb" ? " ttb" : ""}${sc.headline || sc.join ? " tight" : ""}">${(writeForm(l, t.f, t.c ?? null) || []).map(g => glyphSVG(g, 20, { hand: sc.hand, headline: sc.headline, join: sc.join })).join("")}</span>`);
+      const words = clause.tokens.map(t => `<span class="glyphword${sc.dir === "rtl" ? " rtl" : sc.dir === "ttb" ? " ttb" : ""}${sc.headline || sc.join ? " tight" : ""}">${(writeForm(l, t.f, t.c ?? null) || []).map(g => glyphSVG(g, 20, { hand: sc.hand, headline: sc.headline, join: sc.join, dir: sc.dir })).join("")}</span>`);
       const sep = sc.sep === "space" ? `<span class="wsep"></span>` : sc.sep === "dot" ? `<span class="wsep dot">·</span>` : "";
       return `<p class="cells glyphline${sc.dir === "ttb" ? " ttb" : ""}">${words.join(sep)} <span class="gloss">— in its own hand${sc.sep === "continua" ? ", run together" : ""}</span></p>`;
     })()}

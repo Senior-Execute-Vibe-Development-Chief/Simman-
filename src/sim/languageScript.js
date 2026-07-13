@@ -54,30 +54,57 @@ const h01 = (...a) => hash32(...a) / 4294967296;
 
 // ── structural fit: what each type costs THIS language ────────────────────
 // Constants are learnability/typology priors with independent meaning, not
-// tuned outcomes: ~60 glyphs = a comfortable syllabary (kana 46+), ~120 =
+// tuned outcomes: ~60 signs = a comfortable syllabary (kana 46+), ~120 =
 // strained, ~220 = the practical ceiling (Yi is the famous outlier);
 // logography's base is LOW (thousands of glyphs) and earns its keep only
 // where morphemes are isolable, short, and homophone-heavy under tone.
-function sylSpaceOf(lang) {
-  const inv = compiledInv(lang);
-  const sb = inv.syllab;
-  const nuc = inv.vows.length + (sb.diphs ? sb.diphs.length : 0);
-  return (sb.onsets.length + 1) * nuc * (sb.codas.length + 1);
+//
+// Fit is measured against the ATTESTED corpus at the juncture, never the
+// generative profile alone: sound change bakes splits and clusters into the
+// words themselves, so the corpus a late juncture faces differs from the one
+// the founders saw — this drift is the entire engine of late reform and of
+// invention (a syllabary adopted over a simple corpus, strained past its
+// ceiling by centuries of splits, is the Sejong condition).
+const CORPORA = new WeakMap();
+function corpusOf(lang, at) {
+  const cut = Math.min(at, lang.rules.length);
+  const key = cut * 1000003 + (lang.gen || 0) * 101 + (lang.xph ? lang.xph.length : 0);
+  let m = CORPORA.get(lang);
+  if (!m) { m = new Map(); CORPORA.set(lang, m); }
+  const hit = m.get(key);
+  if (hit) return hit;
+  const gl = cut >= lang.rules.length ? lang : frozenLang(lang, cut);
+  const types = new Set();
+  let syls = 0, words = 0, clustered = 0;
+  for (let cid = 0; cid < CONCEPTS.length; cid++) {
+    const f = nativeStemOf(gl, cid);
+    if (!f || !f.syls) continue;
+    words++;
+    syls += f.syls.length;
+    for (const sy of f.syls) { types.add(sylkey(sy)); if (sy.on.length >= 2 || sy.co.length >= 2) clustered++; }
+  }
+  const out = { sylTypes: types.size, wordLen: syls / Math.max(1, words), clusterRate: clustered / Math.max(1, syls) };
+  if (m.size > 16) m.clear();                          // ladder + recurring junctures, never unbounded
+  m.set(key, out);
+  return out;
 }
-function fitsOf(lang) {
+function fitsOf(lang, at) {
   const p = lang.prof;
-  const syl = sylSpaceOf(lang);
+  const c = corpusOf(lang, at);
   return {
-    logo: 0.3 + (p.morph === "iso" ? 1.1 : 0) + (p.tone ? 0.7 : 0) + (p.wordLen <= 1.6 ? 0.7 : 0),
-    syll: syl <= 60 ? 2.2 : syl <= 120 ? 1.3 : syl <= 220 ? 0.5 : 0.1,
+    logo: 0.3 + (p.morph === "iso" ? 1.1 : 0) + (p.tone ? 0.7 : 0) + (c.wordLen <= 1.6 ? 0.7 : 0),
+    syll: c.sylTypes <= 60 ? 2.2 : c.sylTypes <= 120 ? 1.3 : c.sylTypes <= 220 ? 0.5 : 0.1,
     abjad: p.morph === "tmpl" ? 2.4 : p.harmony !== "none" ? 0.8 : 0.5,   // predictable vowels are cheap to omit
-    abugida: 1.1 + (p.sylC <= 1 ? 0.5 : 0) - (p.onDepth >= 2 ? 0.6 : 0),
-    alphabet: 1.4 + (p.sylC >= 2 ? 0.6 : 0),
+    // clusterRate = share of syllables carrying a complex margin: under 1-in-25
+    // the corpus is canonically CV (an abugida's home ground); past 1-in-8
+    // clusters are systemic and segment letters pay for themselves
+    abugida: 1.1 + (c.clusterRate < 0.04 ? 0.5 : 0) - (c.clusterRate >= 0.12 ? 0.6 : 0),
+    alphabet: 1.4 + (c.clusterRate >= 0.12 ? 0.6 : 0),
   };
 }
 // one simplification step per re-learning, along attested pathways only
 const LADDER = { logo: ["syll", "abjad"], syll: ["alphabet", "abugida"], abjad: ["alphabet", "abugida"], abugida: [], alphabet: [] };
-export const SCRIPT_NAME = { logo: "logographic", syll: "syllabary", abjad: "abjad (consonants only)", abugida: "abugida", alphabet: "alphabet" };
+export const SCRIPT_NAME = { logo: "logographic", syll: "syllabary", abjad: "abjad (consonants only)", abugida: "abugida", alphabet: "alphabet", featural: "featural alphabet (letters draw the sounds' own features)" };
 export const HAND_NAME = {
   carved: "carved (no strokes along the grain)",
   clay: "pressed into clay (wedges)",
@@ -117,22 +144,44 @@ export function scriptOf(lang) {
       const j2 = j1 + 2 + hash32(fam, "scr:g2") % 4;
       for (const at of [j1, j2]) {
         if (len < at) break;
-        const fits = fitsOf(lang);
+        // the decision reads the corpus AS IT STOOD at the juncture — a
+        // centuries-old adoption cannot see today's phonology (and so the
+        // verdict never rewrites itself as later rules accumulate)
+        const fits = fitsOf(lang, at);
         let best = null;
         for (const t of LADDER[type]) if (!best || fits[t] > fits[best]) best = t;
         if (best && fits[best] > fits[type] + 0.15) { type = best; adoptedAt = at; }
       }
-      // spelling consolidates on the current type and freezes there — a
-      // type change was the last reform… unless the tradition, drifted deep
-      // into lag, reforms WITHOUT changing type (state-gated: only fires
-      // once the unreplayed tail is real)
+      // spelling consolidates on the current type and freezes there — then
+      // post-consolidation junctures RECUR as history accumulates (every few
+      // rules of depth, never wall-clock). Each is a fresh literate
+      // generation's chance to reform a drifted spelling (the Turkish move)
+      // — or, holding a script whose fit the corpus has left behind, to
+      // INVENT: a featural alphabet whose letters draw the sounds' own
+      // features (the Sejong condition — current fit poor, a far better fit
+      // exists — evaluated on the corpus AS IT STOOD at that juncture, so
+      // the verdict never rewrites itself later)
       let frozenAt = Math.min(len, adoptedAt + hash32(fam, "scr:frz") % 2);
-      let reformed = false;
-      const rj = adoptedAt + 5 + hash32(fam, "scr:rg") % 4;      // a possible reform juncture
-      if (len >= rj && len - frozenAt >= 5 && h01(fam, "scr:reform") < 0.45) {
-        frozenAt = Math.min(len, rj); reformed = true;           // the Turkish move
+      let reformed = false, invented = false;
+      // one juncture every 2 rules of depth ≈ one literate era; the grid is
+      // anchored at rj so a verdict, once passed, never moves. Reform runs
+      // at 0.15/era — most traditions FOSSILIZE (France convenes academies
+      // that fail); the misfit-invention roll is generous at 0.4/era, since
+      // courts facing a systemically unusable script do act within a few
+      // eras (Korea, Cherokee, Vai — invention under misfit recurs in the
+      // record; the rarity lives in the PRECONDITION, not the roll)
+      const rj = adoptedAt + 5 + hash32(fam, "scr:rg") % 4;
+      for (let at = rj; at <= len; at += 2) {
+        const f2 = fitsOf(lang, at);
+        const bestAll = Math.max(f2.logo, f2.syll, f2.abjad, f2.abugida, f2.alphabet);
+        if (f2[type] < 0.75 && bestAll > f2[type] + 0.6 && h01(fam, "scr:inv", at) < 0.4) {
+          type = "featural"; adoptedAt = at; frozenAt = at; invented = true;
+          break;                                                 // an invention is terminal
+        } else if (at - frozenAt >= 5 && h01(fam, "scr:reform", at) < 0.15) {
+          frozenAt = at; reformed = true;                        // the Turkish move
+        }
       }
-      script = { type, born, adoptedAt, frozenAt, reformed };
+      script = { type, born, adoptedAt, frozenAt, reformed, invented };
       // direction: weighted by type — the historical-accident distribution
       // (abjads run right-to-left with their Semitic lineage; logographies
       // and their syllabic daughters took columns; everyone else mostly ltr)
@@ -161,9 +210,16 @@ export function scriptOf(lang) {
       ? h01(fam2, "scr:tw") < 0.35 : false;                      // the Vietnamese minority
     script.headline = script.type === "abugida" && h01(script.styleSeed, "head") < 0.55;   // the Devanagari bar
     script.join = script.hand === "pen" && h01(script.styleSeed, "join") < 0.65;           // joined cursive
+    if (script.type === "featural") {
+      // an INVENTED script is designed, not worn smooth: block-built, never
+      // cursive, no inherited headline; column or row by the court's choice
+      script.dir = h01(fam2, "scr:fdir") < 0.8 ? "ltr" : "ttb";
+      script.join = false; script.headline = false;
+    }
     script.glyphBudget = script.type === "logo" ? CONCEPTS.length
-      : script.type === "syll" ? sylSpaceOf(lang)
+      : script.type === "syll" ? corpusOf(lang, script.frozenAt).sylTypes
       : script.type === "abjad" ? inv.cons.length + (script.matres === "long" ? 2 : 0)
+      : script.type === "featural" ? new Set(inv.cons.map(fkey)).size + new Set(inv.vows.map(vkey)).size
       : inv.cons.length + inv.vows.length;
   }
   SCRIPTS.set(lang, { key, script });
@@ -175,10 +231,13 @@ export function scriptOf(lang) {
 const GHOSTS = new WeakMap();
 function frozenLang(lang, frozenAt) {
   const key = frozenAt * 1000003 + (lang.gen || 0) * 101 + lang.loans.length;
-  const hit = GHOSTS.get(lang);
-  if (hit && hit.key === key) return hit.ghost;
+  let m = GHOSTS.get(lang);
+  if (!m) { m = new Map(); GHOSTS.set(lang, m); }
+  const hit = m.get(key);
+  if (hit) return hit;
   const ghost = { ...lang, rules: lang.rules.slice(0, frozenAt), loans: [] };
-  GHOSTS.set(lang, { key, ghost });
+  if (m.size > 6) m.clear();                           // junctures + the frozen tradition, never unbounded
+  m.set(key, ghost);
   return ghost;
 }
 
@@ -341,7 +400,10 @@ function bandStrokes(script, key, salt) {
   if (script.type === "logo" || script.type === "syll") return rawStrokes(script, key, salt);   // square signs
   const raw = anatomyStrokes(script, key, salt, 1, salt > 8 ? 3 : 2);
   const z = hash32(script.styleSeed, "zone", key) % 100;
-  const [top, bot] = z < 68 ? [0.3, 0.76] : z < 84 ? [0.06, 0.76] : [0.3, 0.97];
+  // a headline script HANGS its letters from the bar (the shirorekha):
+  // no ascenders — the body starts just under the line and may descend
+  const [top, bot] = script.headline ? (z < 72 ? [0.14, 0.72] : [0.14, 0.95])
+    : z < 68 ? [0.3, 0.76] : z < 84 ? [0.06, 0.76] : [0.3, 0.97];
   for (const s of raw) {
     s.pts = s.pts.map(p => ({ x: p.x, y: top + p.y * (bot - top) }));
     if (s.kind === "loop") s.r = (s.r || 0.12) * (bot - top);
@@ -360,6 +422,178 @@ const vkey = (v) => "v" + v.h + "." + v.b + "." + v.r;
 const sylkey = (s) => [...s.on.map(ckey), ...s.nu.map(vkey), ...s.co.map(ckey)].join("-");
 // domain radicals for phono-semantic compounds (one per concept domain)
 const radKey = (d) => "rad:" + d;
+// a featural letter merges what the FEATURES merge, exactly as Hangul does:
+// ㄱ is k AND g (plain voicing, l ∈ {0,1}), ㄹ is l AND r (the liquids),
+// dental sits with alveolar, uvular with velar, the gutturals share the
+// throat-loop — the key mirrors featC's own iconography, so key ↔ glyph is
+// injective by construction; aspiration/ejective/prenasal stay distinct
+const fkey = (c) => {
+  const p = c.p === 8 ? 1 : c.p === 5 ? 4 : c.p === 7 ? 6 : c.p;
+  const m = c.m === 5 ? 4 : c.m;
+  return "f" + p + "." + m + "." + (c.l >= 2 ? c.l : 0) + "." + c.s;
+};
+
+// ── featural letters: the glyph IS the feature bundle (the Hangul machine) ─
+// Place draws the base shape (the real Hangul iconography is articulatory:
+// ㅁ a closed mouth, ㄱ the tongue root at the velum, ㅇ the open throat);
+// manner modifies it; ASPIRATION ADDS A STROKE to the plain letter (ㄱ→ㅋ),
+// so related sounds are visibly related — the whole point of the class.
+// An INVENTED script is drawn with the designer's ruler, not the scribe's
+// wear: the hand's material vocabulary does not restyle these shapes (v1).
+function featC(script, c) {
+  const st = [];
+  const L = (x1, y1, x2, y2) => st.push({ pts: [{ x: x1, y: y1 }, { x: x2, y: y2 }], bow: 0 });
+  const p = Math.min(c.p, 8);
+  if (p === 0) { L(0.2, 0.2, 0.8, 0.2); L(0.8, 0.2, 0.8, 0.8); L(0.8, 0.8, 0.2, 0.8); L(0.2, 0.8, 0.2, 0.2); }        // labial: the closed lips (ㅁ)
+  else if (p === 1 || p === 8) { L(0.2, 0.2, 0.8, 0.2); L(0.2, 0.2, 0.2, 0.8); }                                       // coronal: tongue tip to the ridge (ㄴ flipped)
+  else if (p === 2) { L(0.2, 0.2, 0.8, 0.2); L(0.2, 0.2, 0.2, 0.8); st.push({ pts: [{ x: 0.2, y: 0.8 }, { x: 0.55, y: 0.8 }], bow: -0.25 }); }   // retroflex: curled
+  else if (p === 3) { L(0.5, 0.15, 0.15, 0.85); L(0.5, 0.15, 0.85, 0.85); }                                            // palatal: the raised body (∧)
+  else if (p === 4 || p === 5) { L(0.2, 0.2, 0.8, 0.2); L(0.8, 0.2, 0.8, 0.8); }                                       // velar/uvular: root to the soft palate (ㄱ)
+  else { st.push({ pts: [{ x: 0.5, y: 0.5 }], bow: 0, kind: "loop", r: 0.3 }); }                                       // guttural: the open throat (ㅇ)
+  if (c.m === 2) L(0.15, 0.02, 0.85, 0.02);                                    // fricative: airflow line above
+  if (c.m === 3) { L(0.15, 0.02, 0.85, 0.02); L(0.5, 0.02, 0.5, 0.18); }       // affricate: line + stop tick
+  if (c.m === 1) L(0.35, 0.98, 0.65, 0.98);                                    // nasal: the open passage below
+  if (c.m === 4 || c.m === 5) st.push({ pts: [{ x: 0.8, y: 0.8 }, { x: 0.55, y: 0.98 }], bow: 0.2 });   // liquid: a flick
+  if (c.m === 6) st.push({ pts: [{ x: 0.2, y: 0.85 }, { x: 0.45, y: 0.98 }], bow: -0.2 });              // glide: the off-glide sweep
+  if (c.l === 2) L(0.3, 0.1, 0.7, 0.1);                                        // aspirated: ONE MORE stroke (ㄱ→ㅋ)
+  if (c.l === 3) st.push({ pts: [{ x: 0.9, y: 0.1 }], bow: 0, kind: "dot" });  // ejective: a point
+  if (c.l === 4) L(0.05, 0.9, 0.05, 0.6);                                      // prenasal: a leading stub
+  if (c.s === 1) L(0.92, 0.35, 0.92, 0.65);                                    // palatalized tick
+  if (c.s === 2) st.push({ pts: [{ x: 0.92, y: 0.5 }], bow: 0, kind: "loop", r: 0.07 });   // labialized ring
+  return st;
+}
+// vowels are BARS with feature ticks (the ㅏㅓㅗㅜ system): front vowels
+// stand vertical, back vowels lie horizontal, height places the tick
+function featV(script, v) {
+  const st = [];
+  const L = (x1, y1, x2, y2) => st.push({ pts: [{ x: x1, y: y1 }, { x: x2, y: y2 }], bow: 0 });
+  if (v.b === 0) { L(0.5, 0.05, 0.5, 0.95); if (v.h === 0) L(0.5, 0.3, 0.85, 0.3); else if (v.h === 1) L(0.5, 0.5, 0.85, 0.5); else L(0.5, 0.7, 0.85, 0.7); }
+  else if (v.b === 2) { L(0.05, 0.5, 0.95, 0.5); if (v.h === 0) L(0.3, 0.5, 0.3, 0.15); else if (v.h === 1) L(0.5, 0.5, 0.5, 0.15); else L(0.7, 0.5, 0.7, 0.85); }
+  else { L(0.5, 0.05, 0.5, 0.95); if (v.h !== 1) L(0.15, v.h === 0 ? 0.3 : 0.7, 0.85, v.h === 0 ? 0.3 : 0.7); }
+  if (v.r) st.push({ pts: [{ x: v.b === 2 ? 0.5 : 0.2, y: v.b === 2 ? 0.78 : 0.5 }], bow: 0, kind: "loop", r: 0.08 });
+  return st;
+}
+// one syllable = one BLOCK: onset top-left, the vowel beside or below it by
+// its own orientation, the coda underneath — Hangul's composition, derived
+function featBlock(script, lang, syl) {
+  const inv = compiledInv(lang);
+  const on = syl.on.length ? syl.on : null;
+  const v = syl.nu[0] || inv.vows[0];
+  const vertical = v.b !== 2;                        // vertical bars stand beside, horizontal lie below
+  const strokes = [];
+  const onComp = (c) => featC(script, c);
+  const codaN = syl.co.length;
+  const topH = codaN ? 0.6 : 0.94;
+  if (vertical) {
+    // onset left, vowel bar right
+    if (on) on.forEach((c, i) => strokes.push(...fitBox(onComp(c), 0.04 + i * 0.28 / Math.max(1, on.length - 1 || 1), 0.04, on.length > 1 ? 0.26 : 0.5, topH * 0.92)));
+    else strokes.push(...fitBox([{ pts: [{ x: 0.5, y: 0.5 }], bow: 0, kind: "loop", r: 0.3 }], 0.04, 0.04, 0.5, topH * 0.92));   // null onset = the silent ㅇ
+    const vw = 0.36 / syl.nu.length;
+    syl.nu.forEach((vv, k) => strokes.push(...fitBox(featV(script, vv), 0.6 + k * vw, 0.04, vw, topH * 0.92)));
+  } else {
+    // onset top, vowel bar below it
+    if (on) on.forEach((c, i) => strokes.push(...fitBox(onComp(c), 0.1 + i * 0.42, 0.04, on.length > 1 ? 0.38 : 0.8, topH * 0.5)));
+    else strokes.push(...fitBox([{ pts: [{ x: 0.5, y: 0.5 }], bow: 0, kind: "loop", r: 0.3 }], 0.1, 0.04, 0.8, topH * 0.5));
+    const vh = 0.42 / syl.nu.length;
+    syl.nu.forEach((vv, k) => strokes.push(...fitBox(featV(script, vv), 0.1, topH * (0.52 + k * vh), 0.8, topH * vh)));
+  }
+  syl.co.forEach((c, i) => strokes.push(...fitBox(onComp(c), 0.15 + i * 0.42, 0.66, codaN > 1 ? 0.34 : 0.7, 0.3)));
+  return strokes;
+}
+
+// ── the GLYPH MAP: one deduped sign table per script state ────────────────
+// Both the inventory display AND writeForm read from here, so a sign that
+// the distinctness walk moved (or dotted) looks the same in a word as in
+// the table — they can never desync. Collision resolution is the script's
+// own: a JOINED PEN hand keeps the letter skeleton and adds DOTS (i'jam —
+// the Arabic solution, where ب ت ث share a rasm and differ by pointing);
+// every other hand moves the strokes (the salt walk).
+const GLYPHMAPS = new WeakMap();
+const DOTS = [[1, "above"], [2, "above"], [3, "above"], [1, "below"], [2, "below"], [3, "below"]];
+function withDots(strokes, n, pos) {
+  const y = pos === "above" ? 0.08 : 0.97;
+  const out = strokes.map(x => ({ ...x, pts: x.pts.map(pp => ({ ...pp })) }));
+  for (let i = 0; i < n; i++) out.push({ pts: [{ x: 0.38 + i * 0.14, y }], bow: 0, kind: "dot" });
+  return out;
+}
+function glyphMapOf(lang) {
+  const s = scriptOf(lang);
+  if (!s) return null;
+  const stateKey = s.type + ":" + s.frozenAt + ":" + (lang.gen || 0) + ":" + lang.rules.length + ":" + (lang.xph ? lang.xph.length : 0);
+  const hit = GLYPHMAPS.get(lang);
+  if (hit && hit.key === stateKey) return hit;
+  const inv = compiledInv(lang);
+  const cons = inv.cons, vows = inv.vows;
+  const seen = new Set();
+  const map = new Map();
+  const entries = [];
+  // marks (vowel diacritics, virama) draw from the free stroke grammar, not
+  // the letter anatomy — a sliced spine is too stereotyped to keep a dozen
+  // marks apart, and real diacritics are small free shapes anyway
+  const reg = (key, label, markPos = null, post = (x) => x, base = bandStrokes) => {
+    let st = post(base(s, key, 0));
+    if (seen.has(sigOfStrokes(st)) && s.hand === "pen" && s.join && s.type !== "featural") {
+      // i'jam: keep the worn skeleton, point it apart
+      for (const [n, pos] of DOTS) { const d = withDots(st, n, pos); if (!seen.has(sigOfStrokes(d))) { st = d; break; } }
+    }
+    let salt = 0;
+    while (seen.has(sigOfStrokes(st)) && salt < 24) st = post(base(s, key, ++salt));
+    seen.add(sigOfStrokes(st));
+    const e = { key, label, strokes: st, mark: markPos };
+    map.set(key, e); entries.push(e);
+    return e;
+  };
+  if (s.type === "featural") {
+    // components are feature-derived (injective by construction after the
+    // Hangul-style feature merges in fkey) — no walk needed; the label
+    // lists every sound the component covers (ㄱ "k/g", ㄹ "l/r")
+    const seenF = new Set();
+    for (const c of cons) {
+      const k = fkey(c);
+      if (seenF.has(k)) continue;
+      seenF.add(k);
+      const mates = [...new Set(cons.filter(x => fkey(x) === k).map(x => romLabel(lang, x)))];
+      const e = { key: k, label: mates.join("/"), strokes: featC(s, c) };
+      map.set(k, e); entries.push(e);
+    }
+    for (const v of vows) {
+      const k = vkey(v);
+      if (seenF.has(k)) continue;
+      seenF.add(k);
+      const e = { key: k, label: romV(lang, v), strokes: featV(s, v) };
+      map.set(k, e); entries.push(e);
+    }
+  } else if (s.type === "syll") {
+    const sb = inv.syllab;
+    const nucs = [...vows, ...(sb.diphs || []).map(d => d[0])];
+    const done = new Set();
+    for (const v of nucs) {
+      for (const on of [[], ...sb.onsets, ...cons.map(c => [c])]) {
+        const key = sylkey({ on, nu: [v], co: [] });
+        if (done.has(key)) continue;
+        done.add(key);
+        reg(key, [...on.map(c => romLabel(lang, c)), romV(lang, v)].join(""));
+      }
+    }
+    reg("mora:N", "-n (mora)");
+  } else if (s.type !== "logo") {
+    for (const c of cons) reg(ckey(c), romLabel(lang, c));
+    if (s.type === "abugida") {
+      const pos = markPosOf(s);
+      const inh = vkey(inv.vows[0]);
+      for (const v of vows) if (vkey(v) !== inh) reg("vd:" + vkey(v), romV(lang, v), pos, (st) => st.slice(0, 1), rawStrokes);
+      reg("vc:carrier", "vowel carrier");
+      reg("virama", "virama", "below", (st) => st.slice(0, 1), rawStrokes);
+    } else if (s.type === "alphabet") {
+      for (const v of vows) reg(vkey(v), romV(lang, v));
+    } else if (s.type === "abjad" && s.matres === "long") {
+      reg("mater:back", "ū/ō (mater)"); reg("mater:front", "ī/ē (mater)"); reg("carrier", "initial vowel (carrier)");
+    }
+  }
+  const out = { key: stateKey, map, entries };
+  GLYPHMAPS.set(lang, out);
+  return out;
+}
 
 /** The script's glyph table: [{ key, label, strokes, mark? }] — finite types
  *  enumerate their (frozen) inventory in a fixed order with a distinctness
@@ -368,16 +602,9 @@ const radKey = (d) => "rad:" + d;
 export function glyphInventory(lang, cap = 64) {
   const s = scriptOf(lang);
   if (!s) return null;
-  const seen = new Set();
-  const mk = (key, label, markPos = null, post = (x) => x) => {
-    let salt = 0, st = post(bandStrokes(s, key, salt));
-    while (seen.has(sigOfStrokes(st)) && salt < 24) st = post(bandStrokes(s, key, ++salt));
-    seen.add(sigOfStrokes(st));
-    return { key, label, strokes: st, mark: markPos };
-  };
-  const inv = compiledInv(lang);
-  const out = [];
   if (s.type === "logo") {
+    const seen = new Set();
+    const out = [];
     for (let cid = 0; cid < CONCEPTS.length && out.length < Math.min(cap, 18); cid++) {
       const g = logoGlyph(lang, cid);
       if (!g) continue;
@@ -388,34 +615,8 @@ export function glyphInventory(lang, cap = 64) {
     }
     return out;
   }
-  if (s.type === "syll") {
-    const sb = inv.syllab;
-    outer: for (const v of inv.vows) {
-      for (const on of [[], ...sb.onsets]) {
-        const key = sylkey({ on, nu: [v], co: [] });
-        out.push(mk(key, [...on.map(c => romLabel(lang, c)), romV(lang, v)].join("")));
-        if (out.length >= cap) break outer;
-      }
-    }
-    return out;
-  }
-  for (const c of inv.cons) { out.push(mk(ckey(c), romLabel(lang, c))); if (out.length >= cap) return out; }
-  if (s.type === "abugida") {
-    // vowel DIACRITICS: 1-stroke marks; the commonest vowel is inherent
-    // (unmarked) — the inventory is frequency-ordered, so vows[0] is it
-    const pos = markPosOf(s);
-    inv.vows.slice(1).forEach((v) => {
-      if (out.length >= cap) return;
-      out.push(mk("vd:" + vkey(v), romV(lang, v), pos, (st) => st.slice(0, 1)));
-    });
-  } else if (s.type === "alphabet") {
-    for (const v of inv.vows) { if (out.length >= cap) break; out.push(mk(vkey(v), romV(lang, v))); }
-  } else if (s.type === "abjad" && s.matres === "long") {
-    out.push(mk("mater:back", "ū/ō (mater)"));
-    out.push(mk("mater:front", "ī/ē (mater)"));
-    out.push(mk("carrier", "initial vowel (carrier)"));
-  }
-  return out;
+  // every finite type reads the ONE shared map writeForm reads — no desync
+  return glyphMapOf(lang).entries.slice(0, cap);
 }
 const markPosOf = (s) => { const r = h01(s.styleSeed, "mkpos"); return r < 0.5 ? "above" : r < 0.8 ? "below" : "after"; };
 const romLabel = (lang, c) => romanizeC(c, lang.prof.romTaste, lang.prof.rom, lang.prof.orthoStyle);
@@ -484,7 +685,34 @@ export function writeForm(lang, form, cid = null) {
   const s = scriptOf(lang);
   if (!s || !form) return null;
   const glyphs = [];
-  const G = (key) => ({ strokes: bandStrokes(s, key, 0) });
+  // every sign comes from the ONE shared map (walked, dotted — as displayed);
+  // open-set keys (logographic grammar signs) fall back to the stroke grammar
+  const gm = s.type === "logo" ? null : glyphMapOf(lang);
+  const G = (key) => {
+    const e = gm && gm.map.get(key);
+    return e ? { strokes: e.strokes } : { strokes: bandStrokes(s, key, 0) };
+  };
+  // orthography writes PHONEMES: a surface segment sound change carried out
+  // of the inventory is written with its nearest letter, exactly as English
+  // writes the flap with ⟨t⟩ — only the featural type (below) draws sounds
+  // directly and needs no such collapse
+  const inv0 = s.type === "logo" ? null : compiledInv(lang);
+  const nearC = (c) => {
+    let best = c, bd = 1e9;
+    for (const x of inv0.cons) {
+      const d = (x.p !== c.p) * 3 + (x.m !== c.m) * 3 + (x.l !== c.l) + (x.s !== c.s);
+      if (d < bd) { bd = d; best = x; if (!d) break; }
+    }
+    return best;
+  };
+  const nearV = (v) => {
+    let best = v, bd = 1e9;
+    for (const x of inv0.vows) {
+      const d = (x.h !== v.h) * 2 + (x.b !== v.b) * 2 + (x.r !== v.r);
+      if (d < bd) { bd = d; best = x; if (!d) break; }
+    }
+    return best;
+  };
   const pos = s.type === "abugida" ? markPosOf(s) : null;
   const plan = s.toneWritten ? phoneticPlan(lang, form) : null;
   const toneMark = (sylIdx) => {
@@ -498,44 +726,62 @@ export function writeForm(lang, form, cid = null) {
     else glyphs.push(G("w:" + form.syls.map(sylkey).join("+")));
   } else if (s.type === "syll") {
     form.syls.forEach((syl) => {
-      const bare = { on: syl.on, nu: syl.nu, co: [] };
-      glyphs.push(G(sylkey(syl.co.length ? bare : syl)));
+      const on = syl.on.map(nearC);
+      const nu0 = syl.nu.length ? [nearV(syl.nu[0])] : [];
+      const k = sylkey({ on, nu: nu0, co: [] });
+      if (!gm.map.has(k) && on.length > 1) {
+        // a cluster the signary never licensed is broken into CV signs with
+        // echo vowels — su-to-ra-i-ku, ko-no-so: the syllabary's own move
+        for (const c of on) glyphs.push(G(sylkey({ on: [c], nu: nu0, co: [] })));
+      } else glyphs.push(G(k));
+      // a diphthong's off-glide takes the bare vowel sign (kana かい "kai")
+      for (const v of syl.nu.slice(1)) glyphs.push(G(sylkey({ on: [], nu: [nearV(v)], co: [] })));
       for (const c of syl.co) {                                  // the three attested coda treatments
         if (s.codaMode === "moraic" && c.m === 1) glyphs.push(G("mora:N"));
-        else if (s.codaMode === "echo") glyphs.push(G(sylkey({ on: [c], nu: syl.nu.slice(0, 1), co: [] })));   // ko-no-so
+        else if (s.codaMode === "echo") glyphs.push(G(sylkey({ on: [nearC(c)], nu: nu0, co: [] })));   // ko-no-so
         // drop: unwritten
       }
     });
+  } else if (s.type === "featural") {
+    // one syllable = one composed BLOCK (the Hangul geometry)
+    form.syls.forEach((syl, i) => { glyphs.push({ strokes: featBlock(s, lang, syl) }); toneMark(i); });
   } else if (s.type === "abjad") {
     form.syls.forEach((syl, i) => {
       if (i === 0 && !syl.on.length && s.matres === "long") glyphs.push(G("carrier"));   // initial vowel needs a seat
-      for (const c of syl.on) glyphs.push(G(ckey(c)));
+      for (const c of syl.on) glyphs.push(G(ckey(nearC(c))));
       if (s.matres === "long" && syl.nu.some(v => v.lg)) glyphs.push(G(materKey(lang, syl.nu[0])));
-      for (const c of syl.co) glyphs.push(G(ckey(c)));
+      for (const c of syl.co) glyphs.push(G(ckey(nearC(c))));
       toneMark(i);
     });
   } else if (s.type === "abugida") {
-    const inv = compiledInv(lang);
-    const inherent = vkey(inv.vows[0]);
+    const inherent = vkey(inv0.vows[0]);
+    const M = (key) => { const e = gm.map.get(key); return e ? e.strokes : rawStrokes(s, key, 0).slice(0, 1); };
     form.syls.forEach((syl, i) => {
-      const base = syl.on.length ? G(ckey(syl.on[0])) : G("vc:carrier");
-      const v = syl.nu[0];
-      if (v && vkey(v) !== inherent) base.mark = { strokes: rawStrokes(s, "vd:" + vkey(v), 0).slice(0, 1), pos };
+      const base = syl.on.length ? G(ckey(nearC(syl.on[0]))) : G("vc:carrier");
+      const v = syl.nu[0] ? nearV(syl.nu[0]) : null;
+      if (v && vkey(v) !== inherent) base.mark = { strokes: M("vd:" + vkey(v)), pos };
       glyphs.push(base);
       for (const c of [...syl.on.slice(1), ...syl.co]) {
-        const g = G(ckey(c));
-        if (s.virama) g.mark = { strokes: rawStrokes(s, "virama", 0).slice(0, 1), pos: "below" };   // the killer mark
+        const g = G(ckey(nearC(c)));
+        if (s.virama) g.mark = { strokes: M("virama"), pos: "below" };   // the killer mark
         glyphs.push(g);
       }
       toneMark(i);
     });
   } else {
     form.syls.forEach((syl, i) => {
-      for (const c of syl.on) glyphs.push(G(ckey(c)));
-      for (const v of syl.nu) glyphs.push(G(vkey(v)));
-      for (const c of syl.co) glyphs.push(G(ckey(c)));
+      for (const c of syl.on) glyphs.push(G(ckey(nearC(c))));
+      for (const v of syl.nu) glyphs.push(G(vkey(nearV(v))));
+      for (const c of syl.co) glyphs.push(G(ckey(nearC(c))));
       toneMark(i);
     });
+  }
+  // the FINAL FORM: a joined hand ends its word with a sweep below the
+  // baseline — the Arabic final-swash logic, one tail per word
+  if (s.join && glyphs.length) {
+    const last = glyphs[glyphs.length - 1];
+    const dx = s.dir === "rtl" ? -1 : 1;
+    last.strokes = [...last.strokes, { pts: [{ x: 0.5 + dx * 0.12, y: 0.78 }, { x: 0.5 + dx * 0.44, y: 0.97 }], bow: dx * 0.3, kind: "tail" }];
   }
   return glyphs;
 }

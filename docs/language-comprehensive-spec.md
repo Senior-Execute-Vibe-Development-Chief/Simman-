@@ -929,3 +929,58 @@ can be SPOKEN and WRITTEN. Probe 313 → **320** checks (§26).
   traditions freeze the stem and spell inflection by ear — ours spells
   the whole running line by ear, noted in the card copy); loanword
   writing; sim/chronicle wiring, unchanged.
+
+## Build status (session 15, sixth phase) — the missing script classes
+
+Coverage round ("no Arabic, no Hindi styles"): the two big visual
+identities missing were the JOINED-POINTED look and the HANGING look, and
+the sixth structural class (featural) had no path into existence. All
+three now emerge; probe 320 → **327** checks (§25 e2).
+
+- **Fit reads the ATTESTED CORPUS, not the static profile.** fitsOf now
+  measures the frozen lexicon as it stood at each juncture (distinct
+  syllable count, attested word length, attested cluster rate) — sound
+  change bakes splits and clusters into words, so the corpus a late
+  juncture faces differs from the founders'. This kills two latent
+  anachronisms at once: juncture verdicts no longer read today's
+  phonology retroactively (history can't rewrite itself), and the fit
+  landscape finally MOVES, which is the entire engine of late reform.
+- **The featural class is INVENTED, never assigned.** Post-consolidation
+  junctures recur every 2 rules of accumulated depth; at each, a court
+  holding a script whose fit the corpus has left behind (fit < 0.75 and a
+  far better one exists — the Sejong condition) rolls invention at
+  0.4/era. The result is rare like the record (~1–2% at deep drift, none
+  young). Letters draw the sounds' own features: place = base shape
+  (articulator iconography), manner modifies, a laryngeal series ADDS a
+  stroke (ㄱ→ㅋ); fkey merges exactly what featC draws identically
+  (voicing pairs, the liquids, dental/alveolar, uvular/velar — so one
+  letter covers k/g as Hangul's ㄱ does, injective by construction).
+  Syllables compose into BLOCKS (onset beside/above the vowel bar by its
+  orientation, coda beneath, silent-ㅇ null onset). Invented scripts are
+  ruler-drawn: the hand's material vocabulary does not restyle them, they
+  never join, never inherit a headline.
+- **The ONE shared glyph map.** glyphMapOf builds a single deduped sign
+  table per script state; BOTH the inventory display and writeForm read
+  it, so a walked or pointed sign looks the same in a word as in the
+  table — the latent desync closed by construction (gated: word sigs ⊆
+  table sigs, 0 strays / 3556). Collision resolution is the script's own:
+  a joined pen hand keeps the worn skeleton and POINTS it apart — dots
+  above/below, the i'jam solution that split ب ت ث (gated: ≥3 traditions
+  attest shared-skeleton pointed pairs) — every other hand moves strokes
+  (the salt walk). Abugida vowel marks now draw from the free stroke
+  grammar (a sliced spine was too stereotyped to keep a dozen marks
+  apart — the very desync source, since words already drew them free).
+- **Orthography writes PHONEMES.** Surface segments that sound change
+  carried out of the inventory are written with their nearest letter
+  (English never added a flap letter); a syllabary facing an unlicensed
+  cluster breaks it into CV signs with echo vowels (su-to-ra-i-ku); a
+  diphthong's off-glide takes the bare vowel sign (かい). Only the
+  featural type writes sounds directly — Hangul's fidelity, for free.
+- **Headline scripts HANG their letters** (no ascenders above the bar,
+  descenders allowed — the Devanagari band, gated); **joined hands end
+  the word in a final swash** (a tapering tail stroke, the Arabic
+  final-form logic, one per word).
+- **Parked:** script BORROWING along contact/prestige lines (the actual
+  Sejong precondition — Korea wrote CHINESE; needs sim-side neighbors);
+  hand-styled featural letters (real Hangul took brush styling);
+  boustrophedon; loanword writing; sim/chronicle wiring, unchanged.
