@@ -123,6 +123,14 @@ const NONLIVING_CATS = ["plant", "object", "architecture", "natural", "celestial
 // the COMPACT categories — stars, discs, crescents — are the only devices
 // flag cloth repeats or strews; everything else is a FIGURE there
 const COMPACT_CATS = new Set(["celestial", "geometric"]);
+// THE CONSTELLATION GRAMMAR — how flag cloth ORGANIZES a repeated compact
+// device. Real flags never wallpaper their repeats: the count enumerates
+// something (states, islands, provinces) and the devices are arranged — a
+// ring (the federal circle), an arc over the middle, offset rows (the
+// star-field), or a seeded constellation (a literal little sky map).
+// Weighted like every other frequency window: rows and rings common, the
+// arc and the sky map rarer.
+const ARRAY_PATTERNS = ["rows", "rows", "ring", "ring", "arc", "constellation"];
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 // @INJECT:MOTIFS-START — the lab build (tools/build_lab.mjs) replaces this whole
 // block with the size-filtered subset so the artifact's pools match its bundled art.
@@ -587,6 +595,9 @@ export function expressGenome(genome) {
       // no room on it and a counterchanged ordinary is no single ground, so
       // both keep their company BETWEEN instead.
       let slot = pickEnum(get("arrange"), ORD_COMPANY);
+      // sewn cloth never wallpapers UNDER a band: on a flag the semé company
+      // doesn't express — the bare band IS the design (the commonest real case)
+      if (isFlag && slot === "seme") slot = "none";
       // no single band to sit ON: a chevron, a counterchanged ordinary, or a
       // diminutive group keep their company BETWEEN instead
       if (slot === "on" && (field.ordinary === "chevron" || field.counterchange || field.ordinaryCount > 1)) slot = "between";
@@ -619,6 +630,25 @@ export function expressGenome(genome) {
       if (arrange === "three" || arrange === "inPale") arrange = "single";
       if (slots && slots.length > 1) slots = [slots[0]];
     }
+    // THE CONSTELLATION GRAMMAR: on a flag a compact device's multiple-intent
+    // — the same genes that station three lions on a shield or strew a silk —
+    // expresses as an ORGANIZED array: ring / arc / rows / seeded sky map.
+    // The count gene counts the devices (real counts enumerate members); the
+    // otherwise-idle script gene picks the pattern, and the brand gene seeds
+    // the constellation, exactly as it seeds a tamga. Each pattern imposes its
+    // own geometric floor (a "ring" of three is not a ring).
+    let array = null;
+    if (isFlag && compact && !hasOrdinary && ["three", "inPale", "seme"].includes(arrange)) {
+      let count = arrange === "seme" ? 5 + Math.min(7, Math.floor(get("motifCount") * 8))
+        : 2 + Math.min(4, Math.floor(get("motifCount") * 5));
+      const pattern = pickEnum(get("scriptDensity"), ARRAY_PATTERNS);
+      if (pattern === "ring") count = Math.max(4, count);
+      else if (pattern === "arc") count = Math.min(9, Math.max(3, count));
+      else if (pattern === "constellation") count = Math.min(9, Math.max(4, count));
+      array = { pattern, count, seed: Math.floor(get("brandSeed") * 1e6), sizeF: 0.75 + get("motifScale") * 0.5 };
+      arrange = "array";
+      counterchange = false;                     // an array is appliqué from one bolt
+    }
     // a heraldic semé is a FIELD treatment: it lies beneath chief, bordure and
     // ordinary, not over them
     behind = arrange === "seme" && composition === "heraldic";
@@ -626,24 +656,32 @@ export function expressGenome(genome) {
     // the tails of the sunDisc gene, otherwise idle for charges. An armorial
     // abatement is a shield's business: a flag flies its device upright.
     const attitude = isFlag ? null : get("sunDisc") < 0.12 ? "inverted" : get("sunDisc") > 0.88 ? "sinister" : null;
+    // THE CANTON HOUSES THE DEVICE: on flag cloth the canton is the position
+    // of honour, not a second device beside the first — a compact device (or
+    // its whole array) moves INTO the canton block and dresses against it
+    // (the tincture rule, one layer up). A figure never boards the canton.
+    const housed = isFlag && composition === "heraldic" && !hasOrdinary && compact
+      && get("star") > 0.62 && (arrange === "single" || arrange === "array");
+    if (housed) tincture = tinctureOn([markT], get("hueA"), get("value"));
     // FLAG DETAILING: a single device may sit on a bounded PANEL (disc or
     // lozenge — the charge then dresses against the panel, the tincture rule
     // applied recursively), or wear a FIMBRIATION halo; both are how modern
     // flags separate a figure from a busy ground
     let panel = null, fimb = null;
-    if (isFlag && !hasOrdinary && !counterchange && (composition === "heraldic" || composition === "central")) {
+    if (!housed && isFlag && !hasOrdinary && !counterchange && (composition === "heraldic" || composition === "central")) {
       // a lone FIGURE wants a ground of its own to sit on — its panel window
       // opens wide; a compact device (a disc, a star) flies bare more often
       if (arrange === "single" && get("crescent") > (compact ? 0.56 : 0.38) && get("crescent") <= 0.74) {
         panel = { shape: get("symmetry") > 0.5 ? "disc" : "lozenge", tincture: markT.rgb, name: markT.name };
         tincture = tinctureOn([markT], get("hueA"), get("value"));
-      } else if (arrange !== "seme" && get("motifCount") > 0.6) {
+      } else if (arrange === "single" && get("motifCount") > 0.6) {
         fimb = tinctureOn([...grounds, tincture], get("hueA"), get("value"), pal.poles);
       }
     }
     if (arrange) motif = { id, cat, tincture: tincture.rgb, tinctureName: tincture.name, counterchange, behind,
-      slots, tilt, attitude, panel, fimbriation: fimb ? fimb.rgb : null, fimbName: fimb ? fimb.name : null,
-      count: slots ? slots.length : arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
+      slots, tilt, attitude, panel, array, inCanton: housed || undefined,
+      fimbriation: fimb ? fimb.rgb : null, fimbName: fimb ? fimb.name : null,
+      count: slots ? slots.length : array ? array.count : arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
       // on a flag a figure sits like a badge, not an armorial beast filling
       // the cloth — it rides at roughly three-quarter size
       scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5)
@@ -669,12 +707,18 @@ export function expressGenome(genome) {
   // room for it, in a contrast-guaranteed colour so it never vanishes into the
   // field. No centred disc (it used to cover the device); no figure over a figure.
   const cantonOK = composition === "heraldic" || composition === "brand" || composition === "script";
+  // on FLAG cloth the hoist-top must be free cloth (no canton over an
+  // ordinary's arm) and the canton is the device's house, never a second
+  // device beside a figure: it flies with a housed device, or alone
+  const flagCantonOK = !isFlag || composition !== "heraldic"
+    || (!hasOrdinary && (!motif || motif.inCanton));
   const ornaments = {
     border: get("border") > 0.5 || composition === "central",
     cornerAccent: composition === "central" && get("pearl") > 0.5,           // small disc, clear of the device
-    canton: cantonOK && get("star") > 0.62,
+    canton: cantonOK && flagCantonOK && get("star") > 0.62,
     cantonKind: get("sunDisc") > 0.5 ? "sun" : "star",
     cantonColor: markT.rgb,                     // the canton lies on the field: it wears markT
+    cantonName: markT.name,
 
     scriptDensity: 0.4 + get("scriptDensity") * 0.6,
     brandSeed: Math.floor(get("brandSeed") * 1e6),
@@ -722,7 +766,8 @@ export function sigilFromSeed(seed) {
 }
 
 // ── BLAZON — the formal heraldic sentence for a phenotype ────────────────────
-const NUMWORD = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight"];
+const NUMWORD = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+  "nine", "ten", "eleven", "twelve", "thirteen"];
 const CHARGE_NAME = {
   mullet6: "mullet of six points", mullet8: "mullet of eight points", rowel: "pierced mullet",
   crossCouped: "cross couped", crossPattee: "cross pattée", crosslet: "cross crosslet",
@@ -814,11 +859,21 @@ export function blazonGenome(genome) {
   } else {
     if (hasOrd) parts.push(ordClause);
     if (m && m.arrange !== "seme") {
-      if (m.arrange === "three") parts.push(`three ${pluralize(mName)} ${mT}${mFimb}`);
-      else if (m.arrange === "inPale") parts.push(`two ${pluralize(mName)} in pale ${mT}${mFimb}`);
-      else if (p.composition === "radial") parts.push(`a ${mName} ${mT} within an annulet`);
-      else if (m.panel) parts.push(`a ${m.panel.shape === "disc" ? "roundel" : "lozenge"} ${tName(m.panel.name)} charged with a ${mName} ${mT}`);
-      else parts.push(`a ${mName} ${mT}${mFimb}`);
+      // an ARRAY blazons with its arrangement phrase; housed in a canton it
+      // becomes the canton's charge ("on a canton Azure, five mullets in annulo Or")
+      let clause;
+      if (m.arrange === "array") {
+        const A = m.array;
+        const ph = A.pattern === "ring" ? "in annulo" : A.pattern === "arc" ? "in arc"
+          : A.pattern === "constellation" ? "in constellation" : A.count <= 4 ? "in fess" : "in rows";
+        clause = `${NUMWORD[A.count]} ${pluralize(mName)} ${ph} ${mT}`;
+      }
+      else if (m.arrange === "three") clause = `three ${pluralize(mName)} ${mT}${mFimb}`;
+      else if (m.arrange === "inPale") clause = `two ${pluralize(mName)} in pale ${mT}${mFimb}`;
+      else if (p.composition === "radial") clause = `a ${mName} ${mT} within an annulet`;
+      else if (m.panel) clause = `a ${m.panel.shape === "disc" ? "roundel" : "lozenge"} ${tName(m.panel.name)} charged with a ${mName} ${mT}`;
+      else clause = `a ${mName} ${mT}${mFimb}`;
+      parts.push(m.inCanton ? `on a canton ${tName(p.ornaments.cantonName)} ${clause}` : clause);
     }
   }
   if (f.chief) parts.push(`a chief${f.line !== "straight" ? ` ${f.line}` : ""} ${tName(f.ordinaryName)}`);
@@ -857,8 +912,9 @@ export function describeGenome(genome) {
   }
   if (p.motif) {
     const m = p.motif, t = m.counterchange ? "counterchanged" : m.tinctureName;
-    const head = m.arrange === "between" ? "between: " : m.arrange === "onOrdinary" ? "on it: " : m.behind ? "semé " : "";
-    bits.push(head + m.id + (m.count > 1 ? `×${m.count}` : "") + " " + t);
+    const head = m.arrange === "between" ? "between: " : m.arrange === "onOrdinary" ? "on it: "
+      : m.arrange === "array" ? `${m.array.pattern}${m.inCanton ? "@canton" : ""} ` : m.behind ? "semé " : "";
+    bits.push(head + m.id + (m.count > 1 ? `×${m.count}` : "") + " " + t + (m.inCanton && m.arrange !== "array" ? " @canton" : ""));
   }
   else if (p.composition === "script") bits.push("calligraphy");
   else if (p.composition === "brand") bits.push("tamga");

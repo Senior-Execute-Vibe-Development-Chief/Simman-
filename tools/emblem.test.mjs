@@ -41,7 +41,8 @@ const ARGENT = TINCTURES.argent.rgb, AZURE = TINCTURES.azure.rgb;
 
 let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
-const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0 };
+const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
+  array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, housed: 0 };
 // the compact device categories — the only ones a flag repeats or strews
 const COMPACT = new Set(["celestial", "geometric"]);
 const fail = (msg, g) => { if (fails++ < 10) console.error(`  FAIL ${msg}${g ? `\n       ${describeGenome(g)}` : ""}`); };
@@ -72,6 +73,27 @@ function audit(g) {
     if (fm && !COMPACT.has(fm.cat)) {
       if ((fm.count || 1) > 1) fail("figure in multiples on a flag", g);
       if (fm.arrange === "seme") fail("strewn figure on a flag", g);
+    }
+    // THE CONSTELLATION GRAMMAR: cloth never wallpapers or shield-stations a
+    // repeated device — multiples come only as organized arrays (or an
+    // ordinary's company), and a housed device implies its canton
+    if (fm && ["seme", "three", "inPale"].includes(fm.arrange)) fail(`unorganized multiple on a flag (${fm.arrange})`, g);
+    if (fm && fm.array) {
+      seen["array_" + fm.array.pattern] = (seen["array_" + fm.array.pattern] || 0) + 1;
+      if (!COMPACT.has(fm.cat)) fail("figurative array on a flag", g);
+      if (fm.array.count < 2 || fm.array.count > 13) fail(`array count out of bounds (${fm.array.count})`, g);
+      if (fm.array.pattern === "ring" && fm.array.count < 4) fail("a ring of fewer than four devices", g);
+      if (fm.array.pattern === "arc" && (fm.array.count < 3 || fm.array.count > 9)) fail("arc count out of bounds", g);
+      if (fm.array.count !== fm.count) fail("array count disagrees with motif count", g);
+    }
+    if (fm && fm.inCanton) {
+      seen.housed++;
+      if (!p.ornaments.canton) fail("housed device without its canton", g);
+      if (!COMPACT.has(fm.cat)) fail("a figure boarded the canton", g);
+    }
+    if (p.composition === "heraldic" && p.ornaments.canton) {
+      if (f.ordinary && f.ordinary !== "none") fail("canton over an ordinary on a flag", g);
+      if (fm && !fm.inCanton) fail("canton beside a free device on a flag", g);
     }
   }
   if (p.composition === "heraldic") {
@@ -104,6 +126,9 @@ function audit(g) {
       } else if (m.arrange === "between") {
         if (!hasOrd || !m.slots || !m.slots.length) fail("between company malformed", g);
         checkMark(m.tincture, grounds, "charge-between", g, strict);
+      } else if (m.inCanton) {
+        // a housed device dresses against the canton block, not the field
+        checkMark(m.tincture, [p.ornaments.cantonColor], "charge-in-canton", g, false);
       } else if (m.counterchange) {
         if (!["perPale", "perFess", "perBend"].includes(f.partition)) fail("counterchange on non-2-region partition", g);
       } else if (m.panel) {

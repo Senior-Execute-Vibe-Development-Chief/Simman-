@@ -445,6 +445,72 @@ function canton(w, h, base, kind, color, flag, fieldC) {
   const cx = w * 0.8, cy = h * 0.2, r = base * 0.1;
   return kind === "sun" ? sunDisc(cx, cy, r * 0.7, color) : star(cx, cy, r, color);
 }
+// ── an ARRAY of compact devices — the constellation grammar of modern cloth.
+// The phenotype supplies {pattern, count, seed, sizeF}; positions are computed
+// in px inside a given region and the device size falls out of the packing
+// (ring circumference / row pitch / arc chord). The constellation is a seeded
+// sky map: min-separation scatter with gently varied star sizes. ──
+function placeArray(m, x0, y0, bw, bh) {
+  const a = m.array, pts = [];
+  let b = Math.min(bw, bh) * 0.2;
+  if (a.pattern === "ring") {
+    const R = Math.min(bw, bh) * 0.36, cx = x0 + bw / 2, cy = y0 + bh / 2;
+    for (let i = 0; i < a.count; i++) {
+      const th = -Math.PI / 2 + i * 2 * Math.PI / a.count;
+      pts.push([cx + Math.cos(th) * R, cy + Math.sin(th) * R]);
+    }
+    b = Math.min(2 * Math.PI * R / a.count * 0.62, Math.min(bw, bh) * 0.2);
+  } else if (a.pattern === "arc") {
+    // an arc bulging toward the region's top, its ends dipping to mid-height;
+    // squeezed horizontally if the region can't take the full sweep
+    const cx = x0 + bw / 2, cy = y0 + bh * 1.2, R = bh * 0.85;
+    const span = 0.6 + 0.07 * a.count;
+    const fit = Math.min(1, (bw * 0.42) / (R * Math.sin(span)));
+    for (let i = 0; i < a.count; i++) {
+      const th = (a.count === 1 ? 0 : i / (a.count - 1) - 0.5) * 2 * span;
+      pts.push([cx + Math.sin(th) * R * fit, cy - Math.cos(th) * R]);
+    }
+    b = Math.min(R * fit * 2 * span / Math.max(1, a.count - 1) * 0.6, bh * 0.2);
+  } else if (a.pattern === "rows") {
+    // the staggered-rows system: rows alternate c and c−1 devices (the
+    // long-flag algorithm); an exact stagger is preferred, else plain
+    // centred rows with the short remainder last
+    const n = a.count;
+    let rowsN = 1, c = n, stag = false;
+    if (n > 4) {
+      for (let r = 2; r <= 4 && !stag; r++) {
+        if ((n + (r >> 1)) % r === 0) { const cc = (n + (r >> 1)) / r; if (cc >= r) { rowsN = r; c = cc; stag = true; } }
+      }
+      if (!stag) { rowsN = n > 9 ? 3 : 2; c = Math.ceil(n / rowsN); }
+    }
+    const sx = bw / (c + 0.4), sy = bh / (rowsN + 0.5);
+    let left = n;
+    for (let r = 0; r < rowsN; r++) {
+      const inRow = stag ? (r % 2 ? c - 1 : c) : Math.min(c, left);
+      const cy = y0 + sy * (r + 0.75);
+      for (let i = 0; i < inRow; i++) pts.push([x0 + bw / 2 + (i - (inRow - 1) / 2) * sx, cy]);
+      left -= inRow;
+    }
+    b = Math.min(sx, sy) * 0.72;
+  } else {
+    // constellation — a seeded sky map (the same idle gene that brands a
+    // tamga seeds the sky): min-separation scatter, sizes gently varied
+    const rng = rrng((a.seed ^ 0x5eed0) >>> 0);
+    const minD = Math.min(bw, bh) * 0.3;
+    for (let i = 0; i < a.count; i++) {
+      let px = 0, py = 0;
+      for (let t = 0; t < 60; t++) {
+        px = x0 + bw * (0.14 + 0.72 * rng()); py = y0 + bh * (0.14 + 0.72 * rng());
+        if (pts.every(q => Math.hypot(q[0] - px, q[1] - py) > minD * (1 - t / 80))) break;
+      }
+      pts.push([px, py, 0.75 + rng() * 0.5]);
+    }
+    b = Math.min(bw, bh) * 0.2;
+  }
+  b *= a.sizeF;
+  return pts.map(([px, py, s]) => motif(m.id, px - b * (s || 1) / 2, py - b * (s || 1) / 2, b * (s || 1), m.tincture)).join("");
+}
+
 // ── charges accompanying an ordinary: the phenotype supplies the slot
 // positions (motif.slots, unit coords) and any tilt (charges riding a bend);
 // this just draws them. ──
@@ -524,6 +590,11 @@ function coatContent(p, w, h, rng) {
       // already drawn beneath
     } else if (mot && (mot.arrange === "between" || mot.arrange === "onOrdinary")) {
       content += placeAround(mot, w, h, p.substrate);
+    } else if (mot && mot.arrange === "array" && !mot.inCanton) {
+      // the array spreads across the free cloth (dropping under a chief,
+      // staying inside a bordure)
+      const mx = w * 0.09, my = h * (f.chief ? 0.32 : 0.11);
+      content += placeArray(mot, mx, my, w - 2 * mx, h - my - h * 0.11);
     } else if (mot && mot.counterchange) {
       // a counterchanged charge wears the field's own tinctures SWAPPED across
       // the partition line — each half of the charge in the other half's tincture
@@ -533,12 +604,24 @@ function coatContent(p, w, h, rng) {
         + `<clipPath id="${cB}"><path d="${partitionRegion(f.partition, w, h, 1)}"/></clipPath>`
         + `<g clip-path="url(#${cA})">${placeMotif({ ...mot, tincture: tb }, w, h, p.substrate)}</g>`
         + `<g clip-path="url(#${cB})">${placeMotif({ ...mot, tincture: ta }, w, h, p.substrate)}</g>`;
-    } else if (mot) {
+    } else if (mot && !mot.inCanton) {
       content += placeMotif(mot, w, h, p.substrate);
     }
     // a FLAG may carry a true canton block over its field — stripes-and-canton
-    // is the modern grammar's backbone
-    if (p.isFlag && p.ornaments.canton) content += canton(w, h, base, p.ornaments.cantonKind, p.ornaments.cantonColor, true, C.field);
+    // is the modern grammar's backbone. The canton HOUSES a compact device or
+    // its whole array (the star-field union); only without one does it fly
+    // its own lone symbol.
+    if (p.isFlag && p.ornaments.canton) {
+      if (mot && mot.inCanton) {
+        const cw2 = w * 0.36, ch2 = h * 0.52;
+        content += `<rect width="${F(cw2)}" height="${F(ch2)}" fill="${css(p.ornaments.cantonColor)}"/>`;
+        if (mot.array) content += placeArray(mot, cw2 * 0.07, ch2 * 0.07, cw2 * 0.86, ch2 * 0.86);
+        else {
+          const bb = Math.min(cw2, ch2) * 1.15 * mot.scale;
+          content += motif(mot.id, cw2 / 2 - bb / 2, ch2 / 2 - bb / 2, bb, mot.tincture);
+        }
+      } else content += canton(w, h, base, p.ornaments.cantonKind, p.ornaments.cantonColor, true, C.field);
+    }
   } else {
     content += `<rect width="${w}" height="${h}" fill="${css(C.field)}"/>`;
     if (p.composition === "central" && p.motif) {
@@ -557,7 +640,10 @@ function coatContent(p, w, h, rng) {
     } else if (p.composition === "brand") {
       content += tamga(cxm, cym, base * 0.26, p.ornaments.brandSeed, C.charge);
     } else if (p.composition === "seme" && p.motif) {
-      for (let ry = 0; ry < 4; ry++) for (let ci = 0; ci < 3; ci++) {
+      // on a FLAG the strewing organized itself into an array upstream;
+      // silk and shields keep the true wallpaper semé
+      if (p.motif.array) content += placeArray(p.motif, w * 0.09, h * 0.11, w * 0.82, h * 0.78);
+      else for (let ry = 0; ry < 4; ry++) for (let ci = 0; ci < 3; ci++) {
         const mx = (ci + (ry % 2 ? 0.5 : 0)) * w / 3 + w / 6, my = (ry + 0.5) * h / 4;
         content += oriented(p.motif, motif(p.motif.id, mx - base * 0.09, my - base * 0.09, base * 0.18, p.motif.tincture), mx, my);
       }
