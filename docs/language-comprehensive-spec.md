@@ -882,6 +882,18 @@ Probe 305 → **313** checks (§25 extended).
   a numerals row, and "a written line" — three words under the script's
   own separation habit, headline-joined or cursive-joined where the hand
   says so.
+- **LETTER ANATOMY** (review round: "looks bare for the alphabets").
+  Random strokes read as tick marks, not letters. Segmental signs are now
+  built as real letters are: a SPINE (straight, diagonal, or arched stem)
+  plus 1–2 ATTACHMENTS at its joints — bowls, arms, crossbars, legs, a
+  second stem with connector (b d h k H N þ И) — with each hand supplying
+  the vocabulary: carved bowls are ANGULAR (þ, the grain rule reaching
+  into letter shape), clay builds every element from wedges, the round
+  hand arcs even its stems, the pen bows and loops. Bowls and arms open
+  away from the nearest edge (the base-joint squash a gate caught). The
+  tally numerals fall out cleaner still: the unit is now literally a stem
+  stroke — I, II, III. Logographs and syllabaries keep the square grid
+  compositor that already read well.
 
 ## Build status (session 15, fifth phase) — the full clause
 
