@@ -307,20 +307,31 @@ export function rollGrammar(famSeed, prof) {
  *  (Latin SOV → Romance SVO). Syntax moves faster than morphology, so the
  *  adposition and affix dials deliberately LAG — the attested disharmonic
  *  window, where a fresh SVO tongue still wears its inherited postpositions. */
+function applyWoFlip(g, lang) {
+  if (lang.parentId >= 0 && !lang.pin && h01(lang.seed, "woflip") < 0.12) {
+    const ov = g.wo === "sov" || g.wo === "ovs";
+    g.wo = h01(lang.seed, "wonew") < 0.7 ? (ov ? "svo" : "sov")
+      : h01(lang.seed, "wonew2") < 0.5 ? "vso" : "svo";
+    g.whFront = h01(lang.seed, "whnew") < (g.wo === "sov" ? 0.3 : 0.7);
+  }
+  g._fxid = lang.id;
+}
 export function gramOf(lang) {
   const p = lang.prof;
   if (!p.gram) p.gram = rollGrammar(lang.famSeed ?? lang.seed, p);
   const g = p.gram;
-  if (g._fxid !== lang.id) {
-    if (lang.parentId >= 0 && !lang.pin && h01(lang.seed, "woflip") < 0.12) {
-      const ov = g.wo === "sov" || g.wo === "ovs";
-      g.wo = h01(lang.seed, "wonew") < 0.7 ? (ov ? "svo" : "sov")
-        : h01(lang.seed, "wonew2") < 0.5 ? "vso" : "svo";
-      g.whFront = h01(lang.seed, "whnew") < (g.wo === "sov" ? 0.3 : 0.7);
-    }
-    g._fxid = lang.id;
-  }
+  if (g._fxid !== lang.id) applyWoFlip(g, lang);
   return g;
+}
+/** Called at BIRTH by branchLanguage/foundLanguage(parent): the daughter's
+ *  grammar is materialized from the parent's at the branching event itself,
+ *  so whether anyone READ the parent's grammar first can never change what
+ *  the daughter inherits (a review caught read-order leaking into
+ *  daughters' word order — reads must be side-effect-free for history). */
+export function bequeathGrammar(parent, child) {
+  const g = gramOf(parent);
+  child.prof.gram = JSON.parse(JSON.stringify(g));
+  applyWoFlip(child.prof.gram, child);
 }
 
 // ── derived-state cache (WeakMap keyed by record, like compile()) ─────────

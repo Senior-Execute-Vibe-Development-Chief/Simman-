@@ -82,10 +82,14 @@ export function stepHistory(hist) {
   const before = hist.events.length;
   // fortunes shift, zero-sum: one community's rise is its neighbours' shade
   // — with the Matthew effect (a bigger community absorbs speakers faster),
-  // which is what actually produces hegemons and dying tongues
-  for (const L of alive) L.pop *= Math.exp((rng() - 0.5) * 0.7 + MATTHEW * Math.log(L.pop));
+  // which is what actually produces hegemons and dying tongues. A LONE
+  // community has no one to compete with: its walk runs free (so a
+  // single-root history can still grow past cohesion and split — a review
+  // caught the renormalization pinning it to par forever), and a zero
+  // total must not NaN-poison the pool.
+  for (const L of alive) L.pop *= Math.exp((rng() - 0.5) * 0.7 + MATTHEW * Math.log(Math.max(L.pop, 1e-6)));
   const total = alive.reduce((a, L) => a + L.pop, 0);
-  for (const L of alive) L.pop *= alive.length / total;
+  if (alive.length >= 2 && total > 0) for (const L of alive) L.pop *= alive.length / total;
   for (const L of [...alive]) {
     if (L.deadEra !== null) continue;
     // EVOLVE: sound change accumulates steadily in every living tongue

@@ -1102,3 +1102,47 @@ history in miniature, the dress rehearsal for sim wiring. Probe 342 →
   reference lineages hold their costumes through deep history; every
   survivor still translates/speaks/writes; daughters stay in the family;
   history-grown records JSON-roundtrip byte-stable.
+
+## Build status (session 15, tenth phase) — the adversarial review round
+
+Three independent adversarial reviews (hostile linguist / cache+
+determinism auditor / edge-case crasher) over the script and history
+layers; every reproduced finding fixed at the mechanism and gated.
+Probe 349 → **359** checks.
+
+- **CRASH: borrowed featural** — LADDER had no featural entry, so a
+  featural script that SPREAD (donor invented, borrower adopted) threw at
+  the borrower's next juncture, permanently poisoning the record and
+  killing ~3% of deep history runs. featural is now a ladder terminal.
+- **STALENESS: re-adoption invisible** — the scriptOf cache key omitted
+  scr identity, so a second adoptScriptFrom at the same depth returned
+  the first donor's script until an unrelated mutation; save/load then
+  disagreed with the session. Key now carries scr.at/styleSeed/type.
+- **READS MUTATED HISTORY** — gramOf lazily wrote the rolled grammar
+  into the persisted prof, so whether anyone LOOKED at a grammar card
+  before a branch changed the daughter's word order (~12% of seeds).
+  Grammar now settles at BIRTH (bequeathGrammar in branch/found);
+  reads are side-effect-free, gated.
+- **Display lies fixed at the mechanism:** toneWritten abugidas dropped
+  every tone mark (the slot was taken by the vowel diacritic) — tone now
+  STACKS above it, the Thai way (mark2, gated ≥95% of tonal syllables);
+  the "N signs" chip disagreed with the signary (phantom virama entry on
+  viramaless abugidas, missing carrier, corpus-vs-grid syllabary
+  mismatch) — glyphBudget now mirrors the map enumeration exactly,
+  gated chip===table; matres lectionis rolled for abjads with no long
+  vowels to write — now gated on prof.longV; stripTone deleted umlauts
+  along with tone marks (only the four TONE_MARKS strip now); writeName
+  lost 20% of names' consonants (mark-stripping asymmetry + letters
+  outside the inventory's conventions) — tokens strip identically and
+  stray letters are SOUNDED OUT via a Latin-reading fallback then seated
+  by nearest-letter, loss now ≤4%, gated ≤8%.
+- **Featural block overflow** (3+ onset/coda consonants walked off the
+  glyph box) — rows now divide by element count, gated in-box.
+- **Performance:** corpus/ghost caches were keyed on gen, so every drift
+  rebuilt every historical corpus (quadratic scriptOf; 10s histories) —
+  corpora are functions of (cut, xph) only; 60-drift loop 3.3s → 0.17s.
+- **History dynamics:** a lone root was pinned to par forever by the
+  zero-sum renormalization (can now free-run and split, gated); zero
+  total pop NaN-poisoned the pool (guarded).
+- **Boundary guards:** out-of-range cid, numeralGlyphs(0), malformed
+  forms → null instead of throwing, gated.

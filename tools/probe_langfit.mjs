@@ -15,7 +15,7 @@ import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, lan
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
-import { scriptOf, writeWord, writeForm, writeName, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
+import { scriptOf, writeWord, writeForm, writeName, formFromSurface, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
 import { runHistory } from "../src/sim/languageHistory.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
@@ -2418,6 +2418,78 @@ console.log("\n── §25 writing systems ──");
   }
   check(`a borrowed misfit is the Sejong condition — inventions occur AND prestige holds (${sjInv} invented / ${sjKept} kept of ${sjN})`,
     sjN >= 10 && sjInv >= 3 && sjKept >= 3);
+  // (e4) adversarial-review regressions — each of these was a reproduced bug
+  {
+    // a BORROWED featural script must survive later junctures (LADDER crash)
+    const wR = mkWorld();
+    const fd = foundLanguage(wR, { seed: 862368 });
+    for (let d = 0; d < 8; d++) driftLanguage(wR, fd);
+    const fb = foundLanguage(wR, { seed: 424243 });
+    adoptScriptFrom(fb, fd);
+    let survived = true;
+    try { for (let d = 0; d < 6; d++) { driftLanguage(wR, fb); scriptOf(fb); } } catch { survived = false; }
+    check(`a borrowed featural script survives later junctures (donor ${scriptOf(fd).type})`, survived && scriptOf(fd).type === "featural");
+    // a SECOND adoption must be visible immediately (stale-cache bug)
+    const a2 = foundLanguage(wR, { seed: 111 }), b2 = foundLanguage(wR, { seed: 820331 }), c2 = foundLanguage(wR, { seed: 424244 });
+    for (let d = 0; d < 8; d++) { driftLanguage(wR, b2); driftLanguage(wR, c2); }
+    adoptScriptFrom(a2, b2);
+    const ss1 = scriptOf(a2).styleSeed;
+    adoptScriptFrom(a2, c2);
+    check("a re-adoption is visible immediately and roundtrips",
+      scriptOf(a2).styleSeed !== ss1 && scriptOf(a2).styleSeed === scriptOf(c2).styleSeed
+      && JSON.stringify(scriptOf(JSON.parse(JSON.stringify(a2)))) === JSON.stringify(scriptOf(a2)));
+    // toneWritten must actually mark tonal syllables (abugidas stacked, the Thai way)
+    const tl = foundLanguage(wR, { seed: 896792 });
+    for (let d = 0; d < 7; d++) driftLanguage(wR, tl);
+    const ts = scriptOf(tl);
+    const countM = () => { let m = 0, sy = 0; for (let c = 0; c < 60; c++) { if (loanOf(tl, c)) continue; const f = writtenFormOf(tl, c); if (!f) continue; sy += f.syls.length; for (const g of writeWord(tl, c).glyphs) { if (g.mark) m++; if (g.mark2) m++; } } return [m, sy]; };
+    const tOn = countM(); ts.toneWritten = false; const tOff = countM(); ts.toneWritten = true;
+    check(`toneWritten marks every tonal syllable (${tOn[0] - tOff[0]}/${tOn[1]}, ${ts.type})`, ts.toneWritten && tOn[1] > 100 && tOn[0] - tOff[0] >= tOn[1] * 0.95);
+    // the "N signs" chip equals the table (budget mirror), and matres imply long vowels
+    let bBad = 0, bN = 0, mBad = 0;
+    for (let i = 0; i < 40; i++) {
+      const l = foundLanguage(wR, { seed: 820000 + i * 331 });
+      for (let d = 0; d < 6; d++) driftLanguage(wR, l);
+      const s = scriptOf(l);
+      if (s.matres === "long" && !l.prof.longV) mBad++;
+      if (s.type === "logo") continue;
+      bN++;
+      if (glyphInventory(l, 1e4).length !== s.glyphBudget) bBad++;
+    }
+    check(`the signs chip equals the signary it sits above (${bBad}/${bN} off)`, bN >= 20 && bBad === 0);
+    check(`matres lectionis only where long vowels exist to write (${mBad} phantom)`, mBad === 0);
+    // writeName round trip: names survive their own conventions
+    let nmN2 = 0, nmMiss = 0;
+    const stripAll = (x) => x.normalize("NFD").replace(/[̀́̄̌]/g, "").normalize("NFC").toLowerCase().replace(/[^\p{L}']/gu, "");
+    for (let i = 0; i < 30; i++) {
+      const l = foundLanguage(wR, { seed: 820000 + i * 331 });
+      for (let d = 0; d < 8; d++) driftLanguage(wR, l);
+      for (let k = 0; k < 8; k++) {
+        const nm = k % 2 ? langPlaceName(l, k) : langPersonName(l, k, k % 4 === 0);
+        nmN2++;
+        const f = formFromSurface(l, nm);
+        if (!f || stripAll(renderWord(f, l.prof)) !== stripAll(nm)) nmMiss++;
+      }
+    }
+    check(`names survive the scribe's round trip (${nmMiss}/${nmN2} = ${(100 * nmMiss / nmN2).toFixed(1)}% resounded)`, nmMiss / nmN2 <= 0.08);
+    // umlauts are vowels, not melodies: the lag showcase must not strip them
+    let umlChecked = 0, umlBad = 0;
+    for (let i = 0; i < 80 && umlChecked < 10; i++) {
+      const l = foundLanguage(wR, { seed: 827000 + i * 47 });
+      for (let d = 0; d < 7; d++) driftLanguage(wR, l);
+      for (const x of silentLetterSample(l, 6)) {
+        const today = wordOf(l, x.cid).normalize("NFD").replace(/[̀́̄̌]/g, "").normalize("NFC");
+        if (/[üöä]/.test(today)) { umlChecked++; if (!/[üöä]/.test(x.said)) umlBad++; }
+      }
+    }
+    check(`the lag showcase keeps umlauts (${umlChecked} checked, ${umlBad} lost)`, umlChecked >= 5 && umlBad === 0);
+    // boundary guards return null, never throw
+    const gl = foundLanguage(wR, { seed: 5 });
+    driftLanguage(wR, gl);
+    check("boundary guards: bad cid / numeral 0 / malformed forms → null",
+      writeWord(gl, 9999) === null && writeWord(gl, -1) === null && numeralGlyphs(gl, 0) === null
+      && writeForm(gl, {}, null) === null && writeForm(gl, { syls: [null] }, null) === null);
+  }
   const wD = mkWorld();
   const d1 = foundLanguage(wD, { seed: 860001 });
   for (let d = 0; d < 6; d++) driftLanguage(wD, d1);
@@ -2608,6 +2680,21 @@ console.log("\n── §28 the areal simulation (history harness) ──");
   const h = runHistory(4242, roots, 14);
   const h2 = runHistory(4242, roots, 14);
   check("history deterministic (same seed → same event log)", JSON.stringify(h.events) === JSON.stringify(h2.events));
+  // reads are side-effect-free for history: looking at a grammar before a
+  // branch must not change the daughter (a review caught prof.gram leaking)
+  const mkChain = (read) => {
+    const w = mkWorld();
+    const root = foundLanguage(w, { seed: 17 });
+    const c1 = branchLanguage(w, root, 0.5);
+    if (read) gramOf(c1);
+    return JSON.stringify(gramOf(branchLanguage(w, c1, 0.5)));
+  };
+  check("grammar reads are side-effect-free (daughters identical with/without a prior read)", mkChain(false) === mkChain(true));
+  // a lone root can still grow past cohesion and split; poisoned-seed runs survive
+  let loneBranch = 0, crashFree = true;
+  for (const sd of [1, 42, 777]) if (runHistory(sd, ["random"], 30).events.some(e => e.type === "branch")) loneBranch++;
+  try { for (const sd of [302452, 309808, 342910]) runHistory(sd, Array(8).fill("random"), 30); } catch { crashFree = false; }
+  check(`single-root histories can branch (${loneBranch}/3 seeds) and featural-spread seeds run`, loneBranch >= 1 && crashFree);
   const counts = {};
   for (const e of h.events) counts[e.type] = (counts[e.type] || 0) + 1;
   check(`the four verbs all fire (branch ${counts.branch || 0} · drift ${counts.drift || 0} · borrow ${counts.borrow || 0} · adopt ${counts.adopt || 0} · death ${counts.death || 0})`,

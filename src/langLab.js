@@ -428,6 +428,9 @@ function glyphSVG(g, size = 26, opts = {}) {
   }).join("");
   let extra = "";
   if (markT) extra += parts(g.mark.strokes, markT, 30, 5);
+  // a second mark (tone stacked over a vowel diacritic, the Thai way) rides
+  // higher still, in the sliver above the first
+  if (g.mark2 && g.mark2.strokes) extra += parts(g.mark2.strokes, { sx: 0.3, sy: 0.12, ox: 0.35, oy: g.mark && g.mark.pos === "above" ? -0.04 : 0.02 }, 24, 4);
   if (opts.headline) extra += `<path d="M 0 ${(H * 0.1).toFixed(1)} L ${W} ${(H * 0.1).toFixed(1)}" stroke="currentColor" stroke-width="5" fill="none"/>`;
   if (opts.join) extra += opts.dir === "ttb"
     ? `<path d="M ${(W * 0.5).toFixed(1)} 0 L ${(W * 0.5).toFixed(1)} ${H}" stroke="currentColor" stroke-width="4" fill="none" opacity="0.85"/>`

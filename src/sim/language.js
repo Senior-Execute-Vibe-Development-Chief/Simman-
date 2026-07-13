@@ -24,6 +24,7 @@
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { rollProfile, applySignature, buildInventory, buildSyllabary, synthWord, renderWord, copyWord } from "./languagePhonology.js";
 import { applicableRules, applyRules, legalizeWord } from "./languageChange.js";
+import { bequeathGrammar } from "./languageGrammar.js";
 import { CONCEPTS, COLEX, DERIV, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
@@ -65,6 +66,9 @@ export function foundLanguage(world, { seed, parentId = -1 } = {}) {
     ...(parent && parent.scr ? { scr: JSON.parse(JSON.stringify(parent.scr)) } : {}),
   };
   languagesOf(world).set(id, lang);
+  // grammar is settled AT BIRTH from the parent's — so whether anyone read
+  // the parent's grammar earlier can never change what the daughter gets
+  if (parent) bequeathGrammar(parent, lang);
   // a fresh root tongue arrives with a little history already in its bones
   if (!parent) { const n = 1 + (hash32(s, "age") % 2); for (let i = 0; i < n; i++) driftLanguage(world, lang); }
   return lang;
@@ -99,6 +103,8 @@ export function branchLanguage(world, parent, divergence = 0.4) {
     ...(parent.scr ? { scr: JSON.parse(JSON.stringify(parent.scr)) } : {}),
   };
   languagesOf(world).set(id, child);
+  // grammar settles AT BIRTH (see foundLanguage) — reads stay side-effect-free
+  bequeathGrammar(parent, child);
   const n = 1 + Math.round(d * 4);
   for (let i = 0; i < n; i++) driftLanguage(world, child);
   return child;
