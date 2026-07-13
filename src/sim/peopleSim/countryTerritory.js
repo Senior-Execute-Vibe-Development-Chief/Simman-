@@ -35,6 +35,10 @@ import { claimHostility } from "./habitability.js";
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
 const _envNum = (k, d) => (typeof process !== "undefined" && process.env && +process.env[k]) || d;
+// Force-override variant for env vars that shadow a LIVE LEVER: an explicitly-set env
+// (including "0") returns its number and wins over the T.* lever; unset/garbage returns
+// NaN and defers to the lever. (_envNum can't express an explicit 0 — `+  "0" || d` → d.)
+const _envForce = (k) => { const v = typeof process !== "undefined" && process.env ? process.env[k] : undefined; return v != null && v !== "" ? +v : NaN; };
 // Persistent-territory master switch: the T lever (live-tunable) OR the SIM_PERSIST_TERR
 // env (for headless A/B — mirrors the SIM_* override pattern used throughout this file).
 // SIM_PERSIST_TERR=1 forces ON, =0 forces OFF, unset defers to the lever.
@@ -143,8 +147,11 @@ const POP_FILL = 12;  // rateCap multiplier under POP_FIELD: realms reach their 
 // power sprawls past its hinterland into low-pop marches, FIELD_SPAN·capacity), so the
 // size distribution is unchanged where capacity already binds; only the frozen small
 // realms grow to cover their own land, restoring fronts and consolidation.
-const COVER_BASE = _envNum("SIM_COVER_BASE", 25);   // ref-tiles a realm covers around its capital at organisation 0 (a chiefdom's core region)
-const COVER_ORG  = _envNum("SIM_COVER_ORG", 150);   // + this × capital organisation — an administered hinterland scales with statecraft
+// Both are LIVE LEVERS (T.COVER_BASE / T.COVER_ORG, "Empire size & cohesion"), read at
+// use time in fieldPolityTerritory; the SIM_COVER_* envs FORCE-override them for headless
+// sweeps (the SIM_* override pattern used throughout this file — unset defers to the lever).
+const COVER_BASE_ENV = _envForce("SIM_COVER_BASE");   // lever def 25: ref-tiles a realm covers around its capital at organisation 0 (a chiefdom's core region)
+const COVER_ORG_ENV  = _envForce("SIM_COVER_ORG");    // lever def 150: + this × capital organisation — an administered hinterland scales with statecraft
 // Wet-tropic claim resistance: hot AND wet rainforest (the Congo, the Amazon, New
 // Guinea) was easy to walk through but near-impossible to ADMINISTER — disease,
 // no roads, leached soil, no storable surplus to tax or garrison. So it amplifies
@@ -647,6 +654,9 @@ function fieldPolityTerritory(world) {
   // Phase 3 fills coverage from cores (no catchment bulk), so the per-pass integration cap
   // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
   const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
+  // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
+  const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
+  const coverOrg  = Number.isFinite(COVER_ORG_ENV)  ? COVER_ORG_ENV  : (T.COVER_ORG ?? 150);
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * Math.max(0, cp) * r2);
     if (T.TILE_POLITY) {
@@ -660,7 +670,7 @@ function fieldPolityTerritory(world) {
       // (Under FIELD_ADMIN target and floor are load-denominated, like everything here.)
       const kn = knOf.get(cid);
       const org = (kn && kn.organization) || 0;
-      const floor = Math.round((COVER_BASE + COVER_ORG * org) * r2 * (adminOn ? ADMIN_LOAD_RECAL : 1));
+      const floor = Math.round((coverBase + coverOrg * org) * r2 * (adminOn ? ADMIN_LOAD_RECAL : 1));
       if (floor > t) t = floor;
     } else if (cp <= 0) {
       // A realm with NO real capacity yet — a newborn minted after the last polity pass,
