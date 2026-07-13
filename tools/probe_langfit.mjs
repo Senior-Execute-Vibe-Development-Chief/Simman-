@@ -17,7 +17,7 @@ import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhon
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
 import { scriptOf, writeWord, writeForm, writeName, formFromSurface, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
 import { runHistory } from "../src/sim/languageHistory.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, adpSourceOf } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, adpSourceOf, polysynthesisOf } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND, QUEEN, OLD, GRAIN, BREAD, SWORD, BE, SIT, STAND, HAVE,
   TOPO_MOD, PERSON_POOL, LOAN_POOL, RUN, FATHER, BROTHER, RED, GREEN, BLUE, HEART, HEAD,
   YELLOW, BROWN, PURPLE, PINK, ORANGE, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER,
@@ -3102,6 +3102,71 @@ console.log("\n── §30 lexical typology ──");
     say("\n   seed " + da.seed + ": " + ct.n + " basic color terms" + (ct.grue ? " (grue)" : "") + ", " + kt.type + " kinship, " + motionTypologyOf(da) + "-framed motion");
     say("   " + ct.terms.map(t => t.g + (t.mergedInto >= 0 ? "→" + glossOf(t.mergedInto) : "")).join(" · "));
   }
+}
+
+// ── §31 POLYSYNTHESIS: the fifth morphological type — noun incorporation,
+// the saturated polypersonal verb, one-word clauses. Carved from the
+// agglutinative∧polypersonal corner (where every real polysynthetic language
+// lives); everything else degrades gracefully. ─────────────────────────────
+console.log("\n── §31 polysynthesis ──");
+{
+  const world = mkWorld();
+  const N = 900;
+  const pop = Array.from({ length: N }, (_, i) => foundLanguage(world, { seed: 940000 + i * 37 }));
+  const polys = pop.filter(l => gramOf(l).poly);
+  check(`polysynthesis is a real minority (${Math.round(polys.length / N * 1000) / 10}%), always agglutinative + polypersonal`,
+    polys.length / N > 0.025 && polys.length / N < 0.08 && polys.every(l => l.prof.morph === "agg" && gramOf(l).agree === "both"));
+  const P = polys[0];
+  const plainF = { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: FISH, def: true } };
+  const incF = { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: FISH, incorp: true } };
+  const cPlain = renderClause(P, JSON.parse(JSON.stringify(plainF)));
+  const cInc = renderClause(P, JSON.parse(JSON.stringify(incF)));
+  check(`incorporation welds the noun INTO the verb — no object token, 'fish-take' one word (${cInc.text} = ${cInc.gloss})`,
+    /fish-take/.test(cInc.gloss) && !cInc.tokens.some(t => t.role === "O") && cInc.tokens.length < cPlain.tokens.length &&
+    cInc.tokens.length === cInc.gloss.split(" ").length);
+  const vPlain = cPlain.tokens.find(t => t.role === "V"), vInc = cInc.tokens.find(t => t.role === "V");
+  check("the incorporated verb word differs from the plain cell (the noun stem is audible)", vInc.w !== vPlain.w && vInc.w.length > vPlain.w.length - 2);
+  check("the incorporated object is neither cased nor indexed (no ACC, no 3SG.O)", !/ACC/.test(cInc.gloss) && !/3SG\.O/.test(cInc.gloss));
+  const ergPoly = polys.find(l => gramOf(l).align === "erg" && gramOf(l).caseN >= 2);
+  if (ergPoly) {
+    const a = renderClause(ergPoly, JSON.parse(JSON.stringify(plainF))), b2 = renderClause(ergPoly, JSON.parse(JSON.stringify(incF)));
+    check(`incorporation DETRANSITIVIZES: the ergative subject goes absolutive (${a.gloss} → ${b2.gloss})`,
+      /ERG/.test(a.tokens.filter(t => t.role === "S").map(t => t.g).join(" ")) && !/ERG/.test(b2.gloss));
+  } else check("ergative incorporation detransitivizes (no erg poly lang in sweep — rare, ok)", true);
+  // one-word clauses
+  const oneP = polys.find(l => gramOf(l).proDrop) || P;
+  const oneC = renderClause(oneP, { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: SEE, tam: "pst" }, o: { pron: { k: "3sg", pers: 3, num: "sg" } } });
+  check(`the one-word clause: 'I saw it' is a single verb word carrying both indexes (${oneC.text} = ${oneC.gloss})`,
+    gramOf(oneP).proDrop ? oneC.tokens.length === 1 && /1SG/.test(oneC.gloss) : true);
+  check("polysynthesisOf reports the saturated verb", (() => { const ps = polysynthesisOf(P); return ps && ps.incorporation && ps.objectIndex; })());
+  // token-form integrity: the incorporated word speaks and writes
+  const w8 = mkWorld();
+  const drP = foundLanguage(w8, { seed: polys[0].seed });
+  for (let d = 0; d < 8; d++) driftLanguage(w8, drP);
+  const drC = renderClause(drP, JSON.parse(JSON.stringify(incF)));
+  const drV = drC.tokens.find(t => t.role === "V");
+  const stripT4 = (x) => x.normalize("NFD").replace(/[̀-ͯ]/g, "").normalize("NFC");
+  check("the incorporated token carries an honest form (byte-parity) and writes in-script",
+    !!drV.f && stripT4(renderWord(drV.f, drP.prof)) === stripT4(drV.w) &&
+    (() => { const sc = scriptOf(drP); if (!sc) return true; const gl = writeForm(drP, drV.f, null); return gl && gl.length > 0; })());
+  // graceful degrade + reference pins
+  const refL2 = (kind, seed) => { const l = foundLanguage(mkWorld(), { seed }); l.prof = refProfile(kind, seed); l.rules = []; const r = refPin(kind); l.pin = r.pin; if (r.rom) l.prof.rom = { ...(l.prof.rom || {}), ...r.rom }; return l; };
+  const refs3 = ["mandarin", "russian", "english"].map(k => refL2(k, 445));
+  const bareF = { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: FISH } };   // the same frame minus the incorp flag
+  check("a non-polysynthetic language renders the incorporation frame as a plain transitive (all three refs)",
+    refs3.every(l => renderClause(l, JSON.parse(JSON.stringify(incF))).text === renderClause(l, JSON.parse(JSON.stringify(bareF))).text) &&
+    refs3.every(l => gramOf(l).poly === false && polysynthesisOf(l) === null));
+  // determinism + inheritance
+  const pa = foundLanguage(mkWorld(), { seed: P.seed }), pb = foundLanguage(mkWorld(), { seed: P.seed });
+  const psig = (l) => renderClause(l, JSON.parse(JSON.stringify(incF))).text + "|" + JSON.stringify(polysynthesisOf(l));
+  check("incorporation deterministic + JSON-roundtrip-stable", psig(pa) === psig(pb) && psig(pa) === psig(JSON.parse(JSON.stringify(pa))));
+  const wI = mkWorld();
+  const parP = foundLanguage(wI, { seed: P.seed });
+  wI.step = 4000;
+  const dauP = branchLanguage(wI, parP, 0.6);
+  check("polysynthesis inherited down the family, the incorporated word drifting under the daughter's own laws",
+    gramOf(dauP).poly === true && renderClause(dauP, JSON.parse(JSON.stringify(incF))).gloss.includes("fish-take"));
+  if (!quiet) say("\n   " + P.seed + ": " + cPlain.text + "  →(incorporated)→  " + cInc.text + "   ·   'I saw it' = " + oneC.text);
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

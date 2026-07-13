@@ -1278,3 +1278,37 @@ moves and no name pool grows — the append-only integrity gates lead.
   the motion example with its go-compound etymology.
 - Parked: Omaha/Crow generational skewing (needs gendered ego); elder/
   younger sibling ranking; mensural color modifiers ('light/dark X').
+
+## Build status (session 16, third phase) — typology completion III: polysynthesis
+
+The fifth morphological type — not a fifth affixation mechanics but a
+DEGREE: the saturated verb. Carved (prof.gram.poly, own stream) from the
+agglutinative∧polypersonal corner, where every real polysynthetic
+language lives — ~5% of the population. Probe 440 → **451** checks (§31).
+
+- **Noun incorporation.** `o:{n,incorp:true}` welds the object noun's
+  stem INTO the verb word ('he fish-takes' = he fishes): the compound is
+  built from the PRE-RULE roots and rides the whole rule log as ONE word
+  (sound change hits it whole; a derived member falls back to evolved
+  stems attached at the surface — onionBuild's new `rootPre` opt). The
+  clause DETRANSITIVIZES: the incorporated noun is neither cased nor
+  indexed, and an ergative subject goes absolutive (gated). Incorporation
+  blocks stem suppletion, as real incorporating paradigms do. Non-poly
+  languages render the frame as a plain transitive — graceful degrade,
+  gated byte-equal on all three references.
+- **One-word clauses.** A poly language drops OBJECT pronouns too — the
+  existing object-index series carries them — so 'I saw it' is a single
+  verb word bearing both person indexes (see⟨PST⟩-1SG-3SG.O, gated one
+  token). The polypersonal machinery was already complete (the session-15
+  object-agreement review); poly is where it saturates.
+- **Frozen-stem interplay** (the handoff's warning): an incorporated
+  token carries `c:null` — a compound has no single dictionary entry, so
+  the script layer spells it honestly by ear (the same fallback real
+  irregulars take); byte-parity of the token form is gated on a drifted
+  language, speaking and writing included.
+- New export `polysynthesisOf`; `poly` pinned false in all three
+  references; Lab: a "Polysynthesis" section in the verb card with the
+  plain/incorporated pair and the one-word clause.
+- Parked: incorporation types II–IV (oblique promotion, discourse
+  backgrounding, classificatory NI); noun-incorporation-fed word
+  formation (lexicalized incorporations entering the dictionary).

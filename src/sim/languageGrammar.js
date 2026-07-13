@@ -221,6 +221,13 @@ export function rollGrammar(famSeed, prof) {
   // reflexive exponent in the Romance-se corner (recpSame) or wears its own.
   const refl = m === "iso" ? "pron" : H("refl") < 0.42 ? "verb" : "pron";
   const recpSame = H("rcpsame") < 0.45;
+  // ── POLYSYNTHESIS (phase 3): the fifth morphological type — not a fifth
+  // affixation mechanics but a DEGREE: an agglutinative, polypersonal tongue
+  // whose verb saturates its arguments (subject AND object indexed, both
+  // pronouns dropped — the one-word clause) and INCORPORATES non-specific
+  // objects ('he fish-takes' = he fishes). Carved from the agg∧polypersonal
+  // corner, where every real polysynthetic language lives — ~5% overall. ──
+  const poly = m === "agg" && agree === "both" && H("poly") < 0.5;
   return {
     wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
     genders, tenses, agree,
@@ -318,6 +325,7 @@ export function rollGrammar(famSeed, prof) {
     chaining,
     // syntax completion (predication / existence / possession / serialization)
     copN, copA, copLoc, possPred, existV, negEx, svc, svcTam, refl, recpSame,
+    poly,   // polysynthesis (phase 3): incorporation + saturated verb
     switchRef: chaining && m !== "iso" ? H("sr") < 0.55 : false,          // SS/DS reference tracking ⊂ chaining, never iso
     clusiv: H("cl") < 0.35,                          // inclusive/exclusive 'we'
     gender3: (genders ? H("g3") < 0.75 : H("g3") < 0.15),
@@ -1805,10 +1813,10 @@ function ablautNu(lang, form) {
 // and the whole inflected word rides the tail of the log as one piece — so
 // a language's endings erode, sandhi across the seam, and stems alternate
 // exactly as far as its own sound laws push them.
-function onionBuild(lang, stemCid, events, { fuse = false, theme = null, pattern = null, rootOverride = null, ablaut = false } = {}) {
+function onionBuild(lang, stemCid, events, { fuse = false, theme = null, pattern = null, rootOverride = null, rootPre = true, ablaut = false } = {}) {
   const prof = lang.prof;
   const side = gramOf(lang).affixSide;
-  const src = rootOverride ? { w: copyWord(rootOverride), pre: true } : rootFormOf(lang, stemCid);
+  const src = rootOverride ? { w: copyWord(rootOverride), pre: rootPre } : rootFormOf(lang, stemCid);
   let form = src.w;                                  // deep copy already
   const rules = lang.rules;
   if (pattern) repattern(lang, form, pattern);
@@ -2163,17 +2171,33 @@ export function possessionType(lang, cid) {
 
 /** Inflect a verb: TAM + person agreement per the language's dials.
  *  { text, gloss, pre, post, irr } — particles ride pre/post for isolating
- *  tongues (the Mandarin 'le' lives in post). */
-export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false, ev = null, hon = false, nf = false, conv = null, rel = false } = {}) {
-  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (ev ? ":e" + ev : "") + (mir ? ":mir" : "") + (hon ? ":hon" : "") + (nf ? ":nf" : "") + (conv ? ":cv" + conv : "") + (rel ? ":rel" : "");
+ *  tongues (the Mandarin 'le' lives in post). `incorp` (phase 3) welds an
+ *  object noun's stem INTO the verb word before inflection — the whole N-V
+ *  unit rides the onion, so sound change hits it as one word and the
+ *  TAM/person layers attach outside, exactly like a real incorporating verb. */
+export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", obj = null, neg = false, mood = null, sclass = null, dir = null, voice = null, irrealisMood = null, mir = false, ev = null, hon = false, nf = false, conv = null, rel = false, incorp = null } = {}) {
+  const key = "v:" + cid + ":" + (tam || "") + ":" + (pers || "") + ":" + num + ":" + (obj || "") + (neg ? ":n" : "") + (mood ? ":" + mood : "") + (sclass != null ? ":c" + sclass : "") + (dir ? ":d" + dir : "") + (voice ? ":v" + voice : "") + (irrealisMood ? ":m" + irrealisMood : "") + (ev ? ":e" + ev : "") + (mir ? ":mir" : "") + (hon ? ":hon" : "") + (nf ? ":nf" : "") + (conv ? ":cv" + conv : "") + (rel ? ":rel" : "") + (incorp != null ? ":inc" + incorp : "");
   const c = gc(lang);
   const hit = c.cells.get(key);
   if (hit) return hit;
   const spec = paradigmSpec(lang);
   const g = gramOf(lang);
   const morph = lang.prof.morph;
-  const stemGloss = glossOf(cid);
+  let stemGloss = glossOf(cid);
   const imperative = mood === "imp";
+  // POLYSYNTHESIS (phase 3): the incorporated noun+verb stem — welded from
+  // the PRE-RULE roots when both exist, so the compound rides the whole rule
+  // log as ONE word (a derived member falls back to the evolved stems,
+  // attached at the surface). Incorporation blocks stem irregularity: a
+  // compound stem regularizes, as real incorporating paradigms do.
+  let incRoot = null, incPre = true;
+  if (incorp != null && !spec.iso) {
+    const nR = rootFormOf(lang, incorp), vR = rootFormOf(lang, cid);
+    if (nR.pre && vR.pre) incRoot = legalizeWord(joinSyls(nR.w.syls, vR.w.syls));
+    else { incRoot = legalizeWord(joinSyls(nativeStemOf(lang, incorp).syls, nativeStemOf(lang, cid).syls)); incPre = false; }
+    if (incRoot.syls.length > 5) incRoot.syls = [incRoot.syls[0], incRoot.syls[1], ...incRoot.syls.slice(-3)];
+    stemGloss = glossOf(incorp) + "-" + stemGloss;
+  }
   // imperatives carry no tense; the ITERATIVE/continuative imperfective is
   // often reduplication (every morphotype, Chinese kàn-kan included). GRADED
   // tense expands to base-tense + a distance affix (so it inherits the base's
@@ -2245,9 +2269,9 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     impExtras(pre, post);
     out = { text: renderWord(nativeStemOf(lang, cid), lang.prof), gloss: stemGloss + (imperative && g.imp !== "particle" ? ".IMP" : ""), pre, post, irr: false, form: nativeStemOf(lang, cid) };
   } else {
-    const irr = tamAff && isMarkedTam(tamEff) ? irregularityOf(lang, cid) : null;
+    const irr = incRoot ? null : tamAff && isMarkedTam(tamEff) ? irregularityOf(lang, cid) : null;
     const events = [], glosses = [], outerGlosses = [];   // outerGlosses: the young agglutinated tier (evidential) — dash-joined even in fusional glosses
-    let rootOverride = null, pattern = null, ablaut = false;
+    let rootOverride = incRoot, pattern = null, ablaut = false;
     if (neg && !imperative && spec.negAff) {
       // affixal negation sits innermost (the Turkish -me- slot)
       events.push({ ...spec.negAff, t: 0 });
@@ -2305,7 +2329,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
     const vTheme = spec.vThemes.length > 1 ? spec.vThemes[hash32(lang.famSeed ?? lang.seed, "conjpick", cid) % spec.vThemes.length] : null;
     const form = onionBuild(lang, cid, events, {
       fuse: morph === "fus", theme: vTheme && events.length ? vTheme : null,
-      pattern, rootOverride, ablaut,
+      pattern, rootOverride, rootPre: incPre, ablaut,
     });
     const text = renderWord(form, lang.prof);
     // HONEST GLOSS, per cell: even the outer clitic can be eaten at the very
@@ -2316,7 +2340,7 @@ export function inflectVerb(lang, cid, { tam = null, pers = null, num = "sg", ob
       const evs2 = events.filter(e => e !== oAffUsed);
       const bare = renderWord(onionBuild(lang, cid, evs2, {
         fuse: morph === "fus", theme: vTheme && evs2.length ? vTheme : null,
-        pattern, rootOverride, ablaut,
+        pattern, rootOverride, rootPre: incPre, ablaut,
       }), lang.prof);
       if (bare === text) outerGlosses.splice(outerGlosses.indexOf(oAffUsed.g), 1);
     }
@@ -2998,6 +3022,13 @@ export function renderClause(lang, frame, opts = {}) {
     if (g.refl === "verb") oArg = null;
     else oArg = { reflTok: voice };
   }
+  // POLYSYNTHESIS (phase 3): a non-specific object INCORPORATES — its stem
+  // welds into the verb word and the clause DETRANSITIVIZES ('he fish-takes'
+  // = he fishes; the incorporated noun is neither cased nor indexed, and the
+  // subject surfaces ABS under ergativity). Only where the language is
+  // polysynthetic; elsewhere the frame renders as a plain transitive.
+  let incorpCid = null;
+  if (!voice && oArg && oArg.incorp && oArg.n != null && g.poly) { incorpCid = oArg.n; oArg = null; }
   const trans = !!oArg || !!oComp;
   const sIsPron = sArg && !!sArg.pron;
   // TAM resolves first (the tam-split reads it), then the effective alignment
@@ -3027,6 +3058,9 @@ export function renderClause(lang, frame, opts = {}) {
   // went to O (abs-agree / inverse), and never index a CLAUSAL object (o.comp,
   // where oArg is null even though the verb is transitive) or a reflexive
   const objPers = !imperative && g.agree === "both" && trans && oArg && !oArg.wh && !oArg.reflTok && agreeArg === sArg ? String(argPers(oArg)) : null;
+  // polypersonal pro-drop (phase 3): a poly language drops OBJECT pronouns
+  // too — the verb's object index carries them ('saw-1SG-3SG.O': ONE word)
+  if (g.poly && g.proDrop && objPers && oArg && oArg.pron) toks.o = [];
   const neg = !!frame.v.neg;
   // subject class-concord on the verb (Bantu ki-, Russian past -l/-la)
   const vClass = g.concord && g.concord.verb && sArg && !sIsPron && sArg.n != null && g.genders ? genderOf(lang, sArg.n) : null;
@@ -3045,7 +3079,7 @@ export function renderClause(lang, frame, opts = {}) {
     tam, pers: agreePers, num: agNum === "du" ? "pl" : agNum, obj: objPers,
     neg: neg && (imperative || !!spec.negAff), mood: imperative ? "imp" : null, sclass: vClass, dir: direction,
     voice: voice && !spec.iso ? voice : null,   // synthetic voice affix (iso uses a light verb below)
-    irrealisMood, mir: mirOn, ev: evOn,
+    irrealisMood, mir: mirOn, ev: evOn, incorp: incorpCid,
     conv: medial === "cvb" ? "temp" : opts.conv || null, nf: !!opts.nfVerb, rel: !!opts.relGap,
   });
   toks.v = [...vx.pre.map(t => ({ ...t, role: "V" })), { w: vx.text, g: vx.gloss, role: "V", f: vx.form, c: frame.v.c, seam: vx.seam }, ...vx.post.map(t => ({ ...t, role: "V" }))];
@@ -3172,6 +3206,15 @@ function renderPossessionClause(lang, frame, opts = {}) {
     default:   // 'loc' — the world's commonest: the possessor is an 'at'-phrase on the existential
       return renderExistentialClause(lang, { ex: owned, v: fv, q: frame.q, adv: frame.adv, loc: { adp: "at", n: P.possessor.n, pron: P.possessor.pron, def: P.possessor.def, num: P.possessor.num } }, opts);
   }
+}
+
+/** Polysynthesis (phase 3) — null for the four plainer types, else what the
+ *  saturated verb does: noun incorporation, the double person index, and
+ *  whether a two-pronoun clause collapses to ONE word. */
+export function polysynthesisOf(lang) {
+  const g = gramOf(lang);
+  if (!g.poly) return null;
+  return { incorporation: true, objectIndex: g.agree === "both", oneWord: g.proDrop && g.agree === "both" };
 }
 
 /** The predication complex (syntax completion) — how this language says

@@ -20,9 +20,9 @@ import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
   alignmentOf, voicesOf, voiceEtymologies, tamShape, evidentialSystem, classInventory, concordMarkers, agreementTargets, inflectAdj,
   classifiersOf, classifierEtymologies, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns,
-  renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf } from "./sim/languageGrammar.js";
+  renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, polysynthesisOf } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, OLD, GRAIN,
-  RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN } from "./sim/languageLexicon.js";
+  RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN, FISH } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
@@ -661,6 +661,17 @@ function verbFrontierHTML(l) {
     if (pr.svc) exs.push(clauseEx("serial verbs — ‘the king took the sword (and) ate the bread’, one clause", renderClause(l, { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: SWORD, def: true }, v2: { c: EAT, o: { n: BREAD, def: true } } })));
     secs.push(`<h3>Being, having, existing</h3><div class="chips">${chips}</div>
       <p class="note">How ‘X is Y’, ‘there is X’ and ‘X has Y’ are said — a verbal, pronominal or TENSED-ZERO copula; a be/have/posture existential (locative fronts, presentationally); possession as one of the five real strategies. All thin remaps of machinery the language already has.</p>${exs.join("")}`);
+  }
+
+  // ── Polysynthesis (phase 3) — the saturated verb, only where rolled ──
+  const ps = polysynthesisOf(l);
+  if (ps) {
+    const g2 = gramOf(l);
+    secs.push(`<h3>Polysynthesis</h3><div class="chips"><span class="chip">noun incorporation</span><span class="chip">polypersonal verb</span>${ps.oneWord ? `<span class="chip">one-word clauses</span>` : ""}</div>
+      <p class="note">The fifth morphological type: the verb SATURATES — subject and object are both indexed on it, pronouns stay home, and a non-specific object INCORPORATES: its stem welds into the verb word, which then inflects as one long word (‘he fish-takes’ = he fishes).</p>
+      ${clauseEx("‘the king took the fish’ (plain — the object stands free, cased and indexed)", renderClause(l, { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: FISH, def: true } }))}
+      ${clauseEx("‘the king fish-takes’ (incorporated — one verb word, detransitivized)", renderClause(l, { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: FISH, incorp: true } }))}
+      ${g2.proDrop ? clauseEx("‘I saw it’ — the whole clause is ONE word", renderClause(l, { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: SEE, tam: "pst" }, o: { pron: { k: "3sg", pers: 3, num: "sg" } } })) : ""}`);
   }
 
   // ── Tense · aspect · mood depth (Group C′) ──

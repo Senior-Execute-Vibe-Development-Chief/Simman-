@@ -56,7 +56,7 @@ export function refProfile(kind, seed) {
       // existence and possession — with the fused negative (méiyǒu), full
       // serialization (ná dāo qiē ròu), pronominal reflexive (zìjǐ ≠ hùxiāng)
       copN: "pron", copA: "verb", copLoc: "posture", possPred: "have", existV: "have",
-      negEx: "special", svc: true, svcTam: "first", refl: "pron", recpSame: false,
+      negEx: "special", svc: true, svcTam: "first", refl: "pron", recpSame: false, poly: false,
       dual: false, clusiv: true, gender3: false, defArt: false, indefArt: false,
       proDrop: true, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "affix", declN: 1, conjN: 1, pronCase: "none",
@@ -97,7 +97,7 @@ export function refProfile(kind, seed) {
       // byl starik), locational possession (u menya est'), the fused negative
       // existential (net), verbal reflexive (-sja, doubling as reciprocal)
       copN: "zero", copA: "cop", copLoc: "cop", possPred: "loc", existV: "be",
-      negEx: "special", svc: false, svcTam: "first", refl: "verb", recpSame: true,
+      negEx: "special", svc: false, svcTam: "first", refl: "verb", recpSame: true, poly: false,
       dual: false, clusiv: false, gender3: true, defArt: false, indefArt: false,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 3, conjN: 2, pronCase: "full",
@@ -142,7 +142,7 @@ export function refProfile(kind, seed) {
       // possession, a plain negated existential, pronominal reflexive
       // (himself ≠ each other), no serialization
       copN: "verb", copA: "cop", copLoc: "cop", possPred: "have", existV: "be",
-      negEx: "neg", svc: false, svcTam: "first", refl: "pron", recpSame: false,
+      negEx: "neg", svc: false, svcTam: "first", refl: "pron", recpSame: false, poly: false,
       dual: false, clusiv: false, gender3: true, defArt: true, indefArt: true,
       proDrop: false, numBase: 10, numOrder: true, dem3: false, negAffix: false,
       pronPl: "root", declN: 2, conjN: 2, pronCase: "acc",
