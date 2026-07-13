@@ -1653,10 +1653,10 @@ export function adoptAndFound(world) {
 // countries (it's unclaimed frontier) — with an explicit capital-distance gate
 // on top so a new state can't pop up in an empire's heartland. Gated on real
 // cluster population so the country count stays controlled (no micro-state swarm).
-const NUCLEATE_R          = 9;      // cluster radius, tiles
+const NUCLEATE_R          = 9;      // cluster/basin radius, REFERENCE-tiles (×resScaleFor at other grids — a real distance)
 const NUCLEATE_SEAT_POP   = 160;    // the seat must be a real regional centre (a large village / town)
 const NUCLEATE_CLUSTER_POP= 400;    // total stateless population nearby to be a viable state
-const NUCLEATE_CAP_DIST   = 8;      // ...and at least this far from any existing capital
+const NUCLEATE_CAP_DIST   = 8;      // ...and at least this far from any existing capital (REFERENCE-tiles, ×resScaleFor)
 const NUCLEATE_MAX_PASS   = 4;      // cap new states minted per territory pass (anti-bloom)
 // State-capacity gate (Diamond/Scott): a STATE needs a storable, taxable surplus,
 // not just bodies. Forager-dense but low-surplus land (the wet tropics, leached
@@ -1674,8 +1674,17 @@ export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
   const tw = world.tw, halfTw = tw / 2;
+  // The founding radius and the capital-isolation gate are REAL distances
+  // (res-invariance 2026-07): NUCLEATE_R is the basin whose people can cohere
+  // into one polity, NUCLEATE_CAP_DIST the isolation that makes it frontier.
+  // Raw, a finer grid gathered 1/rs² of the real basin's people (the per-real-
+  // area popField sums per tile), so the viability bar was quietly ×rs² harder:
+  // at the shipped 1920 default state birth all but stopped — the map kept a
+  // stateless low-org tail and claimed% stalled. ×1 exactly at the reference.
+  const _rsN = resScaleFor(tw);
+  const nucR = NUCLEATE_R * _rsN, nucRi = Math.round(nucR);
   const seatPop = NUCLEATE_SEAT_POP / lever, clusterPop = NUCLEATE_CLUSTER_POP / lever;
-  const capD2 = (NUCLEATE_CAP_DIST / Math.sqrt(lever)) ** 2;
+  const capD2 = ((NUCLEATE_CAP_DIST * _rsN) / Math.sqrt(lever)) ** 2;
   const caps = [];
   if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
   const fert = world.fert, moist = world.moist;
@@ -1736,7 +1745,7 @@ export function nucleateFrontierStates(world) {
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
     if (caps.length && dCap < capD2) continue;
     let cp = 0, isLeader = true;                // viable cluster + this settlement leads it
-    forEachNear(world, s.pos.x, s.pos.y, NUCLEATE_R, (o) => {
+    forEachNear(world, s.pos.x, s.pos.y, nucR, (o) => {
       if (o.mode !== "settled" || o.countryId >= 0) return;
       cp += o.people || 0;
       const op = o.people || 0, sp = s.people || 0;
@@ -1748,10 +1757,10 @@ export function nucleateFrontierStates(world) {
       const pfA = world.popField, coA = world._countryOwner, elevA = world.elev, thh = world.th;
       const sy = s.pos.y | 0, sx = s.pos.x | 0;
       let mass = 0;
-      for (let dy = -NUCLEATE_R; dy <= NUCLEATE_R; dy++) {
+      for (let dy = -nucRi; dy <= nucRi; dy++) {
         const yy = sy + dy; if (yy < 0 || yy >= thh) continue;
-        for (let dx = -NUCLEATE_R; dx <= NUCLEATE_R; dx++) {
-          if (dx * dx + dy * dy > NUCLEATE_R * NUCLEATE_R) continue;
+        for (let dx = -nucRi; dx <= nucRi; dx++) {
+          if (dx * dx + dy * dy > nucRi * nucRi) continue;
           const ti2 = yy * tw + (((sx + dx) % tw) + tw) % tw;
           if (!(elevA[ti2] > 0) || coA[ti2] >= 0) continue;   // claimed ground already carries a state
           mass += pfA[ti2];
@@ -1767,7 +1776,7 @@ export function nucleateFrontierStates(world) {
   for (const { s } of cand) {
     if (n >= NUCLEATE_MAX_PASS) break;
     let tooClose = false;                        // don't mint two adjacent states in one pass
-    for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (NUCLEATE_R * 2) ** 2) { tooClose = true; break; } }
+    for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (nucR * 2) ** 2) { tooClose = true; break; } }
     if (tooClose) continue;
     s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
     ensurePolity(world, s.id, { how: "frontier", seat: s });

@@ -34,8 +34,14 @@ const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 // the field's own dynamics and any raw read did not). ×1 exactly at the
 // reference. The GROWTH/MIGRATE rates below are per-capita/share and stay
 // unscaled (NB: POP_MIGRATE's implied diffusion coefficient D ∝ rate·Δx² is
-// still res-variant — second-order here, since every habitable tile is seeded
-// and fills by LOCAL logistic growth; a true fix needs sub-stepped migration).
+// still res-variant — MEASURED second-order, 2026-07 rs=4 arc: sub-stepped
+// migration with total share ×rn² (substeps ≤0.5, byte-identical at the
+// reference) was built and A/B'd at 1920/12k — it did NOT move the dev clock
+// (org .236→.235) and SHRANK the urban economy (census −34%: people diffuse
+// out of cradle catchments faster than towns can urbanise them). The dev-clock
+// driver was the road-wiring radii (roads.js). The patch is archived in the
+// session notes; re-measure it on the road-fixed world before ever shipping —
+// docs/empire-consolidation-2026-07.md "THE rs=4 ARC").
 const CAP_PER_FERT = 1200;
 // Development multiplier: local carrying capacity rises with AGRICULTURAL tech —
 // a hunter-gatherer land feeds a thin scatter, an irrigated-plough society feeds a

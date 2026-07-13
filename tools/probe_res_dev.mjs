@@ -16,6 +16,19 @@
 // → settlement count res-invariant (the audit's spacing fixes hold); the FIELD is
 //   ~3.15× (CAP_PER_FERT/SEED_POP are per-tile); cities SMALLER and org SLOWER at
 //   960 (per-edge transport costs unnormalized → trade/diffusion reach halves).
+//
+// Reference finding #2 (2026-07-13, the rs=4 arc — road-wiring radii ×rn; same
+// seed/step; full percentiles for the reference cell, never recorded before):
+//   480 ref:   79 setts | census 39,364 | city p50  66 p90 763 max 9,483 | org mean .382 p50 .425 p90 .471 max .489 | 21 realms / 19.2%
+//   tw=480:    88 setts | census 53,228 | city p50 204 p90 1031 max 6,535 | org mean .377 p50 .417 (0.99×/0.98× ref) | 27 / 21.2%
+//   tw=960:    73 setts | census 27,040 | city p50  76 p90  763 max 3,745 | org mean .330 p50 .413 (0.86×/0.97× ref) | 12 / 12.9%
+// → the MASSES' development clock tracks the reference at both grids post-fix
+//   (org p50 0.97–0.98×; pre-fix tw=960 sat at ~0.4×). tw=960's 12k residuals:
+//   org MEAN 0.86× (a stateless low-org tail — settlements that lay/receive no
+//   roads and haven't crossed ORG_STATE_MIN to nucleate), realms/claimed low at
+//   the snapshot (state birth later), apex city 0.39× (river-mag grid-variance
+//   thins the free river-trade net: the Nile hearth reads mag4 at tw=240/480,
+//   mag3 at tw=960 — see the founding logs). The windowed battery is the judge.
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 

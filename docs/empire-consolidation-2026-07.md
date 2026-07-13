@@ -416,6 +416,111 @@ prime suspect for the next res arc. Sub-stepped migration + re-measure at
 1920 is the designed follow-up; until then the "1×"/tw=480 setting is the
 best-validated shipped grid.
 
+## THE rs=4 ARC (2026-07-13, follow-up session) — the trade wiring was the clock
+
+The queued arc, run verify-first exactly as designed. All A/Bs: probe_res_dev,
+step 12k, seed 8817, same-grid same-seed pre/post (clean single-variable cells);
+the 480 reference cell's full percentiles were captured for the first time
+(city p50 66 / p90 763; org p50 .425 / p90 .471 — the reference org
+DISTRIBUTION is TIGHT: everyone near the leaders).
+
+### 1. POP_MIGRATE verified first — REFUTED (so nobody rebuilds it)
+
+Sub-stepped migration was built as the verify vehicle (total share
+×rn² per firing, split into substeps of ≤0.5 share each; n=1 and bit-exact at
+the reference — hash480 held at b9c264b9/100239cd; stable at rs=4, 2×0.48
+substeps). Measured at 1920/12k: **org .236→.235 (flat), claimed 8.5→9.7%,
+census 25.3k→16.8k (0.64×→0.43× — WORSE), p50 city 49→37.** At 960/12k:
+neutral (org .337→.333). D×16 field diffusion does not drive the dev clock —
+it drains cradle catchments faster than towns urbanise them in an unwired
+world. The patch is archived (session scratchpad), NOT shipped; the popField.js
+header records the refutation. If ever revisited, re-measure ON TOP of the
+road fix below.
+
+### 2. The real driver: the road-wiring radii (FIXED, shipped)
+
+The reach/trade graph only propagates along ROADS, navigable RIVERS (mag≥3),
+or settlement tiles (roads.js computeReach) — partners REQUIRE built roads;
+rivers are free corridors (why the river-cradle leaders always near-tracked).
+Two raw-tile radii under-wired the road mesh at fine grids:
+
+- **`CLOSE_NEIGHBOUR_DIST` (20 raw)** — the guaranteed village↔neighbour
+  wiring, calibrated "just above MIN_SETT_DIST (12)". But founding spacing
+  scales ×rn (crystallize.js) while the 20 did not: at rs=4 neighbours sit
+  ~48 tiles apart — **the local road mesh never formed at the shipped
+  default** (and was mostly dead at rs=2, spacing ~24). Now ×rNormPop.
+- **`partnerReachFor` (PARTNER_DIST_BASE 20 + √pop, ×techMul, raw)** — the
+  road planner's commercial horizon was ¼ the real distance at rs=4. Now
+  ×rNormPop.
+
+The trap that amplified both: stateless settlements neither lay nor receive
+roads, and MIN_POP_TO_PLAN=60 is out of reach for a starved town — no roads →
+no partners → no diffusion/trade → towns stay small → still no roads. The
+DIFFUSE_COST_K fix from the res-invariance arc never got an EDGE to act on.
+
+Measured (each grid vs the byte-identical 480 reference at matched step 12k):
+
+| | 480 ref | tw=480 pre | tw=480 POST | tw=960 pre | tw=960 POST |
+|---|---|---|---|---|---|
+| org p50 | .425 | ~.37 | **.434 (1.02×)** | ~.17 | **.413 (0.97×)** |
+| org mean | .382 | .337 | **.384 (1.005×)** | .236 | .330 (0.86×) |
+| p50 / p90 city | 66 / 763 | 97 / 770 | 77→204* / 1031 | 49 / — | 76 / **763** |
+| census | 39.4k | 41.9k | 53.5k (1.36×) | 25.3k | 27.0k (0.69×) |
+| realms / claimed | 21 / 19.2% | 27 / 20.1% | 27 / 21.2% | ~14 / 8.5% | 12 / 12.9% |
+
+*77 with roads-only, 204 with the full set. **The tw=480 grid's ~10% org
+lag — written off in the res-invariance arc as "partly realization noise" —
+was THIS, and is GONE (1.005×).** At tw=960 the masses' clock is fixed (p50
+0.97×, p90 city exactly at reference); what remains is the stateless low-org
+TAIL (drags the mean to 0.86×) and late state birth (realms/claimed at the
+12k snapshot) — see residuals below.
+
+Same-class fix in the same commit: **`NUCLEATE_R`/`NUCLEATE_CAP_DIST`
+(countryTerritory.js) ×resScaleFor** — the state-birth basin gathered a
+raw-tile disc of per-real-area popField, i.e. 1/rs² of the real basin's
+people (the viability bar was quietly ×16 harder at rs=4). Measured
+NEUTRAL at the 12k snapshot (realms 12→12: the ORG_STATE_MIN statecraft gate
+binds FIRST on the unroaded stateless tail, so the basin bar is rarely even
+evaluated there yet) and mildly active at tw=480 (25→27 realms); it binds as
+tails develop. Mechanism-correct, ×1 exactly at the reference.
+
+### Residuals at rs=4 (diagnosed, deliberately not quick-fixed)
+
+1. **The stateless-tail trap**: stateless settlements lay/receive no roads
+   (roads.js gates both directions on countryId) → their org grows unroaded →
+   ORG_STATE_MIN blocks nucleation → land stays unclaimed at the snapshot.
+   The trap exists at every grid; the reference tail escapes it faster (its
+   marginal rivers carry more of the map — below). Candidate mechanisms if it
+   needs closing: pedlar/foot diffusion off the road net (a faiths.js-style
+   near-radius knowledge trickle), or roads to organized-but-stateless towns.
+2. **River magnitude is grid-variant in worldgen**: the same seed's Nile
+   hearth reads river(mag4) at tw=240 AND tw=480 but river(mag3) at tw=960
+   (founding logs) — flow accumulation classifies lower per-tile on finer
+   grids, so the FREE river-trade network (mag≥3 corridors) thins and the
+   water-access premium (mag/RM_FULL) shrinks exactly where the apex cities
+   live (apex 0.39× at 12k). A prototype lever already exists —
+   `RES_INV_RIVER`, def 0 — this is its own arc, worldgen-side.
+3. The 12k snapshot exaggerates TIMING (a state-birth wave at 13k vs 11k reads
+   as 12 vs 21 realms); the windowed probe_empires battery below is the
+   product judge.
+
+### Secondary raw-radius family (triaged in the same sweep, documented not bundled)
+
+Same F-class, different channels, none implicated in the dev-clock signature:
+`FRONTIER_RADIUS` 28 (colony local-density gate), `COLONY_MIN_DIST` 14
+(landing spacing), `RAID_RANGE` 28 (slaver reach), cultures.js:503 raw 16
+(daughter-culture homeland seeding), faiths.js:414 raw 11 (foot-conversion
+radius). Verified CLEAN: MARKET_CUTOFF (rides mktR×rn), cohesionRadius
+(fraction of tw), INHERIT_NEAR_RADIUS (perf fast-path, identical full-scan
+fallback), MINE_RANGE (URBAN_NODES experimental path only, def 0).
+
+### Validation (the F-class recipe)
+
+hash480 UNCHANGED pre/post across every increment (b9c264b9/100239cd — the
+radii are ×1.0 at the reference by construction); hashbase 320 re-keys (new
+pair + recipe in its header chain); smoke green; probe_empires 1920/24k
+re-run — numbers in the battery addendum below.
+
 ## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
   (not just capped via comboE): it needs a **NON-multiplicative** limiter — e.g.
