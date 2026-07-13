@@ -413,7 +413,7 @@ The capture churn IS the tell that 4c is required: war still fights on the per-s
 catchment map (`_territoryOwner`), which now diverges from the capital-anchored field, so
 non-capital cities flip constantly.
 
-## 4c — war on the tile field (DESIGNED, not yet implemented)
+## 4c — war on the tile field (BUILT: v1 below; distance decay shipped 2026-07 as WAR_REACH — see the update at the end of this section. Header previously read "not yet implemented".)
 
 **Design: country war-adapters.** The strategic layer (truces, coalitions, exhaustion, casus
 belli — armies.js:378-513) and the force model (`offForceOf`/`defForceOf`/concentration/

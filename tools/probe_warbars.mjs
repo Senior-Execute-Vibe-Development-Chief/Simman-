@@ -14,11 +14,12 @@
 //     frozen-front settlement, faded = fronts dissolved), duration of the signed
 //     peace, war age, exhaustion split at signing.
 //   node tools/probe_warbars.mjs [steps=24000] [seed=8817]
-// KNOWN GAP surfaced while reading the code: amphibious fronts are disabled under
-// the default TILE_WAR mode (armies.js "restore in a later slice") — populated
-// enemy shores are unconquerable by sea, so a Mediterranean-shaped hegemon is
-// structurally impossible regardless of what the bars say. That alone caps the
-// classical world at land-contiguous empires.
+// [RESOLVED — kept for the record] A gap surfaced while reading the code: at the
+// time, amphibious fronts were disabled under the default TILE_WAR mode (armies.js
+// "restore in a later slice") — populated enemy shores were unconquerable by sea.
+// That gap HAS SINCE BEEN CLOSED: nation-level beachheads run under TILE_WAR
+// (armies.js, the `T.AMPHIB_BAR > 0 && TILE_WAR` block; see "AMPHIB RESTORED"
+// in the findings below). Do not re-diagnose it from this header.
 //
 // FINDINGS (24k, seed 8817, 480x240) — the funnel, measured:
 //   INITIATION IS NOT THE BOTTLENECK: 4118 candidate pair-passes, 2275 opened

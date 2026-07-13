@@ -1,6 +1,8 @@
 # Territory growth redesign — capital-outward, settlements on the frontier
 
-Status: **plan / pre-build**. Goal agreed with owner: stop the "bag of
+Status: **SHIPPED** (see §4b "Integration — SHIPPED" below; header was stale "plan /
+pre-build" until audit 2026-07) — and since SUPERSEDED by the field-polity model
+(docs/field-polity-spec.md), which replaced the mechanism this plan built. Goal agreed with owner: stop the "bag of
 absorbed independent statelets" feel; make a country a realm that **grows
 outward from its capital**, with **settlements appearing at advantageous
 frontier sites**, while keeping all the war / conquest / secession machinery.

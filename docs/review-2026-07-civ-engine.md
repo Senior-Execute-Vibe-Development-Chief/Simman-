@@ -10,6 +10,16 @@ claim was then attacked by independent adversarial verifiers whose default stanc
 evidence is code-cited but unattacked).
 
 **Legend:** `[C]` confirmed · `[P]` plausible · `[U]` unverified · **crit/maj/min** severity.
+
+> **STALENESS WARNING (audit 2026-07-13):** this is a point-in-time snapshot with no
+> resolved-annotations, and several of its CONFIRMED items have since been FIXED — spot-
+> checked: the inflation `step >= 5000` gate (now org-gated, inflation.js), the
+> `COVERAGE_RAMP` step-ramp (now a wave-of-advance tempo, crystallize.js), the
+> Nile/Mesopotamia same-tile seat (now `HEARTH_MIN_SEP_FRAC`, state.js), and the
+> `capE.logistics` dead read (now `logisticsLevel`, conquest.js). Other items —
+> notably the save/load family (B19 road-flow decay, B42 reconcile-vs-pass-start,
+> B52/B75 `_riverAcc` lost on load) — have NOT been re-verified either way. Check the
+> code before re-opening OR trusting any item here.
 Full per-finding detail (descriptions, failure scenarios, suggested fixes) is in the
 appendix: `docs/review-2026-07-appendix/`.
 

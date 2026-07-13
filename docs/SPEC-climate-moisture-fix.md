@@ -1,5 +1,13 @@
 # SPEC — Fix continental aridity in the moisture model
 
+**STATUS: IMPLEMENTED (kept as the design record).** The fix this spec prescribes
+is built and shipped — src/sim/moistureSolver.js now runs the depletive, CONSERVED
+moisture transport ("Depletive transport (replaces the old near-lossless
+max-of-neighbours flood)... continentality is emergent", moistureSolver.js header);
+the non-conserved max-of-neighbours spread this doc diagnoses is gone. Do not
+re-implement from this spec — it is history. (Audit 2026-07: the doc previously
+read as an open handoff.)
+
 Handoff spec. Investigation is done; the root cause is pinned. This describes the
 bug, the evidence, what was already tried/reverted, and the fix to implement.
 

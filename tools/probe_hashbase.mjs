@@ -5,7 +5,15 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): e2f4dd54/6cb39c4d (WAR_REACH 15 default — war
+// Current baseline (2500 steps): 341a3443/c9e04c68 (audit 2026-07 fixes: war-sack
+// captives land on the victor's real capital instead of the throwaway TILE_WAR
+// adapter — war supplies slaves again and the stormed-city population leak is
+// closed; adapters carry army-weighted _nomad; war capture budget/momentum and
+// REALM_GAP_FILL/MARKET_RANGE are resolution-invariant (×resScale²/×resScale/×rn).
+// This probe's 320px grid sits BELOW the 240-tile reference (rn≈0.67), so the
+// invariance factors re-key it; the 480px probe grid IS the reference (×1 exactly)
+// and its windowed numbers are unchanged by the F-class fixes. docs/audit-2026-07.md.)
+// Prior baseline (2500 steps): e2f4dd54/6cb39c4d (WAR_REACH 15 default — war
 // force projection decays exp(−d/H) from the capital, the immortal-giants fix;
 // docs/empire-consolidation-2026-07.md). SIM_TUNE="WAR_REACH=0" recovers the
 // prior pair below EXACTLY (the projection-blind war, one lever away).
