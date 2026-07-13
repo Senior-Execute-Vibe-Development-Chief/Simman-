@@ -181,8 +181,121 @@ Measured (all windowed 16k–30k probe_avg + probe_empires 24k, 2 seeds; stylize
   secession align — rarer, as in history.
 - `WAR_REACH=0` recovers the projection-blind war byte-identically.
 
+## 960 LOOP CLOSED (2026-07-13, follow-up session) — the shipped grid re-measured
+
+Everything above was validated at the 480px probe grid (tw=240 = the res-invariance
+reference). The audit's war-rate fix (×resScale² capture budget) deliberately changed
+960 — war used to sweep real area at ¼ the validated rate there — and nobody had
+re-measured since. This session ran the full battery at 960 (probe_empires 24k seeds
+8817+4242 with map renders; probe_avg windowed **24k–40k** — see "window
+correspondence" below; plus a current-HEAD 480 probe_empires for like-for-like flows).
+
+### The measured 960 state (current defaults: comboE + WAR_REACH 15 + cities-only)
+
+Windowed probe_avg (9 samples, 24k–40k):
+
+| | 960 / 8817 | 960 / 4242 | 480 ref (16k–30k) |
+|---|---|---|---|
+| realms | 52.3 [48–56] | 47.3 [42–52] | 32.6 / 39.4 |
+| claimed | 63.1% | 66.1% | 50.6% / 55.5% |
+| biggest | **13.4 [6.6–17.2] M** | **14.7 [7.5–20.0] M** | 6.6 / 6.6 M |
+
+probe_empires checkpoints (claimed% tracks 480 remarkably well step-for-step —
+the war-rate fix works; the old "960 develops slower" belief was largely the ¼-rate
+war itself):
+
+| step | 480/8817 | 960/8817 | 960/4242 |
+|---|---|---|---|
+| 8k | 20 realms / 16.1% | 19 / 13.9% | 22 / 15.9% |
+| 16k | 28 / 30.0% | 27 / 23.3% | 36 / 27.2% |
+| 24k | 30 / 55.0% | 51 / 53.7% | 52 / 58.0% |
+
+Top-5 churn at 24k is healthy at BOTH grids (960: #5→#1 jumps between checkpoints,
+two ~8k-age realms in 4242's top-5; 480: two sub-11k-age in top-5). Both 960 map
+renders look like political maps, not blobs. Old-snapshot context: pre-WAR_REACH 960
+@32k was 34 realms / 58.5%; pre-comboE 960 was 21–24 realms with coverage
+RETREATING by 50k. The new 960 beats both on count+coverage and shows no retreat
+through 40k.
+
+### Verdict per axis
+
+- **Coverage ✓** — tracks 480 step-for-step to 24k, settles higher (63/66%), never
+  retreats.
+- **Churn ✓** — boards turn over with young realms at both grids.
+- **Count ~** — elevated ~1.4× (47–52 vs 33–39), stable bands. Partly legitimate
+  (finer grid resolves more small realms mid-shatter-wave), partly the residuals
+  below (the fragmentation loop runs hotter: by 24k seed 8817 has 150 war
+  realm-kills at 960 vs 26 at 480).
+- **Biggest ✗** — the real divergence: through 24k the giants match (7.4/7.5M vs
+  7.0M), then the LATE window grows runaway hegemons (17–20 Mkm² peaks, means
+  ~2× the 480 equilibrium) on both seeds.
+
+### Probe-semantics correction (recorded so nobody misreads the flows again)
+
+probe_empires' `captured=` counts `settlement.captured` events — but under the
+default TILE_WAR every storm falls on the defender's CAPITAL (the adapter's home)
+and logs `polity.shattered` instead (armies.js has the only emitter). So
+`captured=0` is STRUCTURAL under tile-war, not "war is dead": **`shattered` IS the
+war realm-kill flow.** (The pre-WAR_REACH diagnosis's "captured=0 the entire run"
+was evidence via the frozen top-5 ages, which remain valid — but the counter
+itself never could fire under tile-war.) probe_empires' header now says this.
+
+### Diagnosis (mechanisms pinned, VALUES DELIBERATELY UNTOUCHED)
+
+The matched-step development snapshot (tools/probe_res_dev.mjs, step 12k, seed
+8817) discriminates the drivers — full entry in docs/audit-2026-07.md OPEN #5b:
+
+1. **The demographic field level is per-tile** (popField.js `CAP_PER_FERT`/
+   `SEED_POP`): total field population measured **3.15×** at 960 (31.4M vs 10.0M).
+   The median-anchors absorb the level for their consumers (why the political map
+   still works); the field's own dynamics and any raw-magnitude read do not.
+2. **Transport edge costs are per-tile, unnormalized** (transport.js: a plain tile
+   costs 1.0 at any grid): the same real journey costs 2× at 960, so absolute
+   cost thresholds — knowledge-diffusion damping (`DIFFUSE_COST_K`), road/trade
+   viability, transport reach — see a world twice as large. Measured downstream:
+   cities 0.69× mean size (max 0.46×), org 0.84× at matched step. Settlement
+   COUNT is res-invariant (79 vs 87 — the audit's spacing fixes hold).
+
+The two residuals compose into both visible 960 symptoms: the DEVELOPMENT clock
+runs slow relative to the (now res-invariant) political clock — an org-lagged
+world has weaker walls and smaller prey, so the kill/fragment loop runs hotter
+(count ~1.4×) — and cost-damped DIFFUSION widens the tech dispersion between
+leader and laggards, so the leader's logistics edge persists, it out-projects
+(WAR_REACH's H ∝ logistics) and out-absorbs everyone, and snowballs into the
+late-window runaway giant. One mechanism family, both symptoms, opposite signs.
+
+**Why no fix shipped here:** the transport normalization is NOT a one-line ÷rn —
+several consumers already compensate individually (foodHierarchy hauls a REAL
+distance ×rNormPop while reading the raw-cost map; others don't), so a blanket
+edge-cost normalization would double-compensate them. It needs the
+consumer-by-consumer design pass (the ENCIRCLE_PENALTY precedent), then the full
+F-class validation recipe (×1 at the reference by construction → hashbase 320
+re-key → smoke/stylized → this battery re-run at 960). The field-level ÷resScale²
+is lower-interlock (the anchors self-calibrate) but only cures the 3× base, not
+the visible symptoms — ship both in one designed arc, not piecemeal.
+
+### Window correspondence + measurement notes for the next 960 session
+
+- 480's 16k–30k window and 960's 24k–40k window are roughly ORG-matched (top
+  realms ~0.6 → ~1.0 across each): compare those, not equal steps, until the
+  transport residual is fixed.
+- Cross-resolution comparisons carry WORLD-REALIZATION noise, not just dynamics:
+  the terrain noise is sampled at different frequencies, so even hearth-site
+  climate differs (Yellow River site moist 0.82@480 vs 0.46@960, seed 8817).
+  Judge shape, never exact values.
+- A 960 probe_empires 24k run is ~15 min; a 960 probe_avg to 40k ~35 min (4
+  concurrent on 4 cores). Budget accordingly.
+
 ## OPEN / NEXT
 
+- **The development-clock res-invariance arc** (from the 960 loop-closure above):
+  normalize the demographic field level (÷resScale² on `CAP_PER_FERT`/`SEED_POP`)
+  and the transport cost field (consumer-by-consumer — see the double-compensation
+  caution) so the development clock joins the political clock in res-invariance.
+  Expected effect at 960: org dispersion tightens → the late-window runaway giant
+  (17–20 Mkm² peaks) pulls back toward the 480 equilibrium (~6.6M), and the
+  kill/fragment loop cools (count toward ~40). Validate with
+  tools/probe_res_dev.mjs at matched steps + this doc's full 960 battery.
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
   (not just capped via comboE): it needs a **NON-multiplicative** limiter — e.g.
   amphibious requires NAVAL DOMINANCE (control of the sea), a separate axis giants

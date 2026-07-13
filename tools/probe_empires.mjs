@@ -9,6 +9,12 @@
 // show the top-5 turning over between checkpoints and former giants leaving the
 // board; the immortal regime showed the same two realms on top at every
 // checkpoint with age == the full run length.
+// COUNTER SEMANTICS under the default TILE_WAR (learned at the 960 loop-closure):
+// every storm falls on the defender's CAPITAL (the adapter's home), and a capital
+// fall logs `polity.shattered` (armies.js), NOT `settlement.captured` — so
+// `captured=` counts non-capital city captures, which tile-war structurally
+// almost never produces. captured=0 does NOT mean "war is dead": READ `shattered`
+// FOR WAR REALM-KILLS (it has exactly one mechanism emitter, the capital storm).
 //   node tools/probe_empires.mjs [steps] [W] [seed] [out.png]
 import zlib from "node:zlib";
 import { writeFileSync } from "node:fs";
