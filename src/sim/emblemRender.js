@@ -12,7 +12,7 @@
 //   drawEmblem(genome, x, y, cw, ch) → a <g> placing that emblem at (x,y) in a cw×ch cell
 //   rrng(seed)                       → the deterministic per-emblem PRNG (exported for callers)
 import { CHARGE_DETAIL } from "./heraldryChargesDetailed.js";
-import { expressGenome, GENES, INK, BONE } from "./emblemGenome.js";
+import { expressGenome, GENES, INK, BONE, BUNTING_RGB } from "./emblemGenome.js";
 const SUBSTRATE_IDX = GENES.indexOf("substrate");
 
 // a tincture may be an [r,g,b] array or a pre-built fill string (a hatch
@@ -251,7 +251,7 @@ function ordinaryPath(type, w, h, ln, amp, flag) {
     case "chevron": {
       // on CLOTH a chevron is COUCHED: it issues from the hoist and points
       // into the fly (a shield's upward chevron doesn't exist on flags)
-      if (flag) { const ax = w * 0.52, ay = h / 2, t = h * 0.105;
+      if (flag) { const ax = w * 0.52, ay = h / 2, t = h * 0.12;
         return bandQuad(-t, -t, ax, ay, t) + bandQuad(-t, h + t, ax, ay, t); }
       const t = h * 0.16; return `M0 ${h} L${F(w / 2)} ${F(h * 0.42)} L${w} ${h} L${F(w - t)} ${h} L${F(w / 2)} ${F(h * 0.42 + t * 1.3)} L${F(t)} ${h} Z`;
     }
@@ -270,7 +270,7 @@ function ordinaryPath(type, w, h, ln, amp, flag) {
       // on CLOTH the pall is COUCHED: the Y lies on its side, arms from the
       // hoist corners, stem running to the fly (the unity-Y of real flags);
       // upright it stays the shield's pall
-      if (flag) { const jx = w * 0.36, jy = h / 2, t = h * 0.1;
+      if (flag) { const jx = w * 0.38, jy = h / 2, t = h * 0.12;
         return bandQuad(-t, -t, jx, jy, t) + bandQuad(-t, h + t, jx, jy, t) + bandQuad(jx - t, jy, w + t, jy, t); }
       const cx = w / 2, cy = h * 0.44, t = w * 0.11; return `M${F(-t)} ${F(-t)} L${F(t)} ${F(-t)} L${F(cx + t)} ${F(cy)} L${F(cx + t)} ${h} L${F(cx - t)} ${h} L${F(cx - t)} ${F(cy + t)} L${F(w - t)} ${F(t)} L${F(w + t)} ${F(t)} L${F(w + t)} ${F(-t)} Z`;
     }
@@ -309,6 +309,10 @@ function heraldicOverlay(w, h, f, sh, base, flag) {
   if (ord && ord !== "none") {
     const path = (f.ordinaryCount || 1) > 1 ? diminutivePaths(ord, w, h, ln, amp, f.ordinaryCount)
       : ordinaryPath(ord, w, h, ln, amp, flag);
+    // the couched pall's hoist MOUTH: the wedge the arms embrace, laid
+    // beneath the band so the fimbriation separates it (the unity-Y)
+    if (flag && ord === "pall" && f.pallMouth)
+      s += `<polygon points="0,0 ${F(w * 0.38)},${F(h / 2)} 0,${F(h)}" fill="${css(f.pallMouth)}"/>`;
     if (f.counterchange) {                       // swap tinctures across the partition
       const A = css(f.tinctures[0]), B = css(f.tinctures[1]);
       const cA = `cc${uid++}`, cB = `cc${uid++}`;
@@ -756,11 +760,24 @@ function emblemInner(genome, aw, ah) {
     const qGenes = q.genes.slice();
     qGenes[SUBSTRATE_IDX] = genome.genes[SUBSTRATE_IDX];
     const qp = expressGenome({ genes: qGenes, gen: q.gen || 0, seed: qSeed });
-    const qrng = rrng(((qSeed ^ ((q.gen || 0) * 2654435761)) + 1013904223) >>> 0);
-    const cw2 = w * 0.36, ch2 = h * 0.52, qc = `en${uid++}`;
-    content += `<clipPath id="${qc}"><rect width="${F(cw2)}" height="${F(ch2)}"/></clipPath>`
-      + `<g clip-path="url(#${qc})">${coatContent(qp, cw2, ch2, qrng)}</g>`
-      + `<path d="M${F(cw2)} 0 V${F(ch2)} H0" fill="none" stroke="#12100f" stroke-width="1.2"/>`;
+    const OV = new Set(["cross", "saltire"]);
+    if (p.composition === "heraldic" && qp.composition === "heraldic"
+      && OV.has(p.field.ordinary) && OV.has(qp.field.ordinary)
+      && p.field.ordinary !== qp.field.ordinary) {
+      // THE SUPERIMPOSED UNION: two band-led cloths FUSE — the senior's band
+      // rides over the whole field, separated by undyed cloth (or soot when
+      // the band itself is undyed): the 1606 construction, not a copy of it
+      const path = ordinaryPath(qp.field.ordinary, w, h, "straight", Math.min(w, h) * 0.032, true);
+      const sep = qp.field.ordinaryTincture === BUNTING_RGB.argent ? BUNTING_RGB.sable : BUNTING_RGB.argent;
+      content += `<path d="${path}" fill="none" stroke="${css(sep)}" stroke-width="${F(Math.min(w, h) * 0.055)}" stroke-linejoin="round"/>`
+        + `<path d="${path}" fill="${css(qp.field.ordinaryTincture)}"/>`;
+    } else {
+      const qrng = rrng(((qSeed ^ ((q.gen || 0) * 2654435761)) + 1013904223) >>> 0);
+      const cw2 = w * 0.36, ch2 = h * 0.52, qc = `en${uid++}`;
+      content += `<clipPath id="${qc}"><rect width="${F(cw2)}" height="${F(ch2)}"/></clipPath>`
+        + `<g clip-path="url(#${qc})">${coatContent(qp, cw2, ch2, qrng)}</g>`
+        + `<path d="M${F(cw2)} 0 V${F(ch2)} H0" fill="none" stroke="#12100f" stroke-width="1.2"/>`;
+    }
   } else if (qs && qs.length > 1) {
     // a MARSHALLED shield: the accumulated quarterings, each a full coat
     // rendered recursively into its quarter — two coats sit 1&4 / 2&3, three

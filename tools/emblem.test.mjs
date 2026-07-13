@@ -165,7 +165,11 @@ function audit(g) {
     const hasOrd = f.ordinary && f.ordinary !== "none";
     if (hasOrd && !f.counterchange) checkMark(f.ordinaryTincture, grounds, "ordinary", g, strict);
     if (p.isFlag && p.ornaments.canton) checkMark(p.ornaments.cantonColor, grounds, "canton-flag", g, strict);
-    if (f.fimbriation) { seen.fimbriation++; checkMark(f.fimbriation, [...grounds, f.ordinaryTincture], "fimbriation", g, false); }
+    if (f.fimbriation) {
+      seen.fimbriation++;
+      // a separator is audited on its JOB: the band plus same-class grounds
+      checkMark(f.fimbriation, [f.ordinaryTincture, ...grounds.filter(gr => classOf(gr) === classOf(f.ordinaryTincture))], "fimbriation", g, false);
+    }
     if (f.chief) checkMark(f.subTincture, grounds, "chief", g, strict);
     if (f.bordure) checkMark(f.subTincture, grounds, "bordure", g, strict);
     const m = p.motif;
@@ -188,7 +192,7 @@ function audit(g) {
         checkMark(m.panel.tincture, grounds, "panel", g, strict);
         checkMark(m.tincture, [m.panel.tincture], "charge-on-panel", g, false);
       } else checkMark(m.tincture, grounds, "charge", g, strict);
-      if (m.fimbriation) checkMark(m.fimbriation, [...grounds, m.tincture], "charge-fimbriation", g, false);
+      if (m.fimbriation) checkMark(m.fimbriation, [m.tincture, ...grounds.filter(gr => classOf(gr) === classOf(m.tincture))], "charge-fimbriation", g, false);
       if (m.behind && m.arrange !== "seme") fail("behind flag on non-seme", g);
     }
   } else if (p.motif) {
@@ -262,6 +266,33 @@ for (let i = 0; i < 60; i++) {
   asFlag.genes[SUB] = 0.25; asFlag.genes[COMP] = 0.1;
   if (!blazonGenome(asFlag).includes("in the canton the union:")) fail("marshalled cloth should blazon as an ensign");
   if (emblemSVG(asFlag, 160, 160).length < 400) fail("ensign failed to render");
+}
+
+// ── 5a2: the superimposed union + the pall's mouth (constructed) ──
+{
+  const SUB = GENES.indexOf("substrate"), COMP = GENES.indexOf("composition"), ORD = GENES.indexOf("hueC");
+  const fa = foundGenome(555); fa.genes[SUB] = 0.25; fa.genes[COMP] = 0.1; fa.genes[ORD] = 0.81;   // a cross cloth
+  const fb2 = foundGenome(556); fb2.genes[SUB] = 0.25; fb2.genes[COMP] = 0.1; fb2.genes[ORD] = 0.86; // a saltire cloth
+  const un = crossGenome(fa, fb2, 9);
+  un.genes[SUB] = 0.25; un.genes[COMP] = 0.1; un.genes[ORD] = 0.86;
+  const bz = blazonGenome(un);
+  if (!bz.includes("surmounted, for the union")) fail(`two band-led cloths should fuse by superimposition (${bz})`);
+  if (emblemSVG(un, 160, 160).length < 400) fail("superimposed union failed to render");
+  // the pall's mouth: couched pall + fimbriation encloses a wedge
+  const MC = GENES.indexOf("motifCount"), PART = GENES.indexOf("partition"),
+    HA = GENES.indexOf("hueA"), CH = GENES.indexOf("chroma"), VA = GENES.indexOf("value");
+  let sawMouth = false;
+  for (let seed = 1; seed < 3000 && !sawMouth; seed++) {
+    const g = foundGenome(seed);
+    g.genes[SUB] = 0.25; g.genes[COMP] = 0.1; g.genes[ORD] = 0.97; g.genes[MC] = 0.75;
+    g.genes[PART] = 0.17; g.genes[HA] = 0.58; g.genes[CH] = 0.85; g.genes[VA] = 0.35;
+    const p = expressGenome(g);
+    if (p.field.ordinary === "pall" && p.field.pallMouth) {
+      sawMouth = true;
+      if (!blazonGenome(g).includes("enclosing at the hoist")) fail("pall mouth missing from blazon");
+    }
+  }
+  if (!sawMouth) fail("pall mouth unreachable under pinned genes");
 }
 
 // ── 5b: the continuum — a shield can still WALK into a modern flag under

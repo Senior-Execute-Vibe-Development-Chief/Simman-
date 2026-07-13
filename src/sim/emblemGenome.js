@@ -370,6 +370,15 @@ function nearestTincture(rgb, names) {
   return best;
 }
 const T = name => ({ name, kind: TINCTURES[name].kind, rgb: TINCTURES[name].rgb });
+// what SEPARATES sewn pieces is never a design statement: it is undyed
+// cloth showing between them, or soot when the pieces run pale — whichever
+// stands farther from everything it touches (a two-member constructive
+// pick, like the two-pole modes')
+const sepPick = touch => {
+  const a = T("argent"), s = T("sable");
+  const dmin = c => Math.min(...touch.map(g => dE(c.rgb, g.rgb)));
+  return dmin(a) >= dmin(s) ? a : s;
+};
 // ── the DYER'S WHEEL: a colour intent is a dye-vat, not a spectrometer.
 // Hue availability follows the great dyestuffs — madder and kermes reds, weld
 // and saffron golds, woad and indigo blues, copper and sap greens — while true
@@ -435,7 +444,9 @@ function namedDyeDark(u, val, exclude, bunting) {
   let members = v.members;
   if (bunting) members = TINCTURES[members[0]].kind === "stain" ? []
     : members.filter(n => TINCTURES[n].kind !== "stain");
-  let cands = [...members.filter(n => TINCTURES[n].kind !== "metal"), "sable"];
+  // the painter keeps soot beside every vat; the MILL dyes the intended
+  // colour when it has one — soot is the fallback, not a rival
+  let cands = [...members.filter(n => TINCTURES[n].kind !== "metal"), ...(bunting ? [] : ["sable"])];
   if (exclude) cands = cands.filter(n => n !== exclude);
   if (!cands.length) cands = (bunting ? BOLTS : DARKS).filter(n => TINCTURES[n].kind !== "metal" && n !== exclude);
   return nearestTincture(hsl(v.hue, 0.75, v.lo + val * (v.hi - v.lo)), cands);
@@ -450,8 +461,18 @@ const classOf = t => (t.kind === "metal" ? "metal" : "dark");
 // between any metal and any dark. A reused bolt that clears this bar reads at
 // least as well as the rule of tincture ever promises.
 const OPPOSITION_FLOOR = Math.min(...METALS.flatMap(m => DARKS.map(d => dE(TINCTURES[m].rgb, TINCTURES[d].rgb))));
-// a flag is sewn from named bolts: the nearest standard one to any colour
-const toBolt = t => T(nearestTincture(t.rgb, BOLTS));
+// a flag is sewn from named bolts. Dye LOTS are saturated by nature: a
+// PALE order duller than the dullest dyed bolt isn't a dye at all — it
+// ships as UNDYED cloth (why dusty pigment traditions fly white, not
+// mustard); every other order takes the nearest standard lot, soot
+// included by plain nearness.
+const DYE_CHROMA_MIN = Math.min(...["or", "gules", "azure", "vert", "purpure"]
+  .map(n => Math.hypot(T_LAB[n][1], T_LAB[n][2])));
+const toBolt = t => {
+  const lab = oklab(t.rgb);
+  if (Math.hypot(lab[1], lab[2]) < DYE_CHROMA_MIN && lab[0] > CLASS_L) return T("argent");
+  return T(nearestTincture(t.rgb, BOLTS));
+};
 
 // What a mark WEARS follows from what it LIES ON — the rule of tincture as a
 // constructive rule, not a post-hoc contrast fix:
@@ -485,10 +506,14 @@ function tinctureOn(grounds, hue, val, poles = [], opts = {}) {
   if (uniform) {
     // on a metal ground the mark is DYED cloth — named by its vat; on a dark
     // ground it is METAL thread — gilt when the intent runs warm, silver when
-    // pale or cool
+    // pale or cool. On BUNTING there is no thread: the light mark is either
+    // UNDYED cloth (argent — the mill's default, and the reason white
+    // dominates real flags) or a yellow dye lot, so the pick follows the
+    // intent's own saturation instead of a painter's fixed gilt.
+    const msat = opts.bunting && opts.chroma != null ? 0.25 + opts.chroma * 0.65 : 0.3;
     return classOf(grounds[0]) === "metal"
       ? T(namedDyeDark(hue, val, null, opts.bunting))
-      : T(nearestTincture(hsl(dyeHue(hue), 0.3, 0.62 + val * 0.3), METALS));
+      : T(nearestTincture(hsl(dyeHue(hue), msat, 0.62 + val * 0.3), METALS));
   }
   let best = null, bd = -1;
   for (const c of [...poles, ...(opts.bunting ? BOLTS : T_NAMES).map(T)]) {
@@ -538,20 +563,35 @@ function decodePalette(get, bunting) {
     // deep dull one sable, so METAL FIELDS emerge exactly where the genes
     // imply them; stains only ever claim their own narrow vats
     fieldT = T(namedDyeField(hA, 0.25 + chroma * 0.65, val, bunting));
-    chargeT = tinctureOn([fieldT], hB, val, [], { bunting });
+    chargeT = tinctureOn([fieldT], hB, val, [], { bunting, chroma });
     // the partition companion: a second dark beside a dark field when the
     // secondary gene asks for one (colour-and-colour parties are lawful), else
     // the opposite class — the classic party of colour and metal
-    companionT = classOf(fieldT) === "dark" && get("secondary") > 0.5
+    // colour-and-colour parties are lawful but read poorly at distance —
+    // on cloth they need a stronger intent (the same legibility economics
+    // that empties flags of beasts); shields keep the painter's window
+    companionT = classOf(fieldT) === "dark" && get("secondary") > (bunting ? 0.75 : 0.5)
       ? T(namedDyeDark(hB, val, fieldT.name, bunting))
       : chargeT;
     accentT = chargeT;
   }
   // a FLAG is sewn from the bunting shelf whatever the tradition: the silk's
-  // and the pigment's continuous colours come back as their nearest standard
-  // bolts (ink and bone are already sable and argent), the same substrate
-  // reinterpretation that keeps vair off cloth
-  if (bunting) {
+  // and the pigment's continuous FIELD comes back as its nearest standard
+  // bolt — and because the mill only sews named bolts, the marks are then
+  // re-derived AGAINST that bolt by the same constructive rules the
+  // heraldic mode uses (a raw-space pick snapped after the fact can land on
+  // its own ground; a bolt-space derivation cannot)
+  if (bunting && (mode === "imperial" || mode === "earth")) {
+    fieldT = toBolt(fieldT);
+    chargeT = tinctureOn([fieldT], hB, val, [], { bunting, chroma });
+    companionT = classOf(fieldT) === "dark" && get("secondary") > 0.75
+      ? T(namedDyeDark(hB, val, fieldT.name, true))
+      : chargeT;
+    accentT = chargeT;
+    poles = poles.map(toBolt);
+  } else if (bunting) {
+    // heraldic and monochrome already live in bolt space; the achromatics
+    // (ink, bone) just take their named bolts
     fieldT = toBolt(fieldT); companionT = toBolt(companionT);
     chargeT = toBolt(chargeT); accentT = toBolt(accentT);
     poles = poles.map(toBolt);
@@ -643,7 +683,7 @@ export function expressGenome(genome) {
   // the tincture any mark lying on this field wears — chargeT was constructed
   // against the plain field; every other ground (a party, a fur) re-derives
   const markT = grounds.length === 1 && grounds[0] === pal.fieldT ? pal.chargeT
-    : tinctureOn(grounds, get("hueB"), get("value"), pal.poles, { bunting: isFlag });
+    : tinctureOn(grounds, get("hueB"), get("value"), pal.poles, { bunting: isFlag, chroma: get("chroma") });
   const mixedGround = new Set(grounds.map(g => g.kind === "metal" ? "metal" : "dark")).size > 1;
   if (field.fur === "fretty") {
     // the lattice is a mark on the field: it wears what reads there
@@ -671,9 +711,24 @@ export function expressGenome(genome) {
     // FIMBRIATION on flags: the thin separating outline (a Nordic cross's
     // white edge) — its tincture picked to read against EVERYTHING it
     // separates, band and field bands alike
-    if (isFlag && field.ordinary !== "none" && !field.counterchange && get("motifCount") > 0.6) {
-      const fb = tinctureOn([...grounds, markT], get("hueA"), get("value"), pal.poles, { bunting: isFlag });
+    // FIMBRIATION exists to do a JOB: separating same-class neighbours (a
+    // colour band on a colour ground — its rule-of-tincture function). A
+    // metal band on a dark field needs none and real flags fly none; and
+    // the separator itself is undyed cloth or soot, never a statement.
+    if (isFlag && field.ordinary !== "none" && !field.counterchange && get("motifCount") > 0.6
+      && grounds.some(g => classOf(g) === classOf(markT))) {
+      // the separator is judged on its JOB: the band and the grounds of the
+      // band's own class (it may run invisibly across the others — the
+      // white fimbriation crossing a white region is the real construction)
+      const fb = sepPick([markT, ...grounds.filter(g => classOf(g) === classOf(markT))]);
       field.fimbriation = fb.rgb; field.fimbName = fb.name;
+      // a fimbriated COUCHED PALL encloses its hoist MOUTH: the wedge the
+      // arms embrace takes its own statement colour, picked to stand off
+      // from band and field alike (the full unity-Y construction)
+      if (field.ordinary === "pall") {
+        const mt = tinctureOn([markT, ...grounds], get("hueA"), get("value"), pal.poles, { bunting: true, chroma: get("chroma") });
+        field.pallMouth = mt.rgb; field.pallMouthName = mt.name;
+      }
     }
   }
 
@@ -740,7 +795,7 @@ export function expressGenome(genome) {
           arrange = slot === "on" ? "onOrdinary" : "between";
           slots = pts;
           tilt = (slot === "on" && spec.tilt) || 0;
-          if (slot === "on") tincture = tinctureOn([markT], get("hueA"), get("value"), [], isFlag ? { bunting: true, flying: grounds } : {});
+          if (slot === "on") tincture = tinctureOn([markT], get("hueA"), get("value"), [], isFlag ? { bunting: true, flying: grounds, chroma: get("chroma") } : {});
         }
       } else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value"), [], { bunting: isFlag }); }
     } else {
@@ -794,7 +849,7 @@ export function expressGenome(genome) {
     // (the tincture rule, one layer up). A figure never boards the canton.
     const housed = isFlag && composition === "heraldic" && !hasOrdinary && compact
       && get("star") > 0.62 && (arrange === "single" || arrange === "array");
-    if (housed) tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds });
+    if (housed) tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds, chroma: get("chroma") });
     // repeated / housed / band-riding devices draw from the flag vocabulary
     if (isFlag && compact && (array || housed || slots) && FLAG_SIMPLE[cat]) {
       const p2 = FLAG_SIMPLE[cat];
@@ -812,9 +867,10 @@ export function expressGenome(genome) {
         // the panel may be a disc, a lozenge, or an INESCUTCHEON — the small
         // state-arms shield modern flags carry at their centre
         panel = { shape: pickEnum(get("symmetry"), PANEL_SHAPES), tincture: markT.rgb, name: markT.name };
-        tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds });
-      } else if (arrange === "single" && get("motifCount") > 0.6) {
-        fimb = tinctureOn([...grounds, tincture], get("hueA"), get("value"), pal.poles, { bunting: true });
+        tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds, chroma: get("chroma") });
+      } else if (arrange === "single" && get("motifCount") > 0.6
+        && grounds.some(g => classOf(g) === classOf(tincture))) {
+        fimb = sepPick([tincture, ...grounds.filter(g => classOf(g) === classOf(tincture))]);
       }
     }
     if (arrange) motif = { id, cat, tincture: tincture.rgb, tinctureName: tincture.name, counterchange, behind,
@@ -978,9 +1034,22 @@ export function blazonGenome(genome) {
   if (genome.quarters && genome.quarters.length > 1) {
     // marshalled CLOTH blazons as an ensign — the senior coat in the canton,
     // the house's own style as the field; shields enumerate their quarters
-    if (expressGenome(genome).isFlag) {
+    const pOwn = expressGenome(genome);
+    if (pOwn.isFlag) {
       const own = blazonGenome({ genes: genome.genes, gen: genome.gen, seed: genome.seed, cadency: genome.cadency });
-      const un = blazonGenome({ genes: genome.quarters[0].genes, gen: genome.quarters[0].gen, seed: genome.quarters[0].seed });
+      // two band-led cloths FUSE by superimposition (the 1606 construction):
+      // the senior's cross rides over the whole, separated by undyed cloth
+      const q = genome.quarters[0];
+      const qGenes = q.genes.slice(); qGenes[IDX.substrate] = genome.genes[IDX.substrate];
+      const q0 = expressGenome({ genes: qGenes, gen: q.gen || 0, seed: q.seed });
+      const OV = ["cross", "saltire"];
+      if (pOwn.composition === "heraldic" && q0.composition === "heraldic"
+        && OV.includes(pOwn.field.ordinary) && OV.includes(q0.field.ordinary)
+        && pOwn.field.ordinary !== q0.field.ordinary) {
+        const sep = q0.field.ordinaryName === "argent" ? "Sable" : "Argent";
+        return `${own}; surmounted, for the union, by a ${ordName(q0.field.ordinary)} ${tName(q0.field.ordinaryName)} fimbriated ${sep}`;
+      }
+      const un = blazonGenome({ genes: q.genes, gen: q.gen, seed: q.seed });
       return `${own}; in the canton the union: ${un}`;
     }
     const qs = genome.quarters.map(q => blazonGenome({ genes: q.genes, gen: q.gen, seed: q.seed }));
@@ -1012,12 +1081,13 @@ export function blazonGenome(genome) {
   const nOrd = (hasOrd && f.ordinaryCount) || 1;
   const oFimb = hasOrd && f.fimbriation ? ` fimbriated ${tName(f.fimbName)}` : "";
   const mFimb = m && m.fimbriation ? ` fimbriated ${tName(m.fimbName)}` : "";
+  const oMouth = hasOrd && f.pallMouth ? `, enclosing at the hoist a wedge ${tName(f.pallMouthName)}` : "";
   const ordClause = nOrd > 1 ? `${NUMWORD[nOrd]} ${pluralize(DIM_NAME[f.ordinary])}${oLn} ${oT}${oFimb}`
-    : hasOrd ? `a ${couch(f.ordinary)}${oLn} ${oT}${oFimb}` : "";
+    : hasOrd ? `a ${couch(f.ordinary)}${oLn} ${oT}${oFimb}${oMouth}` : "";
   if (hasOrd && m && m.arrange === "between") {
-    parts.push(`${ordClause} between ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+    parts.push(`${ordClause} between ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);   // ordClause already carries the mouth
   } else if (hasOrd && m && m.arrange === "onOrdinary") {
-    parts.push(`on a ${couch(f.ordinary)}${oLn} ${oT}${oFimb} ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+    parts.push(`on a ${couch(f.ordinary)}${oLn} ${oT}${oFimb} ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}${oMouth}`);
   } else {
     if (hasOrd) parts.push(ordClause);
     if (m && m.arrange !== "seme") {
@@ -1087,4 +1157,4 @@ export function describeGenome(genome) {
   return bits.join(" · ");
 }
 
-export { SUBSTRATES, COMPOSITIONS, PALETTES, MOTIFS, MOTIF_CATS, INK, BONE, GOLD };
+export { SUBSTRATES, COMPOSITIONS, PALETTES, MOTIFS, MOTIF_CATS, INK, BONE, GOLD, BUNTING_RGB };

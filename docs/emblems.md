@@ -183,6 +183,27 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     blazon stay in the painter's space; only the woven cloth's rgb swaps
     (classes and legibility re-verified: the recipes' metal↔dark floor,
     0.397, exceeds the paint's own 0.152).
+  - **The mill's defaults** — WHITE is undyed cloth, the default bolt: a
+    pale order duller than the dullest dye lot ships undyed (why dusty
+    pigment traditions fly white, not mustard); the light mark on a dark
+    ground follows the intent's own saturation (undyed vs a yellow lot),
+    so white leads gold everywhere, as on Earth. Colour-and-colour parties
+    need a stronger intent on cloth (legibility economics); silks and
+    pigments re-derive their marks IN BOLT SPACE against the snapped field.
+  - **Fimbriation is a function, not a fashion** — it fires only when it
+    has a job (a colour band on a colour ground, its rule-of-tincture
+    purpose; a metal band needs none and real flags fly none), and the
+    separator is undyed cloth or soot — judged only against the band and
+    the grounds of the band's own class (it may run invisibly across the
+    rest, the real construction). A fimbriated couched PALL encloses its
+    hoist MOUTH: the embraced wedge takes its own statement colour — the
+    full unity-Y.
+  - **The superimposed union** — when two BAND-LED cloths (a cross and a
+    saltire) marshal, the union doesn't fly a canton: the senior's band
+    rides over the whole field, separated by undyed cloth (the 1606
+    construction as a mechanism). Blazoned "…; surmounted, for the union,
+    by a cross Argent fimbriated Sable". All other unions keep the
+    canton-ensign.
   - **The sewing economy** — a mark lying on another mark reuses a bolt
     already flying whenever it reads (class opposition on a uniform
     ground; at least the palette's own metal↔dark minimum on a mixed one).
