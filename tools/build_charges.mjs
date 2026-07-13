@@ -3,6 +3,10 @@
 // Drop heraldic charge SVGs into assets/charges-src/, named by the charge id the
 // grammar uses (lion.svg, eagle.svg, dragon.svg, …; see src/sim/heraldry.js
 // CHARGES). Then run:  node tools/build_charges.mjs
+// …and AFTERWARDS run  node tools/measure_charges.mjs  — sources often declare
+// a viewBox their content does not actually occupy (cropped fragments, root
+// translates, zero-matrix hidden groups); that tool measures the real artwork
+// in a browser and re-anchors every entry's vb to its true bounds.
 //
 // It strips a full-canvas background, auto-detects the recolour placeholder (the
 // dominant coloured fill — e.g. Armoria's #d7374a, or a solid silhouette's one
