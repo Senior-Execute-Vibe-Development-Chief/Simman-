@@ -70,6 +70,22 @@ export const PRIMITIVES = {
 const oriented = (m, s, cx, cy) => !m.attitude ? s
   : `<g transform="${m.attitude === "inverted" ? `rotate(180 ${F(cx)} ${F(cy)})` : `translate(${F(2 * cx)},0) scale(-1,1)`}">${s}</g>`;
 
+// one DEVICE at a point: optional contrasting PANEL beneath (the bounded
+// disc/lozenge of modern flags), optional FIMBRIATION halo (a slightly larger
+// under-copy in the separating tincture), then the charge, then attitude
+function deviceAt(m, mx, my, b) {
+  let s = "";
+  if (m.panel) {
+    s += m.panel.shape === "disc"
+      ? `<circle cx="${F(mx)}" cy="${F(my)}" r="${F(b * 0.62)}" fill="${css(m.panel.tincture)}"/>`
+      : `<polygon points="${F(mx)},${F(my - b * 0.68)} ${F(mx + b * 0.68)},${F(my)} ${F(mx)},${F(my + b * 0.68)} ${F(mx - b * 0.68)},${F(my)}" fill="${css(m.panel.tincture)}"/>`;
+    b *= 0.78;
+  }
+  if (m.fimbriation) s += motif(m.id, mx - b * 0.545, my - b * 0.545, b * 1.09, m.fimbriation);
+  s += motif(m.id, mx - b / 2, my - b / 2, b, m.tincture);
+  return oriented(m, s, mx, my);
+}
+
 // ── a motif: a vector primitive if one owns the id, else recoloured charge art ──
 function motif(id, x, y, box, colRGB) {
   const prim = PRIMITIVES[id];
@@ -252,6 +268,9 @@ function heraldicOverlay(w, h, f, sh, base, flag) {
         + `<g clip-path="url(#${cA})"><path d="${path}" fill="${B}"/></g>`
         + `<g clip-path="url(#${cB})"><path d="${path}" fill="${A}"/></g>`;
     } else {
+      // FIMBRIATION: the thin separating outline of modern flags — a stroke
+      // beneath the band, half of it left showing past the fill
+      if (f.fimbriation) s += `<path d="${path}" fill="none" stroke="${css(f.fimbriation)}" stroke-width="${F(Math.min(w, h) * 0.055)}" stroke-linejoin="round"/>`;
       s += `<path d="${path}" fill="${oc}"/>`;
     }
   }
@@ -443,7 +462,7 @@ function placeMotif(m, w, h, substrate) {
   const base = Math.min(w, h), tap = substrate === "shield" || substrate === "pennon" || substrate === "lozenge";
   let box = base * (m.arrange === "three" ? 0.34 : 0.6) * m.scale / 0.5;
   if (tap) box *= 0.85;                                  // leave room inside the taper
-  const one = (mx, my, b) => oriented(m, motif(m.id, mx - b / 2, my - b / 2, b, m.tincture), mx, my);
+  const one = (mx, my, b) => deviceAt(m, mx, my, b);
   if (m.arrange === "three") return one(w * 0.3, h * (tap ? 0.34 : 0.32), box) + one(w * 0.7, h * (tap ? 0.34 : 0.32), box) + one(w * 0.5, h * (tap ? 0.63 : 0.7), box * 0.9);
   if (m.arrange === "inPale") return one(w / 2, h * 0.3, box * 0.8) + one(w / 2, h * (tap ? 0.6 : 0.66), box * 0.8);
   if (m.arrange === "seme") { let s = ""; for (let ry = 0; ry < 3; ry++) for (let c = 0; c < 3; c++) s += one((c + 0.5) * w / 3, (ry + 0.5) * h / 3, base * 0.16); return s; }
@@ -520,7 +539,7 @@ function coatContent(p, w, h, rng) {
     content += `<rect width="${w}" height="${h}" fill="${css(C.field)}"/>`;
     if (p.composition === "central" && p.motif) {
       const f = centralFit(p.substrate, w, h, base);
-      content += oriented(p.motif, motif(p.motif.id, f.cx - f.box / 2, f.cy - f.box / 2, f.box, p.motif.tincture), f.cx, f.cy);
+      content += deviceAt(p.motif, f.cx, f.cy, f.box);
       if (p.ornaments.cornerAccent) content += sunDisc(w * 0.82, h * 0.2, base * 0.05, C.accent);
     } else if (p.composition === "radial" && p.motif) {
       content += `<circle cx="${cxm}" cy="${cym}" r="${base * 0.4}" fill="none" stroke="${css(C.companion)}" stroke-width="${base * 0.035}"/>`;

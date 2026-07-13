@@ -468,6 +468,13 @@ export function expressGenome(genome) {
     field.subTincture = markT.rgb;                     // chief/bordure share the reading tincture
     // counterchange the ordinary across a two-region partition (per pale/fess/bend)
     field.counterchange = !field.fur && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
+    // FIMBRIATION on flags: the thin separating outline (a Nordic cross's
+    // white edge) — its tincture picked to read against EVERYTHING it
+    // separates, band and field bands alike
+    if (isFlag && field.ordinary !== "none" && !field.counterchange && get("motifCount") > 0.6) {
+      const fb = tinctureOn([...grounds, markT], get("hueA"), get("value"), pal.poles);
+      field.fimbriation = fb.rgb; field.fimbName = fb.name;
+    }
   }
 
   // motif — a figurative composition carries a charge. Low iconism forbids LIVING
@@ -526,8 +533,21 @@ export function expressGenome(genome) {
     // ATTITUDE: rarely a charge is borne INVERTED or turned TO SINISTER —
     // the tails of the sunDisc gene, otherwise idle for charges
     const attitude = get("sunDisc") < 0.12 ? "inverted" : get("sunDisc") > 0.88 ? "sinister" : null;
+    // FLAG DETAILING: a single device may sit on a bounded PANEL (disc or
+    // lozenge — the charge then dresses against the panel, the tincture rule
+    // applied recursively), or wear a FIMBRIATION halo; both are how modern
+    // flags separate a figure from a busy ground
+    let panel = null, fimb = null;
+    if (isFlag && !hasOrdinary && !counterchange && (composition === "heraldic" || composition === "central")) {
+      if (arrange === "single" && get("crescent") > 0.56 && get("crescent") <= 0.74) {
+        panel = { shape: get("symmetry") > 0.5 ? "disc" : "lozenge", tincture: markT.rgb, name: markT.name };
+        tincture = tinctureOn([markT], get("hueA"), get("value"));
+      } else if (arrange !== "seme" && get("motifCount") > 0.6) {
+        fimb = tinctureOn([...grounds, tincture], get("hueA"), get("value"), pal.poles);
+      }
+    }
     if (arrange) motif = { id, cat, tincture: tincture.rgb, tinctureName: tincture.name, counterchange, behind,
-      slots, tilt, attitude,
+      slots, tilt, attitude, panel, fimbriation: fimb ? fimb.rgb : null, fimbName: fimb ? fimb.name : null,
       count: slots ? slots.length : arrange === "three" ? 3 : arrange === "inPale" ? 2 : 1, arrange,
       scale: (composition === "central" ? 0.86 : composition === "radial" ? 0.7 : 0.5) * (0.75 + get("motifScale") * 0.5) };
   }
@@ -684,19 +704,22 @@ export function blazonGenome(genome) {
   const oT = hasOrd ? (f.counterchange ? "counterchanged" : tName(f.ordinaryName)) : "";
   const DIM_NAME = { fess: "bar", pale: "pallet", bend: "bendlet", bendSinister: "scarpe", chevron: "chevronel" };
   const nOrd = (hasOrd && f.ordinaryCount) || 1;
-  const ordClause = nOrd > 1 ? `${NUMWORD[nOrd]} ${pluralize(DIM_NAME[f.ordinary])}${oLn} ${oT}`
-    : hasOrd ? `a ${ordName(f.ordinary)}${oLn} ${oT}` : "";
+  const oFimb = hasOrd && f.fimbriation ? ` fimbriated ${tName(f.fimbName)}` : "";
+  const mFimb = m && m.fimbriation ? ` fimbriated ${tName(m.fimbName)}` : "";
+  const ordClause = nOrd > 1 ? `${NUMWORD[nOrd]} ${pluralize(DIM_NAME[f.ordinary])}${oLn} ${oT}${oFimb}`
+    : hasOrd ? `a ${ordName(f.ordinary)}${oLn} ${oT}${oFimb}` : "";
   if (hasOrd && m && m.arrange === "between") {
     parts.push(`${ordClause} between ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
   } else if (hasOrd && m && m.arrange === "onOrdinary") {
-    parts.push(`on a ${ordName(f.ordinary)}${oLn} ${oT} ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
+    parts.push(`on a ${ordName(f.ordinary)}${oLn} ${oT}${oFimb} ${m.count === 1 ? `a ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);
   } else {
     if (hasOrd) parts.push(ordClause);
     if (m && m.arrange !== "seme") {
-      if (m.arrange === "three") parts.push(`three ${pluralize(mName)} ${mT}`);
-      else if (m.arrange === "inPale") parts.push(`two ${pluralize(mName)} in pale ${mT}`);
+      if (m.arrange === "three") parts.push(`three ${pluralize(mName)} ${mT}${mFimb}`);
+      else if (m.arrange === "inPale") parts.push(`two ${pluralize(mName)} in pale ${mT}${mFimb}`);
       else if (p.composition === "radial") parts.push(`a ${mName} ${mT} within an annulet`);
-      else parts.push(`a ${mName} ${mT}`);
+      else if (m.panel) parts.push(`a ${m.panel.shape === "disc" ? "roundel" : "lozenge"} ${tName(m.panel.name)} charged with a ${mName} ${mT}`);
+      else parts.push(`a ${mName} ${mT}${mFimb}`);
     }
   }
   if (f.chief) parts.push(`a chief${f.line !== "straight" ? ` ${f.line}` : ""} ${tName(f.ordinaryName)}`);

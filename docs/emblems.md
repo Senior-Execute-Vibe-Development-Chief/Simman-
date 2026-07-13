@@ -111,10 +111,16 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
 - **Substrates**: shield (heater / Iberian / French / kite outlines), banner,
   roundel, pennon, gonfalon, lozenge. Flag substrates get vexillological
   grammar: Nordic cross toward the hoist, hoist-pointing pile, true
-  rectangular canton.
+  rectangular canton, **fimbriation** (a separating outline on an ordinary
+  or around a charge, tincture chosen by the same argmax rule against
+  *everything it touches*), and **device panels** (a disc or lozenge ground
+  bounding the charge, the charge re-derived against the panel — the
+  tincture rule applied recursively).
 - **Partitions**: per pale/fess/bend, quarterly, gyronny, per saltire, per
-  chevron, barry, paly, **chequy**, **lozengy** — edges in line-styles
-  (wavy, engrailed, embattled, indented).
+  chevron, barry, paly, **chequy**, **lozengy**, **tierced** (in pale /
+  in fess — the tricolour, third tincture constructed against both
+  neighbours) — edges in line-styles (wavy, engrailed, embattled,
+  indented).
 - **Field treatments**: ermine, vair (real grounds — marks pick against
   argent / argent+azure), **fretty**, **masoned**.
 - **Ordinaries**: fess, pale, bend, bend sinister, chevron, cross, saltire,

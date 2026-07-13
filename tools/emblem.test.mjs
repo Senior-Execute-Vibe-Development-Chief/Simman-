@@ -41,7 +41,7 @@ const ARGENT = TINCTURES.argent.rgb, AZURE = TINCTURES.azure.rgb;
 
 let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
-const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0 };
+const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0 };
 const fail = (msg, g) => { if (fails++ < 10) console.error(`  FAIL ${msg}${g ? `\n       ${describeGenome(g)}` : ""}`); };
 
 function checkMark(mark, grounds, what, g, strict) {
@@ -76,6 +76,7 @@ function audit(g) {
     const hasOrd = f.ordinary && f.ordinary !== "none";
     if (hasOrd && !f.counterchange) checkMark(f.ordinaryTincture, grounds, "ordinary", g, strict);
     if (p.isFlag && p.ornaments.canton) checkMark(p.ornaments.cantonColor, grounds, "canton-flag", g, strict);
+    if (f.fimbriation) { seen.fimbriation++; checkMark(f.fimbriation, [...grounds, f.ordinaryTincture], "fimbriation", g, false); }
     if (f.chief) checkMark(f.subTincture, grounds, "chief", g, strict);
     if (f.bordure) checkMark(f.subTincture, grounds, "bordure", g, strict);
     const m = p.motif;
@@ -89,12 +90,21 @@ function audit(g) {
         checkMark(m.tincture, grounds, "charge-between", g, strict);
       } else if (m.counterchange) {
         if (!["perPale", "perFess", "perBend"].includes(f.partition)) fail("counterchange on non-2-region partition", g);
+      } else if (m.panel) {
+        seen.panel++;
+        checkMark(m.panel.tincture, grounds, "panel", g, strict);
+        checkMark(m.tincture, [m.panel.tincture], "charge-on-panel", g, false);
       } else checkMark(m.tincture, grounds, "charge", g, strict);
+      if (m.fimbriation) checkMark(m.fimbriation, [...grounds, m.tincture], "charge-fimbriation", g, false);
       if (m.behind && m.arrange !== "seme") fail("behind flag on non-seme", g);
     }
   } else if (p.motif) {
     const strict = p.colors.mode === "heraldic" || p.colors.mode === "monochrome";
-    checkMark(p.motif.tincture, [p.colors.field], `charge(${p.composition})`, g, strict);
+    if (p.motif.panel) {
+      seen.panel++;
+      checkMark(p.motif.panel.tincture, [p.colors.field], "panel", g, strict);
+      checkMark(p.motif.tincture, [p.motif.panel.tincture], "charge-on-panel", g, false);
+    } else checkMark(p.motif.tincture, [p.colors.field], `charge(${p.composition})`, g, strict);
   }
 }
 
