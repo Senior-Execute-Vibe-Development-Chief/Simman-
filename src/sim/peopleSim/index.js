@@ -46,7 +46,7 @@ import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
 import { updateFaiths, FAITH_INTERVAL, updatePilgrimage, PILGRIM_INTERVAL } from "./faiths.js";
 import { updateSlaveTrade, SLAVE_INTERVAL } from "./slavery.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
-import { diffuseIdentityField } from "./identityField.js";
+import { diffuseIdentityField, stepIdentityField, IDENT_FIELD_INTERVAL } from "./identityField.js";
 import { stepPopField } from "./popField.js";
 import { stepControlField } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
@@ -309,6 +309,12 @@ export function stepPeopleSim(world, n = 1) {
     // Peoples: assimilation toward the ruler's culture, colonial divergence,
     // per-polity culture refresh (cultures.js).
     if (_at(CULTURE_INTERVAL, 41)) updateCultures(world);
+    // Stage 2 (T.TILE_IDENTITY): the land's own culture layer — tiles keep
+    // their mix across conquest and assimilate toward their governing city on
+    // the attachment clock; stamps each province's countryside identity
+    // (s._rurCulMix) for the cohesion consumers. Right after the culture pass
+    // so city mixes are fresh. Lever 0 → returns immediately (byte-identical).
+    if (T.TILE_IDENTITY > 0 && _at(IDENT_FIELD_INTERVAL, 42)) stepIdentityField(world);
     // Faiths: folk-faith seeding, organized genesis, trade-graph conversion,
     // state adoption + legitimacy, schisms (faiths.js).
     if (_at(FAITH_INTERVAL, 43)) updateFaiths(world);

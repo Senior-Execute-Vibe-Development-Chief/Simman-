@@ -5,6 +5,11 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
+// Identity Stage 2 (T.TILE_IDENTITY, default 0 — the sticky per-tile culture
+// layer + irredentist/rural-cohesion consumers) is byte-TRANSPARENT off: this
+// pair AND the 480 reference pair verified unchanged with the code in. The
+// lever-on functional gate is tools/probe_identity2.mjs (ghost identity,
+// countryside stamps, v4 top-2 roundtrip).
 // Current baseline (2500 steps): 36e38967/f57f0ddd (development-clock
 // res-invariance, 2026-07: popField cap/seed are per REAL area (÷rNormPop²),
 // and the remaining unscaled cumulative-cost thresholds ride the grid —

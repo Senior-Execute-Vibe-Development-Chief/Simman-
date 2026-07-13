@@ -22,6 +22,7 @@ import { slavePull } from "./slavery.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
+import { tileCulShareOf } from "./identityField.js";
 import { realmName } from "./chronicle.js";
 import { inCrisis } from "./dynasties.js";
 import { getPolity as _getPolity } from "./entities.js";
@@ -518,9 +519,20 @@ export function advanceFronts(world) {
   // brings its era's political question to the war — righteous religion
   // between medieval courts, the national cause once either party
   // industrialises — while two ancient rivals fight ancient wars.
-  const casusOf = (attCC, defCC, tileOwner) => {
+  const casusOf = (attCC, defCC, tileOwner, ti) => {
     const A = capOf.get(attCC), D = capOf.get(defCC);
-    return casusBelliMul(A, D, tileOwner, identityWeightsFor(world, A, D));
+    // T.TILE_IDENTITY: the irredentist term reads THE CONTESTED GROUND's own
+    // people (the per-tile culture field) instead of the tileOwner entity —
+    // under TILE_WAR that entity is the country adapter (no culMix) and the
+    // term was structurally INERT (audit 2026-07 OPEN #3, now wired). Only the
+    // land front passes a tile; the amphibious bars stay pair-level (their
+    // beaches are enumerated after the bar) — undefined there keeps the term
+    // reading 0 under tile-war exactly as before.
+    let tShare;
+    if (T.TILE_IDENTITY > 0 && ti !== undefined && world.tileCulId && A && A.culMix && A.culMix.length) {
+      tShare = tileCulShareOf(world, ti, A.culMix[0][0]);
+    }
+    return casusBelliMul(A, D, tileOwner, identityWeightsFor(world, A, D), tShare);
   };
   // A dominant realm projects military power — it attacks on a slimmer margin, so a
   // great power expands by conquest where the pack stalls (Rome, the Mongols).
@@ -832,14 +844,13 @@ export function advanceFronts(world) {
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
     // (factors hoisted verbatim — same call sequence, same IEEE product chain — so the
     // throughput instrumentation below can attribute a rejection without re-deriving)
-    // NB (audit 2026-07): under TILE_WAR the tileOwner arg is the country ADAPTER,
-    // which has no culMix — casusBelliMul's IRREDENTIST term (the contested
-    // province's own people are the attacker's nation) reads 0, i.e. that term is
-    // INERT in the default mode. The honest local read needs the per-tile identity
-    // field, which today is a render-only lens mirror (identityField.js "nothing
-    // reads the field") — wiring it in is an open item; passing the defender's
-    // capital instead would be linearly redundant with the base people term.
-    const _wb = warBarOf(A.countryId), _cs = casusOf(A.countryId, D.countryId, D),
+    // Irredentism (T.TILE_IDENTITY): passing `ti` lets the casus term read THE
+    // CONTESTED TILE's own people from the identity field — a co-national
+    // countryside under foreign rule lowers the attacker's bar tile by tile
+    // (the audit's "structurally inert under tile-war" item, now wired; lever
+    // off → tShare undefined → the adapter-read 0 of the default mode,
+    // byte-identical).
+    const _wb = warBarOf(A.countryId), _cs = casusOf(A.countryId, D.countryId, D, ti),
           _cl = claimBarOf(A.countryId, D.countryId), _db = domBarOf(A.countryId),
           _cb = coalitionBarOf(A.countryId, D.countryId);
     const bar = effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * _wb * _cs * _cl * _db * _cb;

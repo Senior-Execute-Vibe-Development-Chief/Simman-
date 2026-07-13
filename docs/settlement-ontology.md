@@ -207,3 +207,50 @@ alternative remains open); `natArmy = Σ member garrisons` (cities host troops �
 now the pool above it is field-based); and the per-province IDENTITY mixes
 (cohesion reads city mixes — the rural majority has no identity data until the
 per-tile identity field becomes authoritative, Stage 2).
+
+---
+
+## STATUS UPDATE (2026-07-13, later) — identity Stage 2 BUILT (lever, default off)
+
+The last item above — "the rural majority has no identity data until the
+per-tile identity field becomes authoritative, Stage 2" — is now built:
+**T.TILE_IDENTITY** (tuning.js; identityField.js `stepIdentityField`), default
+0 pending the windowed A/B.
+
+- **The culture layer is sim state under the lever**: tiles KEEP their mix on
+  ownership change (conquest recolours the flag, not the people — verified: a
+  6k-step probe run shows ghost identity persisting on 168 tiles that lost
+  their owner) and ASSIMILATE toward their governing city's culMix at
+  r = 1−exp(−dtY·attach/ASSIM_TAU) per firing — the LOYAL_FIELD attachment
+  continuum is the clock, so habituated ground assimilates in the same
+  ~1000-dyn-year band emergent flag-forgetting (HAB_DONE) lands in, and
+  restless conquered ground effectively never does. Owned-but-empty tiles are
+  painted by first colonisation; the field seeds once from the city mirror
+  (fresh world, pre-v4 save, or lever flipped mid-run). Faith/language stay
+  Stage-0 render mirrors; the culture LENS displays the authoritative field
+  (diffuse/mirror guards keep render from clobbering state).
+- **Consumers wired**: (a) the irredentist casus-belli term reads THE
+  CONTESTED TILE's own people at the land front (audit OPEN #3 — structurally
+  inert under tile-war since the adapter has no culMix — now live; the
+  amphibious bars stay pair-level, beaches are enumerated after the bar);
+  (b) every province is stamped `s._rurCulMix` (top-2, popField-weighted) +
+  `s._rurCulPeople` (in CENSUS units via the PROV_FIELD anchor), and
+  absorbResistance's people axis blends town and countryside people-weighted —
+  an EXACT blend (layerMis is linear in the share), so rural identity now
+  exists in cohesion (habituation, absorb, overreach, grievance) and peasant
+  nationalism is expressible. Audit OPEN #2's "rural people have no identity"
+  is closed under the lever.
+- **Persistence**: SAVE_VERSION 3→4 — the culture layer persists top-2
+  quantised (`maps.tileCul2Id/Shr`, ≈6 B/tile; slots 2-3 are re-earned residue).
+  Additive-tolerant: lever-off saves carry no new keys; pre-v4 saves re-seed
+  from the mirror on the first firing. Roundtrip verified byte-equal on the
+  persisted slots (tools/probe_identity2.mjs, top2Mismatch 0, resume clean).
+- **Validation at default off**: probe_hashbase 36e38967/f57f0ddd and the 480
+  reference b9c264b9/100239cd both UNCHANGED (byte-transparent), smoke green.
+  tools/probe_identity2.mjs is the lever-on functional gate.
+
+**Next for this arc**: the windowed lever A/B (16k–30k, 2 seeds) + stylized
+3-seed with TILE_IDENTITY=1, then the flip decision. Expected effects to
+measure: irredentist wars along cultural fault lines, slower absorb of
+culturally-foreign countryside, revolt/secession cadence shifts from the
+rural cohesion term.

@@ -401,6 +401,21 @@ stepped migration); the raw storm radius + flat-tile city footprint (audit
 OPEN #5, topological). All second-order next to what shipped; measure at
 resScale=4 (the app's 1920 default) before hunting them further.
 
+### The resScale=4 spot-check (the app's true default, measured same day)
+
+probe_res_dev 1920/12k/8817: settlements 73 ✓, field 6.5M (0.65×), census
+25.3k (0.64×), org mean .236 (0.62×), claimed 8.5%; probe_empires 1920/24k:
+63 realms / 45.6% / biggest 10.8M, churn alive (a 2.2k-age realm in the
+top-5), org 0.59–0.64 at 24k. VERDICT: functional and enormously better than
+pre-fix (the field would have been ~10×; it is 0.65×), but **a residual
+development-clock lag grows with resScale — ~0.9× at rs=2, ~0.6× at rs=4.**
+The p50 city lags hardest (49 people / org .17) while the leaders are
+near-track — the signature of impaired REDISTRIBUTION, which makes
+POP_MIGRATE's unfixed diffusion coefficient (16× slower real D at rs=4) the
+prime suspect for the next res arc. Sub-stepped migration + re-measure at
+1920 is the designed follow-up; until then the "1×"/tw=480 setting is the
+best-validated shipped grid.
+
 ## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
   (not just capped via comboE): it needs a **NON-multiplicative** limiter — e.g.
