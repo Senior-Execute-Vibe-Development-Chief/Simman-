@@ -45,7 +45,7 @@
 // ("scr:*"). References pin their scripts as scenario data (prof.script).
 
 import { hash32 } from "./peopleSim/rng.js";
-import { compiledInv, nativeStemOf, etymologyOf, wordOf } from "./language.js";
+import { compiledInv, nativeStemOf, etymologyOf, wordOf, loanOf } from "./language.js";
 import { renderWord, romanizeC, romanizeV } from "./languagePhonology.js";
 import { CONCEPTS } from "./languageLexicon.js";
 import { phoneticPlan } from "./languagePhonetics.js";
@@ -122,8 +122,23 @@ const SCRIPTS = new WeakMap();
  *  → { type, dir, hand, born, adoptedAt, frozenAt, reformed, lag, sep,
  *      matres, virama, codaMode, toneWritten, headline, join,
  *      styleSeed, glyphBudget } */
+/** SCRIPT SPREAD: adopt a neighbour's writing tradition — how most scripts
+ *  on Earth actually arrived (Latin, Arabic, Cyrillic each cover dozens of
+ *  tongues; primary invention is the rarity). The borrower takes the
+ *  donor's whole LOOK — type, hand, direction, letterforms — and spells
+ *  ITSELF by ear at adoption; its own orthographic machinery (matres,
+ *  virama, tone marking) is re-derived for its own phonology, and its own
+ *  junctures continue from there. A borrowed costume that fits badly is
+ *  the true Sejong precondition. Additive record field `lang.scr`. */
+export function adoptScriptFrom(lang, donor) {
+  const ds = scriptOf(donor);
+  if (!ds) return null;
+  lang.scr = { type: ds.type, hand: ds.hand, dir: ds.dir, styleSeed: ds.styleSeed >>> 0, from: donor.id ?? 0, at: lang.rules.length };
+  return scriptOf(lang);
+}
+
 export function scriptOf(lang) {
-  const key = lang.rules.length * 1000003 + (lang.gen || 0) * 101 + (lang.xph ? lang.xph.length : 0);
+  const key = lang.rules.length * 1000003 + (lang.gen || 0) * 101 + (lang.xph ? lang.xph.length : 0) + (lang.scr ? (lang.scr.at + 1) * 13 : 0);
   const hit = SCRIPTS.get(lang);
   if (hit && hit.key === key) return hit.script;
   const fam = lang.famSeed ?? lang.seed;
@@ -139,13 +154,22 @@ export function scriptOf(lang) {
     // the record IS the tradition: every language here belongs to a
     // record-keeping people, so writing begins with the record itself —
     // logographic, the accounting-token origin of every primary invention.
+    // UNLESS the tradition ARRIVED: a borrowed script (lang.scr) starts at
+    // its adoption index with the donor's type and whole look — the
+    // Latin/Arabic/Cyrillic path, how most scripts actually spread.
     // (Truly preliterate tongues return with sim-side literacy wiring,
     // parked; everything downstream still keys on accumulated history.)
-    const born = 0;
+    const scr = lang.scr && lang.scr.at <= len ? lang.scr : null;
+    const born = scr ? scr.at : 0;
     {
-      let type = "logo", adoptedAt = born;
+      let type = scr ? scr.type : "logo", adoptedAt = born;
       // re-learning junctures: each is a chance to simplify one ladder step
-      // toward whatever fits THIS language best — or to keep what works
+      // toward whatever fits THIS language best — or to keep what works.
+      // A BORROWED script pays a PRESTIGE TAX to step: abandoning the
+      // civilized neighbour's letters costs legitimacy, so only a
+      // chasm-sized gap moves it (Korea kept Chinese characters for
+      // centuries — and the escape, when it came, was invention)
+      const stepGap = scr ? 0.9 : 0.15;
       const j1 = born + 2 + hash32(fam, "scr:g1") % 3;
       const j2 = j1 + 2 + hash32(fam, "scr:g2") % 4;
       for (const at of [j1, j2]) {
@@ -156,7 +180,7 @@ export function scriptOf(lang) {
         const fits = fitsOf(lang, at);
         let best = null;
         for (const t of LADDER[type]) if (!best || fits[t] > fits[best]) best = t;
-        if (best && fits[best] > fits[type] + 0.15) { type = best; adoptedAt = at; }
+        if (best && fits[best] > fits[type] + stepGap) { type = best; adoptedAt = at; }
       }
       // spelling consolidates on the current type and freezes there — then
       // post-consolidation junctures RECUR as history accumulates (every few
@@ -187,7 +211,7 @@ export function scriptOf(lang) {
           frozenAt = at; reformed = true;                        // the Turkish move
         }
       }
-      script = { type, born, adoptedAt, frozenAt, reformed, invented };
+      script = { type, born, adoptedAt, frozenAt, reformed, invented, borrowed: !!scr };
       // direction: weighted by type — the historical-accident distribution
       // (abjads run right-to-left with their Semitic lineage; logographies
       // and their syllabic daughters took columns; everyone else mostly ltr)
@@ -199,12 +223,23 @@ export function scriptOf(lang) {
       // a re-learned script may change its whole look
       const hr = h01(fam, "scr:hand", adoptedAt);
       script.hand = hr < 0.18 ? "carved" : hr < 0.3 ? "clay" : hr < 0.5 ? "brush" : hr < 0.78 ? "pen" : "round";
+      // BOUSTROPHEDON: an archaic monumental convention — the line turns
+      // as the ox plows, letters mirroring on the return. It survives only
+      // in traditions never re-learned (standardization killed it on Earth
+      // too: archaic Greek and Etruscan had it, their descendants don't),
+      // and never on the joined pen, whose ligatures fix a direction
+      if (adoptedAt === born && !scr && script.hand !== "pen" && h01(fam, "scr:bous") < 0.1) script.dir = "boustro";
+      // a borrowed tradition that was never re-learned keeps the DONOR's
+      // conventions whole — direction, medium, letterforms travel together
+      if (scr && adoptedAt === born) { script.dir = scr.dir; script.hand = scr.hand; }
     }
   }
   if (script) {
     const fam2 = fam;
     script.lag = len - script.frozenAt;
-    script.styleSeed = hash32(fam2, "scr:style", script.adoptedAt) >>> 0;
+    script.styleSeed = script.borrowed && script.adoptedAt === script.born
+      ? lang.scr.styleSeed >>> 0                       // the donor's letterforms, kept whole
+      : hash32(fam2, "scr:style", script.adoptedAt) >>> 0;
     const inv = compiledInv(lang);
     // per-type orthographic machinery (each its own stream)
     script.sep = (() => { const r = h01(fam2, "scr:sep"); return r < 0.5 ? "space" : r < 0.85 ? "continua" : "dot"; })();
@@ -217,9 +252,10 @@ export function scriptOf(lang) {
     script.headline = script.type === "abugida" && h01(script.styleSeed, "head") < 0.55;   // the Devanagari bar
     script.join = script.hand === "pen" && h01(script.styleSeed, "join") < 0.65;           // joined cursive
     if (script.type === "featural") {
-      // an INVENTED script is designed, not worn smooth: block-built, never
-      // cursive, no inherited headline; column or row by the court's choice
-      script.dir = h01(fam2, "scr:fdir") < 0.8 ? "ltr" : "ttb";
+      // a featural script is designed, not worn smooth: block-built, never
+      // cursive, no inherited headline; the inventing court picks column
+      // or row — a BORROWED featural keeps its donor's direction
+      if (script.invented) script.dir = h01(fam2, "scr:fdir") < 0.8 ? "ltr" : "ttb";
       script.join = false; script.headline = false;
     }
     script.glyphBudget = script.type === "logo" ? CONCEPTS.length
@@ -552,7 +588,7 @@ function withDots(strokes, n, pos) {
 function glyphMapOf(lang) {
   const s = scriptOf(lang);
   if (!s) return null;
-  const stateKey = s.type + ":" + s.frozenAt + ":" + (lang.gen || 0) + ":" + lang.rules.length + ":" + (lang.xph ? lang.xph.length : 0);
+  const stateKey = s.type + ":" + s.frozenAt + ":" + (lang.gen || 0) + ":" + lang.rules.length + ":" + (lang.xph ? lang.xph.length : 0) + ":" + s.styleSeed;
   const hit = GLYPHMAPS.get(lang);
   if (hit && hit.key === stateKey) return hit;
   const inv = compiledInv(lang);
@@ -757,11 +793,33 @@ export function writeForm(lang, form, cid = null) {
   const pos = s.type === "abugida" ? markPosOf(s) : null;
   const plan = s.toneWritten ? phoneticPlan(lang, form) : null;
   const toneMark = (sylIdx) => {
-    if (!plan || !glyphs.length || plan.syls[sylIdx].tone == null) return;
+    if (!plan || !glyphs.length || !plan.syls[sylIdx] || plan.syls[sylIdx].tone == null) return;
     const m = rawStrokes(s, "tone:" + plan.syls[sylIdx].tone, 0).slice(0, 1);
     const g = glyphs[glyphs.length - 1];
     if (!g.mark) g.mark = { strokes: m, pos: "above" };
   };
+  // FROZEN-STEM SPELLING: a real tradition freezes the STEM and spells only
+  // the inflection by ear — ⟨knight⟩ + ⟨-s⟩. When the concept is known, no
+  // loan shadows it, and the current surface still carries the stem's
+  // syllables intact (a suffixing or prefixing paradigm), the stem's
+  // by-ear syllables are replaced with its frozen spelling; a stem the
+  // inflection has reshaped (fusion, ablaut, reduplication) falls back to
+  // by-ear whole, exactly as real irregulars get respelled.
+  if (cid != null && s.type !== "logo" && s.frozenAt < lang.rules.length && !loanOf(lang, cid)) {
+    const cur = nativeStemOf(lang, cid);
+    const froz = writtenFormOf(lang, cid);
+    if (cur && froz && form.syls.length >= cur.syls.length) {
+      const n = cur.syls.length;
+      const isFrozen = form.syls.length === froz.syls.length && froz.syls.every((sy, i) => sylkey(sy) === sylkey(form.syls[i]));
+      if (!isFrozen) {
+        if (cur.syls.every((sy, i) => sylkey(sy) === sylkey(form.syls[i]))) {
+          form = { syls: [...froz.syls, ...form.syls.slice(n)] };                       // stem + suffixes
+        } else if (cur.syls.every((sy, i) => sylkey(sy) === sylkey(form.syls[form.syls.length - n + i]))) {
+          form = { syls: [...form.syls.slice(0, form.syls.length - n), ...froz.syls] };  // prefixes + stem
+        }
+      }
+    }
+  }
   if (s.type === "logo") {
     if (cid != null) glyphs.push({ strokes: logoGlyph(lang, cid).strokes });
     else glyphs.push(G("w:" + form.syls.map(sylkey).join("+")));
@@ -834,7 +892,20 @@ export function writeForm(lang, form, cid = null) {
 export function writeWord(lang, cid) {
   const s = scriptOf(lang);
   if (!s) return null;
-  if ((lang.loans || []).some(x => x.c === cid)) return null;   // a loan has no native tradition (v1)
+  const loan = loanOf(lang, cid);
+  if (loan) {
+    const said = s.toneWritten || !lang.prof.tone ? loan.w : stripTone(loan.w);
+    if (s.type === "logo") {
+      // the SIGN means the concept — a borrowed word only changes the
+      // READING under it, the Japanese kun/on move
+      return { glyphs: [{ strokes: logoGlyph(lang, cid).strokes }], translit: said, silent: false, loan: true };
+    }
+    if (!loan.f) return null;                        // legacy string-only record: nothing to spell
+    // spelled as heard at borrowing, foreign segments adapted to the
+    // native signary (the sushi-in-Latin-letters move) — and since loan
+    // surfaces don't drift (v1), the spelling stays true to the sound
+    return { glyphs: writeForm(lang, loan.f, null), translit: said, silent: false, loan: true };
+  }
   const frozen = writtenFormOf(lang, cid);
   const translit = writtenWordOf(lang, cid);
   const saidNow = renderWord(nativeStemOf(lang, cid), lang.prof);
@@ -860,6 +931,60 @@ export function numeralGlyphs(lang, n) {
   if (n <= 9) { out.push({ strokes: bandStrokes(s, "num:" + n, 0) }); return out; }
   if (n === 10) { out.push({ strokes: bandStrokes(s, "num:10", 0) }); return out; }
   return null;
+}
+
+// ── names in the native script: the scribe SOUNDS THE NAME OUT ────────────
+// Names are string-assembled (erosion, welded suffixes, trims), so they
+// carry no single internal form. A scribe never needed one: they hear the
+// name and spell it through their own conventions. formFromSurface inverts
+// the language's own romanization — a longest-match parse over the
+// inventory's letter spellings — then syllabifies C*V(C*) greedily. The
+// round trip is near-lossless because the name WAS generated by these
+// conventions; anything unparseable is skipped, as scribes skip what they
+// cannot hear.
+const PARSERS = new WeakMap();
+function surfaceParser(lang) {
+  const key = (lang.gen || 0) * 101 + (lang.xph ? lang.xph.length : 0);
+  const hit = PARSERS.get(lang);
+  if (hit && hit.key === key) return hit;
+  const inv = compiledInv(lang);
+  const toks = [];
+  for (const c of inv.cons) { const r = romLabel(lang, c); if (r) toks.push([r.toLowerCase(), { c }]); }
+  for (const v of inv.vows) { const r = romV(lang, v); if (r) toks.push([stripTone(r).toLowerCase(), { v }]); }
+  toks.sort((a, b) => b[0].length - a[0].length);      // longest match first
+  const out = { key, toks };
+  PARSERS.set(lang, out);
+  return out;
+}
+export function formFromSurface(lang, str) {
+  const { toks } = surfaceParser(lang);
+  const s = stripTone(String(str)).toLowerCase().replace(/[^\p{L}']/gu, "");
+  const segs = [];
+  for (let i = 0; i < s.length;) {
+    const hit = toks.find(([r]) => s.startsWith(r, i));
+    if (hit) { segs.push(hit[1]); i += hit[0].length; }
+    else i++;                                          // unheard: skipped
+  }
+  // syllabify greedily: onset consonants attach forward to the next vowel;
+  // trailing consonants close the final syllable
+  const syls = [];
+  let on = [];
+  for (const seg of segs) {
+    if (seg.c) { on.push(seg.c); continue; }
+    syls.push({ on, nu: [seg.v], co: [] });
+    on = [];
+  }
+  if (on.length && syls.length) syls[syls.length - 1].co.push(...on);
+  else if (on.length) syls.push({ on, nu: [], co: [] });
+  return syls.length ? { syls: syls.map(sy => JSON.parse(JSON.stringify(sy))) } : null;
+}
+/** A proper name written in the language's own script — spelled as heard,
+ *  the way scribes have always taken names down. → [{strokes, mark?}] */
+export function writeName(lang, name) {
+  const s = scriptOf(lang);
+  if (!s || !name) return null;
+  const f = formFromSurface(lang, name);
+  return f ? writeForm(lang, f, null) : null;
 }
 
 /** Words whose frozen spelling no longer matches their sound — the silent-

@@ -11,11 +11,11 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf } from "../src/sim/language.js";
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
-import { scriptOf, writeWord, writeForm, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs } from "../src/sim/languageScript.js";
+import { scriptOf, writeWord, writeForm, writeName, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom } from "../src/sim/languageScript.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND } from "../src/sim/languageLexicon.js";
 
@@ -2373,6 +2373,50 @@ console.log("\n── §25 writing systems ──");
   check(`featural blocks are syllables, unjoined, in rows or columns (${blockBad} bad over ${blockN} words)`, blockN >= 20 && blockBad === 0);
   check(`featural letters merge what the features merge (a k/g component exists)`, mergeSeen);
   check(`a laryngeal series adds strokes to the plain letter (${addSeen} pairs, ${addBad} bad)`, addBad === 0);
+  // (e3) SCRIPT SPREAD: adoption keeps the donor's whole look; the borrower
+  // spells itself by ear from adoption; daughters inherit the tradition;
+  // and a hostile pairing (an agglutinative tongue under a borrowed
+  // logography) is the true Sejong condition — some invent, some are held
+  // by prestige, exactly the Earth record
+  const wS = mkWorld();
+  const dn = foundLanguage(wS, { seed: 820331 });
+  for (let d = 0; d < 8; d++) driftLanguage(wS, dn);
+  const dS = scriptOf(dn);
+  const br = foundLanguage(wS, { seed: 424243 });
+  for (let d = 0; d < 2; d++) driftLanguage(wS, br);
+  adoptScriptFrom(br, dn);
+  const b0 = scriptOf(br);
+  const adoptOK = b0.borrowed && b0.type === dS.type && b0.styleSeed === dS.styleSeed
+    && b0.hand === dS.hand && b0.dir === dS.dir && b0.frozenAt === br.scr.at && b0.lag === 0;
+  const dSigs = new Map((glyphInventory(dn, 200) || []).map(g => [g.key, JSON.stringify(g.strokes)]));
+  const sharedSigns = (glyphInventory(br, 200) || []).filter(g => dSigs.get(g.key) === JSON.stringify(g.strokes)).length;
+  const kid = branchLanguage(wS, br, 0.4);
+  const kS = scriptOf(kid);
+  for (let d = 0; d < 6; d++) driftLanguage(wS, br);
+  const b1 = scriptOf(br);
+  check(`a borrowed script keeps the donor's whole look and spells by ear from adoption (lag 0 → ${b1.lag})`,
+    adoptOK && (b1.lag >= 4 || b1.reformed || b1.invented));
+  check(`borrowed letterforms are the donor's own (${sharedSigns} shared signs draw identically)`, sharedSigns >= 5);
+  check(`daughters inherit the borrowed tradition (${kS.borrowed ? "borrowed" : "not"}, style ${kS.styleSeed === dS.styleSeed ? "kept" : "lost"})`,
+    kS.borrowed && kS.styleSeed === dS.styleSeed);
+  const roundOK = JSON.stringify(scriptOf(JSON.parse(JSON.stringify(br)))) === JSON.stringify(b1);
+  check("adoption survives the persistence path (scr field roundtrips)", roundOK);
+  let sjInv = 0, sjKept = 0, sjN = 0;
+  for (let i = 0; i < 60; i++) {
+    const x = foundLanguage(wS, { seed: 700000 + i * 97 });
+    if (x.prof.morph !== "agg" && x.prof.morph !== "fus") continue;
+    driftLanguage(wS, x);
+    const dn2 = foundLanguage(wS, { seed: 555111 + i });
+    if (scriptOf(dn2).type !== "logo") continue;
+    sjN++;
+    adoptScriptFrom(x, dn2);
+    for (let d = 0; d < 12; d++) driftLanguage(wS, x);
+    const sx = scriptOf(x);
+    if (sx.invented) sjInv++;
+    else if (sx.type === "logo" && sx.borrowed) sjKept++;
+  }
+  check(`a borrowed misfit is the Sejong condition — inventions occur AND prestige holds (${sjInv} invented / ${sjKept} kept of ${sjN})`,
+    sjN >= 10 && sjInv >= 3 && sjKept >= 3);
   const wD = mkWorld();
   const d1 = foundLanguage(wD, { seed: 860001 });
   for (let d = 0; d < 6; d++) driftLanguage(wD, d1);
@@ -2443,10 +2487,112 @@ console.log("\n── §26 the full clause (token forms) ──");
   check(`every formed token yields a non-empty phonetic plan (${planBad} bad)`, planBad === 0);
   check(`every formed token writes in a literate language (${writBad} bad)`, writBad === 0);
   check(`a logography gives its grammar words distinct own signs (the 的/了 pattern)`, gramSigns);
+  // FROZEN-STEM SPELLING: in a lagged segmental tradition, a clause token
+  // whose stem the sound changes have reshaped is still WRITTEN with the
+  // stem's frozen spelling (⟨knight⟩+⟨-s⟩) — so the cid-aware spelling must
+  // differ from the naive by-ear one, and must open with the dictionary's
+  // own frozen-stem glyphs
+  let fsSeen = 0, fsBad = 0;
+  const sigFS = (g) => JSON.stringify(g.strokes.filter(x => x.kind !== "tail"));
+  for (let i = 0; i < 60 && fsSeen < 8; i++) {
+    const l = foundLanguage(w7, { seed: 895000 + i * 137 });
+    for (let d = 0; d < 9; d++) driftLanguage(w7, l);
+    const sc = scriptOf(l);
+    if (!sc || sc.type === "logo" || sc.type === "featural" || !sc.lag) continue;
+    const ww = writeWord(l, KING);
+    if (!ww || !ww.silent || ww.loan) continue;                  // want a stem the sounds have left behind
+    const c = renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } });
+    const t = c.tokens.find(x => x.c === KING && x.f);
+    if (!t) continue;
+    const aware = writeForm(l, t.f, KING);
+    const naive = writeForm(l, t.f, null);
+    if (JSON.stringify(aware) === JSON.stringify(naive)) continue;   // stem reshaped by inflection: by-ear fallback is legal
+    fsSeen++;
+    // the cid-aware spelling opens (or closes) with the frozen stem's glyphs
+    const stemSigs = ww.glyphs.map(sigFS);
+    const awareSigs = aware.map(sigFS);
+    const headMatch = stemSigs.every((s2, k) => awareSigs[k] === s2);
+    const tailMatch = stemSigs.every((s2, k) => awareSigs[awareSigs.length - stemSigs.length + k] === s2);
+    if (!headMatch && !tailMatch) fsBad++;
+  }
+  check(`inflected tokens keep the frozen STEM spelling — ⟨knight⟩+⟨-s⟩ (${fsSeen} lagged tokens checked, ${fsBad} bad)`, fsSeen >= 3 && fsBad === 0);
   // determinism + JSON roundtrip of the token-form layer
   const t1 = foundLanguage(mkWorld(), { seed: 880191 });
   const tsig = (l) => JSON.stringify(renderClause(l, FRAMES[0]).tokens.map(t => [t.w, t.f, t.c ?? null]));
   check("clause token forms deterministic + JSON-roundtrip-stable", tsig(t1) === tsig(JSON.parse(JSON.stringify(t1))));
+}
+
+// ── §27 totality: every concept translates, speaks, and writes ────────────
+// "Work for all word translations": under heavy contact (chained loans
+// included), every concept in every language must yield a word, a gloss, a
+// speakable form with a non-empty plan and IPA, and a written form — no
+// nulls, no silent gaps. Loans speak and write with the form they were
+// borrowed with (by ear), logographies keep the concept's sign and change
+// only the reading (the kun/on move).
+console.log("\n── §27 totality (translate · speak · write) ──");
+{
+  const world = mkWorld();
+  const pool = [];
+  for (let i = 0; i < 12; i++) {
+    const l = foundLanguage(world, { seed: 910000 + i * 379 });
+    for (let d = 0; d < 5; d++) driftLanguage(world, l);
+    pool.push(l);
+  }
+  // heavy contact, including CHAINS (i borrows what i-1 already borrowed)
+  for (let i = 0; i < pool.length; i++) for (let k = 1; k <= 3; k++) borrowFrom(world, pool[i], pool[(i + k) % pool.length]);
+  let words = 0, wBad = 0, sBad = 0, gBad = 0, loanN = 0, loanBad = 0, glossBad = 0;
+  for (let cid = 0; cid < CONCEPTS.length; cid++) if (!glossOf(cid)) glossBad++;
+  for (const l of pool) {
+    for (let cid = 0; cid < CONCEPTS.length; cid++) {
+      words++;
+      const w = wordOf(l, cid);
+      if (!w || typeof w !== "string") wBad++;
+      const lr = loanOf(l, cid);
+      const form = lr ? lr.f : nativeStemOf(l, cid);
+      const plan = form ? phoneticPlan(l, form) : null;
+      if (!plan || !plan.syls.length || !ipaOf(l, form)) sBad++;
+      const ww = writeWord(l, cid);
+      if (!ww || !ww.glyphs || !ww.glyphs.length || ww.glyphs.some(g => !g.strokes.length)) gBad++;
+      if (lr) { loanN++; if (!ww || !ww.loan) loanBad++; }
+    }
+  }
+  // NAMES write too: the scribe sounds a name out through the language's
+  // own romanization (formFromSurface inverts it) and spells the result —
+  // every sampled name must yield glyphs, deterministically
+  let nmN = 0, nmBad = 0;
+  for (const l of pool.slice(0, 6)) {
+    for (let n = 0; n < 8; n++) {
+      for (const nm of [langPlaceName(l, n), langPersonName(l, n, n % 2 === 0)]) {
+        nmN++;
+        const g = writeName(l, nm);
+        if (!g || !g.length || g.some(x => !x.strokes.length)) nmBad++;
+      }
+    }
+    const nm0 = langPlaceName(l, 0);
+    if (JSON.stringify(writeName(l, nm0)) !== JSON.stringify(writeName(JSON.parse(JSON.stringify(l)), nm0))) nmBad++;
+  }
+  check(`every NAME writes in the native script — spelled as heard (${nmBad}/${nmN} bad)`, nmN >= 90 && nmBad === 0);
+  // boustrophedon: rare, only on never-re-learned, never-borrowed, non-pen
+  // primaries (standardization kills it, as it did on Earth)
+  let bouN = 0, bouBad = 0;
+  for (let i = 0; i < 200; i++) {
+    const l = foundLanguage(world, { seed: 930000 + i * 211 });
+    for (let d = 0; d < 4; d++) driftLanguage(world, l);
+    const s = scriptOf(l);
+    if (!s || s.dir !== "boustro") continue;
+    bouN++;
+    if (s.adoptedAt !== s.born || s.hand === "pen" || s.borrowed || s.join) bouBad++;
+  }
+  check(`boustrophedon occurs on archaic primaries only (${bouN} found, ${bouBad} bad)`, bouN >= 2 && bouBad === 0);
+  check(`every concept glosses (${glossBad} bad)`, glossBad === 0);
+  check(`every concept has a word in every tongue (${wBad}/${words} bad)`, wBad === 0);
+  check(`every concept SPEAKS in every tongue — loans from their borrowed form (${sBad} bad)`, sBad === 0);
+  check(`every concept WRITES in every tongue — loans included (${gBad} bad)`, gBad === 0);
+  check(`loans exist under contact and write as loans (${loanN} loan entries, ${loanBad} bad)`, loanN >= 20 && loanBad === 0);
+  // loan records with forms survive the persistence path
+  const lx = pool[0];
+  const wsig = (l) => JSON.stringify(CONCEPTS.map((c, cid) => [wordOf(l, cid), writeWord(l, cid)]));
+  check("loan-bearing records deterministic + JSON-roundtrip-stable", wsig(lx) === wsig(JSON.parse(JSON.stringify(lx))));
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

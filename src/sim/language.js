@@ -61,6 +61,8 @@ export function foundLanguage(world, { seed, parentId = -1 } = {}) {
     rules: parent ? parent.rules.slice() : [],
     loans: parent ? parent.loans.slice() : [],
     xph: parent && parent.xph ? parent.xph.map(b => ({ ...b })) : [],
+    // a borrowed writing tradition is family property — daughters inherit it
+    ...(parent && parent.scr ? { scr: JSON.parse(JSON.stringify(parent.scr)) } : {}),
   };
   languagesOf(world).set(id, lang);
   // a fresh root tongue arrives with a little history already in its bones
@@ -93,6 +95,8 @@ export function branchLanguage(world, parent, divergence = 0.4) {
     rules: parent.rules.slice(),
     loans: parent.loans.slice(),
     xph: parent.xph ? parent.xph.map(b => ({ ...b })) : [],
+    // a borrowed writing tradition is family property — daughters inherit it
+    ...(parent.scr ? { scr: JSON.parse(JSON.stringify(parent.scr)) } : {}),
   };
   languagesOf(world).set(id, child);
   const n = 1 + Math.round(d * 4);
@@ -111,12 +115,27 @@ export function borrowFrom(world, lang, donor) {
   const mine = compile(lang).inv;
   const cand = dInv.cons.filter(dc => !mine.cons.some(c => c.p === dc.p && c.m === dc.m && c.l === dc.l && c.s === dc.s));
   if (cand.length) lang.xph.push({ ...cand[rng.int(cand.length)] });
-  // (b) a prestige word crosses over (frozen at borrow time, foreign look kept)
+  // (b) a prestige word crosses over (frozen at borrow time, foreign look
+  // kept). The record carries the donor's spoken FORM too — borrowing
+  // happens by ear, so the borrower can speak and write what it heard
+  // (chained through the donor's own loans, the way 'coffee' crossed
+  // half the planet one contact at a time)
   if (rng() < 0.8) {
     const cid = LOAN_POOL[rng.int(LOAN_POOL.length)];
-    lang.loans.push({ c: cid, w: wordOf(donor, cid), d: donor.id });
+    const dl = donor.loans.filter(x => x.c === cid).pop();
+    const f = dl ? (dl.f ? JSON.parse(JSON.stringify(dl.f)) : null) : nativeStemOf(donor, cid);
+    lang.loans.push({ c: cid, w: wordOf(donor, cid), d: donor.id, ...(f ? { f } : {}) });
   }
   lang.gen++;
+}
+
+/** The loan record shadowing a concept, or null (the last borrowing wins,
+ *  exactly as wordOf prefers it). `f` is the donor's spoken form at borrow
+ *  time; legacy records (pre-form saves) may lack it. */
+export function loanOf(lang, cid) {
+  ensureV2(lang);
+  for (let i = lang.loans.length - 1; i >= 0; i--) if (lang.loans[i].c === cid) return lang.loans[i];
+  return null;
 }
 
 // v1 records (old saves) upgrade lazily: profile re-rolled from the seed —

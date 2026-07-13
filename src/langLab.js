@@ -10,10 +10,10 @@
 // under `npm run dev`, which is why every read is typeof-guarded. Declared
 // here so ESLint's no-undef doesn't flag the injected identifier.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf } from "./sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
-import { scriptOf, glyphInventory, writeWord, writeForm, silentLetterSample, numeralGlyphs, SCRIPT_NAME, HAND_NAME } from "./sim/languageScript.js";
+import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME } from "./sim/languageScript.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
@@ -75,7 +75,7 @@ function sylLabel(l) {
 let PLANS = [];                                     // per-render plan registry (data-p indices)
 let CLAUSES = [];                                   // per-render clause registry (data-cp indices)
 const regPlan = (p) => PLANS.push(p) - 1;
-const regClause = (plans, contour) => CLAUSES.push({ plans, contour }) - 1;
+const regClause = (groups, contour) => CLAUSES.push({ groups, contour }) - 1;
 let AC = null, NOISE = null;
 function ac() {
   if (!AC) {
@@ -227,20 +227,40 @@ function speakPlan(plan) {
   const ctx = ac();
   scheduleWord(ctx, mkMaster(ctx), plan, ctx.currentTime + 0.06);
 }
-// a whole clause: word plans in sequence under one intonation phrase —
-// pitch declines across the clause and the final word carries the
-// boundary tone (fall for statements/commands, rise for questions)
-function speakClause(plans, contour = "fall") {
+// a whole sentence: word plans in sequence, grouped into intonation
+// phrases (one per clause) — pitch declines across the whole utterance,
+// each NON-final clause ends on a continuation rise with a comma pause
+// (the near-universal spoken comma), and only the final clause carries
+// the sentence's boundary tone (fall for statements/commands, rise for
+// questions)
+function speakClause(groups, contour = "fall") {
   const ctx = ac();
   const master = mkMaster(ctx);
   let t = ctx.currentTime + 0.06;
-  const N = plans.length;
-  plans.forEach((p, i) => {
-    t = scheduleWord(ctx, master, p, t, {
-      scale: 1.05 - 0.12 * (i / Math.max(1, N - 1)),
-      boundary: i === N - 1 ? contour : null,
-    }) + 0.08;                                        // inter-word gap
+  const total = groups.reduce((a, g) => a + g.length, 0);
+  let k = 0;
+  groups.forEach((g, gi) => {
+    const lastG = gi === groups.length - 1;
+    g.forEach((p, i) => {
+      t = scheduleWord(ctx, master, p, t, {
+        scale: 1.05 - 0.12 * (k / Math.max(1, total - 1)),
+        boundary: i === g.length - 1 ? (lastG ? contour : "rise") : null,
+      }) + 0.08;                                      // inter-word gap
+      k++;
+    });
+    if (!lastG) t += 0.16;                            // the comma pause
   });
+}
+// clause boundaries from the token stream: a CONJ opens a new intonation
+// phrase (the comma sits before "and", as spoken)
+function planGroups(l, tokens) {
+  const groups = [[]];
+  for (const t of tokens) {
+    if (!t.f) continue;
+    if (t.role === "CONJ" && groups[groups.length - 1].length) groups.push([]);
+    groups[groups.length - 1].push(phoneticPlan(l, t.f));
+  }
+  return groups.filter(g => g.length);
 }
 
 const MORPH = { iso: "isolating", agg: "agglutinative", fus: "fusional", tmpl: "templatic (root-and-pattern)" };
@@ -278,13 +298,22 @@ function namesHTML(l) {
   // (real maps repeat a generic as Caveford/Caveton — distinct specifics on
   // a shared head — not three bare 'cave's; a fresh reader caught the
   // bare-duplicate pair)
+  // names carry their written form too — the scribe sounds a name out and
+  // spells it in the script's own signs (writeName inverts the language's
+  // romanization, exactly what taking a name down IS)
+  const sc = scriptOf(l);
+  const wname = (n) => {
+    if (!sc) return "";
+    const g = writeName(l, n);
+    return g && g.length ? ` <span class="glyphword${sc.dir === "rtl" ? " rtl" : sc.dir === "ttb" ? " ttb" : ""}">${g.map(x => glyphSVG(x, 15, { hand: sc.hand })).join("")}</span>` : "";
+  };
   const topo = [];
   const seenTopo = new Set();
   for (let i = 0; i < 24 && topo.length < 10; i++) {
     const { name, gloss } = langPlaceNameEx(l, i);
     if (seenTopo.has(name)) continue;
     seenTopo.add(name);
-    topo.push(`<li><span class="w">${esc(name)}</span>${gloss ? ` <span class="gloss">‘${esc(gloss)}’</span>` : ` <span class="gloss lost">meaning lost</span>`}</li>`);
+    topo.push(`<li><span class="w">${esc(name)}</span>${wname(name)}${gloss ? ` <span class="gloss">‘${esc(gloss)}’</span>` : ` <span class="gloss lost">meaning lost</span>`}</li>`);
   }
   const men = [1, 2, 3].map(i => langPersonName(l, i, false));
   const women = [4, 5, 6].map(i => langPersonName(l, i, true));
@@ -293,11 +322,11 @@ function namesHTML(l) {
   return `
     <h3>Places</h3><ul class="cols">${topo.join("")}</ul>
     <h3>People</h3>
-    <p><span class="lbl">men</span> ${men.map(n => `<span class="w">${esc(n)}</span>`).join(", ")}
-       <span class="lbl ind">women</span> ${women.map(n => `<span class="w">${esc(n)}</span>`).join(", ")}</p>
+    <p><span class="lbl">men</span> ${men.map(n => `<span class="w">${esc(n)}</span>${wname(n)}`).join(", ")}
+       <span class="lbl ind">women</span> ${women.map(n => `<span class="w">${esc(n)}</span>${wname(n)}`).join(", ")}</p>
     <h3>Houses &amp; realms</h3>
     <p><span class="lbl">dynasties</span> ${dyn.map(n => `<span class="w">${esc(n)}</span>`).join(", ")}
-       <span class="lbl ind">realms</span> ${realms.map(n => `<span class="w">${esc(n)}</span>`).join(", ")}</p>`;
+       <span class="lbl ind">realms</span> ${realms.map(n => `<span class="w">${esc(n)}</span>${wname(n)}`).join(", ")}</p>`;
 }
 
 // ── the Sound card: IPA + the vocalizer (phonemes and words you can hear) ─
@@ -407,7 +436,7 @@ function writingHTML(l) {
   const s = scriptOf(l);
   if (!s) return `<section class="card"><h2>Writing</h2>
     <p class="note">No written tradition yet — this tongue is young. Records consolidate only after a little history: <b>Drift</b> the language and a script will be born (logographic first, the way every primary invention was).</p></section>`;
-  const dirName = { ltr: "left → right", rtl: "right → left", ttb: "top → bottom" }[s.dir];
+  const dirName = { ltr: "left → right", rtl: "right → left", ttb: "top → bottom", boustro: "boustrophedon (as the ox plows)" }[s.dir];
   const chips = [SCRIPT_NAME[s.type],
     s.type === "featural" ? "designed geometry (ruler-drawn)" : HAND_NAME[s.hand],
     s.type === "logo" ? "one sign per morpheme (open set)" : `${s.glyphBudget} signs`,
@@ -420,13 +449,16 @@ function writingHTML(l) {
     s.headline ? "headline bar joins the word" : null,
     s.join ? "cursive: letters join + final swash" : null,
     s.invented ? "invented whole (the Sejong move)" : null,
+    s.borrowed && !s.invented ? "borrowed script (arrived by contact)" : null,
     s.type === "featural" ? "syllables stack into blocks" : null,
     s.lag ? `spelling frozen ${s.lag} sound change${s.lag > 1 ? "s" : ""} ago` : s.reformed ? "spelling reformed (shallow again)" : "shallow orthography (young)",
   ].filter(Boolean).map(t => `<span class="chip">${esc(t)}</span>`).join("");
   const story = s.invented
-    ? `Invented whole at court — the Sejong move: centuries of sound change had left the old script's fit behind, so the replacement draws each sound's own FEATURES. Place gives the base shape, manner modifies it, and a laryngeal series just adds a stroke — related sounds look related, and one letter covers a voicing pair the way Hangul's ㄱ covers k and g.`
-    : s.adoptedAt > s.born
-      ? `Born logographic (every primary tradition is), then re-learned and simplified — the current type won because it fits this language's own structure.`
+    ? `Invented whole at court — the Sejong move: centuries of sound change had left the old script's fit behind${s.borrowed ? " (a borrowed script that never fit this tongue)" : ""}, so the replacement draws each sound's own FEATURES. Place gives the base shape, manner modifies it, and a laryngeal series just adds a stroke — related sounds look related, and one letter covers a voicing pair the way Hangul's ㄱ covers k and g.`
+    : s.borrowed && s.adoptedAt === s.born
+      ? `The script ARRIVED: a neighbour's tradition adopted whole — letterforms, hand, and direction kept — and set to spelling this tongue by ear. Most scripts in history spread exactly this way (Latin, Arabic, Cyrillic each cover dozens of languages); a borrowed costume that fits badly is held in place by prestige, and escaping it usually takes an invention.`
+      : s.adoptedAt > s.born
+        ? `Born logographic (every primary tradition is), then re-learned and simplified — the current type won because it fits this language's own structure.`
       : s.type === "logo" && l.rules.length < 2
         ? `A newborn tradition: writing begins, as every primary invention did, with accounting-token logographs — one sign per morpheme. Its first re-learning juncture is still ahead: <b>Drift</b> the language and watch the script simplify toward whatever fits.`
         : s.type === "logo"
@@ -456,8 +488,13 @@ function writingHTML(l) {
   // a written LINE: three words under the script's own separation habit
   const lineWords = [KING, SEE, RIVER].map(cid => writeWord(l, cid)).filter(Boolean);
   const sepHTML = s.sep === "space" ? `<span class="wsep"></span>` : s.sep === "dot" ? `<span class="wsep dot">·</span>` : "";
-  const lineHTML = lineWords.length === 3
-    ? `<p class="cells glyphline${s.dir === "ttb" ? " ttb" : ""}">${lineWords.map(w => wordHTML(w)).join(sepHTML)} <span class="gloss">‘king · see · river’${s.sep === "continua" ? " — run together, as old traditions did" : ""}</span></p>` : "";
+  const lineHTML = lineWords.length !== 3 ? ""
+    : s.dir === "boustro"
+      // the ox turns: the second line runs back the other way, its letters
+      // MIRRORED — archaic Greek did exactly this
+      ? `<p class="cells glyphline">${wordHTML(lineWords[0])}${sepHTML}${wordHTML(lineWords[1])}</p>
+         <p class="cells glyphline boustroline">${wordHTML(lineWords[2])} <span class="gloss">‘king · see · river’ — the line turns as the ox plows, letters mirrored on the return</span></p>`
+      : `<p class="cells glyphline${s.dir === "ttb" ? " ttb" : ""}">${lineWords.map(w => wordHTML(w)).join(sepHTML)} <span class="gloss">‘king · see · river’${s.sep === "continua" ? " — run together, as old traditions did" : ""}</span></p>`;
   // numerals: tally marks for the low digits, own signs above
   const nums = [1, 2, 3, 4, 7, 10].map(n => { const g = numeralGlyphs(l, n); return g ? `<span class="glyphcell">${g.map(x => glyphSVG(x, 26, gOptsPlain)).join("")}<span class="lbl">${n}</span></span>` : ""; }).join("");
   const silent = silentLetterSample(l, 3);
@@ -537,7 +574,14 @@ function grammarHTML(l) {
 // Each subsection is EMERGENT — it appears only when this language's dials
 // rolled the feature, so a plain SVO tongue shows a short card and an
 // Amazonian-shaped one a long one. Every example is rendered live.
-const clauseEx = (label, cl) => `<p class="ensent dim">${esc(label)}</p>${interHTML(cl)}`;
+// every example sentence is speakable whole — clause trees group into
+// intonation phrases, non-final clauses rising into the comma
+const clauseEx = (label, cl) => {
+  const l = active();
+  const btn = cl.tokens && cl.tokens.some(t => t.f)
+    ? ` <button class="spk play" data-cp="${regClause(planGroups(l, cl.tokens), "fall")}" title="speak the sentence">▶</button>` : "";
+  return `<p class="ensent dim">${esc(label)}${btn}</p>${interHTML(cl)}`;
+};
 const cellStr = (x) => esc([...x.pre.map(t => t.w), x.text, ...x.post.map(t => t.w)].join(" "));
 
 function verbFrontierHTML(l) {
@@ -834,12 +878,13 @@ function sentenceHTML(l) {
       // commands FALL, questions RISE (the near-universal boundary tones)
       if (!clause.tokens.every(t => t.f)) return "";
       const contour = frame.q || (frame.o && frame.o.wh) ? "rise" : "fall";
-      return ` <button class="spk play" data-cp="${regClause(clause.tokens.map(t => phoneticPlan(l, t.f)), contour)}" title="speak the sentence">▶</button>`;
+      return ` <button class="spk play" data-cp="${regClause(planGroups(l, clause.tokens), contour)}" title="speak the sentence">▶</button>`;
     })()}</p>
     ${interHTML(clause)}
     ${(() => {
       // …and written, in the language's own script (its separation habit,
-      // its direction; spelled by ear — the frozen spellings live above)
+      // its direction) — STEMS keep their frozen spelling, inflection is
+      // spelled by ear: the ⟨knight⟩+⟨-s⟩ economy of real traditions
       const sc = scriptOf(l);
       if (!sc || !clause.tokens.every(t => t.f)) return "";
       const words = clause.tokens.map(t => `<span class="glyphword${sc.dir === "rtl" ? " rtl" : sc.dir === "ttb" ? " ttb" : ""}${sc.headline || sc.join ? " tight" : ""}">${(writeForm(l, t.f, t.c ?? null) || []).map(g => glyphSVG(g, 20, { hand: sc.hand, headline: sc.headline, join: sc.join, dir: sc.dir })).join("")}</span>`);
@@ -863,7 +908,8 @@ function cognatesHTML() {
   // read it (loans shadow the native form and stay silent)
   let rows = COGNATE_SET.map(cid =>
     `<tr><td class="lbl">${esc(glossOf(cid))}</td>${cols.map(l => {
-      if ((l.loans || []).some(x => x.c === cid)) return `<td class="w">${esc(wordOf(l, cid))}</td>`;
+      const lr = (l.loans || []).some(x => x.c === cid) ? loanOf(l, cid) : null;
+      if (lr) return lr.f ? `<td class="w spkw" data-p="${regPlan(phoneticPlan(l, lr.f))}" title="click to hear (borrowed)">${esc(wordOf(l, cid))}</td>` : `<td class="w">${esc(wordOf(l, cid))}</td>`;
       return `<td class="w spkw" data-p="${regPlan(phoneticPlan(l, nativeStemOf(l, cid)))}" title="click to hear">${esc(wordOf(l, cid))}</td>`;
     }).join("")}</tr>`).join("");
   // M5: cognate CONJUGATIONS — the same paradigm cell down the family,
@@ -911,11 +957,17 @@ function loansHTML(l) {
   if (!l.loans.length) return "";
   const seen = new Set();
   const items = [];
+  const sc = scriptOf(l);
   for (let i = l.loans.length - 1; i >= 0; i--) {
-    const { c, w } = l.loans[i];
+    const { c, w, f } = l.loans[i];
     if (seen.has(c)) continue;
     seen.add(c);
-    items.push(`<li><span class="lbl">${esc(glossOf(c))}</span> <span class="w">${esc(w)}</span> <span class="gloss">borrowed</span> <span class="w dim">${esc(renderNative(l, c))}</span> <span class="gloss lost">native, displaced</span></li>`);
+    // a loan speaks with the form it was borrowed with, and writes in the
+    // borrower's own script (spelled as heard, foreign sounds adapted)
+    const wCell = f ? `<span class="w spkw" data-p="${regPlan(phoneticPlan(l, f))}" title="click to hear">${esc(w)}</span>` : `<span class="w">${esc(w)}</span>`;
+    const ww = sc ? writeWord(l, c) : null;
+    const glyphs = ww && ww.glyphs ? ` <span class="glyphword${sc.dir === "rtl" ? " rtl" : sc.dir === "ttb" ? " ttb" : ""}">${ww.glyphs.map(g => glyphSVG(g, 16, { hand: sc.hand })).join("")}</span>` : "";
+    items.push(`<li><span class="lbl">${esc(glossOf(c))}</span> ${wCell}${glyphs} <span class="gloss">borrowed</span> <span class="w dim">${esc(renderNative(l, c))}</span> <span class="gloss lost">native, displaced</span></li>`);
   }
   return `<h3>Loan stratum</h3><ul class="cols">${items.join("")}</ul>`;
 }
@@ -945,10 +997,11 @@ function dictionaryHTML(l) {
       if (byWord.get(r.w) > 1) notes.push(colexWords.has(r.w) ? "shared word" : "homophone");
       const ety = etymologyOf(l, r.cid);
       const from = ety ? `‹ ‘${esc(ety.gloss)}’` : "";
-      // native entries speak (a loan surface and a compound counting form
-      // have no single internal form — those stay silent)
-      const speakable = !loanSet.has(r.cid) && !r.num;
-      const form = speakable ? nativeStemOf(l, r.cid) : null;
+      // every entry speaks: natives from their stem, loans from the form
+      // they were borrowed with (by ear — the record keeps what was heard);
+      // only compound counting forms stay silent (no single internal form)
+      const loanRec = loanSet.has(r.cid) ? loanOf(l, r.cid) : null;
+      const form = r.num ? null : loanRec ? (loanRec.f || null) : nativeStemOf(l, r.cid);
       const wCell = form
         ? `<td class="w spkw" data-p="${regPlan(phoneticPlan(l, form))}" title="click to hear">${esc(r.w)}</td>`
         : `<td class="w">${esc(r.w)}</td>`;
@@ -982,6 +1035,7 @@ function render() {
     <label class="slider">Divergence <input id="div" type="range" min="0.2" max="1" step="0.1" value="${S.divergence}" /></label>
     <button id="branch" title="Found a daughter language, drifted by the divergence distance">Branch a daughter</button>
     <button id="borrow" title="Contact with a foreign tongue: borrow a sound and a prestige word">Borrow from a neighbour</button>
+    <button id="adopt" title="A neighbour's script arrives: keep its letterforms whole, spell this tongue by ear — the way most scripts actually spread">Adopt a script</button>
   </section>
   <section class="card">
     <h2>Specimen: <span class="w big">${esc(langWord(l, 0))}</span>${lineage.length > 1 ? `<span class="count"> — daughter ${lineage.length - 1} of the family</span>` : ""}</h2>
@@ -1020,6 +1074,13 @@ function render() {
   document.getElementById("borrow").onclick = () => {
     if (!donor) donor = foundLanguage(world, { seed: (S.seed * 2654435761 + 7) >>> 0 });
     borrowFrom(world, active(), donor); render();
+  };
+  document.getElementById("adopt").onclick = () => {
+    if (!donor) {
+      donor = foundLanguage(world, { seed: (S.seed * 2654435761 + 7) >>> 0 });
+      for (let i = 0; i < 6; i++) driftLanguage(world, donor);   // a mature neighbouring tradition
+    }
+    adoptScriptFrom(active(), donor); render();
   };
   const ds = document.getElementById("dictSearch");
   ds.oninput = (e) => {
@@ -1116,6 +1177,7 @@ td.spkw:hover{color:var(--accent)}
 .glyphword.ttb{flex-direction:column}
 .glyphword.tight{gap:0}
 .glyphline{display:flex;flex-wrap:wrap;align-items:center;gap:.15rem}
+.boustroline .glyphword svg{transform:scaleX(-1)}
 .glyphline.ttb{flex-direction:column;align-items:flex-start}
 .wsep{display:inline-block;width:.7rem}
 .wsep.dot{width:auto;padding:0 .25rem;color:var(--muted)}
@@ -1146,7 +1208,7 @@ export function mount() {
   // gesture the AudioContext needs)
   document.getElementById("app").addEventListener("click", (e) => {
     const cp = e.target.closest("[data-cp]");
-    if (cp) { const c = CLAUSES[+cp.dataset.cp]; if (c) speakClause(c.plans, c.contour); return; }
+    if (cp) { const c = CLAUSES[+cp.dataset.cp]; if (c) speakClause(c.groups, c.contour); return; }
     const el = e.target.closest("[data-p]");
     if (el) { const p = PLANS[+el.dataset.p]; if (p) speakPlan(p); }
   });
