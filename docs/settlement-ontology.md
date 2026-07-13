@@ -254,3 +254,18 @@ per-tile identity field becomes authoritative, Stage 2" — is now built:
 measure: irredentist wars along cultural fault lines, slower absorb of
 culturally-foreign countryside, revolt/secession cadence shifts from the
 rural cohesion term.
+
+**Windowed lever A/B (same day, 480/16k–30k, probe_avg):** count and coverage
+are NEUTRAL (8817: 32.6→34.6 realms, 50.6→51.8%; 4242: 39.4→37.1, 55.5→57.5%
+— within window noise), but the BIGGEST REALM grows on both seeds: 6.6→8.6
+Mkm² (+30%, 8817) and 6.6→7.7 (+17%, 4242). Mechanism read: the sticky field
+assimilates a realm's long-held core to its culture, and the now-live
+irredentist discount then makes wars INTO kin land cheaper — cultural gravity
+that big coherent realms harvest best (the Qin / Prussia–Germany /
+Piedmont–Italy unification pattern — historically honest, but it leans
+against the consolidation arc's giant discipline). VERDICT: **stays DEFAULT
+0.** The flip is a design decision, not a formality: it wants (a) the
+stylized battery + churn analysis under the lever (is the bigger realm still
+mortal?), and (b) possibly a counterweight — the kinship-RESTRAINT side of
+the same casus read (kin STATES sparing each other) measured against the
+irredentist pull before the pair ships on.
