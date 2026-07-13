@@ -21,8 +21,46 @@ let uid = 0;
 // deterministic per-emblem rng from a seed (no Math.random)
 export function rrng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = (t + Math.imul(t ^ t >>> 7, 61 | t)) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
-// ── a motif from the charge art, recoloured to the tincture ──
+// ── VECTOR PRIMITIVE charges — the geometric subordinaries (mullets, roundels,
+// crosses, lozenges, billets…) drawn as parametric paths, not raster art: crisp
+// at any size, a few bytes each, and they counterchange and semé for free
+// because they flow through the same motif() pipeline. Each fills the same box
+// a raster charge gets. Ids here SHADOW same-named raster art. ──
+const starPts = (cx, cy, R, n, r, rot) => { const p = []; for (let i = 0; i < 2 * n; i++) { const a = rot - Math.PI / 2 + i * Math.PI / n, rad = i % 2 ? r : R; p.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]); } return p; };
+const poly = (pts, C) => `<polygon points="${pts.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="${C}"/>`;
+const ptsPath = pts => "M" + pts.map(q => `${F(q[0])} ${F(q[1])}`).join("L") + "Z";
+const ringPath = (cx, cy, r) => `M${F(cx - r)} ${F(cy)} A${F(r)} ${F(r)} 0 1 0 ${F(cx + r)} ${F(cy)} A${F(r)} ${F(r)} 0 1 0 ${F(cx - r)} ${F(cy)} Z`;
+const diamondPts = (cx, cy, hw, hh) => [[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]];
+export const PRIMITIVES = {
+  mullet: (x, y, b, C) => poly(starPts(x + b / 2, y + b / 2, b * 0.48, 5, b * 0.19, 0), C),
+  mullet6: (x, y, b, C) => poly(starPts(x + b / 2, y + b / 2, b * 0.48, 6, b * 0.21, 0), C),
+  mullet8: (x, y, b, C) => poly(starPts(x + b / 2, y + b / 2, b * 0.48, 8, b * 0.25, 0), C),
+  rowel: (x, y, b, C) => `<path d="${ptsPath(starPts(x + b / 2, y + b / 2, b * 0.48, 6, b * 0.23, 0))} ${ringPath(x + b / 2, y + b / 2, b * 0.11)}" fill="${C}" fill-rule="evenodd"/>`,
+  roundel: (x, y, b, C) => `<circle cx="${F(x + b / 2)}" cy="${F(y + b / 2)}" r="${F(b * 0.42)}" fill="${C}"/>`,
+  annulet: (x, y, b, C) => `<path d="${ringPath(x + b / 2, y + b / 2, b * 0.42)} ${ringPath(x + b / 2, y + b / 2, b * 0.26)}" fill="${C}" fill-rule="evenodd"/>`,
+  lozenge: (x, y, b, C) => poly(diamondPts(x + b / 2, y + b / 2, b * 0.34, b * 0.48), C),
+  fusil: (x, y, b, C) => poly(diamondPts(x + b / 2, y + b / 2, b * 0.24, b * 0.49), C),
+  mascle: (x, y, b, C) => `<path d="${ptsPath(diamondPts(x + b / 2, y + b / 2, b * 0.34, b * 0.48))} ${ptsPath(diamondPts(x + b / 2, y + b / 2, b * 0.2, b * 0.29))}" fill="${C}" fill-rule="evenodd"/>`,
+  billet: (x, y, b, C) => `<rect x="${F(x + b * 0.3)}" y="${F(y + b * 0.1)}" width="${F(b * 0.4)}" height="${F(b * 0.8)}" fill="${C}"/>`,
+  delf: (x, y, b, C) => `<rect x="${F(x + b * 0.19)}" y="${F(y + b * 0.19)}" width="${F(b * 0.62)}" height="${F(b * 0.62)}" fill="${C}"/>`,
+  crossCouped: (x, y, b, C) => { const cx = x + b / 2, cy = y + b / 2, t = b * 0.14, L = b * 0.45;
+    return poly([[cx - t, cy - L], [cx + t, cy - L], [cx + t, cy - t], [cx + L, cy - t], [cx + L, cy + t], [cx + t, cy + t], [cx + t, cy + L], [cx - t, cy + L], [cx - t, cy + t], [cx - L, cy + t], [cx - L, cy - t], [cx - t, cy - t]], C); },
+  crossPattee: (x, y, b, C) => { const cx = x + b / 2, cy = y + b / 2, w0 = b * 0.055, w1 = b * 0.3, L = b * 0.46;
+    const arm = `${F(cx - w0)},${F(cy)} ${F(cx - w1)},${F(cy - L)} ${F(cx + w1)},${F(cy - L)} ${F(cx + w0)},${F(cy)}`;
+    return [0, 90, 180, 270].map(r => `<polygon points="${arm}" fill="${C}" transform="rotate(${r} ${F(cx)} ${F(cy)})"/>`).join(""); },
+  crosslet: (x, y, b, C) => { const cx = x + b / 2, cy = y + b / 2, t = b * 0.14, L = b * 0.45, o = b * 0.28, s = b * 0.17;
+    const R = (rx, ry, w, h) => `<rect x="${F(rx)}" y="${F(ry)}" width="${F(w)}" height="${F(h)}" fill="${C}"/>`;
+    return R(cx - t / 2, cy - L, t, 2 * L) + R(cx - L, cy - t / 2, 2 * L, t)
+      + R(cx - s, cy - o - t / 2, 2 * s, t) + R(cx - s, cy + o - t / 2, 2 * s, t)
+      + R(cx - o - t / 2, cy - s, t, 2 * s) + R(cx + o - t / 2, cy - s, t, 2 * s); },
+  goutte: (x, y, b, C) => { const cx = x + b / 2, r = b * 0.26, top = y + b * 0.04, bl = y + b * 0.7;
+    return `<path d="M${F(cx)} ${F(top)} C${F(cx + r * 0.5)} ${F(bl - r * 1.5)} ${F(cx + r)} ${F(bl - r * 0.6)} ${F(cx + r)} ${F(bl)} A${F(r)} ${F(r)} 0 1 1 ${F(cx - r)} ${F(bl)} C${F(cx - r)} ${F(bl - r * 0.6)} ${F(cx - r * 0.5)} ${F(bl - r * 1.5)} ${F(cx)} ${F(top)} Z" fill="${C}"/>`; },
+};
+
+// ── a motif: a vector primitive if one owns the id, else recoloured charge art ──
 function motif(id, x, y, box, colRGB) {
+  const prim = PRIMITIVES[id];
+  if (prim) return prim(x, y, box, css(colRGB));
   const det = CHARGE_DETAIL[id]; if (!det) return "";
   let body = det.body;
   if (det.recolor) for (const [c, f] of det.recolor) body = body.split(c).join(css(shade(colRGB, f)));

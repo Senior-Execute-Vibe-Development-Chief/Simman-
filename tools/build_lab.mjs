@@ -26,19 +26,22 @@ const stripModule = s => s
   .replace(/^export\s+(function|const|let|class|async)\b/gm, "$1");
 
 // ── charge art + motif pools, from the built module + the genome's MOTIFS ──
+// Vector PRIMITIVES (parametric paths inlined with the renderer) need no
+// bundled art, so they always stay in the pools and never count against CAP.
 const { CHARGE_DETAIL } = await import("../src/sim/heraldryChargesDetailed.js");
 const { MOTIFS } = await import("../src/sim/emblemGenome.js");
+const { PRIMITIVES } = await import("../src/sim/emblemRender.js");
 
 const filtered = {}, keep = new Set();
 for (const [cat, pool] of Object.entries(MOTIFS)) {
-  const kept = pool.filter(id => CHARGE_DETAIL[id] && CHARGE_DETAIL[id].body.length <= CAP);
+  const kept = pool.filter(id => PRIMITIVES[id] || (CHARGE_DETAIL[id] && CHARGE_DETAIL[id].body.length <= CAP));
   filtered[cat] = kept;
-  kept.forEach(id => keep.add(id));
+  kept.forEach(id => { if (!PRIMITIVES[id]) keep.add(id); });
 }
 const subset = {};
 let bytes = 0;
 for (const id of [...keep].sort()) { subset[id] = CHARGE_DETAIL[id]; bytes += CHARGE_DETAIL[id].body.length; }
-const dropped = Object.values(MOTIFS).flat().filter(id => !keep.has(id));
+const dropped = Object.values(MOTIFS).flat().filter(id => !keep.has(id) && !PRIMITIVES[id]);
 
 // ── inline the genome (MOTIFS swapped for the subset) and the renderer ──
 let genomeSrc = stripModule(read("src/sim/emblemGenome.js"))

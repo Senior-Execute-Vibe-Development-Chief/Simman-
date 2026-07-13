@@ -86,7 +86,9 @@ const MOTIFS = {
   architecture: ["tower", "castle", "bridge", "gate", "arch", "house", "city"],
   natural: ["cloud", "lightning", "snowflake", "teardrop", "flint", "flames", "fireball"],
   celestial: ["sun", "moon", "estoile", "comet"],
-  geometric: ["lozenge", "fusil", "roundel", "billet", "fret", "triskele"],
+  // mostly VECTOR PRIMITIVES (parametric paths in the renderer — crisp,
+  // counterchangeable, semé-able); fret and triskele stay raster art
+  geometric: ["mullet", "mullet6", "mullet8", "rowel", "roundel", "annulet", "lozenge", "fusil", "mascle", "billet", "delf", "crossCouped", "crossPattee", "crosslet", "goutte", "fret", "triskele"],
 };
 // @INJECT:MOTIFS-END
 
