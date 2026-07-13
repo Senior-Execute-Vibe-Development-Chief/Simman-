@@ -5,7 +5,14 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): 341a3443/c9e04c68 (audit 2026-07 fixes: war-sack
+// Current baseline (2500 steps): fcb58415/2fc112a5 (cities-only census purge —
+// MUSTER_FIELD/PROV_FIELD/BIRTH_FIELD default ON: manpower from governed popField,
+// the admin-load ledger reads each province's governed catchment people, frontier
+// states are born of the stateless basin's popField mass; anchors persisted;
+// docs/settlement-ontology.md STATUS UPDATE + docs/audit-2026-07.md).
+// SIM_TUNE="MUSTER_FIELD=0,PROV_FIELD=0,BIRTH_FIELD=0" recovers the prior pair
+// below EXACTLY.
+// Prior baseline (2500 steps): 341a3443/c9e04c68 (audit 2026-07 fixes: war-sack
 // captives land on the victor's real capital instead of the throwaway TILE_WAR
 // adapter — war supplies slaves again and the stormed-city population leak is
 // closed; adapters carry army-weighted _nomad; war capture budget/momentum and

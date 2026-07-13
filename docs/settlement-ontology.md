@@ -168,3 +168,42 @@ Two populations exist by design: `popField` (canonical people-on-land;
 power, manpower, capacity, nomadism) and `s.people` (the economy's town
 census; production, casualties, taxes, seat power). Never sum them into one
 number.
+
+
+---
+
+## STATUS UPDATE (2026-07-13) — the cities-only census purge (partial V4, §4b)
+
+With settlements now purely CITIES (urban nodes over an auto-farmed countryside),
+every place the member roster stood in for the nation's PEOPLE was re-audited
+(docs/audit-2026-07.md, "do countries care about settlements beyond economics?")
+and the census-as-substance reads were migrated to the governed land — three
+levers, DEFAULT ON, each the POW_FIELD grounding pattern (field measure,
+median-anchored to the census so calibrated thresholds keep meaning; the anchors
+persist in saves; byte-identical at 0):
+
+- **MUSTER_FIELD** — the national manpower pool draws on governed popField, not
+  Σ city censuses (armies.js; the doc's own V4 item "muster manpower from Σ member
+  pops — should be popField over tiles" is DONE for the pool; garrison hosting and
+  the per-city rural conscript levy stay urban by design).
+- **PROV_FIELD** — the admin-load ledger's per-province reads are the province's
+  governed catchment people (`s._govPeople`, conquest.js): size burden, rebel
+  levy (the peasant rising), people-weighted NAT_OVERREACH heterogeneity, and
+  republic primacy (dynasties.js).
+- **BIRTH_FIELD** — frontier-state viability is the stateless BASIN's popField
+  mass, not the summed censuses of nearby towns (countryTerritory.js; this is
+  field-polity-spec §4b's substance — the seat still must be a real city).
+
+Validated: windowed 2-seed probes healthy on every axis (coverage up on both
+seeds, biggest realm down/flat), stylized 3/3 seeds all hard gates at ≤2 soft
+warnings, smoke green, levers-off recovery byte-exact.
+
+**Still standing (by design or pending):** the capital and provincial SEATS
+(role 2 — selection, courts, governor tree, CAP_SEAT, walls); the V3
+member-transfer family (secede/fragment/restore/absorb still flip s.countryId
+and seed successors at member cities); realm ALIVENESS from the roster (a realm
+dies with its last city — defensible as "no seat, no court", but the field
+alternative remains open); `natArmy = Σ member garrisons` (cities host troops —
+now the pool above it is field-based); and the per-province IDENTITY mixes
+(cohesion reads city mixes — the rural majority has no identity data until the
+per-tile identity field becomes authoritative, Stage 2).
