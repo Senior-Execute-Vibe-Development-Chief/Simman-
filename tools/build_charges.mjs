@@ -98,7 +98,15 @@ function detectRecolor(inner, rootFill) {
   return list;
 }
 
-const out = {};
+// MERGE, don't replace: raw sources are git-ignored working files, so the
+// committed module usually holds charges whose SVGs are no longer on disk.
+// Files present here override their ids; every other committed entry persists.
+let out = {};
+try {
+  const prev = await import("../src/sim/heraldryChargesDetailed.js");
+  out = { ...prev.CHARGE_DETAIL };
+  console.log(`merging over ${Object.keys(out).length} existing charges`);
+} catch (e) { /* first build */ }
 const meta = [];
 for (const file of files) {
   const id = file.replace(/\.svg$/, "");
@@ -143,6 +151,23 @@ for (const file of files) {
   const body = lowered.replace(/\s+/g, " ").trim();
   out[id] = { vb, recolor, body };
   meta.push({ id, recolor, bytes: body.length });
+}
+
+// STRUCTURAL VALIDATION: a body with unbalanced tags corrupts every emblem it
+// is embedded in (the nested <svg> swallows the rest of the document), so any
+// entry that fails a tag-balance check is dropped, loudly.
+const TAGS = ["svg", "g", "defs", "symbol", "clipPath", "mask", "pattern", "style", "text", "tspan", "title", "desc", "linearGradient", "radialGradient", "filter", "a", "switch", "marker"];
+function balanced(body) {
+  for (const t of TAGS) {
+    const open = (body.match(new RegExp(`<${t}(?=[\\s>])[^>]*[^/]>|<${t}>`, "g")) || []).length;
+    const close = (body.match(new RegExp(`</${t}>`, "g")) || []).length;
+    if (open !== close) return `${t}: ${open} open vs ${close} close`;
+  }
+  return null;
+}
+for (const [id, e] of Object.entries(out)) {
+  const bad = balanced(e.body);
+  if (bad) { console.log(`  DROPPED ${id} — unbalanced markup (${bad})`); delete out[id]; }
 }
 
 const header = `// ── DETAILED heraldic charge art (user-provided) ──

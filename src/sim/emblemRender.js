@@ -125,7 +125,7 @@ function furFill(w, h, p) {
   const kind = p.fur, base = Math.min(w, h);
   if (kind === "fretty") {                        // interlaced bendlets over the field colour
     let s = `<rect width="${w}" height="${h}" fill="${css(p.tinctures[0])}"/>`;
-    const T = css(p.treatTincture), sp = base * 0.26, sw = base * 0.05, ext = w + h;
+    const T = css(p.treatTincture), sp = base * 0.34, sw = base * 0.042, ext = w + h;
     s += `<g stroke="${T}" stroke-width="${F(sw)}">`;
     for (let x = -ext; x < ext; x += sp) s += `<line x1="${F(x)}" y1="0" x2="${F(x + h)}" y2="${h}"/>`;
     for (let x = -ext; x < ext; x += sp) s += `<line x1="${F(x + h)}" y1="0" x2="${F(x)}" y2="${h}"/>`;
