@@ -22,6 +22,14 @@
 //   480 ref:   79 setts | census 39,364 | city p50  66 p90 763 max 9,483 | org mean .382 p50 .425 p90 .471 max .489 | 21 realms / 19.2%
 //   tw=480:    88 setts | census 53,228 | city p50 204 p90 1031 max 6,535 | org mean .377 p50 .417 (0.99×/0.98× ref) | 27 / 21.2%
 //   tw=960:    73 setts | census 27,040 | city p50  76 p90  763 max 3,745 | org mean .330 p50 .413 (0.86×/0.97× ref) | 12 / 12.9%
+// With sub-stepped POP_MIGRATE shipped on top (arc part 2 — the FULL set):
+//   tw=480:    87 setts | census 58,778 | city p50  67 p90 1241 max 9,118 | org mean .392 p50 .442 (1.03×/1.04× ref) | 25 / 22.5%
+//   tw=960:    74 setts | census 32,998 | city p50  76 p90 1075 max 4,701 | org mean .326 p50 .408 (0.85×/0.96× ref) | 12 / 12.7%
+// → org + city percentiles TRACK the reference at both grids (p50 city 67/76 vs
+//   66; max city 0.96× at tw=480). Census TOTAL drifts high at tw=480 (1.49×, a
+//   heavy-tailed sum on a different terrain draw — judge by the multi-seed
+//   windowed battery, not this single cell). tw=960's realms/claimed remain
+//   snapshot-low (stateless-tail + river-mag residuals, see the docs).
 // → the MASSES' development clock tracks the reference at both grids post-fix
 //   (org p50 0.97–0.98×; pre-fix tw=960 sat at ~0.4×). tw=960's 12k residuals:
 //   org MEAN 0.86× (a stateless low-org tail — settlements that lay/receive no

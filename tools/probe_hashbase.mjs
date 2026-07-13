@@ -10,7 +10,22 @@
 // pair AND the 480 reference pair verified unchanged with the code in. The
 // lever-on functional gate is tools/probe_identity2.mjs (ghost identity,
 // countryside stamps, v4 top-2 roundtrip).
-// Current baseline (2500 steps): 36e38967/f57f0ddd (development-clock
+// Current baseline (2500 steps): f9eb7306/8d66ed8d (the rs=4 arc part 2,
+// 2026-07: sub-stepped POP_MIGRATE — total migration share ×rn² per firing,
+// substeps ≤ MIG_SHARE_MAX. On this sub-reference 320 grid the share DROPS
+// (0.06→0.0267: its D was 2.25× too fast in real units), re-keying the
+// stream. Shipped SECOND, after the road-wiring fix below — the same patch
+// A/B'd HARMFUL on the unwired world and census +22% on the wired one
+// (docs/empire-consolidation-2026-07.md "THE rs=4 ARC" §1/§3b). The 480
+// reference pair is UNCHANGED (b9c264b9/100239cd, bit-exact n=1 there).)
+// Prior baseline (2500 steps): 85674ac7/2db3bf8 (the rs=4 arc, 2026-07:
+// the trade-WIRING radii are real distances — CLOSE_NEIGHBOUR_DIST and
+// partnerReachFor ×rNormPop (roads.js), NUCLEATE_R/NUCLEATE_CAP_DIST
+// ×resScaleFor (countryTerritory.js). This 320 grid sits BELOW the reference
+// (rn≈0.67) so its wiring radii TIGHTEN (20→13.3 etc.) and the stream re-keys;
+// the 480 reference pair is UNCHANGED (b9c264b9/100239cd, verified across
+// every increment — the factors are ×1.0 exactly there).)
+// Prior baseline (2500 steps): 36e38967/f57f0ddd (development-clock
 // res-invariance, 2026-07: popField cap/seed are per REAL area (÷rNormPop²),
 // and the remaining unscaled cumulative-cost thresholds ride the grid —
 // DIFFUSE_COST_K, trade freight, reach/pathfind search budgets, the admin-flood

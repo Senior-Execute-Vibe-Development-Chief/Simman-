@@ -424,7 +424,7 @@ the 480 reference cell's full percentiles were captured for the first time
 (city p50 66 / p90 763; org p50 .425 / p90 .471 — the reference org
 DISTRIBUTION is TIGHT: everyone near the leaders).
 
-### 1. POP_MIGRATE verified first — REFUTED (so nobody rebuilds it)
+### 1. POP_MIGRATE verified first — REFUTED as the driver (then shipped as the substrate, see §3b)
 
 Sub-stepped migration was built as the verify vehicle (total share
 ×rn² per firing, split into substeps of ≤0.5 share each; n=1 and bit-exact at
@@ -432,10 +432,9 @@ the reference — hash480 held at b9c264b9/100239cd; stable at rs=4, 2×0.48
 substeps). Measured at 1920/12k: **org .236→.235 (flat), claimed 8.5→9.7%,
 census 25.3k→16.8k (0.64×→0.43× — WORSE), p50 city 49→37.** At 960/12k:
 neutral (org .337→.333). D×16 field diffusion does not drive the dev clock —
-it drains cradle catchments faster than towns urbanise them in an unwired
-world. The patch is archived (session scratchpad), NOT shipped; the popField.js
-header records the refutation. If ever revisited, re-measure ON TOP of the
-road fix below.
+it drains cradle catchments faster than towns urbanise them in an UNWIRED
+world. The hypothesis about the CLOCK was wrong; the physics (D ∝ share·Δx²
+is res-variant) was right — see §3b for the flip once the wiring existed.
 
 ### 2. The real driver: the road-wiring radii (FIXED, shipped)
 
@@ -483,6 +482,26 @@ NEUTRAL at the 12k snapshot (realms 12→12: the ORG_STATE_MIN statecraft gate
 binds FIRST on the unroaded stateless tail, so the basin bar is rarely even
 evaluated there yet) and mildly active at tw=480 (25→27 realms); it binds as
 tails develop. Mechanism-correct, ×1 exactly at the reference.
+
+### 3b. The migration patch flips positive on the wired world — SHIPPED second
+
+With the road wiring fixed, the §1 patch was re-measured on top (same cell,
+1920/12k/8817): **census 27.0k→33.0k (+22%: 0.69×→0.84× of the reference),
+city mean 370→446 (0.90× ref), p90 city 763→1,075, max 3,745→4,701; org and
+realms/claimed neutral (.330→.326, 12/12.9→12/12.7).** The same D×16 that
+DRAINED the unwired world (§1) FEEDS it once towns have the trade net to
+urbanise the flow — the roads are the mechanism, the field is the substrate,
+and the ORDER of the two fixes was the whole story. Shipped as its own
+commit; the reference stays byte-identical (hash480 re-verified with the
+patch in), and the 320 hashbase re-keys again (pair in its header chain).
+
+Full-set matrix cell at tw=480 (12k/8817): org .392/p50 .442 (1.03×/1.04×
+ref), p50 city 67 (ref 66), max 9,118 (0.96× ref), 25 realms / 22.5%. The
+one drifting number across the arc is the tw=480 census TOTAL (1.06×→1.36×→
+1.49× as the world gains function) — a heavy-tailed sum on a different
+terrain realization; the multi-seed windowed battery (probe_avg) is its
+judge, not a single matched-step cell. All per-capita/percentile shape sits
+on the reference.
 
 ### Residuals at rs=4 (diagnosed, deliberately not quick-fixed)
 
