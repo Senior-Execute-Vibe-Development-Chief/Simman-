@@ -185,8 +185,16 @@ const PANEL_SHAPES = ["lozenge", "disc", "disc", "escutcheon"];
 // NOTE: the rayed suns (sun/sunRays/sunOutline) are OUT of the vocabulary —
 // their art reads as a microbe, not a solar disc. A clean sun-disc flag
 // (Japan/Bangladesh class) is still fully reachable through geometric `roundel`.
+// The stars/discs/crescents still lead (that is what real flags repeat), but the
+// pool now also carries the crisp VECTOR PRIMITIVES — couped & pattée crosses,
+// the crosslet, mascle, fusil, pierced mullet, goutte — which are parametric
+// paths, sharp at any size, so they survive mass sewing exactly as a mullet
+// does. This widens the device SUBJECT on cloth (a flag's canton, band or array
+// can bear a cross or a lozenge, not only a star) without admitting the ornate
+// raster interlace that reads as a microbe at flag distance.
 const FLAG_SIMPLE = {
-  geometric: ["mullet", "mullet", "mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle"],
+  geometric: ["mullet", "mullet", "mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle",
+    "crossCouped", "crossPattee", "crosslet", "mascle", "fusil", "rowel", "goutte"],
   celestial: ["moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "starAndCrescent", "starAndCrescent"],
 };
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
@@ -1049,14 +1057,14 @@ export function expressGenome(genome) {
         : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
       counterchange = composition === "heraldic" && !field.fur && mixedGround
         && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
-      // THE FIELD IS THE FLAG: on partitioned cloth most flags fly the
-      // geometry ALONE — a tricolour needs no badge (~60% of real flags carry
-      // no device at all; the stripes do the identity work at any distance).
-      // A device appears only from the arrange gene's upper band, and it is a
-      // LONE central emblem (compact multiples still organize into an array).
-      // A plain field (no stripes, no ordinary) always speaks through its device.
+      // THE FIELD IS THE FLAG: on partitioned cloth many flags fly the geometry
+      // ALONE — a tricolour needs no badge, the stripes do the identity work at
+      // any distance. But a badged tricolour is just as real (Ghana's star,
+      // Senegal's star, Cameroon's star, India's wheel), so the arrange gene's
+      // upper HALF carries a LONE central emblem (compact multiples still
+      // organize into an array). A plain field always speaks through its device.
       if (isFlag && composition === "heraldic" && partition !== "plain") {
-        arrange = get("arrange") < 0.6 ? null
+        arrange = get("arrange") < 0.5 ? null
           : (compact && get("arrange") >= 0.82) ? "seme" : "single";
       }
     }

@@ -47,7 +47,9 @@ const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, atti
   hoistPale: 0, hoistWedge: 0, hoistDevice: 0 };
 // the flag device vocabulary: what a repeated/housed/band-riding device may be
 const FLAG_VOCAB = new Set(["mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle",
-  "sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline", "starAndCrescent"]);
+  "sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline", "starAndCrescent",
+  // crisp vector primitives — parametric paths, sharp at any size, so they sew as cleanly as a mullet
+  "crossCouped", "crossPattee", "crosslet", "mascle", "fusil", "rowel", "goutte"]);
 const STAINS = new Set(names.filter(n => TINCTURES[n].kind === "stain"));
 // the compact device categories — the only ones a flag repeats or strews
 const COMPACT = new Set(["celestial", "geometric"]);

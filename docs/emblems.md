@@ -189,9 +189,12 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     conjoined STAR AND CRESCENT as a single classic device.
   - **The flag device vocabulary** — repeated, housed, or band-riding
     devices are cut from folded cloth many times over: only the simple
-    silhouettes survive (mullets, discs, crescents, moons…); the ornate
-    interlace (knots, frets, clan marks) stays a shield's and a mon's
-    business. A LONE central device keeps the full pool. The rayed suns
+    silhouettes survive (mullets, discs, crescents, moons, and the crisp
+    VECTOR primitives — couped & pattée crosses, the crosslet, mascle, fusil,
+    pierced mullet, goutte — which are parametric paths, sharp at any size, so
+    a canton or a band can bear a cross or a lozenge, not only a star); the
+    ornate raster interlace (knots, frets, clan marks) stays a shield's and a
+    mon's business. A LONE central device keeps the full pool. The rayed suns
     (`sun`/`sunRays`/`sunOutline`) are OUT of the whole charge vocabulary —
     their bundled art reads as a microbe, not a solar disc; a clean sun-disc
     flag (Japan/Bangladesh class) still flies through the geometric `roundel`.
