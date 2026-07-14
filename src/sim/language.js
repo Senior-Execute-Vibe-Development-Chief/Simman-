@@ -300,6 +300,15 @@ const weightedPick = (cands, r01) => {
   return cands[cands.length - 1];
 };
 const DERIV_TARGETS = [...DERIV_BY_TARGET.keys()].sort((a, b) => a - b);
+// dictionary seeding order: FREQUENCY (basicness) descending, cid ascending as
+// a stable tiebreak. The most-used words claim the short surfaces FIRST, so
+// when the homophony repair has to lengthen a colliding word it lengthens the
+// RARE one — not the frequent one (Zipf again, at the collision layer). The
+// old cid order let a high-frequency but late-appended concept — every low
+// numeral sits near the cid tail — collide with the ~230 words seeded before
+// it and grow a spurious syllable ('two' = gyeitavve).
+const SEED_ORDER = Array.from({ length: CONCEPTS.length }, (_, i) => i)
+  .sort((a, b) => (CONCEPTS[b].b - CONCEPTS[a].b) || (a - b));
 
 // Assign every abstract target its derivation pathway ONCE per family, so two
 // distinct abstracts never receive the SAME coinage. The DERIV table shares
@@ -378,7 +387,7 @@ function seedDictionary(lang, c) {
   if (c.seeded) return;
   c.seeded = true;                                     // set first: internalOf below must not re-enter
   const taken = new Map();                             // rendered surface → owning cid
-  for (let cid = 0; cid < CONCEPTS.length; cid++) {
+  for (const cid of SEED_ORDER) {                      // frequency order: frequent words claim short surfaces first
     if (c.colex.has(cid)) continue;                    // intended merge, not a collision
     let surf = renderWord(internalOf(lang, cid), lang.prof);
     let guard = 0;
@@ -465,7 +474,7 @@ function synthRoot(lang, cid) {
   const con = CONCEPTS[cid];
   const rng = mkRng(hash32(lang.famSeed, "root", cid));
   return lang.prof.morph === "tmpl" ? synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed)
-    : synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, con.b >= 0.85));
+    : synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, con.b));
 }
 
 /** The word for a concept, as a rendered string. Loans win over native. */
@@ -542,11 +551,21 @@ export function rootFormOf(lang, cid) {
   return { w: copyWord(rootOf(lang, id)), pre: true };
 }
 
-// root length from the language's own distribution (Vietnamese-short
-// through Greenlandic-long); basic concepts run shorter, like real ones
-function rootLen(rng, prof, basic) {
-  const n = Math.round((prof.wordLen || 2) + (rng() - 0.5) + (basic ? -0.6 : 0.3));
-  return Math.max(1, Math.min(4, n));   // no daily word is 5+ syllables — speech erodes them first
+// root length from the language's own distribution (Vietnamese-short through
+// Greenlandic-long), shaped by ZIPF'S LAW OF ABBREVIATION — the most robust
+// quantitative universal in linguistics: within any language, frequency
+// predicts brevity. The core Swadesh vocabulary, the low numerals, the
+// most-used verbs are short EVERYWHERE, because use wears them down; a
+// trisyllabic word for 'two' is a language that has never been spoken.
+// Basicness `b` IS that frequency rank (water 1.0, law 0.6, harbor 0.5), so
+// the length bias scales continuously with it (slope 3.4 over the b range,
+// centred at b≈0.66), and the very top of the list is CAPPED short so a core
+// word or a low numeral can never be a three-syllable mouthful.
+function rootLen(rng, prof, b) {
+  const bias = 3.4 * (0.66 - b);                          // b=1 → −1.16, b=0.7 → −0.14, b=0.4 → +0.88
+  const n = Math.round((prof.wordLen || 2) + (rng() - 0.5) + bias);
+  const cap = b >= 0.95 ? 2 : b >= 0.8 ? 3 : 4;           // no daily word is 5+ syllables; no core word 3+
+  return Math.max(1, Math.min(cap, n));
 }
 
 // templatic roots: a consonant skeleton the patterns interleave (k-t-b style)
@@ -735,7 +754,7 @@ export function langWordForm(lang, n) {
   ensureV2(lang);
   const c = compile(lang);
   const rng = mkRng(hash32(lang.seed, "w", lang.gen, n));
-  return minimalNameRepair(lang, rng, applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, true))));
+  return minimalNameRepair(lang, rng, applyRules(lang.rules, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, 0.85))));
 }
 
 /** A generic word of the tongue (faith names, culture endonyms). */

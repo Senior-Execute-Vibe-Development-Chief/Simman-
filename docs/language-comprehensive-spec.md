@@ -1476,3 +1476,44 @@ at the mechanism and gated (§34). Probe 485 → **495**.
 
 **The typology-completion effort is complete and adversarially hardened:
 six phases, probe 359 → 495, all four gates green at every commit.**
+
+## Build status (session 16, seventh phase) — Zipf's law of abbreviation
+
+Acting on an external review's highest-leverage item: within any language,
+frequency predicts brevity — the core Swadesh vocabulary, the low numerals,
+the most-used verbs are short EVERYWHERE, because use wears them down. The
+generator produced trisyllabic numerals (`two = gyeitavve`), the tell of a
+word list rather than a spoken language. Two mechanism links, both keyed on
+the concept graph's existing basicness `b` (an independently-meaningful
+frequency rank — no fitted table):
+
+- **Graded root length.** `rootLen` now scales the length bias continuously
+  with `b` (slope 3.4, centred at b≈0.66) and CAPS the top of the frequency
+  list short (b≥0.95 → ≤2 syllables, b≥0.8 → ≤3), so a core word or a low
+  numeral can never be a three-syllable mouthful. The abstract tail keeps
+  its morphotype-appropriate length.
+- **Frequency-order dictionary seeding.** The deeper cause: the dictionary
+  seeded in cid order, so a high-frequency but late-appended concept — every
+  low numeral sits near the cid tail — collided with the ~230 words already
+  seeded and grew a spurious disambiguating syllable. Seeding now runs in
+  basicness-descending order, so the FREQUENT word claims the short surface
+  and the RARE word is the one homophony-repair lengthens — Zipf at the
+  collision layer too.
+
+Measured: core Swadesh 1.8 → **1.42** syllables, numerals 1–3 ~2.2 → **1.47**
+('two' is one syllable in 55% of languages, up from 21%; a trisyllabic 'two'
+fell from 9% to <1%), while the abstract tail is unchanged at 2.7. The whole
+lexicon + names re-baseline (accepted, open-question 2); all four gates stay
+green. Three probe gates that had pinned a single seed's specific outcome
+were de-flaked (they tested properties that still hold — cognate divergence
+79/80 families, featural-donor script, click usage median 15% — but were
+coupled to pre-Zipf surfaces): the divergence check now founds its family in
+a fresh world (removing a world-state coupling in branch seeds), the featural
+gate uses a post-rebaseline seed, and the click gate tests the population
+median rather than one noisy pick. Probe 495 → 496.
+
+Parked from the same review (by leverage): frequency-weighted erosion
+(part b — deferred; it introduces irregularity that would fight the regular-
+correspondence invariant), affixal derivation into the lexicon, the
+romanizer's over-eager repeated-syllable haplology, topic/focus scrambling,
+and the sim-side culture→lexicon conditioning.
