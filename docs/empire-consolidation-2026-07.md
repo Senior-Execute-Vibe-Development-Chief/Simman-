@@ -710,28 +710,42 @@ biggest realm to 22M km² (runaway); 150 holds it to a population-earned ~13M.
   flat tail. Largest-empire share 13%, Zipf −0.84, fallen lifespan ~217y.
 - **Byte-identical off** (hash480 b9c264b9/100239cd) — fully reversible.
 
-**The default flip (0→1) is BUILT and behaviourally validated but BLOCKED on a
-save/load bug — it stays DEFAULT 0 (opt-in) until that is fixed.** Enabling it as
-the default was attempted (2026-07) and reverted when smoke's save/load
-CONTINUATION gate failed: a loaded world's coverage drifts ~4pp from the
-uninterrupted run (land 5.9% vs 9.6% at +1000 steps), tripping the 3pp tolerance.
-It is NOT a data-loss runaway (pop drift 4.3%, wealth 0%, counts within
-tolerance) — SIZE_BY_POP's pop-driven coverage is simply more SENSITIVE to the
-save/load re-warm than the org-floor it replaces, and at the sparse early map
-(~6–10% coverage) a small transient is a large relative slice. Ruled out as the
-driver (both tested, numbers byte-identical): the per-country capacity warm-up
-(persisting + restoring `_capacity` after rebuildCountries changed nothing —
-capacity is recomputed before territory), and the logistics march (march ≈ 0 that
-early, so removing it changed nothing). The residual is in the pop-CORE's
-global-median coupling (`popCapK = medTG/medGP`) amplifying whatever small
-political-map transient the load re-warm carries — root cause not yet isolated.
-FIX PLAN before the flip: reproduce the drift in isolation (probe the loaded vs
-original `_countryOwner` right after load), find the non-restored cross-tick input
-the pop-core reads, persist/re-derive it (the anchor pattern), then re-run smoke +
-the reference battery. Until then: the mechanism is fully validated at DEFAULT 0
-via `SIM_TUNE="SIZE_BY_POP=1"` (coverage 9→66%, sub-Egypt realms throughout, giant
-mortal, stylized 3/3 at 0 warnings — all above), the shipped default is unchanged
-(reference b9c264b9/100239cd), and env sweep knobs are retained (SIM_MARCH_TILES/POW).
+### The save/load bug (found, root-caused, fixed) and the DEFAULT FLIP
+
+The first flip attempt was REVERTED when smoke's save/load CONTINUATION gate
+failed: a loaded world's coverage drifted 3.7pp from the uninterrupted run (land
+5.9% vs 9.6% at +1000 steps, over the 3pp tolerance). Two wrong guesses first
+(both left the numbers byte-identical, so both wrong): the per-country capacity
+warm-up, and the logistics march. Then INSTRUMENTED it (a probe reproducing
+smoke exactly): the two worlds are BYTE-IDENTICAL at the save step — it is not a
+missing field. The driver is **`popCapK = medTG/medGP`, a global median coupling
+computed FRESH each pass with no smoothing** — unlike every other anchor in the
+sim (`_refRevenue`, `provRatio` are all low-passed + persisted). A one-tile
+save/load re-warm perturbation shifts the median → shifts EVERY realm's target →
+compounds through sticky territory into runaway drift; the org-floor tolerated
+this, SIZE_BY_POP exposed it.
+
+**Fix = the anchor pattern**: low-pass `popCapK` (SIZE_POPK_SMOOTH 0.25) into a
+persisted `world._sizePopK` (persist.js, beside provRatio), and hold the
+persisted anchor on passes with no fresh median (the capacity-zero passes right
+after a load). A loaded world resumes on the identical ratio → the first
+post-load territory pass computes identical targets. **Measured: load drift
+3.7pp → 0.0pp; smoke continuation clean** (pop 2.3%, wealth 2.6%). The smoothing
+also IMPROVED the live behaviour — sparser/smaller early (5.2% cover / median
+266k km² at 8k vs 9%/319k pre-smoothing), coverage still rising to ~60%, and the
+giant TAMER (~10–12M vs ~13M).
+
+**FLIPPED to DEFAULT 1** (user decision, 2026-07). Validated at the flipped
+default: smoke green (incl. save/load continuation), stylized 3/3 all hard gates
+at 0 soft warnings (better than the floor's 1 — no flat empire-area tail). This
+is the FIRST change to move the 480 reference hash guard (a deliberate default
+behaviour change): new reference pair **6c46c2d1/9262bb95** (probe_hash480), new
+320 pair **a264fb6c/bd4b8f36** (probe_hashbase). `SIM_TUNE="SIZE_BY_POP=0"`
+recovers the pre-flip world (b9c264b9/100239cd) EXACTLY — every documented
+pre-flip number in this file (comboE, WAR_REACH, the rs=4 arc, the windowed
+batteries) now describes the `SIZE_BY_POP=0` baseline, one lever away. Validated
+only at the 480 reference; a 1920 windowed confirmation is the outstanding
+follow-up (container instability). Env sweep knobs retained (SIM_MARCH_TILES/POW).
 
 ## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*

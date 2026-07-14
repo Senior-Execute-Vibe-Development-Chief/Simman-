@@ -10,7 +10,14 @@
 // pair AND the 480 reference pair verified unchanged with the code in. The
 // lever-on functional gate is tools/probe_identity2.mjs (ghost identity,
 // countryside stamps, v4 top-2 roundtrip).
-// Current baseline (2500 steps): f9eb7306/8d66ed8d (the rs=4 arc part 2,
+// Current baseline (2500 steps): a264fb6c/bd4b8f36 (SIZE_BY_POP flipped DEFAULT
+// 0→1 — realm size = governed-people core (smoothed+persisted popCapK anchor) +
+// logistics march, replacing the COVER_BASE/COVER_ORG floor so realms smaller
+// than Egypt exist and coverage rises with development; docs/empire-consolidation-
+// 2026-07.md "THE MINIMUM-EGYPT FIX". SIM_TUNE="SIZE_BY_POP=0" recovers the prior
+// pair below EXACTLY. The 480 reference pair ALSO moved (6c46c2d1/9262bb95) — a
+// deliberate default behaviour change, the first to move the reference guard.)
+// Prior baseline (2500 steps): f9eb7306/8d66ed8d (the rs=4 arc part 2,
 // 2026-07: sub-stepped POP_MIGRATE — total migration share ×rn² per firing,
 // substeps ≤ MIG_SHARE_MAX. On this sub-reference 320 grid the share DROPS
 // (0.06→0.0267: its D was 2.25× too fast in real units), re-keying the
