@@ -31,7 +31,11 @@
   .ctrl{ margin-bottom:13px; }
   .ctrl label{ display:flex; justify-content:space-between; font-size:.78rem; margin-bottom:4px; color:var(--ink); }
   .ctrl label b{ font-weight:600; }
-  .ctrl label .val{ color:var(--muted); font-family:var(--mono); font-size:.72rem; font-variant-numeric:tabular-nums; }
+  .ctrl label .val{ color:var(--muted); font-family:var(--mono); font-size:.72rem; font-variant-numeric:tabular-nums; background:none; border:0; padding:0 3px; cursor:pointer; border-radius:3px; }
+  .ctrl label .val:hover{ color:var(--ink); background:var(--raised); }
+  .ctrl.free label .val{ font-style:italic; }              /* auto — varies every roll */
+  .ctrl:not(.free) label .val{ color:var(--accent); font-style:normal; }  /* pinned — held across rolls */
+  .ctrl.free input[type=range]{ opacity:.4; }
   input[type=range]{ width:100%; accent-color:var(--accent); height:18px; }
 
   .stage{ background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:20px; display:flex; flex-direction:column; align-items:center; gap:14px; }
@@ -119,7 +123,7 @@
       <p class="hint">Bookmarks into style-space, named for the historical traditions they evoke. They only set genes — nothing is locked to a culture: evolve freely from any of them, and any genome can still become anything.</p>
       <div class="chips" id="presets"></div>
       <h2>Design axes</h2>
-      <p class="hint">Abstract dials — they bias the genome without locking any pattern to a kind of realm. Move one and the emblem re-forms. <b>Note:</b> axes re-found the genome from its seed, so shape first, then evolve.</p>
+      <p class="hint">Abstract dials — they bias the genome without locking any pattern to a kind of realm. Each starts <b>auto</b>: free to vary with every reroll. Drag one to pin it; click its value to release it back to auto. So leave <i>Base hue</i> and <i>Tone</i> on auto and colours change per flag — pin them only to hold a palette.</p>
       <div id="sliders"></div>
     </aside>
 
@@ -232,14 +236,26 @@ const TRAITS=[["figuration","Figuration","abstract → living figures"],["ornate
 const NAMES_A=["Vale","Sable","Celestial","Iron","Azure","Gilded","Ashen","Vermilion","Hollow","Verdant","Storm","Amber","Onyx","Coral","Ivory"];
 const NAMES_B=["Court","Dominion","League","Marches","Reach","Hold","Confederacy","Throne","Compact","Banner","Realm","Crown","Union","Order"];
 let state={ seed:(Math.random()*2e9)>>>0, traits:{}, genome:null, lineage:[], pinA:null, pinB:null };
-TRAITS.forEach(([k])=>state.traits[k]=0.5);
+// state.traits holds ONLY the axes the player has pinned. Everything absent is
+// "auto": foundGenome leaves it to the seed, so it varies with every roll. This
+// is why hue/tone give diverse colours per flag until you deliberately fix them.
 
 const $=s=>document.querySelector(s);
 function nameFor(gm){ const r=rrng((gm.seed*7+ (gm.gen||0)*13)>>>0); return NAMES_A[Math.floor(r()*NAMES_A.length)]+" "+NAMES_B[Math.floor(r()*NAMES_B.length)]; }
 
+// An axis is "auto" (free) until the player engages it: drag the slider to pin
+// it, click its value chip to release it back to auto. Pinned axes ride along
+// every reroll; auto axes are re-drawn from the seed, so they vary per flag.
+function syncAxis(k){ const c=$("#c_"+k), lab=$("#v_"+k), s=$("#s_"+k), pinned=k in state.traits;
+  c.classList.toggle("free",!pinned);
+  if(pinned){ lab.textContent=state.traits[k].toFixed(2); s.value=Math.round(state.traits[k]*100); }
+  else lab.textContent="auto"; }
+function reFound(){ state.genome=foundGenome(state.seed,state.traits); paint(true); }
 function buildSliders(){ const box=$("#sliders");
-  box.innerHTML=TRAITS.map(([k,label,hint])=>`<div class="ctrl"><label><b>${label}</b><span class="val" id="v_${k}">0.50</span></label><input type="range" min="0" max="100" value="50" id="s_${k}" aria-label="${label}"></div>`).join("");
-  TRAITS.forEach(([k])=>{ const s=$("#s_"+k); s.addEventListener("input",()=>{ state.traits[k]=s.value/100; $("#v_"+k).textContent=(s.value/100).toFixed(2); state.genome=foundGenome(state.seed,state.traits); paint(true); }); }); }
+  box.innerHTML=TRAITS.map(([k,label,hint])=>`<div class="ctrl free" id="c_${k}" title="${hint}"><label><b>${label}</b><button type="button" class="val" id="v_${k}" title="auto — varies each roll. Click to pin here, or to release a pinned axis.">auto</button></label><input type="range" min="0" max="100" value="50" id="s_${k}" aria-label="${label}"></div>`).join("");
+  TRAITS.forEach(([k])=>{ const s=$("#s_"+k);
+    s.addEventListener("input",()=>{ state.traits[k]=s.value/100; syncAxis(k); reFound(); });
+    $("#v_"+k).addEventListener("click",()=>{ if(k in state.traits) delete state.traits[k]; else state.traits[k]=s.value/100; syncAxis(k); reFound(); }); }); }
 
 /* ── style presets: named bookmarks into style-space. Each just sets the axis
    sliders and a handful of genes, then hunts a seed whose EXPRESSION matches
@@ -264,7 +280,12 @@ const PRESETS=[
 ];
 function applyPreset(ps){
   const [,,axes,genes,need]=ps;
-  for(const [k,v] of Object.entries(axes||{})){ state.traits[k]=v; const s=$("#s_"+k); if(s){ s.value=Math.round(v*100); $("#v_"+k).textContent=v.toFixed(2); } }
+  // a preset pins ONLY the axes it names; every other axis is released to auto,
+  // so e.g. the Modern flag preset (which sets no hue/tone) rolls a fresh colour
+  // family on each seed rather than clinging to one.
+  state.traits={};
+  for(const [k,v] of Object.entries(axes||{})) state.traits[k]=v;
+  TRAITS.forEach(([k])=>syncAxis(k));
   let s=(Math.random()*2e9)>>>0, g;
   for(let i=0;i<64;i++){
     g=foundGenome(s,state.traits);
