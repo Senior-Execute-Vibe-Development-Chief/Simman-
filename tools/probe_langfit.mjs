@@ -434,11 +434,19 @@ console.log("\n── grammar diachrony ──");
 
   // (a) the grammaticalization CYCLE: drift languages hard; every case must
   // stay audible (eroded categories renew from fresh words), and the sweep
-  // must actually catch renewal happening
+  // must actually catch renewal happening. Two different sample widths, on
+  // purpose: renewal is a ~20%-per-language event, so it is COUNTED over a
+  // 30-wide sweep (a 10-window was only ~90% likely to contain one — a latent
+  // flake any surface re-baseline could tip to zero; 30 is >99.9%), while the
+  // audibility INVARIANT stays on its original focused 10-window (widening it
+  // would newly assert over rare, pre-existing case syncretism it never
+  // covered — a scope change, not what this gate is for).
   let silentCase = 0, renewals = 0, checked = 0;
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 30; i++) {
     const l = foundLanguage(world, { seed: 152000 + i * 419 });
     for (let d = 0; d < 10; d++) driftLanguage(world, l);
+    renewals += affixEtymologies(l).filter(e => e.renewed).length;   // renewal over the full sweep
+    if (i >= 10) continue;                                            // audibility over the original window
     const shape = paradigmShape(l);
     if (shape.iso || !shape.cases.length) continue;
     const bare = fullV(inflectNoun(l, STONE, { num: "sg", cas: null }));
@@ -447,7 +455,6 @@ console.log("\n── grammar diachrony ──");
       checked++;
       if (fullV(inflectNoun(l, STONE, { num: "sg", cas: cs.k })) === bare) silentCase++;
     }
-    renewals += affixEtymologies(l).filter(e => e.renewed).length;
   }
   check(`case categories stay audible under heavy drift (${silentCase}/${checked} silent)`, checked > 0 && silentCase === 0);
   check(`renewal actually fires somewhere in the sweep (${renewals} renewed affixes)`, renewals >= 1);
@@ -2092,6 +2099,40 @@ console.log("\n── §24 vocalizer (IPA + phonetic plans) ──");
   const d1 = foundLanguage(mkWorld(), { seed: 795001 });
   const dsig = (l) => [STONE, KING].map(cid => ipaOf(l, nativeStemOf(l, cid))).join("|") + JSON.stringify(phoneticPlan(l, nativeStemOf(l, STONE)));
   check("IPA + phonetic plans deterministic + JSON-roundtrip-stable", dsig(d1) === dsig(JSON.parse(JSON.stringify(d1))));
+
+  // (g) ROMANIZER FAITHFULNESS (review 3.2): the surface derives from the
+  // phoneme string and never silently swallows a whole SYLLABLE. A repeated
+  // syllable (walk /nɨsɨs/) has a vowel between the consonants, so the digraph-
+  // collapse cleanup can't span it — the spelling keeps it ('nisis', not
+  // 'nis'), matching the IPA the vocalizer says. Tested directly: for a form
+  // with an adjacent identical-syllable pair, rendering the full form must
+  // DIFFER from rendering it with one copy dropped (equal ⇒ the romanizer ate
+  // the syllable). Restricted to atonal tongues, where a syllable's marks don't
+  // depend on its position.
+  let repPairs = 0, eaten = 0;
+  const sylK = (s) => JSON.stringify([s.on, s.nu, s.co]);
+  for (let i = 0; i < 300 && repPairs < 120; i++) {
+    const l = foundLanguage(world, { seed: 812000 + i * 53 });
+    if (l.prof.tone > 0 || l.prof.pitchAccent) continue;
+    for (let cid = 0; cid < CONCEPTS.length && repPairs < 120; cid++) {
+      const form = nativeStemOf(l, cid);
+      let at = -1;
+      for (let k = 0; k + 1 < form.syls.length; k++) if (sylK(form.syls[k]) === sylK(form.syls[k + 1])) { at = k; break; }
+      if (at < 0) continue;
+      repPairs++;
+      const dropped = copyWord(form); dropped.syls.splice(at, 1);
+      if (renderWord(form, l.prof) === renderWord(dropped, l.prof)) eaten++;
+    }
+  }
+  check(`romanizer keeps a repeated syllable in the spelling, never eats it (${eaten}/${repPairs} eaten)`, repPairs >= 40 && eaten === 0);
+  // the digraph collapse it exists FOR still fires: no rendered word retains a
+  // DOUBLED consonant digraph (ghgh/nyny/zhzh), only vowel-separated repeats
+  let doubledDigraph = 0, wordsSeen = 0;
+  for (let i = 0; i < 120; i++) {
+    const l = foundLanguage(world, { seed: 814000 + i * 71 });
+    for (let cid = 0; cid < CONCEPTS.length; cid += 5) { wordsSeen++; if (/([bcdfghjklmnpqrstvwxyz]{2})\1/i.test(wordOf(l, cid))) doubledDigraph++; }
+  }
+  check(`the digraph cleanup still fires — no doubled consonant digraph survives romanization (${doubledDigraph}/${wordsSeen})`, doubledDigraph === 0);
 }
 
 // ── §25 writing systems: emergent script type, orthographic lag, glyphs ───

@@ -1514,9 +1514,8 @@ median rather than one noisy pick. Probe 495 → 496.
 
 Parked from the same review (by leverage): frequency-weighted erosion
 (part b — deferred; it introduces irregularity that would fight the regular-
-correspondence invariant), affixal derivation into the lexicon, the
-romanizer's over-eager repeated-syllable haplology, topic/focus scrambling,
-and the sim-side culture→lexicon conditioning.
+correspondence invariant), topic/focus scrambling, and the sim-side
+culture→lexicon conditioning.
 
 ## Build status (session 16, eighth phase) — affixal derivation (agentive)
 
@@ -1557,3 +1556,39 @@ in the Lab's "The lexicon's shape" card as a Derivation section (base → agent,
 the shared affix underlined). Drive-by: fixed a latent `ckWords`-undefined
 crash in the probe's non-quiet rarities display (it broke every verbose run).
 All four gates green; probe 496 → 502.
+
+## Build status (session 16, ninth phase) — romanizer faithfulness (haplology)
+
+The external review's item 3.2: "Romanizer haplologizes; IPA doesn't." A word
+was SPELLED collapsed but SAID full — walk /nɨsɨs/ spelled 'nis', father /fafa/
+spelled 'fa' — so the spelling and the phonetic plan disagreed, and a homophone
+check run on the spelling saw collisions that were not there. The cause was a
+single over-broad regex in `renderWord`: the surface cleanup collapsed any
+repeated two-character run (`(..)\1+ → $1`) meant only for accidental repeated
+DIGRAPHS (ghgh→gh), but the pattern also matched a repeated SYLLABLE ('isis' in
+'nisis' → 'nis'), silently swallowing a whole phonemic syllable the IPA kept.
+
+The fix restricts the collapse to consonant-only runs — the class spans every
+consonant grapheme, y and h included (they form the digraphs ny=/ɲ/, gh=/ɣ/,
+never a nucleus). A repeated syllable has a vowel [aeiou] between the
+consonants, so no consonant-pair can span it: the spelling now keeps it
+('nisis', 'fafa'), matching the IPA exactly, while the digraph cleanup the
+regex existed for (ghgh→gh, nyny→ny, ssss→ss) still fires. Surface-only, as
+before; the internal form was always faithful. Reduplication is untouched — it
+concatenates already-rendered halves, which the cleanup, seeing each half
+whole, never spans (the codebase's long-standing reduplication-vs-haplology
+resolution).
+
+The romanization now derives faithfully from the phoneme string (the review's
+prescription), so mama/papa-type kinship words and every repeated-syllable
+root read as they sound. Measured: the roman-shorter-than-IPA rate fell by
+~40%, and a direct probe gate (§24g) confirms a repeated syllable is never
+eaten (0/120) while no doubled consonant digraph survives (0/5760). The
+faithful surfaces also shift a few homophony-repair collisions during seeding
+(a small, correct re-baseline — 'nisis' and 'nis' are no longer treated as the
+same word). One pre-existing single-window gate (grammaticalization RENEWAL,
+a ~20%-per-language event caught over only 10 seeds — ~90% reliable, a latent
+flake) was tipped to zero by that re-baseline and de-flaked: renewal is now
+counted over a 30-wide sweep (>99.9%), while the audibility invariant it shared
+the loop with stays on its original focused window. All four gates green;
+probe 502 → 504.

@@ -526,9 +526,18 @@ export function renderWord(word, prof) {
     out += syl;
   }
   // Romanization cleanup: initial glottal stop is conventionally silent;
-  // trailing apostrophes (final ejectives) read as typos; repeated digraphs
-  // (ghgh, zhzh) collapse — all surface-only, the internal form keeps them.
-  out = out.replace(/^'+/, "").replace(/'+$/, "").replace(/''+/g, "'").replace(/(..)\1+/g, "$1").replace(/(.)\1\1+/g, "$1$1");
+  // trailing apostrophes (final ejectives) read as typos; repeated CONSONANT
+  // digraphs (ghgh→gh, nyny→ny, zhzh→zh) and 3+ identical consonants (ssss→ss)
+  // collapse. The collapse is restricted to consonant-only runs (the class
+  // spans every consonant grapheme, y and h included — they form the digraphs
+  // ny=/ɲ/, gh=/ɣ/, never a nucleus): a repeated SYLLABLE has a vowel [aeiou]
+  // between the consonants, so no consonant-pair spans it and the spelling
+  // keeps it — walk /nɨsɨs/ stays 'nisis', not 'nis', to match the IPA the
+  // phonetic layer says (review 3.2: romanization derives faithfully from the
+  // phoneme string; it never silently swallows a whole syllable). Reduplication
+  // is unaffected — it concatenates already-rendered halves, which this pass,
+  // seeing each half whole, never spans. All surface-only; the form keeps them.
+  out = out.replace(/^'+/, "").replace(/'+$/, "").replace(/''+/g, "'").replace(/([bcdfghjklmnpqrstvwxyz]{2})\1+/gi, "$1").replace(/([bcdfghjklmnpqrstvwxyz])\1\1+/gi, "$1$1");
   // orthographic finishing conventions (spelling, not sound). English:
   // no final -i/-v/-j/-u, no written zh/ngk/kw, final diphthongs respelled
   // (law, how, boy, day), -ck/-ff/-tch after short vowels, and a seeded
