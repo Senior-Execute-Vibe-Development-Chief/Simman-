@@ -117,9 +117,13 @@ const TARGETS = [
   ["Hoist triangle + many fly stripes (Cuba/Eritrea skeleton)", { ...base(), partition: flagPart("barry"), hueC: ordinary("none"), arrange: 0.2, brandSeed: 0.5, stripes: stripesGeneFor(5) },
     p => p.isFlag && p.field.hoist && p.field.hoist.shape === "triangle" && p.field.partition === "barry" && p.field.stripes === 5 && !p.motif],
 
-  // ── F. BORDURE on cloth ────────────────────────────────────────────────────
-  ["Plain field + bordure frame (Sri Lanka/Montenegro/Grenada)", { ...base(), partition: flagPart("plain"), hueC: ordinary("none"), arrange: 0.1, border: 0.9, star: 0.2 },
-    p => p.isFlag && p.composition === "heraldic" && p.field.bordure],
+  // ── F. BORDURE — deliberately NOT a flag feature ───────────────────────────
+  // A heraldic bordure strokes the field's whole outline, which on cloth reads as
+  // exactly the unwanted "line around the edge of the flag". No mainstream national
+  // flag carries one; the rare bordered flags (Sri Lanka, Montenegro, Grenada) are
+  // bespoke-arms flags, excluded below. So the bordure is now SHIELD/silk-only
+  // vocabulary (like the chief) — its reachability is exercised on shields by
+  // emblem.test.mjs, not here. No flag target.
 
   // ── G. SERRATED / PILY edge ────────────────────────────────────────────────
   ["Serrated vertical division (Qatar/Bahrain)", { ...base(), partition: flagPart("perPale"), hueC: ordinary("none"), arrange: 0.2, line: slot(POOLS.LINES, "indented") },
@@ -210,7 +214,7 @@ const EXCLUDED = [
   ["Kenya", "Maasai shield & spears — bespoke central icon"],
   ["Mexico / Ecuador / Bolivia", "eagle-and-serpent / state seal — bespoke arms"],
   ["Bhutan", "dragon — bespoke central icon"],
-  ["Sri Lanka", "lion + bo leaves — bespoke icon (its bordure IS in scope, tested above)"],
+  ["Sri Lanka", "lion + bo leaves — bespoke icon (and its bordure: flags carry no bordure, it's shield-only)"],
   ["Cambodia", "Angkor Wat — bespoke central icon"],
   ["Brazil", "celestial globe + motto — bespoke (its star FIELD is in scope, tested above)"],
   ["Albania / Serbia / Montenegro", "double eagle / arms — bespoke (borders/fields in scope)"],

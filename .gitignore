@@ -3,3 +3,8 @@ dist/
 tools/emblem-genome-lab.html
 realworld.svg
 tools/flag-rating.html
+
+# local visual diagnostics (playwright-core, env-specific)
+tools/visual-diag*.mjs
+tools/visual-gallery.mjs
+scratch-*.png
