@@ -631,6 +631,92 @@ fallback), MINE_RANGE (URBAN_NODES experimental path only, def 0).
   open correctness question. No number here changed; only the confirmation is
   deferred.
 
+## THE MINIMUM-EGYPT FIX (2026-07, SIZE_BY_POP) — realm size tracks governed people, not a floor
+
+User report: "anything smaller than Egypt is now impossible; realms spawn a
+tiny speck then explode in one tick to the size of all other new nations."
+MEASURED and true. Three layers, all at the 480 reference (1 tile ≈ 17,700 km²):
+
+1. **The coverage floor.** Every realm's growth target is max()'d with
+   `COVER_BASE(25) + COVER_ORG(260)·org` ref-tiles — so a realm at the
+   statehood threshold (org 0.15) is floored to 64 tiles = **1.13M km² ≈
+   Egypt**, and the boosted fill rate (EXPAND_RATE·POP_FILL = 96 tiles/pass)
+   fills the whole floor in ONE territory pass → the "explode in one tick."
+2. **Solo realms are hard-skipped** in the capacity calc (conquest.js:2034),
+   so a lone city-state gets `_capacity = 0` → target 0 → the floor was the
+   patch that gave it any size.
+3. **The capacity curve is log-compressed and median-anchored**:
+   `capacity = CAP_K_REL(7.8)·log2(1 + power/MEDIAN power)`, so a realm 10×
+   the median's power gets only ~3.5× the area — every realm clusters at the
+   median ≈ 47 tiles ≈ 830k km², *already Egypt-scale before the floor*.
+
+Under all three, the grid itself: 17,700 km²/tile (70,000 at Quarter sim res),
+so a real 2,000-km² city-state is sub-tile — the smallest possible realm is
+~1 tile regardless of the size model. (Documented; the fix makes realms as
+small as the grid allows, it can't beat the grid.)
+
+### The floor-on/off/mechanism A/B (reference grid, seed 8817, over time)
+
+| | median realm | sub-Egypt realms | coverage 8k→32k | biggest |
+|---|---|---|---|---|
+| Default (floor) | 75→123 t (1.3–3.2M km²) | 4–18 | 16→64% | ~10M |
+| Floor OFF | 5→45 t (89–797k) | 15–36 | 2.6→23% | ~4.6M |
+| SIZE_BY_POP v1 (pop cap only) | 5→68 t | 18–37 | 2.4→32% | ~4.8M |
+| **SIZE_BY_POP (core+march)** | **18→79 t (319k→1.4M)** | **21–31** | **9→63%** | ~13M |
+
+Floor-off proves small realms are achievable but EMPTIES the map (coverage
+collapses to 23% — the documented comboE risk: the median-anchored log2 means
+nobody pulls ahead, so nothing fills). v1 (pop cap alone) is the same — small
+realms, 32% plateau. The plateau is intrinsic to the median-relative benchmark.
+
+### The mechanism (T.SIZE_BY_POP, lever, DEFAULT 0, byte-identical off)
+
+Extent = **populated CORE + administrative MARCH**, no floor:
+- **Core** = `govPop / medianGovPop · median-capacity-target` (countryTerritory.js):
+  extent tracks the people a realm actually administers, benchmarked to the
+  median established realm each pass (the _refRevenue pattern — no fitted
+  density). Under-populated realms shrink to what their people justify →
+  sub-Egypt realms exist; the median-and-above are unchanged.
+- **March** = `150 · logistics² · r2` ref-tiles ADDED on top: the sparse
+  deserts/tundra/marches a state can *reach* but its people don't fill. It is
+  ~0 in the pre-road era and grows with roads→rail, so **coverage rises with
+  development** (the "near-full only at the industrial era" target) instead of
+  being floored full from birth. Capacity is deliberately NOT the ceiling
+  (median-anchored → would re-cap the whole map at the median, the v1 plateau);
+  the growth Dijkstra's admin-load attenuation is the real reach bound.
+- Nomads exempt (steppe held by momentum, not people); a capless solo is
+  driven purely by its population so it grows instead of freezing at its core.
+
+**Calibration** (swept to 40k at the reference): march = `150·logistics²`. The
+squared logistics gate keeps the early frontier genuinely small (march ≈ 0 until
+roads mature) and pushes the fill toward the industrial era; the linear gate
+(pow 1) inflated antiquity (median 637k vs 319k) and filled by the classical
+period. March magnitude is the giant lever: 400 fills fuller (73%) but runs the
+biggest realm to 22M km² (runaway); 150 holds it to a population-earned ~13M.
+
+### Validation (reference grid — 1920 confirmation pending a stable container)
+
+- **Coverage rises with development**: 9%(antiquity) → 17% → 49% → 63% → 66%
+  (industrial), matching the default's late level from a sparse early world.
+- **Small realms exist at every step**: early median 319k km², 31/33 realms
+  sub-Egypt at 8k; late still 25 sub-Egypt of 46.
+- **The giant is MORTAL** (probe_empires 32k): the top slot turns over (biggest
+  at 32k is age 27,680, not the oldest realm's 30,013), young realms climb to
+  the top-5 (age 5,413 at #2), deaths abundant (shattered 7→249, seceded 37),
+  and the late map is MULTIPOLAR (several 9–12M realms, no dominant hegemon).
+- **Stylized 3/3 seeds, all hard gates, 0 soft warnings** — BETTER than the
+  default (which carries 1: the flat empire-area tail from its uniformly-capped
+  giants). SIZE_BY_POP's natural size spread (city-states → great powers) has no
+  flat tail. Largest-empire share 13%, Zipf −0.84, fallen lifespan ~217y.
+- **Byte-identical off** (hash480 b9c264b9/100239cd) — fully reversible.
+
+The default flip (0→1) is a product decision: the mechanism directly fixes the
+reported problem and is measurably MORE history-shaped than the floor, but it is
+the most load-bearing size mechanism in the sim and is validated only at the 480
+reference (the app default is 1920; the container has been too unstable for the
+long 1920 runs). Recommendation: flip on, with a 1920 windowed confirmation to
+follow when the box is stable. Env sweep knobs retained (SIM_MARCH_TILES/POW).
+
 ## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
   (not just capped via comboE): it needs a **NON-multiplicative** limiter — e.g.
