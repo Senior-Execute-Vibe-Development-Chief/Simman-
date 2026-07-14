@@ -27,7 +27,8 @@ import { applicableRules, applyRules, legalizeWord } from "./languageChange.js";
 import { bequeathGrammar, adpSourceOf, gramOf } from "./languageGrammar.js";
 import { CONCEPTS, COLEX, DERIV, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE,
   BK_TERMS, BK_PARENT, KIN_MERGES, KIN_SLOTS, MOTION_DV, MOTION_PATH_ADP, MOTION_SAT_RATE,
-  GREEN, BLUE, YELLOW, BROWN, PURPLE, PINK, ORANGE, GREY } from "./languageLexicon.js";
+  GREEN, BLUE, YELLOW, BROWN, PURPLE, PINK, ORANGE, GREY,
+  AGENT_BASE, MAN, PEOPLE, BODY } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
 const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
@@ -44,6 +45,51 @@ const DERIV_BY_TARGET = (() => {
   return m;
 })();
 const DERIV_RATE = 0.72;   // P(a given family derives a given abstract vs keeps an opaque root)
+
+// ── the agentive nominalizer (item 1.5) ───────────────────────────────────
+// An agent noun ('ruler') = a base verb ('rule') + a grammaticalized AGENTIVE
+// affix, worn from the family's OWN 'person' word (Heine–Kuteva: 'man' is the
+// commonest source cross-linguistically, then 'person/people', then 'body/
+// self'). The source is per-FAMILY, so every agent in a family carries the SAME
+// worn affix — the regularity that makes it an affix (-er, -sha, -ci, mu-) and
+// not a per-word compound. (The analytic 'V-person' compound — a full 'person'
+// word, un-worn — is already how GUARDIAN ‹ guard+man is built; this is its
+// SYNTHETIC, bound-affix counterpart, which is what 'affixal derivation' means.)
+function agentSourceOf(lang) {
+  const pin = lang.prof.lex && lang.prof.lex.agent;   // pinnable (probe/Lab), like motion
+  if (pin != null) return pin;
+  const roll = h01(lang.famSeed, "agentsrc");
+  return roll < 0.5 ? MAN : roll < 0.83 ? PEOPLE : BODY;
+}
+// reduce a source noun's INTERNAL form to ONE bound affix syllable — the worn
+// nominalizer (-er ‹ 'man', mu- ‹ 'person'). Keep the salient first syllable,
+// trim its onset and coda to a single consonant: an unstressed clitic that
+// still rides the sound-change log, so it corresponds regularly to the free
+// 'person' word across the family (mu-ntu, per-son, the survivor of erosion).
+function lightAffix(word) {
+  const s = word.syls[0];
+  return { syls: [{ on: s.on.slice(0, 1).map(x => ({ ...x })), nu: s.nu.slice(0, 1).map(x => ({ ...x })), co: s.co.slice(0, 1).map(x => ({ ...x })) }] };
+}
+// attach a bound affix to a stem WITHOUT the compound machinery's erosion: a
+// productive derivation keeps its base whole (that is what makes it read as
+// 'rule'+er and stay transparent), so joinInternal's blend-truncation and
+// syllable cap — right for old lexicalised names — must not fire here. Only the
+// seam is repaired: a fusional tongue elides the seam vowel (the fusion that
+// makes the affix cling and alternate), and a glide breaks vowel hiatus, both
+// exactly as joinInternal does. Prefixing? the affix leads (Bantu m-); else it
+// trails (English -er). Both morphemes still ride the sound-change log, so the
+// agent corresponds regularly to its base and to its cognates across the family.
+function joinAffix(lang, stem, affix, prefixing) {
+  const a = copyWord(prefixing ? affix : stem), b = copyWord(prefixing ? stem : affix);
+  const lastA = a.syls[a.syls.length - 1], firstB = b.syls[0];
+  if (lang.prof.morph === "fus" && lastA.nu.length && !lastA.co.length && !firstB.on.length) {
+    lastA.nu = [];
+    if (!lastA.nu.length && !lastA.co.length && lastA.on.length) { firstB.on = [...lastA.on, ...firstB.on]; a.syls.pop(); }
+  } else if (lastA.nu.length && !lastA.co.length && !firstB.on.length && firstB.nu.length) {
+    firstB.on = [firstB.nu[0].b === 0 ? { p: 3, m: 6, l: 1, s: 0 } : { p: 0, m: 6, l: 1, s: 0 }];
+  }
+  return { syls: [...a.syls, ...b.syls] };
+}
 
 export function languagesOf(world) { return world.languages || (world.languages = new Map()); }
 export function getLanguage(world, id) { return id >= 0 && world.languages ? world.languages.get(id) || null : null; }
@@ -369,6 +415,11 @@ function derivParts(lang, cid) {
     const src = adpSourceOf(lang, MOTION_PATH_ADP.get(cid));
     return [head, src != null ? src : dflt];
   }
+  // AGENTIVE (item 1.5): an agent noun derives from [base verb, 'person' source]
+  // in EVERY family — agentive nominalization is productive and near-universal,
+  // so (unlike the abstracts) there is no derive-or-not roll; the per-family
+  // variation is the affix source and whether it reduced (handled in internalOf).
+  if (AGENT_BASE.has(cid)) return [AGENT_BASE.get(cid), agentSourceOf(lang)];
   if (con.dv) return h01(lang.famSeed, "dv", cid) < 0.65 ? con.dv : null;
   if (!DERIV_BY_TARGET.has(cid)) return null;
   const c = compile(lang);
@@ -439,24 +490,39 @@ function internalOf(lang, cid) {
   // (if this family colexified the two parts into ONE lexeme, a compound
   // would duplicate it — "water-water" — so coin a root instead)
   if (pr && parts[0] !== parts[1]) {
-    // derived concept: a compound of its parts (or a re-vowelled pattern of
-    // the head root, if the tongue is templatic — derivation by pattern, where
-    // the pattern itself is the modifier's exponent: pass the mod so different
-    // pathways give different patterns, not one m-word for the whole abstract set)
-    if (lang.prof.morph === "tmpl") w = revowel(lang, parts[0], cid, pr[1]);
-    else w = joinInternal(lang, parts[1], parts[0]);
-    // EROSION: a transparent compound wears to a 1–3 syllable stump (the same
-    // "no daily word is 5+ syllables" principle as rootLen/erodeName). Common
-    // concrete compounds erode when frequent (b≥0.5); the curated ABSTRACT
-    // derivations always do — a rare-but-derived word like 'throne' (‹ king+
-    // sit) still nests two roots deep, and no tongue says a four-heavy-syllable
-    // word for it, so it wears down regardless of its own frequency.
-    const abstract = !con.dv && DERIV_BY_TARGET.has(cid);
-    if ((con.b >= 0.5 || abstract) && w.syls.length > 3) w.syls = [w.syls[0], ...w.syls.slice(-2)];
-    // legalize so the dictionary form is byte-identical to what the grammar
-    // layer's rootFormOf (pre:false → legalizeWord) builds — one source of
-    // truth for derived concepts too (the session-11 desync lesson)
-    w = legalizeWord(w);
+    if (AGENT_BASE.has(cid)) {
+      // AGENTIVE (item 1.5): base-verb stem + a grammaticalized 'person' affix.
+      // parts[0] is the base's reflex (the transparent stem), parts[1] the
+      // family's 'person' reflex, worn to one clitic syllable (the -er / -sha /
+      // mu- affix). The affix is the nominalizing HEAD (it makes the word a
+      // noun) and the base the modifier, so the compound STRATEGY places it
+      // correctly: a head-LAST family suffixes it (base+affix: -er, -sha, -ci),
+      // a head-FIRST family prefixes it (affix+base: the Bantu m-). The
+      // agentive's position tracks the family's headedness for free — nothing
+      // time- or case-gated. joinAffix keeps the base morpheme whole (no blend
+      // erosion, no compound cap), so the derivation reads transparently.
+      const prefixing = (lang.prof.compound || "hl") === "hf";
+      w = legalizeWord(joinAffix(lang, parts[0], lightAffix(parts[1]), prefixing));
+    } else {
+      // derived concept: a compound of its parts (or a re-vowelled pattern of
+      // the head root, if the tongue is templatic — derivation by pattern, where
+      // the pattern itself is the modifier's exponent: pass the mod so different
+      // pathways give different patterns, not one m-word for the whole abstract set)
+      if (lang.prof.morph === "tmpl") w = revowel(lang, parts[0], cid, pr[1]);
+      else w = joinInternal(lang, parts[1], parts[0]);
+      // EROSION: a transparent compound wears to a 1–3 syllable stump (the same
+      // "no daily word is 5+ syllables" principle as rootLen/erodeName). Common
+      // concrete compounds erode when frequent (b≥0.5); the curated ABSTRACT
+      // derivations always do — a rare-but-derived word like 'throne' (‹ king+
+      // sit) still nests two roots deep, and no tongue says a four-heavy-syllable
+      // word for it, so it wears down regardless of its own frequency.
+      const abstract = !con.dv && DERIV_BY_TARGET.has(cid);
+      if ((con.b >= 0.5 || abstract) && w.syls.length > 3) w.syls = [w.syls[0], ...w.syls.slice(-2)];
+      // legalize so the dictionary form is byte-identical to what the grammar
+      // layer's rootFormOf (pre:false → legalizeWord) builds — one source of
+      // truth for derived concepts too (the session-11 desync lesson)
+      w = legalizeWord(w);
+    }
   } else {
     // atomic: evolve the (possibly homophony-repaired) root as one piece, so
     // wordOf and the grammar layer's rootFormOf never diverge

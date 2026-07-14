@@ -1517,3 +1517,43 @@ Parked from the same review (by leverage): frequency-weighted erosion
 correspondence invariant), affixal derivation into the lexicon, the
 romanizer's over-eager repeated-syllable haplology, topic/focus scrambling,
 and the sim-side culture→lexicon conditioning.
+
+## Build status (session 16, eighth phase) — affixal derivation (agentive)
+
+The external review's item 1.5: agent nouns should be COINED, not stored —
+'ruler' is 'rule' + an agentive affix, the way 'teacher' is 'teach' + '-er'.
+Before this the lexicon derived only by COMPOUNDING two full roots (guardian ‹
+guard+man); it had no bound derivational affix. Now five agent concepts
+(ruler, builder, warrior, seer, speaker — append-only, the new cid tail after
+BARK) are built through a grammaticalized AGENTIVE nominalizer. The mechanism,
+two per-family facts so every agent shares them (the regularity that makes it
+an affix, not a per-word compound):
+
+- **Source.** The affix is worn from the family's OWN word for a person —
+  'man' (commonest, Heine–Kuteva), then 'people', then 'body/self' — chosen
+  once per family (`agentSourceOf`, pinnable via `prof.lex.agent`). So the
+  affix is a real morpheme with an etymology, not an invented ending, and it
+  differs across families (236 distinct in a 320-family probe sample).
+- **Placement by headedness.** The affix is the nominalizing HEAD, so the
+  compound strategy positions it for free: a head-final family SUFFIXES it
+  (base+affix: -er, -sha, -ci), a head-initial one PREFIXES it (affix+base:
+  the Bantu m-). Nothing time- or case-gated.
+
+The form is built by `joinAffix`, a deliberate sibling of `joinInternal` that
+does NOT apply the compound machinery's blend-truncation or syllable cap: a
+productive derivation keeps its base WHOLE (that is what makes it transparent),
+so only the seam is repaired (fusional vowel elision, hiatus glide). Both the
+base and the affix are the concepts' own reflexes, evolved through the rule
+log, so the agent corresponds sound-for-sound to its base and to cognates
+across the family — the regular-correspondence invariant the review names.
+
+Measured (probe §35): the base verb shows through the derived word **99%** of
+the time (the rest is regular seam alternation, not opacity); the affix is
+regular across all five agents on the headedness-predicted edge in **93%** of
+families (the slack is seam allomorphy); pinning the source man/people/body
+yields three distinct agents (the source is a real input, cardinal rule 2);
+a mother tongue and its drifted sister both coin transparent agents. Surfaced
+in the Lab's "The lexicon's shape" card as a Derivation section (base → agent,
+the shared affix underlined). Drive-by: fixed a latent `ckWords`-undefined
+crash in the probe's non-quiet rarities display (it broke every verbose run).
+All four gates green; probe 496 → 502.

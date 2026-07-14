@@ -22,7 +22,8 @@ import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb
   classifiersOf, classifierEtymologies, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns,
   renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, polysynthesisOf } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, OLD, GRAIN,
-  RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN, FISH, WATER, GOD, WINE } from "./sim/languageLexicon.js";
+  RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN, FISH, WATER, GOD, WINE,
+  RULER, BUILDER, WARRIOR, SEER, SPEAKER, RULEV, BUILDV, FIGHTV, SAY } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
@@ -843,6 +844,28 @@ function lexTypologyHTML(l) {
   secs.push(`<h3>Motion <span class="count">(${esc(mName[mt])})</span></h3>
     <p class="note">Talmy's split: where the PATH of motion lives. A satellite-framed tongue keeps the manner verb and says ‘ran in’ — its ‘enter’ is a go-compound${eEty ? ` (here ${esc(wordOf(l, ENTER))} ‹ ‘${esc(eEty.gloss)}’)` : ""}; a verb-framed one says ‘entered’ and lets the running go unsaid; a serializing one says both.</p>
     ${mEx}`);
+  // affixal derivation — the agentive nominalizer (item 1.5): 'one who VERBs' =
+  // a base verb + an agentive affix worn from the family's own 'person' word.
+  // The SAME affix rides every agent (regular) and the base stays whole
+  // (transparent), both riding the sound-change log (regular correspondence).
+  const agEty = etymologyOf(l, RULER);
+  if (agEty) {
+    const AGENTS = [[RULER, RULEV], [BUILDER, BUILDV], [WARRIOR, FIGHTV], [SEER, SEE], [SPEAKER, SAY]];
+    const hf = (l.prof.compound || "hl") === "hf";
+    const ws = AGENTS.map(([a]) => wordOf(l, a));
+    // the shared affix (the regular exponent), taken on the headedness edge
+    const shared = (tail) => { let p = ws[0]; for (const s of ws) { let i = 0; while (i < p.length && i < s.length && (tail ? p[p.length - 1 - i] === s[s.length - 1 - i] : p[i] === s[i])) i++; p = tail ? p.slice(p.length - i) : p.slice(0, i); } return p; };
+    const affix = hf ? shared(false) : shared(true);
+    const emph = (w) => {
+      if (affix && hf && w.startsWith(affix)) return `<u>${esc(affix)}</u>${esc(w.slice(affix.length))}`;
+      if (affix && !hf && w.endsWith(affix)) return `${esc(w.slice(0, w.length - affix.length))}<u>${esc(affix)}</u>`;
+      return esc(w);
+    };
+    const rows = AGENTS.map(([a, b], i) => `<span class="cell"><span class="gloss">${esc(glossOf(b))} →</span> <span class="w">${emph(ws[i])}</span> <span class="lbl">${esc(glossOf(a))}</span></span>`).join(" ");
+    secs.push(`<h3>Derivation <span class="count">(agentive ‹ ‘${esc(glossOf(agEty.mod))}’${hf ? ", a prefix" : ""})</span></h3>
+      <p class="note">‘One who VERBs’ is COINED, not memorised: a base verb takes an agentive affix worn down from this family's own word for ‘${esc(glossOf(agEty.mod))}’ (the -er / -sha / mu- machine). The same ${hf ? "prefix" : "suffix"} (<u>underlined</u>) rides every agent — that is the regularity that makes it an affix — while the base stays whole, so ‘${esc(wordOf(l, RULER))}’ still shows ‘${esc(wordOf(l, RULEV))}’ inside it. Both morphemes ride the sound-change log, so a cognate in a sister tongue corresponds sound-for-sound.</p>
+      <p class="cells">${rows}</p>`);
+  }
   // the new colex domains, only where they fired (emergent card)
   const pairs = [[MIND, HEART, "one word for heart & mind"], [MIND, HEAD, "one word for head & mind"], [LANGUAGE_C, TONGUE, "the tongue IS the language"], [BARK, SKIN, "bark is just ‘skin’"]];
   const fired = pairs.filter(([a, b]) => wordOf(l, a) === wordOf(l, b)).map(([a, b, lab]) => `<span class="cell"><span class="w">${esc(wordOf(l, a))}</span> <span class="gloss">${esc(lab)}</span></span>`);

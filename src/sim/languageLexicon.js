@@ -303,6 +303,28 @@ export const LANGUAGE_C = c("language", "gov", 0.6);
 export const SKIN = c("skin", "bod", 0.85);
 export const BARK = c("bark", "plt", 0.5, [SKIN, TREE]);
 
+// ── affixal derivation: agent nouns (typology completion, item 1.5) ───────
+// AGENT nouns — 'one who VERBs' — coined by a grammaticalized AGENTIVE affix,
+// worn down from a 'person' word (man/people/body: the Heine–Kuteva agent-
+// nominalizer quarry — Turkish -ci, Japanese -sha 者, Swahili m-, Persian -gar,
+// English -er) and attached to a base verb. The build lives in language.js:
+// the affix is a light reflex of the family's OWN 'person' word, shared across
+// every agent → the "-er" regularity; the stem is the base verb's own reflex →
+// transparent ('rule'→'ruler') and regularly-corresponding across the family
+// (both morphemes ride the sound-change log). APPEND-ONLY, as ever; these seed
+// the dictionary last and enter no name pool.
+export const RULER = c("ruler", "gov", 0.5);
+export const BUILDER = c("builder", "crf", 0.4);
+export const WARRIOR = c("warrior", "war", 0.5);
+export const SEER = c("seer", "fth", 0.4);
+export const SPEAKER = c("speaker", "gov", 0.4);
+// each agent's base verb (the stem the agentive affix attaches to). The affix
+// SOURCE (the 'person' word) is a per-family choice made in language.js, not
+// fixed here — the mechanism, not the outcome.
+export const AGENT_BASE = new Map([
+  [RULER, RULEV], [BUILDER, BUILDV], [WARRIOR, FIGHTV], [SEER, SEE], [SPEAKER, SAY],
+]);
+
 export const CONCEPTS = D;
 
 // ── Berlin–Kay hierarchy data (shared world-structure, cardinal rule 2) ──

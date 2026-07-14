@@ -23,7 +23,8 @@ import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND, QUEEN, OLD, GRAIN, BREAD, SWORD, BE, SIT, STAND, HAVE,
   TOPO_MOD, PERSON_POOL, LOAN_POOL, RUN, FATHER, BROTHER, RED, GREEN, BLUE, HEART, HEAD,
   YELLOW, BROWN, PURPLE, PINK, ORANGE, GREY, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER,
-  ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK, LORD, NIGHT } from "../src/sim/languageLexicon.js";
+  ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK, LORD, NIGHT,
+  RULER, BUILDER, WARRIOR, SEER, SPEAKER, AGENT_BASE, RULEV, BUILDV, FIGHTV, SAY, PEOPLE, BODY } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -3000,12 +3001,17 @@ console.log("\n── §30 lexical typology ──");
   const A = (x) => x.tokens.length === x.gloss.split(" ").length;
   const refL = (kind, seed) => { const l = foundLanguage(mkWorld(), { seed }); l.prof = refProfile(kind, seed); l.rules = []; const r = refPin(kind); l.pin = r.pin; if (r.rom) l.prof.rom = { ...(l.prof.rom || {}), ...r.rom }; return l; };
 
-  // append-only integrity (first gates): ids fixed, nothing entered a name pool
-  check("append-only: BARK is the last concept, LORD unmoved, VERBS tail is the path set",
-    BARK === CONCEPTS.length - 1 && CONCEPTS[LORD].g === "lord" && VERBS.slice(-4).join() === [ENTER, EXIT, ASCEND, DESCEND].join());
+  // append-only integrity (first gates): ids fixed, nothing entered a name pool.
+  // The agent nouns (item 1.5) are the NEW tail — five contiguous ids right
+  // after BARK, SPEAKER last — so every earlier surface keeps its cid and the
+  // old anchor (BARK) simply shifted five slots deeper, nothing reordered.
+  const agentTail = [RULER, BUILDER, WARRIOR, SEER, SPEAKER];
+  check("append-only: the agent nouns are the tail (contiguous after BARK, SPEAKER last), LORD unmoved, VERBS tail is the path set",
+    agentTail.join() === agentTail.map((_, i) => BARK + 1 + i).join() && SPEAKER === CONCEPTS.length - 1 &&
+    CONCEPTS[LORD].g === "lord" && VERBS.slice(-4).join() === [ENTER, EXIT, ASCEND, DESCEND].join());
   const pools = [TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL];
-  const newCids = [YELLOW, BROWN, PURPLE, PINK, ORANGE, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER, ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK];
-  check("no phase-2 concept entered a name/loan pool (names never re-baseline)",
+  const newCids = [YELLOW, BROWN, PURPLE, PINK, ORANGE, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER, ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK, ...agentTail];
+  check("no appended concept (phase-2 or the agent nouns) entered a name/loan pool (names never re-baseline)",
     newCids.every(cid => pools.every(p => !p.includes(cid))));
 
   // ── Berlin–Kay ──
@@ -3353,6 +3359,9 @@ console.log("\n── §32 phonological rarities ──");
   check("rarity layers deterministic + JSON-roundtrip-stable", sig9(da) === sig9(db) && sig9(da) === sig9(JSON.parse(JSON.stringify(da))));
 
   if (!quiet) {
+    // sample click-bearing words from the first click language (this display
+    // line referenced an undefined ckWords — a latent crash on any non-quiet run)
+    const ckWords = found.ck ? Array.from({ length: 40 }, (_, i) => wordOf(found.ck, i * 3 + 1)).filter(w => /[ǀǃǁǂʘ]/.test(w)) : [];
     say("\n   clicks:    " + ckWords.slice(0, 6).join("  "));
     say("   ATR:       " + atrWords.slice(0, 6).join("  "));
     say("   registers: " + phWords.split(" ").slice(0, 6).join("  "));
@@ -3579,6 +3588,75 @@ console.log("\n── §34 adversarial review fixes ──");
   for (let d = 0; d < 10; d++) { driftLanguage(rw1, rl1); driftLanguage(rw2, rl2); }
   const fsig = (l) => renderClause(l, possPron).text + "|" + renderClause(l, relPronFrame).text + "|" + (highRegister(l) ? registerWords(l, KING).high : "-");
   check("review-fix layer deterministic + JSON-roundtrip-stable", fsig(rl1) === fsig(rl2) && fsig(rl1) === fsig(JSON.parse(JSON.stringify(rl1))));
+}
+
+// ── §35 AFFIXAL DERIVATION: agent nouns (item 1.5). 'ruler' = 'rule' + a
+// grammaticalized agentive affix worn from the family's own 'person' word.
+// Transparent (the base stays whole) and REGULAR (one shared affix across every
+// agent, on the side the family's headedness predicts), and the affix SOURCE is
+// a real per-family input — pin it and the word changes. The mechanism, not a
+// fitted 'ruler'. ─────────────────────────────────────────────────────────
+console.log("\n── §35 affixal derivation (agentive) ──");
+{
+  const AG = [RULER, BUILDER, WARRIOR, SEER, SPEAKER], BASE = [RULEV, BUILDV, FIGHTV, SEE, SAY];
+  const strip = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const cpre = (a) => { let p = a[0]; for (const s of a) { let i = 0; while (i < p.length && i < s.length && p[i] === s[i]) i++; p = p.slice(0, i); } return p; };
+  const csuf = (a) => { let p = a[0]; for (const s of a) { let i = 0; while (i < p.length && i < s.length && p[p.length - 1 - i] === s[s.length - 1 - i]) i++; p = p.slice(p.length - i); } return p; };
+  const contains = (agent, base) => agent.includes(base) || (base.length > 2 && (agent.includes(base.slice(0, -1)) || agent.includes(base.slice(1))));
+  const world = mkWorld();
+  const N = 320;
+  const pop = Array.from({ length: N }, (_, i) => foundLanguage(world, { seed: 660000 + i * 47 }));
+
+  // 1) productive + transparent: every family coins the agents (no opaque roots)
+  //    and the base verb still shows through the derived word — 'teacher' from
+  //    'teach'. The tiny remainder is regular seam alternation, not opacity.
+  let trans = 0, tot = 0;
+  for (const l of pop) { const A = AG.map(c => strip(wordOf(l, c))), B = BASE.map(c => strip(wordOf(l, c))); for (let k = 0; k < 5; k++) { tot++; if (contains(A[k], B[k])) trans++; } }
+  check(`the agent noun is transparent — its base verb shows through ${Math.round(100 * trans / tot)}% of the time (rest is regular seam alternation)`,
+    trans / tot > 0.95);
+
+  // 2) regular affix, placed by headedness: every agent in a family carries the
+  //    SAME worn affix (that is what makes it an affix, not a per-word compound),
+  //    on the side the compound strategy dictates — head-first prefixes it (m-),
+  //    else it suffixes (-er). A literal shared substring; seam allomorphy is the
+  //    slack below 100%.
+  let regular = 0;
+  for (const l of pop) { const A = AG.map(c => strip(wordOf(l, c))); const hf = (l.prof.compound || "hl") === "hf"; if ((hf ? cpre(A) : csuf(A)).length >= 1) regular++; }
+  check(`the agentive affix is regular across all five agents, on the headedness-predicted edge, in ${Math.round(100 * regular / N)}% of families`,
+    regular / N > 0.88);
+
+  // 3) the affix SOURCE drives the form (cardinal rule 2: mechanism, not a fitted
+  //    'ruler'). Same tongue, three 'person' sources pinned → three agents, and
+  //    the base is the shared part, the affix the part that moves.
+  const pinRuler = [MAN, PEOPLE, BODY].map((src) => { const l = foundLanguage(mkWorld(), { seed: 424242 }); l.prof.lex = { ...(l.prof.lex || {}), agent: src }; return wordOf(l, RULER); });
+  check(`pinning the agentive source (man/people/body) changes the agent word — the source is a real input, not decoration [${pinRuler.join(" / ")}]`,
+    new Set(pinRuler).size >= 2);
+
+  // 4) cross-family variation: the affix is the family's own worn 'person' word,
+  //    so it differs across families — not one global -er string.
+  const affixes = new Set(pop.map(l => { const A = AG.map(c => strip(wordOf(l, c))); const hf = (l.prof.compound || "hl") === "hf"; return (hf ? "P" : "S") + (hf ? cpre(A) : csuf(A)); }));
+  check(`the agentive affix varies across families (${affixes.size} distinct in ${N}) — a worn reflex of each family's 'person' word, never a fixed morpheme`,
+    affixes.size > N / 4);
+
+  // 5) regular correspondence down a family: a language and a drifted sister both
+  //    coin the agents transparently, so the derivation survives sound change the
+  //    way inherited vocabulary does (the invariant the review names).
+  const wf = mkWorld(); const mother = foundLanguage(wf, { seed: 913377 });
+  const sister = JSON.parse(JSON.stringify(mother)); for (let d = 0; d < 12; d++) driftLanguage(wf, sister);
+  const famTransparent = (l) => AG.every((c, k) => contains(strip(wordOf(l, c)), strip(wordOf(l, BASE[k]))));
+  check("a mother tongue and its drifted sister both coin transparent agents — the affixal derivation corresponds regularly across sound change",
+    famTransparent(mother) && famTransparent(sister) && wordOf(mother, RULER) !== wordOf(sister, RULER));
+
+  // 6) determinism + JSON-roundtrip for the new cids
+  const wa = mkWorld(), wb = mkWorld(); const la = foundLanguage(wa, { seed: 778899 }), lb = foundLanguage(wb, { seed: 778899 });
+  for (let d = 0; d < 8; d++) { driftLanguage(wa, la); driftLanguage(wb, lb); }
+  const asig = (l) => AG.map(c => wordOf(l, c)).join();
+  check("agentive derivation deterministic + JSON-roundtrip-stable", asig(la) === asig(lb) && asig(la) === asig(JSON.parse(JSON.stringify(la))));
+
+  if (!quiet) {
+    const specimen = pop.slice(0, 5).map(l => { const hf = (l.prof.compound || "hl") === "hf"; return `${wordOf(l, RULEV)}→${wordOf(l, RULER)}${hf ? "(pre)" : ""}`; });
+    say("   agentive: " + specimen.join("   "));
+  }
 }
 
 // ── determinism: same record → same names, always ─────────────────────────
