@@ -33,6 +33,7 @@ import { makeSettlement, techEff } from "./settlement.js";
 import { logEvent } from "./events.js";
 import { dominantCulture } from "./cultures.js";
 import { T } from "./tuning.js";
+import { fieldShift } from "./popField.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
 import { expansionColonyMul } from "./personality.js";
@@ -547,6 +548,7 @@ function tryColonize(world, A, cands, prev) {
   if (full.length > MAX_ROUTE_TILES) full = full.slice(0, MAX_ROUTE_TILES);
   const endow = Math.min((A.wealth || 0) * COLONY_ENDOW_FRAC, COLONY_ENDOW_CAP);
   A.people -= COLONY_PEOPLE;
+  fieldShift(world, A, -COLONY_PEOPLE);   // one population: the colonists leave this ground (ONE_POP; no-op otherwise)
   A.wealth = (A.wealth || 0) - endow;
   recordOut(A, OUT_COLONY, endow);
   A._lastColony = world.step;

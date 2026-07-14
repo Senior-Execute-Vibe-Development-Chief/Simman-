@@ -47,7 +47,7 @@ import { updateFaiths, FAITH_INTERVAL, updatePilgrimage, PILGRIM_INTERVAL } from
 import { updateSlaveTrade, SLAVE_INTERVAL } from "./slavery.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { diffuseIdentityField, stepIdentityField, IDENT_FIELD_INTERVAL } from "./identityField.js";
-import { stepPopField } from "./popField.js";
+import { stepPopField, deriveOnePop } from "./popField.js";
 import { stepControlField } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 
@@ -249,7 +249,13 @@ export function stepPeopleSim(world, n = 1) {
     // Runs after the settlement pass so it reads this tick's leading agriculture.
     {
       const _pfs = Math.max(1, T.POP_FIELD_STRIDE | 0);
-      if (T.POP_FIELD && world.step % _pfs === 0) stepPopField(world, _pfs);
+      if (T.POP_FIELD && world.step % _pfs === 0) {
+        stepPopField(world, _pfs);
+        // ONE POPULATION (docs/one-population.md slice B): the census is a
+        // DERIVED READ of the field over each settlement's catchment; this
+        // also stamps next pass's urban capacity spikes and core rates.
+        deriveOnePop(world);
+      }
     }
     // Political control field (controlField.js). In PRETTY mode (CONTROL_FIELD, CTRL_LIVE off)
     // it's a render-only layer (world._ctrlOwner is the drawn border; nothing in the sim reads

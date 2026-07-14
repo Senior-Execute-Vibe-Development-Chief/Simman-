@@ -14,6 +14,7 @@ import { passRng } from "./rng.js";
 import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
 import { techEff } from "./settlement.js";
+import { fieldShift } from "./popField.js";
 
 // ── FAMINE — a regional bad-harvest event ──
 // Hits a geographic cluster of settlements for a window, slashing their land-
@@ -252,7 +253,9 @@ export function updateShocks(world) {
       // when IT does (review D36; germ_theory/medicine had no effects at all).
       const relief = techEff(s).healthRelief || 0;
       const mort = T.PLAGUE_MORT * (1 - relief) * (1 + PLAGUE_URBAN * urban * (1 - relief)) * virgin * _dt;
+      const before = s.people;
       s.people = Math.max(1, s.people * (1 - mort));
+      fieldShift(world, s, s.people - before);   // one population: the pestilence empties the LAND too (FIELD_DEMOG)
       // SLAVE_PEOPLE: the unfree live inside s.people — the pestilence takes its share
       // of them too (slave quarters historically fared worse, not better).
       if (T.SLAVERY && T.SLAVE_PEOPLE && (s._unfree || 0) > 0) s._unfree = Math.min((s._unfree || 0) * (1 - mort), Math.max(0, s.people - 1));

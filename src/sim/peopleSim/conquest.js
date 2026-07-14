@@ -28,6 +28,7 @@ import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
 import { closeWar } from "./armies.js";
 import { updateLoyaltyField, updateGrievLedger, grievOf, ATTACH_SECEDE, GRIEV_UNREST_W } from "./loyaltyField.js";
+import { fieldShift } from "./popField.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
 // (T.POLITY_INTERVAL); index.js gates the pass on it.
@@ -1221,7 +1222,7 @@ function declareIndependence(world, c, seed) {
   // The plot still costs him (army loss, ambition reset, cooldown).
   if (!hasOutsideBorder(world, c.id, bloc) || !blocHasSeat(bloc)) {
     for (const m of bloc) {
-      ravage(m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
+      ravage(world, m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
       m._ambition = 0;
       m.loyalty = 0.5;
       m._conqueredAt = world.step;
@@ -1243,8 +1244,10 @@ function declareIndependence(world, c, seed) {
 
 // Damage a town in a rising — people die or flee, wealth is looted, the
 // garrison mutinies.
-function ravage(s, popMul, wealthMul, armyMul) {
+function ravage(world, s, popMul, wealthMul, armyMul) {
+  const _b = s.people;
   s.people = Math.max(1, (s.people || 0) * popMul);
+  fieldShift(world, s, s.people - _b);   // one population: the rising's dead and fled leave the LAND too (FIELD_DEMOG)
   // SLAVE_PEOPLE: the unfree live inside s.people, so a ravaged town's losses fall on
   // free and unfree alike (never more unfree than people).
   if (T.SLAVERY && T.SLAVE_PEOPLE && (s._unfree || 0) > 0) s._unfree = Math.min((s._unfree || 0) * popMul, Math.max(0, s.people - 1));
@@ -1261,7 +1264,7 @@ function rebel(world, c, seeds) {
   const radius = Math.max(UNREST_RADIUS_MIN, c.holdReach || c.range);   // rally radius is a map distance → res-scaled grip
   for (const seed of seeds) {
     if (seed.id === c.capitalId) {            // the throne riots, it doesn't secede
-      ravage(seed, RIOT_POP, RIOT_WEALTH, RIOT_ARMY);
+      ravage(world, seed, RIOT_POP, RIOT_WEALTH, RIOT_ARMY);
       seed.unrest = 0;
       continue;
     }
@@ -1288,7 +1291,7 @@ function rebel(world, c, seeds) {
     // just doesn't produce a successor realm.
     if (!hasOutsideBorder(world, c.id, bloc) || !blocHasSeat(bloc)) {
       for (const m of bloc) {
-        ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
+        ravage(world, m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
         m.unrest = 0;
         m.loyalty = 0.5;
         m._conqueredAt = world.step;
@@ -1298,7 +1301,7 @@ function rebel(world, c, seeds) {
     snapClaim(world, newId);                   // a rebellion seizes its territory at once
     ensurePolity(world, newId, { silent: true, seat: seed });
     for (const m of bloc) {
-      ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
+      ravage(world, m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
       m.countryId = newId;
       m.unrest = 0;                            // the rising vents the grievance
       m.loyalty = 1;                           // loyal to the new rebel realm
@@ -2865,7 +2868,7 @@ function hordeRaids(world, countries) {
         if (p > 0) { v.wealth -= p; loot += p; }
         if (T.SLAVERY) {
           const g = Math.min((v.people || 0) * RAID_CAPTIVE * evade, (v.people || 0) * 0.2);
-          if (g >= 1) { recordCaptives(N.capital, v, g); v.people -= g; took += g; }   // the captive trains carry who they are (SLAVE_PEOPLE)
+          if (g >= 1) { recordCaptives(N.capital, v, g); v.people -= g; took += g; fieldShift(world, v, -g); }   // the captive trains carry who they are (SLAVE_PEOPLE) — and empty the LAND (FIELD_DEMOG)
         }
         hit.push(v);
       }
