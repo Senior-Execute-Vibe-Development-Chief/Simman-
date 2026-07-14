@@ -394,6 +394,7 @@ const FIELD_SPAN_DEF = 6.0;   // tiles a realm's administration holds per unit h
 // biggest realm to a population-earned ~13M km² (raising the march to 400 fills
 // fuller but runs the giant to 22M; 150 is the balance).
 const MARCH_LOG_TILES = 150;
+const SIZE_POPK_SMOOTH = 0.25;   // low-pass on the persisted tiles-per-person anchor (world._sizePopK; the REF_POP_SMOOTH pattern)
 // The logistics GATE exponent: >1 keeps the early frontier small (march ≈ 0 until
 // roads mature) and pushes the map-fill toward the true industrial era. Calibrated
 // to 2. Env-overridable for sweeps (SIM_MARCH_TILES / SIM_MARCH_POW).
@@ -695,11 +696,25 @@ function fieldPolityTerritory(world) {
       const gp = govPopOf.get(cid) || 0;
       if (gp > 0) { gps.push(gp); tgs.push(spanEff * cp * r2); }
     }
+    // tiles per governed-person at the MEDIAN realm — LOW-PASSED and PERSISTED
+    // (world._sizePopK), the _refRevenue anchor pattern. Without the smoothing this
+    // global median coupling made the pop-core twitchy: a one-tile save/load
+    // re-warm perturbation shifts the median → shifts EVERY realm's target →
+    // compounds through sticky territory into a runaway coverage drift (the
+    // continuation-gate failure). Smoothed, the ratio relaxes; PERSISTED, a loaded
+    // world resumes on the same anchor the live run carries, so the first post-load
+    // pass computes identical targets. When a pass has NO fresh median (capacity
+    // all-zero — the first passes after a load, before the polity pass recomputes
+    // capacity) it holds the persisted anchor instead of collapsing to the floor.
+    let fresh = 0;
     if (gps.length) {
       gps.sort((a, b) => a - b); tgs.sort((a, b) => a - b);
       const medGP = gps[gps.length >> 1], medTG = tgs[tgs.length >> 1];
-      if (medGP > 0 && medTG > 0) popCapK = medTG / medGP;     // tiles per governed-person at the median realm
+      if (medGP > 0 && medTG > 0) fresh = medTG / medGP;
     }
+    const prev = world._sizePopK || 0;
+    if (fresh > 0) world._sizePopK = prev > 0 ? prev + (fresh - prev) * SIZE_POPK_SMOOTH : fresh;
+    popCapK = world._sizePopK || 0;                            // persisted anchor (holds through capacity-less post-load passes)
   }
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * Math.max(0, cp) * r2);
