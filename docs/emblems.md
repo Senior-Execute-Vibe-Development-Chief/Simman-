@@ -402,11 +402,23 @@ hand-typed, so a reorder can't stale them — sweeps founder seeds, and checks
 the expressed phenotype against a structural predicate (structure, not pixels —
 the predicates are colour-agnostic). A witness seed proves reachability; a MISS
 is a capability gap to BUILD, never a flag to hard-code. Bespoke flags are
-listed with a one-line exclusion reason so the corpus is auditable. Current
-status: **36 in-scope targets reachable, 0 MISS**, with **1 documented
-deferred** gap — the quintband 1:1:2:1:1 mirror (Thailand, Costa Rica), which
-wants a general N-band *symmetric tierced* (the Spanish-fess splitter
-generalised past three bands), not a one-flag partition.
+listed with a one-line exclusion reason so the corpus is auditable. The
+mechanism audit covers **36 structural targets** (each a family, representative
+flags named); status there is **0 MISS**.
+
+`tools/flag-world.mjs` then walks **all ~197 sovereign flags one by one** — the
+whole corpus, not a sample — tagging each by structure and verifying the tag is
+reachable. Honest coverage: **~103 reachable, ~69 bespoke-excluded, ~25 genuine
+structural gaps** (≈80% of in-scope structures; ≈87% of all flags reachable or
+legitimately excluded). The remaining gaps cluster into the next round of
+general mechanisms to build — among them: oblique bands *radiating from the
+hoist* (Seychelles, Marshall Is.), *fimbriated stripe seams* (Gambia,
+Uzbekistan), a device *on* a hoist band (Guinea-Bissau), the quintband
+1:1:2:1:1 mirror (Thailand, Costa Rica → a general N-band symmetric tierced),
+a *rayed sun to the edges* (North Macedonia), the *superimposed Union Jack*
+class (UK + Commonwealth cantons), overlaid hoist triangles (Timor-Leste),
+and several near-misses (two-star diagonals, two parallel diagonals, quartered
++ stars). Each is surfaced honestly as a missing SYSTEM, never hard-coded.
 
 ## The lab
 
