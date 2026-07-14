@@ -57,16 +57,24 @@ function load(p) {
   return k;
 }
 
-const col = {}, ld = {}, part = {}, ord = {}; let rays = 0, hasDevice = 0;
+const col = {}, ld = {}, part = {}, ord = {}; let rays = 0, hasDevice = 0, loadSum = 0;
+const feat = { bordure: 0, canton: 0, counterchange: 0, seams: 0, union: 0, hoist: 0, hoistDevice: 0 };
 for (let i = 0; i < N; i++) {
   const p = nextFlag((i * 2654435761) >>> 0);
   const c = colourNames(p);
   if (c.rays) rays++;
   col[c.n] = (col[c.n] || 0) + 1;
-  const L = load(p); ld[L] = (ld[L] || 0) + 1;
+  const L = load(p); ld[L] = (ld[L] || 0) + 1; loadSum += L;
   part[p.field.partition] = (part[p.field.partition] || 0) + 1;
   const o = p.field.ordinary || "none"; ord[o] = (ord[o] || 0) + 1;
   if (p.motif) hasDevice++;
+  const f = p.field;
+  if (f.bordure) feat.bordure++;
+  if (p.ornaments.canton) feat.canton++;
+  if (f.counterchange) feat.counterchange++;
+  if (f.seamFimbriation) feat.seams++;
+  if (f.saltireOverlay) feat.union++;
+  if (f.hoist) { feat.hoist++; if (f.hoist.device) feat.hoistDevice++; }
 }
 const pct = (x) => (100 * x / N).toFixed(1) + "%";
 const dist = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${pct(v)}`).join("  ");
@@ -75,8 +83,9 @@ const meanCol = Object.entries(col).reduce((a, [k, v]) => a + +k * v, 0) / N;
 console.log(`sample: ${N} heraldic flags\n`);
 console.log(`distinct colours   mean ${meanCol.toFixed(2)}   ${dist(col)}`);
 console.log(`  (rays flags counted by ray-count: ${pct(rays)} of sample)`);
-console.log(`\ndecorative load    ${dist(ld)}`);
+console.log(`\ndecorative load    mean ${(loadSum / N).toFixed(2)}   ${dist(ld)}`);
 console.log(`  0 = bare/striped field · higher = more features stacked`);
 console.log(`\ncarries a device   ${pct(hasDevice)}`);
+console.log(`\nper-feature rate   ${Object.entries(feat).map(([k, v]) => `${k}:${pct(v)}`).join("  ")}`);
 console.log(`\npartition mix      ${dist(part)}`);
 console.log(`\nordinary mix       ${dist(ord)}`);

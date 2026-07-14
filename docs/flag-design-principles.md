@@ -27,7 +27,7 @@ legibility argument — a flag is read **small, moving, at distance, from memory
 
 | Principle | Engine | Evidence / note |
 |---|---|---|
-| 1 · Simple | **Partial** | 44.5% of flags stack ≥3 decorative features; 9.5% stack 4–5. Real flags sit at 1–2. *The clearest remaining gap — see "Divergences" below.* |
+| 1 · Simple | **Held** *(visual-economy budget added)* | Was the clearest gap (44.5% stacked ≥3 features); the crowding mechanism below thinned it — mean load 2.40 → 2.14, load-2 now the mode (53%), load-4+ down from 9.5% to 3.4%. |
 | 2 · Meaningful | **N/A by design** | Symbolism is emergent in the sim (a civ's genome carries its meaning); the standalone engine can't and shouldn't fake semantics. |
 | 3 · 2–3 colours | **Strong** | Mean **3.07** distinct tinctures; **88.5%** at 2–3. Bang on the principle. |
 | 4 · No lettering/seals | **Held** | The engine renders no text and no photo-real seals; the bespoke-flag exclusion list owns the seal-bearing outliers. |
@@ -114,15 +114,31 @@ resolve.
 
 A flag is a **small budget of ink**. Real flags spend it on *one* dominant idea:
 a division, or a cross, or a canton-and-field, or a single central charge — rarely
-two of those together, almost never three. The engine's features currently gate
+two of those together, almost never three. The engine's features *used to* gate
 **independently** (each on its own gene threshold), so on a lucky genome a
-partition *and* an ordinary *and* a device *and* a canton *and* a bordure all fire
-at once. That independence is the missing mechanism — there is no accounting for
-what the field already carries.
+partition *and* an ordinary *and* a device *and* a canton *and* a bordure all fired
+at once — nothing accounted for what the field already carried, and a bordure
+alone landed on 37.6% of flags.
 
-> **Measured:** load-2 40.8%, load-3 35.1%, load-1 14.7%, load-4 8.6%, load-5
-> 0.9%. So ~45% of flags are busier than a real flag ever is. **This is the top
-> composition finding.**
+> **The visual-economy budget (`expressGenome`, "VISUAL ECONOMY" block).** The field
+> now carries an attention budget seeded by its own structure (a plain field 0, a
+> simple division 0.15, a heavy rotational cut 0.32; an ordinary or hoist band adds
+> 0.22). Every *secondary* layer — bordure, counterchange, the union overlay, a
+> hoist device, stripe seams, the canton — must clear a gene bar **raised by the
+> load already committed** (`gene > base + load·CROWD`), and committing spends its
+> own weight so the next bar is higher. The dominant idea (the partition, and one
+> main overlay — an ordinary or a central device) is never crowded. This is a
+> *cost the field pays*, not a cap: a genome with its genes near 1 still stacks
+> everything (the coat-of-arms flags), but the average genome settles on one or two
+> ideas. Self-calibrating on any seed — a plain field admits more, a quartered field
+> under a cross admits almost nothing. Cloth pays; a shield (a full achievement of
+> arms) does not (`CROWD = 0`).
+>
+> **Measured effect** (8000 flags): mean load **2.40 → 2.14**; load-1 14.7 → 18.2%,
+> load-2 40.8 → **53.2%** (the mode), load-3 35.1 → 25.2%, load-4 8.6 → 3.3%, load-5
+> 0.9 → 0.1%. Bordure 37.6 → 21.4%, canton 12.1 → 8.0%, counterchange 9.9 → 5.6%.
+> Colour economy (mean 3.06) and device rate (33%) untouched — the palette and the
+> one dominant idea are never crowded.
 
 ### Placement — the positions of honour
 
@@ -161,32 +177,35 @@ deliberate, honoured exception, not the norm. Balance is what makes a flag feel
 
 ---
 
-## Divergences worth fixing (mechanisms, not fits)
+## Divergences (mechanisms, not fits)
 
-Ranked by how much they'd improve realism, each expressed as a **system** so it
-self-calibrates on any seed (cardinal rule 2):
+Each expressed as a **system** so it self-calibrates on any seed (cardinal rule 2):
 
-1. **Visual-economy budget (principle 1).** *The top gap.* Instead of every
-   decorative feature gating independently, later/heavier features should read
-   what the field already carries and **stand down when the flag is already
-   full** — a plain field admits a device *and* a canton; a quartered field under
-   an ordinary admits nothing more. The load distribution then shifts toward 1–2
-   as a *consequence*, on every seed, with no cap hard-coded. This is a genuine
-   missing mechanism (a cost the field pays), not a throttle.
+1. **Visual-economy budget (principle 1) — ✅ BUILT.** *Was the top gap.* The
+   crowding mechanism above replaced independent per-feature gating with an
+   accumulating attention budget: secondary layers stand down as the field fills.
+   Load fell toward 1–2 as a *consequence* (see measured effect), no cap hard-coded.
 
-2. **Fatter bicolour tail (principle 3).** The clean 2-colour flag is
-   under-produced. This is the *companion* gate, not the palette: a dark field
-   currently reaches for a second dark companion fairly readily; asking a stronger
-   intent for the third colour would let more flags settle as true bicolours. Small
-   change, squarely inside "leave the palette alone" (it changes *how many*
-   tinctures show, not *which* bolts exist).
+2. **Bordure still over-produced (principle 1) — candidate.** Even after crowding,
+   a bordure lands on **21.4%** of flags vs ~5–10% of real ones. Crowding fixed the
+   *co-occurrence* (bordure-on-busy-field); the residual is the bordure's own base
+   commonness (its `0.62` gate is a leftover from when a bordure was chiefly a
+   shield feature). Raising that base is a clean, independent commonness tweak — a
+   candidate for the rating pass.
 
-3. *(Theory only, not scoped)* colour-family co-occurrence — left out on purpose;
+3. **Fatter bicolour tail (principle 3) — candidate.** The clean 2-colour flag is
+   under-produced (7.8% vs ~20–25% real). This is the *companion* gate, not the
+   palette: a dark field reaches for a second dark companion fairly readily; asking
+   a stronger intent for the third colour would let more flags settle as true
+   bicolours. Squarely inside "leave the palette alone" — it changes *how many*
+   tinctures show, not *which* bolts exist.
+
+4. *(Theory only, not scoped)* colour-family co-occurrence — left out on purpose;
    it risks fitting outcomes and the palette is out of bounds.
 
-Both (1) and (2) are candidates the **rating tool** is meant to confirm: the
-`flag-ratings.json` export will show whether raters actually mark the load-4/5 and
-the exactly-3 flags down. Build the mechanism the data points to — don't pre-tune.
+Candidates (2) and (3) are what the **rating tool** is meant to settle: the
+`flag-ratings.json` export will show whether raters actually mark the bordured and
+the exactly-3-colour flags down. Build the tweak the data points to — don't pre-tune.
 
 ---
 
