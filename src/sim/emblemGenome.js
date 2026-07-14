@@ -910,7 +910,11 @@ export function expressGenome(genome) {
     field.ordinaryCount = ["fess", "pale", "bend", "bendSinister", "chevron"].includes(field.ordinary)
       && !["barry", "paly"].includes(partition) && get("stripes") > 0.62
       ? (get("stripes") > 0.86 ? 3 : 2) : 1;
-    field.chief = !rayField && get("pearl") > 0.66;
+    // NO CHIEF ON CLOTH: a heraldic chief (a distinct top band) is shield
+    // vocabulary — no national flag carries one, and on an otherwise symmetric
+    // flag it reads as an unwanted line across the top, breaking the symmetry.
+    // A top stripe belongs to the partition (perFess/tiercedFess), not a chief.
+    field.chief = !isFlag && get("pearl") > 0.66;
     field.bordure = !rayField && get("border") > 0.62;
     field.subTincture = markT.rgb; field.subName = markT.name;   // chief/bordure read on the FIELD (markT), not the band
     // counterchange the ordinary across a two-region partition (per pale/fess/bend)

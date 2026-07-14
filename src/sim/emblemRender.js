@@ -298,10 +298,12 @@ function ordinaryPath(type, w, h, ln, amp, flag, xstyle) {
       }
       // flag THROUGHOUT: a centred cross reaching EVERY edge (England's St
       // George, Georgia) — a full-width fess crossed by a full-height centred
-      // pale, arms as thick as the Nordic's (0.2h)
+      // pale, arms as thick as the Nordic's (0.2h). The pale must wind the SAME
+      // way as the fess (start at the fly side, down, back), or the nonzero
+      // fill-rule cancels them where they cross and hollows the centre square.
       if (flag && xstyle === "throughout") {
         const t = h * 0.1;
-        return ordinaryPath("fess", w, h, "straight", amp) + `M${F(w / 2 - t)} 0 V${F(h)} H${F(w / 2 + t)} V0 Z`;
+        return ordinaryPath("fess", w, h, "straight", amp) + `M${F(w / 2 + t)} 0 V${F(h)} H${F(w / 2 - t)} V0 Z`;
       }
       // flag NORDIC: both arms equally thick in absolute cloth units (the fess
       // arm is 0.2h, so the vertical matches it), the crossing offset to hoist
