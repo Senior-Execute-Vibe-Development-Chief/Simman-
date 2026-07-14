@@ -668,8 +668,17 @@ function coatContent(p, w, h, rng) {
       content += `<defs>${defs.join("")}</defs>`;
     }
     content += fieldSVG(w, h, f);
-    // the compound hoist element rides over the striped fly, under any device
-    if (f.hoist) content += hoistBand(w, h, f.hoist);
+    // the compound hoist element rides over the striped fly, and may itself bear
+    // a compact device (Guinea-Bissau's star on the pale, Comoros' crescent)
+    if (f.hoist) {
+      content += hoistBand(w, h, f.hoist);
+      if (f.hoist.device) {
+        const e = w * f.hoist.extent;
+        const dx = f.hoist.shape === "pale" ? e / 2 : e * 0.36;   // in a wedge the device sits toward the hoist point
+        const db = f.hoist.shape === "pale" ? e * 0.62 : Math.min(e, h) * 0.5;
+        content += motif(f.hoist.device.id, dx - db / 2, h / 2 - db / 2, db, f.hoist.device.tincture);
+      }
+    }
     // a semé is a field treatment — strewn BENEATH the ordinary/chief/bordure
     if (mot && mot.behind) content += placeMotif(mot, w, h, p.substrate);
     content += heraldicOverlay(w, h, f, sh, base, p.isFlag);

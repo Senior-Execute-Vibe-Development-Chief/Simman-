@@ -300,10 +300,20 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     reuses the field-embellishment gene (crescent) whose FUR output is discarded
     on cloth — a shield furs, sewn cloth carries a hoist device: one gene,
     reinterpreted by substrate, so the vector never grows. The shape rides the
-    idle line gene, the extent the idle motifScale gene. A hoist band is a
-    COMPLETE statement — no chief, bordure, device or canton stacks on it (else a
-    same-tincture chief and pale fuse into a broken L). ~4% of flags, spread
-    across all three fly partitions and both shapes.
+    idle line gene, the extent the idle motifScale gene. The band is a PLACE, not
+    just a bar: a compact device may ride ON it (Guinea-Bissau's star, Comoros'
+    crescent), dressed against the band. No chief stacks on a compound field (a
+    same-tincture chief and pale fuse into a broken L), but a framing bordure is
+    a clean co-occurring layer. ~4% of flags, all three fly partitions, both shapes.
+  - **Flags LAYER (composition, not one-element-at-a-time)** — real flags stack a
+    field + a hoist/ordinary/canton + a device + a frame; the engine used to pick
+    ONE focal element and suppress the rest. Now the DEVICE is a placeable layer
+    (in a canton, on a hoist band, between/on an ordinary, or central) and a
+    framing BORDURE co-occurs with an ordinary or a compound field instead of
+    being cancelled — so ~39% of flags carry two or more focal layers (a cross
+    with a charge and a border, a compound band bearing a star, a pale charged and
+    framed). Chief/bordure wear `subName` (markT, the field-reading mark), which
+    on a tricolour band differs from the band's own tincture.
   - **The tricolour ordinary — fimbriation as an ENABLER, not an ornament** —
     the rule of tincture forbids a colour band on a colour ground UNLESS a metal
     (or undyed) separator runs between them; that is the whole reason

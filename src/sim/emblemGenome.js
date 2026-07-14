@@ -871,7 +871,7 @@ export function expressGenome(genome) {
       ? (get("stripes") > 0.86 ? 3 : 2) : 1;
     field.chief = get("pearl") > 0.66;
     field.bordure = get("border") > 0.62;
-    field.subTincture = markT.rgb;                     // chief/bordure read on the FIELD (markT), not the band
+    field.subTincture = markT.rgb; field.subName = markT.name;   // chief/bordure read on the FIELD (markT), not the band
     // counterchange the ordinary across a two-region partition (per pale/fess/bend)
     field.counterchange = !field.fur && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
     // THE TRICOLOUR ORDINARY — fimbriation as an ENABLER, not an ornament.
@@ -891,10 +891,10 @@ export function expressGenome(genome) {
       const band = T(namedDyeDark(get("hueB"), get("value"), grounds[0].name, true));   // a 2nd colour ≠ field
       if (classOf(band) === "dark" && band.name !== grounds[0].name) { ordT = band; tricolour = true; }
     }
-    // a tricolour ordinary is a COMPLETE statement (Norway, DR Congo, Trinidad
-    // carry neither): no chief or bordure — they read on the FIELD via markT,
-    // which now differs from the band, so they would also mis-blazon
-    if (tricolour) { field.chief = false; field.bordure = false; }
+    // a tricolour band takes no CHIEF (a top band fighting the cross arm reads
+    // as clutter); a framing bordure is a clean co-occurring layer and reads on
+    // the field via markT/subName, distinct from both field and band
+    if (tricolour) field.chief = false;
     field.ordinaryTincture = ordT.rgb;
     field.ordinaryName = ordT.name;
     // a flag CROSS is Nordic (hoist-shifted, edge-to-edge) by default; a strong
@@ -944,10 +944,22 @@ export function expressGenome(genome) {
     // tincture as a constructive argmax over the striped grounds, on the shelf
     const ht = tinctureOn(grounds, get("hueA"), get("value"), pal.poles, { bunting: true, chroma: get("chroma") });
     field.hoist = { shape, extent, tincture: ht.rgb, name: ht.name };
-    // a compound field is a COMPLETE statement: the hoist element carries the
-    // honour, so no chief or bordure stacks on it (real compound flags fly
-    // neither) — else a same-tincture chief and pale fuse into a broken L
-    field.chief = false; field.bordure = false;
+    // THE HOIST BAND IS A PLACE, not just a bar: a compact device may ride ON
+    // it — Guinea-Bissau's black star, Comoros' crescent-and-stars, São Tomé's
+    // stars. The device is a placeable LAYER, dressed against the band by the
+    // constructive rule, rather than suppressed. Gated on the arrange gene so
+    // most compound flags still fly the bare band (the common real case).
+    if (get("arrange") > 0.66) {
+      const dcat = get("motifCount") > 0.5 ? "celestial" : "geometric";
+      const dpool = FLAG_SIMPLE[dcat];
+      const did = dpool[Math.min(dpool.length - 1, Math.floor(get("motifIdx") * dpool.length))];
+      const dt = tinctureOn([ht], get("hueB"), get("value"), [], { bunting: true, flying: grounds, chroma: get("chroma") });
+      field.hoist.device = { id: did, cat: dcat, tincture: dt.rgb, tinctureName: dt.name };
+    }
+    // no chief stacks on a compound field (a same-tincture chief and pale fuse
+    // into a broken L); a framing bordure, however, is a clean co-occurring
+    // layer, so it is left to the border gene
+    field.chief = false;
     hasHoist = true;
   }
 
@@ -1265,10 +1277,14 @@ function fieldPhrase(f, m) {
   }
   if (m && m.arrange === "seme")
     s += ` semé of ${pluralize(chargeName(m.id))} ${m.counterchange ? "counterchanged" : tName(m.tinctureName)}`;
-  // the compound hoist element (a band or a wedge) rides over the striped fly
-  if (f.hoist) s += f.hoist.shape === "pale"
-    ? `, a pale ${tName(f.hoist.name)} at the hoist`
-    : `, a triangle ${tName(f.hoist.name)} issuant from the hoist`;
+  // the compound hoist element (a band or a wedge) rides over the striped fly,
+  // and may itself be charged with a compact device (Guinea-Bissau's star)
+  if (f.hoist) {
+    const dv = f.hoist.device ? ` charged with ${art(chargeName(f.hoist.device.id))} ${chargeName(f.hoist.device.id)} ${tName(f.hoist.device.tinctureName)}` : "";
+    s += f.hoist.shape === "pale"
+      ? `, a pale ${tName(f.hoist.name)} at the hoist${dv}`
+      : `, a triangle ${tName(f.hoist.name)} issuant from the hoist${dv}`;
+  }
   return s;
 }
 
@@ -1361,8 +1377,11 @@ export function blazonGenome(genome) {
       parts.push(m.inCanton ? `on a canton ${tName(p.ornaments.cantonName)} ${clause}` : clause);
     }
   }
-  if (f.chief) parts.push(`a chief${f.line !== "straight" ? ` ${f.line}` : ""} ${tName(f.ordinaryName)}`);
-  if (f.bordure) parts.push(`a bordure ${tName(f.ordinaryName)}`);
+  // chief/bordure wear subName (markT — the field-reading mark), which on a
+  // tricolour band differs from the ordinary's own tincture
+  const subN = f.subName || f.ordinaryName;
+  if (f.chief) parts.push(`a chief${f.line !== "straight" ? ` ${f.line}` : ""} ${tName(subN)}`);
+  if (f.bordure) parts.push(`a bordure ${tName(subN)}`);
   if (p.cadency) parts.push(`${art(chargeName(p.cadency.mark))} ${chargeName(p.cadency.mark)} ${tName(p.cadency.tinctureName)} for difference`);
   return parts.join(", ") + (p.substrate !== "shield" ? ` — on a ${p.substrate}` : "");
 }

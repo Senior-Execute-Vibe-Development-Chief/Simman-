@@ -44,7 +44,7 @@ const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
   array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, array_satellites: 0, housed: 0, couched: 0,
   cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0, flagFigure: 0, flagBare: 0,
-  hoistPale: 0, hoistWedge: 0 };
+  hoistPale: 0, hoistWedge: 0, hoistDevice: 0 };
 // the flag device vocabulary: what a repeated/housed/band-riding device may be
 const FLAG_VOCAB = new Set(["mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle",
   "sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline", "starAndCrescent"]);
@@ -135,7 +135,8 @@ function audit(g) {
       if (f.ordinary && f.ordinary !== "none") worn.add(f.ordinaryName);
       if (f.fimbName) worn.add(f.fimbName);
       if (f.treatName) worn.add(f.treatName);
-      if (f.hoist) worn.add(f.hoist.name);
+      if (f.hoist) { worn.add(f.hoist.name); if (f.hoist.device) worn.add(f.hoist.device.tinctureName); }
+      if (f.bordure || f.chief) worn.add(f.subName);
       if (fm) { worn.add(fm.tinctureName); if (fm.panel) worn.add(fm.panel.name); if (fm.fimbName) worn.add(fm.fimbName); }
       if (p.ornaments.canton) worn.add(p.ornaments.cantonName);
       for (const n of worn) if (STAINS.has(n)) fail(`a stain flies on cloth (${n})`, g);
@@ -179,6 +180,8 @@ function audit(g) {
       if (!["perFess", "tiercedFess", "barry"].includes(f.partition)) fail(`hoist band on a non-horizontal fly (${f.partition})`, g);
       seen[f.hoist.shape === "pale" ? "hoistPale" : "hoistWedge"]++;
       checkMark(f.hoist.tincture, grounds, "hoist", g, false);
+      // a device riding ON the band dresses against the band, not the field
+      if (f.hoist.device) { seen.hoistDevice++; checkMark(f.hoist.device.tincture, [f.hoist.tincture], "hoist-device", g, false); }
     }
     if (p.isFlag && p.ornaments.canton) checkMark(p.ornaments.cantonColor, grounds, "canton-flag", g, strict);
     if (f.fimbriation) {
