@@ -381,6 +381,14 @@ function claimNoise(world) {
 // capacity — so cap/load read here are ≤1 polity-interval stale, which is fine (capacity
 // drifts slowly and has its own hysteresis).
 const FIELD_SPAN_DEF = 6.0;   // tiles a realm's administration holds per unit hold-capacity (T.FIELD_SPAN lever; 6 since comboE — was 12, see docs/empire-consolidation-2026-07.md)
+// SIZE_BY_POP: reference-tiles of SPARSE FRONTIER a fully-logistic (industrial:
+// roads→rail, logisticsLevel→1) state administers BEYOND its populated core. This
+// is what claims the deserts/tundra/marches real empires held but their population
+// never filled — and it is ~0 in the pre-road era, so it lifts coverage toward
+// full ONLY as the world industrialises (the "rises with development" target),
+// never as an early floor. Added to the pop core, not max()'d — a low-pop realm on
+// the early frontier stays small; a developed one spreads over its marches.
+const MARCH_LOG_TILES = 150;
 function fieldPolityTerritory(world) {
   const FIELD_SPAN = T.FIELD_SPAN || FIELD_SPAN_DEF;
   const { N, tw, th, elev, fert, temp, moist } = world;
@@ -392,13 +400,14 @@ function fieldPolityTerritory(world) {
   // updatePolities; one-interval stale is acceptable).
   const alive = new Set();
   for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) alive.add(s.countryId);
-  const capOf = new Map(), knOf = new Map(), hostOf = new Map(), claimCap = new Map();
+  const capOf = new Map(), knOf = new Map(), hostOf = new Map(), claimCap = new Map(), logiOf = new Map();
   if (world.countries) for (const [cid, c] of world.countries) {
     if (!alive.has(cid) || !c.capital) continue;
     capOf.set(cid, Math.max(0, c._capacity || 0));
     knOf.set(cid, c.capital.knowledge || {});
     const cons = (c.capital.knowledge && c.capital.knowledge.construction) || 0;
     const logi = (c.capital._techEff ? c.capital._techEff.logisticsLevel : cons * cons) || 0;
+    logiOf.set(cid, logi);                                      // SIZE_BY_POP: the reach-over-sparse-land driver (roads→rail)
     hostOf.set(cid, CLAIM_HOSTILITY * Math.max(0, 1 - logi));   // the modern partition of the wastes (fades with logistics)
     claimCap.set(cid, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
   }
@@ -694,8 +703,16 @@ function fieldPolityTerritory(world) {
       if (c && c._nomadic) {
         // exempt: keep the capacity target (below)
       } else {
+        // Populated CORE (people-driven) + administrative MARCH (logistics-driven,
+        // ~0 pre-road, growing with roads/rail). The march is the ceiling-lift that
+        // makes coverage RISE WITH DEVELOPMENT: a developed realm claims the sparse
+        // frontier its logistics reach, filling the late map, while an early / low-pop
+        // realm (short march) stays small. Capacity is NOT the ceiling here — it is
+        // median-anchored (log2-compressed) and would re-cap the whole map at the
+        // median; the growth Dijkstra's admin-load attenuation is the real reach bound.
         const popCap = Math.round((govPopOf.get(cid) || 0) * popCapK);
-        t = cp > 0 ? Math.min(t, popCap) : popCap;
+        const march = Math.round(MARCH_LOG_TILES * (logiOf.get(cid) || 0) * r2);
+        t = popCap + march;
       }
       if (t <= 0) { if (cp <= 0 && (govPopOf.get(cid) || 0) <= 0) continue; }  // capless + peopleless newborn: hold (cold-start)
     } else if (T.TILE_POLITY) {
