@@ -388,12 +388,17 @@ const FIELD_SPAN_DEF = 6.0;   // tiles a realm's administration holds per unit h
 // full ONLY as the world industrialises (the "rises with development" target),
 // never as an early floor. Added to the pop core, not max()'d — a low-pop realm on
 // the early frontier stays small; a developed one spreads over its marches.
+// Calibrated at the 480 reference (docs/empire-consolidation-2026-07.md): march =
+// 150·logistics² lifts coverage 9%(8k)→49%(24k)→66%(40k) — sparse antiquity, the
+// fill arriving with roads — keeps the median realm ~319k km² early, and holds the
+// biggest realm to a population-earned ~13M km² (raising the march to 400 fills
+// fuller but runs the giant to 22M; 150 is the balance).
 const MARCH_LOG_TILES = 150;
-// Sweep knobs (env, unset = defaults): the march's SIZE and how steeply it gates on
-// logistics (POW>1 keeps the early frontier small — march ≈ 0 until roads mature —
-// and pushes the map-fill toward the true industrial era).
+// The logistics GATE exponent: >1 keeps the early frontier small (march ≈ 0 until
+// roads mature) and pushes the map-fill toward the true industrial era. Calibrated
+// to 2. Env-overridable for sweeps (SIM_MARCH_TILES / SIM_MARCH_POW).
 const MARCH_TILES_ENV = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_TILES) || 0;
-const MARCH_POW = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_POW) || 1;
+const MARCH_POW = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_POW) || 2;
 function fieldPolityTerritory(world) {
   const FIELD_SPAN = T.FIELD_SPAN || FIELD_SPAN_DEF;
   const { N, tw, th, elev, fert, temp, moist } = world;
