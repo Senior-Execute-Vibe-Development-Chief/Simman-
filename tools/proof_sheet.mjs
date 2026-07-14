@@ -82,8 +82,8 @@ MODES.gallery = function () {
   const geom = n => slot(POOLS.MOTIFS.geometric, n);
   const clean = { pearl: 0.1, border: 0.1 };   // pin off the chief/bordure clutter for clear proofs
   const T = [
-    ["Switzerland: symmetric cross", { ...base(), ...clean, partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, secondary: 0.1, symmetry: 0.9 },
-      p => p.field.ordinary === "cross" && p.field.crossStyle === "symmetric" && !p.motif],
+    ["Switzerland: couped cross", { ...base(), ...clean, partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, secondary: 0.1, symmetry: 0.9 },
+      p => p.field.ordinary === "cross" && p.field.crossStyle === "couped" && !p.motif],
     ["Greece: canton cross + stripes", { ...base(), ...clean, partition: flagPart("barry"), hueC: ordinary("none"), arrange: 0.2, star: 0.9, sunDisc: 0.1, crescent: 0.2, stripes: stripesGeneFor(9) },
       p => p.field.partition === "barry" && p.field.stripes === 9 && p.ornaments.canton && p.ornaments.cantonKind === "cross"],
     ["USA: canton + 13 stripes + stars", { ...base(), ...clean, partition: flagPart("barry"), hueC: ordinary("none"), arrange: 0.9, motifCat: slot(POOLS.MOTIF_CATS, "geometric"), star: 0.9, scriptDensity: arrayPattern("rows"), stripes: stripesGeneFor(13), motifCount: 0.9 },
@@ -94,6 +94,32 @@ MODES.gallery = function () {
       p => p.motif?.array?.pattern === "ring" && !p.motif.inCanton],
     ["Star & crescent, lone", { ...base(), ...clean, partition: flagPart("plain"), hueC: ordinary("none"), arrange: 0.1, star: 0.2, motifCat: slot(POOLS.MOTIF_CATS, "celestial"), motifIdx: 0.95 },
       p => p.motif?.id === "starAndCrescent"],
+  ];
+  let lo = 2;
+  for (const [label, pins, pred] of T) { const g = findGenome(pins, pred, lo); items.push({ label, g }); lo = (g ? g.seed : lo) + 1; }
+  return items;
+};
+
+MODES.newgaps = function () {
+  const items = [];
+  const clean = { pearl: 0.1, border: 0.1 };
+  const T = [
+    ["Switzerland: square + couped cross", { ...base(), ...clean, substrate: 0.332, partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, secondary: 0.1, symmetry: 0.9, brandSeed: 0.1 },
+      p => p.flagRatio >= 0.95 && p.field.crossStyle === "couped" && !p.field.saltireOverlay],
+    ["England: cross throughout", { ...base(), ...clean, partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, secondary: 0.1, symmetry: 0.7, brandSeed: 0.1 },
+      p => p.field.crossStyle === "throughout" && !p.field.saltireOverlay && !p.motif],
+    ["Qatar: very long + serrated", { ...base(), ...clean, substrate: 0.172, partition: flagPart("perPale"), hueC: ordinary("none"), arrange: 0.2, line: slot(POOLS.LINES, "indented") },
+      p => p.flagRatio <= 0.45 && p.field.partition === "perPale" && p.field.line === "indented"],
+    ["Gambia: fimbriated stripe seams", { ...base(), ...clean, partition: flagPart("barry"), hueC: ordinary("none"), arrange: 0.2, stripes: stripesGeneFor(5), motifCount: 0.9 },
+      p => p.field.partition === "barry" && p.field.seamFimbriation && !p.motif],
+    ["Thailand: quintband 1:1:2:1:1", { ...base(), ...clean, partition: flagPart("quintFess"), hueC: ordinary("none"), arrange: 0.2 },
+      p => p.field.partition === "quintFess" && p.field.stripeWeights && !p.motif],
+    ["Seychelles: radiating fan", { ...base(), ...clean, partition: flagPart("rays"), hueC: ordinary("none"), arrange: 0.2, stripes: 0.6 },
+      p => p.field.partition === "rays" && p.field.rays && p.field.rays.count >= 4],
+    ["Union Jack: cross + saltire", { ...base(), ...clean, partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, secondary: 0.1, symmetry: 0.7, brandSeed: 0.9 },
+      p => p.field.ordinary === "cross" && p.field.saltireOverlay],
+    ["Marshall Is: two rays + (bare)", { ...base(), ...clean, partition: flagPart("rays"), hueC: ordinary("none"), arrange: 0.2, stripes: 0.05 },
+      p => p.field.partition === "rays" && p.field.rays && p.field.rays.count === 3],
   ];
   let lo = 2;
   for (const [label, pins, pred] of T) { const g = findGenome(pins, pred, lo); items.push({ label, g }); lo = (g ? g.seed : lo) + 1; }

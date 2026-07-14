@@ -76,13 +76,15 @@ const TARGETS = [
   ["Many equal stripes ×9 (—)", { ...base(), partition: flagPart("barry"), hueC: ordinary("none"), arrange: 0.2, stripes: stripesGeneFor(9) },
     p => bareStriped(p, "barry", 9)],
 
-  // ── B. CROSSES — symmetric and Nordic, fimbriated or not ───────────────────
-  ["Nordic cross plain (Denmark/Sweden/Finland)", { ...base(), partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, motifCount: 0.2 },
-    p => withOrd(p, "cross") && !p.field.fimbriation && !p.motif && p.field.crossStyle !== "symmetric"],
-  ["Nordic cross fimbriated (Norway/Iceland)", { ...base(), partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, secondary: 0.9 },
-    p => withOrd(p, "cross") && !!p.field.fimbriation && !p.motif && p.field.crossStyle !== "symmetric"],
-  ["Symmetric couped cross centred (Switzerland/Georgia)", { ...base(), partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, motifCount: 0.2, symmetry: 0.9 },
-    p => withOrd(p, "cross") && p.field.crossStyle === "symmetric"],
+  // ── B. CROSSES — Nordic, throughout, couped; fimbriated or not ─────────────
+  ["Nordic cross plain (Denmark/Sweden/Finland)", { ...base(), partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, motifCount: 0.2, symmetry: 0.2 },
+    p => withOrd(p, "cross") && !p.field.fimbriation && !p.motif && p.field.crossStyle === "nordic"],
+  ["Nordic cross fimbriated (Norway/Iceland)", { ...base(), partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, secondary: 0.9, symmetry: 0.2 },
+    p => withOrd(p, "cross") && !!p.field.fimbriation && !p.motif && p.field.crossStyle === "nordic"],
+  ["Cross throughout, edge-to-edge (England/Georgia)", { ...base(), partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, motifCount: 0.2, symmetry: 0.7 },
+    p => withOrd(p, "cross") && p.field.crossStyle === "throughout"],
+  ["Symmetric couped cross centred (Switzerland)", { ...base(), partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, motifCount: 0.2, symmetry: 0.9 },
+    p => withOrd(p, "cross") && p.field.crossStyle === "couped"],
 
   // ── C. SALTIRES / CHEVRONS / PILES / TRIANGLES / PALL ──────────────────────
   ["Saltire plain (Scotland/Jamaica skeleton)", { ...base(), partition: flagPart("plain"), hueC: ordinary("saltire"), arrange: 0.2 },
@@ -150,6 +152,22 @@ const TARGETS = [
   // ── J. BORDERLINE — skeleton + nearest generic charge (§3) ─────────────────
   ["Spoked wheel on tricolour (India skeleton)", { ...base(), partition: flagPart("tiercedFess"), hueC: ordinary("none"), arrange: 0.7, star: 0.2, motifCat: slot(POOLS.MOTIF_CATS, "geometric"), motifIdx: geomCharge("cartwheel") },
     p => p.isFlag && p.field.partition === "tiercedFess" && p.motif && (p.motif.count || 1) === 1 && !p.motif.inCanton],
+
+  // ── K. PROPORTIONS — the aspect-ratio outliers ─────────────────────────────
+  ["Square flag 1:1 (Switzerland/Vatican)", { ...base(), substrate: 0.332, partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, symmetry: 0.9 },
+    p => p.isFlag && p.substrate === "banner" && p.flagRatio >= 0.95],
+  ["Very long flag 11:28 (Qatar)", { ...base(), substrate: 0.172, partition: flagPart("perPale"), hueC: ordinary("none"), arrange: 0.2, line: slot(POOLS.LINES, "indented") },
+    p => p.isFlag && p.substrate === "banner" && p.flagRatio <= 0.45],
+
+  // ── L. NEW MECHANISMS this round ───────────────────────────────────────────
+  ["Fimbriated stripe seams (Gambia/Uzbekistan)", { ...base(), partition: flagPart("barry"), hueC: ordinary("none"), arrange: 0.2, stripes: stripesGeneFor(5), motifCount: 0.9 },
+    p => p.isFlag && p.field.partition === "barry" && p.field.seamFimbriation],
+  ["Quintband 1:1:2:1:1 mirror (Thailand/Costa Rica)", { ...base(), partition: flagPart("quintFess"), hueC: ordinary("none"), arrange: 0.2 },
+    p => p.isFlag && p.field.partition === "quintFess" && p.field.stripeWeights && !p.motif],
+  ["Radiating bands from the hoist (Seychelles)", { ...base(), partition: flagPart("rays"), hueC: ordinary("none"), arrange: 0.2 },
+    p => p.isFlag && p.field.partition === "rays" && !p.motif],
+  ["Cross + saltire superimposed (Union Jack skeleton)", { ...base(), partition: flagPart("plain"), hueC: ordinary("cross"), arrange: 0.2, symmetry: 0.7, motifCount: 0.9, brandSeed: 0.9 },
+    p => p.isFlag && p.field.ordinary === "cross" && p.field.saltireOverlay],
 ];
 
 // ── run ──────────────────────────────────────────────────────────────────────

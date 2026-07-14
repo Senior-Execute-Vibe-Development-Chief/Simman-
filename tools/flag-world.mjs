@@ -61,6 +61,13 @@ const S = {
   // "dev" = a lone GENERAL charge (star/disc/crescent) on a partitioned or plain
   // field — many national flags are a tricolour or bicolour + one generic device.
   dev:       [{ ...B(), partition: fp("tiercedPale"), hueC: od("none"), arrange: 0.7, star: 0.2, motifCat: cc("geometric"), motifIdx: gc("mullet") }, p => p.motif && (p.motif.count || 1) === 1 && !p.motif.inCanton],
+  // mechanisms built this round
+  xcross:    [{ ...B(), partition: fp("plain"), hueC: od("cross"), arrange: 0.2, symmetry: 0.7 }, p => p.field.crossStyle === "throughout"],
+  square:    [{ ...B(), substrate: 0.332, partition: fp("plain"), hueC: od("cross"), arrange: 0.2, symmetry: 0.9 }, p => p.isFlag && p.flagRatio >= 0.95],
+  quintband: [{ ...B(), partition: fp("quintFess"), hueC: od("none"), arrange: 0.2 }, p => p.field.partition === "quintFess" && p.field.stripeWeights],
+  rays:      [{ ...B(), partition: fp("rays"), hueC: od("none"), arrange: 0.2, stripes: 0.6 }, p => p.field.partition === "rays" && p.field.rays],
+  seams:     [{ ...B(), partition: fp("barry"), hueC: od("none"), arrange: 0.2, stripes: 0.5, motifCount: 0.9 }, p => p.field.partition === "barry" && p.field.seamFimbriation],
+  union:     [{ ...B(), partition: fp("plain"), hueC: od("cross"), arrange: 0.2, symmetry: 0.7, brandSeed: 0.9 }, p => p.field.ordinary === "cross" && p.field.saltireOverlay],
 };
 const REACHABLE_TAGS = new Set(Object.keys(S));
 
@@ -77,13 +84,13 @@ const WORLD = [
   ["Chad", "vtri"], ["Comoros", "ctriN"], ["Congo (Rep.)", "bendFimb"], ["DR Congo", "bendFimb"],
   ["Djibouti", "htriangle"], ["Egypt", "excl:eagle of Saladin"], ["Equatorial Guinea", "excl:national arms"],
   ["Eritrea", "excl:wreath emblem"], ["Eswatini", "excl:shield-and-spears emblem"], ["Ethiopia", "excl:pentagram-disc emblem"],
-  ["Gabon", "htri"], ["Gambia", "gap:fimbriated barry seams (thin white bands)"], ["Ghana", "dev"],
+  ["Gabon", "htri"], ["Gambia", "seams"], ["Ghana", "dev"],
   ["Guinea", "vtri"], ["Guinea-Bissau", "cpale2"], ["Ivory Coast", "vtri"], ["Kenya", "excl:Maasai shield & spears"],
   ["Lesotho", "excl:mokorotlo hat"], ["Liberia", "cantonStars"], ["Libya", "starcresc"], ["Madagascar", "cpale2"],
   ["Malawi", "excl:rising-sun emblem"], ["Mali", "vtri"], ["Mauritania", "starcresc"], ["Mauritius", "barry"],
   ["Morocco", "dev"], ["Mozambique", "excl:rifle-hoe-book emblem"], ["Namibia", "bendFimb"], ["Niger", "dev"],
   ["Nigeria", "vaba"], ["Rwanda", "excl:sun emblem"], ["Sao Tome & Principe", "ctri3"], ["Senegal", "dev"],
-  ["Seychelles", "gap:oblique bands radiating from the hoist"], ["Sierra Leone", "htri"], ["Somalia", "star"],
+  ["Seychelles", "rays"], ["Sierra Leone", "htri"], ["Somalia", "star"],
   ["South Africa", "pall"], ["South Sudan", "ctri3"], ["Sudan", "ctri3"], ["Tanzania", "bendFimb"],
   ["Togo", "cantonStars"], ["Tunisia", "starcresc"], ["Uganda", "excl:grey crowned crane"],
   ["Zambia", "excl:eagle + fly-corner bars"], ["Zimbabwe", "excl:Zimbabwe bird emblem"],
@@ -92,7 +99,7 @@ const WORLD = [
   ["Antigua & Barbuda", "gap:rising-sun rays over a chevron-rayed field"], ["Argentina", "excl:Sun of May face"],
   ["Bahamas", "htriangle"], ["Barbados", "excl:trident head"], ["Belize", "excl:coat of arms"],
   ["Bolivia", "excl:state coat of arms"], ["Brazil", "excl:celestial globe & motto"], ["Canada", "excl:maple leaf (on a vertical Spanish fess)"],
-  ["Chile", "cantonStars"], ["Colombia", "r211"], ["Costa Rica", "gap:quintband 1:1:2:1:1 mirror"],
+  ["Chile", "cantonStars"], ["Colombia", "r211"], ["Costa Rica", "quintband"],
   ["Cuba", "ctriN"], ["Dominica", "excl:sisserou-parrot emblem"], ["Dominican Republic", "cantonCross"],
   ["Ecuador", "excl:coat of arms"], ["El Salvador", "excl:coat of arms"], ["Grenada", "bordure"],
   ["Guatemala", "excl:coat of arms"], ["Guyana", "pile"], ["Haiti", "excl:coat of arms"],
@@ -117,9 +124,9 @@ const WORLD = [
   ["Philippines", "gap:hoist triangle with sun & stars + two stripes"], ["Qatar", "serrated"],
   ["Saudi Arabia", "excl:shahada & sword"], ["Singapore", "gap:crescent + five stars in a canton band"],
   ["South Korea", "excl:taegeuk & trigrams"], ["Sri Lanka", "excl:lion & bo-leaves"], ["Syria", "star"],
-  ["Taiwan", "excl:sun emblem in canton"], ["Tajikistan", "excl:crown & stars emblem"], ["Thailand", "gap:quintband 1:1:2:1:1 mirror"],
+  ["Taiwan", "excl:sun emblem in canton"], ["Tajikistan", "excl:crown & stars emblem"], ["Thailand", "quintband"],
   ["Timor-Leste", "gap:two overlaid hoist triangles + star"], ["Turkey", "starcresc"], ["Turkmenistan", "excl:carpet guls"],
-  ["UAE", "cpale3"], ["Uzbekistan", "gap:barry with fimbriated seams + crescent & stars"], ["Vietnam", "star"], ["Yemen", "htri"],
+  ["UAE", "cpale3"], ["Uzbekistan", "seams"], ["Vietnam", "star"], ["Yemen", "htri"],
 
   // ── Europe (44) ──
   ["Albania", "excl:double-headed eagle"], ["Andorra", "excl:coat of arms"], ["Austria", "aba"],
@@ -133,12 +140,12 @@ const WORLD = [
   ["Norway", "nordicFimb"], ["Poland", "hbi"], ["Portugal", "excl:coat of arms"], ["Romania", "vtri"],
   ["Russia", "htri"], ["San Marino", "excl:coat of arms"], ["Serbia", "excl:coat of arms"], ["Slovakia", "excl:coat of arms"],
   ["Slovenia", "excl:coat of arms"], ["Spain", "spanish"], ["Sweden", "nordic"], ["Switzerland", "symcross"],
-  ["Ukraine", "hbi"], ["United Kingdom", "gap:superimposed Union Jack (counterchanged saltires)"],
+  ["Ukraine", "hbi"], ["United Kingdom", "union"],
   ["Vatican City", "excl:crossed keys & tiara"],
 
   // ── Oceania (14) ──
   ["Australia", "excl:Union Jack canton + Commonwealth star"], ["Fiji", "excl:Union Jack + shield"],
-  ["Kiribati", "gap:heraldic wavy field with sun & bird"], ["Marshall Islands", "gap:oblique rays from the hoist + star"],
+  ["Kiribati", "gap:heraldic wavy field with sun & bird"], ["Marshall Islands", "rays"],
   ["Micronesia", "ring"], ["Nauru", "gap:thin bend with a rayed star below"], ["New Zealand", "excl:Union Jack + Southern Cross"],
   ["Palau", "disc"], ["Papua New Guinea", "excl:bird-of-paradise + Southern Cross"], ["Samoa", "cantonStars"],
   ["Solomon Islands", "gap:diagonal bend dividing a field + star canton"], ["Tonga", "cantonCross"],

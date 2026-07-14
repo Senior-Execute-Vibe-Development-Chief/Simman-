@@ -345,7 +345,9 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
 - **Partitions**: per pale/fess/bend, quarterly, gyronny, per saltire, per
   chevron, barry, paly, **chequy**, **lozengy**, **tierced** (in pale /
   in fess — the tricolour, third tincture constructed against both
-  neighbours, one band optionally doubled: the Spanish fess) — edges in
+  neighbours, one band optionally doubled: the Spanish fess), the mirror
+  **quintFess** (five bands 1:1:2:1:1, palette A-B-C-B-A — Thailand), and the
+  corner-fan **rays** (Seychelles, which flies alone) — edges in
   line-styles (wavy, engrailed, embattled, indented).
 - **Field treatments**: ermine, vair (real grounds — marks pick against
   argent / argent+azure), **fretty**, **masoned**.
@@ -421,17 +423,21 @@ flags named); status there is **0 MISS**.
 
 `tools/flag-world.mjs` then walks **all ~197 sovereign flags one by one** — the
 whole corpus, not a sample — tagging each by structure and verifying the tag is
-reachable. Honest coverage: **~103 reachable, ~69 bespoke-excluded, ~25 genuine
-structural gaps** (≈80% of in-scope structures; ≈87% of all flags reachable or
-legitimately excluded). The remaining gaps cluster into the next round of
-general mechanisms to build — among them: oblique bands *radiating from the
-hoist* (Seychelles, Marshall Is.), *fimbriated stripe seams* (Gambia,
-Uzbekistan), a device *on* a hoist band (Guinea-Bissau), the quintband
-1:1:2:1:1 mirror (Thailand, Costa Rica → a general N-band symmetric tierced),
-a *rayed sun to the edges* (North Macedonia), the *superimposed Union Jack*
-class (UK + Commonwealth cantons), overlaid hoist triangles (Timor-Leste),
-and several near-misses (two-star diagonals, two parallel diagonals, quartered
-+ stars). Each is surfaced honestly as a missing SYSTEM, never hard-coded.
+reachable. Honest coverage: **~108 reachable, ~69 bespoke-excluded, ~18 genuine
+structural gaps** (≈86% of in-scope structures; ≈90% of all flags reachable or
+legitimately excluded). A round of six mechanisms closed seven of the earlier
+gaps — the mirror **quintband** (Thailand, Costa Rica: a `quintFess` partition,
+1:1:2:1:1, palette A-B-C-B-A), the corner-fan **rays** (Seychelles, Marshall
+Is.), **fimbriated stripe seams** (Gambia, Uzbekistan), the **cross throughout**
+(England, Georgia) and the **couped** cross (Switzerland) as distinct crossStyles,
+**square and very-long** banner cuts (Switzerland/Vatican; Qatar), and the
+**cross-over-saltire union** (the Union Jack skeleton; the offset counterchanged
+Irish saltire stays a bespoke refinement). The remaining gaps are the next
+round — a rayed sun to the edges (North Macedonia, deliberately dropped so far),
+overlaid hoist triangles (Timor-Leste), the thin-middle A-B-A (Latvia), and
+several near-misses (two-star diagonals, quartered + stars, Singapore's
+crescent-and-five). Each is surfaced honestly as a missing SYSTEM, never
+hard-coded.
 
 ## The lab
 

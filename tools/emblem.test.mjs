@@ -44,7 +44,8 @@ const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
   array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, array_satellites: 0, housed: 0, couched: 0,
   cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0, flagFigure: 0, flagBare: 0,
-  hoistPale: 0, hoistWedge: 0, hoistDevice: 0 };
+  hoistPale: 0, hoistWedge: 0, hoistDevice: 0, cutVeryLong: 0, cutSquare: 0,
+  quintFess: 0, rays: 0, seams: 0, union: 0, crossThroughout: 0, crossCouped: 0 };
 // the flag device vocabulary: what a repeated/housed/band-riding device may be
 const FLAG_VOCAB = new Set(["mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle",
   "sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline", "starAndCrescent",
@@ -123,11 +124,14 @@ function audit(g) {
     }
     if (fm && COMPACT.has(fm.cat) && (fm.array || fm.inCanton || fm.slots) && !FLAG_VOCAB.has(fm.id))
       fail(`ornate device sewn in repeat (${fm.id})`, g);
-    // THE CLOTH CUT: banners span the real ratio spread (1:2 … 2:3), smooth
+    // THE CLOTH CUT: banners span 1:2 … 2:3 in the common middle, with rare
+    // ends reaching a very long cut (~11:28) and a square (1:1)
     if (p.substrate === "banner") {
-      if (!(p.flagRatio >= 0.5 && p.flagRatio <= 0.667)) fail(`banner cut out of range (${p.flagRatio})`, g);
+      if (!(p.flagRatio >= 0.39 && p.flagRatio <= 1.01)) fail(`banner cut out of range (${p.flagRatio})`, g);
       if (p.flagRatio < 0.53) seen.cutLong++;
       if (p.flagRatio > 0.64) seen.cutStocky++;
+      if (p.flagRatio <= 0.45) seen.cutVeryLong++;
+      if (p.flagRatio >= 0.95) seen.cutSquare++;
     }
     // THE BUNTING SHELF: no stain flies on cloth, and the sewing economy
     // keeps a flag to a few bolts (the mechanism lands 2–4; 5 is the
@@ -139,10 +143,14 @@ function audit(g) {
       if (f.treatName) worn.add(f.treatName);
       if (f.hoist) { worn.add(f.hoist.name); if (f.hoist.device) worn.add(f.hoist.device.tinctureName); }
       if (f.bordure || f.chief) worn.add(f.subName);
+      if (f.seamName) worn.add(f.seamName);
+      if (f.saltireOverlay) worn.add(f.saltireOverlay.name);
       if (fm) { worn.add(fm.tinctureName); if (fm.panel) worn.add(fm.panel.name); if (fm.fimbName) worn.add(fm.fimbName); }
       if (p.ornaments.canton) worn.add(p.ornaments.cantonName);
       for (const n of worn) if (STAINS.has(n)) fail(`a stain flies on cloth (${n})`, g);
-      if (worn.size > 5) fail(`flag runs ${worn.size} tinctures`, g);
+      // a RADIATING fan legitimately flies many colours (Seychelles' five); every
+      // other flag holds to the sewing economy's few bolts
+      if (worn.size > 5 && f.partition !== "rays") fail(`flag runs ${worn.size} tinctures`, g);
       if (fm && (fm.inCanton || fm.panel || fm.arrange === "onOrdinary") && f.names.includes(fm.tinctureName)) seen.boltReuse++;
     }
   }
@@ -186,6 +194,16 @@ function audit(g) {
       if (f.hoist.device) { seen.hoistDevice++; checkMark(f.hoist.device.tincture, [f.hoist.tincture], "hoist-device", g, false); }
     }
     if (p.isFlag && p.ornaments.canton) checkMark(p.ornaments.cantonColor, grounds, "canton-flag", g, strict);
+    // NEW mechanisms: stripe seams read against the bands; the union's saltire
+    // reads against the field; the centred cross styles are counted for reach
+    if (f.seamFimbriation) { seen.seams++; checkMark(f.seamFimbriation, grounds, "seam", g, false); }
+    if (f.saltireOverlay) {
+      seen.union++;
+      if (f.ordinary !== "cross") fail("saltire overlay without a cross", g);
+      checkMark(f.saltireOverlay.tincture, grounds, "saltire-overlay", g, false);
+    }
+    if (f.crossStyle === "throughout") seen.crossThroughout++;
+    if (f.crossStyle === "couped") seen.crossCouped++;
     if (f.fimbriation) {
       seen.fimbriation++;
       // a separator is audited on its JOB: the band plus same-class grounds

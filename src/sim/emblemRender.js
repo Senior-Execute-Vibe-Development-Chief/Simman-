@@ -230,6 +230,16 @@ function fieldSVG(w, h, p) {
       for (let i = 0; i < 3; i++) { const ww = w * wt[i]; s += `<rect x="${F(xx)}" width="${F(ww + 1)}" height="${h}" fill="${css(p.tinctures[Math.min(i, p.tinctures.length - 1)])}"/>`; xx += ww; } return s; }
     case "tiercedFess": { const wt = tiercedWeights(p); let s = "", yy = 0;
       for (let i = 0; i < 3; i++) { const hh = h * wt[i]; s += `<rect y="${F(yy)}" width="${w}" height="${F(hh + 1)}" fill="${css(p.tinctures[Math.min(i, p.tinctures.length - 1)])}"/>`; yy += hh; } return s; }
+    // the QUINTBAND: five bands, weights 1:1:2:1:1, mirror palette A-B-C-B-A
+    case "quintFess": { const wt = p.stripeWeights || [1, 1, 2, 1, 1], tot = wt.reduce((x, y) => x + y, 0), idx = [0, 1, 2, 1, 0];
+      let s = "", yy = 0;
+      for (let i = 0; i < 5; i++) { const hh = h * wt[i] / tot; s += `<rect y="${F(yy)}" width="${w}" height="${F(hh + 1)}" fill="${css(p.tinctures[Math.min(idx[i], p.tinctures.length - 1)])}"/>`; yy += hh; } return s; }
+    // RADIATING BANDS: oblique sectors fanning from the bottom-hoist corner
+    case "rays": { const R2 = p.rays; if (!R2) return R;
+      const n = R2.count, Rr = Math.hypot(w, h) * 1.25; let s = `<rect width="${w}" height="${h}" fill="${css(R2.colors[0])}"/>`;
+      for (let i = 0; i < n; i++) { const a0 = -Math.PI / 2 + i / n * (Math.PI / 2), a1 = -Math.PI / 2 + (i + 1) / n * (Math.PI / 2);
+        s += `<polygon points="0,${F(h)} ${F(Math.cos(a0) * Rr)},${F(h + Math.sin(a0) * Rr)} ${F(Math.cos(a1) * Rr)},${F(h + Math.sin(a1) * Rr)}" fill="${css(R2.colors[i % R2.colors.length])}"/>`; }
+      return s; }
     case "lozengy": { const cols = Math.max(4, Math.min(8, n + 2)), cw = w / cols, hh = cw * 0.7; let s = R;
       for (let j = -1; j <= Math.ceil(h / hh) + 1; j++) { if (!(j % 2)) continue;
         for (let i = -1; i <= cols; i++) { const cx = i * cw + cw / 2, cy = j * hh;
@@ -251,10 +261,21 @@ function hoistBand(w, h, hoist) {
     : `<polygon points="0,0 ${F(e)},${F(h / 2)} 0,${F(h)}" fill="${c}"/>`;
 }
 
+// ── FIMBRIATED STRIPE SEAMS: thin metal lines at the band boundaries of a
+// striped field (Gambia, Uzbekistan) ──
+function seamLines(w, h, f) {
+  const c = css(f.seamFimbriation), sw = Math.min(w, h) * 0.045;
+  const ys = [];
+  if (f.partition === "barry") { const n = f.stripes; for (let i = 1; i < n; i++) ys.push(i * h / n); }
+  else if (f.partition === "tiercedFess") { const wt = tiercedWeights(f); ys.push(wt[0] * h, (wt[0] + wt[1]) * h); }
+  else if (f.partition === "quintFess") { const wt = f.stripeWeights || [1, 1, 2, 1, 1], t = wt.reduce((a, b) => a + b, 0); let y = 0; for (let i = 0; i < 4; i++) { y += wt[i] / t * h; ys.push(y); } }
+  return `<g stroke="${c}" stroke-width="${F(sw)}">` + ys.map(y => `<line x1="0" y1="${F(y)}" x2="${F(w)}" y2="${F(y)}"/>`).join("") + `</g>`;
+}
+
 // ── an ordinary as a fill path (long edges in the given line-style). On a
 // FLAG the grammar goes vexillological: the cross sits Nordic (crossing
 // toward the hoist) and the pile points from the hoist. ──
-function ordinaryPath(type, w, h, ln, amp, flag, sym) {
+function ordinaryPath(type, w, h, ln, amp, flag, xstyle) {
   switch (type) {
     case "fess": { const y0 = h * 0.4, y1 = h * 0.6; return `M0 ${F(y0)} ${styledEdge(0, y0, w, y0, ln, amp)} L${w} ${F(y1)} ${styledEdge(w, y1, 0, y1, ln, amp)} Z`; }
     case "pale": { const x0 = w * 0.4, x1 = w * 0.6; return `M${F(x1)} 0 ${styledEdge(x1, 0, x1, h, ln, amp)} L${F(x0)} ${h} ${styledEdge(x0, h, x0, 0, ln, amp)} Z`; }
@@ -268,12 +289,19 @@ function ordinaryPath(type, w, h, ln, amp, flag, sym) {
       const t = h * 0.16; return `M0 ${h} L${F(w / 2)} ${F(h * 0.42)} L${w} ${h} L${F(w - t)} ${h} L${F(w / 2)} ${F(h * 0.42 + t * 1.3)} L${F(t)} ${h} Z`;
     }
     case "cross": {
-      // flag SYMMETRIC: a centred couped cross (Switzerland/Georgia) — equal
-      // arms, not hoist-shifted, ending short of the edges (a bold Greek cross)
-      if (flag && sym) {
+      // flag COUPED: a centred couped cross (Switzerland) — equal arms, not
+      // hoist-shifted, ending short of the edges (a bold Greek cross)
+      if (flag && xstyle === "couped") {
         const cx = w / 2, cy = h / 2, t = h * 0.15, L = h * 0.36;
         return ptsPath([[cx - t, cy - L], [cx + t, cy - L], [cx + t, cy - t], [cx + L, cy - t], [cx + L, cy + t],
           [cx + t, cy + t], [cx + t, cy + L], [cx - t, cy + L], [cx - t, cy + t], [cx - L, cy + t], [cx - L, cy - t], [cx - t, cy - t]]);
+      }
+      // flag THROUGHOUT: a centred cross reaching EVERY edge (England's St
+      // George, Georgia) — a full-width fess crossed by a full-height centred
+      // pale, arms as thick as the Nordic's (0.2h)
+      if (flag && xstyle === "throughout") {
+        const t = h * 0.1;
+        return ordinaryPath("fess", w, h, "straight", amp) + `M${F(w / 2 - t)} 0 V${F(h)} H${F(w / 2 + t)} V0 Z`;
       }
       // flag NORDIC: both arms equally thick in absolute cloth units (the fess
       // arm is 0.2h, so the vertical matches it), the crossing offset to hoist
@@ -326,7 +354,11 @@ function heraldicOverlay(w, h, f, sh, base, flag) {
   let s = "";
   if (ord && ord !== "none") {
     const path = (f.ordinaryCount || 1) > 1 ? diminutivePaths(ord, w, h, ln, amp, f.ordinaryCount)
-      : ordinaryPath(ord, w, h, ln, amp, flag, f.crossStyle === "symmetric");
+      : ordinaryPath(ord, w, h, ln, amp, flag, f.crossStyle);
+    // THE UNION: a St Andrew saltire laid BENEATH the cross (the Jack skeleton) —
+    // the cross's fimbriation then reads as the white edge over it
+    if (f.saltireOverlay)
+      s += `<path d="${ordinaryPath("saltire", w, h, "straight", amp, flag)}" fill="${css(f.saltireOverlay.tincture)}"/>`;
     // the couched pall's hoist MOUTH: the wedge the arms embrace, laid
     // beneath the band so the fimbriation separates it (the unity-Y)
     if (flag && ord === "pall" && f.pallMouth)
@@ -668,6 +700,8 @@ function coatContent(p, w, h, rng) {
       content += `<defs>${defs.join("")}</defs>`;
     }
     content += fieldSVG(w, h, f);
+    // thin metal seams between the stripes (Gambia), over the bands
+    if (f.seamFimbriation) content += seamLines(w, h, f);
     // the compound hoist element rides over the striped fly, and may itself bear
     // a compact device (Guinea-Bissau's star on the pale, Comoros' crescent)
     if (f.hoist) {

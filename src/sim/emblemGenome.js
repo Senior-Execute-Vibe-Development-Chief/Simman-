@@ -115,6 +115,9 @@ const FLAG_PARTITIONS = [
   "perFess", "plain", "tiercedFess", "perPale", "perBend", "paly",
   "barry", "tiercedPale", "hoistTriangle", "tiercedFess", "quarterly", "perFess",
   "perSaltire", "plain",
+  // the rarities: the mirror QUINTBAND (Thailand 1:1:2:1:1) and the corner-fan
+  // RAYS (Seychelles) — one slot each, reachable but genuinely uncommon
+  "quintFess", "rays",
 ];
 // field TREATMENTS (the crescent gene's high window): the two furs, plus the
 // lattice treatments — fretty (interlaced bendlets) and masoned (brickwork)
@@ -787,11 +790,17 @@ export function expressGenome(genome) {
   // THE CLOTH CUT: a banner's ratio comes from the substrate gene's position
   // WITHIN its own window — the same gene that picked the cloth picks the
   // cut, and it drifts smoothly under mutation. The span covers the real
-  // spread of rectangular flags, 1:2 (long) … 2:3 (stocky); the traditional
-  // tailed substrates keep their fixed cuts.
+  // spread of rectangular flags, 1:2 (long) … 2:3 (stocky) across the common
+  // middle of the window; the RARE ends reach the true outliers — a very long
+  // cut (Qatar's 11:28) at the bottom, a SQUARE (Switzerland, Vatican) at the
+  // top — so those aspect ratios are reachable without making most flags odd.
+  // The traditional tailed substrates keep their fixed cuts.
   const sWin = get("substrate") * SUBSTRATES.length;
-  const flagRatio = substrate === "banner" ? 0.5 + (sWin - Math.floor(sWin)) * 0.167
-    : substrate === "pennon" ? 0.6 : 0.62;
+  const uCut = sWin - Math.floor(sWin);
+  const flagRatio = substrate !== "banner" ? (substrate === "pennon" ? 0.6 : 0.62)
+    : uCut < 0.08 ? 0.40 + uCut / 0.08 * 0.10                 // rare LONG (down to ~11:28)
+      : uCut > 0.92 ? 0.667 + (uCut - 0.92) / 0.08 * 0.333    // rare SQUARE (up to 1:1)
+        : 0.5 + (uCut - 0.08) / 0.84 * 0.167;                 // the common 1:2 … 2:3
 
   // the field's partition is settled first — the palette needs to know whether
   // the field will be a SOLID ground (a whole flag one colour) or a striped
@@ -821,7 +830,7 @@ export function expressGenome(genome) {
   // chargeT (the bright centre of a tricolour), and the far band is the second
   // companion when one exists (A-B-C, the French pattern) or the field again
   // (A-B-A, the Austrian) — the secondary gene already decides which
-  if (partition === "tiercedPale" || partition === "tiercedFess") {
+  if (partition === "tiercedPale" || partition === "tiercedFess" || partition === "quintFess") {
     const t3 = pal.companionT.name !== pal.chargeT.name ? pal.companionT : pal.fieldT;
     field.tinctures = [pal.field, pal.chargeT.rgb, t3.rgb];
     field.names = [pal.fieldT.name, pal.chargeT.name, t3.name];
@@ -829,7 +838,27 @@ export function expressGenome(genome) {
     // the SPANISH-FESS system: the thickness gene — the same one that splits
     // an ordinary into diminutives, same windows — may double one band:
     // the middle (1:2:1) or, at the gene's top, the first (2:1:1)
-    if (get("stripes") > 0.62) field.tiercedWide = get("stripes") > 0.86 ? 0 : 1;
+    if (partition !== "quintFess" && get("stripes") > 0.62) field.tiercedWide = get("stripes") > 0.86 ? 0 : 1;
+    // the QUINTBAND generalises the tierced past three: FIVE bands, mirror
+    // palette A-B-C-B-A, the centre doubled — Thailand & Costa Rica's 1:1:2:1:1.
+    // The three band tinctures index [0,1,2,1,0]; the weights carry the doubling.
+    if (partition === "quintFess") field.stripeWeights = [1, 1, 2, 1, 1];
+  }
+  // RADIATING BANDS: oblique sectors fanning from the bottom-hoist corner
+  // (Seychelles' five, the Marshall Islands' two). The count rides the stripes
+  // gene (3–6); the colours cycle the flag's own tinctures, extended with fresh
+  // bolts so a wide fan reads (Seychelles flies five distinct colours).
+  if (partition === "rays") {
+    const count = 3 + Math.floor(get("stripes") * 4);   // 3..6
+    const nm = new Set();
+    const base = [pal.fieldT, pal.chargeT, pal.companionT].filter(t => !nm.has(t.name) && nm.add(t.name));
+    const extra = BOLTS.map(T).filter(t => !nm.has(t.name));
+    const palette = [...base, ...extra];
+    const rayT = Array.from({ length: count }, (_, i) => palette[i % palette.length]);
+    field.rays = { count, colors: rayT.map(t => t.rgb) };
+    field.tinctures = rayT.map(t => t.rgb);
+    field.names = rayT.map(t => t.name);
+    grounds = [rayT[0]];
   }
   // a field TREATMENT drapes the WHOLE field (so no partition/counterchange
   // under it). A fur IS the ground — ermine reads as argent strewn with
@@ -870,15 +899,19 @@ export function expressGenome(genome) {
     field.treatName = field.treatTincture === INK ? "sable" : "argent";
   }
   if (composition === "heraldic") {
-    field.ordinary = pickEnum(get("hueC"), ORDINARIES);
+    // a RADIATING fan fills the whole field with many colours: nothing overlays
+    // it cleanly (no single mark reads on every ray), so it flies ALONE — no
+    // ordinary, chief, bordure, device or canton (Seychelles is a pure fan)
+    const rayField = partition === "rays";
+    field.ordinary = rayField ? "none" : pickEnum(get("hueC"), ORDINARIES);
     // DIMINUTIVES: with the stripes gene otherwise idle, a linear ordinary
     // may split into its thinner plural form — bars, pallets, bendlets,
     // chevronels — two of them, or three at the gene's top
     field.ordinaryCount = ["fess", "pale", "bend", "bendSinister", "chevron"].includes(field.ordinary)
       && !["barry", "paly"].includes(partition) && get("stripes") > 0.62
       ? (get("stripes") > 0.86 ? 3 : 2) : 1;
-    field.chief = get("pearl") > 0.66;
-    field.bordure = get("border") > 0.62;
+    field.chief = !rayField && get("pearl") > 0.66;
+    field.bordure = !rayField && get("border") > 0.62;
     field.subTincture = markT.rgb; field.subName = markT.name;   // chief/bordure read on the FIELD (markT), not the band
     // counterchange the ordinary across a two-region partition (per pale/fess/bend)
     field.counterchange = !field.fur && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
@@ -905,11 +938,32 @@ export function expressGenome(genome) {
     if (tricolour) field.chief = false;
     field.ordinaryTincture = ordT.rgb;
     field.ordinaryName = ordT.name;
-    // a flag CROSS is Nordic (hoist-shifted, edge-to-edge) by default; a strong
-    // symmetry intent makes it SYMMETRIC instead — a centred couped cross
-    // (Switzerland, Georgia). The symmetry gene is otherwise idle on a bare
-    // cross (counterchange needs a two-region partition, a plain field isn't).
-    if (isFlag && field.ordinary === "cross") field.crossStyle = get("symmetry") > 0.6 ? "symmetric" : "nordic";
+    // a flag CROSS takes one of three constructions off the symmetry gene
+    // (otherwise idle on a bare cross — counterchange needs a two-region
+    // partition, a plain field isn't): NORDIC, hoist-shifted and edge-to-edge,
+    // the default (Denmark, Sweden); THROUGHOUT, centred and reaching every edge
+    // (England's St George, Georgia); COUPED, centred but ending short of the
+    // edges (Switzerland). Nordic keeps the widest window; the two centred forms
+    // share the symmetric upper band.
+    if (isFlag && field.ordinary === "cross") {
+      const sy = get("symmetry");
+      field.crossStyle = sy > 0.8 ? "couped" : sy > 0.55 ? "throughout" : "nordic";
+    }
+    // THE UNION: a centred cross may be SUPERIMPOSED over a SALTIRE — England's
+    // cross of St George over Scotland's saltire of St Andrew, the Union Jack
+    // skeleton. The saltire takes a tincture reading against both field and
+    // cross; the cross is then edged in that same tincture (the Jack's white
+    // fimbriation, which merges with the white saltire). The exact Jack — the
+    // offset, counterchanged Irish saltire — stays a bespoke refinement.
+    if (isFlag && field.ordinary === "cross" && field.crossStyle !== "nordic"
+      && !field.counterchange && get("brandSeed") > 0.62) {
+      const crossT = T(field.ordinaryName);
+      const st = tinctureOn([...grounds, crossT], get("hueC"), get("value"), pal.poles, { bunting: true, chroma: get("chroma") });
+      if (st.name !== field.ordinaryName) {
+        field.saltireOverlay = { tincture: st.rgb, name: st.name };
+        field.fimbriation = st.rgb; field.fimbName = st.name;
+      }
+    }
     // FIMBRIATION does a JOB: separating same-class neighbours. MANDATORY for a
     // tricolour band (else the colour-on-colour is illegal); otherwise optional
     // (the motifCount gene) and only where a ground shares the band's class (a
@@ -971,15 +1025,32 @@ export function expressGenome(genome) {
     hasHoist = true;
   }
 
+  // FIMBRIATED STRIPE SEAMS: thin metal lines dividing the bands of a striped
+  // field — Gambia's white seams between red/blue/green, Uzbekistan's red ones.
+  // A treatment (not a partition), gated on the motifCount gene, on a bare
+  // striped field. The seam is undyed cloth or gold — whichever metal reads
+  // farthest from every band it separates.
+  if (isFlag && composition === "heraldic" && field.ordinary === "none" && !hasHoist
+    && ["barry", "tiercedFess", "quintFess"].includes(partition) && get("motifCount") > 0.72) {
+    let best = null, bd = -1;
+    for (const c of [T("argent"), T("or")]) {
+      const d = Math.min(...grounds.map(gr => dE(c.rgb, gr.rgb)));
+      if (d > bd) { bd = d; best = c; }
+    }
+    // only seam when a metal actually READS between the bands (skip a barry of
+    // two metals, where no seam would separate anything)
+    if (bd > 0.12) { field.seamFimbriation = best.rgb; field.seamName = best.name; }
+  }
+
   // motif — a figurative composition carries a charge. Low iconism forbids LIVING
   // figures, so a living category (beast/bird/mythic/sea) is remapped to a
   // non-living one (celestial / geometric / plant / object). Only the abstract
   // compositions carry no charge.
   let motif = null;
   const hasOrdinary = composition === "heraldic" && field.ordinary && field.ordinary !== "none";
-  // a hoist band IS the design (Benin, UAE, Jordan): the striped fly and the
-  // hoist element carry the identity, so no central device competes with them
-  if (!hasHoist && ["heraldic", "central", "radial", "seme"].includes(composition)) {
+  // a hoist band IS the design (Benin, UAE, Jordan), and a radiating fan fills
+  // the field (Seychelles): neither leaves room for a competing central device
+  if (!hasHoist && partition !== "rays" && ["heraldic", "central", "radial", "seme"].includes(composition)) {
     let cat = pickEnum(get("motifCat"), MOTIF_CATS);
     if (aniconic && LIVING_CATS.has(cat)) {
       cat = NONLIVING_CATS[Math.floor(get("motifCount") * NONLIVING_CATS.length) % NONLIVING_CATS.length];
@@ -1170,7 +1241,7 @@ export function expressGenome(genome) {
   const ornaments = {
     border: get("border") > 0.5 || composition === "central",
     cornerAccent: composition === "central" && get("pearl") > 0.5,           // small disc, clear of the device
-    canton: cantonOK && flagCantonOK && get("star") > 0.62,
+    canton: cantonOK && flagCantonOK && partition !== "rays" && get("star") > 0.62,
     // a lone canton flies a star, a sun, or a CROSS (Greece, Tonga) — the idle
     // sunDisc gene splits three ways instead of two
     cantonKind: get("sunDisc") > 0.66 ? "sun" : get("sunDisc") < 0.33 ? "cross" : "star",
@@ -1281,8 +1352,12 @@ function fieldPhrase(f, m) {
       + (f.tiercedWide === 0 ? ", the hoist band doubled" : f.tiercedWide === 1 ? ", the middle band doubled" : ""); break;
     case "tiercedFess": s = `Tierced in fess ${a}, ${b} and ${tName(f.names[2])}`
       + (f.tiercedWide === 0 ? ", the upper band doubled" : f.tiercedWide === 1 ? ", the middle band doubled" : ""); break;
+    case "quintFess": s = `Barry of five ${a}, ${b} and ${tName(f.names[2])}, mirror-symmetric, the centre band doubled`; break;
+    case "rays": s = `Rayonné of ${NUMWORD[(f.rays && f.rays.count) || 5]} issuant from the hoist, ${f.names.map(tName).join(", ")}`; break;
     default: s = a;
   }
+  // thin metal seams dividing the bands (Gambia)
+  if (f.seamFimbriation) s += `, the bands fimbriated ${tName(f.seamName)}`;
   if (m && m.arrange === "seme")
     s += ` semé of ${pluralize(chargeName(m.id))} ${m.counterchange ? "counterchanged" : tName(m.tinctureName)}`;
   // the compound hoist element (a band or a wedge) rides over the striped fly,
@@ -1349,16 +1424,18 @@ export function blazonGenome(genome) {
   const oT = hasOrd ? (f.counterchange ? "counterchanged" : tName(f.ordinaryName)) : "";
   const DIM_NAME = { fess: "bar", pale: "pallet", bend: "bendlet", bendSinister: "scarpe", chevron: "chevronel" };
   // on cloth the pall and the chevron lie COUCHED (issuing from the hoist);
-  // a symmetric flag cross is couped (centred, short of the edges)
+  // a centred flag cross is couped (short of the edges) or throughout (edge-to-edge)
   const couch = o => p.isFlag && (o === "pall" || o === "chevron") ? `${ordName(o)} couched`
-    : p.isFlag && o === "cross" && f.crossStyle === "symmetric" ? "cross couped"
-      : ordName(o);
+    : p.isFlag && o === "cross" && f.crossStyle === "couped" ? "cross couped"
+      : p.isFlag && o === "cross" && f.crossStyle === "throughout" ? "cross throughout"
+        : ordName(o);
   const nOrd = (hasOrd && f.ordinaryCount) || 1;
   const oFimb = hasOrd && f.fimbriation ? ` fimbriated ${tName(f.fimbName)}` : "";
   const mFimb = m && m.fimbriation ? ` fimbriated ${tName(m.fimbName)}` : "";
   const oMouth = hasOrd && f.pallMouth ? `, enclosing at the hoist a wedge ${tName(f.pallMouthName)}` : "";
   const ordClause = nOrd > 1 ? `${NUMWORD[nOrd]} ${pluralize(DIM_NAME[f.ordinary])}${oLn} ${oT}${oFimb}`
-    : hasOrd ? `a ${couch(f.ordinary)}${oLn} ${oT}${oFimb}${oMouth}` : "";
+    : f.saltireOverlay ? `a saltire ${tName(f.saltireOverlay.name)} surmounted by a ${couch(f.ordinary)}${oLn} ${oT}${oFimb}`
+      : hasOrd ? `a ${couch(f.ordinary)}${oLn} ${oT}${oFimb}${oMouth}` : "";
   if (hasOrd && m && m.arrange === "between") {
     parts.push(`${ordClause} between ${m.count === 1 ? `${art(mName)} ${mName}` : `${NUMWORD[m.count]} ${pluralize(mName)}`} ${mT}`);   // ordClause already carries the mouth
   } else if (hasOrd && m && m.arrange === "onOrdinary") {
