@@ -319,6 +319,11 @@ export const BK_PARENT = new Map([
   [PURPLE, [[BLUE, 0.55], [BLACK, 0.45]]],
   [PINK, [[RED, 1]]],
   [ORANGE, [[YELLOW, 1]]],
+  // grey is a late/wildcard term (B&K stage VII-ish): a language below the
+  // late stage has no basic grey — it reads as an achromatic (black/white).
+  // It was previously always basic (missing here), so every small system
+  // spuriously carried an independent grey (a reviewer caught 6/6).
+  [GREY, [[BLACK, 0.55], [WHITE, 0.45]]],
 ]);
 
 // ── kinship systems (Morgan's classic types) — merge lists per type ──────

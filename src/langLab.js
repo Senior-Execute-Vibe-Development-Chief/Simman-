@@ -686,9 +686,16 @@ function verbFrontierHTML(l) {
       `possession: ${possName[pr.poss]}`,
       pr.svc ? `serial verbs (TAM on ${pr.svc.tam === "first" ? "the first" : "both"})` : null,
     ].filter(Boolean).map(t => `<span class="chip">${t}</span>`).join("");
+    // the past-tense caption is only true where the copula is actually ZERO
+    // (a tensed zero copula grows its BE); a verbal-adjective language just
+    // conjugates the property word, a copular one already has an overt copula
+    const pastCap = pr.cop.nominal === "zero" && pr.cop.adjectival === "cop"
+      ? "‘the king was old’ (watch a zero copula grow its BE)"
+      : pr.cop.adjectival === "verb" ? "‘the king was old’ (the property word takes tense directly)"
+      : "‘the king was old’";
     const exs = [
       clauseEx("‘the king is old’", renderClause(l, { s: { n: KING, def: true }, pred: { adj: OLD }, v: {} })),
-      clauseEx("‘the king was old’ (watch a zero copula grow its BE)", renderClause(l, { s: { n: KING, def: true }, pred: { adj: OLD }, v: { tam: "pst" } })),
+      clauseEx(pastCap, renderClause(l, { s: { n: KING, def: true }, pred: { adj: OLD }, v: { tam: "pst" } })),
       clauseEx("‘the king is a wolf’", renderClause(l, { s: { n: KING, def: true }, pred: { n: WOLF, def: false }, v: {} })),
       clauseEx("‘there is grain in the town’", renderClause(l, { ex: { n: GRAIN }, loc: { adp: "in", n: TOWN, def: true }, v: {} })),
       clauseEx("‘there is no grain’", renderClause(l, { ex: { n: GRAIN }, v: { neg: true } })),

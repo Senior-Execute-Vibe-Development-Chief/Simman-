@@ -22,7 +22,7 @@ import { runHistory } from "../src/sim/languageHistory.js";
 import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, adpSourceOf, polysynthesisOf } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND, QUEEN, OLD, GRAIN, BREAD, SWORD, BE, SIT, STAND, HAVE,
   TOPO_MOD, PERSON_POOL, LOAN_POOL, RUN, FATHER, BROTHER, RED, GREEN, BLUE, HEART, HEAD,
-  YELLOW, BROWN, PURPLE, PINK, ORANGE, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER,
+  YELLOW, BROWN, PURPLE, PINK, ORANGE, GREY, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER,
   ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK, LORD, NIGHT } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
@@ -3007,16 +3007,22 @@ console.log("\n── §30 lexical typology ──");
   // ── Berlin–Kay ──
   const cts = pop.map(l => colorTermsOf(l));
   const basicIn = (ct, cid) => ct.terms.find(t => t.cid === cid).mergedInto === -1;
-  check("the hierarchy is implicational: brown only after yellow, late terms only after brown, never past a grue anchor",
+  check("the hierarchy is implicational: brown only after yellow, late terms (purple/pink/orange/grey) only after brown, never past a grue anchor",
     cts.every(ct => (!basicIn(ct, BROWN) || basicIn(ct, YELLOW)) &&
-      ([PURPLE, PINK, ORANGE].every(c2 => !basicIn(ct, c2) || basicIn(ct, BROWN))) &&
+      ([PURPLE, PINK, ORANGE, GREY].every(c2 => !basicIn(ct, c2) || basicIn(ct, BROWN))) &&
       (!ct.grue || !basicIn(ct, BROWN))));
+  // grey is no longer spuriously always-basic — a small system reads it as an achromatic
+  check(`grey collapses into an achromatic below the late stage (not independent in every system) — ${Math.round(rate(cts, ct => !basicIn(ct, GREY)) * 100)}% merge it`,
+    rate(cts, ct => !basicIn(ct, GREY)) > 0.1 && cts.some(ct => basicIn(ct, GREY)));
   const yRate = rate(cts, ct => basicIn(ct, YELLOW));
   check(`yellow is near-universal, the stage-VII terms minority (yellow ${pct(yRate)}, orange ${pct(rate(cts, ct => basicIn(ct, ORANGE)))})`,
     yRate > 0.65 && yRate < 0.9 && rate(cts, ct => basicIn(ct, ORANGE)) < 0.25);
   const nDist = cts.map(ct => ct.n);
-  check(`basic-term counts span the range (min ${Math.min(...nDist)}, max ${Math.max(...nDist)}, modal 6–7)`,
-    Math.min(...nDist) <= 6 && Math.max(...nDist) === 11 && rate(cts, ct => ct.n === 6 || ct.n === 7) > 0.4);
+  // grue languages cap low (grue blocks brown) and grey now collapses below the
+  // late stage — so the plurality sits at the 5–6-term stage (the old 6–7 mode
+  // was grey spuriously inflating every count by one)
+  check(`basic-term counts span the range (min ${Math.min(...nDist)}, max ${Math.max(...nDist)}, modal 5–6)`,
+    Math.min(...nDist) <= 5 && Math.max(...nDist) === 11 && rate(cts, ct => ct.n === 5 || ct.n === 6) > 0.5);
   const unsplitL = pop.find(l => { const ct = colorTermsOf(l); return !basicIn(ct, YELLOW); });
   check("an unsplit term IS its parent's word (orange resolving through yellow to red)",
     wordOf(unsplitL, YELLOW) === wordOf(unsplitL, RED) || wordOf(unsplitL, YELLOW) === wordOf(unsplitL, GREEN));

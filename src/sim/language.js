@@ -27,7 +27,7 @@ import { applicableRules, applyRules, legalizeWord } from "./languageChange.js";
 import { bequeathGrammar, adpSourceOf, gramOf } from "./languageGrammar.js";
 import { CONCEPTS, COLEX, DERIV, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE,
   BK_TERMS, BK_PARENT, KIN_MERGES, KIN_SLOTS, MOTION_DV, MOTION_PATH_ADP, MOTION_SAT_RATE,
-  GREEN, BLUE, YELLOW, BROWN, PURPLE, PINK, ORANGE } from "./languageLexicon.js";
+  GREEN, BLUE, YELLOW, BROWN, PURPLE, PINK, ORANGE, GREY } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
 const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
@@ -223,6 +223,7 @@ function compile(lang) {
     split[PURPLE] = full || (split[BROWN] && h01(fam, "bk:purple") < 0.5);
     split[PINK] = full || (split[BROWN] && h01(fam, "bk:pink") < 0.45);
     split[ORANGE] = full || (split[BROWN] && h01(fam, "bk:orange") < 0.42);
+    split[GREY] = full || (split[BROWN] && h01(fam, "bk:grey") < 0.55);   // a late/wildcard term — no basic grey below the late stage
     for (const [cid, pool] of BK_PARENT) {
       if (split[cid]) continue;
       let r = h01(fam, "bk:src", cid), parent = pool[pool.length - 1][0];
