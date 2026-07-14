@@ -269,3 +269,59 @@ stylized battery + churn analysis under the lever (is the bigger realm still
 mortal?), and (b) possibly a counterweight — the kinship-RESTRAINT side of
 the same casus read (kin STATES sparing each other) measured against the
 irredentist pull before the pair ships on.
+
+---
+
+## STATUS UPDATE (2026-07-13, later still) — flip evidence in: DEFAULT 0 STANDS; the counterweight must act on ABSORPTION, not war
+
+Both flip prerequisites above were run (480px reference throughout; the rs=4
+arc left it byte-identical, so every prior number is comparable).
+
+**(a) Mortality/churn A/B (probe_empires 24k, both seeds, lever vs off).**
+Board-level churn, count and coverage stay healthy under the lever — but the
+top slot becomes an ABSORB-CONCENTRATION race: on 8817 one realm
+monotone-snowballs (2.0→3.3→3.5→7.0→12.9 Mkm² across checkpoints, age 21.9k
+at 24k, absorb=27 in the last window; the off-lever top is 7.0M and YOUNG at
+10.6k — the off board churns at #1); on 4242 the pattern is milder (9.2M vs
+7.5M) and the top slot still turns over — the 24k winner vaulted there with
+30 absorbs in one window. Same mechanism, seed-dependent severity.
+
+**(b) The kinship-restraint counterweight — BUILT, MEASURED, and it
+BACKFIRES.** Under the lever the people-axis of casusBelliMul now reads the
+DEFENDER REALM's governed people (member cities + their governed countryside field people — the
+absorbResistance blend; armies.js realmCulOf → cohesion.js) instead of its
+capital city's census mix. No new constants: only the read moves onto the
+land, completing the lever's semantics (both casus sides on the same field).
+Off-path byte-transparent (hash480 b9c264b9/100239cd and hashbase
+f9eb7306/8d66ed8d verified unchanged); probe_identity2 passes (ghost 148
+tiles, stamps 65/66, top2Mismatch 0). Measured, windowed 16k–30k: biggest
+realm 8.6→**11.0** Mkm² (8817 — now +67% over lever-off) and 7.7→**8.0**
+(4242); probe_empires 24k on 8817 goes BIPOLAR (13.7M age-24k + 13.2M
+age-22k twin hegemons). **The restraint pacifies each cultural sphere
+INTERNALLY (kin mid-realms stop shattering each other) while kin-lowered
+absorbResistance — untouched by any casus term — consolidates the pacified
+sphere into its biggest member.** Sphere-pacification + kin-absorption =
+FASTER unification (the post-1815 German pattern: intra-sphere peace +
+customs-union integration → Prussia absorbs the lot). Historically honest;
+exactly anti-discipline.
+
+**Stylized 3-seed under the lever (pair build): 3/3 ALL HARD GATES PASS**
+(soft warnings within budget; largest-empire share 7% on 777, Zipf −1.25,
+fallen median ~139y) — the lever world stays history-shaped even with the
+bigger giants.
+
+**VERDICT: TILE_IDENTITY stays DEFAULT 0.** The restraint ships lever-gated
+(the honest complete read; anyone flipping the lever gets both sides of the
+casus and this documented trade-off). **The real counterweight is an
+ABSORB-CHANNEL design, queued:** the growth channel is peaceful absorption
+(conquest.js: prob ×= 1 − ABSORB_IDENTITY·absorbResistance — kin countryside
+reads ~0.1 resistance vs ~0.8 foreign, a ~3× rate advantage into kin
+neighbours), so the missing mechanism is kin STATES resisting peaceful
+dissolution: a state-COHERENCE term on the absorbed party (its own org / age
+/ court — a functioning kingdom does not dissolve into a cousin realm
+without dominance or crisis), distinct from the people-kinship that rightly
+lowers integration FRICTION. Note the ABSORB_* gates (ABSORB_ORG_MIN /
+ABSORB_DOMINANCE / ABSORB_FORCE) were measured inert pre-Stage-2 ("suppress
+peaceful absorption: no effect") precisely because absorption was not then
+the kin-gravity channel — under the lever they become live levers again, and
+the state-coherence design should be measured against them.

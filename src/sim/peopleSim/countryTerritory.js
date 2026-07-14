@@ -381,6 +381,25 @@ function claimNoise(world) {
 // capacity — so cap/load read here are ≤1 polity-interval stale, which is fine (capacity
 // drifts slowly and has its own hysteresis).
 const FIELD_SPAN_DEF = 6.0;   // tiles a realm's administration holds per unit hold-capacity (T.FIELD_SPAN lever; 6 since comboE — was 12, see docs/empire-consolidation-2026-07.md)
+// SIZE_BY_POP: reference-tiles of SPARSE FRONTIER a fully-logistic (industrial:
+// roads→rail, logisticsLevel→1) state administers BEYOND its populated core. This
+// is what claims the deserts/tundra/marches real empires held but their population
+// never filled — and it is ~0 in the pre-road era, so it lifts coverage toward
+// full ONLY as the world industrialises (the "rises with development" target),
+// never as an early floor. Added to the pop core, not max()'d — a low-pop realm on
+// the early frontier stays small; a developed one spreads over its marches.
+// Calibrated at the 480 reference (docs/empire-consolidation-2026-07.md): march =
+// 150·logistics² lifts coverage 9%(8k)→49%(24k)→66%(40k) — sparse antiquity, the
+// fill arriving with roads — keeps the median realm ~319k km² early, and holds the
+// biggest realm to a population-earned ~13M km² (raising the march to 400 fills
+// fuller but runs the giant to 22M; 150 is the balance).
+const MARCH_LOG_TILES = 150;
+const SIZE_POPK_SMOOTH = 0.25;   // low-pass on the persisted tiles-per-person anchor (world._sizePopK; the REF_POP_SMOOTH pattern)
+// The logistics GATE exponent: >1 keeps the early frontier small (march ≈ 0 until
+// roads mature) and pushes the map-fill toward the true industrial era. Calibrated
+// to 2. Env-overridable for sweeps (SIM_MARCH_TILES / SIM_MARCH_POW).
+const MARCH_TILES_ENV = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_TILES) || 0;
+const MARCH_POW = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_POW) || 2;
 function fieldPolityTerritory(world) {
   const FIELD_SPAN = T.FIELD_SPAN || FIELD_SPAN_DEF;
   const { N, tw, th, elev, fert, temp, moist } = world;
@@ -392,13 +411,14 @@ function fieldPolityTerritory(world) {
   // updatePolities; one-interval stale is acceptable).
   const alive = new Set();
   for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) alive.add(s.countryId);
-  const capOf = new Map(), knOf = new Map(), hostOf = new Map(), claimCap = new Map();
+  const capOf = new Map(), knOf = new Map(), hostOf = new Map(), claimCap = new Map(), logiOf = new Map();
   if (world.countries) for (const [cid, c] of world.countries) {
     if (!alive.has(cid) || !c.capital) continue;
     capOf.set(cid, Math.max(0, c._capacity || 0));
     knOf.set(cid, c.capital.knowledge || {});
     const cons = (c.capital.knowledge && c.capital.knowledge.construction) || 0;
     const logi = (c.capital._techEff ? c.capital._techEff.logisticsLevel : cons * cons) || 0;
+    logiOf.set(cid, logi);                                      // SIZE_BY_POP: the reach-over-sparse-land driver (roads→rail)
     hostOf.set(cid, CLAIM_HOSTILITY * Math.max(0, 1 - logi));   // the modern partition of the wastes (fades with logistics)
     claimCap.set(cid, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
   }
@@ -657,9 +677,71 @@ function fieldPolityTerritory(world) {
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
   const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
   const coverOrg  = Number.isFinite(COVER_ORG_ENV)  ? COVER_ORG_ENV  : (T.COVER_ORG ?? 260);
+  // SIZE_BY_POP: extent tracks the PEOPLE a realm governs, not a fixed floor.
+  // Governed popField per realm, and a self-calibrating tiles-per-person constant
+  // benchmarked to the MEDIAN established realm (the _refRevenue pattern — no fitted
+  // density). A realm's target is then capped at govPop×popCapK: under-populated
+  // realms (fresh frontier states) shrink to what their people justify (sub-Egypt
+  // realms exist), the median-and-above (the developed core) are unchanged, and the
+  // map fills LATE as population grows rather than EARLY by a floor. Byte-identical
+  // when off (nothing computes).
+  let govPopOf = null, popCapK = 0;
+  if (T.SIZE_BY_POP && world.popField) {
+    govPopOf = new Map();
+    const pf = world.popField;
+    for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c < 0 || !(elev[ti] > 0)) continue; govPopOf.set(c, (govPopOf.get(c) || 0) + pf[ti]); }
+    const gps = [], tgs = [];
+    for (const [cid, cp] of capOf) {
+      if (cp <= 0) continue;                                   // benchmark on established (capacity-bearing) realms
+      const gp = govPopOf.get(cid) || 0;
+      if (gp > 0) { gps.push(gp); tgs.push(spanEff * cp * r2); }
+    }
+    // tiles per governed-person at the MEDIAN realm — LOW-PASSED and PERSISTED
+    // (world._sizePopK), the _refRevenue anchor pattern. Without the smoothing this
+    // global median coupling made the pop-core twitchy: a one-tile save/load
+    // re-warm perturbation shifts the median → shifts EVERY realm's target →
+    // compounds through sticky territory into a runaway coverage drift (the
+    // continuation-gate failure). Smoothed, the ratio relaxes; PERSISTED, a loaded
+    // world resumes on the same anchor the live run carries, so the first post-load
+    // pass computes identical targets. When a pass has NO fresh median (capacity
+    // all-zero — the first passes after a load, before the polity pass recomputes
+    // capacity) it holds the persisted anchor instead of collapsing to the floor.
+    let fresh = 0;
+    if (gps.length) {
+      gps.sort((a, b) => a - b); tgs.sort((a, b) => a - b);
+      const medGP = gps[gps.length >> 1], medTG = tgs[tgs.length >> 1];
+      if (medGP > 0 && medTG > 0) fresh = medTG / medGP;
+    }
+    const prev = world._sizePopK || 0;
+    if (fresh > 0) world._sizePopK = prev > 0 ? prev + (fresh - prev) * SIZE_POPK_SMOOTH : fresh;
+    popCapK = world._sizePopK || 0;                            // persisted anchor (holds through capacity-less post-load passes)
+  }
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * Math.max(0, cp) * r2);
-    if (T.TILE_POLITY) {
+    if (T.SIZE_BY_POP && popCapK > 0) {
+      // Population-driven extent (no floor). Nomads exempt — a steppe confederation
+      // holds vast sparse land by MOMENTUM, not by the people on it. A capless solo
+      // (cp=0, conquest.js sizes only multi-province holds) is driven purely by its
+      // population, so a lone city-state grows to its people's worth instead of
+      // freezing at its core; a realm WITH capacity keeps that as the defensible ceiling.
+      const c = world.countries && world.countries.get(cid);
+      if (c && c._nomadic) {
+        // exempt: keep the capacity target (below)
+      } else {
+        // Populated CORE (people-driven) + administrative MARCH (logistics-driven,
+        // ~0 pre-road, growing with roads/rail). The march is the ceiling-lift that
+        // makes coverage RISE WITH DEVELOPMENT: a developed realm claims the sparse
+        // frontier its logistics reach, filling the late map, while an early / low-pop
+        // realm (short march) stays small. Capacity is NOT the ceiling here — it is
+        // median-anchored (log2-compressed) and would re-cap the whole map at the
+        // median; the growth Dijkstra's admin-load attenuation is the real reach bound.
+        const popCap = Math.round((govPopOf.get(cid) || 0) * popCapK);
+        const marchTiles = MARCH_TILES_ENV > 0 ? MARCH_TILES_ENV : MARCH_LOG_TILES;
+        const march = Math.round(marchTiles * Math.pow(logiOf.get(cid) || 0, MARCH_POW) * r2);
+        t = popCap + march;
+      }
+      if (t <= 0) { if (cp <= 0 && (govPopOf.get(cid) || 0) <= 0) continue; }  // capless + peopleless newborn: hold (cold-start)
+    } else if (T.TILE_POLITY) {
       // COVERAGE FLOOR (capital-only anchoring): guarantee every realm a growth target
       // of at least an org-scaled administrative hinterland, so a solo city-state whose
       // Tilly capacity is 0 (conquest.js sizes only multi-province holds) still covers
@@ -1653,10 +1735,10 @@ export function adoptAndFound(world) {
 // countries (it's unclaimed frontier) — with an explicit capital-distance gate
 // on top so a new state can't pop up in an empire's heartland. Gated on real
 // cluster population so the country count stays controlled (no micro-state swarm).
-const NUCLEATE_R          = 9;      // cluster radius, tiles
+const NUCLEATE_R          = 9;      // cluster/basin radius, REFERENCE-tiles (×resScaleFor at other grids — a real distance)
 const NUCLEATE_SEAT_POP   = 160;    // the seat must be a real regional centre (a large village / town)
 const NUCLEATE_CLUSTER_POP= 400;    // total stateless population nearby to be a viable state
-const NUCLEATE_CAP_DIST   = 8;      // ...and at least this far from any existing capital
+const NUCLEATE_CAP_DIST   = 8;      // ...and at least this far from any existing capital (REFERENCE-tiles, ×resScaleFor)
 const NUCLEATE_MAX_PASS   = 4;      // cap new states minted per territory pass (anti-bloom)
 // State-capacity gate (Diamond/Scott): a STATE needs a storable, taxable surplus,
 // not just bodies. Forager-dense but low-surplus land (the wet tropics, leached
@@ -1674,8 +1756,17 @@ export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
   const tw = world.tw, halfTw = tw / 2;
+  // The founding radius and the capital-isolation gate are REAL distances
+  // (res-invariance 2026-07): NUCLEATE_R is the basin whose people can cohere
+  // into one polity, NUCLEATE_CAP_DIST the isolation that makes it frontier.
+  // Raw, a finer grid gathered 1/rs² of the real basin's people (the per-real-
+  // area popField sums per tile), so the viability bar was quietly ×rs² harder:
+  // at the shipped 1920 default state birth all but stopped — the map kept a
+  // stateless low-org tail and claimed% stalled. ×1 exactly at the reference.
+  const _rsN = resScaleFor(tw);
+  const nucR = NUCLEATE_R * _rsN, nucRi = Math.round(nucR);
   const seatPop = NUCLEATE_SEAT_POP / lever, clusterPop = NUCLEATE_CLUSTER_POP / lever;
-  const capD2 = (NUCLEATE_CAP_DIST / Math.sqrt(lever)) ** 2;
+  const capD2 = ((NUCLEATE_CAP_DIST * _rsN) / Math.sqrt(lever)) ** 2;
   const caps = [];
   if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
   const fert = world.fert, moist = world.moist;
@@ -1736,7 +1827,7 @@ export function nucleateFrontierStates(world) {
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
     if (caps.length && dCap < capD2) continue;
     let cp = 0, isLeader = true;                // viable cluster + this settlement leads it
-    forEachNear(world, s.pos.x, s.pos.y, NUCLEATE_R, (o) => {
+    forEachNear(world, s.pos.x, s.pos.y, nucR, (o) => {
       if (o.mode !== "settled" || o.countryId >= 0) return;
       cp += o.people || 0;
       const op = o.people || 0, sp = s.people || 0;
@@ -1748,10 +1839,10 @@ export function nucleateFrontierStates(world) {
       const pfA = world.popField, coA = world._countryOwner, elevA = world.elev, thh = world.th;
       const sy = s.pos.y | 0, sx = s.pos.x | 0;
       let mass = 0;
-      for (let dy = -NUCLEATE_R; dy <= NUCLEATE_R; dy++) {
+      for (let dy = -nucRi; dy <= nucRi; dy++) {
         const yy = sy + dy; if (yy < 0 || yy >= thh) continue;
-        for (let dx = -NUCLEATE_R; dx <= NUCLEATE_R; dx++) {
-          if (dx * dx + dy * dy > NUCLEATE_R * NUCLEATE_R) continue;
+        for (let dx = -nucRi; dx <= nucRi; dx++) {
+          if (dx * dx + dy * dy > nucRi * nucRi) continue;
           const ti2 = yy * tw + (((sx + dx) % tw) + tw) % tw;
           if (!(elevA[ti2] > 0) || coA[ti2] >= 0) continue;   // claimed ground already carries a state
           mass += pfA[ti2];
@@ -1767,7 +1858,7 @@ export function nucleateFrontierStates(world) {
   for (const { s } of cand) {
     if (n >= NUCLEATE_MAX_PASS) break;
     let tooClose = false;                        // don't mint two adjacent states in one pass
-    for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (NUCLEATE_R * 2) ** 2) { tooClose = true; break; } }
+    for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (nucR * 2) ** 2) { tooClose = true; break; } }
     if (tooClose) continue;
     s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
     ensurePolity(world, s.id, { how: "frontier", seat: s });

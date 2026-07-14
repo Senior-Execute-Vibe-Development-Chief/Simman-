@@ -245,6 +245,7 @@ export function saveWorld(world, meta = {}) {
     refRealmPop: world._refRealmPop,  // GRIEV_LEDGER smoothed median realm population (what a "people" weighs); absent/0 reseeds at the next polity pass
     musterRatio: world._musterRatio,  // MUSTER_FIELD smoothed census↔governed-people anchor (armies.js); absent/0 reseeds at the next muster
     provRatio: world._provRatio,      // PROV_FIELD smoothed per-province census↔governed anchor (conquest.js); absent/0 reseeds at the next polity pass
+    sizePopK: world._sizePopK,        // SIZE_BY_POP smoothed tiles-per-governed-person anchor (countryTerritory.js); absent/0 reseeds, holds pop-core targets stable across a load
     loyalScanAt: world._loyalScanAt,  // LOYAL_FIELD last owner-diff scan step (classifies force vs politics in transfer semantics)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1, event: world._nextEventId ?? (world.events ? world.events.length : 0) },
@@ -366,6 +367,7 @@ export function loadWorld(data, opts = {}) {
   world._refRealmPop = data.refRealmPop ?? 0;     // smoothed median realm population (GRIEV_LEDGER read normalizer; 0 reseeds next pass)
   world._musterRatio = data.musterRatio ?? 0;     // MUSTER_FIELD census↔governed anchor (0 reseeds at the next muster)
   world._provRatio = data.provRatio ?? 0;         // PROV_FIELD per-province census↔governed anchor (0 reseeds next polity pass)
+  world._sizePopK = data.sizePopK ?? 0;           // SIZE_BY_POP tiles-per-person anchor (0 reseeds; holds pop-core targets stable across a load)
   if (data.loyalScanAt != null) world._loyalScanAt = data.loyalScanAt;   // owner-diff scan clock (unset ≡ never scanned)
   world._popTotal = data.popTotal ?? 0;
   world._eraAt = data.eraAt || [0];

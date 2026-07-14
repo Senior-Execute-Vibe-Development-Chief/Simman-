@@ -139,13 +139,18 @@ const FLOW_EPS            = 0.001;
 // shipping tech, not just city size).
 const PARTNER_DIST_BASE   = 20;
 const PARTNER_DIST_PER    = 1.0;        // tiles per sqrt(pop)
-function partnerReachFor(s) {
+function partnerReachFor(world, s) {
   const k = s.knowledge || {};
   // Mobility (horses, wagons) and navigation (ships) both expand commercial
   // horizon. Cap the multiplier at ~1.8× so even a maxed-tech metropolis
   // can't reach across an entire continent in one trade pair.
   const techMul = 1 + 0.5 * (k.mobility || 0) + 0.3 * (k.navigation || 0);
-  return (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul;
+  // A commercial horizon is a REAL distance: peers sit ×rNormPop more tiles
+  // apart on a finer grid (founding spacing scales — crystallize.js), so the
+  // raw-tile radius quietly shrank the road planner's real horizon to 1/rn
+  // (¼ at the shipped 1920 default) and the trunk network under-wired.
+  // ×1 exactly at the 240-tile reference.
+  return (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul * rNormPop(world);
 }
 
 // New roads need a margin of improvement to justify the effort.
@@ -594,7 +599,8 @@ function isGabrielEdge(world, a, b, dAB2) {
   // "< dAB2" between-test is precisely |mc|² < dAB2/4. Only settlements the
   // spatial grid returns for that small disk can break the edge, so we query
   // it instead of scanning every settlement. Midpoint via the shortest signed
-  // Δx so it's correct across the longitude seam (edges here are ≤20 tiles).
+  // Δx so it's correct across the longitude seam (edges here are ≤20·rNormPop
+  // tiles — the res-scaled close-neighbour radius — always ≪ half the map).
   let dx = b.pos.x - a.pos.x;
   if (dx > tw / 2) dx -= tw; else if (dx < -tw / 2) dx += tw;
   let mx = a.pos.x + dx / 2; mx = ((mx % tw) + tw) % tw;
@@ -617,7 +623,15 @@ function linkCloseNeighbours(world, s) {
   // Only the settlements within CLOSE_NEIGHBOUR_DIST matter; the spatial grid
   // returns exactly those (with their squared distance as dAB2) instead of a
   // full O(settlements) scan per settled town each tick.
-  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST, (peer, dAB2) => {
+  // ×rNormPop: "close" is a REAL distance. The constant is calibrated just above
+  // the reference founding spacing (MIN_SETT_DIST 12) so closest pairs always
+  // qualify — but the spacing scales ×rn with the grid (crystallize.js) while a
+  // raw 20 does not, so at the shipped 1920 default (rn=4, spacing ~48 tiles)
+  // the guaranteed city↔neighbour wiring found NOBODY and the local road
+  // mesh never formed (under cities-only defaults every settlement entity is
+  // an urban centre — the countryside is the popField, not an entity).
+  // ×1 exactly at the 240-tile reference.
+  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST * rNormPop(world), (peer, dAB2) => {
     if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
     if (peer.countryId < 0) return;   // don't road to a stateless neighbour
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
@@ -662,7 +676,7 @@ function tryAddRoad(world, s) {
   const components = world._networkComponents;
   const myComp = components ? components.get(s.id) : null;
 
-  const reach = partnerReachFor(s);
+  const reach = partnerReachFor(world, s);
 
   // ── Pass 1: rank in-reach peers by trade benefit, WITHOUT pathing ──
   // findPath is a full terrain Dijkstra (the expensive primitive); doing

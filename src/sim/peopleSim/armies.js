@@ -515,6 +515,39 @@ export function advanceFronts(world) {
   // CORE is the capital's dominant identity, looked up per country once per pass.
   const capOf = new Map();
   if (world.countries) for (const c of world.countries.values()) if (c.capital) capOf.set(c.id, c.capital);
+  // T.TILE_IDENTITY: the kinship-RESTRAINT side of the casus reads the DEFENDER
+  // REALM's PEOPLE — the people-weighted culture of its member CITIES plus their
+  // governed COUNTRYSIDE (the field people via the _rurCulMix stamps — the
+  // absorbResistance blend, cohesion.js) — instead of its capital city's
+  // census mix. This is the counterweight to the irredentist term (Stage 2
+  // wired only the righteous side to the ground, which tilted the balance:
+  // biggest realm +17–30% in the windowed A/B). A long-settled nation-state's
+  // assimilated ground is authentically KIN to its cultural siblings (restraint
+  // strengthens — kin states spare each other), while an empire of restless
+  // conquered foreigners reads FOREIGN however cosmopolitan its capital
+  // (restraint weakens — the "liberator" carves it up). Same field, same
+  // era-weights, no new constants: only the READ moves onto the land.
+  // Aggregated once per war pass; lever off ⇒ null ⇒ the capital-mix read,
+  // byte-identical (the extra casusBelliMul argument is undefined).
+  let realmCulOf = null;
+  if (T.TILE_IDENTITY > 0 && world.countries) {
+    realmCulOf = new Map();
+    const acc = new Map();   // countryId → Map(culId → people)
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0) continue;
+      let m = acc.get(s.countryId); if (!m) { m = new Map(); acc.set(s.countryId, m); }
+      const wCity = Math.max(0, s.people || 0);
+      if (wCity > 0 && s.culMix) for (const e of s.culMix) m.set(e[0], (m.get(e[0]) || 0) + e[1] * wCity);
+      const wRur = s._rurCulMix ? (s._rurCulPeople || 0) : 0;   // census units (identityField.js stamp)
+      if (wRur > 0) for (const e of s._rurCulMix) m.set(e[0], (m.get(e[0]) || 0) + e[1] * wRur);
+    }
+    for (const [cc, m] of acc) {
+      let tot = 0; for (const v of m.values()) tot += v;
+      if (!(tot > 0)) continue;
+      const mix = [...m.entries()].map((e) => [e[0], e[1] / tot]).sort((a, b) => b[1] - a[1]);
+      realmCulOf.set(cc, mix);
+    }
+  }
   // Salience per PAIR of belligerents (cohesion.js): the more developed side
   // brings its era's political question to the war — righteous religion
   // between medieval courts, the national cause once either party
@@ -532,7 +565,10 @@ export function advanceFronts(world) {
     if (T.TILE_IDENTITY > 0 && ti !== undefined && world.tileCulId && A && A.culMix && A.culMix.length) {
       tShare = tileCulShareOf(world, ti, A.culMix[0][0]);
     }
-    return casusBelliMul(A, D, tileOwner, identityWeightsFor(world, A, D), tShare);
+    // Kinship restraint reads the defender REALM's people under the lever
+    // (undefined off-path / for unregistered realms → the capital-mix read).
+    const dGround = realmCulOf ? realmCulOf.get(defCC) : undefined;
+    return casusBelliMul(A, D, tileOwner, identityWeightsFor(world, A, D), tShare, dGround);
   };
   // A dominant realm projects military power — it attacks on a slimmer margin, so a
   // great power expands by conquest where the pack stalls (Rome, the Mongols).
