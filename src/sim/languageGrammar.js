@@ -2725,6 +2725,9 @@ export function renderClause(lang, frame, opts = {}) {
   // ── SYNTAX-COMPLETION dispatch: predicative possession and existentials are
   // thin remaps onto the copular/existential/verbal machinery below (opt-in
   // frame fields — a bare verbal frame never enters these branches) ──
+  // a frame with NO verb-bearing content (no verb, predicate, existential, or
+  // possession) is malformed — degrade to an empty clause rather than crash
+  if (!frame.v && !frame.pred && !frame.ex && !frame.poss) return { tokens: [], text: "", gloss: "" };
   if (frame.poss) return renderPossessionClause(lang, frame, opts);
   if (frame.ex) return renderExistentialClause(lang, frame, opts);
   // ── MOTION TYPOLOGY (Talmy, phase 2): frame.path = { p, n, def } rewrites
@@ -2733,7 +2736,7 @@ export function renderClause(lang, frame, opts = {}) {
   // BACKGROUNDED — dropped, exactly Talmy's trade ('entered the house');
   // equipollent: both verbs serialize, ground as the path verb's object
   // ('ran entered the house' — the Mandarin 跑进 shape). ──
-  if (frame.path) {
+  if (frame.path && frame.path.p != null) {   // a path frame needs a path verb; a bare frame.path degrades to the plain clause below
     const ty = motionTypologyOf(lang);
     const { path, ...rest } = frame;
     const ground = path.n != null ? { adp: MOTION_PATH_ADP.get(path.p) || "in", n: path.n, def: path.def, num: path.num } : null;
@@ -2742,7 +2745,9 @@ export function renderClause(lang, frame, opts = {}) {
     return renderClause(lang, { ...rest, v: { ...rest.v, c: path.p }, loc: ground || rest.loc }, opts);
   }
   // SERIAL-VERB degrade: a non-serializing language coordinates instead
-  // ('took the knife AND cut the meat'), pronominalizing the second subject
+  // ('took the knife AND cut the meat'), pronominalizing the second subject.
+  // A v2 with no verb concept is malformed — drop it and render the plain clause.
+  if (frame.v2 && frame.v2.c == null) { const { v2, ...rest } = frame; return renderClause(lang, rest, opts); }
   if (frame.v2 && !g.svc) {
     const { v2, ...rest } = frame;
     const s2 = frame.s && frame.s.pron ? frame.s
@@ -2757,6 +2762,49 @@ export function renderClause(lang, frame, opts = {}) {
   // collects the detached tokens here and the finish tail prepends them (empty
   // for every other strategy, so the assembly is untouched when none occur)
   const detachedRel = [];
+  // ── relative-clause attachment (Group G), shared by NOUN and PRONOUN heads:
+  // the head plays arg.rel.role INSIDE, rendered with a GAP (gap / participle),
+  // a relativizer inflected for the gap's case (relpron), a resumptive pronoun
+  // (resump), or the left-detached correlative. Factored out so a PRONOUN-headed
+  // relative ('he WHO saw the river') renders instead of silently dropping the
+  // clause — the reviewer caught the pron branch returning before this ran, and
+  // for correlatives the resuming pronoun IS the head, so it must be reachable. ──
+  const attachRel = (seq, arg, role) => {
+    const rel = arg.rel, strat = g.relStrat;
+    const innerHead = arg.pron ? { pron: arg.pron } : { n: arg.n, num: arg.num };
+    if (strat === "corr") {
+      const innerFrame = { ...rel, v: rel.v };
+      if (rel.role === "s" || rel.role === "o") innerFrame[rel.role] = innerHead;
+      const inner = renderClause(lang, innerFrame, {});
+      detachedRel.push({ w: cl.links.rel.w, g: "REL", role, f: cl.links.rel.form }, ...inner.tokens.map(t => ({ ...t, role })));
+      const d = cl.dems[cl.dems.length - 1];
+      return [{ w: d.w, g: d.g, role, f: d.form }, ...seq];
+    }
+    const gapRole = rel.role === "s" ? "S" : rel.role === "o" ? "O" : null;
+    const innerFrame = { ...rel, v: rel.v };
+    const rOpts = { gap: strat === "resump" ? null : gapRole };
+    if (strat === "resump" && gapRole) innerFrame[rel.role] = { pron: { k: "3sg", pers: 3, num: "sg" } };  // resumptive pronoun
+    if (strat === "gap" && lang.prof.morph === "agg" && spec.partcp) rOpts.relGap = true;                 // participial relative
+    const inner = renderClause(lang, innerFrame, rOpts);
+    const innerToks = inner.tokens.map(t => ({ ...t, role }));
+    // gap/relpron take an overt relativizer; the participial gap (agg) IS its
+    // own strategy marker (the PTCP); resump fills the gap with a pronoun
+    let relMark = strat === "resump" || rOpts.relGap ? null : { w: cl.links.rel.w, g: "REL", role, f: cl.links.rel.form };
+    // the relative PRONOUN inflects for the head's role inside (который-ACC when
+    // the head is the inner object); caseN=1 (genitive-only English) stays invariant
+    if (relMark && strat === "relpron" && rel.role !== "s") {
+      const csK = rel.role === "o" ? "acc" : spec.cases.some(x => x.k === "loc") ? "loc" : "dat";
+      const csAff = spec.cases.find(x => x.k === csK);
+      if (csAff) {
+        const rf = copyWord(cl.links.rel.form);
+        attachSyl(lang.prof, rf, csAff.syl, g.affixSide);
+        legalizeWord(rf);
+        relMark = { w: rformNeutral(lang, rf), g: "REL." + csAff.g, role, f: rf };
+      }
+    }
+    const relSeq = relMark ? (g.relPre ? [...innerToks, relMark] : [relMark, ...innerToks]) : innerToks;
+    return g.relPre ? [...relSeq, ...seq] : [...seq, ...relSeq];
+  };
   const np = (arg, cas, role) => {
     if (!arg) return [];
     if (arg.reflTok) {
@@ -2783,13 +2831,17 @@ export function renderClause(lang, frame, opts = {}) {
       // object/oblique pronouns take their case form (me/him); subjects stay
       // bare — nom-acc even under noun ergativity (split ergativity for free)
       const pcKey = role === "O" ? "acc" : role === "X" ? "obl" : null;
-      if (pcKey && cell.cases && cell.cases[pcKey]) return [{ w: cell.cases[pcKey].w, g: cell.cases[pcKey].g, role, f: cell.cases[pcKey].form }];
-      return [{ w: cell.w, g: cell.g, role, f: cell.form }];
+      const pcell = pcKey && cell.cases && cell.cases[pcKey] ? cell.cases[pcKey] : cell;
+      const pseq = [{ w: pcell.w, g: pcell.g, role, f: pcell.form }];
+      // a PRONOUN head can carry a relative ('he who saw the river') — attach it
+      // instead of returning early and dropping the clause (reviewer finding)
+      return arg.rel ? attachRel(pseq, arg, role) : pseq;
     }
     if (arg.wh) {
       const q = cl.qs.find(x => x.k === "what");
       return [{ w: q.w, g: "what", role, wh: true, f: q.form }];
     }
+    if (arg.n == null) return [];   // malformed arg (no concept, pronoun, wh, or reflexive) — degrade to nothing, never crash
     const headCls = g.genders ? genderOf(lang, arg.n) : 0;
     // count core (Group D): a counted arg expands to [Num (CL) N] in place —
     // `count` wins over `num`; numeralPhrase owns the count, np keeps adj/dem/art
@@ -2847,54 +2899,9 @@ export function renderClause(lang, frame, opts = {}) {
     if (arg.poss) { /* definiteness rides the possessor — no article on the head */ }
     else if (arg.def && cl.defArt) seq = g.adjN ? [{ w: cl.defArt.w, g: "DEF", role, f: cl.defArt.form }, ...seq] : [...seq, { w: cl.defArt.w, g: "DEF", role, f: cl.defArt.form }];
     else if (arg.def === false && cl.indefArt) seq = g.adjN ? [{ w: cl.indefArt.w, g: "INDF", role, f: cl.indefArt.form }, ...seq] : [...seq, { w: cl.indefArt.w, g: "INDF", role, f: cl.indefArt.form }];
-    // relative clause (Group G): the head plays arg.rel.role INSIDE, rendered
-    // with a GAP; the strategy is gap (an invariant relativizer, or an agg
-    // participle), relpron (postnominal + caseN≥1 only — the universal), or
-    // resump (an ordinary pronoun fills the gap). relPre lags a word-order flip.
-    if (arg.rel) {
-      const rel = arg.rel, strat = g.relStrat;
-      if (strat === "corr") {
-        // CORRELATIVE (the Hindi jo…vo shape, syntax completion): the relative
-        // clause is LEFT-DETACHED with the head OVERT inside it, opened by the
-        // relativizer ('REL king the-river saw…'), and a distal demonstrative
-        // RESUMES the head in the matrix ('…that king went'). The detached
-        // block is collected clause-level; the finish tail prepends it.
-        const innerFrame = { ...rel, v: rel.v };
-        if (rel.role === "s" || rel.role === "o") innerFrame[rel.role] = { n: arg.n, num: arg.num };
-        const inner = renderClause(lang, innerFrame, {});
-        detachedRel.push({ w: cl.links.rel.w, g: "REL", role, f: cl.links.rel.form }, ...inner.tokens.map(t => ({ ...t, role })));
-        const d = cl.dems[cl.dems.length - 1];
-        seq = [{ w: d.w, g: d.g, role, f: d.form }, ...seq];
-        return seq;
-      }
-      const gapRole = rel.role === "s" ? "S" : rel.role === "o" ? "O" : null;
-      const innerFrame = { ...rel, v: rel.v };
-      const rOpts = { gap: strat === "resump" ? null : gapRole };
-      if (strat === "resump" && gapRole) innerFrame[rel.role] = { pron: { k: "3sg", pers: 3, num: "sg" } };  // resumptive pronoun
-      if (strat === "gap" && lang.prof.morph === "agg" && spec.partcp) rOpts.relGap = true;                 // participial relative
-      const inner = renderClause(lang, innerFrame, rOpts);
-      const innerToks = inner.tokens.map(t => ({ ...t, role }));
-      // gap/relpron take an overt relativizer; the participial gap (agg) IS its
-      // own strategy marker (the PTCP), so it needs no separate relativizer;
-      // resump fills the gap with a pronoun and takes neither
-      let relMark = strat === "resump" || rOpts.relGap ? null : { w: cl.links.rel.w, g: "REL", role, f: cl.links.rel.form };
-      // the relative PRONOUN inflects for the head's role inside the relative
-      // (который-ACC when the head is the inner object) — what makes relpron a
-      // distinct strategy rather than a costume on the gap. Needs a real core
-      // case: caseN=1 (genitive-only English) stays invariant, as pinned.
-      if (relMark && strat === "relpron" && rel.role !== "s") {
-        const csK = rel.role === "o" ? "acc" : spec.cases.some(x => x.k === "loc") ? "loc" : "dat";
-        const csAff = spec.cases.find(x => x.k === csK);
-        if (csAff) {
-          const rf = copyWord(cl.links.rel.form);
-          attachSyl(lang.prof, rf, csAff.syl, g.affixSide);
-          legalizeWord(rf);
-          relMark = { w: rformNeutral(lang, rf), g: "REL." + csAff.g, role, f: rf };
-        }
-      }
-      const relSeq = relMark ? (g.relPre ? [...innerToks, relMark] : [relMark, ...innerToks]) : innerToks;
-      seq = g.relPre ? [...relSeq, ...seq] : [...seq, ...relSeq];
-    }
+    // relative clause (Group G): attached through the shared helper (handles
+    // gap / relpron / resump / correlative, and pronoun heads too)
+    if (arg.rel) seq = attachRel(seq, arg, role);
     return seq;
   };
   // a clausal complement (o.comp): render the inner clause + the complementizer,
@@ -2968,6 +2975,9 @@ export function renderClause(lang, frame, opts = {}) {
   if (frame.pred) {
     const fv = frame.v || {};
     const pred = frame.pred;
+    // a predication needs an adjective, a nominal, or a locative predicate — a
+    // pred frame with none of them is malformed and degrades to an empty clause
+    if (pred.adj == null && pred.n == null && !pred.loc && !pred.pron && !pred.wh) return { tokens: [], text: "", gloss: "" };
     if (pred.adj != null && g.copA === "verb")
       return renderClause(lang, { s: frame.s, v: { c: pred.adj, tam: fv.tam, neg: fv.neg, mood: fv.mood }, q: frame.q, adv: frame.adv }, opts);
     const tam = resolveTam(lang, fv.tam);
@@ -3110,8 +3120,10 @@ export function renderClause(lang, frame, opts = {}) {
   // imperatives address "you": the 2nd-person subject is dropped by default
   // (universal tendency), and any explicit subject pronoun goes with it
   if (imperative && (!sArg || sIsPron)) toks.s = [];
-  // pro-drop: agreement carries the person, the pronoun stays home
-  else if (sIsPron && g.proDrop && g.agree !== "none") toks.s = [];
+  // pro-drop: agreement carries the person, the pronoun stays home — but only a
+  // BARE pronoun drops; a pronoun heading a relative ('he WHO saw the river') is
+  // heavy and stays overt, or the whole relative clause would vanish with it
+  else if (sIsPron && !sArg.rel && g.proDrop && g.agree !== "none") toks.s = [];
   const locToks = [
     ...(locArg ? adjunct({ n: locArg.n, pron: locArg.pron, def: locArg.def, num: locArg.num }, locArg.adp) : []),
     ...adjunct(byArg, g.passBy),      // passive agent
@@ -3168,11 +3180,15 @@ export function renderClause(lang, frame, opts = {}) {
 function renderExistentialClause(lang, frame, opts = {}) {
   const g = gramOf(lang), cl = closedOf(lang);
   const fv = frame.v || {};
-  const ex = frame.ex;
+  const ex = frame.ex || {};
   const tam = resolveTam(lang, fv.tam);
   const vC = g.existV === "have" ? HAVE : g.existV === "posture" ? postureVerbOf(lang) : BE;
   const useNegEx = !!fv.neg && g.negEx === "special" && tam == null && cl.negEx;
-  const pivot = { n: ex.n, num: ex.num, count: ex.count, adj: ex.adj, poss: ex.poss, def: ex.def };
+  // the pivot may be a pronoun ('there is IT' / a pronominal possessed) — carry
+  // .pron through the remap; a pivot with neither a concept nor a pronoun is a
+  // malformed frame and degrades to an empty clause (never a deep crash)
+  if (ex.n == null && !ex.pron) return { tokens: [], text: "", gloss: "" };
+  const pivot = ex.pron ? { pron: ex.pron } : { n: ex.n, num: ex.num, count: ex.count, adj: ex.adj, poss: ex.poss, def: ex.def };
   const f2 = g.existV === "have"
     ? { v: { c: vC, tam: fv.tam, neg: !!fv.neg && !useNegEx }, o: pivot, loc: frame.loc, q: frame.q, adv: frame.adv }
     : { s: pivot, v: { c: vC, tam: fv.tam, neg: !!fv.neg && !useNegEx }, loc: frame.loc, q: frame.q, adv: frame.adv };
@@ -3202,13 +3218,17 @@ function renderExistentialClause(lang, frame, opts = {}) {
 // exists to fit.
 function renderPossessionClause(lang, frame, opts = {}) {
   const g = gramOf(lang);
-  const P = frame.poss, fv = frame.v || {};
+  const P = frame.poss || {}, fv = frame.v || {};
+  // a possession frame needs both a possessor and a possessed — otherwise it is
+  // malformed and degrades to an empty clause (never a deep crash)
+  if (!P.possessor || !P.possessed) return { tokens: [], text: "", gloss: "" };
   const owned = { ...P.possessed };
   switch (g.possPred) {
     case "have":
       return renderClause(lang, { s: P.possessor, v: { c: HAVE, tam: fv.tam, neg: fv.neg }, o: owned, q: frame.q, adv: frame.adv }, opts);
     case "com":
-      return renderClause(lang, { s: P.possessor, pred: { loc: { adp: "with", n: owned.n, num: owned.num, def: owned.def } }, v: fv, q: frame.q, adv: frame.adv }, opts);
+      // the possessed may be a pronoun ('the king is with IT') — thread .pron
+      return renderClause(lang, { s: P.possessor, pred: { loc: { adp: "with", pron: owned.pron, n: owned.n, num: owned.num, def: owned.def } }, v: fv, q: frame.q, adv: frame.adv }, opts);
     case "gen":
       return renderExistentialClause(lang, { ex: { ...owned, poss: P.possessor.pron ? { pron: P.possessor.pron } : { n: P.possessor.n } }, v: fv, q: frame.q, adv: frame.adv }, opts);
     case "topic":

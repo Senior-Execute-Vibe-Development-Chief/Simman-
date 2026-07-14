@@ -3448,6 +3448,120 @@ console.log("\n── §33 diglossia + dialects ──");
   }
 }
 
+// ── §34 ADVERSARIAL REVIEW ROUND: every confirmed finding fixed at the
+// mechanism and gated here (hostile linguist / cache-determinism auditor /
+// edge-case crasher). ──────────────────────────────────────────────────────
+console.log("\n── §34 adversarial review fixes ──");
+{
+  const world = mkWorld();
+  const A = (x) => x.tokens.length === x.gloss.split(" ").filter(Boolean).length;
+  const refL = (kind, seed) => { const l = foundLanguage(mkWorld(), { seed }); l.prof = refProfile(kind, seed); l.rules = []; const r = refPin(kind); l.pin = r.pin; if (r.rom) l.prof.rom = { ...(l.prof.rom || {}), ...r.rom }; return l; };
+
+  // ── FINDING 1 (HIGH): a pronominal possessed crashed 4 of the 5 possession
+  // strategies; a pronoun existential pivot crashed all. Now the .pron threads
+  // through the remap; "the king has it" renders in every strategy. ──
+  const pop = Array.from({ length: 500 }, (_, i) => foundLanguage(world, { seed: 962000 + i * 47 }));
+  const possPron = { poss: { possessor: { n: KING, def: true }, possessed: { pron: { k: "3sg", pers: 3, num: "sg" } } }, v: {} };
+  const byStrat = {};
+  let possPronBad = 0;
+  for (const l of pop) { const s = gramOf(l).possPred; (byStrat[s] ??= []).push(l); }
+  for (const l of pop) { try { const c = renderClause(l, JSON.parse(JSON.stringify(possPron))); if (!A(c) || !c.tokens.length) possPronBad++; } catch { possPronBad++; } }
+  check(`'the king has IT' (pronominal possessed) renders in ALL five possession strategies — no crash (${Object.keys(byStrat).sort().join("/")})`,
+    Object.keys(byStrat).length === 5 && possPronBad === 0);
+  let exPronBad = 0;
+  for (const l of pop.slice(0, 200)) { try { const c = renderClause(l, { ex: { pron: { k: "3sg", pers: 3, num: "sg" } }, v: {} }); if (!A(c)) exPronBad++; } catch { exPronBad++; } }
+  check("a pronoun existential pivot ('there is IT') renders — no crash", exPronBad === 0);
+
+  // ── FINDING 2 (MEDIUM): a relative clause on a PRONOUN head silently vanished
+  // in all four strategies (the np pron branch returned before the rel logic; and
+  // pro-drop then ate a pronoun that carried a relative). Now it renders. ──
+  const relPronFrame = { s: { pron: { k: "3sg", pers: 3, num: "sg" }, rel: { role: "s", v: { c: SEE, tam: "pst" }, o: { n: RIVER } } }, v: { c: GO, tam: "pst" } };
+  const stratLangs = {};
+  for (const l of pop) { const s = gramOf(l).relStrat; if (!stratLangs[s]) stratLangs[s] = l; }
+  let relPronBad = 0; const relSeen = [];
+  for (const strat of ["gap", "resump", "relpron", "corr"]) {
+    const l = stratLangs[strat]; if (!l) continue;
+    const c = renderClause(l, JSON.parse(JSON.stringify(relPronFrame)));
+    relSeen.push(strat);
+    // the relative must be PRESENT: a REL/PTCP marker, or the inner verb+object appear (the head no longer vanishes)
+    const hasRel = /REL|PTCP/.test(c.gloss) || (/see/.test(c.gloss) && /river/.test(c.gloss));
+    if (!hasRel || !A(c) || c.tokens.length < 3) relPronBad++;
+  }
+  check(`a relative clause on a PRONOUN head renders in every strategy — 'he who saw the river went' (${relSeen.join("/")})`,
+    relSeen.length === 4 && relPronBad === 0);
+  // pro-drop no longer eats a pronoun that heads a relative
+  const pdRel = pop.find(l => gramOf(l).proDrop && gramOf(l).agree !== "none" && gramOf(l).relStrat === "gap");
+  if (pdRel) {
+    const bare = renderClause(pdRel, { s: { pron: { k: "3sg", pers: 3, num: "sg" } }, v: { c: GO, tam: "pst" } });
+    const withRel = renderClause(pdRel, JSON.parse(JSON.stringify(relPronFrame)));
+    check(`pro-drop still drops a BARE pronoun but keeps one heading a relative (bare ${bare.tokens.length} tok, +rel ${withRel.tokens.length} tok)`,
+      withRel.tokens.length > bare.tokens.length && A(withRel));
+  } else check("pro-drop + relative interaction (no pro-drop gap lang in sweep)", true);
+
+  // ── FINDING 3 (MEDIUM): a tonogenized diglossic tongue's HIGH register carried
+  // spurious tone marks (the ghost predates tonogenesis but rendered through the
+  // modern tonal prof). Now the classical form is atonal — it carries the
+  // phonation REGISTERS tonogenesis later spent, never the tone it hadn't gained. ──
+  const TONE_MARKS = /[̀́̄̌]/;
+  let tonoDig = null;
+  for (let i = 0; i < 4000 && !tonoDig; i++) {
+    const l = foundLanguage(world, { seed: 966000 + i * 13 });
+    for (let d = 0; d < 10; d++) driftLanguage(world, l);
+    const s = scriptOf(l);
+    if (registerOf(l) && l.prof.tone && l.rules.indexOf(12) >= 0 && l.rules.indexOf(12) >= s.frozenAt) tonoDig = l;
+  }
+  if (tonoDig) {
+    let hiTone = 0, hiReg = 0;
+    for (let cid = 0; cid < 120; cid++) { const rw = registerWords(tonoDig, cid); if (TONE_MARKS.test(rw.high.normalize("NFD"))) hiTone++; if (/[̰̤]/.test(rw.high.normalize("NFD"))) hiReg++; }
+    const chron = renderClause(highRegister(tonoDig), { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } });
+    check(`a tonogenized diglossic HIGH register is ATONAL — 0 spurious tone marks, registers preserved (${hiTone} toned / ${hiReg} registered of 120; chronicle "${chron.text}")`,
+      hiTone === 0 && !TONE_MARKS.test(chron.text.normalize("NFD")) && A(chron));
+    // and the LOW (modern) register DOES carry tone — the split is real
+    check("the tonogenized LOW (street) register still carries the tone it gained", (() => { let lo = 0; for (let cid = 0; cid < 120; cid++) if (TONE_MARKS.test(registerWords(tonoDig, cid).low.normalize("NFD"))) lo++; return lo > 20; })());
+  } else check("tonogenized diglossic tongue (none surfaced in the 4000-seed sweep — rare intersection)", false);
+
+  // ── FINDING 4 (LOW): malformed frames threw a cryptic deep error; now they
+  // degrade to an empty (aligned) clause, uniformly. ──
+  const l0 = foundLanguage(world, { seed: 962047 });
+  const malformed = [{ ex: {} }, { poss: { possessor: { n: KING } } }, { poss: {} }, { pred: {} }, { path: { n: STONE } }, { path: {} }, { s: { n: KING }, v: { c: SEE }, v2: {} }, { s: { n: KING }, v: { c: SEE }, o: { incorp: true } }, {}, { s: { n: KING } }];
+  let mThrew = 0, mBad = 0;
+  for (const f of malformed) { try { const c = renderClause(l0, JSON.parse(JSON.stringify(f))); if (!A(c)) mBad++; } catch { mThrew++; } }
+  check(`malformed frames degrade to an aligned clause, never a deep throw (${mThrew} threw, ${mBad} misaligned of ${malformed.length})`, mThrew === 0 && mBad === 0);
+  // a well-formed motion frame that happens to lack a ground noun still works (the path-guard doesn't over-trigger)
+  const motionNoGround = pop.find(l => motionTypologyOf(l) === "verb");
+  check("a path frame with no ground noun still renders (guard targets only a MISSING path verb)",
+    A(renderClause(motionNoGround, { s: { n: KING, def: true }, v: { c: RUN, tam: "pst" }, path: { p: ENTER } })));
+
+  // ── FINDING 5 (minor): the script vkey collapsed ±ATR vowel pairs in the glyph
+  // budget; now an ATR language gives them distinct signs, atr-less languages are
+  // byte-identical (the append fires only when atr is set). ──
+  // find an ATR language whose script actually writes vowel signs (alphabet /
+  // abugida / featural — it ladders there only after accumulated drift, since a
+  // fresh tongue is born logographic), then confirm the ±ATR pairs each get a sign
+  let atrL = null;
+  const wATR = mkWorld();
+  for (let i = 0; i < 900 && !atrL; i++) {
+    const l = foundLanguage(wATR, { seed: 55 + i * 7 });
+    if (l.prof.harmony !== "atr") continue;
+    for (let d = 0; d < 14; d++) driftLanguage(wATR, l);
+    const s = scriptOf(l);
+    if (s && ["alphabet", "abugida", "featural"].includes(s.type)) atrL = l;
+  }
+  if (atrL) {
+    const atrPairs = compiledInv(atrL).vows.filter(v => v.atr).length;   // the lax partners the harmony minted
+    const gi = glyphInventory(atrL, 500);
+    const atrSigns = gi.filter(e => /\.a\d/.test(e.key)).length;         // vowel signs keyed with the ±ATR distinction
+    check(`an ATR language's script gives its ±ATR vowels distinct signs — the glyph budget no longer collapses them (${atrPairs} lax vowels → ${atrSigns} atr-marked signs)`,
+      atrPairs >= 1 && atrSigns >= 1);
+  } else check("ATR-language glyph budget (no ATR-harmony vowel-writing language surfaced — rare)", false);
+  // determinism of the whole fix set
+  const rw1 = mkWorld(), rw2 = mkWorld();
+  const rl1 = foundLanguage(rw1, { seed: 966169 }), rl2 = foundLanguage(rw2, { seed: 966169 });
+  for (let d = 0; d < 10; d++) { driftLanguage(rw1, rl1); driftLanguage(rw2, rl2); }
+  const fsig = (l) => renderClause(l, possPron).text + "|" + renderClause(l, relPronFrame).text + "|" + (highRegister(l) ? registerWords(l, KING).high : "-");
+  check("review-fix layer deterministic + JSON-roundtrip-stable", fsig(rl1) === fsig(rl2) && fsig(rl1) === fsig(JSON.parse(JSON.stringify(rl1))));
+}
+
 // ── determinism: same record → same names, always ─────────────────────────
 {
   const w1 = mkWorld(), w2 = mkWorld();

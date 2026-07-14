@@ -357,13 +357,32 @@ export function registerOf(lang) {
   return { diglossic: true, lag: s.lag, frozenAt: s.frozenAt };
 }
 
+// The frozen ghost's phonological profile — the modern one EXCEPT where tone
+// AROSE by tonogenesis (rule 12) AFTER the tradition froze. The classical
+// form predates that change: it still carries the phonation REGISTERS that
+// tonogenesis later spent, NOT tone — so stamping the modern tone melodies on
+// it is an anachronism (the review caught the H register of a tonogenized
+// tongue rendering spurious tone marks, co-occurring with the very registers
+// the tone replaced). Rule 12 only ever enters the log for an atonal language,
+// so `indexOf(12) ≥ frozenAt` proves the ghost was atonal at the freeze.
+function highProf(lang) {
+  const p = lang.prof;
+  if (!p.tone) return p;
+  const s = scriptOf(lang);
+  const t12 = lang.rules.indexOf(12);
+  return s && t12 >= s.frozenAt ? { ...p, tone: 0, toneMarks: false } : p;
+}
+
 /** The HIGH-register (literary / chronicle) lens on a diglossic language: the
  *  frozen ghost, a full language record renderable through the ordinary
  *  grammar API — renderClause(highRegister(lang), frame) is the chronicle
  *  voice, renderClause(lang, frame) the street voice. Null when not diglossic
  *  (the language has ONE register — pass it directly). */
 export function highRegister(lang) {
-  return registerOf(lang) ? frozenLang(lang, scriptOf(lang).frozenAt) : null;
+  if (!registerOf(lang)) return null;
+  const ghost = frozenLang(lang, scriptOf(lang).frozenAt);
+  const hp = highProf(lang);
+  return hp === lang.prof ? ghost : { ...ghost, prof: hp };   // atonal ghost when tone postdates the freeze
 }
 
 /** A concept in each register: the L (colloquial, drift-complete, loans win)
@@ -372,7 +391,7 @@ export function highRegister(lang) {
 export function registerWords(lang, cid) {
   const low = wordOf(lang, cid);
   const g = highRegister(lang);
-  const high = g ? renderWord(nativeStemOf(g, cid), lang.prof) : low;
+  const high = g ? renderWord(nativeStemOf(g, cid), highProf(lang)) : low;   // conservative pronunciation, atonal if tone postdates the freeze
   return { low, high, differ: low !== high, loanInLow: !!loanOf(lang, cid) };
 }
 
@@ -563,7 +582,12 @@ const gestaltOf = (ss) => ss.map(s => (s.kind || "") + s.pts.map(p => Math.round
 
 // keys: segments by feature signature; syllables by their segment signatures
 const ckey = (c) => "c" + c.p + "." + c.m + "." + c.l + "." + c.s;
-const vkey = (v) => "v" + v.h + "." + v.b + "." + v.r;
+// the sign key for a vowel. ATR is appended ONLY when set, so a ±ATR harmony
+// language gives its tense/lax vowels DISTINCT signs (matching the Sound card's
+// vowel count — the reviewer caught the glyph budget collapsing them), while an
+// atr-less language's keys — and therefore every glyph the hand draws from them
+// — stay byte-identical (the ~95% with no ATR are untouched).
+const vkey = (v) => "v" + v.h + "." + v.b + "." + v.r + (v.atr ? ".a" + v.atr : "");
 const sylkey = (s) => [...s.on.map(ckey), ...s.nu.map(vkey), ...s.co.map(ckey)].join("-");
 // domain radicals for phono-semantic compounds (one per concept domain)
 const radKey = (d) => "rad:" + d;

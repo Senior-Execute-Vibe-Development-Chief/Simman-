@@ -1416,3 +1416,63 @@ completion is done.
 **The typology-completion effort is complete: five phases, probe 359 →
 485, all four gates green at every commit. The adversarial review round
 is the remaining step.**
+
+## Build status (session 16, sixth phase) — the adversarial review round
+
+Three independent hostile reviewers (a typological linguist, a cache/
+determinism auditor, an edge-case crasher), each required to REPRODUCE a
+finding with a runnable script before reporting. The determinism auditor
+came back fully clean — every hard invariant (same-seed, JSON-roundtrip,
+the read-order leak test, the frozen-ghost prof-sharing, the dialect
+`_fxid` trick, the phase-4 rarity streams not shifting existing output)
+held. The other two surfaced real defects; every confirmed one is fixed
+at the mechanism and gated (§34). Probe 485 → **495**.
+
+- **CRASH — pronominal possessed** (HIGH): "the king has IT" threw
+  `TypeError …'dv'` in four of the five possession strategies (only
+  `have` survived) and a pronoun existential pivot threw always — the
+  remaps built the pivot/possessed from `.n` and dropped `.pron`,
+  feeding `undefined` into the noun-derivation path. Fixed: `.pron`
+  threads through `renderExistentialClause`'s pivot and
+  `renderPossessionClause`'s comitative loc; all five strategies render
+  it. Gated.
+- **Pronoun-headed relative silently vanished** (MEDIUM): 'he WHO saw
+  the river went' rendered as just 'he went' in all four strategies —
+  `np()`'s pronoun branch returned before the relative logic, and even
+  once reached, pro-drop then ate a pronoun that carried a relative.
+  Fixed: the relative attachment is factored into one `attachRel`
+  helper both the noun and pronoun branches call (correlatives resume a
+  pronoun head correctly too), and pro-drop now keeps a pronoun that
+  heads a relative ('heavy' pronouns stay overt). Gated across all four
+  strategies.
+- **Tonogenized diglossic HIGH register carried spurious tone** (MEDIUM):
+  a tongue that gained tone by tonogenesis (rule 12) AFTER its script
+  froze rendered its classical register WITH tone marks — the frozen
+  ghost predates tone but shared the modern tonal `prof`. Fixed: the H
+  register renders through a `highProf` whose tone is off when
+  `rules.indexOf(12) ≥ frozenAt` (rule 12 only ever enters an atonal
+  language's log, so its position proves the ghost was atonal). The
+  classical form now carries the phonation REGISTERS tonogenesis later
+  spent, never the tone it hadn't yet gained. Gated (0 tone marks, 154
+  register marks; the street register still tonal).
+- **Malformed frames threw cryptically** (LOW / GIGO): a frame missing a
+  required cid (`ex` with no `n`, `pred` with no predicate, `path` with
+  no path verb, `v2` with no verb, a verbless frame) bottomed out at
+  `CONCEPTS[undefined].dv`, and `path`-with-no-verb silently no-opped on
+  some seeds but crashed on others. Fixed with guards at each new-frame
+  dispatch + one `np()` catch-all: every malformed frame degrades to an
+  empty, gloss-aligned clause. Gated (10 malformed frames, 0 throws).
+- **Script vkey collapsed ±ATR vowels** (minor, auditor): the glyph
+  budget keyed vowels without ATR, so an ATR language's tense/lax pairs
+  shared one sign — inconsistent with the Sound card. Fixed surgically:
+  the ATR component appends to `vkey` ONLY when set, so atr-less
+  languages (95%) stay byte-identical (their glyphs hash on the key) and
+  ATR languages give their ±ATR vowels distinct signs. Gated.
+- **Judged and kept** (no change): ~6% of native words have a
+  phonologically SHORTER H than L form — not erosion but homophony-
+  repair lengthening the MODERN word (the Mandarin 子/头 road); the
+  classical form legitimately predates the disambiguating syllable. The
+  linguist concurred it isn't typologically wrong.
+
+**The typology-completion effort is complete and adversarially hardened:
+six phases, probe 359 → 495, all four gates green at every commit.**
