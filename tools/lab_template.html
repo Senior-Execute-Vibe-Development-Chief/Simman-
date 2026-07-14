@@ -273,10 +273,15 @@ const PRESETS=[
     {composition:.86,paletteMode:.87,substrate:.25,motifCat:.85,iconism:.3},p=>p.motif],
   ["Calligraphy","aniconic banner",{figuration:.06,ornateness:.5},
     {composition:.59,paletteMode:.1,substrate:.25,iconism:.1,scriptDensity:.85},null],
-  ["Modern flag","stripes, wedges, panels",{ornateness:.15,saturation:.85,figuration:.45,format:.35},
-    {composition:.1,paletteMode:.1,substrate:.25,line:.1,pearl:.3,border:.3},
-    p=>p.isFlag&&p.composition==="heraldic"&&!p.field.fur&&
-       (p.field.partition!=="plain"||p.field.ordinary!=="none"||(p.motif&&p.motif.panel))],
+  // "Modern flag": pin ONLY what makes cloth read as a national flag — a banner
+  // substrate, the vexillological heraldic grammar, the vivid bunting palette —
+  // and RELEASE ornateness/figuration/line/border to auto, so each reroll rolls
+  // its own complexity, device and treatment instead of clinging to one boring
+  // corner. (The old preset pinned ornateness .15, which dragged arrange/border/
+  // partition all down and left 92% of flags a bare tricolour.)
+  ["Modern flag","stripes · crosses · cantons · charges",{saturation:.85,format:.35},
+    {composition:.1,paletteMode:.1,substrate:.25},
+    p=>p.isFlag&&p.composition==="heraldic"&&!p.field.fur],
 ];
 function applyPreset(ps){
   const [,,axes,genes,need]=ps;
