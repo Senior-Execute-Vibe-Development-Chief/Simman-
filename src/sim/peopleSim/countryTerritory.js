@@ -389,6 +389,11 @@ const FIELD_SPAN_DEF = 6.0;   // tiles a realm's administration holds per unit h
 // never as an early floor. Added to the pop core, not max()'d — a low-pop realm on
 // the early frontier stays small; a developed one spreads over its marches.
 const MARCH_LOG_TILES = 150;
+// Sweep knobs (env, unset = defaults): the march's SIZE and how steeply it gates on
+// logistics (POW>1 keeps the early frontier small — march ≈ 0 until roads mature —
+// and pushes the map-fill toward the true industrial era).
+const MARCH_TILES_ENV = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_TILES) || 0;
+const MARCH_POW = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_POW) || 1;
 function fieldPolityTerritory(world) {
   const FIELD_SPAN = T.FIELD_SPAN || FIELD_SPAN_DEF;
   const { N, tw, th, elev, fert, temp, moist } = world;
@@ -711,7 +716,8 @@ function fieldPolityTerritory(world) {
         // median-anchored (log2-compressed) and would re-cap the whole map at the
         // median; the growth Dijkstra's admin-load attenuation is the real reach bound.
         const popCap = Math.round((govPopOf.get(cid) || 0) * popCapK);
-        const march = Math.round(MARCH_LOG_TILES * (logiOf.get(cid) || 0) * r2);
+        const marchTiles = MARCH_TILES_ENV > 0 ? MARCH_TILES_ENV : MARCH_LOG_TILES;
+        const march = Math.round(marchTiles * Math.pow(logiOf.get(cid) || 0, MARCH_POW) * r2);
         t = popCap + march;
       }
       if (t <= 0) { if (cp <= 0 && (govPopOf.get(cid) || 0) <= 0) continue; }  // capless + peopleless newborn: hold (cold-start)
