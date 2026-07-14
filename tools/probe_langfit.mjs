@@ -11,7 +11,7 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf, colorTermsOf, kinshipOf, dialectsOf, colexPartner, cultureOf } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf, colorTermsOf, kinshipOf, dialectsOf, colexPartner, cultureOf, rootFormOf } from "../src/sim/language.js";
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord, copyWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
@@ -1581,15 +1581,24 @@ console.log("\n── Numeral classifiers ──");
   const genEt = clfL.map(l => classifierEtymologies(l).find(e => e.cls === "gen")).filter(Boolean);
   check(`general classifier occurs BOTH opaque and derived (opaque ${genEt.filter(e => !e.from).length}, derived ${genEt.filter(e => e.from).length})`, genEt.some(e => !e.from) && genEt.some(e => e.from));
 
-  // (g) cognate across sisters + drift under sound law
-  let cdRoot = null;
-  for (let s = 0; s < 3000 && !cdRoot; s++) { const w = mkWorld(); const r = foundLanguage(w, { seed: 820000 + s * 13 }); if (gramOf(r).classif && classifierEtymologies(r).some(e => e.from)) cdRoot = { w, r }; }
-  if (cdRoot) {
-    const { w, r } = cdRoot; const e0 = classifierEtymologies(r).find(e => e.from);
+  // (g) cognate across sisters + drift under sound law. Sampled, not pinned to
+  // one example: a derived classifier ALWAYS keeps its source across sisters
+  // (cognate), and a healthy share DRIFT in surface — but only ~half drift on
+  // any given pair (a short worn clitic often has little for the rule log to
+  // bite), so a single-example pin was a coin flip. Assert the population shape.
+  let cdCognate = 0, cdDrift = 0, cdN = 0, cdEx = null;
+  for (let s = 0; s < 4000 && cdN < 40; s++) {
+    const w = mkWorld(); const r = foundLanguage(w, { seed: 820000 + s * 13 });
+    if (!(gramOf(r).classif && classifierEtymologies(r).some(e => e.from))) continue;
+    const e0 = classifierEtymologies(r).find(e => e.from);
     w.step = 4000; let d = branchLanguage(w, r, 0.9); w.step = 8000; d = branchLanguage(w, d, 0.9);
     const eD = classifierEtymologies(d).find(e => e.cls === e0.cls);
-    check(`classifiers cognate across sisters but drift (${e0.cls}‹${e0.from}: ${e0.w} → ${eD.w})`, eD.from === e0.from && eD.w !== e0.w);
-  } else check("classifier cognate-under-drift (none found)", false);
+    if (!eD) continue; cdN++;
+    if (eD.from === e0.from) cdCognate++;
+    if (eD.w !== e0.w) { cdDrift++; if (!cdEx) cdEx = `${e0.cls}‹${e0.from}: ${e0.w}→${eD.w}`; }
+  }
+  check(`classifiers cognate across sisters but drift under sound law (${cdN} pairs: ${cdCognate} cognate, ${cdDrift} drifted; e.g. ${cdEx})`,
+    cdN >= 20 && cdCognate === cdN && cdDrift >= cdN * 0.25);
 
   // (h) assignment: hum/anm/long give three DIFFERENT classifiers; RIVER→gen
   // fallback where 'long' is absent; every animal reads 'anm'
@@ -3835,6 +3844,59 @@ console.log("\n── §37 cultural ecology (culture → lexicon) ──");
     const sea = pop.find(l => cultureOf(l).kind === "seafaring");
     say("   seafaring water words: " + [SEA, LAKE, RIVER, WATER].map(c => glossOf(c) + "=" + wordOf(sea, c)).join("  "));
   }
+}
+
+// ── §38 FREQUENCY-WEIGHTED EROSION (Zipf, part b): use does not only SHORTEN a
+// word (part a, rootLen) — it wears it phonologically SMOOTH. The most-used
+// words shed marked structure (simple onsets, open syllables), the frequency↔
+// simplicity universal that part a left flat. Applied at the ROOT, family-
+// constant, so it stays REGULAR — the whole reason the per-word version was
+// deferred. ────────────────────────────────────────────────────────────────
+console.log("\n── §38 frequency-weighted erosion (texture) ──");
+{
+  const world = mkWorld();
+  const N = 500;
+  const pop = Array.from({ length: N }, (_, i) => foundLanguage(world, { seed: 651000 + i * 29 }));
+  const texture = (form) => { let cl = 0, cd = 0, n = 0; for (const s of form.syls) { n++; if (s.on.length >= 2) cl++; if (s.co.length) cd++; } return { cl: cl / n, cd: cd / n }; };
+  let core = { cl: 0, cd: 0, n: 0 }, rare = { cl: 0, cd: 0, n: 0 };
+  for (const l of pop) for (let cid = 0; cid < CONCEPTS.length; cid++) {
+    const b = CONCEPTS[cid].b; if (b < 0.9 && b >= 0.5) continue;
+    const t = texture(nativeStemOf(l, cid)); const bk = b >= 0.9 ? core : rare;
+    bk.cl += t.cl; bk.cd += t.cd; bk.n++;
+  }
+  const cCl = core.cl / core.n, rCl = rare.cl / rare.n, cCd = core.cd / core.n, rCd = rare.cd / rare.n;
+
+  // 1) the texture gradient: the most frequent words wear phonologically SIMPLER
+  //    than the rare — fewer marked onset clusters AND more open syllables.
+  check(`frequent words wear phonologically simpler than rare — fewer onset clusters (${(100 * cCl).toFixed(1)}% < ${(100 * rCl).toFixed(1)}%) and more open syllables (coda ${(100 * cCd).toFixed(0)}% < ${(100 * rCd).toFixed(0)}%)`,
+    cCl < rCl && cCd < rCd - 0.02);
+
+  // 2) the abbreviation law (part a) still stands beside it: core far shorter
+  const meanSyl = (lo, hi) => { let s = 0, n = 0; for (const l of pop.slice(0, 150)) for (let cid = 0; cid < CONCEPTS.length; cid++) { const b = CONCEPTS[cid].b; if (b < lo || b >= hi) continue; s += nativeStemOf(l, cid).syls.length; n++; } return s / n; };
+  check("the abbreviation law holds alongside the texture wear — core (b≥0.9) far shorter than the tail", meanSyl(0.9, 1.01) < meanSyl(0, 0.5) - 0.5);
+
+  // 3) REGULAR CORRESPONDENCE preserved (the reason this lives at the root, not
+  //    per-word): a mother and a drifted sister wear every frequent concept to
+  //    the IDENTICAL pre-rule root, then diverge only by the sister's rule log.
+  const wf = mkWorld(); const mother = foundLanguage(wf, { seed: 653000 });
+  const sister = JSON.parse(JSON.stringify(mother)); for (let d = 0; d < 10; d++) driftLanguage(wf, sister);
+  let shared = 0, checkedR = 0, diverged = 0;
+  for (let cid = 0; cid < CONCEPTS.length; cid++) {
+    if (CONCEPTS[cid].b < 0.8) continue;
+    const rm = rootFormOf(mother, cid), rs = rootFormOf(sister, cid);
+    if (!rm.pre || !rs.pre) continue;                                // compare atomic (pre-rule) roots only
+    checkedR++; if (JSON.stringify(rm.w) === JSON.stringify(rs.w)) shared++;
+    if (wordOf(mother, cid) !== wordOf(sister, cid)) diverged++;      // yet the surfaces still drift
+  }
+  check(`the erosion is REGULAR — mother & drifted sister share the identical worn root for every frequent word (${shared}/${checkedR}), while surfaces still drift (${diverged})`,
+    checkedR > 0 && shared === checkedR && diverged > 0);
+
+  // 4) determinism + JSON-roundtrip
+  const ea = foundLanguage(mkWorld(), { seed: 655001 }), eb = foundLanguage(mkWorld(), { seed: 655001 });
+  const esig = (l) => Array.from({ length: 14 }, (_, i) => wordOf(l, i * 7)).join();
+  check("frequency-weighted erosion deterministic + JSON-roundtrip-stable", esig(ea) === esig(eb) && esig(ea) === esig(JSON.parse(JSON.stringify(ea))));
+
+  if (!quiet) say(`   texture: core onset-cluster ${(100 * cCl).toFixed(1)}% / coda ${(100 * cCd).toFixed(0)}%  vs  rare ${(100 * rCl).toFixed(1)}% / ${(100 * rCd).toFixed(0)}%`);
 }
 
 // ── determinism: same record → same names, always ─────────────────────────

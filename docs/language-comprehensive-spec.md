@@ -1512,9 +1512,10 @@ a fresh world (removing a world-state coupling in branch seeds), the featural
 gate uses a post-rebaseline seed, and the click gate tests the population
 median rather than one noisy pick. Probe 495 → 496.
 
-Parked from the same review (by leverage): frequency-weighted erosion
-(part b — deferred; it introduces irregularity that would fight the regular-
-correspondence invariant).
+Every item from that external review is now worked through (see the phases
+below); the last of them, frequency-weighted erosion, resolved the way the
+cardinal rules predict — the naive per-word version was a dead end, the real
+mechanism a root-level one.
 
 ## Build status (session 16, eighth phase) — affixal derivation (agentive)
 
@@ -1658,3 +1659,42 @@ ecologies keeps its hand/arm merge identical (only the salient domain moves),
 proving the bound. Surfaced in the Lab's lexicon card as a Cultural-ecology
 section (the salient domain's words, distinct or blurred). All four gates
 green; probe 511 → 516.
+
+## Build status (session 16, twelfth phase) — frequency-weighted erosion (Zipf, part b)
+
+The last parked item, and the one the cardinal rules were made for. Zipf part a
+(the abbreviation law) already makes frequent words SHORT — the length gradient
+is clean and monotonic (mean syllables 1.58 → 1.96 → 2.31 → 2.69 across the
+frequency bands, 0/6180 frequent words over-long). What it left FLAT was the
+phonological TEXTURE: measured, onset-cluster and coda rates were the same for
+'water' as for 'cliff', though the frequency↔simplicity universal says the
+most-used words should also wear phonologically SMOOTH (simple onsets, open
+syllables — 'the', 'be', 'to' are CV-light everywhere).
+
+The dead end first: a per-WORD, per-LANGUAGE erosion (each tongue wears its own
+frequent words its own way) is the naive reading, and it BREAKS regular
+correspondence — two sisters would erode the same inherited root to different
+shapes for no rule-governed reason, and the comparative method would fail on
+the map. That is exactly the irregularity the item was parked for.
+
+The real mechanism is ROOT-LEVEL and FAMILY-CONSTANT. `wearFrequent` runs at
+`synthRoot` — the one place both `internalOf` (dictionary) and `rootFormOf`
+(grammar) draw from, so there is no desync — and reduces a frequent root's
+marked onset clusters and opens some of its codas, scaled by basicness `b` above
+0.6, decided by a family-seed roll. Because it is keyed on the SHARED `b` and the
+SHARED family seed, two sisters wear every concept IDENTICALLY, then diverge only
+by their own rule logs: regular correspondence is untouched (probe §38 proves it
+— a mother and a drifted sister share the identical worn root for 102/102
+frequent words, while the surfaces still drift). The wear is deliberately gentle
+on codas — over-opening leaves a stable CV nub that sound change can no longer
+bite, which would suppress cognate drift; measured, the natural classifier-drift
+rate (~49%) is preserved. (That over-eager version did expose a genuinely
+fragile probe pin — a single-example "this classifier drifts" gate, a coin flip
+at a 49% drift rate — which is now a robust population check: all cognate, a
+healthy share drift.)
+
+Measured (§38) over 500 languages: the core (b≥0.9) now wears strictly simpler
+than the tail — onset clusters 0.3% vs 0.5%, codas 27% vs 32% — while the
+abbreviation law stands beside it. The honest finding the item was really about:
+frequency erosion belongs at the family root, not in per-word drift; put it
+there and the invariant holds. All four gates green; probe 516 → 520.

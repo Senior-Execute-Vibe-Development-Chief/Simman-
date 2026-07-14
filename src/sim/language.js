@@ -571,8 +571,36 @@ function synthRoot(lang, cid) {
   const c = compile(lang);
   const con = CONCEPTS[cid];
   const rng = mkRng(hash32(lang.famSeed, "root", cid));
-  return lang.prof.morph === "tmpl" ? synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed)
-    : synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, con.b));
+  if (lang.prof.morph === "tmpl") return synthTemplatic(rng, lang.prof, c.inv, cid, lang.famSeed);
+  return wearFrequent(lang, synthWord(rng, lang.prof, c.inv, rootLen(rng, lang.prof, con.b)), con.b, cid);
+}
+
+// FREQUENCY-WEIGHTED EROSION (Zipf, part b): use does not only SHORTEN a word
+// (rootLen, part a) — it wears it phonologically SMOOTH. The most-used words
+// shed marked structure, leaning to simple onsets and open syllables (the
+// documented frequency↔simplicity universal — 'the', 'be', 'to', 'water' are
+// CV-light everywhere; part a left the phonological TEXTURE flat across the
+// frequency range). Applied at the ROOT, deterministically and FAMILY-CONSTANT,
+// so it stays REGULAR: internalOf and rootFormOf build from the one worn root
+// (no desync), and two sister tongues wear the same concepts the same way, then
+// diverge only by their regular sound-change logs. That is the whole reason this
+// lives here and not in per-word drift — a per-language erosion would break the
+// regular-correspondence invariant; a shared, root-level one cannot. Fades in
+// above b=0.6, strongest at the top of the list.
+function wearFrequent(lang, w, b, cid) {
+  if (b < 0.6 || !w.syls.length) return w;
+  const simplify = (b - 0.6) / 0.4;                                   // 0 at b=0.6 → 1 at the top of the list
+  for (let i = 0; i < w.syls.length; i++) {
+    const s = w.syls[i];
+    if (s.on.length > 1 && h01(lang.famSeed, "wearon", cid, i) < simplify) s.on = s.on.slice(0, 1);   // a marked onset cluster reduces to its head
+    // a coda opens up (the CV lean): the final coda most readily, a medial one
+    // more gently — never emptying a bare vowel to nothing. (Sound change still
+    // drifts the survivors regularly: the natural cognate-drift rate is
+    // unchanged, this only tips the phonological TEXTURE toward simplicity.)
+    const last = i === w.syls.length - 1;
+    if (s.co.length && (w.syls.length > 1 || s.on.length) && h01(lang.famSeed, "wearco", cid, i) < simplify * (last ? 0.55 : 0.3)) s.co = [];
+  }
+  return legalizeWord(w);
 }
 
 /** The word for a concept, as a rendered string. Loans win over native. */
