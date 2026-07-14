@@ -31,6 +31,7 @@ import { getPolity } from "./entities.js";
 import { T } from "./tuning.js";
 import { recordIn, IN_STATE_PAY } from "./money.js";
 import { feedGrievance, SACK_GRIEV_FRAC } from "./loyaltyField.js";
+import { fieldShift } from "./popField.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -1670,6 +1671,7 @@ export function advanceFronts(world) {
             const taken = (dS.people || 0) * Math.min(0.5, T.CAPTURE_FRAC * Math.sqrt(slavePull(world, captor)));
             recordCaptives(captor, dS, taken);   // the carried-off carry who they are (SLAVE_PEOPLE)
             dS.people -= taken; captor._captives = (captor._captives || 0) + taken;
+            fieldShift(world, dS, -taken);    // one population: the captive trains empty the LAND (FIELD_DEMOG); arrivals land where the market buys them
           }
           dS.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
           dS._ambition = 0;    // a freshly subdued city isn't plotting (yet)

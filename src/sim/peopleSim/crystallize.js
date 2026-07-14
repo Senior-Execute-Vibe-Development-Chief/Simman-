@@ -18,6 +18,7 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
+import { fieldShift } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity } from "./entities.js";
@@ -1005,6 +1006,7 @@ function sendSettlers(world, parent) {
   const settlers = Math.min(COLONY_SEND_CAP, Math.round(parent.people * COLONY_SEND_FRAC));
   if (settlers < 25) return;
   parent.people -= settlers;
+  fieldShift(world, parent, -settlers);   // one population: the colonists leave this ground (ONE_POP; no-op otherwise)
   parent._lastColonySent = world.step;
   const inherited = {};
   for (const k of Object.keys(parent.knowledge)) inherited[k] = parent.knowledge[k];
@@ -1107,6 +1109,7 @@ function maybeUrbanGenesis(world) {
     const seed = Math.min(URBAN_SEED_CAP, Math.round(region.people * URBAN_SEED_FRAC));
     if (seed < URBAN_SEED_MIN) continue;
     region.people -= seed;
+    fieldShift(world, region, -seed);   // one population: the founders leave this ground (ONE_POP; no-op otherwise)
     const inherited = {};
     for (const k of Object.keys(region.knowledge)) inherited[k] = region.knowledge[k];
     const town = makeSettlement(world, best.tx + 0.5, best.ty + 0.5, {

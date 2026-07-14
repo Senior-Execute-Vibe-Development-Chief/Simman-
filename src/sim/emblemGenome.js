@@ -808,9 +808,51 @@ export function expressGenome(genome) {
   let partition = composition === "heraldic"
     ? pickEnum(get("partition"), isFlag ? FLAG_PARTITIONS : PARTITIONS)
     : "plain";
+  // A PALL is itself a field division — the unity-Y, its two arms and wedge (or,
+  // upright on a shield, arms and stem) cutting the field into three. Laid over an
+  // existing multi-band partition it becomes a SECOND division fighting the first:
+  // the arms cross the stripe seams and the whole thing muddies into a broken,
+  // "incomplete V" on cloth, or a big weird jumble with a lost charge on a shield.
+  // So the pall CLAIMS the ground — a many-banded partition collapses to plain (or
+  // keeps a single split) and the pall does the dividing. Peeked from the same gene
+  // that sets the ordinary below, before the palette reads the ground. One primary
+  // structure per field — the visual-economy principle at the STRUCTURE layer, on
+  // every substrate.
+  if (composition === "heraldic" && partition !== "rays"
+    && pickEnum(get("hueC"), ORDINARIES) === "pall"
+    && !["plain", "perPale", "perFess"].includes(partition)) partition = "plain";
   const solidGround = partition === "plain";
   const pal = decodePalette(get, isFlag, solidGround);
   const symmetry = composition === "radial" ? "radial" : pickEnum(get("symmetry"), SYMMETRIES);
+
+  // ── VISUAL ECONOMY: the flag's attention budget ─────────────────────────────
+  // A flag is read small, moving, at distance, from memory (NAVA's first
+  // principle). Real flags spend their ink on ONE dominant idea — a division, or
+  // a cross, or a canton-and-field — and rarely stack a second decorative layer,
+  // almost never a third. The engine's embellishments each gate on their OWN gene
+  // INDEPENDENTLY, so nothing accounts for what the cloth already carries and busy
+  // flags pile up by pure chance (a bordure alone lands on a third of them).
+  //
+  // So every SECONDARY layer pays a CROWDING cost: its gene must clear a bar that
+  // RISES with the visual weight already committed. Committing spends that layer's
+  // own weight, so the next layer's bar is higher still. This is not a cap on
+  // feature count — a genome that strongly wants a busy flag (its genes near 1)
+  // still stacks everything, as the coat-of-arms flags do; it is a COST the field
+  // pays, so the AVERAGE genome settles on one or two ideas and the load
+  // distribution falls to the shape real vexillology shows. It self-calibrates on
+  // any seed: a plain field admits more, a quartered field under a cross admits
+  // almost nothing. The DOMINANT structure (the partition, and the one main
+  // overlay — an ordinary or a central device) is never crowded; only the extra
+  // layers stacked on top of it are. Cloth read-at-distance pays; a shield, which
+  // legitimately bears a full achievement of arms, does not (CROWD = 0).
+  const CROWD = isFlag ? 0.62 : 0;
+  const HEAVY_DIV = new Set(["quarterly", "gyronny", "perSaltire", "chequy", "lozengy", "hoistTriangle"]);
+  // the field's own structure seeds the budget: a blank field is wide open, a
+  // simple stripe division costs a little, a heavy rotational cut costs more
+  let visualLoad = partition === "plain" ? 0 : HEAVY_DIV.has(partition) ? 0.32 : 0.15;
+  // a layer commits only if its intent clears the crowded bar; committing spends
+  // its weight onto the running load
+  const crowd = (v, base, weight) => { const ok = v > base + visualLoad * CROWD; if (ok) visualLoad += weight; return ok; };
 
   // field — a heraldic field can be divided (partition), draped in a FUR, laid with
   // an ORDINARY, and topped by a CHIEF / bounded by a BORDURE, all with a line-style
@@ -904,6 +946,10 @@ export function expressGenome(genome) {
     // ordinary, chief, bordure, device or canton (Seychelles is a pure fan)
     const rayField = partition === "rays";
     field.ordinary = rayField ? "none" : pickEnum(get("hueC"), ORDINARIES);
+    // an ordinary is a DOMINANT overlay (the flag's one big move when present),
+    // so it is never itself crowded — but it seeds the budget for every lesser
+    // layer that might try to stack on top of it
+    if (field.ordinary !== "none") visualLoad += 0.22;
     // DIMINUTIVES: with the stripes gene otherwise idle, a linear ordinary
     // may split into its thinner plural form — bars, pallets, bendlets,
     // chevronels — two of them, or three at the gene's top
@@ -915,10 +961,17 @@ export function expressGenome(genome) {
     // flag it reads as an unwanted line across the top, breaking the symmetry.
     // A top stripe belongs to the partition (perFess/tiercedFess), not a chief.
     field.chief = !isFlag && get("pearl") > 0.66;
-    field.bordure = !rayField && get("border") > 0.62;
+    // NO BORDURE ON CLOTH: a heraldic bordure strokes the field's whole outline,
+    // which on a flag is exactly the unwanted "line around the edge of the flag"
+    // the frameless cloth was meant to shed — no mainstream national flag carries
+    // one (the rare bordered flags, Sri Lanka/Montenegro, are bespoke-arms flags).
+    // So the bordure stays SHIELD/silk vocabulary, like the chief. On a shield it
+    // still pays the (zero) crowd cost and frames the coat as heraldry intends.
+    field.bordure = !isFlag && crowd(get("border"), 0.62, 0.10);
     field.subTincture = markT.rgb; field.subName = markT.name;   // chief/bordure read on the FIELD (markT), not the band
-    // counterchange the ordinary across a two-region partition (per pale/fess/bend)
-    field.counterchange = !field.fur && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
+    // counterchange the ordinary across a two-region partition (per pale/fess/bend);
+    // it roughly doubles the field's visual complexity, so it too pays crowding
+    field.counterchange = !field.fur && TWO_REGION.includes(partition) && crowd(get("symmetry"), 0.6, 0.16);
     // THE TRICOLOUR ORDINARY — fimbriation as an ENABLER, not an ornament.
     // The rule of tincture forbids a colour band on a colour ground UNLESS a
     // metal (or undyed) separator runs between them; that is the whole reason
@@ -960,7 +1013,7 @@ export function expressGenome(genome) {
     // fimbriation, which merges with the white saltire). The exact Jack — the
     // offset, counterchanged Irish saltire — stays a bespoke refinement.
     if (isFlag && field.ordinary === "cross" && field.crossStyle !== "nordic"
-      && !field.counterchange && get("brandSeed") > 0.62) {
+      && !field.counterchange && crowd(get("brandSeed"), 0.62, 0.30)) {
       const crossT = T(field.ordinaryName);
       const st = tinctureOn([...grounds, crossT], get("hueC"), get("value"), pal.poles, { bunting: true, chroma: get("chroma") });
       if (st.name !== field.ordinaryName) {
@@ -1010,12 +1063,13 @@ export function expressGenome(genome) {
     // tincture as a constructive argmax over the striped grounds, on the shelf
     const ht = tinctureOn(grounds, get("hueA"), get("value"), pal.poles, { bunting: true, chroma: get("chroma") });
     field.hoist = { shape, extent, tincture: ht.rgb, name: ht.name };
+    visualLoad += 0.22;                        // the band is a structural region, like an ordinary
     // THE HOIST BAND IS A PLACE, not just a bar: a compact device may ride ON
     // it — Guinea-Bissau's black star, Comoros' crescent-and-stars, São Tomé's
     // stars. The device is a placeable LAYER, dressed against the band by the
     // constructive rule, rather than suppressed. Gated on the arrange gene so
     // most compound flags still fly the bare band (the common real case).
-    if (get("arrange") > 0.66) {
+    if (crowd(get("arrange"), 0.66, 0.18)) {
       const dcat = get("motifCount") > 0.5 ? "celestial" : "geometric";
       const dpool = FLAG_SIMPLE[dcat];
       const did = dpool[Math.min(dpool.length - 1, Math.floor(get("motifIdx") * dpool.length))];
@@ -1035,7 +1089,7 @@ export function expressGenome(genome) {
   // striped field. The seam is undyed cloth or gold — whichever metal reads
   // farthest from every band it separates.
   if (isFlag && composition === "heraldic" && field.ordinary === "none" && !hasHoist
-    && ["barry", "tiercedFess", "quintFess"].includes(partition) && get("motifCount") > 0.72) {
+    && ["barry", "tiercedFess", "quintFess"].includes(partition) && crowd(get("motifCount"), 0.72, 0.08)) {
     let best = null, bd = -1;
     for (const c of [T("argent"), T("or")]) {
       const d = Math.min(...grounds.map(gr => dE(c.rgb, gr.rgb)));
@@ -1045,6 +1099,13 @@ export function expressGenome(genome) {
     // two metals, where no seam would separate anything)
     if (bd > 0.12) { field.seamFimbriation = best.rgb; field.seamName = best.name; }
   }
+
+  // THE CANTON'S CROWDED BAR, fixed here once the field's full visual load is
+  // settled (the central device below is never crowded, so the load is final).
+  // BOTH the housed device — a charge that rides IN the canton — and the canton
+  // ornament itself read this one bar, so they stay in lockstep: a busy field
+  // flies neither, and a housed device can never be left without its canton.
+  const cantonBar = 0.62 + visualLoad * CROWD;
 
   // motif — a figurative composition carries a charge. Low iconism forbids LIVING
   // figures, so a living category (beast/bird/mythic/sea) is remapped to a
@@ -1182,7 +1243,7 @@ export function expressGenome(genome) {
     // its whole array) moves INTO the canton block and dresses against it
     // (the tincture rule, one layer up). A figure never boards the canton.
     const housed = isFlag && composition === "heraldic" && !hasOrdinary && compact
-      && get("star") > 0.62 && (arrange === "single" || arrange === "array");
+      && get("star") > cantonBar && (arrange === "single" || arrange === "array");
     if (housed) tincture = tinctureOn([markT], get("hueA"), get("value"), [], { bunting: true, flying: grounds, chroma: get("chroma") });
     // repeated / housed / band-riding devices draw from the flag vocabulary
     if (isFlag && compact && (array || housed || slots) && FLAG_SIMPLE[cat]) {
@@ -1245,7 +1306,10 @@ export function expressGenome(genome) {
   const ornaments = {
     border: get("border") > 0.5 || composition === "central",
     cornerAccent: composition === "central" && get("pearl") > 0.5,           // small disc, clear of the device
-    canton: cantonOK && flagCantonOK && partition !== "rays" && get("star") > 0.62,
+    // the canton is the last layer to decide, so it reads the FULL accumulated
+    // load (cantonBar) — a busy field seldom also flies an honour block in the
+    // hoist, and the housed device above shares this exact bar
+    canton: cantonOK && flagCantonOK && partition !== "rays" && get("star") > cantonBar,
     // a lone canton flies a star, a sun, or a CROSS (Greece, Tonga) — the idle
     // sunDisc gene splits three ways instead of two
     cantonKind: get("sunDisc") > 0.66 ? "sun" : get("sunDisc") < 0.33 ? "cross" : "star",
