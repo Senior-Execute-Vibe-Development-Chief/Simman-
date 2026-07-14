@@ -98,6 +98,14 @@ woad a deep one); the value gene picks depth *within* the vat. Argent and
 sable join every field's candidates — undyed cloth and the soot vat are
 always on the shelf — so metal fields still emerge from pale, dull intents.
 
+The **imperial silk** and **earth pigment** palettes make *continuous*
+colours (a free hue, not a vat), and the **bunting** snap picks a named bolt
+for one: all three name that colour by its HUE family first (`nameByHue`),
+never by 3D nearest — a vivid green matches muted tinctures on *lightness*
+and would come out "or", so the wheel's hue-first principle names it "vert"
+(and a green silk snaps to the vert bolt, not the gold). Near-neutrals still
+fall to metal/soot by lightness.
+
 **The rule of tincture is constructed, not checked.** What a mark wears
 follows from what it lies on (`tinctureOn`):
 

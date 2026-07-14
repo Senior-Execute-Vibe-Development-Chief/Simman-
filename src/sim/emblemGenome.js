@@ -495,7 +495,41 @@ function namedDyeDark(u, val, exclude, bunting) {
 // lightness, between the darkest metal and the lightest non-metal) — used to
 // type the CONTINUOUS colours of the non-heraldic palette modes
 const CLASS_L = (Math.min(...METALS.map(n => T_LAB[n][0])) + Math.max(...DARKS.map(n => T_LAB[n][0]))) / 2;
-const P = rgb => ({ name: nearestTincture(rgb, T_NAMES), kind: oklab(rgb)[0] > CLASS_L ? "metal" : "colour", rgb });
+// the hue of an rgb, 0..1 (HSL hue), and the dyer's-wheel family that hue
+// falls in — so a CONTINUOUS colour (imperial silk, earth pigment, or a
+// bunting snap) is named by its HUE first, never by 3D nearest. A vivid
+// green matches muted tinctures on LIGHTNESS under plain nearest and comes
+// out "or"; committing to the hue family first (exactly the dyer's-wheel
+// principle) names it "vert". Near-neutrals still fall to metal/soot.
+function rgbHue([r, g, b]) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  if (d < 1e-6) return 0;
+  let h = mx === r ? (g - b) / d : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return ((h / 6) % 1 + 1) % 1;
+}
+function hueFamily(h) {
+  for (const [, h0, h1, members] of DYE_VATS) {
+    const a = ((h0 % 1) + 1) % 1, b = ((h1 % 1) + 1) % 1;
+    if (a <= b ? (h >= a && h < b) : (h >= a || h < b)) return members;
+  }
+  return DYE_VATS[0][3];
+}
+const T_HUE = {}; for (const n of T_NAMES) T_HUE[n] = rgbHue(TINCTURES[n].rgb);
+function nameByHue(rgb, candidates) {
+  const ab = oklab(rgb);
+  if (Math.hypot(ab[1], ab[2]) < DYE_CHROMA_MIN * 0.7) return nearestTincture(rgb, candidates);
+  const fam = hueFamily(rgbHue(rgb)).filter(n => candidates.includes(n));
+  if (!fam.length) return nearestTincture(rgb, candidates);
+  // within the family, pick by HUE distance — not 3D nearest, which leans to
+  // the brighter metal (a chartreuse names "or" over "vert" on lightness even
+  // though it reads green; by hue it's nearer vert)
+  const h = rgbHue(rgb);
+  let best = fam[0], bd = Infinity;
+  for (const n of fam) { let d = Math.abs(h - T_HUE[n]); d = Math.min(d, 1 - d); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+const P = rgb => ({ name: nameByHue(rgb, T_NAMES), kind: oklab(rgb)[0] > CLASS_L ? "metal" : "colour", rgb });
 const classOf = t => (t.kind === "metal" ? "metal" : "dark");
 // what strict class opposition itself GUARANTEES: the smallest OKLab distance
 // between any metal and any dark. A reused bolt that clears this bar reads at
@@ -511,7 +545,7 @@ const DYE_CHROMA_MIN = Math.min(...["or", "gules", "azure", "vert", "purpure"]
 const toBolt = t => {
   const lab = oklab(t.rgb);
   if (Math.hypot(lab[1], lab[2]) < DYE_CHROMA_MIN && lab[0] > CLASS_L) return T("argent");
-  return T(nearestTincture(t.rgb, BOLTS));
+  return T(nameByHue(t.rgb, BOLTS));   // by hue, so a green silk snaps to vert, not or
 };
 
 // What a mark WEARS follows from what it LIES ON — the rule of tincture as a
@@ -595,7 +629,9 @@ function decodePalette(get, bunting, solidGround) {
         ? namedDyeDark(hB, val, hF.name)
         : hC.name };
   } else if (mode === "imperial") {
-    fieldT = P(hsl(hA, 0.55 + chroma * 0.35, 0.42 + val * 0.12));
+    // imperial silk: vivid, but rich rather than highlighter (the top of the
+    // saturation range pulled back from neon)
+    fieldT = P(hsl(hA, 0.46 + chroma * 0.28, 0.42 + val * 0.12));
     poles = [T("or"), P(INK)];
     chargeT = companionT = farPole(fieldT.rgb, poles[0], poles[1]);   // gold on silk; ink if the silk runs light
     accentT = P([0xc0, 0x39, 0x2b]);
@@ -695,7 +731,10 @@ export function expressGenome(genome) {
   // symmetry) so no genome grows — the depth was latent in the vector.
   const tinctures = [pal.field, pal.companion];
   const field = { partition, tinctures, names: [pal.fieldT.name, pal.companionT.name],
-    line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") * 7) };
+    // stripe COUNT is low-biased with a long tail: most striped fields run
+    // 2–5 (bicolour/tricolour bars), a minority reach the many-barred flags
+    // (the US thirteen, Greece's nine) — a gentle power curve, not a uniform
+    line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") ** 1.7 * 11) };
   // the typed GROUND any mark over this field lies on
   let grounds = partition === "plain" ? [pal.fieldT] : [pal.fieldT, pal.companionT];
   const TWO_REGION = ["perPale", "perFess", "perBend"];

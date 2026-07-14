@@ -591,7 +591,7 @@ function placeAround(m, w, h, substrate) {
 function placeMotif(m, w, h, substrate) {
   const base = Math.min(w, h), tap = substrate === "shield" || substrate === "pennon" || substrate === "lozenge";
   let box = base * (m.arrange === "three" ? 0.34 : 0.6) * m.scale / 0.5;
-  if (tap) box *= 0.85;                                  // leave room inside the taper
+  if (tap) box *= 0.9;                                   // leave room inside the taper
   const one = (mx, my, b) => deviceAt(m, mx, my, b);
   if (m.arrange === "three") return one(w * 0.3, h * (tap ? 0.34 : 0.32), box) + one(w * 0.7, h * (tap ? 0.34 : 0.32), box) + one(w * 0.5, h * (tap ? 0.63 : 0.7), box * 0.9);
   if (m.arrange === "inPale") return one(w / 2, h * 0.3, box * 0.8) + one(w / 2, h * (tap ? 0.6 : 0.66), box * 0.8);
