@@ -844,9 +844,9 @@ function emblemInner(genome, aw, ah) {
     } else {
       const qrng = rrng(((qSeed ^ ((q.gen || 0) * 2654435761)) + 1013904223) >>> 0);
       const cw2 = w * 0.36, ch2 = h * 0.52, qc = `en${uid++}`;
+      // the canton reads by its own colour against the fly — no ink seam (cloth)
       content += `<clipPath id="${qc}"><rect width="${F(cw2)}" height="${F(ch2)}"/></clipPath>`
-        + `<g clip-path="url(#${qc})">${coatContent(qp, cw2, ch2, qrng)}</g>`
-        + `<path d="M${F(cw2)} 0 V${F(ch2)} H0" fill="none" stroke="#12100f" stroke-width="1.2"/>`;
+        + `<g clip-path="url(#${qc})">${coatContent(qp, cw2, ch2, qrng)}</g>`;
     }
   } else if (qs && qs.length > 1) {
     // a MARSHALLED shield: the accumulated quarterings, each a full coat
@@ -876,11 +876,14 @@ function emblemInner(genome, aw, ah) {
   const bd = p.ornaments.border && p.composition !== "heraldic"
     ? (sh.round ? `<circle cx="${w / 2}" cy="${h / 2}" r="${w / 2 - base * 0.05}" fill="none" stroke="${css(C.companion)}" stroke-width="${base * 0.05}"/>`
       : `<rect x="${base * 0.04}" y="${base * 0.04}" width="${w - base * 0.08}" height="${h - base * 0.08}" fill="none" stroke="${css(C.companion)}" stroke-width="${base * 0.05}"/>`) : "";
-  const frame = sh.round
-    ? `<circle cx="${w / 2}" cy="${h / 2}" r="${w / 2 - 1}" fill="none" stroke="#12100f" stroke-width="3"/>`
-    : `<path d="${sh.d}" fill="none" stroke="#12100f" stroke-width="2.5"/>`;
+  // NO OUTLINE ON CLOTH: a shield or roundel is drawn with an ink edge (part of
+  // the escutcheon), but a real flag has none — its own colours define its
+  // shape, and a black frame reads as an unwanted border. Flags fly frameless.
+  const frame = p.isFlag ? ""
+    : sh.round ? `<circle cx="${w / 2}" cy="${h / 2}" r="${w / 2 - 1}" fill="none" stroke="#12100f" stroke-width="3"/>`
+      : `<path d="${sh.d}" fill="none" stroke="#12100f" stroke-width="2.5"/>`;
   let tails = "";
-  if (sh.tails) { const ty = h * 0.82; for (let i = 0; i < 3; i++) { const tx = w * (0.17 + i * 0.33); tails += `<path d="M${tx} ${ty} L${tx + w * 0.16} ${ty} L${tx + w * 0.08} ${ty + h * 0.16} Z" fill="${css(C.field)}" stroke="#12100f" stroke-width="1.5"/>`; } }
+  if (sh.tails) { const ty = h * 0.82; for (let i = 0; i < 3; i++) { const tx = w * (0.17 + i * 0.33); tails += `<path d="M${tx} ${ty} L${tx + w * 0.16} ${ty} L${tx + w * 0.08} ${ty + h * 0.16} Z" fill="${css(C.field)}"/>`; } }
 
   return `<g transform="translate(${ox.toFixed(1)},${oy.toFixed(1)})"><clipPath id="${clip}"><path d="${sh.d}"/></clipPath>`
     + `<g clip-path="url(#${clip})">${content}${bd}</g>${tails}${frame}</g>`;
