@@ -43,7 +43,8 @@ let fails = 0, checks = 0, minMeasured = Infinity;
 const fieldNames = new Set();
 const seen = { chequy: 0, lozengy: 0, fretty: 0, masoned: 0, diminutive: 0, attitude: 0, tiercedPale: 0, tiercedFess: 0, fimbriation: 0, panel: 0, hoistTriangle: 0,
   array_rows: 0, array_ring: 0, array_arc: 0, array_constellation: 0, array_satellites: 0, housed: 0, couched: 0,
-  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0, flagFigure: 0, flagBare: 0 };
+  cutLong: 0, cutStocky: 0, spanishMid: 0, spanishFirst: 0, boltReuse: 0, inescutcheon: 0, flagFigure: 0, flagBare: 0,
+  hoistPale: 0, hoistWedge: 0 };
 // the flag device vocabulary: what a repeated/housed/band-riding device may be
 const FLAG_VOCAB = new Set(["mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle",
   "sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline", "starAndCrescent"]);
@@ -134,6 +135,7 @@ function audit(g) {
       if (f.ordinary && f.ordinary !== "none") worn.add(f.ordinaryName);
       if (f.fimbName) worn.add(f.fimbName);
       if (f.treatName) worn.add(f.treatName);
+      if (f.hoist) worn.add(f.hoist.name);
       if (fm) { worn.add(fm.tinctureName); if (fm.panel) worn.add(fm.panel.name); if (fm.fimbName) worn.add(fm.fimbName); }
       if (p.ornaments.canton) worn.add(p.ornaments.cantonName);
       for (const n of worn) if (STAINS.has(n)) fail(`a stain flies on cloth (${n})`, g);
@@ -163,7 +165,21 @@ function audit(g) {
     const strict = p.colors.mode === "heraldic" || p.colors.mode === "monochrome"
       || f.fur === "ermine" || f.fur === "vair";
     const hasOrd = f.ordinary && f.ordinary !== "none";
-    if (hasOrd && !f.counterchange) checkMark(f.ordinaryTincture, grounds, "ordinary", g, strict);
+    // a fimbriated band is LEGALISED by its separator (audited below), so the
+    // band itself may lie same-class on the field (the tricolour cross/bend) —
+    // the class-opposition check applies only to an UNfimbriated ordinary
+    if (hasOrd && !f.counterchange && !f.fimbriation) checkMark(f.ordinaryTincture, grounds, "ordinary", g, strict);
+    // the compound hoist element is a solid region over the striped fly: it
+    // reads against every fly band by the same constructive rule (a flag-only
+    // mechanism; the striped fly is a mixed ground, so the measured dE bound)
+    if (f.hoist) {
+      if (!p.isFlag) fail("a hoist band off cloth", g);
+      if (f.ordinary && f.ordinary !== "none") fail("hoist band beside an ordinary", g);
+      if (p.motif) fail("hoist band beside a device", g);
+      if (!["perFess", "tiercedFess", "barry"].includes(f.partition)) fail(`hoist band on a non-horizontal fly (${f.partition})`, g);
+      seen[f.hoist.shape === "pale" ? "hoistPale" : "hoistWedge"]++;
+      checkMark(f.hoist.tincture, grounds, "hoist", g, false);
+    }
     if (p.isFlag && p.ornaments.canton) checkMark(p.ornaments.cantonColor, grounds, "canton-flag", g, strict);
     if (f.fimbriation) {
       seen.fimbriation++;

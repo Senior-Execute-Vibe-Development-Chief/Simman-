@@ -47,6 +47,8 @@ flat SVG
 | `tools/render_emblems.mjs` | static preview sheets (`node tools/render_emblems.mjs both out.svg`) |
 | `tools/build_lab.mjs` + `tools/lab_template.html` | builds the interactive lab by inlining the two src modules + a size-capped charge subset |
 | `tools/emblem.test.mjs` | property harness — runs as part of `npm test` |
+| `tools/flag-reachability.mjs` | **the flag reachability audit** — pins the deciding genes (computed from the live `POOLS`), sweeps founder seeds, and verifies the expressed phenotype against a per-flag structural predicate; every MISS is a capability gap to BUILD, never a flag to hard-code |
+| `tools/proof_sheet.mjs` | render a labelled grid of emblems to PNG (headless Chromium) and *look* at it — the eye is part of the acceptance test |
 
 ## The genome
 
@@ -288,6 +290,45 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     figural tradition (the same 0.72 iconism boundary that forces heraldic
     composition); weaker figuration sews the non-living pick. Flags carry
     a beast ~11% vs shields ~31% — the real gradient.
+  - **Compound fields** — a hoist element (a vertical BAND / pale, or a WEDGE /
+    triangle) laid over a horizontally-striped fly, each in its own bolt: the
+    Arab and African compound flags (Benin, UAE, Madagascar, Jordan, Sudan,
+    Cuba). The engine otherwise commits to ONE partition, so this whole family
+    was unreachable. It is not a second partition fighting the first — the base
+    partition stays the FLY striping and the hoist is a distinct region drawn
+    OVER it (decoupled exactly the way an ordinary decouples from the field). It
+    reuses the field-embellishment gene (crescent) whose FUR output is discarded
+    on cloth — a shield furs, sewn cloth carries a hoist device: one gene,
+    reinterpreted by substrate, so the vector never grows. The shape rides the
+    idle line gene, the extent the idle motifScale gene. A hoist band is a
+    COMPLETE statement — no chief, bordure, device or canton stacks on it (else a
+    same-tincture chief and pale fuse into a broken L). ~4% of flags, spread
+    across all three fly partitions and both shapes.
+  - **The tricolour ordinary — fimbriation as an ENABLER, not an ornament** —
+    the rule of tincture forbids a colour band on a colour ground UNLESS a metal
+    (or undyed) separator runs between them; that is the whole reason
+    fimbriation exists (Norway, Iceland, DR Congo, Trinidad — a colour cross /
+    bend on a colour field, edged white). The engine previously always
+    constructed the band OPPOSITE-class to the field, so colour-on-colour never
+    arose and this entire family was unreachable. On a uniform COLOUR ground a
+    single bare ordinary may instead take a SECOND colour (the secondary gene —
+    already "a colour beside a colour" — asks for it), which then MUST be
+    fimbriated by the opposite class; a metal ground, or no such intent, keeps
+    the plain opposite-class band (Denmark / Sweden / Switzerland). A tricolour
+    ordinary is a complete statement (no chief/bordure — they read on the field
+    via markT, which now differs from the band). Fimbriated ordinaries ~10% of
+    flag ordinaries; the on-band charge now reads against the BAND's own tincture.
+  - **The symmetric cross** — a flag cross is Nordic (hoist-shifted, edge-to-
+    edge) by default; a strong symmetry intent makes it a centred COUPED cross
+    instead (Switzerland, Georgia). The symmetry gene is otherwise idle on a
+    bare cross (counterchange needs a two-region partition, a plain field isn't).
+    Blazoned "a cross couped".
+  - **The canton's own charge** — a lone canton flies a star, a sun, or a CROSS
+    (Greece, Tonga): the idle sunDisc gene splits three ways instead of two.
+    Blazoned "on a canton Azure a cross Argent".
+  - **Stripe counts to fourteen** — the barry/paly count curve reaches 14
+    (Malaysia) as well as 13 (USA), 11 (Liberia), 9 (Greece/Uruguay); the count
+    words extend to match.
 - **Partitions**: per pale/fess/bend, quarterly, gyronny, per saltire, per
   chevron, barry, paly, **chequy**, **lozengy**, **tierced** (in pale /
   in fess — the tricolour, third tincture constructed against both
@@ -347,7 +388,25 @@ honest plain-language line for the non-blazonable traditions.
    array counts bounded with per-pattern floors; a housed device implies
    its canton, a canton implies a free hoist; banner cuts stay in
    [1:2, 2:3]; no stain ever flies; ≤ 5 bolts per flag; a living figure
-   implies the figural tradition (iconism > 0.72).
+   implies the figural tradition (iconism > 0.72). A compound HOIST element
+   is flag-only, sits over a horizontal fly, never beside an ordinary or a
+   device, and reads against the fly grounds. A fimbriated ordinary may lie
+   same-class on the field (its separator is the legaliser, audited on its job).
+
+## Flag reachability (the corpus backbone)
+
+`tools/flag-reachability.mjs` walks the world's national flags: for every
+in-scope flag (a general vexillological pattern, *not* a bespoke emblem) it
+pins the deciding genes — values computed from the live `POOLS` arrays, never
+hand-typed, so a reorder can't stale them — sweeps founder seeds, and checks
+the expressed phenotype against a structural predicate (structure, not pixels —
+the predicates are colour-agnostic). A witness seed proves reachability; a MISS
+is a capability gap to BUILD, never a flag to hard-code. Bespoke flags are
+listed with a one-line exclusion reason so the corpus is auditable. Current
+status: **36 in-scope targets reachable, 0 MISS**, with **1 documented
+deferred** gap — the quintband 1:1:2:1:1 mirror (Thailand, Costa Rica), which
+wants a general N-band *symmetric tierced* (the Spanish-fess splitter
+generalised past three bands), not a one-flag partition.
 
 ## The lab
 

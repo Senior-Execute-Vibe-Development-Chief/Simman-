@@ -239,10 +239,22 @@ function fieldSVG(w, h, p) {
   }
 }
 
+// ── a COMPOUND FIELD's hoist element: a vertical band (a pale) or a wedge (a
+// triangle) issuing from the hoist, drawn OVER the striped fly in its own bolt
+// — the Arab/African compound flags (Benin, UAE, Jordan, Cuba). The fly stripes
+// run full width behind it; the solid region simply covers the hoist portion,
+// which is exactly what those flags are. ──
+function hoistBand(w, h, hoist) {
+  const c = css(hoist.tincture), e = w * hoist.extent;
+  return hoist.shape === "pale"
+    ? `<rect width="${F(e)}" height="${F(h)}" fill="${c}"/>`
+    : `<polygon points="0,0 ${F(e)},${F(h / 2)} 0,${F(h)}" fill="${c}"/>`;
+}
+
 // ── an ordinary as a fill path (long edges in the given line-style). On a
 // FLAG the grammar goes vexillological: the cross sits Nordic (crossing
 // toward the hoist) and the pile points from the hoist. ──
-function ordinaryPath(type, w, h, ln, amp, flag) {
+function ordinaryPath(type, w, h, ln, amp, flag, sym) {
   switch (type) {
     case "fess": { const y0 = h * 0.4, y1 = h * 0.6; return `M0 ${F(y0)} ${styledEdge(0, y0, w, y0, ln, amp)} L${w} ${F(y1)} ${styledEdge(w, y1, 0, y1, ln, amp)} Z`; }
     case "pale": { const x0 = w * 0.4, x1 = w * 0.6; return `M${F(x1)} 0 ${styledEdge(x1, 0, x1, h, ln, amp)} L${F(x0)} ${h} ${styledEdge(x0, h, x0, 0, ln, amp)} Z`; }
@@ -256,9 +268,15 @@ function ordinaryPath(type, w, h, ln, amp, flag) {
       const t = h * 0.16; return `M0 ${h} L${F(w / 2)} ${F(h * 0.42)} L${w} ${h} L${F(w - t)} ${h} L${F(w / 2)} ${F(h * 0.42 + t * 1.3)} L${F(t)} ${h} Z`;
     }
     case "cross": {
-      // flag: the NORDIC construction — both arms equally thick in absolute
-      // cloth units (the fess arm is 0.2h, so the vertical matches it), the
-      // crossing offset toward the hoist
+      // flag SYMMETRIC: a centred couped cross (Switzerland/Georgia) — equal
+      // arms, not hoist-shifted, ending short of the edges (a bold Greek cross)
+      if (flag && sym) {
+        const cx = w / 2, cy = h / 2, t = h * 0.15, L = h * 0.36;
+        return ptsPath([[cx - t, cy - L], [cx + t, cy - L], [cx + t, cy - t], [cx + L, cy - t], [cx + L, cy + t],
+          [cx + t, cy + t], [cx + t, cy + L], [cx - t, cy + L], [cx - t, cy + t], [cx - L, cy + t], [cx - L, cy - t], [cx - t, cy - t]]);
+      }
+      // flag NORDIC: both arms equally thick in absolute cloth units (the fess
+      // arm is 0.2h, so the vertical matches it), the crossing offset to hoist
       const vert = flag ? `M${F(w * 0.34 + h * 0.1)} 0 V${h} H${F(w * 0.34 - h * 0.1)} V0 Z`
         : ordinaryPath("pale", w, h, "straight", amp);
       return ordinaryPath("fess", w, h, "straight", amp) + vert;
@@ -308,7 +326,7 @@ function heraldicOverlay(w, h, f, sh, base, flag) {
   let s = "";
   if (ord && ord !== "none") {
     const path = (f.ordinaryCount || 1) > 1 ? diminutivePaths(ord, w, h, ln, amp, f.ordinaryCount)
-      : ordinaryPath(ord, w, h, ln, amp, flag);
+      : ordinaryPath(ord, w, h, ln, amp, flag, f.crossStyle === "symmetric");
     // the couched pall's hoist MOUTH: the wedge the arms embrace, laid
     // beneath the band so the fimbriation separates it (the unity-Y)
     if (flag && ord === "pall" && f.pallMouth)
@@ -490,8 +508,13 @@ function centralFit(substrate, w, h, base) {
 function canton(w, h, base, kind, color, flag, fieldC) {
   if (flag) {
     const cw = w * 0.36, chh = h * 0.52, r = base * 0.11;
+    // a centred couped cross filling the canton (Greece/Tonga)
+    const cross = () => { const cx = cw / 2, cy = chh / 2, t = chh * 0.15, L = chh * 0.4;
+      return poly([[cx - t, cy - L], [cx + t, cy - L], [cx + t, cy - t], [cx + L, cy - t], [cx + L, cy + t],
+        [cx + t, cy + t], [cx + t, cy + L], [cx - t, cy + L], [cx - t, cy + t], [cx - L, cy + t], [cx - L, cy - t], [cx - t, cy - t]], css(fieldC)); };
     return `<rect width="${F(cw)}" height="${F(chh)}" fill="${css(color)}"/>`
-      + (kind === "sun" ? sunDisc(cw / 2, chh / 2, r * 0.7, fieldC) : star(cw / 2, chh / 2, r, fieldC));
+      + (kind === "sun" ? sunDisc(cw / 2, chh / 2, r * 0.7, fieldC)
+        : kind === "cross" ? cross() : star(cw / 2, chh / 2, r, fieldC));
   }
   const cx = w * 0.8, cy = h * 0.2, r = base * 0.1;
   return kind === "sun" ? sunDisc(cx, cy, r * 0.7, color) : star(cx, cy, r, color);
@@ -645,6 +668,8 @@ function coatContent(p, w, h, rng) {
       content += `<defs>${defs.join("")}</defs>`;
     }
     content += fieldSVG(w, h, f);
+    // the compound hoist element rides over the striped fly, under any device
+    if (f.hoist) content += hoistBand(w, h, f.hoist);
     // a semé is a field treatment — strewn BENEATH the ordinary/chief/bordure
     if (mot && mot.behind) content += placeMotif(mot, w, h, p.substrate);
     content += heraldicOverlay(w, h, f, sh, base, p.isFlag);

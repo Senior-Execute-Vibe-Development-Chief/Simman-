@@ -207,6 +207,16 @@ const MOTIFS = {
 };
 // @INJECT:MOTIFS-END
 
+// The decode POOLS, exported so tooling (the reachability audit) can compute
+// pin values from the LIVE arrays — `(index + 0.5) / pool.length` for a
+// pickEnum slot — and never hand-guess a magnitude that a reorder would break.
+export const POOLS = {
+  SUBSTRATES, SHIELD_SHAPES, COMPOSITIONS, FLAG_COMPOSITIONS, SYMMETRIES,
+  PALETTES, FLAG_PALETTES, PARTITIONS, FLAG_PARTITIONS, ORDINARIES, ORD_COMPANY,
+  ARRANGES, LINES, TREATMENTS, MOTIF_CATS, ARRAY_PATTERNS, PANEL_SHAPES,
+  FLAG_SIMPLE, MOTIFS,
+};
+
 const pickEnum = (v, arr) => arr[Math.min(arr.length - 1, Math.floor(v * arr.length))];
 
 // ── construction ──────────────────────────────────────────────────────────
@@ -795,7 +805,7 @@ export function expressGenome(genome) {
     // stripe COUNT is low-biased with a long tail: most striped fields run
     // 2–5 (bicolour/tricolour bars), a minority reach the many-barred flags
     // (the US thirteen, Greece's nine) — a gentle power curve, not a uniform
-    line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") ** 1.7 * 11) };
+    line: pickEnum(get("line"), LINES), stripes: 2 + Math.floor(get("stripes") ** 1.7 * 12) };
   // the typed GROUND any mark over this field lies on
   let grounds = partition === "plain" ? [pal.fieldT] : [pal.fieldT, pal.companionT];
   const TWO_REGION = ["perPale", "perFess", "perBend"];
@@ -859,35 +869,86 @@ export function expressGenome(genome) {
     field.ordinaryCount = ["fess", "pale", "bend", "bendSinister", "chevron"].includes(field.ordinary)
       && !["barry", "paly"].includes(partition) && get("stripes") > 0.62
       ? (get("stripes") > 0.86 ? 3 : 2) : 1;
-    field.ordinaryTincture = markT.rgb;
-    field.ordinaryName = markT.name;
     field.chief = get("pearl") > 0.66;
     field.bordure = get("border") > 0.62;
-    field.subTincture = markT.rgb;                     // chief/bordure share the reading tincture
+    field.subTincture = markT.rgb;                     // chief/bordure read on the FIELD (markT), not the band
     // counterchange the ordinary across a two-region partition (per pale/fess/bend)
     field.counterchange = !field.fur && TWO_REGION.includes(partition) && get("symmetry") > 0.6;
-    // FIMBRIATION on flags: the thin separating outline (a Nordic cross's
-    // white edge) — its tincture picked to read against EVERYTHING it
-    // separates, band and field bands alike
-    // FIMBRIATION exists to do a JOB: separating same-class neighbours (a
-    // colour band on a colour ground — its rule-of-tincture function). A
-    // metal band on a dark field needs none and real flags fly none; and
-    // the separator itself is undyed cloth or soot, never a statement.
-    if (isFlag && field.ordinary !== "none" && !field.counterchange && get("motifCount") > 0.6
-      && grounds.some(g => classOf(g) === classOf(markT))) {
-      // the separator is judged on its JOB: the band and the grounds of the
-      // band's own class (it may run invisibly across the others — the
-      // white fimbriation crossing a white region is the real construction)
-      const fb = sepPick([markT, ...grounds.filter(g => classOf(g) === classOf(markT))]);
+    // THE TRICOLOUR ORDINARY — fimbriation as an ENABLER, not an ornament.
+    // The rule of tincture forbids a colour band on a colour ground UNLESS a
+    // metal (or undyed) separator runs between them; that is the whole reason
+    // fimbriation exists (Norway, Iceland, DR Congo, Trinidad — a colour cross/
+    // bend on a colour field, edged white). The engine otherwise always
+    // constructs the band OPPOSITE-class to the field, so colour-on-colour
+    // never arose and this entire family was unreachable. On a uniform COLOUR
+    // ground a single bare ordinary may instead take a SECOND colour (the
+    // secondary gene — already "a colour beside a colour" — asks for it), which
+    // then MUST be fimbriated; a metal ground, or no such intent, keeps the
+    // plain opposite-class band (Denmark/Sweden/Switzerland).
+    let ordT = markT, tricolour = false;
+    if (isFlag && field.ordinary !== "none" && field.ordinaryCount === 1 && !field.counterchange
+      && grounds.length === 1 && classOf(grounds[0]) === "dark" && get("secondary") > 0.62) {
+      const band = T(namedDyeDark(get("hueB"), get("value"), grounds[0].name, true));   // a 2nd colour ≠ field
+      if (classOf(band) === "dark" && band.name !== grounds[0].name) { ordT = band; tricolour = true; }
+    }
+    // a tricolour ordinary is a COMPLETE statement (Norway, DR Congo, Trinidad
+    // carry neither): no chief or bordure — they read on the FIELD via markT,
+    // which now differs from the band, so they would also mis-blazon
+    if (tricolour) { field.chief = false; field.bordure = false; }
+    field.ordinaryTincture = ordT.rgb;
+    field.ordinaryName = ordT.name;
+    // a flag CROSS is Nordic (hoist-shifted, edge-to-edge) by default; a strong
+    // symmetry intent makes it SYMMETRIC instead — a centred couped cross
+    // (Switzerland, Georgia). The symmetry gene is otherwise idle on a bare
+    // cross (counterchange needs a two-region partition, a plain field isn't).
+    if (isFlag && field.ordinary === "cross") field.crossStyle = get("symmetry") > 0.6 ? "symmetric" : "nordic";
+    // FIMBRIATION does a JOB: separating same-class neighbours. MANDATORY for a
+    // tricolour band (else the colour-on-colour is illegal); otherwise optional
+    // (the motifCount gene) and only where a ground shares the band's class (a
+    // partitioned field). The separator is undyed cloth or soot — never a
+    // statement — judged on the band plus the grounds of the band's own class.
+    if (isFlag && field.ordinary !== "none" && !field.counterchange
+      && grounds.some(g => classOf(g) === classOf(ordT)) && (tricolour || get("motifCount") > 0.6)) {
+      const fb = sepPick([ordT, ...grounds.filter(g => classOf(g) === classOf(ordT))]);
       field.fimbriation = fb.rgb; field.fimbName = fb.name;
       // a fimbriated COUCHED PALL encloses its hoist MOUTH: the wedge the
       // arms embrace takes its own statement colour, picked to stand off
       // from band and field alike (the full unity-Y construction)
       if (field.ordinary === "pall") {
-        const mt = tinctureOn([markT, ...grounds], get("hueA"), get("value"), pal.poles, { bunting: true, chroma: get("chroma") });
+        const mt = tinctureOn([ordT, ...grounds], get("hueA"), get("value"), pal.poles, { bunting: true, chroma: get("chroma") });
         field.pallMouth = mt.rgb; field.pallMouthName = mt.name;
       }
     }
+  }
+
+  // ── COMPOUND FIELD: a hoist element over a horizontally-striped fly ──────────
+  // Real flags routinely marry a vertical hoist BAND (a pale) or a hoist WEDGE
+  // (a triangle) to a horizontally-striped fly, each in its own bolt — the Arab
+  // and African compound flags (Benin, UAE, Madagascar, Jordan, Sudan, Cuba…).
+  // The engine otherwise commits to ONE partition, so this whole family was
+  // unreachable. It is NOT a second partition fighting the first: the base
+  // partition stays the FLY striping and the hoist is a distinct region drawn
+  // OVER it, so the two decouple exactly the way an ordinary decouples from the
+  // field. It reuses the field-embellishment gene (crescent) whose FUR output is
+  // already discarded on cloth — a shield furs, sewn cloth instead carries a
+  // hoist device: one gene, reinterpreted by substrate (the engine's idiom), so
+  // the vector never grows. The shape rides the otherwise-idle line gene and the
+  // extent the idle motifScale gene, so band-vs-wedge and its width vary freely.
+  let hasHoist = false;
+  const HORIZONTAL_FLY = new Set(["perFess", "tiercedFess", "barry"]);
+  if (isFlag && composition === "heraldic" && field.ordinary === "none"
+    && HORIZONTAL_FLY.has(partition) && get("crescent") > 0.74) {
+    const shape = pickEnum(get("line"), ["pale", "pale", "pale", "triangle", "triangle"]);
+    const extent = shape === "pale" ? 0.30 + get("motifScale") * 0.08 : 0.42 + get("motifScale") * 0.1;
+    // one solid region reads against EVERY fly band it overlaps — the rule of
+    // tincture as a constructive argmax over the striped grounds, on the shelf
+    const ht = tinctureOn(grounds, get("hueA"), get("value"), pal.poles, { bunting: true, chroma: get("chroma") });
+    field.hoist = { shape, extent, tincture: ht.rgb, name: ht.name };
+    // a compound field is a COMPLETE statement: the hoist element carries the
+    // honour, so no chief or bordure stacks on it (real compound flags fly
+    // neither) — else a same-tincture chief and pale fuse into a broken L
+    field.chief = false; field.bordure = false;
+    hasHoist = true;
   }
 
   // motif — a figurative composition carries a charge. Low iconism forbids LIVING
@@ -896,7 +957,9 @@ export function expressGenome(genome) {
   // compositions carry no charge.
   let motif = null;
   const hasOrdinary = composition === "heraldic" && field.ordinary && field.ordinary !== "none";
-  if (["heraldic", "central", "radial", "seme"].includes(composition)) {
+  // a hoist band IS the design (Benin, UAE, Jordan): the striped fly and the
+  // hoist element carry the identity, so no central device competes with them
+  if (!hasHoist && ["heraldic", "central", "radial", "seme"].includes(composition)) {
     let cat = pickEnum(get("motifCat"), MOTIF_CATS);
     if (aniconic && LIVING_CATS.has(cat)) {
       cat = NONLIVING_CATS[Math.floor(get("motifCount") * NONLIVING_CATS.length) % NONLIVING_CATS.length];
@@ -964,7 +1027,9 @@ export function expressGenome(genome) {
           arrange = slot === "on" ? "onOrdinary" : "between";
           slots = pts;
           tilt = (slot === "on" && spec.tilt) || 0;
-          if (slot === "on") tincture = tinctureOn([markT], get("hueA"), get("value"), [], isFlag ? { bunting: true, flying: grounds, chroma: get("chroma") } : {});
+          // a charge ON the band reads against the BAND's own tincture (which
+          // may be a tricolour second colour, not markT) — the rule one layer up
+          if (slot === "on") tincture = tinctureOn([T(field.ordinaryName)], get("hueA"), get("value"), [], isFlag ? { bunting: true, flying: grounds, chroma: get("chroma") } : {});
         }
       } else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value"), [], { bunting: isFlag }); }
     } else {
@@ -1079,13 +1144,16 @@ export function expressGenome(genome) {
   // on FLAG cloth the hoist-top must be free cloth (no canton over an
   // ordinary's arm) and the canton is the device's house, never a second
   // device beside a figure: it flies with a housed device, or alone
+  // a hoist band already owns the hoist: no canton stacks on top of it
   const flagCantonOK = !isFlag || composition !== "heraldic"
-    || (!hasOrdinary && (!motif || motif.inCanton));
+    || (!hasHoist && !hasOrdinary && (!motif || motif.inCanton));
   const ornaments = {
     border: get("border") > 0.5 || composition === "central",
     cornerAccent: composition === "central" && get("pearl") > 0.5,           // small disc, clear of the device
     canton: cantonOK && flagCantonOK && get("star") > 0.62,
-    cantonKind: get("sunDisc") > 0.5 ? "sun" : "star",
+    // a lone canton flies a star, a sun, or a CROSS (Greece, Tonga) — the idle
+    // sunDisc gene splits three ways instead of two
+    cantonKind: get("sunDisc") > 0.66 ? "sun" : get("sunDisc") < 0.33 ? "cross" : "star",
     cantonColor: markT.rgb,                     // the canton lies on the field: it wears markT
     cantonName: markT.name,
 
@@ -1138,7 +1206,7 @@ export function sigilFromSeed(seed) {
 
 // ── BLAZON — the formal heraldic sentence for a phenotype ────────────────────
 const NUMWORD = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
-  "nine", "ten", "eleven", "twelve", "thirteen"];
+  "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen"];
 const CHARGE_NAME = {
   mullet6: "mullet of six points", mullet8: "mullet of eight points", rowel: "pierced mullet",
   crossCouped: "cross couped", crossPattee: "cross pattée", crosslet: "cross crosslet",
@@ -1197,6 +1265,10 @@ function fieldPhrase(f, m) {
   }
   if (m && m.arrange === "seme")
     s += ` semé of ${pluralize(chargeName(m.id))} ${m.counterchange ? "counterchanged" : tName(m.tinctureName)}`;
+  // the compound hoist element (a band or a wedge) rides over the striped fly
+  if (f.hoist) s += f.hoist.shape === "pale"
+    ? `, a pale ${tName(f.hoist.name)} at the hoist`
+    : `, a triangle ${tName(f.hoist.name)} issuant from the hoist`;
   return s;
 }
 
@@ -1241,8 +1313,10 @@ export function blazonGenome(genome) {
   }
   const parts = [fieldPhrase(f, m)];
   // a canton flying its lone symbol (no other device on the cloth)
-  if (!m && p.isFlag && p.ornaments.canton)
-    parts.push(`on a canton ${tName(p.ornaments.cantonName)} a ${p.ornaments.cantonKind === "sun" ? "sun" : "mullet"} ${tName(f.names[0])}`);
+  if (!m && p.isFlag && p.ornaments.canton) {
+    const ck = p.ornaments.cantonKind;
+    parts.push(`on a canton ${tName(p.ornaments.cantonName)} a ${ck === "sun" ? "sun" : ck === "cross" ? "cross" : "mullet"} ${tName(f.names[0])}`);
+  }
   const mT = m ? (m.counterchange ? "counterchanged" : tName(m.tinctureName)) : "";
   const ATT = { inverted: " inverted", sinister: " contourné" };
   const mName = m ? chargeName(m.id) + (ATT[m.attitude] || "") : "";
@@ -1250,8 +1324,11 @@ export function blazonGenome(genome) {
   const oLn = hasOrd && f.line !== "straight" ? ` ${f.line}` : "";
   const oT = hasOrd ? (f.counterchange ? "counterchanged" : tName(f.ordinaryName)) : "";
   const DIM_NAME = { fess: "bar", pale: "pallet", bend: "bendlet", bendSinister: "scarpe", chevron: "chevronel" };
-  // on cloth the pall and the chevron lie COUCHED (issuing from the hoist)
-  const couch = o => (p.isFlag && (o === "pall" || o === "chevron") ? `${ordName(o)} couched` : ordName(o));
+  // on cloth the pall and the chevron lie COUCHED (issuing from the hoist);
+  // a symmetric flag cross is couped (centred, short of the edges)
+  const couch = o => p.isFlag && (o === "pall" || o === "chevron") ? `${ordName(o)} couched`
+    : p.isFlag && o === "cross" && f.crossStyle === "symmetric" ? "cross couped"
+      : ordName(o);
   const nOrd = (hasOrd && f.ordinaryCount) || 1;
   const oFimb = hasOrd && f.fimbriation ? ` fimbriated ${tName(f.fimbName)}` : "";
   const mFimb = m && m.fimbriation ? ` fimbriated ${tName(m.fimbName)}` : "";
