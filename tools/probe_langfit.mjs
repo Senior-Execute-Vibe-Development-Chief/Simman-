@@ -19,7 +19,7 @@ import { applicableRules, applyRule } from "../src/sim/languageChange.js";
 import { hash32 } from "../src/sim/peopleSim/rng.js";
 import { scriptOf, writeWord, writeForm, writeName, formFromSurface, writtenWordOf, writtenFormOf, glyphInventory, silentLetterSample, numeralGlyphs, adoptScriptFrom, registerOf, highRegister, registerWords } from "../src/sim/languageScript.js";
 import { runHistory } from "../src/sim/languageHistory.js";
-import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, adpSourceOf, polysynthesisOf } from "../src/sim/languageGrammar.js";
+import { rollGrammar, gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, paradigmSpec, affixEtymologies, renderClause, intensive, genderOf, classInventory, nounClassInfo, pronoun, concordMarkers, agreementTargets, inflectAdj, alignmentOf, agentivityOf, clauseAlignment, voicesOf, voiceEtymologies, tamShape, resolveMood, resolveTam, evidentialSystem, classifiersOf, classifierEtymologies, classifierFor, classifSenseOf, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns, honorificVerb, renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, adpSourceOf, polysynthesisOf, infoStructureOf } from "../src/sim/languageGrammar.js";
 import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOPO_HEAD, SEE, GO, TAKE, EAT, SLEEP, HORSE, WOLF, TOWN, BLACK, HOUSE, WALKV, GREAT, SIX, SEVEN, EIGHT, NINE, TEN, SEEM, MAN, TREE, FISH, HAND, QUEEN, OLD, GRAIN, BREAD, SWORD, BE, SIT, STAND, HAVE,
   TOPO_MOD, PERSON_POOL, LOAN_POOL, RUN, FATHER, BROTHER, RED, GREEN, BLUE, HEART, HEAD,
   YELLOW, BROWN, PURPLE, PINK, ORANGE, GREY, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER,
@@ -3697,6 +3697,77 @@ console.log("\n── §35 affixal derivation (agentive) ──");
   if (!quiet) {
     const specimen = pop.slice(0, 5).map(l => { const hf = (l.prof.compound || "hl") === "hf"; return `${wordOf(l, RULEV)}→${wordOf(l, RULER)}${hf ? "(pre)" : ""}`; });
     say("   agentive: " + specimen.join("   "));
+  }
+}
+
+// ── §36 INFORMATION STRUCTURE: topic & focus scrambling (item 1.8). A topic
+// fronts (+ a worn TOP clitic where one grammaticalized); a focus is realized
+// by strategy — SCRAMBLED to the front where case keeps the moved role
+// recoverable, else left in place under a worn FOC clitic. The strategy is
+// EMERGENT from case richness, never a fixed order. ────────────────────────
+console.log("\n── §36 information structure (topic/focus) ──");
+{
+  const world = mkWorld();
+  const N = 360;
+  const pop = Array.from({ length: N }, (_, i) => foundLanguage(world, { seed: 631000 + i * 41 }));
+  const F = (l, x) => renderClause(l, { s: { n: KING, def: true, ...(x.s || {}) }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true, ...(x.o || {}) } });
+
+  // 1) the emergent link (cardinal rule 1): the focus strategy tracks CASE, not
+  //    a clock — ex-situ FRONTING appears only where rich case (caseN≥3) keeps
+  //    the scrambled role recoverable; the caseless stay in situ. Both occur.
+  let frontLowCase = 0, front = 0, insitu = 0;
+  for (const l of pop) { const info = infoStructureOf(l); if (info.focus === "front") { front++; if (gramOf(l).caseN < 3) frontLowCase++; } else insitu++; }
+  check(`focus fronting is licensed by case, never a clock — every ex-situ tongue has caseN≥3 (${frontLowCase} violations), and both strategies live (front ${front}, in-situ ${insitu})`,
+    frontLowCase === 0 && front >= N * 0.15 && insitu >= N * 0.15);
+
+  // 2) a focused argument is actually realized — the clause reorders (ex-situ)
+  //    or gains a FOC clitic (in-situ). Almost always visible; the slack is the
+  //    rare object-initial order where the focus is already at the front.
+  let focChanged = 0;
+  for (const l of pop) { if (F(l, { o: { focus: true } }).text !== F(l, {}).text) focChanged++; }
+  check(`a focused argument visibly changes the clause (fronted or FOC-marked) in ${Math.round(100 * focChanged / N)}% of languages`, focChanged / N > 0.95);
+
+  // 3) a topicalized argument fronts where that is observable — a verb-initial
+  //    tongue moves the subject ahead of the verb, or a TOP clitic appears
+  let topDemo = 0, topChanged = 0;
+  for (const l of pop) {
+    const g = gramOf(l), info = infoStructureOf(l);
+    if (g.wo === "vso" || g.wo === "vos" || info.topicMark) { topDemo++; if (F(l, { s: { topic: true } }).text !== F(l, {}).text) topChanged++; }
+  }
+  check(`a topicalized argument fronts wherever that is observable (${topChanged}/${topDemo})`, topDemo >= 40 && topChanged === topDemo);
+
+  // 4) the clitics are grammaticalized, not invented: TOP ‹ the demonstrative
+  //    (the 'that one, —' thematic road), FOC ‹ 'be' (the cleft 'it IS X')
+  const tops = pop.map(l => infoStructureOf(l)).filter(i => i.topicMark);
+  const focs = pop.map(l => infoStructureOf(l)).filter(i => i.focusMark);
+  check(`the TOP clitic is worn from the demonstrative and the FOC from 'be' (TOP n=${tops.length}, FOC n=${focs.length})`,
+    tops.length >= 20 && focs.length >= 20 && tops.every(i => i.topicMark.from === "this") && focs.every(i => i.focusMark.from === "be"));
+
+  // 5) token/gloss alignment survives the reordering (every moved token keeps
+  //    its gloss; a FOC/TOP clitic glosses itself)
+  let misaligned = 0;
+  for (const l of pop.slice(0, 120)) for (const r of [F(l, {}), F(l, { s: { topic: true } }), F(l, { o: { focus: true } })]) if (r.tokens.length !== r.gloss.split(" ").length) misaligned++;
+  check(`topic/focus renders stay token-gloss aligned (${misaligned} misaligned of 360)`, misaligned === 0);
+
+  // 6) an UNFLAGGED clause is byte-identical — the reorder pass is a pure no-op
+  //    when no argument is topic/focus (the frozen-shape guarantee)
+  let noopBad = 0;
+  for (const l of pop.slice(0, 120)) {
+    const bare = renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } });
+    if (bare.text !== F(l, {}).text) noopBad++;
+  }
+  check(`an unflagged clause is untouched by the info-structure pass (${noopBad} drift)`, noopBad === 0);
+
+  // 7) determinism + JSON-roundtrip
+  const da = foundLanguage(mkWorld(), { seed: 636363 }), db = foundLanguage(mkWorld(), { seed: 636363 });
+  const isig = (l) => { const x = { s: { n: KING, def: true, topic: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true, focus: true } }; return renderClause(l, x).text; };
+  check("information structure deterministic + JSON-roundtrip-stable", isig(da) === isig(db) && isig(da) === isig(JSON.parse(JSON.stringify(da))));
+
+  if (!quiet) {
+    const l = pop.find(x => infoStructureOf(x).topicMark) || pop[0];
+    say("   topic: " + F(l, { s: { topic: true } }).text + "  [" + F(l, { s: { topic: true } }).gloss + "]");
+    const lf = pop.find(x => infoStructureOf(x).focus === "front") || pop[0];
+    say("   focus (ex-situ): " + F(lf, { o: { focus: true } }).text + "  [" + F(lf, { o: { focus: true } }).gloss + "]");
   }
 }
 

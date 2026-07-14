@@ -1514,8 +1514,7 @@ median rather than one noisy pick. Probe 495 → 496.
 
 Parked from the same review (by leverage): frequency-weighted erosion
 (part b — deferred; it introduces irregularity that would fight the regular-
-correspondence invariant), topic/focus scrambling, and the sim-side
-culture→lexicon conditioning.
+correspondence invariant) and the sim-side culture→lexicon conditioning.
 
 ## Build status (session 16, eighth phase) — affixal derivation (agentive)
 
@@ -1592,3 +1591,41 @@ flake) was tipped to zero by that re-baseline and de-flaked: renewal is now
 counted over a 30-wide sweep (>99.9%), while the audibility invariant it shared
 the loop with stays on its original focused window. All four gates green;
 probe 502 → 504.
+
+## Build status (session 16, tenth phase) — information structure (topic/focus)
+
+The external review's item 1.8: word order should carry not just grammar but
+TOPIC (what a clause is about) and FOCUS (the new, contrastive part), and the
+SCRAMBLING that realizes them. Before this a clause was rendered in one fixed
+order per language; now a clause frame can flag an argument `.topic` or
+`.focus`, and `renderClause` re-orders it — a pure no-op when neither is set,
+so every existing clause is byte-identical.
+
+The mechanism is a per-family dial (`g.info`) plus a post-pass, both keyed on
+emergent typology, never a clock:
+
+- **Focus strategy tracks CASE.** Rich case (caseN≥3) keeps a moved argument's
+  role recoverable off its ending, so a case-rich tongue SCRAMBLES the focus
+  ex-situ to the clause front; a rigid, caseless one cannot move it without
+  losing who-did-what, so it leaves the focus in place under a FOCUS clitic.
+  Measured across 360 languages: every ex-situ language has caseN≥3 (zero
+  violations) — the licensing is exact, and it falls out of the case dial, not
+  a table.
+- **Topicalization fronts** the flagged argument (visible when it is not
+  already initial — a verb-initial tongue moves the subject ahead of the verb),
+  and a topic-prominent subset (strongest in isolating tongues) marks it with a
+  clitic.
+- **Two grammaticalized clitics** join `closedOf`: TOP worn from the
+  demonstrative (the 'that one, —' thematic road: Japanese wa, Korean nun), FOC
+  worn from 'be' (the cleft 'it IS X' collapsed to an in-situ marker). Real
+  morphemes with etymologies, deduped against the other closed classes.
+
+`applyInfoStructure` extracts an argument's (contiguous, role-tagged) token
+block and moves or marks it; the gloss line moves with it. A defensive default
+(`infoOf`) covers the hand-built reference grammars, which predate the field —
+they carry no topic/focus clitic, so the frozen shape is untouched. Surfaced in
+the Lab's verb-frontier card as an Information-structure section (neutral /
+topic / focus of the same clause). Probe §36 gates the emergent licensing,
+the visible reordering (focus changes the clause 99% of the time; topic fronts
+150/150 where observable), the clitic etymologies, gloss alignment, and the
+unflagged-clause no-op. All four gates green; probe 504 → 511.

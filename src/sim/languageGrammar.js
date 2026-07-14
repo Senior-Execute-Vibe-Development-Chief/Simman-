@@ -228,8 +228,21 @@ export function rollGrammar(famSeed, prof) {
   // objects ('he fish-takes' = he fishes). Carved from the agg∧polypersonal
   // corner, where every real polysynthetic language lives — ~5% overall. ──
   const poly = m === "agg" && agree === "both" && H("poly") < 0.5;
+  // INFORMATION STRUCTURE (item 1.8): topic & focus, and the scrambling that
+  // realizes them. Case licenses free constituent order — the roles stay
+  // recoverable off their marking — so a case-rich tongue SCRAMBLES a focus out
+  // of its base slot (ex-situ, to the clause edge) and fronts a topic; a rigid,
+  // caseless one cannot move a core argument without losing who-did-what, so it
+  // leaves the focus in place and marks it with a particle. All emergent from
+  // case richness plus a topic-prominence lean — no clock, no fixed era.
+  const scramble = caseN >= 3;
+  const info = {
+    scramble,
+    topicPart: m === "iso" ? H("topm") < 0.6 : H("topm") < 0.28,    // TOP marker ‹ dem (topic-prominent lean, strongest in isolating tongues)
+    focus: scramble && H("focs") < 0.6 ? "front" : "insitu",        // ex-situ movement vs an in-situ FOC particle
+  };
   return {
-    wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront,
+    wo, adpSide, genN, adjN, affixSide, caseN, align, negPos, qPart, whFront, info,
     genders, tenses, agree,
     activeFluid, ergSplit, hierSplit, invAgree, absAgree,   // alignment splits (Group F)
     caus, pass, passBy, antip, appl, applOf,                // voice & valency (Group B)
@@ -385,6 +398,12 @@ function applyWoFlip(g, lang) {
   }
   g._fxid = lang.id;
 }
+// info-structure dial (item 1.8), with a safe default for hand-built reference/
+// pinned grammars minted before the field existed — they carry no topic/focus
+// clitic (topicPart false, focus 'front' ⇒ movement, not a particle), so adding
+// the field breaks no frozen shape.
+const infoOf = (g) => g.info || { scramble: false, topicPart: false, focus: "front" };
+
 export function gramOf(lang) {
   const p = lang.prof;
   if (!p.gram) p.gram = rollGrammar(lang.famSeed ?? lang.seed, p);
@@ -878,7 +897,25 @@ export function closedOf(lang) {
     }
   }
 
-  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, voice: voiceLV, links: { comp: compz, rel: relz, when: whenSub }, cop: copP, negEx: negExP, refl: reflP, recp: recpP };
+  // INFORMATION-STRUCTURE particles (item 1.8): a TOPIC marker worn from the
+  // demonstrative (the 'that one, —' thematic pathway — Japanese wa, Korean nun
+  // sit here), present in topic-prominent tongues; a FOCUS marker worn from
+  // 'be' (the cleft 'it IS X' collapsed to an in-situ clitic) for the rigid,
+  // caseless tongues that cannot move the focus to the clause edge.
+  let topP = null, focP = null;
+  const info = infoOf(g);
+  if (info.topicPart) {
+    const tf = legalizeWord(R({ syls: [wearSyl(prof, lighten(copyWord(demRoot)))] }));
+    topP = { g: "TOP", form: tf, w: rform(lang, tf), src: "this" };
+    dedupe(lang, inv, [topP], [...closedAll, reflP, recpP].filter(Boolean));
+  }
+  if (info.focus === "insitu") {
+    const ff = legalizeWord(R({ syls: [wearSyl(prof, lighten(rootFormOf(lang, BE).w))] }));
+    focP = { g: "FOC", form: ff, w: rform(lang, ff), src: "be" };
+    dedupe(lang, inv, [focP], [...closedAll, reflP, recpP, topP].filter(Boolean));
+  }
+
+  c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, voice: voiceLV, links: { comp: compz, rel: relz, when: whenSub }, cop: copP, negEx: negExP, refl: reflP, recp: recpP, topP, focP };
   return c.closed;
 }
 
@@ -2686,6 +2723,57 @@ export function clauseAlignment(lang, frame) {
   return { effAlign, hier: g.align === "erg" && g.ergSplit === "hier", direction, tam, imperative };
 }
 
+// INFORMATION STRUCTURE (item 1.8): re-order a clause for topic and focus.
+// A topicalized argument moves to the clause edge (+ a worn TOP clitic where
+// the language has one, postposed like -wa); a focused argument is realized by
+// the language's strategy — SCRAMBLED to the front when case keeps the moved
+// role recoverable, else left in place under a worn FOC clitic. Reads .topic /
+// .focus off the S or O argument; a pure no-op when neither is flagged, so
+// every clause built without them is byte-identical to before.
+function applyInfoStructure(lang, frame, seq) {
+  if (!frame || (!(frame.s && (frame.s.topic || frame.s.focus)) && !(frame.o && (frame.o.topic || frame.o.focus)))) return seq;
+  const g = gramOf(lang), cl = closedOf(lang);
+  const blockOf = (role) => {
+    const start = seq.findIndex(t => t.role === role);
+    if (start < 0) return null;
+    let end = start; while (end < seq.length && seq[end].role === role) end++;
+    return { start, end, toks: seq.slice(start, end) };
+  };
+  // TOPIC first: front the flagged argument; a TOP clitic follows it (X-wa)
+  const topRole = frame.s && frame.s.topic ? "S" : frame.o && frame.o.topic ? "O" : null;
+  if (topRole) {
+    const b = blockOf(topRole);
+    if (b) {
+      const mark = cl.topP ? [{ w: cl.topP.w, g: "TOP", role: "TOP", f: cl.topP.form }] : [];
+      seq = [...b.toks, ...mark, ...seq.slice(0, b.start), ...seq.slice(b.end)];
+    }
+  }
+  // FOCUS: scramble to the front (ex-situ) where the language moves it, else
+  // mark in place with the FOC clitic (in-situ, the rigid-order strategy)
+  const focRole = frame.s && frame.s.focus ? "S" : frame.o && frame.o.focus ? "O" : null;
+  if (focRole) {
+    const b = blockOf(focRole);
+    if (b) {
+      if (infoOf(g).focus === "front") seq = [...b.toks, ...seq.slice(0, b.start), ...seq.slice(b.end)];
+      else if (cl.focP) seq = [...seq.slice(0, b.end), { w: cl.focP.w, g: "FOC", role: "FOC", f: cl.focP.form }, ...seq.slice(b.end)];
+    }
+  }
+  return seq;
+}
+
+/** The information-structure profile (item 1.8) — how the language realizes
+ *  topic and focus: whether it scrambles (case-licensed free order), its focus
+ *  strategy, and any worn TOP/FOC clitic with its etymology. For the Lab + gates. */
+export function infoStructureOf(lang) {
+  const g = gramOf(lang), cl = closedOf(lang), info = infoOf(g);
+  return {
+    scramble: info.scramble,
+    focus: info.focus,
+    topicMark: cl.topP ? { w: cl.topP.w, from: cl.topP.src } : null,
+    focusMark: cl.focP ? { w: cl.focP.w, from: cl.focP.src } : null,
+  };
+}
+
 /** The valency-changing voices this language has (Group B; refl/recpSame are
  *  the syntax-completion additions — additive fields on the frozen shape). */
 export function voicesOf(lang) {
@@ -3162,6 +3250,8 @@ export function renderClause(lang, frame, opts = {}) {
   // wh-fronting: the question word moves to the clause edge when the dials say
   const whIdx = seq.findIndex(t => t.wh);
   if (whIdx > 0 && g.whFront) seq.unshift(...seq.splice(whIdx, 1));
+  // information structure (item 1.8): topicalize / focus the flagged argument
+  seq = applyInfoStructure(lang, frame, seq);
   if (negFinal) seq.push({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
   // polar-question particle (wh-questions carry their own interrogative), the
   // adverbial clauses, and the detached blocks — the shared tail

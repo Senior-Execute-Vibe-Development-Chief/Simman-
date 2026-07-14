@@ -20,7 +20,7 @@ import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
   alignmentOf, voicesOf, voiceEtymologies, tamShape, evidentialSystem, classInventory, concordMarkers, agreementTargets, inflectAdj,
   classifiersOf, classifierEtymologies, numeralPhrase, inflectPossessed, possessionType, comparative, tvPronouns,
-  renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, polysynthesisOf } from "./sim/languageGrammar.js";
+  renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, polysynthesisOf, infoStructureOf } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, OLD, GRAIN,
   RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN, FISH, WATER, GOD, WINE,
   RULER, BUILDER, WARRIOR, SEER, SPEAKER, RULEV, BUILDV, FIGHTV, SAY } from "./sim/languageLexicon.js";
@@ -716,6 +716,25 @@ function verbFrontierHTML(l) {
       ${clauseEx("‘the king took the fish’ (plain — the object stands free, cased and indexed)", renderClause(l, { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: FISH, def: true } }))}
       ${clauseEx("‘the king fish-takes’ (incorporated — one verb word, detransitivized)", renderClause(l, { s: { n: KING, def: true }, v: { c: TAKE, tam: "pst" }, o: { n: FISH, incorp: true } }))}
       ${g2.proDrop ? clauseEx("‘I saw it’ — the whole clause is ONE word", renderClause(l, { s: { pron: { k: "1sg", pers: 1, num: "sg" } }, v: { c: SEE, tam: "pst" }, o: { pron: { k: "3sg", pers: 3, num: "sg" } } })) : ""}`);
+  }
+
+  // ── Information structure (item 1.8): topic & focus scrambling ──
+  {
+    const info = infoStructureOf(l);
+    const chips = [
+      `focus: ${info.focus === "front" ? "ex-situ (scrambled to the front)" : "in-situ (marked in place)"}`,
+      info.scramble ? "case-licensed scrambling" : "rigid constituent order",
+      info.topicMark ? `TOP ‹ ‘${esc(info.topicMark.from)}’ (${esc(info.topicMark.w)})` : null,
+      info.focusMark ? `FOC ‹ ‘${esc(info.focusMark.from)}’ (${esc(info.focusMark.w)})` : null,
+    ].filter(Boolean).map(t => `<span class="chip">${t}</span>`).join("");
+    const plain = renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } });
+    const topic = renderClause(l, { s: { n: KING, def: true, topic: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true } });
+    const focus = renderClause(l, { s: { n: KING, def: true }, v: { c: SEE, tam: "pst" }, o: { n: RIVER, def: true, focus: true } });
+    secs.push(`<h3>Information structure</h3><div class="chips">${chips}</div>
+      <p class="note">Word order carries more than grammar — it marks TOPIC (what the clause is about) and FOCUS (the new, contrastive part). A topic fronts${info.topicMark ? ", taking a clitic worn from the demonstrative" : ""}; a focus ${info.focus === "front" ? "SCRAMBLES to the front" : "stays in place under a clitic worn from ‘be’"}. Which is even possible is emergent: rich case keeps a moved argument's role recoverable, so case-rich tongues reorder freely while rigid, caseless ones mark in place instead.</p>
+      ${clauseEx("neutral — ‘the king saw the river’", plain)}
+      ${clauseEx("topic on the subject — ‘the king, (he) saw the river’", topic)}
+      ${clauseEx("focus on the object — ‘it was the RIVER the king saw’", focus)}`);
   }
 
   // ── Tense · aspect · mood depth (Group C′) ──
