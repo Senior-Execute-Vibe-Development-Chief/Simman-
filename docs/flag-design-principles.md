@@ -27,7 +27,7 @@ legibility argument — a flag is read **small, moving, at distance, from memory
 
 | Principle | Engine | Evidence / note |
 |---|---|---|
-| 1 · Simple | **Held** *(visual-economy budget added)* | Was the clearest gap (44.5% stacked ≥3 features); the crowding mechanism below thinned it — mean load 2.40 → 2.14, load-2 now the mode (53%), load-4+ down from 9.5% to 3.4%. |
+| 1 · Simple | **Held** *(economy budget + bordure/pall fixes)* | Was the clearest gap (44.5% stacked ≥3 features); crowding + dropping the bordure off cloth thinned it — mean load 2.40 → 1.89, load-2 the mode (57%), load-1 up to 27%, load-4+ under 1%. |
 | 2 · Meaningful | **N/A by design** | Symbolism is emergent in the sim (a civ's genome carries its meaning); the standalone engine can't and shouldn't fake semantics. |
 | 3 · 2–3 colours | **Strong** | Mean **3.07** distinct tinctures; **88.5%** at 2–3. Bang on the principle. |
 | 4 · No lettering/seals | **Held** | The engine renders no text and no photo-real seals; the bespoke-flag exclusion list owns the seal-bearing outliers. |
@@ -134,9 +134,10 @@ alone landed on 37.6% of flags.
 > under a cross admits almost nothing. Cloth pays; a shield (a full achievement of
 > arms) does not (`CROWD = 0`).
 >
-> **Measured effect** (8000 flags): mean load **2.40 → 2.14**; load-1 14.7 → 18.2%,
-> load-2 40.8 → **53.2%** (the mode), load-3 35.1 → 25.2%, load-4 8.6 → 3.3%, load-5
-> 0.9 → 0.1%. Bordure 37.6 → 21.4%, canton 12.1 → 8.0%, counterchange 9.9 → 5.6%.
+> **Measured effect** (8000 flags), crowding budget *plus* the bordure suppression
+> below: mean load **2.40 → 1.89**; load-1 14.7 → **27.3%**, load-2 40.8 → **56.8%**
+> (the mode), load-3 35.1 → 15.0%, load-4 8.6 → 0.9%, load-5 0.9 → 0%. Bordure 37.6
+> → **0%** (off cloth entirely), canton 12.1 → 8.5%, counterchange 9.9 → 5.7%.
 > Colour economy (mean 3.06) and device rate (33%) untouched — the palette and the
 > one dominant idea are never crowded.
 
@@ -186,26 +187,31 @@ Each expressed as a **system** so it self-calibrates on any seed (cardinal rule 
    accumulating attention budget: secondary layers stand down as the field fills.
    Load fell toward 1–2 as a *consequence* (see measured effect), no cap hard-coded.
 
-2. **Bordure still over-produced (principle 1) — candidate.** Even after crowding,
-   a bordure lands on **21.4%** of flags vs ~5–10% of real ones. Crowding fixed the
-   *co-occurrence* (bordure-on-busy-field); the residual is the bordure's own base
-   commonness (its `0.62` gate is a leftover from when a bordure was chiefly a
-   shield feature). Raising that base is a clean, independent commonness tweak — a
-   candidate for the rating pass.
+2. **Bordure off cloth (principle 1) — ✅ DONE.** A heraldic bordure strokes the
+   field's whole outline, which on a flag reads as exactly the unwanted "line around
+   the edge". It's now SHIELD/silk-only vocabulary (like the chief) — 37.6% → 0% on
+   flags. The rare real bordered flags (Sri Lanka, Montenegro, Grenada) are
+   bespoke-arms flags, excluded anyway.
 
-3. **Fatter bicolour tail (principle 3) — candidate.** The clean 2-colour flag is
+3. **A pall claims its ground (principle 1) — ✅ DONE.** A pall *is* a field
+   division (the unity-Y). Laid over a multi-band partition it became a second
+   division fighting the first — the "incomplete V" on cloth, a jumbled coat on a
+   shield. Now a pall collapses a many-banded ground to plain (or a single split)
+   and does the dividing itself, on every substrate.
+
+4. **Fatter bicolour tail (principle 3) — candidate.** The clean 2-colour flag is
    under-produced (7.8% vs ~20–25% real). This is the *companion* gate, not the
    palette: a dark field reaches for a second dark companion fairly readily; asking
    a stronger intent for the third colour would let more flags settle as true
    bicolours. Squarely inside "leave the palette alone" — it changes *how many*
    tinctures show, not *which* bolts exist.
 
-4. *(Theory only, not scoped)* colour-family co-occurrence — left out on purpose;
+5. *(Theory only, not scoped)* colour-family co-occurrence — left out on purpose;
    it risks fitting outcomes and the palette is out of bounds.
 
-Candidates (2) and (3) are what the **rating tool** is meant to settle: the
-`flag-ratings.json` export will show whether raters actually mark the bordured and
-the exactly-3-colour flags down. Build the tweak the data points to — don't pre-tune.
+Candidate (4) is what the **rating tool** is meant to settle: the
+`flag-ratings.json` export will show whether raters actually mark the exactly-3-colour
+flags down. Build the tweak the data points to — don't pre-tune.
 
 ---
 

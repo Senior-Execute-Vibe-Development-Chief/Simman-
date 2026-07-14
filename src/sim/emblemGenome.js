@@ -808,6 +808,19 @@ export function expressGenome(genome) {
   let partition = composition === "heraldic"
     ? pickEnum(get("partition"), isFlag ? FLAG_PARTITIONS : PARTITIONS)
     : "plain";
+  // A PALL is itself a field division — the unity-Y, its two arms and wedge (or,
+  // upright on a shield, arms and stem) cutting the field into three. Laid over an
+  // existing multi-band partition it becomes a SECOND division fighting the first:
+  // the arms cross the stripe seams and the whole thing muddies into a broken,
+  // "incomplete V" on cloth, or a big weird jumble with a lost charge on a shield.
+  // So the pall CLAIMS the ground — a many-banded partition collapses to plain (or
+  // keeps a single split) and the pall does the dividing. Peeked from the same gene
+  // that sets the ordinary below, before the palette reads the ground. One primary
+  // structure per field — the visual-economy principle at the STRUCTURE layer, on
+  // every substrate.
+  if (composition === "heraldic" && partition !== "rays"
+    && pickEnum(get("hueC"), ORDINARIES) === "pall"
+    && !["plain", "perPale", "perFess"].includes(partition)) partition = "plain";
   const solidGround = partition === "plain";
   const pal = decodePalette(get, isFlag, solidGround);
   const symmetry = composition === "radial" ? "radial" : pickEnum(get("symmetry"), SYMMETRIES);
@@ -948,9 +961,13 @@ export function expressGenome(genome) {
     // flag it reads as an unwanted line across the top, breaking the symmetry.
     // A top stripe belongs to the partition (perFess/tiercedFess), not a chief.
     field.chief = !isFlag && get("pearl") > 0.66;
-    // a BORDURE is a pure extra layer — a frame over whatever the field already
-    // is — so it pays the crowding cost (a busy field seldom wants a frame too)
-    field.bordure = !rayField && crowd(get("border"), 0.62, 0.10);
+    // NO BORDURE ON CLOTH: a heraldic bordure strokes the field's whole outline,
+    // which on a flag is exactly the unwanted "line around the edge of the flag"
+    // the frameless cloth was meant to shed — no mainstream national flag carries
+    // one (the rare bordered flags, Sri Lanka/Montenegro, are bespoke-arms flags).
+    // So the bordure stays SHIELD/silk vocabulary, like the chief. On a shield it
+    // still pays the (zero) crowd cost and frames the coat as heraldry intends.
+    field.bordure = !isFlag && crowd(get("border"), 0.62, 0.10);
     field.subTincture = markT.rgb; field.subName = markT.name;   // chief/bordure read on the FIELD (markT), not the band
     // counterchange the ordinary across a two-region partition (per pale/fess/bend);
     // it roughly doubles the field's visual complexity, so it too pays crowding
