@@ -119,8 +119,25 @@ export function adminFriction(cap, s, w) {
 // polyglot empires fracture into nation-states — emergent, never time-gated.
 export function absorbResistance(absorberCap, s, w) {
   if (!absorberCap || absorberCap === s || !s) return 0;
+  // The PEOPLE axis reads the whole province, not just the town census: under
+  // T.TILE_IDENTITY every province carries its countryside's aggregate culture
+  // (s._rurCulMix, popField-weighted — identityField.js) and the mismatch is
+  // the people-weighted blend of town and countryside. EXACT, not an
+  // approximation: layerMis is linear in the mixture's share of the core id,
+  // so blending the scalars people-weighted equals measuring the blended
+  // mixture. Rural people-weight converts to census units via the PROV_FIELD
+  // anchor (world._provRatio); anchor absent (PROV_FIELD off / not yet
+  // stamped) → town-only, exactly the legacy read. Lever off: s._rurCulMix is
+  // never set, town-only — byte-identical.
+  let peopleMis = layerMis(absorberCap.culMix, s.culMix);
+  const wRur = s._rurCulMix ? (s._rurCulPeople || 0) : 0;   // already census units (stamped ×provRatio, identityField.js)
+  if (wRur > 0) {
+    const wCity = Math.max(0, s.people || 0);
+    const rurMis = layerMis(absorberCap.culMix, s._rurCulMix);
+    peopleMis = (peopleMis * wCity + rurMis * wRur) / (wCity + wRur);
+  }
   const m = w.faith  * layerMis(absorberCap.faithMix, s.faithMix)
-          + w.people * layerMis(absorberCap.culMix,   s.culMix)
+          + w.people * peopleMis
           + w.lang   * layerMis(absorberCap.langMix,  s.langMix)
           + w.anc    * layerMis(absorberCap.ancMix,   s.ancMix);
   const wsum = w.faith + w.people + w.lang + w.anc;
@@ -144,18 +161,34 @@ export function identityGrievanceCause(cap, s, w) {
 // axis with the calendar exactly like the loyalty/unrest hooks.
 const CASUS_W = 0.30;   // strength of the righteous-war / kinship-restraint bar shift
 const IRRED_W = 0.25;   // extra eagerness to "liberate" a co-national province held by a foreign state
-export function casusBelliMul(aCap, dCap, tileOwner, w) {
+export function casusBelliMul(aCap, dCap, tileOwner, w, tileCulShare, dRealmCulMix) {
   if (!aCap || !dCap) return 1;
   const dom = (mix) => (mix && mix.length ? mix[0][0] : -1);
   // signed per axis: +1 wholly foreign (righteous), −1 same identity (kin → restraint)
   const sgn = (coreMix, otherMix) => { const id = dom(coreMix); return id < 0 ? 0 : 1 - 2 * mixShare(otherMix, id); };
+  // The PEOPLE axis reads the defender REALM's governed people when the caller
+  // provides it (T.TILE_IDENTITY, armies.js: member cities + their governed
+  // countryside field people, people-weighted) — the kinship-restraint
+  // counterweight to the irredentist term below. A
+  // nation-state's assimilated ground is authentically kin (spared); an empire
+  // of unassimilated conquests reads foreign however cosmopolitan its capital
+  // (invites the liberator). Absent (lever off / unregistered realm) → the
+  // capital's census mix, the exact legacy expression.
   let R = w.faith  * sgn(aCap.faithMix, dCap.faithMix)
-        + w.people * sgn(aCap.culMix,   dCap.culMix)
+        + w.people * sgn(aCap.culMix,   (dRealmCulMix && dRealmCulMix.length) ? dRealmCulMix : dCap.culMix)
         + w.anc    * sgn(aCap.ancMix,   dCap.ancMix);
   // irredentist pull: the contested province's OWN people are the attacker's nation
-  // under foreign rule — eagerly reclaimed in the national age (reads the tile owner).
+  // under foreign rule — eagerly reclaimed in the national age. `tileCulShare`
+  // (T.TILE_IDENTITY, armies.js) is THE CONTESTED GROUND's own share of the
+  // attacker's people, read from the per-tile identity field — the honest local
+  // read; without it the term reads the tile OWNER entity (a settlement in the
+  // legacy modes; under tile-war the country adapter, where it was structurally
+  // inert — the audit's open item, now wired).
   const pid = dom(aCap.culMix);
-  if (pid >= 0 && tileOwner) R += IRRED_W * w.people * mixShare(tileOwner.culMix, pid);
+  if (pid >= 0) {
+    if (tileCulShare !== undefined) R += IRRED_W * w.people * tileCulShare;
+    else if (tileOwner) R += IRRED_W * w.people * mixShare(tileOwner.culMix, pid);
+  }
   return Math.max(0.6, Math.min(1.6, 1 - CASUS_W * R));   // R>0 righteous → lower bar; R<0 kin → higher bar
 }
 

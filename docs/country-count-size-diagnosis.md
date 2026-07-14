@@ -277,3 +277,14 @@ Russia analog — the North European Plain remains the one open corridor, as in
 history). probe_egypt: **86-91% of modern Egypt through the whole org 0.10-0.25
 span** (was 130-220%), expanding to 269% only at org 0.31 — the most accurate
 cradle trajectory measured to date.
+
+
+---
+
+**Audit note (2026-07-13):** the `SIM_REACH_BASE`/`SIM_REACH_ORG` env knobs this doc
+sweeps are DEAD under the current defaults — their only consumers sit in the legacy
+reach-Voronoi body that `FIELD_POLITY=1` skips entirely (countryTerritory.js returns
+into `fieldPolityTerritory` first). Empire extent is now governed by the field-model
+levers (`FIELD_SPAN`, `COVER_BASE`/`COVER_ORG`, `EXPAND_RATE`, `ADMIN_HALF`,
+`WAR_REACH`). The measurements in this doc remain valid history for the entity model;
+do not sweep `SIM_REACH_*` expecting effect on current HEAD.

@@ -430,7 +430,11 @@ export function updateSea(world) {
       const peer = world._byId ? world._byId.get(pid) : null;
       if (!peer) continue;
       const gravity = Math.sqrt(Math.max(1, peer.people || 0));
-      const value = (gravity + T.SEA_LUX_PULL * (peer._luxSupply || 0)) / (1 + cost * SEA_FREIGHT_K);
+      // Freight discounts value per REAL sea distance: cost is cumulative
+      // SEA_STEP·tiles, ×resScale on a finer grid for the same crossing, so
+      // normalize it back or far partners are over-discounted at fine grids
+      // (audit OPEN #5b). ÷1 exactly at the reference.
+      const value = (gravity + T.SEA_LUX_PULL * (peer._luxSupply || 0)) / (1 + (cost / resScale) * SEA_FREIGHT_K);
       reached.push([pid, cost, value]);
     }
     reached.sort((a, b) => b[2] - a[2]);   // most valuable first

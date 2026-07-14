@@ -5,7 +5,84 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps): 83ccc922/574e8595 (ontology V2 — LOYAL_FIELD
+// Identity Stage 2 (T.TILE_IDENTITY, default 0 — the sticky per-tile culture
+// layer + irredentist/rural-cohesion consumers) is byte-TRANSPARENT off: this
+// pair AND the 480 reference pair verified unchanged with the code in. The
+// lever-on functional gate is tools/probe_identity2.mjs (ghost identity,
+// countryside stamps, v4 top-2 roundtrip).
+// Current baseline (2500 steps): a264fb6c/bd4b8f36 (SIZE_BY_POP flipped DEFAULT
+// 0→1 — realm size = governed-people core (smoothed+persisted popCapK anchor) +
+// logistics march, replacing the COVER_BASE/COVER_ORG floor so realms smaller
+// than Egypt exist and coverage rises with development; docs/empire-consolidation-
+// 2026-07.md "THE MINIMUM-EGYPT FIX". SIM_TUNE="SIZE_BY_POP=0" recovers the prior
+// pair below EXACTLY. The 480 reference pair ALSO moved (6c46c2d1/9262bb95) — a
+// deliberate default behaviour change, the first to move the reference guard.)
+// Prior baseline (2500 steps): f9eb7306/8d66ed8d (the rs=4 arc part 2,
+// 2026-07: sub-stepped POP_MIGRATE — total migration share ×rn² per firing,
+// substeps ≤ MIG_SHARE_MAX. On this sub-reference 320 grid the share DROPS
+// (0.06→0.0267: its D was 2.25× too fast in real units), re-keying the
+// stream. Shipped SECOND, after the road-wiring fix below — the same patch
+// A/B'd HARMFUL on the unwired world and census +22% on the wired one
+// (docs/empire-consolidation-2026-07.md "THE rs=4 ARC" §1/§3b). The 480
+// reference pair is UNCHANGED (b9c264b9/100239cd, bit-exact n=1 there).)
+// Prior baseline (2500 steps): 85674ac7/2db3bf8 (the rs=4 arc, 2026-07:
+// the trade-WIRING radii are real distances — CLOSE_NEIGHBOUR_DIST and
+// partnerReachFor ×rNormPop (roads.js), NUCLEATE_R/NUCLEATE_CAP_DIST
+// ×resScaleFor (countryTerritory.js). This 320 grid sits BELOW the reference
+// (rn≈0.67) so its wiring radii TIGHTEN (20→13.3 etc.) and the stream re-keys;
+// the 480 reference pair is UNCHANGED (b9c264b9/100239cd, verified across
+// every increment — the factors are ×1.0 exactly there).)
+// Prior baseline (2500 steps): 36e38967/f57f0ddd (development-clock
+// res-invariance, 2026-07: popField cap/seed are per REAL area (÷rNormPop²),
+// and the remaining unscaled cumulative-cost thresholds ride the grid —
+// DIFFUSE_COST_K, trade freight, reach/pathfind search budgets, the admin-flood
+// search bound (now sharing holdReach's scale). This probe's 320 grid sits
+// BELOW the reference (rn≈0.67) so the factors re-key it — its previously
+// UNDER-populated field (0.44× the reference level) now matches the reference,
+// and its diffusion/freight scales tightened to match its cheaper raw costs.
+// The 480 grid (tw=240 = the reference) is BYTE-IDENTICAL by construction
+// (verified b9c264b9/100239cd pre AND post, 2500 steps, seeds 8817/31337) —
+// every ×/÷ factor is exactly 1 there, so all documented 480 numbers stand.
+// There is NO lever: like the audit's war-rate/gap-fill fixes, correctness at
+// non-reference grids is not opt-in; the reference is the invariant.
+// docs/empire-consolidation-2026-07.md "RES-INVARIANCE ARC".)
+// Prior baseline (2500 steps): fcb58415/2fc112a5 — same pair as the cities-only
+// purge below: ORG_APT_CAP was WIRED into the field capacity (the dead payout
+// finally fires) but then measured at 0.15 AND 0.4 to fatten the biggest realm
+// ~+50% (a rich-get-richer multiplier), so it ships DEFAULT 0 (opt-in variance,
+// the CAP_GEO precedent) — aptMul ×1 exactly, so defaults stay on the prior
+// trajectory. ORG_APT_CAP=0.4 gives fcb58415/7e78c085 (8817 unchanged at this
+// horizon — no capital aptitude accrues by 2500). ALLY_FRONT (defensive-only
+// coalition relief) at default 0 — byte-transparent off.
+// Prior baseline (2500 steps): fcb58415/2fc112a5 (cities-only census purge —
+// MUSTER_FIELD/PROV_FIELD/BIRTH_FIELD default ON: manpower from governed popField,
+// the admin-load ledger reads each province's governed catchment people, frontier
+// states are born of the stateless basin's popField mass; anchors persisted;
+// docs/settlement-ontology.md STATUS UPDATE + docs/audit-2026-07.md).
+// SIM_TUNE="MUSTER_FIELD=0,PROV_FIELD=0,BIRTH_FIELD=0" recovers the prior pair
+// below EXACTLY.
+// Prior baseline (2500 steps): 341a3443/c9e04c68 (audit 2026-07 fixes: war-sack
+// captives land on the victor's real capital instead of the throwaway TILE_WAR
+// adapter — war supplies slaves again and the stormed-city population leak is
+// closed; adapters carry army-weighted _nomad; war capture budget/momentum and
+// REALM_GAP_FILL/MARKET_RANGE are resolution-invariant (×resScale²/×resScale/×rn).
+// This probe's 320px grid sits BELOW the 240-tile reference (rn≈0.67), so the
+// invariance factors re-key it; the 480px probe grid IS the reference (×1 exactly)
+// and its windowed numbers are unchanged by the F-class fixes. docs/audit-2026-07.md.)
+// Prior baseline (2500 steps): e2f4dd54/6cb39c4d (WAR_REACH 15 default — war
+// force projection decays exp(−d/H) from the capital, the immortal-giants fix;
+// docs/empire-consolidation-2026-07.md). SIM_TUNE="WAR_REACH=0" recovers the
+// prior pair below EXACTLY (the projection-blind war, one lever away).
+// Prior baseline (2500 steps): d8fc9f8f/bab1ad19 (comboE empire-consolidation
+// defaults — FIELD_SPAN 6, COVER_ORG 260, EXPAND_RATE 8, REGION_SPACING 1.0, with
+// COVER_BASE/COVER_ORG newly exposed as live levers;
+// docs/empire-consolidation-2026-07.md). The exposure itself is byte-TRANSPARENT:
+// SIM_TUNE="FIELD_SPAN=12,COVER_ORG=150,EXPAND_RATE=1.5,REGION_SPACING=1.2"
+// recovers the prior pair below EXACTLY (same hash stream — the flip is purely the
+// four values), and setting COVER_ORG=260 via SIM_TUNE vs via the legacy
+// SIM_COVER_ORG env gives the SAME pair (d6eeee6e/d449827a on the pre-flip build) —
+// lever path ≡ env path.
+// Prior baseline (2500 steps): 83ccc922/574e8595 (ontology V2 — LOYAL_FIELD
 // + GRIEV_LEDGER defaults: tile homeland memory, the attachment continuum,
 // the nation-pair grievance ledger; hashes the field + ledger + scan clock,
 // so the stream is re-keyed). LOYAL_FIELD=0,GRIEV_LEDGER=0 gives

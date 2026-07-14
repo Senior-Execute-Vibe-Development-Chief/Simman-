@@ -168,3 +168,160 @@ Two populations exist by design: `popField` (canonical people-on-land;
 power, manpower, capacity, nomadism) and `s.people` (the economy's town
 census; production, casualties, taxes, seat power). Never sum them into one
 number.
+
+
+---
+
+## STATUS UPDATE (2026-07-13) — the cities-only census purge (partial V4, §4b)
+
+With settlements now purely CITIES (urban nodes over an auto-farmed countryside),
+every place the member roster stood in for the nation's PEOPLE was re-audited
+(docs/audit-2026-07.md, "do countries care about settlements beyond economics?")
+and the census-as-substance reads were migrated to the governed land — three
+levers, DEFAULT ON, each the POW_FIELD grounding pattern (field measure,
+median-anchored to the census so calibrated thresholds keep meaning; the anchors
+persist in saves; byte-identical at 0):
+
+- **MUSTER_FIELD** — the national manpower pool draws on governed popField, not
+  Σ city censuses (armies.js; the doc's own V4 item "muster manpower from Σ member
+  pops — should be popField over tiles" is DONE for the pool; garrison hosting and
+  the per-city rural conscript levy stay urban by design).
+- **PROV_FIELD** — the admin-load ledger's per-province reads are the province's
+  governed catchment people (`s._govPeople`, conquest.js): size burden, rebel
+  levy (the peasant rising), people-weighted NAT_OVERREACH heterogeneity, and
+  republic primacy (dynasties.js).
+- **BIRTH_FIELD** — frontier-state viability is the stateless BASIN's popField
+  mass, not the summed censuses of nearby towns (countryTerritory.js; this is
+  field-polity-spec §4b's substance — the seat still must be a real city).
+
+Validated: windowed 2-seed probes healthy on every axis (coverage up on both
+seeds, biggest realm down/flat), stylized 3/3 seeds all hard gates at ≤2 soft
+warnings, smoke green, levers-off recovery byte-exact.
+
+**Still standing (by design or pending):** the capital and provincial SEATS
+(role 2 — selection, courts, governor tree, CAP_SEAT, walls); the V3
+member-transfer family (secede/fragment/restore/absorb still flip s.countryId
+and seed successors at member cities); realm ALIVENESS from the roster (a realm
+dies with its last city — defensible as "no seat, no court", but the field
+alternative remains open); `natArmy = Σ member garrisons` (cities host troops —
+now the pool above it is field-based); and the per-province IDENTITY mixes
+(cohesion reads city mixes — the rural majority has no identity data until the
+per-tile identity field becomes authoritative, Stage 2).
+
+---
+
+## STATUS UPDATE (2026-07-13, later) — identity Stage 2 BUILT (lever, default off)
+
+The last item above — "the rural majority has no identity data until the
+per-tile identity field becomes authoritative, Stage 2" — is now built:
+**T.TILE_IDENTITY** (tuning.js; identityField.js `stepIdentityField`), default
+0 pending the windowed A/B.
+
+- **The culture layer is sim state under the lever**: tiles KEEP their mix on
+  ownership change (conquest recolours the flag, not the people — verified: a
+  6k-step probe run shows ghost identity persisting on 168 tiles that lost
+  their owner) and ASSIMILATE toward their governing city's culMix at
+  r = 1−exp(−dtY·attach/ASSIM_TAU) per firing — the LOYAL_FIELD attachment
+  continuum is the clock, so habituated ground assimilates in the same
+  ~1000-dyn-year band emergent flag-forgetting (HAB_DONE) lands in, and
+  restless conquered ground effectively never does. Owned-but-empty tiles are
+  painted by first colonisation; the field seeds once from the city mirror
+  (fresh world, pre-v4 save, or lever flipped mid-run). Faith/language stay
+  Stage-0 render mirrors; the culture LENS displays the authoritative field
+  (diffuse/mirror guards keep render from clobbering state).
+- **Consumers wired**: (a) the irredentist casus-belli term reads THE
+  CONTESTED TILE's own people at the land front (audit OPEN #3 — structurally
+  inert under tile-war since the adapter has no culMix — now live; the
+  amphibious bars stay pair-level, beaches are enumerated after the bar);
+  (b) every province is stamped `s._rurCulMix` (top-2, popField-weighted) +
+  `s._rurCulPeople` (in CENSUS units via the PROV_FIELD anchor), and
+  absorbResistance's people axis blends town and countryside people-weighted —
+  an EXACT blend (layerMis is linear in the share), so rural identity now
+  exists in cohesion (habituation, absorb, overreach, grievance) and peasant
+  nationalism is expressible. Audit OPEN #2's "rural people have no identity"
+  is closed under the lever.
+- **Persistence**: SAVE_VERSION 3→4 — the culture layer persists top-2
+  quantised (`maps.tileCul2Id/Shr`, ≈6 B/tile; slots 2-3 are re-earned residue).
+  Additive-tolerant: lever-off saves carry no new keys; pre-v4 saves re-seed
+  from the mirror on the first firing. Roundtrip verified byte-equal on the
+  persisted slots (tools/probe_identity2.mjs, top2Mismatch 0, resume clean).
+- **Validation at default off**: probe_hashbase 36e38967/f57f0ddd and the 480
+  reference b9c264b9/100239cd both UNCHANGED (byte-transparent), smoke green.
+  tools/probe_identity2.mjs is the lever-on functional gate.
+
+**Next for this arc**: the windowed lever A/B (16k–30k, 2 seeds) + stylized
+3-seed with TILE_IDENTITY=1, then the flip decision. Expected effects to
+measure: irredentist wars along cultural fault lines, slower absorb of
+culturally-foreign countryside, revolt/secession cadence shifts from the
+rural cohesion term.
+
+**Windowed lever A/B (same day, 480/16k–30k, probe_avg):** count and coverage
+are NEUTRAL (8817: 32.6→34.6 realms, 50.6→51.8%; 4242: 39.4→37.1, 55.5→57.5%
+— within window noise), but the BIGGEST REALM grows on both seeds: 6.6→8.6
+Mkm² (+30%, 8817) and 6.6→7.7 (+17%, 4242). Mechanism read: the sticky field
+assimilates a realm's long-held core to its culture, and the now-live
+irredentist discount then makes wars INTO kin land cheaper — cultural gravity
+that big coherent realms harvest best (the Qin / Prussia–Germany /
+Piedmont–Italy unification pattern — historically honest, but it leans
+against the consolidation arc's giant discipline). VERDICT: **stays DEFAULT
+0.** The flip is a design decision, not a formality: it wants (a) the
+stylized battery + churn analysis under the lever (is the bigger realm still
+mortal?), and (b) possibly a counterweight — the kinship-RESTRAINT side of
+the same casus read (kin STATES sparing each other) measured against the
+irredentist pull before the pair ships on.
+
+---
+
+## STATUS UPDATE (2026-07-13, later still) — flip evidence in: DEFAULT 0 STANDS; the counterweight must act on ABSORPTION, not war
+
+Both flip prerequisites above were run (480px reference throughout; the rs=4
+arc left it byte-identical, so every prior number is comparable).
+
+**(a) Mortality/churn A/B (probe_empires 24k, both seeds, lever vs off).**
+Board-level churn, count and coverage stay healthy under the lever — but the
+top slot becomes an ABSORB-CONCENTRATION race: on 8817 one realm
+monotone-snowballs (2.0→3.3→3.5→7.0→12.9 Mkm² across checkpoints, age 21.9k
+at 24k, absorb=27 in the last window; the off-lever top is 7.0M and YOUNG at
+10.6k — the off board churns at #1); on 4242 the pattern is milder (9.2M vs
+7.5M) and the top slot still turns over — the 24k winner vaulted there with
+30 absorbs in one window. Same mechanism, seed-dependent severity.
+
+**(b) The kinship-restraint counterweight — BUILT, MEASURED, and it
+BACKFIRES.** Under the lever the people-axis of casusBelliMul now reads the
+DEFENDER REALM's governed people (member cities + their governed countryside field people — the
+absorbResistance blend; armies.js realmCulOf → cohesion.js) instead of its
+capital city's census mix. No new constants: only the read moves onto the
+land, completing the lever's semantics (both casus sides on the same field).
+Off-path byte-transparent (hash480 b9c264b9/100239cd and hashbase
+f9eb7306/8d66ed8d verified unchanged); probe_identity2 passes (ghost 148
+tiles, stamps 65/66, top2Mismatch 0). Measured, windowed 16k–30k: biggest
+realm 8.6→**11.0** Mkm² (8817 — now +67% over lever-off) and 7.7→**8.0**
+(4242); probe_empires 24k on 8817 goes BIPOLAR (13.7M age-24k + 13.2M
+age-22k twin hegemons). **The restraint pacifies each cultural sphere
+INTERNALLY (kin mid-realms stop shattering each other) while kin-lowered
+absorbResistance — untouched by any casus term — consolidates the pacified
+sphere into its biggest member.** Sphere-pacification + kin-absorption =
+FASTER unification (the post-1815 German pattern: intra-sphere peace +
+customs-union integration → Prussia absorbs the lot). Historically honest;
+exactly anti-discipline.
+
+**Stylized 3-seed under the lever (pair build): 3/3 ALL HARD GATES PASS**
+(soft warnings within budget; largest-empire share 7% on 777, Zipf −1.25,
+fallen median ~139y) — the lever world stays history-shaped even with the
+bigger giants.
+
+**VERDICT: TILE_IDENTITY stays DEFAULT 0.** The restraint ships lever-gated
+(the honest complete read; anyone flipping the lever gets both sides of the
+casus and this documented trade-off). **The real counterweight is an
+ABSORB-CHANNEL design, queued:** the growth channel is peaceful absorption
+(conquest.js: prob ×= 1 − ABSORB_IDENTITY·absorbResistance — kin countryside
+reads ~0.1 resistance vs ~0.8 foreign, a ~3× rate advantage into kin
+neighbours), so the missing mechanism is kin STATES resisting peaceful
+dissolution: a state-COHERENCE term on the absorbed party (its own org / age
+/ court — a functioning kingdom does not dissolve into a cousin realm
+without dominance or crisis), distinct from the people-kinship that rightly
+lowers integration FRICTION. Note the ABSORB_* gates (ABSORB_ORG_MIN /
+ABSORB_DOMINANCE / ABSORB_FORCE) were measured inert pre-Stage-2 ("suppress
+peaceful absorption: no effect") precisely because absorption was not then
+the kin-gravity channel — under the lever they become live levers again, and
+the state-coherence design should be measured against them.

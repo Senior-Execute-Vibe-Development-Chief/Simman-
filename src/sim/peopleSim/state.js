@@ -358,12 +358,16 @@ function cradleSurround(world, ti) {
   return total > 0 ? { landBarrier: landBarrier / total, seaFrac: sea / total }
                    : { landBarrier: 0, seaFrac: 0 };
 }
-// EARTH MAP: the two historical Old-World hearths. On the real-Earth heightmap these
-// fractional map positions are fixed (equirectangular: x = (lon+180)/360, y = (90−lat)/180),
-// so we snap each to the best fertile river tile nearby. Seeding ONLY these two means
-// civilisation radiates from Egypt and China while the New World and Australia stay wild
-// until sea-borne colonisation (sea.js) reaches them — the "ungoverned until colonisation"
-// look. Extend this list (Indus, Mesopotamia, Mesoamerica, Andes) for more independent hearths.
+// EARTH MAP: the three historical Old-World hearths (Nile, Mesopotamia, Yellow River).
+// On the real-Earth heightmap these fractional map positions are fixed (equirectangular:
+// x = (lon+180)/360, y = (90−lat)/180), so we snap each to the best fertile river tile
+// nearby. Seeding ONLY these three means civilisation radiates from the Old-World cradles
+// while the New World and Australia stay wild until sea-borne colonisation (sea.js)
+// reaches them — the "ungoverned until colonisation" look. Extend this list (Indus,
+// Mesoamerica, Andes) for more independent hearths. NB this is a deliberate, preset-gated
+// diorama INPUT (T.EARTH_HEARTHS, earth presets only): the emergent cradle scorer below
+// (seedCradleVillage — temp×moist×fert×river×circumscription) is the real mechanism and
+// runs for every procedural map, and for Earth when the lever is off.
 const EARTH_HEARTH_SITES = [
   { name: "Nile",        fx: 0.580, fy: 0.329 },   // fertile ribbon through the Sahara to the Mediterranean delta
   { name: "Mesopotamia", fx: 0.622, fy: 0.330, r: 0.02 },   // Tigris-Euphrates / the Fertile Crescent. TIGHT search radius: the wide

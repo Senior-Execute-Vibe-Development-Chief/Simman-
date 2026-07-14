@@ -2,7 +2,9 @@
 
 A procedural world generator and emergent civilization simulator that runs
 entirely in the browser. It builds a planet — tectonics, wind, rain, rivers,
-soil, ores — then seeds two Neolithic river-valley villages on it and lets
+soil, ores — then seeds a handful of Neolithic river-valley villages on it (three
+historical hearths on the Earth preset; site-scored emergent cradles on procedural
+maps) and lets
 thousands of years of history emerge: settlements crystallize, trade routes
 form, states rise, wage war, overextend, and fall. Nothing is scripted; every
 empire on the map is the output of local rules.

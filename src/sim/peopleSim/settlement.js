@@ -1857,8 +1857,13 @@ function updateKnowledge(world, s) {
     // Route-cost damping of the best-holder's pull. The scale means "the
     // route cost at which contact is too thin to carry technique well" —
     // ~3× a nav-0 port's whole sea range; a typical neighbourly land link
-    // costs a fraction of it (weight ≈ 1).
-    const DIFFUSE_COST_K = 30;
+    // costs a fraction of it (weight ≈ 1). Link costs are cumulative PER-TILE
+    // path costs (transport.js/sea.js), so the same real route reads ×rNormPop
+    // on a finer grid — the scale rides along, or technique diffuses at half
+    // the real reach at tw=480 (measured: org 0.84× at matched step — the
+    // development-clock res-variance, docs/audit-2026-07.md OPEN #5b). ×1
+    // exactly at the 240-tile reference.
+    const DIFFUSE_COST_K = 30 * rNormPop(world);
     const kmCostW = { agriculture:1, construction:1, organization:1,
                       metallurgy:1, navigation:1, mobility:1 };
     let any = false;

@@ -44,7 +44,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { getPolity } from "./entities.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
@@ -139,13 +139,18 @@ const FLOW_EPS            = 0.001;
 // shipping tech, not just city size).
 const PARTNER_DIST_BASE   = 20;
 const PARTNER_DIST_PER    = 1.0;        // tiles per sqrt(pop)
-function partnerReachFor(s) {
+function partnerReachFor(world, s) {
   const k = s.knowledge || {};
   // Mobility (horses, wagons) and navigation (ships) both expand commercial
   // horizon. Cap the multiplier at ~1.8× so even a maxed-tech metropolis
   // can't reach across an entire continent in one trade pair.
   const techMul = 1 + 0.5 * (k.mobility || 0) + 0.3 * (k.navigation || 0);
-  return (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul;
+  // A commercial horizon is a REAL distance: peers sit ×rNormPop more tiles
+  // apart on a finer grid (founding spacing scales — crystallize.js), so the
+  // raw-tile radius quietly shrank the road planner's real horizon to 1/rn
+  // (¼ at the shipped 1920 default) and the trunk network under-wired.
+  // ×1 exactly at the 240-tile reference.
+  return (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul * rNormPop(world);
 }
 
 // New roads need a margin of improvement to justify the effort.
@@ -403,7 +408,12 @@ function computeReach(world, s, stMap) {
   dist[startTi] = 0; seen[startTi] = stamp; prev[startTi] = -1;
   heap.push(startTi, 0);
   let visited = 0;
-  while (heap.n > 0 && visited++ < MAX_REACH_VISITS) {
+  // The visit cap bounds a REAL search area: tiles-per-real-area is ×rNormPop²
+  // on a finer grid, so the cap rides along or the reach Dijkstra covers ¼ the
+  // real disk at tw=480 and frontier settlements lose their far partners
+  // (audit OPEN #5b). ×1 exactly at the 240-tile reference.
+  const maxVisits = MAX_REACH_VISITS * rNormPop(world) ** 2;
+  while (heap.n > 0 && visited++ < maxVisits) {
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;                 // stale heap entry
     const peer = stMap.get(ti);
@@ -589,7 +599,8 @@ function isGabrielEdge(world, a, b, dAB2) {
   // "< dAB2" between-test is precisely |mc|² < dAB2/4. Only settlements the
   // spatial grid returns for that small disk can break the edge, so we query
   // it instead of scanning every settlement. Midpoint via the shortest signed
-  // Δx so it's correct across the longitude seam (edges here are ≤20 tiles).
+  // Δx so it's correct across the longitude seam (edges here are ≤20·rNormPop
+  // tiles — the res-scaled close-neighbour radius — always ≪ half the map).
   let dx = b.pos.x - a.pos.x;
   if (dx > tw / 2) dx -= tw; else if (dx < -tw / 2) dx += tw;
   let mx = a.pos.x + dx / 2; mx = ((mx % tw) + tw) % tw;
@@ -612,7 +623,15 @@ function linkCloseNeighbours(world, s) {
   // Only the settlements within CLOSE_NEIGHBOUR_DIST matter; the spatial grid
   // returns exactly those (with their squared distance as dAB2) instead of a
   // full O(settlements) scan per settled town each tick.
-  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST, (peer, dAB2) => {
+  // ×rNormPop: "close" is a REAL distance. The constant is calibrated just above
+  // the reference founding spacing (MIN_SETT_DIST 12) so closest pairs always
+  // qualify — but the spacing scales ×rn with the grid (crystallize.js) while a
+  // raw 20 does not, so at the shipped 1920 default (rn=4, spacing ~48 tiles)
+  // the guaranteed city↔neighbour wiring found NOBODY and the local road
+  // mesh never formed (under cities-only defaults every settlement entity is
+  // an urban centre — the countryside is the popField, not an entity).
+  // ×1 exactly at the 240-tile reference.
+  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST * rNormPop(world), (peer, dAB2) => {
     if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
     if (peer.countryId < 0) return;   // don't road to a stateless neighbour
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
@@ -657,7 +676,7 @@ function tryAddRoad(world, s) {
   const components = world._networkComponents;
   const myComp = components ? components.get(s.id) : null;
 
-  const reach = partnerReachFor(s);
+  const reach = partnerReachFor(world, s);
 
   // ── Pass 1: rank in-reach peers by trade benefit, WITHOUT pathing ──
   // findPath is a full terrain Dijkstra (the expensive primitive); doing
@@ -965,7 +984,12 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
     ? Math.max((a._techEff && a._techEff.seaSpeed) || 0, (b._techEff && b._techEff.seaSpeed) || 0) : 0;
   const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (world._dt || 1)   // granularity: finer trade per tick
     * (link.sea ? T.SEA_TRADE_MULT * (1 + SEA_TECH_VOL * shipTech) : link.river ? T.RIVER_TRADE_MULT : 1);
-  const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
+  // Freight is paid per REAL distance, not per tile: link.cost is a cumulative
+  // per-tile path cost, so the same real route reads ×rNormPop on a finer grid —
+  // uncorrected, fine-grid trade paid double freight (tw=480) and city wealth
+  // starved (part of the development-clock res-variance, audit OPEN #5b). ÷1
+  // exactly at the 240-tile reference.
+  const transport = link.cost / rNormPop(world) * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
   // HUME price-specie-flow (Currency Phase 2): a region's export COMPETITIVENESS
@@ -1239,7 +1263,12 @@ export function findPath(world, s, t, opts) {
   let dgx=Math.abs((start%tw)-gx); if(dgx>tw/2)dgx=tw-dgx;
   const dgy=((start/tw)|0)-gy;
   const dHint=Math.sqrt(dgx*dgx+dgy*dgy);
-  const limit = Math.min(12000, 1500 + ((dHint*dHint*6)|0));
+  // Node budget bounds a REAL search area (the dHint² term self-scales — dHint
+  // is in raw tiles — but the floor and the hard cap don't): ×rNormPop² keeps
+  // the longest buildable road a constant REAL length at any grid (raw, the cap
+  // halved it at tw=480; audit OPEN #5b). ×1 exactly at the reference.
+  const _rr = rNormPop(world) ** 2;
+  const limit = Math.min(12000 * _rr, 1500 * _rr + ((dHint*dHint*6)|0));
   let visited = 0;
   while (heap.n > 0) {
     if (visited++ > limit) return null;

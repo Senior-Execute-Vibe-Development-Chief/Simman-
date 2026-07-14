@@ -30,8 +30,27 @@ import { reindexRoads } from "./peopleSim/roads.js";
 import { recomputeClimMod } from "./peopleSim/climate.js";
 import { rebuildCountries, updateAlliances, rebuildOverlords } from "./peopleSim/conquest.js";
 import { T, applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
+import { ensureIdentityField, IDENTITY_K } from "./peopleSim/identityField.js";
 
-export const SAVE_VERSION = 3;
+// Stage 2 (T.TILE_IDENTITY) save quantisation: the culture layer keeps K=4
+// mixture slots in memory but persists the top-2 (dominant-first by
+// construction — every writer sorts) — ids Int16 + shares Uint8, ≈6 B/tile
+// before base64. The dropped residue is sub-20% by the writers' SEC_MIN rules
+// and is re-earned by the assimilation dynamics after load.
+function top2Ids(world) {
+  const K = IDENTITY_K, src = world.tileCulId, N = world.N;
+  const out = new Int16Array(N * 2);
+  for (let ti = 0; ti < N; ti++) { out[ti * 2] = src[ti * K]; out[ti * 2 + 1] = src[ti * K + 1]; }
+  return out;
+}
+function top2Shrs(world) {
+  const K = IDENTITY_K, src = world.tileCulShr, N = world.N;
+  const out = new Uint8Array(N * 2);
+  for (let ti = 0; ti < N; ti++) { out[ti * 2] = src[ti * K]; out[ti * 2 + 1] = src[ti * K + 1]; }
+  return out;
+}
+
+export const SAVE_VERSION = 4;
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -43,6 +62,13 @@ export const SAVE_VERSION = 3;
 // pre-reactive world (made when both levers defaulted OFF and therefore stored NO
 // delta for them) from a modern one, and keep it in its original regime on load
 // instead of silently continuing it under the reactive default. See loadWorld.
+// v3 → v4: identity Stage 2 (T.TILE_IDENTITY, identityField.js) — the per-tile
+// CULTURE layer became persistable sim state (maps.tileCul2Id/tileCul2Shr,
+// top-2 quantised). Additive-tolerant both ways: the payload exists only when
+// the lever ran (a lever-off v4 save carries no new keys), and a v≤3 (or
+// lever-off) save loaded under the lever simply re-seeds the field from the
+// city mirror on the first stepIdentityField firing — the correct
+// no-better-information prior, not a regime fork.
 
 // Persistent per-settlement state. Everything else on a settlement object is
 // a derived cache some pass rebuilds (territory tallies, trade reach, money
@@ -217,6 +243,9 @@ export function saveWorld(world, meta = {}) {
     refRevenue: world._refRevenue,    // CAP_MODEL smoothed fiscal peer baseline — carried state since REF_REV_SMOOTH (conquest.js); absent/0 reseeds at the next pass's median
     refCapPowerS: world._refCapPowerS,   // CAP_RELATIVE smoothed median capital power (the capacity ruler's era base); absent/0 reseeds at the next polity pass
     refRealmPop: world._refRealmPop,  // GRIEV_LEDGER smoothed median realm population (what a "people" weighs); absent/0 reseeds at the next polity pass
+    musterRatio: world._musterRatio,  // MUSTER_FIELD smoothed census↔governed-people anchor (armies.js); absent/0 reseeds at the next muster
+    provRatio: world._provRatio,      // PROV_FIELD smoothed per-province census↔governed anchor (conquest.js); absent/0 reseeds at the next polity pass
+    sizePopK: world._sizePopK,        // SIZE_BY_POP smoothed tiles-per-governed-person anchor (countryTerritory.js); absent/0 reseeds, holds pop-core targets stable across a load
     loyalScanAt: world._loyalScanAt,  // LOYAL_FIELD last owner-diff scan step (classifies force vs politics in transfer semantics)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1, event: world._nextEventId ?? (world.events ? world.events.length : 0) },
@@ -249,6 +278,16 @@ export function saveWorld(world, meta = {}) {
       // → dropped by JSON.stringify → a lever-off save stays byte-identical).
       // Homeland memory is near-empty → sparse pairs like tileCapturedAt.
       allegiance: world._allegiance ? b64FromTyped(world._allegiance) : undefined,
+      // Stage 2 (T.TILE_IDENTITY, identityField.js): the CULTURE layer is sim
+      // state — the land remembers who lives on it — so it persists, quantised
+      // to the top-2 slots per tile (ids Int16 + shares Uint8 ≈ 6 B/tile; the
+      // v4 payload). Slots 2-3 are re-earned by assimilation dynamics after a
+      // load — they are sub-20% residue by construction. Absent unless the
+      // lever ran AND the field initialised (a lever-off save stays
+      // byte-identical); a pre-v4 or lever-off save simply re-seeds from the
+      // city mirror on the first stepIdentityField firing.
+      tileCul2Id: T.TILE_IDENTITY > 0 && world._tileIdentInit && world.tileCulId ? b64FromTyped(top2Ids(world)) : undefined,
+      tileCul2Shr: T.TILE_IDENTITY > 0 && world._tileIdentInit && world.tileCulShr ? b64FromTyped(top2Shrs(world)) : undefined,
       tileOwnerPrev: world._tileOwnerPrev ? b64FromTyped(world._tileOwnerPrev) : undefined,
       tileHomeland: sparseFromTyped(world._tileHomeland, -1) ?? undefined,
       tileFellAt: sparseFromTyped(world._tileFellAt, -Infinity) ?? undefined,
@@ -326,6 +365,9 @@ export function loadWorld(data, opts = {}) {
   world._refRevenue = data.refRevenue ?? 0;   // smoothed fiscal peer baseline (0 / pre-field saves: reseeds at the next polity pass's median)
   world._refCapPowerS = data.refCapPowerS ?? 0;   // smoothed median capital power (CAP_RELATIVE ruler base; 0 reseeds next pass)
   world._refRealmPop = data.refRealmPop ?? 0;     // smoothed median realm population (GRIEV_LEDGER read normalizer; 0 reseeds next pass)
+  world._musterRatio = data.musterRatio ?? 0;     // MUSTER_FIELD census↔governed anchor (0 reseeds at the next muster)
+  world._provRatio = data.provRatio ?? 0;         // PROV_FIELD per-province census↔governed anchor (0 reseeds next polity pass)
+  world._sizePopK = data.sizePopK ?? 0;           // SIZE_BY_POP tiles-per-person anchor (0 reseeds; holds pop-core targets stable across a load)
   if (data.loyalScanAt != null) world._loyalScanAt = data.loyalScanAt;   // owner-diff scan clock (unset ≡ never scanned)
   world._popTotal = data.popTotal ?? 0;
   world._eraAt = data.eraAt || [0];
@@ -384,6 +426,24 @@ export function loadWorld(data, opts = {}) {
         || (world._countryOwner ? Int32Array.from(world._countryOwner) : new Int32Array(N).fill(-1));
       world._tileHomeland = typedFromSparse(data.maps.tileHomeland, Int32Array, N, -1) || new Int32Array(N).fill(-1);
       world._tileFellAt = typedFromSparse(data.maps.tileFellAt, Float64Array, N, -Infinity) || new Float64Array(N).fill(-Infinity);
+    }
+    // Stage 2 (T.TILE_IDENTITY): the persisted top-2 culture layer expands
+    // back into the K-slot field; its presence marks the field initialised
+    // (so stepIdentityField continues the loaded history instead of
+    // re-seeding from the mirror). Absent payload (pre-v4 / lever-off save)
+    // → nothing loads; the first firing seeds from the city mirror.
+    const c2i = loadTyped(data.maps.tileCul2Id, Int16Array, N * 2);
+    const c2s = loadTyped(data.maps.tileCul2Shr, Uint8Array, N * 2);
+    if (c2i && c2s) {
+      ensureIdentityField(world);
+      const K = IDENTITY_K, idA = world.tileCulId, shA = world.tileCulShr;
+      for (let ti = 0; ti < N; ti++) {
+        const b = ti * K;
+        idA[b] = c2i[ti * 2]; shA[b] = c2s[ti * 2];
+        idA[b + 1] = c2i[ti * 2 + 1]; shA[b + 1] = c2s[ti * 2 + 1];
+        for (let k = 2; k < K; k++) { idA[b + k] = -1; shA[b + k] = 0; }
+      }
+      world._tileIdentInit = true;
     }
   }
   // The road/flow sparse indices were created empty at init and no longer

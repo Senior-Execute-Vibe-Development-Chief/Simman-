@@ -108,7 +108,8 @@ Three mechanisms landed the field model:
    over-capacity marches (never worked/home land) → reused cartography.
 2. **adoptAndFound inverted** — a subject derives `countryId` from `_countryOwner`
    directly (growth is already capacity-throttled, no render-crawl lag needed).
-3. **Levers** — `FIELD_POLITY` (def 1), `FIELD_SPAN` (12), `EXPAND_RATE` (1.5).
+3. **Levers** — `FIELD_POLITY` (def 1), `FIELD_SPAN` (def 6; was 12 until the comboE
+   consolidation fix, docs/empire-consolidation-2026-07.md), `EXPAND_RATE` (def 8; was 1.5, same fix).
 
 Measured (480 seed 8817): realms **46** at step 20k (entity model ~19-26), 65% claimed,
 top-5 13.7/9.5/9.1/8.1/7.2M km² (heavy-tailed great-power set, no continent-spanner);
@@ -412,7 +413,7 @@ The capture churn IS the tell that 4c is required: war still fights on the per-s
 catchment map (`_territoryOwner`), which now diverges from the capital-anchored field, so
 non-capital cities flip constantly.
 
-## 4c — war on the tile field (DESIGNED, not yet implemented)
+## 4c — war on the tile field (BUILT: v1 below; distance decay shipped 2026-07 as WAR_REACH — see the update at the end of this section. Header previously read "not yet implemented".)
 
 **Design: country war-adapters.** The strategic layer (truces, coalitions, exhaustion, casus
 belli — armies.js:378-513) and the force model (`offForceOf`/`defForceOf`/concentration/
@@ -519,9 +520,12 @@ the causes were real MECHANISM gaps, not tuning knobs:
    nothing consolidates → settlements stay stateless and found their own realms without limit.
    **Fix — coverage floor** (`fieldPolityTerritory`): guarantee every realm a growth target of at
    least an ORG-scaled administrative HINTERLAND around its capital (`COVER_BASE + COVER_ORG·org`,
-   env-tunable `SIM_COVER_BASE/ORG`, default 25/150), `max()`'d with the capacity target so great
-   powers (capacity-bound) are unchanged and only the frozen small realms grow. This is the coverage
-   the per-settlement anchors used to provide, now emergent from the capital's reach.
+   live levers `T.COVER_BASE`/`T.COVER_ORG`, default 25/260 — COVER_ORG was 150 until the comboE
+   consolidation fix made it the map-filling default, docs/empire-consolidation-2026-07.md; the
+   `SIM_COVER_BASE/ORG` envs force-override the levers for headless sweeps), `max()`'d with the
+   capacity target so great powers (capacity-bound) are unchanged and only the frozen small realms
+   grow. This is the coverage the per-settlement anchors used to provide, now emergent from the
+   capital's reach.
 
 2. **Inert absorption.** `absorbWeakNeighbors` flipped only `s.countryId`; under field-derived flags
    the next `adoptAndFound` reverted it (and stranded a solo realm's absorbed capital into
@@ -584,3 +588,11 @@ political map everywhere. Validation for the flip:
 Deeper follow-ups (not blocking): the tile-war consolidates only by capital-storm (`captured=0`
 non-capital storms — distance-decayed national might + a shrink-to-collapse path would make war more
 decisive); war/secession heal the field gradually (via growth) rather than instantly.
+**Update (2026-07-13): the §4c distance decay is BUILT and default-on** (`T.WAR_REACH`, armies.js;
+exp(−d/H) from the capital, H logistics-stretched — corrected from the designed hyperbolic to
+exponential, since per-march-day supply loss is multiplicative and no hyperbolic tail inverts a
+10-20× might gap at this grid). It also localises the storm: attacker projected at the capital's
+distance, fortress = the capital settlement's OWN homeMight (the adapter had accidentally garrisoned
+the walls with the whole national pool, double-counted with the relief share). Measured: every map
+axis improves, the frozen top-5 finally churns, stylized 3/3 at 1 warning —
+docs/empire-consolidation-2026-07.md "THE IMMORTAL-GIANTS FIX".

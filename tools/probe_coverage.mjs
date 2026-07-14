@@ -14,7 +14,7 @@ const world = buildSim({ W, H, seed: SEED });
 while (world.step < STEPS) stepPeopleSim(world, 1);
 
 const co = world._countryOwner, pf = world.popField, elev = world.elev;
-const FIELD_SPAN = T.FIELD_SPAN || 12;
+const FIELD_SPAN = T.FIELD_SPAN || 6;
 const r2 = resScaleFor(world.tw) ** 2;
 
 const held = new Map();

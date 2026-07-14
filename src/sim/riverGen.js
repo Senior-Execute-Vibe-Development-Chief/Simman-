@@ -485,6 +485,30 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     // Caspian) shows while a transmission-lossed desert corridor (the Himalaya→Caspian run)
     // drops out of the visible network instead of threading the whole interior.
     const tStream = accumFor(CATCH_STREAM), tTrib = accumFor(CATCH_TRIB), tMajor = accumFor(CATCH_MAJOR), tGreat = accumFor(CATCH_GREAT);
+    // SIM_RIVER_DIAG=1: print the classification diagnostics that separate a
+    // BAR defect (avgRunoff drift → thresholds mis-scale) from a FLOW defect
+    // (drainage fragmentation → the big basins under-accumulate at fine grids).
+    // Measured 2026-07 (seed 8817, 480 vs 1920 pixels): bars exact (avgRunoff
+    // 0.2302/0.2263), top river 0.79× bar-relative at rs=4, terminal land
+    // 39.0→42.3%, ocean discharge per land −7% — the deficit is CONCENTRATION
+    // (fixed-spectrum terrain resolves more divides at fine grids), mostly the
+    // irreducible-representation class. docs/empire-consolidation-2026-07.md.
+    if (typeof process !== "undefined" && process.env && process.env.SIM_RIVER_DIAG) {
+      let over = 0, termLand = 0, landC = 0, oceanIn = 0;
+      for (let ti = 0; ti < N; ti++) {
+        if (tElev[ti] <= 0) continue;
+        landC++;
+        if (flowAccum[ti] >= tGreat) over++;
+        if (drainsTerminal[ti] === 1) termLand++;
+        // flow discharged INTO water next hop = river mouths (exorheic total discharge)
+        const d = flowDir[ti];
+        if (d !== 255) {
+          const tx = ti % tw, ty = (ti - tx) / tw, ny = ty + D8_DY[d];
+          if (ny >= 0 && ny < th) { const ni = ny * tw + ((tx + D8_DX[d] + tw) % tw); if (tElev[ni] <= 0) oceanIn += flowAccum[ti] * transmit[ti]; }
+        }
+      }
+      console.log(`[riverDiag] tw=${tw} avgRunoff=${avgRunoff.toFixed(4)} tGreat=${Math.round(tGreat)} maxAccum=${Math.round(maxAccum)} max/tGreat=${(maxAccum / tGreat).toFixed(3)} tilesOverGreat=${over} termLand%=${(100 * termLand / landC).toFixed(1)} oceanDischargePerLand=${(oceanIn / landC).toFixed(3)}`);
+    }
     const tStreamS = tStream * TERMINAL_STRICT, tTribS = tTrib * TERMINAL_STRICT, tMajorS = tMajor * TERMINAL_STRICT, tGreatS = tGreat * TERMINAL_STRICT;
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;

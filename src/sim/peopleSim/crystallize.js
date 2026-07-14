@@ -178,11 +178,11 @@ const BASE_RATE                 = 0.030;   // 3x — the world settles ~3x faste
 // "wave of no-tech settlements in isolated wilderness" detached from the realm they
 // flew the flag of. Beyond this hop a wilderness candidate simply doesn't found here;
 // longer jumps into virgin land are the job of colony parties (maybeSendSettlers),
-// which carry full tech and pick a bounded site. ABSOLUTE tiles (NOT res-scaled):
-// settlement spacing itself is absolute at every resolution, so a frontier extension is
-// ~one spacing from the donor on any map — the detached-exclave gaps this guards against
-// are absolute, not a fraction of the world (a res-scaled bound let 40-tile exclaves
-// through on the full-res map). CALIBRATED TO THE SPACING MODEL: it must be at least the
+// which carry full tech and pick a bounded site. REFERENCE-tiles, ×rn at the use site
+// (a REAL distance, like the spacing model it is calibrated to — both moved to real
+// distance under RES_INVARIANT_POP; this comment previously argued "ABSOLUTE (NOT
+// res-scaled)" from the era when spacing was absolute too — stale since the spacing
+// went ×rn, fixed in the 2026-07 audit). CALIBRATED TO THE SPACING MODEL: it must be at least the
 // MAXIMUM natural spacing — barren land spaces settlements MIN_SETT_DIST·(1+SPARSE_SPREAD)
 // = 20 tiles apart (capacitySpacingMul) — or a realm on marginal land can't reach its OWN
 // next village at its natural density and is frozen at a handful of settlements while
@@ -414,14 +414,19 @@ export function maybeCrystallize(world) {
     // has decayed to nothing), so the grid query is exact, not approximate.
     // This replaces an O(settlements) scan per candidate — the dominant cost
     // once the map gets dense.
-    const MARKET_CUTOFF = MARKET_RANGE * 3;
+    // MARKET_RANGE is a REAL distance (a market catchment), so it scales with the
+    // grid like the founding spacings beside it (hardFloor/softDist ×rn) — unscaled
+    // it made clusters tighter in real km the finer the grid (audit 2026-07).
+    // ×1 exactly at the 240-tile reference.
+    const mktR = MARKET_RANGE * rn;
+    const MARKET_CUTOFF = mktR * 3;
     let nearestSq = Infinity;
     let marketPull = 0;
     forEachNear(world, tx, ty, MARKET_CUTOFF, (o, dd) => {
       if (dd < nearestSq) nearestSq = dd;
       const d = Math.sqrt(dd);
       const tierBonus = 1 + (o.tier | 0);
-      marketPull += tierBonus * Math.exp(-d / MARKET_RANGE);
+      marketPull += tierBonus * Math.exp(-d / mktR);
     });
     // Capacity-scaled spacing: a low-fertility site demands more elbow room,
     // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
