@@ -159,11 +159,18 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
   more often. Same genes throughout — the substrate reinterprets them.
   See `docs/flag-realism-research.md` for the research behind the modern
   grammar (sources inside). The realism mechanisms, all substrate-keyed:
-  - **Corpus-weighted partitions** — on cloth the partition gene decodes
-    through its own frequency windows (the DYE_VATS idiom): horizontal
-    stripes dominate, vertical bands next, diagonals and the hoist wedge
-    present, quarterly and per-saltire genuine rarities; the engraver
-    partitions don't exist here at all.
+  - **Corpus-weighted partitions (orientation decoupled from magnitude)** —
+    on cloth the partition gene decodes through its own frequency windows
+    (the DYE_VATS idiom): horizontal stripes dominate, vertical bands next,
+    diagonals and the hoist wedge present, quarterly and per-saltire genuine
+    rarities; the engraver partitions don't exist here at all. The families
+    are **interleaved across the whole gene range**, never segregated by
+    magnitude — else any bias that pushes the gene down (a "plain, clean"
+    ornateness, say) silently makes ~96% of flags a horizontal tricolour and
+    leaves vertical bands, diagonals, the hoist wedge and quartered fields
+    effectively unreachable. That is the two-clock trap in *space*: a whole
+    family gated off by a magnitude no one intended as a gate. Slot counts
+    still set commonness; reachability stays uniform whatever biases the gene.
   - **The field is the flag** — on partitioned cloth the arrange gene's
     first window flies the geometry ALONE (no device): pure tricolours and
     striped fields, ~38% of heraldic cloth, matching the real ~40%. A
@@ -180,9 +187,12 @@ line). Monochrome heraldic coats engrave the hues their genes imply as
     conjoined STAR AND CRESCENT as a single classic device.
   - **The flag device vocabulary** — repeated, housed, or band-riding
     devices are cut from folded cloth many times over: only the simple
-    silhouettes survive (mullets, discs, crescents, suns…); the ornate
+    silhouettes survive (mullets, discs, crescents, moons…); the ornate
     interlace (knots, frets, clan marks) stays a shield's and a mon's
-    business. A LONE central device keeps the full pool.
+    business. A LONE central device keeps the full pool. The rayed suns
+    (`sun`/`sunRays`/`sunOutline`) are OUT of the whole charge vocabulary —
+    their bundled art reads as a microbe, not a solar disc; a clean sun-disc
+    flag (Japan/Bangladesh class) still flies through the geometric `roundel`.
   - **The canton houses the device** — the canton is the position of
     honour, not a second device: a compact device or its whole array moves
     INTO the canton and dresses against it; a figure never boards it; the

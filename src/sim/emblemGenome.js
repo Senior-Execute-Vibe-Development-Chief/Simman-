@@ -93,17 +93,28 @@ const FLAG_PALETTES = [
 ];
 const PARTITIONS  = ["plain", "perPale", "perFess", "perBend", "quarterly", "gyronny", "perSaltire", "chevron", "barry", "paly", "chequy", "lozengy", "tiercedPale", "tiercedFess"];
 // on CLOTH the SAME gene decodes through corpus-weighted windows instead
-// (the DYE_VATS / MOTIF_CATS idiom): horizontal stripes dominate real
-// flags, vertical bands next, diagonals and the hoist wedge present, the
-// rotational cuts genuine rarities — and the engraver-only partitions
-// (gyronny, grids) don't exist here at all, only their sewn kin.
+// (the DYE_VATS / MOTIF_CATS idiom): horizontal stripes dominate real flags,
+// vertical bands next, diagonals and the hoist wedge present, the rotational
+// cuts genuine rarities — and the engraver-only partitions (gyronny, grids)
+// don't exist here at all, only their sewn kin.
+//
+// ONE HARD RULE, learned the hard way: orientation MUST NOT ride on gene
+// magnitude. The old array segregated all horizontal cuts at low indices and
+// the verticals/diagonals/triangle/quartered at high ones — so any bias that
+// pushed the partition gene DOWN (a "plain, clean" ornateness, say) silently
+// made 96% of flags a horizontal tricolour and left vertical bands, diagonals,
+// the hoist wedge and quartered fields effectively UNREACHABLE. That is the
+// two-clock trap in space: a whole family gated off by a magnitude no one
+// intended as a gate. So the families are INTERLEAVED across the full range —
+// each recurs at low, middle AND high indices. Slot COUNTS still set commonness
+// (horizontal leads, then vertical, then the diagonal/triangle/quartered
+// rarities); REACHABILITY is uniform across the gene, whatever biases it.
 const FLAG_PARTITIONS = [
-  "plain", "plain", "plain",
-  "perFess", "perFess", "perFess", "tiercedFess", "tiercedFess", "tiercedFess", "tiercedFess", "tiercedFess",
-  "barry", "barry", "barry",
-  "perPale", "perPale", "tiercedPale", "tiercedPale", "tiercedPale", "paly",
-  "perBend", "perBend", "hoistTriangle", "hoistTriangle",
-  "quarterly", "perSaltire",
+  "plain", "tiercedFess", "tiercedPale", "perFess", "barry", "perBend",
+  "tiercedFess", "perPale", "hoistTriangle", "tiercedFess", "barry", "tiercedPale",
+  "perFess", "plain", "tiercedFess", "perPale", "perBend", "paly",
+  "barry", "tiercedPale", "hoistTriangle", "tiercedFess", "quarterly", "perFess",
+  "perSaltire", "plain",
 ];
 // field TREATMENTS (the crescent gene's high window): the two furs, plus the
 // lattice treatments — fretty (interlaced bendlets) and masoned (brickwork)
@@ -167,13 +178,16 @@ const ARRAY_PATTERNS = ["rows", "rows", "ring", "ring", "arc", "constellation", 
 const PANEL_SHAPES = ["lozenge", "disc", "disc", "escutcheon"];
 // THE FLAG DEVICE VOCABULARY: a repeated, housed, or band-riding device is
 // cut from folded cloth many times over — only the simple silhouettes
-// survive mass sewing and distance (stars, discs, crescents, suns). The
+// survive mass sewing and distance (stars, discs, crescents, moons). The
 // ornate interlace — knots, frets, clan marks — stays a shield's and a
 // mon's business; a LONE central device keeps the full pool (a flag may
 // fly one strange thing, never five).
+// NOTE: the rayed suns (sun/sunRays/sunOutline) are OUT of the vocabulary —
+// their art reads as a microbe, not a solar disc. A clean sun-disc flag
+// (Japan/Bangladesh class) is still fully reachable through geometric `roundel`.
 const FLAG_SIMPLE = {
   geometric: ["mullet", "mullet", "mullet", "mullet6", "mullet8", "roundel", "annulet", "lozenge", "triangle"],
-  celestial: ["sun", "moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "sunRays", "sunOutline", "starAndCrescent", "starAndCrescent"],
+  celestial: ["moon", "estoile", "moonIncrescent", "moonDecrescent", "moonCrescent", "starAndCrescent", "starAndCrescent"],
 };
 // motif ids resolve to charge art in the renderer (DrawShield / game-icons).
 // @INJECT:MOTIFS-START — the lab build (tools/build_lab.mjs) replaces this whole
@@ -188,8 +202,8 @@ const MOTIFS = {
   object: ["crown", "key", "sword", "anchor", "ship", "scales", "harp", "lyre", "book", "bell", "bugle", "clarion", "lute", "drum", "chalice", "amphora", "anvil", "hammer", "millrind", "millstone", "scythe", "sickle", "plough", "pitchfork", "compass", "lantern", "lamp", "scroll", "mirror", "shears", "quill", "distaff", "axe", "halberd", "arrow", "arrows", "pheon", "trident", "spear", "bow", "crossbow", "flail", "club", "cannon", "mace", "warhammer", "helmet", "gauntlet", "breastplate", "mailedfist", "horseshoe", "spur", "stirrup", "saddle", "wagon", "beehive", "beacon", "brazier", "torch", "grenade", "chest", "wolfiron", "staple", "musicalNote", "noteQuarter", "noteEighth", "fireSteel", "comb", "bookModernClosed", "candlestick", "vallary", "saxon", "palisado", "antique", "earl", "duke", "helmetKnight", "helmetEsquire", "helmetNorman", "helmetPeer", "helmetKnightAffronty", "lance", "dagger", "rapier", "swordstpaul", "sabre", "seax", "slaughterAxe", "pickAxe", "addice", "waterBouget", "mug", "barrel", "scoop", "funnel", "table", "flag", "frenchGemstoneInProfile", "arrowBroad", "spearHeadImbrued", "oar", "rudderPole", "oarInsaltire2", "fishingBoat", "crowsNest", "barge", "lymphadFurled", "lymphadSailsSet", "buckle", "maunche", "stirrupLeathered", "hawkbell", "farmingFlail", "fishhook", "farmingFlailInsaltire2", "shepherdsCrook", "butterChurn", "ploughshare", "chessPawn", "chessRook", "chessKing"],
   architecture: ["tower", "castle", "bridge", "gate", "arch", "house", "city", "keystoneCouped", "pyramid", "obelisk", "fountainNatural", "pillar", "bridgeThreeArches", "keystone", "lighthouse"],
   natural: ["cloud", "teardrop", "flint", "flames", "fireball"],
-  celestial: ["sun", "moon", "estoile", "moonIncrescent", "moonPendant", "estoileInflamed", "moonDecrescent", "moonCrescent", "sunOutline", "sunRays", "starAndCrescent"],
-  geometric: ["mullet", "mullet6", "mullet8", "rowel", "roundel", "annulet", "lozenge", "fusil", "mascle", "billet", "delf", "crossCouped", "crossPattee", "crosslet", "goutte", "fret", "triskele", "knot", "suffolkKnot", "carolingianKnot", "hungerfordKnot", "triangle", "shakefork", "saltire", "mulletOf5VoidedInterlaced", "mulletOf7VoidedInterlaced", "mulletOf8MasclesInterlaced", "takedaClanSymbol", "tokikikyoClanSymbol", "moriClanSymbol"],
+  celestial: ["moon", "estoile", "moonIncrescent", "moonPendant", "estoileInflamed", "moonDecrescent", "moonCrescent", "starAndCrescent"],
+  geometric: ["mullet", "mullet6", "mullet8", "rowel", "roundel", "annulet", "lozenge", "fusil", "mascle", "billet", "delf", "crossCouped", "crossPattee", "crosslet", "goutte", "fret", "triskele", "knot", "suffolkKnot", "carolingianKnot", "hungerfordKnot", "triangle", "shakefork", "saltire", "mulletOf5VoidedInterlaced", "mulletOf7VoidedInterlaced", "mulletOf8MasclesInterlaced", "takedaClanSymbol", "tokikikyoClanSymbol", "moriClanSymbol", "cogwheel", "cartwheel", "catherinewheel", "waterwheel", "millwheel", "chosokabeClanSymbol"],
 };
 // @INJECT:MOTIFS-END
 
@@ -266,7 +280,7 @@ export function foundGenome(seed, axes = {}) {
   // ENVIRONMENT — the biome the realm actually lives in
   if (A.maritime != null) { colourField(A.maritime, 0.81, 0.9); bias("hueB", 0.10, A.maritime * 0.4, 0.06); bias("line", 0.42, A.maritime * 0.3); bias("motifCat", 0.375, A.maritime * 0.4, 0.05); }   // AZURE field · wavy · sea creatures
   if (A.sylvan   != null) { colourField(A.sylvan, 0.585, 0.92); bias("motifCat", 0.44, A.sylvan * 0.45, 0.05); bias("iconism", 0.7, A.sylvan * 0.3); }             // VERT field · plant/tree
-  if (A.arid     != null) { colourField(A.arid, 0.40, 0.85); bias("value", 0.62, A.arid * 0.5); bias("partition", 0.06, A.arid * 0.6); bias("motifCat", 0.77, A.arid * 0.35, 0.04); }  // OCHRE/GOLD · sparse plain · sun
+  if (A.arid     != null) { colourField(A.arid, 0.40, 0.85); bias("value", 0.62, A.arid * 0.5); bias("partition", 0.06, A.arid * 0.6); bias("motifCat", 0.77, A.arid * 0.35, 0.04); }  // OCHRE/GOLD · sparse plain · star & crescent
   if (A.montane  != null) { bias("chroma", 0.16, A.montane * 0.82); bias("value", 0.34, A.montane * 0.55, 0.04); bias("paletteMode", 0.10, A.montane * 0.5); bias("motifCat", 0.18, A.montane * 0.4, 0.04); bias("hueC", 0.89, A.montane * 0.4); }  // GREY/STARK · eagle/bird · the pile (a peak)
   // ETHOS — the values and economy the realm holds
   if (A.regal    != null) { colourField(A.regal, 0.40, 0.85); bias("value", 0.6, A.regal * 0.4); bias("border", 0.72, A.regal * 0.6); bias("partition", 0.30, A.regal * 0.45); bias("symmetry", 0.7, A.regal * 0.5); bias("motifCat", 0.55, A.regal * 0.3, 0.04); }  // GOLD · rich · quartered/bordered/ordered · regalia
