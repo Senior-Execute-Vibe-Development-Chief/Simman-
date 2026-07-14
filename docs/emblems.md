@@ -68,7 +68,22 @@ tails set a charge's attitude. The depth is latent in the vector.
 - `foundGenome(seed, axes)` — a genome from a seed, optionally biased by
   **abstract visual axes** (figuration, ornateness, boldness, saturation,
   symmetry, tone, hue, format). Deliberately no axis picks a composition or a
-  charge category — that's how decoupling is enforced at the API.
+  charge category — that's how decoupling is enforced at the API. **Beyond
+  those eight abstract dials, a second layer of SEMANTIC axes reads a realm's
+  emergent state** — environment (`maritime`, `sylvan`, `arid`, `montane`),
+  ethos (`regal`, `martial`, `austere`, `mercantile`, `devout`, `pastoral`),
+  structure (`imperial`, `tribal`). Each keys on an emergent STATE variable
+  (biome cover, martial ethos, court wealth — never an identity label) and
+  shifts a SOFT window: it makes a look more likely, never forces it, so every
+  pattern stays reachable by every realm (decoupling's essence holds). Each has
+  a strong defining lever (usually the palette — a coloured family is a joint
+  lock of hue + value + chroma + mode) and soft secondary ones (category,
+  layout), so a family reads at a glance yet stays varied and never a stamp.
+  Measured at full strength: maritime→blue 82%, sylvan→green 77%, martial→
+  red/black 91%, devout→sigil/aniconic 88%. This is the standalone half of the
+  sim-integration mapping (realm state → axes); the transmission layer (descent,
+  conquest, prestige-imitation, religion) that turns these into shared, evolving
+  TRADITIONS is the sim session's work.
 - `mutateGenome(g, seed, strength)` — drift + rare macro-mutations. The same
   bearer: cadency is preserved; quarters drift gently and rarely simplify.
 - `inheritGenome(parent, seed, strength)` — a successor. **Cadency**: the heir

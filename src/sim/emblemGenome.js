@@ -237,6 +237,48 @@ export function foundGenome(seed, axes = {}) {
   if (a.hue != null) { set("hueA", wrap01(a.hue + bell(rng) * 0.05)); set("hueB", wrap01(a.hue + 0.5 + bell(rng) * 0.1)); }
   if (a.format != null) nudge("substrate", a.format, 0.6);
 
+  // ── SEMANTIC input axes: the levers a realm's EMERGENT STATE pulls ─────────
+  // The eight above are abstract visual dials; these are the world's own inputs.
+  // A people HERALDISES the environment it lives in and the values it holds:
+  // each axis reads an emergent STATE variable (biome cover, martial ethos,
+  // court wealth — never an identity label) and shifts a SOFT window — it makes
+  // a look more LIKELY, never forces it, so every pattern stays reachable by
+  // every realm (decoupling's essence holds). The weights carry causal meaning:
+  // a coastal people depends on and depicts the sea; a martial dynasty flies
+  // blood and iron; an austere one strips the field bare. This is the
+  // MOTIF_CATS / DYE_VATS idiom, now conditioned on the realm's own world, and
+  // it composes — the sim sets several and their nudges blend. The bell noise
+  // on the hue/tone genes keeps every family internally varied, never a stamp.
+  const bias = (name, target, w, jit = 0) => nudge(name, clamp01(target + (jit ? bell(rng) * jit : 0)), w);
+  const A = a;
+  // Each axis LOCKS its defining lever at full strength (usually the palette —
+  // the family's instant read; a hue nudge needs ~0.85 weight to pull a low
+  // random gene all the way into its dyer's-wheel band) and keeps its SECONDARY
+  // levers SOFT (~0.35, so the family stays varied and never a stamp). At the
+  // MODERATE axis values the sim will mostly emit, even the strong lever is a
+  // lean, not a lock — the weight scales with the axis.
+  // a field's COLOUR is a joint function of hue + value + chroma + palette
+  // MODE: a coloured family only reads if the mode is the bright dyed one
+  // (imperial silk / earth / mono ignore or remap the hue) and the value sits
+  // mid (a deep or pale intent collapses to sable/argent). So the colour axes
+  // commit the palette together — hue locked, mode→heraldic, value→mid.
+  const colourField = (v, hueTarget, hueW) => { bias("hueA", hueTarget, v * hueW, 0.03); bias("paletteMode", 0.10, v * 0.7); bias("value", 0.5, v * 0.5, 0.05); bias("chroma", 0.7, v * 0.4); };
+  // ENVIRONMENT — the biome the realm actually lives in
+  if (A.maritime != null) { colourField(A.maritime, 0.81, 0.9); bias("hueB", 0.10, A.maritime * 0.4, 0.06); bias("line", 0.42, A.maritime * 0.3); bias("motifCat", 0.375, A.maritime * 0.4, 0.05); }   // AZURE field · wavy · sea creatures
+  if (A.sylvan   != null) { colourField(A.sylvan, 0.585, 0.92); bias("motifCat", 0.44, A.sylvan * 0.45, 0.05); bias("iconism", 0.7, A.sylvan * 0.3); }             // VERT field · plant/tree
+  if (A.arid     != null) { colourField(A.arid, 0.40, 0.85); bias("value", 0.62, A.arid * 0.5); bias("partition", 0.06, A.arid * 0.6); bias("motifCat", 0.77, A.arid * 0.35, 0.04); }  // OCHRE/GOLD · sparse plain · sun
+  if (A.montane  != null) { bias("chroma", 0.16, A.montane * 0.82); bias("value", 0.34, A.montane * 0.55, 0.04); bias("paletteMode", 0.10, A.montane * 0.5); bias("motifCat", 0.18, A.montane * 0.4, 0.04); bias("hueC", 0.89, A.montane * 0.4); }  // GREY/STARK · eagle/bird · the pile (a peak)
+  // ETHOS — the values and economy the realm holds
+  if (A.regal    != null) { colourField(A.regal, 0.40, 0.85); bias("value", 0.6, A.regal * 0.4); bias("border", 0.72, A.regal * 0.6); bias("partition", 0.30, A.regal * 0.45); bias("symmetry", 0.7, A.regal * 0.5); bias("motifCat", 0.55, A.regal * 0.3, 0.04); }  // GOLD · rich · quartered/bordered/ordered · regalia
+  if (A.martial  != null) { colourField(A.martial, 0.08, 0.88); bias("value", 0.34, A.martial * 0.5); bias("motifScale", 0.85, A.martial * 0.55); bias("hueC", 0.84, A.martial * 0.45); bias("motifCat", 0.55, A.martial * 0.28, 0.05); }  // BLOOD-AND-IRON gules/sable · a dominant charge · the saltire · arms
+  if (A.austere  != null) { bias("paletteMode", 0.30, A.austere * 0.88); bias("chroma", 0.10, A.austere * 0.85); bias("partition", 0.05, A.austere * 0.72); bias("border", 0.08, A.austere * 0.6); bias("motifCount", 0.16, A.austere * 0.6); bias("secondary", 0.08, A.austere * 0.55); bias("iconism", 0.3, A.austere * 0.4); }  // STARK: monochrome, plain, bare
+  if (A.mercantile != null) { bias("chroma", 0.68, A.mercantile * 0.5); bias("stripes", 0.68, A.mercantile * 0.6); bias("motifCat", 0.55, A.mercantile * 0.4, 0.05); bias("iconism", 0.55, A.mercantile * 0.3); bias("partition", 0.6, A.mercantile * 0.4); }  // BRIGHT BARS · ships/keys/scales
+  if (A.devout   != null) { bias("symmetry", 0.85, A.devout * 0.8); bias("iconism", 0.12, A.devout * 0.7); bias("composition", 0.92, A.devout * 0.5, 0.02); bias("border", 0.45, A.devout * 0.4); bias("chroma", 0.4, A.devout * 0.35); }  // RESTRAINT: aniconic, mirrored · the sacred sigil
+  if (A.pastoral != null) { bias("paletteMode", 0.82, A.pastoral * 0.82); bias("motifCat", 0.05, A.pastoral * 0.45, 0.03); bias("chroma", 0.42, A.pastoral * 0.35); bias("partition", 0.06, A.pastoral * 0.45); bias("iconism", 0.78, A.pastoral * 0.4); }  // EARTH palette · beasts · plain
+  // STRUCTURE — the shape of the polity
+  if (A.imperial != null) { bias("chroma", 0.78, A.imperial * 0.45); bias("partition", 0.30, A.imperial * 0.6); bias("border", 0.62, A.imperial * 0.5); bias("motifCount", 0.62, A.imperial * 0.4); bias("pearl", 0.72, A.imperial * 0.45); }  // rich, quartered, complex, a chief
+  if (A.tribal   != null) { bias("composition", 0.66, A.tribal * 0.68, 0.02); bias("iconism", 0.18, A.tribal * 0.5); bias("chroma", 0.4, A.tribal * 0.35); bias("partition", 0.05, A.tribal * 0.55); }  // the clan brand (tamga) · aniconic
+
   return { genes: g, gen: 0, seed: seed >>> 0 };
 }
 
