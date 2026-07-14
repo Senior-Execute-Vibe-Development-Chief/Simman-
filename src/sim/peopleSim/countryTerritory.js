@@ -657,9 +657,48 @@ function fieldPolityTerritory(world) {
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
   const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
   const coverOrg  = Number.isFinite(COVER_ORG_ENV)  ? COVER_ORG_ENV  : (T.COVER_ORG ?? 260);
+  // SIZE_BY_POP: extent tracks the PEOPLE a realm governs, not a fixed floor.
+  // Governed popField per realm, and a self-calibrating tiles-per-person constant
+  // benchmarked to the MEDIAN established realm (the _refRevenue pattern — no fitted
+  // density). A realm's target is then capped at govPop×popCapK: under-populated
+  // realms (fresh frontier states) shrink to what their people justify (sub-Egypt
+  // realms exist), the median-and-above (the developed core) are unchanged, and the
+  // map fills LATE as population grows rather than EARLY by a floor. Byte-identical
+  // when off (nothing computes).
+  let govPopOf = null, popCapK = 0;
+  if (T.SIZE_BY_POP && world.popField) {
+    govPopOf = new Map();
+    const pf = world.popField;
+    for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c < 0 || !(elev[ti] > 0)) continue; govPopOf.set(c, (govPopOf.get(c) || 0) + pf[ti]); }
+    const gps = [], tgs = [];
+    for (const [cid, cp] of capOf) {
+      if (cp <= 0) continue;                                   // benchmark on established (capacity-bearing) realms
+      const gp = govPopOf.get(cid) || 0;
+      if (gp > 0) { gps.push(gp); tgs.push(spanEff * cp * r2); }
+    }
+    if (gps.length) {
+      gps.sort((a, b) => a - b); tgs.sort((a, b) => a - b);
+      const medGP = gps[gps.length >> 1], medTG = tgs[tgs.length >> 1];
+      if (medGP > 0 && medTG > 0) popCapK = medTG / medGP;     // tiles per governed-person at the median realm
+    }
+  }
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * Math.max(0, cp) * r2);
-    if (T.TILE_POLITY) {
+    if (T.SIZE_BY_POP && popCapK > 0) {
+      // Population-driven extent (no floor). Nomads exempt — a steppe confederation
+      // holds vast sparse land by MOMENTUM, not by the people on it. A capless solo
+      // (cp=0, conquest.js sizes only multi-province holds) is driven purely by its
+      // population, so a lone city-state grows to its people's worth instead of
+      // freezing at its core; a realm WITH capacity keeps that as the defensible ceiling.
+      const c = world.countries && world.countries.get(cid);
+      if (c && c._nomadic) {
+        // exempt: keep the capacity target (below)
+      } else {
+        const popCap = Math.round((govPopOf.get(cid) || 0) * popCapK);
+        t = cp > 0 ? Math.min(t, popCap) : popCap;
+      }
+      if (t <= 0) { if (cp <= 0 && (govPopOf.get(cid) || 0) <= 0) continue; }  // capless + peopleless newborn: hold (cold-start)
+    } else if (T.TILE_POLITY) {
       // COVERAGE FLOOR (capital-only anchoring): guarantee every realm a growth target
       // of at least an org-scaled administrative hinterland, so a solo city-state whose
       // Tilly capacity is 0 (conquest.js sizes only multi-province holds) still covers
