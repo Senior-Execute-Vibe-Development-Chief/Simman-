@@ -128,6 +128,19 @@ export function applyRule(rule, w) {
  *  coda clusters must fall strictly in sonority, gutturals don't cluster,
  *  onsets cap at 3 / codas at 2. */
 export function legalizeWord(w) {
+  // a nucleus-less syllable is unpronounceable wreckage (a morpheme seam that
+  // emptied a vowel must not leave a bare {} behind) — drop it, rescuing any
+  // onset onto a neighbour (previous syllable's coda, else the first real
+  // syllable's onset). Never empty the word entirely.
+  if (w.syls.length > 1 && w.syls.some(s => !s.nu.length)) {
+    const kept = [];
+    for (const s of w.syls) {
+      if (s.nu.length) { kept.push(s); continue; }
+      if (s.on.length && kept.length) kept[kept.length - 1].co = [...kept[kept.length - 1].co, ...s.on];
+      else if (s.on.length) { const nxt = w.syls.find(x => x.nu.length); if (nxt) nxt.on = [...s.on, ...nxt.on]; }
+    }
+    if (kept.length) w.syls = kept;
+  }
   for (const s of w.syls) {
     // clicks are onset-only in life — wreckage that lands one in a coda
     // (final-vowel loss pushing an onset rightward) is repaired by dropping

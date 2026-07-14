@@ -57,7 +57,7 @@ const DERIV_RATE = 0.72;   // P(a given family derives a given abstract vs keeps
 // SYNTHETIC, bound-affix counterpart, which is what 'affixal derivation' means.)
 function agentSourceOf(lang) {
   const pin = lang.prof.lex && lang.prof.lex.agent;   // pinnable (probe/Lab), like motion
-  if (pin != null) return pin;
+  if (pin != null && CONCEPTS[pin]) return pin;        // honour a valid pin; a garbage cid falls back to the roll, never a cryptic throw
   const roll = h01(lang.famSeed, "agentsrc");
   return roll < 0.5 ? MAN : roll < 0.83 ? PEOPLE : BODY;
 }
@@ -79,14 +79,31 @@ function lightAffix(word) {
 // exactly as joinInternal does. Prefixing? the affix leads (Bantu m-); else it
 // trails (English -er). Both morphemes still ride the sound-change log, so the
 // agent corresponds regularly to its base and to its cognates across the family.
+// A fusional tongue ELIDES the seam vowel when the first part `a` ends in an
+// open syllable and the second part (whose first syllable is firstB) is vowel-
+// initial. Two guards make it safe: never annihilate a bare-vowel MONOSYLLABLE
+// (eliding it would delete the whole morpheme — fatal for a productive
+// derivation whose point is transparency; the caller falls through to a hiatus
+// glide instead), and after eliding, POP the emptied syllable (saving its onset
+// onto the next one) so it never leaves a nucleus-less syllable behind. Returns
+// true iff it elided, so the caller knows whether to try its own seam repair.
+function fuseSeam(a, firstB, morph) {
+  const lastA = a.syls[a.syls.length - 1];
+  if (morph !== "fus" || !lastA.nu.length || lastA.co.length || firstB.on.length) return false;
+  if (a.syls.length === 1 && !lastA.on.length) return false;   // a bare-vowel monosyllable: keep it whole
+  lastA.nu = [];
+  if (lastA.on.length) firstB.on = [...lastA.on, ...firstB.on];
+  a.syls.pop();
+  return true;
+}
+const hiatusGlide = (firstB) => [firstB.nu[0].b === 0 ? { p: 3, m: 6, l: 1, s: 0 } : { p: 0, m: 6, l: 1, s: 0 }];
+
 function joinAffix(lang, stem, affix, prefixing) {
   const a = copyWord(prefixing ? affix : stem), b = copyWord(prefixing ? stem : affix);
-  const lastA = a.syls[a.syls.length - 1], firstB = b.syls[0];
-  if (lang.prof.morph === "fus" && lastA.nu.length && !lastA.co.length && !firstB.on.length) {
-    lastA.nu = [];
-    if (!lastA.nu.length && !lastA.co.length && lastA.on.length) { firstB.on = [...lastA.on, ...firstB.on]; a.syls.pop(); }
-  } else if (lastA.nu.length && !lastA.co.length && !firstB.on.length && firstB.nu.length) {
-    firstB.on = [firstB.nu[0].b === 0 ? { p: 3, m: 6, l: 1, s: 0 } : { p: 0, m: 6, l: 1, s: 0 }];
+  const firstB = b.syls[0];
+  if (!fuseSeam(a, firstB, lang.prof.morph)) {
+    const lastA = a.syls[a.syls.length - 1];
+    if (lastA.nu.length && !lastA.co.length && !firstB.on.length && firstB.nu.length) firstB.on = hiatusGlide(firstB);
   }
   return { syls: [...a.syls, ...b.syls] };
 }
@@ -240,7 +257,12 @@ const COMPILED = new WeakMap();
 
 function compile(lang) {
   ensureV2(lang);
-  const key = lang.gen * 1000003 + lang.loans.length * 101 + lang.xph.length;
+  // the cache key folds in prof.lex (the agentive/motion/culture PINS): a pin
+  // set after a first read must invalidate the derived words, or a warm record
+  // and its JSON round-trip (fresh cache) would disagree — a determinism footgun
+  // the review caught. Most tongues carry no pin, so the key stays the bare
+  // number; a pinned one appends its tiny lex signature.
+  const key = lang.gen * 1000003 + lang.loans.length * 101 + lang.xph.length + (lang.prof.lex ? ":" + JSON.stringify(lang.prof.lex) : "");
   let c = COMPILED.get(lang);
   if (c && c.key === key) return c;
   // exact-inventory pinning (labelled-scenario languages: a pin lists the
@@ -267,6 +289,11 @@ function compile(lang) {
   const cult = cultureFor(lang);
   const colex = new Map();
   COLEX.forEach(([a, b, p], i) => {
+    // salience keys on the pair's TAKER domain (CONCEPTS[a].d) on purpose: a
+    // pair's domain is where its head lives, so 'sky→god' / 'wind→spirit' are
+    // FAITH colexifications (taker = god/spirit, fth), not calendar ones — a
+    // sky-reckoning tongue protects sun/moon/day/month (taker = sky), not the
+    // theology. (Reviewed: keying on either member would blur that distinction.)
     const pAdj = cult && ECOLOGY_DOMAINS.has(CONCEPTS[a].d) && CONCEPTS[a].d === cult.salient ? p * CULTURE_SALIENCE : p;
     if (h01(lang.famSeed, "colex", i) < pAdj) colex.set(b, a);
   });
@@ -749,17 +776,14 @@ function joinInternal(lang, mod, head) {
     }
     a.syls.push({ on: [{ ...c.linkSyl.on[0] }], nu: [{ ...c.linkSyl.nu[0] }], co: [] });
   }
-  const lastA = a.syls[a.syls.length - 1], firstB = b.syls[0];
-  if (lang.prof.morph === "fus" && lastA.nu.length && !lastA.co.length && !firstB.on.length) {
-    lastA.nu = [];                                            // elide the seam vowel
-    if (!lastA.nu.length && !lastA.co.length && lastA.on.length) { firstB.on = [...lastA.on, ...firstB.on]; a.syls.pop(); }
-  } else if (lastA.co.length && firstB.on.length >= 2) {
-    firstB.on = firstB.on.slice(0, 1);                        // simplify the seam
-  }
-  // hiatus repair: languages don't butt two full vowels together at a
-  // morpheme seam — insert a glide (y before front vowels, w otherwise)
-  if (lastA.nu.length && !lastA.co.length && !firstB.on.length && firstB.nu.length) {
-    firstB.on = [firstB.nu[0].b === 0 ? { p: 3, m: 6, l: 1, s: 0 } : { p: 0, m: 6, l: 1, s: 0 }];
+  const firstB = b.syls[0];
+  // the fusional seam elides safely (shared fuseSeam — never annihilates a
+  // bare-vowel monosyllable, never leaves an empty syllable). If it did not
+  // elide, simplify a cluster seam or break a vowel hiatus with a glide.
+  if (!fuseSeam(a, firstB, lang.prof.morph)) {
+    const lastA = a.syls[a.syls.length - 1];
+    if (lastA.co.length && firstB.on.length >= 2) firstB.on = firstB.on.slice(0, 1);
+    else if (lastA.nu.length && !lastA.co.length && !firstB.on.length && firstB.nu.length) firstB.on = hiatusGlide(firstB);
   }
   // keep compounds speakable: cap syllables, favouring the head (linker
   // compounds get one more so the linker survives)

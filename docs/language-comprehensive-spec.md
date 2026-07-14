@@ -1647,18 +1647,25 @@ salient in wat/plt/lnd/sky respectively), and a colex pair whose domain is that
 family's SALIENT one merges at half the probability (CULTURE_SALIENCE 0.5) — the
 lived-in distinctions resist loss, so a seafaring tongue keeps sea/lake/river
 apart where a landlocked one lets them blur. The colex ROLL is untouched (same
-stream); only the THRESHOLD drops, and only inside the ecology domains, so the
-blast radius is bounded: every neutral pair (hand/arm, heart/mind) and every
-pinned reference tongue is byte-identical — the probe's 511 prior checks all
-still pass unchanged.
+stream); only the THRESHOLD drops, and only inside the ecology domains.
+
+What that bounds — stated precisely, after the review round corrected an
+overclaim — is the colex MERGE MAP: which neutral pairs merge (hand/arm,
+heart/mind) is identical across all four ecologies, and every pinned reference
+tongue is byte-identical. Rendered SURFACES are NOT word-bounded, though:
+un-merging a salient pair frees a surface, which reorders the homophony-repair
+pass, so a neutral WORD can still shift even though its merge does not — the
+ordinary cascade ANY colex change makes (Zipf's re-baseline did the same). The
+§37 gate asserts the map invariant and MEASURES the surface cascade rather than
+denying it.
 
 Measured (probe §37) over 600 languages: each ecology holds its own domain
 strictly finer than the others do — wat 22% vs 45% merged, plt 28% vs 53%,
 lnd 12% vs 28%, sky 21% vs 52% — while a pinned seed flipped across all four
-ecologies keeps its hand/arm merge identical (only the salient domain moves),
-proving the bound. Surfaced in the Lab's lexicon card as a Cultural-ecology
-section (the salient domain's words, distinct or blurred). All four gates
-green; probe 511 → 516.
+ecologies keeps its neutral colex MAP identical (only the salient domain
+re-merges). Surfaced in the Lab's lexicon card as a Cultural-ecology section
+(the salient domain's words, distinct or blurred). All four gates green;
+probe 511 → 516.
 
 ## Build status (session 16, twelfth phase) — frequency-weighted erosion (Zipf, part b)
 
@@ -1698,3 +1705,47 @@ than the tail — onset clusters 0.3% vs 0.5%, codas 27% vs 32% — while the
 abbreviation law stands beside it. The honest finding the item was really about:
 frequency erosion belongs at the family root, not in per-word drift; put it
 there and the invariant holds. All four gates green; probe 516 → 520.
+
+## Build status (session 16, thirteenth phase) — the second adversarial review round
+
+Three hostile reviewers, one per layer (word-forms, grammar, culture+integration),
+each tasked to BREAK the session's five commits with repro scripts — not read
+them. They ran ~200k render/word calls between them; five real defects surfaced,
+all slipping past the per-feature gates, each now fixed at the mechanism.
+
+- **The empty-syllable seam (HIGH).** The fusional seam (`joinAffix` AND, latent
+  since long before, `joinInternal`) emptied a nucleus but only popped the
+  syllable when it kept an onset — so an onset-less bare-vowel base (`see`=/i/)
+  plus a vowel-initial affix left an illegal `{}` syllable and ANNIHILATED the
+  base (`seer`→`í`), baking into `inflectNoun`, clauses, and a roman↔IPA desync.
+  Fixed in a shared `fuseSeam`: never annihilate a bare-vowel monosyllable (fall
+  to a hiatus glide), never leave a nucleus-less syllable; `legalizeWord` now
+  drops any that slip through. 0 empty syllables across 95,600 pairs; `seer`
+  keeps `see`. Fixes god/law/oath/priest too.
+- **The clitic collision (grammar).** The TOP/FOC dedup seed omitted defArt/
+  indefArt/copula/neg-existential/voice forms, so the TOP clitic (‹ the distal
+  demonstrative) surfaced identical to DEF (‹ the same demonstrative) — "king the
+  the saw" — in 14/360 of §36's own seeds. Seed extended to the full closed
+  class: 0 collisions in 2000.
+- **Topic/focus × voice.** `applyInfoStructure` read the flag off the UNDERLYING
+  role but extracted by SURFACE role, so a passive's focused patient was silently
+  dropped and an applicative fronted the wrong NP. Rebuilt on a token MARKER
+  (`markInfo` stamps the flagged argument's tokens) that rides the voice remap:
+  the passive patient (now subject) and applicative theme (now O2) focus
+  correctly; gloss stays aligned; the unflagged clause is still byte-identical.
+- **The culture overclaim (honesty).** The 1.6 commit claimed neutral WORDS
+  byte-identical; true only of the colex MERGE MAP — un-merging a salient pair
+  reorders homophony repair, so a neutral SURFACE can shift (the same cascade
+  Zipf made). Corrected the §37 gate to assert the map invariant and MEASURE the
+  surface cascade, and the prose to match.
+- **The pin cache footgun.** `compile()`'s cache key omitted `prof.lex`, so a
+  pin (agent/motion/culture) set AFTER a first read desynced a warm record from
+  its JSON round-trip. Folded `prof.lex` into the key: 0 mismatches. Plus a
+  valid-cid guard on the agentive pin (garbage falls back to the roll, no throw)
+  and a note that culture salience keys on the pair's taker domain on purpose.
+
+Cleared by the reviewers and worth recording: the romanizer (3.2) and the
+frequency-erosion texture (part b) are clean; determinism, JSON round-trip,
+append-only, and the frozen API hold across all five commits and their
+combinations (1200 drifted+branched languages, 0 crashes). All four gates green;
+probe stays 520 (the fixes changed forms, not the check count).

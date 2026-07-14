@@ -3819,17 +3819,26 @@ console.log("\n── §37 cultural ecology (culture → lexicon) ──");
   //    pinning the culture actually flips the salient (wat) domain, then confirm
   //    the neutral (bod) domain did NOT move with it — hand/arm is identical
   //    across all four ecologies even as the water words diverge.
-  let flip = null;
-  for (let s = 0; s < 400 && !flip; s++) {
-    const pins = ["seafaring", "farming", "highland", "skyreckoning"].map(k => {
-      const l = foundLanguage(mkWorld(), { seed: 770000 + s * 13 });
+  // the bound stated HONESTLY (review): culture changes the colex MERGE MAP only
+  // in the salient domain — a neutral pair's merge (hand/arm) is identical across
+  // all four ecologies. Rendered SURFACES are NOT word-bounded, though: un-merging
+  // a salient pair frees a surface and reorders homophony repair, so a neutral
+  // WORD can still shift — the ordinary cascade ANY colex change makes (Zipf too).
+  // Assert the map invariant; MEASURE the surface cascade rather than deny it.
+  let mapInvariant = true, wordShift = 0, seedN = 0;
+  for (let s = 0; s < 300 && seedN < 120; s++) {
+    const per = ["seafaring", "farming", "highland", "skyreckoning"].map(k => {
+      const l = foundLanguage(mkWorld(), { seed: 772000 + s * 13 });
       l.prof.lex = { ...(l.prof.lex || {}), culture: k };
-      return { hand: colexPartner(l, ARM), wat: (colexPartner(l, WATER) === RIVER) + "/" + (colexPartner(l, LAKE) === SEA) };
+      return { hand: colexPartner(l, ARM), handW: wordOf(l, ARM), wat: (colexPartner(l, WATER) === RIVER) + "/" + (colexPartner(l, LAKE) === SEA) };
     });
-    if (new Set(pins.map(p => p.wat)).size >= 2) flip = pins;
+    if (new Set(per.map(p => p.wat)).size < 2) continue;                       // only seeds where the salient domain actually flips
+    seedN++;
+    if (!per.every(p => p.hand === per[0].hand)) mapInvariant = false;         // the neutral MERGE must never move
+    if (new Set(per.map(p => p.handW)).size > 1) wordShift++;                  // the neutral SURFACE may move (cascade)
   }
-  check("when culture flips the salient domain, the neutral domain (hand/arm) does NOT move — the re-baseline stays inside the lived-in domain",
-    !!flip && flip.every(p => p.hand === flip[0].hand));
+  check(`culture bounds the colex MAP to the salient domain (neutral merges never change), while neutral SURFACES cascade with the re-merge in ${Math.round(100 * wordShift / Math.max(1, seedN))}% of flip-seeds — the honest reach is map-bounded, not word-bounded`,
+    seedN >= 20 && mapInvariant);
 
   // 4) pinned reference tongues are exempt (their colex must stay byte-identical)
   check("pinned reference tongues carry no ecology (colex unperturbed)",

@@ -904,15 +904,20 @@ export function closedOf(lang) {
   // caseless tongues that cannot move the focus to the clause edge.
   let topP = null, focP = null;
   const info = infoOf(g);
+  // the TOP clitic wears from the SAME distal demonstrative the definite article
+  // does, so it must dedupe against defArt (and the rest of the closed class the
+  // base seed omits — indefArt, the voice affixes, the copula and negative-
+  // existential particles), or 'king TOP saw' surfaces as 'king the saw'
+  const closedFull = [...closedAll, defArt, indefArt, ...Object.values(voiceLV), copP, negExP, reflP, recpP].filter(Boolean);
   if (info.topicPart) {
     const tf = legalizeWord(R({ syls: [wearSyl(prof, lighten(copyWord(demRoot)))] }));
     topP = { g: "TOP", form: tf, w: rform(lang, tf), src: "this" };
-    dedupe(lang, inv, [topP], [...closedAll, reflP, recpP].filter(Boolean));
+    dedupe(lang, inv, [topP], closedFull);
   }
   if (info.focus === "insitu") {
     const ff = legalizeWord(R({ syls: [wearSyl(prof, lighten(rootFormOf(lang, BE).w))] }));
     focP = { g: "FOC", form: ff, w: rform(lang, ff), src: "be" };
-    dedupe(lang, inv, [focP], [...closedAll, reflP, recpP, topP].filter(Boolean));
+    dedupe(lang, inv, [focP], [...closedFull, topP].filter(Boolean));
   }
 
   c.closed = { prons, dems, neg, qs, conj, adps, defArt, indefArt, qp, impPart, prohibW, voice: voiceLV, links: { comp: compz, rel: relz, when: whenSub }, cop: copP, negEx: negExP, refl: reflP, recp: recpP, topP, focP };
@@ -2723,40 +2728,46 @@ export function clauseAlignment(lang, frame) {
   return { effAlign, hier: g.align === "erg" && g.ergSplit === "hier", direction, tam, imperative };
 }
 
+// tag every token of a flagged argument with the info-structure marker. Marking
+// the ARGUMENT (not a surface role) means the flag rides through the voice
+// prepass: a focused patient promoted to subject under the passive, a theme
+// demoted to O2 under the applicative, an agent pushed into the by-phrase — each
+// keeps its marker wherever it surfaced, so topic/focus COMPOSES with voice.
+function markInfo(toks, arg) {
+  if (!arg || (!arg.topic && !arg.focus)) return toks;
+  for (const t of toks) { if (arg.topic) t.top = true; if (arg.focus) t.foc = true; }
+  return toks;
+}
+
 // INFORMATION STRUCTURE (item 1.8): re-order a clause for topic and focus.
-// A topicalized argument moves to the clause edge (+ a worn TOP clitic where
-// the language has one, postposed like -wa); a focused argument is realized by
-// the language's strategy — SCRAMBLED to the front when case keeps the moved
-// role recoverable, else left in place under a worn FOC clitic. Reads .topic /
-// .focus off the S or O argument; a pure no-op when neither is flagged, so
-// every clause built without them is byte-identical to before.
-function applyInfoStructure(lang, frame, seq) {
-  if (!frame || (!(frame.s && (frame.s.topic || frame.s.focus)) && !(frame.o && (frame.o.topic || frame.o.focus)))) return seq;
+// A topicalized argument moves to the clause edge (+ a worn TOP clitic where the
+// language has one, postposed like -wa); a focused argument is realized by the
+// language's strategy — SCRAMBLED to the front when case keeps the moved role
+// recoverable, else left in place under a worn FOC clitic. Finds the flagged
+// argument by the marker markInfo stamped on its tokens (robust to the voice
+// remap); a pure no-op when nothing is marked, so every clause built without
+// topic/focus is byte-identical to before.
+function applyInfoStructure(lang, seq) {
+  if (!seq.some(t => t.top || t.foc)) return seq;
   const g = gramOf(lang), cl = closedOf(lang);
-  const blockOf = (role) => {
-    const start = seq.findIndex(t => t.role === role);
+  const blockOf = (key) => {
+    const start = seq.findIndex(t => t[key]);
     if (start < 0) return null;
-    let end = start; while (end < seq.length && seq[end].role === role) end++;
+    let end = start; while (end < seq.length && seq[end][key]) end++;
     return { start, end, toks: seq.slice(start, end) };
   };
   // TOPIC first: front the flagged argument; a TOP clitic follows it (X-wa)
-  const topRole = frame.s && frame.s.topic ? "S" : frame.o && frame.o.topic ? "O" : null;
-  if (topRole) {
-    const b = blockOf(topRole);
-    if (b) {
-      const mark = cl.topP ? [{ w: cl.topP.w, g: "TOP", role: "TOP", f: cl.topP.form }] : [];
-      seq = [...b.toks, ...mark, ...seq.slice(0, b.start), ...seq.slice(b.end)];
-    }
+  const tb = blockOf("top");
+  if (tb) {
+    const mark = cl.topP ? [{ w: cl.topP.w, g: "TOP", role: "TOP", f: cl.topP.form }] : [];
+    seq = [...tb.toks, ...mark, ...seq.slice(0, tb.start), ...seq.slice(tb.end)];
   }
   // FOCUS: scramble to the front (ex-situ) where the language moves it, else
   // mark in place with the FOC clitic (in-situ, the rigid-order strategy)
-  const focRole = frame.s && frame.s.focus ? "S" : frame.o && frame.o.focus ? "O" : null;
-  if (focRole) {
-    const b = blockOf(focRole);
-    if (b) {
-      if (infoOf(g).focus === "front") seq = [...b.toks, ...seq.slice(0, b.start), ...seq.slice(b.end)];
-      else if (cl.focP) seq = [...seq.slice(0, b.end), { w: cl.focP.w, g: "FOC", role: "FOC", f: cl.focP.form }, ...seq.slice(b.end)];
-    }
+  const fb = blockOf("foc");
+  if (fb) {
+    if (infoOf(g).focus === "front") seq = [...fb.toks, ...seq.slice(0, fb.start), ...seq.slice(fb.end)];
+    else if (cl.focP) seq = [...seq.slice(0, fb.end), { w: cl.focP.w, g: "FOC", role: "FOC", f: cl.focP.form }, ...seq.slice(fb.end)];
   }
   return seq;
 }
@@ -3148,8 +3159,8 @@ export function renderClause(lang, frame, opts = {}) {
   const sCase = coreCaseOf(lang, "S", { trans, effAlign, hier, arg: sArg, sAgentive });
   const oCase = coreCaseOf(lang, "O", { trans, effAlign, hier, arg: oArg, sAgentive });
   const toks = {
-    s: opts.gap === "S" ? [] : np(sArg, sCase, "S"),
-    o: opts.gap === "O" ? [] : oComp ? complementTokens(oComp) : np(oArg, oCase, "O"),
+    s: opts.gap === "S" ? [] : markInfo(np(sArg, sCase, "S"), sArg),
+    o: opts.gap === "O" ? [] : oComp ? complementTokens(oComp) : markInfo(np(oArg, oCase, "O"), oArg),
     v: [],
   };
   // verb agreement: with the (derived) SUBJECT by default, but with the
@@ -3214,8 +3225,8 @@ export function renderClause(lang, frame, opts = {}) {
   else if (sIsPron && !sArg.rel && g.proDrop && g.agree !== "none") toks.s = [];
   const locToks = [
     ...(locArg ? adjunct({ n: locArg.n, pron: locArg.pron, def: locArg.def, num: locArg.num }, locArg.adp) : []),
-    ...adjunct(byArg, g.passBy),      // passive agent
-    ...adjunct(oblArg, "with"),       // antipassive patient
+    ...markInfo(adjunct(byArg, g.passBy), byArg),      // passive agent (may be topicalized)
+    ...markInfo(adjunct(oblArg, "with"), oblArg),      // antipassive patient (may be focused)
   ];
   // SERIAL VERBS (syntax completion): a second verb (+ its own object) inside
   // ONE clause — no linker, shared subject, TAM once (svcTam 'first') or on
@@ -3228,7 +3239,7 @@ export function renderClause(lang, frame, opts = {}) {
     svcVToks = [...vx2.pre.map(t => ({ ...t, role: "V2" })), { w: vx2.text, g: vx2.gloss, role: "V2", f: vx2.form, c: frame.v2.c, seam: vx2.seam }, ...vx2.post.map(t => ({ ...t, role: "V2" }))];
     svcOToks = frame.v2.o ? np(frame.v2.o, null, "O2") : [];
   }
-  const themeToks = applTheme ? np(applTheme, null, "O2") : [];   // the applicative's retained theme, bare
+  const themeToks = markInfo(applTheme ? np(applTheme, null, "O2") : [], applTheme);   // applicative theme (may be focused)
   // assemble by word order; adjuncts sit preverbally in OV, clause-late in VO
   const ov = g.wo === "sov" || g.wo === "ovs";
   const v1c = g.wo === "vso" || g.wo === "vos";
@@ -3251,7 +3262,7 @@ export function renderClause(lang, frame, opts = {}) {
   const whIdx = seq.findIndex(t => t.wh);
   if (whIdx > 0 && g.whFront) seq.unshift(...seq.splice(whIdx, 1));
   // information structure (item 1.8): topicalize / focus the flagged argument
-  seq = applyInfoStructure(lang, frame, seq);
+  seq = applyInfoStructure(lang, seq);
   if (negFinal) seq.push({ w: cl.neg.w, g: "NEG", role: "V", f: cl.neg.form });
   // polar-question particle (wh-questions carry their own interrogative), the
   // adverbial clauses, and the detached blocks — the shared tail
