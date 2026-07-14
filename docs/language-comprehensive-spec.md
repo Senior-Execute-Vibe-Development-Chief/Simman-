@@ -1514,7 +1514,7 @@ median rather than one noisy pick. Probe 495 → 496.
 
 Parked from the same review (by leverage): frequency-weighted erosion
 (part b — deferred; it introduces irregularity that would fight the regular-
-correspondence invariant) and the sim-side culture→lexicon conditioning.
+correspondence invariant).
 
 ## Build status (session 16, eighth phase) — affixal derivation (agentive)
 
@@ -1629,3 +1629,32 @@ topic / focus of the same clause). Probe §36 gates the emergent licensing,
 the visible reordering (focus changes the clause 99% of the time; topic fronts
 150/150 where observable), the clitic etymologies, gloss alignment, and the
 unflagged-clause no-op. All four gates green; probe 504 → 511.
+
+## Build status (session 16, eleventh phase) — cultural ecology (culture → lexicon)
+
+The external review's item 1.6: a speech community's way of life should shape
+its lexicon — the Austronesian navigator's wealth of sea words, the farmer's
+grain and soil terms, the Saami snow distinctions. The review framed it
+sim-side (a peopleSim culture conditioning the language); the standing
+constraint keeps this Lab-side, so it is modelled as a per-FAMILY ecology
+rolled from the family seed, exposed by `cultureOf` and pinnable via
+`prof.lex.culture`.
+
+The mechanism is one biased colexification threshold, nothing scripted: each
+family lives by one of four ecologies (seafaring/farming/highland/sky-reckoning,
+salient in wat/plt/lnd/sky respectively), and a colex pair whose domain is that
+family's SALIENT one merges at half the probability (CULTURE_SALIENCE 0.5) — the
+lived-in distinctions resist loss, so a seafaring tongue keeps sea/lake/river
+apart where a landlocked one lets them blur. The colex ROLL is untouched (same
+stream); only the THRESHOLD drops, and only inside the ecology domains, so the
+blast radius is bounded: every neutral pair (hand/arm, heart/mind) and every
+pinned reference tongue is byte-identical — the probe's 511 prior checks all
+still pass unchanged.
+
+Measured (probe §37) over 600 languages: each ecology holds its own domain
+strictly finer than the others do — wat 22% vs 45% merged, plt 28% vs 53%,
+lnd 12% vs 28%, sky 21% vs 52% — while a pinned seed flipped across all four
+ecologies keeps its hand/arm merge identical (only the salient domain moves),
+proving the bound. Surfaced in the Lab's lexicon card as a Cultural-ecology
+section (the salient domain's words, distinct or blurred). All four gates
+green; probe 511 → 516.

@@ -510,3 +510,20 @@ export const PERSON_POOL = [WOLF, BEAR, EAGLE, RAVEN, FALCON, LION, DEER, BOAR,
 export const LOAN_POOL = [KING, LAW, THRONE, CROWN, TAX, COUNCIL, REALM, TEMPLE,
   PRIEST, HOLY, GOD, WINE, SILK, COIN, GOLD, SILVER, MARKET, ARMY, GUARD, TOWER,
   VICTORY, GLORY, NOBLE];
+
+// ── cultural ecology (item 1.6): a speech community's subsistence focus makes
+// its vocabulary FINER in the domain it lives by — the Austronesian navigator's
+// wealth of sea words, the farmer's grain and soil terms, the Saami snow
+// distinctions. Modelled Lab-side (no peopleSim hookup) as a per-family ECOLOGY
+// that lowers colexification in its SALIENT semantic domain (the critical
+// distinctions resist merger), touching ONLY the ecology domains {wat,plt,lnd,
+// sky} — every other merge (hand/arm, heart/mind) is byte-identical, and pinned
+// reference tongues are exempt. One salient domain per culture; language.js
+// (compile) applies the bias and cultureOf() reports it.
+export const ECOLOGY_DOMAINS = new Set(["wat", "plt", "lnd", "sky"]);
+export const CULTURES = [
+  { k: "seafaring", salient: "wat", g: "seafaring — a wealth of water words" },
+  { k: "farming", salient: "plt", g: "farming — fine plant & grain terms" },
+  { k: "highland", salient: "lnd", g: "highland — the shapes of the land named" },
+  { k: "skyreckoning", salient: "sky", g: "sky-reckoning — sun, moon & season kept apart" },
+];

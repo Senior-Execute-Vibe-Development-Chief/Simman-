@@ -10,7 +10,7 @@
 // under `npm run dev`, which is why every read is typeof-guarded. Declared
 // here so ESLint's no-undef doesn't flag the injected identifier.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf, colorTermsOf, kinshipOf, dialectsOf } from "./sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf, colorTermsOf, kinshipOf, dialectsOf, cultureOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
 import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME, registerOf, highRegister, registerWords } from "./sim/languageScript.js";
@@ -23,7 +23,8 @@ import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb
   renderClauseTree, clauseLinkersOf, synchronicPhonology, predicationOf, motionTypologyOf, polysynthesisOf, infoStructureOf } from "./sim/languageGrammar.js";
 import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VERBS, HORSE, TOWN, BLACK, SEE, GO, TAKE, EAT, SLEEP, QUEEN, BREAD, SWORD, GREAT, OLD, GRAIN,
   RUN, ENTER, MIND, HEART, HEAD, LANGUAGE_C, TONGUE, BARK, SKIN, FISH, WATER, GOD, WINE,
-  RULER, BUILDER, WARRIOR, SEER, SPEAKER, RULEV, BUILDV, FIGHTV, SAY } from "./sim/languageLexicon.js";
+  RULER, BUILDER, WARRIOR, SEER, SPEAKER, RULEV, BUILDV, FIGHTV, SAY,
+  SEA, LAKE, TREE, WOOD, FOREST, HILL, EARTH, LAND, SUN, MOON, DAY, MONTH } from "./sim/languageLexicon.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
@@ -884,6 +885,23 @@ function lexTypologyHTML(l) {
     secs.push(`<h3>Derivation <span class="count">(agentive ‹ ‘${esc(glossOf(agEty.mod))}’${hf ? ", a prefix" : ""})</span></h3>
       <p class="note">‘One who VERBs’ is COINED, not memorised: a base verb takes an agentive affix worn down from this family's own word for ‘${esc(glossOf(agEty.mod))}’ (the -er / -sha / mu- machine). The same ${hf ? "prefix" : "suffix"} (<u>underlined</u>) rides every agent — that is the regularity that makes it an affix — while the base stays whole, so ‘${esc(wordOf(l, RULER))}’ still shows ‘${esc(wordOf(l, RULEV))}’ inside it. Both morphemes ride the sound-change log, so a cognate in a sister tongue corresponds sound-for-sound.</p>
       <p class="cells">${rows}</p>`);
+  }
+  // cultural ecology (item 1.6): the family's subsistence focus keeps its
+  // salient domain lexically finer — show which of that domain's concepts stay
+  // distinct (a word of their own) rather than blurring into a neighbour
+  const cult = cultureOf(l);
+  if (cult) {
+    const DOMAIN_WORDS = { wat: [SEA, LAKE, RIVER, WATER], plt: [TREE, WOOD, FOREST, GRAIN], lnd: [MOUNTAIN, HILL, EARTH, LAND], sky: [SUN, MOON, DAY, MONTH] };
+    const domName = { wat: "water", plt: "plant & grain", lnd: "land", sky: "sky" };
+    const set = DOMAIN_WORDS[cult.salient] || [];
+    const cells = set.map(cid => {
+      const p = colexPartner(l, cid);
+      return `<span class="cell"><span class="lbl">${esc(glossOf(cid))}</span> ${p >= 0 ? `<span class="gloss">= ${esc(glossOf(p))}</span>` : `<span class="w">${esc(wordOf(l, cid))}</span>`}</span>`;
+    }).join(" ");
+    const distinct = set.filter(cid => colexPartner(l, cid) < 0).length;
+    secs.push(`<h3>Cultural ecology <span class="count">(${esc(cult.gloss)})</span></h3>
+      <p class="note">A community's way of life makes its vocabulary FINER where it lives: a ${esc(cult.kind)} tongue keeps its ${domName[cult.salient]} words apart where a stranger to that domain lets them blur together (sea = lake, hill = mountain). Emergent, not scripted — colexification is simply halved in the salient domain, so ${distinct}/${set.length} of these keep a word of their own here.</p>
+      <p class="cells">${cells}</p>`);
   }
   // the new colex domains, only where they fired (emergent card)
   const pairs = [[MIND, HEART, "one word for heart & mind"], [MIND, HEAD, "one word for head & mind"], [LANGUAGE_C, TONGUE, "the tongue IS the language"], [BARK, SKIN, "bark is just ‘skin’"]];

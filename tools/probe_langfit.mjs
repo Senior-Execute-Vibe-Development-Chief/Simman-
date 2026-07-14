@@ -11,7 +11,7 @@
 //
 //   node tools/probe_langfit.mjs [--quiet]
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf, colorTermsOf, kinshipOf, dialectsOf } from "../src/sim/language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceName, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, nativeStemOf, compiledInv, loanOf, colorTermsOf, kinshipOf, dialectsOf, colexPartner, cultureOf } from "../src/sim/language.js";
 import { refProfile, refPin, applyReference } from "../src/sim/languageRefs.js";
 import { rollProfile, buildInventory, renderWord, copyWord } from "../src/sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV } from "../src/sim/languagePhonetics.js";
@@ -24,7 +24,8 @@ import { WATER, RIVER, KING, STONE, MOTHER, GOD, WINE, LAW, CONCEPTS, VERBS, TOP
   TOPO_MOD, PERSON_POOL, LOAN_POOL, RUN, FATHER, BROTHER, RED, GREEN, BLUE, HEART, HEAD,
   YELLOW, BROWN, PURPLE, PINK, ORANGE, GREY, SISTER, UNCLE_F, UNCLE_M, AUNT_F, AUNT_M, COUSIN, GRANDFATHER, GRANDMOTHER,
   ENTER, EXIT, ASCEND, DESCEND, MIND, TONGUE, LANGUAGE_C, SKIN, BARK, LORD, NIGHT,
-  RULER, BUILDER, WARRIOR, SEER, SPEAKER, AGENT_BASE, RULEV, BUILDV, FIGHTV, SAY, PEOPLE, BODY } from "../src/sim/languageLexicon.js";
+  RULER, BUILDER, WARRIOR, SEER, SPEAKER, AGENT_BASE, RULEV, BUILDV, FIGHTV, SAY, PEOPLE, BODY,
+  LAKE, SEA, ARM, HILL, MOUNTAIN, WOOD, MONTH, MOON } from "../src/sim/languageLexicon.js";
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
@@ -3768,6 +3769,71 @@ console.log("\n── §36 information structure (topic/focus) ──");
     say("   topic: " + F(l, { s: { topic: true } }).text + "  [" + F(l, { s: { topic: true } }).gloss + "]");
     const lf = pop.find(x => infoStructureOf(x).focus === "front") || pop[0];
     say("   focus (ex-situ): " + F(lf, { o: { focus: true } }).text + "  [" + F(lf, { o: { focus: true } }).gloss + "]");
+  }
+}
+
+// ── §37 CULTURAL ECOLOGY: culture → lexicon (item 1.6). A family's subsistence
+// focus keeps its vocabulary FINER in the domain it lives by — a seafaring
+// tongue merges sea/lake/river far less than a landlocked one. Modelled as a
+// per-family ecology that lowers colexification in its salient domain ONLY,
+// leaving every neutral domain (and every pinned reference) byte-identical. ──
+console.log("\n── §37 cultural ecology (culture → lexicon) ──");
+{
+  const world = mkWorld();
+  const N = 600;
+  const pop = Array.from({ length: N }, (_, i) => foundLanguage(world, { seed: 640000 + i * 31 }));
+  const merged = (l, taker, host) => colexPartner(l, taker) === host;
+  const domMerge = { wat: (l) => merged(l, WATER, RIVER) || merged(l, LAKE, SEA), plt: (l) => merged(l, WOOD, TREE), lnd: (l) => merged(l, HILL, MOUNTAIN), sky: (l) => merged(l, MONTH, MOON) };
+  const salientCult = { wat: "seafaring", plt: "farming", lnd: "highland", sky: "skyreckoning" };
+
+  // 1) culture is deterministic and spread across the four ecologies
+  const byC = {};
+  for (const l of pop) (byC[cultureOf(l).kind] ||= []).push(l);
+  check(`the four ecologies all occur, roughly evenly (${Object.entries(byC).map(([k, v]) => k + " " + v.length).join(", ")})`,
+    Object.keys(byC).length === 4 && Object.values(byC).every(v => v.length > N * 0.12));
+
+  // 2) the mechanism: in EVERY ecology domain, the culture that lives by it
+  //    keeps that domain FINER — a strictly lower colexification rate than the
+  //    tongues that don't. This is culture → lexicon, straight off the dial.
+  let allFiner = true; const rows = [];
+  for (const dom of ["wat", "plt", "lnd", "sky"]) {
+    const sal = byC[salientCult[dom]] || [];
+    const oth = pop.filter(l => cultureOf(l).kind !== salientCult[dom]);
+    const rs = sal.filter(domMerge[dom]).length / Math.max(1, sal.length);
+    const ro = oth.filter(domMerge[dom]).length / Math.max(1, oth.length);
+    rows.push(`${dom} ${Math.round(rs * 100)}%<${Math.round(ro * 100)}%`);
+    if (!(rs < ro - 0.05)) allFiner = false;
+  }
+  check(`each ecology keeps its own domain lexically finer than others do (${rows.join(", ")})`, allFiner);
+
+  // 3) the blast radius is BOUNDED to the lived-in domain. Find a seed where
+  //    pinning the culture actually flips the salient (wat) domain, then confirm
+  //    the neutral (bod) domain did NOT move with it — hand/arm is identical
+  //    across all four ecologies even as the water words diverge.
+  let flip = null;
+  for (let s = 0; s < 400 && !flip; s++) {
+    const pins = ["seafaring", "farming", "highland", "skyreckoning"].map(k => {
+      const l = foundLanguage(mkWorld(), { seed: 770000 + s * 13 });
+      l.prof.lex = { ...(l.prof.lex || {}), culture: k };
+      return { hand: colexPartner(l, ARM), wat: (colexPartner(l, WATER) === RIVER) + "/" + (colexPartner(l, LAKE) === SEA) };
+    });
+    if (new Set(pins.map(p => p.wat)).size >= 2) flip = pins;
+  }
+  check("when culture flips the salient domain, the neutral domain (hand/arm) does NOT move — the re-baseline stays inside the lived-in domain",
+    !!flip && flip.every(p => p.hand === flip[0].hand));
+
+  // 4) pinned reference tongues are exempt (their colex must stay byte-identical)
+  check("pinned reference tongues carry no ecology (colex unperturbed)",
+    ["mandarin", "russian", "english"].every(k => { const l = foundLanguage(mkWorld(), { seed: 445 }); l.prof = refProfile(k, 445); l.rules = []; l.pin = refPin(k).pin; return cultureOf(l) === null; }));
+
+  // 5) determinism + JSON-roundtrip
+  const ca = foundLanguage(mkWorld(), { seed: 646464 }), cb = foundLanguage(mkWorld(), { seed: 646464 });
+  const csig = (l) => cultureOf(l).kind + [WATER, LAKE, WOOD, HILL, MONTH, ARM].map(c => colexPartner(l, c)).join();
+  check("cultural ecology deterministic + JSON-roundtrip-stable", csig(ca) === csig(cb) && csig(ca) === csig(JSON.parse(JSON.stringify(ca))));
+
+  if (!quiet) {
+    const sea = pop.find(l => cultureOf(l).kind === "seafaring");
+    say("   seafaring water words: " + [SEA, LAKE, RIVER, WATER].map(c => glossOf(c) + "=" + wordOf(sea, c)).join("  "));
   }
 }
 

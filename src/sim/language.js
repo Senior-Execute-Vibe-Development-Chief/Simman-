@@ -28,7 +28,7 @@ import { bequeathGrammar, adpSourceOf, gramOf } from "./languageGrammar.js";
 import { CONCEPTS, COLEX, DERIV, TOPO_HEAD, TOPO_MOD, PERSON_POOL, LOAN_POOL, LAND, SON, TOWN, FORT, HOUSE,
   BK_TERMS, BK_PARENT, KIN_MERGES, KIN_SLOTS, MOTION_DV, MOTION_PATH_ADP, MOTION_SAT_RATE,
   GREEN, BLUE, YELLOW, BROWN, PURPLE, PINK, ORANGE, GREY,
-  AGENT_BASE, MAN, PEOPLE, BODY } from "./languageLexicon.js";
+  AGENT_BASE, MAN, PEOPLE, BODY, CULTURES, ECOLOGY_DOMAINS } from "./languageLexicon.js";
 
 const h01 = (...a) => hash32(...a) / 4294967296;
 const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
@@ -213,6 +213,27 @@ function ensureV2(lang) {
   return lang;
 }
 
+// ── cultural ecology (item 1.6) ───────────────────────────────────────────
+// The salient-domain colex threshold multiplier: a lived-in distinction is half
+// as likely to be lost to a merger. A real prior on distinction-retention, not
+// a knob fitted to any one word.
+const CULTURE_SALIENCE = 0.5;
+// the family's ecology, or null for a pinned reference tongue (whose colex must
+// stay byte-identical); pinnable via prof.lex.culture for the Lab and gates.
+function cultureFor(lang) {
+  if (lang.pin) return null;
+  const pin = lang.prof.lex && lang.prof.lex.culture;
+  if (pin) return CULTURES.find(c => c.k === pin) || null;
+  return CULTURES[hash32(lang.famSeed, "culture") % CULTURES.length];
+}
+
+/** The family's cultural ecology (item 1.6): its subsistence focus and the
+ *  semantic domain it keeps lexically finest. Null for pinned reference tongues. */
+export function cultureOf(lang) {
+  const c = cultureFor(lang);
+  return c ? { kind: c.k, gloss: c.g, salient: c.salient } : null;
+}
+
 // ── compiled state (derived, WeakMap-cached, never persisted) ─────────────
 
 const COMPILED = new WeakMap();
@@ -235,9 +256,20 @@ function compile(lang) {
   // family-seeded so sisters share their cluster fashions (pinned
   // references may list their literal legal onsets/codas/diphthongs)
   inv.syllab = buildSyllabary(lang.famSeed, lang.prof, inv, lang.pin);
-  // family-level semantic structure: colexification + derive-vs-root choices
+  // family-level semantic structure: colexification + derive-vs-root choices.
+  // CULTURAL ECOLOGY (item 1.6): the family's subsistence focus makes it keep
+  // FINER distinctions in its salient domain — a seafaring tongue merges sea/
+  // lake/river far less than a landlocked one. The colex ROLL is unchanged (same
+  // stream); only the THRESHOLD drops (× CULTURE_SALIENCE) for a colex pair
+  // whose domain is this culture's salient one, and only within the ecology
+  // domains. Every other pair — and every pinned reference tongue — keeps its
+  // exact threshold, so nothing outside the lived-in domain re-baselines.
+  const cult = cultureFor(lang);
   const colex = new Map();
-  COLEX.forEach(([a, b, p], i) => { if (h01(lang.famSeed, "colex", i) < p) colex.set(b, a); });
+  COLEX.forEach(([a, b, p], i) => {
+    const pAdj = cult && ECOLOGY_DOMAINS.has(CONCEPTS[a].d) && CONCEPTS[a].d === cult.salient ? p * CULTURE_SALIENCE : p;
+    if (h01(lang.famSeed, "colex", i) < pAdj) colex.set(b, a);
+  });
   c = { key, inv, colex, words: new Map(), internals: new Map(), roots: new Map(), sufs: null, seeded: false };
   // ── LEXICAL TYPOLOGY (phase 2): the Berlin–Kay color hierarchy and the
   // kinship system, both expressed as colexification of the APPENDED concepts
