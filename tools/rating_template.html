@@ -1,0 +1,160 @@
+<title>Flag Rating — teach the engine what reads well</title>
+<style>
+  :root{
+    --ground:#e7e0cf; --surface:#f2ede1; --raised:#f8f4ea; --ink:#23272e; --muted:#6e6756;
+    --gold:#8f6a10; --blue:#2f4f96; --rule:#d4cbb4;
+    --vb:#9d2130; --b:#c07a1c; --g:#5a8a2e; --vg:#1f6e41;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{--ground:#14161c;--surface:#1d212a;--raised:#262b36;--ink:#e9e3d5;--muted:#968f7e;--gold:#c7a052;--blue:#89a2de;--rule:#323a47;--vb:#e07f7c;--b:#d9a24b;--g:#8ec766;--vg:#63b487;}}
+  :root[data-theme="dark"]{--ground:#14161c;--surface:#1d212a;--raised:#262b36;--ink:#e9e3d5;--muted:#968f7e;--gold:#c7a052;--blue:#89a2de;--rule:#323a47;--vb:#e07f7c;--b:#d9a24b;--g:#8ec766;--vg:#63b487;}
+  :root[data-theme="light"]{--ground:#e7e0cf;--surface:#f2ede1;--raised:#f8f4ea;--ink:#23272e;--muted:#6e6756;--gold:#8f6a10;--blue:#2f4f96;--rule:#d4cbb4;--vb:#9d2130;--b:#c07a1c;--g:#5a8a2e;--vg:#1f6e41;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:720px;margin:0 auto;padding:clamp(18px,3vw,34px) 18px 60px;}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(24px,4vw,34px);margin:.2em 0 .1em;letter-spacing:-.01em;}
+  .lede{color:var(--muted);font-size:14.5px;margin:0 0 20px;max-width:60ch;}
+  .stage{background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:20px;box-shadow:0 1px 0 rgba(0,0,0,.04);}
+  .flag{display:flex;justify-content:center;align-items:center;min-height:220px;}
+  .flag svg{width:100%;max-width:440px;height:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18));}
+  .blazon{font-family:var(--serif);font-style:italic;color:var(--muted);text-align:center;font-size:14px;margin:14px 4px 2px;min-height:2.6em;text-wrap:balance;}
+  .btns{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px;}
+  button.rate{font-family:var(--sans);font-weight:650;font-size:15px;padding:14px 6px 10px;border:2px solid;border-radius:10px;background:var(--raised);cursor:pointer;color:var(--ink);transition:transform .05s,background .12s;}
+  button.rate:hover{transform:translateY(-1px);}
+  button.rate:active{transform:translateY(0);}
+  button.rate .k{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px;font-weight:400;}
+  .rate.vb{border-color:var(--vb);} .rate.vb:hover{background:color-mix(in srgb,var(--vb) 15%,var(--raised));}
+  .rate.b{border-color:var(--b);} .rate.b:hover{background:color-mix(in srgb,var(--b) 15%,var(--raised));}
+  .rate.g{border-color:var(--g);} .rate.g:hover{background:color-mix(in srgb,var(--g) 15%,var(--raised));}
+  .rate.vg{border-color:var(--vg);} .rate.vg:hover{background:color-mix(in srgb,var(--vg) 15%,var(--raised));}
+  .bar{display:flex;align-items:center;gap:14px;margin-top:22px;flex-wrap:wrap;}
+  .count{font-family:var(--mono);font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .count b{color:var(--ink);}
+  .tallies{display:flex;gap:10px;font-family:var(--mono);font-size:12px;}
+  .tallies span{padding:2px 8px;border-radius:12px;background:var(--raised);border:1px solid var(--rule);}
+  .spacer{flex:1;}
+  .ghost{font-family:var(--sans);font-size:13px;padding:8px 13px;border:1px solid var(--rule);border-radius:8px;background:transparent;color:var(--ink);cursor:pointer;}
+  .ghost:hover{background:var(--raised);}
+  .ghost.primary{border-color:var(--gold);color:var(--gold);font-weight:600;}
+  .hint{color:var(--muted);font-size:12.5px;margin-top:14px;}
+  a{color:var(--blue);}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Emblem engine · training the eye</div>
+  <h1>Flag Rating</h1>
+  <p class="lede">Rate each generated flag on how well it reads as a flag — design, balance, legibility, whether it looks like a real national flag could. Your calls are recorded with the flag's structure so the patterns behind "good" and "bad" can be found. Use the buttons or press <b>1–4</b>; <b>U</b> undoes.</p>
+
+  <div class="stage">
+    <div class="flag" id="flag"></div>
+    <div class="blazon" id="blazon"></div>
+    <div class="btns">
+      <button class="rate vb" data-r="vb">Very bad<span class="k">1</span></button>
+      <button class="rate b" data-r="b">Bad<span class="k">2</span></button>
+      <button class="rate g" data-r="g">Good<span class="k">3</span></button>
+      <button class="rate vg" data-r="vg">Very good<span class="k">4</span></button>
+    </div>
+  </div>
+
+  <div class="bar">
+    <div class="count"><b id="n">0</b> rated</div>
+    <div class="tallies">
+      <span style="color:var(--vb)">VB <b id="tvb">0</b></span>
+      <span style="color:var(--b)">B <b id="tb">0</b></span>
+      <span style="color:var(--g)">G <b id="tg">0</b></span>
+      <span style="color:var(--vg)">VG <b id="tvg">0</b></span>
+    </div>
+    <div class="spacer"></div>
+    <button class="ghost" id="undo">Undo (U)</button>
+    <button class="ghost primary" id="export">Export ratings</button>
+    <button class="ghost" id="reset">Reset</button>
+  </div>
+  <p class="hint">Ratings save in this browser automatically. When you've rated a batch (say 40–60), hit <b>Export ratings</b> — it copies a JSON to your clipboard and downloads a file. Send me that and I'll find what your good and bad flags have in common.</p>
+</div>
+
+<script>
+// ── the real inlined engine (genome + renderer + charge art) ──
+const CHARGE_DETAIL = __CHARGE_DETAIL__;
+__EMBLEM_GENOME__
+__EMBLEM_RENDER__
+
+// the "Modern flag" space we're evaluating: a banner, the heraldic vexillological
+// grammar, the vivid bunting palette; everything else free (ornateness released).
+const HERALDIC = (POOLS.FLAG_COMPOSITIONS.indexOf("heraldic") + 0.5) / POOLS.FLAG_COMPOSITIONS.length;
+const AXES = { saturation: 0.85, format: 0.35 };
+const PIN = { composition: HERALDIC, paletteMode: 0.1, substrate: 0.25 };
+// IDX (gene name → index) is already defined by the inlined engine — reuse it
+const flagOK = p => p.isFlag && p.composition === "heraldic" && !p.field.fur;
+
+function nextGenome() {
+  let s = (Math.random() * 2e9) >>> 0, g;
+  for (let i = 0; i < 80; i++) {
+    g = foundGenome(s, AXES);
+    for (const k in PIN) g.genes[IDX[k]] = PIN[k];
+    if (flagOK(expressGenome(g))) return g;
+    s = (s * 1664525 + 1013904223) >>> 0;
+  }
+  return g;
+}
+
+// the structural fingerprint recorded with every rating — the levers to correlate
+function features(p) {
+  const f = p.field, m = p.motif, o = p.ornaments;
+  const names = f.names ? [...new Set(f.names)] : [];
+  return {
+    partition: f.partition, ordinary: f.ordinary || "none", crossStyle: f.crossStyle || "",
+    stripes: (f.partition === "barry" || f.partition === "paly") ? f.stripes : 0,
+    tiercedWide: f.tiercedWide ?? "", hoist: f.hoist ? f.hoist.shape : "",
+    hoistDevice: f.hoist && f.hoist.device ? f.hoist.device.id : "",
+    seams: !!f.seamFimbriation, fimbriation: !!f.fimbriation, saltire: !!f.saltireOverlay,
+    bordure: !!f.bordure, counterchange: !!f.counterchange,
+    device: m ? m.id : "none", deviceCat: m ? m.cat : "", arrange: m ? m.arrange : "",
+    count: m ? (m.count || 1) : 0, inCanton: !!(m && m.inCanton), panel: m && m.panel ? m.panel.shape : "",
+    array: m && m.array ? m.array.pattern : "", canton: !!o.canton, cantonKind: o.canton ? o.cantonKind : "",
+    ratio: +p.flagRatio.toFixed(2), substrate: p.substrate, colours: names.join("+"), ncolours: names.size || names.length,
+  };
+}
+
+const KEY = "flag-ratings-v1";
+let ratings = JSON.parse(localStorage.getItem(KEY) || "[]");
+let cur = null;
+
+function show() {
+  cur = nextGenome();
+  const p = expressGenome(cur);
+  document.getElementById("flag").innerHTML = emblemSVG(cur, 440, 264);
+  document.getElementById("blazon").textContent = blazonGenome(cur);
+}
+function refresh() {
+  const t = { vb: 0, b: 0, g: 0, vg: 0 };
+  for (const r of ratings) t[r.rating]++;
+  document.getElementById("n").textContent = ratings.length;
+  for (const k of ["vb", "b", "g", "vg"]) document.getElementById("t" + k).textContent = t[k];
+}
+function rate(r) {
+  if (!cur) return;
+  const p = expressGenome(cur);
+  ratings.push({ rating: r, genes: cur.genes.map(x => +x.toFixed(6)), seed: cur.seed, blazon: blazonGenome(cur), features: features(p) });
+  localStorage.setItem(KEY, JSON.stringify(ratings));
+  refresh(); show();
+}
+document.querySelectorAll("button.rate").forEach(b => b.addEventListener("click", () => rate(b.dataset.r)));
+document.getElementById("undo").addEventListener("click", () => { ratings.pop(); localStorage.setItem(KEY, JSON.stringify(ratings)); refresh(); });
+document.getElementById("reset").addEventListener("click", () => { if (confirm("Clear all ratings in this browser?")) { ratings = []; localStorage.setItem(KEY, "[]"); refresh(); } });
+document.getElementById("export").addEventListener("click", () => {
+  const json = JSON.stringify(ratings, null, 1);
+  navigator.clipboard && navigator.clipboard.writeText(json).catch(() => {});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+  a.download = "flag-ratings.json"; a.click();
+});
+addEventListener("keydown", e => {
+  const map = { "1": "vb", "2": "b", "3": "g", "4": "vg" };
+  if (map[e.key]) rate(map[e.key]);
+  else if (e.key.toLowerCase() === "u") { ratings.pop(); localStorage.setItem(KEY, JSON.stringify(ratings)); refresh(); }
+});
+refresh(); show();
+</script>
