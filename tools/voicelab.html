@@ -595,8 +595,9 @@ function scoreVowel(B, nu, t, kpts, dur) {
   B.to("constrDiameter", t, a.constrIndex >= 0 ? a.constrDiameter : 3, trans);
   B.to("intensity", t, 1, 0.02); B.to("tenseness", t, a.tenseness, 0.03);
   if (nu[0].ph === 1) { B.to("aspiration", t, 0.28, 0.02); B.to("aspiration", t + dur, 0, 0.03); }
-  const kf = a.fscale;
-  layF0(B, t, dur, kpts.map(k => k * kf));
+  // pitch is laid ONCE per syllable in scoreWord (a per-segment contour reset the
+  // pitch upward at every seam — a sawtooth wobble); fscale is applied there too
+  void kpts;
   if (b) {                                                   // glide toward the second target
     B.to("tongueIndex", t + dur * 0.45, b.tongueIndex, dur * 0.5);
     B.to("tongueDiameter", t + dur * 0.45, b.tongueDiameter, dur * 0.5);
@@ -610,6 +611,7 @@ function scoreWord(B, plan, t, mod = {}) {
   const scale = mod.scale || 1;
   const nSyl = plan.syls.length;
   plan.syls.forEach((syl, i) => {
+    const sylStart = t;
     // pitch: tone melody, else stress + declination (mirrors the formant engine)
     let kpts = plan.tone > 0 && syl.tone != null ? TONE_SHAPES[syl.tone].map(k => k * scale)
       : (() => { const k = (1 + (i === plan.stress ? 0.13 : 0) - 0.1 * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
@@ -618,22 +620,29 @@ function scoreWord(B, plan, t, mod = {}) {
       const tailK = kpts[kpts.length - 1];
       kpts = mod.boundary === "rise" ? [...kpts, tailK * 1.35] : [...kpts, tailK * 0.72];
     }
+    const kf = syl.nu.length && syl.nu[0].ph === 2 ? 0.72 : 1;   // creaky nucleus drops the syllable's pitch
     for (const c of syl.on) {
-      t += scoreCons(B, c, t, kpts, false) + 0.004;
+      t += scoreCons(B, c, t, [], false) + 0.004;               // [] → pitch is laid once, below
       if (c.s) {                                             // ʲ/ʷ on-glide
         const gv = c.s === 1 ? { h: 0, b: 0, r: 0 } : { h: 0, b: 2, r: 1 };
         const gp = vowelPosture(gv);
         B.to("tongueIndex", t, gp.tongueIndex, 0.02); B.to("lip", t, gp.lip, 0.02);
-        B.to("intensity", t, 1, 0.01); layF0(B, t, 0.03, kpts);
+        B.to("intensity", t, 1, 0.01);
         t += 0.034;
       }
     }
     if (syl.nu.length) {
       const long = syl.nu[0].lg;
       const dur = (i === plan.stress ? 0.19 : 0.15) * (long ? 1.5 : 1) * (i === nSyl - 1 ? 1.12 : 1);
-      t += scoreVowel(B, syl.nu, t, kpts, dur) + 0.004;
+      t += scoreVowel(B, syl.nu, t, [], dur) + 0.004;
     }
-    for (const c of syl.co) t += scoreCons(B, c, t, kpts, true) + 0.004;
+    for (const c of syl.co) t += scoreCons(B, c, t, [], true) + 0.004;
+    // ONE smooth pitch contour across the whole syllable: laying it per-segment
+    // reset the pitch upward at every seam (a sawtooth wobble — the "modulating").
+    // Voiceless spans are silent, so a contour spanning them is inaudible; the
+    // voiced parts trace a single continuous glide, and sampleTrack interpolates
+    // smoothly across the syllable boundary (no step).
+    layF0(B, sylStart, Math.max(0.001, t - sylStart), kpts.map(k => k * kf));
     // Voicing stays CONTINUOUS across syllable boundaries — fading to silence at
     // every seam chopped a word into disconnected syllables (the "chops"). Only
     // the word's final edge fades out; voiceless consonants make their own gaps.
