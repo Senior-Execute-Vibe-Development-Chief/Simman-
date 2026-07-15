@@ -36,7 +36,7 @@ const LIP_REFLECTION = -0.85;
 // to read as distinct vowels. `radiation` is the lip-radiation pre-emphasis
 // coefficient (see renderScore) — the +6 dB/oct that turns raw tract pressure
 // into a sound that reads as speech; 0 disables it. Exposed for the harness.
-const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.97, wallLoss: 1.3, wallThresh: 0.03, hf: 0.92 };
+const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.9, wallLoss: 1.3, wallThresh: 0.03, hf: 0.92 };
 // A hard ceiling on the travelling waves. Normal speech never exceeds ~5 here,
 // so this is invisible in practice — but a driven closed cavity (a long voiced
 // velar closure, where the constriction sits right against the velum) can ring
@@ -56,14 +56,26 @@ function makeNoise(seed) {
 // ── the LF glottal source (Liljencrants–Fant), voice quality from tenseness ─
 // A physiological pulse, not a sawtooth: the whole point of the de-buzz. Low
 // tenseness → breathy (more aspiration, softer close); high → pressed/creaky.
-function makeGlottis(sampleRate) {
+function makeGlottis(sampleRate, seed = 1) {
+  const gnoise = makeNoise((seed ^ 0x5f356495) >>> 0);   // independent seeded perturbation source
   const g = {
     freq: F0_BASE, tenseness: 0.6, intensity: 0, loudness: 1,
-    timeInWaveform: 0, waveformLength: 1 / F0_BASE,
+    timeInWaveform: 0, waveformLength: 1 / F0_BASE, ttot: 0, jit: 1, shim: 1, aspLP: 0,
     alpha: 0, E0: 0, epsilon: 0, shift: 0, Delta: 1, Te: 0, omega: 0,
   };
   function setupWaveform() {
-    g.waveformLength = 1 / g.freq;
+    // Per-period source perturbation — the jitter/shimmer/flutter a real larynx
+    // has and a perfect pulse train lacks. Without it the harmonics have ZERO
+    // bandwidth (measured harmonics-to-noise ~128 dB vs a human ~15-20 dB), and a
+    // flawless harmonic stack is exactly what "buzzy / robotic / electronic"
+    // sounds like — no amount of timbre/tilt tuning fixes periodicity. Flutter is
+    // a slow deterministic drift (incommensurate sines); jitter (period) and
+    // shimmer (amplitude) are seeded cycle-to-cycle variation. Creaky is rougher.
+    const flutter = 0.010 * Math.sin(2 * Math.PI * 4.7 * g.ttot) + 0.006 * Math.sin(2 * Math.PI * 7.9 * g.ttot);
+    const rough = g.tenseness > 0.85 ? 2.5 : 1;
+    g.jit = 1 + flutter + 0.006 * rough * gnoise();
+    g.shim = 1 + 0.045 * gnoise();
+    g.waveformLength = 1 / (g.freq * g.jit);
     let Rd = 3 * (1 - g.tenseness);
     Rd = clamp(Rd, 0.5, 2.7);
     const Ra = -0.01 + 0.048 * Rd;
@@ -90,18 +102,22 @@ function makeGlottis(sampleRate) {
     const out = t > g.Te
       ? (-Math.exp(-g.epsilon * (t - g.Te)) + g.shift) / g.Delta
       : g.E0 * Math.exp(g.alpha * t) * Math.sin(g.omega * t);
-    return out * g.intensity * g.loudness;
+    return out * g.intensity * g.loudness * g.shim;   // shim = per-cycle amplitude shimmer
   }
   setupWaveform();
   g.step = (noise) => {
     g.timeInWaveform += 1 / sampleRate;
+    g.ttot += 1 / sampleRate;
     if (g.timeInWaveform > g.waveformLength) { g.timeInWaveform -= g.waveformLength; setupWaveform(); }
     let out = waveform(g.timeInWaveform / g.waveformLength);
-    // aspiration rides with voicing (breath through a barely-open glottis) —
-    // kept low so modal vowels don't read as breathy/"wet"
+    // aspiration rides with voicing (breath through a barely-open glottis), but
+    // BAND-LIMITED: raw white breath turns into a bright synthetic hiss after the
+    // +6 dB/oct lip radiation. A one-pole low-pass keeps it breath-shaped (rolls
+    // off above ~3 kHz), so relaxing the source doesn't re-introduce "wet".
+    g.aspLP = 0.6 * g.aspLP + 0.4 * noise;
     const voiced = 0.1 + 0.2 * Math.max(0, Math.sin(2 * Math.PI * g.timeInWaveform / g.waveformLength));
     const mod = g.tenseness * voiced + (1 - g.tenseness) * 0.3;
-    out += g.intensity * Math.max(0, 0.82 - g.tenseness) * mod * noise * 0.11;
+    out += g.intensity * Math.max(0, 0.82 - g.tenseness) * mod * g.aspLP * 0.11;
     return out;
   };
   g.setLoudness = () => { g.loudness = Math.pow(clamp(g.tenseness, 0, 1), 0.25); };
@@ -273,7 +289,7 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   const len = Math.max(1, Math.ceil(score.dur * IR)) + tail;
   const out = new Float32Array(len);
   const noise = makeNoise(seed);
-  const glo = makeGlottis(IR);
+  const glo = makeGlottis(IR, seed);
   const tr = makeTract();
   const tracks = score.tracks;
   const P = { ...DEFAULTS };
@@ -401,7 +417,10 @@ function vowelPosture(v) {
   // than any co-located constriction would (so `min()` ignored it — it was inert
   // dead weight). Back+round gets its low F2 from lip rounding + the retracted hump.
   const constrIndex = -1, constrDiameter = 3;
-  let tenseness = 0.72, fscale = 1;                            // modal voice (less breathy = less "wet")
+  // relaxed-modal source (Rd≈1.05, not pressed): the old pressed 0.72 was chosen
+  // to fight "wet", but that traded wet for BUZZY. With per-cycle jitter/shimmer
+  // now carrying the "aliveness" and the breath band-limited, the source can relax.
+  let tenseness = 0.65, fscale = 1;
   if (v.ph === 1) tenseness = 0.4;                             // breathy
   else if (v.ph === 2) { tenseness = 0.9; fscale = 0.72; }     // creaky (drops pitch)
   return { tongueIndex, tongueDiameter, lip, velum, tenseness, fscale, constrIndex, constrDiameter };
