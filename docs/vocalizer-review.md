@@ -32,6 +32,32 @@ the exact defect the synth has.
 > may be too bright), not a missing mechanism. Iterate it live in the Voice Lab
 > (`tools/voicelab.html`).
 
+> **Update 2 — the "ultra-review" (four parallel expert passes) found the ROOT
+> bug, which this doc's §2 wrongly called "faithful".** The dominant defect behind
+> the *entire* feedback history was a **non-passive waveguide**: the pressure-
+> junction port routed the left-going wave one section off (`L[k] = jL[k+1]` where
+> the junction writes `jL[k]` as the wave entering section k; the lip boundary
+> wrote the dead node `jL[N]`). On any area gradient the tube **created energy** —
+> a pole at |z|≈1.0067, self-oscillating — and the tanh clamp (firing **260,752×**
+> on a sustained `/i/`) pinned the runaway into a buzzy ~3.7 kHz limit cycle.
+> **That** was the "medium-toned squeak / rubber shoe on a gym floor," and the
+> same mechanism produced the `/u//o/` peakiness, the loudness imbalance the
+> leveller fought, and much of the "formant ceiling." The leveller, HF loss, wall
+> braces and clamp were all coping mechanisms for it. Fix (4 lines): make L
+> consistent (`L[k]=jL[k]`, lip→`jL[N-1]`, same for the nose branch) + clamp the
+> wall-loss to [0,1] (it went to −0.303 at closures — a sign-flipping inverter on
+> every stop/nasal). Result: `voice.mjs` 2/6→5/6, clamp fires 0×, `/i/` a real
+> vowel not a whistle, loudness spread collapses. The passes also delivered:
+> **source de-buzz** (jitter/shimmer/flutter — the port had dropped Pink
+> Trombone's perturbation stage, leaving a ~128 dB-pure "buzzer"), **band-limited
+> breath**, a **graded-rounding vowel-space** fix (`/u/` and `/o/` had been the
+> *identical* spectrum), **natural prosody** (a bounded terminal tone replacing the
+> 64 Hz vocal-fry plunge, stress-accent excursions, word-level voicing continuity),
+> and — once the now-passive tract stopped amplifying them — **restored
+> consonants** (turbulence-injection gain + tongue-body place **loci**, so stops
+> stopped sounding like vowel-gaps). Full set: commits `8b2473f…c2cf114` on this
+> branch; the engine is now genuinely passive.
+
 ---
 
 ## 1. Verdict by subsystem
