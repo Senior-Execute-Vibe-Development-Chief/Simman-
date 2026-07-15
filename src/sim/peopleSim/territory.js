@@ -118,15 +118,16 @@ const SQRT2 = Math.SQRT2;
 // hamlet holds only its home cluster while a city commands a broad heartland
 // — that size gap is what reads as a hierarchy on the map, and small village
 // cores let settlements pack in densely without fighting over the same land.
-const CORE_BY_TIER = [1, 2, 3, 4];
-export function coreRadiusFor(s) {
+const CORE_BY_TIER = [1, 2, 3, 4];   // REFERENCE-tiles (×rNormPop when a world is passed — a real distance)
+export function coreRadiusFor(s, world) {
   const t = s.tier | 0;
+  const rn = world ? rNormPop(world) : 1;   // ×1 exactly at the 240 reference (callers without a world stay legacy)
   // URBAN_NODES: a town/city is a NODE — its land is just a tight built-up
   // footprint (the city sits ON the land, it doesn't farm a heartland). Keeping
   // the big tier-scaled core would leave a city occupying a chunk of farmland;
   // a radius-1 block (the urban core) hands the rest to the Farming Regions.
-  if (T.URBAN_NODES && t >= 1) return 1;
-  return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
+  if (T.URBAN_NODES && t >= 1) return Math.max(1, Math.round(rn));
+  return Math.max(1, Math.round(CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t] * rn));
 }
 
 // Beyond the guaranteed core, every settlement is also GUARANTEED a farmland
@@ -135,15 +136,16 @@ export function coreRadiusFor(s) {
 // town is never squeezed down to its bare core block. This belt is the land a
 // region genuinely owns — and therefore carries with it when it secedes.
 // Scaled by T.HINTERLAND_MULT (tuning.js); never smaller than the core.
-const HINTERLAND_BY_TIER = [3, 4, 6, 8];
-export function hinterlandRadiusFor(s) {
+const HINTERLAND_BY_TIER = [3, 4, 6, 8];   // REFERENCE-tiles (×rNormPop when a world is passed)
+export function hinterlandRadiusFor(s, world) {
   const t = s.tier | 0;
   // URBAN_NODES: a town/city gets no guaranteed farmland belt beyond its core —
   // the countryside belongs to the Farming Regions (see reachBudget).
-  if (T.URBAN_NODES && t >= 1) return coreRadiusFor(s);
+  if (T.URBAN_NODES && t >= 1) return coreRadiusFor(s, world);
+  const rn = world ? rNormPop(world) : 1;   // ×1 exactly at the 240 reference
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
   const mul = T.LOCALITY_MODE ? T.HINTERLAND_MULT * Math.max(1, T.LOCALITY_SPACING || 3) : T.HINTERLAND_MULT;
-  return Math.max(coreRadiusFor(s), Math.round(base * mul));
+  return Math.max(coreRadiusFor(s, world), Math.round(base * mul * rn));
 }
 
 class MinHeap {
@@ -262,7 +264,7 @@ export function computeTerritory(world) {
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    const r = coreRadiusFor(s);
+    const r = coreRadiusFor(s, world);
     for (let dy = -r; dy <= r; dy++) {
       const ny = sy + dy; if (ny < 0 || ny >= th) continue;
       for (let dx = -r; dx <= r; dx++) {
@@ -293,7 +295,7 @@ export function computeTerritory(world) {
   const capAt = world._tileCapturedAt;
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    const hr = hinterlandRadiusFor(s), hr2 = hr * hr;
+    const hr = hinterlandRadiusFor(s, world), hr2 = hr * hr;
     for (let dy = -hr; dy <= hr; dy++) {
       const ny = sy + dy; if (ny < 0 || ny >= th) continue;
       for (let dx = -hr; dx <= hr; dx++) {

@@ -1027,7 +1027,7 @@ export function advanceFronts(world) {
         let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
         const ddy = ty - dhy;
         const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
-        const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
+        const assaultDist = coreRadiusFor(D, world) + ASSAULT_MARGIN;
         for (const pc of cands) {
           // Deferred per-beach bar (T.WAR_REACH; lane-level at lever 0, see step 2):
           // each side projects to THIS shore.
@@ -1092,7 +1092,7 @@ export function advanceFronts(world) {
         let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
         const ddy = ty - dhy;
         const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
-        const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
+        const assaultDist = coreRadiusFor(D, world) + ASSAULT_MARGIN;
         for (const pc of cands) {
           if (distHome <= assaultDist) pc.canStorm = true;   // the port city fronts the water — stormable from the sea
           else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });

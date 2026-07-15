@@ -575,7 +575,7 @@ export function updateFaiths(world) {
   // prophet fuses them (Sikhism from Hindu + Muslim, Manichaeism from
   // Zoroastrian + Christian + Buddhist). Rare; starts its own root lineage.
   if (world.step - (world._lastSyncretismAt ?? -Infinity) >= SYNCRETISM_WORLD_COOLDOWN / (world._dt || 1)) {
-    for (const s of world.settlements) {
+    for (const s of setts) {   // id-sorted snapshot: the break-on-first winner must not depend on array order
       if (s.mode !== "settled" || (s.tier | 0) < 2 || !s.faithMix || s.faithMix.length < 2) continue;
       const [a, b] = s.faithMix;
       if (a[1] < SYNCRETISM_MIN_SHARE || b[1] < SYNCRETISM_MIN_SHARE) continue;

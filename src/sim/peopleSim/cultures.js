@@ -363,6 +363,22 @@ function cohesionRadius(world, s) {
   const conn = (k.organization || 0) + (k.mobility || 0) + (k.construction || 0) * 0.7;
   return Math.max(COHESION_MIN, (COHESION_BASE_FRAC + COHESION_TECH * Math.min(COHESION_CAP, conn)) * world.tw);
 }
+// True if `x` still has LIVING CONTACT with culture `culId` through its trade or
+// sea network (a same-culture peer other than itself). The isolation-divergence
+// trigger below uses it for the diverging settlement; the homeland pull-in reuses
+// it so a WELL-CONNECTED neighbour (still in touch with the parent stock) is left
+// with the parent instead of being swept into the daughter people just for sitting
+// near an isolated one — the isolation analogue of the drift path's reach re-check.
+function hasStockContact(world, x, culId) {
+  for (const key of ["_tradeReach", "_seaReach"]) {
+    const reach = x[key]; if (!reach) continue;
+    for (const pid of reach.keys()) {
+      const peer = world._byId && world._byId.get(typeof pid === "number" ? pid : +pid);
+      if (peer && peer.mode === "settled" && peer.id !== x.id && dominantCulture(peer) === culId) return true;
+    }
+  }
+  return false;
+}
 export function updateCultures(world) {
   // ── living languages: slow sound change; borrowing under contact ──
   if (world.cultures) {
@@ -476,19 +492,7 @@ export function updateCultures(world) {
     // an ocean is the sharpest isolator).
     if (!s._diverged) {
       const myCul = dominantCulture(s);
-      let contact = false;
-      if (s._tradeReach) {
-        for (const pid of s._tradeReach.keys()) {
-          const peer = world._byId && world._byId.get(typeof pid === "number" ? pid : +pid);
-          if (peer && peer.mode === "settled" && dominantCulture(peer) === myCul && peer.id !== s.id) { contact = true; break; }
-        }
-      }
-      if (!contact && s._seaReach) {
-        for (const pid of s._seaReach.keys()) {
-          const peer = world._byId && world._byId.get(typeof pid === "number" ? pid : +pid);
-          if (peer && peer.mode === "settled" && dominantCulture(peer) === myCul && peer.id !== s.id) { contact = true; break; }
-        }
-      }
+      const contact = hasStockContact(world, s, myCul);
       if (contact) { s._isolatedSince = undefined; continue; }
       if (s._isolatedSince === undefined) { s._isolatedSince = world.step; continue; }
       const divAfter = (s._isColony ? DIVERGE_AFTER : DIVERGE_AFTER * 2.2) / (world._dt || 1);
@@ -502,7 +506,9 @@ export function updateCultures(world) {
         s._diverged = true;
         // the new people's homeland: same-stock neighbours join the daughter
         forEachNear(world, s.pos.x, s.pos.y, 16 * rNormPop(world), (nb) => {   // real-distance homeland (res-invariant)
-          if (nb !== s && nb.mode === "settled" && dominantCulture(nb) === myCul) {
+          // only same-stock neighbours that are ALSO out of contact with the parent
+          // join the daughter; a still-connected town stays with its people
+          if (nb !== s && nb.mode === "settled" && dominantCulture(nb) === myCul && !hasStockContact(world, nb, myCul)) {
             seedCulture(world, nb, daughter.id);
             nb._diverged = true;
           }
