@@ -242,7 +242,11 @@ __EMBLEM_RENDER__
   // shield, elaborates through the high heraldic age (charges, then quarterings),
   // then MIGRATES onto cloth — a banner, and finally a bold modern FLAG. The form
   // itself evolves: shield -> banner -> flag.
-  const SUB={ shield:0.07, banner:0.28 };
+  const SUB={ shield:0.07, banner:0.28, gonfalon:0.75 };
+  // The arc opens BEFORE heraldry: a pre-heraldic WAR-BANNER (a gonfalon — hanging,
+  // tailed cloth) bearing the house's raw device in its livery colours. Heraldry is
+  // born when that device is formalized onto a SHIELD (the coat of arms), so the coat
+  // literally descends from the banner — same device, same colours, a new formal medium.
   // NOT a fresh draw each age — a DESCENT. Every age carries the parent coat forward
   // and only EDITS it, along the real conservation gradient of what flags keep vs
   // discard over history:
@@ -258,8 +262,10 @@ __EMBLEM_RENDER__
   // The founding coat is a fresh, diverse draw, so different houses give different
   // lineages; but WITHIN a run the flag genuinely descends from the arms.
   const AGES=[
-    { name:"Coat of arms", tag:"one lone charge on a plain field", sub:SUB.shield,
-      found:{figuration:0.64, boldness:0.72, ornateness:0.12, saturation:0.6}, simple:true },
+    { name:"War banner", tag:"pre-heraldic — the house's device on cloth, before the shield", sub:SUB.gonfalon,
+      found:{figuration:0.72, boldness:0.82, ornateness:0.05, saturation:0.66}, proto:true },
+    { name:"Coat of arms", tag:"the device is formalized onto a shield — heraldry begins", sub:SUB.shield,
+      simple:true },
     { name:"Charged arms", tag:"the field divides, gains an ordinary and a chief — a fuller coat", sub:SUB.shield,
       charged:true, edit:{pearl:0.82, border:0.74, secondary:0.25, motifCount:0.12, arrange:0.12, motifScale:0.52} },
     { name:"Grand arms", tag:"marshalled & quartered — dynastic accretion", sub:SUB.shield,
@@ -270,9 +276,10 @@ __EMBLEM_RENDER__
       shed:true, edit:{border:0.03, star:0.2} },
   ];
   // Each age FORCES the composition its heraldic moment lived in — that is the real
-  // developmental step, and it is what makes the five stages read as distinct:
-  //   a lone CENTRAL charge  ->  the full HERALDIC grammar (field + ordinary + chief)
-  //   ->  quartered  ->  the arms flown big on cloth  ->  bold livery bands.
+  // developmental step, and it is what makes the six stages read as distinct:
+  //   a device on a pre-heraldic BANNER  ->  formalized as a lone CENTRAL charge on a
+  //   shield  ->  the full HERALDIC grammar (field + ordinary + chief)  ->  quartered
+  //   ->  the arms flown big on cloth  ->  bold national livery.
   const CENTRAL=0.36;    // COMPOSITIONS band [0.27,0.45): a single charge, plain field
   const HERALDIC=0.12;   // COMPOSITIONS band [0,0.27): divided field + ordinary + chief + bordure
 
@@ -299,8 +306,8 @@ __EMBLEM_RENDER__
   const armsDiv=()=>state.armsDivision!=null?state.armsDivision:0.16;
 
   const state={ genome:null, lineage:[], cursor:-1, era:0 };
-  const subOf=g=>(g && g.genes[IDX.substrate]<0.167)?"shield":"banner";   // heater shields sit below the banner window
-  const dimsFor=(g,big)=>subOf(g)==="shield"?(big?[300,344]:[86,98]):(big?[360,234]:[118,78]);
+  const subOf=g=>{ const s=g?g.genes[IDX.substrate]:0.28; return s<0.167?"shield":s>=0.667?"gonfalon":"banner"; };   // shield / rectangular banner / hanging (tailed) gonfalon
+  const dimsFor=(g,big)=>{ const k=subOf(g); return k==="shield"?(big?[300,344]:[86,98]):k==="gonfalon"?(big?[300,320]:[92,100]):(big?[360,234]:[118,78]); };   // the gonfalon hangs tall, with tails
   const stageDims=()=>dimsFor(state.genome,true);
 
   function houseAxes(){
@@ -327,14 +334,16 @@ __EMBLEM_RENDER__
   const flagDiv=()=>state.flagDivision!=null?state.flagDivision:0.05;
   function dressAge(genes, age){
     genes[IDX.substrate]=age.sub;
+    if(age.proto){ genes[IDX.composition]=0.70; genes[IDX.partition]=0.0; genes[IDX.motifCount]=0.06; genes[IDX.arrange]=0.05; genes[IDX.motifScale]=0.82; genes[IDX.border]=0.0; genes[IDX.star]=0.2; genes[IDX.pearl]=0.1; genes[IDX.crescent]=0.2; genes[IDX.iconism]=0.82; }   // pre-heraldic: one BIG bold device flying BARE on a plain cloth banner. crescent low = no disc panel; iconism high = a war banner CARRIES its beast (as real standards did), so it reads as the same device the coat formalizes
     if(age.simple){ genes[IDX.composition]=CENTRAL; genes[IDX.partition]=0.06; genes[IDX.motifCount]=0.05; genes[IDX.arrange]=0.05; genes[IDX.border]=0.03; genes[IDX.pearl]=0.1; }   // a lone charge on a plain field (pearl low: no corner disc)
-    if(age.charged){ genes[IDX.composition]=HERALDIC; genes[IDX.partition]=armsDiv(); }   // the full heraldic grammar comes alive: division + ordinary + chief + bordure
+    if(age.charged){ genes[IDX.composition]=HERALDIC; genes[IDX.partition]=armsDiv(); genes[IDX.crescent]=(state.origCrescent!=null?state.origCrescent:0.5); }   // the full heraldic grammar comes alive; restore the founding crescent so furs & inescutcheons return from here on
     if(age.bigCharge){ genes[IDX.composition]=0.70; genes[IDX.partition]=0.03; genes[IDX.arrange]=0.1; genes[IDX.motifScale]=0.88; genes[IDX.motifCount]=0.05; genes[IDX.pearl]=0.1; }  // plain cloth, one BIG central charge — no corner disc beside it
     if(age.shed){ genes[IDX.composition]=0.06; genes[IDX.partition]=flagDiv(); genes[IDX.arrange]=0.66; genes[IDX.motifCount]=0.12; genes[IDX.motifScale]=0.6; }   // national livery, but the device is RETAINED (a charged flag) — not stripped to bare bands
     if(age.edit) for(const k in age.edit) genes[IDX[k]]=age.edit[k];
   }
 
-  // found the house at the first age — a simple, diverse COAT OF ARMS on a shield
+  // found the house at the first age — a pre-heraldic WAR-BANNER (its device + livery);
+  // every later age descends from it, the coat of arms first formalizing it onto a shield
   function foundHouse(){
     const g=foundGenome(rnd32(), Object.assign({}, houseAxes(), AGES[0].found));
     // The house's LIVERY is two colours: hueA the field, hueC the accent (the ordinary /
@@ -344,6 +353,7 @@ __EMBLEM_RENDER__
     // cloth alike, and letting hueC roam is what gives the coats their full range of
     // ordinaries (saltire, bend, chevron, pall…), not just the cross/pale two bolts allow.
     g.genes[IDX.hueB]=g.genes[IDX.hueC];
+    state.origCrescent=g.genes[IDX.crescent];       // stash the founding value: the war banner pins it low (bare device); the charged arms restores it (furs, panels)
     dressAge(g.genes, AGES[0]);
     setLivery(g);                                   // fix the house's colours here; every later age flies them
     state.armsDivision=ARMS_DIVISIONS[(Math.random()*ARMS_DIVISIONS.length)|0];   // which party its charged coat takes
