@@ -787,6 +787,13 @@ export function expressGenome(genome) {
   // a shield's outline — the brandSeed gene is idle on shields, so it picks
   const shieldShape = substrate === "shield" ? pickEnum(get("brandSeed"), SHIELD_SHAPES) : "heater";
   const isFlag = FLAG_SUBSTRATES.has(substrate);
+  // A STAINLESS tradition (opt-in, e.g. a strictly-European heraldry): the
+  // palette shuns the stains (tenné / sanguine / murrey) — and princely purpure —
+  // exactly the way flag bunting does, drawing only the six standard tinctures,
+  // but WITHOUT making the emblem a flag. The shield keeps its form, its furs and
+  // its chief; only its dye-shelf narrows. Off by default, so the world sim (which
+  // wants every tradition's full palette) is untouched.
+  const paletteBunting = isFlag || genome.noStain === true;
   // THE CLOTH CUT: a banner's ratio comes from the substrate gene's position
   // WITHIN its own window — the same gene that picked the cloth picks the
   // cut, and it drifts smoothly under mutation. The span covers the real
@@ -822,7 +829,7 @@ export function expressGenome(genome) {
     && pickEnum(get("hueC"), ORDINARIES) === "pall"
     && !["plain", "perPale", "perFess"].includes(partition)) partition = "plain";
   const solidGround = partition === "plain";
-  const pal = decodePalette(get, isFlag, solidGround);
+  const pal = decodePalette(get, paletteBunting, solidGround);
   const symmetry = composition === "radial" ? "radial" : pickEnum(get("symmetry"), SYMMETRIES);
 
   // ── VISUAL ECONOMY: the flag's attention budget ─────────────────────────────
@@ -930,7 +937,7 @@ export function expressGenome(genome) {
   // the tincture any mark lying on this field wears — chargeT was constructed
   // against the plain field; every other ground (a party, a fur) re-derives
   const markT = grounds.length === 1 && grounds[0] === pal.fieldT ? pal.chargeT
-    : tinctureOn(grounds, get("hueB"), get("value"), pal.poles, { bunting: isFlag, chroma: get("chroma") });
+    : tinctureOn(grounds, get("hueB"), get("value"), pal.poles, { bunting: paletteBunting, chroma: get("chroma") });
   const mixedGround = new Set(grounds.map(g => g.kind === "metal" ? "metal" : "dark")).size > 1;
   if (field.fur === "fretty") {
     // the lattice is a mark on the field: it wears what reads there
@@ -1185,9 +1192,9 @@ export function expressGenome(genome) {
           tilt = (slot === "on" && spec.tilt) || 0;
           // a charge ON the band reads against the BAND's own tincture (which
           // may be a tricolour second colour, not markT) — the rule one layer up
-          if (slot === "on") tincture = tinctureOn([T(field.ordinaryName)], get("hueA"), get("value"), [], isFlag ? { bunting: true, flying: grounds, chroma: get("chroma") } : {});
+          if (slot === "on") tincture = tinctureOn([T(field.ordinaryName)], get("hueA"), get("value"), [], isFlag ? { bunting: true, flying: grounds, chroma: get("chroma") } : (paletteBunting ? { bunting: true, chroma: get("chroma") } : {}));
         }
-      } else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value"), [], { bunting: isFlag }); }
+      } else if (slot === "seme") { arrange = "seme"; tincture = tinctureOn(grounds, get("hueA"), get("value"), [], { bunting: paletteBunting }); }
     } else {
       arrange = composition === "central" || composition === "radial" ? "single"
         : composition === "seme" ? "seme" : pickEnum(get("arrange"), ARRANGES);
@@ -1449,12 +1456,12 @@ export function blazonGenome(genome) {
     // the house's own style as the field; shields enumerate their quarters
     const pOwn = expressGenome(genome);
     if (pOwn.isFlag) {
-      const own = blazonGenome({ genes: genome.genes, gen: genome.gen, seed: genome.seed, cadency: genome.cadency });
+      const own = blazonGenome({ genes: genome.genes, gen: genome.gen, seed: genome.seed, cadency: genome.cadency, noStain: genome.noStain });
       // two band-led cloths FUSE by superimposition (the 1606 construction):
       // the senior's cross rides over the whole, separated by undyed cloth
       const q = genome.quarters[0];
       const qGenes = q.genes.slice(); qGenes[IDX.substrate] = genome.genes[IDX.substrate];
-      const q0 = expressGenome({ genes: qGenes, gen: q.gen || 0, seed: q.seed });
+      const q0 = expressGenome({ genes: qGenes, gen: q.gen || 0, seed: q.seed, noStain: genome.noStain });
       const OV = ["cross", "saltire"];
       if (pOwn.composition === "heraldic" && q0.composition === "heraldic"
         && OV.includes(pOwn.field.ordinary) && OV.includes(q0.field.ordinary)
@@ -1462,10 +1469,10 @@ export function blazonGenome(genome) {
         const sep = q0.field.ordinaryName === "argent" ? "Sable" : "Argent";
         return `${own}; surmounted, for the union, by a ${ordName(q0.field.ordinary)} ${tName(q0.field.ordinaryName)} fimbriated ${sep}`;
       }
-      const un = blazonGenome({ genes: q.genes, gen: q.gen, seed: q.seed });
+      const un = blazonGenome({ genes: q.genes, gen: q.gen, seed: q.seed, noStain: genome.noStain });
       return `${own}; in the canton the union: ${un}`;
     }
-    const qs = genome.quarters.map(q => blazonGenome({ genes: q.genes, gen: q.gen, seed: q.seed }));
+    const qs = genome.quarters.map(q => blazonGenome({ genes: q.genes, gen: q.gen, seed: q.seed, noStain: genome.noStain }));
     const ROMAN = ["I", "II", "III", "IV"];
     return `Quarterly: ${qs.map((q, i) => `${ROMAN[i]}. ${q}`).join("; ")}`;
   }

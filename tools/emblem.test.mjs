@@ -385,7 +385,35 @@ for (let i = 0; i < 60; i++) {
   if (emblemSVG(withMark, 120, 120).length < 400) fail("cadency emblem failed to render");
 }
 
+// ── 7: a STAINLESS tradition (noStain) — the palette shuns the stains AND
+// princely purpure on ANY substrate, shield or cloth, and through marshalling,
+// exactly as bunting does; the strictly-European heraldry studio relies on it ──
+{
+  const OFF = /Tenné|Sanguine|Murrey|Purpure/;
+  const SUB = GENES.indexOf("substrate");
+  for (let seed = 1; seed <= 800; seed++) {
+    const g = foundGenome(seed); g.noStain = true;
+    g.genes[SUB] = (seed % 2) ? 0.05 : 0.25;                 // shields and cloth alike
+    if (OFF.test(blazonGenome(g))) fail(`noStain still shows a stain/purpure: ${blazonGenome(g)}`, g);
+    if (emblemSVG(g, 120, 120).length < 300) fail("noStain emblem failed to render", g);
+    if (seed % 40 === 0) {                                   // and through a marshalled union (quarters too)
+      const u = crossGenome(g, { ...foundGenome(seed + 7), noStain: true }, seed);
+      u.noStain = true; u.genes[SUB] = 0.05;
+      if (OFF.test(blazonGenome(u))) fail(`noStain union shows a stain/purpure: ${blazonGenome(u)}`, u);
+    }
+  }
+  // CONTRAPOSITIVE: stains MUST stay reachable by default, or the guard is
+  // vacuous — the world sim keeps every tradition's full palette (only the
+  // opt-in flag narrows it).
+  let sawStainDefault = false;
+  for (let seed = 1; seed <= 4000 && !sawStainDefault; seed++) {
+    const g = foundGenome(seed); g.genes[SUB] = 0.05;
+    if (/Tenné|Sanguine|Murrey/.test(blazonGenome(g))) sawStainDefault = true;
+  }
+  if (!sawStainDefault) fail("stains unreachable by default — the noStain guard proves nothing");
+}
+
 console.log(`[emblem] ${checks} tincture checks over ${N} genomes, min measured dE ${minMeasured.toFixed(3)}; `
-  + `${fieldNames.size}/${names.length} tinctures seen as fields; determinism, art coverage, marshalling checked`);
+  + `${fieldNames.size}/${names.length} tinctures seen as fields; determinism, art coverage, marshalling, noStain checked`);
 if (fails) { console.error(`[emblem] FAILED with ${fails} failure(s)`); process.exit(1); }
 console.log("[emblem] all checks passed");

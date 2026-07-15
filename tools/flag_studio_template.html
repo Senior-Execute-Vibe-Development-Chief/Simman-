@@ -245,19 +245,24 @@ __EMBLEM_RENDER__
   // The founding coat is a fresh, diverse draw, so different houses give different
   // lineages; but WITHIN a run the flag genuinely descends from the arms.
   const AGES=[
-    { name:"Coat of arms", tag:"a simple shield coat — the founding device", sub:SUB.shield,
-      found:{ornateness:0.34, figuration:0.6, boldness:0.6, saturation:0.6}, plainCoat:true },
-    { name:"Charged arms", tag:"the coat elaborates — a bolder device", sub:SUB.shield,
-      edit:{iconism:0.82, arrange:0.1, motifScale:0.7, motifCount:0.1, border:0.22} },
+    { name:"Coat of arms", tag:"one lone charge on a plain field", sub:SUB.shield,
+      found:{figuration:0.64, boldness:0.72, ornateness:0.12, saturation:0.6}, simple:true },
+    { name:"Charged arms", tag:"the field divides, gains an ordinary and a chief — a fuller coat", sub:SUB.shield,
+      charged:true, edit:{pearl:0.82, border:0.74, secondary:0.25, motifCount:0.12, arrange:0.12, motifScale:0.52} },
     { name:"Grand arms", tag:"marshalled & quartered — dynastic accretion", sub:SUB.shield,
-      marshal:true, edit:{border:0.46} },
-    { name:"Banner of arms", tag:"the same arms move onto cloth", sub:SUB.banner,
-      edit:{arrange:0.72, motifScale:0.62, border:0.3} },
-    { name:"Colours", tag:"the charge falls away — colours & ordinary remain", sub:SUB.banner,
-      shed:true, edit:{border:0.05} },
-    { name:"National flag", tag:"bold, simple, mass-made — a modern flag", sub:SUB.banner,
-      shed:true, edit:{border:0.03} },
+      marshal:true, edit:{border:0.46, secondary:0.25} },
+    { name:"Banner of arms", tag:"the full arms, flown big on cloth", sub:SUB.banner,
+      bigCharge:true, edit:{border:0.05, iconism:0.82} },
+    { name:"National flag", tag:"the charge gives way to bold livery colours", sub:SUB.banner,
+      shed:true, edit:{border:0.03, star:0.2} },
   ];
+  // Each age FORCES the composition its heraldic moment lived in — that is the real
+  // developmental step, and it is what makes the five stages read as distinct:
+  //   a lone CENTRAL charge  ->  the full HERALDIC grammar (field + ordinary + chief)
+  //   ->  quartered  ->  the arms flown big on cloth  ->  bold livery bands.
+  const CENTRAL=0.36;    // COMPOSITIONS band [0.27,0.45): a single charge, plain field
+  const HERALDIC=0.12;   // COMPOSITIONS band [0,0.27): divided field + ordinary + chief + bordure
+  const PER_FESS=0.16;   // PARTITIONS index 2 — a two-region split (distinct from the quartering to come)
 
   const ENV=[["maritime","Coastal"],["sylvan","Wooded"],["arid","Desert"],["montane","Mountainous"]];
   const ETHOS=[["martial","Warlike"],["regal","Wealthy"],["devout","Devout"],["mercantile","Mercantile"]];
@@ -304,9 +309,13 @@ __EMBLEM_RENDER__
   }
 
   // apply an age's substrate + its edits to a coat (DESCENT keeps everything else)
+  const flagDiv=()=>state.flagDivision!=null?state.flagDivision:0.05;
   function dressAge(genes, age){
     genes[IDX.substrate]=age.sub;
-    if(age.plainCoat) genes[IDX.border]=0.05;                 // a basic coat — no bordure clutter
+    if(age.simple){ genes[IDX.composition]=CENTRAL; genes[IDX.partition]=0.06; genes[IDX.motifCount]=0.05; genes[IDX.arrange]=0.05; genes[IDX.border]=0.03; genes[IDX.pearl]=0.1; }   // a lone charge on a plain field (pearl low: no corner disc)
+    if(age.charged){ genes[IDX.composition]=HERALDIC; genes[IDX.partition]=PER_FESS; }   // the full heraldic grammar comes alive: division + ordinary + chief + bordure
+    if(age.bigCharge){ genes[IDX.composition]=0.70; genes[IDX.partition]=0.03; genes[IDX.arrange]=0.1; genes[IDX.motifScale]=0.88; genes[IDX.motifCount]=0.05; genes[IDX.pearl]=0.1; }  // plain cloth, one BIG central charge — no corner disc beside it
+    if(age.shed){ genes[IDX.composition]=0.06; genes[IDX.partition]=flagDiv(); genes[IDX.arrange]=0.06; genes[IDX.motifCount]=0.03; }                              // pure livery bands, no device
     if(age.edit) for(const k in age.edit) genes[IDX[k]]=age.edit[k];
   }
 
@@ -323,6 +332,7 @@ __EMBLEM_RENDER__
     g.genes[IDX.value]=snapVal(g.genes[IDX.value]); // ...and lightness to a clear level, so metal/colour is stable
     dressAge(g.genes, AGES[0]);
     setLivery(g);                                   // fix the house's colours here; every later age flies them
+    state.flagDivision=[0.05,0.11,0.66][(Math.random()*3)|0];   // the layout its cloth takes: tricolour / bicolour / paly
     g.gen=0; delete g.cadency; delete g.quarters;
     state.era=0; commit(g,{fresh:true});
   }
@@ -335,20 +345,20 @@ __EMBLEM_RENDER__
   function ageInto(g, age){
     const genes=g.genes.slice();                 // conserve the parent coat
     dressAge(genes, age);                         // substrate + this age's edits
-    if(age.shed){                                 // the charge falls away for the nation's flag
-      if(Math.random()<0.62){ genes[IDX.arrange]=0.06; genes[IDX.motifCount]=0.04; }         // colours + division + ordinary speak alone
-      else { genes[IDX.arrange]=0.8; genes[IDX.motifScale]=0.5+Math.random()*0.18; genes[IDX.motifCount]=0.05; }  // a lone, simplified device survives
-    }
     let out={ genes, gen:(g.gen||0)+1, seed:g.seed };
-    if(g.quarters && !age.shed) out.quarters=g.quarters;      // carry quartering through the heraldic + banner ages
+    if(g.quarters && age.sub===SUB.shield) out.quarters=g.quarters;   // quartering lives ONLY on the shield — never a canton on cloth
     if(age.marshal){
       const mate=foundGenome(rnd32(), Object.assign({}, houseAxes(), {figuration:0.7, ornateness:0.66, regal:0.5})); mate.genes[IDX.substrate]=age.sub;
+      mate.genes[IDX.hueA]=snapHue(mate.genes[IDX.hueA]);   // the marriage partner is ALSO a European house:
+      mate.genes[IDX.hueC]=snapHue(mate.genes[IDX.hueC]);   // keep its quarter in the same bunting-bolt palette (no stains)
+      mate.genes[IDX.hueB]=mate.genes[IDX.hueC];
+      mate.genes[IDX.value]=snapVal(mate.genes[IDX.value]);
+      mate.genes[IDX.secondary]=0.25;
       const c=crossGenome(out, mate, rnd32());
       out={ genes:c.genes, gen:out.gen, seed:out.seed }; out.genes[IDX.substrate]=age.sub;
       if(c.quarters) out.quarters=c.quarters.slice(0,4);   // the union shows in the quarters; the FIELD stays the house's
     }
-    if(age.shed) delete out.quarters;
-    applyLivery(out.genes);   // whatever elaboration/marriage happened, the device flies the house's own colours
+    applyLivery(out.genes);   // the device always flies the house's own colours
     return out;
   }
 
@@ -365,6 +375,7 @@ __EMBLEM_RENDER__
 
   function commit(g,{fresh}={}){
     europeanize(g.genes); if(g.quarters) g.quarters.forEach(q=>europeanize(q.genes,true));   // European heraldry + modern flags only
+    g.noStain=true; if(g.quarters) g.quarters.forEach(q=>{ q.noStain=true; });               // ...and only the six standard tinctures (no tenné/sanguine/murrey stains)
     g._era=state.era;
     if(fresh){ state.lineage=[]; state.cursor=-1; }
     else if(state.cursor>=0 && state.cursor<state.lineage.length-1) state.lineage=state.lineage.slice(0,state.cursor+1);

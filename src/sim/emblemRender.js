@@ -829,7 +829,7 @@ function emblemInner(genome, aw, ah) {
     // flag grammar inside the canton
     const qGenes = q.genes.slice();
     qGenes[SUBSTRATE_IDX] = genome.genes[SUBSTRATE_IDX];
-    const qp = expressGenome({ genes: qGenes, gen: q.gen || 0, seed: qSeed });
+    const qp = expressGenome({ genes: qGenes, gen: q.gen || 0, seed: qSeed, noStain: genome.noStain });
     const OV = new Set(["cross", "saltire"]);
     if (p.composition === "heraldic" && qp.composition === "heraldic"
       && OV.has(p.field.ordinary) && OV.has(qp.field.ordinary)
@@ -857,7 +857,7 @@ function emblemInner(genome, aw, ah) {
     for (let i = 0; i < 4; i++) {
       const q = qs[order[i]];
       const qSeed = q.seed != null ? q.seed : genome.seed;
-      const qp = expressGenome({ genes: q.genes, gen: q.gen || 0, seed: qSeed });
+      const qp = expressGenome({ genes: q.genes, gen: q.gen || 0, seed: qSeed, noStain: genome.noStain });
       const qrng = rrng(((qSeed ^ ((q.gen || 0) * 2654435761)) + i * 1013904223) >>> 0);
       content += `<g transform="translate(${F((i % 2) * cw)},${F(((i / 2) | 0) * ch)})">${coatContent(qp, cw, ch, qrng)}</g>`;
     }
