@@ -483,11 +483,12 @@ function scoreCons(B, c, t, kpts, final) {
   if (voicedBar) layF0(B, t + dt, closure, kpts);
   dt += closure;
   if (ejective) { B.set("intensity", t + dt, 0); dt += 0.03; }   // glottal compression: a beat of silence
-  // release burst: a short crack of turbulence as the constriction springs open
+  // release burst: a short crack of turbulence as the constriction springs
+  // open — RAMPED (an abrupt on/off step read as a click/chirp) and kept modest
   if (!glottalStop) {
     B.to("constrDiameter", t + dt, 0.3, 0.006);
-    B.set("fricative", t + dt, ejective ? 0.5 : final ? 0.22 : 0.34);
-    B.set("fricative", t + dt + 0.012, affric ? (sib ? 0.6 : 0.42) : 0);
+    B.to("fricative", t + dt, ejective ? 0.36 : final ? 0.15 : 0.24, 0.003);
+    if (!affric) B.to("fricative", t + dt + 0.009, 0, 0.012);
     B.to("constrDiameter", t + dt + 0.02, 1.6, 0.02);
   } else { B.to("constrDiameter", t + dt, 1.6, 0.02); }
   dt += 0.02;
@@ -550,9 +551,11 @@ function scoreWord(B, plan, t, mod = {}) {
       t += scoreVowel(B, syl.nu, t, kpts, dur) + 0.004;
     }
     for (const c of syl.co) t += scoreCons(B, c, t, kpts, true) + 0.004;
-    // fade voicing into the seam so words don't click
-    B.to("intensity", t, 0, 0.02);
-    t += 0.02;
+    // Voicing stays CONTINUOUS across syllable boundaries — fading to silence at
+    // every seam chopped a word into disconnected syllables (the "chops"). Only
+    // the word's final edge fades out; voiceless consonants make their own gaps.
+    if (i === nSyl - 1) { B.to("intensity", t, 0, 0.03); t += 0.03; }
+    else t += 0.012;
   });
   return t;
 }
