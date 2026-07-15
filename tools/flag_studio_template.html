@@ -248,11 +248,13 @@ __EMBLEM_RENDER__
   // discard over history:
   //   KEEP  — the COLOURS/tinctures (a house's livery became its flag's), the
   //           principal ORDINARY (a cross/saltire survives onto cloth), the field
-  //           DIVISION (a party shield -> stripes). These are conserved genes.
-  //   SHED  — the CHARGE (a beast/device: elaborated through the heraldic age, then
-  //           mostly dropped for the nation's flag — the tricolour rejected dynastic
-  //           charges), and QUARTERING / borders / ornament (added at the peak,
-  //           dropped for the flag).
+  //           DIVISION (a party shield -> stripes), and — SUBORDINATED, not dropped —
+  //           the house's DEVICE, riding the national livery the way a real charged
+  //           flag carries the state arms (Mexico, Spain, Serbia, Portugal).
+  //   SHED  — the ELABORATION: the QUARTERING, the borders and ornament added at the
+  //           heraldic peak, and the device's DOMINANCE (it shrinks from the banner's
+  //           whole field to one emblem on the colours). The flag is bolder and
+  //           simpler than the arms, but not stripped bare.
   // The founding coat is a fresh, diverse draw, so different houses give different
   // lineages; but WITHIN a run the flag genuinely descends from the arms.
   const AGES=[
@@ -264,7 +266,7 @@ __EMBLEM_RENDER__
       marshal:true, edit:{border:0.46, secondary:0.25} },
     { name:"Banner of arms", tag:"the full arms, flown big on cloth", sub:SUB.banner,
       bigCharge:true, edit:{border:0.05, iconism:0.82} },
-    { name:"National flag", tag:"the charge gives way to bold livery colours", sub:SUB.banner,
+    { name:"National flag", tag:"national livery — the field bold, the device kept but subordinate", sub:SUB.banner,
       shed:true, edit:{border:0.03, star:0.2} },
   ];
   // Each age FORCES the composition its heraldic moment lived in — that is the real
@@ -328,7 +330,7 @@ __EMBLEM_RENDER__
     if(age.simple){ genes[IDX.composition]=CENTRAL; genes[IDX.partition]=0.06; genes[IDX.motifCount]=0.05; genes[IDX.arrange]=0.05; genes[IDX.border]=0.03; genes[IDX.pearl]=0.1; }   // a lone charge on a plain field (pearl low: no corner disc)
     if(age.charged){ genes[IDX.composition]=HERALDIC; genes[IDX.partition]=armsDiv(); }   // the full heraldic grammar comes alive: division + ordinary + chief + bordure
     if(age.bigCharge){ genes[IDX.composition]=0.70; genes[IDX.partition]=0.03; genes[IDX.arrange]=0.1; genes[IDX.motifScale]=0.88; genes[IDX.motifCount]=0.05; genes[IDX.pearl]=0.1; }  // plain cloth, one BIG central charge — no corner disc beside it
-    if(age.shed){ genes[IDX.composition]=0.06; genes[IDX.partition]=flagDiv(); genes[IDX.arrange]=0.06; genes[IDX.motifCount]=0.03; }                              // pure livery bands, no device
+    if(age.shed){ genes[IDX.composition]=0.06; genes[IDX.partition]=flagDiv(); genes[IDX.arrange]=0.66; genes[IDX.motifCount]=0.12; genes[IDX.motifScale]=0.6; }   // national livery, but the device is RETAINED (a charged flag) — not stripped to bare bands
     if(age.edit) for(const k in age.edit) genes[IDX[k]]=age.edit[k];
   }
 
