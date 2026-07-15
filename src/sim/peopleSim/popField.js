@@ -478,8 +478,6 @@ const URBAN_CONC_R = 6;      // the urban hinterland radius (tiles) people draw 
 const URBAN_CONC_LAMBDA = 0.2;  // relaxation toward the target per tick (convergence rate, not the equilibrium)
 const URBAN_CONC_MAXFRAC = 0.5; // cap per-tick flux at half the available side (no single-tick emptying)
 const URBAN_CONC_MAXFRAC_G = 0.12; // under γ the target is the RAW economy (large) → a gentler per-tick flux so the flow can't strip the countryside in a rush toward it (the graveyard equilibrium is reached over many ticks)
-const URBAN_MIGRATE_R = 12;        // labour-shed radius (tiles) for inter-regional migration: ~2× the local hinterland (URBAN_CONC_R), an extended-but-finite catchment — NOT the whole map (that was dead end #2's runaway)
-const URBAN_MIGRATE_MAXFRAC = 0.10; // per-tick draw capped at this fraction of a neighbourhood's tapped rural people (a migration friction — labour relocates slowly; the graveyard, not this, sets the equilibrium size)
 
 /** Move `delta` field-people between the core tile and its OWN countryside
  *  (owner==sid, within the hinterland box), conservatively. +pull in, −push out. */
@@ -529,50 +527,6 @@ function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta, maxFrac) {
     }
     pf[coreTi] -= moved;
   }
-}
-
-/** BOUNDED INTER-REGIONAL MIGRATION (T.URBAN_MIGRATE). Draw up to `want`
- *  field-people from NEIGHBOURING regions' RURAL countryside into this core
- *  tile, conservatively. This is the missing mechanism the hinterland-throttle
- *  needs (docs/one-population.md): a genuine primate — its import economy
- *  exceeds its own region's people — pulls landless labour ACROSS regions, so
- *  it can outgrow its own hinterland. It is NOT the runaway inter-city pull of
- *  dead end #2: (1) the draw is spatially bounded to a labour-shed (URBAN_MIGRATE_R),
- *  (2) friction-capped per tick (URBAN_MIGRATE_MAXFRAC), (3) taken only from RURAL
- *  tiles of OTHER regions (a rival city core, and any above-median-density tile,
- *  is excluded — so it never death-spirals a neighbour's cities), and (4) braked
- *  by the density graveyard the caller applies (as the core fills, its excess
- *  mortality rises → in-migration = excess deaths sets a finite equilibrium).
- *  Deterministic box walk, no RNG. Returns the amount actually moved. */
-function drawInterRegional(world, owner, sid, cx, cy, coreTi, want, coreTiSet, medDens) {
-  if (want <= 0 || medDens <= 0) return 0;
-  const pf = world.popField, tw = world.tw, th = world.th;
-  const R = URBAN_MIGRATE_R;
-  const y0 = Math.max(0, cy - R), y1 = Math.min(th - 1, cy + R);
-  // Sum tappable rural people: OTHER regions' land, not a city core, below the
-  // typical core density (i.e. genuine countryside — not a rival town/city).
-  let avail = 0;
-  for (let y = y0; y <= y1; y++) for (let xx = cx - R; xx <= cx + R; xx++) {
-    const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
-    const o = owner[ti];
-    if (o < 0 || o === sid || coreTiSet.has(ti)) continue;
-    const p = pf[ti];
-    if (p > 0 && p < medDens) avail += p;
-  }
-  if (avail <= 0) return 0;
-  const take = Math.min(want, avail * URBAN_MIGRATE_MAXFRAC);
-  const frac = take / avail;
-  let moved = 0;
-  for (let y = y0; y <= y1; y++) for (let xx = cx - R; xx <= cx + R; xx++) {
-    const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
-    const o = owner[ti];
-    if (o < 0 || o === sid || coreTiSet.has(ti)) continue;
-    const p = pf[ti];
-    if (p <= 0 || p >= medDens) continue;
-    const m = p * frac; pf[ti] -= m; moved += m;
-  }
-  pf[coreTi] += moved;
-  return moved;
 }
 
 /**
@@ -638,18 +592,11 @@ export function deriveOnePop(world) {
   // WITHOUT changing the total (Σ share = 1 for any β) — so the slope (β) and
   // the urbanization level (economy) cannot fight. Pre-pass sums the pulls, and
   // (under γ) collects the importing cores' densities for the median reference.
-  // Inter-regional urban migration (T.URBAN_MIGRATE) needs the graveyard brake,
-  // so it only runs under γ. coreTiSet protects every city core (own and rival)
-  // from the inter-regional draw — migrants come from countryside, not from
-  // depopulating other cities (that was dead end #2's chaos).
-  const migrate = useGamma && T.URBAN_MIGRATE > 0;
   let sumK = 0, sumKb = 0;
   const coreDens = useGamma ? [] : null;
-  const coreTiSet = migrate ? new Set() : null;
   if (agglom) {
     for (const s of world.settlements) {
       if (s.mode !== "settled") continue;
-      if (coreTiSet) { const cti0 = (s.pos.y | 0) * tw + (s.pos.x | 0); if (cti0 >= 0 && cti0 < world.N) coreTiSet.add(cti0); }
       const isr = Math.max(0, Math.min(1,
         ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
       const kb = ((s._k || 0) * isr) / scale;
@@ -696,8 +643,7 @@ export function deriveOnePop(world) {
       // (βeff=1 under γ: the target is the RAW economy — the density graveyard,
       // not this exponent, does the compressing).
       const share = Math.pow(kBeyond, betaEff) / sumKb;
-      const uTargetRaw = T.URBAN_AGGLOM * sumK * share;   // the economy's demand, pre-hinterland (AGGLOM = the fraction of import-fed capacity that concentrates in the core)
-      uTarget = uTargetRaw;
+      uTarget = T.URBAN_AGGLOM * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core
       // A city lives WITHIN its hinterland: cap the target at a share of the
       // region's own people. Under β-share this is the binding limiter (and, for
       // over-concentrated seeds, a UNIFORMISING one — the whole top set pins to
@@ -705,20 +651,6 @@ export function deriveOnePop(world) {
       // graveyard holds most cores well below it, so economies differentiate
       // (each core settles at its own capacity^(1/(1+γ))) instead of flattening.
       if (f > 0) uTarget = Math.min(uTarget, (useGamma ? URBAN_GMAXSHARE : URBAN_MAXSHARE) * f);
-      // BOUNDED INTER-REGIONAL MIGRATION (T.URBAN_MIGRATE): a genuine primate —
-      // its economy exceeds its own region, so the hinterland cap binds and a
-      // DEFICIT survives — draws rural labour from neighbouring regions to fill it.
-      // Braked by the density graveyard below (a fuller core is deadlier) and
-      // self-tapering (the imported people raise f next tick → smaller deficit),
-      // so it converges instead of running away. Off (URBAN_MIGRATE=0) ⇒ byte-identical.
-      if (migrate && f > 0) {
-        const deficit = uTargetRaw - uTarget;
-        if (deficit > 0) {
-          const cx = s.pos.x | 0, cy = s.pos.y | 0;
-          const drawn = drawInterRegional(world, owner, s.id, cx, cy, ti, T.URBAN_MIGRATE * deficit, coreTiSet, medDens);
-          uTarget += drawn;   // hold the imported labour — the capacity spike (kCap = uTarget) tracks it
-        }
-      }
       if (f > 0) {
         const cx = s.pos.x | 0, cy = s.pos.y | 0;
         const delta = URBAN_CONC_LAMBDA * (uTarget - pf[ti]);
