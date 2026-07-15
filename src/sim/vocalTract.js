@@ -409,9 +409,14 @@ function vowelPosture(v) {
   // and the hump pinches the front of the tract nearly shut, killing F1 and turning
   // the vowel into a ~4 kHz whistle (that was the /i/ bug). Keep it in the vowel
   // range — a channel, not a closure.
-  let tongueDiameter = height === 0 ? 2.4 : height === 1 ? 2.75 : 3.1;
+  let tongueDiameter = height === 0 ? 2.1 : height === 1 ? 2.8 : 3.35;   // wider height spread → real F1 contrast
   if (v.atr) { tongueDiameter += 0.2; tongueIndex -= 0.6; }    // −ATR: laxer, a touch centralized
-  const lip = v.r ? 0.95 : 0;
+  // rounding GRADED by height, not binary: a close /u/ is tightly rounded, mid
+  // /o/ moderately, open /ɒ/ only slightly. Binary rounding made /u/ and /o/ the
+  // SAME spectrum (measured cosine 1.000) — the lip aperture is what separates
+  // them (it sets F1/F2 for a back vowel, where the tongue-height change barely
+  // registers). A real articulatory mechanism, not a fitted formant.
+  const lip = v.r ? (height === 0 ? 0.95 : height === 1 ? 0.55 : 0.3) : 0;
   const velum = v.n ? 0.4 : 0.01;
   // No separate constriction for vowels: the hump already narrows the tract more
   // than any co-located constriction would (so `min()` ignored it — it was inert
@@ -584,11 +589,19 @@ function scoreWord(B, plan, t, mod = {}) {
     const sylStart = t;
     // pitch: tone melody, else stress + declination (mirrors the formant engine)
     let kpts = plan.tone > 0 && syl.tone != null ? TONE_SHAPES[syl.tone].map(k => k * scale)
-      : (() => { const k = (1 + (i === plan.stress ? 0.13 : 0) - 0.1 * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
-    if (plan.pitchAccent && i === plan.stress) kpts = kpts.map(k => k * 1.22);
+      : (() => {
+        const k = (1 - 0.1 * (i / Math.max(1, nSyl))) * scale;     // gentle declination baseline
+        // a STRESSED syllable gets a real pitch-accent EXCURSION (rise-fall), not
+        // just a flat higher level — the old flat [k, 0.96k] read as monotone.
+        return i === plan.stress ? [k * 0.98, k * 1.12, k * 0.98] : [k, k * 0.95];
+      })();
+    if (plan.pitchAccent && i === plan.stress) kpts = kpts.map(k => k * 1.18);
     if (mod.boundary && i === nSyl - 1) {
       const tailK = kpts[kpts.length - 1];
-      kpts = mod.boundary === "rise" ? [...kpts, tailK * 1.35] : [...kpts, tailK * 0.72];
+      // BOUNDED terminal tone: the fall lands on a floor, not a fixed fraction of
+      // the already-declined value. Stacking ×0.72 on declination plunged every
+      // phrase to ~0.61×F0 — vocal-fry "voice giving out" at every sentence end.
+      kpts = mod.boundary === "rise" ? [...kpts, Math.min(1.4, tailK + 0.3)] : [...kpts, Math.max(0.82, tailK - 0.14)];
     }
     const kf = syl.nu.length && syl.nu[0].ph === 2 ? 0.72 : 1;   // creaky nucleus drops the syllable's pitch
     for (const c of syl.on) {
@@ -603,7 +616,12 @@ function scoreWord(B, plan, t, mod = {}) {
     }
     if (syl.nu.length) {
       const long = syl.nu[0].lg;
-      const dur = (i === plan.stress ? 0.19 : 0.15) * (long ? 1.5 : 1) * (i === nSyl - 1 ? 1.12 : 1);
+      // Faster base (old tempo was ~2× too slow / robotically metronomic) plus
+      // INTRINSIC duration: open/low vowels run longer than close ones (real
+      // tongue-jaw inertia), so segments stop being identical-length beads.
+      const vh = syl.nu[0].h || 0;
+      const intrinsic = vh === 2 ? 1.3 : vh === 1 ? 1.05 : 0.9;
+      const dur = (i === plan.stress ? 0.14 : 0.10) * intrinsic * (long ? 1.5 : 1) * (i === nSyl - 1 ? 1.15 : 1);
       t += scoreVowel(B, syl.nu, t, [], dur) + 0.004;
     }
     for (const c of syl.co) t += scoreCons(B, c, t, [], true) + 0.004;
@@ -613,11 +631,15 @@ function scoreWord(B, plan, t, mod = {}) {
     // voiced parts trace a single continuous glide, and sampleTrack interpolates
     // smoothly across the syllable boundary (no step).
     layF0(B, sylStart, Math.max(0.001, t - sylStart), kpts.map(k => k * kf));
-    // Voicing stays CONTINUOUS across syllable boundaries — fading to silence at
-    // every seam chopped a word into disconnected syllables (the "chops"). Only
-    // the word's final edge fades out; voiceless consonants make their own gaps.
-    if (i === nSyl - 1) { B.to("intensity", t, 0, 0.03); t += 0.03; }
-    else t += 0.012;
+    // Voicing stays CONTINUOUS across syllable boundaries — and across WORD
+    // boundaries within a phrase. Fade to silence only at a phrase edge (a
+    // group/clause end, or a lone word); fading every word to zero re-created the
+    // "chopped into disconnected pieces" percept one level up from the syllable
+    // seam that was already fixed. Voiceless consonants still make their own gaps.
+    if (i === nSyl - 1) {
+      if (mod.wordFinal !== false) { B.to("intensity", t, 0, 0.03); t += 0.03; }
+      else t += 0.012;
+    } else t += 0.012;
   });
   return t;
 }
@@ -639,10 +661,12 @@ export function scoreClause(groups, contour = "fall") {
   groups.forEach((g, gi) => {
     const lastG = gi === groups.length - 1;
     g.forEach((p, i) => {
+      const groupFinal = i === g.length - 1;
       t = scoreWord(B, p, t, {
         scale: 1.05 - 0.12 * (k / Math.max(1, total - 1)),
-        boundary: i === g.length - 1 ? (lastG ? contour : "rise") : null,
-      }) + 0.08;
+        boundary: groupFinal ? (lastG ? contour : "rise") : null,
+        wordFinal: groupFinal,                             // only group-final words fade to silence
+      }) + (groupFinal ? 0.05 : 0.02);                     // words within a phrase flow close together
       k++;
     });
     if (!lastG) t += 0.16;
