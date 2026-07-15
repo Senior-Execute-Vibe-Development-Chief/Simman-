@@ -26,7 +26,7 @@
 
 import { TONE_SHAPES } from "./languagePhonetics.js";
 
-const F0_BASE = 118;               // speaker's base pitch, shared with the formant engine
+const F0_BASE = 105;               // speaker's base pitch (a deeper male voice reads less "high")
 const N = 44;                      // tract sections (glottis at 0, lips at N-1)
 const BLADE_START = 10, TIP_START = 32, LIP_START = 39;
 const NOSE_LENGTH = 28, NOSE_START = N - NOSE_LENGTH + 1;   // 17
@@ -95,10 +95,11 @@ function makeGlottis(sampleRate) {
     g.timeInWaveform += 1 / sampleRate;
     if (g.timeInWaveform > g.waveformLength) { g.timeInWaveform -= g.waveformLength; setupWaveform(); }
     let out = waveform(g.timeInWaveform / g.waveformLength);
-    // aspiration rides with voicing (breath through a barely-open glottis)
+    // aspiration rides with voicing (breath through a barely-open glottis) —
+    // kept low so modal vowels don't read as breathy/"wet"
     const voiced = 0.1 + 0.2 * Math.max(0, Math.sin(2 * Math.PI * g.timeInWaveform / g.waveformLength));
     const mod = g.tenseness * voiced + (1 - g.tenseness) * 0.3;
-    out += g.intensity * (1 - Math.sqrt(g.tenseness)) * mod * noise * 0.2;
+    out += g.intensity * (1 - Math.sqrt(g.tenseness)) * mod * noise * 0.07;
     return out;
   };
   g.setLoudness = () => { g.loudness = Math.pow(clamp(g.tenseness, 0, 1), 0.25); };
@@ -243,13 +244,18 @@ const DEFAULTS = {
   constrIndex: -1, constrDiameter: 3, fricative: 0, aspiration: 0, velum: 0.01, lip: 0,
 };
 
-/** Render a score {dur, tracks} to mono Float32 PCM. Deterministic given seed. */
+/** Render a score {dur, tracks} to mono Float32 PCM at `sampleRate`.
+ *  Deterministic given seed. The waveguide is calibrated at a FIXED internal
+ *  rate and the result resampled to the requested rate, so the formants land
+ *  at the same frequencies on every device (a tube whose length is fixed in
+ *  samples would shrink — and pitch up — at a higher output rate). */
 export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
-  const tail = Math.ceil(0.06 * sampleRate);
-  const len = Math.max(1, Math.ceil(score.dur * sampleRate)) + tail;
+  const IR = 44100;                                // internal DSP rate (tube + glottis calibrated here)
+  const tail = Math.ceil(0.06 * IR);
+  const len = Math.max(1, Math.ceil(score.dur * IR)) + tail;
   const out = new Float32Array(len);
   const noise = makeNoise(seed);
-  const glo = makeGlottis(sampleRate);
+  const glo = makeGlottis(IR);
   const tr = makeTract();
   const tracks = score.tracks;
   const P = { ...DEFAULTS };
@@ -263,7 +269,7 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   for (let i = 0; i < len; i += BLOCK) {
     const blk = Math.min(BLOCK, len - i);
     // posture at the block's END drives the new reflections; glottis ramps
-    const t0 = i / sampleRate, t1 = (i + blk) / sampleRate;
+    const t0 = i / IR, t1 = (i + blk) / IR;
     const p0f = sampleTrack(tracks.frequency, t0, F0_BASE), p1f = sampleTrack(tracks.frequency, t1, F0_BASE);
     const p0t = sampleTrack(tracks.tenseness, t0, 0.6), p1t = sampleTrack(tracks.tenseness, t1, 0.6);
     const p0i = sampleTrack(tracks.intensity, t0, 0), p1i = sampleTrack(tracks.intensity, t1, 0);
@@ -289,9 +295,14 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
     }
     tr.commit();
   }
-  // DC-block
-  let y = 0, xprev = 0;
-  for (let i = 0; i < len; i++) { const x = out[i]; y = x - xprev + 0.996 * y; xprev = x; out[i] = y; }
+  // DC-block, then a gentle low-pass to warm the timbre — the raw waveguide is
+  // bright/harsh ("high"), and speech energy above ~5 kHz is mostly sibilance
+  let y = 0, xprev = 0, lp = 0;
+  const LPC = 1 - Math.exp(-2 * Math.PI * 5000 / IR);
+  for (let i = 0; i < len; i++) {
+    const x = out[i]; y = x - xprev + 0.996 * y; xprev = x;
+    lp += LPC * (y - lp); out[i] = lp;
+  }
   // Level management. The sustained VOICE should set the loudness — not the
   // brief stop bursts or the higher-gain constricted vowels, which are several
   // times louder in the raw waveguide and, under peak normalization, crushed
@@ -299,8 +310,8 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   // slow-release envelope toward a target so quiet and loud segments even out,
   // a soft gate hushes the silences between segments, and tanh limits whatever
   // still overshoots (the burst transients).
-  const TARGET = 0.2, FLOOR = 0.1;
-  const ATT = Math.exp(-1 / (0.004 * sampleRate)), REL = Math.exp(-1 / (0.09 * sampleRate));
+  const TARGET = 0.2, FLOOR = 0.065;
+  const ATT = Math.exp(-1 / (0.004 * IR)), REL = Math.exp(-1 / (0.09 * IR));
   let env = 0;
   for (let i = 0; i < len; i++) {
     const a = Math.abs(out[i]);
@@ -308,7 +319,15 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
     const gate = env <= 0.008 ? 0 : env >= 0.025 ? 1 : (env - 0.008) / 0.017;
     out[i] = Math.tanh(out[i] * (gate * TARGET / Math.max(env, FLOOR)));
   }
-  return out;
+  if (sampleRate === IR) return out;
+  // resample (linear) from the internal rate to the requested output rate
+  const ratio = sampleRate / IR, outLen = Math.max(1, Math.round(len * ratio));
+  const res = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const src = i / ratio, j = Math.floor(src), f = src - j;
+    res[i] = (out[j] || 0) * (1 - f) + (out[j + 1] || 0) * f;
+  }
+  return res;
 }
 
 // ── the feature→gesture mapping: where the tongue is, where the pinch is ──
@@ -335,9 +354,9 @@ function vowelPosture(v) {
   // a long front cavity behind rounded lips). Front /i/ needs no help.
   let constrIndex = -1, constrDiameter = 3;
   if ((height === 0 && (back >= 1 || v.r)) || (height === 1 && v.r)) { constrIndex = tongueIndex; constrDiameter = height === 0 ? 0.65 : 0.78; }
-  let tenseness = 0.62, fscale = 1;
-  if (v.ph === 1) tenseness = 0.34;                            // breathy
-  else if (v.ph === 2) { tenseness = 0.88; fscale = 0.72; }    // creaky (drops pitch)
+  let tenseness = 0.72, fscale = 1;                            // modal voice (less breathy = less "wet")
+  if (v.ph === 1) tenseness = 0.4;                             // breathy
+  else if (v.ph === 2) { tenseness = 0.9; fscale = 0.72; }     // creaky (drops pitch)
   return { tongueIndex, tongueDiameter, lip, velum, tenseness, fscale, constrIndex, constrDiameter };
 }
 
