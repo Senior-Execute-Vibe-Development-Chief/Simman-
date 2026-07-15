@@ -207,7 +207,7 @@
     <button class="fe-btn ghost" id="lnkBtn" type="button">Copy share link</button>
   </div>
 
-  <p class="fe-foot"><b>The arc, and why it bends.</b> A device begins as a <b>coat of arms</b> — a charge on a shield, to be known by in the press of battle. As a house grows lordly it takes on more: a divided field, then the <b>quarterings</b> a family accretes through marriage and inheritance — heraldry at its most elaborate. Then the device leaves the shield for <b>cloth</b>, flown as a banner over hall and host; and the pressures reverse — a flag must read across open sea and be sewn by the thousand, and it comes to stand for a whole <b>nation</b>, not one bloodline. So the intricate achievement gives way to <b>bold, simple, high-contrast</b> geometry. Complexity rises, then falls; the form goes <b>shield → banner → flag</b>. Here you drive that arc by hand; in the simulation it falls out of each realm's own development. <b>Drift</b> and <b>Unite</b> vary a house within an age; the ages themselves are the spine.</p>
+  <p class="fe-foot"><b>The arc, and why it bends.</b> A device begins as a <b>coat of arms</b> — a charge on a shield, to be known by in the press of battle. As a house grows lordly it takes on more: a divided field, then the <b>quarterings</b> a family accretes through marriage and inheritance — heraldry at its most elaborate. Then the device leaves the shield for <b>cloth</b>, flown as a banner over hall and host; and the pressures reverse — a flag must read across open sea and be sewn by the thousand, and it comes to stand for a whole <b>nation</b>, not one bloodline. So the intricate achievement gives way to <b>bold, simple, high-contrast</b> geometry. What survives the journey is what reads at a distance: above all the <b>colours</b> — a house's livery became its flag (the Dutch orange, the Belgian arms of Brabant) — and a bold <b>ordinary</b> like a cross; what falls away is the fine detail — the charges, the quarterings, the borders. Complexity rises, then falls; the form goes <b>shield → banner → flag</b>. Here you drive that arc by hand; in the simulation it falls out of each realm's own development. <b>Drift</b> and <b>Unite</b> vary a house within an age; the ages themselves are the spine.</p>
  </div>
  <div class="fe-toast" id="toast"></div>
 </div>
@@ -232,27 +232,51 @@ __EMBLEM_RENDER__
   // then MIGRATES onto cloth — a banner, and finally a bold modern FLAG. The form
   // itself evolves: shield -> banner -> flag.
   const SUB={ shield:0.07, banner:0.28 };
-  // Every step is a FRESH, diverse draw in its age's style (the full heraldic / flag
-  // grammar), sharing only the house's colours, so no two runs look alike. Complexity
-  // RISES to the quartered peak, then FALLS as the arms become a nation's flag.
+  // NOT a fresh draw each age — a DESCENT. Every age carries the parent coat forward
+  // and only EDITS it, along the real conservation gradient of what flags keep vs
+  // discard over history:
+  //   KEEP  — the COLOURS/tinctures (a house's livery became its flag's), the
+  //           principal ORDINARY (a cross/saltire survives onto cloth), the field
+  //           DIVISION (a party shield -> stripes). These are conserved genes.
+  //   SHED  — the CHARGE (a beast/device: elaborated through the heraldic age, then
+  //           mostly dropped for the nation's flag — the tricolour rejected dynastic
+  //           charges), and QUARTERING / borders / ornament (added at the peak,
+  //           dropped for the flag).
+  // The founding coat is a fresh, diverse draw, so different houses give different
+  // lineages; but WITHIN a run the flag genuinely descends from the arms.
   const AGES=[
-    { name:"Coat of arms", tag:"the basic shield — a simple charged coat", sub:SUB.shield,
-      axes:{ornateness:0.32, figuration:0.55, boldness:0.58, saturation:0.6}, plainCoat:true },
-    { name:"Charged arms", tag:"a fuller heraldic shield — beasts & ordinaries", sub:SUB.shield,
-      axes:{figuration:0.86, ornateness:0.6, boldness:0.62, saturation:0.6, regal:0.4} },
-    { name:"Grand arms", tag:"quartered & marshalled — dynastic accretion", sub:SUB.shield,
-      axes:{figuration:0.78, ornateness:0.9, boldness:0.58, saturation:0.58, regal:0.6, imperial:0.72}, marshal:true },
-    { name:"Banner of arms", tag:"the arms migrate onto cloth", sub:SUB.banner,
-      axes:{figuration:0.58, ornateness:0.7, boldness:0.62, saturation:0.72, regal:0.4}, charged:true, border:true },
-    { name:"Colours", tag:"the cloth simplifies — bold, bright", sub:SUB.banner,
-      axes:{figuration:0.2, ornateness:0.5, boldness:0.68, saturation:0.9, mercantile:0.55}, simplify:true },
+    { name:"Coat of arms", tag:"a simple shield coat — the founding device", sub:SUB.shield,
+      found:{ornateness:0.34, figuration:0.6, boldness:0.6, saturation:0.6}, plainCoat:true },
+    { name:"Charged arms", tag:"the coat elaborates — a bolder device", sub:SUB.shield,
+      edit:{iconism:0.82, arrange:0.1, motifScale:0.7, motifCount:0.1, border:0.22} },
+    { name:"Grand arms", tag:"marshalled & quartered — dynastic accretion", sub:SUB.shield,
+      marshal:true, edit:{border:0.46} },
+    { name:"Banner of arms", tag:"the same arms move onto cloth", sub:SUB.banner,
+      edit:{arrange:0.72, motifScale:0.62, border:0.3} },
+    { name:"Colours", tag:"the charge falls away — colours & ordinary remain", sub:SUB.banner,
+      shed:true, edit:{border:0.05} },
     { name:"National flag", tag:"bold, simple, mass-made — a modern flag", sub:SUB.banner,
-      axes:{figuration:0.1, ornateness:0.4, boldness:0.74, saturation:0.98, mercantile:0.5, imperial:0.4}, simplify:true },
+      shed:true, edit:{border:0.03} },
   ];
 
   const ENV=[["maritime","Coastal"],["sylvan","Wooded"],["arid","Desert"],["montane","Mountainous"]];
   const ETHOS=[["martial","Warlike"],["regal","Wealthy"],["devout","Devout"],["mercantile","Mercantile"]];
-  const HUE_KEEP=new Set(["hueA","hueB","chroma"]);   // the house's colours carry forward through the ages
+  const LIVERY=["hueA","hueB","hueC","chroma","value"];   // the house's colours — fixed at founding, flown by every age
+  function applyLivery(genes){ if(state.livery) for(const k of LIVERY) genes[IDX[k]]=state.livery[k]; }
+  function setLivery(g){ state.livery=LIVERY.reduce((o,k)=>(o[k]=g.genes[IDX[k]],o),{}); }
+  // The hue anchors a shield and a flag SHARE — the four chromatic bunting bolts
+  // (gules, or, vert, azure; argent & sable come from lightness). Snapping the
+  // house's field + accent to these keeps the palette to the six flag/heraldry
+  // colours AND guarantees the flag flies the coat's own colours (no stain that
+  // can't be woven as bunting, so nothing has to be remapped when it reaches cloth).
+  const BOLTS=[0.08,0.40,0.585,0.81];
+  const snapHue=v=>{ let best=BOLTS[0],bd=9; for(const b of BOLTS){ const d=Math.abs((((v-b)%1+1.5)%1)-0.5); if(d<bd){bd=d;best=b;} } return best; };
+  // Lightness decides METAL vs COLOUR, and the threshold differs between a shield's
+  // pigment and a flag's bunting — so a borderline value shows white on the coat but
+  // its colour on the flag. Snap it to three clear levels (sable / the colour /
+  // argent) so a tincture reads identically on both, and the palette stays the six.
+  const VALS=[0.16,0.5,0.86];
+  const snapVal=v=>VALS.reduce((b,x)=>Math.abs(x-v)<Math.abs(b-v)?x:b, VALS[0]);
 
   const state={ genome:null, lineage:[], cursor:-1, era:0 };
   const subOf=g=>(g && g.genes[IDX.substrate]<0.167)?"shield":"banner";   // heater shields sit below the banner window
@@ -279,40 +303,52 @@ __EMBLEM_RENDER__
     if(genes[IDX.composition]>=maxComp) genes[IDX.composition]=Math.random()*maxComp;
   }
 
-  // apply an age's SUBSTRATE + structural character to a fresh gene vector
+  // apply an age's substrate + its edits to a coat (DESCENT keeps everything else)
   function dressAge(genes, age){
     genes[IDX.substrate]=age.sub;
     if(age.plainCoat) genes[IDX.border]=0.05;                 // a basic coat — no bordure clutter
-    if(age.charged){ genes[IDX.arrange]=0.74; genes[IDX.motifScale]=0.6+Math.random()*0.24; genes[IDX.motifCount]=0.1; genes[IDX.iconism]=0.82; }  // force a device onto the cloth
-    if(age.border) genes[IDX.border]=0.45;
-    if(age.simplify) genes[IDX.border]=0.05;
+    if(age.edit) for(const k in age.edit) genes[IDX[k]]=age.edit[k];
   }
 
-  // found the house at the first age — a basic COAT OF ARMS on a shield
+  // found the house at the first age — a simple, diverse COAT OF ARMS on a shield
   function foundHouse(){
-    const g=foundGenome(rnd32(), Object.assign({}, houseAxes(), AGES[0].axes));
-    dressAge(g.genes, AGES[0]); g.gen=0; delete g.cadency; delete g.quarters;
+    const g=foundGenome(rnd32(), Object.assign({}, houseAxes(), AGES[0].found));
+    // The house's LIVERY is two colours. hueA is the field; hueC is the accent (the
+    // ordinary / charge colour). Bind the field's SECOND tincture (hueB, used by a
+    // flag's stripes) to that same accent, so when the arms become a striped flag it
+    // flies the coat's own colours — not a third hue the shield never showed.
+    g.genes[IDX.hueA]=snapHue(g.genes[IDX.hueA]);   // field + accent snap to shared bunting bolts...
+    g.genes[IDX.hueC]=snapHue(g.genes[IDX.hueC]);
+    g.genes[IDX.hueB]=g.genes[IDX.hueC];            // ...and the flag's 2nd colour is that accent
+    g.genes[IDX.value]=snapVal(g.genes[IDX.value]); // ...and lightness to a clear level, so metal/colour is stable
+    dressAge(g.genes, AGES[0]);
+    setLivery(g);                                   // fix the house's colours here; every later age flies them
+    g.gen=0; delete g.cadency; delete g.quarters;
     state.era=0; commit(g,{fresh:true});
   }
 
-  // develop the device into a target AGE. A FRESH draw in that age's style (the full
-  // heraldic / flag grammar) is what gives real diversity — only the house COLOURS
-  // carry over, for a through-line. The early ages are SHIELDS (a coat of arms), the
-  // later ones CLOTH (a banner, then a flag); the dynastic peak marshals a second
-  // coat — true quartering on the shield; the modern ages shed the quarters.
+  // develop the device into a target AGE by DESCENT: carry the whole parent coat
+  // forward — its colours, ordinary, division and charge all conserved — then apply
+  // the age's edits. The heraldic ages elaborate; the flag ages SHED the charge and
+  // quartering. So the flag descends from the arms (same colours, same cross), and
+  // only the fine detail is discarded — the way real flags did.
   function ageInto(g, age){
-    const t=foundGenome(rnd32(), Object.assign({}, houseAxes(), age.axes));   // fresh seed → diverse
-    const genes=t.genes.slice();
-    HUE_KEEP.forEach(n=>{ genes[IDX[n]]=g.genes[IDX[n]]; });                  // keep the house colours
-    dressAge(genes, age);
-    let out={ genes, gen:(g.gen||0)+1, seed:t.seed };
+    const genes=g.genes.slice();                 // conserve the parent coat
+    dressAge(genes, age);                         // substrate + this age's edits
+    if(age.shed){                                 // the charge falls away for the nation's flag
+      if(Math.random()<0.62){ genes[IDX.arrange]=0.06; genes[IDX.motifCount]=0.04; }         // colours + division + ordinary speak alone
+      else { genes[IDX.arrange]=0.8; genes[IDX.motifScale]=0.5+Math.random()*0.18; genes[IDX.motifCount]=0.05; }  // a lone, simplified device survives
+    }
+    let out={ genes, gen:(g.gen||0)+1, seed:g.seed };
+    if(g.quarters && !age.shed) out.quarters=g.quarters;      // carry quartering through the heraldic + banner ages
     if(age.marshal){
-      const mate=foundGenome(rnd32(), Object.assign({}, houseAxes(), age.axes)); mate.genes[IDX.substrate]=age.sub;
+      const mate=foundGenome(rnd32(), Object.assign({}, houseAxes(), {figuration:0.7, ornateness:0.66, regal:0.5})); mate.genes[IDX.substrate]=age.sub;
       const c=crossGenome(out, mate, rnd32());
       out={ genes:c.genes, gen:out.gen, seed:out.seed }; out.genes[IDX.substrate]=age.sub;
-      if(c.quarters) out.quarters=c.quarters.slice(0,4);
+      if(c.quarters) out.quarters=c.quarters.slice(0,4);   // the union shows in the quarters; the FIELD stays the house's
     }
-    if(age.simplify) delete out.quarters;
+    if(age.shed) delete out.quarters;
+    applyLivery(out.genes);   // whatever elaboration/marriage happened, the device flies the house's own colours
     return out;
   }
 
@@ -408,7 +444,7 @@ __EMBLEM_RENDER__
   function pack(g){ return {g:g.genes.map(v=>+v.toFixed(4)), n:g.gen||0, s:g.seed||0, e:g._era||0, c:g.cadency||0, q:g.quarters?g.quarters.map(x=>({g:x.genes.map(v=>+v.toFixed(4)),n:x.gen||0,s:x.seed||0})):0}; }
   function unpack(o){ const g={genes:o.g,gen:o.n||0,seed:o.s||0,_era:o.e||0}; if(o.c)g.cadency=o.c; if(o.q)g.quarters=o.q.map(x=>({genes:x.g,gen:x.n||0,seed:x.s||0})); return g; }
   function updateHash(g){ try{ history.replaceState(null,"","#"+btoa(unescape(encodeURIComponent(JSON.stringify(pack(g)))))); }catch(e){} }
-  function fromHash(){ try{ const h=location.hash.slice(1); if(!h) return false; const o=JSON.parse(decodeURIComponent(escape(atob(h)))); state.genome=unpack(o); state.era=o.e||0; state.lineage=[state.genome]; state.cursor=0; paint(false); renderTrack(); return true; }catch(e){ return false; } }
+  function fromHash(){ try{ const h=location.hash.slice(1); if(!h) return false; const o=JSON.parse(decodeURIComponent(escape(atob(h)))); state.genome=unpack(o); setLivery(state.genome); state.era=o.e||0; state.lineage=[state.genome]; state.cursor=0; paint(false); renderTrack(); return true; }catch(e){ return false; } }
 
   // ── wire ──
   buildSliders();
