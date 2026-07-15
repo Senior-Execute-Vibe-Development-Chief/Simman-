@@ -299,6 +299,71 @@ compressor got into this state. Before pushing any change: `npm run lint`,
 
 ---
 
+## Ultra-review (round 2) — the deeper bugs, and the one that mattered most
+
+The first review fixed the *muffle* (radiation) but the voice still "sounded
+bad." A four-way parallel deep review (waveguide-DSP correctness, glottal source,
+prosody/timing, system-level naturalness) plus fresh measurement found that the
+earlier fixes had been **coping mechanisms layered on a broken core**. Fixes
+below are landed on this branch, ranked by the impact they turned out to have.
+
+### THE root cause — a non-passive waveguide (self-oscillation = the "squeak")
+`vocalTract.js` `step()`. The pressure-junction port routed the **left-going
+wave one section off**: the junction writes `jL[m]` as the wave entering section
+`m`, but the update read `L[k] = jL[k+1]` (and the lip boundary wrote `jL[N]`,
+leaving `jL[N-1]` a dead node). `R` was section-indexed, `L` junction-indexed —
+inconsistent, so on any area gradient the tube **created energy** (pole at
+|z|≈1.0067). It self-oscillated; the `tanh` clamp — which fired **260,752×** on a
+single sustained `/i/` (the "normal speech never exceeds ~5" comment was flatly
+false) — was the only thing preventing NaN, pinning the runaway into a buzzy
+~3.7 kHz limit cycle. **That limit cycle is the "medium-toned squeak / rubber
+shoe on a gym floor,"** and the same mechanism produced the `/u//o/` peakiness,
+the loudness imbalance the leveller was fighting, the nasal/velar buzz, and much
+of what §3.2 called the "formant ceiling." The fix is 4 lines (`L[k]=jL[k]`, lip
+boundary → `jL[N-1]`, same for the nose branch). After it: clamp fires **0×**,
+internal wave peak on `/i/` **12.4 → 0.6**, `voice.mjs` vowel-space **2/6 → 5/6**,
+`/i/` becomes a real vowel (F2≈2.3 kHz, F1 present) instead of a whistle, vowel
+loudness evens out, formants land at textbook quarter-wave positions.
+Also: the wall-loss coefficient reached **−0.303** at closures (a sign-flipping
+inverter, not a loss) → clamped to [0,1].
+
+### The source was a perfect buzzer — no jitter/shimmer
+`makeGlottis`. The LF pulse math is a faithful port, but the port dropped Pink
+Trombone's per-cycle perturbation. Result: harmonics-to-noise ~**128 dB** (human
+~15–20). A flawless harmonic stack *is* "buzzy/robotic," and no timbre/tilt knob
+touches periodicity — which is why months of `tenseness`/`hf` tuning never
+reached it. Added seeded per-cycle F0 jitter (~0.6%) + amplitude shimmer (~4.5%)
++ slow flutter (~1.6%), band-limited the aspiration (raw white breath became a
+bright hiss after radiation), relaxed the pressed modal source (`tenseness`
+0.72→0.65), gentled radiation (0.97→0.9). Deterministic (seeded).
+
+### The vowel space had collapsed, and connected speech was robotic
+Prosody/timing review, all measured: `/u/`~`/o/` rendered as the **same spectrum**
+(binary lip rounding) — fixed with height-graded rounding + wider tongue-diameter
+spread. Every vowel was the **same length at ~2× too slow** a tempo — cut base
+durations and added intrinsic duration (open vowels longer). Every phrase
+**plunged to ~64 Hz** (vocal fry) because the terminal tone multiplied an
+already-declined value — made it a bounded floor, and gave stress a real
+rise-fall accent. Voicing was driven to **silence at every word** — propagated
+the syllable-continuity rule to word seams.
+
+### The `/i/` whistle (a regression introduced mid-review)
+The first-round vowel-geometry rework set `tongueDiameter` so small the tongue
+hump pinched the tract to a near-closure, killing F1 → a 4 kHz whistle. Kept the
+diameter in the vowel range and removed a co-located vowel constriction that was
+**inert** anyway (the hump was always narrower, so `min()` ignored it).
+
+### Still open (future work, lower payoff)
+- `shape()` builds slightly unphysical area functions for high tongues (a mid
+  closure + a 6× area spike); `/a/`'s F1 is a touch low. Clamp tongue diameter and
+  give front-high vowels their F2 from a front-cavity length split.
+- Leveller envelope still ripples ~9% at F0 (4 ms attack tracks the pitch period)
+  — lengthen the attack or detect on a peak-hold envelope.
+- Per-formant **bandwidth** control (the genuine waveguide ceiling, §3.2/§7) and
+  place-shaped fricative spectra remain unaddressed.
+
+---
+
 ## Appendix — how this was measured (repro)
 
 The DSP is pure, so everything here was rendered and analysed headless under Node:
