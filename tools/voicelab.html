@@ -78,7 +78,10 @@ const LIP_REFLECTION = -0.85;
 // to read as distinct vowels. `radiation` is the lip-radiation pre-emphasis
 // coefficient (see renderScore) — the +6 dB/oct that turns raw tract pressure
 // into a sound that reads as speech; 0 disables it. Exposed for the harness.
-const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.9, wallLoss: 1.3, wallThresh: 0.03, hf: 0.92 };
+const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.9, wallLoss: 1.3, wallThresh: 0.03, hf: 0.92, turb: 4 };
+// `turb` = frication/burst injection gain. The bursts were tuned when the
+// waveguide self-oscillated and amplified them; now that it's passive they need
+// real gain, or stops/fricatives are inaudible ("sounds like only vowels").
 // A hard ceiling on the travelling waves. Normal speech never exceeds ~5 here,
 // so this is invisible in practice — but a driven closed cavity (a long voiced
 // velar closure, where the constriction sits right against the velum) can ring
@@ -244,7 +247,7 @@ function makeTract() {
       if (gain <= 0 || index < 1 || index > N - 2) return;
       const thin = clamp(5 * (0.85 - dia), 0, 1);
       const open = clamp(15 * (dia - 0.02), 0, 1);
-      const nz = turb * gain * thin * open;
+      const nz = turb * gain * thin * open * DSP.turb;
       const i = Math.floor(index), f = index - i;
       R[i] += nz * (1 - f) * 0.5; L[i] += nz * (1 - f) * 0.5;
       R[i + 1] += nz * f * 0.5; L[i + 1] += nz * f * 0.5;
@@ -432,6 +435,13 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
 // end … 43=lips). These are ARTICULATORY positions, not tuned formant values —
 // the resonances follow from where the air column narrows.
 const PLACE_INDEX = { 0: 41, 8: 36, 1: 33, 2: 31, 3: 29, 4: 20, 5: 16, 6: 11, 7: 3 };
+// Tongue-BODY target per place (the formant "locus"). Leaning the tongue toward
+// it during a consonant bends the neighbouring vowel's formants — that transition
+// is the main perceptual cue for consonant PLACE. Without it, every stop was just
+// a gap in an unchanging vowel-formant field ("sounds like only vowels"). Labials
+// pull F2 low (tongue back), coronals/palatals high (front), velars mid; glottals
+// (7) don't move the tongue body.
+const LOCUS = { 0: 15, 8: 30, 1: 31, 2: 27, 3: 32, 4: 22, 5: 13, 6: 10 };
 // tongue posture for a vowel — the articulatory vowel quadrilateral, from which
 // the formants fall out. The two axes of the chart ARE the two axes of the tube:
 //   backness → where the tongue hump sits → the front/back cavity split → F2
@@ -501,6 +511,12 @@ function scoreCons(B, c, t, kpts, final) {
   const voicedBar = c.l === 1;
   const kMid = kpts[Math.floor(kpts.length / 2)] || 1;
   const trans = 0.028;
+  // lean the tongue BODY toward this place's formant locus, so the flanking
+  // vowels' formants transition into/out of the consonant — the place cue that
+  // makes a stop sound like a consonant and not a gap. Glides (m===6) set their
+  // own tongue posture below; glottals have no locus.
+  const locus = LOCUS[p];
+  if (locus != null && c.m !== 6) B.to("tongueIndex", t, locus, trans);
 
   if (c.m === 1) {                                            // NASAL: closure + open velum
     const dur = 0.085;
