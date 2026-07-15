@@ -34,7 +34,7 @@ const LIP_REFLECTION = -0.85;
 // Loss knobs set the formant bandwidths: a near-closed glottis (high
 // reflection) and light per-section damping keep the resonances sharp enough
 // to read as distinct vowels. Exposed for the calibration harness.
-const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.8, wallLoss: 1, wallThresh: 0.02, hf: 0.82 };
+const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.8, wallLoss: 1.3, wallThresh: 0.03, hf: 0.92 };
 // A hard ceiling on the travelling waves. Normal speech never exceeds ~5 here,
 // so this is invisible in practice — but a driven closed cavity (a long voiced
 // velar closure, where the constriction sits right against the velum) can ring
@@ -158,10 +158,15 @@ function makeTract() {
     // shuts (viscous loss at a near-closure), which also dissipates the energy
     // a hard closure would otherwise trap in the sealed cavity beyond it — the
     // passivity leak that made a nasal (an oral closure + open velum) blow up.
+    for (let i = 0; i < N; i++) Anew[i] = Math.max(1e-6, diameter[i] * diameter[i]);
+    // wall loss keyed to the NARROWEST area in a small neighbourhood, not just
+    // the section's own: this damps the tiny high-Q cavity that forms right
+    // beside a closure (the velar/uvular ring-up that glitched) LOCALLY, so the
+    // rest of the tract stays bright — global HF loss alone dulled everything.
     for (let i = 0; i < N; i++) {
-      const A = Math.max(1e-6, diameter[i] * diameter[i]);
-      Anew[i] = A;
-      wall[i] = DSP.damp - DSP.wallLoss * clamp((DSP.wallThresh - A) / DSP.wallThresh, 0, 1);
+      let minA = Anew[i];
+      for (let j = Math.max(0, i - 2); j <= Math.min(N - 1, i + 2); j++) if (Anew[j] < minA) minA = Anew[j];
+      wall[i] = DSP.damp - DSP.wallLoss * clamp((DSP.wallThresh - minA) / DSP.wallThresh, 0, 1);
     }
     noseDiameter[0] = Math.max(0.01, p.velum);
     noseAnew[0] = noseDiameter[0] * noseDiameter[0];
@@ -316,7 +321,7 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   // slow-release envelope toward a target so quiet and loud segments even out,
   // a soft gate hushes the silences between segments, and tanh limits whatever
   // still overshoots (the burst transients).
-  const TARGET = 0.2, FLOOR = 0.065;
+  const TARGET = 0.22, FLOOR = 0.085;                            // gentler leveling keeps some dynamics (less "flat")
   const ATT = Math.exp(-1 / (0.004 * IR)), REL = Math.exp(-1 / (0.09 * IR));
   let env = 0;
   for (let i = 0; i < len; i++) {
