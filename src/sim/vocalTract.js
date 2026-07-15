@@ -99,7 +99,7 @@ function makeGlottis(sampleRate) {
     // kept low so modal vowels don't read as breathy/"wet"
     const voiced = 0.1 + 0.2 * Math.max(0, Math.sin(2 * Math.PI * g.timeInWaveform / g.waveformLength));
     const mod = g.tenseness * voiced + (1 - g.tenseness) * 0.3;
-    out += g.intensity * (1 - Math.sqrt(g.tenseness)) * mod * noise * 0.07;
+    out += g.intensity * Math.max(0, 0.82 - g.tenseness) * mod * noise * 0.11;
     return out;
   };
   g.setLoudness = () => { g.loudness = Math.pow(clamp(g.tenseness, 0, 1), 0.25); };
@@ -318,17 +318,19 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   // brief stop bursts or the higher-gain constricted vowels, which are several
   // times louder in the raw waveguide and, under peak normalization, crushed
   // every open vowel to near-silence. A gentle compressor rides a fast-attack /
-  // slow-release envelope toward a target so quiet and loud segments even out,
-  // a soft gate hushes the silences between segments, and tanh limits whatever
-  // still overshoots (the burst transients).
+  // slow-release envelope toward a target so quiet and loud segments even out;
+  // a smooth downward expander (not a hard gate — that clicked) hushes the
+  // silences between segments. Output stays LINEAR in the normal range so there
+  // is no pervasive tanh distortion (the buzzy edge); only true peaks soft-limit.
   const TARGET = 0.22, FLOOR = 0.085;                            // gentler leveling keeps some dynamics (less "flat")
   const ATT = Math.exp(-1 / (0.004 * IR)), REL = Math.exp(-1 / (0.09 * IR));
   let env = 0;
   for (let i = 0; i < len; i++) {
     const a = Math.abs(out[i]);
     env = a > env ? ATT * env + (1 - ATT) * a : REL * env + (1 - REL) * a;
-    const gate = env <= 0.008 ? 0 : env >= 0.025 ? 1 : (env - 0.008) / 0.017;
-    out[i] = Math.tanh(out[i] * (gate * TARGET / Math.max(env, FLOOR)));
+    const gate = env >= 0.03 ? 1 : env <= 0.006 ? 0.06 : 0.06 + 0.94 * (env - 0.006) / 0.024;
+    const v = out[i] * (gate * TARGET / Math.max(env, FLOOR));
+    out[i] = Math.abs(v) < 0.6 ? v : Math.sign(v) * (0.6 + 0.4 * Math.tanh((Math.abs(v) - 0.6) / 0.4));
   }
   if (sampleRate === IR) return out;
   // resample (linear) from the internal rate to the requested output rate
