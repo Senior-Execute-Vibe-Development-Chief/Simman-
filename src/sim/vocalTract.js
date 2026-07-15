@@ -33,8 +33,10 @@ const NOSE_LENGTH = 28, NOSE_START = N - NOSE_LENGTH + 1;   // 17
 const LIP_REFLECTION = -0.85;
 // Loss knobs set the formant bandwidths: a near-closed glottis (high
 // reflection) and light per-section damping keep the resonances sharp enough
-// to read as distinct vowels. Exposed for the calibration harness.
-const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.8, wallLoss: 1.3, wallThresh: 0.03, hf: 0.92 };
+// to read as distinct vowels. `radiation` is the lip-radiation pre-emphasis
+// coefficient (see renderScore) — the +6 dB/oct that turns raw tract pressure
+// into a sound that reads as speech; 0 disables it. Exposed for the harness.
+const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.97, wallLoss: 1.3, wallThresh: 0.03, hf: 0.92 };
 // A hard ceiling on the travelling waves. Normal speech never exceeds ~5 here,
 // so this is invisible in practice — but a driven closed cavity (a long voiced
 // velar closure, where the constriction sits right against the velum) can ring
@@ -314,24 +316,48 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   // DC-block (the per-section HF loss already warms the timbre)
   let y = 0, xprev = 0;
   for (let i = 0; i < len; i++) { const x = out[i]; y = x - xprev + 0.996 * y; xprev = x; out[i] = y; }
-  // Level management. The sustained VOICE should set the loudness — not the
-  // brief stop bursts or the higher-gain constricted vowels, which are several
-  // times louder in the raw waveguide and, under peak normalization, crushed
-  // every open vowel to near-silence. A gentle compressor rides a fast-attack /
-  // slow-release envelope toward a target so quiet and loud segments even out;
-  // a smooth downward expander (not a hard gate — that clicked) hushes the
-  // silences between segments. Output stays LINEAR in the normal range so there
-  // is no pervasive tanh distortion (the buzzy edge); only true peaks soft-limit.
-  const TARGET = 0.22, FLOOR = 0.085;                            // gentler leveling keeps some dynamics (less "flat")
+  // LIP RADIATION. The sound radiated from the lips is ~the TIME-DERIVATIVE of
+  // the tract pressure — a +6 dB/oct high-pass (a one-zero pre-emphasis). This
+  // is the missing physics that made the voice a dull, vowel-less hum: without
+  // it the glottal source's steep −12 dB/oct tilt is never compensated and
+  // F2/F3 sit 20–40 dB below the fundamental, so every vowel measures (and
+  // sounds) nearly identical. With it, the formants stand proud and the vowels
+  // separate. Energy-preserving make-up gain, so the leveler below is unaffected
+  // (and it self-calibrates regardless). DSP.radiation = 0 disables it.
+  if (DSP.radiation > 0) {
+    let e0 = 0; for (let i = 0; i < len; i++) e0 += out[i] * out[i];
+    let xp = 0; for (let i = 0; i < len; i++) { const x = out[i]; out[i] = x - DSP.radiation * xp; xp = x; }
+    let e1 = 0; for (let i = 0; i < len; i++) e1 += out[i] * out[i];
+    const g = Math.sqrt(e0 / (e1 || 1e-9)); for (let i = 0; i < len; i++) out[i] *= g;
+  }
+  // Level management, SELF-CALIBRATING. The sustained voice should set the
+  // loudness — not the brief stop bursts or the higher-gain constricted vowels,
+  // which are several times louder in the raw waveguide. A first pass finds THIS
+  // utterance's own envelope peak; the compressor floor and the downward-expander
+  // window are set RELATIVE to it, so the leveler tracks the signal instead of
+  // hard-coded magnitudes (which silently broke the moment any upstream stage —
+  // e.g. the radiation above — changed the absolute level). Output stays LINEAR
+  // in range so there's no pervasive tanh distortion (the buzzy edge); only true
+  // peaks soft-limit.
   const ATT = Math.exp(-1 / (0.004 * IR)), REL = Math.exp(-1 / (0.09 * IR));
-  let env = 0;
+  let env = 0, envMax = 1e-9;
+  for (let i = 0; i < len; i++) { const a = Math.abs(out[i]); env = a > env ? ATT * env + (1 - ATT) * a : REL * env + (1 - REL) * a; if (env > envMax) envMax = env; }
+  const LEVEL = 0.5 * envMax;                                    // level voiced segments toward half the utterance's own peak
+  const FLOOR = 0.2 * envMax;                                    // caps make-up gain at LEVEL/FLOOR = 2.5× — no transient blow-up
+  const gOpen = 0.10 * envMax, gShut = 0.02 * envMax;            // downward-expander window, relative to the peak
+  env = 0;
   for (let i = 0; i < len; i++) {
     const a = Math.abs(out[i]);
     env = a > env ? ATT * env + (1 - ATT) * a : REL * env + (1 - REL) * a;
-    const gate = env >= 0.03 ? 1 : env <= 0.006 ? 0.06 : 0.06 + 0.94 * (env - 0.006) / 0.024;
-    const v = out[i] * (gate * TARGET / Math.max(env, FLOOR));
+    const gate = env >= gOpen ? 1 : env <= gShut ? 0.05 : 0.05 + 0.95 * (env - gShut) / (gOpen - gShut);
+    const v = out[i] * (gate * LEVEL / Math.max(env, FLOOR));
     out[i] = Math.abs(v) < 0.6 ? v : Math.sign(v) * (0.6 + 0.4 * Math.tanh((Math.abs(v) - 0.6) / 0.4));
   }
+  // final peak-normalize to a consistent playback level (the absolute output no
+  // longer depends on the arbitrary post-radiation scale — the leveler only had
+  // to set the segment-to-segment BALANCE)
+  let pk = 0; for (let i = 0; i < len; i++) { const a = Math.abs(out[i]); if (a > pk) pk = a; }
+  if (pk > 1e-6) { const g = 0.9 / pk; for (let i = 0; i < len; i++) out[i] *= g; }
   if (sampleRate === IR) return out;
   // resample (linear) from the internal rate to the requested output rate
   const ratio = sampleRate / IR, outLen = Math.max(1, Math.round(len * ratio));
@@ -348,25 +374,40 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
 // end … 43=lips). These are ARTICULATORY positions, not tuned formant values —
 // the resonances follow from where the air column narrows.
 const PLACE_INDEX = { 0: 41, 8: 36, 1: 33, 2: 31, 3: 29, 4: 20, 5: 16, 6: 11, 7: 3 };
-// tongue posture for a vowel: backness → position (front vowels sit forward,
-// toward the palate), height → how close the tongue rides to the roof.
+// tongue posture for a vowel — the articulatory vowel quadrilateral, from which
+// the formants fall out. The two axes of the chart ARE the two axes of the tube:
+//   backness → where the tongue hump sits → the front/back cavity split → F2
+//   height   → how close the hump rides to the roof → the aperture → F1
+// We set the ARTICULATION (tongue position + constriction) from those features;
+// we never write a formant frequency. (index 0 = glottis … 43 = lips.)
 function vowelPosture(v) {
   const back = v.b || 0, height = v.h || 0;
-  // tongue hump position: front vowels forward (palatal), close back vowels at
-  // the velum, and LOW vowels retracted into the pharynx (that wide back cavity
-  // is what opens F1). So the high point moves with BOTH height and backness.
-  let tongueIndex = height === 2
-    ? (back === 0 ? 16 : back === 2 ? 11 : 13)                 // low: pharyngeal-ish
-    : (back === 0 ? 27 : back === 2 ? 19 : 20);                // close/mid: palatal / velar / central
-  let tongueDiameter = height === 0 ? 2.1 : height === 1 ? 2.6 : 3.0;
-  if (v.atr) { tongueDiameter += 0.25; tongueIndex += 0.6; }   // −ATR: laxer, a touch fronter
+  // hump front↔back sets F2. A FORWARD hump (near the palate, high index) shrinks
+  // the front cavity and RAISES F2 — that is what "front" means; a retracted hump
+  // lengthens it and lowers F2. Low vowels pull the high point back and down.
+  let tongueIndex = back === 0 ? 31 : back === 2 ? 15 : 21;    // palatal / velar / central
+  if (height === 2) tongueIndex -= back === 0 ? 6 : back === 2 ? 3 : 4;   // low vowels retract
+  // hump height sets F1. Close → tongue near the roof, small diameter, low F1;
+  // open → tongue drops away, large diameter, high F1.
+  let tongueDiameter = height === 0 ? 1.8 : height === 1 ? 2.5 : 3.15;
+  if (v.atr) { tongueDiameter += 0.3; tongueIndex -= 0.6; }    // −ATR: laxer, a touch centralized
   const lip = v.r ? 0.95 : 0;
   const velum = v.n ? 0.4 : 0.01;
-  // a smooth hump alone can't pull F2 down for close back/round vowels — add a
-  // constriction co-located with the tongue (that's how /u/ gets its low F2:
-  // a long front cavity behind rounded lips). Front /i/ needs no help.
-  let constrIndex = -1, constrDiameter = 3;
-  if ((height === 0 && (back >= 1 || v.r)) || (height === 1 && v.r)) { constrIndex = tongueIndex; constrDiameter = height === 0 ? 0.65 : 0.78; }
+  // A smooth hump alone barely moves F2 (proven: every vowel collapsed to
+  // F2≈850). A co-located constriction sharpens the cavity split that MAKES the
+  // F2 contrast: FRONT close/mid vowels get a PALATAL channel that raises F2
+  // (the mechanism /i/ was missing); BACK close/mid + round get a VELAR pinch
+  // that lowers it (how /u/,/o/ get their low F2). Open (low) vowels stay
+  // unconstricted — one wide cavity, high F1, F2 wherever the hump leaves it.
+  // The constriction's LOCATION (= the hump: forward for front, retracted for
+  // back) decides whether it raises or lowers F2, so the SAME tightness gives a
+  // front vowel a high F2 and a back vowel a low one — the front/back split is
+  // carried by WHERE, not how much. Tightness scales with height (a close vowel
+  // pinches harder). Only the fully-open central vowel (/a/) stays unconstricted,
+  // a single wide cavity.
+  let constrIndex = tongueIndex;
+  let constrDiameter = height === 0 ? 0.62 : height === 1 ? 0.9 : 1.15;
+  if (back === 1 && height === 2) { constrIndex = -1; constrDiameter = 3; }
   let tenseness = 0.72, fscale = 1;                            // modal voice (less breathy = less "wet")
   if (v.ph === 1) tenseness = 0.4;                             // breathy
   else if (v.ph === 2) { tenseness = 0.9; fscale = 0.72; }     // creaky (drops pitch)

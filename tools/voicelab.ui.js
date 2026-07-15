@@ -35,14 +35,8 @@ const WORDS = [
 const CLAUSE = { groups: [[WORDS[2][1], WORDS[3][1]]], contour: "fall" };
 
 // ── post-fx (JS, so the drawn spectrum == exactly what you hear) ──────────
-function radiate(x, coef) {
-  let e0 = 0; for (let i = 0; i < x.length; i++) e0 += x[i] * x[i];
-  const y = new Float32Array(x.length); let xp = 0;
-  for (let i = 0; i < x.length; i++) { y[i] = x[i] - coef * xp; xp = x[i]; }
-  let e1 = 0; for (let i = 0; i < y.length; i++) e1 += y[i] * y[i];
-  const g = Math.sqrt(e0 / (e1 || 1e-9)); for (let i = 0; i < y.length; i++) y[i] *= g;
-  return y;
-}
+// Note: lip radiation is no longer post-fx — it's an engine stage now
+// (DSP.radiation), driven by the toggle below. These remain for exploration.
 function biquad(x, b0, b1, b2, a1, a2) {
   const y = new Float32Array(x.length); let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
   for (let i = 0; i < x.length; i++) { const xi = x[i]; const yi = b0 * xi + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = xi; y2 = y1; y1 = yi; y[i] = yi; }
@@ -83,14 +77,14 @@ function synth(plan, isClause) {
   const score = isClause ? scoreClause(plan.groups, plan.contour) : scorePlan(plan);
   if (S.pitch !== 105 && score.tracks.frequency) { const k = S.pitch / 105; score.tracks.frequency = score.tracks.frequency.map((p) => ({ t: p.t, v: p.v * k })); }
   let x = renderScore(score, sr, S.seed);
-  if (S.radiate) x = radiate(x, S.radAmt);
   if (S.presence !== 0) x = highshelf(x, 2800, S.presence, sr);
   if (S.lp) x = lowpass(x, S.lpHz, sr);
   x = S.normalize ? normalizePeak(x, 0.92) : x;
   return { x, sr };
 }
 function engineOverrides() {
-  return { hf: +hf.value, damp: +damp.value, glottalRefl: +grefl.value, wallLoss: +wloss.value };
+  // radiation is now an ENGINE stage (DSP.radiation); the toggle + amount drive it
+  return { hf: +hf.value, damp: +damp.value, glottalRefl: +grefl.value, wallLoss: +wloss.value, radiation: S.radiate ? S.radAmt : 0 };
 }
 function play(plan, name, isClause) {
   let r; try { r = synth(plan, isClause); } catch (e) { readout.textContent = "render error: " + e.message; return; }
@@ -160,7 +154,7 @@ function section(title, sub) { const s = el("div", { class: "card" }); s.appendC
 function playRow(items, isClause) { const row = el("div", { class: "row" }); items.forEach(([label, plan]) => { ALL[label] = { plan, clause: isClause }; const b = el("button", { class: "pill", text: label }); b.onclick = () => play(plan, label, isClause); row.appendChild(b); }); return row; }
 
 app.appendChild(h(`<div class="head"><h1>Voice Lab <span class="tag">diagnostic</span></h1>
-<p>Runs the <b>verbatim <code>src/sim/vocalTract.js</code></b> engine in your browser and renders each sound offline — the same DSP the Lab and the published gen use. So if it's muffled here, the synthesis is the cause, not the bundle. Toggle the fix (lip radiation) and the "artifact confound" (the 8&nbsp;kHz playback low-pass the Lab adds) to hear the difference. Pick a sound; watch the spectrum.</p></div>`));
+<p>Runs the <b>verbatim <code>src/sim/vocalTract.js</code></b> engine in your browser and renders each sound offline — the exact DSP the sim/Lab use, so what you hear is the engine, not the bundle. Lip radiation and the reworked vowel geometry are <b>on by default now</b>; toggle radiation off to hear the old dull "before". Pick a sound; watch the spectrum.</p></div>`));
 
 const cSounds = section("Sounds");
 cSounds.appendChild(h(`<div class="lbl">sustained vowels</div>`));
@@ -174,7 +168,7 @@ app.appendChild(cSounds);
 const cFix = section("Fix &amp; playback", "post-render, re-plays instantly");
 function toggle(label, key, hint) { const id = "t_" + key; const wrap = el("label", { class: "ctl" }); const cb = el("input", { type: "checkbox", id }); if (S[key]) cb.setAttribute("checked", ""); cb.onchange = () => { S[key] = cb.checked; if (S.lastName) replay(); }; wrap.appendChild(cb); wrap.appendChild(h(`<span>${label} <span class="hint">${hint || ""}</span></span>`)); return wrap; }
 function slider(label, key, min, max, step, fmt, live) { const wrap = el("div", { class: "ctl" }); const out = el("span", { class: "val" }); const r = el("input", { type: "range", min, max, step, value: S[key] }); const upd = () => { S[key] = +r.value; out.textContent = (fmt ? fmt(+r.value) : r.value); }; r.oninput = () => { upd(); }; r.onchange = () => { if (live && S.lastName) replay(); }; upd(); wrap.appendChild(h(`<span>${label}</span>`)); wrap.appendChild(r); wrap.appendChild(out); return wrap; }
-cFix.appendChild(toggle("Lip radiation (the fix)", "radiate", "+6 dB/oct — un-muffles the tilt"));
+cFix.appendChild(toggle("Lip radiation", "radiate", "engine default — toggle OFF for the old dull tilt"));
 cFix.appendChild(slider("· radiation amount", "radAmt", 0.90, 1.0, 0.005, (v) => v.toFixed(3), true));
 cFix.appendChild(slider("Presence shelf @2.8k (dB)", "presence", -6, 12, 1, (v) => (v > 0 ? "+" : "") + v, true));
 cFix.appendChild(toggle("Peak-normalize", "normalize", "even out per-sound loudness"));
@@ -207,7 +201,7 @@ const readout = el("div", { class: "readout" }); readout.textContent = "play a s
 cAna.appendChild(readout);
 app.appendChild(cAna);
 
-app.appendChild(h(`<div class="foot"><b>What to listen/look for.</b> (1) Vowel ladder with radiation ON vs OFF — off = all the same dull hum; on = distinct. (2) The blue F2 band on the spectrum — for <code>i/e</code> it should stand tall; here it sags (the muffle). (3) Sweep HF-loss / damp / glottal-reflection — the F2 band barely moves: the muffle is the vowel <i>geometry</i> (<code>vowelPosture</code>), not the losses. (4) Turn on the 8&nbsp;kHz playback low-pass — that's what the Lab adds; note it only makes things duller, so the artifact isn't hiding brightness that exists.</div>`));
+app.appendChild(h(`<div class="foot"><b>What to listen/look for.</b> (1) Vowel ladder <code>i e æ a ə ɔ o u ɯ</code> — they should now step front→back as distinct vowels; toggle radiation OFF to hear the old undifferentiated hum. (2) The blue F2 band stands tall for front <code>i/e</code> and drops for back <code>u/o</code> — that spread is the vowel identity. (3) Sweep HF-loss / damp / glottal-reflection — vowel color barely moves: the identity is the <i>geometry</i> (<code>vowelPosture</code>), not the losses. (4) The 8&nbsp;kHz playback low-pass is what the Lab adds on output — it only dulls, so the bundle isn't the problem.</div>`));
 
 // expose a headless hook so the build can smoke-test render without audio
 window.__voicelab = { synth, VOWELS, WORDS, S };

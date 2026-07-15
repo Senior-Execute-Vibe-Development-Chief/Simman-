@@ -17,6 +17,21 @@ remains after that, and is the real ceiling. The whole "measurements say clean,
 ears say broken" paradox is also explained here: the analyzer compensates for
 the exact defect the synth has.
 
+> **Update — fixes landed on this branch.** The three top recommendations are
+> now implemented in `src/sim/vocalTract.js`: **(1) lip radiation** (`DSP.radiation`,
+> applied in `renderScore` — the +6 dB/oct that was missing); **(2) a
+> self-calibrating leveller** — floor, gate window and target set relative to the
+> utterance's own envelope peak (make-up gain capped at 2.5× so transients don't
+> clip), plus a final peak-normalize, so it no longer breaks when an upstream
+> stage changes the level; **(3) a reworked `vowelPosture`** that gives every
+> peripheral vowel a co-located palatal/velar constriction, so F2 fronts and
+> spreads instead of collapsing. Measured: vowel-to-vowel distinctness ~0.99 → 0.0–0.4,
+> spectral centroid now orders monotonically front→back (`u` 725 Hz … `i` 3653 Hz),
+> loudness spread 2.9× → 1.2×, consonants unclipped (peaks ≤ 0.9). §3.2's "deeper
+> ceiling" is largely addressed — what remains is fine-tuning by ear (e.g. `/i/`
+> may be too bright), not a missing mechanism. Iterate it live in the Voice Lab
+> (`tools/voicelab.html`).
+
 ---
 
 ## 1. Verdict by subsystem
