@@ -266,6 +266,19 @@ __EMBLEM_RENDER__
     return a;
   }
 
+  // Keep the studio to EUROPEAN heraldry + modern-Western flag styles. The engine can
+  // express every tradition; here we exclude the non-European ones by pinning two
+  // genes: the PALETTE to the bright tincture / bunting family (no monochrome black-&-
+  // white hatching, no imperial silk, no earth pigment) and the COMPOSITION to the
+  // heraldic + central band (no Arabic calligraphy, no steppe tamga or tilework, no
+  // radial mon, no sacred sigil). Applied to every committed coat, including quarters.
+  function europeanize(genes, asShield){
+    genes[IDX.paletteMode]=0.1;                                    // heraldic palette, shield & cloth alike
+    const isShield = asShield || genes[IDX.substrate]<0.167;
+    const maxComp = isShield ? 0.44 : 0.83;                        // heraldic (+ central) compositions only
+    if(genes[IDX.composition]>=maxComp) genes[IDX.composition]=Math.random()*maxComp;
+  }
+
   // apply an age's SUBSTRATE + structural character to a fresh gene vector
   function dressAge(genes, age){
     genes[IDX.substrate]=age.sub;
@@ -315,6 +328,7 @@ __EMBLEM_RENDER__
   function back(){ if(state.cursor>0){ state.cursor--; state.genome=state.lineage[state.cursor]; state.era=state.genome._era!=null?state.genome._era:state.era; paint(true); renderTrack(); renderStrip(); } }
 
   function commit(g,{fresh}={}){
+    europeanize(g.genes); if(g.quarters) g.quarters.forEach(q=>europeanize(q.genes,true));   // European heraldry + modern flags only
     g._era=state.era;
     if(fresh){ state.lineage=[]; state.cursor=-1; }
     else if(state.cursor>=0 && state.cursor<state.lineage.length-1) state.lineage=state.lineage.slice(0,state.cursor+1);
