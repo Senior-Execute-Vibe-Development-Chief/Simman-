@@ -45,12 +45,14 @@ code{background:#131b29;padding:1px 5px;border-radius:5px;font-size:.9em;color:#
 .ctl input[type=range]{flex:1;accent-color:var(--acc)}
 .ctl input[type=checkbox]{accent-color:var(--acc);width:16px;height:16px}
 label.ctl{cursor:pointer}
-.val{flex:0 0 66px;text-align:right;font:12px ui-monospace,monospace;color:var(--blue)}
+.val{flex:0 0 66px;text-align:right;font:12px ui-monospace,monospace;color:var(--blue);font-variant-numeric:tabular-nums}
 .hint{color:var(--dim);font-size:12px}
+.pill:focus-visible,.ctl input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.pill{transition:none}}
 .canvas-wrap{position:relative;margin:8px 0}
 .clabel{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:4px}
 canvas{width:100%;height:auto;border:1px solid var(--edge);border-radius:8px;display:block;background:#0b0f16}
-.readout{margin-top:12px;font-size:13px;color:#d3deee;background:#0b1220;border:1px solid var(--edge);border-radius:8px;padding:10px 12px}
+.readout{margin-top:12px;font-size:13px;color:#d3deee;background:#0b1220;border:1px solid var(--edge);border-radius:8px;padding:10px 12px;font-variant-numeric:tabular-nums}
 .readout .hint{display:block;margin-top:5px}
 .foot{color:var(--dim);font-size:13px;line-height:1.6;margin-top:8px;max-width:74ch}
 .foot b{color:#c4d2e8}
