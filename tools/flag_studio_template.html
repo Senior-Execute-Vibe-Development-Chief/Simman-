@@ -227,6 +227,17 @@ __EMBLEM_RENDER__
   const cl=x=>x<0?0:x>1?1:x;
   const $=s=>document.getElementById(s);
   const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+  // EUROPEAN CHARGES ONLY: the shared engine's motif pools carry a few overtly
+  // non-European devices — the Ottoman star-and-crescent, the Japanese clan mon.
+  // Prune them from the (live-read) pools once, up front, so no coat can draw them.
+  // A bare crescent or moon STAYS: it is a common European charge; only the
+  // star-AND-crescent compound reads Ottoman. (europeanize already blocks the
+  // aniconic traditions — tamga, calligraphy, tilework, sigils — at the composition.)
+  {
+    const NON_EUROPEAN=new Set(["starAndCrescent","takedaClanSymbol","tokikikyoClanSymbol","moriClanSymbol","chosokabeClanSymbol"]);
+    for(const pool of [typeof MOTIFS!=="undefined"&&MOTIFS, typeof FLAG_SIMPLE!=="undefined"&&FLAG_SIMPLE])
+      if(pool) for(const cat in pool) pool[cat]=pool[cat].filter(id=>!NON_EUROPEAN.has(id));
+  }
   // Heraldry's real arc: a house's device is born as a basic COAT OF ARMS on a
   // shield, elaborates through the high heraldic age (charges, then quarterings),
   // then MIGRATES onto cloth — a banner, and finally a bold modern FLAG. The form
@@ -262,26 +273,28 @@ __EMBLEM_RENDER__
   //   ->  quartered  ->  the arms flown big on cloth  ->  bold livery bands.
   const CENTRAL=0.36;    // COMPOSITIONS band [0.27,0.45): a single charge, plain field
   const HERALDIC=0.12;   // COMPOSITIONS band [0,0.27): divided field + ordinary + chief + bordure
-  const PER_FESS=0.16;   // PARTITIONS index 2 — a two-region split (distinct from the quartering to come)
 
   const ENV=[["maritime","Coastal"],["sylvan","Wooded"],["arid","Desert"],["montane","Mountainous"]];
   const ETHOS=[["martial","Warlike"],["regal","Wealthy"],["devout","Devout"],["mercantile","Mercantile"]];
   const LIVERY=["hueA","hueB","hueC","chroma","value"];   // the house's colours — fixed at founding, flown by every age
   function applyLivery(genes){ if(state.livery) for(const k of LIVERY) genes[IDX[k]]=state.livery[k]; }
   function setLivery(g){ state.livery=LIVERY.reduce((o,k)=>(o[k]=g.genes[IDX[k]],o),{}); }
-  // The hue anchors a shield and a flag SHARE — the four chromatic bunting bolts
-  // (gules, or, vert, azure; argent & sable come from lightness). Snapping the
-  // house's field + accent to these keeps the palette to the six flag/heraldry
-  // colours AND guarantees the flag flies the coat's own colours (no stain that
-  // can't be woven as bunting, so nothing has to be remapped when it reaches cloth).
-  const BOLTS=[0.08,0.40,0.585,0.81];
-  const snapHue=v=>{ let best=BOLTS[0],bd=9; for(const b of BOLTS){ const d=Math.abs((((v-b)%1+1.5)%1)-0.5); if(d<bd){bd=d;best=b;} } return best; };
-  // Lightness decides METAL vs COLOUR, and the threshold differs between a shield's
-  // pigment and a flag's bunting — so a borderline value shows white on the coat but
-  // its colour on the flag. Snap it to three clear levels (sable / the colour /
-  // argent) so a tincture reads identically on both, and the palette stays the six.
-  const VALS=[0.16,0.5,0.86];
-  const snapVal=v=>VALS.reduce((b,x)=>Math.abs(x-v)<Math.abs(b-v)?x:b, VALS[0]);
+  // The palette needs NO gene-snapping: noStain (set on every committed coat) already
+  // mills every derived tincture down to the six standard bunting bolts — on the
+  // shield and the cloth alike — so field, accent and marks come out clean European
+  // tinctures however the hue/value genes fall, AND the flag flies the coat's own
+  // colours because both derive the SAME bolt from the SAME gene. Letting the hues
+  // roam freely (instead of pinning them to four bolts, as an earlier version did) is
+  // what unlocks the full range of ORDINARIES — a saltire, bend, chevron, pall or
+  // pile, not just a cross or pale — since the engine reads the ordinary TYPE from the
+  // (now free) accent-hue gene. That one change is most of the studio's visual range.
+  //
+  // The one palette-shape a house DOES fix at founding is which DIVISION its charged
+  // coat takes — a party per pale / fess / bend, or a chevron, barry, paly — so the
+  // "fuller coat" stage varies house to house instead of always splitting per fess.
+  // Kept clear of the quartering the grand-arms stage brings, so the two stay distinct.
+  const ARMS_DIVISIONS=[0.10,0.16,0.23,0.52,0.58,0.64];   // perPale · perFess · perBend · chevron · barry · paly
+  const armsDiv=()=>state.armsDivision!=null?state.armsDivision:0.16;
 
   const state={ genome:null, lineage:[], cursor:-1, era:0 };
   const subOf=g=>(g && g.genes[IDX.substrate]<0.167)?"shield":"banner";   // heater shields sit below the banner window
@@ -313,7 +326,7 @@ __EMBLEM_RENDER__
   function dressAge(genes, age){
     genes[IDX.substrate]=age.sub;
     if(age.simple){ genes[IDX.composition]=CENTRAL; genes[IDX.partition]=0.06; genes[IDX.motifCount]=0.05; genes[IDX.arrange]=0.05; genes[IDX.border]=0.03; genes[IDX.pearl]=0.1; }   // a lone charge on a plain field (pearl low: no corner disc)
-    if(age.charged){ genes[IDX.composition]=HERALDIC; genes[IDX.partition]=PER_FESS; }   // the full heraldic grammar comes alive: division + ordinary + chief + bordure
+    if(age.charged){ genes[IDX.composition]=HERALDIC; genes[IDX.partition]=armsDiv(); }   // the full heraldic grammar comes alive: division + ordinary + chief + bordure
     if(age.bigCharge){ genes[IDX.composition]=0.70; genes[IDX.partition]=0.03; genes[IDX.arrange]=0.1; genes[IDX.motifScale]=0.88; genes[IDX.motifCount]=0.05; genes[IDX.pearl]=0.1; }  // plain cloth, one BIG central charge — no corner disc beside it
     if(age.shed){ genes[IDX.composition]=0.06; genes[IDX.partition]=flagDiv(); genes[IDX.arrange]=0.06; genes[IDX.motifCount]=0.03; }                              // pure livery bands, no device
     if(age.edit) for(const k in age.edit) genes[IDX[k]]=age.edit[k];
@@ -322,16 +335,16 @@ __EMBLEM_RENDER__
   // found the house at the first age — a simple, diverse COAT OF ARMS on a shield
   function foundHouse(){
     const g=foundGenome(rnd32(), Object.assign({}, houseAxes(), AGES[0].found));
-    // The house's LIVERY is two colours. hueA is the field; hueC is the accent (the
-    // ordinary / charge colour). Bind the field's SECOND tincture (hueB, used by a
-    // flag's stripes) to that same accent, so when the arms become a striped flag it
-    // flies the coat's own colours — not a third hue the shield never showed.
-    g.genes[IDX.hueA]=snapHue(g.genes[IDX.hueA]);   // field + accent snap to shared bunting bolts...
-    g.genes[IDX.hueC]=snapHue(g.genes[IDX.hueC]);
-    g.genes[IDX.hueB]=g.genes[IDX.hueC];            // ...and the flag's 2nd colour is that accent
-    g.genes[IDX.value]=snapVal(g.genes[IDX.value]); // ...and lightness to a clear level, so metal/colour is stable
+    // The house's LIVERY is two colours: hueA the field, hueC the accent (the ordinary /
+    // charge colour). Bind the field's SECOND tincture (hueB, a flag's stripe colour) to
+    // that accent, so a striped flag flies the coat's own colours — not a third hue. The
+    // hues themselves stay UNSNAPPED: noStain mills them to clean bolts on shield and
+    // cloth alike, and letting hueC roam is what gives the coats their full range of
+    // ordinaries (saltire, bend, chevron, pall…), not just the cross/pale two bolts allow.
+    g.genes[IDX.hueB]=g.genes[IDX.hueC];
     dressAge(g.genes, AGES[0]);
     setLivery(g);                                   // fix the house's colours here; every later age flies them
+    state.armsDivision=ARMS_DIVISIONS[(Math.random()*ARMS_DIVISIONS.length)|0];   // which party its charged coat takes
     state.flagDivision=[0.05,0.11,0.66][(Math.random()*3)|0];   // the layout its cloth takes: tricolour / bicolour / paly
     g.gen=0; delete g.cadency; delete g.quarters;
     state.era=0; commit(g,{fresh:true});
@@ -349,10 +362,7 @@ __EMBLEM_RENDER__
     if(g.quarters && age.sub===SUB.shield) out.quarters=g.quarters;   // quartering lives ONLY on the shield — never a canton on cloth
     if(age.marshal){
       const mate=foundGenome(rnd32(), Object.assign({}, houseAxes(), {figuration:0.7, ornateness:0.66, regal:0.5})); mate.genes[IDX.substrate]=age.sub;
-      mate.genes[IDX.hueA]=snapHue(mate.genes[IDX.hueA]);   // the marriage partner is ALSO a European house:
-      mate.genes[IDX.hueC]=snapHue(mate.genes[IDX.hueC]);   // keep its quarter in the same bunting-bolt palette (no stains)
-      mate.genes[IDX.hueB]=mate.genes[IDX.hueC];
-      mate.genes[IDX.value]=snapVal(mate.genes[IDX.value]);
+      mate.genes[IDX.hueB]=mate.genes[IDX.hueC];   // the marriage partner is ALSO a stainless European house (noStain keeps its quarter clean)
       mate.genes[IDX.secondary]=0.25;
       const c=crossGenome(out, mate, rnd32());
       out={ genes:c.genes, gen:out.gen, seed:out.seed }; out.genes[IDX.substrate]=age.sub;
