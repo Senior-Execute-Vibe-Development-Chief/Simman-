@@ -119,9 +119,18 @@ const SQRT2 = Math.SQRT2;
 // — that size gap is what reads as a hierarchy on the map, and small village
 // cores let settlements pack in densely without fighting over the same land.
 const CORE_BY_TIER = [1, 2, 3, 4];   // REFERENCE-tiles (×rNormPop when a world is passed — a real distance)
+// Res-scaling the guaranteed core/hinterland belts is CORRECT in principle (they are
+// a real distance, like every other reach) but DEFAULT OFF after measurement. Same-seed
+// A/B at tw=960 (SIM_CORE_SCALE=1 vs 0, 6000 steps): scaling ON crashed claimed land
+// 28.7%→9.2% at ~equal development — the enlarged guaranteed belts COUPLE with the reach
+// flood to REDUCE net territory (a hidden coupling like the CRADLE_MIN_SEP one, NOT the
+// intended more-land). So this stays a documented OPEN residual: enable with
+// SIM_CORE_SCALE=1 only together with a fix for that interaction. ×1 at the 240 reference
+// regardless, so the reference (smoke/stylized) is byte-identical either way.
+const _coreScaleOn = (typeof process !== "undefined" && process.env && process.env.SIM_CORE_SCALE === "1");
 export function coreRadiusFor(s, world) {
   const t = s.tier | 0;
-  const rn = world ? rNormPop(world) : 1;   // ×1 exactly at the 240 reference (callers without a world stay legacy)
+  const rn = (world && _coreScaleOn) ? rNormPop(world) : 1;   // ×1 exactly at the 240 reference (callers without a world stay legacy)
   // URBAN_NODES: a town/city is a NODE — its land is just a tight built-up
   // footprint (the city sits ON the land, it doesn't farm a heartland). Keeping
   // the big tier-scaled core would leave a city occupying a chunk of farmland;
@@ -142,7 +151,7 @@ export function hinterlandRadiusFor(s, world) {
   // URBAN_NODES: a town/city gets no guaranteed farmland belt beyond its core —
   // the countryside belongs to the Farming Regions (see reachBudget).
   if (T.URBAN_NODES && t >= 1) return coreRadiusFor(s, world);
-  const rn = world ? rNormPop(world) : 1;   // ×1 exactly at the 240 reference
+  const rn = (world && _coreScaleOn) ? rNormPop(world) : 1;   // ×1 exactly at the 240 reference
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
   const mul = T.LOCALITY_MODE ? T.HINTERLAND_MULT * Math.max(1, T.LOCALITY_SPACING || 3) : T.HINTERLAND_MULT;
   return Math.max(coreRadiusFor(s, world), Math.round(base * mul * rn));
