@@ -34,7 +34,7 @@ const LIP_REFLECTION = -0.85;
 // Loss knobs set the formant bandwidths: a near-closed glottis (high
 // reflection) and light per-section damping keep the resonances sharp enough
 // to read as distinct vowels. Exposed for the calibration harness.
-const DSP = { glottalRefl: 0.9, damp: 0.998, radiation: 0.8, wallLoss: 1, wallThresh: 0.02 };
+const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.8, wallLoss: 1, wallThresh: 0.02, hf: 0.82 };
 // A hard ceiling on the travelling waves. Normal speech never exceeds ~5 here,
 // so this is invisible in practice — but a driven closed cavity (a long voiced
 // velar closure, where the constriction sits right against the velum) can ring
@@ -117,6 +117,7 @@ function makeTract() {
   const noseDiameter = new Float64Array(NOSE_LENGTH);
   const noseAold = new Float64Array(NOSE_LENGTH), noseAnew = new Float64Array(NOSE_LENGTH);
   const wall = new Float64Array(N);                                 // per-section damping (heavier at a closure)
+  const RlpS = new Float64Array(N), LlpS = new Float64Array(N);     // per-section HF-loss filter state
 
   for (let i = 0; i < N; i++) diameter[i] = rest[i] = i < 7 * N / 44 - 0.5 ? 0.6 : i < 12 * N / 44 ? 1.1 : 1.5;
   for (let i = 0; i < NOSE_LENGTH; i++) {
@@ -200,10 +201,20 @@ function makeTract() {
         jR[i] = P - L[i]; jL[i - 1] = P - R[i - 1];
       }
     }
+    // frequency-dependent loss: a mild one-pole low-pass per section. Real
+    // tracts damp high frequencies far faster than low, so this both warms the
+    // timbre and, crucially, kills the ~8 kHz resonances of the tiny cavities
+    // that back closures form against the velum — the runaway that fired the
+    // clamp and glitched voiced velar/uvular sounds.
+    const HF = DSP.hf;
     for (let k = 0; k < N; k++) {
-      const r = jR[k] * wall[k], l = jL[k + 1] * wall[k];
-      R[k] = r < -MAXW ? -MAXW : r > MAXW ? MAXW : r;
-      L[k] = l < -MAXW ? -MAXW : l > MAXW ? MAXW : l;
+      let r = jR[k] * wall[k], l = jL[k + 1] * wall[k];
+      RlpS[k] += HF * (r - RlpS[k]); r = RlpS[k];
+      LlpS[k] += HF * (l - LlpS[k]); l = LlpS[k];
+      // soft (tanh) saturation, not a hard clip: a cavity that still rings up
+      // rounds off smoothly instead of clicking. Linear for normal speech.
+      R[k] = Math.abs(r) < 6 ? r : MAXW * Math.tanh(r / MAXW);
+      L[k] = Math.abs(l) < 6 ? l : MAXW * Math.tanh(l / MAXW);
     }
     lipOut.lip = R[N - 1];
     // nose branch (fixed-area pressure 2-ports out to the nostril)
@@ -215,8 +226,8 @@ function makeTract() {
     }
     for (let k = 0; k < NOSE_LENGTH; k++) {
       const r = noseJR[k] * DSP.damp, l = noseJL[k + 1] * DSP.damp;
-      noseR[k] = r < -MAXW ? -MAXW : r > MAXW ? MAXW : r;
-      noseL[k] = l < -MAXW ? -MAXW : l > MAXW ? MAXW : l;
+      noseR[k] = Math.abs(r) < 6 ? r : MAXW * Math.tanh(r / MAXW);
+      noseL[k] = Math.abs(l) < 6 ? l : MAXW * Math.tanh(l / MAXW);
     }
     lipOut.nose = noseR[NOSE_LENGTH - 1];
     void noise;
@@ -295,14 +306,9 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
     }
     tr.commit();
   }
-  // DC-block, then a gentle low-pass to warm the timbre — the raw waveguide is
-  // bright/harsh ("high"), and speech energy above ~5 kHz is mostly sibilance
-  let y = 0, xprev = 0, lp = 0;
-  const LPC = 1 - Math.exp(-2 * Math.PI * 5000 / IR);
-  for (let i = 0; i < len; i++) {
-    const x = out[i]; y = x - xprev + 0.996 * y; xprev = x;
-    lp += LPC * (y - lp); out[i] = lp;
-  }
+  // DC-block (the per-section HF loss already warms the timbre)
+  let y = 0, xprev = 0;
+  for (let i = 0; i < len; i++) { const x = out[i]; y = x - xprev + 0.996 * y; xprev = x; out[i] = y; }
   // Level management. The sustained VOICE should set the loudness — not the
   // brief stop bursts or the higher-gain constricted vowels, which are several
   // times louder in the raw waveguide and, under peak normalization, crushed
