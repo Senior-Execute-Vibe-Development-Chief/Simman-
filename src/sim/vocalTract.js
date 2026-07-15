@@ -384,30 +384,23 @@ function vowelPosture(v) {
   const back = v.b || 0, height = v.h || 0;
   // hump front↔back sets F2. A FORWARD hump (near the palate, high index) shrinks
   // the front cavity and RAISES F2 — that is what "front" means; a retracted hump
-  // lengthens it and lowers F2. Low vowels pull the high point back and down.
-  let tongueIndex = back === 0 ? 31 : back === 2 ? 15 : 21;    // palatal / velar / central
-  if (height === 2) tongueIndex -= back === 0 ? 6 : back === 2 ? 3 : 4;   // low vowels retract
-  // hump height sets F1. Close → tongue near the roof, small diameter, low F1;
-  // open → tongue drops away, large diameter, high F1.
-  let tongueDiameter = height === 0 ? 1.8 : height === 1 ? 2.5 : 3.15;
-  if (v.atr) { tongueDiameter += 0.3; tongueIndex -= 0.6; }    // −ATR: laxer, a touch centralized
+  // lengthens it and lowers F2. This WIDE index range is what actually spreads F2
+  // (measured: front /i/ ≈ 2500–3100 Hz, central ≈ 1100, back+round ≈ 900).
+  let tongueIndex = back === 0 ? 30 : back === 2 ? 15 : 21;    // palatal / velar / central
+  if (height === 2) tongueIndex -= back === 0 ? 5 : back === 2 ? 2 : 3;   // low vowels retract a touch
+  // hump height sets F1 (close → nearer the roof → lower F1). CRITICAL: the tongue
+  // hump IS the constriction in this area function; push tongueDiameter below ~2.3
+  // and the hump pinches the front of the tract nearly shut, killing F1 and turning
+  // the vowel into a ~4 kHz whistle (that was the /i/ bug). Keep it in the vowel
+  // range — a channel, not a closure.
+  let tongueDiameter = height === 0 ? 2.4 : height === 1 ? 2.75 : 3.1;
+  if (v.atr) { tongueDiameter += 0.2; tongueIndex -= 0.6; }    // −ATR: laxer, a touch centralized
   const lip = v.r ? 0.95 : 0;
   const velum = v.n ? 0.4 : 0.01;
-  // A smooth hump alone barely moves F2 (proven: every vowel collapsed to
-  // F2≈850). A co-located constriction sharpens the cavity split that MAKES the
-  // F2 contrast: FRONT close/mid vowels get a PALATAL channel that raises F2
-  // (the mechanism /i/ was missing); BACK close/mid + round get a VELAR pinch
-  // that lowers it (how /u/,/o/ get their low F2). Open (low) vowels stay
-  // unconstricted — one wide cavity, high F1, F2 wherever the hump leaves it.
-  // The constriction's LOCATION (= the hump: forward for front, retracted for
-  // back) decides whether it raises or lowers F2, so the SAME tightness gives a
-  // front vowel a high F2 and a back vowel a low one — the front/back split is
-  // carried by WHERE, not how much. Tightness scales with height (a close vowel
-  // pinches harder). Only the fully-open central vowel (/a/) stays unconstricted,
-  // a single wide cavity.
-  let constrIndex = tongueIndex;
-  let constrDiameter = height === 0 ? 0.62 : height === 1 ? 0.9 : 1.15;
-  if (back === 1 && height === 2) { constrIndex = -1; constrDiameter = 3; }
+  // No separate constriction for vowels: the hump already narrows the tract more
+  // than any co-located constriction would (so `min()` ignored it — it was inert
+  // dead weight). Back+round gets its low F2 from lip rounding + the retracted hump.
+  const constrIndex = -1, constrDiameter = 3;
   let tenseness = 0.72, fscale = 1;                            // modal voice (less breathy = less "wet")
   if (v.ph === 1) tenseness = 0.4;                             // breathy
   else if (v.ph === 2) { tenseness = 0.9; fscale = 0.72; }     // creaky (drops pitch)
