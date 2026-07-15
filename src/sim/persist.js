@@ -585,6 +585,23 @@ export function hashWorld(world) {
       mixNum(id); mixStr(e.name); mixNum(e.foundedStep); mixNum(e.nameCounter);
     }
   }
+  // Emblems (emblems.js, T.EMBLEMS) — the heritable arms / house genomes / people's
+  // visual traditions / faith sigils. PRESENCE-NORMALIZED: a record without the field
+  // (lever off, or not yet founded) contributes nothing, so a pre-emblem world hashes
+  // exactly as before. A genome is a small gene vector + lineage marks (seed / gen /
+  // cadency / quarter roll); mixing them makes any determinism or save/load round-trip
+  // bug in the EVOLUTION surface — they ride on the culture/dynasty/polity/faith
+  // records, which round-trip as whole entries, so this is save/load-safe.
+  const mixGenome = (g) => {
+    if (!g) return;
+    mixNum(g.seed || 0); mixNum(g.gen || 0); mixNum(g.cadency || 0);
+    if (g.genes) for (let i = 0; i < g.genes.length; i++) mixNum(g.genes[i]);
+    if (g.quarters) { mixNum(g.quarters.length); for (const q of g.quarters) { mixNum(q.seed || 0); mixNum(q.gen || 0); if (q.genes) for (let i = 0; i < q.genes.length; i++) mixNum(q.genes[i]); } }
+  };
+  if (world.polities) for (const id of [...world.polities.keys()].sort((a, b) => a - b)) { const p = world.polities.get(id); if (p && p.emblem) { mixNum(id); mixGenome(p.emblem); } }
+  if (world.dynasties) for (const id of [...world.dynasties.keys()].sort((a, b) => a - b)) { const d = world.dynasties.get(id); if (d && d.arms) { mixNum(id); mixGenome(d.arms); } }
+  if (world.faiths) for (const id of [...world.faiths.keys()].sort((a, b) => a - b)) { const f = world.faiths.get(id); if (f && f.sigil) { mixNum(id); mixGenome(f.sigil); } }
+  if (world.cultures) for (const id of [...world.cultures.keys()].sort((a, b) => a - b)) { const c = world.cultures.get(id); if (c && c.tradition && c.tradition.axes) { mixNum(id); mixNum(c.tradition.seed || 0); for (const k of Object.keys(c.tradition.axes).sort()) mixNum(c.tradition.axes[k]); } }
   mixNum(world.events ? world.events.length : 0);
   if (world.roadQuality) { const rq = world.roadQuality; for (let i = 0; i < rq.length; i += 97) mixNum(rq[i]); }
   if (world.roadFlow) { const rf = world.roadFlow; for (let i = 0; i < rf.length; i += 97) mixNum(rf[i]); }

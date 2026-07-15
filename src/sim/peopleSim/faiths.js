@@ -18,6 +18,7 @@
 // ground the other systems stand on.
 
 import { passRng, entityRng, hash32 } from "./rng.js";
+import { ensureSigil } from "./emblems.js";
 import { T } from "./tuning.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
@@ -201,6 +202,12 @@ function newFaith(world, fields) {
     ? (parent.rootFaithId ?? parent.id) : f.id;
   f.endedStep = -1;
   reg.set(id, f);
+  // The creed's own evolvable SACRED SIGIL — an aniconic, symmetric glyph seeded
+  // from the faith's tradition + doctrine (ensureSigil): a de-novo creed founds a
+  // fresh one, a schism drifts its parent's, a syncretic fusion blends both. Kept
+  // beside hue/rootFaithId so folk, organized, schism and syncretic faiths all get
+  // one uniformly. Pure output — never read back by any faith mechanic.
+  ensureSigil(world, f);
   return f;
 }
 

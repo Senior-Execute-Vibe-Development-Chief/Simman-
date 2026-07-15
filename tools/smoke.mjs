@@ -94,6 +94,20 @@ console.log(`[smoke] invariant run: ${RUN_STEPS} steps with checks on`);
   check(`population grew (${p0} → ${st.totalPeople})`, st.totalPeople > p0);
   check("wealth finite & non-negative", Number.isFinite(st.totalWealth) && st.totalWealth >= 0, String(st.totalWealth));
   console.log(`  info step ${st.step} · ${st.settlements} settlements · pop ${st.totalPeople} · wealth ${st.totalWealth} · ${st.countries} countries · claimed ${(st.landPct * 100).toFixed(1)}% of land`);
+  // Emblems (emblems.js): the heritable arms / sigils / traditions are founded from
+  // emergent state as the world runs. The determinism + save/load hashes already prove
+  // they replay and round-trip exactly (hashWorld covers the genomes); this guards the
+  // WIRING itself against a silent regression that leaves them empty (which the hashes,
+  // matching empty-vs-empty, would not catch). Evolution (marshalling at unions) is a
+  // longer-horizon behaviour proven by tools/probe_emblems.mjs.
+  {
+    let realms = 0, arms = 0; for (const p of world.polities.values()) { if (p.endedStep >= 0) continue; realms++; if (p.emblem && p.emblem.genes) arms++; }
+    let faiths = 0, sigils = 0; for (const f of world.faiths.values()) { faiths++; if (f.sigil && f.sigil.genes) sigils++; }
+    let cultures = 0, trads = 0; for (const c of world.cultures.values()) { cultures++; if (c.tradition && c.tradition.axes) trads++; }
+    check(`emblems: arms founded from state (${arms}/${realms} realms)`, realms > 0 && arms >= Math.ceil(realms * 0.8));
+    check(`emblems: every faith has a sacred sigil (${sigils}/${faiths})`, faiths > 0 && sigils === faiths);
+    check(`emblems: peoples carry a visual tradition (${trads}/${cultures})`, cultures > 0 && trads >= 1);
+  }
 }
 
 console.log(`[smoke] identity field: per-tile mirror tracks the entities`);

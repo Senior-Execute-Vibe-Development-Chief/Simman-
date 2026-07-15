@@ -28,6 +28,7 @@ import { T, passWindow } from "./tuning.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, nameFor, dominantCulture } from "./cultures.js";
+import { foundHouseArms, emblemOnAccession } from "./emblems.js";
 import { getFaith, dominantFaith } from "./faiths.js";
 // The dynasty layer runs on the DYNASTY clock — a separate, slower UNIFORM clock
 // (see calendar.js). Uniform so a king reigns ~50 years regardless of how fast the
@@ -266,6 +267,10 @@ function newDynasty(world, founder, polityId) {
   logEvent(world, "dynasty.founded", {
     dynasty: id, dynastyName: d.name, person: founder.id, personName: founder.name, polity: polityId,
   });
+  // The house's founding ARMS — minted from its realm's people (visual tradition)
+  // and character at the moment it rises, tilted by the founder's own temperament.
+  // The family resemblance every realm the house comes to rule will carry.
+  foundHouseArms(world, d, polityId, founder);
   return d;
 }
 
@@ -677,6 +682,11 @@ function selectElected(world, c, polity, rng) {
 }
 
 function crown(world, polity, person, how, gov) {
+  // The realm's house BEFORE this accession — captured now, since line ~712 below
+  // overwrites polity.dynastyId with the incoming house. The emblem hook needs the
+  // OLD house to tell an ordinary succession (same house → descent) from a change
+  // of house (→ marshalling of two lineages on one shield).
+  const _oldHouseId = polity.dynastyId != null ? polity.dynastyId : -1;
   // close out the previous ruler's reign record (for the tree's reign spans) — UNLESS
   // they still reign elsewhere (a personal-union monarch merely deposed from one throne,
   // CLAIMANT_WARS): closing it would truncate their real reign span / epithet.
@@ -712,6 +722,12 @@ function crown(world, polity, person, how, gov) {
   polity.dynastyId = person.dynastyId;
   person._title = titleFor(gov, person.female);
   const d = getDynasty(world, person.dynastyId);
+
+  // EVOLVE the realm's displayed emblem on this accession: descent within the house
+  // (cadency + drift), the first royal house taking up a communal device, or the
+  // marshalling of two lineages when a new house inherits/wins/unites the throne.
+  // All emergent — fired by WHO now reigns, never a date.
+  emblemOnAccession(world, polity, person, d, how, newHouse, _oldHouseId);
 
   // Track the ordered roll of HOUSES that have ruled this realm (most recent last),
   // so the family-tree view can show the previous royal families too — not just

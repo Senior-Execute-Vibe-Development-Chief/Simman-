@@ -23,6 +23,7 @@ import { techEff, getWealthReserve, recordCaptives, monetization } from "./settl
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
+import { reconcileEmblems, inheritEmblem } from "./emblems.js";
 import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
@@ -1153,6 +1154,7 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     const s = survivors[0];
     ensurePolity(world, s.id, { how: "fragment", seat: s, from: oldId, fromName: deadName });
     inheritPersonality(world, oldId, s.id);       // lone successor keeps the old realm's temperament
+    inheritEmblem(world, oldId, s.id);            // ...and its arms, drifted (the successor resembles the dead realm)
     snapClaim(world, s.id);                        // the realm shatters at once, not as a wave
     s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
     return;
@@ -1188,6 +1190,7 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
   for (const cap of capitals) {
     ensurePolity(world, cap.id, { how: "fragment", seat: cap, from: oldId, fromName: deadName });
     inheritPersonality(world, oldId, cap.id);
+    inheritEmblem(world, oldId, cap.id);          // each Diadochus carries the dead empire's arms, drifted
     snapClaim(world, cap.id);
   }
   // Each survivor joins its nearest successor capital.
@@ -2718,6 +2721,10 @@ export function updatePolities(world) {
   // substantial newcomers, close the records of realms that vanished. (No
   // pruning — fallen realms keep their record, history and temperament.)
   reconcilePolities(world, countries);
+  // Found the missing emblems (a civic device for a realm not yet under a house)
+  // and keep each realm's displayed arms tracking its reigning house. Idempotent;
+  // evolution itself happens at the event hooks (accession, conquest, fragmentation).
+  reconcileEmblems(world, countries);
 }
 
 // ── Nomad confederations: a polity MODE, derived, never stored ─────────

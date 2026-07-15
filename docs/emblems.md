@@ -1,7 +1,8 @@
 # The Emblem Engine — a heritable design-genetics for every banner
 
-*Working notes for future generations. Status: standalone — deliberately **not**
-wired into the simulation yet. Everything here is engine + tools + lab.*
+*Working notes for future generations. Status: the ENGINE is standalone (engine +
+tools + lab, below); the TRANSMISSION LAYER that now wires it into the living
+simulation is documented in "Sim integration" at the end.*
 
 The emblem engine turns a small **gene vector** into a flat 2D banner design —
 European-style heraldry, an imperial silk, a monochrome mon, a calligraphic
@@ -457,10 +458,80 @@ target), a kinship dendrogram over `genomeDistance`, and ancestry tracing.
 the dominant cluster, drop stray crop-marks, strip zero-scale matrices, and
 re-anchor `vb` to true bounds + 2% pad). Never trust a source viewBox.
 
-## What's deliberately NOT here yet
+## Sim integration — the transmission layer (`src/sim/peopleSim/emblems.js`)
 
-Sim integration. When it happens: realms found genomes from emergent state
-via the abstract axes; successions call `inheritGenome`; unions/conquests
-call `crossGenome`; schisms re-seed sigils. The engine primitives all exist —
-the delicate part is mapping emergent realm state → axes without violating
-the cardinal rules. That work deserves its own session.
+The engine above is now WIRED into the living world. `emblems.js` is the half the
+engine deferred: it reads emergent state → axes, founds genomes, and evolves them
+through the sim's own history. It obeys both cardinal rules — evolution fires on
+EVENTS (never a clock), the look is read from STATE (never fitted to an outcome),
+and every operator is a soft axis lean so every pattern stays reachable.
+
+**What lives where** (all new fields on existing registry records, so they
+round-trip through save/load for free — persist.js serialises whole Map entries;
+`hashWorld` covers them presence-normalised, so a lever-off world is byte-identical):
+
+| record.field | founded from | evolves by |
+|---|---|---|
+| `culture.tradition` `{seed, axes}` | the cradle's BIOME (maritime/sylvan/arid/montane) | drift on daughter-culture divergence, blended toward the daughter's own homeland ∝ divergence |
+| `dynasty.arms` | the founding realm's tradition + character, tilted by the founder's temperament | the house's canonical founding look (reference) |
+| `polity.emblem` (display truth) | CIVIC device from tradition + realm state while pre-dynastic | marshalling at a dynastic UNION; a first house adopting the civic device; differencing when a cadet line founds a successor |
+| `faith.sigil` | a devout, aniconic sacred genome hued to the faith, sharpened by doctrine | drift on schism (`mutateGenome`), blend on syncretism (`crossGenome`) |
+
+**State → axes** (`ethosAxes`/`envAxes`, the rule-2-critical mapping). Each axis
+reads a genuine state variable and softly leans the look; nothing forces a
+composition or charge, and nothing is pinned to an absolute:
+- environment — the capital's cached terrain (sea-facing share, moisture/timber,
+  ruggedness) → maritime/sylvan/arid/montane;
+- temperament — `personality.{aggression,commerce}` → martial / mercantile;
+- statehood — capital `knowledge.organization` + realm size vs the world's live
+  median → imperial ↔ tribal (self-calibrating on emergent development, never a
+  clock: a world stuck in antiquity keeps flying clan brands, one that builds
+  empires flies quartered regalia);
+- wealth — court treasury vs the world's median treasury → regal;
+- faith — the theocracy composite (capital adherence share × doctrine zeal ×
+  hierarchy) → devout; ascetic doctrine → austere;
+- pastoral — rural fraction + horse/livestock land.
+Wealth and size read RELATIVE to the world's live median (the `_refRevenue` idiom),
+so the look self-calibrates on any map, seed, resolution or pace.
+
+**The referent climb.** A realm bears a CIVIC device (place + people) while it has
+no reigning house; when literacy brings a dynasty (the same gate king-lists use),
+the first house TAKES UP that device as its dynastic arms (institution → lineage) —
+emergent, gated on development, never a date. Thereafter the arms are TERRITORIAL:
+an ordinary succession, a new local line after a crisis, an elected office changing
+hands — none repaint the shield (France stayed fleur-de-lys across Valois and
+Bourbon). Heraldry stays conservative; the visible evolution is concentrated at the
+few events where it belongs.
+
+**The evolution events** (each an emergent moment in the sim, hooked at one call
+site):
+- **descent** — ordinary succession leaves the arms UNCHANGED (a house's arms are
+  stable across its reigns), so a lineage stays recognisable rather than drifting
+  into noise;
+- **marshalling** — a DYNASTIC UNION (a house holding a second crown by a won claim /
+  inheritance, `crown(how="claim")`) quarters the two lineages (`crossGenome`,
+  deduped, capped at four). This is heraldry's real and almost-only source of
+  quartering (Habsburg; England quartering France), so quartered arms stay the
+  exception. Raw conquest does NOT quarter — annexation extinguishes the loser's
+  arms (preserved on its never-deleted record for a restoration);
+- **cadency** — a successor / breakaway realm bears the parent realm's arms
+  DIFFERENCED (`inheritGenome` — a cadet mark plus the engine's rare macro-mutation),
+  so the Diadochi read as heirs before diverging;
+- **schism / syncretism** — a daughter faith drifts its parent's sigil; a fusion
+  blends both.
+
+**Hooks** (one line each, mirroring the personality/hue idioms already at these
+sites): `newDynasty`→`foundHouseArms`; `crown`→`emblemOnAccession`;
+`newFaith`→`ensureSigil`; `fragmentRealm`/secession→`inheritEmblem` beside
+`inheritPersonality`; `updatePolities`→`reconcileEmblems` (founds the civic device
+for a realm not yet under a house, and keeps the display tracking the reigning
+house). Determinism: every operator is seeded from `hash32(world.seed,"emblem",…)` —
+an independent substream, so emblems perturb no other system's dice, and the whole
+evolutionary tree replays identically. Nothing reads an emblem back, so the layer is
+pure heritable OUTPUT — it cannot change the sim's behaviour, determinism, or
+stylized facts. Lever: `T.EMBLEMS` (default on; off → no emblem state, byte-identical).
+
+**Tools.** `tools/probe_emblems.mjs` — text coverage + one realm's arms over time.
+`tools/emblem_evolution.mjs` — a proof sheet (SVG + PNG): the great realms' arms
+labelled by the state that shaped them, one realm's arms marshalling over its
+history, and the faith sigils.

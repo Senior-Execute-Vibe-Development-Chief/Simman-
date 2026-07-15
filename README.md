@@ -133,6 +133,18 @@ On top of that economic-political engine sit the identity layers:
   burn records; lost foundings are retold as myth), and court bias
   (conquests are liberations, defeats are betrayals or omissions). False
   history from honest mechanisms — the true log stays underneath.
+- **Emblems** (`emblems.js`) — heritable arms that EVOLVE. Every people
+  carries a visual TRADITION founded from the biome it cradles on
+  (maritime→blue, sylvan→green, arid→sun-and-sand, montane→stark stone);
+  every realm flies an emblem founded from that tradition and its own
+  character (a martial court blood-and-iron, a rich one gilded, a great
+  centralised state quartered regalia, a clan brand for the undeveloped),
+  which then descends UNCHANGED down its rulers, MARSHALS two lineages on
+  one shield at a dynastic union, and is DIFFERENCED when a cadet line
+  founds a successor state; every creed gets an aniconic sacred SIGIL that
+  drifts on schism. Founded from emergent STATE, evolved by emergent EVENTS
+  — never a clock (docs/emblems.md). The design-genetics engine it drives is
+  `emblemGenome.js` + `emblemRender.js`.
 
 **Save/load** (`src/sim/persist.js`): versioned JSON of the full dynamic
 state; terrain rebuilds deterministically from the seed. The smoke test
