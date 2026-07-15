@@ -346,6 +346,7 @@ __EMBLEM_RENDER__
   // every later age descends from it, the coat of arms first formalizing it onto a shield
   function foundHouse(){
     const g=foundGenome(rnd32(), Object.assign({}, houseAxes(), AGES[0].found));
+    if(g.genes[IDX.motifCat]>=0.70 && g.genes[IDX.motifCat]<0.75) g.genes[IDX.motifCat]=0.6;   // steer off the "natural" charges (flint/cloud/flames): on cloth they remap to a star, so the FLAG would show an icon that was never in the arms
     // The house's LIVERY is two colours: hueA the field, hueC the accent (the ordinary /
     // charge colour). Bind the field's SECOND tincture (hueB, a flag's stripe colour) to
     // that accent, so a striped flag flies the coat's own colours — not a third hue. The
@@ -373,12 +374,14 @@ __EMBLEM_RENDER__
     let out={ genes, gen:(g.gen||0)+1, seed:g.seed };
     if(g.quarters && age.sub===SUB.shield) out.quarters=g.quarters;   // quartering lives ONLY on the shield — never a canton on cloth
     if(age.marshal){
+      const hCat=out.genes[IDX.motifCat], hIdx=out.genes[IDX.motifIdx];   // remember the house's OWN (senior) device
       const mate=foundGenome(rnd32(), Object.assign({}, houseAxes(), {figuration:0.7, ornateness:0.66, regal:0.5})); mate.genes[IDX.substrate]=age.sub;
       mate.genes[IDX.hueB]=mate.genes[IDX.hueC];   // the marriage partner is ALSO a stainless European house (noStain keeps its quarter clean)
       mate.genes[IDX.secondary]=0.25;
       const c=crossGenome(out, mate, rnd32());
       out={ genes:c.genes, gen:out.gen, seed:out.seed }; out.genes[IDX.substrate]=age.sub;
-      if(c.quarters) out.quarters=c.quarters.slice(0,4);   // the union shows in the quarters; the FIELD stays the house's
+      out.genes[IDX.motifCat]=hCat; out.genes[IDX.motifIdx]=hIdx;   // the marshalled arms fly the SENIOR charge — crossGenome would otherwise coin-flip the device to the mate's, which then "appears" on the flag as a charge that was never in the house's own arms. The union shows ONLY in the quarters.
+      if(c.quarters) out.quarters=c.quarters.slice(0,4);   // the union shows in the quarters; the FIELD + charge stay the house's
     }
     applyLivery(out.genes);   // the device always flies the house's own colours
     return out;
