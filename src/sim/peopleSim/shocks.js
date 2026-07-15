@@ -12,7 +12,7 @@
 
 import { passRng } from "./rng.js";
 import { logEvent } from "./events.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { techEff } from "./settlement.js";
 import { fieldShift } from "./popField.js";
 
@@ -22,7 +22,7 @@ import { fieldShift } from "./popField.js";
 // unrest (conquest.js). Read in updateFood via s._famineUntil / s._harvestMul.
 const FAMINE_CHECK    = 700;    // ticks between famine-spawn rolls
 // FAMINE_CHANCE -> runtime lever (tuning.js T.FAMINE_CHANCE)
-const FAMINE_RADIUS   = 12;     // tiles — settlements within this of the seed are struck (regional, not continental)
+const FAMINE_RADIUS   = 12;     // REFERENCE-tiles — settlements within this of the seed are struck (×rNormPop at other grids: a real regional radius, not continental)
 const FAMINE_MIN_DUR  = 400;
 const FAMINE_MAX_DUR  = 1200;
 const FAMINE_SEVERITY = 0.35;   // harvest multiplier during famine (0.35 = ~65% crop loss)
@@ -88,7 +88,7 @@ const CONTACT_CHECK = 600;    // ticks between first-contact scans
 const CONTACT_GAP   = 0.35;   // load gap that makes first contact catastrophic (an ocean between disease pools)
 const VIRGIN_MORT   = 6;      // mortality multiplier while a virgin-soil epidemic burns (no immunity)
 const VIRGIN_DUR    = 900;    // how long the virgin-soil wave keeps killing (it sweeps an unexposed people)
-const VIRGIN_RADIUS = 22;     // tiles of the contacted population swept by the wave
+const VIRGIN_RADIUS = 22;     // REFERENCE-tiles of the contacted population swept by the wave (×rNormPop at other grids)
 
 function loadTarget(s) {
   const urban = Math.min(1, Math.max(0, Math.log10(Math.max(1, s.people) / 200)) / 1.5);            // crowd diseases
@@ -140,7 +140,7 @@ function contactEpidemic(world, rng) {
       for (const n of world.settlements) {
         if (n.mode !== "settled" || n._contacted) continue;
         if ((hi._diseaseLoad || 0) - (n._diseaseLoad || 0) < CONTACT_GAP) continue;   // only pools genuinely naive to the ARRIVING diseases (comparing against the scanner's own load let a high-load port sweep in mid-load immune neighbours)
-        if (torusDist(world, lo.pos.x, lo.pos.y, n.pos.x, n.pos.y) > VIRGIN_RADIUS) continue;
+        if (torusDist(world, lo.pos.x, lo.pos.y, n.pos.x, n.pos.y) > VIRGIN_RADIUS * rNormPop(world)) continue;
         n._contacted = true;
         n._virginUntil = world.step + (VIRGIN_DUR * sev) / _dt;
         infect(world, n);
@@ -194,7 +194,7 @@ export function updateShocks(world) {
       const hitPolities = new Set();
       for (const s of world.settlements) {
         if (s.mode !== "settled") continue;
-        if (torusDist(world, seed.pos.x, seed.pos.y, s.pos.x, s.pos.y) > FAMINE_RADIUS) continue;
+        if (torusDist(world, seed.pos.x, seed.pos.y, s.pos.x, s.pos.y) > FAMINE_RADIUS * rNormPop(world)) continue;
         s._famineUntil = until;
         s._harvestMul = FAMINE_SEVERITY;
         if (s.countryId >= 0) hitPolities.add(s.countryId);

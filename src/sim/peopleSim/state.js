@@ -330,6 +330,15 @@ function initRiverMag(world, w) {
 // becomes the seed of an independent civilization, producing a multipolar
 // world even at high resolution.
 const MAX_CRADLES = 10;
+// NB deliberately NOT ×rNormPop, unlike the other reach constants. The cradle COUNT
+// does drift with resolution (a finer grid packs in more cradles), but that drift
+// COMPENSATES for the un-normalised founding-throughput residual: a finer grid has more
+// tiles to fill, so it NEEDS more seeds to reach the same real land-fill at a given step.
+// Measured (tw=960, seed 8817, 9k steps): scaling this to fix the count dropped claimed
+// land 27%→5% while leaving settlement/realm counts unchanged — a net regression. So the
+// count-invariance and the throughput residual must be fixed TOGETHER (scale founding
+// throughput ×rNorm² AND this), never this alone. See docs/resolution-invariance-plan.md
+// (the "founding-throughput channel" open residual).
 const CRADLE_MIN_SEP = 60;   // tile-space minimum separation (large enough that a single
                               // continent gets at most 1-2 cradles, but Earth's separated
                               // landmasses each get one if they have a viable site)
@@ -489,7 +498,7 @@ function seedCradleVillage(world) {
   candidates.sort((a, b) => b.score - a.score);
   // Greedy: pick highest-scoring tile, then skip any tile within CRADLE_MIN_SEP.
   const picked = [];
-  const minSepSq = CRADLE_MIN_SEP * CRADLE_MIN_SEP;
+  const minSepSq = CRADLE_MIN_SEP * CRADLE_MIN_SEP;   // NOT res-scaled — see CRADLE_MIN_SEP note above
   for (const c of candidates) {
     if (picked.length >= MAX_CRADLES) break;
     const ty = (c.ti / tw) | 0, tx = c.ti - ty * tw;

@@ -69,7 +69,7 @@ const WIND_MULT_MAX = 1.7;   // dearest a full headwind makes a tile (tacking)
 // keeps the headwind penalty (avoid beating into the wind) while reining in
 // gross wind-chasing detours.
 const MIN_NAV_FOR_SEA = 0.04;    // below this a settlement has no seacraft
-const EMBARK_RADIUS   = 4;       // tiles to search around home for water
+const EMBARK_RADIUS   = 4;       // REFERENCE-tiles to search around home for water (×resScaleFor at other grids)
 // SEA_MIN_POP -> runtime lever (tuning.js T.SEA_MIN_POP)
 const MAX_SEA_VISITS  = 300000;  // global flood pop cap (one flood per pass)
 const MAX_ROUTE_TILES = 1200;    // cap on a sea path's stored tile count
@@ -93,7 +93,7 @@ const COLONY_COOLDOWN   = 500 / 1.1; // ticks between expeditions from one port
                                  // which divides this; behaviour identical)
 const COLONY_ENDOW_FRAC = 0.12;  // share of the parent's coin colonists carry
 const COLONY_ENDOW_CAP  = 5000;
-const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement (grid near-query radius)
+const COLONY_MIN_DIST   = 14;    // landing must be this far (REFERENCE-tiles, ×resScaleFor) from any settlement — matches the res-scaled native MIN_SETT_DIST
 const COLONY_PER_PORT_CAND = 400; // cap shore candidates collected per port
 
 // 8-neighbour offsets (match the flood's neighbour order) for wind heading.
@@ -147,9 +147,10 @@ function findEmbarkTile(world, s) {
   const { tw, th, elev } = world;
   const sx = s.pos.x | 0, sy = s.pos.y | 0;
   let best = -1, bestD2 = Infinity;
-  for (let dy = -EMBARK_RADIUS; dy <= EMBARK_RADIUS; dy++) {
+  const R = Math.max(1, Math.round(EMBARK_RADIUS * resScaleFor(world.tw)));   // real-distance search box (res-invariant port detection)
+  for (let dy = -R; dy <= R; dy++) {
     const ny = sy + dy; if (ny < 0 || ny >= th) continue;
-    for (let dx = -EMBARK_RADIUS; dx <= EMBARK_RADIUS; dx++) {
+    for (let dx = -R; dx <= R; dx++) {
       const nx = ((sx + dx) % tw + tw) % tw;
       const ti = ny * tw + nx;
       if (elev[ti] > 0) continue;
@@ -577,7 +578,7 @@ function siteIsClear(world, lti) {
   const { tw } = world;
   const ty = (lti / tw) | 0, tx = lti - ty * tw;
   let clear = true;
-  forEachNear(world, tx, ty, COLONY_MIN_DIST, () => { clear = false; });
+  forEachNear(world, tx, ty, COLONY_MIN_DIST * resScaleFor(world.tw), () => { clear = false; });
   return clear;
 }
 
@@ -619,6 +620,7 @@ function foundColony(world, sh) {
     const home = world._byId && world._byId.get(sh.owner);
     if (home && home.mode === "settled") {
       home.people = (home.people || 0) + (sh.people || 0);
+      fieldShift(world, home, +(sh.people || 0));   // ONE_POP: re-seed the field the launch debited — symmetric with tryColonize; without it the field stays short and s.people (a derived read of the field) silently loses the returning colonists
       home.wealth = (home.wealth || 0) + (sh.wealth || 0);
     }
     return;

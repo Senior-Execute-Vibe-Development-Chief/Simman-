@@ -474,7 +474,7 @@ function applyUrbanSpikes(world, cap) {
 const URBAN_MAXSHARE = 0.9;  // a city holds at most this share of its region's people (the hinterland bound)
 const URBAN_GMAXSHARE = 0.97; // under γ the hinterland bound is a pure CONSERVATION guard (the graveyard, not the cap, limits)
 const GRAVEYARD_PMAX = 12;   // cap on the density-graded graveyard multiplier (a transient spike can't kill a core in one pass)
-const URBAN_CONC_R = 6;      // the urban hinterland radius (tiles) people draw in from
+const URBAN_CONC_R = 6;      // the urban hinterland radius (REFERENCE-tiles, ×rNormPop at other grids) people draw in from
 const URBAN_CONC_LAMBDA = 0.2;  // relaxation toward the target per tick (convergence rate, not the equilibrium)
 const URBAN_CONC_MAXFRAC = 0.5; // cap per-tick flux at half the available side (no single-tick emptying)
 const URBAN_CONC_MAXFRAC_G = 0.12; // under γ the target is the RAW economy (large) → a gentler per-tick flux so the flow can't strip the countryside in a rush toward it (the graveyard equilibrium is reached over many ticks)
@@ -484,8 +484,9 @@ const URBAN_CONC_MAXFRAC_G = 0.12; // under γ the target is the RAW economy (la
 function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta, maxFrac) {
   if (maxFrac === undefined) maxFrac = URBAN_CONC_MAXFRAC;
   const pf = world.popField, tw = world.tw, th = world.th;
-  const x0 = cx - URBAN_CONC_R, x1 = cx + URBAN_CONC_R;
-  const y0 = Math.max(0, cy - URBAN_CONC_R), y1 = Math.min(th - 1, cy + URBAN_CONC_R);
+  const ucr = Math.max(1, Math.round(URBAN_CONC_R * rNormPop(world)));   // real-distance hinterland (res-invariant urban concentration)
+  const x0 = cx - ucr, x1 = cx + ucr;
+  const y0 = Math.max(0, cy - ucr), y1 = Math.min(th - 1, cy + ucr);
   if (delta > 0) {
     // AGGLOMERATION: pull the hinterland in. Sum owned countryside people, then
     // drain the same fraction from each (proportional) up to the flux cap.
@@ -708,7 +709,7 @@ export function deriveOnePop(world) {
 // market that bought them is. Deterministic ring walk, no RNG; the field's
 // own logistic growth recovers a dent over generations, exactly as the
 // census does. No-op when the lever (or the field itself) is off.
-const FIELD_SHIFT_R = 6;   // max cascade radius (tiles): a town's demographic hinterland
+const FIELD_SHIFT_R = 6;   // max cascade radius (REFERENCE-tiles, ×rNormPop at other grids): a town's demographic hinterland
 
 export function fieldShift(world, s, delta) {
   if ((!T.FIELD_DEMOG && !T.ONE_POP) || !T.POP_FIELD || !world.popField || !s || !s.pos) return;
@@ -719,7 +720,8 @@ export function fieldShift(world, s, delta) {
   if (ti0 < 0 || ti0 >= world.N) return;
   if (delta > 0) { pf[ti0] += delta; return; }
   let need = -delta;
-  for (let r = 0; r <= FIELD_SHIFT_R && need > 0; r++) {
+  const fsr = Math.max(1, Math.round(FIELD_SHIFT_R * rNormPop(world)));   // real-distance cascade radius (res-invariant)
+  for (let r = 0; r <= fsr && need > 0; r++) {
     // ring r around (cx,cy): fixed order (top row, bottom row, left col, right col)
     for (let k = -r; k <= r && need > 0; k++) {
       for (let e = 0; e < (r === 0 ? 1 : 4) && need > 0; e++) {

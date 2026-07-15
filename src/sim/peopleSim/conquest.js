@@ -389,7 +389,7 @@ export function recordOccupation(s, fromId, toId, step) {
 // meekly transfer — they break into regional successor states around their
 // strongest surviving cities (the Diadochi after Alexander).
 const FRAG_MAX_STATES = 12;   // CEILING on successor realms; the actual count scales with the dead realm's city-count (Roman few ↔ Chinese many)
-const FRAG_SEPARATION = 18;   // successor capitals must be at least this far apart
+const FRAG_SEPARATION = 18;   // successor capitals must be at least this far apart (REFERENCE-tiles, ×resScaleFor at other grids — a real distance, like PROVINCE_SPAN)
 
 // ── War duress (capacity catalysts) ───────────────────────────────────
 // War throttles the control budget: a realm at war on several fronts has its
@@ -449,8 +449,8 @@ const COLONY_TECH_DIFFUSE = 0.06;  // base per-pass rate the colony seat's knowl
 // line, so protection and support are neither automatic nor perfect — the realistic limit on
 // how far, and how strongly, an empire can hold across the sea. This is WHY distant colonies
 // broke away: the metropole simply could not project enough force to hold them.
-const NAVAL_REACH_BASE    = 8;     // tiles a metropole can project with no naval tech (coastal reach)
-const NAVAL_REACH_NAV     = 70;    // extra projection tiles at full navigation tech
+const NAVAL_REACH_BASE    = 8;     // REFERENCE-tiles a metropole can project with no naval tech (coastal reach; ×resScaleFor at other grids)
+const NAVAL_REACH_NAV     = 70;    // extra projection REFERENCE-tiles at full navigation tech (×resScaleFor — matches the res-scaled hold reach it competes with)
 
 const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
@@ -717,9 +717,9 @@ function buildHierarchy(world, c) {
 
 // The REGIONAL radius a provincial seat administers (reference tiles; res-scaled
 // like every other map distance): a province is the land within a region's span of
-// its seat. Numerically equal to countryTerritory's NUCLEATE_R at the 240 reference
-// — but NB NUCLEATE_R is used UNSCALED there (a latent res-invariance inconsistency,
-// noted, not this change's to fix), so the two diverge on larger grids.
+// its seat. Numerically equal to countryTerritory's NUCLEATE_R at the 240 reference,
+// and NUCLEATE_R is likewise ×resScaleFor at its use site (countryTerritory.js), so
+// the two track each other at every grid.
 const PROVINCE_SPAN = 9;
 // PROVINCES — assign every member to the nearest SEAT of its realm: the capital,
 // any CITY, and any LOCALLY-STRONGEST member (no stronger realm-mate within a
@@ -1179,7 +1179,7 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     if (s.id === oldId) continue;
     let far = true;
     for (const cap of capitals) {
-      if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+      if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION * resScaleFor(world.tw)) { far = false; break; }
     }
     if (far) capitals.push(s);
   }
@@ -3063,7 +3063,7 @@ export function rebuildOverlords(world, countries) {
     if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
     const d = dist(world, dc.capital.pos.x, dc.capital.pos.y, oc.capital.pos.x, oc.capital.pos.y);
     const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
-    const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
+    const navalReach = (NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV) * resScaleFor(world.tw);   // real distance, comparable to the res-scaled hold reach + d below
     // Projection is by whichever ARM reaches: the navy across water (naval
     // reach), or the army over land — which marches out to the overlord's hold
     // reach, the same operational range that let a land VASSAL submit in the

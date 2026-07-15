@@ -22,10 +22,10 @@ import { recordIn, recordOut, IN_SLAVE_TRADE, OUT_SLAVE } from "./money.js";
 import { getWealthReserve, recordCaptives, drainCaptivePools, arriveCaptives } from "./settlement.js";
 import { feedGrievance } from "./loyaltyField.js";
 import { fieldShift } from "./popField.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 
 export const SLAVE_INTERVAL = 50;     // ticks between slave-trade passes (slow flow)
-const RAID_RANGE     = 28;            // tiles a slaver's raiding parties reach
+const RAID_RANGE     = 28;            // REFERENCE-tiles a slaver's raiding parties reach (×rNormPop at other grids — a real distance)
 const RAID_DOMINANCE = 2.0;           // how much stronger a raider must be than its victim
 const SLAVE_PRICE    = 8;             // coin per captive on the market (calibration)
 const PULL_CAP       = 3;             // raiding capacity is bounded by military reach/logistics, however hungry the market — intensity saturates at 1+PULL_CAP×SLAVE_PULL
@@ -90,7 +90,7 @@ export function updateSlaveTrade(world) {
       const rPow = settlementPower(r);
       if (rPow <= 1) continue;
       let took = 0;
-      forEachNear(world, r.pos.x, r.pos.y, RAID_RANGE, (v) => {
+      forEachNear(world, r.pos.x, r.pos.y, RAID_RANGE * rNormPop(world), (v) => {
         if (v === r || v.mode !== "settled") return;
         if (v.countryId === r.countryId && r.countryId >= 0) return;   // raid OUTSIDERS, not your own
         // The razzia preys on the STATELESS frontier: a town under a crown is a hard

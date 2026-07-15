@@ -402,9 +402,10 @@ export function computeTerritory(world) {
 // no longer collapses when cities stop owning broad reach-domains. This decouples
 // minting from the farming catchment: the countryside (or a nearby city) works
 // each deposit, and the silver spreads through trade, as it did historically.
-const MINE_RANGE = 8;    // tiles within which a settlement works a mine (≈ a settlement's natural
-                         // territory radius, so the worked-mine count — and thus the money supply —
-                         // tracks the owned-territory baseline instead of minting every mountain)
+const MINE_RANGE = 8;    // REFERENCE-tiles within which a settlement works a mine (×rNormPop at other
+                         // grids — ≈ a settlement's natural, res-scaled territory radius, so the worked-
+                         // mine count — and thus the money supply — tracks the owned-territory baseline
+                         // at any resolution instead of minting more mountains on a finer grid)
 function assignMinesByProximity(world, byId) {
   // Mine-tile list (precious/gems deposits), built once and cached.
   if (!world._mineTiles) {
@@ -423,7 +424,7 @@ function assignMinesByProximity(world, byId) {
     if (reserve && reserve[id] && reserve[id][ti] <= 0) continue;   // dried-up mine — nobody works it
     const mx = ti % tw, my = (ti / tw) | 0;
     let best = null, bestD = Infinity;
-    forEachNear(world, mx + 0.5, my + 0.5, MINE_RANGE, (s, d2) => { if (d2 < bestD) { bestD = d2; best = s; } });
+    forEachNear(world, mx + 0.5, my + 0.5, MINE_RANGE * rNormPop(world), (s, d2) => { if (d2 < bestD) { bestD = d2; best = s; } });
     if (best) best._minableTiles.push(m);
   }
 }

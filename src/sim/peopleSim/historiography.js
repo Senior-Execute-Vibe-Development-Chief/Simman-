@@ -26,8 +26,9 @@ import { getPolity } from "./entities.js";
 import { getFaith } from "./faiths.js";
 import { getDynasty } from "./dynasties.js";
 import { realmName } from "./chronicle.js";
+import { rNormPop } from "./tuning.js";
 
-const HORIZON_BASE = 70;        // tiles within which distant MAJOR events are reliably heard of
+const HORIZON_BASE = 70;        // REFERENCE-tiles within which distant MAJOR events are reliably heard of (×rNormPop at other grids)
 const HORIZON_LIT = 80;         // extra horizon at full literacy (organization 1.0)
 const RUMOR_BAND = 0.35;        // knowledge prob band that renders as rumor instead of record
 const SACK_SURVIVAL = 0.45;     // chance an older record survives each sack of the capital
@@ -134,7 +135,7 @@ export function perspectiveChronicle(world, viewerId, limit = 0) {
   const p = getPolity(world, viewerId);
   const cap = capitalOf(world, viewerId);
   const lit = cap && cap.knowledge ? (cap.knowledge.organization || 0) : 0;
-  const horizon = HORIZON_BASE + HORIZON_LIT * lit;
+  const horizon = (HORIZON_BASE + HORIZON_LIT * lit) * rNormPop(world);   // real-distance information horizon (res-invariant; render-only)
 
   // own events + major world events, merged by step
   const own = eventsFor(world, "p:" + viewerId);

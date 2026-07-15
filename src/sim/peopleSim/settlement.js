@@ -32,7 +32,7 @@ import { hash32 } from "./rng.js";
 // trade-fed hubs — a realistic population pyramid rather than a map of
 // uniform cities.
 //
-// The metropolis bar is 3000, not 5000: at the current (dense) settlement
+// The metropolis bar is 900 (TIER_THRESHOLD[3] below), not thousands: at the current (dense) settlement
 // URBAN tier bars (sim-people), now that towns are SPAWNED (not promoted from a
 // region) and grow on the grain surplus of the capped rural districts around
 // them. A town tops out ~600-800 on its narrow tier-1 food catchment; crossing

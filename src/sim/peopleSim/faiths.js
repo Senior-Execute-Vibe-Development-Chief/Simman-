@@ -18,7 +18,7 @@
 // ground the other systems stand on.
 
 import { passRng, entityRng, hash32 } from "./rng.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, languageOf, dominantCulture, familyOf, folkAnchorOf } from "./cultures.js";
@@ -55,7 +55,7 @@ const MIX_FLOOR = 0.05;                  // drop faith shares below this so a co
 // Branching (schism) — bounded so the late game doesn't fission exponentially.
 const SCHISM_MIN_REALMS = 3;             // only a faith spanning several realms can schism
 const SCHISM_MIN_AGE = 3000;             // a young faith doesn't schism
-const SCHISM_MIN_DIST = 95;              // map distance from origin see (tiles)
+const SCHISM_MIN_DIST = 95;              // map distance from origin see (REFERENCE-tiles, ×rNormPop at other grids — a real distance, like cohesionRadius/MARRY_REACH_FRAC)
 const MAX_BRANCHES_PER_ROOT = 6;         // a religion fissions into a few great branches, not endlessly
 const SCHISM_ROOT_COOLDOWN = 1400;       // min ticks between schisms within one religion family
 const MAX_SCHISMS_PER_PASS = 2;          // global brake on late-game fissioning
@@ -411,7 +411,7 @@ export function updateFaiths(world) {
     if (s._tradeReach && byId) for (const pid of s._tradeReach.keys()) weighPeer(byId.get(typeof pid === "number" ? pid : +pid));
     if (s._seaReach && byId) for (const pid of s._seaReach.keys()) weighPeer(byId.get(typeof pid === "number" ? pid : +pid));
     // word also travels on foot: near neighbours convert even off the trade map
-    forEachNear(world, s.pos.x, s.pos.y, 11, (nb) => { if (nb !== s) weighPeer(nb); });
+    forEachNear(world, s.pos.x, s.pos.y, 11 * rNormPop(world), (nb) => { if (nb !== s) weighPeer(nb); });   // real-distance foot range (res-invariant conversion fronts)
     if (s.countryId >= 0) {
       const p = getPolity(world, s.countryId);
       if (p && p.faithId >= 0) {
@@ -540,7 +540,7 @@ export function updateFaiths(world) {
         let dx = Math.abs(c.capital.pos.x - origin.pos.x);
         if (dx > world.tw / 2) dx = world.tw - dx;
         const dy = c.capital.pos.y - origin.pos.y;
-        if (Math.sqrt(dx * dx + dy * dy) < SCHISM_MIN_DIST) continue;
+        if (Math.sqrt(dx * dx + dy * dy) < SCHISM_MIN_DIST * rNormPop(world)) continue;
         // a real estrangement helps light the reform: war or a failed throne
         const estranged = (c._fronts || 0) > 0 || (p._crisisAt != null && world.step - p._crisisAt < 1200 / (world._dt || 1));
         const trigger = estranged ? 1 : 0.45;
