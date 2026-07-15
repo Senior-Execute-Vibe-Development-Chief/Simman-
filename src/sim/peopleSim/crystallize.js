@@ -948,7 +948,7 @@ function maybeSendSettlers(world, alive) {
     // room wherever it is, instead of stalling GLOBALLY once the cradles fill (the old
     // total-count guard wrongly froze a New-World frontier the moment the Old World filled).
     let localN = -1;
-    forEachNear(world, parent.pos.x, parent.pos.y, FRONTIER_RADIUS, () => { localN++; });
+    forEachNear(world, parent.pos.x, parent.pos.y, FRONTIER_RADIUS * rNormFor(world), () => { localN++; });
     const colonySat = 1 / (1 + (Math.max(0, localN) / COLONY_LOCAL_SAT_REF) ** 2);
     // Wave-of-advance tempo from the PARENT's own agriculture: a mature
     // farming people colonises at full rate, a marginal one trickles.

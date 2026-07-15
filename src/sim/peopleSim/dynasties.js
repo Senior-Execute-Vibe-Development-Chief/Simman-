@@ -962,6 +962,33 @@ function reapIdleHouses(world) {
   }
 }
 
+// Drop extinct, unreferenced dynasty husks. reapIdleHouses empties a non-ruling
+// house's members but never removes the now-memberless record, so world.dynasties
+// grew monotonically for the whole run — every elective rotation and crisis founder
+// left a permanent husk that rides every save, is walked by the save-hash, and pins
+// its founder line forever in prunePersons (930). A house is dropped only when it is
+// referenced by NO living realm (neither its ruling house nor in the capped recent-
+// houses roll) AND has zero living kin — pure emergent STATE, never a time gate. The
+// size floor is a memory bound with independent meaning (mirrors prunePersons' person
+// floor), so short determinism / smoke / hash runs never trip it and stay byte-
+// identical. Deterministic: set membership + order-independent Map deletes, no rng.
+function pruneDynasties(world) {
+  if (!world.dynasties || world.dynasties.size < 400) return;
+  const referenced = new Set();
+  for (const c of world.countries.values()) {
+    const pol = getPolity(world, c.id);
+    if (!pol || pol.endedStep >= 0) continue;
+    if (pol.dynastyId >= 0) referenced.add(pol.dynastyId);
+    if (pol.houses) for (const h of pol.houses) referenced.add(h);
+  }
+  for (const [id, d] of world.dynasties) {
+    if (referenced.has(id)) continue;
+    const living = d.members && d.members.some(mid => { const p = getPerson(world, mid); return p && p.died < 0; });
+    if (living) continue;
+    world.dynasties.delete(id);   // extinct husk, unreferenced by any living realm
+  }
+}
+
 // ── Claimant succession (CLAIMANT_WARS) ──────────────────────────────────────
 // The house of a person's OTHER parent — the house their house-parent married into.
 // A foreign princess who wed into house X leaves her children OF house X but carrying
@@ -1105,7 +1132,7 @@ export function updateDynasties(world) {
   // its interval (index.js _at phase offsets), so the old naive
   // `step % (DYNASTY_INTERVAL*24) === 0` was NEVER true — prunePersons was dead
   // code and the person registry grew without bound for the whole run.
-  if (passWindow(world, DYNASTY_INTERVAL, DYNASTY_INTERVAL * 24)) prunePersons(world);
+  if (passWindow(world, DYNASTY_INTERVAL, DYNASTY_INTERVAL * 24)) { pruneDynasties(world); prunePersons(world); }
   // Years elapsed since the last pass — the step→year mapping compresses early
   // eras, so every per-pass rate below is computed from ANNUAL hazards raised to
   // this span. One pass can be 30 years in the bronze age and one year later;

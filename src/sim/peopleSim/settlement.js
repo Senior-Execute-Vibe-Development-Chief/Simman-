@@ -1677,7 +1677,7 @@ function updateKnowledge(world, s) {
   const metalBoost = 1 + metalEff * 1.8;             // metal TOOLS help building — the metal you can forge, not merely know of
   k.construction = clamp01(k.construction + T.LEARN_BASE * 1.0 * sciMul * (1 - k.construction)
     * buildMat * stoneBoost * metalBoost
-    * (1 + k.agriculture * 0.6) * (1 + popSqrt * 0.06));
+    * (1 + k.agriculture * 0.6) * (1 + sciSqrt * 0.06));   // urban core builds — pace to a CITY of that size, not the whole province (mirrors organization/metallurgy/navigation/mobility above; closes the raw-pop leak into orgEraCap → the world clock)
 
   // Agriculture: farmland scale + metal tools (plough) + wild-food
   // gathering that supplements the early village (folds in the old

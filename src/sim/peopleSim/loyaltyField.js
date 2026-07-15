@@ -55,7 +55,7 @@
 
 import { T } from "./tuning.js";
 import { dynYear } from "../calendar.js";
-import { absorbResistance, identityWeightsNow } from "./cohesion.js";
+import { absorbResistance, identityWeightsFor } from "./cohesion.js";
 
 // ── Habituation (dyn-years) ───────────────────────────────────────────────
 const HAB_RISE_TAU = 500;  // e-fold time of attachment toward a WELL-GOVERNED condition at median identity;
@@ -265,7 +265,6 @@ export function updateLoyaltyField(world, countries) {
   // 2. Habituation. Per-member rates once (identity vs the ruler's core),
   // then a flat O(N) tile walk with cached per-(homeland,ruler) ledger factors.
   const passY = passDynYears();
-  const idW = identityWeightsNow(world);
   const allies = world._allies;
   // settlement id → rise rate (per pass, identity-coupled); country id → its
   // capital's rise rate + the realm's mean administrative condition (the
@@ -273,6 +272,10 @@ export function updateLoyaltyField(world, countries) {
   const riseOf = new Map(), capRise = new Map(), meanLoyal = new Map();
   for (const c of countries.values()) {
     const cap = c.capital;
+    // Identity salience from THIS realm's own development (its capital's organisation),
+    // not the planet-wide leader: an uncontacted ancient continent keeps ancient-era
+    // habituation even after someone else industrialises (fixes the global-signal leak).
+    const idW = identityWeightsFor(world, cap);
     let sum = 0, n = 0;
     for (const m of c.members) {
       if (m.countryId !== c.id) continue;

@@ -18,7 +18,7 @@
 // ground the other systems stand on.
 
 import { passRng, entityRng, hash32 } from "./rng.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, languageOf, dominantCulture, familyOf, folkAnchorOf } from "./cultures.js";
@@ -411,7 +411,7 @@ export function updateFaiths(world) {
     if (s._tradeReach && byId) for (const pid of s._tradeReach.keys()) weighPeer(byId.get(typeof pid === "number" ? pid : +pid));
     if (s._seaReach && byId) for (const pid of s._seaReach.keys()) weighPeer(byId.get(typeof pid === "number" ? pid : +pid));
     // word also travels on foot: near neighbours convert even off the trade map
-    forEachNear(world, s.pos.x, s.pos.y, 11, (nb) => { if (nb !== s) weighPeer(nb); });
+    forEachNear(world, s.pos.x, s.pos.y, 11 * rNormPop(world), (nb) => { if (nb !== s) weighPeer(nb); });
     if (s.countryId >= 0) {
       const p = getPolity(world, s.countryId);
       if (p && p.faithId >= 0) {

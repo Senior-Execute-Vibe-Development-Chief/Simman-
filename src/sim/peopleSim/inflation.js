@@ -165,24 +165,6 @@ export function localP(world, s) {
   return p === undefined ? 1 : p;
 }
 
-// Country-level price level — used for state finances (army wages, colony
-// grants). Returns the population-weighted average price across the country's
-// members, so a realm spanning multiple components pays at the right blend.
-export function localPByCountry(world, c) {
-  const Pmap = world._inflP;
-  if (!Pmap || !world._networkComponents || !c || !c.members) return 1;
-  let num = 0, den = 0;
-  for (const s of c.members) {
-    if (s.mode !== "settled") continue;
-    const root = world._networkComponents.has(s.id) ? world._networkComponents.get(s.id) : s.id;
-    const p = Pmap.get(root);
-    if (p === undefined) continue;
-    const w = Math.max(1, s.people);
-    num += p * w; den += w;
-  }
-  return den > 0 ? num / den : 1;
-}
-
 export function displayPByCountry(world, c) {
   const Rmap = world._inflRaw;
   if (!Rmap || !world._networkComponents || !c || !c.members) return 1;
