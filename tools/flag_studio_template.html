@@ -338,7 +338,9 @@ __EMBLEM_RENDER__
     if(age.simple){ genes[IDX.composition]=CENTRAL; genes[IDX.partition]=0.06; genes[IDX.motifCount]=0.05; genes[IDX.arrange]=0.05; genes[IDX.border]=0.03; genes[IDX.pearl]=0.1; }   // a lone charge on a plain field (pearl low: no corner disc)
     if(age.charged){ genes[IDX.composition]=HERALDIC; genes[IDX.partition]=armsDiv(); genes[IDX.crescent]=(state.origCrescent!=null?state.origCrescent:0.5); }   // the full heraldic grammar comes alive; restore the founding crescent so furs & inescutcheons return from here on
     if(age.bigCharge){ genes[IDX.composition]=0.70; genes[IDX.partition]=0.03; genes[IDX.arrange]=0.1; genes[IDX.motifScale]=0.88; genes[IDX.motifCount]=0.05; genes[IDX.pearl]=0.1; }  // plain cloth, one BIG central charge — no corner disc beside it
-    if(age.shed){ genes[IDX.composition]=0.06; genes[IDX.partition]=flagDiv(); genes[IDX.arrange]=0.66; genes[IDX.motifCount]=0.12; genes[IDX.motifScale]=0.6; }   // national livery, but the device is RETAINED (a charged flag) — not stripped to bare bands
+    if(age.shed){ genes[IDX.composition]=0.06; genes[IDX.partition]=flagDiv(); genes[IDX.motifScale]=0.6;
+      if(state.flagBare){ genes[IDX.arrange]=0.06; genes[IDX.motifCount]=0.03; }   // a REPUBLICAN/revolutionary flag: the arms are rejected — bare national livery, no device
+      else { genes[IDX.arrange]=0.66; genes[IDX.motifCount]=0.12; } }                // the common case: the device is RETAINED (a charged flag) on the national livery
     if(age.edit) for(const k in age.edit) genes[IDX[k]]=age.edit[k];
   }
 
@@ -359,6 +361,15 @@ __EMBLEM_RENDER__
     setLivery(g);                                   // fix the house's colours here; every later age flies them
     state.armsDivision=ARMS_DIVISIONS[(Math.random()*ARMS_DIVISIONS.length)|0];   // which party its charged coat takes
     state.flagDivision=[0.05,0.11,0.66][(Math.random()*3)|0];   // the layout its cloth takes: tricolour / bicolour / paly
+    // The dynastic arc is the COMMON path, not a universal one. Two beats vary with the
+    // house's CHARACTER (the sliders), so it isn't the same story every time:
+    //  · a dynastic UNION (grand arms marshalled/quartered) is the norm for great & warlike
+    //    houses, but merchant republics seldom married their arms — they AUGMENT instead.
+    //  · the flag KEEPS its device by default, but a mercantile/coastal temper is likelier
+    //    to shed to a bare national tricolour (the republican/revolutionary rejection of arms).
+    const ax=houseAxes(), gv=k=>ax[k]||0, cl=x=>x<0.08?0.08:x>0.92?0.92:x;
+    state.marshals = Math.random() < cl(0.62 + 0.28*gv("regal") + 0.18*gv("martial") - 0.5*gv("mercantile") - 0.25*gv("maritime"));
+    state.flagBare  = Math.random() < cl(0.18 + 0.5*gv("mercantile") + 0.25*gv("maritime") - 0.3*gv("regal") - 0.25*gv("devout") - 0.18*gv("martial"));
     g.gen=0; delete g.cadency; delete g.quarters;
     state.era=0; commit(g,{fresh:true});
   }
@@ -373,7 +384,7 @@ __EMBLEM_RENDER__
     dressAge(genes, age);                         // substrate + this age's edits
     let out={ genes, gen:(g.gen||0)+1, seed:g.seed };
     if(g.quarters && age.sub===SUB.shield) out.quarters=g.quarters;   // quartering lives ONLY on the shield — never a canton on cloth
-    if(age.marshal){
+    if(age.marshal && state.marshals){          // A DYNASTIC UNION — two houses' arms quartered on one shield
       const hCat=out.genes[IDX.motifCat], hIdx=out.genes[IDX.motifIdx];   // remember the house's OWN (senior) device
       const mate=foundGenome(rnd32(), Object.assign({}, houseAxes(), {figuration:0.7, ornateness:0.66, regal:0.5})); mate.genes[IDX.substrate]=age.sub;
       mate.genes[IDX.hueB]=mate.genes[IDX.hueC];   // the marriage partner is ALSO a stainless European house (noStain keeps its quarter clean)
@@ -382,6 +393,8 @@ __EMBLEM_RENDER__
       out={ genes:c.genes, gen:out.gen, seed:out.seed }; out.genes[IDX.substrate]=age.sub;
       out.genes[IDX.motifCat]=hCat; out.genes[IDX.motifIdx]=hIdx;   // the marshalled arms fly the SENIOR charge — crossGenome would otherwise coin-flip the device to the mate's, which then "appears" on the flag as a charge that was never in the house's own arms. The union shows ONLY in the quarters.
       if(c.quarters) out.quarters=c.quarters.slice(0,4);   // the union shows in the quarters; the FIELD + charge stay the house's
+    } else if(age.marshal){                     // NO union — the single coat GROWS GRAND on its own: the charge multiplies (three of it) inside a bold bordure of honour
+      out.genes[IDX.composition]=HERALDIC; out.genes[IDX.partition]=0.0; out.genes[IDX.border]=0.97; out.genes[IDX.star]=0.2; out.genes[IDX.pearl]=0.1; out.genes[IDX.arrange]=0.46; out.genes[IDX.motifCount]=0.5; out.genes[IDX.motifScale]=0.44;
     }
     applyLivery(out.genes);   // the device always flies the house's own colours
     return out;
@@ -416,8 +429,11 @@ __EMBLEM_RENDER__
     st.innerHTML=emblemSVG(g,W,H);
     if(animate && !reduce) st.classList.add("enter");
     $("blazon").textContent=blazonGenome(g);
-    const chips=[[`<span class="fe-chip era">${AGES[g._era!=null?g._era:state.era].name}</span>`],[`<span class="fe-chip">generation ${g.gen||0}</span>`]];
-    if(g.quarters && g.quarters.length>1) chips.push([`<span class="fe-chip gold">${g.quarters.length} quartered coats</span>`]);
+    const era=g._era!=null?g._era:state.era, grandIdx=AGES.findIndex(a=>a.marshal), flagIdx=AGES.findIndex(a=>a.shed);
+    const chips=[[`<span class="fe-chip era">${AGES[era].name}</span>`],[`<span class="fe-chip">generation ${g.gen||0}</span>`]];
+    if(g.quarters && g.quarters.length>1) chips.push([`<span class="fe-chip gold">marshalled · ${g.quarters.length} coats</span>`]);
+    else if(era===grandIdx) chips.push([`<span class="fe-chip">augmented · no union</span>`]);   // this house never married its arms — it grew grand on its own
+    if(era===flagIdx) chips.push([`<span class="fe-chip ${state.flagBare?'gold':''}">${state.flagBare?'tricolour · arms rejected':'charged flag'}</span>`]);
     if(g.cadency) chips.push([`<span class="fe-chip gold">cadency ${g.cadency}</span>`]);
     $("chips").innerHTML=chips.map(c=>c[0]).join("");
     renderStrip(); updateHash(g);
