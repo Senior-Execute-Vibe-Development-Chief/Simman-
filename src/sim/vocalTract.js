@@ -34,7 +34,7 @@ const LIP_REFLECTION = -0.85;
 // Loss knobs set the formant bandwidths: a near-closed glottis (high
 // reflection) and light per-section damping keep the resonances sharp enough
 // to read as distinct vowels. Exposed for the calibration harness.
-const DSP = { glottalRefl: 0.9, damp: 0.9996, radiation: 0.8, wallLoss: 1, wallThresh: 0.02 };
+const DSP = { glottalRefl: 0.9, damp: 0.998, radiation: 0.8, wallLoss: 1, wallThresh: 0.02 };
 // A hard ceiling on the travelling waves. Normal speech never exceeds ~5 here,
 // so this is invisible in practice — but a driven closed cavity (a long voiced
 // velar closure, where the constriction sits right against the velum) can ring
@@ -259,6 +259,7 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   };
   const BLOCK = 128;
   const lipOut = { lip: 0, nose: 0 };
+  let turbLP = 0;                                // one-pole low-pass state for turbulence noise
   for (let i = 0; i < len; i += BLOCK) {
     const blk = Math.min(BLOCK, len - i);
     // posture at the block's END drives the new reflections; glottis ramps
@@ -277,24 +278,36 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
       glo.setLoudness();
       const nz = noise();
       const glottal = glo.step(nz);
-      const turb = noise();
-      tr.step(glottal, turb, lambda, nz, pmid, lipOut);
+      // band-limit the turbulence: real frication/burst noise rolls off, not the
+      // harsh full-band white that made stop bursts a ~11 kHz click
+      turbLP = 0.4 * turbLP + 0.6 * noise();
+      tr.step(glottal, turbLP, lambda, nz, pmid, lipOut);
       let v = lipOut.lip + lipOut.nose;
-      tr.step(glottal, turb, lambda, nz, pmid, lipOut);
+      tr.step(glottal, turbLP, lambda, nz, pmid, lipOut);
       v += lipOut.lip + lipOut.nose;
       out[i + s] = v * 0.125;
     }
     tr.commit();
   }
-  // DC-block, then normalize to a consistent peak
-  let y = 0, xprev = 0, peak = 0;
+  // DC-block
+  let y = 0, xprev = 0;
+  for (let i = 0; i < len; i++) { const x = out[i]; y = x - xprev + 0.996 * y; xprev = x; out[i] = y; }
+  // Level management. The sustained VOICE should set the loudness — not the
+  // brief stop bursts or the higher-gain constricted vowels, which are several
+  // times louder in the raw waveguide and, under peak normalization, crushed
+  // every open vowel to near-silence. A gentle compressor rides a fast-attack /
+  // slow-release envelope toward a target so quiet and loud segments even out,
+  // a soft gate hushes the silences between segments, and tanh limits whatever
+  // still overshoots (the burst transients).
+  const TARGET = 0.2, FLOOR = 0.1;
+  const ATT = Math.exp(-1 / (0.004 * sampleRate)), REL = Math.exp(-1 / (0.09 * sampleRate));
+  let env = 0;
   for (let i = 0; i < len; i++) {
-    const x = out[i];
-    y = x - xprev + 0.996 * y; xprev = x;
-    out[i] = y;
-    const a = Math.abs(y); if (a > peak) peak = a;
+    const a = Math.abs(out[i]);
+    env = a > env ? ATT * env + (1 - ATT) * a : REL * env + (1 - REL) * a;
+    const gate = env <= 0.008 ? 0 : env >= 0.025 ? 1 : (env - 0.008) / 0.017;
+    out[i] = Math.tanh(out[i] * (gate * TARGET / Math.max(env, FLOOR)));
   }
-  if (peak > 1e-6) { const gscale = 0.62 / peak; for (let i = 0; i < len; i++) out[i] = Math.tanh(out[i] * gscale * 1.15); }
   return out;
 }
 
@@ -321,7 +334,7 @@ function vowelPosture(v) {
   // constriction co-located with the tongue (that's how /u/ gets its low F2:
   // a long front cavity behind rounded lips). Front /i/ needs no help.
   let constrIndex = -1, constrDiameter = 3;
-  if ((height === 0 && (back >= 1 || v.r)) || (height === 1 && v.r)) { constrIndex = tongueIndex; constrDiameter = height === 0 ? 0.65 : 0.95; }
+  if ((height === 0 && (back >= 1 || v.r)) || (height === 1 && v.r)) { constrIndex = tongueIndex; constrDiameter = height === 0 ? 0.65 : 0.78; }
   let tenseness = 0.62, fscale = 1;
   if (v.ph === 1) tenseness = 0.34;                            // breathy
   else if (v.ph === 2) { tenseness = 0.88; fscale = 0.72; }    // creaky (drops pitch)
@@ -441,8 +454,8 @@ function scoreCons(B, c, t, kpts, final) {
   // release burst: a short crack of turbulence as the constriction springs open
   if (!glottalStop) {
     B.to("constrDiameter", t + dt, 0.3, 0.006);
-    B.set("fricative", t + dt, ejective ? 0.8 : final ? 0.4 : 0.6);
-    B.set("fricative", t + dt + 0.012, affric ? (sib ? 0.7 : 0.5) : 0);
+    B.set("fricative", t + dt, ejective ? 0.5 : final ? 0.22 : 0.34);
+    B.set("fricative", t + dt + 0.012, affric ? (sib ? 0.6 : 0.42) : 0);
     B.to("constrDiameter", t + dt + 0.02, 1.6, 0.02);
   } else { B.to("constrDiameter", t + dt, 1.6, 0.02); }
   dt += 0.02;

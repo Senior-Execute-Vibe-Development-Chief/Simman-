@@ -10,7 +10,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { renderScore, scorePlan, scoreClause } from "../src/sim/vocalTract.js";
 
-const SR = 44100;
+const SR = 48000;
 const args = process.argv.slice(2);
 const wavDir = args.includes("--wav") ? (args[args.indexOf("--wav") + 1] || "voice-out") : null;
 
