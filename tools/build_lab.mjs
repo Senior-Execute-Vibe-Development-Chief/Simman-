@@ -4,7 +4,9 @@
 // slice of the charge art. Nothing is hand-ported: the lab renders with the exact
 // same code as the sim and the preview tools.
 //
-//   node tools/build_lab.mjs [out.html]
+//   node tools/build_lab.mjs [out.html] [template.html]
+// (template defaults to tools/lab_template.html; pass another to build a different
+//  self-contained page around the SAME inlined engine — e.g. the flag studio.)
 //
 // Browsers can't ES-import, so we strip import/export and replace the genome's
 // MOTIFS block (marked @INJECT:MOTIFS) with a subset restricted to the charges that
@@ -15,6 +17,7 @@ import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = process.argv[2] || join(ROOT, "tools", "emblem-genome-lab.html");
+const TEMPLATE = process.argv[3] || "tools/lab_template.html";
 const CAP = 40 * 1024;   // per-charge body-byte cap: keeps the artifact light
 
 const read = p => readFileSync(join(ROOT, p), "utf8");
@@ -51,7 +54,7 @@ const renderSrc = stripModule(read("src/sim/emblemRender.js"));
 
 const chargeLiteral = "{\n" + Object.entries(subset).map(([id, e]) => `  ${JSON.stringify(id)}: ${JSON.stringify(e)}`).join(",\n") + "\n}";
 
-let html = read("tools/lab_template.html")
+let html = read(TEMPLATE)
   .replace("__CHARGE_DETAIL__", chargeLiteral)
   .replace("__EMBLEM_GENOME__", genomeSrc)
   .replace("__EMBLEM_RENDER__", renderSrc);
