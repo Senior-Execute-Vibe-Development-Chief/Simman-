@@ -1,0 +1,358 @@
+<!-- The Flag Family Tree — a self-contained artifact built by tools/build_lab.mjs
+     (node tools/build_lab.mjs tools/flag-family-tree.html tools/flag_tree_template.html).
+     The three placeholders are filled with the REAL inlined emblem engine
+     (src/sim/emblemGenome.js + emblemRender.js) + a size-capped charge subset, so every
+     flag here is bred with the exact genome operators the simulation uses:
+       foundGenome  = a new lineage      mutateGenome = drift / cadet difference
+       crossGenome  = marshal at a union (two parents)
+     Body-only (no <html>/<head>/<body>) so it publishes directly as an Artifact. -->
+<style>
+  :root{
+    --ground:#E7E3D8; --panel:#F2EFE6; --panel-2:#EAE6DA; --line:#D2CBBA;
+    --ink:#211E17; --muted:#6E685A; --faint:#8C8676;
+    --or:#9C7016; --or-soft:#b98a2a; --ring:rgba(156,112,22,.5);
+    --grn:#3f7a4e; --red:#a5342b;
+    --shadow:0 1px 2px rgba(40,34,20,.12), 0 8px 24px rgba(40,34,20,.10);
+    --tile:#faf8f2; --tile-edge:rgba(30,24,10,.16);
+    --serif:"Iowan Old Style","Palatino Linotype","Palatino","Book Antiqua",Georgia,"Times New Roman",serif;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ground:#14131A; --panel:#1E1B26; --panel-2:#24212E; --line:#332F3E;
+    --ink:#ECE6D8; --muted:#9C95A8; --faint:#7A7488;
+    --or:#D8B24A; --or-soft:#E7C766; --ring:rgba(216,178,74,.55);
+    --grn:#6fae7a; --red:#d1685e;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
+    --tile:#100F16; --tile-edge:rgba(236,230,216,.18);
+  }}
+  :root[data-theme="dark"]{
+    --ground:#14131A; --panel:#1E1B26; --panel-2:#24212E; --line:#332F3E;
+    --ink:#ECE6D8; --muted:#9C95A8; --faint:#7A7488;
+    --or:#D8B24A; --or-soft:#E7C766; --ring:rgba(216,178,74,.55);
+    --grn:#6fae7a; --red:#d1685e;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
+    --tile:#100F16; --tile-edge:rgba(236,230,216,.18);
+  }
+  :root[data-theme="light"]{
+    --ground:#E7E3D8; --panel:#F2EFE6; --panel-2:#EAE6DA; --line:#D2CBBA;
+    --ink:#211E17; --muted:#6E685A; --faint:#8C8676;
+    --or:#9C7016; --or-soft:#b98a2a; --ring:rgba(156,112,22,.5);
+    --grn:#3f7a4e; --red:#a5342b;
+    --shadow:0 1px 2px rgba(40,34,20,.12), 0 8px 24px rgba(40,34,20,.10);
+    --tile:#faf8f2; --tile-edge:rgba(30,24,10,.16);
+  }
+  *{box-sizing:border-box}
+  .ft-root{background:var(--ground);color:var(--ink);font-family:var(--sans);min-height:100vh;
+    line-height:1.5;-webkit-font-smoothing:antialiased;padding:clamp(14px,2.6vw,30px);}
+  .ft-wrap{max-width:1240px;margin:0 auto;}
+  .ft-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;
+    border-bottom:1px solid var(--line);padding-bottom:15px;margin-bottom:18px;}
+  .ft-kicker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--or);font-weight:600;margin-bottom:7px;}
+  .ft-title{font-family:var(--serif);font-weight:600;font-size:clamp(25px,4vw,40px);line-height:1.02;margin:0;}
+  .ft-sub{color:var(--muted);font-size:13.5px;max-width:66ch;margin-top:9px;}
+  .ft-sub b{color:var(--ink);font-weight:600;}
+  .ft-theme{border:1px solid var(--line);background:var(--panel);color:var(--muted);font-family:var(--sans);
+    font-size:12px;padding:8px 12px;border-radius:9px;cursor:pointer;white-space:nowrap;}
+  .ft-theme:hover{border-color:var(--or);color:var(--ink);}
+
+  .ft-controls{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:16px;}
+  .ft-btn{appearance:none;font-family:var(--sans);font-size:12.5px;font-weight:600;border-radius:10px;padding:9px 15px;cursor:pointer;
+    border:1px solid var(--line);background:var(--panel-2);color:var(--ink);transition:border-color .15s,background .15s,color .15s;}
+  .ft-btn:hover{border-color:var(--or);}
+  .ft-btn.primary{background:var(--or);border-color:var(--or);color:#1a1508;}
+  .ft-btn.primary:hover{background:var(--or-soft);border-color:var(--or-soft);}
+  .ft-btn:disabled{opacity:.4;cursor:not-allowed;}
+  .ft-gen{font-family:var(--mono);font-size:12px;color:var(--muted);padding:0 6px;font-variant-numeric:tabular-nums;}
+  .ft-legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-left:auto;font-size:11px;color:var(--faint);}
+  .ft-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .ft-swatch{width:16px;height:0;border-top-width:2px;border-top-style:solid;display:inline-block;}
+
+  .ft-main{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start;}
+  @media (max-width:900px){.ft-main{grid-template-columns:1fr;}}
+  .ft-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);}
+  .ft-treebox{overflow:auto;border-radius:16px;max-height:82vh;}
+  .ft-treebox>svg{display:block;width:100%;height:auto;background:transparent;}
+
+  .edge{fill:none;stroke:var(--line);stroke-width:1.4;opacity:.55;transition:opacity .2s,stroke .2s;}
+  .edge.cadet{stroke:var(--grn);stroke-dasharray:3 2.5;}
+  .edge.union{stroke:var(--or);stroke-width:1.9;}
+  .edge.lit{stroke:var(--or);opacity:1;stroke-width:2.4;stroke-dasharray:none;}
+  .node .frame{fill:none;stroke:var(--tile-edge);stroke-width:1.2;}
+  .node .hit{fill:transparent;cursor:pointer;}
+  .node.lit .frame{stroke:var(--or-soft);stroke-width:2;}
+  .node.sel .frame{stroke:var(--or);stroke-width:2.6;}
+  .node.dead{opacity:.34;}
+  .node.dim{opacity:.28;}
+  .tag{font-family:var(--sans);font-size:8.5px;font-weight:600;fill:var(--faint);}
+  .tag.union{fill:var(--or);}
+  .tag.cadet{fill:var(--grn);}
+  .tag.event{fill:var(--muted);}
+  .genlab{font-family:var(--mono);font-size:10px;fill:var(--faint);letter-spacing:.04em;}
+  .deadx{stroke:var(--red);stroke-width:2;opacity:.8;}
+  @keyframes ftPop{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  .node.fresh{animation:ftPop .45s cubic-bezier(.2,.7,.2,1);}
+
+  .ft-insp{padding:18px;position:sticky;top:14px;}
+  .ft-insp-flag{background:var(--tile);border:1px solid var(--tile-edge);border-radius:10px;padding:16px;
+    display:flex;align-items:center;justify-content:center;min-height:150px;}
+  .ft-insp-flag svg{max-width:100%;height:auto;filter:drop-shadow(0 3px 8px rgba(0,0,0,.28));border-radius:2px;}
+  .ft-insp h3{font-family:var(--serif);font-size:19px;margin:15px 0 3px;font-weight:600;}
+  .ft-mech{font-size:12px;color:var(--or);font-weight:600;margin-bottom:2px;}
+  .ft-blazon{font-family:var(--serif);font-style:italic;font-size:13.5px;color:var(--ink);line-height:1.4;margin:9px 0;}
+  .ft-blazon::before,.ft-blazon::after{content:'"';color:var(--faint);}
+  .ft-anc{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;}
+  .ft-anc-h{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:9px;}
+  .ft-anc ol{list-style:none;margin:0;padding:0;}
+  .ft-anc li{display:flex;gap:9px;align-items:baseline;font-size:12px;color:var(--muted);padding:3px 0;position:relative;padding-left:14px;}
+  .ft-anc li::before{content:"";position:absolute;left:3px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--line);}
+  .ft-anc li b{color:var(--ink);font-weight:600;}
+  .ft-anc li.cur::before{background:var(--or);}
+  .ft-empty{color:var(--faint);font-size:12.5px;font-style:italic;line-height:1.5;}
+</style>
+
+<div class="ft-root"><div class="ft-wrap">
+  <div class="ft-head">
+    <div>
+      <div class="ft-kicker">Simman · heraldic phylogeny</div>
+      <h1 class="ft-title">The Flag Family Tree</h1>
+      <p class="ft-sub">Not one flag through five stages — a whole <b>population</b> bred over generations. Pre-heraldic <b>protos</b> seed it; then lineages <b>continue</b>, split off <b>cadet branches</b>, <b>marshal</b> at dynastic unions, are <b>diminished</b> for the flag, <b>re-cut</b> by revolution, and go <b>extinct</b>. The survivors at the bottom are the "modern" flags. Click any flag to trace its descent.</p>
+    </div>
+    <button class="ft-theme" id="themeBtn">◐ theme</button>
+  </div>
+
+  <div class="ft-controls">
+    <button class="ft-btn primary" id="newBtn">✦ New tree</button>
+    <button class="ft-btn" id="stepBtn">Step ▸</button>
+    <button class="ft-btn" id="playBtn">Grow ▸▸</button>
+    <span class="ft-gen" id="genLabel">generation 0</span>
+    <div class="ft-legend">
+      <span><i class="ft-swatch" style="border-color:var(--line)"></i>descent</span>
+      <span><i class="ft-swatch" style="border-color:var(--grn);border-top-style:dashed"></i>cadet</span>
+      <span><i class="ft-swatch" style="border-color:var(--or)"></i>union</span>
+      <span><span style="color:var(--red)">✕</span> extinct</span>
+    </div>
+  </div>
+
+  <div class="ft-main">
+    <div class="ft-card ft-treebox" id="treebox"><svg id="tree"></svg></div>
+    <div class="ft-card ft-insp" id="insp">
+      <div class="ft-empty" id="inspEmpty">Grow the tree, then click any flag to see its blazon and trace its line of descent back to a pre-heraldic proto.</div>
+      <div id="inspBody" style="display:none">
+        <div class="ft-insp-flag" id="inspFlag"></div>
+        <div class="ft-mech" id="inspMech"></div>
+        <h3 id="inspTitle"></h3>
+        <div class="ft-blazon" id="inspBlazon"></div>
+        <div class="ft-anc">
+          <div class="ft-anc-h">Line of descent</div>
+          <ol id="inspAnc"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<script>
+const CHARGE_DETAIL = __CHARGE_DETAIL__;
+
+__EMBLEM_GENOME__
+
+__EMBLEM_RENDER__
+
+(function(){
+  const IDX={}; GENES.forEach((g,i)=>IDX[g]=i);
+  const $=s=>document.getElementById(s);
+  const rnd32=()=>(Math.random()*4294967296)>>>0;
+  const pick=a=>a[(Math.random()*a.length)|0];
+  const shuffle=a=>{ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; };
+
+  // EUROPEAN CHARGES ONLY: prune the shared engine's few non-European devices
+  // (the Ottoman star-and-crescent, the Japanese clan mon) from the live-read pools.
+  {
+    const BLOCK=new Set(["starAndCrescent","takedaClanSymbol","tokikikyoClanSymbol","moriClanSymbol","chosokabeClanSymbol"]);
+    for(const pool of [typeof MOTIFS!=="undefined"&&MOTIFS, typeof FLAG_SIMPLE!=="undefined"&&FLAG_SIMPLE])
+      if(pool) for(const cat in pool) pool[cat]=pool[cat].filter(id=>!BLOCK.has(id));
+  }
+  // European heraldry + modern-Western flag styles only (see the studio): pin the
+  // palette heraldic and the composition to the heraldic/central family; noStain
+  // then holds every tincture to the six standard bunting bolts.
+  function europeanize(genes){
+    genes[IDX.paletteMode]=0.1;
+    if(genes[IDX.composition]>=0.83) genes[IDX.composition]=Math.random()*0.83;
+  }
+
+  const BANNER=0.28, HERALDIC=0.12, CENTRAL=0.36;
+  // ── PRE-HERALDIC PROTOS: the seed generation. Each is a simple flag archetype,
+  // an origin that predates (or sidesteps) formal coats of arms. ──
+  const ENVAX=["maritime","sylvan","arid","montane"], ETHAX=["martial","regal","devout","mercantile"];
+  function randomAxes(){ const a={}; a[pick(ENVAX)]=0.4+Math.random()*0.5; if(Math.random()<0.7) a[pick(ETHAX)]=0.4+Math.random()*0.5; return a; }
+  const PROTOS={
+    cross:  {mech:"a saint's cross adopted",   dress:G=>{G[IDX.composition]=HERALDIC; G[IDX.partition]=0.00; G[IDX.hueC]=0.80; G[IDX.motifCount]=0.03; G[IDX.arrange]=0.2; G[IDX.star]=0.2;}},
+    saltire:{mech:"a saint's saltire adopted", dress:G=>{G[IDX.composition]=HERALDIC; G[IDX.partition]=0.00; G[IDX.hueC]=0.86; G[IDX.motifCount]=0.03; G[IDX.arrange]=0.2; G[IDX.star]=0.2;}},
+    livery: {mech:"livery colours",            dress:G=>{G[IDX.composition]=HERALDIC; G[IDX.partition]=pick([0.05,0.16,0.66]); G[IDX.hueC]=0.30; G[IDX.motifCount]=0.03; G[IDX.arrange]=0.2;}},
+    battle: {mech:"battle colours (a legend)", dress:G=>{G[IDX.composition]=HERALDIC; G[IDX.partition]=pick([0.12,0.26]); G[IDX.hueC]=0.30; G[IDX.motifCount]=0.03; G[IDX.arrange]=0.2;}},
+    totem:  {mech:"a canting totem",           dress:G=>{G[IDX.composition]=CENTRAL; G[IDX.partition]=0.00; G[IDX.motifCount]=0.12; G[IDX.arrange]=0.66; G[IDX.motifScale]=0.66;}},
+    civic:  {mech:"a civic badge",             dress:G=>{G[IDX.composition]=HERALDIC; G[IDX.partition]=pick([0.12,0.26]); G[IDX.hueC]=0.30; G[IDX.motifCount]=0.12; G[IDX.arrange]=0.66; G[IDX.motifScale]=0.55;}},
+  };
+  const PROTO_KINDS=Object.keys(PROTOS);
+  function proto(kind){
+    const g=foundGenome(rnd32(), randomAxes());
+    g.genes[IDX.substrate]=BANNER; g.genes[IDX.border]=0.03;
+    PROTOS[kind].dress(g.genes);
+    g.noStain=true; g.gen=0; delete g.quarters; delete g.cadency;
+    europeanize(g.genes);
+    return g;
+  }
+  // ── the genome OPERATORS = the historical mechanisms ──
+  function stamp(g){ g.genes[IDX.substrate]=BANNER; g.noStain=true; europeanize(g.genes);
+    if(g.quarters) g.quarters.forEach(q=>{ q.noStain=true; europeanize(q.genes); }); return g; }
+  const drift     =g=>stamp(mutateGenome(g, rnd32(), 0.30));                 // restyle / re-tincture (the lineage continues)
+  const cadet     =g=>stamp(mutateGenome(g, rnd32(), 0.58));                 // a junior branch, differenced
+  const marshal   =(a,b)=>stamp(crossGenome(a, b, rnd32()));                 // two houses unite (two parents)
+  function diminish(g){ const c={genes:g.genes.slice(), seed:g.seed, gen:(g.gen||0)+1};
+    c.genes[IDX.composition]=HERALDIC; c.genes[IDX.motifCount]=0.03; c.genes[IDX.arrange]=0.2; delete c.quarters; return stamp(c); }
+  function revolution(g){ const c=mutateGenome(g, rnd32(), 0.72);
+    c.genes[IDX.motifCount]=0.03; c.genes[IDX.arrange]=0.2; delete c.quarters; return stamp(c); }
+
+  // ── population state ──
+  const nodes=[]; const byId=new Map(); let living=[]; let gen=0; let NEXT=0; let selected=null; let timer=null;
+  const CAP=8, MAXGEN=7;
+  function mk(genome, parents, mech, kind){ const n={id:NEXT++, genome, gen, parents:parents||[], mech, kind, dead:false, fresh:true, x:0, y:0}; nodes.push(n); byId.set(n.id,n); return n; }
+
+  function seedTree(){
+    if(timer){ clearInterval(timer); timer=null; }
+    nodes.length=0; byId.clear(); living.length=0; gen=0; NEXT=0; selected=null;
+    for(const k of shuffle(PROTO_KINDS.slice()).slice(0,5)) living.push(mk(proto(k), [], PROTOS[k].mech, k));
+    for(const n of nodes) n.fresh=false;
+    render(); showInspector(null); syncButtons();
+  }
+
+  function step(){
+    if(gen>=MAXGEN) return;
+    gen++;
+    for(const n of nodes) n.fresh=false;
+    const prev=living.slice();
+    // 1) deaths — conquest / extinction (never at the very start; keep a floor)
+    const survivors=prev.filter(p=> !(gen>=2 && prev.length>3 && Math.random()<0.14));
+    for(const p of prev) if(!survivors.includes(p)){ p.dead=true; }
+    living=[];
+    // 2) each surviving lineage CONTINUES (mostly a drift; sometimes diminished or re-cut)
+    for(const p of survivors){
+      const t=Math.random(); let cg, mech;
+      if(t<0.09){ cg=revolution(p.genome); mech="revolution — re-cut"; }
+      else if(t<0.24){ cg=diminish(p.genome); mech="diminished for the flag"; }
+      else { cg=drift(p.genome); mech="continues"; }
+      living.push(mk(cg, [p.id], mech, p.kind));
+      // 3) a CADET branch sometimes splits off the same parent
+      if(living.length<CAP && Math.random()<0.22)
+        living.push(mk(cadet(p.genome), [p.id], "cadet branch — differenced", p.kind));
+    }
+    // 4) MARSHALLING — pair two surviving lineages into a union child
+    let guard=0;
+    while(living.length<CAP && survivors.length>=2 && guard<2 && Math.random()<0.6){
+      guard++;
+      const a=pick(survivors), b=pick(survivors.filter(x=>x!==a));
+      if(a&&b) living.push(mk(marshal(a.genome,b.genome), [a.id,b.id], "marshalled at union", "union"));
+    }
+    // 5) a fresh PROTO occasionally enters (mostly early)
+    if(living.length<CAP && gen<=3 && Math.random()<0.35){ const k=pick(PROTO_KINDS); living.push(mk(proto(k), [], PROTOS[k].mech, k)); }
+    render(); if(selected) selectNode(selected, false); syncButtons();
+  }
+
+  // ── layout: generations top→bottom; each child near its parents, spread to avoid overlap ──
+  const FW=66, FH=42, ROWH=112, PADX=54, PADTOP=46;
+  function layout(){
+    const byGen={}; let maxGen=0;
+    for(const n of nodes){ (byGen[n.gen]=byGen[n.gen]||[]).push(n); if(n.gen>maxGen) maxGen=n.gen; }
+    let maxRow=1; for(let g=0;g<=maxGen;g++) maxRow=Math.max(maxRow,(byGen[g]||[]).length);
+    const W=Math.max(760, PADX*2 + maxRow*128);
+    for(let g=0; g<=maxGen; g++){
+      const row=byGen[g]||[];
+      for(const n of row){
+        const px=n.parents.map(pid=>byId.get(pid)).filter(Boolean).map(p=>p.x);
+        n.tx = px.length ? px.reduce((a,b)=>a+b,0)/px.length : W*(row.indexOf(n)+0.5)/row.length;
+      }
+      row.sort((a,b)=>a.tx-b.tx);
+      const inner=W-PADX*2;
+      for(let i=0;i<row.length;i++){ row[i].x = PADX + inner*(row.length===1?0.5:(i/(row.length-1))); row[i].y = PADTOP + g*ROWH; }
+    }
+    return {W, H:PADTOP + maxGen*ROWH + FH + 24, maxGen, byGen};
+  }
+  function ancestorsOf(n){ const set=new Set(); const stk=[n]; while(stk.length){ const c=stk.pop(); for(const pid of c.parents){ if(!set.has(pid)){ set.add(pid); const p=byId.get(pid); if(p) stk.push(p); } } } return set; }
+
+  function flagSVG(genome,x,y,w,h){ return emblemSVG(genome,w,h).replace('<svg ', `<svg x="${(x-w/2).toFixed(1)}" y="${(y-h/2).toFixed(1)}" width="${w}" height="${h}" `); }
+  // colour the EVENT, not the bloodline: gold only at an actual union (two parents),
+  // green only at a cadet split; plain descent stays grey.
+  function edgeClass(child){ return child.parents.length>1?"union" : (child.mech&&child.mech.startsWith("cadet")?"cadet":""); }
+
+  function render(){
+    const {W,H,maxGen,byGen}=layout();
+    const lit = selected ? ancestorsOf(selected) : null;
+    const isLit=id=>lit&&(lit.has(id)||id===selected.id);
+    let s=`<svg id="tree" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMin meet" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">`;
+    // generation labels
+    for(let g=0;g<=maxGen;g++){ const y=PADTOP+g*ROWH; s+=`<text class="genlab" x="8" y="${y-FH/2-6}">${g===0?"protos":"gen "+g}</text>`; }
+    // edges
+    for(const n of nodes){ for(const pid of n.parents){ const p=byId.get(pid); if(!p) continue;
+      const litE = lit && isLit(n.id) && isLit(pid);
+      const my=(p.y+FH/2), cy=(n.y-FH/2), mid=(my+cy)/2;
+      s+=`<path class="edge ${edgeClass(n)}${litE?" lit":""}" d="M${p.x.toFixed(1)} ${my.toFixed(1)} C ${p.x.toFixed(1)} ${mid.toFixed(1)}, ${n.x.toFixed(1)} ${mid.toFixed(1)}, ${n.x.toFixed(1)} ${cy.toFixed(1)}"/>`; } }
+    // nodes
+    for(const n of nodes){
+      const cls=["node"]; if(n===selected) cls.push("sel"); else if(lit&&isLit(n.id)) cls.push("lit"); else if(lit) cls.push("dim");
+      if(n.dead) cls.push("dead"); if(n.fresh) cls.push("fresh");
+      s+=`<g class="${cls.join(' ')}" data-id="${n.id}">`;
+      s+=flagSVG(n.genome, n.x, n.y, FW, FH);
+      s+=`<rect class="frame" x="${(n.x-FW/2-2).toFixed(1)}" y="${(n.y-FH/2-2).toFixed(1)}" width="${FW+4}" height="${FH+4}" rx="4"/>`;
+      if(n.dead){ const r=8, cx=n.x+FW/2-3, cy=n.y-FH/2-3;
+        s+=`<line class="deadx" x1="${cx-r/2}" y1="${cy-r/2}" x2="${cx+r/2}" y2="${cy+r/2}"/><line class="deadx" x1="${cx+r/2}" y1="${cy-r/2}" x2="${cx-r/2}" y2="${cy+r/2}"/>`; }
+      // annotation tag for EVENT births (skip plain continuations to cut clutter)
+      const ev=n.mech&&n.mech!=="continues";
+      if(ev){ const tcls=n.parents.length>1?"union":(n.mech.startsWith("cadet")?"cadet":"event");
+        s+=`<text class="tag ${tcls}" x="${n.x}" y="${(n.y+FH/2+12).toFixed(1)}" text-anchor="middle">${tagText(n.mech)}</text>`; }
+      s+=`<rect class="hit" x="${(n.x-FW/2-3).toFixed(1)}" y="${(n.y-FH/2-3).toFixed(1)}" width="${FW+6}" height="${FH+18}"/>`;
+      s+=`</g>`;
+    }
+    s+=`</svg>`;
+    $("treebox").innerHTML=s;
+    $("genLabel").textContent=`generation ${gen}`;
+  }
+  function tagText(m){ return m.replace(" — "," · ").replace("marshalled at union","marshalled").replace("cadet branch · differenced","cadet").replace("diminished for the flag","diminished").replace("revolution · re-cut","revolution"); }
+
+  // ── inspector ──
+  function selectNode(n, scroll){ selected=n; render(); showInspector(n); }
+  function showInspector(n){
+    if(!n){ $("inspEmpty").style.display=""; $("inspBody").style.display="none"; return; }
+    $("inspEmpty").style.display="none"; $("inspBody").style.display="";
+    $("inspFlag").innerHTML=emblemSVG(n.genome, 260, 168);
+    $("inspMech").textContent = n.mech==="continues" ? "the lineage continues" : n.mech;
+    $("inspTitle").textContent = n.parents.length===0 ? "A founding proto"
+      : n.parents.length>1 ? "A union flag"
+      : n.mech==="cadet branch — differenced" ? "A cadet branch"
+      : n.mech==="revolution — re-cut" ? "A re-cut flag"
+      : n.mech==="diminished for the flag" ? "A diminished flag" : "A descendant flag";
+    $("inspBlazon").textContent = blazonGenome(n.genome);
+    // line of descent: walk the primary parent chain to a proto
+    const chain=[]; let cur=n, guard=0;
+    while(cur && guard++<40){ chain.push(cur); if(!cur.parents.length) break; cur=byId.get(cur.parents[0]); }
+    chain.reverse();
+    $("inspAnc").innerHTML = chain.map((c,i)=>`<li class="${c===n?'cur':''}"><b>${c.gen===0?'proto':'gen '+c.gen}</b> — ${c.mech==='continues'?'continues':escapeHtml(c.mech)}${c.parents.length>1?' <span style="color:var(--or)">(+ a second line)</span>':''}</li>`).join("");
+  }
+  const escapeHtml=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+  // ── wiring ──
+  $("treebox").addEventListener("click",e=>{ const g=e.target.closest(".node"); if(!g) return; const n=byId.get(+g.dataset.id); if(n) selectNode(n,true); });
+  $("newBtn").addEventListener("click",seedTree);
+  $("stepBtn").addEventListener("click",()=>{ if(gen<MAXGEN) step(); });
+  $("playBtn").addEventListener("click",()=>{
+    if(timer){ clearInterval(timer); timer=null; syncButtons(); return; }
+    if(gen>=MAXGEN) seedTree();
+    timer=setInterval(()=>{ if(gen>=MAXGEN){ clearInterval(timer); timer=null; syncButtons(); return; } step(); }, 900);
+    syncButtons();
+  });
+  function syncButtons(){ $("playBtn").textContent = timer?"❚❚ Pause":"Grow ▸▸"; $("stepBtn").disabled = gen>=MAXGEN; }
+  $("themeBtn").addEventListener("click",()=>{ const cur=document.documentElement.getAttribute("data-theme"); const dark=cur?cur==="dark":matchMedia("(prefers-color-scheme:dark)").matches; document.documentElement.setAttribute("data-theme",dark?"light":"dark"); if(nodes.length) render(); });
+
+  seedTree();
+})();
+</script>
