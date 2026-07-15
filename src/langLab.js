@@ -13,6 +13,7 @@
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf, colorTermsOf, kinshipOf, dialectsOf, cultureOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
 import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
+import { scorePlan as tractScorePlan, scoreClause as tractScoreClause, renderScore as tractRender } from "./sim/vocalTract.js";
 import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME, registerOf, highRegister, registerWords } from "./sim/languageScript.js";
 import { foundHistory, stepHistory, ancestryOf } from "./sim/languageHistory.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
@@ -29,7 +30,7 @@ import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VE
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
 const S = {
-  seed: 8817, preset: "random", divergence: 0.5, search: "", noun: STONE, verb: VERBS[2],
+  seed: 8817, preset: "random", divergence: 0.5, search: "", voice: "tract", noun: STONE, verb: VERBS[2],
   sent: { type: "plain", s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl", pred: "adj" },
   hist: { seed: 9917, eras: 14, english: true, russian: true, mandarin: true, random: 3 },
 };
@@ -95,6 +96,36 @@ function ac() {
   if (AC.state === "suspended") AC.resume();
   return AC;
 }
+// the glottal source: a Rosenberg glottal-flow pulse's DERIVATIVE (the actual
+// acoustic source at the folds) as a PeriodicWave, replacing the buzzy
+// sawtooth. Same harmonic richness (it still excites every formant) but the
+// natural pulse shape drops the sawtooth's harsh edge — the single highest-
+// leverage de-buzz for a source-filter synth. Cached per context (+ a breathier
+// wave, more spectral tilt, for breathy phonation).
+let GLOTTAL_WAVE = null, GLOTTAL_WAVE_BREATHY = null;
+function glottalWave(ctx, breathy) {
+  if (breathy && GLOTTAL_WAVE_BREATHY) return GLOTTAL_WAVE_BREATHY;
+  if (!breathy && GLOTTAL_WAVE) return GLOTTAL_WAVE;
+  const M = 2048, K = 40;
+  const Tp = breathy ? 0.44 : 0.38, Te = breathy ? 0.72 : 0.60;   // open-phase timing (breathy = longer)
+  const flow = new Float32Array(M);
+  for (let i = 0; i < M; i++) {
+    const t = i / M;
+    flow[i] = t < Tp ? 0.5 * (1 - Math.cos(Math.PI * t / Tp))
+      : t < Te ? Math.cos(Math.PI * (t - Tp) / (2 * (Te - Tp))) : 0;
+  }
+  const deriv = new Float32Array(M);                              // flow derivative = the source
+  for (let i = 0; i < M; i++) deriv[i] = flow[i] - flow[(i - 1 + M) % M];
+  const real = new Float32Array(K + 1), imag = new Float32Array(K + 1);
+  for (let k = 1; k <= K; k++) {                                  // one-period DFT → harmonic coefficients
+    let re = 0, im = 0;
+    for (let i = 0; i < M; i++) { const a = 2 * Math.PI * k * i / M; re += deriv[i] * Math.cos(a); im -= deriv[i] * Math.sin(a); }
+    real[k] = 2 * re / M; imag[k] = 2 * im / M;
+  }
+  const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  if (breathy) GLOTTAL_WAVE_BREATHY = wave; else GLOTTAL_WAVE = wave;
+  return wave;
+}
 const VOWEL_F = (v) => {
   const F1 = [300, 480, 720][v.h] || 480;
   let F2 = v.b === 0 ? 2150 - v.h * 150 : v.b === 1 ? 1400 : 950 + v.h * 100;
@@ -121,7 +152,7 @@ function vNoise(ctx, out, t, dur, freq, q, gain) {
 // a voiced resonant segment: sawtooth source through three parallel formant
 // filters; frs may be [from, to] pairs for a diphthong/glide transition
 function vVoiced(ctx, out, t, dur, frs, gains, f0pts, opts = {}) {
-  const osc = ctx.createOscillator(); osc.type = "sawtooth";
+  const osc = ctx.createOscillator(); osc.setPeriodicWave(glottalWave(ctx, !!opts.breathy));
   const n = f0pts.length;
   f0pts.forEach((k, i) => { const tt = t + (dur * i) / Math.max(1, n - 1); i === 0 ? osc.frequency.setValueAtTime(F0 * k, tt) : osc.frequency.linearRampToValueAtTime(F0 * k, tt); });
   const seg = ctx.createGain(); seg.gain.setValueAtTime(0, t);
@@ -238,7 +269,7 @@ function scheduleWord(ctx, master, plan, t, mod = {}) {
       // PHONATION (phase 4): creaky voice drops the pitch and pulses it;
       // breathy voice mixes an aspiration wash over the vowel
       const vf0 = v0.ph === 2 ? f0pts.map(k => k * 0.72) : f0pts;
-      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], vf0, { nasal: !!v0.n, trill: v0.ph === 2 ? 42 : 0 });
+      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], vf0, { nasal: !!v0.n, trill: v0.ph === 2 ? 42 : 0, breathy: v0.ph === 1 });
       if (v0.ph === 1) vNoise(ctx, master, t, dur, 1500, 0.35, 0.12);
       t += dur + 0.004;
     }
@@ -259,17 +290,41 @@ function mkMaster(ctx) {
   master.connect(soften); soften.connect(ctx.destination);
   return master;
 }
-function speakPlan(plan) {
+function speakPlanFormant(plan) {
   const ctx = ac();
   scheduleWord(ctx, mkMaster(ctx), plan, ctx.currentTime + 0.06);
 }
+// ── the articulatory voice: render the whole utterance offline into a buffer
+// (src/sim/vocalTract.js is pure, so the identical DSP runs under Node), then
+// play it. The buffer is pre-normalized, so it goes through a light gain only.
+function playTractBuffer(ctx, data) {
+  const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
+  buf.getChannelData(0).set(data);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const g = ctx.createGain(); g.gain.value = 0.9;
+  const soften = ctx.createBiquadFilter(); soften.type = "lowpass"; soften.frequency.value = 8000;
+  src.connect(g); g.connect(soften); soften.connect(ctx.destination);
+  src.start(ctx.currentTime + 0.02);
+}
+function speakPlanTract(plan) {
+  const ctx = ac();
+  playTractBuffer(ctx, tractRender(tractScorePlan(plan), ctx.sampleRate));
+}
+function speakClauseTract(groups, contour) {
+  const ctx = ac();
+  playTractBuffer(ctx, tractRender(tractScoreClause(groups, contour), ctx.sampleRate));
+}
+// engine dispatch: the Sound card's toggle picks the articulatory tract (the
+// vocal-tract model) or the formant sketch; both read the SAME phonetic plans
+function speakPlan(plan) { S.voice === "formant" ? speakPlanFormant(plan) : speakPlanTract(plan); }
 // a whole sentence: word plans in sequence, grouped into intonation
 // phrases (one per clause) — pitch declines across the whole utterance,
 // each NON-final clause ends on a continuation rise with a comma pause
 // (the near-universal spoken comma), and only the final clause carries
 // the sentence's boundary tone (fall for statements/commands, rise for
 // questions)
-function speakClause(groups, contour = "fall") {
+function speakClause(groups, contour = "fall") { S.voice === "formant" ? speakClauseFormant(groups, contour) : speakClauseTract(groups, contour); }
+function speakClauseFormant(groups, contour = "fall") {
   const ctx = ac();
   const master = mkMaster(ctx);
   let t = ctx.currentTime + 0.06;
@@ -401,8 +456,11 @@ function soundHTML(l) {
     const form = nativeStemOf(l, cid);
     addRow(glossOf(cid), renderWord(form, prof), form);
   }
-  return `<section class="card"><h2>Sound <span class="count">— IPA &amp; a rough voice</span></h2>
-    <p class="note">The same feature bundles the phonology stores, rendered two more ways: IPA for the linguist, and a small formant synthesizer for the ear — a sketch of the sound, not a native speaker, but the clusters, codas, vowel qualities and ${prof.tone ? "tone melodies (matching the written marks exactly)" : "stress placement"} are the real ones. Click a phoneme to hear it; ▶ speaks a word. Spelling and speech may honestly disagree — the romanization drops what convention drops (initial glottal stops, collapsed digraphs); the IPA keeps it.</p>
+  return `<section class="card"><h2>Sound <span class="count">— IPA &amp; a voice</span></h2>
+    <p class="note">The same feature bundles the phonology stores, rendered two more ways: IPA for the linguist, and a synthesizer for the ear. Two voices are on offer: an <b>articulatory vocal tract</b> — a Kelly–Lochbaum waveguide where you set a tongue and a constriction and the formants fall out of the tube's shape, so clicks, ejectives, nasals and breathy/creaky voice all emerge from the mechanism — and the older <b>formant sketch</b> (a buzz through three resonators). Either way the clusters, codas, vowel qualities and ${prof.tone ? "tone melodies (matching the written marks exactly)" : "stress placement"} are the real ones. Click a phoneme to hear it; ▶ speaks a word. Spelling and speech may honestly disagree — the romanization drops what convention drops (initial glottal stops, collapsed digraphs); the IPA keeps it.</p>
+    <p class="cells"><span class="lbl">voice</span>
+      <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice !== "formant" ? " checked" : ""}/> articulatory tract</label>
+      <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice === "formant" ? " checked" : ""}/> formant sketch</label></p>
     <h3>Phonemes</h3>
     <p class="cells">${cChips}</p>
     <p class="cells">${vChips}</p>
@@ -1454,6 +1512,8 @@ function render() {
     render();
   };
   if (hv("histStep")) hv("histStep").onclick = () => { readHist(); stepHistory(HIST); render(); };
+  // voice engine toggle: read at play time, so no re-render needed
+  document.querySelectorAll('input[name="voiceEngine"]').forEach(r => { r.onchange = (e) => { S.voice = e.target.value; }; });
   const ds = document.getElementById("dictSearch");
   ds.oninput = (e) => {
     S.search = e.target.value;
@@ -1540,6 +1600,8 @@ button.spk:hover{filter:none;border-color:var(--accent);color:var(--accent)}
 button.spk.play{border-radius:999px;line-height:1.2;font-size:.72rem;color:var(--accent)}
 td.spkw{cursor:pointer}
 td.spkw:hover{color:var(--accent)}
+label.vopt{display:inline-flex;align-items:center;gap:.3rem;background:var(--chipbg);border-radius:999px;padding:.1rem .6rem;margin-right:.3rem;font-size:.82rem;cursor:pointer}
+label.vopt input{accent-color:var(--accent);cursor:pointer}
 .ipa{font-size:.78rem;white-space:nowrap;font-style:normal}
 .glyph{color:var(--ink);display:block}
 .glyphcell{display:inline-flex;flex-direction:column;align-items:center;gap:.05rem;background:var(--chipbg);border-radius:4px;padding:.3rem .45rem .15rem;margin:0 .2rem .25rem 0}
