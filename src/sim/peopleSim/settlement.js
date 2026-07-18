@@ -2170,7 +2170,7 @@ function updateFood(world, s) {
   // then shifts as development does. agri^POW keeps the lift back-loaded so the modern
   // BOOM still rides agriculture's climb to the top of the tree.
   if (T.ANCHOR_POP > 0) {
-    s._eraProd = world._eraProd || 1;
+    s._eraProd = world._eraProd || 1; s._indCap = 1;   // anchor drives magnitude; no separate field-capacity break
   } else {
     const agri = (s.knowledge && s.knowledge.agriculture) || 0;
     // Density requires being in a DEVELOPED STATE, not just personal organisation: read the
@@ -2179,10 +2179,10 @@ function updateFood(world, s) {
     // a state. (A capital reads its own org, since it IS its country's capital.) This is what
     // keeps significant/dense settlements always part of a nation — undeveloped, stateless
     // ground can't bloom on fertility alone, however rich it is.
-    let devOrg = 0;
+    let devOrg = 0, capMetal = 0;
     if (s.countryId >= 0 && world.countries) {
       const c = world.countries.get(s.countryId);
-      if (c && c.capital && c.capital.knowledge) devOrg = c.capital.knowledge.organization;
+      if (c && c.capital && c.capital.knowledge) { devOrg = c.capital.knowledge.organization; capMetal = c.capital.knowledge.metallurgy || 0; }
     }
     const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
     // BASE is a uniform floor (climate-NEUTRAL): it carries the ORIGINAL cradle-correct
@@ -2193,6 +2193,16 @@ function updateFood(world, s) {
     // adds the DEVELOPMENT-driven bloom on top, so the cradles still out-grow the rest as
     // they organise, but the world isn't inert while it gets there.
     s._eraProd = T.ERA_PROD_BASE + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
+    // Industrial carrying-capacity break (T.INDUSTRIAL_CAP → popField.capField). The field
+    // population governor never received the modern productivity boom the food model did
+    // (capField caps at the pre-industrial ~3.3×), so under ONE_POP the modern population
+    // under-produces. Lift the field capacity of this realm's worked land once its CAPITAL
+    // crosses the industrial threshold — org AND metallurgy past ~0.78, the SAME gate as
+    // AGRI_INDUSTRIAL — so a modern state's land feeds a modern population. Emergent (reached
+    // industrial development, never a clock); stateless land keeps indCap 1 (subsistence);
+    // byte-identical at INDUSTRIAL_CAP=0.
+    const indGate = Math.min(1, Math.max(0, (devOrg - 0.78) / 0.18)) * Math.min(1, Math.max(0, (capMetal - 0.78) / 0.18));
+    s._indCap = 1 + T.INDUSTRIAL_CAP * indGate;
   }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
   // ── Animal husbandry: livestock secondary products ──────────────────

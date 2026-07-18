@@ -291,20 +291,28 @@ export function stepPopField(world, sub = 1) {
   //    the civilized cores support dense settlement while the deep frontier
   //    stays a thin subsistence scatter. Lever off: the global scalar, exactly.
   const accessDev = ACCESS_DEV0 + ACCESS_DEVK * leadAgri;   // transport premium grows with tech (emergent)
+  // Industrial carrying-capacity break (T.INDUSTRIAL_CAP): a worked tile's crop capacity is
+  // lifted by its owning realm's industrial development (s._indCap, set in updateSettlement) —
+  // the modern productivity boom the food model had but the field never received. Off ⇒ no
+  // lookup, byte-identical; frontier / stateless tiles (owner < 0) keep indMul 1 (subsistence).
+  const indOn = T.INDUSTRIAL_CAP > 0;
+  const indOwner = indOn ? world._territoryOwner : null, indById = indOn ? world._byId : null;
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
     const access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
     const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i]) : 1;
+    let indMul = 1;
+    if (indOn) { const sid = indOwner[i]; if (sid >= 0) { const s2 = indById.get(sid); if (s2 && s2._indCap > 1) indMul = s2._indCap; } }
     if (devF) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      const crop = fert[i] * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul;
+      const crop = fert[i] * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul;   // ×indMul: industrial agronomy break
       const range = pasture[i];   // the herd or the plough — whichever feeds this ground better (openness already prices relief)
       cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
-      cap[i] = fert[i] * capPerFert * dev * reach * reliefMul;
+      cap[i] = fert[i] * capPerFert * dev * reach * reliefMul * indMul;
     }
   }
 
