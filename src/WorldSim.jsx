@@ -3300,6 +3300,11 @@ const renderInspect=()=>{
   const isRegion=(s.tier|0)===0;
   const nextThr=isRegion?0:TIER_THRESHOLD[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
+  // s.people is the WHOLE PROVINCE (urban core + rural hinterland, summed over the
+  // settlement's entire catchment). For an urban node, headline the CITY CORE
+  // (_urbanPop) — the number a reader means by "the city" — and show the province
+  // as context. Falls back to the province total if the core isn't serialized yet.
+  const hasCore=!isRegion && s._urbanPop!=null && s._urbanPop>0;
   const k=s.knowledge||{};
   const tech=techState(k);                 // Civ-like discovery layer derived from knowledge (tech.js)
   const techList=TECHS.filter((t,i)=>tech.have[i]===1);
@@ -3634,9 +3639,15 @@ const renderInspect=()=>{
       {/* ── At-a-glance summary (always visible) ── */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
         <div>
-          <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s.people)}</span>
-          {K?<span className="au-fade" style={{fontSize:10}}> / {fmtPeople(K)}</span>:null}
-          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>people</span>
+          {hasCore?(<>
+            <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s._urbanPop)}</span>
+            <span className="au-fade" style={{fontSize:9,marginLeft:3}}>in the city</span>
+            <span className="au-fade" style={{fontSize:10,marginLeft:6}}>· {fmtPeople(s.people)} province</span>
+          </>):(<>
+            <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s.people)}</span>
+            {K?<span className="au-fade" style={{fontSize:10}}> / {fmtPeople(K)}</span>:null}
+            <span className="au-fade" style={{fontSize:9,marginLeft:3}}>people</span>
+          </>)}
         </div>
         <span style={{fontSize:9,fontWeight:600,color:"#fff",background:statusColor,borderRadius:8,padding:"1px 8px",textTransform:"uppercase",letterSpacing:0.3}}>{status}</span>
       </div>
@@ -4025,7 +4036,7 @@ const renderCharts=()=>{
             </div>))}
         </div>;})()}
       <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
-      <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
+      <MiniChart data={H} get={d=>d.gold}           label="Gold by weight (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
       <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
       <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
       <MiniChart data={H} get={d=>(d.towns||0)+d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
@@ -4334,7 +4345,7 @@ return(
     whole world holds a thin subsistence scatter (as it truly did by 3000 BC);
     that haze stays faint, and the ramp belongs to where people CONCENTRATE —
     the farmed countryside and the great basins. National power, manpower and
-    migration all read this field{peopleRef.current&&peopleRef.current._popMax?` · densest tile ≈ ${Math.round(peopleRef.current._popMax).toLocaleString()} people`:""}.
+    migration all read this field{peopleRef.current&&peopleRef.current._popMax?` · densest tile ≈ ${fmtPeople(peopleRef.current._popMax)} people`:""}.
   </div>
 </div>}
 

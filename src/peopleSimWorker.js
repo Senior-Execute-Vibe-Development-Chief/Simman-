@@ -284,6 +284,10 @@ function packSelected(s) {
     _minedRate: s._minedRate, _terrTiles: s._terrTiles, _terrFertSum: s._terrFertSum,
     waterAccess: s.waterAccess, _fishYield: s._fishYield, _pastoral: s._pastoral,
     _foodSupply: s._foodSupply, _foodDemand: s._foodDemand, _urbanFactor: s._urbanFactor,
+    // CITY CORE vs whole PROVINCE: s.people bundles the rural hinterland (it's the
+    // sum over the settlement's entire catchment). _urbanPop is the people in the
+    // urban core itself — the number the card should headline as "the city".
+    _urbanPop: s._urbanPop, _ruralPop: s._ruralPop,
     food: s.food, _foodImportRate: s._foodImportRate, _civFoodDemand: s._civFoodDemand,
     _luxSupply: s._luxSupply, _luxDemand: s._luxDemand,
     army: s.army, loyalty: s.loyalty, _adminLoad: s._adminLoad, _ambition: s._ambition,
@@ -564,7 +568,9 @@ function buildSnapshot() {
     owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim,
     fieldDom, fieldSec, fieldLayer,   // per-tile identity field for the active culture/faith/language lens
     loyal, loyalHome,                 // loyalty lens: attachment heat + the ground's remembered nation
-    popDens, popMax: popDens ? popMax : undefined,   // population lens: log-packed people-on-land
+    // popMax → CENSUS people on the densest tile (× _onePopScale): the raw field
+    // max is field units, not people; the legend then ×POP_SCALE via fmtPeople.
+    popDens, popMax: popDens ? popMax * (world._onePopScale || 1) : undefined,   // population lens: log-packed people-on-land
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
