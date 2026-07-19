@@ -651,7 +651,7 @@ export function deriveOnePop(world) {
       // (βeff=1 under γ: the target is the RAW economy — the density graveyard,
       // not this exponent, does the compressing).
       const share = Math.pow(kBeyond, betaEff) / sumKb;
-      uTarget = T.URBAN_AGGLOM * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core
+      uTarget = T.URBAN_AGGLOM * (1 + T.URBAN_IND * (s._indGate || 0)) * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core; ×(1+URBAN_IND·indGate) = the emergent industrial urban transition
       // A city lives WITHIN its hinterland: cap the target at a share of the
       // region's own people. Under β-share this is the binding limiter (and, for
       // over-concentrated seeds, a UNIFORMISING one — the whole top set pins to

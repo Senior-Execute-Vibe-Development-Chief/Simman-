@@ -2170,7 +2170,7 @@ function updateFood(world, s) {
   // then shifts as development does. agri^POW keeps the lift back-loaded so the modern
   // BOOM still rides agriculture's climb to the top of the tree.
   if (T.ANCHOR_POP > 0) {
-    s._eraProd = world._eraProd || 1; s._indCap = 1;   // anchor drives magnitude; no separate field-capacity break
+    s._eraProd = world._eraProd || 1; s._indCap = 1; s._indGate = 0;   // anchor drives magnitude; no separate field-capacity break
   } else {
     const agri = (s.knowledge && s.knowledge.agriculture) || 0;
     // Density requires being in a DEVELOPED STATE, not just personal organisation: read the
@@ -2201,8 +2201,8 @@ function updateFood(world, s) {
     // AGRI_INDUSTRIAL — so a modern state's land feeds a modern population. Emergent (reached
     // industrial development, never a clock); stateless land keeps indCap 1 (subsistence);
     // byte-identical at INDUSTRIAL_CAP=0.
-    const indGate = Math.min(1, Math.max(0, (devOrg - 0.78) / 0.18)) * Math.min(1, Math.max(0, (capMetal - 0.78) / 0.18));
-    s._indCap = 1 + T.INDUSTRIAL_CAP * indGate;
+    s._indGate = Math.min(1, Math.max(0, (devOrg - 0.78) / 0.18)) * Math.min(1, Math.max(0, (capMetal - 0.78) / 0.18));   // reached-industrial-development gate (0..1), reused by the urban transition
+    s._indCap = 1 + T.INDUSTRIAL_CAP * s._indGate;
   }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
   // ── Animal husbandry: livestock secondary products ──────────────────
