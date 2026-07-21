@@ -8,3 +8,6 @@ tools/flag-rating.html
 tools/visual-diag*.mjs
 tools/visual-gallery.mjs
 scratch-*.png
+
+# transient Claude Code agent worktrees (isolated subagent runs)
+.claude/worktrees/
