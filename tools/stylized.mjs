@@ -438,7 +438,12 @@ const st = peopleSimStats(world);
       for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
       return den > 0 ? num / den : 0;
     })();
-    score("culture count ~ area^k, k<1", slope.toFixed(2), slope > 0 && slope < 1.3, false, "diversity grows with territory, sublinearly");
+    // Band tightened 1.3 → 1.05: the old upper bound admitted k∈[1,1.3) — superlinear,
+    // contradicting the "k<1" claim it prints. Measured slope 0.53–0.83 across the three
+    // canon seeds (21k), so 1.05 enforces sublinearity with margin. (Caveat: this fits a
+    // TEMPORAL accumulation as area fills, a proxy for the cross-sectional area law; the
+    // band change fixes the superlinear-admittance, not that deeper proxy nuance.)
+    score("culture count ~ area^k, k<1", slope.toFixed(2), slope > 0 && slope < 1.05, false, "diversity grows with territory, sublinearly (k<1)");
   } else score("culture scaling", "n/a", true, false, "not enough growth samples");
 }
 
@@ -484,11 +489,13 @@ const st = peopleSimStats(world);
       if (coast || (riverMag && riverMag[ti] >= 1)) waterT++;
     }
     const enrich = (onWater / setts.length) / Math.max(1e-6, waterT / Math.max(1, landT));
-    // Same-footprint null (unscored context): the numerator (s.waterAccess) detects
-    // water over a 3×3 (computeWaterAccess) while this denominator base-rate is
-    // per-tile — an asymmetry that inflates enrichment above 1.0 even for random
-    // siting. Re-score the numerator's OWN detector over every land tile for an
-    // honest null, so the doc can see how much of the 1.7 is real vs footprint.
+    // SAME-FOOTPRINT null (this is the SCORED statistic): the numerator
+    // (s.waterAccess) detects water over a 3×3 (computeWaterAccess), so the
+    // denominator base-rate must use the SAME detector over every land tile. The
+    // old per-tile base-rate was too low and inflated enrichment above 1.0 even for
+    // random siting (raw `enrich` reads ~1.70; the honest value is ~1.36, stable
+    // across all three canon seeds). A world with NO water preference reads ~1.0
+    // under this null; real pre-modern siting reads well above it.
     let sfWater = 0;
     { const coast = world.coast;
       for (let ti = 0; ti < tw * th; ti++) {
@@ -502,8 +509,12 @@ const st = peopleSimStats(world);
       }
     }
     const enrichSF = (onWater / setts.length) / Math.max(1e-6, sfWater / Math.max(1, landT));
-    score("settlements cluster on water (enrichment)", enrich.toFixed(2), enrich >= 1.3, false,
-      `${(onWater / setts.length * 100).toFixed(0)}% on water vs ${(waterT / Math.max(1, landT) * 100).toFixed(0)}% of land; SAME-footprint null ${(sfWater / Math.max(1, landT) * 100).toFixed(0)}% → honest enrich ${enrichSF.toFixed(2)} (NN-CV ${cv.toFixed(2)}, both unscored)`);
+    // Bar 1.15: measured 1.36–1.37 across all three canon seeds (real clustering),
+    // with headroom above the ~1.0 a no-preference world would read. Was `enrich >=
+    // 1.3` on the footprint-inflated raw metric, which sat below plausible random-
+    // siting enrichment — a world with no water preference could pass it.
+    score("settlements cluster on water (same-footprint enrichment)", enrichSF.toFixed(2), enrichSF >= 1.15, false,
+      `${(onWater / setts.length * 100).toFixed(0)}% on water vs same-footprint null ${(sfWater / Math.max(1, landT) * 100).toFixed(0)}% (raw per-tile null gave ${enrich.toFixed(2)}; NN-CV ${cv.toFixed(2)})`);
   } else score("clustering", "n/a", true, false, "too few settlements");
 }
 

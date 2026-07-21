@@ -17,10 +17,12 @@ verified first-hand against the code** before it was trusted or acted on.
 **Headline.** The alarms were real bugs — in the *measurement*, not the world.
 The single worst one (the "400M city") is a whole PROVINCE's population printed
 under a "metropolis" label; the actual city core is only the urban share of that
-(~8–13%, so several-fold smaller) and was never shown at all. Eleven clear-cut
-defects are fixed this pass (all read-side — `npm test` is byte-identical); six
-more are reported with precise fixes but held for a decision (three of them
-re-draw a validation band, which wants the multi-seed battery and a human's eye).
+(~8–13%, so several-fold smaller) and was never shown at all. Thirteen clear-cut
+defects are fixed this pass (all in measurement/validation code, not sim
+mechanics — `npm test` is byte-identical and `npm run validate` stays green across
+all three canon seeds); four more are reported with precise fixes but held for a
+decision (one re-draws the deliberately-discussed Zipf soft-warning; the rest are
+further UI honesty, lower value than the card fix).
 
 ---
 
@@ -132,18 +134,16 @@ battery). Every finding was confirmed first-hand against the cited lines.
   province populations (core + countryside) of tier≥2 settlements — counting the
   countryside as urban. *Fix:* numerator is `Σ _urbanPop`.
 
-- **V2 [REPORTED] — the water-clustering null is miscalibrated; the gate can pass
+- **V2 [FIXED] — the water-clustering null was miscalibrated; the gate could pass
   random siting.** The numerator (`s.waterAccess > 0.05`) detects water over a
-  **3×3** neighborhood (`computeWaterAccess`), but the denominator base-rate is
+  **3×3** neighborhood (`computeWaterAccess`), but the denominator base-rate was
   **per-tile** — a footprint asymmetry that lifts enrichment above 1.0 even with
-  no siting preference, and the bar is only 1.3. *Recommended fix:* score the
-  numerator's own detector over all land tiles (a same-footprint null — now
-  printed as unscored context). **Measured (seed 8817, 21k):** the reported
-  enrichment is **1.69**, but the honest same-footprint enrichment is **1.36** —
-  the clustering is *real* (1.36 > 1.0; the footprint inflated it by ~0.33), yet
-  1.36 sits only just above the 1.3 bar. A proper fix must swap in the
-  same-footprint null **and** lower the bar (~1.15 for margin), tuned on the
-  multi-seed battery. Held because it re-draws the band.
+  no siting preference, and the bar was only 1.3 (below plausible random-siting
+  enrichment). *Fix:* score the numerator's own detector over all land tiles (a
+  same-footprint null), bar 1.15. **Cross-seed (8817/4242/777, 21k):** the honest
+  same-footprint enrichment is **1.36 / 1.36 / 1.37** — remarkably stable, real
+  clustering, with headroom over the ~1.0 a no-preference world reads; the raw
+  per-tile null had inflated it to ~1.70. The raw value stays printed as context.
 
 ### MAJOR
 
@@ -173,15 +173,21 @@ battery). Every finding was confirmed first-hand against the cited lines.
   **attenuated shallow** under scatter; true G-I is the transposed regression
   reporting `−α̂`. The entity (urban cores) and band are right, but the estimator
   biases toward the −0.70 fail line — exactly where the known soft-warning sits.
-  *Held:* switching estimators re-draws the band; needs the multi-seed recalibration
-  (backlog #12), an owner call — not a silent change to what the suite certifies.
+  **Cross-seed (21k):** −0.64 (16 cities) / −0.69 (18 cities) / n/a (11 cities <
+  the 15 min) — the attenuation pattern, both landed seeds just shy of the −0.70
+  pass line. *Held:* switching estimators re-draws the band and touches the one
+  soft-warning the project deliberately chose not to close with a fitted constant
+  (backlog #8); it wants a proper G-I-vs-current measurement across seeds and your
+  sign-off — not a silent change to what the suite certifies.
 
-- **V3 [REPORTED] — "culture count ~ area^k, k<1" admits superlinear.** The band
-  is `slope < 1.3` (`stylized.mjs:423`) — a slope in [1.0, 1.3) passes while
-  contradicting the stated sublinearity. Secondary: it fits a *temporal*
-  accumulation, a proxy for a cross-sectional area law. *Recommended:* tighten to
-  ~1.0 — the measured slope is **0.83** (seed 8817, 21k), comfortably below 1, so
-  the tighter band passes here; held pending the same check across seeds.
+- **V3 [FIXED] — "culture count ~ area^k, k<1" admitted superlinear.** The band
+  was `slope < 1.3` (`stylized.mjs:423`) — a slope in [1.0, 1.3) passed while
+  contradicting the stated sublinearity. *Fix:* tightened to `< 1.05`.
+  **Cross-seed (8817/4242/777, 21k):** the measured slope is **0.83 / 0.74 / 0.53**
+  — all comfortably sublinear, so the tighter band passes with margin while now
+  actually enforcing k<1. (Secondary, *not* addressed: it fits a *temporal*
+  accumulation as area fills — a proxy for the cross-sectional area law; the band
+  change resolves the superlinear-admittance, not that deeper metric nuance.)
 
 - **M1 [REPORTED] — leaderboard "Settlement → Population" shows province pop.**
   Same province-as-city class as C1 (`WorldSim.jsx:3901`), but under a generic
@@ -201,7 +207,7 @@ battery). Every finding was confirmed first-hand against the cited lines.
   relabeled "by weight." (`WorldSim.jsx`)
 - **m2 [REPORTED]** — per-settlement rows in the country/peoples lists print
   province pop (same class as C1, compact lists).
-- **war-rate normalization [REPORTED]** — cumulative `wars.length` ÷ end-of-run
+- **war-rate normalization [noted]** — cumulative `wars.length` ÷ end-of-run
   `st.countries` snapshot (`stylized.mjs:253`); 400×-wide band makes verdict
   impact ≈ nil.
 - **`pop` vs `people` [noted]** — `earthFullRecord` records both `st.totalPeople`
@@ -228,23 +234,32 @@ and Gold mass re-expressions (disclosed in the export header). `earthFullRecord`
 
 ## 4. Disposition
 
-**Fixed (11, all read-side — `npm test` byte-identical):** C1, C2, V1, D1, D2 ·
-D3, D4, D5, D6, V4 · m1.
+**Fixed (13, all in measurement/validation code, not sim mechanics):** C1, C2,
+V1, D1, D2 · D3, D4, D5, D6, V4 · V2, V3, m1. The four gate fixes (V1, V4, V2, V3)
+were each **validated across all three canon seeds** (8817/4242/777) before
+landing — not tuned to one.
 
-**Reported (fix recommended, held for a decision):** V2, V3, V5 (each re-draws a
-validation band — best done together through the multi-seed battery,
-`STYLIZED_SEEDS="8817,4242,777"`, per backlog #12) · M1, M2, m2 (further UI
-honesty, lower value than C1).
+**Reported (fix recommended, held for a decision):** V5 (re-draws the
+deliberately-discussed Zipf soft-warning — wants a proper G-I-vs-current
+measurement across seeds and your sign-off, per backlog #8) · M1, M2, m2 (further
+UI honesty, lower value than the C1 card fix).
 
-The reported gate items are deliberately **not** silently changed: a validation
-band is what the suite certifies as "history-shaped," and re-drawing one on a
-single seed is the exact outcome-fitting the cardinal rules forbid. They want the
-seed battery and a human's eye, not a quiet edit.
+V5 is deliberately **not** silently changed: a validation band is what the suite
+certifies as "history-shaped," and swapping the estimator to move the one
+soft-warning the project chose not to close with a fitted constant is exactly the
+outcome-fitting the cardinal rules forbid without deliberate sign-off.
 
-**Validation after the fixes** (`npm test` byte-identical; `npm run validate` seed
-8817, 480×240, 21k): **all hard gates pass, 1 soft warning within budget 2** — the
-known ONE_POP Zipf (−0.64, finding V5's attenuation territory). The two changed
-gates behave: `price level bounded` now reads the honest **0.55** (was a
-can't-fail tautology) and `market integration narrows prices (Δ)` still passes at
-**−0.17** after the population-weighting fix. The suite stays green while two of
-its gates went from measuring the wrong thing to measuring the right one.
+**Validation after the fixes** — `npm test` byte-identical; `npm run validate`
+multi-seed (`STYLIZED_SEEDS="8817,4242,777"`, 480×240, 21k): **3/3 seeds pass, all
+hard gates, 1 soft warning each within budget 2** (the known Zipf, V5). Cross-seed
+behaviour of the four changed gates:
+
+| Gate | 8817 | 4242 | 777 | band |
+|------|------|------|-----|------|
+| price level bounded (was a can't-fail tautology) | 0.55 | 0.68 | 0.80 | [0.35, 8] |
+| market integration Δ (now people-weighted) | −0.17 | 0.89 | 0.51 | > −0.2 |
+| water clustering (now same-footprint null) | 1.36 | 1.36 | 1.37 | ≥ 1.15 |
+| culture k<1 (was `<1.3`, admitted superlinear) | 0.83 | 0.74 | 0.53 | < 1.05 |
+
+Four gates went from measuring the wrong thing (or being unable to fail) to
+measuring the right one — and the suite stays green on every canon seed.
