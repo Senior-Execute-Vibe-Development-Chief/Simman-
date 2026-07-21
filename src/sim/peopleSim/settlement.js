@@ -711,12 +711,19 @@ function updateWealth(world, s) {
     // the SAME measure the price level divides T by) at the EMERGENT baseline
     // monetisation ratio world._inflRef, so money tracks output and M/T stays off the
     // floor. Gated on organisation past the industrial threshold (emergent, never a
-    // clock) and the banking institution; byte-identical off / pre-industrial (fmat=0).
-    if (T.FIAT_OUTPUT > 0 && world._inflRef > 0 && bankF > 0) {
+    // clock) and the banking INSTITUTION — but NOT trade reach: central-bank/fiat
+    // money is a claim on the DOMESTIC economy, unlike the bills-of-exchange specie-
+    // credit above which legitimately needs correspondents (reachF). The deep battery
+    // showed reach-gated fiat firing on only ~2 of 140 industrial hubs, because the
+    // very fragmentation fiat must survive severs trade reach → reachF→0 → fiat off
+    // (chicken-and-egg). So fiat uses a reach-INDEPENDENT bank factor. Byte-identical
+    // off / pre-industrial (fmat=0).
+    const fiatBank = techEff(s).credit ? depth : 0;   // banking institution + org depth only, reach-independent
+    if (T.FIAT_OUTPUT > 0 && world._inflRef > 0 && fiatBank > 0) {
       const fmat = Math.min(1, Math.max(0, (org - 0.78) / 0.18));        // financial maturity: the industrial gate on the hub's own organisation
       if (fmat > 0) {
         const out = exportValueOf(s, world) * Math.sqrt(Math.max(1, s.people || 1));   // the hub's real-output proxy (= the inflation model's T-contribution)
-        const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * bankF;         // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
+        const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;      // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
         if (fiatTarget > target) target = fiatTarget;                    // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
       }
     }
