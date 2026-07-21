@@ -701,7 +701,26 @@ function updateWealth(world, s) {
     const reachF = s._tradeReach ? Math.min(1, s._tradeReach.size / 12) : 0;
     const depth = 0.25 + 0.75 * Math.min(1, Math.max(0, (org - 0.70) / 0.30));   // a new bank multiplies modestly; finance deepens with statecraft
     const bankF = techEff(s).credit ? depth * reachF : 0;
-    const gap = base * (T.CREDIT_MAX_MULT - 1) * bankF - cur;
+    let target = base * (T.CREDIT_MAX_MULT - 1) * bankF;                  // specie-anchored credit ceiling (existing)
+    // ②a FIAT (default off, docs/industrial-transition-2026-07.md): at industrial
+    // financial maturity money becomes a claim on real OUTPUT, not just mined specie
+    // — the fiat/central-bank transition. Without it credit ≤ specie×MULT, and the
+    // INDUSTRIAL_CAP-scaled (×N) economy deflates to the price floor because specie
+    // can't grow to monetise it (→ chronic insolvency → the fiscal-collapse cascade).
+    // Back credit with the settlement's own real-output proxy (exportValue×√people —
+    // the SAME measure the price level divides T by) at the EMERGENT baseline
+    // monetisation ratio world._inflRef, so money tracks output and M/T stays off the
+    // floor. Gated on organisation past the industrial threshold (emergent, never a
+    // clock) and the banking institution; byte-identical off / pre-industrial (fmat=0).
+    if (T.FIAT_OUTPUT > 0 && world._inflRef > 0 && bankF > 0) {
+      const fmat = Math.min(1, Math.max(0, (org - 0.78) / 0.18));        // financial maturity: the industrial gate on the hub's own organisation
+      if (fmat > 0) {
+        const out = exportValueOf(s, world) * Math.sqrt(Math.max(1, s.people || 1));   // the hub's real-output proxy (= the inflation model's T-contribution)
+        const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * bankF;         // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
+        if (fiatTarget > target) target = fiatTarget;                    // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
+      }
+    }
+    const gap = target - cur;
     const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 ? CREDIT_CRUNCH : 1));
     const delta = gap * rate;
     if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
