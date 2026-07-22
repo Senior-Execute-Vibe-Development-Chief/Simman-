@@ -719,16 +719,25 @@ function updateWealth(world, s) {
     // (chicken-and-egg). So fiat uses a reach-INDEPENDENT bank factor. Byte-identical
     // off / pre-industrial (fmat=0).
     const fiatBank = techEff(s).credit ? depth : 0;   // banking institution + org depth only, reach-independent
+    let fiatBound = false;   // is the fiat (output-backed) target the binding one this tick?
     if (T.FIAT_OUTPUT > 0 && world._inflRef > 0 && fiatBank > 0) {
       const fmat = Math.min(1, Math.max(0, (org - 0.78) / 0.18));        // financial maturity: the industrial gate on the hub's own organisation
       if (fmat > 0) {
         const out = exportValueOf(s, world) * Math.sqrt(Math.max(1, s.people || 1));   // the hub's real-output proxy (= the inflation model's T-contribution)
         const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;      // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
-        if (fiatTarget > target) target = fiatTarget;                    // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
+        if (fiatTarget > target) { target = fiatTarget; fiatBound = true; }             // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
       }
     }
     const gap = target - cur;
-    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 ? CREDIT_CRUNCH : 1));
+    // Managed/fiat money is NOT panic-recalled like bills of exchange: when the fiat
+    // target binds, contraction runs at the normal rate (not ×CREDIT_CRUNCH), so a
+    // TRANSIENT output dip can't ratchet the money supply — and the price — back to the
+    // floor over each population oscillation. The deep battery showed the ×4 crunch
+    // calling fiat in on a trade dip (coin 17M→4M in 10k steps, P 0.47→0.21); sticky
+    // fiat is what keeps the price off the floor across the whole modern arc, not just
+    // at onset. Specie-credit (bills of exchange) keeps the crunch — a run on a bank IS
+    // faster than deposit growth; a central bank managing fiat is not.
+    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 && !fiatBound ? CREDIT_CRUNCH : 1));
     const delta = gap * rate;
     if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
     else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_CREDIT, take); } }   // credit called in, not goods bought (B17)
