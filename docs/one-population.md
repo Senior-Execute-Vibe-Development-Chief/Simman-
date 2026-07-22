@@ -335,6 +335,56 @@ that outgrows its own hinterland by drawing people across regions, braked by the
 very graveyard built here (the brake dead end #2 lacked). Until one lands 3/3 at
 zero warnings, ONE_POP stays lever-off, byte-identical.
 
+### Bounded inter-regional migration: BUILT, measured, reverted (dead end 5)
+
+The second named next-arc above — "the primate city that outgrows its own
+hinterland by drawing people ACROSS regions, braked by the very graveyard built
+here" — was built (T.URBAN_MIGRATE, default off, byte-identical; commit
+reverted) and measured on the real gate, 3 seeds. THE MECHANISM: a genuine
+primate — its import economy exceeds its own region's people, so the 0.97·f
+hinterland cap binds and a DEFICIT survives — draws rural field-people from
+NEIGHBOURING regions within a bounded labour-shed (radius 12 ≈ 2× the local
+hinterland), a friction-capped fraction per tick (0.10), taking only genuine
+countryside (owner≠self, not a city core, density < the median core) so it
+never depopulates a rival city, and braked by the density graveyard (a fuller
+core is deadlier) plus self-tapering (imported labour raises f, shrinking the
+deficit). Cardinal-rule-clean: gated on emergent state (economy vs region),
+conservative, deterministic, the slope left to emerge — no constant dialled to
+the gate.
+
+MEASURED (480×240 / 21k, real gate). off → on:
+
+  | seed  | Zipf (cities>50)            | settlements | polities | empire tail |
+  |-------|-----------------------------|-------------|----------|-------------|
+  | 8817  | −0.64 (16) → −0.60 (18) / n/a (13)@0.3 | 134 → 114 | 63 → 52 | 5.7 → 3.8 |
+  | 31337 | −0.58 (15) → n/a (14) / n/a (5)@0.3     | 93 → 94   | 53 → 49 | 3.7 → 5.6 |
+  | 4242  | −0.69 (18) → n/a (14)                   | 117 → 114 | 57 → 54 | 6.9 → 6.6 |
+
+THE FINDING — it reproduces the settlement-lifecycle coupling, a BOUNDED variant
+of dead end #2, so off is strictly better than on:
+  • In EVERY on-config across all three seeds, cities>50 drops below the gate's
+    15-city floor → Zipf reads **n/a** (unmeasurable — worse than the measurable
+    off baseline). The draw consolidates urban population into too FEW cores.
+  • Settlement count thins (8817 134→114) and the one still-measurable on-slope
+    went the WRONG way (−0.64 → −0.60). The gentler 0.3 setting was not gentler
+    but CHAOTIC (31337 collapsed to 5 cities), the same γ-coupling noise the doc
+    already flags on 31337 — evidence the instability is structural, not mis-tuned.
+  • ROOT CAUSE: under ONE_POP a town's very existence is its catchment field, so
+    draining a neighbour's rural hinterland — even bounded, even excluding its
+    core — starves the town's derived population and kills it. Concentration by
+    depopulation is the anti-tail: it removes the small end of the rank-size
+    distribution instead of lifting the large end.
+
+Reverted (a lever that only makes the gate worse earns no standing default-off
+home — it joins the prose dead ends). TWO leads remain UNWALKED: (1) the
+multi-tile urban FOOTPRINT (the doc's own untried mechanism above — a metropolis
+occupies size-proportional tiles, so the −1.5 economic ceiling binds per tile
+across a footprint instead of one throughput-clipped tile; steepens WITHOUT
+inter-regional draining); (2) a SURPLUS-only inter-regional draw that takes only
+field-people ABOVE a rural subsistence floor, so neighbour towns keep their
+core population and don't die — the piece this realization lacked. Until one
+lands 3/3 at zero warnings, ONE_POP stays lever-off at its 1 Zipf soft-warning.
+
 The heart of the unification:
 
 1. **Urban capacity**: a city tile's carrying capacity stops being cropland

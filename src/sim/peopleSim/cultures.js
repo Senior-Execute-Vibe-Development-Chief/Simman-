@@ -20,6 +20,7 @@ import { hash32, entityRng } from "./rng.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { forEachNear } from "./spatialGrid.js";
+import { rNormPop } from "./tuning.js";
 
 export const CULTURE_INTERVAL = 150;      // ticks between assimilation/divergence passes (≈ polity cadence)
 // Language standardizes FAST enough to flip a core province within a realm's
@@ -500,7 +501,7 @@ export function updateCultures(world) {
         seedCulture(world, s, daughter.id);
         s._diverged = true;
         // the new people's homeland: same-stock neighbours join the daughter
-        forEachNear(world, s.pos.x, s.pos.y, 16, (nb) => {
+        forEachNear(world, s.pos.x, s.pos.y, 16 * rNormPop(world), (nb) => {
           if (nb !== s && nb.mode === "settled" && dominantCulture(nb) === myCul) {
             seedCulture(world, nb, daughter.id);
             nb._diverged = true;

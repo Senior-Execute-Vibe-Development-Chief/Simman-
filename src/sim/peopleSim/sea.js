@@ -32,7 +32,7 @@
 import { makeSettlement, techEff } from "./settlement.js";
 import { logEvent } from "./events.js";
 import { dominantCulture } from "./cultures.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { fieldShift } from "./popField.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
@@ -577,7 +577,7 @@ function siteIsClear(world, lti) {
   const { tw } = world;
   const ty = (lti / tw) | 0, tx = lti - ty * tw;
   let clear = true;
-  forEachNear(world, tx, ty, COLONY_MIN_DIST, () => { clear = false; });
+  forEachNear(world, tx, ty, COLONY_MIN_DIST * rNormPop(world), () => { clear = false; });
   return clear;
 }
 

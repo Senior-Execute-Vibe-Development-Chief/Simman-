@@ -701,8 +701,43 @@ function updateWealth(world, s) {
     const reachF = s._tradeReach ? Math.min(1, s._tradeReach.size / 12) : 0;
     const depth = 0.25 + 0.75 * Math.min(1, Math.max(0, (org - 0.70) / 0.30));   // a new bank multiplies modestly; finance deepens with statecraft
     const bankF = techEff(s).credit ? depth * reachF : 0;
-    const gap = base * (T.CREDIT_MAX_MULT - 1) * bankF - cur;
-    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 ? CREDIT_CRUNCH : 1));
+    let target = base * (T.CREDIT_MAX_MULT - 1) * bankF;                  // specie-anchored credit ceiling (existing)
+    // ②a FIAT (default off, docs/industrial-transition-2026-07.md): at industrial
+    // financial maturity money becomes a claim on real OUTPUT, not just mined specie
+    // — the fiat/central-bank transition. Without it credit ≤ specie×MULT, and the
+    // INDUSTRIAL_CAP-scaled (×N) economy deflates to the price floor because specie
+    // can't grow to monetise it (→ chronic insolvency → the fiscal-collapse cascade).
+    // Back credit with the settlement's own real-output proxy (exportValue×√people —
+    // the SAME measure the price level divides T by) at the EMERGENT baseline
+    // monetisation ratio world._inflRef, so money tracks output and M/T stays off the
+    // floor. Gated on organisation past the industrial threshold (emergent, never a
+    // clock) and the banking INSTITUTION — but NOT trade reach: central-bank/fiat
+    // money is a claim on the DOMESTIC economy, unlike the bills-of-exchange specie-
+    // credit above which legitimately needs correspondents (reachF). The deep battery
+    // showed reach-gated fiat firing on only ~2 of 140 industrial hubs, because the
+    // very fragmentation fiat must survive severs trade reach → reachF→0 → fiat off
+    // (chicken-and-egg). So fiat uses a reach-INDEPENDENT bank factor. Byte-identical
+    // off / pre-industrial (fmat=0).
+    const fiatBank = techEff(s).credit ? depth : 0;   // banking institution + org depth only, reach-independent
+    let fiatBound = false;   // is the fiat (output-backed) target the binding one this tick?
+    if (T.FIAT_OUTPUT > 0 && world._inflRef > 0 && fiatBank > 0) {
+      const fmat = Math.min(1, Math.max(0, (org - 0.78) / 0.18));        // financial maturity: the industrial gate on the hub's own organisation
+      if (fmat > 0) {
+        const out = exportValueOf(s, world) * Math.sqrt(Math.max(1, s.people || 1));   // the hub's real-output proxy (= the inflation model's T-contribution)
+        const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;      // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
+        if (fiatTarget > target) { target = fiatTarget; fiatBound = true; }             // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
+      }
+    }
+    const gap = target - cur;
+    // Managed/fiat money is NOT panic-recalled like bills of exchange: when the fiat
+    // target binds, contraction runs at the normal rate (not ×CREDIT_CRUNCH), so a
+    // TRANSIENT output dip can't ratchet the money supply — and the price — back to the
+    // floor over each population oscillation. The deep battery showed the ×4 crunch
+    // calling fiat in on a trade dip (coin 17M→4M in 10k steps, P 0.47→0.21); sticky
+    // fiat is what keeps the price off the floor across the whole modern arc, not just
+    // at onset. Specie-credit (bills of exchange) keeps the crunch — a run on a bank IS
+    // faster than deposit growth; a central bank managing fiat is not.
+    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 && !fiatBound ? CREDIT_CRUNCH : 1));
     const delta = gap * rate;
     if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
     else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_CREDIT, take); } }   // credit called in, not goods bought (B17)
@@ -1677,7 +1712,7 @@ function updateKnowledge(world, s) {
   const metalBoost = 1 + metalEff * 1.8;             // metal TOOLS help building — the metal you can forge, not merely know of
   k.construction = clamp01(k.construction + T.LEARN_BASE * 1.0 * sciMul * (1 - k.construction)
     * buildMat * stoneBoost * metalBoost
-    * (1 + k.agriculture * 0.6) * (1 + popSqrt * 0.06));
+    * (1 + k.agriculture * 0.6) * (1 + sciSqrt * 0.06));   // urban core builds — pace to a CITY of that size, not the whole province (mirrors organization/metallurgy/navigation/mobility above; closes the raw-pop leak into orgEraCap → the world clock)
 
   // Agriculture: farmland scale + metal tools (plough) + wild-food
   // gathering that supplements the early village (folds in the old
@@ -2170,7 +2205,7 @@ function updateFood(world, s) {
   // then shifts as development does. agri^POW keeps the lift back-loaded so the modern
   // BOOM still rides agriculture's climb to the top of the tree.
   if (T.ANCHOR_POP > 0) {
-    s._eraProd = world._eraProd || 1;
+    s._eraProd = world._eraProd || 1; s._indCap = 1; s._indGate = 0;   // anchor drives magnitude; no separate field-capacity break
   } else {
     const agri = (s.knowledge && s.knowledge.agriculture) || 0;
     // Density requires being in a DEVELOPED STATE, not just personal organisation: read the
@@ -2179,10 +2214,10 @@ function updateFood(world, s) {
     // a state. (A capital reads its own org, since it IS its country's capital.) This is what
     // keeps significant/dense settlements always part of a nation — undeveloped, stateless
     // ground can't bloom on fertility alone, however rich it is.
-    let devOrg = 0;
+    let devOrg = 0, capMetal = 0;
     if (s.countryId >= 0 && world.countries) {
       const c = world.countries.get(s.countryId);
-      if (c && c.capital && c.capital.knowledge) devOrg = c.capital.knowledge.organization;
+      if (c && c.capital && c.capital.knowledge) { devOrg = c.capital.knowledge.organization; capMetal = c.capital.knowledge.metallurgy || 0; }
     }
     const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
     // BASE is a uniform floor (climate-NEUTRAL): it carries the ORIGINAL cradle-correct
@@ -2193,6 +2228,16 @@ function updateFood(world, s) {
     // adds the DEVELOPMENT-driven bloom on top, so the cradles still out-grow the rest as
     // they organise, but the world isn't inert while it gets there.
     s._eraProd = T.ERA_PROD_BASE + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
+    // Industrial carrying-capacity break (T.INDUSTRIAL_CAP → popField.capField). The field
+    // population governor never received the modern productivity boom the food model did
+    // (capField caps at the pre-industrial ~3.3×), so under ONE_POP the modern population
+    // under-produces. Lift the field capacity of this realm's worked land once its CAPITAL
+    // crosses the industrial threshold — org AND metallurgy past ~0.78, the SAME gate as
+    // AGRI_INDUSTRIAL — so a modern state's land feeds a modern population. Emergent (reached
+    // industrial development, never a clock); stateless land keeps indCap 1 (subsistence);
+    // byte-identical at INDUSTRIAL_CAP=0.
+    s._indGate = Math.min(1, Math.max(0, (devOrg - 0.78) / 0.18)) * Math.min(1, Math.max(0, (capMetal - 0.78) / 0.18));   // reached-industrial-development gate (0..1), reused by the urban transition
+    s._indCap = 1 + T.INDUSTRIAL_CAP * s._indGate;
   }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
   // ── Animal husbandry: livestock secondary products ──────────────────

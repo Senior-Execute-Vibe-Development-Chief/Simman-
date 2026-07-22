@@ -74,12 +74,21 @@ function collect(step){
   // demographics
   const pops=setts.map(s=>s.people||0),totalPop=sum(pops);
   const tierC=[0,0,0,0],tierP=[0,0,0,0];for(const s of setts){const t=Math.min(3,s.tier|0);tierC[t]++;tierP[t]+=s.people||0;}
-  const topCities=setts.slice().sort((a,b)=>(b.people||0)-(a.people||0)).slice(0,5).map(s=>({pop:Math.round(s.people||0),tier:s.tier|0}));
-  const urban=totalPop?(tierP[2]+tierP[3])/totalPop:0;
+  // City size = the URBAN CORE, not the whole province: s.people bundles the
+  // rural hinterland. True urbanization = people in cores / total people (mirror
+  // stylized.mjs:305). The tier>=2 fallback serves the pre-province model.
+  const hasRural=setts.some(s=>(s._ruralPop||0)>0);
+  const cityPop=s=>hasRural?(s._urbanPop||0):((s.tier|0)>=2?(s.people||0):0);
+  const topCities=setts.slice().sort((a,b)=>cityPop(b)-cityPop(a)).slice(0,5).map(s=>({pop:Math.round(cityPop(s)),tier:s.tier|0}));
+  let urbanCore=0;for(const s of setts)urbanCore+=cityPop(s);
+  const urban=totalPop?urbanCore/totalPop:0;
   // economy
   let tradeFlow=0;if(world._linkMoney)for(const[,n]of world._linkMoney)tradeFlow+=Math.abs(n);
   let seaMag=0,allMag=0;if(world._moneyFlows)for(const f of world._moneyFlows){allMag+=f.mag;if(f.sea)seaMag+=f.mag;}
-  const totalWealth=sum(setts.map(s=>s.wealth||0));
+  // Total gold = settlement coin + LIVE state treasuries (matches peopleSimStats,
+  // index.js:424). diag_full previously omitted treasuries entirely.
+  let treasury=0;if(world.polities)for(const p of world.polities.values())if(p.endedStep<0)treasury+=Math.max(0,p.treasury||0);
+  const totalWealth=sum(setts.map(s=>s.wealth||0))+treasury;
   let roadTiles=0;if(world.roadQuality){const rq=world.roadQuality;for(let i=0;i<N;i++)if(rq[i]<1.0)roadTiles++;}
   const nLinks=world._linkMoney?world._linkMoney.size:0;
   // technology

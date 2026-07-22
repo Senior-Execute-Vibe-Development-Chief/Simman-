@@ -291,20 +291,28 @@ export function stepPopField(world, sub = 1) {
   //    the civilized cores support dense settlement while the deep frontier
   //    stays a thin subsistence scatter. Lever off: the global scalar, exactly.
   const accessDev = ACCESS_DEV0 + ACCESS_DEVK * leadAgri;   // transport premium grows with tech (emergent)
+  // Industrial carrying-capacity break (T.INDUSTRIAL_CAP): a worked tile's crop capacity is
+  // lifted by its owning realm's industrial development (s._indCap, set in updateSettlement) —
+  // the modern productivity boom the food model had but the field never received. Off ⇒ no
+  // lookup, byte-identical; frontier / stateless tiles (owner < 0) keep indMul 1 (subsistence).
+  const indOn = T.INDUSTRIAL_CAP > 0;
+  const indOwner = indOn ? world._territoryOwner : null, indById = indOn ? world._byId : null;
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
     const access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
     const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i]) : 1;
+    let indMul = 1;
+    if (indOn) { const sid = indOwner[i]; if (sid >= 0) { const s2 = indById.get(sid); if (s2 && s2._indCap > 1) indMul = s2._indCap; } }
     if (devF) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      const crop = fert[i] * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul;
+      const crop = fert[i] * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul;   // ×indMul: industrial agronomy break
       const range = pasture[i];   // the herd or the plough — whichever feeds this ground better (openness already prices relief)
       cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
-      cap[i] = fert[i] * capPerFert * dev * reach * reliefMul;
+      cap[i] = fert[i] * capPerFert * dev * reach * reliefMul * indMul;
     }
   }
 
@@ -451,11 +459,69 @@ export function popFieldTotal(world) {
 // A settlement dying no longer erases people — the region's people outlive
 // the town, on the land, where they always were.
 
-/** Apply the urban spikes (built by deriveOnePop) into this pass's capField. */
+// ── T.URBAN_FOOTPRINT: resolution-invariant urban core (ONE_POP) ──────────────
+// popField stores people PER REAL AREA (capPerFert/seedPop ÷rn²), so the SINGLE
+// core tile holds ~1/rn² the people at a finer grid and the urban SHARE collapses
+// ∝1/rn² with resolution (measured ~33% at tw=240 → ~10% at tw=480). When on, the
+// core becomes a fixed REAL DISK, so the concentration, the capacity spike and the
+// measurement all span the same real footprint at any grid.
+//
+// Urban core radius in tiles: a fixed REAL footprint. 0 at the tw=240 reference
+// (rn=1 → single tile, byte-identical) AND whenever the lever/RES_INVARIANT_POP is
+// off; grows with rNormPop so the city spans the same real area at finer grids.
+// (Reuses the computeBuildableArea/computeWaterAccess round(rn) real-neighbourhood
+// normalisation, −1 so the reference stays a single tile.)
+function urbanCoreR(world) {
+  return (T.URBAN_FOOTPRINT && T.RES_INVARIANT_POP) ? Math.max(0, Math.round(rNormPop(world)) - 1) : 0;
+}
+
+// Sum popField over the urban-core DISK: the (2R+1)² tiles Chebyshev-radius-R
+// around (cx,cy), x-wrapped and y-clamped, skipping empties (pf<=0). R<=0 returns
+// the EXACT single-tile read the pre-footprint code used, so the measurement and
+// target are byte-identical at the reference. Owner-agnostic (the footprint
+// REFERENCE reads all people on the real disk; the people MOVED by urbanConcentrate
+// stay owner-restricted and strictly conserved — see change note there).
+function diskSum(pf, tw, th, cx, cy, R) {
+  if (R <= 0) return pf[cy * tw + ((cx % tw) + tw) % tw];
+  let sum = 0;
+  const y0 = Math.max(0, cy - R), y1 = Math.min(th - 1, cy + R);
+  for (let y = y0; y <= y1; y++) {
+    for (let dx = -R; dx <= R; dx++) {
+      const x = ((cx + dx) % tw + tw) % tw;
+      const v = pf[y * tw + x];
+      if (v > 0) sum += v;
+    }
+  }
+  return sum;
+}
+
+/** Apply the urban spikes (built by deriveOnePop) into this pass's capField.
+ *  Under T.URBAN_FOOTPRINT (R>0) each spike's capacity is spread EVENLY over the
+ *  (2R+1)² HABITABLE (elev>0) disk tiles around its core, so capacity co-locates
+ *  with the population urbanConcentrate spreads over the same disk (pop≈cap on each
+ *  footprint tile, so the field pass neither crashes nor expels the crowd). R<=0
+ *  keeps the single-tile add EXACTLY (byte-identical). */
 function applyUrbanSpikes(world, cap) {
   const sp = world._urbanSpike;
   if (!sp) return;
-  for (const [ti, e] of sp) cap[ti] += e.k;
+  const R = urbanCoreR(world);
+  if (R <= 0) { for (const [ti, e] of sp) cap[ti] += e.k; return; }
+  const tw = world.tw, th = world.th, elev = world.elev;
+  for (const [ti, e] of sp) {
+    if (!(e.k > 0)) { cap[ti] += e.k; continue; }   // 0/neg spike: single-tile no-op, no disk needed
+    const cy = (ti / tw) | 0, cx = ti - cy * tw;
+    const y0 = Math.max(0, cy - R), y1 = Math.min(th - 1, cy + R);
+    let n = 0;
+    for (let y = y0; y <= y1; y++) for (let dx = -R; dx <= R; dx++) {
+      if (elev[y * tw + ((cx + dx) % tw + tw) % tw] > 0) n++;
+    }
+    if (n <= 0) { cap[ti] += e.k; continue; }        // no habitable disk tile → fall back to the core
+    const share = e.k / n;
+    for (let y = y0; y <= y1; y++) for (let dx = -R; dx <= R; dx++) {
+      const t2 = y * tw + ((cx + dx) % tw + tw) % tw;
+      if (elev[t2] > 0) cap[t2] += share;
+    }
+  }
 }
 
 // ── T.URBAN_AGGLOM: agglomeration↔congestion urban concentration (ONE_POP) ──
@@ -479,53 +545,161 @@ const URBAN_CONC_LAMBDA = 0.2;  // relaxation toward the target per tick (conver
 const URBAN_CONC_MAXFRAC = 0.5; // cap per-tick flux at half the available side (no single-tick emptying)
 const URBAN_CONC_MAXFRAC_G = 0.12; // under γ the target is the RAW economy (large) → a gentler per-tick flux so the flow can't strip the countryside in a rush toward it (the graveyard equilibrium is reached over many ticks)
 
-/** Move `delta` field-people between the core tile and its OWN countryside
- *  (owner==sid, within the hinterland box), conservatively. +pull in, −push out. */
-function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta, maxFrac) {
+// Deposit EXACTLY `amount` people across tiles[0..n) weighted by w[0..n)
+// (sum sumW>0): all but the last take their proportional share, the last takes the
+// running remainder — so Σ deposits === amount to the ULP and every disk branch of
+// urbanConcentrate conserves. (The single-core code conserved by moving the exact
+// accumulated total to ONE counter-tile; the disk has many tiles on both sides, so
+// it needs this remainder trick to stay exact.) Deterministic; n>=1 required.
+const _spreadTiles = new Int32Array(4096);   // scratch (max needed: hinterland box 169, or a disk (2R+1)² — R<=31 fits)
+const _spreadW = new Float64Array(4096);
+function spreadExact(pf, tiles, w, n, sumW, amount) {
+  let dep = 0;
+  for (let j = 0; j < n - 1; j++) { const m = amount * (w[j] / sumW); pf[tiles[j]] += m; dep += m; }
+  pf[tiles[n - 1]] += amount - dep;
+}
+
+// Deposit `amount` across the OWNED disk tiles (Chebyshev R of (cx,cy)), weighted
+// by spare capacity (cap−pf), even-split if none has spare, onto the core tile if
+// the disk owns nothing — always conserving (Σ === amount). Deterministic walk.
+function depositAcrossDisk(world, owner, sid, coreTi, cx, cy, R, amount) {
+  if (!(amount > 0)) return;
+  const pf = world.popField, cap = world.capField, tw = world.tw, th = world.th;
+  const y0 = Math.max(0, cy - R), y1 = Math.min(th - 1, cy + R);
+  let sumSpare = 0, owned = 0;
+  for (let y = y0; y <= y1; y++) for (let dx = -R; dx <= R; dx++) {
+    const ti = y * tw + ((cx + dx) % tw + tw) % tw;
+    if (owner[ti] !== sid) continue;
+    owned++; const s = cap[ti] - pf[ti]; if (s > 0) sumSpare += s;
+  }
+  if (owned <= 0) { pf[coreTi] += amount; return; }   // disk owns nothing → the core absorbs it
+  const bySpare = sumSpare > 0;
+  let n = 0, sumW = 0;
+  for (let y = y0; y <= y1; y++) for (let dx = -R; dx <= R; dx++) {
+    const ti = y * tw + ((cx + dx) % tw + tw) % tw;
+    if (owner[ti] !== sid) continue;
+    const s = cap[ti] - pf[ti];
+    if (bySpare) { if (s <= 0) continue; _spreadTiles[n] = ti; _spreadW[n] = s; sumW += s; n++; }
+    else { _spreadTiles[n] = ti; _spreadW[n] = 1; sumW += 1; n++; }   // no spare anywhere → even split
+  }
+  spreadExact(pf, _spreadTiles, _spreadW, n, sumW, amount);
+}
+
+/** Move `delta` field-people between the urban CORE and its OWN countryside
+ *  (owner==sid, within the hinterland box), conservatively. +pull in, −push out.
+ *  R<=0: the core is the single tile coreTi (byte-identical to the pre-footprint
+ *  code). R>0 (T.URBAN_FOOTPRINT): the core is the OWNED DISK of Chebyshev radius R
+ *  around (cx,cy) — the hinterland excludes the whole disk, and the moved people are
+ *  spread across / drawn from the disk's tiles by spare capacity / density. People
+ *  OUT === people IN in every branch (a strict conservation invariant). */
+function urbanConcentrate(world, owner, sid, cx, cy, coreTi, delta, maxFrac, R) {
   if (maxFrac === undefined) maxFrac = URBAN_CONC_MAXFRAC;
   const pf = world.popField, tw = world.tw, th = world.th;
   const x0 = cx - URBAN_CONC_R, x1 = cx + URBAN_CONC_R;
   const y0 = Math.max(0, cy - URBAN_CONC_R), y1 = Math.min(th - 1, cy + URBAN_CONC_R);
+  if (!(R > 0)) {
+    // ── single-tile core: EXACTLY the pre-footprint code (byte-identical) ──
+    if (delta > 0) {
+      // AGGLOMERATION: pull the hinterland in. Sum owned countryside people, then
+      // drain the same fraction from each (proportional) up to the flux cap.
+      let avail = 0;
+      for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
+        const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
+        if (ti === coreTi || owner[ti] !== sid) continue;
+        if (pf[ti] > 0) avail += pf[ti];
+      }
+      if (avail <= 0) return;
+      const take = Math.min(delta, avail * maxFrac);
+      const frac = take / avail;
+      let moved = 0;
+      for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
+        const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
+        if (ti === coreTi || owner[ti] !== sid || pf[ti] <= 0) continue;
+        const m = pf[ti] * frac; pf[ti] -= m; moved += m;
+      }
+      pf[coreTi] += moved;
+    } else if (delta < 0) {
+      // CONGESTION: push the crowd back out, spread over owned countryside
+      // proportional to each tile's SPARE capacity (people go where there is room).
+      const push = Math.min(-delta, pf[coreTi] * maxFrac);
+      if (push <= 0) return;
+      const cap = world.capField;
+      let room = 0;
+      for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
+        const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
+        if (ti === coreTi || owner[ti] !== sid) continue;
+        const s = cap[ti] - pf[ti]; if (s > 0) room += s;
+      }
+      if (room <= 0) return;
+      let moved = 0;
+      for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
+        const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
+        if (ti === coreTi || owner[ti] !== sid) continue;
+        const s = cap[ti] - pf[ti]; if (s <= 0) continue;
+        const m = push * (s / room); pf[ti] += m; moved += m;
+      }
+      pf[coreTi] -= moved;
+    }
+    return;
+  }
+  // ── R>0: the core is the OWNED DISK (Chebyshev radius R of (cx,cy)) ──
+  const cap = world.capField;
+  const inDisk = (dx, dy) => (dx < 0 ? -dx : dx) <= R && (dy < 0 ? -dy : dy) <= R;
+  const dy0 = Math.max(0, cy - R), dy1 = Math.min(th - 1, cy + R);
   if (delta > 0) {
-    // AGGLOMERATION: pull the hinterland in. Sum owned countryside people, then
-    // drain the same fraction from each (proportional) up to the flux cap.
+    // AGGLOMERATION: drain owned hinterland OUTSIDE the disk (proportional, flux-
+    // capped), deposit the drained total across the owned disk tiles by spare cap.
     let avail = 0;
-    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
-      const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
-      if (ti === coreTi || owner[ti] !== sid) continue;
-      if (pf[ti] > 0) avail += pf[ti];
+    for (let y = y0; y <= y1; y++) { const dy = y - cy;
+      for (let xx = x0; xx <= x1; xx++) { if (inDisk(xx - cx, dy)) continue;
+        const ti = y * tw + ((xx % tw) + tw) % tw;
+        if (owner[ti] !== sid) continue;
+        if (pf[ti] > 0) avail += pf[ti];
+      }
     }
     if (avail <= 0) return;
     const take = Math.min(delta, avail * maxFrac);
     const frac = take / avail;
     let moved = 0;
-    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
-      const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
-      if (ti === coreTi || owner[ti] !== sid || pf[ti] <= 0) continue;
-      const m = pf[ti] * frac; pf[ti] -= m; moved += m;
+    for (let y = y0; y <= y1; y++) { const dy = y - cy;
+      for (let xx = x0; xx <= x1; xx++) { if (inDisk(xx - cx, dy)) continue;
+        const ti = y * tw + ((xx % tw) + tw) % tw;
+        if (owner[ti] !== sid || pf[ti] <= 0) continue;
+        const m = pf[ti] * frac; pf[ti] -= m; moved += m;
+      }
     }
-    pf[coreTi] += moved;
+    depositAcrossDisk(world, owner, sid, coreTi, cx, cy, R, moved);   // Σ deposit === moved (conserved)
   } else if (delta < 0) {
-    // CONGESTION: push the crowd back out, spread over owned countryside
-    // proportional to each tile's SPARE capacity (people go where there is room).
-    const push = Math.min(-delta, pf[coreTi] * maxFrac);
+    // CONGESTION: remove the crowd from the owned disk (proportional to pf),
+    // deposit into owned hinterland OUTSIDE the disk by spare capacity.
+    let diskPop = 0;
+    for (let y = dy0; y <= dy1; y++) for (let dx = -R; dx <= R; dx++) {
+      const ti = y * tw + ((cx + dx) % tw + tw) % tw;
+      if (owner[ti] !== sid || pf[ti] <= 0) continue;
+      diskPop += pf[ti];
+    }
+    const push = Math.min(-delta, diskPop * maxFrac);
     if (push <= 0) return;
-    const cap = world.capField;
-    let room = 0;
-    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
-      const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
-      if (ti === coreTi || owner[ti] !== sid) continue;
-      const s = cap[ti] - pf[ti]; if (s > 0) room += s;
+    // collect the hinterland sinks FIRST (room>0); if none, move nothing (conserve)
+    let n = 0, room = 0;
+    for (let y = y0; y <= y1; y++) { const dy = y - cy;
+      for (let xx = x0; xx <= x1; xx++) { if (inDisk(xx - cx, dy)) continue;
+        const ti = y * tw + ((xx % tw) + tw) % tw;
+        if (owner[ti] !== sid) continue;
+        const s = cap[ti] - pf[ti]; if (s <= 0) continue;
+        _spreadTiles[n] = ti; _spreadW[n] = s; room += s; n++;
+      }
     }
-    if (room <= 0) return;
-    let moved = 0;
-    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) {
-      const x = ((xx % tw) + tw) % tw, ti = y * tw + x;
-      if (ti === coreTi || owner[ti] !== sid) continue;
-      const s = cap[ti] - pf[ti]; if (s <= 0) continue;
-      const m = push * (s / room); pf[ti] += m; moved += m;
+    if (n <= 0 || room <= 0) return;
+    // remove `push` from the disk proportional to pf, accumulate the REAL removed
+    const frac = push / diskPop;
+    let removed = 0;
+    for (let y = dy0; y <= dy1; y++) for (let dx = -R; dx <= R; dx++) {
+      const ti = y * tw + ((cx + dx) % tw + tw) % tw;
+      if (owner[ti] !== sid || pf[ti] <= 0) continue;
+      const m = pf[ti] * frac; pf[ti] -= m; removed += m;
     }
-    pf[coreTi] -= moved;
+    spreadExact(pf, _spreadTiles, _spreadW, n, room, removed);   // Σ deposit === removed (conserved)
   }
 }
 
@@ -562,6 +736,9 @@ export function deriveOnePop(world) {
     world._onePopScale = cs.length ? Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1])) : 1;
   }
   const scale = world._onePopScale;
+  // T.URBAN_FOOTPRINT: the urban core's real radius (tiles). 0 (default / reference
+  // grid) ⇒ the disk reads/moves collapse to the single core tile, byte-identical.
+  const coreR = urbanCoreR(world);
   const agglom = T.URBAN_AGGLOM > 0;
   // GROUNDED SLOPE (T.URBAN_GAMMA): the size↔economy elasticity is set by the
   // urban graveyard, not a free lever. Excess mortality rises super-linearly
@@ -643,7 +820,7 @@ export function deriveOnePop(world) {
       // (βeff=1 under γ: the target is the RAW economy — the density graveyard,
       // not this exponent, does the compressing).
       const share = Math.pow(kBeyond, betaEff) / sumKb;
-      uTarget = T.URBAN_AGGLOM * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core
+      uTarget = T.URBAN_AGGLOM * (1 + T.URBAN_IND * (s._indGate || 0)) * sumK * share;   // AGGLOM = the fraction of import-fed capacity that concentrates in the core; ×(1+URBAN_IND·indGate) = the emergent industrial urban transition
       // A city lives WITHIN its hinterland: cap the target at a share of the
       // region's own people. Under β-share this is the binding limiter (and, for
       // over-concentrated seeds, a UNIFORMISING one — the whole top set pins to
@@ -653,8 +830,11 @@ export function deriveOnePop(world) {
       if (f > 0) uTarget = Math.min(uTarget, (useGamma ? URBAN_GMAXSHARE : URBAN_MAXSHARE) * f);
       if (f > 0) {
         const cx = s.pos.x | 0, cy = s.pos.y | 0;
-        const delta = URBAN_CONC_LAMBDA * (uTarget - pf[ti]);
-        if (delta > 1e-6 || delta < -1e-6) urbanConcentrate(world, owner, s.id, cx, cy, ti, delta, useGamma ? URBAN_CONC_MAXFRAC_G : URBAN_CONC_MAXFRAC);
+        // Relax the whole urban FOOTPRINT (disk of radius coreR) toward the target,
+        // not just the centre tile — so the concentration target is a real area, not
+        // one tile whose people shrink ∝1/rn². coreR=0 ⇒ diskSum === pf[ti] exactly.
+        const delta = URBAN_CONC_LAMBDA * (uTarget - diskSum(pf, tw, world.th, cx, cy, coreR));
+        if (delta > 1e-6 || delta < -1e-6) urbanConcentrate(world, owner, s.id, cx, cy, ti, delta, useGamma ? URBAN_CONC_MAXFRAC_G : URBAN_CONC_MAXFRAC, coreR);
       }
     }
     if (f > 0) s.people = Math.max(1, f * scale);
@@ -664,7 +844,9 @@ export function deriveOnePop(world) {
     // Zipf statistics read; the region's rural remainder is everyone else on
     // its land. (Overrides the census-side ruralShare heuristic each tick.)
     if (f > 0) {
-      s._urbanPop = Math.min(s.people, Math.max(0, pf[ti] * scale));
+      // The urban core is the people on the real FOOTPRINT (disk of radius coreR),
+      // in census units — resolution-invariant. coreR=0 ⇒ diskSum === pf[ti] exactly.
+      s._urbanPop = Math.min(s.people, Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR) * scale));
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
     }
     // else: no catchment tiles this pass (fresh founding / recompute lag) — keep the census value
@@ -684,6 +866,11 @@ export function deriveOnePop(world) {
     // what makes the equilibrium size sublinear in economy and re-differentiates
     // cores the hard cap would have flattened. γ=0 ⇒ ×1 (the flat sink, byte-
     // identical). Clamped so a transient spike can't kill a core in one pass.
+    // FOLLOW-UP (T.URBAN_FOOTPRINT): this density ratio still reads the core-CENTRE
+    // tile pf[ti] (and medDens is a centre-tile median at line ~615), so numerator
+    // and denominator share the same single-tile basis — the ratio is dimensionless
+    // and largely resolution-robust. Migrating it to a disk-mean density is a
+    // secondary refinement, deliberately out of scope for this first footprint cut.
     let sink = s._rSink || 0;
     if (useGamma && sink > 0 && medDens > 0 && pf[ti] > 0) {
       sink *= Math.min(GRAVEYARD_PMAX, Math.pow(pf[ti] / medDens, gamma));

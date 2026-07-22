@@ -100,8 +100,12 @@ for (let t = 0; t < STEPS; t += win) {
   // component weighs as the settlements living under it.
   let pDisp = -1;
   if (world._inflRef !== undefined && world._inflP && world._inflP.size >= 2 && world._networkComponents) {
-    const w = new Map();   // component root → member settlements under that price
-    for (const r of world._networkComponents.values()) w.set(r, (w.get(r) || 0) + 1);
+    const w = new Map();   // component root → PEOPLE under that price (population-weighted, matching the claim above — was settlement COUNT, which let 20 villages outvote 2 cities)
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const r = world._networkComponents.has(s.id) ? world._networkComponents.get(s.id) : s.id;
+      w.set(r, (w.get(r) || 0) + (s.people || 0));
+    }
     let W = 0, mean = 0;
     for (const [root, p] of world._inflP) { const n = w.get(root) || 1; W += n; mean += p * n; }
     if (W > 0) {
@@ -360,10 +364,24 @@ const st = peopleSimStats(world);
 // ── 8. Prices: bounded level, integration reduces dispersion (D48) ──
 {
   const post = samples.filter(s => s.pDisp >= 0);
-  if (post.length >= 5 && world._inflP && world._inflP.size) {
-    const ps = [...world._inflP.values()];
-    const meanP = ps.reduce((a, b) => a + b) / ps.length;
-    score("price level bounded", meanP.toFixed(2), meanP >= 0.4 && meanP <= 3.0, false, "closed money supply: no secular hyper/deflation");
+  if (post.length >= 5 && world._inflRaw && world._inflRaw.size) {
+    // Read the UNCAPPED raw indicator (_inflRaw, band 0.2..20), NOT the sim-facing
+    // _inflP: inflation.js clamps _inflP to [0.4,3.0], so a [0.4,3.0] band on it IS
+    // that clamp — the gate could never fail (a hyperinflating world pegs every
+    // component at 3.0 and still passes). raw = M/T ÷ the emergent baseline, so a
+    // healthy closed-money world sits near 1; weight by the PEOPLE living under each
+    // component's prices. The band trips only on genuine runaway (toward the 20x cap
+    // or collapse toward 0.2), not on the historically-real Spanish-silver drift.
+    let num = 0, den = 0;
+    for (const s of setts) {
+      const root = world._networkComponents && world._networkComponents.has(s.id) ? world._networkComponents.get(s.id) : s.id;
+      const r = world._inflRaw.get(root); if (r == null) continue;
+      num += r * (s.people || 0); den += s.people || 0;
+    }
+    const meanP = den > 0 ? num / den : 1;
+    const capMean = (() => { const v = [...world._inflP.values()]; return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 1; })();
+    const pegged = [...world._inflP.values()].filter(p => p >= 2.99).length;
+    score("price level bounded", meanP.toFixed(2), meanP >= 0.35 && meanP <= 8, false, `people-weighted raw M/T÷baseline (sim-clamped mean ${capMean.toFixed(2)}, ${pegged} components pegged at cap)`);
     // DETRENDED: raw levels confound the integration effect with the development
     // trend — components fall over the run while staggered MONETIZATION widens
     // cross-region dispersion (entrepôts monetize centuries before the periphery;
@@ -420,7 +438,12 @@ const st = peopleSimStats(world);
       for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
       return den > 0 ? num / den : 0;
     })();
-    score("culture count ~ area^k, k<1", slope.toFixed(2), slope > 0 && slope < 1.3, false, "diversity grows with territory, sublinearly");
+    // Band tightened 1.3 → 1.05: the old upper bound admitted k∈[1,1.3) — superlinear,
+    // contradicting the "k<1" claim it prints. Measured slope 0.53–0.83 across the three
+    // canon seeds (21k), so 1.05 enforces sublinearity with margin. (Caveat: this fits a
+    // TEMPORAL accumulation as area fills, a proxy for the cross-sectional area law; the
+    // band change fixes the superlinear-admittance, not that deeper proxy nuance.)
+    score("culture count ~ area^k, k<1", slope.toFixed(2), slope > 0 && slope < 1.05, false, "diversity grows with territory, sublinearly (k<1)");
   } else score("culture scaling", "n/a", true, false, "not enough growth samples");
 }
 
@@ -466,8 +489,32 @@ const st = peopleSimStats(world);
       if (coast || (riverMag && riverMag[ti] >= 1)) waterT++;
     }
     const enrich = (onWater / setts.length) / Math.max(1e-6, waterT / Math.max(1, landT));
-    score("settlements cluster on water (enrichment)", enrich.toFixed(2), enrich >= 1.3, false,
-      `${(onWater / setts.length * 100).toFixed(0)}% sited on water vs ${(waterT / Math.max(1, landT) * 100).toFixed(0)}% of land; uniform = 1.0 (NN-CV ${cv.toFixed(2)}, unscored)`);
+    // SAME-FOOTPRINT null (this is the SCORED statistic): the numerator
+    // (s.waterAccess) detects water over a 3×3 (computeWaterAccess), so the
+    // denominator base-rate must use the SAME detector over every land tile. The
+    // old per-tile base-rate was too low and inflated enrichment above 1.0 even for
+    // random siting (raw `enrich` reads ~1.70; the honest value is ~1.36, stable
+    // across all three canon seeds). A world with NO water preference reads ~1.0
+    // under this null; real pre-modern siting reads well above it.
+    let sfWater = 0;
+    { const coast = world.coast;
+      for (let ti = 0; ti < tw * th; ti++) {
+        if (elev[ti] <= 0) continue;
+        const ty = (ti / tw) | 0, tx = ti - ty * tw;
+        let coastBit = 0, bestMag = 0;
+        for (let dy = -1; dy <= 1; dy++) { const ny = ty + dy; if (ny < 0 || ny >= th) continue;
+          for (let dx = -1; dx <= 1; dx++) { const nx = ((tx + dx) % tw + tw) % tw; const ni = ny * tw + nx;
+            if (coast && coast[ni]) coastBit = 1; const m = riverMag ? (riverMag[ni] || 0) : 0; if (m > bestMag) bestMag = m; } }
+        if (Math.min(1, coastBit * 0.5 + bestMag * 0.2) > 0.05) sfWater++;
+      }
+    }
+    const enrichSF = (onWater / setts.length) / Math.max(1e-6, sfWater / Math.max(1, landT));
+    // Bar 1.15: measured 1.36–1.37 across all three canon seeds (real clustering),
+    // with headroom above the ~1.0 a no-preference world would read. Was `enrich >=
+    // 1.3` on the footprint-inflated raw metric, which sat below plausible random-
+    // siting enrichment — a world with no water preference could pass it.
+    score("settlements cluster on water (same-footprint enrichment)", enrichSF.toFixed(2), enrichSF >= 1.15, false,
+      `${(onWater / setts.length * 100).toFixed(0)}% on water vs same-footprint null ${(sfWater / Math.max(1, landT) * 100).toFixed(0)}% (raw per-tile null gave ${enrich.toFixed(2)}; NN-CV ${cv.toFixed(2)})`);
   } else score("clustering", "n/a", true, false, "too few settlements");
 }
 

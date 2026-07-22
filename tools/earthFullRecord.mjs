@@ -2,7 +2,7 @@
 // Runs the real full pipeline at any size and records EVERYTHING the sim exposes,
 // in four layers, so a whole world's history can be reviewed post-hoc:
 //   A. FINE SERIES  (every SERIES steps → <out>.series.jsonl): ~40 aggregates —
-//      population/tiers/urbanisation, countries + size top5, wealth/treasury/trade/
+//      population/tiers/urbanisation (people-share in cores), countries + top5 member counts, wealth/treasury/trade/
 //      price-level/solvency, money+people conservation totals (invariants ON),
 //      leader knowledge per track, era census, wars/fronts/army, plague/famine,
 //      registry sizes (persons/dynasties/cultures/faiths), event count, steps/s, RSS.
@@ -59,6 +59,13 @@ function series(dt) {
   const setts = world.settlements.filter(s => s.mode === "settled");
   const st = peopleSimStats(world);
   const tiers = [0, 0, 0, 0]; for (const s of setts) tiers[Math.min(3, s.tier | 0)]++;
+  // True demographic urbanization = share of PEOPLE living in urban cores
+  // (mirror tools/stylized.mjs:305) — NOT the share of settlements that are
+  // tier>=2 (each settlement is a whole province; that count-share read ~62%
+  // while the real people-in-cities share is ~8-13%).
+  const hasRural = setts.some(s => (s._ruralPop || 0) > 0);
+  let uPop = 0, tPop = 0;
+  for (const s of setts) { tPop += s.people || 0; uPop += hasRural ? (s._urbanPop || 0) : ((s.tier | 0) >= 2 ? (s.people || 0) : 0); }
   // leader + era census
   let lead = null, leadOrg = 0; const eraH = new Array(ERAS.length).fill(0);
   for (const c of (world.countries || new Map()).values()) {
@@ -72,7 +79,12 @@ function series(dt) {
   let treas = 0, inso = 0, minSv = 1, sizes = [];
   const memb = new Map(); for (const s of setts) if (s.countryId >= 0) memb.set(s.countryId, (memb.get(s.countryId) || 0) + 1);
   for (const [cid, c] of (world.countries || new Map())) {
-    treas += Math.max(0, c._treasury || 0); const sv = c._solvency ?? 1;
+    // LIVE polity treasury (matches peopleSimStats/HUD, index.js:411) — NOT the
+    // per-pass c._treasury snapshot, which sawtooths ~50% because between passes
+    // tariff/mint flows drain purses into the live treasury the snapshot misses.
+    const pol = world.polities ? world.polities.get(cid) : null;
+    if (pol && pol.endedStep < 0) treas += Math.max(0, pol.treasury || 0);
+    const sv = c._solvency ?? 1;
     if (sv < 0.05) inso++; if (sv < minSv) minSv = sv;
     sizes.push(memb.get(cid) || 0);
   }
@@ -87,8 +99,8 @@ function series(dt) {
     leadEra: ERAS[Math.max(0, eraH.reduce((m, v, i) => v > 0 ? i : m, 0))], leadOrg: r2(leadOrg),
     lead: Object.fromEntries(KTRK.map(k => [k.slice(0, 4), r2(lk[k] || 0)])),
     eras: eraH.join(","),
-    pop: Math.round(st.totalPeople), setts: setts.length, tiers: tiers.join(","), urbanPct: r2(100 * (tiers[2] + tiers[3]) / Math.max(1, setts.length)),
-    countries: (world.countries || new Map()).size, top5: sizes.slice(0, 5).join(","),
+    pop: Math.round(st.totalPeople), setts: setts.length, tiers: tiers.join(","), urbanPct: r2(tPop > 0 ? 100 * uPop / tPop : 0),
+    countries: (world.countries || new Map()).size, top5Members: sizes.slice(0, 5).join(","),
     wealth: Math.round(sum(setts.map(s => s.wealth || 0))), treasury: Math.round(treas), tradeFlow: Math.round(tradeFlow), links: world._linkMoney ? world._linkMoney.size : 0,
     P: r2(globalP), insolvent: inso, minSolv: r2(minSv),
     coin: Math.round(world.debug?.totalCoin || 0), people: Math.round(world.debug?.totalPeople || 0),   // conservation watch
