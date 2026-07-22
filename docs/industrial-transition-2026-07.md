@@ -299,11 +299,36 @@ proxy is the wrong base (measured peopleProd/Ttrade diverges ≈250× and wideni
 across the arc). The deep tw=240/480 re-confirmation is the same class of expensive
 run §7 flags; the mechanism is resolution-independent.
 
-**Open (in progress at writing):** a FIAT sweep (1.5 / 4 / 8 under `OUTPUT_TOTAL=1`)
-to settle whether the onset overshoot-then-crash is calibration (a regime-
-appropriate FIAT damps it) or structural (spirals at any level → ②b/②c strictly
-required). Prior from the data: mostly structural — the fiat collapse is triggered
-by org loss on fragmentation, which a money *level* doesn't prevent.
+**FIAT sweep result** (`OUTPUT_TOTAL=1`, deep-modern org=1; ran 1.5 / 4 / 8).
+Raising FIAT in the total-output regime does NOT simply center the price — it
+trades off cohesion against inflation:
+
+| FIAT | price P (deep modern) | insolvent (mean) | countries (cohesion) |
+|---|---|---|---|
+| 1.5 | ~0.3 (stuck near the floor) | low then rising | ~52, fragmenting |
+| 4   | 2.0 → 0.23 (overshoot, then spiral) | 1.0 | ~55 → 61 |
+| 8   | mean 1.48, **CoV 0.75** [0.36–3.8] | 1.1 | **37.8, CoV 0.06** |
+
+Higher FIAT monotonically improves COHESION (countries ~52 → ~38) and solvency:
+FIAT=8 holds the realm together far better than the control (~38 vs ~55 countries,
+CoV 0.06) — the "holds together because it can afford to" criterion is *largely met
+at adequate monetisation*, and FIAT≈4 (carried over from the trade-proxy regime) is
+simply under-calibrated for the larger total-output base. BUT the modern PRICE stays
+volatile at EVERY level: deflated at 1.5, overshoot-then-spiral at 4, and at 8 it
+overshoots to ~3.8, settles near ~1 for a spell, then still suffers periodic
+fiat-collapse events (M 10M → 0.6M around step 92k → P to the floor). So the
+price residual is NOT pure calibration — no single FIAT stabilises it; the
+instability lives in the fiat money-SUPPLY dynamics (the org-gated credit ramp /
+call-in that collapses when a realm fragments), which the T-measure doesn't touch.
+
+**Net.** Residual-1 + a regime-appropriate FIAT (≈8, not the trade-proxy ≈4)
+already buys the better half — ~7× monetisation, materially better solvency, and
+genuine cohesion. A STABLE modern price additionally needs the fiat supply made
+robust to fragmentation: ②b (extraction that funds solvency without leaning on
+volatile fiat credit) and ②c (reach that stops the fragmentation that collapses
+org-gated fiat). Co-required for price STABILITY — confirmed by the sweep, not
+assumed. Nothing here is auto-applied; FIAT and OUTPUT_TOTAL stay default-off, and
+the co-tuning + flip remain the owner's call.
 
 **Cardinal-rule check.** Emergent (gates on the settlement's own `_eraProd` /
 development, never a clock). A SYSTEM (the correct output measure), not a fitted
