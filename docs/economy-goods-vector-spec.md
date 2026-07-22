@@ -407,6 +407,51 @@ joint calibration, not two.** Then: shocks-via-prices demo, the
 settlement-panel goods table (UI/worker snapshot), luxury re-sizing via the
 now-exposed lever, and the full cross-seed battery for any default flips.
 
+## Beyond Stage 4 — the nine-lever batch (2026-07)
+
+Owner said "do all of it"; landed in three commits, every lever default 0 /
+byte-identical off (smoke green with all the touched paths — knowledge,
+conquest scoring, events, worker):
+
+- **T.GOODS_FREIGHT** — per-good value density (ore 3×, luxury 0.15×); trade
+  RANGE per good becomes an output (von Thünen). Bulk spreads widen, luxury
+  untouched (measured 3k A/B).
+- **T.ARMY_PROCURE** — war burns kit: army metal demand × live warLevel
+  (cached on the polity). The war economy through prices.
+- **T.GOODS_STOCKS** — entrepôts shelve and re-export: multi-hop trade, the
+  spread-minus-freight profit of position; stock decays, stays off the local
+  price. Measured buffering: ore max 4.00 → 2.65 (3k).
+- **T.GOODS_INVEST** — spare wealth buys depreciating craft capacity from
+  LIVE partners (closed supply, the construction pattern). The growth engine;
+  at the full stack, wealth hits the arc's high (387k) with pop back at
+  baseline (36.2k — the Stage-0/4 macro drift is GONE with investment on).
+- **T.RESOURCE_WARS** — absorption pressure reads the price map (cheap-there,
+  dear-at-my-capital, gap ≥ 0.5); biases WHICH neighbours a dominant realm
+  erodes, never creates dominance.
+- **T.INDUCED_INNOV** — dear staple/metal/materials pull the agronomy/
+  furnace/mason tracks (one-sided; gluts never punish).
+- **Chronicle**: `market.dearth` / `market.boom` events from sustained
+  crisis-band prices (log-only, fires only with the layer on).
+- **Snapshot**: `_gPrice` mirrored for every settlement — the painted
+  price-map lens is DEFERRED to the UI arc (canvas work); data is ready.
+- **tools/probe_priceshock.mjs** — sack the top luxury exporter: victim
+  price 0.59 → 0.86 in 500 ticks, ring-1 +0.07, ring-2 flat, absorbed by
+  ~2000. Distance decay AND market resilience, both emergent.
+
+**Twelve-lever battery (8817, 20k):** smoke green; validate all hard gates,
+1 soft warning — now a MEASURED Zipf slope (−0.60, 21 cities; the known
+ONE_POP compression topic) instead of n/a. Entropy 2.25 (Services 28.5 /
+Textiles 23.8 / Metalwork 21.5 / CW 14.6 / Pottery 11.5); asymmetry goods
+0.91 / luxury 0.99. *Measurement caveat:* materials asymmetry reads 0.29
+because CAPITAL-GOODS purchases (GOODS_INVEST) book on the same channel as
+materials trade — a labelling overlap, not mirror trade; split the channel
+when the calibration pass lands.
+
+Still deliberately parked: layer unification + the F8 calibration (JOINT
+with the fiat arc after it merges), the painted price lens, default flips
+(owner's call), and the ultracode-scale cross-seed × cross-lever matrix +
+adversarial pre-merge review when the owner calls for them.
+
 ## Open questions (decide before Stage 2)
 
 1. **Grain:** ~~unify into the market, or leave on the food hierarchy?~~
