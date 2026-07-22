@@ -102,6 +102,7 @@ const INVEST_FRAC   = 0.01;    // share of spare wealth a town commits per tick 
 const CAPX_PER_COIN = 0.002;   // capacity bought per coin at zero saturation (≈500 coin → +1.0)
 const CAPX_MAX      = 1.0;     // capital can at most DOUBLE a craft's capability (land/skills still bind)
 const CAPX_DEPREC   = 0.0005;  // per-tick depreciation (mills silt, docks rot — renewal or decline)
+const CAPX_FILL     = 0.02;    // share of the OUTSTANDING build cost financeable per tick (~a construction season to complete funded works)
 
 // Compute this settlement's goods vectors for the tick: production, demand,
 // the relaxed local price, and the (slowly reallocating) craft labour
@@ -325,8 +326,18 @@ export function updateGoods(world, s) {
     const dep = 1 - CAPX_DEPREC * dt;
     for (let c = 0; c < N_CRAFT; c++) cx[c] *= dep;
     const spare = (s.wealth || 0) - getWealthReserve(s);
-    if (spare > 1 && wBest > EPS && cx[cBest] < CAPX_MAX && s._tradeReach && s._tradeReach.size > 0) {
-      let invest = spare * INVEST_FRAC * T.GOODS_INVEST * dt;
+    const gapX = CAPX_MAX - cx[cBest];
+    if (spare > 1 && wBest > EPS && gapX > 0.01 && s._tradeReach && s._tradeReach.size > 0) {
+      // Spend is bounded by the OUTSTANDING BUILD COST, not just the purse:
+      // you build the mill once (≈gap/CAPX_PER_COIN coin, financed over
+      // ~1/CAPX_FILL ticks), then pay only depreciation-replacement. The
+      // first cut spent a flat fraction of spare wealth forever — measured
+      // at 12k it made "capital goods sold" 55-58% of ALL world income at
+      // every demand scale, towns shovelling coin at builders for
+      // asymptotically nothing. Capital is a stock to complete, not a
+      // bottomless spending channel.
+      let invest = Math.min(spare * INVEST_FRAC * T.GOODS_INVEST * dt,
+                            (gapX / CAPX_PER_COIN) * CAPX_FILL * dt);
       if (invest > 0.01) {
         // Pay the live partners (equal split by headcount — hire builders,
         // buy fittings from the neighbourhood). Recompute liveness inline so
@@ -341,7 +352,7 @@ export function updateGoods(world, s) {
           recordOut(s, OUT_CAPITAL, invest);   // its own channel — so trade asymmetry never conflates capital purchases with materials trade
           const share = invest / recips.length;
           for (const p of recips) { p.wealth = (p.wealth || 0) + share; recordIn(p, IN_CAPITAL, share); }
-          cx[cBest] = Math.min(CAPX_MAX, cx[cBest] + invest * CAPX_PER_COIN * (1 - cx[cBest] / CAPX_MAX));
+          cx[cBest] = Math.min(CAPX_MAX, cx[cBest] + invest * CAPX_PER_COIN);   // the gap itself limits — coin buys capacity at par until the works are done
         }
       }
     }

@@ -1103,8 +1103,13 @@ function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, interme
     let qty = Math.min(exp[g] * Math.min(1, GT_FLOW_FRAC * gapF), imp[g]);
     if (qty <= 0.0001) continue;
     // Clearing price: the midpoint — both sides gain vs their local price
-    // (the gains from trade), and value stays on the goods' own scale.
-    const pMid = (Pa[g] + Pb[g]) * 0.5;
+    // (the gains from trade). T.GOODS_VALUE_UNIT converts the goods' own
+    // quantity scale to COIN (the F8 unit calibration): a pure unit factor
+    // on value — quantities, budgets, prices and every ratio untouched.
+    // (Scaling the DEMAND constants instead was measured wrong: it shrinks
+    // exportable surpluses — towns eat their own production — so goods-sold
+    // income FELL as the scale rose. Units belong on the value line.)
+    const pMid = (Pa[g] + Pb[g]) * 0.5 * (T.GOODS_VALUE_UNIT || 1);
     let value = qty * pMid;
     if (value > valueLeft) { value = valueLeft; qty = value / pMid; }
     // Freight ∝ share of the pair's value this consignment uses — scaled by
