@@ -201,10 +201,12 @@ byte-identical off), so mainline is unchanged until each stage validates.
 
 ## Open questions (decide before Stage 2)
 
-1. **Grain:** unify into the market, or leave on the food hierarchy? (Leaning:
-   keep the hierarchy for subsistence feeding — it's tuned and load-bearing for
-   city formation — and let the *market* carry only the tradable surplus, so the
-   two don't double-count.)
+1. **Grain:** ~~unify into the market, or leave on the food hierarchy?~~
+   **DECIDED 2026-07 (owner):** grain STAYS on the food hierarchy — it's tuned
+   and load-bearing for city formation. The market carries only the tradable
+   `staple` *surplus* (what's left after the hierarchy feeds the tree), so the
+   two never double-count. Stage 2 must subtract the hierarchy's shipped grain
+   from the market-side `staple` supply.
 2. **Good count:** is 8 the right granularity, or split ore by metal / add
    `livestock`+`horses` as a 9th (military input)? Start at 8; add only if a
    stage needs it.

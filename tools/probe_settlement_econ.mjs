@@ -101,11 +101,23 @@ agg.map((v, i) => [IN_LABELS[i], v]).sort((a, b) => b[1] - a[1]).forEach(([k, v]
   if (v / aggTot > 0.002) console.log(`   ${(100 * v / aggTot).toFixed(1).padStart(5)}%  ${k}`);
 });
 
+// ── 1b. Endowment homogenization (analysis F3) ────────────────────────
+// How many resources does each settlement read as "having"? Under the MAX
+// endowment big cities converge on 8-10; under RES_SCARCITY a city should
+// read rich only in what it genuinely commands.
+function nRes(s, thr) { const r = s.localRes || {}; let n = 0; for (const k in r) if (r[k] >= thr) n++; return n; }
+const big10 = [...setts].sort((a, b) => b.people - a.people).slice(0, 10);
+const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+console.log(`\n### ENDOWMENT BREADTH (resources per settlement at richness thresholds)`);
+console.log(`   all ${setts.length} setts:  ≥0.10 ${mean(setts.map((s) => nRes(s, 0.10))).toFixed(1)}   ≥0.25 ${mean(setts.map((s) => nRes(s, 0.25))).toFixed(1)}   ≥0.40 ${mean(setts.map((s) => nRes(s, 0.40))).toFixed(1)}`);
+console.log(`   top-10 by pop:   ≥0.10 ${mean(big10.map((s) => nRes(s, 0.10))).toFixed(1)}   ≥0.25 ${mean(big10.map((s) => nRes(s, 0.25))).toFixed(1)}   ≥0.40 ${mean(big10.map((s) => nRes(s, 0.40))).toFixed(1)}`);
+
 // ── 2. Specialty diversity ────────────────────────────────────────────
 const towns = setts.filter((s) => (s.tier | 0) >= 1);
 const specCount = {};
 for (const s of towns) { const k = s._specKey || "(none)"; specCount[k] = (specCount[k] || 0) + 1; }
-console.log(`\n### SPECIALTY DISTRIBUTION across ${towns.length} towns+ (the comparative-advantage sector each locks into)`);
+const specEntropy = Object.values(specCount).reduce((h, n) => { const p = n / towns.length; return h - p * Math.log2(p); }, 0);
+console.log(`\n### SPECIALTY DISTRIBUTION across ${towns.length} towns+ (the comparative-advantage sector each locks into)   [entropy ${specEntropy.toFixed(2)} bits of ${Math.log2(5).toFixed(2)} max]`);
 Object.entries(specCount).sort((a, b) => b[1] - a[1]).forEach(([k, n]) =>
   console.log(`   ${(100 * n / towns.length).toFixed(1).padStart(5)}%  (${String(n).padStart(4)})  ${k}`));
 

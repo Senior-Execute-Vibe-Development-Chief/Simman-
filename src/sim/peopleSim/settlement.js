@@ -582,6 +582,41 @@ function craftLegs(s, k, r) {
   }
   return legs;
 }
+// ── Ricardian specialty reference (T.SPEC_RELATIVE, goods-vector Stage 0) ──
+// True comparative advantage is RELATIVE TO THE COMPETITION, not to a sector's
+// own ceiling: score = legs[k] / (world-typical output of k). The CRAFT_REF
+// scoring ("closeness to the ceiling") let the easiest-to-saturate sector win
+// everywhere — Crafted wares = construction ≈ 1 for every developed town, so
+// 50-65% of towns locked into it and Metalwork/Services structurally never won
+// (docs/settlement-economy-analysis-2026-07.md F1). Against the world mean, an
+// ore town's metal leg towers over a world mostly without ore, a metropolis's
+// services tower over a world of villages — the pick spreads with geography,
+// with NO reference constants at all.
+// The mean is LAG-1: settlements accumulate raw legs as they compute them, and
+// the first computeExportValue of each tick swaps last tick's sums into the
+// mean every settlement then reads — identical for all, order-independent,
+// deterministic. No mean yet (first tick of a run, or right after load — the
+// accumulator is a transient cache, never persisted) → the caller skips
+// evolving the pick for that one tick.
+const SPEC_REL_EPS = 0.02;   // output level below which a sector reads "globally absent" (guards ÷0; a locally-present, globally-absent craft then scores huge — the world's only forge town IS the metal specialist)
+function craftMeanOf(world) {
+  if (world._craftMeanStep !== world.step) {
+    const acc = world._craftAcc, n = world._craftAccN || 0;
+    let mean = null;
+    if (acc && n > 0) { mean = {}; for (const k in acc) mean[k] = acc[k] / n; }
+    world._craftMean = mean;
+    world._craftMeanStep = world.step;
+    world._craftAcc = null; world._craftAccN = 0;
+  }
+  return world._craftMean;
+}
+function accumulateCraftLegs(world, legs) {
+  let acc = world._craftAcc;
+  if (!acc) { acc = world._craftAcc = {}; world._craftAccN = 0; }
+  for (const k in legs) acc[k] = (acc[k] || 0) + legs[k];
+  world._craftAccN++;
+}
+
 // AGGLOMERATION lock-in (increasing returns): multiply a town's ESTABLISHED specialty
 // (_specKey, the comparative-advantage sector it has committed to, strength _specStr)
 // so the cluster compounds — Florence→wool, Toledo→steel, Murano→glass. Applied by
@@ -1062,8 +1097,21 @@ export function computeExportValue(s, world) {
   // profile (not the boosted output) is what lets industry relocate and keeps the map
   // diverse instead of every town chasing the single absolute-strongest craft.
   if (world && T.AGGLOM_W > 0) {
+    // T.SPEC_RELATIVE: score vs the lag-1 WORLD-TYPICAL output of each sector
+    // (Ricardian — see craftMeanOf) instead of vs the CRAFT_REF ceiling. No
+    // mean yet (first tick / just loaded) → hold the pick for one tick.
+    let specRef = null, holdPick = false;
+    if (T.SPEC_RELATIVE) {
+      specRef = craftMeanOf(world);
+      accumulateCraftLegs(world, legs);
+      if (!specRef) holdPick = true;
+    }
     let topK = null, topScore = -1;
-    for (const key in legs) { const sc = legs[key] / (CRAFT_REF[key] || 1); if (sc > topScore) { topScore = sc; topK = key; } }
+    if (!holdPick) for (const key in legs) {
+      const sc = specRef ? legs[key] / ((specRef[key] || 0) + SPEC_REL_EPS)
+                         : legs[key] / (CRAFT_REF[key] || 1);
+      if (sc > topScore) { topScore = sc; topK = key; }
+    }
     if (topK) {
       if (s._specKey === topK) s._specStr = Math.min(1, (s._specStr || 0) + T.AGGLOM_RISE * (1 - (s._specStr || 0)));
       else {
