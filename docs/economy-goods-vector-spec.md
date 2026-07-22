@@ -199,6 +199,52 @@ byte-identical off), so mainline is unchanged until each stage validates.
 - **Probe:** `tools/probe_settlement_econ.mjs` already dumps identity / buy /
   sell / partners — extend it to print per-good prices and the new facts.
 
+## Stage 0 — LANDED (2026-07)
+
+Shipped behind `T.RES_SCARCITY` (+ `RES_SCARCITY_K`, def 1.5) and
+`T.SPEC_RELATIVE`, both **default 0** (byte-identical off; smoke green twice).
+Measured at 480×240, seed 8817, 20 000 steps (`tools/probe_settlement_econ.mjs`):
+
+| metric | OFF | S only | R only | **S+R** |
+|---|---|---|---|---|
+| specialty entropy (bits, max 2.32) | 1.11 | 0.92 | 2.12 | **2.19** |
+| top-10-city endowment breadth ≥0.10 / ≥0.25 / ≥0.40 | 6.3 / 4.6 / 2.7 | 5.3 / 3.3 / 1.6 | 6.4 / 4.8 / 2.6 | **3.4 / 2.2 / 1.5** |
+| Crafted-wares share of specialties | 64.8 % | 77.0 % | 9.1 % | 15.7 % |
+| Metalwork / Services shares | 0 % / 0 % | 0 % / 0 % | 32.6 % / 10.6 % | 22.5 % / 11.8 % |
+| settlements · pop · wealth | 128 · 35.0k · 301k | 87 · 25.6k · 289k | 132 · 35.9k · 322k | 102 · 26.9k · 303k |
+
+Findings:
+
+- **The two levers are COMPLEMENTS — ship them together.** Scarcity alone
+  (S) *worsens* the picker collapse (Crafted wares 77 %): scarcer geography
+  shrinks the geographic legs, leaving construction even more dominant under
+  the CRAFT_REF scoring. The Ricardian pick alone (R) fixes the distribution
+  but leaves big cities endowment-homogenised. Together: all five sectors
+  alive in geographic proportions AND the top cities' endowment breadth
+  roughly halved (6.3 → 3.4 at the 0.10 threshold).
+- **Mechanism lesson (recorded so it isn't re-learned):** the first
+  RES_SCARCITY cut used the saturated SUM alone (`S/(S+K)`, K=1) and failed
+  its own goal — a forest belt sums to S≈30, an ore district 4–6, so
+  everything a big city touched read ~0.9+ and breadth ROSE (top-10 ≥0.40:
+  2.7 → 6.1). Quantity without quality is the wrong physics; the landed form
+  is **grade × substantiality** (`maxRichness × (1 − e^(−S/K))`), which
+  preserves the MAX's correct reading of source quality and gates it on
+  commanding a real district.
+- **Honest macro shift under the flags** (pop −23 %, settlements −20 %,
+  cities 16 → 20): the inflated MAX endowments were propping up craft
+  output everywhere; scarcity removes that subsidy. `npm run validate` under
+  both flags: **all hard gates pass**, 1 soft warning (Zipf n/a — 13 cities
+  > 50 urban at 21k, within the 2-warning budget).
+- Remaining for Stage 1+: ~39 % of towns' single biggest export line is
+  still the flat "Baseline" — that line only disappears when real per-good
+  production replaces the scalar (Stage 1).
+
+Repro:
+```
+SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1" node tools/probe_settlement_econ.mjs 20000 8817 480 240
+SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1" npm run validate
+```
+
 ## Open questions (decide before Stage 2)
 
 1. **Grain:** ~~unify into the market, or leave on the food hierarchy?~~

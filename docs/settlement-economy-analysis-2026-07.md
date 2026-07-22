@@ -185,6 +185,12 @@ set of goods.
 
 ## Systemic fixes (mechanism-first — no outcome-fitting)
 
+> **Status 2026-07:** the chosen direction is the goods-vector reframe —
+> `docs/economy-goods-vector-spec.md`. Its Stage 0 (fixes #1 + #2 below,
+> behind `T.RES_SCARCITY` / `T.SPEC_RELATIVE`, defaults off) has LANDED and
+> measured: specialty entropy 1.11 → 2.19 bits, top-city endowment breadth
+> halved — see the spec's "Stage 0 — LANDED" section for the A/B table.
+
 Directions only; nothing here dials in a specific town's result.
 
 1. **Re-normalise the comparative-advantage picker (F1).** The `CRAFT_REF`
