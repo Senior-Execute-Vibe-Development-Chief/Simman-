@@ -1089,8 +1089,17 @@ function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, interme
   }
   if (order.length === 0) return;
   order.sort((x, y) => y[1] - x[1] || x[0] - y[0]);
-  const freightTotal = transport;   // pair freight, allocated below ∝ value shipped
-  let freightLeft = freightTotal;
+  // Pair freight allocates against the INITIAL carrying budget — a fixed
+  // denominator, so the legs' shares sum to ≤ 1 and the pair's total freight
+  // = transport × the cargo mix's value-weighted bulkiness (exactly the
+  // physics: same value in ore = more tonnage = more carriage). The first
+  // cut divided by the SHRINKING remaining budget and tracked an exhaustible
+  // freight pool: legs compounded to ~1.8-3× the physical cost, the pool
+  // went negative, and every later consignment shipped FREE — silently
+  // bypassing the ship-worthiness check the von Thünen mechanism depends on
+  // (caught by the 2026-07 adversarial pre-merge review).
+  const freightTotal = transport;
+  const valueBudget0 = valueLeft;
   for (const [g, gap] of order) {
     if (valueLeft <= 0.001) break;
     const aSells = Pa[g] < Pb[g];
@@ -1112,11 +1121,11 @@ function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, interme
     const pMid = (Pa[g] + Pb[g]) * 0.5 * (T.GOODS_VALUE_UNIT || 1);
     let value = qty * pMid;
     if (value > valueLeft) { value = valueLeft; qty = value / pMid; }
-    // Freight ∝ share of the pair's value this consignment uses — scaled by
-    // the good's value density under T.GOODS_FREIGHT (lever 0 = flat, 1 =
-    // full bulk differentiation; ore pays 3×, silk a fifteenth).
+    // Freight ∝ share of the pair's INITIAL value budget — scaled by the
+    // good's value density under T.GOODS_FREIGHT (lever 0 = flat, 1 = full
+    // bulk differentiation; ore pays 3×, silk a fifteenth).
     const bulkMul = T.GOODS_FREIGHT > 0 ? 1 + T.GOODS_FREIGHT * ((GT_BULK[g] || 1) - 1) : 1;
-    const freight = freightLeft > 0 ? freightTotal * Math.min(1, value / (valueLeft + EPS_V)) * bulkMul : 0;
+    const freight = freightTotal * (value / (valueBudget0 + EPS_V)) * bulkMul;
     const scale = sellGoods(world, seller, buyer, value * fxRate(world, buyer, seller), freight, intermediates, numInter,
       GT_BOOK_IN[g] !== undefined ? GT_BOOK_IN[g] : IN_GOODS,
       GT_BOOK_OUT[g] !== undefined ? GT_BOOK_OUT[g] : OUT_GOODS) || 0;
@@ -1124,7 +1133,6 @@ function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, interme
     const moved = qty * scale;
     exp[g] -= moved; imp[g] -= moved;
     valueLeft -= value * scale;
-    freightLeft -= freight * scale;
     // Per-tick net-goods bookkeeping → next tick's local prices (goods.js).
     const perTick = moved / stride;
     const nS = seller._gNet, nB = buyer._gNet;

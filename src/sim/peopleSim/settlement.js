@@ -1163,6 +1163,13 @@ export function computeExportValue(s, world) {
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
   const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world) * techEff(s).tradeMult;
   ag *= mult; agFood *= mult; agMat *= mult;
+  // Stash the PRIMARY materials component (post-mult, PRE-ore) for the goods
+  // layer — cap[G_MATERIALS] must never include the ore the goods vector
+  // already carries as G_ORE. Stashing after the UNIFY branch's `agMat +=
+  // oreU` made every mining settlement's extraction ship TWICE (once as ore,
+  // once as phantom materials), double-booking income and depressing its
+  // materials price — caught by the 2026-07 adversarial pre-merge review.
+  s._agMat = agMat;
   let v;
   if (T.GOODS_UNIFY && s._gProd) {
     // ── LAYER UNIFICATION (T.GOODS_UNIFY) ────────────────────────────────
@@ -1187,7 +1194,6 @@ export function computeExportValue(s, world) {
     man *= mult;
     v = ag + man;
   }
-  s._agMat = agMat;                                     // goods.js reads the primary materials component directly (breaks the ev↔cap cycle)
   s._exportFoodFrac = v > 0 ? agFood / v : 0;           // share booked as "food & farm goods"
   s._exportMatFrac  = v > 0 ? agMat / v : 0;            // share booked as "materials" (rest = manufactured/service goods)
   return v;

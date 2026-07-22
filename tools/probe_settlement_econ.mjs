@@ -199,4 +199,8 @@ byPop.slice(0, 10).forEach((s) => {
   console.log(`   ASYMMETRY INDEX (top-10 mean; 0 = mirror trade, 1 = one-way): ${parts.join("   ")}`);
 }
 
-console.log(`\n(done in ${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+// Timing goes to STDERR: stdout must be a byte-stable function of (seed, steps,
+// levers) so determinism gates can diff two runs' stdout directly (the wall-clock
+// footer was the only line that ever differed — pre-merge review, 2026-07).
+console.log(`\n(done)`);
+process.stderr.write(`(done in ${((Date.now() - t0) / 1000).toFixed(0)}s)\n`);
