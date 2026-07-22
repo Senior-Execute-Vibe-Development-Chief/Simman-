@@ -97,6 +97,7 @@ const SETT_FIELDS = [
   "_lastBorrow",                         // crop-package borrow cooldown (T.CROP_AXIS)
   "_rivalN",                             // peer-weighted rival contact (competition signal)
   "_hegF", "_peerPeak",                  // hegemonic stagnation: decline-from-peak peer pressure + the peak ratchet
+  "_gPrice", "_gShare",                  // goods vector (T.GOODS_PRICES): local per-good prices + craft labour shares — the market's memory (plain number arrays)
 ];
 
 // Load-bearing per-settlement DYNAMIC state that the hashWorld core loop omitted:

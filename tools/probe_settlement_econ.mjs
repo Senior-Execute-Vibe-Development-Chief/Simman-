@@ -12,6 +12,8 @@ import { stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 import { getExportBreakdown, getTradeProfile, TIER_NAME, monetization } from "../src/sim/peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS } from "../src/sim/peopleSim/money.js";
 import { personalityOf } from "../src/sim/peopleSim/personality.js";
+import { GOODS } from "../src/sim/peopleSim/goods.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 
 const STEPS = parseInt(process.argv[2] || "20000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);
@@ -83,6 +85,10 @@ function dump(s, tag) {
   console.log(`   SELLS (income):  ${inFlows(s)}`);
   console.log(`   BUYS  (spending): ${outFlows(s)}`);
   console.log(`   partners: ${partners(s)}`);
+  if (T.GOODS_PRICES && s._gPrice) {
+    console.log(`   goods prices: ${GOODS.map((g, i) => `${g} ${rr(s._gPrice[i])}`).join("  ")}`);
+    if (s._gShare) console.log(`   craft labour: ore ${rr(s._gShare[0])} metal ${rr(s._gShare[1])} cloth ${rr(s._gShare[2])} wares ${rr(s._gShare[3])} services ${rr(s._gShare[4])}`);
+  }
 }
 
 // ── 1. Macro ──────────────────────────────────────────────────────────
@@ -111,6 +117,17 @@ const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length :
 console.log(`\n### ENDOWMENT BREADTH (resources per settlement at richness thresholds)`);
 console.log(`   all ${setts.length} setts:  ≥0.10 ${mean(setts.map((s) => nRes(s, 0.10))).toFixed(1)}   ≥0.25 ${mean(setts.map((s) => nRes(s, 0.25))).toFixed(1)}   ≥0.40 ${mean(setts.map((s) => nRes(s, 0.40))).toFixed(1)}`);
 console.log(`   top-10 by pop:   ≥0.10 ${mean(big10.map((s) => nRes(s, 0.10))).toFixed(1)}   ≥0.25 ${mean(big10.map((s) => nRes(s, 0.25))).toFixed(1)}   ≥0.40 ${mean(big10.map((s) => nRes(s, 0.40))).toFixed(1)}`);
+
+// ── 1c. Goods-price dispersion (Stage 1: the gradient Stage 2 trades against) ──
+if (T.GOODS_PRICES) {
+  console.log(`\n### LOCAL PRICE DISPERSION per good (min / median / max across ${setts.length} settlements)`);
+  for (let g = 0; g < GOODS.length; g++) {
+    const ps = setts.filter((s) => s._gPrice).map((s) => s._gPrice[g]).sort((a, b) => a - b);
+    if (!ps.length) break;
+    const med = ps[(ps.length / 2) | 0];
+    console.log(`   ${GOODS[g].padEnd(10)} ${rr(ps[0])} / ${rr(med)} / ${rr(ps[ps.length - 1])}`);
+  }
+}
 
 // ── 2. Specialty diversity ────────────────────────────────────────────
 const towns = setts.filter((s) => (s.tier | 0) >= 1);

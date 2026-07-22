@@ -20,6 +20,7 @@ import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
+import { updateGoods, LEG_GOOD } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
 // scope: country ids are settlement ids and the personality RNG is seeded from
@@ -582,6 +583,7 @@ function craftLegs(s, k, r) {
   }
   return legs;
 }
+export { craftLegs };   // goods.js (Stage 1) builds craft capabilities from the same recipe — can't drift
 // ── Ricardian specialty reference (T.SPEC_RELATIVE, goods-vector Stage 0) ──
 // True comparative advantage is RELATIVE TO THE COMPETITION, not to a sector's
 // own ceiling: score = legs[k] / (world-typical output of k). The CRAFT_REF
@@ -1107,9 +1109,16 @@ export function computeExportValue(s, world) {
       if (!specRef) holdPick = true;
     }
     let topK = null, topScore = -1;
+    // GOODS_PRICES (Stage 1): weight each sector's score by the LOCAL PRICE of
+    // the good it makes — full comparative advantage (supply-side edge × local
+    // demand). A cold town's dear cloth pulls the loom, a war economy's dear
+    // metal pulls the forge. Prices are clamped to [0.25, 4] in goods.js, so
+    // this colours the pick rather than overriding geography.
+    const gP = T.GOODS_PRICES ? s._gPrice : null;
     if (!holdPick) for (const key in legs) {
-      const sc = specRef ? legs[key] / ((specRef[key] || 0) + SPEC_REL_EPS)
-                         : legs[key] / (CRAFT_REF[key] || 1);
+      let sc = specRef ? legs[key] / ((specRef[key] || 0) + SPEC_REL_EPS)
+                       : legs[key] / (CRAFT_REF[key] || 1);
+      if (gP && LEG_GOOD[key] !== undefined) sc *= gP[LEG_GOOD[key]];
       if (sc > topScore) { topScore = sc; topK = key; }
     }
     if (topK) {
@@ -1406,6 +1415,7 @@ export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
   updateWealth(world, s);
   updateCoercedLabour(world, s);   // slaves, cash crops, mine intensification (reads fresh wealth)
+  updateGoods(world, s);           // goods-vector Stage 1: prod/demand/price + craft labour (after lux & cash crops so budgets are fresh; no-op unless T.GOODS_PRICES)
   updateDevelopment(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
