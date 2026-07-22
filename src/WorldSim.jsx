@@ -11,6 +11,7 @@ import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
+import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./sim/peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
@@ -3863,6 +3864,28 @@ const renderInspect=()=>{
                 {captives>50&&<div style={{fontSize:10,marginTop:1,color:"#b06a4a"}}>Captives held: {captives.toLocaleString()} <span className="au-fade">for the slave market</span></div>}
                 {estates>0.15&&<div style={{fontSize:10,marginTop:1}}>Latifundia: {Math.round(estates*100)}% <span className="au-fade">of the land in elite estates</span></div>}
                 {serf>0.1&&<div style={{fontSize:10,marginTop:1}}>Serfdom: {Math.round(serf*100)}% <span className="au-fade">bound peasantry</span></div>}
+              </div>
+            );
+          })()}
+
+          {/* ── Local market (goods-vector levers, T.GOODS_PRICES+): per-good
+              scarcity prices, net trade flows, and where craft labour leans.
+              Renders only when the goods layer is on (worker mirrors _gPrice). ── */}
+          {s._gPrice&&(()=>{
+            const P=s._gPrice,N=s._gNet,L=s._gShare;
+            const col=p=>p>=1.5?"#b06a4a":p<=0.6?"#4a7a4a":"#5a4a32";
+            const flows=N?GOODS.map((g,i)=>[g,N[i]]).filter(([,v])=>Math.abs(v)>0.01)
+              .sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,3):[];
+            let lean=null;
+            if(L){let ti=0;for(let i=1;i<L.length;i++)if(L[i]>L[ti])ti=i;if(L[ti]>0.35)lean=[["ore","metalwork","cloth","wares","services"][ti],Math.round(L[ti]*100)];}
+            return(
+              <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid var(--au-line,#0002)"}}>
+                <div className="au-fade" style={{fontSize:9}}>Local market <span style={{opacity:.7}}>(dear = scarce here)</span></div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"1px 6px",fontSize:9.5,marginTop:2}}>
+                  {GOODS.map((g,i)=><span key={g} style={{color:col(P[i]),fontVariantNumeric:"tabular-nums"}}>{g} ×{P[i].toFixed(1)}</span>)}
+                </div>
+                {flows.length>0&&<div style={{fontSize:10,marginTop:2}}>{flows.map(([g,v])=>`${v>0?"imports":"exports"} ${g}`).join(", ")}</div>}
+                {lean&&<div style={{fontSize:10,marginTop:1}}>Craft labour leans to <b>{lean[0]}</b> <span className="au-fade">({lean[1]}%)</span></div>}
               </div>
             );
           })()}
