@@ -2206,11 +2206,10 @@ export function updatePolities(world) {
     // ground, in EVERY era — static geography, so a Nile/Mesopotamia/Yellow-River core
     // holds a structurally larger empire than a steppe-centred realm. A path-INDEPENDENT
     // source of size VARIETY that stops every realm relaxing to one characteristic size.
-    const capTi = (cap.pos.y | 0) * world.tw + (cap.pos.x | 0);
-    const geoCore = (world.fert ? world.fert[capTi] || 0 : 0.5)
-                  + 0.5 * (world.tFlood && world.tFlood[capTi] ? 1 : 0)
-                  + 0.3 * Math.min(1, (world.riverMag ? world.riverMag[capTi] || 0 : 0) / 3);
-    const geoMul = 1 + T.CAP_GEO * geoCore;
+    // (CAP_GEO removed 2026-07: the "ships default 0" product decision — the
+    // opt-in size-variance family (with ORG_APT_CAP) measured to fatten the
+    // biggest realms; the emergent capacity ruler carries size variety now.)
+    const geoMul = 1;
     // ── The capacity RULER (T.CAP_RELATIVE, default on) ─────────────────────────
     // The log2 base is measured against the ERA'S OWN median capital power (smoothed,
     // floored at POW_REF so genesis — when the median is tiny — is unchanged), not the
@@ -2243,7 +2242,7 @@ export function updatePolities(world) {
     // half ran — the lever read 0.4 and did nothing. Same gate and shape as the
     // legacy path (countryTerritory.js:929); ORG_APT_CAP=0 recovers the unwired
     // capacity byte-identically (×1 exact).
-    const aptMul = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_CAP * ((cap._orgApt || 0)) : 1;
+    const aptMul = 1;   // (ORG_APT_CAP removed 2026-07: measured windowed at 0.15 and 0.4, the capacity payout failed its gates; the aptitude LEARNING half lives on)
     let peaceCapacity = (capK * instMul * Math.log2(1 + capPowerCap / powRefEff)
                         + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul * aptMul;
     // IMPERIAL HYSTERESIS (path dependence): the administrative reach, roads and

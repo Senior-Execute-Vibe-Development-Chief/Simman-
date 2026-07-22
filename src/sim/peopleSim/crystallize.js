@@ -358,11 +358,9 @@ export function maybeCrystallize(world) {
   // checks, so spawn rate falls off naturally.
   const { N, tw, th, elev, fert, coast, riverMag, transportDist } = world;
   const rng = passRng(world, "crystallize");
-  // LOCALITY model spaces centres farther apart (×LOCALITY_SPACING) so the map
-  // fills with fewer, larger localities — each farming a bigger catchment —
-  // instead of a dense village scatter.
-  const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3)
-              : T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2)   // the model's GRANULARITY constant: how much countryside one town-region entity abstracts (see tuning.js REGION_SPACING)
+  // (LOCALITY_MODE removed 2026-07 — the experiment was superseded by the
+  // shipped DISSOLVE_FARMS region model, which owns the spacing below.)
+  const spMul = T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2)   // the model's GRANULARITY constant: how much countryside one town-region entity abstracts (see tuning.js REGION_SPACING)
               : 1;
   const rn = rNormFor(world);            // spacing in REAL distance, not tiles (RES_INVARIANT_POP)
   const hardFloor   = HARD_FLOOR * spMul * rn;

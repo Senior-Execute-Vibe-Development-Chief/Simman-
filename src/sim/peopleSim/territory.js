@@ -82,18 +82,13 @@ export function reachBudget(s) {
   // Zero economic reach → the cost-Dijkstra adds nothing beyond the core. This
   // touches ONLY the economic catchment; the political border layer
   // (countryTerritory.js) has its own capital-anchored reach and is unaffected.
-  if (T.URBAN_NODES && (s.tier | 0) >= 1) return 0;
+  // (URBAN_NODES + LOCALITY_MODE removed 2026-07: both experiments were
+  // superseded by the shipped DISSOLVE_FARMS region model.)
   // Admin reach now comes from the reach techs (tech.js) via the settlement's
   // cached effects (reachLevel tracks organization); falls back to continuous
   // organization if the cache isn't computed yet.
   const reach = s._techEff ? s._techEff.reachLevel : ((s.knowledge && s.knowledge.organization) || 0);
-  let b = TERRITORY_BASE + reach * T.ORG_REACH;
-  // LOCALITY model: centres are spaced LOCALITY_SPACING× farther apart, so widen
-  // each catchment to match — otherwise the freed land between them goes unfarmed
-  // (food + population collapse) and centres stay village-sized. A locality farms
-  // its whole hinterland.
-  if (T.LOCALITY_MODE) b *= Math.max(1, T.LOCALITY_SPACING || 3);
-  return b;
+  return TERRITORY_BASE + reach * T.ORG_REACH;
 }
 
 // Per-tile food weight by distance: 1 next to the centre, tailing off with
@@ -102,7 +97,7 @@ export function reachBudget(s) {
 // can walk to). In LOCALITY mode it's gentle: a locality's rural population is
 // spread ACROSS its catchment and works the whole thing, so far tiles still
 // count — otherwise widening the catchment just adds discounted-to-nothing land.
-function foodFalloff(cost) { return 1 / (1 + cost * (T.LOCALITY_MODE ? 0.04 : 0.5)); }
+function foodFalloff(cost) { return 1 / (1 + cost * 0.5); }
 
 // Plantability floor (same idea as before): below this fertility a tile
 // yields too little to feed anyone. Eased by agriculture knowledge.
@@ -121,11 +116,6 @@ const SQRT2 = Math.SQRT2;
 const CORE_BY_TIER = [1, 2, 3, 4];
 export function coreRadiusFor(s) {
   const t = s.tier | 0;
-  // URBAN_NODES: a town/city is a NODE — its land is just a tight built-up
-  // footprint (the city sits ON the land, it doesn't farm a heartland). Keeping
-  // the big tier-scaled core would leave a city occupying a chunk of farmland;
-  // a radius-1 block (the urban core) hands the rest to the Farming Regions.
-  if (T.URBAN_NODES && t >= 1) return 1;
   return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
 }
 
@@ -138,12 +128,8 @@ export function coreRadiusFor(s) {
 const HINTERLAND_BY_TIER = [3, 4, 6, 8];
 export function hinterlandRadiusFor(s) {
   const t = s.tier | 0;
-  // URBAN_NODES: a town/city gets no guaranteed farmland belt beyond its core —
-  // the countryside belongs to the Farming Regions (see reachBudget).
-  if (T.URBAN_NODES && t >= 1) return coreRadiusFor(s);
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
-  const mul = T.LOCALITY_MODE ? T.HINTERLAND_MULT * Math.max(1, T.LOCALITY_SPACING || 3) : T.HINTERLAND_MULT;
-  return Math.max(coreRadiusFor(s), Math.round(base * mul));
+  return Math.max(coreRadiusFor(s), Math.round(base * T.HINTERLAND_MULT));
 }
 
 class MinHeap {
@@ -238,17 +224,11 @@ export function computeTerritory(world) {
   // wilderness, so neighbours can grow into the vacated land. Also
   // release any WATER tiles that lingered from an older code path —
   // borders shouldn't bleed into the ocean.
-  // URBAN_NODES: also release land held by tier-1+ NODES (a settlement keeps the
-  // catchment it claimed while still a tier-0 village even after it grows into a
-  // city — ownership is persistent — so without this the change is inert). Their
-  // CORE is re-stamped immediately below; the rest returns to wilderness for the
   // Farming Regions to reclaim.
-  const releaseNodes = !!T.URBAN_NODES;
   for (let ti = 0; ti < N; ti++) {
     const o = owner[ti];
     if (o < 0) continue;
     if (!byId.has(o) || world.elev[ti] <= 0) { owner[ti] = -1; continue; }
-    if (releaseNodes) { const os = byId.get(o); if (os && (os.tier | 0) >= 1) { owner[ti] = -1; continue; } }
     if (clip && clip[ti] !== (countryOf.get(o) ?? -1)) owner[ti] = -1;   // catchment tile no longer within its owner's country → release (borders shifted)
   }
 
@@ -370,7 +350,8 @@ export function computeTerritory(world) {
       //   VALUE PULL — a tile worth holding is worth reaching for, so the border is spent toward the
       //   floodplain rather than the cheapest-nearest waste (value ÷ difficulty).
       let eff = step;
-      if (riverMag && riverMag[ni] >= 2) eff /= (1 + T.RIVER_REACH);     // ride the navigable spine
+      // (RIVER_REACH removed 2026-07: measured to over-concentrate — the doc'd
+      // verdict in persistent-territory-spec. VALUE_PULL alone rides the banks.)
       eff /= (1 + T.VALUE_PULL * (val[ni] || 0));                        // pull onto the valued banks
       const nd = d + eff;
       if (nd > bud) continue;                // owner can't reach further (in value-weighted effort)
@@ -394,39 +375,10 @@ export function computeTerritory(world) {
   tallyTerritory(world, owner, tcost, byId);   // food falloff uses TRUE haul cost, not value-discounted effort
 
   reclaimRuins(world);   // stranded coin re-enters circulation where the land is worked again
-  if (T.URBAN_NODES) assignMinesByProximity(world, byId);
 }
-
-// URBAN_NODES: a mine is worked by whoever is NEAREST, not by who owns the
-// (usually infertile, now-unclaimed) mountain it sits on — so the specie supply
-// no longer collapses when cities stop owning broad reach-domains. This decouples
-// minting from the farming catchment: the countryside (or a nearby city) works
-// each deposit, and the silver spreads through trade, as it did historically.
-const MINE_RANGE = 8;    // tiles within which a settlement works a mine (≈ a settlement's natural
-                         // territory radius, so the worked-mine count — and thus the money supply —
-                         // tracks the owned-territory baseline instead of minting every mountain)
-function assignMinesByProximity(world, byId) {
-  // Mine-tile list (precious/gems deposits), built once and cached.
-  if (!world._mineTiles) {
-    const list = [];
-    const dep = world.deposits || {};
-    for (const id of ["precious", "gems"]) {
-      const arr = dep[id]; if (!arr) continue;
-      for (let ti = 0; ti < world.N; ti++) if (arr[ti] > 0.05) list.push([ti, id]);
-    }
-    world._mineTiles = list;
-  }
-  if (!world._settGrid) return;   // need the spatial index (built each tick before territory)
-  const tw = world.tw, reserve = world.depositReserve;
-  for (const m of world._mineTiles) {
-    const ti = m[0], id = m[1];
-    if (reserve && reserve[id] && reserve[id][ti] <= 0) continue;   // dried-up mine — nobody works it
-    const mx = ti % tw, my = (ti / tw) | 0;
-    let best = null, bestD = Infinity;
-    forEachNear(world, mx + 0.5, my + 0.5, MINE_RANGE, (s, d2) => { if (d2 < bestD) { bestD = d2; best = s; } });
-    if (best) best._minableTiles.push(m);
-  }
-}
+// (URBAN_NODES and its assignMinesByProximity helper were removed in the
+// 2026-07 default-flip campaign — the node-city experiment was superseded by
+// the shipped DISSOLVE_FARMS region model; mines are worked by owned tiles.)
 
 // Walk every claimed tile once and accumulate each owner's food / resource
 // / mineable stats, and record which settlements BORDER each other (their
@@ -522,13 +474,8 @@ function tallyTerritory(world, owner, cost, byId) {
           if (v > (acc[id] || 0)) acc[id] = v;
         }
       }
-      // URBAN_NODES assigns mines by PROXIMITY (assignMinesByProximity) instead of
-      // ownership — a node city owns no mountains, so owned-tile mining would zero
-      // the money supply. Skip the owned-tile mineral grab in that mode.
-      if (!T.URBAN_NODES) {
-        if (deposits.precious && deposits.precious[ti] > 0.05 && mineLive("precious", ti)) s._minableTiles.push([ti, "precious"]);
-        if (deposits.gems && deposits.gems[ti] > 0.05 && mineLive("gems", ti)) s._minableTiles.push([ti, "gems"]);
-      }
+      if (deposits.precious && deposits.precious[ti] > 0.05 && mineLive("precious", ti)) s._minableTiles.push([ti, "precious"]);
+      if (deposits.gems && deposits.gems[ti] > 0.05 && mineLive("gems", ti)) s._minableTiles.push([ti, "gems"]);
     }
     // Borders: compare right + down neighbours (x wraps).
     const ty = (ti / tw) | 0, tx = ti - ty * tw;

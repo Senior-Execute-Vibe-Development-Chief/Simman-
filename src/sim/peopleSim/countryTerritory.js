@@ -197,10 +197,6 @@ const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fract
 // largest territory" artifact (a 25-person hamlet flying a 447-tile border). Floored
 // at the settlement's own ground (integMin), so coverage is never lost.
 const CLAIM_POP_REF = 1000;
-// Power-weighted borders (T.CLAIM_POW): clamp on the per-realm claim weight, so a
-// hegemon dominates its marches (×CLAIM_W_MAX reach / border push) but can't swallow
-// the continent in one pass, and a weakling still holds a small core (×CLAIM_W_MIN).
-const CLAIM_W_MIN = 0.6, CLAIM_W_MAX = 2.2;
 // Past the reference, scale keeps PAYING (sqrt, dampened) instead of clamping to 1.
 // The clamp was an equalizer: a 60-member empire projected the same claim as a
 // 32-member one, so every mature realm converged on the same regional size (the
@@ -1008,7 +1004,7 @@ export function computeCountryTerritory(world) {
     // Heritable aptitude pays out as extra STATE CAPACITY (boost #2): a realm run
     // by a high-aptitude stock projects administrative reach further for the same
     // tech — the institutional edge of the "winter peoples" made territorial.
-    const aptMul = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_CAP * (capApt.get(c) || 0) : 1;
+    const aptMul = 1;   // (ORG_APT_CAP removed 2026-07 — see conquest.js note)
     budget.set(c, b * emGated * sf * persMul * aptMul);
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
@@ -1095,23 +1091,11 @@ export function computeCountryTerritory(world) {
   // slowly (ec / weight), so its boundary with a weaker neighbour falls PAST the
   // geometric midpoint — the strong push their sphere into the weak's frontier
   // (settled tiles are cost-0 sources, so cities still need conquest). Weight =
-  // (strength / median strength)^CLAIM_POW, compressed and clamped so a hegemon
-  // dominates its marches without eating the map. CLAIM_POW=0 → the old midpoint.
+  // (CLAIM_POW removed in the 2026-07 default-flip campaign: it only ever read
+  // under the LEGACY entity model, dead since FIELD_POLITY became the default —
+  // the field model expresses strength through capacity/projection instead.
+  // claimW stays as the empty map = the unweighted midpoint the readers expect.)
   const claimW = new Map();
-  if (T.CLAIM_POW > 0) {
-    const powByCountry = new Map();
-    for (const s of world.settlements) {
-      if (s.mode !== "settled" || s.countryId < 0) continue;
-      const p = settlementPower(s);
-      if (p > (powByCountry.get(s.countryId) || 0)) powByCountry.set(s.countryId, p);
-    }
-    const vals = [...powByCountry.values()].sort((a, b) => a - b);
-    const ref = vals.length ? vals[vals.length >> 1] : 1;   // the MEDIAN realm strength is the neutral ×1 weight
-    for (const [cid, p] of powByCountry) {
-      const w = Math.pow(Math.max(1e-6, p / Math.max(1e-6, ref)), T.CLAIM_POW);
-      claimW.set(cid, w < CLAIM_W_MIN ? CLAIM_W_MIN : w > CLAIM_W_MAX ? CLAIM_W_MAX : w);
-    }
-  }
   // Multi-source Dijkstra: every land tile goes to the nearest country (by travel
   // cost) within that country's reach budget; another country's tile is just a
   // cheaper claim, so the boundary lands on the (power-weighted) cost-bisector.

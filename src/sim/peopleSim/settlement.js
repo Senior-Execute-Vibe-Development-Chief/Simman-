@@ -2360,9 +2360,10 @@ function updateFood(world, s) {
   // ORGANISED civilisations bloom first, and the centre of gravity follows DEVELOPMENT —
   // then shifts as development does. agri^POW keeps the lift back-loaded so the modern
   // BOOM still rides agriculture's climb to the top of the tree.
-  if (T.ANCHOR_POP > 0) {
-    s._eraProd = world._eraProd || 1; s._indCap = 1; s._indGate = 0;   // anchor drives magnitude; no separate field-capacity break
-  } else {
+  // (ANCHOR_POP removed in the 2026-07 default-flip campaign: the legacy
+  // demographic anchor was the codified two-clock trap — population steered to
+  // a historical curve instead of emerging. Emergence is the only path now.)
+  {
     const agri = (s.knowledge && s.knowledge.agriculture) || 0;
     // Density requires being in a DEVELOPED STATE, not just personal organisation: read the
     // settlement's COUNTRY's development (its capital's organisation). A stateless settlement
@@ -2468,29 +2469,10 @@ function updateFood(world, s) {
   // yields. So the rich temperate plains (Europe) sit near-empty until a civilisation has
   // the metallurgy AND the plough — which is why farming radiated OUTWARD from the cradles
   // as tools spread, not wherever the soil was richest. The land OPENS as the tools arrive.
-  let workable = 1;
-  if (T.LAND_TOOL_GATE > 0) {
-    climateOf(world, s);
-    const kk = s.knowledge || {};
-    // A river VALLEY is open alluvium — farmable from the first digging stick (the cradles sit
-    // on rivers). RIVER-only (s._riverAcc), NOT waterAccess: a forested COAST is not open ground —
-    // NW Europe's coastal woodland still had to be felled. Keying this on waterAccess (which
-    // counts coast as 0.5) wrongly exempted every coastal forest and gutted the gate, which is
-    // why temperate Europe still bloomed in the bronze age with the gate nominally on.
-    const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
-    const moist = s._climMoist ?? 0.5;
-    const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
-    const meanFert = (s._terrFertSum || 0) / Math.max(1, tiles);
-    // FOREST: woodland starts at ~0.40 effective moisture (the sim's own biome line). It must be
-    // CLEARED with metal axes. Dry grassland/steppe (<0.40) and river valleys are open.
-    const forest = Math.max(0, Math.min(1, (moist - 0.38) / 0.20)) * (1 - riverOpen);
-    // HEAVY soil: very rich ground off the rivers (clay plains) — needs the plough; river alluvium is light.
-    const heavy  = Math.max(0, Math.min(1, (meanFert - 0.6) / 0.30)) * (1 - riverOpen);
-    const axes   = Math.min(1, (kk.metallurgy || 0) / T.LAND_CLEAR_METAL);              // bronze→iron clears forest
-    const plough = Math.min(1, Math.max(0, ((kk.agriculture || 0) - 0.45) / 0.40));     // the_plough→heavy_plough breaks heavy soil
-    const locked = Math.min(0.92, Math.max(forest * (1 - axes), heavy * (1 - plough))); // the binding lock holds back this share of the land
-    workable = 1 - T.LAND_TOOL_GATE * locked;
-  }
+  // (LAND_TOOL_GATE removed in the 2026-07 default-flip campaign: its own desc
+  // recorded the verdict — measured at every strength 0.35–0.7 it cost more
+  // than it bought. The tool-unlock idea may return via CROP_AXIS packages.)
+  const workable = 1;
   s._workable = workable;
   // IRRIGATION — an arid RIVER valley (the Nile, the Euphrates, the Indus) is a fertile
   // ribbon through desert: a managed river makes it extraordinarily productive per acre,
@@ -2844,7 +2826,7 @@ function updatePopulation(world, s) {
   // surplus food the capped city can't house stays in the hinterland feeding RURAL
   // population (ruralCap keeps full _eraProd), so the modern boom spreads across the
   // land and many towns instead of piling into one metropolis.
-  const houseEra = T.ANCHOR_POP > 0 ? (s._eraProd || 1) : Math.pow(s._eraProd || 1, T.HOUSE_ERA_POW);
+  const houseEra = Math.pow(s._eraProd || 1, T.HOUSE_ERA_POW);
   let houseK = housingCapacity(s) * houseEra;
   // RURAL CEILING: a tier-0 farming region holds only a rural district's worth
   // of people (URBAN_CAP). Capping foodK AND houseK (not just K) is deliberate:
@@ -2864,7 +2846,7 @@ function updatePopulation(world, s) {
     // food's full _eraProd means a modern countryside FEEDS more than it can HOUSE, so the
     // surplus ships up the hierarchy to grow TOWNS instead of piling into ever-denser
     // villages — the farm→city drift that urbanises the modern era. Linear under the anchor.
-    const rEra = T.ANCHOR_POP > 0 ? (s._eraProd || 1) : Math.pow(s._eraProd || 1, T.RURAL_ERA_POW);
+    const rEra = Math.pow(s._eraProd || 1, T.RURAL_ERA_POW);
     const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE)) * rEra;
     foodK = Math.min(foodK, ruralCap); houseK = Math.min(houseK, ruralCap);
   }
@@ -2881,7 +2863,7 @@ function updatePopulation(world, s) {
   // load, full urbanity and zero sanitation, crowd disease slightly more than
   // cancels natural increase (1.2x) — the city needs migrants to grow.
   const URBAN_GRAVEYARD_W = 1.2;
-  const K = (T.LOCALITY_MODE || T.DISSOLVE_FARMS)
+  const K = T.DISSOLVE_FARMS
     ? Math.max(K_MIN_VIABLE, foodK)
     : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
   s._k = K;
