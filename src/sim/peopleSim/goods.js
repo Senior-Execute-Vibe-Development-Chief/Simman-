@@ -30,7 +30,7 @@
 // only through the dimensionless prices.
 
 import { T } from "./tuning.js";
-import { craftLegs, exportValueOf, monetization } from "./settlement.js";
+import { craftLegs, exportValueOf, monetization, METAL_W } from "./settlement.js";
 
 // Good indices. staple/materials/luxury are PRIMARY (their production is
 // governed by the food/territory/luxury systems — the goods layer prices
@@ -108,7 +108,15 @@ export function updateGoods(world, s) {
   cap[G_STAPLE]    = s._foodSupply || 0;                        // food units (its own pair below)
   cap[G_MATERIALS] = ev * (s._exportMatFrac || 0);
   cap[G_ORE]       = ((r.copper || 0) + (r.tin || 0) + (r.iron || 0) + (r.coal || 0)) * (0.3 + 0.7 * (k.organization || 0)) * W_ORE;
-  cap[G_METAL]     = legs["Metalwork"] || 0;
+  // Stage 3 (T.GOODS_CHAIN): metal capability is SKILL-limited — metallurgy
+  // as practised (capped by REACHABLE ore via _metalCap: an isolated culture
+  // with no ore anywhere in reach still can't know iron) — and the ORE IN
+  // HAND constraint moves to the INPUT side below (production gates on ore
+  // availability = own extraction + imports). Sheffield: skill + shipped-in
+  // ore. Without the chain, craftLegs' in-hand oreTier gate stands.
+  cap[G_METAL]     = T.GOODS_CHAIN
+    ? Math.min(k.metallurgy || 0, s._metalCap !== undefined ? s._metalCap : (k.metallurgy || 0)) * METAL_W
+    : (legs["Metalwork"] || 0);
   cap[G_CLOTH]     = legs["Textiles"] || 0;
   cap[G_WARES]     = (legs["Pottery & leather"] || 0) + (legs["Crafted wares"] || 0);
   cap[G_LUXURY]    = s._luxSupply || 0;                         // coin units (its own pair below)
@@ -125,6 +133,19 @@ export function updateGoods(world, s) {
     const g = CRAFTS[c];
     prod[g] = cap[g] * Math.min(DEDICATION_CAP, N_CRAFT * L[c]);
   }
+  // Stage 3 (T.GOODS_CHAIN): the forge CONSUMES ore — metal output gates on
+  // ore availability (own extraction + net imports, last sweep's _gNet).
+  // CRUCIALLY the ore DEMAND below reads the UNGATED desired metal, or the
+  // chain deadlocks: no ore → no metal → no ore demand → no price signal →
+  // no imports. The starved smith keeps BIDDING for ore; the bid is the
+  // signal that ships it. desiredMetal is what the smiths WANT to run.
+  const desiredMetal = prod[G_METAL];
+  if (T.GOODS_CHAIN) {
+    const netNow = s._gNet;
+    const oreAvail = Math.max(0, prod[G_ORE] + (netNow ? netNow[G_ORE] : 0));
+    const oreNeed = desiredMetal * ORE_PER_METAL;
+    if (oreNeed > EPS) prod[G_METAL] = desiredMetal * Math.min(1, oreAvail / oreNeed);
+  }
 
   // ── Demand ────────────────────────────────────────────────────────────
   const pop = Math.max(1, s.people || 0);
@@ -132,7 +153,7 @@ export function updateGoods(world, s) {
   const cold = Math.max(0, 0.5 - (s._climTemp ?? 0.5));         // 0 warm → 0.5 polar
   dem[G_STAPLE]    = s._foodDemand || 0;
   dem[G_MATERIALS] = pop * MAT_PC * (0.5 + (k.construction || 0));
-  dem[G_ORE]       = prod[G_METAL] * ORE_PER_METAL;             // smiths eat ore (physical coupling lands in Stage 3)
+  dem[G_ORE]       = desiredMetal * ORE_PER_METAL;              // smiths bid for the ore they WANT (ungated — see the chain note above)
   dem[G_METAL]     = pop * METAL_PC + (s.army || 0) * ARMS_PC;
   dem[G_CLOTH]     = pop * CLOTH_PC * (1 + COLD_CLOTH * cold * 2);
   dem[G_WARES]     = pop * WARES_PC;

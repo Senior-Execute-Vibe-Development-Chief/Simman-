@@ -584,6 +584,7 @@ function craftLegs(s, k, r) {
   return legs;
 }
 export { craftLegs };   // goods.js (Stage 1) builds craft capabilities from the same recipe — can't drift
+export { METAL_W };     // goods.js (Stage 3 chain): skill-limited metal capability on the same weight
 // ── Ricardian specialty reference (T.SPEC_RELATIVE, goods-vector Stage 0) ──
 // True comparative advantage is RELATIVE TO THE COMPETITION, not to a sector's
 // own ceiling: score = legs[k] / (world-typical output of k). The CRAFT_REF
