@@ -46,6 +46,17 @@ All 8 sim cells + UI green; no NaNs, no globally pinned markets, no
 zero-flow worlds; determinism cells differed only on the (now fixed)
 timing footer.
 
+## Post-fix re-battery (same day)
+
+Smoke green (defaults byte-identical); stylized all hard gates (1 softie);
+20k full stack at 8817: goods sold **20.2 %** (the F8 share holds WITHOUT
+the phantom double-book), materials income deflated to 9.2 % as predicted,
+capital 1.4 %, entropy 2.13, asymmetry 0.95 / 0.62 / 0.77. Ore now reads
+its TRUE scarcity — median 2.88 across a real 0.46–4.00 gradient (the
+pre-fix phantom materials had been masking it); the flip battery should
+track the at-cap fraction as the watch list says, but this is a market
+pricing a genuinely scarce industrial input, not a uniform pin.
+
 ## Default-flip watch list (from the synthesis, standing)
 
 - Re-measure everything post-fix (done — see the spec's closing sections);
