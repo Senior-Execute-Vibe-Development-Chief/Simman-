@@ -446,6 +446,7 @@ function tallyTerritory(world, owner, cost, byId) {
     s._terrFarmedWt = 0;   // falloff-weighted count of tiles actually ENTERING the harvest sum
     s._terrMinFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
     s._terrResAcc = {};
+    if (T.RES_SCARCITY) s._terrResMax = {};   // best grade held per resource (see finalize)
     s._minableTiles = [];
   }
   const haveDep = deposits && Object.keys(deposits).length > 0;
@@ -492,19 +493,34 @@ function tallyTerritory(world, owner, cost, byId) {
     }
     if (haveDep) {
       const acc = s._terrResAcc;
-      // RES_SCARCITY (goods-vector Stage 0): accumulate the COMMANDED QUANTITY
-      // (Σ richness × real area, reference-tile units via _invA — the same
-      // normalisation as the fertility sum) instead of the per-tile MAX. The
-      // MAX made one stray copper tile anywhere in a big catchment read as
-      // "rich in copper", homogenising endowments as territories grow;
-      // the quantity keeps a real mining district rich and a whisper scarce.
-      // Saturated to the 0..1 richness scale at finalize below.
-      for (const id of TERR_RES) {
-        const arr = deposits[id];
-        if (!arr) continue;
-        const v = arr[ti] || 0;
-        if (T.RES_SCARCITY) { if (v > 0) acc[id] = (acc[id] || 0) + v * _invA; }
-        else if (v > (acc[id] || 0)) acc[id] = v;
+      // RES_SCARCITY (goods-vector Stage 0): track BOTH the best GRADE held
+      // (max richness — a mine's ore quality doesn't dilute because the realm
+      // is large) and the COMMANDED QUANTITY (Σ richness × real area,
+      // reference-tile units via _invA — the same normalisation as the
+      // fertility sum). Finalize below reads grade × substantiality, so one
+      // stray copper tile no longer makes a whole catchment "rich in copper"
+      // (the F3 homogenisation) while a real district keeps its full grade.
+      // (First cut summed alone and saturated — measured at 480/8817 it
+      // ERASED the grading instead: everything a big city touched read ~0.9+,
+      // breadth ROSE. Quantity without quality is the wrong physics.)
+      if (T.RES_SCARCITY) {
+        const mx = s._terrResMax;
+        for (const id of TERR_RES) {
+          const arr = deposits[id];
+          if (!arr) continue;
+          const v = arr[ti] || 0;
+          if (v > 0) {
+            acc[id] = (acc[id] || 0) + v * _invA;
+            if (v > (mx[id] || 0)) mx[id] = v;
+          }
+        }
+      } else {
+        for (const id of TERR_RES) {
+          const arr = deposits[id];
+          if (!arr) continue;
+          const v = arr[ti] || 0;
+          if (v > (acc[id] || 0)) acc[id] = v;
+        }
       }
       // URBAN_NODES assigns mines by PROXIMITY (assignMinesByProximity) instead of
       // ownership — a node city owns no mountains, so owned-tile mining would zero
@@ -520,17 +536,23 @@ function tallyTerritory(world, owner, cost, byId) {
     const ro = owner[rt]; if (ro >= 0 && ro !== oid) addBorder(oid, ro);
     if (ty < th - 1) { const dn = ti + tw; const dno = owner[dn]; if (dno >= 0 && dno !== oid) addBorder(oid, dno); }
   }
-  // RES_SCARCITY finalize: saturate the commanded quantity onto the 0..1
-  // richness scale every consumer already reads (S/(S+K): one full-richness
-  // reference tile = half-saturated at K=1, a district saturates toward 1,
-  // a stray tile stays below the 0.10 "has it" thresholds). _terrResAcc keeps
-  // the raw sums for probes; localRes gets the saturated view. Flag off:
-  // localRes aliases the MAX accumulator exactly as before (byte-identical).
+  // RES_SCARCITY finalize: localRes[id] = GRADE × SUBSTANTIALITY —
+  //   grade          = best richness held (what the MAX measured, and what
+  //                    every consumer's 0..1 scale already means), times
+  //   substantiality = 1 − exp(−S/K), S the commanded quantity in
+  //                    reference-tile·richness units, K the quantity at which
+  //                    a holding counts as a real working district (~63%
+  //                    there at S=K, ~95% at 3K).
+  // A stray tile reads ~nothing, a single mine a solid fraction of its grade,
+  // a district/belt its full grade — graded scarcity that survives city
+  // growth, on the exact scale consumers read today. _terrResAcc keeps the
+  // raw sums for probes; flag off: localRes aliases the MAX accumulator
+  // exactly as before (byte-identical).
   if (T.RES_SCARCITY) {
     const satK = T.RES_SCARCITY_K;
     for (const s of byId.values()) {
-      const acc = s._terrResAcc, out = {};
-      for (const id in acc) { const v = acc[id]; out[id] = v / (v + satK); }
+      const acc = s._terrResAcc, mx = s._terrResMax, out = {};
+      for (const id in acc) out[id] = (mx[id] || 0) * (1 - Math.exp(-acc[id] / satK));
       s.localRes = out;
     }
   } else {
@@ -549,6 +571,7 @@ export function seedLocalTerritory(world, s) {
   const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
   let fertSum = 0, tiles = 0, farmedWt = 0;
   const res = {};
+  const resMax = {};   // best grade per resource (RES_SCARCITY composite)
   const minable = [];
   const haveDep = deposits && Object.keys(deposits).length > 0;
   const reserve = world.depositReserve;
@@ -568,10 +591,10 @@ export function seedLocalTerritory(world, s) {
       const cost = Math.sqrt(dx * dx + dy * dy) / _rn;
       if (f >= minFert) { const w = foodFalloff(cost); fertSum += f * w * _invA; farmedWt += w * _invA; }
       if (haveDep) {
-        // Same commanded-quantity accumulation as tallyTerritory under
-        // RES_SCARCITY (saturated below), MAX otherwise — the seed box must
+        // Same grade × substantiality accumulation as tallyTerritory under
+        // RES_SCARCITY (composed below), MAX otherwise — the seed box must
         // read on the same scale as the first full territory pass.
-        for (const id of TERR_RES) { const arr = deposits[id]; if (!arr) continue; const v = arr[ti] || 0; if (T.RES_SCARCITY) { if (v > 0) res[id] = (res[id] || 0) + v * _invA; } else if (v > (res[id] || 0)) res[id] = v; }
+        for (const id of TERR_RES) { const arr = deposits[id]; if (!arr) continue; const v = arr[ti] || 0; if (T.RES_SCARCITY) { if (v > 0) { res[id] = (res[id] || 0) + v * _invA; if (v > (resMax[id] || 0)) resMax[id] = v; } } else if (v > (res[id] || 0)) res[id] = v; }
         if (deposits.precious && deposits.precious[ti] > 0.05 && mineLive("precious", ti)) minable.push([ti, "precious"]);
         if (deposits.gems && deposits.gems[ti] > 0.05 && mineLive("gems", ti)) minable.push([ti, "gems"]);
       }
@@ -581,7 +604,7 @@ export function seedLocalTerritory(world, s) {
   s._terrTiles = tiles;
   s._terrWorkTiles = tiles;   // local seed box is all walkable — everything counts as worked
   s._terrFarmedWt = farmedWt;
-  if (T.RES_SCARCITY) { const satK = T.RES_SCARCITY_K; for (const id in res) res[id] = res[id] / (res[id] + satK); }
+  if (T.RES_SCARCITY) { const satK = T.RES_SCARCITY_K; for (const id in res) res[id] = (resMax[id] || 0) * (1 - Math.exp(-res[id] / satK)); }
   s.localRes = res;
   s._minableTiles = minable;
 }
