@@ -30,10 +30,10 @@
 // only through the dimensionless prices.
 
 import { T } from "./tuning.js";
-import { craftLegs, exportValueOf, monetization, METAL_W, getWealthReserve, findSettlementById } from "./settlement.js";
+import { craftLegs, exportValueOf, monetization, METAL_W, getWealthReserve, findSettlementById, applyClusterBoost, sackPenalty, techEff } from "./settlement.js";
 import { personalityOf } from "./personality.js";
 import { getPolity } from "./entities.js";
-import { recordIn, recordOut, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
+import { recordIn, recordOut, IN_CAPITAL, OUT_CAPITAL } from "./money.js";
 import { logEvent } from "./events.js";
 
 // Good indices. staple/materials/luxury are PRIMARY (their production is
@@ -118,25 +118,42 @@ export function updateGoods(world, s) {
   if (!L || L.length !== N_CRAFT) L = s._gShare = [0.2, 0.2, 0.2, 0.2, 0.2];
 
   const k = s.knowledge || {}, r = s.localRes || {};
-  const legs = craftLegs(s, k, r);
-  const ev = exportValueOf(s, world);   // memoised; also refreshes _exportFoodFrac/_exportMatFrac
+  let legs = craftLegs(s, k, r);
+  const ev = exportValueOf(s, world);   // memoised; also refreshes _exportFoodFrac/_exportMatFrac (and stashes _agMat under UNIFY)
+  // ── UNIFICATION (T.GOODS_UNIFY): the goods caps become THE craft economy ──
+  // Cluster lock-in, the sack/army/tech multiplier and the village craft
+  // fraction move INTO the caps, so production — and with it trade
+  // quantities, the ore chain, labour and investment — craters on a sack
+  // and compounds on an established specialty exactly as the scalar output
+  // always did. computeExportValue then sums prod back as its manufactured
+  // sector: one economy, one set of laws.
+  let unifyMul = 1;
+  if (T.GOODS_UNIFY) {
+    legs = applyClusterBoost(legs, s);   // craftLegs returns a fresh object — safe to boost in place
+    const armyFrac = (s.army || 0) / Math.max(1, s.people || 1);
+    unifyMul = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world) * techEff(s).tradeMult;
+    if ((s.tier | 0) < 1) unifyMul *= T.FARM_CRAFT_FRAC;
+  }
 
   // ── Capability (output at even attention) per good ────────────────────
   // Primary sector from the scalar economy's own decomposition (zero drift):
   // agFood/agMat are exportValue × the fractions computeExportValue set.
   const cap = s._gCap || (s._gCap = new Array(8).fill(0));
   cap[G_STAPLE]    = s._foodSupply || 0;                        // food units (its own pair below)
-  cap[G_MATERIALS] = ev * (s._exportMatFrac || 0);
-  cap[G_ORE]       = ((r.copper || 0) + (r.tin || 0) + (r.iron || 0) + (r.coal || 0)) * (0.3 + 0.7 * (k.organization || 0)) * W_ORE;
+  // Under UNIFY the primary materials component comes STRAIGHT from
+  // computeExportValue's stash (post-mult agMat) — reading ev × frac would
+  // be circular now that ev itself sums the goods production.
+  cap[G_MATERIALS] = T.GOODS_UNIFY && s._agMat !== undefined ? s._agMat : ev * (s._exportMatFrac || 0);
+  cap[G_ORE]       = ((r.copper || 0) + (r.tin || 0) + (r.iron || 0) + (r.coal || 0)) * (0.3 + 0.7 * (k.organization || 0)) * W_ORE * unifyMul;
   // Stage 3 (T.GOODS_CHAIN): metal capability is SKILL-limited — metallurgy
   // as practised (capped by REACHABLE ore via _metalCap: an isolated culture
   // with no ore anywhere in reach still can't know iron) — and the ORE IN
   // HAND constraint moves to the INPUT side below (production gates on ore
   // availability = own extraction + imports). Sheffield: skill + shipped-in
   // ore. Without the chain, craftLegs' in-hand oreTier gate stands.
-  cap[G_METAL]     = T.GOODS_CHAIN
+  cap[G_METAL]     = (T.GOODS_CHAIN
     ? Math.min(k.metallurgy || 0, s._metalCap !== undefined ? s._metalCap : (k.metallurgy || 0)) * METAL_W
-    : (legs["Metalwork"] || 0);
+    : (legs["Metalwork"] || 0)) * unifyMul;
   // Stage 4 (T.GOODS_CLOTHQ): the MARKET cloth good is fine cloth, not
   // homespun. Every settlement clothes itself with homespun (never traded,
   // never marketed) — what made Flanders/Florence was that most regions
@@ -148,10 +165,10 @@ export function updateGoods(world, s) {
   const clothQ = T.GOODS_CLOTHQ
     ? Math.min(1, Math.max(0, (0.4 + (k.construction || 0) * 0.5 - 0.5) / 0.4))
     : 1;
-  cap[G_CLOTH]     = (legs["Textiles"] || 0) * clothQ;
-  cap[G_WARES]     = (legs["Pottery & leather"] || 0) + (legs["Crafted wares"] || 0);
-  cap[G_LUXURY]    = s._luxSupply || 0;                         // coin units (its own pair below)
-  cap[G_SERVICES]  = legs["Services & records"] || 0;
+  cap[G_CLOTH]     = (legs["Textiles"] || 0) * clothQ * unifyMul;
+  cap[G_WARES]     = ((legs["Pottery & leather"] || 0) + (legs["Crafted wares"] || 0)) * unifyMul;
+  cap[G_LUXURY]    = s._luxSupply || 0;                         // coin units (its own pair below; carries its own sack² penalty)
+  cap[G_SERVICES]  = (legs["Services & records"] || 0) * unifyMul;
   // Invested capital multiplies its craft's capability (T.GOODS_INVEST —
   // built below from spare wealth, applied here so labour, production and
   // the ore chain all see the invested capacity coherently).
@@ -190,8 +207,13 @@ export function updateGoods(world, s) {
   const dem = s._gDem || (s._gDem = new Array(8).fill(0));
   const cold = Math.max(0, 0.5 - (s._climTemp ?? 0.5));         // 0 warm → 0.5 polar
   const monet = monetization(s);
+  // T.GOODS_PC_SCALE: one unit-calibration knob on the craft per-capita
+  // demand constants (the F8 fix — a UNITS calibration in the repo's
+  // blessed sense, like SCI_COMPOUND to the Bronze span: sized so craft
+  // trade carries a historical share of income, never a named outcome).
+  const pcs = T.GOODS_PC_SCALE || 1;
   dem[G_STAPLE]    = s._foodDemand || 0;
-  dem[G_MATERIALS] = pop * MAT_PC * (0.5 + (k.construction || 0));
+  dem[G_MATERIALS] = pop * MAT_PC * pcs * (0.5 + (k.construction || 0));
   dem[G_ORE]       = desiredMetal * ORE_PER_METAL;              // smiths bid for the ore they WANT (ungated — see the chain note above)
   // Wartime procurement (T.ARMY_PROCURE): a realm AT WAR burns kit —
   // weapons wear, arrows are spent, mounts are lost — so the ARMY's metal
@@ -205,17 +227,17 @@ export function updateGoods(world, s) {
     const wl = (gov && gov._warLevel) || 0;
     if (wl > 0) armsMul = 1 + T.ARMY_PROCURE * Math.min(3, wl);
   }
-  dem[G_METAL]     = pop * METAL_PC + (s.army || 0) * ARMS_PC * armsMul;
+  dem[G_METAL]     = (pop * METAL_PC + (s.army || 0) * ARMS_PC * armsMul) * pcs;
   // Under CLOTHQ, market-cloth demand is the MONETIZED share of clothing
   // consumption — the subsistence remainder is met by homespun (the same
   // split the supply side makes; a coinless hamlet neither sells nor buys
   // fine cloth). Historically clothing was the classic wealth-elastic
   // purchase: market cloth consumption rose steeply as economies monetized.
-  dem[G_CLOTH]     = pop * CLOTH_PC * (1 + COLD_CLOTH * cold * 2)
+  dem[G_CLOTH]     = pop * CLOTH_PC * pcs * (1 + COLD_CLOTH * cold * 2)
                    * (T.GOODS_CLOTHQ ? 0.15 + 0.85 * monet : 1);
-  dem[G_WARES]     = pop * WARES_PC;
+  dem[G_WARES]     = pop * WARES_PC * pcs;
   dem[G_LUXURY]    = s._luxDemand || 0;
-  dem[G_SERVICES]  = pop * SVC_PC * (0.25 + 0.75 * monet);      // cash economies demand clerks & credit
+  dem[G_SERVICES]  = pop * SVC_PC * pcs * (0.25 + 0.75 * monet);   // cash economies demand clerks & credit
   // Stage 4 (T.GOODS_TEMPER): the realm's TEMPERAMENT colours its demand —
   // a martial court arms (metal), a mercantile one contracts and banks
   // (services). Weighted by the lever and only on the positive pole, so
@@ -316,9 +338,9 @@ export function updateGoods(world, s) {
         }
         if (recips.length > 0) {
           s.wealth -= invest;
-          recordOut(s, OUT_MATERIALS, invest);
+          recordOut(s, OUT_CAPITAL, invest);   // its own channel — so trade asymmetry never conflates capital purchases with materials trade
           const share = invest / recips.length;
-          for (const p of recips) { p.wealth = (p.wealth || 0) + share; recordIn(p, IN_MATERIALS, share); }
+          for (const p of recips) { p.wealth = (p.wealth || 0) + share; recordIn(p, IN_CAPITAL, share); }
           cx[cBest] = Math.min(CAPX_MAX, cx[cBest] + invest * CAPX_PER_COIN * (1 - cx[cBest] / CAPX_MAX));
         }
       }

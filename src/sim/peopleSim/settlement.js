@@ -20,7 +20,7 @@ import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
-import { updateGoods, LEG_GOOD, G_STAPLE, G_MATERIALS, G_METAL } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
+import { updateGoods, LEG_GOOD, G_STAPLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_SERVICES } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
 // scope: country ids are settlement ids and the personality RNG is seeded from
@@ -635,6 +635,7 @@ function applyClusterBoost(legs, s) {
   }
   return legs;
 }
+export { applyClusterBoost };   // goods.js (GOODS_UNIFY): the goods caps carry the same increasing returns
 
 // Cache a settlement's home-tile climate — latitude band (0 = equator,
 // 1 = pole), temperature and moisture (worldgen's 0..1 scales). Terrain is
@@ -1048,6 +1049,7 @@ export function updateCoercedLabour(world, s) {
 // city long ago and re-took it — sacks always cost real productive value.
 // SACK_PRODUCTION_FLOOR -> runtime lever (tuning.js T.SACK_PRODUCTION_FLOOR)
 const CONQUEST_RECOVERY     = 5000;  // ticks to recover linearly to full output
+export { sackPenalty };   // goods.js (GOODS_UNIFY): craft caps take the same sack crater the scalar output does
 function sackPenalty(s, world) {
   if (s._sackedAt == null || !world || world.step == null) return 1;
   // Recovery span in HISTORY time: same healing arc at any SIM_GRANULARITY
@@ -1160,8 +1162,32 @@ export function computeExportValue(s, world) {
   // for a while (sackPenalty); tech scales the lot.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
   const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world) * techEff(s).tradeMult;
-  ag *= mult; man *= mult; agFood *= mult; agMat *= mult;
-  const v = ag + man;
+  ag *= mult; agFood *= mult; agMat *= mult;
+  let v;
+  if (T.GOODS_UNIFY && s._gProd) {
+    // ── LAYER UNIFICATION (T.GOODS_UNIFY) ────────────────────────────────
+    // The manufactured/service sector IS the goods layer's production
+    // (last tick's _gProd — a one-tick lag on a slow variable, which breaks
+    // the ev↔cap cycle deterministically). Everything the goods economy
+    // knows — labour dedication, invested capital, the ore chain's input
+    // gate, cluster lock-in, the sack/army/tech multiplier, the village
+    // craft fraction — is already inside prod (goods.js caps under this
+    // same flag), so the ONE number the rest of the sim reads (trade
+    // volume, inflation's T, development, war worth) finally describes the
+    // economy that actually trades. craftLegs' own in-hand ore gate
+    // retires here automatically: prod[metal] is chain-gated instead.
+    // The primary sector stays this function's (its recipes were always
+    // authoritative); goods.js reads the stashed post-mult agMat directly.
+    const gp = s._gProd;
+    const oreU = gp[G_ORE] || 0;   // raw extraction sells as materials
+    const manU = (gp[G_METAL] || 0) + (gp[G_CLOTH] || 0) + (gp[G_WARES] || 0) + (gp[G_SERVICES] || 0);
+    ag += oreU; agMat += oreU;
+    v = ag + manU;
+  } else {
+    man *= mult;
+    v = ag + man;
+  }
+  s._agMat = agMat;                                     // goods.js reads the primary materials component directly (breaks the ev↔cap cycle)
   s._exportFoodFrac = v > 0 ? agFood / v : 0;           // share booked as "food & farm goods"
   s._exportMatFrac  = v > 0 ? agMat / v : 0;            // share booked as "materials" (rest = manufactured/service goods)
   return v;
