@@ -452,6 +452,42 @@ with the fiat arc after it merges), the painted price lens, default flips
 (owner's call), and the ultracode-scale cross-seed × cross-lever matrix +
 adversarial pre-merge review when the owner calls for them.
 
+## CLOSING ACT — LANDED (2026-07): unification + F8 calibration + joint fiat
+
+`T.GOODS_UNIFY` (exportValue's craft sector IS the goods production, lag-1;
+boost/sack/tech/craft-frac moved into the goods caps — a sack now craters
+trade quantities too; craftLegs' ore gate retired), `IN/OUT_CAPITAL`
+channels, and `T.GOODS_VALUE_UNIT` **calibrated to 10** — the sweep's knee
+(goods-sold income 6.6 % → 24.1 % at 10, saturating ~21-24 % beyond as
+carrying capacity and purses bind). Two sweep-caught defects fixed and
+recorded: capital spend was a flat wealth fraction forever (55-58 % of ALL
+income — now bounded by outstanding build cost: 1.3-2.7 %), and demand-side
+scaling was the WRONG F8 knob (it shrinks surpluses; units belong on the
+value line).
+
+**Final 20k, full stack (8817):** the income composition is finally
+history-shaped — goods 17.9 / luxuries 17.2 / pilgrims 12.1 / food 10.8 /
+tolls 10.1 / taxes 10.0 / mining 5.6 / materials 5.6 / capital 1.2 %. **F8
+CLOSED** (goods sold 2.4 % → 17.9 %). Entropy 2.19; asymmetry goods 0.99 /
+luxury 0.97 / materials 0.53 (genuine mixed trade — capital now books on
+its own channel). Pop 33.7k ≈ baseline; wealth 377k.
+
+**Joint fiat verdict:** full goods stack + `OUTPUT_TOTAL=1, FIAT_OUTPUT=4`
+— **all hard gates pass** (1 softie, the Zipf n/a). The two arcs coexist;
+under OUTPUT_TOTAL the money layer prices people × eraProd and never reads
+the unified exportValue, so the feared double-calibration never
+materialises. Smoke stays byte-identical at defaults throughout.
+
+Note for the default-flip battery: Textiles read 8.7 % in this run (vs
+20.5 % in the Stage-4 slice) — the unified mix shifts specialty shares
+between runs; the flip battery should watch the BAND across seeds, not one
+world's split.
+
+Remaining after this: the painted price-map lens (UI arc; data plumbed),
+default flips (owner's call), the ultracode-scale matrix + adversarial
+pre-merge review, and the deferred texture (barter-label retirement now
+that real flow lines exist).
+
 ## Open questions (decide before Stage 2)
 
 1. **Grain:** ~~unify into the market, or leave on the food hierarchy?~~

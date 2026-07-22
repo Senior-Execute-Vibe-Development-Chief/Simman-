@@ -247,7 +247,10 @@ Scorecard against the original findings:
 | F6 temperament decorative | 7/8 top realms "Mercantile", no production effect | **FIXED** — labels vary (Raider-Republic, Trading Empire, …); temperament bids demand (GOODS_TEMPER) |
 | F7 per-route goods fiction | "give copper / get −" | **FIXED in substance** — real per-good flow lines per settlement; the old barter labels linger in the panel and can now be retired |
 
-**New finding, F8 — craft-trade VALUE is under-scaled.** The flows are real
+**New finding, F8 — craft-trade VALUE is under-scaled.** *(CLOSED 2026-07:
+`T.GOODS_VALUE_UNIT` calibrated to the sweep's knee (10) under the
+unification — goods-sold income 2.4 % → 17.9 % of world income at 20k, the
+composition finally history-shaped. See the spec's Closing Act section.)* The flows are real
 and directional but THIN in coin: "goods sold" is 2.4 % (8817) / 1.6 %
 (4242) of world income, and a Metalwork *specialist* metropolis earns
 +0.02/tick on goods while living on taxes and war loans. Cause: the
