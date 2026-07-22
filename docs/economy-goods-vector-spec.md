@@ -386,6 +386,17 @@ byte-identical off. Measured at 480×240 / 8817 / 20 000, seven levers on
 Repro: `SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1,GOODS_PRICES=1,GOODS_TRADE=1,GOODS_CHAIN=1,GOODS_CLOTHQ=1,GOODS_TEMPER=0.5"
 node tools/probe_settlement_econ.mjs 20000 8817 480 240`
 
+**Seven-lever cross-seed battery (2026-07): PASSED.** Stylized under the
+full stack: 2/2 seeds (4242, 777), each with only the known Zipf-n/a softie
+— the pop~development 0.65 warning was an 8817 outlier, not systematic.
+Seed-1234 probe replicates the whole signature: entropy 2.24, Textiles
+17.9 % (the looms return cross-seed), asymmetry 0.97 / 0.95 / 1.00.
+
+**In the app:** the settlement card now carries a **Local market** section
+(worker mirrors `_gPrice/_gShare/_gNet`; dormant when the levers are off) —
+all eight goods priced (dear = scarce here), the top net flows, and where
+craft labour leans. Verified by dev build + headless ui_smoke (exit 0).
+
 **Stage 4 remainder (not started):** layer unification (exportValue derived
 FROM the goods vector; craftLegs' in-hand ore gate retires in favour of the
 chain) and the calibration pass (wealth scale, per-capita constants, the
