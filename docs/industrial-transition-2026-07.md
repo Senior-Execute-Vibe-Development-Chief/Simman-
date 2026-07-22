@@ -238,3 +238,74 @@ This is the same class of work as trade-decoupling (backlog #6): a missing
 *system*, characterised cardinal-rule-safe, none auto-applied. Everything built
 this pass is default-off and byte-identical; the levers are in and validated, the
 remaining arc is precisely located in inflation.js's T.
+
+---
+
+## 8. Residual 1 BUILT — the total-output T-measure (`OUTPUT_TOTAL`) + the measured verdict
+
+*(Appended a later session. Corrects §7's sequencing with what the battery showed.)*
+
+**What was built.** §7 residual 1, as a default-off lever `OUTPUT_TOTAL` and ONE
+shared `realOutputOf(s, world)` (settlement.js) that BOTH the price denominator T
+(inflation.js:85) and the fiat backing (settlement.js, the FIAT_OUTPUT credit
+target) now read — so numerator and denominator can never drift.
+
+- **Off (default):** the traded-output proxy `exportValue × √people` — textually
+  byte-identical to the two original inline expressions. `npm test` green (smoke
+  166s + emblem, all checks); `npm run validate` green (all hard gates, 1 soft
+  warning within budget). The shipped world is untouched.
+- **On:** total (domestic) real output `people × _eraProd` — population × the
+  productivity index that already scales carrying capacity (~1 forager → ~260
+  modern, gated on the settlement's OWN development, never a clock). Its magnitude
+  is fully absorbed by the live REF calibration (REF = M/ΣT at lock, so a constant
+  re-scale of T cancels in both P and the fiat target) — only the SHAPE changes:
+  linear in population, productivity-weighted, **trade-independent**.
+
+**The measured A/B** (tw=120 = W240, seed 8817, the 4 industrial levers on,
+FIAT=4; control `OUTPUT_TOTAL=0` vs treatment `=1`; deep-modern window, leadOrg=1):
+
+| deep modern (org=1) | control (trade-proxy T) | treatment (total-output T) |
+|---|---|---|
+| monetisation M/peopleProd | 2.6 | **18.5** (≈7× better-funded) |
+| insolvent realms (mean / max) | 2.5 / 7 | **1.0 / 3** |
+| country count (fragmentation) | ~55 | ~50 |
+| price P (people-weighted raw) | ~1.8 (CoV 0.15) | 2.0 → 0.23 (see below) |
+
+**Verdict — necessary, but NOT sufficient (this corrects §7's optimism).** The
+total-output T is the correct, load-bearing base, and it materially improves the
+modern economy's MONETISATION (≈7×) and average SOLVENCY (mean insolvent 2.5→1.0,
+max 7→3). But it does **not, alone, make the modern price *stay* healthy.** In the
+treatment the fiat overshoots at industrial onset (P≈2), then the realm still
+cycles into fragmentation (→61 countries) → per-hub organisation drops → the
+org-gated fiat is called in → the money supply collapses (M 6.7M → 0.6M) → the
+price deflates to the floor (P≈0.23) → insolvency → more fragmentation. The SAME
+fiscal-political secular cycle §1 diagnosed. The T-measure smooths the DENOMINATOR
+(peopleProd is stable across the arc); the instability has simply **moved into the
+fiat money SUPPLY**, which stays fragile because it is gated on per-hub org and
+collapses exactly when the realm it must fund breaks apart.
+
+So §7's sequence ("residual 1 makes the price stay healthy; THEN ②b/②c") is too
+optimistic. The honest reading: **total-output-②a and ②b/②c are CO-REQUIRED, not
+sequential.** ②b (extraction that rises with development, keeping the modern state
+solvent through the transition) and ②c (reach that holds the ×N realm together)
+are what stop the fragmentation that collapses the org-gated fiat. Residual 1 is a
+true, correct piece of that joint system — now in and validated-off — but a stable
+modern price is a JOINT property of all three, as the battery shows.
+
+**Resolution caveat.** This A/B is at tw=120 (coarser than §7's tw=240/480). At
+tw=120 the baseline pathology reads as inflation-instability (P≈1.8, swinging)
+rather than the tw=480 deflation-to-floor — but it is the SAME disease: the trade
+proxy is the wrong base (measured peopleProd/Ttrade diverges ≈250× and widening
+across the arc). The deep tw=240/480 re-confirmation is the same class of expensive
+run §7 flags; the mechanism is resolution-independent.
+
+**Open (in progress at writing):** a FIAT sweep (1.5 / 4 / 8 under `OUTPUT_TOTAL=1`)
+to settle whether the onset overshoot-then-crash is calibration (a regime-
+appropriate FIAT damps it) or structural (spirals at any level → ②b/②c strictly
+required). Prior from the data: mostly structural — the fiat collapse is triggered
+by org loss on fragmentation, which a money *level* doesn't prevent.
+
+**Cardinal-rule check.** Emergent (gates on the settlement's own `_eraProd` /
+development, never a clock). A SYSTEM (the correct output measure), not a fitted
+outcome — no price target dialed; and the finding that it is insufficient *alone*
+is surfaced, not papered over with a constant. Default-off, byte-identical.

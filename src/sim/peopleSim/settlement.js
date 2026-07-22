@@ -723,7 +723,7 @@ function updateWealth(world, s) {
     if (T.FIAT_OUTPUT > 0 && world._inflRef > 0 && fiatBank > 0) {
       const fmat = Math.min(1, Math.max(0, (org - 0.78) / 0.18));        // financial maturity: the industrial gate on the hub's own organisation
       if (fmat > 0) {
-        const out = exportValueOf(s, world) * Math.sqrt(Math.max(1, s.people || 1));   // the hub's real-output proxy (= the inflation model's T-contribution)
+        const out = realOutputOf(s, world);   // the hub's real-output proxy (= the inflation model's T-contribution; OUTPUT_TOTAL switches trade-proxy → total output)
         const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;      // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
         if (fiatTarget > target) { target = fiatTarget; fiatBound = true; }             // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
       }
@@ -1100,6 +1100,33 @@ export function exportValueOf(s, world) {
     s._evStep = world.step;
   }
   return s._exportValue;
+}
+
+// ── Real-output measure for the MONETARY economy (inflation T + fiat backing) ──
+// The price level is P = (M/T)/REF and fiat money (FIAT_OUTPUT) is a claim on
+// output; BOTH the denominator T (inflation.js) and the fiat backing
+// (updateMining, above) read THIS one function, so numerator and denominator can
+// never drift. Two regimes:
+//   • DEFAULT (OUTPUT_TOTAL 0): the TRADED-output proxy exportValue×√people — the
+//     volume that crosses markets (sub-linear in population, trade-tech-weighted).
+//     Byte-identical to the original inline expressions both callers used.
+//   • OUTPUT_TOTAL > 0: TOTAL (domestic) real output ≈ population × productivity,
+//     people × _eraProd. _eraProd is the productivity index that already scales
+//     carrying capacity (~1 forager → ~260 modern developed, gated on the
+//     settlement's OWN development, never a clock). This is the whole economy, not
+//     the traded slice, so as a modern realm turns inward (trade fraction shrinks,
+//     trade links fragment) T does NOT collapse — the money supply can keep
+//     monetising the real economy instead of pricing the ×N industrial output
+//     against a shrinking traded fraction (which deflates the modern price toward
+//     the floor). Magnitude is absorbed by the live REF calibration, so only the
+//     SHAPE of the measure changes (linear in people, productivity-weighted,
+//     trade-independent). Necessary but, alone, not sufficient for a stable modern
+//     price — the fiat supply dynamics (②b/②c) co-determine it; see the measured
+//     A/B in docs/industrial-transition-2026-07.md ②a residual 1.
+export function realOutputOf(s, world) {
+  const ppl = Math.max(1, s.people || 0);
+  if (T.OUTPUT_TOTAL > 0) return ppl * (s._eraProd || 1);
+  return exportValueOf(s, world) * Math.sqrt(ppl);
 }
 
 // Does this settlement FARM its own land (so its base output is food)? Under
