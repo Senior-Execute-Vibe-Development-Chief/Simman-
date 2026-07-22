@@ -288,6 +288,49 @@ Measured at 480×240 / 8817 / 20 000 steps, all three flags on:
 Repro: `SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1,GOODS_PRICES=1" node
 tools/probe_settlement_econ.mjs 20000 8817 480 240`
 
+## Stage 2 — LANDED (2026-07)
+
+Shipped behind `T.GOODS_TRADE` (requires `GOODS_PRICES`), **default 0**
+(byte-identical scalar flow off; smoke green). Per-good flows down the price
+gradient replace the symmetric exchange; money rides the same audited
+`sellGoods` path (now returning its applied scale, with per-good booking
+channels); imports/exports feed next-tick prices; Hume compA/compB,
+demandMul and the luxury overlay retire on this path (their jobs emerge
+from the prices). Measured at 480×240 / 8817 / 20 000, all four flags:
+
+- **F2 FIXED — buy ≠ sell.** Asymmetry index (0 = the old mirror, 1 = pure
+  one-way): **goods 0.80, materials 0.73, luxury 0.95.** The baseline's
+  big cities sat at ~0.05 (sell 30 / buy 33). Every settlement shows a
+  directed flow signature (ore towns export ore, cloth-short towns import
+  cloth, luxury coasts export to inland consumers).
+- **Prices equalise across the network**, up to transport cost: metal
+  median 1.98 (Stage 1, autarky) → **0.90**; ore → 1.00; visible already
+  at 3k steps (ore max 2.24 → 1.42). The self-flattening gradient IS the
+  trade system working.
+- **Gates:** stylized all hard gates pass (same 1 soft Zipf-n/a warning,
+  within budget); smoke (defaults) byte-identical. Macro: wealth 259k vs
+  301k baseline — one-way flows move less gross coin than the old
+  symmetric churn, as expected.
+- **Pre-registered test result — textiles did NOT recover (0 %).** The
+  spec's Stage-1 note said a non-recovery would be a real finding, and it
+  is: cloth capability carries a universal CLIMATE floor (0.2 + wool/cotton
+  in craftLegs — untouched by RES_SCARCITY, which grades deposits, not
+  climate), so no region is cloth-POOR, the glut is world-wide (median
+  0.55, max 1.83), and no price gradient can justify an export loom. What
+  made Flanders/Florence was that most regions could NOT make fine cloth.
+  The missing mechanism is cloth QUALITY/skill grading (or wealth-elastic
+  clothing demand — real consumption rose steeply with wealth); build one
+  of those, don't inflate a constant. → Stage 3/4 candidate.
+
+Repro: `SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1,GOODS_PRICES=1,GOODS_TRADE=1"
+node tools/probe_settlement_econ.mjs 20000 8817 480 240`
+
+Remaining stages: **Stage 3** — metal production CONSUMES ore (the physical
+chain; ore demand is already priced and flowing, so this is now a small
+step: gate `prod[metal]` on ore availability = local + imported). **Stage
+4** — temperament→demand coupling, luxury re-sizing, cloth quality, shocks
+via prices, UI panel for the goods table.
+
 ## Open questions (decide before Stage 2)
 
 1. **Grain:** ~~unify into the market, or leave on the food hierarchy?~~
