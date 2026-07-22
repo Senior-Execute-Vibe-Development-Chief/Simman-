@@ -245,6 +245,49 @@ SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1" node tools/probe_settlement_econ.mjs 2
 SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1" npm run validate
 ```
 
+### Stage 0 cross-seed battery (2026-07) — PASSED, default-flip ready
+
+- Stylized suite under both flags: **3/3 seeds** (8817, 4242, 777) pass all
+  hard gates; each shows the same 1 soft warning (Zipf n/a — few cities > 50
+  urban at 21k, within the 2-warning budget, the known era-dependent softie).
+- Seed-1234 probe replicates the Stage 0 metrics: entropy 1.27 → **2.10**
+  bits; top-10 endowment breadth down at every threshold (4.0/3.0/1.4 →
+  3.2/2.1/1.1). Macro drift is **seed-dependent, not systematic**: pop fell
+  ~23 % on 8817 but ROSE ~37 % on 1234 (15.4k → 21.1k).
+- The default flip is a judgement call for the owner; mechanics are ready.
+
+## Stage 1 — LANDED (2026-07)
+
+Shipped behind `T.GOODS_PRICES` (+ `GOODS_PRICE_ADAPT` 0.05,
+`GOODS_LABOUR_ADAPT` 0.02, `GOODS_ELAST` 0.5), **default 0** (byte-identical
+off; smoke green with the layer in the import graph). New `goods.js`: the
+8-good vector per settlement — production, demand, damped local scarcity
+price, and profit-seeking craft labour shares — exactly as specced, with
+capabilities REUSING the scalar recipes (exported `craftLegs`, the
+food/materials fractions, the luxury budgets) so the layers can't drift.
+`_gPrice`/`_gShare` persist. Trade is still the scalar flow.
+
+Measured at 480×240 / 8817 / 20 000 steps, all three flags on:
+
+- **Real spatial price gradients per good** (min/med/max): staple
+  0.25/0.25/4.00 — breadbaskets at the floor, famine towns at the cap; metal
+  0.25/1.98/4.00 — dear wherever forge-less; cloth 0.25/0.44/1.89 —
+  glutted; luxury 0.25/1.87/4.00. This dispersion is the gradient Stage 2
+  trades against, now observable per settlement.
+- **Demand-responsive specialisation**: the price-weighted pick reshapes the
+  mix (entropy 2.12 bits): Crafted wares 29.6 %, Services 24.5 %, Metalwork
+  24.5 %, Pottery 18.4 %, **Textiles 3.1 %**.
+- **Known Stage-1 artifact (recorded, not a bug): local-only prices
+  undervalue EXPORT industries.** Textiles fell 36 % → 3 % because every
+  town's *local* cloth market is glutted (median 0.44) — with no goods
+  trade, no town can justify an export loom. The historical textile belts
+  were export industries; they should return exactly when Stage 2 lets a
+  cloth-cheap town sell into cloth-dear regions. If they don't, THAT will be
+  a real finding about the demand constants.
+
+Repro: `SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1,GOODS_PRICES=1" node
+tools/probe_settlement_econ.mjs 20000 8817 480 240`
+
 ## Open questions (decide before Stage 2)
 
 1. **Grain:** ~~unify into the market, or leave on the food hierarchy?~~
