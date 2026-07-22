@@ -88,6 +88,12 @@ function dump(s, tag) {
   if (T.GOODS_PRICES && s._gPrice) {
     console.log(`   goods prices: ${GOODS.map((g, i) => `${g} ${rr(s._gPrice[i])}`).join("  ")}`);
     if (s._gShare) console.log(`   craft labour: ore ${rr(s._gShare[0])} metal ${rr(s._gShare[1])} cloth ${rr(s._gShare[2])} wares ${rr(s._gShare[3])} services ${rr(s._gShare[4])}`);
+    if (T.GOODS_TRADE && s._gNet) {
+      const flows = GOODS.map((g, i) => [g, s._gNet[i]]).filter(([, v]) => Math.abs(v) > 0.005)
+        .sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]))
+        .map(([g, v]) => `${v > 0 ? "imports" : "exports"} ${g} ${rr(Math.abs(v))}`).join(", ");
+      console.log(`   goods flows (/tick): ${flows || "(balanced)"}`);
+    }
   }
 }
 
@@ -176,5 +182,21 @@ byPop.slice(0, 10).forEach((s) => {
   const i = s._mInRate || [], o = s._mOutRate || [];
   console.log(`   ${(s.name || "?").padEnd(16)} goods  sell ${rr(i[1]).padStart(6)} / buy ${rr(o[0]).padStart(6)}    food  sell ${rr(i[2]).padStart(6)} / buy ${rr(o[1]).padStart(6)}    mats  sell ${rr(i[3]).padStart(6)} / buy ${rr(o[2]).padStart(6)}`);
 });
+// Asymmetry index per category: |sell−buy|/(sell+buy), 0 = perfect mirror
+// (the F2 pathology), 1 = pure one-way flow (real division of labour).
+// Mean over the top-10 cities; goods+materials+luxury only (food rides the
+// hierarchy, tolls/tariffs aren't goods).
+{
+  const cats = [[1, 0, "goods"], [3, 2, "materials"], [8, 9, "luxury"]];
+  const parts = cats.map(([ci, co, label]) => {
+    let sum = 0, n = 0;
+    for (const s of byPop.slice(0, 10)) {
+      const sell = (s._mInRate && s._mInRate[ci]) || 0, buy = (s._mOutRate && s._mOutRate[co]) || 0;
+      if (sell + buy > 0.5) { sum += Math.abs(sell - buy) / (sell + buy); n++; }
+    }
+    return `${label} ${n ? (sum / n).toFixed(2) : "n/a"}`;
+  });
+  console.log(`   ASYMMETRY INDEX (top-10 mean; 0 = mirror trade, 1 = one-way): ${parts.join("   ")}`);
+}
 
 console.log(`\n(done in ${((Date.now() - t0) / 1000).toFixed(0)}s)`);

@@ -41,6 +41,11 @@ export const G_STAPLE = 0, G_MATERIALS = 1, G_ORE = 2, G_METAL = 3, G_CLOTH = 4,
 // Craft-sector goods (labour-allocated), in _gShare order.
 const CRAFTS = [G_ORE, G_METAL, G_CLOTH, G_WARES, G_SERVICES];
 const N_CRAFT = 5;
+// SHIPPABLE goods (Stage 2, T.GOODS_TRADE). Staple is excluded — grain flows
+// up the food hierarchy (owner ruling, spec Open Question 1) and must not be
+// double-counted; services are earned in place (the carrying trade), never
+// crated. Order is irrelevant here — the trade pass sorts by price gap.
+export const TRADABLE = [G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_LUXURY];
 
 // Price band. A price is a local scarcity signal, not a market clearing —
 // bounded so a zero-capability good (an oreless town's ore) reads "dear,
@@ -135,12 +140,18 @@ export function updateGoods(world, s) {
   dem[G_SERVICES]  = pop * SVC_PC * (0.25 + 0.75 * monetization(s));   // cash economies demand clerks & credit
 
   // ── Price relaxation ──────────────────────────────────────────────────
-  // Local scarcity price per good: relax toward clamp((D/S)^ELAST). Damped
+  // Local scarcity price per good: relax toward clamp((D/AVAIL)^ELAST),
+  // where availability = own production + net trade (Stage 2: imports ADD
+  // to the local market, exports REMOVE from it — the classic coupling:
+  // grain exports raised bread prices at home, imports glutted them). With
+  // no goods trade (_gNet absent / Stage 1) avail = prod exactly. Damped
   // (GOODS_PRICE_ADAPT) so shocks ripple over ticks instead of snapping —
   // no solver, no oscillation, deterministic.
+  const net = s._gNet;   // per-tick net goods received, built by the trade pass
   const elast = T.GOODS_ELAST, adapt = Math.min(1, T.GOODS_PRICE_ADAPT * dt);
   for (let g = 0; g < 8; g++) {
-    let target = Math.pow((dem[g] + EPS) / (prod[g] + EPS), elast);
+    const avail = Math.max(0, prod[g] + (net ? net[g] : 0));
+    let target = Math.pow((dem[g] + EPS) / (avail + EPS), elast);
     if (target < P_LO) target = P_LO; else if (target > P_HI) target = P_HI;
     P[g] += adapt * (target - P[g]);
   }
