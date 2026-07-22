@@ -34,6 +34,7 @@ import { craftLegs, exportValueOf, monetization, METAL_W, getWealthReserve, find
 import { personalityOf } from "./personality.js";
 import { getPolity } from "./entities.js";
 import { recordIn, recordOut, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
+import { logEvent } from "./events.js";
 
 // Good indices. staple/materials/luxury are PRIMARY (their production is
 // governed by the food/territory/luxury systems — the goods layer prices
@@ -94,6 +95,9 @@ const DEDICATION_CAP = 2.5;
 // with no living suppliers cannot conjure capital. Capacity depreciates,
 // so capital must be renewed — rich towns compound their edge physically,
 // poor ones fall behind: the growth engine between endowment and output.
+// Chronicle thresholds: the crisis end of the price band, held long enough
+// to be an episode (the cooldown), in a town with a real market.
+const PRICE_EV_HI = 3.5, PRICE_EV_COOLDOWN = 2500, PRICE_EV_MIN_POP = 300;
 const INVEST_FRAC   = 0.01;    // share of spare wealth a town commits per tick at lever 1 (patient capital)
 const CAPX_PER_COIN = 0.002;   // capacity bought per coin at zero saturation (≈500 coin → +1.0)
 const CAPX_MAX      = 1.0;     // capital can at most DOUBLE a craft's capability (land/skills still bind)
@@ -265,6 +269,27 @@ export function updateGoods(world, s) {
       sum += L[c];
     }
     if (sum > 0) for (let c = 0; c < N_CRAFT; c++) L[c] /= sum;
+  }
+
+  // ── Price extremes enter the CHRONICLE ────────────────────────────────
+  // Dearth years and boom years were what pre-modern chronicles actually
+  // recorded about the economy. A sustained price at the crisis end of the
+  // band logs once per episode (cooldown), for a town big enough to have a
+  // market worth chronicling. Log-only — no sim behaviour changes here.
+  if (s.people > PRICE_EV_MIN_POP && world.step - (s._lastPriceEv || -Infinity) > PRICE_EV_COOLDOWN / dt) {
+    if (P[G_STAPLE] >= PRICE_EV_HI) {
+      s._lastPriceEv = world.step;
+      logEvent(world, "market.dearth", { s: s.id, sName: s.name || "a town" });
+    } else {
+      for (let c = 0; c < N_CRAFT; c++) {
+        const g = CRAFTS[c];
+        if (P[g] >= PRICE_EV_HI && prod[g] > dem[g]) {   // dear AND it's the local trade — a boom, not a shortage
+          s._lastPriceEv = world.step;
+          logEvent(world, "market.boom", { s: s.id, sName: s.name || "a town", good: GOODS[g] });
+          break;
+        }
+      }
+    }
   }
 
   // ── Capital investment (see constants above) ──────────────────────────

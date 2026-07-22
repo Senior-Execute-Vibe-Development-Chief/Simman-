@@ -272,6 +272,9 @@ function packSettlement(s) {
     // Coerced-labour intensity 0..1 for the Society lens: how bound the labour is
     // (slaves as a share of people, serfdom, cash-crop plantation land).
     _coerce: Math.min(1, (s._unfreeRatio || 0) + 0.6 * (s._serf || 0) + 0.4 * (s._cashFrac || 0)),
+    // Goods-vector prices (T.GOODS_PRICES) for EVERY settlement — the data a
+    // future price-map lens paints; null and free when the levers are off.
+    _gPrice: s._gPrice || null,
   };
 }
 

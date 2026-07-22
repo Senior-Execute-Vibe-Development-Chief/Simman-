@@ -20,7 +20,7 @@ import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
-import { updateGoods, LEG_GOOD } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
+import { updateGoods, LEG_GOOD, G_STAPLE, G_MATERIALS, G_METAL } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
 // scope: country ids are settlement ids and the personality RNG is seeded from
@@ -1742,6 +1742,22 @@ function updateKnowledge(world, s) {
   const agriClim = Math.max(0.2, 1 + T.ENV_SPEC * (irrig * 1.1 - tropical * 0.45 - cold * 0.5));
   const orgClim  = Math.max(0.4, 1 + T.ENV_SPEC * (maritime * 0.3 - tropical * 0.40));
 
+  // ── Induced innovation (T.INDUCED_INNOV): necessity mothers invention ──
+  // A society whose own market prices a good DEAR leans its learning toward
+  // the technique that makes it: dearth pushes agronomy (the rotation and
+  // manuring literature followed hungry decades), dear metal pushes the
+  // furnace men, dear building materials the mason's methods. Reads the
+  // settlement's LOCAL goods prices (goods.js, only under T.GOODS_PRICES) —
+  // a lived condition, never a date. One-sided by design: gluts never
+  // punish learning (abundance doesn't make a society forget).
+  let needAgri = 1, needMat = 1, needMetal = 1;
+  if (T.INDUCED_INNOV > 0 && s._gPrice) {
+    const gp = s._gPrice;
+    needAgri  = 1 + T.INDUCED_INNOV * Math.max(0, gp[G_STAPLE] - 1);
+    needMat   = 1 + T.INDUCED_INNOV * Math.max(0, gp[G_MATERIALS] - 1);
+    needMetal = 1 + T.INDUCED_INNOV * Math.max(0, gp[G_METAL] - 1);
+  }
+
   // ── Heritable aptitude: selection ratchet ────────────────────────────
   // Under a mild-summer/harsh-winter/reliable-growing-season climate the
   // population's heritable organisation aptitude climbs toward the selection
@@ -1773,7 +1789,7 @@ function updateKnowledge(world, s) {
   const stoneBoost = 1 + (r.stone || 0) * 0.6;
   const metalBoost = 1 + metalEff * 1.8;             // metal TOOLS help building — the metal you can forge, not merely know of
   k.construction = clamp01(k.construction + T.LEARN_BASE * 1.0 * sciMul * (1 - k.construction)
-    * buildMat * stoneBoost * metalBoost
+    * buildMat * stoneBoost * metalBoost * needMat
     * (1 + k.agriculture * 0.6) * (1 + sciSqrt * 0.06));   // urban core builds — pace to a CITY of that size, not the whole province (mirrors organization/metallurgy/navigation/mobility above; closes the raw-pop leak into orgEraCap → the world clock)
 
   // Agriculture: farmland scale + metal tools (plough) + wild-food
@@ -1798,7 +1814,7 @@ function updateKnowledge(world, s) {
   const indAgri = 1 + T.AGRI_INDUSTRIAL
     * Math.min(1, Math.max(0, (k.organization - 0.78) / 0.18))
     * Math.min(1, Math.max(0, (k.metallurgy   - 0.78) / 0.18));
-  k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * (1 - k.agriculture)
+  k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * needAgri * (1 - k.agriculture)
     * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost * foragePull * indAgri);
 
   // Organization: pop-driven admin burden + a literate-state branch
@@ -1846,7 +1862,7 @@ function updateKnowledge(world, s) {
     const fuel = 1 + (r.timber || 0) * 0.3 + co * 0.4;             // charcoal / coke
     const headroom = 1 - k.metallurgy / metalCap;
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      T.LEARN_BASE * 2.6 * sciMul * headroom * (0.5 + 0.5 * oreRate) * fuel
+      T.LEARN_BASE * 2.6 * sciMul * headroom * (0.5 + 0.5 * oreRate) * fuel * needMetal
       * (1 + k.construction * 0.4 + sciSqrt * 0.04));
   }
 

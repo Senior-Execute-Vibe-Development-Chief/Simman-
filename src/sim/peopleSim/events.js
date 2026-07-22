@@ -141,6 +141,8 @@ const NARRATE = {
     if (ev.kind === "colony") return `The colony of ${ev.sName} was planted on a far shore.`;
     return `${ev.sName} was founded.`;
   },
+  "market.dearth"(ev) { return `Dearth in ${ev.sName} — bread at famine prices in the market.`; },
+  "market.boom"(ev) { return `${ev.sName}'s ${ev.good || "wares"} fetch extraordinary prices — a boom year.`; },
   "settlement.withered"(ev) { return `${ev.sName} withered away and was abandoned.`; },
   "settlement.abandoned"(ev) { return `${ev.sName} was abandoned.`; },
   "settlement.tier"(ev) {
@@ -297,6 +299,8 @@ export function categoryOf(ev, as = -1) {
     case "settlement.captured": return as === ev.from ? "war" : "conquest";
     case "settlement.annexed": return as === ev.from ? "loss" : "annex";
     case "famine.struck": return "famine";
+    case "market.dearth": return "famine";
+    case "market.boom": return "wealth";
     case "plague.outbreak": return "plague";
     case "era.reached": return "discovery";
     case "growth.cities": return "growth";
