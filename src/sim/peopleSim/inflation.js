@@ -14,18 +14,22 @@
 //
 //   P  =  M_component / T_component      (relative to a reference)
 //   M  =  sum of coin held in the component
-//   T  =  real output proxy, sum over members of
-//             max(1, exportValue × √pop)
-//         — exportValue × √pop is the existing trade-volume basis; using
-//         the same shape as TRADE_RATE keeps T meaningful at any tech
-//         level (a backward populous region produces less per capita than
-//         a literate one).
+//   T  =  real output, sum over members of max(1, realOutputOf(s))
+//         — by default the trade-volume basis exportValue × √pop (the same
+//         shape as TRADE_RATE, meaningful at any tech level: a backward
+//         populous region produces less per capita than a literate one).
+//         Under OUTPUT_TOTAL it becomes TOTAL output (population × productivity)
+//         so a modern economy that is mostly DOMESTIC — only a fraction traded —
+//         is priced against its whole output, not its shrinking trade fraction
+//         (which otherwise deflates the modern price to the floor). realOutputOf
+//         (settlement.js) is the single measure both T here and the fiat backing
+//         read, so they can never drift.
 //
 // All sim prices that should respond to inflation read `localP(world, s)`
 // (or `localPByCountry` for state-level money). At P=1 (the reference)
 // behaviour is unchanged from the pre-inflation calibration.
 
-import { exportValueOf } from "./settlement.js";
+import { realOutputOf } from "./settlement.js";
 import { TECHS } from "./tech.js";
 
 // The organization level at which stamped coin exists — read from the tech
@@ -81,8 +85,7 @@ export function updateInflation(world) {
     if (s.mode !== "settled") continue;
     const root = comps.has(s.id) ? comps.get(s.id) : s.id;
     M.set(root, (M.get(root) || 0) + Math.max(0, s.wealth || 0));
-    const ev = exportValueOf(s, world);
-    const out = Math.max(1, ev * Math.sqrt(Math.max(1, s.people)));
+    const out = Math.max(1, realOutputOf(s, world));
     T.set(root, (T.get(root) || 0) + out);
   }
 

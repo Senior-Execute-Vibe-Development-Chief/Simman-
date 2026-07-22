@@ -761,12 +761,22 @@ function updateWealth(world, s) {
     // off / pre-industrial (fmat=0).
     const fiatBank = techEff(s).credit ? depth : 0;   // banking institution + org depth only, reach-independent
     let fiatBound = false;   // is the fiat (output-backed) target the binding one this tick?
+    let fmatHub = 0;         // this hub's financial maturity (0 pre-industrial → 1 fully modern); gates the no-crunch rule below
     if (T.FIAT_OUTPUT > 0 && world._inflRef > 0 && fiatBank > 0) {
       const fmat = Math.min(1, Math.max(0, (org - 0.78) / 0.18));        // financial maturity: the industrial gate on the hub's own organisation
+      fmatHub = fmat;
       if (fmat > 0) {
-        const out = exportValueOf(s, world) * Math.sqrt(Math.max(1, s.people || 1));   // the hub's real-output proxy (= the inflation model's T-contribution)
-        const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;      // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
-        if (fiatTarget > target) { target = fiatTarget; fiatBound = true; }             // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
+        const out = realOutputOf(s, world);   // the hub's real-output proxy (= the inflation model's T-contribution; OUTPUT_TOTAL switches trade-proxy → total output)
+        const fiatTargetRaw = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;   // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
+        // FIAT_SMOOTH (default 0 ⇒ spot, unchanged): a central bank targets the TREND
+        // money stock, not the last tick's. Smoothing the backing (slow EMA) keeps the
+        // fiat target — and thus the money supply and the price — stable through a
+        // TRANSIENT dip in output OR organisation (a fragmentation blip), instead of
+        // the target dropping with the blip and the overhang unwinding to the floor.
+        // dt-scaled for SIM_GRANULARITY. FIAT_SMOOTH=0 ⇒ s._fiatTgt == raw (no change).
+        const a = T.FIAT_SMOOTH > 0 ? Math.min(1, T.FIAT_SMOOTH * (world._dt || 1)) : 1;
+        s._fiatTgt = s._fiatTgt === undefined ? fiatTargetRaw : s._fiatTgt + (fiatTargetRaw - s._fiatTgt) * a;
+        if (s._fiatTgt > target) { target = s._fiatTgt; fiatBound = true; }             // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
       }
     }
     const gap = target - cur;
@@ -778,7 +788,16 @@ function updateWealth(world, s) {
     // fiat is what keeps the price off the floor across the whole modern arc, not just
     // at onset. Specie-credit (bills of exchange) keeps the crunch — a run on a bank IS
     // faster than deposit growth; a central bank managing fiat is not.
-    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 && !fiatBound ? CREDIT_CRUNCH : 1));
+    // A financially-MATURE fiat hub does not panic-recall: the ×CREDIT_CRUNCH bank-run
+    // contraction is specie-credit (bills-of-exchange) behaviour — a run is faster than
+    // deposit growth. Once a hub is fiat-mature (fmatHub>0) it MANAGES its currency, so
+    // even when a transient output dip drops the fiat target below the specie line
+    // (fiatBound flips false and the overhang would otherwise be crunched), contraction
+    // runs at the NORMAL rate. Without this a −7% output blip flipped fiatBound false and
+    // the crunch collapsed the money supply −77% in a pass — the measured procyclical
+    // modern price break. Pre-fiat hubs (fmatHub=0) keep the crunch; byte-identical when
+    // FIAT_OUTPUT=0 (fmatHub stays 0 ⇒ the original `gap<0 && !fiatBound` rule exactly).
+    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 && !fiatBound && fmatHub <= 0 ? CREDIT_CRUNCH : 1));
     const delta = gap * rate;
     if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
     else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_CREDIT, take); } }   // credit called in, not goods bought (B17)
@@ -1161,6 +1180,33 @@ export function exportValueOf(s, world) {
     s._evStep = world.step;
   }
   return s._exportValue;
+}
+
+// ── Real-output measure for the MONETARY economy (inflation T + fiat backing) ──
+// The price level is P = (M/T)/REF and fiat money (FIAT_OUTPUT) is a claim on
+// output; BOTH the denominator T (inflation.js) and the fiat backing
+// (updateMining, above) read THIS one function, so numerator and denominator can
+// never drift. Two regimes:
+//   • DEFAULT (OUTPUT_TOTAL 0): the TRADED-output proxy exportValue×√people — the
+//     volume that crosses markets (sub-linear in population, trade-tech-weighted).
+//     Byte-identical to the original inline expressions both callers used.
+//   • OUTPUT_TOTAL > 0: TOTAL (domestic) real output ≈ population × productivity,
+//     people × _eraProd. _eraProd is the productivity index that already scales
+//     carrying capacity (~1 forager → ~260 modern developed, gated on the
+//     settlement's OWN development, never a clock). This is the whole economy, not
+//     the traded slice, so as a modern realm turns inward (trade fraction shrinks,
+//     trade links fragment) T does NOT collapse — the money supply can keep
+//     monetising the real economy instead of pricing the ×N industrial output
+//     against a shrinking traded fraction (which deflates the modern price toward
+//     the floor). Magnitude is absorbed by the live REF calibration, so only the
+//     SHAPE of the measure changes (linear in people, productivity-weighted,
+//     trade-independent). Necessary but, alone, not sufficient for a stable modern
+//     price — the fiat supply dynamics (②b/②c) co-determine it; see the measured
+//     A/B in docs/industrial-transition-2026-07.md ②a residual 1.
+export function realOutputOf(s, world) {
+  const ppl = Math.max(1, s.people || 0);
+  if (T.OUTPUT_TOTAL > 0) return ppl * (s._eraProd || 1);
+  return exportValueOf(s, world) * Math.sqrt(ppl);
 }
 
 // Does this settlement FARM its own land (so its base output is food)? Under

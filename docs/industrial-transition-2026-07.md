@@ -238,3 +238,179 @@ This is the same class of work as trade-decoupling (backlog #6): a missing
 *system*, characterised cardinal-rule-safe, none auto-applied. Everything built
 this pass is default-off and byte-identical; the levers are in and validated, the
 remaining arc is precisely located in inflation.js's T.
+
+---
+
+## 8. Residual 1 BUILT — the total-output T-measure (`OUTPUT_TOTAL`) + the measured verdict
+
+*(Appended a later session. Corrects §7's sequencing with what the battery showed.)*
+
+**What was built.** §7 residual 1, as a default-off lever `OUTPUT_TOTAL` and ONE
+shared `realOutputOf(s, world)` (settlement.js) that BOTH the price denominator T
+(inflation.js:85) and the fiat backing (settlement.js, the FIAT_OUTPUT credit
+target) now read — so numerator and denominator can never drift.
+
+- **Off (default):** the traded-output proxy `exportValue × √people` — textually
+  byte-identical to the two original inline expressions. `npm test` green (smoke
+  166s + emblem, all checks); `npm run validate` green (all hard gates, 1 soft
+  warning within budget). The shipped world is untouched.
+- **On:** total (domestic) real output `people × _eraProd` — population × the
+  productivity index that already scales carrying capacity (~1 forager → ~260
+  modern, gated on the settlement's OWN development, never a clock). Its magnitude
+  is fully absorbed by the live REF calibration (REF = M/ΣT at lock, so a constant
+  re-scale of T cancels in both P and the fiat target) — only the SHAPE changes:
+  linear in population, productivity-weighted, **trade-independent**.
+
+**The measured A/B** (tw=120 = W240, seed 8817, the 4 industrial levers on,
+FIAT=4; control `OUTPUT_TOTAL=0` vs treatment `=1`; deep-modern window, leadOrg=1):
+
+| deep modern (org=1) | control (trade-proxy T) | treatment (total-output T) |
+|---|---|---|
+| monetisation M/peopleProd | 2.6 | **18.5** (≈7× better-funded) |
+| insolvent realms (mean / max) | 2.5 / 7 | **1.0 / 3** |
+| country count (fragmentation) | ~55 | ~50 |
+| price P (people-weighted raw) | ~1.8 (CoV 0.15) | 2.0 → 0.23 (see below) |
+
+**Verdict — necessary, but NOT sufficient (this corrects §7's optimism).** The
+total-output T is the correct, load-bearing base, and it materially improves the
+modern economy's MONETISATION (≈7×) and average SOLVENCY (mean insolvent 2.5→1.0,
+max 7→3). But it does **not, alone, make the modern price *stay* healthy.** In the
+treatment the fiat overshoots at industrial onset (P≈2), then the realm still
+cycles into fragmentation (→61 countries) → per-hub organisation drops → the
+org-gated fiat is called in → the money supply collapses (M 6.7M → 0.6M) → the
+price deflates to the floor (P≈0.23) → insolvency → more fragmentation. The SAME
+fiscal-political secular cycle §1 diagnosed. The T-measure smooths the DENOMINATOR
+(peopleProd is stable across the arc); the instability has simply **moved into the
+fiat money SUPPLY**, which stays fragile because it is gated on per-hub org and
+collapses exactly when the realm it must fund breaks apart.
+
+So §7's sequence ("residual 1 makes the price stay healthy; THEN ②b/②c") is too
+optimistic. The honest reading: **total-output-②a and ②b/②c are CO-REQUIRED, not
+sequential.** ②b (extraction that rises with development, keeping the modern state
+solvent through the transition) and ②c (reach that holds the ×N realm together)
+are what stop the fragmentation that collapses the org-gated fiat. Residual 1 is a
+true, correct piece of that joint system — now in and validated-off — but a stable
+modern price is a JOINT property of all three, as the battery shows.
+
+**Resolution caveat.** This A/B is at tw=120 (coarser than §7's tw=240/480). At
+tw=120 the baseline pathology reads as inflation-instability (P≈1.8, swinging)
+rather than the tw=480 deflation-to-floor — but it is the SAME disease: the trade
+proxy is the wrong base (measured peopleProd/Ttrade diverges ≈250× and widening
+across the arc). The deep tw=240/480 re-confirmation is the same class of expensive
+run §7 flags; the mechanism is resolution-independent.
+
+**FIAT sweep result** (`OUTPUT_TOTAL=1`, deep-modern org=1; ran 1.5 / 4 / 8).
+Raising FIAT in the total-output regime does NOT simply center the price — it
+trades off cohesion against inflation:
+
+| FIAT | price P (deep modern) | insolvent (mean) | countries (cohesion) |
+|---|---|---|---|
+| 1.5 | ~0.3 (stuck near the floor) | low then rising | ~52, fragmenting |
+| 4   | 2.0 → 0.23 (overshoot, then spiral) | 1.0 | ~55 → 61 |
+| 8   | mean 1.48, **CoV 0.75** [0.36–3.8] | 1.1 | **37.8, CoV 0.06** |
+
+Higher FIAT monotonically improves COHESION (countries ~52 → ~38) and solvency:
+FIAT=8 holds the realm together far better than the control (~38 vs ~55 countries,
+CoV 0.06) — the "holds together because it can afford to" criterion is *largely met
+at adequate monetisation*, and FIAT≈4 (carried over from the trade-proxy regime) is
+simply under-calibrated for the larger total-output base. BUT the modern PRICE stays
+volatile at EVERY level: deflated at 1.5, overshoot-then-spiral at 4, and at 8 it
+overshoots to ~3.8, settles near ~1 for a spell, then still suffers periodic
+fiat-collapse events (M 10M → 0.6M around step 92k → P to the floor). So the
+price residual is NOT pure calibration — no single FIAT stabilises it; the
+instability lives in the fiat money-SUPPLY dynamics (the org-gated credit ramp /
+call-in that collapses when a realm fragments), which the T-measure doesn't touch.
+
+**Net.** Residual-1 + a regime-appropriate FIAT (≈8, not the trade-proxy ≈4)
+already buys the better half — ~7× monetisation, materially better solvency, and
+genuine cohesion. A STABLE modern price additionally needs the fiat supply made
+robust to fragmentation: ②b (extraction that funds solvency without leaning on
+volatile fiat credit) and ②c (reach that stops the fragmentation that collapses
+org-gated fiat). Co-required for price STABILITY — confirmed by the sweep, not
+assumed. Nothing here is auto-applied; FIAT and OUTPUT_TOTAL stay default-off, and
+the co-tuning + flip remain the owner's call.
+
+**Cardinal-rule check.** Emergent (gates on the settlement's own `_eraProd` /
+development, never a clock). A SYSTEM (the correct output measure), not a fitted
+outcome — no price target dialed; and the finding that it is insufficient *alone*
+is surfaced, not papered over with a constant. Default-off, byte-identical.
+
+---
+
+## 9. ②b + ②c + two fiat refinements BUILT — cohesion & solvency solved; the price's LAST cause isolated
+
+This session built the fiscal state (②b) and the reach (②c) §8 called co-required,
+plus two fiat-dynamics refinements the batteries forced. **Four new mechanisms, all
+default-off, all `npm test` byte-identical + `npm run validate` green.** The result:
+**cohesion and solvency are now solved; the modern price's residual deflation is
+isolated to one precise, structural cause — a per-hub fiat.**
+
+**Built:**
+- **②b `MODERN_FISC`** (conquest.js) — the modern income tax on real output
+  (`realOutputOf`, people×productivity), coin-where-monetised / **in-kind-where-not**
+  (`gov._inKind` provisions the army). Because `monetization` falls *with* the coin
+  hoard, the tax auto-shifts to in-kind exactly when coin dries up → the state stays
+  funded through a monetary dip. Gated on `cap._indGate`.
+- **②a′ fiat no-crunch** (`e5fe332`) — a financially-mature fiat hub no longer
+  ×CREDIT_CRUNCH bank-run-recalls when a transient dip drops the fiat below the specie
+  line (that flipped `fiatBound` false and collapsed the overhang: a measured −7%
+  output blip → −77% money in a pass).
+- **`FIAT_SMOOTH`** (settlement.js) — the fiat backing is smoothed against TREND
+  output (slow EMA), so the money target doesn't chase every output/org blip. Only the
+  backing; the price still divides T by SPOT output (honest read).
+- **②c `INDUSTRIAL_REACH`** (conquest.js) — absolute logistic reach. CAP_MODEL's tail
+  is RELATIVE (out-extract peers); when all realms industrialise together none gains
+  surplus, so the modern realm got no reach and shed its ×N provinces. This adds reach
+  from the realm's OWN industrial logistics (`cap._indGate` × logistics tech), bounded
+  by the same emergent `domCeil`.
+
+**Full-stack battery (tw=120, seed 8817; OUTPUT_TOTAL=1, INDUSTRIAL_CAP=25,
+URBAN_IND=3, URBAN_FOOTPRINT=1, FIAT=6, MODERN_FISC=0.15, FIAT_SMOOTH=0.02;
+INDUSTRIAL_REACH swept 4/8):**
+
+| deep modern (org=1) | ②a only | +②b+②a′+smooth | **+②c (REACH=4)** |
+|---|---|---|---|
+| country count (cohesion) | → 54–61 | → 52–57 | **34–40, stable** |
+| hard-insolvent count | spikes ~7 | ~0–3 | **~0** |
+| price P | → floor | → floor | → floor (still) |
+| M / peopleProd | collapses | collapses | 118 → 4 (still) |
+
+**②c is a real win.** With absolute reach the modern realm HOLDS: country count
+stable at 34–40 (best of the whole investigation, vs 54–61 without it) and solvent.
+Cohesion and solvency — §5's second and third success criteria — are met.
+(`INDUSTRIAL_REACH=8` over-extends → more insolvency; 4 is better. Calibratable.)
+
+**The price's LAST cause — a per-hub fiat (isolated, precise).** The deflation
+survives *even in a cohesive, solvent realm* (M/peopleProd 118→4 while countries hold
+at 37 and insolvency is 0), so it is NOT fragmentation and NOT solvency. The cause:
+the fiat is issued **per hub** — a settlement monetises only its OWN output, and only
+once IT is financially mature (org>0.78). The ×N population boom throws up NEW,
+immature provinces faster than they cross that gate; they add to the price
+denominator **T** (all output) but not to the money **M** (only mature hubs issue
+fiat), so **M/T declines as the boom outruns provincial maturation** → deflation.
+Smoothing/no-crunch can't touch this — it is an ARCHITECTURE gap: a per-hub fiat vs a
+realm-level **central bank** that issues currency for the WHOLE realm's output (mature
+core + immature provinces alike), which is how a real fiat state monetises its
+frontier. That is the next arc (**②a″, realm-level fiat**).
+
+**Status of §5's success criteria:**
+- Solvency holds — **met** (②b).
+- Fragmentation subsides — **met** (②c: 34–40 vs 54–61).
+- Price leaves the floor / population plateaus — **NOT yet**: the per-hub fiat
+  under-monetises the booming frontier. ②a″ (realm-level fiat) is the isolated fix.
+
+**Resolution caveat (unchanged, and now sharper).** All of §8–9 is tw=120; §7's
+numbers are tw=480, where the same ②a stack read insolvency ~0.2 and a milder cycle.
+The per-hub-fiat gap is *worst* at coarse resolution — few settlements, so the
+mature-hub fraction swings hard and the booming frontier is a big share. At tw=240/480
+there are many more settlements and the mature fraction is steadier, so the current
+five-mechanism stack may already suffice. **A tw=240/480 full-stack re-run is the
+right next measurement before building ②a″** — the fix may be unnecessary at the
+player's real grid.
+
+**Cardinal-rule check.** Every mechanism models a real cause (a modern state taxes
+income; a central bank doesn't panic-recall or chase blips; rail extends reach) and
+gates on emergent development, never a clock or a dialed target. Cohesion, solvency,
+and (pending ②a″/real-grid) the price are their JOINT consequence. The honest finding
+— cohesion/solvency solved, the price's last cause isolated to the fiat architecture
+— is surfaced, not papered over. All five levers default-off, byte-identical.
