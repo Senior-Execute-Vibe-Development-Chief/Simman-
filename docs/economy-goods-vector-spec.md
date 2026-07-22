@@ -331,6 +331,41 @@ step: gate `prod[metal]` on ore availability = local + imported). **Stage
 4** — temperament→demand coupling, luxury re-sizing, cloth quality, shocks
 via prices, UI panel for the goods table.
 
+## Stage 3 — LANDED (2026-07)
+
+Shipped behind `T.GOODS_CHAIN` (requires `GOODS_PRICES`; `GOODS_TRADE` makes
+imports exist), **default 0** (byte-identical off; smoke green). Metal
+capability is skill-limited (reach-capped metallurgy × the same `METAL_W`
+craftLegs uses); production gates on ore availability = own extraction +
+imports; ore demand reads the UNGATED desired metal so the starved smith
+keeps bidding — the bid is the signal that ships the ore. Measured at
+480×240 / 8817 / 20 000, all five flags:
+
+- **Ore becomes a real industrial input: median price 1.00 → 1.87**, spread
+  0.25–4.00 — cheap at the mining districts, dear at the forges, bid up by
+  smiths who consume it. Ore-import flow lines appear across the network
+  (Sheffield lives: connected smiths run on shipped ore; cutting the route
+  strangles the forge).
+- Asymmetry holds (goods 0.81 / materials 0.77 / luxury 0.99); entropy 2.03
+  (Pottery 28 %, Metalwork 27 %, Crafted wares 26 %, Services 18 %).
+- **Gates:** stylized all hard gates pass (same 1 soft Zipf warning); smoke
+  byte-identical. Macro: wealth compresses further (156k) — the chain is a
+  real constraint on what was previously free metal output; where total
+  wealth should sit is a Stage-4 calibration question for when the scalar
+  and goods layers unify.
+- The textile finding stands (0.9 % — one town): cloth quality/skill
+  grading remains the missing mechanism.
+
+Repro: `SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1,GOODS_PRICES=1,GOODS_TRADE=1,GOODS_CHAIN=1"
+node tools/probe_settlement_econ.mjs 20000 8817 480 240`
+
+**Stage 4 (not started):** unify the layers (exportValue derived FROM the
+goods vector; craftLegs' in-hand ore gate retires in favour of the chain),
+temperament→demand coupling, cloth quality grading, luxury re-sizing,
+shocks via prices, the settlement-panel goods table, and the calibration
+pass (wealth scale, per-capita constants) — then the cross-seed battery for
+any default flip.
+
 ## Open questions (decide before Stage 2)
 
 1. **Grain:** ~~unify into the market, or leave on the food hierarchy?~~
