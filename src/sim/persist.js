@@ -98,6 +98,7 @@ const SETT_FIELDS = [
   "_rivalN",                             // peer-weighted rival contact (competition signal)
   "_hegF", "_peerPeak",                  // hegemonic stagnation: decline-from-peak peer pressure + the peak ratchet
   "_gPrice", "_gShare",                  // goods vector (T.GOODS_PRICES): local per-good prices + craft labour shares — the market's memory (plain number arrays)
+  "_gStock", "_gCapx",                   // merchant warehouse stock (T.GOODS_STOCKS) + invested craft capital (T.GOODS_INVEST) — both carry cross-tick state
 ];
 
 // Load-bearing per-settlement DYNAMIC state that the hashWorld core loop omitted:

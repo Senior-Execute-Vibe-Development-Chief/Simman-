@@ -30,9 +30,10 @@
 // only through the dimensionless prices.
 
 import { T } from "./tuning.js";
-import { craftLegs, exportValueOf, monetization, METAL_W } from "./settlement.js";
+import { craftLegs, exportValueOf, monetization, METAL_W, getWealthReserve, findSettlementById } from "./settlement.js";
 import { personalityOf } from "./personality.js";
 import { getPolity } from "./entities.js";
+import { recordIn, recordOut, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
 
 // Good indices. staple/materials/luxury are PRIMARY (their production is
 // governed by the food/territory/luxury systems — the goods layer prices
@@ -85,6 +86,19 @@ const W_ORE = 1.5;
 // not 5× — capacity is also capital, skills, and ground.
 const DEDICATION_CAP = 2.5;
 
+// ── Capital investment (T.GOODS_INVEST) ──────────────────────────────────
+// Spare wealth buys PRODUCTIVE CAPACITY — mills, docks, workshop stock —
+// in the craft that is locally most profitable (price × capability). The
+// coin is CONSERVED: it buys capital goods from live trade partners (the
+// same closed-supply pattern as construction, settlement.js), so a town
+// with no living suppliers cannot conjure capital. Capacity depreciates,
+// so capital must be renewed — rich towns compound their edge physically,
+// poor ones fall behind: the growth engine between endowment and output.
+const INVEST_FRAC   = 0.01;    // share of spare wealth a town commits per tick at lever 1 (patient capital)
+const CAPX_PER_COIN = 0.002;   // capacity bought per coin at zero saturation (≈500 coin → +1.0)
+const CAPX_MAX      = 1.0;     // capital can at most DOUBLE a craft's capability (land/skills still bind)
+const CAPX_DEPREC   = 0.0005;  // per-tick depreciation (mills silt, docks rot — renewal or decline)
+
 // Compute this settlement's goods vectors for the tick: production, demand,
 // the relaxed local price, and the (slowly reallocating) craft labour
 // shares. Called from updateSettlement after the wealth/luxury/coerced
@@ -134,6 +148,13 @@ export function updateGoods(world, s) {
   cap[G_WARES]     = (legs["Pottery & leather"] || 0) + (legs["Crafted wares"] || 0);
   cap[G_LUXURY]    = s._luxSupply || 0;                         // coin units (its own pair below)
   cap[G_SERVICES]  = legs["Services & records"] || 0;
+  // Invested capital multiplies its craft's capability (T.GOODS_INVEST —
+  // built below from spare wealth, applied here so labour, production and
+  // the ore chain all see the invested capacity coherently).
+  if (T.GOODS_INVEST > 0 && s._gCapx) {
+    const cx = s._gCapx;
+    for (let c = 0; c < N_CRAFT; c++) cap[CRAFTS[c]] *= 1 + cx[c];
+  }
 
   // ── Production ────────────────────────────────────────────────────────
   // Primary goods produce at their governing system's level; crafts produce
@@ -228,8 +249,12 @@ export function updateGoods(world, s) {
   // locally DEAR and locally DOABLE. Slow (guilds retrain over years, not
   // ticks); renormalised so Σ = 1. A town with no craft capability at all
   // keeps its shares (nothing to allocate).
-  let wSum = 0;
-  for (let c = 0; c < N_CRAFT; c++) wSum += P[CRAFTS[c]] * cap[CRAFTS[c]];
+  let wSum = 0, cBest = 0, wBest = -1;
+  for (let c = 0; c < N_CRAFT; c++) {
+    const w = P[CRAFTS[c]] * cap[CRAFTS[c]];
+    wSum += w;
+    if (w > wBest) { wBest = w; cBest = c; }
+  }
   if (wSum > EPS) {
     const lAdapt = Math.min(1, T.GOODS_LABOUR_ADAPT * dt);
     let sum = 0;
@@ -240,6 +265,39 @@ export function updateGoods(world, s) {
       sum += L[c];
     }
     if (sum > 0) for (let c = 0; c < N_CRAFT; c++) L[c] /= sum;
+  }
+
+  // ── Capital investment (see constants above) ──────────────────────────
+  // Depreciate always (capital rots whether or not new coin comes), invest
+  // spare wealth into the most profitable craft, paying LIVE suppliers —
+  // conserved coin, same pattern as construction. No suppliers → no
+  // capital goods to buy (an isolated town cannot invest its way up).
+  if (T.GOODS_INVEST > 0) {
+    let cx = s._gCapx;
+    if (!cx) cx = s._gCapx = [0, 0, 0, 0, 0];
+    const dep = 1 - CAPX_DEPREC * dt;
+    for (let c = 0; c < N_CRAFT; c++) cx[c] *= dep;
+    const spare = (s.wealth || 0) - getWealthReserve(s);
+    if (spare > 1 && wBest > EPS && cx[cBest] < CAPX_MAX && s._tradeReach && s._tradeReach.size > 0) {
+      let invest = spare * INVEST_FRAC * T.GOODS_INVEST * dt;
+      if (invest > 0.01) {
+        // Pay the live partners (equal split by headcount — hire builders,
+        // buy fittings from the neighbourhood). Recompute liveness inline so
+        // a dead partner can't receive coin (the construction-pass rule).
+        const recips = [];
+        for (const pid of s._tradeReach.keys()) {
+          const p = findSettlementById(world, pid);
+          if (p && p.mode === "settled") recips.push(p);
+        }
+        if (recips.length > 0) {
+          s.wealth -= invest;
+          recordOut(s, OUT_MATERIALS, invest);
+          const share = invest / recips.length;
+          for (const p of recips) { p.wealth = (p.wealth || 0) + share; recordIn(p, IN_MATERIALS, share); }
+          cx[cBest] = Math.min(CAPX_MAX, cx[cBest] + invest * CAPX_PER_COIN * (1 - cx[cBest] / CAPX_MAX));
+        }
+      }
+    }
   }
 }
 

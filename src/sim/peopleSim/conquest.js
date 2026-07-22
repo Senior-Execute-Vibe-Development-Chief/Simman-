@@ -20,6 +20,7 @@ import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff, getWealthReserve, recordCaptives, monetization } from "./settlement.js";
+import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.RESOURCE_WARS)
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
@@ -3137,6 +3138,7 @@ function absorbWeakNeighbors(world, countries) {
     let pow = 0; for (const m of c.members) pow += settlementPower(m);
     countryPower.set(c.id, pow);
   }
+  const RES_WANT_MIN = 0.5;   // price-gap below which a neighbour's cheap good isn't worth leaning on (casual edges aren't casus belli)
   fieldPowerOverlay(world, countries, countryPower);   // POW_FIELD: dominance is over governed people
   // Per-settlement exposure to strong, organised foreign realms able to absorb a
   // settlement of its tier. Walk every tile once, crediting each qualifying
@@ -3179,9 +3181,24 @@ function absorbWeakNeighbors(world, countries) {
       }
       if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough
       const orgFactor = Math.min(1, (fOrg - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
+      // Resource hunger (T.RESOURCE_WARS): the empire leans HARDER on the
+      // neighbour holding what it lacks — each shippable good the border
+      // settlement has CHEAP while F's capital finds it DEAR (a real
+      // scarcity gap, ≥ RES_WANT_MIN price-points, not a casual edge) adds
+      // pull. The Ruhr, the tin coasts, the grain shores: acquisitive
+      // pressure pointed by the price map, biasing WHICH neighbours a
+      // dominant realm erodes — never creating dominance it doesn't have
+      // (all the power/org/headroom gates above still rule).
+      let hunger = 1;
+      if (T.RESOURCE_WARS > 0 && F.capital._gPrice && m._gPrice) {
+        const Pf = F.capital._gPrice, Pm = m._gPrice;
+        let want = 0;
+        for (const g of TRADABLE) want += Math.max(0, Pf[g] - Pm[g] - RES_WANT_MIN);
+        if (want > 0) hunger = 1 + T.RESOURCE_WARS * Math.min(2, want);
+      }
       let perCc = perSett.get(m.id);
       if (!perCc) { perCc = new Map(); perSett.set(m.id, perCc); }
-      perCc.set(F.id, (perCc.get(F.id) || 0) + settlementPower(F.capital) * orgFactor);
+      perCc.set(F.id, (perCc.get(F.id) || 0) + settlementPower(F.capital) * orgFactor * hunger);
     }
   }
   // Per-settlement probabilistic defection. A village that's heavily

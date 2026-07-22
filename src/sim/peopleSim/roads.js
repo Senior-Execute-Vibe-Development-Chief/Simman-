@@ -889,6 +889,26 @@ function runTradePass(world, rf, flowTiles, stride) {
           if (surplus > 0) e[g] = surplus * stride;
           else im[g] = -surplus * GT_OVERBUY * stride;
         }
+        // Merchant stocks (T.GOODS_STOCKS): a MART also OFFERS what it holds
+        // in its warehouses and BIDS for goods beyond its own needs, to the
+        // extent it is an entrepôt — the Venice pattern: buy where cheap,
+        // shelve, resell where dear. The price-gap gate still rules every
+        // leg, so a hub only accumulates when it genuinely sits between a
+        // cheap source and a dear sink. Stock stays OFF the local price
+        // (warehoused for re-export, not dumped on the town market).
+        if (T.GOODS_STOCKS > 0) {
+          const es = entrepotShare(s);
+          if (es > 0.05) {
+            let st = s._gStock;
+            if (!st) st = s._gStock = new Array(8).fill(0);
+            const room = STOCK_CAP_W * es * Math.sqrt(Math.max(1, s.people || 0));
+            for (const g of TRADABLE) {
+              e[g] += st[g] * T.GOODS_STOCKS;                                   // offer the shelf
+              const free = room - st[g];
+              if (free > 0) im[g] += free * STOCK_BID_FRAC * T.GOODS_STOCKS;    // bid for re-export stock
+            }
+          }
+        }
       }
     }
   }
@@ -952,7 +972,38 @@ function runTradePass(world, rf, flowTiles, stride) {
   }
   world._moneyFlows = moneyFlows;
   world._linkMoney = linkMoney;
+  // Merchant-stock reconcile (T.GOODS_STOCKS): after the sweep, what a mart
+  // bought beyond its OWN shortfall goes on the shelf; what it sold beyond
+  // its OWN surplus came off it. Own-need baselines recompute from prod/dem
+  // (unchanged within a sweep — deterministic), so no extra arrays ride the
+  // settlement. Spoilage + warehouse cost drain the shelf each sweep, so
+  // stock is a working buffer, not a hoard.
+  if (T.GOODS_TRADE && T.GOODS_PRICES && T.GOODS_STOCKS > 0) {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || !s._gStock || !s._gExpLeft) continue;
+      const st = s._gStock, e = s._gExpLeft, im = s._gImpLeft;
+      const es = entrepotShare(s);
+      const room = STOCK_CAP_W * es * Math.sqrt(Math.max(1, s.people || 0));
+      const spoil = Math.pow(1 - STOCK_SPOIL, stride);
+      for (const g of TRADABLE) {
+        const baseE = Math.max(0, ((s._gProd && s._gProd[g]) || 0) - ((s._gDem && s._gDem[g]) || 0)) * stride;
+        const baseIm = Math.max(0, ((s._gDem && s._gDem[g]) || 0) - ((s._gProd && s._gProd[g]) || 0)) * GT_OVERBUY * stride;
+        const offered = baseE + st[g] * T.GOODS_STOCKS;
+        const eUsed = offered - e[g];
+        const soldFromStock = Math.max(0, eUsed - baseE);
+        const bidTotal = baseIm + Math.max(0, room - st[g]) * STOCK_BID_FRAC * T.GOODS_STOCKS;
+        const imUsed = bidTotal - im[g];
+        const boughtForStock = Math.max(0, imUsed - baseIm);   // own need is filled first, the rest is shelved
+        st[g] = Math.min(room, Math.max(0, (st[g] - soldFromStock + boughtForStock) * spoil));
+      }
+    }
+  }
 }
+// Warehouse scale: a great mart (entrepôt share ~1, big market) shelves a
+// few sweeps' worth of a strong flow; a river ford shelves nothing.
+const STOCK_CAP_W   = 1.5;    // stock cap = W × entrepôtShare × √pop
+const STOCK_BID_FRAC = 0.3;   // share of free shelf a mart bids for per sweep (works into position gradually)
+const STOCK_SPOIL   = 0.002;  // per-tick spoilage + warehouse cost (a working buffer, not a hoard)
 
 // Walk the path's tiles, collect each settlement whose home tile
 // sits on the route (other than endpoints). De-duplicates so a
