@@ -151,7 +151,10 @@ const BUILD_RATE          = 0.045;  // housing/tick per construction-weighted bu
 export const ARMY_FOOD        = 0.003;  // extra food per soldier per tick (provisioning, above civilian)
 const ARMY_LABOR_FREE = 0.08;   // army up to this fraction of pop (the standing professional core) doesn't reduce farming; only the wartime CONSCRIPT surge beyond it empties the fields
 const LUX_RES = ["spices", "furs", "incense", "dyes"];
-const LUX_SUPPLY_RATE = 4.0;    // coin/tick a region can earn per luxury-unit × √pop
+// LUX_SUPPLY_RATE -> runtime lever (tuning.js T.LUX_SUPPLY_RATE): coin/tick a
+// region can earn per luxury-unit × √pop. Exposed for the goods-vector
+// calibration battery (spec Stage 4: luxury should be a thin high-margin
+// sliver, not the biggest line in every port) — default unchanged.
 const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
                                 // (so rich hoards drive real luxury demand, not just headcount)
 // Fish: per-tick food a water settlement lands. fishYield = T.FISH_RATE ×
@@ -839,7 +842,7 @@ function computeLuxury(s, world) {
   // collapses harder than its grain (which the same sackPenalty above only
   // dents). Squaring takes 0.3 → 0.09 at the floor.
   const sp = sackPenalty(s, world);
-  s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF * sp * sp;
+  s._luxSupply = luxRes * T.LUX_SUPPLY_RATE * popF * sp * sp;
   const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
   // Luxury is URBAN / elite consumption — silks, spices, furs for a town's wealthy class. A
   // farming village (tier 0) is a subsistence peasant community: even a cash-rich one buys

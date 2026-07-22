@@ -31,6 +31,7 @@
 
 import { T } from "./tuning.js";
 import { craftLegs, exportValueOf, monetization, METAL_W } from "./settlement.js";
+import { personalityOf } from "./personality.js";
 
 // Good indices. staple/materials/luxury are PRIMARY (their production is
 // governed by the food/territory/luxury systems — the goods layer prices
@@ -117,7 +118,18 @@ export function updateGoods(world, s) {
   cap[G_METAL]     = T.GOODS_CHAIN
     ? Math.min(k.metallurgy || 0, s._metalCap !== undefined ? s._metalCap : (k.metallurgy || 0)) * METAL_W
     : (legs["Metalwork"] || 0);
-  cap[G_CLOTH]     = legs["Textiles"] || 0;
+  // Stage 4 (T.GOODS_CLOTHQ): the MARKET cloth good is fine cloth, not
+  // homespun. Every settlement clothes itself with homespun (never traded,
+  // never marketed) — what made Flanders/Florence was that most regions
+  // could NOT weave market-grade cloth. Quality gates on craft skill: below
+  // journeyman construction (~0.5 craft) the output isn't market-grade at
+  // all; above it, it grades up to the full leg. This is the mechanism the
+  // Stage-2 finding called for — the universal climate floor stays (it IS
+  // homespun), but it stops counting as tradable supply.
+  const clothQ = T.GOODS_CLOTHQ
+    ? Math.min(1, Math.max(0, (0.4 + (k.construction || 0) * 0.5 - 0.5) / 0.4))
+    : 1;
+  cap[G_CLOTH]     = (legs["Textiles"] || 0) * clothQ;
   cap[G_WARES]     = (legs["Pottery & leather"] || 0) + (legs["Crafted wares"] || 0);
   cap[G_LUXURY]    = s._luxSupply || 0;                         // coin units (its own pair below)
   cap[G_SERVICES]  = legs["Services & records"] || 0;
@@ -151,14 +163,35 @@ export function updateGoods(world, s) {
   const pop = Math.max(1, s.people || 0);
   const dem = s._gDem || (s._gDem = new Array(8).fill(0));
   const cold = Math.max(0, 0.5 - (s._climTemp ?? 0.5));         // 0 warm → 0.5 polar
+  const monet = monetization(s);
   dem[G_STAPLE]    = s._foodDemand || 0;
   dem[G_MATERIALS] = pop * MAT_PC * (0.5 + (k.construction || 0));
   dem[G_ORE]       = desiredMetal * ORE_PER_METAL;              // smiths bid for the ore they WANT (ungated — see the chain note above)
   dem[G_METAL]     = pop * METAL_PC + (s.army || 0) * ARMS_PC;
-  dem[G_CLOTH]     = pop * CLOTH_PC * (1 + COLD_CLOTH * cold * 2);
+  // Under CLOTHQ, market-cloth demand is the MONETIZED share of clothing
+  // consumption — the subsistence remainder is met by homespun (the same
+  // split the supply side makes; a coinless hamlet neither sells nor buys
+  // fine cloth). Historically clothing was the classic wealth-elastic
+  // purchase: market cloth consumption rose steeply as economies monetized.
+  dem[G_CLOTH]     = pop * CLOTH_PC * (1 + COLD_CLOTH * cold * 2)
+                   * (T.GOODS_CLOTHQ ? 0.15 + 0.85 * monet : 1);
   dem[G_WARES]     = pop * WARES_PC;
   dem[G_LUXURY]    = s._luxDemand || 0;
-  dem[G_SERVICES]  = pop * SVC_PC * (0.25 + 0.75 * monetization(s));   // cash economies demand clerks & credit
+  dem[G_SERVICES]  = pop * SVC_PC * (0.25 + 0.75 * monet);      // cash economies demand clerks & credit
+  // Stage 4 (T.GOODS_TEMPER): the realm's TEMPERAMENT colours its demand —
+  // a martial court arms (metal), a mercantile one contracts and banks
+  // (services). Weighted by the lever and only on the positive pole, so
+  // temperament finally shapes WHAT a society wants, not just how many
+  // roads it builds (analysis F6). Read from the polity's personality —
+  // deterministic, seeded, drifting with lived history (personality.js).
+  if (T.GOODS_TEMPER > 0 && s.countryId >= 0 && world.countries) {
+    const c = world.countries.get(s.countryId);
+    const p = c ? personalityOf(world, c) : null;
+    if (p) {
+      if (p.aggression > 0) dem[G_METAL]    *= 1 + T.GOODS_TEMPER * p.aggression;
+      if (p.commerce   > 0) dem[G_SERVICES] *= 1 + T.GOODS_TEMPER * p.commerce;
+    }
+  }
 
   // ── Price relaxation ──────────────────────────────────────────────────
   // Local scarcity price per good: relax toward clamp((D/AVAIL)^ELAST),
