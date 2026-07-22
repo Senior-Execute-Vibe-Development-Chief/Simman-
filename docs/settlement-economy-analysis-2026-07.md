@@ -229,3 +229,40 @@ of town; F2 + F5 are what would make "what they buy vs sell" finally mean
 something.
 
 *Reproduce:* `node tools/probe_settlement_econ.mjs 20000 8817 480 240`
+
+---
+
+## RE-DIAGNOSIS 2026-07 — after the goods-vector arc (Stages 0–4 slice)
+
+Same instrument, same depth (20k @ 480), seeds 8817 + 4242, seven levers on.
+Scorecard against the original findings:
+
+| finding | then | now |
+|---|---|---|
+| F1 specialisation collapse | 2 buckets, entropy 1.11; Metal/Services never win | **FIXED** — entropy 2.28/2.29; all five sectors 12–26 % on both seeds |
+| F2 buy ≈ sell mirror | asymmetry ~0.05 | **FIXED** — 0.93/0.84/1.00 and 0.94/0.99/0.89; every card's buy-list differs from its sell-list |
+| F3 endowment homogenisation | top cities 8–10 resources | **FIXED** — 3–4 graded resources; big cities are the *most* distinctive now |
+| F4 luxury oversized & symmetric | #1 line everywhere, both ways | **MOSTLY FIXED** — one-way (asym 0.89–1.0); size awaits the LUX_SUPPLY_RATE calibration |
+| F5 no supply chains | metal = own-tile ore only | **FIXED** — forge cities import ore at price 4.0 (Tyizuvtiv: iron 0.14 in hand, ore bid at the cap, labour leaning metal 0.35) |
+| F6 temperament decorative | 7/8 top realms "Mercantile", no production effect | **FIXED** — labels vary (Raider-Republic, Trading Empire, …); temperament bids demand (GOODS_TEMPER) |
+| F7 per-route goods fiction | "give copper / get −" | **FIXED in substance** — real per-good flow lines per settlement; the old barter labels linger in the panel and can now be retired |
+
+**New finding, F8 — craft-trade VALUE is under-scaled.** The flows are real
+and directional but THIN in coin: "goods sold" is 2.4 % (8817) / 1.6 %
+(4242) of world income, and a Metalwork *specialist* metropolis earns
++0.02/tick on goods while living on taxes and war loans. Cause: the
+per-capita demand constants put craft demand (and so surpluses) at ~0.1–3
+units/tick where the old scalar shipped 40–300 coin/tick — a ~50–100×
+scale gap between the goods layer's units and the coin economy. This is
+precisely the CALIBRATION PASS already scoped (with layer unification,
+after the fiat merge): size the per-capita constants so gross craft trade
+carries a historical share of income. Mechanism right, units unfinished.
+
+Minor: staple sits at the price floor almost everywhere (0.25–0.34) —
+breadbaskets are glutted with no horizontal grain market by design (owner
+ruling: hierarchy feeds, market carries surplus only); revisit only if
+grain-export economies (Egypt→Rome) are wanted as visible trade.
+
+**Verdict: the economy is no longer boring — it is legible, diverse,
+directional, and mechanistic. What remains is one calibration (F8), not a
+missing system.**
