@@ -720,8 +720,10 @@ function updateWealth(world, s) {
     // off / pre-industrial (fmat=0).
     const fiatBank = techEff(s).credit ? depth : 0;   // banking institution + org depth only, reach-independent
     let fiatBound = false;   // is the fiat (output-backed) target the binding one this tick?
+    let fmatHub = 0;         // this hub's financial maturity (0 pre-industrial → 1 fully modern); gates the no-crunch rule below
     if (T.FIAT_OUTPUT > 0 && world._inflRef > 0 && fiatBank > 0) {
       const fmat = Math.min(1, Math.max(0, (org - 0.78) / 0.18));        // financial maturity: the industrial gate on the hub's own organisation
+      fmatHub = fmat;
       if (fmat > 0) {
         const out = realOutputOf(s, world);   // the hub's real-output proxy (= the inflation model's T-contribution; OUTPUT_TOTAL switches trade-proxy → total output)
         const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;      // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
@@ -737,7 +739,16 @@ function updateWealth(world, s) {
     // fiat is what keeps the price off the floor across the whole modern arc, not just
     // at onset. Specie-credit (bills of exchange) keeps the crunch — a run on a bank IS
     // faster than deposit growth; a central bank managing fiat is not.
-    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 && !fiatBound ? CREDIT_CRUNCH : 1));
+    // A financially-MATURE fiat hub does not panic-recall: the ×CREDIT_CRUNCH bank-run
+    // contraction is specie-credit (bills-of-exchange) behaviour — a run is faster than
+    // deposit growth. Once a hub is fiat-mature (fmatHub>0) it MANAGES its currency, so
+    // even when a transient output dip drops the fiat target below the specie line
+    // (fiatBound flips false and the overhang would otherwise be crunched), contraction
+    // runs at the NORMAL rate. Without this a −7% output blip flipped fiatBound false and
+    // the crunch collapsed the money supply −77% in a pass — the measured procyclical
+    // modern price break. Pre-fiat hubs (fmatHub=0) keep the crunch; byte-identical when
+    // FIAT_OUTPUT=0 (fmatHub stays 0 ⇒ the original `gap<0 && !fiatBound` rule exactly).
+    const rate = Math.min(1, T.CREDIT_RATE * (world._dt || 1) * (gap < 0 && !fiatBound && fmatHub <= 0 ? CREDIT_CRUNCH : 1));
     const delta = gap * rate;
     if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
     else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_CREDIT, take); } }   // credit called in, not goods bought (B17)
