@@ -19,7 +19,7 @@ import { TECHS } from "./tech.js";
 import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
-import { techEff, getWealthReserve, recordCaptives, monetization } from "./settlement.js";
+import { techEff, getWealthReserve, recordCaptives, monetization, realOutputOf } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
@@ -2613,6 +2613,36 @@ export function updatePolities(world) {
       }
       const give = Math.max(0, s.wealth || 0) * (gov._taxRate ?? T.TAX_BASE);
       if (give > 0) { s.wealth -= give; gov.treasury += give; gov._revenue += give; recordOut(s, OUT_TRIBUTE, give); }
+      // ②b MODERN_FISC (docs/industrial-transition-2026-07.md, default off): the modern
+      // income tax. The wealth tax above reaches only the coin HOARD and the produce
+      // levy below only the HARVEST; a modern revenue state (income tax, withholding, a
+      // professional bureaucracy) taxes the whole real OUTPUT FLOW — the medieval few-%
+      // → the modern ~40-50% of GDP. Levied on the STABLE real economy (realOutputOf,
+      // people×productivity), priced to coin at the monetisation ratio world._inflRef,
+      // and — exactly like the produce levy — the unmonetized remainder is taken IN KIND
+      // (gov._inKind, which provisions the army before any coin is needed). So when a
+      // monetary dip collapses the coin hoard, monetization falls with it and the tax
+      // shifts to in-kind, keeping the state SOLVENT through the dip instead of
+      // collapsing with the coin — breaking the modern fiscal-fragmentation spiral (②a's
+      // residual). Emergent on the realm's OWN reached industrial development
+      // (cap._indGate — capital org AND metallurgy past ~0.78, the INDUSTRIAL_CAP gate),
+      // never a clock; the rate is a development curve, never a target solvency. The
+      // revenue also feeds gov._lastRevenue, so the existing CAP_LOG reach (②c) is funded
+      // for free. Byte-identical at MODERN_FISC=0.
+      if (T.MODERN_FISC > 0 && cap && (cap._indGate || 0) > 0 && (world._inflRef || 0) > 0) {
+        // realOutputOf×_inflRef is the output's COIN-VALUE (a stock, ≈ the money the
+        // output supports — the same bridge the fiat backing uses), so this is a
+        // per-pass share like the wealth tax above — NOT ×POLITY_INTERVAL (that factor
+        // is for the produce levy, whose base _landFood is a per-tick harvest FLOW).
+        const incomeDue = T.MODERN_FISC * cap._indGate * realOutputOf(s, world) * world._inflRef;
+        if (incomeDue > 0) {
+          const mz = T.MONETIZE > 0 ? monetization(s) : 1;
+          const coinPart = Math.min(Math.max(0, s.wealth || 0), incomeDue * mz);   // purse-capped: coin must exist to remit
+          if (coinPart > 0) { s.wealth -= coinPart; gov.treasury += coinPart; gov._revenue += coinPart; recordOut(s, OUT_TRIBUTE, coinPart); }
+          const inKind = incomeDue * (1 - mz);
+          if (inKind > 0) gov._inKind = (gov._inKind || 0) + inKind;   // provisions the army (disburseTreasury), like the produce levy's in-kind
+        }
+      }
       // PRODUCE LEVY (rent + tithe on the HARVEST): a landlord/church share of a settlement's
       // farm OUTPUT, taken off the top every pass — what kept real peasants poor (their surplus
       // skimmed as a share of the crop, not their cash hoard) and what funds the towns. It falls
