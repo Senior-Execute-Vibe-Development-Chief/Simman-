@@ -726,8 +726,16 @@ function updateWealth(world, s) {
       fmatHub = fmat;
       if (fmat > 0) {
         const out = realOutputOf(s, world);   // the hub's real-output proxy (= the inflation model's T-contribution; OUTPUT_TOTAL switches trade-proxy → total output)
-        const fiatTarget = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;      // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
-        if (fiatTarget > target) { target = fiatTarget; fiatBound = true; }             // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
+        const fiatTargetRaw = T.FIAT_OUTPUT * fmat * out * world._inflRef * fiatBank;   // × REF ⇒ coin units: money the output supports at the baseline monetisation ratio
+        // FIAT_SMOOTH (default 0 ⇒ spot, unchanged): a central bank targets the TREND
+        // money stock, not the last tick's. Smoothing the backing (slow EMA) keeps the
+        // fiat target — and thus the money supply and the price — stable through a
+        // TRANSIENT dip in output OR organisation (a fragmentation blip), instead of
+        // the target dropping with the blip and the overhang unwinding to the floor.
+        // dt-scaled for SIM_GRANULARITY. FIAT_SMOOTH=0 ⇒ s._fiatTgt == raw (no change).
+        const a = T.FIAT_SMOOTH > 0 ? Math.min(1, T.FIAT_SMOOTH * (world._dt || 1)) : 1;
+        s._fiatTgt = s._fiatTgt === undefined ? fiatTargetRaw : s._fiatTgt + (fiatTargetRaw - s._fiatTgt) * a;
+        if (s._fiatTgt > target) { target = s._fiatTgt; fiatBound = true; }             // fiat SUPERSEDES the specie ceiling when the output-backed level is larger
       }
     }
     const gap = target - cur;

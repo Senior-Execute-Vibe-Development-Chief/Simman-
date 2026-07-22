@@ -2184,6 +2184,18 @@ export function updatePolities(world) {
       const fiscalSurplus = FISC_SAT * (1 - Math.exp(-fiscalSurplusRaw / FISC_SAT));
       const logistics = capE.logisticsLevel || 0;   // (capE.logistics was a typo — that field doesn't exist, so the term was silently 0)
       dominance = Math.min(domCeil, 1 + T.CAP_FISC * fiscalSurplus * (1 + T.CAP_LOG * logistics));
+      // ②c INDUSTRIAL_REACH (docs/industrial-transition-2026-07.md, default off): the
+      // logistics revolution (rail, steam, telegraph) extends administrative reach
+      // ABSOLUTELY — a rail-age state governs a continent per unit power where a bronze-
+      // age one governs a valley — not only RELATIVE to peers. The grounded CAP_LOG tail
+      // above is relative (fiscalSurplus vs the peer median), so when every realm
+      // industrialises together no one gains surplus and the modern realm gets NO extra
+      // reach → it sheds the ×N provinces INDUSTRIAL_CAP gave it (the fragmentation that
+      // collapses the org-gated fiat, docs §9). This adds reach from the realm's OWN
+      // reached industrial logistics (cap._indGate × the logistics tech — emergent, never
+      // a clock), bounded by the SAME emergent domCeil (capCoh-scaled) so a modern state
+      // towers but can't eat the map anachronistically. Byte-identical at 0.
+      if (T.INDUSTRIAL_REACH > 0) dominance = Math.min(domCeil, dominance + T.INDUSTRIAL_REACH * (cap._indGate || 0) * logistics);
     } else {
       dominance = Math.min(domCeil, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
     }
