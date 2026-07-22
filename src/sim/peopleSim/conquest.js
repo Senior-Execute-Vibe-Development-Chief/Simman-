@@ -2257,6 +2257,7 @@ export function updatePolities(world) {
     else if (raidedCap)  duress *= WAR_CAPACITY_MULT;                    // core harried
     // War intensity drives the army's wartime cost surcharge (disburseTreasury).
     const warLevel = fronts + (besiegedCap ? 2 : raidedCap ? 1 : 0);
+    gov._warLevel = warLevel;   // cached on the polity for the goods layer's wartime procurement read (T.ARMY_PROCURE) — refreshed every polity pass, like _solvency
     // Fiscal duress (death-spiral): a state that can't pay its army (last
     // pass's solvency, from disburseTreasury) loses its grip on the frontier.
     // Lose provinces → lose tax revenue → can't pay → capacity falls → lose

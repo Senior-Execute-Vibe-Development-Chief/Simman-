@@ -32,6 +32,7 @@
 import { T } from "./tuning.js";
 import { craftLegs, exportValueOf, monetization, METAL_W } from "./settlement.js";
 import { personalityOf } from "./personality.js";
+import { getPolity } from "./entities.js";
 
 // Good indices. staple/materials/luxury are PRIMARY (their production is
 // governed by the food/territory/luxury systems — the goods layer prices
@@ -167,7 +168,19 @@ export function updateGoods(world, s) {
   dem[G_STAPLE]    = s._foodDemand || 0;
   dem[G_MATERIALS] = pop * MAT_PC * (0.5 + (k.construction || 0));
   dem[G_ORE]       = desiredMetal * ORE_PER_METAL;              // smiths bid for the ore they WANT (ungated — see the chain note above)
-  dem[G_METAL]     = pop * METAL_PC + (s.army || 0) * ARMS_PC;
+  // Wartime procurement (T.ARMY_PROCURE): a realm AT WAR burns kit —
+  // weapons wear, arrows are spent, mounts are lost — so the ARMY's metal
+  // demand (not the civilian term) scales with the realm's live war
+  // intensity (conquest.js warLevel: fronts + siege/raid state, cached on
+  // the polity each pass). Forges lean to metal and ore imports swell in
+  // wartime, realm-wide, through nothing but the price system.
+  let armsMul = 1;
+  if (T.ARMY_PROCURE > 0 && s.countryId >= 0) {
+    const gov = getPolity(world, s.countryId);
+    const wl = (gov && gov._warLevel) || 0;
+    if (wl > 0) armsMul = 1 + T.ARMY_PROCURE * Math.min(3, wl);
+  }
+  dem[G_METAL]     = pop * METAL_PC + (s.army || 0) * ARMS_PC * armsMul;
   // Under CLOTHQ, market-cloth demand is the MONETIZED share of clothing
   // consumption — the subsistence remainder is met by homespun (the same
   // split the supply side makes; a coinless hamlet neither sells nor buys

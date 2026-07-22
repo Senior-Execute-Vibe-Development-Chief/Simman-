@@ -51,7 +51,7 @@ import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
 import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, IN_CARRY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
-import { TRADABLE, G_MATERIALS, G_LUXURY } from "./goods.js";   // goods-vector Stage 2 (T.GOODS_TRADE)
+import { TRADABLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_LUXURY } from "./goods.js";   // goods-vector Stage 2 (T.GOODS_TRADE) + the freight bulk table
 
 // Entrepôt share (0..1): how much of an entrepôt a hub is — port access (a harbour or
 // strait trade must funnel through) times market size (a great mart re-sells what it
@@ -1012,6 +1012,16 @@ const GT_OVERBUY  = 1.5;    // a buyer imports at most this multiple of its own 
 // Money channels per good index (book the crate on its own channel).
 const GT_BOOK_IN  = { [G_MATERIALS]: IN_MATERIALS,  [G_LUXURY]: IN_LUXURY  };
 const GT_BOOK_OUT = { [G_MATERIALS]: OUT_MATERIALS, [G_LUXURY]: OUT_LUXURY };
+// VALUE-TO-WEIGHT (T.GOODS_FREIGHT — von Thünen): freight a coin's worth of
+// each good incurs, relative to the average consignment. Pre-modern freight
+// economics: stone and ore all but never moved overland (they doubled in
+// price within a cart-day), grain not much farther, metalware and pottery
+// traded regionally, cloth crossed kingdoms, and spice/silk crossed the
+// world with freight a rounding error on their value. The ship-worthiness
+// check in sellGoods (value must exceed freight+tolls) then KILLS distant
+// bulk trades while letting the light-and-dear run far — trade range per
+// good becomes an OUTPUT of value density × route cost, never a rule.
+const GT_BULK = { [G_MATERIALS]: 2.5, [G_ORE]: 3.0, [G_METAL]: 1.0, [G_CLOTH]: 0.5, [G_WARES]: 1.0, [G_LUXURY]: 0.15 };
 function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, intermediates, numInter) {
   // Pair carrying capacity in VALUE — the scalar model's own gravity volume
   // (√pop × rate × sea/river carrier terms), so gross trade magnitude stays
@@ -1046,8 +1056,11 @@ function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, interme
     const pMid = (Pa[g] + Pb[g]) * 0.5;
     let value = qty * pMid;
     if (value > valueLeft) { value = valueLeft; qty = value / pMid; }
-    // Freight ∝ share of the pair's value this consignment uses.
-    const freight = freightLeft > 0 ? freightTotal * Math.min(1, value / (valueLeft + EPS_V)) : 0;
+    // Freight ∝ share of the pair's value this consignment uses — scaled by
+    // the good's value density under T.GOODS_FREIGHT (lever 0 = flat, 1 =
+    // full bulk differentiation; ore pays 3×, silk a fifteenth).
+    const bulkMul = T.GOODS_FREIGHT > 0 ? 1 + T.GOODS_FREIGHT * ((GT_BULK[g] || 1) - 1) : 1;
+    const freight = freightLeft > 0 ? freightTotal * Math.min(1, value / (valueLeft + EPS_V)) * bulkMul : 0;
     const scale = sellGoods(world, seller, buyer, value * fxRate(world, buyer, seller), freight, intermediates, numInter,
       GT_BOOK_IN[g] !== undefined ? GT_BOOK_IN[g] : IN_GOODS,
       GT_BOOK_OUT[g] !== undefined ? GT_BOOK_OUT[g] : OUT_GOODS) || 0;
