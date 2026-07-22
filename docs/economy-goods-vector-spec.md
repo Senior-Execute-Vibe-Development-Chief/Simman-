@@ -359,12 +359,42 @@ keeps bidding — the bid is the signal that ships the ore. Measured at
 Repro: `SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1,GOODS_PRICES=1,GOODS_TRADE=1,GOODS_CHAIN=1"
 node tools/probe_settlement_econ.mjs 20000 8817 480 240`
 
-**Stage 4 (not started):** unify the layers (exportValue derived FROM the
-goods vector; craftLegs' in-hand ore gate retires in favour of the chain),
-temperament→demand coupling, cloth quality grading, luxury re-sizing,
-shocks via prices, the settlement-panel goods table, and the calibration
-pass (wealth scale, per-capita constants) — then the cross-seed battery for
-any default flip.
+## Stage 4 slice — LANDED (2026-07): cloth quality, temperament demand, lux lever
+
+Three separable mechanisms behind `T.GOODS_CLOTHQ` (0/1), `T.GOODS_TEMPER`
+(weight) and the exposed `T.LUX_SUPPLY_RATE` (default unchanged), all
+byte-identical off. Measured at 480×240 / 8817 / 20 000, seven levers on
+(`…,GOODS_CLOTHQ=1,GOODS_TEMPER=0.5`):
+
+- **THE LOOMS RETURN — and are earned.** Market cloth = fine cloth (skill-
+  gated supply, monetization-gated demand; homespun stays real but
+  unmarketed). Textiles: 0 % → **20.5 %** of specialties; cloth median
+  price 0.44 (glut) → 2.88 (autarkic scarcity, 3k) → **0.94 with 0.25–4.00
+  spread** (mature trade — equalised, with the gradient that sustains the
+  export loom). 15 settlements carry cloth in their flow signatures.
+- **Peak diversity: entropy 2.28 bits of 2.32 max** — Metalwork 25.6 /
+  Crafted wares 23.1 / Textiles 20.5 / Services 18.8 / Pottery 12.0. The
+  most balanced specialty map of the arc, from geography × skill × demand.
+- **Asymmetry strongest yet:** goods 0.93 / materials 0.84 / luxury 1.00.
+- **Gates: all hard gates pass; soft budget now EXACTLY spent (2/2).**
+  Besides the known Zipf-n/a, `population ~ development` loosened to 0.65
+  (from 0.90): towns now prosper on trade position and skill, not farm
+  development alone — realistic in kind (Venice), but it puts the stack at
+  the warning line. The calibration pass must tighten this before any
+  default flip.
+
+Repro: `SIM_TUNE="RES_SCARCITY=1,SPEC_RELATIVE=1,GOODS_PRICES=1,GOODS_TRADE=1,GOODS_CHAIN=1,GOODS_CLOTHQ=1,GOODS_TEMPER=0.5"
+node tools/probe_settlement_econ.mjs 20000 8817 480 240`
+
+**Stage 4 remainder (not started):** layer unification (exportValue derived
+FROM the goods vector; craftLegs' in-hand ore gate retires in favour of the
+chain) and the calibration pass (wealth scale, per-capita constants, the
+pop~development softie) — **deliberately deferred until the fiat arc
+(industrial-transition branch) merges: its total-output T-measure prices
+the same output the unified exportValue would define, so the two need ONE
+joint calibration, not two.** Then: shocks-via-prices demo, the
+settlement-panel goods table (UI/worker snapshot), luxury re-sizing via the
+now-exposed lever, and the full cross-seed battery for any default flips.
 
 ## Open questions (decide before Stage 2)
 
