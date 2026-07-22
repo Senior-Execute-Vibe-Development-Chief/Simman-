@@ -178,18 +178,63 @@ across grids). Success is measured as emergent outcomes, not dialed values:
 
 ## 6. Status & sequence
 
-- **① resolution-invariant urban core** — in progress (default-off
-  `URBAN_FOOTPRINT`; conservative radius `max(0,round(rNormPop)−1)` keeps the
-  tw=240 reference byte-identical). Fixes the resolution-dependence that makes any
-  urban tuning meaningless across grids — the prerequisite for trusting ②'s urban
-  numbers.
-- **② industrial fiscal/monetary state** — designed (this doc). ②a (money
-  off specie) is the load-bearing piece: it's the direct cause of the deflation
-  that triggers the whole cascade. ②b follows; ②c is measure-first.
-- **Then** re-run the deep tw=240/tw=480 battery to confirm the four-part
-  industrial system produces a history-shaped modern world (magnitude,
-  urbanisation, stability) before any default flip — which remains the owner's
-  call.
+- **① resolution-invariant urban core** — **BUILT + validated** (`af19949`,
+  default-off `URBAN_FOOTPRINT`, conservative radius keeps tw=240 byte-identical).
+- **②a money off specie** — **BUILT + validated** through three refinements the
+  deep battery forced: `67f4f6b` (decouple from specie), `9d8b4db` (reach-
+  independent — reach-gated fiat fired on 2/140 hubs), `188b9a3` (sticky, not
+  panic-recalled). Default-off `FIAT_OUTPUT`, byte-identical.
+- **②b / ②c** — not built (②a's outcome changed the priority; see §7).
 
-This is the same class of work as the trade-decoupling arc (backlog #6): a
-missing *system*, sketched cardinal-rule-safe, none auto-applied.
+---
+
+## 7. Battery results (all four levers, seed 8817) & the remaining arc
+
+The deep from-scratch battery — the honest gate that a stable-world injection test
+can't be — was run repeatedly as each ②a refinement landed. Net verdict:
+
+**What the four-part stack achieves (validated, tw=480 = the player's grid):**
+
+| tw=480 modern | baseline (IND+URB) | +①+②a (FIAT=4) |
+|---|---|---|
+| population magnitude | 2.40B | **4.03B** (toward real ~6B) |
+| insolvency (realms) | ~4.0 | **~0.2** (eliminated) |
+| oscillation (pop CoV) | 18% | **14%** (damped) |
+| urban share | 9% | **21%** (was resolution-collapsed) |
+| price (mean) | 0.20 (floored) | 0.37 (lifted) |
+
+Real, substantial progress: higher magnitude, no fiscal collapse, milder cycle,
+much better urbanisation. **Tuned lever values: `INDUSTRIAL_CAP=25, URBAN_IND=3,
+URBAN_FOOTPRINT=1, FIAT_OUTPUT≈4`** (the out×REF proxy runs ~4× light; FIAT=1→P0.20
+floored, 4→P0.95, 10→P2.66 inflation).
+
+**Two characterised residuals (NOT fixed — the next arcs):**
+
+1. **The modern price does not SUSTAIN.** It lifts at industrialisation onset
+   (P≈1.4) but decays back to the floor (0.21) across the arc. Ruled out as the
+   cause: the credit crunch (sticky-fiat `188b9a3` changed the price curve not at
+   all — 0.41 mean either way). The **real cause is the price/money model's output
+   measure**: `P = (M/T)/REF` with **T = *traded* output** (`exportValue×√people`,
+   inflation.js:84-85). A modern economy is mostly *domestic* output (GDP), only a
+   fraction traded; pricing the ×26 industrial economy against its shrinking trade
+   fraction reads as deflation, and the fiat backing (also `exportValue`-based) is
+   trade-sensitive for the same reason. **The next arc is a total-output measure of
+   T** (population×productivity, not just trade) — a change to a *core validated
+   subsystem* (inflation.js), deliberately NOT undertaken as a fourth default-off
+   lever. This is a fresh arc, like trade-decoupling #6.
+2. **Urban parity is partial** (tw=480 21% vs tw=240 31%). The conservative
+   footprint radius (chosen to keep the reference byte-identical) is a smaller real
+   area than full parity needs; closing it means the larger radius, which
+   recalibrates the tw=240 reference and the stylized urban/Zipf gates — a
+   deliberate tradeoff, not a bug.
+
+**Sequence when resumed:** the T-measure rework (residual 1) is the load-bearing
+next step — it's what makes the modern price, and thus the whole fiscal picture,
+*stay* healthy. Then re-measure ②b/②c (a funded, non-deflating modern state may
+already hold together). Only then, with the price sustaining, is the default-flip
+decision (with the tuned values above) ready for the owner.
+
+This is the same class of work as trade-decoupling (backlog #6): a missing
+*system*, characterised cardinal-rule-safe, none auto-applied. Everything built
+this pass is default-off and byte-identical; the levers are in and validated, the
+remaining arc is precisely located in inflation.js's T.
