@@ -16,21 +16,58 @@ export const EV_CATS = [
   ["society", "Society", "#9a5a48"],
 ];
 
+// Keyed on the sim's RAW event types (events.js logEvent calls — the worker
+// feed forwards ev.type verbatim). `toast: true` marks the epochal moments.
 const TYPE_META = {
-  war: { cat: "war", icon: "⚔" }, conquest: { cat: "war", icon: "⚔" },
-  annex: { cat: "war", icon: "⚑" }, loss: { cat: "war", icon: "⚑" },
-  founding: { cat: "politics", icon: "✦" }, secession: { cat: "politics", icon: "⚐", toast: true },
-  end: { cat: "politics", icon: "✝", toast: true },
-  faith: { cat: "faith", icon: "❖" },
-  wealth: { cat: "economy", icon: "◈" }, trade: { cat: "economy", icon: "⇄" },
-  industry: { cat: "economy", icon: "⚙", toast: true },
-  plague: { cat: "disaster", icon: "☠" }, famine: { cat: "disaster", icon: "☄" },
-  discovery: { cat: "discovery", icon: "✧", toast: true },
-  growth: { cat: "society", icon: "⌂" }, society: { cat: "society", icon: "⌂" },
+  "war.began": { cat: "war", icon: "⚔" }, "war.ended": { cat: "war", icon: "⚑" },
+  "settlement.captured": { cat: "war", icon: "⚔" },
+  "polity.shattered": { cat: "war", icon: "⚔", toast: true },
+  "war.indemnity": { cat: "war", icon: "◈" }, "horde.raid": { cat: "war", icon: "🐎" },
+  "polity.founded": { cat: "politics", icon: "✦" }, "polity.restored": { cat: "politics", icon: "✦", toast: true },
+  "polity.seceded": { cat: "politics", icon: "⚐" }, "polity.ended": { cat: "politics", icon: "✝", toast: true },
+  "polity.submitted": { cat: "politics", icon: "⚐" },
+  "settlement.annexed": { cat: "politics", icon: "⚑" },
+  "colony.independent": { cat: "politics", icon: "⚐", toast: true },
+  "succession.crisis": { cat: "politics", icon: "♔" },
+  "gov.changed": { cat: "politics", icon: "♔" },
+  "ruler.crowned": { cat: "politics", icon: "♔" }, "ruler.elected": { cat: "politics", icon: "♔" },
+  "ruler.elevated": { cat: "politics", icon: "♔" }, "ruler.died": { cat: "politics", icon: "♔" },
+  "dynasty.founded": { cat: "politics", icon: "♔" }, "dynasty.union": { cat: "politics", icon: "♔" },
+  "dynasty.extinct": { cat: "politics", icon: "♔" }, "crown.debt": { cat: "politics", icon: "◈" },
+  "faith.founded": { cat: "faith", icon: "❖", toast: true },
+  "polity.adoptedFaith": { cat: "faith", icon: "❖" },
+  "faith.syncretized": { cat: "faith", icon: "❖" },
+  "faith.schism": { cat: "faith", icon: "❖", toast: true },
+  "faith.faded": { cat: "faith", icon: "❖" }, "city.holy": { cat: "faith", icon: "❖" },
+  "market.boom": { cat: "economy", icon: "◈" }, "wealth.milestone": { cat: "economy", icon: "◈" },
+  "industry.specialty": { cat: "economy", icon: "⚒" }, "mine.boom": { cat: "economy", icon: "⚒" },
+  "city.entrepot": { cat: "economy", icon: "⇄" }, "city.financier": { cat: "economy", icon: "⇄" },
+  "realm.monument": { cat: "economy", icon: "◆", toast: true },
+  "famine.struck": { cat: "disaster", icon: "☄" }, "market.dearth": { cat: "disaster", icon: "☄" },
+  "plague.outbreak": { cat: "disaster", icon: "☠" },
+  "plague.virginSoil": { cat: "disaster", icon: "☠", toast: true },
+  "era.reached": { cat: "discovery", icon: "✧", toast: true },
+  "growth.cities": { cat: "society", icon: "⌂" },
+  "settlement.founded": { cat: "society", icon: "⌂" },
+  "settlement.lapsed": { cat: "society", icon: "⌂" },
+  "colony.departed": { cat: "society", icon: "⛵" }, "colony.founded": { cat: "society", icon: "⛵" },
+  "culture.born": { cat: "society", icon: "✦" }, "culture.diverged": { cat: "society", icon: "✦" },
+  "language.shift": { cat: "society", icon: "✎" },
+  "city.slaver": { cat: "society", icon: "⛓" }, "city.plantation": { cat: "society", icon: "⛓" },
+  "city.latifundia": { cat: "society", icon: "⛓" }, "society.serfdom": { cat: "society", icon: "⛓" },
+  "society.emancipation": { cat: "society", icon: "🕊", toast: true },
+  "slave.revolt": { cat: "society", icon: "⛓", toast: true },
 };
+const PREFIX_CAT = { war: "war", polity: "politics", ruler: "politics", dynasty: "politics",
+  succession: "politics", gov: "politics", faith: "faith", market: "economy", wealth: "economy",
+  industry: "economy", mine: "economy", city: "economy", famine: "disaster", plague: "disaster",
+  era: "discovery" };
 
 export function evMeta(type) {
-  return TYPE_META[type] || { cat: "society", icon: "·" };
+  const m = TYPE_META[type];
+  if (m) return m;
+  const prefix = typeof type === "string" ? type.split(".")[0] : "";
+  return { cat: PREFIX_CAT[prefix] || "society", icon: "·" };
 }
 export function evCatColor(cat) {
   const row = EV_CATS.find(([id]) => id === cat);

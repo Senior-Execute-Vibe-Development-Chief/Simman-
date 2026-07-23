@@ -306,15 +306,17 @@ const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wea
   war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
   plague:"Plague",famine:"Famine",end:"Fall",
   industry:"Industry",trade:"Trade",faith:"Faith",society:"Society"};
-function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose,eraAt}){
+function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose,eraAt,armsURL}){
   const rows=(entries||[]).slice().reverse();   // newest first
   const yr=(step)=>displayYearStr(step);
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:"var(--z-documents)",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0,gap:8}}>
-          <div className="au-pico-title" style={{fontSize:15}}>Chronicle{name?` — ${name}`:""}{" "}
-            <span className="au-fade" style={{fontSize:11}}>· {rows.length} events</span></div>
+          <div className="au-pico-title" style={{fontSize:15,display:"flex",alignItems:"center",gap:8}}>
+            {armsURL&&<img src={armsURL} alt="" style={{height:26,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.3))"}}/>}
+            <span>Chronicle{name?` — ${name}`:""}{" "}
+            <span className="au-fade" style={{fontSize:11}}>· {rows.length} events</span></span></div>
           {/* True record vs the realm's own tradition: same events, different
               survivors — the scribes' version drops what burned, never heard
               the distant news, and flatters the court. */}
@@ -4722,6 +4724,7 @@ return(
 {chronicleOpen&&peopleRef.current&&peopleRef.current._chronicle&&(
   <ChronicleOverlay entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
     eraAt={peopleRef.current._eraAt}
+    armsURL={peopleRef.current._chronicle.countryId>=0?emblemURLFor(peopleRef.current._chronicle.countryId):null}
     perspective={!!peopleRef.current._chronicle.perspective}
     onTogglePerspective={()=>{
       const next=!peopleRef.current._chronicle.perspective;
