@@ -124,7 +124,7 @@ export function LegendCard({ spec, open, onToggle, controls, children }) {
   if (!spec) return null;
   return (
     <div className="au-parchment" style={{ position: "absolute", bottom: 8, left: 8, padding: open ? "7px 11px 9px" : "4px 11px", fontSize: 11, maxWidth: 252, zIndex: 20 }}>
-      <div style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 5, borderBottom: open ? "1px solid rgba(58,38,20,0.18)" : "none", paddingBottom: open ? 3 : 0, marginBottom: open ? 5 : 0 }}
+      <div style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 5, borderBottom: open ? "1px solid rgba(216,190,150,0.18)" : "none", paddingBottom: open ? 3 : 0, marginBottom: open ? 5 : 0 }}
         onClick={onToggle}>
         <span className="au-heading au-sc" style={{ fontSize: 11, flex: 1 }}>{open ? "▾" : "▸"} {spec.title}</span>
       </div>

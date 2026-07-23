@@ -7,13 +7,13 @@
 import { useEffect, useRef, useState } from "react";
 
 export const EV_CATS = [
-  ["war", "War", "#b23a28"],
-  ["politics", "Politics", "#8a6420"],
-  ["faith", "Faith", "#5566b0"],
-  ["economy", "Economy", "#2f8a78"],
-  ["disaster", "Disaster", "#8a3aa8"],
-  ["discovery", "Discovery", "#2f6fa8"],
-  ["society", "Society", "#9a5a48"],
+  ["war", "War", "#e06a52"],
+  ["politics", "Politics", "#d4a83e"],
+  ["faith", "Faith", "#8f9fe4"],
+  ["economy", "Economy", "#5cc0aa"],
+  ["disaster", "Disaster", "#c078e0"],
+  ["discovery", "Discovery", "#6aa8e0"],
+  ["society", "Society", "#c99078"],
 ];
 
 // Keyed on the sim's RAW event types (events.js logEvent calls — the worker
@@ -71,7 +71,7 @@ export function evMeta(type) {
 }
 export function evCatColor(cat) {
   const row = EV_CATS.find(([id]) => id === cat);
-  return row ? row[2] : "#5a4a32";
+  return row ? row[2] : "#b8a482";
 }
 
 /** Bell in the top bar: unread count since the feed was last opened. */
@@ -145,8 +145,8 @@ export function ToastHost({ feedRef, verbosity, onJump, stepNow }) {
 export function HelpOverlay({ onClose }) {
   const K = ([k, d], i) => (
     <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "2px 0" }}>
-      <kbd style={{ fontFamily: "inherit", fontSize: 11.5, border: "1px solid rgba(58,38,20,0.4)",
-        borderRadius: 3, padding: "0 7px", minWidth: 34, textAlign: "center", background: "rgba(120,80,40,0.08)" }}>{k}</kbd>
+      <kbd style={{ fontFamily: "inherit", fontSize: 11.5, border: "1px solid rgba(216,190,150,0.4)",
+        borderRadius: 3, padding: "0 7px", minWidth: 34, textAlign: "center", background: "rgba(214,178,118,0.10)" }}>{k}</kbd>
       <span style={{ fontSize: 12.5 }}>{d}</span>
     </div>
   );

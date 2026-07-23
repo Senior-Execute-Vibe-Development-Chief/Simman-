@@ -186,7 +186,7 @@ function TechTreeOverlay({k,title,onClose}){
           <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
         </div>
         {(()=>{const tot=techTotalList(ts.have);if(!tot.length)return null;
-          return <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center",marginBottom:7,paddingBottom:6,borderBottom:"1px solid rgba(120,90,50,0.2)"}}>
+          return <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center",marginBottom:7,paddingBottom:6,borderBottom:"1px solid rgba(216,190,150,0.2)"}}>
             <span className="au-fade" style={{fontSize:10,marginRight:3,fontWeight:600,letterSpacing:0.3}}>STACKED TECH BONUSES</span>
             {tot.map((e,i)=><span key={i} style={{padding:"1.5px 6px",borderRadius:3,fontSize:10,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
           </div>;
@@ -198,7 +198,7 @@ function TechTreeOverlay({k,title,onClose}){
           {ERAS.map((e,ei)=>{let sx=0,n=0;for(const t of TECHS)if(t.era===ei){const pp=pos[t.id];if(pp){sx+=pp.x+NW/2;n++;}}if(!n)return null;const cx=sx/n;
             return(<g key={e}>
               <rect x={cx-46} y={TOP-26} width={92} height={3} fill={ERA_BG[ei]} rx={1.5}/>
-              <text x={cx} y={TOP-12} textAnchor="middle" fontSize={11} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
+              <text x={cx} y={TOP-12} textAnchor="middle" fontSize={11} fill="#b8a482" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
             </g>);
           })}
           {/* prerequisite links — orthogonal (right-angle) routing, drawn UNDER
@@ -210,14 +210,14 @@ function TechTreeOverlay({k,title,onClose}){
             const open=ts.have[TECH_IDX[p]]===1;
             const stag=(TECH_IDX[p]*3+TECH_IDX[t.id])%5;
             return <path key={p+">"+t.id} d={techEdgePath(a,b,L,stag)} fill="none"
-              stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
+              stroke={open?"#a8895c":"rgba(216,190,150,0.22)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
           }))}
           {/* tech nodes (opaque fills occlude the links routed behind them) */}
           {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
             let fill,stroke,txt,sw,dash="";
             if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
             else if(ns.state==="next"){fill="#fffaf0";stroke=era;txt="#2c2114";sw=2;}
-            else{fill="#e9e1ce";stroke="rgba(90,75,50,0.42)";txt="rgba(70,58,40,0.62)";sw=1;dash="4 3";}
+            else{fill="rgba(255,255,255,0.07)";stroke="rgba(216,190,150,0.30)";txt="rgba(228,214,184,0.55)";sw=1;dash="4 3";}
             return(<g key={t.id} style={{cursor:"help"}}
               onMouseMove={e=>setHov({id:t.id,x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)}>
               <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
@@ -229,7 +229,7 @@ function TechTreeOverlay({k,title,onClose}){
         <div className="au-fade" style={{fontSize:10,marginTop:6,display:"flex",gap:16,flexWrap:"wrap"}}>
           <span>{chip("#dab347","none")}discovered</span>
           <span>{chip("rgba(255,251,243,0.95)","2px solid #d8b24a")}researching (prerequisites met)</span>
-          <span>{chip("rgba(150,140,120,0.2)","1px dashed rgba(90,75,50,0.5)")}locked — needs an earlier tech</span>
+          <span>{chip("rgba(255,255,255,0.07)","1px dashed rgba(216,190,150,0.4)")}locked — needs an earlier tech</span>
         </div>
       </div>
       {hov&&(()=>{
@@ -238,17 +238,17 @@ function TechTreeOverlay({k,title,onClose}){
         const vw=typeof window!=="undefined"?window.innerWidth:1280, vh=typeof window!=="undefined"?window.innerHeight:800;
         const left=Math.min(hov.x+16, vw-258), top=Math.min(hov.y+16, vh-200);
         return(<div style={{position:"fixed",left,top,width:242,zIndex:320,pointerEvents:"none",
-          background:"#f6eeda",border:`2px solid ${ERA_BG[t.era]||"#b9b2a4"}`,borderRadius:7,padding:"8px 10px",boxShadow:"0 6px 18px rgba(0,0,0,0.4)"}}>
-          <div style={{fontWeight:"bold",fontSize:13,color:"#2c2114"}}>{t.name}</div>
-          <div style={{fontSize:9,letterSpacing:0.5,textTransform:"uppercase",color:"#8a7a55",marginBottom:4}}>
+          background:"#262019",border:`2px solid ${ERA_BG[t.era]||"#b9b2a4"}`,borderRadius:7,padding:"8px 10px",boxShadow:"0 6px 18px rgba(0,0,0,0.55)"}}>
+          <div style={{fontWeight:"bold",fontSize:13,color:"var(--au-ink)"}}>{t.name}</div>
+          <div style={{fontSize:9,letterSpacing:0.5,textTransform:"uppercase",color:"var(--au-ink-faded)",marginBottom:4}}>
             {ERAS[t.era]} · {ns.state==="have"?"discovered":ns.state==="next"?`researching ${(ns.prog*100)|0}%`:"locked"}</div>
-          <div style={{fontSize:10.5,color:"#473a28",lineHeight:1.35,marginBottom:6}}>{t.desc}</div>
+          <div style={{fontSize:10.5,color:"var(--au-ink)",opacity:0.85,lineHeight:1.35,marginBottom:6}}>{t.desc}</div>
           {fx.length>0
             ? <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:t.prereq.length?6:0}}>
                 {fx.map((e,i)=><span key={i} style={{padding:"1.5px 5px",borderRadius:3,fontSize:9.5,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
               </div>
-            : <div style={{fontSize:9.5,fontStyle:"italic",color:"#9a8a65",marginBottom:t.prereq.length?6:0}}>a stepping-stone — no direct bonus</div>}
-          {t.prereq.length>0&&<div style={{fontSize:9.5,color:"#7a6a48"}}>Requires: {t.prereq.map(p=>TECHS[TECH_IDX[p]].name).join(" + ")}</div>}
+            : <div style={{fontSize:9.5,fontStyle:"italic",color:"var(--au-ink-faded)",marginBottom:t.prereq.length?6:0}}>a stepping-stone — no direct bonus</div>}
+          {t.prereq.length>0&&<div style={{fontSize:9.5,color:"var(--au-ink-faded)"}}>Requires: {t.prereq.map(p=>TECHS[TECH_IDX[p]].name).join(" + ")}</div>}
         </div>);
       })()}
     </div>
@@ -298,10 +298,11 @@ function EdRow({label,value,min,max,step,onChange,fmt}){
   </div>;
 }
 
-const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
-  war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
-  plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32",
-  industry:"#5a7488",trade:"#2f8a78",faith:"#5566b0",society:"#9a5a48"};
+// Category tints, bright enough to read on the dark cards.
+const CHRON_COL={founding:"#4fbc8a",discovery:"#6aa8e0",growth:"#66b573",wealth:"#d4a83e",
+  war:"#e06a52",conquest:"#dd8a44",annex:"#c39a4a",secession:"#b084e4",loss:"#d08258",
+  plague:"#c078e0",famine:"#d49250",end:"#b8a482",
+  industry:"#8fb0c4",trade:"#5cc0aa",faith:"#8f9fe4",society:"#c99078"};
 const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
   war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
   plague:"Plague",famine:"Famine",end:"Fall",
@@ -335,8 +336,8 @@ function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose,
               {rows.map((e,i)=>(
                 <Fragment key={i}>
                   <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yr(e.step)}</span>
-                  <span style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:CHRON_COL[e.type]||"#5a4a32",fontWeight:600,whiteSpace:"nowrap"}}>{CHRON_LABEL[e.type]||e.type}</span>
-                  <span style={{color:"#3a2614",lineHeight:1.4}}>{e.text}</span>
+                  <span style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:CHRON_COL[e.type]||"#b8a482",fontWeight:600,whiteSpace:"nowrap"}}>{CHRON_LABEL[e.type]||e.type}</span>
+                  <span style={{color:"var(--au-ink)",lineHeight:1.4}}>{e.text}</span>
                 </Fragment>
               ))}
             </div>}
@@ -355,23 +356,23 @@ const TRAIT_DEF=[["vigor","Vig"],["wit","Wit"],["boldness","Bold"],["ruthlessnes
 function traitTip(t){return t?TRAIT_DEF.map(([k,l])=>`${l} ${t[k]>0?"+":""}${t[k]}`).join("  "):"";}
 function PersonCard({n}){
   const dead=n.diedY>=0;
-  const border=n.isRuler?"2px solid #b8902f":n.bastard?"1px dashed #9a7b52":"1px solid rgba(90,74,50,0.4)";
-  const bg=n.isRuler?"rgba(184,144,47,0.16)":n.foreign?"rgba(90,74,50,0.05)":"rgba(255,255,255,0.45)";
+  const border=n.isRuler?"2px solid #d8b13a":n.bastard?"1px dashed #a8895c":"1px solid rgba(216,190,150,0.28)";
+  const bg=n.isRuler?"rgba(216,177,58,0.14)":n.foreign?"rgba(255,255,255,0.03)":"rgba(255,255,255,0.06)";
   const reigned=n.reignFrom>=0;
   return(
     <div title={[n.trait&&!n.foreign?n.trait:"",n.traits?traitTip(n.traits):"",n.foreign?"married into the house":n.bastard?"born out of wedlock":""].filter(Boolean).join("\n")||undefined}
       style={{border,background:bg,borderRadius:5,padding:"3px 7px",minWidth:96,opacity:dead&&!reigned?0.6:1,fontSize:11}}>
       <div style={{display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
-        <span style={{color:n.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{n.female?"♀":"♂"}</span>
+        <span style={{color:n.female?"#d886c0":"#82a4e8",fontWeight:700}}>{n.female?"♀":"♂"}</span>
         {n.isRuler&&<span title="reigning" style={{fontSize:12}}>♔</span>}
-        <span style={{fontWeight:n.isRuler||reigned?700:500,color:"#2a1c0e"}}>{n.name}{n.epithet?` ${n.epithet}`:""}</span>
+        <span style={{fontWeight:n.isRuler||reigned?700:500,color:"var(--au-ink)"}}>{n.name}{n.epithet?` ${n.epithet}`:""}</span>
         {n.bastard&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>bastard</span>}
       </div>
-      {n.isRuler&&n.title&&<div style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:"#8a6a1a",fontWeight:600}}>{n.title}</div>}
+      {n.isRuler&&n.title&&<div style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:"#d8b13a",fontWeight:600}}>{n.title}</div>}
       <div className="au-fade" style={{fontSize:9.5,fontVariantNumeric:"tabular-nums"}}>
         {dead?`${fy(n.bornY)} – ${fy(n.diedY)} · ${n.age}y`:`b. ${fy(n.bornY)} · ${n.age}y`}
       </div>
-      {reigned&&<div style={{fontSize:9,color:"#8a6a1a",fontVariantNumeric:"tabular-nums"}}>reigned {fy(n.reignFrom)}–{n.reignTo>=0?fy(n.reignTo):"now"}</div>}
+      {reigned&&<div style={{fontSize:9,color:"#d8b13a",fontVariantNumeric:"tabular-nums"}}>reigned {fy(n.reignFrom)}–{n.reignTo>=0?fy(n.reignTo):"now"}</div>}
       {!n.foreign&&n.trait&&<div className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{n.trait}</div>}
     </div>
   );
@@ -384,7 +385,7 @@ const GOV_META={monarchy:{icon:"♔",col:"#b8902f",label:"Crown"},
   elective:{icon:"♛",col:"#9c7a2f",label:"Elective Monarchy"}};
 // Standard top-down genealogy: each generation a row, parents centred above
 // their children, sibling/parent connectors drawn in pure CSS (classes below).
-const FT_LN="rgba(120,100,70,0.45)";
+const FT_LN="rgba(216,190,150,0.35)";
 const FT_CSS=`
 .ft-wrap{display:inline-flex;flex-direction:column;gap:16px;min-width:100%;padding:4px 2px 8px;align-items:center}
 .ft-tree ul{position:relative;padding-top:18px;display:flex;justify-content:center;margin:0}
@@ -456,8 +457,8 @@ function SuccessionRoll({roll}){
       <div key={i} style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"2px 9px",alignItems:"baseline",fontSize:12,
         padding:"1px 4px",borderLeft:`3px solid ${gm.col}`,marginLeft:4,background:e.current?"rgba(184,144,47,0.12)":"transparent"}}>
         <span className="au-fade" style={{fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",fontSize:11}}>{fy(e.fromY)}–{e.toY>=0?fy(e.toY):"now"}</span>
-        <span style={{color:e.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{e.female?"♀":"♂"}</span>
-        <span style={{color:"#2a1c0e"}}>
+        <span style={{color:e.female?"#d886c0":"#82a4e8",fontWeight:700}}>{e.female?"♀":"♂"}</span>
+        <span style={{color:"var(--au-ink)"}}>
           <span className="au-fade">{e.title?e.title+" ":""}</span>
           <b style={{fontWeight:e.current?700:600}}>{e.name}</b>{e.epithet?` ${e.epithet}`:""}
           {e.current&&<span style={{color:gm.col,fontWeight:700}}> · reigning</span>}
@@ -504,7 +505,7 @@ function DynastyOverlay({tree,onClose}){
               ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No reigning house — the realm keeps no king-list yet.</div>
               :houses.map((h,i)=>(
                 <div key={h.dynastyId} style={{marginBottom:14,opacity:h.isCurrent?1:0.92}}>
-                  <div style={{display:"flex",alignItems:"baseline",gap:8,borderBottom:"1px solid rgba(90,74,50,0.25)",paddingBottom:2,marginBottom:2,marginTop:i?10:0}}>
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,borderBottom:"1px solid rgba(216,190,150,0.22)",paddingBottom:2,marginBottom:2,marginTop:i?10:0}}>
                     <span className="au-pico-title" style={{fontSize:13}}>House {h.name}</span>
                     <span className="au-fade" style={{fontSize:10}}>
                       {h.isCurrent?"reigning":"former"} · {fy(h.founded)}–{h.ended>=0?fy(h.ended):"now"}
@@ -517,7 +518,7 @@ function DynastyOverlay({tree,onClose}){
               ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No sovereigns recorded yet.</div>
               :<SuccessionRoll roll={roll}/>)}
         </div>
-        <div className="au-fade" style={{fontSize:9.5,marginTop:8,flexShrink:0,display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid rgba(90,74,50,0.2)",paddingTop:6}}>
+        <div className="au-fade" style={{fontSize:9.5,marginTop:8,flexShrink:0,display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid rgba(216,190,150,0.20)",paddingTop:6}}>
           {mode==="tree"
             ?<><span>♔ reigning</span><span>♀ / ♂</span><span>⚭ married</span><span style={{fontStyle:"italic"}}>dashed = bastard</span><span>faded = married in / deceased</span></>
             :<><span style={{color:GOV_META.monarchy.col}}>♔ crown</span><span style={{color:GOV_META.theocracy.col}}>☩ theocracy</span><span style={{color:GOV_META.republic.col}}>⚖ council</span><span style={{color:GOV_META.despotism.col}}>⚔ despotism</span><span>oldest first</span></>}
@@ -707,7 +708,7 @@ function buildHistoryExport(H){
 // causing flicker and making the collapsible headers flaky to click.
 function PsBar({ v, color }) {
   return (
-    <div style={{ position:"relative", height:5, background:"rgba(0,0,0,0.15)", borderRadius:2, marginTop:1 }}>
+    <div style={{ position:"relative", height:5, background:"rgba(255,255,255,0.10)", borderRadius:2, marginTop:1 }}>
       <div style={{ position:"absolute", inset:0, width:`${Math.max(0,Math.min(1,v))*100}%`, background:color||"#7a5", borderRadius:2 }} />
     </div>
   );
@@ -725,7 +726,7 @@ function PsKRow({ label, val, colour, note }) {
 }
 function PsSection({ id, title, right, open, onToggle, children }) {
   return (
-    <div style={{ marginTop:6, borderTop:"1px solid rgba(0,0,0,0.10)", paddingTop:5 }}>
+    <div style={{ marginTop:6, borderTop:"1px solid rgba(216,190,150,0.12)", paddingTop:5 }}>
       <div onClick={(e)=>{ e.stopPropagation(); onToggle(id); }} className="au-fade"
         style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", userSelect:"none", fontSize:10, letterSpacing:0.4, textTransform:"uppercase" }}>
         <span>{open ? "▾" : "▸"} {title}</span>
@@ -3336,8 +3337,8 @@ const renderRealmDetail=()=>{
         {[["aggression",pers.aggression],["commerce",pers.commerce],["expansionism",pers.expansionism]].map(([k,v])=>(
           <div key={k} style={{display:"flex",alignItems:"center",gap:6,fontSize:9}}>
             <span className="au-fade" style={{width:74,textTransform:"capitalize"}}>{k}</span>
-            <div style={{flex:1,height:4,background:"rgba(58,38,20,0.15)",borderRadius:2,position:"relative"}}>
-              <div style={{position:"absolute",left:"50%",top:-1,bottom:-1,width:1,background:"rgba(58,38,20,0.4)"}}/>
+            <div style={{flex:1,height:4,background:"rgba(216,190,150,0.15)",borderRadius:2,position:"relative"}}>
+              <div style={{position:"absolute",left:"50%",top:-1,bottom:-1,width:1,background:"rgba(216,190,150,0.4)"}}/>
               <div style={{position:"absolute",left:v>=0?"50%":`${50+v*50}%`,width:`${Math.abs(v)*50}%`,top:0,bottom:0,
                 background:v>=0?"hsl(8,60%,45%)":"hsl(200,45%,45%)",borderRadius:2}}/>
             </div>
@@ -3349,7 +3350,7 @@ const renderRealmDetail=()=>{
       {members.map(m=>(
         <div key={m.id} onClick={()=>navigate({tab:"inspect",sett:m.id})}
           title="Inspect this settlement"
-          style={{display:"flex",gap:6,fontSize:11,padding:"2.5px 0",cursor:"pointer",borderBottom:"1px solid rgba(58,38,20,0.07)"}}>
+          style={{display:"flex",gap:6,fontSize:11,padding:"2.5px 0",cursor:"pointer",borderBottom:"1px solid rgba(216,190,150,0.07)"}}>
           <span style={{textTransform:"capitalize"}}>{c.capitalId===m.id?"★ ":""}{m.name}</span>
           {c.capitalId===m.id&&<span className="au-fade">· capital</span>}
           {(m.tier|0)>=3&&<span className="au-fade">· metropolis</span>}
@@ -3396,7 +3397,7 @@ const renderPeoples=()=>{
             {f.name} <span className="au-fade" style={{fontSize:9}}>family · {f.rows.length} {f.rows.length===1?"people":"peoples"} · {fmtPeople(f.pop)}</span>
           </div>
           {f.rows.map(({c,a})=>(
-            <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(58,38,20,0.08)"}}>
+            <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(216,190,150,0.08)"}}>
               <span style={{width:9,height:9,borderRadius:2,background:`hsl(${c.hue|0},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
               <span style={{fontWeight:600}}>{c.name}</span>
               {c.parent>=0&&psw.cultures.get(c.parent)&&<span className="au-fade" style={{fontSize:9}}>← {psw.cultures.get(c.parent).name}</span>}
@@ -3425,7 +3426,7 @@ const renderFaiths=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
       {rows.map(({f,a})=>(
-        <div key={f.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(58,38,20,0.10)"}}>
+        <div key={f.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(216,190,150,0.10)"}}>
           <span style={{width:10,height:10,borderRadius:f.kind==="organized"?"50%":2,background:`hsl(${f.hue|0},55%,50%)`,flexShrink:0,alignSelf:"center"}}/>
           <span style={{fontWeight:600,fontSize:12}}>{f.name}</span>
           <span className="au-fade" style={{fontSize:9}}>{f.character||f.kind}{f.parent>=0&&psw.faiths.get(f.parent)?` ← ${psw.faiths.get(f.parent).name}`:""}</span>
@@ -3473,7 +3474,7 @@ const renderLanguages=()=>{
             {famName(f)} <span className="au-fade" style={{fontSize:9}}>family · {ls.length} {ls.length===1?"tongue":"tongues"} · {fmtPeople(f.pop)}</span>
           </div>
           {ls.map(({l,a})=>(
-            <div key={l.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(58,38,20,0.08)"}}>
+            <div key={l.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(216,190,150,0.08)"}}>
               <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hueOf(l)},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
               <span style={{fontWeight:600}}>{l.name||"(tongue)"}</span>
               <div style={{flex:1}}/>
@@ -3924,7 +3925,7 @@ const renderInspect=()=>{
         <div style={{fontSize:10}}>
           <button onClick={()=>setTechTreeOpen(true)}
             style={{width:"100%",marginBottom:6,padding:"4px 6px",cursor:"pointer",borderRadius:4,
-              background:"rgba(120,90,50,0.14)",border:"1px solid rgba(120,90,50,0.35)",color:"#3a2c18",fontSize:10.5}}>
+              background:"rgba(214,178,118,0.13)",border:"1px solid rgba(214,178,118,0.3)",color:"var(--au-ink)",fontSize:10.5}}>
             ⛬ Open tech tree
           </button>
           <div style={{display:"flex",flexWrap:"wrap",gap:"3px 4px"}}>
@@ -3936,7 +3937,7 @@ const renderInspect=()=>{
             ))}
           </div>
           {techNext.length>0&&(
-            <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid rgba(120,90,50,0.22)"}}>
+            <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid rgba(216,190,150,0.18)"}}>
               <div className="au-fade" style={{marginBottom:3,fontSize:9.5}}>Researching</div>
               {techNext.map(t=>(
                 <div key={t.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
@@ -4085,7 +4086,7 @@ const renderInspect=()=>{
               Renders only when the goods layer is on (worker mirrors _gPrice). ── */}
           {s._gPrice&&(()=>{
             const P=s._gPrice,N=s._gNet,L=s._gShare;
-            const col=p=>p>=1.5?"#b06a4a":p<=0.6?"#4a7a4a":"#5a4a32";
+            const col=p=>p>=1.5?"#e08a62":p<=0.6?"#6db56d":"#b8a482";
             const flows=N?GOODS.map((g,i)=>[g,N[i]]).filter(([,v])=>Math.abs(v)>0.01)
               .sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,3):[];
             let lean=null;
@@ -4119,12 +4120,12 @@ const renderInspect=()=>{
             <div style={{fontSize:10}}>
               <button onClick={()=>setChronicleOpen(true)}
                 style={{width:"100%",marginBottom:5,padding:"4px 6px",cursor:"pointer",borderRadius:4,
-                  background:"rgba(120,90,50,0.14)",border:"1px solid rgba(120,90,50,0.35)",color:"#3a2c18",fontSize:10.5}}>
+                  background:"rgba(214,178,118,0.13)",border:"1px solid rgba(214,178,118,0.3)",color:"var(--au-ink)",fontSize:10.5}}>
                 📜 Open chronicle ({chron.entries.length} events)
               </button>
               <div style={{display:"flex",gap:6,lineHeight:1.3}}>
                 <span className="au-fade" style={{flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{yr(latest.step)}</span>
-                <span style={{color:CHRON_COL[latest.type]||"#5a4a32"}}>{latest.text}</span>
+                <span style={{color:CHRON_COL[latest.type]||"#b8a482"}}>{latest.text}</span>
               </div>
             </div>
           </PsSection>
@@ -4193,7 +4194,7 @@ const renderBoard=()=>{
       <div style={{padding:"0 12px 6px"}}>
         <input type="search" value={boardQuery} onChange={e=>setBoardQuery(e.target.value)}
           placeholder="search by name…" style={{width:"100%",fontSize:11.5,padding:"3px 8px",
-            background:"rgba(255,252,240,0.5)",border:"1px solid rgba(58,38,20,0.3)",color:"var(--au-ink)",borderRadius:3}}/>
+            background:"rgba(0,0,0,0.28)",border:"1px solid rgba(216,190,150,0.25)",color:"var(--au-ink)",borderRadius:3}}/>
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
         {Object.entries(sorts).map(([k,[,label]])=>(
@@ -4218,7 +4219,7 @@ const renderBoard=()=>{
               return(
                 <tr key={r.id}
                   onClick={()=>navigate({tab:"inspect",sett:r.id})}
-                  style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                  style={{cursor:"pointer",borderTop:"1px solid rgba(216,190,150,0.09)"}}>
                   <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
                   <td style={{padding:"3px 4px"}}>
                     <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
@@ -4236,7 +4237,7 @@ const renderBoard=()=>{
             return(
               <tr key={r.id}
                 onClick={()=>navigate({tab:"realms",realm:r.id})}
-                style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                style={{cursor:"pointer",borderTop:"1px solid rgba(216,190,150,0.09)"}}>
                 <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
                 <td style={{padding:"3px 4px"}}>
                   {arms
@@ -4287,15 +4288,15 @@ const renderCharts=()=>{
             {EV_CATS.map(([id,label,col])=>(
               <button key={id} onClick={()=>tog(id)}
                 className={"au-filter"+(active.has(id)?" au-active":"")}
-                style={active.has(id)?{borderColor:col,color:col}:{borderColor:"rgba(58,38,20,0.3)",color:"var(--au-ink-faded)"}}
+                style={active.has(id)?{borderColor:col,color:col}:{borderColor:"rgba(216,190,150,0.3)",color:"var(--au-ink-faded)"}}
                 title={active.size?"filtering — click to toggle":"click to filter to "+label}>{label}</button>
             ))}
-            {active.size>0&&<button className="au-filter" style={{borderColor:"rgba(58,38,20,0.3)",color:"var(--au-ink-faded)"}}
+            {active.size>0&&<button className="au-filter" style={{borderColor:"rgba(216,190,150,0.3)",color:"var(--au-ink-faded)"}}
               onClick={()=>setFeedCats(new Set())}>× all</button>}
           </div>
           {rows.map(({e,m,key})=>(
             <div key={key} onClick={()=>jumpTo(e.x,e.y)}
-              style={{fontSize:11,padding:"2.5px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.4,display:"flex",gap:6}}
+              style={{fontSize:11,padding:"2.5px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(216,190,150,0.08)",lineHeight:1.4,display:"flex",gap:6}}
               title={e.x!=null?"Jump to where it happened":undefined}>
               <span style={{color:evCatColor(m.cat),flexShrink:0,width:12,textAlign:"center"}}>{m.icon}</span>
               <span style={{minWidth:0}}><span className="au-fade" style={{marginRight:5,fontVariantNumeric:"tabular-nums"}}>{yr(e.step)}</span>{e.text}</span>
@@ -4309,7 +4310,7 @@ const renderCharts=()=>{
       <MiniChart data={H} get={d=>(d.towns||0)+d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
       <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
       <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
-      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
+      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(216,190,150,0.12)",marginTop:4}}>
         <button onClick={copy} className="au-rail-tab au-active" style={{width:"100%",fontSize:11,padding:"5px 0"}}>
           {statsCopied?"Copied ✓":"Copy stats rundown"}
         </button>
@@ -4500,7 +4501,7 @@ return(
     const emblem=ctry?realmEmblemURL(psw,ctry,terRef.current,worldRef.current?worldRef.current.seed:0):null;
     if(!hoverInfo.sett&&!ctry)return null;
     const tierName=hoverInfo.sett?["farming region","town","city","metropolis"][hoverInfo.sett.tier]||"settlement":null;
-    return(<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,paddingBottom:4,borderBottom:"1px solid rgba(58,38,20,0.18)"}}>
+    return(<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,paddingBottom:4,borderBottom:"1px solid rgba(216,190,150,0.18)"}}>
       {emblem&&<img src={emblem} alt="" style={{height:26,flexShrink:0,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.3))"}}/>}
       <div style={{minWidth:0}}>
         {hoverInfo.sett&&<div className="au-pico-title" style={{textTransform:"capitalize"}}>
@@ -4537,7 +4538,7 @@ return(
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
   padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
 <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
-  borderBottom:keyOpen?"1px solid rgba(58,38,20,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
+  borderBottom:keyOpen?"1px solid rgba(216,190,150,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
   onClick={()=>setKeyOpen(v=>!v)}>
   <span className="au-heading au-sc" style={{fontSize:10,flex:1}}>{keyOpen?"▾":"▸"} Key</span>
 </div>
@@ -4607,7 +4608,7 @@ return(
 {/* ══════════ THE CODEX (right dock — the atlas's book; plan §7) ══════════ */}
 <aside className="au-parchment" style={{width:312,minWidth:312,margin:"6px 6px 6px 3px",
   display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain"}}>
-  <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(58,38,20,0.28)"}}>
+  <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(216,190,150,0.28)"}}>
     {[["world","World"],["realms","Realms"],["peoples","Peoples"],["faiths","Faiths"],["tongues","Tongues"],["inspect","Inspect"]].map(([k,l])=>(
       <button key={k} onClick={()=>navigate({tab:k})}
         className={"au-tab"+(panelTab===k?" au-active":"")} style={{flex:1,padding:"7px 0"}}>{l}</button>
@@ -4627,7 +4628,7 @@ return(
     else crumbs.push(panelTab.charAt(0).toUpperCase()+panelTab.slice(1));
     return(
       <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",flexShrink:0,
-        borderBottom:"1px solid rgba(58,38,20,0.14)",fontSize:10.5}}>
+        borderBottom:"1px solid rgba(216,190,150,0.14)",fontSize:10.5}}>
         <button onClick={navBack} className="au-btn au-flat" title="Back"
           style={{padding:"0 6px",fontSize:12,opacity:navStackRef.current.length?1:0.35}}>◂</button>
         <span className="au-fade" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textTransform:"capitalize"}}>

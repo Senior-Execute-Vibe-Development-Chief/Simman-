@@ -11,17 +11,18 @@
 @import "./ui/fonts.css";
 
 :root {
-  /* paper (documents, map furniture) — unchanged identity */
-  --au-paper: #e6d2a3;
-  --au-paper-aged: #a88c5c;
-  --au-paper-deep: #8a6c40;
-  --au-ink: #3a2614;
-  --au-ink-faded: #6b4f37;
-  --au-ink-light: #8b7556;
-  --au-wax-red: #7a2820;
-  --au-verdigris: #3a5a48;
-  --au-gold: #a07832;
-  --au-shadow: rgba(40, 26, 12, 0.45);
+  /* card surfaces (one dark theme everywhere; the only paper left is the
+     map's own art — label halos, the atlas lens) */
+  --au-paper: #221a12;
+  --au-paper-aged: rgba(214, 178, 118, 0.16);
+  --au-paper-deep: #4a3a26;
+  --au-ink: #e4d6b8;
+  --au-ink-faded: #a8977c;
+  --au-ink-light: #7d6f5c;
+  --au-wax-red: #c25548;
+  --au-verdigris: #5da88c;
+  --au-gold: #d8b13a;
+  --au-shadow: rgba(0, 0, 0, 0.5);
   --au-table-dark: #16100a;
 
   /* chrome (the dark table) */
@@ -40,7 +41,7 @@
 
   /* legacy aliases still referenced from inline JSX styles */
   --au-fade: var(--au-ink-faded);
-  --au-line: rgba(58, 38, 20, 0.22);
+  --au-line: rgba(216, 190, 150, 0.18);
 
   /* type scale — nothing interactive below 11px */
   --fs-0: 11px;   /* fine print, key rows */
@@ -90,42 +91,19 @@ body { margin: 0; background: var(--au-table-dark); }
   -webkit-backdrop-filter: blur(6px);
 }
 
-/* ── PAPER surface — parchment, for the world's own documents ── */
+/* ── CARD surface — the class name survives (hundreds of call sites), the
+   paper does not: a slightly-raised dark card, one theme with the chrome. ── */
 .au-parchment {
-  background-color: var(--au-paper);
-  background-image:
-    radial-gradient(ellipse at 22% 18%, rgba(184,140,88,0.20) 0%, transparent 38%),
-    radial-gradient(ellipse at 78% 82%, rgba(184,140,88,0.18) 0%, transparent 42%),
-    radial-gradient(ellipse at 50% 50%, rgba(120,80,40,0.05) 0%, transparent 70%),
-    repeating-linear-gradient(143deg, transparent 0 2px, rgba(120,80,40,0.018) 2px 3px),
-    repeating-linear-gradient(37deg,  transparent 0 2px, rgba(120,80,40,0.012) 2px 4px);
+  background: linear-gradient(180deg, #2a2118 0%, #241c13 14%, #211a12 100%);
   color: var(--au-ink);
   border: 1px solid var(--au-paper-aged);
-  border-radius: 2px;
+  border-radius: 4px;
   position: relative;
-  box-shadow:
-    inset 0 0 22px rgba(120,80,40,0.20),
-    inset 0 0 4px rgba(160,120,72,0.3),
-    0 3px 10px var(--au-shadow);
+  box-shadow: 0 3px 12px var(--au-shadow);
 }
 .au-parchment.au-elev {
-  box-shadow:
-    inset 0 0 28px rgba(120,80,40,0.26),
-    inset 0 0 6px rgba(160,120,72,0.35),
-    0 12px 40px rgba(0,0,0,0.65),
-    0 2px 6px var(--au-shadow);
-}
-.au-parchment::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background:
-    radial-gradient(circle at 8% 12%,  rgba(80,50,20,0.10) 0%, transparent 22px),
-    radial-gradient(circle at 92% 14%, rgba(80,50,20,0.10) 0%, transparent 22px),
-    radial-gradient(circle at 12% 88%, rgba(80,50,20,0.10) 0%, transparent 22px),
-    radial-gradient(circle at 88% 90%, rgba(80,50,20,0.10) 0%, transparent 22px);
+  box-shadow: 0 14px 44px rgba(0,0,0,0.7), 0 2px 8px var(--au-shadow);
+  border-color: rgba(214, 178, 118, 0.24);
 }
 
 /* ── Dividers ── */
@@ -172,16 +150,7 @@ body { margin: 0; background: var(--au-table-dark); }
 .au-btn.au-wax.au-active { background: rgba(180, 69, 58, 0.18); border-color: var(--au-ch-wax); color: #e08a7d; }
 .au-btn.au-block { width: 100%; }
 
-/* paper-hosted buttons keep ink styling */
-.au-parchment .au-btn {
-  background: rgba(120,80,40,0.04);
-  border-color: rgba(58,38,20,0.32);
-  color: var(--au-ink);
-}
-.au-parchment .au-btn:hover { background: rgba(120,80,40,0.16); border-color: rgba(58,38,20,0.55); }
-.au-parchment .au-btn.au-active { background: rgba(120,80,40,0.28); border-color: var(--au-ink); color: var(--au-ink); }
 .au-parchment .au-btn.au-wax { border-color: var(--au-wax-red); color: var(--au-wax-red); }
-.au-parchment .au-btn.au-wax.au-active { background: rgba(122,40,32,0.18); color: var(--au-wax-red); }
 
 /* ── Rail entries (docks, drawers, menus — chrome by default) ── */
 .au-rail-tab {
@@ -208,9 +177,6 @@ body { margin: 0; background: var(--au-table-dark); }
   border-left-color: var(--au-ch-wax);
   font-weight: 700;
 }
-.au-parchment .au-rail-tab { color: var(--au-ink-light); }
-.au-parchment .au-rail-tab:hover { background: rgba(120,80,40,0.10); color: var(--au-ink-faded); }
-.au-parchment .au-rail-tab.au-active { background: rgba(120,80,40,0.22); color: var(--au-ink); border-left-color: var(--au-wax-red); }
 
 .au-tab {
   background: transparent;
@@ -227,9 +193,6 @@ body { margin: 0; background: var(--au-table-dark); }
 }
 .au-tab:hover { color: var(--au-ch-text); }
 .au-tab.au-active { color: var(--au-ch-gold); border-bottom-color: var(--au-ch-wax); }
-.au-parchment .au-tab { color: var(--au-ink-light); }
-.au-parchment .au-tab:hover { color: var(--au-ink-faded); }
-.au-parchment .au-tab.au-active { color: var(--au-ink); border-bottom-color: var(--au-wax-red); }
 
 /* ── The lens dock (56px icon rail) ── */
 .au-dock-btn {
@@ -275,7 +238,7 @@ body { margin: 0; background: var(--au-table-dark); }
   text-decoration-color: rgba(160, 120, 50, 0.45);
   text-underline-offset: 2px;
 }
-.au-chip:hover { background: rgba(120, 80, 40, 0.14); text-decoration-color: currentColor; }
+.au-chip:hover { background: rgba(214, 178, 118, 0.12); text-decoration-color: currentColor; }
 .au-chip .au-chip-sw {
   width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
@@ -321,10 +284,6 @@ body { margin: 0; background: var(--au-table-dark); }
   width: 12px; height: 12px; background: var(--au-ch-wax);
   border: 1px solid rgba(0,0,0,0.5); border-radius: 50%;
 }
-.au-parchment input[type="range"]::-webkit-slider-runnable-track { background: var(--au-ink-faded); }
-.au-parchment input[type="range"]::-webkit-slider-thumb { background: var(--au-wax-red); border-color: var(--au-ink); }
-.au-parchment input[type="range"]::-moz-range-track { background: var(--au-ink-faded); }
-.au-parchment input[type="range"]::-moz-range-thumb { background: var(--au-wax-red); border-color: var(--au-ink); }
 
 .au-root select {
   background: var(--au-ch-sunk);
@@ -336,13 +295,7 @@ body { margin: 0; background: var(--au-table-dark); }
   border-radius: 3px;
   cursor: pointer;
 }
-.au-parchment select {
-  background: rgba(232,212,164,0.6);
-  border-color: rgba(58,38,20,0.4);
-  color: var(--au-ink);
-}
 .au-root input[type="checkbox"] { accent-color: var(--au-ch-wax); }
-.au-parchment input[type="checkbox"] { accent-color: var(--au-wax-red); }
 .au-root input[type="text"], .au-root input[type="search"], .au-root input[type="number"] {
   background: var(--au-ch-sunk);
   border: 1px solid var(--au-ch-line);
@@ -386,7 +339,7 @@ body { margin: 0; background: var(--au-table-dark); }
 .au-key-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
 .au-key-swatch {
   width: 14px; height: 9px; border-radius: 1px; flex-shrink: 0;
-  border: 1px solid rgba(58,38,20,0.30);
+  border: 1px solid rgba(0,0,0,0.4);
 }
 
 /* ── Toasts (epochal events, NE over the map) ── */
