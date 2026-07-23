@@ -312,6 +312,7 @@ const canvasRef=useRef(null);
 // stays at map resolution below it; this canvas carries only the vector features.
 const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
+const[genBusy,setGenBusy]=useState(false);   // a world is being forged — show it (regens keep the old map up for ~a minute, which read as a dead control)
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
@@ -475,7 +476,7 @@ const[mapScale,setMapScale]=useState(1920);
 // sim tile spans (1 = sim matches the land, 2 = half [default], 4 = quarter/faster). Map
 // resolution (mapScale) sets terrain/coast crispness; simDiv sets sim granularity — which
 // is speed AND emergent detail (a finer grid seeds more river cradles → a different world).
-const[simDiv,setSimDiv]=useState(2);
+const[simDiv,setSimDiv]=useState(4);   // sim granularity default: Quarter — fast everywhere, phone-friendly
 const genW=mapScale,genH=mapScale>>1;   // REQUESTED scale — the size the NEXT world generates at
 // Render/data dimensions track the ACTUAL loaded world, never the requested mapScale. Worldgen is
 // async, so between the scale change and the new world arriving the two differ; keying the canvas /
@@ -527,7 +528,7 @@ const simWorkerRef=useRef(null);
 const genIdRef=useRef(0);
 // Sim tile resolution (simDiv) read by finalizeWorld — a ref so the async worldgen
 // finalize sees the value chosen at request time even though finalizeWorld is memoised.
-const simTileResRef=useRef(2);
+const simTileResRef=useRef(4);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
@@ -591,6 +592,7 @@ const finalizeWorld=useCallback((w)=>{
 // RNG, resource placement) reads `w.seed`. Without this alias the sim's RNG
 // silently fell back to seed 1 for EVERY world.
 if(w.seed==null)w.seed=w._seed??1;
+setGenBusy(false);
 resetEmblems();labelAnchorsRef.current=null;   // a new world bears new arms & names
 setWorld(w);worldRef.current=w;const t=buildTerritory(w,RES);
 terRef.current=t;
@@ -681,6 +683,7 @@ const generate=useCallback((s,ol)=>{
 // Stamp this request; a worker result whose id has been superseded (the user changed
 // scale/seed again before it finished) is a wrong-resolution world and must be ignored.
 const _gid=++genIdRef.current;
+setGenBusy(true);
 // Import path
 if(presetRef.current==="import"&&importedWorldRef.current){
 const w=importedWorldRef.current;importedWorldRef.current=null;finalizeWorld(w);return;}
@@ -4277,6 +4280,15 @@ return(
     :null}
 </LegendCard>}
 
+{/* ─── World-forging indicator: regeneration keeps the old map on screen,
+     so without this a res/seed/preset change looks like a dead control ─── */}
+{genBusy&&<div className="au-chrome au-glass" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
+  zIndex:25,padding:"7px 16px",fontSize:13,display:"flex",gap:9,alignItems:"center",whiteSpace:"nowrap"}}>
+  <span style={{display:"inline-block",width:11,height:11,border:"2px solid var(--au-ch-gold)",borderTopColor:"transparent",
+    borderRadius:"50%",animation:"au-spin 0.9s linear infinite"}}/>
+  <span className="au-era" style={{fontSize:12,color:"var(--au-ch-gold)"}}>Forging a new world…</span>
+</div>}
+
 {/* ─── Epochal-event toasts (plan §8) ─── */}
 <ToastHost feedRef={peopleRef} verbosity={toastVerbosity} onJump={jumpTo} stepNow={liveStep}/>
 
@@ -4454,7 +4466,7 @@ return(
         {[{d:1,l:"Full"},{d:2,l:"Half"},{d:4,l:"Quarter"}].map(o=>(
           <button key={o.d} onClick={()=>{simTileResRef.current=o.d;setSimDiv(o.d);generate(seed);}}
             className={"au-btn au-flat"+(simDiv===o.d?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
-            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms":"Half the map resolution (default)"}>{o.l}</button>
+            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms (default)":"Half the map resolution — slower, more and smaller realms"}>{o.l}</button>
         ))}
       </div>
       <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:6}}>

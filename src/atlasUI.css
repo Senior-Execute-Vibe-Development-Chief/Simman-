@@ -357,6 +357,7 @@ body { margin: 0; background: var(--au-table-dark); }
   animation: au-toast-in 0.28s ease-out;
 }
 @keyframes au-toast-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes au-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .au-toast { animation: none; }
   .au-root * { transition-duration: 0.01ms !important; }
