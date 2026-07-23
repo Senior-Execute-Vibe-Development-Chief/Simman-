@@ -2534,6 +2534,13 @@ export function updatePolities(world) {
       }
     }
     c._loadTotal = cum;   // total admin load drawn (vs c._capacity)
+    // Persisted STRAIN (load ÷ capacity) for the budget-gated expansion levers:
+    // adoption (adoptAndFound) and the territorial reach budget
+    // (computeCountryTerritory) read it, so a court past its budget stops
+    // taking on subjects and stops projecting — expansion asks "can I govern
+    // this?" up front instead of only paying for the answer afterwards.
+    // Stamped on the persistent polity record so save/load replays identically.
+    gov._strain = capacity > 1e-6 ? cum / capacity : (cum > 0 ? 8 : 0);
     // The frontier sheds along the control field: how far over budget the realm
     // sits (war + insolvency are already folded into the throttled capacity) sets
     // the STRESS that shrinks its grip, so a mild overstretch peels the rim while a

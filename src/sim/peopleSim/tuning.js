@@ -142,6 +142,10 @@ export const TUNING_SCHEMA = [
     category: "Empire size & cohesion",
     blurb: "How large an empire one capital can hold together before the frontier rebels. Max empire size is dynamic, not a fixed radius.",
     params: [
+      { key: "ADOPT_BUDGET", label: "Adoption budget gate", def: 0, min: 0, max: 2, step: 0.05,
+        desc: "A court takes on NEW subjects (stateless villages/anchors adopting in) only while its admin strain (load ÷ capacity, from the polity pass) is below this. At 1.0 a realm at its governing budget stops absorbing — refused communities stay independent and later found or join states of their own, so overreach feeds the frontier with small states instead of bloating giants that must collapse. Conquest is UNGATED on purpose: taking what you cannot govern remains possible, and remains punished. 0 = off (the old always-adopt behaviour)." },
+      { key: "REACH_STRAIN", label: "Reach strain elasticity", def: 0, min: 0, max: 2, step: 0.05,
+        desc: "How sharply an OVER-BUDGET realm's territorial reach contracts with its admin strain: reach ÷= 1 + this × (strain − 1, capped). Within budget: no effect. This makes borders SATURATE at what the court can actually govern — asking 'can I govern this?' at expansion time — instead of projecting freely and then shedding in the dramatic early boom-bust. 0 = off." },
       { key: "ABSORB_ORG_MIN", label: "Absorption tech gate", def: 0.48, min: 0.1, max: 0.95, step: 0.02,
         desc: "Organization tech a city needs before it can peacefully vacuum neighbouring village/town statelets into its realm. UP = small city-states survive far longer; the map stays fragmented through the early/classical era." },
       { key: "ABSORB_PROB_MAX", label: "Absorption max rate", def: 0.06, min: 0.01, max: 0.3, step: 0.01,
