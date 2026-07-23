@@ -128,15 +128,15 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // ── Realm names, the way a real map sets them ──────────────────────────
-  // · EVERY realm that is meaningfully visible on screen gets a label — a
-  //   name may overflow a small realm (atlases do this constantly); only a
-  //   realm too small to see, or a hopeless overflow, waits for zoom.
+  // ── Realm names: EVERY realm on screen gets one ────────────────────────
   // · Type sizes live in a TIGHT small band graded by the realm's own
   //   on-screen footprint — a continental empire reads a step larger than a
   //   duchy, never billboard-sized. Zooming in raises the ceiling gently.
-  // · Collision is greedy by area, so big realms win contested ground and
-  //   crowded minors yield until you zoom. No special cases.
+  // · Names freely overflow small realms (this is a strategy map, not a
+  //   purist atlas — completeness wins). Only a true dot of a realm
+  //   (screen footprint under ~6px) waits for zoom.
+  // · Collision is the ONLY other limiter: greedy by area, so big realms
+  //   win contested ground and crowded minors yield until you zoom.
   if (showRealms && anchors && anchors.list.length) {
     const dbg = [];   // per-realm decision trace → globalThis.__labelDebug (cheap; QA reads it)
     for (const a of anchors.list) {
@@ -144,7 +144,7 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
       if (X < -100 || X > featW + 100 || Y < -50 || Y > featH + 50) { dbg.push({ n: a.name, r: "offscreen" }); continue; }
       // the realm's rough on-screen diameter, in CSS px
       const footCss = (Math.sqrt(a.area) * TR * z * k) / pxScale;
-      if (footCss < 15) { dbg.push({ n: a.name, foot: footCss | 0, r: "speck" }); continue; }
+      if (footCss < 6) { dbg.push({ n: a.name, foot: footCss | 0, r: "speck" }); continue; }
       let fsCss = 4 + footCss * 0.11;                // graded by footprint…
       fsCss = Math.min(fsCss, 13 + (z - 1) * 2.2);   // …under a low world-zoom ceiling
       fsCss = Math.min(Math.max(fsCss, 9.5), 17);
@@ -156,7 +156,6 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
       const em = emblemFor ? emblemFor(a.id) : null;
       const emH = em ? fs * 1.05 : 0, emW = emH * 0.88;
       const totW = w + (em ? emW + px(4) : 0);
-      if (totW / pxScale > Math.max(footCss * 2.4, 60)) { dbg.push({ n: a.name, foot: footCss | 0, w: (totW / pxScale) | 0, r: "overflow" }); continue; }
       if (!collide.place(X - totW / 2 - px(2), Y - fs * 0.75, totW + px(4), fs * 1.5)) { dbg.push({ n: a.name, foot: footCss | 0, r: "collide" }); continue; }
       dbg.push({ n: a.name, foot: footCss | 0, fs: fsCss.toFixed(1), r: "drawn" });
       const tx = X + (em ? (emW + px(4)) / 2 : 0);
