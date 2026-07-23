@@ -27,27 +27,43 @@ Requires Node 20+. The production build is a single self-contained HTML file
 
 ## Using the app
 
-The map is the app. A top bar carries the run controls (play + speed
-steps), the era/year readout, a live ticker of the latest world event,
-the globe toggle, the **New World** dialog, and the menu
-(save/load/export, advanced tuning). Press a number key to switch lens,
-Space to pause, Esc to close panels.
+The map is the app — a warm parchment atlas on a dark "map table"; every
+control panel is quiet dark chrome, every world document is paper (the
+design system and roadmap live in `docs/ui-overhaul-plan.md`). Realm names
+and their generated **heraldry** are drawn on the map itself, sized by power
+and revealed by zoom; settlement names appear as you lean in. Space
+pauses, number keys switch lens, `?` opens the full key map.
 
 - **World** — pick a preset in ⊕ New World, roll a seed, press play.
   - Presets: **Earth (Sim)** (real Earth heightmap + simulated climate; can
     optionally use real NCEP wind data), **Tectonic** (plate simulation from
     scratch), plus continents/archipelago-style noise presets and an **Import**
     mode (Azgaar Full-JSON exports or grayscale heightmap images).
-  - The left rail holds map **lenses** — Terrain (map/atlas), Politics,
-    Peoples, Faiths, Economy (trade/money/resources/cropland) — with
-    overlay toggles beneath (rivers, lakes, plates, layers). Worldgen
-    diagnostics (wind/moisture/temperature/depth/crossing) appear with
-    ?dev in the URL.
-  - The right **World Panel** has five tabs: World (history charts + the
-    scrolling event feed — click an event to jump the camera), Realms (a
-    sortable browser; click through to a realm inspector with throne,
-    faith, temperament, fisc and chronicle), Peoples and Faiths (live
-    registries with lineage), and Inspect (the selected settlement).
+  - The left **lens dock** (icon rail) holds the map lenses — Terrain
+    (map/atlas), Politics (realms/loyalty), Peoples
+    (cultures/population/ancestry), Tongues, Faiths, Economy
+    (trade/money/prices/labour/resources/cropland) — each with a flyout
+    for its sub-lenses. Sub-lenses whose phenomenon does not exist yet
+    (money before the first coin, prices before the first market) sit
+    dark until the world develops them — state-gated, never scheduled.
+    The Layers popover (L) owns every overlay: tints, borders, names,
+    heraldry, provinces, roads, sea lanes, rivers, lakes, plates, ships.
+    Worldgen diagnostics appear with ?dev in the URL.
+  - **Click anything.** A settlement click opens its inspector; a click on
+    open territory selects the whole realm (gold outline + its page in
+    the codex); Esc walks back out (settlement → realm → nothing), and
+    the hover card leads with who/whose before terrain facts.
+  - The right dock is the **Codex** — the atlas's book. Tabs: World (the
+    living, category-filtered event feed + history charts), Realms (a
+    searchable browser with each realm's arms; click through to the
+    realm page — throne, faith, temperament, fisc, settlements,
+    chronicle), Peoples / Faiths / Tongues (live registries with
+    lineage), and Inspect (the selected settlement). Every name is a
+    chip that navigates, and the breadcrumb's ◂ Back retraces any jump,
+    including jumps made by clicking the map.
+  - Epochal moments — a realm falls, a faith schisms, a first-of-its-kind
+    discovery — surface as **toasts** over the map (click to jump the
+    camera); the top-bar bell counts unread feed events.
   - Click a settlement for its full panel: economy (food, money flows, trade
     partners, tech tracks), its people and faith mixtures, and its realm —
     ruler, house, state faith, and the realm's chronicle. The chronicle

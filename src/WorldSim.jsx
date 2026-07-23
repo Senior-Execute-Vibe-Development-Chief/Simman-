@@ -14,9 +14,10 @@ import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD }
 import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./sim/peopleSim/tech.js";
-import { resetEmblems, realmEmblemImg, realmEmblemURL, Emblem } from "./ui/emblems.jsx";
+import { resetEmblems, realmEmblemImg, realmEmblemURL } from "./ui/emblems.jsx";
 import { realmLabelAnchors, drawMapLabels } from "./ui/labels.js";
 import { TopBarBell, ToastHost, HelpOverlay, evMeta, evCatColor, EV_CATS } from "./ui/events.jsx";
+import { LEGENDS, LegendCard } from "./ui/legends.jsx";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
 const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
 // effect-chip colour per channel (food=green, naval=teal, build=tan, war=red, admin=violet, trade=jade, wealth=gold)
@@ -767,6 +768,7 @@ const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm 
 const[dynastyOpen,setDynastyOpen]=useState(false);     // ruling family-tree overlay
 const[lens,setLens]=useState("terrain");const subMemRef=useRef({});
 const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realms|peoples|faiths|inspect
+useEffect(()=>{panelTabRef.current=panelTab;},[panelTab]);
 const[newWorldOpen,setNewWorldOpen]=useState(false);
 const[menuOpen,setMenuOpen]=useState(false);
 const[realmSel,setRealmSel]=useState(-1);   // realm inspected in the Realms tab
@@ -785,6 +787,7 @@ useEffect(()=>{edParamsRef.current=edParams;},[edParams]);
 const selectedSettlementIdRef=useRef(-1);
 const selRealmRef=useRef(-1);   // realmSel mirrored for the draw loop (map highlight + label emphasis)
 useEffect(()=>{selRealmRef.current=realmSel;},[realmSel]);
+const panelTabRef=useRef("world");   // mirrored for nav pushes from canvas handlers
 useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedSettlementId]);
 // ── Layer visibility ────────────────────────────────────────────────
 // All toggles for what gets drawn on the peopleSim view. Tier toggles
@@ -827,6 +830,7 @@ const onLeverResetAll=useCallback(()=>{
 },[pushTune]);
 const[boardMode,setBoardMode]=useState("countries");   // "countries" | "settlements"
 const[boardSort,setBoardSort]=useState("size");        // see SORT_KEYS below
+const[boardQuery,setBoardQuery]=useState("");          // browser search (name filter)
 const layersRef=useRef(layers);
 useEffect(()=>{layersRef.current=layers;},[layers]);
 // Country view: live per-country hue assignment (seeded by the previous solve so
@@ -1024,7 +1028,7 @@ try{
   const sw=new PeopleSimWorker();
   sw.onmessage=(e)=>{
     const d=e.data;
-    if(d.type==='snapshot'){if(DEV)console.log('[snap]',d.step);if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='historyData'){
       const blob=new Blob([d.json],{type:"application/json"});
@@ -3085,6 +3089,9 @@ if(psw){
   // Pick within ~6 tile radius (handles small icons and slop).
   // Sync the ref BEFORE the immediate redraw (the effect that mirrors the
   // state into the ref runs after render, so the halo used to lag one frame).
+  // Map jumps are codex navigation too — push the previous location so Back works.
+  navStackRef.current.push({tab:panelTabRef.current,realm:selRealmRef.current,sett:selectedSettlementIdRef.current});
+  if(navStackRef.current.length>48)navStackRef.current.shift();
   if(best&&bestD2<36){
     selectedSettlementIdRef.current=best.id;
     setSelectedSettlementId(best.id);
@@ -3170,7 +3177,41 @@ const pickLens=(id)=>{
   setViewMode(v);viewRef.current=v;
 };
 const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
-const curLens=LENSES.find(x=>x.id===lens)||LENSES[0];
+
+// ── Codex navigation (plan §7.1): one stack over {tab, realm, settlement} so
+// every jump — tab click, chip click, leaderboard row, map click — is
+// reversible with Back. The stack holds snapshots, not routes.
+const navStackRef=useRef([]);
+const navigate=useCallback((next)=>{
+  navStackRef.current.push({tab:panelTab,realm:realmSel,sett:selectedSettlementId});
+  if(navStackRef.current.length>48)navStackRef.current.shift();
+  const applyRealm=(id)=>{setRealmSel(id);selRealmRef.current=id;
+    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id});};
+  if(next.tab!==undefined)setPanelTab(next.tab);
+  if(next.realm!==undefined)applyRealm(next.realm);
+  if(next.sett!==undefined){setSelectedSettlementId(next.sett);selectedSettlementIdRef.current=next.sett;}
+  if(terRef.current)draw(terRef.current);
+},[panelTab,realmSel,selectedSettlementId,draw]);
+const navBack=useCallback(()=>{
+  const prev=navStackRef.current.pop();if(!prev)return;
+  setPanelTab(prev.tab);
+  setRealmSel(prev.realm);selRealmRef.current=prev.realm;
+  if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:prev.realm});
+  setSelectedSettlementId(prev.sett);selectedSettlementIdRef.current=prev.sett;
+  if(terRef.current)draw(terRef.current);
+},[draw]);
+// A clickable entity chip: swatch/emblem + name → navigates the codex.
+const Chip=({hue,img,onClick,cap=true,children,title})=>(
+  <button className="au-chip" onClick={onClick} title={title||"Open"}>
+    {img?<img src={img} alt="" style={{height:13,flexShrink:0}}/>:hue!=null?<span className="au-chip-sw" style={{background:`hsl(${hue|0},58%,50%)`}}/>:null}
+    <span style={cap?{textTransform:"capitalize"}:undefined}>{children}</span>
+  </button>
+);
+const emblemURLFor=(cid)=>{
+  const psw=peopleRef.current;if(!psw||!psw.countries)return null;
+  const c=psw.countries.get(cid);if(!c)return null;
+  return realmEmblemURL(psw,c,terRef.current,worldRef.current?worldRef.current.seed:0);
+};
 // Keyboard: space = play/pause, 1-9 = lenses, F fit, G globe, L layers,
 // ? help; Esc steps back OUT — overlays first, then selection (settlement →
 // its realm → nothing). (Re-subscribed each render for fresh closures — cheap.)
@@ -3247,20 +3288,25 @@ const renderRealmDetail=()=>{
   const capCul=c.capital&&psw.cultures?psw.cultures.get(c.capital.cultureId):null;
   const pers=c.personality;
   const members=(c.members||[]).slice().sort((a,b)=>(b.people||0)-(a.people||0));
+  const armsURL=realmEmblemURL(psw,c,terRef.current,worldRef.current?worldRef.current.seed:0);
   return(
-    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
-      <button onClick={back} className="au-btn au-flat" style={{fontSize:10,marginBottom:6}}>← realms</button>
-      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:2}}>
-        <span style={{width:12,height:12,borderRadius:2,background:`hsl(${hue},60%,50%)`,flexShrink:0}}/>
-        <span className="au-pico-title" style={{fontSize:15}}>{c.name||(c.capital?c.capital.name:"realm "+c.id)}</span>
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:12}}>
+      <button onClick={back} className="au-btn au-flat" style={{fontSize:11,marginBottom:6}}>← all realms</button>
+      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:2}}>
+        {armsURL
+          ?<img src={armsURL} alt="" title="The realm's arms" style={{height:34,flexShrink:0,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
+          :<span style={{width:12,height:12,borderRadius:2,background:`hsl(${hue},60%,50%)`,flexShrink:0}}/>}
+        <span className="au-pico-title" style={{fontSize:16,textTransform:"capitalize"}}>{c.name||(c.capital?c.capital.name:"realm "+c.id)}</span>
         <div style={{flex:1}}/>
         {c.ruler&&<button onClick={()=>setDynastyOpen(true)} title="The ruling family tree"
-          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>🌳</button>}
+          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:15}}>🌳</button>}
         <button onClick={()=>setChronicleOpen(true)} title="The realm's chronicle"
-          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>📜</button>
+          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:15}}>📜</button>
       </div>
-      <div className="au-fade" style={{fontSize:10,marginBottom:8}}>
-        {c.members.length} settlements · {fmtPeople(pop)} souls{capCul?` · ${capCul.name} people`:""}{pers?` · ${pers.label}`:""}
+      <div className="au-fade" style={{fontSize:11,marginBottom:8}}>
+        {c.members.length} settlements · {fmtPeople(pop)} souls
+        {capCul?<> · <Chip hue={capCul.hue} onClick={()=>navigate({tab:"peoples"})} title="Open the Peoples registry">{capCul.name}</Chip> people</>:null}
+        {pers?` · ${pers.label}`:""}
       </div>
       {c.ruler&&<div onClick={()=>setDynastyOpen(true)} title="Open the ruling family tree"
         style={{fontSize:11,marginBottom:6,cursor:"pointer"}}>
@@ -3270,9 +3316,9 @@ const renderRealmDetail=()=>{
         {c.ruler.gov&&c.ruler.gov!=="monarchy"&&<span className="au-fade"> · {c.ruler.gov}</span>}
         {c.ruler.trait&&<span className="au-fade" style={{fontStyle:"italic"}}> · {c.ruler.trait}</span>}
       </div>}
-      {faith&&<div style={{fontSize:11,marginBottom:6}}>
-        <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:`hsl(${faith.hue|0},55%,50%)`,marginRight:5}}/>
-        <span className="au-fade">state faith </span>{faith.name}
+      {faith&&<div style={{fontSize:11.5,marginBottom:6}}>
+        <span className="au-fade">state faith </span>
+        <Chip hue={faith.hue} cap={false} onClick={()=>navigate({tab:"faiths"})} title="Open the Faiths registry">{faith.name}</Chip>
       </div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10,marginBottom:8}}>
         <span className="au-fade">Control</span><span>{(c._loadTotal||0).toFixed(1)}/{(c._capacity||0).toFixed(1)}{(c._loadTotal||0)>(c._capacity||0)?" · over-extended":""}</span>
@@ -3297,17 +3343,18 @@ const renderRealmDetail=()=>{
           </div>
         ))}
       </div>}
-      <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:2}}>Settlements</div>
-      {members.slice(0,20).map(m=>(
-        <div key={m.id} onClick={()=>setSelectedSettlementId(m.id)}
-          style={{display:"flex",gap:6,fontSize:10,padding:"2px 0",cursor:"pointer",borderBottom:"1px solid rgba(58,38,20,0.07)"}}>
-          <span style={{textTransform:"capitalize"}}>{m.name}</span>
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:2}}>Settlements — {members.length}</div>
+      {members.map(m=>(
+        <div key={m.id} onClick={()=>navigate({tab:"inspect",sett:m.id})}
+          title="Inspect this settlement"
+          style={{display:"flex",gap:6,fontSize:11,padding:"2.5px 0",cursor:"pointer",borderBottom:"1px solid rgba(58,38,20,0.07)"}}>
+          <span style={{textTransform:"capitalize"}}>{c.capitalId===m.id?"★ ":""}{m.name}</span>
           {c.capitalId===m.id&&<span className="au-fade">· capital</span>}
+          {(m.tier|0)>=3&&<span className="au-fade">· metropolis</span>}
           <div style={{flex:1}}/>
-          <span className="au-fade">{fmtPeople(m.people||0)}</span>
+          <span className="au-fade au-num">{fmtPeople(m.people||0)}</span>
         </div>
       ))}
-      {members.length>20&&<div className="au-fade" style={{fontSize:9,marginTop:2}}>… and {members.length-20} more</div>}
     </div>
   );
 };
@@ -3547,44 +3594,51 @@ const renderInspect=()=>{
       <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
         {tierName} · {era} · {waterLabel}
       </div>
-      {/* ── People: the culture mixture living here ── */}
+      {/* ── The three identity layers, each a row of chips into its registry:
+            who they ARE (people), what they SPEAK, what they BELIEVE — three
+            separate, differently-paced layers, cross-linked (plan §7.3). ── */}
       {(()=>{
         const mix=s.culMix&&s.culMix.length?s.culMix:(s.cultureId>=0?[[s.cultureId,1]]:null);
         if(!mix||!psw.cultures)return null;
         const parts=mix.filter(([,sh])=>sh>0.02).map(([cid,sh])=>{
           const cul=psw.cultures.get(cid);
-          return cul?`${cul.name}${sh<0.98?` ${Math.round(sh*100)}%`:""}`:null;
+          return cul?{key:cid,name:cul.name,hue:cul.hue,sh}:null;
         }).filter(Boolean);
         if(!parts.length)return null;
-        return <div style={{fontSize:10,marginBottom:6}}>
-          <span className="au-fade">people </span>{parts.join(" · ")}
+        return <div style={{fontSize:11,marginBottom:5}}>
+          <span className="au-fade">people </span>
+          {parts.map((p,i)=><Fragment key={p.key}>{i>0&&<span className="au-fade"> · </span>}
+            <Chip hue={p.hue} cap={false} onClick={()=>navigate({tab:"peoples"})} title="Open the Peoples registry">{p.name}{p.sh<0.98?` ${Math.round(p.sh*100)}%`:""}</Chip></Fragment>)}
         </div>;
       })()}
-      {/* ── Spoken language (a SEPARATE layer from the people: a conquered
-            province speaks its ruler's tongue while staying its own people) ── */}
       {(()=>{
         const mix=s.langMix;
         if(!mix||!mix.length||!psw.languages)return null;
         const parts=mix.filter(([,sh])=>sh>0.03).map(([lid,sh])=>{
           const lg=psw.languages.get(lid);
-          return lg?`${lg.name||"tongue"}${sh<0.97?` ${Math.round(sh*100)}%`:""}`:null;
+          if(!lg)return null;
+          const h=(lg.hue!=null?lg.hue:((lid*2654435761)>>>0)%360)|0;
+          return {key:lid,name:lg.name||"tongue",hue:h,sh};
         }).filter(Boolean);
         if(!parts.length)return null;
-        return <div style={{fontSize:10,marginBottom:6}}>
-          <span className="au-fade">speech </span>{parts.join(" · ")}
+        return <div style={{fontSize:11,marginBottom:5}}>
+          <span className="au-fade">speech </span>
+          {parts.map((p,i)=><Fragment key={p.key}>{i>0&&<span className="au-fade"> · </span>}
+            <Chip hue={p.hue} cap={false} onClick={()=>navigate({tab:"tongues"})} title="Open the Tongues registry">{p.name}{p.sh<0.97?` ${Math.round(p.sh*100)}%`:""}</Chip></Fragment>)}
         </div>;
       })()}
-      {/* ── Faith mixture ── */}
       {(()=>{
         const mix=s.faithMix;
         if(!mix||!mix.length||!psw.faiths)return null;
         const parts=mix.filter(([,sh])=>sh>0.03).map(([fid,sh])=>{
           const f=psw.faiths.get(fid);
-          return f?`${f.name}${f.kind==="organized"?"":" (folk)"}${sh<0.97?` ${Math.round(sh*100)}%`:""}`:null;
+          return f?{key:fid,name:`${f.name}${f.kind==="organized"?"":" (folk)"}`,hue:f.hue,sh}:null;
         }).filter(Boolean);
         if(!parts.length)return null;
-        return <div style={{fontSize:10,marginBottom:6}}>
-          <span className="au-fade">faith </span>{parts.join(" · ")}
+        return <div style={{fontSize:11,marginBottom:5}}>
+          <span className="au-fade">faith </span>
+          {parts.map((p,i)=><Fragment key={p.key}>{i>0&&<span className="au-fade"> · </span>}
+            <Chip hue={p.hue} cap={false} onClick={()=>navigate({tab:"faiths"})} title="Open the Faiths registry">{p.name}{p.sh<0.97?` ${Math.round(p.sh*100)}%`:""}</Chip></Fragment>)}
         </div>;
       })()}
 
@@ -3619,11 +3673,17 @@ const renderInspect=()=>{
           label=`${role} · answers to ${liege?liege.name:(cap?cap.name:"?")}`;
           if(liege&&cap&&liege.id!==cap.id)label+=` · realm of ${cap.name}`;
         }
+        const arms=ctry?emblemURLFor(ctry.id):null;
         return(
-          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0,
-              backgroundImage:overlord>=0&&!vassal?"repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)":undefined}}/>
-            <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
+          <div onClick={()=>{if(ctry)navigate({tab:"realms",realm:ctry.id});}}
+            title={ctry?"Open the realm":undefined}
+            style={{display:"flex",alignItems:"center",gap:6,fontSize:11,marginBottom:6,cursor:ctry?"pointer":"default"}}>
+            {arms
+              ?<img src={arms} alt="" style={{height:16,flexShrink:0,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.25))"}}/>
+              :<span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0,
+                backgroundImage:overlord>=0&&!vassal?"repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)":undefined}}/>}
+            <span className="au-fade" style={{textTransform:"capitalize",textDecoration:ctry?"underline":"none",
+              textDecorationColor:"rgba(160,120,50,0.4)",textUnderlineOffset:2}}>{label}</span>
           </div>
         );
       })()}
@@ -4100,8 +4160,11 @@ const renderBoard=()=>{
   const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
   const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
   const [sortFn,sortLabel,sortFmt]=sorts[sortKey];
+  const q=boardQuery.trim().toLowerCase();
+  const nameOf=(r)=>boardMode==="settlements"?(r.name||""):(r.name||(r.capital&&r.capital.name)||"");
   const rows=(boardMode==="settlements"?setts:countries).slice()
-    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
+    .filter(r=>!q||nameOf(r).toLowerCase().includes(q))
+    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,q?200:30);
 
   const fmt=v=>{
     if(!isFinite(v))return "-";
@@ -4115,15 +4178,20 @@ const renderBoard=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"8px 0"}}>
       <div style={{display:"flex",alignItems:"baseline",marginBottom:6,padding:"0 12px"}}>
-        <span className="au-heading au-sc" style={{fontSize:12}}>Leaderboard</span>
+        <span className="au-heading au-sc" style={{fontSize:12.5}}>The realms of the world</span>
         <div style={{flex:1}} />
       </div>
       <div style={{display:"flex",gap:4,padding:"0 12px 6px"}}>
-        {["countries","settlements"].map(m=>(
+        {[["countries","Realms"],["settlements","Settlements"]].map(([m,l])=>(
           <button key={m} onClick={()=>setBoardMode(m)}
             className={"au-rail-tab"+(boardMode===m?" au-active":"")}
-            style={{flex:1,fontSize:11,textTransform:"capitalize"}}>{m}</button>
+            style={{flex:1,fontSize:11}}>{l}</button>
         ))}
+      </div>
+      <div style={{padding:"0 12px 6px"}}>
+        <input type="search" value={boardQuery} onChange={e=>setBoardQuery(e.target.value)}
+          placeholder="search by name…" style={{width:"100%",fontSize:11.5,padding:"3px 8px",
+            background:"rgba(255,252,240,0.5)",border:"1px solid rgba(58,38,20,0.3)",color:"var(--au-ink)",borderRadius:3}}/>
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
         {Object.entries(sorts).map(([k,[,label]])=>(
@@ -4147,7 +4215,7 @@ const renderBoard=()=>{
               const hue=((r.countryId*61)%360+360)%360;
               return(
                 <tr key={r.id}
-                  onClick={()=>setSelectedSettlementId(r.id)}
+                  onClick={()=>navigate({tab:"inspect",sett:r.id})}
                   style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
                   <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
                   <td style={{padding:"3px 4px"}}>
@@ -4156,23 +4224,26 @@ const renderBoard=()=>{
                     <span style={{textTransform:"capitalize"}}>{r.name}</span>
                     {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
                   </td>
-                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
+                  <td className="au-num" style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
                 </tr>
               );
             }
             const cap=r.capital||(r.members&&r.members[0]);
+            const arms=emblemURLFor(r.id);
             const hue=((r.id*61)%360+360)%360;
             return(
               <tr key={r.id}
-                onClick={()=>{setRealmSel(r.id);if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:r.id});}}
+                onClick={()=>navigate({tab:"realms",realm:r.id})}
                 style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
                 <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
                 <td style={{padding:"3px 4px"}}>
-                  <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
-                    background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
-                  <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
+                  {arms
+                    ?<img src={arms} alt="" style={{height:15,verticalAlign:"middle",marginRight:6,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.25))"}}/>
+                    :<span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                      background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>}
+                  <span style={{textTransform:"capitalize"}}>{r.name||(cap?cap.name:"realm-"+r.id)}</span>
                 </td>
-                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
+                <td className="au-num" style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
               </tr>
             );
           })}
@@ -4510,107 +4581,19 @@ return(
 <span className="au-fade">{Math.round(depthCeil*100)}%</span>
 </div>}
 
-{viewMode==="money"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:230}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Money flow</div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
-    <span style={{width:12,height:12,borderRadius:"50%",background:"radial-gradient(rgba(255,210,80,0.9),rgba(255,210,80,0))",flexShrink:0}}/>
-    <span>Mining — money minted into the system</span></div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
-    <span style={{width:9,height:9,borderRadius:"50%",background:"#ffcf46",flexShrink:0}}/>
-    <span>Gaining wealth</span>
-    <span style={{width:9,height:9,borderRadius:"50%",background:"#e0563b",marginLeft:8,flexShrink:0}}/>
-    <span>Losing</span></div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
-    <span style={{color:"#ffcd46"}}>● ● ●</span>
-    <span>Coins flow from buyer to seller</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    Dot density on each link is its share of THIS tick's total activity, so
-    the busiest links pop and quiet ones go silent regardless of the world's
-    absolute money supply. The world starts on barter (no coins shown).
-  </div>
-</div>}
-
-{viewMode==="loyalty"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:250}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Loyalty of the land</div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:16,height:11,background:"hsl(8,64%,38%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(74,55%,43%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(140,46%,47%)"}}/>
-    </span>
-    <span>detached → attached</span></div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{width:32,height:11,flexShrink:0,background:
-      "repeating-linear-gradient(90deg,hsl(200,62%,46%) 0 3px,hsl(30,60%,42%) 3px 6px)"}}/>
-    <span>ground that remembers a fallen nation</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    How far the people of each tile have accepted their current ruler.
-    Trust builds over generations — slower under a foreign ruler, frozen by
-    grievance — and conquest detaches it. Hatched ground still yearns for the
-    nation whose colour it wears; a revolt there restores that nation.
-  </div>
-</div>}
-
-{viewMode==="population"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:240}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>People on the land</div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:11,height:11,background:"rgba(34,42,64,0.4)"}}/>
-      <span style={{width:11,height:11,background:"rgb(40,60,140)"}}/>
-      <span style={{width:11,height:11,background:"rgb(50,170,130)"}}/>
-      <span style={{width:11,height:11,background:"rgb(200,190,85)"}}/>
-      <span style={{width:11,height:11,background:"rgb(245,235,160)"}}/>
-    </span>
-    <span>scatter → farmed → dense</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    LIVE population — every person the sim carries, where they live. The
-    whole world holds a thin subsistence scatter (as it truly did by 3000 BC);
-    that haze stays faint, and the ramp belongs to where people CONCENTRATE —
-    the farmed countryside and the great basins. National power, manpower and
-    migration all read this field{peopleRef.current&&peopleRef.current._popMax?` · densest tile ≈ ${fmtPeople(peopleRef.current._popMax)} people`:""}.
-  </div>
-</div>}
-
-{viewMode==="prices"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:250}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Local market prices</div>
-  <select value={priceGood} onChange={(e)=>setPriceGood(+e.target.value)}
-    style={{width:"100%",marginBottom:5,fontSize:11,padding:"2px 4px"}}>
-    {GOODS.map((g,i)=><option key={g} value={i}>{g}</option>)}
-  </select>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:16,height:11,background:"hsl(120,55%,38%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(45,30%,52%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(4,85%,36%)"}}/>
-    </span>
-    <span>glut ×0.25 → ×1 → scarce ×4</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    Each catchment tinted by its LOCAL price of the chosen good — the spatial
-    gradient the goods trade flows down. Green basins export it, red fronts
-    are shortages bidding for imports; grey has no market data yet.
-  </div>
-</div>}
-
-{viewMode==="society"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:240}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Coerced labour</div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:16,height:11,background:"#5e626b"}}/>
-      <span style={{width:16,height:11,background:"hsl(17,69%,42%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(4,88%,34%)"}}/>
-    </span>
-    <span>free → bound</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    How coerced a settlement's labour is — slaves as a share of its people,
-    serfdom, and cash-crop plantation land combined. The deep-red bands are
-    the slave coasts, plantation belts and serf peripheries; grey land is free.
-  </div>
-</div>}
+{/* ─── Unified legend (plan §6.3): every thematic lens declares its key as
+     data; one card renders them all. Terrain/atlas/resources keep the
+     data-driven Key card above; Depth keeps its dev controls. ─── */}
+{LEGENDS[viewMode]&&<LegendCard spec={LEGENDS[viewMode]} open={keyOpen} onToggle={()=>setKeyOpen(v=>!v)}
+  controls={viewMode==="prices"?(
+    <select value={priceGood} onChange={(e)=>setPriceGood(+e.target.value)}
+      style={{width:"100%",marginBottom:5,fontSize:11,padding:"2px 4px"}}>
+      {GOODS.map((g,i)=><option key={g} value={i}>{g}</option>)}
+    </select>):null}>
+  {viewMode==="population"&&peopleRef.current&&peopleRef.current._popMax
+    ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>densest tile ≈ {fmtPeople(peopleRef.current._popMax)} people</div>
+    :null}
+</LegendCard>}
 
 {/* ─── Epochal-event toasts (plan §8) ─── */}
 <ToastHost feedRef={peopleRef} verbosity={toastVerbosity} onJump={jumpTo} stepNow={liveStep}/>
@@ -4619,22 +4602,43 @@ return(
 
 </div>{/* end center column */}
 
-{/* ══════════ WORLD PANEL ══════════ */}
-<aside className="au-parchment" style={{width:302,minWidth:302,margin:"6px 6px 6px 3px",
+{/* ══════════ THE CODEX (right dock — the atlas's book; plan §7) ══════════ */}
+<aside className="au-parchment" style={{width:312,minWidth:312,margin:"6px 6px 6px 3px",
   display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain"}}>
   <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(58,38,20,0.28)"}}>
     {[["world","World"],["realms","Realms"],["peoples","Peoples"],["faiths","Faiths"],["tongues","Tongues"],["inspect","Inspect"]].map(([k,l])=>(
-      <button key={k} onClick={()=>setPanelTab(k)}
+      <button key={k} onClick={()=>navigate({tab:k})}
         className={"au-tab"+(panelTab===k?" au-active":"")} style={{flex:1,padding:"7px 0"}}>{l}</button>
     ))}
   </div>
+  {/* breadcrumb + back — every jump in the codex is reversible */}
+  {(()=>{
+    const psw=peopleRef.current;
+    const crumbs=["Codex"];
+    if(panelTab==="world")crumbs.push("World");
+    else if(panelTab==="realms"){crumbs.push("Realms");
+      const c=realmSel>=0&&psw&&psw.countries?psw.countries.get(realmSel):null;
+      if(realmSel>=0)crumbs.push(c?(c.name||"realm "+realmSel):"…");}
+    else if(panelTab==="inspect"){crumbs.push("Inspect");
+      const s=selectedSettlementId>=0&&psw&&psw.settlements?psw.settlements.find(x=>x&&x.id===selectedSettlementId):null;
+      if(s)crumbs.push(s.name);}
+    else crumbs.push(panelTab.charAt(0).toUpperCase()+panelTab.slice(1));
+    return(
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",flexShrink:0,
+        borderBottom:"1px solid rgba(58,38,20,0.14)",fontSize:10.5}}>
+        <button onClick={navBack} className="au-btn au-flat" title="Back"
+          style={{padding:"0 6px",fontSize:12,opacity:navStackRef.current.length?1:0.35}}>◂</button>
+        <span className="au-fade" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textTransform:"capitalize"}}>
+          {crumbs.join(" ▸ ")}</span>
+      </div>);
+  })()}
   {panelTab==="world"&&renderCharts()}
   {panelTab==="realms"&&(realmSel>=0?renderRealmDetail():renderBoard())}
   {panelTab==="peoples"&&renderPeoples()}
   {panelTab==="faiths"&&renderFaiths()}
   {panelTab==="tongues"&&renderLanguages()}
   {panelTab==="inspect"&&(renderInspect()||
-    <div className="au-fade" style={{padding:16,fontSize:11,fontStyle:"italic"}}>Click a settlement on the map to inspect it.</div>)}
+    <div className="au-fade" style={{padding:16,fontSize:12,fontStyle:"italic"}}>Click a settlement on the map to inspect it — or click open territory to select its realm.</div>)}
 </aside>
 
 </div>{/* main row */}
