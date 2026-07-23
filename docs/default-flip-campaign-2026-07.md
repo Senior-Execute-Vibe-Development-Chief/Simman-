@@ -113,6 +113,28 @@ Lever count: 295 → **284**. Dormant feature switches: 38 → **1**.
 The Levers panel still carries every flipped lever as a kill-switch (set 0
 to A/B the legacy behaviour); each desc is stamped `FLIPPED ON 2026-07`.
 
+## Post-campaign arcs (same session)
+
+- **Pilgrimage throughput** (`PILGRIM_SPEND=0.85`, `PILGRIM_RANGE=60`, both
+  flipped after A/B + gates): the watch-list see-hoard pathology fixed at
+  the mechanism — the see SPENDS (temple works, provisioning — conserving)
+  and offerings decay with the journey. 4242 @12k: top-see 28.3 % →
+  sees-combined 12.2 % of world wealth.
+- **UI**: the Economy ▸ Prices lens (catchments painted by the local price
+  of a selected good — the trade gradient made visible) and honest trade
+  labels (measured net-exports replace the barter-guess fiction).
+- **RES_INV_RIVER dossier refreshed** (still the one dormant lever): 960
+  A/B @12k — political map ~unchanged (43 → 40 realms) but population
+  +19 % (the documented water-fed capacity inflation). Its own 1920
+  windowed gate now has a road: `tools/battery_resumable.mjs` drives
+  `earthFullRecord`'s RESUME checkpoints in chunks that survive container
+  restarts (state under `bench/`). Verdict unchanged: dormant until that
+  gate runs green.
+- **Deferred honestly**: proper landings of the two removed prototypes
+  (TILE_IDENTITY Stage 2 with persistence + a passing invariant; live
+  borders with sane consolidation) are multi-session arcs whose specs
+  (settlement-ontology, field-polity) remain the blueprints.
+
 ## Standing watch list (carried from the pre-merge review)
 
 The flip made the goods economy the default world, so the review's watch
