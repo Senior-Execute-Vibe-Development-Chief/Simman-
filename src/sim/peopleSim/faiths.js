@@ -25,7 +25,7 @@ import { getCulture, languageOf, dominantCulture, familyOf, folkAnchorOf } from 
 import { faithShapePersonality } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { langWord } from "../language.js";
-import { recordIn, recordOut, IN_PILGRIM, OUT_PILGRIM } from "./money.js";
+import { recordIn, recordOut, IN_PILGRIM, OUT_PILGRIM, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
 import { getWealthReserve } from "./settlement.js";
 
 // ── Timing: an AXIAL AGE, then bounded branching (the real pattern) ──
@@ -659,6 +659,19 @@ export function updatePilgrimage(world) {
   const byId = world._byId;
   if (!byId || !world.faiths || !world.faiths.size) return;
   const pot = new Map();   // holy-city id → offerings collected this pass
+  // Distance decay (T.PILGRIM_RANGE, reference-tiles): pilgrimage COSTS the
+  // journey — most of a far pilgrim's outlay was consumed on the road, and the
+  // poor never set out at all, so what ARRIVES at the see falls with distance
+  // (arrive = 1/(1 + dist/RANGE)). A see's devotional catchment is therefore
+  // regional-strong with a world-faith sliver, instead of a flat world tithe.
+  const rn = rNormPop(world), tw = world.tw;
+  const arriveF = (s, holy) => {
+    if (!(T.PILGRIM_RANGE > 0)) return 1;
+    let dx = Math.abs((s.pos.x | 0) - (holy.pos.x | 0)); if (dx > tw / 2) dx = tw - dx;
+    const dy = (s.pos.y | 0) - (holy.pos.y | 0);
+    const dist = Math.sqrt(dx * dx + dy * dy) / rn;   // reference-tile units (grid-invariant)
+    return 1 / (1 + dist / T.PILGRIM_RANGE);
+  };
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s.faithMix || !s.faithMix.length) continue;
     const spendable = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
@@ -670,7 +683,7 @@ export function updatePilgrimage(world) {
       if (origin < 0 || origin === s.id) continue;          // no see, or this IS the see
       const holy = byId.get(origin);
       if (!holy || holy.mode !== "settled") continue;
-      const give = spendable * T.PILGRIM_W * sh;            // offering ∝ devotion (faith share)
+      const give = spendable * T.PILGRIM_W * sh * arriveF(s, holy);   // offering ∝ devotion, decayed by the road
       if (give <= 0) continue;
       pot.set(origin, (pot.get(origin) || 0) + give);
       spent += give;
@@ -679,6 +692,30 @@ export function updatePilgrimage(world) {
   }
   for (const [holyId, coin] of pot) {
     const holy = byId.get(holyId);
-    if (holy) { holy.wealth = (holy.wealth || 0) + coin; recordIn(holy, IN_PILGRIM, coin); }
+    if (!holy) continue;
+    holy.wealth = (holy.wealth || 0) + coin; recordIn(holy, IN_PILGRIM, coin);
+    // The see SPENDS (T.PILGRIM_SPEND): a holy city was a THROUGHPUT hub, not
+    // a hoard — offerings funded temple-building, clergy, alms, festivals and
+    // the provisioning of the pilgrim traffic itself (the hajj economy, Rome's
+    // basilica works). The devotional income recirculates to the see's LIVE
+    // partners (builders and provisioners; the construction pass's conserving
+    // pattern — no live partner, nothing to buy), and only the hoard share
+    // stays. This is the mechanism that bounds see wealth — a stock kept in
+    // check by its own spending, never a cap: the see stays the richest kind
+    // of city by INCOME (the archetype), without becoming the world's vault.
+    if (T.PILGRIM_SPEND > 0 && holy._tradeReach && holy._tradeReach.size > 0) {
+      const recips = [];
+      for (const pid of holy._tradeReach.keys()) {
+        const p = byId.get(pid);
+        if (p && p.mode === "settled") recips.push(p);
+      }
+      if (recips.length > 0) {
+        const spend = coin * T.PILGRIM_SPEND;
+        holy.wealth -= spend;
+        recordOut(holy, OUT_MATERIALS, spend);   // temple works & provisioning — the construction channel
+        const share = spend / recips.length;
+        for (const p of recips) { p.wealth = (p.wealth || 0) + share; recordIn(p, IN_MATERIALS, share); }
+      }
+    }
   }
 }
