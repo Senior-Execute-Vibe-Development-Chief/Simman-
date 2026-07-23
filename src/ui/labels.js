@@ -128,20 +128,27 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // ── Realm names, sized like an atlas: by the realm's own FOOTPRINT ON
-  // SCREEN, never relative to the biggest empire. A name that will not fit
-  // across its realm is simply not drawn at this zoom (zoom in and it
-  // appears) — with a fits-anyway pass for the great powers so a world of
-  // giants is always named. Greedy by area so big realms win contested ground.
+  // ── Realm names, the way a real map sets them ──────────────────────────
+  // · EVERY realm that is meaningfully visible on screen gets a label — a
+  //   name may overflow a small realm (atlases do this constantly); only a
+  //   realm too small to see, or a hopeless overflow, waits for zoom.
+  // · Type sizes live in a TIGHT small band graded by the realm's own
+  //   on-screen footprint — a continental empire reads a step larger than a
+  //   duchy, never billboard-sized. Zooming in raises the ceiling gently.
+  // · Collision is greedy by area, so big realms win contested ground and
+  //   crowded minors yield until you zoom. No special cases.
   if (showRealms && anchors && anchors.list.length) {
-    const biggest = anchors.list[0] ? anchors.list[0].area : 1;
+    const dbg = [];   // per-realm decision trace → globalThis.__labelDebug (cheap; QA reads it)
     for (const a of anchors.list) {
       const X = mapX(a.x), Y = mapY(a.y);
-      if (X < -100 || X > featW + 100 || Y < -50 || Y > featH + 50) continue;
-      // footprint: the realm's rough on-screen diameter (canvas px)
-      const foot = Math.sqrt(a.area) * TR * z * k;
-      // type size scales with the footprint, clamped to a readable band
-      const fs = Math.max(px(10.5), Math.min(px(18), foot * 0.16));
+      if (X < -100 || X > featW + 100 || Y < -50 || Y > featH + 50) { dbg.push({ n: a.name, r: "offscreen" }); continue; }
+      // the realm's rough on-screen diameter, in CSS px
+      const footCss = (Math.sqrt(a.area) * TR * z * k) / pxScale;
+      if (footCss < 15) { dbg.push({ n: a.name, foot: footCss | 0, r: "speck" }); continue; }
+      let fsCss = 4 + footCss * 0.11;                // graded by footprint…
+      fsCss = Math.min(fsCss, 13 + (z - 1) * 2.2);   // …under a low world-zoom ceiling
+      fsCss = Math.min(Math.max(fsCss, 9.5), 17);
+      const fs = px(fsCss);
       const sel = a.id === selRealm;
       ctx.font = `${sel ? 700 : 600} ${fs}px Cinzel, Georgia, serif`;
       const name = a.name.toUpperCase();
@@ -149,15 +156,14 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
       const em = emblemFor ? emblemFor(a.id) : null;
       const emH = em ? fs * 1.05 : 0, emW = emH * 0.88;
       const totW = w + (em ? emW + px(4) : 0);
-      // fit gate: the label must lie across its own territory — except a
-      // great power (≥30% of the biggest realm), which is always named.
-      if (totW > foot * 1.25 && !(a.area >= biggest * 0.3)) continue;
-      if (!collide.place(X - totW / 2 - px(2), Y - fs * 0.75, totW + px(4), fs * 1.5)) continue;
+      if (totW / pxScale > Math.max(footCss * 2.4, 60)) { dbg.push({ n: a.name, foot: footCss | 0, w: (totW / pxScale) | 0, r: "overflow" }); continue; }
+      if (!collide.place(X - totW / 2 - px(2), Y - fs * 0.75, totW + px(4), fs * 1.5)) { dbg.push({ n: a.name, foot: footCss | 0, r: "collide" }); continue; }
+      dbg.push({ n: a.name, foot: footCss | 0, fs: fsCss.toFixed(1), r: "drawn" });
       const tx = X + (em ? (emW + px(4)) / 2 : 0);
       // pale halo so the name reads on any tint, then ink
       ctx.lineJoin = "round";
-      ctx.strokeStyle = sel ? "rgba(255,238,180,0.95)" : "rgba(236,222,186,0.80)";
-      ctx.lineWidth = Math.max(2, fs * 0.15);
+      ctx.strokeStyle = sel ? "rgba(255,238,180,0.95)" : "rgba(236,222,186,0.78)";
+      ctx.lineWidth = Math.max(1.8, fs * 0.12);
       ctx.strokeText(name, tx, Y);
       ctx.fillStyle = sel ? "#1d1206" : "rgba(43,26,10,0.92)";
       ctx.fillText(name, tx, Y);
@@ -165,6 +171,7 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
         ctx.drawImage(em, tx - w / 2 - emW - px(4), Y - emH / 2, emW, emH);
       }
     }
+    globalThis.__labelDebug = dbg;
   }
 
   // ── Settlement names: tier-gated by zoom; small caps under the icon.
