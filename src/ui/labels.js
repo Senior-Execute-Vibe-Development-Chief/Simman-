@@ -157,6 +157,9 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
       if (foot < 9) { dbg.push({ n: a.name, foot: foot | 0, r: "speck" }); continue; }
       let fs = (13 + Math.min(frac, 0.28) * 34) * (1 + (z - 1) * 0.18);
       fs = Math.min(Math.max(fs, 13), 30);
+      // physical floor (small displays): keep names legible; collision below
+      // thins the crowd, and zoom restores the full graded set.
+      if (opts.minFs) fs = Math.max(fs, opts.minFs);
       const sel = a.id === selRealm;
       ctx.font = `${sel ? 700 : 600} ${fs}px Cinzel, Georgia, serif`;
       const name = a.name.toUpperCase();
@@ -199,7 +202,8 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
     }
     rows.sort((a, b) => b.pri - a.pri);
     for (const { s, X, Y } of rows) {
-      const fs = s.tier >= 3 ? 19 : s.tier >= 2 ? 17.5 : 16;
+      let fs = s.tier >= 3 ? 19 : s.tier >= 2 ? 17.5 : 16;
+      if (opts.minFs) fs = Math.max(fs, opts.minFs);
       ctx.font = `500 ${fs}px "Alegreya Sans", "Segoe UI", sans-serif`;
       const name = s.name.charAt(0).toUpperCase() + s.name.slice(1);
       const w = ctx.measureText(name).width;

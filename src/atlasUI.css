@@ -54,6 +54,10 @@
   --z-toasts: 50; --z-documents: 60; --z-system: 70;
 }
 
+/* App-style document lockdown: the map owns all panning. Without this, iOS
+   Safari rubber-bands and side-scrolls the whole page when the codex drawer
+   slides or a drag leaves the canvas. */
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 body { margin: 0; background: var(--au-table-dark); }
 
 .au-root {
@@ -356,6 +360,17 @@ body { margin: 0; background: var(--au-table-dark); }
 @media (prefers-reduced-motion: reduce) {
   .au-toast { animation: none; }
   .au-root * { transition-duration: 0.01ms !important; }
+}
+
+/* ── iPhone mode (≤760px): the app stays the same machine, laid out for a
+   hand. The codex is a slide-over (WorldSim renders it fixed); here the
+   chrome tightens and touch affordances land. ── */
+@media (max-width: 760px) {
+  .au-root { -webkit-tap-highlight-color: transparent; }
+  .au-toast { max-width: 76vw; }
+  .au-dock-btn { padding: 9px 0 7px; }          /* bigger touch targets */
+  .au-dock-btn .au-dock-lbl { display: none; }  /* icons carry the rail */
+  .au-pico { display: none; }                   /* no hover on touch */
 }
 
 /* ── Feed category filter chips ── */

@@ -329,6 +329,20 @@ const[importStatus,setImportStatus]=useState(null);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
 const[showTuning,setShowTuning]=useState(false);
+// ── iPhone mode: below 760px the codex becomes a slide-over drawer, the top
+// bar sheds its dense readouts, the legend starts collapsed, and map labels
+// get a physical floor. Pure display adaptation — same state, same engine.
+const _mqNarrow=typeof matchMedia!=="undefined"?matchMedia("(max-width: 760px)"):null;
+const[narrow,setNarrow]=useState(()=>!!(_mqNarrow&&_mqNarrow.matches));
+const narrowRef=useRef(narrow);
+useEffect(()=>{narrowRef.current=narrow;},[narrow]);
+useEffect(()=>{
+  const mq=matchMedia("(max-width: 760px)");
+  const on=()=>setNarrow(mq.matches);
+  mq.addEventListener("change",on);
+  return()=>mq.removeEventListener("change",on);
+},[]);
+const[codexOpen,setCodexOpen]=useState(false);   // narrow only: the codex drawer
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 // ── Floating surfaces: ALL popovers/drawers/documents live on ONE external
@@ -474,7 +488,7 @@ const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
-const[keyOpen,setKeyOpen]=useState(true);
+const[keyOpen,setKeyOpen]=useState(()=>!(typeof matchMedia!=="undefined"&&matchMedia("(max-width: 760px)").matches));   // phone: legend starts collapsed
 useEffect(()=>{
   // On mouse-up, clear any in-flight pan that ended outside the canvas —
   // otherwise the next click would see panDragRef with a stale "moved" flag
@@ -2327,6 +2341,12 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // over a faith/culture/price fill would mislabel what the colours mean.
     if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmPrices){
       labelAnchorsRef.current=realmLabelAnchors(psw,labelAnchorsRef.current);
+      // Physical floor: on a small display the map-unit sizes drop below
+      // legibility at world zoom; floor them at ~7 CSS px and let collision
+      // thin the crowd (few names far out, all of them as you pinch in).
+      // No-op on desktop, where map-unit sizes already exceed the floor.
+      const _cssW=canvasRef.current?canvasRef.current.getBoundingClientRect().width:FEAT_W;
+      const _minFs=7*(FEAT_W/Math.max(1,_cssW));
       const _seed=worldRef.current?worldRef.current.seed:0;
       const _emblemFor=_L.emblems?(id)=>{
         const c=psw.countries&&psw.countries.get(id);
@@ -2337,7 +2357,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         {TR,toScreenY:(y)=>dataYtoScreenY(y,H,CH)},
         {showRealms:true,showSettlements:_L.icons,capitalIds,
          emblemFor:_emblemFor,selRealm:selRealmRef.current,
-         selSettlement:selId,featW:FEAT_W,featH:FEAT_H});
+         selSettlement:selId,featW:FEAT_W,featH:FEAT_H,minFs:_minFs});
       if(fctx)fctx.setTransform(viewZRef.current*_k,0,0,viewZRef.current*_k,viewXRef.current*_k,viewYRef.current*_k);
     }
   }
@@ -2684,6 +2704,7 @@ if(psw){
     selRealmRef.current=-1;setRealmSel(-1);
     if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:-1});
     setPanelTab("inspect");
+    if(narrowRef.current)setCodexOpen(true);   // phone: selection opens the codex drawer
   }else{
     selectedSettlementIdRef.current=-1;
     setSelectedSettlementId(-1);
@@ -2698,7 +2719,7 @@ if(psw){
     }
     selRealmRef.current=hitRealm;setRealmSel(hitRealm);
     if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:hitRealm});
-    if(hitRealm>=0)setPanelTab("realms");
+    if(hitRealm>=0){setPanelTab("realms");if(narrowRef.current)setCodexOpen(true);}
   }
   draw(ter);
 }
@@ -2730,6 +2751,81 @@ useEffect(()=>{
   c.addEventListener("wheel",onWheel,{passive:false});
   return()=>c.removeEventListener("wheel",onWheel);
 },[CW,CH,draw]);
+// ── Touch: one finger pans, two fingers pinch-zoom around their midpoint,
+// a tap selects (same path as a mouse click). The canvas declares
+// touch-action:none so the browser never scrolls/zooms the page instead.
+useEffect(()=>{
+  const c=canvasRef.current;if(!c)return;
+  const touches=new Map();let lastDist=0,lastMid=null;
+  const put=(t)=>touches.set(t.identifier,{x:t.clientX,y:t.clientY});
+  const onStart=(e)=>{
+    for(const t of e.changedTouches)put(t);
+    if(touches.size===1){
+      const t0=[...touches.values()][0];
+      panDragRef.current={mx:t0.x,my:t0.y,vx:viewXRef.current,vy:viewYRef.current,moved:false};
+    }else if(touches.size===2){
+      panDragRef.current=null;
+      const[a,b]=[...touches.values()];
+      lastDist=Math.hypot(a.x-b.x,a.y-b.y);
+      lastMid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+    }
+    e.preventDefault();
+  };
+  const onTMove=(e)=>{
+    for(const t of e.changedTouches)if(touches.has(t.identifier))put(t);
+    const r=c.getBoundingClientRect();
+    if(touches.size===1&&panDragRef.current){
+      const t0=[...touches.values()][0];const pd=panDragRef.current;
+      const dx=t0.x-pd.mx,dy=t0.y-pd.my;
+      if(!pd.moved&&Math.hypot(dx,dy)<=5)return;
+      pd.moved=true;
+      viewXRef.current=pd.vx+dx*(CW/r.width);
+      viewYRef.current=pd.vy+dy*(CH/r.height);
+      if(terRef.current)draw(terRef.current);
+    }else if(touches.size===2){
+      const[a,b]=[...touches.values()];
+      const dist=Math.hypot(a.x-b.x,a.y-b.y)||1;
+      const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      const rawX=(mid.x-r.left)/r.width*CW,rawY=(mid.y-r.top)/r.height*CH;
+      const zOld=viewZRef.current;
+      const zNew=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,zOld*(dist/(lastDist||dist))));
+      const kz=zNew/zOld;
+      viewXRef.current=rawX-(rawX-viewXRef.current)*kz+(mid.x-lastMid.x)*(CW/r.width);
+      viewYRef.current=rawY-(rawY-viewYRef.current)*kz+(mid.y-lastMid.y)*(CH/r.height);
+      viewZRef.current=zNew;
+      lastDist=dist;lastMid=mid;
+      if(terRef.current)draw(terRef.current);
+    }
+    e.preventDefault();
+  };
+  const onEnd=(e)=>{
+    for(const t of e.changedTouches){
+      const wasSolo=touches.size===1;
+      touches.delete(t.identifier);
+      if(wasSolo&&touches.size===0){
+        const pd=panDragRef.current;
+        // preventDefault suppresses the browser's synthetic click, so a
+        // clean tap routes through the click handler ourselves.
+        if(pd&&!pd.moved)onCanvasClick({clientX:t.clientX,clientY:t.clientY});
+        panDragRef.current=null;
+      }
+    }
+    if(touches.size===1){
+      const t0=[...touches.values()][0];
+      panDragRef.current={mx:t0.x,my:t0.y,vx:viewXRef.current,vy:viewYRef.current,moved:false};
+      lastDist=0;
+    }
+    e.preventDefault();
+  };
+  c.addEventListener("touchstart",onStart,{passive:false});
+  c.addEventListener("touchmove",onTMove,{passive:false});
+  c.addEventListener("touchend",onEnd,{passive:false});
+  c.addEventListener("touchcancel",onEnd,{passive:false});
+  return()=>{
+    c.removeEventListener("touchstart",onStart);c.removeEventListener("touchmove",onTMove);
+    c.removeEventListener("touchend",onEnd);c.removeEventListener("touchcancel",onEnd);
+  };
+},[CW,CH,draw,onCanvasClick]);
 const onCanvasMouseDown=useCallback((ev)=>{
   // Any button (left, middle, right) can start a drag. onCanvasClick fires
   // only if the mouse hardly moved (see the moved>3 check there), so plain
@@ -3909,8 +4005,8 @@ return(
   <div style={{display:"flex",gap:1}}>
     {/* speed = target ticks/sec. 30 ≈ one step per frame (the step counter ticks
         up one-by-one); lower watches it crawl, higher packs more per frame, Max
-        runs flat-out. */}
-    {[[8,"¼×"],[30,"1×"],[120,"4×"],[480,"16×"],[100000,"Max"]].map(([v,l])=>(
+        runs flat-out. Narrow screens keep just the two useful stops. */}
+    {(narrow?[[30,"1×"],[100000,"Max"]]:[[8,"¼×"],[30,"1×"],[120,"4×"],[480,"16×"],[100000,"Max"]]).map(([v,l])=>(
       <button key={v} onClick={()=>{setSpeed(v);speedRef.current=v;}}
         className={"au-btn au-flat au-num"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:12}}
         title={v>=100000?"as fast as possible":`~${v} ticks/sec`}>{l}</button>
@@ -3918,28 +4014,32 @@ return(
   </div>
   <span className="au-vrule" style={{height:22}}/>
   {/* era ribbon — the one place time appears; a read-only label, never an input */}
-  <span className="au-era" style={{fontSize:15,color:"var(--au-ch-gold)"}}>{_era}</span>
+  <span className="au-era" style={{fontSize:narrow?13:15,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{_era}</span>
   {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"var(--au-ch-gold)",fontWeight:700,letterSpacing:0.3}}>✦</span>}
-  <span className="au-year au-num" style={{fontSize:13.5}}>{_ys}</span>
-  <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
-  <span className="au-vrule" style={{height:22}}/>
-  <span className="au-num" style={{fontSize:13}}>{_countryCount} <span className="au-sc au-cfade" style={{fontSize:11}}>realms</span></span>
-  <span className="au-num" style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-cfade">%</span> <span className="au-sc au-cfade" style={{fontSize:11}}>claimed</span></span>
-  {lens==="economy"&&(()=>{
-    const psw=peopleRef.current;
-    const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
-    if(P==null)return null;
-    const col=P>1.1?"var(--au-ch-bad)":P<0.9?"hsl(195,55%,60%)":"var(--au-ch-text)";
-    return <span className="au-num" style={{fontSize:13}} title={`global price level ×${P.toFixed(2)}`}>
-      <span className="au-sc au-cfade" style={{fontSize:11,marginRight:4}}>wheat</span>
-      <span style={{color:col,fontWeight:700}}>{(5*P).toFixed(2)}</span></span>;
-  })()}
+  <span className="au-year au-num" style={{fontSize:narrow?12:13.5,whiteSpace:"nowrap"}}>{_ys}</span>
+  {!narrow&&<>
+    <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
+    <span className="au-vrule" style={{height:22}}/>
+    <span className="au-num" style={{fontSize:13}}>{_countryCount} <span className="au-sc au-cfade" style={{fontSize:11}}>realms</span></span>
+    <span className="au-num" style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-cfade">%</span> <span className="au-sc au-cfade" style={{fontSize:11}}>claimed</span></span>
+    {lens==="economy"&&(()=>{
+      const psw=peopleRef.current;
+      const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
+      if(P==null)return null;
+      const col=P>1.1?"var(--au-ch-bad)":P<0.9?"hsl(195,55%,60%)":"var(--au-ch-text)";
+      return <span className="au-num" style={{fontSize:13}} title={`global price level ×${P.toFixed(2)}`}>
+        <span className="au-sc au-cfade" style={{fontSize:11,marginRight:4}}>wheat</span>
+        <span style={{color:col,fontWeight:700}}>{(5*P).toFixed(2)}</span></span>;
+    })()}
+  </>}
   <div style={{flex:1,minWidth:0}}/>
-  <TopBarBell feedRef={peopleRef} onOpenFeed={()=>{setPanelTab("world");setRealmSel(-1);}}/>
+  <TopBarBell feedRef={peopleRef} onOpenFeed={()=>{setPanelTab("world");setRealmSel(-1);if(narrowRef.current)setCodexOpen(true);}}/>
+  {narrow&&<button onClick={()=>setCodexOpen(v=>!v)} className={"au-btn au-flat"+(codexOpen?" au-active":"")}
+    style={{fontSize:13,padding:"3px 8px"}} title="The codex — realms, peoples, events">📖</button>}
   <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12.5,padding:"3px 8px"}}
-    title="New world — presets, seed, import">⊕ World</button>
-  <button onClick={()=>{setEditorOpen(v=>!v);if(editorArmed)setEditorArmed(false);}} className={"au-btn au-flat"+(editorOpen?" au-active":"")}
-    style={{fontSize:12.5,padding:"3px 8px"}} title="Country editor — place a seed capital with chosen tech & character">🏛 Editor</button>
+    title="New world — presets, seed, import">{narrow?"⊕":"⊕ World"}</button>
+  {!narrow&&<button onClick={()=>{setEditorOpen(v=>!v);if(editorArmed)setEditorArmed(false);}} className={"au-btn au-flat"+(editorOpen?" au-active":"")}
+    style={{fontSize:12.5,padding:"3px 8px"}} title="Country editor — place a seed capital with chosen tech & character">🏛 Editor</button>}
   <button onClick={()=>setMenuOpen(v=>!v)} className={"au-btn au-flat"+(menuOpen?" au-active":"")}
     style={{fontSize:14,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
 </header>
@@ -3966,7 +4066,7 @@ return(
 <div style={{flex:1,display:"flex",minHeight:0,position:"relative"}}>
 
 {/* ══════════ LENS DOCK (56px icon rail; flyout carries sub-lenses) ══════════ */}
-<aside className="au-chrome" style={{width:58,minWidth:58,margin:"6px 3px 6px 6px",
+<aside className="au-chrome" style={{width:narrow?46:58,minWidth:narrow?46:58,margin:narrow?"4px 2px 4px 4px":"6px 3px 6px 6px",
   padding:"6px 0",display:"flex",flexDirection:"column",position:"relative",zIndex:"var(--z-docks)"}}
   onMouseLeave={()=>setDockFly(null)}>
   {LENSES.map((L,li)=>(
@@ -4024,25 +4124,28 @@ return(
   <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
     <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
   </div>:
-  // The map canvas and the fixed-resolution feature canvas share one wrapper so the feature
-  // overlay covers the map EXACTLY (both fill the wrapper; identical aspect ratio ⇒ perfect
+  // The map canvas and the fixed-resolution feature canvas share one aspect-locked box so the
+  // feature overlay covers the map EXACTLY (both fill it; identical aspect ratio ⇒ perfect
   // registration). The map is pixelated (coarse terrain upscales blocky); the feature overlay is
   // smooth (crisp lines). pointer-events on the overlay pass through to the map for hit-testing.
-  // The WRAPPER carries the sizing AND the border/shadow: width:100% (fills the column at ANY scale)
-  // + aspect-ratio (sets the height, constant across scales) + maxWidth/Height:100%. Both canvases
-  // then fill the wrapper's identical content box (width/height:100%, borderless), so a coarse
-  // 480-wide map upscales to the same on-screen box as a 1920 one AND the fixed-res feature overlay
-  // registers pixel-exact over it. Putting the 1px border on a CANVAS instead (border-box) would
-  // shrink only that canvas by 2px — the overlay would then be 2px wider, diverging from the centre.
-  // The map box stays == displayed map, so mouse→canvas mapping is unaffected.
-  <div style={{position:"relative",lineHeight:0,width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
-    maxWidth:"100%",maxHeight:"100%",boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}}>
+  // Mouse/touch mapping reads the CANVAS bounding rect, so the box may be clipped by a parent
+  // without breaking hit-tests.
+  //   Desktop: the box fits INSIDE the column (contain) — width:100% + aspect-ratio + max sizes.
+  //   Narrow:  the box COVERS the column (height:100%, centred, parent clips) — a phone shows a
+  //   screen-filling slice of the world and pans, instead of a letterboxed strip.
+  <div style={narrow?{position:"relative",width:"100%",height:"100%",overflow:"hidden"}
+    :{position:"relative",lineHeight:0,width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
+      maxWidth:"100%",maxHeight:"100%",boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}}>
+  <div style={narrow?{position:"absolute",top:0,bottom:0,left:"50%",transform:"translateX(-50%)",
+      height:"100%",aspectRatio:`${CW}/${CH}`,lineHeight:0}
+    :{position:"absolute",inset:0,lineHeight:0}}>
   <canvas ref={canvasRef} width={CW} height={CH}
     onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
     onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-    style={{display:"block",imageRendering:"pixelated",width:"100%",height:"100%"}} />
+    style={{display:"block",imageRendering:"pixelated",width:"100%",height:"100%",touchAction:"none"}} />
   <canvas ref={featRef} width={FEAT_W} height={FEAT_H}
     style={{position:"absolute",left:0,top:0,width:"100%",height:"100%",pointerEvents:"none"}} />
+  </div>
   </div>
 }
 
@@ -4181,14 +4284,23 @@ return(
 
 </div>{/* end center column */}
 
-{/* ══════════ THE CODEX (right dock — the atlas's book; plan §7) ══════════ */}
-<aside className="au-parchment" style={{width:312,minWidth:312,margin:"6px 6px 6px 3px",
-  display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain"}}>
-  <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(216,190,150,0.28)"}}>
+{/* ══════════ THE CODEX (right dock — the atlas's book; plan §7) ══════════
+     Desktop: an inline column. Narrow: a fixed slide-over drawer, toggled
+     from the top bar and auto-opened by map selection. Same content. */}
+<aside className="au-parchment" style={narrow?{
+    position:"fixed",top:0,right:0,bottom:0,width:"min(340px, 92vw)",zIndex:46,
+    display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain",
+    borderRadius:0,transform:codexOpen?"translateX(0)":"translateX(102%)",
+    transition:"transform 0.22s ease-out",boxShadow:"-8px 0 30px rgba(0,0,0,0.55)"
+  }:{width:312,minWidth:312,margin:"6px 6px 6px 3px",
+    display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain"}}>
+  <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(216,190,150,0.28)",alignItems:"stretch"}}>
     {[["world","World"],["realms","Realms"],["peoples","Peoples"],["faiths","Faiths"],["tongues","Tongues"],["inspect","Inspect"]].map(([k,l])=>(
       <button key={k} onClick={()=>navigate({tab:k})}
         className={"au-tab"+(panelTab===k?" au-active":"")} style={{flex:1,padding:"7px 0"}}>{l}</button>
     ))}
+    {narrow&&<button onClick={()=>setCodexOpen(false)} title="Close"
+      style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-ink-faded)",fontSize:17,padding:"0 9px"}}>×</button>}
   </div>
   {/* breadcrumb + back — every jump in the codex is reversible */}
   {(()=>{
