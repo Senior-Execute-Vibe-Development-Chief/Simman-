@@ -20,7 +20,7 @@ import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
-import { updateGoods, LEG_GOOD, G_STAPLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_SERVICES } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
+import { updateGoods, LEG_GOOD, GOODS, G_STAPLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_SERVICES } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
 // scope: country ids are settlement ids and the personality RNG is seeded from
@@ -1352,17 +1352,15 @@ export function getExportBreakdown(s, world) {
 // export-value gradient, not specific-commodity barter, so a goods label
 // would be fiction (and made a town look like it both buys and sells the
 // same thing).
-// Resources, by richness, that `haver` has and `needer` lacks — i.e.
-// what `haver` could barter to `needer`. Returns the top one (or null).
-const BARTER_RES = ["timber","stone","copper","tin","iron","coal","horses","salt"];
-const BARTER_HAVE = 0.10;   // a settlement "has" a resource at ≥ this richness
-function topBarterGood(haver, needer) {
-  const hr = haver.localRes || {}, nr = needer.localRes || {};
-  let best = null, bestV = BARTER_HAVE;
-  for (const id of BARTER_RES) {
-    const hv = hr[id] || 0;
-    if (hv > bestV && (nr[id] || 0) < BARTER_HAVE) { bestV = hv; best = id; }
-  }
+// A settlement's top REAL net-export good, from the goods layer's measured
+// flows (_gNet: negative = exported). Replaces the old topBarterGood fiction
+// (a raw-resource guess that printed "give copper / get −" regardless of what
+// actually moved — retired 2026-07 once the goods trade made flows real).
+function topNetExportOf(s) {
+  const n = s._gNet;
+  if (!n) return null;
+  let best = null, bestV = -0.005;   // a real flow, not noise
+  for (let g = 0; g < n.length; g++) if (n[g] < bestV) { bestV = n[g]; best = GOODS[g]; }
   return best;
 }
 export function getTradeProfile(s, world) {
@@ -1384,10 +1382,10 @@ export function getTradeProfile(s, world) {
     let foodRole = null;
     if (sFood > 0.01 && peerFood < -0.01) foodRole = "selling food";
     else if (sFood < -0.01 && peerFood > 0.01) foodRole = "buying food";
-    // Barter description: what each side gives the other (a resource it
-    // has that the partner lacks). Shown when little/no coin moves.
-    const give = topBarterGood(s, peer);
-    const get  = topBarterGood(peer, s);
+    // What each side genuinely SELLS into the network (its top measured
+    // net-export good) — real flows, not the old resource-guess fiction.
+    const give = topNetExportOf(s);
+    const get  = topNetExportOf(peer);
 
     profile.push({
       partner: peer.name, partnerId: peer.id,

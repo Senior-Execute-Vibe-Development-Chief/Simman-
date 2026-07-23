@@ -11,3 +11,4 @@ scratch-*.png
 
 # transient Claude Code agent worktrees (isolated subagent runs)
 .claude/worktrees/
+bench/

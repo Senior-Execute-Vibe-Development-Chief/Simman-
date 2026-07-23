@@ -266,7 +266,7 @@ const LENSES=[
   {id:"ancestry",label:"Ancestry",subs:[["ancestry","Ancestry"]]},
   {id:"languages",label:"Languages",subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
+  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
   ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 
@@ -729,6 +729,9 @@ const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
+// Prices lens: which good's local price paints the map (index into GOODS).
+const[priceGood,setPriceGood]=useState(3);const priceGoodRef=useRef(3);
+useEffect(()=>{priceGoodRef.current=priceGood;},[priceGood]);
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
 const[depthFromSea,setDepthFromSea]=useState(false);
@@ -1827,6 +1830,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmLanguage = viewRef.current === "language";
   const vmAncestry = viewRef.current === "ancestry";
   const vmSociety = viewRef.current === "society";
+  const vmPrices = viewRef.current === "prices";
   const vmLoyalty = viewRef.current === "loyalty";
   const vmPopulation = viewRef.current === "population";
     if(psw&&ctx&&vmRoads){
@@ -1998,7 +2002,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmPrices?8192+priceGoodRef.current:0);
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -2028,7 +2032,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // ── Culture / Faith views: who LIVES on each tile (dominant culture
       // or faith of the settlement whose territory it is) — peoples and
       // creeds, not states. Same machinery, different per-settlement key. ──
-      if((vmCulture||vmFaith||vmLanguage||vmAncestry||vmSociety)&&psw.settlements){
+      if((vmCulture||vmFaith||vmLanguage||vmAncestry||vmSociety||vmPrices)&&psw.settlements){
         const tw=psw.tw,th=psw.th,N2=tw*th;
         // Resolve a settlement's overlay colour [h,s,l] + grouping KEY (borders
         // drawn where the key changes). Peoples → one hue each; Faiths → faith
@@ -2159,6 +2163,28 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           let lastFs=null;
           for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;
             const fs=coerceCol(sid);const y=(ti/tw)|0,x=ti-y*tw;
+            if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+            stctx.fillRect(x,y,1,1);}
+        }
+        // ── Prices: the local market price of ONE selected good, per catchment ──
+        // green (glut, price → 0.25) → parchment (≈1) → red (scarce, → 4.0). This
+        // is the spatial gradient the goods trade flows down — trade basins and
+        // shortage fronts at a glance. Data: every settlement's _gPrice (worker).
+        if(nf&&vmPrices){
+          const nearest=nf.nearest,byId=psw._byId,g=priceGoodRef.current,prCache=new Map();
+          const priceCol=(sid)=>{let c=prCache.get(sid);if(c!==undefined)return c;
+            const st=byId&&byId.get(sid);const p=st&&st._gPrice?st._gPrice[g]:null;
+            if(p==null)c="#5e626b";
+            else{
+              // log-scale around 1: t∈[-1,1] over price∈[0.25,4]
+              const t=Math.max(-1,Math.min(1,Math.log2(p)/2));
+              c=t<0?`hsl(${Math.round(95+25*t)},${Math.round(35-20*t)}%,${Math.round(46+8*t)}%)`
+                   :`hsl(${Math.round(28-24*t)},${Math.round(45+40*t)}%,${Math.round(48-12*t)}%)`;
+            }
+            prCache.set(sid,c);return c;};
+          let lastFs=null;
+          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;
+            const fs=priceCol(sid);const y=(ti/tw)|0,x=ti-y*tw;
             if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
             stctx.fillRect(x,y,1,1);}
         }
@@ -2335,7 +2361,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
         let lastFs=null;
@@ -2358,7 +2384,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
-      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2785,7 +2811,7 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'v
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
 useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,layers]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,layers,priceGood]);
 
 // Opening the Ancestry lens replays the peopling of the world: the wavefront
 // spreads from the East-African cradle outward over ~10s (animLoop drives it).
@@ -4369,6 +4395,27 @@ return(
     that haze stays faint, and the ramp belongs to where people CONCENTRATE —
     the farmed countryside and the great basins. National power, manpower and
     migration all read this field{peopleRef.current&&peopleRef.current._popMax?` · densest tile ≈ ${fmtPeople(peopleRef.current._popMax)} people`:""}.
+  </div>
+</div>}
+
+{viewMode==="prices"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:250}}>
+  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Local market prices</div>
+  <select value={priceGood} onChange={(e)=>setPriceGood(+e.target.value)}
+    style={{width:"100%",marginBottom:5,fontSize:11,padding:"2px 4px"}}>
+    {GOODS.map((g,i)=><option key={g} value={i}>{g}</option>)}
+  </select>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
+    <span style={{display:"flex",flexShrink:0}}>
+      <span style={{width:16,height:11,background:"hsl(120,55%,38%)"}}/>
+      <span style={{width:16,height:11,background:"hsl(45,30%,52%)"}}/>
+      <span style={{width:16,height:11,background:"hsl(4,85%,36%)"}}/>
+    </span>
+    <span>glut ×0.25 → ×1 → scarce ×4</span></div>
+  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
+    Each catchment tinted by its LOCAL price of the chosen good — the spatial
+    gradient the goods trade flows down. Green basins export it, red fronts
+    are shortages bidding for imports; grey has no market data yet.
   </div>
 </div>}
 
