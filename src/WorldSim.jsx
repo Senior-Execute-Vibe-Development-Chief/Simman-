@@ -14,6 +14,9 @@ import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD }
 import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./sim/peopleSim/tech.js";
+import { resetEmblems, realmEmblemImg, realmEmblemURL, Emblem } from "./ui/emblems.jsx";
+import { realmLabelAnchors, drawMapLabels } from "./ui/labels.js";
+import { TopBarBell, ToastHost, HelpOverlay, evMeta, evCatColor, EV_CATS } from "./ui/events.jsx";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
 const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
 // effect-chip colour per channel (food=green, naval=teal, build=tan, war=red, admin=violet, trade=jade, wealth=gold)
@@ -260,15 +263,27 @@ function TechTreeOverlay({k,title,onClose}){
 // variations within it. Worldgen diagnostics live behind a ?dev URL flag.
 const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).has("dev");
 const LENSES=[
-  {id:"terrain", label:"Terrain", subs:[["terrain","Map"],["atlas","Atlas"]]},
-  {id:"politics",label:"Politics",subs:[["country","Realms"],["loyalty","Loyalty"]]},
-  {id:"peoples", label:"Peoples", subs:[["culture","Peoples"],["population","Population"]]},
-  {id:"ancestry",label:"Ancestry",subs:[["ancestry","Ancestry"]]},
-  {id:"languages",label:"Languages",subs:[["language","Languages"]]},
-  {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
-  ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
+  {id:"terrain", label:"Terrain", icon:"🗺", subs:[["terrain","Map"],["atlas","Atlas"]]},
+  {id:"politics",label:"Politics",icon:"👑", subs:[["country","Realms"],["loyalty","Loyalty"]]},
+  {id:"peoples", label:"Peoples", icon:"👥", subs:[["culture","Peoples"],["population","Population"],["ancestry","Ancestry"]]},
+  {id:"languages",label:"Tongues",icon:"💬", subs:[["language","Languages"]]},
+  {id:"faiths",  label:"Faiths",  icon:"🕯", subs:[["faith","Faiths"]]},
+  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
+  ...(DEV?[{id:"dev",label:"Dev",icon:"🔬",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
+// Emergent availability (plan §6.5): a sub-lens lights up when its phenomenon
+// first EXISTS in the world — state-gated, never time-gated. Returns null
+// (available) or a short "why it's still dark" string shown as the tooltip.
+function subLockReason(sub,psw,stats){
+  if(!psw)return null;
+  if(sub==="money"&&!((stats&&stats.totalWealth)>0))
+    return "No coin has been struck yet — the world still barters.";
+  if(sub==="prices"&&!(psw.settlements&&psw.settlements.some(s=>s&&s._gPrice)))
+    return "No market prices yet — towns must first meet in trade.";
+  if(sub==="society"&&!(psw.settlements&&psw.settlements.some(s=>s&&(s._coerce||0)>0.02)))
+    return "No coerced labour anywhere yet.";
+  return null;
+}
 
 // Country-editor field lists + a compact slider row.
 const ED_KFIELDS=[["agriculture","Agriculture"],["construction","Construction"],["organization","Organization"],["metallurgy","Metallurgy"],["navigation","Navigation"],["mobility","Mobility"]];
@@ -768,6 +783,8 @@ useEffect(()=>{edParamsRef.current=edParams;},[edParams]);
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
+const selRealmRef=useRef(-1);   // realmSel mirrored for the draw loop (map highlight + label emphasis)
+useEffect(()=>{selRealmRef.current=realmSel;},[realmSel]);
 useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedSettlementId]);
 // ── Layer visibility ────────────────────────────────────────────────
 // All toggles for what gets drawn on the peopleSim view. Tier toggles
@@ -780,9 +797,12 @@ const[layers,setLayers]=useState({
   icons:true, tints:true, borders:true, provinces:false, roads:true, seaLanes:true,
   moneyFlow:true, ships:true, shocks:true,
   village:true, town:true, city:true, metropolis:true,
+  labels:true, emblems:true,   // names + heraldry drawn on the map (plan §5.1–5.2)
 });
 const[layersOpen,setLayersOpen]=useState(false);
 const[leversOpen,setLeversOpen]=useState(false);
+const[dockFly,setDockFly]=useState(null);      // lens id whose sub-lens flyout is open
+const[helpOpen,setHelpOpen]=useState(false);   // keyboard/help overlay
 const[tuneVals,setTuneVals]=useState(()=>tuningDefaults());
 const tuneValsRef=useRef(tuneVals);
 // Push a tuning change to the sim. Covers BOTH execution paths: postMessage to
@@ -942,6 +962,9 @@ const psTintSrcRef=useRef(null);   // sim-res (tw×th) owner colours, 1px per ti
 const psTintRef=useRef(null);      // map-res (CW×CH) tint layer, coast-clipped
 const psOverlayMeta=useRef({step:-1,ch:0});
 const identityFillRef=useRef(null);   // cached nearest-settlement map for the people/faith/language overlays
+const labelAnchorsRef=useRef(null);   // cached realm-label anchors (recomputed when a new claim grid arrives)
+const[toastVerbosity]=useState("epochal");   // "all" | "epochal" | "silent" (feed-bell menu, future)
+const[feedCats,setFeedCats]=useState(()=>new Set());   // active feed category filters (empty = all)
 const ancRevealRef=useRef({start:0,active:false});   // deep-ancestry "peopling" replay: wavefront spread time + whether animating
 // Reusable scratch for the money-flow coin particles (money view). Coins are
 // bucketed by link busyness so the whole overlay costs ~4 fillStyle changes
@@ -970,6 +993,7 @@ const finalizeWorld=useCallback((w)=>{
 // RNG, resource placement) reads `w.seed`. Without this alias the sim's RNG
 // silently fell back to seed 1 for EVERY world.
 if(w.seed==null)w.seed=w._seed??1;
+resetEmblems();labelAnchorsRef.current=null;   // a new world bears new arms & names
 setWorld(w);worldRef.current=w;const t=buildTerritory(w,RES);
 terRef.current=t;
 // Rivers (and deposits) are computed inside buildTerritory and stored
@@ -1000,7 +1024,7 @@ try{
   const sw=new PeopleSimWorker();
   sw.onmessage=(e)=>{
     const d=e.data;
-    if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    if(d.type==='snapshot'){if(DEV)console.log('[snap]',d.step);if(applySnapshotRef.current)applySnapshotRef.current(d);}
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='historyData'){
       const blob=new Blob([d.json],{type:"application/json"});
@@ -2002,7 +2026,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmPrices?8192+priceGoodRef.current:0);
+    const layerKey=((L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmPrices?8192+priceGoodRef.current:0))+"|"+selRealmRef.current;   // selection rides the key → highlight rebuilds on select
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -2318,6 +2342,29 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(prog>=1)rv.active=false;   // spread complete — release the per-frame rebuild
       }
+      // ── Selected-realm emphasis (plan §5.3): a bright wash + gold outline
+      // around the realm the player has picked, drawn into the cached overlay
+      // (selection id rides the rebuild key). One O(tiles) pass per rebuild.
+      const emphasizeRealm=(arr,tw2,th2)=>{
+        const sel=selRealmRef.current;if(sel<0||!arr)return;
+        octx.save();
+        octx.fillStyle="rgba(255,244,200,0.16)";
+        octx.strokeStyle="rgba(255,206,84,0.95)";octx.lineWidth=2.6*uiF;octx.lineJoin="round";octx.lineCap="round";
+        octx.beginPath();
+        for(let ti=0;ti<arr.length;ti++){
+          if(arr[ti]!==sel)continue;
+          const py=(ti/tw2)|0,px=ti-py*tw2;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          octx.fillRect(sx,sy,TR,TR);
+          const ro=arr[py*tw2+(px===tw2-1?0:px+1)],lo=arr[py*tw2+(px===0?tw2-1:px-1)];
+          const uo=py>0?arr[ti-tw2]:-2,dn=py<th2-1?arr[ti+tw2]:-2;
+          if(ro!==sel){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(lo!==sel){octx.moveTo(sx,sy);octx.lineTo(sx,sy+TR);}
+          if(uo!==sel&&uo!==-2){octx.moveTo(sx,sy);octx.lineTo(sx+TR,sy);}
+          if(dn!==sel&&dn!==-2){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}
+        }
+        octx.stroke();octx.restore();
+      };
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
         const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
@@ -2360,6 +2407,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         octx.stroke();
+        emphasizeRealm(claimArr,tw,th);
       }
       if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
@@ -2384,6 +2432,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
+        emphasizeRealm(claimArr,tw,th);
       } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
@@ -2686,6 +2735,30 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
     }
     }
+    // ── Names on the map (plan §5.1) + heraldry (§5.2) ──
+    // Realm names anchor at the claimed-territory centre (cached until a new
+    // claim grid arrives); settlement names are tier-gated by zoom. Drawn
+    // screen-space on the feature canvas so type renders crisp at any map
+    // scale. Skipped on the identity/thematic lenses, where political names
+    // over a faith/culture/price fill would mislabel what the colours mean.
+    if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmPrices){
+      labelAnchorsRef.current=realmLabelAnchors(psw,labelAnchorsRef.current);
+      const _canvasEl=canvasRef.current;
+      const _cssW=_canvasEl?_canvasEl.getBoundingClientRect().width:FEAT_W;
+      const _pxScale=Math.max(0.5,FEAT_W/Math.max(1,_cssW));
+      const _seed=worldRef.current?worldRef.current.seed:0;
+      const _emblemFor=_L.emblems?(id)=>{
+        const c=psw.countries&&psw.countries.get(id);
+        return c?realmEmblemImg(psw,c,ter,_seed):null;
+      }:null;
+      drawMapLabels(fctx,psw,labelAnchorsRef.current,
+        {z:viewZRef.current,vx:viewXRef.current,vy:viewYRef.current,k:_k,pxScale:_pxScale},
+        {TR,toScreenY:(y)=>dataYtoScreenY(y,H,CH)},
+        {showRealms:true,showSettlements:_L.icons,capitalIds,
+         emblemFor:_emblemFor,selRealm:selRealmRef.current,
+         selSettlement:selId,featW:FEAT_W,featH:FEAT_H});
+      if(fctx)fctx.setTransform(viewZRef.current*_k,0,0,viewZRef.current*_k,viewXRef.current*_k,viewYRef.current*_k);
+    }
   }
   // ── Sea lanes ── faint dashed routes over open water connecting the
   // ports that trade by ship (sea.js). Drawn in every view except the
@@ -2748,7 +2821,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
-  if(snap.countryClaim)psw._countryClaim=snap.countryClaim;  // capital-claim prototype (Capital Claim view); keep last
+  if(snap.countryClaim){psw._countryClaim=snap.countryClaim;psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver drives label-anchor cache)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
   // layer it was built for, so a stale field from a previous lens is ignored.
@@ -2951,14 +3024,26 @@ const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.ri
 const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
 const isLake=terTi>=0&&terRef.current&&terRef.current.rivers&&terRef.current.rivers.lake?terRef.current.rivers.lake[terTi]>=0:false;
 const lakeSize=isLake?terRef.current.rivers.lakeInfo[terRef.current.rivers.lake[terTi]].size:0;
-// Who lives here / whose realm: territory owner + national claim at this tile.
-let hovOwner=null,hovRealm=null;
+// Who lives here / whose realm: territory owner + national claim at this tile,
+// plus the nearest settlement (identity card) — same radius the click uses.
+let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
 {const psw=peopleRef.current;
  if(psw&&terTi>=0){
    if(psw._territoryOwner&&psw._byId){const oid=psw._territoryOwner[terTi];if(oid>=0){const o=psw._byId.get(oid);if(o)hovOwner=o.name;}}
-   if(psw._countryClaim&&psw.countries){const cc=psw._countryClaim[terTi];if(cc>=0){const c=psw.countries.get(cc);if(c)hovRealm=c.name||(c.capital&&c.capital.name);}}
+   if(psw._countryClaim&&psw.countries){
+     const tw2=psw.tw;const stx=Math.min(tw2-1,((wx/RES)|0)/psw.tileRes|0),sty=Math.min(psw.th-1,((wy/RES)|0)/psw.tileRes|0);
+     const cc=psw._countryClaim[sty*tw2+stx];
+     if(cc>=0){const c=psw.countries.get(cc);if(c){hovRealm=c.name||(c.capital&&c.capital.name);hovRealmId=cc;}}}
+   {const psTx=((wx/RES)|0)/psw.tileRes,psTy=((wy/RES)|0)/psw.tileRes;
+    let best=null,bestD2=36;
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      let dx=Math.abs(s.pos.x-psTx);if(dx>psw.tw/2)dx=psw.tw-dx;
+      const dy=s.pos.y-psTy,d2=dx*dx+dy*dy;
+      if(d2<bestD2){bestD2=d2;best=s;}}
+    if(best)hovSett={name:best.name,tier:best.tier|0,people:best.people||0,isCap:(psw.countries&&psw.countries.get(best.countryId)&&psw.countries.get(best.countryId).capitalId===best.id)||false};}
  }}
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm});
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm,realmId:hovRealmId,sett:hovSett});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
@@ -3003,9 +3088,25 @@ if(psw){
   if(best&&bestD2<36){
     selectedSettlementIdRef.current=best.id;
     setSelectedSettlementId(best.id);
+    // a settlement click retargets the chronicle to ITS realm
+    selRealmRef.current=-1;setRealmSel(-1);
+    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:-1});
+    setPanelTab("inspect");
   }else{
     selectedSettlementIdRef.current=-1;
     setSelectedSettlementId(-1);
+    // Unified selection (plan §5.3): a click on claimed ground selects the
+    // REALM — highlight on the map, its page in the codex. Water or
+    // wilderness deselects everything.
+    let hitRealm=-1;
+    if(psw._countryClaim){
+      const tx=Math.max(0,Math.min(psw.tw-1,psTx|0)),ty=Math.max(0,Math.min(psw.th-1,psTy|0));
+      hitRealm=psw._countryClaim[ty*psw.tw+tx];
+      if(!(hitRealm>=0&&psw.countries&&psw.countries.get(hitRealm)))hitRealm=-1;
+    }
+    selRealmRef.current=hitRealm;setRealmSel(hitRealm);
+    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:hitRealm});
+    if(hitRealm>=0)setPanelTab("realms");
   }
   draw(ter);
 }
@@ -3070,14 +3171,37 @@ const pickLens=(id)=>{
 };
 const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
 const curLens=LENSES.find(x=>x.id===lens)||LENSES[0];
-// Keyboard: space = play/pause, 1-9 = lenses, Esc = close everything.
-// (Re-subscribed each render so the handlers see fresh closures — cheap.)
+// Keyboard: space = play/pause, 1-9 = lenses, F fit, G globe, L layers,
+// ? help; Esc steps back OUT — overlays first, then selection (settlement →
+// its realm → nothing). (Re-subscribed each render for fresh closures — cheap.)
 useEffect(()=>{
   const onKey=(e)=>{
     const t=e.target;
     if(t&&(t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA"))return;
     if(e.code==="Space"){e.preventDefault();togglePlay();}
-    else if(e.key==="Escape"){setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setDynastyOpen(false);setTechTreeOpen(false);setLayersOpen(false);setSelectedSettlementId(-1);}
+    else if(e.key==="Escape"){
+      const overlayOpen=menuOpen||newWorldOpen||chronicleOpen||dynastyOpen||techTreeOpen||layersOpen||helpOpen||dockFly;
+      setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setDynastyOpen(false);setTechTreeOpen(false);setLayersOpen(false);setHelpOpen(false);setDockFly(null);
+      if(overlayOpen)return;
+      if(selectedSettlementId>=0){
+        // walk up: from the settlement to its realm
+        const psw=peopleRef.current;
+        const s=psw&&psw.settlements&&psw.settlements.find(x=>x&&x.id===selectedSettlementId);
+        const cid=s&&s.countryId>=0?s.countryId:-1;
+        selectedSettlementIdRef.current=-1;setSelectedSettlementId(-1);
+        selRealmRef.current=cid;setRealmSel(cid);
+        if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:cid});
+        if(cid>=0)setPanelTab("realms");
+      }else if(realmSel>=0){
+        selRealmRef.current=-1;setRealmSel(-1);
+        if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:-1});
+      }
+      if(terRef.current)draw(terRef.current);
+    }
+    else if(e.key==="f"||e.key==="F")resetView();
+    else if(e.key==="g"||e.key==="G")setShowGlobe(v=>!v);
+    else if(e.key==="l"||e.key==="L")setLayersOpen(v=>!v);
+    else if(e.key==="?")setHelpOpen(v=>!v);
     else{const n=+e.key;if(n>=1&&n<=LENSES.length)pickLens(LENSES[n-1].id);}
   };
   window.addEventListener("keydown",onKey);
@@ -4073,16 +4197,37 @@ const renderCharts=()=>{
         <div style={{flex:1}} />
       </div>
       {(()=>{const F=peopleRef.current&&peopleRef.current._feed;if(!F||!F.length)return null;
-        // No inner scroll — the feed flows in the tab's single scroll (a nested
-        // scrollbox here made the whole panel feel un-scrollable). Show the most
-        // recent ~28 events; the full chronicle lives in the realm view.
+        // The living feed (plan §8): category filter chips over the structured
+        // event stream; click an entry to jump the camera to where it happened.
+        // No inner scroll — the feed flows in the tab's single scroll.
+        const active=feedCats;
+        const tog=(id)=>setFeedCats(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
+        const rows=[];
+        for(let i=F.length-1;i>=0&&rows.length<40;i--){
+          const e=F[i];const m=evMeta(e.type);
+          if(active.size&&!active.has(m.cat))continue;
+          rows.push({e,m,key:i});
+        }
         return <div style={{padding:"0 10px 8px"}}>
-          <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Latest events</div>
-          {F.slice(-28).reverse().map((e,i)=>(
-            <div key={F.length-i} onClick={()=>jumpTo(e.x,e.y)}
-              style={{fontSize:10,padding:"2px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.35}}>
-              <span className="au-fade" style={{marginRight:5}}>{yr(e.step)}</span>{e.text}
+          <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:4}}>The living feed</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
+            {EV_CATS.map(([id,label,col])=>(
+              <button key={id} onClick={()=>tog(id)}
+                className={"au-filter"+(active.has(id)?" au-active":"")}
+                style={active.has(id)?{borderColor:col,color:col}:{borderColor:"rgba(58,38,20,0.3)",color:"var(--au-ink-faded)"}}
+                title={active.size?"filtering — click to toggle":"click to filter to "+label}>{label}</button>
+            ))}
+            {active.size>0&&<button className="au-filter" style={{borderColor:"rgba(58,38,20,0.3)",color:"var(--au-ink-faded)"}}
+              onClick={()=>setFeedCats(new Set())}>× all</button>}
+          </div>
+          {rows.map(({e,m,key})=>(
+            <div key={key} onClick={()=>jumpTo(e.x,e.y)}
+              style={{fontSize:11,padding:"2.5px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.4,display:"flex",gap:6}}
+              title={e.x!=null?"Jump to where it happened":undefined}>
+              <span style={{color:evCatColor(m.cat),flexShrink:0,width:12,textAlign:"center"}}>{m.icon}</span>
+              <span style={{minWidth:0}}><span className="au-fade" style={{marginRight:5,fontVariantNumeric:"tabular-nums"}}>{yr(e.step)}</span>{e.text}</span>
             </div>))}
+          {rows.length===0&&<div className="au-fade" style={{fontSize:11,fontStyle:"italic"}}>Nothing in these categories yet.</div>}
         </div>;})()}
       <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
       <MiniChart data={H} get={d=>d.gold}           label="Gold by weight (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
@@ -4107,50 +4252,46 @@ return(
 <div className="au-root" style={{width:"100vw",height:"100vh",
   background:"var(--au-table-dark)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
 
-{/* ══════════ TOP BAR ══════════ */}
-<header className="au-parchment" style={{display:"flex",alignItems:"center",gap:12,margin:"6px 6px 0",padding:"5px 14px",flexShrink:0,zIndex:45,position:"relative"}}>
+{/* ══════════ TOP BAR (chrome — the player's controls) ══════════ */}
+<header className="au-chrome au-glass" style={{display:"flex",alignItems:"center",gap:10,margin:"6px 6px 0",padding:"5px 12px",flexShrink:0,zIndex:45,position:"relative",minHeight:44}}>
   <button onClick={togglePlay} className={"au-btn"+(playing?" au-wax au-active":"")}
-    style={{padding:"4px 14px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif"}} title="Space">{playing?"❚❚":"▶"}</button>
-  <div style={{display:"flex",gap:2}}>
+    style={{padding:"5px 15px",fontSize:14,fontFamily:"'Cinzel',Georgia,serif"}} title="Play / pause — Space">{playing?"❚❚":"▶"}</button>
+  <div style={{display:"flex",gap:1}}>
     {/* speed = target ticks/sec. 30 ≈ one step per frame (the step counter ticks
         up one-by-one); lower watches it crawl, higher packs more per frame, Max
         runs flat-out. */}
     {[[8,"¼×"],[30,"1×"],[120,"4×"],[480,"16×"],[100000,"Max"]].map(([v,l])=>(
       <button key={v} onClick={()=>{setSpeed(v);speedRef.current=v;}}
-        className={"au-btn au-flat"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:11}}
+        className={"au-btn au-flat au-num"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:12}}
         title={v>=100000?"as fast as possible":`~${v} ticks/sec`}>{l}</button>
     ))}
   </div>
-  <span className="au-vrule" style={{height:20}}/>
-  <span className="au-era" style={{fontSize:14}}>{_era}</span>
-  {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"#c9a227",fontWeight:700,letterSpacing:0.3}}>✦ Arc Complete</span>}
-  <span className="au-year" style={{fontSize:13}}>{_ys}</span>
-  <span className="au-fade" style={{fontSize:10}}>step {_step.toLocaleString()}</span>
-  <span className="au-vrule" style={{height:20}}/>
-  <span style={{fontSize:12}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:10}}>realms</span></span>
-  <span style={{fontSize:12}}>{Math.round((psStats.landPct||0)*100)}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:10}}>claimed</span></span>
+  <span className="au-vrule" style={{height:22}}/>
+  {/* era ribbon — the one place time appears; a read-only label, never an input */}
+  <span className="au-era" style={{fontSize:15,color:"var(--au-ch-gold)"}}>{_era}</span>
+  {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"var(--au-ch-gold)",fontWeight:700,letterSpacing:0.3}}>✦</span>}
+  <span className="au-year au-num" style={{fontSize:13.5}}>{_ys}</span>
+  <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
+  <span className="au-vrule" style={{height:22}}/>
+  <span className="au-num" style={{fontSize:13}}>{_countryCount} <span className="au-sc au-cfade" style={{fontSize:11}}>realms</span></span>
+  <span className="au-num" style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-cfade">%</span> <span className="au-sc au-cfade" style={{fontSize:11}}>claimed</span></span>
   {lens==="economy"&&(()=>{
     const psw=peopleRef.current;
     const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
     if(P==null)return null;
-    const col=P>1.1?"hsl(8,75%,45%)":P<0.9?"hsl(195,65%,35%)":"var(--au-ink)";
-    return <span style={{fontSize:12}} title={`global price level ×${P.toFixed(2)}`}>
-      <span className="au-sc au-fade" style={{fontSize:10,marginRight:4}}>wheat</span>
-      <span style={{color:col,fontWeight:600}}>{(5*P).toFixed(2)}</span></span>;
+    const col=P>1.1?"var(--au-ch-bad)":P<0.9?"hsl(195,55%,60%)":"var(--au-ch-text)";
+    return <span className="au-num" style={{fontSize:13}} title={`global price level ×${P.toFixed(2)}`}>
+      <span className="au-sc au-cfade" style={{fontSize:11,marginRight:4}}>wheat</span>
+      <span style={{color:col,fontWeight:700}}>{(5*P).toFixed(2)}</span></span>;
   })()}
   <div style={{flex:1,minWidth:0}}/>
-  {(()=>{const F=peopleRef.current&&peopleRef.current._feed;const last=F&&F[F.length-1];if(!last)return null;
-    return <span onClick={()=>setPanelTab("world")} className="au-fade"
-      style={{fontSize:11,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:360,cursor:"pointer",flexShrink:1}}
-      title="Open the world feed">📜 {last.text}</span>;})()}
-  <button onClick={()=>setShowGlobe(!showGlobe)} className={"au-btn au-flat"+(showGlobe?" au-active":"")}
-    style={{fontSize:12,padding:"3px 8px"}} title="3D globe">🌍</button>
-  <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12,padding:"3px 8px"}}
+  <TopBarBell feedRef={peopleRef} onOpenFeed={()=>{setPanelTab("world");setRealmSel(-1);}}/>
+  <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12.5,padding:"3px 8px"}}
     title="New world — presets, seed, import">⊕ World</button>
   <button onClick={()=>{setEditorOpen(v=>!v);if(editorArmed)setEditorArmed(false);}} className={"au-btn au-flat"+(editorOpen?" au-active":"")}
-    style={{fontSize:12,padding:"3px 8px"}} title="Country editor — place a seed capital with chosen tech & character">🏛 Editor</button>
+    style={{fontSize:12.5,padding:"3px 8px"}} title="Country editor — place a seed capital with chosen tech & character">🏛 Editor</button>
   <button onClick={()=>setMenuOpen(v=>!v)} className={"au-btn au-flat"+(menuOpen?" au-active":"")}
-    style={{fontSize:12,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
+    style={{fontSize:14,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
 </header>
 <input ref={saveFileRef} type="file" accept=".json" style={{display:"none"}}
         onChange={async(e)=>{
@@ -4174,36 +4315,53 @@ return(
 
 <div style={{flex:1,display:"flex",minHeight:0,position:"relative"}}>
 
-{/* ══════════ LENS RAIL ══════════ */}
-<aside className="au-parchment au-scroll" style={{width:112,minWidth:112,margin:"6px 3px 6px 6px",
-  padding:"8px 0",display:"flex",flexDirection:"column",overflowY:"auto"}}>
-  <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"0 12px 4px"}}>Lens</div>
-  {LENSES.map(L=>(
-    <button key={L.id} onClick={()=>pickLens(L.id)}
-      className={"au-rail-tab"+(lens===L.id?" au-active":"")}>{L.label}</button>
+{/* ══════════ LENS DOCK (56px icon rail; flyout carries sub-lenses) ══════════ */}
+<aside className="au-chrome" style={{width:58,minWidth:58,margin:"6px 3px 6px 6px",
+  padding:"6px 0",display:"flex",flexDirection:"column",position:"relative",zIndex:"var(--z-docks)"}}
+  onMouseLeave={()=>setDockFly(null)}>
+  {LENSES.map((L,li)=>(
+    <button key={L.id}
+      onClick={()=>{pickLens(L.id);setDockFly(L.subs.length>1?L.id:null);}}
+      onMouseEnter={()=>{if(dockFly!==null||L.subs.length>1)setDockFly(L.subs.length>1?L.id:null);}}
+      className={"au-dock-btn"+(lens===L.id?" au-active":"")}
+      title={`${L.label} — key ${li+1}`}>
+      <span className="au-dock-ico">{L.icon}</span>
+      <span className="au-dock-lbl">{L.label}</span>
+    </button>
   ))}
-  {curLens.subs.length>1&&<>
-    <div className="au-rule"/>
-    {curLens.subs.map(([v,l])=>(
-      <button key={v} onClick={()=>pickSub(v)}
-        className={"au-rail-tab"+(viewMode===v?" au-active":"")}
-        style={{paddingLeft:20,fontSize:11}}>{l}</button>
-    ))}
-  </>}
-  <div className="au-rule"/>
-  <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 12px 2px"}}>Overlays</div>
-  <button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
-    className={"au-rail-tab"+(showRivers?" au-active":"")}>Rivers</button>
-  {showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
-    className={"au-rail-tab"+(showStreams?" au-active":"")} style={{paddingLeft:20,fontSize:11}}>· Streams</button>}
-  <button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
-    className={"au-rail-tab"+(showLakes?" au-active":"")}>Lakes</button>
-  {world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
-    className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
-  <button onClick={()=>setLayersOpen(v=>!v)}
-    className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers…</button>
+  <div className="au-rule" style={{margin:"5px 8px"}}/>
+  <button onClick={()=>{setLayersOpen(v=>!v);setDockFly(null);}}
+    className={"au-dock-btn"+(layersOpen?" au-active":"")} title="Map layers — L">
+    <span className="au-dock-ico">🗂</span><span className="au-dock-lbl">Layers</span></button>
+  <button onClick={()=>setShowGlobe(!showGlobe)}
+    className={"au-dock-btn"+(showGlobe?" au-active":"")} title="3D globe — G">
+    <span className="au-dock-ico">🌍</span><span className="au-dock-lbl">Globe</span></button>
+  <button onClick={()=>setHelpOpen(v=>!v)}
+    className={"au-dock-btn"+(helpOpen?" au-active":"")} title="Keys & help — ?">
+    <span className="au-dock-ico">✳</span><span className="au-dock-lbl">Help</span></button>
   <div style={{flex:1}}/>
-  <span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>seed {seed}</span>
+  <span className="au-cfade au-num" style={{fontSize:9,textAlign:"center"}} title="World seed">{seed}</span>
+
+  {/* flyout: the active-hovered lens's sub-lenses */}
+  {dockFly&&(()=>{
+    const L=LENSES.find(x=>x.id===dockFly);if(!L||L.subs.length<2)return null;
+    const li=LENSES.indexOf(L);
+    const psw=peopleRef.current;
+    return(
+      <div className="au-chrome au-glass" style={{position:"absolute",left:60,top:6+li*44,minWidth:128,
+        padding:"5px 0",zIndex:"var(--z-popovers)"}}>
+        <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"2px 12px 4px"}}>{L.label}</div>
+        {L.subs.map(([v,l])=>{
+          const lock=subLockReason(v,psw,psStats);
+          return(
+          <button key={v} onClick={()=>{if(lock)return;pickLens(L.id);pickSub(v);}}
+            className={"au-rail-tab"+(viewMode===v?" au-active":"")}
+            style={{fontSize:12,opacity:lock?0.42:1,cursor:lock?"default":"pointer"}}
+            title={lock||undefined}>{l}{lock?" ·🔒":""}</button>);
+        })}
+      </div>
+    );
+  })()}
 </aside>
 
 {/* ══════════ CENTER COLUMN ══════════ */}
@@ -4239,8 +4397,8 @@ return(
 }
 
 {/* ─── Country editor panel ─── */}
-{editorOpen&&<div className="au-parchment" style={{position:"absolute",top:48,left:8,width:228,
-  maxHeight:"calc(100% - 64px)",overflowY:"auto",padding:"8px 10px",fontSize:11,zIndex:30}}>
+{editorOpen&&<div className="au-chrome au-glass" style={{position:"absolute",top:48,left:8,width:232,
+  maxHeight:"calc(100% - 64px)",overflowY:"auto",padding:"8px 10px",fontSize:12,zIndex:"var(--z-drawers)",borderColor:"var(--au-ch-wax)"}}>
   <div className="au-heading au-sc" style={{fontSize:11,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
     <span>Country Editor</span>
     <span onClick={()=>{setEditorOpen(false);setEditorArmed(false);}} style={{cursor:"pointer"}}>✕</span>
@@ -4260,10 +4418,29 @@ return(
     Arm, then click a land tile: a fully-formed realm appears, filled with cities out to the extent its tech allows it to hold. Drop several to compare. (Takes a moment to settle.)</div>
 </div>}
 
-{/* ─── Pico hover card ─── */}
+{/* ─── Pico hover card — identity first, terrain second (plan §5.3) ─── */}
 {hoverInfo&&<div className="au-parchment au-pico"
   style={{left:hoverInfo.x+14,top:hoverInfo.y-12}}>
-  <div className="au-pico-title" style={{
+  {(()=>{   // identity block: settlement › realm, with the realm's arms
+    const psw=peopleRef.current;
+    const ctry=hoverInfo.realmId>=0&&psw&&psw.countries?psw.countries.get(hoverInfo.realmId):null;
+    const emblem=ctry?realmEmblemURL(psw,ctry,terRef.current,worldRef.current?worldRef.current.seed:0):null;
+    if(!hoverInfo.sett&&!ctry)return null;
+    const tierName=hoverInfo.sett?["farming region","town","city","metropolis"][hoverInfo.sett.tier]||"settlement":null;
+    return(<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,paddingBottom:4,borderBottom:"1px solid rgba(58,38,20,0.18)"}}>
+      {emblem&&<img src={emblem} alt="" style={{height:26,flexShrink:0,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.3))"}}/>}
+      <div style={{minWidth:0}}>
+        {hoverInfo.sett&&<div className="au-pico-title" style={{textTransform:"capitalize"}}>
+          {hoverInfo.sett.name}{hoverInfo.sett.isCap?" ★":""}</div>}
+        {hoverInfo.sett&&<div className="au-fade" style={{fontSize:11,textTransform:"capitalize"}}>
+          {tierName} · {fmtPeople(hoverInfo.sett.people)} souls</div>}
+        {ctry&&<div style={{fontSize:hoverInfo.sett?11:12.5,fontWeight:hoverInfo.sett?400:700}}>
+          {!hoverInfo.sett&&<span className="au-fade" style={{fontWeight:400}}>realm of </span>}
+          <span style={{textTransform:"capitalize"}}>{hoverInfo.realm}</span></div>}
+      </div>
+    </div>);
+  })()}
+  <div className="au-pico-title" style={{fontSize:12,
     color:hoverInfo.isLake?"var(--au-verdigris)":hoverInfo.elevM<=0?"var(--au-verdigris)":"var(--au-ink)"}}>
     {hoverInfo.isLake?`Lake (${hoverInfo.lakeSize}t)`:hoverInfo.biome}
   </div>
@@ -4273,12 +4450,11 @@ return(
   {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
     {RIVER_NAMES[hoverInfo.river]}
   </div>}
-  {(hoverInfo.owner||hoverInfo.realm)&&<div style={{fontSize:11}}>
-    {hoverInfo.owner&&<span style={{textTransform:"capitalize"}}>{hoverInfo.owner}</span>}
-    {hoverInfo.owner&&hoverInfo.realm&&hoverInfo.realm!==hoverInfo.owner&&<span className="au-fade"> · </span>}
-    {hoverInfo.realm&&hoverInfo.realm!==hoverInfo.owner&&<span className="au-fade">{hoverInfo.realm}</span>}
+  {hoverInfo.owner&&hoverInfo.owner!==(hoverInfo.sett&&hoverInfo.sett.name)&&<div className="au-fade" style={{fontSize:11}}>
+    worked by <span style={{textTransform:"capitalize"}}>{hoverInfo.owner}</span>
   </div>}
-  <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
+  <div className="au-fade" style={{fontSize:10,marginTop:2,fontStyle:"italic"}}>
+    {hoverInfo.sett?"click to inspect":hoverInfo.realmId>=0?"click to select the realm":""}</div>
 </div>}
 
 
@@ -4436,6 +4612,9 @@ return(
   </div>
 </div>}
 
+{/* ─── Epochal-event toasts (plan §8) ─── */}
+<ToastHost feedRef={peopleRef} verbosity={toastVerbosity} onJump={jumpTo} stepNow={liveStep}/>
+
 </div>{/* end map area */}
 
 </div>{/* end center column */}
@@ -4474,30 +4653,45 @@ return(
       className={"au-rail-tab"+(layers[k]?" au-active":"")}
       style={{paddingLeft:14+(indent||0),width:"100%",textAlign:"left",fontSize:12}}>{label}</button>
   );
+  // Terrain overlays live in separate state/refs (pre-date the layers map);
+  // rendered here as the same kind of row so the popover is the ONE home of
+  // every map overlay.
+  const trow=(on,set,ref,label,indent)=>(
+    <button key={label} onClick={()=>{set(v=>!v);ref.current=!ref.current;}}
+      className={"au-rail-tab"+(on?" au-active":"")}
+      style={{paddingLeft:14+(indent||0),width:"100%",textAlign:"left",fontSize:12}}>{label}</button>
+  );
   return(
-    <aside className="au-parchment au-scroll" style={{
-      position:"absolute",left:124,top:8,width:220,maxHeight:"80vh",
-      padding:"10px 0",overflowY:"auto",zIndex:30}}>
+    <aside className="au-chrome au-glass au-scroll" style={{
+      position:"absolute",left:66,top:8,width:224,maxHeight:"85vh",
+      padding:"8px 0",overflowY:"auto",zIndex:"var(--z-popovers)"}}>
       <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
-        <span className="au-heading au-sc" style={{fontSize:12}}>Layers</span>
+        <span className="au-heading au-sc" style={{fontSize:12.5}}>Map layers</span>
         <div style={{flex:1}} />
         <span onClick={()=>setLayersOpen(false)}
-          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+          style={{cursor:"pointer",fontSize:18,color:"var(--au-ch-text-dim)"}}>×</span>
       </div>
-      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 14px 2px"}}>Map</div>
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"4px 14px 2px"}}>Politics & trade</div>
       {row("tints","Country tints")}
       {row("borders","Borders")}
+      {row("labels","Names on the map")}
+      {row("emblems","Heraldry")}
       {row("provinces","Province borders")}
       {row("roads","Roads")}
       {row("seaLanes","Sea lanes")}
       {row("moneyFlow","Money flow")}
-      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>Terrain</div>
+      {trow(showRivers,setShowRivers,showRiversRef,"Rivers")}
+      {showRivers&&trow(showStreams,setShowStreams,showStreamsRef,"· Streams",10)}
+      {trow(showLakes,setShowLakes,showLakesRef,"Lakes")}
+      {world&&world.pixPlate&&trow(showPlates,setShowPlates,showPlatesRef,"Plates")}
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
       {row("icons","Icons (master)")}
       {row("village","· Farming Regions",10)}
       {row("city","· Cities",10)}
       {row("metropolis","· Metropolises",10)}
       {row("shocks","Plague / famine outlines")}
-      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
       {row("ships","Colony ships")}
     </aside>
   );
@@ -4506,9 +4700,9 @@ return(
 
 
 {rightPanel==="params"&&(preset==="earth"||preset==="earth_sim")&&
-<aside className="au-parchment au-scroll" style={{
+<aside className="au-chrome au-glass au-scroll" style={{
   position:"absolute",right:316,top:6,bottom:6,width:300,
-  padding:"10px 12px",overflowY:"auto",zIndex:30}}>
+  padding:"10px 12px",overflowY:"auto",zIndex:"var(--z-drawers)"}}>
 <div style={{display:"flex",alignItems:"baseline",marginBottom:6}}>
   <span className="au-heading au-sc" style={{fontSize:12}}>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
   <div style={{flex:1}} />
@@ -4606,7 +4800,7 @@ return(
 {/* ══════════ MENU POPOVER ══════════ */}
 {menuOpen&&(
   <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:210}}>
-    <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{position:"absolute",right:10,top:44,width:230,padding:"8px 0",display:"flex",flexDirection:"column"}}>
+    <div onClick={e=>e.stopPropagation()} className="au-chrome au-glass" style={{position:"absolute",right:10,top:48,width:238,padding:"8px 0",display:"flex",flexDirection:"column",zIndex:"var(--z-popovers)"}}>
       <button className="au-rail-tab" onClick={()=>{
         downloadSaveRef.current=(json,step)=>{
           const blob=new Blob([json],{type:"application/json"});
@@ -4648,6 +4842,9 @@ return(
 {leversOpen&&<SimLevers values={tuneVals} onChange={onLeverChange}
   onResetKey={onLeverResetKey} onResetAll={onLeverResetAll}
   onClose={()=>setLeversOpen(false)} />}
+
+{/* ══════════ HELP / KEYS ══════════ */}
+{helpOpen&&<HelpOverlay onClose={()=>setHelpOpen(false)}/>}
 
 {/* ══════════ TUNING MODAL ══════════ */}
 {showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}

@@ -45,8 +45,8 @@ function Lever({ p, val, onChange, onReset }) {
 
 export default function SimLevers({ values, onChange, onResetKey, onResetAll, onClose }) {
   return (
-    <aside className="au-parchment au-scroll" style={{
-      position: "absolute", right: 8, top: 6, bottom: 6, width: 290, zIndex: 40,
+    <aside className="au-chrome au-glass au-scroll" style={{
+      position: "absolute", right: 8, top: 6, bottom: 6, width: 290, zIndex: "var(--z-drawers)",
       padding: "8px 10px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4,
         position: "sticky", top: -8, background: "inherit", paddingBottom: 4, zIndex: 1 }}>
