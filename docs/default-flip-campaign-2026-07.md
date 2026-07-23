@@ -57,20 +57,31 @@ usual band. Also removed in this wave, covered by its battery:
 - `CAP_GEO` — the other member of ORG_APT_CAP's measured "fattens the
   biggest realms" family; the emergent capacity ruler carries size variety.
 
-## Wave 3 — the four survivors (flipped after screens + combined gate)
+## Wave 3 — screens, a FAILED combined gate, a bisect, and honest verdicts
 
-`TILE_IDENTITY` (identity lives on the land — the settlement-ontology
-Stage-2 design, flipped by its own documented procedure), `CROP_AXIS`
-(concrete crop packages — the continental axis becomes emergent instead of
-a proxy), `CTRL_LIVE` (the control field IS the political map — live
-borders), `ALLY_FRONT=1` (coalition relief armies — the code ships the
-DEFENSIVE-ONLY rewrite; the measured-harmful offensive half was already
-excised, which supersedes the backlog's older "keep 0" note).
-Each passed a single-seed screen individually (hard gates green, warns in
-budget), then the four together — the prospective default world — passed
-the combined full gate: smoke (the sharp edge: per-tile culture state and
-field borders through save/load), 3-seed stylized, 20k probe.
-<!-- W3-RESULTS -->
+All four candidates (`TILE_IDENTITY, CROP_AXIS, CTRL_LIVE, ALLY_FRONT`)
+passed single-seed screens — then the four TOGETHER **failed the combined
+full gate**, exactly what the gate exists to catch: smoke failed twice
+(`field culture matches entities — 282 mismatched`; load-continuation
+diverging to 8 countries / 100 % land vs the original's 16 / 70.5 %) and
+the probe world was politically pathological (5 countries, largest empire
+65 % of claimed land). A five-way bisect (each lever alone vs base, 12k)
+attributed everything:
+
+| lever alone @12k | countries | pop | verdict |
+|---|---|---|---|
+| base | 72 | 13.6k | — |
+| `ALLY_FRONT=1` | 72 | 13.6k | **byte-identical** → FLIPPED ON (relief arms only when a bloc member is stormed by its balance target; screened green at 21k) |
+| `CROP_AXIS=1` | 50 | 21.1k | real, sane shifts → full gate (smoke + **3/3 seeds**) → FLIPPED ON — the continental axis is now emergent from concrete crop packages by default |
+| `TILE_IDENTITY=1` | 65 | 19.7k | macro sane but **fails its own culture-consistency invariant** (the 282 tiles) → Stage-2 lever REMOVED; the Stage-0/1 identity mirror stays live; settlement-ontology remains the spec |
+| `CTRL_LIVE=1` | **8** | 44.7k | **the world-breaker** — runaway consolidation + the unpersisted-field load divergence → prototype lever REMOVED; the render control field stays; field-polity-spec keeps the design |
+
+After the verdicts, bare defaults were proven **byte-identical** to the
+bisect's corresponding lines twice over (post-removals == base; post-
+CROP_AXIS-flip == the CROP_AXIS line) — flips and removals landed exactly
+as measured, nothing else moved. Residual chore, documented: unreachable
+guards on the two deleted keys remain in war/identity code for a cleanup
+pass.
 
 ## The one exception — RES_INV_RIVER stays dormant, documented
 
@@ -92,10 +103,12 @@ behaviour) are parameters whose value happens to be zero.
 | | count |
 |---|---|
 | dormant levers before | 38 |
-| flipped ON (waves 1–3) | 26 |
-| removed with code paths | 9 |
-| values-at-zero (no action) | 2 |
+| flipped ON (waves 1–3) | **24** (15 + 7 + `ALLY_FRONT`, `CROP_AXIS`) |
+| removed with code paths | **11** (7 + `RIVER_REACH`, `CAP_GEO`, `CTRL_LIVE`, `TILE_IDENTITY`) |
+| values-at-zero (no action) | 2 (`FARM_MAX_TIER`, `LUX_VILLAGE_FRAC`) |
 | documented exception | 1 (`RES_INV_RIVER`) |
+
+Lever count: 295 → **284**. Dormant feature switches: 38 → **1**.
 
 The Levers panel still carries every flipped lever as a kill-switch (set 0
 to A/B the legacy behaviour); each desc is stamped `FLIPPED ON 2026-07`.
