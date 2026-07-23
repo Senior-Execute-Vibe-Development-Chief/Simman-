@@ -491,7 +491,7 @@ function buildSnapshot() {
   // settlement is never a bare dot on the map while its nascent capital's projected claim
   // is still ~0. Render-only (a per-tick slice; nothing in the sim reads this).
   let countryClaim = null;
-  if (sendStatic && T.CONTROL_FIELD && !T.CTRL_LIVE && world._ctrlOwner) {
+  if (sendStatic && T.CONTROL_FIELD && world._ctrlOwner) {
     // PRETTY MODE (control field as the drawn border): the political map is rendered from
     // the control field (world._ctrlOwner) — coherent, terrain-following, continuously-moving
     // borders — instead of the recompute crawl. The field is seeded by the SAME nations

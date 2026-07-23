@@ -904,7 +904,6 @@ export function computeCountryTerritory(world) {
   // field, not a rebuilt Voronoi. (The field runs after the settlement pass; on the very
   // first tick _countryOwner is briefly unset until it runs, which is fine — cradles carry a
   // seeded countryId.)
-  if (T.CTRL_LIVE) return;
   // FIELD POLITY (T.FIELD_POLITY, docs/field-polity-spec.md): the political map is
   // the AUTHORED persistent state — countries grow at their own frontier and war
   // moves tiles; settlements derive their flag from the ground. The seeded reach-

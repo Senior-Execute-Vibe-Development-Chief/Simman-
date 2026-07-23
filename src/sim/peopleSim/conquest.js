@@ -2493,20 +2493,11 @@ export function updatePolities(world) {
     // (the far frontier, low control) is restless and bleeds loyalty — a self-consistent
     // fragmentation brake that scales with each realm, so a big empire sheds its outer marches
     // while a compact one holds firm, with no capacity stack.
-    const chArr = T.CTRL_LIVE ? world._ctrlHold : null;
-    const _cw = world.tw;
-    const holdAt = (s) => chArr ? (chArr[(s.pos.y | 0) * _cw + (((s.pos.x | 0) % _cw) + _cw) % _cw] || 0) : 0;
-    const capHold = chArr && cap ? Math.max(1e-3, holdAt(cap)) : 1;
+    // (T.CTRL_LIVE removed 2026-07 — the field-hold loyalty read went with the
+    // prototype; coverage is the capacity budget, as always.)
     for (const { s, load } of loads) {
       cum += load;
-      let covered, overField = 0;
-      if (T.CTRL_LIVE) {
-        const frac = holdAt(s) / capHold;                 // this province's grip as a share of the core's
-        covered = frac >= CTRL_LOYAL_FRAC;
-        overField = covered ? 0 : Math.min(OVER_DECAY_CAP, (CTRL_LOYAL_FRAC - frac) / CTRL_LOYAL_FRAC);
-      } else {
-        covered = cum <= capacity;
-      }
+      const covered = cum <= capacity;
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (pacified || infant) {
@@ -2522,7 +2513,7 @@ export function updatePolities(world) {
         // How deep past the line — CAPPED so a wildly over-extended realm sheds gradually
         // (ring by ring over passes) instead of its whole frontier collapsing in one tick.
         // CTRL_LIVE uses the field-hold deficit (overField); else the capacity overspend.
-        const over = T.CTRL_LIVE ? overField : Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
+        const over = Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
         // An ORGANISED empire's provinces are administratively STICKY — records,
         // garrisons, an integrated economy and roads bind a province to the
         // realm, so it bleeds loyalty slowly even while over-budget. This is the

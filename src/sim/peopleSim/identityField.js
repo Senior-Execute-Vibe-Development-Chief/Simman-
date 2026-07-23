@@ -74,10 +74,7 @@ export function mirrorIdentityField(world) {
   ensureIdentityField(world);
   const owner = world._territoryOwner;
   const K = IDENTITY_K;
-  // Stage 2 (T.TILE_IDENTITY): the culture layer is SIM STATE — the mirror
-  // must not wipe it (stepIdentityField owns its lifecycle). Faith/language
-  // remain Stage-0 mirrors either way.
-  const skipCul = T.TILE_IDENTITY > 0;
+  const skipCul = false;   // (the Stage-2 T.TILE_IDENTITY state layer was removed 2026-07 — the mirror owns all three layers)
   // Start clean every pass: -1 ids, 0 shares. Cheap typed-array fills.
   for (const L of LAYERS) { if (skipCul && L.mix === "culMix") continue; world[L.id].fill(-1); world[L.shr].fill(0); }
   if (!owner) return;   // no territory yet → empty field
@@ -97,136 +94,11 @@ export function mirrorIdentityField(world) {
   }
 }
 
-// ── Stage 2 (T.TILE_IDENTITY): the CULTURE layer becomes sim STATE ─────────
-//
-// docs/settlement-ontology.md Stage 2. Under the lever the culture layer stops
-// being a wipe-and-rewrite mirror and becomes the LAND's own slow identity:
-//   - tiles KEEP their mix when ownership changes (conquest recolours the
-//     flag, not the people);
-//   - each owned tile ASSIMILATES toward its governing city's culMix at a rate
-//     set by the LOYAL_FIELD attachment clock — r = 1 − exp(−dtY·attach/ASSIM_TAU)
-//     per firing, dyn-years, G-invariant (the loyaltyField convention). Fully
-//     habituated ground (attach ~0.9) completes in ~2.2·ASSIM_TAU/0.9 ≈ 1000
-//     dyn-years — the same band emergent assimilation (HAB_DONE) lands in, so
-//     the ground's PEOPLE and its political MEMORY forget together; restless
-//     conquered ground (attach → 0) effectively never assimilates;
-//   - an owned but EMPTY tile is painted outright (first colonisation names
-//     the countryside); unowned tiles are untouched (ghost identity — the
-//     land remembers departed peoples).
-// The same pass stamps every governing settlement's RURAL identity aggregate
-// (s._rurCulMix, top-2 of the popField-weighted culture mass over its tiles,
-// + s._rurCulPeople the field-people so consumers can people-weight it) — the
-// catchment read the province-cohesion consumers use (cohesion.js).
-// Faith/language stay Stage-0 mirrors. Lever off: nothing here runs, nothing
-// allocates — byte-identical.
-export const IDENT_FIELD_INTERVAL = 150;   // ≈ the culture-pass cadence (a perf cadence, not a content gate)
-const ASSIM_TAU = 400;   // dyn-years: e-fold of tile assimilation at FULL attachment (see block comment)
-const NEUTRAL_ATTACH = 0.5;   // LOYAL_FIELD off → no per-tile clock; assimilate at half pace everywhere
-
-export function stepIdentityField(world) {
-  if (!(T.TILE_IDENTITY > 0)) return;
-  ensureIdentityField(world);
-  const owner = world._territoryOwner, byId = world._byId;
-  if (!owner || !byId) return;
-  const N = world.N, K = IDENTITY_K;
-  const idA = world.tileCulId, shA = world.tileCulShr;
-  // First firing (fresh world, pre-v4 save, or lever flipped on mid-run):
-  // seed the countryside from the city mirror — owned tiles take their
-  // governing city's mix, the "no better information" prior. From then on the
-  // field only evolves by the rules above.
-  if (!world._tileIdentInit) {
-    for (let ti = 0; ti < N; ti++) {
-      const oid = owner[ti]; if (oid < 0) continue;
-      const s = byId.get(oid); if (!s || s.mode !== "settled") continue;
-      writeMix(idA, shA, ti * K, s.culMix);
-    }
-    world._tileIdentInit = true;
-  }
-  const alg = T.LOYAL_FIELD ? world._allegiance : null;   // the attachment clock (loyaltyField.js)
-  const dtY = IDENT_FIELD_INTERVAL * (dynYear(1) - dynYear(0));   // dyn-years per firing (G-invariant)
-  const pf = world.popField;
-  const rur = new Map();   // sid → Map(culId → popField-weighted culture mass)
-  const rurPeople = new Map();   // sid → Σ popField over its tiles
-  // merge scratch (≤ K existing + MIX_K incoming ids)
-  const accId = new Int32Array(16), accW = new Float64Array(16);
-  for (let ti = 0; ti < N; ti++) {
-    const oid = owner[ti]; if (oid < 0) continue;   // unowned: ghost identity persists
-    const s = byId.get(oid); if (!s || s.mode !== "settled") continue;
-    const base = ti * K, mix = s.culMix;
-    if (idA[base] < 0) {   // owned but empty: first colonisation paints it
-      writeMix(idA, shA, base, mix);
-    } else if (mix && mix.length) {
-      const attach = alg ? alg[ti] : NEUTRAL_ATTACH;
-      const r = 1 - Math.exp(-dtY * attach / ASSIM_TAU);
-      if (r > 0) {
-        // weighted vote merge: existing slots at (1−r), the city's mix at r —
-        // then top-K requantised (the blur's consolidation rules).
-        let m = 0;
-        for (let k = 0; k < K; k++) {
-          const id = idA[base + k]; if (id < 0) break;
-          const w = (1 - r) * (shA[base + k] / 255);
-          if (w <= 0) continue;
-          accId[m] = id; accW[m] = w; m++;
-        }
-        for (let k = 0; k < mix.length && k < K; k++) {
-          const id = mix[k][0], w = r * mix[k][1];
-          if (w <= 0) continue;
-          let j = 0; for (; j < m; j++) if (accId[j] === id) { accW[j] += w; break; }
-          if (j === m && m < 16) { accId[m] = id; accW[m] = w; m++; }
-        }
-        let total = 0;
-        const lim = m < K ? m : K;
-        for (let a = 0; a < lim; a++) {   // partial selection sort, top-K by weight
-          let bi = a; for (let b2 = a + 1; b2 < m; b2++) if (accW[b2] > accW[bi]) bi = b2;
-          if (bi !== a) { const it = accId[a]; accId[a] = accId[bi]; accId[bi] = it; const wt = accW[a]; accW[a] = accW[bi]; accW[bi] = wt; }
-          total += accW[a];
-        }
-        if (total > 0) {
-          let wrote = 0, accShr = 0;
-          for (let k = 0; k < lim; k++) {
-            const q = Math.round((accW[k] / total) * 255);
-            if (q <= 0) break;
-            idA[base + wrote] = accId[k]; shA[base + wrote] = q; accShr += q; wrote++;
-          }
-          if (wrote > 0) { const dom = shA[base] + (255 - accShr); shA[base] = dom < 0 ? 0 : dom > 255 ? 255 : dom; }
-          for (let k = wrote; k < K; k++) { idA[base + k] = -1; shA[base + k] = 0; }
-        }
-      }
-    }
-    // rural aggregate: this tile's people vote their culture into the
-    // governing settlement's countryside mix (popField-weighted)
-    if (pf) {
-      const p = pf[ti];
-      if (p > 0) {
-        rurPeople.set(oid, (rurPeople.get(oid) || 0) + p);
-        let rm = rur.get(oid); if (!rm) rur.set(oid, rm = new Map());
-        for (let k = 0; k < K; k++) {
-          const id = idA[base + k]; if (id < 0) break;
-          const w = p * (shA[base + k] / 255);
-          if (w > 0) rm.set(id, (rm.get(id) || 0) + w);
-        }
-      }
-    }
-  }
-  // stamp the per-province countryside identity (top-2, normalised) — the
-  // catchment read cohesion consumes. Cleared first so a settlement that lost
-  // all its land this pass doesn't carry a stale countryside. _rurCulPeople is
-  // stored in CENSUS units (×provRatio, the PROV_FIELD anchor) so cohesion can
-  // people-weight town vs countryside without knowing about field units;
-  // anchor absent (PROV_FIELD off / not yet stamped) → 0 → consumers read
-  // town-only, the legacy behaviour.
-  const provRatio = world._provRatio || 0;
-  for (const s of world.settlements) { if (s.mode === "settled") { s._rurCulMix = null; s._rurCulPeople = 0; } }
-  for (const [sid, rm] of rur) {
-    const s = byId.get(sid); if (!s || s.mode !== "settled") continue;
-    let i1 = -1, w1 = 0, i2 = -1, w2 = 0, tot = 0;
-    for (const [id, w] of rm) { tot += w; if (w > w1) { i2 = i1; w2 = w1; i1 = id; w1 = w; } else if (w > w2) { i2 = id; w2 = w; } }
-    if (tot > 0 && i1 >= 0) {
-      s._rurCulMix = i2 >= 0 ? [[i1, w1 / tot], [i2, w2 / tot]] : [[i1, w1 / tot]];
-      s._rurCulPeople = (rurPeople.get(sid) || 0) * provRatio;
-    }
-  }
-}
+// (Stage 2 — T.TILE_IDENTITY, the culture-layer-as-sim-state prototype — was
+// removed in the 2026-07 default-flip campaign: it failed its own
+// field-culture-matches-entities invariant at the gate. The Stage-0/1 mirror
+// below is the live behaviour; docs/settlement-ontology.md remains the spec
+// for a proper Stage-2 landing with persistence and a passing invariant.)
 
 /** Share of culture `culId` among the people of tile `ti` (0..1) — the
  *  per-tile read the irredentist casus-belli term consumes (armies.js). */
@@ -321,7 +193,6 @@ export function diffuseIdentityField(world, layerName, passes = 4) {
   // Stage 2: the culture layer is SIM STATE (stepIdentityField owns it) — the
   // render lens must display it, not re-flood it (the wipe would erase the
   // land's remembered identity every time the player opened the map).
-  if (T.TILE_IDENTITY > 0 && layerName === "culture") return;
   ensureIdentityField(world);   // allocate the field arrays if this is the first call
   floodCounties(world, L);   // step 1: tile each realm into town counties
   const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th, NK = N * K, elev = world.elev;

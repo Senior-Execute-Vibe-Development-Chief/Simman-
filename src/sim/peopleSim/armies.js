@@ -22,7 +22,6 @@ import { slavePull } from "./slavery.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
-import { tileCulShareOf } from "./identityField.js";
 import { realmName } from "./chronicle.js";
 import { inCrisis } from "./dynasties.js";
 import { getPolity as _getPolity } from "./entities.js";
@@ -480,7 +479,9 @@ export function advanceFronts(world) {
   // next tick. Instead a winning front writes FORWARD PRESSURE (world._warFront/_warAdv) that
   // the field bulges into the defender toward its capital (controlField.js). Cleared each pass
   // so ended wars / receded fronts stop pushing.
-  const CTRL_LIVE = !!T.CTRL_LIVE;
+  // (T.CTRL_LIVE removed 2026-07 — prototype failed its gate. Bound false so the
+  // field-war branches below are provably dead; strip them on the next war pass.)
+  const CTRL_LIVE = false;
   let warFront = null, warAdv = null;
   if (CTRL_LIVE) {
     warFront = world._warFront; warAdv = world._warAdv;
@@ -530,25 +531,10 @@ export function advanceFronts(world) {
   // era-weights, no new constants: only the READ moves onto the land.
   // Aggregated once per war pass; lever off ⇒ null ⇒ the capital-mix read,
   // byte-identical (the extra casusBelliMul argument is undefined).
-  let realmCulOf = null;
-  if (T.TILE_IDENTITY > 0 && world.countries) {
-    realmCulOf = new Map();
-    const acc = new Map();   // countryId → Map(culId → people)
-    for (const s of world.settlements) {
-      if (s.mode !== "settled" || s.countryId < 0) continue;
-      let m = acc.get(s.countryId); if (!m) { m = new Map(); acc.set(s.countryId, m); }
-      const wCity = Math.max(0, s.people || 0);
-      if (wCity > 0 && s.culMix) for (const e of s.culMix) m.set(e[0], (m.get(e[0]) || 0) + e[1] * wCity);
-      const wRur = s._rurCulMix ? (s._rurCulPeople || 0) : 0;   // census units (identityField.js stamp)
-      if (wRur > 0) for (const e of s._rurCulMix) m.set(e[0], (m.get(e[0]) || 0) + e[1] * wRur);
-    }
-    for (const [cc, m] of acc) {
-      let tot = 0; for (const v of m.values()) tot += v;
-      if (!(tot > 0)) continue;
-      const mix = [...m.entries()].map((e) => [e[0], e[1] / tot]).sort((a, b) => b[1] - a[1]);
-      realmCulOf.set(cc, mix);
-    }
-  }
+  // (T.TILE_IDENTITY removed 2026-07 — Stage-2 lever failed its invariant gate.
+  // The realm-countryside culture aggregate and the tile-irredentist read went
+  // with it; casusBelliMul's off-path (capital-mix) reads are the behaviour.)
+  const realmCulOf = null;
   // Salience per PAIR of belligerents (cohesion.js): the more developed side
   // brings its era's political question to the war — righteous religion
   // between medieval courts, the national cause once either party
@@ -562,10 +548,7 @@ export function advanceFronts(world) {
     // land front passes a tile; the amphibious bars stay pair-level (their
     // beaches are enumerated after the bar) — undefined there keeps the term
     // reading 0 under tile-war exactly as before.
-    let tShare;
-    if (T.TILE_IDENTITY > 0 && ti !== undefined && world.tileCulId && A && A.culMix && A.culMix.length) {
-      tShare = tileCulShareOf(world, ti, A.culMix[0][0]);
-    }
+    let tShare;   // undefined → the capital-mix read (the T.TILE_IDENTITY tile read was removed 2026-07)
     // Kinship restraint reads the defender REALM's people under the lever
     // (undefined off-path / for unregistered realms → the capital-mix read).
     const dGround = realmCulOf ? realmCulOf.get(defCC) : undefined;

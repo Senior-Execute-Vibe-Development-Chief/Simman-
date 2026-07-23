@@ -293,8 +293,8 @@ export function saveWorld(world, meta = {}) {
       // lever ran AND the field initialised (a lever-off save stays
       // byte-identical); a pre-v4 or lever-off save simply re-seeds from the
       // city mirror on the first stepIdentityField firing.
-      tileCul2Id: T.TILE_IDENTITY > 0 && world._tileIdentInit && world.tileCulId ? b64FromTyped(top2Ids(world)) : undefined,
-      tileCul2Shr: T.TILE_IDENTITY > 0 && world._tileIdentInit && world.tileCulShr ? b64FromTyped(top2Shrs(world)) : undefined,
+      // (Stage-2 tileCul2Id/Shr save legs removed with T.TILE_IDENTITY 2026-07;
+      // the v4 LOAD path below still expands old saves' payloads harmlessly.)
       tileOwnerPrev: world._tileOwnerPrev ? b64FromTyped(world._tileOwnerPrev) : undefined,
       tileHomeland: sparseFromTyped(world._tileHomeland, -1) ?? undefined,
       tileFellAt: sparseFromTyped(world._tileFellAt, -Infinity) ?? undefined,
