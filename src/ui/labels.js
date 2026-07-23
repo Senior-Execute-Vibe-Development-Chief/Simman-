@@ -142,18 +142,25 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
     for (const a of anchors.list) {
       const X = mapX(a.x), Y = mapY(a.y);
       if (X < -100 || X > featW + 100 || Y < -50 || Y > featH + 50) { dbg.push({ n: a.name, r: "offscreen" }); continue; }
-      // the realm's rough on-screen diameter, in CSS px
-      const footCss = (Math.sqrt(a.area) * TR * z * k) / pxScale;
+      // Grade by the realm's share of the DISPLAYED MAP WIDTH — a pure
+      // fraction, so the same realm gets the same relative size on every
+      // monitor and map scale. (The old grade used absolute CSS pixels: on a
+      // large window everything crossed the ceiling and every name rendered
+      // at the same maximum size.)
+      const frac = (Math.sqrt(a.area) / (psw && psw.tw ? psw.tw : 960)) * z;
+      const footCss = (Math.sqrt(a.area) * TR * z * k) / pxScale;   // visibility gate only
       if (footCss < 6) { dbg.push({ n: a.name, foot: footCss | 0, r: "speck" }); continue; }
-      let fsCss = 4 + footCss * 0.11;                // graded by footprint…
-      fsCss = Math.min(fsCss, 13 + (z - 1) * 2.2);   // …under a low world-zoom ceiling
-      fsCss = Math.min(Math.max(fsCss, 9.5), 17);
+      // small map text: ~8.5px minors → ~11px empires at world zoom; zoom
+      // raises everything gently (cap 16).
+      let fsCss = (8.5 + Math.min(frac, 0.28) * 18) * (1 + (z - 1) * 0.18);
+      fsCss = Math.min(Math.max(fsCss, 8.5), 16);
       const fs = px(fsCss);
       const sel = a.id === selRealm;
       ctx.font = `${sel ? 700 : 600} ${fs}px Cinzel, Georgia, serif`;
       const name = a.name.toUpperCase();
       const w = ctx.measureText(name).width;
-      const em = emblemFor ? emblemFor(a.id) : null;
+      // shields only beside names with room for them — minors stay quiet text
+      const em = emblemFor && fsCss >= 10.2 ? emblemFor(a.id) : null;
       const emH = em ? fs * 1.05 : 0, emW = emH * 0.88;
       const totW = w + (em ? emW + px(4) : 0);
       if (!collide.place(X - totW / 2 - px(2), Y - fs * 0.75, totW + px(4), fs * 1.5)) { dbg.push({ n: a.name, foot: footCss | 0, r: "collide" }); continue; }
