@@ -142,7 +142,7 @@ export function ToastHost({ feedRef, verbosity, onJump, stepNow }) {
 }
 
 /** Keyboard & reading-the-map help (the `?` overlay). */
-export function HelpOverlay({ onClose }) {
+export function HelpOverlay({ onClose, z = 60 }) {
   const K = ([k, d], i) => (
     <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "2px 0" }}>
       <kbd style={{ fontFamily: "inherit", fontSize: 11.5, border: "1px solid rgba(216,190,150,0.4)",
@@ -152,7 +152,7 @@ export function HelpOverlay({ onClose }) {
   );
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,8,6,0.72)",
-      zIndex: "var(--z-documents)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      zIndex: z, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} className="au-parchment au-elev"
         style={{ padding: "16px 22px", width: "min(560px,92vw)", maxHeight: "86vh", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>

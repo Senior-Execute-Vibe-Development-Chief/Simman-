@@ -55,6 +55,11 @@ function snapToOwned(anchor, id, claim, tw, th) {
 /**
  * Recompute realm label anchors if the claim grid changed (else return cache).
  * Returns [{id, name, x, y, area}] sorted by area desc — x/y in SIM tiles.
+ *
+ * Anchors are DAMPED against the previous placement: a claim refresh moves a
+ * realm's centroid a little every few seconds, and a label that snaps to each
+ * new centroid visibly jitters. Blending toward the new anchor keeps the name
+ * planted while borders creep.
  */
 export function realmLabelAnchors(psw, cache) {
   const claim = psw._countryClaim;
@@ -63,13 +68,24 @@ export function realmLabelAnchors(psw, cache) {
   if (cache && cache.ver === ver && cache.count === psw.countries.size) return cache;
   const tw = psw.tw, th = psw.th;
   const cents = centroidOf(claim, tw, th);
+  const prev = new Map();
+  if (cache && cache.list) for (const p of cache.list) prev.set(p.id, p);
   const list = [];
   for (const c of psw.countries.values()) {
     const cent = cents.get(c.id);
     if (!cent || cent.area < 4) continue;
     const a = snapToOwned(cent, c.id, claim, tw, th);
     const name = c.name || (c.capital && c.capital.name) || ("realm " + c.id);
-    list.push({ id: c.id, name, x: a.x, y: a.y, area: cent.area });
+    const old = prev.get(c.id);
+    let x = a.x, y = a.y;
+    if (old) {
+      // damp: ~1/4 of the way per refresh; snap only on a big jump (secession
+      // moved the heartland) so stale anchors can't strand off-territory.
+      let dx = x - old.x; if (dx > tw / 2) dx -= tw; if (dx < -tw / 2) dx += tw;
+      const dy = y - old.y;
+      if (Math.hypot(dx, dy) < tw * 0.06) { x = ((old.x + dx * 0.25) % tw + tw) % tw; y = old.y + dy * 0.25; }
+    }
+    list.push({ id: c.id, name, x, y, area: cent.area });
   }
   list.sort((p, q2) => q2.area - p.area);
   return { ver, count: psw.countries.size, list };
@@ -112,18 +128,20 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // ── Realm names: LOD by zoom — the great powers at world zoom, everyone
-  // when you lean in. Greedy by area so big realms win contested ground.
+  // ── Realm names, sized like an atlas: by the realm's own FOOTPRINT ON
+  // SCREEN, never relative to the biggest empire. A name that will not fit
+  // across its realm is simply not drawn at this zoom (zoom in and it
+  // appears) — with a fits-anyway pass for the great powers so a world of
+  // giants is always named. Greedy by area so big realms win contested ground.
   if (showRealms && anchors && anchors.list.length) {
-    const maxShown = z < 1.3 ? 14 : z < 2.2 ? 30 : 999;
-    const areaScale = Math.sqrt(anchors.list[0] ? anchors.list[0].area : 1) || 1;
-    let shown = 0;
+    const biggest = anchors.list[0] ? anchors.list[0].area : 1;
     for (const a of anchors.list) {
-      if (shown >= maxShown) break;
       const X = mapX(a.x), Y = mapY(a.y);
-      if (X < -80 || X > featW + 80 || Y < -40 || Y > featH + 40) continue;
-      const t = Math.sqrt(a.area) / areaScale;                 // 0..1 within this world
-      const fs = px(Math.max(11.5, Math.min(20, (10.5 + t * 9.5) * (0.8 + z * 0.12))));
+      if (X < -100 || X > featW + 100 || Y < -50 || Y > featH + 50) continue;
+      // footprint: the realm's rough on-screen diameter (canvas px)
+      const foot = Math.sqrt(a.area) * TR * z * k;
+      // type size scales with the footprint, clamped to a readable band
+      const fs = Math.max(px(10.5), Math.min(px(18), foot * 0.16));
       const sel = a.id === selRealm;
       ctx.font = `${sel ? 700 : 600} ${fs}px Cinzel, Georgia, serif`;
       const name = a.name.toUpperCase();
@@ -131,13 +149,15 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
       const em = emblemFor ? emblemFor(a.id) : null;
       const emH = em ? fs * 1.05 : 0, emW = emH * 0.88;
       const totW = w + (em ? emW + px(4) : 0);
+      // fit gate: the label must lie across its own territory — except a
+      // great power (≥30% of the biggest realm), which is always named.
+      if (totW > foot * 1.25 && !(a.area >= biggest * 0.3)) continue;
       if (!collide.place(X - totW / 2 - px(2), Y - fs * 0.75, totW + px(4), fs * 1.5)) continue;
-      shown++;
       const tx = X + (em ? (emW + px(4)) / 2 : 0);
-      // paper halo so the name reads on any tint, then ink
+      // pale halo so the name reads on any tint, then ink
       ctx.lineJoin = "round";
-      ctx.strokeStyle = sel ? "rgba(255,238,180,0.95)" : "rgba(236,222,186,0.82)";
-      ctx.lineWidth = Math.max(2, fs * 0.16);
+      ctx.strokeStyle = sel ? "rgba(255,238,180,0.95)" : "rgba(236,222,186,0.80)";
+      ctx.lineWidth = Math.max(2, fs * 0.15);
       ctx.strokeText(name, tx, Y);
       ctx.fillStyle = sel ? "#1d1206" : "rgba(43,26,10,0.92)";
       ctx.fillText(name, tx, Y);

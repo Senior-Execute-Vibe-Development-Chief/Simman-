@@ -13,15 +13,16 @@ import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
 import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./sim/peopleSim/tech.js";
+import { TECHS, ERAS, techState, nextTechs } from "./sim/peopleSim/tech.js";
+import { TechTreeOverlay, ChronicleOverlay, DynastyOverlay, CHRON_COL, ERA_BG } from "./ui/documents.jsx";
+import { fmtPeople, fmtFood, fmtGoldKg, MiniChart, buildHistoryExport, Chip, PsKRow, PsSection } from "./ui/bits.jsx";
 import { resetEmblems, realmEmblemImg, realmEmblemURL } from "./ui/emblems.jsx";
 import { realmLabelAnchors, drawMapLabels } from "./ui/labels.js";
 import { TopBarBell, ToastHost, HelpOverlay, evMeta, evCatColor, EV_CATS } from "./ui/events.jsx";
 import { LEGENDS, LegendCard } from "./ui/legends.jsx";
-// tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
-const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
-// effect-chip colour per channel (food=green, naval=teal, build=tan, war=red, admin=violet, trade=jade, wealth=gold)
-const FX_COLOR={farm:"#5f7d33",fish:"#2f7d8a",build:"#9a6f38",military:"#9c3a36",reach:"#6a4a8d",cohesion:"#9a6a33",defense:"#566089",trade:"#2f7d5a",wealth:"#9a7a24",seaSpeed:"#2f6d8a",seaRange:"#2f6d8a",embark:"#2f7d8a",ocean:"#2a6a8a",colonize:"#2a6a8a",walls:"#566089",market:"#2f7d5a"};
+import { useSurfaceStack, openSurface, closeSurface, closeTopSurface, isSurfaceOpen, surfaceZ } from "./ui/surfaces.js";
+
+
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
@@ -167,98 +168,6 @@ function assignCountryColors(claimArr,tw,th,prev){
   return hue;   // Map: countryId → hue 0..360
 }
 
-// ── Tech-tree overlay (Civ-like skill tree) ─────────────────────────
-// Full-screen modal showing the whole tech DAG for the selected settlement:
-// era columns, prerequisite links, and per-node state (discovered / researching
-// with progress / locked). Pure view over tech.js + the settlement's knowledge.
-function TechTreeOverlay({k,title,onClose}){
-  const ts=techState(k||{});
-  const L=techLayout();
-  const {pos,NW,NH,TOP,W,H}=L;
-  const [hov,setHov]=useState(null);   // {id,x,y} — hovered tech for the effect card
-  const chip=(bg,bd)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"10px 14px",maxWidth:"96vw",maxHeight:"94vh",overflow:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-          <div className="au-pico-title" style={{fontSize:15}}>Tech Tree{title?` — ${title}`:""}{" "}
-            <span className="au-fade" style={{fontSize:11}}>· {ERAS[ts.era]} · {ts.count}/{TECHS.length} discovered</span></div>
-          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
-        </div>
-        {(()=>{const tot=techTotalList(ts.have);if(!tot.length)return null;
-          return <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center",marginBottom:7,paddingBottom:6,borderBottom:"1px solid rgba(216,190,150,0.2)"}}>
-            <span className="au-fade" style={{fontSize:10,marginRight:3,fontWeight:600,letterSpacing:0.3}}>STACKED TECH BONUSES</span>
-            {tot.map((e,i)=><span key={i} style={{padding:"1.5px 6px",borderRadius:3,fontSize:10,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
-          </div>;
-        })()}
-        <svg width={W} height={H} style={{display:"block"}}>
-          {/* era labels at the centroid column of each era's techs — eras
-              interleave across the depth tiers (as in Civ), so they orient
-              rather than partition; node FILL carries the era colour */}
-          {ERAS.map((e,ei)=>{let sx=0,n=0;for(const t of TECHS)if(t.era===ei){const pp=pos[t.id];if(pp){sx+=pp.x+NW/2;n++;}}if(!n)return null;const cx=sx/n;
-            return(<g key={e}>
-              <rect x={cx-46} y={TOP-26} width={92} height={3} fill={ERA_BG[ei]} rx={1.5}/>
-              <text x={cx} y={TOP-12} textAnchor="middle" fontSize={11} fill="#b8a482" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
-            </g>);
-          })}
-          {/* prerequisite links — orthogonal (right-angle) routing, drawn UNDER
-              the opaque nodes so a long link passes cleanly behind intervening
-              tiers instead of crossing them. Each link leaves the prereq's right
-              edge, runs to the target column's left gutter, then rises/drops
-              into the target's left edge. */}
-          {TECHS.map(t=>t.prereq.map(p=>{const a=pos[p],b=pos[t.id];if(!a||!b)return null;
-            const open=ts.have[TECH_IDX[p]]===1;
-            const stag=(TECH_IDX[p]*3+TECH_IDX[t.id])%5;
-            return <path key={p+">"+t.id} d={techEdgePath(a,b,L,stag)} fill="none"
-              stroke={open?"#a8895c":"rgba(216,190,150,0.22)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
-          }))}
-          {/* tech nodes (opaque fills occlude the links routed behind them) */}
-          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
-            let fill,stroke,txt,sw,dash="";
-            if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
-            else if(ns.state==="next"){fill="#fffaf0";stroke=era;txt="#2c2114";sw=2;}
-            else{fill="rgba(255,255,255,0.07)";stroke="rgba(216,190,150,0.30)";txt="rgba(228,214,184,0.55)";sw=1;dash="4 3";}
-            return(<g key={t.id} style={{cursor:"help"}}
-              onMouseMove={e=>setHov({id:t.id,x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)}>
-              <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
-              <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
-              {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}
-            </g>);
-          })}
-        </svg>
-        <div className="au-fade" style={{fontSize:10,marginTop:6,display:"flex",gap:16,flexWrap:"wrap"}}>
-          <span>{chip("#dab347","none")}discovered</span>
-          <span>{chip("rgba(255,251,243,0.95)","2px solid #d8b24a")}researching (prerequisites met)</span>
-          <span>{chip("rgba(255,255,255,0.07)","1px dashed rgba(216,190,150,0.4)")}locked — needs an earlier tech</span>
-        </div>
-      </div>
-      {hov&&(()=>{
-        const t=TECHS[TECH_IDX[hov.id]]; if(!t) return null;
-        const ns=techNodeState(k||{},ts.have,t); const fx=techEffectList(hov.id);
-        const vw=typeof window!=="undefined"?window.innerWidth:1280, vh=typeof window!=="undefined"?window.innerHeight:800;
-        const left=Math.min(hov.x+16, vw-258), top=Math.min(hov.y+16, vh-200);
-        return(<div style={{position:"fixed",left,top,width:242,zIndex:320,pointerEvents:"none",
-          background:"#262019",border:`2px solid ${ERA_BG[t.era]||"#b9b2a4"}`,borderRadius:7,padding:"8px 10px",boxShadow:"0 6px 18px rgba(0,0,0,0.55)"}}>
-          <div style={{fontWeight:"bold",fontSize:13,color:"var(--au-ink)"}}>{t.name}</div>
-          <div style={{fontSize:9,letterSpacing:0.5,textTransform:"uppercase",color:"var(--au-ink-faded)",marginBottom:4}}>
-            {ERAS[t.era]} · {ns.state==="have"?"discovered":ns.state==="next"?`researching ${(ns.prog*100)|0}%`:"locked"}</div>
-          <div style={{fontSize:10.5,color:"var(--au-ink)",opacity:0.85,lineHeight:1.35,marginBottom:6}}>{t.desc}</div>
-          {fx.length>0
-            ? <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:t.prereq.length?6:0}}>
-                {fx.map((e,i)=><span key={i} style={{padding:"1.5px 5px",borderRadius:3,fontSize:9.5,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
-              </div>
-            : <div style={{fontSize:9.5,fontStyle:"italic",color:"var(--au-ink-faded)",marginBottom:t.prereq.length?6:0}}>a stepping-stone — no direct bonus</div>}
-          {t.prereq.length>0&&<div style={{fontSize:9.5,color:"var(--au-ink-faded)"}}>Requires: {t.prereq.map(p=>TECHS[TECH_IDX[p]].name).join(" + ")}</div>}
-        </div>);
-      })()}
-    </div>
-  );
-}
-
-// ── Chronicle overlay — a realm's full history in its own scrollable window ──
-// (the settlement card is too short to hold a long log; a modal escapes it).
-// `entries` are {step,type,text}; rendered newest-first, dated via the display clock and
-// colour-coded by event type (dark tones for contrast on the light parchment).
 // ── Map lenses ──────────────────────────────────────────────────────
 // Grouped views: each lens is one way of READING the world; sub-modes are
 // variations within it. Worldgen diagnostics live behind a ?dev URL flag.
@@ -298,237 +207,6 @@ function EdRow({label,value,min,max,step,onChange,fmt}){
   </div>;
 }
 
-// Category tints, bright enough to read on the dark cards.
-const CHRON_COL={founding:"#4fbc8a",discovery:"#6aa8e0",growth:"#66b573",wealth:"#d4a83e",
-  war:"#e06a52",conquest:"#dd8a44",annex:"#c39a4a",secession:"#b084e4",loss:"#d08258",
-  plague:"#c078e0",famine:"#d49250",end:"#b8a482",
-  industry:"#8fb0c4",trade:"#5cc0aa",faith:"#8f9fe4",society:"#c99078"};
-const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
-  war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
-  plague:"Plague",famine:"Famine",end:"Fall",
-  industry:"Industry",trade:"Trade",faith:"Faith",society:"Society"};
-function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose,eraAt,armsURL}){
-  const rows=(entries||[]).slice().reverse();   // newest first
-  const yr=(step)=>displayYearStr(step);
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:"var(--z-documents)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0,gap:8}}>
-          <div className="au-pico-title" style={{fontSize:15,display:"flex",alignItems:"center",gap:8}}>
-            {armsURL&&<img src={armsURL} alt="" style={{height:26,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.3))"}}/>}
-            <span>Chronicle{name?` — ${name}`:""}{" "}
-            <span className="au-fade" style={{fontSize:11}}>· {rows.length} events</span></span></div>
-          {/* True record vs the realm's own tradition: same events, different
-              survivors — the scribes' version drops what burned, never heard
-              the distant news, and flatters the court. */}
-          <button onClick={onTogglePerspective} className={"au-btn"+(perspective?" au-active":"")}
-            style={{fontSize:10,whiteSpace:"nowrap"}}
-            title="Toggle between the omniscient record and what this realm's own scribes kept">
-            {perspective?"scribes' version":"true record"}</button>
-          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
-        </div>
-        {/* minHeight:0 lets this flex child shrink so overflowY:auto actually
-            engages inside the maxHeight:88vh column (the flexbox scroll gotcha). */}
-        <div style={{overflowY:"auto",minHeight:0,paddingRight:6}}>
-          {rows.length===0
-            ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No events recorded yet.</div>
-            :<div style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"5px 10px",alignItems:"baseline",fontSize:12}}>
-              {rows.map((e,i)=>(
-                <Fragment key={i}>
-                  <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yr(e.step)}</span>
-                  <span style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:CHRON_COL[e.type]||"#b8a482",fontWeight:600,whiteSpace:"nowrap"}}>{CHRON_LABEL[e.type]||e.type}</span>
-                  <span style={{color:"var(--au-ink)",lineHeight:1.4}}>{e.text}</span>
-                </Fragment>
-              ))}
-            </div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Ruling family tree overlay ──────────────────────────────────────────────
-// Renders the reigning house as a genealogy: couples, children indented beneath
-// their parents along a vine, the sitting sovereign crowned, bastards on a dashed
-// border, married-in partners faded, the deceased greyed with their lifespans.
-function fy(y){return y<0?`${-y} BC`:`${y} AD`;}
-const TRAIT_DEF=[["vigor","Vig"],["wit","Wit"],["boldness","Bold"],["ruthlessness","Ruth"]];
-function traitTip(t){return t?TRAIT_DEF.map(([k,l])=>`${l} ${t[k]>0?"+":""}${t[k]}`).join("  "):"";}
-function PersonCard({n}){
-  const dead=n.diedY>=0;
-  const border=n.isRuler?"2px solid #d8b13a":n.bastard?"1px dashed #a8895c":"1px solid rgba(216,190,150,0.28)";
-  const bg=n.isRuler?"rgba(216,177,58,0.14)":n.foreign?"rgba(255,255,255,0.03)":"rgba(255,255,255,0.06)";
-  const reigned=n.reignFrom>=0;
-  return(
-    <div title={[n.trait&&!n.foreign?n.trait:"",n.traits?traitTip(n.traits):"",n.foreign?"married into the house":n.bastard?"born out of wedlock":""].filter(Boolean).join("\n")||undefined}
-      style={{border,background:bg,borderRadius:5,padding:"3px 7px",minWidth:96,opacity:dead&&!reigned?0.6:1,fontSize:11}}>
-      <div style={{display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
-        <span style={{color:n.female?"#d886c0":"#82a4e8",fontWeight:700}}>{n.female?"♀":"♂"}</span>
-        {n.isRuler&&<span title="reigning" style={{fontSize:12}}>♔</span>}
-        <span style={{fontWeight:n.isRuler||reigned?700:500,color:"var(--au-ink)"}}>{n.name}{n.epithet?` ${n.epithet}`:""}</span>
-        {n.bastard&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>bastard</span>}
-      </div>
-      {n.isRuler&&n.title&&<div style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:"#d8b13a",fontWeight:600}}>{n.title}</div>}
-      <div className="au-fade" style={{fontSize:9.5,fontVariantNumeric:"tabular-nums"}}>
-        {dead?`${fy(n.bornY)} – ${fy(n.diedY)} · ${n.age}y`:`b. ${fy(n.bornY)} · ${n.age}y`}
-      </div>
-      {reigned&&<div style={{fontSize:9,color:"#d8b13a",fontVariantNumeric:"tabular-nums"}}>reigned {fy(n.reignFrom)}–{n.reignTo>=0?fy(n.reignTo):"now"}</div>}
-      {!n.foreign&&n.trait&&<div className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{n.trait}</div>}
-    </div>
-  );
-}
-// Per-government styling for the succession roll (crown / theocracy / council).
-const GOV_META={monarchy:{icon:"♔",col:"#b8902f",label:"Crown"},
-  theocracy:{icon:"☩",col:"#5566b0",label:"Theocracy"},
-  republic:{icon:"⚖",col:"#2f8a78",label:"Council"},
-  despotism:{icon:"⚔",col:"#a8402f",label:"Despotism"},
-  elective:{icon:"♛",col:"#9c7a2f",label:"Elective Monarchy"}};
-// Standard top-down genealogy: each generation a row, parents centred above
-// their children, sibling/parent connectors drawn in pure CSS (classes below).
-const FT_LN="rgba(216,190,150,0.35)";
-const FT_CSS=`
-.ft-wrap{display:inline-flex;flex-direction:column;gap:16px;min-width:100%;padding:4px 2px 8px;align-items:center}
-.ft-tree ul{position:relative;padding-top:18px;display:flex;justify-content:center;margin:0}
-.ft-tree li{list-style:none;position:relative;padding:18px 7px 0;display:flex;flex-direction:column;align-items:center}
-.ft-tree li::before,.ft-tree li::after{content:'';position:absolute;top:0;right:50%;border-top:2px solid ${FT_LN};width:50%;height:18px}
-.ft-tree li::after{right:auto;left:50%;border-left:2px solid ${FT_LN}}
-.ft-tree li:only-child::after,.ft-tree li:only-child::before{display:none}
-.ft-tree li:only-child{padding-top:18px}
-.ft-tree li:first-child::before,.ft-tree li:last-child::after{border:0 none}
-.ft-tree li:last-child::before{border-right:2px solid ${FT_LN}}
-.ft-tree ul ul::before{content:'';position:absolute;top:0;left:50%;border-left:2px solid ${FT_LN};width:0;height:18px}
-.ft-tree>ul{padding-top:0}
-.ft-tree>ul>li:only-child{padding-top:0}`;
-// One person (with their married-in partner, if any) as a tree node.
-function Couple({n,sp}){
-  return(
-    <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
-      <PersonCard n={n}/>
-      {sp&&<><span className="au-fade" style={{fontSize:11,alignSelf:"center"}}>⚭</span><PersonCard n={sp}/></>}
-    </div>
-  );
-}
-function FamilyTree({nodes}){
-  const byId=new Map(nodes.map(n=>[n.id,n]));
-  const kidsOf=new Map();
-  for(const n of nodes)if(n.parentId>=0){if(!kidsOf.has(n.parentId))kidsOf.set(n.parentId,[]);kidsOf.get(n.parentId).push(n.id);}
-  for(const arr of kidsOf.values())arr.sort((a,b)=>byId.get(a).bornY-byId.get(b).bornY);
-  const drawn=new Set();
-  // a <li> holding the couple's card and, beneath, a <ul> of their children
-  const renderLi=(id)=>{
-    if(drawn.has(id))return null;
-    drawn.add(id);
-    const n=byId.get(id);if(!n)return null;
-    const sp=n.spouseId>=0&&byId.has(n.spouseId)&&!drawn.has(n.spouseId)?byId.get(n.spouseId):null;
-    if(sp)drawn.add(sp.id);
-    const kids=((kidsOf.get(id)||[]).concat(sp?(kidsOf.get(sp.id)||[]):[])).filter(k=>!drawn.has(k));
-    return(
-      <li key={id}>
-        <Couple n={n} sp={sp}/>
-        {kids.length>0&&<ul>{kids.map(k=>renderLi(k))}</ul>}
-      </li>
-    );
-  };
-  // each independent line (the founder's, plus any unconnected adoptees) is its
-  // own top-down tree, stacked vertically
-  const roots=nodes.filter(n=>n.parentId<0&&!n.foreign).sort((a,b)=>a.bornY-b.bornY);
-  const trees=[];
-  for(const r of roots){ if(drawn.has(r.id))continue; trees.push(<div key={r.id} className="ft-tree"><ul>{renderLi(r.id)}</ul></div>); }
-  for(const n of nodes){ if(drawn.has(n.id)||n.foreign)continue; trees.push(<div key={n.id} className="ft-tree"><ul>{renderLi(n.id)}</ul></div>); }
-  return <div className="ft-wrap">{trees}</div>;
-}
-// Everyone who ever ruled the nation — across houses, councils and theocracies —
-// in order, grouped by house with a banner when the form of rule itself changes.
-function SuccessionRoll({roll}){
-  const rows=[];
-  let lastHouse=null,lastGov=null;
-  roll.forEach((e,i)=>{
-    const gm=GOV_META[e.gov]||GOV_META.monarchy;
-    if(e.gov!==lastGov){
-      rows.push(<div key={"g"+i} style={{margin:"10px 0 3px",fontSize:10,letterSpacing:0.4,textTransform:"uppercase",fontWeight:700,color:gm.col}}>
-        {gm.icon} {gm.label==="Crown"?"Monarchy":gm.label}{lastGov?" — the order changes":""}</div>);
-      lastHouse=null;
-    }
-    if(e.house!==lastHouse){
-      rows.push(<div key={"h"+i} className="au-fade" style={{margin:"5px 0 1px",fontSize:10,fontStyle:"italic"}}>House {e.house||"—"}</div>);
-    }
-    lastHouse=e.house;lastGov=e.gov;
-    rows.push(
-      <div key={i} style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"2px 9px",alignItems:"baseline",fontSize:12,
-        padding:"1px 4px",borderLeft:`3px solid ${gm.col}`,marginLeft:4,background:e.current?"rgba(184,144,47,0.12)":"transparent"}}>
-        <span className="au-fade" style={{fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",fontSize:11}}>{fy(e.fromY)}–{e.toY>=0?fy(e.toY):"now"}</span>
-        <span style={{color:e.female?"#d886c0":"#82a4e8",fontWeight:700}}>{e.female?"♀":"♂"}</span>
-        <span style={{color:"var(--au-ink)"}}>
-          <span className="au-fade">{e.title?e.title+" ":""}</span>
-          <b style={{fontWeight:e.current?700:600}}>{e.name}</b>{e.epithet?` ${e.epithet}`:""}
-          {e.current&&<span style={{color:gm.col,fontWeight:700}}> · reigning</span>}
-        </span>
-      </div>
-    );
-  });
-  return <div>{rows}</div>;
-}
-function DynastyOverlay({tree,onClose}){
-  const[mode,setMode]=useState("tree");
-  // FREEZE a snapshot so the chart doesn't reflow under the reader as the sim
-  // ticks (people age/are born/die every frame). Capture the first frame and on
-  // a realm change; a manual refresh re-captures the live state.
-  const[snap,setSnap]=useState(tree);
-  useEffect(()=>{if(tree&&(!snap||snap.countryId!==tree.countryId))setSnap(tree);},[tree,snap]);
-  const data=snap||tree;
-  const houses=(data&&data.houses)||[];
-  const roll=(data&&data.roll)||[];
-  const Tab=({id,label})=>(
-    <button onClick={()=>setMode(id)} className={"au-btn"+(mode===id?" au-active":"")}
-      style={{fontSize:10,whiteSpace:"nowrap"}}>{label}</button>);
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <style>{FT_CSS}</style>
-      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(860px,95vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,flexShrink:0,gap:8}}>
-          <div className="au-pico-title" style={{fontSize:15}}>House {data?data.houseName||"—":"—"}
-            {data&&<span className="au-fade" style={{fontSize:11}}> · {data.govLabel}</span>}</div>
-          <div style={{display:"flex",gap:5,alignItems:"center"}}>
-            <Tab id="tree" label="Family tree"/>
-            <Tab id="roll" label={`Succession${roll.length?` (${roll.length})`:""}`}/>
-            <button onClick={()=>setSnap(tree)} title="Refresh to the present" className="au-btn"
-              style={{fontSize:10,whiteSpace:"nowrap"}}>↻</button>
-            <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
-          </div>
-        </div>
-        <div className="au-fade" style={{fontSize:10,marginBottom:8,flexShrink:0}}>
-          {data?<>succession law: {data.lawLabel}{data.legitLabel?` · legitimacy ${data.legitLabel}`:""}{data.rulerTitle?` · the ${data.rulerTitle.toLowerCase()} reigns`:""} · <span style={{fontStyle:"italic"}}>snapshot — ↻ to update</span></>:"no ruling house"}
-        </div>
-        <div style={{overflow:"auto",minHeight:0,paddingRight:6}}>
-          {mode==="tree"
-            ?(houses.length===0
-              ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No reigning house — the realm keeps no king-list yet.</div>
-              :houses.map((h,i)=>(
-                <div key={h.dynastyId} style={{marginBottom:14,opacity:h.isCurrent?1:0.92}}>
-                  <div style={{display:"flex",alignItems:"baseline",gap:8,borderBottom:"1px solid rgba(216,190,150,0.22)",paddingBottom:2,marginBottom:2,marginTop:i?10:0}}>
-                    <span className="au-pico-title" style={{fontSize:13}}>House {h.name}</span>
-                    <span className="au-fade" style={{fontSize:10}}>
-                      {h.isCurrent?"reigning":"former"} · {fy(h.founded)}–{h.ended>=0?fy(h.ended):"now"}
-                    </span>
-                  </div>
-                  <FamilyTree nodes={h.nodes}/>
-                </div>))
-            )
-            :(roll.length===0
-              ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No sovereigns recorded yet.</div>
-              :<SuccessionRoll roll={roll}/>)}
-        </div>
-        <div className="au-fade" style={{fontSize:9.5,marginTop:8,flexShrink:0,display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid rgba(216,190,150,0.20)",paddingTop:6}}>
-          {mode==="tree"
-            ?<><span>♔ reigning</span><span>♀ / ♂</span><span>⚭ married</span><span style={{fontStyle:"italic"}}>dashed = bastard</span><span>faded = married in / deceased</span></>
-            :<><span style={{color:GOV_META.monarchy.col}}>♔ crown</span><span style={{color:GOV_META.theocracy.col}}>☩ theocracy</span><span style={{color:GOV_META.republic.col}}>⚖ council</span><span style={{color:GOV_META.despotism.col}}>⚔ despotism</span><span>oldest first</span></>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
 function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
 function atlasMountain(c,x,y,s,snow,tone){
 const h=s,wd=s*0.86;
@@ -624,119 +302,7 @@ c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
 
 
 
-// ── Display units (peopleSim) ───────────────────────────────────────
-// The sim runs on compact internal units; these scale them to realistic,
-// human-readable figures at the DISPLAY layer ONLY — the simulation math is
-// untouched. One sim-"person" ≈ POP_SCALE real people (the map labels already
-// assumed this convention); food is shown as a mass of grain; wealth as a mass
-// of gold. Tweak these three to taste.
-const POP_SCALE        = 1000;   // sim pop → people: metropolis ~3.4M, city ~1.2M, town ~250k, village ~25k
-const FOOD_KG_PER_UNIT = 1000;   // one sim food unit → kg of grain (1 unit = 1 tonne)
-const GOLD_G_PER_COIN  = 8;      // one sim coin → grams of gold (a gold ducat ≈ 3.5g; 8g keeps treasuries legible)
 const HISTORY_INTERVAL = 100;    // sim steps between History-chart samples
-
-// Compact number: 1234 → "1.2k", 3_400_000 → "3.4M", 2.1e9 → "2.1B".
-function fmtNum(n){
-  const s=n<0?"-":""; const a=Math.abs(n);
-  if(a>=1e9)return s+(a/1e9).toFixed(1)+"B";
-  if(a>=1e6)return s+(a/1e6).toFixed(a>=1e7?0:1)+"M";
-  if(a>=1e3)return s+(a/1e3).toFixed(a>=1e4?0:1)+"k";
-  return s+Math.round(a).toString();
-}
-// Mass in kilograms → grams / kg / tonnes / kilotonnes.
-function fmtMass(kg){
-  const s=kg<0?"-":""; const a=Math.abs(kg);
-  if(a>=1e6)return s+(a/1e6).toFixed(1)+" kt";
-  if(a>=1e3)return s+(a/1e3).toFixed(a>=1e4?0:1)+" t";
-  if(a>=1)return s+(a>=100?Math.round(a):a.toFixed(1))+" kg";
-  return s+Math.round(a*1000)+" g";
-}
-// People — scale sim population to real people.
-function fmtPeople(p){ return fmtNum((p||0)*POP_SCALE); }
-// Food (grain) shown as a mass.
-function fmtFood(simFood){ return fmtMass((simFood||0)*FOOD_KG_PER_UNIT); }
-// Wealth shown as a mass of gold.
-function fmtGoldKg(simCoin){ return fmtMass((simCoin||0)*GOLD_G_PER_COIN/1000); }
-
-// ── History charts ──────────────────────────────────────────────────
-// One metric over sim-steps as a small SVG line chart (the History panel).
-function MiniChart({data,get,label,color,fmtY}){
-  const W=300,H=54,padL=3,padR=3,padT=2,padB=8;
-  if(!data||data.length<2)
-    return <div style={{padding:"5px 10px"}}><div className="au-sc au-fade" style={{fontSize:9}}>{label}</div><div className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>gathering data…</div></div>;
-  let yMin=Infinity,yMax=-Infinity;
-  for(const d of data){const v=get(d);if(v<yMin)yMin=v;if(v>yMax)yMax=v;}
-  if(!(yMax>yMin))yMax=yMin+1;
-  const x0=data[0].step,x1=data[data.length-1].step,dx=Math.max(1,x1-x0);
-  const sx=v=>padL+(W-padL-padR)*((v-x0)/dx);
-  const sy=v=>padT+(H-padT-padB)*(1-(v-yMin)/(yMax-yMin));
-  let pts="";
-  for(const d of data)pts+=sx(d.step).toFixed(1)+","+sy(get(d)).toFixed(1)+" ";
-  const cur=get(data[data.length-1]);
-  return(
-    <div style={{padding:"3px 10px 6px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-        <span className="au-sc au-fade" style={{fontSize:9}}>{label}</span>
-        <span style={{fontSize:11,fontWeight:600,color}}>{fmtY(cur)}</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{width:"100%",height:H,display:"block"}}>
-        <polyline points={pts.trim()} fill="none" stroke={color} strokeWidth={1.3} vectorEffect="non-scaling-stroke"/>
-      </svg>
-      <div style={{display:"flex",justifyContent:"space-between"}}>
-        <span className="au-fade" style={{fontSize:8}}>{fmtY(yMin)}</span>
-        <span className="au-fade" style={{fontSize:8}}>peak {fmtY(yMax)}</span>
-      </div>
-    </div>);
-}
-// Copyable markdown rundown of the run so far (downsampled to ~40 rows).
-function buildHistoryExport(H){
-  if(!H||!H.length)return "No history yet — let the simulation run for a while, then copy again.";
-  const N=H.length,stride=Math.max(1,Math.ceil(N/40)),rows=[];
-  for(let i=0;i<N;i+=stride)rows.push(H[i]);
-  if(rows[rows.length-1]!==H[N-1])rows.push(H[N-1]);
-  const head="| step | population | gold | land % | countries | settlements | villages | cities | metros | largest empire (tiles) | army |";
-  const sep ="|---|---|---|---|---|---|---|---|---|---|---|";
-  const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${(r.towns||0)+(r.cities||0)} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
-  return `Simman — global stats over time (display units: 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
-}
-
-// ── Settlement-card presentational components ──
-// Defined at module scope (stable identities) so they are NOT redefined
-// every WorldSim render. The card re-renders several times a second while
-// the sim plays; if these lived inside the render, React would treat them
-// as new component types each time and tear down + rebuild their DOM —
-// causing flicker and making the collapsible headers flaky to click.
-function PsBar({ v, color }) {
-  return (
-    <div style={{ position:"relative", height:5, background:"rgba(255,255,255,0.10)", borderRadius:2, marginTop:1 }}>
-      <div style={{ position:"absolute", inset:0, width:`${Math.max(0,Math.min(1,v))*100}%`, background:color||"#7a5", borderRadius:2 }} />
-    </div>
-  );
-}
-function PsKRow({ label, val, colour, note }) {
-  return (
-    <div style={{ margin:"3px 0" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10 }}>
-        <span>{label}{note ? <span className="au-fade" style={{ marginLeft:4, fontSize:9 }}>{note}</span> : null}</span>
-        <span>{(val*100|0)}%</span>
-      </div>
-      <PsBar v={val} color={colour} />
-    </div>
-  );
-}
-function PsSection({ id, title, right, open, onToggle, children }) {
-  return (
-    <div style={{ marginTop:6, borderTop:"1px solid rgba(216,190,150,0.12)", paddingTop:5 }}>
-      <div onClick={(e)=>{ e.stopPropagation(); onToggle(id); }} className="au-fade"
-        style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", userSelect:"none", fontSize:10, letterSpacing:0.4, textTransform:"uppercase" }}>
-        <span>{open ? "▾" : "▸"} {title}</span>
-        {right!=null && <span style={{ textTransform:"none", letterSpacing:0 }}>{right}</span>}
-      </div>
-      {open && <div style={{ marginTop:4 }}>{children}</div>}
-    </div>
-  );
-}
-
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);
@@ -762,22 +328,35 @@ const[showLakes,setShowLakes]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
-const[rightPanel,setRightPanel]=useState("");  // "" | "params" | "tribes"
 const[showTuning,setShowTuning]=useState(false);
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
-const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
-const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm history) overlay
-const[dynastyOpen,setDynastyOpen]=useState(false);     // ruling family-tree overlay
+// ── Floating surfaces: ALL popovers/drawers/documents live on ONE external
+// stack (src/ui/surfaces.js) — exclusive popovers & drawers, stacking
+// documents, Esc pops the top, z from stack order. The derived consts +
+// shim setters below keep every existing call site working unchanged.
+const _surfStack=useSurfaceStack();
+const _sOpen=(id)=>_surfStack.some(s=>s.id===id);
+const menuOpen=_sOpen("menu"),        newWorldOpen=_sOpen("newworld"),
+      chronicleOpen=_sOpen("chronicle"), dynastyOpen=_sOpen("dynasty"),
+      techTreeOpen=_sOpen("techtree"),   layersOpen=_sOpen("layers"),
+      helpOpen=_sOpen("help"),           leversOpen=_sOpen("levers"),
+      editorOpen=_sOpen("editor");
+const rightPanel=_sOpen("wind")?"params":"";
+const _mkSet=(id,kind)=>(v)=>{const next=typeof v==="function"?v(isSurfaceOpen(id)):v;if(next)openSurface(id,kind);else closeSurface(id);};
+const setMenuOpen=_mkSet("menu","popover"),      setLayersOpen=_mkSet("layers","popover"),
+      setNewWorldOpen=_mkSet("newworld","document"), setChronicleOpen=_mkSet("chronicle","document"),
+      setDynastyOpen=_mkSet("dynasty","document"),   setTechTreeOpen=_mkSet("techtree","document"),
+      setHelpOpen=_mkSet("help","document"),         setLeversOpen=_mkSet("levers","drawer"),
+      setEditorOpen=_mkSet("editor","drawer");
+const setRightPanel=(v)=>{const val=typeof v==="function"?v(rightPanel):v;if(val==="params")openSurface("wind","drawer");else closeSurface("wind");};
+const _zOf=(id)=>surfaceZ(_surfStack,id);
 const[lens,setLens]=useState("terrain");const subMemRef=useRef({});
 const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realms|peoples|faiths|inspect
 useEffect(()=>{panelTabRef.current=panelTab;},[panelTab]);
-const[newWorldOpen,setNewWorldOpen]=useState(false);
-const[menuOpen,setMenuOpen]=useState(false);
 const[realmSel,setRealmSel]=useState(-1);   // realm inspected in the Realms tab
 // ── Country editor: arm placement, then click the map to drop a seed capital
 // with the chosen tech/knowledge/personality and watch what it grows into. ──
-const[editorOpen,setEditorOpen]=useState(false);   // panel visible
 const[editorArmed,setEditorArmed]=useState(false); // next map click PLACES instead of selects
 const[edParams,setEdParams]=useState({tier:2,people:500,
   knowledge:{agriculture:0.6,construction:0.3,organization:0.4,metallurgy:0.3,navigation:0.1,mobility:0.2},
@@ -805,10 +384,7 @@ const[layers,setLayers]=useState({
   village:true, town:true, city:true, metropolis:true,
   labels:true, emblems:true,   // names + heraldry drawn on the map (plan §5.1–5.2)
 });
-const[layersOpen,setLayersOpen]=useState(false);
-const[leversOpen,setLeversOpen]=useState(false);
-const[dockFly,setDockFly]=useState(null);      // lens id whose sub-lens flyout is open
-const[helpOpen,setHelpOpen]=useState(false);   // keyboard/help overlay
+const[dockFly,setDockFly]=useState(null);      // lens id whose sub-lens flyout is open (hover-transient)
 const[tuneVals,setTuneVals]=useState(()=>tuningDefaults());
 const tuneValsRef=useRef(tuneVals);
 // Push a tuning change to the sim. Covers BOTH execution paths: postMessage to
@@ -943,6 +519,7 @@ const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0}
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
 // bar visibly counts up tick-by-tick; the heavier psStats stays throttled to ~5Hz.
 const [liveStep,setLiveStep]=useState(0);
+const uiPulseRef=useRef(0);   // last React-pulse time — gates snapshot-driven renders to ≤4Hz
 // Time-series of global metrics for the History charts + copyable export. Kept
 // in a ref (no re-render on every sample); the charts read it on the regular
 // psStats-driven re-render. Sampled every HISTORY_INTERVAL sim steps.
@@ -2820,7 +2397,15 @@ const applySnapshot=useCallback((snap)=>{
   let psw=peopleRef.current;
   if(!psw||!psw._isMirror){psw=peopleRef.current={_isMirror:true};}
   psw.step=snap.step;psw.tw=snap.tw;psw.th=snap.th;psw.tileRes=snap.tileRes;psw.N=snap.N;
-  setLiveStep(snap.step);   // 30Hz step display (no-op when unchanged → no extra render)
+  // REACT PULSE ≤4Hz: the mirror/canvas consume every snapshot (refs, above
+  // and below), but the React tree — panels, buttons, readouts — re-renders
+  // only on this gated pulse. At 30 renders/s the whole codex re-diffed per
+  // sim tick and every button felt sticky; at 4Hz the numbers still read as
+  // live and clicks land between renders. Paused worlds pulse immediately so
+  // selection/detail refreshes feel instant.
+  let _pulsed=false;
+  {const _now=performance.now();
+   if(!playRef.current||_now-(uiPulseRef.current||0)>=250){uiPulseRef.current=_now;_pulsed=true;setLiveStep(snap.step);}}
   if(snap.eraAt)psw._eraAt=snap.eraAt;   // display-calendar timeline
   psw.globalP=snap.globalP;
   if(snap.owner)psw._territoryOwner=snap.owner;
@@ -2858,7 +2443,7 @@ const applySnapshot=useCallback((snap)=>{
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
   // (the sim numbers don't need 30Hz); drawing still happens every snapshot.
   psw._snapN=(psw._snapN||0)+1;
-  if(psw._snapN%6===1){if(snap.stats)setPsStats(snap.stats);}
+  if(_pulsed&&snap.stats)setPsStats(snap.stats);
   // History sample for the charts/export (gated by sim-step, reset on new run).
   if(snap.stats){
     const H=psHistoryRef.current, st=snap.step, last=H[H.length-1];
@@ -3203,13 +2788,6 @@ const navBack=useCallback(()=>{
   setSelectedSettlementId(prev.sett);selectedSettlementIdRef.current=prev.sett;
   if(terRef.current)draw(terRef.current);
 },[draw]);
-// A clickable entity chip: swatch/emblem + name → navigates the codex.
-const Chip=({hue,img,onClick,cap=true,children,title})=>(
-  <button className="au-chip" onClick={onClick} title={title||"Open"}>
-    {img?<img src={img} alt="" style={{height:13,flexShrink:0}}/>:hue!=null?<span className="au-chip-sw" style={{background:`hsl(${hue|0},58%,50%)`}}/>:null}
-    <span style={cap?{textTransform:"capitalize"}:undefined}>{children}</span>
-  </button>
-);
 const emblemURLFor=(cid)=>{
   const psw=peopleRef.current;if(!psw||!psw.countries)return null;
   const c=psw.countries.get(cid);if(!c)return null;
@@ -3224,9 +2802,10 @@ useEffect(()=>{
     if(t&&(t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA"))return;
     if(e.code==="Space"){e.preventDefault();togglePlay();}
     else if(e.key==="Escape"){
-      const overlayOpen=menuOpen||newWorldOpen||chronicleOpen||dynastyOpen||techTreeOpen||layersOpen||helpOpen||dockFly;
-      setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setDynastyOpen(false);setTechTreeOpen(false);setLayersOpen(false);setHelpOpen(false);setDockFly(null);
-      if(overlayOpen)return;
+      // Step back OUT, one layer at a time: flyout → top floating surface →
+      // settlement selection → realm selection.
+      if(dockFly){setDockFly(null);return;}
+      if(closeTopSurface())return;
       if(selectedSettlementId>=0){
         // walk up: from the settlement to its realm
         const psw=peopleRef.current;
@@ -3579,7 +3158,7 @@ const renderInspect=()=>{
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
-      {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
+      {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} z={_zOf("techtree")} onClose={()=>setTechTreeOpen(false)}/>}
 
       {/* ── Header ── (the chronicle opener lives here so it's always visible
           without scrolling the card — a long card can push a bottom section
@@ -4472,7 +4051,7 @@ return(
 
 {/* ─── Country editor panel ─── */}
 {editorOpen&&<div className="au-chrome au-glass" style={{position:"absolute",top:48,left:8,width:232,
-  maxHeight:"calc(100% - 64px)",overflowY:"auto",padding:"8px 10px",fontSize:12,zIndex:"var(--z-drawers)",borderColor:"var(--au-ch-wax)"}}>
+  maxHeight:"calc(100% - 64px)",overflowY:"auto",padding:"8px 10px",fontSize:12,zIndex:_zOf("editor"),borderColor:"var(--au-ch-wax)"}}>
   <div className="au-heading au-sc" style={{fontSize:11,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
     <span>Country Editor</span>
     <span onClick={()=>{setEditorOpen(false);setEditorArmed(false);}} style={{cursor:"pointer"}}>✕</span>
@@ -4671,7 +4250,7 @@ return(
   return(
     <aside className="au-chrome au-glass au-scroll" style={{
       position:"absolute",left:66,top:8,width:224,maxHeight:"85vh",
-      padding:"8px 0",overflowY:"auto",zIndex:"var(--z-popovers)"}}>
+      padding:"8px 0",overflowY:"auto",zIndex:_zOf("layers")}}>
       <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
         <span className="au-heading au-sc" style={{fontSize:12.5}}>Map layers</span>
         <div style={{flex:1}} />
@@ -4709,7 +4288,7 @@ return(
 {rightPanel==="params"&&(preset==="earth"||preset==="earth_sim")&&
 <aside className="au-chrome au-glass au-scroll" style={{
   position:"absolute",right:316,top:6,bottom:6,width:300,
-  padding:"10px 12px",overflowY:"auto",zIndex:"var(--z-drawers)"}}>
+  padding:"10px 12px",overflowY:"auto",zIndex:_zOf("wind")}}>
 <div style={{display:"flex",alignItems:"baseline",marginBottom:6}}>
   <span className="au-heading au-sc" style={{fontSize:12}}>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
   <div style={{flex:1}} />
@@ -4723,7 +4302,7 @@ return(
 
 {/* ══════════ CHRONICLE OVERLAY (follows the inspected realm) ══════════ */}
 {chronicleOpen&&peopleRef.current&&peopleRef.current._chronicle&&(
-  <ChronicleOverlay entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
+  <ChronicleOverlay z={_zOf("chronicle")} entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
     eraAt={peopleRef.current._eraAt}
     armsURL={peopleRef.current._chronicle.countryId>=0?emblemURLFor(peopleRef.current._chronicle.countryId):null}
     perspective={!!peopleRef.current._chronicle.perspective}
@@ -4735,12 +4314,12 @@ return(
 
 {/* ══════════ RULING FAMILY TREE OVERLAY (follows the inspected realm) ══════════ */}
 {dynastyOpen&&(
-  <DynastyOverlay tree={peopleRef.current&&peopleRef.current._dynasty}
+  <DynastyOverlay z={_zOf("dynasty")} tree={peopleRef.current&&peopleRef.current._dynasty}
     onClose={()=>setDynastyOpen(false)}/>)}
 
 {/* ══════════ NEW WORLD MODAL ══════════ */}
 {newWorldOpen&&(
-  <div onClick={()=>setNewWorldOpen(false)} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.7)",zIndex:220,display:"flex",alignItems:"center",justifyContent:"center"}}>
+  <div onClick={()=>setNewWorldOpen(false)} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.7)",zIndex:_zOf("newworld"),display:"flex",alignItems:"center",justifyContent:"center"}}>
     <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"14px 18px",width:"min(420px,92vw)"}}>
       <div style={{display:"flex",alignItems:"center",marginBottom:10}}>
         <span className="au-pico-title" style={{fontSize:15}}>New World</span>
@@ -4807,7 +4386,7 @@ return(
 
 {/* ══════════ MENU POPOVER ══════════ */}
 {menuOpen&&(
-  <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:210}}>
+  <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:_zOf("menu")}}>
     <div onClick={e=>e.stopPropagation()} className="au-chrome au-glass" style={{position:"absolute",right:10,top:48,width:238,padding:"8px 0",display:"flex",flexDirection:"column",zIndex:"var(--z-popovers)"}}>
       <button className="au-rail-tab" onClick={()=>{
         downloadSaveRef.current=(json,step)=>{
@@ -4852,7 +4431,7 @@ return(
   onClose={()=>setLeversOpen(false)} />}
 
 {/* ══════════ HELP / KEYS ══════════ */}
-{helpOpen&&<HelpOverlay onClose={()=>setHelpOpen(false)}/>}
+{helpOpen&&<HelpOverlay z={_zOf("help")} onClose={()=>setHelpOpen(false)}/>}
 
 {/* ══════════ TUNING MODAL ══════════ */}
 {showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}
