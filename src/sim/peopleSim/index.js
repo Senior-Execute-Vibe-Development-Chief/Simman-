@@ -15,7 +15,7 @@ import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
 import { computeCountryTerritory, adoptAndFound, nucleateFrontierStates } from "./countryTerritory.js";
 import { buildSettlementGrid } from "./spatialGrid.js";
-import { relaxClaim, updateAdminTenure } from "./countryClaim.js";
+import { relaxClaim } from "./countryClaim.js";
 
 // How often the drawn border crawls toward the country-primary territory target
 // (world._countryOwner). Small so borders visibly creep tile-by-tile rather than
@@ -46,7 +46,7 @@ import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
 import { updateFaiths, FAITH_INTERVAL, updatePilgrimage, PILGRIM_INTERVAL } from "./faiths.js";
 import { updateSlaveTrade, SLAVE_INTERVAL } from "./slavery.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
-import { diffuseIdentityField, stepIdentityField, IDENT_FIELD_INTERVAL } from "./identityField.js";
+import { diffuseIdentityField } from "./identityField.js";
 import { stepPopField, deriveOnePop } from "./popField.js";
 import { stepControlField } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
@@ -66,74 +66,11 @@ export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
 }
 
-// ── Real-history population anchor ───────────────────────────────────────
-// The emergent food economy gets the SHAPE of early growth right but badly
-// undershoots the modern explosion — left alone it stays near-flat from
-// antiquity while the real world grew ~50× between 1 AD and 1950. So, exactly
-// as the calendar anchors year↔step, we calibrate ONE global productivity index
-// (world._eraProd) to recorded world population and let the per-settlement
-// distribution stay fully emergent. _eraProd scales BOTH food production
-// (settlement.js updateFood) and the rural ceiling (updatePopulation), so the
-// food economy — trade, surplus, army labour — stays internally consistent and
-// only the overall SCALE of civilisation tracks history.
-//
-// Anchors are [year, world population in MILLIONS] (standard historical
-// estimates). 1 sim-person ≙ 1000 people, so the sim-unit target is
-// millions × 1000. Interpolated in LOG space, since population grows
-// geometrically.
-const POP_ANCHORS = [
-  [-9000,    2], [-5000,    5], [-3000,   14], [-1000,   50],
-  [1,      200], [500,     190], [1000,   290], [1500,   450],
-  [1700,   600], [1800,    990], [1850,  1260], [1900,  1650],
-  [1950,  2520],
-];
-function realWorldPopSim(year) {
-  const A = POP_ANCHORS, n = A.length;
-  let m;
-  if (year <= A[0][0]) m = A[0][1];
-  else if (year >= A[n - 1][0]) m = A[n - 1][1];
-  else { let i = 1; while (i < n && year > A[i][0]) i++;
-    const a = A[i - 1], b = A[i], t = (year - a[0]) / (b[0] - a[0]);
-    m = Math.exp(Math.log(a[1]) + (Math.log(b[1]) - Math.log(a[1])) * t); }   // log-linear
-  return m * 1000;   // millions → sim-units (people / 1000)
-}
-const ANCHOR_MIN = 0.5, ANCHOR_MAX = 240, ANCHOR_SLEW = 0.02, ANCHOR_HEADROOM = 4;
-function applyDemographicAnchor(world, popTotal, capTotal) {
-  world._popTotal = popTotal;
-  if (world._eraProd === undefined) world._eraProd = 1;
-  if (capTotal <= 0 || popTotal <= 1) return;   // need a live population to steer by
-  // Target the population a civilisation at the world's DEVELOPMENT level would have
-  // — NOT the wall clock. Keying this on stepToYear was the two-clock landmine the
-  // cardinal rule warns about: the linear calendar runs to "6000 AD" by step 18000
-  // while the world is still developmentally medieval, so realWorldPopSim demanded a
-  // far-future population and the integrator cranked _eraProd toward its ceiling —
-  // inflating the single best-fertility settlement into a runaway primate mega-city
-  // (the "civilisation always blooms in that one strip" artifact). world._civYear is
-  // the emergent development pseudo-year (civYearFromOrg), so the target now tracks
-  // what the world has BECOME: a world stuck in antiquity keeps an ancient
-  // population forever, one that industrialises early grows early. (One-tick lag —
-  // _civYear is set just after this call — is immaterial to the slow integrator.)
-  const target = realWorldPopSim(world._civYear ?? -6000);
-  if (target <= 0) return;
-  // Integral control: nudge the global productivity index so the world TOTAL
-  // population converges on the historical curve. Carrying capacity is linear in
-  // _eraProd (food, fish, housing and the rural ceiling all scale with it), so
-  // this feedback is bounded, and the integrator's infinite DC gain removes the
-  // steady lag that pinning capacity directly leaves — population forever chasing
-  // a rising ceiling — so the total lands ON the curve, not a fixed fraction below.
-  //   ANTI-WIND-UP: cap how far total capacity may LEAD population (≤ HEADROOM×).
-  // In the deep past a handful of seed villages fill in only at the logistic
-  // rate, so target/pop is briefly enormous; without this the integrator would
-  // wind straight to the clamp and then overshoot. Capping the lead lets
-  // population grow at near-max rate while _eraProd stays only as high as it can
-  // actually use — and where a steep stretch of the curve outruns the logistic
-  // ceiling, the total simply lags gracefully instead of oscillating.
-  const wantPop = target / popTotal;                       // drive pop → target
-  const wantCap = ANCHOR_HEADROOM * popTotal / capTotal;   // but lead pop by ≤ HEADROOM×
-  const want = world._eraProd * Math.min(wantPop, wantCap);
-  const lo = world._eraProd * (1 - ANCHOR_SLEW), hi = world._eraProd * (1 + ANCHOR_SLEW);
-  world._eraProd = Math.max(ANCHOR_MIN, Math.min(ANCHOR_MAX, Math.max(lo, Math.min(hi, want))));
-}
+// (The real-history population anchor — realWorldPopSim + applyDemographicAnchor —
+// was removed in the 2026-07 default-flip campaign with its T.ANCHOR_POP lever: it
+// was the legacy two-clock trap codified, population steered to a recorded curve
+// instead of emerging. The modern boom's real mechanism is INDUSTRIAL_CAP + the
+// energy-regimes wave, not a curve fit.)
 
 // Civilisational development → pseudo-year. The era gates that used to read the
 // wall-clock (frontier close, hinterland claim, identity salience) instead read how
@@ -187,8 +124,7 @@ export function stepPeopleSim(world, n = 1) {
       s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
       if (s.mode !== "dead") { _popSum += s.people; _capSum += s._k || 0; }   // world totals for the demographic anchor
     }
-    if (T.ANCHOR_POP > 0) applyDemographicAnchor(world, _popSum, _capSum);   // calibrate _eraProd to the historical population curve
-    else { world._popTotal = _popSum; world._eraProd = 1; }                  // FULLY EMERGENT: no pinning — carrying capacity is whatever local tech + land support
+    world._popTotal = _popSum; world._eraProd = 1;                  // FULLY EMERGENT: no pinning — carrying capacity is whatever local tech + land support (the legacy anchor was removed with T.ANCHOR_POP)
     buildSettlementGrid(world);   // spatial index for near-settlement queries (crystallise / roads)
     mark("byId");
     // Civilisational development signal for the de-pinned era gates (frontier close,
@@ -219,7 +155,6 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step === 1 || world.step % _terrIvl === 0) {
       computeTerritory(world);          // per-settlement food catchments (economy)
       computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
-      if (T.ADOPT_ADMIN) updateAdminTenure(world);   // W6-G item 3 (exp.): stamp administered-tenure from _countryOwner changes before adoption reads it
       adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
       nucleateFrontierStates(world);    // primary state formation: a developed stateless frontier cluster mints a NEW country
     }
@@ -315,12 +250,6 @@ export function stepPeopleSim(world, n = 1) {
     // Peoples: assimilation toward the ruler's culture, colonial divergence,
     // per-polity culture refresh (cultures.js).
     if (_at(CULTURE_INTERVAL, 41)) updateCultures(world);
-    // Stage 2 (T.TILE_IDENTITY): the land's own culture layer — tiles keep
-    // their mix across conquest and assimilate toward their governing city on
-    // the attachment clock; stamps each province's countryside identity
-    // (s._rurCulMix) for the cohesion consumers. Right after the culture pass
-    // so city mixes are fresh. Lever 0 → returns immediately (byte-identical).
-    if (T.TILE_IDENTITY > 0 && _at(IDENT_FIELD_INTERVAL, 42)) stepIdentityField(world);
     // Faiths: folk-faith seeding, organized genesis, trade-graph conversion,
     // state adoption + legitimacy, schisms (faiths.js).
     if (_at(FAITH_INTERVAL, 43)) updateFaiths(world);

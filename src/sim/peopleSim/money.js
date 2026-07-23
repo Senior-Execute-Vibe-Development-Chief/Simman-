@@ -22,7 +22,8 @@ export const IN_CARRY     = 11;  // the carrying trade — brokerage/re-export e
 export const IN_FINANCE   = 12;  // interest earned lending to the state — the bankers' city (Genoa/Augsburg/Amsterdam)
 export const IN_SLAVE_TRADE = 13; // selling captives down the slave trade — the slaver/middleman (Crimea/Dahomey/Aro)
 export const IN_CREDIT    = 14;  // bank credit CONJURED on top of specie (a banking hub's fractional money creation) — not goods sold (B17)
-const N_IN = 15;
+export const IN_CAPITAL   = 15;  // sold capital goods — mills, docks, fittings — to an investing neighbour (T.GOODS_INVEST)
+const N_IN = 16;
 
 // Spending channels.
 export const OUT_GOODS    = 0;   // bought goods (imports)
@@ -38,18 +39,19 @@ export const OUT_LUXURY   = 9;   // bought luxury goods (elite consumption)
 export const OUT_PILGRIM  = 10;  // offerings & the cost of pilgrimage paid by the faithful
 export const OUT_SLAVE    = 11;  // coin paid to buy coerced labour off the slave trade
 export const OUT_CREDIT   = 12;  // bank credit CALLED IN as commerce collapses (the money supply contracts) — not goods bought (B17)
-const N_OUT = 13;
+export const OUT_CAPITAL  = 13;  // invested in productive capacity — mills, docks, workshop stock (T.GOODS_INVEST; distinct from construction so trade asymmetry reads clean)
+const N_OUT = 14;
 
 export const IN_LABELS = [
   "mining", "goods sold", "food & farm goods", "materials sold",
   "transit tolls", "taxes & customs", "tribute received", "colonial aid",
   "luxuries sold", "state pay", "pilgrim offerings", "carrying trade", "war loans",
-  "slave trade", "bank credit created",
+  "slave trade", "bank credit created", "capital goods sold",
 ];
 export const OUT_LABELS = [
   "goods bought", "food & farm goods", "construction", "freight & tolls",
   "import duties", "tribute paid", "army upkeep", "colonial aid", "colony ship",
-  "luxuries bought", "pilgrimage", "slaves bought", "credit called in",
+  "luxuries bought", "pilgrimage", "slaves bought", "credit called in", "capital invested",
 ];
 
 const DECAY = 0.95;   // EMA smoothing (~20-tick window)

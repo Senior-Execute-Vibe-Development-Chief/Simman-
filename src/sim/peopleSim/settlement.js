@@ -20,6 +20,7 @@ import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
+import { updateGoods, LEG_GOOD, GOODS, G_STAPLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_SERVICES } from "./goods.js";   // goods-vector Stage 1 (T.GOODS_PRICES; ESM cycle is fine — functions only, like the roads.js pair)
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
 // scope: country ids are settlement ids and the personality RNG is seeded from
@@ -150,7 +151,10 @@ const BUILD_RATE          = 0.045;  // housing/tick per construction-weighted bu
 export const ARMY_FOOD        = 0.003;  // extra food per soldier per tick (provisioning, above civilian)
 const ARMY_LABOR_FREE = 0.08;   // army up to this fraction of pop (the standing professional core) doesn't reduce farming; only the wartime CONSCRIPT surge beyond it empties the fields
 const LUX_RES = ["spices", "furs", "incense", "dyes"];
-const LUX_SUPPLY_RATE = 4.0;    // coin/tick a region can earn per luxury-unit × √pop
+// LUX_SUPPLY_RATE -> runtime lever (tuning.js T.LUX_SUPPLY_RATE): coin/tick a
+// region can earn per luxury-unit × √pop. Exposed for the goods-vector
+// calibration battery (spec Stage 4: luxury should be a thin high-margin
+// sliver, not the biggest line in every port) — default unchanged.
 const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
                                 // (so rich hoards drive real luxury demand, not just headcount)
 // Fish: per-tick food a water settlement lands. fishYield = T.FISH_RATE ×
@@ -582,6 +586,43 @@ function craftLegs(s, k, r) {
   }
   return legs;
 }
+export { craftLegs };   // goods.js (Stage 1) builds craft capabilities from the same recipe — can't drift
+export { METAL_W };     // goods.js (Stage 3 chain): skill-limited metal capability on the same weight
+// ── Ricardian specialty reference (T.SPEC_RELATIVE, goods-vector Stage 0) ──
+// True comparative advantage is RELATIVE TO THE COMPETITION, not to a sector's
+// own ceiling: score = legs[k] / (world-typical output of k). The CRAFT_REF
+// scoring ("closeness to the ceiling") let the easiest-to-saturate sector win
+// everywhere — Crafted wares = construction ≈ 1 for every developed town, so
+// 50-65% of towns locked into it and Metalwork/Services structurally never won
+// (docs/settlement-economy-analysis-2026-07.md F1). Against the world mean, an
+// ore town's metal leg towers over a world mostly without ore, a metropolis's
+// services tower over a world of villages — the pick spreads with geography,
+// with NO reference constants at all.
+// The mean is LAG-1: settlements accumulate raw legs as they compute them, and
+// the first computeExportValue of each tick swaps last tick's sums into the
+// mean every settlement then reads — identical for all, order-independent,
+// deterministic. No mean yet (first tick of a run, or right after load — the
+// accumulator is a transient cache, never persisted) → the caller skips
+// evolving the pick for that one tick.
+const SPEC_REL_EPS = 0.02;   // output level below which a sector reads "globally absent" (guards ÷0; a locally-present, globally-absent craft then scores huge — the world's only forge town IS the metal specialist)
+function craftMeanOf(world) {
+  if (world._craftMeanStep !== world.step) {
+    const acc = world._craftAcc, n = world._craftAccN || 0;
+    let mean = null;
+    if (acc && n > 0) { mean = {}; for (const k in acc) mean[k] = acc[k] / n; }
+    world._craftMean = mean;
+    world._craftMeanStep = world.step;
+    world._craftAcc = null; world._craftAccN = 0;
+  }
+  return world._craftMean;
+}
+function accumulateCraftLegs(world, legs) {
+  let acc = world._craftAcc;
+  if (!acc) { acc = world._craftAcc = {}; world._craftAccN = 0; }
+  for (const k in legs) acc[k] = (acc[k] || 0) + legs[k];
+  world._craftAccN++;
+}
+
 // AGGLOMERATION lock-in (increasing returns): multiply a town's ESTABLISHED specialty
 // (_specKey, the comparative-advantage sector it has committed to, strength _specStr)
 // so the cluster compounds — Florence→wool, Toledo→steel, Murano→glass. Applied by
@@ -594,6 +635,7 @@ function applyClusterBoost(legs, s) {
   }
   return legs;
 }
+export { applyClusterBoost };   // goods.js (GOODS_UNIFY): the goods caps carry the same increasing returns
 
 // Cache a settlement's home-tile climate — latitude band (0 = equator,
 // 1 = pole), temperature and moisture (worldgen's 0..1 scales). Terrain is
@@ -820,7 +862,7 @@ function computeLuxury(s, world) {
   // collapses harder than its grain (which the same sackPenalty above only
   // dents). Squaring takes 0.3 → 0.09 at the floor.
   const sp = sackPenalty(s, world);
-  s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF * sp * sp;
+  s._luxSupply = luxRes * T.LUX_SUPPLY_RATE * popF * sp * sp;
   const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
   // Luxury is URBAN / elite consumption — silks, spices, furs for a town's wealthy class. A
   // farming village (tier 0) is a subsistence peasant community: even a cash-rich one buys
@@ -1007,6 +1049,7 @@ export function updateCoercedLabour(world, s) {
 // city long ago and re-took it — sacks always cost real productive value.
 // SACK_PRODUCTION_FLOOR -> runtime lever (tuning.js T.SACK_PRODUCTION_FLOOR)
 const CONQUEST_RECOVERY     = 5000;  // ticks to recover linearly to full output
+export { sackPenalty };   // goods.js (GOODS_UNIFY): craft caps take the same sack crater the scalar output does
 function sackPenalty(s, world) {
   if (s._sackedAt == null || !world || world.step == null) return 1;
   // Recovery span in HISTORY time: same healing arc at any SIM_GRANULARITY
@@ -1081,8 +1124,28 @@ export function computeExportValue(s, world) {
   // profile (not the boosted output) is what lets industry relocate and keeps the map
   // diverse instead of every town chasing the single absolute-strongest craft.
   if (world && T.AGGLOM_W > 0) {
+    // T.SPEC_RELATIVE: score vs the lag-1 WORLD-TYPICAL output of each sector
+    // (Ricardian — see craftMeanOf) instead of vs the CRAFT_REF ceiling. No
+    // mean yet (first tick / just loaded) → hold the pick for one tick.
+    let specRef = null, holdPick = false;
+    if (T.SPEC_RELATIVE) {
+      specRef = craftMeanOf(world);
+      accumulateCraftLegs(world, legs);
+      if (!specRef) holdPick = true;
+    }
     let topK = null, topScore = -1;
-    for (const key in legs) { const sc = legs[key] / (CRAFT_REF[key] || 1); if (sc > topScore) { topScore = sc; topK = key; } }
+    // GOODS_PRICES (Stage 1): weight each sector's score by the LOCAL PRICE of
+    // the good it makes — full comparative advantage (supply-side edge × local
+    // demand). A cold town's dear cloth pulls the loom, a war economy's dear
+    // metal pulls the forge. Prices are clamped to [0.25, 4] in goods.js, so
+    // this colours the pick rather than overriding geography.
+    const gP = T.GOODS_PRICES ? s._gPrice : null;
+    if (!holdPick) for (const key in legs) {
+      let sc = specRef ? legs[key] / ((specRef[key] || 0) + SPEC_REL_EPS)
+                       : legs[key] / (CRAFT_REF[key] || 1);
+      if (gP && LEG_GOOD[key] !== undefined) sc *= gP[LEG_GOOD[key]];
+      if (sc > topScore) { topScore = sc; topK = key; }
+    }
     if (topK) {
       if (s._specKey === topK) s._specStr = Math.min(1, (s._specStr || 0) + T.AGGLOM_RISE * (1 - (s._specStr || 0)));
       else {
@@ -1099,8 +1162,38 @@ export function computeExportValue(s, world) {
   // for a while (sackPenalty); tech scales the lot.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
   const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world) * techEff(s).tradeMult;
-  ag *= mult; man *= mult; agFood *= mult; agMat *= mult;
-  const v = ag + man;
+  ag *= mult; agFood *= mult; agMat *= mult;
+  // Stash the PRIMARY materials component (post-mult, PRE-ore) for the goods
+  // layer — cap[G_MATERIALS] must never include the ore the goods vector
+  // already carries as G_ORE. Stashing after the UNIFY branch's `agMat +=
+  // oreU` made every mining settlement's extraction ship TWICE (once as ore,
+  // once as phantom materials), double-booking income and depressing its
+  // materials price — caught by the 2026-07 adversarial pre-merge review.
+  s._agMat = agMat;
+  let v;
+  if (T.GOODS_UNIFY && s._gProd) {
+    // ── LAYER UNIFICATION (T.GOODS_UNIFY) ────────────────────────────────
+    // The manufactured/service sector IS the goods layer's production
+    // (last tick's _gProd — a one-tick lag on a slow variable, which breaks
+    // the ev↔cap cycle deterministically). Everything the goods economy
+    // knows — labour dedication, invested capital, the ore chain's input
+    // gate, cluster lock-in, the sack/army/tech multiplier, the village
+    // craft fraction — is already inside prod (goods.js caps under this
+    // same flag), so the ONE number the rest of the sim reads (trade
+    // volume, inflation's T, development, war worth) finally describes the
+    // economy that actually trades. craftLegs' own in-hand ore gate
+    // retires here automatically: prod[metal] is chain-gated instead.
+    // The primary sector stays this function's (its recipes were always
+    // authoritative); goods.js reads the stashed post-mult agMat directly.
+    const gp = s._gProd;
+    const oreU = gp[G_ORE] || 0;   // raw extraction sells as materials
+    const manU = (gp[G_METAL] || 0) + (gp[G_CLOTH] || 0) + (gp[G_WARES] || 0) + (gp[G_SERVICES] || 0);
+    ag += oreU; agMat += oreU;
+    v = ag + manU;
+  } else {
+    man *= mult;
+    v = ag + man;
+  }
   s._exportFoodFrac = v > 0 ? agFood / v : 0;           // share booked as "food & farm goods"
   s._exportMatFrac  = v > 0 ? agMat / v : 0;            // share booked as "materials" (rest = manufactured/service goods)
   return v;
@@ -1259,17 +1352,15 @@ export function getExportBreakdown(s, world) {
 // export-value gradient, not specific-commodity barter, so a goods label
 // would be fiction (and made a town look like it both buys and sells the
 // same thing).
-// Resources, by richness, that `haver` has and `needer` lacks — i.e.
-// what `haver` could barter to `needer`. Returns the top one (or null).
-const BARTER_RES = ["timber","stone","copper","tin","iron","coal","horses","salt"];
-const BARTER_HAVE = 0.10;   // a settlement "has" a resource at ≥ this richness
-function topBarterGood(haver, needer) {
-  const hr = haver.localRes || {}, nr = needer.localRes || {};
-  let best = null, bestV = BARTER_HAVE;
-  for (const id of BARTER_RES) {
-    const hv = hr[id] || 0;
-    if (hv > bestV && (nr[id] || 0) < BARTER_HAVE) { bestV = hv; best = id; }
-  }
+// A settlement's top REAL net-export good, from the goods layer's measured
+// flows (_gNet: negative = exported). Replaces the old topBarterGood fiction
+// (a raw-resource guess that printed "give copper / get −" regardless of what
+// actually moved — retired 2026-07 once the goods trade made flows real).
+function topNetExportOf(s) {
+  const n = s._gNet;
+  if (!n) return null;
+  let best = null, bestV = -0.005;   // a real flow, not noise
+  for (let g = 0; g < n.length; g++) if (n[g] < bestV) { bestV = n[g]; best = GOODS[g]; }
   return best;
 }
 export function getTradeProfile(s, world) {
@@ -1291,10 +1382,10 @@ export function getTradeProfile(s, world) {
     let foodRole = null;
     if (sFood > 0.01 && peerFood < -0.01) foodRole = "selling food";
     else if (sFood < -0.01 && peerFood > 0.01) foodRole = "buying food";
-    // Barter description: what each side gives the other (a resource it
-    // has that the partner lacks). Shown when little/no coin moves.
-    const give = topBarterGood(s, peer);
-    const get  = topBarterGood(peer, s);
+    // What each side genuinely SELLS into the network (its top measured
+    // net-export good) — real flows, not the old resource-guess fiction.
+    const give = topNetExportOf(s);
+    const get  = topNetExportOf(peer);
 
     profile.push({
       partner: peer.name, partnerId: peer.id,
@@ -1404,6 +1495,7 @@ export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
   updateWealth(world, s);
   updateCoercedLabour(world, s);   // slaves, cash crops, mine intensification (reads fresh wealth)
+  updateGoods(world, s);           // goods-vector Stage 1: prod/demand/price + craft labour (after lux & cash crops so budgets are fresh; no-op unless T.GOODS_PRICES)
   updateDevelopment(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
@@ -1726,6 +1818,22 @@ function updateKnowledge(world, s) {
   const agriClim = Math.max(0.2, 1 + T.ENV_SPEC * (irrig * 1.1 - tropical * 0.45 - cold * 0.5));
   const orgClim  = Math.max(0.4, 1 + T.ENV_SPEC * (maritime * 0.3 - tropical * 0.40));
 
+  // ── Induced innovation (T.INDUCED_INNOV): necessity mothers invention ──
+  // A society whose own market prices a good DEAR leans its learning toward
+  // the technique that makes it: dearth pushes agronomy (the rotation and
+  // manuring literature followed hungry decades), dear metal pushes the
+  // furnace men, dear building materials the mason's methods. Reads the
+  // settlement's LOCAL goods prices (goods.js, only under T.GOODS_PRICES) —
+  // a lived condition, never a date. One-sided by design: gluts never
+  // punish learning (abundance doesn't make a society forget).
+  let needAgri = 1, needMat = 1, needMetal = 1;
+  if (T.INDUCED_INNOV > 0 && s._gPrice) {
+    const gp = s._gPrice;
+    needAgri  = 1 + T.INDUCED_INNOV * Math.max(0, gp[G_STAPLE] - 1);
+    needMat   = 1 + T.INDUCED_INNOV * Math.max(0, gp[G_MATERIALS] - 1);
+    needMetal = 1 + T.INDUCED_INNOV * Math.max(0, gp[G_METAL] - 1);
+  }
+
   // ── Heritable aptitude: selection ratchet ────────────────────────────
   // Under a mild-summer/harsh-winter/reliable-growing-season climate the
   // population's heritable organisation aptitude climbs toward the selection
@@ -1757,7 +1865,7 @@ function updateKnowledge(world, s) {
   const stoneBoost = 1 + (r.stone || 0) * 0.6;
   const metalBoost = 1 + metalEff * 1.8;             // metal TOOLS help building — the metal you can forge, not merely know of
   k.construction = clamp01(k.construction + T.LEARN_BASE * 1.0 * sciMul * (1 - k.construction)
-    * buildMat * stoneBoost * metalBoost
+    * buildMat * stoneBoost * metalBoost * needMat
     * (1 + k.agriculture * 0.6) * (1 + sciSqrt * 0.06));   // urban core builds — pace to a CITY of that size, not the whole province (mirrors organization/metallurgy/navigation/mobility above; closes the raw-pop leak into orgEraCap → the world clock)
 
   // Agriculture: farmland scale + metal tools (plough) + wild-food
@@ -1782,7 +1890,7 @@ function updateKnowledge(world, s) {
   const indAgri = 1 + T.AGRI_INDUSTRIAL
     * Math.min(1, Math.max(0, (k.organization - 0.78) / 0.18))
     * Math.min(1, Math.max(0, (k.metallurgy   - 0.78) / 0.18));
-  k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * (1 - k.agriculture)
+  k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * needAgri * (1 - k.agriculture)
     * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost * foragePull * indAgri);
 
   // Organization: pop-driven admin burden + a literate-state branch
@@ -1830,7 +1938,7 @@ function updateKnowledge(world, s) {
     const fuel = 1 + (r.timber || 0) * 0.3 + co * 0.4;             // charcoal / coke
     const headroom = 1 - k.metallurgy / metalCap;
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      T.LEARN_BASE * 2.6 * sciMul * headroom * (0.5 + 0.5 * oreRate) * fuel
+      T.LEARN_BASE * 2.6 * sciMul * headroom * (0.5 + 0.5 * oreRate) * fuel * needMetal
       * (1 + k.construction * 0.4 + sciSqrt * 0.04));
   }
 
@@ -2250,9 +2358,10 @@ function updateFood(world, s) {
   // ORGANISED civilisations bloom first, and the centre of gravity follows DEVELOPMENT —
   // then shifts as development does. agri^POW keeps the lift back-loaded so the modern
   // BOOM still rides agriculture's climb to the top of the tree.
-  if (T.ANCHOR_POP > 0) {
-    s._eraProd = world._eraProd || 1; s._indCap = 1; s._indGate = 0;   // anchor drives magnitude; no separate field-capacity break
-  } else {
+  // (ANCHOR_POP removed in the 2026-07 default-flip campaign: the legacy
+  // demographic anchor was the codified two-clock trap — population steered to
+  // a historical curve instead of emerging. Emergence is the only path now.)
+  {
     const agri = (s.knowledge && s.knowledge.agriculture) || 0;
     // Density requires being in a DEVELOPED STATE, not just personal organisation: read the
     // settlement's COUNTRY's development (its capital's organisation). A stateless settlement
@@ -2358,29 +2467,10 @@ function updateFood(world, s) {
   // yields. So the rich temperate plains (Europe) sit near-empty until a civilisation has
   // the metallurgy AND the plough — which is why farming radiated OUTWARD from the cradles
   // as tools spread, not wherever the soil was richest. The land OPENS as the tools arrive.
-  let workable = 1;
-  if (T.LAND_TOOL_GATE > 0) {
-    climateOf(world, s);
-    const kk = s.knowledge || {};
-    // A river VALLEY is open alluvium — farmable from the first digging stick (the cradles sit
-    // on rivers). RIVER-only (s._riverAcc), NOT waterAccess: a forested COAST is not open ground —
-    // NW Europe's coastal woodland still had to be felled. Keying this on waterAccess (which
-    // counts coast as 0.5) wrongly exempted every coastal forest and gutted the gate, which is
-    // why temperate Europe still bloomed in the bronze age with the gate nominally on.
-    const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
-    const moist = s._climMoist ?? 0.5;
-    const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
-    const meanFert = (s._terrFertSum || 0) / Math.max(1, tiles);
-    // FOREST: woodland starts at ~0.40 effective moisture (the sim's own biome line). It must be
-    // CLEARED with metal axes. Dry grassland/steppe (<0.40) and river valleys are open.
-    const forest = Math.max(0, Math.min(1, (moist - 0.38) / 0.20)) * (1 - riverOpen);
-    // HEAVY soil: very rich ground off the rivers (clay plains) — needs the plough; river alluvium is light.
-    const heavy  = Math.max(0, Math.min(1, (meanFert - 0.6) / 0.30)) * (1 - riverOpen);
-    const axes   = Math.min(1, (kk.metallurgy || 0) / T.LAND_CLEAR_METAL);              // bronze→iron clears forest
-    const plough = Math.min(1, Math.max(0, ((kk.agriculture || 0) - 0.45) / 0.40));     // the_plough→heavy_plough breaks heavy soil
-    const locked = Math.min(0.92, Math.max(forest * (1 - axes), heavy * (1 - plough))); // the binding lock holds back this share of the land
-    workable = 1 - T.LAND_TOOL_GATE * locked;
-  }
+  // (LAND_TOOL_GATE removed in the 2026-07 default-flip campaign: its own desc
+  // recorded the verdict — measured at every strength 0.35–0.7 it cost more
+  // than it bought. The tool-unlock idea may return via CROP_AXIS packages.)
+  const workable = 1;
   s._workable = workable;
   // IRRIGATION — an arid RIVER valley (the Nile, the Euphrates, the Indus) is a fertile
   // ribbon through desert: a managed river makes it extraordinarily productive per acre,
@@ -2734,7 +2824,7 @@ function updatePopulation(world, s) {
   // surplus food the capped city can't house stays in the hinterland feeding RURAL
   // population (ruralCap keeps full _eraProd), so the modern boom spreads across the
   // land and many towns instead of piling into one metropolis.
-  const houseEra = T.ANCHOR_POP > 0 ? (s._eraProd || 1) : Math.pow(s._eraProd || 1, T.HOUSE_ERA_POW);
+  const houseEra = Math.pow(s._eraProd || 1, T.HOUSE_ERA_POW);
   let houseK = housingCapacity(s) * houseEra;
   // RURAL CEILING: a tier-0 farming region holds only a rural district's worth
   // of people (URBAN_CAP). Capping foodK AND houseK (not just K) is deliberate:
@@ -2754,7 +2844,7 @@ function updatePopulation(world, s) {
     // food's full _eraProd means a modern countryside FEEDS more than it can HOUSE, so the
     // surplus ships up the hierarchy to grow TOWNS instead of piling into ever-denser
     // villages — the farm→city drift that urbanises the modern era. Linear under the anchor.
-    const rEra = T.ANCHOR_POP > 0 ? (s._eraProd || 1) : Math.pow(s._eraProd || 1, T.RURAL_ERA_POW);
+    const rEra = Math.pow(s._eraProd || 1, T.RURAL_ERA_POW);
     const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE)) * rEra;
     foodK = Math.min(foodK, ruralCap); houseK = Math.min(houseK, ruralCap);
   }
@@ -2771,7 +2861,7 @@ function updatePopulation(world, s) {
   // load, full urbanity and zero sanitation, crowd disease slightly more than
   // cancels natural increase (1.2x) — the city needs migrants to grow.
   const URBAN_GRAVEYARD_W = 1.2;
-  const K = (T.LOCALITY_MODE || T.DISSOLVE_FARMS)
+  const K = T.DISSOLVE_FARMS
     ? Math.max(K_MIN_VIABLE, foodK)
     : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
   s._k = K;

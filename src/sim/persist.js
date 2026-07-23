@@ -97,6 +97,8 @@ const SETT_FIELDS = [
   "_lastBorrow",                         // crop-package borrow cooldown (T.CROP_AXIS)
   "_rivalN",                             // peer-weighted rival contact (competition signal)
   "_hegF", "_peerPeak",                  // hegemonic stagnation: decline-from-peak peer pressure + the peak ratchet
+  "_gPrice", "_gShare",                  // goods vector (T.GOODS_PRICES): local per-good prices + craft labour shares — the market's memory (plain number arrays)
+  "_gStock", "_gCapx",                   // merchant warehouse stock (T.GOODS_STOCKS) + invested craft capital (T.GOODS_INVEST) — both carry cross-tick state
 ];
 
 // Load-bearing per-settlement DYNAMIC state that the hashWorld core loop omitted:
@@ -291,8 +293,8 @@ export function saveWorld(world, meta = {}) {
       // lever ran AND the field initialised (a lever-off save stays
       // byte-identical); a pre-v4 or lever-off save simply re-seeds from the
       // city mirror on the first stepIdentityField firing.
-      tileCul2Id: T.TILE_IDENTITY > 0 && world._tileIdentInit && world.tileCulId ? b64FromTyped(top2Ids(world)) : undefined,
-      tileCul2Shr: T.TILE_IDENTITY > 0 && world._tileIdentInit && world.tileCulShr ? b64FromTyped(top2Shrs(world)) : undefined,
+      // (Stage-2 tileCul2Id/Shr save legs removed with T.TILE_IDENTITY 2026-07;
+      // the v4 LOAD path below still expands old saves' payloads harmlessly.)
       tileOwnerPrev: world._tileOwnerPrev ? b64FromTyped(world._tileOwnerPrev) : undefined,
       tileHomeland: sparseFromTyped(world._tileHomeland, -1) ?? undefined,
       tileFellAt: sparseFromTyped(world._tileFellAt, -Infinity) ?? undefined,

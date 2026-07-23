@@ -272,6 +272,9 @@ function packSettlement(s) {
     // Coerced-labour intensity 0..1 for the Society lens: how bound the labour is
     // (slaves as a share of people, serfdom, cash-crop plantation land).
     _coerce: Math.min(1, (s._unfreeRatio || 0) + 0.6 * (s._serf || 0) + 0.4 * (s._cashFrac || 0)),
+    // Goods-vector prices (T.GOODS_PRICES) for EVERY settlement — the data a
+    // future price-map lens paints; null and free when the levers are off.
+    _gPrice: s._gPrice || null,
   };
 }
 
@@ -300,6 +303,7 @@ function packSelected(s) {
     _houseK: s._houseK, _foodK: s._foodK,
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
     _specKey: s._specKey, _specStr: s._specStr,                          // agglomeration: locked-in craft specialty
+    _gPrice: s._gPrice || null, _gShare: s._gShare || null, _gNet: s._gNet || null,   // goods vector (T.GOODS_PRICES+): local market prices, craft labour, net flows
     _unfree: s._unfree, _captives: s._captives, _unfreeRatio: s._unfreeRatio,   // coerced labour
     _cashFrac: s._cashFrac, _cashSuit: s._cashSuit, _cashOut: s._cashOut, _serf: s._serf, _estates: s._estates,
     foundedStep: s.foundedStep, parentSettlementId: s.parentSettlementId,
@@ -487,7 +491,7 @@ function buildSnapshot() {
   // settlement is never a bare dot on the map while its nascent capital's projected claim
   // is still ~0. Render-only (a per-tick slice; nothing in the sim reads this).
   let countryClaim = null;
-  if (sendStatic && T.CONTROL_FIELD && !T.CTRL_LIVE && world._ctrlOwner) {
+  if (sendStatic && T.CONTROL_FIELD && world._ctrlOwner) {
     // PRETTY MODE (control field as the drawn border): the political map is rendered from
     // the control field (world._ctrlOwner) — coherent, terrain-following, continuously-moving
     // borders — instead of the recompute crawl. The field is seeded by the SAME nations

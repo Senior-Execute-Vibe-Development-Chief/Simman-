@@ -20,6 +20,7 @@ import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff, getWealthReserve, recordCaptives, monetization, realOutputOf } from "./settlement.js";
+import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.RESOURCE_WARS)
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
@@ -2205,11 +2206,10 @@ export function updatePolities(world) {
     // ground, in EVERY era — static geography, so a Nile/Mesopotamia/Yellow-River core
     // holds a structurally larger empire than a steppe-centred realm. A path-INDEPENDENT
     // source of size VARIETY that stops every realm relaxing to one characteristic size.
-    const capTi = (cap.pos.y | 0) * world.tw + (cap.pos.x | 0);
-    const geoCore = (world.fert ? world.fert[capTi] || 0 : 0.5)
-                  + 0.5 * (world.tFlood && world.tFlood[capTi] ? 1 : 0)
-                  + 0.3 * Math.min(1, (world.riverMag ? world.riverMag[capTi] || 0 : 0) / 3);
-    const geoMul = 1 + T.CAP_GEO * geoCore;
+    // (CAP_GEO removed 2026-07: the "ships default 0" product decision — the
+    // opt-in size-variance family (with ORG_APT_CAP) measured to fatten the
+    // biggest realms; the emergent capacity ruler carries size variety now.)
+    const geoMul = 1;
     // ── The capacity RULER (T.CAP_RELATIVE, default on) ─────────────────────────
     // The log2 base is measured against the ERA'S OWN median capital power (smoothed,
     // floored at POW_REF so genesis — when the median is tiny — is unchanged), not the
@@ -2242,7 +2242,7 @@ export function updatePolities(world) {
     // half ran — the lever read 0.4 and did nothing. Same gate and shape as the
     // legacy path (countryTerritory.js:929); ORG_APT_CAP=0 recovers the unwired
     // capacity byte-identically (×1 exact).
-    const aptMul = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_CAP * ((cap._orgApt || 0)) : 1;
+    const aptMul = 1;   // (ORG_APT_CAP removed 2026-07: measured windowed at 0.15 and 0.4, the capacity payout failed its gates; the aptitude LEARNING half lives on)
     let peaceCapacity = (capK * instMul * Math.log2(1 + capPowerCap / powRefEff)
                         + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul * aptMul;
     // IMPERIAL HYSTERESIS (path dependence): the administrative reach, roads and
@@ -2269,6 +2269,7 @@ export function updatePolities(world) {
     else if (raidedCap)  duress *= WAR_CAPACITY_MULT;                    // core harried
     // War intensity drives the army's wartime cost surcharge (disburseTreasury).
     const warLevel = fronts + (besiegedCap ? 2 : raidedCap ? 1 : 0);
+    gov._warLevel = warLevel;   // cached on the polity for the goods layer's wartime procurement read (T.ARMY_PROCURE) — refreshed every polity pass, like _solvency
     // Fiscal duress (death-spiral): a state that can't pay its army (last
     // pass's solvency, from disburseTreasury) loses its grip on the frontier.
     // Lose provinces → lose tax revenue → can't pay → capacity falls → lose
@@ -2492,20 +2493,11 @@ export function updatePolities(world) {
     // (the far frontier, low control) is restless and bleeds loyalty — a self-consistent
     // fragmentation brake that scales with each realm, so a big empire sheds its outer marches
     // while a compact one holds firm, with no capacity stack.
-    const chArr = T.CTRL_LIVE ? world._ctrlHold : null;
-    const _cw = world.tw;
-    const holdAt = (s) => chArr ? (chArr[(s.pos.y | 0) * _cw + (((s.pos.x | 0) % _cw) + _cw) % _cw] || 0) : 0;
-    const capHold = chArr && cap ? Math.max(1e-3, holdAt(cap)) : 1;
+    // (T.CTRL_LIVE removed 2026-07 — the field-hold loyalty read went with the
+    // prototype; coverage is the capacity budget, as always.)
     for (const { s, load } of loads) {
       cum += load;
-      let covered, overField = 0;
-      if (T.CTRL_LIVE) {
-        const frac = holdAt(s) / capHold;                 // this province's grip as a share of the core's
-        covered = frac >= CTRL_LOYAL_FRAC;
-        overField = covered ? 0 : Math.min(OVER_DECAY_CAP, (CTRL_LOYAL_FRAC - frac) / CTRL_LOYAL_FRAC);
-      } else {
-        covered = cum <= capacity;
-      }
+      const covered = cum <= capacity;
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (pacified || infant) {
@@ -2521,7 +2513,7 @@ export function updatePolities(world) {
         // How deep past the line — CAPPED so a wildly over-extended realm sheds gradually
         // (ring by ring over passes) instead of its whole frontier collapsing in one tick.
         // CTRL_LIVE uses the field-hold deficit (overField); else the capacity overspend.
-        const over = T.CTRL_LIVE ? overField : Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
+        const over = Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
         // An ORGANISED empire's provinces are administratively STICKY — records,
         // garrisons, an integrated economy and roads bind a province to the
         // realm, so it bleeds loyalty slowly even while over-budget. This is the
@@ -3178,6 +3170,7 @@ function absorbWeakNeighbors(world, countries) {
     let pow = 0; for (const m of c.members) pow += settlementPower(m);
     countryPower.set(c.id, pow);
   }
+  const RES_WANT_MIN = 0.5;   // price-gap below which a neighbour's cheap good isn't worth leaning on (casual edges aren't casus belli)
   fieldPowerOverlay(world, countries, countryPower);   // POW_FIELD: dominance is over governed people
   // Per-settlement exposure to strong, organised foreign realms able to absorb a
   // settlement of its tier. Walk every tile once, crediting each qualifying
@@ -3220,9 +3213,24 @@ function absorbWeakNeighbors(world, countries) {
       }
       if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough
       const orgFactor = Math.min(1, (fOrg - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
+      // Resource hunger (T.RESOURCE_WARS): the empire leans HARDER on the
+      // neighbour holding what it lacks — each shippable good the border
+      // settlement has CHEAP while F's capital finds it DEAR (a real
+      // scarcity gap, ≥ RES_WANT_MIN price-points, not a casual edge) adds
+      // pull. The Ruhr, the tin coasts, the grain shores: acquisitive
+      // pressure pointed by the price map, biasing WHICH neighbours a
+      // dominant realm erodes — never creating dominance it doesn't have
+      // (all the power/org/headroom gates above still rule).
+      let hunger = 1;
+      if (T.RESOURCE_WARS > 0 && F.capital._gPrice && m._gPrice) {
+        const Pf = F.capital._gPrice, Pm = m._gPrice;
+        let want = 0;
+        for (const g of TRADABLE) want += Math.max(0, Pf[g] - Pm[g] - RES_WANT_MIN);
+        if (want > 0) hunger = 1 + T.RESOURCE_WARS * Math.min(2, want);
+      }
       let perCc = perSett.get(m.id);
       if (!perCc) { perCc = new Map(); perSett.set(m.id, perCc); }
-      perCc.set(F.id, (perCc.get(F.id) || 0) + settlementPower(F.capital) * orgFactor);
+      perCc.set(F.id, (perCc.get(F.id) || 0) + settlementPower(F.capital) * orgFactor * hunger);
     }
   }
   // Per-settlement probabilistic defection. A village that's heavily

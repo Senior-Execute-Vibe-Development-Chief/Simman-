@@ -130,7 +130,7 @@ export function stepControlField(world) {
   const coMap = world._countryOwner;
   // PRETTY MODE (default): faithfully DRAW the authoritative map, bounded + smoothed. CTRL_LIVE has
   // no external truth to track (the field IS the map), so it keeps the emergent capital-flood below.
-  if (!T.CTRL_LIVE && coMap && coMap.length === N) { stepTrackingBounded(world, cost); return; }
+  if (coMap && coMap.length === N) { stepTrackingBounded(world, cost); return; }   // (the T.CTRL_LIVE authoring path was removed 2026-07)
 
   // ── CTRL_LIVE: emergent capital-flood (the field authors _countryOwner) ──────────────────────
   // Sources + per-nation reach BUDGET (P, cost-units) and water navigation.
@@ -215,11 +215,9 @@ export function stepControlField(world) {
   // CTRL_LIVE: the field IS the political map — publish it as _countryOwner (land only;
   // water carried the field only as a naval relay). The recompute (fieldPolityTerritory)
   // is skipped, so this per-tick copy is the sole author of the political map.
-  if (T.CTRL_LIVE) {
-    let co = world._countryOwner;
-    if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N).fill(-1);
-    for (let t = 0; t < N; t++) co[t] = elev[t] > 0 ? no[t] : -1;
-  }
+  // (T.CTRL_LIVE removed 2026-07: the block that copied the field into
+  // _countryOwner — the "field IS the political map" prototype — failed its
+  // gate on runaway consolidation; field-polity-spec keeps the design.)
 }
 
 // PRETTY MODE: draw the authoritative _countryOwner, BOUNDED + SMOOTHED (see the header note by the

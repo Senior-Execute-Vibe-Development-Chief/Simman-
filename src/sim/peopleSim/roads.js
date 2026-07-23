@@ -51,6 +51,7 @@ import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
 import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, IN_CARRY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { TRADABLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_LUXURY } from "./goods.js";   // goods-vector Stage 2 (T.GOODS_TRADE) + the freight bulk table
 
 // Entrepôt share (0..1): how much of an entrepôt a hub is — port access (a harbour or
 // strait trade must funnel through) times market size (a great mart re-sells what it
@@ -864,11 +865,51 @@ function runTradePass(world, rf, flowTiles, stride) {
   // The luxury budgets (set per-tick by computeLuxury) must cover `stride` ticks
   // now that this sweep stands in for that many — scale them up front so every
   // luxLeg, from either side, draws against the larger pool.
-  if (stride !== 1) {
+  const goodsTrade = T.GOODS_TRADE && T.GOODS_PRICES;
+  if (stride !== 1 || goodsTrade) {
     for (const s of world.settlements) {
       if (s.mode !== "settled") continue;
-      s._luxSupplyLeft = (s._luxSupplyLeft || 0) * stride;
-      s._luxDemandLeft = (s._luxDemandLeft || 0) * stride;
+      if (stride !== 1) {
+        s._luxSupplyLeft = (s._luxSupplyLeft || 0) * stride;
+        s._luxDemandLeft = (s._luxDemandLeft || 0) * stride;
+      }
+      // Stage 2 sweep budgets: what each settlement can EXPORT this sweep
+      // (its surplus over own demand) and how much it will IMPORT (its
+      // shortfall × GT_OVERBUY), per good — drawn down across partners like
+      // the luxury budgets. _gNet rebuilds each sweep (≤ stride−1 ticks
+      // stale between sweeps, the _linkMoney convention).
+      if (goodsTrade && s._gProd && s._gDem) {
+        let e = s._gExpLeft, im = s._gImpLeft, n = s._gNet;
+        if (!e)  e  = s._gExpLeft = new Array(8).fill(0);
+        if (!im) im = s._gImpLeft = new Array(8).fill(0);
+        if (!n)  n  = s._gNet     = new Array(8).fill(0);
+        for (let g = 0; g < 8; g++) { e[g] = 0; im[g] = 0; n[g] = 0; }
+        for (const g of TRADABLE) {
+          const surplus = (s._gProd[g] || 0) - (s._gDem[g] || 0);
+          if (surplus > 0) e[g] = surplus * stride;
+          else im[g] = -surplus * GT_OVERBUY * stride;
+        }
+        // Merchant stocks (T.GOODS_STOCKS): a MART also OFFERS what it holds
+        // in its warehouses and BIDS for goods beyond its own needs, to the
+        // extent it is an entrepôt — the Venice pattern: buy where cheap,
+        // shelve, resell where dear. The price-gap gate still rules every
+        // leg, so a hub only accumulates when it genuinely sits between a
+        // cheap source and a dear sink. Stock stays OFF the local price
+        // (warehoused for re-export, not dumped on the town market).
+        if (T.GOODS_STOCKS > 0) {
+          const es = entrepotShare(s);
+          if (es > 0.05) {
+            let st = s._gStock;
+            if (!st) st = s._gStock = new Array(8).fill(0);
+            const room = STOCK_CAP_W * es * Math.sqrt(Math.max(1, s.people || 0));
+            for (const g of TRADABLE) {
+              e[g] += st[g] * T.GOODS_STOCKS;                                   // offer the shelf
+              const free = room - st[g];
+              if (free > 0) im[g] += free * STOCK_BID_FRAC * T.GOODS_STOCKS;    // bid for re-export stock
+            }
+          }
+        }
+      }
     }
   }
   const usage = USAGE_PER_TRADE * stride;
@@ -901,7 +942,9 @@ function runTradePass(world, rf, flowTiles, stride) {
       const sBefore = s.wealth || 0;
       const peerBefore = peer.wealth || 0;
       runGeneralTradeBetween(world, s, peer, link, stride);
-      runLuxuryTradeBetween(world, s, peer);
+      // Under GOODS_TRADE luxury rides the goods market (G_LUXURY flows with
+      // the rest) — the separate overlay would double-count it.
+      if (!goodsTrade) runLuxuryTradeBetween(world, s, peer);
       // Store under a canonical lo:hi key, oriented as "coin /tick that reached
       // the HIGHER-id settlement" (the convention getTradeProfile + the
       // money-flow overlay expect). Measure the HIGHER-id side's own wealth
@@ -929,7 +972,38 @@ function runTradePass(world, rf, flowTiles, stride) {
   }
   world._moneyFlows = moneyFlows;
   world._linkMoney = linkMoney;
+  // Merchant-stock reconcile (T.GOODS_STOCKS): after the sweep, what a mart
+  // bought beyond its OWN shortfall goes on the shelf; what it sold beyond
+  // its OWN surplus came off it. Own-need baselines recompute from prod/dem
+  // (unchanged within a sweep — deterministic), so no extra arrays ride the
+  // settlement. Spoilage + warehouse cost drain the shelf each sweep, so
+  // stock is a working buffer, not a hoard.
+  if (T.GOODS_TRADE && T.GOODS_PRICES && T.GOODS_STOCKS > 0) {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || !s._gStock || !s._gExpLeft) continue;
+      const st = s._gStock, e = s._gExpLeft, im = s._gImpLeft;
+      const es = entrepotShare(s);
+      const room = STOCK_CAP_W * es * Math.sqrt(Math.max(1, s.people || 0));
+      const spoil = Math.pow(1 - STOCK_SPOIL, stride);
+      for (const g of TRADABLE) {
+        const baseE = Math.max(0, ((s._gProd && s._gProd[g]) || 0) - ((s._gDem && s._gDem[g]) || 0)) * stride;
+        const baseIm = Math.max(0, ((s._gDem && s._gDem[g]) || 0) - ((s._gProd && s._gProd[g]) || 0)) * GT_OVERBUY * stride;
+        const offered = baseE + st[g] * T.GOODS_STOCKS;
+        const eUsed = offered - e[g];
+        const soldFromStock = Math.max(0, eUsed - baseE);
+        const bidTotal = baseIm + Math.max(0, room - st[g]) * STOCK_BID_FRAC * T.GOODS_STOCKS;
+        const imUsed = bidTotal - im[g];
+        const boughtForStock = Math.max(0, imUsed - baseIm);   // own need is filled first, the rest is shelved
+        st[g] = Math.min(room, Math.max(0, (st[g] - soldFromStock + boughtForStock) * spoil));
+      }
+    }
+  }
 }
+// Warehouse scale: a great mart (entrepôt share ~1, big market) shelves a
+// few sweeps' worth of a strong flow; a river ford shelves nothing.
+const STOCK_CAP_W   = 1.5;    // stock cap = W × entrepôtShare × √pop
+const STOCK_BID_FRAC = 0.3;   // share of free shelf a mart bids for per sweep (works into position gradually)
+const STOCK_SPOIL   = 0.002;  // per-tick spoilage + warehouse cost (a working buffer, not a hoard)
 
 // Walk the path's tiles, collect each settlement whose home tile
 // sits on the route (other than endpoints). De-duplicates so a
@@ -966,6 +1040,108 @@ function demandMul(buyer) {
   if (spare <= 0) return 1;
   return 1 + Math.min(DEMAND_WEALTH_CAP, spare / DEMAND_WEALTH_REF);
 }
+// ── Goods trade (T.GOODS_TRADE — goods-vector Stage 2) ─────────────────────
+// Replaces the symmetric both-sell-their-scalar flow with PER-GOOD flows
+// down the price gradient: each shippable good moves from the side where it
+// is locally CHEAP to the side where it is DEAR, in quantity bounded by the
+// seller's surplus budget, the buyer's shortfall appetite, the pair's
+// carrying capacity, and the buyer's purse. Money moves the other way
+// through sellGoods — the same audited path (reserve, tolls, entrepôt
+// brokerage, FX, tariffs, conservation) the scalar flow used. Imports and
+// exports feed back into each side's local prices (goods.js reads _gNet),
+// so prices RELAX TOWARD EQUALITY ACROSS THE NETWORK, up to transport cost —
+// the spatial price gradient becomes self-flattening, which IS the trade
+// system the spec pivots on. Hume's imposed compA/compB correction retires
+// here: with real per-good prices, price-specie-flow EMERGES (a specie-rich,
+// dear region imports more than it exports and bleeds coin) instead of
+// being bolted on. buy ≠ sell by construction — a town imports what it is
+// short of and exports what it is long on.
+const GT_MIN_GAP  = 0.05;   // relative price gap below which a good doesn't move (arbitrage won't pay)
+const GT_GAP_CAP  = 2.0;    // flow-driving gap factor cap (a 3×+ gap ships no faster than 3× — carrying capacity binds first)
+const GT_FLOW_FRAC = 0.25;  // fraction of the seller's remaining surplus budget one route can take per unit gap (≈12 partners: a few strong-gap routes drain the budget, weak gaps nibble)
+const GT_OVERBUY  = 1.5;    // a buyer imports at most this multiple of its own shortfall (merchants overbuy a little; no bottomless hoards without re-export modelling)
+// Money channels per good index (book the crate on its own channel).
+const GT_BOOK_IN  = { [G_MATERIALS]: IN_MATERIALS,  [G_LUXURY]: IN_LUXURY  };
+const GT_BOOK_OUT = { [G_MATERIALS]: OUT_MATERIALS, [G_LUXURY]: OUT_LUXURY };
+// VALUE-TO-WEIGHT (T.GOODS_FREIGHT — von Thünen): freight a coin's worth of
+// each good incurs, relative to the average consignment. Pre-modern freight
+// economics: stone and ore all but never moved overland (they doubled in
+// price within a cart-day), grain not much farther, metalware and pottery
+// traded regionally, cloth crossed kingdoms, and spice/silk crossed the
+// world with freight a rounding error on their value. The ship-worthiness
+// check in sellGoods (value must exceed freight+tolls) then KILLS distant
+// bulk trades while letting the light-and-dear run far — trade range per
+// good becomes an OUTPUT of value density × route cost, never a rule.
+const GT_BULK = { [G_MATERIALS]: 2.5, [G_ORE]: 3.0, [G_METAL]: 1.0, [G_CLOTH]: 0.5, [G_WARES]: 1.0, [G_LUXURY]: 0.15 };
+function runGoodsTradeBetween(world, a, b, link, stride, vol, transport, intermediates, numInter) {
+  // Pair carrying capacity in VALUE — the scalar model's own gravity volume
+  // (√pop × rate × sea/river carrier terms), so gross trade magnitude stays
+  // on the calibrated scale; what changes is the CONTENTS of the flow.
+  let valueLeft = vol * (exportValueOf(a, world) + exportValueOf(b, world)) * 0.5;
+  if (valueLeft <= 0) return;
+  const Pa = a._gPrice, Pb = b._gPrice;
+  // Ship the widest gaps first — when carrying capacity binds, the trades
+  // most worth making happen (sorted, so deterministic).
+  const order = [];
+  for (const g of TRADABLE) {
+    const gap = Math.abs(Pa[g] - Pb[g]) / Math.min(Pa[g], Pb[g]);
+    if (gap >= GT_MIN_GAP) order.push([g, gap]);
+  }
+  if (order.length === 0) return;
+  order.sort((x, y) => y[1] - x[1] || x[0] - y[0]);
+  // Pair freight allocates against the INITIAL carrying budget — a fixed
+  // denominator, so the legs' shares sum to ≤ 1 and the pair's total freight
+  // = transport × the cargo mix's value-weighted bulkiness (exactly the
+  // physics: same value in ore = more tonnage = more carriage). The first
+  // cut divided by the SHRINKING remaining budget and tracked an exhaustible
+  // freight pool: legs compounded to ~1.8-3× the physical cost, the pool
+  // went negative, and every later consignment shipped FREE — silently
+  // bypassing the ship-worthiness check the von Thünen mechanism depends on
+  // (caught by the 2026-07 adversarial pre-merge review).
+  const freightTotal = transport;
+  const valueBudget0 = valueLeft;
+  for (const [g, gap] of order) {
+    if (valueLeft <= 0.001) break;
+    const aSells = Pa[g] < Pb[g];
+    const seller = aSells ? a : b, buyer = aSells ? b : a;
+    const exp = seller._gExpLeft, imp = buyer._gImpLeft;
+    if (!exp || !imp) continue;
+    const gapF = Math.min(GT_GAP_CAP, gap);
+    // Quantity: seller's remaining surplus × how hard the gap pulls, capped
+    // by the buyer's remaining shortfall appetite.
+    let qty = Math.min(exp[g] * Math.min(1, GT_FLOW_FRAC * gapF), imp[g]);
+    if (qty <= 0.0001) continue;
+    // Clearing price: the midpoint — both sides gain vs their local price
+    // (the gains from trade). T.GOODS_VALUE_UNIT converts the goods' own
+    // quantity scale to COIN (the F8 unit calibration): a pure unit factor
+    // on value — quantities, budgets, prices and every ratio untouched.
+    // (Scaling the DEMAND constants instead was measured wrong: it shrinks
+    // exportable surpluses — towns eat their own production — so goods-sold
+    // income FELL as the scale rose. Units belong on the value line.)
+    const pMid = (Pa[g] + Pb[g]) * 0.5 * (T.GOODS_VALUE_UNIT || 1);
+    let value = qty * pMid;
+    if (value > valueLeft) { value = valueLeft; qty = value / pMid; }
+    // Freight ∝ share of the pair's INITIAL value budget — scaled by the
+    // good's value density under T.GOODS_FREIGHT (lever 0 = flat, 1 = full
+    // bulk differentiation; ore pays 3×, silk a fifteenth).
+    const bulkMul = T.GOODS_FREIGHT > 0 ? 1 + T.GOODS_FREIGHT * ((GT_BULK[g] || 1) - 1) : 1;
+    const freight = freightTotal * (value / (valueBudget0 + EPS_V)) * bulkMul;
+    const scale = sellGoods(world, seller, buyer, value * fxRate(world, buyer, seller), freight, intermediates, numInter,
+      GT_BOOK_IN[g] !== undefined ? GT_BOOK_IN[g] : IN_GOODS,
+      GT_BOOK_OUT[g] !== undefined ? GT_BOOK_OUT[g] : OUT_GOODS) || 0;
+    if (scale <= 0) continue;
+    const moved = qty * scale;
+    exp[g] -= moved; imp[g] -= moved;
+    valueLeft -= value * scale;
+    // Per-tick net-goods bookkeeping → next tick's local prices (goods.js).
+    const perTick = moved / stride;
+    const nS = seller._gNet, nB = buyer._gNet;
+    if (nS) nS[g] -= perTick;
+    if (nB) nB[g] += perTick;
+  }
+}
+const EPS_V = 0.001;
+
 function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   const minPop = Math.min(a.people, b.people);
   // stride× volume + freight: this sweep stands in for `stride` ticks, so it
@@ -992,6 +1168,16 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   const transport = link.cost / rNormPop(world) * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
+  // Stage 2 (T.GOODS_TRADE): per-good flows down the price gradient replace
+  // the symmetric scalar exchange below. Same gravity volume (carrying
+  // capacity), same freight, same sellGoods plumbing; a pair where a side
+  // has no goods vector yet (first tick of a fresh settlement) trades the
+  // scalar way this sweep. Hume compA/compB and demandMul retire on this
+  // path — the per-good prices ARE the balance mechanism now.
+  if (T.GOODS_TRADE && T.GOODS_PRICES && a._gPrice && b._gPrice) {
+    runGoodsTradeBetween(world, a, b, link, stride, vol, transport, intermediates, numInter);
+    return;
+  }
   // HUME price-specie-flow (Currency Phase 2): a region's export COMPETITIVENESS
   // scales with how cheap it is vs its trade partner. A specie-rich region has a
   // high price level (localP), so its goods are dear — it exports LESS and (as
@@ -1081,8 +1267,14 @@ function customsCollector(world, seller, buyer) {
 // wealth above its reserve, with freight consumed en route, a toll skimmed
 // by each intermediate settlement on the road, and — for foreign goods — an
 // import duty collected by the buyer's state.
-function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, numInter) {
-  if (goodsValue <= 0) return;
+// Returns the SCALE actually applied (0 when nothing shipped, 1 when the
+// buyer could afford the full consignment) so the goods-trade pass
+// (T.GOODS_TRADE) can book the real quantity moved. Optional bookIn/bookOut
+// override the seller-mix booking split with an explicit channel pair — the
+// per-good path knows exactly what's in the crate; the scalar path (both
+// omitted) books by the seller's export fractions exactly as before.
+function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, numInter, bookIn, bookOut) {
+  if (goodsValue <= 0) return 0;
   // Each intermediate's toll scales with how much of a CROSSING it controls
   // (waterAccess — a ford, bridge, strait or port that trade must funnel through).
   let tollSum = 0, brokerSum = 0;
@@ -1106,11 +1298,11 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   const collector = customsCollector(world, seller, buyer);
   const tariff = collector ? goodsValue * T.TARIFF_RATE : 0;
   // Don't ship goods worth less than the cost to move + clear them.
-  if (goodsValue <= freight + totalToll + totalBroker + tariff) return;
+  if (goodsValue <= freight + totalToll + totalBroker + tariff) return 0;
   const want = goodsValue + freight + totalToll + totalBroker + tariff;
   const reserve = getWealthReserve(buyer);
   const available = Math.max(0, (buyer.wealth || 0) - reserve);
-  if (available <= 0) return;
+  if (available <= 0) return 0;
   const actual = available < want ? available : want;
   const scale = actual / want;
   buyer.wealth -= actual;
@@ -1140,20 +1332,29 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // export mix is genuinely food-dominated (a breadbasket whose output is mostly
   // grain, even after it grows past tier 0). Without the second clause every grown
   // farm town is mislabelled a goods-merchant and the whole map reads as "goods sold".
-  const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0)
-                   || (seller._exportFoodFrac || 0) >= T.FOOD_SELLER_FRAC;
-  const buyerShort = (buyer._foodSupply || 0) < (buyer._foodDemand || 0);
-  const foodFrac = (buyerShort || sellerFarm) ? (seller._exportFoodFrac || 0) : 0;
-  const matFrac  = seller._exportMatFrac || 0;
-  const foodPaid = paid * foodFrac;
-  const matPaid  = paid * matFrac;
-  const goodsPaid = paid - foodPaid - matPaid;
-  recordIn(seller, IN_FOOD, foodPaid);
-  recordIn(seller, IN_MATERIALS, matPaid);
-  recordIn(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the seller's own shipping fee
-  recordOut(buyer, OUT_FOOD, foodPaid);
-  recordOut(buyer, OUT_MATERIALS, matPaid);
-  recordOut(buyer, OUT_GOODS, goodsPaid);
+  if (bookIn !== undefined) {
+    // Per-good booking (T.GOODS_TRADE): the crate's contents are known —
+    // book the whole consignment on its own channel, freight to the
+    // seller's shipping income as ever.
+    recordIn(seller, bookIn, paid);
+    if (freightPaid > 0) recordIn(seller, IN_GOODS, freightPaid);
+    recordOut(buyer, bookOut, paid);
+  } else {
+    const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0)
+                     || (seller._exportFoodFrac || 0) >= T.FOOD_SELLER_FRAC;
+    const buyerShort = (buyer._foodSupply || 0) < (buyer._foodDemand || 0);
+    const foodFrac = (buyerShort || sellerFarm) ? (seller._exportFoodFrac || 0) : 0;
+    const matFrac  = seller._exportMatFrac || 0;
+    const foodPaid = paid * foodFrac;
+    const matPaid  = paid * matFrac;
+    const goodsPaid = paid - foodPaid - matPaid;
+    recordIn(seller, IN_FOOD, foodPaid);
+    recordIn(seller, IN_MATERIALS, matPaid);
+    recordIn(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the seller's own shipping fee
+    recordOut(buyer, OUT_FOOD, foodPaid);
+    recordOut(buyer, OUT_MATERIALS, matPaid);
+    recordOut(buyer, OUT_GOODS, goodsPaid);
+  }
   recordOut(buyer, OUT_TOLLS, (freight + totalToll + totalBroker) * scale);
   if (intermediates) {
     for (const inter of intermediates) {
@@ -1174,6 +1375,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // to the SELLER — goods price + carrying fee) + totalToll*scale (to the
   // intermediates) + tariff*scale (to the state). Nothing is burned in trade; the
   // money supply is regulated by COIN_LOSS_RATE + depleting mines instead.
+  return scale;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
