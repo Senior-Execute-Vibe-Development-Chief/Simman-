@@ -115,11 +115,16 @@ function makeCollider() {
  * proj: {TR, toScreenY} — sim-tile → map-canvas projection helpers.
  */
 export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
-  const { z, vx, vy, k, pxScale } = view;
+  // ALL sizing below is in FEATURE-CANVAS pixels — map units, exactly like
+  // the settlement icons. Labels therefore scale WITH the displayed map: the
+  // same proportion of the world on a 27" monitor and a phone. Nothing here
+  // may depend on the window's CSS size (an earlier version sized in CSS px;
+  // on a phone the whole world spans a few hundred of them, so every name
+  // rendered enormous relative to the map and the grading collapsed).
+  const { z, vx, vy, k } = view;
   const { TR, toScreenY } = proj;
   const { showRealms, showSettlements, emblemFor, selRealm, featW, featH } = opts;
   const collide = makeCollider();
-  const px = (v) => v * pxScale;                       // CSS px → canvas px
   const mapX = (x) => (x * TR * z + vx) * k;           // sim tile → feature-canvas px
   const mapY = (y) => (toScreenY(y * TR) * z + vy) * k;
 
@@ -142,30 +147,27 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
     for (const a of anchors.list) {
       const X = mapX(a.x), Y = mapY(a.y);
       if (X < -100 || X > featW + 100 || Y < -50 || Y > featH + 50) { dbg.push({ n: a.name, r: "offscreen" }); continue; }
-      // Grade by the realm's share of the DISPLAYED MAP WIDTH — a pure
-      // fraction, so the same realm gets the same relative size on every
-      // monitor and map scale. (The old grade used absolute CSS pixels: on a
-      // large window everything crossed the ceiling and every name rendered
-      // at the same maximum size.)
+      // Grade by the realm's share of the map width (a pure fraction × zoom),
+      // then set type in CANVAS px: ~13 for minors → ~22 for continental
+      // empires at world zoom, rising gently as you zoom (cap 30). On a 1920
+      // feature canvas that is ~0.7–1.2% of the map's width — small map text
+      // at every display size.
       const frac = (Math.sqrt(a.area) / (psw && psw.tw ? psw.tw : 960)) * z;
-      const footCss = (Math.sqrt(a.area) * TR * z * k) / pxScale;   // visibility gate only
-      if (footCss < 6) { dbg.push({ n: a.name, foot: footCss | 0, r: "speck" }); continue; }
-      // small map text: ~8.5px minors → ~11px empires at world zoom; zoom
-      // raises everything gently (cap 16).
-      let fsCss = (8.5 + Math.min(frac, 0.28) * 18) * (1 + (z - 1) * 0.18);
-      fsCss = Math.min(Math.max(fsCss, 8.5), 16);
-      const fs = px(fsCss);
+      const foot = Math.sqrt(a.area) * TR * z * k;     // canvas-px diameter (visibility gate)
+      if (foot < 9) { dbg.push({ n: a.name, foot: foot | 0, r: "speck" }); continue; }
+      let fs = (13 + Math.min(frac, 0.28) * 34) * (1 + (z - 1) * 0.18);
+      fs = Math.min(Math.max(fs, 13), 30);
       const sel = a.id === selRealm;
       ctx.font = `${sel ? 700 : 600} ${fs}px Cinzel, Georgia, serif`;
       const name = a.name.toUpperCase();
       const w = ctx.measureText(name).width;
       // shields only beside names with room for them — minors stay quiet text
-      const em = emblemFor && fsCss >= 10.2 ? emblemFor(a.id) : null;
+      const em = emblemFor && fs >= 16 ? emblemFor(a.id) : null;
       const emH = em ? fs * 1.05 : 0, emW = emH * 0.88;
-      const totW = w + (em ? emW + px(4) : 0);
-      if (!collide.place(X - totW / 2 - px(2), Y - fs * 0.75, totW + px(4), fs * 1.5)) { dbg.push({ n: a.name, foot: footCss | 0, r: "collide" }); continue; }
-      dbg.push({ n: a.name, foot: footCss | 0, fs: fsCss.toFixed(1), r: "drawn" });
-      const tx = X + (em ? (emW + px(4)) / 2 : 0);
+      const totW = w + (em ? emW + 4 : 0);
+      if (!collide.place(X - totW / 2 - 3, Y - fs * 0.75, totW + 6, fs * 1.5)) { dbg.push({ n: a.name, foot: foot | 0, r: "collide" }); continue; }
+      dbg.push({ n: a.name, foot: foot | 0, fs: fs.toFixed(1), r: "drawn" });
+      const tx = X + (em ? (emW + 4) / 2 : 0);
       // pale halo so the name reads on any tint, then ink
       ctx.lineJoin = "round";
       ctx.strokeStyle = sel ? "rgba(255,238,180,0.95)" : "rgba(236,222,186,0.78)";
@@ -174,13 +176,14 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
       ctx.fillStyle = sel ? "#1d1206" : "rgba(43,26,10,0.92)";
       ctx.fillText(name, tx, Y);
       if (em && em.complete && em.naturalWidth) {
-        ctx.drawImage(em, tx - w / 2 - emW - px(4), Y - emH / 2, emW, emH);
+        ctx.drawImage(em, tx - w / 2 - emW - 4, Y - emH / 2, emW, emH);
       }
     }
     globalThis.__labelDebug = dbg;
   }
 
   // ── Settlement names: tier-gated by zoom; small caps under the icon.
+  // Canvas-px sizes, like the icons — they scale with the map.
   if (showSettlements && psw && psw.settlements) {
     const minTier = z < 1.6 ? 3 : z < 2.6 ? 2 : z < 4.2 ? 1 : 0;
     const capIds = opts.capitalIds;
@@ -196,12 +199,12 @@ export function drawMapLabels(ctx, psw, anchors, view, proj, opts) {
     }
     rows.sort((a, b) => b.pri - a.pri);
     for (const { s, X, Y } of rows) {
-      const fs = px(s.tier >= 3 ? 12.5 : s.tier >= 2 ? 11.5 : 10.5);
+      const fs = s.tier >= 3 ? 19 : s.tier >= 2 ? 17.5 : 16;
       ctx.font = `500 ${fs}px "Alegreya Sans", "Segoe UI", sans-serif`;
       const name = s.name.charAt(0).toUpperCase() + s.name.slice(1);
       const w = ctx.measureText(name).width;
-      const ly = Y + px(9) + fs * 0.5;
-      if (!collide.place(X - w / 2 - px(2), ly - fs * 0.7, w + px(4), fs * 1.4)) continue;
+      const ly = Y + 14 + fs * 0.5;
+      if (!collide.place(X - w / 2 - 3, ly - fs * 0.7, w + 6, fs * 1.4)) continue;
       ctx.lineJoin = "round";
       ctx.strokeStyle = "rgba(236,222,186,0.85)";
       ctx.lineWidth = Math.max(1.6, fs * 0.16);

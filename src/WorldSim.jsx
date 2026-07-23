@@ -2327,16 +2327,13 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // over a faith/culture/price fill would mislabel what the colours mean.
     if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmPrices){
       labelAnchorsRef.current=realmLabelAnchors(psw,labelAnchorsRef.current);
-      const _canvasEl=canvasRef.current;
-      const _cssW=_canvasEl?_canvasEl.getBoundingClientRect().width:FEAT_W;
-      const _pxScale=Math.max(0.5,FEAT_W/Math.max(1,_cssW));
       const _seed=worldRef.current?worldRef.current.seed:0;
       const _emblemFor=_L.emblems?(id)=>{
         const c=psw.countries&&psw.countries.get(id);
         return c?realmEmblemImg(psw,c,ter,_seed):null;
       }:null;
       drawMapLabels(fctx,psw,labelAnchorsRef.current,
-        {z:viewZRef.current,vx:viewXRef.current,vy:viewYRef.current,k:_k,pxScale:_pxScale},
+        {z:viewZRef.current,vx:viewXRef.current,vy:viewYRef.current,k:_k},
         {TR,toScreenY:(y)=>dataYtoScreenY(y,H,CH)},
         {showRealms:true,showSettlements:_L.icons,capitalIds,
          emblemFor:_emblemFor,selRealm:selRealmRef.current,
