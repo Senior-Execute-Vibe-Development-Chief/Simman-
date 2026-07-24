@@ -74,9 +74,9 @@ export const LEGENDS = {
   population: {
     title: "People on the land",
     rows: [
-      [ramp(["rgba(34,42,64,0.3)", "rgb(40,60,140)", "rgb(50,170,130)", "rgb(240,205,60)", "rgb(240,250,225)"], 11), "≈100 → ≈1,000,000 people per region"],
-      [ramp(["rgba(34,42,64,0.3)", "rgba(34,42,64,0.65)"]), "haze — subsistence scatter (<1k)"],
-      [ramp(["rgb(40,60,140)"]), "sparse countryside (~3k)"],
+      [ramp(["rgba(56,66,96,0.4)", "rgb(44,66,148)", "rgb(50,170,130)", "rgb(240,205,60)", "rgb(240,250,225)"], 11), "≈100 → ≈1,000,000 people per region"],
+      [ramp(["rgba(56,66,96,0.35)", "rgba(56,66,96,0.7)"]), "haze — subsistence scatter (<1k)"],
+      [ramp(["rgb(44,66,148)"]), "sparse countryside (~3k)"],
       [ramp(["rgb(50,170,130)"]), "farmed belts (~30k)"],
       [ramp(["rgb(240,205,60)"]), "dense basins (~200k)"],
       [ramp(["rgb(240,250,225)"]), "urban cores (500k+)"],
