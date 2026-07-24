@@ -279,6 +279,10 @@ export function saveWorld(world, meta = {}) {
       // Regional development field (T.DEV_FIELD): the wave-of-advance ratchet is
       // an integral of history, not re-derivable — absent unless the lever ran.
       devField: world.devField ? b64FromTyped(world.devField) : undefined,
+      // Land improvement (T.LAND_WORKS): built capital in the land — an
+      // integral of history like devField, not re-derivable. Absent unless
+      // the lever ran, so default saves stay byte-identical.
+      worksField: world.worksField ? b64FromTyped(world.worksField) : undefined,
       // The loyalty field (T.LOYAL_FIELD, loyaltyField.js): allegiance is a
       // dense continuum (every governed tile carries a value), the owner-diff
       // snapshot is dense ids; both absent unless the lever ran (undefined key
@@ -421,6 +425,8 @@ export function loadWorld(data, opts = {}) {
     if (pf) { world.popField = pf; world.capField = new Float32Array(N); world._popNext = new Float32Array(N); }   // phase-1 pop field (capField re-derived next step)
     const df = loadTyped(data.maps.devField, Float32Array, N);
     if (df) { world.devField = df; world._devNext = new Float32Array(N); }   // regional development ratchet (T.DEV_FIELD); absent old saves reseed via ensureDevField
+    const wkf = loadTyped(data.maps.worksField, Float32Array, N);
+    if (wkf) world.worksField = wkf;   // land improvement (T.LAND_WORKS); _irrigable is static terrain, rebuilt on demand
     const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);
@@ -615,6 +621,8 @@ export function hashWorld(world) {
   // never hashed; FIELD_DEMOG writes it from event sites, so a divergence or
   // round-trip bug must show. Presence-normalized, sampled on the road stride.
   { const pf = world.popField; for (let i = 0; i < world.N; i += 97) mixNum(pf ? pf[i] : 0); }
+  // worksField (T.LAND_WORKS) — built land capital; presence-normalized like devField.
+  { const wf = world.worksField; for (let i = 0; i < world.N; i += 97) mixNum(wf ? wf[i] : 0); }
   mixNum(world._inflRef ?? -1);
   for (const k of WORLD_MAPS) mixNum(world[k] ? world[k].size : 0);   // registered world maps: presence + size (every one now covered, not just a hand-picked few)
   if (world._cBudgetRamp) { const ks = [...world._cBudgetRamp.keys()].sort((a, b) => a - b); for (const k of ks) { mixNum(k); mixNum(world._cBudgetRamp.get(k)); } }   // + cBudgetRamp full key/values

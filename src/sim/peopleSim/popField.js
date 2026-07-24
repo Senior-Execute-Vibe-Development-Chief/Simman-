@@ -99,6 +99,37 @@ const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neoli
 const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
 const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
 const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
+// ── T.LAND_WORKS: Boserupian land improvement (capacity is BUILT, not given) ──
+// Real carrying capacity was never a fixed property of terrain: under
+// population pressure societies INVESTED labour in the land itself —
+// irrigation canals, terraces, drainage, paddy levelling — and that capital
+// accumulated in place over centuries, raising yield ~2-3× (basin irrigation)
+// to 5-15× (wet rice vs dry farming). It is why equal-fertility valleys
+// diverged: the worked Nile/Ganges/Yellow basins densified for millennia
+// while unworked land plateaued — and why collapse SCARS (Mesopotamia's
+// broken canals) emptied dense country for centuries. Without this, the
+// population field is a pure fill-toward-terrain: after the technique wave
+// passes, two equal valleys are equally dense forever, and "civilization"
+// can only brighten the whole map, never densify a PLACE.
+//   • BUILD: where people press their current ceiling (pop/cap past the
+//     Boserup threshold — intensification starts when extensification is
+//     exhausted), water can be led onto fields (river / floodplain / wet
+//     climate), and the farming technique has actually reached the ground
+//     (devField). Purely local state — no clock, no named region.
+//   • EFFECT: crop capacity ×(1 + LAND_WORKS·works). The lever IS the
+//     physical constant: yield multiple of fully-improved land (2 ≈ the
+//     historical irrigation premium; rangeland herding is untouched).
+//   • DECAY: unmaintained works silt and slump — staffing below a quarter
+//     of the (improved) ceiling lets them rot on a ~two-century half-life,
+//     so a die-off or exodus leaves a real scar that must be rebuilt.
+//   • Self-limiting: building raises cap → lowers pressure → slows building
+//     (negative feedback); the field's own migration then pulls people INTO
+//     the improved basin (spare capacity) — the hotspot concentration.
+const WORKS_PRESS = 0.5;    // pressure (pop/cap) where intensification begins — Boserup's trigger
+const WORKS_STAFF = 0.25;   // below this pressure, works lose their maintenance hands pro-rata
+const WORKS_RATE  = 0.0012; // build speed: sustained full pressure at skill 0.6 on watered land ≈ 0→0.8 over ~2000 steps (~5 centuries)
+const WORKS_DECAY = 0.0009; // unstaffed rot: half-life ≈ 800 steps (~2 centuries)
+
 // ── Pastoral capacity (the mechanism DEV_FIELD un-masked) ────────────────────
 // The global scalar had been silently gifting the STEPPE farming-level capacity;
 // with capacity honest about local technique, the range thinned to nothing and
@@ -297,6 +328,10 @@ export function stepPopField(world, sub = 1) {
   // lookup, byte-identical; frontier / stateless tiles (owner < 0) keep indMul 1 (subsistence).
   const indOn = T.INDUSTRIAL_CAP > 0;
   const indOwner = indOn ? world._territoryOwner : null, indById = indOn ? world._byId : null;
+  // T.LAND_WORKS: accumulated land improvement multiplies CROP capacity (the
+  // canals irrigate fields, not rangeland). Lever value = max yield multiple.
+  const worksOn = T.LAND_WORKS > 0 && world.worksField;
+  const worksF = worksOn ? world.worksField : null, worksK = worksOn ? T.LAND_WORKS : 0;
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
@@ -304,15 +339,16 @@ export function stepPopField(world, sub = 1) {
     const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i]) : 1;
     let indMul = 1;
     if (indOn) { const sid = indOwner[i]; if (sid >= 0) { const s2 = indById.get(sid); if (s2 && s2._indCap > 1) indMul = s2._indCap; } }
+    const wkMul = worksF ? 1 + worksK * worksF[i] : 1;
     if (devF) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      const crop = fert[i] * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul;   // ×indMul: industrial agronomy break
+      const crop = fert[i] * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul;   // ×indMul: industrial agronomy break; ×wkMul: built land improvement
       const range = pasture[i];   // the herd or the plough — whichever feeds this ground better (openness already prices relief)
       cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
-      cap[i] = fert[i] * capPerFert * dev * reach * reliefMul * indMul;
+      cap[i] = fert[i] * capPerFert * dev * reach * reliefMul * indMul * wkMul;
     }
   }
 
@@ -432,6 +468,45 @@ export function stepPopField(world, sub = 1) {
       }
     }
     const t = pop; pop = nxt; nxt = t;           // swap buffers (per substep — next substep reads this one's result)
+  }
+  // ── T.LAND_WORKS: build/rot pass (see the header block above the constants).
+  // Runs on this tick's final pop & cap; the multiplier is felt next firing —
+  // a one-firing lag that keeps the pass order clean and deterministic.
+  if (T.LAND_WORKS > 0) {
+    let wk = world.worksField;
+    if (!wk || wk.length !== N) wk = world.worksField = new Float32Array(N);
+    // Irrigability — static terrain: water that can be LED onto fields. A great
+    // river offers its whole flow, a floodplain is the historical basin-irrigation
+    // heartland, and a genuinely wet climate (paddy country) irrigates from rain.
+    let irr = world._irrigable;
+    if (!irr || irr.length !== N) {
+      irr = world._irrigable = new Float32Array(N);
+      const tFl = world.tFlood, mo = world.moist;
+      for (let li = 0; li < nLand; li++) {
+        const i = land[li];
+        const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
+        const fl = tFl && tFl[i] ? 0.85 : 0;
+        const wet = Math.max(0, ((mo ? mo[i] : 0) - 0.55) / 0.45) * 0.6;
+        const v = water + fl + wet;
+        irr[i] = v > 1 ? 1 : v;
+      }
+    }
+    const rate = WORKS_RATE * dt, dk = WORKS_DECAY * dt;
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const a = irr[i];
+      let w = wk[i];
+      if (a <= 0 && w <= 0) continue;            // dry, unimproved ground: nothing to build or rot
+      const k = cap[i];
+      const press = k > 0 ? pop[i] / k : 0;
+      if (a > 0 && press > WORKS_PRESS) {
+        const skill = devF ? devF[i] : leadAgri;  // the technique that has actually reached this ground
+        if (skill > 0.05) w += rate * (press - WORKS_PRESS) * skill * a;
+      }
+      const staffed = press > WORKS_STAFF ? 1 : press / WORKS_STAFF;
+      if (staffed < 1) w -= dk * (1 - staffed) * w;
+      wk[i] = w < 0 ? 0 : w > 1 ? 1 : w;
+    }
   }
   world.popField = pop;
   world._popNext = nxt;
