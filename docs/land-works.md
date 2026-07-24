@@ -96,6 +96,20 @@ Reading:
   while rain-fed belts hold teal and wilderness stays slate — civilization
   now densifies PLACES on screen.
 
-## Gates at LAND_WORKS=2 (the candidate default)
+## Gates at LAND_WORKS=2 — SHIPPED as default
 
-(smoke / stylized results recorded below when run)
+- **Smoke**: all checks passed (determinism, zero invariant violations,
+  save/load roundtrip hash identity with the new persisted worksField).
+- **Political cycle** (probe_cycle, 6k steps): the rolling dawn is intact —
+  ramp 3→9→15→20→24, peak 285 → ~180 gentle correction, 6 polity deaths,
+  no runaway, no confetti (49 realms; denser basins support a few more
+  viable seats).
+- **Stylized 21k steps: all hard gates passed, ZERO soft warnings** —
+  first zero-warning run on record. The long-standing knowingly-shipped
+  Zipf soft warning RESOLVED: urban rank-size slope −0.83 (empirical
+  envelope −0.8..−1.2, 52 cities) vs −0.55 (16 cities) before — the
+  differentiated dense basins feed the central-place hierarchy the real
+  size gradients it lacked. Other marks: largest empire 7%, fallen-polity
+  lifespan median ~603y, urbanization 10.7%, pop~development monotone
+  0.92, war rates and price levels in band, final population 106,550
+  (the denser agrarian world, as designed).
