@@ -21,7 +21,7 @@ import { isContinentalLand } from "./state.js";
 import { fieldShift } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
-import { getPolity } from "./entities.js";
+import { getPolity, fiscAdoptable } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
@@ -652,6 +652,20 @@ export function maybeCrystallize(world) {
         if (dd2 > fed * fed && !rodeAway) continue;
       }
       if (!extension && !rodeAway) continue;   // demographic gate: connected extension or horde birth — a FLAG is not required to be born (see the statecraft symmetry above)
+      // (people drawn here, after the last reject, so the rng stream is unchanged)
+      const bornPeople = 18 + (rng.int(8));
+      // FISC TEST (T.FISC_ADOPT): booking a newborn community onto the tax rolls is
+      // an act of administration the court must be able to AFFORD — the capacity its
+      // people bring must cover the admin load of governing them (entities.js). A
+      // hamlet the fisc cannot carry is born STATELESS instead (people, not rule —
+      // the same status the statecraft-symmetry gate mints), staying primary-state
+      // fuel until a court that CAN afford it reaches it. This is the birth-grant
+      // half of the early overextension: realms no longer book countryside their
+      // revenue cannot govern just because it crystallised inside their border.
+      if (joinCountry >= 0
+          && !fiscAdoptable(world, world.countries && world.countries.get(joinCountry), tx + 0.5, ty + 0.5, bornPeople)) {
+        joinCountry = -1;
+      }
       // Share the joining realm's development: floor the (distance-decayed) inherited
       // knowledge at NATION_TECH_FLOOR of the realm's capital, so a frontier village of
       // a developed empire is born developed, not neolithic. Cloned so we never mutate
@@ -663,7 +677,7 @@ export function maybeCrystallize(world) {
         for (const kk in bornKnow) { const fl = NATION_TECH_FLOOR * (nk[kk] || 0); if (fl > bornKnow[kk]) bornKnow[kk] = fl; }
       }
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
-        people: 18 + (rng.int(8)),
+        people: bornPeople,
         knowledge: bornKnow,
         countryId: joinCountry,   // born into the realm it sits in / extends — stateless (-1) for a rode-away steppe camp or a daughter of a sub-ORG_STATE_MIN mother (statecraft symmetry)
         parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate

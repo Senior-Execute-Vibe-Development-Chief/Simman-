@@ -23,7 +23,7 @@ import { techEff, getWealthReserve, recordCaptives, monetization, realOutputOf }
 import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.RESOURCE_WARS)
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
-import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
+import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities, SIZE_REF } from "./entities.js";
 import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
@@ -332,7 +332,7 @@ const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (ins
 //  so a realm holds only what it can reach through its own land, wilderness or sea)
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
 // SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
-const SIZE_REF      = 1000;  // population scale for the size term
+// SIZE_REF -> shared with the adoption fisc test (entities.js) — one ruler for "how big to govern"
 const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much extra...
 // RECENCY_TICKS -> runtime lever (tuning.js T.RECENCY_TICKS)
 const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty

@@ -100,3 +100,74 @@ Asked and answered with the levers we already have:
   booking countryside they cannot afford; most contained. (2) deep-prehistory
   genesis — fixes universality. Together: a rolling dawn of small states,
   each overreaching and correcting on its own clock.
+
+## Round 2 (2026-07): the two ranked fixes, built and measured
+
+Both mechanisms were implemented and measured on the same pipeline
+(480×240, seed 8817, 6 000 steps, defaults byte-identical to the baseline
+above — re-verified checkpoint-for-checkpoint before the arms ran).
+
+- **`FISC_ADOPT` (the fisc test, entities.js `fiscAdoptable`)** — the
+  corrected marginal-revenue mechanism: a stateless community is adopted
+  (crystallise born-join, adoptAndFound anchor + village branches) only if
+  the capacity its people bring — the realm's own `_capacity ÷ Σ member
+  people`, both stamped by the polity pass — covers `FISC_ADOPT ×` the
+  admin load of governing it (the polity pass's own ruler: distance ÷
+  holdRange × the SIZE_REF size term, at steady state). Emergent on both
+  sides, per-subject (no global freeze — the ADOPT_BUDGET failure), exempts
+  conquest / border shifts / colonies / member-region town spin-offs.
+  Decision surface unit-checked: the measured 4-person, load-5.27 hamlet is
+  refused; a newborn beside the capital, and every productive town, adopts.
+- **`DAWN` (the long dawn, popField.js)** — deep-prehistory genesis as an
+  initial condition: the genesis field seeds at `DAWN ×` its Malthusian
+  equilibrium (residence-graded as before), and the census↔field bridge is
+  calibrated at the EQUILIBRIUM reference (without that, mature census
+  inflates by 1/DAWN and the staggering cancels out of the nucleation mass
+  — found in design review, fixed before first run). Basins then cross the
+  absolute state-viability bars on clocks set by their own richness.
+
+| arm | peak (step) | trough | deaths @6k | realms @6k | ramp to ~22 realms | settled @6k |
+|---|---|---|---|---|---|---|
+| baseline            | 324 (1000) | 168        | 7  | 45 | 2 windows (250→1000)   | 75 |
+| FISC=1              | 279 (1000) | **65** (4750) | 10 | 54 | 2 windows              | 69 |
+| DAWN=0.35           | 302 (1750) | 197        | **4** (0 thru 1500) | 43 | **5+ windows (250→1500)** | 77 |
+| FISC=1 + DAWN=0.35  | 264 (1000) | 99         | 10 | 54 | 5+ windows             | 75 |
+
+**DAWN=0.35 is the genesis-pulse fix.** The dawn rolls (realm ramp
+3→9→15→20→26 across 1250 steps), the early die-off disappears (0 deaths
+through step 1500 vs 5; 4 by 6k vs 7; 0 abandonments vs 2), the median
+realm runs ~25% larger through the peak era, the correction is a gentle
+−33% deflation instead of the −48% mass shatter — and the world converges
+to the same size by 6k (77 settled vs 75, 43 realms vs 45). Default
+flipped to 0.35 (≈ the 3000 BC condition: a third of the agrarian ceiling
+carried, most of the filling still ahead).
+
+**FISC_ADOPT is a measured negative at every dose — the honest surprise.**
+Alone at 1.0 it trims the early peak modestly but correlates with a deeper
+mid-late deflation (trough 65 vs 168) and more deaths (10 vs 7); stacked
+on the dawn it suppresses exactly the consolidation the dawn enables (max
+110 vs 209, median 20 vs 32, deaths 10 vs 4). Halving it (0.5 + dawn)
+reproduces the same signature, merely later: a fragmentation wave at
+~3000-3500 (realms 25→51 in 1000 steps), max 74 / median 21 / 63 realms /
+8 deaths at 6k. Monotonic dose-response, so this is the mechanism, not the
+tuning. Reading: in this sim's fiscal loop CAPACITY COMES FROM SUBJECTS
+(capacity-per-person is roughly flat at early development), so *any*
+adoption-refusal — global (ADOPT_BUDGET) or marginal (this) — starves the
+mid-game hinterland absorption that funds the next ring of consolidation;
+the failure analysis above ("empires absorbed to pay for themselves")
+applies to the marginal form too. Meanwhile the dawn removes the birth-
+grant pathology on its own: infants born into a 35%-full world have
+little countryside to over-book. Default stays 0; the lever, the shared
+`fiscAdoptable` helper and its verified decision surface stay in the tree
+for future re-pricing work (e.g. capacity-formation lag, where a subject's
+capacity contribution arrives slower than its load).
+
+**Shipped defaults from this round: `DAWN=0.35`, `FISC_ADOPT=0`,
+`ADOPT_BUDGET=0`, `REACH_STRAIN=0`** — one mechanism fixed the cycle;
+three levers document why the other three answers were wrong.
+
+Gates at the shipped defaults: smoke fully green (determinism, zero
+invariant violations, save/load hash identity, living civilization);
+stylized 21k-step run all hard gates passed with the one pre-existing
+soft Zipf warning (budget 2) — 80 polities, largest-empire share 5%,
+fallen-lifespan median ~305y, wars 0.34/1k-steps/polity.

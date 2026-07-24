@@ -333,12 +333,28 @@ export function stepPopField(world, sub = 1) {
   // frontier sits below it) — once, at activation (scale unset = first
   // derive hasn't run). Idempotent via max(); the same skipped-history
   // reasoning as the genesis seeds and the pre-map Neolithic wave.
+  //
+  // T.DAWN — the LONG DAWN (deep-prehistory genesis): >0 opens the map EARLIER
+  // in its peopling trajectory, seeding the field at that FRACTION of the
+  // equilibrium instead of at it. The field's own logistic growth then fills
+  // each basin on its own clock — rich basins (a great river's Σcapacity)
+  // cross the absolute state-viability bars (nucleation cluster mass, seat
+  // size) generations before marginal ones, so the dawn of states ROLLS
+  // across the map instead of firing everywhere at once (the measured
+  // universal boom-bust of the cold start — docs/budget-gated-expansion.md).
+  // An initial condition, not a gate: nothing during the run reads it; it
+  // only chooses where in its own trajectory the world begins. The census↔
+  // field bridge below is calibrated at the EQUILIBRIUM reference so mature
+  // census levels are unchanged (without that, thinning the field would
+  // silently inflate every mature census by 1/DAWN and de-stagger nothing).
   if (onePop && !(world._onePopScale > 0)) {
     const tArr = world.tArrival;
+    const dawn = T.DAWN > 0 ? Math.min(1, T.DAWN) : 1;
+    world._dawnSeed = dawn;   // read by the bridge calibration THIS tick (deriveOnePop); never persisted, never re-read
     for (let li = 0; li < nLand; li++) {
       const i = land[li];
       const residence = tArr ? (1 - Math.min(1, Math.max(0, tArr[i]))) : 0.5;
-      const eq = cap[i] * (0.55 + 0.35 * residence);   // long-peopled land presses its ceiling; the frontier sits under it
+      const eq = cap[i] * (0.55 + 0.35 * residence) * dawn;   // long-peopled land presses its ceiling; the frontier sits under it
       if (eq > pop[i]) pop[i] = eq;
     }
   }
@@ -734,6 +750,13 @@ export function deriveOnePop(world) {
     }
     cs.sort((a, b) => a - b); fs.sort((a, b) => a - b);
     world._onePopScale = cs.length ? Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1])) : 1;
+    // T.DAWN: the bridge is a unit conversion calibrated at the MALTHUSIAN
+    // REFERENCE (the field the world matures toward). Under a dawn seed the
+    // field at activation is dawn× that reference, so the raw median ratio
+    // above is 1/dawn too high — correct it, or every mature census would be
+    // inflated by 1/dawn and the dawn's staggering would cancel out of the
+    // state-viability mass (basin × census/field). At dawn 1: ×1, unchanged.
+    if (world._dawnSeed > 0 && world._dawnSeed < 1) world._onePopScale *= world._dawnSeed;
   }
   const scale = world._onePopScale;
   // T.URBAN_FOOTPRINT: the urban core's real radius (tiles). 0 (default / reference
