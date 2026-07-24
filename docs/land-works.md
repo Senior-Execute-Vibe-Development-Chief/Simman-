@@ -131,6 +131,26 @@ Gates at 0.0007: smoke all green; stylized 21k **all hard gates passed,
 median ~260y, pop 89,791 — the era-dependent risk (a slower world under-
 developing by 21k) did not materialize.
 
+## Addendum 2: local demographic regimes (GROWTH_LOCAL)
+
+User follow-up: growth was still "universal on a connected landmass" — and
+the mechanism agreed: the intrinsic rate was ONE global constant; only the
+Malthus term (1−p/K) modulated it, and that synchronizes (the dawn seeds
+one fraction everywhere). Historically the RATE was local — differential
+natural increase drove the Neolithic expansion (farmers out-bred foragers
+~3-5×), and the wet-tropic disease belt cut it regardless of food.
+
+Shipped: r_i = base × (0.35 + 1.30·devField_i) ÷ (1 + 0.35·tropicBurden_i),
+lever-blended (GROWTH_LOCAL, default 1). Measured A/B (9k steps, band
+growth per 1500-step window): the core band's growth is dominated by
+saturation headroom + migration (nearly unchanged — an honest finding),
+while the FRONTIER transforms: flat rate raced the forager band to its
+thin ceiling and stalled (+47.9% → +1.2%/window); under the regime it
+crawls and keeps filling (+22.4% → +11.5%) — the frontier now lags the
+civilized world by millennia instead of saturating alongside it. Gates:
+smoke green; stylized 21k all hard gates, 0 soft warnings (third
+consecutive zero-warning run).
+
 ## Gates at LAND_WORKS=2 — SHIPPED as default
 
 - **Smoke**: all checks passed (determinism, zero invariant violations,
