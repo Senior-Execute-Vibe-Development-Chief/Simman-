@@ -55,7 +55,15 @@ const CAP_PER_FERT = 1200;
 // becomes a field in a later phase. base at neolithic → ~×3.3 at full farming tech.
 const DEV_BASE = 0.30, DEV_TECH = 3.0;
 const POP_GROWTH = 0.03;    // logistic intrinsic growth per step (r in pop += r·pop·(1−pop/K))
-const POP_MIGRATE = 0.06;   // share of a tile's people that migrate toward spare capacity per step (at the reference grid)
+// Migration share per step (at the reference grid) — now a LEVER (T.POP_MIGRATE,
+// same name): a diffusion coefficient in disguise (D ∝ share·Δx²). At the old
+// 0.06 (~24%/year between ~reference-tile cells) the connected landmass behaved
+// as ONE FLUID — every local deficit topped up, every local surplus drained, so
+// population genuinely rose "universally on a connected land mass" and local
+// regimes/scars/booms were laundered away by their neighbours. Human-scale
+// mobility is far lower; the lever's default is set by measurement (see
+// docs/land-works.md addendum 3).
+const POP_MIGRATE = 0.06;   // legacy constant: the schema default mirrors it ÷6 (see tuning.js)
 const SEED_POP = 0.4;       // people seeded per habitable tile (the spark logistic growth needs)
 // Max share of a tile one migration SUBSTEP may move. An explicit-scheme
 // stability/accuracy bound (a substep must not come close to emptying a tile —
@@ -488,7 +496,7 @@ export function stepPopField(world, sub = 1) {
   //    empties a tile per firing). At the reference n = 1 and migShare reduces to
   //    the original POP_MIGRATE·dt bit-for-bit (×1.0 and ÷1 are IEEE-exact), so the
   //    reference trajectory is byte-identical at every step.
-  const migT = POP_MIGRATE * dt * (_rnF * _rnF);            // total share-time this firing (D ×rn² in real units)
+  const migT = (T.POP_MIGRATE ?? POP_MIGRATE) * dt * (_rnF * _rnF);   // total share-time this firing (D ×rn² in real units); lever-owned rate
   const nSub = Math.max(1, Math.ceil(migT / MIG_SHARE_MAX));
   const migShare = migT / nSub;                             // per-substep share (= POP_MIGRATE·dt exactly at the reference)
   let nxt = world._popNext; if (!nxt || nxt.length !== N) nxt = world._popNext = new Float32Array(N);
