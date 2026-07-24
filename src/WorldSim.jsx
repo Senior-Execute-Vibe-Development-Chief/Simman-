@@ -1861,29 +1861,31 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           octx.stroke();octx.setLineDash([]);
         }
       }
-      // ── Population: the people-on-land field (popField, the canonical
-      // demographic substrate) as a density heat — near-empty subsistence land
-      // FADES into the base grey, the farmed countryside reads blue→teal, and
-      // the dense cores burn amber→white. The packed value is log-scaled (so
-      // the transport byte carries the full dynamic range); the RAW log read
-      // rendered a 20-people scrub tile at ~60% of a 7,000-people valley's
-      // brightness — the whole peopled planet glowed and the lens read as
-      // "livability". A cubic gamma on the log value re-allocates the colour
-      // range to the TOP decades (where the people actually are), so the map
-      // shows concentration relative to the era's densest region — a thin
-      // hunter-gatherer scatter is a faint haze, not a lit country. ──
+      // ── Population: the people-on-land field (popField) on an ABSOLUTE log
+      // ruler. The worker packs density against a FIXED span — log10 of the
+      // census per reference tile, 0.1..1000 ≈ 100 → 1,000,000 real people,
+      // one decade per quarter of the byte — never against the frame's own
+      // maximum. (The old relative packing read as a uniform world-wide glow
+      // that only brightened: at genesis the densest tile IS ordinary
+      // farmland so everything sat at the top of the ramp, and log-vs-max
+      // ratios compress toward 1 as the world grows.) On the fixed ruler a
+      // thin dawn world LOOKS thin, growth is real change on screen, and the
+      // same colour means the same density in any era: haze <1k · slate→blue
+      // 1k-10k · blue→teal 10k-75k · teal→amber 75k-560k · white ≥560k. The
+      // packed value already carries the decades, so t is LINEAR (no gamma —
+      // a gamma here would re-crush the haze/blue decades the dawn lives in). ──
       if(vmPopulation&&psw._popDens){
         const tw=psw.tw,th=psw.th,N2=Math.min(tw*th,psw._popDens.length);
         const dens=psw._popDens;let lastFs=null;
         const fsCache=new Array(251);
         const colAt=(v)=>{let fs=fsCache[v];if(fs)return fs;
-          const t0=v/250,t=t0*t0*t0;   // gamma 3 on the log-packed value: the top decades own the ramp
+          const t=v/250;   // linear on the packed log: one decade per 0.25
           let r,g,b,a=1;
-          if(t<0.10){a=0.25+t/0.10*0.5;r=34;g=42;b=64;}                                          // subsistence scatter: a faint haze over the base
-          else if(t<0.35){const s2=(t-0.10)/0.25;r=(34+s2*6)|0;g=(42+s2*18)|0;b=(64+s2*76)|0;}   // thin countryside: slate → deep blue
-          else if(t<0.65){const s2=(t-0.35)/0.3;r=(40+s2*10)|0;g=(60+s2*110)|0;b=(140-s2*10)|0;} // farmed land: blue → teal
-          else if(t<0.88){const s2=(t-0.65)/0.23;r=(50+s2*190)|0;g=(170+s2*35)|0;b=(130-s2*70)|0;} // dense belts: teal → amber
-          else{const s2=(t-0.88)/0.12;r=240;g=(205+s2*45)|0;b=(60+s2*165)|0;}                    // the great basins: amber → white-hot
+          if(t<0.25){a=0.22+t/0.25*0.45;r=34;g=42;b=64;}                                          // <1k: subsistence haze over the base
+          else if(t<0.50){const s2=(t-0.25)/0.25;r=(34+s2*6)|0;g=(42+s2*18)|0;b=(64+s2*76)|0;}    // 1k→10k: slate → deep blue countryside
+          else if(t<0.72){const s2=(t-0.50)/0.22;r=(40+s2*10)|0;g=(60+s2*110)|0;b=(140-s2*10)|0;} // 10k→75k: blue → teal farmed belts
+          else if(t<0.90){const s2=(t-0.72)/0.18;r=(50+s2*190)|0;g=(170+s2*35)|0;b=(130-s2*70)|0;} // 75k→560k: teal → amber dense basins
+          else{const s2=(t-0.90)/0.10;r=240;g=(205+s2*45)|0;b=(60+s2*165)|0;}                     // ≥560k: amber → white-hot urban cores
           fs=a<1?`rgba(${r},${g},${b},${a.toFixed(2)})`:`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};
         for(let ti=0;ti<N2;ti++){
           const v=dens[ti];if(v<=0)continue;   // empty land / water → base
@@ -4276,7 +4278,7 @@ return(
       {GOODS.map((g,i)=><option key={g} value={i}>{g}</option>)}
     </select>):null}>
   {viewMode==="population"&&peopleRef.current&&peopleRef.current._popMax
-    ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>densest tile ≈ {fmtPeople(peopleRef.current._popMax)} people</div>
+    ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>densest region ≈ {fmtPeople(peopleRef.current._popMax)} people</div>
     :null}
 </LegendCard>}
 

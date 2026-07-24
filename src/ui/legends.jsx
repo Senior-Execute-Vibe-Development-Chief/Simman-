@@ -74,9 +74,14 @@ export const LEGENDS = {
   population: {
     title: "People on the land",
     rows: [
-      [ramp(["rgba(34,42,64,0.4)", "rgb(40,60,140)", "rgb(50,170,130)", "rgb(200,190,85)", "rgb(245,235,160)"], 11), "scatter → farmed → dense"],
+      [ramp(["rgba(34,42,64,0.3)", "rgb(40,60,140)", "rgb(50,170,130)", "rgb(240,205,60)", "rgb(240,250,225)"], 11), "≈100 → ≈1,000,000 people per region"],
+      [ramp(["rgba(34,42,64,0.3)", "rgba(34,42,64,0.65)"]), "haze — subsistence scatter (<1k)"],
+      [ramp(["rgb(40,60,140)"]), "sparse countryside (~3k)"],
+      [ramp(["rgb(50,170,130)"]), "farmed belts (~30k)"],
+      [ramp(["rgb(240,205,60)"]), "dense basins (~200k)"],
+      [ramp(["rgb(240,250,225)"]), "urban cores (500k+)"],
     ],
-    tip: "LIVE population — every person the sim carries, where they live. The faint haze is the subsistence scatter the whole world holds; the bright ramp belongs to where people CONCENTRATE. National power, manpower and migration all read this field.",
+    tip: "LIVE population on a FIXED ruler — the same colour means the same density in every era, so a thin ancient world reads faint and growth is real change on screen (nothing renormalizes to the brightest tile). National power, manpower and migration all read this field.",
   },
   money: {
     title: "Money flow",
