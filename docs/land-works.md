@@ -228,6 +228,32 @@ urbanizes more but flatter; 1.0's slope was the better −0.77, so the gate
 re-baseline → 1.0 path stands as the follow-up). Population 235k at 21k —
 the ledger's richer maturity at half strength.
 
+## Addendum 6: TERRAIN_FADE — technology substitutes for terrain (SHIPPED at 1)
+
+User question: "does the relevance of tile type fade with better tech?"
+Audit answer: partially — the pastoral→farm crossover, the urban share and
+ledger imports already decoupled; but fertility ratios were scale-invariant
+forever, relief never softened, irrigation stayed surface-water, the
+tropical burden was eternal, and the waterside premium only ever grew.
+History's late chapters SUBSTITUTED for terrain: fertilizer compressed
+yield ratios, engineering erased ruggedness, pumps freed irrigation,
+medicine collapsed the disease belts, land transport made interiors
+compete.
+
+Shipped: five fades on one lever, every term gated on the owning
+settlement's emergent industrial gate (s._indGate) — the set SLEEPS until
+a realm industrializes, never touches wilderness, no clock anywhere.
+FADE_FERT 0.5 · FADE_RELIEF 0.6 · FADE_PUMP 0.5 · FADE_MED 3.0 ·
+FADE_ACCESS 0.5 (each constant documented at its historical magnitude in
+popField.js). Unit-verified live: an industrial realm's relief-0.32 river
+tile gains ×1.398 — the composed prediction exactly; fade 1.00 on
+industrial realm land, 0.00 in wilderness; the gate resisted stub forcing
+(recomputed from capital development each pass — found the honest way).
+Gates at def 1: smoke green (dissolve margin 61 vs 63), stylized 21k all
+hard gates + 1 soft warning (budget 2) — the pre-industrial window barely
+feels the set, exactly as designed; the fades awaken in long industrial
+runs (their era-signature there is the noted follow-up measurement).
+
 ## Gates at LAND_WORKS=2 — SHIPPED as default
 
 - **Smoke**: all checks passed (determinism, zero invariant violations,
