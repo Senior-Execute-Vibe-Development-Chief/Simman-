@@ -130,6 +130,30 @@ const WORKS_STAFF = 0.25;   // below this pressure, works lose their maintenance
 const WORKS_RATE  = 0.0012; // build speed: sustained full pressure at skill 0.6 on watered land ≈ 0→0.8 over ~2000 steps (~5 centuries)
 const WORKS_DECAY = 0.0009; // unstaffed rot: half-life ≈ 800 steps (~2 centuries)
 
+// ── T.GROWTH_LOCAL: per-tile demographic regimes (farmer vs forager) ─────────
+// The intrinsic growth rate was a single global constant — every tile on the
+// planet compounded at the same r, so a connected landmass rose through its
+// saturation trajectory in LOCKSTEP (the Malthus term (1−p/K) is the food
+// brake, but it synchronizes rather than differentiates: the dawn seeds one
+// fraction everywhere). Historically the RATE was local — differential
+// natural increase is the engine of the Neolithic expansion itself (farmers
+// out-bred foragers ~3-5×; Ammerman & Cavalli-Sforza's wave is DRIVEN by
+// that surplus), and the wet-tropic disease belt crushed natural increase
+// regardless of food. Both drivers already live on the map as emergent
+// state: devField (the farming technique that actually REACHED each tile)
+// and climate. r_i = r × (R_DEV0 + R_DEVK·dev_i) ÷ (1 + R_TROPIC·burden_i),
+// lever-blended so 0 = the flat rate exactly:
+//   dev 0 (forager land)   → ×0.35 of base   (near-stationary bands)
+//   dev 0.5 (mid farming)  → ×1.00           (SETT_GROWTH keeps its meaning)
+//   dev 1 (advanced core)  → ×1.65           (the demographic engine)
+// City cores are untouched (their own transition/graveyard-bent rEff). The
+// visible result: growth is no longer universal — the civilized band climbs
+// while the frontier crawls, tile by tile, by food (Malthus), technique
+// (regime) and disease (climate).
+const R_DEV0   = 0.35;  // forager-land natural increase as a share of base (pre-farming bands grew ~3-5× slower)
+const R_DEVK   = 1.30;  // technique gradient: ×1 at dev 0.5, ×1.65 at full technique
+const R_TROPIC = 0.35;  // wet-tropic disease burden on natural increase (endemic malaria belts)
+
 // ── Pastoral capacity (the mechanism DEV_FIELD un-masked) ────────────────────
 // The global scalar had been silently gifting the STEPPE farming-level capacity;
 // with capacity honest about local technique, the range thinned to nothing and
@@ -403,13 +427,40 @@ export function stepPopField(world, sub = 1) {
     for (const [ti, e] of world._urbanSpike) if (e.r !== undefined && (e.r !== rBulk || e.sink > 0)) corePre.push(ti, pop[ti]);
   }
 
-  // 2. Logistic growth toward capacity (in place).
+  // 2. Logistic growth toward capacity (in place). Under T.GROWTH_LOCAL the
+  //    intrinsic rate is a LOCAL regime (see the header block): technique-
+  //    graded and disease-burdened, lever-blended from the flat base.
+  const gl = T.GROWTH_LOCAL || 0;
+  const glOn = gl > 0 && devF;
+  let tropicB = null;
+  if (glOn) {
+    tropicB = world._tropicBurden;
+    if (!tropicB || tropicB.length !== N) {
+      // Static climate burden: hot AND wet (the endemic-disease belt) — the
+      // same shape the state-formation gate reads off settlements (_wetTropic).
+      tropicB = world._tropicBurden = new Float32Array(N);
+      const te = world.temp, mo = world.moist;
+      for (let li = 0; li < nLand; li++) {
+        const i = land[li];
+        const t2 = Math.max(0, Math.min(1, ((te ? te[i] : 0) - 0.62) / 0.2));
+        const m2 = Math.max(0, Math.min(1, ((mo ? mo[i] : 0) - 0.55) / 0.25));
+        tropicB[i] = t2 * m2;
+      }
+    }
+  }
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const k = cap[i];
     if (k <= 0) { pop[i] = 0; continue; }
     const p = pop[i];
-    if (p > 0) pop[i] = p + rBulk * dt * p * (1 - p / k);
+    if (p > 0) {
+      let rT = rBulk;
+      if (glOn) {
+        const reg = (R_DEV0 + R_DEVK * devF[i]) / (1 + R_TROPIC * tropicB[i]);
+        rT = rBulk * (1 + gl * (reg - 1));
+      }
+      pop[i] = p + rT * dt * p * (1 - p / k);
+    }
   }
   if (corePre) {
     for (let j = 0; j < corePre.length; j += 2) {
