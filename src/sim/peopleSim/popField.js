@@ -215,21 +215,47 @@ function stampDevSources(world, dev) {
   }
 }
 
-/** One wave relaxation: each land tile rises toward its best neighbour − loss. */
+/** One wave relaxation: each land tile rises toward its best neighbour − loss.
+ *  T.DIFF_CLIM adds a CLIMATE-DISTANCE toll per edge: the package loses
+ *  DIFF_CLIM × (|Δtemp| + |Δmoist|) crossing between climatically different
+ *  tiles — crops and livestock had to be re-adapted for each new band, so
+ *  real agriculture raced ALONG climate bands (the Eurasian east-west axis)
+ *  and crawled ACROSS them (maize's millennia-long trek out of Mexico), and
+ *  some boundaries it effectively never crossed (wheat vs the Sahara).
+ *  Resolution-invariant by construction: the toll across any gradient sums
+ *  to DIFF_CLIM × the total climate distance, however many tiles span it.
+ *  Without it the wave crosses the Sahara at the same speed as the Danube
+ *  plain (both are "land"), and a connected landmass converges to near-
+ *  uniform technique (planetary thinning is only ~0.025/1000 km) — the
+ *  measured late-run uniformity. 0 = the flat wave, byte-identical. */
 function relaxDevWave(world, dev, land) {
   const tw = world.tw, th = world.th;
   let nxt = world._devNext;
   if (!nxt || nxt.length !== world.N) nxt = world._devNext = new Float32Array(world.N);
   nxt.set(dev);
   const loss = devWaveLoss(world);
+  const ck = T.DIFF_CLIM || 0;
+  const te = world.temp, mo = world.moist;
+  const climOn = ck > 0 && te && mo;
   for (let li = 0; li < land.length; li++) {
     const i = land[li];
     const y = (i / tw) | 0, x = i - y * tw;
-    let best = dev[y * tw + ((x + 1) % tw)];
-    const l = dev[y * tw + ((x - 1 + tw) % tw)];
-    if (l > best) best = l;
-    if (y > 0 && dev[i - tw] > best) best = dev[i - tw];
-    if (y < th - 1 && dev[i + tw] > best) best = dev[i + tw];
+    const iR = y * tw + ((x + 1) % tw), iL = y * tw + ((x - 1 + tw) % tw);
+    let best;
+    if (climOn) {
+      const ti = te[i], mi = mo[i];
+      best = dev[iR] - ck * (Math.abs(te[iR] - ti) + Math.abs(mo[iR] - mi));
+      const l = dev[iL] - ck * (Math.abs(te[iL] - ti) + Math.abs(mo[iL] - mi));
+      if (l > best) best = l;
+      if (y > 0) { const u = dev[i - tw] - ck * (Math.abs(te[i - tw] - ti) + Math.abs(mo[i - tw] - mi)); if (u > best) best = u; }
+      if (y < th - 1) { const d2 = dev[i + tw] - ck * (Math.abs(te[i + tw] - ti) + Math.abs(mo[i + tw] - mi)); if (d2 > best) best = d2; }
+    } else {
+      best = dev[iR];
+      const l = dev[iL];
+      if (l > best) best = l;
+      if (y > 0 && dev[i - tw] > best) best = dev[i - tw];
+      if (y < th - 1 && dev[i + tw] > best) best = dev[i + tw];
+    }
     const v = best - loss;
     if (v > nxt[i]) nxt[i] = v;
   }
