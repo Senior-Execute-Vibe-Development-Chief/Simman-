@@ -178,6 +178,23 @@ Default flipped 0.06 → 0.01. Gates: smoke green; stylized 21k all hard
 gates, 0 soft warnings — the FOURTH consecutive zero-warning battery
 (Zipf −0.84 / 45 cities, largest empire 8%, urbanization 10.1%).
 
+## Addendum 4: climate-gated diffusion (DIFF_CLIM) — SHIPPED at 0.8
+
+The technique wave crossed the Sahara at the same 1 km/yr as the Danube
+plain (both are "land"), and its planetary thinning (~0.025/1000 km) let a
+connected landmass converge to uniform technique — measured: hot-band and
+temperate medians IDENTICAL (0.49/0.49) by step 6000 under the flat wave.
+Real packages were climate-bound (crops/livestock re-adapted per band):
+agriculture raced along bands and crawled across them — Diamond's axes.
+
+Shipped: per-edge toll loss += DIFF_CLIM × (|Δtemp|+|Δmoist|), resolution-
+invariant (sums to total climate distance crossed), applied to the genesis
+pre-run too. Measured at 0.8: the tropics run their own later clock — no
+package at step 3000 (0.00 vs temperate 0.47), narrowing over ten
+millennia (0.37→0.43→0.47 vs ~0.49) as adaptation pays the toll. Gates:
+smoke green; stylized 21k all hard gates, 0 soft warnings (fifth
+consecutive zero-warning battery; 76 polities, Zipf −0.77/34 cities).
+
 ## Gates at LAND_WORKS=2 — SHIPPED as default
 
 - **Smoke**: all checks passed (determinism, zero invariant violations,
