@@ -410,6 +410,43 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  // ── T.FOOD_K: worked land's capacity IS the food ledger (the unification) ──
+  // The formula above is an abstract PROXY (fertility × technique × access);
+  // the settlement economy carries the REAL ledger — catchment harvests with
+  // the dynamic climate applied, fish and herds, grain routed up the
+  // hierarchy, era productivity, national policy. The city cores were unified
+  // long ago (urban spikes = the economy beyond the land); this unifies the
+  // COUNTRYSIDE: each settled settlement's LAND-FED capacity share
+  // (s._k × landShare, in field units via the bridge) is distributed over its
+  // worked catchment in proportion to the formula's own relative land quality,
+  // and BLENDED over the proxy by the lever. The import share stays at the
+  // core (the spike's definition), so catchment + spike sum to the economy's
+  // own number — no double count. Wild land keeps the subsistence formula
+  // (people outside the market economy live off the land directly). What this
+  // newly delivers: famine years, blockades, trade wealth and policy reshape
+  // the RURAL population map — K follows the harvest, not just the terrain.
+  const fkL = T.FOOD_K || 0;
+  if (fkL > 0 && world._territoryOwner && world._byId && world._onePopScale > 0) {
+    const owner = world._territoryOwner, byId = world._byId, bridge = world._onePopScale;
+    let sumW = world._fkSumW; if (!sumW) sumW = world._fkSumW = new Map(); else sumW.clear();
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li]; const sid = owner[i];
+      if (sid >= 0 && cap[i] > 0) sumW.set(sid, (sumW.get(sid) || 0) + cap[i]);
+    }
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li]; const sid = owner[i];
+      if (sid < 0) continue;
+      const s = byId.get(sid);
+      if (!s || s.mode !== "settled" || !(s._k > 0)) continue;
+      const W = sumW.get(sid);
+      if (!(W > 0) || !(cap[i] > 0)) continue;
+      const landShare = Math.max(0, Math.min(1, 1 -
+        ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
+      const ledgerK = (s._k * landShare / bridge) * (cap[i] / W);
+      cap[i] = cap[i] * (1 - fkL) + ledgerK * fkL;
+    }
+  }
+
   // T.ONE_POP: the urban spikes land in the capacity field (each city core
   // carries what its economy supports beyond its land), and the field's
   // intrinsic rate becomes the census's HUMAN rate — the field owns demography
