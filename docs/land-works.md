@@ -195,6 +195,35 @@ millennia (0.37→0.43→0.47 vs ~0.49) as adaptation pays the toll. Gates:
 smoke green; stylized 21k all hard gates, 0 soft warnings (fifth
 consecutive zero-warning battery; 76 polities, Zipf −0.77/34 cities).
 
+## Addendum 5: capacity from the food ledger (FOOD_K)
+
+User direction: per-tile population should follow "exactly how many people
+could live on this tile — how much food they can get, how much they
+produce, and other national factors." The architecture had TWO parallel
+food systems: the settlement economy's REAL ledger (catchment harvests
+with dynamic climate, fish/herds, hierarchy grain, era productivity,
+policy) and the field's abstract proxy capacity (fert × technique ×
+access). Cities were already unified (urban spikes = economy beyond the
+land); FOOD_K unifies the countryside: worked land's K blends toward the
+settlement's land-fed s._k share, distributed over the catchment by land
+quality, import share staying at the core (sums exactly to the economy's
+number). Wild land keeps the subsistence formula.
+
+Measured at 1.0 (12k probe): an honest lean-to-rich arc — the world opens
+LEANER (5.6M at step 1500; primitive economies feed less than the terrain
+proxy claimed) and matures RICHER (59M by 9k; routing + era productivity),
+with deeper sustained unsaturation (half the world under 0.7 of ceiling at
+9k) — but realm formation delayed hard early (4 realms at step 1500).
+
+Gates at 1.0: stylized 21k **all hard gates, 0 soft warnings** (63
+polities, 65 cities, pop 295,754 — the richest world on record; the
+delayed dawn fully recovers) — but the SMOKE dissolve-comparison inverted
+(dissolved 61 vs legacy 58 entities at the smoke seed: the leaner ledger
+shrank the LEGACY arm), so 1.0 does not ship. Recorded: that gate is a
+one-seed structural margin now binding default policy — worth a
+re-baseline look, then revisit 1.0. Candidate 0.5 passes smoke (62 vs 63,
+thin); its stylized battery decides the shipped default.
+
 ## Gates at LAND_WORKS=2 — SHIPPED as default
 
 - **Smoke**: all checks passed (determinism, zero invariant violations,
