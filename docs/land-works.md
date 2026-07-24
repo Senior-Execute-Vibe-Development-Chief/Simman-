@@ -96,6 +96,41 @@ Reading:
   while rain-fed belts hold teal and wilderness stays slate — civilization
   now densifies PLACES on screen.
 
+## Addendum: the rate that made the field a capacity portrait (SETT_GROWTH)
+
+User follow-up: *"The population field shouldn't measure carrying CAPACITY,
+it should measure ACTUAL population."* Nominally it always did (popField is
+people; capField is the ceiling) — but MEASURED, the distinction had
+collapsed: at the shipped intrinsic rate (0.0018/tick ≈ 0.72%/yr — an
+open-frontier boom rate applied everywhere, always) the field saturated to
+its ceiling and stayed there:
+
+| step | pop/cap p50 | p90 | % of inhabited land ≥0.85·cap |
+|---|---|---|---|
+| 1000 | 0.63 | 0.76 | 1% (the dawn — the one honest era) |
+| 3000 | 0.94 | 1.02 | 72% |
+| 9000 | 0.96 | 1.05 | 92% |
+
+Every dent healed in ~50 sim-years; the "actual population" map was a
+0.96× copy of the capacity map, and demographic history was invisible.
+Real pre-modern natural increase: 0.04-0.1%/yr long-run average, 0.2-0.6%
+in recovery; the Black Death scar took 150+ years to close.
+
+**Fix: SETT_GROWTH 0.0018 → 0.0007 (≈0.28%/yr, the historical band).**
+Measured (12k steps): pop/cap p50 0.44→0.86 across steps 1500-6000, ~20%
+of land persistently below 0.7 of its (works/industry-raised) ceiling —
+capacity now OUTRUNS people where history is being made, scars last
+generations, and the political arc keeps its exact shape ~1.4× slower
+(42 realms / claims 224 / 83 settled by 12k). A dawn-compensation arm
+(DAWN 0.5) was REJECTED: the richer initial mass nucleates a 57-realm
+fragment field whose biggest claim collapses to ~120 — no empire tail.
+
+Gates at 0.0007: smoke all green; stylized 21k **all hard gates passed,
+0 soft warnings** (second consecutive zero-warning run) — Zipf −0.82 /
+42 cities, largest empire 9%, tail 10.5, urbanization 9.9%, fallen-polity
+median ~260y, pop 89,791 — the era-dependent risk (a slower world under-
+developing by 21k) did not materialize.
+
 ## Gates at LAND_WORKS=2 — SHIPPED as default
 
 - **Smoke**: all checks passed (determinism, zero invariant violations,
