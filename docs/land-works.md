@@ -151,6 +151,33 @@ civilized world by millennia instead of saturating alongside it. Gates:
 smoke green; stylized 21k all hard gates, 0 soft warnings (third
 consecutive zero-warning run).
 
+## Addendum 3: the landmass fluid (POP_MIGRATE)
+
+The last uniformizer, named by the user's own phrase — population rising
+"universally on a CONNECTED LAND MASS". The migration share was a hard
+constant 0.06/tick (~24%/year relocating between ~reference-tile cells,
+50-100× real pre-modern mobility): at that diffusion speed the connected
+landmass is one fluid — local deficits topped up, local surpluses drained,
+the local structure every other mechanism produces laundered away.
+
+Instrument lesson recorded honestly: band-aggregate growth tables are
+BLIND to it (tile flows net out inside any large aggregate — measured
+near-identical bands at 0.06/0.01/0.005). The right instruments:
+
+- **Saturation structure** (12k steps, 0.01 vs 0.06): land ≥0.85·cap at
+  step 9000 = **13% vs 60%**; pop/cap median 0.76 vs 0.94; scar band
+  (<0.7) 34% vs 22% — while world totals stay equal (49.1M vs 50.9M).
+  Same growth, no longer universally distributed.
+- **Scar experiment** (halve a 197-tile basin at step 4000): at 0.06 the
+  wound closes by ~1000 steps; at 0.01 it is still visible at 1500 —
+  half the healing pace; regional catastrophe leaves generation marks.
+- **Trade-off**: peak hotspot skew eases (p99/med 59.6 → 49.5) — great
+  basins and cities are partly migrant-fed, which is itself historical.
+
+Default flipped 0.06 → 0.01. Gates: smoke green; stylized 21k all hard
+gates, 0 soft warnings — the FOURTH consecutive zero-warning battery
+(Zipf −0.84 / 45 cities, largest empire 8%, urbanization 10.1%).
+
 ## Gates at LAND_WORKS=2 — SHIPPED as default
 
 - **Smoke**: all checks passed (determinism, zero invariant violations,
