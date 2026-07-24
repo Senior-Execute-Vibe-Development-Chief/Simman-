@@ -75,3 +75,28 @@ byte-identical runs → the entire delta is the adoption gate).
 - Validate as a campaign: this probe's cycle metrics + the stylized-facts
   gates (fallen-polity lifespans, empire tails, war rates) at 480 AND the
   shipped width — empire size is resolution-sensitive.
+
+## Addendum: "remove the crystallisation wave and the core regions?"
+
+Asked and answered with the levers we already have:
+
+- **The core-region floor is already replaced** (SIZE_BY_POP=1, the 2026-07
+  flip): extent is population-earned, coverage rises with development. Every
+  pulse measurement above ran under that model — the pulse survives, because
+  the birth grant is now the (real) 3000-BC initial population being BOOKED
+  into org≈0.25 states, not a scripted hinterland. Removing "core regions"
+  further = removing the world's people, i.e. the premise.
+- **The crystallisation wave is emergent, not scripted** — the condensation of
+  that initial population wherever density × fertility crosses threshold. It
+  is a wave only because the cold start places every fertile valley NEAR the
+  threshold at t0. De-synchronising it means initial conditions deeper in
+  prehistory (a thinner, growing scatter), so valleys cross on their own
+  clocks and the dawn rolls instead of pulsing. That re-anchors every
+  downstream calibration (stylized gates run 15k steps from the current
+  genesis) — full-campaign scope. Reality check: the real Holocene dawn was
+  itself compressed (~1.5 millennia for all cradles); the sim compresses it
+  ~10× further.
+- **Ranked fixes**: (1) marginal-revenue adoption (above) — stops infants
+  booking countryside they cannot afford; most contained. (2) deep-prehistory
+  genesis — fixes universality. Together: a rolling dawn of small states,
+  each overreaching and correcting on its own clock.
