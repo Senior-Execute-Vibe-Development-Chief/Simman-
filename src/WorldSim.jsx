@@ -1888,10 +1888,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           // Brightness is MONOTONE in density over the lens's dark land base
           // (~rgb(52,52,57)): haze lifts gently above it, each band starts
           // where the previous ended — bright always means more people.
+          // Palette weight sits on the REAL regime boundary (measured, seed
+          // 8817 @3k/6k steps): technique-reached land — overwhelmingly the
+          // governed world — runs a median ~13k people/region, subsistence
+          // wilderness ~0.7-2.2k (6× at equal fertility, 17× overall; the
+          // devField wave is the mechanism). So the 1k-10k subsistence decade
+          // stays a QUIET slate and saturation snaps in across 10k-20k —
+          // civilization visibly burns, the wild stays a murmur. Same
+          // absolute ruler; only the colours' emphasis moved.
           let r,g,b,a=1;
           if(t<0.25){a=0.25+t/0.25*0.55;r=56;g=66;b=96;}                                          // <1k: subsistence haze — a soft blue lift
-          else if(t<0.50){const s2=(t-0.25)/0.25;r=(55-s2*11)|0;g=(63+s2*3)|0;b=(90+s2*58)|0;}    // 1k→10k: haze-blue → deep blue countryside
-          else if(t<0.72){const s2=(t-0.50)/0.22;r=(44+s2*6)|0;g=(66+s2*104)|0;b=(148-s2*18)|0;}  // 10k→75k: blue → teal farmed belts
+          else if(t<0.50){const s2=(t-0.25)/0.25;r=(50-s2*2)|0;g=(60+s2*6)|0;b=(86+s2*22)|0;}     // 1k→10k: muted slate-blue — thinly peopled wild stays quiet
+          else if(t<0.58){const s2=(t-0.50)/0.08;r=(48+s2*2)|0;g=(66+s2*74)|0;b=(108+s2*22)|0;}   // 10k→20k: the agrarian threshold — saturation snaps in
+          else if(t<0.72){const s2=(t-0.58)/0.14;r=50;g=(140+s2*30)|0;b=130;}                     // 20k→75k: teal deepens across the farmed belts
           else if(t<0.90){const s2=(t-0.72)/0.18;r=(50+s2*190)|0;g=(170+s2*35)|0;b=(130-s2*70)|0;} // 75k→560k: teal → amber dense basins
           else{const s2=(t-0.90)/0.10;r=240;g=(205+s2*45)|0;b=(60+s2*165)|0;}                     // ≥560k: amber → white-hot urban cores
           fs=a<1?`rgba(${r},${g},${b},${a.toFixed(2)})`:`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};

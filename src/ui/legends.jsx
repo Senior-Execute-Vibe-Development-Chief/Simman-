@@ -74,14 +74,14 @@ export const LEGENDS = {
   population: {
     title: "People on the land",
     rows: [
-      [ramp(["rgba(56,66,96,0.4)", "rgb(44,66,148)", "rgb(50,170,130)", "rgb(240,205,60)", "rgb(240,250,225)"], 11), "≈100 → ≈1,000,000 people per region"],
+      [ramp(["rgba(56,66,96,0.4)", "rgb(48,66,108)", "rgb(50,155,130)", "rgb(240,205,60)", "rgb(240,250,225)"], 11), "≈100 → ≈1,000,000 people per region"],
       [ramp(["rgba(56,66,96,0.35)", "rgba(56,66,96,0.7)"]), "haze — subsistence scatter (<1k)"],
-      [ramp(["rgb(44,66,148)"]), "sparse countryside (~3k)"],
-      [ramp(["rgb(50,170,130)"]), "farmed belts (~30k)"],
+      [ramp(["rgb(48,64,100)"]), "thin countryside (~3k)"],
+      [ramp(["rgb(50,155,130)"]), "farmed heartlands (~30k)"],
       [ramp(["rgb(240,205,60)"]), "dense basins (~200k)"],
       [ramp(["rgb(240,250,225)"]), "urban cores (500k+)"],
     ],
-    tip: "LIVE population on a FIXED ruler — the same colour means the same density in every era, so a thin ancient world reads faint and growth is real change on screen (nothing renormalizes to the brightest tile). National power, manpower and migration all read this field.",
+    tip: "LIVE population on a FIXED ruler — the same colour means the same density in every era, and nothing renormalizes to the brightest tile. The sharp slate→teal turn near ~10k marks where the farming package has actually REACHED the land: governed heartlands run ~6× the density of equal-fertility wilderness (~17× overall), because states seed and radiate the technique wave. National power, manpower and migration all read this field.",
   },
   money: {
     title: "Money flow",
