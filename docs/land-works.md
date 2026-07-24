@@ -221,8 +221,12 @@ delayed dawn fully recovers) — but the SMOKE dissolve-comparison inverted
 (dissolved 61 vs legacy 58 entities at the smoke seed: the leaner ledger
 shrank the LEGACY arm), so 1.0 does not ship. Recorded: that gate is a
 one-seed structural margin now binding default policy — worth a
-re-baseline look, then revisit 1.0. Candidate 0.5 passes smoke (62 vs 63,
-thin); its stylized battery decides the shipped default.
+re-baseline look, then revisit 1.0. **SHIPPED at 0.5**: smoke passes
+(62 vs 63, thin margin noted), stylized 21k all hard gates with 1 soft
+warning inside budget (Zipf −0.64 at 80 cities — the half-ledger world
+urbanizes more but flatter; 1.0's slope was the better −0.77, so the gate
+re-baseline → 1.0 path stands as the follow-up). Population 235k at 21k —
+the ledger's richer maturity at half strength.
 
 ## Gates at LAND_WORKS=2 — SHIPPED as default
 
