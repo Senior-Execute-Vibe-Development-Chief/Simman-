@@ -66,6 +66,36 @@ of history, not re-derivable):
 Fully local state — no clock, no named region, byte-identical at 0
 (multiplier ×1 exactly; the field is never allocated).
 
-## Measurements (480×240 seed 8817, 8000 steps)
+## Measurements (480×240 seed 8817, 8000 steps, probe_works.mjs)
 
-(filled from probe_works.mjs / probe_cycle.mjs / gates below)
+Density on technique-reached fertile land (dev>0.1, fert≥0.35), real
+people per reference tile; works = mean level on river-adjacent vs
+rain-fed reached land:
+
+| step | baseline: med / p90 / p99 (skew) | works=2: med / p90 / p99 (skew) | works river/dry | world pop base→works |
+|---|---|---|---|---|
+| 2000 | 11.5k / 18.7k / 26.8k (2.3) | 12.2k / 22.1k / 37.0k (3.0) | 0.15 / 0.04 | 26.3M → 28.2M |
+| 4000 | 13.5k / 21.1k / 29.3k (2.2) | 17.3k / 36.8k / 64.6k (3.7) | 0.48 / 0.14 | 31.1M → 42.2M |
+| 6000 | 14.2k / 21.8k / 31.1k (2.2) | 22.9k / 51.6k / 86.4k (3.8) | 0.79 / 0.25 | 32.6M → 54.9M |
+| 8000 | 14.6k / 22.6k / 32.2k (2.2) | 28.7k / 62.0k / 93.0k (3.2) | 0.95 / 0.36 | 34.0M → 65.3M |
+
+Reading:
+
+- **The baseline IS the user's complaint, quantified**: skew frozen at 2.2
+  for six thousand steps — a static terrain theme drifting brighter.
+- **Works create the hotspots**: top basins reach ~3× what terrain alone
+  supports (93k vs 32k); skew rises to 3.8 as pioneer basins pull ahead,
+  then eases to 3.2 as improvement generalizes down the distribution —
+  the historical sequence (leaders first, followers later). River works
+  saturate (~0.95) by ~5 centuries of sustained pressure; rain-fed country
+  builds at a third of that pace and keeps differentiating after.
+- **World population 34M → 65M by step 8000** — the real 3000→1000 BC
+  band (roughly 14M → 50M) doubled through exactly this mechanism, so the
+  magnitude is historically placed, not runaway.
+- On the population lens the improved basins cross the amber band (75k+)
+  while rain-fed belts hold teal and wilderness stays slate — civilization
+  now densifies PLACES on screen.
+
+## Gates at LAND_WORKS=2 (the candidate default)
+
+(smoke / stylized results recorded below when run)
