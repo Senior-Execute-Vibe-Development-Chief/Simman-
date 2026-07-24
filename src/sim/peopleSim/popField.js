@@ -162,6 +162,25 @@ const R_DEV0   = 0.35;  // forager-land natural increase as a share of base (pre
 const R_DEVK   = 1.30;  // technique gradient: ×1 at dev 0.5, ×1.65 at full technique
 const R_TROPIC = 0.35;  // wet-tropic disease burden on natural increase (endemic malaria belts)
 
+// ── T.TERRAIN_FADE: technology SUBSTITUTES for terrain (the late-era fades) ──
+// Pre-industrial technique AMPLIFIES what terrain gives (multiplicative on
+// fertility, water, relief — ratios never close). History's late chapters
+// SUBSTITUTED for what terrain withholds: synthetic fertilizer raised poor
+// soils proportionally more (yield ratios compressed), rail and engineering
+// erased ruggedness's price, pumps and dams freed irrigation from surface
+// water, medicine collapsed the tropical disease burden, and land transport
+// tapered the waterside premium. One lever, five terms, ALL gated on the
+// OWNING settlement's emergent industrial gate (s._indGate — org+metallurgy,
+// the same gate the urban transition and industrial capacity use): nobody
+// railroads the wilderness, and the whole set SLEEPS until a realm actually
+// industrializes — no clock anywhere. Each constant is the fade's magnitude
+// at full industrial development:
+const FADE_FERT   = 0.5;  // fertilizer closes half the natural-fertility gap (post-Haber cereal-yield convergence)
+const FADE_RELIEF = 0.6;  // engineering removes ~60% of ruggedness's capacity penalty (rail, tunnels, terrace machinery)
+const FADE_PUMP   = 0.5;  // pumps/dams supply half of full irrigability anywhere industrial (aquifer / center-pivot farming)
+const FADE_MED    = 3.0;  // medicine divides the wet-tropic burden by (1+3) at full development (the 20th-c malaria collapse)
+const FADE_ACCESS = 0.5;  // land transport cuts the river/coast import premium by a third (the interior becomes competitive)
+
 // ── Pastoral capacity (the mechanism DEV_FIELD un-masked) ────────────────────
 // The global scalar had been silently gifting the STEPPE farming-level capacity;
 // with capacity honest about local technique, the range thinned to nothing and
@@ -385,7 +404,14 @@ export function stepPopField(world, sub = 1) {
   // the modern productivity boom the food model had but the field never received. Off ⇒ no
   // lookup, byte-identical; frontier / stateless tiles (owner < 0) keep indMul 1 (subsistence).
   const indOn = T.INDUSTRIAL_CAP > 0;
-  const indOwner = indOn ? world._territoryOwner : null, indById = indOn ? world._byId : null;
+  // T.TERRAIN_FADE needs the owner lookup even when INDUSTRIAL_CAP is off.
+  const tfL = T.TERRAIN_FADE || 0;
+  const ownOn = indOn || tfL > 0;
+  const indOwner = ownOn ? world._territoryOwner : null, indById = ownOn ? world._byId : null;
+  // Per-tile fade level (lever × owner's industrial gate), stashed for the
+  // works/growth passes below (same firing, deterministic order).
+  let tfArr = null;
+  if (tfL > 0) { tfArr = world._tfFade; if (!tfArr || tfArr.length !== N) tfArr = world._tfFade = new Float32Array(N); else tfArr.fill(0); }
   // T.LAND_WORKS: accumulated land improvement multiplies CROP capacity (the
   // canals irrigate fields, not rangeland). Lever value = max yield multiple.
   const worksOn = T.LAND_WORKS > 0 && world.worksField;
@@ -393,20 +419,34 @@ export function stepPopField(world, sub = 1) {
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
-    const access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
-    const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i]) : 1;
-    let indMul = 1;
-    if (indOn) { const sid = indOwner[i]; if (sid >= 0) { const s2 = indById.get(sid); if (s2 && s2._indCap > 1) indMul = s2._indCap; } }
+    let access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
+    let indMul = 1, fade = 0;
+    if (ownOn && indOwner) {
+      const sid = indOwner[i];
+      if (sid >= 0) {
+        const s2 = indById.get(sid);
+        if (s2) {
+          if (indOn && s2._indCap > 1) indMul = s2._indCap;
+          if (tfL > 0) { fade = tfL * (s2._indGate || 0); if (fade > 0) tfArr[i] = fade; }
+        }
+      }
+    }
+    // TERRAIN_FADE: engineering eases ruggedness; land transport tapers the
+    // waterside premium; fertilizer floors poor soil (substitution, not
+    // amplification — see the constants block).
+    const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i] * (1 - FADE_RELIEF * fade)) : 1;
+    if (fade > 0) access /= 1 + FADE_ACCESS * fade;
+    const f0 = fert[i], fEff = fade > 0 ? f0 + FADE_FERT * fade * (1 - f0) : f0;
     const wkMul = worksF ? 1 + worksK * worksF[i] : 1;
     if (devF) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      const crop = fert[i] * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul;   // ×indMul: industrial agronomy break; ×wkMul: built land improvement
+      const crop = fEff * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul;   // ×indMul: industrial agronomy break; ×wkMul: built land improvement
       const range = pasture[i];   // the herd or the plough — whichever feeds this ground better (openness already prices relief)
       cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
-      cap[i] = fert[i] * capPerFert * dev * reach * reliefMul * indMul * wkMul;
+      cap[i] = fEff * capPerFert * dev * reach * reliefMul * indMul * wkMul;
     }
   }
 
@@ -527,7 +567,9 @@ export function stepPopField(world, sub = 1) {
     if (p > 0) {
       let rT = rBulk;
       if (glOn) {
-        const reg = (R_DEV0 + R_DEVK * devF[i]) / (1 + R_TROPIC * tropicB[i]);
+        // TERRAIN_FADE: medicine collapses the tropical burden where the owner is industrial.
+        const burden = R_TROPIC * tropicB[i] / (tfArr && tfArr[i] > 0 ? 1 + FADE_MED * tfArr[i] : 1);
+        const reg = (R_DEV0 + R_DEVK * devF[i]) / (1 + burden);
         rT = rBulk * (1 + gl * (reg - 1));
       }
       pop[i] = p + rT * dt * p * (1 - p / k);
@@ -614,9 +656,11 @@ export function stepPopField(world, sub = 1) {
       }
     }
     const rate = WORKS_RATE * dt, dk = WORKS_DECAY * dt;
+    const tfW = (T.TERRAIN_FADE || 0) > 0 ? world._tfFade : null;   // pumps/dams irrigate beyond surface water where the owner is industrial (guarded: stale array must not leak when the lever is off)
     for (let li = 0; li < nLand; li++) {
       const i = land[li];
-      const a = irr[i];
+      let a = irr[i];
+      if (tfW && tfW[i] > 0) { a += FADE_PUMP * tfW[i]; if (a > 1) a = 1; }
       let w = wk[i];
       if (a <= 0 && w <= 0) continue;            // dry, unimproved ground: nothing to build or rot
       const k = cap[i];
