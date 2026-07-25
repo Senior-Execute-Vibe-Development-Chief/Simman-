@@ -30,6 +30,9 @@ console.log(`[prof] loaded step=${world.step} tw=${world.tw} setts=${world.settl
 
 const acc = new Map();   // pass key -> per-tick ms array
 const tickMs = [];
+// The polity pass self-reports sub-phases (world.debug.pol — a fresh object per
+// firing); accumulate each firing once, by object identity.
+const polSum = {}; let polFirings = 0, lastPol = null;
 t0 = performance.now();
 for (let i = 0; i < TICKS; i++) {
   const s0 = performance.now();
@@ -37,6 +40,8 @@ for (let i = 0; i < TICKS; i++) {
   tickMs.push(performance.now() - s0);
   const p = world.debug.pass || {};
   for (const k in p) { let a = acc.get(k); if (!a) acc.set(k, a = []); a.push(p[k]); }
+  const pol = world.debug.pol;
+  if (pol && pol !== lastPol) { lastPol = pol; polFirings++; for (const k in pol) polSum[k] = (polSum[k] || 0) + pol[k]; }
 }
 const wall = performance.now() - t0;
 
@@ -54,3 +59,5 @@ for (const [k, st] of rows) {
 }
 const tt = stat(tickMs);
 console.log(`  ${"TICK TOTAL".padEnd(12)}${r1(tt.mean)} ${r1(tt.med)} ${r1(tt.p95)} ${r1(tt.max)}   ${tt.sum.toFixed(0).padStart(7)}`);
+if (polFirings) console.log(`[prof] polity sub-phases over ${polFirings} firing(s):`, Object.entries(polSum).map(([k, v]) => `${k}=${v.toFixed(0)}ms`).join(" "));
+if (world._fpStats) console.log(`[prof] findPath stats:`, JSON.stringify(world._fpStats, (k, v) => typeof v === "number" ? Math.round(v * 10) / 10 : v));
