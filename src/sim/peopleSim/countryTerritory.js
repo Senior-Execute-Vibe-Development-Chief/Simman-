@@ -1392,8 +1392,20 @@ function recolorByCapital(world, co, capPos, knOf, claimCap) {
 // tiles keep cost=Infinity: they're assertion, not administration, and the
 // secession pass already treats settlement-less tiles as inert (conquest.js
 // looseAt: no administering basin → never loose).
+// R6 measurement (roadmap W6-G): per-pass changed-tile tallies for the
+// corrective cartography passes, so "possibly-dead" is a measurement, not a
+// vibe (backlog #19). Counters only, under world.debug — never read by any
+// mechanism, never persisted; a probe diffs them across step windows.
+function cartoTally(world, key, n) {
+  if (!n) return;
+  const d = world.debug || (world.debug = {});
+  const c = d.carto || (d.carto = {});
+  c[key] = (c[key] || 0) + n;
+}
+
 function fillEnclosedWaste(world, co) {
   const { N, tw, th, elev } = world;
+  cartoTally(world, "calls", 1);   // one cartography stack invocation (waste→gaps→smooth run together)
   let seen = world._wasteSeen;
   if (!seen || seen.length !== N) seen = world._wasteSeen = new Uint8Array(N);
   seen.fill(0);
@@ -1424,6 +1436,7 @@ function fillEnclosedWaste(world, co) {
     if (border < 0) continue;              // open, island, or contested — stays wild
     if (comp.length > (claimed.get(border) || 0) * ENCLOSED_FILL_MAX) continue;
     for (let k = 0; k < comp.length; k++) co[comp[k]] = border;
+    cartoTally(world, "waste", comp.length);
   }
 }
 
@@ -1457,6 +1470,7 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
   if (!snap || snap.length !== N) snap = world._smoothSnap = new Int32Array(N);
   // tiny fixed-size tally over the ≤8 distinct neighbour values (cheaper than a Map)
   const vals = new Int32Array(8), cnts = new Int32Array(8);
+  let chg = 0;
   for (let it = 0; it < iters; it++) {
     snap.set(co);                                   // frozen read; writes go to co
     for (let ti = 0; ti < N; ti++) {
@@ -1478,9 +1492,10 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
         if (j === m) { vals[m] = v; cnts[m] = 1; m++; } else cnts[j]++;
         if (cnts[j] > bestC) { bestC = cnts[j]; best = v; }
       }
-      if (bestC >= 5 && best !== snap[ti]) co[ti] = best;          // clear majority of the 8-neighbourhood → adopt it
+      if (bestC >= 5 && best !== snap[ti]) { co[ti] = best; chg++; }   // clear majority of the 8-neighbourhood → adopt it
     }
   }
+  cartoTally(world, pinWorked ? "smoothPinned" : "smooth", chg);
 }
 
 // ── Partition the gaps: no terra nullius between neighbours ──────────────────
@@ -1608,6 +1623,7 @@ function closeRealmGaps(world, co, D) {
     if (c >= 0) { fills[n++] = ti; fills[n++] = c; }
   }
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
+  cartoTally(world, "gaps", n >> 1);
 }
 
 // Settlements take their politics from the GROWN territory — the country whose
