@@ -361,6 +361,14 @@ The kin graph finally does politics. All triggers are house state.
    across ticks, publish lanes on completion); frontier-set border crawl (B81);
    sea trade top-K peers (B78 — keep 64 lanes for topology, trade the best ~16 by
    value). Prefer these over I82.
+   > **RE-MEASURED 2026-07-25 (the 1920/30k battery's own per-pass profiler,
+   > mature era ≥24k, both arms): the B80/B81/B78 premise is STALE.** Top
+   > passes when sampled in the top-3: settlements ~82 ms/tick (I82 — closed),
+   > **armies 43–59 ms**, **roads 11–23 ms**; territory ≤3.3, trade ≤2.2 —
+   > and the claim crawl (B81) and sea flood (B80) never enter the top-3 at
+   > all. The next perf arc, if wanted, is ARMIES then ROADS, each behind its
+   > own byte-identity proof (or an honestly-gated trajectory change) — not
+   > the B-list. Fingerprints live in every battery's series rows (`slow:`).
 5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
    (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
    **Verdict: G-equivalence holds for the SHAPE of history, not the exact
