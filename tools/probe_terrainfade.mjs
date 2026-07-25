@@ -16,6 +16,17 @@
 // relief>0.5 · poor soil fert<0.35 · disease belt tropicBurden>0.3 ·
 // interior coast=0 & riverMag<2. All shares are of the same run's own
 // field population, so the comparison is shape vs shape.
+//
+// Reference (Earth 320×160 seed 8817, 48k steps, 2026-07 defaults):
+// arms byte-identical through 18k (gate hard zero), takeoff 18–21k
+// (org/met→1.00, ~99% of fade-arm pop on faded land from 24k). Mature
+// signature (39k–48k mean, fade vs control): poor soil 12.2% vs 4.6%
+// (2.6×, diverging), interior 30.5% vs 19.1% (rising vs flat), mean fert
+// under people 0.794 vs 0.820, relief 0.072 vs 0.088; wet-tropic share
+// FELL 6.7% vs 10.3% (medicine outweighed by the temperate-interior
+// fades — the Earth signature is the plains filling, not a tropics
+// boom). Macro totals swing seed-like post-divergence (trajectory
+// chaos) — judge the shares, not the totals. docs/land-works.md add. 6.
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 import { applyTuning } from "../src/sim/peopleSim/tuning.js";
