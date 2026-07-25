@@ -19,9 +19,21 @@ import { applyTuning } from "../src/sim/peopleSim/tuning.js";
 export const SIM_TUNE_OVERRIDES = {};
 if (process.env.SIM_TUNE) {
   for (const kv of process.env.SIM_TUNE.split(",")) { const [k, v] = kv.split("="); if (k && v !== undefined) SIM_TUNE_OVERRIDES[k.trim()] = +v; }
-  applyTuning(SIM_TUNE_OVERRIDES);
   console.log("[SIM_TUNE]", JSON.stringify(SIM_TUNE_OVERRIDES));
 }
+
+// TOOL DEFAULTS (owner decision 2026-07-25): every tool runs the popField
+// worker pool at AUTO (-1 -> bands = cores, capped) unless SIM_TUNE says
+// otherwise — proven bit-identical at every setting, so this only moves
+// wall-clock, and the heavy tools are where the pool both pays (batteries
+// -22%/tick) and accumulates soak for the eventual app default. The APP is
+// deliberately NOT covered: its default stays T.POP_FIELD_WORKERS = 0 until
+// production hosting sends the COOP/COEP headers (docs/popfield-parallel.md
+// §5). Re-apply after ANY loadWorld — persist restores the save's tuning.
+export function applyToolTuning() {
+  applyTuning({ POP_FIELD_WORKERS: -1, ...SIM_TUNE_OVERRIDES });
+}
+applyToolTuning();
 
 /** generateWorld + buildTerritory; returns the legacy harness shape. */
 export function buildWorld(opts = {}) {

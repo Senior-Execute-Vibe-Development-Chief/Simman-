@@ -14,8 +14,7 @@
 // SIM_TUNE passes through (_harness side effect). Invariant checks are OFF so
 // the window measures the sim, not the debug pass.
 import fs from "fs";
-import { SIM_TUNE_OVERRIDES } from "./_harness.mjs";
-import { applyTuning } from "../src/sim/peopleSim/tuning.js";
+import { applyToolTuning } from "./_harness.mjs";
 import { loadWorld } from "../src/sim/persist.js";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
@@ -25,9 +24,9 @@ if (!SNAP) { console.error("usage: profile_window.mjs <snapshot.world.json> [tic
 
 let t0 = performance.now();
 const world = loadWorld(fs.readFileSync(SNAP, "utf8"));
-// loadWorld restores the SAVE's tuning — re-apply SIM_TUNE so lever A/Bs on
-// snapshots actually run the requested levers.
-if (Object.keys(SIM_TUNE_OVERRIDES).length) applyTuning(SIM_TUNE_OVERRIDES);
+// loadWorld restores the SAVE's tuning — re-apply the tool defaults +
+// SIM_TUNE so lever A/Bs on snapshots actually run the requested levers.
+applyToolTuning();
 world._dbgProfile = true;
 world._checkInvariants = false;
 console.log(`[prof] loaded step=${world.step} tw=${world.tw} setts=${world.settlements.length} in ${((performance.now() - t0) / 1000).toFixed(1)}s`);

@@ -278,9 +278,22 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
    L1 shape baseline the pass is ≈2.2× with ~86% parallel-phase efficiency.
    (Absolute ms are container-relative — this box ran ~2× slower than the
    Stage B one; only same-box pairs are comparable.)
-4. **Battery** — the full gate set (§6) rides every stage; the remaining
-   flips are POLICY: the node-side default for heavy tools, and the
-   browser default once production hosting sends the isolation headers.
+4. **Defaults — FIRST FLIP SHIPPED 2026-07-25 (owner decision).** The lever
+   gained **AUTO (-1)**: bands = the machine's real core count
+   (navigator.hardwareConcurrency — browsers, workers and node 21+), capped
+   at 8; a 2-core box gets 2 bands (no oversubscription), 1 core degrades to
+   the lever-1 path. **Every TOOL now defaults to AUTO** via
+   tools/_harness.mjs (re-applied after any loadWorld, which restores the
+   save's tuning — batteries re-apply on resumed chunks too): the heavy
+   tools are where the pool pays daily (-22%/tick) and where soak
+   accumulates for free; a mid-phase worker death there is a loud abort and
+   a checkpoint resume, not a lost session. **The APP default stays 0** —
+   the schema default is the app's — until production hosting sends the
+   isolation headers (GitHub Pages needs a coi-serviceworker-style shim)
+   and the tool-side soak has aged; then the app boot can pass AUTO.
+   Gates for the flip: probe_hashbase runs the pool by default now and must
+   keep printing the canonical pair; snapshot identity re-proven including
+   an 8-band oversubscription leg; smoke + validate under AUTO.
 
 ## 6. Proof battery (all must pass before any default moves)
 

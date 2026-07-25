@@ -420,7 +420,7 @@ export function stepPopField(world, sub = 1) {
   // prepare step may convert world arrays to SharedArrayBuffer-backed views,
   // so every local captured above is refreshed to address the SAME memory the
   // workers see.
-  const _pctx = (T.POP_FIELD_WORKERS | 0) >= 1 ? _pfPrepare(world, land, nLand, devF) : null;
+  const _pctx = _pfLever() >= 1 ? _pfPrepare(world, land, nLand, devF) : null;
   if (_pctx) {
     ({ elev, fert, riverMag, relief, coast } = world);
     land = world._popLand;
@@ -852,6 +852,23 @@ function _pfPackTables(world, ctx) {
 // trajectory; it only moves the finish line of the slowest band. Raw memcpy
 // slices stay fixed-equal (uniform cost). EMA + 25% blend per firing keeps
 // boundaries from oscillating.
+// Resolve the lever: -1 = AUTO — bands from the machine's real core count
+// (navigator.hardwareConcurrency exists in browsers, workers AND node 21+),
+// capped at the lever's max. Any resolved count is bit-identical (the probe's
+// guarantee), so AUTO is pure wall-clock adaptation: 4-core container → 4
+// bands; a 2-core laptop → 2 (no oversubscription); 1 core → the lever-1
+// single-thread kernel path.
+let _pfAutoN = 0;
+function _pfLever() {
+  const raw = T.POP_FIELD_WORKERS | 0;
+  if (raw !== -1) return raw;
+  if (!_pfAutoN) {
+    const hc = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 4;
+    _pfAutoN = Math.max(1, Math.min(8, hc | 0));
+  }
+  return _pfAutoN;
+}
+
 function _pfRebalance(ar, pool, nLand, N) {
   const bands = pool.bands;
   let W = ar._bandW;
@@ -911,7 +928,7 @@ function _pfPrepare(world, land, nLand, devF) {
   _ensureWk(world);
   let mv = world._migMove; if (!mv || mv.length !== N) mv = world._migMove = new Float64Array(N);
   let ssum = world._migSum; if (!ssum || ssum.length !== N) ssum = world._migSum = new Float64Array(N);
-  const lever = T.POP_FIELD_WORKERS | 0;
+  const lever = _pfLever();
   // Node always qualifies (worker_threads); a browser qualifies only when the
   // page is cross-origin isolated (COOP/COEP — the SharedArrayBuffer gate).
   // The browser additionally requires running INSIDE a worker (the app's sim

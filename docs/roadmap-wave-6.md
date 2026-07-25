@@ -485,9 +485,11 @@ The kin graph finally does politics. All triggers are house state.
    > (tools/browser_popfield_check.mjs) proving in-browser lever identity
    > with the pool genuinely engaged. Identity everywhere throughout:
    > 5bc2cc6c all levers on the 30k snapshot; genesis = the canonical pair;
-   > smoke + validate green. T.POP_FIELD_WORKERS default stays 0; open:
-   > production hosting's isolation headers + the single-file build's worker
-   > chunk (design doc §8).
+   > smoke + validate green. **Defaults (owner, same day): tools run AUTO
+   > (-1 = bands from core count, capped) via tools/_harness.mjs — every
+   > battery/probe/smoke run soaks the pool and finishes ~22% sooner; the
+   > APP default stays 0 until production hosting sends the isolation
+   > headers** (+ the single-file build's worker chunk — design doc §8).
 5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
    (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
    **Verdict: G-equivalence holds for the SHAPE of history, not the exact
