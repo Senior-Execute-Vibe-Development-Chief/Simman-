@@ -1426,6 +1426,56 @@ const SQRT2 = Math.SQRT2;
 // a per-call stamp avoids both Map overhead and any O(N) clear. Hundreds of
 // these run each road-plan cycle, so this is the hot primitive.
 const FP_MIN_STEP = 0.02;   // cheapest an edge can ever cost (worn road × max tech) — keeps h admissible
+// ── Static land-connectivity oracle for the noWater A* ──────────────────────
+// findPath(noWater) can only ever reach tiles in the START tile's 8-neighbour
+// land component (x wraps, y clamps — exactly the A*'s own neighbour rule):
+// water destinations are skipped outright and land/river edge costs are always
+// finite, so noWater reachability is pure geometry. Elevation never changes
+// after worldgen, so ONE flood fill per world answers "is there any land route
+// at all?" in O(1) — where the A* burned its whole node budget (≤12000·rn²,
+// 192k heap pops at the 1920 default) re-proving the same permanent geographic
+// NO for the same island↔mainland pair every plan cycle: candidate peers are
+// offered by EUCLIDEAN radius (partnerReachFor / the close-neighbour scan via
+// forEachNear), so strait and island pairs are ranked forever. Measured on the
+// 30k-step 1920 snapshot (600 ticks): 28/495 calls were topological fails at
+// ~33 ms each — a fifth of all findPath time — and the whole labelling floods
+// once in 8 ms (numbers in the commit / roadmap W6-G item 4).
+// Distinct from countryClaim.js's _landComp, which is 4-NEIGHBOUR (the claim
+// crawl's connectivity): a diagonal isthmus joins components for the A* that
+// the crawl correctly splits, so reusing that map would wrongly null real
+// routes. Derived scratch — never persisted, never hashed; rebuilt lazily
+// after load.
+function landComp8(world) {
+  let lc = world._landComp8;
+  if (lc && lc.length === world.N) return lc;
+  const { N, tw, th, elev } = world;
+  lc = world._landComp8 = new Int32Array(N).fill(-1);
+  const stack = new Int32Array(N);
+  for (let seed = 0; seed < N; seed++) {
+    if (lc[seed] >= 0 || elev[seed] <= 0) continue;
+    let top = 0;
+    stack[top++] = seed; lc[seed] = seed;
+    while (top > 0) {
+      const ti = stack[--top];
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1;
+      const xp = tx === tw - 1 ? 0 : tx + 1;
+      const yu = ty - 1, yd = ty + 1;
+      const ns = [
+        ty * tw + xm, ty * tw + xp,
+        yu >= 0 ? yu * tw + tx : -1, yd < th ? yd * tw + tx : -1,
+        yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
+        yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
+      ];
+      for (let k = 0; k < 8; k++) {
+        const ni = ns[k];
+        if (ni < 0 || elev[ni] <= 0 || lc[ni] >= 0) continue;
+        lc[ni] = seed; stack[top++] = ni;
+      }
+    }
+  }
+  return lc;
+}
 // Optional opts.noWater: skip water tiles even if the settlement's
 // navigation would let it embark. Used by road planners (you can't paint
 // a road across the sea); marching armies pass no opts so they DO get to
@@ -1436,6 +1486,17 @@ export function findPath(world, s, t, opts) {
   const start = (s.pos.y | 0) * tw + (s.pos.x | 0);
   const goal  = (t.pos.y | 0) * tw + (t.pos.x | 0);
   if (start === goal || elev[start] <= 0 || elev[goal] <= 0) return null;
+  // A noWater route between different 8-neighbour land components is a
+  // PERMANENT geographic no — answer it in O(1) instead of re-burning the
+  // node budget proving it every plan cycle. Byte-identical skip: the search
+  // below provably returns null for an off-component goal (noWater skips
+  // every water tile and land edges are always finite, so the goal can never
+  // be stamped — it exits via the visit limit or heap exhaustion either way);
+  // only the unhashed scratch (_fpG/_fpSeen/_fpStamp) would have differed.
+  if (noWater) {
+    const lc = landComp8(world);
+    if (lc[start] !== lc[goal]) return null;
+  }
   // Scratch arrays, reused across calls; a monotonic stamp marks which
   // entries belong to THIS call so we never have to clear N every time.
   if (!world._fpG || world._fpG.length !== N) {
