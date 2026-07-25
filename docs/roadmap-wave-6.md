@@ -394,6 +394,73 @@ The kin graph finally does politics. All triggers are house state.
    > and the per-edge cache fetch itself sampled at 5.2s. `_edgeCost` is
    > compute-lean and memory-tight as written. The honest reduction path is
    > FEWER CALLS (caller cadence and reuse), not per-call micro-caching.
+   >
+   > **RESOLVED 2026-07-25 — the findPath "mystery caller" does not exist; the
+   > measurement method was the lie.** Static: `findPath` is reachable ONLY via
+   > `maybeBuildRoads` → `tryAddRoad` (≤2 new + ≤1 shortcut probes per planned
+   > settlement) and `linkCloseNeighbours` (one probe per unconnected/Gabriel
+   > close peer). The call-tree walk (`tools/prof_aggregate.mjs
+   > --callers=findPath`, 600 ticks on a fresh 30k/1920 snapshot — seed 8817,
+   > Renaissance, 155 setts) confirms exactly two ancestors: tryAddRoad 3.62 s
+   > and the forEachNear visitor (= linkCloseNeighbours' callback) 1.01 s
+   > self+desc = 7.7 ms/tick, ALL inside the roads bracket. The paradox was the
+   > SAMPLER: `world.debug.pass` holds ONE tick and the battery's `slow:` field
+   > samples it once per 250-step series row, while road planning is expensive
+   > only while the plan queue drains (1 settlement/tick, PLAN_INTERVAL 240,
+   > backoff ≤8×) — every-tick bracket stats (`tools/profile_window.mjs`, new)
+   > read roads mean 8.9 ms / median 0.5 / p95 71: the sampled label sees the
+   > median, a function profile sees the mean, and both are true. (The armies
+   > bracket also spans the wealth-delta loop + pruneDead, so its label
+   > inherits the same ambiguity.) Any future bracket claim goes through
+   > profile_window, not the series `slow:` field.
+   >
+   > **SHIPPED same day (byte-identical): the noWater A*'s static
+   > land-connectivity oracle (roads.js `landComp8`).** findPath(noWater) fails
+   > two ways: node-budget exhaustion (knowledge-dependent → NOT cacheable) or
+   > NO LAND ROUTE — permanent geography: elevation never changes, noWater
+   > skips every water tile, land/river edges are always finite, so an
+   > off-component goal can never be stamped and the A* provably returns null
+   > either way (only unhashed scratch differs — that is the whole
+   > byte-identity proof). Candidates are offered by EUCLIDEAN radius
+   > (partnerReachFor / the close-neighbour scan), so island↔mainland and
+   > strait pairs are ranked forever, each doomed probe re-burning up to the
+   > full budget (12000·rn² = 192k pops at 1920) every plan cycle. One
+   > 8-NEIGHBOUR flood per world — deliberately distinct from countryClaim's
+   > 4-neighbour `_landComp`: a diagonal isthmus joins components for the A*
+   > that the crawl correctly splits, so reusing that map would wrongly null
+   > real routes. Measured (30k/1920, 600-tick windows, quiet machine):
+   > classify pass found 28/495 calls topological (5.7%) at ~33 ms each =
+   > 917 ms = 19.4% of all findPath time; A/B on identical windows: findPath
+   > subtree 4.63 → 3.67 s (−20.7%), roads bracket mean 8.9 → 7.2 ms/tick
+   > (−19%), the flood itself 7.9 ms once per world. Hashbase held
+   > (4dbe3ec3/fe5627fe — re-anchored on pristine HEAD in this container
+   > first); smoke + validate green.
+   >
+   > **AUDITED 2026-07-25 (recompute cadences of the edge-cost family's big
+   > customers — honest negatives, the I82/edge-cost-cache precedent): neither
+   > computeTerritory nor capitalTransportCosts admits a byte-identical
+   > recompute skip.** Their inputs GENUINELY drift between firings: the
+   > per-edge params read the live settlement/capital knowledge objects
+   > (construction/mobility/navigation are written unconditionally every tick —
+   > the I82 finding; only the reach-BUDGET side, `_techEff.reachLevel`, is
+   > KNOW_INTERVAL-staggered), computeTerritory additionally re-tallies under
+   > the climate fert overlay (refreshed every 20 ticks) and clips to
+   > `_countryOwner` (redrawn by its own pass), and capitalTransportCosts reads
+   > `_countryOwner` for the contiguity toll plus the drifting `c.range` search
+   > bound. An exact-input skip can never hit; a stale-tolerant one is a
+   > TRAJECTORY change — a product decision gated on full re-validation, not a
+   > perf refactor. Measured at 30k/1920 (two independent 600-tick windows
+   > agree): capitalTransportCosts ≈ 2.4 s per polity firing (world.debug.pol
+   > transport 9.5 s over 4 firings ≈ 49% of the pass; worst single tick
+   > 2.68 s; #5 self-time in the whole profile at 3.6 s), territory's one
+   > firing 583 ms bracket. Cadences are already emergent-safe (interval ×
+   > rNorm clamps, byte-identical at probe grids). The honest reduction paths
+   > remain: the B80-style budgeted incremental flood for territory (designed
+   > above), fewer A* calls (the oracle, shipped), and — the #1 sim function at
+   > 19.7 ms/tick self in this window — worker-parallel stepPopField, IF
+   > full-size Earth is confirmed as a product goal (owner decision pending;
+   > the design constraint stands: tile-band partitioning, no GPU floats, or
+   > the hash-based QA dies).
 5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
    (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
    **Verdict: G-equivalence holds for the SHAPE of history, not the exact
