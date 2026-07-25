@@ -92,6 +92,16 @@ own written flip condition; removing it would delete a needed fine-grid
 res-invariance fix. It remains the single deliberately-dormant lever, and
 un-blocks when the resumable-recorder tooling (backlog #12) exists.
 
+> **RESOLVED 2026-07-25 — the battery ran, the lever FLIPPED ON.** The
+> resumable chunk driver carried the full 4-way (off/on × 8817/31337) to
+> 30k at 1920 in one session: realm count recovers ×1.35–1.6 on both seeds,
+> settlements stable, residual size/pop deltas sign-flip by seed (chaos,
+> not systematic inflation); stylized 21k at 1920 under the lever passed
+> all hard gates at 1 soft warning; byte-transparency at the 480 reference
+> proven by hashbase A/B on the post-FOOD_K build. **Dormant feature
+> switches: 1 → 0.** Full record in the lever's own desc (tuning.js) and
+> `tools/score_resinv.mjs` over `bench/resinv1920_*`.
+
 ## Not part of the campaign — values, not switches
 
 `FARM_MAX_TIER=0` (live tier threshold read by the trade booking) and

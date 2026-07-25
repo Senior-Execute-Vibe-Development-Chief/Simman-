@@ -631,6 +631,17 @@ fallback), MINE_RANGE (URBAN_NODES experimental path only, def 0).
   open correctness question. No number here changed; only the confirmation is
   deferred.
 
+  **CLOSED 2026-07-25 — the stable box arrived and the battery ran.** The
+  resumable chunk driver (backlog #12) carried the full 4-way (off/on ×
+  8817/31337) to 30k at 1920. Windowed verdict (≥16k, medians): realms
+  25→37 (8817) and 23→32 (31337) under the lever — the count residual
+  CLOSES; top-giant/pop/claimed deltas sign-flip by seed (8817 top1 ×0.61,
+  31337 ×1.50), i.e. trajectory chaos, not a systematic giant or a
+  capacity-inflation bias. With the stylized 1920 gate green under the
+  lever and 480 byte-transparency hashbase-proven, `RES_INV_RIVER` flipped
+  default 0→1. Scorer: `tools/score_resinv.mjs`; artifacts
+  `bench/resinv1920_*`.
+
 ## THE MINIMUM-EGYPT FIX (2026-07, SIZE_BY_POP) — realm size tracks governed people, not a floor
 
 User report: "anything smaller than Egypt is now impossible; realms spawn a

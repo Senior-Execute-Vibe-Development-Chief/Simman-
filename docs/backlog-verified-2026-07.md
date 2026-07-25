@@ -117,10 +117,19 @@ cardinal-rule-safe design; none auto-applied.
 - **11 Grid-variant river magnitude.** The fix is one line (`RES_INV_RIVER
   def:0→1`, byte-identical at the reference) but flipping it needs the 1920
   windowed multi-seed battery — which is #12.
+  > **DONE 2026-07-25.** #12's battery ran; verdict green on both seeds
+  > (realms ×1.35–1.6 recovery, no systematic pathology); stylized at 1920
+  > under the lever passed; hashbase A/B proved 480 byte-transparency.
+  > `RES_INV_RIVER` def 0→1 — the last dormant lever ships.
 - **12 1920/rs=4 validation.** Not a code bug — the run outlives the container.
   *Path:* drive the 1920 battery through the existing resumable recorder
   (`earthFullRecord.mjs` checkpoints every 10k, resumes via `RESUME=`), scoring
   claimed-% and biggest-km² from its series output across windows.
+  > **DONE 2026-07-25.** `battery_resumable.mjs` chunk loops carried the
+  > 4-way to 30k at 1920 inside one session (~2.5h under 4-way contention);
+  > the recorder now APPENDS series rows on resume (it truncated per chunk —
+  > fixed), series rows carry `landPct`, and `tools/score_resinv.mjs` prints
+  > the windowed off-vs-on verdict. Artifacts under `bench/resinv1920_*`.
 
 ---
 
