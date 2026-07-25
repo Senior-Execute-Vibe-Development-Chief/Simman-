@@ -337,6 +337,19 @@ The kin graph finally does politics. All triggers are house state.
    corrective passes (fillEnclosedWaste / closeRealmGaps / re-smoothing) still
    fire and delete the dead ones. Success = same map quality (border length,
    land share, screenshot diff) with fewer passes.
+   > **MEASURED 2026-07-25 — no dead passes; the prune target does not exist.**
+   > Changed-tile tallies now live in the passes themselves (world.debug.carto,
+   > counters only) and `tools/probe_carto.mjs` reads them per window. At 480,
+   > seeds 8817 + 31337, 8k steps: ALL three live passes do real work that
+   > GROWS with map maturity — smooth ~480-495 tiles/1k steps mature (the
+   > workhorse; 1955-2113 total), gaps near-zero pre-maturity then 75-170/1k
+   > once realms actually border each other (252-334 total — it looked dead
+   > only while there were no neighbours to partition), waste 30-100/1k late
+   > (176-218 total). `smoothPinned` measured 0 — but its only caller is the
+   > legacy lever-off path (the A/B contract), not deletable dead weight.
+   > Verdict: R6's prune half CLOSES as "measured alive, keep all three";
+   > the counters stay, so any future cartography change re-measures in one
+   > probe run. Perf effort goes to the tile-bound passes (B80/B81) instead.
 3. **Adoption off the render layer** (the deeper fix behind grownLiveOwnerAt):
    a tile is "administered" once it has been inside `_countryOwner` for a
    logistics-derived integration delay; adoption reads that, and the claim
@@ -348,6 +361,39 @@ The kin graph finally does politics. All triggers are house state.
    across ticks, publish lanes on completion); frontier-set border crawl (B81);
    sea trade top-K peers (B78 — keep 64 lanes for topology, trade the best ~16 by
    value). Prefer these over I82.
+   > **RE-MEASURED 2026-07-25 (the 1920/30k battery's own per-pass profiler,
+   > mature era ≥24k, both arms): the B80/B81/B78 premise is STALE.** Top
+   > passes when sampled in the top-3: settlements ~82 ms/tick (I82 — closed),
+   > **armies 43–59 ms**, **roads 11–23 ms**; territory ≤3.3, trade ≤2.2 —
+   > and the claim crawl (B81) and sea flood (B80) never enter the top-3 at
+   > all. The next perf arc, if wanted, is ARMIES then ROADS, each behind its
+   > own byte-identity proof (or an honestly-gated trajectory change) — not
+   > the B-list. Fingerprints live in every battery's series rows (`slow:`).
+   >
+   > **DEEPER 2026-07-25 (function-level `--cpu-prof`, two 600-tick windows on
+   > the 30k 1920 snapshots): the pass labels above are themselves
+   > MIS-ATTRIBUTION.** Both windows had ZERO active fronts yet read
+   > `armies:101–126ms` — the armies/roads EMA labels hold spikes and swallow
+   > unbracketed neighbours; no armies function appears in the top-25 samples.
+   > The real mature-era rocks per tick: **stepPopField ~43–45 ms** (the field
+   > substrate — strided already, I82-class), the **edge-cost family ~42–53 ms**
+   > (`_edgeCost`+`localEdgeCost`+`_paramsFor`+`_tileMode`, spread across the
+   > catchment Voronoi, `capitalTransportCosts` ≤13 ms, and `findPath`), and
+   > **computeTerritory 7–31 ms**. Named open question: `findPath` (roads.js)
+   > samples ~4.5–7.5 ms/tick in windows whose `roads` pass-label reads
+   > ~0.1–1.2 ms — it is being called from OUTSIDE the roads bracket; find the
+   > caller before optimizing anything.
+   >
+   > **NEGATIVE RESULT, measured and reverted (same day): per-tile
+   > static-terrain caching of `_edgeCost` is a REGRESSION.** Precomputing
+   > mode/relief-polynomial/climate-penalty/ridge-excess/river-mult into
+   > Float64 arrays (byte-identity held: hashbase `4dbe3ec3`/`fe5627fe`
+   > unchanged) made the family SLOWER — self-time 31.9s→40.3s (+26%), wall
+   > 126.2→138.9s (+10%) on the identical window — scattered cold Float64
+   > loads lose to recomputing from the already-hot Float32 terrain arrays,
+   > and the per-edge cache fetch itself sampled at 5.2s. `_edgeCost` is
+   > compute-lean and memory-tight as written. The honest reduction path is
+   > FEWER CALLS (caller cadence and reuse), not per-call micro-caching.
 5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
    (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
    **Verdict: G-equivalence holds for the SHAPE of history, not the exact

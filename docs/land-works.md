@@ -228,6 +228,26 @@ urbanizes more but flatter; 1.0's slope was the better −0.77, so the gate
 re-baseline → 1.0 path stands as the follow-up). Population 235k at 21k —
 the ledger's richer maturity at half strength.
 
+**The follow-up landed — SHIPPED at 1.0 (2026-07-25).** The blocking gate
+was measured and found degenerate, not structural: the smoke dissolve
+comparison judges raw entity totals across two arms that are different
+MODELS whose worlds legitimately diverge — under the ledger the legacy
+farming-region arm matures much poorer (58 entities carrying 3,482 people
+vs dissolve's 61 carrying 7,603 at the smoke horizon), so the raw-count
+gate had decayed into a one-seed ±3 coin flip that was binding default
+policy. Re-baselined to the guarantee's own words ("fewer entities at any
+granularity"): the dissolve representation must carry civilization with
+fewer entities PER PERSON than the region-swarm representation. Measured:
+8.0 vs 16.7 per 1k pop at FOOD_K=1 (52% headroom; 7.9 vs 12.2 at 0.5) —
+and a dissolve regression into a village swarm still trips it hard.
+Gates at def 1 on the full 2026-07 default stack (TERRAIN_FADE included):
+smoke green; **deep 3-seed stylized 21k battery 3/3** — 8817 all hard
+gates **0 soft warnings** (pop 295,754 / 63 polities / 139 settlements,
+the richest world on record, reproduced), 4242 one soft (Zipf −0.66 at 75
+cities), 777 one soft (price level 0.34; pop 366,157 / 52 polities), all
+inside budget 2. The abstract proxy formula now survives only on WILD
+land — worked land's carrying capacity is the food ledger, full strength.
+
 ## Addendum 6: TERRAIN_FADE — technology substitutes for terrain (SHIPPED at 1)
 
 User question: "does the relevance of tile type fade with better tech?"
@@ -253,6 +273,45 @@ Gates at def 1: smoke green (dissolve margin 61 vs 63), stylized 21k all
 hard gates + 1 soft warning (budget 2) — the pre-industrial window barely
 feels the set, exactly as designed; the fades awaken in long industrial
 runs (their era-signature there is the noted follow-up measurement).
+
+**The follow-up measurement (2026-07-25, `tools/probe_terrainfade.mjs`):**
+48k-step A/B (TERRAIN_FADE 0 vs 1), Earth 320×160 seed 8817, on the full
+shipped default stack (FOOD_K=1). The arms are **byte-identical through
+step 18,000** — the gate is hard zero until org AND metallurgy cross 0.78,
+and the leader stood at 0.72/0.73 at 18k — then the world takes off
+sharply (org/met 1.00 by 21k; the gate opens on ~90 settlements at once,
+~99% of the fade arm's population on fully-faded land from 24k on). The
+mature era signature (mean of the 39k–48k checkpoints, pop-weighted
+shares of each arm's own population):
+
+- **Poor soil (fert<0.35): 12.2% vs 4.6% — 2.6×, and diverging.** The
+  control world concentrates ever harder onto prime land as industrial
+  capacity multiplies it (7%→4% across the industrial era); fertilizer
+  holds the fade world's poor soils peopled (9%→14–17%).
+- **Interior (no coast, no river): 30.5% vs 19.1%, +11 points — the
+  strongest single term on Earth's geography.** The fade arm's interior
+  share RISES through the industrial era (23%→32%) while control stays
+  flat (~19%): land transport makes the continental interior compete.
+- **Mean fertility under people: 0.794 vs 0.820; mean relief 0.072 vs
+  0.088** — people spread onto land terrain used to forbid, and the land
+  they spread onto is flat interior plains.
+- **The honest counter-signature: the wet-tropic share FELL (6.7% vs
+  10.3%).** Medicine's fade is real but relatively outweighed — the other
+  four fades benefit the temperate interior more, so the composite Earth
+  signature is the plains filling (the Midwest/pampas/steppe chapter),
+  not a tropics boom. A true finding about the mechanism mix, recorded,
+  not tuned away: the historical post-1950 tropics surge is a GROWTH-side
+  story (demographic transition lag), not a K-side one, and the sim's
+  growth side already carries it separately (GROWTH_LOCAL's burden term).
+- Macro totals swing seed-like between arms after divergence (late-era
+  mean pop +28% fade, but checkpoint ranges overlap heavily — the
+  documented trajectory chaos; at the matched first post-takeoff
+  checkpoint the fade arm is +5%). The SHARES above are the structural
+  signal; the verdict rests on them.
+
+Verdict: the lever does exactly what it claims, exactly where it claims —
+asleep until industrialization, then the population map's modern
+structure becomes economic geography. Default stays 1.
 
 ## Gates at LAND_WORKS=2 — SHIPPED as default
 
