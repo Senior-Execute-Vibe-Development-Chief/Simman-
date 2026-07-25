@@ -457,10 +457,15 @@ The kin graph finally does politics. All triggers are house state.
    > rNorm clamps, byte-identical at probe grids). The honest reduction paths
    > remain: the B80-style budgeted incremental flood for territory (designed
    > above), fewer A* calls (the oracle, shipped), and — the #1 sim function at
-   > 19.7 ms/tick self in this window — worker-parallel stepPopField, IF
-   > full-size Earth is confirmed as a product goal (owner decision pending;
-   > the design constraint stands: tile-band partitioning, no GPU floats, or
-   > the hash-based QA dies).
+   > 19.7 ms/tick self in this window — worker-parallel stepPopField.
+   > **DECIDED same day: 960×480 IS the product resolution** (owner,
+   > 2026-07-25), so the stepPopField arc is approved; the full design —
+   > measured phase split (migration 39.5% / FOOD_K 23.3% serial-on-principle /
+   > capacity 21.2%), the index-ordered-gather migration lemma that makes
+   > banding bit-identical BY CONSTRUCTION, the SAB/worker execution model,
+   > lever + staged rollout + proof battery — lives in
+   > docs/popfield-parallel.md. Constraints unchanged: bit-identical at any
+   > worker count, no GPU floats, lever default 0 until the battery passes.
 5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
    (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
    **Verdict: G-equivalence holds for the SHAPE of history, not the exact
