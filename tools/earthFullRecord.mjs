@@ -101,6 +101,7 @@ function series(dt) {
     eras: eraH.join(","),
     pop: Math.round(st.totalPeople), setts: setts.length, tiers: tiers.join(","), urbanPct: r2(tPop > 0 ? 100 * uPop / tPop : 0),
     countries: (world.countries || new Map()).size, top5Members: sizes.slice(0, 5).join(","),
+    landPct: r2(100 * (st.landPct || 0)),   // claimed share of land — the res-invariance battery's windowed metric (backlog #12)
     wealth: Math.round(sum(setts.map(s => s.wealth || 0))), treasury: Math.round(treas), tradeFlow: Math.round(tradeFlow), links: world._linkMoney ? world._linkMoney.size : 0,
     P: r2(globalP), insolvent: inso, minSolv: r2(minSv),
     coin: Math.round(world.debug?.totalCoin || 0), people: Math.round(world.debug?.totalPeople || 0),   // conservation watch
