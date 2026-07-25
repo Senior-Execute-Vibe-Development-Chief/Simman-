@@ -228,6 +228,26 @@ urbanizes more but flatter; 1.0's slope was the better −0.77, so the gate
 re-baseline → 1.0 path stands as the follow-up). Population 235k at 21k —
 the ledger's richer maturity at half strength.
 
+**The follow-up landed — SHIPPED at 1.0 (2026-07-25).** The blocking gate
+was measured and found degenerate, not structural: the smoke dissolve
+comparison judges raw entity totals across two arms that are different
+MODELS whose worlds legitimately diverge — under the ledger the legacy
+farming-region arm matures much poorer (58 entities carrying 3,482 people
+vs dissolve's 61 carrying 7,603 at the smoke horizon), so the raw-count
+gate had decayed into a one-seed ±3 coin flip that was binding default
+policy. Re-baselined to the guarantee's own words ("fewer entities at any
+granularity"): the dissolve representation must carry civilization with
+fewer entities PER PERSON than the region-swarm representation. Measured:
+8.0 vs 16.7 per 1k pop at FOOD_K=1 (52% headroom; 7.9 vs 12.2 at 0.5) —
+and a dissolve regression into a village swarm still trips it hard.
+Gates at def 1 on the full 2026-07 default stack (TERRAIN_FADE included):
+smoke green; **deep 3-seed stylized 21k battery 3/3** — 8817 all hard
+gates **0 soft warnings** (pop 295,754 / 63 polities / 139 settlements,
+the richest world on record, reproduced), 4242 one soft (Zipf −0.66 at 75
+cities), 777 one soft (price level 0.34; pop 366,157 / 52 polities), all
+inside budget 2. The abstract proxy formula now survives only on WILD
+land — worked land's carrying capacity is the food ledger, full strength.
+
 ## Addendum 6: TERRAIN_FADE — technology substitutes for terrain (SHIPPED at 1)
 
 User question: "does the relevance of tile type fade with better tech?"
