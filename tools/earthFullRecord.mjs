@@ -49,7 +49,11 @@ world._checkInvariants = true;   // per-tick finiteness/range checks + conservat
 world._dbgProfile = true;        // per-pass timing (world.debug.pass) — names the culprit when the pace cliffs
 const STEPS = STEPS_ARG;   // absolute target step
 console.log(`[rec] ${RESUME ? `RESUMED at step ${world.step}` : `built ${W}x${H}`} (tw=${world.tw}) seed=${SEED} in ${((performance.now() - t0) / 1000).toFixed(1)}s → recording to ${OUT}.* (target step ${STEPS})`);
-fs.writeFileSync(OUT + ".series.jsonl", "");
+// A RESUMED run APPENDS to the series — the resumable battery (battery_resumable.mjs)
+// re-invokes this recorder per chunk with the same prefix, and truncating here wiped
+// every prior chunk's rows (measured: a 24k battery arm left holding one chunk's
+// series). Fresh runs still start clean.
+if (!RESUME) fs.writeFileSync(OUT + ".series.jsonl", "");
 
 // realm lifecycle tracker (hall of fame)
 const track = new Map(); let prevIds = new Set(), born = 0, died = 0;
