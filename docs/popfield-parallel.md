@@ -1,6 +1,7 @@
 # Worker-parallel stepPopField — design (W6-G perf arc, mission 3)
 
-**Status: DESIGN — approved target, not yet implemented.**
+**Status: SHIPPED (Stages A + B, 2026-07-25) — identity contracts met, perf
+partial (§0.4 status, §8.4 headroom); browser leg pending.**
 Owner decision 2026-07-25: **960×480 tiles (the "1920" build) is the product
 resolution.** That makes the population field the sim's #1 cost worth
 engineering: `stepPopField` is the largest single function in every mature-era
@@ -28,6 +29,8 @@ battery fingerprints, save/load roundtrips) is worth more than any speedup.
 4. Perf target (the reason to bother): ≥ 1.8× on the pass at 4 workers on the
    30k/1920 snapshot (Amdahl bound ~2.3× — see §2), i.e. ~20.5 → ≤ 11 ms/tick
    at Renaissance maturity, proportionally more at Modern.
+   **STATUS 2026-07-25: 1.2× shipped (sound barrier); the gap is §8.4's
+   band-balance + wake-latency headroom — contracts 1-3 are all met.**
 
 ## 1. Why this pass, and why it CAN be exact
 
@@ -149,6 +152,19 @@ regardless of which worker executes it.
   tiny per-firing header (dt, migShare, nSub, lever values, table lengths).
   ~5 barriers/firing (§2) at ~µs each vs a 20 ms pass: noise. Workers run
   zero-alloc after warmup (everything preallocated in the arena).
+  **The barrier must be EPOCH-STAMPED, never counted** (learned the hard
+  way, §5): worker k stamps its own ctrl slot with the phase seq it just
+  ran; the coordinator waits for all slots == current seq. A shared done
+  COUNTER is wake-anomaly-fragile — the first implementation intermittently
+  double-counted (measured `C_DONE 4 > 3`) and, worse, silently corrupted
+  runs when the anomaly hit the in-place phases (three different hashes from
+  three identical runs). Stamps are idempotent under duplicate wakes, stale
+  threads stamp old epochs (ignored), and a worker that observes a seq it
+  cannot replay stamps POISON → dispose → throw. Each pool also owns a
+  FRESH ctrl/hdr SAB pair, so threads of a disposed pool can never touch a
+  successor's barrier regardless of termination latency. Verified: 5/5
+  correct hashes under deliberate CPU contention where the counter version
+  failed 2/3.
 - **Phase order preserved exactly** as today: setup → [cap ∥] → FOOD_K →
   spikes/seed/corePre → [growth ∥] → core re-integrate → per-substep
   ([6a ∥] barrier [6b ∥] barrier, swap) → [works ∥] → publish.
@@ -175,7 +191,51 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
    modes). Gates: snapshot L0≡L1 (hash 5bc2cc6c, fields byte-equal — the
    rn=4 wrap/spike/FOOD_K/works paths), genesis L0≡L1 with L1 reproducing the
    canonical hashbase pair, smoke, validate.
-2. **Stage B** — arena + workers behind the same lever, default 0.
+2. **Stage B — SHIPPED 2026-07-25**: the SAB arena + persistent worker pool
+   (popFieldPool.js / popFieldWorker.js), banding capacity, growth, both
+   migration passes and works across `lever` bands (coordinator computes band
+   0; workers 1..N−1). **Measured on the 30k/1920 snapshot, 600 ticks, 4-core
+   container, with the SOUND (epoch-stamped) barrier, bit-identical output:**
+   settlements bracket 38.3 → 34.7 ms/tick (−9%), whole tick 70.9 → 69.1
+   (−3%); band sweep L2/L3/L4 = 35.5/36.2/34.7 (4 bands best). The field
+   pass itself ≈20.5 → ≈17 ms — **1.2×, short of the §0.4 ≥1.8× target;
+   recorded honestly as PARTIAL.** (An earlier build measured 31.4/−18% —
+   on the racy counted barrier, i.e. an unsound number; it is NOT the
+   baseline for future work.) The shortfall is attributable and listed as
+   headroom in §8.4: worker wake latency on 1–4 ms phases (5 barriers ×
+   2 wakes/firing) and land-count-equal bands not being work-equal. The
+   lever ships default 0 either way. Identity: snapshot 200-tick
+   L0=L1=L2=L4 (hash 5bc2cc6c, fields byte-equal), genesis 2500×2-seeds
+   L0=L4 = the canonical hashbase pair, and 5/5 correct hashes under
+   deliberate CPU contention (where the counter barrier failed 2/3).
+   Three findings future work must respect:
+   - **Synchronous drivers never run the event loop** (probes/batteries/the
+     profiler step in one sync block), so pool SPAWN uses
+     `process.getBuiltinModule` (no await) and READINESS rides a ctrl-SAB
+     Atomics counter — a postMessage-based ready flag left the pool in
+     fallback for an entire window (measured: zero speedup, silently). For
+     the same reason `awaitPhase` carries a wall-clock timeout: a worker
+     crash mid-phase can't fire its 'error' event mid-window, and growth/
+     works are in-place (non-idempotent), so the only honest outcome is
+     dispose + THROW, never a silent partial phase.
+   - **popField/_popNext are a swap pair over two fixed SABs** — the publish
+     re-points the KEYS every firing, so arena identity is the unordered
+     pair {popA, popB} + parity, never key→buffer (keying them respawned
+     the pool every tick).
+   - **loadWorld restores the SAVE's tuning** (persist.js resets + applies
+     saved non-defaults), silently clobbering pre-load lever overrides —
+     snapshot-based lever A/Bs must re-apply AFTER load (probe_popfield_par
+     and profile_window now do; _harness exports SIM_TUNE_OVERRIDES). This
+     ALSO made the first "identity across levers" snapshot run vacuous
+     (every leg silently ran lever 0 and of course matched) — a gate that
+     passes must be checked for whether it MEASURED anything.
+   - **Counted barriers corrupt silently; epoch-stamped barriers fail loudly
+     or not at all** (§4 Sync). The counter version passed a 2500-tick
+     interleaved bisect and still produced three different hashes from three
+     identical runs under contention — wake anomalies are too rare to catch
+     by staring and too frequent to ship. The genesis identity gate (a seed
+     the snapshot gate didn't cover) is what caught it; keep BOTH horizons
+     in the probe forever.
 3. **Battery** — full gate set (§6) + perf A/B; only then discuss flipping
    the node-side default for the heavy tools (batteries run 4-core
    containers) and, separately and later, the browser default.
@@ -209,13 +269,23 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
   O(land) per firing and stays so; the stride lever remains the blunt
   fallback for weak hardware.
 
-## 8. Open questions (resolve during Stage B)
+## 8. Open questions (Stage B outcomes)
 
-1. Browser worker topology: nested workers from the sim worker vs a flat pool
-   owned by main with the sim posting firing headers — pick after measuring
-   postMessage latency in the shipped app shell.
-2. Does the app's snapshot path ever structured-clone `popField` mid-tick
-   (render mirrors)? Audit before SAB-backing (SAB posts share, not copy —
-   likely fine, verify the render worker's assumptions).
-3. Worker warmup at world build vs first lever use (container tools want
-   eager; the app wants lazy).
+1. **Node topology SETTLED**: a flat pool spawned synchronously from the sim
+   thread via `process.getBuiltinModule("node:worker_threads")`, barrier over
+   a ctrl SAB. **Browser topology still open** — the browser leg currently
+   resolves to the lever-1 one-thread kernel path (identical results); when
+   built it needs COOP/COEP + a worker-spawn path that doesn't rely on the
+   event loop mid-run, and the §5 Stage B findings apply verbatim.
+2. Render-mirror audit: still open, but lower-stakes than feared — SAB-backed
+   views serialize/hash identically and the sim's own consumers all read
+   through `world.*` references (the conversion replaces them in place).
+   Verify the app shell's snapshot path before flipping any browser default.
+3. Warmup SETTLED for tools: lazy spawn on the first lever ≥2 firing; the
+   pool is ready by the next firing (workers boot on their own threads while
+   the sim steps), and the interim firings take the identical-result fallback
+   — no eager path needed anywhere.
+4. NEW (measured, open): band balance — bands split by land-tile COUNT, but
+   work per tile varies (spikes, owners, works hotspots). A cost-weighted
+   split (e.g. by last firing's per-band wall time) could close part of the
+   1.5×→2.1× gap; only worth it if the pass grows again at Modern maturity.

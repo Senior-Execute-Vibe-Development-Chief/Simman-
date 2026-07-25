@@ -39,6 +39,9 @@ for (const seed of SEEDS) {
   for (const L of LEVERS) {
     applyTuning({ POP_FIELD_WORKERS: L });
     const world = snapMode ? loadWorld(SNAP) : buildSim({ W: 320, H: 160, seed });
+    // loadWorld restores the SAVE's tuning (persist.js resets + applies the
+    // saved non-defaults), silently clobbering the lever — re-apply AFTER.
+    applyTuning({ POP_FIELD_WORKERS: L });
     stepPeopleSim(world, STEPS);
     rows.push({ L, hash: hashWorld(world), pf: sha(world.popField), cf: sha(world.capField),
                 pfA: world.popField.slice(), cfA: world.capField.slice() });   // keep copies, drop the world

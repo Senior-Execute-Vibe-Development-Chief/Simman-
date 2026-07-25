@@ -13,11 +13,14 @@ import { applyTuning } from "../src/sim/peopleSim/tuning.js";
 
 // SIM_TUNE env override for calibration sweeps: SIM_TUNE="FISH_RATE=7,FISH_ERAPROD_POW=0.4".
 // Lets a probe OR a gate (smoke/stylized) run with non-default levers without editing defaults.
+// Parsed SIM_TUNE overrides, exported so snapshot-loading tools can RE-apply
+// them after loadWorld — persist.js restores the SAVE's tuning on load
+// (reset + saved non-defaults), which silently clobbers any pre-load lever.
+export const SIM_TUNE_OVERRIDES = {};
 if (process.env.SIM_TUNE) {
-  const ov = {};
-  for (const kv of process.env.SIM_TUNE.split(",")) { const [k, v] = kv.split("="); if (k && v !== undefined) ov[k.trim()] = +v; }
-  applyTuning(ov);
-  console.log("[SIM_TUNE]", JSON.stringify(ov));
+  for (const kv of process.env.SIM_TUNE.split(",")) { const [k, v] = kv.split("="); if (k && v !== undefined) SIM_TUNE_OVERRIDES[k.trim()] = +v; }
+  applyTuning(SIM_TUNE_OVERRIDES);
+  console.log("[SIM_TUNE]", JSON.stringify(SIM_TUNE_OVERRIDES));
 }
 
 /** generateWorld + buildTerritory; returns the legacy harness shape. */
