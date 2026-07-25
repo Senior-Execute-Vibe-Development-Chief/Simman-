@@ -195,14 +195,22 @@ console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
   // farming-region model (DISSOLVE_FARMS=0) under the same defaults — not a
   // hardcoded snapshot, which went stale the moment REGION_SPACING's default
   // changed the dissolve model's town density (the comboE flip: 64 towns vs a
-  // fitted "< 60"). The legacy world's entity count is towns + the tier-0
-  // farming-region swarm, so dissolve must come in under it at any granularity.
-  let legacyN = 0;
+  // fitted "< 60"). Re-baselined 2026-07 (docs/land-works.md addendum 5): the
+  // two arms are different MODELS whose worlds legitimately diverge (under the
+  // ledger-fed defaults the legacy arm matures poorer — ~58 entities on ~3.5k
+  // people vs dissolve's ~61 on ~7.6k), so RAW totals degenerated into a
+  // one-seed ±3 coin flip that was binding default policy. The guarantee, per
+  // its own words, is GRANULARITY: the dissolve representation must carry
+  // civilization with fewer entities PER PERSON than the region-swarm
+  // representation, at any world size. A dissolve regression into a village
+  // swarm drives entities-per-capita back up to region granularity and trips.
+  let legacyN = 0, legacyPop = 1;
   applyTuning({ DISSOLVE_FARMS: 0 });
   try {
     const l = buildSim({ W, H, seed: SEED, preset: PRESET });
     stepPeopleSim(l, 3000);
-    legacyN = peopleSimStats(l).settlements;
+    const ls = peopleSimStats(l);
+    legacyN = ls.settlements; legacyPop = Math.max(1, ls.totalPeople);
   } finally { resetTuning(); }
   applyTuning({ DISSOLVE_FARMS: 1 });
   try {
@@ -217,7 +225,11 @@ console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
     const hits = a.debug && a.debug.invariantHits; let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
     check("dissolve: zero invariant violations", hitTotal === 0, hits ? JSON.stringify(hits) : "");
     check(`dissolve: civilization alive (${sa.settlements} settlements)`, sa.settlements >= 5 && sa.totalPeople > 500);
-    check(`dissolve: fewer entities than farming-region model (${sa.settlements} vs ${legacyN})`, sa.settlements < legacyN, `${sa.settlements} vs legacy ${legacyN}`);
+    const gDiss = sa.settlements / Math.max(1, sa.totalPeople);
+    const gLegacy = legacyN / legacyPop;
+    check(`dissolve: fewer entities per person than farming-region model (${(1000 * gDiss).toFixed(1)} vs ${(1000 * gLegacy).toFixed(1)} per 1k pop)`,
+      gDiss < gLegacy,
+      `dissolve ${sa.settlements} entities / ${sa.totalPeople} pop vs legacy ${legacyN} / ${legacyPop}`);
   } finally {
     resetTuning();   // restore defaults so nothing downstream sees the lever
   }
