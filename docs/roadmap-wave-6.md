@@ -337,6 +337,19 @@ The kin graph finally does politics. All triggers are house state.
    corrective passes (fillEnclosedWaste / closeRealmGaps / re-smoothing) still
    fire and delete the dead ones. Success = same map quality (border length,
    land share, screenshot diff) with fewer passes.
+   > **MEASURED 2026-07-25 — no dead passes; the prune target does not exist.**
+   > Changed-tile tallies now live in the passes themselves (world.debug.carto,
+   > counters only) and `tools/probe_carto.mjs` reads them per window. At 480,
+   > seeds 8817 + 31337, 8k steps: ALL three live passes do real work that
+   > GROWS with map maturity — smooth ~480-495 tiles/1k steps mature (the
+   > workhorse; 1955-2113 total), gaps near-zero pre-maturity then 75-170/1k
+   > once realms actually border each other (252-334 total — it looked dead
+   > only while there were no neighbours to partition), waste 30-100/1k late
+   > (176-218 total). `smoothPinned` measured 0 — but its only caller is the
+   > legacy lever-off path (the A/B contract), not deletable dead weight.
+   > Verdict: R6's prune half CLOSES as "measured alive, keep all three";
+   > the counters stay, so any future cartography change re-measures in one
+   > probe run. Perf effort goes to the tile-bound passes (B80/B81) instead.
 3. **Adoption off the render layer** (the deeper fix behind grownLiveOwnerAt):
    a tile is "administered" once it has been inside `_countryOwner` for a
    logistics-derived integration delay; adoption reads that, and the claim
