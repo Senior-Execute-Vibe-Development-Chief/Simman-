@@ -163,20 +163,29 @@ regardless of which worker executes it.
 
 ## 5. Lever & rollout
 
-`T.POP_FIELD_WORKERS` (runtime lever, default **0**): 0 = today's serial code
-untouched; N = N bands. Ship order:
+`T.POP_FIELD_WORKERS` (runtime lever, default **0**): 0 = today's serial
+scatter, byte-path untouched (contract §0.1 kept literally — the scatter is
+not rewritten); **1 = the index-ordered gather on the sim thread** (the
+serially-testable Stage-A config, and the form banding requires); ≥2 = N band
+workers (until Stage B lands, resolves to the one-thread gather). Ship order:
 
-1. **Stage A** — serial ordered-gather migration (no lever needed; must hold
-   the CURRENT hashbase pair — this is a pure op-order-preserving refactor).
-2. **Stage B** — arena + workers behind the lever, default 0.
+1. **Stage A — SHIPPED 2026-07-25**: the gather substep behind lever ≥1, plus
+   `tools/probe_popfield_par.mjs` (cross-lever identity: hashWorld + sha256 of
+   both field buffers, genesis 2500×2-seeds and 30k/1920-snapshot 200-tick
+   modes). Gates: snapshot L0≡L1 (hash 5bc2cc6c, fields byte-equal — the
+   rn=4 wrap/spike/FOOD_K/works paths), genesis L0≡L1 with L1 reproducing the
+   canonical hashbase pair, smoke, validate.
+2. **Stage B** — arena + workers behind the same lever, default 0.
 3. **Battery** — full gate set (§6) + perf A/B; only then discuss flipping
    the node-side default for the heavy tools (batteries run 4-core
    containers) and, separately and later, the browser default.
 
 ## 6. Proof battery (all must pass before any default moves)
 
-- `probe_hashbase 2500`, lever 0: `4dbe3ec3`/`fe5627fe` unchanged (Stage A
-  alone must hold this — it is the lemma's gate).
+- `probe_hashbase 2500` (or the probe below's genesis mode) with the gather
+  FORCED ON (`SIM_TUNE="POP_FIELD_WORKERS=1"`): `4dbe3ec3`/`fe5627fe`
+  unchanged — the lemma's gate. Lever 0 is the untouched scatter and holds
+  trivially.
 - **New `tools/probe_popfield_par.mjs`:** same build, same seed, run K steps
   with WORKERS ∈ {0, 2, 3, 4} → `hashWorld` AND full-serialize sha256 must be
   identical across the set. Two horizons: 2500 steps from genesis at 320

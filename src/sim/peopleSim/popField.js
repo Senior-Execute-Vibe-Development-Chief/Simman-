@@ -605,30 +605,45 @@ export function stepPopField(world, sub = 1) {
   const nSub = Math.max(1, Math.ceil(migT / MIG_SHARE_MAX));
   const migShare = migT / nSub;                             // per-substep share (= POP_MIGRATE·dt exactly at the reference)
   let nxt = world._popNext; if (!nxt || nxt.length !== N) nxt = world._popNext = new Float32Array(N);
+  // T.POP_FIELD_WORKERS ≥ 1 selects the index-ordered GATHER form of this
+  // substep (bit-identical by construction — docs/popfield-parallel.md §3;
+  // proven by tools/probe_popfield_par.mjs + the hashbase pair). 0 (default)
+  // keeps the scatter below untouched. The gather is the bandable form Stage B
+  // splits across workers; at 1 it runs on the sim thread.
+  const gatherOn = ((T.POP_FIELD_WORKERS | 0) >= 1);
+  let mv = null, ssum = null;
+  if (gatherOn) {
+    mv = world._migMove; if (!mv || mv.length !== N) mv = world._migMove = new Float64Array(N);
+    ssum = world._migSum; if (!ssum || ssum.length !== N) ssum = world._migSum = new Float64Array(N);
+  }
   for (let it = 0; it < nSub; it++) {
     nxt.set(pop);
-    for (let li = 0; li < nLand; li++) {
-      const i = land[li];
-      const p = pop[i]; if (p <= 0) continue;
-      const y = (i / tw) | 0, x = i - y * tw;
-      let sumSpare = 0;
-      const spare = _spare4; // reused scratch
-      for (let d = 0; d < 4; d++) {
-        const ny = y + DIRS4[d][1];
-        if (ny < 0 || ny >= th) { spare[d] = 0; continue; }
-        const nx = (x + DIRS4[d][0] + tw) % tw;
-        const ni = ny * tw + nx;
-        const s = cap[ni] - pop[ni];
-        spare[d] = s > 0 ? s : 0;
-        sumSpare += spare[d];
-      }
-      if (sumSpare <= 0) continue;               // hemmed in by full/empty land — nobody leaves
-      const move = migShare * p;                 // leaving this tile this substep
-      nxt[i] -= move;
-      for (let d = 0; d < 4; d++) {
-        if (spare[d] <= 0) continue;
-        const ny = y + DIRS4[d][1], nx = (x + DIRS4[d][0] + tw) % tw;
-        nxt[ny * tw + nx] += move * (spare[d] / sumSpare);
+    if (gatherOn) {
+      migrateSubGather(pop, nxt, cap, land, nLand, tw, th, migShare, mv, ssum);
+    } else {
+      for (let li = 0; li < nLand; li++) {
+        const i = land[li];
+        const p = pop[i]; if (p <= 0) continue;
+        const y = (i / tw) | 0, x = i - y * tw;
+        let sumSpare = 0;
+        const spare = _spare4; // reused scratch
+        for (let d = 0; d < 4; d++) {
+          const ny = y + DIRS4[d][1];
+          if (ny < 0 || ny >= th) { spare[d] = 0; continue; }
+          const nx = (x + DIRS4[d][0] + tw) % tw;
+          const ni = ny * tw + nx;
+          const s = cap[ni] - pop[ni];
+          spare[d] = s > 0 ? s : 0;
+          sumSpare += spare[d];
+        }
+        if (sumSpare <= 0) continue;               // hemmed in by full/empty land — nobody leaves
+        const move = migShare * p;                 // leaving this tile this substep
+        nxt[i] -= move;
+        for (let d = 0; d < 4; d++) {
+          if (spare[d] <= 0) continue;
+          const ny = y + DIRS4[d][1], nx = (x + DIRS4[d][0] + tw) % tw;
+          nxt[ny * tw + nx] += move * (spare[d] / sumSpare);
+        }
       }
     }
     const t = pop; pop = nxt; nxt = t;           // swap buffers (per substep — next substep reads this one's result)
@@ -679,6 +694,74 @@ export function stepPopField(world, sub = 1) {
 }
 
 const _spare4 = new Float64Array(4);
+
+// ── Index-ordered GATHER migration substep (docs/popfield-parallel.md §3) ───
+// Bit-identical reformulation of the scatter substep in stepPopField, and the
+// bandable form Stage B splits across workers. Two passes, both pure:
+//   6a per SOURCE i: record move_i = migShare·pop[i] and sumSpare_i — the SAME
+//      expressions, accumulated in the SAME DIRS4 scan order as the scatter
+//      (float sums are order-sensitive; zero terms are +0.0 and bit-neutral).
+//   6b per TARGET j: apply j's ≤5 incident ops in ascending SOURCE-INDEX order
+//      — exactly the order the scatter's ascending source visit produced them
+//      — each as its own f32 read-modify-write on nxt[j], so every cell passes
+//      through the identical IEEE value sequence. A contribution from source i
+//      toward j is move_i · (spare_j / sumSpare_i) with spare_j = cap[j]−pop[j]
+//      — the very value the scatter computed AT the source for the direction
+//      facing j (same operands, unchanged within the substep). The self op is
+//      nxt[j] −= move_j, sequenced at j's own index. Wrap columns permute the
+//      order (x=0: W is the row END, sorting after self/E; x=tw−1: E is the
+//      row START, sorting before W/self), hence the three column categories.
+// Water tiles are never sources (mv stays 0 — 6a writes every LAND slot each
+// substep, water slots are never written and start 0) and never receive
+// (targets come from the land list). Skipping an op whose operand is ±0 is
+// bit-exact (x ± 0 = x for the non-negative f32 values here), which is why the
+// mv>0 gates match the scatter's p>0/sumSpare>0/spare>0 guard structure.
+function migrateSubGather(pop, nxt, cap, land, nLand, tw, th, migShare, mv, ssum) {
+  // 6a — outflow records (pure per-tile; writes only slot i)
+  for (let li = 0; li < nLand; li++) {
+    const i = land[li];
+    const p = pop[i];
+    if (p <= 0) { mv[i] = 0; continue; }
+    const y = (i / tw) | 0, x = i - y * tw;
+    let sumSpare = 0;
+    for (let d = 0; d < 4; d++) {
+      const ny = y + DIRS4[d][1];
+      if (ny < 0 || ny >= th) continue;
+      const nx = (x + DIRS4[d][0] + tw) % tw;
+      const ni = ny * tw + nx;
+      const s = cap[ni] - pop[ni];
+      sumSpare += s > 0 ? s : 0;
+    }
+    if (sumSpare <= 0) { mv[i] = 0; continue; }
+    mv[i] = migShare * p;
+    ssum[i] = sumSpare;
+  }
+  // 6b — ordered gather (pure per-tile; writes only nxt[j])
+  for (let li = 0; li < nLand; li++) {
+    const j = land[li];
+    const y = (j / tw) | 0, x = j - y * tw;
+    const sj = cap[j] - pop[j];
+    const recv = sj > 0;
+    if (y > 0) { const n = j - tw, m = mv[n]; if (m > 0 && recv) nxt[j] += m * (sj / ssum[n]); }
+    if (x > 0 && x < tw - 1) {           // interior column: W < self < E
+      const w = j - 1, e = j + 1;
+      { const m = mv[w]; if (m > 0 && recv) nxt[j] += m * (sj / ssum[w]); }
+      { const m = mv[j]; if (m > 0) nxt[j] -= m; }
+      { const m = mv[e]; if (m > 0 && recv) nxt[j] += m * (sj / ssum[e]); }
+    } else if (x === 0) {                // seam west wraps to row end: self < E < W
+      const e = j + 1, w = j + tw - 1;
+      { const m = mv[j]; if (m > 0) nxt[j] -= m; }
+      { const m = mv[e]; if (m > 0 && recv) nxt[j] += m * (sj / ssum[e]); }
+      { const m = mv[w]; if (m > 0 && recv) nxt[j] += m * (sj / ssum[w]); }
+    } else {                             // x === tw−1, east wraps to row start: E < W < self
+      const e = j - tw + 1, w = j - 1;
+      { const m = mv[e]; if (m > 0 && recv) nxt[j] += m * (sj / ssum[e]); }
+      { const m = mv[w]; if (m > 0 && recv) nxt[j] += m * (sj / ssum[w]); }
+      { const m = mv[j]; if (m > 0) nxt[j] -= m; }
+    }
+    if (y < th - 1) { const s2 = j + tw, m = mv[s2]; if (m > 0 && recv) nxt[j] += m * (sj / ssum[s2]); }
+  }
+}
 
 // Static list of LAND tile indices (ascending, so the field loops keep their exact
 // iteration order). Terrain is fixed, so this is built once and reused.
