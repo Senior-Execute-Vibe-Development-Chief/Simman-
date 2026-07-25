@@ -369,6 +369,31 @@ The kin graph finally does politics. All triggers are house state.
    > all. The next perf arc, if wanted, is ARMIES then ROADS, each behind its
    > own byte-identity proof (or an honestly-gated trajectory change) — not
    > the B-list. Fingerprints live in every battery's series rows (`slow:`).
+   >
+   > **DEEPER 2026-07-25 (function-level `--cpu-prof`, two 600-tick windows on
+   > the 30k 1920 snapshots): the pass labels above are themselves
+   > MIS-ATTRIBUTION.** Both windows had ZERO active fronts yet read
+   > `armies:101–126ms` — the armies/roads EMA labels hold spikes and swallow
+   > unbracketed neighbours; no armies function appears in the top-25 samples.
+   > The real mature-era rocks per tick: **stepPopField ~43–45 ms** (the field
+   > substrate — strided already, I82-class), the **edge-cost family ~42–53 ms**
+   > (`_edgeCost`+`localEdgeCost`+`_paramsFor`+`_tileMode`, spread across the
+   > catchment Voronoi, `capitalTransportCosts` ≤13 ms, and `findPath`), and
+   > **computeTerritory 7–31 ms**. Named open question: `findPath` (roads.js)
+   > samples ~4.5–7.5 ms/tick in windows whose `roads` pass-label reads
+   > ~0.1–1.2 ms — it is being called from OUTSIDE the roads bracket; find the
+   > caller before optimizing anything.
+   >
+   > **NEGATIVE RESULT, measured and reverted (same day): per-tile
+   > static-terrain caching of `_edgeCost` is a REGRESSION.** Precomputing
+   > mode/relief-polynomial/climate-penalty/ridge-excess/river-mult into
+   > Float64 arrays (byte-identity held: hashbase `4dbe3ec3`/`fe5627fe`
+   > unchanged) made the family SLOWER — self-time 31.9s→40.3s (+26%), wall
+   > 126.2→138.9s (+10%) on the identical window — scattered cold Float64
+   > loads lose to recomputing from the already-hot Float32 terrain arrays,
+   > and the per-edge cache fetch itself sampled at 5.2s. `_edgeCost` is
+   > compute-lean and memory-tight as written. The honest reduction path is
+   > FEWER CALLS (caller cadence and reuse), not per-call micro-caching.
 5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
    (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
    **Verdict: G-equivalence holds for the SHAPE of history, not the exact
