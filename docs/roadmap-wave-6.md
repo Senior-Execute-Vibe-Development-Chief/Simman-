@@ -473,11 +473,21 @@ The kin graph finally does politics. All triggers are house state.
    > an epoch-stamped protocol (per-worker seq stamps, POISON on the
    > unreplayable, fresh ctrl per pool); 5/5 correct under deliberate
    > contention after. Honest perf with the sound barrier: settlements
-   > 38.3→34.7 ms/tick (−9%), pass ≈1.2× at 4 bands — SHORT of the design's
-   > 1.8× target; the attributed headroom (band balance, wake latency) is
-   > design doc §8.4. Identity everywhere: 5bc2cc6c all levers on the 30k
-   > snapshot; genesis = the canonical pair. T.POP_FIELD_WORKERS default
-   > stays 0.
+   > 38.3→34.7 ms/tick (−9%), pass ≈1.2× at 4 bands — short of the design's
+   > 1.8× target at that point. **Stage C (same day) closed it**: adaptive
+   > timing-fed band balancing (ranges live in the ctrl SAB), per-worker JIT
+   > warmup (each worker's isolate started COLD — 40-65 ms interpreted
+   > firings poisoned the balancer's feedback), and spin-then-park wakes →
+   > **pass ≈2.2× (~the Amdahl bound), settlements −33%, tick −22%**
+   > (same-box sweep). The BROWSER leg shipped too: shared worker core,
+   > nested-Web-Worker spawn gated on crossOriginIsolated + sim-in-a-worker,
+   > COOP/COEP on vite dev/preview, and a headless-chromium gate
+   > (tools/browser_popfield_check.mjs) proving in-browser lever identity
+   > with the pool genuinely engaged. Identity everywhere throughout:
+   > 5bc2cc6c all levers on the 30k snapshot; genesis = the canonical pair;
+   > smoke + validate green. T.POP_FIELD_WORKERS default stays 0; open:
+   > production hosting's isolation headers + the single-file build's worker
+   > chunk (design doc §8).
 5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
    (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
    **Verdict: G-equivalence holds for the SHAPE of history, not the exact

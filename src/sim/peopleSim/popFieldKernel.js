@@ -206,6 +206,13 @@ export const OP_CAP = 1, OP_GROWTH = 2, OP_MIG_A = 3, OP_MIG_B = 4, OP_WORKS = 5
 // observes a seq jump it cannot replay stamps POISON so the coordinator
 // fails LOUDLY instead of computing with a silently-skipped band.
 export const C_SEQ = 0, C_OP = 1, C_PARITY = 2, C_READY = 3, C_HINT = 4, C_SLOT0 = 5;
+// Band RANGES also live in ctrl — 4 int32 per band (lo, hi, rawLo, rawHi) at
+// bandBase(bands) + 4k — so the coordinator can REBALANCE bands between
+// firings with plain writes (visible via the phase handshake) and no worker
+// respawn. Any banding is bit-identical by construction, so the balancer is
+// free to move boundaries every firing, even from timing feedback.
+export const bandBase = (bands) => C_SLOT0 + (bands - 1);
+export const ctrlLen = (bands) => bandBase(bands) + 4 * bands;
 // C_HINT is a WAKE HINT only — workers bump+notify it so the coordinator has
 // an address to park on; the epoch slots stay the sole source of truth, so
 // hint anomalies (overshoot, stale bumps) can never affect correctness.
@@ -216,4 +223,7 @@ export const H_CAPPERFERT = 0, H_ACCESSDEV = 1, H_DEV = 2, H_TFL = 3, H_INDON = 
              H_RBULK = 9, H_GL = 10, H_GLON = 11, H_DT = 12, H_TFON = 13,
              H_MIGSHARE = 14, H_RATE = 15, H_DK = 16, H_LEADAGRI = 17, H_TFWON = 18,
              H_HASRIVER = 19, H_HASCOAST = 20, H_HASRELIEF = 21;
-export const HDR_LEN = 24;
+// Per-band phase-time accumulators (worker k adds its wall ms to H_TIME0+k;
+// slot 0 is the coordinator's, kept JS-side) — the balancer's feedback signal.
+export const H_TIME0 = 22;
+export const HDR_LEN = 32;   // H_TIME0 + up to 8 bands, spare included

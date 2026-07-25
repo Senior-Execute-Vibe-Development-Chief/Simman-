@@ -1,7 +1,9 @@
 # Worker-parallel stepPopField — design (W6-G perf arc, mission 3)
 
-**Status: SHIPPED (Stages A + B, 2026-07-25) — identity contracts met, perf
-partial (§0.4 status, §8.4 headroom); browser leg pending.**
+**Status: SHIPPED (Stages A + B + C, 2026-07-25) — identity contracts met on
+node AND in-browser; pass ≈2.2× at 4 bands (~the Amdahl bound). Open:
+production hosting's isolation headers + the single-file build's worker
+chunk (§8), and the default-flip policy decisions (§5.4).**
 Owner decision 2026-07-25: **960×480 tiles (the "1920" build) is the product
 resolution.** That makes the population field the sim's #1 cost worth
 engineering: `stepPopField` is the largest single function in every mature-era
@@ -29,8 +31,10 @@ battery fingerprints, save/load roundtrips) is worth more than any speedup.
 4. Perf target (the reason to bother): ≥ 1.8× on the pass at 4 workers on the
    30k/1920 snapshot (Amdahl bound ~2.3× — see §2), i.e. ~20.5 → ≤ 11 ms/tick
    at Renaissance maturity, proportionally more at Modern.
-   **STATUS 2026-07-25: 1.2× shipped (sound barrier); the gap is §8.4's
-   band-balance + wake-latency headroom — contracts 1-3 are all met.**
+   **STATUS 2026-07-25 (Stage C): TARGET EXCEEDED — pass ≈2.2× at 4 bands,
+   essentially the Amdahl bound (2.3×), via the adaptive band balancer +
+   worker JIT warmup + spin-then-park (§5 Stage C). Contracts 1-3 met
+   throughout.**
 
 ## 1. Why this pass, and why it CAN be exact
 
@@ -236,9 +240,47 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
      by staring and too frequent to ship. The genesis identity gate (a seed
      the snapshot gate didn't cover) is what caught it; keep BOTH horizons
      in the probe forever.
-3. **Battery** — full gate set (§6) + perf A/B; only then discuss flipping
-   the node-side default for the heavy tools (batteries run 4-core
-   containers) and, separately and later, the browser default.
+3. **Stage C — SHIPPED 2026-07-25 (balance + browser leg).** Three changes
+   closed the perf gap, one built the browser path:
+   - **Adaptive band balancer**: band ranges moved into the ctrl SAB (4
+     int32/band — rebalancing is plain writes, no respawn), workers add each
+     phase's wall ms to a per-band hdr slot, and the coordinator resizes
+     land ranges between firings (EMA 0.3, 25% blend, settle-in guard that
+     discards the pool's first 4 samples and any >200 ms outlier). Identity
+     is banding-independent BY CONSTRUCTION, so a timing-driven,
+     non-deterministic balancer cannot move a bit — only the finish line of
+     the slowest band. Converged bands are visibly unequal (the last,
+     sparse-land band runs ~50% wider than the coordinator's).
+   - **Worker JIT warmup**: each worker is its own V8 isolate, so its
+     kernels start COLD — the first firings ran interpreted (measured 40-65
+     ms vs ~8 warm), poisoning the tick AND the balancer's feedback (it
+     chased the transient for ~20 firings). Workers now run every kernel
+     ~64× over tiny local dummy buffers (same argument shapes → same hidden
+     classes/ICs) before announcing ready.
+   - **Spin-then-park** (~12k empty loads before Atomics.wait) turns most
+     phase wakes into free pickups; the coordinator parks on a wake-HINT
+     counter (bumped+notified by workers; hint anomalies harmless — the
+     epoch slots stay the sole truth).
+   - **Browser leg**: the run loop moved to popFieldWorkerCore.js, shared by
+     the node entry (worker_threads) and popFieldWorker.browser.js (a Web
+     Worker that takes its init via ONE postMessage, then enters the same
+     Atomics loop). The pool spawns whichever substrate exists; browsers
+     additionally require crossOriginIsolated AND running inside a worker
+     (Atomics.wait is illegal on the main thread — the wantPool guard keeps
+     a main-thread sim on the identical lever-1 path). vite dev/preview now
+     send COOP/COEP; PRODUCTION hosting must too (GitHub Pages cannot set
+     headers — a coi-serviceworker-style shim is the open deployment
+     decision). Gate: tools/browser_popfield_check.mjs — headless chromium
+     against the dev server asserts crossOriginIsolated, the pool genuinely
+     engaged (nested workers), and lever-0 ≡ lever-4 hashes in-browser.
+   **Measured (same-box 600-tick sweep, 30k/1920, 4-core):** settlements
+   80.9 → 54.1 ms/tick (−33%), whole tick 145.2 → 113.8 (−22%); through the
+   L1 shape baseline the pass is ≈2.2× with ~86% parallel-phase efficiency.
+   (Absolute ms are container-relative — this box ran ~2× slower than the
+   Stage B one; only same-box pairs are comparable.)
+4. **Battery** — the full gate set (§6) rides every stage; the remaining
+   flips are POLICY: the node-side default for heavy tools, and the
+   browser default once production hosting sends the isolation headers.
 
 ## 6. Proof battery (all must pass before any default moves)
 
@@ -271,12 +313,10 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
 
 ## 8. Open questions (Stage B outcomes)
 
-1. **Node topology SETTLED**: a flat pool spawned synchronously from the sim
-   thread via `process.getBuiltinModule("node:worker_threads")`, barrier over
-   a ctrl SAB. **Browser topology still open** — the browser leg currently
-   resolves to the lever-1 one-thread kernel path (identical results); when
-   built it needs COOP/COEP + a worker-spawn path that doesn't rely on the
-   event loop mid-run, and the §5 Stage B findings apply verbatim.
+1. **Topology SETTLED on both platforms** (Stage C): node = flat pool via
+   `process.getBuiltinModule`; browser = nested Web Workers spawned from the
+   sim worker, init via one pre-loop postMessage, gated on
+   crossOriginIsolated + not-main-thread. Same core loop file for both.
 2. Render-mirror audit: still open, but lower-stakes than feared — SAB-backed
    views serialize/hash identically and the sim's own consumers all read
    through `world.*` references (the conversion replaces them in place).
@@ -285,7 +325,9 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
    pool is ready by the next firing (workers boot on their own threads while
    the sim steps), and the interim firings take the identical-result fallback
    — no eager path needed anywhere.
-4. NEW (measured, open): band balance — bands split by land-tile COUNT, but
-   work per tile varies (spikes, owners, works hotspots). A cost-weighted
-   split (e.g. by last firing's per-band wall time) could close part of the
-   1.5×→2.1× gap; only worth it if the pass grows again at Modern maturity.
+4. Band balance: CLOSED by Stage C's adaptive balancer (timing-feedback
+   resize per firing) — the pass sits at ~the Amdahl bound. Remaining open:
+   production hosting's isolation headers (the coi-serviceworker decision),
+   and the single-file build's treatment of the worker chunk
+   (vite-plugin-singlefile vs emitted worker files — verify before any
+   browser default flip).

@@ -30,7 +30,7 @@ import { tileOpenness } from "./transport.js";
 // popFieldPool.js. Lever 0 keeps the serial loops in THIS file untouched; the
 // cross-lever identity probe (tools/probe_popfield_par.mjs) gates the pairing.
 import * as PFK from "./popFieldKernel.js";
-import { signalPhase, awaitPhase, ensurePool, makeBands } from "./popFieldPool.js";
+import { signalPhase, awaitPhase, ensurePool, makeBands, writeBands } from "./popFieldPool.js";
 const { RM_FULL, ACCESS_RIVER, ACCESS_COAST, ACCESS_DEV0, ACCESS_DEVK, RELIEF_PEN,
         DEV_BASE, DEV_TECH, R_DEV0, R_DEVK, R_TROPIC,
         FADE_FERT, FADE_RELIEF, FADE_PUMP, FADE_MED, FADE_ACCESS,
@@ -843,6 +843,64 @@ function _pfPackTables(world, ctx) {
   ctx.capT = capT; ctx.gateT = gateT;
 }
 
+// Adaptive band balance (docs/popfield-parallel.md §8.4): equalize measured
+// per-band phase time by resizing the LAND ranges between firings. Band 0's
+// time is accumulated JS-side around the coordinator's own kernel calls
+// (ar._t0Acc); workers add theirs to hdr[H_TIME0+k]. Identity is
+// banding-independent BY CONSTRUCTION, so this feedback loop — timing-driven,
+// non-deterministic, different every run — can never change a bit of the
+// trajectory; it only moves the finish line of the slowest band. Raw memcpy
+// slices stay fixed-equal (uniform cost). EMA + 25% blend per firing keeps
+// boundaries from oscillating.
+function _pfRebalance(ar, pool, nLand, N) {
+  const bands = pool.bands;
+  let W = ar._bandW;
+  if (!W || W.length !== bands) {
+    W = ar._bandW = new Float64Array(bands);
+    const b = makeBands(nLand, N, bands);
+    for (let k = 0; k < bands; k++) W[k] = b[k].hi - b[k].lo;
+    ar._bandEma = new Float64Array(bands);
+    ar._bandT = new Float64Array(bands);
+    ar._t0Acc = 0;
+  }
+  const ema = ar._bandEma, t = ar._bandT, hdr = pool.hdr;
+  let all = ar._t0Acc > 0;
+  t[0] = ar._t0Acc;
+  for (let k = 1; k < bands; k++) { t[k] = hdr[PFK.H_TIME0 + k]; if (!(t[k] > 0)) all = false; }
+  ar._t0Acc = 0;
+  for (let k = 1; k < bands; k++) hdr[PFK.H_TIME0 + k] = 0;
+  // Settle-in guard: discard the pool's first few samples (spawn/convert
+  // transients) and any absurd one (a GC pause inside a phase) — feeding
+  // those to the EMA made the balancer chase ghosts for ~20 firings.
+  ar._balN = (ar._balN || 0) + 1;
+  if (ar._balN <= 4) all = false;
+  else if (all) { for (let k = 0; k < bands; k++) if (t[k] > 200) { all = false; break; } }
+  if (all) {
+    for (let k = 0; k < bands; k++) ema[k] = ema[k] > 0 ? 0.7 * ema[k] + 0.3 * t[k] : t[k];
+    let sum = 0;
+    for (let k = 0; k < bands; k++) sum += W[k] / ema[k];
+    const minW = Math.max(64, nLand >> 6);
+    let acc = 0;
+    for (let k = 0; k < bands; k++) {
+      const target = (nLand * (W[k] / ema[k])) / sum;
+      let w = W[k] + 0.25 * (target - W[k]);
+      if (w < minW) w = minW;
+      W[k] = w; acc += w;
+    }
+    const scale = nLand / acc;
+    for (let k = 0; k < bands; k++) W[k] *= scale;
+  }
+  const ranges = [];
+  let lo = 0;
+  for (let k = 0; k < bands; k++) {
+    const hi = k === bands - 1 ? nLand : Math.min(nLand, lo + Math.round(W[k]));
+    ranges.push({ lo, hi: hi < lo ? lo : hi, rawLo: Math.floor((N * k) / bands), rawHi: Math.floor((N * (k + 1)) / bands) });
+    lo = ranges[k].hi;
+  }
+  writeBands(pool.ctrl, bands, ranges);
+  return ranges[0];
+}
+
 // Build the per-firing parallel context. Never affects the trajectory — only
 // which code path computes the identical numbers.
 function _pfPrepare(world, land, nLand, devF) {
@@ -854,8 +912,15 @@ function _pfPrepare(world, land, nLand, devF) {
   let mv = world._migMove; if (!mv || mv.length !== N) mv = world._migMove = new Float64Array(N);
   let ssum = world._migSum; if (!ssum || ssum.length !== N) ssum = world._migSum = new Float64Array(N);
   const lever = T.POP_FIELD_WORKERS | 0;
+  // Node always qualifies (worker_threads); a browser qualifies only when the
+  // page is cross-origin isolated (COOP/COEP — the SharedArrayBuffer gate).
+  // The browser additionally requires running INSIDE a worker (the app's sim
+  // thread): awaitPhase blocks in Atomics.wait, which browsers forbid on the
+  // main thread — a main-thread sim keeps the identical lever-1 path.
   const wantPool = lever >= 2 && typeof SharedArrayBuffer !== "undefined" &&
-    typeof process !== "undefined" && !!(process.versions && process.versions.node);
+    ((typeof process !== "undefined" && !!(process.versions && process.versions.node)) ||
+     (typeof crossOriginIsolated !== "undefined" && crossOriginIsolated === true &&
+      typeof window === "undefined"));
   const ctx = { usePool: false, pool: null, arena: null, nLand, band0: null, mv, ssum, capT: null, gateT: null, devF: devF || null };
   if (wantPool) {
     const ar = _pfEnsureArena(world);
@@ -866,7 +931,7 @@ function _pfPrepare(world, land, nLand, devF) {
     if (!pool) pool = world._pfPool = ensurePool(world, _pfArenaMsg(ar), lever);
     if (pool.readyNow()) {
       ctx.usePool = true; ctx.pool = pool;
-      ctx.band0 = makeBands(ar.nLand, N, lever)[0];
+      ctx.band0 = _pfRebalance(ar, pool, ar.nLand, N);
       if (devF) { ar.devView.set(world.devField); ctx.devF = ar.devView; }   // per-firing mirror (wave pass may swap devField's buffer)
     }
   }
@@ -895,7 +960,9 @@ function _pfCap(ctx, world, o) {
     h[PFK.H_WORKSK] = ko.worksK; h[PFK.H_DEVON] = ko.devOn ? 1 : 0; h[PFK.H_OWNERON] = ko.ownerOn ? 1 : 0;
     h[PFK.H_HASRIVER] = ko.hasRiver ? 1 : 0; h[PFK.H_HASCOAST] = ko.hasCoast ? 1 : 0; h[PFK.H_HASRELIEF] = ko.hasRelief ? 1 : 0;
     signalPhase(ctx.pool, PFK.OP_CAP, _pfParity(ctx, world.popField));
-    PFK.capBand(ko, 0, ctx.band0.hi);
+    const t0 = performance.now();
+    PFK.capBand(ko, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
     awaitPhase(ctx.pool); _pfCheck(ctx);
   } else PFK.capBand(ko, 0, ctx.nLand);
 }
@@ -908,7 +975,9 @@ function _pfGrowth(ctx, o) {
     h[PFK.H_RBULK] = ko.rBulk; h[PFK.H_GL] = ko.gl; h[PFK.H_GLON] = ko.glOn ? 1 : 0;
     h[PFK.H_DT] = ko.dt; h[PFK.H_TFON] = ko.tfOn ? 1 : 0; h[PFK.H_DEVON] = ctx.devF ? 1 : 0;
     signalPhase(ctx.pool, PFK.OP_GROWTH, _pfParity(ctx, o.pop));
-    PFK.growthBand(ko, 0, ctx.band0.hi);
+    const t0 = performance.now();
+    PFK.growthBand(ko, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
     awaitPhase(ctx.pool); _pfCheck(ctx);
   } else PFK.growthBand(ko, 0, ctx.nLand);
 }
@@ -920,11 +989,15 @@ function _pfMigrate(ctx, pop, nxt, cap, land, nLand, tw, th, migShare) {
     const par = _pfParity(ctx, pop);
     ctx.pool.hdr[PFK.H_MIGSHARE] = migShare;
     signalPhase(ctx.pool, PFK.OP_MIG_A, par);
-    PFK.migCopyBand(nxt, pop, 0, ctx.band0.rawHi);
-    PFK.mig6aBand(oa, 0, ctx.band0.hi);
+    let t0 = performance.now();
+    PFK.migCopyBand(nxt, pop, ctx.band0.rawLo, ctx.band0.rawHi);
+    PFK.mig6aBand(oa, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
     awaitPhase(ctx.pool); _pfCheck(ctx);
     signalPhase(ctx.pool, PFK.OP_MIG_B, par);
-    PFK.mig6bBand(ob, 0, ctx.band0.hi);
+    t0 = performance.now();
+    PFK.mig6bBand(ob, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
     awaitPhase(ctx.pool); _pfCheck(ctx);
   } else {
     PFK.migCopyBand(nxt, pop, 0, pop.length);
@@ -941,7 +1014,9 @@ function _pfWorks(ctx, o) {
     h[PFK.H_RATE] = ko.rate; h[PFK.H_DK] = ko.dk; h[PFK.H_LEADAGRI] = ko.leadAgri;
     h[PFK.H_TFWON] = ko.tfWOn ? 1 : 0; h[PFK.H_DEVON] = ctx.devF ? 1 : 0;
     signalPhase(ctx.pool, PFK.OP_WORKS, _pfParity(ctx, o.pop));
-    PFK.worksBand(ko, 0, ctx.band0.hi);
+    const t0 = performance.now();
+    PFK.worksBand(ko, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
     awaitPhase(ctx.pool); _pfCheck(ctx);
   } else PFK.worksBand(ko, 0, ctx.nLand);
 }
