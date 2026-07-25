@@ -1,139 +1,169 @@
-/* ── Atlas UI: ye-olde parchment theme ──
-   Color tokens, parchment surfaces, ink typography, hand-drawn divider
-   utilities. Class names use the au- prefix so they cannot collide with
-   anything in the worldgen modules. */
+/* ── Atlas UI: the map table ──
+   Two-surface system (docs/ui-overhaul-plan.md §3):
+     CHROME — the dark table the atlas lies on. Top bar, docks, drawers,
+       feed: controls that belong to the PLAYER. Quiet, translucent, recedes.
+     PAPER  — the parchment. The map, legends, hover cards and full-screen
+       documents: content that belongs to the WORLD. Warm, glows on the table.
+   Class prefix au- kept so nothing in worldgen modules can collide.
+   Fonts are self-hosted latin subsets (src/ui/fonts.css) — the production
+   single-file build has no runtime font fetch. */
 
-@import url('https://fonts.googleapis.com/css2?family=IM+Fell+English:ital,wght@0,400;1,400&family=Cinzel:wght@500;600;700&display=swap');
+@import "./ui/fonts.css";
 
 :root {
-  --au-paper: #e6d2a3;
-  --au-paper-aged: #a88c5c;
-  --au-paper-deep: #8a6c40;
-  --au-ink: #3a2614;
-  --au-ink-faded: #6b4f37;
-  --au-ink-light: #8b7556;
-  --au-wax-red: #7a2820;
-  --au-verdigris: #3a5a48;
-  --au-gold: #a07832;
-  --au-shadow: rgba(40, 26, 12, 0.45);
-  --au-table-dark: #1a0f04;
-  /* Used from inline JSX styles (WorldSim) as var() values, not classes. */
+  /* card surfaces (one dark theme everywhere; the only paper left is the
+     map's own art — label halos, the atlas lens) */
+  --au-paper: #221a12;
+  --au-paper-aged: rgba(214, 178, 118, 0.16);
+  --au-paper-deep: #4a3a26;
+  --au-ink: #e4d6b8;
+  --au-ink-faded: #a8977c;
+  --au-ink-light: #7d6f5c;
+  --au-wax-red: #c25548;
+  --au-verdigris: #5da88c;
+  --au-gold: #d8b13a;
+  --au-shadow: rgba(0, 0, 0, 0.5);
+  --au-table-dark: #16100a;
+
+  /* chrome (the dark table) */
+  --au-ch-bg: #201812;            /* raised chrome surface */
+  --au-ch-bg-high: #2a2018;       /* hovered / active chrome */
+  --au-ch-sunk: #120d08;          /* sunken wells (inputs, tracks) */
+  --au-ch-line: rgba(214, 178, 118, 0.13);
+  --au-ch-line-strong: rgba(214, 178, 118, 0.28);
+  --au-ch-text: #d8c9a8;          /* primary chrome text */
+  --au-ch-text-dim: #9d8c6d;      /* secondary */
+  --au-ch-text-faint: #6f6250;    /* tertiary / disabled */
+  --au-ch-gold: #d8b13a;          /* highlights, selection on chrome */
+  --au-ch-wax: #b4453a;           /* primary action / live state on chrome */
+  --au-ch-good: #7fae72;
+  --au-ch-bad: #c96a4f;
+
+  /* legacy aliases still referenced from inline JSX styles */
   --au-fade: var(--au-ink-faded);
-  --au-line: rgba(58, 38, 20, 0.22);
+  --au-line: rgba(216, 190, 150, 0.18);
+
+  /* type scale — nothing interactive below 11px */
+  --fs-0: 11px;   /* fine print, key rows */
+  --fs-1: 12.5px; /* secondary UI */
+  --fs-2: 14px;   /* base */
+  --fs-3: 16px;   /* section titles */
+  --fs-4: 20px;   /* page titles */
+
+  --z-docks: 20; --z-drawers: 30; --z-popovers: 40;
+  --z-toasts: 50; --z-documents: 60; --z-system: 70;
 }
 
+/* App-style document lockdown: the map owns all panning. Without this, iOS
+   Safari rubber-bands and side-scrolls the whole page when the codex drawer
+   slides or a drag leaves the canvas. */
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 body { margin: 0; background: var(--au-table-dark); }
 
 .au-root {
-  font-family: 'IM Fell English', Georgia, 'Palatino Linotype', serif;
-  color: var(--au-ink);
-  font-size: 13px;
-  line-height: 1.35;
+  font-family: 'Alegreya Sans', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
+  color: var(--au-ch-text);
+  font-size: var(--fs-2);
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
 }
 
 .au-root * { box-sizing: border-box; }
+.au-root :focus-visible { outline: 2px solid var(--au-ch-gold); outline-offset: 1px; }
 
 .au-heading {
   font-family: 'Cinzel', 'Trajan Pro', Georgia, serif;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: var(--au-ink);
 }
 
-.au-sc {
-  font-variant: small-caps;
-  letter-spacing: 0.08em;
+.au-sc { font-variant: small-caps; letter-spacing: 0.08em; }
+.au-num { font-variant-numeric: tabular-nums; }
+.au-serif { font-family: 'IM Fell English', Georgia, 'Palatino Linotype', serif; }
+
+/* ── CHROME surface — the dark table ── */
+.au-chrome {
+  background: linear-gradient(180deg, var(--au-ch-bg-high) 0%, var(--au-ch-bg) 12%, var(--au-ch-bg) 100%);
+  color: var(--au-ch-text);
+  border: 1px solid var(--au-ch-line);
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+.au-chrome.au-glass {
+  background: rgba(26, 19, 13, 0.86);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
-/* ── Parchment surface — warm paper, age stains, soft inner shadow ── */
+/* ── CARD surface — the class name survives (hundreds of call sites), the
+   paper does not: a slightly-raised dark card, one theme with the chrome. ── */
 .au-parchment {
-  background-color: var(--au-paper);
-  background-image:
-    radial-gradient(ellipse at 22% 18%, rgba(184,140,88,0.20) 0%, transparent 38%),
-    radial-gradient(ellipse at 78% 82%, rgba(184,140,88,0.18) 0%, transparent 42%),
-    radial-gradient(ellipse at 50% 50%, rgba(120,80,40,0.05) 0%, transparent 70%),
-    repeating-linear-gradient(143deg, transparent 0 2px, rgba(120,80,40,0.018) 2px 3px),
-    repeating-linear-gradient(37deg,  transparent 0 2px, rgba(120,80,40,0.012) 2px 4px);
+  background: linear-gradient(180deg, #2a2118 0%, #241c13 14%, #211a12 100%);
   color: var(--au-ink);
   border: 1px solid var(--au-paper-aged);
-  border-radius: 2px;
+  border-radius: 4px;
   position: relative;
-  box-shadow:
-    inset 0 0 22px rgba(120,80,40,0.20),
-    inset 0 0 4px rgba(160,120,72,0.3),
-    0 3px 10px var(--au-shadow);
+  box-shadow: 0 3px 12px var(--au-shadow);
 }
-
 .au-parchment.au-elev {
-  box-shadow:
-    inset 0 0 28px rgba(120,80,40,0.26),
-    inset 0 0 6px rgba(160,120,72,0.35),
-    0 8px 26px rgba(10,4,0,0.55),
-    0 2px 6px var(--au-shadow);
+  box-shadow: 0 14px 44px rgba(0,0,0,0.7), 0 2px 8px var(--au-shadow);
+  border-color: rgba(214, 178, 118, 0.24);
 }
 
-.au-parchment::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background:
-    radial-gradient(circle at 8% 12%,  rgba(80,50,20,0.10) 0%, transparent 22px),
-    radial-gradient(circle at 92% 14%, rgba(80,50,20,0.10) 0%, transparent 22px),
-    radial-gradient(circle at 12% 88%, rgba(80,50,20,0.10) 0%, transparent 22px),
-    radial-gradient(circle at 88% 90%, rgba(80,50,20,0.10) 0%, transparent 22px);
-}
-
-/* ── Hand-drawn dividers ── */
+/* ── Dividers ── */
 .au-rule {
   height: 1px;
-  background: linear-gradient(to right, transparent, var(--au-ink-faded) 10%, var(--au-ink-faded) 90%, transparent);
-  opacity: 0.35;
+  background: linear-gradient(to right, transparent, currentColor 10%, currentColor 90%, transparent);
+  opacity: 0.22;
   margin: 6px 2px;
 }
 .au-vrule {
   width: 1px;
   align-self: stretch;
-  background: linear-gradient(to bottom, transparent, var(--au-ink-faded) 14%, var(--au-ink-faded) 86%, transparent);
-  opacity: 0.35;
+  background: linear-gradient(to bottom, transparent, currentColor 14%, currentColor 86%, transparent);
+  opacity: 0.22;
   margin: 0 4px;
 }
 
-/* ── Buttons / tabs / rail entries ── */
+/* ── Buttons ──
+   Default styling follows the surface: on chrome they are dark quiet keys,
+   on paper they keep the old inked look. */
 .au-btn {
-  background: rgba(120,80,40,0.04);
-  border: 1px solid rgba(58,38,20,0.32);
-  color: var(--au-ink);
+  background: rgba(214, 178, 118, 0.06);
+  border: 1px solid var(--au-ch-line);
+  color: var(--au-ch-text);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--fs-1);
   padding: 4px 10px;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
   letter-spacing: 0.04em;
-  border-radius: 2px;
+  border-radius: 3px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   justify-content: center;
 }
-.au-btn:hover { background: rgba(120,80,40,0.16); border-color: rgba(58,38,20,0.55); }
-.au-btn.au-active { background: rgba(120,80,40,0.28); border-color: var(--au-ink); font-weight: 600; }
+.au-btn:hover { background: rgba(214, 178, 118, 0.14); border-color: var(--au-ch-line-strong); }
+.au-btn.au-active { background: rgba(216, 177, 58, 0.16); border-color: var(--au-ch-gold); color: var(--au-ch-gold); font-weight: 700; }
 .au-btn:focus { outline: none; }
+.au-btn:focus-visible { outline: 2px solid var(--au-ch-gold); outline-offset: 1px; }
 .au-btn.au-flat { background: transparent; border-color: transparent; }
-.au-btn.au-flat:hover { background: rgba(120,80,40,0.10); }
-.au-btn.au-wax { border-color: var(--au-wax-red); color: var(--au-wax-red); }
-.au-btn.au-wax.au-active { background: rgba(122,40,32,0.18); color: var(--au-wax-red); }
+.au-btn.au-flat:hover { background: rgba(214, 178, 118, 0.10); }
+.au-btn.au-wax { border-color: var(--au-ch-wax); color: var(--au-ch-wax); }
+.au-btn.au-wax.au-active { background: rgba(180, 69, 58, 0.18); border-color: var(--au-ch-wax); color: #e08a7d; }
 .au-btn.au-block { width: 100%; }
 
+.au-parchment .au-btn.au-wax { border-color: var(--au-wax-red); color: var(--au-wax-red); }
+
+/* ── Rail entries (docks, drawers, menus — chrome by default) ── */
 .au-rail-tab {
   background: transparent;
   border: none;
   border-left: 3px solid transparent;
-  color: var(--au-ink-light);
+  color: var(--au-ch-text-dim);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--fs-1);
   padding: 6px 14px 6px 11px;
   cursor: pointer;
   letter-spacing: 0.08em;
@@ -144,41 +174,95 @@ body { margin: 0; background: var(--au-table-dark); }
   display: block;
   width: 100%;
 }
-.au-rail-tab:hover { background: rgba(120,80,40,0.10); color: var(--au-ink-faded); }
+.au-rail-tab:hover { background: rgba(214, 178, 118, 0.08); color: var(--au-ch-text); }
 .au-rail-tab.au-active {
-  background: rgba(120,80,40,0.22);
-  color: var(--au-ink);
-  border-left-color: var(--au-wax-red);
-  font-weight: 600;
+  background: rgba(216, 177, 58, 0.12);
+  color: var(--au-ch-gold);
+  border-left-color: var(--au-ch-wax);
+  font-weight: 700;
 }
 
 .au-tab {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--au-ink-light);
+  color: var(--au-ch-text-dim);
   font-family: inherit;
-  font-size: 11px;
-  padding: 6px 10px;
+  font-size: var(--fs-0);
+  padding: 7px 10px;
   cursor: pointer;
   letter-spacing: 0.10em;
   font-variant: small-caps;
   transition: color 0.12s, border-color 0.12s;
 }
-.au-tab:hover { color: var(--au-ink-faded); }
-.au-tab.au-active { color: var(--au-ink); border-bottom-color: var(--au-wax-red); }
+.au-tab:hover { color: var(--au-ch-text); }
+.au-tab.au-active { color: var(--au-ch-gold); border-bottom-color: var(--au-ch-wax); }
+
+/* ── The lens dock (56px icon rail) ── */
+.au-dock-btn {
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  color: var(--au-ch-text-dim);
+  width: 100%;
+  padding: 7px 0 5px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.au-dock-btn .au-dock-ico { font-size: 19px; line-height: 1.15; filter: grayscale(0.35) sepia(0.25); }
+.au-dock-btn .au-dock-lbl { font-size: 9px; letter-spacing: 0.06em; font-variant: small-caps; }
+.au-dock-btn:hover { background: rgba(214,178,118,0.08); color: var(--au-ch-text); }
+.au-dock-btn.au-active {
+  background: rgba(216,177,58,0.12);
+  color: var(--au-ch-gold);
+  border-left-color: var(--au-ch-wax);
+}
+.au-dock-btn.au-active .au-dock-ico { filter: none; }
+.au-dock-btn.au-locked { opacity: 0.38; }
+.au-dock-btn:disabled { cursor: default; }
+
+/* ── Entity chip — a clickable noun ── */
+.au-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+  text-decoration: underline;
+  text-decoration-color: rgba(160, 120, 50, 0.45);
+  text-underline-offset: 2px;
+}
+.au-chip:hover { background: rgba(214, 178, 118, 0.12); text-decoration-color: currentColor; }
+.au-chip .au-chip-sw {
+  width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+}
 
 /* ── Text colors ── */
 .au-fade { color: var(--au-ink-faded); }
 .au-mute { color: var(--au-ink-light); }
+.au-chrome .au-fade, .au-cfade { color: var(--au-ch-text-dim); }
+.au-chrome .au-mute { color: var(--au-ch-text-faint); }
 .au-gold-text { color: var(--au-gold); font-weight: 600; }
+.au-chrome .au-gold-text { color: var(--au-ch-gold); }
 .au-verde-text { color: var(--au-verdigris); }
 
 /* ── Scrollbar ── */
+.au-scroll { scrollbar-width: thin; scrollbar-color: rgba(160,130,80,0.4) transparent; }
 .au-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
 .au-scroll::-webkit-scrollbar-track { background: transparent; }
-.au-scroll::-webkit-scrollbar-thumb { background: rgba(120,80,40,0.45); border-radius: 4px; }
-.au-scroll::-webkit-scrollbar-thumb:hover { background: var(--au-ink-faded); }
+.au-scroll::-webkit-scrollbar-thumb { background: rgba(160,130,80,0.35); border-radius: 4px; }
+.au-scroll::-webkit-scrollbar-thumb:hover { background: rgba(160,130,80,0.6); }
 
 /* ── Native input styling ── */
 .au-root input[type="range"] {
@@ -188,93 +272,119 @@ body { margin: 0; background: var(--au-table-dark); }
   cursor: pointer;
 }
 .au-root input[type="range"]::-webkit-slider-runnable-track {
-  height: 3px;
-  background: var(--au-ink-faded);
-  border-radius: 2px;
+  height: 3px; background: var(--au-ch-text-faint); border-radius: 2px;
 }
 .au-root input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 12px; height: 12px;
-  background: var(--au-wax-red);
-  border: 1px solid var(--au-ink);
+  background: var(--au-ch-wax);
+  border: 1px solid rgba(0,0,0,0.5);
   border-radius: 50%;
   margin-top: -4.5px;
-  box-shadow: 0 1px 2px rgba(20,4,0,0.4);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.4);
 }
-.au-root input[type="range"]::-moz-range-track {
-  height: 3px;
-  background: var(--au-ink-faded);
-  border-radius: 2px;
-}
+.au-root input[type="range"]::-moz-range-track { height: 3px; background: var(--au-ch-text-faint); border-radius: 2px; }
 .au-root input[type="range"]::-moz-range-thumb {
-  width: 12px; height: 12px;
-  background: var(--au-wax-red);
-  border: 1px solid var(--au-ink);
-  border-radius: 50%;
+  width: 12px; height: 12px; background: var(--au-ch-wax);
+  border: 1px solid rgba(0,0,0,0.5); border-radius: 50%;
 }
 
 .au-root select {
-  background: rgba(232,212,164,0.6);
-  border: 1px solid rgba(58,38,20,0.4);
-  color: var(--au-ink);
+  background: var(--au-ch-sunk);
+  border: 1px solid var(--au-ch-line-strong);
+  color: var(--au-ch-text);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--fs-1);
   padding: 3px 6px;
-  border-radius: 2px;
+  border-radius: 3px;
   cursor: pointer;
 }
-
-.au-root input[type="checkbox"] {
-  accent-color: var(--au-wax-red);
+.au-root input[type="checkbox"] { accent-color: var(--au-ch-wax); }
+.au-root input[type="text"], .au-root input[type="search"], .au-root input[type="number"] {
+  background: var(--au-ch-sunk);
+  border: 1px solid var(--au-ch-line);
+  color: var(--au-ch-text);
+  font: inherit;
+  font-size: var(--fs-1);
+  padding: 3px 8px;
+  border-radius: 3px;
 }
 
 /* ── Era ribbon (top chronicle) ── */
-.au-chronicle {
-  display: flex;
-  align-items: baseline;
-  gap: 18px;
-  padding: 6px 22px;
-  font-size: 13px;
-}
-.au-chronicle .au-era {
+.au-chronicle { display: flex; align-items: baseline; gap: 18px; padding: 6px 22px; font-size: var(--fs-1); }
+.au-chronicle .au-era, .au-era {
   font-family: 'Cinzel', Georgia, serif;
   font-weight: 700;
-  font-size: 15px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--au-ink);
 }
-.au-chronicle .au-year {
-  font-size: 14px;
-  font-style: italic;
-  color: var(--au-ink);
-}
+.au-chronicle .au-year, .au-year { font-style: italic; }
 
-/* ── Pico hover card ── */
+/* ── Pico hover card (paper, floats at cursor) ── */
 .au-pico {
   position: fixed;
-  z-index: 100;
-  padding: 6px 11px;
+  z-index: var(--z-popovers);
+  padding: 7px 12px;
   pointer-events: none;
-  font-size: 12px;
-  line-height: 1.35;
-  max-width: 280px;
+  font-size: var(--fs-1);
+  line-height: 1.4;
+  max-width: 300px;
 }
 .au-pico .au-pico-title {
   font-family: 'Cinzel', Georgia, serif;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 13.5px;
   letter-spacing: 0.04em;
   margin-bottom: 2px;
 }
 
 /* ── Key card (collapsible legend) ── */
-.au-key {
-  font-size: 11px;
-  line-height: 1.35;
-}
+.au-key { font-size: var(--fs-0); line-height: 1.4; }
 .au-key-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
 .au-key-swatch {
   width: 14px; height: 9px; border-radius: 1px; flex-shrink: 0;
-  border: 1px solid rgba(58,38,20,0.30);
+  border: 1px solid rgba(0,0,0,0.4);
 }
+
+/* ── Toasts (epochal events, NE over the map) ── */
+.au-toast {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  cursor: pointer;
+  max-width: 340px;
+  animation: au-toast-in 0.28s ease-out;
+}
+@keyframes au-toast-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes au-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .au-toast { animation: none; }
+  .au-root * { transition-duration: 0.01ms !important; }
+}
+
+/* ── iPhone mode (≤760px): the app stays the same machine, laid out for a
+   hand. The codex is a slide-over (WorldSim renders it fixed); here the
+   chrome tightens and touch affordances land. ── */
+@media (max-width: 760px) {
+  .au-root { -webkit-tap-highlight-color: transparent; }
+  .au-toast { max-width: 76vw; }
+  .au-dock-btn { padding: 9px 0 7px; }          /* bigger touch targets */
+  .au-dock-btn .au-dock-lbl { display: none; }  /* icons carry the rail */
+  .au-pico { display: none; }                   /* no hover on touch */
+}
+
+/* ── Feed category filter chips ── */
+.au-filter {
+  background: transparent;
+  border: 1px solid var(--au-ch-line);
+  color: var(--au-ch-text-dim);
+  border-radius: 10px;
+  font: inherit;
+  font-size: var(--fs-0);
+  padding: 1px 9px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.au-filter:hover { border-color: var(--au-ch-line-strong); color: var(--au-ch-text); }
+.au-filter.au-active { border-color: var(--au-ch-gold); color: var(--au-ch-gold); background: rgba(216,177,58,0.10); }

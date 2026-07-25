@@ -21,7 +21,7 @@ import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
 import { narrate } from "./sim/peopleSim/events.js";
 import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
-import { applyTuning, resetTuning, T } from "./sim/peopleSim/tuning.js";
+import { applyTuning, resetTuning, T, rNormPop } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
@@ -462,15 +462,34 @@ function buildSnapshot() {
     loyalHome = world._tileHomeland ? world._tileHomeland.slice() : null;
   }
   // Population view: the people-on-land field (popField — the canonical
-  // demographic substrate), log-packed to a Uint8 heat so one bright city
-  // basin doesn't flatten the countryside. popMax rides along for the legend.
+  // demographic substrate) packed on an ABSOLUTE log ruler, NOT against the
+  // frame's own maximum. The relative packing (log1p(pf)/log1p(popMax)) was
+  // measured to destroy the lens both ways: at genesis the densest tile IS
+  // ordinary farmland, so the whole habitable band sat at the top of the ramp
+  // (a world-wide glow shaped like fertility); and as the world grows
+  // multiplicatively, log-vs-max ratios compress toward 1 on every tile — the
+  // pattern froze while the whole map drifted brighter. The fixed ruler:
+  // census-units per REFERENCE tile (pf × bridge × rNormPop², grid-invariant),
+  // log10 over 0.1..1000 — ≈100 → ≈1,000,000 real people at the UI's ×1000
+  // display scale, 4 decades calibrated to the measured range (dawn median
+  // ~230, cradle valleys ~6-10k, mature belts ~5-13k, urban cores beyond).
+  // Same colour = same density in every era; a thin dawn world LOOKS thin.
+  // popMax rides along for the legend, in the same per-reference-tile units.
+  // (ONE_POP off: no bridge — the raw-unit fallback only shifts the ruler.)
   let popDens = null, popMax = 0;
   if (viewMode === "population" && sendStatic && world.popField) {
     const pf = world.popField, N = world.N;
     for (let ti = 0; ti < N; ti++) if (pf[ti] > popMax) popMax = pf[ti];
-    const logMax = Math.log1p(popMax);
+    const rn = rNormPop(world);
+    const k = (world._onePopScale || 1) * rn * rn;   // field → census units per reference tile
+    const LO = -1, SPAN = 4;                          // log10(0.1) .. log10(1000)
     popDens = new Uint8Array(N);
-    if (logMax > 0) for (let ti = 0; ti < N; ti++) popDens[ti] = pf[ti] > 0.01 ? Math.min(250, Math.round(Math.log1p(pf[ti]) / logMax * 250)) : 0;
+    for (let ti = 0; ti < N; ti++) {
+      const p = pf[ti] * k;
+      if (p <= 0.1) continue;                         // below the ruler: effectively empty, leave the base map
+      popDens[ti] = Math.min(250, Math.round((Math.log10(p) - LO) / SPAN * 250));
+    }
+    popMax *= k;
   }
 
   // Money view: the animated coin flows (change every tick → send each frame
@@ -572,9 +591,9 @@ function buildSnapshot() {
     owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim,
     fieldDom, fieldSec, fieldLayer,   // per-tile identity field for the active culture/faith/language lens
     loyal, loyalHome,                 // loyalty lens: attachment heat + the ground's remembered nation
-    // popMax → CENSUS people on the densest tile (× _onePopScale): the raw field
-    // max is field units, not people; the legend then ×POP_SCALE via fmtPeople.
-    popDens, popMax: popDens ? popMax * (world._onePopScale || 1) : undefined,   // population lens: log-packed people-on-land
+    // popMax → CENSUS people per REFERENCE tile on the densest ground (already
+    // × bridge × rNormPop² at pack time); the legend then ×POP_SCALE via fmtPeople.
+    popDens, popMax: popDens ? popMax : undefined,   // population lens: absolute-ruler people-on-land
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last

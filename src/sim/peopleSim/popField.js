@@ -55,7 +55,15 @@ const CAP_PER_FERT = 1200;
 // becomes a field in a later phase. base at neolithic → ~×3.3 at full farming tech.
 const DEV_BASE = 0.30, DEV_TECH = 3.0;
 const POP_GROWTH = 0.03;    // logistic intrinsic growth per step (r in pop += r·pop·(1−pop/K))
-const POP_MIGRATE = 0.06;   // share of a tile's people that migrate toward spare capacity per step (at the reference grid)
+// Migration share per step (at the reference grid) — now a LEVER (T.POP_MIGRATE,
+// same name): a diffusion coefficient in disguise (D ∝ share·Δx²). At the old
+// 0.06 (~24%/year between ~reference-tile cells) the connected landmass behaved
+// as ONE FLUID — every local deficit topped up, every local surplus drained, so
+// population genuinely rose "universally on a connected land mass" and local
+// regimes/scars/booms were laundered away by their neighbours. Human-scale
+// mobility is far lower; the lever's default is set by measurement (see
+// docs/land-works.md addendum 3).
+const POP_MIGRATE = 0.06;   // legacy constant: the schema default mirrors it ÷6 (see tuning.js)
 const SEED_POP = 0.4;       // people seeded per habitable tile (the spark logistic growth needs)
 // Max share of a tile one migration SUBSTEP may move. An explicit-scheme
 // stability/accuracy bound (a substep must not come close to emptying a tile —
@@ -99,6 +107,80 @@ const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neoli
 const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
 const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
 const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
+// ── T.LAND_WORKS: Boserupian land improvement (capacity is BUILT, not given) ──
+// Real carrying capacity was never a fixed property of terrain: under
+// population pressure societies INVESTED labour in the land itself —
+// irrigation canals, terraces, drainage, paddy levelling — and that capital
+// accumulated in place over centuries, raising yield ~2-3× (basin irrigation)
+// to 5-15× (wet rice vs dry farming). It is why equal-fertility valleys
+// diverged: the worked Nile/Ganges/Yellow basins densified for millennia
+// while unworked land plateaued — and why collapse SCARS (Mesopotamia's
+// broken canals) emptied dense country for centuries. Without this, the
+// population field is a pure fill-toward-terrain: after the technique wave
+// passes, two equal valleys are equally dense forever, and "civilization"
+// can only brighten the whole map, never densify a PLACE.
+//   • BUILD: where people press their current ceiling (pop/cap past the
+//     Boserup threshold — intensification starts when extensification is
+//     exhausted), water can be led onto fields (river / floodplain / wet
+//     climate), and the farming technique has actually reached the ground
+//     (devField). Purely local state — no clock, no named region.
+//   • EFFECT: crop capacity ×(1 + LAND_WORKS·works). The lever IS the
+//     physical constant: yield multiple of fully-improved land (2 ≈ the
+//     historical irrigation premium; rangeland herding is untouched).
+//   • DECAY: unmaintained works silt and slump — staffing below a quarter
+//     of the (improved) ceiling lets them rot on a ~two-century half-life,
+//     so a die-off or exodus leaves a real scar that must be rebuilt.
+//   • Self-limiting: building raises cap → lowers pressure → slows building
+//     (negative feedback); the field's own migration then pulls people INTO
+//     the improved basin (spare capacity) — the hotspot concentration.
+const WORKS_PRESS = 0.5;    // pressure (pop/cap) where intensification begins — Boserup's trigger
+const WORKS_STAFF = 0.25;   // below this pressure, works lose their maintenance hands pro-rata
+const WORKS_RATE  = 0.0012; // build speed: sustained full pressure at skill 0.6 on watered land ≈ 0→0.8 over ~2000 steps (~5 centuries)
+const WORKS_DECAY = 0.0009; // unstaffed rot: half-life ≈ 800 steps (~2 centuries)
+
+// ── T.GROWTH_LOCAL: per-tile demographic regimes (farmer vs forager) ─────────
+// The intrinsic growth rate was a single global constant — every tile on the
+// planet compounded at the same r, so a connected landmass rose through its
+// saturation trajectory in LOCKSTEP (the Malthus term (1−p/K) is the food
+// brake, but it synchronizes rather than differentiates: the dawn seeds one
+// fraction everywhere). Historically the RATE was local — differential
+// natural increase is the engine of the Neolithic expansion itself (farmers
+// out-bred foragers ~3-5×; Ammerman & Cavalli-Sforza's wave is DRIVEN by
+// that surplus), and the wet-tropic disease belt crushed natural increase
+// regardless of food. Both drivers already live on the map as emergent
+// state: devField (the farming technique that actually REACHED each tile)
+// and climate. r_i = r × (R_DEV0 + R_DEVK·dev_i) ÷ (1 + R_TROPIC·burden_i),
+// lever-blended so 0 = the flat rate exactly:
+//   dev 0 (forager land)   → ×0.35 of base   (near-stationary bands)
+//   dev 0.5 (mid farming)  → ×1.00           (SETT_GROWTH keeps its meaning)
+//   dev 1 (advanced core)  → ×1.65           (the demographic engine)
+// City cores are untouched (their own transition/graveyard-bent rEff). The
+// visible result: growth is no longer universal — the civilized band climbs
+// while the frontier crawls, tile by tile, by food (Malthus), technique
+// (regime) and disease (climate).
+const R_DEV0   = 0.35;  // forager-land natural increase as a share of base (pre-farming bands grew ~3-5× slower)
+const R_DEVK   = 1.30;  // technique gradient: ×1 at dev 0.5, ×1.65 at full technique
+const R_TROPIC = 0.35;  // wet-tropic disease burden on natural increase (endemic malaria belts)
+
+// ── T.TERRAIN_FADE: technology SUBSTITUTES for terrain (the late-era fades) ──
+// Pre-industrial technique AMPLIFIES what terrain gives (multiplicative on
+// fertility, water, relief — ratios never close). History's late chapters
+// SUBSTITUTED for what terrain withholds: synthetic fertilizer raised poor
+// soils proportionally more (yield ratios compressed), rail and engineering
+// erased ruggedness's price, pumps and dams freed irrigation from surface
+// water, medicine collapsed the tropical disease burden, and land transport
+// tapered the waterside premium. One lever, five terms, ALL gated on the
+// OWNING settlement's emergent industrial gate (s._indGate — org+metallurgy,
+// the same gate the urban transition and industrial capacity use): nobody
+// railroads the wilderness, and the whole set SLEEPS until a realm actually
+// industrializes — no clock anywhere. Each constant is the fade's magnitude
+// at full industrial development:
+const FADE_FERT   = 0.5;  // fertilizer closes half the natural-fertility gap (post-Haber cereal-yield convergence)
+const FADE_RELIEF = 0.6;  // engineering removes ~60% of ruggedness's capacity penalty (rail, tunnels, terrace machinery)
+const FADE_PUMP   = 0.5;  // pumps/dams supply half of full irrigability anywhere industrial (aquifer / center-pivot farming)
+const FADE_MED    = 3.0;  // medicine divides the wet-tropic burden by (1+3) at full development (the 20th-c malaria collapse)
+const FADE_ACCESS = 0.5;  // land transport cuts the river/coast import premium by a third (the interior becomes competitive)
+
 // ── Pastoral capacity (the mechanism DEV_FIELD un-masked) ────────────────────
 // The global scalar had been silently gifting the STEPPE farming-level capacity;
 // with capacity honest about local technique, the range thinned to nothing and
@@ -152,21 +234,47 @@ function stampDevSources(world, dev) {
   }
 }
 
-/** One wave relaxation: each land tile rises toward its best neighbour − loss. */
+/** One wave relaxation: each land tile rises toward its best neighbour − loss.
+ *  T.DIFF_CLIM adds a CLIMATE-DISTANCE toll per edge: the package loses
+ *  DIFF_CLIM × (|Δtemp| + |Δmoist|) crossing between climatically different
+ *  tiles — crops and livestock had to be re-adapted for each new band, so
+ *  real agriculture raced ALONG climate bands (the Eurasian east-west axis)
+ *  and crawled ACROSS them (maize's millennia-long trek out of Mexico), and
+ *  some boundaries it effectively never crossed (wheat vs the Sahara).
+ *  Resolution-invariant by construction: the toll across any gradient sums
+ *  to DIFF_CLIM × the total climate distance, however many tiles span it.
+ *  Without it the wave crosses the Sahara at the same speed as the Danube
+ *  plain (both are "land"), and a connected landmass converges to near-
+ *  uniform technique (planetary thinning is only ~0.025/1000 km) — the
+ *  measured late-run uniformity. 0 = the flat wave, byte-identical. */
 function relaxDevWave(world, dev, land) {
   const tw = world.tw, th = world.th;
   let nxt = world._devNext;
   if (!nxt || nxt.length !== world.N) nxt = world._devNext = new Float32Array(world.N);
   nxt.set(dev);
   const loss = devWaveLoss(world);
+  const ck = T.DIFF_CLIM || 0;
+  const te = world.temp, mo = world.moist;
+  const climOn = ck > 0 && te && mo;
   for (let li = 0; li < land.length; li++) {
     const i = land[li];
     const y = (i / tw) | 0, x = i - y * tw;
-    let best = dev[y * tw + ((x + 1) % tw)];
-    const l = dev[y * tw + ((x - 1 + tw) % tw)];
-    if (l > best) best = l;
-    if (y > 0 && dev[i - tw] > best) best = dev[i - tw];
-    if (y < th - 1 && dev[i + tw] > best) best = dev[i + tw];
+    const iR = y * tw + ((x + 1) % tw), iL = y * tw + ((x - 1 + tw) % tw);
+    let best;
+    if (climOn) {
+      const ti = te[i], mi = mo[i];
+      best = dev[iR] - ck * (Math.abs(te[iR] - ti) + Math.abs(mo[iR] - mi));
+      const l = dev[iL] - ck * (Math.abs(te[iL] - ti) + Math.abs(mo[iL] - mi));
+      if (l > best) best = l;
+      if (y > 0) { const u = dev[i - tw] - ck * (Math.abs(te[i - tw] - ti) + Math.abs(mo[i - tw] - mi)); if (u > best) best = u; }
+      if (y < th - 1) { const d2 = dev[i + tw] - ck * (Math.abs(te[i + tw] - ti) + Math.abs(mo[i + tw] - mi)); if (d2 > best) best = d2; }
+    } else {
+      best = dev[iR];
+      const l = dev[iL];
+      if (l > best) best = l;
+      if (y > 0 && dev[i - tw] > best) best = dev[i - tw];
+      if (y < th - 1 && dev[i + tw] > best) best = dev[i + tw];
+    }
     const v = best - loss;
     if (v > nxt[i]) nxt[i] = v;
   }
@@ -296,23 +404,86 @@ export function stepPopField(world, sub = 1) {
   // the modern productivity boom the food model had but the field never received. Off ⇒ no
   // lookup, byte-identical; frontier / stateless tiles (owner < 0) keep indMul 1 (subsistence).
   const indOn = T.INDUSTRIAL_CAP > 0;
-  const indOwner = indOn ? world._territoryOwner : null, indById = indOn ? world._byId : null;
+  // T.TERRAIN_FADE needs the owner lookup even when INDUSTRIAL_CAP is off.
+  const tfL = T.TERRAIN_FADE || 0;
+  const ownOn = indOn || tfL > 0;
+  const indOwner = ownOn ? world._territoryOwner : null, indById = ownOn ? world._byId : null;
+  // Per-tile fade level (lever × owner's industrial gate), stashed for the
+  // works/growth passes below (same firing, deterministic order).
+  let tfArr = null;
+  if (tfL > 0) { tfArr = world._tfFade; if (!tfArr || tfArr.length !== N) tfArr = world._tfFade = new Float32Array(N); else tfArr.fill(0); }
+  // T.LAND_WORKS: accumulated land improvement multiplies CROP capacity (the
+  // canals irrigate fields, not rangeland). Lever value = max yield multiple.
+  const worksOn = T.LAND_WORKS > 0 && world.worksField;
+  const worksF = worksOn ? world.worksField : null, worksK = worksOn ? T.LAND_WORKS : 0;
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
-    const access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
-    const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i]) : 1;
-    let indMul = 1;
-    if (indOn) { const sid = indOwner[i]; if (sid >= 0) { const s2 = indById.get(sid); if (s2 && s2._indCap > 1) indMul = s2._indCap; } }
+    let access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
+    let indMul = 1, fade = 0;
+    if (ownOn && indOwner) {
+      const sid = indOwner[i];
+      if (sid >= 0) {
+        const s2 = indById.get(sid);
+        if (s2) {
+          if (indOn && s2._indCap > 1) indMul = s2._indCap;
+          if (tfL > 0) { fade = tfL * (s2._indGate || 0); if (fade > 0) tfArr[i] = fade; }
+        }
+      }
+    }
+    // TERRAIN_FADE: engineering eases ruggedness; land transport tapers the
+    // waterside premium; fertilizer floors poor soil (substitution, not
+    // amplification — see the constants block).
+    const reliefMul = relief ? 1 / (1 + RELIEF_PEN * relief[i] * (1 - FADE_RELIEF * fade)) : 1;
+    if (fade > 0) access /= 1 + FADE_ACCESS * fade;
+    const f0 = fert[i], fEff = fade > 0 ? f0 + FADE_FERT * fade * (1 - f0) : f0;
+    const wkMul = worksF ? 1 + worksK * worksF[i] : 1;
     if (devF) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      const crop = fert[i] * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul;   // ×indMul: industrial agronomy break
+      const crop = fEff * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul;   // ×indMul: industrial agronomy break; ×wkMul: built land improvement
       const range = pasture[i];   // the herd or the plough — whichever feeds this ground better (openness already prices relief)
       cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
-      cap[i] = fert[i] * capPerFert * dev * reach * reliefMul * indMul;
+      cap[i] = fEff * capPerFert * dev * reach * reliefMul * indMul * wkMul;
+    }
+  }
+
+  // ── T.FOOD_K: worked land's capacity IS the food ledger (the unification) ──
+  // The formula above is an abstract PROXY (fertility × technique × access);
+  // the settlement economy carries the REAL ledger — catchment harvests with
+  // the dynamic climate applied, fish and herds, grain routed up the
+  // hierarchy, era productivity, national policy. The city cores were unified
+  // long ago (urban spikes = the economy beyond the land); this unifies the
+  // COUNTRYSIDE: each settled settlement's LAND-FED capacity share
+  // (s._k × landShare, in field units via the bridge) is distributed over its
+  // worked catchment in proportion to the formula's own relative land quality,
+  // and BLENDED over the proxy by the lever. The import share stays at the
+  // core (the spike's definition), so catchment + spike sum to the economy's
+  // own number — no double count. Wild land keeps the subsistence formula
+  // (people outside the market economy live off the land directly). What this
+  // newly delivers: famine years, blockades, trade wealth and policy reshape
+  // the RURAL population map — K follows the harvest, not just the terrain.
+  const fkL = T.FOOD_K || 0;
+  if (fkL > 0 && world._territoryOwner && world._byId && world._onePopScale > 0) {
+    const owner = world._territoryOwner, byId = world._byId, bridge = world._onePopScale;
+    let sumW = world._fkSumW; if (!sumW) sumW = world._fkSumW = new Map(); else sumW.clear();
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li]; const sid = owner[i];
+      if (sid >= 0 && cap[i] > 0) sumW.set(sid, (sumW.get(sid) || 0) + cap[i]);
+    }
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li]; const sid = owner[i];
+      if (sid < 0) continue;
+      const s = byId.get(sid);
+      if (!s || s.mode !== "settled" || !(s._k > 0)) continue;
+      const W = sumW.get(sid);
+      if (!(W > 0) || !(cap[i] > 0)) continue;
+      const landShare = Math.max(0, Math.min(1, 1 -
+        ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
+      const ledgerK = (s._k * landShare / bridge) * (cap[i] / W);
+      cap[i] = cap[i] * (1 - fkL) + ledgerK * fkL;
     }
   }
 
@@ -333,12 +504,28 @@ export function stepPopField(world, sub = 1) {
   // frontier sits below it) — once, at activation (scale unset = first
   // derive hasn't run). Idempotent via max(); the same skipped-history
   // reasoning as the genesis seeds and the pre-map Neolithic wave.
+  //
+  // T.DAWN — the LONG DAWN (deep-prehistory genesis): >0 opens the map EARLIER
+  // in its peopling trajectory, seeding the field at that FRACTION of the
+  // equilibrium instead of at it. The field's own logistic growth then fills
+  // each basin on its own clock — rich basins (a great river's Σcapacity)
+  // cross the absolute state-viability bars (nucleation cluster mass, seat
+  // size) generations before marginal ones, so the dawn of states ROLLS
+  // across the map instead of firing everywhere at once (the measured
+  // universal boom-bust of the cold start — docs/budget-gated-expansion.md).
+  // An initial condition, not a gate: nothing during the run reads it; it
+  // only chooses where in its own trajectory the world begins. The census↔
+  // field bridge below is calibrated at the EQUILIBRIUM reference so mature
+  // census levels are unchanged (without that, thinning the field would
+  // silently inflate every mature census by 1/DAWN and de-stagger nothing).
   if (onePop && !(world._onePopScale > 0)) {
     const tArr = world.tArrival;
+    const dawn = T.DAWN > 0 ? Math.min(1, T.DAWN) : 1;
+    world._dawnSeed = dawn;   // read by the bridge calibration THIS tick (deriveOnePop); never persisted, never re-read
     for (let li = 0; li < nLand; li++) {
       const i = land[li];
       const residence = tArr ? (1 - Math.min(1, Math.max(0, tArr[i]))) : 0.5;
-      const eq = cap[i] * (0.55 + 0.35 * residence);   // long-peopled land presses its ceiling; the frontier sits under it
+      const eq = cap[i] * (0.55 + 0.35 * residence) * dawn;   // long-peopled land presses its ceiling; the frontier sits under it
       if (eq > pop[i]) pop[i] = eq;
     }
   }
@@ -351,13 +538,42 @@ export function stepPopField(world, sub = 1) {
     for (const [ti, e] of world._urbanSpike) if (e.r !== undefined && (e.r !== rBulk || e.sink > 0)) corePre.push(ti, pop[ti]);
   }
 
-  // 2. Logistic growth toward capacity (in place).
+  // 2. Logistic growth toward capacity (in place). Under T.GROWTH_LOCAL the
+  //    intrinsic rate is a LOCAL regime (see the header block): technique-
+  //    graded and disease-burdened, lever-blended from the flat base.
+  const gl = T.GROWTH_LOCAL || 0;
+  const glOn = gl > 0 && devF;
+  let tropicB = null;
+  if (glOn) {
+    tropicB = world._tropicBurden;
+    if (!tropicB || tropicB.length !== N) {
+      // Static climate burden: hot AND wet (the endemic-disease belt) — the
+      // same shape the state-formation gate reads off settlements (_wetTropic).
+      tropicB = world._tropicBurden = new Float32Array(N);
+      const te = world.temp, mo = world.moist;
+      for (let li = 0; li < nLand; li++) {
+        const i = land[li];
+        const t2 = Math.max(0, Math.min(1, ((te ? te[i] : 0) - 0.62) / 0.2));
+        const m2 = Math.max(0, Math.min(1, ((mo ? mo[i] : 0) - 0.55) / 0.25));
+        tropicB[i] = t2 * m2;
+      }
+    }
+  }
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const k = cap[i];
     if (k <= 0) { pop[i] = 0; continue; }
     const p = pop[i];
-    if (p > 0) pop[i] = p + rBulk * dt * p * (1 - p / k);
+    if (p > 0) {
+      let rT = rBulk;
+      if (glOn) {
+        // TERRAIN_FADE: medicine collapses the tropical burden where the owner is industrial.
+        const burden = R_TROPIC * tropicB[i] / (tfArr && tfArr[i] > 0 ? 1 + FADE_MED * tfArr[i] : 1);
+        const reg = (R_DEV0 + R_DEVK * devF[i]) / (1 + burden);
+        rT = rBulk * (1 + gl * (reg - 1));
+      }
+      pop[i] = p + rT * dt * p * (1 - p / k);
+    }
   }
   if (corePre) {
     for (let j = 0; j < corePre.length; j += 2) {
@@ -385,7 +601,7 @@ export function stepPopField(world, sub = 1) {
   //    empties a tile per firing). At the reference n = 1 and migShare reduces to
   //    the original POP_MIGRATE·dt bit-for-bit (×1.0 and ÷1 are IEEE-exact), so the
   //    reference trajectory is byte-identical at every step.
-  const migT = POP_MIGRATE * dt * (_rnF * _rnF);            // total share-time this firing (D ×rn² in real units)
+  const migT = (T.POP_MIGRATE ?? POP_MIGRATE) * dt * (_rnF * _rnF);   // total share-time this firing (D ×rn² in real units); lever-owned rate
   const nSub = Math.max(1, Math.ceil(migT / MIG_SHARE_MAX));
   const migShare = migT / nSub;                             // per-substep share (= POP_MIGRATE·dt exactly at the reference)
   let nxt = world._popNext; if (!nxt || nxt.length !== N) nxt = world._popNext = new Float32Array(N);
@@ -416,6 +632,47 @@ export function stepPopField(world, sub = 1) {
       }
     }
     const t = pop; pop = nxt; nxt = t;           // swap buffers (per substep — next substep reads this one's result)
+  }
+  // ── T.LAND_WORKS: build/rot pass (see the header block above the constants).
+  // Runs on this tick's final pop & cap; the multiplier is felt next firing —
+  // a one-firing lag that keeps the pass order clean and deterministic.
+  if (T.LAND_WORKS > 0) {
+    let wk = world.worksField;
+    if (!wk || wk.length !== N) wk = world.worksField = new Float32Array(N);
+    // Irrigability — static terrain: water that can be LED onto fields. A great
+    // river offers its whole flow, a floodplain is the historical basin-irrigation
+    // heartland, and a genuinely wet climate (paddy country) irrigates from rain.
+    let irr = world._irrigable;
+    if (!irr || irr.length !== N) {
+      irr = world._irrigable = new Float32Array(N);
+      const tFl = world.tFlood, mo = world.moist;
+      for (let li = 0; li < nLand; li++) {
+        const i = land[li];
+        const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
+        const fl = tFl && tFl[i] ? 0.85 : 0;
+        const wet = Math.max(0, ((mo ? mo[i] : 0) - 0.55) / 0.45) * 0.6;
+        const v = water + fl + wet;
+        irr[i] = v > 1 ? 1 : v;
+      }
+    }
+    const rate = WORKS_RATE * dt, dk = WORKS_DECAY * dt;
+    const tfW = (T.TERRAIN_FADE || 0) > 0 ? world._tfFade : null;   // pumps/dams irrigate beyond surface water where the owner is industrial (guarded: stale array must not leak when the lever is off)
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      let a = irr[i];
+      if (tfW && tfW[i] > 0) { a += FADE_PUMP * tfW[i]; if (a > 1) a = 1; }
+      let w = wk[i];
+      if (a <= 0 && w <= 0) continue;            // dry, unimproved ground: nothing to build or rot
+      const k = cap[i];
+      const press = k > 0 ? pop[i] / k : 0;
+      if (a > 0 && press > WORKS_PRESS) {
+        const skill = devF ? devF[i] : leadAgri;  // the technique that has actually reached this ground
+        if (skill > 0.05) w += rate * (press - WORKS_PRESS) * skill * a;
+      }
+      const staffed = press > WORKS_STAFF ? 1 : press / WORKS_STAFF;
+      if (staffed < 1) w -= dk * (1 - staffed) * w;
+      wk[i] = w < 0 ? 0 : w > 1 ? 1 : w;
+    }
   }
   world.popField = pop;
   world._popNext = nxt;
@@ -734,6 +991,13 @@ export function deriveOnePop(world) {
     }
     cs.sort((a, b) => a - b); fs.sort((a, b) => a - b);
     world._onePopScale = cs.length ? Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1])) : 1;
+    // T.DAWN: the bridge is a unit conversion calibrated at the MALTHUSIAN
+    // REFERENCE (the field the world matures toward). Under a dawn seed the
+    // field at activation is dawn× that reference, so the raw median ratio
+    // above is 1/dawn too high — correct it, or every mature census would be
+    // inflated by 1/dawn and the dawn's staggering would cancel out of the
+    // state-viability mass (basin × census/field). At dawn 1: ×1, unchanged.
+    if (world._dawnSeed > 0 && world._dawnSeed < 1) world._onePopScale *= world._dawnSeed;
   }
   const scale = world._onePopScale;
   // T.URBAN_FOOTPRINT: the urban core's real radius (tiles). 0 (default / reference

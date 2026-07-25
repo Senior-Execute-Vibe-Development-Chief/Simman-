@@ -23,7 +23,7 @@
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
-import { ensurePolity } from "./entities.js";
+import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
 import { settlementPower } from "./conquest.js";
 import { T } from "./tuning.js";
 import { claimHostility } from "./habitability.js";
@@ -1004,7 +1004,17 @@ export function computeCountryTerritory(world) {
     // by a high-aptitude stock projects administrative reach further for the same
     // tech — the institutional edge of the "winter peoples" made territorial.
     const aptMul = 1;   // (ORG_APT_CAP removed 2026-07 — see conquest.js note)
-    budget.set(c, b * emGated * sf * persMul * aptMul);
+    // Budget-gated expansion (T.REACH_STRAIN): reach contracts with the admin
+    // STRAIN the last polity pass measured (gov._strain = load/capacity, ≥1 =
+    // over budget) — a court that cannot govern what it holds stops projecting,
+    // so borders SATURATE at governable size instead of overshooting and
+    // collapsing. Within budget (strain ≤ 1): no effect. The elasticity is the
+    // lever; overload capped so a deep crisis contracts the frontier, never
+    // deletes the realm's core (the shed stays ring-by-ring, as ever).
+    const _pol = getPolity(world, c);
+    const _strain = _pol && _pol._strain != null ? _pol._strain : 0;
+    const strainMul = 1 / (1 + (T.REACH_STRAIN || 0) * Math.min(3, Math.max(0, _strain - 1)));
+    budget.set(c, b * emGated * sf * persMul * aptMul * strainMul);
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
   // grows in gradually instead of snapping to a continental claim in one pass
@@ -1636,6 +1646,27 @@ export function adoptAndFound(world) {
     if (fieldPolity) { const id = co[ti]; return id >= 0 && alive.has(id) ? id : -1; }
     return grownLiveOwnerAt(world, ti);
   };
+  // Budget-gated adoption (T.ADOPT_BUDGET): taking on a NEW subject is an act of
+  // administration, and a court already past its budget (strain = load/capacity
+  // from the last polity pass, on the persistent polity record) refuses it — the
+  // community stays independent until a state that CAN govern it reaches it, or
+  // it founds/joins a state of its own (primary-state fuel, exactly like the
+  // statecraft gate below). Conquest and realm↔realm border shifts are untouched:
+  // overreach by the sword stays possible — and stays punished.
+  const overBudget = (cid) => {
+    const gate = T.ADOPT_BUDGET || 0;
+    if (!gate || cid < 0) return false;
+    const pol = getPolity(world, cid);
+    return !!pol && pol._strain != null && pol._strain >= gate;
+  };
+  // FISC TEST (T.FISC_ADOPT, entities.js): the marginal-revenue adoption gate —
+  // a court adopts a stateless community only if the capacity its people bring
+  // (the realm's own capacity-per-governed-person × the community's people)
+  // covers the admin load of governing it. Per-subject, so productive near
+  // communities are always welcome (no global freeze, no fiscal death-spiral —
+  // the failure the bare strain gate above measured).
+  const fiscOk = (cid, s) =>
+    fiscAdoptable(world, world.countries && world.countries.get(cid), s.pos.x, s.pos.y, s.people || 0);
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
@@ -1645,7 +1676,9 @@ export function adoptAndFound(world) {
     // never reaches city tier in isolation, so it carries sovereignty by flag).
     if ((s.tier | 0) >= CITY_TIER || s._sovereignSeat) {
       if (s.countryId < 0) {
-        s.countryId = region >= 0 ? region : s.id;   // stateless anchor: join its region, else found
+        // an over-budget region cannot take the anchor in — it founds instead;
+        // nor can one whose fisc cannot carry it (the marginal-revenue test)
+        s.countryId = region >= 0 && !overBudget(region) && fiscOk(region, s) ? region : s.id;
         s._integratedAt = world.step;                // new sovereign / adopted land integrates its territory in gradually (anti-bloom; see INTEGRATE_*)
       }
       // a town/city with a country keeps it (sovereign)
@@ -1694,6 +1727,8 @@ export function adoptAndFound(world) {
           // stated settlements) and losses to statelessness are untouched — those
           // are conquest/border dynamics, not primary adoption.
           if ((realmOrg.get(region) || 0) < T.ORG_STATE_MIN) continue;
+          if (overBudget(region)) continue;   // the court cannot govern more — the village stays free
+          if (!fiscOk(region, s)) continue;   // …nor afford THIS one: its people don't fund their own administration — it stays free
           s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
         }
         s.countryId = region;

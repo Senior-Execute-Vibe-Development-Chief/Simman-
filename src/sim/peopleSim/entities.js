@@ -17,9 +17,60 @@
 
 import { logEvent } from "./events.js";
 import { getCulture, nameFor, dominantCulture } from "./cultures.js";
+import { T } from "./tuning.js";
 
 export function politiesOf(world) {
   return world.polities || (world.polities = new Map());
+}
+
+// Population scale for the admin-load size term — shared by the polity pass's
+// per-member load (conquest.js) and the adoption fisc test below, so both
+// price "how big is this community to govern" on the same ruler.
+export const SIZE_REF = 1000;
+
+/**
+ * The FISC TEST (T.FISC_ADOPT): may this court AFFORD to adopt this community?
+ *
+ * Marginal revenue vs marginal load — a real mechanism, not a threshold on
+ * strain (docs/budget-gated-expansion.md records why the bare strain gate
+ * made the boom-bust WORSE: refusing subjects wholesale refuses their taxes).
+ * Here the two sides of the ledger are compared for THIS community alone:
+ *   • what its people FUND: the realm's own capacity-per-governed-person
+ *     (c._capacity / Σ member people — both stamped by the polity pass) times
+ *     the candidate's people. Fully emergent: a developed fisc affords more
+ *     per head, an infant court almost nothing — no unit constant to tune.
+ *   • what it COSTS: the same load ruler the coverage budget uses
+ *     ((distance/holdRange) × size term), at steady state (recency and
+ *     coercion → 1; consolidation transients are the momentum machinery's
+ *     story, not the adoption decision's).
+ * A community that pays for itself is adopted even by a strained realm (it
+ * HELPS); one that cannot is refused even by a slack one (it would erode) —
+ * so there is no global freeze and no fiscal death-spiral. Distance is the
+ * wrap-aware euclidean (the terrain surcharge needs the polity pass's
+ * Dijkstra, absent here) — a mild UNDER-estimate of true cost, i.e. the
+ * permissive direction for a refusal gate.
+ * Scope: PRIMARY adoption only (stateless community → realm): the crystallise
+ * born-join and adoptAndFound. Conquest, realm↔realm border shifts, colonies
+ * and a member region's own town spin-offs are untouched.
+ * Courts with no stamped fisc yet (a realm before its first polity pass)
+ * adopt freely — the first stamp gates everything after.
+ */
+export function fiscAdoptable(world, c, x, y, people) {
+  const F = T.FISC_ADOPT || 0;
+  if (!(F > 0) || !c) return true;
+  const cap = c.capital, C = c._capacity;
+  if (!cap || !cap.pos || !(C > 0)) return true;
+  let P = 0;
+  const mem = c.members || [];
+  for (let i = 0; i < mem.length; i++) { const m = mem[i]; if (m && m.mode === "settled") P += m.people || 0; }
+  if (!(P > 0)) return true;
+  let dx = Math.abs(cap.pos.x - x); if (dx > world.tw / 2) dx = world.tw - dx;
+  const dy = cap.pos.y - y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  const holdRange = Math.max(1, c.holdReach || c.range || 0);
+  const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (people || 0) / SIZE_REF));
+  const load = (d / holdRange) * sizeMul;
+  return (people || 0) * (C / P) >= F * load;
 }
 
 export function getPolity(world, id) {

@@ -13,11 +13,16 @@ import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
 import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./sim/peopleSim/tech.js";
-// tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
-const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
-// effect-chip colour per channel (food=green, naval=teal, build=tan, war=red, admin=violet, trade=jade, wealth=gold)
-const FX_COLOR={farm:"#5f7d33",fish:"#2f7d8a",build:"#9a6f38",military:"#9c3a36",reach:"#6a4a8d",cohesion:"#9a6a33",defense:"#566089",trade:"#2f7d5a",wealth:"#9a7a24",seaSpeed:"#2f6d8a",seaRange:"#2f6d8a",embark:"#2f7d8a",ocean:"#2a6a8a",colonize:"#2a6a8a",walls:"#566089",market:"#2f7d5a"};
+import { TECHS, ERAS, techState, nextTechs } from "./sim/peopleSim/tech.js";
+import { TechTreeOverlay, ChronicleOverlay, DynastyOverlay, CHRON_COL, ERA_BG } from "./ui/documents.jsx";
+import { fmtPeople, fmtFood, fmtGoldKg, MiniChart, buildHistoryExport, Chip, PsKRow, PsSection } from "./ui/bits.jsx";
+import { resetEmblems, realmEmblemImg, realmEmblemURL } from "./ui/emblems.jsx";
+import { realmLabelAnchors, drawMapLabels } from "./ui/labels.js";
+import { TopBarBell, ToastHost, HelpOverlay, evMeta, evCatColor, EV_CATS } from "./ui/events.jsx";
+import { LEGENDS, LegendCard } from "./ui/legends.jsx";
+import { useSurfaceStack, openSurface, closeSurface, closeTopSurface, isSurfaceOpen, surfaceZ } from "./ui/surfaces.js";
+
+
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
@@ -163,112 +168,32 @@ function assignCountryColors(claimArr,tw,th,prev){
   return hue;   // Map: countryId → hue 0..360
 }
 
-// ── Tech-tree overlay (Civ-like skill tree) ─────────────────────────
-// Full-screen modal showing the whole tech DAG for the selected settlement:
-// era columns, prerequisite links, and per-node state (discovered / researching
-// with progress / locked). Pure view over tech.js + the settlement's knowledge.
-function TechTreeOverlay({k,title,onClose}){
-  const ts=techState(k||{});
-  const L=techLayout();
-  const {pos,NW,NH,TOP,W,H}=L;
-  const [hov,setHov]=useState(null);   // {id,x,y} — hovered tech for the effect card
-  const chip=(bg,bd)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"10px 14px",maxWidth:"96vw",maxHeight:"94vh",overflow:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-          <div className="au-pico-title" style={{fontSize:15}}>Tech Tree{title?` — ${title}`:""}{" "}
-            <span className="au-fade" style={{fontSize:11}}>· {ERAS[ts.era]} · {ts.count}/{TECHS.length} discovered</span></div>
-          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
-        </div>
-        {(()=>{const tot=techTotalList(ts.have);if(!tot.length)return null;
-          return <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center",marginBottom:7,paddingBottom:6,borderBottom:"1px solid rgba(120,90,50,0.2)"}}>
-            <span className="au-fade" style={{fontSize:10,marginRight:3,fontWeight:600,letterSpacing:0.3}}>STACKED TECH BONUSES</span>
-            {tot.map((e,i)=><span key={i} style={{padding:"1.5px 6px",borderRadius:3,fontSize:10,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
-          </div>;
-        })()}
-        <svg width={W} height={H} style={{display:"block"}}>
-          {/* era labels at the centroid column of each era's techs — eras
-              interleave across the depth tiers (as in Civ), so they orient
-              rather than partition; node FILL carries the era colour */}
-          {ERAS.map((e,ei)=>{let sx=0,n=0;for(const t of TECHS)if(t.era===ei){const pp=pos[t.id];if(pp){sx+=pp.x+NW/2;n++;}}if(!n)return null;const cx=sx/n;
-            return(<g key={e}>
-              <rect x={cx-46} y={TOP-26} width={92} height={3} fill={ERA_BG[ei]} rx={1.5}/>
-              <text x={cx} y={TOP-12} textAnchor="middle" fontSize={11} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
-            </g>);
-          })}
-          {/* prerequisite links — orthogonal (right-angle) routing, drawn UNDER
-              the opaque nodes so a long link passes cleanly behind intervening
-              tiers instead of crossing them. Each link leaves the prereq's right
-              edge, runs to the target column's left gutter, then rises/drops
-              into the target's left edge. */}
-          {TECHS.map(t=>t.prereq.map(p=>{const a=pos[p],b=pos[t.id];if(!a||!b)return null;
-            const open=ts.have[TECH_IDX[p]]===1;
-            const stag=(TECH_IDX[p]*3+TECH_IDX[t.id])%5;
-            return <path key={p+">"+t.id} d={techEdgePath(a,b,L,stag)} fill="none"
-              stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
-          }))}
-          {/* tech nodes (opaque fills occlude the links routed behind them) */}
-          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
-            let fill,stroke,txt,sw,dash="";
-            if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
-            else if(ns.state==="next"){fill="#fffaf0";stroke=era;txt="#2c2114";sw=2;}
-            else{fill="#e9e1ce";stroke="rgba(90,75,50,0.42)";txt="rgba(70,58,40,0.62)";sw=1;dash="4 3";}
-            return(<g key={t.id} style={{cursor:"help"}}
-              onMouseMove={e=>setHov({id:t.id,x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)}>
-              <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
-              <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
-              {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}
-            </g>);
-          })}
-        </svg>
-        <div className="au-fade" style={{fontSize:10,marginTop:6,display:"flex",gap:16,flexWrap:"wrap"}}>
-          <span>{chip("#dab347","none")}discovered</span>
-          <span>{chip("rgba(255,251,243,0.95)","2px solid #d8b24a")}researching (prerequisites met)</span>
-          <span>{chip("rgba(150,140,120,0.2)","1px dashed rgba(90,75,50,0.5)")}locked — needs an earlier tech</span>
-        </div>
-      </div>
-      {hov&&(()=>{
-        const t=TECHS[TECH_IDX[hov.id]]; if(!t) return null;
-        const ns=techNodeState(k||{},ts.have,t); const fx=techEffectList(hov.id);
-        const vw=typeof window!=="undefined"?window.innerWidth:1280, vh=typeof window!=="undefined"?window.innerHeight:800;
-        const left=Math.min(hov.x+16, vw-258), top=Math.min(hov.y+16, vh-200);
-        return(<div style={{position:"fixed",left,top,width:242,zIndex:320,pointerEvents:"none",
-          background:"#f6eeda",border:`2px solid ${ERA_BG[t.era]||"#b9b2a4"}`,borderRadius:7,padding:"8px 10px",boxShadow:"0 6px 18px rgba(0,0,0,0.4)"}}>
-          <div style={{fontWeight:"bold",fontSize:13,color:"#2c2114"}}>{t.name}</div>
-          <div style={{fontSize:9,letterSpacing:0.5,textTransform:"uppercase",color:"#8a7a55",marginBottom:4}}>
-            {ERAS[t.era]} · {ns.state==="have"?"discovered":ns.state==="next"?`researching ${(ns.prog*100)|0}%`:"locked"}</div>
-          <div style={{fontSize:10.5,color:"#473a28",lineHeight:1.35,marginBottom:6}}>{t.desc}</div>
-          {fx.length>0
-            ? <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:t.prereq.length?6:0}}>
-                {fx.map((e,i)=><span key={i} style={{padding:"1.5px 5px",borderRadius:3,fontSize:9.5,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
-              </div>
-            : <div style={{fontSize:9.5,fontStyle:"italic",color:"#9a8a65",marginBottom:t.prereq.length?6:0}}>a stepping-stone — no direct bonus</div>}
-          {t.prereq.length>0&&<div style={{fontSize:9.5,color:"#7a6a48"}}>Requires: {t.prereq.map(p=>TECHS[TECH_IDX[p]].name).join(" + ")}</div>}
-        </div>);
-      })()}
-    </div>
-  );
-}
-
-// ── Chronicle overlay — a realm's full history in its own scrollable window ──
-// (the settlement card is too short to hold a long log; a modal escapes it).
-// `entries` are {step,type,text}; rendered newest-first, dated via the display clock and
-// colour-coded by event type (dark tones for contrast on the light parchment).
 // ── Map lenses ──────────────────────────────────────────────────────
 // Grouped views: each lens is one way of READING the world; sub-modes are
 // variations within it. Worldgen diagnostics live behind a ?dev URL flag.
 const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).has("dev");
 const LENSES=[
-  {id:"terrain", label:"Terrain", subs:[["terrain","Map"],["atlas","Atlas"]]},
-  {id:"politics",label:"Politics",subs:[["country","Realms"],["loyalty","Loyalty"]]},
-  {id:"peoples", label:"Peoples", subs:[["culture","Peoples"],["population","Population"]]},
-  {id:"ancestry",label:"Ancestry",subs:[["ancestry","Ancestry"]]},
-  {id:"languages",label:"Languages",subs:[["language","Languages"]]},
-  {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
-  ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
+  {id:"terrain", label:"Terrain", icon:"🗺", subs:[["terrain","Map"],["atlas","Atlas"]]},
+  {id:"politics",label:"Politics",icon:"👑", subs:[["country","Realms"],["loyalty","Loyalty"]]},
+  {id:"peoples", label:"Peoples", icon:"👥", subs:[["culture","Peoples"],["population","Population"],["ancestry","Ancestry"]]},
+  {id:"languages",label:"Tongues",icon:"💬", subs:[["language","Languages"]]},
+  {id:"faiths",  label:"Faiths",  icon:"🕯", subs:[["faith","Faiths"]]},
+  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
+  ...(DEV?[{id:"dev",label:"Dev",icon:"🔬",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
+// Emergent availability (plan §6.5): a sub-lens lights up when its phenomenon
+// first EXISTS in the world — state-gated, never time-gated. Returns null
+// (available) or a short "why it's still dark" string shown as the tooltip.
+function subLockReason(sub,psw,stats){
+  if(!psw)return null;
+  if(sub==="money"&&!((stats&&stats.totalWealth)>0))
+    return "No coin has been struck yet — the world still barters.";
+  if(sub==="prices"&&!(psw.settlements&&psw.settlements.some(s=>s&&s._gPrice)))
+    return "No market prices yet — towns must first meet in trade.";
+  if(sub==="society"&&!(psw.settlements&&psw.settlements.some(s=>s&&(s._coerce||0)>0.02)))
+    return "No coerced labour anywhere yet.";
+  return null;
+}
 
 // Country-editor field lists + a compact slider row.
 const ED_KFIELDS=[["agriculture","Agriculture"],["construction","Construction"],["organization","Organization"],["metallurgy","Metallurgy"],["navigation","Navigation"],["mobility","Mobility"]];
@@ -282,234 +207,6 @@ function EdRow({label,value,min,max,step,onChange,fmt}){
   </div>;
 }
 
-const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
-  war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
-  plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32",
-  industry:"#5a7488",trade:"#2f8a78",faith:"#5566b0",society:"#9a5a48"};
-const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
-  war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
-  plague:"Plague",famine:"Famine",end:"Fall",
-  industry:"Industry",trade:"Trade",faith:"Faith",society:"Society"};
-function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose,eraAt}){
-  const rows=(entries||[]).slice().reverse();   // newest first
-  const yr=(step)=>displayYearStr(step);
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0,gap:8}}>
-          <div className="au-pico-title" style={{fontSize:15}}>Chronicle{name?` — ${name}`:""}{" "}
-            <span className="au-fade" style={{fontSize:11}}>· {rows.length} events</span></div>
-          {/* True record vs the realm's own tradition: same events, different
-              survivors — the scribes' version drops what burned, never heard
-              the distant news, and flatters the court. */}
-          <button onClick={onTogglePerspective} className={"au-btn"+(perspective?" au-active":"")}
-            style={{fontSize:10,whiteSpace:"nowrap"}}
-            title="Toggle between the omniscient record and what this realm's own scribes kept">
-            {perspective?"scribes' version":"true record"}</button>
-          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
-        </div>
-        {/* minHeight:0 lets this flex child shrink so overflowY:auto actually
-            engages inside the maxHeight:88vh column (the flexbox scroll gotcha). */}
-        <div style={{overflowY:"auto",minHeight:0,paddingRight:6}}>
-          {rows.length===0
-            ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No events recorded yet.</div>
-            :<div style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"5px 10px",alignItems:"baseline",fontSize:12}}>
-              {rows.map((e,i)=>(
-                <Fragment key={i}>
-                  <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yr(e.step)}</span>
-                  <span style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:CHRON_COL[e.type]||"#5a4a32",fontWeight:600,whiteSpace:"nowrap"}}>{CHRON_LABEL[e.type]||e.type}</span>
-                  <span style={{color:"#3a2614",lineHeight:1.4}}>{e.text}</span>
-                </Fragment>
-              ))}
-            </div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Ruling family tree overlay ──────────────────────────────────────────────
-// Renders the reigning house as a genealogy: couples, children indented beneath
-// their parents along a vine, the sitting sovereign crowned, bastards on a dashed
-// border, married-in partners faded, the deceased greyed with their lifespans.
-function fy(y){return y<0?`${-y} BC`:`${y} AD`;}
-const TRAIT_DEF=[["vigor","Vig"],["wit","Wit"],["boldness","Bold"],["ruthlessness","Ruth"]];
-function traitTip(t){return t?TRAIT_DEF.map(([k,l])=>`${l} ${t[k]>0?"+":""}${t[k]}`).join("  "):"";}
-function PersonCard({n}){
-  const dead=n.diedY>=0;
-  const border=n.isRuler?"2px solid #b8902f":n.bastard?"1px dashed #9a7b52":"1px solid rgba(90,74,50,0.4)";
-  const bg=n.isRuler?"rgba(184,144,47,0.16)":n.foreign?"rgba(90,74,50,0.05)":"rgba(255,255,255,0.45)";
-  const reigned=n.reignFrom>=0;
-  return(
-    <div title={[n.trait&&!n.foreign?n.trait:"",n.traits?traitTip(n.traits):"",n.foreign?"married into the house":n.bastard?"born out of wedlock":""].filter(Boolean).join("\n")||undefined}
-      style={{border,background:bg,borderRadius:5,padding:"3px 7px",minWidth:96,opacity:dead&&!reigned?0.6:1,fontSize:11}}>
-      <div style={{display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
-        <span style={{color:n.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{n.female?"♀":"♂"}</span>
-        {n.isRuler&&<span title="reigning" style={{fontSize:12}}>♔</span>}
-        <span style={{fontWeight:n.isRuler||reigned?700:500,color:"#2a1c0e"}}>{n.name}{n.epithet?` ${n.epithet}`:""}</span>
-        {n.bastard&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>bastard</span>}
-      </div>
-      {n.isRuler&&n.title&&<div style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:"#8a6a1a",fontWeight:600}}>{n.title}</div>}
-      <div className="au-fade" style={{fontSize:9.5,fontVariantNumeric:"tabular-nums"}}>
-        {dead?`${fy(n.bornY)} – ${fy(n.diedY)} · ${n.age}y`:`b. ${fy(n.bornY)} · ${n.age}y`}
-      </div>
-      {reigned&&<div style={{fontSize:9,color:"#8a6a1a",fontVariantNumeric:"tabular-nums"}}>reigned {fy(n.reignFrom)}–{n.reignTo>=0?fy(n.reignTo):"now"}</div>}
-      {!n.foreign&&n.trait&&<div className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{n.trait}</div>}
-    </div>
-  );
-}
-// Per-government styling for the succession roll (crown / theocracy / council).
-const GOV_META={monarchy:{icon:"♔",col:"#b8902f",label:"Crown"},
-  theocracy:{icon:"☩",col:"#5566b0",label:"Theocracy"},
-  republic:{icon:"⚖",col:"#2f8a78",label:"Council"},
-  despotism:{icon:"⚔",col:"#a8402f",label:"Despotism"},
-  elective:{icon:"♛",col:"#9c7a2f",label:"Elective Monarchy"}};
-// Standard top-down genealogy: each generation a row, parents centred above
-// their children, sibling/parent connectors drawn in pure CSS (classes below).
-const FT_LN="rgba(120,100,70,0.45)";
-const FT_CSS=`
-.ft-wrap{display:inline-flex;flex-direction:column;gap:16px;min-width:100%;padding:4px 2px 8px;align-items:center}
-.ft-tree ul{position:relative;padding-top:18px;display:flex;justify-content:center;margin:0}
-.ft-tree li{list-style:none;position:relative;padding:18px 7px 0;display:flex;flex-direction:column;align-items:center}
-.ft-tree li::before,.ft-tree li::after{content:'';position:absolute;top:0;right:50%;border-top:2px solid ${FT_LN};width:50%;height:18px}
-.ft-tree li::after{right:auto;left:50%;border-left:2px solid ${FT_LN}}
-.ft-tree li:only-child::after,.ft-tree li:only-child::before{display:none}
-.ft-tree li:only-child{padding-top:18px}
-.ft-tree li:first-child::before,.ft-tree li:last-child::after{border:0 none}
-.ft-tree li:last-child::before{border-right:2px solid ${FT_LN}}
-.ft-tree ul ul::before{content:'';position:absolute;top:0;left:50%;border-left:2px solid ${FT_LN};width:0;height:18px}
-.ft-tree>ul{padding-top:0}
-.ft-tree>ul>li:only-child{padding-top:0}`;
-// One person (with their married-in partner, if any) as a tree node.
-function Couple({n,sp}){
-  return(
-    <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
-      <PersonCard n={n}/>
-      {sp&&<><span className="au-fade" style={{fontSize:11,alignSelf:"center"}}>⚭</span><PersonCard n={sp}/></>}
-    </div>
-  );
-}
-function FamilyTree({nodes}){
-  const byId=new Map(nodes.map(n=>[n.id,n]));
-  const kidsOf=new Map();
-  for(const n of nodes)if(n.parentId>=0){if(!kidsOf.has(n.parentId))kidsOf.set(n.parentId,[]);kidsOf.get(n.parentId).push(n.id);}
-  for(const arr of kidsOf.values())arr.sort((a,b)=>byId.get(a).bornY-byId.get(b).bornY);
-  const drawn=new Set();
-  // a <li> holding the couple's card and, beneath, a <ul> of their children
-  const renderLi=(id)=>{
-    if(drawn.has(id))return null;
-    drawn.add(id);
-    const n=byId.get(id);if(!n)return null;
-    const sp=n.spouseId>=0&&byId.has(n.spouseId)&&!drawn.has(n.spouseId)?byId.get(n.spouseId):null;
-    if(sp)drawn.add(sp.id);
-    const kids=((kidsOf.get(id)||[]).concat(sp?(kidsOf.get(sp.id)||[]):[])).filter(k=>!drawn.has(k));
-    return(
-      <li key={id}>
-        <Couple n={n} sp={sp}/>
-        {kids.length>0&&<ul>{kids.map(k=>renderLi(k))}</ul>}
-      </li>
-    );
-  };
-  // each independent line (the founder's, plus any unconnected adoptees) is its
-  // own top-down tree, stacked vertically
-  const roots=nodes.filter(n=>n.parentId<0&&!n.foreign).sort((a,b)=>a.bornY-b.bornY);
-  const trees=[];
-  for(const r of roots){ if(drawn.has(r.id))continue; trees.push(<div key={r.id} className="ft-tree"><ul>{renderLi(r.id)}</ul></div>); }
-  for(const n of nodes){ if(drawn.has(n.id)||n.foreign)continue; trees.push(<div key={n.id} className="ft-tree"><ul>{renderLi(n.id)}</ul></div>); }
-  return <div className="ft-wrap">{trees}</div>;
-}
-// Everyone who ever ruled the nation — across houses, councils and theocracies —
-// in order, grouped by house with a banner when the form of rule itself changes.
-function SuccessionRoll({roll}){
-  const rows=[];
-  let lastHouse=null,lastGov=null;
-  roll.forEach((e,i)=>{
-    const gm=GOV_META[e.gov]||GOV_META.monarchy;
-    if(e.gov!==lastGov){
-      rows.push(<div key={"g"+i} style={{margin:"10px 0 3px",fontSize:10,letterSpacing:0.4,textTransform:"uppercase",fontWeight:700,color:gm.col}}>
-        {gm.icon} {gm.label==="Crown"?"Monarchy":gm.label}{lastGov?" — the order changes":""}</div>);
-      lastHouse=null;
-    }
-    if(e.house!==lastHouse){
-      rows.push(<div key={"h"+i} className="au-fade" style={{margin:"5px 0 1px",fontSize:10,fontStyle:"italic"}}>House {e.house||"—"}</div>);
-    }
-    lastHouse=e.house;lastGov=e.gov;
-    rows.push(
-      <div key={i} style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"2px 9px",alignItems:"baseline",fontSize:12,
-        padding:"1px 4px",borderLeft:`3px solid ${gm.col}`,marginLeft:4,background:e.current?"rgba(184,144,47,0.12)":"transparent"}}>
-        <span className="au-fade" style={{fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",fontSize:11}}>{fy(e.fromY)}–{e.toY>=0?fy(e.toY):"now"}</span>
-        <span style={{color:e.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{e.female?"♀":"♂"}</span>
-        <span style={{color:"#2a1c0e"}}>
-          <span className="au-fade">{e.title?e.title+" ":""}</span>
-          <b style={{fontWeight:e.current?700:600}}>{e.name}</b>{e.epithet?` ${e.epithet}`:""}
-          {e.current&&<span style={{color:gm.col,fontWeight:700}}> · reigning</span>}
-        </span>
-      </div>
-    );
-  });
-  return <div>{rows}</div>;
-}
-function DynastyOverlay({tree,onClose}){
-  const[mode,setMode]=useState("tree");
-  // FREEZE a snapshot so the chart doesn't reflow under the reader as the sim
-  // ticks (people age/are born/die every frame). Capture the first frame and on
-  // a realm change; a manual refresh re-captures the live state.
-  const[snap,setSnap]=useState(tree);
-  useEffect(()=>{if(tree&&(!snap||snap.countryId!==tree.countryId))setSnap(tree);},[tree,snap]);
-  const data=snap||tree;
-  const houses=(data&&data.houses)||[];
-  const roll=(data&&data.roll)||[];
-  const Tab=({id,label})=>(
-    <button onClick={()=>setMode(id)} className={"au-btn"+(mode===id?" au-active":"")}
-      style={{fontSize:10,whiteSpace:"nowrap"}}>{label}</button>);
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <style>{FT_CSS}</style>
-      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(860px,95vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,flexShrink:0,gap:8}}>
-          <div className="au-pico-title" style={{fontSize:15}}>House {data?data.houseName||"—":"—"}
-            {data&&<span className="au-fade" style={{fontSize:11}}> · {data.govLabel}</span>}</div>
-          <div style={{display:"flex",gap:5,alignItems:"center"}}>
-            <Tab id="tree" label="Family tree"/>
-            <Tab id="roll" label={`Succession${roll.length?` (${roll.length})`:""}`}/>
-            <button onClick={()=>setSnap(tree)} title="Refresh to the present" className="au-btn"
-              style={{fontSize:10,whiteSpace:"nowrap"}}>↻</button>
-            <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
-          </div>
-        </div>
-        <div className="au-fade" style={{fontSize:10,marginBottom:8,flexShrink:0}}>
-          {data?<>succession law: {data.lawLabel}{data.legitLabel?` · legitimacy ${data.legitLabel}`:""}{data.rulerTitle?` · the ${data.rulerTitle.toLowerCase()} reigns`:""} · <span style={{fontStyle:"italic"}}>snapshot — ↻ to update</span></>:"no ruling house"}
-        </div>
-        <div style={{overflow:"auto",minHeight:0,paddingRight:6}}>
-          {mode==="tree"
-            ?(houses.length===0
-              ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No reigning house — the realm keeps no king-list yet.</div>
-              :houses.map((h,i)=>(
-                <div key={h.dynastyId} style={{marginBottom:14,opacity:h.isCurrent?1:0.92}}>
-                  <div style={{display:"flex",alignItems:"baseline",gap:8,borderBottom:"1px solid rgba(90,74,50,0.25)",paddingBottom:2,marginBottom:2,marginTop:i?10:0}}>
-                    <span className="au-pico-title" style={{fontSize:13}}>House {h.name}</span>
-                    <span className="au-fade" style={{fontSize:10}}>
-                      {h.isCurrent?"reigning":"former"} · {fy(h.founded)}–{h.ended>=0?fy(h.ended):"now"}
-                    </span>
-                  </div>
-                  <FamilyTree nodes={h.nodes}/>
-                </div>))
-            )
-            :(roll.length===0
-              ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No sovereigns recorded yet.</div>
-              :<SuccessionRoll roll={roll}/>)}
-        </div>
-        <div className="au-fade" style={{fontSize:9.5,marginTop:8,flexShrink:0,display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid rgba(90,74,50,0.2)",paddingTop:6}}>
-          {mode==="tree"
-            ?<><span>♔ reigning</span><span>♀ / ♂</span><span>⚭ married</span><span style={{fontStyle:"italic"}}>dashed = bastard</span><span>faded = married in / deceased</span></>
-            :<><span style={{color:GOV_META.monarchy.col}}>♔ crown</span><span style={{color:GOV_META.theocracy.col}}>☩ theocracy</span><span style={{color:GOV_META.republic.col}}>⚖ council</span><span style={{color:GOV_META.despotism.col}}>⚔ despotism</span><span>oldest first</span></>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
 function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
 function atlasMountain(c,x,y,s,snow,tone){
 const h=s,wd=s*0.86;
@@ -605,119 +302,7 @@ c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
 
 
 
-// ── Display units (peopleSim) ───────────────────────────────────────
-// The sim runs on compact internal units; these scale them to realistic,
-// human-readable figures at the DISPLAY layer ONLY — the simulation math is
-// untouched. One sim-"person" ≈ POP_SCALE real people (the map labels already
-// assumed this convention); food is shown as a mass of grain; wealth as a mass
-// of gold. Tweak these three to taste.
-const POP_SCALE        = 1000;   // sim pop → people: metropolis ~3.4M, city ~1.2M, town ~250k, village ~25k
-const FOOD_KG_PER_UNIT = 1000;   // one sim food unit → kg of grain (1 unit = 1 tonne)
-const GOLD_G_PER_COIN  = 8;      // one sim coin → grams of gold (a gold ducat ≈ 3.5g; 8g keeps treasuries legible)
 const HISTORY_INTERVAL = 100;    // sim steps between History-chart samples
-
-// Compact number: 1234 → "1.2k", 3_400_000 → "3.4M", 2.1e9 → "2.1B".
-function fmtNum(n){
-  const s=n<0?"-":""; const a=Math.abs(n);
-  if(a>=1e9)return s+(a/1e9).toFixed(1)+"B";
-  if(a>=1e6)return s+(a/1e6).toFixed(a>=1e7?0:1)+"M";
-  if(a>=1e3)return s+(a/1e3).toFixed(a>=1e4?0:1)+"k";
-  return s+Math.round(a).toString();
-}
-// Mass in kilograms → grams / kg / tonnes / kilotonnes.
-function fmtMass(kg){
-  const s=kg<0?"-":""; const a=Math.abs(kg);
-  if(a>=1e6)return s+(a/1e6).toFixed(1)+" kt";
-  if(a>=1e3)return s+(a/1e3).toFixed(a>=1e4?0:1)+" t";
-  if(a>=1)return s+(a>=100?Math.round(a):a.toFixed(1))+" kg";
-  return s+Math.round(a*1000)+" g";
-}
-// People — scale sim population to real people.
-function fmtPeople(p){ return fmtNum((p||0)*POP_SCALE); }
-// Food (grain) shown as a mass.
-function fmtFood(simFood){ return fmtMass((simFood||0)*FOOD_KG_PER_UNIT); }
-// Wealth shown as a mass of gold.
-function fmtGoldKg(simCoin){ return fmtMass((simCoin||0)*GOLD_G_PER_COIN/1000); }
-
-// ── History charts ──────────────────────────────────────────────────
-// One metric over sim-steps as a small SVG line chart (the History panel).
-function MiniChart({data,get,label,color,fmtY}){
-  const W=300,H=54,padL=3,padR=3,padT=2,padB=8;
-  if(!data||data.length<2)
-    return <div style={{padding:"5px 10px"}}><div className="au-sc au-fade" style={{fontSize:9}}>{label}</div><div className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>gathering data…</div></div>;
-  let yMin=Infinity,yMax=-Infinity;
-  for(const d of data){const v=get(d);if(v<yMin)yMin=v;if(v>yMax)yMax=v;}
-  if(!(yMax>yMin))yMax=yMin+1;
-  const x0=data[0].step,x1=data[data.length-1].step,dx=Math.max(1,x1-x0);
-  const sx=v=>padL+(W-padL-padR)*((v-x0)/dx);
-  const sy=v=>padT+(H-padT-padB)*(1-(v-yMin)/(yMax-yMin));
-  let pts="";
-  for(const d of data)pts+=sx(d.step).toFixed(1)+","+sy(get(d)).toFixed(1)+" ";
-  const cur=get(data[data.length-1]);
-  return(
-    <div style={{padding:"3px 10px 6px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-        <span className="au-sc au-fade" style={{fontSize:9}}>{label}</span>
-        <span style={{fontSize:11,fontWeight:600,color}}>{fmtY(cur)}</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{width:"100%",height:H,display:"block"}}>
-        <polyline points={pts.trim()} fill="none" stroke={color} strokeWidth={1.3} vectorEffect="non-scaling-stroke"/>
-      </svg>
-      <div style={{display:"flex",justifyContent:"space-between"}}>
-        <span className="au-fade" style={{fontSize:8}}>{fmtY(yMin)}</span>
-        <span className="au-fade" style={{fontSize:8}}>peak {fmtY(yMax)}</span>
-      </div>
-    </div>);
-}
-// Copyable markdown rundown of the run so far (downsampled to ~40 rows).
-function buildHistoryExport(H){
-  if(!H||!H.length)return "No history yet — let the simulation run for a while, then copy again.";
-  const N=H.length,stride=Math.max(1,Math.ceil(N/40)),rows=[];
-  for(let i=0;i<N;i+=stride)rows.push(H[i]);
-  if(rows[rows.length-1]!==H[N-1])rows.push(H[N-1]);
-  const head="| step | population | gold | land % | countries | settlements | villages | cities | metros | largest empire (tiles) | army |";
-  const sep ="|---|---|---|---|---|---|---|---|---|---|---|";
-  const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${(r.towns||0)+(r.cities||0)} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
-  return `Simman — global stats over time (display units: 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
-}
-
-// ── Settlement-card presentational components ──
-// Defined at module scope (stable identities) so they are NOT redefined
-// every WorldSim render. The card re-renders several times a second while
-// the sim plays; if these lived inside the render, React would treat them
-// as new component types each time and tear down + rebuild their DOM —
-// causing flicker and making the collapsible headers flaky to click.
-function PsBar({ v, color }) {
-  return (
-    <div style={{ position:"relative", height:5, background:"rgba(0,0,0,0.15)", borderRadius:2, marginTop:1 }}>
-      <div style={{ position:"absolute", inset:0, width:`${Math.max(0,Math.min(1,v))*100}%`, background:color||"#7a5", borderRadius:2 }} />
-    </div>
-  );
-}
-function PsKRow({ label, val, colour, note }) {
-  return (
-    <div style={{ margin:"3px 0" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10 }}>
-        <span>{label}{note ? <span className="au-fade" style={{ marginLeft:4, fontSize:9 }}>{note}</span> : null}</span>
-        <span>{(val*100|0)}%</span>
-      </div>
-      <PsBar v={val} color={colour} />
-    </div>
-  );
-}
-function PsSection({ id, title, right, open, onToggle, children }) {
-  return (
-    <div style={{ marginTop:6, borderTop:"1px solid rgba(0,0,0,0.10)", paddingTop:5 }}>
-      <div onClick={(e)=>{ e.stopPropagation(); onToggle(id); }} className="au-fade"
-        style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", userSelect:"none", fontSize:10, letterSpacing:0.4, textTransform:"uppercase" }}>
-        <span>{open ? "▾" : "▸"} {title}</span>
-        {right!=null && <span style={{ textTransform:"none", letterSpacing:0 }}>{right}</span>}
-      </div>
-      {open && <div style={{ marginTop:4 }}>{children}</div>}
-    </div>
-  );
-}
-
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);
@@ -727,6 +312,7 @@ const canvasRef=useRef(null);
 // stays at map resolution below it; this canvas carries only the vector features.
 const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
+const[genBusy,setGenBusy]=useState(false);   // a world is being forged — show it (regens keep the old map up for ~a minute, which read as a dead control)
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
@@ -743,21 +329,49 @@ const[showLakes,setShowLakes]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
-const[rightPanel,setRightPanel]=useState("");  // "" | "params" | "tribes"
 const[showTuning,setShowTuning]=useState(false);
+// ── iPhone mode: below 760px the codex becomes a slide-over drawer, the top
+// bar sheds its dense readouts, the legend starts collapsed, and map labels
+// get a physical floor. Pure display adaptation — same state, same engine.
+const _mqNarrow=typeof matchMedia!=="undefined"?matchMedia("(max-width: 760px)"):null;
+const[narrow,setNarrow]=useState(()=>!!(_mqNarrow&&_mqNarrow.matches));
+const narrowRef=useRef(narrow);
+useEffect(()=>{narrowRef.current=narrow;},[narrow]);
+useEffect(()=>{
+  const mq=matchMedia("(max-width: 760px)");
+  const on=()=>setNarrow(mq.matches);
+  mq.addEventListener("change",on);
+  return()=>mq.removeEventListener("change",on);
+},[]);
+const[codexOpen,setCodexOpen]=useState(false);   // narrow only: the codex drawer
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
-const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
-const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm history) overlay
-const[dynastyOpen,setDynastyOpen]=useState(false);     // ruling family-tree overlay
+// ── Floating surfaces: ALL popovers/drawers/documents live on ONE external
+// stack (src/ui/surfaces.js) — exclusive popovers & drawers, stacking
+// documents, Esc pops the top, z from stack order. The derived consts +
+// shim setters below keep every existing call site working unchanged.
+const _surfStack=useSurfaceStack();
+const _sOpen=(id)=>_surfStack.some(s=>s.id===id);
+const menuOpen=_sOpen("menu"),        newWorldOpen=_sOpen("newworld"),
+      chronicleOpen=_sOpen("chronicle"), dynastyOpen=_sOpen("dynasty"),
+      techTreeOpen=_sOpen("techtree"),   layersOpen=_sOpen("layers"),
+      helpOpen=_sOpen("help"),           leversOpen=_sOpen("levers"),
+      editorOpen=_sOpen("editor");
+const rightPanel=_sOpen("wind")?"params":"";
+const _mkSet=(id,kind)=>(v)=>{const next=typeof v==="function"?v(isSurfaceOpen(id)):v;if(next)openSurface(id,kind);else closeSurface(id);};
+const setMenuOpen=_mkSet("menu","popover"),      setLayersOpen=_mkSet("layers","popover"),
+      setNewWorldOpen=_mkSet("newworld","document"), setChronicleOpen=_mkSet("chronicle","document"),
+      setDynastyOpen=_mkSet("dynasty","document"),   setTechTreeOpen=_mkSet("techtree","document"),
+      setHelpOpen=_mkSet("help","document"),         setLeversOpen=_mkSet("levers","drawer"),
+      setEditorOpen=_mkSet("editor","drawer");
+const setRightPanel=(v)=>{const val=typeof v==="function"?v(rightPanel):v;if(val==="params")openSurface("wind","drawer");else closeSurface("wind");};
+const _zOf=(id)=>surfaceZ(_surfStack,id);
 const[lens,setLens]=useState("terrain");const subMemRef=useRef({});
 const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realms|peoples|faiths|inspect
-const[newWorldOpen,setNewWorldOpen]=useState(false);
-const[menuOpen,setMenuOpen]=useState(false);
+useEffect(()=>{panelTabRef.current=panelTab;},[panelTab]);
 const[realmSel,setRealmSel]=useState(-1);   // realm inspected in the Realms tab
 // ── Country editor: arm placement, then click the map to drop a seed capital
 // with the chosen tech/knowledge/personality and watch what it grows into. ──
-const[editorOpen,setEditorOpen]=useState(false);   // panel visible
 const[editorArmed,setEditorArmed]=useState(false); // next map click PLACES instead of selects
 const[edParams,setEdParams]=useState({tier:2,people:500,
   knowledge:{agriculture:0.6,construction:0.3,organization:0.4,metallurgy:0.3,navigation:0.1,mobility:0.2},
@@ -768,6 +382,9 @@ useEffect(()=>{edParamsRef.current=edParams;},[edParams]);
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
+const selRealmRef=useRef(-1);   // realmSel mirrored for the draw loop (map highlight + label emphasis)
+useEffect(()=>{selRealmRef.current=realmSel;},[realmSel]);
+const panelTabRef=useRef("world");   // mirrored for nav pushes from canvas handlers
 useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedSettlementId]);
 // ── Layer visibility ────────────────────────────────────────────────
 // All toggles for what gets drawn on the peopleSim view. Tier toggles
@@ -780,9 +397,9 @@ const[layers,setLayers]=useState({
   icons:true, tints:true, borders:true, provinces:false, roads:true, seaLanes:true,
   moneyFlow:true, ships:true, shocks:true,
   village:true, town:true, city:true, metropolis:true,
+  labels:true, emblems:true,   // names + heraldry drawn on the map (plan §5.1–5.2)
 });
-const[layersOpen,setLayersOpen]=useState(false);
-const[leversOpen,setLeversOpen]=useState(false);
+const[dockFly,setDockFly]=useState(null);      // lens id whose sub-lens flyout is open (hover-transient)
 const[tuneVals,setTuneVals]=useState(()=>tuningDefaults());
 const tuneValsRef=useRef(tuneVals);
 // Push a tuning change to the sim. Covers BOTH execution paths: postMessage to
@@ -807,6 +424,7 @@ const onLeverResetAll=useCallback(()=>{
 },[pushTune]);
 const[boardMode,setBoardMode]=useState("countries");   // "countries" | "settlements"
 const[boardSort,setBoardSort]=useState("size");        // see SORT_KEYS below
+const[boardQuery,setBoardQuery]=useState("");          // browser search (name filter)
 const layersRef=useRef(layers);
 useEffect(()=>{layersRef.current=layers;},[layers]);
 // Country view: live per-country hue assignment (seeded by the previous solve so
@@ -858,7 +476,7 @@ const[mapScale,setMapScale]=useState(1920);
 // sim tile spans (1 = sim matches the land, 2 = half [default], 4 = quarter/faster). Map
 // resolution (mapScale) sets terrain/coast crispness; simDiv sets sim granularity — which
 // is speed AND emergent detail (a finer grid seeds more river cradles → a different world).
-const[simDiv,setSimDiv]=useState(2);
+const[simDiv,setSimDiv]=useState(4);   // sim granularity default: Quarter — fast everywhere, phone-friendly
 const genW=mapScale,genH=mapScale>>1;   // REQUESTED scale — the size the NEXT world generates at
 // Render/data dimensions track the ACTUAL loaded world, never the requested mapScale. Worldgen is
 // async, so between the scale change and the new world arriving the two differ; keying the canvas /
@@ -871,7 +489,7 @@ const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
-const[keyOpen,setKeyOpen]=useState(true);
+const[keyOpen,setKeyOpen]=useState(()=>!(typeof matchMedia!=="undefined"&&matchMedia("(max-width: 760px)").matches));   // phone: legend starts collapsed
 useEffect(()=>{
   // On mouse-up, clear any in-flight pan that ended outside the canvas —
   // otherwise the next click would see panDragRef with a stale "moved" flag
@@ -910,12 +528,13 @@ const simWorkerRef=useRef(null);
 const genIdRef=useRef(0);
 // Sim tile resolution (simDiv) read by finalizeWorld — a ref so the async worldgen
 // finalize sees the value chosen at request time even though finalizeWorld is memoised.
-const simTileResRef=useRef(2);
+const simTileResRef=useRef(4);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
 // bar visibly counts up tick-by-tick; the heavier psStats stays throttled to ~5Hz.
 const [liveStep,setLiveStep]=useState(0);
+const uiPulseRef=useRef(0);   // last React-pulse time — gates snapshot-driven renders to ≤4Hz
 // Time-series of global metrics for the History charts + copyable export. Kept
 // in a ref (no re-render on every sample); the charts read it on the regular
 // psStats-driven re-render. Sampled every HISTORY_INTERVAL sim steps.
@@ -942,6 +561,9 @@ const psTintSrcRef=useRef(null);   // sim-res (tw×th) owner colours, 1px per ti
 const psTintRef=useRef(null);      // map-res (CW×CH) tint layer, coast-clipped
 const psOverlayMeta=useRef({step:-1,ch:0});
 const identityFillRef=useRef(null);   // cached nearest-settlement map for the people/faith/language overlays
+const labelAnchorsRef=useRef(null);   // cached realm-label anchors (recomputed when a new claim grid arrives)
+const[toastVerbosity]=useState("epochal");   // "all" | "epochal" | "silent" (feed-bell menu, future)
+const[feedCats,setFeedCats]=useState(()=>new Set());   // active feed category filters (empty = all)
 const ancRevealRef=useRef({start:0,active:false});   // deep-ancestry "peopling" replay: wavefront spread time + whether animating
 // Reusable scratch for the money-flow coin particles (money view). Coins are
 // bucketed by link busyness so the whole overlay costs ~4 fillStyle changes
@@ -970,6 +592,8 @@ const finalizeWorld=useCallback((w)=>{
 // RNG, resource placement) reads `w.seed`. Without this alias the sim's RNG
 // silently fell back to seed 1 for EVERY world.
 if(w.seed==null)w.seed=w._seed??1;
+setGenBusy(false);
+resetEmblems();labelAnchorsRef.current=null;   // a new world bears new arms & names
 setWorld(w);worldRef.current=w;const t=buildTerritory(w,RES);
 terRef.current=t;
 // Rivers (and deposits) are computed inside buildTerritory and stored
@@ -1059,6 +683,7 @@ const generate=useCallback((s,ol)=>{
 // Stamp this request; a worker result whose id has been superseded (the user changed
 // scale/seed again before it finished) is a wrong-resolution world and must be ignored.
 const _gid=++genIdRef.current;
+setGenBusy(true);
 // Import path
 if(presetRef.current==="import"&&importedWorldRef.current){
 const w=importedWorldRef.current;importedWorldRef.current=null;finalizeWorld(w);return;}
@@ -1670,10 +1295,15 @@ d.set(atlasCache.current.img.data);
 // Neutral grey base for the people / faith / language / loyalty / population
 // overlays — dark grey ocean, flat grey land — so the coloured regions read
 // clearly without the terrain colours competing. Faint elevation keeps coasts legible.
+// POPULATION gets a DARK land base: its heat ramp must be monotone in
+// brightness (bright = more people), and over the light identity base the
+// sub-1k haze DARKENED the land — empty desert out-glowed peopled scrub.
+const popDark=vm==="population";
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
 const e=w.elevation[sy*W+sx];const pi4=ti<<2;
 if(e<=sl){d[pi4]=20;d[pi4+1]=22;d[pi4+2]=27;}
+else if(popDark){const v=(56-Math.max(0,e-0.1)*26)|0;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=(v+5)|0;}
 else{const v=(118-Math.max(0,e-0.1)*64)|0;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=(v+6)|0;}
 d[pi4+3]=255;}
 }else{
@@ -2002,7 +1632,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmPrices?8192+priceGoodRef.current:0);
+    const layerKey=((L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmPrices?8192+priceGoodRef.current:0))+"|"+selRealmRef.current;   // selection rides the key → highlight rebuilds on select
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -2236,29 +1866,43 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           octx.stroke();octx.setLineDash([]);
         }
       }
-      // ── Population: the people-on-land field (popField, the canonical
-      // demographic substrate) as a density heat — near-empty subsistence land
-      // FADES into the base grey, the farmed countryside reads blue→teal, and
-      // the dense cores burn amber→white. The packed value is log-scaled (so
-      // the transport byte carries the full dynamic range); the RAW log read
-      // rendered a 20-people scrub tile at ~60% of a 7,000-people valley's
-      // brightness — the whole peopled planet glowed and the lens read as
-      // "livability". A cubic gamma on the log value re-allocates the colour
-      // range to the TOP decades (where the people actually are), so the map
-      // shows concentration relative to the era's densest region — a thin
-      // hunter-gatherer scatter is a faint haze, not a lit country. ──
+      // ── Population: the people-on-land field (popField) on an ABSOLUTE log
+      // ruler. The worker packs density against a FIXED span — log10 of the
+      // census per reference tile, 0.1..1000 ≈ 100 → 1,000,000 real people,
+      // one decade per quarter of the byte — never against the frame's own
+      // maximum. (The old relative packing read as a uniform world-wide glow
+      // that only brightened: at genesis the densest tile IS ordinary
+      // farmland so everything sat at the top of the ramp, and log-vs-max
+      // ratios compress toward 1 as the world grows.) On the fixed ruler a
+      // thin dawn world LOOKS thin, growth is real change on screen, and the
+      // same colour means the same density in any era: haze <1k · slate→blue
+      // 1k-10k · blue→teal 10k-75k · teal→amber 75k-560k · white ≥560k. The
+      // packed value already carries the decades, so t is LINEAR (no gamma —
+      // a gamma here would re-crush the haze/blue decades the dawn lives in). ──
       if(vmPopulation&&psw._popDens){
         const tw=psw.tw,th=psw.th,N2=Math.min(tw*th,psw._popDens.length);
         const dens=psw._popDens;let lastFs=null;
         const fsCache=new Array(251);
         const colAt=(v)=>{let fs=fsCache[v];if(fs)return fs;
-          const t0=v/250,t=t0*t0*t0;   // gamma 3 on the log-packed value: the top decades own the ramp
+          const t=v/250;   // linear on the packed log: one decade per 0.25
+          // Brightness is MONOTONE in density over the lens's dark land base
+          // (~rgb(52,52,57)): haze lifts gently above it, each band starts
+          // where the previous ended — bright always means more people.
+          // Palette weight sits on the REAL regime boundary (measured, seed
+          // 8817 @3k/6k steps): technique-reached land — overwhelmingly the
+          // governed world — runs a median ~13k people/region, subsistence
+          // wilderness ~0.7-2.2k (6× at equal fertility, 17× overall; the
+          // devField wave is the mechanism). So the 1k-10k subsistence decade
+          // stays a QUIET slate and saturation snaps in across 10k-20k —
+          // civilization visibly burns, the wild stays a murmur. Same
+          // absolute ruler; only the colours' emphasis moved.
           let r,g,b,a=1;
-          if(t<0.10){a=0.25+t/0.10*0.5;r=34;g=42;b=64;}                                          // subsistence scatter: a faint haze over the base
-          else if(t<0.35){const s2=(t-0.10)/0.25;r=(34+s2*6)|0;g=(42+s2*18)|0;b=(64+s2*76)|0;}   // thin countryside: slate → deep blue
-          else if(t<0.65){const s2=(t-0.35)/0.3;r=(40+s2*10)|0;g=(60+s2*110)|0;b=(140-s2*10)|0;} // farmed land: blue → teal
-          else if(t<0.88){const s2=(t-0.65)/0.23;r=(50+s2*190)|0;g=(170+s2*35)|0;b=(130-s2*70)|0;} // dense belts: teal → amber
-          else{const s2=(t-0.88)/0.12;r=240;g=(205+s2*45)|0;b=(60+s2*165)|0;}                    // the great basins: amber → white-hot
+          if(t<0.25){a=0.25+t/0.25*0.55;r=56;g=66;b=96;}                                          // <1k: subsistence haze — a soft blue lift
+          else if(t<0.50){const s2=(t-0.25)/0.25;r=(50-s2*2)|0;g=(60+s2*6)|0;b=(86+s2*22)|0;}     // 1k→10k: muted slate-blue — thinly peopled wild stays quiet
+          else if(t<0.58){const s2=(t-0.50)/0.08;r=(48+s2*2)|0;g=(66+s2*74)|0;b=(108+s2*22)|0;}   // 10k→20k: the agrarian threshold — saturation snaps in
+          else if(t<0.72){const s2=(t-0.58)/0.14;r=50;g=(140+s2*30)|0;b=130;}                     // 20k→75k: teal deepens across the farmed belts
+          else if(t<0.90){const s2=(t-0.72)/0.18;r=(50+s2*190)|0;g=(170+s2*35)|0;b=(130-s2*70)|0;} // 75k→560k: teal → amber dense basins
+          else{const s2=(t-0.90)/0.10;r=240;g=(205+s2*45)|0;b=(60+s2*165)|0;}                     // ≥560k: amber → white-hot urban cores
           fs=a<1?`rgba(${r},${g},${b},${a.toFixed(2)})`:`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};
         for(let ti=0;ti<N2;ti++){
           const v=dens[ti];if(v<=0)continue;   // empty land / water → base
@@ -2318,6 +1962,29 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(prog>=1)rv.active=false;   // spread complete — release the per-frame rebuild
       }
+      // ── Selected-realm emphasis (plan §5.3): a bright wash + gold outline
+      // around the realm the player has picked, drawn into the cached overlay
+      // (selection id rides the rebuild key). One O(tiles) pass per rebuild.
+      const emphasizeRealm=(arr,tw2,th2)=>{
+        const sel=selRealmRef.current;if(sel<0||!arr)return;
+        octx.save();
+        octx.fillStyle="rgba(255,244,200,0.16)";
+        octx.strokeStyle="rgba(255,206,84,0.95)";octx.lineWidth=2.6*uiF;octx.lineJoin="round";octx.lineCap="round";
+        octx.beginPath();
+        for(let ti=0;ti<arr.length;ti++){
+          if(arr[ti]!==sel)continue;
+          const py=(ti/tw2)|0,px=ti-py*tw2;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          octx.fillRect(sx,sy,TR,TR);
+          const ro=arr[py*tw2+(px===tw2-1?0:px+1)],lo=arr[py*tw2+(px===0?tw2-1:px-1)];
+          const uo=py>0?arr[ti-tw2]:-2,dn=py<th2-1?arr[ti+tw2]:-2;
+          if(ro!==sel){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(lo!==sel){octx.moveTo(sx,sy);octx.lineTo(sx,sy+TR);}
+          if(uo!==sel&&uo!==-2){octx.moveTo(sx,sy);octx.lineTo(sx+TR,sy);}
+          if(dn!==sel&&dn!==-2){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}
+        }
+        octx.stroke();octx.restore();
+      };
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
         const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
@@ -2360,6 +2027,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         octx.stroke();
+        emphasizeRealm(claimArr,tw,th);
       }
       if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
@@ -2384,6 +2052,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
+        emphasizeRealm(claimArr,tw,th);
       } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
@@ -2686,6 +2355,33 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
     }
     }
+    // ── Names on the map (plan §5.1) + heraldry (§5.2) ──
+    // Realm names anchor at the claimed-territory centre (cached until a new
+    // claim grid arrives); settlement names are tier-gated by zoom. Drawn
+    // screen-space on the feature canvas so type renders crisp at any map
+    // scale. Skipped on the identity/thematic lenses, where political names
+    // over a faith/culture/price fill would mislabel what the colours mean.
+    if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmPrices){
+      labelAnchorsRef.current=realmLabelAnchors(psw,labelAnchorsRef.current);
+      // Physical floor: on a small display the map-unit sizes drop below
+      // legibility at world zoom; floor them at ~7 CSS px and let collision
+      // thin the crowd (few names far out, all of them as you pinch in).
+      // No-op on desktop, where map-unit sizes already exceed the floor.
+      const _cssW=canvasRef.current?canvasRef.current.getBoundingClientRect().width:FEAT_W;
+      const _minFs=7*(FEAT_W/Math.max(1,_cssW));
+      const _seed=worldRef.current?worldRef.current.seed:0;
+      const _emblemFor=_L.emblems?(id)=>{
+        const c=psw.countries&&psw.countries.get(id);
+        return c?realmEmblemImg(psw,c,ter,_seed):null;
+      }:null;
+      drawMapLabels(fctx,psw,labelAnchorsRef.current,
+        {z:viewZRef.current,vx:viewXRef.current,vy:viewYRef.current,k:_k},
+        {TR,toScreenY:(y)=>dataYtoScreenY(y,H,CH)},
+        {showRealms:true,showSettlements:_L.icons,capitalIds,
+         emblemFor:_emblemFor,selRealm:selRealmRef.current,
+         selSettlement:selId,featW:FEAT_W,featH:FEAT_H,minFs:_minFs});
+      if(fctx)fctx.setTransform(viewZRef.current*_k,0,0,viewZRef.current*_k,viewXRef.current*_k,viewYRef.current*_k);
+    }
   }
   // ── Sea lanes ── faint dashed routes over open water connecting the
   // ports that trade by ship (sea.js). Drawn in every view except the
@@ -2740,7 +2436,15 @@ const applySnapshot=useCallback((snap)=>{
   let psw=peopleRef.current;
   if(!psw||!psw._isMirror){psw=peopleRef.current={_isMirror:true};}
   psw.step=snap.step;psw.tw=snap.tw;psw.th=snap.th;psw.tileRes=snap.tileRes;psw.N=snap.N;
-  setLiveStep(snap.step);   // 30Hz step display (no-op when unchanged → no extra render)
+  // REACT PULSE ≤4Hz: the mirror/canvas consume every snapshot (refs, above
+  // and below), but the React tree — panels, buttons, readouts — re-renders
+  // only on this gated pulse. At 30 renders/s the whole codex re-diffed per
+  // sim tick and every button felt sticky; at 4Hz the numbers still read as
+  // live and clicks land between renders. Paused worlds pulse immediately so
+  // selection/detail refreshes feel instant.
+  let _pulsed=false;
+  {const _now=performance.now();
+   if(!playRef.current||_now-(uiPulseRef.current||0)>=250){uiPulseRef.current=_now;_pulsed=true;setLiveStep(snap.step);}}
   if(snap.eraAt)psw._eraAt=snap.eraAt;   // display-calendar timeline
   psw.globalP=snap.globalP;
   if(snap.owner)psw._territoryOwner=snap.owner;
@@ -2748,7 +2452,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
-  if(snap.countryClaim)psw._countryClaim=snap.countryClaim;  // capital-claim prototype (Capital Claim view); keep last
+  if(snap.countryClaim){psw._countryClaim=snap.countryClaim;psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver drives label-anchor cache)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
   // layer it was built for, so a stale field from a previous lens is ignored.
@@ -2778,7 +2482,7 @@ const applySnapshot=useCallback((snap)=>{
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
   // (the sim numbers don't need 30Hz); drawing still happens every snapshot.
   psw._snapN=(psw._snapN||0)+1;
-  if(psw._snapN%6===1){if(snap.stats)setPsStats(snap.stats);}
+  if(_pulsed&&snap.stats)setPsStats(snap.stats);
   // History sample for the charts/export (gated by sim-step, reset on new run).
   if(snap.stats){
     const H=psHistoryRef.current, st=snap.step, last=H[H.length-1];
@@ -2951,14 +2655,26 @@ const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.ri
 const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
 const isLake=terTi>=0&&terRef.current&&terRef.current.rivers&&terRef.current.rivers.lake?terRef.current.rivers.lake[terTi]>=0:false;
 const lakeSize=isLake?terRef.current.rivers.lakeInfo[terRef.current.rivers.lake[terTi]].size:0;
-// Who lives here / whose realm: territory owner + national claim at this tile.
-let hovOwner=null,hovRealm=null;
+// Who lives here / whose realm: territory owner + national claim at this tile,
+// plus the nearest settlement (identity card) — same radius the click uses.
+let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
 {const psw=peopleRef.current;
  if(psw&&terTi>=0){
    if(psw._territoryOwner&&psw._byId){const oid=psw._territoryOwner[terTi];if(oid>=0){const o=psw._byId.get(oid);if(o)hovOwner=o.name;}}
-   if(psw._countryClaim&&psw.countries){const cc=psw._countryClaim[terTi];if(cc>=0){const c=psw.countries.get(cc);if(c)hovRealm=c.name||(c.capital&&c.capital.name);}}
+   if(psw._countryClaim&&psw.countries){
+     const tw2=psw.tw;const stx=Math.min(tw2-1,((wx/RES)|0)/psw.tileRes|0),sty=Math.min(psw.th-1,((wy/RES)|0)/psw.tileRes|0);
+     const cc=psw._countryClaim[sty*tw2+stx];
+     if(cc>=0){const c=psw.countries.get(cc);if(c){hovRealm=c.name||(c.capital&&c.capital.name);hovRealmId=cc;}}}
+   {const psTx=((wx/RES)|0)/psw.tileRes,psTy=((wy/RES)|0)/psw.tileRes;
+    let best=null,bestD2=36;
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      let dx=Math.abs(s.pos.x-psTx);if(dx>psw.tw/2)dx=psw.tw-dx;
+      const dy=s.pos.y-psTy,d2=dx*dx+dy*dy;
+      if(d2<bestD2){bestD2=d2;best=s;}}
+    if(best)hovSett={name:best.name,tier:best.tier|0,people:best.people||0,isCap:(psw.countries&&psw.countries.get(best.countryId)&&psw.countries.get(best.countryId).capitalId===best.id)||false};}
  }}
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm});
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm,realmId:hovRealmId,sett:hovSett});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
@@ -3000,12 +2716,32 @@ if(psw){
   // Pick within ~6 tile radius (handles small icons and slop).
   // Sync the ref BEFORE the immediate redraw (the effect that mirrors the
   // state into the ref runs after render, so the halo used to lag one frame).
+  // Map jumps are codex navigation too — push the previous location so Back works.
+  navStackRef.current.push({tab:panelTabRef.current,realm:selRealmRef.current,sett:selectedSettlementIdRef.current});
+  if(navStackRef.current.length>48)navStackRef.current.shift();
   if(best&&bestD2<36){
     selectedSettlementIdRef.current=best.id;
     setSelectedSettlementId(best.id);
+    // a settlement click retargets the chronicle to ITS realm
+    selRealmRef.current=-1;setRealmSel(-1);
+    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:-1});
+    setPanelTab("inspect");
+    if(narrowRef.current)setCodexOpen(true);   // phone: selection opens the codex drawer
   }else{
     selectedSettlementIdRef.current=-1;
     setSelectedSettlementId(-1);
+    // Unified selection (plan §5.3): a click on claimed ground selects the
+    // REALM — highlight on the map, its page in the codex. Water or
+    // wilderness deselects everything.
+    let hitRealm=-1;
+    if(psw._countryClaim){
+      const tx=Math.max(0,Math.min(psw.tw-1,psTx|0)),ty=Math.max(0,Math.min(psw.th-1,psTy|0));
+      hitRealm=psw._countryClaim[ty*psw.tw+tx];
+      if(!(hitRealm>=0&&psw.countries&&psw.countries.get(hitRealm)))hitRealm=-1;
+    }
+    selRealmRef.current=hitRealm;setRealmSel(hitRealm);
+    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:hitRealm});
+    if(hitRealm>=0){setPanelTab("realms");if(narrowRef.current)setCodexOpen(true);}
   }
   draw(ter);
 }
@@ -3037,6 +2773,81 @@ useEffect(()=>{
   c.addEventListener("wheel",onWheel,{passive:false});
   return()=>c.removeEventListener("wheel",onWheel);
 },[CW,CH,draw]);
+// ── Touch: one finger pans, two fingers pinch-zoom around their midpoint,
+// a tap selects (same path as a mouse click). The canvas declares
+// touch-action:none so the browser never scrolls/zooms the page instead.
+useEffect(()=>{
+  const c=canvasRef.current;if(!c)return;
+  const touches=new Map();let lastDist=0,lastMid=null;
+  const put=(t)=>touches.set(t.identifier,{x:t.clientX,y:t.clientY});
+  const onStart=(e)=>{
+    for(const t of e.changedTouches)put(t);
+    if(touches.size===1){
+      const t0=[...touches.values()][0];
+      panDragRef.current={mx:t0.x,my:t0.y,vx:viewXRef.current,vy:viewYRef.current,moved:false};
+    }else if(touches.size===2){
+      panDragRef.current=null;
+      const[a,b]=[...touches.values()];
+      lastDist=Math.hypot(a.x-b.x,a.y-b.y);
+      lastMid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+    }
+    e.preventDefault();
+  };
+  const onTMove=(e)=>{
+    for(const t of e.changedTouches)if(touches.has(t.identifier))put(t);
+    const r=c.getBoundingClientRect();
+    if(touches.size===1&&panDragRef.current){
+      const t0=[...touches.values()][0];const pd=panDragRef.current;
+      const dx=t0.x-pd.mx,dy=t0.y-pd.my;
+      if(!pd.moved&&Math.hypot(dx,dy)<=5)return;
+      pd.moved=true;
+      viewXRef.current=pd.vx+dx*(CW/r.width);
+      viewYRef.current=pd.vy+dy*(CH/r.height);
+      if(terRef.current)draw(terRef.current);
+    }else if(touches.size===2){
+      const[a,b]=[...touches.values()];
+      const dist=Math.hypot(a.x-b.x,a.y-b.y)||1;
+      const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      const rawX=(mid.x-r.left)/r.width*CW,rawY=(mid.y-r.top)/r.height*CH;
+      const zOld=viewZRef.current;
+      const zNew=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,zOld*(dist/(lastDist||dist))));
+      const kz=zNew/zOld;
+      viewXRef.current=rawX-(rawX-viewXRef.current)*kz+(mid.x-lastMid.x)*(CW/r.width);
+      viewYRef.current=rawY-(rawY-viewYRef.current)*kz+(mid.y-lastMid.y)*(CH/r.height);
+      viewZRef.current=zNew;
+      lastDist=dist;lastMid=mid;
+      if(terRef.current)draw(terRef.current);
+    }
+    e.preventDefault();
+  };
+  const onEnd=(e)=>{
+    for(const t of e.changedTouches){
+      const wasSolo=touches.size===1;
+      touches.delete(t.identifier);
+      if(wasSolo&&touches.size===0){
+        const pd=panDragRef.current;
+        // preventDefault suppresses the browser's synthetic click, so a
+        // clean tap routes through the click handler ourselves.
+        if(pd&&!pd.moved)onCanvasClick({clientX:t.clientX,clientY:t.clientY});
+        panDragRef.current=null;
+      }
+    }
+    if(touches.size===1){
+      const t0=[...touches.values()][0];
+      panDragRef.current={mx:t0.x,my:t0.y,vx:viewXRef.current,vy:viewYRef.current,moved:false};
+      lastDist=0;
+    }
+    e.preventDefault();
+  };
+  c.addEventListener("touchstart",onStart,{passive:false});
+  c.addEventListener("touchmove",onTMove,{passive:false});
+  c.addEventListener("touchend",onEnd,{passive:false});
+  c.addEventListener("touchcancel",onEnd,{passive:false});
+  return()=>{
+    c.removeEventListener("touchstart",onStart);c.removeEventListener("touchmove",onTMove);
+    c.removeEventListener("touchend",onEnd);c.removeEventListener("touchcancel",onEnd);
+  };
+},[CW,CH,draw,onCanvasClick]);
 const onCanvasMouseDown=useCallback((ev)=>{
   // Any button (left, middle, right) can start a drag. onCanvasClick fires
   // only if the mouse hardly moved (see the moved>3 check there), so plain
@@ -3069,15 +2880,66 @@ const pickLens=(id)=>{
   setViewMode(v);viewRef.current=v;
 };
 const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
-const curLens=LENSES.find(x=>x.id===lens)||LENSES[0];
-// Keyboard: space = play/pause, 1-9 = lenses, Esc = close everything.
-// (Re-subscribed each render so the handlers see fresh closures — cheap.)
+
+// ── Codex navigation (plan §7.1): one stack over {tab, realm, settlement} so
+// every jump — tab click, chip click, leaderboard row, map click — is
+// reversible with Back. The stack holds snapshots, not routes.
+const navStackRef=useRef([]);
+const navigate=useCallback((next)=>{
+  navStackRef.current.push({tab:panelTab,realm:realmSel,sett:selectedSettlementId});
+  if(navStackRef.current.length>48)navStackRef.current.shift();
+  const applyRealm=(id)=>{setRealmSel(id);selRealmRef.current=id;
+    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id});};
+  if(next.tab!==undefined)setPanelTab(next.tab);
+  if(next.realm!==undefined)applyRealm(next.realm);
+  if(next.sett!==undefined){setSelectedSettlementId(next.sett);selectedSettlementIdRef.current=next.sett;}
+  if(terRef.current)draw(terRef.current);
+},[panelTab,realmSel,selectedSettlementId,draw]);
+const navBack=useCallback(()=>{
+  const prev=navStackRef.current.pop();if(!prev)return;
+  setPanelTab(prev.tab);
+  setRealmSel(prev.realm);selRealmRef.current=prev.realm;
+  if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:prev.realm});
+  setSelectedSettlementId(prev.sett);selectedSettlementIdRef.current=prev.sett;
+  if(terRef.current)draw(terRef.current);
+},[draw]);
+const emblemURLFor=(cid)=>{
+  const psw=peopleRef.current;if(!psw||!psw.countries)return null;
+  const c=psw.countries.get(cid);if(!c)return null;
+  return realmEmblemURL(psw,c,terRef.current,worldRef.current?worldRef.current.seed:0);
+};
+// Keyboard: space = play/pause, 1-9 = lenses, F fit, G globe, L layers,
+// ? help; Esc steps back OUT — overlays first, then selection (settlement →
+// its realm → nothing). (Re-subscribed each render for fresh closures — cheap.)
 useEffect(()=>{
   const onKey=(e)=>{
     const t=e.target;
     if(t&&(t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA"))return;
     if(e.code==="Space"){e.preventDefault();togglePlay();}
-    else if(e.key==="Escape"){setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setDynastyOpen(false);setTechTreeOpen(false);setLayersOpen(false);setSelectedSettlementId(-1);}
+    else if(e.key==="Escape"){
+      // Step back OUT, one layer at a time: flyout → top floating surface →
+      // settlement selection → realm selection.
+      if(dockFly){setDockFly(null);return;}
+      if(closeTopSurface())return;
+      if(selectedSettlementId>=0){
+        // walk up: from the settlement to its realm
+        const psw=peopleRef.current;
+        const s=psw&&psw.settlements&&psw.settlements.find(x=>x&&x.id===selectedSettlementId);
+        const cid=s&&s.countryId>=0?s.countryId:-1;
+        selectedSettlementIdRef.current=-1;setSelectedSettlementId(-1);
+        selRealmRef.current=cid;setRealmSel(cid);
+        if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:cid});
+        if(cid>=0)setPanelTab("realms");
+      }else if(realmSel>=0){
+        selRealmRef.current=-1;setRealmSel(-1);
+        if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:-1});
+      }
+      if(terRef.current)draw(terRef.current);
+    }
+    else if(e.key==="f"||e.key==="F")resetView();
+    else if(e.key==="g"||e.key==="G")setShowGlobe(v=>!v);
+    else if(e.key==="l"||e.key==="L")setLayersOpen(v=>!v);
+    else if(e.key==="?")setHelpOpen(v=>!v);
     else{const n=+e.key;if(n>=1&&n<=LENSES.length)pickLens(LENSES[n-1].id);}
   };
   window.addEventListener("keydown",onKey);
@@ -3123,20 +2985,25 @@ const renderRealmDetail=()=>{
   const capCul=c.capital&&psw.cultures?psw.cultures.get(c.capital.cultureId):null;
   const pers=c.personality;
   const members=(c.members||[]).slice().sort((a,b)=>(b.people||0)-(a.people||0));
+  const armsURL=realmEmblemURL(psw,c,terRef.current,worldRef.current?worldRef.current.seed:0);
   return(
-    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
-      <button onClick={back} className="au-btn au-flat" style={{fontSize:10,marginBottom:6}}>← realms</button>
-      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:2}}>
-        <span style={{width:12,height:12,borderRadius:2,background:`hsl(${hue},60%,50%)`,flexShrink:0}}/>
-        <span className="au-pico-title" style={{fontSize:15}}>{c.name||(c.capital?c.capital.name:"realm "+c.id)}</span>
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:12}}>
+      <button onClick={back} className="au-btn au-flat" style={{fontSize:11,marginBottom:6}}>← all realms</button>
+      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:2}}>
+        {armsURL
+          ?<img src={armsURL} alt="" title="The realm's arms" style={{height:34,flexShrink:0,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.35))"}}/>
+          :<span style={{width:12,height:12,borderRadius:2,background:`hsl(${hue},60%,50%)`,flexShrink:0}}/>}
+        <span className="au-pico-title" style={{fontSize:16,textTransform:"capitalize"}}>{c.name||(c.capital?c.capital.name:"realm "+c.id)}</span>
         <div style={{flex:1}}/>
         {c.ruler&&<button onClick={()=>setDynastyOpen(true)} title="The ruling family tree"
-          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>🌳</button>}
+          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:15}}>🌳</button>}
         <button onClick={()=>setChronicleOpen(true)} title="The realm's chronicle"
-          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>📜</button>
+          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:15}}>📜</button>
       </div>
-      <div className="au-fade" style={{fontSize:10,marginBottom:8}}>
-        {c.members.length} settlements · {fmtPeople(pop)} souls{capCul?` · ${capCul.name} people`:""}{pers?` · ${pers.label}`:""}
+      <div className="au-fade" style={{fontSize:11,marginBottom:8}}>
+        {c.members.length} settlements · {fmtPeople(pop)} souls
+        {capCul?<> · <Chip hue={capCul.hue} onClick={()=>navigate({tab:"peoples"})} title="Open the Peoples registry">{capCul.name}</Chip> people</>:null}
+        {pers?` · ${pers.label}`:""}
       </div>
       {c.ruler&&<div onClick={()=>setDynastyOpen(true)} title="Open the ruling family tree"
         style={{fontSize:11,marginBottom:6,cursor:"pointer"}}>
@@ -3146,9 +3013,9 @@ const renderRealmDetail=()=>{
         {c.ruler.gov&&c.ruler.gov!=="monarchy"&&<span className="au-fade"> · {c.ruler.gov}</span>}
         {c.ruler.trait&&<span className="au-fade" style={{fontStyle:"italic"}}> · {c.ruler.trait}</span>}
       </div>}
-      {faith&&<div style={{fontSize:11,marginBottom:6}}>
-        <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:`hsl(${faith.hue|0},55%,50%)`,marginRight:5}}/>
-        <span className="au-fade">state faith </span>{faith.name}
+      {faith&&<div style={{fontSize:11.5,marginBottom:6}}>
+        <span className="au-fade">state faith </span>
+        <Chip hue={faith.hue} cap={false} onClick={()=>navigate({tab:"faiths"})} title="Open the Faiths registry">{faith.name}</Chip>
       </div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10,marginBottom:8}}>
         <span className="au-fade">Control</span><span>{(c._loadTotal||0).toFixed(1)}/{(c._capacity||0).toFixed(1)}{(c._loadTotal||0)>(c._capacity||0)?" · over-extended":""}</span>
@@ -3164,8 +3031,8 @@ const renderRealmDetail=()=>{
         {[["aggression",pers.aggression],["commerce",pers.commerce],["expansionism",pers.expansionism]].map(([k,v])=>(
           <div key={k} style={{display:"flex",alignItems:"center",gap:6,fontSize:9}}>
             <span className="au-fade" style={{width:74,textTransform:"capitalize"}}>{k}</span>
-            <div style={{flex:1,height:4,background:"rgba(58,38,20,0.15)",borderRadius:2,position:"relative"}}>
-              <div style={{position:"absolute",left:"50%",top:-1,bottom:-1,width:1,background:"rgba(58,38,20,0.4)"}}/>
+            <div style={{flex:1,height:4,background:"rgba(216,190,150,0.15)",borderRadius:2,position:"relative"}}>
+              <div style={{position:"absolute",left:"50%",top:-1,bottom:-1,width:1,background:"rgba(216,190,150,0.4)"}}/>
               <div style={{position:"absolute",left:v>=0?"50%":`${50+v*50}%`,width:`${Math.abs(v)*50}%`,top:0,bottom:0,
                 background:v>=0?"hsl(8,60%,45%)":"hsl(200,45%,45%)",borderRadius:2}}/>
             </div>
@@ -3173,17 +3040,18 @@ const renderRealmDetail=()=>{
           </div>
         ))}
       </div>}
-      <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:2}}>Settlements</div>
-      {members.slice(0,20).map(m=>(
-        <div key={m.id} onClick={()=>setSelectedSettlementId(m.id)}
-          style={{display:"flex",gap:6,fontSize:10,padding:"2px 0",cursor:"pointer",borderBottom:"1px solid rgba(58,38,20,0.07)"}}>
-          <span style={{textTransform:"capitalize"}}>{m.name}</span>
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:2}}>Settlements — {members.length}</div>
+      {members.map(m=>(
+        <div key={m.id} onClick={()=>navigate({tab:"inspect",sett:m.id})}
+          title="Inspect this settlement"
+          style={{display:"flex",gap:6,fontSize:11,padding:"2.5px 0",cursor:"pointer",borderBottom:"1px solid rgba(216,190,150,0.07)"}}>
+          <span style={{textTransform:"capitalize"}}>{c.capitalId===m.id?"★ ":""}{m.name}</span>
           {c.capitalId===m.id&&<span className="au-fade">· capital</span>}
+          {(m.tier|0)>=3&&<span className="au-fade">· metropolis</span>}
           <div style={{flex:1}}/>
-          <span className="au-fade">{fmtPeople(m.people||0)}</span>
+          <span className="au-fade au-num">{fmtPeople(m.people||0)}</span>
         </div>
       ))}
-      {members.length>20&&<div className="au-fade" style={{fontSize:9,marginTop:2}}>… and {members.length-20} more</div>}
     </div>
   );
 };
@@ -3223,7 +3091,7 @@ const renderPeoples=()=>{
             {f.name} <span className="au-fade" style={{fontSize:9}}>family · {f.rows.length} {f.rows.length===1?"people":"peoples"} · {fmtPeople(f.pop)}</span>
           </div>
           {f.rows.map(({c,a})=>(
-            <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(58,38,20,0.08)"}}>
+            <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(216,190,150,0.08)"}}>
               <span style={{width:9,height:9,borderRadius:2,background:`hsl(${c.hue|0},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
               <span style={{fontWeight:600}}>{c.name}</span>
               {c.parent>=0&&psw.cultures.get(c.parent)&&<span className="au-fade" style={{fontSize:9}}>← {psw.cultures.get(c.parent).name}</span>}
@@ -3252,7 +3120,7 @@ const renderFaiths=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
       {rows.map(({f,a})=>(
-        <div key={f.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(58,38,20,0.10)"}}>
+        <div key={f.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(216,190,150,0.10)"}}>
           <span style={{width:10,height:10,borderRadius:f.kind==="organized"?"50%":2,background:`hsl(${f.hue|0},55%,50%)`,flexShrink:0,alignSelf:"center"}}/>
           <span style={{fontWeight:600,fontSize:12}}>{f.name}</span>
           <span className="au-fade" style={{fontSize:9}}>{f.character||f.kind}{f.parent>=0&&psw.faiths.get(f.parent)?` ← ${psw.faiths.get(f.parent).name}`:""}</span>
@@ -3300,7 +3168,7 @@ const renderLanguages=()=>{
             {famName(f)} <span className="au-fade" style={{fontSize:9}}>family · {ls.length} {ls.length===1?"tongue":"tongues"} · {fmtPeople(f.pop)}</span>
           </div>
           {ls.map(({l,a})=>(
-            <div key={l.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(58,38,20,0.08)"}}>
+            <div key={l.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(216,190,150,0.08)"}}>
               <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hueOf(l)},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
               <span style={{fontWeight:600}}>{l.name||"(tongue)"}</span>
               <div style={{flex:1}}/>
@@ -3405,7 +3273,7 @@ const renderInspect=()=>{
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
-      {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
+      {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} z={_zOf("techtree")} onClose={()=>setTechTreeOpen(false)}/>}
 
       {/* ── Header ── (the chronicle opener lives here so it's always visible
           without scrolling the card — a long card can push a bottom section
@@ -3423,44 +3291,51 @@ const renderInspect=()=>{
       <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
         {tierName} · {era} · {waterLabel}
       </div>
-      {/* ── People: the culture mixture living here ── */}
+      {/* ── The three identity layers, each a row of chips into its registry:
+            who they ARE (people), what they SPEAK, what they BELIEVE — three
+            separate, differently-paced layers, cross-linked (plan §7.3). ── */}
       {(()=>{
         const mix=s.culMix&&s.culMix.length?s.culMix:(s.cultureId>=0?[[s.cultureId,1]]:null);
         if(!mix||!psw.cultures)return null;
         const parts=mix.filter(([,sh])=>sh>0.02).map(([cid,sh])=>{
           const cul=psw.cultures.get(cid);
-          return cul?`${cul.name}${sh<0.98?` ${Math.round(sh*100)}%`:""}`:null;
+          return cul?{key:cid,name:cul.name,hue:cul.hue,sh}:null;
         }).filter(Boolean);
         if(!parts.length)return null;
-        return <div style={{fontSize:10,marginBottom:6}}>
-          <span className="au-fade">people </span>{parts.join(" · ")}
+        return <div style={{fontSize:11,marginBottom:5}}>
+          <span className="au-fade">people </span>
+          {parts.map((p,i)=><Fragment key={p.key}>{i>0&&<span className="au-fade"> · </span>}
+            <Chip hue={p.hue} cap={false} onClick={()=>navigate({tab:"peoples"})} title="Open the Peoples registry">{p.name}{p.sh<0.98?` ${Math.round(p.sh*100)}%`:""}</Chip></Fragment>)}
         </div>;
       })()}
-      {/* ── Spoken language (a SEPARATE layer from the people: a conquered
-            province speaks its ruler's tongue while staying its own people) ── */}
       {(()=>{
         const mix=s.langMix;
         if(!mix||!mix.length||!psw.languages)return null;
         const parts=mix.filter(([,sh])=>sh>0.03).map(([lid,sh])=>{
           const lg=psw.languages.get(lid);
-          return lg?`${lg.name||"tongue"}${sh<0.97?` ${Math.round(sh*100)}%`:""}`:null;
+          if(!lg)return null;
+          const h=(lg.hue!=null?lg.hue:((lid*2654435761)>>>0)%360)|0;
+          return {key:lid,name:lg.name||"tongue",hue:h,sh};
         }).filter(Boolean);
         if(!parts.length)return null;
-        return <div style={{fontSize:10,marginBottom:6}}>
-          <span className="au-fade">speech </span>{parts.join(" · ")}
+        return <div style={{fontSize:11,marginBottom:5}}>
+          <span className="au-fade">speech </span>
+          {parts.map((p,i)=><Fragment key={p.key}>{i>0&&<span className="au-fade"> · </span>}
+            <Chip hue={p.hue} cap={false} onClick={()=>navigate({tab:"tongues"})} title="Open the Tongues registry">{p.name}{p.sh<0.97?` ${Math.round(p.sh*100)}%`:""}</Chip></Fragment>)}
         </div>;
       })()}
-      {/* ── Faith mixture ── */}
       {(()=>{
         const mix=s.faithMix;
         if(!mix||!mix.length||!psw.faiths)return null;
         const parts=mix.filter(([,sh])=>sh>0.03).map(([fid,sh])=>{
           const f=psw.faiths.get(fid);
-          return f?`${f.name}${f.kind==="organized"?"":" (folk)"}${sh<0.97?` ${Math.round(sh*100)}%`:""}`:null;
+          return f?{key:fid,name:`${f.name}${f.kind==="organized"?"":" (folk)"}`,hue:f.hue,sh}:null;
         }).filter(Boolean);
         if(!parts.length)return null;
-        return <div style={{fontSize:10,marginBottom:6}}>
-          <span className="au-fade">faith </span>{parts.join(" · ")}
+        return <div style={{fontSize:11,marginBottom:5}}>
+          <span className="au-fade">faith </span>
+          {parts.map((p,i)=><Fragment key={p.key}>{i>0&&<span className="au-fade"> · </span>}
+            <Chip hue={p.hue} cap={false} onClick={()=>navigate({tab:"faiths"})} title="Open the Faiths registry">{p.name}{p.sh<0.97?` ${Math.round(p.sh*100)}%`:""}</Chip></Fragment>)}
         </div>;
       })()}
 
@@ -3495,11 +3370,17 @@ const renderInspect=()=>{
           label=`${role} · answers to ${liege?liege.name:(cap?cap.name:"?")}`;
           if(liege&&cap&&liege.id!==cap.id)label+=` · realm of ${cap.name}`;
         }
+        const arms=ctry?emblemURLFor(ctry.id):null;
         return(
-          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0,
-              backgroundImage:overlord>=0&&!vassal?"repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)":undefined}}/>
-            <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
+          <div onClick={()=>{if(ctry)navigate({tab:"realms",realm:ctry.id});}}
+            title={ctry?"Open the realm":undefined}
+            style={{display:"flex",alignItems:"center",gap:6,fontSize:11,marginBottom:6,cursor:ctry?"pointer":"default"}}>
+            {arms
+              ?<img src={arms} alt="" style={{height:16,flexShrink:0,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.25))"}}/>
+              :<span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0,
+                backgroundImage:overlord>=0&&!vassal?"repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)":undefined}}/>}
+            <span className="au-fade" style={{textTransform:"capitalize",textDecoration:ctry?"underline":"none",
+              textDecorationColor:"rgba(160,120,50,0.4)",textUnderlineOffset:2}}>{label}</span>
           </div>
         );
       })()}
@@ -3738,7 +3619,7 @@ const renderInspect=()=>{
         <div style={{fontSize:10}}>
           <button onClick={()=>setTechTreeOpen(true)}
             style={{width:"100%",marginBottom:6,padding:"4px 6px",cursor:"pointer",borderRadius:4,
-              background:"rgba(120,90,50,0.14)",border:"1px solid rgba(120,90,50,0.35)",color:"#3a2c18",fontSize:10.5}}>
+              background:"rgba(214,178,118,0.13)",border:"1px solid rgba(214,178,118,0.3)",color:"var(--au-ink)",fontSize:10.5}}>
             ⛬ Open tech tree
           </button>
           <div style={{display:"flex",flexWrap:"wrap",gap:"3px 4px"}}>
@@ -3750,7 +3631,7 @@ const renderInspect=()=>{
             ))}
           </div>
           {techNext.length>0&&(
-            <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid rgba(120,90,50,0.22)"}}>
+            <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid rgba(216,190,150,0.18)"}}>
               <div className="au-fade" style={{marginBottom:3,fontSize:9.5}}>Researching</div>
               {techNext.map(t=>(
                 <div key={t.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
@@ -3899,7 +3780,7 @@ const renderInspect=()=>{
               Renders only when the goods layer is on (worker mirrors _gPrice). ── */}
           {s._gPrice&&(()=>{
             const P=s._gPrice,N=s._gNet,L=s._gShare;
-            const col=p=>p>=1.5?"#b06a4a":p<=0.6?"#4a7a4a":"#5a4a32";
+            const col=p=>p>=1.5?"#e08a62":p<=0.6?"#6db56d":"#b8a482";
             const flows=N?GOODS.map((g,i)=>[g,N[i]]).filter(([,v])=>Math.abs(v)>0.01)
               .sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,3):[];
             let lean=null;
@@ -3933,12 +3814,12 @@ const renderInspect=()=>{
             <div style={{fontSize:10}}>
               <button onClick={()=>setChronicleOpen(true)}
                 style={{width:"100%",marginBottom:5,padding:"4px 6px",cursor:"pointer",borderRadius:4,
-                  background:"rgba(120,90,50,0.14)",border:"1px solid rgba(120,90,50,0.35)",color:"#3a2c18",fontSize:10.5}}>
+                  background:"rgba(214,178,118,0.13)",border:"1px solid rgba(214,178,118,0.3)",color:"var(--au-ink)",fontSize:10.5}}>
                 📜 Open chronicle ({chron.entries.length} events)
               </button>
               <div style={{display:"flex",gap:6,lineHeight:1.3}}>
                 <span className="au-fade" style={{flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{yr(latest.step)}</span>
-                <span style={{color:CHRON_COL[latest.type]||"#5a4a32"}}>{latest.text}</span>
+                <span style={{color:CHRON_COL[latest.type]||"#b8a482"}}>{latest.text}</span>
               </div>
             </div>
           </PsSection>
@@ -3976,8 +3857,11 @@ const renderBoard=()=>{
   const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
   const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
   const [sortFn,sortLabel,sortFmt]=sorts[sortKey];
+  const q=boardQuery.trim().toLowerCase();
+  const nameOf=(r)=>boardMode==="settlements"?(r.name||""):(r.name||(r.capital&&r.capital.name)||"");
   const rows=(boardMode==="settlements"?setts:countries).slice()
-    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
+    .filter(r=>!q||nameOf(r).toLowerCase().includes(q))
+    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,q?200:30);
 
   const fmt=v=>{
     if(!isFinite(v))return "-";
@@ -3991,15 +3875,20 @@ const renderBoard=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"8px 0"}}>
       <div style={{display:"flex",alignItems:"baseline",marginBottom:6,padding:"0 12px"}}>
-        <span className="au-heading au-sc" style={{fontSize:12}}>Leaderboard</span>
+        <span className="au-heading au-sc" style={{fontSize:12.5}}>The realms of the world</span>
         <div style={{flex:1}} />
       </div>
       <div style={{display:"flex",gap:4,padding:"0 12px 6px"}}>
-        {["countries","settlements"].map(m=>(
+        {[["countries","Realms"],["settlements","Settlements"]].map(([m,l])=>(
           <button key={m} onClick={()=>setBoardMode(m)}
             className={"au-rail-tab"+(boardMode===m?" au-active":"")}
-            style={{flex:1,fontSize:11,textTransform:"capitalize"}}>{m}</button>
+            style={{flex:1,fontSize:11}}>{l}</button>
         ))}
+      </div>
+      <div style={{padding:"0 12px 6px"}}>
+        <input type="search" value={boardQuery} onChange={e=>setBoardQuery(e.target.value)}
+          placeholder="search by name…" style={{width:"100%",fontSize:11.5,padding:"3px 8px",
+            background:"rgba(0,0,0,0.28)",border:"1px solid rgba(216,190,150,0.25)",color:"var(--au-ink)",borderRadius:3}}/>
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
         {Object.entries(sorts).map(([k,[,label]])=>(
@@ -4023,8 +3912,8 @@ const renderBoard=()=>{
               const hue=((r.countryId*61)%360+360)%360;
               return(
                 <tr key={r.id}
-                  onClick={()=>setSelectedSettlementId(r.id)}
-                  style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                  onClick={()=>navigate({tab:"inspect",sett:r.id})}
+                  style={{cursor:"pointer",borderTop:"1px solid rgba(216,190,150,0.09)"}}>
                   <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
                   <td style={{padding:"3px 4px"}}>
                     <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
@@ -4032,23 +3921,26 @@ const renderBoard=()=>{
                     <span style={{textTransform:"capitalize"}}>{r.name}</span>
                     {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
                   </td>
-                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
+                  <td className="au-num" style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
                 </tr>
               );
             }
             const cap=r.capital||(r.members&&r.members[0]);
+            const arms=emblemURLFor(r.id);
             const hue=((r.id*61)%360+360)%360;
             return(
               <tr key={r.id}
-                onClick={()=>{setRealmSel(r.id);if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:r.id});}}
-                style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                onClick={()=>navigate({tab:"realms",realm:r.id})}
+                style={{cursor:"pointer",borderTop:"1px solid rgba(216,190,150,0.09)"}}>
                 <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
                 <td style={{padding:"3px 4px"}}>
-                  <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
-                    background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
-                  <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
+                  {arms
+                    ?<img src={arms} alt="" style={{height:15,verticalAlign:"middle",marginRight:6,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.25))"}}/>
+                    :<span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                      background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>}
+                  <span style={{textTransform:"capitalize"}}>{r.name||(cap?cap.name:"realm-"+r.id)}</span>
                 </td>
-                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
+                <td className="au-num" style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
               </tr>
             );
           })}
@@ -4073,16 +3965,37 @@ const renderCharts=()=>{
         <div style={{flex:1}} />
       </div>
       {(()=>{const F=peopleRef.current&&peopleRef.current._feed;if(!F||!F.length)return null;
-        // No inner scroll — the feed flows in the tab's single scroll (a nested
-        // scrollbox here made the whole panel feel un-scrollable). Show the most
-        // recent ~28 events; the full chronicle lives in the realm view.
+        // The living feed (plan §8): category filter chips over the structured
+        // event stream; click an entry to jump the camera to where it happened.
+        // No inner scroll — the feed flows in the tab's single scroll.
+        const active=feedCats;
+        const tog=(id)=>setFeedCats(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
+        const rows=[];
+        for(let i=F.length-1;i>=0&&rows.length<40;i--){
+          const e=F[i];const m=evMeta(e.type);
+          if(active.size&&!active.has(m.cat))continue;
+          rows.push({e,m,key:i});
+        }
         return <div style={{padding:"0 10px 8px"}}>
-          <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Latest events</div>
-          {F.slice(-28).reverse().map((e,i)=>(
-            <div key={F.length-i} onClick={()=>jumpTo(e.x,e.y)}
-              style={{fontSize:10,padding:"2px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.35}}>
-              <span className="au-fade" style={{marginRight:5}}>{yr(e.step)}</span>{e.text}
+          <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:4}}>The living feed</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
+            {EV_CATS.map(([id,label,col])=>(
+              <button key={id} onClick={()=>tog(id)}
+                className={"au-filter"+(active.has(id)?" au-active":"")}
+                style={active.has(id)?{borderColor:col,color:col}:{borderColor:"rgba(216,190,150,0.3)",color:"var(--au-ink-faded)"}}
+                title={active.size?"filtering — click to toggle":"click to filter to "+label}>{label}</button>
+            ))}
+            {active.size>0&&<button className="au-filter" style={{borderColor:"rgba(216,190,150,0.3)",color:"var(--au-ink-faded)"}}
+              onClick={()=>setFeedCats(new Set())}>× all</button>}
+          </div>
+          {rows.map(({e,m,key})=>(
+            <div key={key} onClick={()=>jumpTo(e.x,e.y)}
+              style={{fontSize:11,padding:"2.5px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(216,190,150,0.08)",lineHeight:1.4,display:"flex",gap:6}}
+              title={e.x!=null?"Jump to where it happened":undefined}>
+              <span style={{color:evCatColor(m.cat),flexShrink:0,width:12,textAlign:"center"}}>{m.icon}</span>
+              <span style={{minWidth:0}}><span className="au-fade" style={{marginRight:5,fontVariantNumeric:"tabular-nums"}}>{yr(e.step)}</span>{e.text}</span>
             </div>))}
+          {rows.length===0&&<div className="au-fade" style={{fontSize:11,fontStyle:"italic"}}>Nothing in these categories yet.</div>}
         </div>;})()}
       <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
       <MiniChart data={H} get={d=>d.gold}           label="Gold by weight (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
@@ -4091,7 +4004,7 @@ const renderCharts=()=>{
       <MiniChart data={H} get={d=>(d.towns||0)+d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
       <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
       <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
-      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
+      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(216,190,150,0.12)",marginTop:4}}>
         <button onClick={copy} className="au-rail-tab au-active" style={{width:"100%",fontSize:11,padding:"5px 0"}}>
           {statsCopied?"Copied ✓":"Copy stats rundown"}
         </button>
@@ -4107,50 +4020,50 @@ return(
 <div className="au-root" style={{width:"100vw",height:"100vh",
   background:"var(--au-table-dark)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
 
-{/* ══════════ TOP BAR ══════════ */}
-<header className="au-parchment" style={{display:"flex",alignItems:"center",gap:12,margin:"6px 6px 0",padding:"5px 14px",flexShrink:0,zIndex:45,position:"relative"}}>
+{/* ══════════ TOP BAR (chrome — the player's controls) ══════════ */}
+<header className="au-chrome au-glass" style={{display:"flex",alignItems:"center",gap:10,margin:"6px 6px 0",padding:"5px 12px",flexShrink:0,zIndex:45,position:"relative",minHeight:44}}>
   <button onClick={togglePlay} className={"au-btn"+(playing?" au-wax au-active":"")}
-    style={{padding:"4px 14px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif"}} title="Space">{playing?"❚❚":"▶"}</button>
-  <div style={{display:"flex",gap:2}}>
+    style={{padding:"5px 15px",fontSize:14,fontFamily:"'Cinzel',Georgia,serif"}} title="Play / pause — Space">{playing?"❚❚":"▶"}</button>
+  <div style={{display:"flex",gap:1}}>
     {/* speed = target ticks/sec. 30 ≈ one step per frame (the step counter ticks
         up one-by-one); lower watches it crawl, higher packs more per frame, Max
-        runs flat-out. */}
-    {[[8,"¼×"],[30,"1×"],[120,"4×"],[480,"16×"],[100000,"Max"]].map(([v,l])=>(
+        runs flat-out. Narrow screens keep just the two useful stops. */}
+    {(narrow?[[30,"1×"],[100000,"Max"]]:[[8,"¼×"],[30,"1×"],[120,"4×"],[480,"16×"],[100000,"Max"]]).map(([v,l])=>(
       <button key={v} onClick={()=>{setSpeed(v);speedRef.current=v;}}
-        className={"au-btn au-flat"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:11}}
+        className={"au-btn au-flat au-num"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:12}}
         title={v>=100000?"as fast as possible":`~${v} ticks/sec`}>{l}</button>
     ))}
   </div>
-  <span className="au-vrule" style={{height:20}}/>
-  <span className="au-era" style={{fontSize:14}}>{_era}</span>
-  {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"#c9a227",fontWeight:700,letterSpacing:0.3}}>✦ Arc Complete</span>}
-  <span className="au-year" style={{fontSize:13}}>{_ys}</span>
-  <span className="au-fade" style={{fontSize:10}}>step {_step.toLocaleString()}</span>
-  <span className="au-vrule" style={{height:20}}/>
-  <span style={{fontSize:12}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:10}}>realms</span></span>
-  <span style={{fontSize:12}}>{Math.round((psStats.landPct||0)*100)}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:10}}>claimed</span></span>
-  {lens==="economy"&&(()=>{
-    const psw=peopleRef.current;
-    const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
-    if(P==null)return null;
-    const col=P>1.1?"hsl(8,75%,45%)":P<0.9?"hsl(195,65%,35%)":"var(--au-ink)";
-    return <span style={{fontSize:12}} title={`global price level ×${P.toFixed(2)}`}>
-      <span className="au-sc au-fade" style={{fontSize:10,marginRight:4}}>wheat</span>
-      <span style={{color:col,fontWeight:600}}>{(5*P).toFixed(2)}</span></span>;
-  })()}
+  <span className="au-vrule" style={{height:22}}/>
+  {/* era ribbon — the one place time appears; a read-only label, never an input */}
+  <span className="au-era" style={{fontSize:narrow?13:15,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{_era}</span>
+  {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"var(--au-ch-gold)",fontWeight:700,letterSpacing:0.3}}>✦</span>}
+  <span className="au-year au-num" style={{fontSize:narrow?12:13.5,whiteSpace:"nowrap"}}>{_ys}</span>
+  {!narrow&&<>
+    <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
+    <span className="au-vrule" style={{height:22}}/>
+    <span className="au-num" style={{fontSize:13}}>{_countryCount} <span className="au-sc au-cfade" style={{fontSize:11}}>realms</span></span>
+    <span className="au-num" style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-cfade">%</span> <span className="au-sc au-cfade" style={{fontSize:11}}>claimed</span></span>
+    {lens==="economy"&&(()=>{
+      const psw=peopleRef.current;
+      const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
+      if(P==null)return null;
+      const col=P>1.1?"var(--au-ch-bad)":P<0.9?"hsl(195,55%,60%)":"var(--au-ch-text)";
+      return <span className="au-num" style={{fontSize:13}} title={`global price level ×${P.toFixed(2)}`}>
+        <span className="au-sc au-cfade" style={{fontSize:11,marginRight:4}}>wheat</span>
+        <span style={{color:col,fontWeight:700}}>{(5*P).toFixed(2)}</span></span>;
+    })()}
+  </>}
   <div style={{flex:1,minWidth:0}}/>
-  {(()=>{const F=peopleRef.current&&peopleRef.current._feed;const last=F&&F[F.length-1];if(!last)return null;
-    return <span onClick={()=>setPanelTab("world")} className="au-fade"
-      style={{fontSize:11,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:360,cursor:"pointer",flexShrink:1}}
-      title="Open the world feed">📜 {last.text}</span>;})()}
-  <button onClick={()=>setShowGlobe(!showGlobe)} className={"au-btn au-flat"+(showGlobe?" au-active":"")}
-    style={{fontSize:12,padding:"3px 8px"}} title="3D globe">🌍</button>
-  <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12,padding:"3px 8px"}}
-    title="New world — presets, seed, import">⊕ World</button>
-  <button onClick={()=>{setEditorOpen(v=>!v);if(editorArmed)setEditorArmed(false);}} className={"au-btn au-flat"+(editorOpen?" au-active":"")}
-    style={{fontSize:12,padding:"3px 8px"}} title="Country editor — place a seed capital with chosen tech & character">🏛 Editor</button>
+  <TopBarBell feedRef={peopleRef} onOpenFeed={()=>{setPanelTab("world");setRealmSel(-1);if(narrowRef.current)setCodexOpen(true);}}/>
+  {narrow&&<button onClick={()=>setCodexOpen(v=>!v)} className={"au-btn au-flat"+(codexOpen?" au-active":"")}
+    style={{fontSize:13,padding:"3px 8px"}} title="The codex — realms, peoples, events">📖</button>}
+  <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12.5,padding:"3px 8px"}}
+    title="New world — presets, seed, import">{narrow?"⊕":"⊕ World"}</button>
+  {!narrow&&<button onClick={()=>{setEditorOpen(v=>!v);if(editorArmed)setEditorArmed(false);}} className={"au-btn au-flat"+(editorOpen?" au-active":"")}
+    style={{fontSize:12.5,padding:"3px 8px"}} title="Country editor — place a seed capital with chosen tech & character">🏛 Editor</button>}
   <button onClick={()=>setMenuOpen(v=>!v)} className={"au-btn au-flat"+(menuOpen?" au-active":"")}
-    style={{fontSize:12,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
+    style={{fontSize:14,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
 </header>
 <input ref={saveFileRef} type="file" accept=".json" style={{display:"none"}}
         onChange={async(e)=>{
@@ -4174,36 +4087,53 @@ return(
 
 <div style={{flex:1,display:"flex",minHeight:0,position:"relative"}}>
 
-{/* ══════════ LENS RAIL ══════════ */}
-<aside className="au-parchment au-scroll" style={{width:112,minWidth:112,margin:"6px 3px 6px 6px",
-  padding:"8px 0",display:"flex",flexDirection:"column",overflowY:"auto"}}>
-  <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"0 12px 4px"}}>Lens</div>
-  {LENSES.map(L=>(
-    <button key={L.id} onClick={()=>pickLens(L.id)}
-      className={"au-rail-tab"+(lens===L.id?" au-active":"")}>{L.label}</button>
+{/* ══════════ LENS DOCK (56px icon rail; flyout carries sub-lenses) ══════════ */}
+<aside className="au-chrome" style={{width:narrow?46:58,minWidth:narrow?46:58,margin:narrow?"4px 2px 4px 4px":"6px 3px 6px 6px",
+  padding:"6px 0",display:"flex",flexDirection:"column",position:"relative",zIndex:"var(--z-docks)"}}
+  onMouseLeave={()=>setDockFly(null)}>
+  {LENSES.map((L,li)=>(
+    <button key={L.id}
+      onClick={()=>{pickLens(L.id);setDockFly(L.subs.length>1?L.id:null);}}
+      onMouseEnter={()=>{if(dockFly!==null||L.subs.length>1)setDockFly(L.subs.length>1?L.id:null);}}
+      className={"au-dock-btn"+(lens===L.id?" au-active":"")}
+      title={`${L.label} — key ${li+1}`}>
+      <span className="au-dock-ico">{L.icon}</span>
+      <span className="au-dock-lbl">{L.label}</span>
+    </button>
   ))}
-  {curLens.subs.length>1&&<>
-    <div className="au-rule"/>
-    {curLens.subs.map(([v,l])=>(
-      <button key={v} onClick={()=>pickSub(v)}
-        className={"au-rail-tab"+(viewMode===v?" au-active":"")}
-        style={{paddingLeft:20,fontSize:11}}>{l}</button>
-    ))}
-  </>}
-  <div className="au-rule"/>
-  <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 12px 2px"}}>Overlays</div>
-  <button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
-    className={"au-rail-tab"+(showRivers?" au-active":"")}>Rivers</button>
-  {showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
-    className={"au-rail-tab"+(showStreams?" au-active":"")} style={{paddingLeft:20,fontSize:11}}>· Streams</button>}
-  <button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
-    className={"au-rail-tab"+(showLakes?" au-active":"")}>Lakes</button>
-  {world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
-    className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
-  <button onClick={()=>setLayersOpen(v=>!v)}
-    className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers…</button>
+  <div className="au-rule" style={{margin:"5px 8px"}}/>
+  <button onClick={()=>{setLayersOpen(v=>!v);setDockFly(null);}}
+    className={"au-dock-btn"+(layersOpen?" au-active":"")} title="Map layers — L">
+    <span className="au-dock-ico">🗂</span><span className="au-dock-lbl">Layers</span></button>
+  <button onClick={()=>setShowGlobe(!showGlobe)}
+    className={"au-dock-btn"+(showGlobe?" au-active":"")} title="3D globe — G">
+    <span className="au-dock-ico">🌍</span><span className="au-dock-lbl">Globe</span></button>
+  <button onClick={()=>setHelpOpen(v=>!v)}
+    className={"au-dock-btn"+(helpOpen?" au-active":"")} title="Keys & help — ?">
+    <span className="au-dock-ico">✳</span><span className="au-dock-lbl">Help</span></button>
   <div style={{flex:1}}/>
-  <span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>seed {seed}</span>
+  <span className="au-cfade au-num" style={{fontSize:9,textAlign:"center"}} title="World seed">{seed}</span>
+
+  {/* flyout: the active-hovered lens's sub-lenses */}
+  {dockFly&&(()=>{
+    const L=LENSES.find(x=>x.id===dockFly);if(!L||L.subs.length<2)return null;
+    const li=LENSES.indexOf(L);
+    const psw=peopleRef.current;
+    return(
+      <div className="au-chrome au-glass" style={{position:"absolute",left:60,top:6+li*44,minWidth:128,
+        padding:"5px 0",zIndex:"var(--z-popovers)"}}>
+        <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"2px 12px 4px"}}>{L.label}</div>
+        {L.subs.map(([v,l])=>{
+          const lock=subLockReason(v,psw,psStats);
+          return(
+          <button key={v} onClick={()=>{if(lock)return;pickLens(L.id);pickSub(v);}}
+            className={"au-rail-tab"+(viewMode===v?" au-active":"")}
+            style={{fontSize:12,opacity:lock?0.42:1,cursor:lock?"default":"pointer"}}
+            title={lock||undefined}>{l}{lock?" ·🔒":""}</button>);
+        })}
+      </div>
+    );
+  })()}
 </aside>
 
 {/* ══════════ CENTER COLUMN ══════════ */}
@@ -4216,31 +4146,34 @@ return(
   <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
     <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
   </div>:
-  // The map canvas and the fixed-resolution feature canvas share one wrapper so the feature
-  // overlay covers the map EXACTLY (both fill the wrapper; identical aspect ratio ⇒ perfect
+  // The map canvas and the fixed-resolution feature canvas share one aspect-locked box so the
+  // feature overlay covers the map EXACTLY (both fill it; identical aspect ratio ⇒ perfect
   // registration). The map is pixelated (coarse terrain upscales blocky); the feature overlay is
   // smooth (crisp lines). pointer-events on the overlay pass through to the map for hit-testing.
-  // The WRAPPER carries the sizing AND the border/shadow: width:100% (fills the column at ANY scale)
-  // + aspect-ratio (sets the height, constant across scales) + maxWidth/Height:100%. Both canvases
-  // then fill the wrapper's identical content box (width/height:100%, borderless), so a coarse
-  // 480-wide map upscales to the same on-screen box as a 1920 one AND the fixed-res feature overlay
-  // registers pixel-exact over it. Putting the 1px border on a CANVAS instead (border-box) would
-  // shrink only that canvas by 2px — the overlay would then be 2px wider, diverging from the centre.
-  // The map box stays == displayed map, so mouse→canvas mapping is unaffected.
-  <div style={{position:"relative",lineHeight:0,width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
-    maxWidth:"100%",maxHeight:"100%",boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}}>
+  // Mouse/touch mapping reads the CANVAS bounding rect, so the box may be clipped by a parent
+  // without breaking hit-tests.
+  //   Desktop: the box fits INSIDE the column (contain) — width:100% + aspect-ratio + max sizes.
+  //   Narrow:  the box COVERS the column (height:100%, centred, parent clips) — a phone shows a
+  //   screen-filling slice of the world and pans, instead of a letterboxed strip.
+  <div style={narrow?{position:"relative",width:"100%",height:"100%",overflow:"hidden"}
+    :{position:"relative",lineHeight:0,width:"100%",height:"auto",aspectRatio:`${CW}/${CH}`,
+      maxWidth:"100%",maxHeight:"100%",boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}}>
+  <div style={narrow?{position:"absolute",top:0,bottom:0,left:"50%",transform:"translateX(-50%)",
+      height:"100%",aspectRatio:`${CW}/${CH}`,lineHeight:0}
+    :{position:"absolute",inset:0,lineHeight:0}}>
   <canvas ref={canvasRef} width={CW} height={CH}
     onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
     onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-    style={{display:"block",imageRendering:"pixelated",width:"100%",height:"100%"}} />
+    style={{display:"block",imageRendering:"pixelated",width:"100%",height:"100%",touchAction:"none"}} />
   <canvas ref={featRef} width={FEAT_W} height={FEAT_H}
     style={{position:"absolute",left:0,top:0,width:"100%",height:"100%",pointerEvents:"none"}} />
+  </div>
   </div>
 }
 
 {/* ─── Country editor panel ─── */}
-{editorOpen&&<div className="au-parchment" style={{position:"absolute",top:48,left:8,width:228,
-  maxHeight:"calc(100% - 64px)",overflowY:"auto",padding:"8px 10px",fontSize:11,zIndex:30}}>
+{editorOpen&&<div className="au-chrome au-glass" style={{position:"absolute",top:48,left:8,width:232,
+  maxHeight:"calc(100% - 64px)",overflowY:"auto",padding:"8px 10px",fontSize:12,zIndex:_zOf("editor"),borderColor:"var(--au-ch-wax)"}}>
   <div className="au-heading au-sc" style={{fontSize:11,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
     <span>Country Editor</span>
     <span onClick={()=>{setEditorOpen(false);setEditorArmed(false);}} style={{cursor:"pointer"}}>✕</span>
@@ -4260,10 +4193,29 @@ return(
     Arm, then click a land tile: a fully-formed realm appears, filled with cities out to the extent its tech allows it to hold. Drop several to compare. (Takes a moment to settle.)</div>
 </div>}
 
-{/* ─── Pico hover card ─── */}
+{/* ─── Pico hover card — identity first, terrain second (plan §5.3) ─── */}
 {hoverInfo&&<div className="au-parchment au-pico"
   style={{left:hoverInfo.x+14,top:hoverInfo.y-12}}>
-  <div className="au-pico-title" style={{
+  {(()=>{   // identity block: settlement › realm, with the realm's arms
+    const psw=peopleRef.current;
+    const ctry=hoverInfo.realmId>=0&&psw&&psw.countries?psw.countries.get(hoverInfo.realmId):null;
+    const emblem=ctry?realmEmblemURL(psw,ctry,terRef.current,worldRef.current?worldRef.current.seed:0):null;
+    if(!hoverInfo.sett&&!ctry)return null;
+    const tierName=hoverInfo.sett?["farming region","town","city","metropolis"][hoverInfo.sett.tier]||"settlement":null;
+    return(<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,paddingBottom:4,borderBottom:"1px solid rgba(216,190,150,0.18)"}}>
+      {emblem&&<img src={emblem} alt="" style={{height:26,flexShrink:0,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.3))"}}/>}
+      <div style={{minWidth:0}}>
+        {hoverInfo.sett&&<div className="au-pico-title" style={{textTransform:"capitalize"}}>
+          {hoverInfo.sett.name}{hoverInfo.sett.isCap?" ★":""}</div>}
+        {hoverInfo.sett&&<div className="au-fade" style={{fontSize:11,textTransform:"capitalize"}}>
+          {tierName} · {fmtPeople(hoverInfo.sett.people)} souls</div>}
+        {ctry&&<div style={{fontSize:hoverInfo.sett?11:12.5,fontWeight:hoverInfo.sett?400:700}}>
+          {!hoverInfo.sett&&<span className="au-fade" style={{fontWeight:400}}>realm of </span>}
+          <span style={{textTransform:"capitalize"}}>{hoverInfo.realm}</span></div>}
+      </div>
+    </div>);
+  })()}
+  <div className="au-pico-title" style={{fontSize:12,
     color:hoverInfo.isLake?"var(--au-verdigris)":hoverInfo.elevM<=0?"var(--au-verdigris)":"var(--au-ink)"}}>
     {hoverInfo.isLake?`Lake (${hoverInfo.lakeSize}t)`:hoverInfo.biome}
   </div>
@@ -4273,12 +4225,11 @@ return(
   {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
     {RIVER_NAMES[hoverInfo.river]}
   </div>}
-  {(hoverInfo.owner||hoverInfo.realm)&&<div style={{fontSize:11}}>
-    {hoverInfo.owner&&<span style={{textTransform:"capitalize"}}>{hoverInfo.owner}</span>}
-    {hoverInfo.owner&&hoverInfo.realm&&hoverInfo.realm!==hoverInfo.owner&&<span className="au-fade"> · </span>}
-    {hoverInfo.realm&&hoverInfo.realm!==hoverInfo.owner&&<span className="au-fade">{hoverInfo.realm}</span>}
+  {hoverInfo.owner&&hoverInfo.owner!==(hoverInfo.sett&&hoverInfo.sett.name)&&<div className="au-fade" style={{fontSize:11}}>
+    worked by <span style={{textTransform:"capitalize"}}>{hoverInfo.owner}</span>
   </div>}
-  <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
+  <div className="au-fade" style={{fontSize:10,marginTop:2,fontStyle:"italic"}}>
+    {hoverInfo.sett?"click to inspect":hoverInfo.realmId>=0?"click to select the realm":""}</div>
 </div>}
 
 
@@ -4288,7 +4239,7 @@ return(
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
   padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
 <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
-  borderBottom:keyOpen?"1px solid rgba(58,38,20,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
+  borderBottom:keyOpen?"1px solid rgba(216,190,150,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
   onClick={()=>setKeyOpen(v=>!v)}>
   <span className="au-heading au-sc" style={{fontSize:10,flex:1}}>{keyOpen?"▾":"▸"} Key</span>
 </div>
@@ -4334,128 +4285,82 @@ return(
 <span className="au-fade">{Math.round(depthCeil*100)}%</span>
 </div>}
 
-{viewMode==="money"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:230}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Money flow</div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
-    <span style={{width:12,height:12,borderRadius:"50%",background:"radial-gradient(rgba(255,210,80,0.9),rgba(255,210,80,0))",flexShrink:0}}/>
-    <span>Mining — money minted into the system</span></div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
-    <span style={{width:9,height:9,borderRadius:"50%",background:"#ffcf46",flexShrink:0}}/>
-    <span>Gaining wealth</span>
-    <span style={{width:9,height:9,borderRadius:"50%",background:"#e0563b",marginLeft:8,flexShrink:0}}/>
-    <span>Losing</span></div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
-    <span style={{color:"#ffcd46"}}>● ● ●</span>
-    <span>Coins flow from buyer to seller</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    Dot density on each link is its share of THIS tick's total activity, so
-    the busiest links pop and quiet ones go silent regardless of the world's
-    absolute money supply. The world starts on barter (no coins shown).
-  </div>
+{/* ─── Unified legend (plan §6.3): every thematic lens declares its key as
+     data; one card renders them all. Terrain/atlas/resources keep the
+     data-driven Key card above; Depth keeps its dev controls. ─── */}
+{LEGENDS[viewMode]&&<LegendCard spec={LEGENDS[viewMode]} open={keyOpen} onToggle={()=>setKeyOpen(v=>!v)}
+  controls={viewMode==="prices"?(
+    <select value={priceGood} onChange={(e)=>setPriceGood(+e.target.value)}
+      style={{width:"100%",marginBottom:5,fontSize:11,padding:"2px 4px"}}>
+      {GOODS.map((g,i)=><option key={g} value={i}>{g}</option>)}
+    </select>):null}>
+  {viewMode==="population"&&peopleRef.current&&peopleRef.current._popMax
+    ?<div className="au-fade" style={{fontSize:10,marginTop:3}}>densest region ≈ {fmtPeople(peopleRef.current._popMax)} people</div>
+    :null}
+</LegendCard>}
+
+{/* ─── World-forging indicator: regeneration keeps the old map on screen,
+     so without this a res/seed/preset change looks like a dead control ─── */}
+{genBusy&&<div className="au-chrome au-glass" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
+  zIndex:25,padding:"7px 16px",fontSize:13,display:"flex",gap:9,alignItems:"center",whiteSpace:"nowrap"}}>
+  <span style={{display:"inline-block",width:11,height:11,border:"2px solid var(--au-ch-gold)",borderTopColor:"transparent",
+    borderRadius:"50%",animation:"au-spin 0.9s linear infinite"}}/>
+  <span className="au-era" style={{fontSize:12,color:"var(--au-ch-gold)"}}>Forging a new world…</span>
 </div>}
 
-{viewMode==="loyalty"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:250}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Loyalty of the land</div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:16,height:11,background:"hsl(8,64%,38%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(74,55%,43%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(140,46%,47%)"}}/>
-    </span>
-    <span>detached → attached</span></div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{width:32,height:11,flexShrink:0,background:
-      "repeating-linear-gradient(90deg,hsl(200,62%,46%) 0 3px,hsl(30,60%,42%) 3px 6px)"}}/>
-    <span>ground that remembers a fallen nation</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    How far the people of each tile have accepted their current ruler.
-    Trust builds over generations — slower under a foreign ruler, frozen by
-    grievance — and conquest detaches it. Hatched ground still yearns for the
-    nation whose colour it wears; a revolt there restores that nation.
-  </div>
-</div>}
-
-{viewMode==="population"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:240}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>People on the land</div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:11,height:11,background:"rgba(34,42,64,0.4)"}}/>
-      <span style={{width:11,height:11,background:"rgb(40,60,140)"}}/>
-      <span style={{width:11,height:11,background:"rgb(50,170,130)"}}/>
-      <span style={{width:11,height:11,background:"rgb(200,190,85)"}}/>
-      <span style={{width:11,height:11,background:"rgb(245,235,160)"}}/>
-    </span>
-    <span>scatter → farmed → dense</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    LIVE population — every person the sim carries, where they live. The
-    whole world holds a thin subsistence scatter (as it truly did by 3000 BC);
-    that haze stays faint, and the ramp belongs to where people CONCENTRATE —
-    the farmed countryside and the great basins. National power, manpower and
-    migration all read this field{peopleRef.current&&peopleRef.current._popMax?` · densest tile ≈ ${fmtPeople(peopleRef.current._popMax)} people`:""}.
-  </div>
-</div>}
-
-{viewMode==="prices"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:250}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Local market prices</div>
-  <select value={priceGood} onChange={(e)=>setPriceGood(+e.target.value)}
-    style={{width:"100%",marginBottom:5,fontSize:11,padding:"2px 4px"}}>
-    {GOODS.map((g,i)=><option key={g} value={i}>{g}</option>)}
-  </select>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:16,height:11,background:"hsl(120,55%,38%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(45,30%,52%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(4,85%,36%)"}}/>
-    </span>
-    <span>glut ×0.25 → ×1 → scarce ×4</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    Each catchment tinted by its LOCAL price of the chosen good — the spatial
-    gradient the goods trade flows down. Green basins export it, red fronts
-    are shortages bidding for imports; grey has no market data yet.
-  </div>
-</div>}
-
-{viewMode==="society"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
-  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:240}}>
-  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Coerced labour</div>
-  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
-    <span style={{display:"flex",flexShrink:0}}>
-      <span style={{width:16,height:11,background:"#5e626b"}}/>
-      <span style={{width:16,height:11,background:"hsl(17,69%,42%)"}}/>
-      <span style={{width:16,height:11,background:"hsl(4,88%,34%)"}}/>
-    </span>
-    <span>free → bound</span></div>
-  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    How coerced a settlement's labour is — slaves as a share of its people,
-    serfdom, and cash-crop plantation land combined. The deep-red bands are
-    the slave coasts, plantation belts and serf peripheries; grey land is free.
-  </div>
-</div>}
+{/* ─── Epochal-event toasts (plan §8) ─── */}
+<ToastHost feedRef={peopleRef} verbosity={toastVerbosity} onJump={jumpTo} stepNow={liveStep}/>
 
 </div>{/* end map area */}
 
 </div>{/* end center column */}
 
-{/* ══════════ WORLD PANEL ══════════ */}
-<aside className="au-parchment" style={{width:302,minWidth:302,margin:"6px 6px 6px 3px",
-  display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain"}}>
-  <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(58,38,20,0.28)"}}>
+{/* ══════════ THE CODEX (right dock — the atlas's book; plan §7) ══════════
+     Desktop: an inline column. Narrow: a fixed slide-over drawer, toggled
+     from the top bar and auto-opened by map selection. Same content. */}
+<aside className="au-parchment" style={narrow?{
+    position:"fixed",top:0,right:0,bottom:0,width:"min(340px, 92vw)",zIndex:46,
+    display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain",
+    borderRadius:0,transform:codexOpen?"translateX(0)":"translateX(102%)",
+    transition:"transform 0.22s ease-out",boxShadow:"-8px 0 30px rgba(0,0,0,0.55)"
+  }:{width:312,minWidth:312,margin:"6px 6px 6px 3px",
+    display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain"}}>
+  <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(216,190,150,0.28)",alignItems:"stretch"}}>
     {[["world","World"],["realms","Realms"],["peoples","Peoples"],["faiths","Faiths"],["tongues","Tongues"],["inspect","Inspect"]].map(([k,l])=>(
-      <button key={k} onClick={()=>setPanelTab(k)}
+      <button key={k} onClick={()=>navigate({tab:k})}
         className={"au-tab"+(panelTab===k?" au-active":"")} style={{flex:1,padding:"7px 0"}}>{l}</button>
     ))}
+    {narrow&&<button onClick={()=>setCodexOpen(false)} title="Close"
+      style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-ink-faded)",fontSize:17,padding:"0 9px"}}>×</button>}
   </div>
+  {/* breadcrumb + back — every jump in the codex is reversible */}
+  {(()=>{
+    const psw=peopleRef.current;
+    const crumbs=["Codex"];
+    if(panelTab==="world")crumbs.push("World");
+    else if(panelTab==="realms"){crumbs.push("Realms");
+      const c=realmSel>=0&&psw&&psw.countries?psw.countries.get(realmSel):null;
+      if(realmSel>=0)crumbs.push(c?(c.name||"realm "+realmSel):"…");}
+    else if(panelTab==="inspect"){crumbs.push("Inspect");
+      const s=selectedSettlementId>=0&&psw&&psw.settlements?psw.settlements.find(x=>x&&x.id===selectedSettlementId):null;
+      if(s)crumbs.push(s.name);}
+    else crumbs.push(panelTab.charAt(0).toUpperCase()+panelTab.slice(1));
+    return(
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",flexShrink:0,
+        borderBottom:"1px solid rgba(216,190,150,0.14)",fontSize:10.5}}>
+        <button onClick={navBack} className="au-btn au-flat" title="Back"
+          style={{padding:"0 6px",fontSize:12,opacity:navStackRef.current.length?1:0.35}}>◂</button>
+        <span className="au-fade" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textTransform:"capitalize"}}>
+          {crumbs.join(" ▸ ")}</span>
+      </div>);
+  })()}
   {panelTab==="world"&&renderCharts()}
   {panelTab==="realms"&&(realmSel>=0?renderRealmDetail():renderBoard())}
   {panelTab==="peoples"&&renderPeoples()}
   {panelTab==="faiths"&&renderFaiths()}
   {panelTab==="tongues"&&renderLanguages()}
   {panelTab==="inspect"&&(renderInspect()||
-    <div className="au-fade" style={{padding:16,fontSize:11,fontStyle:"italic"}}>Click a settlement on the map to inspect it.</div>)}
+    <div className="au-fade" style={{padding:16,fontSize:12,fontStyle:"italic"}}>Click a settlement on the map to inspect it — or click open territory to select its realm.</div>)}
 </aside>
 
 </div>{/* main row */}
@@ -4474,30 +4379,45 @@ return(
       className={"au-rail-tab"+(layers[k]?" au-active":"")}
       style={{paddingLeft:14+(indent||0),width:"100%",textAlign:"left",fontSize:12}}>{label}</button>
   );
+  // Terrain overlays live in separate state/refs (pre-date the layers map);
+  // rendered here as the same kind of row so the popover is the ONE home of
+  // every map overlay.
+  const trow=(on,set,ref,label,indent)=>(
+    <button key={label} onClick={()=>{set(v=>!v);ref.current=!ref.current;}}
+      className={"au-rail-tab"+(on?" au-active":"")}
+      style={{paddingLeft:14+(indent||0),width:"100%",textAlign:"left",fontSize:12}}>{label}</button>
+  );
   return(
-    <aside className="au-parchment au-scroll" style={{
-      position:"absolute",left:124,top:8,width:220,maxHeight:"80vh",
-      padding:"10px 0",overflowY:"auto",zIndex:30}}>
+    <aside className="au-chrome au-glass au-scroll" style={{
+      position:"absolute",left:66,top:8,width:224,maxHeight:"85vh",
+      padding:"8px 0",overflowY:"auto",zIndex:_zOf("layers")}}>
       <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
-        <span className="au-heading au-sc" style={{fontSize:12}}>Layers</span>
+        <span className="au-heading au-sc" style={{fontSize:12.5}}>Map layers</span>
         <div style={{flex:1}} />
         <span onClick={()=>setLayersOpen(false)}
-          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+          style={{cursor:"pointer",fontSize:18,color:"var(--au-ch-text-dim)"}}>×</span>
       </div>
-      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 14px 2px"}}>Map</div>
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"4px 14px 2px"}}>Politics & trade</div>
       {row("tints","Country tints")}
       {row("borders","Borders")}
+      {row("labels","Names on the map")}
+      {row("emblems","Heraldry")}
       {row("provinces","Province borders")}
       {row("roads","Roads")}
       {row("seaLanes","Sea lanes")}
       {row("moneyFlow","Money flow")}
-      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>Terrain</div>
+      {trow(showRivers,setShowRivers,showRiversRef,"Rivers")}
+      {showRivers&&trow(showStreams,setShowStreams,showStreamsRef,"· Streams",10)}
+      {trow(showLakes,setShowLakes,showLakesRef,"Lakes")}
+      {world&&world.pixPlate&&trow(showPlates,setShowPlates,showPlatesRef,"Plates")}
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
       {row("icons","Icons (master)")}
       {row("village","· Farming Regions",10)}
       {row("city","· Cities",10)}
       {row("metropolis","· Metropolises",10)}
       {row("shocks","Plague / famine outlines")}
-      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
       {row("ships","Colony ships")}
     </aside>
   );
@@ -4506,9 +4426,9 @@ return(
 
 
 {rightPanel==="params"&&(preset==="earth"||preset==="earth_sim")&&
-<aside className="au-parchment au-scroll" style={{
+<aside className="au-chrome au-glass au-scroll" style={{
   position:"absolute",right:316,top:6,bottom:6,width:300,
-  padding:"10px 12px",overflowY:"auto",zIndex:30}}>
+  padding:"10px 12px",overflowY:"auto",zIndex:_zOf("wind")}}>
 <div style={{display:"flex",alignItems:"baseline",marginBottom:6}}>
   <span className="au-heading au-sc" style={{fontSize:12}}>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
   <div style={{flex:1}} />
@@ -4522,8 +4442,9 @@ return(
 
 {/* ══════════ CHRONICLE OVERLAY (follows the inspected realm) ══════════ */}
 {chronicleOpen&&peopleRef.current&&peopleRef.current._chronicle&&(
-  <ChronicleOverlay entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
+  <ChronicleOverlay z={_zOf("chronicle")} entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
     eraAt={peopleRef.current._eraAt}
+    armsURL={peopleRef.current._chronicle.countryId>=0?emblemURLFor(peopleRef.current._chronicle.countryId):null}
     perspective={!!peopleRef.current._chronicle.perspective}
     onTogglePerspective={()=>{
       const next=!peopleRef.current._chronicle.perspective;
@@ -4533,12 +4454,12 @@ return(
 
 {/* ══════════ RULING FAMILY TREE OVERLAY (follows the inspected realm) ══════════ */}
 {dynastyOpen&&(
-  <DynastyOverlay tree={peopleRef.current&&peopleRef.current._dynasty}
+  <DynastyOverlay z={_zOf("dynasty")} tree={peopleRef.current&&peopleRef.current._dynasty}
     onClose={()=>setDynastyOpen(false)}/>)}
 
 {/* ══════════ NEW WORLD MODAL ══════════ */}
 {newWorldOpen&&(
-  <div onClick={()=>setNewWorldOpen(false)} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.7)",zIndex:220,display:"flex",alignItems:"center",justifyContent:"center"}}>
+  <div onClick={()=>setNewWorldOpen(false)} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.7)",zIndex:_zOf("newworld"),display:"flex",alignItems:"center",justifyContent:"center"}}>
     <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"14px 18px",width:"min(420px,92vw)"}}>
       <div style={{display:"flex",alignItems:"center",marginBottom:10}}>
         <span className="au-pico-title" style={{fontSize:15}}>New World</span>
@@ -4564,7 +4485,7 @@ return(
         {[{d:1,l:"Full"},{d:2,l:"Half"},{d:4,l:"Quarter"}].map(o=>(
           <button key={o.d} onClick={()=>{simTileResRef.current=o.d;setSimDiv(o.d);generate(seed);}}
             className={"au-btn au-flat"+(simDiv===o.d?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
-            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms":"Half the map resolution (default)"}>{o.l}</button>
+            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms (default)":"Half the map resolution — slower, more and smaller realms"}>{o.l}</button>
         ))}
       </div>
       <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:6}}>
@@ -4605,8 +4526,8 @@ return(
 
 {/* ══════════ MENU POPOVER ══════════ */}
 {menuOpen&&(
-  <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:210}}>
-    <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{position:"absolute",right:10,top:44,width:230,padding:"8px 0",display:"flex",flexDirection:"column"}}>
+  <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:_zOf("menu")}}>
+    <div onClick={e=>e.stopPropagation()} className="au-chrome au-glass" style={{position:"absolute",right:10,top:48,width:238,padding:"8px 0",display:"flex",flexDirection:"column",zIndex:"var(--z-popovers)"}}>
       <button className="au-rail-tab" onClick={()=>{
         downloadSaveRef.current=(json,step)=>{
           const blob=new Blob([json],{type:"application/json"});
@@ -4648,6 +4569,9 @@ return(
 {leversOpen&&<SimLevers values={tuneVals} onChange={onLeverChange}
   onResetKey={onLeverResetKey} onResetAll={onLeverResetAll}
   onClose={()=>setLeversOpen(false)} />}
+
+{/* ══════════ HELP / KEYS ══════════ */}
+{helpOpen&&<HelpOverlay z={_zOf("help")} onClose={()=>setHelpOpen(false)}/>}
 
 {/* ══════════ TUNING MODAL ══════════ */}
 {showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}
