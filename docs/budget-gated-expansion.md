@@ -171,3 +171,40 @@ invariant violations, save/load hash identity, living civilization);
 stylized 21k-step run all hard gates passed with the one pre-existing
 soft Zipf warning (budget 2) — 80 polities, largest-empire share 5%,
 fallen-lifespan median ~305y, wars 0.34/1k-steps/polity.
+
+## Addendum 2 (2026-07-26): the endowment decomposition — org-cut measured, REJECTED
+
+Owner hypothesis: the genesis balloon comes from the cradle seed's head start
+(240 people, agriculture 0.55, organization 0.28). Tested with a new
+instrument, `tools/probe_cradle_pulse.mjs` (age-aligned claimed-tile
+trajectories, cradle-seeded vs natural realms, 480×240 × 8k).
+
+**Baseline (3 seeds):** cradles peak at ~age 750–2250 at 33–64 tiles mean and
+overshoot their settled extent ×1.32–1.57; naturals run ×1.04–1.36 — the
+balloon is real and cradle-specific.
+
+**Decomposition (8817 spot runs):** the FULL-natural seed (25 people, org
+0.10, agri 0.50) eliminates the balloon entirely — cradles peak at age
+5500–7000 like anyone else — but planetary ignition collapses (+5k steps to
+the first natural state): the technique half (agri/metal/people) is the
+diffusion source the whole world lights from. The org-only cut (0.28→0.10,
+package kept) kept ignition on time and cut 8817's peak 38 % — the promising
+read that motivated the battery.
+
+**3-seed A/B of the org cut (`CRADLE_ORG=0.1`): NOT robust.** Peak down on
+8817/4242 (64→40, 57→47) but UP on 31337 (33→69); the overshoot ratio is
+WORSE on all three seeds (1.56→2.52, 1.32→9.16, 1.57→2.85) — a low-org
+proto-cradle is FRAIL, and its later shatters/witherings dominate the
+trajectory; ignition and era-1 arrival shift ±600–1000 steps with no
+consistent sign. The single-seed promise was trajectory chaos — the same
+standing lesson the G-equivalence and TRUCE_TOLL measurements taught.
+
+**Verdict:** the statehood endowment is a minor, non-robust contributor. The
+pulse's deeper causes stand as diagnosed above: the 3000-BC initial field
+population being BOOKED instantly by any org-capable state, plus the
+first-mover vacuum (member acquisition not load-priced). The ranked fixes
+remain (1) marginal-revenue adoption — design two, after the measured failure
+of the naive gate — and (2) deeper-prehistory genesis (campaign scope).
+`T.CRADLE_ORG` ships as an explicit knob (default 0.28, byte-identical —
+hashbase pair verified unchanged) so the epoch-vs-balloon tradeoff is a lever
+in the panel rather than a number buried in makeSettlement.

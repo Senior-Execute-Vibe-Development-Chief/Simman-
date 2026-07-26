@@ -294,7 +294,18 @@ export function makeSettlement(world, x, y, opts = {}) {
       // Initial CONDITIONS of the world at t=0, not a gate on anything.
       agriculture: 0.55,        // mature floodplain/irrigation farming
       construction: 0.20,       // mudbrick towns, the first monumental works
-      organization: 0.28,       // temple accounts / proto-writing — kingship at the door
+      // TECHNIQUE vs STATEHOOD (2026-07 endowment decomposition): the seed's
+      // agri/metal/people package is the world's IGNITION source (removing it
+      // measured +5k steps to planetary statehood — the diffusion everyone
+      // downstream waits on), but the ORGANIZATION head start is the
+      // politically active half: it buys instant reach, capacity and adoption
+      // rights, and is ~40% of the genesis territorial balloon (cradles peak
+      // ~age 1000 at 1.56x their settled extent while natural states run
+      // 1.06x). T.CRADLE_ORG makes that half a lever: 0.28 = kingship at the
+      // door (the eve-of-states reading); 0.10 = the same proto-urban town
+      // must BUILD its kingship like everyone else (statehood earned, arriving
+      // fast because the technique package is intact).
+      organization: T.CRADLE_ORG,  // temple accounts / proto-writing
       metallurgy:  0.16,        // chalcolithic copper (ore access still gates practice)
       navigation:  0.05,        // river craft
       mobility:    0.05,        // pack animals
