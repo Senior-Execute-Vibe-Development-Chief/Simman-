@@ -307,7 +307,20 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // ITCZ width 8° — narrow band representing annual-mean position.
       // IRL the ITCZ migrates seasonally but only brings sustained rain to ~±8°.
       if (temp[ci] > 0.45 && moist > 0.05) {
-        const itczFactor = Math.exp(-((latSgn - _itczLat) * (latSgn - _itczLat)) / (2 * 8 * 8));
+        // The migrating monsoon ITCZ (follows the sun to _itczLat) PLUS a fixed
+        // deep-equatorial band. A two-solstice solve parks the ITCZ at ±_itczLat, so the
+        // equator would sit that far from convection in BOTH solves and the everwet
+        // rainforests (Congo, Amazon, Borneo) would dry out. But the real equator is
+        // warm year-round and the ITCZ crosses it twice (the equinoxes), so deep
+        // convection there never stops — model that as an ITCZ floor centred on 0°.
+        const itczMonsoon = Math.exp(-((latSgn - _itczLat) * (latSgn - _itczLat)) / (2 * 8 * 8));
+        // The equatorial floor only exists to replace the convection the ±_itczLat shift
+        // moved off the equator, so scale it by the shift: 0 for an annual-mean solve
+        // (itczLat=0 stays byte-identical — the tectonic/earth presets rely on that),
+        // full strength for the ±13° seasonal solves.
+        const itczEquator = Math.exp(-(latSgn * latSgn) / (2 * 9 * 9)) * 0.9
+          * Math.min(1, Math.abs(_itczLat) / 8);
+        const itczFactor = Math.max(itczMonsoon, itczEquator);
         const subtropSuppress = 1 - subsidenceFactor * 0.9;
         const midlatFactor = Math.exp(-((latDeg - 45) * (latDeg - 45)) / (2 * 12 * 12)) * 0.3;
         const convFactor = (itczFactor + midlatFactor) * subtropSuppress;
