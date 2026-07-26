@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- Dev-only harness page for tools/browser_popfield_check.mjs (NOT part of the
+     app build — vite only bundles index.html). Spawns the sim in a worker
+     (the app's own topology; Atomics.wait is illegal on the main thread) and
+     mirrors its result into the title for the headless driver. -->
+<html>
+<head><meta charset="utf-8"><title>RUNNING</title></head>
+<body>
+<script type="module">
+  const w = new Worker(new URL("./tools/browser_popfield_worker.js", import.meta.url), { type: "module" });
+  w.onmessage = (e) => {
+    window.__result = e.data;
+    document.title = e.data && e.data.ok ? "DONE" : "FAIL";
+  };
+  w.onerror = (e) => {
+    window.__result = { ok: false, error: String(e.message || e) };
+    document.title = "FAIL";
+  };
+  window.__isolated = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated;
+</script>
+</body>
+</html>

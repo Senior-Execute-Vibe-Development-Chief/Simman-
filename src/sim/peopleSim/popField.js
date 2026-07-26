@@ -24,8 +24,17 @@
 
 import { T, rNormPop } from "./tuning.js";
 import { tileOpenness } from "./transport.js";
-
-const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+// Stage B (docs/popfield-parallel.md): the four parallel-safe loop bodies and
+// the physical constants they share live in popFieldKernel.js (single source —
+// a worker thread imports the kernel standalone), the worker pool in
+// popFieldPool.js. Lever 0 keeps the serial loops in THIS file untouched; the
+// cross-lever identity probe (tools/probe_popfield_par.mjs) gates the pairing.
+import * as PFK from "./popFieldKernel.js";
+import { signalPhase, awaitPhase, ensurePool, makeBands, writeBands } from "./popFieldPool.js";
+const { RM_FULL, ACCESS_RIVER, ACCESS_COAST, ACCESS_DEV0, ACCESS_DEVK, RELIEF_PEN,
+        DEV_BASE, DEV_TECH, R_DEV0, R_DEVK, R_TROPIC,
+        FADE_FERT, FADE_RELIEF, FADE_PUMP, FADE_MED, FADE_ACCESS,
+        WORKS_PRESS, WORKS_STAFF, WORKS_RATE, WORKS_DECAY, DIRS4 } = PFK;
 
 // Carrying capacity: people per unit (fertility × development) on one tile at
 // saturation. A calibration constant — its absolute value sets total world
@@ -53,7 +62,7 @@ const CAP_PER_FERT = 1200;
 // a hunter-gatherer land feeds a thin scatter, an irrigated-plough society feeds a
 // dense one. Emergent (read from the world's leading agriculture in phase 1);
 // becomes a field in a later phase. base at neolithic → ~×3.3 at full farming tech.
-const DEV_BASE = 0.30, DEV_TECH = 3.0;
+// DEV_BASE / DEV_TECH — popFieldKernel.js (single source, shared with the band kernels).
 const POP_GROWTH = 0.03;    // logistic intrinsic growth per step (r in pop += r·pop·(1−pop/K))
 // Migration share per step (at the reference grid) — now a LEVER (T.POP_MIGRATE,
 // same name): a diffusion coefficient in disguise (D ∝ share·Δx²). At the old
@@ -133,10 +142,7 @@ const EARTH_KM = 40075;             // planet circumference — the map's x-exte
 //   • Self-limiting: building raises cap → lowers pressure → slows building
 //     (negative feedback); the field's own migration then pulls people INTO
 //     the improved basin (spare capacity) — the hotspot concentration.
-const WORKS_PRESS = 0.5;    // pressure (pop/cap) where intensification begins — Boserup's trigger
-const WORKS_STAFF = 0.25;   // below this pressure, works lose their maintenance hands pro-rata
-const WORKS_RATE  = 0.0012; // build speed: sustained full pressure at skill 0.6 on watered land ≈ 0→0.8 over ~2000 steps (~5 centuries)
-const WORKS_DECAY = 0.0009; // unstaffed rot: half-life ≈ 800 steps (~2 centuries)
+// WORKS_PRESS / WORKS_STAFF / WORKS_RATE / WORKS_DECAY — popFieldKernel.js.
 
 // ── T.GROWTH_LOCAL: per-tile demographic regimes (farmer vs forager) ─────────
 // The intrinsic growth rate was a single global constant — every tile on the
@@ -158,9 +164,7 @@ const WORKS_DECAY = 0.0009; // unstaffed rot: half-life ≈ 800 steps (~2 centur
 // visible result: growth is no longer universal — the civilized band climbs
 // while the frontier crawls, tile by tile, by food (Malthus), technique
 // (regime) and disease (climate).
-const R_DEV0   = 0.35;  // forager-land natural increase as a share of base (pre-farming bands grew ~3-5× slower)
-const R_DEVK   = 1.30;  // technique gradient: ×1 at dev 0.5, ×1.65 at full technique
-const R_TROPIC = 0.35;  // wet-tropic disease burden on natural increase (endemic malaria belts)
+// R_DEV0 / R_DEVK / R_TROPIC — popFieldKernel.js.
 
 // ── T.TERRAIN_FADE: technology SUBSTITUTES for terrain (the late-era fades) ──
 // Pre-industrial technique AMPLIFIES what terrain gives (multiplicative on
@@ -175,11 +179,7 @@ const R_TROPIC = 0.35;  // wet-tropic disease burden on natural increase (endemi
 // railroads the wilderness, and the whole set SLEEPS until a realm actually
 // industrializes — no clock anywhere. Each constant is the fade's magnitude
 // at full industrial development:
-const FADE_FERT   = 0.5;  // fertilizer closes half the natural-fertility gap (post-Haber cereal-yield convergence)
-const FADE_RELIEF = 0.6;  // engineering removes ~60% of ruggedness's capacity penalty (rail, tunnels, terrace machinery)
-const FADE_PUMP   = 0.5;  // pumps/dams supply half of full irrigability anywhere industrial (aquifer / center-pivot farming)
-const FADE_MED    = 3.0;  // medicine divides the wet-tropic burden by (1+3) at full development (the 20th-c malaria collapse)
-const FADE_ACCESS = 0.5;  // land transport cuts the river/coast import premium by a third (the interior becomes competitive)
+// FADE_FERT / FADE_RELIEF / FADE_PUMP / FADE_MED / FADE_ACCESS — popFieldKernel.js.
 
 // ── Pastoral capacity (the mechanism DEV_FIELD un-masked) ────────────────────
 // The global scalar had been silently gifting the STEPPE farming-level capacity;
@@ -309,15 +309,12 @@ function ensureDevField(world, land) {
 // genuine mechanism with independent physical meaning (never a size fitted to a
 // place): the great river valleys, deltas and coastal plains concentrate on their
 // own, and so does any map you never looked at.
-const RM_FULL = 4;          // river magnitude of a GREAT river (Nile/Yangtze) — the data's top bin; access ∝ min(1, mag/RM_FULL)
-const ACCESS_RIVER = 1.0;   // full-magnitude river's share of the transport-access premium
-const ACCESS_COAST = 0.35;  // a coast's share (fisheries + sea trade) — weaker than a great river
+// RM_FULL / ACCESS_RIVER / ACCESS_COAST — popFieldKernel.js (values there).
 // The premium GROWS with development: a neolithic landing imports little, an
 // industrial port draws grain from a continent. Emergent (reads leading
 // agriculture as the transport-tech proxy), never a clock. base (ancient
 // irrigation already ~doubles a great valley) → +ACCESS_DEVK at full tech.
-const ACCESS_DEV0 = 1.0, ACCESS_DEVK = 1.0;
-const RELIEF_PEN = 3.0;     // how sharply local ruggedness (relief 0..~0.54) cuts capacity: cap ×= 1/(1+RELIEF_PEN·relief)
+// ACCESS_DEV0 / ACCESS_DEVK / RELIEF_PEN — popFieldKernel.js.
 
 export function initPopField(world) {
   const N = world.N;
@@ -342,7 +339,7 @@ export function initPopField(world) {
 // scales by it so a strided field follows the same trajectory at ~1/sub the cost.
 export function stepPopField(world, sub = 1) {
   const N = world.N, tw = world.tw, th = world.th;
-  const { elev, fert, riverMag, relief, coast } = world;
+  let { elev, fert, riverMag, relief, coast } = world;
   let pop = world.popField, cap = world.capField;
   if (!pop || pop.length !== N) { initPopField(world); pop = world.popField; cap = world.capField; }
 
@@ -363,7 +360,7 @@ export function stepPopField(world, sub = 1) {
   // skipping it is byte-identical, it just drops the field pass's dead iterations
   // (the whole field-model overhead scales with this loop count). The land index is
   // static (terrain), built once.
-  const land = world._popLand && world._popLand.length ? world._popLand : (world._popLand = buildLandList(world));
+  let land = world._popLand && world._popLand.length ? world._popLand : (world._popLand = buildLandList(world));
   const nLand = land.length;
   const _rnF = rNormPop(world);
   const capPerFert = CAP_PER_FERT / (_rnF * _rnF);   // per REAL area (÷1 exactly at the reference)
@@ -407,7 +404,7 @@ export function stepPopField(world, sub = 1) {
   // T.TERRAIN_FADE needs the owner lookup even when INDUSTRIAL_CAP is off.
   const tfL = T.TERRAIN_FADE || 0;
   const ownOn = indOn || tfL > 0;
-  const indOwner = ownOn ? world._territoryOwner : null, indById = ownOn ? world._byId : null;
+  let indOwner = ownOn ? world._territoryOwner : null; const indById = ownOn ? world._byId : null;
   // Per-tile fade level (lever × owner's industrial gate), stashed for the
   // works/growth passes below (same firing, deterministic order).
   let tfArr = null;
@@ -415,7 +412,30 @@ export function stepPopField(world, sub = 1) {
   // T.LAND_WORKS: accumulated land improvement multiplies CROP capacity (the
   // canals irrigate fields, not rangeland). Lever value = max yield multiple.
   const worksOn = T.LAND_WORKS > 0 && world.worksField;
-  const worksF = worksOn ? world.worksField : null, worksK = worksOn ? T.LAND_WORKS : 0;
+  let worksF = worksOn ? world.worksField : null; const worksK = worksOn ? T.LAND_WORKS : 0;
+  // ── Stage B parallel context (docs/popfield-parallel.md §4) ────────────────
+  // Lever ≥1 routes the four parallel-safe phases through the shared band
+  // kernels (≥2 additionally bands them across the worker pool when it is
+  // ready). Null ⇒ every serial loop below runs exactly as always. The
+  // prepare step may convert world arrays to SharedArrayBuffer-backed views,
+  // so every local captured above is refreshed to address the SAME memory the
+  // workers see.
+  const _pctx = _pfLever() >= 1 ? _pfPrepare(world, land, nLand, devF) : null;
+  if (_pctx) {
+    ({ elev, fert, riverMag, relief, coast } = world);
+    land = world._popLand;
+    pop = world.popField; cap = world.capField;
+    if (devF) devF = world.devField;
+    if (pasture) pasture = world._pastureCap;
+    if (tfArr) tfArr = world._tfFade;
+    if (worksF) worksF = world.worksField;
+    if (indOwner) indOwner = world._territoryOwner;
+  }
+  if (_pctx) {
+    _pfCap(_pctx, world, { land, fert, riverMag, coast, relief, cap, pasture, worksF, tfArr,
+      ownOn: !!(ownOn && indOwner), indOn, tfL, worksOn: !!worksF, worksK,
+      capPerFert, accessDev, dev });
+  } else
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
@@ -544,21 +564,10 @@ export function stepPopField(world, sub = 1) {
   const gl = T.GROWTH_LOCAL || 0;
   const glOn = gl > 0 && devF;
   let tropicB = null;
-  if (glOn) {
-    tropicB = world._tropicBurden;
-    if (!tropicB || tropicB.length !== N) {
-      // Static climate burden: hot AND wet (the endemic-disease belt) — the
-      // same shape the state-formation gate reads off settlements (_wetTropic).
-      tropicB = world._tropicBurden = new Float32Array(N);
-      const te = world.temp, mo = world.moist;
-      for (let li = 0; li < nLand; li++) {
-        const i = land[li];
-        const t2 = Math.max(0, Math.min(1, ((te ? te[i] : 0) - 0.62) / 0.2));
-        const m2 = Math.max(0, Math.min(1, ((mo ? mo[i] : 0) - 0.55) / 0.25));
-        tropicB[i] = t2 * m2;
-      }
-    }
-  }
+  if (glOn) tropicB = _ensureTropicB(world, land, nLand);
+  if (_pctx) {
+    _pfGrowth(_pctx, { land, pop, cap, tropicB, tfArr, glOn, tfOn: !!tfArr, gl, rBulk, dt });
+  } else
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
     const k = cap[i];
@@ -605,30 +614,37 @@ export function stepPopField(world, sub = 1) {
   const nSub = Math.max(1, Math.ceil(migT / MIG_SHARE_MAX));
   const migShare = migT / nSub;                             // per-substep share (= POP_MIGRATE·dt exactly at the reference)
   let nxt = world._popNext; if (!nxt || nxt.length !== N) nxt = world._popNext = new Float32Array(N);
+  // Lever ≥1: the index-ordered GATHER form of this substep (bit-identical by
+  // construction — docs/popfield-parallel.md §3; kernels in popFieldKernel.js,
+  // banded across the pool at ≥2). 0 keeps the scatter below untouched.
   for (let it = 0; it < nSub; it++) {
-    nxt.set(pop);
-    for (let li = 0; li < nLand; li++) {
-      const i = land[li];
-      const p = pop[i]; if (p <= 0) continue;
-      const y = (i / tw) | 0, x = i - y * tw;
-      let sumSpare = 0;
-      const spare = _spare4; // reused scratch
-      for (let d = 0; d < 4; d++) {
-        const ny = y + DIRS4[d][1];
-        if (ny < 0 || ny >= th) { spare[d] = 0; continue; }
-        const nx = (x + DIRS4[d][0] + tw) % tw;
-        const ni = ny * tw + nx;
-        const s = cap[ni] - pop[ni];
-        spare[d] = s > 0 ? s : 0;
-        sumSpare += spare[d];
-      }
-      if (sumSpare <= 0) continue;               // hemmed in by full/empty land — nobody leaves
-      const move = migShare * p;                 // leaving this tile this substep
-      nxt[i] -= move;
-      for (let d = 0; d < 4; d++) {
-        if (spare[d] <= 0) continue;
-        const ny = y + DIRS4[d][1], nx = (x + DIRS4[d][0] + tw) % tw;
-        nxt[ny * tw + nx] += move * (spare[d] / sumSpare);
+    if (_pctx) {
+      _pfMigrate(_pctx, pop, nxt, cap, land, nLand, tw, th, migShare);
+    } else {
+      nxt.set(pop);
+      for (let li = 0; li < nLand; li++) {
+        const i = land[li];
+        const p = pop[i]; if (p <= 0) continue;
+        const y = (i / tw) | 0, x = i - y * tw;
+        let sumSpare = 0;
+        const spare = _spare4; // reused scratch
+        for (let d = 0; d < 4; d++) {
+          const ny = y + DIRS4[d][1];
+          if (ny < 0 || ny >= th) { spare[d] = 0; continue; }
+          const nx = (x + DIRS4[d][0] + tw) % tw;
+          const ni = ny * tw + nx;
+          const s = cap[ni] - pop[ni];
+          spare[d] = s > 0 ? s : 0;
+          sumSpare += spare[d];
+        }
+        if (sumSpare <= 0) continue;               // hemmed in by full/empty land — nobody leaves
+        const move = migShare * p;                 // leaving this tile this substep
+        nxt[i] -= move;
+        for (let d = 0; d < 4; d++) {
+          if (spare[d] <= 0) continue;
+          const ny = y + DIRS4[d][1], nx = (x + DIRS4[d][0] + tw) % tw;
+          nxt[ny * tw + nx] += move * (spare[d] / sumSpare);
+        }
       }
     }
     const t = pop; pop = nxt; nxt = t;           // swap buffers (per substep — next substep reads this one's result)
@@ -637,26 +653,16 @@ export function stepPopField(world, sub = 1) {
   // Runs on this tick's final pop & cap; the multiplier is felt next firing —
   // a one-firing lag that keeps the pass order clean and deterministic.
   if (T.LAND_WORKS > 0) {
-    let wk = world.worksField;
-    if (!wk || wk.length !== N) wk = world.worksField = new Float32Array(N);
+    const wk = _ensureWk(world);
     // Irrigability — static terrain: water that can be LED onto fields. A great
     // river offers its whole flow, a floodplain is the historical basin-irrigation
     // heartland, and a genuinely wet climate (paddy country) irrigates from rain.
-    let irr = world._irrigable;
-    if (!irr || irr.length !== N) {
-      irr = world._irrigable = new Float32Array(N);
-      const tFl = world.tFlood, mo = world.moist;
-      for (let li = 0; li < nLand; li++) {
-        const i = land[li];
-        const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
-        const fl = tFl && tFl[i] ? 0.85 : 0;
-        const wet = Math.max(0, ((mo ? mo[i] : 0) - 0.55) / 0.45) * 0.6;
-        const v = water + fl + wet;
-        irr[i] = v > 1 ? 1 : v;
-      }
-    }
+    const irr = _ensureIrr(world, land, nLand);
     const rate = WORKS_RATE * dt, dk = WORKS_DECAY * dt;
     const tfW = (T.TERRAIN_FADE || 0) > 0 ? world._tfFade : null;   // pumps/dams irrigate beyond surface water where the owner is industrial (guarded: stale array must not leak when the lever is off)
+    if (_pctx) {
+      _pfWorks(_pctx, { land, pop, cap, wk, irr, tfW, tfWOn: !!tfW, leadAgri, rate, dk });
+    } else
     for (let li = 0; li < nLand; li++) {
       const i = land[li];
       let a = irr[i];
@@ -679,6 +685,359 @@ export function stepPopField(world, sub = 1) {
 }
 
 const _spare4 = new Float64Array(4);
+
+// ── Stage B plumbing (docs/popfield-parallel.md §4) ─────────────────────────
+// The gather/cap/growth/works loop bodies live in popFieldKernel.js; here is
+// everything that ROUTES them: shared lazy-init ensures (one formula, used by
+// the serial path and the parallel prepare alike), the SharedArrayBuffer
+// arena, the per-firing owner tables, and the phase dispatchers that either
+// run a kernel full-range on the sim thread (lever 1, or pool not ready) or
+// signal the pool and take band 0 (lever ≥2). Pool state can never change a
+// bit — only which thread executes which band — so a pool that is still
+// spawning, or absent (browser), silently degrades to the same trajectory.
+
+// Static climate burden: hot AND wet (the endemic-disease belt) — the same
+// shape the state-formation gate reads off settlements (_wetTropic).
+function _ensureTropicB(world, land, nLand) {
+  let tropicB = world._tropicBurden;
+  if (!tropicB || tropicB.length !== world.N) {
+    tropicB = world._tropicBurden = new Float32Array(world.N);
+    const te = world.temp, mo = world.moist;
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const t2 = Math.max(0, Math.min(1, ((te ? te[i] : 0) - 0.62) / 0.2));
+      const m2 = Math.max(0, Math.min(1, ((mo ? mo[i] : 0) - 0.55) / 0.25));
+      tropicB[i] = t2 * m2;
+    }
+  }
+  return tropicB;
+}
+
+// Irrigability — static terrain: water that can be LED onto fields (see the
+// LAND_WORKS block in stepPopField for the physical story).
+function _ensureIrr(world, land, nLand) {
+  let irr = world._irrigable;
+  if (!irr || irr.length !== world.N) {
+    irr = world._irrigable = new Float32Array(world.N);
+    const tFl = world.tFlood, mo = world.moist, riverMag = world.riverMag;
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
+      const fl = tFl && tFl[i] ? 0.85 : 0;
+      const wet = Math.max(0, ((mo ? mo[i] : 0) - 0.55) / 0.45) * 0.6;
+      const v = water + fl + wet;
+      irr[i] = v > 1 ? 1 : v;
+    }
+  }
+  return irr;
+}
+
+function _ensureWk(world) {
+  let wk = world.worksField;
+  if (!wk || wk.length !== world.N) wk = world.worksField = new Float32Array(world.N);
+  return wk;
+}
+
+// Convert a world array to a SharedArrayBuffer-backed view IN PLACE (copy,
+// replace the reference — every consumer reads/writes the same memory as the
+// workers from then on). Constructor-preserving (riverMag/coast are Uint8).
+function _pfConv(world, ar, key) {
+  const cur = world[key];
+  if (!cur) { if (ar.sabs[key] !== null) { ar.sabs[key] = null; ar.gen++; } return; }
+  if (cur.buffer instanceof SharedArrayBuffer) { if (ar.sabs[key] !== cur.buffer) { ar.sabs[key] = cur.buffer; ar.gen++; } return; }
+  const sab = new SharedArrayBuffer(cur.byteLength);
+  const view = new cur.constructor(sab);
+  view.set(cur);
+  world[key] = view;
+  ar.sabs[key] = sab;
+  ar.gen++;
+}
+
+const _PF_CONV_KEYS = ["capField", "fert", "riverMag", "coast", "relief",
+  "_pastureCap", "worksField", "_tfFade", "_tropicBurden", "_irrigable",
+  "_migMove", "_migSum", "_territoryOwner", "_popLand"];
+
+// popField/_popNext are a swap PAIR over two fixed SABs: every firing's
+// publish re-points the KEYS at the other buffer, so identity must be checked
+// against the unordered pair {popA, popB} (parity tells workers which is
+// which) — keying them like the arrays above respawned the pool every tick.
+function _pfConvPair(world, ar) {
+  const inPair = (b) => b === ar.sabs.popA || b === ar.sabs.popB;
+  const conv1 = (key, slot, otherSlot) => {
+    const cur = world[key];
+    if (cur.buffer instanceof SharedArrayBuffer && inPair(cur.buffer)) return;
+    const sab = new SharedArrayBuffer(cur.byteLength);
+    const view = new cur.constructor(sab);
+    view.set(cur);
+    world[key] = view;
+    // claim whichever pair slot the OTHER key does not currently hold
+    const otherBuf = world[key === "popField" ? "_popNext" : "popField"];
+    if (otherBuf && otherBuf.buffer === ar.sabs[slot]) ar.sabs[otherSlot] = sab;
+    else ar.sabs[slot] = sab;
+    ar.gen++;
+  };
+  conv1("popField", "popA", "popB");
+  conv1("_popNext", "popB", "popA");
+}
+
+// The SAB arena (lever ≥2, node, SAB available). devField is NOT converted —
+// the wave pass may swap its buffer — it gets a per-firing MIRROR instead
+// (one ~N·4-byte memcpy, visible to workers via the phase handshake).
+function _pfEnsureArena(world) {
+  const N = world.N;
+  let ar = world._pfArena;
+  if (!ar || ar.N !== N) {
+    ar = world._pfArena = { gen: 0, N, tw: world.tw, th: world.th, nLand: world._popLand.length,
+                            tableCap: 16384, sabs: {} };
+    const ds = new SharedArrayBuffer(N * 4);
+    ar.sabs.devF = ds; ar.devView = new Float32Array(ds);
+  }
+  _pfConvPair(world, ar);
+  for (const k of _PF_CONV_KEYS) _pfConv(world, ar, k);
+  if (!ar.sabs.capT || !ar.capTView || ar.capTView.length < ar.tableCap) {
+    const c = new SharedArrayBuffer(ar.tableCap * 8), g = new SharedArrayBuffer(ar.tableCap * 8);
+    ar.sabs.capT = c; ar.sabs.gateT = g;
+    ar.capTView = new Float64Array(c); ar.gateTView = new Float64Array(g);
+    ar.gen++;
+  }
+  ar.nLand = world._popLand.length;
+  return ar;
+}
+
+function _pfArenaMsg(ar) {
+  const s = ar.sabs;
+  return { gen: ar.gen, N: ar.N, tw: ar.tw, th: ar.th, nLand: ar.nLand,
+    sabs: { land: s._popLand, owner: s._territoryOwner, popA: s.popA, popB: s.popB,
+      cap: s.capField, fert: s.fert, riverMag: s.riverMag, coast: s.coast, relief: s.relief,
+      devF: s.devF, pasture: s._pastureCap, worksF: s.worksField, tfArr: s._tfFade,
+      tropicB: s._tropicBurden, irr: s._irrigable, mv: s._migMove, ssum: s._migSum,
+      capT: s.capT, gateT: s.gateT } };
+}
+
+// Pack the per-settlement industrial scalars into dense per-sid tables — the
+// kernels' stand-in for indById.get(sid): an absent sid reads 0, reproducing
+// the serial "settlement missing → skip" branch exactly (0 > 1 is false and
+// tfL·0 never writes the fade). Grows by rebuilding the pool (rare).
+function _pfPackTables(world, ctx) {
+  const byId = world._byId;
+  let maxId = 0;
+  if (byId) for (const id of byId.keys()) if (id > maxId) maxId = id;
+  if (ctx.usePool && maxId >= ctx.arena.tableCap) {
+    // Table overflow: fall back this firing, respawn the pool with room.
+    while (ctx.arena.tableCap <= maxId) ctx.arena.tableCap *= 2;
+    if (world._pfPool) { world._pfPool.dispose(); world._pfPool = null; }
+    ctx.usePool = false; ctx.pool = null;
+  }
+  let capT, gateT;
+  if (ctx.usePool) { capT = ctx.arena.capTView; gateT = ctx.arena.gateTView; }
+  else {
+    capT = world._pfCapT; gateT = world._pfGateT;
+    if (!capT || capT.length <= maxId) {
+      let n = 16384; while (n <= maxId) n *= 2;
+      capT = world._pfCapT = new Float64Array(n);
+      gateT = world._pfGateT = new Float64Array(n);
+    }
+  }
+  capT.fill(0); gateT.fill(0);
+  if (byId) for (const [id, s] of byId) { capT[id] = s._indCap || 0; gateT[id] = s._indGate || 0; }
+  ctx.capT = capT; ctx.gateT = gateT;
+}
+
+// Adaptive band balance (docs/popfield-parallel.md §8.4): equalize measured
+// per-band phase time by resizing the LAND ranges between firings. Band 0's
+// time is accumulated JS-side around the coordinator's own kernel calls
+// (ar._t0Acc); workers add theirs to hdr[H_TIME0+k]. Identity is
+// banding-independent BY CONSTRUCTION, so this feedback loop — timing-driven,
+// non-deterministic, different every run — can never change a bit of the
+// trajectory; it only moves the finish line of the slowest band. Raw memcpy
+// slices stay fixed-equal (uniform cost). EMA + 25% blend per firing keeps
+// boundaries from oscillating.
+// Resolve the lever: -1 = AUTO — bands from the machine's real core count
+// (navigator.hardwareConcurrency exists in browsers, workers AND node 21+),
+// capped at the lever's max. Any resolved count is bit-identical (the probe's
+// guarantee), so AUTO is pure wall-clock adaptation: 4-core container → 4
+// bands; a 2-core laptop → 2 (no oversubscription); 1 core → the lever-1
+// single-thread kernel path.
+let _pfAutoN = 0;
+function _pfLever() {
+  const raw = T.POP_FIELD_WORKERS | 0;
+  if (raw !== -1) return raw;
+  if (!_pfAutoN) {
+    const hc = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 4;
+    _pfAutoN = Math.max(1, Math.min(8, hc | 0));
+  }
+  return _pfAutoN;
+}
+
+function _pfRebalance(ar, pool, nLand, N) {
+  const bands = pool.bands;
+  let W = ar._bandW;
+  if (!W || W.length !== bands) {
+    W = ar._bandW = new Float64Array(bands);
+    const b = makeBands(nLand, N, bands);
+    for (let k = 0; k < bands; k++) W[k] = b[k].hi - b[k].lo;
+    ar._bandEma = new Float64Array(bands);
+    ar._bandT = new Float64Array(bands);
+    ar._t0Acc = 0;
+  }
+  const ema = ar._bandEma, t = ar._bandT, hdr = pool.hdr;
+  let all = ar._t0Acc > 0;
+  t[0] = ar._t0Acc;
+  for (let k = 1; k < bands; k++) { t[k] = hdr[PFK.H_TIME0 + k]; if (!(t[k] > 0)) all = false; }
+  ar._t0Acc = 0;
+  for (let k = 1; k < bands; k++) hdr[PFK.H_TIME0 + k] = 0;
+  // Settle-in guard: discard the pool's first few samples (spawn/convert
+  // transients) and any absurd one (a GC pause inside a phase) — feeding
+  // those to the EMA made the balancer chase ghosts for ~20 firings.
+  ar._balN = (ar._balN || 0) + 1;
+  if (ar._balN <= 4) all = false;
+  else if (all) { for (let k = 0; k < bands; k++) if (t[k] > 200) { all = false; break; } }
+  if (all) {
+    for (let k = 0; k < bands; k++) ema[k] = ema[k] > 0 ? 0.7 * ema[k] + 0.3 * t[k] : t[k];
+    let sum = 0;
+    for (let k = 0; k < bands; k++) sum += W[k] / ema[k];
+    const minW = Math.max(64, nLand >> 6);
+    let acc = 0;
+    for (let k = 0; k < bands; k++) {
+      const target = (nLand * (W[k] / ema[k])) / sum;
+      let w = W[k] + 0.25 * (target - W[k]);
+      if (w < minW) w = minW;
+      W[k] = w; acc += w;
+    }
+    const scale = nLand / acc;
+    for (let k = 0; k < bands; k++) W[k] *= scale;
+  }
+  const ranges = [];
+  let lo = 0;
+  for (let k = 0; k < bands; k++) {
+    const hi = k === bands - 1 ? nLand : Math.min(nLand, lo + Math.round(W[k]));
+    ranges.push({ lo, hi: hi < lo ? lo : hi, rawLo: Math.floor((N * k) / bands), rawHi: Math.floor((N * (k + 1)) / bands) });
+    lo = ranges[k].hi;
+  }
+  writeBands(pool.ctrl, bands, ranges);
+  return ranges[0];
+}
+
+// Build the per-firing parallel context. Never affects the trajectory — only
+// which code path computes the identical numbers.
+function _pfPrepare(world, land, nLand, devF) {
+  const N = world.N;
+  // Shared lazy inits, hoisted so kernels (and workers) always find them.
+  _ensureTropicB(world, land, nLand);
+  _ensureIrr(world, land, nLand);
+  _ensureWk(world);
+  let mv = world._migMove; if (!mv || mv.length !== N) mv = world._migMove = new Float64Array(N);
+  let ssum = world._migSum; if (!ssum || ssum.length !== N) ssum = world._migSum = new Float64Array(N);
+  const lever = _pfLever();
+  // Node always qualifies (worker_threads); a browser qualifies only when the
+  // page is cross-origin isolated (COOP/COEP — the SharedArrayBuffer gate).
+  // The browser additionally requires running INSIDE a worker (the app's sim
+  // thread): awaitPhase blocks in Atomics.wait, which browsers forbid on the
+  // main thread — a main-thread sim keeps the identical lever-1 path.
+  const wantPool = lever >= 2 && typeof SharedArrayBuffer !== "undefined" &&
+    ((typeof process !== "undefined" && !!(process.versions && process.versions.node)) ||
+     (typeof crossOriginIsolated !== "undefined" && crossOriginIsolated === true &&
+      typeof window === "undefined"));
+  const ctx = { usePool: false, pool: null, arena: null, nLand, band0: null, mv, ssum, capT: null, gateT: null, devF: devF || null };
+  if (wantPool) {
+    const ar = _pfEnsureArena(world);
+    ctx.arena = ar;
+    ctx.mv = world._migMove; ctx.ssum = world._migSum;   // conversion may have replaced them
+    let pool = world._pfPool;
+    if (pool && (pool.bands !== lever || pool.gen !== ar.gen || pool.dead)) { pool.dispose(); pool = world._pfPool = null; }
+    if (!pool) pool = world._pfPool = ensurePool(world, _pfArenaMsg(ar), lever);
+    if (pool.readyNow()) {
+      if (!pool._announced) { pool._announced = true; console.log(`[popField] worker pool engaged: ${pool.bands} bands`); }   // one line per pool — the in-app/in-tool proof the parallel path is live (gates grep for it)
+      ctx.usePool = true; ctx.pool = pool;
+      ctx.band0 = _pfRebalance(ar, pool, ar.nLand, N);
+      if (devF) { ar.devView.set(world.devField); ctx.devF = ar.devView; }   // per-firing mirror (wave pass may swap devField's buffer)
+    }
+  }
+  _pfPackTables(world, ctx);
+  return ctx;
+}
+
+function _pfCheck(ctx) {
+  if (ctx.pool && ctx.pool.dead) {
+    throw new Error("popField worker pool died mid-phase — in-place phases may be partially applied; rerun (the trajectory of THIS run cannot be trusted)");
+  }
+}
+const _pfParity = (ctx, popBuf) => (popBuf.buffer === ctx.arena.sabs.popA ? 0 : 1);
+
+function _pfCap(ctx, world, o) {
+  const ko = { land: o.land, fert: o.fert, riverMag: o.riverMag, coast: o.coast, relief: o.relief,
+    cap: o.cap, devF: ctx.devF, pasture: o.pasture, worksF: o.worksF, tfArr: o.tfArr,
+    owner: o.ownOn ? world._territoryOwner : null, capT: ctx.capT, gateT: ctx.gateT,
+    hasRiver: !!o.riverMag, hasCoast: !!o.coast, hasRelief: !!o.relief,
+    ownerOn: o.ownOn, indOn: o.indOn, tfL: o.tfL, worksOn: o.worksOn, worksK: o.worksK,
+    devOn: !!ctx.devF, capPerFert: o.capPerFert, accessDev: o.accessDev, dev: o.dev };
+  if (ctx.usePool) {
+    const h = ctx.pool.hdr;
+    h[PFK.H_CAPPERFERT] = ko.capPerFert; h[PFK.H_ACCESSDEV] = ko.accessDev; h[PFK.H_DEV] = ko.dev;
+    h[PFK.H_TFL] = ko.tfL; h[PFK.H_INDON] = ko.indOn ? 1 : 0; h[PFK.H_WORKSON] = ko.worksOn ? 1 : 0;
+    h[PFK.H_WORKSK] = ko.worksK; h[PFK.H_DEVON] = ko.devOn ? 1 : 0; h[PFK.H_OWNERON] = ko.ownerOn ? 1 : 0;
+    h[PFK.H_HASRIVER] = ko.hasRiver ? 1 : 0; h[PFK.H_HASCOAST] = ko.hasCoast ? 1 : 0; h[PFK.H_HASRELIEF] = ko.hasRelief ? 1 : 0;
+    signalPhase(ctx.pool, PFK.OP_CAP, _pfParity(ctx, world.popField));
+    const t0 = performance.now();
+    PFK.capBand(ko, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
+    awaitPhase(ctx.pool); _pfCheck(ctx);
+  } else PFK.capBand(ko, 0, ctx.nLand);
+}
+
+function _pfGrowth(ctx, o) {
+  const ko = { land: o.land, pop: o.pop, cap: o.cap, devF: ctx.devF, tropicB: o.tropicB, tfArr: o.tfArr,
+    glOn: o.glOn, tfOn: o.tfOn, gl: o.gl, rBulk: o.rBulk, dt: o.dt };
+  if (ctx.usePool) {
+    const h = ctx.pool.hdr;
+    h[PFK.H_RBULK] = ko.rBulk; h[PFK.H_GL] = ko.gl; h[PFK.H_GLON] = ko.glOn ? 1 : 0;
+    h[PFK.H_DT] = ko.dt; h[PFK.H_TFON] = ko.tfOn ? 1 : 0; h[PFK.H_DEVON] = ctx.devF ? 1 : 0;
+    signalPhase(ctx.pool, PFK.OP_GROWTH, _pfParity(ctx, o.pop));
+    const t0 = performance.now();
+    PFK.growthBand(ko, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
+    awaitPhase(ctx.pool); _pfCheck(ctx);
+  } else PFK.growthBand(ko, 0, ctx.nLand);
+}
+
+function _pfMigrate(ctx, pop, nxt, cap, land, nLand, tw, th, migShare) {
+  const oa = { land, pop, cap, mv: ctx.mv, ssum: ctx.ssum, tw, th, migShare };
+  const ob = { land, pop, nxt, cap, mv: ctx.mv, ssum: ctx.ssum, tw, th };
+  if (ctx.usePool) {
+    const par = _pfParity(ctx, pop);
+    ctx.pool.hdr[PFK.H_MIGSHARE] = migShare;
+    signalPhase(ctx.pool, PFK.OP_MIG_A, par);
+    let t0 = performance.now();
+    PFK.migCopyBand(nxt, pop, ctx.band0.rawLo, ctx.band0.rawHi);
+    PFK.mig6aBand(oa, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
+    awaitPhase(ctx.pool); _pfCheck(ctx);
+    signalPhase(ctx.pool, PFK.OP_MIG_B, par);
+    t0 = performance.now();
+    PFK.mig6bBand(ob, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
+    awaitPhase(ctx.pool); _pfCheck(ctx);
+  } else {
+    PFK.migCopyBand(nxt, pop, 0, pop.length);
+    PFK.mig6aBand(oa, 0, nLand);
+    PFK.mig6bBand(ob, 0, nLand);
+  }
+}
+
+function _pfWorks(ctx, o) {
+  const ko = { land: o.land, pop: o.pop, cap: o.cap, wk: o.wk, irr: o.irr, tfW: o.tfW,
+    tfWOn: o.tfWOn, devF: ctx.devF, devOn: !!ctx.devF, leadAgri: o.leadAgri, rate: o.rate, dk: o.dk };
+  if (ctx.usePool) {
+    const h = ctx.pool.hdr;
+    h[PFK.H_RATE] = ko.rate; h[PFK.H_DK] = ko.dk; h[PFK.H_LEADAGRI] = ko.leadAgri;
+    h[PFK.H_TFWON] = ko.tfWOn ? 1 : 0; h[PFK.H_DEVON] = ctx.devF ? 1 : 0;
+    signalPhase(ctx.pool, PFK.OP_WORKS, _pfParity(ctx, o.pop));
+    const t0 = performance.now();
+    PFK.worksBand(ko, ctx.band0.lo, ctx.band0.hi);
+    ctx.arena._t0Acc += performance.now() - t0;
+    awaitPhase(ctx.pool); _pfCheck(ctx);
+  } else PFK.worksBand(ko, 0, ctx.nLand);
+}
 
 // Static list of LAND tile indices (ascending, so the field loops keep their exact
 // iteration order). Terrain is fixed, so this is built once and reused.

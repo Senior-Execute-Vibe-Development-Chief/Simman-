@@ -18,7 +18,7 @@
 //   RES_INVARIANT_POP etc. honoured via env (defaults apply otherwise).
 //     node tools/earthFullRecord.mjs [steps=80000] [seed=8817] [W=1920] [out]
 import fs from "fs";
-import { buildSim } from "./_harness.mjs";
+import { buildSim, applyToolTuning } from "./_harness.mjs";
 import { stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
 import { displayYear } from "../src/sim/calendar.js";
@@ -45,6 +45,7 @@ const RESUME = process.env.RESUME || null;
 const world = RESUME
   ? (await import("../src/sim/persist.js")).loadWorld(fs.readFileSync(RESUME, "utf8"))
   : buildSim({ W, H, seed: SEED });
+applyToolTuning();   // loadWorld restores the SAVE's tuning — resumed chunks keep the tool defaults (perf-only, trajectory-neutral)
 world._checkInvariants = true;   // per-tick finiteness/range checks + conservation totals
 world._dbgProfile = true;        // per-pass timing (world.debug.pass) — names the culprit when the pace cliffs
 const STEPS = STEPS_ARG;   // absolute target step

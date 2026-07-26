@@ -2,6 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Cross-origin isolation shim (docs/popfield-parallel.md §5): GitHub
+         Pages cannot send the COOP/COEP headers SharedArrayBuffer needs, so
+         this service worker (vendored, MIT — gzuidhof/coi-serviceworker)
+         re-serves the page with them added. First visit does ONE automatic
+         reload; where headers already arrive (vite dev/preview, a proper
+         host) it self-skips. Classic script, RELATIVE src: it must stay a
+         separate same-origin file (a service worker cannot be inlined), and
+         the relative path resolves under the /Simman-/ base in both dev and
+         Pages. Without isolation the sim still runs — single-threaded. -->
+    <script src="coi-serviceworker.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Procedural world generator and emergent civilization simulator — tectonics, climate, rivers, and thousands of years of unscripted history in the browser." />
     <meta name="theme-color" content="#1a0f04" />
