@@ -272,3 +272,24 @@ deliver. (If the canopy story is wanted for its own sake later, the forest
 SIGNAL needs a real vegetation reading — temperate Europe at moist ~0.46 is
 historically closed forest, not 40 % — but re-deriving a signal shared with
 the state-formation bar is its own validated change.)
+
+## Addendum 5 (2026-07-26): the sprawl's true site — the era-invariant span
+
+Traced from addendum 4's finding (11k people painting 95 % of Europe at 12k).
+Two compounding causes in the SIZE_BY_POP sizing stack (countryTerritory.js):
+(1) the tiles-per-person anchor is CIRCULAR — `_sizePopK = median(spanEff ×
+capacity × r2) ÷ median(governed people)`, i.e. calibrated from the capacity
+target it is supposed to discipline, so a sparse young world's
+capacity-generosity is laundered into a huge per-person ruler; and (2) the
+deeper one: CAPACITY is deliberately era-RELATIVE (log of era-median-relative
+power — correct for turnover), but the paint per capacity unit (`FIELD_SPAN`
+= 6 tiles/unit) is era-INVARIANT — a stone-age chiefdom at org 0.15 gets the
+same tiles-per-capacity as a rail empire. Absolute administrative technique
+never enters the ruler, so the stone age tiles every biome with states.
+**Fix (the cardinal rule's own RIGHT example — `reach = base + logistics ×
+SCALE`): `T.SPAN_TECH` — spanEff ramps with the realm's ABSOLUTE admin tech
+(capital organization/logistics): span = FIELD_SPAN × (SPAN_BASE +
+(1−SPAN_BASE) × adminTech). A chiefdom paints its valley; the span grows to
+the full 6 as statecraft matures; the industrial march/coverage arc above is
+untouched.** Lever default 0 pending battery (Europe claimed% at 8–16k must
+fall hard; late coverage must still rise with development; 3-seed stylized).
