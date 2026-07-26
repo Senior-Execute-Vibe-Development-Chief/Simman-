@@ -293,3 +293,21 @@ SCALE`): `T.SPAN_TECH` — spanEff ramps with the realm's ABSOLUTE admin tech
 the full 6 as statecraft matures; the industrial march/coverage arc above is
 untouched.** Lever default 0 pending battery (Europe claimed% at 8–16k must
 fall hard; late coverage must still rise with development; 3-seed stylized).
+
+**Addendum 5 results (same day): SPAN_TECH BUILT, measured decisive on the
+sprawl, default 0 — the flip is an OWNER call.** Byte-identical at 0
+(hashbase 4a956f14/2a8e6fce verified). A/B (8817 × 16k): stone-age Europe
+claimed 16→95→98 % (@8/12/16k) baseline vs **10→33→36 % at SPAN_TECH=0.85**
+— two-thirds wilderness through the whole early game, filling as org grows,
+with settlements/org/agri developing identically in both arms. THE fix for
+"huge stone-age nations". But the stylized suite prices it: 3/3 hard-green
+at BOTH doses, yet soft warnings rise 1→5 total (0.85: Zipf shallower on all
+three seeds −0.52..−0.58, cradle-distance tech gradient washes out on two;
+0.6 keeps only half the Europe win at the same warning count). This is a
+genuine SHAPE TRADE, not a dose problem: smaller earned early realms
+redistribute urban concentration and tech geography, and the suite encodes
+the old shape. Per the ADOPT_ADMIN precedent (no flip with two seeds
+at-budget and a new warning class), the default stays 0 until the owner
+either accepts the new shape (and re-baselines the Zipf/cradle-gradient
+facts to it) or asks for a narrower mechanism. SIM_TUNE="SPAN_TECH=0.85"
+previews the earned-span world in any tool.
