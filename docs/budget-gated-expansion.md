@@ -248,3 +248,27 @@ measured this month ("a slow world traces the same curve later and still
 passes" — the W6-A design premise, now demonstrated). No validate-horizon
 extension was needed. Guard baselines re-anchored on the new defaults
 (priors kept; `SIM_TUNE="CRADLE_EVE=1"` recovers the legacy pairs).
+
+## Addendum 4 (2026-07-26): FOREST_LOCK built — capacity responds, the PAINT does not
+
+The field-side half of LAND_CLEAR_METAL (T.FOREST_LOCK, popField.js): the
+countryTerritory forest signal (moist 0.38–0.58 band × not-floodplain) locks
+that share of a tile's CROP capacity until the administering settlement's own
+metallurgy crosses LAND_CLEAR_METAL; pasture floors it; wild land has no
+axes; the arid cradles carry no signal. Byte-identical at 0 (hashbase pair
+4a956f14/2a8e6fce verified unchanged). Mechanically correct — and the A/B
+(8817 × 16k, lock 0 vs 0.8) shows it is NOT the fix for the observed
+stone-age sprawl: Europe pop −10 % at 16k (the moisture proxy reads mean
+Europe as only ~40 % canopy, so the lock bites a third of capacity at most),
+while CLAIMED Europe is unchanged (95 % vs 92 % at 12k) — because at 12k
+Europe holds only ~11k people yet paints ~95 % claimed. **The "huge
+stone-age nations" are not population-carried: they are the logistics-march
+footprint of SPARSE realms.** The claim/march pacing at low technology —
+how much paint a small-people, low-org realm may hold — is the actual
+driver, and it is the next arc (countryTerritory growth target / march
+component under SIZE_BY_POP), together with the known adoption-pricing
+problem. Lever ships default-0: flipping it would claim a fix it does not
+deliver. (If the canopy story is wanted for its own sake later, the forest
+SIGNAL needs a real vegetation reading — temperate Europe at moist ~0.46 is
+historically closed forest, not 40 % — but re-deriving a signal shared with
+the state-formation bar is its own validated change.)
