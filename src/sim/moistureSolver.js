@@ -3,6 +3,124 @@
 // Produces precipitation accumulation map from elevation, wind, and temperature data.
 // Shared by tectonic and earth_sim modes.
 
+// ── Terrain shelter: how enclosed a cell is by the ground around it ──────────────
+// Returns 0 (open) … 1 (deeply enclosed basin floor) at full resolution.
+//
+// A basin floor ringed by highland is poorly VENTILATED: the mean flow is deflected
+// over and around the rim instead of flushing the floor, so the air inside is not
+// replaced — it equilibrates with its surroundings by mixing, and what evaporates
+// into it tends to stay. This is why the Sichuan Basin, the Po Valley and the Central
+// Valley are humid, cloudy and fog-prone out of proportion to their rainfall, and why
+// their pooled air is partly decoupled from the free troposphere above the rim.
+//
+// Enclosure is DIRECTIONAL. An isotropic measure — comparing a cell to a blur of the
+// terrain — cannot tell a walled basin from a coastal slope backed by a range, and
+// scores the Atacama, open to the whole Pacific, as sheltered as Sichuan. So rays are
+// cast outward and each returns the highest ground it crosses, giving two numbers that
+// answer different questions: the WEAKEST side (is there a way straight through?) and
+// the MEAN wall (how deep is the bowl?). A basin has to satisfy both.
+//
+// The per-cell score is then pooled across the basin floor, since the sheltered air is
+// a property of the whole hollow rather than of its single lowest point, and the pool
+// is bounded by height — it fills to the rim and no further.
+//
+// Computed on the same 2× coarse grid the solver uses, then sampled back to full res.
+export function terrainShelter(W, H, elevation) {
+  const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2), mN = mW * mH;
+  const elev = new Float32Array(mN);
+  const sea = new Uint8Array(mN);
+  for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
+    const fi = Math.min(H - 1, my * 2) * W + Math.min(W - 1, mx * 2);
+    elev[my * mW + mx] = Math.max(0, elevation[fi]);
+    sea[my * mW + mx] = elevation[fi] <= 0 ? 1 : 0;
+  }
+  const rad = Math.max(2, Math.round(5 * mW / 360));   // ~5° — resolution-independent
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  const coarse = new Float32Array(mN);
+  for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
+    const ci = my * mW + mx;
+    if (sea[ci]) continue;
+    const e0 = elev[ci];
+    let minBarrier = Infinity, sumBarrier = 0;
+    for (let d = 0; d < 8; d++) {
+      const dx = DIRS[d][0], dy = DIRS[d][1];
+      let maxE = 0;
+      for (let r = 1; r <= rad; r++) {
+        const yy = my + dy * r; if (yy < 0 || yy >= mH) break;
+        const si = yy * mW + ((mx + dx * r + mW * 4) % mW);
+        // Open sea ends the ray: past the coast there is no rim, only whatever
+        // barrier (if any) was already crossed on the way out.
+        if (sea[si]) break;
+        if (elev[si] > maxE) maxE = elev[si];
+      }
+      const barrier = maxE - e0;
+      sumBarrier += Math.max(0, barrier);
+      if (barrier < minBarrier) minBarrier = barrier;
+    }
+    // Two things have to be true, and they are different questions. ENCLOSURE (the
+    // weakest side) asks whether the wind has a way straight through — one outlet is
+    // still a basin, so this only needs a low sill, but a side that opens onto plain or
+    // sea disqualifies the cell outright. DEPTH (the mean wall) asks how big the bowl
+    // is, which is what decides whether enough air pools to matter. Requiring both
+    // separates a deep basin with a gorge for an outlet (Sichuan: weakest side 0.07,
+    // mean wall ~0.2) from the shallow scattered hollows of broken upland (the US
+    // Southwest: enclosed on paper, but only just, and holding nothing).
+    const enclosed = Math.max(0, Math.min(1, (minBarrier - 0.02) / 0.03));
+    const depth    = Math.max(0, Math.min(1, (sumBarrier / 8 - 0.12) / 0.15));
+    coarse[ci] = enclosed * depth;
+  }
+  // The sheltered air POOL is a property of the basin, not of the single most enclosed
+  // cell in it. Measured per-cell the score comes out patchy: a ray cast toward a
+  // neighbouring cell on the same basin floor finds no barrier at all, so only the very
+  // lowest points score while the floor around them reads open. Air does not behave that
+  // way — it pools across the whole floor up to the rim. So spread the score to ground
+  // that lies within a short reach of enclosed ground (a dilation, not a blur: pooling
+  // must not dilute the enclosure it spreads), then relax the result so the pool fades
+  // out at its edges instead of ending on a hard step.
+  // The spread is bounded by HEIGHT, not just by distance: pooled air fills a basin up
+  // to its rim and no further, so a cell only joins a neighbouring cell's pool if it does
+  // not stand above it. Without that gate the pool climbs out over the surrounding
+  // country and greens it (measured: the US Southwest and the Tarim, both broken ground
+  // where small enclosed hollows sit among much higher ridges).
+  const pool = new Float32Array(mN);
+  const pr = Math.max(1, Math.round(1.5 * mW / 360));   // ~1.5° — basin-floor scale
+  const POOL_RISE = 0.03;                               // how far a floor may undulate
+  for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
+    const ci = my * mW + mx;
+    if (sea[ci]) continue;
+    let best = coarse[ci];
+    for (let dy = -pr; dy <= pr; dy++) {
+      const yy = my + dy; if (yy < 0 || yy >= mH) continue;
+      for (let dx = -pr; dx <= pr; dx++) {
+        const si = yy * mW + ((mx + dx + mW * 4) % mW);
+        if (sea[si]) continue;
+        if (elev[ci] > elev[si] + POOL_RISE) continue;  // this cell stands above that pool
+        if (coarse[si] > best) best = coarse[si];
+      }
+    }
+    pool[ci] = best;
+  }
+  const relaxed = new Float32Array(mN);
+  for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
+    const ci = my * mW + mx;
+    if (sea[ci]) continue;
+    let s = pool[ci] * 0.5, wsum = 0.5;
+    for (let d = 0; d < 4; d++) {
+      const yy = my + (d === 2 ? 1 : d === 3 ? -1 : 0);
+      if (yy < 0 || yy >= mH) continue;
+      const xx = (mx + (d === 0 ? 1 : d === 1 ? -1 : 0) + mW) % mW;
+      s += pool[yy * mW + xx] * 0.125; wsum += 0.125;
+    }
+    relaxed[ci] = s / wsum;
+  }
+
+  const out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    out[y * W + x] = relaxed[Math.min(mH - 1, y >> 1) * mW + Math.min(mW - 1, x >> 1)];
+  }
+  return out;
+}
+
 export function solveMoisture(W, H, elevation, windX, windY, temperature, params = {}) {
   const p = (k, d) => params[k] !== undefined ? params[k] : d;
 
@@ -197,6 +315,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // dies off in fewer degrees and over-dries interiors as the app's grid widens.
   const _DIFF_REF_DEG = 360 / 240; // 1.5° — cell width at the calibration resolution
   const diffPerCell = Math.pow(_moistDiffuse, (360 / mW) / _DIFF_REF_DEG);
+
 
   for (let step = 0; step < STEPS; step++) {
     atmosPrev.set(atmos);

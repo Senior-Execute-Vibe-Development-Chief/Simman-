@@ -20,7 +20,7 @@ import { initNoise, mkRng, fbm, noise2D, warp, ridged, worley } from "./worldgen
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
-import { solveMoisture } from "./moistureSolver.js";
+import { solveMoisture, terrainShelter } from "./moistureSolver.js";
 
 const RES = 1;
 
@@ -274,6 +274,9 @@ for(let i=0;i<W*H;i++){tecWindX[i]=(sumWX[i]+winWX[i])*0.5;tecWindY[i]=(sumWY[i]
 const fWX=tecWindX,fWY=tecWindY;
 // Seasonal moisture (ITCZ + Hadley descent shifted ±13° with the sun), then keep the
 // WETTER half-year (lightly blended so a bone-dry season still pulls a cell down).
+// Terrain enclosure — a property of the ground, not the season; computed once and
+// read by the subtropical-belt drying further down.
+const shelterField=terrainShelter(W,H,elevation);
 const moistSum=solveMoisture(W,H,elevation,sumWX,sumWY,temperature,{..._tecParams,itczLat:13});
 const moistWin=solveMoisture(W,H,elevation,winWX,winWY,temperature,{..._tecParams,itczLat:-13});
 const windMoisture=new Float32Array(W*H);
@@ -433,9 +436,20 @@ const llj=Math.exp(-((latS-0.30)*(latS-0.30))/(2*0.11*0.11))    // ~15-39°S (Ch
 // otherwise a place whose rains fall in the OTHER half (e.g. the interior-China Yangtze
 // basin, wet in the solver's winter) is desertified despite having a real rainy season.
 const wetSeason=Math.max(moistSum[i],moistWin[i]);
+//  (d) TERRAIN-ENCLOSED ground. The belt models Hadley subsidence drying the surface,
+//      but that acts on the ventilated column: air pooled in a basin, below the rim and
+//      not flushed by the mean flow, is partly decoupled from the descending free
+//      troposphere above it. This is why enclosed subtropical basins (Sichuan, the Po,
+//      the Fergana) are humid and fog-bound at latitudes where open ground is desert.
+//      Self-limiting, and that is what makes it safe: sparing the belt only preserves
+//      moisture a place ALREADY has, so an enclosed basin that nothing reaches (an arid
+//      interior basin) keeps its ~0.03 and stays a desert. Emergent from the heightmap —
+//      it scores 0 for the Sahara, the Australian interior, the Atacama and the US
+//      Southwest, which are open ground however rough.
+const basinShelter=shelterField[i];
 const monsoon=Math.max(
   Math.max(0,Math.min(1,(wetSeason-0.45)/0.22)),
-  Math.max(llj, Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2))*humidSubtrop));
+  Math.max(Math.max(llj, Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2))*humidSubtrop), basinShelter));
 const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.58*(1-0.9*monsoon):0;
 // Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
 // steppes and prairies — the Great Plains, the Eurasian steppe, the Pampas,
