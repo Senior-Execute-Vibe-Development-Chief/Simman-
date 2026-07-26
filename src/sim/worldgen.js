@@ -279,6 +279,18 @@ const fWX=tecWindX,fWY=tecWindY;
 const shelterField=terrainShelter(W,H,elevation);
 const moistSum=solveMoisture(W,H,elevation,sumWX,sumWY,temperature,{..._tecParams,itczLat:13});
 const moistWin=solveMoisture(W,H,elevation,winWX,winWY,temperature,{..._tecParams,itczLat:-13});
+// ── The SHOULDER season (equinox) ───────────────────────────────────────────────
+// Two solstice solves measure how STRONG the wet/dry swing is; they cannot measure how
+// LONG the dry season lasts, and duration is what separates rainforest from savanna
+// (Koppen Af needs every month wet, Aw needs several dry months). Sampling the year at
+// the equinoxes as well as the solstices gives a third point — the sun on the equator,
+// no seasonal land-sea contrast — so a cell can be asked how much of the YEAR is dry
+// rather than how far it swings. The equinox configuration is season:0 / itczLat:0,
+// which is exactly the long-standing annual-mean setup, so it needs no new calibration.
+const eqWind=(realWind&&realWindFns&&realWindFns.isRealWindAvailable())
+  ?{windX:sumWX,windY:sumWY}
+  :solveWind(W,H,elevation,fbm,{..._tecParams,season:0},seed*0.0137);
+const moistEq=solveMoisture(W,H,elevation,eqWind.windX,eqWind.windY,temperature,{..._tecParams,itczLat:0});
 const windMoisture=new Float32Array(W*H);
 for(let i=0;i<W*H;i++){const a=moistSum[i],b=moistWin[i];windMoisture[i]=Math.max(a,b)*0.82+Math.min(a,b)*0.18;}
 // Wind-advected temperature
@@ -348,6 +360,12 @@ const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
 const dx2=fx-ix,dy2=fy-iy;
 windTemp[y*W+x]=(tGrid[iy*mW2+ix]*(1-dx2)+tGrid[iy*mW2+Math.min(mW2-1,ix+1)]*dx2)*(1-dy2)
 +(tGrid[(iy+1)*mW2+ix]*(1-dx2)+tGrid[(iy+1)*mW2+Math.min(mW2-1,ix+1)]*dx2)*dy2;}
+// Sun-declination phase of each month: s = sin(2πk/12), where s=+1 is the local summer
+// solstice, s=0 the equinoxes and s=−1 the winter solstice. The three seasonal solves are
+// samples of the year AT s = +1, 0, −1, so a quadratic through them reconstructs the
+// annual moisture curve and these are the twelve points to read it at. Precomputed once —
+// this runs per pixel below.
+const SEASON_S=[0,0.5,0.8660254,1,0.8660254,0.5,0,-0.5,-0.8660254,-1,-0.8660254,-0.5];
 // Final temperature & moisture combination
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
 const e=elevation[i];
@@ -492,21 +510,37 @@ const arabiaDry=e>0?araLon*araLat*0.78:0;
 // left alone — within the warm latitudes where savanna forms.
 const drySeason=ny<0.5?moistWin[i]:moistSum[i];
 const savWarm=Math.max(0,Math.min(1,(0.34-tLat)/0.10));// warm tropics/subtropics only
-// Moderate strength: enough to open the savanna belt (Deccan, Cerrado, N-Australian
-// interior → dry-forest/savanna) without driving the very wet windward monsoon coasts
-// (Western Ghats) below forest.
-// The deep equatorial belt needs its OWN guard, and cannot rely on the threshold above.
-// The ITCZ crosses the equator twice a year, so 0-9° gets two rainy seasons and never a
-// long dry one — that IS the everwet rainforest climate. A two-solstice solve cannot see
-// that: it samples only the extremes, with the rain belt parked 13° away in BOTH solves,
-// so it reports a large wet/dry contrast exactly where there is really none. The
-// threshold used to hide this only because the seasonal cycle was inverted and produced
-// no contrast anywhere; with a working monsoon the equator shows the largest contrast on
-// the map and the term ate the rainforests (measured against the pre-monsoon build:
-// West African rainforest 58%→6%, Amazon 90%→50%). Taper it out equatorward on the same
-// ramp the savanna BELT above uses.
-const savEqGuard=Math.max(0,Math.min(1,(tLat-0.07)/0.05));// 0 below ~6°, 1 by ~11°
-const savSeasonDry=e>0?Math.max(0,(summerWet-drySeason)-0.16)*0.80*savWarm*savEqGuard:0;
+// Keyed on the dry season's LENGTH, not its depth. What separates rainforest from
+// savanna is how much of the year is dry (Koppen Af needs every month wet; Aw needs
+// several dry months) — and the wet/dry CONTRAST between two solstices cannot see that.
+// Measured: contrast ranks the Guinea coast (rainforest, 0.62) as MORE seasonal than the
+// Cerrado (savanna, 0.52) and the Llanos (savanna, 0.21) as LESS seasonal than the Congo
+// (rainforest, 0.23) — the values interleave, so no threshold on contrast can work, and
+// strengthening the term converted rainforest to savanna before it touched real savanna.
+// Sampling the year at the equinoxes as well (moistEq) lets the year be COUNTED instead:
+// four quarterly samples, of which the two equinoxes coincide, so the shoulder season
+// carries weight 2. That ordering is clean — Sahel 2.3, N Australia 1.6, Cerrado 1.2 all
+// sit above Guinea 1.0, SE Asia 0.7, Congo 0.6, Amazon 0.5, Indonesia 0.0 — and it needs
+// no latitude guard, because a place with rain in every season is spared on its own
+// merits wherever it lies. (An earlier build needed an explicit equatorward guard here
+// precisely because amplitude misreads the equator; duration does not.)
+// Counting whole quarters is too coarse to use directly: the count is an integer, so
+// Guinea (rainforest) and the Cerrado (savanna) both come out at "about one dry quarter"
+// and no threshold on it can separate them. But three samples need not be read as three
+// states — taken at s = +1, 0, −1 they define a quadratic in the sun's declination, which
+// IS the annual cycle, smooth and dominated by that one variable. So reconstruct the curve
+// and integrate it: walk the twelve months, evaluate the fitted moisture at each, and take
+// the FRACTION of the year below the dry threshold. That is the Koppen quantity — months
+// of drought — recovered at monthly resolution from three solves.
+const mS=summerWet,mE=moistEq[i],mWn=drySeason;
+const qb=(mS-mWn)*0.5,qc=(mS+mWn-2*mE)*0.5;
+let dryMonths=0;
+for(let k=0;k<12;k++){const s=SEASON_S[k];if(mE+qb*s+qc*s*s<0.55)dryMonths++;}
+const dryFrac=dryMonths/12;
+// Rainforest lands at or below ~1/4 of the year dry (Amazon 0.08, Congo and Guinea 0.25),
+// real savanna well above it (Cerrado 0.42, N Australia 0.7, Sahel 0.75), so the ramp sits
+// in the gap between them.
+const savSeasonDry=e>0?Math.max(0,Math.min(1,(dryFrac-0.28)/0.17))*0.42*savWarm:0;
 // ── Patagonian / Monte rain shadow ──────────────────────────────────────────────
 // The real southern Andes (2-3 km) wring the westerlies into steppe-to-desert from
 // ~35-52°S; but the heightmap renders that cordillera at barely 0.1 elevation, too low
