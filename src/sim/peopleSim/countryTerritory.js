@@ -419,6 +419,25 @@ function fieldPolityTerritory(world) {
     claimCap.set(cid, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
   }
 
+  // ── T.SPAN_TECH: the span is EARNED (addendum 5) ──────────────────────
+  // Capacity is deliberately era-RELATIVE (log of era-median-relative power),
+  // but the paint per capacity unit (FIELD_SPAN) was era-INVARIANT — a stone
+  // chiefdom got the same tiles-per-capacity as a rail empire, so the stone
+  // age tiled every biome with states (11k people painting 95% of Europe).
+  // spanTechMul = 1 − SPAN_TECH × (1 − capital org): the lever is the share
+  // of the administrative span that requires mature statecraft (registries,
+  // courts, provincial delegation); the remainder — runner-and-kin governance
+  // — is available to any court. org → 1 recovers today's ruler EXACTLY, so
+  // the mature calibration (and the industrial march/coverage arc) is
+  // untouched; only the primitive world's paint shrinks to its statecraft.
+  const spanL = T.SPAN_TECH || 0;
+  const spanTechMul = (cid) => {
+    if (spanL <= 0) return 1;
+    const kn = knOf.get(cid);
+    const org = (kn && kn.organization) || 0;
+    return 1 - spanL * (1 - Math.min(1, org));
+  };
+
   // Per-edge CLAIM cost for a realm stepping from ti into land tile ni: the transport
   // edge cost, soft-capped (engineering), amplified on barren / wet-tropic ground
   // (hostility fades with the realm's logistics), wobbled by the organic-border noise.
@@ -690,7 +709,7 @@ function fieldPolityTerritory(world) {
     for (const [cid, cp] of capOf) {
       if (cp <= 0) continue;                                   // benchmark on established (capacity-bearing) realms
       const gp = govPopOf.get(cid) || 0;
-      if (gp > 0) { gps.push(gp); tgs.push(spanEff * cp * r2); }
+      if (gp > 0) { gps.push(gp); tgs.push(spanEff * spanTechMul(cid) * cp * r2); }
     }
     // tiles per governed-person at the MEDIAN realm — LOW-PASSED and PERSISTED
     // (world._sizePopK), the _refRevenue anchor pattern. Without the smoothing this
@@ -713,7 +732,7 @@ function fieldPolityTerritory(world) {
     popCapK = world._sizePopK || 0;                            // persisted anchor (holds through capacity-less post-load passes)
   }
   for (const [cid, cp] of capOf) {
-    let t = Math.round(spanEff * Math.max(0, cp) * r2);
+    let t = Math.round(spanEff * spanTechMul(cid) * Math.max(0, cp) * r2);
     if (T.SIZE_BY_POP && popCapK > 0) {
       // Population-driven extent (no floor). Nomads exempt — a steppe confederation
       // holds vast sparse land by MOMENTUM, not by the people on it. A capless solo

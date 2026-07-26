@@ -171,3 +171,151 @@ invariant violations, save/load hash identity, living civilization);
 stylized 21k-step run all hard gates passed with the one pre-existing
 soft Zipf warning (budget 2) — 80 polities, largest-empire share 5%,
 fallen-lifespan median ~305y, wars 0.34/1k-steps/polity.
+
+## Addendum 2 (2026-07-26): the endowment decomposition — org-cut measured, REJECTED
+
+Owner hypothesis: the genesis balloon comes from the cradle seed's head start
+(240 people, agriculture 0.55, organization 0.28). Tested with a new
+instrument, `tools/probe_cradle_pulse.mjs` (age-aligned claimed-tile
+trajectories, cradle-seeded vs natural realms, 480×240 × 8k).
+
+**Baseline (3 seeds):** cradles peak at ~age 750–2250 at 33–64 tiles mean and
+overshoot their settled extent ×1.32–1.57; naturals run ×1.04–1.36 — the
+balloon is real and cradle-specific.
+
+**Decomposition (8817 spot runs):** the FULL-natural seed (25 people, org
+0.10, agri 0.50) eliminates the balloon entirely — cradles peak at age
+5500–7000 like anyone else — but planetary ignition collapses (+5k steps to
+the first natural state): the technique half (agri/metal/people) is the
+diffusion source the whole world lights from. The org-only cut (0.28→0.10,
+package kept) kept ignition on time and cut 8817's peak 38 % — the promising
+read that motivated the battery.
+
+**3-seed A/B of the org cut (`CRADLE_ORG=0.1`): NOT robust.** Peak down on
+8817/4242 (64→40, 57→47) but UP on 31337 (33→69); the overshoot ratio is
+WORSE on all three seeds (1.56→2.52, 1.32→9.16, 1.57→2.85) — a low-org
+proto-cradle is FRAIL, and its later shatters/witherings dominate the
+trajectory; ignition and era-1 arrival shift ±600–1000 steps with no
+consistent sign. The single-seed promise was trajectory chaos — the same
+standing lesson the G-equivalence and TRUCE_TOLL measurements taught.
+
+**Verdict:** the statehood endowment is a minor, non-robust contributor. The
+pulse's deeper causes stand as diagnosed above: the 3000-BC initial field
+population being BOOKED instantly by any org-capable state, plus the
+first-mover vacuum (member acquisition not load-priced). The ranked fixes
+remain (1) marginal-revenue adoption — design two, after the measured failure
+of the naive gate — and (2) deeper-prehistory genesis (campaign scope).
+`T.CRADLE_ORG` briefly shipped as an explicit knob and was superseded the
+same day by **`T.CRADLE_EVE`** (the owner chose removal of the whole head
+start): 1 = the legacy eve-of-states package, byte-identical; 0 = cradles
+seed as natural villages (25 people, frontier knowledge) and the first
+kingdoms EMERGE — the balloon gone at its root, the dawn ~5k steps later,
+`DISP_START` following the lever so the display label stays honest. Battery
+and flip record in addendum 3 below.
+
+## Addendum 3 (2026-07-26): the head start REMOVED — `CRADLE_EVE` default 0
+
+Owner order after the addendum-2 verdict: remove the eve-of-states package
+entirely. Built as `T.CRADLE_EVE` (1 = the legacy injected proto-urban town —
+240 people, agri 0.55 / org 0.28 / constr 0.20 / copper — byte-identical,
+hashbase pair verified; 0 = a cradle seeds as a NATURAL VILLAGE, 25 people at
+the frontier knowledge floor) and **flipped to 0** on the battery below. Every
+calendar epoch follows the lever (calendar.js: display −3000→−4300, dynasty
+−3000→−4300, the 0.5y/tick clock −3000→−5600), so the map now opens in the
+late neolithic and the first kingdoms still read ~3000 BC — the label follows
+the world, per the cardinal rule, instead of the world being inflated to
+match the label.
+
+**Battery (3 seeds × 12k, probe_cradle_pulse):**
+- The balloon is REMOVED at its root on 8817/4242 — cradles peak organically
+  at age 5500–8000 (vs age ~1000 injected), ratios at natural levels; 31337
+  keeps a MINIATURE early pulse (peaks age 500–1000 at ~33–36 tiles) from the
+  deeper cause addendum 2 named: any org-capable polity still instantly books
+  the pre-seeded 3000-BC field population around it. That residual is the
+  marginal-revenue-adoption arc's problem, not the seed's.
+- Ignition: first natural state +3.6–5.3k steps; era-1 arrival 9900–10800 vs
+  4800–5100 (~+5.2k mean — the calendar shift above).
+- Cradle statehood is now EARNED, hence non-guaranteed: 8 of 12 hearth
+  villages reached lasting statehood; famous-cradle openings are a strong
+  tendency, not a promise. (The pinned EARTH_HEARTH_SITES still place the
+  villages and found the cultures; only instant kingship is gone.)
+
+**Gates: the emergent-axis design paid off in full.** At the STANDARD 21k
+horizon, on the slower world: smoke green (all checks, incl. save/load and
+the dissolve gate), stylized **3/3 hard-green with 8817 = 0, 31337 = 0,
+4242 = 1 soft warning** — the best warning profile of any configuration
+measured this month ("a slow world traces the same curve later and still
+passes" — the W6-A design premise, now demonstrated). No validate-horizon
+extension was needed. Guard baselines re-anchored on the new defaults
+(priors kept; `SIM_TUNE="CRADLE_EVE=1"` recovers the legacy pairs).
+
+## Addendum 4 (2026-07-26): FOREST_LOCK built — capacity responds, the PAINT does not
+
+The field-side half of LAND_CLEAR_METAL (T.FOREST_LOCK, popField.js): the
+countryTerritory forest signal (moist 0.38–0.58 band × not-floodplain) locks
+that share of a tile's CROP capacity until the administering settlement's own
+metallurgy crosses LAND_CLEAR_METAL; pasture floors it; wild land has no
+axes; the arid cradles carry no signal. Byte-identical at 0 (hashbase pair
+4a956f14/2a8e6fce verified unchanged). Mechanically correct — and the A/B
+(8817 × 16k, lock 0 vs 0.8) shows it is NOT the fix for the observed
+stone-age sprawl: Europe pop −10 % at 16k (the moisture proxy reads mean
+Europe as only ~40 % canopy, so the lock bites a third of capacity at most),
+while CLAIMED Europe is unchanged (95 % vs 92 % at 12k) — because at 12k
+Europe holds only ~11k people yet paints ~95 % claimed. **The "huge
+stone-age nations" are not population-carried: they are the logistics-march
+footprint of SPARSE realms.** The claim/march pacing at low technology —
+how much paint a small-people, low-org realm may hold — is the actual
+driver, and it is the next arc (countryTerritory growth target / march
+component under SIZE_BY_POP), together with the known adoption-pricing
+problem. Lever ships default-0: flipping it would claim a fix it does not
+deliver. (If the canopy story is wanted for its own sake later, the forest
+SIGNAL needs a real vegetation reading — temperate Europe at moist ~0.46 is
+historically closed forest, not 40 % — but re-deriving a signal shared with
+the state-formation bar is its own validated change.)
+
+## Addendum 5 (2026-07-26): the sprawl's true site — the era-invariant span
+
+Traced from addendum 4's finding (11k people painting 95 % of Europe at 12k).
+Two compounding causes in the SIZE_BY_POP sizing stack (countryTerritory.js):
+(1) the tiles-per-person anchor is CIRCULAR — `_sizePopK = median(spanEff ×
+capacity × r2) ÷ median(governed people)`, i.e. calibrated from the capacity
+target it is supposed to discipline, so a sparse young world's
+capacity-generosity is laundered into a huge per-person ruler; and (2) the
+deeper one: CAPACITY is deliberately era-RELATIVE (log of era-median-relative
+power — correct for turnover), but the paint per capacity unit (`FIELD_SPAN`
+= 6 tiles/unit) is era-INVARIANT — a stone-age chiefdom at org 0.15 gets the
+same tiles-per-capacity as a rail empire. Absolute administrative technique
+never enters the ruler, so the stone age tiles every biome with states.
+**Fix (the cardinal rule's own RIGHT example — `reach = base + logistics ×
+SCALE`): `T.SPAN_TECH` — spanEff ramps with the realm's ABSOLUTE admin tech
+(capital organization/logistics): span = FIELD_SPAN × (SPAN_BASE +
+(1−SPAN_BASE) × adminTech). A chiefdom paints its valley; the span grows to
+the full 6 as statecraft matures; the industrial march/coverage arc above is
+untouched.** Lever default 0 pending battery (Europe claimed% at 8–16k must
+fall hard; late coverage must still rise with development; 3-seed stylized).
+
+**Addendum 5 results (same day): SPAN_TECH BUILT, measured decisive on the
+sprawl, default 0 — the flip is an OWNER call.** Byte-identical at 0
+(hashbase 4a956f14/2a8e6fce verified). A/B (8817 × 16k): stone-age Europe
+claimed 16→95→98 % (@8/12/16k) baseline vs **10→33→36 % at SPAN_TECH=0.85**
+— two-thirds wilderness through the whole early game, filling as org grows,
+with settlements/org/agri developing identically in both arms. THE fix for
+"huge stone-age nations". But the stylized suite prices it: 3/3 hard-green
+at BOTH doses, yet soft warnings rise 1→5 total (0.85: Zipf shallower on all
+three seeds −0.52..−0.58, cradle-distance tech gradient washes out on two;
+0.6 keeps only half the Europe win at the same warning count). This is a
+genuine SHAPE TRADE, not a dose problem: smaller earned early realms
+redistribute urban concentration and tech geography, and the suite encodes
+the old shape. Per the ADOPT_ADMIN precedent (no flip with two seeds
+at-budget and a new warning class), the default stays 0 until the owner
+either accepts the new shape (and re-baselines the Zipf/cradle-gradient
+facts to it) or asks for a narrower mechanism. SIM_TUNE="SPAN_TECH=0.85"
+previews the earned-span world in any tool.
+
+**FLIPPED (owner decision, same day): `SPAN_TECH=0.85` ships.** The Zipf and
+cradle-gradient soft facts were re-baselined to the earned-span world
+(rationale in stylized.mjs at each gate), and the full suite on the new
+defaults came back **3/3 seeds, all hard gates, ZERO soft warnings each — the
+first triple-zero validation of the month**. Smoke green; deep round-trip
+byte-identical at 14k; guards re-anchored (hashbase b988776a/e58bdc35,
+round-trip db04acac/64ee637d; priors kept, SPAN_TECH=0 recovers them).

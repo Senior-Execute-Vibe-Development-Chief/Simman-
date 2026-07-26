@@ -283,14 +283,18 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Start at the tier-0 storage cap (see storageCap in updateFood);
     // a larger value would just be clamped away on the first tick.
     food: 80,
-    knowledge: opts.knowledge || (opts.cradle ? {
-      // A CRADLE seeds at the EVE OF STATES — the display epoch is 3000 BC
-      // (calendar.js DISP_START) and this is what 3000 BC WAS: proto-urban
-      // irrigation towns (late Uruk, Naqada III, Longshan) with temple
-      // administration on the verge of kingship, and copper metallurgy already
-      // millennia old. The old stone-age seed (agr .5 / org .1 / met 0) spent
-      // ~1600 displayed years growing INTO the state the start date already
-      // claims — the measured 5.3x "Neolithic" start-up row (probe_erapace).
+    knowledge: opts.knowledge || (opts.cradle && T.CRADLE_EVE ? {
+      // A CRADLE at the EVE OF STATES (T.CRADLE_EVE=1) — a ready proto-urban
+      // town injected at t=0 so the world matches the 3000-BC display label
+      // (late Uruk, Naqada III, Longshan: temple administration on the verge
+      // of kingship, copper millennia old). Measured cost (2026-07,
+      // probe_cradle_pulse + budget-gated-expansion.md addendum 2): this
+      // injected head start is the genesis territorial BALLOON — cradles peak
+      // ~age 1000 at 1.32-1.57x their settled extent, then visibly shrink,
+      // while natural states run 1.04-1.36x. With CRADLE_EVE=0 a cradle seeds
+      // as a natural village (the block below) and the first kingdoms EMERGE
+      // ~5k steps later — the balloon gone, the dawn earned, the display epoch
+      // (calendar.js DISP_START) shifted earlier to keep the label honest.
       // Initial CONDITIONS of the world at t=0, not a gate on anything.
       agriculture: 0.55,        // mature floodplain/irrigation farming
       construction: 0.20,       // mudbrick towns, the first monumental works

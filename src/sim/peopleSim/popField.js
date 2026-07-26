@@ -470,6 +470,50 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  // ── T.FOREST_LOCK: the canopy prices the crop — the FIELD-side half of
+  // LAND_CLEAR_METAL. The clearance model existed only as a STATE-FORMATION
+  // bar (countryTerritory forestBar), so the capacity field read raw
+  // fertility on closed-canopy land and stone-age Europe filled to
+  // half-mature farm density, overwhelming the very bar that was supposed to
+  // hold it (2026-07 diagnosis: huge stone-age nations over an anachronistic
+  // population). Here the SAME forest signal (moisture band × not-floodplain,
+  // the countryTerritory definition) locks that share of a tile's CROP
+  // capacity until the land's own administering settlement carries the axes
+  // (metallurgy vs LAND_CLEAR_METAL — local and emergent; wild land has no
+  // toolkit and stays forager-sparse). The pasture term is the floor either
+  // way: clearings, swidden and mast still feed people, and open land is
+  // untouched. The arid river cradles carry no forest signal, so the Nile /
+  // Indus / Mesopotamia lead exactly as before. Runs as a deterministic
+  // main-thread post-pass (fixed land order, after the banded/inline capacity
+  // compute, before FOOD_K and the genesis seed) so pool and non-pool stay
+  // bit-identical and the DAWN seed itself is forest-priced — Europe is born
+  // sparse and OPENS with the iron age. 0 = canopy-blind capacity (legacy).
+  const flL = T.FOREST_LOCK || 0;
+  if (flL > 0) {
+    const moistF = world.moist;
+    const clearRef = Math.max(0.1, T.LAND_CLEAR_METAL || 0.55);
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const m = moistF[i];
+      if (m <= 0.38) continue;                                       // no closed canopy on dry land
+      const rOpen = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
+      const forest = Math.min(1, (m - 0.38) / 0.20) * (1 - rOpen);
+      if (forest <= 0) continue;
+      let iron = 0;
+      if (ownOn && indOwner) {
+        const sid = indOwner[i];
+        if (sid >= 0) {
+          const s2 = indById.get(sid);
+          if (s2 && s2.knowledge) iron = Math.min(1, (s2.knowledge.metallurgy || 0) / clearRef);
+        }
+      }
+      const locked = forest * (1 - iron);
+      if (locked <= 0) continue;
+      const crop = cap[i] * (1 - flL * locked);
+      cap[i] = crop > pasture[i] ? crop : pasture[i];
+    }
+  }
+
   // ── T.FOOD_K: worked land's capacity IS the food ledger (the unification) ──
   // The formula above is an abstract PROXY (fertility × technique × access);
   // the settlement economy carries the REAL ledger — catchment harvests with
