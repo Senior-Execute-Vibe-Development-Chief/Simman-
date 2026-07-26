@@ -1137,6 +1137,12 @@ export function advanceFronts(world) {
         claim: (T.CLAIMANT_WARS && world._succClaims && (world._succClaims.get(defId) || {}).by === attId) ? 1 : 0,
         faithClash: fa >= 0 && fd >= 0 && fa !== fd ? 1 : 0,
         aggression: pers ? +(pers.aggression || 0).toFixed(2) : 0,
+        // The pair has fought before within this run's memory: the war+slavery
+        // breakdown measured ~90-170 war.began/1k late-game, most of them the
+        // SAME rivalries re-flaring after each truce lapse — annotate, so the
+        // chronicle can say "the war resumed" instead of minting a fresh war
+        // per flare. Event-content only; no sim state reads it.
+        rematch: last !== undefined ? 1 : 0,
       });
       if (pa) pa._reignWars = (pa._reignWars || 0) + 1;   // a war of the reigning ruler's making (epithet deeds)
     }

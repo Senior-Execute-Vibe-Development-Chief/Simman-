@@ -182,6 +182,10 @@ const NARRATE = {
   "arc.complete"(ev) { return ev.name ? `The world entered the ${ev.eraName} age — under ${ev.name}, civilisation climbed the last rung of the knowledge tree.` : `The world entered the ${ev.eraName} age — civilisation climbed the last rung of the knowledge tree.`; },
   "war.began"(ev, as) {
     const why = ev.claim ? " to press a claim to its throne" : ev.crisis ? " as the succession failed" : ev.faithClash ? " under the banner of the faith" : "";
+    if (ev.rematch) {
+      if (as === ev.to) return `The old war with ${ev.name || "the enemy"} flared again${why}.`;
+      return `Renewed the old war against ${ev.defName || "a neighbour"}${why}.`;
+    }
     if (as === ev.to) return `${ev.name || "An enemy"} marched against the realm${why}.`;
     return `Marched to war against ${ev.defName || "a neighbour"}${why}.`;
   },
