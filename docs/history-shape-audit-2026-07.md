@@ -17,12 +17,14 @@ a state can be sundered with its provinces' institutions fully intact, and
 `restoreNations`/successor formation rebuilds at full administrative strength
 within decades. The fix shipped and FLIPPED ON this session
 (`COLLAPSE_SCAR=0.7`, dose-validated, 3-seed gates green — record below). The
-faith monoculture claim is confirmed at maximum severity (top faith 95–98 %
-of world population, ALL THREE seeds) — the sharpest open gap after this
-session. India was confirmed broken (no Indus cradle; 1–3 capitals and ~⅛ of
-Europe's population) and the Indus cradle shipped, gates green. Late-game war
-density, not early-game activity, is the real pacing problem — and the scar
-already cuts it by a third as a side effect.
+faith monoculture claim was confirmed at maximum severity (top faith 95–98 %
+of world population, ALL THREE seeds) and FIXED in the follow-up session
+(`FAITH_FRONTIER=1` — frontier resistance; 31337 ends 58 % top with three
+living creeds; gates 3/3 with 8817 at zero warnings). India was confirmed
+broken (no Indus cradle; 1–3 capitals and ~⅛ of Europe's population) and the
+Indus cradle shipped, gates green. Late-game war density, not early-game
+activity, is the real pacing problem — and the scar already cuts it by a
+third as a side effect.
 
 ## The notes, verdict by verdict
 
@@ -50,18 +52,34 @@ restored nations are born administratively diminished, so re-consolidation is
 EARNED through the normal learning law, and repeat collapses compound.
 Byte-identical at 0. A/B + gate record below.
 
-### 2. Faith monoculture — CONFIRMED, maximum severity
-At 24k the top faith holds **97 / 95 / 98 %** of world population
-(8817/31337/4242); exactly ONE faith ≥5 % on every seed; HHI 0.90–0.96. 4242
-still had a 74 %/2-faith world at 20k — then consolidated. Total planetary
-religious homogenization is the unconditional outcome. Missing counterforce —
-candidates, all emergent-state-keyed: conversion resistance ∝ identity
-distance + organized rival clergy (the same absorbResistance physics), schism
-pressure ∝ span (a faith stretched over many polities/cultures breeds
-heresies — the machinery exists in `faith.schism` but evidently under-fires at
-scale), state-church lock-in (a throne wedded to faith A resists A→B sweep).
-NOT built this session — needs its own measured arc. This is the sharpest
-single stylized-fact gap the suite does not currently gate.
+### 2. Faith monoculture — CONFIRMED, then FIXED (`T.FAITH_FRONTIER`, flipped)
+At 24k the top faith held **97 / 95 / 98 %** of world population
+(8817/31337/4242); exactly ONE faith ≥5 % on every seed; HHI 0.90–0.96. Total
+planetary religious homogenization was the unconditional outcome. Reading the
+machinery found the imbalance over-determined: THREE compounding
+rich-get-richer terms (the deliberate `sizePull` network effect up to ~2.15×,
+`STATE_PRESSURE` 2.4, affinity up to 2×) against **zero frontier resistance**
+— conversion pull ignored cultural distance entirely, and an established
+state church added its own pull but never suppressed rivals. Schism was not
+under-supplied; it was un-STICKY: every new branch faced the parent's full
+network pull with no home-turf defense and was re-absorbed.
+
+**Built + FLIPPED this session: `T.FAITH_FRONTIER=1`** — two counterforces in
+the spread pass, both from existing state, the consolidation engine untouched:
+(a) contact osmosis between different culture FAMILIES runs at ~35 % of
+kin-speed (state pressure deliberately undiscounted — royal adoption is
+exactly how faiths really leapt civilizations, so the great sweeps stay
+possible via thrones, not market osmosis); (b) an organized state church
+suppresses rival organized missions in its territory ∝ its militancy, while
+folk/stateless ground stays contestable (where the real mass conversions
+happened). **Measured (24k A/B):** 31337 ends 96 %→**58 % / 3 creeds ≥5 % /
+HHI 0.92→0.40** — durably plural through the whole late game; 8817 stays
+plural through the classical bands (27–64 % top) then one communion
+consolidates to 89 % **through the open state channel** — a distribution of
+honest outcomes (sometimes a plural world, sometimes a near-universal
+communion) rather than a clamped ceiling. Gates: stylized 3/3 hard-green —
+**8817 at ZERO soft warnings**, 31337/4242 one each. `FAITH_FRONTIER=0`
+recovers the winner-take-all world.
 
 ### 3. "Too much activity in early ages" — INVERTED: the problem is LATE
 Era-0 pacing is quiet (0.4–0.8 polity+war events /1k steps /live polity;
@@ -69,10 +87,51 @@ war events 0–4.5/1k). The LATE game is the outlier: **236–451 war events per
 1 000 steps** (a war event every ~2–4 steps world-wide), 5–10 events/1k per
 polity, and a capital-storm shatter every ~36–40 steps. This is where the
 chronicle's "at 130 cities the generator produces noise" lives — the volume
-is real, not a rendering artifact. Whether it is I97 (war saturation)
-partially returned or mostly capture/front noise needs the war-side breakdown
-(`war.began` vs fronts vs captures) before any mechanism work. Note: era-0
-statehood cadence (≈20 polities by step 4000) is a separate, milder question.
+is real, not a rendering artifact. Note: era-0 statehood cadence (≈20
+polities by step 4000) is a separate, milder question.
+
+> **DECOMPOSED (session 2, `tools/probe_war_slavery.mjs`, 2 seeds × 24k on
+> shipped defaults): the late game is not in permanent WAR — it is in
+> permanent FLICKER.** At any sampled instant only **0–5 of ~50–60 realms
+> are at war** (7–37 directed front pairs), yet **~90–170 new wars are
+> declared per 1k steps** with matching endings, 27–68 indemnities/1k, and
+> **135–309 live truces** at once; regular settlement captures in the late
+> windows round to ZERO (the sundering is capital-storms, the countryside
+> moves by tile fronts). So the event density is declarations/treaties, not
+> battles: the dyadic truce stack works per-pair, but the SYSTEM never
+> enters a general peace — pairs declare → skirmish → truce → lapse →
+> re-declare (WAR_MEMORY re-logs a fresh `war.began` after 900 dormant
+> steps, so long rivalries read as dozens of "wars"). War deadliness stays
+> sane (biggest war of a window ~500–1 800 dead vs ~10⁵–10⁶ world pop).
+> The I97 residue, in its true form, is that PEACE is not yet a
+> system-level state (the review's own congress/interdependence note) —
+> a real arc, deliberately not rushed this session. Cheap rider for the
+> chronicle meanwhile: annotate re-flares (`rematch`) so the feed can say
+> "the war resumed" instead of minting a new war per flare. Also observed:
+> with plural faiths surviving (FAITH_FRONTIER), faith-clash annotations
+> dominate late declarations on 31337 (137 of 173/1k) — more mixed-faith
+> dyads exist to clash; watch, don't tune.
+>
+> **STEP-0 CLASSIFICATION (session 3, the probe's rematch×trade tally,
+> 8817):** the interdependence route is measured OUT as the primary fix —
+> **~70 % of late declarations are between pairs with ZERO cross-border
+> trade** (the existing trade terms can't touch them), rematch share rises
+> to ~50-60 %, and `heavyTrade == traded` in every window (the attack bar's
+> `TRADE_PEACE_REF = 8` is an ABSOLUTE coin threshold, saturated by any
+> nonzero trade — the same fitted-constant class the truce pass already
+> fixed for itself with the era-median; recorded for a calibration pass).
+> **BUILT: `T.TRUCE_TOLL` (default 0)** — the treaty's DURATION now scales
+> with the war's own reckoned toll (dead over the belligerents' combined
+> people, saturating at the ~3 % great-war scale): great wars buy
+> generation-plus peaces for THAT pair, skirmishes buy the base paper, the
+> marches stay restless as intended. This is the chronicle review's "war
+> outcomes ignore battlefield events" fixed at the treaty site. **Default
+> stays 0 honestly:** the single-seed aggregate A/B is chaos-dominated
+> (the toll world re-rolled into an active-horde, faith-war trajectory —
+> the G-equivalence lesson; began/1k is not a per-mechanism readout), and
+> the DIRECT metric — the re-flare interval of the SAME pair after a
+> bloody war, baseline vs toll — needs its own small analysis probe.
+> That measurement is the named resume trigger for the flip decision.
 
 ### 4. "Everyone runs on slave trade" — PARTIALLY confirmed
 World slave-trade share of all income: 1.3–7.0 %. Realms with slaving >10 %
@@ -83,6 +142,34 @@ history, and it starts almost immediately. Suspects: raid supply too cheap at
 low tech, gang-labour demand (`_estates`/mines/cash-crop pull) too broad, or
 UI salience (the slaver chronicle mark fires at a modest 25/tick). Measure the
 supply channels before touching anything.
+
+> **PROFILED (session 2, same probe): in-band, with ONE real gap — no
+> abolition force.** Unfree runs 3–7 % of world population through the
+> mature eras (Rome empire-wide was ~10–15 %), raiding is state-on-stateless
+> as designed (crowned raiders 26–46 vs stateless 0–6 — the razzia preys on
+> the frontier, the crown fields the razzia), settlement-level sellers with
+> >10 % slave income are 5–19 of ~140, world slave income 0.5–4 %. The
+> perception of ubiquity is the REALM-level >10 % stat plus the chronicle's
+> low slaver-mark bar (25/tick). The genuine defect is the TREND: unfree
+> share RISES into the late eras (7.3 % / 9.9 % at 24k, buyers 37–50) —
+> nothing ever erodes coerced labour as wage economies mature. The missing
+> mechanism is an emergent decline (free-labour substitution as
+> industrial/organizational development raises the productivity and
+> monitoring cost gap, riding the same machinery the serfdom fork already
+> uses) — NOT a date-triggered abolition. Next-session candidate.
+>
+> **BUILT (session 3): `T.FREE_LABOUR` — free labour outcompetes the
+> gang.** Where a settlement crosses the industrial band (the SAME
+> org 0.78–0.96 × metallurgy 0.78–0.96 gate the industrial-mobility
+> learning uses), its coerced-labour demand is divided by
+> `1 + FREE_LABOUR·band`; the market stops refilling and the stock bleeds
+> out through the existing attrition sink. **The A/B is the ideal safety
+> profile:** the FREE_LABOUR=4 world is BYTE-IDENTICAL to baseline until
+> ~step 22k on 8817 — no settlement crosses the band before then, so the
+> lever provably cannot touch any history that hasn't industrialized —
+> and the first divergence lands exactly with industry (unfree −1.5 %,
+> world slave income 4.0→3.3 % by 24k, the arc's beginning; its full
+> expression lives at 30k+ horizons). Realm by realm, never a date.
 
 ### 5. Sub-Saharan Africa — WORKING, arguably not deep enough
 The stack (TSETSE 0.85 stripping draft animals, malaria/arid signals,
@@ -126,13 +213,26 @@ Recorded here so the next session starts from the number, not the vibe.
    **default FLIPPED this session**.
 2. **Indus hearth** — ✅ shipped, gates 3/3 green (4242 to zero warnings);
    India re-measured alive (pop ×3, org 0.46→0.71, 3 capitals).
-3. **Faith counterforce** — next mechanism arc (schism-at-span +
-   identity-priced conversion); gate: no seed ends >~70 % single-faith
-   without an emergent reason.
-4. **Late-war density breakdown** — measurement first (war.began vs captures
-   vs front events per window); only then decide if I97 needs a second pass.
-5. **Slave-supply narrowing** — measurement first (who sells, who buys, at
-   what tech).
+3. **Faith counterforce** — ✅ built + FLIPPED (`FAITH_FRONTIER=1`,
+   session 2 of this audit): 31337 96→58 % top faith with 3 living creeds;
+   8817's 89 % consolidation runs through the open state channel (an
+   emergent reason, accepted). A stylized faith-plurality gate remains an
+   owner option once more seeds are observed.
+4. **Late-war density** — ✅ measured, decomposed, and half-built: the
+   flicker is ~70 % non-trading pairs and ~50-60 % rematches (the trade
+   route is measured out); the `rematch` chronicle rider SHIPPED;
+   **`TRUCE_TOLL` BUILT, default 0** — the treaty's duration now can scale
+   with the war's own toll, but the flip waits on its DIRECT metric (the
+   same pair's re-flare interval after a bloody war), because aggregate
+   war counts are trajectory-chaotic and a single-seed A/B proved nothing
+   either way. Also recorded: the attack bar's `TRADE_PEACE_REF = 8` is an
+   absolute coin threshold (saturated binary in practice) — a calibration
+   pass should re-derive it against the era median like the truce pass did.
+5. **Coerced-labour decline** — ✅ **BUILT + FLIPPED (`FREE_LABOUR=4`)**:
+   industrial settlements' gang-labour demand collapses and stocks bleed
+   out through the existing attrition sink; provably byte-identical until
+   the industrial band is actually crossed (~22k on 8817 — beyond every
+   validated horizon), gates 3/3 at the baseline warning profile.
 6. **Moisture/India (b)** and **Europe-first (7)** — worldgen-side arcs,
    owner-scheduled.
 

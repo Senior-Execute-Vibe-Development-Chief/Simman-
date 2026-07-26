@@ -54,6 +54,7 @@ const WAR_SPOILS    = 0.6;    // war-weariness relief a realm banks each time it
 const PLUNDER_FRAC  = 0.30;   // share of a stormed city's coin that is portable and seizable — sacks pay (a conserved transfer to the victor's treasury)
 const INDEMNITY_FRAC = 0.25;  // max share of the beaten side's treasury paid as reparations at a truce (scaled by how one-sided the exhaustion is)
 const TRADE_PEACE_W  = 2.0;   // how much mutual trade LENGTHENS a truce: at pairTrade >= its own war-relief scale the peace holds ~3x as long (merchants fund the settlement)
+const TOLL_GREAT     = 0.03;  // the toll (war dead / the belligerents' combined people) at which a war reads as GREAT — ~3% of a population dead is the recorded scale of the wars that bought generation-long peaces; the T.TRUCE_TOLL duration term saturates here
 const CONGRESS_JOIN  = 0.75;  // a third belligerent already worn past this fraction of TRUCE_EXHAUST joins the settlement (wars end at conferences, not dyad by dyad)
 // Frozen-front settlement (T.STALEMATE_TICKS, the status-quo peace): the war's front
 // DISPLACEMENT is a signed per-pass tile exchange folded into an EMA; the war reads
@@ -1137,6 +1138,12 @@ export function advanceFronts(world) {
         claim: (T.CLAIMANT_WARS && world._succClaims && (world._succClaims.get(defId) || {}).by === attId) ? 1 : 0,
         faithClash: fa >= 0 && fd >= 0 && fa !== fd ? 1 : 0,
         aggression: pers ? +(pers.aggression || 0).toFixed(2) : 0,
+        // The pair has fought before within this run's memory: the war+slavery
+        // breakdown measured ~90-170 war.began/1k late-game, most of them the
+        // SAME rivalries re-flaring after each truce lapse — annotate, so the
+        // chronicle can say "the war resumed" instead of minting a fresh war
+        // per flare. Event-content only; no sim state reads it.
+        rematch: last !== undefined ? 1 : 0,
       });
       if (pa) pa._reignWars = (pa._reignWars || 0) + 1;   // a war of the reigning ruler's making (epithet deeds)
     }
@@ -1240,7 +1247,29 @@ export function advanceFronts(world) {
       if ((truces.get(key) || 0) > world.step) return false;   // already at peace
       const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
       const tradeW = Math.min(1, trade / tradeRef);
-      const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
+      // The peace lasts as long as the war HURT (T.TRUCE_TOLL): duration also
+      // scales with the war's own toll — its reckoned dead over the
+      // belligerents' combined people. A war that bled the pair ~TOLL_GREAT
+      // (a GREAT war) buys a generation-plus treaty; a bloodless border
+      // skirmish buys only the base paper, so the marches stay restless
+      // (intended) while great rivalries become episodic instead of
+      // flickering on the flat truce clock. Measured need (war+slavery
+      // breakdown, 2026-07): ~50-60% of late declarations are the SAME pairs
+      // re-flaring the moment the flat truce lapses, ~70% of them
+      // non-trading, so the trade term alone cannot pace them — the toll is
+      // the pair-specific state that should. 0 = flat duration (byte-identical).
+      let tollW = 0;
+      if (T.TRUCE_TOLL > 0) {
+        const dead = world._warDead ? (world._warDead.get(key) || 0) : 0;
+        if (dead > 0) {
+          let pop = 0;
+          const ca = world.countries && world.countries.get(a), cb = world.countries && world.countries.get(b);
+          if (ca) for (const m of ca.members) pop += Math.max(0, m.people || 0);
+          if (cb) for (const m of cb.members) pop += Math.max(0, m.people || 0);
+          tollW = Math.min(1, dead / (Math.max(1, pop) * TOLL_GREAT));
+        }
+      }
+      const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW + T.TRUCE_TOLL * tollW)) / (world._dt || 1);
       truces.set(key, world.step + dur);
       if (WDBG) WDBG.signed.push({ how, dur: Math.round(dur * (world._dt || 1)), age: world.step - (warBorn.get(key) ?? world.step),
         exhHi: Math.max(exh.get(a) || 0, exh.get(b) || 0), exhLo: Math.min(exh.get(a) || 0, exh.get(b) || 0) });
