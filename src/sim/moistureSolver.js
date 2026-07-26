@@ -138,12 +138,17 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   //    adjacent cells but, decaying ~half per cell, cannot carry ocean moisture dozens
   //    of cells inland the way the old flood-fill did. This is the lateral leak that,
   //    together with precipitation, makes interiors dry.
-  const _moistDiffuse    = p('moistDiffuse', 0.55);
+  const _moistDiffuse    = p('moistDiffuse', 0.75);
+  // How much of the lateral mixing reads the MEAN of the land neighbours rather than the
+  // wettest one (see the mixing block below). 0 = the old max-fill, which floors every
+  // cell at the wettest neighbour's value and smears wet regions outward; 1 = a pure
+  // averaging exchange, which lets sharp wet/dry boundaries form.
+  const _mixMean         = p('moistMixMean', 1);
   // Evapotranspiration recycling strength (see the recycling term below). Boosted well
   // above the legacy 0.06/0.08 so warm, wet interiors (Amazon, Congo) recharge their own
   // air column now that the lossless max-fill no longer floods them for free. Temp-gated,
   // so it lifts the rainforests without re-wetting cold/dry continental interiors.
-  const _moistRecyclRate = p('moistRecyclRate', 0.24);
+  const _moistRecyclRate = p('moistRecyclRate', 0.36);
   const _moistRecyclCap  = p('moistRecyclCap', 0.30);
   // Winter extratropical storm track (frontal/cyclonic rain). The sole rain source of
   // Mediterranean (Cs) climates — absent from the model, which left the Levant, the
@@ -363,20 +368,36 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       //   and was not undone by a max-refill), so the column dries MONOTONICALLY
       //   downwind and a mountain-ringed interior with a long dry fetch ends up
       //   near-rainless on its own. A parcel traced from OCEAN is the fresh source.
-      // - Isotropic diffusion: a WEAK, lossy spread (_moistDiffuse << 1) modelling
-      //   the seasonal/synoptic transport the annual-mean wind misses. It can seed
-      //   a cell from a wetter neighbour but, decaying ~half per cell, cannot carry
-      //   ocean moisture deep inland the way the old near-lossless max-fill did.
+      // - Isotropic mixing: a WEAK, lossy lateral spread (_moistDiffuse << 1) modelling
+      //   the seasonal/synoptic transport the annual-mean wind misses. Read from the
+      //   MEAN of the land neighbours, not the wettest one. Taking the max makes this a
+      //   flood-fill wearing a decay: every cell is then guaranteed at least
+      //   (wettest neighbour × decay), so a wet region projects an exponential skirt
+      //   outward that nothing downstream can cut, and no sharp wet/dry boundary can
+      //   form anywhere. That is why savanna bordering rainforest came out as forest —
+      //   the Llanos read WETTER in its dry season (0.68) than the Guinea coast (0.24),
+      //   because the Amazon's skirt floors it. Averaging removes the floor and makes
+      //   the spread respect geometry: a cell with one wet neighbour and three dry ones
+      //   takes a quarter of the excess, not all of it, so moisture falls off sharply
+      //   across a boundary while a cell enclosed by wet ground still stays wet.
       //   From LAND neighbours only (skip ocean to avoid flooding cold polar coasts).
       let moist = upwind;
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
       const iL = my * mW + mxL, iR = my * mW + mxR;
       const iU = (my - 1) * mW + mx, iD = (my + 1) * mW + mx;
-      const nMax = Math.max(
-        isOcean[iL] ? 0 : prev[iL], isOcean[iR] ? 0 : prev[iR],
-        isOcean[iU] ? 0 : prev[iU], isOcean[iD] ? 0 : prev[iD]);
-      const diffuse = nMax * diffPerCell;
-      if (diffuse > moist) moist = diffuse;
+      let nSum = 0, nCnt = 0;
+      if (!isOcean[iL]) { nSum += prev[iL]; nCnt++; }
+      if (!isOcean[iR]) { nSum += prev[iR]; nCnt++; }
+      if (!isOcean[iU]) { nSum += prev[iU]; nCnt++; }
+      if (!isOcean[iD]) { nSum += prev[iD]; nCnt++; }
+      if (nCnt) {
+        const nMean = nSum / nCnt;
+        const nMax = Math.max(
+          isOcean[iL] ? 0 : prev[iL], isOcean[iR] ? 0 : prev[iR],
+          isOcean[iU] ? 0 : prev[iU], isOcean[iD] ? 0 : prev[iD]);
+        const diffuse = (nMean * _mixMean + nMax * (1 - _mixMean)) * diffPerCell;
+        if (diffuse > moist) moist = diffuse;
+      }
 
       // ── Temperature capacity clamp ──
       // Cold air can't hold much moisture (Clausius-Clapeyron)
