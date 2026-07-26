@@ -87,10 +87,30 @@ war events 0–4.5/1k). The LATE game is the outlier: **236–451 war events per
 1 000 steps** (a war event every ~2–4 steps world-wide), 5–10 events/1k per
 polity, and a capital-storm shatter every ~36–40 steps. This is where the
 chronicle's "at 130 cities the generator produces noise" lives — the volume
-is real, not a rendering artifact. Whether it is I97 (war saturation)
-partially returned or mostly capture/front noise needs the war-side breakdown
-(`war.began` vs fronts vs captures) before any mechanism work. Note: era-0
-statehood cadence (≈20 polities by step 4000) is a separate, milder question.
+is real, not a rendering artifact. Note: era-0 statehood cadence (≈20
+polities by step 4000) is a separate, milder question.
+
+> **DECOMPOSED (session 2, `tools/probe_war_slavery.mjs`, 2 seeds × 24k on
+> shipped defaults): the late game is not in permanent WAR — it is in
+> permanent FLICKER.** At any sampled instant only **0–5 of ~50–60 realms
+> are at war** (7–37 directed front pairs), yet **~90–170 new wars are
+> declared per 1k steps** with matching endings, 27–68 indemnities/1k, and
+> **135–309 live truces** at once; regular settlement captures in the late
+> windows round to ZERO (the sundering is capital-storms, the countryside
+> moves by tile fronts). So the event density is declarations/treaties, not
+> battles: the dyadic truce stack works per-pair, but the SYSTEM never
+> enters a general peace — pairs declare → skirmish → truce → lapse →
+> re-declare (WAR_MEMORY re-logs a fresh `war.began` after 900 dormant
+> steps, so long rivalries read as dozens of "wars"). War deadliness stays
+> sane (biggest war of a window ~500–1 800 dead vs ~10⁵–10⁶ world pop).
+> The I97 residue, in its true form, is that PEACE is not yet a
+> system-level state (the review's own congress/interdependence note) —
+> a real arc, deliberately not rushed this session. Cheap rider for the
+> chronicle meanwhile: annotate re-flares (`rematch`) so the feed can say
+> "the war resumed" instead of minting a new war per flare. Also observed:
+> with plural faiths surviving (FAITH_FRONTIER), faith-clash annotations
+> dominate late declarations on 31337 (137 of 173/1k) — more mixed-faith
+> dyads exist to clash; watch, don't tune.
 
 ### 4. "Everyone runs on slave trade" — PARTIALLY confirmed
 World slave-trade share of all income: 1.3–7.0 %. Realms with slaving >10 %
@@ -101,6 +121,21 @@ history, and it starts almost immediately. Suspects: raid supply too cheap at
 low tech, gang-labour demand (`_estates`/mines/cash-crop pull) too broad, or
 UI salience (the slaver chronicle mark fires at a modest 25/tick). Measure the
 supply channels before touching anything.
+
+> **PROFILED (session 2, same probe): in-band, with ONE real gap — no
+> abolition force.** Unfree runs 3–7 % of world population through the
+> mature eras (Rome empire-wide was ~10–15 %), raiding is state-on-stateless
+> as designed (crowned raiders 26–46 vs stateless 0–6 — the razzia preys on
+> the frontier, the crown fields the razzia), settlement-level sellers with
+> >10 % slave income are 5–19 of ~140, world slave income 0.5–4 %. The
+> perception of ubiquity is the REALM-level >10 % stat plus the chronicle's
+> low slaver-mark bar (25/tick). The genuine defect is the TREND: unfree
+> share RISES into the late eras (7.3 % / 9.9 % at 24k, buyers 37–50) —
+> nothing ever erodes coerced labour as wage economies mature. The missing
+> mechanism is an emergent decline (free-labour substitution as
+> industrial/organizational development raises the productivity and
+> monitoring cost gap, riding the same machinery the serfdom fork already
+> uses) — NOT a date-triggered abolition. Next-session candidate.
 
 ### 5. Sub-Saharan Africa — WORKING, arguably not deep enough
 The stack (TSETSE 0.85 stripping draft animals, malaria/arid signals,
@@ -149,10 +184,15 @@ Recorded here so the next session starts from the number, not the vibe.
    8817's 89 % consolidation runs through the open state channel (an
    emergent reason, accepted). A stylized faith-plurality gate remains an
    owner option once more seeds are observed.
-4. **Late-war density breakdown** — measurement first (war.began vs captures
-   vs front events per window); only then decide if I97 needs a second pass.
-5. **Slave-supply narrowing** — measurement first (who sells, who buys, at
-   what tech).
+4. **Late-war density breakdown** — ✅ measured (`probe_war_slavery.mjs`):
+   the late game is permanent diplomatic FLICKER, not permanent war (0–5 of
+   ~60 realms at war while ~100 wars/1k are declared-and-truced). The next
+   mechanism arc here is system-level peace (congress/interdependence eras);
+   cheap chronicle rider: a `rematch` annotation on re-flares.
+5. **Slave-supply narrowing** — ✅ measured: in-band (unfree 3–7 % of pop,
+   state-on-stateless supply as designed); the real gap is the missing
+   emergent DECLINE of coerced labour as wage economies mature (unfree share
+   still rising at 24k). Next-session candidate.
 6. **Moisture/India (b)** and **Europe-first (7)** — worldgen-side arcs,
    owner-scheduled.
 
