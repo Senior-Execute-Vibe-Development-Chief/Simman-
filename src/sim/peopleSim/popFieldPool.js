@@ -25,6 +25,14 @@
 // identical-result one-thread path, so pool state only ever moves wall-clock.
 import { C_SEQ, C_OP, C_PARITY, C_READY, C_HINT, C_SLOT0, POISON, OP_EXIT, HDR_LEN, bandBase, ctrlLen } from "./popFieldKernel.js";
 
+// Explicit band-worker URL for BUILT apps: the app's sim worker is bundled
+// inline (?worker&inline → a blob), where import.meta.url cannot resolve the
+// band-worker chunk. The page resolves the emitted chunk's real URL
+// (?worker&url) and threads it in via setBandWorkerUrl before the pool
+// spawns; unset (dev module graph, tests) falls back to sibling resolution.
+let _bandWorkerUrl = null;
+export function setBandWorkerUrl(u) { _bandWorkerUrl = u || null; }
+
 export function makeBands(nLand, N, bands) {
   const out = [];
   for (let k = 0; k < bands; k++) {
@@ -91,7 +99,7 @@ export function ensurePool(world, arena, bands) {
       // SABs share (not copy) through postMessage; the entry blocks in
       // Atomics.wait forever after this one message.
       for (let k = 1; k < bands; k++) {
-        const w = new Worker(new URL("./popFieldWorker.browser.js", import.meta.url), { type: "module" });
+        const w = new Worker(_bandWorkerUrl || new URL("./popFieldWorker.browser.js", import.meta.url), { type: "module" });
         w.onerror = (e) => { console.error("[popField pool] band worker error:", e && e.message); pool.dispose(); };
         w.postMessage({ bufs, geom, idx: k });
         pool.workers.push(w);

@@ -23,6 +23,7 @@ import { narrate } from "./sim/peopleSim/events.js";
 import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
 import { applyTuning, resetTuning, T, rNormPop } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
+import { setBandWorkerUrl } from "./sim/peopleSim/popFieldPool.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
 import { doctrineLabel } from "./sim/peopleSim/faiths.js";
@@ -111,6 +112,7 @@ const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, the
 
 self.onmessage = (e) => {
   const m = e.data;
+  if (m.type === 'bandWorkerUrl') { setBandWorkerUrl(m.url); return; }   // popField pool: built-app band-worker chunk URL (page-resolved)
   if (m.type === "init") {
     try {
       genMeta = m.genMeta || {};

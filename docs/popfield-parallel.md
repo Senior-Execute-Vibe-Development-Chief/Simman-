@@ -1,11 +1,12 @@
 # Worker-parallel stepPopField — design (W6-G perf arc, mission 3)
 
-**Status: SHIPPED (Stages A + B + C + defaults + hosting, 2026-07-25) —
-identity contracts met on node AND in-browser; pass ≈2.2× at 4 bands (~the
-Amdahl bound); tools default to AUTO; the published site is cross-origin
-isolated via the vendored shim (Pages-faithful gate green). Open before the
-APP default flips: §8.4(a) worker resolution from the inlined sim worker,
-plus soak (§5.4).**
+**Status: COMPLETE (Stages A + B + C + defaults + hosting + THE APP FLIP,
+2026-07-25) — identity contracts met on node AND in-browser; pass ≈2.2× at
+4 bands (~the Amdahl bound); AUTO (-1) is the schema default everywhere;
+the published site is cross-origin isolated via the vendored shim and the
+BUILT app engages the pool end-to-end on a Pages-faithful server
+(tools/browser_pages_check.mjs, green). Players get the parallel sim on the
+next deploy of dist/.**
 Owner decision 2026-07-25: **960×480 tiles (the "1920" build) is the product
 resolution.** That makes the population field the sim's #1 cost worth
 engineering: `stepPopField` is the largest single function in every mature-era
@@ -21,8 +22,10 @@ battery fingerprints, save/load roundtrips) is worth more than any speedup.
 
 ## 0. The contract (what "done" means)
 
-1. `T.POP_FIELD_WORKERS = 0` (default) runs literally today's code path —
-   byte-identical, no SAB, no workers, nothing to prove.
+1. `T.POP_FIELD_WORKERS = 0` runs literally the pre-arc serial code path —
+   byte-identical, no SAB, no workers, nothing to prove. (It was the schema
+   default through Stages A-C; since the 2026-07-25 flip the default is
+   AUTO (-1) everywhere and 0 is the explicit opt-out.)
 2. `T.POP_FIELD_WORKERS = N > 0` produces a **bit-identical trajectory to
    N = 0** — same `probe_hashbase` pair, same full-serialize sha256 — for
    every N, on node and in the browser. Not "deterministic per N":
@@ -296,10 +299,22 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
    Gates for the flip: probe_hashbase runs the pool by default now and must
    keep printing the canonical pair; snapshot identity re-proven including
    an 8-band oversubscription leg; smoke + validate under AUTO.
-   **Hosting prerequisite CLEARED same day** — the coi-serviceworker shim
-   ships in the page (§8.4): the published site is cross-origin isolated
-   even on GitHub Pages, so the app flip now waits only on §8.4(a) (worker
-   resolution from the inlined sim worker) and soak.
+   **Hosting prerequisite CLEARED same day**, and then **THE APP FLIP
+   SHIPPED (owner order, same day): the schema default is now AUTO (-1)** —
+   tools, node and the app alike. §8.4(a) was real and is FIXED: the app's
+   sim worker is an inline blob (?worker&inline) whose import.meta.url
+   resolves nothing, so the PAGE resolves the band-worker chunk's emitted
+   URL (?worker&url import in WorldSim.jsx) and threads it to the worker
+   (a 'bandWorkerUrl' message → popFieldPool.setBandWorkerUrl; unset falls
+   back to sibling resolution for the dev graph). The pool announces
+   engagement once ("[popField] worker pool engaged: N bands") — the gates
+   grep for it. tools/browser_pages_check.mjs now proves the WHOLE player
+   chain on a Pages-faithful server: shim → isolation → worldgen → play
+   (pressed AFTER generation — the sim worker is created then and starts
+   paused; an early press is lost) → nested band workers fetch their chunk
+   → pool engaged, 4 bands. Old saves flip too: a save whose lever matched
+   the old default stored nothing, so loading it under the new default
+   resolves to AUTO; explicitly-set levers persist as set.
 
 ## 6. Proof battery (all must pass before any default moves)
 

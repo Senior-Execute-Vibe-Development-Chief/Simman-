@@ -485,11 +485,16 @@ The kin graph finally does politics. All triggers are house state.
    > (tools/browser_popfield_check.mjs) proving in-browser lever identity
    > with the pool genuinely engaged. Identity everywhere throughout:
    > 5bc2cc6c all levers on the 30k snapshot; genesis = the canonical pair;
-   > smoke + validate green. **Defaults (owner, same day): tools run AUTO
-   > (-1 = bands from core count, capped) via tools/_harness.mjs — every
-   > battery/probe/smoke run soaks the pool and finishes ~22% sooner; the
-   > APP default stays 0 until production hosting sends the isolation
-   > headers** (+ the single-file build's worker chunk — design doc §8).
+   > smoke + validate green. **Defaults (owner, same day): AUTO (-1 = bands
+   > from core count, capped) is the SCHEMA default — tools, node and the
+   > app.** Hosting was cleared with the vendored coi-serviceworker shim
+   > (published site is cross-origin isolated even on GitHub Pages), the
+   > inline-sim-worker URL gap (design doc §8.4a) was real and fixed by
+   > page-side ?worker&url threading, and tools/browser_pages_check.mjs
+   > proves the full player chain: built app, headerless server, play
+   > pressed → "pool engaged: 4 bands". The arc is COMPLETE
+   > (docs/popfield-parallel.md); players get the parallel sim on the next
+   > dist/ deploy.
 5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
    (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
    **Verdict: G-equivalence holds for the SHAPE of history, not the exact

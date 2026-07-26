@@ -947,6 +947,7 @@ function _pfPrepare(world, land, nLand, devF) {
     if (pool && (pool.bands !== lever || pool.gen !== ar.gen || pool.dead)) { pool.dispose(); pool = world._pfPool = null; }
     if (!pool) pool = world._pfPool = ensurePool(world, _pfArenaMsg(ar), lever);
     if (pool.readyNow()) {
+      if (!pool._announced) { pool._announced = true; console.log(`[popField] worker pool engaged: ${pool.bands} bands`); }   // one line per pool — the in-app/in-tool proof the parallel path is live (gates grep for it)
       ctx.usePool = true; ctx.pool = pool;
       ctx.band0 = _pfRebalance(ar, pool, ar.nLand, N);
       if (devF) { ar.devView.set(world.devField); ctx.devF = ar.devView; }   // per-firing mirror (wave pass may swap devField's buffer)

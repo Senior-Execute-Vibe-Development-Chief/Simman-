@@ -25,6 +25,12 @@ import { useSurfaceStack, openSurface, closeSurface, closeTopSurface, isSurfaceO
 
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
+// The popField band-worker chunk's real URL (vite emits it as a sidecar file
+// even under singlefile). Resolved HERE — page context, real URL — because the
+// sim worker itself is an inline blob whose import.meta.url resolves nothing;
+// threaded to the worker below so its pool can spawn nested band workers in
+// the BUILT app (docs/popfield-parallel.md §8.4a).
+import popFieldBandWorkerUrl from "./sim/peopleSim/popFieldWorker.browser.js?worker&url";
 
 // Noise + PRNG utilities moved to src/worldgenUtils.js so worldgen code can
 // also run headlessly (Node tests, future tooling) without dragging React in.
@@ -643,6 +649,9 @@ try{
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
+  // Band-worker URL for the popField pool (absolute — the worker's blob
+  // context cannot resolve page-relative paths).
+  try{sw.postMessage({type:'bandWorkerUrl',url:new URL(popFieldBandWorkerUrl,location.href).href});}catch{/* pool falls back to single-thread */}
   // Empty mirror until the first snapshot arrives.
   peopleRef.current={_isMirror:true,step:0,settlements:[],tw:t.tw||0,th:t.th||0,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,N:0,countries:new Map(),_byId:new Map()};
   // Send ONLY the fields createWorld reads (structured-clone copies them; the
