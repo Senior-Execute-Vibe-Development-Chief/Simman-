@@ -1,9 +1,11 @@
 # Worker-parallel stepPopField — design (W6-G perf arc, mission 3)
 
-**Status: SHIPPED (Stages A + B + C, 2026-07-25) — identity contracts met on
-node AND in-browser; pass ≈2.2× at 4 bands (~the Amdahl bound). Open:
-production hosting's isolation headers + the single-file build's worker
-chunk (§8), and the default-flip policy decisions (§5.4).**
+**Status: SHIPPED (Stages A + B + C + defaults + hosting, 2026-07-25) —
+identity contracts met on node AND in-browser; pass ≈2.2× at 4 bands (~the
+Amdahl bound); tools default to AUTO; the published site is cross-origin
+isolated via the vendored shim (Pages-faithful gate green). Open before the
+APP default flips: §8.4(a) worker resolution from the inlined sim worker,
+plus soak (§5.4).**
 Owner decision 2026-07-25: **960×480 tiles (the "1920" build) is the product
 resolution.** That makes the population field the sim's #1 cost worth
 engineering: `stepPopField` is the largest single function in every mature-era
