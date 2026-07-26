@@ -494,9 +494,19 @@ const drySeason=ny<0.5?moistWin[i]:moistSum[i];
 const savWarm=Math.max(0,Math.min(1,(0.34-tLat)/0.10));// warm tropics/subtropics only
 // Moderate strength: enough to open the savanna belt (Deccan, Cerrado, N-Australian
 // interior → dry-forest/savanna) without driving the very wet windward monsoon coasts
-// (Western Ghats) below forest. The everwet rainforests are spared by the threshold
-// (their wet/dry contrast is small).
-const savSeasonDry=e>0?Math.max(0,(summerWet-drySeason)-0.16)*0.80*savWarm:0;
+// (Western Ghats) below forest.
+// The deep equatorial belt needs its OWN guard, and cannot rely on the threshold above.
+// The ITCZ crosses the equator twice a year, so 0-9° gets two rainy seasons and never a
+// long dry one — that IS the everwet rainforest climate. A two-solstice solve cannot see
+// that: it samples only the extremes, with the rain belt parked 13° away in BOTH solves,
+// so it reports a large wet/dry contrast exactly where there is really none. The
+// threshold used to hide this only because the seasonal cycle was inverted and produced
+// no contrast anywhere; with a working monsoon the equator shows the largest contrast on
+// the map and the term ate the rainforests (measured against the pre-monsoon build:
+// West African rainforest 58%→6%, Amazon 90%→50%). Taper it out equatorward on the same
+// ramp the savanna BELT above uses.
+const savEqGuard=Math.max(0,Math.min(1,(tLat-0.07)/0.05));// 0 below ~6°, 1 by ~11°
+const savSeasonDry=e>0?Math.max(0,(summerWet-drySeason)-0.16)*0.80*savWarm*savEqGuard:0;
 // ── Patagonian / Monte rain shadow ──────────────────────────────────────────────
 // The real southern Andes (2-3 km) wring the westerlies into steppe-to-desert from
 // ~35-52°S; but the heightmap renders that cordillera at barely 0.1 elevation, too low
