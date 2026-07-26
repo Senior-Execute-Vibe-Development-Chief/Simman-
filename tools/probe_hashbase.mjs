@@ -18,7 +18,13 @@
 // pair AND the 480 reference pair verified unchanged with the code in. The
 // lever-on functional gate is tools/probe_identity2.mjs (ghost identity,
 // countryside stamps, v4 top-2 roundtrip).
-// Current baseline (2500 steps): a264fb6c/bd4b8f36 (SIZE_BY_POP flipped DEFAULT
+// Current baseline (2500 steps): 7b5d5861/473a336c (history-shape audit 2026-07:
+// TWO deliberate default changes moved genesis + trajectory together — the Indus
+// joins EARTH_HEARTH_SITES (a fourth cradle exists from tick 0, so every earth
+// stream re-keys) and COLLAPSE_SCAR flipped 0→0.7 (state sundering scars the
+// dying realm's organization technique; docs/history-shape-audit-2026-07.md).
+// SIM_TUNE="COLLAPSE_SCAR=0" isolates the hearth-only world for bisection.)
+// Prior baseline (2500 steps): a264fb6c/bd4b8f36 (SIZE_BY_POP flipped DEFAULT
 // 0→1 — realm size = governed-people core (smoothed+persisted popCapK anchor) +
 // logistics march, replacing the COVER_BASE/COVER_ORG floor so realms smaller
 // than Egypt exist and coverage rises with development; docs/empire-consolidation-

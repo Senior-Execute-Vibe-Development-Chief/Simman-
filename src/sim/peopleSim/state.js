@@ -375,6 +375,16 @@ const EARTH_HEARTH_SITES = [
                                                             // generated earth sits up by the CASPIAN — seeding "Mesopotamia" on an
                                                             // inland sea. The tight radius keeps it in the Crescent (a dry-fertile
                                                             // irrigation cradle, like the real one) instead of chasing the Caspian river.
+  { name: "Indus",       fx: 0.694, fy: 0.344, r: 0.02 },  // Indus valley (~28°N, ~70°E — Mohenjo-daro/Harappa). The
+                                                            // historical FOURTH river cradle, absent from this list until the
+                                                            // 2026-07 history-shape audit measured the consequence: the
+                                                            // subcontinent spends whole runs near-empty (4-5 settlements,
+                                                            // 1-3 capitals, ~1/8 of Europe's population), and with it the
+                                                            // Eurasian east-west corridor stays severed. TIGHT radius, same
+                                                            // rationale as Mesopotamia: keep it on the Indus, not the nearest
+                                                            // big river elsewhere. (If the generated map fails the site checks
+                                                            // here — warmth/fertility/lowland — the seat silently doesn't
+                                                            // seed, like every other pinned site.)
   { name: "Yellow River", fx: 0.811, fy: 0.305, r: 0.016 },   // the Huang He / Central Plain (~35°N, ~112°E) — the
                                                             // conventional cradle of Chinese civilisation (Erlitou/Shang
                                                             // Zhongyuan heartland), NOT the Yangtze. TIGHT search radius: the

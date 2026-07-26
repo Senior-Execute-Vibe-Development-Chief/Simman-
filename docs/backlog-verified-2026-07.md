@@ -68,6 +68,21 @@ cardinal-rule-safe design; none auto-applied.
   many strong, far provincial power-bases relative to central reach compound the
   existing overmighty-governor ambition into secession (elite-overproduction /
   secular-cycle). Keyed on accumulated state, never tick-age.
+  > **MEASURED 2026-07-26 — CLOSED, already fixed on HEAD; nothing built.**
+  > New standing instrument `tools/probe_hegemon.mjs` (suzerainty-root #1
+  > tenure + mortality + fall-event attribution + the governor-bar internals),
+  > 3 seeds × 24k @480: the lock-in reproduces NOWHERE — back-40% longest hold
+  > 2250–2500 steps (9–12 #1 changes), 31337 churns hardest, and polity
+  > mortality RISES ~30× into maturity (0.25–0.38 → 7.3–10.3 deaths/1k) — the
+  > inversion of the ossification signature. The killing is attributed:
+  > capital-storm shatters dominate (220–268 per back-window), then conquest
+  > endings, strain sheds (top realms sampled at strain 4.6–12.8), and
+  > war-termination's capitulation-vassalage; `polity.restored` runs 9–23.
+  > The W6-C/D/F counter-force stack did the job. One finding survives: the
+  > overmighty-governor elite channel is INERT (ambition ≈0 everywhere; the
+  > 0.55-ratio and 0.5-far bars close as realms mature) — deliberately left
+  > unbuilt per cardinal rule 2, with the fracture blueprint + resume trigger
+  > parked in `docs/hegemon-ossification-2026-07.md`.
 - **6 Zipf city-size tail (the "hinterland throttle").** Cores stay ~0.04 short
   of target slope for lack of inter-regional migration. *Design:* a *bounded*
   inter-regional labour draw in `urbanConcentrate()`, firing only when a genuine

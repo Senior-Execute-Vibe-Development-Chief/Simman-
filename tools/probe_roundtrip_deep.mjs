@@ -7,7 +7,10 @@
 // work against a lossy/nondeterministic round-trip. Run it after any change to
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
-// Baseline (8000 steps, all defaults ON incl. POP_FIELD — the field-simulation model:
+// Baseline (8000 steps, all defaults ON): 8817 h=c31bbafa (8710p/149d), 31337
+// h=6c5fc1bc (8693p/138d) — re-anchored 2026-07 for the history-shape audit's two
+// default changes (Indus hearth + COLLAPSE_SCAR 0→0.7), which re-key every stream.
+// Prior (pre-audit, all defaults ON incl. POP_FIELD — the field-simulation model:
 // people on a per-tile field, territory grown by governed-region capacity, not stamped from
 // settlement catchments): 8817 h=9f0ebe23 (4957p/101d), 31337 h=38b95edf (4320p/87d).
 // POP_FIELD=0 recovers the pre-field settlement roundtrip 8817=ff050141/31337=cff49050;
