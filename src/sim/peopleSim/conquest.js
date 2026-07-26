@@ -1144,6 +1144,22 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     if (s.mode === "settled" && s.countryId === oldId && s.id !== excludeId) survivors.push(s);
   }
   if (survivors.length === 0) return;
+  // ── Collapse scars institutions (T.COLLAPSE_SCAR) ────────────────────
+  // The dying STATE's administrative apparatus dissolves with it: every member
+  // loses organization technique in proportion to how palace-dependent its own
+  // statecraft was (org ×= 1 − SCAR·org). This is the POLITICAL twin of the
+  // demographic dark-age channel (KNOW_DECAY reads pop drawdown/isolation and
+  // so cannot see a collapse that starves no one) — it is what makes successor
+  // and restored states born diminished rather than full-strength, so
+  // re-consolidation runs through the learning law instead of being free.
+  // The stormed throne city itself is NOT hit here: it left the realm before
+  // this call, and its own hit arrives through the sack → drawdown channel.
+  if (T.COLLAPSE_SCAR > 0) {
+    for (const s of survivors) {
+      const k = s.knowledge;
+      if (k && k.organization > 0) k.organization = Math.max(0, k.organization * (1 - T.COLLAPSE_SCAR * k.organization));
+    }
+  }
   // The dying realm's occupied nations (still in living memory) re-emerge as
   // THEMSELVES — same id, hue, history; only the native/assimilated remainder
   // fragments into city-based successors below (the Diadochi case).
