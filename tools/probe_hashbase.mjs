@@ -18,7 +18,11 @@
 // pair AND the 480 reference pair verified unchanged with the code in. The
 // lever-on functional gate is tools/probe_identity2.mjs (ghost identity,
 // countryside stamps, v4 top-2 roundtrip).
-// Current baseline (2500 steps): 7b5d5861/473a336c (history-shape audit 2026-07:
+// Current baseline (2500 steps): e5d6ac69/9b014b38 (FAITH_FRONTIER flipped 0→1 —
+// cross-family conversion discount + established-church suppression of rival
+// missions; the faith monoculture fix, docs/history-shape-audit-2026-07.md §2.
+// SIM_TUNE="FAITH_FRONTIER=0" recovers the pair below for bisection.)
+// Prior baseline (2500 steps): 7b5d5861/473a336c (history-shape audit 2026-07:
 // TWO deliberate default changes moved genesis + trajectory together — the Indus
 // joins EARTH_HEARTH_SITES (a fourth cradle exists from tick 0, so every earth
 // stream re-keys) and COLLAPSE_SCAR flipped 0→0.7 (state sundering scars the

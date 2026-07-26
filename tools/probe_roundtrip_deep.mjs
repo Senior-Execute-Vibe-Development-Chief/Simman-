@@ -7,7 +7,10 @@
 // work against a lossy/nondeterministic round-trip. Run it after any change to
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
-// Baseline (8000 steps, all defaults ON): 8817 h=c31bbafa (8710p/149d), 31337
+// Baseline (8000 steps, all defaults ON): 8817 h=b7650477 (9088p/126d), 31337
+// h=5c7e2cd9 (8013p/118d) — re-anchored for FAITH_FRONTIER 0→1 (the faith
+// monoculture fix; SIM_TUNE="FAITH_FRONTIER=0" recovers the prior pair).
+// Prior: 8817 h=c31bbafa (8710p/149d), 31337
 // h=6c5fc1bc (8693p/138d) — re-anchored 2026-07 for the history-shape audit's two
 // default changes (Indus hearth + COLLAPSE_SCAR 0→0.7), which re-key every stream.
 // Prior (pre-audit, all defaults ON incl. POP_FIELD — the field-simulation model:

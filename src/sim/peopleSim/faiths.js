@@ -386,6 +386,33 @@ export function updateFaiths(world) {
     return t;
   };
   const pulls = [];
+  // ── The frontier resists (T.FAITH_FRONTIER) ──────────────────────────
+  // Two counterforces the sweep-measurement showed missing (top faith ends at
+  // 95-98% of world population on every seed — docs/history-shape-audit-2026-07.md):
+  //  (a) CROSS-FAMILY CONTACT DISCOUNT — osmotic conversion between deeply
+  //      foreign peoples (different culture FAMILIES) runs at a fraction of
+  //      within-civilization speed: crossing the frontier meant a new law, new
+  //      kin rules, new language of rite, and both sides punished it socially.
+  //      State pressure is deliberately NOT discounted — royal adoption was
+  //      exactly the channel by which faiths DID leap families (Buddhism into
+  //      China, Christianity into the north), so the great sweeps stay
+  //      possible; they just need a throne, not mere market osmosis.
+  //  (b) ESTABLISHED-CHURCH DEFENSE — a realm whose court holds an organized
+  //      creed suppresses rival organized missions inside its territory, in
+  //      proportion to the state church's militancy (the same press shape the
+  //      loyalty-clash term uses): the Islam↔Christendom frontier froze for
+  //      centuries under exactly this, while FOLK and stateless ground stayed
+  //      contestable — which is where the real mass conversions happened.
+  // Both scale with one lever; 0 skips the code path entirely (byte-identical).
+  const famCache = new Map();   // cultureId -> familyOf (one lineage walk per culture per pass)
+  const famOf = (cid) => {
+    if (cid < 0) return -1;
+    let fm = famCache.get(cid);
+    if (fm === undefined) { fm = familyOf(world, cid); famCache.set(cid, fm); }
+    return fm;
+  };
+  const FRONTIER_FAM_X = 0.65;   // cross-family osmosis runs at ~35% of kin-speed at lever 1
+  const FRONTIER_DEF_W = 1.1;    // a militant state church cuts a rival mission to ~1/3; a quietist one barely
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s.faithMix || !s.faithMix.length) continue;
     const own = dominantFaith(s);
@@ -393,6 +420,14 @@ export function updateFaiths(world) {
     // faster, one that grates on them slower (affinity). Stateless → neutral.
     const rc = s.countryId >= 0 && world.countries ? world.countries.get(s.countryId) : null;
     const recvPers = rc ? rc.personality : null;
+    const p = s.countryId >= 0 ? getPolity(world, s.countryId) : null;
+    // the receiver's civilizational family + its court's established church (if organized)
+    const recvFam = T.FAITH_FRONTIER > 0 ? famOf(dominantCulture(s)) : -1;
+    let stateF = null;
+    if (T.FAITH_FRONTIER > 0 && p && p.faithId >= 0) {
+      const sf = getFaith(world, p.faithId);
+      if (sf && sf.kind === "organized") stateF = sf;
+    }
     const pull = new Map();
     // own faith is NOT excluded: same-faith neighbours and the state reinforce the
     // local majority, which (with the conformity term below) lets a settlement
@@ -406,6 +441,19 @@ export function updateFaiths(world) {
       let w = f.kind === "organized" ? ORGANIZED_PULL * (0.5 + (f.doctrine ? f.doctrine.zeal : 0.5)) * sizePull(pf) : FOLK_PULL;
       if (peer.countryId === s.countryId && s.countryId >= 0) w *= 1.4;
       w *= affinityMul(ftOf(pf), recvPers);              // a faith appeals more to a congenial people
+      if (T.FAITH_FRONTIER > 0) {
+        // (a) contact osmosis crosses a civilizational frontier at a discount
+        if (recvFam >= 0) {
+          const peerFam = famOf(dominantCulture(peer));
+          if (peerFam >= 0 && peerFam !== recvFam) w *= 1 - T.FAITH_FRONTIER * FRONTIER_FAM_X;
+        }
+        // (b) the established church bears down on rival missions at home
+        if (stateF && f.kind === "organized" && pf !== stateF.id) {
+          const sd = stateF.doctrine;
+          const press = sd ? 0.4 + 1.2 * sd.militancy : 1;
+          w /= 1 + T.FAITH_FRONTIER * FRONTIER_DEF_W * press;
+        }
+      }
       addPull(pf, w);
     };
     if (s._tradeReach && byId) for (const pid of s._tradeReach.keys()) weighPeer(byId.get(typeof pid === "number" ? pid : +pid));
@@ -413,7 +461,6 @@ export function updateFaiths(world) {
     // word also travels on foot: near neighbours convert even off the trade map
     forEachNear(world, s.pos.x, s.pos.y, 11 * rNormPop(world), (nb) => { if (nb !== s) weighPeer(nb); });
     if (s.countryId >= 0) {
-      const p = getPolity(world, s.countryId);
       if (p && p.faithId >= 0) {
         const f = getFaith(world, p.faithId);
         if (f && f.kind === "organized") addPull(p.faithId, STATE_PRESSURE * (0.6 + 0.8 * (f.doctrine ? f.doctrine.zeal : 0.5)) * affinityMul(ftOf(p.faithId), recvPers));

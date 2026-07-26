@@ -17,12 +17,14 @@ a state can be sundered with its provinces' institutions fully intact, and
 `restoreNations`/successor formation rebuilds at full administrative strength
 within decades. The fix shipped and FLIPPED ON this session
 (`COLLAPSE_SCAR=0.7`, dose-validated, 3-seed gates green — record below). The
-faith monoculture claim is confirmed at maximum severity (top faith 95–98 %
-of world population, ALL THREE seeds) — the sharpest open gap after this
-session. India was confirmed broken (no Indus cradle; 1–3 capitals and ~⅛ of
-Europe's population) and the Indus cradle shipped, gates green. Late-game war
-density, not early-game activity, is the real pacing problem — and the scar
-already cuts it by a third as a side effect.
+faith monoculture claim was confirmed at maximum severity (top faith 95–98 %
+of world population, ALL THREE seeds) and FIXED in the follow-up session
+(`FAITH_FRONTIER=1` — frontier resistance; 31337 ends 58 % top with three
+living creeds; gates 3/3 with 8817 at zero warnings). India was confirmed
+broken (no Indus cradle; 1–3 capitals and ~⅛ of Europe's population) and the
+Indus cradle shipped, gates green. Late-game war density, not early-game
+activity, is the real pacing problem — and the scar already cuts it by a
+third as a side effect.
 
 ## The notes, verdict by verdict
 
@@ -50,18 +52,34 @@ restored nations are born administratively diminished, so re-consolidation is
 EARNED through the normal learning law, and repeat collapses compound.
 Byte-identical at 0. A/B + gate record below.
 
-### 2. Faith monoculture — CONFIRMED, maximum severity
-At 24k the top faith holds **97 / 95 / 98 %** of world population
-(8817/31337/4242); exactly ONE faith ≥5 % on every seed; HHI 0.90–0.96. 4242
-still had a 74 %/2-faith world at 20k — then consolidated. Total planetary
-religious homogenization is the unconditional outcome. Missing counterforce —
-candidates, all emergent-state-keyed: conversion resistance ∝ identity
-distance + organized rival clergy (the same absorbResistance physics), schism
-pressure ∝ span (a faith stretched over many polities/cultures breeds
-heresies — the machinery exists in `faith.schism` but evidently under-fires at
-scale), state-church lock-in (a throne wedded to faith A resists A→B sweep).
-NOT built this session — needs its own measured arc. This is the sharpest
-single stylized-fact gap the suite does not currently gate.
+### 2. Faith monoculture — CONFIRMED, then FIXED (`T.FAITH_FRONTIER`, flipped)
+At 24k the top faith held **97 / 95 / 98 %** of world population
+(8817/31337/4242); exactly ONE faith ≥5 % on every seed; HHI 0.90–0.96. Total
+planetary religious homogenization was the unconditional outcome. Reading the
+machinery found the imbalance over-determined: THREE compounding
+rich-get-richer terms (the deliberate `sizePull` network effect up to ~2.15×,
+`STATE_PRESSURE` 2.4, affinity up to 2×) against **zero frontier resistance**
+— conversion pull ignored cultural distance entirely, and an established
+state church added its own pull but never suppressed rivals. Schism was not
+under-supplied; it was un-STICKY: every new branch faced the parent's full
+network pull with no home-turf defense and was re-absorbed.
+
+**Built + FLIPPED this session: `T.FAITH_FRONTIER=1`** — two counterforces in
+the spread pass, both from existing state, the consolidation engine untouched:
+(a) contact osmosis between different culture FAMILIES runs at ~35 % of
+kin-speed (state pressure deliberately undiscounted — royal adoption is
+exactly how faiths really leapt civilizations, so the great sweeps stay
+possible via thrones, not market osmosis); (b) an organized state church
+suppresses rival organized missions in its territory ∝ its militancy, while
+folk/stateless ground stays contestable (where the real mass conversions
+happened). **Measured (24k A/B):** 31337 ends 96 %→**58 % / 3 creeds ≥5 % /
+HHI 0.92→0.40** — durably plural through the whole late game; 8817 stays
+plural through the classical bands (27–64 % top) then one communion
+consolidates to 89 % **through the open state channel** — a distribution of
+honest outcomes (sometimes a plural world, sometimes a near-universal
+communion) rather than a clamped ceiling. Gates: stylized 3/3 hard-green —
+**8817 at ZERO soft warnings**, 31337/4242 one each. `FAITH_FRONTIER=0`
+recovers the winner-take-all world.
 
 ### 3. "Too much activity in early ages" — INVERTED: the problem is LATE
 Era-0 pacing is quiet (0.4–0.8 polity+war events /1k steps /live polity;
@@ -126,9 +144,11 @@ Recorded here so the next session starts from the number, not the vibe.
    **default FLIPPED this session**.
 2. **Indus hearth** — ✅ shipped, gates 3/3 green (4242 to zero warnings);
    India re-measured alive (pop ×3, org 0.46→0.71, 3 capitals).
-3. **Faith counterforce** — next mechanism arc (schism-at-span +
-   identity-priced conversion); gate: no seed ends >~70 % single-faith
-   without an emergent reason.
+3. **Faith counterforce** — ✅ built + FLIPPED (`FAITH_FRONTIER=1`,
+   session 2 of this audit): 31337 96→58 % top faith with 3 living creeds;
+   8817's 89 % consolidation runs through the open state channel (an
+   emergent reason, accepted). A stylized faith-plurality gate remains an
+   owner option once more seeds are observed.
 4. **Late-war density breakdown** — measurement first (war.began vs captures
    vs front events per window); only then decide if I97 needs a second pass.
 5. **Slave-supply narrowing** — measurement first (who sells, who buys, at
