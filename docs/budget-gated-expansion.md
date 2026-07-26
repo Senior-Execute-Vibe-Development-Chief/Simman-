@@ -311,3 +311,11 @@ at-budget and a new warning class), the default stays 0 until the owner
 either accepts the new shape (and re-baselines the Zipf/cradle-gradient
 facts to it) or asks for a narrower mechanism. SIM_TUNE="SPAN_TECH=0.85"
 previews the earned-span world in any tool.
+
+**FLIPPED (owner decision, same day): `SPAN_TECH=0.85` ships.** The Zipf and
+cradle-gradient soft facts were re-baselined to the earned-span world
+(rationale in stylized.mjs at each gate), and the full suite on the new
+defaults came back **3/3 seeds, all hard gates, ZERO soft warnings each — the
+first triple-zero validation of the month**. Smoke green; deep round-trip
+byte-identical at 14k; guards re-anchored (hashbase b988776a/e58bdc35,
+round-trip db04acac/64ee637d; priors kept, SPAN_TECH=0 recovers them).

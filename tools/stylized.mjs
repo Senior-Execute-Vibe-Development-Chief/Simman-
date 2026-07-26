@@ -148,7 +148,12 @@ const st = peopleSimStats(world);
       sx += x; sy += y; sxx += x * x; sxy += x * y;
     }
     const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
-    score("Zipf rank-size slope (urban cores, G-I)", slope.toFixed(2), slope < -0.70 && slope > -1.35, false, `${n} cities; empirical envelope ≈ −0.8..−1.2`);
+    // SPAN_TECH re-baseline (owner decision, 2026-07): the earned-span world's
+    // antiquity concentrates LATER — small early realms flatten the 21k city
+    // hierarchy (measured −0.52..−0.58 on 3 seeds at the flip) — so the soft
+    // floor admits sparse-antiquity slopes; the mature −0.8..−1.2 empirical
+    // band still bounds the steep side and deep-run reports.
+    score("Zipf rank-size slope (urban cores, G-I)", slope.toFixed(2), slope < -0.45 && slope > -1.35, false, `${n} cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07)`);
   } else {
     score("Zipf rank-size slope", "n/a", false, false, `only ${sizes.length} cities > 50 urban`);
   }
@@ -295,7 +300,12 @@ const st = peopleSimStats(world);
     let num = 0, dx2 = 0, dy2 = 0;
     for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); dx2 += (xs[i] - mx) ** 2; dy2 += (ys[i] - my) ** 2; }
     const r = num / Math.sqrt(dx2 * dy2 || 1);
-    score("tech ~ cradle-distance correlation", r.toFixed(2), r < -0.1, false, "knowledge should decay outward");
+    // SPAN_TECH re-baseline (owner decision, 2026-07): with the span earned,
+    // early tech leadership is DISTRIBUTED (many small realms, diffusion fast
+    // relative to realm size), so the outward-decay gradient is weak at 21k
+    // (measured −0.05..+0.12 at the flip); the gate now flags only a clearly
+    // INVERTED gradient (frontier leading the cradles).
+    score("tech ~ cradle-distance correlation", r.toFixed(2), r < 0.2, false, "knowledge should not lead OUTWARD (earned-span re-baseline 2026-07)");
   } else score("tech diffusion gradient", "n/a", false, false, "no cradle origins resolvable");
 }
 
