@@ -7,7 +7,12 @@
 // work against a lossy/nondeterministic round-trip. Run it after any change to
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
-// Baseline (8000 steps, all defaults ON): 8817 h=b7650477 (9088p/126d), 31337
+// Baseline (14000 steps — longer than the 8000 convention because CRADLE_EVE=0's
+// natural dawn delays dynasty formation ~5k steps and the guard exists FOR the
+// dynastic state): 8817 h=184431e (3829p/103d), 31337 h=a53e6c0b (2808p/76d) —
+// re-anchored for CRADLE_EVE 1→0 (the eve-of-states removal;
+// SIM_TUNE="CRADLE_EVE=1" + 8000 steps recovers the prior pair below).
+// Prior (8000 steps, all defaults ON): 8817 h=b7650477 (9088p/126d), 31337
 // h=5c7e2cd9 (8013p/118d) — re-anchored for FAITH_FRONTIER 0→1 (the faith
 // monoculture fix; SIM_TUNE="FAITH_FRONTIER=0" recovers the prior pair).
 // Prior: 8817 h=c31bbafa (8710p/149d), 31337

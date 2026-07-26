@@ -18,7 +18,12 @@
 // pair AND the 480 reference pair verified unchanged with the code in. The
 // lever-on functional gate is tools/probe_identity2.mjs (ghost identity,
 // countryside stamps, v4 top-2 roundtrip).
-// Current baseline (2500 steps): e5d6ac69/9b014b38 (FAITH_FRONTIER flipped 0→1 —
+// Current baseline (2500 steps): 4a956f14/2a8e6fce (CRADLE_EVE flipped 1→0 —
+// the eve-of-states head start REMOVED: cradles seed as natural villages and the
+// first kingdoms EMERGE ~5.2k steps later; the genesis balloon gone at its root.
+// docs/budget-gated-expansion.md addendum 3. SIM_TUNE="CRADLE_EVE=1" recovers
+// the pair below exactly.)
+// Prior baseline (2500 steps): e5d6ac69/9b014b38 (FAITH_FRONTIER flipped 0→1 —
 // cross-family conversion discount + established-church suppression of rival
 // missions; the faith monoculture fix, docs/history-shape-audit-2026-07.md §2.
 // SIM_TUNE="FAITH_FRONTIER=0" recovers the pair below for bisection.)

@@ -283,29 +283,22 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Start at the tier-0 storage cap (see storageCap in updateFood);
     // a larger value would just be clamped away on the first tick.
     food: 80,
-    knowledge: opts.knowledge || (opts.cradle ? {
-      // A CRADLE seeds at the EVE OF STATES — the display epoch is 3000 BC
-      // (calendar.js DISP_START) and this is what 3000 BC WAS: proto-urban
-      // irrigation towns (late Uruk, Naqada III, Longshan) with temple
-      // administration on the verge of kingship, and copper metallurgy already
-      // millennia old. The old stone-age seed (agr .5 / org .1 / met 0) spent
-      // ~1600 displayed years growing INTO the state the start date already
-      // claims — the measured 5.3x "Neolithic" start-up row (probe_erapace).
+    knowledge: opts.knowledge || (opts.cradle && T.CRADLE_EVE ? {
+      // A CRADLE at the EVE OF STATES (T.CRADLE_EVE=1) — a ready proto-urban
+      // town injected at t=0 so the world matches the 3000-BC display label
+      // (late Uruk, Naqada III, Longshan: temple administration on the verge
+      // of kingship, copper millennia old). Measured cost (2026-07,
+      // probe_cradle_pulse + budget-gated-expansion.md addendum 2): this
+      // injected head start is the genesis territorial BALLOON — cradles peak
+      // ~age 1000 at 1.32-1.57x their settled extent, then visibly shrink,
+      // while natural states run 1.04-1.36x. With CRADLE_EVE=0 a cradle seeds
+      // as a natural village (the block below) and the first kingdoms EMERGE
+      // ~5k steps later — the balloon gone, the dawn earned, the display epoch
+      // (calendar.js DISP_START) shifted earlier to keep the label honest.
       // Initial CONDITIONS of the world at t=0, not a gate on anything.
       agriculture: 0.55,        // mature floodplain/irrigation farming
       construction: 0.20,       // mudbrick towns, the first monumental works
-      // TECHNIQUE vs STATEHOOD (2026-07 endowment decomposition): the seed's
-      // agri/metal/people package is the world's IGNITION source (removing it
-      // measured +5k steps to planetary statehood — the diffusion everyone
-      // downstream waits on), but the ORGANIZATION head start is the
-      // politically active half: it buys instant reach, capacity and adoption
-      // rights, and is ~40% of the genesis territorial balloon (cradles peak
-      // ~age 1000 at 1.56x their settled extent while natural states run
-      // 1.06x). T.CRADLE_ORG makes that half a lever: 0.28 = kingship at the
-      // door (the eve-of-states reading); 0.10 = the same proto-urban town
-      // must BUILD its kingship like everyone else (statehood earned, arriving
-      // fast because the technique package is intact).
-      organization: T.CRADLE_ORG,  // temple accounts / proto-writing
+      organization: 0.28,       // temple accounts / proto-writing — kingship at the door
       metallurgy:  0.16,        // chalcolithic copper (ore access still gates practice)
       navigation:  0.05,        // river craft
       mobility:    0.05,        // pack animals

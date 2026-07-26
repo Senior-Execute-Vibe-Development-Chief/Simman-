@@ -205,6 +205,46 @@ population being BOOKED instantly by any org-capable state, plus the
 first-mover vacuum (member acquisition not load-priced). The ranked fixes
 remain (1) marginal-revenue adoption — design two, after the measured failure
 of the naive gate — and (2) deeper-prehistory genesis (campaign scope).
-`T.CRADLE_ORG` ships as an explicit knob (default 0.28, byte-identical —
-hashbase pair verified unchanged) so the epoch-vs-balloon tradeoff is a lever
-in the panel rather than a number buried in makeSettlement.
+`T.CRADLE_ORG` briefly shipped as an explicit knob and was superseded the
+same day by **`T.CRADLE_EVE`** (the owner chose removal of the whole head
+start): 1 = the legacy eve-of-states package, byte-identical; 0 = cradles
+seed as natural villages (25 people, frontier knowledge) and the first
+kingdoms EMERGE — the balloon gone at its root, the dawn ~5k steps later,
+`DISP_START` following the lever so the display label stays honest. Battery
+and flip record in addendum 3 below.
+
+## Addendum 3 (2026-07-26): the head start REMOVED — `CRADLE_EVE` default 0
+
+Owner order after the addendum-2 verdict: remove the eve-of-states package
+entirely. Built as `T.CRADLE_EVE` (1 = the legacy injected proto-urban town —
+240 people, agri 0.55 / org 0.28 / constr 0.20 / copper — byte-identical,
+hashbase pair verified; 0 = a cradle seeds as a NATURAL VILLAGE, 25 people at
+the frontier knowledge floor) and **flipped to 0** on the battery below. Every
+calendar epoch follows the lever (calendar.js: display −3000→−4300, dynasty
+−3000→−4300, the 0.5y/tick clock −3000→−5600), so the map now opens in the
+late neolithic and the first kingdoms still read ~3000 BC — the label follows
+the world, per the cardinal rule, instead of the world being inflated to
+match the label.
+
+**Battery (3 seeds × 12k, probe_cradle_pulse):**
+- The balloon is REMOVED at its root on 8817/4242 — cradles peak organically
+  at age 5500–8000 (vs age ~1000 injected), ratios at natural levels; 31337
+  keeps a MINIATURE early pulse (peaks age 500–1000 at ~33–36 tiles) from the
+  deeper cause addendum 2 named: any org-capable polity still instantly books
+  the pre-seeded 3000-BC field population around it. That residual is the
+  marginal-revenue-adoption arc's problem, not the seed's.
+- Ignition: first natural state +3.6–5.3k steps; era-1 arrival 9900–10800 vs
+  4800–5100 (~+5.2k mean — the calendar shift above).
+- Cradle statehood is now EARNED, hence non-guaranteed: 8 of 12 hearth
+  villages reached lasting statehood; famous-cradle openings are a strong
+  tendency, not a promise. (The pinned EARTH_HEARTH_SITES still place the
+  villages and found the cultures; only instant kingship is gone.)
+
+**Gates: the emergent-axis design paid off in full.** At the STANDARD 21k
+horizon, on the slower world: smoke green (all checks, incl. save/load and
+the dissolve gate), stylized **3/3 hard-green with 8817 = 0, 31337 = 0,
+4242 = 1 soft warning** — the best warning profile of any configuration
+measured this month ("a slow world traces the same curve later and still
+passes" — the W6-A design premise, now demonstrated). No validate-horizon
+extension was needed. Guard baselines re-anchored on the new defaults
+(priors kept; `SIM_TUNE="CRADLE_EVE=1"` recovers the legacy pairs).
