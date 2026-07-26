@@ -23,10 +23,16 @@ function png(width, height, rgb) {
 // ── replicated from WorldSim.jsx (keep in sync) ──
 const BC = [[10,22,56],[20,48,95],[36,78,125],[194,182,140],[168,158,130],[235,240,248],[50,80,58],[45,78,48],[50,105,45],[25,100,52],[14,72,28],[192,176,82],[158,165,78],[210,185,140],[140,135,78],[78,118,48],[152,145,135],[42,110,38],[195,190,180]];
 const BN = ['DeepOcean','ShallowOcean','Coastal','Beach','Tundra','Ice','Taiga','Boreal','TempForest','TempRain','TropRain','Savanna','Grassland','Desert','Shrubland','TropDryForest','Barren','Subtropical','ColdDesert'];
-function getBiomeD(e, m, t, sl) {
+function getBiomeD(e, m, t, sl, dry) {
   if (e <= sl) return e < sl - .08 ? 0 : e < sl - .01 ? 1 : 2;
   const demand = .5 + t * .5;
-  const em = Math.min(1, m / demand);
+  let em = Math.min(1, m / demand);
+  // Dry-season length (see WorldSim.jsx getBiomeD) — kept in sync.
+  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
+  if (dry > 0 && warmth > 0) {
+    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
+    em = Math.max(seas, Math.min(em, 0.17));
+  }
   if (t < .45) return 5;
   if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
   if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
@@ -41,7 +47,7 @@ const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
 const rgb = Buffer.alloc(W * H * 3);
 const counts = {};
 for (let i = 0; i < W * H; i++) {
-  const b = getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0);
+  const b = getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0, w.dryFrac ? w.dryFrac[i] : 0);
   const c = BC[b]; rgb[i * 3] = c[0]; rgb[i * 3 + 1] = c[1]; rgb[i * 3 + 2] = c[2];
   if (w.elevation[i] > 0) counts[b] = (counts[b] || 0) + 1;
 }

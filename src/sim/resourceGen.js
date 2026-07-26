@@ -79,10 +79,23 @@ const B_TUNDRA = 4, B_TAIGA = 6, B_BOREAL = 7, B_TEMP_FOREST = 8,
   B_DESERT = 13, B_SHRUBLAND = 14, B_TROP_DRY = 15, B_ALPINE = 16,
   B_SUBTROP = 17, B_COLD_DESERT = 18;
 
-function getBiome(e, m, t) {
+// `dry` = fraction of the year that is dry (0-1), from the seasonal solves. Kept in sync
+// with WorldSim.jsx getBiomeD. Dry-season LENGTH decides which vegetation a given annual
+// water total carries (Koppen Af/Am vs Aw); it is a property of the vegetation, not a
+// claim that less water fell, so it is applied HERE and not subtracted from tMoist —
+// which the fertility, river and migration systems all read as real water.
+function getBiome(e, m, t, dry) {
   if (e <= 0) return -1;
   const demand = 0.5 + t * 0.5;
-  const em = Math.min(1, m / demand);
+  let em = Math.min(1, m / demand);
+  // Gated on warmth: only where a dry season means drought rather than winter (the
+  // Koppen A-vs-C split). Kept in sync with WorldSim.jsx getBiomeD.
+  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
+  if (dry > 0 && warmth > 0) {
+    // Floored at the savanna threshold — a dry season makes grassland, not desert.
+    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
+    em = Math.max(seas, Math.min(em, 0.17));
+  }
   // Biome temperature bands on the calibrated air-temp scale (kept in sync with
   // WorldSim.jsx getBiomeD): ICE <-15°C · tundra -15..-2 · taiga -2..+5 ·
   // temperate +5..+18 · subtropical +18..+25 · tropical > +25°C.
@@ -95,14 +108,14 @@ function getBiome(e, m, t) {
   return em > 0.56 ? B_TROP_RAIN : em > 0.38 ? B_TROP_DRY : em > 0.16 ? B_SAVANNA : em > 0.09 ? B_GRASSLAND : B_DESERT;
 }
 
-export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed, rivers) {
+export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed, rivers, tDryFrac) {
   const N = tw * th;
   const RES = world.width ? Math.round(world.width / tw) : 1;
 
   // Pre-compute biome per tile
   const tileBiome = new Int8Array(N);
   for (let ti = 0; ti < N; ti++) {
-    tileBiome[ti] = getBiome(tElev[ti], tMoist[ti], tTemp[ti]);
+    tileBiome[ti] = getBiome(tElev[ti], tMoist[ti], tTemp[ti], tDryFrac ? tDryFrac[ti] : 0);
   }
 
   // Plate boundary proximity (tectonic/earth modes)

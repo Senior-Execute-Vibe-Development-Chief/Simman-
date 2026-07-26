@@ -11,10 +11,16 @@ const PRESET = process.argv[4] || "earth_sim";
 const BN = ['DeepOcean','ShallowOcean','Coastal','Beach','Tundra','Ice','Taiga','Boreal',
   'TempForest','TempRain','TropRain','Savanna','Grassland','Desert','Shrubland',
   'TropDryForest','Barren','Subtropical','ColdDesert'];
-function getBiomeD(e, m, t, sl) {
+function getBiomeD(e, m, t, sl, dry) {
   if (e <= sl) return e < sl - .08 ? 0 : e < sl - .01 ? 1 : 2;
   const demand = .5 + t * .5;
-  const em = Math.min(1, m / demand);
+  let em = Math.min(1, m / demand);
+  // Dry-season length (see WorldSim.jsx getBiomeD) — kept in sync.
+  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
+  if (dry > 0 && warmth > 0) {
+    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
+    em = Math.max(seas, Math.min(em, 0.17));
+  }
   if (t < .45) return 5;
   if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
   if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
@@ -78,7 +84,7 @@ console.log('\nplace                         lat  lon   elev    t(°C)  moist  B
 console.log('─'.repeat(110));
 for (const [name, lat, lon, exp] of PLACES) {
   const s = sample(lat, lon);
-  const b = getBiomeD(s.e, s.m, s.t, 0);
+  const b = getBiomeD(s.e, s.m, s.t, 0, w.dryFrac ? w.dryFrac[s.i] : 0);
   const eStr = s.e <= 0 ? 'ocean' : s.e.toFixed(3);
   console.log(
     `${name.padEnd(26)} ${String(lat).padStart(4)} ${String(lon).padStart(4)}  ${eStr.padStart(6)}  ${toC(s.t).padStart(4)}   ${s.m.toFixed(2)}   ${BN[b].padEnd(14)}   ${exp}`);

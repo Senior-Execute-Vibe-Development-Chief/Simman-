@@ -109,13 +109,36 @@ const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / 
 'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
 'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine',
 'Subtropical Forest','Cold Desert','Floodplain'];
-function getBiomeD(e,m,t,sl,flood){
+// dry = fraction of the year that is dry (0-1), from the seasonal solves (world.dryFrac).
+// Optional: 0 means "no dry season known", which reproduces the old behaviour exactly.
+function getBiomeD(e,m,t,sl,flood,dry){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
   if(flood)return 19;   // arid-river floodplain: its own biome, not the savanna its t+m alone reads as
   // Effective moisture: cold regions retain moisture (low evaporation),
   // hot regions lose it to evaporation (Holdridge PET principle).
   const demand=.5+t*.5;
-  const em=Math.min(1,m/demand);
+  let em=Math.min(1,m/demand);
+  // Dry-season LENGTH. The same annual water carries rainforest if it arrives all year
+  // and savanna if it arrives in one half of it — that is the Koppen Af/Am-vs-Aw
+  // distinction, and it is a property of the vegetation, not of the water. It belongs
+  // here. (It used to be applied by subtracting from `moisture` itself back in worldgen,
+  // which made seasonal regions read as physically arid to the fertility, river and
+  // migration systems that share that field.) Rainforest sits at or below ~1/4 of the
+  // year dry, real savanna well above it, so the ramp spans the gap between them.
+  // Only where it is warm enough for a dry season to mean DROUGHT. A cold winter is
+  // dry too, but the vegetation does not starve for water in it — evaporation is near
+  // zero — which is exactly the Koppen A-vs-C split (savanna Aw vs humid-subtropical
+  // Cwa: monsoon China has a bone-dry winter and is forest). Without this gate the
+  // axis turns W Europe, the eastern US and New Zealand into grassland.
+  const warmth=Math.max(0,Math.min(1,(t-.79)/.035));
+  if(dry>0&&warmth>0){
+    // Floored at the savanna threshold: a long dry season turns forest into GRASSLAND,
+    // it does not make desert. Desert is a shortfall in the yearly total, and that is
+    // `m`'s business — without the floor a monsoon plain with real rainfall (the Ganges)
+    // gets multiplied straight past savanna into shrubland.
+    const seas=em*(1-.68*warmth*Math.max(0,Math.min(1,(dry-.28)/.10)));
+    em=Math.max(seas,Math.min(em,.17));
+  }
   // Biome temperature bands on the calibrated air-temp scale (t = 0.60 + °C/100):
   // ICE < -15°C · tundra -15..-2 · taiga -2..+5 · temperate +5..+18 ·
   // subtropical +18..+25 · tropical > +25°C. (Moisture em then picks
@@ -128,7 +151,7 @@ function getBiomeD(e,m,t,sl,flood){
   if(t<.85)return em>.54?17:em>.36?15:em>.16?11:em>.09?14:13;  // subtropical (wider savanna)
   return em>.56?10:em>.38?15:em>.16?11:em>.09?12:13;           // tropical (wider savanna belt)
 }
-function getColorD(e,m,t,sl,flood){const c=BC[getBiomeD(e,m,t,sl,flood)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
+function getColorD(e,m,t,sl,flood,dry){const c=BC[getBiomeD(e,m,t,sl,flood,dry)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 
 // ── Live country colouring (Country view) ───────────────────────────
@@ -831,7 +854,7 @@ const sd=seaDist[i];
 if(sd<HALO&&!(lk&&lk[si]>=0)){const hh=1-sd/HALO,hk=hh*hh;
 r-=hk*86;g-=hk*87;b-=hk*79;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
-const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
+const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0,0,w.dryFrac?w.dryFrac[si]:0);
 let r=197,g=174,b=126;
 // broad uneven aged tone
 r+=big*40;g+=big*37;b+=big*31;
@@ -931,7 +954,7 @@ const px=(gx+(atlasHash(gx+2,gy+3)-0.5)*8)|0,py=(gy+(atlasHash(gx+5,gy+7)-0.5)*8
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0);
+const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0);
 const h=atlasHash(gx+11,gy+4),tone=atlasHash(gx+3,gy+9);
 if(biome===12){if(h>0.42+m*0.5)continue;atlasTuft(octx,px,py,2.6+tone*2.1,tone);}
 else if(biome===11){if(h>0.4)continue;
@@ -967,7 +990,7 @@ const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*5)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*5
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0);
+const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0);
 let cover=0,kind=0;                          // kind: 0 conifer, 1 deciduous, 2 acacia
 if(biome===6){cover=0.40;kind=0;}            // taiga — fir, closed forest
 else if(biome===8||biome===17){cover=0.42;kind=1;} // temperate / subtropical — broadleaf
@@ -984,7 +1007,7 @@ const px=(gx+(atlasHash(gx+1,gy+5)-0.5)*4)|0,py=(gy+(atlasHash(gx+6,gy+2)-0.5)*4
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0);
+const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0);
 if(bm!==9&&bm!==10&&bm!==7)continue;
 if(atlasHash(gx+7,gy+9)>0.95)continue;
 const tone=atlasHash(gx+2,gy+11);
@@ -996,7 +1019,7 @@ const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6
 if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si],dm=w.moisture[si];
-if(getBiomeD(e,dm,w.temperature[si],0)!==13)continue;
+if(getBiomeD(e,dm,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0)!==13)continue;
 if(atlasHash(gx+3,gy+7)>0.62-dm*1.6)continue;
 octx.fillStyle="rgba(120,84,38,0.5)";
 octx.beginPath();octx.arc(px,py,0.7,0,6.2832);octx.fill();}
@@ -2638,7 +2661,7 @@ const temp=w.temperature[i]||0;
 const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
 const moist=terTi>=0&&terRef.current?terRef.current.tMoist[terTi]:(w.moisture[i]||0);
 const isFlood=terTi>=0&&terRef.current&&terRef.current.tFlood?terRef.current.tFlood[terTi]===1:false;
-const biome=getBiomeD(elev,moist,temp,0,isFlood);
+const biome=getBiomeD(elev,moist,temp,0,isFlood,w.dryFrac?w.dryFrac[i]:0);
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*100-60);// range: -60°C to +40°C

@@ -76,6 +76,10 @@ function carveStraits(elevation, W, H) {
 export function generateWorld(W, H, seed, preset, oceanLevel, _legacyArg = true, realWind = false, _tecParams = {}, realWindFns = null) {
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
+// Fraction of the year that is dry (0-1), from the seasonal solves. A CLASSIFICATION
+// axis — how the year's water is DISTRIBUTED — kept separate from `moisture`, which is
+// how much of it there is. Zero for presets with no seasonal solve.
+const dryFrac=new Float32Array(W*H);
 let tecPlates=null,tecWindX=null,tecWindY=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
@@ -480,13 +484,12 @@ const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.58*(1-0.9*monsoon
 // the savanna-belt drying below.)
 const contBand=Math.max(0,Math.min(1,(tLat-0.26)/0.08))*Math.max(0,Math.min(1,(0.68-tLat)/0.12));
 const contDry=e>0?inland*inland*contBand*0.05*(1-0.85*monsoon):0;
-// Tropical savanna belt (~9-22°): a long DRY SEASON the annual-mean solver can't
-// see leaves the Sahel, Cerrado, Llanos, N-Australian and Sudanian savannas far too
-// wet (rainforest). A moderate drying here — inland-gated (humid coasts spared),
-// equatorward-tapered (the everwet ITCZ rainforest at 0-8° untouched) and east-coast
-// spared — opens up the savanna belt between the rainforest and the deserts.
-const savBelt=Math.exp(-((tLat-0.18)*(tLat-0.18))/(2*0.07*0.07))*Math.max(0,Math.min(1,(tLat-0.07)/0.05));
-const savDry=e>0?savBelt*(0.25+0.75*inland)*0.20*(1-0.4*monsoon):0;
+// (The latitude-banded "savanna belt" drying that sat here has been removed. It existed
+// to open a savanna band between rainforest and desert back when the solver could not see
+// seasonality at all, and it did so by claiming the belt was short of water. The three-
+// season solve measures the dry season directly now and the classifier reads it, so the
+// belt emerges from its own climate rather than from a latitude Gaussian — and the
+// moisture field is left telling the truth.)
 // ── Saharo-Arabian / Horn aridity ─────────────────────────────────────────────
 // The annual-mean solver floods the warm seas ringing Arabia and the Horn (Red Sea,
 // Persian Gulf, Arabian Sea) with evaporated moisture that never rains out in reality:
@@ -536,11 +539,17 @@ const mS=summerWet,mE=moistEq[i],mWn=drySeason;
 const qb=(mS-mWn)*0.5,qc=(mS+mWn-2*mE)*0.5;
 let dryMonths=0;
 for(let k=0;k<12;k++){const s=SEASON_S[k];if(mE+qb*s+qc*s*s<0.55)dryMonths++;}
-const dryFrac=dryMonths/12;
-// Rainforest lands at or below ~1/4 of the year dry (Amazon 0.08, Congo and Guinea 0.25),
-// real savanna well above it (Cerrado 0.42, N Australia 0.7, Sahel 0.75), so the ramp sits
-// in the gap between them.
-const savSeasonDry=e>0?Math.max(0,Math.min(1,(dryFrac-0.28)/0.17))*0.42*savWarm:0;
+const dryFracLocal=dryMonths/12;
+// EXPORTED, not subtracted from the moisture. Dry-season length decides which VEGETATION
+// a given amount of yearly water carries — a classification axis, not a claim that less
+// water fell. Folding it into `moisture` (as this did until now) told every downstream
+// consumer of that field a falsehood: moisture drives tileFert, and through it food,
+// population and settlement, so a merely SEASONAL region was reported as physically arid.
+// Measured, it removed 50-72% of the solved moisture across the savanna belt (Sahel
+// 0.71→0.20, Deccan 0.66→0.25) and cut the Sichuan basin's fertility factor from 0.85 to
+// 0.48 — the historic rice bowl of China rendered mediocre farmland to make a biome colour
+// come out right. The biome classifier reads this field directly instead.
+dryFrac[i]=dryFracLocal;
 // ── Patagonian / Monte rain shadow ──────────────────────────────────────────────
 // The real southern Andes (2-3 km) wring the westerlies into steppe-to-desert from
 // ~35-52°S; but the heightmap renders that cordillera at barely 0.1 elevation, too low
@@ -550,9 +559,16 @@ const patShadow=e>0?Math.exp(-((latS-0.49)*(latS-0.49))/(2*0.095*0.095))*Math.ex
 // ── Combine the drying ──
 // Subtropical subsidence + the Arabian/Patagonian terms build the true deserts (0.02).
 // Continental + savanna drying only thin forest into steppe/savanna (grassland floor).
+// Only PHYSICAL water losses belong here — subsidence, the Arabian upwelling and the
+// Patagonian rain shadow build the true deserts (0.02), and continentality thins the
+// interior toward steppe. The savanna terms that used to sit in this sum never claimed
+// water was missing, only that it arrived in one season; they leave `moisture` alone now
+// and are read by the classifier (see dryFrac above). This field once again means "how
+// much water this ground gets", which is what the fertility, river, resource and
+// migration systems all assume they are reading.
 let mo=Math.max(0.02,windMoisture[i]-subtropDry-arabiaDry-patShadow);
-const steppeDry=contDry+savDry+savSeasonDry,steppeFloor=0.15;
-mo=mo>steppeFloor?Math.max(steppeFloor,mo-steppeDry):mo;
+const steppeFloor=0.15;
+mo=mo>steppeFloor?Math.max(steppeFloor,mo-contDry):mo;
 // ── South Asian monsoon foreland ───────────────────────────────────────────────
 // The Indo-Gangetic plain, Bengal/Assam and the Irrawaddy are among the wettest, most
 // fertile lands on Earth — drenched by the summer monsoon off the Bay of Bengal. But
@@ -772,4 +788,4 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
+return{elevation,moisture,temperature,dryFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
