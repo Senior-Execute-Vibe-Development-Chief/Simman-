@@ -111,6 +111,27 @@ polities by step 4000) is a separate, milder question.
 > with plural faiths surviving (FAITH_FRONTIER), faith-clash annotations
 > dominate late declarations on 31337 (137 of 173/1k) — more mixed-faith
 > dyads exist to clash; watch, don't tune.
+>
+> **STEP-0 CLASSIFICATION (session 3, the probe's rematch×trade tally,
+> 8817):** the interdependence route is measured OUT as the primary fix —
+> **~70 % of late declarations are between pairs with ZERO cross-border
+> trade** (the existing trade terms can't touch them), rematch share rises
+> to ~50-60 %, and `heavyTrade == traded` in every window (the attack bar's
+> `TRADE_PEACE_REF = 8` is an ABSOLUTE coin threshold, saturated by any
+> nonzero trade — the same fitted-constant class the truce pass already
+> fixed for itself with the era-median; recorded for a calibration pass).
+> **BUILT: `T.TRUCE_TOLL` (default 0)** — the treaty's DURATION now scales
+> with the war's own reckoned toll (dead over the belligerents' combined
+> people, saturating at the ~3 % great-war scale): great wars buy
+> generation-plus peaces for THAT pair, skirmishes buy the base paper, the
+> marches stay restless as intended. This is the chronicle review's "war
+> outcomes ignore battlefield events" fixed at the treaty site. **Default
+> stays 0 honestly:** the single-seed aggregate A/B is chaos-dominated
+> (the toll world re-rolled into an active-horde, faith-war trajectory —
+> the G-equivalence lesson; began/1k is not a per-mechanism readout), and
+> the DIRECT metric — the re-flare interval of the SAME pair after a
+> bloody war, baseline vs toll — needs its own small analysis probe.
+> That measurement is the named resume trigger for the flip decision.
 
 ### 4. "Everyone runs on slave trade" — PARTIALLY confirmed
 World slave-trade share of all income: 1.3–7.0 %. Realms with slaving >10 %
@@ -136,6 +157,19 @@ supply channels before touching anything.
 > industrial/organizational development raises the productivity and
 > monitoring cost gap, riding the same machinery the serfdom fork already
 > uses) — NOT a date-triggered abolition. Next-session candidate.
+>
+> **BUILT (session 3): `T.FREE_LABOUR` — free labour outcompetes the
+> gang.** Where a settlement crosses the industrial band (the SAME
+> org 0.78–0.96 × metallurgy 0.78–0.96 gate the industrial-mobility
+> learning uses), its coerced-labour demand is divided by
+> `1 + FREE_LABOUR·band`; the market stops refilling and the stock bleeds
+> out through the existing attrition sink. **The A/B is the ideal safety
+> profile:** the FREE_LABOUR=4 world is BYTE-IDENTICAL to baseline until
+> ~step 22k on 8817 — no settlement crosses the band before then, so the
+> lever provably cannot touch any history that hasn't industrialized —
+> and the first divergence lands exactly with industry (unfree −1.5 %,
+> world slave income 4.0→3.3 % by 24k, the arc's beginning; its full
+> expression lives at 30k+ horizons). Realm by realm, never a date.
 
 ### 5. Sub-Saharan Africa — WORKING, arguably not deep enough
 The stack (TSETSE 0.85 stripping draft animals, malaria/arid signals,
@@ -184,15 +218,21 @@ Recorded here so the next session starts from the number, not the vibe.
    8817's 89 % consolidation runs through the open state channel (an
    emergent reason, accepted). A stylized faith-plurality gate remains an
    owner option once more seeds are observed.
-4. **Late-war density breakdown** — ✅ measured (`probe_war_slavery.mjs`):
-   the late game is permanent diplomatic FLICKER, not permanent war (0–5 of
-   ~60 realms at war while ~100 wars/1k are declared-and-truced). The next
-   mechanism arc here is system-level peace (congress/interdependence eras);
-   cheap chronicle rider: a `rematch` annotation on re-flares.
-5. **Slave-supply narrowing** — ✅ measured: in-band (unfree 3–7 % of pop,
-   state-on-stateless supply as designed); the real gap is the missing
-   emergent DECLINE of coerced labour as wage economies mature (unfree share
-   still rising at 24k). Next-session candidate.
+4. **Late-war density** — ✅ measured, decomposed, and half-built: the
+   flicker is ~70 % non-trading pairs and ~50-60 % rematches (the trade
+   route is measured out); the `rematch` chronicle rider SHIPPED;
+   **`TRUCE_TOLL` BUILT, default 0** — the treaty's duration now can scale
+   with the war's own toll, but the flip waits on its DIRECT metric (the
+   same pair's re-flare interval after a bloody war), because aggregate
+   war counts are trajectory-chaotic and a single-seed A/B proved nothing
+   either way. Also recorded: the attack bar's `TRADE_PEACE_REF = 8` is an
+   absolute coin threshold (saturated binary in practice) — a calibration
+   pass should re-derive it against the era median like the truce pass did.
+5. **Coerced-labour decline** — ✅ **BUILT + FLIPPED (`FREE_LABOUR=4`)**:
+   industrial settlements' gang-labour demand collapses and stocks bleed
+   out through the existing attrition sink; provably byte-identical until
+   the industrial band is actually crossed (~22k on 8817 — beyond every
+   validated horizon), gates 3/3 at the baseline warning profile.
 6. **Moisture/India (b)** and **Europe-first (7)** — worldgen-side arcs,
    owner-scheduled.
 

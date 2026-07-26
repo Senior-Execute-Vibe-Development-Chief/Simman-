@@ -927,7 +927,24 @@ export function updateCoercedLabour(world, s) {
   const csDem = T.SLAVE_PULL > 0
     ? (cs * cs / 1.5) * (0.15 + 0.85 * Math.min(1, ((s._mInRate && s._mInRate[IN_LUXURY]) || 0) / Math.max(0.5, s._luxSupply || 0)))
     : cs;
-  const labourDemand = csDem + SLAVE_MINE_PULL * hasMine + ESTATE_PULL * est;   // coerced labour this site could USE
+  let labourDemand = csDem + SLAVE_MINE_PULL * hasMine + ESTATE_PULL * est;   // coerced labour this site could USE
+  // Free labour outcompetes (T.FREE_LABOUR): where THIS settlement has genuinely
+  // industrialized — the same org×metallurgy band the industrial-mobility learning
+  // gates on — wage labour and machine production outbid the coerced gang:
+  // monitoring costs rise with the skill content of the work and capital displaces
+  // raw muscle, so demand falls away and the stock bleeds out through the existing
+  // attrition sink WITHOUT replacement (the market only fills up to target). This
+  // is the emergent decline the 2026-07 war+slavery breakdown measured missing —
+  // unfree share still RISING at 24k with nothing ever eroding it. Realm by realm,
+  // early industrializers manumit first, agrarian estate belts hold on longest,
+  // and a world that never industrializes keeps its slave economies forever —
+  // never a date. 0 = no substitution (byte-identical).
+  if (T.FREE_LABOUR > 0) {
+    const kL = s.knowledge || {};
+    const ind = Math.min(1, Math.max(0, ((kL.organization || 0) - 0.78) / 0.18))
+              * Math.min(1, Math.max(0, ((kL.metallurgy || 0) - 0.78) / 0.18));
+    if (ind > 0) labourDemand /= 1 + T.FREE_LABOUR * ind;
+  }
   // Food security: can it feed extra mouths AND afford to stop growing its own food?
   // surplus on hand + a trade link to import grain (a plantation must import food).
   const surplus = Math.max(0, (s._foodSupply || 0) - (s._foodDemand || 0));

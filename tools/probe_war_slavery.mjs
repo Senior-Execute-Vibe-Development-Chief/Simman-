@@ -27,11 +27,24 @@ function report(step) {
   // ── war events this window ──
   const evs = world.events || [];
   const n = { began: 0, ended: 0, dead: 0, maxDead: 0, capt: 0, shat: 0, horde: 0, indem: 0,
-    crisis: 0, claim: 0, faithClash: 0 };
+    crisis: 0, claim: 0, faithClash: 0, rematch: 0, traded: 0, heavy: 0 };
+  // era-median pair trade (the same self-calibrating ref the truce pass uses)
+  const pt = world._tradePairs;
+  let tradeRef = 1e-6;
+  if (pt && pt.size) { const vs = [...pt.values()].sort((x, y) => x - y); tradeRef = Math.max(1e-6, 2 * vs[vs.length >> 1]); }
   for (; evCursor < evs.length; evCursor++) {
     const e = evs[evCursor];
     switch (e.type) {
-      case "war.began": n.began++; n.crisis += e.crisis || 0; n.claim += e.claim || 0; n.faithClash += e.faithClash || 0; break;
+      case "war.began": {
+        n.began++; n.crisis += e.crisis || 0; n.claim += e.claim || 0; n.faithClash += e.faithClash || 0;
+        n.rematch += e.rematch || 0;
+        // classify the dyad by CURRENT pair trade (within-window approximation)
+        const key = Math.min(e.from, e.to) + ":" + Math.max(e.from, e.to);
+        const tr = pt ? (pt.get(key) || 0) : 0;
+        if (tr > 0) n.traded++;
+        if (tr / tradeRef >= 0.5) n.heavy++;
+        break;
+      }
       case "war.ended": n.ended++; n.dead += e.dead || 0; if ((e.dead || 0) > n.maxDead) n.maxDead = e.dead || 0; break;
       case "settlement.captured": n.capt++; break;
       case "polity.shattered": n.shat++; break;
@@ -52,7 +65,7 @@ function report(step) {
   const alive = [...politiesOf(world).values()].filter((p) => p.endedStep < 0).length;
   const era = world._eraAt ? world._eraAt.length - 1 : 0;
   const k = 1000 / REPORT;
-  console.log(`@${String(step).padStart(6)} era=${era} pol=${alive} | began/1k=${(n.began * k).toFixed(1)} (crisis=${n.crisis} claim=${n.claim} faith=${n.faithClash}) ended/1k=${(n.ended * k).toFixed(1)} capt/1k=${(n.capt * k).toFixed(1)} shat/1k=${(n.shat * k).toFixed(1)} horde/1k=${(n.horde * k).toFixed(1)} indem/1k=${(n.indem * k).toFixed(1)} | fronts=${frontPairs} truces=${truces} atWar=${atWar}/${realms} | deadTot=${Math.round(n.dead)} deadMax=${Math.round(n.maxDead)}`);
+  console.log(`@${String(step).padStart(6)} era=${era} pol=${alive} | began/1k=${(n.began * k).toFixed(1)} (crisis=${n.crisis} claim=${n.claim} faith=${n.faithClash} rematch=${n.rematch} traded=${n.traded} heavyTrade=${n.heavy}) ended/1k=${(n.ended * k).toFixed(1)} capt/1k=${(n.capt * k).toFixed(1)} shat/1k=${(n.shat * k).toFixed(1)} horde/1k=${(n.horde * k).toFixed(1)} indem/1k=${(n.indem * k).toFixed(1)} | fronts=${frontPairs} truces=${truces} atWar=${atWar}/${realms} | deadTot=${Math.round(n.dead)} deadMax=${Math.round(n.maxDead)}`);
 
   // ── slavery ──
   let pop = 0, unfree = 0, captives = 0, raidersC = 0, raidersS = 0, sellers = 0, buyers = 0;
