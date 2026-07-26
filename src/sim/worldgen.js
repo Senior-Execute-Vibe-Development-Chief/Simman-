@@ -428,8 +428,13 @@ const humidSubtrop=Math.min(1,Math.max(0,(tLat-0.23)/0.05));
 const llj=Math.exp(-((latS-0.30)*(latS-0.30))/(2*0.11*0.11))    // ~15-39°S (Chaco→Pampas)
   *Math.exp(-((lonDeg+60)*(lonDeg+60))/(2*7*7))                 // lee of the Andes, ~53-67°W
   *Math.max(0,1-Math.max(0,e-0.05)*7);                          // low ground only
+// A true desert is dry in EVERY season; a monsoon or wet-season climate is not. So the
+// spare keys on the WETTEST half-year (max of the two solves), not specifically summer —
+// otherwise a place whose rains fall in the OTHER half (e.g. the interior-China Yangtze
+// basin, wet in the solver's winter) is desertified despite having a real rainy season.
+const wetSeason=Math.max(moistSum[i],moistWin[i]);
 const monsoon=Math.max(
-  Math.max(0,Math.min(1,(summerWet-0.45)/0.22)),
+  Math.max(0,Math.min(1,(wetSeason-0.45)/0.22)),
   Math.max(llj, Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2))*humidSubtrop));
 const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.58*(1-0.9*monsoon):0;
 // Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
