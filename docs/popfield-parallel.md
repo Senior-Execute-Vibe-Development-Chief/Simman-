@@ -294,6 +294,10 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
    Gates for the flip: probe_hashbase runs the pool by default now and must
    keep printing the canonical pair; snapshot identity re-proven including
    an 8-band oversubscription leg; smoke + validate under AUTO.
+   **Hosting prerequisite CLEARED same day** — the coi-serviceworker shim
+   ships in the page (§8.4): the published site is cross-origin isolated
+   even on GitHub Pages, so the app flip now waits only on §8.4(a) (worker
+   resolution from the inlined sim worker) and soak.
 
 ## 6. Proof battery (all must pass before any default moves)
 
@@ -338,9 +342,19 @@ workers (until Stage B lands, resolves to the one-thread gather). Ship order:
    pool is ready by the next firing (workers boot on their own threads while
    the sim steps), and the interim firings take the identical-result fallback
    — no eager path needed anywhere.
-4. Band balance: CLOSED by Stage C's adaptive balancer (timing-feedback
-   resize per firing) — the pass sits at ~the Amdahl bound. Remaining open:
-   production hosting's isolation headers (the coi-serviceworker decision),
-   and the single-file build's treatment of the worker chunk
-   (vite-plugin-singlefile vs emitted worker files — verify before any
-   browser default flip).
+4. Band balance: CLOSED by Stage C's adaptive balancer. Hosting: CLOSED
+   2026-07-25 (owner chose the shim) — public/coi-serviceworker.js
+   (vendored v0.1.7, MIT) + a classic relative <script> first in
+   index.html's head: on hosts that can't send COOP/COEP (GitHub Pages) it
+   registers, reloads ONCE, and synthesizes the headers; where real headers
+   arrive it self-skips. Gate: tools/browser_pages_check.mjs serves the
+   BUILT dist/ with no headers (Pages-faithful, correct MIME) and requires
+   headless chromium to reach crossOriginIsolated=true + SharedArrayBuffer
+   — green. Build findings: the deploy must publish the whole dist/ (THREE
+   files — index.html, coi-serviceworker.js, and the band-worker chunk,
+   which vite emits as a ~6 kB sidecar even under vite-plugin-singlefile).
+   STILL OPEN before the app default flips to AUTO: (a) verify the band
+   worker resolves from the app's INLINED sim worker in the built page (an
+   inlined module's import.meta.url may be a blob:/page URL — if resolution
+   fails the pool falls back cleanly, but the flip would buy nothing), and
+   (b) player-session soak per §5.4.
