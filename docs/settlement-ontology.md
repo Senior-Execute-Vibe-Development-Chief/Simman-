@@ -169,6 +169,39 @@ power, manpower, capacity, nomadism) and `s.people` (the economy's town
 census; production, casualties, taxes, seat power). Never sum them into one
 number.
 
+## THE URBAN FLOOR (2026-07) — an entity is a town; the countryside is the field
+
+Corollary of cities-only, made enforceable after the owner's review ("our
+settlements represent cities and large towns only, nothing lower"): a
+settlement ENTITY below town scale is an ontology violation — the sub-town
+world (hamlets, villages, dispersed countryside) is exactly what the
+popField is FOR, and the field peoples and develops the land on its own
+(logistic growth, migration, the devField wave — no entities required).
+
+Before this, the crystallisation sweep minted 18–26-person tier-1 entities:
+sub-floor "towns", many born stateless, that sat flagless in the wilderness
+for millennia and read on the map as cities without nations (measured, seed
+8817: 40+ such entities by step 4000, none ever exceeding ~175 people).
+Now (crystallize.js `TOWN_FOUND_MIN`/`TOWN_BASIN_MIN`/`TOWN_BASIN_R`):
+
+- The sweep founds an entity only where the catchment's FIELD population
+  can seed a real town (≥360 people within the ~10-reference-tile market
+  catchment), and the founding (90–118) is DRAWN OUT of that basin
+  (`fieldShift` debit + the ONE_POP credit at the site) — a town is a
+  concentration of its countryside, not a minted speck. One population,
+  conserved; smoke-verified.
+- Genesis cradles seed at 110 (a natural proto-town — Eridu/Çatalhöyük
+  scale), 240 under the legacy eve-of-states lever.
+- Rode-away steppe camps stay small and stateless by design — they are the
+  horde system's mobile seats (ordu), not towns; the one documented
+  exception.
+- Statelessness itself remains (it must: states are BORN from the
+  stateless — nucleateFrontierStates), but it is now what it was in
+  history: a transient population of real pre-state towns (the
+  Çatalhöyük/Trypillia phenomenon) that found or join polities as their
+  organisation crosses the statecraft bar, plus the steppe. No sub-town
+  flagless specks.
+
 
 ---
 

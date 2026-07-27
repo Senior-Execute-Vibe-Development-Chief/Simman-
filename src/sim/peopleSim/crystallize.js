@@ -211,6 +211,26 @@ const RIDE_AWAY_OPEN_MIN        = 0.5;
 // fraction of the realm's (capital's) level. Emergent — keyed on the nation's actual
 // development, never a date/era.
 const NATION_TECH_FLOOR         = 0.5;
+// ── THE URBAN FLOOR (cities-only ontology, 2026-07) ─────────────────────
+// A settlement ENTITY represents a CITY or LARGE TOWN — never less. The
+// sub-town world (hamlets, villages, the dispersed countryside) is the
+// popField, which peoples and develops the land on its own (logistic
+// growth + migration + the devField wave). The sweep therefore founds an
+// entity only where the surrounding basin's FIELD people can actually seed
+// a town, and the founding population is drawn OUT of that basin
+// (fieldShift debit here + the ONE_POP credit inside makeSettlement): a
+// town is a CONCENTRATION of its countryside, not a minted speck. Before
+// this, the sweep minted 18–26-person tier-1 entities — sub-floor "towns"
+// that sat flagless in the wilderness for millennia (the complaint that
+// prompted this: no city or large town has ever stood outside all polity;
+// what history has is peopled countryside, which the FIELD already is).
+// Rode-away steppe camps are the one documented exception (the horde
+// system's mobile seats — ordu, not towns; conquest.js nomad path). A
+// legacy config without the population field keeps the old village-scale
+// births — there is no countryside substrate to concentrate from.
+const TOWN_FOUND_MIN            = 90;    // smallest founding a town entity may have (= URBAN_MIN_POP: a viable town seed)
+const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold first (~4× the founding — the town gathers a quarter of its basin)
+const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (×rn at the use site; = URBAN_CATCHMENT, one market catchment)
 // A settlement spontaneously arising on a STATE'S land (its core or claimed
 // marches, world._countryOwner) is born INTO that state; one arising in genuine
 // wilderness is born INDEPENDENT (a new country). See the spawn block below.
@@ -652,8 +672,28 @@ export function maybeCrystallize(world) {
         if (dd2 > fed * fed && !rodeAway) continue;
       }
       if (!extension && !rodeAway) continue;   // demographic gate: connected extension or horde birth — a FLAG is not required to be born (see the statecraft symmetry above)
+      // THE URBAN FLOOR: an entity is a town, and a town only coalesces where
+      // the countryside can people it. Read the basin's field mass; too thin →
+      // no entity yet — the ground stays field-peopled countryside (the wave
+      // of advance carries on in the FIELD; the town follows the people, not
+      // the other way round). Camps are exempt (ordu, not towns — see above).
+      const townScale = !rodeAway && !!world.popField;
+      if (townScale) {
+        const pf = world.popField;
+        const rB = Math.round(TOWN_BASIN_R * rn);
+        let basin = 0;
+        for (let dy = -rB; dy <= rB; dy++) {
+          const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+          for (let dx = -rB; dx <= rB; dx++) {
+            if (dx * dx + dy * dy > rB * rB) continue;
+            basin += pf[yy * tw + (((tx + dx) % tw) + tw) % tw];
+          }
+        }
+        if (basin < TOWN_BASIN_MIN) continue;
+      }
       // (people drawn here, after the last reject, so the rng stream is unchanged)
-      const bornPeople = 18 + (rng.int(8));
+      const roll = rng.int(8);
+      const bornPeople = townScale ? TOWN_FOUND_MIN + roll * 4 : 18 + roll;
       // FISC TEST (T.FISC_ADOPT): booking a newborn community onto the tax rolls is
       // an act of administration the court must be able to AFFORD — the capacity its
       // people bring must cover the admin load of governing them (entities.js). A
@@ -676,6 +716,11 @@ export function maybeCrystallize(world) {
         const nk = jc.capital.knowledge;
         for (const kk in bornKnow) { const fl = NATION_TECH_FLOOR * (nk[kk] || 0); if (fl > bornKnow[kk]) bornKnow[kk] = fl; }
       }
+      // The founders leave the countryside: debit the basin field around the
+      // site (ring-cascade, nearest first) — makeSettlement's ONE_POP credit
+      // then stands them at the new town, so founding a town moves people off
+      // the land instead of creating them (one population, conserved).
+      if (townScale) fieldShift(world, { pos: { x: tx + 0.5, y: ty + 0.5 } }, -bornPeople);
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: bornPeople,
         knowledge: bornKnow,
