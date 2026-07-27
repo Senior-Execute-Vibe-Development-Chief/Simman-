@@ -73,36 +73,21 @@ function depositField(tx, ty, tw, th, salt, freq, threshold) {
   return (n - threshold) / (1 - threshold); // 0 at edge, 1 at center of deposit
 }
 
-// Biome IDs (matching WorldSim.jsx getBiomeD)
-const B_TUNDRA = 4, B_TAIGA = 6, B_BOREAL = 7, B_TEMP_FOREST = 8,
-  B_TEMP_RAIN = 9, B_TROP_RAIN = 10, B_SAVANNA = 11, B_GRASSLAND = 12,
-  B_DESERT = 13, B_SHRUBLAND = 14, B_TROP_DRY = 15, B_ALPINE = 16,
-  B_SUBTROP = 17, B_COLD_DESERT = 18;
+// The classifier lives in ONE place now (src/sim/biomeClass.js) — this file used to
+// carry a hand-synced copy of it, as did WorldSim.jsx and every probe in tools/.
+import { classifyBiome, B_TUNDRA, B_TAIGA, B_BOREAL, B_TEMP_FOREST, B_TEMP_RAIN,
+  B_TROP_RAIN, B_SAVANNA, B_GRASSLAND, B_DESERT, B_SHRUBLAND, B_TROP_DRY,
+  B_ALPINE, B_SUBTROP, B_COLD_DESERT } from "./biomeClass.js";
 
-function getBiome(e, m, t) {
-  if (e <= 0) return -1;
-  const demand = 0.5 + t * 0.5;
-  const em = Math.min(1, m / demand);
-  // Biome temperature bands on the calibrated air-temp scale (kept in sync with
-  // WorldSim.jsx getBiomeD): ICE <-15°C · tundra -15..-2 · taiga -2..+5 ·
-  // temperate +5..+18 · subtropical +18..+25 · tropical > +25°C.
-  if (t < 0.45) return 5;
-  if (t < 0.52) return em > 0.4 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
-  if (t < 0.58) return em > 0.35 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
-  if (t < 0.65) return em > 0.45 ? B_BOREAL : em > 0.25 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
-  if (t < 0.78) return em > 0.58 ? B_TEMP_RAIN : em > 0.40 ? B_TEMP_FOREST : em > 0.14 ? B_GRASSLAND : B_DESERT;
-  if (t < 0.85) return em > 0.54 ? B_SUBTROP : em > 0.36 ? B_TROP_DRY : em > 0.16 ? B_SAVANNA : em > 0.09 ? B_SHRUBLAND : B_DESERT;
-  return em > 0.56 ? B_TROP_RAIN : em > 0.38 ? B_TROP_DRY : em > 0.16 ? B_SAVANNA : em > 0.09 ? B_GRASSLAND : B_DESERT;
-}
-
-export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed, rivers) {
+export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed, rivers, tDryFrac, tSummerDry) {
   const N = tw * th;
   const RES = world.width ? Math.round(world.width / tw) : 1;
 
   // Pre-compute biome per tile
   const tileBiome = new Int8Array(N);
   for (let ti = 0; ti < N; ti++) {
-    tileBiome[ti] = getBiome(tElev[ti], tMoist[ti], tTemp[ti]);
+    tileBiome[ti] = classifyBiome(tElev[ti], tMoist[ti], tTemp[ti], tDryFrac ? tDryFrac[ti] : 0,
+      tSummerDry ? tSummerDry[ti] : 0);
   }
 
   // Plate boundary proximity (tectonic/earth modes)

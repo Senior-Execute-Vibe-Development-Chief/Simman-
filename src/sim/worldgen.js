@@ -20,7 +20,7 @@ import { initNoise, mkRng, fbm, noise2D, warp, ridged, worley } from "./worldgen
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
-import { solveMoisture } from "./moistureSolver.js";
+import { solveMoisture, terrainShelter } from "./moistureSolver.js";
 
 const RES = 1;
 
@@ -46,13 +46,15 @@ function dirDist(mask, W, H, dir, cap) {
 }
 
 // `realWindFns` is INJECTED ({ isRealWindAvailable, fillRealWind } from
-// realWindData.js) rather than imported: realWindData statically pulls the
-// 2.3MB NCEP wind JSON into whichever bundle imports it, and worldgen also
-// runs inside worldGenWorker — importing it here would inline that data into
-// the worker bundle a second time. Callers that want real winds (the main
-// thread's Earth-Sim checkbox) pass the functions in; everyone else omits
-// them and the solver wind is used. `_legacyArg` keeps the old positional
-// signature stable for the ~60 node probes in tools/.
+// realWindData.js, plus { isRealClimateAvailable, fillRealClimate } from
+// realClimateData.js) rather than imported: those modules statically pull ~5MB
+// of NCEP JSON into whichever bundle imports them, and worldgen also runs inside
+// worldGenWorker — importing them here would inline that data into the worker
+// bundle a second time. Callers that want the real climate (the main thread's
+// Earth-Sim checkbox) pass the functions in; everyone else omits them and the
+// solved wind and climate are used. Each half is probed independently, so a
+// caller may supply either, both or neither. `_legacyArg` keeps the old
+// positional signature stable for the ~60 node probes in tools/.
 // Sub-pixel narrow straits seal shut on the ~20 km/pixel Earth heightmap (the
 // Strait of Gibraltar is ~14 km — finer than one pixel), turning real seas into
 // closed lakes: the Mediterranean otherwise has NO naval link to the Atlantic.
@@ -76,6 +78,16 @@ function carveStraits(elevation, W, H) {
 export function generateWorld(W, H, seed, preset, oceanLevel, _legacyArg = true, realWind = false, _tecParams = {}, realWindFns = null) {
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
+// Fraction of the year that is dry (0-1), from the seasonal solves. A CLASSIFICATION
+// axis — how the year's water is DISTRIBUTED — kept separate from `moisture`, which is
+// how much of it there is. Zero for presets with no seasonal solve.
+const dryFrac=new Float32Array(W*H);
+// PHASE of the dry season, -1..1: >0 means the drought falls in the local SUMMER. That is
+// what makes a Mediterranean climate — sclerophyll scrub instead of forest — and Koppen's
+// Cs is defined by the phase alone, not by the annual total, so it cannot be recovered
+// from dryFrac (which only measures how LONG the drought is). It falls straight out of the
+// two solstice solves the monsoon already needs. Zero for presets with no seasonal solve.
+const summerDry=new Float32Array(W*H);
 let tecPlates=null,tecWindX=null,tecWindY=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
@@ -256,12 +268,18 @@ for(let i=0;i<W*H;i++)if(landMask[i])westFetch[i]=Math.min(_oceanDistW[i],wfScan
 // annual mean, advected by the season-averaged wind.
 let sumWX,sumWY,winWX,winWY;
 if(realWind&&realWindFns&&realWindFns.isRealWindAvailable()){
-// Real NCEP winds are an annual climatology — use the one field for both half-years
-// (the seasonal ITCZ shift in the moisture pass still recovers the monsoon rain belt).
-const rwX=new Float32Array(W*H),rwY=new Float32Array(W*H);
-realWindFns.fillRealWind(W,H,rwX,rwY);
-sumWX=winWX=rwX;sumWY=winWY=rwY;
-console.log("Earth (Sim): using real NCEP/NCAR wind data");
+// Real NCEP winds are TWELVE monthly grids, so take July for the boreal-summer solve and
+// January for the boreal-winter one. This used to fill a single annual mean and hand it to
+// both half-years — which is the very mistake that starves the monsoon: averaged over the
+// year the summer onshore inflow and the winter offshore outflow cancel, and the wettest
+// lands on Earth come out dry. Measured: feeding the solver annual-mean real winds scored
+// 59.4% against the solved wind's 65.2%, i.e. discarding the seasonal cycle cost more than
+// using observed winds gained.
+const sX=new Float32Array(W*H),sY=new Float32Array(W*H),wX=new Float32Array(W*H),wY=new Float32Array(W*H);
+realWindFns.fillRealWind(W,H,sX,sY,6);   // July
+realWindFns.fillRealWind(W,H,wX,wY,0);   // January
+sumWX=sX;sumWY=sY;winWX=wX;winWY=wY;
+console.log("Earth (Sim): using real NCEP/NCAR wind data (July / January)");
 }else{
 const sumWind=solveWind(W,H,elevation,fbm,{..._tecParams,season:1},seed*0.0137);
 const winWind=solveWind(W,H,elevation,fbm,{..._tecParams,season:-1},seed*0.0137);
@@ -274,8 +292,25 @@ for(let i=0;i<W*H;i++){tecWindX[i]=(sumWX[i]+winWX[i])*0.5;tecWindY[i]=(sumWY[i]
 const fWX=tecWindX,fWY=tecWindY;
 // Seasonal moisture (ITCZ + Hadley descent shifted ±13° with the sun), then keep the
 // WETTER half-year (lightly blended so a bone-dry season still pulls a cell down).
+// Terrain enclosure — a property of the ground, not the season; computed once and
+// read by the subtropical-belt drying further down.
+const shelterField=terrainShelter(W,H,elevation);
 const moistSum=solveMoisture(W,H,elevation,sumWX,sumWY,temperature,{..._tecParams,itczLat:13});
 const moistWin=solveMoisture(W,H,elevation,winWX,winWY,temperature,{..._tecParams,itczLat:-13});
+// ── The SHOULDER season (equinox) ───────────────────────────────────────────────
+// Two solstice solves measure how STRONG the wet/dry swing is; they cannot measure how
+// LONG the dry season lasts, and duration is what separates rainforest from savanna
+// (Koppen Af needs every month wet, Aw needs several dry months). Sampling the year at
+// the equinoxes as well as the solstices gives a third point — the sun on the equator,
+// no seasonal land-sea contrast — so a cell can be asked how much of the YEAR is dry
+// rather than how far it swings. The equinox configuration is season:0 / itczLat:0,
+// which is exactly the long-standing annual-mean setup, so it needs no new calibration.
+const eqWind=(realWind&&realWindFns&&realWindFns.isRealWindAvailable())
+  ?(()=>{const eX=new Float32Array(W*H),eY=new Float32Array(W*H);
+    realWindFns.fillRealWind(W,H,eX,eY);   // annual mean = the shoulder season
+    return{windX:eX,windY:eY};})()
+  :solveWind(W,H,elevation,fbm,{..._tecParams,season:0},seed*0.0137);
+const moistEq=solveMoisture(W,H,elevation,eqWind.windX,eqWind.windY,temperature,{..._tecParams,itczLat:0});
 const windMoisture=new Float32Array(W*H);
 for(let i=0;i<W*H;i++){const a=moistSum[i],b=moistWin[i];windMoisture[i]=Math.max(a,b)*0.82+Math.min(a,b)*0.18;}
 // Wind-advected temperature
@@ -345,6 +380,12 @@ const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
 const dx2=fx-ix,dy2=fy-iy;
 windTemp[y*W+x]=(tGrid[iy*mW2+ix]*(1-dx2)+tGrid[iy*mW2+Math.min(mW2-1,ix+1)]*dx2)*(1-dy2)
 +(tGrid[(iy+1)*mW2+ix]*(1-dx2)+tGrid[(iy+1)*mW2+Math.min(mW2-1,ix+1)]*dx2)*dy2;}
+// Sun-declination phase of each month: s = sin(2πk/12), where s=+1 is the local summer
+// solstice, s=0 the equinoxes and s=−1 the winter solstice. The three seasonal solves are
+// samples of the year AT s = +1, 0, −1, so a quadratic through them reconstructs the
+// annual moisture curve and these are the twelve points to read it at. Precomputed once —
+// this runs per pixel below.
+const SEASON_S=[0,0.5,0.8660254,1,0.8660254,0.5,0,-0.5,-0.8660254,-1,-0.8660254,-0.5];
 // Final temperature & moisture combination
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
 const e=elevation[i];
@@ -428,9 +469,25 @@ const humidSubtrop=Math.min(1,Math.max(0,(tLat-0.23)/0.05));
 const llj=Math.exp(-((latS-0.30)*(latS-0.30))/(2*0.11*0.11))    // ~15-39°S (Chaco→Pampas)
   *Math.exp(-((lonDeg+60)*(lonDeg+60))/(2*7*7))                 // lee of the Andes, ~53-67°W
   *Math.max(0,1-Math.max(0,e-0.05)*7);                          // low ground only
+// A true desert is dry in EVERY season; a monsoon or wet-season climate is not. So the
+// spare keys on the WETTEST half-year (max of the two solves), not specifically summer —
+// otherwise a place whose rains fall in the OTHER half (e.g. the interior-China Yangtze
+// basin, wet in the solver's winter) is desertified despite having a real rainy season.
+const wetSeason=Math.max(moistSum[i],moistWin[i]);
+//  (d) TERRAIN-ENCLOSED ground. The belt models Hadley subsidence drying the surface,
+//      but that acts on the ventilated column: air pooled in a basin, below the rim and
+//      not flushed by the mean flow, is partly decoupled from the descending free
+//      troposphere above it. This is why enclosed subtropical basins (Sichuan, the Po,
+//      the Fergana) are humid and fog-bound at latitudes where open ground is desert.
+//      Self-limiting, and that is what makes it safe: sparing the belt only preserves
+//      moisture a place ALREADY has, so an enclosed basin that nothing reaches (an arid
+//      interior basin) keeps its ~0.03 and stays a desert. Emergent from the heightmap —
+//      it scores 0 for the Sahara, the Australian interior, the Atacama and the US
+//      Southwest, which are open ground however rough.
+const basinShelter=shelterField[i];
 const monsoon=Math.max(
-  Math.max(0,Math.min(1,(summerWet-0.45)/0.22)),
-  Math.max(llj, Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2))*humidSubtrop));
+  Math.max(0,Math.min(1,(wetSeason-0.45)/0.22)),
+  Math.max(Math.max(llj, Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2))*humidSubtrop), basinShelter));
 const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.58*(1-0.9*monsoon):0;
 // Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
 // steppes and prairies — the Great Plains, the Eurasian steppe, the Pampas,
@@ -443,13 +500,12 @@ const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.58*(1-0.9*monsoon
 // the savanna-belt drying below.)
 const contBand=Math.max(0,Math.min(1,(tLat-0.26)/0.08))*Math.max(0,Math.min(1,(0.68-tLat)/0.12));
 const contDry=e>0?inland*inland*contBand*0.05*(1-0.85*monsoon):0;
-// Tropical savanna belt (~9-22°): a long DRY SEASON the annual-mean solver can't
-// see leaves the Sahel, Cerrado, Llanos, N-Australian and Sudanian savannas far too
-// wet (rainforest). A moderate drying here — inland-gated (humid coasts spared),
-// equatorward-tapered (the everwet ITCZ rainforest at 0-8° untouched) and east-coast
-// spared — opens up the savanna belt between the rainforest and the deserts.
-const savBelt=Math.exp(-((tLat-0.18)*(tLat-0.18))/(2*0.07*0.07))*Math.max(0,Math.min(1,(tLat-0.07)/0.05));
-const savDry=e>0?savBelt*(0.25+0.75*inland)*0.20*(1-0.4*monsoon):0;
+// (The latitude-banded "savanna belt" drying that sat here has been removed. It existed
+// to open a savanna band between rainforest and desert back when the solver could not see
+// seasonality at all, and it did so by claiming the belt was short of water. The three-
+// season solve measures the dry season directly now and the classifier reads it, so the
+// belt emerges from its own climate rather than from a latitude Gaussian — and the
+// moisture field is left telling the truth.)
 // ── Saharo-Arabian / Horn aridity ─────────────────────────────────────────────
 // The annual-mean solver floods the warm seas ringing Arabia and the Horn (Red Sea,
 // Persian Gulf, Arabian Sea) with evaporated moisture that never rains out in reality:
@@ -473,11 +529,46 @@ const arabiaDry=e>0?araLon*araLat*0.78:0;
 // left alone — within the warm latitudes where savanna forms.
 const drySeason=ny<0.5?moistWin[i]:moistSum[i];
 const savWarm=Math.max(0,Math.min(1,(0.34-tLat)/0.10));// warm tropics/subtropics only
-// Moderate strength: enough to open the savanna belt (Deccan, Cerrado, N-Australian
-// interior → dry-forest/savanna) without driving the very wet windward monsoon coasts
-// (Western Ghats) below forest. The everwet rainforests are spared by the threshold
-// (their wet/dry contrast is small).
-const savSeasonDry=e>0?Math.max(0,(summerWet-drySeason)-0.16)*0.80*savWarm:0;
+// Keyed on the dry season's LENGTH, not its depth. What separates rainforest from
+// savanna is how much of the year is dry (Koppen Af needs every month wet; Aw needs
+// several dry months) — and the wet/dry CONTRAST between two solstices cannot see that.
+// Measured: contrast ranks the Guinea coast (rainforest, 0.62) as MORE seasonal than the
+// Cerrado (savanna, 0.52) and the Llanos (savanna, 0.21) as LESS seasonal than the Congo
+// (rainforest, 0.23) — the values interleave, so no threshold on contrast can work, and
+// strengthening the term converted rainforest to savanna before it touched real savanna.
+// Sampling the year at the equinoxes as well (moistEq) lets the year be COUNTED instead:
+// four quarterly samples, of which the two equinoxes coincide, so the shoulder season
+// carries weight 2. That ordering is clean — Sahel 2.3, N Australia 1.6, Cerrado 1.2 all
+// sit above Guinea 1.0, SE Asia 0.7, Congo 0.6, Amazon 0.5, Indonesia 0.0 — and it needs
+// no latitude guard, because a place with rain in every season is spared on its own
+// merits wherever it lies. (An earlier build needed an explicit equatorward guard here
+// precisely because amplitude misreads the equator; duration does not.)
+// Counting whole quarters is too coarse to use directly: the count is an integer, so
+// Guinea (rainforest) and the Cerrado (savanna) both come out at "about one dry quarter"
+// and no threshold on it can separate them. But three samples need not be read as three
+// states — taken at s = +1, 0, −1 they define a quadratic in the sun's declination, which
+// IS the annual cycle, smooth and dominated by that one variable. So reconstruct the curve
+// and integrate it: walk the twelve months, evaluate the fitted moisture at each, and take
+// the FRACTION of the year below the dry threshold. That is the Koppen quantity — months
+// of drought — recovered at monthly resolution from three solves.
+const mS=summerWet,mE=moistEq[i],mWn=drySeason;
+const qb=(mS-mWn)*0.5,qc=(mS+mWn-2*mE)*0.5;
+let dryMonths=0;
+for(let k=0;k<12;k++){const s=SEASON_S[k];if(mE+qb*s+qc*s*s<0.55)dryMonths++;}
+const dryFracLocal=dryMonths/12;
+// EXPORTED, not subtracted from the moisture. Dry-season length decides which VEGETATION
+// a given amount of yearly water carries — a classification axis, not a claim that less
+// water fell. Folding it into `moisture` (as this did until now) told every downstream
+// consumer of that field a falsehood: moisture drives tileFert, and through it food,
+// population and settlement, so a merely SEASONAL region was reported as physically arid.
+// Measured, it removed 50-72% of the solved moisture across the savanna belt (Sahel
+// 0.71→0.20, Deccan 0.66→0.25) and cut the Sichuan basin's fertility factor from 0.85 to
+// 0.48 — the historic rice bowl of China rendered mediocre farmland to make a biome colour
+// come out right. The biome classifier reads this field directly instead.
+dryFrac[i]=dryFracLocal;
+// Local winter against local summer. Positive = a wet winter and a dry summer, which is
+// the Mediterranean signature; the monsoon lands sit strongly negative.
+summerDry[i]=(drySeason-summerWet)/Math.max(1e-6,drySeason+summerWet);
 // ── Patagonian / Monte rain shadow ──────────────────────────────────────────────
 // The real southern Andes (2-3 km) wring the westerlies into steppe-to-desert from
 // ~35-52°S; but the heightmap renders that cordillera at barely 0.1 elevation, too low
@@ -487,9 +578,16 @@ const patShadow=e>0?Math.exp(-((latS-0.49)*(latS-0.49))/(2*0.095*0.095))*Math.ex
 // ── Combine the drying ──
 // Subtropical subsidence + the Arabian/Patagonian terms build the true deserts (0.02).
 // Continental + savanna drying only thin forest into steppe/savanna (grassland floor).
+// Only PHYSICAL water losses belong here — subsidence, the Arabian upwelling and the
+// Patagonian rain shadow build the true deserts (0.02), and continentality thins the
+// interior toward steppe. The savanna terms that used to sit in this sum never claimed
+// water was missing, only that it arrived in one season; they leave `moisture` alone now
+// and are read by the classifier (see dryFrac above). This field once again means "how
+// much water this ground gets", which is what the fertility, river, resource and
+// migration systems all assume they are reading.
 let mo=Math.max(0.02,windMoisture[i]-subtropDry-arabiaDry-patShadow);
-const steppeDry=contDry+savDry+savSeasonDry,steppeFloor=0.15;
-mo=mo>steppeFloor?Math.max(steppeFloor,mo-steppeDry):mo;
+const steppeFloor=0.15;
+mo=mo>steppeFloor?Math.max(steppeFloor,mo-contDry):mo;
 // ── South Asian monsoon foreland ───────────────────────────────────────────────
 // The Indo-Gangetic plain, Bengal/Assam and the Irrawaddy are among the wettest, most
 // fertile lands on Earth — drenched by the summer monsoon off the Bay of Bengal. But
@@ -535,6 +633,19 @@ const wt=windTemp[i];
 const curAnom=e<=0?currentAnom[i]:coastCur[i]*0.7;
 temperature[i]=Math.max(0,Math.min(1,mt*0.92+wt*0.08+curAnom));
 moisture[i]=mo;}
+// ── Observed climate override ───────────────────────────────────────────────────
+// The same switch that swaps the solver's wind for the real one swaps the rest of the
+// climate too: measured precipitation and 2 m air temperature replace the solved
+// moisture, temperature and dry-season length. Everything above still RAN — the winds,
+// the currents, the seasonal moisture solves — because the ocean-current and wind
+// fields are exported and read downstream; only the three climate fields are replaced.
+// This is a deliberate escape hatch from the emergent generator, not a part of it: the
+// point of the mode is to run the civilisation simulation on Earth's real weather.
+// Everything after this line — rivers, fertility, settlement, the whole of history —
+// still emerges; it just emerges on a given climate instead of a predicted one.
+if(realWind&&realWindFns&&realWindFns.fillRealClimate&&realWindFns.isRealClimateAvailable&&realWindFns.isRealClimateAvailable()){
+realWindFns.fillRealClimate(W,H,elevation,moisture,temperature,dryFrac,summerDry);
+console.log("Earth (Sim): using real NCEP/NCAR precipitation + air temperature");}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
@@ -709,4 +820,4 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
+return{elevation,moisture,temperature,dryFrac,summerDry,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}

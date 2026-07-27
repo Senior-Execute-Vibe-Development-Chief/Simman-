@@ -1,9 +1,18 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
+import { isRealClimateAvailable, fillRealClimate } from "./realClimateData.js";
+import { classifyBiome } from "./sim/biomeClass.js";
 import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor } from "./TuningPanel.jsx";
 import { loadPresets, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
+// The observed-Earth data set, injected into worldgen as one bundle (see the
+// realWindFns note there — worldgen must not import these modules itself, or the
+// ~5MB of NCEP JSON gets inlined into the worker bundle a second time).
+const REAL_FNS = { isRealWindAvailable, fillRealWind, isRealClimateAvailable, fillRealClimate };
+// Is anything observed available to switch ON? Wind and climate load independently,
+// so the toggle is live if EITHER data set made it into the bundle.
+const realDataAvailable = () => isRealWindAvailable() || isRealClimateAvailable();
 import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
@@ -98,37 +107,29 @@ const BC=[
 [192,176,82],    // 11 Savanna — golden-tan with scattered green
 [158,165,78],    // 12 Grassland — tan-green prairie (more green than pure golden)
 [210,185,140],   // 13 Desert — warm sandy tan (slight orange like Sahara satellite)
-[140,135,78],    // 14 Shrubland — olive-brown chaparral
+[140,135,78],    // 14 Shrubland — olive-brown hot semi-desert scrub
 [78,118,48],     // 15 Tropical Dry Forest — muted olive-green
 [152,145,135],   // 16 Barren / Alpine — gray-brown rock
 [42,110,38],     // 17 Subtropical Forest — warm humid (SE US, S China, SE Brazil)
 [195,190,180],   // 18 Cold Desert / Polar Desert — pale gray-tan
-[34,104,56]      // 19 Floodplain — vivid irrigated alluvium (the Nile/Indus green ribbon through desert)
+[34,104,56],     // 19 Floodplain — vivid irrigated alluvium (the Nile/Indus green ribbon through desert)
+[124,138,86]     // 20 Mediterranean — grey-green sclerophyll (olive, holm oak, maquis)
 ];
 const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / Ice','Taiga',
 'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
 'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine',
-'Subtropical Forest','Cold Desert','Floodplain'];
-function getBiomeD(e,m,t,sl,flood){
+'Subtropical Forest','Cold Desert','Floodplain','Mediterranean'];
+// dry    = fraction of the year that is arid  (world.dryFrac)
+// sumDry = phase of that drought, >0 = summer-dry (world.summerDry)
+// Both optional: 0 reproduces the older behaviour. The classification itself lives in
+// src/sim/biomeClass.js — this wrapper only adds the things the RENDER knows about
+// (sea level, floodplain ribbons) on top of it.
+function getBiomeD(e,m,t,sl,flood,dry,sumDry){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
   if(flood)return 19;   // arid-river floodplain: its own biome, not the savanna its t+m alone reads as
-  // Effective moisture: cold regions retain moisture (low evaporation),
-  // hot regions lose it to evaporation (Holdridge PET principle).
-  const demand=.5+t*.5;
-  const em=Math.min(1,m/demand);
-  // Biome temperature bands on the calibrated air-temp scale (t = 0.60 + °C/100):
-  // ICE < -15°C · tundra -15..-2 · taiga -2..+5 · temperate +5..+18 ·
-  // subtropical +18..+25 · tropical > +25°C. (Moisture em then picks
-  // forest/grassland/desert within each band — Holdridge PET logic, unchanged.)
-  if(t<.45)return 5;                                        // permanent ice / snow (Greenland, Antarctica, high Arctic)
-  if(t<.52)return em>.4?6:em>.08?4:18;                      // tundra / cold desert
-  if(t<.58)return em>.35?6:em>.08?4:18;
-  if(t<.65)return em>.45?7:em>.25?6:em>.08?4:18;            // taiga / boreal
-  if(t<.78)return em>.58?9:em>.40?8:em>.14?12:13;           // temperate (forest band raised → wider prairie/steppe)
-  if(t<.85)return em>.54?17:em>.36?15:em>.16?11:em>.09?14:13;  // subtropical (wider savanna)
-  return em>.56?10:em>.38?15:em>.16?11:em>.09?12:13;           // tropical (wider savanna belt)
+  return classifyBiome(e,m,t,dry,sumDry);
 }
-function getColorD(e,m,t,sl,flood){const c=BC[getBiomeD(e,m,t,sl,flood)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
+function getColorD(e,m,t,sl,flood,dry,sumDry){const c=BC[getBiomeD(e,m,t,sl,flood,dry,sumDry)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 
 // ── Live country colouring (Country view) ───────────────────────────
@@ -676,7 +677,7 @@ try{
 if(!usedWorker){
   const _pend2=pendingSaveRef.current;
   if(_pend2){pendingSaveRef.current=null;
-  try{peopleRef.current=loadWorld(_pend2,{realWindFns:{isRealWindAvailable,fillRealWind}});}
+  try{peopleRef.current=loadWorld(_pend2,{realWindFns:REAL_FNS});}
   catch(err){
     console.error("load failed:",err);
     alert("Could not load save: "+(err&&err.message));
@@ -701,7 +702,7 @@ const _ol=ol!==undefined?ol:oceanLevelRef.current;
 // this bundle only (duplicating 2.3MB of JSON into the worker isn't worth a
 // rare power-user toggle). EVERYTHING else generates in the worker — the old
 // main-thread path froze the UI 2-5s for every non-tectonic preset.
-const _realWind=presetRef.current==="earth_sim"&&useRealWindRef.current&&isRealWindAvailable();
+const _realWind=presetRef.current==="earth_sim"&&useRealWindRef.current&&realDataAvailable();
 if(!_realWind){
 try{
 if(workerRef.current)workerRef.current.terminate();
@@ -716,7 +717,7 @@ finalizeWorld(generateWorld(genW,genH,s,presetRef.current,_ol,true,false,_tecPar
 worker.postMessage({type:'generate',W:genW,H:genH,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
-finalizeWorld(Object.assign(generateWorld(genW,genH,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld,genW,genH]);
+finalizeWorld(Object.assign(generateWorld(genW,genH,s,presetRef.current,_ol,true,_realWind,_tecParams,REAL_FNS),{realWindUsed:_realWind}));},[finalizeWorld,genW,genH]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
@@ -750,7 +751,7 @@ if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
-}else{const c=getColorD(e,m,t,sl,flood);r=c[0];g=c[1];b=c[2];}
+}else{const c=getColorD(e,m,t,sl,flood,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);r=c[0];g=c[1];b=c[2];}
 // Swamp overlay
 let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
@@ -831,7 +832,7 @@ const sd=seaDist[i];
 if(sd<HALO&&!(lk&&lk[si]>=0)){const hh=1-sd/HALO,hk=hh*hh;
 r-=hk*86;g-=hk*87;b-=hk*79;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
-const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
+const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
 let r=197,g=174,b=126;
 // broad uneven aged tone
 r+=big*40;g+=big*37;b+=big*31;
@@ -931,7 +932,7 @@ const px=(gx+(atlasHash(gx+2,gy+3)-0.5)*8)|0,py=(gy+(atlasHash(gx+5,gy+7)-0.5)*8
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0);
+const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
 const h=atlasHash(gx+11,gy+4),tone=atlasHash(gx+3,gy+9);
 if(biome===12){if(h>0.42+m*0.5)continue;atlasTuft(octx,px,py,2.6+tone*2.1,tone);}
 else if(biome===11){if(h>0.4)continue;
@@ -967,7 +968,7 @@ const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*5)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*5
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0);
+const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
 let cover=0,kind=0;                          // kind: 0 conifer, 1 deciduous, 2 acacia
 if(biome===6){cover=0.40;kind=0;}            // taiga — fir, closed forest
 else if(biome===8||biome===17){cover=0.42;kind=1;} // temperate / subtropical — broadleaf
@@ -984,7 +985,7 @@ const px=(gx+(atlasHash(gx+1,gy+5)-0.5)*4)|0,py=(gy+(atlasHash(gx+6,gy+2)-0.5)*4
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
-const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0);
+const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0);
 if(bm!==9&&bm!==10&&bm!==7)continue;
 if(atlasHash(gx+7,gy+9)>0.95)continue;
 const tone=atlasHash(gx+2,gy+11);
@@ -996,7 +997,7 @@ const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6
 if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si],dm=w.moisture[si];
-if(getBiomeD(e,dm,w.temperature[si],0)!==13)continue;
+if(getBiomeD(e,dm,w.temperature[si],0,0,w.dryFrac?w.dryFrac[si]:0,w.summerDry?w.summerDry[si]:0)!==13)continue;
 if(atlasHash(gx+3,gy+7)>0.62-dm*1.6)continue;
 octx.fillStyle="rgba(120,84,38,0.5)";
 octx.beginPath();octx.arc(px,py,0.7,0,6.2832);octx.fill();}
@@ -2638,7 +2639,7 @@ const temp=w.temperature[i]||0;
 const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
 const moist=terTi>=0&&terRef.current?terRef.current.tMoist[terTi]:(w.moisture[i]||0);
 const isFlood=terTi>=0&&terRef.current&&terRef.current.tFlood?terRef.current.tFlood[terTi]===1:false;
-const biome=getBiomeD(elev,moist,temp,0,isFlood);
+const biome=getBiomeD(elev,moist,temp,0,isFlood,w.dryFrac?w.dryFrac[i]:0,w.summerDry?w.summerDry[i]:0);
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*100-60);// range: -60°C to +40°C
@@ -4503,7 +4504,7 @@ return(
         <label style={{fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5,marginBottom:6}} className="au-fade">
           <input type="checkbox" checked={useRealWind}
             onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed);}}/>
-          {isRealWindAvailable()?"Use real NCEP winds":"Real winds (data not available)"}
+          {realDataAvailable()?"Use real Earth climate (NCEP wind, rain & heat)":"Real Earth climate (data not available)"}
         </label>}
       {preset==="tectonic"&&<div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
         <span className="au-fade" style={{fontSize:10}}>preset</span>

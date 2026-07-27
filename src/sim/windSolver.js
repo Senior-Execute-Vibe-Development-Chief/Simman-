@@ -107,9 +107,11 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       // swing poleward); the hemisphere sign flips it across the equator so July heats
       // Asia and cools Australia, January the reverse.
       if (_season !== 0) {
-        const hemi = latFrac >= 0 ? 1 : -1;
+        // North is the top of the grid, so the NH is latFrac<0: it must HEAT in boreal
+        // summer (_season=+1). hemi carries that sign (+1 in the NH, −1 in the SH).
+        const hemi = latFrac < 0 ? 1 : -1;
         const latW = Math.min(1.25, (absLat * 90) / 22); // ~0 at equator → 1 by 22°
-        T += _season * hemi * lf * 0.30 * latW;
+        T += _season * hemi * lf * 0.17 * latW;
       }
 
       // Lapse rate cooling — affects temperature but NOT pressure directly.

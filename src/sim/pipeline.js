@@ -299,10 +299,12 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
 export function buildTerritory(w,RES=1){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
 const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th),tFert=new Float32Array(tw*th);
+const tDryFrac=new Float32Array(tw*th);// dry-season fraction: a classification axis, carried alongside (not folded into) tMoist
+const tSummerDry=new Float32Array(tw*th);// PHASE of that dry season (>0 = summer-dry): the Mediterranean axis
 const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th);
 // Pass 1: base tile data + climate fertility
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*RES),py=Math.min(w.height-1,ty*RES),i=py*w.width+px;
-const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];
+const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];tDryFrac[ti]=w.dryFrac?w.dryFrac[i]:0;tSummerDry[ti]=w.summerDry?w.summerDry[i]:0;
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
 if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
@@ -586,7 +588,7 @@ const cAvg=cnt>0?csum/cnt:1.0;
 tCross[ti]=Math.min(1,cAvg/CROSS_MAX);}
 
 // ── Natural resource deposits ──
-const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
+const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers,tDryFrac,tSummerDry);
 // (The legacy tribe-seeding / background-population layer that lived here —
 // valley scoring, bgPop/cityPop, tribe knowledge/budget/port/coast tables —
 // was removed with the tribe system itself: the peopleSim worker owns ALL
