@@ -268,12 +268,18 @@ for(let i=0;i<W*H;i++)if(landMask[i])westFetch[i]=Math.min(_oceanDistW[i],wfScan
 // annual mean, advected by the season-averaged wind.
 let sumWX,sumWY,winWX,winWY;
 if(realWind&&realWindFns&&realWindFns.isRealWindAvailable()){
-// Real NCEP winds are an annual climatology — use the one field for both half-years
-// (the seasonal ITCZ shift in the moisture pass still recovers the monsoon rain belt).
-const rwX=new Float32Array(W*H),rwY=new Float32Array(W*H);
-realWindFns.fillRealWind(W,H,rwX,rwY);
-sumWX=winWX=rwX;sumWY=winWY=rwY;
-console.log("Earth (Sim): using real NCEP/NCAR wind data");
+// Real NCEP winds are TWELVE monthly grids, so take July for the boreal-summer solve and
+// January for the boreal-winter one. This used to fill a single annual mean and hand it to
+// both half-years — which is the very mistake that starves the monsoon: averaged over the
+// year the summer onshore inflow and the winter offshore outflow cancel, and the wettest
+// lands on Earth come out dry. Measured: feeding the solver annual-mean real winds scored
+// 59.4% against the solved wind's 65.2%, i.e. discarding the seasonal cycle cost more than
+// using observed winds gained.
+const sX=new Float32Array(W*H),sY=new Float32Array(W*H),wX=new Float32Array(W*H),wY=new Float32Array(W*H);
+realWindFns.fillRealWind(W,H,sX,sY,6);   // July
+realWindFns.fillRealWind(W,H,wX,wY,0);   // January
+sumWX=sX;sumWY=sY;winWX=wX;winWY=wY;
+console.log("Earth (Sim): using real NCEP/NCAR wind data (July / January)");
 }else{
 const sumWind=solveWind(W,H,elevation,fbm,{..._tecParams,season:1},seed*0.0137);
 const winWind=solveWind(W,H,elevation,fbm,{..._tecParams,season:-1},seed*0.0137);
@@ -300,7 +306,9 @@ const moistWin=solveMoisture(W,H,elevation,winWX,winWY,temperature,{..._tecParam
 // rather than how far it swings. The equinox configuration is season:0 / itczLat:0,
 // which is exactly the long-standing annual-mean setup, so it needs no new calibration.
 const eqWind=(realWind&&realWindFns&&realWindFns.isRealWindAvailable())
-  ?{windX:sumWX,windY:sumWY}
+  ?(()=>{const eX=new Float32Array(W*H),eY=new Float32Array(W*H);
+    realWindFns.fillRealWind(W,H,eX,eY);   // annual mean = the shoulder season
+    return{windX:eX,windY:eY};})()
   :solveWind(W,H,elevation,fbm,{..._tecParams,season:0},seed*0.0137);
 const moistEq=solveMoisture(W,H,elevation,eqWind.windX,eqWind.windY,temperature,{..._tecParams,itczLat:0});
 const windMoisture=new Float32Array(W*H);

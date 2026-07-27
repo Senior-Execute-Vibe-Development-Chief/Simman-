@@ -50,6 +50,17 @@ export async function loadRealWindData() {
 loadRealWindData();
 
 /**
+ * Hand the module its data directly, bypassing the bundler-specific JSON import — the
+ * same Node entry point realClimateData has, so the probes in tools/ can exercise the
+ * real-wind path instead of reimplementing it.
+ * @param {object} json parsed data/global_wind.json
+ */
+export function provideRealWindData(json) {
+  windData = json;
+  loadFailed = false;
+}
+
+/**
  * Sample real wind data at a given pixel position, returning U/V in m/s.
  * @param {number} x - pixel x (0 to W-1)
  * @param {number} y - pixel y (0 to H-1)
