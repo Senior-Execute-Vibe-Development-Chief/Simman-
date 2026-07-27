@@ -142,3 +142,27 @@ signal (`_civYear` → identity-salience weights) is a smooth function of the
 leading capital's organisation, read per-pair so uncontacted regions keep
 their own era. An age flip grants nothing — by the first cardinal rule it
 never may.
+
+## Addendum — THE URBAN FLOOR (owner ruling: entities are cities/large towns only)
+
+The stateless-settlements verdict above was superseded in one respect by the
+owner's ontology ruling: settlement entities represent cities and large
+towns only, so the sweep's 18–26-person births were entities below the
+model's own representational floor — and *they*, not statelessness itself,
+were the flagless-wilderness artifact. Fix (crystallize.js, state.js; full
+rule in docs/settlement-ontology.md "THE URBAN FLOOR"): births require a
+peopled basin (≥360 field people in the market catchment), found at town
+scale (90–118) drawn OUT of the basin field (conserved), cradles seed at
+110, steppe camps stay the one documented small/stateless exception.
+
+Measured (3 seeds, same probes): Bronze attainment moved again, 8400–9300 →
+**7200–7800** (town-scale foundings learn faster — the Stone Age is now
+~24% of a 30k run, from 39% at baseline); Bronze 1.4–1.5×, Medieval
+0.8–1.4×, Renaissance 1.3–1.5×, Industrial 1.0–1.5×, Iron 0.4× (the
+classical gap, unchanged); stateless falls 56 → 25 by step 16000 with the
+biggest ever stateless settlement 239 people (org 0.13 — a genuine
+pre-state town, the Çatalhöyük case) and none on claimed ground; stylized
+suite all hard gates green (1 in-budget soft warning: only 4 polities
+fallen in-window — more states form earlier, the board is younger). The
+display/dynasty epoch re-fit accordingly: −5500 → **−5250** (3-seed fits
+−5342/−5240/−5240), landing Bronze on screen at ~3300–3450 BC.
