@@ -300,7 +300,11 @@ export const TECH_FX = {
   mechanized_farm:  { farm:0.60, build:0.02 },
   green_revolution: { farm:1.30 },
   // — naval / water —  (fish sums ≈ 1.18, ≈ old nav·1.2)
-  sailing:      { fish:0.32, seaSpeed:0.20, embark:true },
+  // Sailing carries a seaRange share: the SAIL is what turns a paddled
+  // strait-hop into coastal shipping (sea.js gates lane projection on the
+  // embark ability and starts the range ladder here — before this tech a
+  // port reaches only SEA_RANGE_BASE).
+  sailing:      { fish:0.32, seaSpeed:0.20, seaRange:0.12, embark:true },
   galleys:      { fish:0.32, seaRange:0.30, military:0.05 },
   cartography:  { seaRange:0.18, seaSpeed:0.10 },
   the_compass:  { seaRange:0.24, seaSpeed:0.16, logistics:0.04 },
