@@ -2155,14 +2155,22 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // full warm line; a path or hard-packed track (TRACK_FLOOR 0.30 and
       // above) draws thinner and fainter — the map shows kin paths becoming
       // trunk tracks becoming paved viae as the world actually earns them.
+      // A pre-engineering surface is a DESIRE LINE: it exists where feet and
+      // hooves actually pass, so a track carrying no meaningful traffic
+      // (flow below ~a sustained trade trickle) is not drawn at all — no
+      // phantom long lines between towns that never trade, no ghost paths
+      // lingering through their multi-thousand-tick abandonment decay. A
+      // built (engineered) road always draws: masonry persists.
       if(L.roads&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&psw.roadQuality&&psw.roadFlow){
-        const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
+        const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50,TRACK_SHOW_FLOW=0.5;
         for(let ti=0;ti<rq.length;ti++){
           if(rq[ti]>=1.0)continue;
+          const track=rq[ti]>0.28;   // between QUALITY_NEW 0.25 (engineered) and TRACK_FLOOR 0.30 — float32-safe band edge
+          const flow=rf[ti]||0;
+          if(track&&flow<TRACK_SHOW_FLOW)continue;
           const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
-          const track=rq[ti]>0.28;   // between QUALITY_NEW 0.25 (engineered) and TRACK_FLOOR 0.30 — float32-safe band edge
+          const intensity=Math.min(1,flow/FLOW_FULL);
           const w=((track?0.9:1.4)+intensity*1.6)*uiF,off=(TR-w)*0.5;
           octx.fillStyle=`rgba(120,80,40,${((track?0.30:0.55)+intensity*0.35).toFixed(2)})`;
           octx.fillRect(sx+off,sy+off,w,w);

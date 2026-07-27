@@ -177,6 +177,22 @@ const PARTNER_DIST_BASE   = 10;         // was 20: the zero-tech horizon is the 
                                         // settlement over, not a continental corridor —
                                         // long trunk planning is EARNED below
 const PARTNER_DIST_PER    = 1.0;        // tiles per sqrt(pop)
+// Hard ceiling on a SINGLE planned road segment, in REFERENCE tiles (a real
+// distance: one reference tile ≈ 170 km on the Earth grid). Population and
+// commerce may WANT a far partner, but a maintained overland route longer
+// than the local ring was beyond any pre-modern state — long-range land
+// trade was a RELAY through intermediate towns (the trade-reach chain
+// already models it), not one continuous surveyed line between two little
+// settlements. Only LOGISTICS technique (wheel→roads→rail→telegraph, the
+// techEff channel) extends what one polity can survey and maintain as a
+// single route: ~12 ref-tiles pre-logistics (the neighbour ring), ~20 by
+// the classical roads era, ~35-48 in the rail age (the genuinely
+// continental trunk — historically the first single land routes at that
+// scale). Without this cap the uncapped √pop term let any modest early
+// town plan a ~4000-km line: the "continent-spanning road between two
+// random little settlements" artifact.
+const SEG_CAP_BASE        = 12;
+const SEG_CAP_LOGI        = 36;
 function partnerReachFor(world, s) {
   const k = s.knowledge || {};
   // Mobility (horses, wagons), navigation (ships) and CONSTRUCTION (the
@@ -185,12 +201,14 @@ function partnerReachFor(world, s) {
   // metropolis. A stone-age hamlet plans only to its neighbours; the wheel,
   // pack routes and engineering push the horizon outward as they arrive.
   const techMul = 1 + 0.5 * (k.mobility || 0) + 0.3 * (k.navigation || 0) + 0.6 * (k.construction || 0);
+  const want = (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul;
+  const cap = SEG_CAP_BASE + SEG_CAP_LOGI * techEff(s).logisticsLevel;
   // A commercial horizon is a REAL distance: peers sit ×rNormPop more tiles
   // apart on a finer grid (founding spacing scales — crystallize.js), so the
   // raw-tile radius quietly shrank the road planner's real horizon to 1/rn
   // (¼ at the shipped 1920 default) and the trunk network under-wired.
   // ×1 exactly at the 240-tile reference.
-  return (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul * rNormPop(world);
+  return Math.min(want, cap) * rNormPop(world);
 }
 
 // New roads need a margin of improvement to justify the effort.
@@ -205,17 +223,22 @@ const NEW_FRACTION_IN     = 0.55 / 1.2; // peer in same component: moderate nove
                                         // which divides these; behaviour identical)
 const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path
 
-// Close-neighbour rule: any settled pair within this many tiles
+// Close-neighbour rule: any settled pair within this many REFERENCE tiles
 // of each other gets a direct path painted by the local-link
 // pass — separate from economic road planning. Models the
 // ever-present village foot traffic (kin visits, shared grazing,
 // market days, parish boundaries) which produces paths between
 // neighbours whether or not they have anything to trade. Without
-// this, two hamlets 22 tiles apart get routed 80 tiles round a
-// worn trunk because the worn arterial is "cheaper" than a fresh
-// terrain crossing. Threshold sits just above MIN_SETT_DIST (12)
-// so the closest possible pairs always qualify.
-const CLOSE_NEIGHBOUR_DIST    = 20;     // grid near-query radius for local links
+// this, two close towns get routed the long way round a worn trunk
+// because the worn arterial is "cheaper" than a fresh terrain crossing.
+// 12 covers the natural founding-spacing rings on habitable land
+// (fertile ~4-10, moderate ~10-12 — crystallize.js capacitySpacingMul);
+// pairs farther apart than this are NOT "close" in any real sense (a
+// reference tile ≈ 170 km) and get no guaranteed path — they trade via
+// relay chains, or genuinely stand isolated (ultra-sparse pairs on barren
+// land: honest — and under the urban floor such entities barely arise).
+// The old 20 guaranteed painted ~3300-km lines between little settlements.
+const CLOSE_NEIGHBOUR_DIST    = 12;     // grid near-query radius for local links (REFERENCE tiles, ×rn at use)
 const MIN_POP_TO_LINK         = 30;     // lower bar than road planning
 
 // Resource needs by tier — kept for road-planning preference.
@@ -276,6 +299,19 @@ const TOLL_CHOKE_W    = 3.0;    // …multiplied for a settlement that controls 
 
 const ROADS_TECH = TECH_IDX["roads"];      // the paving unlock the pave floor reads
 const RAIL_TECH  = TECH_IDX["railroad"];   // …and the rail-age unlock below it
+
+// Debug telemetry: the longest SINGLE build (one planned/linked route,
+// Euclidean endpoint distance in REFERENCE tiles) ever painted this run.
+// Write-only — probe_progression prints it to verify the segment cap; the
+// sim never reads it.
+function recordBuildSpan(world, a, b) {
+  if (!world.debug) return;
+  const tw = world.tw;
+  let dx = Math.abs(a.pos.x - b.pos.x); if (dx > tw / 2) dx = tw - dx;
+  const dy = a.pos.y - b.pos.y;
+  const d = Math.sqrt(dx * dx + dy * dy) / rNormPop(world);
+  if (!(world.debug.maxBuildSpan >= d)) world.debug.maxBuildSpan = d;
+}
 
 export { QUALITY_NEW, QUALITY_MAX, TRACK_FLOOR, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
 
@@ -710,6 +746,7 @@ function linkCloseNeighbours(world, s) {
     for (const ti of path.tiles) if (paintRoad(world, ti, q)) didChange = true;
     if (didChange) {
       anyBuilt = true;
+      recordBuildSpan(world, s, peer);
     }
   });
   return anyBuilt;
@@ -859,6 +896,7 @@ function tryAddRoad(world, s) {
     if (paintRoad(world, ti, paintQ)) didChange = true;
   }
   if (!didChange) return false;
+  recordBuildSpan(world, s, bestPartner);
   return true;
 }
 

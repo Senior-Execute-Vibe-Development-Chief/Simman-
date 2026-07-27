@@ -166,3 +166,39 @@ suite all hard gates green (1 in-budget soft warning: only 4 polities
 fallen in-window — more states form earlier, the board is younger). The
 display/dynasty epoch re-fit accordingly: −5500 → **−5250** (3-seed fits
 −5342/−5240/−5240), landing Bronze on screen at ~3300–3450 BC.
+
+## Addendum 2 — the SEGMENT CAP (owner: "still continent-spanning roads between two little settlements")
+
+Right: the first roads pass fixed surface QUALITY and TIMING but left the
+LENGTH of a single planned route ungoverned — `partnerReachFor`'s uncapped
+√pop term let a modest early town plan a ~20–26-reference-tile line (a
+reference tile ≈ 170 km: ~4,000 km), and the kin-path pass guaranteed
+painted links out to 20 reference tiles (~3,300 km). The urban floor made
+it worse: every 90+-person founding instantly cleared both the planning
+(60) and linking (30) population bars. Fixes (roads.js, WorldSim.jsx):
+
+- **A hard cap on any single planned segment**: `min(want, SEG_CAP_BASE 12
+  + SEG_CAP_LOGI 36 × logisticsLevel)` reference tiles. Pre-logistics
+  cultures plan only to the neighbour ring (~the founding-spacing scale);
+  the classical roads era stretches it to ~20; the rail age to ~35–48 —
+  the first genuinely continental single land routes, exactly when history
+  built them. Long-range land trade below that tech is what it really was:
+  a RELAY through intermediate towns, which the trade-reach chaining
+  already models (and which stays unbounded, as it should be).
+- **Kin paths shrink to the real neighbour ring**: CLOSE_NEIGHBOUR_DIST
+  20 → 12 reference tiles (the founding-spacing rings on habitable land);
+  pairs farther apart than that are not "close" in any sense and get no
+  guaranteed path — ultra-sparse pairs stand honestly isolated (and under
+  the urban floor such entities barely arise).
+- **Pre-engineering surfaces render as desire lines**: a track/path draws
+  only while it carries real traffic (flow ≥ ~a sustained trade trickle);
+  engineered roads always draw (masonry persists). No phantom lines
+  between towns that never trade; no ghost paths through the
+  multi-thousand-tick abandonment decay.
+
+Verified with build telemetry (`world.debug.maxBuildSpan`, printed by
+probe_progression): the longest single build over a 16k-step run is
+exactly **12 reference tiles** from tick 0 through the Bronze Age; the
+longer all-road trade links the probe still reports (27–48) are relay
+chains threading towns/junctions — the Silk-Road structure, drawn only
+where flow actually runs.

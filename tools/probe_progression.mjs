@@ -27,7 +27,7 @@ const dist = (a, b) => {
   return Math.sqrt(dx * dx + dy * dy);
 };
 
-console.log("step | era | lead k(cons/org/nav/met) | setts free ctry | roadT (<=.1/.1-.3/>.3) maxLink | lanes maxLane | ports sail:noSail | ships");
+console.log("step | era | lead k(cons/org/nav/met) | setts free ctry | roadT (<=.1/.1-.3/>.3) maxLink maxRoad | lanes maxLane | ports sail:noSail | ships");
 for (let t = 0; t < STEPS; t += IVL) {
   stepPeopleSim(world, IVL);
   // Leading knowledge across settled settlements.
@@ -54,13 +54,27 @@ for (let t = 0; t < STEPS; t += IVL) {
       if (q <= 0.1) rArt++; else if (q <= 0.3) rRoad++; else rTrail++;
     }
   }
-  // Longest active land trade link (Euclidean between the endpoints).
-  let maxLink = 0;
+  // Longest active land trade link (Euclidean between the endpoints) — a
+  // RELAY chain through intermediate towns is legitimate at any length
+  // (that is how long-range land trade worked); maxRoad below is the check
+  // that no single DIRECT painted line spans a continent: the longest link
+  // with NO intermediate settlement on its path whose tiles run ≥85% on
+  // painted road (excludes river corridors, which need no road).
+  let maxLink = 0, maxRoad = 0;
+  const rqA = world.roadQuality;
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s._tradeReach) continue;
-    for (const pid of s._tradeReach.keys()) {
+    for (const [pid, link] of s._tradeReach) {
       const p = world._byId && world._byId.get(pid);
-      if (p) { const d = dist(s.pos, p.pos); if (d > maxLink) maxLink = d; }
+      if (!p) continue;
+      const d = dist(s.pos, p.pos);
+      if (d > maxLink) maxLink = d;
+      if (rqA && link.tiles && link.tiles.length > 2 && d > maxRoad
+          && (!link.inter || link.inter.length === 0)) {
+        let on = 0;
+        for (const ti of link.tiles) if (rqA[ti] < 1.0) on++;
+        if (on >= link.tiles.length * 0.85) maxRoad = d;
+      }
     }
   }
   // Sea lanes.
@@ -84,8 +98,8 @@ for (let t = 0; t < STEPS; t += IVL) {
     `${String(world.step).padStart(5)} | ${ERAS[era].padEnd(10)} | ` +
     `${kc.toFixed(2)}/${ko.toFixed(2)}/${kn.toFixed(2)}/${km.toFixed(2)} | ` +
     `${String(setts).padStart(4)} ${String(free).padStart(4)} ${String(nCtry).padStart(3)} | ` +
-    `${String(rArt).padStart(5)}/${String(rRoad).padStart(5)}/${String(rTrail).padStart(5)} ${maxLink.toFixed(0).padStart(3)} | ` +
+    `${String(rArt).padStart(5)}/${String(rRoad).padStart(5)}/${String(rTrail).padStart(5)} ${maxLink.toFixed(0).padStart(3)} ${maxRoad.toFixed(0).padStart(3)} | ` +
     `${String(lanes.length).padStart(3)} ${maxLane.toFixed(0).padStart(3)} | ` +
     `${String(portsSail).padStart(3)}:${String(portsNoSail).padStart(3)} | ` +
-    `${(world.ships || []).length}`);
+    `${(world.ships || []).length} | bld ${(world.debug.maxBuildSpan || 0).toFixed(0)}`);
 }
