@@ -303,9 +303,21 @@ export function makeSettlement(world, x, y, opts = {}) {
       navigation:  0.05,        // river craft
       mobility:    0.05,        // pack animals
     } : {
+      // The NATURAL-VILLAGE seed: an internally consistent neolithic package.
+      // agriculture 0.5 asserts ESTABLISHED cereal farming — and no farming
+      // people ever lacked pottery (the granary craft), fire, mudbrick and
+      // the hunt. The old construction 0.1 paired plough-adjacent agronomy
+      // with a pre-pottery toolkit — a society ~2000 years out of joint with
+      // itself — and that skew alone stretched the played Stone Age to
+      // ~11.7k steps (39% of a 30k run, probe_erapace seed 8817: 9.8× its
+      // display-span vs Bronze 1.2× / Medieval 1.3×), because the whole
+      // pre-Bronze arc is the construction track crawling 0.10 → 0.36.
+      // 0.18 = pottery just mastered (tech.js gate), masonry still far off:
+      // the same LATE-NEOLITHIC moment the agriculture value describes.
+      // Initial CONDITIONS of the world at t=0, not a gate on anything.
       agriculture: 0.50,        // frontier starts already farming (absorbs the old foraging track)
-      construction: 0.1,        // absorbs the old toolmaking track (wagons + bridges)
-      organization: 0.1,        // absorbs the old literacy track (records + bureaucracy)
+      construction: 0.18,       // the farming village's real toolkit: pottery, granaries, mudbrick
+      organization: 0.1,        // kin-village society — statehood still to be EARNED
       metallurgy:  0,           // gated by ore access
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses

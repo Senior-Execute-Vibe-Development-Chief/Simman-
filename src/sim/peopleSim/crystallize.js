@@ -1185,9 +1185,12 @@ function inheritKnowledgeAt(world, ti, td, nearestHint = null) {
   // toolmaking→construction, literacy→organization). Metallurgy,
   // navigation, and mobility stay at zero — they're resource-gated and
   // only kick in once the site touches ore / water / horses.
+  // Construction matches the genesis-village package (settlement.js
+  // makeSettlement): a people that invents farming invents the pot and the
+  // granary with it — the two values describe ONE late-neolithic moment.
   const baseline = {
     agriculture: NEOLITHIC_AGRI,
-    construction: 0.1,
+    construction: 0.18,
     organization: 0.1,
   };
   world._lastInheritDonor = nearest;   // culture rides the same lineage (caller reads this)
