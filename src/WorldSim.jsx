@@ -1,9 +1,17 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
+import { isRealClimateAvailable, fillRealClimate } from "./realClimateData.js";
 import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor } from "./TuningPanel.jsx";
 import { loadPresets, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
+// The observed-Earth data set, injected into worldgen as one bundle (see the
+// realWindFns note there — worldgen must not import these modules itself, or the
+// ~5MB of NCEP JSON gets inlined into the worker bundle a second time).
+const REAL_FNS = { isRealWindAvailable, fillRealWind, isRealClimateAvailable, fillRealClimate };
+// Is anything observed available to switch ON? Wind and climate load independently,
+// so the toggle is live if EITHER data set made it into the bundle.
+const realDataAvailable = () => isRealWindAvailable() || isRealClimateAvailable();
 import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
@@ -699,7 +707,7 @@ try{
 if(!usedWorker){
   const _pend2=pendingSaveRef.current;
   if(_pend2){pendingSaveRef.current=null;
-  try{peopleRef.current=loadWorld(_pend2,{realWindFns:{isRealWindAvailable,fillRealWind}});}
+  try{peopleRef.current=loadWorld(_pend2,{realWindFns:REAL_FNS});}
   catch(err){
     console.error("load failed:",err);
     alert("Could not load save: "+(err&&err.message));
@@ -724,7 +732,7 @@ const _ol=ol!==undefined?ol:oceanLevelRef.current;
 // this bundle only (duplicating 2.3MB of JSON into the worker isn't worth a
 // rare power-user toggle). EVERYTHING else generates in the worker — the old
 // main-thread path froze the UI 2-5s for every non-tectonic preset.
-const _realWind=presetRef.current==="earth_sim"&&useRealWindRef.current&&isRealWindAvailable();
+const _realWind=presetRef.current==="earth_sim"&&useRealWindRef.current&&realDataAvailable();
 if(!_realWind){
 try{
 if(workerRef.current)workerRef.current.terminate();
@@ -739,7 +747,7 @@ finalizeWorld(generateWorld(genW,genH,s,presetRef.current,_ol,true,false,_tecPar
 worker.postMessage({type:'generate',W:genW,H:genH,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
-finalizeWorld(Object.assign(generateWorld(genW,genH,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld,genW,genH]);
+finalizeWorld(Object.assign(generateWorld(genW,genH,s,presetRef.current,_ol,true,_realWind,_tecParams,REAL_FNS),{realWindUsed:_realWind}));},[finalizeWorld,genW,genH]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
@@ -4526,7 +4534,7 @@ return(
         <label style={{fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5,marginBottom:6}} className="au-fade">
           <input type="checkbox" checked={useRealWind}
             onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed);}}/>
-          {isRealWindAvailable()?"Use real NCEP winds":"Real winds (data not available)"}
+          {realDataAvailable()?"Use real Earth climate (NCEP wind, rain & heat)":"Real Earth climate (data not available)"}
         </label>}
       {preset==="tectonic"&&<div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
         <span className="au-fade" style={{fontSize:10}}>preset</span>

@@ -35,8 +35,9 @@ and revealed by zoom; settlement names appear as you lean in. Space
 pauses, number keys switch lens, `?` opens the full key map.
 
 - **World** — pick a preset in ⊕ New World, roll a seed, press play.
-  - Presets: **Earth (Sim)** (real Earth heightmap + simulated climate; can
-    optionally use real NCEP wind data), **Tectonic** (plate simulation from
+  - Presets: **Earth (Sim)** (real Earth heightmap + simulated climate; a
+    checkbox swaps the whole climate for observation — NCEP wind, rainfall and
+    air temperature — for a real-Earth map), **Tectonic** (plate simulation from
     scratch), plus continents/archipelago-style noise presets and an **Import**
     mode (Azgaar Full-JSON exports or grayscale heightmap images).
   - The left **lens dock** (icon rail) holds the map lenses — Terrain
@@ -185,6 +186,12 @@ Headless node scripts for measuring the sim live in `tools/`:
   and hand-roll a similar pipeline; prefer the harness for new tools.
 - `tools/convert_wind_data.py` — regenerates `data/global_wind.json` from the
   NCEP/NCAR reanalysis NetCDF files (local copies in `data/`, else downloads).
+- `tools/convert_climate_data.py` — likewise for `data/global_precip.json` and
+  `data/global_airtemp.json`.
+- `tools/probe_climate_truth.mjs` — scores the climate against that observation
+  (temperature in °C, moisture by rank, biome against derived Köppen), with a
+  zonal null model so the numbers mean something. `--real` scores the observed
+  mode instead; see the header for which of its numbers are round-trips.
 
 ## Data
 
@@ -193,7 +200,13 @@ Headless node scripts for measuring the sim live in `tools/`:
   straits/islands resolve, relief quantile-matched to the original Tangram
   elevation scale; source reference images in `data/`).
 - `data/global_wind.json` — NCEP/NCAR 10 m climatological winds, 12 monthly
-  U/V grids, used by the optional "real wind" toggle in Earth (Sim).
+  U/V grids, used by the optional real-climate toggle in Earth (Sim).
+- `data/global_precip.json`, `data/global_airtemp.json` — NCEP/NCAR 1991-2020
+  monthly precipitation and 2 m air temperature climatology. The same toggle
+  feeds them through `src/realClimateData.js`, which converts them into the
+  sim's `temperature`, `moisture` and `dryFrac` fields; `tools/` also scores the
+  solver against them. Note the three data files add ~2.8 MB to the bundle, and
+  the build is single-file, so nothing code-splits.
 
 ## Deploying
 

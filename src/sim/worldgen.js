@@ -46,13 +46,15 @@ function dirDist(mask, W, H, dir, cap) {
 }
 
 // `realWindFns` is INJECTED ({ isRealWindAvailable, fillRealWind } from
-// realWindData.js) rather than imported: realWindData statically pulls the
-// 2.3MB NCEP wind JSON into whichever bundle imports it, and worldgen also
-// runs inside worldGenWorker — importing it here would inline that data into
-// the worker bundle a second time. Callers that want real winds (the main
-// thread's Earth-Sim checkbox) pass the functions in; everyone else omits
-// them and the solver wind is used. `_legacyArg` keeps the old positional
-// signature stable for the ~60 node probes in tools/.
+// realWindData.js, plus { isRealClimateAvailable, fillRealClimate } from
+// realClimateData.js) rather than imported: those modules statically pull ~5MB
+// of NCEP JSON into whichever bundle imports them, and worldgen also runs inside
+// worldGenWorker — importing them here would inline that data into the worker
+// bundle a second time. Callers that want the real climate (the main thread's
+// Earth-Sim checkbox) pass the functions in; everyone else omits them and the
+// solved wind and climate are used. Each half is probed independently, so a
+// caller may supply either, both or neither. `_legacyArg` keeps the old
+// positional signature stable for the ~60 node probes in tools/.
 // Sub-pixel narrow straits seal shut on the ~20 km/pixel Earth heightmap (the
 // Strait of Gibraltar is ~14 km — finer than one pixel), turning real seas into
 // closed lakes: the Mediterranean otherwise has NO naval link to the Atlantic.
@@ -614,6 +616,19 @@ const wt=windTemp[i];
 const curAnom=e<=0?currentAnom[i]:coastCur[i]*0.7;
 temperature[i]=Math.max(0,Math.min(1,mt*0.92+wt*0.08+curAnom));
 moisture[i]=mo;}
+// ── Observed climate override ───────────────────────────────────────────────────
+// The same switch that swaps the solver's wind for the real one swaps the rest of the
+// climate too: measured precipitation and 2 m air temperature replace the solved
+// moisture, temperature and dry-season length. Everything above still RAN — the winds,
+// the currents, the seasonal moisture solves — because the ocean-current and wind
+// fields are exported and read downstream; only the three climate fields are replaced.
+// This is a deliberate escape hatch from the emergent generator, not a part of it: the
+// point of the mode is to run the civilisation simulation on Earth's real weather.
+// Everything after this line — rivers, fertility, settlement, the whole of history —
+// still emerges; it just emerges on a given climate instead of a predicted one.
+if(realWind&&realWindFns&&realWindFns.fillRealClimate&&realWindFns.isRealClimateAvailable&&realWindFns.isRealClimateAvailable()){
+realWindFns.fillRealClimate(W,H,elevation,moisture,temperature,dryFrac);
+console.log("Earth (Sim): using real NCEP/NCAR precipitation + air temperature");}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;

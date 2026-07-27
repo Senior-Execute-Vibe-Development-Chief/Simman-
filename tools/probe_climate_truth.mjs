@@ -87,8 +87,27 @@ const MCLS = b => b === 5 ? "ICE" : [13, 18, 14].includes(b) ? "DRY"
   : [12, 11].includes(b) ? "GRASS" : [8, 9, 10, 15, 17].includes(b) ? "FOREST"
   : b === 4 ? "TUNDRA" : "BOREAL";
 
-console.error(`[gen] ${W}x${H} ...`);
-const w = generateWorld(W, H, 8817, "earth_sim", 0.78, true, false, {});
+// With --real, generate in the observed-climate mode the Earth (Sim) checkbox turns on,
+// by handing worldgen the SAME src/realClimateData.js the app injects. Two caveats to
+// read the resulting numbers with:
+//   * Temperature and moisture are then scored against the data they were built from,
+//     so those two are a ROUND-TRIP check (is the unit conversion and resampling
+//     faithful?), not a measure of skill. Only the solver run is a real score.
+//   * BIOME is still meaningful either way: the truth is Koppen applied to the raw
+//     observation, while the model class comes from the sim's own classifier applied to
+//     the converted fields. It measures how well the conversion plus that classifier
+//     reproduce Koppen — which is the honest ceiling of the observed mode.
+// Real WIND is not injected here (its loader has no Node entry point); under --real the
+// wind is solved. That does not touch the scored fields, which are overwritten wholesale.
+const REAL = process.argv.includes("--real");
+let fns = null;
+if (REAL) {
+  const rc = await import("../src/realClimateData.js");
+  rc.provideRealClimateData(PR, TA);
+  fns = { isRealWindAvailable: () => false, isRealClimateAvailable: rc.isRealClimateAvailable, fillRealClimate: rc.fillRealClimate };
+}
+console.error(`[gen] ${W}x${H}${REAL ? " (observed climate)" : ""} ...`);
+const w = generateWorld(W, H, 8817, "earth_sim", 0.78, true, REAL, {}, fns);
 const STEP = Math.max(1, Math.round(W / 360));
 const pts = [];
 for (let y = 0; y < H; y += STEP) {
