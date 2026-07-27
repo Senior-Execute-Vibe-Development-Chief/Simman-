@@ -3,6 +3,7 @@
 // Samples elevation/temperature/moisture/biome at known places, converts the
 // internal t-scale back to °C (t = 0.60 + °C/100), and prints expected vs got.
 import { generateWorld } from "../src/sim/worldgen.js";
+import { classifyBiome } from "../src/sim/biomeClass.js";
 
 const W = parseInt(process.argv[2] || "720", 10);
 const H = parseInt(process.argv[3] || "360", 10);
@@ -11,24 +12,9 @@ const PRESET = process.argv[4] || "earth_sim";
 const BN = ['DeepOcean','ShallowOcean','Coastal','Beach','Tundra','Ice','Taiga','Boreal',
   'TempForest','TempRain','TropRain','Savanna','Grassland','Desert','Shrubland',
   'TropDryForest','Barren','Subtropical','ColdDesert'];
-function getBiomeD(e, m, t, sl, dry) {
-  if (e <= sl) return e < sl - .08 ? 0 : e < sl - .01 ? 1 : 2;
-  const demand = .5 + t * .5;
-  let em = Math.min(1, m / demand);
-  // Dry-season length (see WorldSim.jsx getBiomeD) — kept in sync.
-  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
-  if (dry > 0 && warmth > 0) {
-    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
-    em = Math.max(seas, Math.min(em, 0.17));
-  }
-  if (t < .45) return 5;
-  if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
-  if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
-  if (t < .65) return em > .45 ? 7 : em > .25 ? 6 : em > .08 ? 4 : 18;
-  if (t < .78) return em>.58?9:em>.40?8:em>.14?12:13;
-  if (t < .85) return em>.54?17:em>.36?15:em>.16?11:em>.09?14:13;
-  return em>.56?10:em>.38?15:em>.16?11:em>.09?12:13;
-}
+// Classifier imported, not copied — see src/sim/biomeClass.js. Local copies in
+// tools/ are how the probes drifted away from the code they were meant to check.
+const getBiomeD = (e, m, t, sl, dry) => classifyBiome(e, m, t, dry, 0);
 const toC = t => ((t - 0.60) * 100).toFixed(0);
 
 // lat (+N), lon (+E), name, expected biome / note

@@ -17,6 +17,7 @@
 //      often the model is wrong but WHAT it confuses for what.
 import { readFileSync } from "node:fs";
 import { generateWorld } from "../src/sim/worldgen.js";
+import { classifyBiome } from "../src/sim/biomeClass.js";
 
 const W = +(process.argv[2] || 1920), H = W >> 1;
 const load = n => JSON.parse(readFileSync(new URL(`../data/${n}`, import.meta.url)));
@@ -39,19 +40,25 @@ function obs(la, lo) {
   return { p, t };
 }
 
-// ── Koppen main class, then collapsed to the coarse land-cover classes the model
-// emits. The collapse is documented rather than clever: Af/Am are rainforest, Aw/As
-// savanna, BW desert, BS steppe (grassland), C temperate forest, D boreal, ET tundra,
-// EF ice. Mediterranean Cs is really shrubland and lands in FOREST here — a known
-// blur, called out so nobody reads more precision into the number than it carries.
+// ── Koppen, computed in FULL (all three letters) and then collapsed to the coarse
+// land-cover classes the model emits. The full code matters: an earlier version of this
+// file collapsed ALL of Koppen D to BOREAL, but 45% of D is Da/Db — hot- and warm-summer
+// humid continental (Chicago, Moscow, Hokkaido), which is temperate and mixed FOREST,
+// not taiga. Only Dc/Dd (cool summer, 1-3 months above 10degC) is boreal. That single
+// mistake inflated observed "boreal" to ~30% of land against a real ~17%, and charged
+// the model for a confusion it was not making.
+//   BW desert - BS steppe (grassland) - Af/Am rainforest - Aw savanna (grassland)
+//   Cs MEDITERRANEAN sclerophyll shrub - other C temperate forest
+//   Da/Db temperate forest - Dc/Dd boreal - ET tundra - EF ice
 function koppen(p, t) {
   const MAP = p.reduce((a, b) => a + b, 0);
   const MAT = t.reduce((a, b) => a + b, 0) / 12;
   const tmax = Math.max(...t), tmin = Math.min(...t);
   // summer half = warmer six months (Apr-Sep in the N, Oct-Mar in the S)
   const north = t.slice(3, 9).reduce((a, b) => a + b, 0) > t.concat(t).slice(9, 15).reduce((a, b) => a + b, 0);
-  const sHalf = north ? p.slice(3, 9) : p.concat(p).slice(9, 15);
-  const sP = sHalf.reduce((a, b) => a + b, 0);
+  const sMon = north ? [3, 4, 5, 6, 7, 8] : [9, 10, 11, 0, 1, 2];
+  const wMon = north ? [9, 10, 11, 0, 1, 2] : [3, 4, 5, 6, 7, 8];
+  const sP = sMon.reduce((a, i) => a + p[i], 0);
   const frac = MAP > 0 ? sP / MAP : 0;
   const Pth = frac >= 0.7 ? 2 * MAT + 28 : frac <= 0.3 ? 2 * MAT : 2 * MAT + 14;
   if (MAP < 10 * Pth) return MAP < 5 * Pth ? "BW" : "BS";
@@ -61,29 +68,31 @@ function koppen(p, t) {
     if (pdry >= 60) return "Af";
     return pdry >= 100 - MAP / 25 ? "Am" : "Aw";
   }
-  return tmin >= 0 ? "C" : "D";
+  const sMin = Math.min(...sMon.map(i => p[i])), wMax = Math.max(...wMon.map(i => p[i]));
+  const wMin = Math.min(...wMon.map(i => p[i])), sMax = Math.max(...sMon.map(i => p[i]));
+  // The "s" test (Ps,min < 30 and Pw,max >= 3*Ps,min) is trivially satisfied whenever the
+  // driest summer month is near zero, so a WINTER-dry tropical climate with one bone-dry
+  // shoulder month qualifies on a technicality. Requiring summer to actually be the drier
+  // half is the standard disambiguation, and it matters: without it, 5% of "Cs" landed in
+  // Zambia and on the Ganges plain, scattering Mediterranean truth across the monsoon tropics.
+  const sP2 = sMon.reduce((a, i) => a + p[i], 0), wP2 = wMon.reduce((a, i) => a + p[i], 0);
+  const second = (sMin < 30 && wMax >= 3 * sMin && sP2 < wP2) ? "s" : (wMin < sMax / 10) ? "w" : "f";
+  const third = tmin < -38 ? "d" : tmax >= 22 ? "a" : t.filter(v => v >= 10).length >= 4 ? "b" : "c";
+  return (tmin >= 0 ? "C" : "D") + second + third;
 }
-const KCLS = { BW: "DRY", BS: "GRASS", Aw: "GRASS", Af: "FOREST", Am: "FOREST",
-               C: "FOREST", D: "BOREAL", ET: "TUNDRA", EF: "ICE" };
+function kcls(k) {
+  if (k === "BW") return "DRY";
+  if (k === "BS" || k === "Aw") return "GRASS";
+  if (k === "Af" || k === "Am") return "FOREST";
+  if (k === "ET") return "TUNDRA";
+  if (k === "EF") return "ICE";
+  if (k[0] === "C") return k[1] === "s" ? "MED" : "FOREST";
+  return (k[2] === "c" || k[2] === "d") ? "BOREAL" : "FOREST";   // D
+}
 
-function bio(e, m, t, dry) {
-  if (e <= 0) return -1;
-  const d = .5 + t * .5;
-  let em = Math.min(1, m / d);
-  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
-  if (dry > 0 && warmth > 0) {
-    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
-    em = Math.max(seas, Math.min(em, 0.17));
-  }
-  if (t < .45) return 5;
-  if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
-  if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
-  if (t < .65) return em > .45 ? 7 : em > .25 ? 6 : em > .08 ? 4 : 18;
-  if (t < .78) return em > .58 ? 9 : em > .40 ? 8 : em > .14 ? 12 : 13;
-  if (t < .85) return em > .54 ? 17 : em > .36 ? 15 : em > .16 ? 11 : em > .09 ? 14 : 13;
-  return em > .56 ? 10 : em > .38 ? 15 : em > .16 ? 11 : em > .09 ? 12 : 13;
-}
-const MCLS = b => b === 5 ? "ICE" : [13, 18, 14].includes(b) ? "DRY"
+// Shrubland (14) is hot semi-desert scrub and scores as DRY. Mediterranean has its own
+// id (20) — reusing 14 would have deleted a live biome; see src/sim/biomeClass.js.
+const MCLS = b => b === 5 ? "ICE" : [13, 18, 14].includes(b) ? "DRY" : b === 20 ? "MED"
   : [12, 11].includes(b) ? "GRASS" : [8, 9, 10, 15, 17].includes(b) ? "FOREST"
   : b === 4 ? "TUNDRA" : "BOREAL";
 
@@ -122,8 +131,9 @@ for (let y = 0; y < H; y += STEP) {
       oT: o.t.reduce((a, b) => a + b, 0) / 12,
       mM: w.moisture[i],
       oP: o.p.reduce((a, b) => a + b, 0),
-      mC: MCLS(bio(w.elevation[i], w.moisture[i], w.temperature[i], w.dryFrac ? w.dryFrac[i] : 0)),
-      oC: KCLS[koppen(o.p, o.t)] });
+      mC: MCLS(classifyBiome(w.elevation[i], w.moisture[i], w.temperature[i],
+        w.dryFrac ? w.dryFrac[i] : 0, w.summerDry ? w.summerDry[i] : 0)),
+      oC: kcls(koppen(o.p, o.t)) });
   }
 }
 console.log(`\n${pts.length.toLocaleString()} land points vs NCEP observation  (${W}x${H})\n`);
@@ -155,7 +165,7 @@ function spearman(a, b) {
 console.log(`MOISTURE      Spearman rank correlation ${spearman(pts.map(p => p.mM), pts.map(p => p.oP)).toFixed(3)}`);
 
 // 3. biome vs derived Koppen
-const CLS = ["FOREST", "GRASS", "DRY", "BOREAL", "TUNDRA", "ICE"];
+const CLS = ["FOREST", "GRASS", "MED", "DRY", "BOREAL", "TUNDRA", "ICE"];
 const conf = {}; CLS.forEach(a => { conf[a] = {}; CLS.forEach(b => conf[a][b] = 0); });
 let hit = 0;
 for (const p of pts) { if (!conf[p.oC] || !conf[p.oC][p.mC] === undefined) continue;
@@ -206,7 +216,7 @@ for (const [a, b, n] of pairs.slice(0, 6))
     sae += Math.abs(zT - p.oT);
     if (Math.abs(p.la) <= 60) { s60 += Math.abs(zT - p.oT); n60++; }
     zp.push(z.p.reduce((a, b) => a + b, 0));
-    if (KCLS[koppen(z.p, z.t)] === p.oC) nhit++;
+    if (kcls(koppen(z.p, z.t)) === p.oC) nhit++;
   }
   console.log("\nNULL MODEL — observed zonal mean (a world of stripes; no geography)");
   console.log(`  TEMPERATURE  |error| ${(sae / pts.length).toFixed(2)}°C all land, ${(s60 / n60).toFixed(2)}°C at |lat|<=60`);

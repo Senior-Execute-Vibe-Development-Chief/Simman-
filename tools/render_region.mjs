@@ -3,6 +3,7 @@
 import zlib from "node:zlib";
 import { writeFileSync } from "node:fs";
 import { generateWorld } from "../src/sim/worldgen.js";
+import { classifyBiome } from "../src/sim/biomeClass.js";
 
 const REGIONS = {
   asia:   { latN: 60, latS: 5, lonW: 60, lonE: 150 },
@@ -28,24 +29,9 @@ function png(width, height, rgb) {
   return Buffer.concat([sig, chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw, { level: 6 })), chunk("IEND", Buffer.alloc(0))]);
 }
 const BC = [[10,22,56],[20,48,95],[36,78,125],[194,182,140],[168,158,130],[235,240,248],[50,80,58],[45,78,48],[50,105,45],[25,100,52],[14,72,28],[192,176,82],[158,165,78],[210,185,140],[140,135,78],[78,118,48],[152,145,135],[42,110,38],[195,190,180]];
-function getBiomeD(e, m, t, sl, dry) {
-  if (e <= sl) return e < sl - .08 ? 0 : e < sl - .01 ? 1 : 2;
-  const demand = .5 + t * .5; let em = Math.min(1, m / demand);
-  // Dry-season length (kept in sync with WorldSim.jsx getBiomeD).
-  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
-  if (dry > 0 && warmth > 0) {
-    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
-    em = Math.max(seas, Math.min(em, 0.17));
-  }
-
-  if (t < .45) return 5;
-  if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
-  if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
-  if (t < .65) return em > .45 ? 7 : em > .25 ? 6 : em > .08 ? 4 : 18;
-  if (t < .78) return em>.58?9:em>.40?8:em>.14?12:13;
-  if (t < .85) return em>.54?17:em>.36?15:em>.16?11:em>.09?14:13;
-  return em>.56?10:em>.38?15:em>.16?11:em>.09?12:13;
-}
+// Classifier imported, not copied — see src/sim/biomeClass.js. Local copies in
+// tools/ are how the probes drifted away from the code they were meant to check.
+const getBiomeD = (e, m, t, sl, dry) => classifyBiome(e, m, t, dry, 0);
 const w = generateWorld(W, H, 8817, PRESET, 0.78, true, false, {});
 const x0 = Math.round(((r.lonW + 180) / 360) * W), x1 = Math.round(((r.lonE + 180) / 360) * W);
 const y0 = Math.round((90 - r.latN) / 180 * H), y1 = Math.round((90 - r.latS) / 180 * H);

@@ -123,8 +123,10 @@ const LAPSE_K_PER_KM = 6.5;
 function deriveGrids() {
   if (derived) return derived;
   const LAT = precip.lat, LON = precip.lon, NLAT = LAT.length, NLON = LON.length;
-  const P = new Float32Array(NLAT * NLON), T = new Float32Array(NLAT * NLON), D = new Float32Array(NLAT * NLON);
+  const P = new Float32Array(NLAT * NLON), T = new Float32Array(NLAT * NLON),
+        D = new Float32Array(NLAT * NLON), S = new Float32Array(NLAT * NLON);
   for (let j = 0; j < NLAT; j++) {
+    const north = LAT[j] >= 0;
     for (let i = 0; i < NLON; i++) {
       let map = 0, mat = 0, dryMonths = 0;
       for (let m = 0; m < 12; m++) {
@@ -137,12 +139,20 @@ function deriveGrids() {
         // from savanna at the same annual total (see the dryFrac note in worldgen).
         if (pm < 2 * tm) dryMonths++;
       }
+      // Phase of the drought: local-winter rainfall against local-summer rainfall.
+      // Positive = summer-dry, the Mediterranean signature (Koppen's Cs).
+      let sP = 0, wP = 0;
+      for (let k = 0; k < 6; k++) {
+        sP += precip.months[(north ? 3 + k : 9 + k) % 12][j][i];
+        wP += precip.months[(north ? 9 + k : 3 + k) % 12][j][i];
+      }
       P[j * NLON + i] = map;          // mm/yr
       T[j * NLON + i] = mat / 12;     // degC
       D[j * NLON + i] = dryMonths / 12;
+      S[j * NLON + i] = (wP - sP) / Math.max(1e-6, wP + sP);
     }
   }
-  derived = { P, T, D, LAT, LON, NLAT, NLON };
+  derived = { P, T, D, S, LAT, LON, NLAT, NLON };
   return derived;
 }
 
@@ -156,11 +166,12 @@ function deriveGrids() {
  * @param {Float32Array} moisture   out
  * @param {Float32Array} temperature out
  * @param {Float32Array} [dryFrac]  out, fraction of the year that is arid
+ * @param {Float32Array} [summerDry] out, phase of the drought (>0 = summer-dry)
  * @returns {boolean} false if the data is not loaded
  */
-export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac) {
+export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry) {
   if (!isRealClimateAvailable()) return false;
-  const { P, T, D, LAT, NLAT, NLON } = deriveGrids();
+  const { P, T, D, S, LAT, NLAT, NLON } = deriveGrids();
 
   // Latitude index + fraction per map ROW (the Gaussian grid is not evenly spaced, so
   // this is a scan rather than arithmetic — but it is H scans, not W*H).
@@ -232,6 +243,7 @@ export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac)
       if (e > 0) degC -= LAPSE_K_PER_KM * (e - smooth[i]) * ELEV_M / 1000;
       temperature[i] = Math.max(0, Math.min(1, 0.6 + degC / 100));
       if (dryFrac) dryFrac[i] = Math.max(0, Math.min(1, samp(D, y, x)));
+      if (summerDry) summerDry[i] = Math.max(-1, Math.min(1, samp(S, y, x)));
       if (e > 0) {
         const mm = Math.max(0, samp(P, y, x));
         obsP[i] = mm; nLand++;

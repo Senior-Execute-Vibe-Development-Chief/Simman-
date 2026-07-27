@@ -82,6 +82,12 @@ const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new
 // axis — how the year's water is DISTRIBUTED — kept separate from `moisture`, which is
 // how much of it there is. Zero for presets with no seasonal solve.
 const dryFrac=new Float32Array(W*H);
+// PHASE of the dry season, -1..1: >0 means the drought falls in the local SUMMER. That is
+// what makes a Mediterranean climate — sclerophyll scrub instead of forest — and Koppen's
+// Cs is defined by the phase alone, not by the annual total, so it cannot be recovered
+// from dryFrac (which only measures how LONG the drought is). It falls straight out of the
+// two solstice solves the monsoon already needs. Zero for presets with no seasonal solve.
+const summerDry=new Float32Array(W*H);
 let tecPlates=null,tecWindX=null,tecWindY=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
@@ -552,6 +558,9 @@ const dryFracLocal=dryMonths/12;
 // 0.48 — the historic rice bowl of China rendered mediocre farmland to make a biome colour
 // come out right. The biome classifier reads this field directly instead.
 dryFrac[i]=dryFracLocal;
+// Local winter against local summer. Positive = a wet winter and a dry summer, which is
+// the Mediterranean signature; the monsoon lands sit strongly negative.
+summerDry[i]=(drySeason-summerWet)/Math.max(1e-6,drySeason+summerWet);
 // ── Patagonian / Monte rain shadow ──────────────────────────────────────────────
 // The real southern Andes (2-3 km) wring the westerlies into steppe-to-desert from
 // ~35-52°S; but the heightmap renders that cordillera at barely 0.1 elevation, too low
@@ -627,7 +636,7 @@ moisture[i]=mo;}
 // Everything after this line — rivers, fertility, settlement, the whole of history —
 // still emerges; it just emerges on a given climate instead of a predicted one.
 if(realWind&&realWindFns&&realWindFns.fillRealClimate&&realWindFns.isRealClimateAvailable&&realWindFns.isRealClimateAvailable()){
-realWindFns.fillRealClimate(W,H,elevation,moisture,temperature,dryFrac);
+realWindFns.fillRealClimate(W,H,elevation,moisture,temperature,dryFrac,summerDry);
 console.log("Earth (Sim): using real NCEP/NCAR precipitation + air temperature");}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
@@ -803,4 +812,4 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,dryFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
+return{elevation,moisture,temperature,dryFrac,summerDry,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
