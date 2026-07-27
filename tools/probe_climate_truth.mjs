@@ -98,7 +98,7 @@ for (let y = 0; y < H; y += STEP) {
     const i = y * W + x; if (w.elevation[i] <= 0) continue;
     const lo = (x + 0.5) / W * 360 - 180;
     const o = obs(la, lo); if (!o) continue;
-    pts.push({ la, lo,
+    pts.push({ la, lo, o,
       mT: (w.temperature[i] - 0.6) * 100,
       oT: o.t.reduce((a, b) => a + b, 0) / 12,
       mM: w.moisture[i],
@@ -160,6 +160,60 @@ pairs.sort((x, y) => y[2] - x[2]);
 console.log("\nBIGGEST CONFUSIONS");
 for (const [a, b, n] of pairs.slice(0, 6))
   console.log(`  observed ${a.padEnd(7)} -> model ${b.padEnd(7)} ${(100 * n / pts.length).toFixed(1)}% of land`);
+
+// ── 4. SKILL vs a world made of stripes ────────────────────────────────────
+// An absolute score is uninterpretable on its own: 60% biome agreement reads like a
+// passing grade until you learn what a model with NO geography scores. So build the
+// null model — every land point predicts the OBSERVED zonal mean over land in its
+// own 2 degree band — and score it identically. It is deliberately a hard baseline: it
+// is handed the real answer for each latitude and is blind only to longitude, and
+// for biome it feeds real mm and degC through the SAME koppen() used to make the
+// truth, so its classifier error is zero where the model's is not. Beating it means
+// the continents, mountains and monsoons are earning their keep.
+{
+  const bands = new Map();
+  for (const p of pts) {
+    const b = Math.round(p.la / 2) * 2;
+    if (!bands.has(b)) bands.set(b, { p: new Array(12).fill(0), t: new Array(12).fill(0), n: 0 });
+    const z = bands.get(b);
+    for (let m = 0; m < 12; m++) { z.p[m] += p.o.p[m]; z.t[m] += p.o.t[m]; }
+    z.n++;
+  }
+  for (const z of bands.values()) for (let m = 0; m < 12; m++) { z.p[m] /= z.n; z.t[m] /= z.n; }
+  let sae = 0, s60 = 0, n60 = 0, nhit = 0; const zp = [];
+  for (const p of pts) {
+    const z = bands.get(Math.round(p.la / 2) * 2);
+    const zT = z.t.reduce((a, b) => a + b, 0) / 12;
+    sae += Math.abs(zT - p.oT);
+    if (Math.abs(p.la) <= 60) { s60 += Math.abs(zT - p.oT); n60++; }
+    zp.push(z.p.reduce((a, b) => a + b, 0));
+    if (KCLS[koppen(z.p, z.t)] === p.oC) nhit++;
+  }
+  console.log("\nNULL MODEL — observed zonal mean (a world of stripes; no geography)");
+  console.log(`  TEMPERATURE  |error| ${(sae / pts.length).toFixed(2)}°C all land, ${(s60 / n60).toFixed(2)}°C at |lat|<=60`);
+  console.log(`  MOISTURE     Spearman ${spearman(zp, pts.map(p => p.oP)).toFixed(3)}`);
+  console.log(`  BIOME        agreement ${(100 * nhit / pts.length).toFixed(1)}%`);
+
+  // Strip each field of its OWN zonal mean and correlate the remainder. Latitude is
+  // free; this is the part geography has to earn, and the only honest measure of
+  // whether the solver puts wet and warm in the right LONGITUDES.
+  const mz = new Map();
+  for (const p of pts) {
+    const b = Math.round(p.la / 2) * 2;
+    if (!mz.has(b)) mz.set(b, { mM: 0, oP: 0, mT: 0, oT: 0, n: 0 });
+    const z = mz.get(b); z.mM += p.mM; z.oP += p.oP; z.mT += p.mT; z.oT += p.oT; z.n++;
+  }
+  for (const z of mz.values()) { z.mM /= z.n; z.oP /= z.n; z.mT /= z.n; z.oT /= z.n; }
+  const aTm = [], aTo = [], aM = [], aO = [];
+  for (const p of pts) {
+    const z = mz.get(Math.round(p.la / 2) * 2);
+    aTm.push(p.mT - z.mT); aTo.push(p.oT - z.oT);
+    aM.push(p.mM - z.mM);  aO.push(p.oP - z.oP);
+  }
+  console.log("\nANOMALY SKILL — zonal mean removed from BOTH sides (pure longitudinal structure)");
+  console.log(`  temperature  Spearman ${spearman(aTm, aTo).toFixed(3)}`);
+  console.log(`  moisture     Spearman ${spearman(aM, aO).toFixed(3)}`);
+}
 
 // temperature error by latitude band
 console.log("\nTEMPERATURE ERROR BY LATITUDE");
