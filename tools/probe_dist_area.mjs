@@ -6,9 +6,16 @@ const PRESET = process.argv[2] || "earth_sim";
 const BN = ['DeepOcean','ShallowOcean','Coastal','Beach','Tundra','Ice','Taiga','Boreal',
   'TempForest','TempRain','TropRain','Savanna','Grassland','Desert','Shrubland',
   'TropDryForest','Barren','Subtropical','ColdDesert'];
-function getBiomeD(e, m, t, sl) {
+function getBiomeD(e, m, t, sl, dry) {
   if (e <= sl) return e < sl - .08 ? 0 : e < sl - .01 ? 1 : 2;
-  const demand = .5 + t * .5; const em = Math.min(1, m / demand);
+  const demand = .5 + t * .5; let em = Math.min(1, m / demand);
+  // Dry-season length (kept in sync with WorldSim.jsx getBiomeD).
+  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
+  if (dry > 0 && warmth > 0) {
+    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
+    em = Math.max(seas, Math.min(em, 0.17));
+  }
+
   if (t < .45) return 5;
   if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
   if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
@@ -23,7 +30,7 @@ for (let y = 0; y < H; y++) {
   const lat = (y / H - 0.5) * Math.PI; const wgt = Math.cos(lat); // area weight
   for (let x = 0; x < W; x++) {
     const i = y * W + x; if (w.elevation[i] <= 0) continue;
-    const b = getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0);
+    const b = getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0, w.dryFrac ? w.dryFrac[i] : 0);
     counts[b] = (counts[b] || 0) + wgt; land += wgt;
   }
 }

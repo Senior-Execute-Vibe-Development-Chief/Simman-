@@ -773,7 +773,7 @@ if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
-}else{const c=getColorD(e,m,t,sl,flood);r=c[0];g=c[1];b=c[2];}
+}else{const c=getColorD(e,m,t,sl,flood,w.dryFrac?w.dryFrac[si]:0);r=c[0];g=c[1];b=c[2];}
 // Swamp overlay
 let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){

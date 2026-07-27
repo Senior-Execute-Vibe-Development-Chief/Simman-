@@ -28,9 +28,16 @@ function png(width, height, rgb) {
   return Buffer.concat([sig, chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw, { level: 6 })), chunk("IEND", Buffer.alloc(0))]);
 }
 const BC = [[10,22,56],[20,48,95],[36,78,125],[194,182,140],[168,158,130],[235,240,248],[50,80,58],[45,78,48],[50,105,45],[25,100,52],[14,72,28],[192,176,82],[158,165,78],[210,185,140],[140,135,78],[78,118,48],[152,145,135],[42,110,38],[195,190,180]];
-function getBiomeD(e, m, t, sl) {
+function getBiomeD(e, m, t, sl, dry) {
   if (e <= sl) return e < sl - .08 ? 0 : e < sl - .01 ? 1 : 2;
-  const demand = .5 + t * .5; const em = Math.min(1, m / demand);
+  const demand = .5 + t * .5; let em = Math.min(1, m / demand);
+  // Dry-season length (kept in sync with WorldSim.jsx getBiomeD).
+  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
+  if (dry > 0 && warmth > 0) {
+    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
+    em = Math.max(seas, Math.min(em, 0.17));
+  }
+
   if (t < .45) return 5;
   if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
   if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
@@ -46,7 +53,7 @@ const cw = x1 - x0, ch = y1 - y0, ow = cw * SCALE, oh = ch * SCALE;
 const rgb = Buffer.alloc(ow * oh * 3);
 for (let oy = 0; oy < oh; oy++) for (let ox = 0; ox < ow; ox++) {
   const sx = x0 + Math.floor(ox / SCALE), sy = y0 + Math.floor(oy / SCALE);
-  const i = sy * W + sx, b = getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0), c = BC[b];
+  const i = sy * W + sx, b = getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0, w.dryFrac ? w.dryFrac[i] : 0), c = BC[b];
   const o = (oy * ow + ox) * 3; rgb[o] = c[0]; rgb[o+1] = c[1]; rgb[o+2] = c[2];
 }
 const out = `/tmp/region_${REGION}_${PRESET}.png`;

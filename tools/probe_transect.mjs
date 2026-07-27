@@ -6,9 +6,16 @@ const W = 720, H = 360;
 const BN = ['DeepOcean','ShallowOcean','Coastal','Beach','Tundra','Ice','Taiga','Boreal',
   'TempForest','TempRain','TropRain','Savanna','Grassland','Desert','Shrubland',
   'TropDryForest','Barren','Subtropical','ColdDesert'];
-function getBiomeD(e, m, t, sl) {
+function getBiomeD(e, m, t, sl, dry) {
   if (e <= sl) return e < sl - .08 ? 0 : e < sl - .01 ? 1 : 2;
-  const demand = .5 + t * .5; const em = Math.min(1, m / demand);
+  const demand = .5 + t * .5; let em = Math.min(1, m / demand);
+  // Dry-season length (kept in sync with WorldSim.jsx getBiomeD).
+  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
+  if (dry > 0 && warmth > 0) {
+    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
+    em = Math.max(seas, Math.min(em, 0.17));
+  }
+
   if (t < .45) return 5;
   if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
   if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
@@ -20,7 +27,7 @@ function getBiomeD(e, m, t, sl) {
 const toC = t => ((t - 0.60) * 100).toFixed(0);
 const w = generateWorld(W, H, 8817, "earth_sim", 0.78, true, false, {});
 const px = (lat, lon) => { const y = Math.round((90 - lat) / 180 * (H - 1)); let x = Math.round(((lon + 180) / 360) * W) % W; if (x < 0) x += W; return [x, y]; };
-const at = (lat, lon) => { const [x, y] = px(lat, lon); const i = y * W + x; return { e: w.elevation[i], m: w.moisture[i], t: w.temperature[i], b: getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0) }; };
+const at = (lat, lon) => { const [x, y] = px(lat, lon); const i = y * W + x; return { e: w.elevation[i], m: w.moisture[i], t: w.temperature[i], b: getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0, w.dryFrac ? w.dryFrac[i] : 0) }; };
 
 console.log('\n=== SAHARA N-S TRANSECT @ 13°E (Niger→Libya→Med) ===');
 console.log('lat  elev    t°C  moist  biome       (real: 10-15°N savanna, 18-30°N desert)');

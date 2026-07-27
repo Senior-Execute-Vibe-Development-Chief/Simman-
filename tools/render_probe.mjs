@@ -21,9 +21,16 @@ function png(width, height, rgb) {
 }
 
 const BC = [[10,22,56],[20,48,95],[36,78,125],[194,182,140],[168,158,130],[235,240,248],[50,80,58],[45,78,48],[50,105,45],[25,100,52],[14,72,28],[192,176,82],[158,165,78],[210,185,140],[140,135,78],[78,118,48],[152,145,135],[42,110,38],[195,190,180]];
-function getBiomeD(e, m, t, sl) {
+function getBiomeD(e, m, t, sl, dry) {
   if (e <= sl) return e < sl - .08 ? 0 : e < sl - .01 ? 1 : 2;
-  const demand = .5 + t * .5; const em = Math.min(1, m / demand);
+  const demand = .5 + t * .5; let em = Math.min(1, m / demand);
+  // Dry-season length (kept in sync with WorldSim.jsx getBiomeD).
+  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
+  if (dry > 0 && warmth > 0) {
+    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
+    em = Math.max(seas, Math.min(em, 0.17));
+  }
+
   if (t < .45) return 5;
   if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
   if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
@@ -78,7 +85,7 @@ writeFileSync('/tmp/heightmap.png', png(W, H, withGraticule(Buffer.from(hm))));
 
 // 2) biome map
 const bm = Buffer.alloc(W * H * 3);
-for (let i = 0; i < W * H; i++) { const b = getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0); const c = BC[b]; bm[i*3]=c[0]; bm[i*3+1]=c[1]; bm[i*3+2]=c[2]; }
+for (let i = 0; i < W * H; i++) { const b = getBiomeD(w.elevation[i], w.moisture[i], w.temperature[i], 0, w.dryFrac ? w.dryFrac[i] : 0); const c = BC[b]; bm[i*3]=c[0]; bm[i*3+1]=c[1]; bm[i*3+2]=c[2]; }
 writeFileSync('/tmp/biome.png', png(W, H, withGraticule(Buffer.from(bm))));
 
 // 3) temperature map (blue cold → red hot)

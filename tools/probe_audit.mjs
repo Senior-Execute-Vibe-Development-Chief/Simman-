@@ -11,9 +11,16 @@ const BN = ['DeepOcean','ShallowOcean','Coastal','Beach','Tundra','Ice','Taiga',
 // rough biome "family" for each id, to judge match leniently
 const FAM = {5:'ice',4:'tundra',6:'cold',7:'cold',8:'tempF',9:'tempF',10:'tropF',11:'grass',
   12:'grass',13:'desert',14:'desert',15:'tropF',16:'barren',17:'subF',18:'desert'};
-function getBiomeD(e, m, t) {
+function getBiomeD(e, m, t, dry) {
   if (e <= 0) return -1;
-  const demand = .5 + t * .5; const em = Math.min(1, m / demand);
+  const demand = .5 + t * .5; let em = Math.min(1, m / demand);
+  // Dry-season length (kept in sync with WorldSim.jsx getBiomeD).
+  const warmth = Math.max(0, Math.min(1, (t - 0.79) / 0.035));
+  if (dry > 0 && warmth > 0) {
+    const seas = em * (1 - 0.68 * warmth * Math.max(0, Math.min(1, (dry - 0.28) / 0.10)));
+    em = Math.max(seas, Math.min(em, 0.17));
+  }
+
   if (t < .45) return 5;
   if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
   if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
@@ -122,7 +129,7 @@ for (const [region, places] of Object.entries(REGIONS)) {
   console.log('place                          real°C  mdl°C  moist  biome           expected     '+'flag');
   for (const [name, lat, lon, realC, exFam, note] of places) {
     const s = sample(lat, lon);
-    const b = getBiomeD(s.e, s.m, s.t);
+    const b = getBiomeD(s.e, s.m, s.t, 0, w.dryFrac ? w.dryFrac[s.i] : 0);
     const fam = b < 0 ? 'OCEAN' : FAM[b];
     const dT = toC(s.t) - realC;
     const biomeBad = fam !== exFam && !(fam==='OCEAN');
