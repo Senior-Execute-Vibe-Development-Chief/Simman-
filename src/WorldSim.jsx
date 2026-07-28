@@ -3253,13 +3253,16 @@ const renderInspect=()=>{
   // Water-access label.
   const wa=s.waterAccess||0;
   const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
-  // Food balance. surplus is the REAL flow balance — local production +
-  // smoothed imports − consumption. An import-fed city sits near 0 (it
-  // eats grain as fast as it arrives, so stored food stays low); that is
-  // "balanced", NOT starving. Only a genuine, uncovered shortfall that is
-  // actually draining the granary counts as starving.
+  // Food balance. surplus is the REAL flow balance — supply − consumption,
+  // where _foodSupply already contains hierarchy-delivered grain (via
+  // _foodNet); _foodImportRate is the display-only decomposition of that
+  // delivered share, so adding it here would double-count imports. An
+  // import-fed city sits near 0 (it eats grain as fast as it arrives, so
+  // stored food stays low); that is "balanced", NOT starving. Only a
+  // genuine, uncovered shortfall that is actually draining the granary
+  // counts as starving.
   const supply=s._foodSupply||0, demand=s._foodDemand||0, importRate=s._foodImportRate||0;
-  const surplus=(supply+importRate)-demand;
+  const surplus=supply-demand;
   const eps=Math.max(0.02,demand*0.02);
   const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
   let status,statusColor;

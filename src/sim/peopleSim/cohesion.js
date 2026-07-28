@@ -53,7 +53,6 @@ export function eraIdentityWeights(year) {
     anc:    0.12,
   };
 }
-export function identityWeightsNow(world) { return eraIdentityWeights(world._civYear ?? -9000); }
 
 // Organisation → development pseudo-year (moved from index.js so the identity
 // layer owns its own development mapping). Calibrated to the historical
@@ -111,8 +110,8 @@ export function adminFriction(cap, s, w) {
 // era-weighted MEAN mismatch across all four identity axes, normalized to [0,1]
 // (0 = kin, integrates freely; 1 = wholly foreign on every salient axis).
 //
-// Because the weights are era-derived from emergent development (identityWeightsNow
-// reads _civYear, mapped from the leading state's organisation — NOT the wall-clock),
+// Because the weights are era-derived from emergent development (identityWeightsFor
+// reads each realm's OWN capital organisation — NOT the wall-clock),
 // this self-calibrates: in antiquity the salient axes are faith/tongue and the people
 // axis is near-silent, so classical empires can still be multi-ethnic (Rome, Persia,
 // the Mongols); as development reaches the national age the people axis crests and
