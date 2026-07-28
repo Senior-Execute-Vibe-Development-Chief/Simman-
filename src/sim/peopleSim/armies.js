@@ -27,10 +27,11 @@ import { inCrisis } from "./dynasties.js";
 import { getPolity as _getPolity } from "./entities.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { recordIn, IN_STATE_PAY } from "./money.js";
 import { feedGrievance, SACK_GRIEV_FRAC } from "./loyaltyField.js";
 import { fieldShift } from "./popField.js";
+import { forEachNear } from "./spatialGrid.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -212,6 +213,23 @@ function might(s) { return (s.army || 0) * techMul(s); }
 // date). Weight: a fully-fortified city is ~2.5x harder to storm — walls
 // decided sieges without making them unwinnable (starvation still works).
 const WALL_W = 1.5;
+// ── Fortress zone of control (the tile-war role of a walled town) ─────
+// A walled, manned strongpoint dominates the ground around it: the
+// defender's tiles within its shadow resist at a multiple, decaying with
+// distance — so fronts stall at fortress lines (the limes, the march
+// castles, the bastide belts) until the attacker masses what a siege
+// really took, instead of flowing around militarily-transparent towns.
+// Gated on the walls ABILITY (the masonry tech); magnitude = the walls
+// level (defense channel — which gunpowder erodes, ending the castle age
+// per-theatre) × how MANNED the place is (garrison vs reference). This is
+// what a garrison/march town is FOR: before it, a non-capital settlement
+// decided nothing locally — national armies fight the open field, only
+// capitals are stormed, and towns flipped with their ground without a
+// fight (measured/owner-reviewed 2026-07: "do garrison towns make
+// sense?" — they didn't, yet).
+const FORT_R            = 3;    // REFERENCE-tiles of shadow (×rNormPop at use)
+const FORT_W            = 2.0;  // peak added defense multiple at the fortress itself, fully walled + manned
+const FORT_GARRISON_REF = 40;   // garrison at which walls count as fully manned
 function homeMight(s) {
   const morale = Math.max(MILITIA_MORALE_FLOOR, (s.loyalty ?? 1) - 0.5 * (s.unrest || 0));
   const militia = (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
@@ -772,6 +790,7 @@ export function advanceFronts(world) {
   // ENEMY settlement (different country) adjacent to it that out-powers the
   // owner — that enemy can capture this tile. Group candidates by
   // attacker→defender front; flag fronts that have reached the city core.
+  const _fortRn = rNormPop(world);   // fortress shadow is a REAL distance (see FORT_R)
   const pairs = new Map();   // "att:def" -> { att, def, tiles:[{ti,distHome}], canStorm }
   for (let ti = 0; ti < N; ti++) {
     const d = owner[ti];
@@ -848,10 +867,30 @@ export function advanceFronts(world) {
       const alp = Math.min(1, (world.elev[ti] - 0.5) / 0.3);
       terrainDef *= 1 + (1.0 + 1.6 * alp) * (1 - 0.5 * cons);   // ≈2–4.6× rough/high alpine
     }
+    // ── Fortress shadow (see FORT_R above) ──────────────────────────
+    // The strongest walled-and-manned strongpoint of the DEFENDER's own
+    // country within FORT_R lends the tile its shadow, fading linearly
+    // with distance. Only frontier tiles reach this code (an eligible
+    // enemy neighbour exists), so the grid query cost rides the front
+    // length, not the map.
+    {
+      const fr = FORT_R * _fortRn;
+      let fortAdd = 0;
+      forEachNear(world, tx + 0.5, ty + 0.5, fr, (S, d2) => {
+        if (S.mode !== "settled" || S.countryId !== defCC) return;
+        const eff = techEff(S);
+        if (!eff.walls) return;
+        const manned = 0.4 + 0.6 * Math.min(1, (S.army || 0) / FORT_GARRISON_REF);
+        const f = FORT_W * Math.max(0, eff.defenseLevel || 0) * manned * Math.max(0, 1 - Math.sqrt(d2) / fr);
+        if (f > fortAdd) fortAdd = f;
+      });
+      terrainDef *= 1 + fortAdd;
+    }
     if (terrainDef > 6) terrainDef = 6;            // cap — a single tile can't be unconquerable
-    // Even a vastly-stronger attacker is CHANNELLED by terrain: a river/mountain
-    // tile resists ~up to 6× a plain, so fronts snap to ridges and rivers and
-    // pour through the passes/valleys between, rather than advancing as a wall.
+    // Even a vastly-stronger attacker is CHANNELLED by terrain (and by the
+    // fortress line): a river/mountain/castle-shadow tile resists ~up to 6× a
+    // plain, so fronts snap to ridges, rivers and marches and pour through
+    // the gaps between, rather than advancing as a wall.
     const effDef = D._M * projOf(D, ti) * thinFactor * terrainDef;   // the defender projects to its own frontier too (×1 at lever 0)
     // Trade peace raises the bar: between two countries with a profitable
     // trade link, opportunistic encroachment is suppressed (it's bad

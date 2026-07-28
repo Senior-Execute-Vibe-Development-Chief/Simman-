@@ -254,3 +254,28 @@ see falls, fades if the faith does.
 of a fallen realm keeps its people in the field, and the urban floor
 re-concentrates them into new towns wherever basins persist — flight and
 return are what the field already does.
+
+## Addendum 4 — the fortress zone of control (owner: "do garrison towns make sense?")
+
+They didn't, yet — audited: under TILE_WAR a tile's defense was national
+army share × capital-distance decay × thin-tile × terrain, with **no
+settlement-local term**; non-capital towns flip flags with their ground
+(only capitals are stormed), and the code said it outright ("a border
+town's garrison decides nothing in the open field"). A march plantation
+contributed men to the national pool and nothing to the line it was
+planted on. Historically backwards: fortified places dominated their
+surroundings; sieges *were* pre-modern war because you could not hold or
+pass ground under a hostile fortress.
+
+Fix (armies.js `FORT_R/FORT_W/FORT_GARRISON_REF`): the strongest
+walled-and-manned strongpoint of the defender's own country within a
+3-reference-tile shadow lends its tiles a defense multiple — gated on the
+walls ABILITY (masonry), scaled by the walls level (the defense channel
+gunpowder later erodes — the castle age ends per-theatre, never on a
+date) × how manned the place is (garrison vs 40). Folded into the same
+terrain product and its existing 6× cap, computed only on frontier tiles
+(cost rides the front length). Fronts now stall at fortress lines and
+pour through the gaps — the limes, the march-castle belts — and a
+garrison town finally does what it was planted for. National field
+armies still decide the open field; the fortress decides what "open"
+means.
