@@ -92,8 +92,10 @@ const MAX_ROUTE_TILES = 1200;    // cap on a sea path's stored tile count
 const SEA_FREIGHT_K = 0.02;   // how much a partner's route cost discounts its trade value in peer selection
 
 // Colonisation. Tuned to be reasonably common: a navigation-capable city
-// mounts expeditions fairly often, and a young colony is supplied from
-// home (see supplyColonies in conquest.js) so it survives its first years.
+// mounts expeditions fairly often, and a young colony is invested in from
+// home — the metropole ships coin and grain across the overlord link while
+// the dependency is young (the colonial-economy pass in conquest.js) — so
+// it survives its first years.
 // COLONY_MIN_POP -> runtime lever (tuning.js T.COLONY_MIN_POP)
 const COLONY_MIN_NAV    = 0.25;  // need ocean-going ships
 const COLONY_PEOPLE     = 30;    // colonists carried (migrated out of parent)
@@ -102,8 +104,17 @@ const COLONY_COOLDOWN   = 500 / 1.1; // ticks between expeditions from one port
                                  // which divides this; behaviour identical)
 const COLONY_ENDOW_FRAC = 0.12;  // share of the parent's coin colonists carry
 const COLONY_ENDOW_CAP  = 5000;
-const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement (grid near-query radius)
-const COLONY_PER_PORT_CAND = 400; // cap shore candidates collected per port
+const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement (grid near-query radius, ×rNormPop — a real distance)
+// Shore-candidate budget per port: how much nearby coastline a port's site
+// survey covers, counted in UNIQUE land tiles at the 240-wide reference grid.
+// Coastline is ONE-dimensional — its tile count per unit of REAL length grows
+// linearly with resolution — so the live cap is ×rNormPop (updateSea), exactly
+// 400 at the reference. The exclusion radius the candidates compete against
+// (COLONY_MIN_DIST, siteIsClear) is already res-scaled; leaving this budget
+// raw shrank the surveyed coast to 1/rNorm of its calibrated length at fine
+// grids, so a dense realm's whole window sat inside its own settlements'
+// exclusion disks — zero valid sites, every pass, only at high resolution.
+const COLONY_PER_PORT_CAND = 400;
 
 // 8-neighbour offsets (match the flood's neighbour order) for wind heading.
 const DX = [-1, 1, 0, 0, -1, 1, -1, 1];
@@ -239,7 +250,12 @@ export function updateSea(world) {
   // Colony-eligible ports (we only collect shore candidates for these, to
   // keep the flood cheap).
   const eligible = new Set();
-  const shoreCand = new Map();   // portId -> [{landTi, waterTi, d, f}]
+  const shoreCand = new Map();   // portId -> [{landTi, waterTi, d, f}] — unique landTi, nearest-water approach first
+  const shoreSeen = new Map();   // portId -> Set(landTi examined) — dedup scratch for the flood's shore collection
+  // Live candidate budget: COLONY_PER_PORT_CAND is calibrated in reference
+  // tiles of coastline (1-D), so it scales ×rNormPop — the same REAL coast
+  // length surveyed at any grid (×1, byte-identical, at the 240 reference).
+  const candCap = Math.round(COLONY_PER_PORT_CAND * rNormPop(world));
   for (const p of ports) {
     // An expansionist realm mounts colonial expeditions more often (shorter
     // effective cooldown); an insular one rarely bothers (personality.js
@@ -261,6 +277,7 @@ export function updateSea(world) {
     if (pop >= T.COLONY_MIN_POP || qgoal) {
       eligible.add(p.id);
       shoreCand.set(p.id, []);
+      shoreSeen.set(p.id, new Set());
     }
   }
 
@@ -337,11 +354,19 @@ export function updateSea(world) {
       if (ni < 0) continue;
       if (elev[ni] > 0) {
         // Land neighbour — a potential colony shore for this port (cardinal
-        // only, to keep landings on a real coastline).
+        // only, to keep landings on a real coastline). Dedup by LAND tile: a
+        // crenellated coast offers the same land tile to up to 4 adjacent
+        // water tiles, so without dedup one site could eat 4 slots of the
+        // budget. First examination wins — the flood pops water nearest-first,
+        // so that is the cheapest water approach to the site (the landing).
         if (collectShore && k < 4) {
           const arr = shoreCand.get(oid);
-          if (arr.length < COLONY_PER_PORT_CAND && isContinentalLand(world, ni)) {
-            arr.push({ landTi: ni, waterTi: ti, d, f: world.fert[ni] || 0 });
+          if (arr.length < candCap) {
+            const seen = shoreSeen.get(oid);
+            if (!seen.has(ni)) {
+              seen.add(ni);
+              if (isContinentalLand(world, ni)) arr.push({ landTi: ni, waterTi: ti, d, f: world.fert[ni] || 0 });
+            }
           }
         }
         continue;
