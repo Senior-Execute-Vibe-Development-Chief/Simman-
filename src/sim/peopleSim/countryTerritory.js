@@ -402,6 +402,16 @@ function fieldPolityTerritory(world) {
   const resScale = resScaleFor(tw), r2 = resScale * resScale;
   let co = world._countryOwner;
   if (!co || co.length !== N) { co = world._countryOwner = new Int32Array(N); co.fill(-1); }
+  // RELEASED-BY mask (scratch, per pass): the realm that relinquished each tile THIS
+  // pass — by the connectivity release (step 3) or the over-capacity shed (step 6).
+  // The cartography stack (step 7) reads it so the mapmaker never hands a tile
+  // straight back to the realm whose own mechanisms just released it (the measured
+  // fill-and-revert cycle that neutralised the shed on coasts: gaps ≈ gapsSea every
+  // window, fills ≫ net growth, an over-target coastal realm pinned at 8× its
+  // capacity target). A DIFFERENT realm claiming the tile is genuine capture of
+  // fresh no-man's-land and stays allowed.
+  let rel = world._fpRel; if (!rel || rel.length !== N) { rel = world._fpRel = new Int32Array(N); }
+  rel.fill(-1);
 
   // Living polities + per-country capacity/knowledge (the Tilly stack from the last
   // updatePolities; one-interval stale is acceptable).
@@ -644,7 +654,7 @@ function fieldPolityTerritory(world) {
         }
       }
     }
-    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) co[ti] = -1;
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) { rel[ti] = co[ti]; co[ti] = -1; }
   } else {
     let reach = world._fpReach; if (!reach || reach.length !== N) reach = world._fpReach = new Uint8Array(N);
     reach.fill(0);
@@ -663,7 +673,7 @@ function fieldPolityTerritory(world) {
       ];
       for (let k = 0; k < 8; k++) { const ni = ns[k]; if (ni >= 0 && !reach[ni] && co[ni] === c) { reach[ni] = 1; q[qt++] = ni; } }
     }
-    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) co[ti] = -1;
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) { rel[ti] = co[ti]; co[ti] = -1; }
   }
 
   // 4. Held ADMINISTRATION (post-release) → grow/shed budgets vs the capacity target.
@@ -789,6 +799,7 @@ function fieldPolityTerritory(world) {
   //    priced exactly like the entity Voronoi (soft-capped relief + fertility-hostility
   //    ribbon-hug + wet-tropic + organic noise). Contested wild goes to whoever reaches
   //    it cheaper.
+  const spentGrow = new Map();   // cid → admin load actually claimed in step 5 (feeds the step-7 fill headroom)
   if (grow.size) {
     let cost = world._fpCost; if (!cost || cost.length !== N) cost = world._fpCost = new Float64Array(N);
     cost.fill(Infinity);
@@ -856,6 +867,7 @@ function fieldPolityTerritory(world) {
         }
       }
     }
+    for (const [c, g] of grow) spentGrow.set(c, g - (budget.get(c) || 0));   // load actually claimed
   }
 
   // 6. SHED over-capacity marches: a realm holding more than its target releases its
@@ -869,6 +881,7 @@ function fieldPolityTerritory(world) {
   //    farthest, dearest march, not whichever edge tile happens to scan first. The
   //    per-realm sort is over edge candidates only (a perimeter, not N). Lever off:
   //    the flat scan-order release, byte-identical.
+  const shedRel = new Map();   // cid → admin load actually released in step 6 (feeds the step-7 fill headroom)
   {
     const excess = new Map();
     for (const [cid, t] of target) { const h = held.get(cid) || 0; if (h > t) excess.set(cid, h - t); }
@@ -891,7 +904,8 @@ function fieldPolityTerritory(world) {
         for (const [cid, arr] of cands) {
           let rem = excess.get(cid);
           arr.sort((a, b) => (dist[b] - dist[a]) || (a - b));   // most remote first (index tiebreak keeps it deterministic)
-          for (const ti of arr) { if (!(rem > 0)) break; co[ti] = -1; rem -= loadOfD(dist[ti]); }
+          for (const ti of arr) { if (!(rem > 0)) break; rel[ti] = cid; co[ti] = -1; rem -= loadOfD(dist[ti]); }
+          shedRel.set(cid, excess.get(cid) - rem);
         }
       } else {
         for (let ti = 0; ti < N; ti++) {
@@ -902,18 +916,43 @@ function fieldPolityTerritory(world) {
           const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
           let edge = false;
           for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { edge = true; break; } }
-          if (edge) { co[ti] = -1; excess.set(cid, rem - 1); }
+          if (edge) { rel[ti] = cid; co[ti] = -1; excess.set(cid, rem - 1); shedRel.set(cid, (shedRel.get(cid) || 0) + 1); }
         }
       }
     }
   }
 
+  // FILL HEADROOM: what each targeted realm can still afford after growth and shed —
+  // target − end-of-pass held, in admin-load units. The cartography stack below is
+  // ASSERTION, not administration ("filled tiles keep cost=Infinity"), but its fills
+  // land in next pass's held ledger all the same — so unbounded assertion silently
+  // re-spent the shed's refund and pinned over-capacity coastal realms at their old
+  // extent (the fill-and-revert cycle). Bounding assertion by the SAME capacity
+  // ledger that bounds growth and triggers shed closes the loop: a realm at or over
+  // its target is handed nothing, an under-target realm absorbs pockets only up to
+  // what it can administer. Each filled tile charges the minimum admin load
+  // loadOfD(0) = 1 (its true distance isn't known until next pass's walk re-prices
+  // it; any overshoot from that under-charge is one small shed, masked, and done).
+  // Realms with NO target (capless cold-start holds) stay unbounded, as before.
+  const room = new Map();
+  for (const [cid, t] of target) room.set(cid, Math.max(0, t - ((held.get(cid) || 0) + (spentGrow.get(cid) || 0) - (shedRel.get(cid) || 0))));
+  // Per-pass debug snapshot (measurement only, never read by a mechanism): each
+  // targeted realm's end-of-pass held load (post-release + growth − shed) vs target.
+  {
+    const dbg = world.debug || (world.debug = {});
+    const ht = {};
+    for (const [cid, t] of target) ht[cid] = [Math.round(((held.get(cid) || 0) + (spentGrow.get(cid) || 0) - (shedRel.get(cid) || 0)) * 10) / 10, t];
+    dbg.fpPass = { step: world.step, ht };
+  }
+
   // 7. Cartography (reused, pure _countryOwner ops): fill interior pockets, partition
   //    the gaps between neighbours, smooth the border. Home tiles are pinned in the
-  //    smoother, so no realm is smoothed out of existence.
-  fillEnclosedWaste(world, co);
-  closeRealmGaps(world, co, T.REALM_GAP_FILL);
-  smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
+  //    smoother, so no realm is smoothed out of existence. The released-by mask keeps
+  //    the mapmaker from handing back what steps 3/6 just relinquished, and the
+  //    headroom keeps assertion inside the capacity ledger (see rel/room above).
+  fillEnclosedWaste(world, co, rel, room);
+  closeRealmGaps(world, co, T.REALM_GAP_FILL, rel, room);
+  smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0, /*pinWorked*/ false, rel, room);
 }
 
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
@@ -1422,7 +1461,11 @@ function cartoTally(world, key, n) {
   c[key] = (c[key] || 0) + n;
 }
 
-function fillEnclosedWaste(world, co) {
+// relBy/room (field-polity callers only; legacy callers omit them, byte-identical):
+// relBy[ti] = realm that released ti this pass — never hand it straight back;
+// room = per-realm remaining fill headroom in load units — assertion stays inside
+// the capacity ledger (see the step-7 comment in fieldPolityTerritory).
+function fillEnclosedWaste(world, co, relBy = null, room = null) {
   const { N, tw, th, elev } = world;
   cartoTally(world, "calls", 1);   // one cartography stack invocation (waste→gaps→smooth run together)
   let seen = world._wasteSeen;
@@ -1454,8 +1497,18 @@ function fillEnclosedWaste(world, co) {
     }
     if (border < 0) continue;              // open, island, or contested — stays wild
     if (comp.length > (claimed.get(border) || 0) * ENCLOSED_FILL_MAX) continue;
-    for (let k = 0; k < comp.length; k++) co[comp[k]] = border;
-    cartoTally(world, "waste", comp.length);
+    let filled = 0, bounced = 0, unafforded = 0;
+    let rm = room && room.has(border) ? room.get(border) : Infinity;
+    for (let k = 0; k < comp.length; k++) {
+      const ti = comp[k];
+      if (relBy && relBy[ti] === border) { bounced++; continue; }   // just released by this very realm — the shed sticks
+      if (rm < 1) { unafforded++; continue; }                        // no headroom — the realm can't administer more
+      co[ti] = border; rm -= 1; filled++;
+    }
+    if (room && room.has(border)) room.set(border, rm);
+    cartoTally(world, "waste", filled);
+    cartoTally(world, "wasteBounce", bounced);
+    cartoTally(world, "wasteHeldBack", unafforded);
   }
 }
 
@@ -1470,7 +1523,7 @@ function fillEnclosedWaste(world, co) {
 // dissolve — area roughly preserved. Settlement HOME tiles are pinned, so no realm
 // is ever smoothed out of existence (its basin regrows next pass). Iterations =
 // BORDER_SMOOTH. O(passes·N).
-function smoothCountryBorders(world, co, iters, pinWorked = false) {
+function smoothCountryBorders(world, co, iters, pinWorked = false, relBy = null, room = null) {
   if (!(iters > 0)) return;
   const { N, tw, th, elev } = world;
   let prot = world._smoothProt;
@@ -1520,7 +1573,21 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
       // need = ceil(5·landN/8). landN=8 gives exactly 5 (inland byte-identical);
       // fewer voters scale the bar down proportionally. A tile with <2 land
       // neighbours has no meaningful vote (an islet / causeway tip) and is left alone.
-      if (landN >= 2 && bestC >= Math.ceil(5 * landN / 8) && best !== snap[ti]) { co[ti] = best; chg++; if (landN < 8) chgCoast++; }
+      if (landN >= 2 && bestC >= Math.ceil(5 * landN / 8) && best !== snap[ti]) {
+        // A WILD→realm adoption is the smoother handing out new land: it obeys the
+        // same released-by mask and capacity headroom as the fill passes (measured
+        // as a reverter channel of the shed cycle). Realm↔realm and realm→wild
+        // flips are the border-straightening trade itself and stay untouched.
+        if (best >= 0 && snap[ti] < 0) {
+          if (relBy && relBy[ti] === best) { cartoTally(world, "smoothBounce", 1); continue; }
+          if (room && room.has(best)) {
+            const rm = room.get(best);
+            if (rm < 1) { cartoTally(world, "smoothHeldBack", 1); continue; }
+            room.set(best, rm - 1);
+          }
+        }
+        co[ti] = best; chg++; if (landN < 8) chgCoast++;
+      }
     }
   }
   cartoTally(world, pinWorked ? "smoothPinned" : "smooth", chg);
@@ -1545,7 +1612,7 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
 // realm ground, so a beach flanked by one realm on one side stays open frontier
 // and an unclaimed island (sea on every ray) is never swallowed. Four linear
 // sweeps → O(N). Set D=0 (REALM_GAP_FILL) to recover the raw cost-Voronoi basins.
-function closeRealmGaps(world, co, D) {
+function closeRealmGaps(world, co, D, relBy = null, room = null) {
   if (!(D > 0)) return;
   const { N, tw, th, elev } = world;
   // T.REALM_GAP_FILL is REFERENCE-tiles: the fillable no-man's-land is a real
@@ -1684,7 +1751,14 @@ function closeRealmGaps(world, co, D) {
     const realmRays = (w >= 0 ? 1 : 0) + (e >= 0 ? 1 : 0) + (nn >= 0 ? 1 : 0) + (ss >= 0 ? 1 : 0);
     if (realmRays < 2) continue;
     const c = near[ti];                                                   // smooth nearest country (not the axis-aligned cardinal flank)
-    if (c >= 0) { fills[n++] = ti; fills[n++] = c; if (realmRays < 4) nSea++; }
+    if (c < 0) continue;
+    if (relBy && relBy[ti] === c) { cartoTally(world, "gapsBounce", 1); continue; }   // just released by this very realm — the shed sticks
+    if (room && room.has(c)) {
+      const rm = room.get(c);
+      if (rm < 1) { cartoTally(world, "gapsHeldBack", 1); continue; }     // no headroom — the realm can't administer more
+      room.set(c, rm - 1);
+    }
+    fills[n++] = ti; fills[n++] = c; if (realmRays < 4) nSea++;
   }
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
   cartoTally(world, "gaps", n >> 1);
