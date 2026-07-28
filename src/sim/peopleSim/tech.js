@@ -23,6 +23,8 @@
 // engineering). The "Modern" column is the aspirational horizon only the very
 // best, ore-and-coal-rich, highly organised civilisations ever touch.
 
+import { T } from "./tuning.js";
+
 export const ERAS = ["Stone Age", "Bronze Age", "Classical", "Medieval", "Renaissance", "Industrial", "Modern"];
 
 // Each tech: id, era (column), name (kept short for the node — detail lives in
@@ -333,28 +335,51 @@ export const TECH_FX = {
   the_factory:  { build:0.06, trade:0.20, wealth:0.10 },
   mass_prod:    { build:0.04, trade:0.18 },
   electricity:  { build:0.03, wealth:0.15 },
-  // — metal / military —  (military sums ≈ 2.30 ≈ old met·1.5+mob·0.8, but
-  //  FRONT-LOADED onto the era-defining weapons — copper/bronze/iron and the
-  //  chariot/cavalry steps — so a mid-tech army isn't a pushover, the way the
-  //  continuous met·1.5 made it. A bronze or iron sword is a real leap.)
-  copper_working:{ military:0.24, wealth:0.03 },
-  bronze_working:{ military:0.28 },
-  bronze_arms:  { military:0.08 },
+  // — metal / military —  (two regimes, keyed by T.MIL_REVOLUTIONS:)
+  //  LEGACY (lever 0): the additive `military` weights below sum ≈ 2.35 ≈ old
+  //  met·1.5+mob·0.8, front-loaded onto the era-defining weapons.
+  //  REVOLUTIONS (lever 1, default): each armament REVOLUTION is a
+  //  MULTIPLICATIVE step (`milMul`, compounding across revolutions), because a
+  //  new weapon SYSTEM obsoletes the old one wholesale — its characteristic
+  //  battlefield dominance at equal numbers is a RATIO, not a bonus — while
+  //  incremental techs inside a paradigm (archery, the chariot/cavalry arm,
+  //  roads, drill) still ADD. A carrier tech's legacy `military` weight is
+  //  EXCLUDED from the additive base on the revolutions path (replaced by its
+  //  factor); each revolution's total multiple is the product of its carriers,
+  //  split by their share of delivering the system:
+  //    bronze arms      copper 1.10 · bronze_working 1.25 · bronze_arms 1.10  ≈ 1.51
+  //    mass iron        iron_working 1.40 · iron_legions 1.15                 ≈ 1.61
+  //    pike-and-shot    gunpowder 1.25 · firearms 1.30 · musketry 1.35 · foundry 1.10 ≈ 2.41
+  //    rifled-industrial steel 1.20 · rifling 1.40                            ≈ 1.68
+  //    mechanization    combustion 1.25 · flight 1.12                         ≈ 1.40
+  //  (docs/user-report-diagnosis-2026-07-28.md §12: the additive arc capped the
+  //  whole Stone→Modern span at 3.35× and priced the entire gunpowder
+  //  revolution below copper working — muskets needed more MEN, not better
+  //  guns. Diffusion is untouched: neighbours still converge, so these ratios
+  //  express only in the window a gap exists and across capability gates.)
+  //  Gunpowder's wall EROSION (the end of the castle age) stays a real channel
+  //  effect but is spread over the siege-gun era — gunpowder −0.05, firearms
+  //  −0.07 (`defenseRev`, replacing the legacy one-shot −0.12; same −0.12 era
+  //  total, so FX_TOTAL.defense is conserved) — and each carrier's own combat
+  //  multiple exceeds its wall debit, so adopting guns is never a net own-goal.
+  copper_working:{ military:0.24, milMul:1.10, wealth:0.03 },
+  bronze_working:{ military:0.28, milMul:1.25 },
+  bronze_arms:  { military:0.08, milMul:1.10 },
   archery:      { military:0.05 },
-  iron_working: { military:0.30 },
-  iron_legions: { military:0.12, cohesion:0.03 },
+  iron_working: { military:0.30, milMul:1.40 },
+  iron_legions: { military:0.12, milMul:1.15, cohesion:0.03 },
   chariots:     { military:0.28, logistics:0.04 },
   cavalry:      { military:0.18, logistics:0.12 },
   chivalry:     { military:0.10, defense:0.08 },
   blast_furnace:{ military:0.03, build:0.02 },
-  gunpowder:    { military:0.05, defense:-0.12 },   // ends the age of the castle wall
-  firearms:     { military:0.05 },
-  foundry:      { military:0.04, build:0.02 },
-  musketry:     { military:0.07, cohesion:0.04 },
-  steel:        { military:0.06, build:0.04 },
-  rifling:      { military:0.05 },
-  combustion:   { military:0.03, trade:0.10, seaSpeed:0.20, logistics:0.15 },
-  flight:       { military:0.03 },
+  gunpowder:    { military:0.05, milMul:1.25, defense:-0.12, defenseRev:-0.05 },   // ends the age of the castle wall
+  firearms:     { military:0.05, milMul:1.30, defenseRev:-0.07 },
+  foundry:      { military:0.04, milMul:1.10, build:0.02 },
+  musketry:     { military:0.07, milMul:1.35, cohesion:0.04 },
+  steel:        { military:0.06, milMul:1.20, build:0.04 },
+  rifling:      { military:0.05, milMul:1.40 },
+  combustion:   { military:0.03, milMul:1.25, trade:0.10, seaSpeed:0.20, logistics:0.15 },
+  flight:       { military:0.03, milMul:1.12 },
   mining:       { wealth:0.12, military:0.02 },
   // — administration / reach / cohesion —  (reach is GAP-WEIGHTED onto the admin
   //  techs by their org-thresholds, cohesion FRONT-LOADED onto early social/legal
@@ -431,8 +456,11 @@ export function techEffects(k, blend = 1) {
     organization: q(_k.organization) / 1000, metallurgy: q(_k.metallurgy) / 1000,
     navigation: q(_k.navigation) / 1000, mobility: q(_k.mobility) / 1000,
   };
+  // T.MIL_REVOLUTIONS is part of the memo key: the lever switches which
+  // military formula a cached entry embodies, so dragging it must miss.
+  const STEEP = T.MIL_REVOLUTIONS > 0;
   const _key = q(_k.agriculture) + "," + q(_k.construction) + "," + q(_k.organization) + ","
-             + q(_k.metallurgy) + "," + q(_k.navigation) + "," + q(_k.mobility) + "|" + blend;
+             + q(_k.metallurgy) + "," + q(_k.navigation) + "," + q(_k.mobility) + "|" + blend + (STEEP ? "|R" : "");
   const _hit = _fxCache.get(_key);
   if (_hit) return _hit;
   const have = techState(qk).have;
@@ -443,6 +471,12 @@ export function techEffects(k, blend = 1) {
   // hug the old smooth curve instead of jumping at the unlock tick. Abilities
   // (embark/ocean/…) still flip only on the real unlock.
   const PARTIAL = 0.6;
+  // Revolutions path (T.MIL_REVOLUTIONS): milAdd = the additive military sum
+  // EXCLUDING revolution carriers (their weight is replaced by their factor);
+  // milMul = the compounding product of the carriers' factors, each factor
+  // interpolated by credit (an imminent revolution lends a fraction of its
+  // multiple — the same on-ramp as the additive channel).
+  let milAdd = 0, milMul = 1;
   for (let i = 0; i < TECHS.length; i++) {
     const fx = TECH_FX[TECHS[i].id]; if (!fx) continue;
     let credit;
@@ -452,7 +486,13 @@ export function techEffects(k, blend = 1) {
     for (const key in fx) {
       const v = fx[key];
       if (typeof v === "boolean") { if (v && credit >= 1) can[key] = true; }
-      else if (key in ch) ch[key] += v * credit;
+      else if (key === "milMul") { if (STEEP) milMul *= 1 + (v - 1) * credit; }
+      else if (key === "defenseRev") { if (STEEP) ch.defense += v * credit; }   // the era-spread wall erosion (replaces the carrier's legacy `defense`)
+      else if (key in ch) {
+        if (STEEP && key === "defense" && fx.defenseRev !== undefined) continue;   // superseded by defenseRev on the revolutions path
+        ch[key] += v * credit;
+        if (key === "military" && fx.milMul === undefined) milAdd += v * credit;
+      }
     }
   }
   const ag = qk.agriculture, cn = qk.construction, nav = qk.navigation,
@@ -461,7 +501,13 @@ export function techEffects(k, blend = 1) {
     have, ch, ...can,
     farmYield:  1 + lerp(ag * 1.2, ch.farm, blend),            // ×land food   (old 1+ag·1.2)
     fishFactor: 0.3 + lerp(nav * 1.2, ch.fish, blend),          // ×fishery     (old 0.3+nav·1.2)
-    military:   1 + lerp(met * 1.5 + mob * 0.8, ch.military, blend), // ×combat (old 1+met·1.5+mob·0.8)
+    // ×combat. Legacy: bounded additive (old 1+met·1.5+mob·0.8 at blend 0).
+    // Revolutions (T.MIL_REVOLUTIONS, default): incremental techs add, armament
+    // revolutions MULTIPLY and compound (see the TECH_FX military block) — the
+    // decisive transitions are real force multiples at equal population.
+    military:   STEEP
+      ? (1 + lerp(met * 1.5 + mob * 0.8, milAdd, blend)) * (1 + (milMul - 1) * blend)
+      : 1 + lerp(met * 1.5 + mob * 0.8, ch.military, blend),
     buildLevel: lerp(cn, lvl(ch.build, "build"), blend),        // density lvl  (old construction)
     reachLevel: lerp(org, lvl(ch.reach, "reach"), blend),       // admin reach  (old organization)
     cohesion:   lerp(org, lvl(ch.cohesion, "cohesion"), blend), // loyalty hold (old organization)
@@ -500,35 +546,61 @@ export function techEffectText(id) {
 
 // Structured per-tech effects for the tree's hover card: one entry per channel
 // with its display text, the channel key (for colour-coding) and whether it's a
-// boon. Booleans (embark/walls/…) render as plain ability labels.
+// boon. Booleans (embark/walls/…) render as plain ability labels. Rendered for
+// the live T.MIL_REVOLUTIONS arm: a revolution carrier shows its ×factor (its
+// additive `military` weight is the superseded legacy arm), and a carrier's
+// era-spread wall debit (`defenseRev`) supersedes its legacy `defense` entry.
 export function techEffectList(id) {
   const fx = TECH_FX[id]; if (!fx) return [];
+  const steep = T.MIL_REVOLUTIONS > 0;
   const out = [];
   for (const key in fx) {
     const v = fx[key];
     if (typeof v === "boolean") { if (v) out.push({ key, text: FX_LABEL[key] || key, good: true, ability: true }); }
-    else out.push({ key, text: `${v > 0 ? "+" : ""}${Math.round(v * 100)}% ${FX_LABEL[key] || key}`, good: v > 0, ability: false });
+    else if (key === "milMul") { if (steep) out.push({ key: "military", text: `×${v.toFixed(2)} ${FX_LABEL.military}`, good: true, ability: false }); }
+    else if (key === "defenseRev") { if (steep) out.push({ key: "defense", text: `${v > 0 ? "+" : ""}${Math.round(v * 100)}% ${FX_LABEL.defense}`, good: v > 0, ability: false }); }
+    else {
+      if (steep && key === "military" && fx.milMul !== undefined) continue;      // replaced by the ×factor line
+      if (steep && key === "defense" && fx.defenseRev !== undefined) continue;   // replaced by the defenseRev line
+      out.push({ key, text: `${v > 0 ? "+" : ""}${Math.round(v * 100)}% ${FX_LABEL[key] || key}`, good: v > 0, ability: false });
+    }
   }
   return out;
 }
 
 // Stacked totals — every DISCOVERED tech's effects summed per channel (+ the
 // abilities unlocked). No partial credit, no blend: the raw "what all my techs
-// add up to" the tree header shows. `have` is techState(k).have.
+// add up to" the tree header shows. `have` is techState(k).have. Under
+// T.MIL_REVOLUTIONS the military line reflects the live arm: carriers' factors
+// compound into `milMul` (returned for the header), their superseded additive
+// weights / one-shot wall debit are excluded from the sums.
 export function techTotals(have) {
+  const steep = T.MIL_REVOLUTIONS > 0;
   const ch = {}; for (const c of FX_CH) ch[c] = 0;
   const can = {}; for (const a of FX_ABIL) can[a] = false;
+  let milMul = 1;
   for (let i = 0; i < TECHS.length; i++) {
     if (!have[i]) continue;
     const fx = TECH_FX[TECHS[i].id]; if (!fx) continue;
-    for (const key in fx) { const v = fx[key]; if (typeof v === "boolean") { if (v) can[key] = true; } else if (key in ch) ch[key] += v; }
+    for (const key in fx) {
+      const v = fx[key];
+      if (typeof v === "boolean") { if (v) can[key] = true; }
+      else if (key === "milMul") { if (steep) milMul *= v; }
+      else if (key === "defenseRev") { if (steep) ch.defense += v; }
+      else if (key in ch) {
+        if (steep && key === "military" && fx.milMul !== undefined) continue;
+        if (steep && key === "defense" && fx.defenseRev !== undefined) continue;
+        ch[key] += v;
+      }
+    }
   }
-  return { ch, can };
+  return { ch, can, milMul };
 }
 export function techTotalList(have) {
-  const { ch, can } = techTotals(have);
+  const { ch, can, milMul } = techTotals(have);
   const out = [];
   for (const c of FX_CH) if (Math.abs(ch[c]) > 0.001) out.push({ key: c, text: `${ch[c] > 0 ? "+" : ""}${Math.round(ch[c] * 100)}% ${FX_LABEL[c] || c}`, good: ch[c] > 0 });
+  if (milMul > 1.001) out.push({ key: "military", text: `×${milMul.toFixed(2)} ${FX_LABEL.military} (revolutions)`, good: true });
   for (const a of FX_ABIL) if (can[a]) out.push({ key: a, text: FX_LABEL[a] || a, good: true, ability: true });
   return out;
 }
