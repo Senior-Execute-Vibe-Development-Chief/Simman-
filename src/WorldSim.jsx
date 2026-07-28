@@ -21,7 +21,7 @@ import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning
 import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
 import { GOODS } from "./sim/peopleSim/goods.js";
-import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
+import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, techState, nextTechs } from "./sim/peopleSim/tech.js";
 import { TechTreeOverlay, ChronicleOverlay, DynastyOverlay, CHRON_COL, ERA_BG } from "./ui/documents.jsx";
 import { fmtPeople, fmtFood, fmtGoldKg, MiniChart, buildHistoryExport, Chip, PsKRow, PsSection } from "./ui/bits.jsx";
@@ -3289,7 +3289,15 @@ const renderInspect=()=>{
   const _xbTot=_xb.reduce((t,b)=>t+b.value,0)||1;
   const produces=_xb.filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
   const _goodsRate=(s._mInRate&&s._mInRate[IN_GOODS])||0;
-  const goodsBreakdown=_goodsRate>0.005
+  // The crafts book on their own channels now (money.js IN_ORE..IN_WARES via
+  // the per-good trade path), so they appear directly — honestly ranked — in
+  // the Gold in/out list above. The export-share ESTIMATE below only renders
+  // for the scalar-path world (no per-good channels carrying data), where the
+  // bundled "goods sold" channel is all there is to decompose.
+  const _craftRate=s._mInRate&&s._mInRate.length>IN_WARES
+    ? (s._mInRate[IN_ORE]||0)+(s._mInRate[IN_METAL]||0)+(s._mInRate[IN_CLOTH]||0)+(s._mInRate[IN_WARES]||0)
+    : 0;
+  const goodsBreakdown=(_goodsRate>0.005&&_craftRate<=0.005)
     ? _xb.map(b=>[b.label==="Baseline"?"Basic produce":b.label, _goodsRate*b.value/_xbTot])
          .filter(x=>x[1]>0.005).sort((a,b)=>b[1]-a[1])
     : [];

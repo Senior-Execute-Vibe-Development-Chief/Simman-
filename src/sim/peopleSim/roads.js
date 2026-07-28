@@ -55,7 +55,7 @@ import { exportValueOf, getWealthReserve, techEff } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
-import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, IN_CARRY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { recordIn, recordOut, recordInMetered, recordOutMetered, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, IN_CARRY, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 import { TRADABLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_LUXURY } from "./goods.js";   // goods-vector Stage 2 (T.GOODS_TRADE) + the freight bulk table
 
 // Entrepôt share (0..1): how much of an entrepôt a hub is — port access (a harbour or
@@ -384,6 +384,12 @@ function recordBuildSpan(world, a, b, walkLenRaw, viaGuard) {
 }
 
 export { QUALITY_NEW, QUALITY_MAX, TRACK_FLOOR, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
+// The trade-cost machinery, exported for the slave market's distance-priced
+// clearing (slavery.js): captives clear through the SAME audited sale path
+// and pay the SAME friction family (freight per path cost, per-hub tolls,
+// entrepôt brokerage, tariffs) every other consignment pays — one cost
+// model, no parallel physics.
+export { sellGoods, TRANSPORT_PER_PATHCOST, TOLL_RATE, TOLL_CHOKE_W, GT_BULK, entrepotShare, MinHeap };
 
 // ── State init ─────────────────────────────────────────────────────
 function ensureRoadArrays(world) {
@@ -1335,8 +1341,14 @@ const GT_MIN_GAP  = 0.05;   // relative price gap below which a good doesn't mov
 const GT_GAP_CAP  = 2.0;    // flow-driving gap factor cap (a 3×+ gap ships no faster than 3× — carrying capacity binds first)
 const GT_FLOW_FRAC = 0.25;  // fraction of the seller's remaining surplus budget one route can take per unit gap (≈12 partners: a few strong-gap routes drain the budget, weak gaps nibble)
 const GT_OVERBUY  = 1.5;    // a buyer imports at most this multiple of its own shortfall (merchants overbuy a little; no bottomless hoards without re-export modelling)
-// Money channels per good index (book the crate on its own channel).
-const GT_BOOK_IN  = { [G_MATERIALS]: IN_MATERIALS,  [G_LUXURY]: IN_LUXURY  };
+// Money channels per good index (book the crate on its own channel). Every
+// craft rides its OWN income channel (money.js IN_ORE..IN_WARES) — with four
+// crafts lumped into IN_GOODS the income-ranking taxonomy was near-empty and
+// any thin channel (the slave trade) ranked top-3 by default (diagnosis §3).
+// The buy side stays bundled as generic imports: the visibility problem is
+// what a town LIVES ON, not what it shops for.
+const GT_BOOK_IN  = { [G_MATERIALS]: IN_MATERIALS,  [G_LUXURY]: IN_LUXURY,
+                      [G_ORE]: IN_ORE, [G_METAL]: IN_METAL, [G_CLOTH]: IN_CLOTH, [G_WARES]: IN_WARES };
 const GT_BOOK_OUT = { [G_MATERIALS]: OUT_MATERIALS, [G_LUXURY]: OUT_LUXURY };
 // VALUE-TO-WEIGHT (T.GOODS_FREIGHT — von Thünen): freight a coin's worth of
 // each good incurs, relative to the average consignment. Pre-modern freight
@@ -1548,8 +1560,16 @@ function customsCollector(world, seller, buyer) {
 // override the seller-mix booking split with an explicit channel pair — the
 // per-good path knows exactly what's in the crate; the scalar path (both
 // omitted) books by the seller's export fractions exactly as before.
-function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, numInter, bookIn, bookOut) {
+// Optional meterTicks (> 1): a SLOW-CADENCE caller (the slave market's
+// ~50-tick pass) meters every provenance booking of this sale over the ticks
+// the pass stands for (money.js recordInMetered — the Tier-A honest-rate
+// contract), so a lumped consignment reads as the steady flow it represents.
+// Coin still moves at once; only the display ledger is metered. Default 0 =
+// the per-tick recordIn path, byte-identical.
+function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, numInter, bookIn, bookOut, meterTicks = 0) {
   if (goodsValue <= 0) return 0;
+  const bookI = meterTicks > 1 ? (t, cat, amt) => recordInMetered(t, cat, amt, meterTicks) : recordIn;
+  const bookO = meterTicks > 1 ? (t, cat, amt) => recordOutMetered(t, cat, amt, meterTicks) : recordOut;
   // Each intermediate's toll scales with how much of a CROSSING it controls
   // (waterAccess — a ford, bridge, strait or port that trade must funnel through).
   let tollSum = 0, brokerSum = 0;
@@ -1611,9 +1631,9 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
     // Per-good booking (T.GOODS_TRADE): the crate's contents are known —
     // book the whole consignment on its own channel, freight to the
     // seller's shipping income as ever.
-    recordIn(seller, bookIn, paid);
-    if (freightPaid > 0) recordIn(seller, IN_GOODS, freightPaid);
-    recordOut(buyer, bookOut, paid);
+    bookI(seller, bookIn, paid);
+    if (freightPaid > 0) bookI(seller, IN_GOODS, freightPaid);
+    bookO(buyer, bookOut, paid);
   } else {
     const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0)
                      || (seller._exportFoodFrac || 0) >= T.FOOD_SELLER_FRAC;
@@ -1623,29 +1643,29 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
     const foodPaid = paid * foodFrac;
     const matPaid  = paid * matFrac;
     const goodsPaid = paid - foodPaid - matPaid;
-    recordIn(seller, IN_FOOD, foodPaid);
-    recordIn(seller, IN_MATERIALS, matPaid);
-    recordIn(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the seller's own shipping fee
-    recordOut(buyer, OUT_FOOD, foodPaid);
-    recordOut(buyer, OUT_MATERIALS, matPaid);
-    recordOut(buyer, OUT_GOODS, goodsPaid);
+    bookI(seller, IN_FOOD, foodPaid);
+    bookI(seller, IN_MATERIALS, matPaid);
+    bookI(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the seller's own shipping fee
+    bookO(buyer, OUT_FOOD, foodPaid);
+    bookO(buyer, OUT_MATERIALS, matPaid);
+    bookO(buyer, OUT_GOODS, goodsPaid);
   }
-  recordOut(buyer, OUT_TOLLS, (freight + totalToll + totalBroker) * scale);
+  bookO(buyer, OUT_TOLLS, (freight + totalToll + totalBroker) * scale);
   if (intermediates) {
     for (const inter of intermediates) {
       if (inter.mode !== "settled") continue;
       const tollPer = goodsValue * TOLL_RATE * (1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0)) * scale;
-      inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer);
+      inter.wealth = (inter.wealth || 0) + tollPer; bookI(inter, IN_TOLLS, tollPer);
       // Re-export brokerage: the great market hubs (high entrepôt share) capture a
       // margin on the goods' value — a coastal mart on a busy route reads as a
       // carrying-trade hub, a backwater ford as a mere toll post.
       const brokerPer = goodsValue * T.ENTREPOT_W * entrepotShare(inter) * scale;
-      if (brokerPer > 0) { inter.wealth += brokerPer; recordIn(inter, IN_CARRY, brokerPer); }
+      if (brokerPer > 0) { inter.wealth += brokerPer; bookI(inter, IN_CARRY, brokerPer); }
     }
   }
   // Customs duty funds the importing realm's STATE TREASURY (not the capital
   // city's purse) — the government then redistributes it (conquest.js).
-  if (collector) { govOf(world, buyer.countryId).treasury += tariff * scale; recordOut(buyer, OUT_TARIFFS, tariff * scale); }
+  if (collector) { govOf(world, buyer.countryId).treasury += tariff * scale; bookO(buyer, OUT_TARIFFS, tariff * scale); }
   // Conservation: buyer loses `actual` = goodsValue*scale + freight*scale (both
   // to the SELLER — goods price + carrying fee) + totalToll*scale (to the
   // intermediates) + tariff*scale (to the state). Nothing is burned in trade; the

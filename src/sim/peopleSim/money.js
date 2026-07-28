@@ -23,7 +23,21 @@ export const IN_FINANCE   = 12;  // interest earned lending to the state — the
 export const IN_SLAVE_TRADE = 13; // selling captives down the slave trade — the slaver/middleman (Crimea/Dahomey/Aro)
 export const IN_CREDIT    = 14;  // bank credit CONJURED on top of specie (a banking hub's fractional money creation) — not goods sold (B17)
 export const IN_CAPITAL   = 15;  // sold capital goods — mills, docks, fittings — to an investing neighbour (T.GOODS_INVEST)
-const N_IN = 16;
+// The craft sector unbundled (2026-07 Tier-B): the per-good trade path
+// (roads.js GT_BOOK_IN — sellGoods knows exactly what's in the crate) books
+// each craft on its own channel instead of lumping four trades into IN_GOODS.
+// With them bundled, a typical realm had ~5-6 live channels and one giant
+// "goods sold" — so a channel worth 5% of income landed at rank 3 and the
+// slave trade read top-3 in realms that in truth ran on cloth, wares and
+// metal (user-report diagnosis §3: the near-empty ranking taxonomy). Money
+// rates are display EMAs, deliberately unpersisted (see below), so appending
+// channels is save-safe. IN_GOODS remains the scalar-path mixed consignment
+// plus the seller's own carriage fees.
+export const IN_ORE       = 16;  // sold ore — the extraction district feeding distant forges
+export const IN_METAL     = 17;  // sold metalware — tools, fittings, arms
+export const IN_CLOTH     = 18;  // sold market cloth — the weaving towns (Flanders/Florence)
+export const IN_WARES     = 19;  // sold everyday wares — pottery, leather, crafted goods
+const N_IN = 20;
 
 // Spending channels.
 export const OUT_GOODS    = 0;   // bought goods (imports)
@@ -47,6 +61,7 @@ export const IN_LABELS = [
   "transit tolls", "taxes & customs", "tribute received", "colonial aid",
   "luxuries sold", "state pay", "pilgrim offerings", "carrying trade", "war loans",
   "slave trade", "bank credit created", "capital goods sold",
+  "ore sold", "metalware sold", "cloth sold", "wares sold",
 ];
 export const OUT_LABELS = [
   "goods bought", "food & farm goods", "construction", "freight & tolls",

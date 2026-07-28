@@ -7,6 +7,11 @@
 //   • MARKET  — captives clear against coerced-labour DEMAND; they become the BUYER's
 //               unfree workforce, coin flows back to the sellers. The slaver/middleman
 //               (Dahomey, the Aro, Crimea) profits by selling people it never works.
+//               Under T.SLAVE_FREIGHT (default) the clearing is DISTANCE-PRICED over
+//               the trade network through roads.js sellGoods — the cargo pays the
+//               same freight/toll/entrepôt/tariff family every other consignment
+//               pays, matched greedily nearest-first, unsold stock staying home
+//               (clearDistancePriced below; lever 0 = the legacy pooled clearing).
 // Conserved: people are moved (victim → captive → the buyer's unfree), coin is moved
 // (buyer → seller). Nothing minted. Emergent — gated on military power, wealth and
 // labour demand, never on era.
@@ -23,12 +28,14 @@ import { getWealthReserve, recordCaptives, drainCaptivePools, arriveCaptives } f
 import { feedGrievance } from "./loyaltyField.js";
 import { fieldShift } from "./popField.js";
 import { T, rNormPop } from "./tuning.js";
+import { mergeReach, sellGoods, TRANSPORT_PER_PATHCOST, TOLL_RATE, TOLL_CHOKE_W, GT_BULK, entrepotShare, MinHeap } from "./roads.js";
+import { G_LUXURY } from "./goods.js";
 
 export const SLAVE_INTERVAL = 50;     // ticks between slave-trade passes (slow flow)
 const RAID_RANGE     = 28;            // tiles a slaver's raiding parties reach
 const RAID_DOMINANCE = 2.0;           // how much stronger a raider must be than its victim
 const SLAVE_PRICE    = 8;             // coin per captive on the market (calibration)
-const PULL_CAP       = 3;             // ceiling on the scarcity multiple: price/raid intensity saturates at 1+PULL_CAP×SLAVE_PULL. HONESTY NOTE: this caps only the market SIGNAL — nothing bounds raid capacity itself (no reach/logistics/army limit on how many victims one raider works per pass); distance-priced clearing and razzia costs are a known gap.
+const PULL_CAP       = 3;             // ceiling on the scarcity multiple: price/raid intensity saturates at 1+PULL_CAP×SLAVE_PULL. HONESTY NOTE: this caps only the market SIGNAL — nothing bounds raid capacity itself (no reach/logistics/army limit on how many victims one raider works per pass); razzia costs remain a known gap. (Distance-priced clearing is BUILT: T.SLAVE_FREIGHT below.)
 
 // The EFFECTIVE pass interval — index.js fires updateSlaveTrade every
 // _ivl(SLAVE_INTERVAL) ticks (G-stretched, same formula). The metered income
@@ -145,7 +152,13 @@ export function updateSlaveTrade(world) {
     }
   }
 
-  // ── Phase B: THE MARKET (long-distance, but along the trade network) ──────────
+  // ── Phase B: THE MARKET ─────────────────────────────────────────────────────
+  // T.SLAVE_FREIGHT (default): distance-priced clearing over the trade network —
+  // captives pay the road like every other consignment. Lever 0: the legacy
+  // pooled per-component clearing below, byte-identical.
+  if (T.SLAVE_FREIGHT > 0) { clearDistancePriced(world, setts); return; }
+
+  // ── LEGACY pooled clearing (T.SLAVE_FREIGHT=0) ──────────────────────────────
   // Under SLAVE_PEOPLE clearing runs PER TRADE COMPONENT (world._networkComponents —
   // the same connected road+sea graph the price level integrates over): a buyer can
   // only be supplied from sellers its merchants can actually reach. Pre-navigation
@@ -154,8 +167,11 @@ export function updateSlaveTrade(world) {
   // Atlantic and Indian-Ocean trades emerge from CONNECTIVITY, never from an era —
   // and each system pools its own regional origins. (The old single GLOBAL pool was
   // a tolerable simplification for a labour stat, but once captives became PEOPLE it
-  // teleported population between unconnected continents.) Lever off: one global
-  // market, exactly the legacy clearing.
+  // teleported population between unconnected continents.) SLAVE_PEOPLE off: one
+  // global market, exactly the original clearing. KNOWN RESIDUAL this pooled form
+  // carries (diagnosis §3, [I13]): one frictionless clearing per component — every
+  // seller paid the same price regardless of distance to any buyer, the only trade
+  // in the sim exempt from freight/tolls/tariffs. That is what SLAVE_FREIGHT fixes.
   const marketKey = (s) => marketKeyOf(world, s);
   const markets = new Map();   // key → { sellers, buyers, supply, demand }
   const marketOf = (key) => { let m = markets.get(key); if (!m) markets.set(key, m = { sellers: [], buyers: [], supply: 0, demand: 0 }); return m; };
@@ -231,4 +247,214 @@ export function updateSlaveTrade(world) {
       s.wealth = (s.wealth || 0) + shipped * price; recordInMetered(s, IN_SLAVE_TRADE, shipped * price, ivl);
     }
   }
+}
+
+// ── Distance-priced clearing (T.SLAVE_FREIGHT) — the market pays the road ────
+// The pooled clearing above was the last frictionless trade in the sim ([I13]):
+// every seller in a component earned the same price whether the buyer was the
+// next valley or the far shore, while every crate of cloth pays freight, tolls,
+// entrepôt brokerage and tariffs. Here captives clear PAIRWISE over the actual
+// trade graph — the merged road+sea reach links every goods consignment already
+// travels — through roads.js sellGoods itself, so a human cargo pays exactly
+// the friction family of goods ([D9]): freight per accumulated path cost at the
+// captive's value density (the silk class — the highest value-to-weight cargo
+// there was: GT_BULK[G_LUXURY], people walk themselves), a toll to every relay
+// town and on-path settlement (the coffle passes the same gates the caravan
+// does — coastal middlemen and caravanserai towns lived on precisely this), the
+// entrepôt margin of the great marts, and the buyer's realm's import duty.
+//
+// Matching is GREEDY NEAREST-FIRST by network transport cost (deterministic
+// tiebreak on ids): the near buyer clears the near stock first — a seller far
+// from any demand keeps its captives in stock (unsold, awaiting a market, worked
+// locally next pass, or never moved at all). Nothing here targets an outcome:
+// the expected localization — slave income concentrating at markets near the
+// plantation/mine/estate belts and fading with network distance — is whatever
+// these ordinary costs imply.
+//
+// The PRICE is still the destination market's scarcity price (the Tier-A
+// T.SLAVE_PULL loop, marketMulOf, unchanged): buyers bid their component's
+// price, the lagged-price map keeps backing next pass's demand index, and the
+// friction rides ON TOP through sellGoods exactly as for goods (the buyer pays
+// carriage and dues; relay towns collect; the seller's sale books
+// IN_SLAVE_TRADE, its carriage fee books as shipping income — same ledger,
+// metered over the pass interval per the Tier-A honest-rate contract).
+//
+// Search bound (no new constants): a route dies where its own friction kills
+// the trade — expansion stops when accumulated ad-valorem dues reach the whole
+// cargo value (tolls alone retire a route within a handful of relay towns:
+// every graph hop IS a settlement) or when carriage alone would exceed the
+// seller's entire stock at the dearest price any market can quote (the
+// PULL_CAP saturation) — the sellGoods ship-worthiness inequality applied as
+// a search horizon. An isolated continent cannot buy captives until someone
+// builds the sea lane; when the lanes exist, the long-distance system EMERGES
+// from connectivity, never from an era.
+function clearDistancePriced(world, setts) {
+  const ivl = passIvl();
+  const byId = world._byId;
+  const sellers = [];
+  const wantLeft = new Map();   // buyerId → residual demand this pass
+  for (const s of setts) {
+    if (s.mode !== "settled") continue;
+    if ((s._captives || 0) > 0.5) sellers.push(s);
+    if ((s._slaveDemand || 0) > 0.5) wantLeft.set(s.id, s._slaveDemand);
+  }
+  if (!sellers.length || !wantLeft.size) { world._slaveLastPrice = new Map(); return; }
+
+  // The settlement graph: undirected adjacency over each settlement's merged
+  // road+sea reach (the SAME links, costs and on-path intermediates the goods
+  // trade walks), cheapest parallel edge kept. Reach maps are nearest-K and
+  // asymmetric; folding both directions restores the mutual mesh.
+  const adj = new Map();   // id → [{to, link}]
+  const addEdge = (a, b, link) => {
+    let l = adj.get(a);
+    if (!l) adj.set(a, l = []);
+    for (const e of l) if (e.to === b) { if (link.cost < e.link.cost) e.link = link; return; }
+    l.push({ to: b, link });
+  };
+  for (const s of setts) {
+    if (s.mode !== "settled") continue;
+    const reach = mergeReach(s);
+    if (!reach || reach.size === 0) continue;
+    for (const [pid, link] of reach) {
+      const p = byId ? byId.get(pid) : null;
+      if (!p || p.mode !== "settled") continue;
+      addEdge(s.id, pid, link);
+      addEdge(pid, s.id, link);
+    }
+  }
+
+  // Per-value friction of passing THROUGH a settlement — the sellGoods rates
+  // verbatim (transit toll incl. the chokepoint term + entrepôt brokerage).
+  const thruFrac = (x) => TOLL_RATE * (1 + TOLL_CHOKE_W * Math.min(1, x.waterAccess || 0))
+                        + T.ENTREPOT_W * entrepotShare(x);
+  // Freight for one pass-consignment over pathCost: the same per-route rate a
+  // goods pair pays over the same span of trade (runGeneralTradeBetween), at
+  // the captive cargo's value density (GT_BULK silk class under GOODS_FREIGHT).
+  const bulkMul = T.GOODS_FREIGHT > 0 ? 1 + T.GOODS_FREIGHT * (GT_BULK[G_LUXURY] - 1) : 1;
+  const rn = rNormPop(world);
+  const freightOf = (pathCost) => pathCost / rn * TRANSPORT_PER_PATHCOST * ivl * bulkMul;
+  // Dearest price any market can quote (the PULL_CAP saturation) — an upper
+  // bound used only to stop searching where carriage can never be paid.
+  const priceCap = SLAVE_PRICE * (1 + Math.max(0, T.SLAVE_PULL || 0) * PULL_CAP);
+
+  // From each seller, walk the network outward (Dijkstra by accumulated link
+  // cost) collecting every reachable posted demand until friction forecloses.
+  const cands = [];
+  for (const seller of sellers) {
+    if (!adj.has(seller.id)) continue;   // no market reach: the stock stays home
+    const stockVal = (seller._captives || 0) * priceCap;
+    const dist = new Map(), tfrac = new Map(), prev = new Map(), prevLink = new Map();
+    const routes = { prev, prevLink, byId };
+    const heap = new MinHeap();
+    dist.set(seller.id, 0); tfrac.set(seller.id, 0);
+    heap.push(seller.id, 0);
+    while (heap.n > 0) {
+      const { ti: id, d } = heap.popMin();
+      if (d > (dist.get(id) ?? Infinity)) continue;   // stale heap entry
+      const isSrc = id === seller.id;
+      const here = isSrc ? seller : (byId ? byId.get(id) : null);
+      if (!here) continue;
+      if (!isSrc && wantLeft.has(id)) cands.push({ cost: d, seller, buyer: here, routes });
+      const out = adj.get(id);
+      if (!out) continue;
+      // Passing THROUGH `here` adds its dues to everything beyond (endpoints
+      // charge nothing — the intermediatesOnPath rule); each hop's own on-path
+      // settlements charge theirs.
+      const thru = isSrc ? 0 : thruFrac(here);
+      const tf = tfrac.get(id) || 0;
+      for (const e of out) {
+        let hopFrac = thru;
+        const li = e.link.inter;
+        if (li) for (const x of li) if (x.mode === "settled" && x.id !== seller.id) hopFrac += thruFrac(x);
+        const nf = tf + hopFrac;
+        if (nf >= 1) continue;                       // dues ≥ the whole cargo value: dead route
+        const nd = d + e.link.cost;
+        if (freightOf(nd) >= stockVal) continue;     // carriage alone exceeds the stock's dearest value
+        if (nd < (dist.get(e.to) ?? Infinity)) {
+          dist.set(e.to, nd); tfrac.set(e.to, nf);
+          prev.set(e.to, id); prevLink.set(e.to, e.link);
+          heap.push(e.to, nd);
+        }
+      }
+    }
+  }
+  if (!cands.length) { world._slaveLastPrice = new Map(); return; }
+
+  // Nearest-first, deterministic: transport cost, then seller id, then buyer id.
+  cands.sort((a, b) => a.cost - b.cost || a.seller.id - b.seller.id || a.buyer.id - b.buyer.id);
+
+  // Each quoting market's scarcity price, memoised — all quotes read the ONE
+  // index frozen this step (marketMulOf), which itself backed demand at LAST
+  // pass's prices; the memo becomes the next pass's lagged-price map below.
+  const priceMemo = new Map();
+  const priceOf = (key) => {
+    let p = priceMemo.get(key);
+    if (p === undefined) priceMemo.set(key, p = SLAVE_PRICE * marketMulOf(world, key));
+    return p;
+  };
+  for (const c of cands) {
+    const seller = c.seller, buyer = c.buyer;
+    const stock = seller._captives || 0;
+    if (stock <= 0.5) continue;                      // sold out to a nearer buyer
+    const want = wantLeft.get(buyer.id) || 0;
+    if (want <= 0.5) continue;                       // filled from a nearer seller
+    const qty = Math.min(stock, want);
+    if (qty < 0.5) continue;                         // dust stays in stock
+    const price = priceOf(marketKeyOf(world, buyer));   // the DESTINATION market's price
+    const inters = routeIntermediates(c);
+    // The audited sale: purse, ship-worthiness, tolls to every relay, entrepôt
+    // margin, import duty, conservation — and the Tier-A metering of every
+    // booking over the pass interval. scale = the fraction that actually ships.
+    const scale = sellGoods(world, seller, buyer, qty * price, freightOf(c.cost),
+      inters, inters ? inters.length : 0, IN_SLAVE_TRADE, OUT_SLAVE, ivl) || 0;
+    if (scale <= 0) continue;
+    const moved = qty * scale;
+    // The PEOPLE move with the coin — this seller's own captive pool arrives
+    // (pairwise cargo: regionally coherent origins, no cross-network teleport).
+    arriveCaptives(world, buyer, moved, seller._captiveCul, seller._captiveAnc);
+    drainCaptivePools(seller, moved, stock);
+    seller._captives = Math.max(0, stock - moved);
+    buyer._unfree = (buyer._unfree || 0) + moved;
+    wantLeft.set(buyer.id, want - moved);
+    // Write-only telemetry for probes: how far the executed trades ran.
+    const dbg = world.debug;
+    if (dbg) {
+      dbg.slaveTradeN = (dbg.slaveTradeN || 0) + 1;
+      dbg.slaveTradeVal = (dbg.slaveTradeVal || 0) + moved * price;
+      dbg.slaveTradeCostVal = (dbg.slaveTradeCostVal || 0) + moved * price * (c.cost / rn);
+      if (!(dbg.slaveTradeMaxCost >= c.cost / rn)) dbg.slaveTradeMaxCost = c.cost / rn;
+    }
+  }
+  // The lagged-price map for next pass's scarcity backing (buildScarcity):
+  // exactly the markets that quoted this pass; a key that stops quoting falls
+  // back to the base price, the honest no-information prior.
+  world._slaveLastPrice = priceMemo;
+}
+
+// The intermediates of a matched pair's network route: every relay settlement
+// the path threads (interior graph nodes) plus each hop link's own on-path
+// settlements — deduplicated, endpoints excluded — handed to sellGoods so the
+// SAME toll/entrepôt machinery that pays Lyon and Malacca pays the towns the
+// coffle passes. Reconstructed lazily (only for pairs that actually match)
+// from the seller's Dijkstra predecessor maps; nodes on a finalized shortest
+// path are themselves finalized, so the walk is exact.
+function routeIntermediates(c) {
+  const { prev, prevLink, byId } = c.routes;
+  let out = null, seen = null;
+  const add = (x) => {
+    if (!x || x.id === c.seller.id || x.id === c.buyer.id) return;
+    if (!seen) { seen = new Set(); out = []; }
+    if (seen.has(x.id)) return;
+    seen.add(x.id); out.push(x);
+  };
+  let at = c.buyer.id;
+  while (at !== c.seller.id) {
+    const link = prevLink.get(at);
+    if (link && link.inter) for (const x of link.inter) add(x);
+    const from = prev.get(at);
+    if (from === undefined) break;   // (defensive: a candidate always has a chain)
+    if (from !== c.seller.id) add(byId ? byId.get(from) : null);
+    at = from;
+  }
+  return out;
 }
