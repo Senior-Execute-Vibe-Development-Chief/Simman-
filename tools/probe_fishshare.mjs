@@ -53,7 +53,7 @@ past.forEach(s=>console.log(`${(s.name||'').padEnd(11)} ${String(Math.round(s.pe
 console.log('\nLIMITER DUMP (biggest 6):');
 console.log('name        pop    land   fish  netFert eraProd irrig livestk agg  agriK climT climM');
 [...setts].sort((a,b)=>b.people-a.people).slice(0,6).forEach(s=>{
-  console.log(`${(s.name||'').padEnd(11)} ${String(Math.round(s.people)).padStart(5)} ${(s._landFood||0).toFixed(1).padStart(6)} ${(s._fishYield||0).toFixed(1).padStart(5)} ${(s._terrFertSum||0).toFixed(1).padStart(7)} ${(s._eraProd||0).toFixed(1).padStart(6)} ${(s._irrigation||1).toFixed(2).padStart(5)} ${(s._livestock||0).toFixed(2).padStart(6)} ${(s._agg||0).toFixed(2).padStart(4)} ${((s.knowledge&&s.knowledge.agriculture)||0).toFixed(2).padStart(5)} ${(s._climTemp||0).toFixed(2).padStart(5)} ${(s._climMoist||0).toFixed(2).padStart(5)}`);
+  console.log(`${(s.name||'').padEnd(11)} ${String(Math.round(s.people)).padStart(5)} ${(s._landFood||0).toFixed(1).padStart(6)} ${(s._fishYield||0).toFixed(1).padStart(5)} ${(s._terrFertSum||0).toFixed(1).padStart(7)} ${(s._eraProd||0).toFixed(1).padStart(6)} ${(s._irrigation||1).toFixed(2).padStart(5)} ${(s._livestock||0).toFixed(2).padStart(6)} ${(s._agriGate||0).toFixed(2).padStart(4)} ${((s.knowledge&&s.knowledge.agriculture)||0).toFixed(2).padStart(5)} ${(s._climTemp||0).toFixed(2).padStart(5)} ${(s._climMoist||0).toFixed(2).padStart(5)}`);
 });
 
 // top settlements by pop, with their fish share

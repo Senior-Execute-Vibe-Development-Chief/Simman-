@@ -199,7 +199,8 @@ export function aggregateFoodHierarchy(world) {
         if (kids) for (const k of kids) if (!seen.has(k.id)) stack.push([k, false]);
       } else {
         stack.pop();
-        let pool = node._storableSupply || 0;                // own production (0 for tier > FARM_MAX_TIER)
+        let pool = node._storableSupply || 0;                // own production (MODEL B: every tier farms its territory)
+        let imported = 0;                                    // grain arriving from the subtree THIS tick (levy + purchase)
         let spare = budget.get(node.id) || 0;
         // The liege's in-kind requisition share — how much of a child's shippable
         // surplus this centre can gather WITHOUT paying, from its administrative
@@ -230,8 +231,15 @@ export function aggregateFoodHierarchy(world) {
           const took = levied + bought;                      // grain that moved UP (levy + purchase); bought ≥ 0 always (rest > 0 since offer > 0 & levyShare ≤ 0.7; spare ≥ 0)
           if (took <= 0) continue;
           pool += took;
+          imported += took;
           k._foodNet = (k._foodNet || 0) - took;             // child keeps less — it gave up `took`
         }
+        // Smoothed grain INFLOW from the hinterland — the info panel's "Imported /tick" row.
+        // Same per-tick 0.9/0.1 fold as the other *Rate fields (e.g. _minedRate), decaying to
+        // 0 when nothing arrives. NOTE: this is a DECOMPOSITION of the supply the settlement
+        // already receives through _foodNet (imports are inside _foodSupply), not an extra
+        // flow on top of it.
+        node._foodImportRate = (node._foodImportRate || 0) * 0.9 + imported * 0.1;
         node._foodPool = pool;
         node._foodNet = pool;                                // keeps it all unless its OWN parent buys (when parent is processed)
         const sf = node._hasFoodParent ? SHIP_FRAC_BY_TIER[Math.min(3, Math.max(0, node.tier | 0))] : 0;

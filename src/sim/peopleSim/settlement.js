@@ -157,11 +157,14 @@ const LUX_RES = ["spices", "furs", "incense", "dyes"];
 // sliver, not the biggest line in every port) — default unchanged.
 const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
                                 // (so rich hoards drive real luxury demand, not just headcount)
-// Fish: per-tick food a water settlement lands. fishYield = T.FISH_RATE ×
-// waterAccess × (0.3 + navigation×1.2). A great-river port with a
-// deep-sea fleet (wa≈0.9, nav≈0.8) nets ~12/tk — comparable to a big
-// farmland patch — so maritime cities can feed themselves; a landlocked
-// site gets nothing.
+// Fish: per-tick food a COASTAL settlement lands (see updateFood's FISH block).
+// fishYield = T.FISH_RATE × sea × seaRich × unmet-need share × fishery tech,
+// where sea = coast-only access (river access feeds GRAIN via alluvium, not
+// fish), seaRich = the cool-water marine-productivity band, the unmet-need
+// share = clamp01(1 − landFood/foodDemand) — the sea supplements exactly the
+// food need the land leaves unfilled, so a fertile cradle draws ~no fish while
+// a marginal coast lives off the sea — and fishery tech = fishFactor/0.3
+// (tech.js). A landlocked site gets nothing.
 // FISH_RATE -> runtime lever (tuning.js T.FISH_RATE)
 
 // ── Ancestry (deep genetic stock) ──────────────────────────────────────────
@@ -907,7 +910,6 @@ function cashSuit(s) {
 }
 const CASHCROP_LAND   = 0.85;   // fraction of arable a fully-cash-cropped settlement pulls OFF food
 const ALLUVIUM_COAST  = 0.5;    // coastal lowland gets this share of a river floodplain's silt-fertility lift (delta/plain/polder farming)
-const FISH_LAND_REF   = 8.0;    // land-food-per-tile above which farming is rich enough that fish stops mattering (the cradles sit well above)
 const SLAVE_MINE_PULL = 0.6;    // mining's coerced-labour demand weight
 const ESTATE_PULL     = 1.0;    // latifundia gang-labour demand weight (a fully-consolidated estate belt pulls like full cash-crop suitability)
 
@@ -2342,9 +2344,9 @@ function updateFood(world, s) {
   // city does NOT magically farm more; it grows by IMPORTING grain shipped
   // from its rural hinterland (see updatePopulation / the food trade), exactly
   // as real metropolises did (Rome's Egyptian grain, London's American wheat).
-  // Only Farming Regions (tier ≤ FARM_MAX_TIER) farm the land; a town/city grows no
-  // grain of its own — it BUYS what its countryside ships up the hierarchy. (Fish below
-  // is unaffected — a coastal city still fishes.)
+  // EVERY settlement's territory is farmed regardless of tier (MODEL B, below) — a city's
+  // own hinterland feeds it first, and it BUYS the shortfall up the hierarchy. (Fish below
+  // is local and perishable — a coastal city still fishes.)
   // Soldiers are MEN OFF THE LAND, but a standing PROFESSIONAL core (up to ARMY_LABOR_FREE of
   // the population) is carried by the settled economy without hurting the harvest — it's the
   // wartime CONSCRIPT surge BEYOND it that empties the fields. A heavy mobilisation thus farms
@@ -2574,52 +2576,8 @@ function updateFood(world, s) {
   // and it is what the emergent history validates against across seeds.
   s._pastShare = landFood > 0 ? pastoral / landFood : 0;
 
-  // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
-  // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish
-  // WAS the foundation of a distinct class of societies — the cold-temperate fishing coasts where the
-  // sea teemed and the land farmed poorly: Norway's cod, the North-Sea/Baltic herring, the Pacific-
-  // Northwest salmon peoples (complex, sedentary, monument-building, NO agriculture), the Humboldt-
-  // anchovy coast that may have underwritten Caral, the oldest American civilisation. So fish here
-  // emerges exactly where it mattered and nowhere else: it scales UP where the SEA is rich and the
-  // LAND is poor, and falls to ~0 in the fertile river cradles and the nutrient-poor tropics.
-  const sea = Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0));   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
-  let fish = 0;
-  if (T.FISH_RATE > 0 && sea > 0.02) {
-    climateOf(world, s);
-    const t = s._climTemp ?? 0.7;
-    // Marine productivity: the world's great fisheries are COLD-temperate/subpolar (cold, nutrient-
-    // churned water teems); warm tropical seas are clear and barren; permanent ice locks the surface.
-    // So the catch peaks in the cool, ice-free band (~0–15°C) and tails off either side.
-    const iceCut  = Math.max(0, Math.min(1, (0.60 - t) / 0.10));         // sub-freezing → ice-locked, short season
-    const tropCut = Math.max(0, Math.min(1, (t - 0.80) / 0.15));         // warm tropical sea → nutrient-poor
-    const seaRich = (1 - T.COLD_FISH * iceCut) * (1 - 0.7 * tropCut);
-    // LAND-POOR gate: fish only supplements where the farmed LAND can't carry the people. landFood
-    // per workable tile measures how rich the local farming is — high in a cradle, low on a marginal
-    // coast — so a fertile valley draws ~no fish while a cold/barren shore leans on the sea.
-    const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
-    const landPerTile = landFood / Math.max(1, tiles);
-    const poor = Math.max(0, Math.min(1, 1 - landPerTile / FISH_LAND_REF));
-    // Fishery technology (tech.js fishFactor: 0.3 pre-tech baseline rising
-    // with navigation + fishing techs) — normalized to that baseline so a
-    // tech-less shore fishes exactly as calibrated and technique multiplies
-    // upward from there. (The channel existed but was read by nothing.)
-    fish = T.FISH_RATE * sea * seaRich * poor * ((techEff(s).fishFactor || 0.3) / 0.3);
-  }
-  s._fishYield = fish;
-
-  // Land food is STORABLE — it fills granaries and ships across the world
-  // to feed distant cities. Fish is perishable: it feeds the local
-  // population well but can't be shipped or stored, so it never becomes
-  // export food. The food trade reads _storableSupply for what a
-  // settlement can send out.
-  s._storableSupply = landFood;
-  // Carrying food = what the food HIERARCHY leaves this settlement — its
-  // aggregated subtree intake minus what it ships up to its liege (computed last
-  // tick, foodHierarchy.js) — plus local perishable fish. So a city is fed by its
-  // whole hinterland, not 12 partners. Before the first aggregation (_foodNet
-  // unset) fall back to its own land food.
-  const netLand = s._foodNet !== undefined ? s._foodNet : landFood;
-  const supply = netLand + fish;
+  // ── Food demand ── (computed BEFORE the fish block: the fish gate reads the
+  // share of this demand the land leaves unfilled. Nothing here depends on fish.)
   // Urbanization tax: per-capita food demand rises with population
   // because bigger settlements have more non-farming specialists
   // (craftsmen, soldiers, priests, scribes) plus transport
@@ -2649,6 +2607,63 @@ function updateFood(world, s) {
   // plantation/mine workforce adds real food demand the settlement must cover or import.
   const slaveFood = T.SLAVERY ? (s._unfree || 0) * 0.0030 * T.SLAVE_FEED : 0;
   const demand = civDemand + armyFood + slaveFood;
+
+  // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
+  // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish
+  // WAS the foundation of a distinct class of societies — the cold-temperate fishing coasts where the
+  // sea teemed and the land farmed poorly: Norway's cod, the North-Sea/Baltic herring, the Pacific-
+  // Northwest salmon peoples (complex, sedentary, monument-building, NO agriculture), the Humboldt-
+  // anchovy coast that may have underwritten Caral, the oldest American civilisation. So fish here
+  // emerges exactly where it mattered and nowhere else: it scales UP where the SEA is rich and the
+  // LAND is poor, and falls to ~0 in the fertile river cradles and the nutrient-poor tropics.
+  const sea = Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0));   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
+  let fish = 0;
+  if (T.FISH_RATE > 0 && sea > 0.02) {
+    climateOf(world, s);
+    const t = s._climTemp ?? 0.7;
+    // Marine productivity: the world's great fisheries are COLD-temperate/subpolar (cold, nutrient-
+    // churned water teems); warm tropical seas are clear and barren; permanent ice locks the surface.
+    // Shape: FULL strength across the whole cool ice-free band (a ~0–20°C PLATEAU, not an interior
+    // peak), cut by sea ice below freezing (T.COLD_FISH) and falling to ~0.3 in the warm tropics.
+    const iceCut  = Math.max(0, Math.min(1, (0.60 - t) / 0.10));         // sub-freezing → ice-locked, short season
+    const tropCut = Math.max(0, Math.min(1, (t - 0.80) / 0.15));         // warm tropical sea → nutrient-poor
+    const seaRich = (1 - T.COLD_FISH * iceCut) * (1 - 0.7 * tropCut);
+    // UNMET-NEED gate: fishing is EFFORT, and a community spends it only on the food need its
+    // LAND leaves unfilled. `poor` is the share of this settlement's own demand that its land
+    // production doesn't cover — clamp01(1 − landFood/demand): fields that out-produce the
+    // mouths they feed draw ~no boats, a marginal coast that can't feed itself from land lives
+    // off the sea, and everything between supplements in proportion to its shortfall. Both
+    // sides of the ratio are in the SAME per-tick food units and both already carry every
+    // era- and resolution-scaling (eraProd, rNormPop-normalised territory sums), so the gate
+    // needs no reference constant and closes BY ITSELF as agriculture matures. Bounded: fish
+    // is still capped by RATE × sea × seaRich × tech, and `poor` shrinks as supply feeds
+    // population feeds demand only toward that cap — no runaway, no oscillation. (The old
+    // gate compared landFood-per-tile against a fitted FISH_LAND_REF=8.0 — measured ~100×
+    // off the scale of its input, so it sat at 0.985–0.997 everywhere forever and fish
+    // became the world staple. A constant with no independent physical meaning: the
+    // second-cardinal-rule tell.)
+    const poor = demand > 0 ? Math.max(0, Math.min(1, 1 - landFood / demand)) : 0;
+    // Fishery technology (tech.js fishFactor: 0.3 pre-tech baseline rising
+    // with navigation + fishing techs) — normalized to that baseline so a
+    // tech-less shore fishes exactly as calibrated and technique multiplies
+    // upward from there. (The channel existed but was read by nothing.)
+    fish = T.FISH_RATE * sea * seaRich * poor * ((techEff(s).fishFactor || 0.3) / 0.3);
+  }
+  s._fishYield = fish;
+
+  // Land food is STORABLE — it fills granaries and ships across the world
+  // to feed distant cities. Fish is perishable: it feeds the local
+  // population well but can't be shipped or stored, so it never becomes
+  // export food. The food trade reads _storableSupply for what a
+  // settlement can send out.
+  s._storableSupply = landFood;
+  // Carrying food = what the food HIERARCHY leaves this settlement — its
+  // aggregated subtree intake minus what it ships up to its liege (computed last
+  // tick, foodHierarchy.js) — plus local perishable fish. So a city is fed by its
+  // whole hinterland, not 12 partners. Before the first aggregation (_foodNet
+  // unset) fall back to its own land food.
+  const netLand = s._foodNet !== undefined ? s._foodNet : landFood;
+  const supply = netLand + fish;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
   s._foodSupply = supply;

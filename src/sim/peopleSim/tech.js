@@ -299,7 +299,8 @@ export const TECH_FX = {
   selective_breed:  { farm:0.35 },
   mechanized_farm:  { farm:0.60, build:0.02 },
   green_revolution: { farm:1.30 },
-  // — naval / water —  (fish sums ≈ 1.18, ≈ old nav·1.2)
+  // — naval / water —  (fish sums ≈ 1.58: sailing+galleys+ocean_nav+steamship+trawling —
+  //  trawling was added after the old "≈1.18 ≈ nav·1.2" calibration note)
   // Sailing carries a seaRange share: the SAIL is what turns a paddled
   // strait-hop into coastal shipping (sea.js gates lane projection on the
   // embark ability and starts the range ladder here — before this tech a
