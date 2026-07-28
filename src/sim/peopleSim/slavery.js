@@ -18,7 +18,7 @@
 
 import { forEachNear } from "./spatialGrid.js";
 import { settlementPower } from "./conquest.js";
-import { recordIn, recordOut, IN_SLAVE_TRADE, OUT_SLAVE } from "./money.js";
+import { recordInMetered, recordOutMetered, IN_SLAVE_TRADE, OUT_SLAVE } from "./money.js";
 import { getWealthReserve, recordCaptives, drainCaptivePools, arriveCaptives } from "./settlement.js";
 import { feedGrievance } from "./loyaltyField.js";
 import { fieldShift } from "./popField.js";
@@ -28,7 +28,12 @@ export const SLAVE_INTERVAL = 50;     // ticks between slave-trade passes (slow 
 const RAID_RANGE     = 28;            // tiles a slaver's raiding parties reach
 const RAID_DOMINANCE = 2.0;           // how much stronger a raider must be than its victim
 const SLAVE_PRICE    = 8;             // coin per captive on the market (calibration)
-const PULL_CAP       = 3;             // raiding capacity is bounded by military reach/logistics, however hungry the market — intensity saturates at 1+PULL_CAP×SLAVE_PULL
+const PULL_CAP       = 3;             // ceiling on the scarcity multiple: price/raid intensity saturates at 1+PULL_CAP×SLAVE_PULL. HONESTY NOTE: this caps only the market SIGNAL — nothing bounds raid capacity itself (no reach/logistics/army limit on how many victims one raider works per pass); distance-priced clearing and razzia costs are a known gap.
+
+// The EFFECTIVE pass interval — index.js fires updateSlaveTrade every
+// _ivl(SLAVE_INTERVAL) ticks (G-stretched, same formula). The metered income
+// bookings below spread each pass's take over exactly the span it was earned in.
+const passIvl = () => Math.max(1, Math.round(SLAVE_INTERVAL * Math.max(1, T.SIM_GRANULARITY || 1)));
 
 // A settlement's slave-market: its trade-network component (SLAVE_PEOPLE), else the
 // single global pool — the same key phase B clears against.
@@ -49,17 +54,33 @@ function marketKeyOf(world, s) {
 //          paid; a glutted market isn't worth the risk of a raid).
 // The feedback closes itself: scarcity → price↑ → effective demand rationed AND
 // supply effort↑ → stocks recover → the signal dies. Derived per step from persisted
-// state (posted demand, wealth, captive stocks) — no save/load wiring needed.
+// state (posted demand, wealth, captive stocks) plus ONE per-pass transient — the
+// lagged clearing-price map (world._slaveLastPrice) the index backs cash demand
+// with. Like war fronts / trade reach, it re-warms on its own cadence after a
+// load (one pass at the base-price prior), so it needs no save wiring.
 // SLAVE_PULL=0 → multiplier ≡ 1: the legacy fixed-price, fixed-rate trade, byte-identical.
 function buildScarcity(world) {
   const want = new Map(), stock = new Map();
+  const lastP = world._slaveLastPrice;   // key → the price the last clearing pass actually charged
   for (const s of world.settlements) {
     const c = s._captives || 0;
-    if (c > 0.5) { const k = marketKeyOf(world, s); stock.set(k, (stock.get(k) || 0) + c); }
+    let k;
+    if (c > 0.5) { k = marketKeyOf(world, s); stock.set(k, (stock.get(k) || 0) + c); }
     if (s.mode !== "settled" || (s._slaveDemand || 0) <= 0.5) continue;
+    if (k === undefined) k = marketKeyOf(world, s);
     const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
-    const eff = Math.min(s._slaveDemand, spare / SLAVE_PRICE);   // demand backed by coin, the only kind a raider gets paid for
-    if (eff > 0.5) { const k = marketKeyOf(world, s); want.set(k, (want.get(k) || 0) + eff); }
+    // Back cash demand at the market's own LAGGED CLEARING price, not the base
+    // price: the clearing pass charges spare/m.price (marked up to 4× base when
+    // starved), so backing the index with spare/SLAVE_PRICE counted up to 4×
+    // more cash-backed demand than the market can absorb at the price it
+    // actually charges — a self-sustaining pin at the multiplier cap (measured:
+    // marketMul=4 permanently). One pass of lag is the standard cobweb form —
+    // buyers budget against the price they last saw, and the fixed point
+    // unwinds over a pass or two; a market that has never cleared (or whose
+    // component id changed on a network merge) starts honest at the base price.
+    const p = (lastP && lastP.get(k)) || SLAVE_PRICE;
+    const eff = Math.min(s._slaveDemand, spare / p);   // demand backed by coin, the only kind a raider gets paid for
+    if (eff > 0.5) want.set(k, (want.get(k) || 0) + eff);
   }
   const r = new Map();
   for (const [k, w] of want) r.set(k, w / Math.max(1, stock.get(k) || 0));
@@ -152,6 +173,17 @@ export function updateSlaveTrade(world) {
     const buy = Math.min(want, spare / m.price);           // a dear market rations its own demand
     if (buy > 0.5) { m.buyers.push([s, buy]); m.demand += buy; }
   }
+  // Remember what each market charged: the NEXT pass's scarcity index backs
+  // cash demand at this price (buildScarcity above). Rebuilt whole each pass —
+  // a component key that stops quoting (demand died, network re-merged) simply
+  // falls back to the base price, the honest no-information prior. Replaced
+  // only AFTER the quoting loop, so the lazy buildScarcity trigger inside
+  // marketMulOf still reads the PREVIOUS pass's prices.
+  {
+    const lastP = new Map();
+    for (const [key, m] of markets) if (m.price !== undefined) lastP.set(key, m.price);
+    world._slaveLastPrice = lastP;
+  }
   for (const { sellers, buyers, supply, demand, price = SLAVE_PRICE } of markets.values()) {
     if (supply <= 0.5 || demand <= 0.5) continue;
     const traded = Math.min(supply, demand);
@@ -174,10 +206,15 @@ export function updateSlaveTrade(world) {
     // Buyers receive captives in proportion to demand and pay the price; the captives
     // become their unfree workforce — and, under SLAVE_PEOPLE, their resident PEOPLE,
     // admixing the buyer's culture/ancestry/language layers on arrival.
+    // Income/spend PROVENANCE is metered over the pass interval (money.js
+    // recordInMetered): the coin moves now, but a 50-tick pass booked into a
+    // ~20-tick display EMA read up to 2.5× the true rate right after each
+    // pass — while ordinary trade books every few ticks. Same totals, honest rate.
+    const ivl = passIvl();
     for (const [s, buy] of buyers) {
       const got = traded * (buy / demand);
       if (got <= 0) continue;
-      s.wealth = (s.wealth || 0) - got * price; recordOut(s, OUT_SLAVE, got * price);
+      s.wealth = (s.wealth || 0) - got * price; recordOutMetered(s, OUT_SLAVE, got * price, ivl);
       s._unfree = (s._unfree || 0) + got;
       arriveCaptives(world, s, got, poolCul, poolAnc);
     }
@@ -188,7 +225,7 @@ export function updateSlaveTrade(world) {
       if (shipped <= 0) continue;
       s._captives = Math.max(0, stock - shipped);
       drainCaptivePools(s, shipped, stock);
-      s.wealth = (s.wealth || 0) + shipped * price; recordIn(s, IN_SLAVE_TRADE, shipped * price);
+      s.wealth = (s.wealth || 0) + shipped * price; recordInMetered(s, IN_SLAVE_TRADE, shipped * price, ivl);
     }
   }
 }

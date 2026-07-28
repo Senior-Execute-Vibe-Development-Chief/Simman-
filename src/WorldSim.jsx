@@ -3770,18 +3770,30 @@ const renderInspect=()=>{
             </>}
           {/* ── Society & labour: economic archetype, craft specialty, coerced labour ── */}
           {(()=>{
-            const a=s._mInRate; let topIdx=-1,topV=0; if(a)for(let i=0;i<a.length;i++)if(a[i]>topV){topV=a[i];topIdx=i;}
+            // Archetypes ranked on ONE consistent basis: an income label fires only
+            // when its channel is BOTH the top income channel AND carries a real
+            // share of total income (ARCH_MIN_SHARE) — no channel gets first-check
+            // privilege (the old chain tested the slave trade first with no
+            // minimum, so any town whose thin top channel happened to be slaves
+            // read "Slaver city" ahead of everything else). Labour-STRUCTURE
+            // labels (plantation/latifundia/serfdom) are judged on their own
+            // labour thresholds, after the income labels.
+            const a=s._mInRate; let topIdx=-1,topV=0,totIn=0; if(a)for(let i=0;i<a.length;i++){totIn+=a[i];if(a[i]>topV){topV=a[i];topIdx=i;}}
             const unfree=Math.round(s._unfree||0),captives=Math.round(s._captives||0),serf=s._serf||0,cashFrac=s._cashFrac||0,estates=s._estates||0;
+            const ARCH_MIN_SHARE=0.25;   // an archetype is an economy the city LIVES ON — the channel must carry a quarter of its income
             let archetype=null;
-            if(topIdx===IN_SLAVE_TRADE)archetype="Slaver city — sells captives";
-            else if(topIdx===IN_PILGRIM)archetype="Holy city — lives on pilgrims";
-            else if(topIdx===IN_CARRY)archetype="Entrepôt — the carrying trade";
-            else if(topIdx===IN_FINANCE)archetype="Financier — lends to the crown";
-            else if(unfree>200&&cashFrac>0.2)archetype="Plantation economy";
-            else if(unfree>200&&topIdx===IN_MINING)archetype="Slave-worked mines";
-            else if(unfree>200&&estates>0.4)archetype="Latifundia — slave-gang estates";
-            else if(topIdx===IN_MINING)archetype="Mining town";
-            else if(serf>0.3)archetype="Serf estate";
+            if(totIn>0&&topV/totIn>=ARCH_MIN_SHARE){
+              if(topIdx===IN_SLAVE_TRADE)archetype="Slaver city — sells captives";
+              else if(topIdx===IN_PILGRIM)archetype="Holy city — lives on pilgrims";
+              else if(topIdx===IN_CARRY)archetype="Entrepôt — the carrying trade";
+              else if(topIdx===IN_FINANCE)archetype="Financier — lends to the crown";
+              else if(topIdx===IN_MINING)archetype=unfree>200?"Slave-worked mines":"Mining town";
+            }
+            if(!archetype){
+              if(unfree>200&&cashFrac>0.2)archetype="Plantation economy";
+              else if(unfree>200&&estates>0.4)archetype="Latifundia — slave-gang estates";
+              else if(serf>0.3)archetype="Serf estate";
+            }
             const spec=(s._specKey&&(s._specStr||0)>0.1)?[s._specKey,Math.round((s._specStr||0)*100)]:null;
             if(!archetype&&!spec&&unfree<50&&captives<50&&serf<0.1&&estates<0.15)return null;
             return(

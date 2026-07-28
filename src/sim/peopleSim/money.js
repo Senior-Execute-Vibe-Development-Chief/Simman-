@@ -67,9 +67,55 @@ export function recordOut(s, cat, amt) {
   a[cat] += amt;
 }
 
+// ── Metered booking: honest rates for slow-cadence passes ────────────────
+// A pass that fires every IVL ticks but books its whole take at once distorts
+// the smoothed display: against the ~20-tick EMA window a 50-tick lump reads
+// up to IVL×(1−DECAY) = 2.5× the true rate right after the pass, then decays
+// toward zero — while the every-few-ticks channels (ordinary trade) read
+// flat. recordInMetered/recordOutMetered fix the DISPLAY side of that: the
+// amount accrues into a pending pot released into the tick accumulator at a
+// level per-tick rate over the `ticks` the pass actually covered, so the EMA
+// sees the same steady flow a per-tick channel would book. Only the
+// provenance LEDGER is metered — the coin itself still moves at the pass, so
+// wealth, conservation and every mechanism reading `wealth` are unchanged.
+// Same true totals, honest rate. (The pots are display smoothers like
+// _mIn/_mInRate — rebuilt within one pass interval, deliberately unpersisted.)
+export function recordInMetered(s, cat, amt, ticks) {
+  if (!(amt > 0)) return;
+  let p = s._mInPend; if (!p) p = s._mInPend = new Float32Array(N_IN);
+  let r = s._mInPendRate; if (!r) r = s._mInPendRate = new Float32Array(N_IN);
+  p[cat] += amt;
+  r[cat] = p[cat] / Math.max(1, ticks);   // drain the whole pot (incl. residue) level across the coming interval
+}
+export function recordOutMetered(s, cat, amt, ticks) {
+  if (!(amt > 0)) return;
+  let p = s._mOutPend; if (!p) p = s._mOutPend = new Float32Array(N_OUT);
+  let r = s._mOutPendRate; if (!r) r = s._mOutPendRate = new Float32Array(N_OUT);
+  p[cat] += amt;
+  r[cat] = p[cat] / Math.max(1, ticks);
+}
+
 // Fold this tick's raw flows into the smoothed rate, then clear the tick
 // accumulators. Called once per settlement per tick at end of step.
 export function foldMoney(s) {
+  // Release this tick's tranche of any metered pots first, so it rides the
+  // fold below exactly like a per-tick booking.
+  const pi = s._mInPend;
+  if (pi) {
+    const pr = s._mInPendRate;
+    for (let i = 0; i < N_IN; i++) {
+      const rel = Math.min(pi[i], pr[i]);
+      if (rel > 0) { recordIn(s, i, rel); pi[i] -= rel; }
+    }
+  }
+  const po = s._mOutPend;
+  if (po) {
+    const pr = s._mOutPendRate;
+    for (let i = 0; i < N_OUT; i++) {
+      const rel = Math.min(po[i], pr[i]);
+      if (rel > 0) { recordOut(s, i, rel); po[i] -= rel; }
+    }
+  }
   const ti = s._mIn;
   if (ti) {
     let e = s._mInRate; if (!e) e = s._mInRate = new Float32Array(N_IN);
