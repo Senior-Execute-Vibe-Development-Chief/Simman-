@@ -26,7 +26,7 @@ import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
 import { settlementPower } from "./conquest.js";
 import { T } from "./tuning.js";
-import { claimHostility } from "./habitability.js";
+import { claimHostility, malariaSignal } from "./habitability.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
 // claims land out to COUNTRY_REACH_BASE + capital-organisation × COUNTRY_REACH_ORG
@@ -1489,7 +1489,7 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
   if (!snap || snap.length !== N) snap = world._smoothSnap = new Int32Array(N);
   // tiny fixed-size tally over the ≤8 distinct neighbour values (cheaper than a Map)
   const vals = new Int32Array(8), cnts = new Int32Array(8);
-  let chg = 0;
+  let chg = 0, chgCoast = 0;
   for (let it = 0; it < iters; it++) {
     snap.set(co);                                   // frozen read; writes go to co
     for (let ti = 0; ti < N; ti++) {
@@ -1503,18 +1503,28 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
         yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
         yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
       ];
-      let m = 0, best = snap[ti], bestC = 0;
+      let m = 0, best = snap[ti], bestC = 0, landN = 0;
       for (let k = 0; k < 8; k++) {
         const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;   // off-map / sea doesn't vote
+        landN++;
         const v = snap[ni];
         let j = 0; for (; j < m; j++) if (vals[j] === v) break;
         if (j === m) { vals[m] = v; cnts[m] = 1; m++; } else cnts[j]++;
         if (cnts[j] > bestC) { bestC = cnts[j]; best = v; }
       }
-      if (bestC >= 5 && best !== snap[ti]) { co[ti] = best; chg++; }   // clear majority of the 8-neighbourhood → adopt it
+      // "Clear majority" is 5-of-8 — but sea neighbours ABSTAIN (skipped above), so a
+      // fixed bar of 5 was structurally unreachable wherever fewer than 5 land
+      // neighbours exist (every peninsula / island / convex coastal tile: the smoother
+      // was DEAD exactly where Europe's protrusions are — diagnosis 2026-07-28 §10).
+      // Apply the same majority FRACTION to the electorate actually present:
+      // need = ceil(5·landN/8). landN=8 gives exactly 5 (inland byte-identical);
+      // fewer voters scale the bar down proportionally. A tile with <2 land
+      // neighbours has no meaningful vote (an islet / causeway tip) and is left alone.
+      if (landN >= 2 && bestC >= Math.ceil(5 * landN / 8) && best !== snap[ti]) { co[ti] = best; chg++; if (landN < 8) chgCoast++; }
     }
   }
   cartoTally(world, pinWorked ? "smoothPinned" : "smooth", chg);
+  cartoTally(world, pinWorked ? "smoothPinnedCoast" : "smoothCoast", chgCoast);   // flips at tiles with a sea/off-map neighbour (coastal smoothing activity)
 }
 
 // ── Partition the gaps: no terra nullius between neighbours ──────────────────
@@ -1526,7 +1536,14 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
 // than a sea of blank buffer. What stays wilderness is the genuinely OPEN
 // frontier: land with a country within D on only one side (or none), facing a
 // large uninhabited expanse — the deep desert/ice/interior beyond any state's
-// reach. WATER blocks the span (a strait is never bridged into land). Four linear
+// reach. WATER blocks the span (a strait is never bridged into land) — and a ray
+// that DIES at the coast within D counts as enclosed-BY-SEA: the sea is a border,
+// not an opening (before this, enclosure needed a realm on all four rays and any
+// water read as open, so no-man's-land near any coast could never fill — the
+// pass was structurally dead on every coastal strip; diagnosis 2026-07-28 §10).
+// The sea alone encloses nothing: at least 2 of the 4 rays must reach actual
+// realm ground, so a beach flanked by one realm on one side stays open frontier
+// and an unclaimed island (sea on every ray) is never swallowed. Four linear
 // sweeps → O(N). Set D=0 (REALM_GAP_FILL) to recover the raw cost-Voronoi basins.
 function closeRealmGaps(world, co, D) {
   if (!(D > 0)) return;
@@ -1544,20 +1561,31 @@ function closeRealmGaps(world, co, D) {
     wD: new Int32Array(N), eD: new Int32Array(N), nD: new Int32Array(N), sD: new Int32Array(N) };
   const { wC, eC, nC, sC, wD, eD, nD, sD } = buf;
   const FAR = 1 << 28;
+  const SEA = -2;   // ray terminator: died at the coast within D (enclosed by sea); -1 = open
   // The W/E sweeps WRAP (longitude is periodic — every other pass in this file
   // wraps, and an unwrapped sweep left gap-fill artifacts hugging the
   // antimeridian seam): each row is scanned twice, the second sweep carrying
   // the seam state across x=0 so a country just west of the seam flanks land
   // just east of it. N/S clamp (the poles don't wrap).
+  // Each sweep tracks the nearest realm tile AND the nearest coast behind it: a land
+  // ray hits whichever comes first — a realm within D (owner reset at every coast, so
+  // last ≥ 0 means the owner is nearer than any water), the coast within D (SEA), or
+  // nothing (open). On the seam pass, hitting water ends the seam's influence (state
+  // from there matches pass 0 exactly), so it breaks like the owner-hit does.
   for (let y = 0; y < th; y++) {                       // ← nearest country to the WEST
-    let last = -1, lastP = -1e9; const row = y * tw;
+    let last = -1, lastP = -1e9, seaP = -1e9; const row = y * tw;
     for (let p = 0; p < 2; p++) {
-      if (p === 1) { if (last < 0) break; lastP -= tw; }   // carry across the seam
+      if (p === 1) { if (last < 0 && seaP < 0) break; lastP -= tw; seaP -= tw; }   // carry across the seam
       for (let x = 0; x < tw; x++) { const ti = row + x;
-        if (elev[ti] <= 0) { last = -1; lastP = -1e9; if (p === 0) { wC[ti] = -1; wD[ti] = FAR; } continue; }
-        const d = x - lastP;
+        if (elev[ti] <= 0) {
+          if (p === 1) { p = 2; break; }
+          last = -1; lastP = -1e9; seaP = x; wC[ti] = -1; wD[ti] = FAR; continue;
+        }
+        const d = x - lastP, dw = x - seaP;
         if (last >= 0 && d <= D) {
           if (p === 0 || d < wD[ti]) { wC[ti] = last; wD[ti] = d; }
+        } else if (dw <= D) {
+          if (p === 0 || dw < wD[ti]) { wC[ti] = SEA; wD[ti] = dw; }
         } else if (p === 0) { wC[ti] = -1; wD[ti] = FAR; }
         else break;                                        // second sweep only matters within D of the seam
         if (co[ti] >= 0) { last = co[ti]; lastP = x; if (p === 1) { p = 2; break; } }
@@ -1565,14 +1593,19 @@ function closeRealmGaps(world, co, D) {
     }
   }
   for (let y = 0; y < th; y++) {                       // → nearest country to the EAST
-    let last = -1, lastP = 1e9; const row = y * tw;
+    let last = -1, lastP = 1e9, seaP = 1e9; const row = y * tw;
     for (let p = 0; p < 2; p++) {
-      if (p === 1) { if (last < 0) break; lastP += tw; }   // carry across the seam
+      if (p === 1) { if (last < 0 && seaP > 1e8) break; lastP += tw; seaP += tw; }   // carry across the seam
       for (let x = tw - 1; x >= 0; x--) { const ti = row + x;
-        if (elev[ti] <= 0) { last = -1; lastP = 1e9; if (p === 0) { eC[ti] = -1; eD[ti] = FAR; } continue; }
-        const d = lastP - x;
+        if (elev[ti] <= 0) {
+          if (p === 1) { p = 2; break; }
+          last = -1; lastP = 1e9; seaP = x; eC[ti] = -1; eD[ti] = FAR; continue;
+        }
+        const d = lastP - x, dw = seaP - x;
         if (last >= 0 && d <= D) {
           if (p === 0 || d < eD[ti]) { eC[ti] = last; eD[ti] = d; }
+        } else if (dw <= D) {
+          if (p === 0 || dw < eD[ti]) { eC[ti] = SEA; eD[ti] = dw; }
         } else if (p === 0) { eC[ti] = -1; eD[ti] = FAR; }
         else break;
         if (co[ti] >= 0) { last = co[ti]; lastP = x; if (p === 1) { p = 2; break; } }
@@ -1580,20 +1613,24 @@ function closeRealmGaps(world, co, D) {
     }
   }
   for (let x = 0; x < tw; x++) {                       // ↓ nearest country to the NORTH
-    let last = -1, lastP = -1e9;
+    let last = -1, lastP = -1e9, seaP = -1e9;          // (the pole edge stays OPEN — only real water encloses)
     for (let y = 0; y < th; y++) { const ti = y * tw + x;
-      if (elev[ti] <= 0) { last = -1; lastP = -1e9; nC[ti] = -1; nD[ti] = FAR; continue; }
-      const d = y - lastP;
-      if (last >= 0 && d <= D) { nC[ti] = last; nD[ti] = d; } else { nC[ti] = -1; nD[ti] = FAR; }
+      if (elev[ti] <= 0) { last = -1; lastP = -1e9; seaP = y; nC[ti] = -1; nD[ti] = FAR; continue; }
+      const d = y - lastP, dw = y - seaP;
+      if (last >= 0 && d <= D) { nC[ti] = last; nD[ti] = d; }
+      else if (dw <= D) { nC[ti] = SEA; nD[ti] = dw; }
+      else { nC[ti] = -1; nD[ti] = FAR; }
       if (co[ti] >= 0) { last = co[ti]; lastP = y; }
     }
   }
   for (let x = 0; x < tw; x++) {                       // ↑ nearest country to the SOUTH
-    let last = -1, lastP = 1e9;
+    let last = -1, lastP = 1e9, seaP = 1e9;
     for (let y = th - 1; y >= 0; y--) { const ti = y * tw + x;
-      if (elev[ti] <= 0) { last = -1; lastP = 1e9; sC[ti] = -1; sD[ti] = FAR; continue; }
-      const d = lastP - y;
-      if (last >= 0 && d <= D) { sC[ti] = last; sD[ti] = d; } else { sC[ti] = -1; sD[ti] = FAR; }
+      if (elev[ti] <= 0) { last = -1; lastP = 1e9; seaP = y; sC[ti] = -1; sD[ti] = FAR; continue; }
+      const d = lastP - y, dw = seaP - y;
+      if (last >= 0 && d <= D) { sC[ti] = last; sD[ti] = d; }
+      else if (dw <= D) { sC[ti] = SEA; sD[ti] = dw; }
+      else { sC[ti] = -1; sD[ti] = FAR; }
       if (co[ti] >= 0) { last = co[ti]; lastP = y; }
     }
   }
@@ -1634,16 +1671,41 @@ function closeRealmGaps(world, co, D) {
   }
   let fills = world._gapFills;
   if (!fills || fills.length < N) fills = world._gapFills = new Int32Array(N);
-  let n = 0;
+  let n = 0, nSea = 0;
   for (let ti = 0; ti < N; ti++) {
     if (co[ti] >= 0 || elev[ti] <= 0) continue;
-    if (wC[ti] < 0 || eC[ti] < 0 || nC[ti] < 0 || sC[ti] < 0) continue;   // not fully enclosed → leave wild (no fingers)
+    // Enclosed on every cardinal side — by a realm within D, or by the SEA (a coast is
+    // a border, not an opening). An OPEN ray (-1) still voids the pocket (no fingers).
+    // The sea alone encloses nothing: at least 2 rays must reach actual realm ground,
+    // so a beach flanked by one realm on one side only stays open frontier and an
+    // unclaimed island (sea on all four rays — rays never cross water) is untouched.
+    const w = wC[ti], e = eC[ti], nn = nC[ti], ss = sC[ti];
+    if (w === -1 || e === -1 || nn === -1 || ss === -1) continue;
+    const realmRays = (w >= 0 ? 1 : 0) + (e >= 0 ? 1 : 0) + (nn >= 0 ? 1 : 0) + (ss >= 0 ? 1 : 0);
+    if (realmRays < 2) continue;
     const c = near[ti];                                                   // smooth nearest country (not the axis-aligned cardinal flank)
-    if (c >= 0) { fills[n++] = ti; fills[n++] = c; }
+    if (c >= 0) { fills[n++] = ti; fills[n++] = c; if (realmRays < 4) nSea++; }
   }
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
   cartoTally(world, "gaps", n >> 1);
+  cartoTally(world, "gapsSea", nSea);   // fills whose enclosure includes a coast (the class the old all-realm test could never fill)
 }
+
+// ── Temperate band (the forest state-bar's climate gate) ─────────────────────
+// STATE_FOREST is the TEMPERATE forest mechanism (tuning.js: N. Europe / Russia /
+// the N-American woodland — dense hardwood on heavy soil, unfarmable until iron),
+// while STATE_DISEASE covers the warm wet belt. The forest signal's moisture test
+// alone cannot tell a Baltic woodland from a monsoon jungle, so on warm monsoon
+// land BOTH state bars fired at full strength and MULTIPLIED (~11.7× the baseline
+// founding bar over the SE Asia box — diagnosis 2026-07-28 §5), double-counting
+// one and the same hostility. Gate the forest signal to the temperate band by
+// REUSING the exact warmth ramp the disease signal is built on: habitability.js
+// tropicalWarmth (t 0.72→0.82), read through the exported malariaSignal at
+// saturated moisture — its dampness term is ≡1 there, so malariaSignal(t, 1) IS
+// that ramp and no second constant exists to drift. The forest bar now fades
+// precisely where the disease bar saturates; cool temperate woodland (t ≤ 0.72)
+// is untouched, and the warm-DRY cradles were never forested to begin with.
+const temperateBand = (t) => 1 - malariaSignal(t, 1);
 
 // Settlements take their politics from the GROWN territory — the country whose
 // border has actually CRAWLED over their tile (grownOwnerAt → world._countryClaim),
@@ -1659,7 +1721,7 @@ function closeRealmGaps(world, co, D) {
 // (Cradles are seeded sovereign at genesis in state.js; secession mints city-led
 // countries in conquest.js — those are the only other country sources.)
 export function adoptAndFound(world) {
-  const co = world._countryOwner, tw = world.tw, elev = world.elev, moist = world.moist;
+  const co = world._countryOwner, tw = world.tw, elev = world.elev, moist = world.moist, temp = world.temp;
   if (!co) return;   // territory pass hasn't run yet — nothing to adopt from
   // Per-realm statecraft, for the STATECRAFT-SYMMETRY adoption gate below: the
   // realm's most-organised settlement (the same fallback computeCountryTerritory
@@ -1734,11 +1796,13 @@ export function adoptAndFound(world) {
       // FOREST/IRON gate (same as nucleateFrontierStates): an unbroken temperate forest
       // can be perfectly clever yet stay a stateless tribe until metallurgy clears it —
       // so a forested no-iron centre needs far more people before it founds a realm, even
-      // a developed one. River valleys / open ground / iron-bearing forests are unaffected.
+      // a developed one. River valleys / open ground / iron-bearing forests are unaffected,
+      // and the warm wet belt is the DISEASE bar's ground, not this one's (temperateBand).
       const moistAt   = s._climMoist ?? (moist ? moist[ti] : 0.5);
+      const tempAt    = s._climTemp ?? (temp ? temp[ti] : 0.5);
       const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
       const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
-      const forestLk  = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * (1 - riverOpen) * (1 - ironReady);
+      const forestLk  = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen) * (1 - ironReady);
       const forestBar = NUCLEATE_SEAT_POP * (1 + T.STATE_FOREST * forestLk);
       if (s.countryId < 0 && region < 0 && tierLockedCentre && co[ti] < 0
           && org >= T.ORG_STATE_MIN                       // the statecraft for territorial rule
@@ -1748,6 +1812,13 @@ export function adoptAndFound(world) {
         continue;
       }
       // otherwise village / town: follow the land (region), or stateless on the frontier
+      // (NB a living SEAT never reaches this branch with foreign ground under its home
+      // tile: the territory pass re-anchors every realm's seat tile — capital anchor +
+      // the not-yet-in-world.countries fallback — before this derivation reads the
+      // ground, and the smoother pins settled home tiles. Verified by direct probe
+      // 2026-07-28: a one-member colony realm planted mid-heartland of a foreign field
+      // keeps its flag through territory+adoption passes — the free-annexation window
+      // §7 suspected here does not exist under the shipped field-polity defaults.)
       if (s.countryId !== region) {
         if (s.countryId < 0 && region >= 0) {
           // STATECRAFT SYMMETRY (docs/country-count-size-diagnosis.md): annexing an
@@ -1822,7 +1893,7 @@ export function nucleateFrontierStates(world) {
   const capD2 = ((NUCLEATE_CAP_DIST * _rsN) / Math.sqrt(lever)) ** 2;
   const caps = [];
   if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
-  const fert = world.fert, moist = world.moist;
+  const fert = world.fert, moist = world.moist, temp = world.temp;
   // ── BIRTH_FIELD (§4b, field-polity-spec): states are born of the PEOPLED LAND ──
   // Cluster viability was the summed CENSUS of nearby stateless settlements — but
   // under cities-only entities the census is the urban network, not the people, so
@@ -1867,9 +1938,12 @@ export function nucleateFrontierStates(world) {
     // farm the woodland — why N. Europe / Russia / the N. American forest belt lagged
     // the open river cradles. River valleys (open alluvium) and already-cleared land
     // are exempt; the lock lifts as iron (metallurgy → LAND_CLEAR_METAL) arrives.
+    // Gated to the TEMPERATE band (temperateBand above): warm wet woodland is the
+    // disease bar's territory — without the gate the two multiplied on monsoon land.
     const moistAt   = s._climMoist ?? (moist ? moist[seatTi] : 0.5);
+    const tempAt    = s._climTemp ?? (temp ? temp[seatTi] : 0.5);
     const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
-    const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * (1 - riverOpen);
+    const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen);
     const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
     const forestLocked = forest * (1 - ironReady);
     const capMul = (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
