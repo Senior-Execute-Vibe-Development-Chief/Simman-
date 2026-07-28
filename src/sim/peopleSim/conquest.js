@@ -450,8 +450,8 @@ const COLONY_TECH_DIFFUSE = 0.06;  // base per-pass rate the colony seat's knowl
 // line, so protection and support are neither automatic nor perfect — the realistic limit on
 // how far, and how strongly, an empire can hold across the sea. This is WHY distant colonies
 // broke away: the metropole simply could not project enough force to hold them.
-const NAVAL_REACH_BASE    = 8;     // tiles a metropole can project with no naval tech (coastal reach)
-const NAVAL_REACH_NAV     = 70;    // extra projection tiles at full navigation tech
+const NAVAL_REACH_BASE    = 8;     // REFERENCE-tiles (×resScaleFor at other grids) a metropole can project with no naval tech (coastal reach)
+const NAVAL_REACH_NAV     = 70;    // extra projection REFERENCE-tiles at full navigation tech
 
 const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
@@ -1819,20 +1819,42 @@ export function updatePolities(world) {
     for (const c of countries.values()) { let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m); _depPow.set(c.id, p); }
     fieldPowerOverlay(world, countries, _depPow);   // POW_FIELD: the independence line weighs governed people
     const blocPow = (c) => _depPow.get(c.id) || 0;
-    // (a) Wire the founding marker (sea.js) → the durable polity link, once.
+    // (a) Wire the founding marker (sea.js) → the durable polity link. Consumed only
+    //     when the link is APPLIED — or provably never can be. The old form consumed
+    //     it unconditionally on first sight: a colony whose founder id happened to be
+    //     absent from THIS pass's live view (mid-conquest, mid-merge), or whose own
+    //     polity record the reconciler hadn't registered yet (arrival racing the
+    //     pass — reconcilePolities runs at the END of the pass), silently lost the
+    //     link forever: an orphan micro-state that still culture-diverged as a colony
+    //     but belonged to nobody.
     for (const s of world.settlements) {
       if (s._overlordCC == null) continue;
-      const over = s._overlordCC; s._overlordCC = undefined;       // consume the marker
-      if (s.countryId !== s.id || over < 0 || over === s.id) continue;
+      const over = s._overlordCC;
+      // Malformed marker — can never become a link. Drop.
+      if (over < 0 || over === s.id) { s._overlordCC = undefined; continue; }
+      // The colony itself lost sovereignty (annexed during/after the voyage): its
+      // life as a self-governing dependency is over — the marker is moot. Drop,
+      // never re-wire a later secession back to the old metropole.
+      if (s.countryId !== s.id) { s._overlordCC = undefined; continue; }
+      // The founder FELL (polity records are never deleted; endedStep marks death):
+      // orphaned for good — no successor-tracing. Drop. Also drop when the founder
+      // id is neither a live realm NOR on record — a never-registered statelet that
+      // vanished can never return (restoration reopens RECORDS only).
+      const founder = getPolity(world, over);
+      if (founder ? founder.endedStep >= 0 : !countries.has(over)) { s._overlordCC = undefined; continue; }
       const pol = getPolity(world, s.id);
-      if (pol && pol._overlord == null && countries.has(over)) {
-        pol._overlord = over;
-        pol._depKind = "colony";                                   // a planted dependency (vs a submitted vassal) — drives investment and map rendering
-        inheritPersonality(world, over, s.id);                     // the colony carries the metropole's temperament
-        snapClaim(world, s.id);                                    // it administers its own ground at once
-        logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
-          seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
-      }
+      // Already bound (vassalized/re-linked in the window) — the marker is moot. Drop.
+      if (pol && pol._overlord != null) { s._overlordCC = undefined; continue; }
+      // Not appliable THIS pass (founder id transiently out of the live view, or the
+      // colony's own record not yet reconciled): KEEP the marker and retry next pass.
+      if (!pol || !countries.has(over)) continue;
+      s._overlordCC = undefined;                                   // consume: the link applies now
+      pol._overlord = over;
+      pol._depKind = "colony";                                     // a planted dependency (vs a submitted vassal) — drives investment and map rendering
+      inheritPersonality(world, over, s.id);                       // the colony carries the metropole's temperament
+      snapClaim(world, s.id);                                      // it administers its own ground at once
+      logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
+        seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
     }
     // (b/b2) Live overlord map + naval reach — extracted so loadWorld can warm
     //        the same state before its updateAlliances call (an overlord-blind
@@ -2393,6 +2415,22 @@ export function updatePolities(world) {
         // war by war and only unwinds on the slow institutional clock.
         s._estates = Math.max(0, Math.min(1, cur + (estTarget > cur ? ESTATE_DRIFT : ESTATE_BREAK) * (estTarget - cur)));
       }
+      // SLAVE SOCIETY (coerced-labor.md §2 — the gSlave term): the enslaved share of a
+      // settlement's population is a STANDING political grievance. A place worked by
+      // chained gangs lives under the threat of the servile war however quiet it looks
+      // (Spartacus's Italy, the Zanj marshes, Saint-Domingue) — masters patrol, fugitives
+      // run, manumission is bargained, and the free poor fear the lash-economy's wage
+      // floor. That price was missing: the estate-wrecking LOCAL revolt (settlement.js
+      // updateCoercedLabour) fires only past a 60% ratio, so below it a slave economy
+      // paid no political cost at all. Folded into the realm unrest sum like serfdom's
+      // gSerf, so it feeds rebellion, loyalty bleed and secession through the same
+      // machinery as every other grievance. Ratio form: under SLAVE_PEOPLE the unfree
+      // live INSIDE s.people (denominator: people); the legacy separate-stock accounting
+      // adds them — the spec's clamp(_unfree/(people+_unfree)), same as _unfreeRatio.
+      const unfree = T.SLAVERY ? (s._unfree || 0) : 0;
+      const gSlave = unfree > 0
+        ? T.SLAVE_UNREST_W * Math.min(1, unfree / Math.max(1, (s.people || 0) + (T.SLAVE_PEOPLE ? 0 : unfree)))
+        : 0;
       let gSerf = 0;
       if (T.SERFDOM) {
         const coercion = Math.min(1, (c._dominance || 1) / 4);              // a strong realm can bind
@@ -2408,7 +2446,7 @@ export function updatePolities(world) {
         gSerf = T.SERF_UNREST * s._serf;
       }
       // a shrewd, firm ruler keeps better order; a foolish, weak one lets it fray (dynasties.js c._rulerRelief, ±)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf + gG) * T.UNREST_GAIN - UNREST_RELIEF - monRelief - (c._rulerRelief || 0)));
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf + gSlave + gG) * T.UNREST_GAIN - UNREST_RELIEF - monRelief - (c._rulerRelief || 0)));
       s._unrestCause = s._plagueActive ? "plague"
                      : gG > gI && gG >= gH && gG >= gT && gG >= gW && gG >= gC ? "old wounds"
                      : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
@@ -3115,12 +3153,20 @@ export function rebuildOverlords(world, countries) {
   const reachOf = world._overlordReach = new Map();
   const tw = world.tw;
   const lab = landLabels(world);
+  // Res-scale: NAVAL_REACH_* are REFERENCE-tile radii (calibrated at the 240 grid),
+  // but d is a raw map distance — at a finer grid the same ocean is more raw tiles,
+  // so an unscaled navalReach projected ~1/resScale the real force: at the shipped
+  // 960 grid every colony sat at ~⅓ the projection it was tuned for, starving
+  // (supply, tech diffusion ∝ proj) and breaking free at ~14% of metropole power.
+  // Same scale (incl. the SIM_HOLD_SCALE A/B env) as holdReach, so BOTH arms of the
+  // max(sea, land) below stay in the same units at every grid — see the arm note.
+  const navScale = _holdScaleEnv > 0 ? _holdScaleEnv : resScaleFor(tw);
   for (const [dep, over] of overlordOf) {
     const dc = countries.get(dep), oc = countries.get(over);
     if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
     const d = dist(world, dc.capital.pos.x, dc.capital.pos.y, oc.capital.pos.x, oc.capital.pos.y);
     const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
-    const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
+    const navalReach = (NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV) * navScale;
     // Projection is by whichever ARM reaches: the navy across water (naval
     // reach), or the army over land — which marches out to the overlord's hold
     // reach, the same operational range that let a land VASSAL submit in the
@@ -3128,10 +3174,11 @@ export function rebuildOverlords(world, countries) {
     // judged by the overlord's NAVY (near-zero pre-sail), so a freshly-submitted
     // statelet sat above the independence line and oscillated submit↔free.
     // The army arm exists ONLY where an army can MARCH — both seats on the same
-    // landmass. Without that check the res-scaled hold reach dwarfed the raw
-    // naval reach and an army "marched" across open ocean to overseas colonies,
-    // silencing the very independence arc (remote colonies break free) the
-    // naval-projection model exists to produce.
+    // landmass: that gate (not unit games) is what keeps an army from "marching"
+    // across open ocean to overseas colonies and silencing the independence arc.
+    // Both reaches now carry the SAME resolution scale against the same raw d,
+    // so the sea-arm : land-arm balance is a resolution-invariant ratio — the
+    // old imbalance (res-scaled hold vs raw naval) cannot re-emerge at any grid.
     const seaProj = navalReach / (navalReach + d);
     const oTi = (oc.capital.pos.y | 0) * tw + (oc.capital.pos.x | 0);
     const dTi = (dc.capital.pos.y | 0) * tw + (dc.capital.pos.x | 0);
