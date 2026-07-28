@@ -405,7 +405,21 @@ const FIELD_SPAN_DEF = 6.0;   // tiles a realm's administration holds per unit h
 // biggest realm to a population-earned ~13M km² (raising the march to 400 fills
 // fuller but runs the giant to 22M; 150 is the balance).
 const MARCH_LOG_TILES = 150;
-const SIZE_POPK_SMOOTH = 0.25;   // low-pass on the persisted tiles-per-person anchor (world._sizePopK; the REF_POP_SMOOTH pattern)
+// SIZE_BY_POP: the average population density over a pre-modern state's WHOLE
+// territory below which there is nobody to govern — people per REFERENCE tile
+// (≈17,700 km²), in SIM-population units (the CAP_PER_FERT scale, popField.js;
+// recalibrate together if the demographic scale ever moves). Historical early
+// empires averaged 3–12 people/km² over their full extent (Achaemenid ~3,
+// Han/Rome ~10–12); × the sim's population scale (~0.07× Earth at matched
+// development, measured pfTot 13.7M at 12k vs ~200M historical) → 3,700–12,400
+// per reference tile. 8,000 is the mid-band value, ratified by the Tier-B2
+// calibration sweep (docs/empire-consolidation-2026-07.md, re-grounding
+// addendum). Frozen ONE-TIME at design (2026-07-28); NEVER a live statistic —
+// the whole point of the re-grounding is that no cross-realm quantity feeds
+// any realm's target. Lever T.RURAL_BIND_DENS; env-overridable for headless
+// sweeps (SIM_BIND_DENS, force-precedence like SIM_MARCH_TILES).
+const RURAL_BIND_DENS_DEF = 8000;
+const BIND_DENS_ENV = (typeof process !== "undefined" && process.env && +process.env.SIM_BIND_DENS) || 0;
 // The logistics GATE exponent: >1 keeps the early frontier small (march ≈ 0 until
 // roads mature) and pushes the map-fill toward the true industrial era. Calibrated
 // to 2. Env-overridable for sweeps (SIM_MARCH_TILES / SIM_MARCH_POW).
@@ -717,48 +731,29 @@ function fieldPolityTerritory(world) {
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
   const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
   const coverOrg  = Number.isFinite(COVER_ORG_ENV)  ? COVER_ORG_ENV  : (T.COVER_ORG ?? 260);
-  // SIZE_BY_POP: extent tracks the PEOPLE a realm governs, not a fixed floor.
-  // Governed popField per realm, and a self-calibrating tiles-per-person constant
-  // benchmarked to the MEDIAN established realm (the _refRevenue pattern — no fitted
-  // density). A realm's target is then capped at govPop×popCapK: under-populated
-  // realms (fresh frontier states) shrink to what their people justify (sub-Egypt
-  // realms exist), the median-and-above (the developed core) are unchanged, and the
-  // map fills LATE as population grows rather than EARLY by a floor. Byte-identical
-  // when off (nothing computes).
-  let govPopOf = null, popCapK = 0;
+  // SIZE_BY_POP: extent tracks the PEOPLE a realm governs — ITS OWN people, at a
+  // fixed physical density (RURAL_BIND_DENS), never a cross-realm statistic. The
+  // previous form scaled every realm's pop-core by a LIVE global anchor: tiles-
+  // per-person at the MEDIAN capacity-bearing realm, low-passed and persisted as
+  // world._sizePopK. With 1–8 realms in sample the "median" WAS the leading
+  // cohort (n=1 for a third of the reference run), so one distant realm reaching
+  // Bronze re-sized every Stone-Age realm on the planet in a single window
+  // (measured ×8–11 jump, a 13–20× band, world coverage breathing in lockstep —
+  // docs/user-report-diagnosis-2026-07-28.md §9). Re-grounded (Tier-B2): each
+  // realm's target reads only its own govPop, its own statecraft, and the frozen
+  // density constant — memoryless (defined from tick 0 and from the first
+  // post-load pass; no warm-up gate, no persisted anchor, so the anchor-seeding
+  // discontinuity and the whole save/load anchor-drift class are gone).
+  // Byte-identical when off (nothing computes).
+  let govPopOf = null;
   if (T.SIZE_BY_POP && world.popField) {
     govPopOf = new Map();
     const pf = world.popField;
     for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c < 0 || !(elev[ti] > 0)) continue; govPopOf.set(c, (govPopOf.get(c) || 0) + pf[ti]); }
-    const gps = [], tgs = [];
-    for (const [cid, cp] of capOf) {
-      if (cp <= 0) continue;                                   // benchmark on established (capacity-bearing) realms
-      const gp = govPopOf.get(cid) || 0;
-      if (gp > 0) { gps.push(gp); tgs.push(spanEff * spanTechMul(cid) * cp * r2); }
-    }
-    // tiles per governed-person at the MEDIAN realm — LOW-PASSED and PERSISTED
-    // (world._sizePopK), the _refRevenue anchor pattern. Without the smoothing this
-    // global median coupling made the pop-core twitchy: a one-tile save/load
-    // re-warm perturbation shifts the median → shifts EVERY realm's target →
-    // compounds through sticky territory into a runaway coverage drift (the
-    // continuation-gate failure). Smoothed, the ratio relaxes; PERSISTED, a loaded
-    // world resumes on the same anchor the live run carries, so the first post-load
-    // pass computes identical targets. When a pass has NO fresh median (capacity
-    // all-zero — the first passes after a load, before the polity pass recomputes
-    // capacity) it holds the persisted anchor instead of collapsing to the floor.
-    let fresh = 0;
-    if (gps.length) {
-      gps.sort((a, b) => a - b); tgs.sort((a, b) => a - b);
-      const medGP = gps[gps.length >> 1], medTG = tgs[tgs.length >> 1];
-      if (medGP > 0 && medTG > 0) fresh = medTG / medGP;
-    }
-    const prev = world._sizePopK || 0;
-    if (fresh > 0) world._sizePopK = prev > 0 ? prev + (fresh - prev) * SIZE_POPK_SMOOTH : fresh;
-    popCapK = world._sizePopK || 0;                            // persisted anchor (holds through capacity-less post-load passes)
   }
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * spanTechMul(cid) * Math.max(0, cp) * r2);
-    if (T.SIZE_BY_POP && popCapK > 0) {
+    if (T.SIZE_BY_POP && govPopOf) {
       // Population-driven extent (no floor). Nomads exempt — a steppe confederation
       // holds vast sparse land by MOMENTUM, not by the people on it. A capless solo
       // (cp=0, conquest.js sizes only multi-province holds) is driven purely by its
@@ -775,7 +770,21 @@ function fieldPolityTerritory(world) {
         // realm (short march) stays small. Capacity is NOT the ceiling here — it is
         // median-anchored (log2-compressed) and would re-cap the whole map at the
         // median; the growth Dijkstra's admin-load attenuation is the real reach bound.
-        const popCap = Math.round((govPopOf.get(cid) || 0) * popCapK);
+        //   CORE = govPop × the realm's OWN spanTechMul ÷ RURAL_BIND_DENS: how many
+        // tiles of average-density territory its people can staff an administration
+        // over, discounted by its own statecraft (the same earned-span factor the
+        // capacity target uses — previously computed here and then DISCARDED, which
+        // is what left Stone realms sized by the leader cohort's anchor). ÷r2 turns
+        // the per-REFERENCE-tile density into per-sim-tile, so the quotient is sim
+        // tiles and the whole term is exactly res-invariant (govPop is per-real-area
+        // by construction). ADMIN_LOAD_RECAL converts tiles → load units under
+        // adminOn, same convention as spanEff and the COVER floor. The emergent
+        // equilibrium: expansion is self-funding exactly while the marginal frontier
+        // tile carries popField ≥ (DENS/r2)·loadOfD(d)/(spanTechMul·RECAL) — the
+        // border comes to rest where the governable people end, with no threshold
+        // count and no cross-realm term anywhere.
+        const bindDens = (BIND_DENS_ENV > 0 ? BIND_DENS_ENV : (T.RURAL_BIND_DENS ?? RURAL_BIND_DENS_DEF)) / r2;   // people per SIM tile
+        const popCap = Math.round((govPopOf.get(cid) || 0) * spanTechMul(cid) * (adminOn ? ADMIN_LOAD_RECAL : 1) / bindDens);
         const marchTiles = MARCH_TILES_ENV > 0 ? MARCH_TILES_ENV : MARCH_LOG_TILES;
         const march = Math.round(marchTiles * Math.pow(logiOf.get(cid) || 0, MARCH_POW) * r2);
         t = popCap + march;

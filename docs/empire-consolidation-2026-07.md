@@ -758,6 +758,95 @@ batteries) now describes the `SIZE_BY_POP=0` baseline, one lever away. Validated
 only at the 480 reference; a 1920 windowed confirmation is the outstanding
 follow-up (container instability). Env sweep knobs retained (SIM_MARCH_TILES/POW).
 
+## THE SIZE-TARGET RE-GROUNDING (2026-07-28, Tier-B2) — a realm's target is ITS OWN people at a fixed physical density
+
+The anchor pattern above (low-pass + persist `world._sizePopK`) treated the
+SYMPTOM (twitchiness) of a deeper defect the diagnosis then measured
+(docs/user-report-diagnosis-2026-07-28.md §9, docs/tier-b-baseline-2026-07-28.md
+§(4)): the pop-core scaled every realm by tiles-per-person at the MEDIAN
+capacity-bearing realm, and with 1–8 realms in sample the "median" WAS the
+leading cohort — n=1 for a third of the reference run. One realm reaching Bronze
+re-sized every Stone-Age realm on the planet in a single window. Re-measured on
+the Tier-B branch base (b859db7, probe over 480×240 / sim tw=240, seeds
+8817+31337, 12–16k, sampled every 250): seed 8817 K band ×9.2 with a ×8.68
+single-window jump @11000, aggregate-target window ratio ×11.57, coverage
+breathing 1.6→8.4→3.4% (2k-window band ×5.07), and 38 realms whose OWN
+gov/org/membership were unchanged moved their targets >10% in one window (worst
+×8.76); seed 31337 the chronic form — K band ×6.9, 50 own-state-unchanged
+offender-windows. The anchor also crushed the cradles when it first seeded
+(heldMax 42→5 across ~3.5k) and suppressed the late map as it decayed.
+
+**Fix (design: docs/design-size-target-regrounding.md, candidate b): delete the
+anchor entirely.** The populated core becomes per-realm and memoryless:
+
+    popCap = round( govPop × spanTechMul × (adminOn ? ADMIN_LOAD_RECAL : 1) × r2 / RURAL_BIND_DENS )
+
+— govPop (the realm's own governed popField, conserved per real area),
+spanTechMul (its OWN earned-span statecraft, previously computed here and then
+DISCARDED — the discard is what left Stone realms sized by the leader cohort),
+and one frozen unit-ful constant. `RURAL_BIND_DENS` (lever, def 8000; env
+SIM_BIND_DENS) = the average density over a state's WHOLE territory below which
+there is nobody to govern, in people per REFERENCE tile: historical early
+empires averaged 3–12 people/km² over their full extent (Achaemenid ~3, Han ~10,
+Rome ~12) × the sim's demographic scale (~0.07× Earth at matched development,
+pfTot 13.7M at 12k) × 17,700 km²/ref-tile → a 3,700–12,400 band; 8,000 is
+mid-band. NEVER a live statistic; coupled to CAP_PER_FERT (recalibrate together).
+`SIZE_POPK_SMOOTH` deleted; `world._sizePopK` no longer computed or read
+(persisted as literal 0 for one format generation so old code loading a new save
+takes its reseed path). No warm-up gate: targets are defined from tick 0 (the
+seeding crush is gone — cradles hold basin-scale 3–17 tile pop-targets from
+genesis) and from the first post-load pass (the whole save/load anchor-drift
+class the smoothing was built to patch is structurally impossible — nothing
+persisted feeds the target). March term, nomad exemption, TILE_POLITY floor and
+lever-off paths byte-identical.
+
+**Calibration sweep (one-time, then frozen)**: SIM_BIND_DENS ∈ {5000, 8000,
+12000} × seeds {8817, 31337}, 480×240, 12k (8000/8817 to 16k), windowed means
+over (X−2k, X] samples every 250:
+
+    (10k,12k]              realms   claimed%   top-5 held (tiles)          heldMed
+    8817  pre-change        38.5     4.02      46.0/34.0/25.9/23.9/23.1     6.3   ← window contains the ×8.4 anchor spike
+    8817  d5000             41.8     4.92      49.9/34.8/33.4/29.3/27.0     6.3
+    8817  d8000             40.3     2.91      32.0/27.4/20.5/18.9/17.3     4.5
+    8817  d12000            41.1     2.51      21.3/14.5/13.8/13.1/12.3     5.0
+    31337 pre-change        53.1     4.70      39.6/33.5/28.9/25.0/23.1     5.4
+    31337 d5000             51.6     3.46      32.8/28.6/23.4/17.4/15.6     4.4
+    31337 d8000             52.6     2.41      16.6/15.5/ 9.1/ 8.5/ 7.9     4.0
+    31337 d12000            54.1     2.23      16.0/ 9.4/ 8.1/ 7.5/ 6.9     4.0
+
+Outcomes scale smoothly ~1/DENS (no cliff); realm counts preserved on both seeds
+(no statelet-minting surge when the anchor dips — there is no anchor). d5000
+best matches the pre-change (10k,12k] window, but that window is defect-inflated
+(the ×8.4 spike sits inside it); d12000 undershoots everything. **d8000 —
+ratified — lands on the design's honest counterfactual (predicted ~3.2% at 12k,
+measured 2.91%/2.8% on 8817, 2.41% on 31337 ≈ the pre-change time-mean with the
+spikes excluded) and keeps the full arc: coverage monotone-rising with
+development (8817 d8000: 1.1→2.3→3.5→8.8% over 8k→16k where the decaying anchor
+had crushed the pre-change build back to 3.0%), heldMed 4.0–7.4 tiles (sub-Egypt
+realms at every step), biggest realm 67 tiles ≈ 1.2M km² at 16k (Egypt-scale,
+mortal, nowhere near the ~13M ceiling).**
+
+**Acceptance (both design gates, measured on all 6 arms)**:
+- BRONZE-JUMP GATE: realms with own gov/org/membership unchanged across a
+  window: max target move ×1.03 (rounding-free), ZERO realms >10% on 5 of 6
+  arms; the two single ">10%" movers (×1.13, ×1.10, both seed-8817) were realms
+  whose OWN capital unlocked logistics tech that window (march term; own-tech
+  movement is exactly what the design requires). Pre-change same filter: 38/50
+  offender-windows, worst ×8.76.
+- OSCILLATION GATE: max window-to-window aggregate-target ratio ×1.14–×1.28
+  across all arms (bar ≤1.5; pre-change ×11.57/×2.35). Coverage 2k-window
+  max/min ×1.50–×2.56 with peak-to-trough drawdown ×1.00–×1.08 — the band is
+  monotone development growth, not breathing (pre-change: ×5.07/×2.79 with real
+  peak-collapse 8.4→3.4%).
+
+Smoke green (determinism, invariants, save/load roundtrip + continuation —
+the continuation gate now exercises a memoryless target). Res-invariance is by
+construction (govPop conserved per real area, ×r2 explicit, the marginal-contour
+ratio grid-free) — the formula uses the same r2 idiom as the march line beside
+it. The stylized coverage-breathing standing gate the design proposes
+(validation 7) is deliberately NOT added in this wave (gates frozen during
+Tier-B); queued for the integrator with the re-baseline (validation 3/6 scope).
+
 ## OPEN / NEXT
 - If you want amphibious war to stop over-consolidating *at the mechanism level*
   (not just capped via comboE): it needs a **NON-multiplicative** limiter — e.g.
