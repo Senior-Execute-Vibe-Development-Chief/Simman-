@@ -151,6 +151,11 @@ const NARRATE = {
       : `${ev.sName} declined to a ${ev.tierName}.`;
   },
   "colony.departed"(ev) { return `A colony fleet set sail from ${ev.sName}.`; },
+  "town.planted"(ev) {
+    return ev.march
+      ? `The crown planted ${ev.sName} to hold the march.`
+      : `The crown chartered ${ev.sName} to govern the countryside.`;
+  },
   "colony.founded"(ev) { return `${ev.sName || "A colony"} was planted overseas under the flag of ${ev.fromName || "its mother country"}.`; },
   "colony.independent"(ev) { return `${ev.name || "The colony"} cast off ${ev.fromName || "its mother country"} and declared itself sovereign.`; },
   "polity.submitted"(ev, as) {
@@ -309,7 +314,7 @@ export function categoryOf(ev, as = -1) {
     case "era.reached": return "discovery";
     case "growth.cities": return "growth";
     case "wealth.milestone": return "wealth";
-    case "settlement.founded": case "colony.departed": return "founding";
+    case "settlement.founded": case "colony.departed": case "town.planted": return "founding";
     case "colony.founded": return "founding";
     case "colony.independent": return as === ev.from ? "loss" : "secession";
     case "polity.submitted": return as === ev.to ? "annex" : "loss";

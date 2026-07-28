@@ -202,3 +202,55 @@ exactly **12 reference tiles** from tick 0 through the Bronze Age; the
 longer all-road trade links the probe still reports (27–48) are relay
 chains threading towns/junctions — the Silk-Road structure, drawn only
 where flow actually runs.
+
+## Addendum 3 — engineering straightens the map; the deliberate-genesis family
+
+**Shortcuts ease with roadcraft** (roads.js `SHORTCUT_GAIN_ENG`,
+`roadEngineeringOf`): the savings a direct line must promise over the
+network route falls from 15% toward 3% as the builder's construction band /
+logistics tech rises, and the per-cycle shortcut probe budget grows 1 → 3.
+A neolithic culture never straightens; the groma-and-causeway cultures
+redraw their maps — the Roman viae, then the rail/motorway ages again.
+
+**State plantation** (crystallize.js `maybePlantTowns`) adds the genesis
+family the organic sweep cannot express — the town founded by a COURT:
+
+- Gates, all live political state: written administration (capital org ≥
+  0.35 — charters and surveys; the Uruk-colony / colonia / bastide bar,
+  which the leading realms cross mid-Bronze), a funded treasury (the
+  endowment MOVES into the town, conserved), a capital with people to
+  spare (the settlers are ONE_POP-moved out of it — a plantation is the
+  state relocating its own people, hence exempt from the sweep's basin
+  bar), a court within its governing budget, and a per-realm cooldown.
+- Siting: the realm's EDGE — measured finding: inside a healthy realm
+  every tile sits within the spacing floor of some town, so the served
+  interior has nothing to plant for. Seeds are border tiles facing a
+  foreign realm (**march** intent — preferring defensible ground and
+  borders the grievance ledger says are hostile) or unowned frontier
+  tiles touching the claim (**charter** intent — scored by the peopled
+  unclaimed basin the seat would bring onto the rolls). A founding party
+  then SURVEYS around the seed for the actual plot (the seed marks the
+  region; realms are too compact for the seed tile itself to clear the
+  spacing floor — measured 17/19 failures without the survey step).
+- The planted town joins the realm at birth with the capital's knowledge
+  and culture, carries the treasury endowment, and is provisioned through
+  the existing colony-supply channel (parentId). A charter town that
+  prospers can take the throne through ordinary capital selection — the
+  planned-capital arc (Baghdad) emerging from growth rather than fiat.
+  (True sticky fiat-capitals are deliberately deferred: the capital is
+  re-derived each pass as the leading urban centre, and overriding that
+  is a design decision about legitimacy, not a patch.)
+- Measured (seed 8817): first plantation ~step 20k (classical), rate
+  rising with org/treasury spread — a rare deliberate act punctuating
+  organic growth, as it should read at this entity scale.
+
+**Holy-city refounding** (crystallize.js `holyRuinSites`): the dead see of
+a faith that still dominates ≥ 6 towns projects a settlement pull (river-
+magnet order, 5-reference-tile radius) over its ruin — pilgrims and memory
+refound the holy city (Jerusalem's pattern). Appears when a great faith's
+see falls, fades if the faith does.
+
+**Refugee refounding** needs no mechanism: under ONE_POP the countryside
+of a fallen realm keeps its people in the field, and the urban floor
+re-concentrates them into new towns wherever basins persist — flight and
+return are what the field already does.

@@ -221,7 +221,22 @@ const NEW_FRACTION_OUT    = 0.35 / 1.2; // peer in different component: low bar
 const NEW_FRACTION_IN     = 0.55 / 1.2; // peer in same component: moderate novelty
                                         // (both ÷1.2 re-anchor the 0.5-pivot commerceMul,
                                         // which divides these; behaviour identical)
-const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path
+const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path…
+// …at ZERO engineering. Surveying and earthworks are what made straightening
+// worth it — the groma-and-causeway cultures famously cut direct lines where
+// older routes wound (the Roman viae; the motorway age again) — so the
+// savings a shortcut must promise FALLS as the builder's roadcraft rises:
+// the required ratio eases from 0.85 toward SHORTCUT_GAIN_ENG (≥3% saving)
+// and the per-cycle shortcut probe budget grows 1 → 3. Emergent in the
+// builder's own construction band + logistics techs (the same measures that
+// set paint quality and the segment cap) — a neolithic culture never
+// straightens; an engineering one redraws its map.
+const SHORTCUT_GAIN_ENG   = 0.97;
+function roadEngineeringOf(s) {
+  const cons = (s && s.knowledge && s.knowledge.construction) || 0;
+  const t = Math.min(1, Math.max(0, (cons - 0.10) / 0.50));   // the paintQualityFor band
+  return Math.max(t, techEff(s).logisticsLevel);
+}
 
 // Close-neighbour rule: any settled pair within this many REFERENCE tiles
 // of each other gets a direct path painted by the local-link
@@ -820,12 +835,18 @@ function tryAddRoad(world, s) {
   const rq = world.roadQuality;
   let bestPartner = null, bestScore = -Infinity, bestPath = null;
   let newEvals = 0, shortcutEvals = 0;
+  // Engineering eases the straightening economics (see SHORTCUT_GAIN_ENG):
+  // the acceptance bar and the probe budget both follow the builder's own
+  // roadcraft, so mature networks get redrawn by the cultures that can.
+  const eng = roadEngineeringOf(s);
+  const shortcutBar = SHORTCUT_GAIN_RATIO + (SHORTCUT_GAIN_ENG - SHORTCUT_GAIN_RATIO) * eng;
+  const maxShortcuts = MAX_SHORTCUT_EVALS + (eng > 0.35 ? 1 : 0) + (eng > 0.7 ? 1 : 0);
   for (const cand of ranked) {
-    if (newEvals >= MAX_NEW_EVALS && shortcutEvals >= MAX_SHORTCUT_EVALS) break;
+    if (newEvals >= MAX_NEW_EVALS && shortcutEvals >= maxShortcuts) break;
     const peer = cand.peer;
     const connected = !!(s._tradeReach && s._tradeReach.has(peer.id));
     if (connected) {
-      if (shortcutEvals >= MAX_SHORTCUT_EVALS) continue;
+      if (shortcutEvals >= maxShortcuts) continue;
     } else {
       if (newEvals >= MAX_NEW_EVALS) continue;
     }
@@ -848,11 +869,13 @@ function tryAddRoad(world, s) {
     const requiredFrac = (sameNetwork ? NEW_FRACTION_IN : NEW_FRACTION_OUT) / commMul;
     if (newFrac < requiredFrac) continue;
 
-    // If same network: ALSO require the new direct path to be
-    // meaningfully shorter than the existing network path.
+    // If same network: ALSO require the new direct path to be meaningfully
+    // shorter than the existing network path — "meaningfully" by the
+    // builder's own engineering (shortcutBar: 15% savings for a pre-survey
+    // culture, any ≥3% once roadcraft matures).
     if (sameNetwork && s._tradeReach && s._tradeReach.has(peer.id)) {
       const networkCost = s._tradeReach.get(peer.id).cost;
-      if (path.cost > networkCost * SHORTCUT_GAIN_RATIO) continue;
+      if (path.cost > networkCost * shortcutBar) continue;
     }
 
     // Wealth eagerness: only the BUILDER's own coffers matter. A

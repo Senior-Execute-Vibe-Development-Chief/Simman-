@@ -49,6 +49,7 @@ const TYPE_META = {
   "era.reached": { cat: "discovery", icon: "✧", toast: true },
   "growth.cities": { cat: "society", icon: "⌂" },
   "settlement.founded": { cat: "society", icon: "⌂" },
+  "town.planted": { cat: "society", icon: "⌂" },
   "settlement.lapsed": { cat: "society", icon: "⌂" },
   "colony.departed": { cat: "society", icon: "⛵" }, "colony.founded": { cat: "society", icon: "⛵" },
   "culture.born": { cat: "society", icon: "✦" }, "culture.diverged": { cat: "society", icon: "✦" },
