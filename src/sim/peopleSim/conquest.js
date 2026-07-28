@@ -18,7 +18,7 @@ import { localEdgeCost, tileOpenness } from "./transport.js";
 import { TECHS } from "./tech.js";
 import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
-import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
+import { CITY_TIER, resScaleFor, successorStatesOn } from "./countryTerritory.js";
 import { techEff, getWealthReserve, recordCaptives, monetization, realOutputOf } from "./settlement.js";
 import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.RESOURCE_WARS)
 import { realmName } from "./chronicle.js";
@@ -777,7 +777,9 @@ function freshCountryId(c, bloc) {
 // at once on the next render pass, rather than crawling out as a slow wave —
 // secession is a political event (the province is its own that day), unlike a
 // conquest front. Consumed + cleared in countryClaim.js relaxClaim.
-function snapClaim(world, id) {
+// (Exported for countryTerritory's restoration-from-the-ground foundings —
+// a re-emerging nation is an already-administered claim, same as secession.)
+export function snapClaim(world, id) {
   if (id < 0) return;
   (world._claimSnap || (world._claimSnap = new Set())).add(id);
   // A state born of secession / fragmentation / re-emergence INHERITS a developed,
@@ -1061,8 +1063,24 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
 // evaporate just because no metropolis sits on it). Only a lone village or empty
 // over-claimed tiles have no government to inherit: those fall stateless and the
 // land reverts to wilderness (the rim recedes).
-function shedPatch(world, c, members) {
-  let seats = members.filter(m => (m.tier | 0) >= CITY_TIER && m.id !== c.capitalId);
+function shedPatch(world, c, members, how) {
+  // Successor seats (T.SUCCESSOR_STATES): a CITY, or any member that is its own
+  // PROVINCIAL seat — blocHasSeat's exact member test (see its twice-learned
+  // history above). The floating CITY label pins labelled cities to the age's
+  // top handful, so the label-only bar left almost every shed patch seatless and
+  // the towns-fallback/lapse floor below was the whole outcome (measured: 0
+  // polity.seceded per 24k). A provincial seat is spacing-bounded by construction
+  // (locally-strongest within PROVINCE_SPAN — assignProvinces, stamped fresh at
+  // the top of this same polity pass), so successors are province-sized, never
+  // per-town — founding and secession need different bars. A non-city seat also
+  // needs the patch to be a real region (≥2 members — a successor is a seat plus
+  // at least one dependent, restoreNations' rule; the towns-fallback's own bar):
+  // a stranded lone town lapses rather than minting a 1-member fleck.
+  const succ = successorStatesOn();
+  let seats = succ
+    ? members.filter(m => m.id !== c.capitalId
+        && ((m.tier | 0) >= CITY_TIER || (m._provinceCity === m.id && members.length >= 2)))
+    : members.filter(m => (m.tier | 0) >= CITY_TIER && m.id !== c.capitalId);
   if (seats.length === 0) {
     // No city — the biggest town becomes a frontier capital, provided the patch is
     // a real region (a seat plus at least one dependent), not a single hamlet.
@@ -1089,6 +1107,30 @@ function shedPatch(world, c, members) {
     for (const seat of seats) { const d = dist(world, seat.pos.x, seat.pos.y, m.pos.x, m.pos.y); if (d < bd) { bd = d; best = seat; } }
     groups.get(best.id).push(m);
   }
+  // Anti-confetti fold (T.SUCCESSOR_STATES): a successor is a seat PLUS at least
+  // one dependent — the same ≥2 rule restoreNations enforces. A non-city seat the
+  // watershed left alone folds into the nearest other seat's cell (distance tie →
+  // smaller id); a full CITY alone remains a city-state; a single-seat patch is
+  // one successor, as before.
+  if (succ && seats.length >= 2) {
+    for (let i = seats.length - 1; i >= 0 && seats.length >= 2; i--) {
+      const seat = seats[i];
+      if ((seat.tier | 0) >= CITY_TIER) continue;
+      const grp = groups.get(seat.id);
+      if (grp && grp.length >= 2) continue;
+      let near = null, nd = Infinity;
+      for (const o of seats) {
+        if (o === seat) continue;
+        const d = dist(world, seat.pos.x, seat.pos.y, o.pos.x, o.pos.y);
+        if (d < nd || (d === nd && near && o.id < near.id)) { nd = d; near = o; }
+      }
+      if (!near) continue;
+      const ng = groups.get(near.id);
+      if (grp) for (const m of grp) ng.push(m);
+      groups.delete(seat.id);
+      seats.splice(i, 1);
+    }
+  }
   for (const seat of seats) {
     const grp = groups.get(seat.id);
     if (!grp || !grp.length) continue;
@@ -1104,8 +1146,87 @@ function shedPatch(world, c, members) {
       m._ambition = 0;
       m._conqueredAt = world.step;                 // anti-flicker grace
     }
-    logEvent(world, "polity.seceded", { polity: newId, from: c.id, fromName: realmName(world, c.id),
-      seatName: seat && seat.name, x: seat ? seat.pos.x | 0 : undefined, y: seat ? seat.pos.y | 0 : undefined });
+    // `how` ("receded", from resolveOrphanedMarches) is additive — narrators
+    // and every existing reader ignore it; absent on the classic revolt path.
+    const ev = { polity: newId, from: c.id, fromName: realmName(world, c.id),
+      seatName: seat && seat.name, x: seat ? seat.pos.x | 0 : undefined, y: seat ? seat.pos.y | 0 : undefined };
+    if (how) ev.how = how;
+    logEvent(world, "polity.seceded", ev);
+  }
+}
+
+// ── The silent shed made witnessable (T.SUCCESSOR_STATES) ────────────────────
+// The territory pass's connectivity release and over-capacity shed set tiles to
+// wilderness with NO political event: a settled march dropped off the map with
+// its towns, people and homeland memory intact and nothing recorded (measured:
+// 99.86% of ~2117 released tiles went realm→wilderness, 35 silent settlement
+// lapses, 0 secessions per 24k — docs/design-successor-states.md). Called from
+// index.js between computeCountryTerritory (which fills world._fpRel) and
+// adoptAndFound (whose unguarded derivation would otherwise silently lapse the
+// orphans in the same firing): settled members standing on ground their own
+// realm no longer holds — and no rival took (a realm→realm flip is a border
+// shift, adoptAndFound's business) — resolve through the EXISTING machinery:
+// fallen nations re-emerge first (restoreNations), a patch with a functional
+// seat secedes as a successor statelet (shedPatch), a seatless remainder
+// honestly lapses (settlement.lapsed) — and either way the parent's recession
+// is chronicled (polity.receded). The released-by mask already blocks only the
+// PARENT re-taking its shed; a successor is a different id, so its claim is the
+// genuine new-realm capture the carto churn fix explicitly allows.
+export function resolveOrphanedMarches(world) {
+  if (!successorStatesOn() || !T.FIELD_POLITY) return;
+  const co = world._countryOwner, rel = world._fpRel;
+  if (!co) return;
+  const tw = world.tw, elev = world.elev, pf = world.popField;
+  // 1. ORPHANS, grouped by realm (settlement-array order — deterministic).
+  const byRealm = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId < 0) continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (!(elev[ti] > 0) || co[ti] >= 0) continue;         // held ground (own or a rival's) → not an orphan
+    let a = byRealm.get(s.countryId); if (!a) byRealm.set(s.countryId, a = []); a.push(s);
+  }
+  for (const [cid, orphans] of byRealm) {
+    const c = world.countries && world.countries.get(cid);
+    // No countries view yet (a realm minted since the last polity pass), or the
+    // throne itself among the orphans (the death machinery's case, not a march):
+    // leave them to the derivation — which now witnesses the lapse.
+    if (!c || orphans.some(m => m.id === c.capitalId)) continue;
+    // 2. FALLEN NATIONS first (the ground under a conquered march remembers):
+    //    the existing machinery verbatim — requireBorder=false, already outside.
+    const restored = restoreNations(world, orphans.filter(m => (m._homeland ?? -1) >= 0), cid, false);
+    // 3. SUCCESSOR STATELET vs HONEST REVERSION — exactly shedPatch: a functional
+    //    seat leads a polity.seceded successor; no functioning centre → the lapse
+    //    branch fires settlement.lapsed and the land stays wilderness.
+    const rest = orphans.filter(m => !restored.has(m.id) && m.countryId === cid);
+    if (rest.length) shedPatch(world, c, rest, "receded");
+    // 4. ANCHOR the outcome so this firing's adoptAndFound can't undo it: every
+    //    orphan that ended in a (new or restored) realm stamps its home tile —
+    //    the same semantics as the territory pass's anchor fallback. Uncharged
+    //    this pass (≤1 tile/member — the same under-charge the fill headroom
+    //    already accepts); any overshoot is one small shed next pass.
+    for (const m of orphans) {
+      if (m.countryId >= 0 && m.countryId !== cid) co[(m.pos.y | 0) * tw + (m.pos.x | 0)] = m.countryId;
+    }
+    // 5. The WITNESS record either way: what the parent's grip lost this firing.
+    let relTiles = 0, relPeople = 0;
+    if (rel && pf) for (let ti = 0; ti < world.N; ti++) if (rel[ti] === cid) { relTiles++; relPeople += pf[ti]; }
+    logEvent(world, "polity.receded", { polity: cid, name: realmName(world, cid), tiles: relTiles,
+      people: Math.round(relPeople), n: orphans.length, s: orphans[0].id, sName: orphans[0].name,
+      x: orphans[0].pos.x | 0, y: orphans[0].pos.y | 0 });
+  }
+  // People-but-no-settlement marches (shed ground with field people, no entity):
+  // a debug tally, not an event — the log stays entity-anchored throughout.
+  if (rel && pf) {
+    let t = 0, p = 0;
+    for (let ti = 0; ti < world.N; ti++) {
+      const r = rel[ti];
+      if (r >= 0 && pf[ti] > 0 && !byRealm.has(r)) { t++; p += pf[ti]; }
+    }
+    if (t > 0) {
+      const dbg = world.debug || (world.debug = {});
+      dbg.recededTiles = (dbg.recededTiles || 0) + t;
+      dbg.recededPeople = (dbg.recededPeople || 0) + p;
+    }
   }
 }
 
@@ -1180,25 +1301,58 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
   // couple of large successors (Roman/Diadochi), a sprawling many-citied one
   // shatters into a crowd of warlord states (Chinese): the number of pieces
   // tracks the severity/scale of the collapse, not a fixed cap.
-  const cityCount = survivors.reduce((n, s) => n + ((s.tier | 0) >= CITY_TIER ? 1 : 0), 0);
-  const maxStates = Math.max(2, Math.min(FRAG_MAX_STATES, Math.ceil(cityCount / 2)));
+  // T.SUCCESSOR_STATES: the basis is FUNCTIONAL seats — a city, or a member that
+  // is its own provincial seat (blocHasSeat's member test) — because the floating
+  // CITY label pins labelled cities to the age's top handful, so the label basis
+  // read 0 at every realm size the sim actually produces and the Diadochi channel
+  // starved (measured: 16 shatters, 0 fragment successors per 24k). Staleness of
+  // _provinceCity here is one polity interval — the same blocHasSeat/
+  // declareIndependence already accept.
+  const succ = successorStatesOn();
+  const isFnSeat = (s) => (s.tier | 0) >= CITY_TIER || (succ && s._provinceCity === s.id);
+  const seatCount = survivors.reduce((n, s) => n + (isFnSeat(s) ? 1 : 0), 0);
+  const maxStates = Math.max(2, Math.min(FRAG_MAX_STATES, Math.ceil(seatCount / 2)));   // adjacent provinces coalesce in pairs
   const ranked = survivors.slice().sort((a, b) => settlementPower(b) - settlementPower(a));
   const capitals = [];
-  for (const s of ranked) {
-    if (capitals.length >= maxStates) break;
-    // Never re-anchor a successor on the DEAD realm's own id: country ids ARE
-    // settlement ids, so a successor whose seat is the founder settlement
-    // (s.id === oldId) would reuse oldId — and ensurePolity would REOPEN the
-    // record endPolity just closed, logging a spurious ended+restored pair and
-    // handing the "shattered" realm its own buried war-chest back (the succession
-    // shatter degrading to a self-rename). The founder settlement still joins its
-    // nearest successor below; the id dies with the house, as intended.
-    if (s.id === oldId) continue;
-    let far = true;
-    for (const cap of capitals) {
-      if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+  // Never re-anchor a successor on the DEAD realm's own id: country ids ARE
+  // settlement ids, so a successor whose seat is the founder settlement
+  // (s.id === oldId) would reuse oldId — and ensurePolity would REOPEN the
+  // record endPolity just closed, logging a spurious ended+restored pair and
+  // handing the "shattered" realm its own buried war-chest back (the succession
+  // shatter degrading to a self-rename). The founder settlement still joins its
+  // nearest successor below; the id dies with the house, as intended.
+  if (succ) {
+    // Pass 1: only FUNCTIONAL seats carry a successor crown (power-ranked, spaced).
+    for (const s of ranked) {
+      if (capitals.length >= maxStates) break;
+      if (s.id === oldId || !isFnSeat(s)) continue;
+      let far = true;
+      for (const cap of capitals) {
+        if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+      }
+      if (far) capitals.push(s);
     }
-    if (far) capitals.push(s);
+    // Pass 2: the Diadochi floor — a seat-poor realm still splits in two, topped
+    // up from ANY survivor (the pre-lever behavior for seatless realms).
+    if (capitals.length < 2) for (const s of ranked) {
+      if (capitals.length >= 2) break;
+      if (s.id === oldId || capitals.includes(s)) continue;
+      let far = true;
+      for (const cap of capitals) {
+        if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+      }
+      if (far) capitals.push(s);
+    }
+  } else {
+    for (const s of ranked) {
+      if (capitals.length >= maxStates) break;
+      if (s.id === oldId) continue;
+      let far = true;
+      for (const cap of capitals) {
+        if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+      }
+      if (far) capitals.push(s);
+    }
   }
   // Each successor realm inherits the dead empire's temperament (with drift),
   // so the Diadochi share their predecessor's character before diverging.

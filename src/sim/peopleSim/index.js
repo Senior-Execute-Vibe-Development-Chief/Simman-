@@ -32,7 +32,7 @@ const CLAIM_RELAX_FINE = 3;
 // one hop every few ticks instead of every tick cuts its cost ~this× for an imperceptible
 // change in how the border moves. (The field pass is ~half a tick if run every tick.)
 const CTRL_FIELD_STRIDE = 4;
-import { updatePolities } from "./conquest.js";
+import { updatePolities, resolveOrphanedMarches } from "./conquest.js";
 import { musterArmies, advanceFronts, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
@@ -155,6 +155,7 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step === 1 || world.step % _terrIvl === 0) {
       computeTerritory(world);          // per-settlement food catchments (economy)
       computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
+      resolveOrphanedMarches(world);    // T.SUCCESSOR_STATES: shed marches resolve (restore → secede → witnessed lapse) BEFORE the derivation reads the ground
       adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
       nucleateFrontierStates(world);    // primary state formation: a developed stateless frontier cluster mints a NEW country
     }

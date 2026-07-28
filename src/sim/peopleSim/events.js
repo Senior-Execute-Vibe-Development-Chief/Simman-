@@ -121,6 +121,10 @@ const NARRATE = {
     if (as === ev.from) return `Province ${ev.seatName || "a city"} rose in revolt and broke away.`;
     return `Broke away from ${ev.fromName || "its parent realm"} in a war of secession.`;
   },
+  "polity.receded"(ev, as) {
+    if (as === ev.polity) return `The realm's grip failed on its far marches — ${ev.n === 1 ? "the community" : `${ev.n} communities`} beyond ${ev.sName || "the frontier"} ${ev.n === 1 ? "was" : "were"} left to fend for themselves.`;
+    return `The grip of ${ev.name || "the old realm"} failed, and the marches beyond ${ev.sName || "the frontier"} were left to their own devices.`;
+  },
   "polity.shattered"(ev, as) {
     if (as === ev.to) return `Stormed the enemy capital ${ev.sName || ""} and shattered the realm.`;
     return `Its capital ${ev.sName || ""} fell to ${ev.toName || "the enemy"} — the realm collapsed.`;
@@ -303,6 +307,7 @@ export function categoryOf(ev, as = -1) {
     case "polity.founded": return "founding";
     case "polity.restored": return "founding";
     case "polity.seceded": return as === ev.from ? "secession" : "founding";
+    case "polity.receded": return "loss";
     case "polity.shattered": return as === ev.to ? "conquest" : "war";
     case "polity.ended": return "end";
     case "settlement.captured": return as === ev.from ? "war" : "conquest";

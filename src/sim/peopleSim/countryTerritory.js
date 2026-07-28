@@ -24,7 +24,10 @@ import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
-import { settlementPower } from "./conquest.js";
+import { settlementPower, snapClaim } from "./conquest.js";
+import { getCulture } from "./cultures.js";
+import { realmName } from "./chronicle.js";
+import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
 import { claimHostility, malariaSignal } from "./habitability.js";
 
@@ -68,6 +71,18 @@ function fieldNavalOn() {
   if (_fieldNavalEnv === "1") return true;
   if (_fieldNavalEnv === "0") return false;
   return T.FIELD_NAVAL > 0;
+}
+// Successor-states master switch (T.SUCCESSOR_STATES lever / SIM_SUCCESSORS env for
+// headless A/B — the SIM_* override pattern above): whether the political fabric
+// re-knits when a realm's grip fails — restoration from remembering ground, shed
+// marches seceding under a functional seat, and every lapse witnessed in the log
+// (docs/design-successor-states.md). 0 = the pre-mechanism world: shed ground
+// lapses flagless and silent (byte-identical to HEAD).
+const _succEnv = (typeof process !== "undefined" && process.env && process.env.SIM_SUCCESSORS) || "";
+export function successorStatesOn() {
+  if (_succEnv === "1") return true;
+  if (_succEnv === "0") return false;
+  return T.SUCCESSOR_STATES > 0;
 }
 // Excursion budget: the most CONSECUTIVE water tiles one crossing may bridge, per realm —
 // none below the seafaring floor (the same T.NAV_EMBARK_THRESH that gates water in the
@@ -1838,6 +1853,23 @@ export function adoptAndFound(world) {
   // the failure the bare strain gate above measured).
   const fiscOk = (cid, s) =>
     fiscAdoptable(world, world.countries && world.countries.get(cid), s.pos.x, s.pos.y, s.people || 0);
+  // Census↔field exchange rate for the restoration viability bar (T.SUCCESSOR_STATES,
+  // restorableHomeland below) — the same global rate nucleateFrontierStates computes
+  // for its own founding bar, evaluated lazily and at most once per pass, only when a
+  // wilderness founding actually fires here with the lever on.
+  let _resF2c = -1;
+  const restoreF2c = () => {
+    if (_resF2c >= 0) return _resF2c;
+    _resF2c = 0;
+    if (T.BIRTH_FIELD > 0 && T.POP_FIELD && world.popField) {
+      let cenT = 0, pfT = 0;
+      for (const o of world.settlements) if (o.mode === "settled") cenT += o.people || 0;
+      const pfA = world.popField, Nn = world.N;
+      for (let ti2 = 0; ti2 < Nn; ti2++) if (elev[ti2] > 0) pfT += pfA[ti2];
+      if (cenT > 0 && pfT > 0) _resF2c = cenT / pfT;
+    }
+    return _resF2c;
+  };
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
@@ -1881,8 +1913,20 @@ export function adoptAndFound(world) {
       if (s.countryId < 0 && region < 0 && tierLockedCentre && co[ti] < 0
           && org >= T.ORG_STATE_MIN                       // the statecraft for territorial rule
           && (s.people || 0) >= forestBar) {              // and the people to clear+farm forest without iron
-        s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
-        ensurePolity(world, s.id, { how: "frontier", seat: s });
+        // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland): a founding on ground
+        // whose people remember ONE fallen nation re-opens that nation instead of
+        // minting a fresh id. This branch's own bar is people-based already, so the
+        // viability gate reuses NUCLEATE_CLUSTER_POP flat (no geography multiplier).
+        const H = successorStatesOn() ? restorableHomeland(world, s, restoreF2c(), NUCLEATE_CLUSTER_POP) : -1;
+        if (H >= 0 && H !== s.id) {
+          s.countryId = H; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+          s._homeland = -1; s._homelandFell = -1;         // home again — the nation IS this ground's memory
+          ensurePolity(world, H, { seat: s, from: -1 });  // re-opens the record; logs polity.restored
+          snapClaim(world, H);                            // an already-administered claim snaps into place
+        } else {
+          s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+          ensurePolity(world, s.id, { how: "frontier", seat: s });
+        }
         continue;
       }
       // otherwise village / town: follow the land (region), or stateless on the frontier
@@ -1911,6 +1955,13 @@ export function adoptAndFound(world) {
           if (!fiscOk(region, s)) continue;   // …nor afford THIS one: its people don't fund their own administration — it stays free
           s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
         }
+        // WITNESSED LAPSE (T.SUCCESSOR_STATES): the realm→stateless direction of this
+        // derivation was the one silent exit from the political map. Shed marches now
+        // resolve in resolveOrphanedMarches BEFORE this derivation reads the ground, so
+        // only stragglers reach here (a realm with no countries-view entry this firing)
+        // — but they must never again pass unrecorded.
+        if (s.countryId >= 0 && region < 0 && successorStatesOn())
+          logEvent(world, "settlement.lapsed", { s: s.id, sName: s.name, from: s.countryId, fromName: realmName(world, s.countryId) });
         s.countryId = region;
       }
     }
@@ -1950,6 +2001,94 @@ const NUCLEATE_MAX_PASS   = 4;      // cap new states minted per territory pass 
 // in already-wet rainforest).
 const NUCLEATE_CAP_FERT_REF = 0.55;  // fertility at/above which the founding bar is at its floor
 const NUCLEATE_CAP_SPREAD   = 3.0;   // low-capacity land needs up to (1+this)× the population to form a state
+// ── Restoration from the ground (T.SUCCESSOR_STATES) ─────────────────────────
+// Wilderness ground REMEMBERS the realm that held it (_tileHomeland — stamped by
+// the loyalty scan when land falls to wild, never decaying on unclaimed ground),
+// but nothing ever read that memory for re-founding: a people re-coalescing on a
+// fallen nation's ground minted a nameless fresh id and the nation stayed dead
+// forever. Under the lever a wilderness founding first asks the ground: when the
+// basin's remembered people-weight points UNCONTESTED at one DEAD polity, the
+// remembered mass alone is VIABLE against the founding bar, and the founding
+// people are that nation's own DESCENDANTS, the founding is a RESTORATION — the
+// old id re-opens (name, hue, chronicle, buried treasury: the record is the
+// identity). Every gate is state — memory, people, culture descent, the registry.
+const RESTORE_MAJORITY = 2 / 3;   // supermajority of the basin's REMEMBERED weight on ONE nation: a
+                                  // restoration is an uncontested popular claim — a borderland
+                                  // remembered by two nations is contested and founds NEW
+const RESTORE_KIN = 1 / 2;        // bare majority of the founding seat's census equal to or lineally
+                                  // descended from the fallen realm's founding culture — the line
+                                  // between "the nation re-formed" and "someone else settled the ruins"
+// Is culture `culId` the fallen nation's founding culture, or a lineal descendant
+// of it? (the bounded parentCultureId walk — cultures.js familyOf's pattern — so
+// daughter cultures of the fallen nation still count as its people.)
+function cultureDescends(world, culId, ancId) {
+  if (culId === ancId) return true;
+  let cul = getCulture(world, culId), hops = 0;
+  while (cul && cul.parentCultureId >= 0 && hops++ < 16) {
+    if (cul.parentCultureId === ancId) return true;
+    cul = getCulture(world, cul.parentCultureId);
+  }
+  return false;
+}
+// The fallen nation this founding restores, or -1 for an ordinary new state.
+// Scans the same NUCLEATE_R basin the founding bar was measured over — UNCLAIMED
+// land only (claimed ground already carries a state; its memory belongs to the
+// loyalty field, not to founding). `f2c` is the caller's census↔field exchange
+// rate (0 = census mode); `bar` the caller's own census-unit founding bar (the
+// exact bar this founding just paid), so a restoration is viable on the same
+// terms as the fresh state it replaces.
+function restorableHomeland(world, s, f2c, bar) {
+  const home = world._tileHomeland, co = world._countryOwner;
+  if (!home || !co) return -1;                       // no memory substrate (LOYAL_FIELD off) → nothing to restore
+  const tw = world.tw, th = world.th, elev = world.elev;
+  const pf = T.POP_FIELD && world.popField ? world.popField : null;   // people carry the yearning; tiles when the field is off
+  const nucRi = Math.round(NUCLEATE_R * resScaleFor(tw));
+  const sx = s.pos.x | 0, sy = s.pos.y | 0;
+  let basinW = 0, remembered = 0;
+  const byH = new Map();
+  for (let dy = -nucRi; dy <= nucRi; dy++) {
+    const yy = sy + dy; if (yy < 0 || yy >= th) continue;
+    for (let dx = -nucRi; dx <= nucRi; dx++) {
+      if (dx * dx + dy * dy > nucRi * nucRi) continue;
+      const ti = yy * tw + (((sx + dx) % tw) + tw) % tw;
+      if (!(elev[ti] > 0) || co[ti] >= 0) continue;
+      const w = pf ? pf[ti] : 1;
+      basinW += w;
+      const h = home[ti];
+      if (h >= 0) { remembered += w; byH.set(h, (byH.get(h) || 0) + w); }
+    }
+  }
+  if (!(remembered > 0)) return -1;
+  let H = -1, HW = 0;
+  for (const [h, w] of byH) if (w > HW || (w === HW && H >= 0 && h < H)) { H = h; HW = w; }   // argmax, tie → smaller id
+  // 1. UNCONTESTED memory: a supermajority of the remembered weight points at H.
+  if (H < 0 || HW < RESTORE_MAJORITY * remembered) return -1;
+  // 2. VIABLE as the old nation (zero new constants): the fallen nation's own
+  //    remembered mass alone clears the exact founding bar the caller computed.
+  //    Census mode (no exchange rate): the remembered people must instead be
+  //    most of the basin — there is no rate to price them in census units.
+  if (f2c > 0) { if (HW * f2c < bar) return -1; }
+  else if (remembered < 0.5 * basinW) return -1;
+  // 3. ACTUALLY dead: a live rump still flying the flag means reunification
+  //    (casus belli / restoreNations), never a clone founded from the wild.
+  const p = getPolity(world, H);
+  if (!p || !(p.endedStep >= 0)) return -1;
+  for (const o of world.settlements) if (o.mode === "settled" && o.countryId === H) return -1;
+  // 4. KINSHIP: the founding seat's people are the old nation's people — a
+  //    majority of its census descends from the polity's founding culture
+  //    (p.cultureId, stamped at founding, never rewritten). A basin resettled
+  //    by a different people founds NEW. No culture on record (cid < 0) → the
+  //    gate abstains; memory + viability decide.
+  const cid = p.cultureId ?? -1;
+  if (cid >= 0) {
+    const mix = s.culMix && s.culMix.length ? s.culMix
+      : (s.cultureId != null && s.cultureId >= 0 ? [[s.cultureId, 1]] : []);
+    let kin = 0;
+    for (const e of mix) if (cultureDescends(world, e[0], cid)) kin += e[1];
+    if (kin < RESTORE_KIN) return -1;
+  }
+  return H;
+}
 export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
@@ -2051,18 +2190,31 @@ export function nucleateFrontierStates(world) {
       }
       cp = mass * f2c;
     }
-    if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp });
+    if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp, capMul });
   }
   if (!cand.length) return;
   cand.sort((a, b) => b.cp - a.cp);             // most-developed clusters first
   const placed = []; let n = 0;
-  for (const { s } of cand) {
+  for (const { s, capMul } of cand) {
     if (n >= NUCLEATE_MAX_PASS) break;
     let tooClose = false;                        // don't mint two adjacent states in one pass
     for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (nucR * 2) ** 2) { tooClose = true; break; } }
     if (tooClose) continue;
-    s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
-    ensurePolity(world, s.id, { how: "frontier", seat: s });
+    // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland above): a founding on
+    // ground whose people remember ONE fallen nation — uncontested, viable against
+    // this candidate's own bar (the same clusterPop×capMul the cluster gate just
+    // charged), dead, and settled by its descendants — re-opens the fallen polity
+    // instead of minting a fresh id. Contested or foreign memory founds NEW.
+    const H = successorStatesOn() ? restorableHomeland(world, s, f2c, clusterPop * capMul) : -1;
+    if (H >= 0 && H !== s.id) {
+      s.countryId = H; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+      s._homeland = -1; s._homelandFell = -1;          // home again — the nation IS this ground's memory
+      ensurePolity(world, H, { seat: s, from: -1 });   // re-opens the record; logs polity.restored
+      snapClaim(world, H);                             // an already-administered claim snaps into place
+    } else {
+      s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+      ensurePolity(world, s.id, { how: "frontier", seat: s });
+    }
     placed.push({ x: s.pos.x, y: s.pos.y }); n++;
   }
 }
