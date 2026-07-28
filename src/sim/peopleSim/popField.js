@@ -116,6 +116,15 @@ const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neoli
 const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
 const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
 const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
+// Climate-ZONE scale for the T.DIFF_CLIM toll (reference tiles; ×rNormPop at
+// other grids — a real distance, ~2 × 167 km ≈ 330 km at the reference). A
+// farming package (crops, calendar, livestock) adapts to the climate BAND it
+// grows in, not to every valley-vs-ridge wiggle one tile over: re-domestication
+// is forced by crossing the Sahara or the tropics boundary, never by a monsoon
+// coast's local texture. So the toll reads climate box-smoothed at this radius
+// (see _ensureDevClim), which keeps every zone-scale gradient at full price
+// while erasing the sub-zone variation the raw fields double-charged.
+const DEV_CLIM_ZONE_REF = 2;
 // ── T.LAND_WORKS: Boserupian land improvement (capacity is BUILT, not given) ──
 // Real carrying capacity was never a fixed property of terrain: under
 // population pressure societies INVESTED labour in the land itself —
@@ -241,12 +250,25 @@ function stampDevSources(world, dev) {
  *  real agriculture raced ALONG climate bands (the Eurasian east-west axis)
  *  and crawled ACROSS them (maize's millennia-long trek out of Mexico), and
  *  some boundaries it effectively never crossed (wheat vs the Sahara).
- *  Resolution-invariant by construction: the toll across any gradient sums
- *  to DIFF_CLIM × the total climate distance, however many tiles span it.
- *  Without it the wave crosses the Sahara at the same speed as the Danube
- *  plain (both are "land"), and a connected landmass converges to near-
- *  uniform technique (planetary thinning is only ~0.025/1000 km) — the
- *  measured late-run uniformity. 0 = the flat wave, byte-identical. */
+ *  The toll reads ZONE-SMOOTHED climate (_ensureDevClim: land-only box
+ *  smoothing at the DEV_CLIM_ZONE_REF real radius), because what is actually
+ *  summed along a path is the fields' TOTAL VARIATION, not their net
+ *  displacement: on the raw fields every sub-zone wiggle (a monsoon coast, a
+ *  cordillera flank, valley-vs-ridge) charged full price, so the most
+ *  climatically TEXTURED land paid the most — SE Asia read as farther from
+ *  China than the Sahara from the Mediterranean (measured devField 0.22 vs
+ *  0.59 at 18k), the inverse of the intent, while the climatically SMOOTH
+ *  Sahara core was crossed easily. Smoothing makes the invariance claim true
+ *  at the zone scale: across any MONOTONE zone-scale gradient the toll still
+ *  telescopes to DIFF_CLIM × the net climate distance, however many tiles
+ *  span it (so the Sahara, the tropics edge and the steppe margin keep their
+ *  full price at any resolution), while variation below the zone scale — the
+ *  texture a farming package never had to re-adapt to — no longer
+ *  accumulates. Without the toll the wave crosses the Sahara at the same
+ *  speed as the Danube plain (both are "land"), and a connected landmass
+ *  converges to near-uniform technique (planetary thinning is only
+ *  ~0.025/1000 km) — the measured late-run uniformity. 0 = the flat wave,
+ *  byte-identical. */
 function relaxDevWave(world, dev, land) {
   const tw = world.tw, th = world.th;
   let nxt = world._devNext;
@@ -254,8 +276,9 @@ function relaxDevWave(world, dev, land) {
   nxt.set(dev);
   const loss = devWaveLoss(world);
   const ck = T.DIFF_CLIM || 0;
-  const te = world.temp, mo = world.moist;
-  const climOn = ck > 0 && te && mo;
+  let te = null, mo = null;
+  if (ck > 0 && world.temp && world.moist) { const dc = _ensureDevClim(world); te = dc.t; mo = dc.m; }
+  const climOn = !!te;
   for (let li = 0; li < land.length; li++) {
     const i = land[li];
     const y = (i / tw) | 0, x = i - y * tw;
@@ -281,6 +304,65 @@ function relaxDevWave(world, dev, land) {
   world._devNext = dev;
   world.devField = nxt;
   return nxt;
+}
+
+// Zone-smoothed climate for the wave toll — pure function of static terrain,
+// built once and cached on the world (never persisted; recomputed on load, and
+// the genesis pre-run in ensureDevField reads the SAME cache via relaxDevWave,
+// so the inherited Neolithic spread pays the same toll as the live wave).
+// Box smoothing at radius DEV_CLIM_ZONE_REF × rNormPop tiles (the repo's
+// real-distance idiom: exactly 2 tiles at the 240-wide reference, a radius
+// that rounds to 0 only where a single tile already spans the zone scale, and
+// then smoothing rightly degrades to the raw fields). LAND-ONLY kernel: the
+// package adapts to the climate of the farmland it is practiced on — sea-
+// surface temp/moist is a different physical regime (uniformly wet), and
+// blending it in would manufacture a phantom toll band along every coastline
+// (the very texture artifact this smoothing removes) while diluting real
+// land-side gradients near the shore. Separable masked box filter — x wraps
+// (the map is a cylinder, same as the wave's own neighbours), y truncates at
+// the poles; a window with no land (open ocean) falls back to the raw value
+// (unread by the wave: dev is 0 on water and the toll only ever subtracts).
+function _ensureDevClim(world) {
+  const rn = rNormPop(world);
+  const r = Math.max(0, Math.round(DEV_CLIM_ZONE_REF * rn));
+  let dc = world._devClim;
+  if (dc && dc.N === world.N && dc.r === r) return dc;
+  const N = world.N, tw = world.tw, th = world.th;
+  const te = world.temp, mo = world.moist, elev = world.elev;
+  const sT = new Float32Array(N), sM = new Float32Array(N);
+  if (r === 0) { sT.set(te); sM.set(mo); }
+  else {
+    // horizontal pass: land-only sums + land count per row window (x wraps)
+    const hT = new Float64Array(N), hM = new Float64Array(N), hC = new Int32Array(N);
+    for (let y = 0; y < th; y++) {
+      const row = y * tw;
+      for (let x = 0; x < tw; x++) {
+        let st = 0, sm = 0, c = 0;
+        for (let dx = -r; dx <= r; dx++) {
+          const j = row + ((x + dx + tw) % tw);
+          if (elev[j] > 0) { st += te[j]; sm += mo[j]; c++; }
+        }
+        const i = row + x;
+        hT[i] = st; hM[i] = sm; hC[i] = c;
+      }
+    }
+    // vertical pass (window truncates at the poles), then normalise by count
+    for (let y = 0; y < th; y++) {
+      const y0 = y - r < 0 ? 0 : y - r, y1 = y + r >= th ? th - 1 : y + r;
+      const row = y * tw;
+      for (let x = 0; x < tw; x++) {
+        let st = 0, sm = 0, c = 0;
+        for (let yy = y0; yy <= y1; yy++) {
+          const j = yy * tw + x;
+          st += hT[j]; sm += hM[j]; c += hC[j];
+        }
+        const i = row + x;
+        if (c > 0) { sT[i] = st / c; sM[i] = sm / c; }
+        else { sT[i] = te[i]; sM[i] = mo[i]; }
+      }
+    }
+  }
+  return (world._devClim = { N, r, t: sT, m: sM });
 }
 
 /**
