@@ -2577,7 +2577,8 @@ function updateFood(world, s) {
   s._pastShare = landFood > 0 ? pastoral / landFood : 0;
 
   // ── Food demand ── (computed BEFORE the fish block: the fish gate reads the
-  // share of this demand the land leaves unfilled. Nothing here depends on fish.)
+  // share of this demand the RETAINED land food leaves unfilled. Nothing here
+  // depends on fish.)
   // Urbanization tax: per-capita food demand rises with population
   // because bigger settlements have more non-farming specialists
   // (craftsmen, soldiers, priests, scribes) plus transport
@@ -2608,6 +2609,14 @@ function updateFood(world, s) {
   const slaveFood = T.SLAVERY ? (s._unfree || 0) * 0.0030 * T.SLAVE_FEED : 0;
   const demand = civDemand + armyFood + slaveFood;
 
+  // RETAINED land food — what the food HIERARCHY leaves this settlement: its
+  // aggregated subtree intake minus what its liege levied/bought away (computed
+  // at the END of last tick, foodHierarchy.js — a 1-tick lag that's invisible,
+  // production drifts slowly). Before the first aggregation (_foodNet unset)
+  // fall back to its own land food. ONE basis: both the fish gate below and the
+  // supply line eat from this same number.
+  const netLand = s._foodNet !== undefined ? s._foodNet : landFood;
+
   // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
   // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish
   // WAS the foundation of a distinct class of societies — the cold-temperate fishing coasts where the
@@ -2628,21 +2637,35 @@ function updateFood(world, s) {
     const iceCut  = Math.max(0, Math.min(1, (0.60 - t) / 0.10));         // sub-freezing → ice-locked, short season
     const tropCut = Math.max(0, Math.min(1, (t - 0.80) / 0.15));         // warm tropical sea → nutrient-poor
     const seaRich = (1 - T.COLD_FISH * iceCut) * (1 - 0.7 * tropCut);
-    // UNMET-NEED gate: fishing is EFFORT, and a community spends it only on the food need its
-    // LAND leaves unfilled. `poor` is the share of this settlement's own demand that its land
-    // production doesn't cover — clamp01(1 − landFood/demand): fields that out-produce the
-    // mouths they feed draw ~no boats, a marginal coast that can't feed itself from land lives
-    // off the sea, and everything between supplements in proportion to its shortfall. Both
-    // sides of the ratio are in the SAME per-tick food units and both already carry every
-    // era- and resolution-scaling (eraProd, rNormPop-normalised territory sums), so the gate
-    // needs no reference constant and closes BY ITSELF as agriculture matures. Bounded: fish
-    // is still capped by RATE × sea × seaRich × tech, and `poor` shrinks as supply feeds
-    // population feeds demand only toward that cap — no runaway, no oscillation. (The old
-    // gate compared landFood-per-tile against a fitted FISH_LAND_REF=8.0 — measured ~100×
-    // off the scale of its input, so it sat at 0.985–0.997 everywhere forever and fish
-    // became the world staple. A constant with no independent physical meaning: the
-    // second-cardinal-rule tell.)
-    const poor = demand > 0 ? Math.max(0, Math.min(1, 1 - landFood / demand)) : 0;
+    // UNMET-NEED gate: fishing is EFFORT, and a community spends it only on the food need
+    // its land leaves unfilled — measured on the land food it actually KEEPS (netLand,
+    // last tick's hierarchy net, hoisted above), because the granary drains from what is
+    // KEPT, not from what is grown: ONE basis for this gate and the supply line below.
+    // The previous form gated on GROSS landFood, which diverges from consumption on both
+    // sides of the grain hierarchy: an EXPORTER whose liege levies/buys away up to
+    // SHIP_FRAC of its pool (no subsistence floor — a tier-1 town can keep ~½ its
+    // harvest) reads "fed" from grain that left on the cart, its boats idle exactly when
+    // the levy opens a real gap; an import-fed HUB reads "hungry" from its own thin
+    // fields while hinterland grain fills its granary, fishing a sea it doesn't need.
+    // (At the reference window — 480×240 seed 8817, 12k steps — the two bases almost
+    // never diverge >0.1 (one hub, briefly): pre-modern haul survival keeps the levy
+    // take small and population equilibrates onto retained supply, so settlements sit at
+    // the band edge rather than inside it. The retained basis is the one that stays
+    // self-consistent as org + haul tech mature and shipped shares grow.)
+    // `poor` = clamp01(1 − netLand/demand): fields whose KEPT harvest feeds the mouths
+    // draw ~no boats, a marginal coast that can't feed itself from land lives off the
+    // sea, an exporting coast fishes exactly the gap the levy opens. Both sides of the
+    // ratio are in the SAME per-tick food units and carry every era- and resolution-
+    // scaling, so the gate needs no reference constant and closes BY ITSELF as
+    // agriculture matures. Stable: fish is perishable — never in _storableSupply — so
+    // fishing more cannot raise the pool the hierarchy levies from (no gate→levy→gate
+    // loop); the only coupling is the scarcity price easing as fish feeds people, and
+    // fish stays capped by RATE × sea × seaRich × tech regardless. A fertile cradle
+    // keeps its grain (netLand ≈ landFood) and still draws ~no fish. (Deep history: the
+    // pre-Tier-A gate compared landFood-per-tile against a fitted FISH_LAND_REF=8.0 —
+    // ~100× off the scale of its input, so it sat at ~1 everywhere forever and fish
+    // became the world staple: the second-cardinal-rule tell.)
+    const poor = demand > 0 ? Math.max(0, Math.min(1, 1 - netLand / demand)) : 0;
     // Fishery technology (tech.js fishFactor: 0.3 pre-tech baseline rising
     // with navigation + fishing techs) — normalized to that baseline so a
     // tech-less shore fishes exactly as calibrated and technique multiplies
@@ -2657,12 +2680,9 @@ function updateFood(world, s) {
   // export food. The food trade reads _storableSupply for what a
   // settlement can send out.
   s._storableSupply = landFood;
-  // Carrying food = what the food HIERARCHY leaves this settlement — its
-  // aggregated subtree intake minus what it ships up to its liege (computed last
-  // tick, foodHierarchy.js) — plus local perishable fish. So a city is fed by its
-  // whole hinterland, not 12 partners. Before the first aggregation (_foodNet
-  // unset) fall back to its own land food.
-  const netLand = s._foodNet !== undefined ? s._foodNet : landFood;
+  // Carrying food = the RETAINED land food (netLand, hoisted above the fish
+  // block, which gates on it) plus local perishable fish. So a city is fed by
+  // its whole hinterland, not 12 partners.
   const supply = netLand + fish;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
