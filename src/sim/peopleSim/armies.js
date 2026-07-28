@@ -229,7 +229,8 @@ const WALL_W = 1.5;
 // sense?" — they didn't, yet).
 const FORT_R            = 3;    // REFERENCE-tiles of shadow (×rNormPop at use)
 const FORT_W            = 2.0;  // peak added defense multiple at the fortress itself, fully walled + manned
-const FORT_GARRISON_REF = 40;   // garrison at which walls count as fully manned
+const FORT_GARRISON_REF = 40;   // garrison at which walls count as fully manned / a base stages at full capacity
+const BASE_GARRISON_MIN = 5;    // below this a post is a watch, not a forward base (projOf ignores it)
 function homeMight(s) {
   const morale = Math.max(MILITIA_MORALE_FLOOR, (s.loyalty ?? 1) - 0.5 * (s.unrest || 0));
   const militia = (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
@@ -728,6 +729,27 @@ export function advanceFronts(world) {
       const cons = (cap.knowledge && cap.knowledge.construction) || 0;
       const logi = (cap._techEff ? cap._techEff.logisticsLevel : cons * cons) || 0;   // the countryTerritory.js:401 idiom — one logistics truth
       ad._projHalf = WAR_REACH * (1 + PROJ_LOGI * logi) * rs;
+      // ── Forward bases (owner review 2026-07: a garrison town's real point
+      // is PROJECTION — troops stationed at the border defend it and answer
+      // threats because they are NEAR it, not because masonry radiates).
+      // Projection no longer decays from the capital alone: it decays from
+      // the nearest base the realm actually MANS. A base's capacity is how
+      // garrisoned it is (vs the manned-walls reference) — a small watch
+      // stages a fraction of the national effort, the heartland always
+      // stages all of it — folded in as max(capacity·e^(−d/H)) over bases
+      // in projOf. Symmetric on purpose: campaigns launch from border
+      // fortresses too (the limes legions, the march castles); and the
+      // fiscal wage system already prices a manned frontier, so basing is
+      // a real budget choice, never free.
+      const cc2 = world.countries.get(ad.id);
+      const bases = [{ x: cap.pos.x, y: cap.pos.y, cap: 1 }];
+      if (cc2) for (const m of cc2.members) {
+        if (m === cap || m.mode !== "settled") continue;
+        const g = m.army || 0;
+        if (g < BASE_GARRISON_MIN) continue;
+        bases.push({ x: m.pos.x, y: m.pos.y, cap: Math.min(1, g / FORT_GARRISON_REF) });
+      }
+      ad._bases = bases;
     }
   }
   // War-rate resolution invariance (audit 2026-07): the tile-capture budget is an
@@ -744,11 +766,27 @@ export function advanceFronts(world) {
   const projOf = (S, ti) => {
     const H = S._projHalf;
     if (!(WAR_REACH > 0) || !(H > 0)) return 1;
-    const h = S._homeTi, hy = (h / tw) | 0, hx = h - hy * tw;
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
-    let dx = Math.abs(tx - hx); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
-    const dy = ty - hy;
-    return Math.exp(-Math.sqrt(dx * dx + dy * dy) / H);   // per-march-day multiplicative supply loss (see PROJ_LOGI comment)
+    const bases = S._bases;
+    if (!bases) {   // no base list (legacy path): single-point decay from home
+      const h = S._homeTi, hy = (h / tw) | 0, hx = h - hy * tw;
+      let dx = Math.abs(tx - hx); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
+      const dy = ty - hy;
+      return Math.exp(-Math.sqrt(dx * dx + dy * dy) / H);   // per-march-day multiplicative supply loss (see PROJ_LOGI comment)
+    }
+    // Forward basing: supply runs from the nearest base the realm MANS —
+    // max over bases of capacity·e^(−d/H) (capacity ≤ 1, capital = 1), so a
+    // garrisoned march town holds and launches at the border what the
+    // distant heartland alone never could (see the base-list note above).
+    let best = 0;
+    for (let i = 0; i < bases.length; i++) {
+      const b = bases[i];
+      let dx = Math.abs(tx - b.x); if (dx > tw / 2) dx = tw - dx;
+      const dy = ty - b.y;
+      const p = b.cap * Math.exp(-Math.sqrt(dx * dx + dy * dy) / H);
+      if (p > best) best = p;
+    }
+    return best;
   };
 
   // Trade-dampened encroachment: a frontier with active cross-border trade

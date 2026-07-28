@@ -279,3 +279,18 @@ pour through the gaps — the limes, the march-castle belts — and a
 garrison town finally does what it was planted for. National field
 armies still decide the open field; the fortress decides what "open"
 means.
+
+**And the larger half — FORWARD BASING** (owner's second correction: the
+real point of a garrison town is that armies *operate from* it). Force
+projection (`projOf`) no longer decays from the capital alone: it decays
+from the nearest base the realm actually MANS — `max over bases of
+capacity × e^(−d/H)`, where a base is any settled member with garrison ≥
+`BASE_GARRISON_MIN` (5), its capacity = garrison / 40 (capped 1), and the
+heartland always stages at 1. Symmetric on purpose: border fortresses
+both hold their ground *and* launch campaigns (the limes legions, the
+march castles), exactly as the projection doctrine's own comment
+promised ("symmetric by construction"). The fiscal wage system already
+prices a manned frontier, so basing is a budget choice, never free —
+and an unpaid, ungarrisoned march town reverts to being mere masonry.
+Walls (the shadow above) and troops (basing) are now separate, honest
+channels: masonry resists, garrisons project.
