@@ -193,6 +193,19 @@ const PARTNER_DIST_PER    = 1.0;        // tiles per sqrt(pop)
 // random little settlements" artifact.
 const SEG_CAP_BASE        = 12;
 const SEG_CAP_LOGI        = 36;
+// The horizon above bounds a ROUTE, not a sight line — and the route that
+// actually gets painted is the A* line ON THE GROUND, which winds around
+// mountains, lakes and coasts and can run far longer than the straight
+// endpoint distance the planner measured. A maintained route tolerates only
+// modest winding beyond the direct line: surveyed historical land routes run
+// ~1.2–1.5× their great-circle distance (route "detour index" — passes,
+// fords and contour-following), and anything beyond that was never one
+// maintained line but a RELAY through intermediate places. So a candidate
+// route whose walked length exceeds the builder's horizon × this allowance
+// is rejected — the pair must connect through relays instead. Dimensionless
+// ratio (walked length / direct length), hence resolution-invariant by
+// construction.
+const PATH_WINDING_MAX    = 1.5;
 function partnerReachFor(world, s) {
   const k = s.knowledge || {};
   // Mobility (horses, wagons), navigation (ships) and CONSTRUCTION (the
@@ -315,17 +328,56 @@ const TOLL_CHOKE_W    = 3.0;    // …multiplied for a settlement that controls 
 const ROADS_TECH = TECH_IDX["roads"];      // the paving unlock the pave floor reads
 const RAIL_TECH  = TECH_IDX["railroad"];   // …and the rail-age unlock below it
 
-// Debug telemetry: the longest SINGLE build (one planned/linked route,
-// Euclidean endpoint distance in REFERENCE tiles) ever painted this run.
-// Write-only — probe_progression prints it to verify the segment cap; the
-// sim never reads it.
-function recordBuildSpan(world, a, b) {
+// Walked length of a contiguous 8-neighbour tile route, in RAW tiles
+// (orthogonal step 1, diagonal step √2): the on-the-ground length of the
+// line as surveyed, as opposed to the straight-line endpoint distance.
+// This is the quantity the logistics horizon must actually bound — A*
+// winds around mountains and coasts, so a route between endpoints inside
+// the horizon can still be far longer than the horizon on the ground.
+function pathWalkLength(world, tiles) {
+  const tw = world.tw;
+  let len = 0;
+  for (let i = 1; i < tiles.length; i++) {
+    // Consecutive route tiles differ by one 8-neighbour step: orthogonal
+    // (length 1) or diagonal (length √2). Classify via decoded Δx (wrapped
+    // across the longitude seam) — a step is diagonal exactly when both
+    // the row and the (wrapped) column change.
+    const a = tiles[i - 1], b = tiles[i];
+    const ay = (a / tw) | 0, by = (b / tw) | 0;
+    let dx = Math.abs((a - ay * tw) - (b - by * tw)); if (dx > tw / 2) dx = tw - dx;
+    len += (dx === 1 && ay !== by) ? SQRT2 : 1;
+  }
+  return len;
+}
+
+// Debug telemetry: the longest SINGLE build (one planned/linked route)
+// ever painted this run, in REFERENCE tiles — BOTH the Euclidean endpoint
+// distance (maxBuildSpan) and the walked length of the painted route
+// (maxBuildPathLen), which winding can push far beyond the endpoint span;
+// the path length is the quantity the horizon actually has to bound, and
+// the earlier endpoint-only telemetry is what let 6×-winding routes pass
+// three audits unseen. Relay-guard builds (the sanctioned over-cap
+// exception — see linkCloseNeighbours) are tallied separately
+// (kinGuardBuilds / maxGuardPathLen) so the rule and the exception stay
+// independently auditable. Write-only — probe scripts print these; the
+// sim never reads them.
+function recordBuildSpan(world, a, b, walkLenRaw, viaGuard) {
   if (!world.debug) return;
   const tw = world.tw;
   let dx = Math.abs(a.pos.x - b.pos.x); if (dx > tw / 2) dx = tw - dx;
   const dy = a.pos.y - b.pos.y;
-  const d = Math.sqrt(dx * dx + dy * dy) / rNormPop(world);
+  const rn = rNormPop(world);
+  const d = Math.sqrt(dx * dx + dy * dy) / rn;
   if (!(world.debug.maxBuildSpan >= d)) world.debug.maxBuildSpan = d;
+  if (walkLenRaw !== undefined) {
+    const pl = walkLenRaw / rn;
+    if (viaGuard) {
+      world.debug.kinGuardBuilds = (world.debug.kinGuardBuilds || 0) + 1;
+      if (!(world.debug.maxGuardPathLen >= pl)) world.debug.maxGuardPathLen = pl;
+    } else if (!(world.debug.maxBuildPathLen >= pl)) {
+      world.debug.maxBuildPathLen = pl;
+    }
+  }
 }
 
 export { QUALITY_NEW, QUALITY_MAX, TRACK_FLOOR, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
@@ -747,23 +799,78 @@ function linkCloseNeighbours(world, s) {
   // an urban centre — the countryside is the popField, not an entity).
   // ×1 exactly at the 240-tile reference.
   const q = paintQualityFor(s);
-  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST * rNormPop(world), (peer, dAB2) => {
+  const rn = rNormPop(world);
+  // Kin paths obey the SAME physics as trunk routes: the walked line to a
+  // neighbour may not exceed min(the close-neighbour radius, the builder's
+  // own logistics horizon) × the winding allowance. The Euclidean radius
+  // already bounds WHO counts as close; this bounds the ROUTE — without it
+  // a path to a neighbour 12 ref-tiles away could legally wind an unbounded
+  // distance around mountains and gulfs, and those painted detours were the
+  // "continental path at tick 0" artifact (third report). Raw tiles: both
+  // terms carry ×rn, so the comparison is resolution-invariant.
+  const kinCapRaw = Math.min(CLOSE_NEIGHBOUR_DIST * rn, partnerReachFor(world, s)) * PATH_WINDING_MAX;
+  // Collect-then-sort (nearest first, id tiebreak) instead of acting inside
+  // the grid callback: the relay guard below needs to know how the WHOLE
+  // neighbourhood fared before it may fire.
+  const cands = [];
+  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST * rn, (peer, dAB2) => {
     if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
+    cands.push({ peer, dAB2 });
+  });
+  cands.sort((a, b) => (a.dAB2 - b.dAB2) || (a.peer.id - b.peer.id));
+  // hasLink: s demonstrably reaches SOMEBODY within the cap (a link painted
+  // now, or an existing within-cap route). fallback: the least-winding
+  // over-cap route found, kept for the relay guard.
+  let hasLink = false;
+  let fallback = null;
+  for (const { peer, dAB2 } of cands) {
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
     // Unconnected close neighbours are bridged for connectivity. ALREADY-connected
     // ones still get a DIRECT road when they are true mesh neighbours (a Gabriel
     // edge — no town between them), so a city links straight to its neighbour
     // instead of every trip detouring out to a trunk artery and back.
-    if (pc === myComp && !isGabrielEdge(world, s, peer, dAB2)) return;
+    if (pc === myComp && !isGabrielEdge(world, s, peer, dAB2)) continue;
     const path = findPath(world, s, peer, { noWater: true });
-    if (!path) return;
+    if (!path) continue;
+    const walk = pathWalkLength(world, path.tiles);
+    if (walk > kinCapRaw) {
+      // Too winding to maintain as a kin path — remember the least-bad
+      // route in case s would otherwise stand utterly alone (relay guard).
+      if (!fallback || walk < fallback.walk) fallback = { peer, path, walk };
+      continue;
+    }
     let didChange = false;
     for (const ti of path.tiles) if (paintRoad(world, ti, q)) didChange = true;
     if (didChange) {
       anyBuilt = true;
-      recordBuildSpan(world, s, peer);
+      recordBuildSpan(world, s, peer, walk);
     }
-  });
+    hasLink = true;   // a within-cap route exists (whether or not it was new paint)
+  }
+  // THE RELAY GUARD — the recorded trap (see the ×rNormPop note above): the
+  // last time effective kin reach was cut, the guaranteed city↔neighbour
+  // wiring found NOBODY and the early network never formed. A people is
+  // never voluntarily roadless: it always treads a path to its ONE nearest
+  // neighbour — that path IS the relay the horizon model assumes long-range
+  // trade flows through. So if s is in a singleton network component (no
+  // road links at all) and every close route was rejected as too winding,
+  // permit the single least-winding one regardless of the cap.
+  if (!hasLink && !anyBuilt && fallback) {
+    let isolated = true;
+    if (comp) {
+      for (const [id, root] of comp) {
+        if (id !== s.id && root === myComp) { isolated = false; break; }
+      }
+    }
+    if (isolated) {
+      let didChange = false;
+      for (const ti of fallback.path.tiles) if (paintRoad(world, ti, q)) didChange = true;
+      if (didChange) {
+        anyBuilt = true;
+        recordBuildSpan(world, s, fallback.peer, fallback.walk, true);
+      }
+    }
+  }
   return anyBuilt;
 }
 
@@ -854,6 +961,16 @@ function tryAddRoad(world, s) {
     if (connected) shortcutEvals++; else newEvals++;   // count cost even if null
     if (!path) continue;
 
+    // The logistics horizon caps the ROUTE AS WALKED, not just its
+    // endpoints: `reach` bounded which peers were considered (Euclidean),
+    // but the A* line to an in-horizon peer can wind far beyond the horizon
+    // on the ground. A route longer than the horizon × the winding
+    // allowance is beyond what this builder can survey and maintain as one
+    // segment — the pair trades via relay chains instead. (reach and the
+    // walked length are both in raw tiles at this grid, so the comparison
+    // is resolution-invariant.)
+    if (pathWalkLength(world, path.tiles) > reach * PATH_WINDING_MAX) continue;
+
     // New-tile fraction: how much of the path is NOT yet on a
     // road. Lower bar to bridge disconnected clusters; higher
     // bar to add a shortcut within an existing network.
@@ -919,7 +1036,7 @@ function tryAddRoad(world, s) {
     if (paintRoad(world, ti, paintQ)) didChange = true;
   }
   if (!didChange) return false;
-  recordBuildSpan(world, s, bestPartner);
+  recordBuildSpan(world, s, bestPartner, pathWalkLength(world, physicalTiles));
   return true;
 }
 
