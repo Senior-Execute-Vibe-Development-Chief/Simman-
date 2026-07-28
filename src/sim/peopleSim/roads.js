@@ -202,9 +202,12 @@ const SEG_CAP_LOGI        = 36;
 // fords and contour-following), and anything beyond that was never one
 // maintained line but a RELAY through intermediate places. So a candidate
 // route whose walked length exceeds the builder's horizon × this allowance
-// is rejected — the pair must connect through relays instead. Dimensionless
-// ratio (walked length / direct length), hence resolution-invariant by
-// construction.
+// is rejected — the pair must connect through relays instead. NB what is
+// bounded is ABSOLUTE walked length against the tech horizon (walked ≤
+// horizon × allowance), not the pair's own detour ratio — a close pair may
+// still take a winding route so long as the whole walk stays inside 1.5×
+// what the builder's logistics can maintain. Dimensionless multiple of the
+// horizon (which already carries rNormPop), hence resolution-invariant.
 const PATH_WINDING_MAX    = 1.5;
 function partnerReachFor(world, s) {
   const k = s.knowledge || {};

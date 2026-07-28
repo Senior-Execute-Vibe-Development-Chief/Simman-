@@ -75,9 +75,12 @@ function buildScarcity(world) {
     // more cash-backed demand than the market can absorb at the price it
     // actually charges — a self-sustaining pin at the multiplier cap (measured:
     // marketMul=4 permanently). One pass of lag is the standard cobweb form —
-    // buyers budget against the price they last saw, and the fixed point
-    // unwinds over a pass or two; a market that has never cleared (or whose
-    // component id changed on a network merge) starts honest at the base price.
+    // buyers budget against the price they last saw. The cobweb is damped but
+    // can ring for several passes near the interior fixed point (|slope| ≈
+    // PULL·r/p² approaches 1 in a moderately starved market); a genuinely
+    // starved market sits stably at the cap, which is honest scarcity. A
+    // market that has never cleared (or whose component id changed on a
+    // network merge) starts at the base price.
     const p = (lastP && lastP.get(k)) || SLAVE_PRICE;
     const eff = Math.min(s._slaveDemand, spare / p);   // demand backed by coin, the only kind a raider gets paid for
     if (eff > 0.5) want.set(k, (want.get(k) || 0) + eff);

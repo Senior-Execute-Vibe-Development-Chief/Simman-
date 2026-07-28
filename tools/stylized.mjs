@@ -528,6 +528,27 @@ const st = peopleSimStats(world);
   } else score("clustering", "n/a", true, false, "too few settlements");
 }
 
+// ── 12b. Food composition ──
+// The R5 blind spot: world fish share regressed 6% → 84-92% across default flips
+// with every gate green, because nothing watched food composition
+// (docs/user-report-diagnosis-2026-07-28.md §2). Real agrarian worlds drew a
+// small minority of calories from the water; the soft bar is generous (≤40%)
+// so honest coastal regimes pass while a phantom-fish regression (the 84%+
+// class) warns. Measured on the fixed build: ~11% at the 21k horizon.
+{
+  let fishSum = 0, supplySum = 0, majFishPop = 0, popSum = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const f = s._fishYield || 0, sup = s._foodSupply || 0;
+    fishSum += f; supplySum += sup;
+    popSum += s.people || 0;
+    if (sup > 0 && f / sup > 0.5) majFishPop += s.people || 0;
+  }
+  const share = supplySum > 0 ? fishSum / supplySum : 0;
+  score("fish share of food supply", `${(share * 100).toFixed(1)}%`, share <= 0.40, false,
+    `${(majFishPop / Math.max(1, popSum) * 100).toFixed(0)}% of population lives majority-fish [soft bar ≤40%]`);
+}
+
 // ── 13. Continuity (hard gates) ──
 {
   score("civilization alive", `${st.settlements} settlements, pop ${st.totalPeople}`, st.settlements >= 20 && st.totalPeople > 500, true);

@@ -110,7 +110,7 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
