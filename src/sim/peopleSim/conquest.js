@@ -1230,6 +1230,18 @@ export function resolveOrphanedMarches(world) {
   }
 }
 
+// Record WHO carries a dead polity's mantle on its persistent record
+// (rec.succId): the principal fragment of a shatter. Restoration needs no
+// pointer — it re-opens the same id. The pointer is what lets obligations
+// bound to the crown (today: a colony's dependency link) follow the
+// succession instead of evaporating with the id; see the metropole-fall
+// resolution in updatePolities. Never self-referential.
+function recordSuccessor(world, deadId, heirId) {
+  if (heirId == null || heirId < 0 || heirId === deadId) return;
+  const rec = getPolity(world, deadId);
+  if (rec && rec.endedStep >= 0) rec.succId = heirId;
+}
+
 // The throne has fallen: scatter the dead empire's surviving provinces into
 // regional successor states around their strongest cities. Called from
 // armies.js the moment a capital is stormed. The conqueror (excludeId) keeps
@@ -1293,6 +1305,7 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     inheritPersonality(world, oldId, s.id);       // lone successor keeps the old realm's temperament
     snapClaim(world, s.id);                        // the realm shatters at once, not as a wave
     s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
+    recordSuccessor(world, oldId, s.id);           // the lone fragment carries the dead state's mantle (colonies follow it)
     return;
   }
   // Successor capitals: the strongest surviving cities, spread apart so the
@@ -1361,6 +1374,11 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     inheritPersonality(world, oldId, cap.id);
     snapClaim(world, cap.id);
   }
+  // The PRINCIPAL successor — the strongest fragment (capitals[] is filled in
+  // power-rank order) — carries the dead state's mantle on the registry, so
+  // obligations bound to the crown (a colony's dependency link) can follow the
+  // succession instead of evaporating with the id.
+  if (capitals.length) recordSuccessor(world, oldId, capitals[0].id);
   // Each survivor joins its nearest successor capital.
   for (const s of survivors) {
     let best = capitals[0], bd = Infinity;
@@ -2009,6 +2027,62 @@ export function updatePolities(world) {
       snapClaim(world, s.id);                                      // it administers its own ground at once
       logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
         seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
+    }
+    // (a2) METROPOLE FALLS: succession or liberation — never a silent mass-drop.
+    //      The old cliff: rebuildOverlords freed EVERY dependency the moment the
+    //      overlord id left the live view — even a one-pass transient (mid-merge
+    //      id shuffle), and even when the registry records a successor carrying
+    //      the fallen state on (B1). Resolve each such bond from the PERSISTENT
+    //      registry instead:
+    //        • overlord ALIVE on record, merely out of this pass's view → WAIT
+    //          (reconcilePolities closes the record at the end of this pass if
+    //          the realm truly evaporated; the next pass resolves it for real);
+    //        • ENDED, and the recorded succession chain (rec.succId) leads to a
+    //          LIVE realm → the dependency PASSES TO THE HEIR — the crown's
+    //          obligations travel with the crown's mantle;
+    //        • ENDED with no living heir → honest LIBERATION, chronicled per
+    //          colony (the Spanish-American arc: the metropole falls, the
+    //          colonies go their own way).
+    for (const c of countries.values()) {
+      const pol = getPolity(world, c.id);
+      if (!pol || pol._overlord == null || pol._overlord === c.id) continue;
+      const over = pol._overlord;
+      if (countries.has(over)) continue;                   // live and present — nothing to resolve
+      const orec = getPolity(world, over);
+      if (orec && orec.endedStep < 0) continue;            // transient absence — wait
+      // Dead on record (or a never-registered statelet that vanished — no
+      // record to succeed from). Walk the recorded succession chain, bounded:
+      // each hop is itself a dead record's heir; stop at the first LIVE realm.
+      let heir = -1, wait = false;
+      { let cur = orec, hops = 0;
+        while (cur && cur.endedStep >= 0 && hops++ < 8) {
+          const nid = cur.succId != null ? cur.succId : -1;
+          if (nid < 0 || nid === cur.id || nid === c.id) break;
+          if (countries.has(nid)) { heir = nid; break; }
+          const nrec = getPolity(world, nid);
+          if (nrec && nrec.endedStep < 0) { wait = true; break; }   // heir alive on record, out of view this pass
+          cur = nrec;
+        } }
+      if (wait) continue;
+      // No cycles: the heir must not sit below THIS dependency in the overlord
+      // pyramid (same rule submission enforces; walked on the records, bounded).
+      if (heir >= 0) {
+        let up = heir;
+        for (let hops = 0; hops < countries.size && up != null && up >= 0; hops++) {
+          const urec = getPolity(world, up);
+          up = urec ? urec._overlord : null;
+          if (up === c.id) { heir = -1; break; }
+        }
+      }
+      if (heir >= 0) {
+        pol._overlord = heir;                              // the dependency passes to the successor state (kind unchanged)
+        logEvent(world, "colony.inherited", { polity: c.id, name: realmName(world, c.id),
+          from: over, fromName: orec ? orec.name : undefined, to: heir, toName: realmName(world, heir) });
+      } else {
+        pol._overlord = undefined; pol._depKind = undefined;
+        logEvent(world, "colony.independent", { polity: c.id, from: over,
+          fromName: orec ? orec.name : undefined, name: realmName(world, c.id), how: "metropole-fell" });
+      }
     }
     // (b/b2) Live overlord map + naval reach — extracted so loadWorld can warm
     //        the same state before its updateAlliances call (an overlord-blind
@@ -3292,18 +3366,22 @@ function coalitionBrake(world, hegemonId, hegemonPow) {
   return Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / Math.max(1, hegemonPow)));
 }
 
-// Live overlord map + validation (an overlord whose realm has died frees its
-// dependencies; self-referential/orphaned links drop) and the metropole's
-// naval REACH to each colony — how much force/supply it can project across
-// the distance, scaled by its naval-logistics tech. Governs protection,
-// support and the independence line. Called from updatePolities every pass
-// and from loadWorld to warm the maps before the post-load alliance rebuild.
+// Live overlord map (self-referential links drop; a bond whose overlord is
+// absent from the live view is left ON THE RECORD — whether that absence is a
+// transient, a succession to follow, or a genuine fall is the REGISTRY's call,
+// made by the metropole-fall resolution in updatePolities, never by this
+// per-pass view) and the metropole's naval REACH to each colony — how much
+// force/supply it can project across the distance, scaled by its
+// naval-logistics tech. Governs protection, support and the independence
+// line. Called from updatePolities every pass and from loadWorld to warm the
+// maps before the post-load alliance rebuild.
 export function rebuildOverlords(world, countries) {
   const overlordOf = world._overlordOf = new Map();
   for (const c of countries.values()) {
     const pol = getPolity(world, c.id);
     if (!pol || pol._overlord == null) continue;
-    if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; pol._depKind = undefined; continue; }
+    if (pol._overlord === c.id) { pol._overlord = undefined; pol._depKind = undefined; continue; }
+    if (!countries.has(pol._overlord)) continue;   // no live overlord this pass: no flows, no severing (see note above)
     overlordOf.set(c.id, pol._overlord);
   }
   const reachOf = world._overlordReach = new Map();

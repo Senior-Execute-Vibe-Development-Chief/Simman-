@@ -12,6 +12,12 @@
 // Records are never deleted. A fallen realm keeps its record (endedStep set),
 // its history stays queryable forever, and a restoration simply re-opens the
 // same entity — restored Poland IS Poland, with its own character and story.
+// A shattered realm's record also carries succId — the principal fragment
+// that took up its mantle (conquest.js recordSuccessor) — so obligations
+// bound to the crown (a colony's dependency link) can follow the succession.
+// Lazily-attached fields (set only when the state exists): _overlord/_depKind
+// (dependency bond), succId (mantle), _lastCharter (colonial-venture pacing,
+// sea.js) — all ride the verbatim record through save/load.
 //
 // The polity id remains the founding-capital settlement id (unchanged scheme).
 
