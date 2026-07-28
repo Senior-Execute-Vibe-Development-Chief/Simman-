@@ -438,7 +438,7 @@ function seedEarthHearths(world) {
     }
     const bx = bestTi % tw, by = (bestTi / tw) | 0;
     picked.push({ x: bx, y: by });
-    const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: T.CRADLE_EVE ? 240 : 25, cradle: true });   // a proto-urban town, not a hamlet — the eve-of-states seed (see makeSettlement)
+    const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor: an entity is a town, its valley countryside is the popField)
     const name = born.name;
     const rm = riverMag ? riverMag[bestTi] : 0;
     console.log(`[peopleSim] ${name} (${site.name}) at tile (${bx},${by}) frac(${(bx / tw).toFixed(2)},${(by / th).toFixed(2)}) ` +
@@ -514,7 +514,7 @@ function seedCradleVillage(world) {
   }
   for (let i = 0; i < picked.length; i++) {
     const p = picked[i];
-    const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 25, cradle: true });   // eve-of-states seed (see makeSettlement)
+    const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor, see crystallize.js)
     const name = born.name;
     const e = elev[p.ti].toFixed(2), t = temp[p.ti].toFixed(2);
     const m = moist[p.ti].toFixed(2), f = fert[p.ti].toFixed(2);

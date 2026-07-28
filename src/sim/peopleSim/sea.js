@@ -53,7 +53,16 @@ export const SEA_INTERVAL = 600;   // ticks between sea-lane / colony passes. Th
 // a port is RANGE, which scales with navigation — a pre-ship culture hops
 // a strait, a maritime power crosses an ocean.
 const SEA_STEP        = 0.24;    // cost per water tile (×√2 on diagonals) — below road quality, so sea lanes win more long routes (ships beat carts on bulk)
-const SEA_RANGE_BASE  = 10;      // sea reach (cost units) at navigation 0
+// Range before the SAIL exists. A culture without the Sailing tech has
+// paddled craft — dugouts, rafts, reed boats: real (Cyprus, the Aegean
+// obsidian run, Sahul) but STRAIT-HOP real, a few tiles to the visible far
+// shore. The old value here (10, ≈40 tiles of open water) was the whole
+// early-game sea web: measured on seed 8817, every lane-holding port from
+// step 8000 to step ~24000 lacked Sailing — a stone-age ocean trade
+// network. Proper range is EARNED in the tech tree: Sailing opens the
+// coastal-shipping horizon (its seaRange effect, tech.js), Galleys →
+// Compass → Caravels → Ocean Sailing → Steamship extend it (T.SEA_RANGE_NAV).
+const SEA_RANGE_BASE  = 2.0;     // paddle-craft reach (cost units): a strait hop, not a sea lane
 // SEA_RANGE_NAV -> runtime lever (tuning.js T.SEA_RANGE_NAV)
 // Wind. A leg sailed with the wind is cheaper, against it dearer (tacking).
 // align = unit-heading · wind direction ∈ [-1,1]; effect scales with wind
@@ -214,10 +223,17 @@ export function updateSea(world) {
   const budget = new Map();
   for (const p of ports) {
     const nav = p.knowledge.navigation || 0;
-    const canSail = nav >= MIN_NAV_FOR_SEA && (p.people || 0) >= T.SEA_MIN_POP;
-    // Sea-lane reach now scales with the naval techs (Galleys → Caravels → Ocean
-    // Sailing → Steamship), not raw navigation (tech.js seaRange channel).
-    budget.set(p.id, canSail ? (SEA_RANGE_BASE + techEff(p).seaRange * T.SEA_RANGE_NAV) * resScale : 0);
+    const canPutOut = nav >= MIN_NAV_FOR_SEA && (p.people || 0) >= T.SEA_MIN_POP;
+    // Sea-lane reach scales with the naval techs (Sailing → Galleys →
+    // Compass → Caravels → Ocean Sailing → Steamship: the seaRange channel,
+    // tech.js). The SAIL itself is the gate on everything beyond a paddled
+    // strait hop: a port without the Sailing tech (techEff embark) projects
+    // only SEA_RANGE_BASE — so the sea WEB emerges when a culture actually
+    // learns to sail, never on a date, and never from the token navigation
+    // drift every coastal village accrues.
+    const eff = techEff(p);
+    const range = SEA_RANGE_BASE + (eff.embark ? eff.seaRange * T.SEA_RANGE_NAV : 0);
+    budget.set(p.id, canPutOut ? range * resScale : 0);
   }
 
   // Colony-eligible ports (we only collect shore candidates for these, to

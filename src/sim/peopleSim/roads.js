@@ -4,10 +4,14 @@
 // per-tile Float32Arrays:
 //
 //   world.roadQuality[ti]  — 1.0 = no road, < 1.0 = road quality.
-//                            QUALITY_NEW (0.25) when freshly built,
-//                            falls toward QUALITY_MAX (0.08) under
-//                            sustained flow. Monotonically decreases —
-//                            a road never gets worse.
+//                            Painted at the BUILDER's roadcraft
+//                            (paintQualityFor: neolithic path 0.58 →
+//                            engineered road 0.25), hard-packs under
+//                            sustained flow to TRACK_FLOOR (0.30), and
+//                            paves below that only as the owning realm
+//                            earns it: Roads tech → PAVED_FLOOR (0.12),
+//                            Railroad → QUALITY_MAX (0.08). Abandoned
+//                            surfaces decay back to bare terrain.
 //                            Read by baseEdgeCost so Dijkstra prefers
 //                            road tiles.
 //   world.roadFlow[ti]     — current trade traffic rate per tile, a
@@ -46,7 +50,8 @@ import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { T, rNormPop } from "./tuning.js";
 import { getPolity } from "./entities.js";
-import { exportValueOf, getWealthReserve } from "./settlement.js";
+import { TECH_IDX } from "./tech.js";
+import { exportValueOf, getWealthReserve, techEff } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
@@ -64,8 +69,38 @@ function entrepotShare(s) {
 }
 
 // ── Constants ──────────────────────────────────────────────────────
-const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
+const QUALITY_NEW         = 0.25;       // ENGINEERED road as laid: 4× cheaper than plain
 const QUALITY_MAX         = 0.08;       // worn arterial: 12× cheaper
+// What surface can a builder actually LAY? Roadcraft is construction
+// knowledge: a neolithic village treads a kin PATH (~1.7× cheaper than wild
+// ground), a masonry-age town grades a cart TRACK, and only an engineering
+// culture (the construction band of the Roads tech, cons ≈ 0.6) lays the
+// QUALITY_NEW metalled surface. Smooth in the builder's own construction —
+// what the world has become, never when it is. This is what stops stone-age
+// hamlets from painting highway-grade trunks at tick 0 (they still connect —
+// paths carry trade and ideas — but a path is not a via).
+const TRAIL_NEW           = 0.58;
+function paintQualityFor(s) {
+  const cons = (s && s.knowledge && s.knowledge.construction) || 0;
+  const t = Math.min(1, Math.max(0, (cons - 0.10) / 0.50));   // 0 at cons 0.10 → 1 at 0.60 (the Roads-tech band)
+  return TRAIL_NEW - (TRAIL_NEW - QUALITY_NEW) * t;
+}
+// Flow-paving splits into three regimes by what the tile's OWNING realm has
+// actually earned (capital techEff, memoised per tick):
+//   • ANY sustained traffic hard-packs a surface down to TRACK_FLOOR — a
+//     beaten trunk track; no state needed.
+//   • A realm holding the ROADS tech paves its busy corridors on to
+//     PAVED_FLOOR — the metalled via. Deliberately kept ABOVE the river
+//     lane (RIVER_STEP 0.10): water haulage stayed cheaper than the best
+//     road until rail (review I17 — the old single 0.08 floor priced a
+//     Roman road below a river barge).
+//   • The RAILROAD tech takes the corridor to QUALITY_MAX — the one land
+//     mode that historically beat the barge.
+// Unowned ground and pre-engineering realms keep tracks; each unlock lets
+// the same busy corridors pave on with no repaint — the emergent via (and
+// then rail-age) network. Never a date, always the realm's own tree.
+const TRACK_FLOOR         = 0.30;
+const PAVED_FLOOR         = 0.12;
 const PLAN_INTERVAL       = 240;        // ticks between road-planning attempts
 const MIN_POP_TO_PLAN     = 60;
 const MAX_REACH_VISITS    = 8000;       // BFS visit cap for trade-reach computation
@@ -138,20 +173,42 @@ const FLOW_EPS            = 0.001;
 // world while letting tech-advanced civs build genuine trade empires
 // (the historical pattern — the Hanseatic League's reach was about
 // shipping tech, not just city size).
-const PARTNER_DIST_BASE   = 20;
+const PARTNER_DIST_BASE   = 10;         // was 20: the zero-tech horizon is the next
+                                        // settlement over, not a continental corridor —
+                                        // long trunk planning is EARNED below
 const PARTNER_DIST_PER    = 1.0;        // tiles per sqrt(pop)
+// Hard ceiling on a SINGLE planned road segment, in REFERENCE tiles (a real
+// distance: one reference tile ≈ 170 km on the Earth grid). Population and
+// commerce may WANT a far partner, but a maintained overland route longer
+// than the local ring was beyond any pre-modern state — long-range land
+// trade was a RELAY through intermediate towns (the trade-reach chain
+// already models it), not one continuous surveyed line between two little
+// settlements. Only LOGISTICS technique (wheel→roads→rail→telegraph, the
+// techEff channel) extends what one polity can survey and maintain as a
+// single route: ~12 ref-tiles pre-logistics (the neighbour ring), ~20 by
+// the classical roads era, ~35-48 in the rail age (the genuinely
+// continental trunk — historically the first single land routes at that
+// scale). Without this cap the uncapped √pop term let any modest early
+// town plan a ~4000-km line: the "continent-spanning road between two
+// random little settlements" artifact.
+const SEG_CAP_BASE        = 12;
+const SEG_CAP_LOGI        = 36;
 function partnerReachFor(world, s) {
   const k = s.knowledge || {};
-  // Mobility (horses, wagons) and navigation (ships) both expand commercial
-  // horizon. Cap the multiplier at ~1.8× so even a maxed-tech metropolis
-  // can't reach across an entire continent in one trade pair.
-  const techMul = 1 + 0.5 * (k.mobility || 0) + 0.3 * (k.navigation || 0);
+  // Mobility (horses, wagons), navigation (ships) and CONSTRUCTION (the
+  // roadcraft that makes a long overland route worth surveying at all)
+  // expand the commercial horizon — up to ~2.4× for a fully-teched
+  // metropolis. A stone-age hamlet plans only to its neighbours; the wheel,
+  // pack routes and engineering push the horizon outward as they arrive.
+  const techMul = 1 + 0.5 * (k.mobility || 0) + 0.3 * (k.navigation || 0) + 0.6 * (k.construction || 0);
+  const want = (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul;
+  const cap = SEG_CAP_BASE + SEG_CAP_LOGI * techEff(s).logisticsLevel;
   // A commercial horizon is a REAL distance: peers sit ×rNormPop more tiles
   // apart on a finer grid (founding spacing scales — crystallize.js), so the
   // raw-tile radius quietly shrank the road planner's real horizon to 1/rn
   // (¼ at the shipped 1920 default) and the trunk network under-wired.
   // ×1 exactly at the 240-tile reference.
-  return (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul * rNormPop(world);
+  return Math.min(want, cap) * rNormPop(world);
 }
 
 // New roads need a margin of improvement to justify the effort.
@@ -164,19 +221,39 @@ const NEW_FRACTION_OUT    = 0.35 / 1.2; // peer in different component: low bar
 const NEW_FRACTION_IN     = 0.55 / 1.2; // peer in same component: moderate novelty
                                         // (both ÷1.2 re-anchor the 0.5-pivot commerceMul,
                                         // which divides these; behaviour identical)
-const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path
+const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path…
+// …at ZERO engineering. Surveying and earthworks are what made straightening
+// worth it — the groma-and-causeway cultures famously cut direct lines where
+// older routes wound (the Roman viae; the motorway age again) — so the
+// savings a shortcut must promise FALLS as the builder's roadcraft rises:
+// the required ratio eases from 0.85 toward SHORTCUT_GAIN_ENG (≥3% saving)
+// and the per-cycle shortcut probe budget grows 1 → 3. Emergent in the
+// builder's own construction band + logistics techs (the same measures that
+// set paint quality and the segment cap) — a neolithic culture never
+// straightens; an engineering one redraws its map.
+const SHORTCUT_GAIN_ENG   = 0.97;
+function roadEngineeringOf(s) {
+  const cons = (s && s.knowledge && s.knowledge.construction) || 0;
+  const t = Math.min(1, Math.max(0, (cons - 0.10) / 0.50));   // the paintQualityFor band
+  return Math.max(t, techEff(s).logisticsLevel);
+}
 
-// Close-neighbour rule: any settled pair within this many tiles
+// Close-neighbour rule: any settled pair within this many REFERENCE tiles
 // of each other gets a direct path painted by the local-link
 // pass — separate from economic road planning. Models the
 // ever-present village foot traffic (kin visits, shared grazing,
 // market days, parish boundaries) which produces paths between
 // neighbours whether or not they have anything to trade. Without
-// this, two hamlets 22 tiles apart get routed 80 tiles round a
-// worn trunk because the worn arterial is "cheaper" than a fresh
-// terrain crossing. Threshold sits just above MIN_SETT_DIST (12)
-// so the closest possible pairs always qualify.
-const CLOSE_NEIGHBOUR_DIST    = 20;     // grid near-query radius for local links
+// this, two close towns get routed the long way round a worn trunk
+// because the worn arterial is "cheaper" than a fresh terrain crossing.
+// 12 covers the natural founding-spacing rings on habitable land
+// (fertile ~4-10, moderate ~10-12 — crystallize.js capacitySpacingMul);
+// pairs farther apart than this are NOT "close" in any real sense (a
+// reference tile ≈ 170 km) and get no guaranteed path — they trade via
+// relay chains, or genuinely stand isolated (ultra-sparse pairs on barren
+// land: honest — and under the urban floor such entities barely arise).
+// The old 20 guaranteed painted ~3300-km lines between little settlements.
+const CLOSE_NEIGHBOUR_DIST    = 12;     // grid near-query radius for local links (REFERENCE tiles, ×rn at use)
 const MIN_POP_TO_LINK         = 30;     // lower bar than road planning
 
 // Resource needs by tier — kept for road-planning preference.
@@ -235,7 +312,23 @@ const TOLL_CHOKE_W    = 3.0;    // …multiplied for a settlement that controls 
 // exempt (famine relief shouldn't be taxed).
 // TARIFF_RATE -> runtime lever (tuning.js T.TARIFF_RATE)
 
-export { QUALITY_NEW, QUALITY_MAX, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
+const ROADS_TECH = TECH_IDX["roads"];      // the paving unlock the pave floor reads
+const RAIL_TECH  = TECH_IDX["railroad"];   // …and the rail-age unlock below it
+
+// Debug telemetry: the longest SINGLE build (one planned/linked route,
+// Euclidean endpoint distance in REFERENCE tiles) ever painted this run.
+// Write-only — probe_progression prints it to verify the segment cap; the
+// sim never reads it.
+function recordBuildSpan(world, a, b) {
+  if (!world.debug) return;
+  const tw = world.tw;
+  let dx = Math.abs(a.pos.x - b.pos.x); if (dx > tw / 2) dx = tw - dx;
+  const dy = a.pos.y - b.pos.y;
+  const d = Math.sqrt(dx * dx + dy * dy) / rNormPop(world);
+  if (!(world.debug.maxBuildSpan >= d)) world.debug.maxBuildSpan = d;
+}
+
+export { QUALITY_NEW, QUALITY_MAX, TRACK_FLOOR, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
 
 // ── State init ─────────────────────────────────────────────────────
 function ensureRoadArrays(world) {
@@ -275,15 +368,17 @@ export function reindexRoads(world) {
   ensureRoadArrays(world);
 }
 
-// Paint a single tile as a fresh road, keeping the sparse road-tile
-// index in sync. Takes min so an existing worn road isn't downgraded.
-// Returns true if the tile actually changed.
-function paintRoad(world, ti) {
+// Paint a single tile as a fresh road at the builder's own roadcraft
+// quality (paintQualityFor), keeping the sparse road-tile index in sync.
+// Takes min so an existing better surface isn't downgraded — and so a
+// LATER, more skilled builder re-planning the same route UPGRADES the old
+// path to its era's surface. Returns true if the tile actually changed.
+function paintRoad(world, ti, q = QUALITY_NEW) {
   // Don't paint roads on water tiles — navigation lets findPath route across
   // water (for marching armies), but the road network is land-only.
   if (world.elev && world.elev[ti] <= 0) return false;
-  if (QUALITY_NEW < world.roadQuality[ti]) {
-    world.roadQuality[ti] = QUALITY_NEW;
+  if (q < world.roadQuality[ti]) {
+    world.roadQuality[ti] = q;
     world._roadTiles.add(ti);
     world._roadVersion = (world._roadVersion || 0) + 1;   // topology changed
     return true;
@@ -537,7 +632,7 @@ export function maybeBuildRoads(world) {
     world._planSnap = snap;
     world._planQueue = world.settlements.filter(s => {
       if (s.mode !== "settled" || s.people < MIN_POP_TO_PLAN) return false;
-      if (s.countryId < 0) return false;   // stateless settlements lay no roads — only a state builds and protects trunk routes (not of a nation)
+      if (s.countryId < 0) return false;   // stateless settlements PLAN no trunk roads — surveying and protecting a long route is statecraft (kin paths to close neighbours are separate: the local-link rotation below serves everyone)
       if ((s.tier | 0) < (T.ROAD_MIN_TIER | 0)) return false;   // grand scale: tier-0 Farming Regions don't lay roads (roads are trade-only trunk routes, town↔city)
       // A meaningful pop jump (or first-ever evaluation) makes it due now.
       if (s._planPop === undefined || s.people > s._planPop * 1.4) s._planNext = 0;
@@ -546,36 +641,56 @@ export function maybeBuildRoads(world) {
     world._planIdx = 0;
   }
 
-  const queue = world._planQueue;
-  if (!queue) return false;
-
-  // Evaluate a slice this tick — sized so the whole queue finishes within
-  // PLAN_SPREAD ticks regardless of how many settlements there are.
-  const snap = world._planSnap || world.step;
-  // Exactly one settlement per tick: each tryAddRoad is several A* probes, so
-  // this guarantees no single tick can spike on road planning. A big backlog
-  // just takes more ticks (and the next cycle re-queues anything unprocessed)
-  // — roads aren't urgent, and smoothness matters more at high sim speed.
-  const end = Math.min(queue.length, world._planIdx + 1);
   let built = false;
-  for (; world._planIdx < end; world._planIdx++) {
-    const s = queue[world._planIdx];
-    if (!s || s.mode !== "settled") continue;
-    const did = tryAddRoad(world, s);
-    s._planPop = s.people;
-    s._planBackoff = did ? 1 : Math.min(8, (s._planBackoff || 1) * 2);
-    s._planNext = snap + PLAN_INTERVAL * s._planBackoff;
-    if (did) built = true;
-    // Wire this settlement to any UNCONNECTED close neighbour. Done per
-    // candidate (one settlement/tick) rather than as a single cycle-end pass —
-    // that pass did all its pathfinds at once and was a ~90ms spike.
-    if (linkCloseNeighbours(world, s)) built = true;
+  const queue = world._planQueue;
+  if (queue) {
+    // Evaluate a slice this tick — sized so the whole queue finishes within
+    // PLAN_SPREAD ticks regardless of how many settlements there are.
+    const snap = world._planSnap || world.step;
+    // Exactly one settlement per tick: each tryAddRoad is several A* probes, so
+    // this guarantees no single tick can spike on road planning. A big backlog
+    // just takes more ticks (and the next cycle re-queues anything unprocessed)
+    // — roads aren't urgent, and smoothness matters more at high sim speed.
+    const end = Math.min(queue.length, world._planIdx + 1);
+    for (; world._planIdx < end; world._planIdx++) {
+      const s = queue[world._planIdx];
+      if (!s || s.mode !== "settled") continue;
+      const did = tryAddRoad(world, s);
+      s._planPop = s.people;
+      s._planBackoff = did ? 1 : Math.min(8, (s._planBackoff || 1) * 2);
+      s._planNext = snap + PLAN_INTERVAL * s._planBackoff;
+      if (did) built = true;
+    }
+    if (world._planIdx >= queue.length) world._planQueue = null;
   }
+
+  // Local-link rotation: ONE settlement per tick, cycling through EVERYONE
+  // settled — statehood NOT required. Kin visits, shared grazing and market
+  // days tread paths between close neighbours whether or not a court exists
+  // (the pass's own stated model; it was unreachable for the stateless
+  // communities it was written for while it lived inside the state-gated plan
+  // queue — review I19). The paths it paints are the builder's OWN roadcraft
+  // (paintQualityFor): village paths, not state trunks, so statecraft still
+  // owns the engineered network via tryAddRoad above.
+  {
+    const setts = world.settlements;
+    const n = setts.length;
+    let cur = world._linkCursor || 0;
+    let scanned = 0;
+    while (scanned < n) {
+      const s = setts[cur % n];
+      cur++; scanned++;
+      if (s.mode === "settled" && s.people >= MIN_POP_TO_LINK) {
+        if (linkCloseNeighbours(world, s)) built = true;
+        break;
+      }
+    }
+    world._linkCursor = cur;
+  }
+
   // One components refresh per tick if anything built (not per build — that
   // BFS-per-build was a multi-hundred-ms stall when a cycle built many roads).
   if (built) world._networkComponents = buildNetworkComponents(world);
-
-  if (world._planIdx >= queue.length) world._planQueue = null;
   return built;
 }
 
@@ -617,7 +732,6 @@ function isGabrielEdge(world, a, b, dAB2) {
 
 function linkCloseNeighbours(world, s) {
   if (s.people < MIN_POP_TO_LINK) return false;
-  if (s.countryId < 0) return false;   // stateless settlements lay no roads (not of a nation)
   const comp = world._networkComponents;
   const myComp = comp && comp.get(s.id) !== undefined ? comp.get(s.id) : s.id;
   let anyBuilt = false;
@@ -632,9 +746,9 @@ function linkCloseNeighbours(world, s) {
   // mesh never formed (under cities-only defaults every settlement entity is
   // an urban centre — the countryside is the popField, not an entity).
   // ×1 exactly at the 240-tile reference.
+  const q = paintQualityFor(s);
   forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST * rNormPop(world), (peer, dAB2) => {
     if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
-    if (peer.countryId < 0) return;   // don't road to a stateless neighbour
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
     // Unconnected close neighbours are bridged for connectivity. ALREADY-connected
     // ones still get a DIRECT road when they are true mesh neighbours (a Gabriel
@@ -644,9 +758,10 @@ function linkCloseNeighbours(world, s) {
     const path = findPath(world, s, peer, { noWater: true });
     if (!path) return;
     let didChange = false;
-    for (const ti of path.tiles) if (paintRoad(world, ti)) didChange = true;
+    for (const ti of path.tiles) if (paintRoad(world, ti, q)) didChange = true;
     if (didChange) {
       anyBuilt = true;
+      recordBuildSpan(world, s, peer);
     }
   });
   return anyBuilt;
@@ -690,7 +805,10 @@ function tryAddRoad(world, s) {
   // cost once the map got dense). forEachNear hands back the squared distance.
   forEachNear(world, s.pos.x, s.pos.y, reach, (peer, peerDistSq) => {
     if (peer.id === s.id) return;
-    if (peer.countryId < 0) return;   // don't road to a stateless settlement (not of a nation)
+    // Stateless peers are legitimate trunk DESTINATIONS: the tin/amber pattern —
+    // states surveyed roads to the non-state peripheries that held what they
+    // lacked. (Stateless communities still PLAN no trunks of their own — the
+    // statecraft gate on the plan queue.)
     const peerRes = peer.localRes || {};
     let resGain = 0;
     for (const n of missing) {
@@ -717,12 +835,18 @@ function tryAddRoad(world, s) {
   const rq = world.roadQuality;
   let bestPartner = null, bestScore = -Infinity, bestPath = null;
   let newEvals = 0, shortcutEvals = 0;
+  // Engineering eases the straightening economics (see SHORTCUT_GAIN_ENG):
+  // the acceptance bar and the probe budget both follow the builder's own
+  // roadcraft, so mature networks get redrawn by the cultures that can.
+  const eng = roadEngineeringOf(s);
+  const shortcutBar = SHORTCUT_GAIN_RATIO + (SHORTCUT_GAIN_ENG - SHORTCUT_GAIN_RATIO) * eng;
+  const maxShortcuts = MAX_SHORTCUT_EVALS + (eng > 0.35 ? 1 : 0) + (eng > 0.7 ? 1 : 0);
   for (const cand of ranked) {
-    if (newEvals >= MAX_NEW_EVALS && shortcutEvals >= MAX_SHORTCUT_EVALS) break;
+    if (newEvals >= MAX_NEW_EVALS && shortcutEvals >= maxShortcuts) break;
     const peer = cand.peer;
     const connected = !!(s._tradeReach && s._tradeReach.has(peer.id));
     if (connected) {
-      if (shortcutEvals >= MAX_SHORTCUT_EVALS) continue;
+      if (shortcutEvals >= maxShortcuts) continue;
     } else {
       if (newEvals >= MAX_NEW_EVALS) continue;
     }
@@ -745,11 +869,13 @@ function tryAddRoad(world, s) {
     const requiredFrac = (sameNetwork ? NEW_FRACTION_IN : NEW_FRACTION_OUT) / commMul;
     if (newFrac < requiredFrac) continue;
 
-    // If same network: ALSO require the new direct path to be
-    // meaningfully shorter than the existing network path.
+    // If same network: ALSO require the new direct path to be meaningfully
+    // shorter than the existing network path — "meaningfully" by the
+    // builder's own engineering (shortcutBar: 15% savings for a pre-survey
+    // culture, any ≥3% once roadcraft matures).
     if (sameNetwork && s._tradeReach && s._tradeReach.has(peer.id)) {
       const networkCost = s._tradeReach.get(peer.id).cost;
-      if (path.cost > networkCost * SHORTCUT_GAIN_RATIO) continue;
+      if (path.cost > networkCost * shortcutBar) continue;
     }
 
     // Wealth eagerness: only the BUILDER's own coffers matter. A
@@ -783,15 +909,17 @@ function tryAddRoad(world, s) {
       }
     }
   }
-  // Paint new tiles into roadQuality (take min so we don't downgrade
-  // an existing worn road). If nothing actually changed (path is
-  // entirely on existing roads), report no build — otherwise we
-  // re-run reach + components every cycle on a stable network.
+  // Paint new tiles into roadQuality at the builder's own roadcraft (take
+  // min so we don't downgrade an existing better surface). If nothing
+  // actually changed (path is entirely on existing roads), report no build —
+  // otherwise we re-run reach + components every cycle on a stable network.
   let didChange = false;
+  const paintQ = paintQualityFor(s);
   for (const ti of physicalTiles) {
-    if (paintRoad(world, ti)) didChange = true;
+    if (paintRoad(world, ti, paintQ)) didChange = true;
   }
   if (!didChange) return false;
+  recordBuildSpan(world, s, bestPartner);
   return true;
 }
 
@@ -829,9 +957,13 @@ export function updateTrade(world) {
   const tStride = tradeStride();
   if (world.step === 1 || world.step % tStride === 0) runTradePass(world, rf, flowTiles, tStride);
   // Quality evolution over the road set only:
-  //   • busy tiles (flow ≥ ROAD_ABANDON_FLOW) pave further toward
-  //     QUALITY_MAX, faster the higher the flow (capped at FLOW_FOR_PAVE,
-  //     ~5000 ticks to fully pave).
+  //   • busy tiles (flow ≥ ROAD_ABANDON_FLOW) pave further, faster the
+  //     higher the flow (capped at FLOW_FOR_PAVE, ~5000 ticks to fully
+  //     pave) — but only down to the floor the tile's polity has EARNED:
+  //     traffic alone hard-packs a track (TRACK_FLOOR); the engineered
+  //     surface below it (→ QUALITY_MAX) needs the owning realm to hold
+  //     the Roads tech (see TRACK_FLOOR above). Emergent: when the realm
+  //     discovers engineering, its busy corridors simply pave on.
   //   • abandoned tiles (flow below that floor) revert toward bare
   //     terrain and, once past ROAD_GONE, leave the road set so routing
   //     and component passes stop treating them as roads.
@@ -839,12 +971,35 @@ export function updateTrade(world) {
   const roadTiles = world._roadTiles;
   if (rq && rf && roadTiles) {
     const gone = [];
+    const co = world._countryOwner;
+    // Per-tick memo: countryId → the pave floor its engineers have earned
+    // (capital's discovered techs). A handful of Map lookups per realm per
+    // tick, cleared and refilled like the other per-tick caches.
+    let paveMemo = world._paveMemo;
+    if (paveMemo) paveMemo.clear(); else paveMemo = world._paveMemo = new Map();
+    const floorFor = (cid) => {
+      if (cid == null || cid < 0 || !world.countries) return TRACK_FLOOR;
+      let v = paveMemo.get(cid);
+      if (v === undefined) {
+        const c = world.countries.get(cid);
+        const cap = c && c.capital;
+        const have = cap && techEff(cap).have;
+        v = have && have[RAIL_TECH] ? QUALITY_MAX
+          : have && have[ROADS_TECH] ? PAVED_FLOOR
+          : TRACK_FLOOR;
+        paveMemo.set(cid, v);
+      }
+      return v;
+    };
     for (const ti of roadTiles) {
       const flow = rf[ti] || 0;
       if (flow >= ROAD_ABANDON_FLOW) {
-        const t = Math.min(1, flow / FLOW_FOR_PAVE);
-        const next = rq[ti] - t * PAVE_RATE;
-        if (next < rq[ti]) rq[ti] = next < QUALITY_MAX ? QUALITY_MAX : next;
+        const floor = co ? floorFor(co[ti]) : TRACK_FLOOR;
+        if (rq[ti] > floor) {
+          const t = Math.min(1, flow / FLOW_FOR_PAVE);
+          const next = rq[ti] - t * PAVE_RATE;
+          rq[ti] = next < floor ? floor : next;
+        }
       } else {
         const next = rq[ti] + ROAD_DECAY_RATE;
         if (next >= ROAD_GONE) { rq[ti] = 1.0; gone.push(ti); }

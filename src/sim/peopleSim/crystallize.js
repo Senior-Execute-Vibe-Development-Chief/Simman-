@@ -23,6 +23,9 @@ import { makeSettlement, dominantAnc, livestockClimate } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
+import { dominantFaith } from "./faiths.js";
+import { logEvent } from "./events.js";
+import { grievOf } from "./loyaltyField.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
@@ -211,6 +214,26 @@ const RIDE_AWAY_OPEN_MIN        = 0.5;
 // fraction of the realm's (capital's) level. Emergent — keyed on the nation's actual
 // development, never a date/era.
 const NATION_TECH_FLOOR         = 0.5;
+// ── THE URBAN FLOOR (cities-only ontology, 2026-07) ─────────────────────
+// A settlement ENTITY represents a CITY or LARGE TOWN — never less. The
+// sub-town world (hamlets, villages, the dispersed countryside) is the
+// popField, which peoples and develops the land on its own (logistic
+// growth + migration + the devField wave). The sweep therefore founds an
+// entity only where the surrounding basin's FIELD people can actually seed
+// a town, and the founding population is drawn OUT of that basin
+// (fieldShift debit here + the ONE_POP credit inside makeSettlement): a
+// town is a CONCENTRATION of its countryside, not a minted speck. Before
+// this, the sweep minted 18–26-person tier-1 entities — sub-floor "towns"
+// that sat flagless in the wilderness for millennia (the complaint that
+// prompted this: no city or large town has ever stood outside all polity;
+// what history has is peopled countryside, which the FIELD already is).
+// Rode-away steppe camps are the one documented exception (the horde
+// system's mobile seats — ordu, not towns; conquest.js nomad path). A
+// legacy config without the population field keeps the old village-scale
+// births — there is no countryside substrate to concentrate from.
+const TOWN_FOUND_MIN            = 90;    // smallest founding a town entity may have (= URBAN_MIN_POP: a viable town seed)
+const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold first (~4× the founding — the town gathers a quarter of its basin)
+const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (×rn at the use site; = URBAN_CATCHMENT, one market catchment)
 // A settlement spontaneously arising on a STATE'S land (its core or claimed
 // marches, world._countryOwner) is born INTO that state; one arising in genuine
 // wilderness is born INDEPENDENT (a new country). See the spawn block below.
@@ -345,11 +368,18 @@ export function maybeCrystallize(world) {
   // multiple of CRYSTAL_INTERVAL so it actually fires past the early return above.
   if (world.step % _ivlG(URBAN_CHECK_INTERVAL) === 0) maybeUrbanGenesis(world);
 
+  // State plantation: courts with charters, treasury and spare people found
+  // deliberate march/charter towns (see maybePlantTowns).
+  if (world.step % _ivlG(PLANT_CHECK_INTERVAL) === 0) maybePlantTowns(world);
+
   // Crystallisation saturation: settlement-count-dependent damper.
   const saturationDamper = 1 / (1 + (_alive / CRYSTAL_SATURATION_REF) ** 2);
 
   // Compute per-sweep resource scarcity / value table once.
   const resScarcity = computeResourceScarcity(world);
+  // Holy ground: dead sees of great living faiths keep pulling settlement
+  // (see holyRuinSites) — the refounded holy city.
+  const holySites = holyRuinSites(world);
 
   // Sample random tiles. For each viable one, compute crystallization
   // probability and roll. No cap on settlement count — spacing
@@ -508,6 +538,19 @@ export function maybeCrystallize(world) {
     quality += busyRoadBonusFor(world, ti, tx, ty);
     quality += geoBonusFor(world, ti, tx, ty);   // chokepoints / passes / sheltered harbours
     quality += defensibilityFor(world, ti, tx, ty);  // hills / river islands / mountain-backed sites
+    // Holy ground: the dead see of a great living faith draws resettlement —
+    // pilgrims, offerings and memory refound the holy city on its own ruin
+    // (Jerusalem's pattern). Purely live state: the pull exists only while
+    // the faith is large and its see is dead, and fades with distance.
+    if (holySites) {
+      const hR = HOLY_PULL_R * rn;
+      for (const h of holySites) {
+        let dx = Math.abs(h.x - (tx + 0.5)); if (dx > tw / 2) dx = tw - dx;
+        const dy = h.y - (ty + 0.5);
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < hR) quality += HOLY_PULL * (1 - d / hR);
+      }
+    }
 
     // Transport-distance modifier. Finite td → diffusion from the land
     // network plus the normal independent floor. Infinite td (across water,
@@ -652,8 +695,28 @@ export function maybeCrystallize(world) {
         if (dd2 > fed * fed && !rodeAway) continue;
       }
       if (!extension && !rodeAway) continue;   // demographic gate: connected extension or horde birth — a FLAG is not required to be born (see the statecraft symmetry above)
+      // THE URBAN FLOOR: an entity is a town, and a town only coalesces where
+      // the countryside can people it. Read the basin's field mass; too thin →
+      // no entity yet — the ground stays field-peopled countryside (the wave
+      // of advance carries on in the FIELD; the town follows the people, not
+      // the other way round). Camps are exempt (ordu, not towns — see above).
+      const townScale = !rodeAway && !!world.popField;
+      if (townScale) {
+        const pf = world.popField;
+        const rB = Math.round(TOWN_BASIN_R * rn);
+        let basin = 0;
+        for (let dy = -rB; dy <= rB; dy++) {
+          const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+          for (let dx = -rB; dx <= rB; dx++) {
+            if (dx * dx + dy * dy > rB * rB) continue;
+            basin += pf[yy * tw + (((tx + dx) % tw) + tw) % tw];
+          }
+        }
+        if (basin < TOWN_BASIN_MIN) continue;
+      }
       // (people drawn here, after the last reject, so the rng stream is unchanged)
-      const bornPeople = 18 + (rng.int(8));
+      const roll = rng.int(8);
+      const bornPeople = townScale ? TOWN_FOUND_MIN + roll * 4 : 18 + roll;
       // FISC TEST (T.FISC_ADOPT): booking a newborn community onto the tax rolls is
       // an act of administration the court must be able to AFFORD — the capacity its
       // people bring must cover the admin load of governing them (entities.js). A
@@ -676,6 +739,11 @@ export function maybeCrystallize(world) {
         const nk = jc.capital.knowledge;
         for (const kk in bornKnow) { const fl = NATION_TECH_FLOOR * (nk[kk] || 0); if (fl > bornKnow[kk]) bornKnow[kk] = fl; }
       }
+      // The founders leave the countryside: debit the basin field around the
+      // site (ring-cascade, nearest first) — makeSettlement's ONE_POP credit
+      // then stands them at the new town, so founding a town moves people off
+      // the land instead of creating them (one population, conserved).
+      if (townScale) fieldShift(world, { pos: { x: tx + 0.5, y: ty + 0.5 } }, -bornPeople);
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: bornPeople,
         knowledge: bornKnow,
@@ -713,6 +781,40 @@ export function maybeCrystallize(world) {
       }
     }
   }
+}
+
+// ── Holy-city refounding (religious genesis) ─────────────────────────
+// A faith's founding see is its holy city (faiths.js: pilgrimage and
+// offerings already flow to it while it stands). When the see DIES but the
+// faith lives on large, the SITE keeps its sanctity — pilgrims still come,
+// and history refounds the holy city on its own ruin (Jerusalem, rebuilt
+// again and again; Rome resettled around its shrines). Model: dead origin
+// settlements of faiths whose flock still dominates ≥ HOLY_FLOCK_MIN towns
+// project a settlement pull around their site (used in the sweep's quality
+// score). Pure live state — the pull appears when a see falls, persists
+// while the faith is great, and fades if the faith does.
+const HOLY_FLOCK_MIN = 6;    // towns whose dominant faith it is — a great faith, not a fading sect
+const HOLY_PULL      = 3.0;  // peak quality bonus at the ruin itself (river-magnet order)
+const HOLY_PULL_R    = 5;    // REFERENCE-tiles of sanctity around the dead see (×rn at use)
+function holyRuinSites(world) {
+  if (!world.faiths || !world.faiths.size || !world._byId) return null;
+  let flock = null, out = null;
+  for (const [, f] of world.faiths) {
+    if (!f || f.originSettlementId == null || f.originSettlementId < 0) continue;
+    const org = world._byId.get(f.originSettlementId);
+    if (!org || org.mode === "settled" || !org.pos) continue;   // see stands (or is gone entirely) — no ruin to refound
+    if (!flock) {   // dominant-faith census, built lazily only when some see is dead
+      flock = new Map();
+      for (const s of world.settlements) {
+        if (s.mode !== "settled") continue;
+        const df = dominantFaith(s);
+        if (df >= 0) flock.set(df, (flock.get(df) || 0) + 1);
+      }
+    }
+    if ((flock.get(f.id) || 0) < HOLY_FLOCK_MIN) continue;
+    (out || (out = [])).push({ x: org.pos.x, y: org.pos.y });
+  }
+  return out;
 }
 
 // Per-sweep resource scarcity / value table. For each tracked
@@ -1034,6 +1136,195 @@ function sendSettlers(world, parent) {
   gridAdd(world, daughter);   // register for same-pass spacing queries
 }
 
+// ── State plantation: the DELIBERATE town (colonia / bastide / gord) ────
+// The genesis family the sweep cannot express: a town founded by a COURT for
+// reasons of state, not by a basin's own economics. Two intents, both read
+// from live political state (never a date, never a name):
+//   • MARCH town — planted on the realm's own claimed border facing another
+//     realm, at an unserved stretch, preferring defensible ground and the
+//     borders its people are AGGRIEVED at (the grievance ledger): the limes
+//     fort-town, the bastide line, the frontier gord.
+//   • CHARTER town — planted in a governed but town-less interior basin (a
+//     peopled countryside more than a market-catchment from any settlement):
+//     the administrative seat that brings the hinterland onto the rolls.
+// It takes a literate administration (org ≥ PLANT_ORG_MIN — charters and
+// surveys), a funded treasury (the endowment MOVES, conserved, into the new
+// town), spare capital population (the settlers are moved, ONE_POP-debited,
+// from the capital — a plantation is the state relocating its own people,
+// which is why it is EXEMPT from the sweep's basin bar), and a court within
+// its governing budget. The planted town joins the realm at birth with the
+// capital's knowledge and culture, and is provisioned by the existing
+// colony-supply channel (parentId → conquest.js). A charter town that
+// prospers can grow into the realm's leading city and take the throne
+// through the ordinary capital selection — the planned-capital arc
+// (Baghdad) emerging from growth rather than fiat.
+const PLANT_CHECK_INTERVAL = 480;   // ticks between plantation considerations (per world; realms gate below)
+const PLANT_ORG_MIN        = 0.35;  // written administration: charters + surveying (the colonia/bastide bar)
+const PLANT_COST           = 1200;  // treasury endowment the settlers carry (conserved: treasury → town wealth)
+const PLANT_PEOPLE         = 100;   // settlers moved out of the capital (town-scale — the urban floor's own size)
+const PLANT_CAP_MIN_POP    = 500;   // the capital must have people to spare
+const PLANT_STRAIN_MAX     = 0.85;  // no planting past the governing budget (COLONY_HEADROOM precedent)
+const PLANT_COOLDOWN       = 2400;  // ticks between plantations per realm
+// A plantation obeys the SAME minimum spacing as any founding (the sweep's
+// capacity-scaled hard floor) — and nothing more. Measured: any larger
+// "isolation" requirement contradicts the map's own geometry (a realm's
+// every tile, border included, sits within ~4-6 of the towns whose reach
+// draws its claim — 9-, 6- and even intent-split 4/6-tile radii each killed
+// ~90% of all candidates). Historically right too: bastides and limes forts
+// were planted BETWEEN existing towns, on the line itself; what keeps
+// plantations meaningful is the SCORE (a real border, a peopled basin), not
+// empty ground around them.
+const PLANT_CAND_MAX       = 4;     // border/frontier seed candidates kept per realm (deterministic reservoir)
+const PLANT_SCORE_MIN      = 0.7;   // don't plant for nothing: an empty frontier scores below this
+const PLANT_SURVEY_R       = 5;     // REFERENCE-tiles the founding party surveys around a seed for the plot
+const PLANT_SURVEY_TRIES   = 8;     // plots sampled per seed (first try = the seed itself)
+function maybePlantTowns(world) {
+  if (!world.countries || !world._countryOwner || !world.popField) return;
+  const { N, tw, elev, fert } = world;
+  const co = world._countryOwner, pf = world.popField;
+  const rng = passRng(world, "plant");
+  const rn = rNormFor(world), rn2 = rn * rn;
+  // Realms eligible to plant this pass (all gates are live political state).
+  const eligible = new Map();
+  // Gate telemetry (write-only, probe-readable — the maxBuildSpan pattern).
+  const dbg = world.debug ? (world.debug.plant || (world.debug.plant = { pop: 0, org: 0, strain: 0, coin: 0, cool: 0, elig: 0, cand: 0, iso: 0, planted: 0 })) : null;
+  for (const [cid, c] of world.countries) {
+    const cap = c.capital;
+    if (!cap || cap.mode !== "settled" || (cap.people || 0) < PLANT_CAP_MIN_POP) { if (dbg) dbg.pop++; continue; }
+    if (((cap.knowledge && cap.knowledge.organization) || 0) < PLANT_ORG_MIN) { if (dbg) dbg.org++; continue; }
+    const pol = getPolity(world, cid);
+    if (!pol || pol.endedStep >= 0) continue;
+    if ((pol._strain ?? 0) >= PLANT_STRAIN_MAX) { if (dbg) dbg.strain++; continue; }
+    if ((pol.treasury || 0) < PLANT_COST) { if (dbg) dbg.coin++; continue; }
+    if (world.step - (pol._lastPlant ?? -Infinity) < PLANT_COOLDOWN) { if (dbg) dbg.cool++; continue; }
+    if (dbg) dbg.elig++;
+    eligible.set(cid, { cid, c, cap, pol, march: [], inland: [] });
+  }
+  if (!eligible.size) return;
+  // One strided sweep over the map gathers bounded candidate lists for every
+  // eligible realm at once (a deterministic reservoir per list) — no per-realm
+  // O(N) scans. The siting domain is the realm's EDGE, because that is where
+  // plantations historically went (measured: inside a healthy realm every
+  // tile is within ~4 of a town — the interior is already served):
+  //   • an OWNED tile touching a FOREIGN realm  → march candidate (the line);
+  //   • an UNOWNED tile touching the realm's own claim → frontier candidate —
+  //     a march if some other realm also touches it (a contested gap), else
+  //     a charter (the state extends rule over the peopled unclaimed basin —
+  //     the colonia-on-annexed-land pattern; the town then anchors territory
+  //     there through the ordinary reach mechanics).
+  const stride = 5;
+  for (let ti = rng.int(stride); ti < N; ti += stride) {
+    if (elev[ti] <= 0) continue;
+    if ((fert[ti] || 0) < 0.02) continue;               // a town needs a toehold (OUTPOST_FERT_MIN)
+    const own = co[ti];
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty * tw + xm, ty * tw + xp, ti - tw, ti + tw];
+    let e = null, foe = -1;
+    if (own >= 0) {
+      e = eligible.get(own);
+      if (!e) continue;
+      for (const ni of ns) {
+        if (ni < 0 || ni >= N) continue;
+        const o = co[ni];
+        if (o >= 0 && o !== own) { foe = o; break; }
+      }
+      if (foe < 0) continue;   // served interior — nothing to plant for (measured)
+    } else {
+      // Unowned frontier: does an eligible realm's claim touch it — and does a
+      // rival's too (a contested gap)?
+      let mine = -1;
+      for (const ni of ns) {
+        if (ni < 0 || ni >= N) continue;
+        const o = co[ni];
+        if (o < 0) continue;
+        if (mine < 0 && eligible.has(o)) mine = o;
+        else if (mine >= 0 && o !== mine) { foe = o; break; }
+      }
+      if (mine < 0) continue;
+      e = eligible.get(mine);
+    }
+    const list = foe >= 0 ? e.march : e.inland;
+    const item = foe >= 0 ? { ti, tx, ty, foe } : { ti, tx, ty };
+    if (list.length < PLANT_CAND_MAX) list.push(item);
+    else { const j = rng.int(list.length * 3); if (j < list.length) list[j] = item; }   // decaying reservoir: keeps a spread, stays deterministic
+  }
+  // The founding spacing floor every plot obeys (see the note above) —
+  // WITHOUT the capacity-spacing widening: a plantation is provisioned by
+  // the state (colony supply from home), not by the land under it, so the
+  // thin-soil frontier does not push it away as it would an organic
+  // village. The flat floor only prevents stacking on a town.
+  const spMul = T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2) : 1;
+  const isoR = HARD_FLOOR * spMul * rn;
+  const surveyR = PLANT_SURVEY_R * rn;
+  const scoreAt = (e, foe, ti, tx, ty) => {
+    if (foe !== undefined) {
+      // A march is worth holding as such; defensible ground and an
+      // aggrieved border raise the priority (the ledger, loyaltyField.js).
+      return 1.0 + defensibilityFor(world, ti, tx, ty) * 0.4 + 2.5 * grievOf(world, e.cid, foe);
+    }
+    // Charter value = the ungoverned-in-practice people around the site
+    // (local field mass, res-normalised — a peopled hinterland with no
+    // town is admin friction the seat would remove).
+    const ty0 = ty > 0 ? ti - tw : ti, ty1 = ty < world.th - 1 ? ti + tw : ti;
+    const cross = pf[ti] + pf[ty * tw + (tx === 0 ? tw - 1 : tx - 1)] + pf[ty * tw + (tx === tw - 1 ? 0 : tx + 1)] + pf[ty0] + pf[ty1];
+    return (cross * rn2) / 60;
+  };
+  for (const e of eligible.values()) {
+    let best = null, bestScore = PLANT_SCORE_MIN;
+    // A seed candidate marks the REGION; the founding party surveys around it
+    // for the actual plot (a short ring walk, the sendSettlers pattern) —
+    // measured necessity: realms here are so compact that their entire border
+    // skin lies within the spacing floor of some town (17/19 seed tiles
+    // failed it), so the party must be able to step outward from the line.
+    for (const cand of e.march.concat(e.inland)) {
+      if (dbg) dbg.cand++;
+      for (let k = 0; k < PLANT_SURVEY_TRIES; k++) {
+        const ang = rng() * Math.PI * 2;
+        const rr = k === 0 ? 0 : (0.3 + 0.7 * rng()) * surveyR;
+        const sx = ((Math.round(cand.tx + Math.cos(ang) * rr) % tw) + tw) % tw;
+        const sy = Math.round(cand.ty + Math.sin(ang) * rr);
+        if (sy < 1 || sy >= world.th - 1) continue;
+        const ti = sy * tw + sx;
+        if (elev[ti] <= 0 || (fert[ti] || 0) < 0.02 || !isContinentalLand(world, ti)) continue;
+        const o = co[ti];
+        if (o >= 0 && o !== e.cid) continue;             // never plant inside another realm
+        let taken = false;
+        forEachNear(world, sx + 0.5, sy + 0.5, isoR, () => { taken = true; });
+        if (taken) { if (dbg) dbg.iso++; continue; }
+        const score = scoreAt(e, cand.foe, ti, sx, sy);
+        if (score > bestScore) { bestScore = score; best = { tx: sx, ty: sy, foe: cand.foe }; }
+      }
+    }
+    if (!best) continue;
+    const { cap, pol, cid } = e;
+    // Found it: settlers and endowment MOVE (both conserved) — the state
+    // relocates people and coin it already has.
+    pol.treasury -= PLANT_COST;
+    pol._lastPlant = world.step;
+    cap.people -= PLANT_PEOPLE;
+    fieldShift(world, cap, -PLANT_PEOPLE);
+    const town = makeSettlement(world, best.tx + 0.5, best.ty + 0.5, {
+      people: PLANT_PEOPLE,
+      knowledge: { ...cap.knowledge },
+      countryId: cid,
+      parentId: cap.id,               // provisioned from home while young (conquest.js colony supply)
+      kind: "planted",
+      cultureId: dominantCulture(cap),
+      tier: 1,
+    });
+    town.wealth = (town.wealth || 0) + PLANT_COST;
+    town._integratedAt = world.step;
+    gridAdd(world, town);
+    if (dbg) dbg.planted++;
+    logEvent(world, "town.planted", {
+      s: town.id, sName: town.name, polity: cid,
+      march: best.foe !== undefined ? true : undefined,
+      x: best.tx, y: best.ty,
+    });
+  }
+}
+
 // ── Urban genesis (mode #2): a farming region BIRTHS a town ───────────
 // A tier-0 farming region is a collection of villages, not a proto-city, so it
 // never urbanises in place (updateTier returns early for tier 0). Instead, once
@@ -1185,9 +1476,12 @@ function inheritKnowledgeAt(world, ti, td, nearestHint = null) {
   // toolmaking→construction, literacy→organization). Metallurgy,
   // navigation, and mobility stay at zero — they're resource-gated and
   // only kick in once the site touches ore / water / horses.
+  // Construction matches the genesis-village package (settlement.js
+  // makeSettlement): a people that invents farming invents the pot and the
+  // granary with it — the two values describe ONE late-neolithic moment.
   const baseline = {
     agriculture: NEOLITHIC_AGRI,
-    construction: 0.1,
+    construction: 0.18,
     organization: 0.1,
   };
   world._lastInheritDonor = nearest;   // culture rides the same lineage (caller reads this)
