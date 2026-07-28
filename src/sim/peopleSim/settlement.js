@@ -47,6 +47,14 @@ import { updateGoods, LEG_GOOD, GOODS, G_STAPLE, G_MATERIALS, G_ORE, G_METAL, G_
 // tier-1 — but it's kept as the tier-1 demotion reference.)
 const TIER_THRESHOLD = [0, 150, 600, 900];
 const TIER_NAME      = ["farming region", "town", "city", "metropolis"];   // tier-0 = an abstraction for MANY small villages (a farmed region), not one village
+// Floors under the PERCENTILE tier bars (updateTier, Tier-B food wave): the
+// measured pre-Tier-B EFFECTIVE bars — the retired relative scale sat pinned at
+// its 0.4 floor all run, so the world actually ran on THRESHOLD×0.4 = 60/240.
+// Kept as floors so a sparse early world still mints its first towns; they are
+// a documented measured-floor shortcut (design-food-economy-wave.md open q.4),
+// not first-principles census minima.
+const TIER_TOWN_FLOOR = 60;    // = TIER_THRESHOLD[1] × 0.4
+const TIER_CITY_FLOOR = 240;   // = TIER_THRESHOLD[2] × 0.4
 // Rural ceiling: a FARMING REGION (tier 0) is a collection of villages — a rural
 // DISTRICT — not a proto-city. Its population is capped here so it can never pile
 // into a single giant "farming region" node. The surplus food its land grows
@@ -158,14 +166,14 @@ const LUX_RES = ["spices", "furs", "incense", "dyes"];
 const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
                                 // (so rich hoards drive real luxury demand, not just headcount)
 // Fish: per-tick food a COASTAL settlement lands (see updateFood's FISH block).
-// fishYield = T.FISH_RATE × sea × seaRich × unmet-need share × fishery tech,
-// where sea = coast-only access (river access feeds GRAIN via alluvium, not
-// fish), seaRich = the cool-water marine-productivity band, the unmet-need
-// share = clamp01(1 − landFood/foodDemand) — the sea supplements exactly the
-// food need the land leaves unfilled, so a fertile cradle draws ~no fish while
-// a marginal coast lives off the sea — and fishery tech = fishFactor/0.3
-// (tech.js). A landlocked site gets nothing.
-// FISH_RATE -> runtime lever (tuning.js T.FISH_RATE)
+// Tier-B model (T.FISH_LABOR): catch = fishers × per-capita catch × fishery
+// tech × stock abundance — fishers are a labor share ramped toward
+// FISHER_MAX × the unmet-need share (clamp01(1 − retainedLand/foodDemand): the
+// sea supplements exactly the need the land leaves unfilled, so a fertile
+// cradle draws ~no boats while a marginal coast lives off the sea), withdrawn
+// from farm labor 1:1, and the catch draws down a per-coast-tile logistic
+// stock (updateFishStocks). A landlocked site gets nothing.
+// FISH_RATE -> retired lever (tuning.js: the legacy flat cap, FISH_LABOR=0 arm)
 
 // ── Ancestry (deep genetic stock) ──────────────────────────────────────────
 // s.ancMix = [[ancId, share], ...] summing to 1, dominant first — the genetic
@@ -1258,9 +1266,10 @@ export function exportValueOf(s, world) {
 //     volume that crosses markets (sub-linear in population, trade-tech-weighted).
 //     Byte-identical to the original inline expressions both callers used.
 //   • OUTPUT_TOTAL > 0: TOTAL (domestic) real output ≈ population × productivity,
-//     people × _eraProd. _eraProd is the productivity index that already scales
-//     carrying capacity (~1 forager → ~260 modern developed, gated on the
-//     settlement's OWN development, never a clock). This is the whole economy, not
+//     people × _eraProd. _eraProd is the composite productivity index that already
+//     scales carrying capacity (built land capital × the industrial break — ~1
+//     forager → ~tens× fully industrial; the ERA_PROD_SCALE legacy arm ran to
+//     ~260 — gated on the settlement's OWN development, never a clock). This is the whole economy, not
 //     the traded slice, so as a modern realm turns inward (trade fraction shrinks,
 //     trade links fragment) T does NOT collapse — the money supply can keep
 //     monetising the real economy instead of pricing the ×N industrial output
@@ -2337,6 +2346,83 @@ export function updateSoil(world) {
   }
 }
 
+// ── Coastal fish stocks: the sea remembers (T.FISH_LABOR) ──────────────────
+// A depletable-renewable stock per stretch of coast, keyed on COASTAL LAND
+// tiles (world.coast — the fishery off this stretch of shore), stored as the
+// TAKEN fraction of virgin capacity in world._fishTaken (lazily allocated, the
+// _soilFatigue pattern; 0 = virgin). Capacity is DERIVED, never stored:
+// C_i = C_full × rich_i with C_full = 4·FISH_MSY/FISH_REGEN (logistic identity
+// MSY = rC/4) and rich_i the marine-productivity shape below. Settlement
+// drawdown happens in updateFood (deterministic settlement order); logistic
+// regrowth runs here on an amortized sweep.
+
+// Marine richness of the fishery off a coastal land tile: the same cold-
+// temperate plateau the legacy per-settlement seaRich used (great fisheries
+// are cold-and-ice-free; warm tropical seas are clear and barren; T.COLD_FISH
+// cuts the ice-locked shore) — evaluated from the TILE's own temperature so
+// per-tile capacity follows the real coast, not the port's home tile.
+function fishRichAt(world, ti) {
+  const t = world.temp[ti] ?? 0.7;
+  const iceCut  = Math.max(0, Math.min(1, (0.60 - t) / 0.10));   // sub-freezing → ice-locked, short season
+  const tropCut = Math.max(0, Math.min(1, (t - 0.80) / 0.15));   // warm tropical sea → nutrient-poor
+  return (1 - T.COLD_FISH * iceCut) * (1 - 0.7 * tropCut);
+}
+
+// The stretch of coast a settlement's boats work: coast-flagged land tiles
+// within the computeWaterAccess neighbourhood — the SAME box that defines
+// waterAccess, so a port fishes exactly the shore it reads its sea access
+// from. Static geography, cached at first read (founding/load — rebuildable,
+// never saved). Two ports within the box radius share tiles: the commons is
+// real.
+function shoreTilesOf(world, s) {
+  if (s._shoreTiles) return s._shoreTiles;
+  const { tw, th, coast } = world;
+  const R = T.RES_INV_RIVER ? Math.max(1, Math.round(rNormPop(world))) : 1;
+  const sx = s.pos.x | 0, sy = s.pos.y | 0;
+  const out = [];
+  for (let dy = -R; dy <= R; dy++) {
+    const ny = sy + dy; if (ny < 0 || ny >= th) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      const nx = ((sx + dx) % tw + tw) % tw;
+      const ni = ny * tw + nx;
+      if (coast[ni]) out.push(ni);
+    }
+  }
+  return (s._shoreTiles = out);
+}
+
+// Regen sweep cadence in TICKS (not SIM_GRANULARITY-stretched: the drawdown in
+// updateFood is a per-tick food flow like the rest of the granary ledger, so
+// regrowth must share the same clock). A performance cadence, not a content
+// gate — the exact logistic step below is interval-invariant.
+export const FISH_REGEN_INTERVAL = 50;
+export function updateFishStocks(world) {
+  if (!(T.FISH_LABOR > 0)) return;
+  const ft = world._fishTaken;
+  if (!ft) return;                     // nobody has fished yet — every stock virgin
+  let list = world._coastList;
+  if (!list) {
+    const idx = [];
+    const coast = world.coast;
+    for (let i = 0; i < world.N; i++) if (coast[i]) idx.push(i);
+    list = world._coastList = Int32Array.from(idx);   // static geography, built once
+  }
+  // Exact logistic step in capacity-relative form (unconditionally stable at
+  // any interval): with s = S/C, s' = s·e^{rΔt} / (1 + s·(e^{rΔt} − 1)).
+  // rich_i cancels — regrowth is capacity-relative — so one exp serves the
+  // whole sweep. The 0.999 drawdown clamp guarantees a remnant to regrow from.
+  const e = Math.exp(T.FISH_REGEN * FISH_REGEN_INTERVAL);
+  for (let k = 0; k < list.length; k++) {
+    const ti = list[k];
+    const tk = ft[ti];
+    if (tk <= 0) continue;             // virgin: s' = s exactly
+    const sf = 1 - tk;
+    const s2 = sf * e / (1 + sf * (e - 1));
+    const v = 1 - s2;
+    ft[ti] = v < 1e-9 ? 0 : v;         // snap the healed shore back to virgin
+  }
+}
+
 function updateFood(world, s) {
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
@@ -2353,7 +2439,14 @@ function updateFood(world, s) {
   // less just as the host needs feeding MORE → the granary drains → famine forces demobilisation.
   // This is the cycle that ends total wars (armies.js); peace carries no production drag.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
-  const armyLabor = Math.max(0.2, 1 - Math.max(0, armyFrac - ARMY_LABOR_FREE) * T.ARMY_LABOR_FOOD);
+  // FISHER LABOR withdrawal (T.FISH_LABOR): the boats are manned by the same labor
+  // pool that works the fields — LAST tick's fisher share (s._fisherFrac, set in the
+  // fish block below; the same 1-tick lag _foodNet uses, so there is no circularity:
+  // land food is computed before the fish block). Fishers withdraw from the harvest
+  // 1:1, bounded by FISHER_MAX ≤ 0.25. This is what makes fishing COST something —
+  // conscription/famine no longer raise fish for free. ×1 exactly while the lever is
+  // off or the settlement has never fished (undefined → 0).
+  const armyLabor = Math.max(0.2, 1 - Math.max(0, armyFrac - ARMY_LABOR_FREE) * T.ARMY_LABOR_FOOD) * (1 - (s._fisherFrac || 0));
   // FARM-LABOUR SUBSISTENCE: working land takes farmers, and they must eat. Each territory tile
   // carries a per-tile labour cost (FARM_FERT_FLOOR, in fertility units) — the crops its farmers
   // consume to work it — deducted from the gross BEFORE the surplus enters the food economy. So
@@ -2379,55 +2472,56 @@ function updateFood(world, s) {
   // (domestication ceiling). This is what keeps a fresh/isolated frontier sparse and
   // stateless — the whole map no longer farms at full yield from tick 0.
   const fy = techEff(s).farmYield; s._farmYield = fy;   // stored for the rural-density ceiling (updatePopulation)
-  // _eraProd — the productivity index that scales carrying capacity (land food, fish,
-  // housing, rural ceiling). ANCHOR_POP=1 → the global historical anchor (index.js,
-  // steered to a recorded population curve). ANCHOR_POP=0 (EMERGENT) → driven by a
-  // settlement's OWN agriculture knowledge (farming+industry raised human carrying
-  // capacity ~100-1000× over foraging) — BUT gated on its civilisation having actually
-  // DEVELOPED, not on farming CLIMATE. Agriculture knowledge is learned fastest in good
-  // rain-fed farming climates, so keying the lift on agronomy ALONE balloons fertile
-  // temperate land (Europe) in the stone age while the arid early cradles (Egypt, Sumer)
-  // — whose advantage was IRRIGATION and early STATES, not rainfall — stay empty. The
-  // development GATE (the settlement's country's organisation) fixes that: undeveloped /
-  // stateless / stone-age land sits at bare subsistence no matter how fertile, the first
-  // ORGANISED civilisations bloom first, and the centre of gravity follows DEVELOPMENT —
-  // then shifts as development does. agri^POW keeps the lift back-loaded so the modern
-  // BOOM still rides agriculture's climb to the top of the tree.
-  // (ANCHOR_POP removed in the 2026-07 default-flip campaign: the legacy
-  // demographic anchor was the codified two-clock trap — population steered to
-  // a historical curve instead of emerging. Emergence is the only path now.)
+  // _eraProd — the settlement's COMPOSITE PRODUCTIVITY INDEX (scales land food,
+  // housing, the rural ceiling, cash-crop output, real output). Tier-B food wave:
+  // the index is now the product of the two REAL capacity mechanisms the sim
+  // already carries — BUILT LAND CAPITAL (popField LAND_WORKS: the canals,
+  // terraces and drainage a pressed basin's own people accumulate, read back as
+  // the harvest-weighted mean over the FARMED catchment) and the INDUSTRIAL
+  // AGRONOMY BREAK (s._indCap — mechanisation + synthetic nitrogen, the same
+  // multiple the capField proxy applies). The retired overlay it replaces
+  // (BASE + SCALE·agri^POW·devGate, the ERA_PROD_SCALE legacy arm below) was a
+  // fitted curve: 260 and the exponent 6 existed only to land the modern boom at
+  // a target scale while staying invisible pre-modern, and its devGate keyed FOOD
+  // productivity on political organisation — but a state does not make wheat
+  // grow; technique (farmYield), tools and built land capital do, and all of them
+  // exist elsewhere in the code. Measured consequence of the overlay: land food
+  // DECLINED 28→21 over steps 1500-9000 while population quadrupled, and the mid
+  // run went 62-75% fish-fed because nothing matured land food in that window.
   {
-    const agri = (s.knowledge && s.knowledge.agriculture) || 0;
-    // Density requires being in a DEVELOPED STATE, not just personal organisation: read the
-    // settlement's COUNTRY's development (its capital's organisation). A stateless settlement
-    // gets devOrg 0 → no lift → it stays a sparse tribe (eraProd≈BASE) until it FOUNDS or JOINS
-    // a state. (A capital reads its own org, since it IS its country's capital.) This is what
-    // keeps significant/dense settlements always part of a nation — undeveloped, stateless
-    // ground can't bloom on fertility alone, however rich it is.
+    // Country development reads (kept for the industrial gate + the legacy arm):
+    // a settlement's industrial break needs its COUNTRY to have industrialised
+    // (its capital's organisation AND metallurgy past ~0.78 — the same gate as
+    // AGRI_INDUSTRIAL); a stateless settlement keeps indCap 1 (subsistence).
     let devOrg = 0, capMetal = 0;
     if (s.countryId >= 0 && world.countries) {
       const c = world.countries.get(s.countryId);
       if (c && c.capital && c.capital.knowledge) { devOrg = c.capital.knowledge.organization; capMetal = c.capital.knowledge.metallurgy || 0; }
     }
-    const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
-    // BASE is a uniform floor (climate-NEUTRAL): it carries the ORIGINAL cradle-correct
-    // distribution (fertility / rivers / the farming transition — NOT farm-climate), so
-    // even undeveloped land holds enough people to found and grow STATES. Without it the
-    // dev-gate drove undeveloped ground to bare subsistence (eraProd=1), which starved
-    // state formation — the map went sparse and stateless. The agri^POW·devGate term then
-    // adds the DEVELOPMENT-driven bloom on top, so the cradles still out-grow the rest as
-    // they organise, but the world isn't inert while it gets there.
-    s._eraProd = T.ERA_PROD_BASE + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
-    // Industrial carrying-capacity break (T.INDUSTRIAL_CAP → popField.capField). The field
-    // population governor never received the modern productivity boom the food model did
-    // (capField caps at the pre-industrial ~3.3×), so under ONE_POP the modern population
-    // under-produces. Lift the field capacity of this realm's worked land once its CAPITAL
-    // crosses the industrial threshold — org AND metallurgy past ~0.78, the SAME gate as
-    // AGRI_INDUSTRIAL — so a modern state's land feeds a modern population. Emergent (reached
-    // industrial development, never a clock); stateless land keeps indCap 1 (subsistence);
-    // byte-identical at INDUSTRIAL_CAP=0.
+    // Industrial carrying-capacity break (T.INDUSTRIAL_CAP → popField.capField and,
+    // since the Tier-B food wave, the LEDGER's industrial break too). Emergent
+    // (reached industrial development, never a clock); byte-identical at
+    // INDUSTRIAL_CAP=0.
     s._indGate = Math.min(1, Math.max(0, (devOrg - 0.78) / 0.18)) * Math.min(1, Math.max(0, (capMetal - 0.78) / 0.18));   // reached-industrial-development gate (0..1), reused by the urban transition
     s._indCap = 1 + T.INDUSTRIAL_CAP * s._indGate;
+    if (T.ERA_PROD_SCALE > 0) {
+      // LEGACY ARM (A/B): the retired fitted overlay, byte-identical at
+      // ERA_PROD_SCALE=260 (the pre-Tier-B default). Kept as a lever per the
+      // FOOD_K/FOREST_LOCK default-flip convention.
+      const agri = (s.knowledge && s.knowledge.agriculture) || 0;
+      const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
+      s._eraProd = T.ERA_PROD_BASE + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
+    } else {
+      // Built land capital: the works the basin's own people accumulated under
+      // pressure (popField LAND_WORKS — canals, terraces, drainage). Catchment
+      // mean over FARMED tiles, same falloff weighting as the harvest itself
+      // (territory.js _terrWorksMean). ONE constant (T.LAND_WORKS) prices it on
+      // ledger and field alike — and the ledger and the field finally agree on
+      // what the industrial break is worth (both ride works × indCap now; the
+      // overlay said 260× where the field said 26×·wk).
+      const worksMul = 1 + T.LAND_WORKS * (s._terrWorksMean || 0);
+      s._eraProd = worksMul * s._indCap;   // composite productivity index (housing/rural/cash/output consumers keep one number)
+    }
   }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
   // ── Animal husbandry: livestock secondary products ──────────────────
@@ -2478,11 +2572,6 @@ function updateFood(world, s) {
     s._aridity = aridSignal(s._climTemp, s._climMoist, s._riverAcc || 0);
     aridBurden = 1 - T.ARID_PENALTY * s._aridity;
   }
-  // _eraProd is the global historical-productivity index (index.js demographic
-  // anchor): scaling LAND FOOD here lifts every settlement's carrying capacity
-  // together so the world total tracks recorded population, while the spatial
-  // distribution stays emergent and the food economy (surplus, trade, army
-  // labour all derived from this flow) stays internally consistent.
   // ── Soil exhaustion (salinisation / nutrient depletion) ──────────────────
   // Long, intensive farming TIRES the land — and irrigated ARID land tires FAST
   // (the Fertile-Crescent / Nile salinisation: irrigation water evaporates and
@@ -2543,6 +2632,10 @@ function updateFood(world, s) {
   // CASH CROPS displace food: arable turned over to sugar/cotton/tobacco grows no grain,
   // so a plantation settlement must IMPORT food (the new dynamic — see updateCoercedLabour).
   const cashLand = T.SLAVERY ? (s._cashFrac || 0) * CASHCROP_LAND : 0;
+  // ×(s._eraProd || 1): the composite productivity index — built land capital
+  // (worksMul, the basin's own accumulated irrigation/terrace/drainage capital)
+  // × the industrial agronomy break (s._indCap). Under the ERA_PROD_SCALE legacy
+  // arm it is the retired fitted overlay instead.
   const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * alluvium * (1 - cashLand);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFarm = world.step < (s._famineUntil || 0)
@@ -2560,8 +2653,16 @@ function updateFood(world, s) {
   // it's added AFTER the harvest cut as a stable floor.
   const agriK = (s.knowledge && s.knowledge.agriculture) || 0;
   const grazeTiles = s._terrWorkTiles ?? s._terrTiles ?? 0;
+  // Rangeland is untouched by canals, so pastoral must NOT ride worksMul: under
+  // the composite index (ERA_PROD_SCALE=0) the herd's own era term is INDUSTRIAL
+  // RANCHING only — fencing, drilled wells, veterinary medicine and feedlots
+  // lifted per-area livestock output (T.PASTORAL_IND, gated on the same emergent
+  // industrial gate as everything else); pre-industrial pastoral productivity
+  // keeps its existing (0.3 + 0.7·agriK) husbandry ramp. The legacy arm keeps
+  // the old composite read for byte-identity.
+  const pastEra = T.ERA_PROD_SCALE > 0 ? (s._eraProd || 1) : (1 + T.PASTORAL_IND * (s._indGate || 0));
   const pastoral = T.LIVESTOCK_FOOD > 0
-    ? T.LIVESTOCK_FOOD * (s._livestock || 0) * grazeTiles * (s._eraProd || 1) * armyLabor * (0.3 + 0.7 * agriK)
+    ? T.LIVESTOCK_FOOD * (s._livestock || 0) * grazeTiles * pastEra * armyLabor * (0.3 + 0.7 * agriK)
     : 0;
   s._pastoral = pastoral;
   const landFood = landFarm + pastoral;
@@ -2627,6 +2728,94 @@ function updateFood(world, s) {
   // LAND is poor, and falls to ~0 in the fertile river cradles and the nutrient-poor tropics.
   const sea = Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0));   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
   let fish = 0;
+  if (T.FISH_LABOR > 0) {
+    // ── Tier-B fish: the catch costs LABOR and draws down a STOCK ────────────
+    // Schaefer/Graham surplus production: catch = q·E·S — catch-per-unit-effort
+    // proportional to abundance, effort = the fishers this community actually
+    // mans the boats with, stock a logistic population per stretch of coast
+    // (world._fishTaken — the depositReserve/soilFatigue pattern: the sea
+    // remembers). What this replaces: a flat per-settlement cap
+    // (FISH_RATE × sea × seaRich × poor) with no labor, no boats-per-person and
+    // no depletion — a 25-person hamlet landed a 16-food windfall and the world
+    // split bimodally into fishless inland vs 90%-fish ports. Now the cap is
+    // EMERGENT = fishers × per-capita catch × abundance: a fishing village
+    // feeds itself with surplus, a great port CAN exist (the all-in classical
+    // equilibrium on rich virgin coast solves to thousands of people with the
+    // stock fished down — the overfished-commons steady state), and industrial
+    // trawling can genuinely strip a coast. The Tier-A demand-gap gate (poor,
+    // below) is KEPT as the effort throttle — the sea supplements exactly the
+    // need the land leaves unfilled (the full rationale lives with the gate's
+    // Tier-A record in docs/tier-a-fixes-2026-07-28.md §1).
+    if (sea > 0.02) {
+      // `poor` = clamp01(1 − netLand/demand) on RETAINED land food (netLand,
+      // last tick's hierarchy net — one basis with the supply line below; both
+      // sides same-unit per-tick food, so the gate is constant-free and closes
+      // BY ITSELF as agriculture matures).
+      const poor = demand > 0 ? Math.max(0, Math.min(1, 1 - netLand / demand)) : 0;
+      // Fisher labor share: the hungry share mans the boats. A land-fed coast
+      // draws ~no boats; a coast that cannot feed itself commits its full
+      // boat-capable share (FISHER_MAX). The ADJUSTMENT rate (FISHER_ADJ) is
+      // the labor-reallocation clock — boats built, crews learned — and the
+      // damper that populates the formerly-empty proportional middle band
+      // (the measured bistability becomes a transition regime).
+      const _dtF = world._dt || 1;
+      const curFF = s._fisherFrac || 0;
+      const dFF = T.FISHER_MAX * poor - curFF;
+      const limFF = T.FISHER_ADJ * _dtF;
+      const ff = curFF + (dFF > limFF ? limFF : dFF < -limFF ? -limFF : dFF);
+      s._fisherFrac = ff;
+      if (ff > 1e-6) {
+        const shore = shoreTilesOf(world, s);
+        const nSh = shore.length;
+        if (nSh > 0) {
+          let ft = world._fishTaken;
+          if (!ft || ft.length !== world.N) ft = world._fishTaken = new Float32Array(world.N);   // lazily allocated, 0 = virgin (the _soilFatigue pattern)
+          // Per-tile capacity is DERIVED, never stored: C_i = C_full × rich_i,
+          // where C_full = 4·MSY/r (the logistic identity MSY = rC/4) and
+          // rich_i is the cold-temperate marine-productivity shape evaluated
+          // from the TILE's temperature (fishRichAt — seaRich appears ONCE,
+          // inside the capacity, not as a separate catch factor). ÷rNormPop:
+          // a coastline is 1-D (the sea.js budget principle), so a finer grid
+          // cuts the same real shore into rn× more tiles — each tile carries
+          // its SHARE of the real stretch's stock, keeping the total fishery
+          // and its depletion clock resolution-invariant (÷1 exactly at the
+          // 240-tile reference; regrowth is capacity-relative, unaffected).
+          const cFull = 4 * T.FISH_MSY / Math.max(1e-9, T.FISH_REGEN) / rNormPop(world);
+          // Mean abundance d = Σ S_i / (n_shore × C_full): the standing stock
+          // as a fraction of full-richness virgin capacity — catch-per-unit-
+          // effort falls as the shore is fished down.
+          let wSum = 0;
+          for (let k = 0; k < nSh; k++) { const ti = shore[k]; wSum += (1 - ft[ti]) * fishRichAt(world, ti); }
+          const d = wSum / nSh;
+          // Catch = fishers × per-capita catch (FISH_PER_CAP on virgin full-
+          // richness water) × technique (fishFactor normalized to the 0.3
+          // pre-tech baseline) × abundance.
+          fish = s.people * ff * T.FISH_PER_CAP * ((techEff(s).fishFactor || 0.3) / 0.3) * d;
+          // Drawdown, same tick, deterministic settlement order: distribute the
+          // catch over the shore ∝ S_i; taken_i += catch_i / C_i, clamped so a
+          // remnant always survives to reseed the logistic. Ports whose boxes
+          // overlap share tiles — the commons is real.
+          if (fish > 0 && wSum > 1e-9) {
+            for (let k = 0; k < nSh; k++) {
+              const ti = shore[k];
+              const rich = fishRichAt(world, ti);
+              if (rich <= 1e-6) continue;
+              const w = (1 - ft[ti]) * rich;
+              if (w <= 0) continue;
+              const v = ft[ti] + (fish * w / wSum) / (cFull * rich);
+              ft[ti] = v > 0.999 ? 0.999 : v;
+            }
+          }
+        }
+      }
+    } else if (s._fisherFrac) {
+      // Inland (or a lever/water edge case): the boats stand down at the same
+      // reallocation clock.
+      s._fisherFrac *= 1 - T.FISHER_ADJ * (world._dt || 1);
+    }
+  } else {
+  // LEGACY ARM (A/B, T.FISH_LABOR=0): the Tier-A flat-cap formula, verbatim.
+  if (s._fisherFrac) s._fisherFrac *= 1 - T.FISHER_ADJ;   // boats stand down if the lever flips off mid-run
   if (T.FISH_RATE > 0 && sea > 0.02) {
     climateOf(world, s);
     const t = s._climTemp ?? 0.7;
@@ -2671,6 +2860,7 @@ function updateFood(world, s) {
     // tech-less shore fishes exactly as calibrated and technique multiplies
     // upward from there. (The channel existed but was read by nothing.)
     fish = T.FISH_RATE * sea * seaRich * poor * ((techEff(s).fishFactor || 0.3) / 0.3);
+  }
   }
   s._fishYield = fish;
 
@@ -2876,22 +3066,25 @@ function updatePopulation(world, s) {
   //   houseK  = housingCapacity(s)  — economy + site, food-independent
   const perCapita = 0.003 * (s._urbanFactor || 1);
   let foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
-  // ×_eraProd: the housing/site ceiling rises with the same global productivity
-  // index as food, representing denser settlement (intensive rural occupation,
-  // vertical urban growth) in later eras. Without this the population would stay
-  // pinned at the medieval SITE cap while food scaled freely — the carrying
-  // capacity must be linear in _eraProd end-to-end or the anchor (index.js)
-  // winds up against the housing dead-zone.
-  // Under the anchor (ANCHOR_POP=1) housing must scale LINEARLY in _eraProd or the
-  // controller winds up against a housing dead-zone. Under EMERGENT productivity
-  // (ANCHOR_POP=0) per-settlement _eraProd reaches into the hundreds, and applying it
-  // linearly to a single city's housing lets one high-agriculture capital absorb a
-  // whole region into an unphysical 70M+ megacity (and makes the world fragile — when
-  // that one city falls the global total craters). City INFRASTRUCTURE can't scale as
-  // fast as farm OUTPUT, so housing takes a DAMPENED power (HOUSE_ERA_POW≈0.45): the
-  // surplus food the capped city can't house stays in the hinterland feeding RURAL
-  // population (ruralCap keeps full _eraProd), so the modern boom spreads across the
-  // land and many towns instead of piling into one metropolis.
+  // ×_eraProd: the housing/site ceiling rises with the same composite
+  // productivity index as food, representing denser settlement (intensive rural
+  // occupation, vertical urban growth) as land capital and industry mature.
+  // Without this the population would stay pinned at the medieval SITE cap
+  // while food scaled freely.
+  // Applying the productivity index linearly to a single city's housing lets one
+  // high-productivity capital absorb a whole region into an unphysical megacity
+  // (and makes the world fragile — when that one city falls the global total
+  // craters). City INFRASTRUCTURE can't scale as fast as farm OUTPUT, so housing
+  // takes a DAMPENED power (HOUSE_ERA_POW): the surplus food the capped city
+  // can't house stays in the hinterland feeding RURAL population, so the boom
+  // spreads across the land and many towns instead of piling into one metropolis.
+  // Under the Tier-B composite index the same damping reads pre-modern works too:
+  // an improved basin houses denser (≤3^0.8 ≈ 2.4× at full works — why classical
+  // cradle cities can exist on grain), and the modern ceiling rides
+  // INDUSTRIAL_CAP alone (78^0.8 ≈ 33 vs the legacy overlay's 261^0.8 ≈ 86 — the
+  // recorded modern-era scale change, re-tunable through that single lever).
+  // Housing deliberately keeps the ONE composite number (works feed people AND
+  // terraced basins housed denser — design open q.6 resolved composite).
   const houseEra = Math.pow(s._eraProd || 1, T.HOUSE_ERA_POW);
   let houseK = housingCapacity(s) * houseEra;
   // RURAL CEILING: a tier-0 farming region holds only a rural district's worth
@@ -3038,37 +3231,55 @@ function updatePopulation(world, s) {
 
 // ── Tier ───────────────────────────────────────────────────────────
 function updateTier(world, s) {
-  // RELATIVE tiers: the bar to count as a town / city / metropolis SCALES with the world's
-  // total population, so as civilisation grows the size that qualifies as a "city" rises too
-  // (a 500-soul settlement is a large farming village in a populous world, a city in an empty
-  // one). This keeps the urban hierarchy proportional and the rural majority rural, instead of
-  // mislabelling mid-size farming settlements as "towns" once the world fills up. Cached once
-  // per tick. (TIER_SCALE_REF / TIER_SCALE_MAX tune it; =off by setting REF huge.)
-  let sc = world._tierScale, topU = world._topUrban;
+  // RANK tiers (Tier-B food wave): the urban hierarchy is a RANK structure
+  // (central-place theory) — towns are the upper half of the settlement
+  // lattice, cities its top ~15% (each city serves ~3-5 towns, the Christaller
+  // branching band). The bars are the settled-population PERCENTILES
+  // townBar = max(floor, P50), cityBar = max(floor, P85), which decouples the
+  // labels from the food SCALE entirely (they survive the honest-food rework,
+  // any seed, any resolution) — the retired TIER_SCALE_REF=29000 was
+  // calibrated to the phantom-fish population scale and sat pinned at its 0.4
+  // floor all run (tier-a-fixes: the recorded Tier-B constraint). The floors
+  // are exactly those measured pre-Tier-B effective bars (THRESHOLD × the 0.4
+  // floor: 60 town / 240 city), kept so a tiny early world still mints its
+  // first towns. Percentiles gate LABELS/rank thresholds only — never any
+  // realm's resources. Cached once per tick.
+  // LEGACY ARM (A/B): TIER_SCALE_REF > 0 restores the world-total relative
+  // scale byte-identically (TIER_SCALE_MAX caps it; the old default was 29000).
+  let topU = world._topUrban;
   if (world._tierScaleStep !== world.step) {
     let tot = 0, top = 0;
+    const pops = T.TIER_SCALE_REF > 0 ? null : [];
     for (const x of world.settlements) if (x.mode === "settled") {
       tot += x.people || 0;
+      if (pops) pops.push(x.people || 0);
       if ((x.tier | 0) >= 1 && (x.people || 0) > top) top = x.people;   // largest URBAN centre, for the floating metro bar
     }
-    sc = world._tierScale = Math.max(0.4, Math.min(T.TIER_SCALE_MAX, tot / T.TIER_SCALE_REF));
+    if (T.TIER_SCALE_REF > 0) {
+      // Legacy relative tiers: the town bar scales with world population ÷ REF;
+      // the city bar scales too under DISSOLVE_FARMS (else every big farming
+      // region mislabels as a "city").
+      const sc = world._tierScale = Math.max(0.4, Math.min(T.TIER_SCALE_MAX, tot / T.TIER_SCALE_REF));
+      world._townBar = TIER_THRESHOLD[1] * sc;
+      world._cityBar = TIER_THRESHOLD[2] * (T.DISSOLVE_FARMS ? sc : 1);
+    } else {
+      pops.sort((a, b) => a - b);
+      const n = pops.length;
+      const pAt = (q) => n ? pops[Math.min(n - 1, Math.floor(q * n))] : 0;
+      world._tierScale = 1;   // kept for probes/panels that read it
+      world._townBar = Math.max(TIER_TOWN_FLOOR, pAt(0.50));
+      world._cityBar = Math.max(TIER_CITY_FLOOR, pAt(0.85));
+    }
     topU = world._topUrban = top;
     world._tierScaleStep = world.step;
   }
-  // Tier bars: the rural→TOWN bar (tier 1) scales with total population (big
-  // farming villages shouldn't read as "towns" once the world fills up). The CITY
-  // bar stays absolute — a genuine floor for "an urban centre". The METROPOLIS bar
-  // floats with the largest city (METRO_REL_FRAC of it, floored at the absolute
-  // base): "metropolis" means one of the handful of biggest cities of the age, so
-  // it stays rare as development lifts every city's size, instead of the whole
-  // city tier eventually crossing a fixed bar into a metro glut.
+  // The METROPOLIS bar floats with the largest city (METRO_REL_FRAC of it,
+  // floored at the absolute base): "metropolis" means one of the handful of
+  // biggest cities of the age, so it stays rare as development lifts every
+  // city's size, instead of the whole city tier eventually crossing a fixed
+  // bar into a metro glut. Unchanged by the rank-bar rework.
   const metroBar = Math.max(TIER_THRESHOLD[3], topU * METRO_REL_FRAC);
-  // DISSOLVE_FARMS: a settlement bundles its rural hinterland + urban core into one
-  // entity, so they run large — scale the CITY bar with world population too (as the
-  // town bar already does), or every big farming region mislabels as a "city" and
-  // urbanisation reads ~90%. Now "city" means a genuine concentration of its age.
-  const cityScale = T.DISSOLVE_FARMS ? sc : 1;
-  const bar = (t) => t === 3 ? metroBar : TIER_THRESHOLD[t] * (t === 1 ? sc : t === 2 ? cityScale : 1);
+  const bar = (t) => t === 3 ? metroBar : t === 2 ? world._cityBar : t === 1 ? world._townBar : TIER_THRESHOLD[0];
   // Farming regions (tier 0) NEVER urbanise in place: a region is a collection
   // of villages, not a proto-city. It instead BIRTHS a separate town within its
   // catchment (urban genesis, crystallize.js). So the tier ladder here moves

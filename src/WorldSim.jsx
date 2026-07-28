@@ -3216,7 +3216,13 @@ const renderInspect=()=>{
   // canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
   // gate (towns are spawned, not grown from regions), so progress is urban-only.
   const isRegion=(s.tier|0)===0;
-  const nextThr=isRegion?0:TIER_THRESHOLD[s.tier+1];
+  // Live tier bars (Tier-B rank tiers): town→city reads the world's cached
+  // cityBar (percentile-anchored, or the legacy relative bar), city→metro the
+  // floating metro bar; falls back to the static THRESHOLD before first tick.
+  const nextThr=isRegion?0:
+    s.tier===1?(psw._cityBar||TIER_THRESHOLD[2]):
+    s.tier===2?Math.max(TIER_THRESHOLD[3],(psw._topUrban||0)*0.8):
+    TIER_THRESHOLD[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   // s.people is the WHOLE PROVINCE (urban core + rural hinterland, summed over the
   // settlement's entire catchment). For an urban node, headline the CITY CORE

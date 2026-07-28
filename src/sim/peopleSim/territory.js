@@ -396,6 +396,7 @@ function tallyTerritory(world, owner, cost, byId) {
     s._terrTiles = 0;
     s._terrWorkTiles = 0;
     s._terrFarmedWt = 0;   // falloff-weighted count of tiles actually ENTERING the harvest sum
+    s._terrWorksWt = 0;    // falloff-weighted LAND_WORKS over those same farmed tiles → _terrWorksMean (the ledger's built-land-capital read)
     s._terrMinFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
     s._terrResAcc = {};
     if (T.RES_SCARCITY) s._terrResMax = {};   // best grade held per resource (see finalize)
@@ -407,6 +408,11 @@ function tallyTerritory(world, owner, cost, byId) {
   // deposit stays on the map but no longer grants luxury budgets / value-cling.
   const mineLive = (id, ti) => !reserve || !reserve[id] || reserve[id][ti] > 0;
   const cm = world.climMod;   // dynamic-climate fertility overlay (undefined = none → ×1)
+  // Built land capital (T.LAND_WORKS → popField worksField): read back per
+  // settlement as the harvest-weighted mean over its FARMED tiles, so the canal
+  // is priced exactly where the grain is grown (updateFood worksMul — ONE
+  // constant prices works on ledger and field alike).
+  const wkF = T.LAND_WORKS > 0 ? world.worksField : null;
   // Resolution-invariant AREA accounting (T.RES_INVARIANT_POP, Phase 2 of
   // docs/resolution-invariance-plan.md): a finer grid cuts the same real land into
   // rn²× more tiles, so raw tile SUMS (_terrTiles/_terrFertSum/…) inflate with the
@@ -442,6 +448,7 @@ function tallyTerritory(world, owner, cost, byId) {
       // costs proportionally less labour just as it yields less. Break-even
       // stays exactly f = FARM_FERT_FLOOR, per the food model's contract.
       s._terrFarmedWt += w * _invA;
+      if (wkF) s._terrWorksWt += wkF[ti] * w * _invA;
     }
     if (haveDep) {
       const acc = s._terrResAcc;
@@ -505,6 +512,9 @@ function tallyTerritory(world, owner, cost, byId) {
   } else {
     for (const s of byId.values()) s.localRes = s._terrResAcc;
   }
+  // Finalize the built-land-capital read: worksField ∈ [0,1] per tile, so the
+  // harvest-weighted mean is ∈ [0,1] — the farmed catchment's improvement level.
+  for (const s of byId.values()) s._terrWorksMean = s._terrFarmedWt > 1e-9 ? s._terrWorksWt / s._terrFarmedWt : 0;
   world._borders = borders;
 }
 
@@ -516,7 +526,8 @@ export function seedLocalTerritory(world, s) {
   const cm = world.climMod;
   const sx = s.pos.x | 0, sy = s.pos.y | 0;
   const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
-  let fertSum = 0, tiles = 0, farmedWt = 0;
+  let fertSum = 0, tiles = 0, farmedWt = 0, worksWt = 0;
+  const wkF = T.LAND_WORKS > 0 ? world.worksField : null;   // built land capital (same read as tallyTerritory)
   const res = {};
   const resMax = {};   // best grade per resource (RES_SCARCITY composite)
   const minable = [];
@@ -536,7 +547,7 @@ export function seedLocalTerritory(world, s) {
       tiles += _invA;
       const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);
       const cost = Math.sqrt(dx * dx + dy * dy) / _rn;
-      if (f >= minFert) { const w = foodFalloff(cost); fertSum += f * w * _invA; farmedWt += w * _invA; }
+      if (f >= minFert) { const w = foodFalloff(cost); fertSum += f * w * _invA; farmedWt += w * _invA; if (wkF) worksWt += wkF[ti] * w * _invA; }
       if (haveDep) {
         // Same grade × substantiality accumulation as tallyTerritory under
         // RES_SCARCITY (composed below), MAX otherwise — the seed box must
@@ -551,6 +562,8 @@ export function seedLocalTerritory(world, s) {
   s._terrTiles = tiles;
   s._terrWorkTiles = tiles;   // local seed box is all walkable — everything counts as worked
   s._terrFarmedWt = farmedWt;
+  s._terrWorksWt = worksWt;
+  s._terrWorksMean = farmedWt > 1e-9 ? worksWt / farmedWt : 0;
   if (T.RES_SCARCITY) { const satK = T.RES_SCARCITY_K; for (const id in res) res[id] = (resMax[id] || 0) * (1 - Math.exp(-res[id] / satK)); }
   s.localRes = res;
   s._minableTiles = minable;

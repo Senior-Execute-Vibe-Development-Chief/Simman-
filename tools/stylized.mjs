@@ -532,12 +532,20 @@ const st = peopleSimStats(world);
 // The R5 blind spot: world fish share regressed 6% → 84-92% across default flips
 // with every gate green, because nothing watched food composition
 // (docs/user-report-diagnosis-2026-07-28.md §2). Real agrarian worlds drew a
-// small minority of calories from the water. PRE-TIER-B BAND: ≤60% — the honest
-// post-fix range measured 11.5–50.1% over five seeds (8817/4242/777/31337/12345
-// at 21k; the high tail is slow-developing seeds whose land food matures late,
-// the known eraProd back-loading residual), while the broken phantom-fish class
-// this gate exists to catch reads 84%+. TIGHTEN to ~40% when the Tier-B
-// land-food maturity fix lands (docs/tier-a-fixes-2026-07-28.md).
+// small minority of calories from the water. TIER-B BAND: ≤40% — the recorded
+// tier-a-fixes trigger, fired with the Tier-B food wave (land-food maturity via
+// works×indCap + fisher labor + depletable stocks,
+// docs/design-food-economy-wave.md): land food now matures through the mid-run
+// instead of stranding the world on the sea, and the fishery's own labor cost
+// and stock depletion bound the catch, so the pre-Tier-B honest-immature high
+// tail (up to ~50% on slow-developing seeds, which the interim ≤60% bar
+// tolerated) is no longer an excuse the gate must extend. Measured on the wave
+// (480×240 seed 8817): 2.1% at 12k, 4.5% at this 21k horizon — vs 68.4% at 12k
+// and 45.8% at 21k before the per-fisher catch was re-anchored (fish now GROWS
+// with real fishing-port populations, bounded by labor and stocks, instead of
+// arriving as a flat windfall — FISH_PER_CAP is the dominant dial and its desc
+// carries the sweep). The broken phantom-fish class this gate exists to catch
+// reads 84%+.
 {
   let fishSum = 0, supplySum = 0, majFishPop = 0, popSum = 0;
   for (const s of world.settlements) {
@@ -548,8 +556,8 @@ const st = peopleSimStats(world);
     if (sup > 0 && f / sup > 0.5) majFishPop += s.people || 0;
   }
   const share = supplySum > 0 ? fishSum / supplySum : 0;
-  score("fish share of food supply", `${(share * 100).toFixed(1)}%`, share <= 0.60, false,
-    `${(majFishPop / Math.max(1, popSum) * 100).toFixed(0)}% of population lives majority-fish [soft bar ≤60% pre-Tier-B]`);
+  score("fish share of food supply", `${(share * 100).toFixed(1)}%`, share <= 0.40, false,
+    `${(majFishPop / Math.max(1, popSum) * 100).toFixed(0)}% of population lives majority-fish [soft bar ≤40% Tier-B]`);
 }
 
 // ── 13. Continuity (hard gates) ──

@@ -80,7 +80,7 @@ const SETT_FIELDS = [
   "_homeland", "_homelandFell", "_sovereignSeat", "_integratedAt", "_conqueredAt",
   "_sackedAt", "_siegeAt", "_warAt", "_ambition",
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
-  "_coloniesSent", "_isColony", "_overlordCC",
+  "_coloniesSent", "_isColony", "_overlordCC", "_fisherFrac",   // fisher labor share (T.FISH_LABOR) — carries the boats-built ramp across ticks (_shoreTiles is static geography, recomputed lazily)
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
   "_diseaseLoad", "_contacted", "_virginUntil",   // endemic immunity load + virgin-soil (Columbian) contact state
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
@@ -110,7 +110,7 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
@@ -306,6 +306,7 @@ export function saveWorld(world, meta = {}) {
       // non-JSON values (-Infinity) in their defaults
       tileCapturedAt: sparseFromTyped(world._tileCapturedAt, -Infinity),
       soilFatigue: sparseFromTyped(world._soilFatigue, 0),
+      fishTaken: sparseFromTyped(world._fishTaken, 0),   // "the sea remembers" (T.FISH_LABOR, settlement.js) — taken fraction of each coastal stock
     },
     reserves,
     tables,
@@ -431,6 +432,8 @@ export function loadWorld(data, opts = {}) {
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);
     if (soil) world._soilFatigue = soil;                // "the land remembers" (settlement.js)
+    const fishT = typedFromSparse(data.maps.fishTaken, Float32Array, N, 0);
+    if (fishT) world._fishTaken = fishT;                // "the sea remembers" (T.FISH_LABOR, settlement.js)
     // The loyalty field (loyaltyField.js). Allegiance is the presence marker
     // (dense, always saved once the lever ran); the sparse memory arrays may
     // legitimately be all-default in a young world, so materialize them at
@@ -599,6 +602,8 @@ export function hashWorld(world) {
   // Presence-normalized: an unallocated lazy array hashes identically to an
   // allocated all-default one (sparse serialization drops empty arrays).
   { const sf = world._soilFatigue; for (let i = 0; i < world.N; i += 97) mixNum(sf ? sf[i] : 0); }
+  // fishTaken (T.FISH_LABOR) — coastal stock state; presence-normalized like soilFatigue.
+  { const ftk = world._fishTaken; for (let i = 0; i < world.N; i += 97) mixNum(ftk ? ftk[i] : 0); }
   { const ca = world._tileCapturedAt; let n = 0, sum = 0; if (ca) for (let i = 0; i < ca.length; i++) if (Number.isFinite(ca[i])) { n++; sum += ca[i]; } mixNum(n); mixNum(sum); }
   // The loyalty field (loyaltyField.js) — presence-normalized like the above:
   // an unallocated (lever-off) field hashes as all-defaults. Allegiance and the

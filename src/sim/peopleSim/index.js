@@ -8,7 +8,7 @@
 // from crystallisation, settler parties and overseas colonies.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL } from "./settlement.js";
+import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL, updateFishStocks, FISH_REGEN_INTERVAL } from "./settlement.js";
 import { aggregateFoodHierarchy } from "./foodHierarchy.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
@@ -243,6 +243,11 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step % SEA_INTERVAL === 7 % SEA_INTERVAL) updateSea(world);
     mark("sea");
     if (_at(SOIL_INTERVAL, 11)) updateSoil(world);   // rate pass: fatigue accrual per unit of HISTORY
+    // Coastal fish-stock regrowth (T.FISH_LABOR): exact logistic step, amortized.
+    // Plain tick modulo (NOT granularity-stretched): the drawdown in updateFood is
+    // a per-tick food flow like the rest of the granary ledger, so regrowth must
+    // share the same clock — and the exact step is interval-invariant anyway.
+    if (world.step % FISH_REGEN_INTERVAL === 13 % FISH_REGEN_INTERVAL) updateFishStocks(world);
     mark("soil");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
