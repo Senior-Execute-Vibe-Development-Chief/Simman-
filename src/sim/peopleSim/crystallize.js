@@ -231,9 +231,22 @@ const NATION_TECH_FLOOR         = 0.5;
 // system's mobile seats — ordu, not towns; conquest.js nomad path). A
 // legacy config without the population field keeps the old village-scale
 // births — there is no countryside substrate to concentrate from.
-const TOWN_FOUND_MIN            = 90;    // smallest founding a town entity may have (= URBAN_MIN_POP: a viable town seed)
-const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold first (~4× the founding — the town gathers a quarter of its basin)
+const TOWN_FOUND_MIN            = 90;    // smallest founding a town entity may have (= URBAN_MIN_POP: a viable town seed).
+                                         // ABSOLUTE by ruling (Tier-C C1 deflation audit): this is the number of real
+                                         // people who physically walk in and found the town — a per-community viability
+                                         // quantum (a town IS ~a hundred people, the urban-floor ruling), debited from
+                                         // the field 1:1, never a label's share of a census partition. Label supply
+                                         // cannot deflate it.
+const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold first (~4× the founding — the town gathers a quarter of its basin).
+                                         // Already a FIELD-MASS read (the B3 bar pattern). Under T.LABEL_BIRTH the bar
+                                         // is the lever T.LABEL_BAR (default = this same 360 anchor) and the read
+                                         // becomes basin-EXCLUSIVE — see the sweep.
 const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (×rn at the use site; = URBAN_CATCHMENT, one market catchment)
+// T.LABEL_BIRTH: the one spacing law — a new label must stand OUTSIDE every
+// existing label's market basin (basin exclusivity; spacing emerges from it).
+// Exported so state acts that mint labels elsewhere (sea colonies, sea.js)
+// read the same basin machinery for their site choice (survey §4 verdict).
+export function labelBasinR(world) { return TOWN_BASIN_R * rNormPop(world); }
 // A settlement spontaneously arising on a STATE'S land (its core or claimed
 // marches, world._countryOwner) is born INTO that state; one arising in genuine
 // wilderness is born INDEPENDENT (a new country). See the spawn block below.
@@ -248,7 +261,14 @@ const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (�
 // pattern: population pressure drives outward settlement, peacefully growing
 // the realm instead of waiting for spontaneous crystallisation or conquest.
 const COLONY_CHECK_INTERVAL   = 240;   // ticks between settler-party rolls (per parent)
-const COLONY_MIN_POP          = 200;   // need a town worth's people before splitting one off
+const COLONY_MIN_POP          = 200;   // need a town worth's people before splitting one off.
+                                       // ABSOLUTE by ruling (Tier-C C1 deflation audit): the bar prices a real
+                                       // demographic ACT — sending ≥25 settlers (COLONY_SEND_FRAC/CAP below)
+                                       // without gutting the sender — in the SAME census units the act debits.
+                                       // Under ONE_POP a label's census IS the people it governs; a community
+                                       // governing fewer people genuinely has fewer to send. Act frequency
+                                       // shifts with C1's census deflation (~×0.6-0.75 at the conservative
+                                       // supply step) — measured, not fudged per-site.
 const COLONY_PRESS_FRAC       = 0.85;  // counts as "pressed" at this fraction of carrying capacity
 const COLONY_SEND_FRAC        = 0.10;  // fraction of parent's population that leaves with the settler party
 const COLONY_SEND_CAP         = 80;    // max settlers per founding (a whole town doesn't depopulate)
@@ -393,6 +413,21 @@ export function maybeCrystallize(world) {
   const spMul = T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2)   // the model's GRANULARITY constant: how much countryside one town-region entity abstracts (see tuning.js REGION_SPACING)
               : 1;
   const rn = rNormFor(world);            // spacing in REAL distance, not tiles (RES_INVARIANT_POP)
+  // ── T.LABEL_BIRTH (Tier C phase 1): the SUPPLY is the field, not the quantum ──
+  // Under the lever the fixed spacing quantum below (hardFloor/softDist ×
+  // capacitySpacingMul — a spacing CONSTANT that pinned planet-wide entity
+  // count at ~90 at every grid) stops being consulted by the sweep. In its
+  // place: BASIN EXCLUSIVITY. A label owns its market basin (the TOWN_BASIN_R
+  // catchment — one market per catchment, the central-place law), so a
+  // candidate founds only where (a) no existing label's basin covers the site
+  // and (b) the site's OWN basin, counted net of the countryside neighbouring
+  // labels' basins already claim, holds the town bar (T.LABEL_BAR) of field
+  // people. Spacing then EMERGES: dense countryside packs labels at catchment
+  // spacing, sparse land holds none at all — density is the popField's, at any
+  // grid. Requires the field (a legacy config without popField keeps the
+  // quantum — there is no basin to read).
+  const labelBirth  = T.LABEL_BIRTH >= 1 && !!world.popField;
+  const rBasin      = TOWN_BASIN_R * rn;   // the basin claim radius, REAL distance
   const hardFloor   = HARD_FLOOR * spMul * rn;
   const softDist    = SOFT_DIST  * spMul * rn;
   const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
@@ -457,28 +492,37 @@ export function maybeCrystallize(world) {
       const tierBonus = 1 + (o.tier | 0);
       marketPull += tierBonus * Math.exp(-d / mktR);
     });
-    // Capacity-scaled spacing: a low-fertility site demands more elbow room,
-    // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
-    // while fertile valleys pack tight.
-    const capSp = capacitySpacingMul(f, hostilityAt(world, ty * world.tw + tx));
-    const onFlood = !!(world.tFlood && world.tFlood[ti]);
-    // The irrigated floodplain was a near-continuous chain of villages — denser than
-    // the farming-region abstraction assumes — so its spacing comes off the BASE floor,
-    // NOT the DISSOLVE/LOCALITY-doubled one (spMul), then FLOOD_SPACING_MUL packs it
-    // tighter still. Without the exemption spMul exactly cancels the dense-pack intent,
-    // leaving the floodplain at ordinary density (the Nile/Indus stayed a lone cradle).
-    const floodSp = onFlood ? FLOOD_SPACING_MUL : 1;
-    const baseFloor = onFlood ? HARD_FLOOR * rn : hardFloor;
-    const baseSoft  = onFlood ? SOFT_DIST  * rn : softDist;
-    const hf = baseFloor * capSp * floodSp, sd = baseSoft * capSp * floodSp;
-    if (nearestSq < hf * hf) continue;             // hard reject — overlap
-    // Linear ramp between hf and sd on actual distance (not squared, so it
-    // grows steeply near the floor and flattens out near the soft boundary —
-    // matches the "very close = bad, modest distance = mostly fine" pattern).
     let spacingFactor = 1;
-    if (nearestSq < sd * sd) {
-      const d = Math.sqrt(nearestSq);
-      spacingFactor = (d - hf) / (sd - hf);
+    if (labelBirth) {
+      // T.LABEL_BIRTH: basin exclusivity IS the spacing. An existing label
+      // within the market catchment already serves this countryside — the
+      // basin is CLAIMED, no second market coalesces inside it. No soft ramp,
+      // no capacity scaling: whether thin land holds a label at all is the
+      // basin BAR's question (below), not a spacing constant's.
+      if (nearestSq < rBasin * rBasin) continue;
+    } else {
+      // Capacity-scaled spacing: a low-fertility site demands more elbow room,
+      // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
+      // while fertile valleys pack tight.
+      const capSp = capacitySpacingMul(f, hostilityAt(world, ty * world.tw + tx));
+      const onFlood = !!(world.tFlood && world.tFlood[ti]);
+      // The irrigated floodplain was a near-continuous chain of villages — denser than
+      // the farming-region abstraction assumes — so its spacing comes off the BASE floor,
+      // NOT the DISSOLVE/LOCALITY-doubled one (spMul), then FLOOD_SPACING_MUL packs it
+      // tighter still. Without the exemption spMul exactly cancels the dense-pack intent,
+      // leaving the floodplain at ordinary density (the Nile/Indus stayed a lone cradle).
+      const floodSp = onFlood ? FLOOD_SPACING_MUL : 1;
+      const baseFloor = onFlood ? HARD_FLOOR * rn : hardFloor;
+      const baseSoft  = onFlood ? SOFT_DIST  * rn : softDist;
+      const hf = baseFloor * capSp * floodSp, sd = baseSoft * capSp * floodSp;
+      if (nearestSq < hf * hf) continue;             // hard reject — overlap
+      // Linear ramp between hf and sd on actual distance (not squared, so it
+      // grows steeply near the floor and flattens out near the soft boundary —
+      // matches the "very close = bad, modest distance = mostly fine" pattern).
+      if (nearestSq < sd * sd) {
+        const d = Math.sqrt(nearestSq);
+        spacingFactor = (d - hf) / (sd - hf);
+      }
     }
     // Market pull: 1.0 at zero pull (frontier), grows with proximity to
     // existing settlements weighted by their tier. Multiplied into the
@@ -705,14 +749,44 @@ export function maybeCrystallize(world) {
         const pf = world.popField;
         const rB = Math.round(TOWN_BASIN_R * rn);
         let basin = 0;
-        for (let dy = -rB; dy <= rB; dy++) {
-          const yy = ty + dy; if (yy < 0 || yy >= th) continue;
-          for (let dx = -rB; dx <= rB; dx++) {
-            if (dx * dx + dy * dy > rB * rB) continue;
-            basin += pf[yy * tw + (((tx + dx) % tw) + tw) % tw];
+        if (labelBirth) {
+          // T.LABEL_BIRTH — the basin read is the SUPPLY, and it is EXCLUSIVE:
+          // countryside already inside a neighbouring label's basin is THAT
+          // market's people and does not count toward this founding (two towns
+          // cannot both live off the same villagers — the same conservation
+          // the fieldShift debit enforces on the founders themselves). The
+          // spacing reject above guarantees no label is within rBasin, so
+          // claimants live in the [rBasin, 2·rBasin) ring.
+          const cl = [];
+          forEachNear(world, tx, ty, 2 * rBasin, (o) => { cl.push(o.pos); });
+          const rb2 = rBasin * rBasin, halfTw = tw / 2;
+          for (let dy = -rB; dy <= rB; dy++) {
+            const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+            for (let dx = -rB; dx <= rB; dx++) {
+              if (dx * dx + dy * dy > rB * rB) continue;
+              const xx = (((tx + dx) % tw) + tw) % tw;
+              const v = pf[yy * tw + xx];
+              if (!(v > 0)) continue;
+              let claimed = false;
+              for (let ci = 0; ci < cl.length; ci++) {
+                let ddx = Math.abs(cl[ci].x - (xx + 0.5)); if (ddx > halfTw) ddx = tw - ddx;
+                const ddy = cl[ci].y - (yy + 0.5);
+                if (ddx * ddx + ddy * ddy <= rb2) { claimed = true; break; }
+              }
+              if (!claimed) basin += v;
+            }
           }
+          if (basin < (T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN)) continue;
+        } else {
+          for (let dy = -rB; dy <= rB; dy++) {
+            const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+            for (let dx = -rB; dx <= rB; dx++) {
+              if (dx * dx + dy * dy > rB * rB) continue;
+              basin += pf[yy * tw + (((tx + dx) % tw) + tw) % tw];
+            }
+          }
+          if (basin < TOWN_BASIN_MIN) continue;
         }
-        if (basin < TOWN_BASIN_MIN) continue;
       }
       // (people drawn here, after the last reject, so the rng stream is unchanged)
       const roll = rng.int(8);
@@ -1093,7 +1167,14 @@ function sendSettlers(world, parent) {
     // Spacing check against existing settlements (grid-bounded near query — any
     // settled neighbour within the capacity-scaled spacing disqualifies the
     // site, so low-fertility frontier spreads its colonies far thinner).
-    const spacing = MIN_SETT_DIST * rNormFor(world) * capacitySpacingMul(fert[ti], hostilityAt(world, ti));
+    // T.LABEL_BIRTH: the colony stays a parent ACT (its people are carried, so
+    // no basin BAR applies — the party is its own founding population), but
+    // its SITE obeys the same basin-exclusivity law as every label: it must
+    // claim an unserved market catchment, not squeeze inside an existing one.
+    // The capacity-spacing quantum retires with the sweep's (survey §4).
+    const spacing = (T.LABEL_BIRTH >= 1 && world.popField)
+      ? TOWN_BASIN_R * rNormFor(world)
+      : MIN_SETT_DIST * rNormFor(world) * capacitySpacingMul(fert[ti], hostilityAt(world, ti));
     let tooClose = false;
     forEachNear(world, tx, ty, spacing, () => { tooClose = true; });
     if (tooClose) continue;
@@ -1254,6 +1335,13 @@ function maybePlantTowns(world) {
   // the state (colony supply from home), not by the land under it, so the
   // thin-soil frontier does not push it away as it would an organic
   // village. The flat floor only prevents stacking on a town.
+  // T.LABEL_BIRTH deliberately does NOT re-key this to the basin law: a march/
+  // charter town is a state ACT planted ON the line between towns by design
+  // (the measured note above: any isolation radius ≥6 killed ~90% of all
+  // candidates), state-provisioned rather than basin-fed — the same reasoning
+  // that already exempts plantations from the sweep's basin BAR extends to the
+  // basin CLAIM. Once planted it is an ordinary label and claims a basin of
+  // its own against future foundings.
   const spMul = T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2) : 1;
   const isoR = HARD_FLOOR * spMul * rn;
   const surveyR = PLANT_SURVEY_R * rn;

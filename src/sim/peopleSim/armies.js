@@ -39,7 +39,13 @@ import { forEachNear } from "./spatialGrid.js";
 // so a settlement that can't cover that food drains its granary and the army
 // DESERTS — you can't field more troops than you can feed. Coin upkeep is now
 // a small secondary cost (pay/equipment), not the binding constraint.
-const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11].map(f => f * 1.075);  // garrison cap as fraction of pop, by tier
+const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11].map(f => f * 1.075);  // garrison cap as fraction of pop, by tier.
+// Tier-C C1 deflation audit: a FRACTION, not an absolute bar — per-label
+// garrisons shrink as label supply divides the census, but label count rises
+// in step, so Σ garrison ≈ frac × Σ census stays supply-invariant; the
+// thresholds that consume garrisons are the 85th-percentile fortRef and the
+// smoothed median _musterRatio (below), both rank/median reads that
+// self-recalibrate with entity count (verified at the C1 flip, not re-anchored).
 const ARMY_CAPITAL_BONUS = 0.03 * 1.075;          // the capital fields a bit more
 // (TIER_FRAC and CAPITAL_BONUS ×1.075 re-anchor the 0.5-pivot aggressionArmyMul
 //  — personality.js; behaviour identical to the old 0.85+a·0.45 form)

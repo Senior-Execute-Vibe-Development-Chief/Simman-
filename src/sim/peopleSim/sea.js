@@ -46,6 +46,7 @@ import { expansionColonyMul } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { getPolity } from "./entities.js";
+import { labelBasinR } from "./crystallize.js";
 
 // Ship ids count up per world (world._nextShipId) — see the settlement-id
 // note in settlement.js for why module-scope counters are off limits.
@@ -786,8 +787,16 @@ function tryCharter(world, cid, info, shoreCand, prev) {
 function siteIsClear(world, lti) {
   const { tw } = world;
   const ty = (lti / tw) | 0, tx = lti - ty * tw;
+  // T.LABEL_BIRTH (Tier C phase 1): the colony stays a state/port ACT — its
+  // people are carried, no basin BAR — but its landing SITE obeys the same
+  // basin-exclusivity law as every label (survey §4): an unclaimed market
+  // basin, i.e. outside every existing label's TOWN_BASIN_R catchment, rather
+  // than the bespoke COLONY_MIN_DIST isolation constant.
+  const r = (T.LABEL_BIRTH >= 1 && world.popField)
+    ? labelBasinR(world)
+    : COLONY_MIN_DIST * rNormPop(world);
   let clear = true;
-  forEachNear(world, tx, ty, COLONY_MIN_DIST * rNormPop(world), () => { clear = false; });
+  forEachNear(world, tx, ty, r, () => { clear = false; });
   return clear;
 }
 

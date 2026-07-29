@@ -359,6 +359,17 @@ export function loadWorld(data, opts = {}) {
     if (!("TILE_POLITY" in tn)) T.TILE_POLITY = 0;
     if (!("CATCHMENT_CLIP" in tn)) T.CATCHMENT_CLIP = 0;
   }
+  // Regime guard (Tier-C C1, the v3 pattern): a v≤4 save was made when
+  // T.LABEL_BIRTH defaulted OFF, so it stores no delta for it — if the lever's
+  // default ever flips ON (with the SAVE_VERSION bump to 5 that flip requires),
+  // a naive load would silently continue the old world under basin-exclusive
+  // label supply AND under a frozen _onePopScale calibrated at the old label
+  // density (survey open question 4 — the bridge cannot re-calibrate). Keep
+  // such saves in their own regime unless they set the lever explicitly.
+  if (data.v < 5) {
+    const tn = data.tuning || {};
+    if (!("LABEL_BIRTH" in tn)) T.LABEL_BIRTH = 0;
+  }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
   const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });

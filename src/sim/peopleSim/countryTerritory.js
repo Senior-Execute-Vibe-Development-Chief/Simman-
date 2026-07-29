@@ -1877,11 +1877,18 @@ export function adoptAndFound(world) {
     if (_resF2c >= 0) return _resF2c;
     _resF2c = 0;
     if (T.BIRTH_FIELD > 0 && T.POP_FIELD && world.popField) {
-      let cenT = 0, pfT = 0;
-      for (const o of world.settlements) if (o.mode === "settled") cenT += o.people || 0;
-      const pfA = world.popField, Nn = world.N;
-      for (let ti2 = 0; ti2 < Nn; ti2++) if (elev[ti2] > 0) pfT += pfA[ti2];
-      if (cenT > 0 && pfT > 0) _resF2c = cenT / pfT;
+      if (T.LABEL_BIRTH >= 1 && T.ONE_POP && world._onePopScale > 0) {
+        // Tier-C C1 deflation guard: the FROZEN bridge, not the coverage-
+        // coupled cenT/pfT ratio — same disposition (and same reasoning) as
+        // nucleateFrontierStates' exchange rate below.
+        _resF2c = world._onePopScale;
+      } else {
+        let cenT = 0, pfT = 0;
+        for (const o of world.settlements) if (o.mode === "settled") cenT += o.people || 0;
+        const pfA = world.popField, Nn = world.N;
+        for (let ti2 = 0; ti2 < Nn; ti2++) if (elev[ti2] > 0) pfT += pfA[ti2];
+        if (cenT > 0 && pfT > 0) _resF2c = cenT / pfT;
+      }
     }
     return _resF2c;
   };
@@ -1925,6 +1932,14 @@ export function adoptAndFound(world) {
       const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
       const forestLk  = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen) * (1 - ironReady);
       const forestBar = NUCLEATE_SEAT_POP * (1 + T.STATE_FOREST * forestLk);
+      // Tier-C C1 deflation audit — kept ABSOLUTE here, recorded: this census
+      // read deflates ~×0.6-0.75 under LABEL_BIRTH's supply step, but its only
+      // effect is to make this wilderness SELF-founding fallback rarer — the
+      // strictly conservative (anti-confetti) direction, never a mis-fire
+      // toward bloom — and C2 (SEAT_FIELD, survey 4b) retires this path
+      // entirely (stateless non-capital cities stop self-founding). A frozen-
+      // bridge basin conversion here would build 4b's machinery one phase
+      // early for a branch about to be deleted.
       if (s.countryId < 0 && region < 0 && tierLockedCentre && co[ti] < 0
           && org >= T.ORG_STATE_MIN                       // the statecraft for territorial rule
           && (s.people || 0) >= forestBar) {              // and the people to clear+farm forest without iron
@@ -2134,13 +2149,28 @@ export function nucleateFrontierStates(world) {
   // what changed is WHOSE substance carries statehood — a lone town amid a dense
   // peopled valley founds the state its basin can carry, a cluster of towns on
   // empty land no longer manufactures one. 0 = the census cluster (byte-identical).
-  let f2c = 0;
+  let f2c = 0, f2cBridge = false;
   if (T.BIRTH_FIELD > 0 && T.POP_FIELD && world.popField && world._countryOwner) {
-    let cenT = 0, pfT = 0;
-    for (const s of world.settlements) if (s.mode === "settled") cenT += s.people || 0;
-    const pfA = world.popField, elevA = world.elev, Nn = world.N;
-    for (let ti = 0; ti < Nn; ti++) if (elevA[ti] > 0) pfT += pfA[ti];
-    if (cenT > 0 && pfT > 0) f2c = cenT / pfT;
+    if (T.LABEL_BIRTH >= 1 && T.ONE_POP && world._onePopScale > 0) {
+      // ── Tier-C C1 DEFLATION GUARD (the survey's riskiest coupling) ──
+      // The cenT/pfT exchange rate below is coverage-COUPLED: cenT = Σ census
+      // = _onePopScale × (field inside label catchments), so scaling label
+      // supply moves the rate through catchment coverage even though the
+      // world's people never changed — the founding bar would silently re-
+      // price with entity count. Under LABEL_BIRTH the rate is the FROZEN
+      // ONE_POP bridge itself (persisted, a pure unit conversion between
+      // census units and field people — the B3 field-mass bar pattern): the
+      // bar keeps meaning "a basin holding what NUCLEATE_CLUSTER_POP census
+      // people weigh" at any label density. Not consulted lever-off
+      // (byte-identical), nor before the bridge freezes at ONE_POP activation.
+      f2c = world._onePopScale; f2cBridge = true;
+    } else {
+      let cenT = 0, pfT = 0;
+      for (const s of world.settlements) if (s.mode === "settled") cenT += s.people || 0;
+      const pfA = world.popField, elevA = world.elev, Nn = world.N;
+      for (let ti = 0; ti < Nn; ti++) if (elevA[ti] > 0) pfT += pfA[ti];
+      if (cenT > 0 && pfT > 0) f2c = cenT / pfT;
+    }
   }
   const cand = [];
   for (const s of world.settlements) {
@@ -2177,7 +2207,20 @@ export function nucleateFrontierStates(world) {
     const capMul = (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
                  * (1 + T.STATE_FOREST * forestLocked)
                  / (1 + T.FRAGMENT * (s._rugged || 0));
-    if ((s.people || 0) < seatPop * capMul) continue;
+    // Tier-C C1 deflation guard, seat half: NUCLEATE_SEAT_POP reads s.people —
+    // under ONE_POP that is the label's CATCHMENT census, which divides among
+    // labels as C1 scales their supply (the same physical town reads smaller
+    // the denser the map — a rank artifact, not a viability fact). Under the
+    // frozen-bridge regime the seat-size read FOLDS INTO the basin-mass bar
+    // (clusterPop × capMul in frozen units, checked below over the same
+    // ground): the seat's viability lives on the LAND it would govern. What
+    // remains of the seat gate is what genuinely belongs to the seat — it is
+    // a settled TOWN (the urban floor: every label is born ≥ TOWN_FOUND_MIN
+    // and withers below 8), it has the statecraft (ORG_STATE_MIN above), and
+    // it LEADS its basin (isLeader below). "A lone town amid a dense peopled
+    // valley founds the state its basin can carry" — the BIRTH_FIELD intent,
+    // now unit-safe.
+    if (!f2cBridge && (s.people || 0) < seatPop * capMul) continue;
     let dCap = Infinity;                        // isolation from existing states' heartlands
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
     if (caps.length && dCap < capD2) continue;

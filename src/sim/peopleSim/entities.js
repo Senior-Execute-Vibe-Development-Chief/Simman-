@@ -32,6 +32,12 @@ export function politiesOf(world) {
 // Population scale for the admin-load size term — shared by the polity pass's
 // per-member load (conquest.js) and the adoption fisc test below, so both
 // price "how big is this community to govern" on the same ruler.
+// ABSOLUTE by ruling (Tier-C C1 deflation audit): the fisc comparison's
+// REVENUE side (people × capacity/Σpeople) is a ratio of census units and is
+// label-supply invariant; this LOAD-side scale enters only log2-compressed
+// (sizeMul = 1 + SIZE_LOAD·log2(1+people/SIZE_REF)), so C1's ~×0.6-0.75
+// census deflation moves the load term marginally (direction: slightly more
+// permissive adoption — measured in validation, not re-anchored per-site).
 export const SIZE_REF = 1000;
 
 /**
