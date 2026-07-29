@@ -138,3 +138,35 @@ All ledger passes are fixed-order integer scans + strictly ordered greedy (no rn
 ## COMPACT VERDICT
 
 **v3 as designed CLEARS the invariance bar in the probe table — but only because it abandoned half of the prescribed v3 direction.** Measured, same seed, 240/480/960: horizon-merged river-node skeleton **165/149/142** (D=5; 480↔960 −4.7%; second seed 158/139/141, +1.4%), D=10 sensitivity 70/63/66; anchorage skeleton **126/165/172** (480↔960 +4.2%; the 240 deficit is sub-pixel bays, the accepted representation-limit class); raw confluences at the absolute 60e3 km² bar 249/317/323 with **97.5%** position co-location 480↔960; union ledger **203 sites at 480**. The other half of the v2-prescribed direction — maxima of horizon-smoothed static terrain fields — is **refuted by the same table** (fert 36/35/**63**, pull-form 72/92/**181**, fractional kernel; worse with v2's integer kernel, which is itself a newly measured resolution leak): worldgen fields are not band-limited at the horizon scale, so *any* field-maxima law inherits grid texture — only network **topology** at absolute physical bars, quantized at the blessed horizon scale, survives. Demand-side fit: 93.6% of mature OFF labels and 99.9% of field population sit on/within the skeleton's horizon, so the law founds where the sim already proves towns belong; the honest residual is that only ~47% of the mature disk-census demand texture is skeleton-hosted, so v3 breaks the W4 pin invariantly (projected ON ≈ 105–203 vs the 78 pin at 480) but will not fully track the ~222 census until an interior-pocket class exists — which requires a band-limited worldgen texture contract first, named here as the recorded follow-up rather than patched with a fitted constant.
+---
+
+## C1 v3 FLIP VERDICT (2026-07-29) — supply PROVEN INVARIANT, but UNREACHABLE
+
+Measured (480/12k seed 8817): ON reaches 78 labels by step 2000 and then
+**freezes for 10k steps** — zero foundings, zero deaths — against the same
+78 the OFF pin produces. 128 of 206 bar-clearing sites stand free: 51 on
+dead ground (fert), 8 areaFert, and ~66 **transport-isolated** (median 43
+tiles to the nearest settlement, far beyond FRONTIER_EXTEND_DIST /
+COLONY_MIN_RANGE = 28). Stylized ON 1/3 seeds (all misses quiet-world
+softs). The invariance arm PASSED decisively (960 ON = −2.6% of 480 ON at
+matched development; v2's texture-acceleration signature gone) and the
+site ledger itself passed its §3 bars on both seeds (union 178/207/205 and
+170/205/208 at 240/480/960; position match 94–97%).
+
+**The diagnosis — three falsifications now say three different things:**
+v1 failed on GEOMETRY (fixed radius = a spacing constant), v2 failed on
+RESOLUTION (smoothed-field attractors are grid texture), v3's supply law
+is geometrically and resolutionally sound and fails on **REACHABILITY**:
+quantizing foundings to the skeleton removes the intermediate random-tile
+creep by which the old sweep crossed deserts and mountains, and the
+frontier act machinery (FRONTIER_EXTEND_DIST, the independence distance,
+census-priced act bars at the frozen ONE_POP bridge) cannot hop
+site-to-site distances.
+
+**Therefore the next attempt is NOT a fourth siting geometry.** The
+binding constraint has moved into the frontier ACT ECONOMICS — how a
+people crosses an empty gap to reach a viable site (relay/staging,
+distance-priced expedition cost against real terrain, or a migration-led
+settling that the field already models). That is its own mechanism design,
+and it is where C1 resumes. Recorded, with the ledger shipped dormant and
+byte-identical off (hashes unchanged: 18ad7c15/256a490b, 3811ccd8/43a9f644).
