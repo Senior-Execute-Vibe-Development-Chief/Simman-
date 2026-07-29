@@ -64,3 +64,16 @@ Ranked against the repo's own scars:
 5. PASTORAL: fold grazeTiles into the field form at C2 (natural — it already reads _terrWorkTiles, settlement.js:2655) or defer? It touches the W6-D nomad calibration.
 6. C2 vs the ERA_PROD legacy arm: the byte-identical A/B convention (ERA_PROD_SCALE pattern) implies keeping the ledger formula as the FOOD_FIELD=0 arm indefinitely — confirm the owner wants the dual-arm maintenance cost or a sunset after the 5-seed battery.
 7. Whether C1 should also subsume capitalTransportCosts (conquest.js, ≈2.4s/polity firing at 30k/960 — the other big edge-cost customer) onto the same incremental partition machinery — likely yes, but it is political, not economic, and belongs to a sibling lane.
+## C1 v1 FLIP VERDICT (2026-07-29) — REJECTED at real grids; v2 direction
+
+Measured (probe_entitysupply, 480x12k seed 8817): lever-ON 29 entities vs
+OFF 78; ON captures 13% of the 218 bar-clearing basins vs OFF's 35%;
+nn spacing 11.6 ref-tiles ON vs 5.3 OFF; coverage 21.6% vs 59.1%; stylized
+lever-ON 0/3 seeds. Root cause: exclusivity at the FIXED TOWN_BASIN_R (10
+ref-tiles) is itself a spacing constant — wider than the old floor — so the
+v1 mechanism inverts the intent. The deflation guard and byte-identity all
+held; the lever ships OFF and dormant. v2 direction: the exclusive claim
+must be the basin a label actually COMMANDS — watershed cells around local
+maxima of the (smoothed) population field, above the bar in MASS — whose
+count scales with density by construction; a dense valley packs many
+adjacent basins, a sparse steppe few.
