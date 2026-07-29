@@ -151,3 +151,89 @@ structure; raw per-tile pf noise does not), or derive site structure from
 the res-invariant terrain fields directly — and re-run this battery
 unchanged. Byte-identity lever-off held through every edit (320:
 18ad7c15/256a490b; 480: 3811ccd8/43a9f644); npm test PASS.
+
+## C1 v3 FLIP VERDICT (2026-07-29) — the MARKET-SITE LEDGER is INVARIANT
+## but the frontier cannot WALK it; ships default OFF; the supply freeze is
+## a site-graph REACHABILITY finding, not a count ceiling
+
+WHAT SHIPPED (T.LABEL_BIRTH re-keyed, still default 0; docs/design-c-
+siting-ledger.md implemented faithfully): supply from the drainage/coast
+SKELETON — river confluences/mouths/terminal sinks at riverGen's absolute
+CATCH_TRIB=60e3 km² discharge-equivalent bar (sinks at the market bar, OQ2)
+plus best-anchorage-per-coast-stretch (SHELTER_MIN=0.30 local maxima of the
+R/2 half-disk land fraction, fractional-edge disk per the v2 kernel
+erratum), greedy keep-largest quantized at SITE_MERGE_D=TOWN_BASIN_R/2;
+cells = nearest-site Euclidean within one horizon, one label per cell,
+claims from live labels at CRYSTAL_INTERVAL staleness; activation = cell
+mass ≥ T.LABEL_BAR through the sweep's EXISTING probability machinery at
+the site tile (spacingFactor≡1); founding the conserved act AT the site;
+daughters/sea site through the ledger (fail-and-wait, OQ4; sea landings
+snap to the harbor site); plantations exempt-but-claiming; geoBonusFor
+reused as-is (OQ3); v2's watershed machinery demoted to instruments with
+the fractional kernel; labelBasin* API 1:1; nothing persists (ledger/cell/
+claim rebuild at load proven byte-exact). Ledger invariance measured and
+committed as tools/probe_sitesupply.mjs (240/480/960 × 8817/4242): union
+178/207/205 and 170/205/208; 480↔960 rivers −9.4/−7.2%, anchorages
++9.6/+9.6%, union −1.0/+1.5%, position match 94.1/96.6% — PASS the §3
+bars; 240 carries the accepted representation deficit (bays −31%).
+
+MEASURED (probe_entitysupply, seed 8817, shipped law):
+  480x12k  OFF: entities 78 (the pin, verbatim v2 numbers — OFF path
+           byte-identical: 320 hashbase 18ad7c15/256a490b, 480
+           3811ccd8/43a9f644, npm test PASS). ON: entities 78 BY STEP
+           2000 — the ledger sweep activates the whole cradle-reachable
+           site set almost immediately (OFF needs 12k steps to creep to
+           the same count) — then FREEZES: zero foundings and zero
+           deaths for 10,000 steps. 128 of 206 bar-clearing sites stay
+           free at 12k: 51 stand on dead ground (fert<MIN_FERT — mouths
+           and sinks in desert), 8 fail areaFert, and ~66 are transport-
+           isolated (td>INDEPENDENT_DIST, median 43 tiles to the nearest
+           settlement — beyond FRONTIER_EXTEND_DIST and COLONY_RANGE),
+           while the census-gated acts that could bridge (daughters at
+           COLONY_MIN_POP=200, sea parties, plantations at 500) never
+           fire at this development. nn 5.8 cv 0.24 (vs OFF 5.3/0.32),
+           srv 92.8%, pfTot 8.3M vs OFF 9.5M, drift 9.2% final (32.8%
+           spike at the burst), ms/tick 9.30 vs OFF 9.23.
+  960x6k   ON: 76 entities, frozen from 2k — within −2.6% of 480 ON at
+           matched pfTot, nn 6.0 ref-tiles ≈ 480's 5.8: the v2 failure
+           signature (101 and ACCELERATING on grid texture) is GONE. The
+           law is resolution-invariant end to end; what it is not, at
+           this machinery, is reachable.
+  stylized lever-ON (21k, 480, 3 seeds): 1/3 — 8817 PASS (2 soft, at
+           budget); 4242 3 soft, 777 4 soft (0 hard anywhere; the misses
+           are all quiet-world softs — wars ~0, few fallen polities, few
+           big cities — the frozen-supply signature; 4242 sits ON the
+           budget knife-edge: a one-site ledger perturbation flips it).
+  empires  lever-ON (12k, 480, lean): realms 21→32 rising, no shatters,
+           no captures, 1-member 100% (young-realm norm), no confetti.
+  roundtrip deep ON 14k: byte-identical both seeds; ledger/cell/claim
+           rebuild EXACT across save→load; post-load CONTINUATION phase
+           drift is the standing lever-off class (OFF control diverges
+           identically — unpersisted warm-cache refresh phases).
+
+VERDICT: ships default OFF. The 480/12k flip bar (materially exceeds OFF,
+≥1.5× the 78 pin ⇒ ≥117, invariant across grids) fails at exactly ON=78 =
+1.0× OFF — but the FAILURE MODE is new and diagnostic. v1 failed on
+geometry (a spacing constant), v2 on resolution (grid-textured supply);
+v3's supply is proven invariant (arm 2 and probe_sitesupply) and the
+freeze is REACHABILITY: founding sites are now quantized to the skeleton,
+so the wave of advance — calibrated to creep tile-by-tile through
+contiguous countryside (FRONTIER_EXTEND_DIST=28, connected-donor
+td≤INDEPENDENT_DIST, colony census bars) — cannot hop the desert/mountain/
+sea gaps between site clusters that random-tile creep used to fill with
+intermediate villages. The OFF world reaches its 78 BY that creep; the ON
+world reaches the same 78 in 2k steps and then has no legal move: the
+demand side is never the binding constraint again (205 of 206 sites clear
+the 360 bar by 12k), the ACT side is. The recorded follow-ups, in order of
+leverage: (1) the census-deflation of act bars at this development
+(_onePopScale ≈ 0.001 prices COLONY_MIN_POP=200 at ~200k field people — a
+frozen-bridge consequence the deflation audit anticipated for THRESHOLDS
+but which here gates the only channels that can extend the frontier);
+(2) the interior-pocket candidate class (§7.1, unchanged — 47% of demand
+texture off-skeleton awaits band-limited worldgen texture); (3) C1-shed
+cost-basin cells (§8.5) whose cost metric would let sites bind across
+barriers honestly. Do NOT widen FRONTIER_EXTEND or soften the act bars to
+force the flip — those are real mechanisms priced in real units; the
+missing system is the frontier's own act economics at site-graph
+distances. Byte-identity lever-off held through every edit; npm test
+PASS; all seven acceptance arms recorded in the v3 commit.

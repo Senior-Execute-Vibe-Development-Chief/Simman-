@@ -9,14 +9,17 @@
 //
 // Channels per checkpoint:
 //   • entities: settled count (by tier), camps/stateless, realm count
-//   • the FIELD-SIDE SUPPLY, two reads:
+//   • the FIELD-SIDE SUPPLY, three reads:
 //       disks — greedy disjoint-centre TOWN_BASIN_R disks per bar (the v1
 //       instrument, kept for continuity with the v1 verdict's 218 number);
-//       wshed — the v2 law's OWN census (crystallize.js labelBasinCensus):
-//       watershed basins of the horizon-smoothed popField clearing each mass
-//       bar, with how many a label already claims — claimed/total at the
-//       founding bar is the law's direct supply-uptake measure, and total is
-//       its ATTRACTOR ceiling (the number the v2 verdict turns on)
+//       wshed — v2's watershed census (crystallize.js labelBasinCensus,
+//       instrument-only since v3): attractor basins of the horizon-smoothed
+//       popField per mass bar with claim counts — the number the v2 verdict
+//       turned on, kept for cross-version continuity;
+//       sites — the v3 LAW's own census (siteLedgerCensus): ledger sites by
+//       class (conf/mouth/sink/bay) with claim counts, plus how many clear
+//       the activation bar — claimed/total sites is the v3 supply-uptake
+//       channel (design-c-siting-ledger.md arm 1)
 //   • srv% — share of field population within one market horizon of a label
 //     (labelServiceCensus): the service-coverage measure that exposed the
 //     covering-constraint dead end (96% served by 32 labels at 240/12k)
@@ -32,7 +35,7 @@
 //   SIM_TUNE="LABEL_BIRTH=1" for the lever-on arm (OFF is the pin baseline).
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
-import { labelBasinCensus, labelServiceCensus } from "../src/sim/peopleSim/crystallize.js";
+import { labelBasinCensus, labelServiceCensus, siteLedgerCensus } from "../src/sim/peopleSim/crystallize.js";
 import { T, rNormPop } from "../src/sim/peopleSim/tuning.js";
 
 const W = +(process.argv[2] || 480), H = W >> 1;
@@ -133,11 +136,16 @@ for (let t = CKPT; t <= STEPS; t += CKPT) {
   const bars = [T.LABEL_BAR > 0 ? T.LABEL_BAR : 360, 2000, 5000, 20000];
   const supply = basinSupply(world, bars);
   const tB = performance.now();
-  const wshed = labelBasinCensus(world, bars);    // v2 watershed census (pure — no world cache touch)
+  const wshed = labelBasinCensus(world, bars);    // v2 watershed census (instrument — no world cache touch)
   const basinMs = performance.now() - tB;
   const svc = labelServiceCensus(world);          // horizon service coverage (pure)
+  const sled = siteLedgerCensus(world, bars[0]);  // v3 ledger census (claims computed fresh)
   const nn = nnStats(setts, world.tw);
-  rows.push({ step: world.step, n: setts.length, pfTot, supply, wshed, svc });
+  rows.push({ step: world.step, n: setts.length, pfTot, supply, wshed, svc, sled });
+  const sledStr = sled
+    ? `sites=${sled.claimed}/${sled.K} bar:${sled.overBar}(free ${sled.freeOverBar}) ` +
+      `[${["conf", "mouth", "sink", "bay"].map((c) => `${c[0]}:${sled.byClass[c] ? `${sled.byClass[c].claimed}/${sled.byClass[c].n}` : "0/0"}`).join(" ")}]`
+    : "sites=n/a";
   console.log(
     `step ${String(world.step).padStart(6)}  entities=${String(setts.length).padStart(4)} ` +
     `(t1=${tiers[1]} t2=${tiers[2]} t3=${tiers[3]} stateless=${stateless}) realms=${realms.size}  ` +
@@ -145,6 +153,7 @@ for (let t = CKPT; t <= STEPS; t += CKPT) {
     `ΣsPeople=${(cenT / 1e6).toFixed(2)}M scale=${scale.toFixed(3)} drift=${(100 * drift).toFixed(2)}%  ` +
     `disks[${bars.join("/")}]=${supply.join("/")}  ` +
     `wshed[${bars.join("/")}]=${wshed ? wshed.map((o) => `${o.claimed}of${o.basins}`).join("/") : "n/a"} (${basinMs.toFixed(1)}ms)  ` +
+    `${sledStr}  ` +
     `srv=${svc && svc.tot > 0 ? (100 * (1 - svc.unserved / svc.tot)).toFixed(1) : "n/a"}%  ` +
     `nn=${nn.mean.toFixed(1)}±cv${nn.cv.toFixed(2)}  ${msTick.toFixed(2)}ms/tick`
   );
@@ -159,5 +168,6 @@ if (first && last && first !== last) {
   const dSup = last.supply[0] / Math.max(1, first.supply[0]);
   console.log(`[entitysupply] growth ${first.step}→${last.step}: entities ×${dN.toFixed(2)}, pfTot ×${dPf.toFixed(2)}, bar-disks ×${dSup.toFixed(2)} | final entities/bar-disks = ${(last.n / Math.max(1, last.supply[0])).toFixed(2)}` +
     (last.wshed ? ` | final wshed claimed/total at bar = ${last.wshed[0].claimed}/${last.wshed[0].basins}` : "") +
+    (last.sled ? ` | final sites claimed/total = ${last.sled.claimed}/${last.sled.K} (bar-clearing ${last.sled.overBar})` : "") +
     (last.svc && last.svc.tot > 0 ? ` | service coverage = ${(100 * (1 - last.svc.unserved / last.svc.tot)).toFixed(1)}%` : ""));
 }

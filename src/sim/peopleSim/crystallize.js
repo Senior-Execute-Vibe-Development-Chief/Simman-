@@ -32,6 +32,7 @@ import { forEachNear, gridAdd } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { T, rNormPop } from "./tuning.js";
 import { settleHostility } from "./habitability.js";
+import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -242,103 +243,160 @@ const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold
                                          // is the lever T.LABEL_BAR (default = this same 360 anchor) and the read
                                          // becomes basin-EXCLUSIVE — see the sweep.
 const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (×rn at the use site; = URBAN_CATCHMENT, one market catchment).
-                                         // Under T.LABEL_BIRTH this same real distance is the market-horizon SCALE of the
-                                         // watershed law below (the smoothing kernel's support diameter) — one constant,
-                                         // one physical meaning: the day's walk that binds a countryside to one market.
-// ── T.LABEL_BIRTH v2: the WATERSHED BASIN law (Tier C phase 1, second cut) ──
-// v1 made a label's exclusive claim a FIXED DISK of TOWN_BASIN_R around it,
-// with a founding's basin counted NET of neighbouring disks, and measured its
-// own refutation (docs/design-c-label-extraction.md "C1 v1 FLIP VERDICT"):
-// 29 entities vs 78 OFF at 480/12k, 13% of the 218-site census, uniform
-// spacing (nn cv 0.23), stylized 0/3 — a spacing constant in disguise. v2
-// derives the claim from the field itself: a label's exclusive basin is the
-// countryside that actually GRAVITATES to it —
-//   (a) popField is smoothed at the market-horizon scale: a separable box
-//       kernel whose support DIAMETER is TOWN_BASIN_R real distance (the
-//       devClim zone-smoothing idiom). The diameter, not the radius, is the
-//       horizon, because of what kernel merging MEANS: under a box of
-//       half-width h two population concentrations fuse into one attractor
-//       exactly when they lie within 2h of each other, so "two
-//       concentrations within one day's walk are ONE market's ground,
-//       farther apart they are distinct market sites" is the kernel with
-//       2h = R (smoothing at the FULL radius double-charges the horizon —
-//       measured: 30 vs 38 planet-wide attractors at 240/12k).
-//   (b) market SITES are the local maxima of the smoothed surface;
-//   (c) every tile ascends its steepest gradient to a maximum — a watershed
-//       PARTITION of the map into market basins. Deterministic: height is
-//       the strict total order (S, −tileIndex), so plateau ties break by
-//       index; resolution-invariant: the only length anywhere is the
-//       horizon, a real distance.
-//   (d) an existing label OWNS the basin its own tile ascends to (claimed);
-//       a founding fires only in an UNCLAIMED basin whose MASS (Σ popField
-//       over the basin's tiles) clears the bar (T.LABEL_BAR). Exclusivity is
-//       by construction — basins partition the land, so no villager is ever
-//       counted toward two markets (v1's net-of-neighbours crescents are
-//       gone with the disk they corrected for), and the whole countryside is
-//       always claimable by exactly one market each.
-// Daughter colonies and sea landings keep their state/parent ACTS but their
-// SITE obeys the same law (an unclaimed basin); state plantations keep their
-// flat anti-stacking floor (marches are planted ON the line between towns by
-// design — exempt from the basin economy like they already are from the
-// bar). Founding remains the conserved fieldShift ACT; dissolution stays
-// demographic wither + witnessed lapse — this law only says WHERE a market
-// may coalesce, never mints or destroys one.
-// HONEST MEASUREMENT (this branch's probes, 240/12k seed 8817 — the flip
-// gate re-measures at 480): the law's supply ceiling is the ATTRACTOR
-// TEXTURE of the demand field at horizon scale, and the mature countryside
-// between towns is smooth — 38 basins planet-wide clear the bar against 152
-// census sites and 90 sustained OFF labels. Two alternative exclusivity
-// geometries probed on this branch fare no better: siting seats only
-// outside every label's horizon disk is a COVERING constraint (96% of field
-// population served by 32 labels — pinned at 32, nn cv 0.21), and any
-// capture/threshold law without a geometric floor is saturated by the
-// mature field's density (the 360-people bar stops binding everywhere
-// settled). See the C1 v2 verdict addendum in
-// docs/design-c-label-extraction.md for the full decomposition.
-// Mechanics: the partition is cached and rebuilt at most once per
-// CRYSTAL_INTERVAL (a perf cadence — how often the same law refreshes,
-// never whether history may happen; label deaths unclaim at the next
-// rebuild); labels minted mid-pass claim their basin live (labelClaimBasin —
-// the gridAdd discipline, on basins). One separable sliding-window box sum +
-// one 8-neighbour pointer pass + one path-compression sweep, all O(N);
-// measured in tools/probe_entitysupply.mjs. Nothing here persists (rebuilt
-// from popField on first use after load — the transportDist re-warm
-// semantics) and nothing here runs lever-off.
-const BASIN_REFRESH = CRYSTAL_INTERVAL;   // partition staleness bound, steps (perf cadence)
+                                         // Under T.LABEL_BIRTH this same real distance is the market HORIZON of the
+                                         // site-ledger law below (the cell's activation-mass radius AND the reach of a
+                                         // site's cell) — one constant, one physical meaning: the day's walk that binds
+                                         // a countryside to one market.
+// ── T.LABEL_BIRTH v3: the MARKET-SITE LEDGER (Tier C phase 1, third cut) ──
+// docs/design-c-siting-ledger.md — the measured foundation and the law. The
+// two dead geometries before it, both refuted ON THIS BRANCH (kept for the
+// record so v4 does not retread):
+//   v1 (fixed-disk exclusivity): a spacing constant in disguise — 29 entities
+//      vs 78 OFF at 480/12k, uniform nn, stylized 0/3 (v1 verdict addendum,
+//      docs/design-c-label-extraction.md).
+//   v2 (watershed of the horizon-smoothed popField): the supply ceiling is
+//      the demand field's ATTRACTOR TEXTURE, which is GRID-RESOLVED (38/82/
+//      113 bar-clearing basins at 240/480/960) — the law inherited a
+//      resolution dependence the invariance discipline forbids (v2 verdict
+//      addendum). Its kernel/watershed machinery survives BELOW as
+//      INSTRUMENTS ONLY (labelBasinCensus / labelServiceCensus — cross-
+//      version probe continuity), now with fractional edge weights (the v2
+//      erratum: integer rounding of the kernel half-width was itself a
+//      resolution leak, ×1.9 count distortion on the same field).
+// v3 splits supply from demand along the line the siting-ledger probes
+// proved: STRUCTURE SUPPLIES, POPULATION ACTIVATES, EXCLUSIVITY IS A
+// PARTITION.
+//   THE SITE LEDGER (static candidate supply — buildSiteLedger): market
+//     sites are read off the drainage/coast SKELETON, the one measured
+//     resolution-invariant source (field maxima of ANY worldgen field are
+//     grid-textured — worldgen is not band-limited at the horizon scale):
+//     • Class N — river nodes (the PIXEL flow tree, worldRef.rivers):
+//       confluences (≥2 upstream branches each ≥ CATCH_TRIB = 60e3 km² of
+//       discharge-equivalent catchment — riverGen's own tributary bar),
+//       ocean mouths (≥ bar, next hop true ocean), terminal sinks (≥ bar,
+//       sealed terminus / inland-sea shore — the oasis / terminal-lake
+//       market, at the MARKET bar, not the TERMINAL_STRICT display multiple:
+//       trade geometry, design OQ2). Ranked by km².
+//     • Class H — anchorages (sim grid): near-shore sea tiles whose horizon
+//       HALF-disk (R/2 real) is ≥ SHELTER_MIN land — meaningful enclosure,
+//       excluding open-sea rocks and cape tips — local maxima under the
+//       strict order (shelter, −index), ranked by shelter: the best
+//       anchorage per stretch of coast.
+//     • THE QUANTIZER: one greedy keep-largest pass, Class N by rank then
+//       Class H by rank, rejecting within SITE_MERGE_D = TOWN_BASIN_R/2 real
+//       distance of any accepted site — the attractor half-support of the
+//       blessed v2 merge ruling (two features within half a horizon are one
+//       physical site). A mouth in a bay is one site (the mouth, which
+//       outranks). Measured (probe_sitesupply): river nodes 149/142 and
+//       anchorages 165/172 at 480/960 (±5%), ~203-site union at 480, 91–97%
+//       cross-grid position match — node counts of a tree thresholded in
+//       absolute km² are TOPOLOGICAL real quantities. Re-run the probe
+//       whenever worldgen's hydrology changes.
+//   THE CELL PARTITION (exclusivity): every tile belongs to its NEAREST
+//     ledger site (Euclidean real distance, ties by site rank) within one
+//     market horizon (TOWN_BASIN_R); land beyond every horizon is
+//     subsistence countryside — field-fed, unclaimable (the market-shed
+//     rule). ONE LABEL PER CELL: a cell is claimed iff a settled label
+//     stands in it; claims rebuild from the LIVE label set at the
+//     CRYSTAL_INTERVAL staleness (a perf cadence — label deaths lapse at the
+//     next rebuild: Jericho refounding for free) and are stamped live on
+//     mint (labelClaimBasin — the gridAdd discipline, on cells).
+//   ACTIVATION (demand): a site fires only when Σ popField over its cell
+//     (∩ horizon, by construction) ≥ T.LABEL_BAR — one O(N) gather per
+//     refresh, cheaper than v2's smooth+watershed rebuild — and then only
+//     through the sweep's EXISTING probability machinery evaluated at the
+//     site tile (quality, diffusion × pioneerTempo of the nearest donor,
+//     saturation damper, ×dt; spacingFactor ≡ 1 — exclusivity is the cell).
+//     A site on dead ground (fert < MIN_FERT) never fires spontaneously.
+//     Dense valleys activate wall-to-wall; sparse steppe cells never reach
+//     the bar; supply scales with real area through the skeleton and with
+//     density through activation. The ledger is static geography — the
+//     HISTORY is which sites live.
+// Founding stays the conserved ACT (TOWN_FOUND_MIN debited 1:1 from the
+// field, the ONE_POP credit, born-into-state gates verbatim), AT the site
+// tile — the demand overlay measured 93.6% of mature OFF labels already
+// within 5 ref-tiles of the skeleton, so snap-founding moves almost nothing.
+// Daughters and sea landings keep their act semantics but SITE through the
+// same three-function API (colonists land at harbors); no unclaimed site in
+// range = fail-and-wait (the v2 decline path, design OQ4). Plantations keep
+// their documented exemption (marches are forts, not markets — site-free)
+// but claim the cell they stand in. Nothing here persists — the ledger and
+// cells rebuild deterministically from worldgen at load (the same contract
+// that rebuilds w.rivers itself), claims rebuild from live labels — and
+// nothing here runs lever-off.
+// HONEST LIMIT (the design's flip decider, §7.1, recorded): ~47% of the
+// mature demand texture is diffuse rain-fed interior the skeleton does not
+// host — the interior-pocket candidate class needs a band-limited worldgen
+// texture contract before ANY field-maxima law can be invariant. Do not
+// paper over it with a lower bar or interior spacing quotas.
+const SHELTER_MIN   = 0.30;             // an anchorage's horizon half-disk is ≥30% enclosed by land
+                                        // (excludes open water and cape tips; deliberately below the
+                                        // straight-shore 0.5 because the RANKING, not the floor,
+                                        // selects — floors ≥0.45 measured LESS invariant: enclosure
+                                        // values grid-sharpen. The one NEW constant of the v3 law.)
+const SITE_MERGE_D  = TOWN_BASIN_R / 2; // DERIVED, not free: the attractor half-support of the v2
+                                        // kernel ruling (D=10 sensitivity measured — invariance does
+                                        // not ride on the choice)
+const CLAIM_REFRESH = CRYSTAL_INTERVAL; // claims/mass staleness bound, steps (perf cadence — how often
+                                        // the same read refreshes, never whether history may happen)
 
-/** The watershed partition, computed fresh (a pure read of popField).
- *  Returns { root: Int32Array(N) — basin id (its maximum's tile index) per
- *  tile; mass: Float64Array(N) — Σ popField of each basin, at its root }. */
+/** INSTRUMENT ONLY (since v3 — the market-site ledger below is the shipped
+ *  law; this v2 watershed machinery survives for cross-version probe
+ *  continuity, never on the supply path). The watershed partition, computed
+ *  fresh (a pure read of popField). Returns { root: Int32Array(N) — basin id
+ *  (its maximum's tile index) per tile; mass: Float64Array(N) — Σ popField
+ *  of each basin, at its root }. */
 function computeLabelBasins(world) {
   const { N, tw, th } = world;
   const pf = world.popField;
   const rn = rNormPop(world);
   // Merge-kernel half-width: support diameter 2h = the horizon (see (a)).
-  const r = Math.min(Math.max(1, Math.round(TOWN_BASIN_R * rn / 2)), (tw - 1) >> 1);
+  // FRACTIONAL edge weights (the v3 erratum): rounding h to an integer made
+  // the kernel's REAL support grid-dependent (round(2.5)=3 at rn=0.5 reads 14
+  // ref-tiles of support vs 11 at rn=1 — up to ×1.9 attractor-count
+  // distortion on the same field). The box now carries weight 1 on the inner
+  // integer core [−m..m] and weight frac(h) on the two edge taps ±(m+1), so
+  // the real support is exactly the horizon at any grid. At integer h (480:
+  // h=5; 960: h=10) fw=0 and this is bit-identical to the old integer kernel
+  // — the recorded v2 wshed numbers at those grids reproduce.
+  const hReal = Math.min(Math.max(1, TOWN_BASIN_R * rn / 2), (tw - 1) >> 1);
+  const m = Math.floor(hReal);
+  const fw = hReal - m;   // fractional edge weight (0 at integer h)
   // (a) separable box sum — x wraps (the map is a cylinder), y truncates at
   // the poles. Sliding windows in a fixed accumulation order: deterministic.
   const hS = new Float64Array(N);
   for (let y = 0; y < th; y++) {
     const row = y * tw;
     let acc = 0;
-    for (let dx = -r; dx <= r; dx++) acc += pf[row + ((dx + tw) % tw)];
-    hS[row] = acc;
+    for (let dx = -m; dx <= m; dx++) acc += pf[row + ((dx + tw) % tw)];
+    hS[row] = fw > 0 ? acc + fw * (pf[row + ((-m - 1 + tw) % tw)] + pf[row + ((m + 1) % tw)]) : acc;
     for (let x = 1; x < tw; x++) {
-      acc += pf[row + ((x + r) % tw)] - pf[row + ((x - r - 1 + tw) % tw)];
-      hS[row + x] = acc;
+      acc += pf[row + ((x + m) % tw)] - pf[row + ((x - m - 1 + tw) % tw)];
+      hS[row + x] = fw > 0 ? acc + fw * (pf[row + ((x - m - 1 + tw) % tw)] + pf[row + ((x + m + 1) % tw)]) : acc;
     }
   }
   const S = new Float64Array(N);
   const acc = new Float64Array(tw);
-  const yTop = Math.min(th - 1, r);
+  const yTop = Math.min(th - 1, m);
   for (let y = 0; y <= yTop; y++) { const row = y * tw; for (let x = 0; x < tw; x++) acc[x] += hS[row + x]; }
-  for (let x = 0; x < tw; x++) S[x] = acc[x];
+  if (fw > 0 && m + 1 < th) { const rowB = (m + 1) * tw; for (let x = 0; x < tw; x++) S[x] = acc[x] + fw * hS[rowB + x]; }
+  else for (let x = 0; x < tw; x++) S[x] = acc[x];
   for (let y = 1; y < th; y++) {
-    const yAdd = y + r, ySub = y - r - 1;
+    const yAdd = y + m, ySub = y - m - 1;
     if (yAdd < th) { const rowA = yAdd * tw; for (let x = 0; x < tw; x++) acc[x] += hS[rowA + x]; }
     if (ySub >= 0) { const rowS = ySub * tw; for (let x = 0; x < tw; x++) acc[x] -= hS[rowS + x]; }
     const row = y * tw;
-    for (let x = 0; x < tw; x++) S[row + x] = acc[x];
+    if (fw > 0) {
+      const rowEA = ySub >= 0 ? ySub * tw : -1, eB = y + m + 1, rowEB = eB < th ? eB * tw : -1;
+      for (let x = 0; x < tw; x++) {
+        let v = acc[x];
+        if (rowEA >= 0) v += fw * hS[rowEA + x];
+        if (rowEB >= 0) v += fw * hS[rowEB + x];
+        S[row + x] = v;
+      }
+    } else {
+      for (let x = 0; x < tw; x++) S[row + x] = acc[x];
+    }
   }
   // (b)+(c) steepest-ascent pointer per tile under the strict total order
   // height(i) = (S[i], −i): among the 8 neighbours take the highest; if it
@@ -382,43 +440,297 @@ function computeLabelBasins(world) {
   return { root: ptr, mass };
 }
 
-// The cached law: partition + claims. Claims are derived from the live label
-// set at every rebuild AND marked live (labelClaimBasin) when a label is
-// minted mid-pass, so same-pass acts see each other — the gridAdd
-// discipline, on basins.
-function _labelBasins(world) {
-  let b = world._labelBasins;
-  if (!b || b.N !== world.N || world.step - b.step >= BASIN_REFRESH || world.step < b.step) {
-    const { root, mass } = computeLabelBasins(world);
-    const claimed = new Uint8Array(world.N);
-    const tw = world.tw;
+// ── The market-site LEDGER + cell partition (the v3 law's static half) ──
+// Fixed scan order for the ≤1-tile land snap (pixel→sim coastal aliasing, and
+// an anchorage's shore tile): the tile itself, then the four cardinals, then
+// the diagonals — nearest first, deterministic.
+const SNAP_ORDER = [[0, 0], [0, -1], [-1, 0], [1, 0], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+function _snapToLand(world, x, y) {
+  const { tw, th } = world;
+  for (const [dx, dy] of SNAP_ORDER) {
+    const yy = y + dy; if (yy < 0 || yy >= th) continue;
+    const xx = (((x + dx) % tw) + tw) % tw;
+    if (isContinentalLand(world, yy * tw + xx)) return { x: xx, y: yy };
+  }
+  return null;
+}
+/** Build the market-site ledger + cell partition — a PURE, deterministic
+ *  read of static worldgen (the pixel flow tree + sim coast geometry; no
+ *  rng, strictly ordered greedy). Returns:
+ *    sites  — rank-ordered array of { x, y, ti, cls, v }: Class N (cls
+ *             "conf"/"mouth"/"sink", v = discharge-equivalent km²) then
+ *             Class H (cls "bay", v = shelter), greedy-quantized at
+ *             SITE_MERGE_D;
+ *    siteId — Int32Array(N): every tile within one market horizon
+ *             (TOWN_BASIN_R real) of a site → the NEAREST site's rank
+ *             (ties to the better rank); −1 = subsistence countryside
+ *             beyond every horizon (unclaimable, field-fed);
+ *    raw    — pre-quantizer candidate counts per class (probe channel).
+ *  opts.detail (probe-only) additionally returns the sorted candidate lists
+ *  candN/candH and the merge distance D, so tools/probe_sitesupply.mjs can
+ *  quantize each class ALONE for the §3 invariance table.
+ *  Exported for the probes (tools/probe_sitesupply.mjs — §3's invariance
+ *  table — and probe_entitysupply.mjs); the sim reads the cache below. */
+export function buildSiteLedger(world, opts = {}) {
+  const { N, tw, th, elev, tileRes } = world;
+  const rn = rNormPop(world);
+  const raw = { conf: 0, mouth: 0, sink: 0, bay: 0 };
+  // ── Class N: river nodes on the PIXEL flow tree (worldRef.rivers) ──
+  const candN = [];
+  const w = world.worldRef;
+  const rv = w && w.rivers;
+  if (rv && rv.flowDir && rv.flowAccum && (rv.km2PerAccum || 0) > 0 && w.elevation) {
+    const pw = w.width, ph = w.height, pe = w.elevation;
+    const { flowDir, flowAccum, drainsTerminal, km2PerAccum } = rv;
+    const bar = CATCH_TRIB / km2PerAccum;   // 60e3 km² of discharge-equivalent catchment, in accumulation units
+    // Upstream branches ≥ bar per pixel: one fixed-order pass along flowDir.
+    const upBig = new Uint8Array(pw * ph);
+    for (let pi = 0; pi < pw * ph; pi++) {
+      if (pe[pi] <= 0 || flowAccum[pi] < bar) continue;
+      const d = flowDir[pi];
+      if (d === 255) continue;
+      const px = pi % pw, py = (pi - px) / pw;
+      const ny = py + D8_DY[d];
+      if (ny < 0 || ny >= ph) continue;
+      const ni = ny * pw + ((px + D8_DX[d] + pw) % pw);
+      if (pe[ni] > 0 && upBig[ni] < 255) upBig[ni]++;
+    }
+    for (let pi = 0; pi < pw * ph; pi++) {
+      if (pe[pi] <= 0) continue;
+      const a = flowAccum[pi];
+      let cls = null;
+      if (a >= bar) {
+        const d = flowDir[pi];
+        if (d === 255) cls = "sink";   // sealed endorheic terminus
+        else {
+          const px = pi % pw, py = (pi - px) / pw;
+          const ny = py + D8_DY[d];
+          if (ny >= 0 && ny < ph && pe[ny * pw + ((px + D8_DX[d] + pw) % pw)] <= 0) {
+            // next hop is water: TRUE ocean = mouth; inland sea = the
+            // terminal-lake market (drainsTerminal encodes exactly this).
+            cls = drainsTerminal && drainsTerminal[pi] === 1 ? "sink" : "mouth";
+          }
+        }
+      }
+      if (!cls && upBig[pi] >= 2) cls = "conf";
+      if (!cls) continue;
+      raw[cls === "conf" ? "conf" : cls]++;
+      const px = pi % pw, py = (pi - px) / pw;
+      const st = _snapToLand(world, Math.min(tw - 1, (px / tileRes) | 0), Math.min(th - 1, (py / tileRes) | 0));
+      if (!st) continue;   // stranded past the 1-tile snap (islet/edge) — no market can stand
+      candN.push({ v: a * km2PerAccum, x: st.x, y: st.y, cls });
+    }
+  }
+  // ── Class H: anchorages on the sim grid ──
+  const candH = [];
+  {
+    const rH = (TOWN_BASIN_R / 2) * rn, rHy = Math.floor(rH), rH2 = rH * rH;
+    // Per-row prefix sums of the land mask (x wraps — the map is a cylinder).
+    const pref = new Int32Array((tw + 1) * th);
+    for (let y = 0; y < th; y++) {
+      const row = y * tw, prow = y * (tw + 1);
+      let acc = 0;
+      for (let x = 0; x < tw; x++) { if (elev[row + x] > 0) acc++; pref[prow + x + 1] = acc; }
+    }
+    const rowLand = (y, x0, x1) => {   // inclusive column span, wrapping
+      const prow = y * (tw + 1), tot = pref[prow + tw];
+      if (x1 - x0 + 1 >= tw) return tot;
+      const a = ((x0 % tw) + tw) % tw, b = ((x1 % tw) + tw) % tw;
+      return a <= b ? pref[prow + b + 1] - pref[prow + a] : (tot - pref[prow + a]) + pref[prow + b + 1];
+    };
+    // Shelter (land fraction of the R/2 real disk) for NEAR-SHORE sea tiles —
+    // a land tile in the 8-neighbourhood; the floor itself excludes open sea.
+    // FRACTIONAL boundary columns (the v3 erratum discipline, §4: integer
+    // truncation of a real support is a resolution leak — enclosure values
+    // grid-sharpen): each row's edge column at floor(h)+1 carries the real
+    // coverage weight h−floor(h), so the disk's support is exactly rH at any
+    // grid.
+    const shel = new Float32Array(N).fill(-1);
+    for (let y = 0; y < th; y++) {
+      const row = y * tw;
+      for (let x = 0; x < tw; x++) {
+        const i = row + x;
+        if (elev[i] > 0) continue;
+        let shore = false;
+        for (let dy = -1; dy <= 1 && !shore; dy++) {
+          const yy = y + dy; if (yy < 0 || yy >= th) continue;
+          const nrow = yy * tw;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            if (elev[nrow + ((((x + dx) % tw) + tw) % tw)] > 0) { shore = true; break; }
+          }
+        }
+        if (!shore) continue;
+        let land = 0, tot = 0;
+        for (let dy = -rHy; dy <= rHy; dy++) {
+          const yy = y + dy; if (yy < 0 || yy >= th) continue;
+          const rem = rH2 - dy * dy; if (rem < 0) continue;
+          const h = Math.sqrt(rem), half = Math.floor(h), fwc = h - half;
+          land += rowLand(yy, x - half, x + half);
+          tot += 2 * half + 1;
+          if (fwc > 0) {
+            const rowT = yy * tw;
+            const xl = rowT + ((((x - half - 1) % tw) + tw) % tw);
+            const xr = rowT + ((((x + half + 1) % tw) + tw) % tw);
+            land += fwc * ((elev[xl] > 0 ? 1 : 0) + (elev[xr] > 0 ? 1 : 0));
+            tot += 2 * fwc;
+          }
+        }
+        shel[i] = tot > 0 ? land / tot : 0;
+      }
+    }
+    // Local maxima under the strict order (shelter, −index), floor SHELTER_MIN.
+    for (let y = 0; y < th; y++) {
+      const row = y * tw;
+      for (let x = 0; x < tw; x++) {
+        const i = row + x, sv = shel[i];
+        if (sv < SHELTER_MIN) continue;
+        let isMax = true;
+        for (let dy = -1; dy <= 1 && isMax; dy++) {
+          const yy = y + dy; if (yy < 0 || yy >= th) continue;
+          const nrow = yy * tw;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const j = nrow + ((((x + dx) % tw) + tw) % tw);
+            const nv = shel[j];
+            if (nv < 0) continue;
+            if (nv > sv || (nv === sv && j < i)) { isMax = false; break; }
+          }
+        }
+        if (!isMax) continue;
+        raw.bay++;
+        const st = _snapToLand(world, x, y);
+        if (!st) continue;
+        candH.push({ v: sv, x: st.x, y: st.y, cls: "bay" });
+      }
+    }
+  }
+  // ── The quantizer: greedy keep-largest, rivers first, then bays ──
+  // Strict total orders (value desc, x asc, y asc): deterministic.
+  const byRank = (a, b) => (b.v - a.v) || (a.x - b.x) || (a.y - b.y);
+  candN.sort(byRank);
+  candH.sort(byRank);
+  const D = SITE_MERGE_D * rn, D2 = D * D;
+  const sites = [];
+  const accept = (c) => {
+    for (let i = 0; i < sites.length; i++) {
+      let dx = Math.abs(sites[i].x - c.x); if (dx > tw / 2) dx = tw - dx;
+      const dy = sites[i].y - c.y;
+      if (dx * dx + dy * dy < D2) return;
+    }
+    sites.push({ x: c.x, y: c.y, ti: c.y * tw + c.x, cls: c.cls, v: c.v });
+  };
+  for (const c of candN) accept(c);
+  for (const c of candH) accept(c);
+  // ── The cell partition: nearest site within one horizon ──
+  const siteId = new Int32Array(N).fill(-1);
+  const bestD2 = new Float64Array(N).fill(Infinity);
+  const R = TOWN_BASIN_R * rn, R2 = R * R, ry = Math.floor(R);
+  for (let k = 0; k < sites.length; k++) {
+    const sx = sites[k].x, sy = sites[k].y;
+    for (let dy = -ry; dy <= ry; dy++) {
+      const yy = sy + dy; if (yy < 0 || yy >= th) continue;
+      const rem = R2 - dy * dy; if (rem < 0) continue;
+      const half = Math.floor(Math.sqrt(rem));
+      const nrow = yy * tw;
+      for (let dx = -half; dx <= half; dx++) {
+        const i = nrow + ((((sx + dx) % tw) + tw) % tw);
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2[i]) { bestD2[i] = d2; siteId[i] = k; }   // strict <: ties keep the better rank (k ascending)
+      }
+    }
+  }
+  return opts.detail ? { sites, siteId, raw, candN, candH, D } : { sites, siteId, raw };
+}
+/** The cached ledger — static per world (a pure function of worldgen), so it
+ *  rebuilds only at load / world swap: the _floodTiles / transportDist
+ *  re-warm lifecycle. NOTHING persists. */
+export function labelSiteLedger(world) {
+  let L = world._siteLedger;
+  if (!L || L.N !== world.N) {
+    const { sites, siteId, raw } = buildSiteLedger(world);
+    L = world._siteLedger = { N: world.N, sites, siteId, raw };
+  }
+  return L;
+}
+// Claims + cell mass, from the LIVE label set + popField, at the
+// CRYSTAL_INTERVAL staleness (a perf cadence; label deaths lapse the claim at
+// the next rebuild — Jericho refounding); labels minted mid-pass stamp their
+// claim live (labelClaimBasin — the gridAdd discipline, on cells).
+function _siteClaims(world) {
+  const L = labelSiteLedger(world);
+  let c = world._siteClaims;
+  if (!c || c.K !== L.sites.length || world.step - c.step >= CLAIM_REFRESH || world.step < c.step) {
+    const K = L.sites.length, tw = world.tw, N = world.N, siteId = L.siteId;
+    const claimed = new Uint8Array(K);
+    const mass = new Float64Array(K);
+    const pf = world.popField;
+    if (pf) for (let i = 0; i < N; i++) { const k = siteId[i]; if (k >= 0) mass[k] += pf[i]; }
     for (const s of world.settlements) {
       if (s.mode !== "settled") continue;
       const ti = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
-      if (ti >= 0 && ti < world.N) claimed[root[ti]] = 1;
+      if (ti >= 0 && ti < N) { const k = siteId[ti]; if (k >= 0) claimed[k] = 1; }
     }
-    b = world._labelBasins = { N: world.N, step: world.step, root, mass, claimed };
+    c = world._siteClaims = { K, step: world.step, claimed, mass };
   }
-  return b;
+  return c;
 }
-const _basinTi = (world, tx, ty) => (ty | 0) * world.tw + ((((tx | 0) % world.tw) + world.tw) % world.tw);
-/** Is the market basin at (tx,ty) unclaimed by every existing label? The one
- *  siting law every label-minting act reads (sweep, daughters, sea landings —
- *  survey §4 verdict). Callers gate on T.LABEL_BIRTH && world.popField. */
+const _cellTi = (world, tx, ty) => (ty | 0) * world.tw + ((((tx | 0) % world.tw) + world.tw) % world.tw);
+/** Is (tx,ty)'s market cell open to a new label — within one horizon of a
+ *  ledger site AND unclaimed by every existing label? The one siting law
+ *  every label-minting act reads (sweep, daughters, sea landings — survey §4
+ *  verdict). Callers gate on T.LABEL_BIRTH && world.popField. */
 export function labelBasinFree(world, tx, ty) {
-  const b = _labelBasins(world);
-  return !b.claimed[b.root[_basinTi(world, tx, ty)]];
+  const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
+  return k >= 0 && !_siteClaims(world).claimed[k];
 }
-/** Field people the basin at (tx,ty) holds — the C1 supply read (the bar's
- *  mass). */
+/** Field people (tx,ty)'s cell holds (cell ∩ horizon by construction) — the
+ *  C1 activation mass. 0 beyond every horizon (subsistence countryside). */
 export function labelBasinMass(world, tx, ty) {
-  const b = _labelBasins(world);
-  return b.mass[b.root[_basinTi(world, tx, ty)]];
+  const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
+  return k >= 0 ? _siteClaims(world).mass[k] : 0;
 }
-/** Mark the basin at (tx,ty) claimed (a label was just minted in it). */
+/** Mark (tx,ty)'s cell claimed (a label was just minted in it). */
 export function labelClaimBasin(world, tx, ty) {
-  const b = _labelBasins(world);
-  b.claimed[b.root[_basinTi(world, tx, ty)]] = 1;
+  const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
+  if (k >= 0) _siteClaims(world).claimed[k] = 1;
+}
+/** The ledger site whose cell (tx,ty) belongs to (null beyond every horizon)
+ *  — the act-snap read: parties found AT the site tile, so labels stand on
+ *  their sites and claim reconstruction at load is exact. */
+export function labelSiteOf(world, tx, ty) {
+  const L = labelSiteLedger(world);
+  const k = L.siteId[_cellTi(world, tx, ty)];
+  return k >= 0 ? L.sites[k] : null;
+}
+/** Instrument read (probe_entitysupply / probe_sitesupply): the ledger
+ *  census — sites by class with claim counts, and how many clear the
+ *  activation bar (claimed/total at the bar is the law's direct
+ *  supply-uptake measure). PURE wrt the claims cache (fresh gather from live
+ *  labels + popField — safe to call lever-off; the static ledger cache is
+ *  shared, a pure function of worldgen). */
+export function siteLedgerCensus(world, bar) {
+  if (!world.popField) return null;
+  const L = labelSiteLedger(world);
+  const K = L.sites.length, N = world.N, tw = world.tw, siteId = L.siteId;
+  const mass = new Float64Array(K);
+  const pf = world.popField;
+  for (let i = 0; i < N; i++) { const k = siteId[i]; if (k >= 0) mass[k] += pf[i]; }
+  const claimed = new Uint8Array(K);
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const ti = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
+    if (ti >= 0 && ti < N) { const k = siteId[ti]; if (k >= 0) claimed[k] = 1; }
+  }
+  const byClass = {};
+  let nClaimed = 0, overBar = 0, freeOverBar = 0;
+  for (let k = 0; k < K; k++) {
+    const o = byClass[L.sites[k].cls] || (byClass[L.sites[k].cls] = { n: 0, claimed: 0 });
+    o.n++;
+    if (claimed[k]) { o.claimed++; nClaimed++; }
+    if (mass[k] >= bar) { overBar++; if (!claimed[k]) freeOverBar++; }
+  }
+  return { K, claimed: nClaimed, overBar, freeOverBar, byClass };
 }
 /** Instrument read (tools/probe_entitysupply.mjs): the watershed supply
  *  census — per mass bar, how many basins clear it and how many of those a
@@ -635,23 +947,33 @@ export function maybeCrystallize(world) {
   const spMul = T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2)   // the model's GRANULARITY constant: how much countryside one town-region entity abstracts (see tuning.js REGION_SPACING)
               : 1;
   const rn = rNormFor(world);            // spacing in REAL distance, not tiles (RES_INVARIANT_POP)
-  // ── T.LABEL_BIRTH (Tier C phase 1 v2): the SUPPLY is the field, not the quantum ──
+  // ── T.LABEL_BIRTH (Tier C phase 1 v3): the SUPPLY is the site ledger ──
   // Under the lever the fixed spacing quantum below (hardFloor/softDist ×
   // capacitySpacingMul — a spacing CONSTANT that pinned planet-wide entity
-  // count at ~90 at every grid) stops being consulted by the sweep. In its
-  // place: the SERVICE-HORIZON law (the engine above). A candidate founds
-  // only where (a) it stands on UNSERVED ground — beyond every existing
-  // market's day's walk — and (b) its own full catchment holds the town bar
-  // (T.LABEL_BAR) of field people. Density then expresses through packing:
-  // dense countryside seats markets to full horizon coverage (supply ∝ its
-  // viable area), sparse countryside fails the bar and stays field-peopled —
-  // supply follows the popField at any grid. Requires the field (a legacy
-  // config without popField keeps the quantum — there is no countryside
-  // substrate to read).
+  // count at ~90 at every grid) stops being consulted by the sweep, and the
+  // SWEEP ITSELF INVERTS (design §2c): instead of CANDIDATES_PER_SWEEP
+  // random tiles praying to land on viable ground, the pass iterates the
+  // LEDGER's unclaimed, bar-clearing sites (deterministic rank order) and
+  // rolls each with the SAME probability machinery evaluated at the site
+  // tile. O(K≈200) per pass instead of 120 random rejects; the flood-ribbon
+  // oversampling retires with the random draw (river sites ARE the valley).
+  // Density expresses through ACTIVATION (dense cells clear the bar, sparse
+  // never do), supply through the skeleton (∝ real drainage/coast
+  // structure). Requires the field (a legacy config without popField keeps
+  // the quantum — there is no countryside substrate to read).
   const labelBirth  = T.LABEL_BIRTH >= 1 && !!world.popField;
   const hardFloor   = HARD_FLOOR * spMul * rn;
   const softDist    = SOFT_DIST  * spMul * rn;
   const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
+  let siteCand = null;
+  if (labelBirth) {
+    const L = labelSiteLedger(world), sc = _siteClaims(world);
+    const bar = T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN;
+    siteCand = [];
+    for (let k = 0; k < L.sites.length; k++) {
+      if (!sc.claimed[k] && sc.mass[k] >= bar) siteCand.push(L.sites[k].ti);
+    }
+  }
   // NB (RES_INVARIANT_POP, measured): scaling THIS candidate count by rn² — the
   // dimensionally-obvious "founding pressure per real area" Phase-3 fix for the
   // 3-seed-systematic ~0.5× EARLY-population undershoot at 2× resolution — was
@@ -662,12 +984,15 @@ export function maybeCrystallize(world) {
   // cadence), so the rn²× per-tick cost (16× at full size) was unearned and it
   // was reverted per the I82 precedent. The early undershoot remains OPEN — see
   // docs/resolution-invariance-plan.md for the decomposition to run next.
-  for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
-    // Draw a share of candidates straight from the FLOODPLAIN ribbon so the arid
-    // river valley actually fills — the uniform random sweep almost never lands on
-    // a 1–5-tile-wide strip, which is why the Nile stayed empty despite being prime
-    // cropland. Everything downstream (river magnet, spacing, quality) is unchanged.
-    const ti = (nFlood && rng() < FLOOD_SAMPLE_FRAC) ? floodTiles[rng.int(nFlood)] : rng.int(N);
+  const nSweep = labelBirth ? siteCand.length : CANDIDATES_PER_SWEEP;
+  for (let i = 0; i < nSweep; i++) {
+    // OFF path: draw a share of candidates straight from the FLOODPLAIN ribbon so
+    // the arid river valley actually fills — the uniform random sweep almost never
+    // lands on a 1–5-tile-wide strip, which is why the Nile stayed empty despite
+    // being prime cropland. Everything downstream (river magnet, spacing, quality)
+    // is unchanged. ON path: the candidate IS the next unclaimed bar-clearing site.
+    const ti = labelBirth ? siteCand[i]
+      : (nFlood && rng() < FLOOD_SAMPLE_FRAC) ? floodTiles[rng.int(nFlood)] : rng.int(N);
     if (!isContinentalLand(world, ti)) continue;
     const f = fert[ti];
     if (f < MIN_FERT) continue;
@@ -715,13 +1040,12 @@ export function maybeCrystallize(world) {
     });
     let spacingFactor = 1;
     if (labelBirth) {
-      // T.LABEL_BIRTH v2: basin exclusivity IS the spacing — and the basin
-      // is the WATERSHED cell the field defines, not a fixed disk (the v1
-      // error). A candidate inside a basin some label already commands is
-      // that market's countryside — no second market coalesces there. No
-      // soft ramp, no capacity scaling, no radius on this path: whether the
-      // countryside can carry a market at all is the basin BAR's question
-      // (below), and how close two labels may stand is the DIVIDE's.
+      // T.LABEL_BIRTH v3: CELL exclusivity IS the spacing — one label per
+      // market cell, no soft ramp, no capacity scaling, no radius on this
+      // path. The site list was drawn unclaimed above; this re-check makes
+      // acts minted EARLIER THIS PASS visible (a daughter/plantation/sea
+      // landing that stamped a claim between the list build and this roll —
+      // the gridAdd discipline, on cells).
       if (!labelBasinFree(world, tx, ty)) continue;
     } else {
       // Capacity-scaled spacing: a low-fertility site demands more elbow room,
@@ -970,13 +1294,13 @@ export function maybeCrystallize(world) {
       const townScale = !rodeAway && !!world.popField;
       if (townScale) {
         if (labelBirth) {
-          // T.LABEL_BIRTH v2 — the basin read is the SUPPLY: the candidate's
-          // watershed basin (the market cell whose countryside would be this
-          // town's own) must hold the bar in MASS. Exclusive by construction
-          // — basins PARTITION the land, so no villager is ever counted
-          // toward two markets (the same conservation the fieldShift debit
-          // enforces on the founders themselves); v1's net-of-neighbours
-          // crescent arithmetic is gone with the disk it corrected for.
+          // T.LABEL_BIRTH v3 — the ACTIVATION bar: the site's cell (its
+          // exclusive countryside, cell ∩ horizon by construction) must hold
+          // the bar in MASS. Cells PARTITION the in-horizon land, so no
+          // villager is ever counted toward two markets — the same
+          // conservation the fieldShift debit enforces on the founders
+          // themselves. (The sweep pre-filtered on this; the act re-reads
+          // the same cached answer as its own guard.)
           if (labelBasinMass(world, tx, ty) < (T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN)) continue;
         } else {
           const pf = world.popField;
@@ -1357,6 +1681,50 @@ function sendSettlers(world, parent) {
   const rng = passRng(world, "settlers.site");
   const px = parent.pos.x | 0, py = parent.pos.y | 0;
   let best = null, bestQ = -Infinity;
+  if (T.LABEL_BIRTH >= 1 && world.popField) {
+    // T.LABEL_BIRTH v3: the colony stays a parent ACT — its people are
+    // carried, so no activation BAR applies (the party is its own founding
+    // population; virgin frontier cells hold no field mass and must stay
+    // colonisable) — but it SITES through the ledger: the party walks to the
+    // best UNCLAIMED market site in its existing range and founds AT it, so
+    // the label stands on its site (claim reconstruction at load is exact).
+    // No unclaimed site in range = fail-and-wait (the party simply isn't
+    // sent this roll — design OQ4). The capacity-spacing quantum retires
+    // with the sweep's (survey §4), and no radius replaces it (the v1
+    // error); the deterministic K≈200 site scan replaces the random annulus
+    // sample.
+    const L = labelSiteLedger(world);
+    const rnD = rNormFor(world);
+    const rMin = COLONY_MIN_RANGE * rnD, rMax = COLONY_RANGE * rnD;
+    const rMin2 = rMin * rMin, rMax2 = rMax * rMax;
+    for (let k = 0; k < L.sites.length; k++) {
+      const st = L.sites[k];
+      let ddx = Math.abs(st.x + 0.5 - parent.pos.x); if (ddx > tw / 2) ddx = tw - ddx;
+      const ddy = st.y + 0.5 - parent.pos.y;
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 < rMin2 || d2 > rMax2) continue;
+      const tx = st.x, ty = st.y, ti = st.ti;
+      if (ty < 1 || ty >= th - 1) continue;
+      if (!isContinentalLand(world, ti)) continue;
+      if (fert[ti] < MIN_FERT) continue;
+      if (!labelBasinFree(world, tx, ty)) continue;
+      let areaFert = 0;
+      for (let dy = -2; dy <= 2; dy++) {
+        const ny = ty + dy;
+        if (ny < 0 || ny >= th) continue;
+        for (let dx = -2; dx <= 2; dx++) {
+          const nx = ((tx + dx) % tw + tw) % tw;
+          const ni = ny * tw + nx;
+          if (elev[ni] > 0) areaFert += fert[ni];
+        }
+      }
+      if (areaFert < MIN_AREA_FERT) continue;
+      let q = fert[ti] * 1.5 + Math.min(2.0, areaFert * 0.1);
+      if (riverMag && riverMag[ti] >= 2) q += 1.0;
+      if (coast && coast[ti]) q += 0.4;
+      if (q > bestQ) { bestQ = q; best = { ti, tx, ty }; }   // strict >: ties keep the better site rank
+    }
+  } else {
   for (let i = 0; i < COLONY_CANDIDATES; i++) {
     // Sample a tile in an annulus around the parent: random angle, random
     // radius in [COLONY_MIN_RANGE, COLONY_RANGE] — in REAL distance (the rng
@@ -1372,15 +1740,7 @@ function sendSettlers(world, parent) {
     // Spacing check against existing settlements (grid-bounded near query — any
     // settled neighbour within the capacity-scaled spacing disqualifies the
     // site, so low-fertility frontier spreads its colonies far thinner).
-    // T.LABEL_BIRTH v2: the colony stays a parent ACT (its people are carried,
-    // so no basin BAR applies — the party is its own founding population), but
-    // its SITE obeys the same watershed law as every label: it must claim an
-    // UNCLAIMED market basin, not squeeze inside one an existing label
-    // commands. The capacity-spacing quantum retires with the sweep's
-    // (survey §4), and no radius replaces it (the v1 error).
-    if (T.LABEL_BIRTH >= 1 && world.popField) {
-      if (!labelBasinFree(world, tx, ty)) continue;
-    } else {
+    {
       const spacing = MIN_SETT_DIST * rNormFor(world) * capacitySpacingMul(fert[ti], hostilityAt(world, ti));
       let tooClose = false;
       forEachNear(world, tx, ty, spacing, () => { tooClose = true; });
@@ -1401,6 +1761,7 @@ function sendSettlers(world, parent) {
     if (riverMag && riverMag[ti] >= 2) q += 1.0;
     if (coast && coast[ti]) q += 0.4;
     if (q > bestQ) { bestQ = q; best = { ti, tx, ty }; }
+  }
   }
   if (!best) return;
   // Pay the demographic cost: a chunk of the parent's people leaves with
@@ -1544,13 +1905,14 @@ function maybePlantTowns(world) {
   // the state (colony supply from home), not by the land under it, so the
   // thin-soil frontier does not push it away as it would an organic
   // village. The flat floor only prevents stacking on a town.
-  // T.LABEL_BIRTH deliberately does NOT re-key this to the basin law: a march/
-  // charter town is a state ACT planted ON the line between towns by design
-  // (the measured note above: any isolation radius ≥6 killed ~90% of all
-  // candidates), state-provisioned rather than basin-fed — the same reasoning
-  // that already exempts plantations from the sweep's basin BAR extends to the
-  // basin CLAIM. Once planted it is an ordinary label and claims a basin of
-  // its own against future foundings.
+  // T.LABEL_BIRTH deliberately does NOT re-key this to the site-ledger law: a
+  // march/charter town is a state ACT planted ON the line between towns by
+  // design (the measured note above: any isolation radius ≥6 killed ~90% of
+  // all candidates), state-provisioned rather than cell-fed — marches are
+  // forts, not markets (design §2c). The same reasoning that already exempts
+  // plantations from the sweep's activation BAR extends to requiring a free
+  // SITE. Once planted it is an ordinary label and claims the cell it stands
+  // in (if any) against future foundings.
   const spMul = T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2) : 1;
   const isoR = HARD_FLOOR * spMul * rn;
   const surveyR = PLANT_SURVEY_R * rn;
@@ -1613,8 +1975,8 @@ function maybePlantTowns(world) {
     town.wealth = (town.wealth || 0) + PLANT_COST;
     town._integratedAt = world.step;
     gridAdd(world, town);
-    // Exempt from the basin LAW for siting (see above) — but once planted it
-    // is an ordinary label and its basin claim must be visible same-pass.
+    // Exempt from the ledger LAW for siting (see above) — but once planted it
+    // is an ordinary label and its cell claim must be visible same-pass.
     if (T.LABEL_BIRTH >= 1 && world.popField) labelClaimBasin(world, best.tx, best.ty);
     if (dbg) dbg.planted++;
     logEvent(world, "town.planted", {

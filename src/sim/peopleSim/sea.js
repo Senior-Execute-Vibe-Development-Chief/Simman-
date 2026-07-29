@@ -46,7 +46,7 @@ import { expansionColonyMul } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { getPolity } from "./entities.js";
-import { labelBasinFree, labelClaimBasin } from "./crystallize.js";
+import { labelBasinFree, labelClaimBasin, labelSiteOf } from "./crystallize.js";
 
 // Ship ids count up per world (world._nextShipId) — see the settlement-id
 // note in settlement.js for why module-scope counters are off limits.
@@ -787,12 +787,15 @@ function tryCharter(world, cid, info, shoreCand, prev) {
 function siteIsClear(world, lti) {
   const { tw } = world;
   const ty = (lti / tw) | 0, tx = lti - ty * tw;
-  // T.LABEL_BIRTH (Tier C phase 1 v2): the colony stays a state/port ACT — its
-  // people are carried, no basin BAR — but its landing SITE obeys the same
-  // watershed law as every label (survey §4): it must claim an UNCLAIMED
-  // market basin (see the watershed basin law in crystallize.js), rather than
-  // honour the bespoke COLONY_MIN_DIST isolation constant. Virgin coasts have
-  // no claimed basins — empty continents stay colonisable.
+  // T.LABEL_BIRTH (Tier C phase 1 v3): the colony stays a state/port ACT — its
+  // people are carried, no activation BAR — but its landing SITE obeys the
+  // market-site ledger (see crystallize.js): the shore it makes for must lie
+  // in an UNCLAIMED market cell (within one horizon of a ledger site — sea
+  // landings thereby target mouths/anchorages), rather than honour the
+  // bespoke COLONY_MIN_DIST isolation constant. The ledger is static
+  // geography, so virgin coasts carry unclaimed harbor sites — empty
+  // continents stay colonisable; a claimed or site-less shore = fail-and-wait
+  // (the fleet turns back, design OQ4).
   if (T.LABEL_BIRTH >= 1 && world.popField) return labelBasinFree(world, tx, ty);
   let clear = true;
   forEachNear(world, tx, ty, COLONY_MIN_DIST * rNormPop(world), () => { clear = false; });
@@ -826,7 +829,7 @@ export function moveShips(world) {
 
 function foundColony(world, sh) {
   const { tw } = world;
-  const ly = (sh.landTi / tw) | 0, lx = sh.landTi - ly * tw;
+  let ly = (sh.landTi / tw) | 0, lx = sh.landTi - ly * tw;
   // A settlement may have appeared on the target during the voyage. Rather than
   // delete the expedition (which would silently destroy its colonists AND their
   // coin endowment — both were already debited from the founder at launch, so
@@ -845,6 +848,14 @@ function foundColony(world, sh) {
       else home.wealth = (home.wealth || 0) + (sh.wealth || 0);
     }
     return;
+  }
+  // T.LABEL_BIRTH v3: the landing SNAPS to its cell's market site — the
+  // colonists land at the harbor (mouth/anchorage) that commands the shore
+  // they surveyed, and the label stands ON its site so claim reconstruction
+  // at load is exact. siteIsClear just proved the cell exists and is free.
+  if (T.LABEL_BIRTH >= 1 && world.popField) {
+    const st = labelSiteOf(world, lx, ly);
+    if (st) { lx = st.x; ly = st.y; }
   }
   const colony = makeSettlement(world, lx + 0.5, ly + 0.5, {
     people: sh.people,

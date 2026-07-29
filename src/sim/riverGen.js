@@ -2,8 +2,11 @@
 // D8 flow direction + priority-flood pit filling + flow accumulation.
 // Produces continent-scale rivers (Congo, Nile, Amazon scale).
 
-const D8_DX = [1, 1, 0, -1, -1, -1, 0, 1];
-const D8_DY = [0, 1, 1, 1, 0, -1, -1, -1];
+// Exported: the flow-tree consumers (the Tier-C market-site ledger walks
+// flowDir to find confluences/mouths/sinks) must share THIS direction
+// convention — re-declaring it would silently desynchronise on any edit.
+export const D8_DX = [1, 1, 0, -1, -1, -1, 0, 1];
+export const D8_DY = [0, 1, 1, 1, 0, -1, -1, -1];
 const D8_DIST = [1, 1.414, 1, 1.414, 1, 1.414, 1, 1.414];
 
 // Deterministic per-(tile,direction) hash — used to jitter flow choice so
@@ -55,7 +58,10 @@ const TRANS_LOSS = 0.30;
 // runoff-weighted (a wet catchment makes a bigger river than a dry one of equal area), so the
 // bar is expressed in km² and converted to flow-accumulation units via the mean land runoff.
 const CATCH_STREAM = 10e3;    // km² of drainage to read as a Stream — small, so the network BRANCHES densely (tributaries, headwaters) like the percentile model did, just resolution-invariantly
-const CATCH_TRIB   = 60e3;    // Tributary
+export const CATCH_TRIB = 60e3;   // Tributary. Exported: the Tier-C market-site ledger
+                                  // (crystallize.js) reuses THIS bar as its river-node
+                                  // threshold — a market node is a tributary-scale
+                                  // junction/mouth/terminus; one constant, one meaning.
 const CATCH_MAJOR  = 800e3;   // Major (Danube/Ganges scale) — unchanged: the corridor suppression lives here + TERMINAL_STRICT
 const CATCH_GREAT  = 2.4e6;   // Great (Nile/Congo/Amazon scale)
 const TERMINAL_STRICT = 2.5;  // closed-basin rivers need this × the catchment to show — only a genuinely large endorheic river (the Volga→Caspian) qualifies, not a transmission-lossed desert corridor
