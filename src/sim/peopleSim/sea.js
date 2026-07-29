@@ -46,7 +46,7 @@ import { expansionColonyMul } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { getPolity } from "./entities.js";
-import { labelBasinR } from "./crystallize.js";
+import { labelBasinFree, labelClaimBasin } from "./crystallize.js";
 
 // Ship ids count up per world (world._nextShipId) — see the settlement-id
 // note in settlement.js for why module-scope counters are off limits.
@@ -787,16 +787,15 @@ function tryCharter(world, cid, info, shoreCand, prev) {
 function siteIsClear(world, lti) {
   const { tw } = world;
   const ty = (lti / tw) | 0, tx = lti - ty * tw;
-  // T.LABEL_BIRTH (Tier C phase 1): the colony stays a state/port ACT — its
+  // T.LABEL_BIRTH (Tier C phase 1 v2): the colony stays a state/port ACT — its
   // people are carried, no basin BAR — but its landing SITE obeys the same
-  // basin-exclusivity law as every label (survey §4): an unclaimed market
-  // basin, i.e. outside every existing label's TOWN_BASIN_R catchment, rather
-  // than the bespoke COLONY_MIN_DIST isolation constant.
-  const r = (T.LABEL_BIRTH >= 1 && world.popField)
-    ? labelBasinR(world)
-    : COLONY_MIN_DIST * rNormPop(world);
+  // watershed law as every label (survey §4): it must claim an UNCLAIMED
+  // market basin (see the watershed basin law in crystallize.js), rather than
+  // honour the bespoke COLONY_MIN_DIST isolation constant. Virgin coasts have
+  // no claimed basins — empty continents stay colonisable.
+  if (T.LABEL_BIRTH >= 1 && world.popField) return labelBasinFree(world, tx, ty);
   let clear = true;
-  forEachNear(world, tx, ty, r, () => { clear = false; });
+  forEachNear(world, tx, ty, COLONY_MIN_DIST * rNormPop(world), () => { clear = false; });
   return clear;
 }
 
@@ -865,4 +864,7 @@ function foundColony(world, sh) {
   colony._overlordCC = sh.countryId;       // ...but a dependency of the founder (wired next polity pass)
   colony.wealth = sh.wealth || 0;
   colony._isColony = true;
+  // Same-pass basin claim (the gridAdd discipline, on basins): later landings
+  // this step must see this colony's market basin as taken.
+  if (T.LABEL_BIRTH >= 1 && world.popField) labelClaimBasin(world, lx, ly);
 }

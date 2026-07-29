@@ -47,7 +47,8 @@ for (const ck of [8000, 12000, 16000, 20000, STEPS]) {
     if (ev.type === "polity.shattered") shattered++;
   }
   const rows = [...tiles.entries()].map(([c, t]) => ({ c, t, mem: (members.get(c) || []).length })).sort((a, b) => b.t - a.t);
-  console.log(`\n=== step ${ck}: realms=${rows.length} claimed=${(100 * claimed / landN).toFixed(1)}% | global flows: captured=${[...gainWar.values()].reduce((x, y) => x + y, 0)} annexed=${[...gainAbsorb.values()].reduce((x, y) => x + y, 0)} seceded=${seceded} shattered=${shattered} ended=${ended}`);
+  const mem1 = rows.filter((r) => r.mem <= 1).length;   // confetti watch: 1-member realm share (Tier-C C1)
+  console.log(`\n=== step ${ck}: realms=${rows.length} (1-member ${mem1}=${rows.length ? (100 * mem1 / rows.length).toFixed(0) : 0}%) claimed=${(100 * claimed / landN).toFixed(1)}% | global flows: captured=${[...gainWar.values()].reduce((x, y) => x + y, 0)} annexed=${[...gainAbsorb.values()].reduce((x, y) => x + y, 0)} seceded=${seceded} shattered=${shattered} ended=${ended}`);
   for (const r of rows.slice(0, 5)) {
     const p = world.polities && world.polities.get(r.c);
     const mem = members.get(r.c) || [];

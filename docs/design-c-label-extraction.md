@@ -77,3 +77,77 @@ must be the basin a label actually COMMANDS — watershed cells around local
 maxima of the (smoothed) population field, above the bar in MASS — whose
 count scales with density by construction; a dense valley packs many
 adjacent basins, a sparse steppe few.
+
+## C1 v2 FLIP VERDICT (2026-07-29) — watershed law SHIPPED default OFF; the
+## supply ceiling is the demand field's ATTRACTOR TEXTURE, which is
+## grid-resolved — the step appears at 960, not at 480
+
+WHAT SHIPPED (T.LABEL_BIRTH, still default 0): v1's fixed-disk exclusivity
+replaced by the watershed basin law exactly per the v1 verdict's direction —
+popField smoothed by a box kernel whose support DIAMETER is TOWN_BASIN_R
+(the horizon is the MERGE distance: under a box of half-width h two
+concentrations fuse exactly when within 2h, so 2h = R; full-radius smoothing
+double-charges the horizon — measured 30 vs 38 attractors at 240/12k),
+market sites = local maxima, basins = steepest-ascent watershed
+(deterministic via the strict total order (S, −tileIndex); the only length
+is the horizon, a real distance), labels own the basin their tile ascends
+to, foundings fire only in an UNCLAIMED basin holding ≥ T.LABEL_BAR field
+people in MASS. Net-of-neighbours crescents gone; basin partition cached at
+CRYSTAL_INTERVAL staleness (perf cadence), claims stamped live on mint (the
+gridAdd discipline). Daughter/sea acts read the same law for siting;
+plantations keep their documented exemption; all v1 deflation guards,
+the persist regime guard, and the conserved founding ACT carried unchanged.
+
+ALTERNATIVE GEOMETRIES BUILT AND REFUTED ON THIS BRANCH (so v3 does not
+retread): (a) seats-outside-every-horizon-disk with the bar on UNSERVED
+mass is a COVERING constraint — 96.7% of field population served by 32
+labels at 240/12k, pinned at 32, nn cv 0.21 uniform; (b) seat-spacing ≥ R
+with the FULL-catchment bar (v1 minus crescents) converges to the same
+covering count dynamically (32 at 240/12k) — a hard seat exclusion at R
+can never pack to the census's overlapping-catchment density from a
+covering configuration; (c) any capture/threshold law without a geometric
+floor is saturated by the mature field (the 360-people bar stops binding
+everywhere settled — sub-tile viable spacing) and over-supplies without a
+new competition mechanism.
+
+MEASURED (probe_entitysupply, seed 8817, shipped law):
+  480x12k  OFF: entities 78, nn 5.3 cv 0.32, disks[360]=221, wshed
+           ceiling 82 basins (25 claimed), srv 93.6%, drift 2.2% final,
+           5.2→9.2 ms/tick.
+           ON:  entities 37 (rising ×1.76 over the back half — no plateau),
+           nn 5.1 cv 0.48, disks[360]=225, wshed ceiling 75 (21 claimed),
+           srv 81.3%, drift 6.6% final (mid-run spikes to 21%), pfTot 5.7M
+           vs OFF 9.5M (a leaner world: fewer labels → less catchment
+           economy), 3.0→4.9 ms/tick. Basin-law fresh compute 1.3-1.8 ms
+           at 480 (≤1/24 steps ⇒ ≤0.08 ms/tick amortized).
+  960x6k   OFF: entities 65 and flattening (48→61→65) at nn 11.0 tiles =
+           5.5 REF-tiles — the W4 pin: same real spacing, no area scaling.
+           ON:  entities 101 and ACCELERATING (47→71→101), nn 5.9 tiles =
+           2.9 REF-tiles, cv 0.69 (density-following), wshed ceiling 113
+           (45 claimed — headroom remains), srv 79%, 7.6→12.9 ms/tick
+           (basin compute 5.6-7.4 ms fresh ⇒ ≤0.3 ms/tick amortized).
+  stylized lever-ON (21k, 480): 8817 PASS (2 soft, at budget), 4242 PASS
+           (1 soft), 777 0 hard but 5 soft — EXCEEDS budget: 2/3 (v1: 0/3).
+  empires lever-ON (12k, 480, lean): realms 11→20 rising, no shatters, no
+           captures, claimed 0.8%, 1-member share 90% vs OFF's 100% at the
+           same horizon — the young-realm norm, no confetti.
+
+VERDICT: ships default OFF. The 480/12k flip criterion (ON must materially
+exceed OFF and track the ~218 census) fails decisively — not because of
+claim geometry (v1's error) but because the law's supply ceiling is the
+number of horizon-scale ATTRACTORS the smoothed demand field carries, and
+the mature countryside between towns is too smooth: 82 basins at 480
+against 221 census sites and 78 sustained OFF labels. The same law at 960
+BREAKS the W4 pin in the right direction (101 vs 65 at 6k, still rising,
+packing dense valleys at half the OFF real spacing) because the finer grid
+resolves more real texture into the field. That is the true finding: the
+watershed supply is attractor-texture-limited, and popField's texture is
+currently GRID-dependent, so the law inherits a resolution dependence the
+repo's invariance discipline forbids (the same Earth must carry the same
+towns at any grid). v3 direction: give the siting law a
+resolution-invariant source of market-site structure — either texture the
+demand field at real scales (works/fert/water carry real-distance
+structure; raw per-tile pf noise does not), or derive site structure from
+the res-invariant terrain fields directly — and re-run this battery
+unchanged. Byte-identity lever-off held through every edit (320:
+18ad7c15/256a490b; 480: 3811ccd8/43a9f644); npm test PASS.
