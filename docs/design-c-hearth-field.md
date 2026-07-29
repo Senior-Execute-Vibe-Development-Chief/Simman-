@@ -334,3 +334,178 @@ Same arms and the same bars C1 has been held to for three attempts. **Every pred
 **7. `TOWN_BASIN_R`'s comment is wrong (risk 8). Does the horizon want re-deriving, or just re-documenting?** If it is honestly "the granularity at which the sim represents urban places", it should be named that and its relationship to `REGION_SPACING` made explicit — at which point `T.LABEL_BAR = 360`, measured inert by 200×, is also revealed as decorative and should either be re-derived against the cell it actually reads or retired.
 
 **8. Do the New World realms need anything C2 does not already give them?** 51 realms were measured, many young and on late-developing continents. If they churn, is that the honest shape of a frontier (and therefore a finding), or is it the confetti scar in a new costume? Arm 7's flow channels should answer it, but the acceptance criterion for "healthy frontier churn" versus "confetti" is not currently written down anywhere, and this design will be the first to need it.
+---
+
+# IMPLEMENTATION ADDENDUM — arm 1 built and measured (branch `tierC/hearth-field`)
+
+**Status: BUILT, default OFF, byte-identical off. Scope = §1 only (`T.MULTI_HEARTH`:
+the pin pre-load, the `CRADLE_MIN_SEP` unit correction, the tier-floor deflation
+guard). §2 (`LABEL_BIRTH=2`) and §3 (`ACT_FIELD_POP`) are NOT built — the ledger is
+byte-untouched and `probe_sitesupply` re-runs identical. New instrument:
+`tools/probe_hearthsupply.mjs`; `tools/probe_entitysupply.mjs` gains the
+per-land-component / devField / census / flow channels the validation plan asks for.
+Every number below was produced on this branch, foreground and serial.**
+
+## The gate — byte-identity and smoke
+
+`probe_hashbase` 320 = **18ad7c15 / 256a490b**, `probe_hash480` = **3811ccd8 /
+43a9f644** — the expected pairs, exactly. `npm test` green. The control arm
+(`LABEL_BIRTH=1, MULTI_HEARTH=0`, 480/12k/8817) reproduces every recorded v3 number:
+**78 labels frozen from step 2000, 1 land component, pfTot 8.32M, devLand 37.1%,
+`_onePopScale` 1.280e-3, census p50 69.1, realms 32**; and its disjoint-disk census
+reads **225 = sea 140 (62%) + home 38 + overseas 47**, reproducing lane M's T9 to the
+tile. The harness is sound.
+
+## Arm 2 — the C1 bar (480/12k, `LABEL_BIRTH=1`)
+
+| channel @12k | OFF 8817 | **ON 8817** | OFF 4242 | **ON 4242** |
+|---|---|---|---|---|
+| labels | 78 | **131 (×1.68)** | 78 | **129 (×1.65)** |
+| land components carrying labels | 1 | **4** (home 78 / 31 / 21 / 1) | 1 | **4** |
+| farmed land, devField ≥ 0.45 | 37.1% | **56.2%** | 38.5% | 56.7% |
+| realms | 32 | 105 | 37 | 103 |
+| field population (pfTot) | 8.32M | 6.36M | 6.35M | — |
+| census p50 | 69.1 | 22.2 | 48.6 | 25.3 |
+| `_townBar` / `_cityBar` | 69.1 / 240 | 22.2 / 63.7 | — | — |
+| ms/tick | 10.01 | 14.57 | 9.54 | — |
+
+**≥1.5× the 78 pin: MET (1.68×/1.65×), on 4 components (bar ≥4).** Label count is
+flat from step 2000 with a live founding/death flow underneath it (+251/−120 at 2k,
++68/−68 at 12k), so the trajectory is monotone with no >2× window jump.
+**Census channel, reported not gated:** the disjoint-disk census does not move with
+the lever (225 → 223) and is **61–62% sea-centred instrument artifact in both arms**;
+on-continent it reads home 37 + overseas 50 = **87 land disks against 131 standing
+labels**. It was never the supply and this design does not claim it.
+
+## The attribution that matters — the two halves measured apart
+
+Fraud control (a), run once, **never shipped**: `MULTI_HEARTH=1` with the tier-floor
+retirement disabled (one-line local edit, reverted; byte-identity re-verified after).
+
+| channel @12k/480/8817 | OFF | **ON, floors KEPT** | **ON, full design** |
+|---|---|---|---|
+| labels / components | 78 / 1 | 131 / 4 | 131 / 4 |
+| farmed land | 37.1% | 58.4% | 56.2% |
+| field population | 8.32M | **8.82M (+6.0%)** | 6.36M (−23.6%) |
+| census p50 | 69.1 | 49.5 | 22.2 |
+| **cities (tier 2)** | 2 | **0** | **22** |
+| realms | 32 | 57 | 105 |
+| polities ended over 12k | 3 | **3** | **473** |
+| shattered / seceded | 0 / 0 | 0 / 1 | 4 / 21 |
+| claimed land | 1.2% | 1.7% | 5.2% |
+
+1. **The hearth half delivers the whole supply and costs nothing in churn.** All 131
+   labels, all 4 components and all of the farmed-land gain are already present with
+   the floors kept; polity turnover is *unchanged* from the control (3 ended, 0
+   shattered). Realms 32 → 57 — in line with the 51 the pins-removed arm measured.
+2. **Pin retention recovers the population, as predicted.** pfTot **+6.0%** against
+   the control where the pins-removed arm lost 11%. The design's ±5% prediction is
+   missed by 1 point, in the *favourable* direction; the Old-World engines are not
+   being cannibalised. The home component still carries **exactly 78** labels — the
+   control's number — and every one of the 53 new labels stands on ground that had
+   no farming at all before.
+3. **The deflation guard is load-bearing, exactly as claimed — and it is expensive.**
+   Fraud control (a) confirms the design's own prediction verbatim: with the floors
+   kept, **tier 2 is empty (0 cities)** and every label is pinned to tier 0/1. Retiring
+   them restores 22 cities. But the same change drives realms 57 → 105, polity
+   turnover 3 → 473, census p50 49.5 → 22.2 and pfTot −28%: a pure rank bar makes
+   "town" and "city" fixed *quotas* (50% / 15% of labels at every instant, from step
+   2000 in a stone-age world), which promotes labels early, forms states early, and
+   fills the map with small low-organisation realms. **§ risk 3 lands harder than
+   predicted.** It is written down, not tuned back.
+
+Fraud control (b), `EARTH_HEARTHS=0` alone (the design's own measured arm):
+**139 labels, 5 components (77/31/21/9/1), devLand 61.1%, pfTot 7.38M, realms 51,
+`_onePopScale` 2.590e-3, census p50 43.8** — the §0a table reproduced to the digit,
+including `_townBar` = 60 with p50 43.8 (the floor binding).
+
+## Arm 3 — HEARTH INVARIANCE (the blocking arm): PASS
+
+`probe_hearthsupply` at 240/480/960 × seeds 8817/4242 (identical on both seeds — the
+Earth heightmap is seed-invariant; only the sim stochastics differ):
+
+| arm | 240 | 480 | 960 | 480↔960 count | 480↔960 position |
+|---|---|---|---|---|---|
+| shipped (pins exclusive) | 4 / 1 comp | 4 / 1 | 4 / 1 | +0% | 100% |
+| **`MULTI_HEARTH=1` (pins + scorer)** | **7 / 4 comp** | **7 / 4** | **7 / 4** | **+0%** | **100%** |
+| diagnostic: pins removed, **RAW-tile** sep | 2 / 2 | 6 / 5 | 10 / 6 | **+67%** | 100% |
+| diagnostic: pins removed, real-distance sep | 4 / 4 | 6 / 5 | 4 / 4 | −33% | 100% |
+
+The shipped arm clears both bars (±20% count, ≥80% position) with no margin used.
+The **raw-tile row is committed as the refutation**: §0c's 2-at-240 / 6-at-480 defect
+reproduces and continues to **10 at 960** — the number of times a planet invented
+farming would have tracked the render grid. Two honest riders:
+
+- The unit correction damps the leak but does not by itself remove it: pins-removed
+  with a real-distance separation still reads 4 / 6 / 4, because the *low-score tail*
+  (the 4-tile islet, the small components) enters and leaves the greedy with grid.
+  **What makes the shipped arm invariant is pin retention** — the four pins take the
+  top of the greedy, so the three remaining picks are the geographically-forced ones.
+  That was not foreseen and it is the strongest argument for retention there is.
+- **The pins are exempt from the separation they impose.** Pinned hearths are seated
+  under `HEARTH_MIN_SEP_FRAC` (≈800 km) but, once pre-loaded, each projects a
+  `CRADLE_MIN_SEP` (≈8 000 km) exclusion disc over the scorer. At 480 the scorer's
+  best Australian site (215,81) is 46 tiles from the Yellow-River pin, inside its disc
+  — so Australia carries a hearth in the pins-removed arm (5 components) and not in
+  the shipped one (4). **Left alone.** Moving `CRADLE_MIN_SEP` to recover Australia
+  would be dialling a constant to produce a named region's result — the exact
+  violation this design exists to repair.
+
+## Arm 4 — resolution downstream (960/6k ON vs 480/6k ON)
+
+Labels **124 vs 131 = −5.3%** (bar ±20%) ✓, at **matched hearth count (7 = 7)**;
+farmed land 41.6% vs 52.3% and pfTot 3.13M vs 3.79M — the two weaker matched
+channels, both inside 20%. Components 3 vs 4 (the islet's single label lapses by 4k
+at 960). **Perf: 17.92 ms/tick at 960 vs 14.57 at 480, +23%** — the flip's 960
+measurement the design demanded is taken and it is cheap; the sub-linear reading
+holds.
+
+## Arms 6, 7, 9, 10
+
+- **Stylized, `MULTI_HEARTH=1`, 21k/480, seeds 8817/4242/777: 3/3 pass** (bar ≥2/3).
+  All hard gates green on every seed; soft warnings 1 / 1 / 2, all inside budget 2 —
+  the standing owner-accepted Zipf canary (−0.21 / −0.23 / −0.17) and, on 777, the
+  culture~area soft. 130 / 128 / 122 settlements alive, 115 / 115 / 103 polities.
+  **The Earth diorama survives: all four Old-World pins seat and log on every run.**
+- **`probe_empires` 12k ON:** realm count rises with label supply (32 → 106) and
+  multi-member realms appear for the first time on this arm (3 of 106 vs 0 of 32);
+  claimed land 1.2% → 5.2%; 21 secessions and 4 shatters where the control had none.
+  **The churn is the guard's, not the hearths' (see the attribution table).** Whether
+  473 endings over 12k is honest frontier mortality or confetti is exactly the design's
+  own open question 8, and the criterion still is not written down anywhere.
+- **`probe_sitesupply`: unchanged, PASS.** 8817 = 177/207/205, union 480↔960 −1.0%,
+  position 94.1%; 4242 = 170/205/208, +1.5%, 96.6%. The shipped v3 table byte-for-byte.
+- **`probe_roundtrip_deep` on the ON path at 12k: PASS** (8817 34215903 == 34215903,
+  31337 3eac56fd == 3eac56fd, kin graph populated). At the probe's 8 000-step default
+  **both** the ON path and the untouched default report the pre-existing "kin graph
+  empty — raise steps" FAIL; that is not this change.
+- **`tools/smoke.mjs` under the lever ON (extra, not a required arm): 1 FAIL.** The
+  save/load hash roundtrip is exact and invariant hits are zero; continuation drift is
+  pop 1.2% / wealth 1.0% against bars of 10% / 25%. What trips is the check's
+  **absolute ±3-country tolerance** on 80 vs 75 realms — a bound that does not scale
+  with realm supply (±3 was ~30% relative at 10 realms and is 4% at 80). Reported,
+  **not widened**.
+
+## What the owner is actually deciding
+
+The lever is default OFF and the flip is not this branch's call. In plain terms, ON:
+
+- **The New World and Australia stop being wilderness.** Agriculture is invented
+  independently on the Americas, South America and one small island; they develop
+  their own towns and their own realms from step 0. The "ungoverned until
+  colonisation" look — an explicit product goal in `EARTH_HEARTH_SITES`' own comment
+  — is gone by design, and sea colonisation will arrive at continents that already
+  have states. Historically that is the correction; visually it is a different Earth.
+- **The Old World is unharmed.** All four pins seat, the home continent carries the
+  same 78 labels, and world population is *higher* than the control (+6.0% before the
+  guard, −24% after it).
+- **The urban hierarchy cannot survive the new label density on its absolute floors**
+  — measured, not argued — so the guard rides along; and the guard is what turns a
+  quiet 57-realm world into a 105-realm one with 150× the polity turnover. If the
+  owner wants the hearths without that, the honest next step is to *derive* a tier bar
+  that is neither an absolute census floor nor a fixed rank quota, not to re-anchor
+  either one.
+
+**Nothing in `EARTH_HEARTH_SITES`, `MAX_CRADLES` or `CRADLE_MIN_SEP` was edited to move
+a count.** `MAX_CRADLES` never binds in the shipped arm (7 of 10 used); the separation
+constant does. Both are now annotated in-code as load-bearing for label supply.

@@ -5,7 +5,7 @@
 
 import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { computeRelief } from "../worldgenUtils.js";
 
 const TILE_RES = 2;
@@ -329,10 +329,26 @@ function initRiverMag(world, w) {
 // up to MAX_CRADLES top scoring sites separated by a minimum distance — each
 // becomes the seed of an independent civilization, producing a multipolar
 // world even at high resolution.
+//
+// ONE CONSTANT, TWO CONSEQUENCES (flagged per docs/design-c-hearth-field.md risk 1):
+// MAX_CRADLES is how many times agriculture was independently invented on a
+// planet. Real Earth: ~7-11 (Fertile Crescent, China x2, New Guinea, Mesoamerica,
+// the Andes, Amazonia, eastern N. America, the Sahel, Ethiopia). Under
+// T.MULTI_HEARTH it is ALSO load-bearing for planetary LABEL SUPPLY, because a
+// hearth is the only thing that starts a devField wave and only farmed land
+// carries town-scale density. It was never chosen against a settlement count and
+// MUST NEVER BE MOVED TOWARD ONE: the only admissible argument for changing it is
+// an argument about how many times humans invented farming.
 const MAX_CRADLES = 10;
-const CRADLE_MIN_SEP = 60;   // tile-space minimum separation (large enough that a single
-                              // continent gets at most 1-2 cradles, but Earth's separated
-                              // landmasses each get one if they have a viable site)
+const CRADLE_MIN_SEP = 60;   // minimum separation between cradles, in REFERENCE tiles
+                              // (~8 000 km at the 240-tile reference) — large enough that a
+                              // single continent gets at most 1-2 cradles, but Earth's separated
+                              // landmasses each get one if they have a viable site.
+                              // UNIT: read x rNormPop (a REAL distance) under T.MULTI_HEARTH,
+                              // raw tiles otherwise. Measured defect the correction repairs:
+                              // with the scorer running, raw tiles give 2 hearths at 240 and 6
+                              // at 480 — the number of agricultural origins on a planet would
+                              // ride on the render grid. Value and meaning untouched.
 // Circumscription (Carneiro): the first states arose in fertile pockets hemmed in
 // by INHOSPITABLE LAND — the Nile walled by the Sahara, the Indus by the Thar,
 // Mesopotamia by desert and mountains. The barrier that matters is dry/mountain
@@ -358,16 +374,29 @@ function cradleSurround(world, ti) {
   return total > 0 ? { landBarrier: landBarrier / total, seaFrac: sea / total }
                    : { landBarrier: 0, seaFrac: 0 };
 }
-// EARTH MAP: the three historical Old-World hearths (Nile, Mesopotamia, Yellow River).
+// EARTH MAP: the historical Old-World hearths (Nile, Mesopotamia, Indus, Yellow River).
 // On the real-Earth heightmap these fractional map positions are fixed (equirectangular:
 // x = (lon+180)/360, y = (90−lat)/180), so we snap each to the best fertile river tile
-// nearby. Seeding ONLY these three means civilisation radiates from the Old-World cradles
-// while the New World and Australia stay wild until sea-borne colonisation (sea.js)
-// reaches them — the "ungoverned until colonisation" look. Extend this list (Indus,
-// Mesoamerica, Andes) for more independent hearths. NB this is a deliberate, preset-gated
-// diorama INPUT (T.EARTH_HEARTHS, earth presets only): the emergent cradle scorer below
-// (seedCradleVillage — temp×moist×fert×river×circumscription) is the real mechanism and
-// runs for every procedural map, and for Earth when the lever is off.
+// nearby. This is a deliberate, preset-gated diorama INPUT (T.EARTH_HEARTHS, earth presets
+// only): the emergent cradle scorer below (seedCradleVillage — temp×moist×fert×river×
+// circumscription) is the real mechanism and runs for every procedural map.
+//
+// WHAT THIS LIST IS AND IS NOT (docs/design-c-hearth-field.md). It is a scenario input
+// saying where Earth's KNOWN hearths were. It is NOT a statement about where hearths
+// CANNOT be — and until T.MULTI_HEARTH it was read as exactly that, because seeding
+// short-circuited into this list and RETURNED, so the scorer never ran on an Earth
+// preset. The consequence was structural: devField (agricultural technique) is stamped
+// from settlements only and its wave is land-only, so with four pins ~60% of the
+// planet's land stayed at devField ≡ 0 forever — the New World and Australia "stayed
+// wild until colonisation" because no farming could reach them, which is an outcome
+// this list was chosen to produce. Under T.MULTI_HEARTH these sites are a PRE-LOAD of
+// the scorer's greedy instead of a cap: they hold their own separation discs and the
+// unchanged scorer fills the rest of the planet.
+//
+// DO NOT ADD SITES HERE TO MOVE A LABEL COUNT, A REALM COUNT OR ANY OTHER MEASURED
+// OUTCOME. A site may only be added on evidence about a REAL historical hearth. The
+// mechanism that puts hearths on unpinned continents is the scorer; if it puts too few
+// somewhere, that is a finding about the scorer, not a gap in this list.
 const EARTH_HEARTH_SITES = [
   { name: "Nile",        fx: 0.580, fy: 0.329 },   // fertile ribbon through the Sahara to the Mediterranean delta
   { name: "Mesopotamia", fx: 0.622, fy: 0.330, r: 0.02 },   // Tigris-Euphrates / the Fertile Crescent. TIGHT search radius: the wide
@@ -400,9 +429,11 @@ const EARTH_HEARTH_SITES = [
 // Crescent civilization at all. ~0.02 of Earth's width ≈ 800 km, well under
 // the real Nile→Euphrates distance, so it never blocks legitimate seats.
 const HEARTH_MIN_SEP_FRAC = 0.02;
+// Returns the list of tiles actually seated, {tx,ty,ti} — empty if none took.
+// (It used to return a boolean, because its only caller returned on truthy. The
+// list is what T.MULTI_HEARTH pre-loads into the algorithmic greedy.)
 function seedEarthHearths(world) {
   const { tw, th, elev, temp, moist, fert, riverMag } = world;
-  let seeded = 0;
   const picked = [];   // hearth tiles already seated this pass
   const minSep = Math.max(3, Math.round(tw * HEARTH_MIN_SEP_FRAC));
   const minSep2 = minSep * minSep;
@@ -420,8 +451,8 @@ function seedEarthHearths(world) {
         const f = fert[ti] || 0; if (f < 0.25) continue;            // fertile (river alluvium counts via tCrop)
         let tooClose = false;
         for (const pk of picked) {
-          const ddx = Math.min(Math.abs(nx - pk.x), tw - Math.abs(nx - pk.x));
-          const ddy = ny - pk.y;
+          const ddx = Math.min(Math.abs(nx - pk.tx), tw - Math.abs(nx - pk.tx));
+          const ddy = ny - pk.ty;
           if (ddx * ddx + ddy * ddy < minSep2) { tooClose = true; break; }
         }
         if (tooClose) continue;
@@ -437,26 +468,40 @@ function seedEarthHearths(world) {
       continue;
     }
     const bx = bestTi % tw, by = (bestTi / tw) | 0;
-    picked.push({ x: bx, y: by });
+    picked.push({ tx: bx, ty: by, ti: bestTi });
     const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor: an entity is a town, its valley countryside is the popField)
     const name = born.name;
     const rm = riverMag ? riverMag[bestTi] : 0;
     console.log(`[peopleSim] ${name} (${site.name}) at tile (${bx},${by}) frac(${(bx / tw).toFixed(2)},${(by / th).toFixed(2)}) ` +
       `temp:${temp[bestTi].toFixed(2)} moist:${moist[bestTi].toFixed(2)} fert:${fert[bestTi].toFixed(2)}${rm >= 2 ? ` river(mag${rm})` : ""}`);
-    seeded++;
   }
-  return seeded > 0;
+  return picked;
 }
 
 function seedCradleVillage(world) {
   const { tw, elev, temp, moist, fert, coast, riverMag, N } = world;
-  // EARTH MAP: force the three historical hearths (Nile, Mesopotamia, Yellow
-  // River) instead of the algorithmic top-N, so the New World stays wild until
-  // colonisation. (T.EARTH_HEARTHS off = algorithmic.)
+  // The cradles seated before the scorer runs. Empty on a procedural map; on an
+  // Earth preset under T.EARTH_HEARTHS it holds the pinned Old-World hearths.
+  const picked = [];
+  // EARTH MAP: seat the historical Old-World hearths (Nile, Mesopotamia, Indus,
+  // Yellow River) from the scenario list.
+  //   T.MULTI_HEARTH = 0 — the pins REPLACE the algorithmic top-N (early return),
+  //     so the New World stays wild until colonisation. The shipped behaviour.
+  //   T.MULTI_HEARTH = 1 — the pins PRE-LOAD the algorithmic greedy below. They
+  //     hold their own separation discs and the scorer, otherwise untouched,
+  //     fills the rest of the planet up to the same MAX_CRADLES. A scenario
+  //     input stops being a cap on the mechanism.
+  // (T.EARTH_HEARTHS off = purely algorithmic, either way.)
   if (T.EARTH_HEARTHS && (world.preset === "earth_sim" || world.preset === "earth")) {
-    if (seedEarthHearths(world)) return;
-    console.warn("[peopleSim] earth hearths found no site — falling back to algorithmic cradles");
+    const pins = seedEarthHearths(world);
+    if (pins.length) {
+      if (!T.MULTI_HEARTH) return;
+      for (const p of pins) picked.push(p);
+    } else {
+      console.warn("[peopleSim] earth hearths found no site — falling back to algorithmic cradles");
+    }
   }
+  const nPinned = picked.length;   // pins are already seated; only the tail below is born here
   // Collect ALL viable candidates with their scores, then greedily pick the
   // top-scoring set with minimum separation.
   const candidates = [];
@@ -498,8 +543,12 @@ function seedCradleVillage(world) {
   }
   candidates.sort((a, b) => b.score - a.score);
   // Greedy: pick highest-scoring tile, then skip any tile within CRADLE_MIN_SEP.
-  const picked = [];
-  const minSepSq = CRADLE_MIN_SEP * CRADLE_MIN_SEP;
+  // Under MULTI_HEARTH `picked` arrives pre-loaded with the scenario pins, so
+  // they simply occupy their own separation discs — the loop is otherwise the
+  // same candidate order, the same rejection test and the same MAX_CRADLES cap.
+  // The separation is a REAL distance under the lever (see CRADLE_MIN_SEP).
+  const minSep = T.MULTI_HEARTH ? CRADLE_MIN_SEP * rNormPop(world) : CRADLE_MIN_SEP;
+  const minSepSq = minSep * minSep;
   for (const c of candidates) {
     if (picked.length >= MAX_CRADLES) break;
     const ty = (c.ti / tw) | 0, tx = c.ti - ty * tw;
@@ -512,7 +561,7 @@ function seedCradleVillage(world) {
     }
     if (!tooClose) picked.push({ tx, ty, ti: c.ti, score: c.score });
   }
-  for (let i = 0; i < picked.length; i++) {
+  for (let i = nPinned; i < picked.length; i++) {   // pins were seated by seedEarthHearths already
     const p = picked[i];
     const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor, see crystallize.js)
     const name = born.name;

@@ -3267,8 +3267,20 @@ function updateTier(world, s) {
       const n = pops.length;
       const pAt = (q) => n ? pops[Math.min(n - 1, Math.floor(q * n))] : 0;
       world._tierScale = 1;   // kept for probes/panels that read it
-      world._townBar = Math.max(TIER_TOWN_FLOOR, pAt(0.50));
-      world._cityBar = Math.max(TIER_CITY_FLOOR, pAt(0.85));
+      // DEFLATION GUARD (T.MULTI_HEARTH, docs/design-c-hearth-field.md §1d): a
+      // census is a PARTITION of the same field people among the labels that
+      // exist, so raising the label supply lowers every label's share — measured
+      // p50 69 → 44 going from 78 to 139 labels — and the absolute floors then
+      // BIND (60 > 44), pinning every label to tier 0/1 and collapsing the whole
+      // tier-keyed stack (CORE/HINTERLAND_BY_TIER, foodHierarchy's haul ranges,
+      // ARMY_TIER_FRAC × s.people, the Zipf/urbanisation stylized facts). The
+      // floors are, by their own comment above, "a documented measured-floor
+      // shortcut… not first-principles census minima" — a number from a retired
+      // scale. Central-place rank structure is scale-free by construction, so the
+      // pure percentile is the mechanism-honest bar and it self-calibrates at any
+      // label supply (verify, don't re-anchor). Off the lever the floors stand.
+      world._townBar = T.MULTI_HEARTH ? pAt(0.50) : Math.max(TIER_TOWN_FLOOR, pAt(0.50));
+      world._cityBar = T.MULTI_HEARTH ? pAt(0.85) : Math.max(TIER_CITY_FLOOR, pAt(0.85));
     }
     topU = world._topUrban = top;
     world._tierScaleStep = world.step;

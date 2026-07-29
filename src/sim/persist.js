@@ -366,9 +366,16 @@ export function loadWorld(data, opts = {}) {
   // label supply AND under a frozen _onePopScale calibrated at the old label
   // density (survey open question 4 — the bridge cannot re-calibrate). Keep
   // such saves in their own regime unless they set the lever explicitly.
+  // The same guard covers MULTI_HEARTH (C1 v4, the hearth field): it changes an
+  // INITIAL CONDITION — how many cradles the world was seeded with — which a
+  // loaded save cannot re-derive (its settlements are already in the file), and
+  // it re-keys the tier bars from floored to pure percentiles. A pre-flip save
+  // continuing under the new default would carry an Old-World-only devField
+  // through a percentile hierarchy calibrated for a denser label set.
   if (data.v < 5) {
     const tn = data.tuning || {};
     if (!("LABEL_BIRTH" in tn)) T.LABEL_BIRTH = 0;
+    if (!("MULTI_HEARTH" in tn)) T.MULTI_HEARTH = 0;
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
