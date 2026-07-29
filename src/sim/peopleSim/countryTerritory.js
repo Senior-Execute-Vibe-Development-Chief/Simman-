@@ -1080,7 +1080,14 @@ export function computeCountryTerritory(world) {
     // Continental logistics needs a network of cities — gate the era-boost by size so
     // a crumbling / one-city realm reaches only regionally (the hollow-husk fix).
     const emGated = 1 + ((eraBoost.get(c) || 1) - 1) * Math.min(1, mem / LOGI_SIZE_REF);
-    const pers = world.personalities && world.personalities.get(c);
+    // Temperament lives ON the persistent polity record (entities.js /
+    // personality.js — seeded lazily by the polity pass's personalityOf,
+    // inherited by successors). This read used to consult `world.personalities`,
+    // a registry the entities refactor left with NO writers — so persMul was
+    // silently ≡ 1 and CLAIM_PERS_SPAN a dead lever. A realm before its first
+    // polity pass has no personality yet and reads neutral (persMul = 1).
+    const _pol = getPolity(world, c);
+    const pers = _pol && _pol.personality;
     const persMul = pers ? 1 + (pers.expansionism || 0) * CLAIM_PERS_SPAN : 1;
     // Heritable aptitude pays out as extra STATE CAPACITY (boost #2): a realm run
     // by a high-aptitude stock projects administrative reach further for the same
@@ -1093,7 +1100,6 @@ export function computeCountryTerritory(world) {
     // collapsing. Within budget (strain ≤ 1): no effect. The elasticity is the
     // lever; overload capped so a deep crisis contracts the frontier, never
     // deletes the realm's core (the shed stays ring-by-ring, as ever).
-    const _pol = getPolity(world, c);
     const _strain = _pol && _pol._strain != null ? _pol._strain : 0;
     const strainMul = 1 / (1 + (T.REACH_STRAIN || 0) * Math.min(3, Math.max(0, _strain - 1)));
     budget.set(c, b * emGated * sf * persMul * aptMul * strainMul);

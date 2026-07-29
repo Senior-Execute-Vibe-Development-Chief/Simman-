@@ -9,8 +9,25 @@ const SEED = parseInt(process.argv[3] || "8817", 10);
 const world = buildSim({ W: 480, H: 240, seed: SEED });
 for (let i = 1; i <= STEPS; i++) stepPeopleSim(world, 1);
 
+// Fallen lifespans from the APPEND-ONLY event log, not a registry endedStep
+// scan (which a later restoration re-opens, retroactively erasing the death —
+// long-run report W2). Each life = birth event (founded/restored/seceded;
+// secession logs seceded INSTEAD of founded for its silently-registered state)
+// closed by the next polity.ended; a fall-then-restoration is a completed fall.
 const lifes = [];
-if (world.polities) for (const p of world.polities.values()) if (p.endedStep >= 0) lifes.push(p.endedStep - p.foundedStep);
+{
+  const openBirth = new Map();
+  for (const ev of world.events || []) {
+    if (ev.type === "polity.founded" || ev.type === "polity.restored" || ev.type === "polity.seceded") {
+      if (!openBirth.has(ev.polity)) openBirth.set(ev.polity, ev.step);
+    } else if (ev.type === "polity.ended") {
+      let b = openBirth.get(ev.polity);
+      if (b === undefined) { const p = world.polities && world.polities.get(ev.polity); b = p ? p.foundedStep : ev.step; }
+      lifes.push(ev.step - b);
+      openBirth.delete(ev.polity);
+    }
+  }
+}
 lifes.sort((a, b) => a - b);
 const med = lifes.length ? lifes[lifes.length >> 1] : 0, max = lifes.length ? lifes[lifes.length - 1] : 0;
 

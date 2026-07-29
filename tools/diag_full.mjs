@@ -7,6 +7,7 @@ import fs from "fs";
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
+import { getPolity } from "../src/sim/peopleSim/entities.js";
 import { T } from "../src/sim/peopleSim/tuning.js";
 
 const W=+(process.argv[4]||960),H=W>>1,N=W*H;
@@ -18,6 +19,11 @@ const SAMPLE=1500;
 // App-identical pipeline (river/lake moisture boosts + bDist feed tCrop) —
 // the old hand-rolled version here measured a world the app never simulates.
 const world=buildSim({W,H,seed:SEED});
+
+// Temperament lives on the persistent polity record (entities.js), not the
+// long-dead `world.personalities` registry this tool used to read (every
+// PERSONALITY line came out "?:N" with all traits 0 — long-run report W1).
+const persOf=(id)=>{const p=getPolity(world,id);return p?p.personality:null;};
 
 const sum=a=>a.reduce((x,y)=>x+y,0);
 const mean=a=>a.length?sum(a)/a.length:0;
@@ -63,7 +69,7 @@ function collect(step){
   let memSpan=0;{const mc=new Map();for(const s of setts){if(s.countryId<0)continue;const ti=(s.pos.y|0)*W+(s.pos.x|0);let st=mc.get(s.countryId);if(!st){st=new Set();mc.set(s.countryId,st);}st.add(comp[ti]);}for(const st of mc.values())if(st.size>=2)memSpan++;}
   // rows per country
   const rows=[];
-  for(const[id,c]of countries){const sz=size.get(id)||0;const p=world.personalities&&world.personalities.get(id);
+  for(const[id,c]of countries){const sz=size.get(id)||0;const p=persOf(id);
     rows.push({id,sz,mem:c.members?c.members.length:0,pop:cpop.get(id)||0,wealth:cwealth.get(id)||0,army:carmy.get(id)||0,
       org:(c.capital&&c.capital.knowledge&&c.capital.knowledge.organization)||0,mf:sz?(fsum.get(id)||0)/sz:0,
       dens:sz?(cpop.get(id)||0)/sz:0,span:spanOf.get(id)||1,
@@ -179,7 +185,7 @@ while(step<END){
   for(const[id,c]of (world.countries||new Map())){let t=track.get(id);if(!t){t={first:step,last:step,maxMembers:0,maxSize:0,peakPop:0,maxWealth:0,label:"?",alive:true};track.set(id,t);}
     t.last=step;t.alive=true;t.maxMembers=Math.max(t.maxMembers,c.members?c.members.length:0);t.maxSize=Math.max(t.maxSize,size.get(id)||0);
     t.peakPop=Math.max(t.peakPop,cpop.get(id)||0);t.maxWealth=Math.max(t.maxWealth,cwealth.get(id)||0);
-    const p=world.personalities&&world.personalities.get(id);if(p)t.label=p._label||"?";}
+    const p=persOf(id);if(p)t.label=p._label||"?";}
   prevIds=ids;
   if(step>=CKPTS[cki]){const st=collect(step);record.checkpoints.push(st);fs.writeFileSync(OUT+".json",JSON.stringify(record,null,1));printReport(st);cki++;}
 }

@@ -219,12 +219,38 @@ const st = peopleSimStats(world);
 // The heavy tail counts the still-ALIVE old realms too: the Rome-shaped
 // long-livers usually haven't died by the end of the run, and ignoring the
 // censored sample was exactly why this gate under-read the tail.
+// LIVES are reconstructed from the APPEND-ONLY event log, not a registry
+// endedStep scan: a restoration RE-OPENS the record (endedStep back to −1), so
+// the scan retroactively erased every death that was later undone — in a
+// restoration-rich regime the gate starved below its own sample minimum and
+// read n/a while realms demonstrably fell (long-run report W2). Each life is a
+// birth (polity.founded / polity.restored / polity.seceded — secession logs
+// seceded INSTEAD of founded for its silently-registered state) closed by the
+// next polity.ended: a fall-then-restoration counts as one COMPLETED fall,
+// and the restored realm's current life is censored at its restoration, not
+// its ancient founding. Bands unchanged — only the input series is honest now.
 {
   const lifes = [];
   const aliveAges = [];
-  if (world.polities) for (const p of world.polities.values()) {
-    if (p.endedStep >= 0) lifes.push(p.endedStep - p.foundedStep);
-    else aliveAges.push(world.step - p.foundedStep);
+  {
+    const openBirth = new Map();   // polity id → birth step of the currently-open life
+    for (const ev of world.events || []) {
+      if (ev.type === "polity.founded" || ev.type === "polity.restored" || ev.type === "polity.seceded") {
+        if (!openBirth.has(ev.polity)) openBirth.set(ev.polity, ev.step);
+      } else if (ev.type === "polity.ended") {
+        let b = openBirth.get(ev.polity);
+        if (b === undefined) {   // silently-registered record (no birth event): fall back to its registry foundedStep
+          const p = world.polities && world.polities.get(ev.polity);
+          b = p ? p.foundedStep : ev.step;
+        }
+        lifes.push(ev.step - b);
+        openBirth.delete(ev.polity);
+      }
+    }
+    // The censored sample: every still-living realm's CURRENT life age.
+    if (world.polities) for (const p of world.polities.values()) {
+      if (p.endedStep < 0) aliveAges.push(world.step - (openBirth.get(p.id) ?? p.foundedStep));
+    }
   }
   lifes.sort((a, b) => a - b);
   // Scoring minimum 5 (was 8): against a 40×-wide band a small-sample median is
