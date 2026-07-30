@@ -136,3 +136,80 @@ validation loop** — at minimum one lean app-grid arm per wave, plus the
 `Σcap`/`Σpop` invariance check above as a standing gate. This is the same
 blind-spot class as the fish share (no food-composition gate) and the size
 constant (all empire gates are ratios, blind to absolute area).
+
+
+---
+
+# The two failure modes share one missing term (2026-07-30)
+
+Investigating whether the control field could replace the budget, prompted by the
+owner asking how steps 5/6/7 compare to real states.
+
+## What is actually there
+
+`controlField.js` implements political control as a per-tile FIELD: pinned at each
+capital at a strength set by its power, propagating one hop per tick, decaying with
+distance, resisted by relief, bled by desert and jungle, checked by great rivers,
+crossing open sea only for a nation with navigation. Border = argmax control.
+
+**It is render-only.** `T.CONTROL_FIELD` (def 1) DRAWS the political map; the
+tuning entry is explicit that "the sim's authoritative `_countryOwner` ... is
+untouched and byte-identical — this only changes how borders LOOK."
+
+**`CTRL_LIVE` — the field AUTHORING the map — was tried and REMOVED (2026-07),
+not merely switched off.** The publish block, the `_warFront`/`_warAdv` field-war
+coupling in armies.js, and the field-hold loyalty read in conquest.js are all
+deleted or bound dead. Measured verdict (default-flip campaign, wave 3):
+
+| lever @12k | countries | pop | verdict |
+|---|---|---|---|
+| `CTRL_LIVE=1` | **8** | 44.7k | "the world-breaker" — runaway consolidation + unpersisted-field load divergence → REMOVED |
+
+Eight countries on the planet, against ~50-65 for the other levers in the same
+sweep.
+
+## The insight: both models fail from the SAME missing physics
+
+- **Budget model (live today):** a size target = f(people already governed).
+  Self-referential, hard-capped. Bistable → below break-even it COLLAPSES to the
+  anchor core (§2 — the owner-reported early-game freeze).
+- **Field model (removed):** control strength ∝ power, and power grows with
+  territory. Self-reinforcing with NO cap → RUNAWAY to 8 mega-empires.
+
+Same feedback, opposite clipping. Both let a state's projection grow with its
+holdings; one bolts a ceiling on top (bistable), the other has none (runaway).
+
+**The term neither has: administrative DILUTION.** A state's apparatus is finite
+and gets spread thinner the more ground it covers. Hold per tile should be
+`control output ÷ (extent already held, distance-weighted)`, not a strength
+independent of extent. Making the projected quantity CONSERVED changes the
+character of the system rather than clipping it:
+
+- a small state projects intensely over a small area; a large one weakly over a
+  large area — so the border settles where two dilutions balance. A stable
+  interior equilibrium exists, which is exactly what neither model has;
+- overextension produces thin hold EVERYWHERE, so an over-large empire is
+  fragile and rivals press in — rise and fall for free, no secession timer;
+- hold is graduated, which is the raw material for vassals / tributaries /
+  indirect rule (§the real-states critique: most historical maps are shades, not
+  solid colour);
+- land is never "wild" while anyone still projects onto it, which removes the
+  wilderness sink that both empties the map and deletes successor states.
+
+This is Lattimore's frontier and Tainter's overstretch stated as a conservation
+law, and it is mechanism rather than outcome-fitting: nothing in it names a
+region, a size, or a date.
+
+## Recommended order of work
+
+1. **Fix the live budget loop first** (§4b) — that is the shipped bug the owner
+   is looking at, and it is a smaller change than reviving the field.
+2. **Then prototype dilution in the render field**, where it is free: the field
+   already runs every tick and nothing reads it, so a conserved-output variant
+   can be measured against the authoritative map with zero risk to saves.
+3. **Only then reconsider authoring.** Reviving `CTRL_LIVE` also requires
+   persisting `_ctrlOwner`/`_ctrlHold` (the load-divergence half of its gate
+   failure) and restoring the field-war coupling.
+
+Do NOT re-enable the removed prototype as-is. It failed on a real defect that
+this note does not fix by itself.
