@@ -420,3 +420,88 @@ sizes have looked like history rather than like villages.
   river fix one field over.
 - **Absolute population magnitude is STILL ungated.** The suite checks the
   pop/development SHAPE (0.93 / 0.94 monotone) and never the level.
+
+
+---
+
+# BRIDGE_GLOBAL REVERTED TO OFF — it re-scales the census (2026-07-30)
+
+Owner, playing the flipped build: *"still doing the whole very tiny country
+blobs, all growing thing. Something fundamental changed with our starting
+stage."* Both halves were right, and the second one is a defect I shipped.
+
+## What the owner caught that the gates did not
+
+**1. The median realm never improved.** The "4 t -> 166 t" headline was the MAX.
+Measured medians at 12k, seed 8817:
+
+| | median realm | largest |
+|---|---|---|
+| app grid, before | 1 t | 4 t (frozen) |
+| app grid, after | 6 t (23k km²) | 166 t |
+| reference, before | 4 t | 41 t |
+| reference, after | 4 t | 63 t |
+
+The TYPICAL country is ~4-6 tiles in every configuration, before and after. The
+fixes moved the leader and the total claimed land, not the swarm of statelets the
+owner is actually looking at. Quoting a max as if it were representative is the
+reporting failure here.
+
+**2. The empty early world is BRIDGE_GLOBAL's doing.** The "nothing, then
+everything at once" shape is largely pre-existing (reference grid, levers off: 2
+realms at step 3000, 5 at 6000, then 27 by 9000). But on the app grid the flip
+moved first states from step 3000 to ~7000.
+
+## Root cause — the bridge is a UNIT CONVERSION, not just a ledger divisor
+
+`bridge = census / field`. `deriveOnePop` uses it to convert the field's people
+into the economy's census magnitudes. Lowering it deflates every settlement's
+recorded population. Measured at tw=240 / 6k:
+
+| config | census | settlements |
+|---|---|---|
+| both off | 4864 | 66 |
+| RES_INV_RIVERCOST only | **4864** | **66** (byte-identical, as designed) |
+| + BRIDGE_GLOBAL | **3507** (−28%) | 61 |
+
+State formation gates on CENSUS — `NUCLEATE_SEAT_POP = 160`,
+`NUCLEATE_CLUSTER_POP = 400`. Deflate the census 28% and every seat reaches the
+bar far later, so the early map is stateless. And it is not only nucleation:
+**every census-calibrated constant in the sim silently changed meaning.** That is
+not a shippable change, whatever the capacity numbers say.
+
+The stylized suite passed on both seeds because it scores the world at 21k, by
+which point the deficit has washed out. It does not test the early game at all —
+another gate that measures the wrong thing, and the third time this session the
+owner found what the gates could not.
+
+## The trade-off, stated honestly
+
+| | first realms | max @12k | census |
+|---|---|---|---|
+| baseline | step 3000 | 4 t frozen | 4864 |
+| RES_INV_RIVERCOST only | step 3000 | 7 t | 4864 |
+| + BRIDGE_GLOBAL | ~step 7000 | 166 t | 3507 |
+
+**The growth win came entirely from the calibration-breaking change.** The
+calibration-safe change alone does not deliver it (7 tiles, not 166). There is no
+version of this that is both safe and fixes the app grid today.
+
+## Shipped state
+
+- `BRIDGE_GLOBAL` back to **def 0**, with the reason recorded in its lever desc.
+- `RES_INV_RIVERCOST` stays **def 1** — byte-identical at the reference (census
+  4864 and 66 settlements, unchanged to the digit) and a genuine fix at finer
+  grids. Smoke green (151.8s).
+
+## The correct route from here
+
+Do NOT redefine the bridge's LEVEL. Make the EXISTING bridge invariant by fixing
+what contaminates it — catchment real-area coverage. `RES_INV_RIVERCOST` took
+that 0.62 -> 0.78 of parity; the remaining terms are the 1-D COAST dilution
+(mean 0.156/0.097/0.060 across grids — the same bug class as the river, one field
+over) and fert max-pooling (−11% mean). At parity the existing bridge is
+naturally grid-invariant, capacity converges, and no census is re-scaled.
+
+Separately, and probably bigger for what the owner sees: **the median realm, not
+the largest.** Nothing in this investigation has yet moved it, at any grid.
