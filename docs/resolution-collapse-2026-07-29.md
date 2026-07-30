@@ -1110,3 +1110,75 @@ this document and never fixed.
 
 None of these is the food-overlay restore, and none of them is what I spent the
 first half of this session on.
+
+
+---
+
+# Item 1 (the bistable loop floor): BUILT, MEASURED, DOES NOT WORK — and why
+
+I ranked the loop floor as the highest-value fix. It is not. Implemented it,
+measured it, reverted it; recording the arithmetic so nobody re-ranks it.
+
+## What was built
+
+`T.SIZE_HEARTLAND`: base = max(govPop, popField of the capital settlement's
+ECONOMIC catchment). Principled — a polity administers at least the region its
+own capital farms, whether or not its frontier encloses it; the catchment is
+already computed and is not the political map.
+
+## Measured: no effect whatsoever
+
+App grid, seed 8817, identical to the digit at every checkpoint:
+
+    SH=0 : 3000/4k km²  6000/4k  9000/4k   claimed 0.02 / 0.08 / 0.12
+    SH=1 : 3000/4k km²  6000/4k  9000/4k   claimed 0.02 / 0.08 / 0.12
+
+Instrumented before measuring (the standing lesson). The term is LIVE and the
+max() simply never binds:
+
+    [heart] cid=2 gov=1954 heart=696 base=1954 stm=0.278 bindDens=1375
+    [heart] cid=4 gov=1521 heart=229 base=1521
+
+The capital's catchment holds FEWER people than the realm's own tiles — partly
+because `CATCHMENT_CLIP` ties the economic catchment to the political border, so
+the "independent" region is not independent.
+
+## Why no floor of this kind can work — the arithmetic
+
+For cid=2: `popCap = 1954 × 0.278 × 1.18 / 1375 = 0.47 tiles`.
+For that realm to hold **10 tiles** it needs `10 × 1375 / (0.278 × 1.18) ≈ 41,900`
+governed people. It has **1,954** — a **21× shortfall**. No heartland region
+supplies 21× the realm's own population. The floor is the wrong shape of fix.
+
+## The actual binding constraint: the world is UNDER-POPULATED
+
+`RURAL_BIND_DENS` = 5500 people per reference tile (15,500 km²) = **0.355
+people/km²** — the density at which land is worth administering. That value is
+defensible; it is LOW by historical standards.
+
+The sim's world carries **Σpop ≈ 4.6M over ~149M km² = 0.031 people/km²** — **11×
+below the density its own size model requires to hold a single tile.** Earth held
+~14M people by 3000 BC (0.09/km²) and ~200M by 1 AD (1.3/km²). At step 9000 the
+sim's displayed year is 1100 BC and it carries ~5M.
+
+**So realms are tiny because there are not enough people to govern, and no
+reshaping of the size target changes that.** The loop's bistability is real and
+amplifies the shortfall, but it is downstream. A perfectly-shaped, floored,
+non-self-referential size model fed 0.031 people/km² still yields one-tile
+realms.
+
+## Corrected priority
+
+1. **POPULATION MAGNITUDE** — the world needs roughly an order of magnitude more
+   people at a given development level. This is the technique→yield hole left by
+   `de97888` (previous section): pre-industrial yields rose several-fold from
+   rotation, the plough, manuring, breeding and crop packages, and the retired
+   `260·agri^6` was faking that channel. Build it from `CROP_AXIS` /
+   `LIVESTOCK` / `k.agriculture`, which already exist.
+2. The residual resolution gap (coast dilution) — amplified 15× by the loop.
+3. The loop floor — revisit ONLY after (1); it cannot bind while the shortfall is
+   21×.
+4. Conquest (86 wars, 1 transfer).
+
+I had (3) ranked first. That was wrong, and measuring it cost less than shipping
+it would have.
