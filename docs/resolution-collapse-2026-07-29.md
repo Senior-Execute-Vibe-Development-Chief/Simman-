@@ -1033,3 +1033,80 @@ sizes — is honestly short by roughly the amount that overlay was inventing.
 It was pushed with that validation outstanding. The design is right; whether the
 magnitude of what replaced the overlay is right was never established, and that
 is the open question — not whether to bring the overlay back.
+
+
+---
+
+# THE BLOB PHASE, MEASURED (tools/probe_blob.mjs, 2026-07-30)
+
+Owner: *"my problem is still that slow start, and the phase of tiny blob nations
+all over. Can you accurately measure that, and is it still there."*
+
+Defined: the phase runs from the first step with >=3 realms until the MEDIAN
+realm reaches 250k km² (a state-sized polity — Romania, the UK). Reported with
+displayed years so it can be read against the calendar the player sees.
+**HEAD, seed 8817, 20000 steps, both grids.**
+
+## THE APP GRID (tw=480 — what the owner plays)
+
+| step | year | realms | claim% | median | max |
+|---|---|---|---|---|---|
+| 3000 | 4100BC | 4 | 0.02 | **4k km²** | 23k |
+| 6000 | 2600BC | 16 | 0.08 | **4k km²** | 23k |
+| 9000 | 1100BC | 25 | 0.12 | **4k km²** | 27k |
+| 12000 | 400AD | 36 | 0.20 | **4k km²** | 27k |
+| 15000 | 1900AD | 43 | 0.37 | **4k km²** | 80k |
+| 17000 | 2900AD | 51 | 1.46 | 19k | 305k |
+| 20000 | 4400AD | 56 | 3.02 | 65k | 275k |
+
+**The median realm is 4,000 km² — ONE TILE — from step 3000 to step 15000.**
+That is 4100 BC to 1900 AD in displayed years. One tile is the anchor core: the
+floor, the smallest a realm can be. **The typical nation on this map is pinned at
+its minimum for 12,000 consecutive steps**, while realm COUNT climbs 4 -> 43.
+
+Blob phase: **never ends within 20,000 steps.** At 4400 AD the median is still
+65k km² and 97% of the world is unclaimed.
+
+## THE REFERENCE GRID (tw=240 — where every battery in this doc was run)
+
+| step | year | realms | claim% | median | max |
+|---|---|---|---|---|---|
+| 4000 | 3600BC | 5 | 0.19 | 62k km² | 77k |
+| 10000 | 600BC | 33 | 1.86 | 62k km² | 600k |
+| 14000 | 1400AD | 50 | 6.09 | 108k | 907k |
+| 18000 | 3400AD | 52 | 11.46 | **261k** | 1938k |
+| 20000 | 4400AD | 51 | 12.82 | 261k | 2353k |
+
+Blob phase: 14000 steps, **ENDS at step 18000**.
+
+## The comparison — the resolution gap is the dominant term
+
+| | app grid | reference | gap |
+|---|---|---|---|
+| median during phase | 4k km² (1 tile) | 62k km² (4 tiles) | **15×** |
+| claimed @20k | 3.02% | 12.82% | 4.2× |
+| max @20k | 275k km² | 2353k km² | 8.5× |
+| phase ends | never (>20k) | step 18000 | — |
+
+**The owner's experience is 15× worse than every measurement in this document**,
+because every battery here — and the entire stylized suite — runs at tw=240. The
+residual Σcap gap after the river fix was only 1.30×, yet the median realm gap is
+15×: the political layer amplifies a modest capacity shortfall into a total
+collapse, because the size loop of §2 is BISTABLE. At tw=240 the median realm
+clears the break-even and sits at 4 tiles; at tw=480 it falls below and collapses
+to the 1-tile anchor, which is exactly the failure mode diagnosed at the start of
+this document and never fixed.
+
+## So, in priority order
+
+1. **The bistable size loop (§2) is the proximate cause** of the owner's world
+   and remains unfixed. A floor — or a holdings-independent base — stops the
+   median collapsing to its anchor. This is now the single highest-value change.
+2. **The residual resolution gap** feeds it. Coast dilution (0.156/0.097/0.060
+   across grids) is the next term, same class as the shipped river fix.
+3. **The technique→yield mechanism** (previous section) sets the ceiling for
+   everyone, both grids.
+4. **Conquest** (86 wars, 1 transfer) stops consolidation at every grid.
+
+None of these is the food-overlay restore, and none of them is what I spent the
+first half of this session on.
