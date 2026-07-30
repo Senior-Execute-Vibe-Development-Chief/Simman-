@@ -298,3 +298,81 @@ Smoke suite green (109.9s, all checks). Default OFF, so nothing shipped changes.
 - The under-population is only partly addressed: 13.63M world capacity is still
   low for the development level, and absolute population magnitude remains
   ungated by the stylized suite (it checks pop/development SHAPE only).
+
+
+---
+
+# The catchment real-area shortfall — FIXED (`T.RES_INV_RIVERCOST`, 2026-07-30)
+
+The leading residual after the bridge fix. Diagnosed by elimination rather than
+by guessing, since the previous three guesses all cost a full measurement cycle.
+
+## Ruled out first
+
+- **Independent of the bridge fix.** With `BRIDGE_GLOBAL=1`, catchment coverage
+  was still 25.3% (tw=240) vs 15.8% (tw=480) — 0.62x, essentially unchanged. So
+  it is a separate defect, not a symptom of the capacity gap.
+- **NOT the reach budget.** `reachBudget` measures 5.000 at BOTH grids and is
+  already multiplied by `rNormPop` in territory.js, whose comment names this exact
+  bug class. The scaling is present and correct: cost accumulates per tile step,
+  so covering a fixed REAL distance needs a budget ∝ rn, which is what it does.
+- **NOT tile desirability.** Mean tile value dilutes only 0.345 -> 0.314 (0.908x).
+  Neutralising it entirely (forcing value=1) moved catchment scaling 2.41x ->
+  2.56x, where 4x is parity. Worth ~6%, not the ~40% shortfall.
+
+## The cause
+
+The transport cost field classifies each tile as water / RIVER / land, and
+river-mode land is far cheaper to cross. A river channel is 1-D on a 2-D grid, so
+per the repo's own measurement `riverMag>=1` covers **50% / 27% / 14%** of land at
+tw 240 / 480 / 960. Half the reference map is cheap river travel against a quarter
+at 2x, so the cost field is systematically dearer on finer grids and every
+cost-bounded catchment shrinks with it.
+
+The coarse grid is the GENEROUS one: a tile holding a river grants river travel
+across its whole area, including the land in it nowhere near the water. The honest
+invariant is that a river makes travel cheap for land within a REAL distance of it
+— walk to the water, take a boat.
+
+## The fix
+
+Classify river mode (and read its magnitude) over a real-distance neighbourhood,
+radius `round(rNormPop)-1`. Radius 0 at the 240 reference, so byte-identical
+there — VERIFIED, not assumed: coverage 25.3%, mean catchment 39.9t, unchanged to
+the digit. This is the same correction already shipped and gated for the
+per-settlement water scan (`RES_INV_RIVER`).
+
+## Measured (both levers on, seed 8817)
+
+| | tw=240 | tw=480 | gap |
+|---|---|---|---|
+| catchment coverage | 25.3% | 15.8% -> **19.7%** | 0.62 -> **0.78** |
+| catchment tile scaling | — | 2.40x -> **3.13x** | (4x = parity) |
+| Σcap | 13.63M | 8.15M -> **10.49M** | 1.67x -> **1.30x** |
+| Σpop | 6.63M | 3.92M -> **5.12M** | 1.69x -> **1.29x** |
+
+App-grid growth trajectory, 12k, seed 8817 — the whole arc of this investigation:
+
+| | max realm | claimed | leadAgri |
+|---|---|---|---|
+| original | 4 t (15k km²) FROZEN | 0.09% | 0.567 |
+| + BRIDGE_GLOBAL | 73 t (279k km²) | 1.16% | 0.546 |
+| + RES_INV_RIVERCOST | **166 t (634k km²)** | **1.82%** | 0.601 |
+
+634k km² is what the REFERENCE grid produced for the same world (631k km²) — the
+app grid now yields the same real empire size, which was the point.
+
+Smoke green (110.4s). Both levers registered in tuning.js, both DEFAULT OFF.
+
+## Still open
+
+- **The residual 1.30x gap.** Catchment coverage is 0.78 of parity, not 1.0.
+  Remaining suspects: fert max-pooling to sim tiles (−11% mean), the 1-D coast
+  dilution (0.156 -> 0.097), and the dev-clock lag.
+- **State formation is delayed** under BRIDGE_GLOBAL (no realms until ~step 8000
+  at tw=480, against 2 by step 2000 before). Unexplained; blocks the default flip.
+- **Neither lever is gated.** BRIDGE_GLOBAL moves the reference grid +81% on Σcap,
+  so it needs the full multi-seed + stylized battery. RES_INV_RIVERCOST is
+  byte-identical at the reference but changes every finer grid and needs its own.
+- **Absolute population magnitude is still ungated** — the stylized suite checks
+  the pop/development SHAPE only. That blind spot is what hid all of this.

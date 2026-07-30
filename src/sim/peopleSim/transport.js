@@ -1,4 +1,4 @@
-import { T, TUNING_VERSION } from "./tuning.js";
+import { T, TUNING_VERSION, rNormPop } from "./tuning.js";
 // Transport distance map: for every land tile, the minimum cumulative
 // terrain-weighted cost to reach the nearest settlement. Used by the
 // crystallization sweep to bias new settlements toward sites already
@@ -203,10 +203,53 @@ export function tileOpenness(world, ti) {
        * Math.max(0, 1 - Math.max(0, relief - 0.6) / 1.4);
 }
 
+// T.RES_INV_RIVERCOST: a river CHANNEL is a 1-D line on a 2-D grid, so the share of
+// land tiles carrying one HALVES per resolution doubling (the repo's own measurement:
+// riverMag>=1 is 50%/27%/14% of land at tw 240/480/960). River-mode land is far cheaper
+// to cross than plain land, so at the reference grid HALF the map is cheap river travel
+// and at 2x only a quarter is — the cost field is systematically dearer on finer grids.
+// Measured consequence: economic catchments cover 25.3% of land at tw=240 but 15.8% at
+// tw=480, and the shortfall is NOT the reach budget (verified identical, 5.000, then
+// correctly scaled by rNormPop) nor tile desirability (neutralising it moved catchment
+// scaling only 2.41x -> 2.56x where 4x is parity).
+//   Physically the coarse grid is the generous one: a tile holding a river gets river
+// travel across its WHOLE area, including the land in it that is nowhere near the water.
+// The honest invariant is that a river makes travel cheap for the land within a REAL
+// distance of it (walk to the water, take a boat). So read the channel over a
+// real-distance neighbourhood instead of the single tile — the same correction already
+// shipped and gated for the per-settlement water scan (RES_INV_RIVER, computeWaterAccess).
+// radius = round(rNormPop)-1 => 0 at the 240 reference => BYTE-IDENTICAL there.
+function _riverNear(world) {
+  let rn = world._rivNear;
+  if (rn && rn.length === world.N) return rn;
+  const N = world.N, tw = world.tw, th = world.th, rmA = world.riverMag;
+  rn = world._rivNear = new Float32Array(N);
+  if (!rmA) return rn;
+  const R = Math.max(0, Math.round(rNormPop(world)) - 1);
+  if (R === 0) { rn.set(rmA); return rn; }
+  const R2 = R * R;
+  for (let y = 0; y < th; y++) {
+    for (let x = 0; x < tw; x++) {
+      let best = 0;
+      for (let dy = -R; dy <= R; dy++) {
+        const yy = y + dy; if (yy < 0 || yy >= th) continue;
+        for (let dx = -R; dx <= R; dx++) {
+          if (dx * dx + dy * dy > R2) continue;
+          const xx = ((x + dx) % tw + tw) % tw;          // cylindrical in x
+          const v = rmA[yy * tw + xx]; if (v > best) best = v;
+        }
+      }
+      rn[y * tw + x] = best;
+    }
+  }
+  return rn;
+}
+
 function _tileMode(world, ti) {
   // 0 = land, 1 = river, 2 = water. Matches the trans-test convention.
   if (world.elev[ti] <= 0) return 2;
-  if (world.riverMag && world.riverMag[ti] >= 2) return 1;
+  const rmF = T.RES_INV_RIVERCOST ? _riverNear(world) : world.riverMag;
+  if (rmF && rmF[ti] >= 2) return 1;
   return 0;
 }
 
@@ -234,7 +277,7 @@ function _edgeCost(world, fromTi, toTi, params, ignoreRoads, noPortTax) {
     if (world.coast && world.coast[toTi]) base = Math.min(base, params.coast);
     base *= T.WATER_COST_MULT;               // open-water crossing dial (tuning.js)
   } else if (toMode === 1) {                 // ── RIVER ──
-    const rm = world.riverMag[toTi];
+    const rm = (T.RES_INV_RIVERCOST ? _riverNear(world) : world.riverMag)[toTi];   // same neighbourhood the mode was classified from
     const magMul = rm >= 4 ? 1.0 : rm >= 3 ? 1.3 : 2.0;
     base = params.river * magMul;
   } else {                                   // ── LAND ──
