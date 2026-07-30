@@ -820,3 +820,74 @@ Shifts under the flip (8817 / 31337, vs the previous run): polities 44→51 /
 conquest defect (86 wars, 1 transfer in 12k steps) recorded above, and it remains
 the dominant cause of a map made of statelets. These two levers fix the SHAPE of
 the dawn, not the SIZE of what it produces.
+
+
+---
+
+# GIT ARCHAEOLOGY: when the median realm was an empire (2026-07-30)
+
+Owner: *"Go back in time, look for a time when median realm was not small,
+around ~4 tiles."* Measured with `tools/probe_hist.mjs` — 480x240, seed 8817,
+9000 steps, identical probe at every commit.
+
+## The arc
+
+| date | commit | realms | claimed | MEDIAN realm | max |
+|---|---|---|---|---|---|
+| 2026-06-25 | d06c55f | 14 | 6.0% | 11 t (169k km²) | 219 t |
+| **2026-07-06** | c608ede | 11 | **25.7%** | **196 t — 3,015k km²** | 778 t (12.0M km²) |
+| 2026-07-14 | 3a7a5af | 20 | 16.9% | **77 t — 1,184k km²** | 133 t |
+| 2026-07-14 | 4480642 | 27 | 6.3% | 15 t (231k km²) | 90 t |
+| 2026-07-22 | d7cbe14 | 46 | 15.2% | 18 t | 189 t |
+| 2026-07-26 | 26de3ef | 31 | 12.0% | **33 t — 508k km²** | 93 t |
+| 2026-07-26 | 3152d6f | 24 | 6.1% | 16 t | 76 t |
+| 2026-07-26 | 4a7734a | 24 | **2.7%** | **7 t** | 30 t |
+| 2026-07-30 | ee04d0c | 27 | 1.0% | **4 t** | 9 t |
+| 2026-07-30 | 5d4ace3 (HEAD) | 29 | 1.5% | 4 t | 26 t |
+
+**Yes — the median realm was a real empire as recently as 2026-07-06: 196 tiles,
+3 million km², with a quarter of all land under a flag.** It is 4 tiles today.
+
+## The three cuts, each isolated
+
+1. **`4480642` SIZE_BY_POP -> 1 (07-14).** Median 77 t -> 15 t, claimed 16.9% ->
+   6.3%, in ONE commit. This is the change that made size track governed people —
+   and removed the coverage floor, which is what made the collapse-to-anchor mode
+   of §2 reachable at all.
+2. **`3152d6f` CRADLE_EVE -> 0 (07-26).** Median 33 t -> 16 t, claimed 12.0% ->
+   6.1%. Removes the eve-of-states head start (the org 0.28 cradle seed), so
+   kingdoms must emerge instead of starting present.
+3. **`4a7734a` SPAN_TECH -> 0.85 (07-26).** Median 16 t -> 7 t, claimed 6.1% ->
+   2.7%. `1d41f44` built it at def 0 and measures BYTE-IDENTICAL to its parent
+   (6.07%, 16 t) — a clean build; the flip is the whole effect.
+
+`SPAN_TECH` is the `spanTechMul` term in the size target, measured at **0.2567**
+early in §"ROOT CAUSE": every young realm is allowed roughly a QUARTER of the
+territory it could otherwise administer. It is the single highest-leverage dial
+on the owner's complaint, and it was flipped deliberately ("the span is earned;
+owner call on the flip").
+
+## This session's contribution, measured honestly
+
+| | claimed | median | max |
+|---|---|---|---|
+| ee04d0c (session start) | 0.99% | 4 t | 9 t (138k km²) |
+| 5d4ace3 (now) | 1.45% | 4 t | 26 t (400k km²) |
+
+Claimed land +47%, largest realm ~2.9×, **median unchanged at 4 t**. The collapse
+predates this session; the work here did not cause it and has not fixed it.
+
+## What this means
+
+The tiny-blob world is not one bug. It is the CUMULATIVE effect of three
+deliberate flips, each defensible alone — size should track people, statehood
+should be earned, administrative span should be earned — that together cut the
+median realm ~50× from its 07-06 value. Nothing measured the JOINT effect,
+because each was gated on its own against ratio-shaped stylized facts that are
+blind to absolute area (§6, the standing blind spot).
+
+**Cheapest experiment for the owner:** lower `SPAN_TECH` (0.85 -> ~0.3) and
+re-measure. It is one number, it is the largest single term in the size target,
+and its flip is fully reversible. Then re-weigh `CRADLE_EVE`. Neither needs new
+mechanism — they need the joint effect measured, which is what
+`tools/probe_hist.mjs` now does in one command at any commit.
