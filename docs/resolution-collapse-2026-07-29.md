@@ -505,3 +505,77 @@ naturally grid-invariant, capacity converges, and no census is re-scaled.
 
 Separately, and probably bigger for what the owner sees: **the median realm, not
 the largest.** Nothing in this investigation has yet moved it, at any grid.
+
+
+---
+
+# THE REAL DEFECT: nothing is ever conquered (2026-07-30)
+
+Owner's clarification, after three rounds of me fixing the wrong thing:
+*"My problem wasn't lack of countries, it was them all being very tiny blobs for
+a long time early game."*
+
+Not the realm COUNT. Not the LARGEST realm (which is what my "4 -> 166 tiles"
+headline measured). The typical realm, staying tiny, for a long time.
+
+## The early world, reference grid, current defaults
+
+    steps 0-6000:  2-7 realms, each 3-6 tiles
+                   sharedBorderPairs=0  borderTiles=0  realmsWithLandBorder=0%
+                   nearest realm 10 tiles away
+                   war.began=0 in every window
+                   AT_TARGET with HEADROOM=0  (target med=2)
+
+Isolated dots ten tiles apart, frozen at a target of 2, touching nobody. Around
+step 8000 borders finally appear and wars start. But:
+
+| window | wars begun | settlements captured | annexed |
+|---|---|---|---|
+| 6000-8000 | 3 | 0 | 0 |
+| 8000-10000 | 8 | 0 | 0 |
+| 10000-12000 | 7 | 0 | 0 |
+| 12000-14000 | 14 | 0 | 0 |
+| 14000-16000 | 16 | 0 | 0 |
+| 16000-18000 | 38 | 0 | 0 |
+
+**86 wars over 18k steps, zero captures, zero annexations.**
+
+## Verified independently of event naming
+
+Under FIELD_POLITY captured TILES are the transfer and settlements re-derive
+their flag, so a zero `settlement.captured` count could have been a reporting
+artifact. `tools/probe_transfer.mjs` measures the thing itself — settlements
+whose countryId moves from one LIVE realm to another:
+
+    over 12,000 steps, reference grid, seed 8817:
+      realm -> realm transfers:      1
+      stateless -> realm:           43
+      realm -> stateless:            5
+      realms: 2 -> 5 -> 27 -> 42 (monotonically rising)
+
+**One settlement conquered in twelve thousand steps.** Not a reporting artifact.
+
+## What this means
+
+Realms grow ONLY by (a) creeping into wilderness, throttled by the size target to
+a couple of tiles, and (b) absorbing STATELESS towns. They never take anything
+from each other. So the map accumulates ever more small states and never merges
+them — realm count rises monotonically for the whole run. Every empire in history
+was built by conquest; this sim has no working consolidation mechanism at all.
+
+This is a first-order defect and it dwarfs everything else in this document. The
+resolution work (bridge, river cost, catchment) is real and worth keeping, but it
+was never going to fix what the owner was looking at: even with capacity perfect,
+a world that cannot conquer stays a patchwork of dots.
+
+## Next
+
+Find why wars never transfer. The war pass reaches `war.began` 86 times, so
+fronts open and armies exist; something between "front opens" and "tile flips
+owner" never fires. Note `armies.js` carries war branches deliberately bound dead
+(`const CTRL_LIVE = false`, "strip them on the next war pass") from the removed
+control-field prototype — worth checking whether the live path lost anything when
+that was torn out, since the timing fits.
+
+Do NOT tune the size target further until this is understood. A conquest-less
+world will look like statelets whatever the target says.
