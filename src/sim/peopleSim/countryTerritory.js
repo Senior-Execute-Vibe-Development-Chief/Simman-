@@ -759,7 +759,18 @@ function fieldPolityTerritory(world) {
   // automatically, so the fragility that produced the 14-tile world cannot recur
   // through this path. Composed with the quota above: hold up to what you can
   // govern (ceiling), of the land that pays (floor).
-  const bindD = Math.max(1, T.RURAL_BIND_DENS || 5500) * Math.max(0.02, T.MARGIN_FRAC ?? 0.33);
+  // ÷r2: RURAL_BIND_DENS is people per REFERENCE tile, but pfM[ti] below is people per
+  // SIM tile (popField is per-real-area, so a sim tile holds 1/r2 of a reference tile's
+  // people). The TARGET converts — `bindDens = RURAL_BIND_DENS / r2` — and this gate did
+  // NOT, so off the reference grid the marginal-tile test demanded r2× the density the
+  // target budgeted for. At the shipped app grid (r2=4) that left 98 of 38,721 wild tiles
+  // admissible: budget available and unspendable (measured Σavailable=63, Σspent=1), so
+  // every realm on the map sat frozen at its anchor core — the largest state on Earth
+  // pinned at 4 tiles for 10k steps, 42× smaller in real area than the same world at the
+  // reference. It read as a TIME threshold ("they don't grow early, then suddenly do")
+  // because rising density eventually clears even the r2×-too-high bar. ×1 at the
+  // reference, so the calibrated world is byte-identical.
+  const bindD = Math.max(1, T.RURAL_BIND_DENS || 5500) * Math.max(0.02, T.MARGIN_FRAC ?? 0.33) / r2;
   // MEASURED, and the reason the quota SURVIVES underneath (2026-07-29): the
   // marginal test alone prices SHAPE but destroys SCALE. Run without the quota it
   // makes every realm expand to the same density contour, so sizes converge —

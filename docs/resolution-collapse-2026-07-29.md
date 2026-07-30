@@ -75,9 +75,46 @@ byte-identical at the reference as designed. The dilution is real but the
 premium is too small a term to account for 2.2×. The change was REVERTED rather
 than shipped unvalidated; the probes are committed.
 
+## 4b. Owner's second observation, and what it rules out
+
+**"They simply don't grow early game, then at a later point they start growing."**
+A THRESHOLD, not a permanent freeze — and it matches the loop algebra exactly.
+With k = d·spanTechMul·r2/DENS, the target is k·held: k<1 shrinks the realm,
+which shrinks its base, which shrinks the target (runaway collapse to the anchor
+core); k>1 runs away upward until frontier density falls. Early spanTechMul is
+low, so k<1 map-wide and NOTHING grows; accumulated statecraft eventually tips k
+past 1 and expansion switches on all at once. The bistability is the bug, and it
+is present at every grid — resolution only moves WHEN the crossing happens.
+
+Three fixes were implemented and measured against the app grid this pass:
+
+1. **Water-premium integral** (popField): REFUTED, §4 — Σcap unmoved.
+2. **Heartland floor** (target base = max(govPop, capital-catchment pop), so the
+   base does not depend on current borders): moved claimed% 0.05→0.06 at step
+   8000. Real but negligible; early catchment population is small and
+   spanTechMul is low, so the target stays ~1-2 load units either way. REVERTED
+   as unvalidated, but the reasoning stands and it belongs in the real fix.
+3. **Growth-gate unit mismatch** (`countryTerritory.js` line 762): CONFIRMED and
+   SHIPPED. `RURAL_BIND_DENS` is people per REFERENCE tile; `pfM[ti]` is people
+   per SIM tile. The target converts (`/r2`); the marginal-tile gate did not, so
+   off-reference it demanded r2× the density the target budgeted for — 98 of
+   38,721 wild tiles admissible at the app grid. A genuine unit bug, byte-
+   identical at the reference. It did NOT unfreeze the map on its own.
+
+**Why (3) alone doesn't fix it, and where the next pass must start:** the audit's
+budget line is the tell — at step 8000 `Σavailable=0`. Early realms have NO
+growth budget, so the admissibility gate is never consulted; making tiles
+admissible cannot help until a budget exists. `target ≤ held` is the binding
+constraint, and that is the self-referential loop of §2, not any gate. **Fix the
+loop first** (a holdings-independent base — §2 and item 2 above — or replace the
+Σ-budget with a purely LOCAL per-tile admissibility rule, which is what the
+code's own comment already claims it does and would be inherently non-bistable).
+Re-measure the gate fix afterwards: it should matter once budgets are non-zero.
+
 ## 5. Where the next pass should look
 
-Remaining candidates, in order of suspicion, none yet measured:
+For the CAPACITY gap of §3 specifically (separate from the loop above),
+remaining candidates, in order of suspicion, none yet measured:
 1. **FOOD_K** — on worked land capacity blends toward the settlement food
    LEDGER, and the ledger is per-ENTITY. Entity count is ~90 at BOTH grids
    (the Tier-C W4 pin), so ledger-fed capacity is spread over 4× more tiles at
