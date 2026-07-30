@@ -2568,7 +2568,29 @@ function updateFood(world, s) {
       // what the industrial break is worth (both ride works × indCap now; the
       // overlay said 260× where the field said 26×·wk).
       const worksMul = 1 + T.LAND_WORKS * (s._terrWorksMean || 0);
-      s._eraProd = worksMul * s._indCap;   // composite productivity index (housing/rural/cash/output consumers keep one number)
+      // ── T.MIXED_FARM — the manure-and-traction channel ────────────────────────────
+      // Retiring the fitted `260·agri^6` overlay (de97888) was right: that constant had
+      // no independent meaning, it existed to land the modern boom at a target scale, and
+      // its devGate keyed FOOD on political organisation — a state grows no wheat. But it
+      // was standing in for a REAL channel, and deleting the fake left the hole: the
+      // several-fold rise in PRE-INDUSTRIAL yields from technique. What replaced it prices
+      // built works (canals, terraces) and the industrial break, and nothing between.
+      //   The largest of those missing levers is MIXED FARMING. An animal's chief
+      // contribution to arable was never dairy or meat — it was nitrogen returned to the
+      // field as manure, and the draught power to pull a plough through heavier soil and
+      // work more land per family. Fields that carried animals out-yielded animal-less
+      // cultivation by roughly a factor of two, and the two-way dependence (fodder for the
+      // beasts, dung for the grain) is the mixed-farming system itself.
+      //   `s._livestock` — climate suitability × the regional husbandry ceiling — is
+      // already computed here, but only feeds SECONDARY products (LIVESTOCK: dairy/meat).
+      // It has never touched crop yield. Technique gates how much of it reaches the field:
+      // a people with beasts but no plough and no rotation gets the dung and not the
+      // traction. One pass stale (set below in the same function), 0 on the first tick.
+      // Byte-identical at 0.
+      const _agriK = (s.knowledge && s.knowledge.agriculture) || 0;
+      const mixedFarm = T.MIXED_FARM > 0 ? 1 + T.MIXED_FARM * (s._livestock || 0) * _agriK : 1;
+      if (process.env.SIM_DBG_MIXED && (world._mDbg = (world._mDbg || 0) + 1) <= 5) console.error(`  [mixed] live=${(s._livestock||0).toFixed(3)} agri=${_agriK.toFixed(3)} mixedFarm=${mixedFarm.toFixed(3)} works=${worksMul.toFixed(3)} indCap=${s._indCap.toFixed(3)}`);
+      s._eraProd = worksMul * mixedFarm * s._indCap;   // composite productivity index (housing/rural/cash/output consumers keep one number)
     }
   }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)

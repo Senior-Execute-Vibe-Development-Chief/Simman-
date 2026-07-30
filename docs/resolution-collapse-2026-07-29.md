@@ -1182,3 +1182,99 @@ realms.
 
 I had (3) ranked first. That was wrong, and measuring it cost less than shipping
 it would have.
+
+
+---
+
+# The technique→yield channel: MIXED_FARM (2026-07-30, default 1.0)
+
+Building the mechanism whose absence the `de97888` section identified, rather
+than restoring the fitted overlay.
+
+## The hole, confirmed by instrumentation
+
+At an early settlement, the current productivity composite reads:
+
+    [mixed] live=0.544 agri=0.500 works=1.000 indCap=1.000
+
+`worksMul = 1.000` and `indCap = 1.000` — **pre-industrial productivity is flat at
+1.0.** What replaced `260·agri^6` prices built works (canals, terraces) and the
+industrial break, and NOTHING in between. The several-fold rise in pre-industrial
+yields from technique has no representation at all.
+
+## The mechanism
+
+The largest of the missing levers is MIXED FARMING. An animal's chief
+contribution to arable was never dairy or meat — it was **nitrogen returned to
+the field as manure, and draught power to pull a plough** through heavier soil
+and work more land per family. Fields carrying animals out-yielded animal-less
+cultivation by roughly a factor of two, and the two-way dependence (fodder for
+the beasts, dung for the grain) IS the mixed-farming system.
+
+    mixedFarm = 1 + T.MIXED_FARM · s._livestock · k.agriculture
+
+`s._livestock` (climate suitability × regional husbandry ceiling) was already
+computed — and had only ever fed SECONDARY products (dairy/meat, `T.LIVESTOCK`).
+It has never touched crop yield. Technique gates how much reaches the field: a
+people with beasts but no plough and no rotation gets the dung, not the traction.
+
+## Choosing the constant WITHOUT fitting it
+
+| MIXED_FARM | Σcap | Σpop | census |
+|---|---|---|---|
+| 0 (off) | 7.40M | 4.61M | 3899 |
+| **1.0** | **8.89M (+20%)** | **5.10M** | **4540 (+16%)** |
+| 1.5 | 9.16M | 5.21M | 4670 |
+| 3.0 | 11.25M (+52%) | 5.66M | 5466 |
+
+3.0 lands Σcap nearest the pre-`de97888` 13.93M — **and that is exactly why it was
+not chosen.** The physical claim is "mixed farming roughly DOUBLES yield at full
+adoption", and full adoption (livestock 1, technique 1) gives `1 + MIXED_FARM`, so
+the claim fixes the constant at **1.0**. Picking 3 to land the old capacity would
+be `260·agri^6` all over again — a number chosen for its outcome.
+
+Unlike `BRIDGE_GLOBAL`, this raises capacity, population AND census together
+(+16%), so nothing downstream is silently re-scaled.
+
+## Gate — flipped ON (def 1.0)
+
+| suite | seed | result |
+|---|---|---|
+| `npm test` | — | green, 116.6s |
+| `npm run validate` | 8817 | all hard gates passed |
+| `npm run validate` | 31337 | all hard gates passed |
+
+World population at 21k rises 21301 -> **33464** (8817) and 23198 -> **31146**
+(31337). Large cities recover: seed 8817 goes 0 -> **8** cities over 50 urban,
+31337 goes 4 -> 5 — reversing the urbanisation slip the ORG levers introduced.
+Polities 51->54 and 67->68; largest empire's share 11%->14% and 8%->13%.
+
+## What it does NOT fix — measured, not assumed
+
+App grid, seed 8817, `MIXED_FARM=1`:
+
+| step | realms | claim% | median | max |
+|---|---|---|---|---|
+| 6000 | 21 (was 16) | 0.12 (was 0.08) | **4k km²** | 27k |
+| 9000 | 30 (was 25) | 0.15 (was 0.12) | **4k km²** | 27k |
+| 12000 | 39 (was 36) | 0.30 (was 0.20) | **4k km²** | 46k |
+
+More realms, +50% claimed land, larger leaders — **and the median still ONE
+TILE.** The blob phase is intact. A 20% capacity gain does not close an 11×
+density shortfall, and it was never going to.
+
+## What remains, honestly
+
+`MIXED_FARM` is ONE of the missing pre-industrial channels. Still absent:
+- **legume rotation / nitrogen fixation** (~30-50% historically)
+- **crop-package quality** — `CROP_AXIS` exists and encodes packages; yield does
+  not read them
+- the works channel is inert early (`worksMul = 1.000`): `LAND_WORKS` accumulates
+  only under population pressure the world does not yet have — a chicken-and-egg
+  the food fix has to break from the technique side.
+
+And the standing question this session could not settle: `RURAL_BIND_DENS` demands
+**0.355 people/km²** before land is worth administering, while the Mongol empire
+governed ~24M km² at ~0.04/km². The threshold may itself be an order of magnitude
+too strict — that is a separate, testable claim, and it is the other end of the
+same 11× gap.
