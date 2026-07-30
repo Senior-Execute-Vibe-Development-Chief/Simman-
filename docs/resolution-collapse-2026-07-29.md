@@ -891,3 +891,67 @@ re-measure. It is one number, it is the largest single term in the size target,
 and its flip is fully reversible. Then re-weigh `CRADLE_EVE`. Neither needs new
 mechanism — they need the joint effect measured, which is what
 `tools/probe_hist.mjs` now does in one command at any commit.
+
+
+---
+
+# THE COMMIT: `de97888`, the food ledger, 2026-07-28 13:30
+
+Owner corrected my archaeology twice — "more recent than that", "during our
+recent phase A, B, C thing" — and was right both times. Bisecting inside the
+Tier-B wave (480x240, seed 8817, 9000 steps, `tools/probe_hist.mjs`):
+
+| commit | time | realms | claimed | median | max |
+|---|---|---|---|---|---|
+| `dc4e0e9` Tier-A | 07-28 07:21 | 32 | 1.91% | 5 t | 23 t (354k km²) |
+| `b859db7` | 12:09 | 32 | 1.91% | 5 t | 23 t |
+| `deffdce` size target sheds the median anchor | 12:35 | 35 | 1.73% | 4 t | 19 t |
+| **`de97888` land works carry the food ledger** | **13:30** | 26 | **0.90%** | 4 t | **8 t (123k km²)** |
+| `e484bfe` | 14:34 | 27 | 0.92% | 4 t | 8 t |
+| Tier-C (all four) | 07-29 | 27 | 0.92% | 4 t | 8 t (unchanged — default-off, as labelled) |
+
+**One commit halved the claimed land and cut the largest realm 2.4×.** Not the
+size-target commit 55 minutes earlier (which cost a modest 1.91% -> 1.73%), and
+nothing in Tier-C at all.
+
+## Mechanism — it is a CAPACITY cut
+
+Σ carrying capacity over all land, same seed, 6000 steps:
+
+| commit | Σcap | Σpop | census |
+|---|---|---|---|
+| `deffdce` (12:35) | **13.93M** | 5.04M | 5327 |
+| `de97888` (13:30) | **7.89M** (−43%) | 4.79M | 4478 |
+| HEAD | 7.40M | 4.61M | 3899 |
+
+`de97888` put the settlement FOOD LEDGER in charge of worked-land capacity
+(`T.FOOD_K`, the `ledgerK` blend in popField.js). The ledger carries roughly HALF
+the magnitude of the terrain proxy it replaced, so the world lost 43% of its food
+in one commit — and with it the governed population that every realm's size
+target is computed from.
+
+## This closes the loop on this session's whole investigation
+
+`BRIDGE_GLOBAL=1` measured Σcap = **13.63M** — within 2% of the pre-`de97888`
+value of 13.93M. **That experiment was unknowingly reverting this commit**, which
+is why it produced 166-tile realms; and it broke state formation because it got
+there by re-scaling the census unit (−28% census, seats never reaching
+NUCLEATE_SEAT_POP) instead of fixing the ledger's magnitude.
+
+So the correct fix is now precisely stated, and it is NOT the bridge:
+**the ledger -> capacity conversion in the FOOD_K blend is under-scaled by ~2×
+relative to the terrain proxy it replaced.** Fixing it there restores the world's
+food without touching the census calibration, which is what every downstream
+constant is tuned against.
+
+## Corrected picture of the whole decline
+
+Three flips (SIZE_BY_POP 07-14, CRADLE_EVE 07-26, SPAN_TECH 07-26) took the
+median from 77 t to 7 t. Then `de97888` (07-28) halved what remained, taking the
+LARGEST realm from 354k km² to 123k km². The owner's memory was right: the world
+was visibly bigger a few days ago, during Tier-A/B, and the drop is a single
+commit inside the Tier-B wave.
+
+Each change was gated on its own and each passed. None of the gates measure
+absolute carrying capacity or absolute realm area — §6, the standing blind spot,
+now with a fourth instance.
