@@ -1278,3 +1278,76 @@ And the standing question this session could not settle: `RURAL_BIND_DENS` deman
 governed ~24M km² at ~0.04/km². The threshold may itself be an order of magnitude
 too strict — that is a separate, testable claim, and it is the other end of the
 same 11× gap.
+
+
+---
+
+# SPAN_TECH: two corrections stacked (2026-07-30)
+
+Owner insisted the blobs came from the last four days. Correct, and the dominant
+term is `SPAN_TECH`, flipped 0 -> 0.85 on 2026-07-26 (`4a7734a`).
+
+## What it does
+
+    effective span = FIELD_SPAN × (1 − SPAN_TECH × (1 − capital organization))
+
+At org 0.15 and SPAN_TECH 0.85 a realm holds **~28%** of its span — the
+`spanTechMul ≈ 0.257` measured in the target dump. Its recorded rationale: the
+era-invariant span "granted a stone-age chiefdom the same tiles-per-capacity as a
+rail empire — the measured cause of the stone age tiling every biome with states
+(11k people painting 95% of Europe at step 12k)."
+
+## Measured at HEAD, seed 8817, step 12000
+
+**App grid (tw=480 — what the owner plays):**
+
+| SPAN_TECH | claimed | median realm | largest |
+|---|---|---|---|
+| 0.85 (default) | 0.20% | **4k km² (1 tile)** | 27k |
+| 0.4 | 1.36% | 11k km² | 515k |
+| **0** | **3.72%** | **46k km²** | **1,035k km²** |
+
+**18.6× the claimed land and 11.5× the median realm**, from one dial.
+
+**Reference grid (tw=240) — does the over-painting return?**
+
+| SPAN_TECH | claimed @400AD | median | blob phase |
+|---|---|---|---|
+| 0.85 | 3.77% | 77k km² | continues |
+| 0.4 | 10.52% | 215k km² | continues |
+| 0 | **13.85%** | **277k km²** | **ENDS** |
+
+**It does not.** 13.85% of world land at 400AD is nowhere near "95% of Europe".
+
+## Why the flip over-corrects now
+
+`SPAN_TECH=0.85` was calibrated on 2026-07-26 against a world with **13.93M**
+carrying capacity. Two days later `de97888` retired the fitted food overlay and
+capacity fell to **7.89M** (§ that section). The span discount and the food cut
+are two independent corrections for the same symptom, stacked without either
+being re-derived against the other. The over-painting `SPAN_TECH` exists to
+prevent is now prevented twice over — and the residual is a world 19× under-
+claimed at the shipped grid.
+
+**This is not an argument that SPAN_TECH is wrong.** The mechanism is right: a
+chiefdom governed by runners and kin should not hold a rail empire's
+tiles-per-capacity. It is an argument that its MAGNITUDE was fitted to a world
+that no longer exists, and must be re-derived now the food model has changed.
+
+## Not changed here — deliberately
+
+The lever's own description records "FLIPPED ON 2026-07 (owner decision)". Its
+value is a product call with a recorded rationale, so the measurement is
+presented rather than the default silently re-tuned. Options, all gated the same
+way, all one line:
+
+- **0.85 (today)** — the earned-span world as flipped; app-grid median 1 tile.
+- **0.4** — chiefdom holds ~66% of span; app median 11k km², reference 215k.
+- **0** — era-invariant span (pre-07-26); app median 46k km², reference 277k and
+  the blob phase ENDS.
+
+## Residual, whatever is chosen
+
+Even at `SPAN_TECH=0` the app grid median (46k km²) is **6× below** the reference
+grid's (277k). The resolution gap survives every food and span fix and remains
+the second-largest term in the owner's experience.
