@@ -1351,3 +1351,47 @@ way, all one line:
 Even at `SPAN_TECH=0` the app grid median (46k km²) is **6× below** the reference
 grid's (277k). The resolution gap survives every food and span fix and remains
 the second-largest term in the owner's experience.
+
+
+## SPAN_TECH TURNED OFF (owner decision, 2026-07-30)
+
+`def: 0.85 -> 0`. The lever desc now leads with why, and keeps the original 07-26
+rationale below it so the reasoning for the flip is not lost.
+
+### Gate
+
+| suite | seed | result |
+|---|---|---|
+| `npm test` | — | green, 120.5s |
+| `npm run validate` | 8817 | all hard gates passed, 2 soft warnings (budget 2) |
+| `npm run validate` | 31337 | all hard gates passed, 1 soft warning |
+
+### The world it produces (21k steps)
+
+| | seed 8817 | seed 31337 |
+|---|---|---|
+| polities | 46 | 60 |
+| largest empire's share | 14% | 6% |
+| **median realm AREA** | **554k km²** | **385k km²** |
+| largest realm | **5,429k km²** | 1,969k km² |
+| world population | 29,446 | 36,317 |
+
+Against the suite's own reference band — "Bronze hegemon ~0.5-1M, Rome ~5M, Han
+~6.5M" — the largest realm is now Rome-scale and the MEDIAN realm is a
+Bronze-hegemon-scale state. Compare the top of this document, where the median
+realm was 4 tiles / 62k km² and the app grid sat at ONE TILE.
+
+### Watch
+
+Seed 8817 now carries **2 soft warnings, exactly at the budget of 2**: the
+pre-existing Zipf n/a, plus a NEW one — "market integration narrows prices (Δ):
+-0.38 (component-drop windows must not widen spread)". A larger, better-connected
+world moves the price system; this did not appear at 0.85. It is a warning, not a
+gate, but the budget has no headroom left on that seed.
+
+### Still open, unchanged by this
+
+The app grid remains ~6× behind the reference at equal settings. Every food and
+span fix in this document helps both grids equally and none of them closes that
+gap; the 1-D coast dilution (0.156/0.097/0.060 across grids, same class as the
+shipped river fix) is the leading remaining term.
