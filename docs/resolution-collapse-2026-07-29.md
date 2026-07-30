@@ -213,3 +213,88 @@ region, a size, or a date.
 
 Do NOT re-enable the removed prototype as-is. It failed on a real defect that
 this note does not fix by itself.
+
+
+---
+
+# ROOT CAUSE FOUND AND FIXED (behind `T.BRIDGE_GLOBAL`, 2026-07-30)
+
+Instrumenting the target's own terms first (rather than guessing a fourth fix)
+settled it immediately. A real realm at step 4896, app grid:
+
+    govPop=7209  stm=0.2567  RECAL=1.18  bindDens=1375  ->  popCap=2  held=8
+
+`popCap=2` is ARITHMETICALLY CORRECT: 7,209 people can staff about two tiles of
+administration. Nothing in the target is broken. **A whole country had 7,209
+people** — the world is under-populated relative to the density needed to hold
+ground, and everything downstream follows. §2's bistability is real but it is not
+the proximate cause; the missing population is.
+
+## The chain, measured end to end
+
+1. `FOOD_K` A/B across grids — the decisive experiment:
+
+   | | tw=240 | tw=480 | ratio |
+   |---|---|---|---|
+   | FOOD_K on (default) | 7.51M | 3.38M | **2.22×** |
+   | FOOD_K off | 5.89M | 4.44M | **1.33×** |
+
+   The ledger RAISES capacity at the reference and LOWERS it at the app grid.
+   A sign flip is the signature of a per-ENTITY quantity spread over a
+   resolution-dependent tile count.
+
+2. `ledgerK = (s._k · landShare / bridge) · (cap[i]/W)`, so each catchment sums to
+   a per-settlement total divided by the bridge.
+
+3. The bridge is `median(census people) / median(field people in the CATCHMENT)`,
+   and catchment extent is grown in TILES, not real area:
+
+   | | tw=240 | tw=480 |
+   |---|---|---|
+   | mean catchment | 37.8 t | 100.1 t (4× would be parity) |
+   | land under a catchment | 25.6% | **16.5%** |
+   | bridge | 0.0013 | **0.0041** (3.15×) |
+
+4. So the divisor shrinks with grid fineness, the bridge inflates, every ledger
+   share shrinks, capacity falls, and the field population the bridge is measured
+   against falls too — **a feedback** that amplifies the underlying 1.33× into the
+   measured 2.22×.
+
+## The fix
+
+`T.BRIDGE_GLOBAL` (default 0): measure the bridge as Σcensus ÷ Σfield-people over
+all land. Both sides are pure people-totals, so catchment geometry drops out
+entirely. This is what a unit conversion between people and people should always
+have been.
+
+## Measured
+
+| | Σcap 240 | Σcap 480 | res gap |
+|---|---|---|---|
+| before | 7.51M | 3.38M | 2.22× |
+| BRIDGE_GLOBAL=1 | **13.63M** | **8.15M** | **1.67×** |
+
+App-grid growth trajectory, 12k, seed 8817 — the owner-visible result:
+
+| | max realm | claimed | trajectory |
+|---|---|---|---|
+| before | 4 t (15k km²) | 0.09% | FROZEN 2k→12k |
+| after | **73 t (279k km²)** | **1.16%** | 0 → 1 → 24 → 73 |
+
+Smoke suite green (109.9s, all checks). Default OFF, so nothing shipped changes.
+
+## Honest caveats
+
+- **State formation is DELAYED**: no realms until step 8000 (baseline had 2 by
+  step 2000). Higher capacity means pop/cap sits lower early, so nucleation
+  thresholds are crossed later. This is a real regression in timing and must be
+  understood before the default flips.
+- **The reference grid changes a lot** (Σcap +81%). Every validated number moves.
+  This needs the full multi-seed gate + stylized battery, not a smoke run.
+- **A 1.67× resolution gap remains** — the catchment real-area shortfall (25.6% →
+  16.5% of land) is now the leading term, plus fert max-pooling (−11%) and the
+  dev-clock lag. The catchment extent being grown in tiles rather than real area
+  is the next thing to fix.
+- The under-population is only partly addressed: 13.63M world capacity is still
+  low for the development level, and absolute population magnitude remains
+  ungated by the stylized suite (it checks pop/development SHAPE only).

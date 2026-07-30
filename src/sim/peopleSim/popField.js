@@ -1467,6 +1467,27 @@ export function deriveOnePop(world) {
   // activation (persisted). A pure unit conversion between the economy's
   // calibrated census magnitudes and the field's people — the distribution
   // and all dynamics are the field's.
+  // T.BRIDGE_GLOBAL: measure the bridge GLOBALLY (Σ census ÷ Σ field people over all
+  // land) instead of as a median over per-settlement CATCHMENTS. Both sides are then
+  // pure people-totals and the geometry drops out. The catchment-median form is
+  // resolution-CONTAMINATED: a catchment's extent is grown in TILES, so at 2× grid it
+  // covers only ~0.64× the real area it covers at the reference (measured 25.6% of land
+  // → 16.5%, mean 37.8t → 100.1t where 4× is parity). The divisor therefore shrinks with
+  // grid fineness and the bridge inflates (measured 0.0013 → 0.0041, 3.15×), which
+  // shrinks every FOOD_K ledger share (ledgerK = s._k·landShare / bridge), which lowers
+  // capacity, which lowers the field population the bridge is measured against — a
+  // FEEDBACK that amplifies an underlying 1.33× capacity gap into the measured 2.22×
+  // (A/B: Σcap 7.51M/3.38M with FOOD_K on, 5.89M/4.44M off — the ledger RAISES capacity
+  // at the reference and LOWERS it at the app grid, the signature of a per-entity
+  // quantity spread over a resolution-dependent tile count).
+  // Default OFF: this changes the calibrated bridge magnitude at every grid, so it needs
+  // the full multi-seed gate before it can be the default.
+  if (!(world._onePopScale > 0) && T.BRIDGE_GLOBAL) {
+    let csTot = 0, fsTot = 0;
+    for (const s of world.settlements) if (s.mode === "settled" && s.people > 0) csTot += s.people;
+    for (let i = 0; i < world.N; i++) if (world.elev[i] > 0) fsTot += pf[i];
+    if (csTot > 0 && fsTot > 0) world._onePopScale = Math.max(1e-6, csTot / fsTot);
+  }
   if (!(world._onePopScale > 0)) {
     const cs = [], fs = [];
     for (const s of world.settlements) {
