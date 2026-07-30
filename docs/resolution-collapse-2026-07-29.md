@@ -376,3 +376,47 @@ Smoke green (110.4s). Both levers registered in tuning.js, both DEFAULT OFF.
   byte-identical at the reference but changes every finer grid and needs its own.
 - **Absolute population magnitude is still ungated** — the stylized suite checks
   the pop/development SHAPE only. That blind spot is what hid all of this.
+
+
+---
+
+# BOTH LEVERS FLIPPED ON BY DEFAULT (2026-07-30)
+
+Owner's call, after the caveats above were put to them. `BRIDGE_GLOBAL` and
+`RES_INV_RIVERCOST` both `def: 1`.
+
+## Gate run
+
+| suite | seed | result |
+|---|---|---|
+| `npm test` (smoke: determinism, invariants, save/load) | — | **green**, 101.2s |
+| `npm run validate` (stylized facts) | 8817 | **all hard gates passed**, 1 soft warning (budget 2) |
+| `npm run validate` | 31337 | **all hard gates passed**, 1 soft warning (budget 2) |
+
+Both seeds' only warning is the Zipf rank-size slope reporting `n/a` for want of
+enough large cities (1 and 2 cities >50 urban) — a pre-existing low-urbanisation
+symptom, not something these levers introduced.
+
+Healthy numbers under the flip (seed 8817 / 31337): 44 / 62 polities, largest
+empire 14% / 12% of claimed land, empire area tail 9.3 / 9.8, and realm AREA
+largest 3.41M km² against the suite's own reference band (Bronze hegemon
+~0.5-1M, Rome ~5M, Han ~6.5M) — the first time in this investigation the empire
+sizes have looked like history rather than like villages.
+
+## What this does NOT clear
+
+- **The validate suite runs at 480x240 (tw=240) only** — the reference grid. The
+  app grid is still not in the loop, so these gates say nothing about the very
+  resolution this whole investigation was about. The process finding of §6 stands
+  and is now the highest-value open item.
+- **The delayed state formation is real but its SIGN is unclear.** At tw=480 the
+  first realms now appear ~step 8000 where the baseline had 2 by step 2000 — but
+  those baseline realms were the frozen 4-tile blobs that never grew. States
+  taking time to form, then growing, may well be the more correct behaviour. Not
+  evidence of a regression; not evidence of health either. Unresolved.
+- **The residual 1.30x resolution gap** in Σcap (catchment coverage 0.78 of
+  parity). Next suspects: fert max-pooling (−11% mean) and the 1-D coast
+  dilution (0.156 -> 0.097 across grids), which is the same bug class as the
+  river fix one field over.
+- **Absolute population magnitude is STILL ungated.** The suite checks the
+  pop/development SHAPE (0.93 / 0.94 monotone) and never the level.
