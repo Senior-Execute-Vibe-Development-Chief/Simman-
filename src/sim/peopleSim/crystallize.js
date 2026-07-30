@@ -19,7 +19,7 @@
 
 import { isContinentalLand } from "./state.js";
 import { fieldShift } from "./popField.js";
-import { makeSettlement, dominantAnc, livestockClimate } from "./settlement.js";
+import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
@@ -2145,7 +2145,7 @@ function inheritKnowledgeAt(world, ti, td, nearestHint = null) {
   const baseline = {
     agriculture: NEOLITHIC_AGRI,
     construction: 0.18,
-    organization: 0.1,
+    organization: birthOrgAt(world, tx, ty, 0.1),   // site-scaled birth organisation (T.ORG_BIRTH_VAR)
   };
   world._lastInheritDonor = nearest;   // culture rides the same lineage (caller reads this)
   if (!nearest) return baseline;

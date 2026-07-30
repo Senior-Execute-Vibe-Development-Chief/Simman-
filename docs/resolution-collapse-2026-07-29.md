@@ -741,3 +741,82 @@ has to depend on where it is. That is the remaining half of this defect.
 stylized battery has not been run under it, and after the BRIDGE_GLOBAL episode
 earlier today nothing goes on by default without one. Try it with
 `T.ORG_PRESSURE = 3`.
+
+
+---
+
+# Birth organisation varies by site — the other half (`T.ORG_BIRTH_VAR`, 2026-07-30)
+
+`ORG_PRESSURE` spread the learning RATE and could not touch the first ~3000
+steps, because **a rate cannot differentiate what starts identical**. Every
+settlement was born at `organization: 0.1` EXACTLY — in `settlement.js`
+makeSettlement AND in `crystallize.js`'s inherit baseline — and inheritance
+blends toward neighbours who are also at 0.1, so the uniformity is
+self-reinforcing.
+
+## Mechanism
+
+The coordination a founding community carries reflects what its site DEMANDS and
+SUPPORTS: a rich site that cannot disperse — hemmed in by desert, mountain or sea
+— must manage water, store a surplus and settle disputes over scarce ground from
+its first generation. An open or barren site needs none of it. Wittfogel's
+hydraulic demand meeting Carneiro's circumscription, both already computed
+per-site:
+
+    birthOrg = 0.1 · (1 + T.ORG_BIRTH_VAR · _confine · fert)
+
+## Calibrating it honestly
+
+Birth organisation at step 1200, 480x240 seed 8817 (`ORG_STATE_MIN` = 0.15):
+
+| setting | p10 | med | p90 | max | spread |
+|---|---|---|---|---|---|
+| 0 (off) | 0.0995 | 0.1012 | 0.1033 | 0.1073 | 0.0078 |
+| 0.5 | 0.1133 | 0.1208 | 0.1311 | 0.1400 | 0.0268 |
+| **1** | 0.1248 | **0.1367** | **0.1578** | 0.1709 | 0.0462 |
+| 2 | 0.1462 | **0.1665** | 0.2235 | 0.2358 | 0.0896 |
+
+**2 OVERSHOOTS**: median 0.167 is already above the statehood bar, so nearly every
+site qualifies at birth and nothing is earned. **1** puts the top ~10-15% of sites
+above the bar while the median must still climb from 0.137 — cradles first,
+periphery later, which is the historical shape.
+
+## Measured — the realm ramp (480x240, seed 8817)
+
+| step | off | BIRTH_VAR=1 | +PRESSURE=3 |
+|---|---|---|---|
+| 3000 | 2 | 3 | 3 |
+| 4500 | 3 | **7** | 6 |
+| 6000 | 5 | **13** | 13 |
+| 7500 | **21** (4× jump) | 17 | 18 |
+| 9000 | 27, max 9 t | 26, max 19 t | 29, max **26 t / 400k km²** |
+
+The cohort burst is gone: a flat line with a 4× jump becomes a smooth monotonic
+ramp, and the leading realm at step 9000 is ~2.9× larger in real area.
+
+## Gate — BOTH FLIPPED ON (def: ORG_BIRTH_VAR=1, ORG_PRESSURE=3)
+
+| suite | seed | result |
+|---|---|---|
+| `npm test` | — | **green**, 119.4s |
+| `npm run validate` | 8817 | **all hard gates passed**, 1 soft warning |
+| `npm run validate` | 31337 | **all hard gates passed**, 1 soft warning |
+
+Shifts under the flip (8817 / 31337, vs the previous run): polities 44→51 /
+62→67; largest empire's share 14%→11% / 12%→8%; empire area tail 9.3→7.7 /
+9.8→6.8; settlements 85→89 / 85→94.
+
+**Two things to watch, recorded rather than glossed:**
+- **Urbanisation slipped.** Cities over 50 urban: seed 8817 went 1 → **0**, seed
+  31337 went 2 → 4. The Zipf warning was pre-existing but 8817 is now at zero
+  large cities. Worth a look if city sizes matter.
+- **More polities, not fewer.** 44→51 and 62→67. The dawn is smoother but the
+  world is MORE fragmented, which cuts against the owner's "tiny blobs" complaint
+  even as it fixes the "all at once" one.
+
+## What this does NOT fix
+
+**The median realm is still ~4 tiles**, unchanged by any of this. That is the
+conquest defect (86 wars, 1 transfer in 12k steps) recorded above, and it remains
+the dominant cause of a map made of statelets. These two levers fix the SHAPE of
+the dawn, not the SIZE of what it produces.

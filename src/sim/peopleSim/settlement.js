@@ -328,7 +328,7 @@ export function makeSettlement(world, x, y, opts = {}) {
       // Initial CONDITIONS of the world at t=0, not a gate on anything.
       agriculture: 0.50,        // frontier starts already farming (absorbs the old foraging track)
       construction: 0.18,       // the farming village's real toolkit: pottery, granaries, mudbrick
-      organization: 0.1,        // kin-village society — statehood still to be EARNED
+      organization: birthOrgAt(world, x, y, 0.1),   // kin-village society — statehood still to be EARNED (site-scaled: T.ORG_BIRTH_VAR)
       metallurgy:  0,           // gated by ore access
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses
@@ -1639,6 +1639,32 @@ function seasonalSelect(temp, moist) {
 // fraction of its surroundings that is sea / high mountain / frozen / true
 // desert — land you cannot just walk off into and farm). Cached at creation
 // (terrain is static); pays out as faster organisation learning (T.CONFINE).
+// T.ORG_BIRTH_VAR — the organisation a community is BORN with depends on WHERE it is.
+// Every settlement in the world is currently seeded at organization 0.1 EXACTLY (here and
+// in crystallize.js's inherit baseline), and inheritance blends toward neighbours who are
+// also at 0.1 — so the uniformity is self-reinforcing. Organisation then climbs to
+// ORG_STATE_MIN (0.15) at a near-uniform rate, and the whole planet crosses the statehood
+// bar as ONE COHORT (measured: 0 of 61 qualifying at step 4500, then 8 -> 44 -> 62). That
+// is why the early map is a handful of lone dots and then fills in at once, and why
+// T.ORG_PRESSURE — which spreads the RATE — cannot touch the first ~3000 steps: a rate
+// cannot differentiate what starts identical.
+//   The coordination a founding community carries reflects what its site DEMANDS and
+// SUPPORTS: a rich site that cannot disperse (hemmed in by desert, mountain or sea) must
+// manage water, store a surplus and settle disputes over scarce ground from the first
+// generation — Wittfogel's hydraulic demand meeting Carneiro's circumscription. An open or
+// barren site needs none of it. So scale the birth value by confinement × fertility, both
+// already computed per site. 0 = off (every birth 0.1, byte-identical).
+export function birthOrgAt(world, x, y, base) {
+  const K = T.ORG_BIRTH_VAR || 0;
+  if (!(K > 0)) return base;
+  const xi = x | 0, yi = y | 0;
+  if (xi < 0 || yi < 0 || yi >= world.th) return base;
+  const ti = yi * world.tw + xi;
+  const fert = world.fert ? (world.fert[ti] || 0) : 0;
+  const conf = computeConfinement(world, xi, yi);
+  return base * (1 + K * conf * fert);
+}
+
 function computeConfinement(world, x, y) {
   const { tw, th, elev, temp, moist } = world;
   const R = 6; let bar = 0, tot = 0;
