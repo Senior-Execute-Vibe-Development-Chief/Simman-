@@ -182,6 +182,18 @@ const st = peopleSimStats(world);
     const med = areas[areas.length >> 1];
     score("largest empire's share of claimed land", (top1 * 100).toFixed(0) + "%", top1 >= 0.04 && top1 <= 0.55, false, `${areas.length} polities on ${claimed} tiles`);
     score("empire area tail (largest/median)", (areas[0] / Math.max(1, med)).toFixed(1), areas[0] / Math.max(1, med) >= 3);
+    // ABSOLUTE realm AREA, in km² — the axis every share/ratio gate above is blind
+    // to. Both are scale-free: a world whose biggest empire is Romania passes the
+    // share gate (10%) and the tail gate (5×) exactly as a world whose biggest is
+    // Rome. That blindness is how RURAL_BIND_DENS shipped six times too high and
+    // was caught in PLAY, not here (owner report 2026-07-29; docs/design-c-
+    // territory-fill.md). Reported UNSCORED: the honest target is era-dependent
+    // (a Bronze hegemon ~0.5–1M km², a classical empire ~2–6M, and the run's era
+    // is emergent, never a step count), so a scored band needs per-era derivation
+    // — recorded as the follow-up. Printing it means the next regression is seen.
+    const landTiles = (() => { let n = 0; for (let i = 0; i < co.length; i++) if (elev[i] > 0) n++; return n; })();
+    const kkm2 = landTiles > 0 ? (510e6 * 0.29) / landTiles / 1000 : 0;   // ~thousand km² per land tile
+    console.log(`        (realm AREA, unscored: largest ${Math.round(areas[0] * kkm2)}k km² · median ${Math.round(med * kkm2)}k km² · reference: Bronze hegemon ~0.5-1M, Rome ~5M, Han ~6.5M)`);
   } else score("empire land tail", "n/a", false, false, `${areas.length} landed polities`);
 }
 
