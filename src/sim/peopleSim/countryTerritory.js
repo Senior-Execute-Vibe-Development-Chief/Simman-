@@ -728,6 +728,57 @@ function fieldPolityTerritory(world) {
   // Phase 3 fills coverage from cores (no catchment bulk), so the per-pass integration cap
   // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
   const rateCap = Math.max(1, Math.round((T.EXPAND_RATE ?? 8) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
+  // ── T.MARGINAL_HOLD: extent from the MARGIN, not from a quota ──────────────
+  // SIZE_BY_POP gives a realm a tile ALLOWANCE (its people ÷ a density) and the
+  // growth walk spends it cheapest-first. That prices the AVERAGE tile and is
+  // blind to which tile: a realm with allowance left claims empty steppe, and a
+  // realm at its allowance stops at the edge of a crowded valley it obviously
+  // administers. It also makes one world-wide constant set every realm's size,
+  // so any shift in the demographic scale silently mis-sizes the whole planet
+  // (measured: B3's honest food economy cut population 31%, the divisor was not
+  // re-derived, and the largest empire on Earth became 14 tiles).
+  // Here the state instead asks the question a state actually asks, of each tile
+  // separately: do the people on this ground pay for governing it at THIS
+  // distance from my seat? Yield is the tile's own people projected through the
+  // court's statecraft; cost is the admin load the rest of the model already
+  // prices (loadOfD = 1 + travel-cost/ADMIN_HALF). So extent EMERGES from the
+  // density gradient and the terrain: a realm follows a dense river valley a
+  // long way and stops dead at the desert beside it, dense cores support distant
+  // marches, thin cores hold only their own hinterland, and coverage still rises
+  // with development because technique and works raise the people while roads
+  // lower the distance. RURAL_BIND_DENS keeps its meaning and its units (people
+  // per reference tile to bind one tile-equivalent) — it is simply applied at the
+  // MARGIN instead of to an average, so it no longer sets a world-wide quota.
+  const marginOn = (T.MARGINAL_HOLD || 0) > 0 && T.SIZE_BY_POP && !!world.popField;
+  const pfM = marginOn ? world.popField : null;
+  // The margin is a FRACTION of the bind density, not a second free number: the
+  // quota's constant is an AVERAGE over a realm's whole extent, and a state's
+  // poorest governable ground has always been far thinner than its average (the
+  // marches, the moors, the desert edge). One dimensionless ratio expresses that,
+  // and — the point — it RIDES any future re-derivation of RURAL_BIND_DENS
+  // automatically, so the fragility that produced the 14-tile world cannot recur
+  // through this path. Composed with the quota above: hold up to what you can
+  // govern (ceiling), of the land that pays (floor).
+  const bindD = Math.max(1, T.RURAL_BIND_DENS || 5500) * Math.max(0.02, T.MARGIN_FRAC ?? 0.33);
+  // MEASURED, and the reason the quota SURVIVES underneath (2026-07-29): the
+  // marginal test alone prices SHAPE but destroys SCALE. Run without the quota it
+  // makes every realm expand to the same density contour, so sizes converge —
+  // top-8 read 28,24,24,20,19,19,19,18 tiles against the quota model's
+  // 41,25,22,20,14,10,8,7 — and history's heavy tail (a few great powers over
+  // many small states) is gone, because a populous realm no longer buys more
+  // ground than a thin one. So the two do different jobs and BOTH are kept: the
+  // quota is the CEILING (how much this state can administer at all — its people
+  // and statecraft), the marginal test is the FILTER (which ground is worth
+  // administering). A realm may hold up to what it can govern, of the land that
+  // pays. Nomads exempt for the same reason they are exempt from the quota: a
+  // steppe confederation holds sparse land by momentum, not by the people
+  // standing on it.
+  const holdsTile = (c, ti, d) => {
+    if (!marginOn) return true;
+    const cc = world.countries && world.countries.get(c);
+    if (cc && cc._nomadic) return true;
+    return pfM[ti] * spanTechMul(c) >= bindD * loadOfD(d);
+  };
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
   const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
   const coverOrg  = Number.isFinite(COVER_ORG_ENV)  ? COVER_ORG_ENV  : (T.COVER_ORG ?? 260);
@@ -885,7 +936,7 @@ function fieldPolityTerritory(world) {
         // FIELD_ADMIN: a claimed tile consumes its admin LOAD from the budget (a remote
         // or harsh tile spends multiples), and its distance is stamped so this pass's
         // shed / next pass's walk read the same d the claim was priced at.
-        if (nd < cost[ni] && (budget.get(c) || 0) > 0) {
+        if (nd < cost[ni] && (budget.get(c) || 0) > 0 && holdsTile(c, ni, nd)) {
           cost[ni] = nd; co[ni] = c; budget.set(c, budget.get(c) - (adminOn ? loadOfD(nd) : 1)); heap.push(ni, nd, c);
           if (adminOn) dist[ni] = nd;
         }
@@ -942,6 +993,28 @@ function fieldPolityTerritory(world) {
           for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { edge = true; break; } }
           if (edge) { rel[ti] = cid; co[ti] = -1; excess.set(cid, rem - 1); shedRel.set(cid, (shedRel.get(cid) || 0) + 1); }
         }
+      }
+    }
+  }
+
+  // 6b. MARGINAL RELEASE (T.MARGINAL_HOLD): the same per-tile question asked of ground
+  //     already held — a march whose people no longer pay for its administration is let
+  //     go, wherever it sits, instead of the quota shed's "most remote first". So a
+  //     realm recedes from the ground that actually stopped being worth governing (a
+  //     plague-emptied march, a frontier the technique wave left behind, land whose
+  //     distance grew when the seat moved), and a still-dense far valley is kept. Home
+  //     tiles and worked catchment stay pinned exactly as the quota shed pins them.
+  if (marginOn) {
+    let homeM = world._fpHomeM; if (!homeM || homeM.length !== N) homeM = world._fpHomeM = new Uint8Array(N);
+    homeM.fill(0);
+    for (const arr of homeTiles.values()) for (const ti of arr) homeM[ti] = 1;
+    for (let ti = 0; ti < N; ti++) {
+      const cid = co[ti];
+      if (cid < 0 || homeM[ti] || worked[ti]) continue;
+      const d = adminOn ? (Number.isFinite(dist[ti]) ? dist[ti] : 0) : 0;
+      if (!holdsTile(cid, ti, d)) {
+        rel[ti] = cid; co[ti] = -1;
+        shedRel.set(cid, (shedRel.get(cid) || 0) + loadOfD(d));
       }
     }
   }
