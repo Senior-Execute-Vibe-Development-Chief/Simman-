@@ -955,3 +955,81 @@ commit inside the Tier-B wave.
 Each change was gated on its own and each passed. None of the gates measure
 absolute carrying capacity or absolute realm area — §6, the standing blind spot,
 now with a fourth instance.
+
+
+---
+
+# What `de97888` ACTUALLY did — and why restoring it is the wrong instinct
+
+Chased the fix, measured it, and the conclusion inverted. Recording it because
+the instinct ("find the commit, put it back") is wrong here and the next
+generation will have it too.
+
+## The lever restore does not work — measured first
+
+`ERA_PROD_SCALE` and `TIER_SCALE_REF` are documented "retired; >0 restores".
+At HEAD, 480x240 seed 8817, 6000 steps:
+
+| config | Σcap | census |
+|---|---|---|
+| defaults (0 / 0) | 7.40M | 3899 |
+| `ERA_PROD_SCALE=260` | 7.74M (**+4.6%**) | 4006 |
+| `+ TIER_SCALE_REF=29000` | 7.74M (no further change) | 4006 |
+
+The consuming code was replaced alongside the constants, so the old world is not
+recoverable by the levers. The missing ~6M of capacity is in the new mechanism.
+
+## What the commit was doing — from its own message
+
+> "The fitted overlay `_eraProd = BASE + 260·agri^6·devGate` is retired
+> (ERA_PROD_SCALE default 260 -> 0)... **The 260 and the exponent 6 existed only
+> to land the modern boom at a target scale** while staying invisible pre-modern
+> (measured exactly 1.000 until ~10500), and devGate keyed FOOD productivity on
+> political organisation — **a state grows no wheat**."
+
+replaced by
+
+    s._eraProd = (1 + LAND_WORKS × _terrWorksMean) × s._indCap
+
+**That commit was obeying THE SECOND CARDINAL RULE.** `260·agri^6` is precisely
+the tell the rule describes: a constant with no independent physical meaning,
+chosen to land an outcome. Retiring it is correct. And `devGate` — food
+productivity keyed on political organisation — was a genuine causal error.
+
+## The real finding, stated the way CLAUDE.md asks
+
+The world did not get worse; it got HONEST, and the honest number is lower. Per
+the rule's own closing line — *"A surprising-but-mechanistic result beats a
+correct-but-fitted one. If the honest system makes Egypt a city-state, that is a
+TRUE finding about a missing mechanism — surface it and build the missing system,
+don't paper over it with a constant."*
+
+**So: the 43% capacity loss is a TRUE finding, and the missing system is the
+pre-industrial TECHNIQUE→YIELD channel.** What replaced the overlay covers:
+- Boserupian built works (canals, terraces, drainage) — `LAND_WORKS × worksMean`
+- industrial capacity — `_indCap`
+
+What it does NOT cover is the several-fold rise in pre-industrial yields from
+agricultural technique itself: crop rotation, the mouldboard plough, manuring,
+selective breeding, new crop packages. The retired `agri^6` was FAKING that
+channel with a fitted exponent. Deleting the fake correctly left a hole where a
+real mechanism should be.
+
+The sim already carries the ingredients — crop packages (`CROP_AXIS`), livestock
+(`LIVESTOCK`: traction/manure/dairy), `k.agriculture`. The build is to price
+yield from those, so a people with a good package, draught animals and manure
+out-produces one without — mechanistically, with no exponent chosen to hit a
+target.
+
+## Recommendation
+
+**Do NOT restore `ERA_PROD_SCALE`.** It is a fitted constant, it is banned by the
+project's own rule, and it only buys +4.6% anyway. Build the technique→yield
+mechanism instead. Until it exists, the world's food — and therefore its realm
+sizes — is honestly short by roughly the amount that overlay was inventing.
+
+**Caveat worth weighing:** `de97888`'s own commit message records that "the
+5-seed battery at 21k is the recorded next validation step **before any push**".
+It was pushed with that validation outstanding. The design is right; whether the
+magnitude of what replaced the overlay is right was never established, and that
+is the open question — not whether to bring the overlay back.
