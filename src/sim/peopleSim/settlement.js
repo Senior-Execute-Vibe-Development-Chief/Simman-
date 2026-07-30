@@ -1967,8 +1967,30 @@ function updateKnowledge(world, s) {
   // a shrewd sovereign builds institutions faster at the seat of rule (dynasties.js c._rulerWit)
   let rulerLearn = 1;
   if (s.countryId >= 0 && world.countries) { const cc = world.countries.get(s.countryId); if (cc && cc.capitalId === s.id) rulerLearn = cc._rulerWit || 1; }
+  // T.ORG_PRESSURE — CARNEIRO, STATED PROPERLY: circumscription ALONE does not build
+  // states, circumscription PLUS population pressure does. Where land is open the losers
+  // of a quarrel walk away; where it is bounded AND full they must submit, and submission
+  // is what an institution is. `confineMul` above already carries circumscription, but as
+  // a bare rate multiplier capped at ~1.39 — and with no pressure term it rewards an EMPTY
+  // hemmed-in island exactly as much as a packed valley.
+  //   Why this matters here: every settlement starts at org=0.1000 and climbs to
+  // ORG_STATE_MIN (0.15) at a near-uniform rate, so the whole planet crosses the statehood
+  // bar within ~2000 steps of itself (measured: 0 of 61 qualifying at step 4500, then
+  // 8 -> 44 -> 62). A uniform initial condition plus a uniform rate makes ANY threshold a
+  // global switch, which is why the early map is a few lone dots and then fills in at
+  // once. Spreading the RATE by local conditions is what turns that switch into a frontier:
+  // a crowded circumscribed basin crosses generations before an open frontier, so the dawn
+  // of states ROLLS (what DAWN does for population, which is not the gate).
+  //   fill = the settlement's people against its own carrying capacity (s._k, one pass
+  // stale — set in the capacity pass; 0 on the very first tick, guarded). 0 = off,
+  // byte-identical.
+  const _fillK = s._k > 0 ? Math.min(1.5, (s.people || 0) / s._k) : 0;
+  const pressMul = T.ORG_PRESSURE > 0 ? 1 + T.ORG_PRESSURE * (s._confine || 0) * _fillK : 1;
+  if (process.env.SIM_DBG_PRESS && (world._pDbg = (world._pDbg || 0) + 1) <= 5) {
+    console.error(`  [press] confine=${(s._confine||0).toFixed(3)} people=${Math.round(s.people||0)} _k=${(s._k||0).toFixed(1)} fill=${_fillK.toFixed(3)} pressMul=${pressMul.toFixed(3)} confineMul=${confineMul.toFixed(3)} org=${k.organization.toFixed(4)}`);
+  }
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul * rulerLearn);
+    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul * rulerLearn * pressMul);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance

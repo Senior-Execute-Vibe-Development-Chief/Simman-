@@ -664,3 +664,80 @@ prevent. Measured `metalCap` 0.9-1.0 at the earliest settlements.
 ceiling and make states form LATER, worsening the owner-visible symptom — while
 also introducing real regional variation (ore varies by place), which is the
 ingredient the rolling dawn actually needs. Both effects are real. Measure both.
+
+
+---
+
+# Spreading the dawn: circumscription × crowding (`T.ORG_PRESSURE`, 2026-07-30)
+
+The follow-up to the falsified ceiling hypothesis above. This time the term was
+verified LIVE and VARYING before any long measurement was run — the lesson from
+three no-op "fixes" earlier in the day.
+
+## Mechanism
+
+Carneiro stated properly: **circumscription alone does not build states —
+circumscription PLUS population pressure does.** Where land is open the losers of
+a quarrel disperse; where it is bounded AND full they must submit, and submission
+is what an institution is. `T.CONFINE` already carried circumscription, but as a
+bare rate multiplier (1.10–1.28 in practice) with no pressure term, so it rewards
+an EMPTY hemmed-in island exactly as much as a packed valley.
+
+    fill      = s.people / s._k                     (settlement against its own capacity)
+    pressMul  = 1 + T.ORG_PRESSURE · s._confine · fill
+
+multiplied into organisation learning. 0 = off, byte-identical.
+
+## Verified live first
+
+    [press] confine=0.705 people=110 _k=554.9 fill=0.198 pressMul=1.419 confineMul=1.282
+    [press] confine=0.509 people=110 _k=219.9 fill=0.500 pressMul=1.764 confineMul=1.204
+    [press] confine=0.661 people=110 _k= 94.5 fill=1.164 pressMul=3.307 confineMul=1.264
+    [press] confine=0.250 people=110 _k=179.9 fill=0.611 pressMul=1.459 confineMul=1.100
+
+`pressMul` spans 1.20–3.31 across five settlements where `confineMul` spans
+1.10–1.28. The term does what it claims: it DIFFERENTIATES.
+
+## Measured (480x240, seed 8817)
+
+Organisation spread (max − p10), and settlements over `ORG_STATE_MIN`:
+
+| step | spread off | spread @3 | qualify off | qualify @3 |
+|---|---|---|---|---|
+| 3000 | 0.029 | 0.044 | 0/57 | 0/56 |
+| 4500 | 0.038 | **0.069** | 0/61 | **12/61** |
+| 6000 | 0.039 | **0.085** | 8/66 | **44/66** |
+| 9000 | 0.038 | **0.111** | 62/73 | 69/72 |
+
+The distribution roughly TRIPLES in width — the planet stops crossing the bar as
+one cohort.
+
+Realm ramp — the owner-visible result:
+
+| step | off | @3 | @6 |
+|---|---|---|---|
+| 4500 | 3 | 5 | 6 |
+| 6000 | 5 | **12** | **14** |
+| 7500 | **21** (4× jump) | 19 | 21 |
+| 9000 | 27 (max 9 t) | 25 (**max 20 t**) | 25 (**max 26 t / 400k km²**) |
+
+The "5 -> 21 in one window" burst becomes a gradual 5 -> 12 -> 19, and the leading
+realm at 9000 goes from 9 tiles to 20-26 (138k -> 308-400k km²).
+
+Smoke green at the default (122.7s).
+
+## What it does NOT fix — stated plainly
+
+**The first ~3000 steps are unchanged**: 3, 2 realms at both settings, and at
+OP=6 as well. Those are the seeded states, alone on the map. Organisation still
+starts at **exactly 0.1000 everywhere** and must climb to 0.15; even a 3× rate in
+the best-pressed basin needs ~4000 steps. Spreading the RATE cannot fix a uniform
+INITIAL CONDITION — to move the earliest phase, the org a settlement is BORN with
+has to depend on where it is. That is the remaining half of this defect.
+
+## Shipped
+
+`T.ORG_PRESSURE`, **default 0** (byte-identical). Not gated: the multi-seed
+stylized battery has not been run under it, and after the BRIDGE_GLOBAL episode
+earlier today nothing goes on by default without one. Try it with
+`T.ORG_PRESSURE = 3`.
