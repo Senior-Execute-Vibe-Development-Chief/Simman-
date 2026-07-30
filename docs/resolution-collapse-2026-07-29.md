@@ -579,3 +579,88 @@ that was torn out, since the timing fits.
 
 Do NOT tune the size target further until this is understood. A conquest-less
 world will look like statelets whatever the target says.
+
+
+---
+
+# Why the dawn of states is SYNCHRONISED (2026-07-30)
+
+Owner: *"at a point the blobs grow back into regular run, but early they are
+distantly spaced blobs."* Not the realm count, not conquest — the EARLY map is a
+few lone dots, then it fills in and looks normal.
+
+## Measured
+
+State birth requires `org >= T.ORG_STATE_MIN` (0.15). Organisation across all
+settled settlements, 480x240 seed 8817:
+
+| step | p10 | med | max | qualifying |
+|---|---|---|---|---|
+| 1500 | 0.098 | 0.102 | 0.110 | **0 / 49** |
+| 3000 | 0.096 | 0.110 | 0.125 | **0 / 57** |
+| 4500 | 0.101 | 0.124 | 0.138 | **0 / 61** |
+| 6000 | 0.113 | 0.138 | 0.153 | 8 / 66 |
+| 7500 | 0.137 | 0.153 | 0.167 | **44 / 68** |
+| 9000 | 0.144 | 0.165 | 0.182 | 62 / 73 |
+
+Nothing can be a state for ~5500 steps; then the whole world crosses within
+~2000. That is the owner's "few distant dots, then regular run", exactly.
+
+`FRONTIER_FOUNDING=4` (which HALVES the capital-spacing rule and QUARTERS both
+population bars) changes the early phase not at all — 3/2/3/5 realms becomes
+3/2/3/6 through step 6000, only doubling after 7500. Neither spacing
+(NUCLEATE_CAP_DIST) nor population is the early gate. Organisation is.
+
+## A hypothesis I formed, tested, and FALSIFIED
+
+I proposed that the stone-age ceiling `orgEraCap = 0.15 + metalCap*0.95 +
+construction*0.15` equals `ORG_STATE_MIN` exactly (both 0.15), so organisation
+would asymptote into the bar and statehood be impossible pre-metal — a global
+switch when metal lifted the cap. I implemented a Carneiro circumscription term
+on the CEILING (`s._confine` already exists and already drives the RATE) and
+measured: **org identical to three decimals, qualifying counts 0/0/0/5/42/62 vs
+0/0/0/8/44/62.** No effect.
+
+Instrumenting the actual values shows why:
+
+    metalCap=0.900  cap=1.0000  org=0.1000  head=0.9000
+    metalCap=1.000  cap=1.0000  org=0.1000  head=0.9000
+
+**The ceiling is already 1.0 from step one; headroom is 0.9, not 0.04.** The
+hypothesis was wrong and the patch was reverted rather than kept as a no-op.
+
+## The actual mechanism
+
+Every settlement starts at **org = 0.1000 exactly**, and grows at a near-uniform
+rate: `LEARN_BASE (4.5e-6) × sciMul × orgClim × orgHead(0.9) × ...`. The only
+regional variation is in those multipliers, and their combined spread is small —
+`confineMul = 1 + CONFINE·_confine` is at most ~1.39 with `_confine` median
+0.295. So the whole world climbs from 0.100 to 0.15 together and crosses within
+~2000 steps of each other.
+
+**A uniform initial condition plus a near-uniform rate makes any threshold a
+global switch.** DAWN cannot help: it staggers when basins reach POPULATION bars,
+and population is not the gate.
+
+For a rolling dawn, organisation must be BUILT BY LOCAL PRESSURE — density
+against capacity, circumscription, conflict — strongly enough to spread crossings
+over millennia, not learned at a near-constant rate everywhere. That is a
+redesign of the knowledge track, not a patch, and it is not attempted here.
+
+## SEPARATE REAL BUG FOUND: the era gate is inert
+
+    const metalCap = oreTier(r);   // ORE availability, not metallurgy KNOWLEDGE
+    orgEraCap = clamp01(0.15 + metalCap * 0.95 + k.construction * 0.15);
+
+The comment on this gate states its purpose: "a stone-tool society runs a
+chiefdom, not a continental bureaucracy — without this, a big fertile village grew
+org→1.0 (continental reach) on population alone, with zero metallurgy." But
+`metalCap` reads the ORE TIER of reachable deposits, not `k.metallurgy`. A
+stone-age village standing on iron ore gets a ceiling of 1.0 immediately. The
+guard does not guard, which is precisely the failure mode it was written to
+prevent. Measured `metalCap` 0.9-1.0 at the earliest settlements.
+
+**Tension to weigh before fixing it:** making the gate bind would LOWER the early
+ceiling and make states form LATER, worsening the owner-visible symptom — while
+also introducing real regional variation (ore varies by place), which is the
+ingredient the rolling dawn actually needs. Both effects are real. Measure both.
