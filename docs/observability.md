@@ -159,6 +159,46 @@ None of those are what the tool was built to find. That is the point of it.
 
 ---
 
+## 12. SHAPE — realm geometry (`--section=shape`)
+
+Counts and areas say nothing about FORM, and form is what a human sees: "blobs all
+over", "it follows the river valley", "scattered dots that never touch". Every owner
+complaint this session was a shape statement and no instrument could read one.
+
+* **compactness** `4πA/P²` — 1.0 is a disc, ~0.2 a ragged sprawl
+* **fragments** — 8-connected components; >1 means the realm is in pieces
+* **main-piece share** — how much of it is the largest fragment
+* **elongation** — principal-axis ratio about the centroid; a valley state reads high
+* **spread from seat** — radius of gyration in tiles
+* **enclaved holes** — unclaimed land fully surrounded by the realm
+* **neighbouring realms** + the count of ISOLATED realms (no land border with anyone)
+* **nearest-seat distance** — the "scattered dots" measure, across all capitals
+
+## 13. THE MAP AS AN IMAGE (`--png=out.png`)
+
+    node tools/observe.mjs --steps=9000 --W=960 --png=map.png
+    node tools/observe.mjs --png=pop.png --png-layer=pop      # population
+    node tools/observe.mjs --png=dev.png --png-layer=dev      # technique wave
+    node tools/observe.mjs --png=ter.png --png-layer=terrain  # fertility
+
+Numbers describe shape; they do not SHOW it. Every diagnosis this session that beat
+the probes came from a human looking at the map. Minimal PNG encoder, no dependencies —
+openable, and directly readable by an agent that can see images.
+
+**What the first render showed that no metric did.** At step 9000 on the shipped app
+grid: 24 realms, **46% of them touching nobody**, strung across the Eurasian
+mid-latitudes with the Americas, Australia and most of Africa entirely stateless — and
+every realm a **near-perfect disc**. Compactness 0.49 / elongation 1.49 read as
+unremarkable in a table; the image reads as circles stamped on the map. Real early
+states follow rivers, coasts and valleys. That the territory walk produces discs says
+its shape is dominated by distance-from-capital rather than by the transport cost field
+it is supposed to ride — a first-order finding that was invisible in every number.
+
+**Second finding, from the metric this time:** `fragments per realm` is **1.00 at p50,
+p90 AND max on both grids**. No realm is ever in pieces — the connectivity release
+(countryTerritory step 3) severs anything not reachable from the capital through
+same-owner land, so an exclave is structurally impossible. History is full of them.
+
 ## Known gaps in observability
 
 * **No per-tick time series.** `--every=N` re-snapshots, it does not record a trace. A
@@ -170,3 +210,15 @@ None of those are what the tool was built to find. That is the point of it.
 * **No diffing.** The highest-value next addition is `observe --json` at two commits
   piped through a differ, so "what did this change actually move?" is one command
   instead of a bespoke A/B.
+* **The active lever configuration is not recorded in a snapshot.** A dump does not say
+  which `T.*` values produced it, so two snapshots cannot be safely compared without
+  external bookkeeping. Should be the first line of every report.
+* **`world.debug` is not surfaced** — `tickMs`, `invariantHits`, `recededTiles/People`,
+  slave-trade counters. Performance and invariant health are outcomes too.
+* **Nested objects collapse to a count** in the nation drill-down (`_techEff={22}`,
+  `knowledge={6}`, `_gPrice=[8]`, `culMix=[4]`). "Every field" is true only one level
+  deep.
+* **Individual entities below the realm level are only ever aggregated.** There is no
+  way to ask about one settlement, one culture, one dynasty, or one road.
+* **Graph structure is counted, not described** — the liege tree, the alliance graph,
+  the road network and the trade graph all report as sizes, never as topology.

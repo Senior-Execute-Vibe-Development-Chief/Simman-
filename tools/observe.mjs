@@ -28,6 +28,8 @@
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { stepToYear } from "../src/sim/calendar.js";
+import nodeZlib from "node:zlib";
+import nodeFs from "node:fs";
 
 const arg = (k, d) => {
   const hit = process.argv.find(a => a.startsWith(`--${k}=`));
@@ -157,6 +159,96 @@ function snapshot(w) {
       console.log(`    ${String(r.name).slice(0, 15).padEnd(16)}${String(r.seat).slice(0, 13).padEnd(14)}${String(r.tiles).padStart(6)}${f(r.km2).padStart(10)}${String(r.members).padStart(5)}${f(r.people).padStart(9)}${f(r.wealth).padStart(9)}${f(r.treasury).padStart(8)}${f(r.power).padStart(8)}${r.dominance.toFixed(2).padStart(6)}${r.org.toFixed(3).padStart(6)}`);
     if (rows.length > 14) console.log(`    … ${rows.length - 14} more`);
     out.nations = rows;
+  }
+
+  // ── SHAPE — the geometry of realms, not just their size ────────────────────
+  // Counts and areas say nothing about FORM, and form is what a human sees on the
+  // map: "blobs all over", "a state that follows the river valley", "scattered dots
+  // that never touch". Every complaint this session was a shape statement, and no
+  // instrument could read one. These are the standard measures:
+  //   COMPACTNESS  4πA/P² — 1.0 is a disc, ~0.2 a ragged sprawl, low = tendrils.
+  //   FRAGMENTS    8-connected components; >1 means the realm is in pieces.
+  //   ELONGATION   principal-axis ratio about the centroid — a Nile-shaped valley
+  //                state reads high, a round blob reads ~1.
+  //   SPREAD       radius of gyration from the seat, in tiles — how far rule reaches.
+  //   ENCLAVES     unclaimed land fully enclosed by the realm (holes it never filled).
+  //   NEIGHBOURS   distinct realms it shares a land border with (0 = an isolated dot).
+  if (want("shape") || want("shapes")) {
+    H("SHAPE — realm geometry");
+    const tw = w.tw, th = w.th;
+    const tiles = new Map();
+    if (co) for (const i of land) { const c = co[i]; if (c >= 0) { let a = tiles.get(c); if (!a) tiles.set(c, a = []); a.push(i); } }
+    const nb4 = (i) => { const y = (i / tw) | 0, x = i - y * tw; const o = []; o.push(y * tw + ((x + 1) % tw)); o.push(y * tw + ((x - 1 + tw) % tw)); if (y > 0) o.push(i - tw); if (y < th - 1) o.push(i + tw); return o; };
+    const nb8 = (i) => { const y = (i / tw) | 0, x = i - y * tw; const o = []; for (let dy = -1; dy <= 1; dy++) { const ny = y + dy; if (ny < 0 || ny >= th) continue; for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; o.push(ny * tw + ((x + dx + tw) % tw)); } } return o; };
+    const rows = [];
+    for (const [cid, arr] of tiles) {
+      const own = new Set(arr);
+      // perimeter + neighbouring realms
+      let perim = 0; const nbrs = new Set();
+      for (const i of arr) for (const n of nb4(i)) {
+        if (own.has(n)) continue;
+        perim++;
+        const o = co[n]; if (o >= 0 && o !== cid) nbrs.add(o);
+      }
+      // 8-connected components
+      const seen = new Set(); let comps = 0, biggest = 0;
+      for (const s0 of arr) {
+        if (seen.has(s0)) continue;
+        comps++; let sz = 0; const st = [s0]; seen.add(s0);
+        while (st.length) { const i = st.pop(); sz++; for (const n of nb8(i)) if (own.has(n) && !seen.has(n)) { seen.add(n); st.push(n); } }
+        if (sz > biggest) biggest = sz;
+      }
+      // centroid + second moments, x unwrapped against the seat to survive the torus
+      const c = w.countries?.get(cid); const cap = c?.capital;
+      const sx = cap ? (cap.pos.x | 0) : ((arr[0] % tw) | 0), sy = cap ? (cap.pos.y | 0) : ((arr[0] / tw) | 0);
+      let mx = 0, my = 0;
+      const xs = [], ys = [];
+      for (const i of arr) {
+        const y = (i / tw) | 0; let x = i - y * tw;
+        let dx = x - sx; if (dx > tw / 2) dx -= tw; if (dx < -tw / 2) dx += tw;
+        xs.push(dx); ys.push(y - sy); mx += dx; my += y - sy;
+      }
+      mx /= arr.length; my /= arr.length;
+      let sxx = 0, syy = 0, sxy = 0, rg = 0;
+      for (let j = 0; j < xs.length; j++) { const a = xs[j] - mx, b = ys[j] - my; sxx += a * a; syy += b * b; sxy += a * b; rg += xs[j] * xs[j] + ys[j] * ys[j]; }
+      sxx /= arr.length; syy /= arr.length; sxy /= arr.length;
+      const tr = sxx + syy, det = sxx * syy - sxy * sxy;
+      const disc = Math.max(0, tr * tr / 4 - det);
+      const l1 = tr / 2 + Math.sqrt(disc), l2 = Math.max(1e-9, tr / 2 - Math.sqrt(disc));
+      // enclaves: unclaimed land whose 4-neighbours are all this realm's
+      let holes = 0;
+      for (const i of arr) for (const n of nb4(i)) {
+        if (own.has(n) || !(elev[n] > 0) || co[n] >= 0) continue;
+        if (nb4(n).every(m => own.has(m) || !(elev[m] > 0))) holes++;
+      }
+      rows.push({ id: cid, name: w.polities?.get(cid)?.name || `#${cid}`, tiles: arr.length,
+        compact: perim > 0 ? (4 * Math.PI * arr.length) / (perim * perim) : 0,
+        frags: comps, mainShare: biggest / arr.length,
+        elong: Math.sqrt(l1 / l2), spread: Math.sqrt(rg / arr.length),
+        holes, nbrs: nbrs.size, perim });
+    }
+    rows.sort((a, b) => b.tiles - a.tiles);
+    line("compactness 4πA/P²", stats(rows.map(r => r.compact)));
+    line("fragments per realm", stats(rows.map(r => r.frags)));
+    line("main-piece share", stats(rows.map(r => r.mainShare)));
+    line("elongation (axis ratio)", stats(rows.map(r => r.elong)));
+    line("spread from seat", stats(rows.map(r => r.spread)));
+    line("enclaved holes", stats(rows.map(r => r.holes)));
+    line("neighbouring realms", stats(rows.map(r => r.nbrs)));
+    const isolated = rows.filter(r => r.nbrs === 0).length;
+    console.log(`    ISOLATED realms (no land border with anyone): ${isolated} of ${rows.length} (${Math.round(100 * isolated / Math.max(1, rows.length))}%)`);
+    // how far apart are the seats? the "scattered dots" measure
+    const seats = [];
+    if (w.countries) for (const c of w.countries.values()) if (c.capital?.mode === "settled") seats.push([c.capital.pos.x | 0, c.capital.pos.y | 0]);
+    const nn = [];
+    for (let a = 0; a < seats.length; a++) { let best = Infinity;
+      for (let b = 0; b < seats.length; b++) { if (a === b) continue; let dx = Math.abs(seats[a][0] - seats[b][0]); if (dx > tw / 2) dx = tw - dx; const dy = seats[a][1] - seats[b][1]; const d = Math.hypot(dx, dy); if (d < best) best = d; }
+      if (Number.isFinite(best)) nn.push(best); }
+    line("nearest-seat distance", stats(nn));
+    console.log(`    ${"name".padEnd(16)}${"tiles".padStart(6)}${"compact".padStart(9)}${"frags".padStart(7)}${"main%".padStart(7)}${"elong".padStart(7)}${"spread".padStart(8)}${"holes".padStart(7)}${"nbrs".padStart(6)}`);
+    for (const r of rows.slice(0, 12))
+      console.log(`    ${String(r.name).slice(0, 15).padEnd(16)}${String(r.tiles).padStart(6)}${r.compact.toFixed(3).padStart(9)}${String(r.frags).padStart(7)}${(100 * r.mainShare).toFixed(0).padStart(7)}${r.elong.toFixed(2).padStart(7)}${r.spread.toFixed(1).padStart(8)}${String(r.holes).padStart(7)}${String(r.nbrs).padStart(6)}`);
+    out.shape = rows;
   }
 
   // ── ECONOMY ────────────────────────────────────────────────────────────────
@@ -307,10 +399,50 @@ function snapshot(w) {
   }
 }
 
+// ── THE MAP, AS AN IMAGE ─────────────────────────────────────────────────────
+// Numbers describe shape; they do not SHOW it. Every diagnosis this session that
+// beat the probes came from someone looking at the map. `--png=out.png` writes the
+// political map (and `--png-layer=pop|dev|terrain` the others) so it can be opened —
+// or read directly by an agent that can see images. Minimal PNG encoder, no deps.
+function writePng(w, file, layer) {
+  const zlib = nodeZlib, fs = nodeFs;
+  const { tw, th, elev } = w, SC = 3, OW = tw * SC, OH = th * SC;
+  const rgb = Buffer.alloc(OW * OH * 3);
+  const hsl = (h, s, l) => { const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2; const hh = h / 60; let r, g, b; if (hh < 1)[r, g, b] = [c, x, 0]; else if (hh < 2)[r, g, b] = [x, c, 0]; else if (hh < 3)[r, g, b] = [0, c, x]; else if (hh < 4)[r, g, b] = [0, x, c]; else if (hh < 5)[r, g, b] = [x, 0, c]; else[r, g, b] = [c, 0, x]; return [(r + m) * 255 | 0, (g + m) * 255 | 0, (b + m) * 255 | 0]; };
+  const co = w._countryOwner, pf = w.popField, dv = w.devField;
+  let pmax = 0; if (pf) for (let i = 0; i < w.N; i++) if (elev[i] > 0 && pf[i] > pmax) pmax = pf[i];
+  const colOf = (i) => {
+    if (elev[i] <= 0) return [16, 30, 60];
+    if (layer === "pop") { const t = pf ? Math.min(1, Math.log1p(pf[i]) / Math.log1p(pmax || 1)) : 0; return [20 + 235 * t | 0, 20 + 120 * t | 0, 40]; }
+    if (layer === "dev") { const t = dv ? Math.min(1, dv[i]) : 0; return [30 + 200 * t | 0, 60 + 150 * t | 0, 40 + 60 * t | 0]; }
+    if (layer === "terrain") { const f2 = w.fert ? w.fert[i] : 0; return [90 + 120 * f2 | 0, 110 + 130 * f2 | 0, 70]; }
+    const c = co ? co[i] : -1;
+    if (c < 0) return [140, 132, 116];
+    return hsl(((c * 61) % 360 + 360) % 360, 0.65, 0.5);
+  };
+  for (let ti = 0; ti < w.N; ti++) {
+    const y = (ti / tw) | 0, x = ti - y * tw, col = colOf(ti);
+    for (let dy = 0; dy < SC; dy++) for (let dx = 0; dx < SC; dx++) {
+      const o = ((y * SC + dy) * OW + (x * SC + dx)) * 3;
+      rgb[o] = col[0]; rgb[o + 1] = col[1]; rgb[o + 2] = col[2];
+    }
+  }
+  const crcT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc = (b) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = crcT[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const ch = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length, 0); const b = Buffer.concat([Buffer.from(t, "ascii"), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(b), 0); return Buffer.concat([l, b, c]); };
+  const ih = Buffer.alloc(13); ih.writeUInt32BE(OW, 0); ih.writeUInt32BE(OH, 4); ih[8] = 8; ih[9] = 2;
+  const st = OW * 3 + 1, raw = Buffer.alloc(st * OH);
+  for (let y = 0; y < OH; y++) { raw[y * st] = 0; rgb.copy(raw, y * st + 1, y * OW * 3, (y + 1) * OW * 3); }
+  fs.writeFileSync(file, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), ch("IHDR", ih), ch("IDAT", zlib.deflateSync(raw, { level: 6 })), ch("IEND", Buffer.alloc(0))]));
+  console.log(`\n    [map] ${layer || "political"} → ${file}  (${OW}x${OH})`);
+}
+
 if (EVERY > 0) {
   for (let t = EVERY; t <= STEPS; t += EVERY) { stepPeopleSim(world, EVERY); console.log(`\n\n################ STEP ${t} ################`); snapshot(world); }
 } else {
   stepPeopleSim(world, STEPS);
   snapshot(world);
 }
+const PNG = arg("png", null);
+if (PNG) writePng(world, PNG, arg("png-layer", null));
 if (JSON_OUT) console.log("\n<<<JSON>>>\n" + JSON.stringify(out, (k, v) => (v === Infinity ? "Inf" : v === -Infinity ? "-Inf" : v), 1));
