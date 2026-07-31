@@ -29,6 +29,7 @@ import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
 import { closeWar } from "./armies.js";
 import { updateLoyaltyField, updateGrievLedger, grievOf, ATTACH_SECEDE, GRIEV_UNREST_W } from "./loyaltyField.js";
+import { tel, telPass } from "./telemetry.js";
 import { fieldShift } from "./popField.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -3285,20 +3286,25 @@ function considerSubmissions(world, countries) {
   const probBase = _passProb(SUBMIT_HAZARD);
   for (const [sid, hid] of threat) {
     if (hid < 0) continue;
+    // FUNNEL (telemetry.js): vassalage is this sim's PRIMARY consolidation channel —
+    // reading the chronicle established 16 `polity.submitted` against 0 annexations
+    // over 16k steps — and it had no instrument that could say why a court did NOT
+    // kneel. Tallied at the rejecting line, so the funnel cannot drift from the gate.
+    tel(world, "submit", "CANDIDATE");
     const S = countries.get(sid), H = countries.get(hid);
-    if (!S || !H || !S.capital || !H.capital) continue;
+    if (!S || !H || !S.capital || !H.capital) { tel(world, "submit", "noLiveSeat"); continue; }
     const spol = getPolity(world, sid);                     // pure read — the record is only minted on an actual submission
-    if (spol && spol._overlord != null) continue;           // already someone's dependency
+    if (spol && spol._overlord != null) { tel(world, "submit", "alreadyADependency"); continue; }
     const powS = eff.get(sid) || 1, powH = eff.get(hid) || 1;
-    if (powH < powS * SUBMIT_RATIO) continue;               // resistance not yet hopeless
+    if (powH < powS * SUBMIT_RATIO) { tel(world, "submit", "resistanceNotHopeless"); continue; }
     // The suzerain must be able to PROJECT force to S's seat — overawing needs a
     // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
     const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
-    if (d > SUBMIT_REACH * Math.max(1, H.holdReach)) continue;
+    if (d > SUBMIT_REACH * Math.max(1, H.holdReach)) { tel(world, "submit", "outOfProjectionReach"); continue; }
     // Deterministic per-(seed, settlement, step) roll — a pure function of its
     // key, so rolling BEFORE the identity/coalition work is free rejection.
     const r = hash32(world.seed || 1, "submit", sid, world.step) / 4294967296;
-    if (r > probBase) continue;
+    if (r > probBase) { tel(world, "submit", "hazardRoll(waiting)"); continue; }
     // No cycles: if H's own overlord chain leads back to S, S can't take H as
     // suzerain (tribute pyramids — a vassal of a vassal — are fine; loops
     // aren't). An acyclic chain can't be longer than the live polity count.
@@ -3307,19 +3313,27 @@ function considerSubmissions(world, countries) {
       up = ov.get(up);
       if (up === sid) { cyc = true; break; }
     }
-    if (cyc) continue;
+    if (cyc) { tel(world, "submit", "cycleWouldForm"); continue; }
     let prob = probBase;
     // Kin submit, foreigners resist longer. Same era-weighted identity brake as
     // peaceful absorption (T.ABSORB_IDENTITY) — it slows a wholly foreign court
     // by the full lever weight but never to zero (absorbResistance saturates at
     // exactly 1 for fully disjoint peoples; unscaled it made foreign submission
     // impossible forever, the opposite of "eventually bends").
-    prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+    const mIdentity = 1 - T.ABSORB_IDENTITY * absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+    prob *= mIdentity;
     // Balance of power: a coalition arrayed against H guarantees the statelets
     // it would overawe — the same deterrence that throttles peaceful absorption.
-    prob /= coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
-    if (r > prob) continue;
-    bendTheKnee(world, sid, hid);
+    const brake = coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
+    prob /= brake;   // kept as a DIVISION: `p *= 1/b` differs from `p /= b` in the last
+                     // ulp, and this feeds a comparison in a determinism-tested sim.
+                     // The attribution below reads the same numbers without touching them.
+    // Attributed to the SMALLER of the two brakes, never to "the roll failed" —
+    // the same rule crystallize.js uses, so a funnel names the binding constraint
+    // instead of the arithmetic that expressed it.
+    if (r > prob) { tel(world, "submit", mIdentity <= 1 / brake ? "identityBrake(foreignCourt)" : "coalitionBrake(deterrence)"); continue; }
+    if (bendTheKnee(world, sid, hid)) telPass(world, "submit");
+    else tel(world, "submit", "bendTheKneeRefused");
   }
 }
 

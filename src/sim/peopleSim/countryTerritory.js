@@ -806,7 +806,11 @@ function fieldPolityTerritory(world) {
     const cc = world.countries && world.countries.get(c);
     if (cc && cc._nomadic) return true;
     const ok = pfM[ti] * spanTechMul(c) >= bindD * loadOfD(d);
-    if (!ok) tel(world, "growth", "tileTooThin(marginal)");
+    // Own channel, not "growth": this fires PER TILE while the growth funnel below
+    // is PER REALM, and mixing the two populations makes both percentages meaningless
+    // (the tile tally silently inflates the realm funnel's denominator).
+    if (!ok) tel(world, "marginalTile", "tooThin");
+    else tel(world, "marginalTile", "PASSED");
     return ok;
   };
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
@@ -949,7 +953,10 @@ function fieldPolityTerritory(world) {
     // funnel can never drift from the gate the way an externally-replicated one does.
     if (raw <= 0) tel(world, "growth", "atOrOverTarget");
     else if (raw > rateCap) tel(world, "growth", "rateLimited");
-    else tel(world, "growth", "hasBudget");
+    // hasBudget IS the accept branch. Tallied with plain tel() it printed as a
+    // REJECTION taking 73.8% of candidates, and why.mjs reported "no explicit accept
+    // marker" — a funnel reading exactly backwards from what the code does.
+    else telPass(world, "growth");
   }
 
   // 5. FRONTIER GROWTH — bounded multi-source Dijkstra from each blob's edge into WILD

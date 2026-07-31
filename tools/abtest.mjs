@@ -112,7 +112,12 @@ const HEADLINE = ["realm.count", "realm.claimedPct", "realm.areaKm2.p50", "realm
   "entity.settled", "entity.stateless", "pop.field", "pop.census", "sett.wealth.p50",
   "shape.compact.p50", "shape.elong.p50", "shape.frags.max", "shape.isolatedPct", "shape.nearestSeat.p50",
   "nation._dominance.max", "count.cultures", "event.war.began", "event.settlement.captured",
-  "event.polity.founded", "event.polity.receded"];
+  "event.polity.founded", "event.polity.receded",
+  // Consolidation runs through VASSALAGE here, not annexation — `event.settlement.captured`
+  // above is reliably 0 while the tributary network forms about once per thousand steps.
+  // blocLandPct is the largest power's honest extent, which realm.count cannot show
+  // because a tributary is invisible on the political map.
+  "event.polity.submitted", "graph.vassal.blocLandPct", "graph.vassal.depthMax"];
 console.log(`\n  ── HEADLINE ${"─".repeat(58)}`);
 for (const k of HEADLINE) {
   const a = per[0].base[k], b = per[0].test[k];

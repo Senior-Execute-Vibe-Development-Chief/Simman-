@@ -203,18 +203,94 @@ same-owner land, so an exclave is structurally impossible. History is full of th
 
 # THE MEASUREMENT SUITE
 
-`observe` answers "what is the world like?". The other two answer the questions that
-actually consumed this session, and both were hand-rolled repeatedly before existing.
+`observe` answers "what is the world like?". The others answer the questions that
+actually consumed these sessions — what did this lever do, which commit moved it, how
+did it get here, and why did the thing NOT happen — every one of which was hand-rolled
+repeatedly before it existed.
 
 ## `tools/lib/simmetrics.mjs` — one collector, every consumer
 
 `collect(world)` returns a FLAT map of `metricName -> number`, built by the same
-introspection rule as `observe`: every length-N tile field, every numeric key on
-settlements / countries / polity records, realm geometry, every collection size, the
-chronicle histogram, `world.debug` counters. **~1,570 metrics today, and it grows by
-itself.** Every tool below consumes it, so all measurements are directly comparable —
-the trap the manual bisects fell into was each pass measuring its own two or three
-numbers.
+introspection rule as `observe`: every length-N tile field, every numeric leaf on
+settlements / countries / polity records, realm geometry, network topology, every
+collection size, the chronicle histogram, `world.debug` counters. **~3,480 metrics at
+the app grid, and it grows by itself.** Every tool below consumes it, so all
+measurements are directly comparable — the trap the manual bisects fell into was each
+pass measuring its own two or three numbers.
+
+### It goes TWO levels deep, and that was not a detail
+
+The collector originally stopped at `typeof v === "number"`, so it saw a settlement's
+~60 scalars and **none of the 234 numeric leaves one level below them**:
+
+| hidden structure | leaves |
+|---|---|
+| `_gPrice/_gProd/_gDem/_gStock/_gCap/_gNet/_gExpLeft/_gImpLeft` — the whole 8-good economy | 64 |
+| `_mIn/_mOut/_mInRate/_mOutRate/_mInPend/_mInPendRate` — money provenance | 108 |
+| `_techEff{}` — farmYield, reachLevel, logisticsLevel, military, walls, credit, seaRange, cohesion | 14 |
+| `knowledge{}`, `localRes`, `_effRes`, `_terrResAcc/_terrResMax` | 35 |
+| country/polity `personality{}`, `chron{}` | 7 |
+
+Since `abtest`, `bisect` and `trace` **all** read `collect()`, a lever writing into any
+of those was structurally unmeasurable. `MIXED_FARM` writes `_techEff.farmYield`; the
+A/B harness could only ever see whatever laundered through to population three passes
+later. Worse, abtest's best safety property — the **non-experiment detector** ("both
+arms identical on every metric ⇒ the switch was never reached") — would report a lever
+that moves *only* hidden state as a dead switch. A false negative exactly where it
+costs most, and the same trap `BALANCE_W` sprang once already.
+
+Rules of the descent, all of which fail open:
+
+* **One level, not arbitrary depth.** Depth 2 is where this data model ends.
+* **Entity references are not recursed.** A value carrying an `id` plus a `name`/`pos`
+  is another entity — `country.capital` would otherwise duplicate all 113 settlement
+  fields under `nation.capital.*`, and `_foodParent` would measure a different town.
+* **Maps/Sets contribute their size**, so `_tradeReach.size` (partners per settlement)
+  is now a first-class metric rather than an observe-only curated line — which means
+  the "pinned at exactly 12" cap-binding finding is something a diff can catch.
+* **Arrays contribute `.len`** even when their elements aren't numbers, so `culMix.len`
+  *is* the mix-depth observe prints by hand.
+* **Vectors are named when a table exists, indexed when not.** `_gPrice.metal`,
+  `_mIn.tribute_received`. The tables are loaded by **dynamic import in a try/catch**,
+  because `bisect.mjs` copies this collector into an *old commit's* worktree where an
+  export may not exist yet — a static import would fail at link time and take the whole
+  bisect down. A missing table costs a readable name, never a measurement.
+
+Cost: 79 ms at the reference grid, 398 ms at the app grid.
+
+### `graph.*` — topology, not sizes
+
+Every network the world carries used to report as one integer. `_overlordOf.size = 16`
+is the same number for a sixteen-wide star under one hegemon and a four-deep tribute
+chain, and those are different worlds. It matters most for **vassalage**, which the
+chronicle read (below) showed is this sim's *primary* consolidation channel.
+
+* **`graph.vassal.*`** — bonds, suzerains, roots, `depthMax`/`depthMean`,
+  `subvassalPct` (bonds whose suzerain is itself a dependency — the pyramid, not the
+  star), `branchMax`, `blocMaxRealms`, `blocPctRealms`, `dependentPctRealms`, and
+  **`blocLandPct`: the share of all claimed land inside the largest bloc**, suzerain
+  plus every descendant. That last one is the honest extent of the largest power, and
+  it resolves the standing paradox directly — realm count rises and the map reads
+  fragmented *because a tributary is invisible on the political map*.
+* **`graph.alliance.*`** — degree mean/max, components, largest bloc %, unallied %.
+* **`graph.trade.*`** — links, nodes, degree, components, largest %, and
+  `top10FlowPct`: is commerce a web, or a handful of arteries carrying everything?
+* **`graph.realmnet.*`** — connected components of the realm adjacency graph: how many
+  *separate political worlds* exist. `shape.isolatedPct` counts realms touching nobody;
+  this counts the clusters, which is a different question.
+* **`graph.road.*`** — components and largest share: one road system, or stubs?
+* **`graph.liege.*`** — the settlement hierarchy *inside* realms, by depth.
+
+Readable as `node tools/observe.mjs --section=graph`.
+
+**What it said on its first run** (app grid, seed 8817, step 12000, 33 realms):
+`vassal.depthMax` **1.00** and `subvassalPct` **0.0%** — the tributary tree is
+completely **flat**. No vassal ever acquires a vassal, though `considerSubmissions`
+explicitly permits pyramids ("tribute pyramids — a vassal of a vassal — are fine; loops
+aren't") and spends code on cycle detection that can therefore never fire. `liege.depthMax`
+is likewise 1: the settlement hierarchy is one level everywhere. And
+`realmnet.components` **16** across 33 realms, largest cluster only **37.5%** — the map
+is not one political world with gaps in it, it is sixteen.
 
 `provenance(world)` returns commit, whether `src/` is dirty, seed, grid, step and the
 **lever diff against shipped defaults**. `observe` now prints it as the first block: a
@@ -228,7 +304,7 @@ be compared with another.
     node tools/abtest.mjs --tune="ORG_BIRTH_VAR=0" --seeds=8817,31337,4242
     node tools/abtest.mjs --env="SIM_SUCCESSORS=0" --grep=realm,shape
 
-Runs both arms on the same seed, diffs **all ~1,570 metrics**, prints a fixed HEADLINE
+Runs both arms on the same seed, diffs **all ~3,480 metrics**, prints a fixed HEADLINE
 block plus the largest effects. Three properties that matter:
 
 * **Multi-seed by default.** Single-seed A/B is how noise ships as a finding — the
@@ -248,7 +324,7 @@ block plus the largest effects. Three properties that matter:
 
 Walks a commit range in a throwaway worktree, running the **current** collector against
 each commit's `src/` — so every commit is measured identically. `--auto` needs no metric
-named in advance: it ranks every one of the ~1,570 by how sharply it steps and reports
+named in advance: it ranks every one of the ~3,480 by how sharply it steps and reports
 which commit carries the most sharp steps. The regression finds itself.
 
 Verified against the known case at the shipped app grid:
@@ -294,7 +370,7 @@ cannot: **SWING** (peak/trough — a stability measure), **DIR** (rising / falli
 oscillating, from sign changes in the first difference), **PEAK@** in steps and years,
 **SETTLE** (is the last third flat — did it converge?), and the chronicle **bucketed by
 window**, so *when* things happened survives instead of collapsing to a count. `--out=`
-writes one CSV row per checkpoint × ~1,570 columns.
+writes one CSV row per checkpoint × ~3,480 columns.
 
 This is what made the old `_sizePopK` anchor legible as UNSTABLE rather than merely
 generous — its median realm swung 92k → 23k → 11k → 80k km² across four checkpoints.
@@ -366,8 +442,33 @@ conquest defect is not "advantage cannot become territory"; it is upstream, in h
 fronts open and how little sticks at the realm level. `adv<=1` (not winning) and
 `noContestedTiles` need opposite fixes and were previously indistinguishable.
 
+**`submit`** — why a court does NOT bend the knee. Wired because reading the chronicle
+established that consolidation here runs almost entirely through vassalage (16
+`polity.submitted` against **0** annexations over 16k steps), which made the *one*
+channel that actually consolidates the world the one with no funnel on it. The
+rejection is attributed to the smaller of the two brakes (identity vs coalition
+deterrence), never to "the roll failed" — the same rule `crystallize.js` uses. App grid,
+12,000 steps, 481 candidate pairs:
+
+    resistanceNotHopeless        355   73.8%
+    alreadyADependency            72   15.0%
+    hazardRoll(waiting)           29    6.0%
+    outOfProjectionReach          13    2.7%
+    identityBrake(foreignCourt)    7    1.5%
+    ✓ PASSED                       4    0.8%
+    noLiveSeat                     1    0.2%
+
+**Vassalage is gated on the POWER RATIO and essentially nothing else.** `SUBMIT_RATIO`
+(the suzerain must be 5× the statelet's whole network) takes three quarters of all
+candidates; projection reach takes 2.7% and identity 1.5%. `coalitionBrake` — a whole
+deterrence mechanism, with a lever behind it — **rejected zero candidates in 12,000
+steps**. So did `cycleWouldForm`, which is consistent with `graph.vassal.depthMax = 1`:
+the tree never gets deep enough for a loop to be possible, and the cycle-detection code
+in `considerSubmissions` cannot currently fire.
+
 Not yet wired: war INITIATION (`armies.js` still uses its own bespoke `WDBG` counters
-and should be migrated onto this layer), the food/trade passes, and migration.
+and should be migrated onto this layer), the food/trade passes, secession, and
+migration.
 
 ## `--section=story` — the history the sim writes about ITSELF
 
@@ -418,23 +519,37 @@ political map** — so the map reads as fragmented while the politics are not.
 
 ## Known gaps in observability
 
-* **No per-tick time series.** `--every=N` re-snapshots, it does not record a trace. A
-  real trace (one row per checkpoint, CSV) would make regressions bisectable by eye.
+Ranked by what they cost. Closed items are kept, struck through, so the next reader can
+see what was already tried.
+
+* **Nothing follows ONE entity through time.** `trace` records `collect()` per
+  checkpoint — world aggregates only. There is no way to follow a single realm's arc,
+  so **realm lifespans, rise-and-fall shape, and who-conquered-whom-when are not
+  measurable**. For a sim whose product is emergent history, the history itself is the
+  least instrumented thing in it. Highest-value remaining addition by a distance.
+* **Funnels cover 5 passes of ~40 modules.** `found`, `nucleate`, `growth`, `capture`,
+  `submit`. Absent: war INITIATION (still on bespoke `WDBG` counters), migration, the
+  food and trade passes, secession, faith/culture birth, colony founding. Every one of
+  those is a "why did it not happen" that still needs a bespoke probe.
+* **Observe and trace are single-seed**, so a finding from either has no error bar.
+  Only `abtest` is multi-seed by default, and cross-seed spread was measurably large
+  enough this month to flip a sign (0.57 vs 1.09 on the same ratio).
+* **Individual entities below the realm level are only ever aggregated.** There is no
+  way to ask about one settlement, one culture, one dynasty, or one road.
 * **Language and faith internals** are counted but not characterised (no phoneme /
   grammar / doctrine summary) — `tools/langlab` covers some of this separately.
 * **Per-tile history** is only what the fields remember (`_tileHomeland`, `_tileFellAt`,
   `_tileCapturedAt`); there is no general "what happened on this tile" query.
-* **No diffing.** The highest-value next addition is `observe --json` at two commits
-  piped through a differ, so "what did this change actually move?" is one command
-  instead of a bespoke A/B.
+* **Nested objects still collapse to a count in the `--nation=` drill-down**
+  (`_techEff={22}`, `knowledge={6}`). The *collector* now descends into them, so
+  `abtest`/`bisect`/`trace` see them; only observe's human drill-down print does not.
+* ~~No per-tick time series~~ — **fixed**: `tools/trace.mjs`, with `--out=` CSV.
+* ~~No diffing~~ — **fixed**: `tools/abtest.mjs` diffs the whole metric map, multi-seed.
 * ~~The active lever configuration is not recorded~~ — **fixed**: `provenance()` stamps
   commit, dirty-src, seed, grid and the lever diff on every `observe` run.
 * ~~`world.debug` is not surfaced~~ — **fixed**: `collect()` emits `debug.*` (tickMs,
   invariantHits, receded counters), so performance and invariant health diff too.
-* **Nested objects collapse to a count** in the nation drill-down (`_techEff={22}`,
-  `knowledge={6}`, `_gPrice=[8]`, `culMix=[4]`). "Every field" is true only one level
-  deep.
-* **Individual entities below the realm level are only ever aggregated.** There is no
-  way to ask about one settlement, one culture, one dynasty, or one road.
-* **Graph structure is counted, not described** — the liege tree, the alliance graph,
-  the road network and the trade graph all report as sizes, never as topology.
+* ~~Nested state is invisible to the collector~~ — **fixed**: depth-2 descent, +1,676
+  metrics, see above.
+* ~~Graph structure is counted, not described~~ — **fixed**: `graph.*` and
+  `observe --section=graph`.
