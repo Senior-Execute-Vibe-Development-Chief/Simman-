@@ -429,3 +429,82 @@ scoped, none applied; `ORG_BIRTH_VAR` remains at its shipped default of 1:
    handing out the answer. Keeps a rolling dawn; unmeasured whether it re-centres on
    the cradles.
 
+---
+
+# THE THIRD REGRESSION: routine shedding mints nations (`T.SUCCESSOR_STATES`, 2026-07-31)
+
+The owner ran the builds. **`dc4e0e9` is the last commit that looks right**, which puts
+the break INSIDE Phase B — and then pointed at the one commit in that window nobody
+had examined: `b859db7` (12:09, "The political fabric re-knits"), which ships
+`T.SUCCESSOR_STATES` at default 1.
+
+## Why it was invisible
+
+Every measurement in that commit, and every number in the lever's own description, was
+taken at **480x240 (tw=240)**. Its commit message records the result plainly:
+
+> "polity.seceded 0 -> 0 at this horizon: every orphaned patch was a single entity ...
+> which the >=2 rule correctly lapses ... the channels are live but atom-starved."
+
+At the reference grid an orphaned patch holds ONE settlement, so the anti-confetti
+"≥2 members" rule lapses it and the successor channel never fires. **At the shipped app
+grid (tw=480) the same real patch holds several settlements**, so the identical rule
+fires constantly. The lever was validated in exactly the regime where it does nothing.
+
+## Measured — app grid, seed 8817, this branch, only the lever differing
+
+| step | OFF: realms / median realm | ON (shipped): realms / median | `polity.receded` |
+|---|---|---|---|
+| 2000 | **4** / **12 tiles** | 14 / **3 tiles** | 0 → **15** |
+| 4000 | **9** / **31 tiles** | 22 / 21 tiles | 0 → **15** |
+| 6000 | **16** / **63 tiles** | 25 / 36 tiles | 0 → 3 |
+| 8000 | **21** / **55 tiles** | 28 / 48 tiles | 0 → 6 |
+
+`settlement.lapsed` runs 0 in every window OFF, and 2/7/3/6 ON. Claimed land at step
+8000 is nearly identical (3.72% vs 3.87%) — **the same ground, carved into far more and
+far smaller nations.** Fifteen recessions in the first 2000 steps of a world that holds
+four realms.
+
+## The category error
+
+`resolveOrphanedMarches` fires on any settled member standing on ground its realm no
+longer holds. But `world._fpRel` is filled by TWO different events in
+`fieldPolityTerritory`:
+
+* **step 3, the connectivity release** — a march severed from its capital. A genuine
+  loss of grip; a successor state here is right (the Diadochi case the design names).
+* **step 6, the over-capacity shed** — the border trimming itself back one ring toward
+  its administrative target. This happens EVERY PASS to any realm above target, and it
+  is not a political event at all; it is the frontier breathing.
+
+The channel does not distinguish them, so every routine frontier adjustment is read as
+a secession and mints a statelet. That is what "blobs of nations all over" is.
+
+It also compounds with the size loop of §2: shed → orphaned members → successor minted
+→ the successor is small → it sheds → more successors. And it got WORSE with this
+session's size fix, not better (recessions 6 → 15 in the first window), because larger
+realms hold more members for a shed to orphan — which is why the size fix alone did not
+restore the owner's early game.
+
+## The fix, when it is built
+
+Not "turn the lever off" — restoration from the ground and Diadochi successors are both
+right, and the witnessed-lapse logging closed a real silent channel. The fix is to
+separate the two release causes, which the code already tracks separately: a shed march
+secedes only when the parent actually lost GRIP (connectivity severed, or a collapse in
+capacity), and an ordinary over-target trim lapses to wilderness the way a receding
+frontier should. No new constants; the distinction is already in the pass.
+
+## Status
+
+**NOT FIXED — no default changed.** Diagnostic build handed to the owner
+(`sizefix + SUCCESSOR_STATES=0`) to confirm by eye before anything is shipped.
+
+## The process finding, again
+
+This is the third instance in two sessions of the same blind spot, and now the clearest:
+a mechanism gated, measured and shipped entirely at tw=240, whose behaviour at the
+shipped grid is not a matter of degree but of KIND — inert at one resolution, dominant
+at the other. `docs/resolution-collapse-2026-07-29.md` §6 already asked for one
+app-grid arm per wave. This is what it costs when that does not happen.
+
