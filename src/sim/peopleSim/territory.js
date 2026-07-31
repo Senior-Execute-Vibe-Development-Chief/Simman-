@@ -217,8 +217,27 @@ export function computeTerritory(world) {
   // (this pass's is computed just after, in computeCountryTerritory — a 1-pass lag is
   // immaterial as borders drift slowly). Off, or before the first political pass, the
   // guards below are inert (byte-identical).
+  //   T.CATCH_WILD — the wilderness allowance is not a privilege of statelessness.
+  // The floor above works only by an accident of encoding: a stateless settlement's
+  // countryId IS -1, the same flag unclaimed land carries, so `clip[ti] === -1`
+  // happens to admit wilderness for it and only for it. The moment that village
+  // joins a state its countryId becomes >= 0 and every wild tile it was farming
+  // fails the test — statehood CONFISCATES the fields at the village door, which no
+  // state has ever done and which the lever's own rationale never asks for (the
+  // rationale is that a catchment must not CREATE a border, and working wild soil
+  // creates none: under TILE_POLITY the political field is stamped from the capital
+  // core alone — countryTerritory.js step 1b — and _territoryOwner is never copied
+  // into _countryOwner). The accident closes a loop with real teeth: border shrinks
+  // -> catchment shrinks -> harvest, s._k and the FOOD_K capacity share shrink ->
+  // popField over the realm's ground shrinks -> the size target (govPop / bind
+  // density) shrinks -> border shrinks. On the lever, the test states the physical
+  // rule instead: a settlement works its OWN country's ground or nobody's, never a
+  // foreign realm's — so where the border falls no longer decides what the peasants
+  // can farm, and the food side of that loop is cut.
   const clip = T.CATCHMENT_CLIP > 0 && world._countryOwner && world._countryOwner.length === N ? world._countryOwner : null;
-  const inCountry = (sid, ti) => !clip || clip[ti] === (countryOf.get(sid) ?? -1);
+  const wildOK = (T.CATCH_WILD || 0) > 0;
+  const clipped = (sid, ti) => clip[ti] !== (countryOf.get(sid) ?? -1) && !(wildOK && clip[ti] < 0);
+  const inCountry = (sid, ti) => !clip || !clipped(sid, ti);
 
   // Release any tile whose owner is gone (died / unsettled) back to
   // wilderness, so neighbours can grow into the vacated land. Also
@@ -229,7 +248,7 @@ export function computeTerritory(world) {
     const o = owner[ti];
     if (o < 0) continue;
     if (!byId.has(o) || world.elev[ti] <= 0) { owner[ti] = -1; continue; }
-    if (clip && clip[ti] !== (countryOf.get(o) ?? -1)) owner[ti] = -1;   // catchment tile no longer within its owner's country → release (borders shifted)
+    if (clip && clipped(o, ti)) owner[ti] = -1;   // catchment tile no longer within its owner's country → release (borders shifted)
   }
 
   // Guarantee each settlement its (tier-sized) core block, carving it from a
@@ -250,7 +269,7 @@ export function computeTerritory(world) {
         const ti = ny * tw + nx;
         if (elev[ti] <= 0) continue;
         if (coreClaimed[ti] === stamp) continue;   // already core of an earlier settlement this pass
-        if (clip && clip[ti] !== s.countryId) continue;   // CATCHMENT_CLIP: the guaranteed core can't reach outside the country's own ground
+        if (clip && clipped(s.id, ti)) continue;   // CATCHMENT_CLIP: the guaranteed core can't reach outside the country's own ground (CATCH_WILD: wilderness counts as its own)
         coreClaimed[ti] = stamp;
         owner[ti] = s.id;
       }
@@ -283,7 +302,7 @@ export function computeTerritory(world) {
         if (elev[ti] <= 0) continue;
         if (coreClaimed[ti] === stamp) continue;       // a settlement's core — sacred
         if (capAt && capAt[ti] > -Infinity) continue;  // conquered land — leave to the conqueror
-        if (clip && clip[ti] !== s.countryId) continue;   // CATCHMENT_CLIP: hinterland stays within the country's ground
+        if (clip && clipped(s.id, ti)) continue;   // CATCHMENT_CLIP: hinterland stays within the country's ground (CATCH_WILD: wilderness counts as its own)
         if (d2 < hintDist[ti]) { hintDist[ti] = d2; owner[ti] = s.id; }
       }
     }

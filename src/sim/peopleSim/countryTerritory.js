@@ -807,11 +807,58 @@ function fieldPolityTerritory(world) {
   // post-load pass; no warm-up gate, no persisted anchor, so the anchor-seeding
   // discontinuity and the whole save/load anchor-drift class are gone).
   // Byte-identical when off (nothing computes).
+  // ── T.SIZE_WORKED: the base is the people the realm's ECONOMY touches ─────────
+  // govPop as written is Σ popField over the tiles the realm CURRENTLY OWNS, and
+  // the target computed from it decides how many tiles it may own. Writing h for
+  // held tiles and d for people per held tile, that is
+  //     target = h·d / bindDens = k·h,           k = d / bindDens
+  // — a pure proportional feedback with NO interior fixed point. k>1 runs away
+  // upward until frontier dilution pulls d down; k<1 RATCHETS: the realm sheds to
+  // k·h, which lowers govPop, which lowers the target, which sheds again, down to
+  // the one-tile anchor core, and it stays there however dense that core is.
+  // Measured at the shipped grid (tools/probe_sizeloop.mjs, seed 8817): k runs 0.39
+  // (step 2000) -> 0.37 (3000) -> 0.71 (4000) -> 1.06 (5000) -> 1.13 (6000), so the
+  // whole early world ratchets to single tiles and then, as k crosses 1, expansion
+  // switches on everywhere at once. That crossing IS the owner-visible "slow start, then blobs
+  // of nations all over": twenty one-tile specks where the pre-Tier-B world carried
+  // three states of 150-350k km². Nothing about it is a magnitude to re-tune — a
+  // self-referential loop is bistable at EVERY setting of the constant, which is
+  // also why one resolution's world is empires and another's is dots.
+  //   The fix is to add to the base a term that does NOT move when the border
+  // moves: the people on ground the realm's own members already WORK but the realm
+  // does not yet hold (their economic catchments, territory.js _territoryOwner,
+  // reaching past the frontier into unclaimed land). That region is set by where
+  // those settlements sit, how far they can haul, and the terrain — none of which
+  // is the political border, once T.CATCH_WILD lets a member work the wilderness at
+  // its door. The physical claim: a polity's administrative base is the people it
+  // governs PLUS the people its own economy already reaches, and it funds its
+  // marches out of that base rather than out of the marches themselves.
+  //   With W for that out-of-border term the target becomes k·h + W/bindDens, which
+  // for k<1 has a STABLE interior fixed point at h* = W / (bindDens·(1−k)) instead
+  // of the ratchet to the anchor core — a young state comes to rest holding the
+  // land its people farm. For k>1 the expansive regime is untouched (it still runs
+  // until frontier dilution pulls d down), and the term can only ever ADD, so no
+  // realm shrinks because of it. Conquest still grows the base through the cities
+  // it takes — which is how it grew in history.
+  //   A tile is counted at most once: only UNOWNED ground consults the catchment,
+  // and under CATCHMENT_CLIP a member never works a foreign realm's ground anyway.
   let govPopOf = null;
   if (T.SIZE_BY_POP && world.popField) {
     govPopOf = new Map();
     const pf = world.popField;
-    for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c < 0 || !(elev[ti] > 0)) continue; govPopOf.set(c, (govPopOf.get(c) || 0) + pf[ti]); }
+    const terrW = (T.SIZE_WORKED || 0) > 0 && terr && byId ? terr : null;
+    for (let ti = 0; ti < N; ti++) {
+      if (!(elev[ti] > 0)) continue;
+      let c = co[ti];
+      if (c < 0 && terrW) {
+        const oid = terrW[ti];
+        if (oid < 0) continue;
+        const s = byId.get(oid);
+        if (!s || s.mode !== "settled" || s.countryId < 0 || !alive.has(s.countryId)) continue;
+        c = s.countryId;
+      } else if (c < 0) continue;
+      govPopOf.set(c, (govPopOf.get(c) || 0) + pf[ti]);
+    }
   }
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * spanTechMul(cid) * Math.max(0, cp) * r2);
