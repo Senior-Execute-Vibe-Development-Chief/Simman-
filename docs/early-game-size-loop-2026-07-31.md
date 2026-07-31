@@ -760,3 +760,62 @@ cannot force a decision — parity (41% of rejections) says the power distributi
 compressed for anyone to overmatch a neighbour, and `dom` (the great-power discount)
 never fires at all. That is the Rome-shaped hole, and it is upstream of every treaty
 constant.
+
+---
+
+# ITEM 2 — THE ROME-SHAPED HOLE: where it actually stands (2026-07-31)
+
+New instrument: `tools/probe_dominance.mjs`, built to discriminate two hypotheses that
+need opposite fixes — (A) a hegemon EXISTS and `_dominance` cannot see it, or (B) the
+power distribution is itself flat and there is no hegemon to see.
+
+## Case A confirmed — the hegemon exists
+
+Reference grid, seed 8817:
+
+| step | POWER max/med | govPop max/med | AREA max/med | `_dominance` med / max |
+|---|---|---|---|---|
+| 9000 | **6.20** | 3.34 | 3.55 | 1.00 / 1.93 |
+| 12000 | 5.94 | 6.15 | 3.44 | 1.00 / 2.02 |
+| 18000 | **8.73** | **7.80** | 5.46 | 1.00 / **1.59** |
+| 21000 | 5.97 | 7.28 | 7.16 | 1.00 / 1.71 |
+
+A realm carrying **6-9× the median's coercive weight and 7-8× its people** reads a
+dominance of 1.6-2.0, and the median great power reads exactly 1.00.
+
+## But my first reading of WHY was wrong
+
+I expected the per-member fiscal normalisation (`revenue / members.length` against the
+peer per-member median — the code's own note: *"or the tail rewards sheer SIZE"*) to be
+deleting the signal. Measured, it is not: revenue-per-member max/median runs **9.28 at
+step 9000 and 3.80 at 12000**. The signal reaches the formula intact.
+
+**The clamp is on the OUTPUT, not the input** — `domCeil = CAP_DOM_CEIL_BASE + capCoh ×
+(CAP_DOM_MAX − CAP_DOM_CEIL_BASE)`, which is deliberately low while institutional
+cohesion is low: *"a bronze-age hegemon saturates low (Sargon's Akkad was vast but
+fragile)"*. Dominance is not blind; it is capped on purpose in exactly the era we want
+conquest in. And `probe_warbars`' "dom 0%" means dom is never the PIVOTAL factor in a
+rejection — not that it has no effect. Both of my framings needed correcting.
+
+## A void experiment, recorded so it is not repeated
+
+`BALANCE_W` (the coalition weight, 37% of all rejections) is a module constant exported
+from `conquest.js`, **not a `T.*` lever** — so `SIM_TUNE="BALANCE_W=0.5"` is a no-op and
+the A/B returned byte-identical arms. That is a VOID experiment, not a null result. Any
+test of the balance-of-power brake needs the constant exposed as a lever first.
+
+## The state of the question, precisely
+
+Wars start in quantity (2454 openings / 21k) and end without a victor — stalemate 21,
+faded 17, truce 4 in the last window; capitulation 3 times in a whole run. The two
+candidate brakes, in the order they should be tested:
+
+1. **The coalition bar** — 37% of rejections and rising exactly when a power rises
+   (18% → 37% across sessions). Needs `BALANCE_W`/`BALANCE_CAP` exposed as levers, then
+   a straight A/B on transfers and realm count. **Cheapest next step.**
+2. **`domCeil` in antiquity** — the great-power discounts are capped to ~1.6-2.0 in the
+   era that historically made hegemons by conquest. The cap has a real rationale, so the
+   question is not "raise it" but whether `capCoh` is the right gate for it, and whether
+   an ABSOLUTE scale term belongs beside the relative one (the `INDUSTRIAL_REACH`
+   argument at conquest.js ②c, generalised out of the industrial era).
+3. Only after those: `parity` (41%) — whether the local attack bar is reachable at all.
