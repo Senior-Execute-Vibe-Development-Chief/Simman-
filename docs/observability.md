@@ -282,6 +282,59 @@ validating at a grid the app does not ship. `collect()` now emits `drawn.*` alon
 `drawn.disagreePct` — how far the two maps have diverged), and
 `observe --png-layer=control` renders what the player sees.
 
+## `npm run trace` — the run over TIME
+
+    node tools/trace.mjs --steps=21000 --every=1000
+    node tools/trace.mjs --W=960 --steps=12000 --every=1000 --out=run.csv
+    node tools/trace.mjs --watch=realm.areaKm2.p50,pop.field
+    node tools/trace.mjs --unstable        # rank every metric by how hard it thrashes
+
+Records the full metric map at every checkpoint and reports what a snapshot structurally
+cannot: **SWING** (peak/trough — a stability measure), **DIR** (rising / falling /
+oscillating, from sign changes in the first difference), **PEAK@** in steps and years,
+**SETTLE** (is the last third flat — did it converge?), and the chronicle **bucketed by
+window**, so *when* things happened survives instead of collapsing to a count. `--out=`
+writes one CSV row per checkpoint × ~1,570 columns.
+
+This is what made the old `_sizePopK` anchor legible as UNSTABLE rather than merely
+generous — its median realm swung 92k → 23k → 11k → 80k km² across four checkpoints.
+Reading that took four separate manual runs; `--unstable` now ranks every metric that
+oscillates, automatically.
+
+## `npm run why` — the funnels: why did it NOT happen?
+
+    node tools/why.mjs --steps=9000 --W=960
+    node tools/why.mjs --steps=9000 --every=3000     # per window, not cumulative
+
+Every other metric here is OUTCOME state, and outcomes **cannot explain absences** —
+which is nearly always the question (why did no state form, why did this realm not grow,
+why was that war never declared). `src/sim/peopleSim/telemetry.js` tallies the reason at
+**the exact line that rejects**, so the funnel can never drift from the gate. That
+matters: `tools/probe_fillaudit.mjs` answers the same question by RE-IMPLEMENTING the
+whole size-target computation externally, and a duplicated gate silently diverges from
+the real one and then lies.
+
+Cost when off is one `if (!world._tel) return;`. No control flow depends on a tally, so
+a telemetry run produces an identical world — `npm test` green with it wired.
+
+Wired so far: **`nucleate`** (state birth: org bar, seat population, basin bar, capital
+spacing, same-pass spacing, per-pass cap) and **`growth`** (realm expansion: target zero,
+at-or-over target, rate limited, has budget, marginal-tile too thin). First run at the
+shipped grid, 6000 steps — 930 candidates considered:
+
+    org<ORG_STATE_MIN         506   54.4%
+    seatPop                   404   43.4%
+    tooNearExistingCapital     15    1.6%
+    basinPop<clusterBar         3    0.3%
+    ✓ PASSED                    1    0.1%
+
+State formation is gated on **organisation and seat population**, not on spacing — which
+is the kind of answer that previously needed a bespoke probe per question.
+
+Not yet wired: the war-initiation funnel (`armies.js` still uses its own bespoke `WDBG`
+counters — it should be migrated to this layer), conquest/capture, settlement founding,
+and the food/trade passes.
+
 ## Known gaps in observability
 
 * **No per-tick time series.** `--every=N` re-snapshots, it does not record a trace. A

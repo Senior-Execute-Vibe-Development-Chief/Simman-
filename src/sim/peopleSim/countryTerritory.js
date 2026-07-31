@@ -26,6 +26,7 @@ import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
 import { settlementPower, snapClaim } from "./conquest.js";
 import { getCulture } from "./cultures.js";
+import { tel, telPass } from "./telemetry.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
@@ -804,7 +805,9 @@ function fieldPolityTerritory(world) {
     if (!marginOn) return true;
     const cc = world.countries && world.countries.get(c);
     if (cc && cc._nomadic) return true;
-    return pfM[ti] * spanTechMul(c) >= bindD * loadOfD(d);
+    const ok = pfM[ti] * spanTechMul(c) >= bindD * loadOfD(d);
+    if (!ok) tel(world, "growth", "tileTooThin(marginal)");
+    return ok;
   };
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
   const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
@@ -937,10 +940,16 @@ function fieldPolityTerritory(world) {
       // and step 6 sheds its ENTIRE frontier on that pass (the cold-start load divergence).
       continue;
     }
-    if (t <= 0) continue;
+    if (t <= 0) { tel(world, "growth", "targetZero"); continue; }
     target.set(cid, t);
-    const g = Math.min(Math.max(0, t - (held.get(cid) || 0)), rateCap);
+    const raw = t - (held.get(cid) || 0);
+    const g = Math.min(Math.max(0, raw), rateCap);
     if (g > 0) grow.set(cid, g);
+    // WHY this realm did or did not expand this pass — tallied at the decision, so the
+    // funnel can never drift from the gate the way an externally-replicated one does.
+    if (raw <= 0) tel(world, "growth", "atOrOverTarget");
+    else if (raw > rateCap) tel(world, "growth", "rateLimited");
+    else tel(world, "growth", "hasBudget");
   }
 
   // 5. FRONTIER GROWTH — bounded multi-source Dijkstra from each blob's edge into WILD
@@ -2322,11 +2331,12 @@ export function nucleateFrontierStates(world) {
   const cand = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId >= 0) continue;
+    tel(world, "nucleate", "CANDIDATE");
     // STATECRAFT GATE: a people without the organisation for territorial rule stays
     // STATELESS — a chiefdom/tribe that holds no bordered land (most of the pre-modern
     // world). Only once organisation crosses the threshold does a bordered realm
     // crystallise, so undeveloped frontiers no longer carve the map wall-to-wall.
-    if (((s.knowledge && s.knowledge.organization) || 0) < T.ORG_STATE_MIN) continue;
+    if (((s.knowledge && s.knowledge.organization) || 0) < T.ORG_STATE_MIN) { tel(world, "nucleate", "org<ORG_STATE_MIN"); continue; }
     // State-capacity multiplier: low-fertility land needs a far bigger cluster
     // to crystallise a state (so it stays a sparse stateless frontier).
     const seatTi = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
@@ -2367,10 +2377,10 @@ export function nucleateFrontierStates(world) {
     // it LEADS its basin (isLeader below). "A lone town amid a dense peopled
     // valley founds the state its basin can carry" — the BIRTH_FIELD intent,
     // now unit-safe.
-    if (!f2cBridge && (s.people || 0) < seatPop * capMul) continue;
+    if (!f2cBridge && (s.people || 0) < seatPop * capMul) { tel(world, "nucleate", "seatPop"); continue; }
     let dCap = Infinity;                        // isolation from existing states' heartlands
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
-    if (caps.length && dCap < capD2) continue;
+    if (caps.length && dCap < capD2) { tel(world, "nucleate", "tooNearExistingCapital"); continue; }
     let cp = 0, isLeader = true;                // viable cluster + this settlement leads it
     forEachNear(world, s.pos.x, s.pos.y, nucR, (o) => {
       if (o.mode !== "settled" || o.countryId >= 0) return;
@@ -2396,6 +2406,7 @@ export function nucleateFrontierStates(world) {
       cp = mass * f2c;
     }
     if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp, capMul });
+    else tel(world, "nucleate", isLeader ? "basinPop<clusterBar" : "notBasinLeader");
   }
   if (!cand.length) return;
   cand.sort((a, b) => b.cp - a.cp);             // most-developed clusters first
@@ -2404,7 +2415,7 @@ export function nucleateFrontierStates(world) {
     if (n >= NUCLEATE_MAX_PASS) break;
     let tooClose = false;                        // don't mint two adjacent states in one pass
     for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (nucR * 2) ** 2) { tooClose = true; break; } }
-    if (tooClose) continue;
+    if (tooClose) { tel(world, "nucleate", "tooNearAnotherNewStateThisPass"); continue; }
     // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland above): a founding on
     // ground whose people remember ONE fallen nation — uncontested, viable against
     // this candidate's own bar (the same clusterPop×capMul the cluster gate just
@@ -2420,8 +2431,10 @@ export function nucleateFrontierStates(world) {
       s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
       ensurePolity(world, s.id, { how: "frontier", seat: s });
     }
+    telPass(world, "nucleate");
     placed.push({ x: s.pos.x, y: s.pos.y }); n++;
   }
+  if (n >= NUCLEATE_MAX_PASS) tel(world, "nucleate", "perPassCapReached");
 }
 
 // Re-export the city threshold so other passes agree on what a "city" is.
