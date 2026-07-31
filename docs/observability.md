@@ -262,6 +262,26 @@ opening builds by hand to reach.
 and 10× at the app grid; bisecting at the reference alone clears the guilty commit (the
 THIRD CARDINAL RULE).
 
+## The map the PLAYER sees is not the map the sim reasons over
+
+`T.CONTROL_FIELD` is **on by default**, which means the app renders `_ctrlOwner` — a
+smoothed control field radiating from each capital — while every metric here reads
+`_countryOwner`, the authoritative political map. They are not the same map. Measured
+at the shipped grid, seed 8817, step 9000:
+
+| | claimed land |
+|---|---|
+| `_countryOwner` — authoritative, what the sim reasons over | **4.58%** |
+| `_ctrlOwner` — what the player actually looks at | **6.65%** |
+| tiles where they disagree | 2.07% of all land (**1.45×** ratio) |
+
+So an owner report about shapes is a report about the DRAWN map, and measuring only the
+authoritative one is measuring a map nobody looks at — the same class of mismatch as
+validating at a grid the app does not ship. `collect()` now emits `drawn.*` alongside
+`shape.*` (geometry of the control field, its realm count, its claimed share, and
+`drawn.disagreePct` — how far the two maps have diverged), and
+`observe --png-layer=control` renders what the player sees.
+
 ## Known gaps in observability
 
 * **No per-tick time series.** `--every=N` re-snapshots, it does not record a trace. A

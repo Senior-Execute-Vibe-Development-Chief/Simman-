@@ -58,9 +58,14 @@ export function provenance(world, extra = {}) {
     step: world.step, year: Math.round(stepToYear(world.step)), levers: leverDiff(), ...extra };
 }
 
-/** Realm geometry. Separated so observe.mjs and the diff tools share one definition. */
-export function shapeOf(world) {
-  const { tw, th, N, elev } = world, co = world._countryOwner;
+/** Realm geometry. Separated so observe.mjs and the diff tools share one definition.
+ *  `src` selects WHICH political map: the authoritative _countryOwner, or _ctrlOwner —
+ *  the control field the APP ACTUALLY DRAWS when T.CONTROL_FIELD is on (the default).
+ *  These are not the same map: measured at the shipped grid, step 9000, the drawn map
+ *  claims 1.45x the tiles of the authoritative one and they disagree on 2% of all land.
+ *  Measuring only _countryOwner means measuring a map no player ever looks at. */
+export function shapeOf(world, src) {
+  const { tw, th, N, elev } = world, co = src || world._countryOwner;
   const rows = [];
   if (!co) return rows;
   const tiles = new Map();
@@ -146,12 +151,23 @@ export function collect(world) {
   for (const p of ps) for (const k of Object.keys(p)) if (typeof p[k] === "number" && Number.isFinite(p[k])) pkeys.add(k);
   for (const k of pkeys) dist(`polity.${k}`, ps.map(p => (typeof p[k] === "number" && Number.isFinite(p[k])) ? p[k] : 0), m);
 
-  // realm geometry
+  // realm geometry — for BOTH political maps: the authoritative one the sim reasons
+  // over, and the control field the player actually sees rendered.
+  const GEO = ["compact", "frags", "mainShare", "elong", "spread", "holes", "nbrs", "perim"];
   const sh = shapeOf(world);
-  for (const key of ["compact", "frags", "mainShare", "elong", "spread", "holes", "nbrs", "perim"])
-    dist(`shape.${key}`, sh.map(r => r[key]), m);
+  for (const key of GEO) dist(`shape.${key}`, sh.map(r => r[key]), m);
   m["shape.isolatedRealms"] = sh.filter(r => r.nbrs === 0).length;
   m["shape.isolatedPct"] = 100 * sh.filter(r => r.nbrs === 0).length / Math.max(1, sh.length);
+  if (world._ctrlOwner && world._ctrlOwner.length === N) {
+    const shc = shapeOf(world, world._ctrlOwner);
+    for (const key of GEO) dist(`drawn.${key}`, shc.map(r => r[key]), m);
+    m["drawn.realmCount"] = shc.length;
+    m["drawn.isolatedPct"] = 100 * shc.filter(r => r.nbrs === 0).length / Math.max(1, shc.length);
+    let dc = 0, dd = 0;
+    for (const i of land) { if (world._ctrlOwner[i] >= 0) dc++; if (world._ctrlOwner[i] !== (co ? co[i] : -1)) dd++; }
+    m["drawn.claimedPct"] = 100 * dc / Math.max(1, land.length);
+    m["drawn.disagreePct"] = 100 * dd / Math.max(1, land.length);   // drawn vs authoritative
+  }
   // nearest-seat spacing — the "scattered dots" measure
   const seats = cs.filter(c => c.capital?.mode === "settled").map(c => [c.capital.pos.x | 0, c.capital.pos.y | 0]);
   const nn = [];

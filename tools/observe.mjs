@@ -423,7 +423,10 @@ function writePng(w, file, layer) {
     if (layer === "pop") { const t = pf ? Math.min(1, Math.log1p(pf[i]) / Math.log1p(pmax || 1)) : 0; return [20 + 235 * t | 0, 20 + 120 * t | 0, 40]; }
     if (layer === "dev") { const t = dv ? Math.min(1, dv[i]) : 0; return [30 + 200 * t | 0, 60 + 150 * t | 0, 40 + 60 * t | 0]; }
     if (layer === "terrain") { const f2 = w.fert ? w.fert[i] : 0; return [90 + 120 * f2 | 0, 110 + 130 * f2 | 0, 70]; }
-    const c = co ? co[i] : -1;
+    // `--png-layer=control` draws what the PLAYER sees (the control field), not the
+    // authoritative map. They differ by ~1.45x in claimed tiles at the shipped grid.
+    const src = layer === "control" && w._ctrlOwner ? w._ctrlOwner : co;
+    const c = src ? src[i] : -1;
     if (c < 0) return [140, 132, 116];
     return hsl(((c * 61) % 360 + 360) % 360, 0.65, 0.5);
   };
