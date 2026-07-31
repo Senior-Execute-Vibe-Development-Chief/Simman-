@@ -18,6 +18,7 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
+import { tel, telPass } from "./telemetry.js";
 import { fieldShift } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
@@ -1014,7 +1015,8 @@ export function maybeCrystallize(world) {
         if (elev[ni] > 0) areaFert += fert[ni];
       }
     }
-    if (areaFert < MIN_AREA_FERT) continue;
+    tel(world, "found", "CANDIDATE");
+    if (areaFert < MIN_AREA_FERT) { tel(world, "found", "areaFertTooLow"); continue; }
     // Visit only the settlements NEAR this candidate (spatial grid, radius
     // MARKET_RANGE × 3), accumulating both:
     //   nearestSq  — for the spacing (anti-overlap) rule
@@ -1046,7 +1048,7 @@ export function maybeCrystallize(world) {
       // acts minted EARLIER THIS PASS visible (a daughter/plantation/sea
       // landing that stamped a claim between the list build and this roll —
       // the gridAdd discipline, on cells).
-      if (!labelBasinFree(world, tx, ty)) continue;
+      if (!labelBasinFree(world, tx, ty)) { tel(world, "found", "basinTaken(LABEL_BIRTH)"); continue; }
     } else {
       // Capacity-scaled spacing: a low-fertility site demands more elbow room,
       // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
@@ -1062,7 +1064,7 @@ export function maybeCrystallize(world) {
       const baseFloor = onFlood ? HARD_FLOOR * rn : hardFloor;
       const baseSoft  = onFlood ? SOFT_DIST  * rn : softDist;
       const hf = baseFloor * capSp * floodSp, sd = baseSoft * capSp * floodSp;
-      if (nearestSq < hf * hf) continue;             // hard reject — overlap
+      if (nearestSq < hf * hf) { tel(world, "found", "hardFloorOverlap"); continue; }   // hard reject — overlap
       // Linear ramp between hf and sd on actual distance (not squared, so it
       // grows steeply near the floor and flattens out near the soft boundary —
       // matches the "very close = bad, modest distance = mostly fine" pattern).
@@ -1158,7 +1160,22 @@ export function maybeCrystallize(world) {
     // farming capability actually arriving at it. No donor in the disk = a
     // genuinely isolated site = forager-floor pace.
     const _r = rng();
-    if (_r >= p) continue;
+    if (_r >= p) {
+      // WHICH throttle actually killed this site? `p` is a product of independent
+      // multipliers, so a bare "the roll failed" tally says nothing. Attribute the
+      // rejection to the SMALLEST factor — the one doing the suppressing. This is the
+      // measurement the ~90-entity supply ceiling has needed: entity count is flat at
+      // both grids and in time (docs/tier-c-coupling-survey.md W4/R1), and nothing has
+      // ever said whether spacing, market saturation or reach is what pins it.
+      if (world._tel) {
+        const parts = [["spacing", spacingFactor], ["market", marketFactor],
+                       ["saturation", saturationDamper], ["reach/diffusion", diffusionMul + independent]];
+        let worst = parts[0];
+        for (const pp of parts) if (pp[1] < worst[1]) worst = pp;
+        tel(world, "found", `throttled:${worst[0]}`);
+      }
+      continue;
+    }
     // One nearest-donor lookup, shared: the tempo gate reads its agriculture
     // and, on accept, the SAME donor seeds inheritance (passing it as a hint
     // avoids a second identical grid scan, and guarantees tempo and inherited
@@ -1168,7 +1185,8 @@ export function maybeCrystallize(world) {
       if (d2 < _bd2) { _bd2 = d2; _donor = s; }
     });
     const _donorAgri = _donor && _donor.knowledge ? (_donor.knowledge.agriculture || NEOLITHIC_AGRI) : NEOLITHIC_AGRI;
-    if (_r >= p * pioneerTempo(_donorAgri)) continue;
+    if (_r >= p * pioneerTempo(_donorAgri)) { tel(world, "found", "pioneerTempo(waveOfAdvance)"); continue; }
+    telPass(world, "found");
     { // ── accepted: found the settlement (block kept to avoid a 100-line reindent; no semantic scope) ──
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.

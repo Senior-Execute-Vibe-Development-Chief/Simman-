@@ -26,6 +26,7 @@ import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
 import { settlementPower, snapClaim } from "./conquest.js";
 import { getCulture } from "./cultures.js";
+import { tel, telPass } from "./telemetry.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
@@ -441,6 +442,22 @@ function fieldPolityTerritory(world) {
   // fresh no-man's-land and stays allowed.
   let rel = world._fpRel; if (!rel || rel.length !== N) { rel = world._fpRel = new Int32Array(N); }
   rel.fill(-1);
+  // WHY the tile was released, not just that it was. `rel` is written by two
+  // events of completely different political meaning, and conquest.js's orphan
+  // resolver could not tell them apart:
+  //   1 = SEVERED — step 3 cut it loose: unreachable through the realm's own
+  //       land, or past the administrative horizon. The centre has genuinely
+  //       lost its grip on that ground, and a march that has lost its centre
+  //       raising its own flag is the Diadochi case the successor design is for.
+  //   0 = TRIMMED — step 6's over-capacity shed (and 6b's marginal release):
+  //       the border walking back one ring toward what the realm can administer.
+  //       This fires EVERY PASS on any realm above target. It is the frontier
+  //       breathing, not a political event, and reading it as a secession is what
+  //       minted a statelet out of every routine adjustment (measured at the app
+  //       grid: 15 polity.receded in the first 2000 steps of a four-realm world —
+  //       docs/early-game-size-loop-2026-07-31.md).
+  let relCut = world._fpRelCut; if (!relCut || relCut.length !== N) { relCut = world._fpRelCut = new Uint8Array(N); }
+  relCut.fill(0);
 
   // Living polities + per-country capacity/knowledge (the Tilly stack from the last
   // updatePolities; one-interval stale is acceptable).
@@ -683,7 +700,7 @@ function fieldPolityTerritory(world) {
         }
       }
     }
-    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) { rel[ti] = co[ti]; co[ti] = -1; }
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) { rel[ti] = co[ti]; relCut[ti] = 1; co[ti] = -1; }   // past the admin horizon: SEVERED
   } else {
     let reach = world._fpReach; if (!reach || reach.length !== N) reach = world._fpReach = new Uint8Array(N);
     reach.fill(0);
@@ -702,7 +719,7 @@ function fieldPolityTerritory(world) {
       ];
       for (let k = 0; k < 8; k++) { const ni = ns[k]; if (ni >= 0 && !reach[ni] && co[ni] === c) { reach[ni] = 1; q[qt++] = ni; } }
     }
-    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) { rel[ti] = co[ti]; co[ti] = -1; }
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) { rel[ti] = co[ti]; relCut[ti] = 1; co[ti] = -1; }   // unreachable through own land: SEVERED
   }
 
   // 4. Held ADMINISTRATION (post-release) → grow/shed budgets vs the capacity target.
@@ -788,7 +805,9 @@ function fieldPolityTerritory(world) {
     if (!marginOn) return true;
     const cc = world.countries && world.countries.get(c);
     if (cc && cc._nomadic) return true;
-    return pfM[ti] * spanTechMul(c) >= bindD * loadOfD(d);
+    const ok = pfM[ti] * spanTechMul(c) >= bindD * loadOfD(d);
+    if (!ok) tel(world, "growth", "tileTooThin(marginal)");
+    return ok;
   };
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
   const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
@@ -807,11 +826,58 @@ function fieldPolityTerritory(world) {
   // post-load pass; no warm-up gate, no persisted anchor, so the anchor-seeding
   // discontinuity and the whole save/load anchor-drift class are gone).
   // Byte-identical when off (nothing computes).
+  // ── T.SIZE_WORKED: the base is the people the realm's ECONOMY touches ─────────
+  // govPop as written is Σ popField over the tiles the realm CURRENTLY OWNS, and
+  // the target computed from it decides how many tiles it may own. Writing h for
+  // held tiles and d for people per held tile, that is
+  //     target = h·d / bindDens = k·h,           k = d / bindDens
+  // — a pure proportional feedback with NO interior fixed point. k>1 runs away
+  // upward until frontier dilution pulls d down; k<1 RATCHETS: the realm sheds to
+  // k·h, which lowers govPop, which lowers the target, which sheds again, down to
+  // the one-tile anchor core, and it stays there however dense that core is.
+  // Measured at the shipped grid (tools/probe_sizeloop.mjs, seed 8817): k runs 0.39
+  // (step 2000) -> 0.37 (3000) -> 0.71 (4000) -> 1.06 (5000) -> 1.13 (6000), so the
+  // whole early world ratchets to single tiles and then, as k crosses 1, expansion
+  // switches on everywhere at once. That crossing IS the owner-visible "slow start, then blobs
+  // of nations all over": twenty one-tile specks where the pre-Tier-B world carried
+  // three states of 150-350k km². Nothing about it is a magnitude to re-tune — a
+  // self-referential loop is bistable at EVERY setting of the constant, which is
+  // also why one resolution's world is empires and another's is dots.
+  //   The fix is to add to the base a term that does NOT move when the border
+  // moves: the people on ground the realm's own members already WORK but the realm
+  // does not yet hold (their economic catchments, territory.js _territoryOwner,
+  // reaching past the frontier into unclaimed land). That region is set by where
+  // those settlements sit, how far they can haul, and the terrain — none of which
+  // is the political border, once T.CATCH_WILD lets a member work the wilderness at
+  // its door. The physical claim: a polity's administrative base is the people it
+  // governs PLUS the people its own economy already reaches, and it funds its
+  // marches out of that base rather than out of the marches themselves.
+  //   With W for that out-of-border term the target becomes k·h + W/bindDens, which
+  // for k<1 has a STABLE interior fixed point at h* = W / (bindDens·(1−k)) instead
+  // of the ratchet to the anchor core — a young state comes to rest holding the
+  // land its people farm. For k>1 the expansive regime is untouched (it still runs
+  // until frontier dilution pulls d down), and the term can only ever ADD, so no
+  // realm shrinks because of it. Conquest still grows the base through the cities
+  // it takes — which is how it grew in history.
+  //   A tile is counted at most once: only UNOWNED ground consults the catchment,
+  // and under CATCHMENT_CLIP a member never works a foreign realm's ground anyway.
   let govPopOf = null;
   if (T.SIZE_BY_POP && world.popField) {
     govPopOf = new Map();
     const pf = world.popField;
-    for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c < 0 || !(elev[ti] > 0)) continue; govPopOf.set(c, (govPopOf.get(c) || 0) + pf[ti]); }
+    const terrW = (T.SIZE_WORKED || 0) > 0 && terr && byId ? terr : null;
+    for (let ti = 0; ti < N; ti++) {
+      if (!(elev[ti] > 0)) continue;
+      let c = co[ti];
+      if (c < 0 && terrW) {
+        const oid = terrW[ti];
+        if (oid < 0) continue;
+        const s = byId.get(oid);
+        if (!s || s.mode !== "settled" || s.countryId < 0 || !alive.has(s.countryId)) continue;
+        c = s.countryId;
+      } else if (c < 0) continue;
+      govPopOf.set(c, (govPopOf.get(c) || 0) + pf[ti]);
+    }
   }
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * spanTechMul(cid) * Math.max(0, cp) * r2);
@@ -874,10 +940,16 @@ function fieldPolityTerritory(world) {
       // and step 6 sheds its ENTIRE frontier on that pass (the cold-start load divergence).
       continue;
     }
-    if (t <= 0) continue;
+    if (t <= 0) { tel(world, "growth", "targetZero"); continue; }
     target.set(cid, t);
-    const g = Math.min(Math.max(0, t - (held.get(cid) || 0)), rateCap);
+    const raw = t - (held.get(cid) || 0);
+    const g = Math.min(Math.max(0, raw), rateCap);
     if (g > 0) grow.set(cid, g);
+    // WHY this realm did or did not expand this pass — tallied at the decision, so the
+    // funnel can never drift from the gate the way an externally-replicated one does.
+    if (raw <= 0) tel(world, "growth", "atOrOverTarget");
+    else if (raw > rateCap) tel(world, "growth", "rateLimited");
+    else tel(world, "growth", "hasBudget");
   }
 
   // 5. FRONTIER GROWTH — bounded multi-source Dijkstra from each blob's edge into WILD
@@ -2259,11 +2331,12 @@ export function nucleateFrontierStates(world) {
   const cand = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId >= 0) continue;
+    tel(world, "nucleate", "CANDIDATE");
     // STATECRAFT GATE: a people without the organisation for territorial rule stays
     // STATELESS — a chiefdom/tribe that holds no bordered land (most of the pre-modern
     // world). Only once organisation crosses the threshold does a bordered realm
     // crystallise, so undeveloped frontiers no longer carve the map wall-to-wall.
-    if (((s.knowledge && s.knowledge.organization) || 0) < T.ORG_STATE_MIN) continue;
+    if (((s.knowledge && s.knowledge.organization) || 0) < T.ORG_STATE_MIN) { tel(world, "nucleate", "org<ORG_STATE_MIN"); continue; }
     // State-capacity multiplier: low-fertility land needs a far bigger cluster
     // to crystallise a state (so it stays a sparse stateless frontier).
     const seatTi = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
@@ -2304,10 +2377,10 @@ export function nucleateFrontierStates(world) {
     // it LEADS its basin (isLeader below). "A lone town amid a dense peopled
     // valley founds the state its basin can carry" — the BIRTH_FIELD intent,
     // now unit-safe.
-    if (!f2cBridge && (s.people || 0) < seatPop * capMul) continue;
+    if (!f2cBridge && (s.people || 0) < seatPop * capMul) { tel(world, "nucleate", "seatPop"); continue; }
     let dCap = Infinity;                        // isolation from existing states' heartlands
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
-    if (caps.length && dCap < capD2) continue;
+    if (caps.length && dCap < capD2) { tel(world, "nucleate", "tooNearExistingCapital"); continue; }
     let cp = 0, isLeader = true;                // viable cluster + this settlement leads it
     forEachNear(world, s.pos.x, s.pos.y, nucR, (o) => {
       if (o.mode !== "settled" || o.countryId >= 0) return;
@@ -2333,6 +2406,7 @@ export function nucleateFrontierStates(world) {
       cp = mass * f2c;
     }
     if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp, capMul });
+    else tel(world, "nucleate", isLeader ? "basinPop<clusterBar" : "notBasinLeader");
   }
   if (!cand.length) return;
   cand.sort((a, b) => b.cp - a.cp);             // most-developed clusters first
@@ -2341,7 +2415,7 @@ export function nucleateFrontierStates(world) {
     if (n >= NUCLEATE_MAX_PASS) break;
     let tooClose = false;                        // don't mint two adjacent states in one pass
     for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (nucR * 2) ** 2) { tooClose = true; break; } }
-    if (tooClose) continue;
+    if (tooClose) { tel(world, "nucleate", "tooNearAnotherNewStateThisPass"); continue; }
     // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland above): a founding on
     // ground whose people remember ONE fallen nation — uncontested, viable against
     // this candidate's own bar (the same clusterPop×capMul the cluster gate just
@@ -2357,8 +2431,10 @@ export function nucleateFrontierStates(world) {
       s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
       ensurePolity(world, s.id, { how: "frontier", seat: s });
     }
+    telPass(world, "nucleate");
     placed.push({ x: s.pos.x, y: s.pos.y }); n++;
   }
+  if (n >= NUCLEATE_MAX_PASS) tel(world, "nucleate", "perPassCapReached");
 }
 
 // Re-export the city threshold so other passes agree on what a "city" is.

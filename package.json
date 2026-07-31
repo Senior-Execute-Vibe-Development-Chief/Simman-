@@ -9,7 +9,13 @@
     "preview": "vite preview",
     "lint": "eslint src",
     "test": "node tools/smoke.mjs && node tools/emblem.test.mjs",
-    "validate": "node tools/stylized.mjs"
+    "validate": "node tools/stylized.mjs",
+    "resgate": "node tools/resgate.mjs",
+    "observe": "node tools/observe.mjs",
+    "abtest": "node tools/abtest.mjs",
+    "bisect": "node tools/bisect.mjs",
+    "trace": "node tools/trace.mjs",
+    "why": "node tools/why.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",

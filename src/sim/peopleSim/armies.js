@@ -16,6 +16,7 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
+import { tel, telPass } from "./telemetry.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
@@ -1360,7 +1361,34 @@ export function advanceFronts(world) {
       const key = Math.min(a, b) + ":" + Math.max(a, b);
       if ((truces.get(key) || 0) > world.step) return false;   // already at peace
       const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
-      const tradeW = Math.min(1, trade / tradeRef);
+      // T.TRUCE_TRADE_OWN — the reference above is a TAUTOLOGY. tradeRef is 2× the
+      // live MEDIAN pair-trade, so the median pair reads tradeW = 0.500 exactly, in
+      // every era, by construction (measured at steps 6000/9000/12000/16000/21000:
+      // 0.500 at all five, with 26-32% of pairs pinned at the cap). The era contrast
+      // this whole block exists for — "an integrated late-game world signs LONG
+      // peaces while subsistence antiquity stays endemic-warlike" — is therefore
+      // structurally impossible: the term instead adds a FLAT ~2× to every truce at
+      // every level of development, which is where the measured ~3000t mean peace
+      // against a 1500t base comes from. It is the same defect class as the removed
+      // world._sizePopK size anchor: a live cross-realm median used as the reference
+      // normalizes away the very quantity it is meant to detect.
+      //   On the lever, interdependence is measured against the pair's OWN economic
+      // life: what share of these two realms' entire commerce runs between them.
+      // Numerator and denominator are both this tick's link money, so inflation and
+      // money-supply drift cancel exactly (the objection the median was answering),
+      // it is a property of the pair rather than of the world, and full dependence is
+      // 1.0 by definition — so it introduces no new constant. Measured share (median
+      // over pairs): 0.008 at step 6000, rising to 0.03-0.05 later, with the most
+      // integrated pairs at 0.37 — near-zero in subsistence antiquity, real for a
+      // genuinely interdependent pair, exactly as the design above describes.
+      let tradeW;
+      const ownTot = (T.TRUCE_TRADE_OWN || 0) > 0 ? world._tradeTotals : null;
+      if (ownTot) {
+        const den = (ownTot.get(a) || 0) + (ownTot.get(b) || 0);
+        tradeW = den > 0 ? Math.min(1, trade / den) : 0;
+      } else {
+        tradeW = Math.min(1, trade / tradeRef);
+      }
       // The peace lasts as long as the war HURT (T.TRUCE_TOLL): duration also
       // scales with the war's own toll — its reckoned dead over the
       // belligerents' combined people. A war that bled the pair ~TOLL_GREAT
@@ -1847,6 +1875,16 @@ export function advanceFronts(world) {
       continue;
     }
     const budget = Math.min(Math.round(T.MAX_CAPTURE * domCap * r2War), Math.floor((adv - 1) * CAPTURE_SCALE * domCap * r2War));
+    // WHY does a live front take no ground? "86 wars, 1 settlement transferred in 12k
+    // steps" was measured for two sessions with no way to see which half failed —
+    // whether fronts never open, or open and then cannot convert an advantage into
+    // tiles. `adv` is the attacker's margin: adv<=1 is a front that is not winning;
+    // budget<1 is a front that IS winning but by too thin a margin for CAPTURE_SCALE
+    // to round up to a single tile. Those need opposite fixes.
+    tel(world, "capture", "CANDIDATE");
+    if (!pc.tiles.length) tel(world, "capture", "noContestedTiles");
+    else if (adv <= 1) tel(world, "capture", "attackerNotWinning(adv<=1)");
+    else if (budget < 1) tel(world, "capture", "marginTooThinToTakeOneTile");
     if (budget >= 1 && pc.tiles.length) {
       // Advance the front BROADLY: take the outermost contested tiles first
       // so the defender's countryside erodes ring by ring (visible) instead
@@ -1866,6 +1904,8 @@ export function advanceFronts(world) {
         // never grieve; conquest.js decays it over generations.
         if (T.GRIEV_LEDGER && world.popField) feedGrievance(world, def.countryId, att.countryId, world.popField[cti]);
       }
+      if (captured > 0) { telPass(world, "capture"); tel(world, "capture", "~tilesTaken", captured); }
+      else tel(world, "capture", "allTilesTakenByAnotherAttacker");
       if (captured > 0) {
         bankMomentum(world, att.countryId, (captured / r2War) * MOMENTUM_PER_TILE);   // captured countryside feeds the streak (reference-tile units)
         bumpMove(att.countryId, def.countryId, captured / r2War);                      // signed displacement: nets against the counter-front's captures

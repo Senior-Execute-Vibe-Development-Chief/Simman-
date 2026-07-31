@@ -3,8 +3,9 @@
 This is a procedural world generator and **emergent** civilization simulator.
 Nothing is scripted; every empire on the map is the output of local rules. Read
 `README.md` for architecture, and `docs/` for design plans. Run `npm test`
-(smoke: determinism, invariants, save/load) and `npm run validate` (stylized
-facts: is the emergent history history-SHAPED?) before pushing.
+(smoke: determinism, invariants, save/load), `npm run validate` (stylized
+facts: is the emergent history history-SHAPED?) and `npm run resgate` (the
+app-grid arm — see the THIRD CARDINAL RULE) before pushing.
 
 ---
 
@@ -128,3 +129,48 @@ RIGHT:  settle where fertility×water is high  // the Nile densely settles itsel
   honest system makes Egypt a city-state, that is a TRUE finding about a missing
   mechanism (here: river valleys don't densely settle yet) — surface it and build
   the missing system, don't paper over it with a constant.
+
+---
+
+## THE THIRD CARDINAL RULE — measure at the grid that SHIPS
+
+> **Every gate in this repo runs at `W=480` (sim `tw=240`). The app ships `W=1920`
+> with `simDiv 4` — sim `tw=480`. A mechanism validated only at the reference grid
+> is unvalidated. Run `npm run resgate` before pushing anything that touches
+> territory, population, the food economy, or politics.**
+
+### Why this is absolute (learned three times in one week)
+
+This is not a precision concern. At the two grids the same code can differ in
+**KIND**, not degree — a mechanism can be inert at one and dominant at the other:
+
+- **`deffdce`, the size-target re-grounding.** Cost 1.91% → 1.73% claimed land at
+  `tw=240` — a 10% effect, passed every gate. At `tw=480` it took the median realm
+  from **70 tiles to 7**. A 10× cut, and the owner saw it in play.
+- **`b859db7`, `SUCCESSOR_STATES`.** Its own commit message records the measurement:
+  *"0 secessions per 24k … the channels are live but atom-starved."* True at
+  `tw=240`, where an orphaned patch is ONE settlement and the ≥2-member rule lapses
+  it. At `tw=480` the same real patch holds several, so the identical rule fires
+  constantly — 15 recessions in the first 2000 steps of a four-realm world. **It was
+  validated in exactly the regime where it does nothing.**
+- The whole `docs/resolution-collapse-2026-07-29.md` investigation, whose §6 asked
+  for this arm and did not get it — which is why it happened twice more.
+
+### Why the existing gates cannot see it
+
+`npm run validate`'s empire checks are all **ratios** — largest empire's *share*,
+area tail *largest/median*, polity *count*. **A world whose realms are uniformly 10×
+too small passes every one of them.** The missing measurement is absolute real area,
+compared across grids. That is what `tools/resgate.mjs` adds.
+
+### Corollaries
+
+- **A resolution-dependent constant is a bug, not a tuning value.** If a quantity is
+  expressed per TILE, ask what it means per km² at both grids. `/r2` conversions
+  assume the underlying field is exactly per-real-area invariant — verify that it is
+  (it measurably is not for coast- and river-derived terms).
+- **A "no effect" measurement at `tw=240` is not evidence of no effect.** It may be
+  evidence that the mechanism cannot reach its own trigger at that granularity.
+- The `resgate` bands encode a **known, open gap** (~1.3-2.2× capacity dilution from
+  1-D coast/river terms). They are a ratchet to be tightened as that closes — never a
+  target to tune toward. If a change improves them, re-baseline downward and say so.
