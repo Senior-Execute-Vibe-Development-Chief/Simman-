@@ -10,7 +10,8 @@
     "lint": "eslint src",
     "test": "node tools/smoke.mjs && node tools/emblem.test.mjs",
     "validate": "node tools/stylized.mjs",
-    "resgate": "node tools/resgate.mjs"
+    "resgate": "node tools/resgate.mjs",
+    "observe": "node tools/observe.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",
