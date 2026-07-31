@@ -30,6 +30,7 @@ import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { stepToYear } from "../src/sim/calendar.js";
 import nodeZlib from "node:zlib";
 import nodeFs from "node:fs";
+import { provenance } from "./lib/simmetrics.mjs";
 
 const arg = (k, d) => {
   const hit = process.argv.find(a => a.startsWith(`--${k}=`));
@@ -91,6 +92,12 @@ function snapshot(w) {
     console.log(`    seed ${w.seed}  grid ${w.tw}x${w.th} (${land.length} land tiles, ${Math.round(km2PerTile)} km²/tile)  step ${w.step}`);
     console.log(`    displayed year ${yr < 0 ? -yr + " BC" : yr + " AD"}   civYear ${f(w._civYear)}   dt ${w._dt}`);
     console.log(`    entities ${settled.length} settled / ${w.settlements.length} total   realms ${w.countries ? w.countries.size : 0}   polity records ${w.polities ? w.polities.size : 0}`);
+    // PROVENANCE — a measurement that does not say which code and which levers
+    // produced it cannot be compared with another one. First line of every report.
+    const pv = provenance(w);
+    const lv = Object.keys(pv.levers).length ? JSON.stringify(pv.levers) : "all at defaults";
+    console.log(`    commit ${pv.commit}${pv.dirtySrc ? " (src DIRTY — uncommitted changes)" : ""}   levers: ${lv}`);
+    out.provenance = pv;
     out.run = { seed: w.seed, tw: w.tw, th: w.th, land: land.length, km2PerTile, step: w.step, year: yr, settled: settled.length, realms: w.countries?.size || 0 };
   }
 

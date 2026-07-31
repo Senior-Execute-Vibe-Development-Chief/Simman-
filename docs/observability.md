@@ -199,6 +199,69 @@ p90 AND max on both grids**. No realm is ever in pieces — the connectivity rel
 (countryTerritory step 3) severs anything not reachable from the capital through
 same-owner land, so an exclave is structurally impossible. History is full of them.
 
+---
+
+# THE MEASUREMENT SUITE
+
+`observe` answers "what is the world like?". The other two answer the questions that
+actually consumed this session, and both were hand-rolled repeatedly before existing.
+
+## `tools/lib/simmetrics.mjs` — one collector, every consumer
+
+`collect(world)` returns a FLAT map of `metricName -> number`, built by the same
+introspection rule as `observe`: every length-N tile field, every numeric key on
+settlements / countries / polity records, realm geometry, every collection size, the
+chronicle histogram, `world.debug` counters. **~1,570 metrics today, and it grows by
+itself.** Every tool below consumes it, so all measurements are directly comparable —
+the trap the manual bisects fell into was each pass measuring its own two or three
+numbers.
+
+`provenance(world)` returns commit, whether `src/` is dirty, seed, grid, step and the
+**lever diff against shipped defaults**. `observe` now prints it as the first block: a
+measurement that does not say which code and which levers produced it cannot honestly
+be compared with another.
+
+## `npm run abtest` — what does this lever actually do?
+
+    node tools/abtest.mjs --tune="CATCH_WILD=1,SIZE_WORKED=1"
+    node tools/abtest.mjs --tune="SPAN_TECH=0" --steps=12000 --W=960
+    node tools/abtest.mjs --tune="ORG_BIRTH_VAR=0" --seeds=8817,31337,4242
+    node tools/abtest.mjs --env="SIM_SUCCESSORS=0" --grep=realm,shape
+
+Runs both arms on the same seed, diffs **all ~1,570 metrics**, prints a fixed HEADLINE
+block plus the largest effects. Three properties that matter:
+
+* **Multi-seed by default.** Single-seed A/B is how noise ships as a finding — the
+  cross-grid ratio read 0.57 on one seed and 1.09 on another this session. A mover is
+  only tagged `CONSISTENT` if it moves the same direction on every seed.
+* **Sentinel-safe ranking.** Ranking by percent puts `endedStep −1 → 2287` (228,800%) at
+  the top and buries what matters. Effect size is `|Δ| / (|a|+|b|)`, bounded in [0,1].
+* **It detects a NON-EXPERIMENT.** If both arms are identical on every metric it says so
+  explicitly, because that means the switch was never reached — a module constant, an
+  env-only gate, a dead branch. `BALANCE_W` produced exactly this trap earlier today and
+  a null result was nearly recorded as a finding. Unknown keys are rejected up front.
+
+## `npm run bisect` — which commit moved it?
+
+    node tools/bisect.mjs --range=dc4e0e9..19bd402 --metric=realm.areaKm2.p50 --W=960
+    node tools/bisect.mjs --commits=b859db7,deffdce,de97888 --auto
+
+Walks a commit range in a throwaway worktree, running the **current** collector against
+each commit's `src/` — so every commit is measured identically. `--auto` needs no metric
+named in advance: it ranks every one of the ~1,570 by how sharply it steps and reports
+which commit carries the most sharp steps. The regression finds itself.
+
+Verified against the known case at the shipped app grid:
+
+    b859db7 → deffdce   realm.areaKm2.p50   267,236 → 26,724   −90.0%  ◄── LARGEST-CLASS STEP
+
+That is the finding it took two sessions, three wrong attributions and the owner
+opening builds by hand to reach.
+
+**Bisect at `--W=960`.** The same commit is a 10% effect at the default reference grid
+and 10× at the app grid; bisecting at the reference alone clears the guilty commit (the
+THIRD CARDINAL RULE).
+
 ## Known gaps in observability
 
 * **No per-tick time series.** `--every=N` re-snapshots, it does not record a trace. A
@@ -210,11 +273,10 @@ same-owner land, so an exclave is structurally impossible. History is full of th
 * **No diffing.** The highest-value next addition is `observe --json` at two commits
   piped through a differ, so "what did this change actually move?" is one command
   instead of a bespoke A/B.
-* **The active lever configuration is not recorded in a snapshot.** A dump does not say
-  which `T.*` values produced it, so two snapshots cannot be safely compared without
-  external bookkeeping. Should be the first line of every report.
-* **`world.debug` is not surfaced** — `tickMs`, `invariantHits`, `recededTiles/People`,
-  slave-trade counters. Performance and invariant health are outcomes too.
+* ~~The active lever configuration is not recorded~~ — **fixed**: `provenance()` stamps
+  commit, dirty-src, seed, grid and the lever diff on every `observe` run.
+* ~~`world.debug` is not surfaced~~ — **fixed**: `collect()` emits `debug.*` (tickMs,
+  invariantHits, receded counters), so performance and invariant health diff too.
 * **Nested objects collapse to a count** in the nation drill-down (`_techEff={22}`,
   `knowledge={6}`, `_gPrice=[8]`, `culMix=[4]`). "Every field" is true only one level
   deep.

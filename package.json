@@ -11,7 +11,9 @@
     "test": "node tools/smoke.mjs && node tools/emblem.test.mjs",
     "validate": "node tools/stylized.mjs",
     "resgate": "node tools/resgate.mjs",
-    "observe": "node tools/observe.mjs"
+    "observe": "node tools/observe.mjs",
+    "abtest": "node tools/abtest.mjs",
+    "bisect": "node tools/bisect.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",
