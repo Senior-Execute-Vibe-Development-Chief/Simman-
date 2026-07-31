@@ -369,6 +369,53 @@ fronts open and how little sticks at the realm level. `adv<=1` (not winning) and
 Not yet wired: war INITIATION (`armies.js` still uses its own bespoke `WDBG` counters
 and should be migrated onto this layer), the food/trade passes, and migration.
 
+## `--section=story` — the history the sim writes about ITSELF
+
+The sim carries a narrative layer that nothing in this repo had ever read:
+`events.js narrate()`, `chronicle.js chronicleText()`,
+`historiography.js perspectiveText()` / `exportHistory()`. It renders the run as prose
+for the player — which realms rose, what befell them, in what order — and every
+instrument here measured STATE while ignoring it.
+
+    node tools/observe.mjs --steps=12000 --W=960 --section=story
+
+prints the narrated world events and then the largest realm's own chronicle, in its own
+voice:
+
+    5600BC  Founded at the dawn of civilisation.
+    2350BC  Marched to war against Ghesyahčeef.
+     350BC  Treasury swelled past 4.0k.
+      75BC  Sisiziitzupčeefa paid a heavy indemnity to Fevvonfax at the peace.
+     275AD  Ghesyahčeef paid a heavy indemnity to Fevvonfax at the peace.
+     333AD  Plague broke out in Fevvon and swept through the realm.
+
+### Reading it corrected a conclusion held for two sessions
+
+The chronicle says things the metrics did not: *"Facing hopeless odds, the court of
+Fevvonfax bowed to Fiighfaxa — keeping its throne at the price of tribute"*, then
+*"cast off Fiighfaxa and declared itself sovereign"*, then three separate realms
+*"bent the knee and became a tributary"*, then one *"cast off Fevvonfax"* again.
+
+Measured at the app grid over 16,000 steps:
+
+| channel | count |
+|---|---|
+| `war.began` | 74 |
+| **`polity.submitted`** (bent the knee → tributary) | **16** |
+| `settlement.captured` | **0** |
+| `settlement.annexed` | **0** |
+
+**Consolidation in this sim runs almost entirely through VASSALAGE, and through
+annexation not at all.** The standing "nothing is ever conquered" finding — carried
+across two sessions and several documents — was measuring `settlement.countryId`
+transfers and captured tiles, i.e. the one channel that is zero, while a tributary
+network formed roughly once per thousand steps in plain sight.
+
+That also resolves a paradox in the numbers: realm COUNT rises monotonically while
+`_dominance` shows a single realm towering 6-9× over the median. Both are true. The
+hegemon exists and rules through tribute, and **a tributary is invisible on the
+political map** — so the map reads as fragmented while the politics are not.
+
 ## Known gaps in observability
 
 * **No per-tick time series.** `--every=N` re-snapshots, it does not record a trace. A

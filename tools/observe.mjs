@@ -31,6 +31,8 @@ import { stepToYear } from "../src/sim/calendar.js";
 import nodeZlib from "node:zlib";
 import nodeFs from "node:fs";
 import { provenance } from "./lib/simmetrics.mjs";
+import { narrate } from "../src/sim/peopleSim/events.js";
+import { chronicleText } from "../src/sim/peopleSim/chronicle.js";
 
 const arg = (k, d) => {
   const hit = process.argv.find(a => a.startsWith(`--${k}=`));
@@ -71,6 +73,7 @@ const f = (x) => !Number.isFinite(x) ? "-" : Math.abs(x) >= 1e6 ? (x / 1e6).toFi
   : Math.abs(x) >= 1e4 ? Math.round(x).toLocaleString("en-US")
   : Math.abs(x) >= 1 ? x.toFixed(2) : x.toFixed(4);
 const line = (label, st, unit = "") => st && console.log(`    ${label.padEnd(22)} p50 ${f(st.p50).padStart(11)}  p90 ${f(st.p90).padStart(11)}  max ${f(st.max).padStart(11)}  mean ${f(st.mean).padStart(11)}  Σ ${f(st.sum).padStart(11)} ${unit}`);
+const yrOf = (s) => { const y = Math.round(stepToYear(s)); return y < 0 ? `${-y}BC` : `${y}AD`; };
 const H = (t) => console.log(`\n━━ ${t} ${"━".repeat(Math.max(0, 68 - t.length))}`);
 
 const world = buildSim({ W, H: W >> 1, seed: SEED });
@@ -356,6 +359,48 @@ function snapshot(w) {
       console.log("    " + sorted.slice(i, i + 4).map(([k, n]) => `${k}=${n}`.padEnd(28)).join(""));
     console.log(`    most recent: ${ev.slice(-4).map(e => `[${e.step}] ${e.kind || e.type}`).join("  |  ")}`);
     out.events = hist;
+  }
+
+  // ── THE STORY THE SIM TELLS ABOUT ITSELF ───────────────────────────────────
+  // The sim carries a narrative layer — events.js narrate(), chronicle.js
+  // chronicleText(), historiography.js perspectiveText() — that renders its own
+  // history as prose for the player. Every instrument in this repo measures STATE
+  // and none of them had ever read it. A run's "gist" is not only its distributions:
+  // it is which realms rose, what befell them, and in what order, which is exactly
+  // what this layer already writes.
+  if (want("story")) {
+    H("THE CHRONICLE, AS THE SIM NARRATES IT");
+    const ev = w.events || [];
+    const KEY = new Set(["polity.founded", "polity.ended", "polity.shattered", "polity.restored",
+      "polity.submitted", "war.began", "war.ended", "settlement.captured", "era.reached",
+      "famine.struck", "plague.outbreak", "faith.founded", "faith.schism", "dynasty.extinct",
+      "succession.crisis", "colony.founded", "gov.changed", "realm.monument", "wealth.milestone"]);
+    const world_story = ev.filter(e => KEY.has(e.kind || e.type));
+    console.log(`    ${world_story.length} narratable world events of ${ev.length}`);
+    const stride = Math.max(1, Math.ceil(world_story.length / 30));
+    for (let i = 0; i < world_story.length; i += stride) {
+      const e = world_story[i];
+      let line2 = "";
+      try { line2 = narrate(w, e, -1); } catch { line2 = e.kind || e.type; }
+      console.log(`    ${String(yrOf(e.step)).padStart(8)}  ${line2}`);
+    }
+    // …and the leading realm's own chronicle, in its own voice
+    let top = null, best = -1;
+    if (w.countries) for (const [cid, c] of w.countries) { if (!c.capital) continue; const t = held.get(cid) || 0; if (t > best) { best = t; top = cid; } }
+    if (top != null) {
+      console.log(`\n    ── the chronicle of ${w.polities?.get(top)?.name || top} (largest realm) ──`);
+      try {
+        // chronicleText returns one comma-joined string of "[step] sentence" entries.
+        const entries = String(chronicleText(w, top)).split(/,(?=\[\d)/);
+        const stride = Math.max(1, Math.ceil(entries.length / 22));
+        for (let i = 0; i < entries.length; i += stride) {
+          const e2 = entries[i].trim(); if (!e2) continue;
+          const mm = e2.match(/^\[(\d+)\]\s*(.*)$/);
+          console.log(mm ? `      ${yrOf(+mm[1]).padStart(8)}  ${mm[2]}` : `      ${e2}`);
+        }
+        console.log(`      (${entries.length} entries in its chronicle)`);
+      } catch (e) { console.log(`      (chronicleText failed: ${e.message})`); }
+    }
   }
 
   // ── COLLECTIONS (auto) ─────────────────────────────────────────────────────
