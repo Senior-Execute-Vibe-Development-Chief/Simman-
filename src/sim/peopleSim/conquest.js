@@ -1966,6 +1966,24 @@ export function updateAlliances(world) {
   }
   const tradeOf = (a, b) => tradePair.get(Math.min(a, b) + ":" + Math.max(a, b)) || 0;
   world._tradePairs = tradePair;   // read by the truce pass: peace lasts while it pays (trade-scaled truce duration)
+  // T.TRUCE_TRADE_OWN: each realm's TOTAL commerce (internal + cross-border), in the
+  // SAME units and the same tick as tradePair, so the truce pass can express
+  // interdependence as a SHARE of the pair's own economic life instead of against a
+  // live cross-realm median. Inflation and money-supply drift cancel exactly (numerator
+  // and denominator are both link money from this tick), which is what the median
+  // reference was reaching for — without the median's fatal property of pinning the
+  // typical pair at a fixed reading in every era. See armies.js signPeace.
+  if (lm && byId) {
+    const tot = new Map();
+    for (const [key, net] of lm) {
+      const colon = key.indexOf(":"); const Sa = byId.get(+key.slice(0, colon)), Sb = byId.get(+key.slice(colon + 1));
+      if (!Sa || !Sb) continue;
+      const v = Math.abs(net);
+      if (Sa.countryId >= 0) tot.set(Sa.countryId, (tot.get(Sa.countryId) || 0) + v);
+      if (Sb.countryId >= 0 && Sb.countryId !== Sa.countryId) tot.set(Sb.countryId, (tot.get(Sb.countryId) || 0) + v);
+    }
+    world._tradeTotals = tot;
+  }
   // 4. each realm's dominant THREAT — the strongest neighbour that towers over it (but never
   //    its own overlord/dependency — a colony does not balance against its metropole).
   const ovT = world._overlordOf;

@@ -1360,7 +1360,34 @@ export function advanceFronts(world) {
       const key = Math.min(a, b) + ":" + Math.max(a, b);
       if ((truces.get(key) || 0) > world.step) return false;   // already at peace
       const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
-      const tradeW = Math.min(1, trade / tradeRef);
+      // T.TRUCE_TRADE_OWN — the reference above is a TAUTOLOGY. tradeRef is 2× the
+      // live MEDIAN pair-trade, so the median pair reads tradeW = 0.500 exactly, in
+      // every era, by construction (measured at steps 6000/9000/12000/16000/21000:
+      // 0.500 at all five, with 26-32% of pairs pinned at the cap). The era contrast
+      // this whole block exists for — "an integrated late-game world signs LONG
+      // peaces while subsistence antiquity stays endemic-warlike" — is therefore
+      // structurally impossible: the term instead adds a FLAT ~2× to every truce at
+      // every level of development, which is where the measured ~3000t mean peace
+      // against a 1500t base comes from. It is the same defect class as the removed
+      // world._sizePopK size anchor: a live cross-realm median used as the reference
+      // normalizes away the very quantity it is meant to detect.
+      //   On the lever, interdependence is measured against the pair's OWN economic
+      // life: what share of these two realms' entire commerce runs between them.
+      // Numerator and denominator are both this tick's link money, so inflation and
+      // money-supply drift cancel exactly (the objection the median was answering),
+      // it is a property of the pair rather than of the world, and full dependence is
+      // 1.0 by definition — so it introduces no new constant. Measured share (median
+      // over pairs): 0.008 at step 6000, rising to 0.03-0.05 later, with the most
+      // integrated pairs at 0.37 — near-zero in subsistence antiquity, real for a
+      // genuinely interdependent pair, exactly as the design above describes.
+      let tradeW;
+      const ownTot = (T.TRUCE_TRADE_OWN || 0) > 0 ? world._tradeTotals : null;
+      if (ownTot) {
+        const den = (ownTot.get(a) || 0) + (ownTot.get(b) || 0);
+        tradeW = den > 0 ? Math.min(1, trade / den) : 0;
+      } else {
+        tradeW = Math.min(1, trade / tradeRef);
+      }
       // The peace lasts as long as the war HURT (T.TRUCE_TOLL): duration also
       // scales with the war's own toll — its reckoned dead over the
       // belligerents' combined people. A war that bled the pair ~TOLL_GREAT

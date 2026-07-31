@@ -667,3 +667,96 @@ Conquest still transfers almost nothing; the ~1.3× capacity gap between grids
 survives (this removed its amplifier, not its cause); and organisation still has no
 diffusion term, so secondary state formation is not modelled — the dawn now starts
 at the cradles but does not yet SPREAD from them by contact.
+
+---
+
+# CONQUEST: the funnel measured at HEAD, and one negative result (2026-07-31)
+
+Taking the largest open item from the previous section. New instrument:
+`tools/probe_holdconquest.mjs` (does a conquest STICK?).
+
+## Where conquest stands after this session's fixes
+
+`tools/probe_transfer.mjs 480 20000` — realm→realm settlement transfers:
+
+| | previous session (recorded) | HEAD |
+|---|---|---|
+| transfers | 1 per 12,000 steps | **16 by step 18,000** |
+| gained from stateless | 43 | 77 |
+| realms | 2 → 42, monotonic | 5 → 38, monotonic |
+
+Conquest is no longer ~zero — realms touch now, so wars reach ground. But growth is
+still ~5× more from absorbing stateless towns than from taking anything, and realm
+count still never falls.
+
+## A hypothesis formed, tested and REFUTED
+
+I expected the territory pass to hand conquests straight back: the over-capacity shed
+pins only home tiles and worked catchment, and a freshly captured march is neither —
+and is by construction the most REMOTE candidate, which is the order the shed releases
+in. Measured instead (`probe_holdconquest`, 20k, judged 1000 steps after capture):
+
+    captures 473   HELD 57%   to wilderness 6%   lost to another realm 37%
+
+**Only 6% are shed.** The territory pass is not eating conquests; there are simply too
+few of them, and none at all before step ~7000.
+
+## The funnel (`tools/probe_warbars.mjs`, 21k)
+
+    candidates 6054, opened 2454 (40.5%), truce-blocked 10156
+    rejection: parity 41%  coalition 37%  stack 12%  trade 5%  exhaust 3%
+    endings, last window: stalemate 21, faded 17, truce 4
+    capitulation: 3 times in 21,000 steps
+    treaty: mean peace ~3000t against a war age of ~900t
+
+Wars start in quantity and end without a victor: stalemate and fade dominate, and the
+deditio path built to make victory compound fires three times in a whole run.
+
+## PROVEN: the trade-peace term is a tautology
+
+`armies.js signPeace` scales truce duration by `tradeW = min(1, pairTrade / tradeRef)`
+with `tradeRef = 2 × the live MEDIAN pair-trade`. So **the median pair reads exactly
+0.500 in every era, by construction** — measured 0.500 at steps 6000, 9000, 12000,
+16000 and 21000, with 26-32% of pairs pinned at the cap. The block's stated purpose,
+"an integrated late-game world signs LONG peaces while subsistence antiquity stays
+endemic-warlike", is structurally impossible; the term instead adds a flat ~2× to every
+truce at every level of development, which is exactly the ~3000t mean peace against a
+1500t base. Same defect class as the `world._sizePopK` size anchor: a live cross-realm
+median as reference normalizes away the quantity it is meant to detect.
+
+And it matters — the truce cycle GATES consolidation:
+
+| step | default | `TRUCE_TICKS=750` |
+|---|---|---|
+| 12000 | 5 transfers / 32 realms | **9 / 28** |
+| 15000 | 12 / 37 | **22 / 34** |
+| 18000 | 16 / 38 | **31 / 36** |
+
+## The fix built — and the honest negative result
+
+`T.TRUCE_TRADE_OWN` (default **0**): measure interdependence against the pair's OWN
+economic life — what share of these two realms' entire commerce runs between them
+(`world._tradeTotals`, internal + cross-border). Numerator and denominator are both
+this tick's link money, so inflation and money-supply drift cancel exactly (the
+objection the median was answering); it is a property of the PAIR, not of the world;
+and full dependence is 1.0 by definition, so no new constant enters. The share behaves
+as the design describes — median 0.008 at step 6000, rising to 0.03-0.05, most
+integrated pairs 0.37.
+
+**It does not improve conquest.** Measured 20k, seed 8817: 13 transfers by step 18,000
+against the default's 16 and the shortened-truce arm's 31. Realm count 36 (default 38).
+So removing the tautology is correct as a defect fix, but it is NOT what unlocks
+consolidation — the shortened-truce arm and this arm produce similar truce LENGTHS
+(~1500t) and very different outcomes, which says the binding constraint is WHICH pairs
+are bound, not how long. **Shipped OFF with the finding**, per the standing convention.
+
+`npm test` green (175.1s) with the lever off.
+
+## Where the next pass should start
+
+Not the truce duration. The endings mix is the tell: **stalemate 21, faded 17, truce 4,
+capitulation 3-per-run.** Wars are not being LOST. Fix why a decisively-winning realm
+cannot force a decision — parity (41% of rejections) says the power distribution is too
+compressed for anyone to overmatch a neighbour, and `dom` (the great-power discount)
+never fires at all. That is the Rome-shaped hole, and it is upstream of every treaty
+constant.
