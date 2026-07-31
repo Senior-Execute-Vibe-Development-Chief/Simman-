@@ -324,4 +324,108 @@ scale. Polity count falls on both — the consolidation noted in §7.
   no longer decides whether realms exist, but the density constant it is measured
   against remains coupled to the sim's demographic scale — recalibrate together if the
   food model moves again, exactly as `RURAL_BIND_DENS`'s own note says.
+* **States still do not spread from cradles** — a SEPARATE regression with a separate
+  cause, bisected below. This fix made its count side worse, not better.
+
+---
+
+# THE SECOND REGRESSION: states stopped spreading from the cradles (2026-07-31)
+
+**Owner:** *"In real life, early nations were almost entirely within a very specific
+area, be it the Fertile Crescent or Yangtze, and spread from there, they did NOT spawn
+across the whole area and grow independently. We had this working moderately well
+before either the phase B or C or maybe even A changes."*
+
+Correct on the symptom, and the bisect says the *cause* is none of those phases.
+Instrument: `tools/probe_dawnspread.mjs` (new), which reads the claim three ways — how
+far a NEW realm is born from the nearest existing one, how far every realm sits from a
+genesis cradle, and what share of realms carry a people DESCENDED from a cradle people
+(`cultures.js familyOf` — the root of the culture tree, which a cradle founds and every
+daughter inherits).
+
+## The bisect — 480x240, seed 8817, identical probe at every commit
+
+| commit | when | cradle distance @2000 / @4000 | descended @2600BC |
+|---|---|---|---|
+| `dc4e0e9` Tier-A recorded | 07-28 07:21 | **0.0 / 0.0** | 50% |
+| `19bd402` end of Phase B | 07-28 16:33 | **0.0 / 0.0** | 40% |
+| `bd12940` end of Phase C | 07-29 17:45 | **0.0 / 0.0** | 40% |
+| `2fef4f6` ORG_PRESSURE added | 07-30 09:54 | **0.0 / 0.0** | 40% |
+| **`5d4ace3` ORG_BIRTH_VAR added + both dawn levers flipped on** | **07-30 10:13** | **8.6 / 8.5** | **23%** |
+| `09fdd3a` last commit on main | 07-30 15:13 | 8.6 / 8.5 | 25% |
+
+**Phase A, B and C are innocent on this measure.** Phase C is byte-identical to
+end-of-Phase-B on every row (it shipped everything default-off, as labelled), and
+Phase B if anything concentrated the dawn slightly (8 realms → 5 at step 6000). Median
+distance from a cradle was **0.0 tiles** — the first states sat literally ON the cradle
+tiles, 100% of them cradle-descended — right up to one commit at 07-30 10:13, which
+was part of the FIX WAVE for the previous session's blob complaint.
+
+Two directions of evidence agree, and they clear the other lever in the same commit:
+
+| arm at HEAD | realms @1000 | cradle distance | descended |
+|---|---|---|---|
+| default | 12 | 7.2 | 58% |
+| `ORG_PRESSURE=0` | 12 | 7.2 | 58% — **no effect** |
+| `ORG_BIRTH_VAR=0` | 4 | **0.0** | **100%** — full restore |
+
+## The mechanism, in arithmetic
+
+    birthOrgAt = 0.1 × (1 + ORG_BIRTH_VAR · confinement · fertility)
+
+At `ORG_BIRTH_VAR = 1` that ranges 0.1–0.2, and `ORG_STATE_MIN` is **0.15**. Any site
+where `confinement × fertility > 0.5` is **born already above the statehood bar** —
+a state at tick one, with no development, no learning and no time. Evaluated over the
+map (seed 8817, 9,616 land tiles):
+
+| lever | tiles born AT OR ABOVE the statehood bar |
+|---|---|
+| `ORG_BIRTH_VAR=0` | 0 (0.00%) |
+| `ORG_BIRTH_VAR=1` | **622 (6.47%)** |
+
+**Correction to a claim made earlier in this session:** I asserted that confinement is
+low on the cradles' open floodplains, so the lever pushed the dawn away from them. That
+is wrong — the cradles score HIGH: Nile 0.1699, Mesopotamia 0.1508, Indus 0.1608
+(Yellow River 0.1229), against the 0.15 bar. The lever does not disadvantage the
+cradles. It grants the same instant statehood to 6.5% of all land, so the cradles stop
+being SPECIAL — which is why states appear scattered instead of at four rivers.
+
+This is also the second cardinal rule in miniature: the lever was aimed at a real
+defect (the synchronised dawn — a uniform initial condition plus a uniform rate makes
+any threshold a global switch) and cured it by handing out the ANSWER at birth,
+according to a site-quality formula, rather than building the mechanism that would
+produce it.
+
+## The mechanism that is actually missing
+
+**Organisation has no diffusion term at all.** `k.organization` grows by
+
+    LEARN_BASE × sciMul × orgClim × orgHead × (...) × aptLearn × confineMul
+              × rulerLearn × pressMul
+
+— every factor a property of the settlement's OWN site. There is no term for the
+organisation of neighbours, trade partners, or a threatening state next door.
+Agriculture diffuses (the `devField` wave, `T.DIFF_CLIM`, at a measured ~1 km/year);
+statecraft does not. So every qualifying site invents the state independently, by
+construction, and the map fills with parallel origins.
+
+History runs the other way round: primary state formation happened perhaps six to
+eight times; everything else is SECONDARY — a response to contact with an existing
+state, through trade, emulation, or the threat of being conquered by one. Build that
+term and the dawn ROLLS outward from wherever statehood first arose (which will be the
+best sites — the cradles), which is both what the owner describes and a real cure for
+the synchronised dawn, instead of a trade of one symptom for the other.
+
+## Status
+
+**NOT FIXED — awaiting the owner's call on approach.** Three options, all measured or
+scoped, none applied; `ORG_BIRTH_VAR` remains at its shipped default of 1:
+
+1. `ORG_BIRTH_VAR = 0` — one line, measured on both sides, restores the cradle dawn
+   exactly. Cost: the synchronised dawn it was built to cure comes back.
+2. Build the diffusion term (above). Bigger, and fixes both.
+3. Bound birth organisation structurally below `ORG_STATE_MIN` — a founding village is
+   not a state by definition, so site variation differentiates the START without
+   handing out the answer. Keeps a rolling dawn; unmeasured whether it re-centres on
+   the cradles.
 
