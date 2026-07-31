@@ -1395,3 +1395,82 @@ The app grid remains ~6× behind the reference at equal settings. Every food and
 span fix in this document helps both grids equally and none of them closes that
 gap; the 1-D coast dilution (0.156/0.097/0.060 across grids, same class as the
 shipped river fix) is the leading remaining term.
+
+
+---
+
+# THE EARLY-GAME BLOCKER: RURAL_BIND_DENS (2026-07-30)
+
+Owner, after the SPAN_TECH flip: *"The early game is STILL blobs and spread. Why
+why why."* Right — and my own data agreed: at `SPAN_TECH=0` the app-grid median
+was still 4k km² at steps 3000 AND 6000. That flip only bites from step 9000.
+
+## Why nothing so far touched the early game
+
+An early realm governs ~2,000 people. `RURAL_BIND_DENS` demanded **5500 people
+per reference tile** (15,500 km²) before land is worth staffing an administration
+over — **0.355 people/km²**. So an early realm could afford ONE TILE no matter how
+the size target was shaped, how much span it was granted, or how much food the
+world had. Every fix in this document sat downstream of a floor it could not
+reach.
+
+## The value was checkable against history, and it failed
+
+| polity | area | population | density |
+|---|---|---|---|
+| Mongol empire | ~24M km² | ~1M | **~0.04 /km²** |
+| Kievan Rus | ~1.3M km² | ~5M | ~4 /km² |
+| Achaemenid Persia | ~5.5M km² | ~35M | ~6 /km² |
+| **the sim's floor** | — | — | **0.355 /km²** |
+
+The floor was **nine times stricter than the sparsest empire that ever existed**
+— which is to say the sim forbade the largest contiguous land empire in history
+from forming. This is a constant with independent physical meaning, so its value
+is a factual claim about administration, and the claim was wrong.
+
+Lowered to **1500 / ref-tile = 0.097 people/km²**: still above the Mongol case,
+far below settled agrarian densities. Chosen against history, not against an
+outcome.
+
+## Measured — app grid (tw=480), seed 8817
+
+| step | year | floor 5500 | floor 1500 |
+|---|---|---|---|
+| 3000 | 4100BC | 4k km², 0.02% | **38k km², 0.27%** |
+| 6000 | 2600BC | 4k km², 0.42% | **382k km², 5.33%** — blob phase ENDS |
+| 9000 | 1100BC | 27k km², 1.56% | **848k km², 12.14%** |
+
+The tiny-blob phase — which never ended within 20,000 steps at every prior
+setting — **ends by 2600BC**. Median realm at step 6000 is 95× larger.
+
+## Gate
+
+| suite | seed | result |
+|---|---|---|
+| `npm test` | — | green, 185.3s |
+| `npm run validate` | 8817 | all hard gates, **1** soft warning (was 2) |
+| `npm run validate` | 31337 | all hard gates, 1 soft warning |
+
+| | seed 8817 | seed 31337 |
+|---|---|---|
+| polities | 30 | 39 |
+| median realm | **923k km²** | **1,061k km²** |
+| largest realm | 14,442k km² | 5,706k km² |
+| largest's share | 24% | 10% |
+| population | 27,719 | 32,726 |
+
+The price-convergence warning that appeared under SPAN_TECH=0 has CLEARED, and
+large cities rose to 10 / 7.
+
+## Watch
+
+Seed 8817's largest realm is **14.4M km²** — above Han (~6.5M) and Rome (~5M) in
+the suite's own band, roughly Mongol scale (~24M) and holding 24% of claimed land.
+That is at the top of the historical envelope, not outside it, but if any single
+realm starts running away this floor is the first place to look. Median 923k km²
+sits exactly in the "Bronze hegemon" reference.
+
+## What this does NOT fix
+
+Conquest is still dead (86 wars, 1 transfer in 12k steps), and the app grid is
+still behind the reference at equal settings. Both stand.
