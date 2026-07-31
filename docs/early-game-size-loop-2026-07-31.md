@@ -431,12 +431,68 @@ scoped, none applied; `ORG_BIRTH_VAR` remains at its shipped default of 1:
 
 ---
 
-# THE THIRD REGRESSION: routine shedding mints nations (`T.SUCCESSOR_STATES`, 2026-07-31)
+# B2 IS THE BREAK, AND AT THE APP GRID IT IS 10× (2026-07-31)
 
-The owner ran the builds. **`dc4e0e9` is the last commit that looks right**, which puts
-the break INSIDE Phase B — and then pointed at the one commit in that window nobody
-had examined: `b859db7` (12:09, "The political fabric re-knits"), which ships
-`T.SUCCESSOR_STATES` at default 1.
+The owner ran the bisect builds by eye: **B1 (`b859db7`) is fine; it breaks on B2
+(`deffdce`)** — the size-target re-grounding. Measured at the APP GRID, which no
+bisect before this had used:
+
+| step 6000 (2600BC) | B1 `b859db7` | B2 `deffdce` |
+|---|---|---|
+| realms | 3 | 5 |
+| claimed land | **0.44%** | **0.09%** |
+| **median realm** | **70 t — 267k km²** | **7 t — 27k km²** |
+| max realm | 72 t | 13 t |
+
+**One commit takes the median realm from 267k km² to 27k km² — 10×.** The same commit
+at the reference grid cost 1.91% → 1.73% claimed and 5 t → 4 t, which is why it passed:
+a 10% effect at tw=240 is a 10× effect at tw=480.
+
+## What it swapped, and why the replacement is fragile
+
+    before:  popCap = govPop × world._sizePopK      (live, low-passed, persisted)
+    after:   popCap = govPop × spanTechMul × RECAL × r2 / RURAL_BIND_DENS   (frozen)
+
+`_sizePopK` was tiles-per-person at the median capacity-bearing realm — a NORMALIZER.
+It made the size target scale-free: independent of the sim's demographic scale,
+independent of resolution, independent of the food model, because it measured the
+world's own realized density and fed that back. That is exactly why the pre-B2 world
+holds up at any grid.
+
+Its removal was still right — a cross-realm statistic driving every realm's size is
+the global coupling that produced the measured ×8–11 planet-wide jumps, and the
+evidence is visible in the B1 column of the owner's own bisect: 92k → 23k → 11k → 80k
+km² median across four checkpoints, with the entire planet down to ONE realm at
+4100 BC. B2 traded an unstable normalizer for a stable absolute, and the absolute is
+only correct at the grid and demographic scale it was calibrated on.
+
+## Where this session's fix actually landed
+
+`SIZE_WORKED` fixed the *feedback* (§2's bistability) and it is aimed at the right
+commit — but it does not touch the *absolute scale*, which is the other half of what
+`_sizePopK` was providing. Measured at the app grid, this branch with both later
+landmines disabled (`SIM_SUCCESSORS=0`, `ORG_BIRTH_VAR=0`):
+
+| step | B1 realms / median | this branch, both off |
+|---|---|---|
+| 1000 | 2 / 92k km² | 4 / 57k km² |
+| 3000 | **1 / 11k km²** | 4 / 88k km² |
+| 4000 | 1 / 80k km² | 4 / 80k km² |
+| 6000 | 3 / **267k km²** | 14 / **195k km²** |
+
+Same order on size, ~4× the realm count, and monotonic instead of lurching. So the
+size loop fix does most of the size restoration; what it cannot do alone is survive
+the two mechanisms below, which sit downstream of it.
+
+---
+
+# THE COMPOUNDING LANDMINE: routine shedding mints nations (`T.SUCCESSOR_STATES`)
+
+`b859db7` (B1, 12:09, "The political fabric re-knits") ships `T.SUCCESSOR_STATES` at
+default 1. The owner's eye is right that B1 looks fine — measured at the app grid it
+fires ZERO recession/lapse/secession events at either B1 or B2, because realms that
+small never shed anything worth orphaning. **It is dormant until realm sizes recover,
+and this session's size fix is what woke it up.**
 
 ## Why it was invisible
 
@@ -497,8 +553,24 @@ frontier should. No new constants; the distinction is already in the pass.
 
 ## Status
 
-**NOT FIXED — no default changed.** Diagnostic build handed to the owner
-(`sizefix + SUCCESSOR_STATES=0`) to confirm by eye before anything is shipped.
+**NOT FIXED — no default changed.** Diagnostic builds handed to the owner:
+`sizefix + SUCCESSOR_STATES=0`, and `sizefix + SUCCESSOR_STATES=0 + ORG_BIRTH_VAR=0`
+(the closest reproduction of the B1-era world), to confirm by eye before anything ships.
+
+## The shipping plan, once the owner confirms
+
+Three independent items, in dependency order:
+
+1. **The absolute scale of `RURAL_BIND_DENS` at off-reference grids.** `SIZE_WORKED`
+   removed the bistability; what remains is that the frozen constant is applied via a
+   `/r2` conversion that assumes `popField` is exactly per-real-area invariant, and it
+   measurably is not (Σcap 2.2× lower at tw=480). That is a bug in the conversion's
+   premise, not a number to re-tune — the honest fix is the capacity invariance itself
+   (1-D coast/river dilution), which is the standing open item.
+2. **`SUCCESSOR_STATES`, surgically** — secede on a genuine loss of grip (step 3's
+   connectivity release), lapse on an ordinary over-target trim (step 6's shed). Both
+   causes are already tracked separately in the pass; no new constants.
+3. **`ORG_BIRTH_VAR`** — see the previous section; three options recorded there.
 
 ## The process finding, again
 
