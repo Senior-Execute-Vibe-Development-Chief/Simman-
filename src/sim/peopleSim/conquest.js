@@ -1194,11 +1194,35 @@ export function resolveOrphanedMarches(world) {
     // 2. FALLEN NATIONS first (the ground under a conquered march remembers):
     //    the existing machinery verbatim — requireBorder=false, already outside.
     const restored = restoreNations(world, orphans.filter(m => (m._homeland ?? -1) >= 0), cid, false);
-    // 3. SUCCESSOR STATELET vs HONEST REVERSION — exactly shedPatch: a functional
-    //    seat leads a polity.seceded successor; no functioning centre → the lapse
-    //    branch fires settlement.lapsed and the land stays wilderness.
+    // 3. SUCCESSOR STATELET vs HONEST REVERSION — split by WHY the ground was
+    //    released (countryTerritory.js world._fpRelCut). A march the realm was
+    //    SEVERED from (step 3: unreachable through its own land, or past the
+    //    administrative horizon) has genuinely lost its centre, and a province
+    //    that has lost its centre raising its own flag is the Diadochi case this
+    //    design is for — it goes to shedPatch, which still applies every seat and
+    //    anti-confetti test. Ground the border merely TRIMMED (step 6's
+    //    over-capacity shed, 6b's marginal release) is the frontier walking back
+    //    one ring toward what the realm can administer; that fires every pass on
+    //    any realm above target and is not a political event at all, so it takes
+    //    shedPatch's own lapse branch verbatim — the settlement falls stateless
+    //    and the land reverts, witnessed.
+    //    Without the split, every routine frontier adjustment minted a statelet:
+    //    measured at the app grid, 15 polity.receded in the first 2000 steps of a
+    //    world holding four realms, and the median realm cut from 12 tiles to 3
+    //    (docs/early-game-size-loop-2026-07-31.md).
+    const relCut = world._fpRelCut;
     const rest = orphans.filter(m => !restored.has(m.id) && m.countryId === cid);
-    if (rest.length) shedPatch(world, c, rest, "receded");
+    const severed = [], trimmed = [];
+    for (const m of rest) {
+      const mi = (m.pos.y | 0) * tw + (m.pos.x | 0);
+      (relCut && relCut[mi] ? severed : trimmed).push(m);
+    }
+    if (severed.length) shedPatch(world, c, severed, "receded");
+    for (const m of trimmed) {
+      if (m.countryId !== cid) continue;
+      m.countryId = -1; m.loyalty = 1; m._ambition = 0; m._conqueredAt = world.step;
+      logEvent(world, "settlement.lapsed", { s: m.id, sName: m.name, from: cid, fromName: realmName(world, cid) });
+    }
     // 4. ANCHOR the outcome so this firing's adoptAndFound can't undo it: every
     //    orphan that ended in a (new or restored) realm stamps its home tile —
     //    the same semantics as the territory pass's anchor fallback. Uncharged

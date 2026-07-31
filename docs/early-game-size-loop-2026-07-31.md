@@ -580,3 +580,90 @@ shipped grid is not a matter of degree but of KIND — inert at one resolution, 
 at the other. `docs/resolution-collapse-2026-07-29.md` §6 already asked for one
 app-grid arm per wave. This is what it costs when that does not happen.
 
+
+
+---
+
+# BOTH LANDMINES FIXED AT THE MECHANISM — SHIPPED (2026-07-31)
+
+The owner confirmed the diagnostic build (size fix + both levers off) fixed the
+problem they were seeing, then asked for the real fix rather than the switches.
+Both are now repaired in the mechanism, and **neither default changed** — both
+levers stay at 1 and keep doing the job they were built for.
+
+## Fix 1 — a released tile now records WHY it was released
+
+`countryTerritory.js` writes `world._fpRelCut` alongside `world._fpRel`:
+
+* **1 = SEVERED** — step 3 cut the ground loose (unreachable through the realm's
+  own land, or past the administrative horizon). The centre genuinely lost its
+  grip, and a province that has lost its centre raising its own flag is exactly
+  the Diadochi case the successor design exists for.
+* **0 = TRIMMED** — step 6's over-capacity shed and 6b's marginal release: the
+  border walking back one ring toward what the realm can administer. This fires
+  every pass on any realm above target. It is the frontier breathing.
+
+`conquest.js resolveOrphanedMarches` splits the orphans on that flag: severed
+patches go to `shedPatch` (every seat and anti-confetti test unchanged), trimmed
+ones take `shedPatch`'s own lapse branch — stateless, land reverts, witnessed.
+Restoration-from-the-ground still runs first for both, so a fallen nation
+re-emerging on remembering ground is untouched. No new constants.
+
+## Fix 2 — a founding village is not a state
+
+`settlement.js birthOrgAt` scaled the base — `base × (1 + K·conf·fert)` — which at
+K=1 ranges 0.1–0.2 against an `ORG_STATE_MIN` of 0.15. It now places the community
+across the PRE-STATE RANGE instead of scaling past it:
+
+    birthOrg = base + (ORG_STATE_MIN − base) × clamp01(K · conf · fert)
+
+The ceiling is `ORG_STATE_MIN` itself, which already MEANS "the top of the
+pre-state range" — no new constant, and it rides any change to that bar. Site
+variation is fully preserved; statehood must be earned everywhere again.
+
+| | tiles born AT OR ABOVE the statehood bar |
+|---|---|
+| before | **622 of 9,616 (6.47%)** |
+| after | **0** |
+
+Cradle values after: Nile 0.135, Mesopotamia 0.125, Indus 0.130, Yellow R. 0.112 —
+still ordered by site quality, still spread, none across the line.
+
+## Measured — app grid, seed 8817, median realm
+
+| step | B1 `b859db7` (last good) | owner's validated build (both levers OFF) | **shipped: surgical, levers ON** |
+|---|---|---|---|
+| 1000 | 92k km² | 57k | **76k** |
+| 2000 | 23k | 50k | **57k** |
+| 3000 | 11k | 88k | **76k** |
+| 4000 | 80k | 80k | **134k** |
+| 5000 | 153k | 160k | **153k** |
+| 6000 | **267k** | 195k | **210k** |
+
+The surgical fixes match or beat the blunt build the owner validated, on every
+checkpoint — while keeping both mechanisms alive.
+
+Cradle spread (tw=240): distance from a cradle **0.0** and **100% cradle-descended**
+through step 2000, still 0.0 at step 4000 — the same restoration switching the
+lever off gives, with the rolling dawn intact.
+
+## Gates
+
+| suite | seed | result |
+|---|---|---|
+| `npm test` | — | green, 165.1s |
+| `npm run validate` | 8817 | all hard gates passed, 1 soft warning (budget 2) |
+| `npm run validate` | 31337 | all hard gates passed, 1 soft warning (budget 2) |
+
+Mature world at 21k: median realm **754k km²** / largest 5,399k (8817, 39 polities,
+top share 12%) and median **461k** / largest 2,569k (31337, 57 polities, top share
+7%). Against the suite's reference line — Bronze hegemon ~0.5–1M, Rome ~5M, Han
+~6.5M — the median realm is a Bronze hegemon and the largest is Rome-scale on both
+seeds. Compare the top of this document, where the app-grid median was ONE TILE.
+
+## Still open, unchanged
+
+Conquest still transfers almost nothing; the ~1.3× capacity gap between grids
+survives (this removed its amplifier, not its cause); and organisation still has no
+diffusion term, so secondary state formation is not modelled — the dawn now starts
+at the cradles but does not yet SPREAD from them by contact.

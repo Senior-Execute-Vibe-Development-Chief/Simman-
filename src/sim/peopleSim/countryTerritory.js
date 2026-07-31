@@ -441,6 +441,22 @@ function fieldPolityTerritory(world) {
   // fresh no-man's-land and stays allowed.
   let rel = world._fpRel; if (!rel || rel.length !== N) { rel = world._fpRel = new Int32Array(N); }
   rel.fill(-1);
+  // WHY the tile was released, not just that it was. `rel` is written by two
+  // events of completely different political meaning, and conquest.js's orphan
+  // resolver could not tell them apart:
+  //   1 = SEVERED — step 3 cut it loose: unreachable through the realm's own
+  //       land, or past the administrative horizon. The centre has genuinely
+  //       lost its grip on that ground, and a march that has lost its centre
+  //       raising its own flag is the Diadochi case the successor design is for.
+  //   0 = TRIMMED — step 6's over-capacity shed (and 6b's marginal release):
+  //       the border walking back one ring toward what the realm can administer.
+  //       This fires EVERY PASS on any realm above target. It is the frontier
+  //       breathing, not a political event, and reading it as a secession is what
+  //       minted a statelet out of every routine adjustment (measured at the app
+  //       grid: 15 polity.receded in the first 2000 steps of a four-realm world —
+  //       docs/early-game-size-loop-2026-07-31.md).
+  let relCut = world._fpRelCut; if (!relCut || relCut.length !== N) { relCut = world._fpRelCut = new Uint8Array(N); }
+  relCut.fill(0);
 
   // Living polities + per-country capacity/knowledge (the Tilly stack from the last
   // updatePolities; one-interval stale is acceptable).
@@ -683,7 +699,7 @@ function fieldPolityTerritory(world) {
         }
       }
     }
-    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) { rel[ti] = co[ti]; co[ti] = -1; }
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) { rel[ti] = co[ti]; relCut[ti] = 1; co[ti] = -1; }   // past the admin horizon: SEVERED
   } else {
     let reach = world._fpReach; if (!reach || reach.length !== N) reach = world._fpReach = new Uint8Array(N);
     reach.fill(0);
@@ -702,7 +718,7 @@ function fieldPolityTerritory(world) {
       ];
       for (let k = 0; k < 8; k++) { const ni = ns[k]; if (ni >= 0 && !reach[ni] && co[ni] === c) { reach[ni] = 1; q[qt++] = ni; } }
     }
-    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) { rel[ti] = co[ti]; co[ti] = -1; }
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) { rel[ti] = co[ti]; relCut[ti] = 1; co[ti] = -1; }   // unreachable through own land: SEVERED
   }
 
   // 4. Held ADMINISTRATION (post-release) → grow/shed budgets vs the capacity target.

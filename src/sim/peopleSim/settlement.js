@@ -1654,6 +1654,24 @@ function seasonalSelect(temp, moist) {
 // generation — Wittfogel's hydraulic demand meeting Carneiro's circumscription. An open or
 // barren site needs none of it. So scale the birth value by confinement × fertility, both
 // already computed per site. 0 = off (every birth 0.1, byte-identical).
+//   A FOUNDING VILLAGE IS NOT A STATE. The first form of this scaled the base:
+// base × (1 + K·conf·fert), which at K=1 ranges 0.1–0.2 against an ORG_STATE_MIN
+// of 0.15 — so any site with conf·fert > 0.5 was BORN ABOVE THE STATEHOOD BAR: a
+// state at tick one, with no development, no learning and no time. Measured over
+// the map (seed 8817): 622 of 9,616 land tiles, 6.5% of the planet. It did not
+// disadvantage the cradles (Nile 0.170, Mesopotamia 0.151, Indus 0.161 — all above
+// the bar); it handed the same instant statehood to hundreds of scattered
+// confined-and-fertile pockets, so the cradles stopped being SPECIAL and states
+// appeared everywhere at once instead of at four rivers
+// (docs/early-game-size-loop-2026-07-31.md).
+//   The variation is right; granting the ANSWER at birth is not. So the site now
+// places the community across the PRE-STATE RANGE — from a loose kin band at
+// `base` up to, at most, the brink of statehood — instead of scaling past it. The
+// ceiling is ORG_STATE_MIN itself, which already MEANS "the top of the pre-state
+// range", so this adds no new constant and rides any change to that bar. K stays
+// the shape of the climb across that range (1 = linear in conf·fert); statehood
+// must still be EARNED everywhere, by learning, exactly as it was before the
+// lever existed. 0 = off (every birth `base`, byte-identical).
 export function birthOrgAt(world, x, y, base) {
   const K = T.ORG_BIRTH_VAR || 0;
   if (!(K > 0)) return base;
@@ -1662,7 +1680,10 @@ export function birthOrgAt(world, x, y, base) {
   const ti = yi * world.tw + xi;
   const fert = world.fert ? (world.fert[ti] || 0) : 0;
   const conf = computeConfinement(world, xi, yi);
-  return base * (1 + K * conf * fert);
+  const bar = T.ORG_STATE_MIN ?? 0.15;
+  if (!(bar > base)) return base;                                  // no pre-state range to spread over
+  const site = Math.max(0, Math.min(1, K * conf * fert));
+  return base + (bar - base) * site;
 }
 
 function computeConfinement(world, x, y) {
