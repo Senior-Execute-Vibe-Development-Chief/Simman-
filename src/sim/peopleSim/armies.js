@@ -16,6 +16,7 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
+import { tel, telPass } from "./telemetry.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
@@ -1874,6 +1875,16 @@ export function advanceFronts(world) {
       continue;
     }
     const budget = Math.min(Math.round(T.MAX_CAPTURE * domCap * r2War), Math.floor((adv - 1) * CAPTURE_SCALE * domCap * r2War));
+    // WHY does a live front take no ground? "86 wars, 1 settlement transferred in 12k
+    // steps" was measured for two sessions with no way to see which half failed —
+    // whether fronts never open, or open and then cannot convert an advantage into
+    // tiles. `adv` is the attacker's margin: adv<=1 is a front that is not winning;
+    // budget<1 is a front that IS winning but by too thin a margin for CAPTURE_SCALE
+    // to round up to a single tile. Those need opposite fixes.
+    tel(world, "capture", "CANDIDATE");
+    if (!pc.tiles.length) tel(world, "capture", "noContestedTiles");
+    else if (adv <= 1) tel(world, "capture", "attackerNotWinning(adv<=1)");
+    else if (budget < 1) tel(world, "capture", "marginTooThinToTakeOneTile");
     if (budget >= 1 && pc.tiles.length) {
       // Advance the front BROADLY: take the outermost contested tiles first
       // so the defender's countryside erodes ring by ring (visible) instead
@@ -1893,6 +1904,8 @@ export function advanceFronts(world) {
         // never grieve; conquest.js decays it over generations.
         if (T.GRIEV_LEDGER && world.popField) feedGrievance(world, def.countryId, att.countryId, world.popField[cti]);
       }
+      if (captured > 0) { telPass(world, "capture"); tel(world, "capture", "~tilesTaken", captured); }
+      else tel(world, "capture", "allTilesTakenByAnotherAttacker");
       if (captured > 0) {
         bankMomentum(world, att.countryId, (captured / r2War) * MOMENTUM_PER_TILE);   // captured countryside feeds the streak (reference-tile units)
         bumpMove(att.countryId, def.countryId, captured / r2War);                      // signed displacement: nets against the counter-front's captures

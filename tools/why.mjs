@@ -34,6 +34,9 @@ const show = (label) => {
     console.log(`  ${ch}:  ${denom} considered · ${head}`);
     for (const [k, v] of Object.entries(outs)) {
       if (k === "CANDIDATE") continue;
+      // `~` prefix = a magnitude tallied alongside the funnel (e.g. tiles taken),
+      // not an outcome of it — shown, but never percentaged against the denominator.
+      if (k.startsWith("~")) { console.log(`      ${k.padEnd(34)}${String(v).padStart(8)}`); continue; }
       console.log(`      ${(k === "PASSED" ? "✓ PASSED" : k).padEnd(34)}${String(v).padStart(8)}  ${(100 * v / Math.max(1, denom)).toFixed(1)}%`);
     }
   }

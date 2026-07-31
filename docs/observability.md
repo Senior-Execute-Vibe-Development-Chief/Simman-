@@ -331,9 +331,43 @@ shipped grid, 6000 steps — 930 candidates considered:
 State formation is gated on **organisation and seat population**, not on spacing — which
 is the kind of answer that previously needed a bespoke probe per question.
 
-Not yet wired: the war-initiation funnel (`armies.js` still uses its own bespoke `WDBG`
-counters — it should be migrated to this layer), conquest/capture, settlement founding,
-and the food/trade passes.
+### Wired funnels, and what they said on first read
+
+**`found`** — settlement supply (app grid, 12k steps, 28,718 candidate evaluations).
+The `~90-entity ceiling` that Tier C spent five design docs and four build attempts on
+is measured rather than argued:
+
+    hardFloorOverlap            16657   58.0%
+    throttled:reach/diffusion   10949   38.1%
+    throttled:spacing             477    1.7%
+    pioneerTempo                  260    0.9%
+    areaFertTooLow                247    0.9%
+    ✓ PASSED                      128    0.4%
+
+**`HARD_FLOOR` — the raw anti-overlap spacing constant — rejects 58% of all candidates**,
+and reach/diffusion the next 38%. Capacity, market saturation and population are
+nowhere. That is the "fixed-radius exclusivity is a spacing constant in disguise"
+verdict from the C1 v1 flip, now with a number on it. Rejections are attributed to the
+SMALLEST multiplier in the probability product, so "the roll failed" is never the answer.
+
+**`nucleate`** — state birth: `org<ORG_STATE_MIN` and `seatPop` take 98% of rejections
+between them; capital spacing takes 1.6%. State formation is gated on organisation and
+seat population, **not** spacing.
+
+**`capture`** — why a live front takes no ground (app grid, 16k steps, 760 fronts):
+
+    ✓ PASSED (took ≥1 tile)       266   35.0%     ~tilesTaken 743
+    noContestedTiles              262   34.5%
+    attackerNotWinning(adv<=1)    229   30.1%
+    marginTooThinToTakeOneTile      3    0.4%
+
+Fronts DO convert — a third of them take ground, 743 tiles over the run. So the
+conquest defect is not "advantage cannot become territory"; it is upstream, in how few
+fronts open and how little sticks at the realm level. `adv<=1` (not winning) and
+`noContestedTiles` need opposite fixes and were previously indistinguishable.
+
+Not yet wired: war INITIATION (`armies.js` still uses its own bespoke `WDBG` counters
+and should be migrated onto this layer), the food/trade passes, and migration.
 
 ## Known gaps in observability
 
