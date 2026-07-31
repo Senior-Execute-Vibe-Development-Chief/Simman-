@@ -18,7 +18,7 @@ import { localEdgeCost, tileOpenness } from "./transport.js";
 import { TECHS } from "./tech.js";
 import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
-import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
+import { CITY_TIER, resScaleFor, successorStatesOn } from "./countryTerritory.js";
 import { techEff, getWealthReserve, recordCaptives, monetization, realOutputOf } from "./settlement.js";
 import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.RESOURCE_WARS)
 import { realmName } from "./chronicle.js";
@@ -450,8 +450,8 @@ const COLONY_TECH_DIFFUSE = 0.06;  // base per-pass rate the colony seat's knowl
 // line, so protection and support are neither automatic nor perfect — the realistic limit on
 // how far, and how strongly, an empire can hold across the sea. This is WHY distant colonies
 // broke away: the metropole simply could not project enough force to hold them.
-const NAVAL_REACH_BASE    = 8;     // tiles a metropole can project with no naval tech (coastal reach)
-const NAVAL_REACH_NAV     = 70;    // extra projection tiles at full navigation tech
+const NAVAL_REACH_BASE    = 8;     // REFERENCE-tiles (×resScaleFor at other grids) a metropole can project with no naval tech (coastal reach)
+const NAVAL_REACH_NAV     = 70;    // extra projection REFERENCE-tiles at full navigation tech
 
 const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
@@ -777,7 +777,9 @@ function freshCountryId(c, bloc) {
 // at once on the next render pass, rather than crawling out as a slow wave —
 // secession is a political event (the province is its own that day), unlike a
 // conquest front. Consumed + cleared in countryClaim.js relaxClaim.
-function snapClaim(world, id) {
+// (Exported for countryTerritory's restoration-from-the-ground foundings —
+// a re-emerging nation is an already-administered claim, same as secession.)
+export function snapClaim(world, id) {
   if (id < 0) return;
   (world._claimSnap || (world._claimSnap = new Set())).add(id);
   // A state born of secession / fragmentation / re-emergence INHERITS a developed,
@@ -1061,8 +1063,24 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
 // evaporate just because no metropolis sits on it). Only a lone village or empty
 // over-claimed tiles have no government to inherit: those fall stateless and the
 // land reverts to wilderness (the rim recedes).
-function shedPatch(world, c, members) {
-  let seats = members.filter(m => (m.tier | 0) >= CITY_TIER && m.id !== c.capitalId);
+function shedPatch(world, c, members, how) {
+  // Successor seats (T.SUCCESSOR_STATES): a CITY, or any member that is its own
+  // PROVINCIAL seat — blocHasSeat's exact member test (see its twice-learned
+  // history above). The floating CITY label pins labelled cities to the age's
+  // top handful, so the label-only bar left almost every shed patch seatless and
+  // the towns-fallback/lapse floor below was the whole outcome (measured: 0
+  // polity.seceded per 24k). A provincial seat is spacing-bounded by construction
+  // (locally-strongest within PROVINCE_SPAN — assignProvinces, stamped fresh at
+  // the top of this same polity pass), so successors are province-sized, never
+  // per-town — founding and secession need different bars. A non-city seat also
+  // needs the patch to be a real region (≥2 members — a successor is a seat plus
+  // at least one dependent, restoreNations' rule; the towns-fallback's own bar):
+  // a stranded lone town lapses rather than minting a 1-member fleck.
+  const succ = successorStatesOn();
+  let seats = succ
+    ? members.filter(m => m.id !== c.capitalId
+        && ((m.tier | 0) >= CITY_TIER || (m._provinceCity === m.id && members.length >= 2)))
+    : members.filter(m => (m.tier | 0) >= CITY_TIER && m.id !== c.capitalId);
   if (seats.length === 0) {
     // No city — the biggest town becomes a frontier capital, provided the patch is
     // a real region (a seat plus at least one dependent), not a single hamlet.
@@ -1089,6 +1107,30 @@ function shedPatch(world, c, members) {
     for (const seat of seats) { const d = dist(world, seat.pos.x, seat.pos.y, m.pos.x, m.pos.y); if (d < bd) { bd = d; best = seat; } }
     groups.get(best.id).push(m);
   }
+  // Anti-confetti fold (T.SUCCESSOR_STATES): a successor is a seat PLUS at least
+  // one dependent — the same ≥2 rule restoreNations enforces. A non-city seat the
+  // watershed left alone folds into the nearest other seat's cell (distance tie →
+  // smaller id); a full CITY alone remains a city-state; a single-seat patch is
+  // one successor, as before.
+  if (succ && seats.length >= 2) {
+    for (let i = seats.length - 1; i >= 0 && seats.length >= 2; i--) {
+      const seat = seats[i];
+      if ((seat.tier | 0) >= CITY_TIER) continue;
+      const grp = groups.get(seat.id);
+      if (grp && grp.length >= 2) continue;
+      let near = null, nd = Infinity;
+      for (const o of seats) {
+        if (o === seat) continue;
+        const d = dist(world, seat.pos.x, seat.pos.y, o.pos.x, o.pos.y);
+        if (d < nd || (d === nd && near && o.id < near.id)) { nd = d; near = o; }
+      }
+      if (!near) continue;
+      const ng = groups.get(near.id);
+      if (grp) for (const m of grp) ng.push(m);
+      groups.delete(seat.id);
+      seats.splice(i, 1);
+    }
+  }
   for (const seat of seats) {
     const grp = groups.get(seat.id);
     if (!grp || !grp.length) continue;
@@ -1104,9 +1146,100 @@ function shedPatch(world, c, members) {
       m._ambition = 0;
       m._conqueredAt = world.step;                 // anti-flicker grace
     }
-    logEvent(world, "polity.seceded", { polity: newId, from: c.id, fromName: realmName(world, c.id),
-      seatName: seat && seat.name, x: seat ? seat.pos.x | 0 : undefined, y: seat ? seat.pos.y | 0 : undefined });
+    // `how` ("receded", from resolveOrphanedMarches) is additive — narrators
+    // and every existing reader ignore it; absent on the classic revolt path.
+    const ev = { polity: newId, from: c.id, fromName: realmName(world, c.id),
+      seatName: seat && seat.name, x: seat ? seat.pos.x | 0 : undefined, y: seat ? seat.pos.y | 0 : undefined };
+    if (how) ev.how = how;
+    logEvent(world, "polity.seceded", ev);
   }
+}
+
+// ── The silent shed made witnessable (T.SUCCESSOR_STATES) ────────────────────
+// The territory pass's connectivity release and over-capacity shed set tiles to
+// wilderness with NO political event: a settled march dropped off the map with
+// its towns, people and homeland memory intact and nothing recorded (measured:
+// 99.86% of ~2117 released tiles went realm→wilderness, 35 silent settlement
+// lapses, 0 secessions per 24k — docs/design-successor-states.md). Called from
+// index.js between computeCountryTerritory (which fills world._fpRel) and
+// adoptAndFound (whose unguarded derivation would otherwise silently lapse the
+// orphans in the same firing): settled members standing on ground their own
+// realm no longer holds — and no rival took (a realm→realm flip is a border
+// shift, adoptAndFound's business) — resolve through the EXISTING machinery:
+// fallen nations re-emerge first (restoreNations), a patch with a functional
+// seat secedes as a successor statelet (shedPatch), a seatless remainder
+// honestly lapses (settlement.lapsed) — and either way the parent's recession
+// is chronicled (polity.receded). The released-by mask already blocks only the
+// PARENT re-taking its shed; a successor is a different id, so its claim is the
+// genuine new-realm capture the carto churn fix explicitly allows.
+export function resolveOrphanedMarches(world) {
+  if (!successorStatesOn() || !T.FIELD_POLITY) return;
+  const co = world._countryOwner, rel = world._fpRel;
+  if (!co) return;
+  const tw = world.tw, elev = world.elev, pf = world.popField;
+  // 1. ORPHANS, grouped by realm (settlement-array order — deterministic).
+  const byRealm = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId < 0) continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (!(elev[ti] > 0) || co[ti] >= 0) continue;         // held ground (own or a rival's) → not an orphan
+    let a = byRealm.get(s.countryId); if (!a) byRealm.set(s.countryId, a = []); a.push(s);
+  }
+  for (const [cid, orphans] of byRealm) {
+    const c = world.countries && world.countries.get(cid);
+    // No countries view yet (a realm minted since the last polity pass), or the
+    // throne itself among the orphans (the death machinery's case, not a march):
+    // leave them to the derivation — which now witnesses the lapse.
+    if (!c || orphans.some(m => m.id === c.capitalId)) continue;
+    // 2. FALLEN NATIONS first (the ground under a conquered march remembers):
+    //    the existing machinery verbatim — requireBorder=false, already outside.
+    const restored = restoreNations(world, orphans.filter(m => (m._homeland ?? -1) >= 0), cid, false);
+    // 3. SUCCESSOR STATELET vs HONEST REVERSION — exactly shedPatch: a functional
+    //    seat leads a polity.seceded successor; no functioning centre → the lapse
+    //    branch fires settlement.lapsed and the land stays wilderness.
+    const rest = orphans.filter(m => !restored.has(m.id) && m.countryId === cid);
+    if (rest.length) shedPatch(world, c, rest, "receded");
+    // 4. ANCHOR the outcome so this firing's adoptAndFound can't undo it: every
+    //    orphan that ended in a (new or restored) realm stamps its home tile —
+    //    the same semantics as the territory pass's anchor fallback. Uncharged
+    //    this pass (≤1 tile/member — the same under-charge the fill headroom
+    //    already accepts); any overshoot is one small shed next pass.
+    for (const m of orphans) {
+      if (m.countryId >= 0 && m.countryId !== cid) co[(m.pos.y | 0) * tw + (m.pos.x | 0)] = m.countryId;
+    }
+    // 5. The WITNESS record either way: what the parent's grip lost this firing.
+    let relTiles = 0, relPeople = 0;
+    if (rel && pf) for (let ti = 0; ti < world.N; ti++) if (rel[ti] === cid) { relTiles++; relPeople += pf[ti]; }
+    logEvent(world, "polity.receded", { polity: cid, name: realmName(world, cid), tiles: relTiles,
+      people: Math.round(relPeople), n: orphans.length, s: orphans[0].id, sName: orphans[0].name,
+      x: orphans[0].pos.x | 0, y: orphans[0].pos.y | 0 });
+  }
+  // People-but-no-settlement marches (shed ground with field people, no entity):
+  // a debug tally, not an event — the log stays entity-anchored throughout.
+  if (rel && pf) {
+    let t = 0, p = 0;
+    for (let ti = 0; ti < world.N; ti++) {
+      const r = rel[ti];
+      if (r >= 0 && pf[ti] > 0 && !byRealm.has(r)) { t++; p += pf[ti]; }
+    }
+    if (t > 0) {
+      const dbg = world.debug || (world.debug = {});
+      dbg.recededTiles = (dbg.recededTiles || 0) + t;
+      dbg.recededPeople = (dbg.recededPeople || 0) + p;
+    }
+  }
+}
+
+// Record WHO carries a dead polity's mantle on its persistent record
+// (rec.succId): the principal fragment of a shatter. Restoration needs no
+// pointer — it re-opens the same id. The pointer is what lets obligations
+// bound to the crown (today: a colony's dependency link) follow the
+// succession instead of evaporating with the id; see the metropole-fall
+// resolution in updatePolities. Never self-referential.
+function recordSuccessor(world, deadId, heirId) {
+  if (heirId == null || heirId < 0 || heirId === deadId) return;
+  const rec = getPolity(world, deadId);
+  if (rec && rec.endedStep >= 0) rec.succId = heirId;
 }
 
 // The throne has fallen: scatter the dead empire's surviving provinces into
@@ -1172,6 +1305,7 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     inheritPersonality(world, oldId, s.id);       // lone successor keeps the old realm's temperament
     snapClaim(world, s.id);                        // the realm shatters at once, not as a wave
     s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
+    recordSuccessor(world, oldId, s.id);           // the lone fragment carries the dead state's mantle (colonies follow it)
     return;
   }
   // Successor capitals: the strongest surviving cities, spread apart so the
@@ -1180,25 +1314,58 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
   // couple of large successors (Roman/Diadochi), a sprawling many-citied one
   // shatters into a crowd of warlord states (Chinese): the number of pieces
   // tracks the severity/scale of the collapse, not a fixed cap.
-  const cityCount = survivors.reduce((n, s) => n + ((s.tier | 0) >= CITY_TIER ? 1 : 0), 0);
-  const maxStates = Math.max(2, Math.min(FRAG_MAX_STATES, Math.ceil(cityCount / 2)));
+  // T.SUCCESSOR_STATES: the basis is FUNCTIONAL seats — a city, or a member that
+  // is its own provincial seat (blocHasSeat's member test) — because the floating
+  // CITY label pins labelled cities to the age's top handful, so the label basis
+  // read 0 at every realm size the sim actually produces and the Diadochi channel
+  // starved (measured: 16 shatters, 0 fragment successors per 24k). Staleness of
+  // _provinceCity here is one polity interval — the same blocHasSeat/
+  // declareIndependence already accept.
+  const succ = successorStatesOn();
+  const isFnSeat = (s) => (s.tier | 0) >= CITY_TIER || (succ && s._provinceCity === s.id);
+  const seatCount = survivors.reduce((n, s) => n + (isFnSeat(s) ? 1 : 0), 0);
+  const maxStates = Math.max(2, Math.min(FRAG_MAX_STATES, Math.ceil(seatCount / 2)));   // adjacent provinces coalesce in pairs
   const ranked = survivors.slice().sort((a, b) => settlementPower(b) - settlementPower(a));
   const capitals = [];
-  for (const s of ranked) {
-    if (capitals.length >= maxStates) break;
-    // Never re-anchor a successor on the DEAD realm's own id: country ids ARE
-    // settlement ids, so a successor whose seat is the founder settlement
-    // (s.id === oldId) would reuse oldId — and ensurePolity would REOPEN the
-    // record endPolity just closed, logging a spurious ended+restored pair and
-    // handing the "shattered" realm its own buried war-chest back (the succession
-    // shatter degrading to a self-rename). The founder settlement still joins its
-    // nearest successor below; the id dies with the house, as intended.
-    if (s.id === oldId) continue;
-    let far = true;
-    for (const cap of capitals) {
-      if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+  // Never re-anchor a successor on the DEAD realm's own id: country ids ARE
+  // settlement ids, so a successor whose seat is the founder settlement
+  // (s.id === oldId) would reuse oldId — and ensurePolity would REOPEN the
+  // record endPolity just closed, logging a spurious ended+restored pair and
+  // handing the "shattered" realm its own buried war-chest back (the succession
+  // shatter degrading to a self-rename). The founder settlement still joins its
+  // nearest successor below; the id dies with the house, as intended.
+  if (succ) {
+    // Pass 1: only FUNCTIONAL seats carry a successor crown (power-ranked, spaced).
+    for (const s of ranked) {
+      if (capitals.length >= maxStates) break;
+      if (s.id === oldId || !isFnSeat(s)) continue;
+      let far = true;
+      for (const cap of capitals) {
+        if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+      }
+      if (far) capitals.push(s);
     }
-    if (far) capitals.push(s);
+    // Pass 2: the Diadochi floor — a seat-poor realm still splits in two, topped
+    // up from ANY survivor (the pre-lever behavior for seatless realms).
+    if (capitals.length < 2) for (const s of ranked) {
+      if (capitals.length >= 2) break;
+      if (s.id === oldId || capitals.includes(s)) continue;
+      let far = true;
+      for (const cap of capitals) {
+        if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+      }
+      if (far) capitals.push(s);
+    }
+  } else {
+    for (const s of ranked) {
+      if (capitals.length >= maxStates) break;
+      if (s.id === oldId) continue;
+      let far = true;
+      for (const cap of capitals) {
+        if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+      }
+      if (far) capitals.push(s);
+    }
   }
   // Each successor realm inherits the dead empire's temperament (with drift),
   // so the Diadochi share their predecessor's character before diverging.
@@ -1207,6 +1374,11 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     inheritPersonality(world, oldId, cap.id);
     snapClaim(world, cap.id);
   }
+  // The PRINCIPAL successor — the strongest fragment (capitals[] is filled in
+  // power-rank order) — carries the dead state's mantle on the registry, so
+  // obligations bound to the crown (a colony's dependency link) can follow the
+  // succession instead of evaporating with the id.
+  if (capitals.length) recordSuccessor(world, oldId, capitals[0].id);
   // Each survivor joins its nearest successor capital.
   for (const s of survivors) {
     let best = capitals[0], bd = Infinity;
@@ -1819,19 +1991,97 @@ export function updatePolities(world) {
     for (const c of countries.values()) { let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m); _depPow.set(c.id, p); }
     fieldPowerOverlay(world, countries, _depPow);   // POW_FIELD: the independence line weighs governed people
     const blocPow = (c) => _depPow.get(c.id) || 0;
-    // (a) Wire the founding marker (sea.js) → the durable polity link, once.
+    // (a) Wire the founding marker (sea.js) → the durable polity link. Consumed only
+    //     when the link is APPLIED — or provably never can be. The old form consumed
+    //     it unconditionally on first sight: a colony whose founder id happened to be
+    //     absent from THIS pass's live view (mid-conquest, mid-merge), or whose own
+    //     polity record the reconciler hadn't registered yet (arrival racing the
+    //     pass — reconcilePolities runs at the END of the pass), silently lost the
+    //     link forever: an orphan micro-state that still culture-diverged as a colony
+    //     but belonged to nobody.
     for (const s of world.settlements) {
       if (s._overlordCC == null) continue;
-      const over = s._overlordCC; s._overlordCC = undefined;       // consume the marker
-      if (s.countryId !== s.id || over < 0 || over === s.id) continue;
+      const over = s._overlordCC;
+      // Malformed marker — can never become a link. Drop.
+      if (over < 0 || over === s.id) { s._overlordCC = undefined; continue; }
+      // The colony itself lost sovereignty (annexed during/after the voyage): its
+      // life as a self-governing dependency is over — the marker is moot. Drop,
+      // never re-wire a later secession back to the old metropole.
+      if (s.countryId !== s.id) { s._overlordCC = undefined; continue; }
+      // The founder FELL (polity records are never deleted; endedStep marks death):
+      // orphaned for good — no successor-tracing. Drop. Also drop when the founder
+      // id is neither a live realm NOR on record — a never-registered statelet that
+      // vanished can never return (restoration reopens RECORDS only).
+      const founder = getPolity(world, over);
+      if (founder ? founder.endedStep >= 0 : !countries.has(over)) { s._overlordCC = undefined; continue; }
       const pol = getPolity(world, s.id);
-      if (pol && pol._overlord == null && countries.has(over)) {
-        pol._overlord = over;
-        pol._depKind = "colony";                                   // a planted dependency (vs a submitted vassal) — drives investment and map rendering
-        inheritPersonality(world, over, s.id);                     // the colony carries the metropole's temperament
-        snapClaim(world, s.id);                                    // it administers its own ground at once
-        logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
-          seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
+      // Already bound (vassalized/re-linked in the window) — the marker is moot. Drop.
+      if (pol && pol._overlord != null) { s._overlordCC = undefined; continue; }
+      // Not appliable THIS pass (founder id transiently out of the live view, or the
+      // colony's own record not yet reconciled): KEEP the marker and retry next pass.
+      if (!pol || !countries.has(over)) continue;
+      s._overlordCC = undefined;                                   // consume: the link applies now
+      pol._overlord = over;
+      pol._depKind = "colony";                                     // a planted dependency (vs a submitted vassal) — drives investment and map rendering
+      inheritPersonality(world, over, s.id);                       // the colony carries the metropole's temperament
+      snapClaim(world, s.id);                                      // it administers its own ground at once
+      logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
+        seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
+    }
+    // (a2) METROPOLE FALLS: succession or liberation — never a silent mass-drop.
+    //      The old cliff: rebuildOverlords freed EVERY dependency the moment the
+    //      overlord id left the live view — even a one-pass transient (mid-merge
+    //      id shuffle), and even when the registry records a successor carrying
+    //      the fallen state on (B1). Resolve each such bond from the PERSISTENT
+    //      registry instead:
+    //        • overlord ALIVE on record, merely out of this pass's view → WAIT
+    //          (reconcilePolities closes the record at the end of this pass if
+    //          the realm truly evaporated; the next pass resolves it for real);
+    //        • ENDED, and the recorded succession chain (rec.succId) leads to a
+    //          LIVE realm → the dependency PASSES TO THE HEIR — the crown's
+    //          obligations travel with the crown's mantle;
+    //        • ENDED with no living heir → honest LIBERATION, chronicled per
+    //          colony (the Spanish-American arc: the metropole falls, the
+    //          colonies go their own way).
+    for (const c of countries.values()) {
+      const pol = getPolity(world, c.id);
+      if (!pol || pol._overlord == null || pol._overlord === c.id) continue;
+      const over = pol._overlord;
+      if (countries.has(over)) continue;                   // live and present — nothing to resolve
+      const orec = getPolity(world, over);
+      if (orec && orec.endedStep < 0) continue;            // transient absence — wait
+      // Dead on record (or a never-registered statelet that vanished — no
+      // record to succeed from). Walk the recorded succession chain, bounded:
+      // each hop is itself a dead record's heir; stop at the first LIVE realm.
+      let heir = -1, wait = false;
+      { let cur = orec, hops = 0;
+        while (cur && cur.endedStep >= 0 && hops++ < 8) {
+          const nid = cur.succId != null ? cur.succId : -1;
+          if (nid < 0 || nid === cur.id || nid === c.id) break;
+          if (countries.has(nid)) { heir = nid; break; }
+          const nrec = getPolity(world, nid);
+          if (nrec && nrec.endedStep < 0) { wait = true; break; }   // heir alive on record, out of view this pass
+          cur = nrec;
+        } }
+      if (wait) continue;
+      // No cycles: the heir must not sit below THIS dependency in the overlord
+      // pyramid (same rule submission enforces; walked on the records, bounded).
+      if (heir >= 0) {
+        let up = heir;
+        for (let hops = 0; hops < countries.size && up != null && up >= 0; hops++) {
+          const urec = getPolity(world, up);
+          up = urec ? urec._overlord : null;
+          if (up === c.id) { heir = -1; break; }
+        }
+      }
+      if (heir >= 0) {
+        pol._overlord = heir;                              // the dependency passes to the successor state (kind unchanged)
+        logEvent(world, "colony.inherited", { polity: c.id, name: realmName(world, c.id),
+          from: over, fromName: orec ? orec.name : undefined, to: heir, toName: realmName(world, heir) });
+      } else {
+        pol._overlord = undefined; pol._depKind = undefined;
+        logEvent(world, "colony.independent", { polity: c.id, from: over,
+          fromName: orec ? orec.name : undefined, name: realmName(world, c.id), how: "metropole-fell" });
       }
     }
     // (b/b2) Live overlord map + naval reach — extracted so loadWorld can warm
@@ -2393,6 +2643,22 @@ export function updatePolities(world) {
         // war by war and only unwinds on the slow institutional clock.
         s._estates = Math.max(0, Math.min(1, cur + (estTarget > cur ? ESTATE_DRIFT : ESTATE_BREAK) * (estTarget - cur)));
       }
+      // SLAVE SOCIETY (coerced-labor.md §2 — the gSlave term): the enslaved share of a
+      // settlement's population is a STANDING political grievance. A place worked by
+      // chained gangs lives under the threat of the servile war however quiet it looks
+      // (Spartacus's Italy, the Zanj marshes, Saint-Domingue) — masters patrol, fugitives
+      // run, manumission is bargained, and the free poor fear the lash-economy's wage
+      // floor. That price was missing: the estate-wrecking LOCAL revolt (settlement.js
+      // updateCoercedLabour) fires only past a 60% ratio, so below it a slave economy
+      // paid no political cost at all. Folded into the realm unrest sum like serfdom's
+      // gSerf, so it feeds rebellion, loyalty bleed and secession through the same
+      // machinery as every other grievance. Ratio form: under SLAVE_PEOPLE the unfree
+      // live INSIDE s.people (denominator: people); the legacy separate-stock accounting
+      // adds them — the spec's clamp(_unfree/(people+_unfree)), same as _unfreeRatio.
+      const unfree = T.SLAVERY ? (s._unfree || 0) : 0;
+      const gSlave = unfree > 0
+        ? T.SLAVE_UNREST_W * Math.min(1, unfree / Math.max(1, (s.people || 0) + (T.SLAVE_PEOPLE ? 0 : unfree)))
+        : 0;
       let gSerf = 0;
       if (T.SERFDOM) {
         const coercion = Math.min(1, (c._dominance || 1) / 4);              // a strong realm can bind
@@ -2408,8 +2674,10 @@ export function updatePolities(world) {
         gSerf = T.SERF_UNREST * s._serf;
       }
       // a shrewd, firm ruler keeps better order; a foolish, weak one lets it fray (dynasties.js c._rulerRelief, ±)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf + gG) * T.UNREST_GAIN - UNREST_RELIEF - monRelief - (c._rulerRelief || 0)));
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf + gSlave + gG) * T.UNREST_GAIN - UNREST_RELIEF - monRelief - (c._rulerRelief || 0)));
+      const gBond = gSerf + gSlave;   // bondage grievances share one cause label
       s._unrestCause = s._plagueActive ? "plague"
+                     : gBond > gG && gBond > gI && gBond >= gH && gBond >= gT && gBond >= gW && gBond >= gC ? "servile unrest"
                      : gG > gI && gG >= gH && gG >= gT && gG >= gW && gG >= gC ? "old wounds"
                      : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"
@@ -3098,29 +3366,41 @@ function coalitionBrake(world, hegemonId, hegemonPow) {
   return Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / Math.max(1, hegemonPow)));
 }
 
-// Live overlord map + validation (an overlord whose realm has died frees its
-// dependencies; self-referential/orphaned links drop) and the metropole's
-// naval REACH to each colony — how much force/supply it can project across
-// the distance, scaled by its naval-logistics tech. Governs protection,
-// support and the independence line. Called from updatePolities every pass
-// and from loadWorld to warm the maps before the post-load alliance rebuild.
+// Live overlord map (self-referential links drop; a bond whose overlord is
+// absent from the live view is left ON THE RECORD — whether that absence is a
+// transient, a succession to follow, or a genuine fall is the REGISTRY's call,
+// made by the metropole-fall resolution in updatePolities, never by this
+// per-pass view) and the metropole's naval REACH to each colony — how much
+// force/supply it can project across the distance, scaled by its
+// naval-logistics tech. Governs protection, support and the independence
+// line. Called from updatePolities every pass and from loadWorld to warm the
+// maps before the post-load alliance rebuild.
 export function rebuildOverlords(world, countries) {
   const overlordOf = world._overlordOf = new Map();
   for (const c of countries.values()) {
     const pol = getPolity(world, c.id);
     if (!pol || pol._overlord == null) continue;
-    if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; pol._depKind = undefined; continue; }
+    if (pol._overlord === c.id) { pol._overlord = undefined; pol._depKind = undefined; continue; }
+    if (!countries.has(pol._overlord)) continue;   // no live overlord this pass: no flows, no severing (see note above)
     overlordOf.set(c.id, pol._overlord);
   }
   const reachOf = world._overlordReach = new Map();
   const tw = world.tw;
   const lab = landLabels(world);
+  // Res-scale: NAVAL_REACH_* are REFERENCE-tile radii (calibrated at the 240 grid),
+  // but d is a raw map distance — at a finer grid the same ocean is more raw tiles,
+  // so an unscaled navalReach projected ~1/resScale the real force: at the shipped
+  // 960 grid every colony sat at ~⅓ the projection it was tuned for, starving
+  // (supply, tech diffusion ∝ proj) and breaking free at ~14% of metropole power.
+  // Same scale (incl. the SIM_HOLD_SCALE A/B env) as holdReach, so BOTH arms of the
+  // max(sea, land) below stay in the same units at every grid — see the arm note.
+  const navScale = _holdScaleEnv > 0 ? _holdScaleEnv : resScaleFor(tw);
   for (const [dep, over] of overlordOf) {
     const dc = countries.get(dep), oc = countries.get(over);
     if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
     const d = dist(world, dc.capital.pos.x, dc.capital.pos.y, oc.capital.pos.x, oc.capital.pos.y);
     const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
-    const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
+    const navalReach = (NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV) * navScale;
     // Projection is by whichever ARM reaches: the navy across water (naval
     // reach), or the army over land — which marches out to the overlord's hold
     // reach, the same operational range that let a land VASSAL submit in the
@@ -3128,10 +3408,11 @@ export function rebuildOverlords(world, countries) {
     // judged by the overlord's NAVY (near-zero pre-sail), so a freshly-submitted
     // statelet sat above the independence line and oscillated submit↔free.
     // The army arm exists ONLY where an army can MARCH — both seats on the same
-    // landmass. Without that check the res-scaled hold reach dwarfed the raw
-    // naval reach and an army "marched" across open ocean to overseas colonies,
-    // silencing the very independence arc (remote colonies break free) the
-    // naval-projection model exists to produce.
+    // landmass: that gate (not unit games) is what keeps an army from "marching"
+    // across open ocean to overseas colonies and silencing the independence arc.
+    // Both reaches now carry the SAME resolution scale against the same raw d,
+    // so the sea-arm : land-arm balance is a resolution-invariant ratio — the
+    // old imbalance (res-scaled hold vs raw naval) cannot re-emerge at any grid.
     const seaProj = navalReach / (navalReach + d);
     const oTi = (oc.capital.pos.y | 0) * tw + (oc.capital.pos.x | 0);
     const dTi = (dc.capital.pos.y | 0) * tw + (dc.capital.pos.x | 0);

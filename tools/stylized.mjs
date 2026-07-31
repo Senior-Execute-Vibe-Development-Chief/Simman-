@@ -182,6 +182,18 @@ const st = peopleSimStats(world);
     const med = areas[areas.length >> 1];
     score("largest empire's share of claimed land", (top1 * 100).toFixed(0) + "%", top1 >= 0.04 && top1 <= 0.55, false, `${areas.length} polities on ${claimed} tiles`);
     score("empire area tail (largest/median)", (areas[0] / Math.max(1, med)).toFixed(1), areas[0] / Math.max(1, med) >= 3);
+    // ABSOLUTE realm AREA, in km² — the axis every share/ratio gate above is blind
+    // to. Both are scale-free: a world whose biggest empire is Romania passes the
+    // share gate (10%) and the tail gate (5×) exactly as a world whose biggest is
+    // Rome. That blindness is how RURAL_BIND_DENS shipped six times too high and
+    // was caught in PLAY, not here (owner report 2026-07-29; docs/design-c-
+    // territory-fill.md). Reported UNSCORED: the honest target is era-dependent
+    // (a Bronze hegemon ~0.5–1M km², a classical empire ~2–6M, and the run's era
+    // is emergent, never a step count), so a scored band needs per-era derivation
+    // — recorded as the follow-up. Printing it means the next regression is seen.
+    const landTiles = (() => { let n = 0; for (let i = 0; i < co.length; i++) if (elev[i] > 0) n++; return n; })();
+    const kkm2 = landTiles > 0 ? (510e6 * 0.29) / landTiles / 1000 : 0;   // ~thousand km² per land tile
+    console.log(`        (realm AREA, unscored: largest ${Math.round(areas[0] * kkm2)}k km² · median ${Math.round(med * kkm2)}k km² · reference: Bronze hegemon ~0.5-1M, Rome ~5M, Han ~6.5M)`);
   } else score("empire land tail", "n/a", false, false, `${areas.length} landed polities`);
 }
 
@@ -219,12 +231,38 @@ const st = peopleSimStats(world);
 // The heavy tail counts the still-ALIVE old realms too: the Rome-shaped
 // long-livers usually haven't died by the end of the run, and ignoring the
 // censored sample was exactly why this gate under-read the tail.
+// LIVES are reconstructed from the APPEND-ONLY event log, not a registry
+// endedStep scan: a restoration RE-OPENS the record (endedStep back to −1), so
+// the scan retroactively erased every death that was later undone — in a
+// restoration-rich regime the gate starved below its own sample minimum and
+// read n/a while realms demonstrably fell (long-run report W2). Each life is a
+// birth (polity.founded / polity.restored / polity.seceded — secession logs
+// seceded INSTEAD of founded for its silently-registered state) closed by the
+// next polity.ended: a fall-then-restoration counts as one COMPLETED fall,
+// and the restored realm's current life is censored at its restoration, not
+// its ancient founding. Bands unchanged — only the input series is honest now.
 {
   const lifes = [];
   const aliveAges = [];
-  if (world.polities) for (const p of world.polities.values()) {
-    if (p.endedStep >= 0) lifes.push(p.endedStep - p.foundedStep);
-    else aliveAges.push(world.step - p.foundedStep);
+  {
+    const openBirth = new Map();   // polity id → birth step of the currently-open life
+    for (const ev of world.events || []) {
+      if (ev.type === "polity.founded" || ev.type === "polity.restored" || ev.type === "polity.seceded") {
+        if (!openBirth.has(ev.polity)) openBirth.set(ev.polity, ev.step);
+      } else if (ev.type === "polity.ended") {
+        let b = openBirth.get(ev.polity);
+        if (b === undefined) {   // silently-registered record (no birth event): fall back to its registry foundedStep
+          const p = world.polities && world.polities.get(ev.polity);
+          b = p ? p.foundedStep : ev.step;
+        }
+        lifes.push(ev.step - b);
+        openBirth.delete(ev.polity);
+      }
+    }
+    // The censored sample: every still-living realm's CURRENT life age.
+    if (world.polities) for (const p of world.polities.values()) {
+      if (p.endedStep < 0) aliveAges.push(world.step - (openBirth.get(p.id) ?? p.foundedStep));
+    }
   }
   lifes.sort((a, b) => a - b);
   // Scoring minimum 5 (was 8): against a 40×-wide band a small-sample median is
@@ -526,6 +564,38 @@ const st = peopleSimStats(world);
     score("settlements cluster on water (same-footprint enrichment)", enrichSF.toFixed(2), enrichSF >= 1.15, false,
       `${(onWater / setts.length * 100).toFixed(0)}% on water vs same-footprint null ${(sfWater / Math.max(1, landT) * 100).toFixed(0)}% (raw per-tile null gave ${enrich.toFixed(2)}; NN-CV ${cv.toFixed(2)})`);
   } else score("clustering", "n/a", true, false, "too few settlements");
+}
+
+// ── 12b. Food composition ──
+// The R5 blind spot: world fish share regressed 6% → 84-92% across default flips
+// with every gate green, because nothing watched food composition
+// (docs/user-report-diagnosis-2026-07-28.md §2). Real agrarian worlds drew a
+// small minority of calories from the water. TIER-B BAND: ≤40% — the recorded
+// tier-a-fixes trigger, fired with the Tier-B food wave (land-food maturity via
+// works×indCap + fisher labor + depletable stocks,
+// docs/design-food-economy-wave.md): land food now matures through the mid-run
+// instead of stranding the world on the sea, and the fishery's own labor cost
+// and stock depletion bound the catch, so the pre-Tier-B honest-immature high
+// tail (up to ~50% on slow-developing seeds, which the interim ≤60% bar
+// tolerated) is no longer an excuse the gate must extend. Measured on the wave
+// (480×240 seed 8817): 2.1% at 12k, 4.5% at this 21k horizon — vs 68.4% at 12k
+// and 45.8% at 21k before the per-fisher catch was re-anchored (fish now GROWS
+// with real fishing-port populations, bounded by labor and stocks, instead of
+// arriving as a flat windfall — FISH_PER_CAP is the dominant dial and its desc
+// carries the sweep). The broken phantom-fish class this gate exists to catch
+// reads 84%+.
+{
+  let fishSum = 0, supplySum = 0, majFishPop = 0, popSum = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const f = s._fishYield || 0, sup = s._foodSupply || 0;
+    fishSum += f; supplySum += sup;
+    popSum += s.people || 0;
+    if (sup > 0 && f / sup > 0.5) majFishPop += s.people || 0;
+  }
+  const share = supplySum > 0 ? fishSum / supplySum : 0;
+  score("fish share of food supply", `${(share * 100).toFixed(1)}%`, share <= 0.40, false,
+    `${(majFishPop / Math.max(1, popSum) * 100).toFixed(0)}% of population lives majority-fish [soft bar ≤40% Tier-B]`);
 }
 
 // ── 13. Continuity (hard gates) ──

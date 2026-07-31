@@ -12,6 +12,12 @@
 // Records are never deleted. A fallen realm keeps its record (endedStep set),
 // its history stays queryable forever, and a restoration simply re-opens the
 // same entity — restored Poland IS Poland, with its own character and story.
+// A shattered realm's record also carries succId — the principal fragment
+// that took up its mantle (conquest.js recordSuccessor) — so obligations
+// bound to the crown (a colony's dependency link) can follow the succession.
+// Lazily-attached fields (set only when the state exists): _overlord/_depKind
+// (dependency bond), succId (mantle), _lastCharter (colonial-venture pacing,
+// sea.js) — all ride the verbatim record through save/load.
 //
 // The polity id remains the founding-capital settlement id (unchanged scheme).
 
@@ -26,6 +32,12 @@ export function politiesOf(world) {
 // Population scale for the admin-load size term — shared by the polity pass's
 // per-member load (conquest.js) and the adoption fisc test below, so both
 // price "how big is this community to govern" on the same ruler.
+// ABSOLUTE by ruling (Tier-C C1 deflation audit): the fisc comparison's
+// REVENUE side (people × capacity/Σpeople) is a ratio of census units and is
+// label-supply invariant; this LOAD-side scale enters only log2-compressed
+// (sizeMul = 1 + SIZE_LOAD·log2(1+people/SIZE_REF)), so C1's ~×0.6-0.75
+// census deflation moves the load term marginally (direction: slightly more
+// permissive adoption — measured in validation, not re-anchored per-site).
 export const SIZE_REF = 1000;
 
 /**

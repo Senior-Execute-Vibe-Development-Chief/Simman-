@@ -97,7 +97,12 @@ export function chronicleTick(world) {
         if ((a[IN_PILGRIM]      || 0) > 60)  mark(CH_HOLY,      "city.holy", {});
         if ((a[IN_CARRY]        || 0) > 40)  mark(CH_ENTREPOT,  "city.entrepot", {});
         if ((a[IN_FINANCE]      || 0) > 50)  mark(CH_FINANCIER, "city.financier", {});
-        if ((a[IN_SLAVE_TRADE]  || 0) > 25)  mark(CH_SLAVER,    "city.slaver", {});
+        // Same bar as the entrepôt: both are BROKERAGE archetypes — a city living
+        // on carrying others' cargo (goods there, people here) — judged on the
+        // same income-rate basis. The old 25 was the lowest bar of any archetype
+        // and, against the pre-metering post-pass income spike (up to 2.5× the
+        // true rate), over-announced slaver cities in the chronicle.
+        if ((a[IN_SLAVE_TRADE]  || 0) > 40)  mark(CH_SLAVER,    "city.slaver", {});
         if ((a[IN_MINING]       || 0) > 150) mark(CH_MINE,      "mine.boom", {});
       }
     }

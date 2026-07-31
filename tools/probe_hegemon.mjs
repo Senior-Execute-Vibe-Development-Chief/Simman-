@@ -3,8 +3,9 @@
 //      its overlord's bloc) holds the most claimed land, sampled every SAMPLE
 //      steps; final table = share of samples held, longest unbroken run, and
 //      the same restricted to the BACK 40% of the run (the lock-in window).
-//   2. Polity MORTALITY — founded/ended per report window from the registry
-//      (the review measured a 7× late-game mortality collapse).
+//   2. Polity MORTALITY — births/deaths per report window from the APPEND-ONLY
+//      event log (the review measured a 7× late-game mortality collapse; the
+//      old registry endedStep scan was restoration-blind — see mortality()).
 //   3. WHY the top realm doesn't break — the internal state the fracture
 //      mechanisms read: province structure vs the overmighty-governor bars
 //      (ratio ≥ 0.55 of the THRONE province, far ≥ 0.5×holdRange — far is not
@@ -16,7 +17,7 @@
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { settlementPower } from "../src/sim/peopleSim/conquest.js";
-import { politiesOf, getPolity } from "../src/sim/peopleSim/entities.js";
+import { getPolity } from "../src/sim/peopleSim/entities.js";
 import { inCrisis } from "../src/sim/peopleSim/dynasties.js";
 import { T } from "../src/sim/peopleSim/tuning.js";
 
@@ -117,11 +118,24 @@ function topInternals(cid) {
   };
 }
 
+// Mortality per window — counted from the APPEND-ONLY event log, never from a
+// registry endedStep scan: a restoration RE-OPENS the record (endedStep back to
+// −1), so the scan retroactively erased every death that was later undone — in
+// a restoration-rich regime the printed series contradicted the run's own event
+// tally (measured at 480/24k: scan said flat 0.25/0.25 deaths/1k while events
+// said 0.76→1.46 — long-run report W2). Births: polity.founded +
+// polity.restored + polity.seceded (secession/rebellion register their new
+// state silently and log seceded INSTEAD of founded, so seceded IS that birth's
+// witness). Deaths: polity.ended alone — every death path funnels through
+// endPolity, and a shatter logs polity.shattered AND its paired
+// polity.ended(conquest), so counting shattered too would double-count. A
+// fall-then-restoration is one completed death plus one (re)birth.
 function mortality(sinceStep, uptoStep) {
   let born = 0, died = 0;
-  for (const p of politiesOf(world).values()) {
-    if (p.foundedStep > sinceStep && p.foundedStep <= uptoStep) born++;
-    if (p.endedStep > sinceStep && p.endedStep <= uptoStep) died++;
+  for (const ev of world.events || []) {
+    if (ev.step <= sinceStep || ev.step > uptoStep || !ev.type) continue;
+    if (ev.type === "polity.ended") died++;
+    else if (ev.type === "polity.founded" || ev.type === "polity.restored" || ev.type === "polity.seceded") born++;
   }
   return { born, died };
 }

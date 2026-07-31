@@ -130,8 +130,9 @@ function deep() {
   for (const s of setts) { if (s.countryId < 0) continue; let a = agg.get(s.countryId); if (!a) { a = { mem: 0, pop: 0, wealth: 0, army: 0 }; agg.set(s.countryId, a); } a.mem++; a.pop += s.people || 0; a.wealth += s.wealth || 0; a.army += s.army || 0; }
   const rows = [];
   for (const [id, c] of (world.countries || new Map())) {
-    const a = agg.get(id) || { mem: 0, pop: 0, wealth: 0, army: 0 }; const p = world.personalities && world.personalities.get(id);
+    const a = agg.get(id) || { mem: 0, pop: 0, wealth: 0, army: 0 };
     const pol = getPolity(world, id);
+    const p = pol && pol.personality;   // temperament lives on the polity record (world.personalities is dead)
     rows.push({ id, name: pol ? pol.name : "?", tiles: size.get(id) || 0, mem: a.mem, pop: Math.round(a.pop), wealth: Math.round(a.wealth), army: Math.round(a.army),
       org: r2((c.capital && c.capital.knowledge && c.capital.knowledge.organization) || 0),
       solv: r2(c._solvency ?? 1), treas: Math.round(c._treasury || 0), fineness: r2(c._fineness ?? 1), dominance: r2(c._dominance || 1),

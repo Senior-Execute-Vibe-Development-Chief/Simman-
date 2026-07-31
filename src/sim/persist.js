@@ -80,7 +80,7 @@ const SETT_FIELDS = [
   "_homeland", "_homelandFell", "_sovereignSeat", "_integratedAt", "_conqueredAt",
   "_sackedAt", "_siegeAt", "_warAt", "_ambition",
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
-  "_coloniesSent", "_isColony", "_overlordCC",
+  "_coloniesSent", "_isColony", "_overlordCC", "_fisherFrac",   // fisher labor share (T.FISH_LABOR) — carries the boats-built ramp across ticks (_shoreTiles is static geography, recomputed lazily)
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
   "_diseaseLoad", "_contacted", "_virginUntil",   // endemic immunity load + virgin-soil (Columbian) contact state
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
@@ -110,7 +110,7 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
@@ -247,7 +247,7 @@ export function saveWorld(world, meta = {}) {
     refRealmPop: world._refRealmPop,  // GRIEV_LEDGER smoothed median realm population (what a "people" weighs); absent/0 reseeds at the next polity pass
     musterRatio: world._musterRatio,  // MUSTER_FIELD smoothed census↔governed-people anchor (armies.js); absent/0 reseeds at the next muster
     provRatio: world._provRatio,      // PROV_FIELD smoothed per-province census↔governed anchor (conquest.js); absent/0 reseeds at the next polity pass
-    sizePopK: world._sizePopK,        // SIZE_BY_POP smoothed tiles-per-governed-person anchor (countryTerritory.js); absent/0 reseeds, holds pop-core targets stable across a load
+    sizePopK: 0,                      // DEAD (Tier-B2 re-grounding): the SIZE_BY_POP global anchor is gone — the target is memoryless (per-realm govPop × RURAL_BIND_DENS, countryTerritory.js). Kept one format generation at 0 so old code loading a new save takes its reseed path; drop next format change
     loyalScanAt: world._loyalScanAt,  // LOYAL_FIELD last owner-diff scan step (classifies force vs politics in transfer semantics)
     devWaveAt: world._devWaveAt,      // DEV_FIELD last wave firing step (the ~1 km/year cadence clock)
     onePopScale: world._onePopScale,  // ONE_POP frozen bridge scalar (census units per field person; a unit conversion, never re-derived)
@@ -306,6 +306,7 @@ export function saveWorld(world, meta = {}) {
       // non-JSON values (-Infinity) in their defaults
       tileCapturedAt: sparseFromTyped(world._tileCapturedAt, -Infinity),
       soilFatigue: sparseFromTyped(world._soilFatigue, 0),
+      fishTaken: sparseFromTyped(world._fishTaken, 0),   // "the sea remembers" (T.FISH_LABOR, settlement.js) — taken fraction of each coastal stock
     },
     reserves,
     tables,
@@ -358,6 +359,24 @@ export function loadWorld(data, opts = {}) {
     if (!("TILE_POLITY" in tn)) T.TILE_POLITY = 0;
     if (!("CATCHMENT_CLIP" in tn)) T.CATCHMENT_CLIP = 0;
   }
+  // Regime guard (Tier-C C1, the v3 pattern): a v≤4 save was made when
+  // T.LABEL_BIRTH defaulted OFF, so it stores no delta for it — if the lever's
+  // default ever flips ON (with the SAVE_VERSION bump to 5 that flip requires),
+  // a naive load would silently continue the old world under basin-exclusive
+  // label supply AND under a frozen _onePopScale calibrated at the old label
+  // density (survey open question 4 — the bridge cannot re-calibrate). Keep
+  // such saves in their own regime unless they set the lever explicitly.
+  // The same guard covers MULTI_HEARTH (C1 v4, the hearth field): it changes an
+  // INITIAL CONDITION — how many cradles the world was seeded with — which a
+  // loaded save cannot re-derive (its settlements are already in the file), and
+  // it re-keys the tier bars from floored to pure percentiles. A pre-flip save
+  // continuing under the new default would carry an Old-World-only devField
+  // through a percentile hierarchy calibrated for a denser label set.
+  if (data.v < 5) {
+    const tn = data.tuning || {};
+    if (!("LABEL_BIRTH" in tn)) T.LABEL_BIRTH = 0;
+    if (!("MULTI_HEARTH" in tn)) T.MULTI_HEARTH = 0;
+  }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
   const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });
@@ -378,7 +397,7 @@ export function loadWorld(data, opts = {}) {
   world._refRealmPop = data.refRealmPop ?? 0;     // smoothed median realm population (GRIEV_LEDGER read normalizer; 0 reseeds next pass)
   world._musterRatio = data.musterRatio ?? 0;     // MUSTER_FIELD census↔governed anchor (0 reseeds at the next muster)
   world._provRatio = data.provRatio ?? 0;         // PROV_FIELD per-province census↔governed anchor (0 reseeds next polity pass)
-  world._sizePopK = data.sizePopK ?? 0;           // SIZE_BY_POP tiles-per-person anchor (0 reseeds; holds pop-core targets stable across a load)
+  world._sizePopK = data.sizePopK ?? 0;           // DEAD (Tier-B2 re-grounding): tolerated for old saves, never read by the sim — the SIZE_BY_POP target is memoryless now (countryTerritory.js)
   if (data.loyalScanAt != null) world._loyalScanAt = data.loyalScanAt;   // owner-diff scan clock (unset ≡ never scanned)
   if (data.devWaveAt != null) world._devWaveAt = data.devWaveAt;         // wave cadence clock (unset ≡ never fired)
   if (data.onePopScale != null) world._onePopScale = data.onePopScale;   // ONE_POP bridge scalar (unset ≡ compute at first derive)
@@ -431,6 +450,8 @@ export function loadWorld(data, opts = {}) {
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);
     if (soil) world._soilFatigue = soil;                // "the land remembers" (settlement.js)
+    const fishT = typedFromSparse(data.maps.fishTaken, Float32Array, N, 0);
+    if (fishT) world._fishTaken = fishT;                // "the sea remembers" (T.FISH_LABOR, settlement.js)
     // The loyalty field (loyaltyField.js). Allegiance is the presence marker
     // (dense, always saved once the lever ran); the sparse memory arrays may
     // legitimately be all-default in a young world, so materialize them at
@@ -599,6 +620,8 @@ export function hashWorld(world) {
   // Presence-normalized: an unallocated lazy array hashes identically to an
   // allocated all-default one (sparse serialization drops empty arrays).
   { const sf = world._soilFatigue; for (let i = 0; i < world.N; i += 97) mixNum(sf ? sf[i] : 0); }
+  // fishTaken (T.FISH_LABOR) — coastal stock state; presence-normalized like soilFatigue.
+  { const ftk = world._fishTaken; for (let i = 0; i < world.N; i += 97) mixNum(ftk ? ftk[i] : 0); }
   { const ca = world._tileCapturedAt; let n = 0, sum = 0; if (ca) for (let i = 0; i < ca.length; i++) if (Number.isFinite(ca[i])) { n++; sum += ca[i]; } mixNum(n); mixNum(sum); }
   // The loyalty field (loyaltyField.js) — presence-normalized like the above:
   // an unallocated (lever-off) field hashes as all-defaults. Allegiance and the

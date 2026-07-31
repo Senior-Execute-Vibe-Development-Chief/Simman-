@@ -121,6 +121,10 @@ const NARRATE = {
     if (as === ev.from) return `Province ${ev.seatName || "a city"} rose in revolt and broke away.`;
     return `Broke away from ${ev.fromName || "its parent realm"} in a war of secession.`;
   },
+  "polity.receded"(ev, as) {
+    if (as === ev.polity) return `The realm's grip failed on its far marches — ${ev.n === 1 ? "the community" : `${ev.n} communities`} beyond ${ev.sName || "the frontier"} ${ev.n === 1 ? "was" : "were"} left to fend for themselves.`;
+    return `The grip of ${ev.name || "the old realm"} failed, and the marches beyond ${ev.sName || "the frontier"} were left to their own devices.`;
+  },
   "polity.shattered"(ev, as) {
     if (as === ev.to) return `Stormed the enemy capital ${ev.sName || ""} and shattered the realm.`;
     return `Its capital ${ev.sName || ""} fell to ${ev.toName || "the enemy"} — the realm collapsed.`;
@@ -150,14 +154,27 @@ const NARRATE = {
       ? `${ev.sName} grew into a ${ev.tierName} (${ev.people} souls).`
       : `${ev.sName} declined to a ${ev.tierName}.`;
   },
-  "colony.departed"(ev) { return `A colony fleet set sail from ${ev.sName}.`; },
+  "colony.departed"(ev) {
+    return ev.charter
+      ? `By royal charter, a colony fleet was outfitted from the treasury and set sail from ${ev.sName}.`
+      : `A colony fleet set sail from ${ev.sName}.`;
+  },
   "town.planted"(ev) {
     return ev.march
       ? `The crown planted ${ev.sName} to hold the march.`
       : `The crown chartered ${ev.sName} to govern the countryside.`;
   },
   "colony.founded"(ev) { return `${ev.sName || "A colony"} was planted overseas under the flag of ${ev.fromName || "its mother country"}.`; },
-  "colony.independent"(ev) { return `${ev.name || "The colony"} cast off ${ev.fromName || "its mother country"} and declared itself sovereign.`; },
+  "colony.independent"(ev) {
+    return ev.how === "metropole-fell"
+      ? `${ev.name || "The colony"} was cast adrift — ${ev.fromName || "its mother country"} had fallen, and no successor claimed its charter.`
+      : `${ev.name || "The colony"} cast off ${ev.fromName || "its mother country"} and declared itself sovereign.`;
+  },
+  "colony.inherited"(ev, as) {
+    return as === ev.to
+      ? `With the mantle of ${ev.fromName || "the fallen metropole"} came its charters: ${ev.name || "a colony"} now answers to this crown.`
+      : `${ev.fromName || "The mother country"} fell, and the charter over ${ev.name || "the colony"} passed to ${ev.toName || "its successor"}.`;
+  },
   "polity.submitted"(ev, as) {
     return as === ev.to
       ? `${ev.name || "A neighbouring statelet"} bent the knee and became a tributary of the realm.`
@@ -303,6 +320,7 @@ export function categoryOf(ev, as = -1) {
     case "polity.founded": return "founding";
     case "polity.restored": return "founding";
     case "polity.seceded": return as === ev.from ? "secession" : "founding";
+    case "polity.receded": return "loss";
     case "polity.shattered": return as === ev.to ? "conquest" : "war";
     case "polity.ended": return "end";
     case "settlement.captured": return as === ev.from ? "war" : "conquest";
@@ -317,6 +335,7 @@ export function categoryOf(ev, as = -1) {
     case "settlement.founded": case "colony.departed": case "town.planted": return "founding";
     case "colony.founded": return "founding";
     case "colony.independent": return as === ev.from ? "loss" : "secession";
+    case "colony.inherited": return as === ev.to ? "annex" : "society";
     case "polity.submitted": return as === ev.to ? "annex" : "loss";
     case "horde.raid": return as === ev.from ? "wealth" : "loss";
     case "plague.virginSoil": return "plague";

@@ -8,6 +8,7 @@ import { cropSuitability } from "../src/sim/cropGen.js";
 import { generateResources } from "../src/sim/resourceGen.js";
 import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
+import { getPolity } from "../src/sim/peopleSim/entities.js";
 
 const W=+(process.argv[4]||768),H=W>>1,N=W*H;
 const SEED=+(process.argv[2]||8817);
@@ -66,7 +67,7 @@ function report(step,size,fsum,members,pop){
   const rows=[];
   for(const[id,c]of countries){
     const sz=size.get(id)||0;
-    const p=world.personalities&&world.personalities.get(id);
+    const p=(getPolity(world,id)||{}).personality;   // temperament lives on the polity record (world.personalities is dead)
     rows.push({id,sz,mem:c.members?c.members.length:0,
       capOrg:(c.capital&&c.capital.knowledge&&c.capital.knowledge.organization)||0,
       mf:sz?(fsum.get(id)||0)/sz:0,pop:pop.get(id)||0,span:spanOf.get(id)||1,
@@ -130,7 +131,7 @@ while(step<END){
     t.last=step;t.alive=true;
     t.maxMembers=Math.max(t.maxMembers,c.members?c.members.length:0);
     t.maxSize=Math.max(t.maxSize,size.get(id)||0);t.peakPop=Math.max(t.peakPop,pop.get(id)||0);
-    const p=world.personalities&&world.personalities.get(id);if(p)t.label=p._label||"?";
+    const p=(getPolity(world,id)||{}).personality;if(p)t.label=p._label||"?";
   }
   prevIds=ids;
   if(step>=CKPTS[cki]){report(step,size,fsum,members,pop);cki++;}

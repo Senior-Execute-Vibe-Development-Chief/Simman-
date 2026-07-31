@@ -24,9 +24,12 @@ import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
-import { settlementPower } from "./conquest.js";
+import { settlementPower, snapClaim } from "./conquest.js";
+import { getCulture } from "./cultures.js";
+import { realmName } from "./chronicle.js";
+import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
-import { claimHostility } from "./habitability.js";
+import { claimHostility, malariaSignal } from "./habitability.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
 // claims land out to COUNTRY_REACH_BASE + capital-organisation × COUNTRY_REACH_ORG
@@ -68,6 +71,18 @@ function fieldNavalOn() {
   if (_fieldNavalEnv === "1") return true;
   if (_fieldNavalEnv === "0") return false;
   return T.FIELD_NAVAL > 0;
+}
+// Successor-states master switch (T.SUCCESSOR_STATES lever / SIM_SUCCESSORS env for
+// headless A/B — the SIM_* override pattern above): whether the political fabric
+// re-knits when a realm's grip fails — restoration from remembering ground, shed
+// marches seceding under a functional seat, and every lapse witnessed in the log
+// (docs/design-successor-states.md). 0 = the pre-mechanism world: shed ground
+// lapses flagless and silent (byte-identical to HEAD).
+const _succEnv = (typeof process !== "undefined" && process.env && process.env.SIM_SUCCESSORS) || "";
+export function successorStatesOn() {
+  if (_succEnv === "1") return true;
+  if (_succEnv === "0") return false;
+  return T.SUCCESSOR_STATES > 0;
 }
 // Excursion budget: the most CONSECUTIVE water tiles one crossing may bridge, per realm —
 // none below the seafaring floor (the same T.NAV_EMBARK_THRESH that gates water in the
@@ -390,7 +405,21 @@ const FIELD_SPAN_DEF = 6.0;   // tiles a realm's administration holds per unit h
 // biggest realm to a population-earned ~13M km² (raising the march to 400 fills
 // fuller but runs the giant to 22M; 150 is the balance).
 const MARCH_LOG_TILES = 150;
-const SIZE_POPK_SMOOTH = 0.25;   // low-pass on the persisted tiles-per-person anchor (world._sizePopK; the REF_POP_SMOOTH pattern)
+// SIZE_BY_POP: the average population density over a pre-modern state's WHOLE
+// territory below which there is nobody to govern — people per REFERENCE tile
+// (≈17,700 km²), in SIM-population units (the CAP_PER_FERT scale, popField.js;
+// recalibrate together if the demographic scale ever moves). Historical early
+// empires averaged 3–12 people/km² over their full extent (Achaemenid ~3,
+// Han/Rome ~10–12); × the sim's population scale (~0.07× Earth at matched
+// development, measured pfTot 13.7M at 12k vs ~200M historical) → 3,700–12,400
+// per reference tile. 8,000 is the mid-band value, ratified by the Tier-B2
+// calibration sweep (docs/empire-consolidation-2026-07.md, re-grounding
+// addendum). Frozen ONE-TIME at design (2026-07-28); NEVER a live statistic —
+// the whole point of the re-grounding is that no cross-realm quantity feeds
+// any realm's target. Lever T.RURAL_BIND_DENS; env-overridable for headless
+// sweeps (SIM_BIND_DENS, force-precedence like SIM_MARCH_TILES).
+const RURAL_BIND_DENS_DEF = 8000;
+const BIND_DENS_ENV = (typeof process !== "undefined" && process.env && +process.env.SIM_BIND_DENS) || 0;
 // The logistics GATE exponent: >1 keeps the early frontier small (march ≈ 0 until
 // roads mature) and pushes the map-fill toward the true industrial era. Calibrated
 // to 2. Env-overridable for sweeps (SIM_MARCH_TILES / SIM_MARCH_POW).
@@ -402,6 +431,16 @@ function fieldPolityTerritory(world) {
   const resScale = resScaleFor(tw), r2 = resScale * resScale;
   let co = world._countryOwner;
   if (!co || co.length !== N) { co = world._countryOwner = new Int32Array(N); co.fill(-1); }
+  // RELEASED-BY mask (scratch, per pass): the realm that relinquished each tile THIS
+  // pass — by the connectivity release (step 3) or the over-capacity shed (step 6).
+  // The cartography stack (step 7) reads it so the mapmaker never hands a tile
+  // straight back to the realm whose own mechanisms just released it (the measured
+  // fill-and-revert cycle that neutralised the shed on coasts: gaps ≈ gapsSea every
+  // window, fills ≫ net growth, an over-target coastal realm pinned at 8× its
+  // capacity target). A DIFFERENT realm claiming the tile is genuine capture of
+  // fresh no-man's-land and stays allowed.
+  let rel = world._fpRel; if (!rel || rel.length !== N) { rel = world._fpRel = new Int32Array(N); }
+  rel.fill(-1);
 
   // Living polities + per-country capacity/knowledge (the Tilly stack from the last
   // updatePolities; one-interval stale is acceptable).
@@ -644,7 +683,7 @@ function fieldPolityTerritory(world) {
         }
       }
     }
-    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) co[ti] = -1;
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && dist[ti] === Infinity) { rel[ti] = co[ti]; co[ti] = -1; }
   } else {
     let reach = world._fpReach; if (!reach || reach.length !== N) reach = world._fpReach = new Uint8Array(N);
     reach.fill(0);
@@ -663,7 +702,7 @@ function fieldPolityTerritory(world) {
       ];
       for (let k = 0; k < 8; k++) { const ni = ns[k]; if (ni >= 0 && !reach[ni] && co[ni] === c) { reach[ni] = 1; q[qt++] = ni; } }
     }
-    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) co[ti] = -1;
+    for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reach[ti]) { rel[ti] = co[ti]; co[ti] = -1; }
   }
 
   // 4. Held ADMINISTRATION (post-release) → grow/shed budgets vs the capacity target.
@@ -689,51 +728,94 @@ function fieldPolityTerritory(world) {
   // Phase 3 fills coverage from cores (no catchment bulk), so the per-pass integration cap
   // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
   const rateCap = Math.max(1, Math.round((T.EXPAND_RATE ?? 8) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
+  // ── T.MARGINAL_HOLD: extent from the MARGIN, not from a quota ──────────────
+  // SIZE_BY_POP gives a realm a tile ALLOWANCE (its people ÷ a density) and the
+  // growth walk spends it cheapest-first. That prices the AVERAGE tile and is
+  // blind to which tile: a realm with allowance left claims empty steppe, and a
+  // realm at its allowance stops at the edge of a crowded valley it obviously
+  // administers. It also makes one world-wide constant set every realm's size,
+  // so any shift in the demographic scale silently mis-sizes the whole planet
+  // (measured: B3's honest food economy cut population 31%, the divisor was not
+  // re-derived, and the largest empire on Earth became 14 tiles).
+  // Here the state instead asks the question a state actually asks, of each tile
+  // separately: do the people on this ground pay for governing it at THIS
+  // distance from my seat? Yield is the tile's own people projected through the
+  // court's statecraft; cost is the admin load the rest of the model already
+  // prices (loadOfD = 1 + travel-cost/ADMIN_HALF). So extent EMERGES from the
+  // density gradient and the terrain: a realm follows a dense river valley a
+  // long way and stops dead at the desert beside it, dense cores support distant
+  // marches, thin cores hold only their own hinterland, and coverage still rises
+  // with development because technique and works raise the people while roads
+  // lower the distance. RURAL_BIND_DENS keeps its meaning and its units (people
+  // per reference tile to bind one tile-equivalent) — it is simply applied at the
+  // MARGIN instead of to an average, so it no longer sets a world-wide quota.
+  const marginOn = (T.MARGINAL_HOLD || 0) > 0 && T.SIZE_BY_POP && !!world.popField;
+  const pfM = marginOn ? world.popField : null;
+  // The margin is a FRACTION of the bind density, not a second free number: the
+  // quota's constant is an AVERAGE over a realm's whole extent, and a state's
+  // poorest governable ground has always been far thinner than its average (the
+  // marches, the moors, the desert edge). One dimensionless ratio expresses that,
+  // and — the point — it RIDES any future re-derivation of RURAL_BIND_DENS
+  // automatically, so the fragility that produced the 14-tile world cannot recur
+  // through this path. Composed with the quota above: hold up to what you can
+  // govern (ceiling), of the land that pays (floor).
+  // ÷r2: RURAL_BIND_DENS is people per REFERENCE tile, but pfM[ti] below is people per
+  // SIM tile (popField is per-real-area, so a sim tile holds 1/r2 of a reference tile's
+  // people). The TARGET converts — `bindDens = RURAL_BIND_DENS / r2` — and this gate did
+  // NOT, so off the reference grid the marginal-tile test demanded r2× the density the
+  // target budgeted for. At the shipped app grid (r2=4) that left 98 of 38,721 wild tiles
+  // admissible: budget available and unspendable (measured Σavailable=63, Σspent=1), so
+  // every realm on the map sat frozen at its anchor core — the largest state on Earth
+  // pinned at 4 tiles for 10k steps, 42× smaller in real area than the same world at the
+  // reference. It read as a TIME threshold ("they don't grow early, then suddenly do")
+  // because rising density eventually clears even the r2×-too-high bar. ×1 at the
+  // reference, so the calibrated world is byte-identical.
+  const bindD = Math.max(1, T.RURAL_BIND_DENS || 5500) * Math.max(0.02, T.MARGIN_FRAC ?? 0.33) / r2;
+  // MEASURED, and the reason the quota SURVIVES underneath (2026-07-29): the
+  // marginal test alone prices SHAPE but destroys SCALE. Run without the quota it
+  // makes every realm expand to the same density contour, so sizes converge —
+  // top-8 read 28,24,24,20,19,19,19,18 tiles against the quota model's
+  // 41,25,22,20,14,10,8,7 — and history's heavy tail (a few great powers over
+  // many small states) is gone, because a populous realm no longer buys more
+  // ground than a thin one. So the two do different jobs and BOTH are kept: the
+  // quota is the CEILING (how much this state can administer at all — its people
+  // and statecraft), the marginal test is the FILTER (which ground is worth
+  // administering). A realm may hold up to what it can govern, of the land that
+  // pays. Nomads exempt for the same reason they are exempt from the quota: a
+  // steppe confederation holds sparse land by momentum, not by the people
+  // standing on it.
+  const holdsTile = (c, ti, d) => {
+    if (!marginOn) return true;
+    const cc = world.countries && world.countries.get(c);
+    if (cc && cc._nomadic) return true;
+    return pfM[ti] * spanTechMul(c) >= bindD * loadOfD(d);
+  };
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
   const coverBase = Number.isFinite(COVER_BASE_ENV) ? COVER_BASE_ENV : (T.COVER_BASE ?? 25);
   const coverOrg  = Number.isFinite(COVER_ORG_ENV)  ? COVER_ORG_ENV  : (T.COVER_ORG ?? 260);
-  // SIZE_BY_POP: extent tracks the PEOPLE a realm governs, not a fixed floor.
-  // Governed popField per realm, and a self-calibrating tiles-per-person constant
-  // benchmarked to the MEDIAN established realm (the _refRevenue pattern — no fitted
-  // density). A realm's target is then capped at govPop×popCapK: under-populated
-  // realms (fresh frontier states) shrink to what their people justify (sub-Egypt
-  // realms exist), the median-and-above (the developed core) are unchanged, and the
-  // map fills LATE as population grows rather than EARLY by a floor. Byte-identical
-  // when off (nothing computes).
-  let govPopOf = null, popCapK = 0;
+  // SIZE_BY_POP: extent tracks the PEOPLE a realm governs — ITS OWN people, at a
+  // fixed physical density (RURAL_BIND_DENS), never a cross-realm statistic. The
+  // previous form scaled every realm's pop-core by a LIVE global anchor: tiles-
+  // per-person at the MEDIAN capacity-bearing realm, low-passed and persisted as
+  // world._sizePopK. With 1–8 realms in sample the "median" WAS the leading
+  // cohort (n=1 for a third of the reference run), so one distant realm reaching
+  // Bronze re-sized every Stone-Age realm on the planet in a single window
+  // (measured ×8–11 jump, a 13–20× band, world coverage breathing in lockstep —
+  // docs/user-report-diagnosis-2026-07-28.md §9). Re-grounded (Tier-B2): each
+  // realm's target reads only its own govPop, its own statecraft, and the frozen
+  // density constant — memoryless (defined from tick 0 and from the first
+  // post-load pass; no warm-up gate, no persisted anchor, so the anchor-seeding
+  // discontinuity and the whole save/load anchor-drift class are gone).
+  // Byte-identical when off (nothing computes).
+  let govPopOf = null;
   if (T.SIZE_BY_POP && world.popField) {
     govPopOf = new Map();
     const pf = world.popField;
     for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c < 0 || !(elev[ti] > 0)) continue; govPopOf.set(c, (govPopOf.get(c) || 0) + pf[ti]); }
-    const gps = [], tgs = [];
-    for (const [cid, cp] of capOf) {
-      if (cp <= 0) continue;                                   // benchmark on established (capacity-bearing) realms
-      const gp = govPopOf.get(cid) || 0;
-      if (gp > 0) { gps.push(gp); tgs.push(spanEff * spanTechMul(cid) * cp * r2); }
-    }
-    // tiles per governed-person at the MEDIAN realm — LOW-PASSED and PERSISTED
-    // (world._sizePopK), the _refRevenue anchor pattern. Without the smoothing this
-    // global median coupling made the pop-core twitchy: a one-tile save/load
-    // re-warm perturbation shifts the median → shifts EVERY realm's target →
-    // compounds through sticky territory into a runaway coverage drift (the
-    // continuation-gate failure). Smoothed, the ratio relaxes; PERSISTED, a loaded
-    // world resumes on the same anchor the live run carries, so the first post-load
-    // pass computes identical targets. When a pass has NO fresh median (capacity
-    // all-zero — the first passes after a load, before the polity pass recomputes
-    // capacity) it holds the persisted anchor instead of collapsing to the floor.
-    let fresh = 0;
-    if (gps.length) {
-      gps.sort((a, b) => a - b); tgs.sort((a, b) => a - b);
-      const medGP = gps[gps.length >> 1], medTG = tgs[tgs.length >> 1];
-      if (medGP > 0 && medTG > 0) fresh = medTG / medGP;
-    }
-    const prev = world._sizePopK || 0;
-    if (fresh > 0) world._sizePopK = prev > 0 ? prev + (fresh - prev) * SIZE_POPK_SMOOTH : fresh;
-    popCapK = world._sizePopK || 0;                            // persisted anchor (holds through capacity-less post-load passes)
   }
   for (const [cid, cp] of capOf) {
     let t = Math.round(spanEff * spanTechMul(cid) * Math.max(0, cp) * r2);
-    if (T.SIZE_BY_POP && popCapK > 0) {
+    if (T.SIZE_BY_POP && govPopOf) {
       // Population-driven extent (no floor). Nomads exempt — a steppe confederation
       // holds vast sparse land by MOMENTUM, not by the people on it. A capless solo
       // (cp=0, conquest.js sizes only multi-province holds) is driven purely by its
@@ -750,7 +832,21 @@ function fieldPolityTerritory(world) {
         // realm (short march) stays small. Capacity is NOT the ceiling here — it is
         // median-anchored (log2-compressed) and would re-cap the whole map at the
         // median; the growth Dijkstra's admin-load attenuation is the real reach bound.
-        const popCap = Math.round((govPopOf.get(cid) || 0) * popCapK);
+        //   CORE = govPop × the realm's OWN spanTechMul ÷ RURAL_BIND_DENS: how many
+        // tiles of average-density territory its people can staff an administration
+        // over, discounted by its own statecraft (the same earned-span factor the
+        // capacity target uses — previously computed here and then DISCARDED, which
+        // is what left Stone realms sized by the leader cohort's anchor). ÷r2 turns
+        // the per-REFERENCE-tile density into per-sim-tile, so the quotient is sim
+        // tiles and the whole term is exactly res-invariant (govPop is per-real-area
+        // by construction). ADMIN_LOAD_RECAL converts tiles → load units under
+        // adminOn, same convention as spanEff and the COVER floor. The emergent
+        // equilibrium: expansion is self-funding exactly while the marginal frontier
+        // tile carries popField ≥ (DENS/r2)·loadOfD(d)/(spanTechMul·RECAL) — the
+        // border comes to rest where the governable people end, with no threshold
+        // count and no cross-realm term anywhere.
+        const bindDens = (BIND_DENS_ENV > 0 ? BIND_DENS_ENV : (T.RURAL_BIND_DENS ?? RURAL_BIND_DENS_DEF)) / r2;   // people per SIM tile
+        const popCap = Math.round((govPopOf.get(cid) || 0) * spanTechMul(cid) * (adminOn ? ADMIN_LOAD_RECAL : 1) / bindDens);
         const marchTiles = MARCH_TILES_ENV > 0 ? MARCH_TILES_ENV : MARCH_LOG_TILES;
         const march = Math.round(marchTiles * Math.pow(logiOf.get(cid) || 0, MARCH_POW) * r2);
         t = popCap + march;
@@ -789,6 +885,7 @@ function fieldPolityTerritory(world) {
   //    priced exactly like the entity Voronoi (soft-capped relief + fertility-hostility
   //    ribbon-hug + wet-tropic + organic noise). Contested wild goes to whoever reaches
   //    it cheaper.
+  const spentGrow = new Map();   // cid → admin load actually claimed in step 5 (feeds the step-7 fill headroom)
   if (grow.size) {
     let cost = world._fpCost; if (!cost || cost.length !== N) cost = world._fpCost = new Float64Array(N);
     cost.fill(Infinity);
@@ -850,12 +947,13 @@ function fieldPolityTerritory(world) {
         // FIELD_ADMIN: a claimed tile consumes its admin LOAD from the budget (a remote
         // or harsh tile spends multiples), and its distance is stamped so this pass's
         // shed / next pass's walk read the same d the claim was priced at.
-        if (nd < cost[ni] && (budget.get(c) || 0) > 0) {
+        if (nd < cost[ni] && (budget.get(c) || 0) > 0 && holdsTile(c, ni, nd)) {
           cost[ni] = nd; co[ni] = c; budget.set(c, budget.get(c) - (adminOn ? loadOfD(nd) : 1)); heap.push(ni, nd, c);
           if (adminOn) dist[ni] = nd;
         }
       }
     }
+    for (const [c, g] of grow) spentGrow.set(c, g - (budget.get(c) || 0));   // load actually claimed
   }
 
   // 6. SHED over-capacity marches: a realm holding more than its target releases its
@@ -869,6 +967,7 @@ function fieldPolityTerritory(world) {
   //    farthest, dearest march, not whichever edge tile happens to scan first. The
   //    per-realm sort is over edge candidates only (a perimeter, not N). Lever off:
   //    the flat scan-order release, byte-identical.
+  const shedRel = new Map();   // cid → admin load actually released in step 6 (feeds the step-7 fill headroom)
   {
     const excess = new Map();
     for (const [cid, t] of target) { const h = held.get(cid) || 0; if (h > t) excess.set(cid, h - t); }
@@ -891,7 +990,8 @@ function fieldPolityTerritory(world) {
         for (const [cid, arr] of cands) {
           let rem = excess.get(cid);
           arr.sort((a, b) => (dist[b] - dist[a]) || (a - b));   // most remote first (index tiebreak keeps it deterministic)
-          for (const ti of arr) { if (!(rem > 0)) break; co[ti] = -1; rem -= loadOfD(dist[ti]); }
+          for (const ti of arr) { if (!(rem > 0)) break; rel[ti] = cid; co[ti] = -1; rem -= loadOfD(dist[ti]); }
+          shedRel.set(cid, excess.get(cid) - rem);
         }
       } else {
         for (let ti = 0; ti < N; ti++) {
@@ -902,18 +1002,65 @@ function fieldPolityTerritory(world) {
           const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1];
           let edge = false;
           for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && (elev[ni] <= 0 || co[ni] < 0)) { edge = true; break; } }
-          if (edge) { co[ti] = -1; excess.set(cid, rem - 1); }
+          if (edge) { rel[ti] = cid; co[ti] = -1; excess.set(cid, rem - 1); shedRel.set(cid, (shedRel.get(cid) || 0) + 1); }
         }
       }
     }
   }
 
+  // 6b. MARGINAL RELEASE (T.MARGINAL_HOLD): the same per-tile question asked of ground
+  //     already held — a march whose people no longer pay for its administration is let
+  //     go, wherever it sits, instead of the quota shed's "most remote first". So a
+  //     realm recedes from the ground that actually stopped being worth governing (a
+  //     plague-emptied march, a frontier the technique wave left behind, land whose
+  //     distance grew when the seat moved), and a still-dense far valley is kept. Home
+  //     tiles and worked catchment stay pinned exactly as the quota shed pins them.
+  if (marginOn) {
+    let homeM = world._fpHomeM; if (!homeM || homeM.length !== N) homeM = world._fpHomeM = new Uint8Array(N);
+    homeM.fill(0);
+    for (const arr of homeTiles.values()) for (const ti of arr) homeM[ti] = 1;
+    for (let ti = 0; ti < N; ti++) {
+      const cid = co[ti];
+      if (cid < 0 || homeM[ti] || worked[ti]) continue;
+      const d = adminOn ? (Number.isFinite(dist[ti]) ? dist[ti] : 0) : 0;
+      if (!holdsTile(cid, ti, d)) {
+        rel[ti] = cid; co[ti] = -1;
+        shedRel.set(cid, (shedRel.get(cid) || 0) + loadOfD(d));
+      }
+    }
+  }
+
+  // FILL HEADROOM: what each targeted realm can still afford after growth and shed —
+  // target − end-of-pass held, in admin-load units. The cartography stack below is
+  // ASSERTION, not administration ("filled tiles keep cost=Infinity"), but its fills
+  // land in next pass's held ledger all the same — so unbounded assertion silently
+  // re-spent the shed's refund and pinned over-capacity coastal realms at their old
+  // extent (the fill-and-revert cycle). Bounding assertion by the SAME capacity
+  // ledger that bounds growth and triggers shed closes the loop: a realm at or over
+  // its target is handed nothing, an under-target realm absorbs pockets only up to
+  // what it can administer. Each filled tile charges the minimum admin load
+  // loadOfD(0) = 1 (its true distance isn't known until next pass's walk re-prices
+  // it; any overshoot from that under-charge is one small shed, masked, and done).
+  // Realms with NO target (capless cold-start holds) stay unbounded, as before.
+  const room = new Map();
+  for (const [cid, t] of target) room.set(cid, Math.max(0, t - ((held.get(cid) || 0) + (spentGrow.get(cid) || 0) - (shedRel.get(cid) || 0))));
+  // Per-pass debug snapshot (measurement only, never read by a mechanism): each
+  // targeted realm's end-of-pass held load (post-release + growth − shed) vs target.
+  {
+    const dbg = world.debug || (world.debug = {});
+    const ht = {};
+    for (const [cid, t] of target) ht[cid] = [Math.round(((held.get(cid) || 0) + (spentGrow.get(cid) || 0) - (shedRel.get(cid) || 0)) * 10) / 10, t];
+    dbg.fpPass = { step: world.step, ht };
+  }
+
   // 7. Cartography (reused, pure _countryOwner ops): fill interior pockets, partition
   //    the gaps between neighbours, smooth the border. Home tiles are pinned in the
-  //    smoother, so no realm is smoothed out of existence.
-  fillEnclosedWaste(world, co);
-  closeRealmGaps(world, co, T.REALM_GAP_FILL);
-  smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
+  //    smoother, so no realm is smoothed out of existence. The released-by mask keeps
+  //    the mapmaker from handing back what steps 3/6 just relinquished, and the
+  //    headroom keeps assertion inside the capacity ledger (see rel/room above).
+  fillEnclosedWaste(world, co, rel, room);
+  closeRealmGaps(world, co, T.REALM_GAP_FILL, rel, room);
+  smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0, /*pinWorked*/ false, rel, room);
 }
 
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
@@ -1017,7 +1164,14 @@ export function computeCountryTerritory(world) {
     // Continental logistics needs a network of cities — gate the era-boost by size so
     // a crumbling / one-city realm reaches only regionally (the hollow-husk fix).
     const emGated = 1 + ((eraBoost.get(c) || 1) - 1) * Math.min(1, mem / LOGI_SIZE_REF);
-    const pers = world.personalities && world.personalities.get(c);
+    // Temperament lives ON the persistent polity record (entities.js /
+    // personality.js — seeded lazily by the polity pass's personalityOf,
+    // inherited by successors). This read used to consult `world.personalities`,
+    // a registry the entities refactor left with NO writers — so persMul was
+    // silently ≡ 1 and CLAIM_PERS_SPAN a dead lever. A realm before its first
+    // polity pass has no personality yet and reads neutral (persMul = 1).
+    const _pol = getPolity(world, c);
+    const pers = _pol && _pol.personality;
     const persMul = pers ? 1 + (pers.expansionism || 0) * CLAIM_PERS_SPAN : 1;
     // Heritable aptitude pays out as extra STATE CAPACITY (boost #2): a realm run
     // by a high-aptitude stock projects administrative reach further for the same
@@ -1030,7 +1184,6 @@ export function computeCountryTerritory(world) {
     // collapsing. Within budget (strain ≤ 1): no effect. The elasticity is the
     // lever; overload capped so a deep crisis contracts the frontier, never
     // deletes the realm's core (the shed stays ring-by-ring, as ever).
-    const _pol = getPolity(world, c);
     const _strain = _pol && _pol._strain != null ? _pol._strain : 0;
     const strainMul = 1 / (1 + (T.REACH_STRAIN || 0) * Math.min(3, Math.max(0, _strain - 1)));
     budget.set(c, b * emGated * sf * persMul * aptMul * strainMul);
@@ -1422,7 +1575,11 @@ function cartoTally(world, key, n) {
   c[key] = (c[key] || 0) + n;
 }
 
-function fillEnclosedWaste(world, co) {
+// relBy/room (field-polity callers only; legacy callers omit them, byte-identical):
+// relBy[ti] = realm that released ti this pass — never hand it straight back;
+// room = per-realm remaining fill headroom in load units — assertion stays inside
+// the capacity ledger (see the step-7 comment in fieldPolityTerritory).
+function fillEnclosedWaste(world, co, relBy = null, room = null) {
   const { N, tw, th, elev } = world;
   cartoTally(world, "calls", 1);   // one cartography stack invocation (waste→gaps→smooth run together)
   let seen = world._wasteSeen;
@@ -1454,8 +1611,18 @@ function fillEnclosedWaste(world, co) {
     }
     if (border < 0) continue;              // open, island, or contested — stays wild
     if (comp.length > (claimed.get(border) || 0) * ENCLOSED_FILL_MAX) continue;
-    for (let k = 0; k < comp.length; k++) co[comp[k]] = border;
-    cartoTally(world, "waste", comp.length);
+    let filled = 0, bounced = 0, unafforded = 0;
+    let rm = room && room.has(border) ? room.get(border) : Infinity;
+    for (let k = 0; k < comp.length; k++) {
+      const ti = comp[k];
+      if (relBy && relBy[ti] === border) { bounced++; continue; }   // just released by this very realm — the shed sticks
+      if (rm < 1) { unafforded++; continue; }                        // no headroom — the realm can't administer more
+      co[ti] = border; rm -= 1; filled++;
+    }
+    if (room && room.has(border)) room.set(border, rm);
+    cartoTally(world, "waste", filled);
+    cartoTally(world, "wasteBounce", bounced);
+    cartoTally(world, "wasteHeldBack", unafforded);
   }
 }
 
@@ -1470,7 +1637,7 @@ function fillEnclosedWaste(world, co) {
 // dissolve — area roughly preserved. Settlement HOME tiles are pinned, so no realm
 // is ever smoothed out of existence (its basin regrows next pass). Iterations =
 // BORDER_SMOOTH. O(passes·N).
-function smoothCountryBorders(world, co, iters, pinWorked = false) {
+function smoothCountryBorders(world, co, iters, pinWorked = false, relBy = null, room = null) {
   if (!(iters > 0)) return;
   const { N, tw, th, elev } = world;
   let prot = world._smoothProt;
@@ -1489,7 +1656,7 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
   if (!snap || snap.length !== N) snap = world._smoothSnap = new Int32Array(N);
   // tiny fixed-size tally over the ≤8 distinct neighbour values (cheaper than a Map)
   const vals = new Int32Array(8), cnts = new Int32Array(8);
-  let chg = 0;
+  let chg = 0, chgCoast = 0;
   for (let it = 0; it < iters; it++) {
     snap.set(co);                                   // frozen read; writes go to co
     for (let ti = 0; ti < N; ti++) {
@@ -1503,18 +1670,42 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
         yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
         yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
       ];
-      let m = 0, best = snap[ti], bestC = 0;
+      let m = 0, best = snap[ti], bestC = 0, landN = 0;
       for (let k = 0; k < 8; k++) {
         const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;   // off-map / sea doesn't vote
+        landN++;
         const v = snap[ni];
         let j = 0; for (; j < m; j++) if (vals[j] === v) break;
         if (j === m) { vals[m] = v; cnts[m] = 1; m++; } else cnts[j]++;
         if (cnts[j] > bestC) { bestC = cnts[j]; best = v; }
       }
-      if (bestC >= 5 && best !== snap[ti]) { co[ti] = best; chg++; }   // clear majority of the 8-neighbourhood → adopt it
+      // "Clear majority" is 5-of-8 — but sea neighbours ABSTAIN (skipped above), so a
+      // fixed bar of 5 was structurally unreachable wherever fewer than 5 land
+      // neighbours exist (every peninsula / island / convex coastal tile: the smoother
+      // was DEAD exactly where Europe's protrusions are — diagnosis 2026-07-28 §10).
+      // Apply the same majority FRACTION to the electorate actually present:
+      // need = ceil(5·landN/8). landN=8 gives exactly 5 (inland byte-identical);
+      // fewer voters scale the bar down proportionally. A tile with <2 land
+      // neighbours has no meaningful vote (an islet / causeway tip) and is left alone.
+      if (landN >= 2 && bestC >= Math.ceil(5 * landN / 8) && best !== snap[ti]) {
+        // A WILD→realm adoption is the smoother handing out new land: it obeys the
+        // same released-by mask and capacity headroom as the fill passes (measured
+        // as a reverter channel of the shed cycle). Realm↔realm and realm→wild
+        // flips are the border-straightening trade itself and stay untouched.
+        if (best >= 0 && snap[ti] < 0) {
+          if (relBy && relBy[ti] === best) { cartoTally(world, "smoothBounce", 1); continue; }
+          if (room && room.has(best)) {
+            const rm = room.get(best);
+            if (rm < 1) { cartoTally(world, "smoothHeldBack", 1); continue; }
+            room.set(best, rm - 1);
+          }
+        }
+        co[ti] = best; chg++; if (landN < 8) chgCoast++;
+      }
     }
   }
   cartoTally(world, pinWorked ? "smoothPinned" : "smooth", chg);
+  cartoTally(world, pinWorked ? "smoothPinnedCoast" : "smoothCoast", chgCoast);   // flips at tiles with a sea/off-map neighbour (coastal smoothing activity)
 }
 
 // ── Partition the gaps: no terra nullius between neighbours ──────────────────
@@ -1526,9 +1717,16 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
 // than a sea of blank buffer. What stays wilderness is the genuinely OPEN
 // frontier: land with a country within D on only one side (or none), facing a
 // large uninhabited expanse — the deep desert/ice/interior beyond any state's
-// reach. WATER blocks the span (a strait is never bridged into land). Four linear
+// reach. WATER blocks the span (a strait is never bridged into land) — and a ray
+// that DIES at the coast within D counts as enclosed-BY-SEA: the sea is a border,
+// not an opening (before this, enclosure needed a realm on all four rays and any
+// water read as open, so no-man's-land near any coast could never fill — the
+// pass was structurally dead on every coastal strip; diagnosis 2026-07-28 §10).
+// The sea alone encloses nothing: at least 2 of the 4 rays must reach actual
+// realm ground, so a beach flanked by one realm on one side stays open frontier
+// and an unclaimed island (sea on every ray) is never swallowed. Four linear
 // sweeps → O(N). Set D=0 (REALM_GAP_FILL) to recover the raw cost-Voronoi basins.
-function closeRealmGaps(world, co, D) {
+function closeRealmGaps(world, co, D, relBy = null, room = null) {
   if (!(D > 0)) return;
   const { N, tw, th, elev } = world;
   // T.REALM_GAP_FILL is REFERENCE-tiles: the fillable no-man's-land is a real
@@ -1544,20 +1742,31 @@ function closeRealmGaps(world, co, D) {
     wD: new Int32Array(N), eD: new Int32Array(N), nD: new Int32Array(N), sD: new Int32Array(N) };
   const { wC, eC, nC, sC, wD, eD, nD, sD } = buf;
   const FAR = 1 << 28;
+  const SEA = -2;   // ray terminator: died at the coast within D (enclosed by sea); -1 = open
   // The W/E sweeps WRAP (longitude is periodic — every other pass in this file
   // wraps, and an unwrapped sweep left gap-fill artifacts hugging the
   // antimeridian seam): each row is scanned twice, the second sweep carrying
   // the seam state across x=0 so a country just west of the seam flanks land
   // just east of it. N/S clamp (the poles don't wrap).
+  // Each sweep tracks the nearest realm tile AND the nearest coast behind it: a land
+  // ray hits whichever comes first — a realm within D (owner reset at every coast, so
+  // last ≥ 0 means the owner is nearer than any water), the coast within D (SEA), or
+  // nothing (open). On the seam pass, hitting water ends the seam's influence (state
+  // from there matches pass 0 exactly), so it breaks like the owner-hit does.
   for (let y = 0; y < th; y++) {                       // ← nearest country to the WEST
-    let last = -1, lastP = -1e9; const row = y * tw;
+    let last = -1, lastP = -1e9, seaP = -1e9; const row = y * tw;
     for (let p = 0; p < 2; p++) {
-      if (p === 1) { if (last < 0) break; lastP -= tw; }   // carry across the seam
+      if (p === 1) { if (last < 0 && seaP < 0) break; lastP -= tw; seaP -= tw; }   // carry across the seam
       for (let x = 0; x < tw; x++) { const ti = row + x;
-        if (elev[ti] <= 0) { last = -1; lastP = -1e9; if (p === 0) { wC[ti] = -1; wD[ti] = FAR; } continue; }
-        const d = x - lastP;
+        if (elev[ti] <= 0) {
+          if (p === 1) { p = 2; break; }
+          last = -1; lastP = -1e9; seaP = x; wC[ti] = -1; wD[ti] = FAR; continue;
+        }
+        const d = x - lastP, dw = x - seaP;
         if (last >= 0 && d <= D) {
           if (p === 0 || d < wD[ti]) { wC[ti] = last; wD[ti] = d; }
+        } else if (dw <= D) {
+          if (p === 0 || dw < wD[ti]) { wC[ti] = SEA; wD[ti] = dw; }
         } else if (p === 0) { wC[ti] = -1; wD[ti] = FAR; }
         else break;                                        // second sweep only matters within D of the seam
         if (co[ti] >= 0) { last = co[ti]; lastP = x; if (p === 1) { p = 2; break; } }
@@ -1565,14 +1774,19 @@ function closeRealmGaps(world, co, D) {
     }
   }
   for (let y = 0; y < th; y++) {                       // → nearest country to the EAST
-    let last = -1, lastP = 1e9; const row = y * tw;
+    let last = -1, lastP = 1e9, seaP = 1e9; const row = y * tw;
     for (let p = 0; p < 2; p++) {
-      if (p === 1) { if (last < 0) break; lastP += tw; }   // carry across the seam
+      if (p === 1) { if (last < 0 && seaP > 1e8) break; lastP += tw; seaP += tw; }   // carry across the seam
       for (let x = tw - 1; x >= 0; x--) { const ti = row + x;
-        if (elev[ti] <= 0) { last = -1; lastP = 1e9; if (p === 0) { eC[ti] = -1; eD[ti] = FAR; } continue; }
-        const d = lastP - x;
+        if (elev[ti] <= 0) {
+          if (p === 1) { p = 2; break; }
+          last = -1; lastP = 1e9; seaP = x; eC[ti] = -1; eD[ti] = FAR; continue;
+        }
+        const d = lastP - x, dw = seaP - x;
         if (last >= 0 && d <= D) {
           if (p === 0 || d < eD[ti]) { eC[ti] = last; eD[ti] = d; }
+        } else if (dw <= D) {
+          if (p === 0 || dw < eD[ti]) { eC[ti] = SEA; eD[ti] = dw; }
         } else if (p === 0) { eC[ti] = -1; eD[ti] = FAR; }
         else break;
         if (co[ti] >= 0) { last = co[ti]; lastP = x; if (p === 1) { p = 2; break; } }
@@ -1580,20 +1794,24 @@ function closeRealmGaps(world, co, D) {
     }
   }
   for (let x = 0; x < tw; x++) {                       // ↓ nearest country to the NORTH
-    let last = -1, lastP = -1e9;
+    let last = -1, lastP = -1e9, seaP = -1e9;          // (the pole edge stays OPEN — only real water encloses)
     for (let y = 0; y < th; y++) { const ti = y * tw + x;
-      if (elev[ti] <= 0) { last = -1; lastP = -1e9; nC[ti] = -1; nD[ti] = FAR; continue; }
-      const d = y - lastP;
-      if (last >= 0 && d <= D) { nC[ti] = last; nD[ti] = d; } else { nC[ti] = -1; nD[ti] = FAR; }
+      if (elev[ti] <= 0) { last = -1; lastP = -1e9; seaP = y; nC[ti] = -1; nD[ti] = FAR; continue; }
+      const d = y - lastP, dw = y - seaP;
+      if (last >= 0 && d <= D) { nC[ti] = last; nD[ti] = d; }
+      else if (dw <= D) { nC[ti] = SEA; nD[ti] = dw; }
+      else { nC[ti] = -1; nD[ti] = FAR; }
       if (co[ti] >= 0) { last = co[ti]; lastP = y; }
     }
   }
   for (let x = 0; x < tw; x++) {                       // ↑ nearest country to the SOUTH
-    let last = -1, lastP = 1e9;
+    let last = -1, lastP = 1e9, seaP = 1e9;
     for (let y = th - 1; y >= 0; y--) { const ti = y * tw + x;
-      if (elev[ti] <= 0) { last = -1; lastP = 1e9; sC[ti] = -1; sD[ti] = FAR; continue; }
-      const d = lastP - y;
-      if (last >= 0 && d <= D) { sC[ti] = last; sD[ti] = d; } else { sC[ti] = -1; sD[ti] = FAR; }
+      if (elev[ti] <= 0) { last = -1; lastP = 1e9; seaP = y; sC[ti] = -1; sD[ti] = FAR; continue; }
+      const d = lastP - y, dw = seaP - y;
+      if (last >= 0 && d <= D) { sC[ti] = last; sD[ti] = d; }
+      else if (dw <= D) { sC[ti] = SEA; sD[ti] = dw; }
+      else { sC[ti] = -1; sD[ti] = FAR; }
       if (co[ti] >= 0) { last = co[ti]; lastP = y; }
     }
   }
@@ -1634,16 +1852,48 @@ function closeRealmGaps(world, co, D) {
   }
   let fills = world._gapFills;
   if (!fills || fills.length < N) fills = world._gapFills = new Int32Array(N);
-  let n = 0;
+  let n = 0, nSea = 0;
   for (let ti = 0; ti < N; ti++) {
     if (co[ti] >= 0 || elev[ti] <= 0) continue;
-    if (wC[ti] < 0 || eC[ti] < 0 || nC[ti] < 0 || sC[ti] < 0) continue;   // not fully enclosed → leave wild (no fingers)
+    // Enclosed on every cardinal side — by a realm within D, or by the SEA (a coast is
+    // a border, not an opening). An OPEN ray (-1) still voids the pocket (no fingers).
+    // The sea alone encloses nothing: at least 2 rays must reach actual realm ground,
+    // so a beach flanked by one realm on one side only stays open frontier and an
+    // unclaimed island (sea on all four rays — rays never cross water) is untouched.
+    const w = wC[ti], e = eC[ti], nn = nC[ti], ss = sC[ti];
+    if (w === -1 || e === -1 || nn === -1 || ss === -1) continue;
+    const realmRays = (w >= 0 ? 1 : 0) + (e >= 0 ? 1 : 0) + (nn >= 0 ? 1 : 0) + (ss >= 0 ? 1 : 0);
+    if (realmRays < 2) continue;
     const c = near[ti];                                                   // smooth nearest country (not the axis-aligned cardinal flank)
-    if (c >= 0) { fills[n++] = ti; fills[n++] = c; }
+    if (c < 0) continue;
+    if (relBy && relBy[ti] === c) { cartoTally(world, "gapsBounce", 1); continue; }   // just released by this very realm — the shed sticks
+    if (room && room.has(c)) {
+      const rm = room.get(c);
+      if (rm < 1) { cartoTally(world, "gapsHeldBack", 1); continue; }     // no headroom — the realm can't administer more
+      room.set(c, rm - 1);
+    }
+    fills[n++] = ti; fills[n++] = c; if (realmRays < 4) nSea++;
   }
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
   cartoTally(world, "gaps", n >> 1);
+  cartoTally(world, "gapsSea", nSea);   // fills whose enclosure includes a coast (the class the old all-realm test could never fill)
 }
+
+// ── Temperate band (the forest state-bar's climate gate) ─────────────────────
+// STATE_FOREST is the TEMPERATE forest mechanism (tuning.js: N. Europe / Russia /
+// the N-American woodland — dense hardwood on heavy soil, unfarmable until iron),
+// while STATE_DISEASE covers the warm wet belt. The forest signal's moisture test
+// alone cannot tell a Baltic woodland from a monsoon jungle, so on warm monsoon
+// land BOTH state bars fired at full strength and MULTIPLIED (~11.7× the baseline
+// founding bar over the SE Asia box — diagnosis 2026-07-28 §5), double-counting
+// one and the same hostility. Gate the forest signal to the temperate band by
+// REUSING the exact warmth ramp the disease signal is built on: habitability.js
+// tropicalWarmth (t 0.72→0.82), read through the exported malariaSignal at
+// saturated moisture — its dampness term is ≡1 there, so malariaSignal(t, 1) IS
+// that ramp and no second constant exists to drift. The forest bar now fades
+// precisely where the disease bar saturates; cool temperate woodland (t ≤ 0.72)
+// is untouched, and the warm-DRY cradles were never forested to begin with.
+const temperateBand = (t) => 1 - malariaSignal(t, 1);
 
 // Settlements take their politics from the GROWN territory — the country whose
 // border has actually CRAWLED over their tile (grownOwnerAt → world._countryClaim),
@@ -1659,7 +1909,7 @@ function closeRealmGaps(world, co, D) {
 // (Cradles are seeded sovereign at genesis in state.js; secession mints city-led
 // countries in conquest.js — those are the only other country sources.)
 export function adoptAndFound(world) {
-  const co = world._countryOwner, tw = world.tw, elev = world.elev, moist = world.moist;
+  const co = world._countryOwner, tw = world.tw, elev = world.elev, moist = world.moist, temp = world.temp;
   if (!co) return;   // territory pass hasn't run yet — nothing to adopt from
   // Per-realm statecraft, for the STATECRAFT-SYMMETRY adoption gate below: the
   // realm's most-organised settlement (the same fallback computeCountryTerritory
@@ -1702,6 +1952,30 @@ export function adoptAndFound(world) {
   // the failure the bare strain gate above measured).
   const fiscOk = (cid, s) =>
     fiscAdoptable(world, world.countries && world.countries.get(cid), s.pos.x, s.pos.y, s.people || 0);
+  // Census↔field exchange rate for the restoration viability bar (T.SUCCESSOR_STATES,
+  // restorableHomeland below) — the same global rate nucleateFrontierStates computes
+  // for its own founding bar, evaluated lazily and at most once per pass, only when a
+  // wilderness founding actually fires here with the lever on.
+  let _resF2c = -1;
+  const restoreF2c = () => {
+    if (_resF2c >= 0) return _resF2c;
+    _resF2c = 0;
+    if (T.BIRTH_FIELD > 0 && T.POP_FIELD && world.popField) {
+      if (T.LABEL_BIRTH >= 1 && T.ONE_POP && world._onePopScale > 0) {
+        // Tier-C C1 deflation guard: the FROZEN bridge, not the coverage-
+        // coupled cenT/pfT ratio — same disposition (and same reasoning) as
+        // nucleateFrontierStates' exchange rate below.
+        _resF2c = world._onePopScale;
+      } else {
+        let cenT = 0, pfT = 0;
+        for (const o of world.settlements) if (o.mode === "settled") cenT += o.people || 0;
+        const pfA = world.popField, Nn = world.N;
+        for (let ti2 = 0; ti2 < Nn; ti2++) if (elev[ti2] > 0) pfT += pfA[ti2];
+        if (cenT > 0 && pfT > 0) _resF2c = cenT / pfT;
+      }
+    }
+    return _resF2c;
+  };
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
@@ -1734,20 +2008,49 @@ export function adoptAndFound(world) {
       // FOREST/IRON gate (same as nucleateFrontierStates): an unbroken temperate forest
       // can be perfectly clever yet stay a stateless tribe until metallurgy clears it —
       // so a forested no-iron centre needs far more people before it founds a realm, even
-      // a developed one. River valleys / open ground / iron-bearing forests are unaffected.
+      // a developed one. River valleys / open ground / iron-bearing forests are unaffected,
+      // and the warm wet belt is the DISEASE bar's ground, not this one's (temperateBand).
       const moistAt   = s._climMoist ?? (moist ? moist[ti] : 0.5);
+      const tempAt    = s._climTemp ?? (temp ? temp[ti] : 0.5);
       const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
       const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
-      const forestLk  = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * (1 - riverOpen) * (1 - ironReady);
+      const forestLk  = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen) * (1 - ironReady);
       const forestBar = NUCLEATE_SEAT_POP * (1 + T.STATE_FOREST * forestLk);
+      // Tier-C C1 deflation audit — kept ABSOLUTE here, recorded: this census
+      // read deflates ~×0.6-0.75 under LABEL_BIRTH's supply step, but its only
+      // effect is to make this wilderness SELF-founding fallback rarer — the
+      // strictly conservative (anti-confetti) direction, never a mis-fire
+      // toward bloom — and C2 (SEAT_FIELD, survey 4b) retires this path
+      // entirely (stateless non-capital cities stop self-founding). A frozen-
+      // bridge basin conversion here would build 4b's machinery one phase
+      // early for a branch about to be deleted.
       if (s.countryId < 0 && region < 0 && tierLockedCentre && co[ti] < 0
           && org >= T.ORG_STATE_MIN                       // the statecraft for territorial rule
           && (s.people || 0) >= forestBar) {              // and the people to clear+farm forest without iron
-        s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
-        ensurePolity(world, s.id, { how: "frontier", seat: s });
+        // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland): a founding on ground
+        // whose people remember ONE fallen nation re-opens that nation instead of
+        // minting a fresh id. This branch's own bar is people-based already, so the
+        // viability gate reuses NUCLEATE_CLUSTER_POP flat (no geography multiplier).
+        const H = successorStatesOn() ? restorableHomeland(world, s, restoreF2c(), NUCLEATE_CLUSTER_POP) : -1;
+        if (H >= 0 && H !== s.id) {
+          s.countryId = H; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+          s._homeland = -1; s._homelandFell = -1;         // home again — the nation IS this ground's memory
+          ensurePolity(world, H, { seat: s, from: -1 });  // re-opens the record; logs polity.restored
+          snapClaim(world, H);                            // an already-administered claim snaps into place
+        } else {
+          s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+          ensurePolity(world, s.id, { how: "frontier", seat: s });
+        }
         continue;
       }
       // otherwise village / town: follow the land (region), or stateless on the frontier
+      // (NB a living SEAT never reaches this branch with foreign ground under its home
+      // tile: the territory pass re-anchors every realm's seat tile — capital anchor +
+      // the not-yet-in-world.countries fallback — before this derivation reads the
+      // ground, and the smoother pins settled home tiles. Verified by direct probe
+      // 2026-07-28: a one-member colony realm planted mid-heartland of a foreign field
+      // keeps its flag through territory+adoption passes — the free-annexation window
+      // §7 suspected here does not exist under the shipped field-polity defaults.)
       if (s.countryId !== region) {
         if (s.countryId < 0 && region >= 0) {
           // STATECRAFT SYMMETRY (docs/country-count-size-diagnosis.md): annexing an
@@ -1766,6 +2069,13 @@ export function adoptAndFound(world) {
           if (!fiscOk(region, s)) continue;   // …nor afford THIS one: its people don't fund their own administration — it stays free
           s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
         }
+        // WITNESSED LAPSE (T.SUCCESSOR_STATES): the realm→stateless direction of this
+        // derivation was the one silent exit from the political map. Shed marches now
+        // resolve in resolveOrphanedMarches BEFORE this derivation reads the ground, so
+        // only stragglers reach here (a realm with no countries-view entry this firing)
+        // — but they must never again pass unrecorded.
+        if (s.countryId >= 0 && region < 0 && successorStatesOn())
+          logEvent(world, "settlement.lapsed", { s: s.id, sName: s.name, from: s.countryId, fromName: realmName(world, s.countryId) });
         s.countryId = region;
       }
     }
@@ -1805,6 +2115,94 @@ const NUCLEATE_MAX_PASS   = 4;      // cap new states minted per territory pass 
 // in already-wet rainforest).
 const NUCLEATE_CAP_FERT_REF = 0.55;  // fertility at/above which the founding bar is at its floor
 const NUCLEATE_CAP_SPREAD   = 3.0;   // low-capacity land needs up to (1+this)× the population to form a state
+// ── Restoration from the ground (T.SUCCESSOR_STATES) ─────────────────────────
+// Wilderness ground REMEMBERS the realm that held it (_tileHomeland — stamped by
+// the loyalty scan when land falls to wild, never decaying on unclaimed ground),
+// but nothing ever read that memory for re-founding: a people re-coalescing on a
+// fallen nation's ground minted a nameless fresh id and the nation stayed dead
+// forever. Under the lever a wilderness founding first asks the ground: when the
+// basin's remembered people-weight points UNCONTESTED at one DEAD polity, the
+// remembered mass alone is VIABLE against the founding bar, and the founding
+// people are that nation's own DESCENDANTS, the founding is a RESTORATION — the
+// old id re-opens (name, hue, chronicle, buried treasury: the record is the
+// identity). Every gate is state — memory, people, culture descent, the registry.
+const RESTORE_MAJORITY = 2 / 3;   // supermajority of the basin's REMEMBERED weight on ONE nation: a
+                                  // restoration is an uncontested popular claim — a borderland
+                                  // remembered by two nations is contested and founds NEW
+const RESTORE_KIN = 1 / 2;        // bare majority of the founding seat's census equal to or lineally
+                                  // descended from the fallen realm's founding culture — the line
+                                  // between "the nation re-formed" and "someone else settled the ruins"
+// Is culture `culId` the fallen nation's founding culture, or a lineal descendant
+// of it? (the bounded parentCultureId walk — cultures.js familyOf's pattern — so
+// daughter cultures of the fallen nation still count as its people.)
+function cultureDescends(world, culId, ancId) {
+  if (culId === ancId) return true;
+  let cul = getCulture(world, culId), hops = 0;
+  while (cul && cul.parentCultureId >= 0 && hops++ < 16) {
+    if (cul.parentCultureId === ancId) return true;
+    cul = getCulture(world, cul.parentCultureId);
+  }
+  return false;
+}
+// The fallen nation this founding restores, or -1 for an ordinary new state.
+// Scans the same NUCLEATE_R basin the founding bar was measured over — UNCLAIMED
+// land only (claimed ground already carries a state; its memory belongs to the
+// loyalty field, not to founding). `f2c` is the caller's census↔field exchange
+// rate (0 = census mode); `bar` the caller's own census-unit founding bar (the
+// exact bar this founding just paid), so a restoration is viable on the same
+// terms as the fresh state it replaces.
+function restorableHomeland(world, s, f2c, bar) {
+  const home = world._tileHomeland, co = world._countryOwner;
+  if (!home || !co) return -1;                       // no memory substrate (LOYAL_FIELD off) → nothing to restore
+  const tw = world.tw, th = world.th, elev = world.elev;
+  const pf = T.POP_FIELD && world.popField ? world.popField : null;   // people carry the yearning; tiles when the field is off
+  const nucRi = Math.round(NUCLEATE_R * resScaleFor(tw));
+  const sx = s.pos.x | 0, sy = s.pos.y | 0;
+  let basinW = 0, remembered = 0;
+  const byH = new Map();
+  for (let dy = -nucRi; dy <= nucRi; dy++) {
+    const yy = sy + dy; if (yy < 0 || yy >= th) continue;
+    for (let dx = -nucRi; dx <= nucRi; dx++) {
+      if (dx * dx + dy * dy > nucRi * nucRi) continue;
+      const ti = yy * tw + (((sx + dx) % tw) + tw) % tw;
+      if (!(elev[ti] > 0) || co[ti] >= 0) continue;
+      const w = pf ? pf[ti] : 1;
+      basinW += w;
+      const h = home[ti];
+      if (h >= 0) { remembered += w; byH.set(h, (byH.get(h) || 0) + w); }
+    }
+  }
+  if (!(remembered > 0)) return -1;
+  let H = -1, HW = 0;
+  for (const [h, w] of byH) if (w > HW || (w === HW && H >= 0 && h < H)) { H = h; HW = w; }   // argmax, tie → smaller id
+  // 1. UNCONTESTED memory: a supermajority of the remembered weight points at H.
+  if (H < 0 || HW < RESTORE_MAJORITY * remembered) return -1;
+  // 2. VIABLE as the old nation (zero new constants): the fallen nation's own
+  //    remembered mass alone clears the exact founding bar the caller computed.
+  //    Census mode (no exchange rate): the remembered people must instead be
+  //    most of the basin — there is no rate to price them in census units.
+  if (f2c > 0) { if (HW * f2c < bar) return -1; }
+  else if (remembered < 0.5 * basinW) return -1;
+  // 3. ACTUALLY dead: a live rump still flying the flag means reunification
+  //    (casus belli / restoreNations), never a clone founded from the wild.
+  const p = getPolity(world, H);
+  if (!p || !(p.endedStep >= 0)) return -1;
+  for (const o of world.settlements) if (o.mode === "settled" && o.countryId === H) return -1;
+  // 4. KINSHIP: the founding seat's people are the old nation's people — a
+  //    majority of its census descends from the polity's founding culture
+  //    (p.cultureId, stamped at founding, never rewritten). A basin resettled
+  //    by a different people founds NEW. No culture on record (cid < 0) → the
+  //    gate abstains; memory + viability decide.
+  const cid = p.cultureId ?? -1;
+  if (cid >= 0) {
+    const mix = s.culMix && s.culMix.length ? s.culMix
+      : (s.cultureId != null && s.cultureId >= 0 ? [[s.cultureId, 1]] : []);
+    let kin = 0;
+    for (const e of mix) if (cultureDescends(world, e[0], cid)) kin += e[1];
+    if (kin < RESTORE_KIN) return -1;
+  }
+  return H;
+}
 export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
@@ -1822,7 +2220,7 @@ export function nucleateFrontierStates(world) {
   const capD2 = ((NUCLEATE_CAP_DIST * _rsN) / Math.sqrt(lever)) ** 2;
   const caps = [];
   if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
-  const fert = world.fert, moist = world.moist;
+  const fert = world.fert, moist = world.moist, temp = world.temp;
   // ── BIRTH_FIELD (§4b, field-polity-spec): states are born of the PEOPLED LAND ──
   // Cluster viability was the summed CENSUS of nearby stateless settlements — but
   // under cities-only entities the census is the urban network, not the people, so
@@ -1835,13 +2233,28 @@ export function nucleateFrontierStates(world) {
   // what changed is WHOSE substance carries statehood — a lone town amid a dense
   // peopled valley founds the state its basin can carry, a cluster of towns on
   // empty land no longer manufactures one. 0 = the census cluster (byte-identical).
-  let f2c = 0;
+  let f2c = 0, f2cBridge = false;
   if (T.BIRTH_FIELD > 0 && T.POP_FIELD && world.popField && world._countryOwner) {
-    let cenT = 0, pfT = 0;
-    for (const s of world.settlements) if (s.mode === "settled") cenT += s.people || 0;
-    const pfA = world.popField, elevA = world.elev, Nn = world.N;
-    for (let ti = 0; ti < Nn; ti++) if (elevA[ti] > 0) pfT += pfA[ti];
-    if (cenT > 0 && pfT > 0) f2c = cenT / pfT;
+    if (T.LABEL_BIRTH >= 1 && T.ONE_POP && world._onePopScale > 0) {
+      // ── Tier-C C1 DEFLATION GUARD (the survey's riskiest coupling) ──
+      // The cenT/pfT exchange rate below is coverage-COUPLED: cenT = Σ census
+      // = _onePopScale × (field inside label catchments), so scaling label
+      // supply moves the rate through catchment coverage even though the
+      // world's people never changed — the founding bar would silently re-
+      // price with entity count. Under LABEL_BIRTH the rate is the FROZEN
+      // ONE_POP bridge itself (persisted, a pure unit conversion between
+      // census units and field people — the B3 field-mass bar pattern): the
+      // bar keeps meaning "a basin holding what NUCLEATE_CLUSTER_POP census
+      // people weigh" at any label density. Not consulted lever-off
+      // (byte-identical), nor before the bridge freezes at ONE_POP activation.
+      f2c = world._onePopScale; f2cBridge = true;
+    } else {
+      let cenT = 0, pfT = 0;
+      for (const s of world.settlements) if (s.mode === "settled") cenT += s.people || 0;
+      const pfA = world.popField, elevA = world.elev, Nn = world.N;
+      for (let ti = 0; ti < Nn; ti++) if (elevA[ti] > 0) pfT += pfA[ti];
+      if (cenT > 0 && pfT > 0) f2c = cenT / pfT;
+    }
   }
   const cand = [];
   for (const s of world.settlements) {
@@ -1867,15 +2280,31 @@ export function nucleateFrontierStates(world) {
     // farm the woodland — why N. Europe / Russia / the N. American forest belt lagged
     // the open river cradles. River valleys (open alluvium) and already-cleared land
     // are exempt; the lock lifts as iron (metallurgy → LAND_CLEAR_METAL) arrives.
+    // Gated to the TEMPERATE band (temperateBand above): warm wet woodland is the
+    // disease bar's territory — without the gate the two multiplied on monsoon land.
     const moistAt   = s._climMoist ?? (moist ? moist[seatTi] : 0.5);
+    const tempAt    = s._climTemp ?? (temp ? temp[seatTi] : 0.5);
     const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
-    const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * (1 - riverOpen);
+    const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen);
     const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
     const forestLocked = forest * (1 - ironReady);
     const capMul = (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
                  * (1 + T.STATE_FOREST * forestLocked)
                  / (1 + T.FRAGMENT * (s._rugged || 0));
-    if ((s.people || 0) < seatPop * capMul) continue;
+    // Tier-C C1 deflation guard, seat half: NUCLEATE_SEAT_POP reads s.people —
+    // under ONE_POP that is the label's CATCHMENT census, which divides among
+    // labels as C1 scales their supply (the same physical town reads smaller
+    // the denser the map — a rank artifact, not a viability fact). Under the
+    // frozen-bridge regime the seat-size read FOLDS INTO the basin-mass bar
+    // (clusterPop × capMul in frozen units, checked below over the same
+    // ground): the seat's viability lives on the LAND it would govern. What
+    // remains of the seat gate is what genuinely belongs to the seat — it is
+    // a settled TOWN (the urban floor: every label is born ≥ TOWN_FOUND_MIN
+    // and withers below 8), it has the statecraft (ORG_STATE_MIN above), and
+    // it LEADS its basin (isLeader below). "A lone town amid a dense peopled
+    // valley founds the state its basin can carry" — the BIRTH_FIELD intent,
+    // now unit-safe.
+    if (!f2cBridge && (s.people || 0) < seatPop * capMul) continue;
     let dCap = Infinity;                        // isolation from existing states' heartlands
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
     if (caps.length && dCap < capD2) continue;
@@ -1903,18 +2332,31 @@ export function nucleateFrontierStates(world) {
       }
       cp = mass * f2c;
     }
-    if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp });
+    if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp, capMul });
   }
   if (!cand.length) return;
   cand.sort((a, b) => b.cp - a.cp);             // most-developed clusters first
   const placed = []; let n = 0;
-  for (const { s } of cand) {
+  for (const { s, capMul } of cand) {
     if (n >= NUCLEATE_MAX_PASS) break;
     let tooClose = false;                        // don't mint two adjacent states in one pass
     for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (nucR * 2) ** 2) { tooClose = true; break; } }
     if (tooClose) continue;
-    s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
-    ensurePolity(world, s.id, { how: "frontier", seat: s });
+    // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland above): a founding on
+    // ground whose people remember ONE fallen nation — uncontested, viable against
+    // this candidate's own bar (the same clusterPop×capMul the cluster gate just
+    // charged), dead, and settled by its descendants — re-opens the fallen polity
+    // instead of minting a fresh id. Contested or foreign memory founds NEW.
+    const H = successorStatesOn() ? restorableHomeland(world, s, f2c, clusterPop * capMul) : -1;
+    if (H >= 0 && H !== s.id) {
+      s.countryId = H; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+      s._homeland = -1; s._homelandFell = -1;          // home again — the nation IS this ground's memory
+      ensurePolity(world, H, { seat: s, from: -1 });   // re-opens the record; logs polity.restored
+      snapClaim(world, H);                             // an already-administered claim snaps into place
+    } else {
+      s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+      ensurePolity(world, s.id, { how: "frontier", seat: s });
+    }
     placed.push({ x: s.pos.x, y: s.pos.y }); n++;
   }
 }

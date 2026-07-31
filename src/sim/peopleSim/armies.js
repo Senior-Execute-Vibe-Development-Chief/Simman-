@@ -39,7 +39,13 @@ import { forEachNear } from "./spatialGrid.js";
 // so a settlement that can't cover that food drains its granary and the army
 // DESERTS — you can't field more troops than you can feed. Coin upkeep is now
 // a small secondary cost (pay/equipment), not the binding constraint.
-const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11].map(f => f * 1.075);  // garrison cap as fraction of pop, by tier
+const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11].map(f => f * 1.075);  // garrison cap as fraction of pop, by tier.
+// Tier-C C1 deflation audit: a FRACTION, not an absolute bar — per-label
+// garrisons shrink as label supply divides the census, but label count rises
+// in step, so Σ garrison ≈ frac × Σ census stays supply-invariant; the
+// thresholds that consume garrisons are the 85th-percentile fortRef and the
+// smoothed median _musterRatio (below), both rank/median reads that
+// self-recalibrate with entity count (verified at the C1 flip, not re-anchored).
 const ARMY_CAPITAL_BONUS = 0.03 * 1.075;          // the capital fields a bit more
 // (TIER_FRAC and CAPITAL_BONUS ×1.075 re-anchor the 0.5-pivot aggressionArmyMul
 //  — personality.js; behaviour identical to the old 0.85+a·0.45 form)
@@ -229,8 +235,16 @@ const WALL_W = 1.5;
 // sense?" — they didn't, yet).
 const FORT_R            = 3;    // REFERENCE-tiles of shadow (×rNormPop at use)
 const FORT_W            = 2.0;  // peak added defense multiple at the fortress itself, fully walled + manned
-const FORT_GARRISON_REF = 40;   // garrison at which walls count as fully manned / a base stages at full capacity
-const BASE_GARRISON_MIN = 5;    // below this a post is a watch, not a forward base (projOf ignores it)
+// The garrison at which walls count as fully manned / a base stages at full
+// capacity is NOT a constant any more: it is derived each war pass from the
+// age's own garrison scale (see fortRef in advanceFronts — the 85th-percentile
+// settled garrison, T.FORT_GARRISON_REF > 0 restores the legacy absolute). The
+// old absolutes (40 manned / 5 base-minimum) were tuned to the pre-Tier-B3
+// phantom-fish population, ~5× the honest scale that food wave landed: at
+// honest garrisons of ~2-10 nothing ever qualified as a forward base (force
+// projection collapsed to capital-only decay) and no wall ever counted manned
+// past the 0.4 floor — the same stale-absolute class as TIER_SCALE_REF.
+const BASE_OF_REF       = 0.125;   // a post stages as a BASE at an eighth of a manned fortress's complement (the legacy 5-of-40 watch→base share)
 function homeMight(s) {
   const morale = Math.max(MILITIA_MORALE_FLOOR, (s.loyalty ?? 1) - 0.5 * (s.unrest || 0));
   const militia = (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
@@ -671,6 +685,29 @@ export function advanceFronts(world) {
   const ovFr = world._overlordOf;
   const bondedCC = (a, b) => !!ovFr && (ovFr.get(a) === b || ovFr.get(b) === a);
 
+  // ── Scale-honest fortress reference (T.FORT_GARRISON_REF; header at FORT_R) ──
+  // fortRef = the garrison of a first-rank stronghold OF THIS AGE: the
+  // 85th-percentile settled garrison, floored at a pair of watchmen (below
+  // that, "manning" is not a military statement). baseMin = BASE_OF_REF of
+  // that complement (never below one man): the watch→base threshold rides the
+  // same scale. Stateless — recomputed each pass from live garrisons — so it
+  // is deterministic, save/load-safe and resolution-free (per-settlement men,
+  // not per-tile), and it self-calibrates across population scales and eras:
+  // war costs and mans the same RELATIVE force everywhere the way the old
+  // absolutes only did at the one population they were tuned on.
+  // T.FORT_GARRISON_REF > 0 = that absolute legacy pair (40 → manned-at-40 /
+  // base-at-5, byte-identical).
+  let fortRef;
+  if (T.FORT_GARRISON_REF > 0) fortRef = T.FORT_GARRISON_REF;
+  else {
+    const g = [];
+    for (const s of world.settlements) if (s.mode === "settled") g.push(s.army || 0);
+    g.sort((a, b) => a - b);
+    fortRef = Math.max(2, g.length ? g[Math.min(g.length - 1, Math.floor(g.length * 0.85))] : 2);
+  }
+  const baseMin = Math.max(1, fortRef * BASE_OF_REF);
+  world._fortRef = fortRef;   // diagnostic surface (probes / info panel); derived, never persisted, never read back by the sim
+
   const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   const natArmy = new Map();    // countryId → Σ raw garrison (for the adapter's army + casualty reconcile)
   const natNomadW = new Map();  // countryId → Σ garrison × _nomad (army-weighted cavalry share, for the adapter's techMul)
@@ -746,8 +783,8 @@ export function advanceFronts(world) {
       if (cc2) for (const m of cc2.members) {
         if (m === cap || m.mode !== "settled") continue;
         const g = m.army || 0;
-        if (g < BASE_GARRISON_MIN) continue;
-        bases.push({ x: m.pos.x, y: m.pos.y, cap: Math.min(1, g / FORT_GARRISON_REF) });
+        if (g < baseMin) continue;                                // a watch, not a base — by the age's own scale
+        bases.push({ x: m.pos.x, y: m.pos.y, cap: Math.min(1, g / fortRef) });
       }
       ad._bases = bases;
     }
@@ -918,7 +955,7 @@ export function advanceFronts(world) {
         if (S.mode !== "settled" || S.countryId !== defCC) return;
         const eff = techEff(S);
         if (!eff.walls) return;
-        const manned = 0.4 + 0.6 * Math.min(1, (S.army || 0) / FORT_GARRISON_REF);
+        const manned = 0.4 + 0.6 * Math.min(1, (S.army || 0) / fortRef);
         const f = FORT_W * Math.max(0, eff.defenseLevel || 0) * manned * Math.max(0, 1 - Math.sqrt(d2) / fr);
         if (f > fortAdd) fortAdd = f;
       });

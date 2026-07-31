@@ -1,0 +1,54 @@
+# Tier-B baseline — post-Tier-A polity dynamics & the elite-fracture trigger check (2026-07-28)
+
+## Trigger verdict
+
+docs/hegemon-ossification-2026-07.md §6, verbatim: "**Resume trigger:** a future battery (960 product resolution, 30k+, or any post-default-change validation) showing the ossification signature — back-40 % modal share ≳ 70 % with an unbroken hold ≳ ⅓ of the window, or a *falling* late-game mortality gradient. Re-run `probe_hegemon` first; if the signature is real, build the following behind a default-0 lever (byte-identical off), entirely inside the existing governor block (every input already computed there)".
+
+Measured on post-Tier-A HEAD (probe_hegemon re-run, 480x240 seed 8817, 24k, the doc's own protocol): back-40% modal share = 49% (Pephamdo, 19/39 samples) — BELOW the ~70% bar; longest unbroken hold = 4750 of 9600 steps = 49.5% — this arm alone exceeds 1/3, but the criterion conjoins it ("with") to the >=70% share, which fails; late-game mortality gradient = 0.13 -> 1.38 deaths/1k first-vs-last third — RISING ~10.6x, the opposite of falling. VERDICT: the resume trigger does NOT fire; per the doc's own instruction ("if the signature is real") the signature is not real, so T.ELITE_FRACTURE stays parked. Consistent with it, the elite channel's inputs are still inert on this run: maxProv/throne 0.00 and ambition 0.00 in every report row (the #1 realm never has a second province). Watch item: the tenure statistics moved TOWARD the signature relative to the CLOSED measurement (changes 11->2, modal 36-49%->49%, hold 23%->49% of window) while remaining under both bars — re-check at 960/30k+ before any future wave, exactly as the trigger says.
+
+## Assessment
+
+The Tier-A batteries' "0 secessions, back-half top-3 union 6-11 realms" is NOT ossification — it is healthy-SHAPED but successor-poor and an order of magnitude quieter than the regime the ossification doc measured. Not ossification: the leaderboard still turns over (9 full-run #1 changes, 2 in the back 40%), mortality RISES into maturity (0.13 -> 1.38/1k), realm count climbs all run (42 -> 62), and the "#1" is a micro-hegemon holding 6-11% of claimed land on a map that is ~91% stateless — there is no frozen empire to fracture, which is also why ELITE_FRACTURE's own qualifying inputs (province ratios, ambition) read zero. Successor-poor, measured: every one of the 16 capital-storm shatters erased a 1-2-member realm outright (0 founded(fragment), 0 restorations from shatters, 2 restorations all run, 0 secessions, 0 settlement.lapsed events), 35 towns silently dropped off the political map under living realms, and of ~2117 tiles released by the shed/connectivity/dead/smoothing valves — carrying ~30M person-units, 692 shed tiles at >4x the wild subsistence baseline, 32 with towns standing — only 3 tiles (0.14%) were picked up by another realm. The land-loss economy is overwhelmingly realm->wilderness with no successor-forming mechanism attached, exactly diagnosis #1/#6; and the churn engine itself has decelerated ~20x (back-40% shatters 237->11, conquest endings 57->10, dissolutions 45->1) so the successor-blindness now dominates the observed dynamics instead of being masked by molten turnover. Implications for the B wave, grounded in these baselines: (B1) the successor-states mechanism is THE binding target — its raw material is measurably there (towns, popField far above subsistence, homeland memory) and measurably unused (0.14% transfer rate; fragmentRealm's survivor list empty at mem 1-2 — R1's atom starves the Diadochi path too); (B2) the _sizePopK anchor misbehaves on HEAD exactly as diagnosed: frozen for 4500 steps by the capacity-0 cohort, then an 8.36x one-window jump mid-Bronze-wave, 13.2x band, with claimed coverage and the largest shed waves of the run (80/78/55 tiles/pass) breathing in lockstep — a re-grounding must remove the global-median coupling, not smooth it; and do NOT build ELITE_FRACTURE — its trigger does not fire and its preconditions (multi-province realms) barely exist. Also reconfirmed: world._eraProd pinned at 1.000 for all 24k steps (the coupled eraProd/tier-bar constraint stands), and probe work in this wave must use continuous runs (loadWorld resume is not trajectory-identical) and test polity death as endedStep>=0.
+
+## Tables
+
+ALL numbers: tools/probe_hegemon.mjs (unmodified, works on HEAD 713c766) + a byte-equivalent instrumented twin, harness buildSim "480x240" seed 8817, 24000 steps, foreground, single continuous runs. NOTE ON GRID: harness 480x240 builds a people-sim tile grid of tw=240 (tileRes halving) — this is the POP_REF_W=240 reference grid: rNormPop=1, resScale=1, territory passes every 144 steps (167 passes/run). Stock run: 220s wall. Logs: /tmp/claude-0/-home-user-Simman-/85150cac-b1ce-5215-a2a1-aa8eb6eca827/scratchpad/stock_24k.log, m0_full24k.log, acc24.json (probe: m0_probe.mjs). The instrumented run's 12 report lines and all 4 final tables are byte-identical to the stock run, so all numbers below describe one trajectory.
+
+(1a) #1-TENURE (suzerainty-root by claimed land, SAMPLE=250):
+  window   | #1 changes | longest unbroken hold      | modal holder (share of samples)
+  full run (96 samples) | 9  | Pephamdo 7500 steps | Pephamdo 52% (then Nenniléa 21%, Pughduf 17%)
+  back 40% (39 samples, 9600 steps) | 2 | Pephamdo 4750 steps (=49.5% of window) | Pephamdo 49% (Pughduf 41%, Kehtutheittea 10%)
+  Only 3 roots ever hold #1 in the back 40%. #1's land share is small in absolute terms: 6.4-11.2% of claimed land late, and claimed land is only ~3-9% of the 9616 land tiles (claimed 249@14k -> 860@24k). Realm count RISES all run: 42@12k -> 62@24k. The #1 realm has mem=2 (two settled members) for the entire back half; maxProv/throne=0.00, ambition 0.00 everywhere (elite channel still inert, as documented).
+
+(1b) POLITY MORTALITY (deaths/1k steps, registry): first third 0.13 -> last third 1.38 (rising ~10.6x). Born/died per 2k window (back half): 8/1, 3/0, 5/1, 5/3, 5/5, 5/2. For comparison the pre-Tier-A CLOSED measurement (docs/hegemon-ossification-2026-07.md §3, same seed/grid/steps): 0.25 -> 10.25. Late mortality is ~7.4x LOWER than the CLOSED baseline; the gradient is still positive.
+
+(1c) FALL-EVENT ATTRIBUTION (polity.* tallies; full run / back 40% / [pre-Tier-A back-40% from the ossification doc]):
+  capital-storm shatters (polity.shattered): 16 / 11 / [237]
+  ended(conquest): 15 / 10 / [57]     ended(dissolved): 3 / 1 / [45]
+  submitted(submission): 12 / 9 / [11]   submitted(capitulation): 2 / 2 / [23]
+  seceded: 0 / 0 / [19]   restored: 2 / 0 / [11]
+  founded(frontier): 54 / 20 / [78]   founded(cradle): 4 / 0   founded(fragment): 0 / 0   founded(secession): 0 / 0
+  colony.independent: 3 / 3. settlement.lapsed events: 0 / 0.
+  Every polity death is a total erasure: 16 shatters produced 0 fragment successors and 0 restorations because every stormed realm had no other settled member (fragmentRealm, conquest.js:1142-1146 — survivors empty at mem 1-2); the Diadochi/restore machinery (conquest.js:1166-1220) is live code that never gets input.
+
+(3) SUCCESSOR-STATES BASELINE (B1 instrumentation, read-only, whole run):
+  - Silent settlement lapses (countryId >=0 -> -1 with NO event): 35, ALL under living realms (0 under dead ones) — the unguarded realm->stateless direction of adoptAndFound. Silent realm->realm flips: 15. settlement.lapsed events: 0 (shedPatch's terminal branch never fired since seceded=0).
+  - Releases of owned tiles to wilderness, classified per pass via world._fpRel + world._fpDist (shed = rel==owner & finite dist; connectivity = rel==owner & dist=Inf; dead-owner = rel!=owner & polity.endedStep>=0; smoothing erosion = rel!=owner & owner alive):
+      over-capacity SHED: 1151 tiles across 110 of 167 passes (median 6/pass, max 80); popField carried 14.78M person-units; 934 tiles above the wild-land subsistence mean, 692 above 4x it; 15 released tiles had a settled town standing (2630 town people). Back-40%: 608 tiles.
+      CONNECTIVITY release: 5 tiles / 2 passes (1 town).
+      DEAD-owner release: 113 tiles / 15 passes; 0.76M person-units; 14 towns standing (1237 people).
+      SMOOTHING erosion (realm->wild border flips, no rel mask): 848 tiles / 105 passes (median 6, max 52); 14.66M person-units; 2 towns.
+      Released-then-transferred to another realm in the same pass: 3 tiles of ~2117 released (0.14%), 0 towns — the successor-blindness number: 99.86% of all released land goes to wilderness, not to any state.
+  - The biggest shed waves (80/78/55/42/39 tiles per pass at steps 11088-11664) coincide exactly with the _sizePopK spike collapse below — the R2 breathing -> shed coupling, measured end-to-end. Late-run shed tiles are dense: pfMax up to 136k people on one released tile (step 23904; wild baseline 816/tile).
+
+(4) _sizePopK TRAJECTORY (every 500 steps; k in tiles/person; claimed tiles; realms; max/med realm tiles; world._eraProd):
+   500-3000: k=0 (no capacity-bearing realm yet; claimed 96-106 = cradle cores)
+   3500-8000: k FROZEN at 7.935e-5 (anchor persists: mem=1 realms have capacity 0, so no fresh median for 4500 steps; claimed 12->150)
+   8500: 6.560e-5 (196)  9000: 4.446e-5 (184)  9500: 3.094e-5 (164)  10000: 2.291e-5 (166)  10500: 1.938e-5 (162)
+   11000: 1.620e-4 (812, maxRealm 113) <- 8.36x JUMP in one 500-step window
+   11500: 8.899e-5 (498)  12000: 4.696e-5 (330)  12500: 3.281e-5 (273)  13000: 2.149e-5 (224)  13500: 1.756e-5 (227)
+   14000-16000: 1.6-2.2e-5 (claimed 249-314, realms 50-53)
+   18000: 1.732e-5 (351)  20000: 2.172e-5 (560)  22000: 1.808e-5 (710)  24000: 1.228e-5 (860, realms 62)
+   Band (nonzero): 1.228e-5 -> 1.620e-4 = 13.2x. Largest single-window moves: +8.36x @11000, then -0.55x/-0.53x @11500/12000. era.reached(Bronze): first at step 7500, main wave 7800-12000 (26 realms), stragglers 19200/19500 — the jump sits mid-Bronze-wave, and claimed coverage breathes in lockstep (162 -> 812 -> 330 tiles across 10500->12000), confirming the diagnosis #9 coupling on post-Tier-A HEAD (old measurement: 2.4e-5 -> 2.7e-4 = 11.2x at Bronze, 20x band; now 8.4x jump, 13.2x band — same phenomenon, later and slightly damped by SIZE_POPK_SMOOTH=0.25). world._eraProd = 1.000 for the entire 24k run (the Tier-B land-food maturity residual, reconfirmed).
+
+INSTRUMENT CAVEATS: (a) single seed (8817) per instruction — cross-seed variance unknown for the new counters; (b) persist.js loadWorld resume is functional but NOT trajectory-identical (a resumed run diverged from the continuous one at the first post-load report line: 14000 ctry=50 but #1 share 5.7% vs 11.2%) — probes needing trajectory-comparable numbers must run continuous, and the smoke suite's "functional resume" does not assert trajectory identity; (c) polity records carry endedStep=-1 while alive (entities.js:118) — any probe classifying death must test endedStep>=0, not null-ness.

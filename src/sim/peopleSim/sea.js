@@ -18,13 +18,19 @@
 //                trade peers (s._seaReach), folded into the existing trade
 //                pass, so grain and goods move by ship and the money
 //                overlay animates gold across the water.
-//   • COLONIES — a large, navigation-capable port dispatches a visible
-//                COLONY SHIP to an unsettled shore anywhere in its
-//                reachable waters (a wide ocean is crossable in one voyage
-//                if navigation is high enough). The colony inherits the
-//                founder's country, so overseas empires form, and the
-//                administrative overstretch / secession system can later
-//                fragment them.
+//   • COLONIES — two sponsors, one expedition machinery. A large,
+//                navigation-capable port dispatches a visible COLONY SHIP to
+//                an unsettled shore anywhere in its reachable waters (a wide
+//                ocean is crossable in one voyage if navigation is high
+//                enough) — the port's own venture. And a REALM whose state
+//                can afford it (treasury, admin headroom, statecraft) and
+//                wants it (land hunger, or a luxury market it cannot reach)
+//                CHARTERS an expedition through its best-positioned port —
+//                the crown project that made great powers colonial powers
+//                (see the CHARTER block below). Either way the colony
+//                becomes a dependency of the founder realm, so overseas
+//                empires form, and the administrative overstretch /
+//                independence system can later sever them.
 //
 // One global flood per pass (bounded by a visit cap) keeps this cheap
 // regardless of how many ports exist — far cheaper than a per-port flood.
@@ -39,6 +45,8 @@ import { recordOut, OUT_COLONY } from "./money.js";
 import { expansionColonyMul } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { resScaleFor } from "./countryTerritory.js";
+import { getPolity } from "./entities.js";
+import { labelBasinFree, labelClaimBasin, labelSiteOf } from "./crystallize.js";
 
 // Ship ids count up per world (world._nextShipId) — see the settlement-id
 // note in settlement.js for why module-scope counters are off limits.
@@ -92,8 +100,10 @@ const MAX_ROUTE_TILES = 1200;    // cap on a sea path's stored tile count
 const SEA_FREIGHT_K = 0.02;   // how much a partner's route cost discounts its trade value in peer selection
 
 // Colonisation. Tuned to be reasonably common: a navigation-capable city
-// mounts expeditions fairly often, and a young colony is supplied from
-// home (see supplyColonies in conquest.js) so it survives its first years.
+// mounts expeditions fairly often, and a young colony is invested in from
+// home — the metropole ships coin and grain across the overlord link while
+// the dependency is young (the colonial-economy pass in conquest.js) — so
+// it survives its first years.
 // COLONY_MIN_POP -> runtime lever (tuning.js T.COLONY_MIN_POP)
 const COLONY_MIN_NAV    = 0.25;  // need ocean-going ships
 const COLONY_PEOPLE     = 30;    // colonists carried (migrated out of parent)
@@ -102,8 +112,46 @@ const COLONY_COOLDOWN   = 500 / 1.1; // ticks between expeditions from one port
                                  // which divides this; behaviour identical)
 const COLONY_ENDOW_FRAC = 0.12;  // share of the parent's coin colonists carry
 const COLONY_ENDOW_CAP  = 5000;
-const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement (grid near-query radius)
-const COLONY_PER_PORT_CAND = 400; // cap shore candidates collected per port
+const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement (grid near-query radius, ×rNormPop — a real distance)
+// Shore-candidate budget per port: how much nearby coastline a port's site
+// survey covers, counted in UNIQUE land tiles at the 240-wide reference grid.
+// Coastline is ONE-dimensional — its tile count per unit of REAL length grows
+// linearly with resolution — so the live cap is ×rNormPop (updateSea), exactly
+// 400 at the reference. The exclusion radius the candidates compete against
+// (COLONY_MIN_DIST, siteIsClear) is already res-scaled; leaving this budget
+// raw shrank the surveyed coast to 1/rNorm of its calibrated length at fine
+// grids, so a dense realm's whole window sat inside its own settlements'
+// exclusion disks — zero valid sites, every pass, only at high resolution.
+const COLONY_PER_PORT_CAND = 400;
+
+// ── The CHARTER: colonisation as a STATE project ────────────────────────────
+// Historically the great colonisations were realm-level undertakings — crown
+// charters, trading companies, navies — EXECUTED through ports. The per-port
+// path above is a port's own venture (a frontier fishing town still wanders to
+// the next shore); the charter is what makes GREAT POWERS colonise: the STATE
+// reads its own condition and SPONSORS an expedition, funded from the realm
+// treasury and dispatched through whichever of ITS ports can reach the best
+// shore — not whichever cape hamlet happens to own the ocean between. Every
+// gate reads live state (fisc, the admin ledger, tech, demography, the luxury
+// market); there is no era gate, no quota, and no named ocean anywhere.
+const CHARTER_ENDOW = COLONY_ENDOW_CAP;  // coin a chartered expedition costs the crown — the sim's existing "fully-funded expedition" (the endowment cap a port's private venture only reaches from a ~42k fortune; here the state puts it up as one grant)
+const CHARTER_ORG_MIN = 0.60;    // statecraft to run a chartered company / colonial office: delegated rule at distance — the same organization rung at which the absorb ladder (conquest.js tierCapForOrg) first trusts a court to integrate remote TOWNS
+const CHARTER_CROWD_MIN = 0.70;  // land-pressure motive: governed people ≥ this share of what governed land can CARRY (popField vs capField) — logistic growth has lost most of its headroom, and land hunger becomes state policy (emigration schemes, planted colonies)
+const CHARTER_COOLDOWN = 1200;   // ticks to raise, fund and outfit the crown's NEXT venture (fleets built, companies chartered, colonists mustered — several times a private port's turnaround; the crown moves slower but bigger). ÷ expansionColonyMul like the port path: temperament paces willingness, it never grants capability.
+
+// SOLVENCY: the crown can afford the venture when, after paying the endowment,
+// the chest still runs the state through one whole outfitting cycle at its own
+// current burn rate with zero income — a working-capital reserve read from the
+// polity's OWN books (pol._spend is the per-polity-pass state spending EMA:
+// army wages, works, dole; conquest.js disburseTreasury). No fitted multiple:
+// a lean pacific statelet charters from a modest chest, a war-machine needs a
+// deep one, and both facts come from their own ledgers. Cadence-invariant:
+// _spend is per-pass and ÷T.POLITY_INTERVAL counts the passes in the cycle,
+// so the reserve is coin-over-CHARTER_COOLDOWN-ticks at any interval setting.
+function charterAffordable(pol) {
+  const reserve = (CHARTER_COOLDOWN / Math.max(1, T.POLITY_INTERVAL)) * Math.max(0, pol._spend || 0);
+  return (pol.treasury || 0) - CHARTER_ENDOW >= reserve;
+}
 
 // 8-neighbour offsets (match the flood's neighbour order) for wind heading.
 const DX = [-1, 1, 0, 0, -1, 1, -1, 1];
@@ -239,7 +287,12 @@ export function updateSea(world) {
   // Colony-eligible ports (we only collect shore candidates for these, to
   // keep the flood cheap).
   const eligible = new Set();
-  const shoreCand = new Map();   // portId -> [{landTi, waterTi, d, f}]
+  const shoreCand = new Map();   // portId -> [{landTi, waterTi, d, f}] — unique landTi, nearest-water approach first
+  const shoreSeen = new Map();   // portId -> Set(landTi examined) — dedup scratch for the flood's shore collection
+  // Live candidate budget: COLONY_PER_PORT_CAND is calibrated in reference
+  // tiles of coastline (1-D), so it scales ×rNormPop — the same REAL coast
+  // length surveyed at any grid (×1, byte-identical, at the 240 reference).
+  const candCap = Math.round(COLONY_PER_PORT_CAND * rNormPop(world));
   for (const p of ports) {
     // An expansionist realm mounts colonial expeditions more often (shorter
     // effective cooldown); an insular one rarely bothers (personality.js
@@ -261,8 +314,90 @@ export function updateSea(world) {
     if (pop >= T.COLONY_MIN_POP || qgoal) {
       eligible.add(p.id);
       shoreCand.set(p.id, []);
+      shoreSeen.set(p.id, new Set());
     }
   }
+
+  // ── Charter decisions: which REALMS sponsor an expedition this pass ──
+  // Decided BEFORE the flood so the flood surveys shores for ALL of a
+  // chartering realm's sea-capable ports — the state's site selection then
+  // spans its whole coastline instead of one cape's accidental water.
+  const charter = new Map();   // countryId -> { ports, goal } (goal = luxury target, else land-pressure settlement)
+  if (world.countries && world.polities) {
+    // A charter is executed through sea-CAPABLE ports: members with the
+    // Sailing embark ability (a state venture needs real sail, not paddle
+    // craft), ocean-going pilots (the same COLONY_MIN_NAV bar the port path
+    // uses), sea range on the board this pass, and enough people that the
+    // colonist levy (COLONY_PEOPLE) leaves a working port (≥ SEA_MIN_POP,
+    // the existing "is it a port at all" bar) behind.
+    const realmPorts = new Map();
+    for (const p of ports) {
+      if (p.countryId < 0) continue;
+      if ((p.knowledge.navigation || 0) < COLONY_MIN_NAV || !techEff(p).embark) continue;
+      if ((budget.get(p.id) || 0) <= 0) continue;
+      if ((p.people || 0) < COLONY_PEOPLE + T.SEA_MIN_POP) continue;
+      let a = realmPorts.get(p.countryId); if (!a) realmPorts.set(p.countryId, a = []); a.push(p);
+    }
+    // Land pressure, per realm with charter-capable ports: governed people vs
+    // what the governed land can CARRY — Σ popField / Σ capField over the
+    // realm's owned tiles (one O(N) scan at this pass's cadence). A crowded
+    // realm's crowding ratio ≥ CHARTER_CROWD_MIN is the settlement-colony
+    // motive; an empty-landed realm reads low and stays home.
+    let crowdOf = null;
+    {
+      const co = world._countryOwner, pf = world.popField, cf = world.capField;
+      if (realmPorts.size && co && pf && cf) {
+        const popS = new Map(), capS = new Map();
+        for (let ti = 0; ti < N; ti++) {
+          const o = co[ti]; if (o < 0 || !realmPorts.has(o)) continue;
+          popS.set(o, (popS.get(o) || 0) + pf[ti]);
+          capS.set(o, (capS.get(o) || 0) + cf[ti]);
+        }
+        crowdOf = new Map();
+        for (const [cid, P] of popS) { const K = capS.get(cid) || 0; crowdOf.set(cid, K > 1e-9 ? P / K : (P > 0 ? Infinity : 0)); }
+      }
+    }
+    for (const [cid, rp] of realmPorts) {
+      const c = world.countries.get(cid);
+      if (!c || !c.capital) continue;
+      const pol = getPolity(world, cid);
+      if (!pol || pol.endedStep >= 0) continue;
+      // COMPETENCE — org gates the institution: below the chartered-company /
+      // colonial-office rung a court cannot run a venture at ocean distance.
+      if ((c.capital.knowledge.organization || 0) < CHARTER_ORG_MIN) continue;
+      // ADMIN HEADROOM — the existing capacity ledger: a realm already drawing
+      // its full capacity is consumed holding what it has; it does not charter.
+      if (c._capacity != null && c._loadTotal != null && c._loadTotal >= c._capacity) continue;
+      // WILLINGNESS — temperament paces the venture cadence (same personality
+      // channel as the port path; an insular crown rarely bothers).
+      const mul = expansionColonyMul(pol.personality || c.personality);
+      if (world.step - (pol._lastCharter ?? -Infinity) < CHARTER_COOLDOWN / mul) continue;
+      // SOLVENCY — the crown must AFFORD the endowment out of surplus
+      // (charterAffordable: pay it and still run the state through the next
+      // outfitting cycle from the chest alone).
+      if (!charterAffordable(pol)) continue;
+      // MOTIVE, read from live state: land hunger (crowding), else a luxury
+      // its markets crave and cannot reach — the same spice-quest goal the
+      // port path computes (reused verbatim; null when demand is met).
+      const crowd = crowdOf ? (crowdOf.get(cid) || 0) : 0;
+      let goal = null;
+      if (crowd < CHARTER_CROWD_MIN) {
+        for (const p of rp) {
+          if (!p._questGoal) continue;
+          if (!goal || (p._luxDemand || 0) > (goal.port._luxDemand || 0)
+            || ((p._luxDemand || 0) === (goal.port._luxDemand || 0) && p.id < goal.port.id)) goal = { port: p, s: p._questGoal };
+        }
+        if (!goal) continue;   // contented realms stay home — no motive, no venture
+      }
+      charter.set(cid, { ports: rp, goal: goal ? goal.s : null });
+      for (const p of rp) {
+        if (!shoreCand.has(p.id)) { shoreCand.set(p.id, []); shoreSeen.set(p.id, new Set()); }
+      }
+    }
+  }
+  // Ports whose shores the flood surveys: individually-eligible ports plus
+  // every chartering realm's capable ports.
+  const surveying = charter.size ? new Set(shoreCand.keys()) : eligible;
 
   // Cached flood scratch arrays (reset each pass; owner persists nothing).
   let owner = world._seaOwner, dist = world._seaDist, prev = world._seaPrev;
@@ -321,7 +456,7 @@ export function updateSea(world) {
     visited++;
     const oid = owner[ti];
     const bud = budget.get(oid) || 0;
-    const collectShore = eligible.has(oid);
+    const collectShore = surveying.has(oid);
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const yu = ty - 1, yd = ty + 1;
@@ -337,11 +472,19 @@ export function updateSea(world) {
       if (ni < 0) continue;
       if (elev[ni] > 0) {
         // Land neighbour — a potential colony shore for this port (cardinal
-        // only, to keep landings on a real coastline).
+        // only, to keep landings on a real coastline). Dedup by LAND tile: a
+        // crenellated coast offers the same land tile to up to 4 adjacent
+        // water tiles, so without dedup one site could eat 4 slots of the
+        // budget. First examination wins — the flood pops water nearest-first,
+        // so that is the cheapest water approach to the site (the landing).
         if (collectShore && k < 4) {
           const arr = shoreCand.get(oid);
-          if (arr.length < COLONY_PER_PORT_CAND && isContinentalLand(world, ni)) {
-            arr.push({ landTi: ni, waterTi: ti, d, f: world.fert[ni] || 0 });
+          if (arr.length < candCap) {
+            const seen = shoreSeen.get(oid);
+            if (!seen.has(ni)) {
+              seen.add(ni);
+              if (isContinentalLand(world, ni)) arr.push({ landTi: ni, waterTi: ti, d, f: world.fert[ni] || 0 });
+            }
           }
         }
         continue;
@@ -478,10 +621,14 @@ export function updateSea(world) {
     }
   }
 
+  // ── Chartered expeditions launch first: the STATE's pick of shore ──
+  for (const [cid, info] of charter) tryCharter(world, cid, info, shoreCand, prev);
+
   // ── Colonisation: each eligible port founds at its best clear shore ──
   for (const pid of eligible) {
     const A = world._byId ? world._byId.get(pid) : null;
     if (!A) continue;
+    if (A._lastColony === world.step) continue;   // its docks just dispatched the realm's chartered fleet
     tryColonize(world, A, shoreCand.get(pid), prev);
   }
 }
@@ -540,33 +687,39 @@ function luxuryGoal(world, A) {
   return goal;
 }
 
-function tryColonize(world, A, cands, prev) {
-  if (!cands || cands.length === 0) return;
+// Pick the best clear site from a candidate list: directed toward `goal` (the
+// spice quest — the reachable shore NEAREST the prize) when one is set, else
+// opportunistic (best fertile shore). Shared by the port and charter paths so
+// the state's survey applies exactly the port path's site standards. Sorts
+// `cands` in place (the per-pass scratch arrays).
+function pickSite(world, cands, goal) {
   const { tw } = world;
-  // DIRECTED toward a distant luxury source (the spice quest, cached in the
-  // eligibility pass) if the port craves one; otherwise opportunistic — best shore.
-  const goal = A._questGoal || null;
-  let chosen = null;
   if (goal) {
     const gx = goal.pos.x, gy = goal.pos.y;
     const gd = (c) => { const cy = (c.landTi / tw) | 0, cx = c.landTi - cy * tw; let dx = Math.abs(cx - gx); if (dx > tw / 2) dx = tw - dx; const dy = cy - gy; return dx * dx + dy * dy; };
     cands.sort((p, q) => gd(p) - gd(q));   // the reachable shore NEAREST the prize → march toward it
-    for (const c of cands) { if (c.f < OUTPOST_FERT_MIN) continue; if (siteIsClear(world, c.landTi)) { chosen = c; break; } }
+    for (const c of cands) { if (c.f < OUTPOST_FERT_MIN) continue; if (siteIsClear(world, c.landTi)) return c; }
   } else {
     cands.sort((p, q) => q.f - p.f);       // best fertile shore first
-    for (const c of cands) { if (c.f < 0.05) break; if (siteIsClear(world, c.landTi)) { chosen = c; break; } }
+    for (const c of cands) { if (c.f < 0.05) break; if (siteIsClear(world, c.landTi)) return c; }
   }
-  if (!chosen) return;
+  return null;
+}
 
+// Debit the colonists from port A, push the colony ship toward `chosen`, and
+// chronicle the departure. The coin endowment was already debited from its
+// source by the caller (the port's own wealth, or the realm treasury for a
+// chartered venture — `charter` marks the latter, so a turned-back fleet
+// refunds the right purse and the chronicle knows a crown project from a
+// port's private wandering).
+function launchExpedition(world, A, chosen, prev, endow, charter) {
+  const { tw } = world;
   const water = reconstruct(prev, chosen.waterTi);     // A.embark → landing water
   const homeA = (A.pos.y | 0) * tw + (A.pos.x | 0);
   let full = [homeA, ...water, chosen.landTi];
   if (full.length > MAX_ROUTE_TILES) full = full.slice(0, MAX_ROUTE_TILES);
-  const endow = Math.min((A.wealth || 0) * COLONY_ENDOW_FRAC, COLONY_ENDOW_CAP);
   A.people -= COLONY_PEOPLE;
   fieldShift(world, A, -COLONY_PEOPLE);   // one population: the colonists leave this ground (ONE_POP; no-op otherwise)
-  A.wealth = (A.wealth || 0) - endow;
-  recordOut(A, OUT_COLONY, endow);
   A._lastColony = world.step;
 
   if (!world.ships) world.ships = [];
@@ -575,13 +728,55 @@ function tryColonize(world, A, cands, prev) {
     owner: A.id, countryId: A.countryId, cultureId: dominantCulture(A),
     knowledge: { ...A.knowledge },
     people: COLONY_PEOPLE, wealth: endow,
+    charter: charter ? 1 : 0,
     landTi: chosen.landTi,
     path: full.map(ti => ({ x: (ti % tw) + 0.5, y: ((ti / tw) | 0) + 0.5 })),
     idx: 0, speed: T.SHIP_SPEED * (1 + techEff(A).seaSpeed),
     x: A.pos.x, y: A.pos.y,
   });
   A._coloniesSent = (A._coloniesSent || 0) + 1;
-  logEvent(world, "colony.departed", { s: A.id, sName: A.name, polity: A.countryId });
+  logEvent(world, "colony.departed", { s: A.id, sName: A.name, polity: A.countryId, charter: charter ? 1 : 0 });
+}
+
+function tryColonize(world, A, cands, prev) {
+  if (!cands || cands.length === 0) return;
+  // DIRECTED toward a distant luxury source (the spice quest, cached in the
+  // eligibility pass) if the port craves one; otherwise opportunistic — best shore.
+  const chosen = pickSite(world, cands, A._questGoal || null);
+  if (!chosen) return;
+  const endow = Math.min((A.wealth || 0) * COLONY_ENDOW_FRAC, COLONY_ENDOW_CAP);
+  A.wealth = (A.wealth || 0) - endow;
+  recordOut(A, OUT_COLONY, endow);
+  launchExpedition(world, A, chosen, prev, endow, false);
+}
+
+// A chartered expedition: the REALM picks its best shore across every capable
+// port's surveyed water (deduped by land tile, cheapest approach wins — that
+// approach's port IS the best-positioned port), pays the endowment from the
+// treasury (conserved: the coin rides the ship), and launches through the
+// existing expedition machinery — same colonists, same overlord link, same
+// landing rules as a port venture; only the SPONSOR differs.
+function tryCharter(world, cid, info, shoreCand, prev) {
+  const pol = getPolity(world, cid);
+  if (!pol || pol.endedStep >= 0 || !charterAffordable(pol)) return;
+  const best = new Map();   // landTi -> flat candidate + its port — cheapest water approach across the realm's ports
+  for (const p of info.ports) {
+    const arr = shoreCand.get(p.id);
+    if (arr) for (const cand of arr) {
+      const ex = best.get(cand.landTi);
+      if (!ex || cand.d < ex.d) best.set(cand.landTi, { landTi: cand.landTi, waterTi: cand.waterTi, d: cand.d, f: cand.f, port: p });
+    }
+  }
+  if (!best.size) return;
+  const chosen = pickSite(world, [...best.values()], info.goal);
+  if (!chosen) return;
+  const A = chosen.port;
+  if ((A.people || 0) < COLONY_PEOPLE + T.SEA_MIN_POP) return;   // re-check: the levy must still leave a working port
+  pol.treasury -= CHARTER_ENDOW;
+  pol._lastCharter = world.step;
+  const c = world.countries && world.countries.get(cid);
+  if (c && c.capital) recordOut(c.capital, OUT_COLONY, CHARTER_ENDOW);   // the flow books against the court, exactly like the colonial-economy pass's treasury flows
+  launchExpedition(world, A, chosen, prev, CHARTER_ENDOW, true);
 }
 
 // A landing tile is clear if no settlement sits within COLONY_MIN_DIST. The
@@ -592,6 +787,16 @@ function tryColonize(world, A, cands, prev) {
 function siteIsClear(world, lti) {
   const { tw } = world;
   const ty = (lti / tw) | 0, tx = lti - ty * tw;
+  // T.LABEL_BIRTH (Tier C phase 1 v3): the colony stays a state/port ACT — its
+  // people are carried, no activation BAR — but its landing SITE obeys the
+  // market-site ledger (see crystallize.js): the shore it makes for must lie
+  // in an UNCLAIMED market cell (within one horizon of a ledger site — sea
+  // landings thereby target mouths/anchorages), rather than honour the
+  // bespoke COLONY_MIN_DIST isolation constant. The ledger is static
+  // geography, so virgin coasts carry unclaimed harbor sites — empty
+  // continents stay colonisable; a claimed or site-less shore = fail-and-wait
+  // (the fleet turns back, design OQ4).
+  if (T.LABEL_BIRTH >= 1 && world.popField) return labelBasinFree(world, tx, ty);
   let clear = true;
   forEachNear(world, tx, ty, COLONY_MIN_DIST * rNormPop(world), () => { clear = false; });
   return clear;
@@ -624,7 +829,7 @@ export function moveShips(world) {
 
 function foundColony(world, sh) {
   const { tw } = world;
-  const ly = (sh.landTi / tw) | 0, lx = sh.landTi - ly * tw;
+  let ly = (sh.landTi / tw) | 0, lx = sh.landTi - ly * tw;
   // A settlement may have appeared on the target during the voyage. Rather than
   // delete the expedition (which would silently destroy its colonists AND their
   // coin endowment — both were already debited from the founder at launch, so
@@ -635,9 +840,22 @@ function foundColony(world, sh) {
     const home = world._byId && world._byId.get(sh.owner);
     if (home && home.mode === "settled") {
       home.people = (home.people || 0) + (sh.people || 0);
-      home.wealth = (home.wealth || 0) + (sh.wealth || 0);
+      // A chartered fleet's endowment returns to the CROWN that put it up —
+      // if that realm still stands on the registry; a private venture's coin
+      // (or an orphaned charter's) returns to the port.
+      const pol = sh.charter ? getPolity(world, sh.countryId) : null;
+      if (pol && pol.endedStep < 0) pol.treasury = (pol.treasury || 0) + (sh.wealth || 0);
+      else home.wealth = (home.wealth || 0) + (sh.wealth || 0);
     }
     return;
+  }
+  // T.LABEL_BIRTH v3: the landing SNAPS to its cell's market site — the
+  // colonists land at the harbor (mouth/anchorage) that commands the shore
+  // they surveyed, and the label stands ON its site so claim reconstruction
+  // at load is exact. siteIsClear just proved the cell exists and is free.
+  if (T.LABEL_BIRTH >= 1 && world.popField) {
+    const st = labelSiteOf(world, lx, ly);
+    if (st) { lx = st.x; ly = st.y; }
   }
   const colony = makeSettlement(world, lx + 0.5, ly + 0.5, {
     people: sh.people,
@@ -657,4 +875,7 @@ function foundColony(world, sh) {
   colony._overlordCC = sh.countryId;       // ...but a dependency of the founder (wired next polity pass)
   colony.wealth = sh.wealth || 0;
   colony._isColony = true;
+  // Same-pass basin claim (the gridAdd discipline, on basins): later landings
+  // this step must see this colony's market basin as taken.
+  if (T.LABEL_BIRTH >= 1 && world.popField) labelClaimBasin(world, lx, ly);
 }

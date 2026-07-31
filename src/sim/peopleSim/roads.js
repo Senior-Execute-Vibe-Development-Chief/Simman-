@@ -55,7 +55,7 @@ import { exportValueOf, getWealthReserve, techEff } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
-import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, IN_CARRY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { recordIn, recordOut, recordInMetered, recordOutMetered, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, IN_CARRY, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 import { TRADABLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_LUXURY } from "./goods.js";   // goods-vector Stage 2 (T.GOODS_TRADE) + the freight bulk table
 
 // Entrepôt share (0..1): how much of an entrepôt a hub is — port access (a harbour or
@@ -193,6 +193,22 @@ const PARTNER_DIST_PER    = 1.0;        // tiles per sqrt(pop)
 // random little settlements" artifact.
 const SEG_CAP_BASE        = 12;
 const SEG_CAP_LOGI        = 36;
+// The horizon above bounds a ROUTE, not a sight line — and the route that
+// actually gets painted is the A* line ON THE GROUND, which winds around
+// mountains, lakes and coasts and can run far longer than the straight
+// endpoint distance the planner measured. A maintained route tolerates only
+// modest winding beyond the direct line: surveyed historical land routes run
+// ~1.2–1.5× their great-circle distance (route "detour index" — passes,
+// fords and contour-following), and anything beyond that was never one
+// maintained line but a RELAY through intermediate places. So a candidate
+// route whose walked length exceeds the builder's horizon × this allowance
+// is rejected — the pair must connect through relays instead. NB what is
+// bounded is ABSOLUTE walked length against the tech horizon (walked ≤
+// horizon × allowance), not the pair's own detour ratio — a close pair may
+// still take a winding route so long as the whole walk stays inside 1.5×
+// what the builder's logistics can maintain. Dimensionless multiple of the
+// horizon (which already carries rNormPop), hence resolution-invariant.
+const PATH_WINDING_MAX    = 1.5;
 function partnerReachFor(world, s) {
   const k = s.knowledge || {};
   // Mobility (horses, wagons), navigation (ships) and CONSTRUCTION (the
@@ -315,20 +331,65 @@ const TOLL_CHOKE_W    = 3.0;    // …multiplied for a settlement that controls 
 const ROADS_TECH = TECH_IDX["roads"];      // the paving unlock the pave floor reads
 const RAIL_TECH  = TECH_IDX["railroad"];   // …and the rail-age unlock below it
 
-// Debug telemetry: the longest SINGLE build (one planned/linked route,
-// Euclidean endpoint distance in REFERENCE tiles) ever painted this run.
-// Write-only — probe_progression prints it to verify the segment cap; the
-// sim never reads it.
-function recordBuildSpan(world, a, b) {
+// Walked length of a contiguous 8-neighbour tile route, in RAW tiles
+// (orthogonal step 1, diagonal step √2): the on-the-ground length of the
+// line as surveyed, as opposed to the straight-line endpoint distance.
+// This is the quantity the logistics horizon must actually bound — A*
+// winds around mountains and coasts, so a route between endpoints inside
+// the horizon can still be far longer than the horizon on the ground.
+function pathWalkLength(world, tiles) {
+  const tw = world.tw;
+  let len = 0;
+  for (let i = 1; i < tiles.length; i++) {
+    // Consecutive route tiles differ by one 8-neighbour step: orthogonal
+    // (length 1) or diagonal (length √2). Classify via decoded Δx (wrapped
+    // across the longitude seam) — a step is diagonal exactly when both
+    // the row and the (wrapped) column change.
+    const a = tiles[i - 1], b = tiles[i];
+    const ay = (a / tw) | 0, by = (b / tw) | 0;
+    let dx = Math.abs((a - ay * tw) - (b - by * tw)); if (dx > tw / 2) dx = tw - dx;
+    len += (dx === 1 && ay !== by) ? SQRT2 : 1;
+  }
+  return len;
+}
+
+// Debug telemetry: the longest SINGLE build (one planned/linked route)
+// ever painted this run, in REFERENCE tiles — BOTH the Euclidean endpoint
+// distance (maxBuildSpan) and the walked length of the painted route
+// (maxBuildPathLen), which winding can push far beyond the endpoint span;
+// the path length is the quantity the horizon actually has to bound, and
+// the earlier endpoint-only telemetry is what let 6×-winding routes pass
+// three audits unseen. Relay-guard builds (the sanctioned over-cap
+// exception — see linkCloseNeighbours) are tallied separately
+// (kinGuardBuilds / maxGuardPathLen) so the rule and the exception stay
+// independently auditable. Write-only — probe scripts print these; the
+// sim never reads them.
+function recordBuildSpan(world, a, b, walkLenRaw, viaGuard) {
   if (!world.debug) return;
   const tw = world.tw;
   let dx = Math.abs(a.pos.x - b.pos.x); if (dx > tw / 2) dx = tw - dx;
   const dy = a.pos.y - b.pos.y;
-  const d = Math.sqrt(dx * dx + dy * dy) / rNormPop(world);
+  const rn = rNormPop(world);
+  const d = Math.sqrt(dx * dx + dy * dy) / rn;
   if (!(world.debug.maxBuildSpan >= d)) world.debug.maxBuildSpan = d;
+  if (walkLenRaw !== undefined) {
+    const pl = walkLenRaw / rn;
+    if (viaGuard) {
+      world.debug.kinGuardBuilds = (world.debug.kinGuardBuilds || 0) + 1;
+      if (!(world.debug.maxGuardPathLen >= pl)) world.debug.maxGuardPathLen = pl;
+    } else if (!(world.debug.maxBuildPathLen >= pl)) {
+      world.debug.maxBuildPathLen = pl;
+    }
+  }
 }
 
 export { QUALITY_NEW, QUALITY_MAX, TRACK_FLOOR, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
+// The trade-cost machinery, exported for the slave market's distance-priced
+// clearing (slavery.js): captives clear through the SAME audited sale path
+// and pay the SAME friction family (freight per path cost, per-hub tolls,
+// entrepôt brokerage, tariffs) every other consignment pays — one cost
+// model, no parallel physics.
+export { sellGoods, TRANSPORT_PER_PATHCOST, TOLL_RATE, TOLL_CHOKE_W, GT_BULK, entrepotShare, MinHeap };
 
 // ── State init ─────────────────────────────────────────────────────
 function ensureRoadArrays(world) {
@@ -747,23 +808,78 @@ function linkCloseNeighbours(world, s) {
   // an urban centre — the countryside is the popField, not an entity).
   // ×1 exactly at the 240-tile reference.
   const q = paintQualityFor(s);
-  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST * rNormPop(world), (peer, dAB2) => {
+  const rn = rNormPop(world);
+  // Kin paths obey the SAME physics as trunk routes: the walked line to a
+  // neighbour may not exceed min(the close-neighbour radius, the builder's
+  // own logistics horizon) × the winding allowance. The Euclidean radius
+  // already bounds WHO counts as close; this bounds the ROUTE — without it
+  // a path to a neighbour 12 ref-tiles away could legally wind an unbounded
+  // distance around mountains and gulfs, and those painted detours were the
+  // "continental path at tick 0" artifact (third report). Raw tiles: both
+  // terms carry ×rn, so the comparison is resolution-invariant.
+  const kinCapRaw = Math.min(CLOSE_NEIGHBOUR_DIST * rn, partnerReachFor(world, s)) * PATH_WINDING_MAX;
+  // Collect-then-sort (nearest first, id tiebreak) instead of acting inside
+  // the grid callback: the relay guard below needs to know how the WHOLE
+  // neighbourhood fared before it may fire.
+  const cands = [];
+  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST * rn, (peer, dAB2) => {
     if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
+    cands.push({ peer, dAB2 });
+  });
+  cands.sort((a, b) => (a.dAB2 - b.dAB2) || (a.peer.id - b.peer.id));
+  // hasLink: s demonstrably reaches SOMEBODY within the cap (a link painted
+  // now, or an existing within-cap route). fallback: the least-winding
+  // over-cap route found, kept for the relay guard.
+  let hasLink = false;
+  let fallback = null;
+  for (const { peer, dAB2 } of cands) {
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
     // Unconnected close neighbours are bridged for connectivity. ALREADY-connected
     // ones still get a DIRECT road when they are true mesh neighbours (a Gabriel
     // edge — no town between them), so a city links straight to its neighbour
     // instead of every trip detouring out to a trunk artery and back.
-    if (pc === myComp && !isGabrielEdge(world, s, peer, dAB2)) return;
+    if (pc === myComp && !isGabrielEdge(world, s, peer, dAB2)) continue;
     const path = findPath(world, s, peer, { noWater: true });
-    if (!path) return;
+    if (!path) continue;
+    const walk = pathWalkLength(world, path.tiles);
+    if (walk > kinCapRaw) {
+      // Too winding to maintain as a kin path — remember the least-bad
+      // route in case s would otherwise stand utterly alone (relay guard).
+      if (!fallback || walk < fallback.walk) fallback = { peer, path, walk };
+      continue;
+    }
     let didChange = false;
     for (const ti of path.tiles) if (paintRoad(world, ti, q)) didChange = true;
     if (didChange) {
       anyBuilt = true;
-      recordBuildSpan(world, s, peer);
+      recordBuildSpan(world, s, peer, walk);
     }
-  });
+    hasLink = true;   // a within-cap route exists (whether or not it was new paint)
+  }
+  // THE RELAY GUARD — the recorded trap (see the ×rNormPop note above): the
+  // last time effective kin reach was cut, the guaranteed city↔neighbour
+  // wiring found NOBODY and the early network never formed. A people is
+  // never voluntarily roadless: it always treads a path to its ONE nearest
+  // neighbour — that path IS the relay the horizon model assumes long-range
+  // trade flows through. So if s is in a singleton network component (no
+  // road links at all) and every close route was rejected as too winding,
+  // permit the single least-winding one regardless of the cap.
+  if (!hasLink && !anyBuilt && fallback) {
+    let isolated = true;
+    if (comp) {
+      for (const [id, root] of comp) {
+        if (id !== s.id && root === myComp) { isolated = false; break; }
+      }
+    }
+    if (isolated) {
+      let didChange = false;
+      for (const ti of fallback.path.tiles) if (paintRoad(world, ti, q)) didChange = true;
+      if (didChange) {
+        anyBuilt = true;
+        recordBuildSpan(world, s, fallback.peer, fallback.walk, true);
+      }
+    }
+  }
   return anyBuilt;
 }
 
@@ -854,6 +970,16 @@ function tryAddRoad(world, s) {
     if (connected) shortcutEvals++; else newEvals++;   // count cost even if null
     if (!path) continue;
 
+    // The logistics horizon caps the ROUTE AS WALKED, not just its
+    // endpoints: `reach` bounded which peers were considered (Euclidean),
+    // but the A* line to an in-horizon peer can wind far beyond the horizon
+    // on the ground. A route longer than the horizon × the winding
+    // allowance is beyond what this builder can survey and maintain as one
+    // segment — the pair trades via relay chains instead. (reach and the
+    // walked length are both in raw tiles at this grid, so the comparison
+    // is resolution-invariant.)
+    if (pathWalkLength(world, path.tiles) > reach * PATH_WINDING_MAX) continue;
+
     // New-tile fraction: how much of the path is NOT yet on a
     // road. Lower bar to bridge disconnected clusters; higher
     // bar to add a shortcut within an existing network.
@@ -919,7 +1045,7 @@ function tryAddRoad(world, s) {
     if (paintRoad(world, ti, paintQ)) didChange = true;
   }
   if (!didChange) return false;
-  recordBuildSpan(world, s, bestPartner);
+  recordBuildSpan(world, s, bestPartner, pathWalkLength(world, physicalTiles));
   return true;
 }
 
@@ -1215,8 +1341,14 @@ const GT_MIN_GAP  = 0.05;   // relative price gap below which a good doesn't mov
 const GT_GAP_CAP  = 2.0;    // flow-driving gap factor cap (a 3×+ gap ships no faster than 3× — carrying capacity binds first)
 const GT_FLOW_FRAC = 0.25;  // fraction of the seller's remaining surplus budget one route can take per unit gap (≈12 partners: a few strong-gap routes drain the budget, weak gaps nibble)
 const GT_OVERBUY  = 1.5;    // a buyer imports at most this multiple of its own shortfall (merchants overbuy a little; no bottomless hoards without re-export modelling)
-// Money channels per good index (book the crate on its own channel).
-const GT_BOOK_IN  = { [G_MATERIALS]: IN_MATERIALS,  [G_LUXURY]: IN_LUXURY  };
+// Money channels per good index (book the crate on its own channel). Every
+// craft rides its OWN income channel (money.js IN_ORE..IN_WARES) — with four
+// crafts lumped into IN_GOODS the income-ranking taxonomy was near-empty and
+// any thin channel (the slave trade) ranked top-3 by default (diagnosis §3).
+// The buy side stays bundled as generic imports: the visibility problem is
+// what a town LIVES ON, not what it shops for.
+const GT_BOOK_IN  = { [G_MATERIALS]: IN_MATERIALS,  [G_LUXURY]: IN_LUXURY,
+                      [G_ORE]: IN_ORE, [G_METAL]: IN_METAL, [G_CLOTH]: IN_CLOTH, [G_WARES]: IN_WARES };
 const GT_BOOK_OUT = { [G_MATERIALS]: OUT_MATERIALS, [G_LUXURY]: OUT_LUXURY };
 // VALUE-TO-WEIGHT (T.GOODS_FREIGHT — von Thünen): freight a coin's worth of
 // each good incurs, relative to the average consignment. Pre-modern freight
@@ -1428,8 +1560,16 @@ function customsCollector(world, seller, buyer) {
 // override the seller-mix booking split with an explicit channel pair — the
 // per-good path knows exactly what's in the crate; the scalar path (both
 // omitted) books by the seller's export fractions exactly as before.
-function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, numInter, bookIn, bookOut) {
+// Optional meterTicks (> 1): a SLOW-CADENCE caller (the slave market's
+// ~50-tick pass) meters every provenance booking of this sale over the ticks
+// the pass stands for (money.js recordInMetered — the Tier-A honest-rate
+// contract), so a lumped consignment reads as the steady flow it represents.
+// Coin still moves at once; only the display ledger is metered. Default 0 =
+// the per-tick recordIn path, byte-identical.
+function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, numInter, bookIn, bookOut, meterTicks = 0) {
   if (goodsValue <= 0) return 0;
+  const bookI = meterTicks > 1 ? (t, cat, amt) => recordInMetered(t, cat, amt, meterTicks) : recordIn;
+  const bookO = meterTicks > 1 ? (t, cat, amt) => recordOutMetered(t, cat, amt, meterTicks) : recordOut;
   // Each intermediate's toll scales with how much of a CROSSING it controls
   // (waterAccess — a ford, bridge, strait or port that trade must funnel through).
   let tollSum = 0, brokerSum = 0;
@@ -1491,9 +1631,9 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
     // Per-good booking (T.GOODS_TRADE): the crate's contents are known —
     // book the whole consignment on its own channel, freight to the
     // seller's shipping income as ever.
-    recordIn(seller, bookIn, paid);
-    if (freightPaid > 0) recordIn(seller, IN_GOODS, freightPaid);
-    recordOut(buyer, bookOut, paid);
+    bookI(seller, bookIn, paid);
+    if (freightPaid > 0) bookI(seller, IN_GOODS, freightPaid);
+    bookO(buyer, bookOut, paid);
   } else {
     const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0)
                      || (seller._exportFoodFrac || 0) >= T.FOOD_SELLER_FRAC;
@@ -1503,29 +1643,29 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
     const foodPaid = paid * foodFrac;
     const matPaid  = paid * matFrac;
     const goodsPaid = paid - foodPaid - matPaid;
-    recordIn(seller, IN_FOOD, foodPaid);
-    recordIn(seller, IN_MATERIALS, matPaid);
-    recordIn(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the seller's own shipping fee
-    recordOut(buyer, OUT_FOOD, foodPaid);
-    recordOut(buyer, OUT_MATERIALS, matPaid);
-    recordOut(buyer, OUT_GOODS, goodsPaid);
+    bookI(seller, IN_FOOD, foodPaid);
+    bookI(seller, IN_MATERIALS, matPaid);
+    bookI(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the seller's own shipping fee
+    bookO(buyer, OUT_FOOD, foodPaid);
+    bookO(buyer, OUT_MATERIALS, matPaid);
+    bookO(buyer, OUT_GOODS, goodsPaid);
   }
-  recordOut(buyer, OUT_TOLLS, (freight + totalToll + totalBroker) * scale);
+  bookO(buyer, OUT_TOLLS, (freight + totalToll + totalBroker) * scale);
   if (intermediates) {
     for (const inter of intermediates) {
       if (inter.mode !== "settled") continue;
       const tollPer = goodsValue * TOLL_RATE * (1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0)) * scale;
-      inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer);
+      inter.wealth = (inter.wealth || 0) + tollPer; bookI(inter, IN_TOLLS, tollPer);
       // Re-export brokerage: the great market hubs (high entrepôt share) capture a
       // margin on the goods' value — a coastal mart on a busy route reads as a
       // carrying-trade hub, a backwater ford as a mere toll post.
       const brokerPer = goodsValue * T.ENTREPOT_W * entrepotShare(inter) * scale;
-      if (brokerPer > 0) { inter.wealth += brokerPer; recordIn(inter, IN_CARRY, brokerPer); }
+      if (brokerPer > 0) { inter.wealth += brokerPer; bookI(inter, IN_CARRY, brokerPer); }
     }
   }
   // Customs duty funds the importing realm's STATE TREASURY (not the capital
   // city's purse) — the government then redistributes it (conquest.js).
-  if (collector) { govOf(world, buyer.countryId).treasury += tariff * scale; recordOut(buyer, OUT_TARIFFS, tariff * scale); }
+  if (collector) { govOf(world, buyer.countryId).treasury += tariff * scale; bookO(buyer, OUT_TARIFFS, tariff * scale); }
   // Conservation: buyer loses `actual` = goodsValue*scale + freight*scale (both
   // to the SELLER — goods price + carrying fee) + totalToll*scale (to the
   // intermediates) + tariff*scale (to the state). Nothing is burned in trade; the

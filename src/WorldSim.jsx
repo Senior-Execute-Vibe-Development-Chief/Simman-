@@ -21,7 +21,7 @@ import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning
 import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
 import { GOODS } from "./sim/peopleSim/goods.js";
-import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
+import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, techState, nextTechs } from "./sim/peopleSim/tech.js";
 import { TechTreeOverlay, ChronicleOverlay, DynastyOverlay, CHRON_COL, ERA_BG } from "./ui/documents.jsx";
 import { fmtPeople, fmtFood, fmtGoldKg, MiniChart, buildHistoryExport, Chip, PsKRow, PsSection } from "./ui/bits.jsx";
@@ -3216,7 +3216,13 @@ const renderInspect=()=>{
   // canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
   // gate (towns are spawned, not grown from regions), so progress is urban-only.
   const isRegion=(s.tier|0)===0;
-  const nextThr=isRegion?0:TIER_THRESHOLD[s.tier+1];
+  // Live tier bars (Tier-B rank tiers): town→city reads the world's cached
+  // cityBar (percentile-anchored, or the legacy relative bar), city→metro the
+  // floating metro bar; falls back to the static THRESHOLD before first tick.
+  const nextThr=isRegion?0:
+    s.tier===1?(psw._cityBar||TIER_THRESHOLD[2]):
+    s.tier===2?Math.max(TIER_THRESHOLD[3],(psw._topUrban||0)*0.8):
+    TIER_THRESHOLD[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   // s.people is the WHOLE PROVINCE (urban core + rural hinterland, summed over the
   // settlement's entire catchment). For an urban node, headline the CITY CORE
@@ -3253,13 +3259,16 @@ const renderInspect=()=>{
   // Water-access label.
   const wa=s.waterAccess||0;
   const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
-  // Food balance. surplus is the REAL flow balance — local production +
-  // smoothed imports − consumption. An import-fed city sits near 0 (it
-  // eats grain as fast as it arrives, so stored food stays low); that is
-  // "balanced", NOT starving. Only a genuine, uncovered shortfall that is
-  // actually draining the granary counts as starving.
+  // Food balance. surplus is the REAL flow balance — supply − consumption,
+  // where _foodSupply already contains hierarchy-delivered grain (via
+  // _foodNet); _foodImportRate is the display-only decomposition of that
+  // delivered share, so adding it here would double-count imports. An
+  // import-fed city sits near 0 (it eats grain as fast as it arrives, so
+  // stored food stays low); that is "balanced", NOT starving. Only a
+  // genuine, uncovered shortfall that is actually draining the granary
+  // counts as starving.
   const supply=s._foodSupply||0, demand=s._foodDemand||0, importRate=s._foodImportRate||0;
-  const surplus=(supply+importRate)-demand;
+  const surplus=supply-demand;
   const eps=Math.max(0.02,demand*0.02);
   const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
   let status,statusColor;
@@ -3280,7 +3289,15 @@ const renderInspect=()=>{
   const _xbTot=_xb.reduce((t,b)=>t+b.value,0)||1;
   const produces=_xb.filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
   const _goodsRate=(s._mInRate&&s._mInRate[IN_GOODS])||0;
-  const goodsBreakdown=_goodsRate>0.005
+  // The crafts book on their own channels now (money.js IN_ORE..IN_WARES via
+  // the per-good trade path), so they appear directly — honestly ranked — in
+  // the Gold in/out list above. The export-share ESTIMATE below only renders
+  // for the scalar-path world (no per-good channels carrying data), where the
+  // bundled "goods sold" channel is all there is to decompose.
+  const _craftRate=s._mInRate&&s._mInRate.length>IN_WARES
+    ? (s._mInRate[IN_ORE]||0)+(s._mInRate[IN_METAL]||0)+(s._mInRate[IN_CLOTH]||0)+(s._mInRate[IN_WARES]||0)
+    : 0;
+  const goodsBreakdown=(_goodsRate>0.005&&_craftRate<=0.005)
     ? _xb.map(b=>[b.label==="Baseline"?"Basic produce":b.label, _goodsRate*b.value/_xbTot])
          .filter(x=>x[1]>0.005).sort((a,b)=>b[1]-a[1])
     : [];
@@ -3770,18 +3787,30 @@ const renderInspect=()=>{
             </>}
           {/* ── Society & labour: economic archetype, craft specialty, coerced labour ── */}
           {(()=>{
-            const a=s._mInRate; let topIdx=-1,topV=0; if(a)for(let i=0;i<a.length;i++)if(a[i]>topV){topV=a[i];topIdx=i;}
+            // Archetypes ranked on ONE consistent basis: an income label fires only
+            // when its channel is BOTH the top income channel AND carries a real
+            // share of total income (ARCH_MIN_SHARE) — no channel gets first-check
+            // privilege (the old chain tested the slave trade first with no
+            // minimum, so any town whose thin top channel happened to be slaves
+            // read "Slaver city" ahead of everything else). Labour-STRUCTURE
+            // labels (plantation/latifundia/serfdom) are judged on their own
+            // labour thresholds, after the income labels.
+            const a=s._mInRate; let topIdx=-1,topV=0,totIn=0; if(a)for(let i=0;i<a.length;i++){totIn+=a[i];if(a[i]>topV){topV=a[i];topIdx=i;}}
             const unfree=Math.round(s._unfree||0),captives=Math.round(s._captives||0),serf=s._serf||0,cashFrac=s._cashFrac||0,estates=s._estates||0;
+            const ARCH_MIN_SHARE=0.25;   // an archetype is an economy the city LIVES ON — the channel must carry a quarter of its income
             let archetype=null;
-            if(topIdx===IN_SLAVE_TRADE)archetype="Slaver city — sells captives";
-            else if(topIdx===IN_PILGRIM)archetype="Holy city — lives on pilgrims";
-            else if(topIdx===IN_CARRY)archetype="Entrepôt — the carrying trade";
-            else if(topIdx===IN_FINANCE)archetype="Financier — lends to the crown";
-            else if(unfree>200&&cashFrac>0.2)archetype="Plantation economy";
-            else if(unfree>200&&topIdx===IN_MINING)archetype="Slave-worked mines";
-            else if(unfree>200&&estates>0.4)archetype="Latifundia — slave-gang estates";
-            else if(topIdx===IN_MINING)archetype="Mining town";
-            else if(serf>0.3)archetype="Serf estate";
+            if(totIn>0&&topV/totIn>=ARCH_MIN_SHARE){
+              if(topIdx===IN_SLAVE_TRADE)archetype="Slaver city — sells captives";
+              else if(topIdx===IN_PILGRIM)archetype="Holy city — lives on pilgrims";
+              else if(topIdx===IN_CARRY)archetype="Entrepôt — the carrying trade";
+              else if(topIdx===IN_FINANCE)archetype="Financier — lends to the crown";
+              else if(topIdx===IN_MINING)archetype=unfree>200?"Slave-worked mines":"Mining town";
+            }
+            if(!archetype){
+              if(unfree>200&&cashFrac>0.2)archetype="Plantation economy";
+              else if(unfree>200&&estates>0.4)archetype="Latifundia — slave-gang estates";
+              else if(serf>0.3)archetype="Serf estate";
+            }
             const spec=(s._specKey&&(s._specStr||0)>0.1)?[s._specKey,Math.round((s._specStr||0)*100)]:null;
             if(!archetype&&!spec&&unfree<50&&captives<50&&serf<0.1&&estates<0.15)return null;
             return(

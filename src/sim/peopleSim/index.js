@@ -8,7 +8,7 @@
 // from crystallisation, settler parties and overseas colonies.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL } from "./settlement.js";
+import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL, updateFishStocks, FISH_REGEN_INTERVAL } from "./settlement.js";
 import { aggregateFoodHierarchy } from "./foodHierarchy.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
@@ -32,7 +32,7 @@ const CLAIM_RELAX_FINE = 3;
 // one hop every few ticks instead of every tick cuts its cost ~this× for an imperceptible
 // change in how the border moves. (The field pass is ~half a tick if run every tick.)
 const CTRL_FIELD_STRIDE = 4;
-import { updatePolities } from "./conquest.js";
+import { updatePolities, resolveOrphanedMarches } from "./conquest.js";
 import { musterArmies, advanceFronts, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
@@ -155,6 +155,7 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step === 1 || world.step % _terrIvl === 0) {
       computeTerritory(world);          // per-settlement food catchments (economy)
       computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
+      resolveOrphanedMarches(world);    // T.SUCCESSOR_STATES: shed marches resolve (restore → secede → witnessed lapse) BEFORE the derivation reads the ground
       adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
       nucleateFrontierStates(world);    // primary state formation: a developed stateless frontier cluster mints a NEW country
     }
@@ -242,6 +243,11 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step % SEA_INTERVAL === 7 % SEA_INTERVAL) updateSea(world);
     mark("sea");
     if (_at(SOIL_INTERVAL, 11)) updateSoil(world);   // rate pass: fatigue accrual per unit of HISTORY
+    // Coastal fish-stock regrowth (T.FISH_LABOR): exact logistic step, amortized.
+    // Plain tick modulo (NOT granularity-stretched): the drawdown in updateFood is
+    // a per-tick food flow like the rest of the granary ledger, so regrowth must
+    // share the same clock — and the exact step is interval-invariant anyway.
+    if (world.step % FISH_REGEN_INTERVAL === 13 % FISH_REGEN_INTERVAL) updateFishStocks(world);
     mark("soil");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
