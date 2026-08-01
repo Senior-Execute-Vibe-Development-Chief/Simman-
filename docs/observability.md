@@ -392,6 +392,55 @@ was complete *within an assumed shape* and blind to everything outside it. That 
 standing lesson for whoever extends this next: the question is never "did I walk all
 the fields?" but **"what shape am I assuming, and what lives outside it?"**
 
+## `npm run spread` — does this finding generalise, or is it one seed?
+
+`observe`, `trace` and `why` all report ONE seed. This session produced a run of strong
+claims on seed 8817 alone — no realm has ever ended, no province has ever seceded, only
+0.5% of attacks fail on strength, the tributary tree is flat — and not one carried an
+error bar. `abtest` has been multi-seed since it was written, for the reason in its own
+header (*"single-seed A/B is how you ship noise as a finding"*), but the identical
+hazard applies to every single-seed OBSERVATION and nothing was checking it.
+
+    npm run spread
+    node tools/spread.mjs --seeds=8817,31337,4242,7777 --steps=9000
+    node tools/spread.mjs --W=960 --grep=life,graph.vassal
+    node tools/spread.mjs --unstable          # rank by cross-seed variability
+
+Per metric: median, min, max, coefficient of variation, and a **verdict** — because the
+point is telling a reader whether a single-seed claim is safe, not handing them a
+number to interpret. `invariant` / `INVARIANT ZERO` (identical on every seed) /
+`stable` (CV < 0.10) / `varies` (< 0.35) / `UNSAFE 1-seed`.
+
+**Funnels are included and never averaged.** Three of this session's headline findings
+were funnel zeros, and a zero is the easiest result in this repo to over-read.
+`0/0/0/0` and `0/0/0/7` mean completely different things; a mean of 1.75 hides which
+one you have.
+
+### What it confirmed, and what it demolished
+
+Four seeds, 9,000 steps, reference grid:
+
+| claim | verdict |
+|---|---|
+| `life.polity.died` = 0 | **INVARIANT ZERO** — holds on every seed |
+| `life.faith.died` = 0 | **INVARIANT ZERO** |
+| `life.culture.died` = 0 | **INVARIANT ZERO** |
+| `secede` never fires | **0/0/0/0 passed** on 191/155/40/19 candidates |
+| `_tradeReach.size` = 12 (p50 *and* max) | **invariant** — the cap binds on every world |
+| `graph.vassal.depthMax` = 1 (flat tree) | **UNSAFE** — runs 0–2, CV 0.71 |
+| `graph.vassal.blocLandPct` | **UNSAFE** — 0–13.8%, CV 0.62 |
+| `life.dynasty.died` | **UNSAFE** — 2–12, CV 0.65 |
+
+So the load-bearing findings survive — *nothing dies, nothing secedes, trade is capped
+at exactly 12* — and one of the tidier ones does not. **16.5% of the 5,053-metric map
+cannot be honestly quoted from a single run.**
+
+The retraction is the point. This document previously concluded that the
+cycle-detection code in `considerSubmissions` "cannot currently fire", reasoning from
+`depthMax = 1` on seed 8817. Other seeds reach depth 2. A structural claim about a
+mechanism needs a far stronger basis than a distributional one, and until this tool
+existed neither had any basis at all beyond a single run.
+
 ## `npm run coverage` — does the collector see the whole world?
 
 The three shape misses above were each found by hand-writing a throwaway enumeration
@@ -581,13 +630,20 @@ chronicle read (below) showed is this sim's *primary* consolidation channel.
 Readable as `node tools/observe.mjs --section=graph`.
 
 **What it said on its first run** (app grid, seed 8817, step 12000, 33 realms):
-`vassal.depthMax` **1.00** and `subvassalPct` **0.0%** — the tributary tree is
-completely **flat**. No vassal ever acquires a vassal, though `considerSubmissions`
-explicitly permits pyramids ("tribute pyramids — a vassal of a vassal — are fine; loops
-aren't") and spends code on cycle detection that can therefore never fire. `liege.depthMax`
-is likewise 1: the settlement hierarchy is one level everywhere. And
-`realmnet.components` **16** across 33 realms, largest cluster only **37.5%** — the map
-is not one political world with gaps in it, it is sixteen.
+`vassal.depthMax` **1.00** and `subvassalPct` **0.0%** — a flat tributary tree, no
+vassal ever acquiring a vassal. `liege.depthMax` likewise 1. And `realmnet.components`
+**16** across 33 realms, largest cluster only **37.5%** — the map is not one political
+world with gaps in it, it is sixteen.
+
+> **⚠ Partly retracted by `npm run spread`.** The flat-tree reading was a SINGLE-SEED
+> result and does not generalise: across four seeds at 9,000 steps `vassal.depthMax`
+> runs 0–2 (median 1, CV 0.71 — **UNSAFE from one seed**), so sub-vassals *do* form on
+> some worlds. An earlier version of this document went further and concluded the
+> cycle-detection code in `considerSubmissions` "cannot currently fire"; that inference
+> was wrong, built on one seed's zero. `blocLandPct` is equally seed-dependent
+> (0–13.8%). Kept here rather than deleted, because the mistake is the lesson: a
+> structural claim ("the mechanism is unreachable") needs a much stronger basis than a
+> distributional one, and neither had an error bar until `spread` existed.
 
 `provenance(world)` returns commit, whether `src/` is dirty, seed, grid, step and the
 **lever diff against shipped defaults**. `observe` now prints it as the first block: a
@@ -759,9 +815,10 @@ deterrence), never to "the roll failed" — the same rule `crystallize.js` uses.
 (the suzerain must be 5× the statelet's whole network) takes three quarters of all
 candidates; projection reach takes 2.7% and identity 1.5%. `coalitionBrake` — a whole
 deterrence mechanism, with a lever behind it — **rejected zero candidates in 12,000
-steps**. So did `cycleWouldForm`, which is consistent with `graph.vassal.depthMax = 1`:
-the tree never gets deep enough for a loop to be possible, and the cycle-detection code
-in `considerSubmissions` cannot currently fire.
+steps**, and so did `cycleWouldForm`. On this seed the tributary tree never gets deep
+enough for a loop to be possible — but see the retraction above: `vassal.depthMax`
+reaches 2 on other seeds, so "the cycle-detection code cannot fire" was an
+over-reading of one run, not a property of the mechanism.
 
 **`attack`** — WAR INITIATION, the gate a front opening (and therefore a `war.began`)
 rests on. `armies.js` had only the bespoke `WDBG` structure here: opt-in, shaped for
@@ -923,9 +980,10 @@ see what was already tried.
   Absent: the food passes, faith/culture birth, colony founding. Migration is
   deliberately excluded — it is continuous field flow, not a candidate/reject decision,
   so a funnel is the wrong instrument and it needs its own.
-* **Observe and trace are single-seed**, so a finding from either has no error bar.
-  Only `abtest` is multi-seed by default, and cross-seed spread was measurably large
-  enough this month to flip a sign (0.57 vs 1.09 on the same ratio).
+* ~~Observe and trace are single-seed~~ — **fixed**: `npm run spread` (below) puts an
+  error bar on every metric and every funnel. `observe`, `trace` and `why` are still
+  single-seed themselves; `spread` is the instrument you reach for before quoting one
+  of their numbers as a finding.
 * ~~No metric carries its own sample size~~ — **fixed**: `dist()` emits `.n` on every
   distribution. Found by being misled by this suite's own output: the 15.7× cross-grid
   dynasty lifespan above looked like a result until you saw it rested on 3 and 6

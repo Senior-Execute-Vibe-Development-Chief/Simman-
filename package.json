@@ -12,6 +12,7 @@
     "validate": "node tools/stylized.mjs",
     "resgate": "node tools/resgate.mjs",
     "coverage": "node tools/coverage.mjs",
+    "spread": "node tools/spread.mjs",
     "observe": "node tools/observe.mjs",
     "abtest": "node tools/abtest.mjs",
     "bisect": "node tools/bisect.mjs",
