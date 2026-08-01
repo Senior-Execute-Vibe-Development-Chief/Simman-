@@ -281,12 +281,12 @@ function snapshot(w) {
     H("LIFECYCLE — births, deaths, survival");
     const L = lifecycleOf(w);
     const v = (k, d = 0) => (L[k] === undefined ? "—" : L[k].toFixed(d));
-    console.log(`    ${"class".padEnd(9)}${"born".padStart(7)}${"died".padStart(7)}${"alive".padStart(7)}${"turnover".padStart(10)}${"lifespan p50".padStart(14)}${"max".padStart(8)}${"age p50".padStart(9)}${"surv 1k".padStart(9)}${"4k".padStart(7)}${"16k".padStart(7)}${"retained".padStart(10)}`);
+    console.log(`    ${"class".padEnd(9)}${"born".padStart(7)}${"endedNow".padStart(9)}${"alive".padStart(7)}${"turnover".padStart(10)}${"lifespan p50".padStart(14)}${"max".padStart(8)}${"age p50".padStart(9)}${"surv 1k".padStart(9)}${"4k".padStart(7)}${"16k".padStart(7)}${"retained".padStart(10)}`);
     for (const c of ["polity", "faith", "dynasty", "culture", "lang", "person"]) {
       if (L[`${c}.born`] === undefined) continue;
-      console.log(`    ${c.padEnd(9)}${v(`${c}.born`).padStart(7)}${v(`${c}.died`).padStart(7)}${v(`${c}.alive`).padStart(7)}${(v(`${c}.turnoverPct`, 1) + "%").padStart(10)}${v(`${c}.lifespan.p50`).padStart(14)}${v(`${c}.lifespan.max`).padStart(8)}${v(`${c}.age.p50`).padStart(9)}${v(`${c}.survival1k`, 0).padStart(9)}${v(`${c}.survival4k`, 0).padStart(7)}${v(`${c}.survival16k`, 0).padStart(7)}${(L[`${c}.retainedPct`] === undefined ? "—" : v(`${c}.retainedPct`, 0) + "%").padStart(10)}`);
+      console.log(`    ${c.padEnd(9)}${v(`${c}.born`).padStart(7)}${v(`${c}.endedNow`).padStart(9)}${v(`${c}.alive`).padStart(7)}${(v(`${c}.turnoverPct`, 1) + "%").padStart(10)}${v(`${c}.lifespan.p50`).padStart(14)}${v(`${c}.lifespan.max`).padStart(8)}${v(`${c}.age.p50`).padStart(9)}${v(`${c}.survival1k`, 0).padStart(9)}${v(`${c}.survival4k`, 0).padStart(7)}${v(`${c}.survival16k`, 0).padStart(7)}${(L[`${c}.retainedPct`] === undefined ? "—" : v(`${c}.retainedPct`, 0) + "%").padStart(10)}`);
     }
-    // `died` is a STATE (records currently marked ended) and restoration clears it,
+    // `endedNow` is a STATE (records currently marked ended); restoration clears it,
     // so it must never be read as "deaths ever" — that mistake made a world with real
     // realm deaths report as immortal for most of a session. endedEver is the
     // cumulative count from the chronicle.
@@ -294,10 +294,10 @@ function snapshot(w) {
       `   restoredEver ${v("polity.restoredEver")}   diedThenRestored ${v("polity.diedThenRestored")}` +
       `   faith.endedEver ${v("faith.endedEver")}   dynasty.endedEver ${v("dynasty.endedEver")}`);
     const immortal = ["polity", "faith", "culture", "lang", "dynasty"]
-      .filter(c => L[`${c}.born`] > 0 && L[`${c}.died`] === 0 && !(L[`${c}.endedEver`] > 0));
+      .filter(c => L[`${c}.born`] > 0 && L[`${c}.endedNow`] === 0 && !(L[`${c}.endedEver`] > 0));
     if (immortal.length) console.log(`    ⚠ NOTHING HAS EVER DIED in: ${immortal.join(", ")} — no completed lifespan exists to measure.`);
     if (L["polity.diedThenRestored"] > 0)
-      console.log(`    ⚠ ${v("polity.diedThenRestored")} realm death(s) are INVISIBLE in polity.died — restoration cleared endedStep. Read endedEver.`);
+      console.log(`    ⚠ ${v("polity.diedThenRestored")} realm death(s) are INVISIBLE in polity.endedNow — restoration cleared endedStep. Read endedEver.`);
     console.log(`    (lifespans in STEPS. retained% = share of ever-minted records still held; "—" = the class has no`);
     console.log(`     monotone id counter, so retention is not computable and no number is invented.)`);
     out.life = L;

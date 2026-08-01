@@ -516,7 +516,12 @@ export function lifecycleOf(world) {
       else ages.push(world.step - b);
     }
     g[`${name}.born`] = lifespans.length + ages.length;
-    g[`${name}.died`] = lifespans.length;
+    // NAMED `endedNow`, NOT `died`, and that is the whole lesson of this block: it
+    // counts records CURRENTLY marked ended, and restoration clears the flag. Called
+    // `died` it read as a death toll, went 0 while two realms had fallen and been
+    // restored, and carried a wrong headline finding for a session. A metric's name
+    // is a CLAIM about what it answers; make the claim the metric can keep.
+    g[`${name}.endedNow`] = lifespans.length;
     g[`${name}.alive`] = ages.length;
     g[`${name}.turnoverPct`] = (lifespans.length + ages.length)
       ? 100 * lifespans.length / (lifespans.length + ages.length) : 0;

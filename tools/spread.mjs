@@ -98,8 +98,9 @@ if (GREP.length) {
 } else {
   // The claims this session actually made, each with its error bar.
   const HEADLINE = ["realm.count", "realm.areaKm2.p50", "realm.claimedPct", "pop.field",
-    "entity.settled", "life.polity.born", "life.polity.died", "life.faith.died",
-    "life.culture.died", "life.dynasty.died", "life.dynasty.lifespan.n",
+    "entity.settled", "life.polity.born", "life.polity.endedNow", "life.polity.endedEver",
+    "life.faith.endedNow", "life.culture.endedNow", "life.dynasty.endedNow",
+    "life.dynasty.endedEver", "life.dynasty.lifespan.n",
     "graph.vassal.bonds", "graph.vassal.depthMax", "graph.vassal.blocLandPct",
     "event.settlement.captured", "event.settlement.annexed", "event.polity.submitted",
     "event.war.began", "sett._tradeReach.size.p50", "sett._tradeReach.size.max"];

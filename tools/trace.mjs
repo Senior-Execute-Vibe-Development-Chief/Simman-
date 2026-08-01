@@ -39,6 +39,7 @@ const has = (k) => process.argv.includes(`--${k}`);
 const W = +arg("W", 480), STEPS = +arg("steps", 12000), EVERY = +arg("every", 1000), SEED = +arg("seed", 8817);
 const OUT = arg("out", null), UNSTABLE = has("unstable"), TOP = +arg("top", 25);
 const OUT_ENT = arg("out-entities", null), ENTITY = arg("entity", null);
+const MONOTONE = has("monotone");
 const WATCH = (arg("watch", "realm.count,realm.areaKm2.p50,realm.claimedPct,pop.field,pop.census,entity.settled,shape.isolatedPct,shape.compact.p50,drawn.claimedPct,nation._dominance.max") || "").split(",").filter(Boolean);
 
 const yr = (s) => { const y = Math.round(stepToYear(s)); return y < 0 ? `${-y}BC` : `${y}AD`; };
@@ -118,6 +119,104 @@ if (UNSTABLE) {
     for (let i = 0; i < rows.length; i += step) cells.push(`${yr(rows[i].step)}:${fmt(s.v[i])}`);
     console.log(`      ${cells.join("  ")}`);
   }
+}
+
+// ── MONOTONICITY — the error class `coverage` and `spread` both structurally miss ──
+//
+// Coverage proves every value is measured. Spread proves a value is stable across
+// seeds. NEITHER can tell you a metric answers the question its name implies, and
+// that is the error that actually cost this session: `life.polity.died` was measured,
+// was reachable, was invariant-zero on four seeds — and counted records CURRENTLY
+// marked dead rather than deaths ever, because restoration clears the flag. Realms
+// were dying and the map said none had.
+//
+// It was caught by accident, and only because the number went 0 → 1 → 0 across
+// checkpoints. That is the signature, and it is checkable: A COUNT OF THINGS THAT
+// HAVE HAPPENED CANNOT DECREASE. Any metric whose name asserts a cumulative history
+// and whose value ever falls is either measuring a state in a counter's clothing, or
+// has a reset in it.
+//
+// Two detectors, because a name is a claim and a shape is evidence:
+//   BY NAME   — `event.*`, `.born`, `.died`, `.endedEver`, the id counters. A decrease
+//               here is a defect unless the event log pruned (which it does at 200k,
+//               visibly, via count.events — so that case is recognised, not guessed).
+//   BY SHAPE  — rises overall, falls rarely. A counter with a reset in it looks like
+//               this whatever it is called, so this arm catches metrics whose names
+//               make no promise at all.
+if (MONOTONE) {
+  const CLAIMS_CUMULATIVE = (k) =>
+    k.startsWith("event.") ||
+    /\.(born|died|endedEver|restoredEver|diedThenRestored)$/.test(k) ||
+    /^world\._next[A-Za-z]+Id$/.test(k);
+  // The event log prunes at EVENT_CAP (events.js) and that legitimately drops every
+  // event.* count at once. Recognised by the live log shrinking at the same
+  // checkpoint, so a long run does not fail the gate for documented behaviour.
+  const evLen = rows.map(r => r.m["count.events"] ?? 0);
+  const prunedAt = new Set();
+  for (let i = 1; i < evLen.length; i++) if (evLen[i] < evLen[i - 1]) prunedAt.add(i);
+
+  const byName = [], byShape = [];
+  for (const k of keys) {
+    const v = rows.map(r => r.m[k] ?? 0);
+    let ups = 0, downs = 0, firstDrop = -1, unexplained = 0;
+    for (let i = 1; i < v.length; i++) {
+      if (v[i] > v[i - 1]) ups++;
+      else if (v[i] < v[i - 1]) {
+        downs++; if (firstDrop < 0) firstDrop = i;
+        if (!(k.startsWith("event.") && prunedAt.has(i))) unexplained++;
+      }
+    }
+    if (!downs) continue;
+    if (CLAIMS_CUMULATIVE(k) && unexplained > 0) {
+      byName.push({ k, downs: unexplained, at: rows[firstDrop].step, from: v[firstDrop - 1], to: v[firstDrop] });
+      continue;
+    }
+    // Shape arm — and the first version of this was useless, which is worth recording:
+    // "rises overall, drops occasionally" flagged 998 metrics, because that describes
+    // almost every growing stock in a growing world. Noise at that volume is not a
+    // weak signal, it is an ignored report.
+    //
+    // The signature that actually matters is a RESET: the value falls back to a level
+    // it had already left behind, then climbs again. `life.polity.died` ran 0,0,1,0 —
+    // it returned to its own baseline. A population or a tile count dips, but a dip
+    // rarely erases every gain since the start of the run.
+    if (CLAIMS_CUMULATIVE(k) || ups < 2) continue;
+    // Counters are INTEGERS. Requiring that alone removes every mean, percentile and
+    // ratio in the map — which is most of the noise, since a float that wobbles is a
+    // measurement, not a tally.
+    if (!v.every(Number.isInteger)) continue;
+    // A reset is not merely "fell": it is "rose above where it started, then came
+    // back to it". The first version tested against the running MINIMUM, which at the
+    // second checkpoint IS the starting value — so any early dip qualified and 632
+    // metrics were flagged. Track the peak instead.
+    let peak = v[0], resetAt = -1;
+    for (let i = 1; i < v.length; i++) {
+      if (v[i] > peak) peak = v[i];
+      if (peak > v[0] && v[i] < v[i - 1] && v[i] <= v[0]) { resetAt = i; break; }
+    }
+    if (resetAt > 0)
+      byShape.push({ k, ups, downs, at: rows[resetAt].step, from: v[resetAt - 1], to: v[resetAt] });
+  }
+
+  console.log(`\n  MONOTONICITY — a count of things that have happened cannot decrease`);
+  if (byName.length) {
+    console.log(`\n  ✗ ${byName.length} metric(s) NAME a cumulative history and decreased:`);
+    for (const r of byName.sort((a, b) => a.k.localeCompare(b.k)))
+      console.log(`      ${r.k.padEnd(38)}${fmt(r.from).padStart(10)} → ${fmt(r.to).padStart(10)}  at step ${r.at}  (${r.downs} drop${r.downs > 1 ? "s" : ""})`);
+    console.log(`\n    Each is either a STATE wearing a counter's name — measure the history`);
+    console.log(`    separately, as life.*.endedEver does — or a genuine reset to find.`);
+  } else console.log(`  ✓ no metric that names a cumulative history ever decreased`);
+
+  if (byShape.length) {
+    console.log(`\n  ⚠ ${byShape.length} metric(s) rose, then fell back to their own baseline — reset-shaped, review:`);
+    for (const r of byShape.sort((a, b) => b.ups - a.ups).slice(0, TOP))
+      console.log(`      ${r.k.padEnd(38)}${String(r.ups).padStart(4)}↑${String(r.downs).padStart(4)}↓   ${fmt(r.from)} → ${fmt(r.to)} at ${r.at}`);
+    if (byShape.length > TOP) console.log(`      … ${byShape.length - TOP} more`);
+    console.log(`    (Not a failure — a real stock can be spent back to nothing. The arm exists`);
+    console.log(`     because the death bug's NAME promised nothing; only its shape gave it away.)`);
+  }
+  if (prunedAt.size) console.log(`\n    note: the event log pruned at ${prunedAt.size} checkpoint(s); event.* drops there are expected and excluded.`);
+  if (byName.length) { console.log(""); process.exitCode = 1; }
 }
 
 // ── ARCS — the shape of ONE realm's life, which no aggregate can carry ───────

@@ -422,14 +422,14 @@ Four seeds, 9,000 steps, reference grid:
 
 | claim | verdict |
 |---|---|
-| `life.polity.died` = 0 | **INVARIANT ZERO** — but see the warning above: this metric was measuring the wrong quantity, and `event.polity.ended` is non-zero. `spread` faithfully confirmed a zero that did not mean what it appeared to. |
-| `life.faith.died` = 0 | **INVARIANT ZERO** (and `faith.endedEver` = 0 too — this one is real) |
-| `life.culture.died` = 0 | **INVARIANT ZERO** (no death event exists for cultures at all) |
+| `life.polity.endedNow` = 0 | **INVARIANT ZERO** — but see the warning above: this metric was measuring the wrong quantity, and `event.polity.ended` is non-zero. `spread` faithfully confirmed a zero that did not mean what it appeared to. |
+| `life.faith.endedNow` = 0 | **INVARIANT ZERO** (and `faith.endedEver` = 0 too — this one is real) |
+| `life.culture.endedNow` = 0 | **INVARIANT ZERO** (no death event exists for cultures at all) |
 | `secede` never fires | **0/0/0/0 passed** on 191/155/40/19 candidates |
 | `_tradeReach.size` = 12 (p50 *and* max) | **invariant** — the cap binds on every world |
 | `graph.vassal.depthMax` = 1 (flat tree) | **UNSAFE** — runs 0–2, CV 0.71 |
 | `graph.vassal.blocLandPct` | **UNSAFE** — 0–13.8%, CV 0.62 |
-| `life.dynasty.died` | **UNSAFE** — 2–12, CV 0.65 |
+| `life.dynasty.endedNow` | **UNSAFE** — 2–12, CV 0.65 |
 
 Note what `spread` could and could not do here. It correctly reported that
 `life.polity.died = 0` on every seed — the metric *is* invariant. Cross-seed agreement
@@ -445,6 +445,56 @@ cycle-detection code in `considerSubmissions` "cannot currently fire", reasoning
 `depthMax = 1` on seed 8817. Other seeds reach depth 2. A structural claim about a
 mechanism needs a far stronger basis than a distributional one, and until this tool
 existed neither had any basis at all beyond a single run.
+
+## `npm run monotone` — the error class the other two gates structurally miss
+
+`coverage` proves every value is measured. `spread` proves a value is stable across
+seeds. **Neither can tell you a metric answers the question its name implies**, and
+that is the error that actually cost this session. `life.polity.endedNow` was measured, was
+reachable, was invariant-zero on four seeds — and counted records *currently* marked
+dead rather than deaths ever, because restoration clears the flag. Realms were dying
+and the map said none had.
+
+It was caught by accident, and only because the number went 0 → 1 → 0 across
+checkpoints. **That is a checkable signature: a count of things that have happened
+cannot decrease.**
+
+    npm run monotone
+    node tools/trace.mjs --monotone --steps=12000 --every=1000 --W=960
+
+Two arms, because a name is a *claim* and a shape is *evidence*:
+
+* **By name** — `event.*`, `.born`, `.endedEver`, `.restoredEver`, the `_next<Class>Id`
+  counters. Any decrease is a defect **unless the event log pruned**, which it does at
+  200k and visibly (`count.events` falls at the same checkpoint), so that case is
+  recognised rather than guessed at. This arm is the gate: it exits non-zero.
+* **By shape** — rose above its own starting value, then fell back to it. A counter
+  with a reset looks like this whatever it is called, which matters because the death
+  bug's name promised nothing. Advisory, not a failure.
+
+### Both arms had to be built twice
+
+The first shape detector flagged **998 metrics** — "rises overall, drops occasionally"
+describes almost every growing stock in a growing world. Noise at that volume is not a
+weak signal, it is an ignored report. The second attempt tested against the running
+*minimum*, which at the second checkpoint **is** the starting value, so any early dip
+qualified: still 632. What works is requiring integer values (a float that wobbles is a
+measurement, not a tally) and a genuine round trip — rose above baseline, came back to
+it. That lands at 58, which is reviewable.
+
+### The fix was to rename the metric, not to annotate around it
+
+Run against the pre-fix collector the gate catches the original bug exactly:
+
+    ✗ 1 metric(s) NAME a cumulative history and decreased:
+        life.polity.died      1.0 → 0.0000  at step 10000
+
+But it kept firing *after* the fix, because `.died` still legitimately decreases — it
+is a state. A gate that fails forever on documented behaviour is a broken gate, and the
+tempting repair is an exceptions list. That would have been wrong: **the name was the
+defect.** The metric is now `life.<class>.endedNow` — records currently marked ended,
+a name that makes no claim it cannot keep — beside `life.<class>.endedEver`, the
+history. The gate passes because the promise and the measurement finally agree.
 
 ## `npm run coverage` — does the collector see the whole world?
 
@@ -566,7 +616,7 @@ died at all.
 
 Measured at the app grid, 12,000 steps:
 
-| seed | `event.polity.ended` (ever) | `polity.restored` | `life.polity.died` |
+| seed | `event.polity.ended` (ever) | `polity.restored` | `life.polity.endedNow` |
 |---|---|---|---|
 | 8817 | **2** | 2 | **0** |
 | 31337 | 1 | 0 | 1 |
@@ -939,7 +989,7 @@ ever conquered": it is not that armies cannot win, it is that they are talked ou
 starting. `outmatched` is broken out separately for exactly this reason — being
 deterred and being outgunned need opposite fixes and were previously the same number.
 
-**`secede`** — why a province does NOT break away. Wired because `life.polity.died`
+**`secede`** — why a province does NOT break away. Wired because `life.polity.endedNow`
 reads 0 at both grids: no realm has ever ended, and shedding provinces is the channel
 by which one could. App grid, 9,000 steps:
 
