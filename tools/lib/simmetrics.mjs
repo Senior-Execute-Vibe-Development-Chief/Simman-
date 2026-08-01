@@ -245,7 +245,14 @@ export function realmRows(world) {
     const tiles = held.get(cid) || 0;
     rows.push({ id: cid, name: p?.name || `#${cid}`, tiles, km2: tiles * km2, people, wealth,
       members: (c.members || []).length, power: world._countryPow?.get(cid) || 0,
-      foundedStep: p?.foundedStep ?? -1, overlord: p?._overlord ?? -1 });
+      foundedStep: p?.foundedStep ?? -1, overlord: p?._overlord ?? -1,
+      // ADMINISTRATIVE STRAIN — load ÷ capacity, the quantity that decides whether a
+      // realm sheds its frontier. Added because the question "why do the largest
+      // realms plateau instead of shattering?" could not be answered from an entity
+      // trace that recorded only size: strain is the mechanism, area is the symptom,
+      // and the two had to be joined by hand from a separate run.
+      strain: p?._strain ?? -1, capacity: c._capacity ?? -1,
+      loadTotal: c._loadTotal ?? -1, momentum: c._momentum ?? 0 });
   }
   rows.sort((a, b) => b.tiles - a.tiles);
   return rows;

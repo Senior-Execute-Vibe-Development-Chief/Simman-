@@ -68,7 +68,8 @@ for (let t = EVERY; t <= STEPS; t += EVERY) {
   for (const r of realmRows(world)) {
     let a = series.get(r.id); if (!a) series.set(r.id, a = { name: r.name, pts: [] });
     a.name = r.name;                     // realms are renamed on succession — keep the latest
-    a.pts.push({ step: t, tiles: r.tiles, km2: r.km2, people: r.people, wealth: r.wealth, power: r.power });
+    a.pts.push({ step: t, tiles: r.tiles, km2: r.km2, people: r.people, wealth: r.wealth, power: r.power,
+      members: r.members, strain: r.strain, capacity: r.capacity, momentum: r.momentum });
   }
   process.stdout.write(`\r  ${t}/${STEPS}   `);
 }
@@ -276,10 +277,10 @@ if (ENTITY) {
 }
 
 if (OUT_ENT) {
-  const head = ["step", "year", "id", "name", "tiles", "km2", "people", "wealth", "power"].join(",");
+  const head = ["step", "year", "id", "name", "tiles", "km2", "people", "wealth", "power", "members", "strain", "capacity", "momentum"].join(",");
   const body = [];
   for (const [id, s] of series) for (const q of s.pts)
-    body.push([q.step, Math.round(stepToYear(q.step)), id, JSON.stringify(s.name), q.tiles, q.km2, q.people, q.wealth, q.power].join(","));
+    body.push([q.step, Math.round(stepToYear(q.step)), id, JSON.stringify(s.name), q.tiles, q.km2, q.people, q.wealth, q.power, q.members, q.strain, q.capacity, q.momentum].join(","));
   writeFileSync(OUT_ENT, head + "\n" + body.join("\n") + "\n");
   console.log(`\n[trace] ${body.length} entity-checkpoint rows → ${OUT_ENT}`);
 }
