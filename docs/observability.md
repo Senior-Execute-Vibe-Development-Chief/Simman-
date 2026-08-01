@@ -763,9 +763,63 @@ steps**. So did `cycleWouldForm`, which is consistent with `graph.vassal.depthMa
 the tree never gets deep enough for a loop to be possible, and the cycle-detection code
 in `considerSubmissions` cannot currently fire.
 
-Not yet wired: war INITIATION (`armies.js` still uses its own bespoke `WDBG` counters
-and should be migrated onto this layer), the food/trade passes, secession, and
-migration.
+**`attack`** — WAR INITIATION, the gate a front opening (and therefore a `war.began`)
+rests on. `armies.js` had only the bespoke `WDBG` structure here: opt-in, shaped for
+one probe, speaking a different language from every other funnel. The bar is a PRODUCT
+of six brakes over raw defence, so the binding term is the **largest multiplier above
+1** — the opposite of `crystallize.js`, where the terms are probabilities and the
+smallest binds. Same rule underneath: name the constraint that did the work. App grid,
+9,000 steps, 3,079 candidates:
+
+    warWeariness              1241   40.3%
+    ✓ PASSED                   949   30.8%
+    coalitionDeterrence        633   20.6%
+    tradePeace                 200    6.5%
+    aggressionTemperament       21    0.7%
+    noCasusBelli                20    0.6%
+    outmatched(noBrakeBinding)  15    0.5%
+
+**Only 0.5% of attacks fail because the attacker is too weak.** Ninety-nine and a half
+percent of rejections are DETERRENCE — war weariness, coalitions, trade peace. The
+military balance is almost never the binding constraint, which reframes "nothing is
+ever conquered": it is not that armies cannot win, it is that they are talked out of
+starting. `outmatched` is broken out separately for exactly this reason — being
+deterred and being outgunned need opposite fixes and were previously the same number.
+
+**`secede`** — why a province does NOT break away. Wired because `life.polity.died`
+reads 0 at both grids: no realm has ever ended, and shedding provinces is the channel
+by which one could. App grid, 9,000 steps:
+
+    secede:  55 considered · 0 passed (0.0%)  ◄── NEVER FIRED
+        withinAdminBudget            42   76.4%
+        infantColony                  9   16.4%
+        loyaltyStockNotYetSpent       3    5.5%
+        garrisoned(recentConquest)    1    1.8%
+
+**Zero secessions, and the reason is not stickiness — it is slack.** Three quarters of
+provinces sit *comfortably inside* their realm's administrative budget, so the loyalty
+decay that leads to secession is never even entered. Of the handful that are
+over-budget, none has finished spending its loyalty stock, and the
+`peopleStillAttached` hysteresis brake — the mechanism built to slow secession — has
+**never once been the binding constraint**. That is the direct explanation of
+`life.polity.died = 0`: realms do not hold together against strain, they never
+experience strain.
+
+`loyaltyStockNotYetSpent` and `peopleStillAttached` are deliberately separate: one is a
+province on its way out and merely slow, the other would never leave however long you
+waited.
+
+Not yet wired: the food and trade passes, and migration — though migration is
+continuous field flow rather than a candidate/reject decision, so a funnel is the wrong
+shape for it and it needs a different instrument.
+
+### "Never fired" is a finding, not a wiring gap
+
+`why` used to print *"no explicit accept marker"* both when a channel had no accept path
+and when the accept path never fired. Those look identical and mean opposite things.
+Every funnel that emits `CANDIDATE` has an accept path by convention, so a missing
+`PASSED` now reports as **`0 passed (0.0%) ◄── NEVER FIRED`**. That change is what
+turned the secession result from a footnote into the headline above.
 
 ## `--section=story` — the history the sim writes about ITSELF
 
@@ -834,10 +888,12 @@ see what was already tried.
 * **`trace` loses early history in very long runs.** The live event log prunes at
   200k events; `trace.mjs` already walks `prevEvents` per checkpoint and could drain
   into its own permanent store, defeating the cap with no `src/` change.
-* **Funnels cover 5 passes of ~40 modules.** `found`, `nucleate`, `growth`, `capture`,
-  `submit`. Absent: war INITIATION (still on bespoke `WDBG` counters), migration, the
-  food and trade passes, secession, faith/culture birth, colony founding. Every one of
-  those is a "why did it not happen" that still needs a bespoke probe.
+* **Funnels cover 7 gates.** `found`, `nucleate`, `growth`, `capture`, `submit`,
+  `attack`, `secede` — the whole political spine: where states are born, how they grow,
+  how they fight, how they consolidate, how they come apart. Absent: the food and trade
+  passes, faith/culture birth, colony founding. Migration is deliberately excluded — it
+  is continuous field flow, not a candidate/reject decision, so a funnel is the wrong
+  instrument and it needs its own.
 * **Observe and trace are single-seed**, so a finding from either has no error bar.
   Only `abtest` is multi-seed by default, and cross-seed spread was measurably large
   enough this month to flip a sign (0.57 vs 1.09 on the same ratio).

@@ -2827,7 +2827,15 @@ export function updatePolities(world) {
       const covered = cum <= capacity;
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
+      // FUNNEL (telemetry.js) — SECESSION: why does this province NOT break away?
+      // Wired because `life.polity.died` measures 0 at both grids: no realm has ever
+      // ended in 9,000 steps, and shedding a province is the channel by which one
+      // could. "Nothing ever fragments" is an ABSENCE, and an absence is exactly what
+      // outcome state cannot explain — the realm count says a realm survived, never
+      // which brake held it together.
+      tel(world, "secede", "CANDIDATE");
       if (pacified || infant) {
+        tel(world, "secede", pacified ? "garrisoned(recentConquest)" : "infantColony");
         // Held by garrison / colonial project: nudge loyalty toward its base
         // but never secede yet.
         const base = pacified ? 0.5 : 0.7;
@@ -2835,6 +2843,7 @@ export function updatePolities(world) {
         continue;
       }
       if (covered) {
+        tel(world, "secede", "withinAdminBudget");
         s.loyalty = Math.min(1, (s.loyalty ?? 1) + LOYAL_RECOVER * (1 - (s.loyalty ?? 1)));
       } else {
         // How deep past the line — CAPPED so a wildly over-extended realm sheds gradually
@@ -2856,8 +2865,15 @@ export function updatePolities(world) {
         // but holds — its people carry the realm; a fresh march (never attached)
         // sheds exactly as before. Detachment follows the collapsed stock on the
         // DETACH_TAU clock, so this delays a core's shedding, never prevents it.
-        if (s.loyalty <= 0 && (!T.LOYAL_FIELD || (s._attach ?? 0) <= ATTACH_SECEDE))
+        // Two brakes, and they need OPPOSITE fixes, so the funnel must tell them
+        // apart: a province still spending down its loyalty stock is on its way out
+        // and merely slow, while one whose PEOPLE remain attached is held by the
+        // hysteresis and would not secede however long you waited.
+        if (s.loyalty <= 0 && (!T.LOYAL_FIELD || (s._attach ?? 0) <= ATTACH_SECEDE)) {
+          telPass(world, "secede");
           seeds.push(s);                                   // collapsed — defer (revolt is contagious)
+        } else if (s.loyalty > 0) tel(world, "secede", "loyaltyStockNotYetSpent");
+        else tel(world, "secede", "peopleStillAttached(hysteresis)");
       }
     }
     c._loadTotal = cum;   // total admin load drawn (vs c._capacity)
