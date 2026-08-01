@@ -226,6 +226,31 @@ export function provenance(world, extra = {}) {
  *  These are not the same map: measured at the shipped grid, step 9000, the drawn map
  *  claims 1.45x the tiles of the authoritative one and they disagree on 2% of all land.
  *  Measuring only _countryOwner means measuring a map no player ever looks at. */
+/** One row per living realm — the per-ENTITY view, as opposed to the distributions
+ *  `collect()` returns. Lives here rather than in a tool because trace and observe
+ *  both need it and two private definitions of "a realm's size" would drift, which is
+ *  the failure the single-collector design exists to prevent. */
+export function realmRows(world) {
+  const { N, elev } = world;
+  let landN = 0; for (let i = 0; i < N; i++) if (elev[i] > 0) landN++;
+  const km2 = (510e6 * 0.29) / Math.max(1, landN);
+  const co = world._countryOwner, held = new Map();
+  if (co) for (let i = 0; i < N; i++) { if (!(elev[i] > 0)) continue; const c = co[i]; if (c >= 0) held.set(c, (held.get(c) || 0) + 1); }
+  const rows = [];
+  if (world.countries) for (const [cid, c] of world.countries) {
+    if (!c.capital) continue;
+    let people = 0, wealth = 0;
+    for (const m of c.members || []) { people += m.people || 0; wealth += m.wealth || 0; }
+    const p = world.polities?.get?.(cid);
+    const tiles = held.get(cid) || 0;
+    rows.push({ id: cid, name: p?.name || `#${cid}`, tiles, km2: tiles * km2, people, wealth,
+      members: (c.members || []).length, power: world._countryPow?.get(cid) || 0,
+      foundedStep: p?.foundedStep ?? -1, overlord: p?._overlord ?? -1 });
+  }
+  rows.sort((a, b) => b.tiles - a.tiles);
+  return rows;
+}
+
 export function shapeOf(world, src) {
   const { tw, th, N, elev } = world, co = src || world._countryOwner;
   const rows = [];

@@ -730,6 +730,49 @@ generous — its median realm swung 92k → 23k → 11k → 80k km² across four
 Reading that took four separate manual runs; `--unstable` now ranks every metric that
 oscillates, automatically.
 
+### ARCS — the shape of one realm's life
+
+Every other metric in `trace` is a world aggregate, and an aggregate structurally
+cannot answer *"did THIS realm peak and decline?"* — a distribution of realm areas per
+checkpoint is equally consistent with every realm growing monotonically and with half
+of them collapsing. `trace` now records a per-entity table at each checkpoint, keyed on
+the sim's **own** polity id — never an invented lineage heuristic, because restoration
+is already modelled (`endedStep` cleared, `polity.restored` logged) and a second notion
+of identity is how an instrument starts disagreeing with the thing it measures.
+
+    node tools/trace.mjs --entity=top          # one realm, checkpoint by checkpoint
+    node tools/trace.mjs --out-entities=e.csv  # one row per realm × checkpoint
+
+Per realm: `peak` and `peakAt`, `finalKm2`, **`peakFraction`** (final ÷ peak — 1.0 means
+still at its largest), `riseSteps`, `fallSteps`.
+
+**Self-diagnosing.** A checkpoint trace cannot see a realm born and died inside one
+interval. `life.polity.born` counts every realm ever minted (records are never
+deleted), so the difference is the blind spot and it is printed every run — a silently
+truncated sample reads exactly like a complete one. Reference grid, 9,000 steps:
+*21 observed vs 21 ever founded — none missed.*
+
+#### It refuted the prediction written for it
+
+This entry previously argued arcs were low priority: `life.polity.died = 0`, therefore
+"no falls to shape". That was wrong, and the instrument said so on its first run:
+
+    peakFraction (final ÷ peak):  p50 1.000   min 0.231
+    realms that EVER declined (kept <90% of peak): 3 of 20
+
+    realm            peak km²   peak@   final km²  final/peak
+    Sasfesučeefa      2.01e+6    8000     1.31e+6       0.649
+    Poxaoso           9.69e+5    8000     9.54e+5       0.984
+    K'aubkyuigh       6.15e+5    8000     5.84e+5       0.950
+
+**Realms contract; they simply never collapse.** The largest realm in the world gave up
+**35% of its territory** between step 8,000 and 9,000, and one realm kept only 23% of
+its peak. So territorial loss is alive and well — what is missing is the last step,
+from *shrinking* to *ended*. "Nothing ever dies" and "realms only grow" are different
+claims, and the second one is false. That distinction was invisible in every aggregate:
+`realm.areaKm2.p50` rises smoothly while individual realms are losing a third of
+themselves.
+
 ## `npm run why` — the funnels: why did it NOT happen?
 
     node tools/why.mjs --steps=9000 --W=960
@@ -959,18 +1002,15 @@ political map** — so the map reads as fragmented while the politics are not.
 Ranked by what they cost. Closed items are kept, struck through, so the next reader can
 see what was already tried.
 
-* **No TRAJECTORIES.** `life.*` now gives lifespans and survival exactly, and
-  `eventv.*` gives event magnitudes — but nothing records a single entity's *shape*
-  over time. "Did this realm peak and decline, or only grow?" still has no metric.
-  The fix needs no `src/` change: have `trace.mjs` record a per-entity table per
-  checkpoint keyed on the sim's **own** polity id (never an invented lineage
-  heuristic — restoration is already modelled via `endedStep`/`polity.restored`),
-  then fold `arc.peakAreaFraction` / `arc.riseSteps` / `arc.fallSteps` back into the
-  metric map so the arc is diffable and gate-able. Self-diagnosing: compare
-  `life.polity.born` against how many realms trace ever saw, and report the
-  entities that lived and died inside one checkpoint interval instead of hiding them.
-  *Lower priority than it looks right now — `life.polity.died = 0` says there are no
-  falls to shape.*
+* ~~No TRAJECTORIES~~ — **fixed**: `trace --entity=` / `--out-entities=` and the ARCS
+  block (below). Note the prediction attached to this entry was **wrong**: it said
+  there would be "no falls to shape" because `life.polity.died = 0`. Realms decline
+  constantly; they just never die.
+* **Arcs are trace-only, not in `collect()`.** `arc.*` is derived from a whole run, so
+  a snapshot cannot compute it and `abtest`/`bisect` cannot diff it. Making it
+  snapshot-computable would mean the sim itself remembering each realm's peak extent
+  (there is precedent — settlements already carry `_popPeak`), which is a `src/` change
+  adding real state and should be an explicit decision, not a measurement side effect.
 * **`trace` loses early history in very long runs.** The live event log prunes at
   200k events; `trace.mjs` already walks `prevEvents` per checkpoint and could drain
   into its own permanent store, defeating the cap with no `src/` change.
