@@ -22,11 +22,20 @@ typed array of length `N`, every numeric leaf on every entity class (to depth 2)
 Map/Set/Array by size, and histograms the event log. **Add state anywhere and it appears
 here on the next run with no edit.**
 
-The two places that rule was violated are both now closed, and they are worth
-remembering as a pair — introspection is only as complete as the *shape* it assumes:
-the walk stopped one level **down** (missing 234 numeric leaves per settlement) and one
-level **out** (measuring 3 entity classes of 8). Neither was visible as a missing
-number; both were visible only as a missing *dimension*.
+That rule was violated in **three** places, all now closed, and they are worth
+remembering together because they are one mistake wearing three faces —
+**introspection is only ever as complete as the SHAPE it assumes**:
+
+| | the walk assumed | what was invisible |
+|---|---|---|
+| one level **down** | entity fields are scalars | 234 numeric leaves per settlement |
+| one level **out** | entities live in three registries | 5 of 8 entity classes |
+| the **container** | state is a length-`N` array or a registry | all 61 world scalars, `deposits`, `_popLand` |
+
+None was visible as a missing *number* — each was visible only as a missing
+*dimension*, which is why they survived so long in a tool whose whole premise is
+completeness. The standing question for whoever extends this is therefore never "did I
+walk all the fields?" but **"what shape am I assuming, and what lives outside it?"**
 
 This is not theoretical: the runtime histogram immediately surfaced five event kinds
 that a `grep` over `logEvent(world, "...")` misses entirely — `ruler.crowned`,
@@ -234,7 +243,7 @@ introspection rule as `observe`: every length-N tile field, every numeric leaf o
 **every entity class** (settlements, countries, polity records, cultures, languages,
 faiths, dynasties, persons), realm geometry, network topology, event payload
 magnitudes, every collection size, the chronicle histogram, `world.debug` counters.
-**~3,900 metrics, and it grows by itself.** Every tool below consumes it, so all
+**~5,020 metrics, and it grows by itself.** Every tool below consumes it, so all
 measurements are directly comparable — the trap the manual bisects fell into was each
 pass measuring its own two or three numbers.
 
@@ -333,6 +342,55 @@ otherwise only `.len` is emitted. Detected from the data, never from a hand-kept
 while `_gPrice`, `_mIn` and `knowledge` keep their named entries.
 
 Cost: 79 ms → 121 ms at the reference grid (3,876 metrics), 398 ms at the app grid.
+
+### The world object itself — a whole category that was missed
+
+Audited at 9,000 steps by enumerating every property on `world` and classifying it:
+**of 61 numeric scalars sitting directly on the world, the collector read exactly
+zero.** Not a shortfall — a category. The walk looked for typed arrays of length `N`
+and for objects inside registries, and a plain number on the world object is neither.
+
+What was in there:
+
+* **Every reference scale the sim calibrates itself against** — `_refCapPower`,
+  `_refCapPowerS`, `_refRevenue`, `_refRealmPop`, `_musterRatio`, `_provRatio`,
+  `_fortRef`, `_tierScale`. These are exactly the "has a constant become the answer?"
+  quantities the SECOND CARDINAL RULE is about, and not one could be A/B'd or bisected.
+* **Headline aggregates** — `_leadOrg` (which the displayed era is derived from),
+  `_topUrban`, `_townBar`, `_cityBar`, `_popTotal`, `_eraProd`, `_climIndex`,
+  `_climShock`, `ancestryCount`.
+
+Two more shape assumptions fell with it:
+
+* **`v.length !== N → skip`** dropped `_popLand[9616]`, a real per-LAND-tile
+  population field whose length is the land count, not `N`. Arrays that are already
+  land-indexed are now measured as fields; anything else becomes `vec.*`, where the
+  distribution is often meaningless (`_coastList` holds tile indices) but `.n` is the
+  only record anywhere of how many coast tiles the world has.
+* **Plain objects on the world were never opened**, and one mattered enormously:
+  `deposits` holds **fourteen per-tile arrays** — timber, stone, copper, tin, iron,
+  coal, horses, salt, precious, gems — and `depositReserve` holds what is left of the
+  depletable ones. **The world's entire resource endowment, the input the whole mining
+  and metal economy runs on, was unmeasured.** A tile field hiding inside a bag is
+  still a tile field.
+
+`WORLD_SCRATCH` is the counterpart of observe's `SCRATCH` and the same bargain — the
+outcome/workspace split is semantic so it cannot be detected, but the list **fails
+open**. Only re-entrancy cursors and version stamps, allocator/worker plumbing, and
+`worldRef` (the raw worldgen output at *render* resolution, whose sim-res copies are
+already collected) are named. The id counters are deliberately *not* scratch: each is a
+cumulative "how many were ever minted", the total the live registry cannot give once
+records start being reclaimed.
+
+After the fix the same audit reports **every remaining uncovered property is exactly
+and only a member of `WORLD_SCRATCH`** — 23 cursors/stamps, 2 lookup tables, 5
+allocators, and one entity reference. Nothing is dark by accident.
+
+**This was the third time the same failure appeared.** Depth-2 was one level *down*;
+entity classes were one level *out*; this was the container. Each time, introspection
+was complete *within an assumed shape* and blind to everything outside it. That is the
+standing lesson for whoever extends this next: the question is never "did I walk all
+the fields?" but **"what shape am I assuming, and what lives outside it?"**
 
 ### `life.*` — do things RISE AND FALL, or only rise?
 
@@ -473,7 +531,7 @@ be compared with another.
     node tools/abtest.mjs --tune="ORG_BIRTH_VAR=0" --seeds=8817,31337,4242
     node tools/abtest.mjs --env="SIM_SUCCESSORS=0" --grep=realm,shape
 
-Runs both arms on the same seed, diffs **all ~3,900 metrics**, prints a fixed HEADLINE
+Runs both arms on the same seed, diffs **all ~5,020 metrics**, prints a fixed HEADLINE
 block plus the largest effects. Three properties that matter:
 
 * **Multi-seed by default.** Single-seed A/B is how noise ships as a finding — the
@@ -493,7 +551,7 @@ block plus the largest effects. Three properties that matter:
 
 Walks a commit range in a throwaway worktree, running the **current** collector against
 each commit's `src/` — so every commit is measured identically. `--auto` needs no metric
-named in advance: it ranks every one of the ~3,900 by how sharply it steps and reports
+named in advance: it ranks every one of the ~5,020 by how sharply it steps and reports
 which commit carries the most sharp steps. The regression finds itself.
 
 Verified against the known case at the shipped app grid:
@@ -539,7 +597,7 @@ cannot: **SWING** (peak/trough — a stability measure), **DIR** (rising / falli
 oscillating, from sign changes in the first difference), **PEAK@** in steps and years,
 **SETTLE** (is the last third flat — did it converge?), and the chronicle **bucketed by
 window**, so *when* things happened survives instead of collapsing to a count. `--out=`
-writes one CSV row per checkpoint × ~3,900 columns.
+writes one CSV row per checkpoint × ~5,020 columns.
 
 This is what made the old `_sizePopK` anchor legible as UNSTABLE rather than merely
 generous — its median realm swung 92k → 23k → 11k → 80k km² across four checkpoints.
@@ -731,6 +789,11 @@ see what was already tried.
   `_urbanSpike`, `_royalCourt`. Audited as duplicate or scratch rather than missing
   signal (`_moneyFlows`' aggregate is already in `sett._mIn`/`_mOut`), so this is
   recorded for honesty, not queued as work.
+* **Nothing audits the collector's own coverage.** All three shape misses were found by
+  hand-writing a throwaway script that enumerates every property on `world` and asks
+  which ones `collect()` reaches. That script should BE a tool
+  (`npm run coverage`) and ideally a gate: it is the only thing that can catch the
+  fourth shape assumption, and on today's evidence there will be one.
 * **Nested objects still collapse to a count in the `--nation=` drill-down**
   (`_techEff={22}`, `knowledge={6}`). The *collector* now descends into them, so
   `abtest`/`bisect`/`trace` see them; only observe's human drill-down print does not.

@@ -67,6 +67,30 @@ function dist(prefix, arr, into) {
 const MAX_VEC = 64;      // enumerate vectors up to this long; beyond it, shape only
 const numeric = (x) => typeof x === "number" && Number.isFinite(x);
 
+// World-level PASS WORKSPACE — the counterpart of observe's SCRATCH, and the same
+// bargain: the outcome/workspace split is semantic so it cannot be detected, but the
+// list FAILS OPEN. Anything not named here is treated as an outcome and measured, so
+// new world state shows up by default instead of hiding. Only two kinds are named:
+// re-entrancy cursors and version stamps (pure bookkeeping — `_reachCursor`,
+// `_roadVersion`, `_fpStamp`), and allocator/worker plumbing (`_pfArena`, `_pfPool`,
+// `_gapBuf`, `_settGrid`, `_polHeap`). `worldRef` is excluded for a different reason:
+// it is the raw worldgen output at RENDER resolution (115,200 cells), and the sim-res
+// copies of those same fields — elev, fert, temp, moist — are already collected, so
+// including it would double-count terrain at a resolution nothing simulates.
+// NOTE the id counters (`_nextPersonId`, …) are deliberately NOT scratch: each one is
+// a cumulative "how many were ever minted", which is exactly the total the live
+// registry cannot give once records start being reclaimed.
+const WORLD_SCRATCH = new Set([
+  "worldRef", "debug",                                     // duplicate / already emitted as debug.*
+  "_pfArena", "_pfPool", "_gapBuf", "_settGrid", "_polHeap",   // allocators, pools, indices
+  "_pfCapT", "_pfGateT",                                   // precomputed lookup tables
+  "_stMapStep", "_reachStamp", "_reachCursor", "_linkCursor", "_transportStep",
+  "_fpStamp", "_roadVersion", "_tileCompStamp", "_tileCompStampVal", "_fpowStep",
+  "_loyalScanAt", "_slaveScarcityStep", "_compRoadVer", "_compSettCount",
+  "_planSnap", "_planIdx", "_craftMeanStep", "_craftAccN", "_tierScaleStep",
+  "_sittingRulersStep", "_aliveCCStep", "_coreStamp", "_agriCeilKey",
+]);
+
 /** An ENTITY REFERENCE, not a data bag. Recursing into a settlement's `_foodParent`
  *  would re-measure a whole other settlement under a misleading name, and
  *  `country.capital` would duplicate all 113 of its fields under `nation.capital.*`.
@@ -541,13 +565,52 @@ export function collect(world) {
   m["pop.census"] = settled.reduce((a, s) => a + (s.people || 0), 0);
   m["pop.bridge"] = world._onePopScale || 0;
 
-  // every tile field
+  // every tile field — and every OTHER typed array too. The old test was
+  // `v.length !== N → skip`, which silently dropped `_popLand[9616]`: a real
+  // per-LAND-tile population field whose length is the land count, not N. A
+  // length test is a shape assumption, and this collector has now been caught
+  // by a shape assumption three times.
+  const landIdx = (a) => { const o = new Array(land.length); for (let j = 0; j < land.length; j++) o[j] = a[land[j]]; return o; };
   for (const k of Object.keys(world)) {
     const v = world[k];
-    if (!ArrayBuffer.isView(v) || v.length !== N) continue;
-    const a = new Array(land.length);
-    for (let j = 0; j < land.length; j++) a[j] = v[land[j]];
-    dist(`field.${k}`, a, m);
+    if (!ArrayBuffer.isView(v) || WORLD_SCRATCH.has(k)) continue;
+    if (v.length === N) dist(`field.${k}`, landIdx(v), m);
+    else if (v.length === land.length) dist(`field.${k}`, Array.from(v), m);  // already land-indexed
+    // Anything else is a list or a table: its distribution is mostly meaningless
+    // (`_coastList` holds tile indices) but `.n` is not — that is the only record
+    // anywhere of how many coast tiles the world has.
+    else dist(`vec.${k}`, Array.from(v), m);
+  }
+
+  // ── THE WORLD OBJECT ITSELF ────────────────────────────────────────────────
+  // Audited at 9,000 steps: of 61 numeric scalars sitting directly on `world`,
+  // the collector read exactly ZERO. Not a shortfall — a whole category missed,
+  // because the walk only ever looked for typed arrays of length N and objects
+  // inside registries. Among the misses were every REFERENCE SCALE the sim
+  // calibrates itself against (`_refCapPower`, `_refRevenue`, `_refRealmPop`,
+  // `_musterRatio`, `_provRatio`, `_fortRef`, `_tierScale`) — precisely the
+  // "has a constant become the answer?" quantities the SECOND CARDINAL RULE is
+  // about — plus `_leadOrg`, `_topUrban`, `_townBar`, `_cityBar`, `_popTotal`.
+  //
+  // Plain objects on the world were dark too, and one of them mattered a lot:
+  // `deposits` holds FOURTEEN per-tile arrays (timber, stone, copper, tin, iron,
+  // coal, horses, salt, precious, gems, …) and `depositReserve` holds what is
+  // left of the depletable ones. The world's entire resource endowment — the
+  // input the whole mining and metal economy runs on — was unmeasured.
+  for (const k of Object.keys(world)) {
+    const v = world[k];
+    if (WORLD_SCRATCH.has(k)) continue;
+    if (typeof v === "number" && Number.isFinite(v)) { m[`world.${k}`] = v; continue; }
+    if (!v || typeof v !== "object") continue;
+    if (ArrayBuffer.isView(v) || Array.isArray(v) || v instanceof Map || v instanceof Set) continue;
+    if (isEntityRef(v)) continue;          // `_lastInheritDonor` is a settlement
+    for (const kk of Object.keys(v)) {
+      const vv = v[kk];
+      // A tile field hiding inside a bag is still a tile field.
+      if (ArrayBuffer.isView(vv) && vv.length === N) { dist(`field.${k}.${kk}`, landIdx(vv), m); continue; }
+      if (typeof vv === "number" && Number.isFinite(vv)) m[`world.${k}.${kk}`] = vv;
+      else if (vv instanceof Map || vv instanceof Set) m[`world.${k}.${kk}.size`] = vv.size;
+    }
   }
   // every numeric leaf on settlements / countries / polity records, DEPTH 2
   const cs = world.countries ? [...world.countries.values()].filter(c => c.capital) : [];
