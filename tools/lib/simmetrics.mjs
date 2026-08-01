@@ -515,7 +515,14 @@ export function lifecycleOf(world) {
       if (Number.isFinite(d) && d >= 0) lifespans.push(d - b);
       else ages.push(world.step - b);
     }
-    g[`${name}.born`] = lifespans.length + ages.length;
+    // `known`, NOT `born` — and this is the SECOND time the same defect appeared.
+    // It counts records the registry currently HOLDS, and dynasties.js reclaims dead
+    // unreferenced persons and extinct dynasty husks, so the number falls. Called
+    // `born` it claimed a birth count and `npm run monotone` caught it decreasing at
+    // 50,000 steps: life.person.born 20,758 → 20,651, life.dynasty.born 221 → 219.
+    // Exactly the trap `died` → `endedNow` had just been renamed out of, one field
+    // over, found by the gate built for the first one.
+    g[`${name}.known`] = lifespans.length + ages.length;
     // NAMED `endedNow`, NOT `died`, and that is the whole lesson of this block: it
     // counts records CURRENTLY marked ended, and restoration clears the flag. Called
     // `died` it read as a death toll, went 0 while two realms had fallen and been
@@ -589,6 +596,9 @@ export function lifecycleOf(world) {
     // a registry whose own header promises records are never deleted.
     const counter = world[`_next${name[0].toUpperCase()}${name.slice(1)}Id`];
     if (Number.isFinite(counter)) {
+      // The true ever-born count, from the same monotone counter — the history
+      // `known` cannot give once records start being reclaimed.
+      g[`${name}.bornEver`] = Math.max(0, counter - 1);
       let lo = Infinity, n = 0;
       for (const it of items) if (Number.isFinite(it.id)) { if (it.id < lo) lo = it.id; n++; }
       const everMinted = counter - (Number.isFinite(lo) ? lo : 0);

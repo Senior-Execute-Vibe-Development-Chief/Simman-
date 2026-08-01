@@ -281,10 +281,10 @@ function snapshot(w) {
     H("LIFECYCLE — births, deaths, survival");
     const L = lifecycleOf(w);
     const v = (k, d = 0) => (L[k] === undefined ? "—" : L[k].toFixed(d));
-    console.log(`    ${"class".padEnd(9)}${"born".padStart(7)}${"endedNow".padStart(9)}${"alive".padStart(7)}${"turnover".padStart(10)}${"lifespan p50".padStart(14)}${"max".padStart(8)}${"age p50".padStart(9)}${"surv 1k".padStart(9)}${"4k".padStart(7)}${"16k".padStart(7)}${"retained".padStart(10)}`);
+    console.log(`    ${"class".padEnd(9)}${"known".padStart(7)}${"endedNow".padStart(9)}${"alive".padStart(7)}${"turnover".padStart(10)}${"lifespan p50".padStart(14)}${"max".padStart(8)}${"age p50".padStart(9)}${"surv 1k".padStart(9)}${"4k".padStart(7)}${"16k".padStart(7)}${"retained".padStart(10)}`);
     for (const c of ["polity", "faith", "dynasty", "culture", "lang", "person"]) {
-      if (L[`${c}.born`] === undefined) continue;
-      console.log(`    ${c.padEnd(9)}${v(`${c}.born`).padStart(7)}${v(`${c}.endedNow`).padStart(9)}${v(`${c}.alive`).padStart(7)}${(v(`${c}.turnoverPct`, 1) + "%").padStart(10)}${v(`${c}.lifespan.p50`).padStart(14)}${v(`${c}.lifespan.max`).padStart(8)}${v(`${c}.age.p50`).padStart(9)}${v(`${c}.survival1k`, 0).padStart(9)}${v(`${c}.survival4k`, 0).padStart(7)}${v(`${c}.survival16k`, 0).padStart(7)}${(L[`${c}.retainedPct`] === undefined ? "—" : v(`${c}.retainedPct`, 0) + "%").padStart(10)}`);
+      if (L[`${c}.known`] === undefined) continue;
+      console.log(`    ${c.padEnd(9)}${v(`${c}.known`).padStart(7)}${v(`${c}.endedNow`).padStart(9)}${v(`${c}.alive`).padStart(7)}${(v(`${c}.turnoverPct`, 1) + "%").padStart(10)}${v(`${c}.lifespan.p50`).padStart(14)}${v(`${c}.lifespan.max`).padStart(8)}${v(`${c}.age.p50`).padStart(9)}${v(`${c}.survival1k`, 0).padStart(9)}${v(`${c}.survival4k`, 0).padStart(7)}${v(`${c}.survival16k`, 0).padStart(7)}${(L[`${c}.retainedPct`] === undefined ? "—" : v(`${c}.retainedPct`, 0) + "%").padStart(10)}`);
     }
     // `endedNow` is a STATE (records currently marked ended); restoration clears it,
     // so it must never be read as "deaths ever" — that mistake made a world with real
@@ -292,9 +292,9 @@ function snapshot(w) {
     // cumulative count from the chronicle.
     console.log(`    cumulative from the chronicle:  polity.endedEver ${v("polity.endedEver")}` +
       `   restoredEver ${v("polity.restoredEver")}   diedThenRestored ${v("polity.diedThenRestored")}` +
-      `   faith.endedEver ${v("faith.endedEver")}   dynasty.endedEver ${v("dynasty.endedEver")}`);
+      `   faith.endedEver ${v("faith.endedEver")}   person.bornEver ${v("person.bornEver")}   dynasty.endedEver ${v("dynasty.endedEver")}`);
     const immortal = ["polity", "faith", "culture", "lang", "dynasty"]
-      .filter(c => L[`${c}.born`] > 0 && L[`${c}.endedNow`] === 0 && !(L[`${c}.endedEver`] > 0));
+      .filter(c => L[`${c}.known`] > 0 && L[`${c}.endedNow`] === 0 && !(L[`${c}.endedEver`] > 0));
     if (immortal.length) console.log(`    ⚠ NOTHING HAS EVER DIED in: ${immortal.join(", ")} — no completed lifespan exists to measure.`);
     if (L["polity.diedThenRestored"] > 0)
       console.log(`    ⚠ ${v("polity.diedThenRestored")} realm death(s) are INVISIBLE in polity.endedNow — restoration cleared endedStep. Read endedEver.`);

@@ -137,7 +137,7 @@ if (UNSTABLE) {
 // has a reset in it.
 //
 // Two detectors, because a name is a claim and a shape is evidence:
-//   BY NAME   — `event.*`, `.born`, `.died`, `.endedEver`, the id counters. A decrease
+//   BY NAME   — `event.*`, `.bornEver`, `.endedEver`, the id counters. A decrease
 //               here is a defect unless the event log pruned (which it does at 200k,
 //               visibly, via count.events — so that case is recognised, not guessed).
 //   BY SHAPE  — rises overall, falls rarely. A counter with a reset in it looks like
@@ -146,7 +146,7 @@ if (UNSTABLE) {
 if (MONOTONE) {
   const CLAIMS_CUMULATIVE = (k) =>
     k.startsWith("event.") ||
-    /\.(born|died|endedEver|restoredEver|diedThenRestored)$/.test(k) ||
+    /\.(bornEver|endedEver|restoredEver|diedThenRestored)$/.test(k) ||
     /^world\._next[A-Za-z]+Id$/.test(k);
   // The event log prunes at EVENT_CAP (events.js) and that legitimately drops every
   // event.* count at once. Recognised by the live log shrinking at the same
@@ -252,10 +252,10 @@ if (arcs.length) {
     console.log(`    ${String(a.name).slice(0, 15).padEnd(16)}${fmt(a.peak).padStart(11)}${String(a.peakAt).padStart(8)}${fmt(a.finalKm2).padStart(11)}${a.peakFraction.toFixed(3).padStart(11)}${String(a.riseSteps).padStart(7)}${String(a.fallSteps).padStart(7)}`);
 }
 // SELF-DIAGNOSING: a checkpoint trace cannot see a realm that was born and died
-// between two checkpoints. life.polity.born counts every realm the world ever minted
+// between two checkpoints. life.polity.known counts every realm the world ever minted
 // (records are never deleted), so the gap is the blind spot — reported, never hidden,
 // because a silently-truncated sample reads exactly like a complete one.
-const bornEver = rows.length ? (rows[rows.length - 1].m["life.polity.born"] ?? 0) : 0;
+const bornEver = rows.length ? (rows[rows.length - 1].m["life.polity.known"] ?? 0) : 0;
 if (bornEver) {
   const missed = Math.max(0, bornEver - series.size);
   console.log(`\n    coverage: ${series.size} realms observed vs ${bornEver} ever founded` +
