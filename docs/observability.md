@@ -227,6 +227,37 @@ p90 AND max on both grids**. No realm is ever in pieces — the connectivity rel
 (countryTerritory step 3) severs anything not reachable from the capital through
 same-owner land, so an exclave is structurally impossible. History is full of them.
 
+> ### ⚠ BOTH OF THOSE ARE WRONG, AND SO IS MOST OF WHAT FOLLOWS
+>
+> Every finding above and below was measured at **≤12,000 steps**. A 50,000-step run
+> at the app grid reverses them:
+>
+> | claim, at ≤12k | at 50,000 steps |
+> |---|---|
+> | realms are near-perfect discs (compactness 0.49) | **compactness p50 0.17**, largest realm 0.035 — ragged, not round |
+> | no realm is ever in pieces; exclaves structurally impossible | **fragments p50 2, max 22** |
+> | 46% of realms touch nobody | **3%** (2 of 60) |
+> | `secede` never fires on any seed | **166 secessions** |
+> | nothing has ever died — INVARIANT ZERO on 4 seeds | **521 realm deaths, 276 restorations** |
+> | tributary tree is flat, depth 1 | **depth 2**, 45.2% of realms are dependencies |
+> | trade net in 2–3 components | **1 component, 100% connected** |
+> | 16 separate political worlds | **3**, largest holding 96.7% |
+>
+> Nothing was wrong with the instruments. Every number was correctly measured, at both
+> grids, and several were confirmed invariant across four seeds. **They were all
+> measured during the world's growth phase.** At 12,000 steps this sim has barely
+> started: 7% of land claimed against 50% at 50,000, 33 realms against 254 ever
+> founded, realms still expanding into empty space and therefore never fragmenting,
+> never over-extending, never dying.
+>
+> **`spread` put error bars on the wrong axis.** It varies the SEED and holds the
+> horizon fixed — so "INVARIANT ZERO across four seeds" meant four seeds all run to
+> 6,000 steps, and the agreement between them was near-meaningless. Horizon variance
+> dominated seed variance by an enormous margin and nothing was instrumenting it.
+>
+> **Read any finding in this document as: "at the horizon it was measured at."** The
+> long-run picture is in `docs/50k-run-2026-08-01.md`.
+
 ---
 
 # THE MEASUREMENT SUITE
