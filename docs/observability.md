@@ -773,6 +773,22 @@ claims, and the second one is false. That distinction was invisible in every agg
 `realm.areaKm2.p50` rises smoothly while individual realms are losing a third of
 themselves.
 
+**Confirmed at the shipped grid** (THIRD CARDINAL RULE) — the decline rate is a
+property of the mechanism, not of the reference resolution:
+
+| | reference `tw=240` | app `tw=480` |
+|---|---|---|
+| realms traced | 20 | 31 |
+| declined ≥10% from peak | 3 (15%) | 5 (16%) |
+| worst `peakFraction` | 0.231 | 0.516 |
+
+At the app grid `Ghesyahčeef` gave up 23% of its peak and `Nawaxexise` 40%. Neither
+died. The `fall` column is 0 for most realms only because they peak at the final
+checkpoint; the ones that do decline fall over 1,000–2,000 steps and then **stabilise**
+— they neither recover nor finish dying. They sit there smaller. That is the session's
+finding in one line: **this world has decline, and it has no death, and nothing bridges
+the two.**
+
 ## `npm run why` — the funnels: why did it NOT happen?
 
     node tools/why.mjs --steps=9000 --W=960
