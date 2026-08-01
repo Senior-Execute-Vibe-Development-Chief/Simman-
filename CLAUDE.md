@@ -7,6 +7,12 @@ Nothing is scripted; every empire on the map is the output of local rules. Read
 facts: is the emergent history history-SHAPED?) and `npm run resgate` (the
 app-grid arm — see the THIRD CARDINAL RULE) before pushing.
 
+If you ADD STATE to the world, also run `npm run coverage`: it proves, by
+perturbation rather than by name-matching, that every measurable property is
+reachable from `collect()`. New state is measured by default — the exclusion
+list fails open — so this fails until the state is either reached or explicitly
+named as pass workspace. See `docs/observability.md`.
+
 ---
 
 ## THE CARDINAL RULE — everything must be emergent

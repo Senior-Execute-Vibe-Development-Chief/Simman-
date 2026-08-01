@@ -80,7 +80,7 @@ const numeric = (x) => typeof x === "number" && Number.isFinite(x);
 // NOTE the id counters (`_nextPersonId`, …) are deliberately NOT scratch: each one is
 // a cumulative "how many were ever minted", which is exactly the total the live
 // registry cannot give once records start being reclaimed.
-const WORLD_SCRATCH = new Set([
+export const WORLD_SCRATCH = new Set([
   "worldRef", "debug",                                     // duplicate / already emitted as debug.*
   "_pfArena", "_pfPool", "_gapBuf", "_settGrid", "_polHeap",   // allocators, pools, indices
   "_pfCapT", "_pfGateT",                                   // precomputed lookup tables

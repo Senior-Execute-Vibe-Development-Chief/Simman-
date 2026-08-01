@@ -392,6 +392,76 @@ was complete *within an assumed shape* and blind to everything outside it. That 
 standing lesson for whoever extends this next: the question is never "did I walk all
 the fields?" but **"what shape am I assuming, and what lives outside it?"**
 
+## `npm run coverage` — does the collector see the whole world?
+
+The three shape misses above were each found by hand-writing a throwaway enumeration
+script, and **nothing in the repo could have caught any of them**. Growing `collect()`
+from 1,304 to 5,020 metrics did not make it complete — it made it complete *within the
+shape it assumed*, three times running. A metric map cannot report its own missing
+dimensions. This tool can.
+
+    npm run coverage
+    node tools/coverage.mjs --steps=9000 --W=960   # the shipped grid
+    node tools/coverage.mjs --verbose              # every property, classified
+
+**It does not match names.** The obvious implementation — compare world keys against
+metric names — is a REPLICATED GATE, and the repo already carries that scar:
+`probe_fillaudit.mjs` answers its question by re-implementing the size-target
+computation externally, which drifts from the real one and then lies. A name-matching
+coverage check would encode a second, parallel idea of what `collect()` does and go
+stale the first time `collect()` changed. Two mechanisms are used instead, neither of
+which knows anything about the collector's logic:
+
+1. **Proxy** — run the *real* `collect()` against a Proxy of the world that records
+   every property read. Exact by construction, sees reads inside helpers too, and
+   cannot drift because there is nothing to keep in sync.
+2. **Perturbation** — change a numeric leaf, re-collect, and check whether *any* metric
+   moved. Reading a value is necessary but nowhere near sufficient: `collect()`
+   iterates `Object.keys(world)` in several loops, so almost everything gets read —
+   including an object whose contents it then walks straight past. This proves the
+   value actually *reaches* a number. Applied kind-uniformly (scalars, tile arrays,
+   odd-length arrays, nested objects) because the three misses were three different
+   shapes, and a check that understood only one would have caught only one.
+
+`WORLD_SCRATCH` is **imported from the collector, never copied**, so the exclusion list
+cannot fork. A property passes if it is proved to reach a metric or is named there;
+anything else is DARK and the tool exits non-zero.
+
+### It proves it can fail, on every run
+
+A gate that has never failed is a rubber stamp, and a coverage tool that cannot fail is
+worse than none — it certifies blindness. So every run first injects a canary the
+collector provably cannot reach (a number nested **two** levels inside a world object,
+which is exactly the shape that remains outside the depth-1 descent) and aborts if the
+detector does not fire.
+
+That self-test earned itself immediately: the first version used "was it read?" as the
+criterion, and the canary was read — because the new world-scalar pass reads every key.
+The criterion was wrong, and the tool said so before anyone trusted a green run.
+
+**And the perturbation probe had a bug the gate caught on itself.** `collect()`
+distributes length-`N` fields over **land only**, and tile 0 is ocean on every map this
+generates — so probing index 0 moved nothing and the first run reported **83 false
+alarms, including `popField` and `fert`**. Probing a land tile fixed it. Recorded here
+because it is the same lesson one layer up: an instrument's own shape assumptions are
+as dangerous as the ones it is built to find.
+
+### Verified against the real regression
+
+Temporarily removing the world-object descent from `collect()` — the exact miss fixed
+in `ec72e56` — makes it fail with:
+
+    ✗ 6 DARK properties
+        deposits          object   read but reaches no metric
+        depositReserve    object   read but reaches no metric
+        _craftMean        object   read but reaches no metric
+        …
+
+Current state: **172 measurable world properties, 172 proved to reach a metric**, 29
+named as workspace, entity-class residue 8.6% (all itemised and justified in
+`ENTITY_ACCEPTED`, which also fails open — a new registry shows up as unexplained
+rather than quietly joining the accepted total).
+
 ### `life.*` — do things RISE AND FALL, or only rise?
 
 Every other metric is a snapshot of the population that EXISTS, and **a snapshot of
@@ -789,11 +859,8 @@ see what was already tried.
   `_urbanSpike`, `_royalCourt`. Audited as duplicate or scratch rather than missing
   signal (`_moneyFlows`' aggregate is already in `sett._mIn`/`_mOut`), so this is
   recorded for honesty, not queued as work.
-* **Nothing audits the collector's own coverage.** All three shape misses were found by
-  hand-writing a throwaway script that enumerates every property on `world` and asks
-  which ones `collect()` reaches. That script should BE a tool
-  (`npm run coverage`) and ideally a gate: it is the only thing that can catch the
-  fourth shape assumption, and on today's evidence there will be one.
+* ~~Nothing audits the collector's own coverage~~ — **fixed**: `npm run coverage`, and
+  it is a gate (see below).
 * **Nested objects still collapse to a count in the `--nation=` drill-down**
   (`_techEff={22}`, `knowledge={6}`). The *collector* now descends into them, so
   `abtest`/`bisect`/`trace` see them; only observe's human drill-down print does not.
