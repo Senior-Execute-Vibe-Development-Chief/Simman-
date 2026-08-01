@@ -422,14 +422,19 @@ Four seeds, 9,000 steps, reference grid:
 
 | claim | verdict |
 |---|---|
-| `life.polity.died` = 0 | **INVARIANT ZERO** — holds on every seed |
-| `life.faith.died` = 0 | **INVARIANT ZERO** |
-| `life.culture.died` = 0 | **INVARIANT ZERO** |
+| `life.polity.died` = 0 | **INVARIANT ZERO** — but see the warning above: this metric was measuring the wrong quantity, and `event.polity.ended` is non-zero. `spread` faithfully confirmed a zero that did not mean what it appeared to. |
+| `life.faith.died` = 0 | **INVARIANT ZERO** (and `faith.endedEver` = 0 too — this one is real) |
+| `life.culture.died` = 0 | **INVARIANT ZERO** (no death event exists for cultures at all) |
 | `secede` never fires | **0/0/0/0 passed** on 191/155/40/19 candidates |
 | `_tradeReach.size` = 12 (p50 *and* max) | **invariant** — the cap binds on every world |
 | `graph.vassal.depthMax` = 1 (flat tree) | **UNSAFE** — runs 0–2, CV 0.71 |
 | `graph.vassal.blocLandPct` | **UNSAFE** — 0–13.8%, CV 0.62 |
 | `life.dynasty.died` | **UNSAFE** — 2–12, CV 0.65 |
+
+Note what `spread` could and could not do here. It correctly reported that
+`life.polity.died = 0` on every seed — the metric *is* invariant. Cross-seed agreement
+says nothing about whether a metric measures the right thing, and four seeds agreeing
+on a wrong number is not evidence of anything. **An error bar is not a validity check.**
 
 So the load-bearing findings survive — *nothing dies, nothing secedes, trade is capped
 at exactly 12* — and one of the tidier ones does not. **16.5% of the 5,053-metric map
@@ -551,6 +556,38 @@ emits nothing. That mattered immediately — polities take their id from the cou
 polity ids are sparse by construction, and an id-span heuristic (the first thing tried)
 reported **23% retention on a registry whose own header promises records are never
 deleted**. A metric that invents a number is worse than one that declines to.
+
+### ⚠ `died` is a STATE, not a history — and that invalidated a headline finding
+
+`died` counts records whose `endedStep` is set. But `entities.js:103` **clears
+`endedStep`** when an old realm re-forms under its id (*"re-opened: an old nation
+re-forming"*). A realm that fell and was later restored therefore reads as never having
+died at all.
+
+Measured at the app grid, 12,000 steps:
+
+| seed | `event.polity.ended` (ever) | `polity.restored` | `life.polity.died` |
+|---|---|---|---|
+| 8817 | **2** | 2 | **0** |
+| 31337 | 1 | 0 | 1 |
+
+**Realms do die.** "Nothing has ever died, INVARIANT ZERO across four seeds" — repeated
+through this document and across a session — was an artefact of asking the records a
+question they do not answer. `spread` confirmed the zero faithfully; the zero was
+measuring the wrong quantity.
+
+The event log is the only cumulative source, and it was explicitly rejected earlier in
+this section for pruning at 200k. That reasoning was **right about lifespans** (which
+need the founding too, and lose it when the log rolls) and **wrong about counts**. Both
+are now emitted and labelled: `.died` is a state, `.endedEver` is a history with a known
+horizon, and `.diedThenRestored` reports the size of the gap between them so the
+discrepancy can never hide again. `observe --section=life` prints a warning when it is
+non-zero.
+
+The lesson is the one this whole document keeps re-learning in a new costume: a metric
+can be exactly correct about the thing it measures and still answer a different
+question from the one being asked. "Records are never deleted" was true. "Therefore
+they remember every death" did not follow.
 
 #### What it said on its first run — and it is an absence
 

@@ -538,6 +538,37 @@ export function lifecycleOf(world) {
       if (eligible > 0) g[`${name}.survival${H / 1000}k`] = 100 * survived / eligible;
     }
 
+    // ── CURRENTLY-DEAD IS NOT DEATHS-EVER ────────────────────────────────────
+    // The bug this block exists to fix, and it invalidated a headline finding for
+    // most of a session. `died` above counts records whose endedStep is set — but
+    // entities.js:103 CLEARS endedStep when an old realm re-forms under its id
+    // ("re-opened: an old nation re-forming"). So a realm that fell and was later
+    // restored reads as never having died at all. Measured at the app grid, 12,000
+    // steps: seed 8817 logged TWO `polity.ended` events and reported died = 0,
+    // because both were restored. "Nothing has ever died" was an artefact of asking
+    // the records a question they do not answer.
+    //
+    // The event log is the only cumulative source, and it was deliberately rejected
+    // earlier in this file for pruning at 200k — that reasoning was right about
+    // LIFESPANS (which need the founding too) and wrong about COUNTS. Both are kept,
+    // labelled: `.died` is a state, `.endedEver` is a history with a known horizon.
+    const DEATH_EVENT = { polity: "polity.ended", faith: "faith.faded", dynasty: "dynasty.extinct" };
+    const ek = DEATH_EVENT[name];
+    if (ek) {
+      let ended = 0, restored = 0;
+      for (const e of (world.events || [])) {
+        const k = e.kind || e.type;
+        if (k === ek) ended++;
+        else if (name === "polity" && k === "polity.restored") restored++;
+      }
+      g[`${name}.endedEver`] = ended;
+      if (name === "polity") {
+        g[`${name}.restoredEver`] = restored;
+        // Deaths the record no longer remembers — the size of the discrepancy above.
+        g[`${name}.diedThenRestored`] = Math.max(0, ended - lifespans.length);
+      }
+    }
+
     // ── SAMPLING HONESTY ─────────────────────────────────────────────────────
     // Not every registry is permanent: dynasties.js reclaims dead unreferenced
     // persons and extinct dynasty husks. For those classes the live registry is a
