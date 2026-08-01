@@ -400,6 +400,33 @@ states it directly rather than by implication. Note what could NOT have found it
 empire check in `validate` is a share, a ratio or a count, and **a world where nothing
 ever dies passes all of them.**
 
+#### At the SHIPPED grid (THIRD CARDINAL RULE), step 12,000
+
+| class | born | died | turnover | lifespan p50 | age p50 | retained |
+|---|---|---|---|---|---|---|
+| polity | 33 | **0** | 0% | — | 7,104 | — |
+| faith | 39 | **0** | 0% | — | 11,357 | 100% |
+| culture | 41 | **0** | 0% | — | 11,256 | 100% |
+| lang | 41 | **0** | 0% | — | 11,256 | — |
+| dynasty | 96 | 6 | 6.3% | 1,175 | 2,141 | 100% |
+| person | 9,638 | 8,985 | 93.2% | 225 | 141 | **50%** |
+
+**The immortality holds at both grids** — so it is a property of the mechanism, not an
+artefact of the reference resolution. Two things do NOT hold, and both are exactly what
+the third cardinal rule exists to catch:
+
+* **`person.retainedPct` is 100% at the reference grid and 50% at the shipped one.**
+  The person purge does not bite at `tw=240` at all, and reclaims half the registry at
+  `tw=480`. So `person.lifespan` at the grid the app actually ships is computed over
+  half a sample — a bias that is *completely invisible* at the grid everything else is
+  validated on. This is the metric earning its keep on its first run: without it, that
+  number would have been read as a complete census. (Both grids report a p50 of 225,
+  which is reassuring but is not evidence the purge is unbiased.)
+* **`dynasty.lifespan.p50` reads 75 steps at the reference grid and 1,175 at the app
+  grid** — 15.7× apart. **Do not treat this as a finding yet:** it rests on 3 and 6
+  completed lifespans respectively, which is an anecdote, not a distribution. It is a
+  flag for a longer run, and it is recorded here rather than quietly averaged away.
+
 ### `graph.*` — topology, not sizes
 
 Every network the world carries used to report as one integer. `_overlordOf.size = 16`
@@ -686,6 +713,11 @@ see what was already tried.
 * **Observe and trace are single-seed**, so a finding from either has no error bar.
   Only `abtest` is multi-seed by default, and cross-seed spread was measurably large
   enough this month to flip a sign (0.57 vs 1.09 on the same ratio).
+* ~~No metric carries its own sample size~~ — **fixed**: `dist()` emits `.n` on every
+  distribution. Found by being misled by this suite's own output: the 15.7× cross-grid
+  dynasty lifespan above looked like a result until you saw it rested on 3 and 6
+  completed lives. Without `.n` a diff cannot tell "this moved" from "this had two data
+  points", and abtest's ranking was one anecdote away from a wrong call.
 * **Individual entities below the realm level are only ever aggregated.** Every class is
   now *distributed* (`person.*`, `culture.*`, …), but there is still no way to ask about
   **one** settlement, one culture, one dynasty, or one road.

@@ -32,6 +32,13 @@ function dist(prefix, arr, into) {
   if (!arr.length) return;
   const b = Float64Array.from(arr).sort();
   let sum = 0; for (const v of b) if (Number.isFinite(v)) sum += v;
+  // SAMPLE SIZE, on every distribution. A p50 over three values reads exactly like a
+  // p50 over five thousand, and that is not hypothetical: life.dynasty.lifespan.p50
+  // came out 75 steps at tw=240 and 1,175 at tw=480 — a 15.7x cross-grid gap that
+  // looked like a finding until you saw it rested on 3 and 6 completed lives. Without
+  // `.n` a diff cannot tell "this moved" from "this had two data points", so every
+  // consumer here — abtest's ranking especially — was one anecdote from a wrong call.
+  into[`${prefix}.n`] = b.length;
   into[`${prefix}.p50`] = pct(b, 0.5);
   into[`${prefix}.p90`] = pct(b, 0.9);
   into[`${prefix}.max`] = b[b.length - 1];
