@@ -11,7 +11,16 @@ If you ADD STATE to the world, also run `npm run coverage`: it proves, by
 perturbation rather than by name-matching, that every measurable property is
 reachable from `collect()`. New state is measured by default — the exclusion
 list fails open — so this fails until the state is either reached or explicitly
-named as pass workspace. See `docs/observability.md`.
+named as pass workspace.
+
+If you ADD A METRIC, also run `npm run monotone`: a count of things that have
+happened cannot decrease, and it fails on any metric whose NAME claims a
+cumulative history while its value falls. That is not hypothetical — `life.*.died`
+counted records *currently* marked dead, restoration cleared the flag, and "no
+realm has ever died" was reported for a session while realms were dying. When it
+fires, ask whether the name or the measurement is wrong; renaming to a claim the
+metric can keep (`endedNow` vs `endedEver`) is usually the fix, and an exceptions
+list usually is not. See `docs/observability.md`.
 
 ---
 
