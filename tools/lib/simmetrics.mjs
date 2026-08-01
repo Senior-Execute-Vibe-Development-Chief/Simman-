@@ -96,8 +96,10 @@ const VEC_NAMES = await (async () => {
 
 /** Discover every numeric leaf path on one entity, adding `path -> getter` to `paths`.
  *  Entities are heterogeneous — a key present on one settlement may be absent on the
- *  next — so paths are unioned across the whole population before any is measured. */
-function discoverPaths(o, paths) {
+ *  next — so paths are unioned across the whole population before any is measured.
+ *  `fixedLen` names the array keys whose length is IDENTICAL across the whole class;
+ *  only those are enumerated positionally (see entityDists). */
+function discoverPaths(o, paths, fixedLen) {
   for (const k of Object.keys(o)) {
     const v = o[k];
     if (numeric(v)) { if (!paths.has(k)) paths.set(k, (e) => numeric(e[k]) ? e[k] : 0); continue; }
@@ -113,8 +115,16 @@ function discoverPaths(o, paths) {
     if (Array.isArray(v) || ArrayBuffer.isView(v)) {
       const p = `${k}.len`;
       // Length is itself an outcome — `culMix.len` IS the mix depth observe prints
-      // by hand, and it is the only thing measurable about an array of non-numbers.
+      // by hand, `dynasty.members.len` is how big a house grew, and it is the only
+      // thing measurable about an array of non-numbers.
       if (!paths.has(p)) paths.set(p, (e) => (e[k]?.length) || 0);
+      // POSITION MEANS SOMETHING ONLY IN A FIXED-SCHEMA VECTOR. `_gPrice[3]` is metal
+      // in every settlement; but index 5 of one dynasty's `members` list has nothing
+      // to do with index 5 of the next, so distributing it is noise wearing a metric's
+      // name — and noise in this map costs real money, because abtest ranks by effect
+      // size and a shuffled id list moves hard. Detected FROM THE DATA (one length
+      // across the entire class ⇒ structural), never from a hand-kept list of names.
+      if (!fixedLen.has(k)) continue;
       if (v.length > MAX_VEC) continue;              // bounded: shape only, no enumeration
       const names = VEC_NAMES[k];
       // Collision scope is THIS vector, not the accumulated path map — a duplicated
@@ -142,8 +152,20 @@ function discoverPaths(o, paths) {
 /** One distribution per numeric leaf, over a population of entities. */
 function entityDists(prefix, items, into) {
   if (!items.length) return;
+  // Which array keys carry a FIXED schema? Survey every entity first: one distinct
+  // length across the whole class means position is structural (a goods vector, a
+  // money-channel array); two or more means it is a variable-length LIST.
+  const lens = new Map();
+  for (const it of items) for (const k of Object.keys(it)) {
+    const v = it[k];
+    if (v && typeof v === "object" && (Array.isArray(v) || ArrayBuffer.isView(v))) {
+      let s = lens.get(k); if (!s) lens.set(k, s = new Set());
+      s.add(v.length);
+    }
+  }
+  const fixedLen = new Set([...lens].filter(([, s]) => s.size === 1).map(([k]) => k));
   const paths = new Map();
-  for (const it of items) discoverPaths(it, paths);
+  for (const it of items) discoverPaths(it, paths, fixedLen);
   for (const [p, get] of paths) dist(`${prefix}.${p}`, items.map(get), into);
 }
 
@@ -424,6 +446,48 @@ export function collect(world) {
   entityDists("sett", settled, m);
   entityDists("nation", cs, m);
   entityDists("polity", ps, m);
+  // …and the PEOPLES half of the sim, which was counted and never characterised.
+  // Depth-2 fixed the collector one level DOWN; this fixes the identical hole one
+  // level OUT — it measured three entity classes of eight, so `count.cultures = 23`
+  // was the entire measurement of a culture. 36.5% of the world's distinct numeric
+  // entity state sat outside the collector, concentrated in exactly these registries
+  // (persons is the largest AND the fastest-growing: 456 at 6k steps on the reference
+  // grid, ~23,700 in a long run). Two design docs describe language systems that no
+  // standing instrument had ever read.
+  for (const [prefix, reg] of [["culture", world.cultures], ["lang", world.languages],
+       ["faith", world.faiths], ["dynasty", world.dynasties], ["person", world.persons]]) {
+    if (!reg) continue;
+    const items = reg instanceof Map ? [...reg.values()] : Array.isArray(reg) ? reg : null;
+    if (items && items.length) entityDists(prefix, items.filter(x => x && typeof x === "object"), m);
+  }
+
+  // ── EVENT PAYLOAD MAGNITUDES ───────────────────────────────────────────────
+  // `event.<kind>` counts how often a thing happened; it cannot say how BIG. A run
+  // with two catastrophic famines and one with two mild ones are identical in the
+  // histogram. This distributes the numeric payload per kind.
+  //
+  // Most payload fields are IDENTIFIERS, though — measured over a 6k-step run, `id`
+  // appears 260 times, `polity` 191, `s` 172, `x`/`y` 138 each, against `people` 5
+  // and `dead` 2. Distributing an id yields a number that moves whenever entities are
+  // renumbered, which would pollute abtest's effect ranking with pure noise. So ids
+  // are excluded by name — a semantic distinction that cannot be detected, exactly
+  // like observe's SCRATCH set, and FAILING OPEN the same way: an unknown field is
+  // treated as a magnitude and measured, so a new one shows up by default instead of
+  // hiding. `step` is always kept: WHEN a kind of event fires is a real outcome.
+  const EVENT_IDS = new Set(["id", "polity", "s", "x", "y", "parent", "culture", "from",
+    "to", "dynasty", "person", "person2", "seat", "faith", "faithId", "lang", "language",
+    "cultureId", "settlement", "target", "attacker", "defender", "ruler", "house"]);
+  const evByKind = new Map();
+  for (const e of (world.events || [])) {
+    const k = e.kind || e.type; if (!k) continue;
+    let a = evByKind.get(k); if (!a) evByKind.set(k, a = []);
+    a.push(e);
+  }
+  for (const [kind, evs] of evByKind) {
+    const fields = new Set();
+    for (const e of evs) for (const f of Object.keys(e)) if (numeric(e[f]) && !EVENT_IDS.has(f)) fields.add(f);
+    for (const f of fields) dist(`eventv.${kind}.${f}`, evs.map(e => numeric(e[f]) ? e[f] : 0), m);
+  }
 
   // realm geometry — for BOTH political maps: the authoritative one the sim reasons
   // over, and the control field the player actually sees rendered.

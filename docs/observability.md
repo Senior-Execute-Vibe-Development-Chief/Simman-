@@ -18,9 +18,15 @@ command.
 ## The design rule: introspection, not a list
 
 The tool carries **no hardcoded field list**. It walks the live world and reports every
-typed array of length `N`, every numeric key present on settlements / countries / polity
-records, every Map/Set/Array by size, and histograms the event log. **Add state anywhere
-and it appears here on the next run with no edit.**
+typed array of length `N`, every numeric leaf on every entity class (to depth 2), every
+Map/Set/Array by size, and histograms the event log. **Add state anywhere and it appears
+here on the next run with no edit.**
+
+The two places that rule was violated are both now closed, and they are worth
+remembering as a pair — introspection is only as complete as the *shape* it assumes:
+the walk stopped one level **down** (missing 234 numeric leaves per settlement) and one
+level **out** (measuring 3 entity classes of 8). Neither was visible as a missing
+number; both were visible only as a missing *dimension*.
 
 This is not theoretical: the runtime histogram immediately surfaced five event kinds
 that a `grep` over `logEvent(world, "...")` misses entirely — `ruler.crowned`,
@@ -117,6 +123,19 @@ captured (count **and km²**), `_overlordOf`/`_overlordReach` (vassalage), `_suc
 `cultures` `languages` `faiths` `dynasties` `persons` `_royalCourt` `_sittingRulers`
 `ancestryCount`, largest peoples by census, culture-mix depth per town.
 
+These used to be COUNTS only — `count.cultures = 23` was the entire measurement of a
+culture. `collect()` now distributes every field of every one of them:
+* **cultures** — `divergence`, `foundedStep`, `parentCultureId`, `rootCultureId`,
+  `langSeed`, `folkFaithId`, `_lastDrift`
+* **languages** — `gen` (generations from the root), `bornStep`, and the typological
+  profile `prof{sylC, tone, consN, vowelN, nasalCoda, onDepth}`
+* **faiths** — `foundedStep`, `endedStep`, and `doctrine{militancy, zeal, syncretism,
+  hierarchy, asce}`
+* **dynasties** — `foundedStep`, `endedStep`, `members.len` (how large a house grew),
+  `inlaws.len`
+* **persons** — `born`, `died`, `lifespan`, `reignFrom`/`reignTo`, `bloodHouse`,
+  `children.len`, and `traits{vigor, wit, boldness, ruthlessness}`
+
 ### 10. Knowledge & ages
 Per-track distributions across all settlements, `_eraAt` (the step each era marker was
 reached), `_leadOrg`, `_townBar`/`_cityBar` (the percentile tier bars), `_topUrban`,
@@ -212,9 +231,10 @@ repeatedly before it existed.
 
 `collect(world)` returns a FLAT map of `metricName -> number`, built by the same
 introspection rule as `observe`: every length-N tile field, every numeric leaf on
-settlements / countries / polity records, realm geometry, network topology, every
-collection size, the chronicle histogram, `world.debug` counters. **~3,480 metrics at
-the app grid, and it grows by itself.** Every tool below consumes it, so all
+**every entity class** (settlements, countries, polity records, cultures, languages,
+faiths, dynasties, persons), realm geometry, network topology, event payload
+magnitudes, every collection size, the chronicle histogram, `world.debug` counters.
+**~3,900 metrics, and it grows by itself.** Every tool below consumes it, so all
 measurements are directly comparable — the trap the manual bisects fell into was each
 pass measuring its own two or three numbers.
 
@@ -256,7 +276,63 @@ Rules of the descent, all of which fail open:
   export may not exist yet — a static import would fail at link time and take the whole
   bisect down. A missing table costs a readable name, never a measurement.
 
-Cost: 79 ms at the reference grid, 398 ms at the app grid.
+### …and it covers EVERY entity class, not three of eight
+
+Depth-2 fixed the collector one level *down*. The identical hole existed one level
+*out*: `collect()` measured settlements, countries and polity records — and nothing
+else. `count.cultures = 23` was the **entire** measurement of a culture. Audited by
+walking every object collection the world holds and counting distinct numeric leaves
+(deduping aliases: `_byId` and `_stMap` are the same 68 settlement objects, which is
+why a naive count reads 72%), **36.5% of the world's entity state was dark**, and all
+of it was the *peoples* half of the simulator:
+
+| collection | objects | leaves | was |
+|---|---|---|---|
+| persons | 456 | 8,208 | dark |
+| events (payload magnitudes) | 260 | 1,820 | dark |
+| languages | 23 | 575 | dark |
+| faiths | 20 | 280 | dark |
+| cultures | 23 | 276 | dark |
+| dynasties | 4 | 164 | dark |
+
+Now `culture.*`, `lang.*`, `faith.*`, `dynasty.*`, `person.*` — so `person.lifespan.p50`,
+`person.traits.ruthlessness.p50`, `faith.doctrine.militancy.p50`, `lang.prof.tone.p50`,
+`dynasty.members.len.max` are metrics that `abtest` and `bisect` can diff. **Dark share
+36.5% → 7.2%**, and the remainder is not missing signal: `_moneyFlows` (a flow log whose
+aggregate is already in `sett._mIn/_mOut`), `_evIndex` (an index into events),
+`_urbanSpike` and `_royalCourt` (scratch and a roster of references).
+
+Persons matters most and grows fastest — 456 at 6k steps on the reference grid, ~23,700
+in a long run. It was the single largest dark class *and* the one nobody could see.
+
+### `eventv.*` — how big, not just how often
+
+`event.<kind>` counts occurrences; it cannot say magnitude. A run with two catastrophic
+famines and one with two mild ones are identical in the histogram. `eventv.<kind>.<field>`
+distributes the numeric payload — `eventv.polity.receded.tiles.max`,
+`eventv.settlement.tier.people.p50`.
+
+Payloads are mostly IDENTIFIERS, though, and that is measured, not assumed: over a 6k-step
+run `id` appears 260 times, `polity` 191, `s` 172, `x`/`y` 138 each — against `people` 5,
+`reign` 5, `tiles` 2, `dead` 2. Distributing an id yields a number that moves whenever
+entities are renumbered, which would pollute abtest's effect ranking with pure noise, so
+ids are excluded **by name**. That is a semantic distinction which cannot be detected —
+the same situation as observe's `SCRATCH` — and it fails open the same way: an unknown
+field is treated as a magnitude and measured, so a new one appears by default instead of
+hiding. `step` is always kept, because *when* a kind of event fires is a real outcome.
+
+### Positional enumeration only for FIXED-SCHEMA vectors
+
+`_gPrice[3]` is metal in every settlement, so `sett._gPrice.metal` is meaningful. But
+index 5 of one dynasty's `members` list has nothing to do with index 5 of the next —
+distributing it is noise wearing a metric's name, and noise here is expensive because
+abtest ranks by effect size and a shuffled id list moves hard. So a vector is enumerated
+positionally only when its length is **identical across the entire entity class**;
+otherwise only `.len` is emitted. Detected from the data, never from a hand-kept list:
+`dynasty.members`, `sett.crops` and `person.children` collapse to `.len` on their own,
+while `_gPrice`, `_mIn` and `knowledge` keep their named entries.
+
+Cost: 79 ms → 121 ms at the reference grid (3,876 metrics), 398 ms at the app grid.
 
 ### `graph.*` — topology, not sizes
 
@@ -304,7 +380,7 @@ be compared with another.
     node tools/abtest.mjs --tune="ORG_BIRTH_VAR=0" --seeds=8817,31337,4242
     node tools/abtest.mjs --env="SIM_SUCCESSORS=0" --grep=realm,shape
 
-Runs both arms on the same seed, diffs **all ~3,480 metrics**, prints a fixed HEADLINE
+Runs both arms on the same seed, diffs **all ~3,900 metrics**, prints a fixed HEADLINE
 block plus the largest effects. Three properties that matter:
 
 * **Multi-seed by default.** Single-seed A/B is how noise ships as a finding — the
@@ -324,7 +400,7 @@ block plus the largest effects. Three properties that matter:
 
 Walks a commit range in a throwaway worktree, running the **current** collector against
 each commit's `src/` — so every commit is measured identically. `--auto` needs no metric
-named in advance: it ranks every one of the ~3,480 by how sharply it steps and reports
+named in advance: it ranks every one of the ~3,900 by how sharply it steps and reports
 which commit carries the most sharp steps. The regression finds itself.
 
 Verified against the known case at the shipped app grid:
@@ -370,7 +446,7 @@ cannot: **SWING** (peak/trough — a stability measure), **DIR** (rising / falli
 oscillating, from sign changes in the first difference), **PEAK@** in steps and years,
 **SETTLE** (is the last third flat — did it converge?), and the chronicle **bucketed by
 window**, so *when* things happened survives instead of collapsing to a count. `--out=`
-writes one CSV row per checkpoint × ~3,480 columns.
+writes one CSV row per checkpoint × ~3,900 columns.
 
 This is what made the old `_sizePopK` anchor legible as UNSTABLE rather than merely
 generous — its median realm swung 92k → 23k → 11k → 80k km² across four checkpoints.
@@ -534,12 +610,19 @@ see what was already tried.
 * **Observe and trace are single-seed**, so a finding from either has no error bar.
   Only `abtest` is multi-seed by default, and cross-seed spread was measurably large
   enough this month to flip a sign (0.57 vs 1.09 on the same ratio).
-* **Individual entities below the realm level are only ever aggregated.** There is no
-  way to ask about one settlement, one culture, one dynasty, or one road.
-* **Language and faith internals** are counted but not characterised (no phoneme /
-  grammar / doctrine summary) — `tools/langlab` covers some of this separately.
+* **Individual entities below the realm level are only ever aggregated.** Every class is
+  now *distributed* (`person.*`, `culture.*`, …), but there is still no way to ask about
+  **one** settlement, one culture, one dynasty, or one road.
+* **Language and faith internals are distributed, not CHARACTERISED.**
+  `lang.prof.tone.p50` and `faith.doctrine.militancy.p50` exist now, so a change to them
+  is diffable — but a distribution is not a description: no phoneme inventory, grammar
+  or doctrine summary. `tools/langlab` covers some of this separately.
 * **Per-tile history** is only what the fields remember (`_tileHomeland`, `_tileFellAt`,
   `_tileCapturedAt`); there is no general "what happened on this tile" query.
+* **7.2% of entity state is still outside the collector** — `_moneyFlows`, `_evIndex`,
+  `_urbanSpike`, `_royalCourt`. Audited as duplicate or scratch rather than missing
+  signal (`_moneyFlows`' aggregate is already in `sett._mIn`/`_mOut`), so this is
+  recorded for honesty, not queued as work.
 * **Nested objects still collapse to a count in the `--nation=` drill-down**
   (`_techEff={22}`, `knowledge={6}`). The *collector* now descends into them, so
   `abtest`/`bisect`/`trace` see them; only observe's human drill-down print does not.
@@ -553,3 +636,9 @@ see what was already tried.
   metrics, see above.
 * ~~Graph structure is counted, not described~~ — **fixed**: `graph.*` and
   `observe --section=graph`.
+* ~~The collector measures three entity classes of eight~~ — **fixed**: `culture.*`
+  `lang.*` `faith.*` `dynasty.*` `person.*`, plus `eventv.*` payload magnitudes. Dark
+  share of entity state 36.5% → 7.2%.
+* ~~Variable-length lists were enumerated positionally~~ — **fixed**: a vector is
+  indexed only when its length is identical across the whole class, detected from the
+  data; lists collapse to `.len`.
