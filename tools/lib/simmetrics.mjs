@@ -404,6 +404,108 @@ export function graphOf(world, held, shape) {
   return g;
 }
 
+// ── LIFECYCLE — birth, death and SURVIVAL of entities ────────────────────────
+//
+// Every other metric here is a snapshot of the population that EXISTS. That cannot
+// answer the question the sim is actually for: do realms rise and fall? A snapshot
+// of survivors has no lifespans in it, and a mean lifespan computed over a
+// population that is still mostly alive is not a number, it is a lie.
+//
+// Two facts about this codebase make it computable with NO new recording:
+//   * `entities.js` — "Records are never deleted. A fallen realm keeps its record
+//     (endedStep set)". So `endedStep − foundedStep` IS the lifespan, exactly, for
+//     every polity that ever existed.
+//   * the EVENT LOG is the wrong place to get this: events.js caps at 200,000 and
+//     splices the oldest 50,000, so a long run silently deletes its early history
+//     and leaves deaths whose births have been pruned away.
+//
+// RIGHT-CENSORING IS HANDLED, because getting it wrong is how survival statistics
+// mislead: an entity founded 500 steps ago tells you nothing about 4,000-step
+// survival. Each horizon's denominator is only those entities that have HAD THE
+// CHANCE to reach it, and a horizon with no eligible entities emits no metric at
+// all rather than a fake 0%.
+//
+// Everything is in STEPS. The displayed year is cosmetic (FIRST CARDINAL RULE) and
+// must never be the unit of a mechanism OR of a measurement compared across runs.
+const BIRTH_FIELDS = ["foundedStep", "bornStep", "born", "createdStep"];
+const DEATH_FIELDS = ["endedStep", "diedStep", "died", "fadedStep"];
+const SURVIVAL_HORIZONS = [1000, 4000, 16000];
+
+/** Lifecycle of every entity class that stamps a birth step. */
+export function lifecycleOf(world) {
+  const g = {};
+  const CLASSES = [["polity", world.polities], ["faith", world.faiths],
+    ["dynasty", world.dynasties], ["culture", world.cultures],
+    ["lang", world.languages], ["person", world.persons]];
+  for (const [name, reg] of CLASSES) {
+    if (!reg) continue;
+    const items = (reg instanceof Map ? [...reg.values()] : Array.isArray(reg) ? reg : [])
+      .filter(x => x && typeof x === "object");
+    if (!items.length) continue;
+    // Field names differ per class (foundedStep/endedStep, born/died, bornStep/…).
+    // Detected against the live records rather than hard-coded per class, and
+    // scanning ALL items because the first one may not carry the stamp.
+    const has = (f) => items.some(it => Number.isFinite(it[f]));
+    const bf = BIRTH_FIELDS.find(has);
+    if (!bf) continue;                          // undated class — nothing to say
+    const df = DEATH_FIELDS.find(has);
+
+    const lifespans = [], ages = [];
+    for (const it of items) {
+      const b = it[bf]; if (!Number.isFinite(b)) continue;
+      const d = df ? it[df] : undefined;
+      // Convention throughout this sim: a negative death stamp means STILL ALIVE
+      // (endedStep = −1, died = −1). Absent is alive too.
+      if (Number.isFinite(d) && d >= 0) lifespans.push(d - b);
+      else ages.push(world.step - b);
+    }
+    g[`${name}.born`] = lifespans.length + ages.length;
+    g[`${name}.died`] = lifespans.length;
+    g[`${name}.alive`] = ages.length;
+    g[`${name}.turnoverPct`] = (lifespans.length + ages.length)
+      ? 100 * lifespans.length / (lifespans.length + ages.length) : 0;
+    if (lifespans.length) dist(`${name}.lifespan`, lifespans, g);
+    if (ages.length) dist(`${name}.age`, ages, g);
+
+    for (const H of SURVIVAL_HORIZONS) {
+      let eligible = 0, survived = 0;
+      for (const it of items) {
+        const b = it[bf]; if (!Number.isFinite(b)) continue;
+        if (world.step - b < H) continue;       // right-censored: no chance yet
+        eligible++;
+        const d = df ? it[df] : undefined;
+        const life = (Number.isFinite(d) && d >= 0) ? d - b : world.step - b;
+        if (life >= H) survived++;
+      }
+      // No metric at all when nobody could have reached the horizon — a 0% here
+      // would read as "everything dies young" when it means "the run is short".
+      if (eligible > 0) g[`${name}.survival${H / 1000}k`] = 100 * survived / eligible;
+    }
+
+    // ── SAMPLING HONESTY ─────────────────────────────────────────────────────
+    // Not every registry is permanent: dynasties.js reclaims dead unreferenced
+    // persons and extinct dynasty husks. For those classes the live registry is a
+    // SAMPLE OF SURVIVORS, so every number above is conditioned on retention and
+    // must say so rather than quietly degrade as a run gets longer.
+    //
+    // The count of records EVER MINTED is the world's own monotone counter, whose
+    // name follows the codebase convention `_next<Class>Id` — derived from the class
+    // name, so a new registry following the same convention is covered with no edit.
+    // FAILS SAFE: a class with no such counter (polities take their id from the
+    // country, so the ids are sparse by construction and never dense) emits NO
+    // metric, instead of an id-span heuristic that would have read 23% retention on
+    // a registry whose own header promises records are never deleted.
+    const counter = world[`_next${name[0].toUpperCase()}${name.slice(1)}Id`];
+    if (Number.isFinite(counter)) {
+      let lo = Infinity, n = 0;
+      for (const it of items) if (Number.isFinite(it.id)) { if (it.id < lo) lo = it.id; n++; }
+      const everMinted = counter - (Number.isFinite(lo) ? lo : 0);
+      if (n && everMinted > 0) g[`${name}.retainedPct`] = 100 * n / Math.max(n, everMinted);
+    }
+  }
+  return g;
+}
+
 /** The exhaustive flat metric map. */
 export function collect(world) {
   const m = {};
@@ -509,6 +611,9 @@ export function collect(world) {
   // network topology — the shape of the tributary tree, the alliance / trade
   // graphs, the realm adjacency clusters and the road network
   for (const [k, v] of Object.entries(graphOf(world, held, sh))) m[`graph.${k}`] = v;
+
+  // lifecycle — how long things LAST, which no snapshot of survivors can say
+  for (const [k, v] of Object.entries(lifecycleOf(world))) m[`life.${k}`] = v;
 
   // nearest-seat spacing — the "scattered dots" measure
   const seats = cs.filter(c => c.capital?.mode === "settled").map(c => [c.capital.pos.x | 0, c.capital.pos.y | 0]);

@@ -334,6 +334,72 @@ while `_gPrice`, `_mIn` and `knowledge` keep their named entries.
 
 Cost: 79 ms → 121 ms at the reference grid (3,876 metrics), 398 ms at the app grid.
 
+### `life.*` — do things RISE AND FALL, or only rise?
+
+Every other metric is a snapshot of the population that EXISTS, and **a snapshot of
+survivors contains no lifespans**. That left the question the sim is actually for —
+do realms rise and fall? — unanswerable, and a mean lifespan taken over a population
+that is still mostly alive is not a number, it is a lie.
+
+Two facts make it computable with **no new recording at all**:
+
+* `entities.js:12` — *"Records are never deleted. A fallen realm keeps its record
+  (endedStep set)."* So `endedStep − foundedStep` **is** the lifespan, exactly, for
+  every polity that ever existed.
+* The **event log is the wrong source**: `events.js:42` caps at 200,000 and splices
+  the oldest 50,000, so a long run deletes its own early history and leaves deaths
+  whose births have been pruned away. Anything built on it is survivorship-biased in
+  precisely the wrong direction.
+
+Per class (`polity` `faith` `dynasty` `culture` `lang` `person`): `born`, `died`,
+`alive`, `turnoverPct`, `lifespan.{p50,p90,max}` for the dead, `age.{p50,max}` for the
+living, and `survival1k`/`survival4k`/`survival16k`. All in **steps** — the displayed
+year is cosmetic and must never be the unit of a measurement compared across runs
+(FIRST CARDINAL RULE).
+
+**Right-censoring is handled, because getting it wrong is how survival statistics
+mislead.** An entity founded 500 steps ago tells you nothing about 4,000-step
+survival, so each horizon's denominator is only entities that have *had the chance*
+to reach it — and a horizon no one is old enough for emits **no metric at all**,
+rather than a 0% that would read as "everything dies young" when it means "the run is
+short".
+
+**`retainedPct` — the metric that admits its own bias.** `dynasties.js:945` reclaims
+dead unreferenced persons and `:988` deletes extinct dynasty husks, so for those
+classes the live registry is a *sample of survivors*. The count ever minted comes from
+the world's own monotone counter, whose name follows the codebase convention
+`_next<Class>Id` — derived from the class name, so a new registry following the same
+convention is covered with no edit. It **fails safe**: a class with no such counter
+emits nothing. That mattered immediately — polities take their id from the country, so
+polity ids are sparse by construction, and an id-span heuristic (the first thing tried)
+reported **23% retention on a registry whose own header promises records are never
+deleted**. A metric that invents a number is worse than one that declines to.
+
+#### What it said on its first run — and it is an absence
+
+Reference grid, seed 8817, step 9,000:
+
+| class | born | died | turnover | lifespan p50 | age p50 |
+|---|---|---|---|---|---|
+| polity | 21 | **0** | 0% | — | 3,384 |
+| faith | 24 | **0** | 0% | — | 8,807 |
+| culture | 32 | **0** | 0% | — | 8,592 |
+| lang | 32 | **0** | 0% | — | 8,592 |
+| dynasty | 24 | 3 | 12.5% | **75** | 1,791 |
+| person | 5,336 | 4,913 | 92.1% | 225 | 141 |
+
+**In this world people die and dynasties die. Nothing else ever does.** No realm, no
+faith, no culture and no language has ended in 9,000 steps; `polity.survival4k` is
+100%. And the one mortal institution is startlingly ephemeral — a dynasty's median
+life is **75 steps** against a realm's 3,384-step age, so houses turn over ~45× within
+a single immortal realm.
+
+This is the same shape as every other finding this session — `settlement.captured` 0,
+`settlement.annexed` 0, `graph.vassal.depthMax` 1 — and it is the first metric that
+states it directly rather than by implication. Note what could NOT have found it: every
+empire check in `validate` is a share, a ratio or a count, and **a world where nothing
+ever dies passes all of them.**
+
 ### `graph.*` — topology, not sizes
 
 Every network the world carries used to report as one integer. `_overlordOf.size = 16`
@@ -598,11 +664,21 @@ political map** — so the map reads as fragmented while the politics are not.
 Ranked by what they cost. Closed items are kept, struck through, so the next reader can
 see what was already tried.
 
-* **Nothing follows ONE entity through time.** `trace` records `collect()` per
-  checkpoint — world aggregates only. There is no way to follow a single realm's arc,
-  so **realm lifespans, rise-and-fall shape, and who-conquered-whom-when are not
-  measurable**. For a sim whose product is emergent history, the history itself is the
-  least instrumented thing in it. Highest-value remaining addition by a distance.
+* **No TRAJECTORIES.** `life.*` now gives lifespans and survival exactly, and
+  `eventv.*` gives event magnitudes — but nothing records a single entity's *shape*
+  over time. "Did this realm peak and decline, or only grow?" still has no metric.
+  The fix needs no `src/` change: have `trace.mjs` record a per-entity table per
+  checkpoint keyed on the sim's **own** polity id (never an invented lineage
+  heuristic — restoration is already modelled via `endedStep`/`polity.restored`),
+  then fold `arc.peakAreaFraction` / `arc.riseSteps` / `arc.fallSteps` back into the
+  metric map so the arc is diffable and gate-able. Self-diagnosing: compare
+  `life.polity.born` against how many realms trace ever saw, and report the
+  entities that lived and died inside one checkpoint interval instead of hiding them.
+  *Lower priority than it looks right now — `life.polity.died = 0` says there are no
+  falls to shape.*
+* **`trace` loses early history in very long runs.** The live event log prunes at
+  200k events; `trace.mjs` already walks `prevEvents` per checkpoint and could drain
+  into its own permanent store, defeating the cap with no `src/` change.
 * **Funnels cover 5 passes of ~40 modules.** `found`, `nucleate`, `growth`, `capture`,
   `submit`. Absent: war INITIATION (still on bespoke `WDBG` counters), migration, the
   food and trade passes, secession, faith/culture birth, colony founding. Every one of
@@ -642,3 +718,7 @@ see what was already tried.
 * ~~Variable-length lists were enumerated positionally~~ — **fixed**: a vector is
   indexed only when its length is identical across the whole class, detected from the
   data; lists collapse to `.len`.
+* ~~Realm lifespans are unmeasurable~~ — **fixed**: `life.*`, computed from the
+  permanent birth/death stamps with no recording, right-censored, and carrying its own
+  retention caveat. Its first read was that nothing except people and dynasties has
+  ever died.
