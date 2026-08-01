@@ -809,9 +809,38 @@ experience strain.
 province on its way out and merely slow, the other would never leave however long you
 waited.
 
-Not yet wired: the food and trade passes, and migration — though migration is
-continuous field flow rather than a candidate/reject decision, so a funnel is the wrong
-shape for it and it needs a different instrument.
+**`roadPeer` / `roadPlan`** — why a town does not lay a trade road. **Two channels on
+purpose**: `roadPeer` counts PEERS EVALUATED, `roadPlan` counts TOWNS THAT TRIED, and
+mixing those two populations is exactly the defect the `growth` funnel used to carry.
+App grid, 9,000 steps:
+
+    roadPeer:  865 considered · 1 passed (0.1%)
+        shortcutProbeBudgetSpent     561   64.9%
+        routeAlreadyMostlyRoad       231   26.7%
+        beyondLogisticsHorizon        58    6.7%
+        newRouteBudgetSpent            9    1.0%
+        noLandPath                     5    0.6%
+
+    roadPlan:  117 considered · 1 passed (0.9%)
+        noViablePeer                 116   99.1%
+
+**The single largest line in the funnel is a performance cap.** `MAX_SHORTCUT_EVALS`
+exists as cost control — *"a tight cap so a stable network doesn't re-path every peer
+every cycle"* — and it accounts for 65% of all peer evaluations. Read it precisely,
+though: that cap governs SHORTCUT probes against peers a town is *already* linked to,
+so it throttles network *improvement*, not network *formation*. New links are barely
+budget-limited at all (1.0%).
+
+The economic brake on new roads is `routeAlreadyMostlyRoad` at 26.7% — the route is
+already largely paved, so there is nothing to build. And at the town level, **99.1% of
+attempts find no viable peer whatsoever.** That sits beside the standing observation
+that trade partners are pinned at exactly 12 for every settlement (p50 = p90 = max),
+and together they say the trade network is not demand-limited or wealth-limited: it is
+saturated against caps.
+
+Not yet wired: the food passes, faith/culture birth, colony founding. Migration is
+deliberately excluded — it is continuous field flow rather than a candidate/reject
+decision, so a funnel is the wrong instrument and it needs its own.
 
 ### "Never fired" is a finding, not a wiring gap
 
@@ -888,12 +917,12 @@ see what was already tried.
 * **`trace` loses early history in very long runs.** The live event log prunes at
   200k events; `trace.mjs` already walks `prevEvents` per checkpoint and could drain
   into its own permanent store, defeating the cap with no `src/` change.
-* **Funnels cover 7 gates.** `found`, `nucleate`, `growth`, `capture`, `submit`,
-  `attack`, `secede` — the whole political spine: where states are born, how they grow,
-  how they fight, how they consolidate, how they come apart. Absent: the food and trade
-  passes, faith/culture birth, colony founding. Migration is deliberately excluded — it
-  is continuous field flow, not a candidate/reject decision, so a funnel is the wrong
-  instrument and it needs its own.
+* **Funnels cover 10 gates.** `found`, `nucleate`, `growth`, `marginalTile`, `capture`,
+  `submit`, `attack`, `secede`, `roadPeer`, `roadPlan` — the whole political spine
+  (where states are born, grow, fight, consolidate, come apart) plus the trade network.
+  Absent: the food passes, faith/culture birth, colony founding. Migration is
+  deliberately excluded — it is continuous field flow, not a candidate/reject decision,
+  so a funnel is the wrong instrument and it needs its own.
 * **Observe and trace are single-seed**, so a finding from either has no error bar.
   Only `abtest` is multi-seed by default, and cross-seed spread was measurably large
   enough this month to flip a sign (0.57 vs 1.09 on the same ratio).
