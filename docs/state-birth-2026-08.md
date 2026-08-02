@@ -149,6 +149,33 @@ endpoint. **`=2` is not**: it costs realms (32→26 at 12k) and ends with twice
 the statelessness. Kept in the lever because it isolates the second half of the
 mechanism for future work, not because it is currently an improvement.
 
+## Gate status — the lever ships OFF
+
+- `npm test` green.
+- `npm run resgate` (SEAT_FIELD=1): **all five app-grid bands hold** — app/ref
+  median realm area 0.57 (floor 0.42), claimed land 0.55 (0.44), density 0.54
+  (0.40), app median realm absolute 210k km² (floor 60k), app realm count 17
+  (floor 6).
+- `npm run validate`, 3 seeds: 8817 and 4242 pass all hard gates at **1 soft
+  warning** each (budget 2) — better than the default's recorded 2. **Seed 777
+  goes over budget at 3.** Measured against its own baseline:
+
+      seed 777, SEAT_FIELD=0 :  Zipf n/a · fallen-polity lifespan          → 2 (at budget)
+      seed 777, SEAT_FIELD=1 :  Zipf n/a · fallen-polity lifespan
+                                · market integration narrows prices (Δ) -0.25   → 3 (over)
+
+  Two of the three are pre-existing on that seed. The third is **new**: the
+  first-difference correlation between component drops and price dispersion goes
+  to −0.25 against a −0.2 bar, i.e. in the windows where the trade network knits,
+  spread widens slightly instead of narrowing.
+
+Per the repo's own flip discipline — 3 seeds, all hard gates, soft warnings
+within budget — **the default stays 0.** The lever is built, byte-identical off,
+and measurably better on the axis the directive targeted; it is not yet clean
+enough to be the world. What it needs before a flip is an explanation of the
+market-integration term on that seed (a realm-count/regime artifact, or a real
+coupling from the founding change into trade-network topology), not a wider band.
+
 ## What this does NOT fix — the early game is gated on something else
 
 The three arms are **bit-for-bit identical for the first ~5000 steps**: 4 realms
@@ -168,8 +195,80 @@ run on different clocks and the cities win by an order of magnitude.
 Under "settlements are ONLY cities" that gap is the thing to examine next: a
 wave of advance spreads *villages*, and villages already live correctly in
 `popField`. What it currently mints at the frontier is a CITY. The `birthPolity`
-funnel added here measures that channel; `probe_statebirth` reports it every
-checkpoint.
+funnel measures that channel; `probe_statebirth` reports it every checkpoint.
+
+---
+
+# The capital as a SEAT OF POWER (owner proposal) — what the code already has
+
+Directive: *"consider making 'The Capital' be a special settlement type, that can
+represent simply the seat of power, be it village or horde or city, whatever."*
+
+## Most of the architecture is already there
+
+- **National power already divides the capital's size out.** `fieldPowerOverlay`
+  computes `governed people × (settlementPower(cap) / cap.people)`, and since
+  `settlementPower = people × mil × org`, that second factor is pure **court
+  competence**. A realm's coercive weight is its people; the seat contributes
+  only how well they are administered. The comment beside it already says
+  "a horde's might is its PEOPLE ON THE STEPPE, not its (few) towns".
+- **Hold capacity is already field-grounded** (`capPowerCap` reads the governed
+  region, not the capital).
+- **`_nomadic` realms already exist**, derived from where the majority of
+  governed people live plus the court's mobility and herds — and `_sovereignSeat`
+  already means "carries sovereignty though it never reached city tier". Steppe
+  camps are already born at 18–25 census as tier-0 non-town entities, so the sim
+  already HAS courts that are not cities; it just cannot found one.
+
+The only live consumer of the capital's own census is **`relPow`**, the
+great-power dominance tail. `coerce` is dead under `HOLD_ARMY = 1` and
+`thronePower` already reads the throne's *province*. So a village- or ordu-seated
+realm would price correctly everywhere except its dominance tail, and that takes
+the same governed-region, median-anchored treatment applied twice already.
+
+## A claim of mine that the measurement did NOT support
+
+Reading the code, the deliberate court-relocation mechanism (`CAPITAL_COURT_MOVE`
+— "the court's treasury and the capital garrison move there") turns out to be
+**dead in the shipped game**: it lives in `maybeUrbanGenesis`, whose first line is
+`if (T.DISSOLVE_FARMS) return;`, and that lever defaults to 1. `rebuildCountries`
+then re-derives `c.capital` from scratch every polity pass as the strongest
+member. I inferred from that the capital must churn — re-landing on whoever grew
+biggest. **`tools/probe_seat.mjs` says it does not:**
+
+    step 12000, 32 realms:  7 capital changes in the whole run
+      rate 0.04 per realm per 1000 steps  (~one per realm per 25,000 steps)
+      why: seatDied 4 (57%) · overtookInPlace 2 · joinedBigger 1
+
+So the architecture PERMITS teleporting and nothing anchors the seat, but
+behaviourally it is near-inert. The seat rule is loose, not chaotic. (When a
+non-death move does happen it is ugly — p50 jump 899 km on a census ratio of
+1.06, a dead heat moving a capital across a continent — but that is 3 events in
+12,000 steps.)
+
+## So the case for a seat entity is ontological, not churn
+
+1. **A realm cannot exist without a city.** The seat must be a member settlement,
+   members are cities, so no chiefdom, horde or village-seated polity is
+   representable at all — the last coupling standing between the sim and spec
+   Phase 4's stated goal ("I should be able to entirely remove settlements and it
+   wouldn't affect a country's growth, land, anything").
+2. **Every court counts as a city** in urban statistics, Zipf and city counts.
+3. **There is no institution to move.** A court cannot be founded, relocated or
+   lost as an act of state — no Baghdad, no St Petersburg, no ordu.
+
+### V1 shape
+
+A seat is a settlement with `kind: "seat"`, **minted by the founding** at the
+founding people's own scale (the camp branch's `18 + roll`, not `TOWN_FOUND_MIN`'s
+90), not selected from members — so it rides trade, food, culture and dynasty
+unchanged instead of needing a new entity class. It wins capital selection
+regardless of size; below the urban floor it is a court and is excluded from
+urban statistics; it grows into a capital *city* by ordinary dynamics with no
+special case, which is the Baghdad arc and is literally "nations create cities";
+and if its polity ends while it is still sub-urban it withers rather than leaving
+a ruin city. That also makes "settlements are ONLY cities" precise instead of
+violated: entities are cities, **plus** the seats of power.
 
 ## The finding that outlives the change
 
