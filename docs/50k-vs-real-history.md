@@ -78,40 +78,51 @@ faith adoptions, dynastic unions and elections all occur at rates that read as h
 rather than as noise. `ruler.died` runs ~250/window with `ruler.elected` rising steadily
 — an emergent shift toward elective succession nobody wrote in.
 
-## 3. Where it does not match — and it is one defect, not many
+## 3. Where it does not match — ⚠ CORRECTED, was wrong by 4x
 
-**The world is demographically empty by a factor of ~50.**
+**An earlier version of this section was wrong by a factor of four and inverted one
+finding entirely.** It treated `popField` (the land field) as the headcount. The
+player-facing population is the settlement census times `POP_SCALE = 1000`
+(`src/ui/bits.jsx`, whose export header states *"1 sim-person = 1,000 people"*); the
+land field is a different internal scale, bridged by `_onePopScale`. Corrected:
 
-| | sim @ org 0.95 | real @ ~1900 | gap |
-|---|---|---|---|
-| population | **32.4M** | ~1.65B | **51× low** |
-| people per km² | **0.219** | ~12 | **55× low** |
-| settlements | **230** | thousands of towns; ~10⁶ villages | **10²–10⁴× low** |
-| largest city (bridge-converted) | ~1.1M | 6.5M (London) | ~6× low |
+| org | ≈ real era | sim pop | real pop | gap | sim largest city | real largest | |
+|---|---|---|---|---|---|---|---|
+| 0.34 | writing ~3200 BC | 13M | ~14M | **1x** | **0.84M** | Uruk ~0.04M | **21x too BIG** |
+| 0.46 | currency ~600 BC | 24M | ~100M | 4x | 2.12M | ~0.20M | 10.6x too big |
+| 0.69 | banking ~1200 AD | 33M | ~400M | 12x | 2.45M | ~0.40M | 6.1x too big |
+| 0.88 | industrialism ~1800 | 71M | ~1000M | 14x | 2.75M | ~1.10M | 2.5x too big |
+| 0.95 | medicine ~1900 | 135M | ~1650M | **12x** | 4.42M | London 6.5M | 1.5x low |
 
-The density figure is the unambiguous one — it needs no bridge conversion. **0.219
-people/km² is real-world density around 3000 BC.** The run ends with construction
-complete (flight), organization at medicine and democracy, and the population density
-of the Early Bronze Age.
+Final density is **0.91 people/km²** — real-world levels around **1 AD**, not 3000 BC as
+previously written. The shortfall at the end is **12x, not 51x**.
 
-And the gap *widens* with development:
+**The inverted claim.** This document previously said the largest city was "smaller than
+Çatalhöyük". It is **4.42 million people** — a genuine metropolis, close to London in
+1900. That was wrong by a factor of a thousand, and it was wrong in the direction that
+made the sim look worse than it is.
 
-| org | ≈ real date | sim pop | real pop | gap |
-|---|---|---|---|---|
-| 0.35 (writing) | 3200 BC | 4.9M | ~14M | 3× |
-| 0.55 (code of laws) | 1750 BC | 8.8M | ~40M | 5× |
-| 0.70 (banking) | 1300 AD | 11.8M | ~400M | 34× |
-| 0.88 (industrialism) | 1800 AD | 15.7M | ~1B | 64× |
-| 0.95 (medicine) | 1900 AD | 32.4M | ~1.65B | 51× |
+### The real defect: the world has no villages
 
-Real population history is a hockey stick — 14M to 1.65B is **118×** across that span.
-The sim manages **6.6×**. It is not that the world starts too small; it is that
-**demography never accelerates.** Technology climbs the full tree while population
-grows roughly linearly, so the two diverge further at every stage.
+With units fixed the picture is sharper, and different:
 
-This is one defect with many symptoms. Too few people → too few settlements (230) →
-too few candidate sites → the `hardFloorOverlap` spacing constant binds → fewer
-settlements still.
+* **Total population at the dawn is right** — 13M against a real ~14M.
+* **But it is packed into far too few centres.** At the writing horizon the world holds
+  ~86 settlements averaging ~150,000 people, largest 840,000 — against a real 3200 BC of
+  thousands of villages and a largest city of ~40,000.
+* **Neither population nor cities accelerate.** Sim population grows 13M → 135M (10x)
+  where real grows 14M → 1.65B (118x). Sim largest city grows 0.84M → 4.42M (5x) where
+  real grows 40k → 6.5M (160x).
+
+The demographic system is **linear where reality is exponential**, and it begins by
+concentrating a CORRECT total population into a tenth of the settlements it should have.
+The cities are not too small — they are too FEW and too LARGE, from the first millennium
+onward, because the right number of people has nowhere else to live.
+
+That also reframes the settlement count. 230 settlements planet-wide is not "missing
+cities"; it is missing the entire VILLAGE AND SMALL-TOWN TIER beneath them. The `found`
+funnel names the mechanism holding that tier out: `hardFloorOverlap` rejects **75.7%** of
+all candidate sites on a raw anti-overlap spacing constant.
 
 ## 4. The anachronism: flight before the compass
 
@@ -155,8 +166,13 @@ It gets **demography and technological coupling** wrong, and both in the same wa
 missing accelerator. Population grows linearly where history compounds; knowledge tracks
 advance independently where history couples them.
 
-The single most consequential number in this document: **0.219 people per km²**, at the
-end of a run whose leading civilization can build aircraft. Every ratio-based check in
-`npm run validate` passes on this world, because the ratios are fine. It is the levels
-that are wrong — the same lesson the THIRD CARDINAL RULE records for territory, now
-repeating for population.
+The single most consequential number in this document, corrected: at the dawn of writing
+the world holds **13M people in ~86 settlements**, when the real world held ~14M in
+thousands of villages. The total is right; the container count is off by two orders of
+magnitude. Everything downstream — cities 21x too large, population failing to
+accelerate, realms administering continents with four provinces — follows from a world
+that has cities and no villages.
+
+Every ratio-based check in `npm run validate` passes here, because the ratios are fine.
+It is the levels that are wrong — the lesson the THIRD CARDINAL RULE records for
+territory, repeating for settlement supply.
