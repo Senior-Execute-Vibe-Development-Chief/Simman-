@@ -1266,6 +1266,19 @@ export function maybeCrystallize(world) {
       const donorCountry = donorSettled && donorOrg >= T.ORG_STATE_MIN ? donor.countryId : -1;
       const extension = region >= 0 || donorSettled;
       let joinCountry = region >= 0 ? region : donorCountry;
+      // FUNNEL (telemetry.js) — WHY IS THIS SETTLEMENT BORN WITHOUT A FLAG? Measured
+      // at the app grid, 91% of settlements are stateless at step 1,500 and they hold
+      // 80% of everyone alive — cities of 100,000+ answering to nobody. Statelessness
+      // has FOUR separate causes here and they need opposite fixes, so a single
+      // "stateless" count cannot guide anything. Tallied at the decision itself.
+      if (world._tel) {
+        tel(world, "birthPolity", "CANDIDATE");
+        if (region >= 0) tel(world, "birthPolity", "PASSED");                       // on administered ground
+        else if (!donorSettled) tel(world, "birthPolity", "stateless:noSettledDonor");
+        else if (donor.countryId < 0) tel(world, "birthPolity", "stateless:motherIsStatelessToo");
+        else if (donorOrg < T.ORG_STATE_MIN) tel(world, "birthPolity", "stateless:motherLacksStatecraft");
+        else tel(world, "birthPolity", "PASSED");                                   // inherits the mother's flag
+      }
       let rodeAway = false;
       // Wilderness founding (region<0) must be a CONTIGUOUS frontier extension of the
       // donor's realm, not a detached tech-less exclave far out in the wild (see
@@ -1298,7 +1311,9 @@ export function maybeCrystallize(world) {
         if (dd2 > fed * fed
             && isFinite(td)
             && (world.fert[ti] || 0) < RIDE_AWAY_FERT_MAX
-            && tileOpenness(world, ti) >= RIDE_AWAY_OPEN_MIN) { rodeAway = true; joinCountry = -1; }
+            && tileOpenness(world, ti) >= RIDE_AWAY_OPEN_MIN) {
+          if (world._tel && joinCountry >= 0) tel(world, "birthPolity", "~lostToRideAway");
+          rodeAway = true; joinCountry = -1; }
         // Past the foot ring but NOT genuine ridable steppe → not a frontier
         // extension the court can hold, and not a horde birth → no settlement.
         if (dd2 > fed * fed && !rodeAway) continue;
@@ -1347,6 +1362,7 @@ export function maybeCrystallize(world) {
       // revenue cannot govern just because it crystallised inside their border.
       if (joinCountry >= 0
           && !fiscAdoptable(world, world.countries && world.countries.get(joinCountry), tx + 0.5, ty + 0.5, bornPeople)) {
+        if (world._tel) tel(world, "birthPolity", "~lostToFiscalRefusal");
         joinCountry = -1;
       }
       // Share the joining realm's development: floor the (distance-decayed) inherited
