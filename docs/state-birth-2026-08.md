@@ -359,3 +359,83 @@ and `adoptAndFound`'s `(s.tier|0) >= 1` all read it, and `updateTier`'s own
 comment records a previous label-supply change that pinned everything to tier 0/1
 and "collapsed the whole tier-keyed stack". This needs a lever and the full gate
 set, not a one-line edit.
+
+---
+
+# The early towns are in the wrong PLACES — and the first fix failed
+
+Owner, watching the sim: *"most of them are in inaccurate locations, is it
+possibly caused by a founding wave that happens early or something?"*
+
+## Two probes, and the first refutes the obvious theory
+
+`tools/probe_siting.mjs` — siting is **not** a blind scatter. Sites carry median
+tile fertility **0.72–0.99 against an all-land median of 0.033**, ~25×, and 85%
+of the first cohort is on a river. There is no early-worse gradient either: the
+earliest cohorts are the *best* sited (0.86–0.99), the 501–2000 cohort the worst
+(0.72). The probability weighting works. What the probe does confirm is the wave
+the owner suspected: **35%** of the settlements alive at step 12000 already
+existed at step 500, 56% by step 2000.
+
+`tools/probe_wheretowns.mjs` puts that wave on a map, and the error is geographic:
+
+    step 200 — 24 settled, NINE world regions occupied
+      C Asia/Steppe 5 · Mesopotamia 3 · India 3 · China 3 · Europe 3
+      · C/S Africa 2 · Sahara 1 · Sahel 1
+    step 500 — Siberia has a town at 67°N (founded step 264)
+    step 2000 — steppe 11, China 10, Europe 10  vs  Mesopotamia 4, Nile 5
+
+The most-settled region on the planet at the dawn is the Central Asian steppe,
+historically pastoral and never an urban core. Europe holds ten towns some two
+millennia before it held one. The first non-cradle founding is at **step 24**.
+The land under each is genuinely good; the PLACES are anachronisms.
+
+## The mechanism
+
+    diffusionMul = exp(−td / 30) × NEAR_RATE(1.5)   // decays with distance to the network
+    independent  = INDEPENDENT_RATE(0.020)          // a FLOOR, on every reachable land tile
+    p = quality × (diffusionMul + independent) × BASE_RATE × …
+
+Beyond td ≈ 130 the diffusion term falls below the floor and the floor dominates.
+Because it is **added** to the decay, it cancels it: five thousand km from the
+nearest farmer is no less likely to invent farming than 130 tiles away. Across
+~7000 land tiles every sweep, "low so empty regions stay empty until colonised"
+(the constant's own comment) becomes one neolithic origin per fertile valley.
+
+## `T.INVENT_FIELD` — built, measured, DOES NOT WORK
+
+The reasoning was that invention's opportunity is people-time, so the floor should
+scale with the basin's population against `TOWN_BASIN_MIN` — the bar the sim
+already uses for "enough countryside to carry a town", so no new constant. Built
+behind `T.INVENT_FIELD`, byte-identical off (`8529d003`/`c0a7ad90`). Measured:
+
+    step   settled (off → on)   regions (off → on)
+     200      24 → 35              9 → 9
+     500      33 → 40             10 → 11
+    2000      55 → 65             10 → 11
+
+**Worse.** More settlements, the same or wider spread, the steppe still 11 at
+step 2000 and Siberia still settled by step 264.
+
+The reason rules out the whole approach, not just the calibration: **every site
+that can found at all already clears the urban floor's basin bar**, so
+`basin / TOWN_BASIN_MIN ≥ 1` at every candidate that matters and the scaling can
+only ever multiply *up*. Population density does not discriminate between a
+cradle founding and a Tarim-basin one — both have the people. It was the wrong
+variable.
+
+## What the failure points at
+
+Independent invention is a **once-only act of a PEOPLE**, not a per-tile,
+per-sweep chance — and the sim does not model it at all. `inheritKnowledgeAt`
+hands any isolated site the full neolithic package for free:
+
+    baseline = { agriculture: NEOLITHIC_AGRI (0.45), construction: 0.18, organization: birthOrgAt(…) }
+    if (!nearest) return baseline;
+
+So every valley on Earth is farming-capable from step 0, and "independent
+invention" is not an invention — it is an assumption. Modelling it properly means
+the capability living on a **people** (culture/ancestry), invented once against a
+real barrier and inherited by descendants, with diffusion carrying it outward —
+which is a genuine subsystem, not a constant. Recorded rather than attempted, and
+the failed lever is kept default-off as the evidence that density was not it.
