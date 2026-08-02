@@ -283,3 +283,79 @@ advance spreads *villages*, and villages already live correctly in `popField`.
 What it currently mints at the frontier is a CITY. Nothing here changes that;
 it is recorded as the next mechanism to examine, with the funnel
 (`birthPolity`) now in place to measure it.
+
+---
+
+# The wilderness "towns" are hamlets — the tier ladder measures the countryside
+
+Owner, watching the running sim: *"there is still dozens of 'towns' spawning very
+early game in wilderness, with no nation attached."*
+
+`tools/probe_towns.mjs`, 480/8817, puts the label beside the thing it names:
+
+    step   settled  labelled     catchment    URBAN CORE    core     core-based
+                    town/city    census p50   p50 (p90)     share    ladder says
+     500     33      33 / 0         13k       422  (9k)     3.8%     0 towns, 0 cities
+    1000     42      42 / 0         14k       453  (3k)     4.3%     0 towns, 0 cities
+    2000     55      55 / 0         22k       881  (9k)     4.4%     0 towns, 0 cities
+    4000     61      60 / 1         34k        2k  (6k)     4.4%     0 towns, 0 cities
+    6000     68      65 / 3         63k        3k (10k)     5.1%     0 towns, 0 cities
+
+**At step 2000 the median "town" has an urban core of 881 people.** That is a
+hamlet. Its catchment holds 22,000 — the countryside it farms — and the label is
+being computed from THAT. The single "city" at step 4000 has a core of 9,000
+against a catchment of 339,000: a large village called a city.
+
+Not one settlement in the world clears the town floor on its actual urban core at
+any checkpoint through step 6000. The final column runs the same ladder against
+`_urbanPop` at the same floors (60/240 census): 0 towns, 0 cities, everything
+below the town bar.
+
+## Why
+
+`updateTier` sets the bars from percentiles of `s.people`, and under `ONE_POP`
+that is the **catchment** census — the urban core plus every villager in the
+district it works (`src/sim/units.js`). So the ladder ranks settlements by how
+peopled their COUNTRYSIDE is and names the result a town. Two things compound it:
+
+- Under `DISSOLVE_FARMS = 1` (shipped default, which abolished tier 0) every new
+  settlement is born `tier: 1`, commented *"born URBAN — a market town, not a
+  village"*. It is granted by fiat, with no test that anything urban is there.
+- The sim's own economy **already disagrees with its own label**: the
+  agglomeration pass gives `uTarget = 0` to any place that imports no food from
+  beyond its own land — *"Non-importers (kBeyond = 0) have no target — they stay
+  rural, as the ontology says."* A fresh wilderness founding has no trade links.
+  So the economy says rural, the label says town, and the label is what is drawn
+  on the map.
+
+## What this is NOT
+
+It is not the founding rate on its own, and it is not the state-birth bars —
+`SEAT_FIELD` is provably inert here (all three arms are identical to step 5000).
+The visible complaint is a measurement error wearing a label: the world is not
+minting dozens of towns, it is minting dozens of villages and calling them towns.
+
+## The fix, and why it is not just a rename
+
+Two changes, one honest, one structural, and they want measuring apart:
+
+1. **The ladder must read the core.** A settlement's tier is a claim about the
+   settlement, and the settlement is its urban core; the district it farms is
+   countryside. Switching `updateTier` to `_urbanPop` requires re-deriving the
+   floors, which were calibrated on the census — on the core scale a town floor
+   of ~2 census (2,000 people) and a city floor of ~10 (10,000) are *definitions*
+   of the words, historically anchored (Uruk at ~40,000 was the largest city on
+   Earth), not constants fitted to an outcome.
+2. **The founding should test whether an urban core CAN form**, not whether
+   people are present. `TOWN_BASIN_MIN` counts basin people; the mechanism that
+   actually decides urbanity — surplus that can be concentrated, i.e. `kBeyond` —
+   is already in the code and is not consulted at founding. Under "villages are
+   implied in the land", a basin that can people itself but not concentrate a
+   core should stay field, with no entity at all.
+
+**Risk, recorded before touching it:** tier is not only a label. `CORE_BY_TIER`,
+`HINTERLAND_BY_TIER`, `ARMY_TIER_FRAC × people`, the food hierarchy's haul ranges
+and `adoptAndFound`'s `(s.tier|0) >= 1` all read it, and `updateTier`'s own
+comment records a previous label-supply change that pinned everything to tier 0/1
+and "collapsed the whole tier-keyed stack". This needs a lever and the full gate
+set, not a one-line edit.
