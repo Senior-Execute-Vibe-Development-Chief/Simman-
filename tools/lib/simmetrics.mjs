@@ -25,6 +25,7 @@
 import { execSync } from "node:child_process";
 import { T, TUNING_SCHEMA } from "../../src/sim/peopleSim/tuning.js";
 import { stepToYear } from "../../src/sim/calendar.js";
+import { POP_SCALE } from "../../src/sim/units.js";
 
 const pct = (sorted, p) => sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] : 0;
 
@@ -638,9 +639,22 @@ export function collect(world) {
   const areas = [...held.values()].map(t => t * km2);
   dist("realm.areaKm2", areas, m);
   let pf = 0; if (world.popField) for (const i of land) pf += world.popField[i];
-  m["pop.field"] = pf;
-  m["pop.perKm2"] = pf / Math.max(1, land.length * km2);
-  m["pop.census"] = settled.reduce((a, s) => a + (s.people || 0), 0);
+  // ── POPULATION, IN REAL PEOPLE ─────────────────────────────────────────────
+  // `pop.people` is THE number to quote: the settlement census scaled by
+  // POP_SCALE, which is exactly what the game shows the player. Everything else
+  // here is named for its unit so it cannot be mistaken for a headcount again —
+  // a 50k analysis was published claiming 32M people and a city "smaller than
+  // Çatalhöyük" because `pop.census` (sim units) and `pop.field` (a THIRD scale,
+  // bridged by _onePopScale) were read as people. True figures: 135M and a
+  // 4.4-million metropolis. See src/sim/units.js.
+  const censusSim = settled.reduce((a, s) => a + (s.people || 0), 0);
+  m["pop.people"] = censusSim * POP_SCALE;                        // ← real people
+  m["pop.perKm2"] = (censusSim * POP_SCALE) / Math.max(1, land.length * km2);
+  m["pop.largestCity"] = settled.reduce((a, s) => Math.max(a, s.people || 0), 0) * POP_SCALE;
+  m["pop.urbanPeople"] = settled.reduce((a, s) => a + (s._urbanPop || 0), 0) * POP_SCALE;
+  m["pop.censusSimUnits"] = censusSim;                            // raw, NOT people
+  m["pop.fieldUnits"] = pf;                                       // a third scale, NOT people
+  m["pop.fieldPerKm2Units"] = pf / Math.max(1, land.length * km2);
   m["pop.bridge"] = world._onePopScale || 0;
 
   // every tile field — and every OTHER typed array too. The old test was

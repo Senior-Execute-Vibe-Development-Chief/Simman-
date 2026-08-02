@@ -15,6 +15,23 @@ command.
     node tools/observe.mjs --section=war,economy # just those
     node tools/observe.mjs --all                 # include pass workspace buffers
 
+## Units: what the numbers mean
+
+**A settlement is a CITY OR LARGE TOWN, never a village.** The village tier is implied
+in the land — `popField` plus each settlement's `_ruralPop`. 230 settlements on an
+Earth-sized world means 230 *cities*, not 230 towns total, and a realm with four
+members is administering four *provincial centres*.
+
+**1 sim-person = 1,000 people** (`POP_SCALE`, `src/sim/units.js`). Three population
+scales exist and confusing them is this codebase's most repeated error:
+`settlement.people` (sim units, ×POP_SCALE for people), `popField` (a different
+internal scale), `_onePopScale` (the drifting bridge between them).
+
+Quote `pop.people`, `pop.largestCity`, `pop.perKm2`. The raw series are deliberately
+named `pop.censusSimUnits` and `pop.fieldUnits` so they cannot be mistaken for
+headcounts — which they were, in a published analysis that reported 32M people and a
+largest city "smaller than Çatalhöyük" when the true figures were 135M and 4.4M.
+
 ## The design rule: introspection, not a list
 
 The tool carries **no hardcoded field list**. It walks the live world and reports every

@@ -109,7 +109,7 @@ const fn = (x) => !Number.isFinite(x) ? "—" : Math.abs(x) >= 1e5 ? x.toExponen
 console.log(`\n${movedAll} of ${keys.length} collected metrics moved${GREP.length ? `; ${rows.length} match --grep=${GREP.join(",")}` : ""}. ${big.length} exceed ±${MINPCT}%.`);
 // Headline metrics ALWAYS shown, moved or not — the questions asked most often.
 const HEADLINE = ["realm.count", "realm.claimedPct", "realm.areaKm2.p50", "realm.areaKm2.max",
-  "entity.settled", "entity.stateless", "pop.field", "pop.census", "sett.wealth.p50",
+  "entity.settled", "entity.stateless", "pop.people", "pop.largestCity", "pop.perKm2", "sett.wealth.p50",
   "shape.compact.p50", "shape.elong.p50", "shape.frags.max", "shape.isolatedPct", "shape.nearestSeat.p50",
   "nation._dominance.max", "count.cultures", "event.war.began", "event.settlement.captured",
   "event.polity.founded", "event.polity.receded",

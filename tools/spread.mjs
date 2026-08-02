@@ -97,7 +97,7 @@ if (GREP.length) {
     `LEAST TRUSTWORTHY FROM ONE SEED (top ${TOP})`);
 } else {
   // The claims this session actually made, each with its error bar.
-  const HEADLINE = ["realm.count", "realm.areaKm2.p50", "realm.claimedPct", "pop.field",
+  const HEADLINE = ["realm.count", "realm.areaKm2.p50", "realm.claimedPct", "pop.people", "pop.largestCity",
     "entity.settled", "life.polity.known", "life.person.bornEver", "life.polity.endedNow", "life.polity.endedEver",
     "life.faith.endedNow", "life.culture.endedNow", "life.dynasty.endedNow",
     "life.dynasty.endedEver", "life.dynasty.lifespan.n",

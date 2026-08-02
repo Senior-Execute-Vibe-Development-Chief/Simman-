@@ -31,6 +31,7 @@ import { stepToYear } from "../src/sim/calendar.js";
 import nodeZlib from "node:zlib";
 import nodeFs from "node:fs";
 import { provenance, graphOf, lifecycleOf } from "./lib/simmetrics.mjs";
+import { POP_SCALE } from "../src/sim/units.js";
 import { narrate } from "../src/sim/peopleSim/events.js";
 import { chronicleText } from "../src/sim/peopleSim/chronicle.js";
 
@@ -130,8 +131,13 @@ function snapshot(w) {
     const census = settled.map(s => s.people || 0);
     const urban = settled.map(s => s._urbanPop || 0), rural = settled.map(s => s._ruralPop || 0);
     const cs = stats(census);
-    console.log(`    Σ popField ${f(pf)}   Σ census ${f(cs?.sum)}   bridge _onePopScale ${f(w._onePopScale)}`);
-    console.log(`    people per km² ${f(pf / (land.length * km2PerTile))}   urban Σ ${f(stats(urban)?.sum)}   rural Σ ${f(stats(rural)?.sum)}`);
+    // REAL PEOPLE, always. The raw sim units are shown too, labelled, because they
+    // are what the internal thresholds are written in — but the headline figure a
+    // human reads must be the one the GAME shows, or it gets quoted as a finding.
+    const P = (x) => f((x || 0) * POP_SCALE);
+    console.log(`    WORLD POPULATION ${P(cs?.sum)} people   (largest city ${P(stats(census)?.max)}, urban ${P(stats(urban)?.sum)}, rural ${P(stats(rural)?.sum)})`);
+    console.log(`    people per km² ${((cs?.sum || 0) * POP_SCALE / (land.length * km2PerTile)).toFixed(2)}   ·   1 sim-person = ${POP_SCALE} people (src/sim/units.js)`);
+    console.log(`    sim units: Σ census ${f(cs?.sum)}   Σ popField ${f(pf)} (a THIRD scale)   bridge _onePopScale ${f(w._onePopScale)}`);
     line("settlement census", cs);
     line("urban core", stats(urban)); line("rural belt", stats(rural));
     line("carrying capacity s._k", stats(settled.map(s => s._k || 0)));

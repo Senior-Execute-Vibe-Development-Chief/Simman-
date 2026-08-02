@@ -24,6 +24,43 @@ list usually is not. See `docs/observability.md`.
 
 ---
 
+## WHAT THE NUMBERS MEAN — read before quoting any of them
+
+**A SETTLEMENT IS A CITY OR LARGE TOWN. NEVER A VILLAGE.** The village and hamlet
+tier is not represented as entities at all — it is **implied in the land**, carried by
+`popField` (people-on-land) and by each settlement's rural belt (`_ruralPop`).
+
+So ~230 settlements on an Earth-sized world is not "a planet with 230 towns"; it is a
+planet with 230 **cities and large towns**, which is the right order for a
+pre-industrial world. And a realm holding 2M km² with four members is administering
+four **provincial centres** — the register real empires used (~20-30 Achaemenid
+satrapies over 5.5M km²; ~10 Roman provinces rising to ~50 under Diocletian; ~100 Han
+commanderies).
+
+**POPULATION IS IN SIM UNITS. 1 sim-person = 1,000 people** (`POP_SCALE`, defined in
+`src/sim/units.js` and imported by both the UI and the metric collector). A settlement
+showing `people = 4422` holds **4.4 million people**.
+
+There are THREE population scales in this codebase and confusing them is the single
+most repeated mistake in its history:
+
+| | what it is |
+|---|---|
+| `settlement.people` | sim units — **× POP_SCALE for people** |
+| `popField` | people-on-land, a *different* internal scale |
+| `_onePopScale` | the bridge between those two, ≈0.001-0.003, drifting |
+
+`npm run observe` prints the real-people figure first and labels the sim units as
+such. In the metric map, quote **`pop.people`**, `pop.largestCity`, `pop.perKm2` —
+never `pop.censusSimUnits` or `pop.fieldUnits`, which are named for their units
+precisely because they are not headcounts.
+
+Forgetting this produced two published-then-retracted findings in one session: "the
+world has 1000× too few towns" and "the world holds 32M people, its largest city
+smaller than Çatalhöyük". True figures: 135M and a 4.4-million-person metropolis.
+
+---
+
 ## THE CARDINAL RULE — everything must be emergent
 
 > **Never, ever gate a specific event, capability, transition, or behavior on a

@@ -4,14 +4,13 @@
 // render, so React remounts it each sim tick and clicks get eaten.
 
 // ── Display units (peopleSim) ───────────────────────────────────────
-// The sim runs on compact internal units; these scale them to realistic,
-// human-readable figures at the DISPLAY layer ONLY — the simulation math is
-// untouched. One sim-"person" ≈ POP_SCALE real people (the map labels already
-// assumed this convention); food is shown as a mass of grain; wealth as a mass
-// of gold. Tweak these three to taste.
-export const POP_SCALE        = 1000;   // sim pop → people: metropolis ~3.4M, city ~1.2M, town ~250k, village ~25k
-export const FOOD_KG_PER_UNIT = 1000;   // one sim food unit → kg of grain (1 unit = 1 tonne)
-export const GOLD_G_PER_COIN  = 8;      // one sim coin → grams of gold (a gold ducat ≈ 3.5g; 8g keeps treasuries legible)
+// MOVED to src/sim/units.js and re-exported here so existing imports keep working.
+// They had to leave this file because it is JSX: node cannot parse it, so the
+// measurement tools could not import the scale and reported raw sim units while
+// the game reported people — a silent thousand-fold discrepancy that produced two
+// retracted findings. See src/sim/units.js for the full note.
+export { POP_SCALE, FOOD_KG_PER_UNIT, GOLD_G_PER_COIN } from "../sim/units.js";
+import { POP_SCALE, FOOD_KG_PER_UNIT, GOLD_G_PER_COIN } from "../sim/units.js";
 
 // Compact number: 1234 → "1.2k", 3_400_000 → "3.4M", 2.1e9 → "2.1B".
 export function fmtNum(n){
