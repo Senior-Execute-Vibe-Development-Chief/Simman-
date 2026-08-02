@@ -50,6 +50,24 @@ most repeated mistake in its history:
 | `popField` | people-on-land, a *different* internal scale |
 | `_onePopScale` | the bridge between those two, ≈0.001-0.003, drifting |
 
+**And `s.people` is not the city — it is the CATCHMENT.** Under `ONE_POP` the census
+is derived from the field over the settlement's worked catchment: `s.people =
+Σ popField(catchment) × _onePopScale` — the city *and* the villages it farms.
+`s._urbanPop` is the city alone; `s._ruralPop = s.people − s._urbanPop` is its
+countryside. So a settlement showing `people = 4422` **stands at the centre of** 4.4
+million people; it does not house them. Three things follow, all of which have already
+caught someone:
+
+- Σ `s.people` is the population of the catchment-**covered** world (settled, worked
+  land) — not the urban population, not world population.
+- **Urbanisation must be read off `_urbanPop`.** Taking Σ`s.people` over the field
+  converted at the global census/field ratio returns exactly 100% — a tautology, since
+  that ratio is *defined* to make the two equal.
+- A census bar on a settlement is a bar on its **catchment**, so compare it to a
+  region's population, not to a city's. `NUCLEATE_SEAT_POP = 160` is "the seat's city
+  and countryside together hold 160,000" — the bar is still measurably unreachable (no
+  stateless city clears it at any checkpoint), but say what it is a bar *on*.
+
 `npm run observe` prints the real-people figure first and labels the sim units as
 such. In the metric map, quote **`pop.people`**, `pop.largestCity`, `pop.perKm2` —
 never `pop.censusSimUnits` or `pop.fieldUnits`, which are named for their units

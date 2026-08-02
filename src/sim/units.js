@@ -37,3 +37,25 @@ export const GOLD_G_PER_COIN  = 8;      // one sim coin → grams of gold (a gol
 // Two separate analyses in one session drew wrong conclusions from forgetting this
 // ("the world has 1000x too few towns", "territory is administratively free because
 // load counts only settlements"). Both were retracted.
+//
+// ── AND `s.people` IS NOT THE CITY — IT IS THE CATCHMENT ─────────────────────
+// The half of the above that is easy to miss, because it reads like a headcount.
+// Under T.ONE_POP the census is derived from the FIELD over the settlement's worked
+// catchment (popField.js deriveOnePop):
+//
+//     s.people    = Σ popField(catchment) × _onePopScale     city AND its villages
+//     s._urbanPop = Σ popField(urban footprint) × _onePopScale       the city alone
+//     s._ruralPop = s.people − s._urbanPop                    the villages it farms
+//
+// So a settlement showing people = 4422 stands at the centre of 4.4 million people —
+// it does not house them. Consequences:
+//   • Σ s.people is the population of the catchment-COVERED world (settled, worked
+//     land), not the urban population and not world population.
+//   • URBANISATION must be read off _urbanPop. Reading it as Σs.people over the field
+//     converted at the global census/field ratio returns 100% — a tautology, since
+//     that ratio is defined to make the two equal.
+//   • A census bar on a settlement is a bar on its CATCHMENT. NUCLEATE_SEAT_POP = 160
+//     means "the seat's city and countryside together hold 160,000", which is the
+//     right thing to compare against a REGION's population, not against Uruk's 40,000
+//     residents. The bar is still measurably unreachable — no stateless city clears it
+//     at any checkpoint — but say what it is a bar ON.
