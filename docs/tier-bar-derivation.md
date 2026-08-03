@@ -364,14 +364,17 @@ The causal chain is thereby confirmed end-to-end, each link measured:
 geometry-free bridge → dawn census invariance → dawn city-share parity →
 seat parity → claiming parity → ratchet green.
 
-**What a flip decision still owes**, precisely: (1) the stylized battery under
-the three-lever config (`MULTI_HEARTH + TIER_BRANCH + BRIDGE_GLOBAL`) — the
-two-lever config passed, but `BRIDGE_GLOBAL` changes the bridge magnitude at
-every grid and the history must be re-checked on top of it; (2)
-`BRIDGE_GLOBAL`'s own multi-seed gate, demanded by its description since the
-day it was written and never run — `abtest --tune=BRIDGE_GLOBAL=1` across the
-seed panel, judged on its own merits at defaults, because flipping it changes
-the calibrated census scale of every world, not only the flip config's.
+**What a flip decision still owes**, precisely: (1) ~~the stylized battery
+under the three-lever config~~ — **RUN, ALL HARD GATES PASS** (1 soft warning,
+budget 2): 61 polities, largest empire 9%, **76 fallen realms** (median
+lifespan ~488y — the dawn-state world churns more than the two-lever config's
+~1763y and the gates accept it; the living-tail gate is measurable at 10.8),
+wars 0.41/1k/polity, urbanisation 4.7%, tech~cradle −0.79, 152 settlements at
+21k. (2) `BRIDGE_GLOBAL`'s own multi-seed gate, demanded by its description
+since the day it was written and never run — `abtest --tune=BRIDGE_GLOBAL=1`
+across the seed panel at defaults, because flipping it changes the calibrated
+census scale of every world, not only the flip config's. Running; appended
+below when it lands.
 
 ### Verdict
 
