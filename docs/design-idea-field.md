@@ -386,8 +386,18 @@ Towns trail the green stain on the Technique lens; regional urbanisation
 *times* now carry the climate toll (the Sahara costs the Sahel seven centuries
 of founding time). This is the wrong-places fix that two previous arms missed,
 and it is the idea-field ontology enforced at the founding law: **a town is
-something the package does when it arrives.** Ships off; the flip package
-(resgate + stylized under the lever) is the standing next measurement.
+something the package does when it arrives.**
+
+**THE FLIP BATTERY — GREEN (2026-08-03).** Resgate: all bands held (claimed
+0.57 vs floor 0.44, median realm 0.70; the front-gate thins the shipped
+grid's dawn as expected — realms 74/69 → 54/31 at 6k, a later and sparser
+dawn statehood — but well inside the ratchet, level with the old defaults'
+0.59). Stylized (21k): **all hard gates pass**, 1 soft warning (budget 2) —
+and the mature world fully recovers: 137 settlements, 64 polities, 51 fallen
+realms, urbanisation 5.1%, and the sharpest knowledge gradient yet measured
+(tech ~ cradle-distance **−0.90**, vs −0.70 at trio defaults and −0.15 in the
+old world) — towns trailing the wave makes knowledge visibly radial. The
+lever is FLIP-READY; the flip is the owner's call.
 
 ### Phase 2 — ORIGIN (`IDEA_FIELD = 2`)
 
