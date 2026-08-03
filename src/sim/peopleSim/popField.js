@@ -243,6 +243,20 @@ function stampDevSources(world, dev) {
   }
 }
 
+/** T.IDEA_FIELD: rebuild the SOURCE field from living practice, fresh each
+ *  firing. Off-lever, stampDevSources writes straight into devField and both it
+ *  and the wave are max-only, so the field is a monotone ratchet — it records
+ *  each tile's best-ever technique and can never fall. On-lever the sources are
+ *  their own array, zeroed first, so a settlement that forgets (T.KNOW_DECAY)
+ *  or dies stops holding its land up. See the lever's note in tuning.js. */
+function rebuildDevSources(world) {
+  let src = world._devSrc;
+  if (!src || src.length !== world.N) src = world._devSrc = new Float32Array(world.N);
+  else src.fill(0);
+  stampDevSources(world, src);
+  return src;
+}
+
 /** One wave relaxation: each land tile rises toward its best neighbour − loss.
  *  T.DIFF_CLIM adds a CLIMATE-DISTANCE toll per edge: the package loses
  *  DIFF_CLIM × (|Δtemp| + |Δmoist|) crossing between climatically different
@@ -275,6 +289,13 @@ function relaxDevWave(world, dev, land) {
   if (!nxt || nxt.length !== world.N) nxt = world._devNext = new Float32Array(world.N);
   nxt.set(dev);
   const loss = devWaveLoss(world);
+  // T.IDEA_FIELD: with a live source field the tile is SET to max(source, wave)
+  // rather than ratcheted up toward it — the same relaxation, run as a genuine
+  // fixed-point iteration so it converges DOWNWARD too when a source recedes.
+  // Note `best` is a MAX over neighbours, so a 0-valued ocean neighbour never
+  // drags a coastal tile down; an isolated tile with no land neighbour falls
+  // back to its own source, which is the correct answer for it.
+  const src = T.IDEA_FIELD ? (world._devSrc && world._devSrc.length === world.N ? world._devSrc : rebuildDevSources(world)) : null;
   const ck = T.DIFF_CLIM || 0;
   let te = null, mo = null;
   if (ck > 0 && world.temp && world.moist) { const dc = _ensureDevClim(world); te = dc.t; mo = dc.m; }
@@ -299,7 +320,8 @@ function relaxDevWave(world, dev, land) {
       if (y < th - 1 && dev[i + tw] > best) best = dev[i + tw];
     }
     const v = best - loss;
-    if (v > nxt[i]) nxt[i] = v;
+    if (src) { const s0 = src[i]; nxt[i] = v > s0 ? v : s0; }
+    else if (v > nxt[i]) nxt[i] = v;
   }
   world._devNext = dev;
   world.devField = nxt;
@@ -376,7 +398,16 @@ function ensureDevField(world, land) {
   if (world.devField && world.devField.length === world.N) return world.devField;
   let dev = world.devField = new Float32Array(world.N);
   world._devNext = new Float32Array(world.N);
-  stampDevSources(world, dev);
+  // T.IDEA_FIELD: the genesis pre-run relaxes against the SAME live-source law
+  // as every later firing, so the eve-of-states initial condition is the one
+  // the running world would have produced — not a ratcheted field the law can
+  // then only erode. `dev` is SEEDED from the sources (not left at zero) so both
+  // arms enter the loop from the same field and spend all `iters` passes
+  // PROPAGATING: seeded at zero the first pass is consumed re-deriving the
+  // sources, which would hand the lever a genesis field one wave-step less
+  // spread than the control and confound the whole arm with an initial
+  // condition.
+  if (T.IDEA_FIELD) dev.set(rebuildDevSources(world)); else stampDevSources(world, dev);
   const tileKm = EARTH_KM / world.tw;
   const iters = Math.max(0, Math.round(DEV_INIT_YEARS * DEV_WAVE_KMPY / tileKm));
   for (let k = 0; k < iters; k++) dev = relaxDevWave(world, dev, land);
@@ -455,7 +486,7 @@ export function stepPopField(world, sub = 1) {
     const ivl = devWaveIvl(world);
     if (world.step - (world._devWaveAt ?? -Infinity) >= ivl) {
       world._devWaveAt = world.step;
-      stampDevSources(world, devF);
+      if (T.IDEA_FIELD) rebuildDevSources(world); else stampDevSources(world, devF);
       devF = relaxDevWave(world, devF, land);
     }
     // Static rangeland capacity (openness is pure terrain — built once). Per REAL

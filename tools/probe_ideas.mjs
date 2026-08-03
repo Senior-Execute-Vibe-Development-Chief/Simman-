@@ -108,6 +108,14 @@ function report(step) {
     if (d > dmax) dmax = d;
     if ((i & 7) === 0) devVals.push(d);          // 1-in-8 sample for quantiles
   }
+  // Population rides along, because the design's named risk (§7) is that a field
+  // that can FALL releases capacity a historic peak was holding up: a leaner
+  // world is the mechanism working, and it has to be measured, not discovered.
+  let pfTot = 0;
+  if (world.popField) for (let i = 0; i < N; i++) pfTot += world.popField[i];
+  const cenTot = setts.reduce((a, s) => a + (s.people || 0), 0);
+  console.log(`  P field pop ${(pfTot / 1e6).toFixed(2)}M (field units)   census Σs.people ${cenTot.toFixed(0)} sim-units`);
+
   console.log(`  A devField over ${landN} land tiles:`);
   console.log(`      exactly 0.000 : ${zero} (${pct(zero, landN)})   nonzero: ${any} (${pct(any, landN)})`);
   console.log(`      >= ${NEOLITHIC_AGRI} (farming): ${farming} (${pct(farming, landN)})`);
@@ -189,7 +197,7 @@ function report(step) {
     let fell = 0;
     for (let i = 0; i < N; i++) if (elev[i] > 0 && dev[i] < prevDev[i] - 1e-6) fell++;
     console.log(`  D since last checkpoint: settlements that FORGOT agriculture: ${forgot}/${setts.length} (max drop ${forgotMax.toFixed(3)})`);
-    console.log(`      devField tiles that FELL: ${fell}   (the wave is a max-ratchet — the land cannot forget)`);
+    console.log(`      devField tiles that FELL: ${fell}   ${fell === 0 ? "(a max-ratchet — the land cannot forget)" : "(the land forgets: T.IDEA_FIELD)"}`);
   }
   prevAgri = new Map(setts.map((s) => [s.id, (s.knowledge && s.knowledge.agriculture) || 0]));
   prevDev = Float32Array.from(dev);

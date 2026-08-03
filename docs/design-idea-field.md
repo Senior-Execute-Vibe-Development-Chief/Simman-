@@ -236,29 +236,50 @@ The design is three phases, each independently measurable and independently
 flippable. Phase 1 alone is a defensible ship; phases 2 and 3 are where the
 product change lives.
 
-### Phase 1 — UNIFY THE TWO LAYERS (`IDEA_FIELD = 1`)
+### Phase 1 — THE LAND CAN FORGET (`IDEA_FIELD = 1`) — BUILT, see the addendum
 
-`devField` stops being its own physics and becomes a **view of what living
-peoples practise**:
+`devField` stops being a monotone ratchet and becomes a **view of what living
+peoples practise**. Sources are rebuilt fresh each firing into their own array,
+and the wave is run as a genuine fixed-point iteration:
 
-1. **Sources are practised knowledge, not a monotone stamp.** The field is
-   rebuilt toward `stampDevSources` each pass rather than ratcheting past it, so
-   when a settlement forgets (`T.KNOW_DECAY`) or dies, the land it fed relaxes
-   back. Dark ages become visible in carrying capacity, which is what a dark age
-   physically *was*.
-2. **The wave rides the carrier, not the tile grid.** The relaxation reads the
-   **merged road + sea reach** the knowledge layer already uses, so technique
-   crosses water exactly where goods do — no boat mechanism, no new constant, and
-   `OVERSEAS_INDEPENDENT_RATE` stops being dead code because reachability is now
-   a property of the network rather than of land adjacency.
-3. **The climate toll stays.** `DIFF_CLIM` is a genuine mechanism with an
-   independent physical meaning (crops re-adapt per band) and it is already on by
-   default. It applies per network edge instead of per tile edge, which is the
-   same statement about total variation along a path.
+```
+dev[i] = max( src[i], best neighbour − climate toll − loss )
+```
 
-This phase introduces **no new constant** and changes no bar. It is a
-*unification*: two idea physics become one, and the one that survives is the one
-that was already measured to be richer.
+so when a settlement forgets (`T.KNOW_DECAY`) or dies, the land it fed relaxes
+back — at exactly the rate it advanced (one tile per wave interval, the same
+`DEV_WAVE_KMPY` in both directions). Dark ages become visible in carrying
+capacity, which is what a dark age physically *was*.
+
+**No new constant, no new rate, no bar changed.**
+
+#### The half of phase 1 that was CUT, and why — a correction to this document
+
+An earlier draft of this section also had the wave *ride the carrier*: read the
+merged road + sea reach so technique crosses water where goods do, with the
+claimed payoff that §1b's 60% would fall and `OVERSEAS_INDEPENDENT_RATE` would
+stop being dead code. **Checked against the founding path before building it,
+and it is wrong.** Founding requires a settled DONOR, not a field value:
+
+```
+crystallize.js:1261   connected    = !!donor && dCul >= 0 && isFinite(td) && td <= INDEPENDENT_DIST
+crystallize.js:1307   donorSettled = connected && donor && donor.mode === "settled"
+crystallize.js:1309   extension    = region >= 0 || donorSettled
+```
+
+So a carrier-borne wave would push `devField` onto a continent with no
+settlements, raise `capField` there, and grow population on land **no people
+ever carried farming to** — technique teleporting across an ocean with nobody
+holding it. That is worse in kind than the land-only wave, not better.
+
+The correct reading is that the cross-water carrier is **already modelled, at
+the settlement layer** (`s.knowledge` diffuses over road + sea), and the field
+inherits it through `stampDevSources` the moment a settlement exists over there.
+The binding constraint on §1b's 60% is therefore the **donor requirement**, not
+the wave's neighbourhood — which is phase 2's problem, and `MULTI_HEARTH`'s.
+
+**Consequence for the battery: §6 item 3 as originally written is void.** It
+demanded of phase 1 an outcome only phase 2 can deliver. It is restated there.
 
 ### Phase 2 — ORIGIN (`IDEA_FIELD = 2`)
 
@@ -363,9 +384,13 @@ Existing constants this design puts in question, none to be re-tuned silently:
 
 1. **Byte-identity off** — hash-equal at 12k with the lever at 0, both grids.
 2. **Determinism** — two runs, same seed, identical hashes (`npm test`).
-3. **The §1b number moves.** Land on settlement-free landmasses must fall from
-   59.9%, and it must fall *because* technique crossed water, not because a bar
-   was lowered. Reported per land component.
+3. ~~**The §1b number moves.**~~ **VOID as written — it was a phase-2 bar
+   charged to phase 1.** Phase 1 cannot move the 60%: founding requires a settled
+   donor, not a field value, so no change to the wave's neighbourhood can put a
+   settlement on an empty continent (see §2 phase 1's correction). Restated as
+   a **phase 2** bar: land on settlement-free landmasses must fall from 60%, and
+   it must fall because a people invented or carried farming there, not because a
+   bar was lowered. Reported per land component. Phase 1's own bar is item 4.
 4. **Dark ages become visible.** Settlements that forget must produce a
    measurable fall in `devField` over the land they fed — the §1e table's second
    row must stop being all zeros.
@@ -426,6 +451,101 @@ Existing constants this design puts in question, none to be re-tuned silently:
    technique differentiation makes interior density emerge on its own, the
    ledger's honest limit may not need a band-limited worldgen contract after
    all. Speculative; measure before believing.
+
+---
+
+## IMPLEMENTATION ADDENDUM — phase 1 built and measured
+
+`T.IDEA_FIELD`, default **0**, ships **off**. Three call sites: a
+`rebuildDevSources` that zeroes and re-stamps into its own array
+(`world._devSrc`), the fixed-point line in `relaxDevWave`, and the genesis
+pre-run in `ensureDevField` so the eve-of-states initial condition obeys the
+same law as every later firing.
+
+**A confound caught in review, before the numbers were trusted.** The first cut
+left `dev` at zero in the genesis pre-run and put the sources only in `_devSrc`,
+so the lever's first relaxation pass was consumed re-deriving the sources and
+the arm entered the world with a genesis field **one wave-step less spread than
+the control** — an initial-condition difference masquerading as a law
+difference. Fixed by seeding `dev` from the sources so both arms spend all
+`iters` passes propagating. Re-measured: **every number below is unchanged**,
+because 36 genesis passes is well past convergence for the settled area, so the
+missing pass had nothing left to do. The fix is kept on correctness grounds and
+is explicitly *not* claimed to have mattered.
+
+### The gates (all at defaults, i.e. lever off)
+
+| gate | result |
+|---|---|
+| **byte-identity off** | `5ffd7243` = `5ffd7243` at 3000 steps, `tw=480`, seed 8817 |
+| `npm test` | pass (215.1s) + emblem pass |
+| `npm run validate` | all hard gates passed, 1 soft warning (budget 2) |
+| `npm run resgate` | all app-grid bands held (median realm 0.57 vs floor 0.42) |
+| `npm run monotone` | ✓ no metric naming a cumulative history decreased |
+| `npm run coverage` | ✓ 173/173 off-lever — **and 174/174 with the lever ON**, 119 perturbation-proved |
+
+The coverage note matters and is the reason it was run twice: off-lever
+`world._devSrc` is never allocated, so the default run passes **vacuously** for
+the state this change adds. On-lever the gate sees it and proves it reaches a
+metric, so it needs no `WORLD_SCRATCH` entry. A lever-gated allocation is a
+blind spot in that gate's default arm; run it both ways whenever a lever adds
+state.
+
+### The measurement — the land forgets (480/8817, `tw=240`, 12k)
+
+```
+                          off        on
+devField tiles that FELL
+  step  1000                0        93
+  step  2000                0       471
+  step  6000                0        76
+  step 12000                0         1
+settlements that FORGOT     8/42     8/43     (unchanged — the CAUSE was always firing)
+farming land @ 1000      19.7%     17.3%
+farming land @ 2000      24.3%     23.3%
+farming land @12k        37.5%     37.4%
+```
+
+Acceptance item 4 is met: the second row stops being all zeros. Note *what*
+changed — the settlements were always forgetting at the same rate; only the land
+now hears about it. The early world is systematically leaner (−2.4 points of
+farmed land at step 1000), and the effect shrinks as the world matures, which is
+the right shape: a mature dense network re-supplies technique faster than it
+recedes.
+
+### The §7 prediction was NOT confirmed, and one seed cannot settle it
+
+§7 predicted a leaner world. At `tw=240`/12k the run is **richer** — field pop
+14.42M → 15.66M (+8.6%), census 16 099 → 17 701 (+9.9%), same 82 settlements,
+30 realms vs 32.
+
+I am **not** claiming that as an effect of the lever. The early checkpoints move
+in the predicted direction and are mechanistically attributable; the 12k gap
+appears after the run has already diverged in realm count, and this sim is
+chaotic — `npm run spread` exists precisely because a finding of this size on a
+single seed did not survive error bars once before. **Phase 1's population
+effect is UNRESOLVED and needs the spread tool over seeds before anyone quotes a
+number.** What is established is the mechanism: the land can now forget, at the
+rate it learned.
+
+### Two arms still owed before this lever may be considered for flip
+
+Both were running when this was committed; results land in a follow-up. **Until
+they are in, phase 1 is a gated, byte-identical-off mechanism repair with a
+reference-grid measurement and nothing more.**
+
+1. **The resolution arm** (`tw=480`, both arms, seed 8817, 6k). The third
+   cardinal rule applies with force: the field's loss term is per tile and the
+   wave interval is grid-scaled, so *how far technique recedes before a source
+   returns* is exactly the kind of quantity that can differ in KIND between
+   grids. A `FELL` count that is large at `tw=240` and negligible at `tw=480`
+   (or the reverse) would mean the mechanism does not do the same thing in the
+   world that ships.
+2. **The multi-seed A/B** (`abtest --tune=IDEA_FIELD=1 --steps=12000
+   --seeds=8817,31337,4242,7777`), which is the only thing that can settle the
+   population question above. `abtest` scores a metric CONSISTENT only if it
+   moves the same direction on every seed; anything that fails that is noise and
+   must be reported as noise.
 
 ---
 
