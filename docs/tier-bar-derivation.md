@@ -244,21 +244,41 @@ Also: 78 polities, largest empire 6% share, urbanisation 4.7% (in band),
 claiming +8% — the dawn city-state effect (§4 bar 4) fires at the calibration
 grid and barely at the one that ships. Realms: ref 14 → 45, app 17 → 20.
 
-### The mechanism, and why the quota never saw it
+### The mechanism — my first account is REFUTED by its own owed measurement
 
-**P85 is a quantile — invariant under any rescaling of the size distribution —
-so it is blind BY CONSTRUCTION to cross-grid census distortion.** `K × median`
-reads the tail-to-median ratio, so it reads *through* to whatever shapes the
-tail. And the tail's cross-grid distortion is a **documented open gap**: the
-~1.3-2.2× capacity dilution from 1-D coast/river terms (CLAUDE.md, the resgate
-section), which hits river/coast settlements — the tail of the size
-distribution — hardest at the finer grid. Thinner tail at the shipped grid →
-fewer settlements clear K×median → fewer dawn seats → less claiming.
+The previous revision of this section claimed: the tail is thinner at the
+shipped grid (the 1-D capacity-dilution gap), `K × median` reads the
+tail-to-median ratio, therefore fewer dawn cities at the app grid. The
+confirming measurement was owed, and it came back the other way:
 
-**The derivation did not create this resolution variance — it un-masked a
-known one the quota was accidentally robust to.** (Status: mechanism
-identified, one confirming measurement — app-grid census p85/p50 at 6k —
-appended below when it lands.)
+```
+6k, defaults:   tw=240   p85/p50 = 2.56   p95/p50 = 3.53   max/p50 = 9.58
+                tw=480   p85/p50 = 3.14   p95/p50 = 5.20   max/p50 = 7.87
+```
+
+**The shipped grid's tail is FATTER at 6k, not thinner.** At that ratio,
+K=4×median sits at a *lower* effective quantile on the app grid — the bar
+should mint relatively *more* cities there, not fewer. The tail story cannot
+explain the claiming asymmetry, and it is retracted.
+
+What survives, because it is directly measured, not inferred:
+
+- **The FAIL and its attribution** — `TIER_BRANCH` alone: ref claiming +66%,
+  app +8%; the isolation table above is the fact the mechanism must explain.
+- **The quota-blindness observation** — P85 *is* rescale-invariant and
+  `K×median` *does* read distribution shape; that is arithmetic. What is
+  refuted is the claim that the shape difference runs in the direction that
+  explains the failure.
+
+Open hypotheses, in testable order: (a) the **dawn** tail (step ~2000, where
+the city-state divergence originates) may differ from the 6k tail — measured
+next, appended below; (b) the asymmetry may live **downstream** of tier
+entirely, in the seat → territory-projection machinery (per-seat claimed area
+across grids), in which case the bar is innocent and the projection layer
+carries the resolution leak; (c) realm-count amplification (ref 14→45 vs app
+17→20) may come through a channel other than city seats — nucleation or
+secession gates whose inputs scale differently. Until one of these is pinned,
+the resgate FAIL is **attributed but unexplained**.
 
 ### Verdict
 
@@ -267,10 +287,9 @@ appended below when it lands.)
   with the derived bar in place.
 - The **flip waits**: no default flip while the resgate ratchet is red — the
   bands are "never a target to tune toward", and softening K to pass would be
-  the exact violation §3 forbids. The blocking item is now the *upstream*
-  census-tail dilution (the CLAUDE.md open gap), which this lever gives a
-  sharp new instrument for: the cross-grid p85/p50 ratio is a direct scalar
-  measure of that gap, cheaper than any territory battery.
+  the exact violation §3 forbids. The blocking item is the claiming asymmetry
+  above: attributed to this lever's presence, mechanism still open (the census
+  tail was measured and cleared — see the retraction).
 - Both levers ship **off**, unchanged.
 
 ## 6. What would make K a measurement (the honest next rung)
