@@ -1247,6 +1247,27 @@ export function maybeCrystallize(world) {
     if (T.INVENT_FIELD > 0 && world.popField) {
       independent *= townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
     }
+    // T.INDEP_TECH — the floor rides the LOCAL TECHNIQUE, because the failed
+    // people-time lever above taught which variable discriminates. INVENT_FIELD
+    // scaled by basin PEOPLE and measurably made things worse: every site that
+    // can found at all already clears the basin bar, so people-scaling can only
+    // multiply UP — forager Siberia has the people. What forager Siberia does
+    // NOT have is the farming package: devField ≈ 0 at the dawn everywhere the
+    // technique wave has not reached. So the local-coalescence floor is scaled
+    // by devField/NEOLITHIC_AGRI (clamped 0..1): on fully-taught ground the
+    // floor is exactly INDEPENDENT_RATE (no late-game change — mature worlds
+    // carry the package everywhere settled), on half-taught frontier it is
+    // half, on untaught land it is ZERO — a town cannot coalesce from people
+    // who do not farm. Towns become a CONSEQUENCE of the idea's spread, the
+    // same ontology as the INVENT_STAGGER handout repair (that arm set what a
+    // newborn KNOWS; this one sets whether it can BE at all). No new constant:
+    // NEOLITHIC_AGRI is the package's own definition of "full farming". The
+    // diffusion term is untouched — colonists FROM the network carry the
+    // package with them; it is only the locals-on-their-own channel that must
+    // wait to be taught. 0 = the flat floor (byte-identical, and the default).
+    if (T.INDEP_TECH && world.devField) {
+      independent *= Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI);
+    }
     const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
