@@ -281,6 +281,79 @@ the wave's neighbourhood — which is phase 2's problem, and `MULTI_HEARTH`'s.
 **Consequence for the battery: §6 item 3 as originally written is void.** It
 demanded of phase 1 an outcome only phase 2 can deliver. It is restated there.
 
+### Phase 2, first arm — BUILT: `T.INVENT_STAGGER` (default 0)
+
+Prompted by the owner's observation (2026-08-03): *"it seems unlikely that 6
+places independently invent farming at the same time."* Real origins span
+~6 500 years; the sim seeded every hearth at step 0.
+
+**The law.** Every picked hearth (pins and scorer picks on one ruler —
+`cradleScoreAt` extracted so pins are scorable) gets a maturity time
+`T = INVENT_EPOCH_Y / score`, with `INVENT_EPOCH_Y = 6500` anchored to the
+archaeological span (first domestication ~9500 BC vs eve-of-states ~3000 BC).
+Maturing inside prehistory → seats at genesis with a **wave age** of
+`DEV_INIT_YEARS − T`; `ensureDevField` runs the pre-run with per-hearth unlock
+iterations, so old hearths open with wide technique halos and young ones with
+small halos. Maturing beyond prehistory → opens **armed**: maturity accrues
+only while the basin actually carries people (`effYears += dt ×
+basinMass/basinCapacity`, `dt` derived from the wave's own km/year calibration
+— no second time constant), igniting mid-game on the Technique lens; a basin
+colonised first **stands down** (the package arrived before it was invented —
+the Australia case). Riding with it, same ontology: **the founding handout
+ends** — `inheritKnowledgeAt`'s baseline agriculture becomes the `devField` at
+the site (what has actually reached this ground), deleting `NEOLITHIC_AGRI`
+from the founding path rather than adding a constant.
+
+**Cardinal-rule audit.** The pre-run stagger is an *initial condition* (the
+same epistemic status as `DEV_INIT_YEARS` itself); the live law gates on state
+(an empty basin never matures — the calendar never enters); the epoch constant
+is anchored to a real-history duration, never a hearth count, and the ORDER of
+invention is score-emergent and invariant to it.
+
+**Measured at genesis (480/8817, byte-identical off at the new-defaults hash
+`4cdb7925`):**
+
+```
+Nile          score 6.91 → matured  940y in, wave age 5060y
+Mesopotamia   score 6.29 → matured 1033y in, wave age 4967y
+Indus         score 6.50 → matured 1000y in, wave age 5000y
+Yellow River  score 6.44 → matured 1010y in, wave age 4990y
+(scorer pick) score 6.75 → matured  963y in, wave age 5037y
+(scorer pick) score 6.48 → matured 1004y in, wave age 4996y
+(scorer pick) score 1.43 → matured 4548y in, wave age 1452y   ← the young hearth
+```
+
+**Three honest limits, measured and named:**
+
+1. **The top cluster compresses.** The stagger is real (4.8× spread) but
+   carried by the weak tail — the six strong hearths' scores genuinely tie
+   (6.29-6.91: all great river valleys), so their maturities cluster within
+   ~90 years. Archaeology has the same cluster-plus-outlier shape but with the
+   *ancient* end (the Fertile Crescent) as the outlier. Real maturity times
+   span ~14× (Crescent ~500y … eastern N America ~7000y); the score spans
+   4.8×, and no transform can bridge that without a fitted shape knob (second
+   rule). The score needs a discriminating term with independent meaning —
+   wild-package diversity is the obvious candidate — before the law can
+   reproduce the real spread.
+2. **The armed/ignition path is unreachable on Earth seeds** (checked: 8817,
+   31337, 4242, 7777 — all picks mature pre-run). The viability filters floor
+   surviving scores at ~2 → T ≤ ~3 250y < prehistory. The machinery is live
+   and correct (a sub-1.1-score pin or a marginal map arms it), but the
+   watch-it-ignite product moment waits on limit 1's fix.
+3. **The wrong-places dawn is UNMOVED by the handout repair** (probe:
+   88 → 83 settled at step 2000, steppe 8 → 8, Siberia founded at step 144 in
+   both arms). The repair is ontologically right and measurably ~neutral here,
+   which sharpens the attribution: the defect lives in the founding
+   PROBABILITY floor (`INDEPENDENT_RATE` cancelling the distance decay), not
+   in the knowledge handout. That floor is the next arm's target. Note the
+   trio defaults already retired the original headline — the steppe no longer
+   leads the planet; the hearth continents do, legitimately.
+
+**Recommendation: ships OFF and stays off for now** — a correct foundation
+whose visible payoff (the ignition moment, the real maturity spread) waits on
+the score's discriminating term. The flip that matters was today's; this arm
+is groundwork.
+
 ### Phase 2 — ORIGIN (`IDEA_FIELD = 2`)
 
 Remove the free handout. `inheritKnowledgeAt`'s baseline stops returning

@@ -114,7 +114,7 @@ const MIG_SHARE_MAX = 0.5;
 //     condition, not a gate (the genesis-seed philosophy).
 const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neolithic ~1 km/year)
 const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
-const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
+export const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
 const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
 // Climate-ZONE scale for the T.DIFF_CLIM toll (reference tiles; ×rNormPop at
 // other grids — a real distance, ~2 × 167 km ≈ 330 km at the reference). A
@@ -213,7 +213,7 @@ const PASTORAL_DENS = 0.10;         // people per openness-1 range tile, as a fr
 // intervals stretch ×G — the _ivl pattern). Resolution-invariant by
 // construction: a finer grid has smaller tiles and proportionally shorter
 // intervals, the same km/year everywhere.
-function devWaveIvl(world) {
+export function devWaveIvl(world) {
   const tileKm = EARTH_KM / world.tw;
   const G = T.SIM_GRANULARITY || 1;
   return Math.max(1, Math.round(tileKm / DEV_WAVE_KMPY / 0.25 * G));
@@ -223,19 +223,26 @@ const devWaveLoss = (world) => DEV_WAVE_LOSS_PLANET / world.tw;
 /** Stamp every settlement's own agriculture onto the land it works. */
 function stampDevSources(world, dev) {
   const owner = world._territoryOwner, byId = world._byId, tw = world.tw;
+  // T.INVENT_STAGGER pre-run only: a hearth whose maturity falls PARTWAY through
+  // prehistory starts radiating at its own pre-run iteration (_devHoldK, set by
+  // ensureDevField from the hearth's wave age), so the Nile-class cores open
+  // with old, wide halos and late hearths with young, small ones. Live play:
+  // _devPreK is undefined and nothing is ever held.
+  const preK = world._devPreK;
+  const held = (s) => preK !== undefined && s._devHoldK !== undefined && preK < s._devHoldK;
   if (owner && byId) {
     for (let i = 0; i < world.N; i++) {
       const sid = owner[i];
       if (sid < 0) continue;
       const s = byId.get(sid);
-      if (!s || s.mode !== "settled") continue;
+      if (!s || s.mode !== "settled" || held(s)) continue;
       const a = (s.knowledge && s.knowledge.agriculture) || 0;
       if (a > dev[i]) dev[i] = a;
     }
   }
   // Home tiles directly, so a settlement with no catchment yet still radiates.
   for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
+    if (s.mode !== "settled" || held(s)) continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (ti < 0 || ti >= world.N) continue;
     const a = (s.knowledge && s.knowledge.agriculture) || 0;
@@ -407,10 +414,40 @@ function ensureDevField(world, land) {
   // sources, which would hand the lever a genesis field one wave-step less
   // spread than the control and confound the whole arm with an initial
   // condition.
-  if (T.IDEA_FIELD) dev.set(rebuildDevSources(world)); else stampDevSources(world, dev);
   const tileKm = EARTH_KM / world.tw;
   const iters = Math.max(0, Math.round(DEV_INIT_YEARS * DEV_WAVE_KMPY / tileKm));
-  for (let k = 0; k < iters; k++) dev = relaxDevWave(world, dev, land);
+  // T.INVENT_STAGGER: hearths matured at different points in prehistory
+  // (s._hearthAgeY = years of wave spread owed by map open, set at seeding).
+  // Map each to the pre-run iteration its wave STARTS at, then run the same
+  // loop with the stamp's hold filter active — a re-stamp fires at each
+  // unlock so a newly-matured hearth starts radiating exactly then. Live play
+  // never sees any of this (world._devPreK is deleted below).
+  let unlocks = null;
+  if (T.INVENT_STAGGER) {
+    const yearsPerIter = tileKm / DEV_WAVE_KMPY;
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s._hearthAgeY === undefined) continue;
+      const k = Math.max(0, Math.min(iters, iters - Math.round(s._hearthAgeY / Math.max(1e-9, yearsPerIter))));
+      if (k > 0) { s._devHoldK = k; (unlocks || (unlocks = new Set())).add(k); }
+    }
+    if (unlocks) world._devPreK = 0;
+  }
+  if (T.IDEA_FIELD) dev.set(rebuildDevSources(world)); else stampDevSources(world, dev);
+  for (let k = 0; k < iters; k++) {
+    if (unlocks) {
+      world._devPreK = k;
+      // A hearth unlocking at k starts contributing THIS pass: re-derive the
+      // sources so its package enters the wave from its own maturity onward.
+      // (IDEA_FIELD arm: refresh _devSrc ONLY — the relax reads it every pass;
+      // dev.set(src) here would erase the spread already accumulated.)
+      if (unlocks.has(k)) { if (T.IDEA_FIELD) rebuildDevSources(world); else stampDevSources(world, dev); }
+    }
+    dev = relaxDevWave(world, dev, land);
+  }
+  if (unlocks) {
+    delete world._devPreK;
+    for (const s of world.settlements) if (s._devHoldK !== undefined) delete s._devHoldK;
+  }
   return dev;
 }
 

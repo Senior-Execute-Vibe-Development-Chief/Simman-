@@ -6,6 +6,7 @@
 import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
 import { T, rNormPop } from "./tuning.js";
+import { DEV_INIT_YEARS } from "./popField.js";
 import { computeRelief } from "../worldgenUtils.js";
 
 const TILE_RES = 2;
@@ -432,7 +433,7 @@ const HEARTH_MIN_SEP_FRAC = 0.02;
 // Returns the list of tiles actually seated, {tx,ty,ti} — empty if none took.
 // (It used to return a boolean, because its only caller returned on truthy. The
 // list is what T.MULTI_HEARTH pre-loads into the algorithmic greedy.)
-function seedEarthHearths(world) {
+function seedEarthHearths(world, seatNow = true) {
   const { tw, th, elev, temp, moist, fert, riverMag } = world;
   const picked = [];   // hearth tiles already seated this pass
   const minSep = Math.max(3, Math.round(tw * HEARTH_MIN_SEP_FRAC));
@@ -469,6 +470,13 @@ function seedEarthHearths(world) {
     }
     const bx = bestTi % tw, by = (bestTi / tw) | 0;
     picked.push({ tx: bx, ty: by, ti: bestTi });
+    // T.INVENT_STAGGER (seatNow=false): the pin is PICKED (it holds its
+    // separation disc) but not yet seated — seatOrArmHearths decides WHEN it
+    // matures on the same ruler as every scorer pick.
+    if (!seatNow) {
+      console.log(`[peopleSim] hearth pin ${site.name} picked at tile (${bx},${by}) — maturity deferred to the stagger law`);
+      continue;
+    }
     const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor: an entity is a town, its valley countryside is the popField)
     const name = born.name;
     const rm = riverMag ? riverMag[bestTi] : 0;
@@ -476,6 +484,77 @@ function seedEarthHearths(world) {
       `temp:${temp[bestTi].toFixed(2)} moist:${moist[bestTi].toFixed(2)} fert:${fert[bestTi].toFixed(2)}${rm >= 2 ? ` river(mag${rm})` : ""}`);
   }
   return picked;
+}
+
+/** The cradle score at one tile — the wild-package richness the greedy ranks
+ *  by (fertility × river × circumscription × climate). Extracted so scenario
+ *  PINS can be scored on the same ruler as scorer picks (T.INVENT_STAGGER
+ *  needs every hearth's score for its maturity time) and so probes can read
+ *  the ranking the seeding actually used. Pure worldgen read; no filters —
+ *  callers that need the viability windows apply them separately. */
+export function cradleScoreAt(world, ti) {
+  const { elev, temp, fert, riverMag } = world;
+  const t = temp[ti], f = fert[ti] || 0;
+  const rm = riverMag ? riverMag[ti] : 0;
+  const riverBonus = rm >= 3 ? 2.6 : rm >= 2 ? 1.6 : rm >= 1 ? 0.6 : 0;
+  const tempFit = 1 - Math.abs(t - 0.76) * 1.3;
+  const elevFit = 1 - elev[ti] * 2;
+  const { landBarrier, seaFrac } = cradleSurround(world, ti);
+  return f * 2 + riverBonus + landBarrier * 2.5 + tempFit + elevFit
+       - Math.max(0, seaFrac - 0.30) * 5;
+}
+
+// ── T.INVENT_STAGGER: agriculture is invented WHEN a hearth matures, not at t=0 ──
+// The owner's observation (2026-08-03): "it seems unlikely that 6 places
+// independently invent farming at the same time." Correct — real origins span
+// ~6 500 years (Fertile Crescent ~9500 BC … Sahel ~3000 BC), and seeding every
+// hearth at step 0 makes them all equally old. Under the lever each picked
+// hearth gets a MATURITY TIME from its own conditions:
+//
+//     T_i = INVENT_EPOCH_Y / score_i
+//
+// — the richer the wild package (the same fertility × river × circumscription
+// score the greedy already ranks by), the sooner domestication completes. A
+// hearth maturing INSIDE prehistory (T_i ≤ DEV_INIT_YEARS) opens the map as a
+// farming core whose technique wave has spread for its own (DEV_INIT_YEARS −
+// T_i) years — the Nile-class sites open ancient, marginal ones open young.
+// A hearth maturing BEYOND prehistory opens ARMED: it accrues maturity only
+// while its basin actually carries people (maybeCrystallize's arming pass —
+// effYears += dt × basinMass/basinCapacity), and IGNITES mid-game when its
+// remaining years are served. Emergent, not scheduled: an empty basin never
+// matures, a colonised basin stands down (the package arrived by sea first),
+// and the ORDER of invention is set by the land, not the calendar. The
+// pre-run staggering is an INITIAL CONDITION (the same epistemic status as
+// DEV_INIT_YEARS and CRADLE_EVE themselves — how old the world is when the
+// map opens), never a live gate.
+//
+// INVENT_EPOCH_Y: the one constant, with an archaeological anchor — first
+// domestication ran ~6 500 years ahead of the eve of states (9500 BC vs
+// ~3000 BC). Divided by a score of ~7 (a great river cradle) it matures in
+// under a millennium of prehistory; a score-2 site takes ~3 300 years; below
+// ~1.1 it does not finish in prehistory at all and opens armed. The ORDER and
+// the relative stagger are invariant to the value; only the absolute epoch
+// scales. Rule-2 audit: the anchor is a real-history duration, not a count of
+// hearths to hit — MAX_CRADLES stays the only supply constant, untouched.
+const INVENT_EPOCH_Y = 6500;
+function seatOrArmHearths(world, picked) {
+  const armed = [];
+  for (const p of picked) {
+    const sc = Math.max(0.5, p.score !== undefined ? p.score : cradleScoreAt(world, p.ti));
+    // (floor 0.5: a scenario PIN on a tile failing the scorer's viability
+    // windows can score ≤ 0; it matures very slowly rather than dividing by
+    // zero — and being a pin, it stays a candidate instead of being dropped.)
+    const Ty = INVENT_EPOCH_Y / sc;
+    if (Ty <= DEV_INIT_YEARS) {
+      const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });
+      born._hearthAgeY = DEV_INIT_YEARS - Ty;   // years the technique wave has spread by map open (read by ensureDevField)
+      console.log(`[peopleSim] hearth ${born.name} at (${p.tx},${p.ty}) score ${sc.toFixed(2)} — matured ${Math.round(Ty)}y into prehistory (wave age ${Math.round(born._hearthAgeY)}y)`);
+    } else {
+      armed.push({ ti: p.ti, tx: p.tx, ty: p.ty, score: sc, needY: Ty - DEV_INIT_YEARS, effY: 0 });
+      console.log(`[peopleSim] hearth candidate at (${p.tx},${p.ty}) score ${sc.toFixed(2)} — ARMED: ~${Math.round(Ty - DEV_INIT_YEARS)}y of peopled-basin time from maturity`);
+    }
+  }
+  if (armed.length) world._armedHearths = armed;
 }
 
 function seedCradleVillage(world) {
@@ -493,9 +572,14 @@ function seedCradleVillage(world) {
   //     input stops being a cap on the mechanism.
   // (T.EARTH_HEARTHS off = purely algorithmic, either way.)
   if (T.EARTH_HEARTHS && (world.preset === "earth_sim" || world.preset === "earth")) {
-    const pins = seedEarthHearths(world);
+    const pins = seedEarthHearths(world, !T.INVENT_STAGGER);
     if (pins.length) {
-      if (!T.MULTI_HEARTH) return;
+      if (!T.MULTI_HEARTH) {
+        // Pins-only mode: under the stagger law the pins still seat or arm by
+        // their own maturity; otherwise seedEarthHearths seated them already.
+        if (T.INVENT_STAGGER) seatOrArmHearths(world, pins);
+        return;
+      }
       for (const p of pins) picked.push(p);
     } else {
       console.warn("[peopleSim] earth hearths found no site — falling back to algorithmic cradles");
@@ -517,16 +601,11 @@ function seedCradleVillage(world) {
     // major river are rejected for low moisture.
     if (!onRiver && (m < 0.30 || m > 0.78)) continue;
     if (f < 0.40) continue;                        // fertile (river alluvium counts via tCrop)
-    // Major rivers are THE cradle feature — weight them heavily.
-    const riverBonus = rm >= 3 ? 2.6 : rm >= 2 ? 1.6 : rm >= 1 ? 0.6 : 0;
-    const tempFit = 1 - Math.abs(t - 0.76) * 1.3;
-    const elevFit = 1 - elev[ti] * 2;
-    const { landBarrier, seaFrac } = cradleSurround(world, ti);
     // Reward a fertile pocket walled by inhospitable LAND (the real river-valley
     // cradles — Nile/Sahara, Indus/Thar); PENALISE being mostly ringed by ocean
     // (islands / coastal outcroppings, where the first states did NOT arise).
-    const score = f * 2 + riverBonus + landBarrier * 2.5 + tempFit + elevFit
-                - Math.max(0, seaFrac - 0.30) * 5;
+    // (Formula lives in cradleScoreAt so pins and probes read the same ruler.)
+    const score = cradleScoreAt(world, ti);
     candidates.push({ ti, score });
   }
   if (candidates.length === 0) {
@@ -560,6 +639,12 @@ function seedCradleVillage(world) {
       if (ddx * ddx + ddy * ddy < minSepSq) { tooClose = true; break; }
     }
     if (!tooClose) picked.push({ tx, ty, ti: c.ti, score: c.score });
+  }
+  if (T.INVENT_STAGGER) {
+    // Under the stagger law NOTHING was seated yet (pins deferred too): every
+    // picked hearth seats or arms by its own maturity, on one ruler.
+    seatOrArmHearths(world, picked);
+    return;
   }
   for (let i = nPinned; i < picked.length; i++) {   // pins were seated by seedEarthHearths already
     const p = picked[i];
