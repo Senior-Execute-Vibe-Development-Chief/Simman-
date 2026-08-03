@@ -1247,28 +1247,33 @@ export function maybeCrystallize(world) {
     if (T.INVENT_FIELD > 0 && world.popField) {
       independent *= townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
     }
-    // T.INDEP_TECH — the floor rides the LOCAL TECHNIQUE, because the failed
-    // people-time lever above taught which variable discriminates. INVENT_FIELD
-    // scaled by basin PEOPLE and measurably made things worse: every site that
-    // can found at all already clears the basin bar, so people-scaling can only
-    // multiply UP — forager Siberia has the people. What forager Siberia does
-    // NOT have is the farming package: devField ≈ 0 at the dawn everywhere the
-    // technique wave has not reached. So the local-coalescence floor is scaled
-    // by devField/NEOLITHIC_AGRI (clamped 0..1): on fully-taught ground the
-    // floor is exactly INDEPENDENT_RATE (no late-game change — mature worlds
-    // carry the package everywhere settled), on half-taught frontier it is
-    // half, on untaught land it is ZERO — a town cannot coalesce from people
-    // who do not farm. Towns become a CONSEQUENCE of the idea's spread, the
-    // same ontology as the INVENT_STAGGER handout repair (that arm set what a
-    // newborn KNOWS; this one sets whether it can BE at all). No new constant:
-    // NEOLITHIC_AGRI is the package's own definition of "full farming". The
-    // diffusion term is untouched — colonists FROM the network carry the
-    // package with them; it is only the locals-on-their-own channel that must
-    // wait to be taught. 0 = the flat floor (byte-identical, and the default).
-    if (T.INDEP_TECH && world.devField) {
-      independent *= Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI);
-    }
-    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    // T.INDEP_TECH — a town can only crystallize where the PACKAGE HAS ARRIVED.
+    // Three measured failures aimed this at the right variable and the right
+    // channel: INVENT_FIELD scaled the floor by basin PEOPLE → worse (every
+    // fireable site has people); INVENT_STAGGER's handout repair fixed what a
+    // newborn KNOWS → the dawn map did not move (the founding still happened);
+    // and gating the INDEPENDENT floor alone → byte-identical outcomes at 6k,
+    // which proved the floor NEVER BINDS under multi-hearth defaults — with
+    // seven hearths every fireable site sits within diffusion reach of some
+    // network, and the anachronisms (a steppe town at step 24, 61°N by step
+    // 144) ride the DIFFUSION term. That term is exp(−td/·): a probability
+    // GRADIENT, not a FRONT — a site 3 000 km from the Indus can found the
+    // moment the sim starts, with no waiting for the package to arrive. But
+    // the sim HAS a front: devField, the technique wave, at its measured
+    // 1 km/year. So the lever scales the WHOLE channel sum by the package's
+    // local arrival, devField/NEOLITHIC_AGRI (clamped 0..1): fully-taught
+    // ground founds at the unchanged rate (the ratio saturates — mature
+    // worlds identical), the wave's edge founds at the edge's fraction, and
+    // untaught land founds NOTHING — towns trail the green stain on the
+    // Technique lens, which is the wave-of-advance picture the pioneering
+    // tempo below already gestures at (it paces by the nearest DONOR's tempo;
+    // this paces by the field's actual arrival). Daughter colonies, sea
+    // landings and plantations are untouched — those are real settler parties
+    // that carry the package with them. No new constant: NEOLITHIC_AGRI is
+    // the package's own definition of "full farming". 0 = ungated
+    // (byte-identical, and the default).
+    const packageFrac = T.INDEP_TECH && world.devField ? Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI) : 1;
+    const p = quality * (diffusionMul + independent) * packageFrac * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
     // full-tempo probability (cheap reject), then against the wave-of-advance
