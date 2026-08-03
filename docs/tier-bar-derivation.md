@@ -307,6 +307,45 @@ not the underlying censuses agree** — rescale-blindness, here a bug wearing a
 robustness costume: the quota's worlds pass resgate while disagreeing across
 grids about what a dawn settlement IS.
 
+### The defect decomposed to arithmetic — and the fix ALREADY EXISTS
+
+`taildecomp` (step 2000, defaults, the small half of the census distribution):
+
+| | tw=240 | tw=480 | ratio |
+|---|---|---|---|
+| census (p50 band) | 11.2 | 16.0 | **1.43** |
+| tiles owned, raw | 41 | 81 | 2.0 |
+| tiles owned, **real** (÷rn²) | 41.0 | **20.3** | 0.50 |
+| field mass `f` | 9145 | 4871 | 0.53 |
+| bridge `_onePopScale` | 1.220e-3 | 3.283e-3 | **2.69** |
+
+`census = f × bridge` and `0.53 × 2.69 = 1.43` — exact. Two tile-grown
+contaminations that do not cancel: the young settlement's **territory covers
+half the real area** at the fine grid (grown in tiles — the in-code comment at
+`deriveOnePop` documented exactly this), and the **bridge is 2.69×** (a
+median-over-catchments calibration, frozen at activation on that same
+contaminated geometry). The p85 band rides the calibration point and stays
+invariant; everyone below it does not. (The top band's census also carries the
+urban-agglomeration flow, so the plain product under-predicts it — the small
+half, where the defect lives, multiplies exactly.)
+
+**And the geometry-free bridge is already in the codebase**: `T.BRIDGE_GLOBAL`
+(default off — its own description records the 3.15× contamination and demands
+the multi-seed gate). Measured at the dawn, both grids:
+
+```
+defaults:        p85/p50 = 4.35 (ref)  vs  3.04 (app)   — 43% apart
+BRIDGE_GLOBAL=1: p85/p50 = 5.58 (ref)  vs  5.28 (app)   —  6% apart
+                 p50 16.9 vs 18.6 (10%) · p95/p50 6.29/6.14 · max/p50 6.53/6.36
+```
+
+**The entire dawn size distribution becomes resolution-invariant** under the
+global bridge — shape aligned to ~6%, median to ~10%. (It also changes the
+world at both grids — fewer, fatter-tailed dawn settlements — which is why its
+gate is owed before any default change; the invariance question, though, is
+answered.) Resgate under `TIER_BRANCH + BRIDGE_GLOBAL`, and under the full
+three-lever flip config, is the direct test — running, appended below.
+
 ### Verdict
 
 - The **unblock stands**: the bar survives any label supply, the hierarchy
