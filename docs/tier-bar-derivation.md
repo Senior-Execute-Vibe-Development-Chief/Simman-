@@ -214,6 +214,65 @@ What rides on K and what does not, stated plainly:
   distribution is robustly Zipf-band regardless of the bar that reads it, which
   is the cross-check's premise measured rather than assumed.
 
+## 5b. THE FLIP BATTERY (owner-requested, 2026-08-03) — stylized PASS, resgate FAIL, attributed
+
+### Stylized (`MULTI_HEARTH=1, TIER_BRANCH=4`, 21k, full battery): **all hard gates pass**, 1 soft warning (budget 2)
+
+The flip config's history is history-shaped by every stylized measure, and
+three readings are better than the default world's:
+
+- **Polity death exists**: 58 fallen realms, median lifespan 7050 steps
+  (~1763y) — in the sim whose founding complaint was the static top.
+- **War intensity per polity is unchanged** (0.25/1k vs 0.22) — the higher raw
+  war counts in the §4 arms were more actors, not a hotter world.
+- **Knowledge radiates**: tech ~ cradle-distance −0.70 vs −0.15 at defaults —
+  the hearth geometry visible in a gate that was nearly flat.
+
+Also: 78 polities, largest empire 6% share, urbanisation 4.7% (in band),
+159 settlements / 61k pop at 21k.
+
+### Resgate: **FAIL — and the driver is THIS lever, isolated**
+
+| claimed-land band | ref | app | app/ref (floor 0.44) |
+|---|---|---|---|
+| defaults | 3.83% | 2.27% | 0.59 ✓ |
+| `MULTI_HEARTH` alone | 8.36% | 4.30% | 0.51 ✓ |
+| **`TIER_BRANCH` alone** | 6.35% | 2.46% | **0.39 ✗** |
+| combined | 7.06% | 2.97% | **0.42 ✗** |
+
+`TIER_BRANCH` alone raises reference-grid claiming +66% and shipped-grid
+claiming +8% — the dawn city-state effect (§4 bar 4) fires at the calibration
+grid and barely at the one that ships. Realms: ref 14 → 45, app 17 → 20.
+
+### The mechanism, and why the quota never saw it
+
+**P85 is a quantile — invariant under any rescaling of the size distribution —
+so it is blind BY CONSTRUCTION to cross-grid census distortion.** `K × median`
+reads the tail-to-median ratio, so it reads *through* to whatever shapes the
+tail. And the tail's cross-grid distortion is a **documented open gap**: the
+~1.3-2.2× capacity dilution from 1-D coast/river terms (CLAUDE.md, the resgate
+section), which hits river/coast settlements — the tail of the size
+distribution — hardest at the finer grid. Thinner tail at the shipped grid →
+fewer settlements clear K×median → fewer dawn seats → less claiming.
+
+**The derivation did not create this resolution variance — it un-masked a
+known one the quota was accidentally robust to.** (Status: mechanism
+identified, one confirming measurement — app-grid census p85/p50 at 6k —
+appended below when it lands.)
+
+### Verdict
+
+- The **unblock stands**: the bar survives any label supply, the hierarchy
+  needs no floor, and `MULTI_HEARTH`'s history passes the stylized battery
+  with the derived bar in place.
+- The **flip waits**: no default flip while the resgate ratchet is red — the
+  bands are "never a target to tune toward", and softening K to pass would be
+  the exact violation §3 forbids. The blocking item is now the *upstream*
+  census-tail dilution (the CLAUDE.md open gap), which this lever gives a
+  sharp new instrument for: the cross-grid p85/p50 ratio is a direct scalar
+  measure of that gap, cheaper than any territory battery.
+- Both levers ship **off**, unchanged.
+
 ## 6. What would make K a measurement (the honest next rung)
 
 K=4 is a constant standing in for a quantity the sim already computes: the
