@@ -73,9 +73,15 @@ export function cropSuitability(t, m, e, coast, riverMag, bDist) {
 // (src/cropPackages.js) while every ENVIRONMENT gate is the shared envGate()
 // above. So a package inherits all the tuned soil/water realism and differs only
 // in WHICH climate it wants. Returns 0..1 × the package's peak yield.
-export function cropSuitabilityPkg(pkg, t, m, e, coast, riverMag, bDist) {
+export function cropSuitabilityPkg(pkg, t, m, e, coast, riverMag, bDist, tGrow, mGrow) {
   if (e <= 0) return 0;
   if (e > 0.45) return 0.02 * pkg.yield;
   const rm = riverMag || 0;
-  return envGate(pkgClimateBell(pkg, t, m), t, m, e, coast, rm, bDist) * pkg.yield;
+  // T.GROW_SEASON: the CLIMATE BELL reads the season the crop grows in (tGrow,
+  // mGrow) when supplied; the environmental gates — aridity floor, tropical
+  // soil, river alluvium, cold — stay ANNUAL land properties (a river irrigates
+  // year-round; a laterite soil is a laterite soil). tGrow undefined ⇒ annual,
+  // byte-identical.
+  const bell = tGrow !== undefined ? pkgClimateBell(pkg, tGrow, mGrow) : pkgClimateBell(pkg, t, m);
+  return envGate(bell, t, m, e, coast, rm, bDist) * pkg.yield;
 }

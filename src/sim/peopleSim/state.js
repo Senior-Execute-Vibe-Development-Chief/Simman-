@@ -108,6 +108,13 @@ export function createWorld(w, opts = {}) {
 
 function initTerrain(world, w, tCrop, tFloodSrc) {
   const { tw, th, tileRes, elev, temp, moist, fert, coast } = world;
+  // T.GROW_SEASON: carry the growing-season fields onto the sim world so the crop
+  // bell can read each package on the season it grows in. Gated so off-lever the
+  // world has no new state (byte-identical, and coverage stays honest). Point-
+  // sampled like temp/moist above, from the same worldgen pixel.
+  const gsOn = T.GROW_SEASON && w.tAmp && w.warmRainFrac;
+  const tAmpF = gsOn ? (world._tAmp = new Float32Array(world.N)) : null;
+  const wRainF = gsOn ? (world._warmRainFrac = new Float32Array(world.N)) : null;
   // Pixel-grid relief, max-pooled to sim tiles below (like fert): a one-pixel
   // ridge LINE is exactly the feature mean-sampling erases — the reason the Alps
   // never walled anything (see transport.js ridge term). Recomputed here, never
@@ -129,6 +136,7 @@ function initTerrain(world, w, tCrop, tFloodSrc) {
       const e = w.elevation[wi], t = w.temperature[wi], m = w.moisture[wi];
       elev[ti] = e; temp[ti] = t; moist[ti] = m;
       coast[ti] = w.coastal ? (w.coastal[wi] ? 1 : 0) : 0;
+      if (tAmpF) { tAmpF[ti] = w.tAmp[wi]; wRainF[ti] = w.warmRainFrac[wi]; }
       // FERTILITY: max-pool over the TILE_RES×TILE_RES worldgen block, not a point
       // sample. Point-sampling every TILE_RES-th pixel DROPS thin fertile features —
       // a one-to-few-tile river floodplain (the Nile / Indus valley) falls between

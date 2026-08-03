@@ -34,7 +34,30 @@ export function pkgSuitAt(world, ti, pkg) {
   const e = world.elev[ti]; if (e <= 0) return 0;
   const coast = world.coast ? world.coast[ti] : 0;
   const rm = world.riverMag ? world.riverMag[ti] : 0;
-  return cropSuitabilityPkg(pkg, world.temp[ti], world.moist[ti], e, coast, rm, null);
+  const t = world.temp[ti], m = world.moist[ti];
+  // T.GROW_SEASON: evaluate the package on the SEASON IT GROWS IN. The crop's
+  // own tOpt picks the season — a cool-optimum crop (wheat) grows in the tile's
+  // cool half, a warm-optimum crop (maize/rice) in the warm half — and it reads
+  // THAT season's temperature and rainfall. No per-crop label: the season falls
+  // out of tOpt vs the two half-year temperatures. (docs/design-growing-season.md)
+  if (world._tAmp) {
+    const amp = world._tAmp[ti], wf = world._warmRainFrac[ti];
+    const tWarm = t + amp, tCool = t - amp;
+    // CROP-SEASON CLASSIFICATION: a crop is warm-season or cool-season by its OWN
+    // optimum (the botanical division ~18C: wheat/barley/oats cool, maize/rice/
+    // sorghum/millet warm), and it grows in THAT half of the year regardless of
+    // whether the half is above/below its optimum — a summer crop grows in summer
+    // or not at all. A warm-season crop forced into a hot dry summer then FAILS on
+    // that season's drought, which is the Mediterranean-summer mechanism.
+    const warm = pkg.tOpt >= 0.80;
+    const tGrow = warm ? tWarm : tCool;
+    // Season moisture: gentle bias toward the annual level (even split ⇒ mGrow=m,
+    // fully-wet season ⇒ 1.4×m, fully-dry ⇒ 0.6×m) — not the ×2 that overshot.
+    const frac = warm ? wf : 1 - wf;
+    const mGrow = Math.max(0, Math.min(1, m * (0.6 + 0.8 * frac)));
+    return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow);
+  }
+  return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null);
 }
 
 // Best package at a tile by RAW suitability — what a cradle / mature culture

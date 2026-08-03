@@ -150,6 +150,52 @@ byte-identical.
 
 ---
 
+## IMPLEMENTATION ADDENDUM — built behind `T.GROW_SEASON`, ships OFF
+
+The seasonal plumbing is built end to end and **byte-identical off** (hash
+`ed030d9` = HEAD, both the flip re-verification and this). `tAmp` and
+`warmRainFrac` flow `realClimateData.deriveGrids` (twelve NCEP months, free in
+the existing loop) → `fillRealClimate` → `worldgen` (real path) or a
+latitude/`summerDry` fallback (procedural) → `state.js` downsample (gated on
+the lever) → `agriculture.js pkgSuitAt`. The bell reads the growing season;
+`envGate` stays annual. `coverage` passes with the lever ON (the new state is
+reached through `cropCeil` → capacity).
+
+**Two things the build taught, that the design did not foresee:**
+
+1. **"No new constant" was wrong.** The naive "grow in the nearer half-season"
+   rule mis-assigns a warm crop to the cool half whenever its optimum sits
+   between the two half-temperatures (maize at 0.82 in a `[0.74, 0.92]` tile
+   picks 0.74) — so maize escapes the summer drought it should die in. The fix
+   is a real one: classify each crop as warm- or cool-season by its own
+   optimum (boundary `tOpt 0.80` ≈ 18 °C, the botanical cool/warm-season crop
+   division), and it grows in that half or not at all. That is **one new
+   agronomic constant**, defensible on its own terms, not derivable away.
+
+2. **The moisture split overshot, and moisture calibration is the residual.**
+   `m × 2 × frac` pushed cool-season moisture to 0.82 and read wheat as *too
+   wet*; softened to `m × (0.6 + 0.8·frac)`. Even then, measured (real NCEP,
+   480/8817):
+
+   ```
+   Mesopotamia   wheat 0.23 → 0.48   but sorghum 0.77 wins (hot-dry cereal)
+   Yellow River  → warm-season cereal (millet-class, its real founder)
+   Mexico        → maize (was wheat)
+   ```
+
+   The maize blanket over the Old-World cradles **breaks** — every cradle now
+   reads as a cereal, not maize. But Mesopotamia's raw winner is *sorghum*, not
+   *wheat*, because the sim's moisture index reads semi-arid Mesopotamia at
+   `m ≈ 0.45` — nearer maize/sorghum's optima than wheat's dry 0.36. That is a
+   **worldgen moisture-calibration** gap (the ~200 mm/yr real Fertile Crescent
+   should map drier than 0.45), separate from and downstream of this lever.
+
+**Status:** the growing-season *temperature* mechanism works and the anachronism
+(cereal cradles reading as maize) is fixed; the exact historical founder crop at
+each cradle waits on the moisture calibration. Ships **off**; the full battery
+(smoke green, byte-identical, coverage-on green so far) and the seed panel are
+owed before any flip, because it rides `CROP_AXIS`.
+
 ## COMPACT VERDICT
 
 The crop model is fed annual-mean temperature and moisture; every Old-World
