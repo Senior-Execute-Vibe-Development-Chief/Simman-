@@ -23,14 +23,15 @@
 //   node tools/observe.mjs --nation=5 --json        # machine-readable
 //   node tools/observe.mjs --section=war,economy    # only those sections
 //
-// Sections: run, fields, population, nations, economy, trade, roads, war, culture,
-//           knowledge, events, ages. Default: all.
+// Sections: run, fields, population, nations, shape, life, graph, economy, trade, roads,
+//           war, culture, knowledge, events, story, collections, ages. Default: all.
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { stepToYear } from "../src/sim/calendar.js";
 import nodeZlib from "node:zlib";
 import nodeFs from "node:fs";
-import { provenance } from "./lib/simmetrics.mjs";
+import { provenance, graphOf, lifecycleOf } from "./lib/simmetrics.mjs";
+import { POP_SCALE } from "../src/sim/units.js";
 import { narrate } from "../src/sim/peopleSim/events.js";
 import { chronicleText } from "../src/sim/peopleSim/chronicle.js";
 
@@ -130,8 +131,13 @@ function snapshot(w) {
     const census = settled.map(s => s.people || 0);
     const urban = settled.map(s => s._urbanPop || 0), rural = settled.map(s => s._ruralPop || 0);
     const cs = stats(census);
-    console.log(`    Σ popField ${f(pf)}   Σ census ${f(cs?.sum)}   bridge _onePopScale ${f(w._onePopScale)}`);
-    console.log(`    people per km² ${f(pf / (land.length * km2PerTile))}   urban Σ ${f(stats(urban)?.sum)}   rural Σ ${f(stats(rural)?.sum)}`);
+    // REAL PEOPLE, always. The raw sim units are shown too, labelled, because they
+    // are what the internal thresholds are written in — but the headline figure a
+    // human reads must be the one the GAME shows, or it gets quoted as a finding.
+    const P = (x) => f((x || 0) * POP_SCALE);
+    console.log(`    WORLD POPULATION ${P(cs?.sum)} people   (largest city ${P(stats(census)?.max)}, urban ${P(stats(urban)?.sum)}, rural ${P(stats(rural)?.sum)})`);
+    console.log(`    people per km² ${((cs?.sum || 0) * POP_SCALE / (land.length * km2PerTile)).toFixed(2)}   ·   1 sim-person = ${POP_SCALE} people (src/sim/units.js)`);
+    console.log(`    sim units: Σ census ${f(cs?.sum)}   Σ popField ${f(pf)} (a THIRD scale)   bridge _onePopScale ${f(w._onePopScale)}`);
     line("settlement census", cs);
     line("urban core", stats(urban)); line("rural belt", stats(rural));
     line("carrying capacity s._k", stats(settled.map(s => s._k || 0)));
@@ -259,6 +265,65 @@ function snapshot(w) {
     for (const r of rows.slice(0, 12))
       console.log(`    ${String(r.name).slice(0, 15).padEnd(16)}${String(r.tiles).padStart(6)}${r.compact.toFixed(3).padStart(9)}${String(r.frags).padStart(7)}${(100 * r.mainShare).toFixed(0).padStart(7)}${r.elong.toFixed(2).padStart(7)}${r.spread.toFixed(1).padStart(8)}${String(r.holes).padStart(7)}${String(r.nbrs).padStart(6)}`);
     out.shape = rows;
+  }
+
+  // ── GRAPHS — the networks, as TOPOLOGY rather than as sizes ────────────────
+  // Every network here used to report as one integer. `overlord bonds 16` is the
+  // same number for a sixteen-wide star under one hegemon and a four-deep tribute
+  // chain — different worlds. It matters most for vassalage, which the sim's own
+  // chronicle showed is its PRIMARY consolidation channel (16 submissions against
+  // 0 annexations over 16k steps), and which explains the standing paradox: realm
+  // count rises and the map reads fragmented because a tributary is INVISIBLE on
+  // the political map. blocLandPct is the honest extent of the largest power.
+  // ── LIFECYCLE — do things RISE AND FALL, or only rise? ─────────────────────
+  // Every other section is a snapshot of what EXISTS, and a snapshot of survivors
+  // contains no lifespans. This reads the permanent birth/death stamps the sim
+  // already carries (entities.js: "Records are never deleted"), so it costs no
+  // recording — and it is the only thing here that can report an ABSENCE of
+  // mortality. Everything in STEPS; the year is cosmetic (FIRST CARDINAL RULE).
+  // A survival % is right-censored: its denominator is only entities old enough
+  // to have reached that horizon, and it is omitted entirely when none are.
+  if (want("life") || want("lifecycle")) {
+    H("LIFECYCLE — births, deaths, survival");
+    const L = lifecycleOf(w);
+    const v = (k, d = 0) => (L[k] === undefined ? "—" : L[k].toFixed(d));
+    console.log(`    ${"class".padEnd(9)}${"known".padStart(7)}${"endedNow".padStart(9)}${"alive".padStart(7)}${"turnover".padStart(10)}${"lifespan p50".padStart(14)}${"max".padStart(8)}${"age p50".padStart(9)}${"surv 1k".padStart(9)}${"4k".padStart(7)}${"16k".padStart(7)}${"retained".padStart(10)}`);
+    for (const c of ["polity", "faith", "dynasty", "culture", "lang", "person"]) {
+      if (L[`${c}.known`] === undefined) continue;
+      console.log(`    ${c.padEnd(9)}${v(`${c}.known`).padStart(7)}${v(`${c}.endedNow`).padStart(9)}${v(`${c}.alive`).padStart(7)}${(v(`${c}.turnoverPct`, 1) + "%").padStart(10)}${v(`${c}.lifespan.p50`).padStart(14)}${v(`${c}.lifespan.max`).padStart(8)}${v(`${c}.age.p50`).padStart(9)}${v(`${c}.survival1k`, 0).padStart(9)}${v(`${c}.survival4k`, 0).padStart(7)}${v(`${c}.survival16k`, 0).padStart(7)}${(L[`${c}.retainedPct`] === undefined ? "—" : v(`${c}.retainedPct`, 0) + "%").padStart(10)}`);
+    }
+    // `endedNow` is a STATE (records currently marked ended); restoration clears it,
+    // so it must never be read as "deaths ever" — that mistake made a world with real
+    // realm deaths report as immortal for most of a session. endedEver is the
+    // cumulative count from the chronicle.
+    console.log(`    cumulative from the chronicle:  polity.endedEver ${v("polity.endedEver")}` +
+      `   restoredEver ${v("polity.restoredEver")}   diedThenRestored ${v("polity.diedThenRestored")}` +
+      `   faith.endedEver ${v("faith.endedEver")}   person.bornEver ${v("person.bornEver")}   dynasty.endedEver ${v("dynasty.endedEver")}`);
+    const immortal = ["polity", "faith", "culture", "lang", "dynasty"]
+      .filter(c => L[`${c}.known`] > 0 && L[`${c}.endedNow`] === 0 && !(L[`${c}.endedEver`] > 0));
+    if (immortal.length) console.log(`    ⚠ NOTHING HAS EVER DIED in: ${immortal.join(", ")} — no completed lifespan exists to measure.`);
+    if (L["polity.diedThenRestored"] > 0)
+      console.log(`    ⚠ ${v("polity.diedThenRestored")} realm death(s) are INVISIBLE in polity.endedNow — restoration cleared endedStep. Read endedEver.`);
+    console.log(`    (lifespans in STEPS. retained% = share of ever-minted records still held; "—" = the class has no`);
+    console.log(`     monotone id counter, so retention is not computable and no number is invented.)`);
+    out.life = L;
+  }
+
+  if (want("graph") || want("graphs")) {
+    H("NETWORKS — topology, not size");
+    const g = graphOf(w, held);
+    const g1 = (k, d = 2) => (g[k] === undefined ? "-" : g[k].toFixed(d));
+    console.log(`    TRIBUTARY TREE   ${g1("vassal.bonds", 0)} bonds · ${g1("vassal.suzerains", 0)} suzerains · ${g1("vassal.roots", 0)} roots`);
+    console.log(`      depth max ${g1("vassal.depthMax", 0)} (mean ${g1("vassal.depthMean")})   sub-vassals ${g1("vassal.subvassalPct", 1)}% of bonds   widest suzerain ${g1("vassal.branchMax", 0)} direct`);
+    console.log(`      LARGEST BLOC ${g1("vassal.blocMaxRealms", 0)} realms = ${g1("vassal.blocPctRealms", 1)}% of realms, holding ${g1("vassal.blocLandPct", 1)}% of all CLAIMED LAND`);
+    console.log(`      dependent realms ${g1("vassal.dependentPctRealms", 1)}% of the world`);
+    console.log(`    ALLIANCES        ${g1("alliance.components", 0)} blocs · degree mean ${g1("alliance.degMean")} max ${g1("alliance.degMax", 0)} · largest ${g1("alliance.largestPct", 1)}% · unallied ${g1("alliance.unalliedPct", 1)}%`);
+    console.log(`    TRADE NET        ${g1("trade.links", 0)} links over ${g1("trade.nodes", 0)} towns · degree mean ${g1("trade.degMean")} max ${g1("trade.degMax", 0)}`);
+    console.log(`                     ${g1("trade.components", 0)} components, largest ${g1("trade.largestPct", 1)}% · busiest 10% of links carry ${g1("trade.top10FlowPct", 1)}% of flow`);
+    console.log(`    REALM ADJACENCY  ${g1("realmnet.components", 0)} separate political worlds · largest cluster ${g1("realmnet.largestPct", 1)}% of realms`);
+    console.log(`    ROADS            ${g1("road.tiles", 0)} tiles in ${g1("road.components", 0)} networks · largest ${g1("road.largestPct", 1)}% · mean ${g1("road.meanCompSize")} tiles`);
+    console.log(`    LIEGE TREE       ${g1("liege.bonds", 0)} bonds · depth max ${g1("liege.depthMax", 0)} (mean ${g1("liege.depthMean")})   [settlement hierarchy inside realms]`);
+    out.graph = g;
   }
 
   // ── ECONOMY ────────────────────────────────────────────────────────────────

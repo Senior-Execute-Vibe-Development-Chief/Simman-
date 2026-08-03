@@ -42,8 +42,10 @@ import { logEvent } from "./events.js";
 // sector, whose labour the layer allocates by profitability.
 export const GOODS = ["staple", "materials", "ore", "metal", "cloth", "wares", "luxury", "services"];
 export const G_STAPLE = 0, G_MATERIALS = 1, G_ORE = 2, G_METAL = 3, G_CLOTH = 4, G_WARES = 5, G_LUXURY = 6, G_SERVICES = 7;
-// Craft-sector goods (labour-allocated), in _gShare order.
-const CRAFTS = [G_ORE, G_METAL, G_CLOTH, G_WARES, G_SERVICES];
+// Craft-sector goods (labour-allocated), in _gShare order. Exported so the
+// metric collector can NAME the entries of _gShare/_gCapx instead of indexing
+// them — a derived name, not a hand-kept list that can drift from this array.
+export const CRAFTS = [G_ORE, G_METAL, G_CLOTH, G_WARES, G_SERVICES];
 const N_CRAFT = 5;
 // SHIPPABLE goods (Stage 2, T.GOODS_TRADE). Staple is excluded — grain flows
 // up the food hierarchy (owner ruling, spec Open Question 1) and must not be

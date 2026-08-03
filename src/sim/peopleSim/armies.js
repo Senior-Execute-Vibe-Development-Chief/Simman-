@@ -1000,6 +1000,37 @@ export function advanceFronts(world) {
         r.f = { agg: aggMul, trade: 1 + tf * TRADE_PEACE_MAX, war: _wb, casus: _cs, claim: _cl, dom: _db, coal: _cb }; }
       if (bestM >= bar) r.passed = true;
     }
+    // FUNNEL (telemetry.js) — WAR INITIATION: why does this attacker NOT push onto
+    // this tile? A front opening here is what becomes a `war.began`, so this is the
+    // gate the whole conquest question rests on, and it was measurable only through
+    // the bespoke WDBG structure above — opt-in, shaped for one probe
+    // (probe_warbars), and speaking a different language from every other funnel.
+    //
+    // The bar is a PRODUCT of six brakes over the raw defence, so the binding one is
+    // the LARGEST multiplier above 1 — the opposite of crystallize.js, where the
+    // terms are probabilities and the SMALLEST binds. Same rule underneath: name the
+    // constraint that actually did the work, never "the roll failed". If every brake
+    // is at or below 1 the attacker is simply outmatched, which is a different
+    // finding from being deterred and must not be confused with one.
+    //
+    // Guarded whole so a disabled run does no attribution work at all: this is the
+    // hottest loop in the sim, per attacker per contested tile per tick.
+    if (world._tel) {
+      tel(world, "attack", "CANDIDATE");
+      if (bestM >= bar) telPass(world, "attack");
+      else {
+        let worstName = null, worstVal = 1 + 1e-9;
+        const brake = (n, v) => { if (v > worstVal) { worstVal = v; worstName = n; } };
+        brake("aggressionTemperament", aggMul);
+        brake("tradePeace", 1 + tf * TRADE_PEACE_MAX);
+        brake("warWeariness", _wb);
+        brake("noCasusBelli", _cs);
+        brake("claimBar", _cl);
+        brake("dominanceBar", _db);
+        brake("coalitionDeterrence", _cb);
+        tel(world, "attack", worstName || "outmatched(noBrakeBinding)");
+      }
+    }
     if (bestM < bar) continue;   // projected attacker vs projected defender (raw vs raw at lever 0)
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;

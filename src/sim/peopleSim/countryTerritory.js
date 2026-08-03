@@ -806,7 +806,11 @@ function fieldPolityTerritory(world) {
     const cc = world.countries && world.countries.get(c);
     if (cc && cc._nomadic) return true;
     const ok = pfM[ti] * spanTechMul(c) >= bindD * loadOfD(d);
-    if (!ok) tel(world, "growth", "tileTooThin(marginal)");
+    // Own channel, not "growth": this fires PER TILE while the growth funnel below
+    // is PER REALM, and mixing the two populations makes both percentages meaningless
+    // (the tile tally silently inflates the realm funnel's denominator).
+    if (!ok) tel(world, "marginalTile", "tooThin");
+    else tel(world, "marginalTile", "PASSED");
     return ok;
   };
   // Coverage-floor levers (env force-overrides for headless sweeps; see COVER_*_ENV).
@@ -949,7 +953,10 @@ function fieldPolityTerritory(world) {
     // funnel can never drift from the gate the way an externally-replicated one does.
     if (raw <= 0) tel(world, "growth", "atOrOverTarget");
     else if (raw > rateCap) tel(world, "growth", "rateLimited");
-    else tel(world, "growth", "hasBudget");
+    // hasBudget IS the accept branch. Tallied with plain tel() it printed as a
+    // REJECTION taking 73.8% of candidates, and why.mjs reported "no explicit accept
+    // marker" — a funnel reading exactly backwards from what the code does.
+    else telPass(world, "growth");
   }
 
   // 5. FRONTIER GROWTH — bounded multi-source Dijkstra from each blob's edge into WILD
@@ -2048,6 +2055,7 @@ export function adoptAndFound(world) {
     }
     return _resF2c;
   };
+  const nucRiAF = Math.round(NUCLEATE_R * resScaleFor(tw));   // the founding basin, in tiles at this grid (T.SEAT_FIELD ≥ 2)
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
@@ -2092,13 +2100,37 @@ export function adoptAndFound(world) {
       // read deflates ~×0.6-0.75 under LABEL_BIRTH's supply step, but its only
       // effect is to make this wilderness SELF-founding fallback rarer — the
       // strictly conservative (anti-confetti) direction, never a mis-fire
-      // toward bloom — and C2 (SEAT_FIELD, survey 4b) retires this path
-      // entirely (stateless non-capital cities stop self-founding). A frozen-
-      // bridge basin conversion here would build 4b's machinery one phase
-      // early for a branch about to be deleted.
-      if (s.countryId < 0 && region < 0 && tierLockedCentre && co[ti] < 0
-          && org >= T.ORG_STATE_MIN                       // the statecraft for territorial rule
-          && (s.people || 0) >= forestBar) {              // and the people to clear+farm forest without iron
+      // toward bloom. (That note also expected C2 to DELETE this branch; see
+      // below — it is re-grounded instead, which is where the basin conversion
+      // it deferred now lives.)
+      // T.SEAT_FIELD ≥ 2 makes this branch ASK THE LAND (survey C2 / spec 4b —
+      // the note above anticipated a deletion; measurement argued for a
+      // re-grounding instead). This is the pure city-creates-nation channel: a
+      // stateless city mints a realm on the strength of its OWN census, and it
+      // is the only birth path in the sim with no test of the country it would
+      // rule. Deleting it outright MEASURED BADLY (480/8k: realms 20→14 and
+      // MORE stateless cities, 43→49 — the basin channel cannot carry the load,
+      // because its capital-distance and basin-leadership gates reject where
+      // this path fires). So under the lever it keeps firing but on the FOUNDING
+      // TEST every other birth pays: the unclaimed basin under the city must
+      // carry a state. The seat requirement collapses to what a court needs —
+      // it is a settled city and it has the statecraft — which also retires the
+      // tier-lock escape clause (a stateless city is pinned at tier 0 by the
+      // very statelessness it is trying to end; that clause existed only to let
+      // a CENSUS bar substitute for the tier, and there is no census bar now).
+      let founds = false;
+      if (s.countryId < 0 && region < 0 && co[ti] < 0
+          && org >= T.ORG_STATE_MIN) {                    // the statecraft for territorial rule
+        // The exchange rate is 0 when there is no population field to read
+        // (POP_FIELD/BIRTH_FIELD off, or before the field exists): the land
+        // cannot be asked, so the lever cannot apply and the census bars stand.
+        const f2cSF = T.SEAT_FIELD >= 2 ? restoreF2c() : 0;
+        founds = f2cSF > 0
+          ? statelessBasinCensus(world, s, f2cSF, nucRiAF)
+              >= (NUCLEATE_CLUSTER_POP / (T.FRONTIER_FOUNDING || 1)) * stateCapacityMul(world, s, ti)
+          : tierLockedCentre && (s.people || 0) >= forestBar;
+      }
+      if (founds) {
         // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland): a founding on ground
         // whose people remember ONE fallen nation re-opens that nation instead of
         // minting a fresh id. This branch's own bar is people-based already, so the
@@ -2113,6 +2145,10 @@ export function adoptAndFound(world) {
           s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
           ensurePolity(world, s.id, { how: "frontier", seat: s });
         }
+        // Both wilderness founding paths log how:"frontier", so the event ledger
+        // cannot tell the city-self-founds channel from the basin channel — this
+        // marker separates them (probe_statebirth reads it).
+        telPass(world, "selfFound");
         continue;
       }
       // otherwise village / town: follow the land (region), or stateless on the frontier
@@ -2275,6 +2311,57 @@ function restorableHomeland(world, s, f2c, bar) {
   }
   return H;
 }
+// ── THE FOUNDING TEST — one question, asked wherever a state might be born ──
+// "Does the LAND here carry a state?" Two channels used to answer two DIFFERENT
+// questions: nucleateFrontierStates asked the land (BIRTH_FIELD's basin mass)
+// but only after the seat city cleared a size bar; adoptAndFound's wilderness
+// path asked ONLY the city's own census and never looked at the ground at all.
+// Measured at 480/8k, that made the pure city-earns-statehood channel the
+// DOMINANT source of new realms (11 births to the basin channel's 3) — states
+// were, in the main, big cities rather than peopled countries. These two
+// helpers are the shared answer; T.SEAT_FIELD routes both channels through them
+// so there is one mechanism, not two special cases. (Extracted verbatim from
+// nucleateFrontierStates' inline code — same operations, same order, so the
+// lever-off trajectory is byte-identical; verified on the hashbase pair.)
+
+// The state-capacity multiplier on the founding bar: how much MORE population
+// this ground needs before it can carry a state. Low carrying capacity, wet
+// tropics and iron-less temperate forest raise it; broken terrain lowers it.
+function stateCapacityMul(world, s, seatTi) {
+  const fert = world.fert, moist = world.moist, temp = world.temp;
+  const capNorm = fert ? Math.min(1, Math.max(0, fert[seatTi] / NUCLEATE_CAP_FERT_REF)) : 1;
+  const moistAt   = s._climMoist ?? (moist ? moist[seatTi] : 0.5);
+  const tempAt    = s._climTemp ?? (temp ? temp[seatTi] : 0.5);
+  const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
+  const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen);
+  const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
+  const forestLocked = forest * (1 - ironReady);
+  return (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
+       * (1 + T.STATE_FOREST * forestLocked)
+       / (1 + T.FRAGMENT * (s._rugged || 0));
+}
+
+// The people of the STATELESS BASIN around a prospective seat, in census units:
+// the population field over UNCLAIMED land within the founding radius (claimed
+// ground already carries a state; its people are not free to found another).
+// `f2c` is the caller's census↔field exchange rate.
+function statelessBasinCensus(world, s, f2c, nucRi) {
+  const pfA = world.popField, coA = world._countryOwner, elevA = world.elev;
+  const tw = world.tw, thh = world.th;
+  const sy = s.pos.y | 0, sx = s.pos.x | 0;
+  let mass = 0;
+  for (let dy = -nucRi; dy <= nucRi; dy++) {
+    const yy = sy + dy; if (yy < 0 || yy >= thh) continue;
+    for (let dx = -nucRi; dx <= nucRi; dx++) {
+      if (dx * dx + dy * dy > nucRi * nucRi) continue;
+      const ti2 = yy * tw + (((sx + dx) % tw) + tw) % tw;
+      if (!(elevA[ti2] > 0) || coA[ti2] >= 0) continue;   // claimed ground already carries a state
+      mass += pfA[ti2];
+    }
+  }
+  return mass * f2c;
+}
+
 export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
@@ -2340,7 +2427,6 @@ export function nucleateFrontierStates(world) {
     // State-capacity multiplier: low-fertility land needs a far bigger cluster
     // to crystallise a state (so it stays a sparse stateless frontier).
     const seatTi = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
-    const capNorm = fert ? Math.min(1, Math.max(0, fert[seatTi] / NUCLEATE_CAP_FERT_REF)) : 1;
     // Broken, compartmented terrain splinters into many small states (the Aegean,
     // Italy, the Caucasus): ruggedness EASES the founding bar, so a smaller pocket
     // can hold out as its own polity. The disease-ridden wet tropics RAISE it: the
@@ -2355,15 +2441,7 @@ export function nucleateFrontierStates(world) {
     // are exempt; the lock lifts as iron (metallurgy → LAND_CLEAR_METAL) arrives.
     // Gated to the TEMPERATE band (temperateBand above): warm wet woodland is the
     // disease bar's territory — without the gate the two multiplied on monsoon land.
-    const moistAt   = s._climMoist ?? (moist ? moist[seatTi] : 0.5);
-    const tempAt    = s._climTemp ?? (temp ? temp[seatTi] : 0.5);
-    const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
-    const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen);
-    const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
-    const forestLocked = forest * (1 - ironReady);
-    const capMul = (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
-                 * (1 + T.STATE_FOREST * forestLocked)
-                 / (1 + T.FRAGMENT * (s._rugged || 0));
+    const capMul = stateCapacityMul(world, s, seatTi);
     // Tier-C C1 deflation guard, seat half: NUCLEATE_SEAT_POP reads s.people —
     // under ONE_POP that is the label's CATCHMENT census, which divides among
     // labels as C1 scales their supply (the same physical town reads smaller
@@ -2377,7 +2455,17 @@ export function nucleateFrontierStates(world) {
     // it LEADS its basin (isLeader below). "A lone town amid a dense peopled
     // valley founds the state its basin can carry" — the BIRTH_FIELD intent,
     // now unit-safe.
-    if (!f2cBridge && (s.people || 0) < seatPop * capMul) { tel(world, "nucleate", "seatPop"); continue; }
+    //
+    // T.SEAT_FIELD generalises exactly that argument off the frozen-bridge
+    // special case: the seat's own bulk is not the state's substance under ANY
+    // unit regime. BIRTH_FIELD already put viability on the land; leaving a
+    // 160-census bar (=160,000 people, four Uruks) on the CITY meant statehood
+    // was still earned by a settlement growing big, and measurably the land's
+    // verdict never bound — the funnel below rejected 84% here and 0.1% at the
+    // basin bar. Under the lever what a seat must be is what a COURT must be
+    // (settled, statecraft, leads its basin); how many people the state can
+    // carry is the basin's answer, checked below over the ground it would rule.
+    if (!f2cBridge && !T.SEAT_FIELD && (s.people || 0) < seatPop * capMul) { tel(world, "nucleate", "seatPop"); continue; }
     let dCap = Infinity;                        // isolation from existing states' heartlands
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
     if (caps.length && dCap < capD2) { tel(world, "nucleate", "tooNearExistingCapital"); continue; }
@@ -2391,19 +2479,7 @@ export function nucleateFrontierStates(world) {
     if (f2c > 0) {
       // BIRTH_FIELD: viability = the stateless basin's people (see the header note).
       // Leadership stays census-ranked — the seat is the leading CITY around (role 2).
-      const pfA = world.popField, coA = world._countryOwner, elevA = world.elev, thh = world.th;
-      const sy = s.pos.y | 0, sx = s.pos.x | 0;
-      let mass = 0;
-      for (let dy = -nucRi; dy <= nucRi; dy++) {
-        const yy = sy + dy; if (yy < 0 || yy >= thh) continue;
-        for (let dx = -nucRi; dx <= nucRi; dx++) {
-          if (dx * dx + dy * dy > nucRi * nucRi) continue;
-          const ti2 = yy * tw + (((sx + dx) % tw) + tw) % tw;
-          if (!(elevA[ti2] > 0) || coA[ti2] >= 0) continue;   // claimed ground already carries a state
-          mass += pfA[ti2];
-        }
-      }
-      cp = mass * f2c;
+      cp = statelessBasinCensus(world, s, f2c, nucRi);
     }
     if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp, capMul });
     else tel(world, "nucleate", isLeader ? "basinPop<clusterBar" : "notBasinLeader");

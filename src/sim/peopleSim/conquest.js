@@ -29,6 +29,7 @@ import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
 import { closeWar } from "./armies.js";
 import { updateLoyaltyField, updateGrievLedger, grievOf, ATTACH_SECEDE, GRIEV_UNREST_W } from "./loyaltyField.js";
+import { tel, telPass } from "./telemetry.js";
 import { fieldShift } from "./popField.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -2826,7 +2827,15 @@ export function updatePolities(world) {
       const covered = cum <= capacity;
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
+      // FUNNEL (telemetry.js) — SECESSION: why does this province NOT break away?
+      // Wired because `life.polity.died` measures 0 at both grids: no realm has ever
+      // ended in 9,000 steps, and shedding a province is the channel by which one
+      // could. "Nothing ever fragments" is an ABSENCE, and an absence is exactly what
+      // outcome state cannot explain — the realm count says a realm survived, never
+      // which brake held it together.
+      tel(world, "secede", "CANDIDATE");
       if (pacified || infant) {
+        tel(world, "secede", pacified ? "garrisoned(recentConquest)" : "infantColony");
         // Held by garrison / colonial project: nudge loyalty toward its base
         // but never secede yet.
         const base = pacified ? 0.5 : 0.7;
@@ -2834,6 +2843,7 @@ export function updatePolities(world) {
         continue;
       }
       if (covered) {
+        tel(world, "secede", "withinAdminBudget");
         s.loyalty = Math.min(1, (s.loyalty ?? 1) + LOYAL_RECOVER * (1 - (s.loyalty ?? 1)));
       } else {
         // How deep past the line — CAPPED so a wildly over-extended realm sheds gradually
@@ -2855,8 +2865,15 @@ export function updatePolities(world) {
         // but holds — its people carry the realm; a fresh march (never attached)
         // sheds exactly as before. Detachment follows the collapsed stock on the
         // DETACH_TAU clock, so this delays a core's shedding, never prevents it.
-        if (s.loyalty <= 0 && (!T.LOYAL_FIELD || (s._attach ?? 0) <= ATTACH_SECEDE))
+        // Two brakes, and they need OPPOSITE fixes, so the funnel must tell them
+        // apart: a province still spending down its loyalty stock is on its way out
+        // and merely slow, while one whose PEOPLE remain attached is held by the
+        // hysteresis and would not secede however long you waited.
+        if (s.loyalty <= 0 && (!T.LOYAL_FIELD || (s._attach ?? 0) <= ATTACH_SECEDE)) {
+          telPass(world, "secede");
           seeds.push(s);                                   // collapsed — defer (revolt is contagious)
+        } else if (s.loyalty > 0) tel(world, "secede", "loyaltyStockNotYetSpent");
+        else tel(world, "secede", "peopleStillAttached(hysteresis)");
       }
     }
     c._loadTotal = cum;   // total admin load drawn (vs c._capacity)
@@ -3285,20 +3302,25 @@ function considerSubmissions(world, countries) {
   const probBase = _passProb(SUBMIT_HAZARD);
   for (const [sid, hid] of threat) {
     if (hid < 0) continue;
+    // FUNNEL (telemetry.js): vassalage is this sim's PRIMARY consolidation channel —
+    // reading the chronicle established 16 `polity.submitted` against 0 annexations
+    // over 16k steps — and it had no instrument that could say why a court did NOT
+    // kneel. Tallied at the rejecting line, so the funnel cannot drift from the gate.
+    tel(world, "submit", "CANDIDATE");
     const S = countries.get(sid), H = countries.get(hid);
-    if (!S || !H || !S.capital || !H.capital) continue;
+    if (!S || !H || !S.capital || !H.capital) { tel(world, "submit", "noLiveSeat"); continue; }
     const spol = getPolity(world, sid);                     // pure read — the record is only minted on an actual submission
-    if (spol && spol._overlord != null) continue;           // already someone's dependency
+    if (spol && spol._overlord != null) { tel(world, "submit", "alreadyADependency"); continue; }
     const powS = eff.get(sid) || 1, powH = eff.get(hid) || 1;
-    if (powH < powS * SUBMIT_RATIO) continue;               // resistance not yet hopeless
+    if (powH < powS * SUBMIT_RATIO) { tel(world, "submit", "resistanceNotHopeless"); continue; }
     // The suzerain must be able to PROJECT force to S's seat — overawing needs a
     // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
     const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
-    if (d > SUBMIT_REACH * Math.max(1, H.holdReach)) continue;
+    if (d > SUBMIT_REACH * Math.max(1, H.holdReach)) { tel(world, "submit", "outOfProjectionReach"); continue; }
     // Deterministic per-(seed, settlement, step) roll — a pure function of its
     // key, so rolling BEFORE the identity/coalition work is free rejection.
     const r = hash32(world.seed || 1, "submit", sid, world.step) / 4294967296;
-    if (r > probBase) continue;
+    if (r > probBase) { tel(world, "submit", "hazardRoll(waiting)"); continue; }
     // No cycles: if H's own overlord chain leads back to S, S can't take H as
     // suzerain (tribute pyramids — a vassal of a vassal — are fine; loops
     // aren't). An acyclic chain can't be longer than the live polity count.
@@ -3307,19 +3329,27 @@ function considerSubmissions(world, countries) {
       up = ov.get(up);
       if (up === sid) { cyc = true; break; }
     }
-    if (cyc) continue;
+    if (cyc) { tel(world, "submit", "cycleWouldForm"); continue; }
     let prob = probBase;
     // Kin submit, foreigners resist longer. Same era-weighted identity brake as
     // peaceful absorption (T.ABSORB_IDENTITY) — it slows a wholly foreign court
     // by the full lever weight but never to zero (absorbResistance saturates at
     // exactly 1 for fully disjoint peoples; unscaled it made foreign submission
     // impossible forever, the opposite of "eventually bends").
-    prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+    const mIdentity = 1 - T.ABSORB_IDENTITY * absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+    prob *= mIdentity;
     // Balance of power: a coalition arrayed against H guarantees the statelets
     // it would overawe — the same deterrence that throttles peaceful absorption.
-    prob /= coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
-    if (r > prob) continue;
-    bendTheKnee(world, sid, hid);
+    const brake = coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
+    prob /= brake;   // kept as a DIVISION: `p *= 1/b` differs from `p /= b` in the last
+                     // ulp, and this feeds a comparison in a determinism-tested sim.
+                     // The attribution below reads the same numbers without touching them.
+    // Attributed to the SMALLER of the two brakes, never to "the roll failed" —
+    // the same rule crystallize.js uses, so a funnel names the binding constraint
+    // instead of the arithmetic that expressed it.
+    if (r > prob) { tel(world, "submit", mIdentity <= 1 / brake ? "identityBrake(foreignCourt)" : "coalitionBrake(deterrence)"); continue; }
+    if (bendTheKnee(world, sid, hid)) telPass(world, "submit");
+    else tel(world, "submit", "bendTheKneeRefused");
   }
 }
 

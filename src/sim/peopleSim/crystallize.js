@@ -151,6 +151,23 @@ function capacitySpacingMul(fertTile, hostility) {
   const capNorm = Math.min(1, Math.max(0, effFert / CAP_FERT_REF));
   return 1 + SPARSE_SPREAD * (1 - capNorm);
 }
+// The countryside a prospective site stands in: the population-field mass over
+// the market basin around it. This is the sim's own measure of "are there people
+// here to make a town of" — the urban floor reads it against TOWN_BASIN_MIN, and
+// T.INVENT_FIELD reads it for independent invention (see the floor note below).
+// Extracted verbatim from the urban-floor check so both ask one question.
+function townBasinMass(world, tx, ty, rB) {
+  const pf = world.popField, tw = world.tw, th = world.th;
+  let basin = 0;
+  for (let dy = -rB; dy <= rB; dy++) {
+    const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+    for (let dx = -rB; dx <= rB; dx++) {
+      if (dx * dx + dy * dy > rB * rB) continue;
+      basin += pf[yy * tw + (((tx + dx) % tw) + tw) % tw];
+    }
+  }
+  return basin;
+}
 const KNOWLEDGE_DECAY_SCALE     = 30;
 // Radius for the spatial-grid fast path in inheritKnowledgeAt. Generous enough
 // that any non-isolated spawn finds its nearest neighbour in the grid (so the
@@ -1151,7 +1168,31 @@ export function maybeCrystallize(world) {
     // so other landmasses wait to be colonised rather than self-populating.
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / (KNOWLEDGE_DECAY_SCALE * resScale)) * NEAR_RATE : 0;   // diffusion REACHES proportionally farther on a finer map
-    const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
+    let independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
+    // INDEPENDENT INVENTION IS A PROPERTY OF A PEOPLE, NOT OF A TILE (T.INVENT_FIELD).
+    // As a flat per-tile floor it says that being five thousand km from the nearest
+    // farmer makes you no less likely to invent farming than being 130 tiles away —
+    // and because it is ADDED to the distance decay, beyond td ≈ 130 it dominates
+    // and CANCELS the decay entirely. Measured consequence (probe_wheretowns, 480/
+    // 8817): at step 200 the world holds settlements in NINE regions, the Central
+    // Asian steppe the most-settled of them; Siberia has a town at 67°N by step 264;
+    // Europe has ten towns before Mesopotamia has five. Every good valley on Earth
+    // invents urbanism at once, which is exactly what its own comment ("low so empty
+    // regions stay empty until colonised") was trying to prevent.
+    //
+    // The opportunity for invention is PEOPLE-TIME: farming and town-building are
+    // invented where many people have lived on workable land for a long time, which
+    // is why there were a handful of neolithic origins rather than one per valley.
+    // So the floor is scaled by the basin's own people, measured against the bar the
+    // sim ALREADY uses for "enough countryside to carry a town" — no new constant is
+    // introduced. A basin exactly at the bar keeps INDEPENDENT_RATE unchanged; ten
+    // times the people invents ten times as readily; empty land effectively never.
+    // The cradles invent first because that is where the people are, and secondary
+    // centres emerge as the field thickens — the shape of the real record, arrived at
+    // by mechanism rather than by tuning a rate until seven centres appear.
+    if (T.INVENT_FIELD > 0 && world.popField) {
+      independent *= townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
+    }
     const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
@@ -1266,6 +1307,19 @@ export function maybeCrystallize(world) {
       const donorCountry = donorSettled && donorOrg >= T.ORG_STATE_MIN ? donor.countryId : -1;
       const extension = region >= 0 || donorSettled;
       let joinCountry = region >= 0 ? region : donorCountry;
+      // FUNNEL (telemetry.js) — WHY IS THIS SETTLEMENT BORN WITHOUT A FLAG? Measured
+      // at the app grid, 91% of settlements are stateless at step 1,500 and they hold
+      // 80% of everyone alive — cities of 100,000+ answering to nobody. Statelessness
+      // has FOUR separate causes here and they need opposite fixes, so a single
+      // "stateless" count cannot guide anything. Tallied at the decision itself.
+      if (world._tel) {
+        tel(world, "birthPolity", "CANDIDATE");
+        if (region >= 0) tel(world, "birthPolity", "PASSED");                       // on administered ground
+        else if (!donorSettled) tel(world, "birthPolity", "stateless:noSettledDonor");
+        else if (donor.countryId < 0) tel(world, "birthPolity", "stateless:motherIsStatelessToo");
+        else if (donorOrg < T.ORG_STATE_MIN) tel(world, "birthPolity", "stateless:motherLacksStatecraft");
+        else tel(world, "birthPolity", "PASSED");                                   // inherits the mother's flag
+      }
       let rodeAway = false;
       // Wilderness founding (region<0) must be a CONTIGUOUS frontier extension of the
       // donor's realm, not a detached tech-less exclave far out in the wild (see
@@ -1298,7 +1352,9 @@ export function maybeCrystallize(world) {
         if (dd2 > fed * fed
             && isFinite(td)
             && (world.fert[ti] || 0) < RIDE_AWAY_FERT_MAX
-            && tileOpenness(world, ti) >= RIDE_AWAY_OPEN_MIN) { rodeAway = true; joinCountry = -1; }
+            && tileOpenness(world, ti) >= RIDE_AWAY_OPEN_MIN) {
+          if (world._tel && joinCountry >= 0) tel(world, "birthPolity", "~lostToRideAway");
+          rodeAway = true; joinCountry = -1; }
         // Past the foot ring but NOT genuine ridable steppe → not a frontier
         // extension the court can hold, and not a horde birth → no settlement.
         if (dd2 > fed * fed && !rodeAway) continue;
@@ -1321,17 +1377,7 @@ export function maybeCrystallize(world) {
           // the same cached answer as its own guard.)
           if (labelBasinMass(world, tx, ty) < (T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN)) continue;
         } else {
-          const pf = world.popField;
-          const rB = Math.round(TOWN_BASIN_R * rn);
-          let basin = 0;
-          for (let dy = -rB; dy <= rB; dy++) {
-            const yy = ty + dy; if (yy < 0 || yy >= th) continue;
-            for (let dx = -rB; dx <= rB; dx++) {
-              if (dx * dx + dy * dy > rB * rB) continue;
-              basin += pf[yy * tw + (((tx + dx) % tw) + tw) % tw];
-            }
-          }
-          if (basin < TOWN_BASIN_MIN) continue;
+          if (townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) < TOWN_BASIN_MIN) continue;
         }
       }
       // (people drawn here, after the last reject, so the rng stream is unchanged)
@@ -1347,6 +1393,7 @@ export function maybeCrystallize(world) {
       // revenue cannot govern just because it crystallised inside their border.
       if (joinCountry >= 0
           && !fiscAdoptable(world, world.countries && world.countries.get(joinCountry), tx + 0.5, ty + 0.5, bornPeople)) {
+        if (world._tel) tel(world, "birthPolity", "~lostToFiscalRefusal");
         joinCountry = -1;
       }
       // Share the joining realm's development: floor the (distance-decayed) inherited

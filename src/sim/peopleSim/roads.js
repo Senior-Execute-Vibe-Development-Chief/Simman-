@@ -57,6 +57,7 @@ import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
 import { recordIn, recordOut, recordInMetered, recordOutMetered, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, IN_CARRY, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 import { TRADABLE, G_MATERIALS, G_ORE, G_METAL, G_CLOTH, G_WARES, G_LUXURY } from "./goods.js";   // goods-vector Stage 2 (T.GOODS_TRADE) + the freight bulk table
+import { tel, telPass } from "./telemetry.js";
 
 // Entrepôt share (0..1): how much of an entrepôt a hub is — port access (a harbour or
 // strait trade must funnel through) times market size (a great mart re-sells what it
@@ -957,18 +958,25 @@ function tryAddRoad(world, s) {
   const eng = roadEngineeringOf(s);
   const shortcutBar = SHORTCUT_GAIN_RATIO + (SHORTCUT_GAIN_ENG - SHORTCUT_GAIN_RATIO) * eng;
   const maxShortcuts = MAX_SHORTCUT_EVALS + (eng > 0.35 ? 1 : 0) + (eng > 0.7 ? 1 : 0);
+  // FUNNEL (telemetry.js) — why does this town NOT lay a trade road? Two channels,
+  // because the populations differ and mixing them makes both percentages
+  // meaningless (the same defect the `growth` funnel carried): `roadPeer` is per
+  // PEER EVALUATED, `roadPlan` below is per TOWN THAT TRIED. The standing finding
+  // that trade partners are pinned at exactly 12 for every settlement — p50, p90 and
+  // max alike — says a cap is binding on the whole world; this says which one.
   for (const cand of ranked) {
     if (newEvals >= MAX_NEW_EVALS && shortcutEvals >= maxShortcuts) break;
     const peer = cand.peer;
     const connected = !!(s._tradeReach && s._tradeReach.has(peer.id));
+    tel(world, "roadPeer", "CANDIDATE");
     if (connected) {
-      if (shortcutEvals >= maxShortcuts) continue;
+      if (shortcutEvals >= maxShortcuts) { tel(world, "roadPeer", "shortcutProbeBudgetSpent"); continue; }
     } else {
-      if (newEvals >= MAX_NEW_EVALS) continue;
+      if (newEvals >= MAX_NEW_EVALS) { tel(world, "roadPeer", "newRouteBudgetSpent"); continue; }
     }
     const path = findPath(world, s, peer, { noWater: true });
     if (connected) shortcutEvals++; else newEvals++;   // count cost even if null
-    if (!path) continue;
+    if (!path) { tel(world, "roadPeer", "noLandPath"); continue; }
 
     // The logistics horizon caps the ROUTE AS WALKED, not just its
     // endpoints: `reach` bounded which peers were considered (Euclidean),
@@ -978,7 +986,7 @@ function tryAddRoad(world, s) {
     // segment — the pair trades via relay chains instead. (reach and the
     // walked length are both in raw tiles at this grid, so the comparison
     // is resolution-invariant.)
-    if (pathWalkLength(world, path.tiles) > reach * PATH_WINDING_MAX) continue;
+    if (pathWalkLength(world, path.tiles) > reach * PATH_WINDING_MAX) { tel(world, "roadPeer", "beyondLogisticsHorizon"); continue; }
 
     // New-tile fraction: how much of the path is NOT yet on a
     // road. Lower bar to bridge disconnected clusters; higher
@@ -993,7 +1001,7 @@ function tryAddRoad(world, s) {
     // only colours the appetite.
     const commMul = (sCountry && sCountry.personality) ? commerceMul(sCountry.personality) : 1;
     const requiredFrac = (sameNetwork ? NEW_FRACTION_IN : NEW_FRACTION_OUT) / commMul;
-    if (newFrac < requiredFrac) continue;
+    if (newFrac < requiredFrac) { tel(world, "roadPeer", "routeAlreadyMostlyRoad"); continue; }
 
     // If same network: ALSO require the new direct path to be meaningfully
     // shorter than the existing network path — "meaningfully" by the
@@ -1001,7 +1009,7 @@ function tryAddRoad(world, s) {
     // culture, any ≥3% once roadcraft matures).
     if (sameNetwork && s._tradeReach && s._tradeReach.has(peer.id)) {
       const networkCost = s._tradeReach.get(peer.id).cost;
-      if (path.cost > networkCost * shortcutBar) continue;
+      if (path.cost > networkCost * shortcutBar) { tel(world, "roadPeer", "shortcutNotShortEnough"); continue; }
     }
 
     // Wealth eagerness: only the BUILDER's own coffers matter. A
@@ -1014,13 +1022,17 @@ function tryAddRoad(world, s) {
                 * (path.tiles.length > 3 ? 1 : 0.5)
                 * wealthEagerness
                 * newFrac;
+    telPass(world, "roadPeer");            // viable: it entered the competition
     if (score > bestScore) {
       bestScore = score;
       bestPartner = peer;
       bestPath = path;
     }
   }
-  if (!bestPartner) return false;
+  // Per-TOWN outcome, kept apart from the per-peer tally above.
+  tel(world, "roadPlan", "CANDIDATE");
+  if (!bestPartner) { tel(world, "roadPlan", "noViablePeer"); return false; }
+  telPass(world, "roadPlan");
 
   // Truncate at junction onto destination's network (if any).
   const destComp = components ? components.get(bestPartner.id) : null;

@@ -29,8 +29,15 @@ const show = (label) => {
     // that were considered — not an outcome. Counting it as one double-counts every
     // candidate and halves every percentage.
     const denom = outs.CANDIDATE ?? Object.entries(outs).filter(([k]) => k !== "CANDIDATE").reduce((a, [, v]) => a + v, 0);
-    const passed = outs.PASSED;
-    const head = passed !== undefined ? `${passed} passed (${(100 * passed / Math.max(1, denom)).toFixed(1)}%)` : "no explicit accept marker";
+    // A channel that emits CANDIDATE always has an accept path (the convention every
+    // funnel here follows), so a MISSING PASSED means the accept branch never fired —
+    // which is a finding, not a wiring gap. Reporting both as "no explicit accept
+    // marker" made the two indistinguishable, and hid the loudest thing the secession
+    // funnel had to say: ZERO of 55 candidate provinces ever broke away.
+    const passed = outs.PASSED ?? (outs.CANDIDATE !== undefined ? 0 : undefined);
+    const head = passed !== undefined
+      ? `${passed} passed (${(100 * passed / Math.max(1, denom)).toFixed(1)}%)${passed === 0 ? "  ◄── NEVER FIRED" : ""}`
+      : "no accept marker wired";
     console.log(`  ${ch}:  ${denom} considered · ${head}`);
     for (const [k, v] of Object.entries(outs)) {
       if (k === "CANDIDATE") continue;
