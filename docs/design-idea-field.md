@@ -528,24 +528,48 @@ effect is UNRESOLVED and needs the spread tool over seeds before anyone quotes a
 number.** What is established is the mechanism: the land can now forget, at the
 rate it learned.
 
-### Two arms still owed before this lever may be considered for flip
+### The resolution arm — same KIND, opposite TREND (`tw=480`, seed 8817, 6k)
 
-Both were running when this was committed; results land in a follow-up. **Until
-they are in, phase 1 is a gated, byte-identical-off mechanism repair with a
-reference-grid measurement and nothing more.**
+The mechanism fires at the shipped grid: `FELL` is nonzero at every checkpoint,
+so the land forgets on both grids. But the two grids disagree about **where in
+the run the effect lives**, and that is the finding:
 
-1. **The resolution arm** (`tw=480`, both arms, seed 8817, 6k). The third
-   cardinal rule applies with force: the field's loss term is per tile and the
-   wave interval is grid-scaled, so *how far technique recedes before a source
-   returns* is exactly the kind of quantity that can differ in KIND between
-   grids. A `FELL` count that is large at `tw=240` and negligible at `tw=480`
-   (or the reverse) would mean the mechanism does not do the same thing in the
-   world that ships.
-2. **The multi-seed A/B** (`abtest --tune=IDEA_FIELD=1 --steps=12000
-   --seeds=8817,31337,4242,7777`), which is the only thing that can settle the
-   population question above. `abtest` scores a metric CONSISTENT only if it
-   moves the same direction on every seed; anything that fails that is noise and
-   must be reported as noise.
+```
+farmed-land reduction (off → on, percentage points)
+  step         tw=240        tw=480
+   1000        −2.4 pt       −0.3 pt
+   2000        −1.0 pt       −1.5 pt
+   6000        −0.9 pt       −1.8 pt
+
+devField tiles that FELL, as a fraction of land
+   1000         0.97%         0.60%
+   2000         4.90%         1.88%
+   6000         0.79%         0.65%
+```
+
+**At the reference grid the effect peaks early and fades; at the shipped grid it
+starts small and grows.** A reader of the `tw=240` arm alone would conclude "an
+early-game correction that the mature world absorbs" — and would be wrong about
+the world that ships, where at 6k it is still widening. This is the third
+cardinal rule's exact hazard, caught by running the arm rather than assuming the
+reference grid generalises.
+
+Two supporting readings at `tw=480`: population is **unchanged** (0.80/0.80,
+1.13/1.12, 3.06/3.05 M field units — under 0.5% at every checkpoint) and realm
+count is identical in both arms (4, 4, 17). Settlements run consistently 2 lower
+with the lever on (41→40, 52→50, 74→72).
+
+That population reading matters for the §7 question: the +8.6% at `tw=240`/12k
+does **not** reproduce at the shipped grid through 6k, which is further evidence
+it is divergence noise rather than a lever effect. The A/B below is the arbiter.
+
+### The multi-seed A/B — the arbiter for the population question
+
+`abtest --tune=IDEA_FIELD=1 --steps=12000 --seeds=8817,31337,4242,7777`, still
+running at the time of this edit. `abtest` scores a metric CONSISTENT only if it
+moves the same direction on **every** seed; anything failing that is noise and
+must be reported as noise, including if it contradicts the §7 prediction in
+either direction.
 
 ---
 
