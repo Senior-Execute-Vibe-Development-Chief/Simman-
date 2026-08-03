@@ -642,5 +642,8 @@ city bar as K towns' load (`T.TIER_BRANCH`, Christaller K, default off) and
 measures it — the hearth's label supply is kept exactly, the hierarchy survives
 with no floor at any K in the band, and the baseline floor turns out to have
 been suppressing dawn-era city-states (early statelessness 93% → 39% at step
-2000 with the honest bar). The remaining flip question for `MULTI_HEARTH` +
-`TIER_BRANCH` is the stylized-history battery, not a missing mechanism.
+2000 with the honest bar). **FLIPPED 2026-08-03**: `MULTI_HEARTH`, `TIER_BRANCH` and `BRIDGE_GLOBAL`
+are the defaults — the batteries passed (stylized all-hard-gates, resgate
+green at 0.70, better than the old defaults' 0.59). Phase 2 is now genuinely
+unblocked: agriculture has multiple origins by default, so removing the
+free `NEOLITHIC_AGRI` handout no longer empties the planet by construction.

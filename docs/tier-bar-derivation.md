@@ -1,5 +1,19 @@
 # THE DERIVED CITY BAR — a city carries K towns' load
 
+> **FLIPPED ON 2026-08-03 (owner decision): `MULTI_HEARTH=1`, `TIER_BRANCH=4`,
+> `BRIDGE_GLOBAL=1` are the defaults.** The full battery behind the decision is
+> this document. One reconciliation mattered at flip time: `BRIDGE_GLOBAL`
+> carried an in-play owner veto from 2026-07-30 (deflated censuses never
+> reached the absolute seat bars — an empty early game). That mechanism is
+> precisely what `TIER_BRANCH` removed: seats now come from the city tier,
+> whose bar deflates *with* the census, and the measured early app-grid world
+> under the trio is 69 realms at step 6000 — the opposite of the vetoed
+> signature. The two levers are a pair; `BRIDGE_GLOBAL` must not run without
+> `TIER_BRANCH` (the lever desc says so in-code). The long-term "correct
+> route" the veto prescribed — making catchment real-area coverage itself
+> invariant (coast dilution, fert max-pooling) — remains open and worthwhile;
+> the flip removes its urgency, not its validity.
+
 The open item two designs are blocked on, recorded in both:
 `docs/design-c-hearth-field.md` ("the honest next step is to *derive* a tier
 bar that is neither an absolute census floor nor a fixed rank quota, not to
@@ -370,11 +384,17 @@ budget 2): 61 polities, largest empire 9%, **76 fallen realms** (median
 lifespan ~488y — the dawn-state world churns more than the two-lever config's
 ~1763y and the gates accept it; the living-tail gate is measurable at 10.8),
 wars 0.41/1k/polity, urbanisation 4.7%, tech~cradle −0.79, 152 settlements at
-21k. (2) `BRIDGE_GLOBAL`'s own multi-seed gate, demanded by its description
-since the day it was written and never run — `abtest --tune=BRIDGE_GLOBAL=1`
-across the seed panel at defaults, because flipping it changes the calibrated
-census scale of every world, not only the flip config's. Running; appended
-below when it lands.
+21k. (2) `BRIDGE_GLOBAL`'s own multi-seed gate — **RUN** (`abtest
+--tune=BRIDGE_GLOBAL=1`, 4 seeds, 12k): **44 movers consistent across all
+four seeds**, the lever's effect is large and real, and its direction is the
+owner's standing complaint addressed: stateless settlements **−67%**, claimed
+land **+53%**, wars **−33%**, polity recessions **−55%**, median settlement
+wealth **+23%**, population −12%. The flag to carry: `settlement.abandoned`
+**45 → 111 (consistent)** — the halved bridge (`pop.bridge` −65%) pushes
+marginal settlements under the *fixed* wither/abandon bars (census-priced
+absolute thresholds, the same deflation class this document opened on). The
+stylized battery bounds it (civilization alive, 152 settlements at 21k, all
+gates), but those bars are the next place the deflation audit should look.
 
 ### Verdict
 
