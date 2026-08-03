@@ -7,6 +7,8 @@ import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
 import { T, rNormPop } from "./tuning.js";
 import { DEV_INIT_YEARS } from "./popField.js";
+import { bestPackageAt } from "./agriculture.js";
+import { CROP_BY_ID } from "../cropPackages.js";
 import { computeRelief } from "../worldgenUtils.js";
 
 const TILE_RES = 2;
@@ -508,8 +510,39 @@ export function cradleScoreAt(world, ti) {
   const tempFit = 1 - Math.abs(t - 0.76) * 1.3;
   const elevFit = 1 - elev[ti] * 2;
   const { landBarrier, seaFrac } = cradleSurround(world, ti);
-  return f * 2 + riverBonus + landBarrier * 2.5 + tempFit + elevFit
-       - Math.max(0, seaFrac - 0.30) * 5;
+  const base = f * 2 + riverBonus + landBarrier * 2.5 + tempFit + elevFit
+             - Math.max(0, seaFrac - 0.30) * 5;
+  // ── T.CRADLE_PACKAGE: THE WILD PACKAGE — was there anything worth domesticating? ──
+  // The score above ranks LAND (fertile, watered, warm, hemmed in) and is blind to
+  // the variable that actually decided which hearths ladders: what grew there wild.
+  // The Fertile Crescent won because it held wheat, barley, goats and sheep; the
+  // Tarim basin is the *ultimate* circumscribed fertile pocket and held none of it —
+  // which is precisely the site this scorer crowned above the Nile (the measured
+  // failure, docs/design-idea-field.md). New Guinea farmed intensively for nine
+  // thousand years and never built a city, because taro does not store.
+  // The sim ALREADY MODELS THIS, shipped and on by default (T.CRADLE_PACKAGE's
+  // sibling T.CROP_AXIS): five packages with climate envelopes and a STORABILITY
+  // trait — wheat/rice 1.00, maize 0.95, sorghum 0.90, tubers 0.35. What was
+  // missing is only that CRADLE PLACEMENT never read it. So the score is scaled by
+  // the best STORABLE staple available at the tile:
+  //
+  //     pkgQ = suit(best package here) × its storability        ∈ 0..1
+  //
+  // A great wheat valley keeps ~its full score; a lush tuber jungle is cut to a
+  // third and stops out-ranking cereal land; ground where nothing grows scores
+  // zero and cannot be a hearth at all. This is the same quantity the farming
+  // CEILING already uses (agriculture.js cropCeil = suit × storability), so
+  // placement and ceiling finally agree about what makes land a cradle — one
+  // definition, two uses, no new constant. The downstream effects (the package
+  // then diffuses only where climate suits it, caps the wet tropics, and gates
+  // each hearth's ladder) are all shipped machinery this simply feeds correctly.
+  if (T.CRADLE_PACKAGE) {
+    const best = bestPackageAt(world, ti);
+    if (!best) return 0;
+    const pkg = CROP_BY_ID[best.id];
+    return base * Math.max(0, Math.min(1, best.suit * (pkg ? pkg.storability : 1)));
+  }
+  return base;
 }
 
 // ── T.INVENT_STAGGER: agriculture is invented WHEN a hearth matures, not at t=0 ──
