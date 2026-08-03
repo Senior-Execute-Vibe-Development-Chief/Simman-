@@ -354,6 +354,41 @@ whose visible payoff (the ignition moment, the real maturity spread) waits on
 the score's discriminating term. The flip that matters was today's; this arm
 is groundwork.
 
+### Phase 2, second arm — BUILT: `T.INDEP_TECH` (default 0) — towns follow the front
+
+Three measured failures triangulated the channel: basin-people scaling (worse),
+the handout repair (dawn unmoved), and a floor-only gate that came back
+**byte-identical over 6k** — proving the independent floor *never binds* under
+multi-hearth defaults (seven hearths put every fireable site within diffusion
+reach of some network; the state-birth floor diagnosis was true in the four-pin
+world and is obsolete). The anachronisms ride the DIFFUSION term, whose defect
+is precise: `exp(−td/·)` is a probability **gradient, not a front** — a site
+3 000 km from the Indus can found at step 24 with no waiting for farming to
+arrive, while the sim's own front (`devField`, 1 km/year) goes unread by the
+sweep.
+
+The lever scales the whole channel sum by the package's local arrival —
+`p ×= min(1, devField/NEOLITHIC_AGRI)` — one multiply, no new constant.
+Measured (480/8817, 6k, vs trio defaults):
+
+```
+first founding        baseline    front-gated
+Siberia               step  144   step 1824   (after the wave reached it)
+Sahel                 step  240   step  960
+C/S Africa            step   72   step 1032
+first steppe town     (52N 77E) @24 — deep Kazakhstan
+                      (43N 92E) @48 — the Gansu corridor, ON the front
+world fill            51/88/107   30/59/91 @ 500/2000/6000 — all 12 regions
+                                  occupied by 6k: delayed, never banned
+```
+
+Towns trail the green stain on the Technique lens; regional urbanisation
+*times* now carry the climate toll (the Sahara costs the Sahel seven centuries
+of founding time). This is the wrong-places fix that two previous arms missed,
+and it is the idea-field ontology enforced at the founding law: **a town is
+something the package does when it arrives.** Ships off; the flip package
+(resgate + stylized under the lever) is the standing next measurement.
+
 ### Phase 2 — ORIGIN (`IDEA_FIELD = 2`)
 
 Remove the free handout. `inheritKnowledgeAt`'s baseline stops returning
