@@ -3370,6 +3370,10 @@ function updateTier(world, s) {
       // scale. Central-place rank structure is scale-free by construction, so the
       // pure percentile is the mechanism-honest bar and it self-calibrates at any
       // label supply (verify, don't re-anchor). Off the lever the floors stand.
+      // MEASURED SINCE (docs/tier-bar-derivation.md): the percentile is scale-free
+      // but a fixed RANK QUOTA — 15% "cities" in any distribution — and the
+      // T.TIER_BRANCH branch below supersedes this guard when set: same survival
+      // under deflation, city share a measurement of the tail instead of a quota.
       // THE DERIVED CITY BAR (T.TIER_BRANCH > 0, docs/tier-bar-derivation.md —
       // the open item both the hearth field and the idea field are blocked on).
       // The comment above states the mechanism — "each city serves ~3-5 towns

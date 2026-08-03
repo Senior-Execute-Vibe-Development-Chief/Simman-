@@ -183,7 +183,47 @@ default flip. What is settled here: the bar's effect is real, mechanistic, and
 in the direction of the owner's standing complaint (the ungoverned early
 world), not an artefact.
 
-### Bar 5: K sensitivity — pending, appended below.
+### Bar 5: K sensitivity (`MULTI_HEARTH` + K ∈ {3,4,5}, @12k)
+
+| K | labels | t2 (share) | t3 | realms | wars | submitted | cityBar | p85/p50 |
+|---|---|---|---|---|---|---|---|---|
+| 3 | 135 | 28 (20.7%) | 3 | 83 | 158 | 40 | 406 | 3.10 |
+| **4** | 133 | 17 (12.8%) | 3 | 75 | 138 | 25 | 498 | — |
+| 5 | 129 | 8 (6.2%) | 3 | 71 | 139 | 25 | 671 | 3.40 |
+| B (P85) | 132 | 17 (12.9%) | 3 | 88 | 168 | 41 | 424 | 2.87 |
+
+What rides on K and what does not, stated plainly:
+
+- **Structure does not.** Label supply (129-135), the metro tier (3 at every
+  K), hierarchy survival, and the dawn city-states hold across the band — the
+  derivation's claims are K-invariant.
+- **The city COUNT does, strongly** — roughly halving per +1 K (28 → 17 → 8),
+  because the bar walks a thinning tail. Choosing K inside the 3-5 band is
+  choosing a city share between ~6% and ~21%. That is an honest limit of the
+  derivation, not a refutation: K is a real geometric constant whose true value
+  the sim cannot measure yet (it would need the trade graph's actual branching
+  factor — see §6), and within the band every choice yields a working
+  hierarchy.
+- **The political cooling saturates at K=4.** K=3 reproduces nearly the quota
+  world (its bar, 406, sits next to P85's 424 — the Zipf coincidence again);
+  K=4 and K=5 both give the calmer politics (75/71 realms, ~138 wars, 25
+  submissions). K=4 — the band's middle, double-digit cities, cooled politics —
+  is the default this document recommends, chosen for geometry and *reported*
+  for its effects, not tuned to them.
+- The mature p85/p50 sits at 2.9-3.4 in **every** arm: the emergent size
+  distribution is robustly Zipf-band regardless of the bar that reads it, which
+  is the cross-check's premise measured rather than assumed.
+
+## 6. What would make K a measurement (the honest next rung)
+
+K=4 is a constant standing in for a quantity the sim already computes: the
+food/trade hierarchy's actual branching factor — how many settlements route
+their higher-order demand through each higher-order node (`foodHierarchy`,
+`mergeReach`). Deriving tier from the *service graph itself* (a settlement's
+tier = its height in that tree) would delete K entirely and make the city
+count a pure output. That is a bigger rework touching the food economy, and it
+is the right successor to this lever, not a reason to delay it: the lever
+unblocks `MULTI_HEARTH` today and the graph derivation replaces K when built.
 
 ### The Zipf cross-check (why quota and derivation agree at maturity)
 

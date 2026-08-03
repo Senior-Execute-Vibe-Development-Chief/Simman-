@@ -636,6 +636,11 @@ as narrowly as the measurements allow:
   noise**, including a +8.6% population reading of my own that did not survive
   the panel.
 
-Phases 2 and 3 remain proposals, and phase 2 is blocked on `MULTI_HEARTH`, which
-is itself blocked on the tier-bar derivation inherited from v4. That derivation
-is the next thing anyone should do in this lane.
+Phases 2 and 3 remain proposals. Phase 2 is blocked on `MULTI_HEARTH`, whose
+tier-bar blocker is now **resolved**: `docs/tier-bar-derivation.md` derives the
+city bar as K towns' load (`T.TIER_BRANCH`, Christaller K, default off) and
+measures it — the hearth's label supply is kept exactly, the hierarchy survives
+with no floor at any K in the band, and the baseline floor turns out to have
+been suppressing dawn-era city-states (early statelessness 93% → 39% at step
+2000 with the honest bar). The remaining flip question for `MULTI_HEARTH` +
+`TIER_BRANCH` is the stylized-history battery, not a missing mechanism.
