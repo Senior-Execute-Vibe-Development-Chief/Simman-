@@ -303,11 +303,14 @@ adopt farming because farming does not pay on the steppe. This is the
 mechanism-true fix for the wrong-places finding: the steppe becomes land that
 ideas *cross* without *rooting*, and no constant knows what a steppe is.
 
-The **map** ships with this phase and is not decoration. The sim already renders
-fields (`identityField`, `controlField`, `popField` all have lenses); a per-idea
-lens showing where a technique actually is, and watching it move, is the
-instrument that would have made every finding in §1 visible on sight. Siberia
-farming at 67°N by step 264 is obvious on a map and invisible in a metric.
+~~The **map** ships with this phase~~ **BUILT EARLY, and that was the right
+order** — the lens exists now (Economy → Technique: worker packs `devDens` on an
+absolute 0..1 ruler, base map = `devField ≡ 0`, ochre haze below the
+`NEOLITHIC_AGRI = 0.45` bar, green snapping in at it). Filing the instrument
+under a payoff phase was backwards: the single most consequential field in the
+sim had no view in the app, and every finding in §1 was made by throwaway probe.
+Siberia farming at 67°N by step 264 is obvious on a map and invisible in a
+metric. Phase 3 keeps only the *adoption* mechanism.
 
 ### Scope discipline — what this is NOT
 

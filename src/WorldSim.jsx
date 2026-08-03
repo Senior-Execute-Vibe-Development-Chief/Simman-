@@ -185,7 +185,7 @@ const LENSES=[
   {id:"peoples", label:"Peoples", icon:"👥", subs:[["culture","Peoples"],["population","Population"],["ancestry","Ancestry"]]},
   {id:"languages",label:"Tongues",icon:"💬", subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  icon:"🕯", subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
+  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
   ...(DEV?[{id:"dev",label:"Dev",icon:"🔬",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 // Emergent availability (plan §6.5): a sub-lens lights up when its phenomenon
@@ -1473,6 +1473,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmPrices = viewRef.current === "prices";
   const vmLoyalty = viewRef.current === "loyalty";
   const vmPopulation = viewRef.current === "population";
+  const vmTechnique = viewRef.current === "technique";
     if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -1642,7 +1643,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=((L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmPrices?8192+priceGoodRef.current:0))+"|"+selRealmRef.current;   // selection rides the key → highlight rebuilds on select
+    const layerKey=((L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0)|(vmLoyalty?2048:0)|(vmPopulation?4096:0)|(vmTechnique?16384:0)|(vmPrices?8192+priceGoodRef.current:0))+"|"+selRealmRef.current;   // selection rides the key → highlight rebuilds on select
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -1922,6 +1923,38 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           stctx.fillRect(x,y,1,1);
         }
       }
+      // ── Technique: the idea field (devField) on an ABSOLUTE 0..1 ruler — the
+      // field that sets carrying capacity, previously invisible in the app
+      // (docs/design-idea-field.md: every defect in it was found by probe).
+      // Land at devField ≡ 0 shows the BASE MAP: "no idea has ever reached this
+      // ground" is the lens's headline reading (60% of all land), and it must
+      // look like wilderness, not like a low value. The one snap sits on the
+      // REAL regime boundary, NEOLITHIC_AGRI = 0.45 (crystallize.js) — the full
+      // farming package: below it a quiet ochre haze (the wave's decayed edge —
+      // contact, not cultivation), at the bar green arrives, and the ramp runs
+      // to gold-white headroom for the advanced eras. Same idiom as the
+      // population lens: brightness monotone over the dark base, saturation
+      // snapping in at the boundary that means something. ──
+      if(vmTechnique&&psw._devDens){
+        const tw=psw.tw,th=psw.th,N2=Math.min(tw*th,psw._devDens.length);
+        const dens=psw._devDens;let lastFs=null;
+        const fsCache=new Array(251);
+        const colAt=(v)=>{let fs=fsCache[v];if(fs)return fs;
+          const t=v/250;   // linear on the absolute ruler: t IS the devField value
+          let r,g,b,a=1;
+          if(t<0.45){const s2=t/0.45;a=0.22+s2*0.58;r=(115+s2*25)|0;g=(92+s2*18)|0;b=48;}          // <0.45: ochre haze — the idea seeping, not arrived
+          else if(t<0.60){const s2=(t-0.45)/0.15;r=(72+s2*20)|0;g=(142+s2*40)|0;b=(58+s2*12)|0;}   // 0.45: the farming package ARRIVES — green snaps in
+          else if(t<0.85){const s2=(t-0.60)/0.25;r=(92+s2*110)|0;g=(182+s2*30)|0;b=(70+s2*20)|0;}  // 0.60→0.85: deepening technique, green → gold
+          else{const s2=(t-0.85)/0.15;r=(202+s2*43)|0;g=(212+s2*33)|0;b=(90+s2*125)|0;}            // ≥0.85: advanced eras — gold → white
+          fs=a<1?`rgba(${r},${g},${b},${a.toFixed(2)})`:`rgb(${r},${g},${b})`;fsCache[v]=fs;return fs;};
+        for(let ti=0;ti<N2;ti++){
+          const v=dens[ti];if(v<=0)continue;   // devField exactly 0 / water → base map
+          const y=(ti/tw)|0,x=ti-y*tw;
+          const fs=colAt(v);
+          if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
+          stctx.fillRect(x,y,1,1);
+        }
+      }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
       // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
       if(vmAncestry&&ter&&ter.tAncestry){
@@ -2039,7 +2072,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.stroke();
         emphasizeRealm(claimArr,tw,th);
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
         let lastFs=null;
@@ -2063,7 +2096,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(L.borders){octx.stroke();octx.setLineDash([]);}
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
         emphasizeRealm(claimArr,tw,th);
-      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2384,7 +2417,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // screen-space on the feature canvas so type renders crisp at any map
     // scale. Skipped on the identity/thematic lenses, where political names
     // over a faith/culture/price fill would mislabel what the colours mean.
-    if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmPrices){
+    if(fctx&&_L.labels&&!_identity&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&!vmPrices){
       labelAnchorsRef.current=realmLabelAnchors(psw,labelAnchorsRef.current);
       // Physical floor: on a small display the map-unit sizes drop below
       // legibility at world zoom; floor them at ~7 CSS px and let collision
@@ -2482,6 +2515,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.fieldDom){psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
   if(snap.loyal){psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
   if(snap.popDens){psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
+  if(snap.devDens){psw._devDens=snap.devDens;}                                 // technique lens: the idea field (keep last)
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
