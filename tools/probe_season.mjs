@@ -30,6 +30,7 @@ const tScale = (degC) => 0.60 + degC / 100;
 const WHEAT_TOPT = 0.73, MAIZE_TOPT = 0.82, RICE_TOPT = 0.86;
 
 const at = JSON.parse(readFileSync(new URL("../data/global_airtemp.json", import.meta.url), "utf8"));
+const pr = JSON.parse(readFileSync(new URL("../data/global_precip.json", import.meta.url), "utf8"));
 const LAT = at.lat, LON = at.lon, NLON = LON.length;
 
 function cellOf(lat, lon) {
@@ -39,15 +40,28 @@ function cellOf(lat, lon) {
   return [j, Math.round(l / (360 / NLON)) % NLON];
 }
 
-/** Twelve monthly means at a lat/lon, plus the quarter aggregates. */
+/** Twelve monthly means at a lat/lon, plus the quarter aggregates AND the
+ *  growing-season coupling: temperature and rainfall of the warm half vs the
+ *  cool half of the year, so a crop can be read on the season it grows in. */
 export function seasonAt(lat, lon) {
   const [j, i] = cellOf(lat, lon);
   const months = at.months.map((m) => m[j][i]);
+  const rain = pr.months.map((m) => m[j][i] * 30.4);   // mm/day → mm/month
   const annual = months.reduce((a, b) => a + b, 0) / 12;
   const asc = [...months].sort((a, b) => a - b);
   const coolQ = (asc[0] + asc[1] + asc[2]) / 3;
   const warmQ = (asc[9] + asc[10] + asc[11]) / 3;
-  return { months, annual, coolQ, warmQ };
+  // Warm half / cool half by temperature, carrying each half's rainfall — the
+  // moisture-season coupling the temperature-only reading misses (measured: a
+  // Mediterranean cool-wet cradle and a monsoon warm-wet cradle look identical
+  // on temperature alone and opposite on which SEASON carries the water).
+  const byT = months.map((t, k) => [t, k]).sort((a, b) => b[0] - a[0]);
+  const warmM = byT.slice(0, 6).map((x) => x[1]), coolM = byT.slice(6).map((x) => x[1]);
+  const warmT = warmM.reduce((a, k) => a + months[k], 0) / 6;
+  const coolT = coolM.reduce((a, k) => a + months[k], 0) / 6;
+  const warmP = warmM.reduce((a, k) => a + rain[k], 0);
+  const coolP = coolM.reduce((a, k) => a + rain[k], 0);
+  return { months, annual, coolQ, warmQ, warmT, coolT, warmP, coolP };
 }
 
 // Default sites: the historical cradles, plus maize's real home as a control.
@@ -85,9 +99,28 @@ for (const [lat, lon, name] of SITES) {
     `${s.coolQ.toFixed(1).padStart(5)}C (${tC.toFixed(3)}) ${bestOf(tC).padEnd(6)} | ${s.warmQ.toFixed(1).padStart(5)}C (${tW.toFixed(3)})`);
 }
 console.log("");
-console.log("READ: 'nearest' is the package whose optimum is closest — a proxy for what");
-console.log("the bell would pick. On the ANNUAL column the Old-World cereal cradles read");
-console.log("as maize country; on the COOL-QUARTER column they read as wheat, with no");
-console.log("constant changed. The Yellow River's cool quarter is below freezing, so it");
-console.log("is correctly NOT winter-wheat country — historically its founder crop was");
-console.log("millet, a summer crop, and wheat arrived later from the west.");
+console.log("THE GROWING-SEASON COUPLING — temperature AND rainfall of each half-year:");
+console.log("site               warm season        cool season       founder-crop reading");
+for (const [lat, lon, name] of SITES) {
+  const s = seasonAt(lat, lon);
+  // A cool-season crop (wheat) grows in the cool half; a warm-season crop
+  // (millet/maize/rice) in the warm half. It thrives only if THAT season is wet.
+  const coolCropOk = s.coolT >= 8 && s.coolT <= 22 && s.coolP >= 40;    // temperate + wet enough
+  const warmCropOk = s.warmT >= 18 && s.warmP >= 120;                    // warm + monsoon-wet
+  const reading = coolCropOk && warmCropOk ? "both seasons crop"
+    : coolCropOk ? "COOL-season cereal (wheat/barley)"
+    : warmCropOk ? "WARM-season cereal (millet/rice/maize)"
+    : (s.warmP < 40 && s.coolP < 40) ? "arid — river-irrigated only"
+    : "no storable-cereal season";
+  console.log(`${name.padEnd(17)} ${s.warmT.toFixed(0).padStart(3)}C ${s.warmP.toFixed(0).padStart(5)}mm   | ` +
+    `${s.coolT.toFixed(0).padStart(3)}C ${s.coolP.toFixed(0).padStart(5)}mm  | ${reading}`);
+}
+console.log("");
+console.log("READ: the model evaluates every package at ANNUAL-MEAN temperature and");
+console.log("moisture, so every Old-World cereal cradle reads as maize country (warm");
+console.log("annual mean). Evaluating each crop on the SEASON IT GROWS IN — cool-optimum");
+console.log("crops on the cool half, warm-optimum crops on the warm half, each with THAT");
+console.log("season's rainfall — recovers the real founder crops from observation with no");
+console.log("constant changed: Mesopotamia cool-wet -> wheat; the Yellow River warm-wet /");
+console.log("cold-dry winter -> millet (a summer crop, its actual founder); New Guinea has");
+console.log("no season -> no cereal. See docs/design-growing-season.md.");
