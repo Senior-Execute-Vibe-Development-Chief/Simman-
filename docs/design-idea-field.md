@@ -513,7 +513,8 @@ farmed land at step 1000), and the effect shrinks as the world matures, which is
 the right shape: a mature dense network re-supplies technique faster than it
 recedes.
 
-### The §7 prediction was NOT confirmed, and one seed cannot settle it
+### The §7 prediction was NOT confirmed — and the contradicting number was noise
+*(written before the seed panel; kept as the reasoning, superseded by the A/B below)*
 
 §7 predicted a leaner world. At `tw=240`/12k the run is **richer** — field pop
 14.42M → 15.66M (+8.6%), census 16 099 → 17 701 (+9.9%), same 82 settlements,
@@ -563,13 +564,43 @@ That population reading matters for the §7 question: the +8.6% at `tw=240`/12k
 does **not** reproduce at the shipped grid through 6k, which is further evidence
 it is divergence noise rather than a lever effect. The A/B below is the arbiter.
 
-### The multi-seed A/B — the arbiter for the population question
+### The multi-seed A/B — ONE real effect, and the population claim is dead
 
-`abtest --tune=IDEA_FIELD=1 --steps=12000 --seeds=8817,31337,4242,7777`, still
-running at the time of this edit. `abtest` scores a metric CONSISTENT only if it
-moves the same direction on **every** seed; anything failing that is noise and
-must be reported as noise, including if it contradicts the §7 prediction in
-either direction.
+`abtest --tune=IDEA_FIELD=1 --steps=12000 --seeds=8817,31337,4242,7777`
+(provenance: commit `745a26a`). Of 109 matched metrics and 75 exceeding ±2%:
+
+> **9 movers consistent across all 4 seeds; 66 mixed-direction.**
+
+And **5 of those 9 are `field._devSrc.*` — the new array existing.** That is the
+instrument appearing in the metric map, not a behavioural result. Discount them
+and there are **four** consistent movers, which are four facets of one effect:
+
+```
+eventv.settlement.abandoned.step.sum    −44.4%   CONSISTENT
+eventv.settlement.abandoned.step.mean   −33.1%   CONSISTENT
+eventv.settlement.abandoned.step.max    −32.8%   CONSISTENT
+eventv.settlement.abandoned.step.p90    −18.8%   CONSISTENT
+```
+
+These are the *step numbers at which abandonments happen*, so every one of them
+falling means **settlements that fail, fail EARLIER**. That is mechanistically
+exactly what the change should do: a settlement losing its technique base is no
+longer propped up by a field holding its best-ever value, so it goes when its
+support goes instead of lingering. The abandonment *count* moved −18.5% but
+**mixed**, so only the timing is established, not the number.
+
+**The population finding is refuted.** `pop.people` +10.0% and
+`pop.largestCity` +27.7% appear in the headline — which is **seed 8817 alone** —
+and neither survives the seed panel (`largestCity` scores explicitly `mixed`;
+`pop.people` does not reach the consistent set at all). `realm.count` likewise:
+32→30, 41→41, 28→32, 45→40 — down, flat, **up**, down. My §7 prediction of a
+leaner mature world and the +8.6%/+9.9% reading that seemed to contradict it are
+**both** noise from a single seed, exactly as the shipped-grid arm already
+suggested.
+
+What survives the panel, then, is narrow and honest: **the land forgets (direct
+measurement, both grids), and settlements that fail now fail earlier (4 seeds).**
+Everything else this lever appears to do is divergence.
 
 ---
 
@@ -587,5 +618,21 @@ the most uniform quantity in the world. At the grid that ships, a third of all
 settlements learn from nobody during the founding wave that fixes the map.
 
 That is a mechanism gap, not a tuning problem, and it sits upstream of all four
-failed density designs. The law above is the proposal; nothing in it ships until
-§1g and §6 are filled in.
+failed density designs. The law above is the proposal.
+
+**Phase 1 is built, gated and shipped OFF.** What the evidence supports, stated
+as narrowly as the measurements allow:
+
+- the land can now forget, at the rate it learned — **direct measurement, both
+  grids**;
+- settlements that fail, fail **earlier** — **4-seed consistent**;
+- the effect's trend **inverts between grids** (fades at the reference grid,
+  grows at the shipped one), so the reference grid alone would have misdescribed
+  it;
+- everything else — population, realm count, largest city — is **divergence
+  noise**, including a +8.6% population reading of my own that did not survive
+  the panel.
+
+Phases 2 and 3 remain proposals, and phase 2 is blocked on `MULTI_HEARTH`, which
+is itself blocked on the tier-bar derivation inherited from v4. That derivation
+is the next thing anyone should do in this lane.
