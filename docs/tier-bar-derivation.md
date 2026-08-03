@@ -271,14 +271,41 @@ What survives, because it is directly measured, not inferred:
   explains the failure.
 
 Open hypotheses, in testable order: (a) the **dawn** tail (step ~2000, where
-the city-state divergence originates) may differ from the 6k tail — measured
-next, appended below; (b) the asymmetry may live **downstream** of tier
-entirely, in the seat → territory-projection machinery (per-seat claimed area
-across grids), in which case the bar is innocent and the projection layer
-carries the resolution leak; (c) realm-count amplification (ref 14→45 vs app
-17→20) may come through a channel other than city seats — nucleation or
-secession gates whose inputs scale differently. Until one of these is pinned,
-the resgate FAIL is **attributed but unexplained**.
+the city-state divergence originates) may differ from the 6k tail; (b) the
+asymmetry may live **downstream** of tier in the seat → territory-projection
+machinery; (c) realm amplification through a non-city channel.
+
+### (a) CONFIRMED — and the root is narrower than the tail
+
+```
+step 2000 (the dawn):  tw=240   p50=21.6   p85=94.0   p85/p50 = 4.35
+                       tw=480   p50=31.7   p85=96.4   p85/p50 = 3.04
+step 6000:             tw=240   2.56   ·   tw=480   3.14      (they CROSS)
+```
+
+At the dawn, K=4 × median sits **below p85** at the reference grid (86.4 <
+94.0 → 16.4% of settlements are cities — arm D's 9/55 exactly) and **at ~p95**
+at the shipped grid (126.8 ≈ p95 → ~5%). A ~3× difference in dawn seats,
+matching the realm ratio (45 vs 20) and the claiming asymmetry (+66% vs +8%).
+By 6k the two tails cross — which is why every mature-world census check
+looked fine — but the political map was already written at the dawn.
+
+**And the decomposition localizes the artefact.** The p85 is nearly EQUAL
+across grids (94.0 vs 96.4): the cradle-core settlements' census is
+resolution-invariant — the bridge works where it was calibrated. The MEDIAN is
+47% bigger at the fine grid (21.6 → 31.7): the **small dawn frontier
+settlement's census is not invariant**. The resolution leak is in
+small-settlement census formation at the dawn — a far narrower target than
+"the tail", and one with a one-line scalar instrument: **cross-grid dawn p50**.
+
+So the corrected causal chain, each link now measured: dawn frontier census
+reads ~1.5× at `tw=480` → the dawn median inflates → `K × median` inflates →
+the derived bar sits 3× rarer in the app grid's dawn → 3× fewer dawn seats →
+the claiming asymmetry resgate catches. The quota never saw any of this
+because a fixed quantile mints the same city share at both grids **whether or
+not the underlying censuses agree** — rescale-blindness, here a bug wearing a
+robustness costume: the quota's worlds pass resgate while disagreeing across
+grids about what a dawn settlement IS.
 
 ### Verdict
 
@@ -287,9 +314,12 @@ the resgate FAIL is **attributed but unexplained**.
   with the derived bar in place.
 - The **flip waits**: no default flip while the resgate ratchet is red — the
   bands are "never a target to tune toward", and softening K to pass would be
-  the exact violation §3 forbids. The blocking item is the claiming asymmetry
-  above: attributed to this lever's presence, mechanism still open (the census
-  tail was measured and cleared — see the retraction).
+  the exact violation §3 forbids. The blocking item is now precise: **dawn
+  small-settlement census is not resolution-invariant** (p50 21.6 vs 31.7 at
+  step 2000 — the causal chain under "(a) CONFIRMED"). Fix that upstream and
+  the dawn ratios align, the derived bar mints the same dawn city share at
+  both grids, and the ratchet should close — re-measure, don't assume.
+  Instrument: cross-grid dawn p50, one scalar.
 - Both levers ship **off**, unchanged.
 
 ## 6. What would make K a measurement (the honest next rung)
