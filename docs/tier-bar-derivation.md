@@ -343,8 +343,35 @@ BRIDGE_GLOBAL=1: p85/p50 = 5.58 (ref)  vs  5.28 (app)   —  6% apart
 global bridge — shape aligned to ~6%, median to ~10%. (It also changes the
 world at both grids — fewer, fatter-tailed dawn settlements — which is why its
 gate is owed before any default change; the invariance question, though, is
-answered.) Resgate under `TIER_BRANCH + BRIDGE_GLOBAL`, and under the full
-three-lever flip config, is the direct test — running, appended below.
+answered.)
+
+### RESGATE RE-TEST: **GREEN, both configs, all bands**
+
+| claimed-land band | without `BRIDGE_GLOBAL` | with | floor |
+|---|---|---|---|
+| `TIER_BRANCH` alone | **0.39 ✗** | **0.80 ✓** | 0.44 |
+| `MULTI_HEARTH + TIER_BRANCH` | **0.42 ✗** | **0.70 ✓** | 0.44 |
+| defaults (for scale) | 0.59 | — | |
+
+Every band held in both runs (median-area 0.53/0.57, people 0.77/0.71,
+absolute median 164k/122k km², realm floors clear). Two readings beyond the
+pass: the corrected configs are **more cross-grid consistent than the shipped
+defaults** (0.70-0.80 vs 0.59), and the dawn city-state effect now fires at
+BOTH grids — realm counts near parity (TB+BG: ref 34 / app 38; full config:
+74 / 69) where `TIER_BRANCH` alone gave 45 / 20.
+
+The causal chain is thereby confirmed end-to-end, each link measured:
+geometry-free bridge → dawn census invariance → dawn city-share parity →
+seat parity → claiming parity → ratchet green.
+
+**What a flip decision still owes**, precisely: (1) the stylized battery under
+the three-lever config (`MULTI_HEARTH + TIER_BRANCH + BRIDGE_GLOBAL`) — the
+two-lever config passed, but `BRIDGE_GLOBAL` changes the bridge magnitude at
+every grid and the history must be re-checked on top of it; (2)
+`BRIDGE_GLOBAL`'s own multi-seed gate, demanded by its description since the
+day it was written and never run — `abtest --tune=BRIDGE_GLOBAL=1` across the
+seed panel, judged on its own merits at defaults, because flipping it changes
+the calibrated census scale of every world, not only the flip config's.
 
 ### Verdict
 
