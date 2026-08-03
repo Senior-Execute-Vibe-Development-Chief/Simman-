@@ -108,28 +108,97 @@ of this document is the measurement.
 
 ## 4. MEASURED — the four arms (12k steps, seed 8817, `tw=240`)
 
-*(appended as the arms land; the derivation is not shippable until filled)*
+Success bars were stated before the numbers (see the commit that added this
+file). The event counts are the chronicle's window, comparable across arms.
 
-| arm | levers | labels | t2 cities | realms | polity founded/receded | cityBar |
-|---|---|---|---|---|---|---|
-| A baseline | none | | | | | |
-| B guard | `MULTI_HEARTH=1` | | | | | |
-| C derived | `MULTI_HEARTH=1, TIER_BRANCH=4` | | | | | |
-| D derived alone | `TIER_BRANCH=4` | | | | | |
+| arm @12k | levers | labels | t2/t3 | realms | stateless | founded/receded | submitted | wars | p50 | cityBar |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A baseline | none | 82 | 13/1 | 32 | 30 (37%) | 28/20 | 6 | 69 | 105.3 | 352.8 |
+| B guard | `MULTI_HEARTH` | 132 | 17/3 | 88 | 18 (14%) | 22/27 | 41 | 168 | 147.5 | 423.9 |
+| C derived | `MULTI_HEARTH, K=4` | 133 | 17/3 | 75 | 33 (25%) | 30/35 | 25 | 138 | 124.7 | 498.5 |
+| D derived alone | `K=4` | 82 | 5/1 | 51 | 10 (12%) | 17/38 | 23 | 117 | 156.5 | 627.4 |
 
-Success bars, stated before the numbers:
+And the mid-run trajectories, where the real differences live:
 
-1. **C keeps B's label supply** (the hearth mechanism must not be disturbed:
-   ~139 labels, 5 components).
-2. **C's hierarchy survives** — t2 > 0 and the city share lands in a
-   central-place-plausible band (a few percent to ~15%), *without* any floor.
-3. **C's polity turnover comes down from B's explosion** toward A's order —
-   the 105-realm / 150×-turnover failure must not reproduce.
-4. **D at defaults moves little** — the derived bar should approximate the
-   shipped effective bar in the un-deflated world (K×median ≈ max(240, P85)
-   there), so flipping K alone is a refinement, not an upheaval.
-5. K ∈ {3,4,5} sensitivity reported; the conclusion must not ride on the
-   choice.
+```
+t2 cities   @2000   @6000   @12000        cityBar   @2000   @6000
+A (floors)      0       3       13        A          240*     240*     * = floor binding
+B (P85)        14      19       17        B         81.6    204.5
+C (K=4)        13       7       17        C         97.6    307.1
+D (K=4)         9       2        5        D         88.3    258.0
+```
+
+### Bars 1-2: MET
+
+- **C keeps B's label supply exactly** — 132 → 133 labels; the hearth
+  mechanism is undisturbed.
+- **C's hierarchy survives with no floor** — t2=17, t3=3 (12.8% cities), the
+  same top structure as B, reached without a quota.
+
+### Bar 3: PARTIALLY MET, and the target was softer than the doc assumed
+
+C vs B: realms 88 → 75 (−15%), wars 168 → 138, submissions 41 → 25 — the
+political temperature cools — but windowed founding/receding rises (22/27 →
+30/35). And **B itself did not reproduce the 105-realm / 150× explosion**: that
+number was measured on the full C1 stack (`LABEL_BIRTH` + `MULTI_HEARTH`); on
+`MULTI_HEARTH` alone the guard gives 88 realms. Most of the realm inflation
+over baseline is the hearths *themselves* — five continents legitimately
+minting states — not the tier guard. The derivation still improves on the
+quota, but the emergency it was framed against is smaller on this config than
+the hearth doc's arm suggested.
+
+### Bar 4: **FAILED as stated — and the failure is the most important finding**
+
+K=4 alone was predicted to move little. It moved a lot, and in the opposite
+direction from the naive reading of the 12k bars: realms 32 → 51, stateless
+share 37% → **12%**, receded 20 → 38, wars 69 → 117.
+
+The cause is at the DAWN, not at maturity. At step 2000 the baseline's floor
+(240) binds and the world has **zero cities** — the floor forbids any city
+until some catchment holds ~240k people, regardless of structure. The derived
+bar reads 88.3 (4 × the dawn median) and finds **nine city-states already
+standing**. Those early cities are province seats; seats project territory;
+borders actually reach the stateless countryside — and the early world governs
+itself: **stateless share at step 2000 falls from 93% (A) to 39% (D)**.
+
+Two things follow, and they must be said plainly:
+
+1. **The floor was not an inert shortcut — it was suppressing the urban
+   revolution.** "No city below census 240" is an absolute number from a
+   retired scale enforcing "no cities until the world is big", which is a scale
+   anachronism: the first cities were dawn-era, small in absolute terms and
+   dominant relative to their lattice (Uruk). The derived bar recovers exactly
+   that reading, and the extra polity churn (receded 38 vs 20) is successor
+   dynamics arriving with the early state system rather than being deferred.
+2. **This connects to the state-birth finding from the other side.**
+   `docs/state-birth-2026-08.md` measured 90%+ of the early world stateless and
+   diagnosed the org gate. This arm shows the CITY-TIER channel binds too: give
+   the dawn its honest city-states and early statelessness collapses without
+   touching a single founding bar.
+
+Whether 51 realms and 117 wars is a *better* history than 32 and 69 is a
+product judgement — but the stylized-history gates, not this doc, are the
+arbiter of "history-shaped", and the K-alone arm must pass them before any
+default flip. What is settled here: the bar's effect is real, mechanistic, and
+in the direction of the owner's standing complaint (the ungoverned early
+world), not an artefact.
+
+### Bar 5: K sensitivity — pending, appended below.
+
+### The Zipf cross-check (why quota and derivation agree at maturity)
+
+Baseline @12k: p85/p50 = 3.35 — inside the Christaller 3-5 band. In a
+rank-size (Zipf) world, "4 × median" ≡ roughly "top ~12.5%", so K×median and
+P85 *coincide wherever the tail is actually Zipf* — which is why B and C agree
+almost everywhere (their cityBars run within ~20% and their t2 counts converge
+to the same 17/3). The three-way divergence is against the FLOOR: at the dawn
+the floor forbids all cities (A: 0 at step 2000) while both scale-honest bars
+find the early city-states (B: 14, C: 13, D: 9); in the deflated world the
+floor pins everything to tier 0/1 while both survive. The derivation's edge
+over the quota is not the mature counts — it is that its city share is a
+*measurement* (zero in a flat lattice, where the quota would still mint 15%),
+and that its constant means something. The quota happens to be right when the
+world happens to be Zipf; the derivation is right because of what a city is.
 
 ## 5. Risks
 
