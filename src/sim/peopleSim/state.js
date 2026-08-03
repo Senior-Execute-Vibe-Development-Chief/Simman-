@@ -341,15 +341,23 @@ function initRiverMag(world, w) {
 // MUST NEVER BE MOVED TOWARD ONE: the only admissible argument for changing it is
 // an argument about how many times humans invented farming.
 const MAX_CRADLES = 10;
-const CRADLE_MIN_SEP = 60;   // minimum separation between cradles, in REFERENCE tiles
-                              // (~8 000 km at the 240-tile reference) — large enough that a
-                              // single continent gets at most 1-2 cradles, but Earth's separated
-                              // landmasses each get one if they have a viable site.
+const CRADLE_MIN_SEP = 24;   // minimum separation between cradles, in REFERENCE tiles.
+                              // EVIDENCE CORRECTION (2026-08-03, the only admissible kind for
+                              // this constant): 24 ref tiles ≈ 4 000 km, the real minimum
+                              // distance between INDEPENDENT agricultural origins — Fertile
+                              // Crescent↔Sahel ~4 000 km, Crescent↔China ~6 500, Mesoamerica↔
+                              // eastern N America ~2 500 (the closest defensible pair). The old
+                              // value 60 (~10 000 km) enforced "a single continent gets at most
+                              // 1-2 cradles" — but real Afro-Eurasia had four or five, and the
+                              // measured failure mode was one high-circumscription winner (the
+                              // Tarim) excluding Mesopotamia, the Indus AND the Nile in a single
+                              // disc (docs/design-idea-field.md). MAX_CRADLES, not this radius,
+                              // is the statement about how many origins a planet gets.
                               // UNIT: read x rNormPop (a REAL distance) under T.MULTI_HEARTH,
-                              // raw tiles otherwise. Measured defect the correction repairs:
+                              // raw tiles otherwise. Measured defect that correction repairs:
                               // with the scorer running, raw tiles give 2 hearths at 240 and 6
                               // at 480 — the number of agricultural origins on a planet would
-                              // ride on the render grid. Value and meaning untouched.
+                              // ride on the render grid.
 // Circumscription (Carneiro): the first states arose in fertile pockets hemmed in
 // by INHOSPITABLE LAND — the Nile walled by the Sahara, the Indus by the Thar,
 // Mesopotamia by desert and mountains. The barrier that matters is dry/mountain
