@@ -283,6 +283,14 @@ export function saveWorld(world, meta = {}) {
       // integral of history like devField, not re-derivable. Absent unless
       // the lever ran, so default saves stay byte-identical.
       worksField: world.worksField ? b64FromTyped(world.worksField) : undefined,
+      // Armed hearth candidates (T.INVENT_STAGGER): sites whose maturity ran
+      // past prehistory, carrying accrued peopled-basin years (effY). Plain
+      // numbers, tiny, and NOT re-derivable — losing them makes a loaded world
+      // never ignite a hearth the original fires (measured: the smoke
+      // continuation gate caught exactly this as an 11% pop divergence).
+      // Absent unless the lever armed any → default saves byte-identical.
+      armedHearths: world._armedHearths && world._armedHearths.length ? world._armedHearths : undefined,
+      hearthArmAt: world._hearthArmAt !== undefined ? world._hearthArmAt : undefined,
       // The loyalty field (T.LOYAL_FIELD, loyaltyField.js): allegiance is a
       // dense continuum (every governed tile carries a value), the owner-diff
       // snapshot is dense ids; both absent unless the lever ran (undefined key
@@ -446,6 +454,9 @@ export function loadWorld(data, opts = {}) {
     if (df) { world.devField = df; world._devNext = new Float32Array(N); }   // regional development ratchet (T.DEV_FIELD); absent old saves reseed via ensureDevField
     const wkf = loadTyped(data.maps.worksField, Float32Array, N);
     if (wkf) world.worksField = wkf;   // land improvement (T.LAND_WORKS); _irrigable is static terrain, rebuilt on demand
+    // Armed hearth candidates (T.INVENT_STAGGER) — see the save side.
+    if (data.maps.armedHearths && data.maps.armedHearths.length) world._armedHearths = data.maps.armedHearths.map(h => ({ ...h }));
+    if (data.maps.hearthArmAt !== undefined) world._hearthArmAt = data.maps.hearthArmAt;
     const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);
