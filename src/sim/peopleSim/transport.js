@@ -353,6 +353,55 @@ export function baseEdgeCost(world, fromTi, toTi) {
   return _edgeCost(world, fromTi, toTi, _paramsFor(world, null));
 }
 
+// ── Terrain hold: how hard ground is to SUBDUE (T.REFUGE) ───────────────────
+// ONE definition of "the defender stands on ground that fights for it", shared
+// by the war pass's tile defence, the capital storm, peaceful absorption and
+// the city-enclave gate (armies.js / conquest.js) — so a moat city and a
+// mountain community resist conquest and gravitation with the same physics.
+// The river and alpine constants are the war pass's own (extracted verbatim —
+// armies.js reads these names, values unchanged); the RIDGE term is the new
+// one: gorge-and-ridge country read off world.relief, the first-class vertical-
+// range field the movement cost already pays (same 0.07 floor — plains p90 ≈
+// 0.06, so plains never trigger), because cell-MEAN altitude is blind to real
+// ranges (the Alps average ~0.31 and slip under elev > 0.5 entirely). Each
+// term eases with the defender's CONSTRUCTION — engineering bridges the ford
+// and roads the pass — so refuges are strongest exactly when statecraft is
+// young, and erode as the besieger's world matures. Never a clock.
+export const RIVER_DEF_W = 2.2, RIVER_DEF_ENG = 0.6;    // ford under fire: ≈3.2× neolithic → ≈2× engineered
+export const ALPINE_DEF_BASE = 1.0, ALPINE_DEF_SLOPE = 1.6, ALPINE_DEF_ENG = 0.5;   // high ground past elev 0.5, steeper = harder
+export const RIDGE_DEF_W = 2.0;       // a fully-broken ridge tile defends at ~×3 before engineering (same family as the river/alpine weights)
+export const RIDGE_DEF_FLOOR = 0.07;  // where ridge country begins — the movement cost's own floor (transport ridge term above)
+export const RIDGE_DEF_FULL = 0.25;   // full brokenness — the measured Himalaya-front class (Alps p50 0.145 sits ~43% up the ramp)
+export const TERRAIN_DEF_CAP = 6;     // the war pass's cap — no single tile is unconquerable
+
+// The ridge term alone (the war tile-scan composes it onto its existing
+// river/alpine terms): extra defence MULTIPLE, 0 on plains.
+export function ridgeHoldAt(world, ti, cons) {
+  const rr = world.relief ? world.relief[ti] : 0;
+  if (rr <= RIDGE_DEF_FLOOR) return 0;
+  return RIDGE_DEF_W * Math.min(1, (rr - RIDGE_DEF_FLOOR) / (RIDGE_DEF_FULL - RIDGE_DEF_FLOOR)) * (1 - 0.5 * cons);
+}
+
+// The full multiplier (river moat × high ground × ridge, capped) for the sites
+// that had NO terrain physics before (storm / absorption / enclave). Callers
+// weight it as 1 + T.REFUGE·(hold−1), so lever 0 is exactly ×1.
+export function terrainHoldAt(world, ti, cons) {
+  let m = 1;
+  if (world.riverMag && world.riverMag[ti] >= 2) m *= 1 + RIVER_DEF_W * (1 - RIVER_DEF_ENG * cons);
+  const e = world.elev[ti];
+  if (e > 0.5) { const alp = Math.min(1, (e - 0.5) / 0.3); m *= 1 + (ALPINE_DEF_BASE + ALPINE_DEF_SLOPE * alp) * (1 - ALPINE_DEF_ENG * cons); }
+  const rh = ridgeHoldAt(world, ti, cons);
+  if (rh > 0) m *= 1 + rh;
+  return Math.min(m, TERRAIN_DEF_CAP);
+}
+
+// The lever-weighted form every new consumer applies: ×1 exactly at REFUGE 0.
+export function refugeHoldAt(world, ti, cons) {
+  const w = T.REFUGE || 0;
+  if (w <= 0) return 1;
+  return 1 + w * (terrainHoldAt(world, ti, cons) - 1);
+}
+
 // Tech-aware cost (per-settlement reach, march speed, conquest range). Pass
 // ignoreRoads=true for political REACH (territory / national claim / admin
 // projection) so borders follow terrain, not roads; leave it off for movement

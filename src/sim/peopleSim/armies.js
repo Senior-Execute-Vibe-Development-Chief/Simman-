@@ -21,6 +21,7 @@ import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee } from "./conquest.js";
+import { ridgeHoldAt, refugeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
@@ -931,17 +932,30 @@ export function advanceFronts(world) {
     // defenders lose most of the river bonus (Roman engineers; modern
     // pontoons). This is what makes fronts visibly SNAP to rivers and
     // mountain ridges instead of plowing straight across the map.
+    // (The weights are the shared terrain-hold constants — transport.js,
+    // one definition for war/storm/absorption; values unchanged.)
     let terrainDef = 1;
     if (world.riverMag && world.riverMag[ti] >= 2) {
       const cons = (D.knowledge && D.knowledge.construction) || 0;
-      terrainDef *= 1 + 2.2 * (1 - 0.6 * cons);    // ≈3.2× at neolithic, ≈2× at high-construction
+      terrainDef *= 1 + RIVER_DEF_W * (1 - RIVER_DEF_ENG * cons);    // ≈3.2× at neolithic, ≈2× at high-construction
     }
     if (world.elev[ti] > 0.5) {
       const cons = (D.knowledge && D.knowledge.construction) || 0;
       // Steeper highland defends harder, scaling past the 0.5 threshold, so a
       // mountain wall genuinely channels invasions instead of being plowed flat.
       const alp = Math.min(1, (world.elev[ti] - 0.5) / 0.3);
-      terrainDef *= 1 + (1.0 + 1.6 * alp) * (1 - 0.5 * cons);   // ≈2–4.6× rough/high alpine
+      terrainDef *= 1 + (ALPINE_DEF_BASE + ALPINE_DEF_SLOPE * alp) * (1 - ALPINE_DEF_ENG * cons);   // ≈2–4.6× rough/high alpine
+    }
+    // RIDGE country (T.REFUGE): gorge-and-ridge land — world.relief past the
+    // movement cost's own 0.07 floor — defends even where cell-MEAN altitude
+    // never crosses 0.5 (the Alps average ~0.31 and slipped under the alpine
+    // term entirely; the same blindness the claim cost fixed with this field).
+    // Fronts now stall in broken country, which is where the map's refuge
+    // statelets live. ×1 exactly at lever 0.
+    if (T.REFUGE > 0) {
+      const cons = (D.knowledge && D.knowledge.construction) || 0;
+      const rh = ridgeHoldAt(world, ti, cons);
+      if (rh > 0) terrainDef *= 1 + T.REFUGE * rh;
     }
     // ── Fortress shadow (see FORT_R above) ──────────────────────────
     // The strongest walled-and-manned strongpoint of the DEFENDER's own
@@ -962,7 +976,7 @@ export function advanceFronts(world) {
       });
       terrainDef *= 1 + fortAdd;
     }
-    if (terrainDef > 6) terrainDef = 6;            // cap — a single tile can't be unconquerable
+    if (terrainDef > TERRAIN_DEF_CAP) terrainDef = TERRAIN_DEF_CAP;   // cap — a single tile can't be unconquerable
     // Even a vastly-stronger attacker is CHANNELLED by terrain (and by the
     // fortress line): a river/mountain/castle-shadow tile resists ~up to 6× a
     // plain, so fronts snap to ridges, rivers and marches and pour through
@@ -1784,7 +1798,22 @@ export function advanceFronts(world) {
       // localization rides the lever (one measured change: war strength is local);
       // lever 0 keeps the adapter-pool fortress byte-identically.
       const pjCap = WAR_REACH > 0 ? projOf(att, def._homeTi) : 1;
-      const defHome = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def);
+      // ── The seat's GROUND joins its walls (T.REFUGE) ──────────────────────
+      // The storm — the realm-killer — had no terrain term at all: a lagoon
+      // city, an alpine eyrie and a plains town all stormed at bare homeMight,
+      // which is why the map kept no mountain statelets (the countryside scan
+      // above prices terrain, but losing countryside never kills a realm; the
+      // storm does). The fortress now multiplies by the seat tile's river-moat/
+      // high-ground/ridge hold (transport.js terrainHoldAt — the same physics
+      // the tile defence uses, same engineering erosion, same cap), so a
+      // defensible seat holds out and is starved or overawed into vassalage
+      // instead (channels that already exist and are not gated on terrain).
+      // ×1 exactly at lever 0.
+      const seatS = TILE_WAR ? def._capital : def;
+      const seatHold = T.REFUGE > 0 && seatS
+        ? refugeHoldAt(world, (seatS.pos.y | 0) * tw + (seatS.pos.x | 0), (seatS.knowledge && seatS.knowledge.construction) || 0)
+        : 1;
+      const defHome = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold;
       // T.ALLY_FRONT: the coalition's relief army stands with the defender at the
       // walls (already theatre-projected; +0 exactly at lever 0).
       const advCity = (attForce0 * pjCap) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
@@ -1805,7 +1834,8 @@ export function advanceFronts(world) {
         // now-reduced garrison returns exactly that floor. (Under WAR_REACH the
         // fortress is the capital settlement's own garrison, whose grind lands via
         // the post-pass reconciliation — the siege wears it down pass over pass.)
-        const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def);
+        // The seat's ground holds through the siege too (T.REFUGE; ×1 at lever 0).
+        const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold;
         if (defNow * em <= att._M * pjCap * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
           // The SETTLEMENT that changes hands: under TILE_WAR `def` is a country adapter, so
           // the storm falls on its real capital (which fragments the realm); otherwise on the

@@ -2466,9 +2466,27 @@ export function nucleateFrontierStates(world) {
     // (settled, statecraft, leads its basin); how many people the state can
     // carry is the basin's answer, checked below over the ground it would rule.
     if (!f2cBridge && !T.SEAT_FIELD && (s.people || 0) < seatPop * capMul) { tel(world, "nucleate", "seatPop"); continue; }
-    let dCap = Infinity;                        // isolation from existing states' heartlands
-    for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
-    if (caps.length && dCap < capD2) { tel(world, "nucleate", "tooNearExistingCapital"); continue; }
+    // ── The isolation veto: DISTANCE under the entity model, CONTROL under the field ──
+    // T.PEER_POLITY (docs/shape-of-the-map-2026-08.md): the fixed NUCLEATE_CAP_DIST
+    // disc (~1,000 km around every capital) was honest when a realm's claim was a
+    // projected reach-bubble far beyond its administration — a founding inside the
+    // bubble's shadow was a founding inside a state. Under the field model control
+    // is EXPLICIT (claimed tiles), and the founding test already prices it: the
+    // basin bar below counts ONLY unclaimed land, so an incumbent's administered
+    // ground contributes nothing to a rival's viability. What the disc actually did
+    // at this point was forbid the packed-peer regime real cradles were (Sumer's
+    // city-states sat 30-50 km apart) — one state per ~2,000-km disc, the measured
+    // one-realm-per-valley map. Under the lever the only spatial veto left is the
+    // ground under the seat itself: administered ground cannot seat a NEW state
+    // (its people already have one; secession is the channel for that).
+    if (T.PEER_POLITY) {
+      const coP = world._countryOwner;
+      if (coP && coP[seatTi] >= 0) { tel(world, "nucleate", "seatOnAdministeredGround"); continue; }
+    } else {
+      let dCap = Infinity;                        // isolation from existing states' heartlands
+      for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
+      if (caps.length && dCap < capD2) { tel(world, "nucleate", "tooNearExistingCapital"); continue; }
+    }
     let cp = 0, isLeader = true;                // viable cluster + this settlement leads it
     forEachNear(world, s.pos.x, s.pos.y, nucR, (o) => {
       if (o.mode !== "settled" || o.countryId >= 0) return;

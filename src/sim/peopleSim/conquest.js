@@ -14,7 +14,7 @@
 
 import { recordIn, recordOut, IN_AID, IN_TRIBUTE, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE, OUT_AID } from "./money.js";
 import { shockUnrest } from "./shocks.js";
-import { localEdgeCost, tileOpenness } from "./transport.js";
+import { localEdgeCost, tileOpenness, refugeHoldAt } from "./transport.js";
 import { TECHS } from "./tech.js";
 import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
@@ -3668,6 +3668,14 @@ function absorbWeakNeighbors(world, countries) {
     // Siberia). Emergent: the brake is the coalition's strength relative to the hegemon,
     // whatever the map makes it — never a size cap or a geography constant.
     if (world._countryPow) prob /= coalitionBrake(world, bestId, world._countryPow.get(bestId) || 1);
+    // DEFENSIBLE GROUND resists the pull (T.REFUGE): peaceful absorption is the
+    // shadow of coercion — "join the orbit or be taken" — and that shadow
+    // attenuates over the same river-moat/high-ground/ridge walls that stall the
+    // war pass (transport.js terrainHoldAt: one definition, engineering-eroded,
+    // capped). A community behind real walls of rock keeps its independence for
+    // as long as the ground holds; the mountain mosaics and moat cities history
+    // actually kept are exactly this. ÷1 at lever 0.
+    if (T.REFUGE > 0) prob /= refugeHoldAt(world, (m.pos.y | 0) * tw + (m.pos.x | 0), (m.knowledge && m.knowledge.construction) || 0);
     // Deterministic per-(seed, settlement, step) roll via the shared avalanche
     // hash. Unlike the old linear-congruential hash it varies with the WORLD SEED
     // (defections used to be identical across every seed) and doesn't correlate
@@ -3786,14 +3794,27 @@ function eliminateEnclaves(world, countries) {
     let intoId = -1, bestBord = 0, totBord = 0;
     for (const [cc, n] of borderCount) { totBord += n; if (n > bestBord) { bestBord = n; intoId = cc; } }
     if (intoId === selfCC) continue;                // region already that country
-    let regionHasCity = false;
-    for (const ti of region) { const o = owner[ti]; if (o >= 0) { const s = byId.get(o); if (s && (s.tier | 0) >= 2) { regionHasCity = true; break; } } }
+    let regionHasCity = false, citySeatHold = 1;
+    for (const ti of region) {
+      const o = owner[ti]; if (o < 0) continue;
+      const s = byId.get(o); if (!s || (s.tier | 0) < 2) continue;
+      regionHasCity = true;
+      // The engulfed city's own ground (T.REFUGE): a mountain-pocket or moat seat
+      // raises the power dominance an engulfing realm needs before the pocket is
+      // peacefully annexed — the enclave gate's own comment names Andorra and San
+      // Marino as exactly what it was wrongly vacuuming. ×1 at lever 0.
+      if (T.REFUGE > 0) {
+        const h = refugeHoldAt(world, (s.pos.y | 0) * tw + (s.pos.x | 0), (s.knowledge && s.knowledge.construction) || 0);
+        if (h > citySeatHold) citySeatHold = h;
+      }
+      if (!(T.REFUGE > 0)) break;   // no hold to compare — first city settles it (pre-lever scan order)
+    }
     let needFrac = ENCLAVE_DOMINANCE;
     if (regionHasCity) {
       // City-state: needs FULL enclosure, UNLESS a much stronger realm deeply
       // engulfs it (then it's peacefully annexed — see CITY_ENCLAVE_* note).
       const domPow = cPow.get(intoId) || 0, selfP = cPow.get(selfCC) ?? Infinity;
-      needFrac = (!_cityEnclaveOff && domPow >= selfP * CITY_ENCLAVE_POWER) ? CITY_ENCLAVE_DOMINANCE : 1.0;
+      needFrac = (!_cityEnclaveOff && domPow >= selfP * CITY_ENCLAVE_POWER * citySeatHold) ? CITY_ENCLAVE_DOMINANCE : 1.0;
     }
     if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
