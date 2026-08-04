@@ -947,7 +947,31 @@ function fieldPolityTerritory(world) {
     if (t <= 0) { tel(world, "growth", "targetZero"); continue; }
     target.set(cid, t);
     const raw = t - (held.get(cid) || 0);
-    const g = Math.min(Math.max(0, raw), rateCap);
+    // ── T.GROW_STATECRAFT: the INTEGRATION RATE is earned by statecraft ──────
+    // The flat per-pass cap (rateCap) lets an org-0.15 chiefdom integrate
+    // wilderness exactly as fast as a rail empire — which is why measured
+    // smallness is a two-pass transient of youth (probe_whysize: realms reach
+    // their basin-scale target in a handful of passes at ANY statecraft).
+    // Integrating land into an administration — surveying it, recording it,
+    // reaching it with law — is itself an act of statecraft: mul =
+    // 1 − w·(1 − org), the same earned-share form as SPAN_TECH but on the
+    // RATE, not the target. A chiefdom's border creeps; a bureaucratic empire's
+    // sweeps; org → 1 recovers today's rate exactly, so the mature world is
+    // untouched. Nomads exempt (a horde RIDES its claim, it doesn't survey it)
+    // — the same carve-out the quota and margin already grant. This lengthens
+    // the archipelago-of-small-states era at any moment of observation, which
+    // is where the map's visible size spectrum lives.
+    let rc = rateCap;
+    const gw = T.GROW_STATECRAFT || 0;
+    if (gw > 0) {
+      const ccG = world.countries && world.countries.get(cid);
+      if (!(ccG && ccG._nomadic)) {
+        const knG = knOf.get(cid);
+        const orgG = Math.min(1, (knG && knG.organization) || 0);
+        rc = Math.max(1, Math.round(rateCap * (1 - gw * (1 - orgG))));
+      }
+    }
+    const g = Math.min(Math.max(0, raw), rc);
     if (g > 0) grow.set(cid, g);
     // WHY this realm did or did not expand this pass — tallied at the decision, so the
     // funnel can never drift from the gate the way an externally-replicated one does.
