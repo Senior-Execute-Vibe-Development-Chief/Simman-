@@ -116,9 +116,51 @@ global war re-balance, the immortal-giants regime returning through a new
 door. The seat hold is high-ground/ridge only; rivers defend the countryside
 tile war as before.
 
-## Results
+## Results — the measured A/B ledger (480/16k, seed 8817 unless noted)
 
-(filled in after the A/B battery — see the session measurements)
+The arms, honestly, including the negatives:
+
+| arm | realms @16k | lnσ | <100k share | shattered | notes |
+|---|---|---|---|---|---|
+| baseline (all off) | 63 | 0.85 | 3% | 10 | the blunt band |
+| PEER only | 60 | 0.94 | 2% | 22 | peers born, then stormed — churn without stock |
+| REFUGE v1 (river at seat) | 65 | 1.01 | 6% | 7 | smalls held, but mortality cratered → NARROWED |
+| PEER+REFUGE (final form) | 58 | 0.84 | 2% | 15 | mortality restored; structure gains only |
+| + SPAN_TECH 0.3/0.5 | 63/70 | 0.85/0.76 | 2%/1% | 16/13 | count up, spread UNMOVED — targets re-converge |
+| + MARGINAL_HOLD | 60 | 0.84 | 2% | 9 | transient gain (16% smalls @8k), then **destroys the top tail** (max/med 13→6) — replicates its 2026-07 warning |
+| + GROW_STATECRAFT 0.85 | **68 (22 vassal)** | 0.92 | 6% | 11 | count best-of-battery, vassal mosaic doubles, no coverage cost |
+| + VASSAL_SHIELD (in all above) | — | — | — | — | vassal stock 13 → 16-22 standing |
+
+Control that corrected an over-claim: seed 4242's LEVER-OFF baseline reads
+lnσ 1.23 (7 smalls) — higher than its lever-on run (1.12, 3) — so the wave-4
+"compounding" reading was seed variance, caught by running the control. What
+survives across seeds is STRUCTURE, not the headline σ: the vassal mosaic
+persists instead of being digested, refuge seats hold (a hold-2.48 mountain
+seat persisting at 10 tiles for 11k steps), turnover +50% with the top-5
+churning, and secessions up (2-8 → 8-25 by 24k).
+
+**Empire mortality at 24k (the immortal-giants instrument): healthy.** 61
+realms at 59.9% claimed (the pre-wave world consolidated to ~19-26 here);
+flows shattered 31 / seceded 25 / annexed 55 (absorption waking exactly as
+org crosses its bar); the top-5 board churns — one long-lived 13M km² leader,
+not the frozen two-giants pathology.
+
+## The finding underneath the battery
+
+Why the σ ceiling: **46 of 58 realms sit exactly AT their target**
+(probe_whysize), so the size distribution IS the target distribution, and
+target ∝ the realm's basin population mass ÷ one world density — the spread
+of basin masses at this planet's geography and grid is lnσ ≈ 0.85-1.2, and
+every political lever that multiplies the quota (span, margin, bind density)
+moves the distribution's MEAN, not its variance. The variance history adds
+comes from aggregation (conquest merging basins — present, the top tail) and
+fragmentation residue (persistent statelets — what this wave's survival
+mechanisms protect). The remaining distance to history's lnσ ≈ 2.0-2.6 lives
+in (a) the settlement-seat supply (REGION_SPACING, the recorded ~55%/tick
+granularity trade) and (b) sub-basin geography, which RESOLVES WITH THE GRID
+— the owner plays tw=960, where relief pockets and small basins exist that
+tw=240 cannot represent. Both are recorded as the next levers, not smuggled
+in as constants.
 
 ## What was measured but NOT changed
 
