@@ -205,9 +205,15 @@ RIGHT:  settle where fertility×water is high  // the Nile densely settles itsel
 ## THE THIRD CARDINAL RULE — measure at the grid that SHIPS
 
 > **Every gate in this repo runs at `W=480` (sim `tw=240`). The app ships `W=1920`
-> with `simDiv 4` — sim `tw=480`. A mechanism validated only at the reference grid
-> is unvalidated. Run `npm run resgate` before pushing anything that touches
-> territory, population, the food economy, or politics.**
+> with `simDiv 2` (Half, sim `tw=960` — owner default 2026-08; it was `simDiv 4`,
+> `tw=480`, until the shape-of-the-map wave measured that the political map's
+> small-state tier only exists at the finer grid). A mechanism validated only at
+> the reference grid is unvalidated. Run `npm run resgate` before pushing anything
+> that touches territory, population, the food economy, or politics — its app arm
+> runs `tw=480` as the standing cross-grid proxy (a full `tw=960` arm is
+> hours-scale; docs/shape-of-the-map-2026-08.md carries this wave's direct
+> `tw=960` measurements), so anything with large territorial blast radius should
+> ALSO be spot-checked at `tw=960` (`tools/probe_shape.mjs [steps] 1920 [seed]`).**
 
 ### Why this is absolute (learned three times in one week)
 

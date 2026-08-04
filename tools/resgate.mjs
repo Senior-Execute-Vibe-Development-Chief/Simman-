@@ -1,7 +1,13 @@
 // THE APP-GRID ARM — a standing gate on the blind spot that cost two sessions.
 //
-// Every battery in this repo runs at W=480 (sim tw=240). The APP ships W=1920 /
-// simDiv 4 (sim tw=480). Three times in one week a change was validated at the
+// Every battery in this repo runs at W=480 (sim tw=240). The APP shipped W=1920 /
+// simDiv 4 (sim tw=480) when this gate was built; since 2026-08 the app default
+// is simDiv 2 (Half, tw=960 — docs/shape-of-the-map-2026-08.md). This arm stays
+// at tw=480: it is the affordable standing PROXY for the cross-grid trend (a
+// tw=960 run is hours-scale), and every failure class it was built on expressed
+// at tw=480 first. Changes with large territorial blast radius should ALSO be
+// spot-checked at tw=960 (tools/probe_shape.mjs [steps] 1920 [seed]).
+// Three times in one week a change was validated at the
 // reference grid and shipped a regression that only existed at the grid players
 // actually use — and each time the difference was not one of DEGREE but of KIND:
 //

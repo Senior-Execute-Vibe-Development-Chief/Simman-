@@ -462,7 +462,7 @@ function stripeCells(ctx,cells,TR,alpha){
 // selecting different settlements.
 const[psCardOpen,setPsCardOpen]=useState({food:true,tech:true,knowledge:false,resources:false,trade:true,chronicle:true});
 const togglePsCard=id=>setPsCardOpen(o=>({...o,[id]:!o[id]}));
-const[useRealWind,setUseRealWind]=useState(false);
+const[useRealWind,setUseRealWind]=useState(true);   // Earth (Sim) default: OBSERVED climate (NCEP wind/rain/temp) — owner decision 2026-08; uncheck to simulate the climate instead. Only consulted on the earth_sim preset (see _realWind), degrades to simulated if the data isn't loaded.
 const useMercator=false;
 const[showGlobe,setShowGlobe]=useState(false);
 const[globeBuf,setGlobeBuf]=useState(null);
@@ -483,7 +483,7 @@ const[mapScale,setMapScale]=useState(1920);
 // sim tile spans (1 = sim matches the land, 2 = half [default], 4 = quarter/faster). Map
 // resolution (mapScale) sets terrain/coast crispness; simDiv sets sim granularity — which
 // is speed AND emergent detail (a finer grid seeds more river cradles → a different world).
-const[simDiv,setSimDiv]=useState(4);   // sim granularity default: Quarter — fast everywhere, phone-friendly
+const[simDiv,setSimDiv]=useState(2);   // sim granularity default: HALF (tw=960) — owner decision 2026-08 (docs/shape-of-the-map-2026-08.md: the small-state tier of the political map exists at this grid and cannot be represented at Quarter; measured 69% of realms under 100k km² early vs 2-8% at the coarse grids). ~4× the sim cost of Quarter — the old phone-friendly default is one click away.
 const genW=mapScale,genH=mapScale>>1;   // REQUESTED scale — the size the NEXT world generates at
 // Render/data dimensions track the ACTUAL loaded world, never the requested mapScale. Worldgen is
 // async, so between the scale change and the new world arriving the two differ; keying the canvas /
@@ -535,7 +535,7 @@ const simWorkerRef=useRef(null);
 const genIdRef=useRef(0);
 // Sim tile resolution (simDiv) read by finalizeWorld — a ref so the async worldgen
 // finalize sees the value chosen at request time even though finalizeWorld is memoised.
-const simTileResRef=useRef(4);
+const simTileResRef=useRef(2);   // mirrors simDiv's new Half default (finalizeWorld reads the ref at request time)
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
@@ -549,7 +549,7 @@ const psHistoryRef=useRef([]);
 const [statsCopied,setStatsCopied]=useState(false);
 const oceanLevelRef=useRef(0.78);const pendingSaveRef=useRef(null);const downloadSaveRef=useRef(null);const saveFileRef=useRef(null);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("earth_sim");const fileRef=useRef(null);const importedWorldRef=useRef(null);
-const useRealWindRef=useRef(false);
+const useRealWindRef=useRef(true);   // mirrors useRealWind's new default (the ref is what worldgen actually reads)
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 const atlasCache=useRef(null);
@@ -4571,7 +4571,7 @@ return(
         {[{d:1,l:"Full"},{d:2,l:"Half"},{d:4,l:"Quarter"}].map(o=>(
           <button key={o.d} onClick={()=>{simTileResRef.current=o.d;setSimDiv(o.d);generate(seed);}}
             className={"au-btn au-flat"+(simDiv===o.d?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
-            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms (default)":"Half the map resolution — slower, more and smaller realms"}>{o.l}</button>
+            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms (the phone-friendly choice)":"Half the map resolution — the full political spectrum, small states included (default)"}>{o.l}</button>
         ))}
       </div>
       <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:6}}>
