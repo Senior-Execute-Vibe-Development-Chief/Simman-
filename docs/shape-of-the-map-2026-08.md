@@ -228,14 +228,27 @@ vassal accumulation and refuge survival COMPOUND over deep time.
 the next wave — neither introduced by this one, both worth their own
 diagnosis):**
 
-1. **The waste-whale.** tw=240/8817 @50k: realm #54 holds 2,919 tiles (~30%
-   of ALL land) with ONE member on fert-0.02 ground, alive 48.5k steps —
-   ~13× any people-funded target. The industrial partition-of-the-wastes
-   appears to run to a degenerate one-owner monopoly at the coarse grid
-   (the tw=480 twin's largest is a 17.5M-km² 29-member empire — ordinary).
-   probe_whysize @50k identifies the binding class (nomad exemption is the
-   suspect: nomads are exempt from the population quota by design, and the
-   momentum/capacity target they DO pay may not bind on empty land).
+1. **The waste-whale — DIAGNOSED (probe_whysize @50k).** At 50k the world is
+   fully partitioned and **every realm on the planet reads HEMMED — zero
+   open frontier anywhere** — so the mature size distribution is set by
+   CONTACT and war, not by targets (which also retro-explains why the
+   target-side levers measured weak: targets only govern the filling era).
+   The whale is NOT an exemption bug: its target is genuinely enormous
+   (held-load 15,028 vs target 79,597) because late-game TERRAIN_FADE lifts
+   waste carrying capacity, field-people migrate into the opened wastes, and
+   whoever already owned them gets the growth — first-mover contiguity on
+   the "who gets Siberia when it becomes claimable" question, the Russia
+   mechanism overgrown ~3× — and it stays ONE-member because settlements
+   crystallize too slowly on marginal land at tw=240 (the seat-supply bound
+   again). The shipped finer grid resolves it naturally: the tw=480 twin's
+   largest is an ordinary 17.5M-km² 29-member empire, the wastes partitioned
+   among several powers. Next-wave candidate if wanted: midline partition of
+   opened wastes among ALL logistics-mature neighbours (the treaty-line
+   mechanism), not first-mover-takes-all. Also confirmed in the same table:
+   the long-lived smalls carry refuge holds 1.5-2.0 (mountain statelets,
+   structurally), and a 1-tile realm with target 1,212 has sat hemmed for
+   49k steps — smallness at maturity is CONTACT-set, exactly as on the real
+   map.
 2. **Personality collapse.** By 50k every realm reads Trading
    Empire/Mercantile with uniformly negative aggression — the temperament
    register flattens as commerce dominates. Pre-existing system, out of this
