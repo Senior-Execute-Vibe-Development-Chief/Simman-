@@ -198,6 +198,49 @@ mechanisms this wave adds. Both halves are now measured.
 - empire mortality at 24k: 61 realms, 59.9% claimed, top-5 churns, flows
   live (shattered 31 / seceded 25 / annexed 55) — not the frozen regime.
 
+## The overnight 50k battery (owner: "are you sure? observe everything")
+
+Four deep runs + one diagnosis run; the 16k horizon every earlier verdict used
+turns out to have been the story's FIRST ACT.
+
+**The spectrum keeps widening for tens of thousands of steps.** The "blunt
+band" is partly a horizon artifact: consolidation, fragmentation residue,
+vassal accumulation and refuge survival COMPOUND over deep time.
+
+| run | grid/seed | lnσ @16k | lnσ @50k | <100k share | vassals | max realm |
+|---|---|---|---|---|---|---|
+| B | tw=240 / 4242 | 0.84-1.12 | **1.76** | 16% | 30 of 44 | 21.8M km² |
+| C | tw=480 / 8817 | ~0.9 | **2.49 — inside the real-map 2.0-2.6 band** | 32% | 27 of 44 | 17.5M km² |
+
+- Tiny statelets at org 0.92-0.98 persist 8k-15k steps into the industrial
+  era (the REFUGE/VASSAL machinery working at full statecraft).
+- A (diag_full, tw=240/8817): 226 born / 178 died over 50k, dead-lifespan
+  median 4,500, hall of fame mixes 48k-step veterans with 15k risers; 99.9%
+  of land claimed at the modern end. Not the frozen regime.
+- D (probe_neighborhood, the microscope): 21 realms chronicled at 250-step
+  cadence in one ~2,000-km window across the whole run. The texture is
+  honest: witnessed deaths (a statelet's full arc to `polity.ended`), a
+  falling realm partitioned three ways by rival great powers, a 2.4M-km²
+  vassal riding a 17.5M-km² hegemon, an over-load realm (load 297 vs cap
+  108) shedding — and NO border flicker/oscillation at fine cadence.
+
+**Two late-game observations flagged (visible only past ~30k, recorded for
+the next wave — neither introduced by this one, both worth their own
+diagnosis):**
+
+1. **The waste-whale.** tw=240/8817 @50k: realm #54 holds 2,919 tiles (~30%
+   of ALL land) with ONE member on fert-0.02 ground, alive 48.5k steps —
+   ~13× any people-funded target. The industrial partition-of-the-wastes
+   appears to run to a degenerate one-owner monopoly at the coarse grid
+   (the tw=480 twin's largest is a 17.5M-km² 29-member empire — ordinary).
+   probe_whysize @50k identifies the binding class (nomad exemption is the
+   suspect: nomads are exempt from the population quota by design, and the
+   momentum/capacity target they DO pay may not bind on empty land).
+2. **Personality collapse.** By 50k every realm reads Trading
+   Empire/Mercantile with uniformly negative aggression — the temperament
+   register flattens as commerce dominates. Pre-existing system, out of this
+   wave's blast radius, recorded.
+
 ## What was measured but NOT changed
 
 - `SPAN_TECH` stays 0 (owner decision 2026-07-30 recorded in
