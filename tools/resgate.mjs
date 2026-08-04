@@ -55,10 +55,21 @@ const SEED = +(process.argv[3] || 8817);
 // was built for — `deffdce` put the app median at 27k km² (the absolute floor fires,
 // 27k < 60k) and `SUCCESSOR_STATES` cut the app median ~1.75x while leaving tw=240
 // untouched, taking the ratio to ~0.33 (below 0.42). Both caught.
+// RE-BASELINED 2026-08 (the shape-of-the-map wave, docs/shape-of-the-map-2026-08.md):
+// the wave IMPROVED the cross-grid ratios, so per the charter above the ratchet
+// tightens toward the new measurement — floors ~25% below the WORSE of the two
+// gate seeds, and never looser than before:
+//
+//              seed 8817     seed 31337     floor (was)
+//   median area   0.67          0.67         0.50 (0.42)
+//   claimed       0.62          0.50         0.44 (=)     (0.50×0.75 < old floor; ratchet never loosens)
+//   pop density   0.62          0.56         0.42 (0.40)
+//   app median    206k km²      164k km²     60k  (=)     (collapse-catch semantics, deliberately deep)
+//   app realms    46            36           6    (=)     (regime floor, not a band)
 const BANDS = {
-  medianAreaRatio: 0.42,   // app median realm area / reference
+  medianAreaRatio: 0.50,   // app median realm area / reference
   claimedRatio:    0.44,   // app claimed% / reference
-  popDensRatio:    0.40,   // app people-per-km² / reference
+  popDensRatio:    0.42,   // app people-per-km² / reference
   appMedianKm2:    60000,  // ABSOLUTE: a one-tile realm at tw=480 is ~4,000 km²
   appRealmsMin:    6,      // the app grid must carry a real map, not two dots
 };
