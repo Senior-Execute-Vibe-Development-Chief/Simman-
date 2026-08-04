@@ -382,12 +382,21 @@ export function ridgeHoldAt(world, ti, cons) {
   return RIDGE_DEF_W * Math.min(1, (rr - RIDGE_DEF_FLOOR) / (RIDGE_DEF_FULL - RIDGE_DEF_FLOOR)) * (1 - 0.5 * cons);
 }
 
-// The full multiplier (river moat × high ground × ridge, capped) for the sites
-// that had NO terrain physics before (storm / absorption / enclave). Callers
-// weight it as 1 + T.REFUGE·(hold−1), so lever 0 is exactly ×1.
+// The SEAT hold (high ground × ridge, capped) for the sites that had NO
+// terrain physics before (the capital storm, peaceful absorption, the
+// city-enclave gate). Deliberately NO river term here: seats are river-sited
+// almost universally (85% of the first settlement cohort is riparian —
+// probe_siting), so a river-moat term at the seat is not a refuge
+// differentiator but a global war re-balance — and history storms river
+// cities routinely (they are the ROADS armies arrive on) while the mountain
+// mosaics persist. Measured before this narrowing: realm-kills fell 4 → 1
+// per 8k with the river term in, war mortality cratering globally — the
+// exact immortal-giants regime this repo already fought once. The river keeps
+// defending exactly where it always did: the countryside tile war (fronts
+// snap to rivers). Callers weight the hold as 1 + T.REFUGE·(hold−1), so
+// lever 0 is exactly ×1.
 export function terrainHoldAt(world, ti, cons) {
   let m = 1;
-  if (world.riverMag && world.riverMag[ti] >= 2) m *= 1 + RIVER_DEF_W * (1 - RIVER_DEF_ENG * cons);
   const e = world.elev[ti];
   if (e > 0.5) { const alp = Math.min(1, (e - 0.5) / 0.3); m *= 1 + (ALPINE_DEF_BASE + ALPINE_DEF_SLOPE * alp) * (1 - ALPINE_DEF_ENG * cons); }
   const rh = ridgeHoldAt(world, ti, cons);

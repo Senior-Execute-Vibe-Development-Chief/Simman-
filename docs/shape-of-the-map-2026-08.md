@@ -94,20 +94,27 @@ deltas, refuge pockets — which is where history put them. 0 = the disc,
 byte-identical (hashbase 442a119f/e1611e5c with both levers 0 = HEAD).
 
 **`T.REFUGE` (def 1) — defensible ground shields statelets.** One shared
-physics — `transport.js terrainHoldAt`: river-moat × high-ground × RIDGE
-(world.relief past the movement cost's own 0.07 floor, full at the measured
-Himalaya-front class 0.25), each term easing with the defender's construction
-(engineering bridges the ford and roads the pass — refuges are strongest when
-statecraft is young and erode as the world matures, never a clock), capped at
-the war pass's own ×6. Three consumers:
+physics — `transport.js terrainHoldAt`: high-ground × RIDGE (world.relief past
+the movement cost's own 0.07 floor, full at the measured Himalaya-front class
+0.25), each term easing with the defender's construction (engineering roads
+the pass — refuges are strongest when statecraft is young and erode as the
+world matures, never a clock), capped at the war pass's own ×6. Three consumers:
 - war tile-defence gains the ridge term (river/alpine terms unchanged —
-  extracted to shared constants, values identical);
+  extracted to shared constants, values identical; the RIVER keeps defending
+  exactly where it always did, the countryside front);
 - the capital storm multiplies the fortress (and siege attrition, and the
   break check) by the seat tile's hold — a defensible seat holds out, and is
   starved or overawed into VASSALAGE instead (channels that already exist and
   are terrain-free);
 - peaceful absorption divides the defection pull by the member's hold, and a
   city-enclave's seat hold raises the power dominance its engulfer needs.
+
+Design correction, measured mid-build: the seat hold's first cut included the
+river-moat term, and realm-kills fell 4 → 1 per 8k — because ~85% of seats are
+river-sited (probe_siting), a seat moat is not a refuge differentiator but a
+global war re-balance, the immortal-giants regime returning through a new
+door. The seat hold is high-ground/ridge only; rivers defend the countryside
+tile war as before.
 
 ## Results
 
