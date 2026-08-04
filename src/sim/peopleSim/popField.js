@@ -114,7 +114,7 @@ const MIG_SHARE_MAX = 0.5;
 //     condition, not a gate (the genesis-seed philosophy).
 const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neolithic ~1 km/year)
 const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
-const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
+export const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
 const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
 // Climate-ZONE scale for the T.DIFF_CLIM toll (reference tiles; ×rNormPop at
 // other grids — a real distance, ~2 × 167 km ≈ 330 km at the reference). A
@@ -213,7 +213,7 @@ const PASTORAL_DENS = 0.10;         // people per openness-1 range tile, as a fr
 // intervals stretch ×G — the _ivl pattern). Resolution-invariant by
 // construction: a finer grid has smaller tiles and proportionally shorter
 // intervals, the same km/year everywhere.
-function devWaveIvl(world) {
+export function devWaveIvl(world) {
   const tileKm = EARTH_KM / world.tw;
   const G = T.SIM_GRANULARITY || 1;
   return Math.max(1, Math.round(tileKm / DEV_WAVE_KMPY / 0.25 * G));
@@ -223,24 +223,45 @@ const devWaveLoss = (world) => DEV_WAVE_LOSS_PLANET / world.tw;
 /** Stamp every settlement's own agriculture onto the land it works. */
 function stampDevSources(world, dev) {
   const owner = world._territoryOwner, byId = world._byId, tw = world.tw;
+  // T.INVENT_STAGGER pre-run only: a hearth whose maturity falls PARTWAY through
+  // prehistory starts radiating at its own pre-run iteration (_devHoldK, set by
+  // ensureDevField from the hearth's wave age), so the Nile-class cores open
+  // with old, wide halos and late hearths with young, small ones. Live play:
+  // _devPreK is undefined and nothing is ever held.
+  const preK = world._devPreK;
+  const held = (s) => preK !== undefined && s._devHoldK !== undefined && preK < s._devHoldK;
   if (owner && byId) {
     for (let i = 0; i < world.N; i++) {
       const sid = owner[i];
       if (sid < 0) continue;
       const s = byId.get(sid);
-      if (!s || s.mode !== "settled") continue;
+      if (!s || s.mode !== "settled" || held(s)) continue;
       const a = (s.knowledge && s.knowledge.agriculture) || 0;
       if (a > dev[i]) dev[i] = a;
     }
   }
   // Home tiles directly, so a settlement with no catchment yet still radiates.
   for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
+    if (s.mode !== "settled" || held(s)) continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (ti < 0 || ti >= world.N) continue;
     const a = (s.knowledge && s.knowledge.agriculture) || 0;
     if (a > dev[ti]) dev[ti] = a;
   }
+}
+
+/** T.IDEA_FIELD: rebuild the SOURCE field from living practice, fresh each
+ *  firing. Off-lever, stampDevSources writes straight into devField and both it
+ *  and the wave are max-only, so the field is a monotone ratchet — it records
+ *  each tile's best-ever technique and can never fall. On-lever the sources are
+ *  their own array, zeroed first, so a settlement that forgets (T.KNOW_DECAY)
+ *  or dies stops holding its land up. See the lever's note in tuning.js. */
+function rebuildDevSources(world) {
+  let src = world._devSrc;
+  if (!src || src.length !== world.N) src = world._devSrc = new Float32Array(world.N);
+  else src.fill(0);
+  stampDevSources(world, src);
+  return src;
 }
 
 /** One wave relaxation: each land tile rises toward its best neighbour − loss.
@@ -275,6 +296,13 @@ function relaxDevWave(world, dev, land) {
   if (!nxt || nxt.length !== world.N) nxt = world._devNext = new Float32Array(world.N);
   nxt.set(dev);
   const loss = devWaveLoss(world);
+  // T.IDEA_FIELD: with a live source field the tile is SET to max(source, wave)
+  // rather than ratcheted up toward it — the same relaxation, run as a genuine
+  // fixed-point iteration so it converges DOWNWARD too when a source recedes.
+  // Note `best` is a MAX over neighbours, so a 0-valued ocean neighbour never
+  // drags a coastal tile down; an isolated tile with no land neighbour falls
+  // back to its own source, which is the correct answer for it.
+  const src = T.IDEA_FIELD ? (world._devSrc && world._devSrc.length === world.N ? world._devSrc : rebuildDevSources(world)) : null;
   const ck = T.DIFF_CLIM || 0;
   let te = null, mo = null;
   if (ck > 0 && world.temp && world.moist) { const dc = _ensureDevClim(world); te = dc.t; mo = dc.m; }
@@ -299,7 +327,8 @@ function relaxDevWave(world, dev, land) {
       if (y < th - 1 && dev[i + tw] > best) best = dev[i + tw];
     }
     const v = best - loss;
-    if (v > nxt[i]) nxt[i] = v;
+    if (src) { const s0 = src[i]; nxt[i] = v > s0 ? v : s0; }
+    else if (v > nxt[i]) nxt[i] = v;
   }
   world._devNext = dev;
   world.devField = nxt;
@@ -376,10 +405,49 @@ function ensureDevField(world, land) {
   if (world.devField && world.devField.length === world.N) return world.devField;
   let dev = world.devField = new Float32Array(world.N);
   world._devNext = new Float32Array(world.N);
-  stampDevSources(world, dev);
+  // T.IDEA_FIELD: the genesis pre-run relaxes against the SAME live-source law
+  // as every later firing, so the eve-of-states initial condition is the one
+  // the running world would have produced — not a ratcheted field the law can
+  // then only erode. `dev` is SEEDED from the sources (not left at zero) so both
+  // arms enter the loop from the same field and spend all `iters` passes
+  // PROPAGATING: seeded at zero the first pass is consumed re-deriving the
+  // sources, which would hand the lever a genesis field one wave-step less
+  // spread than the control and confound the whole arm with an initial
+  // condition.
   const tileKm = EARTH_KM / world.tw;
   const iters = Math.max(0, Math.round(DEV_INIT_YEARS * DEV_WAVE_KMPY / tileKm));
-  for (let k = 0; k < iters; k++) dev = relaxDevWave(world, dev, land);
+  // T.INVENT_STAGGER: hearths matured at different points in prehistory
+  // (s._hearthAgeY = years of wave spread owed by map open, set at seeding).
+  // Map each to the pre-run iteration its wave STARTS at, then run the same
+  // loop with the stamp's hold filter active — a re-stamp fires at each
+  // unlock so a newly-matured hearth starts radiating exactly then. Live play
+  // never sees any of this (world._devPreK is deleted below).
+  let unlocks = null;
+  if (T.INVENT_STAGGER) {
+    const yearsPerIter = tileKm / DEV_WAVE_KMPY;
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s._hearthAgeY === undefined) continue;
+      const k = Math.max(0, Math.min(iters, iters - Math.round(s._hearthAgeY / Math.max(1e-9, yearsPerIter))));
+      if (k > 0) { s._devHoldK = k; (unlocks || (unlocks = new Set())).add(k); }
+    }
+    if (unlocks) world._devPreK = 0;
+  }
+  if (T.IDEA_FIELD) dev.set(rebuildDevSources(world)); else stampDevSources(world, dev);
+  for (let k = 0; k < iters; k++) {
+    if (unlocks) {
+      world._devPreK = k;
+      // A hearth unlocking at k starts contributing THIS pass: re-derive the
+      // sources so its package enters the wave from its own maturity onward.
+      // (IDEA_FIELD arm: refresh _devSrc ONLY — the relax reads it every pass;
+      // dev.set(src) here would erase the spread already accumulated.)
+      if (unlocks.has(k)) { if (T.IDEA_FIELD) rebuildDevSources(world); else stampDevSources(world, dev); }
+    }
+    dev = relaxDevWave(world, dev, land);
+  }
+  if (unlocks) {
+    delete world._devPreK;
+    for (const s of world.settlements) if (s._devHoldK !== undefined) delete s._devHoldK;
+  }
   return dev;
 }
 
@@ -455,7 +523,7 @@ export function stepPopField(world, sub = 1) {
     const ivl = devWaveIvl(world);
     if (world.step - (world._devWaveAt ?? -Infinity) >= ivl) {
       world._devWaveAt = world.step;
-      stampDevSources(world, devF);
+      if (T.IDEA_FIELD) rebuildDevSources(world); else stampDevSources(world, devF);
       devF = relaxDevWave(world, devF, land);
     }
     // Static rangeland capacity (openness is pure terrain — built once). Per REAL

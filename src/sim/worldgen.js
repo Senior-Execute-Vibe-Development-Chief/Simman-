@@ -88,6 +88,12 @@ const dryFrac=new Float32Array(W*H);
 // from dryFrac (which only measures how LONG the drought is). It falls straight out of the
 // two solstice solves the monsoon already needs. Zero for presets with no seasonal solve.
 const summerDry=new Float32Array(W*H);
+// Growing-season fields (docs/design-growing-season.md): tAmp = seasonal temperature
+// amplitude (half the warm-cool swing, in sim t-units); warmRainFrac = share of the
+// year's rain in its warm half. Populated from real monthly data on the Earth-Sim
+// path, and from a latitude/season fallback otherwise (the loop before the return).
+const tAmp=new Float32Array(W*H),warmRainFrac=new Float32Array(W*H);
+let realClimateUsed=false;
 let tecPlates=null,tecWindX=null,tecWindY=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
@@ -644,7 +650,8 @@ moisture[i]=mo;}
 // Everything after this line — rivers, fertility, settlement, the whole of history —
 // still emerges; it just emerges on a given climate instead of a predicted one.
 if(realWind&&realWindFns&&realWindFns.fillRealClimate&&realWindFns.isRealClimateAvailable&&realWindFns.isRealClimateAvailable()){
-realWindFns.fillRealClimate(W,H,elevation,moisture,temperature,dryFrac,summerDry);
+realWindFns.fillRealClimate(W,H,elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac);
+realClimateUsed=true;
 console.log("Earth (Sim): using real NCEP/NCAR precipitation + air temperature");}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
@@ -820,4 +827,15 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,dryFrac,summerDry,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
+// ── Growing-season fallback for every non-real-climate map ───────────────────
+// The Earth-Sim path fills tAmp/warmRainFrac from measured monthly data; every
+// other preset gets a PHYSICAL default, not measured but mechanism-true: the
+// annual temperature SWING grows with latitude (small at the equator, large
+// toward the poles — the dominant driver), and the warm-half rain share follows
+// the seasonal-moisture PHASE the solstice solves already produced (summerDry:
+// +1 = summer-dry Mediterranean → little warm-half rain; −1 = summer-wet monsoon
+// → most of it). Continentality is a documented refinement, not in this first arm.
+if(!realClimateUsed){for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;const lat=Math.abs((y+0.5)/H-0.5)*2;
+tAmp[i]=0.02+0.20*Math.pow(lat,1.2);
+warmRainFrac[i]=Math.max(0,Math.min(1,0.5*(1-summerDry[i])));}}
+return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}

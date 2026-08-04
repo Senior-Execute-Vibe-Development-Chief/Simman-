@@ -6,6 +6,9 @@
 import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
 import { T, rNormPop } from "./tuning.js";
+import { DEV_INIT_YEARS } from "./popField.js";
+import { bestPackageAt } from "./agriculture.js";
+import { CROP_BY_ID } from "../cropPackages.js";
 import { computeRelief } from "../worldgenUtils.js";
 
 const TILE_RES = 2;
@@ -105,6 +108,13 @@ export function createWorld(w, opts = {}) {
 
 function initTerrain(world, w, tCrop, tFloodSrc) {
   const { tw, th, tileRes, elev, temp, moist, fert, coast } = world;
+  // T.GROW_SEASON: carry the growing-season fields onto the sim world so the crop
+  // bell can read each package on the season it grows in. Gated so off-lever the
+  // world has no new state (byte-identical, and coverage stays honest). Point-
+  // sampled like temp/moist above, from the same worldgen pixel.
+  const gsOn = T.GROW_SEASON && w.tAmp && w.warmRainFrac;
+  const tAmpF = gsOn ? (world._tAmp = new Float32Array(world.N)) : null;
+  const wRainF = gsOn ? (world._warmRainFrac = new Float32Array(world.N)) : null;
   // Pixel-grid relief, max-pooled to sim tiles below (like fert): a one-pixel
   // ridge LINE is exactly the feature mean-sampling erases — the reason the Alps
   // never walled anything (see transport.js ridge term). Recomputed here, never
@@ -126,6 +136,7 @@ function initTerrain(world, w, tCrop, tFloodSrc) {
       const e = w.elevation[wi], t = w.temperature[wi], m = w.moisture[wi];
       elev[ti] = e; temp[ti] = t; moist[ti] = m;
       coast[ti] = w.coastal ? (w.coastal[wi] ? 1 : 0) : 0;
+      if (tAmpF) { tAmpF[ti] = w.tAmp[wi]; wRainF[ti] = w.warmRainFrac[wi]; }
       // FERTILITY: max-pool over the TILE_RES×TILE_RES worldgen block, not a point
       // sample. Point-sampling every TILE_RES-th pixel DROPS thin fertile features —
       // a one-to-few-tile river floodplain (the Nile / Indus valley) falls between
@@ -340,15 +351,23 @@ function initRiverMag(world, w) {
 // MUST NEVER BE MOVED TOWARD ONE: the only admissible argument for changing it is
 // an argument about how many times humans invented farming.
 const MAX_CRADLES = 10;
-const CRADLE_MIN_SEP = 60;   // minimum separation between cradles, in REFERENCE tiles
-                              // (~8 000 km at the 240-tile reference) — large enough that a
-                              // single continent gets at most 1-2 cradles, but Earth's separated
-                              // landmasses each get one if they have a viable site.
+const CRADLE_MIN_SEP = 24;   // minimum separation between cradles, in REFERENCE tiles.
+                              // EVIDENCE CORRECTION (2026-08-03, the only admissible kind for
+                              // this constant): 24 ref tiles ≈ 4 000 km, the real minimum
+                              // distance between INDEPENDENT agricultural origins — Fertile
+                              // Crescent↔Sahel ~4 000 km, Crescent↔China ~6 500, Mesoamerica↔
+                              // eastern N America ~2 500 (the closest defensible pair). The old
+                              // value 60 (~10 000 km) enforced "a single continent gets at most
+                              // 1-2 cradles" — but real Afro-Eurasia had four or five, and the
+                              // measured failure mode was one high-circumscription winner (the
+                              // Tarim) excluding Mesopotamia, the Indus AND the Nile in a single
+                              // disc (docs/design-idea-field.md). MAX_CRADLES, not this radius,
+                              // is the statement about how many origins a planet gets.
                               // UNIT: read x rNormPop (a REAL distance) under T.MULTI_HEARTH,
-                              // raw tiles otherwise. Measured defect the correction repairs:
+                              // raw tiles otherwise. Measured defect that correction repairs:
                               // with the scorer running, raw tiles give 2 hearths at 240 and 6
                               // at 480 — the number of agricultural origins on a planet would
-                              // ride on the render grid. Value and meaning untouched.
+                              // ride on the render grid.
 // Circumscription (Carneiro): the first states arose in fertile pockets hemmed in
 // by INHOSPITABLE LAND — the Nile walled by the Sahara, the Indus by the Thar,
 // Mesopotamia by desert and mountains. The barrier that matters is dry/mountain
@@ -432,7 +451,7 @@ const HEARTH_MIN_SEP_FRAC = 0.02;
 // Returns the list of tiles actually seated, {tx,ty,ti} — empty if none took.
 // (It used to return a boolean, because its only caller returned on truthy. The
 // list is what T.MULTI_HEARTH pre-loads into the algorithmic greedy.)
-function seedEarthHearths(world) {
+function seedEarthHearths(world, seatNow = true) {
   const { tw, th, elev, temp, moist, fert, riverMag } = world;
   const picked = [];   // hearth tiles already seated this pass
   const minSep = Math.max(3, Math.round(tw * HEARTH_MIN_SEP_FRAC));
@@ -469,6 +488,13 @@ function seedEarthHearths(world) {
     }
     const bx = bestTi % tw, by = (bestTi / tw) | 0;
     picked.push({ tx: bx, ty: by, ti: bestTi });
+    // T.INVENT_STAGGER (seatNow=false): the pin is PICKED (it holds its
+    // separation disc) but not yet seated — seatOrArmHearths decides WHEN it
+    // matures on the same ruler as every scorer pick.
+    if (!seatNow) {
+      console.log(`[peopleSim] hearth pin ${site.name} picked at tile (${bx},${by}) — maturity deferred to the stagger law`);
+      continue;
+    }
     const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor: an entity is a town, its valley countryside is the popField)
     const name = born.name;
     const rm = riverMag ? riverMag[bestTi] : 0;
@@ -476,6 +502,108 @@ function seedEarthHearths(world) {
       `temp:${temp[bestTi].toFixed(2)} moist:${moist[bestTi].toFixed(2)} fert:${fert[bestTi].toFixed(2)}${rm >= 2 ? ` river(mag${rm})` : ""}`);
   }
   return picked;
+}
+
+/** The cradle score at one tile — the wild-package richness the greedy ranks
+ *  by (fertility × river × circumscription × climate). Extracted so scenario
+ *  PINS can be scored on the same ruler as scorer picks (T.INVENT_STAGGER
+ *  needs every hearth's score for its maturity time) and so probes can read
+ *  the ranking the seeding actually used. Pure worldgen read; no filters —
+ *  callers that need the viability windows apply them separately. */
+export function cradleScoreAt(world, ti) {
+  const { elev, temp, fert, riverMag } = world;
+  const t = temp[ti], f = fert[ti] || 0;
+  const rm = riverMag ? riverMag[ti] : 0;
+  const riverBonus = rm >= 3 ? 2.6 : rm >= 2 ? 1.6 : rm >= 1 ? 0.6 : 0;
+  const tempFit = 1 - Math.abs(t - 0.76) * 1.3;
+  const elevFit = 1 - elev[ti] * 2;
+  const { landBarrier, seaFrac } = cradleSurround(world, ti);
+  const base = f * 2 + riverBonus + landBarrier * 2.5 + tempFit + elevFit
+             - Math.max(0, seaFrac - 0.30) * 5;
+  // ── T.CRADLE_PACKAGE: THE WILD PACKAGE — was there anything worth domesticating? ──
+  // The score above ranks LAND (fertile, watered, warm, hemmed in) and is blind to
+  // the variable that actually decided which hearths ladders: what grew there wild.
+  // The Fertile Crescent won because it held wheat, barley, goats and sheep; the
+  // Tarim basin is the *ultimate* circumscribed fertile pocket and held none of it —
+  // which is precisely the site this scorer crowned above the Nile (the measured
+  // failure, docs/design-idea-field.md). New Guinea farmed intensively for nine
+  // thousand years and never built a city, because taro does not store.
+  // The sim ALREADY MODELS THIS, shipped and on by default (T.CRADLE_PACKAGE's
+  // sibling T.CROP_AXIS): five packages with climate envelopes and a STORABILITY
+  // trait — wheat/rice 1.00, maize 0.95, sorghum 0.90, tubers 0.35. What was
+  // missing is only that CRADLE PLACEMENT never read it. So the score is scaled by
+  // the best STORABLE staple available at the tile:
+  //
+  //     pkgQ = suit(best package here) × its storability        ∈ 0..1
+  //
+  // A great wheat valley keeps ~its full score; a lush tuber jungle is cut to a
+  // third and stops out-ranking cereal land; ground where nothing grows scores
+  // zero and cannot be a hearth at all. This is the same quantity the farming
+  // CEILING already uses (agriculture.js cropCeil = suit × storability), so
+  // placement and ceiling finally agree about what makes land a cradle — one
+  // definition, two uses, no new constant. The downstream effects (the package
+  // then diffuses only where climate suits it, caps the wet tropics, and gates
+  // each hearth's ladder) are all shipped machinery this simply feeds correctly.
+  if (T.CRADLE_PACKAGE) {
+    const best = bestPackageAt(world, ti);
+    if (!best) return 0;
+    const pkg = CROP_BY_ID[best.id];
+    return base * Math.max(0, Math.min(1, best.suit * (pkg ? pkg.storability : 1)));
+  }
+  return base;
+}
+
+// ── T.INVENT_STAGGER: agriculture is invented WHEN a hearth matures, not at t=0 ──
+// The owner's observation (2026-08-03): "it seems unlikely that 6 places
+// independently invent farming at the same time." Correct — real origins span
+// ~6 500 years (Fertile Crescent ~9500 BC … Sahel ~3000 BC), and seeding every
+// hearth at step 0 makes them all equally old. Under the lever each picked
+// hearth gets a MATURITY TIME from its own conditions:
+//
+//     T_i = INVENT_EPOCH_Y / score_i
+//
+// — the richer the wild package (the same fertility × river × circumscription
+// score the greedy already ranks by), the sooner domestication completes. A
+// hearth maturing INSIDE prehistory (T_i ≤ DEV_INIT_YEARS) opens the map as a
+// farming core whose technique wave has spread for its own (DEV_INIT_YEARS −
+// T_i) years — the Nile-class sites open ancient, marginal ones open young.
+// A hearth maturing BEYOND prehistory opens ARMED: it accrues maturity only
+// while its basin actually carries people (maybeCrystallize's arming pass —
+// effYears += dt × basinMass/basinCapacity), and IGNITES mid-game when its
+// remaining years are served. Emergent, not scheduled: an empty basin never
+// matures, a colonised basin stands down (the package arrived by sea first),
+// and the ORDER of invention is set by the land, not the calendar. The
+// pre-run staggering is an INITIAL CONDITION (the same epistemic status as
+// DEV_INIT_YEARS and CRADLE_EVE themselves — how old the world is when the
+// map opens), never a live gate.
+//
+// INVENT_EPOCH_Y: the one constant, with an archaeological anchor — first
+// domestication ran ~6 500 years ahead of the eve of states (9500 BC vs
+// ~3000 BC). Divided by a score of ~7 (a great river cradle) it matures in
+// under a millennium of prehistory; a score-2 site takes ~3 300 years; below
+// ~1.1 it does not finish in prehistory at all and opens armed. The ORDER and
+// the relative stagger are invariant to the value; only the absolute epoch
+// scales. Rule-2 audit: the anchor is a real-history duration, not a count of
+// hearths to hit — MAX_CRADLES stays the only supply constant, untouched.
+const INVENT_EPOCH_Y = 6500;
+function seatOrArmHearths(world, picked) {
+  const armed = [];
+  for (const p of picked) {
+    const sc = Math.max(0.5, p.score !== undefined ? p.score : cradleScoreAt(world, p.ti));
+    // (floor 0.5: a scenario PIN on a tile failing the scorer's viability
+    // windows can score ≤ 0; it matures very slowly rather than dividing by
+    // zero — and being a pin, it stays a candidate instead of being dropped.)
+    const Ty = INVENT_EPOCH_Y / sc;
+    if (Ty <= DEV_INIT_YEARS) {
+      const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });
+      born._hearthAgeY = DEV_INIT_YEARS - Ty;   // years the technique wave has spread by map open (read by ensureDevField)
+      console.log(`[peopleSim] hearth ${born.name} at (${p.tx},${p.ty}) score ${sc.toFixed(2)} — matured ${Math.round(Ty)}y into prehistory (wave age ${Math.round(born._hearthAgeY)}y)`);
+    } else {
+      armed.push({ ti: p.ti, tx: p.tx, ty: p.ty, score: sc, needY: Ty - DEV_INIT_YEARS, effY: 0 });
+      console.log(`[peopleSim] hearth candidate at (${p.tx},${p.ty}) score ${sc.toFixed(2)} — ARMED: ~${Math.round(Ty - DEV_INIT_YEARS)}y of peopled-basin time from maturity`);
+    }
+  }
+  if (armed.length) world._armedHearths = armed;
 }
 
 function seedCradleVillage(world) {
@@ -493,9 +621,14 @@ function seedCradleVillage(world) {
   //     input stops being a cap on the mechanism.
   // (T.EARTH_HEARTHS off = purely algorithmic, either way.)
   if (T.EARTH_HEARTHS && (world.preset === "earth_sim" || world.preset === "earth")) {
-    const pins = seedEarthHearths(world);
+    const pins = seedEarthHearths(world, !T.INVENT_STAGGER);
     if (pins.length) {
-      if (!T.MULTI_HEARTH) return;
+      if (!T.MULTI_HEARTH) {
+        // Pins-only mode: under the stagger law the pins still seat or arm by
+        // their own maturity; otherwise seedEarthHearths seated them already.
+        if (T.INVENT_STAGGER) seatOrArmHearths(world, pins);
+        return;
+      }
       for (const p of pins) picked.push(p);
     } else {
       console.warn("[peopleSim] earth hearths found no site — falling back to algorithmic cradles");
@@ -517,16 +650,11 @@ function seedCradleVillage(world) {
     // major river are rejected for low moisture.
     if (!onRiver && (m < 0.30 || m > 0.78)) continue;
     if (f < 0.40) continue;                        // fertile (river alluvium counts via tCrop)
-    // Major rivers are THE cradle feature — weight them heavily.
-    const riverBonus = rm >= 3 ? 2.6 : rm >= 2 ? 1.6 : rm >= 1 ? 0.6 : 0;
-    const tempFit = 1 - Math.abs(t - 0.76) * 1.3;
-    const elevFit = 1 - elev[ti] * 2;
-    const { landBarrier, seaFrac } = cradleSurround(world, ti);
     // Reward a fertile pocket walled by inhospitable LAND (the real river-valley
     // cradles — Nile/Sahara, Indus/Thar); PENALISE being mostly ringed by ocean
     // (islands / coastal outcroppings, where the first states did NOT arise).
-    const score = f * 2 + riverBonus + landBarrier * 2.5 + tempFit + elevFit
-                - Math.max(0, seaFrac - 0.30) * 5;
+    // (Formula lives in cradleScoreAt so pins and probes read the same ruler.)
+    const score = cradleScoreAt(world, ti);
     candidates.push({ ti, score });
   }
   if (candidates.length === 0) {
@@ -560,6 +688,12 @@ function seedCradleVillage(world) {
       if (ddx * ddx + ddy * ddy < minSepSq) { tooClose = true; break; }
     }
     if (!tooClose) picked.push({ tx, ty, ti: c.ti, score: c.score });
+  }
+  if (T.INVENT_STAGGER) {
+    // Under the stagger law NOTHING was seated yet (pins deferred too): every
+    // picked hearth seats or arms by its own maturity, on one ruler.
+    seatOrArmHearths(world, picked);
+    return;
   }
   for (let i = nPinned; i < picked.length; i++) {   // pins were seated by seedEarthHearths already
     const p = picked[i];

@@ -124,14 +124,21 @@ function deriveGrids() {
   if (derived) return derived;
   const LAT = precip.lat, LON = precip.lon, NLAT = LAT.length, NLON = LON.length;
   const P = new Float32Array(NLAT * NLON), T = new Float32Array(NLAT * NLON),
-        D = new Float32Array(NLAT * NLON), S = new Float32Array(NLAT * NLON);
+        D = new Float32Array(NLAT * NLON), S = new Float32Array(NLAT * NLON),
+        // A = seasonal temperature AMPLITUDE (half the warm-cool swing, degC) and
+        // WF = fraction of the year's rain falling in its WARM half — the two
+        // quantities the growing-season crop model needs (docs/design-growing-season.md),
+        // computed for free in this loop that already reads all twelve months.
+        A = new Float32Array(NLAT * NLON), WF = new Float32Array(NLAT * NLON);
   for (let j = 0; j < NLAT; j++) {
     const north = LAT[j] >= 0;
     for (let i = 0; i < NLON; i++) {
       let map = 0, mat = 0, dryMonths = 0;
+      const tMon = new Float32Array(12), pMon = new Float32Array(12);
       for (let m = 0; m < 12; m++) {
         const pm = precip.months[m][j][i] * 30.4;   // mm/day → mm/month
         const tm = airtemp.months[m][j][i];         // degC
+        tMon[m] = tm; pMon[m] = pm;
         map += pm; mat += tm;
         // Gaussen's aridity criterion: a month is arid when its rainfall in mm falls
         // below twice its mean temperature in degC. Published, physical, parameter-free
@@ -150,9 +157,17 @@ function deriveGrids() {
       T[j * NLON + i] = mat / 12;     // degC
       D[j * NLON + i] = dryMonths / 12;
       S[j * NLON + i] = (wP - sP) / Math.max(1e-6, wP + sP);
+      // Warm half = the six warmest months; cool half = the six coolest. The
+      // amplitude is half the difference of the two halves' mean temperature;
+      // the warm-rain fraction is the six warm months' share of annual rain.
+      const ord = Array.from({ length: 12 }, (_, k) => k).sort((x, y) => tMon[y] - tMon[x]);
+      let warmT = 0, coolT = 0, warmP = 0, allP = 0;
+      for (let k = 0; k < 12; k++) { allP += pMon[k]; if (k < 6) { warmT += tMon[ord[k]]; warmP += pMon[ord[k]]; } else coolT += tMon[ord[k]]; }
+      A[j * NLON + i] = Math.max(0, (warmT - coolT) / 12);           // degC (each sum is over 6, so /6 each → /12 for the half-difference)
+      WF[j * NLON + i] = allP > 1e-6 ? Math.max(0, Math.min(1, warmP / allP)) : 0.5;
     }
   }
-  derived = { P, T, D, S, LAT, LON, NLAT, NLON };
+  derived = { P, T, D, S, A, WF, LAT, LON, NLAT, NLON };
   return derived;
 }
 
@@ -169,9 +184,9 @@ function deriveGrids() {
  * @param {Float32Array} [summerDry] out, phase of the drought (>0 = summer-dry)
  * @returns {boolean} false if the data is not loaded
  */
-export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry) {
+export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac, summerDry, tAmp, warmRainFrac) {
   if (!isRealClimateAvailable()) return false;
-  const { P, T, D, S, LAT, NLAT, NLON } = deriveGrids();
+  const { P, T, D, S, A, WF, LAT, NLAT, NLON } = deriveGrids();
 
   // Latitude index + fraction per map ROW (the Gaussian grid is not evenly spaced, so
   // this is a scan rather than arithmetic — but it is H scans, not W*H).
@@ -244,6 +259,11 @@ export function fillRealClimate(W, H, elevation, moisture, temperature, dryFrac,
       temperature[i] = Math.max(0, Math.min(1, 0.6 + degC / 100));
       if (dryFrac) dryFrac[i] = Math.max(0, Math.min(1, samp(D, y, x)));
       if (summerDry) summerDry[i] = Math.max(-1, Math.min(1, samp(S, y, x)));
+      // Growing-season fields: amplitude in SIM temperature units (degC/100, the
+      // sim's t = 0.6 + degC/100 scale), warm-rain fraction 0..1. Elevation does
+      // not materially change the seasonal SWING, so no lapse term here.
+      if (tAmp) tAmp[i] = Math.max(0, samp(A, y, x) / 100);
+      if (warmRainFrac) warmRainFrac[i] = Math.max(0, Math.min(1, samp(WF, y, x)));
       if (e > 0) {
         const mm = Math.max(0, samp(P, y, x));
         obsP[i] = mm; nLand++;

@@ -1,3 +1,5 @@
+import { T } from "./peopleSim/tuning.js";
+
 // ── Crop packages (SPIKE) ─────────────────────────────────────────────
 // A concrete, per-crop layer under the single abstract `cropSuitability`
 // scalar in cropGen.js. Each package is a CLIMATE ENVELOPE — a Gaussian bell
@@ -29,7 +31,21 @@ export const CROP_PACKAGES = [
   // id        name              tOpt  tTol   mOpt  mTol  store yield  color (RGB)
   { id: "wheat",   name: "Wheat & Barley", tOpt: 0.73, tTol: 0.075, mOpt: 0.36, mTol: 0.16, storability: 1.00, yield: 1.00, color: [222, 184, 70] },
   { id: "rice",    name: "Rice",           tOpt: 0.86, tTol: 0.065, mOpt: 0.72, mTol: 0.17, storability: 1.00, yield: 1.15, color: [70, 160, 95] },
-  { id: "maize",   name: "Maize",          tOpt: 0.82, tTol: 0.100, mOpt: 0.50, mTol: 0.18, storability: 0.95, yield: 1.05, color: [225, 140, 55] },
+  // tTolEarly (T.CROP_PHOTOPERIOD): PREHISTORIC maize was PHOTOPERIOD-SENSITIVE —
+  // it flowered on day-length cues, so every shift in latitude demanded
+  // re-adaptation. That is the documented reason maize crawled north from Mexico
+  // for millennia and did not reach productive cultivation in eastern North
+  // America until ~900 AD, while wheat and barley crossed ~9,000 km of Eurasia
+  // along one latitude band far faster. tTol 0.100 (WIDER than wheat's 0.075)
+  // describes MODERN maize — 500 years of breeding, deliberately
+  // photoperiod-insensitive varieties — which is an anachronism in a prehistory
+  // model, and it is the parameter that made maize win the extreme
+  // high-suitability TAIL and take 7 of 10 hearths including the Nile
+  // (measured, docs/design-idea-field.md). The corrected value is narrower than
+  // wheat because early maize was genuinely harder to move across latitude than
+  // wheat was; the DIRECTION is the evidence-backed claim, the exact figure is
+  // not derivable to three digits and is not asserted to be.
+  { id: "maize",   name: "Maize",          tOpt: 0.82, tTol: 0.100, tTolEarly: 0.055, mOpt: 0.50, mTol: 0.18, storability: 0.95, yield: 1.05, color: [225, 140, 55] },
   { id: "sorghum", name: "Sorghum & Millet", tOpt: 0.87, tTol: 0.100, mOpt: 0.30, mTol: 0.17, storability: 0.90, yield: 0.85, color: [196, 170, 110] },
   { id: "tubers",  name: "Roots & Tubers", tOpt: 0.85, tTol: 0.100, mOpt: 0.78, mTol: 0.20, storability: 0.35, yield: 1.00, color: [150, 95, 175] },
 ];
@@ -41,7 +57,13 @@ for (const c of CROP_PACKAGES) CROP_BY_ID[c.id] = c;
 // 0..1, 1 at the crop's optimum. NO environment gates here (elevation / aridity /
 // alluvium live in cropGen.js so the package path reuses the already-tuned gates).
 export function pkgClimateBell(pkg, t, m) {
-  const dt = (t - pkg.tOpt) / pkg.tTol;
+  // T.CROP_PHOTOPERIOD: use a package's PREHISTORIC temperature tolerance where
+  // one is declared (tTolEarly — currently maize alone; see its note above).
+  // Temperature band is this model's only proxy for latitude, so a crop that
+  // could not cross latitudes without re-adaptation is expressed as a narrower
+  // temperature bell.
+  const tTol = (T.CROP_PHOTOPERIOD && pkg.tTolEarly) ? pkg.tTolEarly : pkg.tTol;
+  const dt = (t - pkg.tOpt) / tTol;
   const dm = (m - pkg.mOpt) / pkg.mTol;
   return Math.exp(-0.5 * dt * dt) * Math.exp(-0.5 * dm * dm);
 }

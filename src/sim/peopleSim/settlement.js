@@ -3370,8 +3370,38 @@ function updateTier(world, s) {
       // scale. Central-place rank structure is scale-free by construction, so the
       // pure percentile is the mechanism-honest bar and it self-calibrates at any
       // label supply (verify, don't re-anchor). Off the lever the floors stand.
-      world._townBar = T.MULTI_HEARTH ? pAt(0.50) : Math.max(TIER_TOWN_FLOOR, pAt(0.50));
-      world._cityBar = T.MULTI_HEARTH ? pAt(0.85) : Math.max(TIER_CITY_FLOOR, pAt(0.85));
+      // MEASURED SINCE (docs/tier-bar-derivation.md): the percentile is scale-free
+      // but a fixed RANK QUOTA — 15% "cities" in any distribution — and the
+      // T.TIER_BRANCH branch below supersedes this guard when set: same survival
+      // under deflation, city share a measurement of the tail instead of a quota.
+      // THE DERIVED CITY BAR (T.TIER_BRANCH > 0, docs/tier-bar-derivation.md —
+      // the open item both the hearth field and the idea field are blocked on).
+      // The comment above states the mechanism — "each city serves ~3-5 towns
+      // (the Christaller branching band)" — and then implements it as a rank
+      // QUOTA (P85), which fixes the COUNT ratio where Christaller's statement
+      // is about the LOAD ratio. A city is a central place carrying the
+      // higher-order demand of K towns' catchments, so its catchment census is
+      // K × the TYPICAL town's:   cityBar = K × median.   This is neither an
+      // absolute census floor (it moves with the world's own scale, so label-
+      // supply deflation moves the bar and the labels together) nor a fixed
+      // rank quota (the share above K×median is a property of the size
+      // distribution's TAIL: a Zipf world yields a few percent of cities, a
+      // flat lattice of equal villages yields ZERO — where P85 mints 15%
+      // "cities" in ANY distribution, including uniform). K is the lever value
+      // itself — a structural constant of market geometry (3-5), not a count
+      // dialed to an outcome — and the metro bar below is already this species
+      // (a fraction of the age's largest). The town bar under DISSOLVE_FARMS
+      // gates no promotion (every settlement IS a town; founding is priced by
+      // the act bars in field people), so _townBar becomes the pure median —
+      // "the typical town", a measurement probes/UI read, not a gate.
+      if (T.TIER_BRANCH > 0) {
+        const med = pAt(0.50);
+        world._townBar = med;
+        world._cityBar = T.TIER_BRANCH * med;
+      } else {
+        world._townBar = T.MULTI_HEARTH ? pAt(0.50) : Math.max(TIER_TOWN_FLOOR, pAt(0.50));
+        world._cityBar = T.MULTI_HEARTH ? pAt(0.85) : Math.max(TIER_CITY_FLOOR, pAt(0.85));
+      }
     }
     topU = world._topUrban = top;
     world._tierScaleStep = world.step;

@@ -19,7 +19,7 @@
 
 import { isContinentalLand } from "./state.js";
 import { tel, telPass } from "./telemetry.js";
-import { fieldShift } from "./popField.js";
+import { fieldShift, devWaveIvl } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable } from "./entities.js";
@@ -913,6 +913,60 @@ export function maybeCrystallize(world) {
     world._transportStep = world.step;
   }
 
+  // ── T.INVENT_STAGGER: armed hearths mature on PEOPLED-BASIN TIME ──────────
+  // A candidate whose maturity ran past prehistory (state.js seatOrArmHearths)
+  // ignites HERE, mid-game, when its remaining years are served — and a year
+  // only counts in proportion to how full the basin actually is (effYears +=
+  // dt × basinMass/basinCapacity): an empty basin never matures, a rich
+  // forager basin serves time at full rate. Colonisation stands a candidate
+  // down — if settlement reached the basin first, the package arrived before
+  // it was invented (the Australia case), which is the mechanism-true outcome,
+  // not a failure. Emergent throughout: the calendar never enters; dt is
+  // derived from the technique wave's own physical calibration (devWaveIvl ↔
+  // one tile-hop ↔ tileKm/DEV_WAVE_KMPY years), the same real-time unit the
+  // pre-run epoch uses.
+  if (T.INVENT_STAGGER && world._armedHearths && world._armedHearths.length && world.popField && world.capField) {
+    const rB = Math.max(1, Math.round(TOWN_BASIN_R * rNormFor(world)));
+    const lastAt = world._hearthArmAt ?? world.step;
+    const dtSteps = world.step - lastAt;
+    world._hearthArmAt = world.step;
+    if (dtSteps > 0) {
+      // steps × (years per wave-hop ÷ steps per wave-hop): derived from the
+      // wave's own calibration (one hop = EARTH_KM/tw km at DEV_WAVE_KMPY=1
+      // km/y over devWaveIvl steps), so the unit is consistent at any grid
+      // and granularity without a second time constant.
+      const dtYears = dtSteps * (40075 / world.tw) / devWaveIvl(world);
+      const keep = [];
+      for (const h of world._armedHearths) {
+        // Colonised basin → stand down (diffusion won the race to this valley).
+        let settledNear = false;
+        forEachNear(world, h.tx, h.ty, rB, () => { settledNear = true; });
+        if (settledNear) {
+          console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) stood down — the farming package arrived before it was invented`);
+          continue;
+        }
+        const basin = townBasinMass(world, h.tx, h.ty, rB);
+        let capMass = 0;
+        const cap = world.capField, tw = world.tw, th = world.th;
+        for (let dy = -rB; dy <= rB; dy++) {
+          const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
+          for (let dx = -rB; dx <= rB; dx++) {
+            if (dx * dx + dy * dy > rB * rB) continue;
+            capMass += cap[yy * tw + (((h.tx + dx) % tw) + tw) % tw];
+          }
+        }
+        h.effY += dtYears * Math.min(1, capMass > 0 ? basin / capMass : 0);
+        if (h.effY >= h.needY) {
+          const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
+          logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
+          console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
+        } else keep.push(h);
+      }
+      world._armedHearths = keep;
+      if (!keep.length) delete world._armedHearths;
+    }
+  }
+
   // Alive-settlement count — shared by the colony saturation damper and the
   // crystallisation saturation damper below (one scan instead of two).
   let _alive = 0;
@@ -1193,7 +1247,33 @@ export function maybeCrystallize(world) {
     if (T.INVENT_FIELD > 0 && world.popField) {
       independent *= townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
     }
-    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    // T.INDEP_TECH — a town can only crystallize where the PACKAGE HAS ARRIVED.
+    // Three measured failures aimed this at the right variable and the right
+    // channel: INVENT_FIELD scaled the floor by basin PEOPLE → worse (every
+    // fireable site has people); INVENT_STAGGER's handout repair fixed what a
+    // newborn KNOWS → the dawn map did not move (the founding still happened);
+    // and gating the INDEPENDENT floor alone → byte-identical outcomes at 6k,
+    // which proved the floor NEVER BINDS under multi-hearth defaults — with
+    // seven hearths every fireable site sits within diffusion reach of some
+    // network, and the anachronisms (a steppe town at step 24, 61°N by step
+    // 144) ride the DIFFUSION term. That term is exp(−td/·): a probability
+    // GRADIENT, not a FRONT — a site 3 000 km from the Indus can found the
+    // moment the sim starts, with no waiting for the package to arrive. But
+    // the sim HAS a front: devField, the technique wave, at its measured
+    // 1 km/year. So the lever scales the WHOLE channel sum by the package's
+    // local arrival, devField/NEOLITHIC_AGRI (clamped 0..1): fully-taught
+    // ground founds at the unchanged rate (the ratio saturates — mature
+    // worlds identical), the wave's edge founds at the edge's fraction, and
+    // untaught land founds NOTHING — towns trail the green stain on the
+    // Technique lens, which is the wave-of-advance picture the pioneering
+    // tempo below already gestures at (it paces by the nearest DONOR's tempo;
+    // this paces by the field's actual arrival). Daughter colonies, sea
+    // landings and plantations are untouched — those are real settler parties
+    // that carry the package with them. No new constant: NEOLITHIC_AGRI is
+    // the package's own definition of "full farming". 0 = ungated
+    // (byte-identical, and the default).
+    const packageFrac = T.INDEP_TECH && world.devField ? Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI) : 1;
+    const p = quality * (diffusionMul + independent) * packageFrac * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
     // full-tempo probability (cheap reject), then against the wave-of-advance
@@ -2207,8 +2287,18 @@ function inheritKnowledgeAt(world, ti, td, nearestHint = null) {
   // Construction matches the genesis-village package (settlement.js
   // makeSettlement): a people that invents farming invents the pot and the
   // granary with it — the two values describe ONE late-neolithic moment.
+  // T.INVENT_STAGGER: the free handout ends — an isolated site inherits the
+  // agriculture that has actually REACHED its ground (devField, the technique
+  // wave), not a flat NEOLITHIC_AGRI. The land knows what it has been taught:
+  // a frontier the wave covered founds farming at the wave's local level, a
+  // valley the wave never reached founds knowing none — and its density,
+  // economy and survival follow from that, with no distance constant deciding
+  // anything. (The wrong-places finding — the steppe out-settling Mesopotamia,
+  // Siberia farming at 67°N — was this handout; docs/state-birth-2026-08.md.)
+  // Deletes a constant from the founding path rather than adding one.
+  const agBase = T.INVENT_STAGGER && world.devField ? (world.devField[ti] || 0) : NEOLITHIC_AGRI;
   const baseline = {
-    agriculture: NEOLITHIC_AGRI,
+    agriculture: agBase,
     construction: 0.18,
     organization: birthOrgAt(world, tx, ty, 0.1),   // site-scaled birth organisation (T.ORG_BIRTH_VAR)
   };

@@ -107,6 +107,17 @@ export const LEGENDS = {
     ],
     tip: "Where agriculture can feed a people — the soil, water and warmth underneath every empire that ever grew.",
   },
+  technique: {
+    title: "Technique — the idea on the land",
+    rows: [
+      [ramp(["rgba(120,95,48,0.3)", "rgba(140,110,48,0.8)", "rgb(72,142,58)", "rgb(92,182,70)", "rgb(202,212,90)", "rgb(245,245,215)"], 11), "untouched → contact → farming → advanced"],
+      [ramp(["rgba(52,52,57,1)"]), "base map: no idea has EVER reached this ground"],
+      [ramp(["rgba(135,105,48,0.6)"]), "ochre haze: the wave's edge — contact, not cultivation"],
+      [ramp(["rgb(80,155,62)"]), "green: the full farming package has arrived (0.45)"],
+      [ramp(["rgb(245,245,215)"]), "white-gold: the technique of later eras"],
+    ],
+    tip: "What the land's people KNOW — the technique that has actually reached each tile, spreading as a wave from where it is practised and setting how densely the ground can feed people. Cropland is what the soil could grow; this is whether anyone yet knows how. The green edge crawling outward IS the Neolithic expansion — and where the colour recedes after a collapse, the land is forgetting.",
+  },
   society: {
     title: "Coerced labour",
     rows: [

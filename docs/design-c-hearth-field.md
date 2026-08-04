@@ -488,7 +488,7 @@ holds.
 
 ## What the owner is actually deciding
 
-The lever is default OFF and the flip is not this branch's call. In plain terms, ON:
+**FLIPPED ON 2026-08-03 (owner decision)** — with `TIER_BRANCH=4` supplying the derived tier bar this design's guard analysis asked for, and `BRIDGE_GLOBAL=1` making the dawn census grid-invariant (docs/tier-bar-derivation.md carries the full battery). The paragraph below is the pre-flip record. The lever was default OFF and the flip was not that branch's call. In plain terms, ON:
 
 - **The New World and Australia stop being wilderness.** Agriculture is invented
   independently on the Americas, South America and one small island; they develop

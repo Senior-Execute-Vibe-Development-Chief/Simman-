@@ -494,6 +494,26 @@ function buildSnapshot() {
     popMax *= k;
   }
 
+  // Technique view: the idea field (world.devField) on an ABSOLUTE 0..1 ruler —
+  // knowledge tracks are clamped 0..1, so ×250 is exact and the same colour
+  // means the same technique in every era. Land at EXACTLY 0 is skipped: the
+  // base map showing through IS the reading ("no idea has ever reached this
+  // ground" — 60% of all land, the design doc's headline), so it must look like
+  // wilderness, not like a low value. The lens exists because this field —
+  // which sets capField and therefore how densely land peoples — had NO view in
+  // the app, and every defect in it so far was found by writing a throwaway
+  // probe (docs/design-idea-field.md).
+  let devDens = null;
+  if (viewMode === "technique" && sendStatic && world.devField) {
+    const df = world.devField, N = world.N;
+    devDens = new Uint8Array(N);
+    for (let ti = 0; ti < N; ti++) {
+      const d = df[ti];
+      if (d <= 0) continue;
+      devDens[ti] = Math.max(1, Math.min(250, Math.round(d * 250)));
+    }
+  }
+
   // Money view: the animated coin flows (change every tick → send each frame
   // while the view is open). Roads view: a clean per-tile component-root array
   // (changes slowly → gate with the static group).
@@ -567,6 +587,7 @@ function buildSnapshot() {
   if (fieldDom) { transfer.push(fieldDom.buffer); transfer.push(fieldSec.buffer); }
   if (loyal) { transfer.push(loyal.buffer); if (loyalHome) transfer.push(loyalHome.buffer); }
   if (popDens) transfer.push(popDens.buffer);
+  if (devDens) transfer.push(devDens.buffer);
 
   // Global price-level summary for the HUD ticker — population-weighted
   // mean across all settlements, so it tracks "the average wheat price the
@@ -596,6 +617,7 @@ function buildSnapshot() {
     // popMax → CENSUS people per REFERENCE tile on the densest ground (already
     // × bridge × rNormPop² at pack time); the legend then ×POP_SCALE via fmtPeople.
     popDens, popMax: popDens ? popMax : undefined,   // population lens: absolute-ruler people-on-land
+    devDens,                          // technique lens: the idea field, absolute 0..1 ruler ×250
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
