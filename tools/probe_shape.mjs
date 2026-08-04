@@ -72,7 +72,9 @@ function report() {
     if (ev.type === "polity.seceded") seceded++;
     if (ev.type === "polity.shattered") shattered++;
   }
-  console.log(`\n=== step ${world.step}  realms=${n}  claimed=${(100 * claimed / landN).toFixed(1)}%  flows: founded=${founded} ended=${ended} seceded=${seceded} shattered=${shattered}`);
+  let vassals = 0;
+  if (world._overlordOf) for (const [dep] of world._overlordOf) if (tiles.has(dep)) vassals++;
+  console.log(`\n=== step ${world.step}  realms=${n} (${vassals} vassal)  claimed=${(100 * claimed / landN).toFixed(1)}%  flows: founded=${founded} ended=${ended} seceded=${seceded} shattered=${shattered}`);
   console.log(`    size km2: P10=${Math.round(q(0.1) / 1000)}k  MED=${Math.round(q(0.5) / 1000)}k  P90=${Math.round(q(0.9) / 1000)}k  MAX=${Math.round(q(0.999) / 1000)}k  | top1share=${(100 * (areas[n - 1] || 0) / Math.max(1, areas.reduce((x, y) => x + y, 0))).toFixed(0)}%  max/med=${((areas[n - 1] || 0) / Math.max(1, q(0.5))).toFixed(1)}  gini=${gini(areas).toFixed(2)}  lnσ=${sigma.toFixed(2)} (real maps ≈2.0-2.6)`);
   console.log(`    histogram  ${hist}`);
   const small = rows.filter(r => r.km2 < 100e3);

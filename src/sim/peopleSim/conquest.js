@@ -3577,6 +3577,19 @@ function absorbWeakNeighbors(world, countries) {
       if (no >= 0) { const fs = byId.get(no); if (!fs) continue; ncc = fs.countryId; }
       else { ncc = co ? co[ni] : -1; }
       if (ncc < 0 || ncc === myCC) continue;
+      // THE BOND IS THE ARRANGEMENT (T.VASSAL_SHIELD): the suzerain-vassal bond
+      // already stops ARMIES (armies.js bondedCC gates every front) — but not
+      // this channel, so an overlord quietly digested the very statelets whose
+      // submission it accepted, and the vassal mosaic (tributaries, princely
+      // states, the Empire's members — history's largest store of persistent
+      // SMALL polities) could never accumulate. A lord who accepts tribute
+      // neither sacks nor annexes the payer; the pull of every UNBONDED realm
+      // is untouched, and the bond itself still dissolves through the existing
+      // channels (overlord death, rebellion, rebuildOverlords lapses).
+      if (T.VASSAL_SHIELD) {
+        const ov = world._overlordOf;
+        if (ov && (ov.get(myCC) === ncc || ov.get(ncc) === myCC)) continue;
+      }
       const F = countries.get(ncc); if (!F || !F.capital) continue;   // a realm mid-collapse can have no capital this pass
       const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
       if (fOrg < T.ABSORB_ORG_MIN) continue;
@@ -3819,6 +3832,16 @@ function eliminateEnclaves(world, countries) {
     if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
     if (!into) continue;
+    // T.VASSAL_SHIELD: an enclave that is the surrounder's own VASSAL (or its
+    // suzerain — the Empire ringed by a mighty tributary) is not vacuumed: the
+    // bond is the arrangement, exactly as in war and absorption. This is the
+    // Andorra/San Marino configuration BY NAME in the gate's own history —
+    // a statelet fully inside a great power, persisting because the
+    // relationship is settled, not because the geometry is unfinished.
+    if (T.VASSAL_SHIELD && selfCC >= 0) {
+      const ov = world._overlordOf;
+      if (ov && (ov.get(selfCC) === intoId || ov.get(intoId) === selfCC)) continue;
+    }
     // STATECRAFT + CAPACITY gate — the same bars every other peaceful-transfer
     // channel pays (absorbWeakNeighbors): swallowing an engulfed community is an
     // act of ADMINISTRATION, not geometry. Ungated, this was the largest single
