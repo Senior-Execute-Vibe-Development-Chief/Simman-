@@ -162,6 +162,42 @@ granularity trade) and (b) sub-basin geography, which RESOLVES WITH THE GRID
 tw=240 cannot represent. Both are recorded as the next levers, not smuggled
 in as constants.
 
+## The owner's grid (tw=960) — measured at last
+
+Two 8k arms at W=1920 / Half sim (the grid the complaint lives at), ON vs
+all-four-levers OFF:
+
+- **Byte-identical to step 4000.** Every mechanism is state-gated (war,
+  absorption, the org founding bar), and the early world has not developed
+  into any of them — the cardinal rule holding by construction, measured.
+- **The early world is already historically shaped at this resolution**:
+  step 4000 reads 69% of realms under 100k km² (real bands 47-80%), step
+  8000 reads 24-25% — versus 2-8% at the coarse gate grids at the same era.
+  The geography that CARRIES small states (relief pockets, small basins,
+  fine coasts) exists at tw=960 and simply cannot be represented at tw=240.
+- At 8k the arms differ only at the margin (38 vs 36 realms; lnσ ~1.0 both):
+  the mechanisms' measured work — the preserved vassal mosaic, refuge
+  persistence, the +50% turnover with mortality intact — lands mid-to-late
+  game, where the coarse-grid A/B isolates it.
+
+So the complaint decomposes cleanly: PART of "too blunt" was the shipped
+default grid itself (Quarter sim cannot hold a small-state tier the owner's
+Half sim already carries), and part was the missing survival/founding
+mechanisms this wave adds. Both halves are now measured.
+
+## Gate record (the shipped defaults: PEER_POLITY + REFUGE + VASSAL_SHIELD + GROW_STATECRAFT 0.85)
+
+- smoke green (incl. determinism + save/load roundtrip), emblem green.
+- stylized: **3/3 seeds pass all hard gates** — soft warnings 2/1/1 against
+  budget 2 (the pre-existing Zipf-n/a on each; one seed adds the known
+  market-integration regime term).
+- resgate: **all five bands, both gate seeds — and the ratios IMPROVED**
+  (median-area ratio 0.67 on both seeds vs the 0.42 floor; app-grid realm
+  count 36-46 vs the recorded 11-17). Ratchet re-baselined upward
+  accordingly (medianAreaRatio 0.42→0.50, popDensRatio 0.40→0.42).
+- empire mortality at 24k: 61 realms, 59.9% claimed, top-5 churns, flows
+  live (shattered 31 / seceded 25 / annexed 55) — not the frozen regime.
+
 ## What was measured but NOT changed
 
 - `SPAN_TECH` stays 0 (owner decision 2026-07-30 recorded in
