@@ -1281,7 +1281,7 @@ export function popFieldTotal(world) {
 // off; grows with rNormPop so the city spans the same real area at finer grids.
 // (Reuses the computeBuildableArea/computeWaterAccess round(rn) real-neighbourhood
 // normalisation, −1 so the reference stays a single tile.)
-function urbanCoreR(world) {
+export function urbanCoreR(world) {   // exported for the CITY_AT_BIRTH site pass (crystallize) — the mint threshold must read the SAME disk the census measures
   return (T.URBAN_FOOTPRINT && T.RES_INVARIANT_POP) ? Math.max(0, Math.round(rNormPop(world)) - 1) : 0;
 }
 
@@ -1291,7 +1291,7 @@ function urbanCoreR(world) {
 // target are byte-identical at the reference. Owner-agnostic (the footprint
 // REFERENCE reads all people on the real disk; the people MOVED by urbanConcentrate
 // stay owner-restricted and strictly conserved — see change note there).
-function diskSum(pf, tw, th, cx, cy, R) {
+export function diskSum(pf, tw, th, cx, cy, R) {
   if (R <= 0) return pf[cy * tw + ((cx % tw) + tw) % tw];
   let sum = 0;
   const y0 = Math.max(0, cy - R), y1 = Math.min(th - 1, cy + R);

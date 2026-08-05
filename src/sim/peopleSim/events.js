@@ -143,6 +143,7 @@ const NARRATE = {
     return `Peacefully absorbed ${ev.sName} from ${ev.fromName || "a neighbour"}.`;
   },
   "settlement.founded"(ev) {
+    if (ev.city) return `The city of ${ev.sName} arose.`;
     if (ev.kind === "cradle") return `${ev.sName} was founded at the dawn of civilisation.`;
     if (ev.kind === "colony") return `The colony of ${ev.sName} was planted on a far shore.`;
     return `${ev.sName} was founded.`;

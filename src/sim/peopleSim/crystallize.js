@@ -19,7 +19,7 @@
 
 import { isContinentalLand } from "./state.js";
 import { tel, telPass } from "./telemetry.js";
-import { fieldShift, devWaveIvl } from "./popField.js";
+import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable } from "./entities.js";
@@ -992,8 +992,94 @@ function maybeDissolveTowns(world) {
   }
 }
 
+// ── T.CITY_AT_BIRTH: cities are BORN as cities — the proto-urban stage lives
+// in the land (Wave 5 Stage B; owner 2026-08-05: "i still see you spawning
+// villages and towns"). No entity ever mints below the city definition.
+// Instead, each unclaimed ledger site whose market cell can feed a city
+// (cell mass ≥ the city-basin bar) CONCENTRATES its countryside in the field
+// itself: URBAN_DRIFT of the cell's people per step trickle toward the site
+// tile (the rural→proto-urban migration), a capacity spike stamped at the
+// site each tick holds what arrived (exactly the mechanism grown cities use,
+// applied pre-entity — deriveOnePop clears the spike map every stride, so
+// the stamp is per-tick), and when the site's core disk holds a real city's
+// people the ENTITY is born: a CITY, tier 2, "the city of X arose" — never
+// a village or town dot. Genesis then runs: hearths ripen basins, basins
+// concentrate, Uruk rises, and the map's first dot IS a city.
+//   The dawn's unit bridge: before any census exists to calibrate
+// _onePopScale, BRIDGE_REF stands in — the measured mid-band of the live
+// bridge (0.001-0.003; a unit choice, not a tuning), replaced by the live
+// bridge the moment the first city exists.
+const BRIDGE_REF = 0.002;
+const URBAN_DRIFT = 5e-5;      // per-step share of a market cell's people drifting to its site (Uruk: village → 40,000 over ~900 years at a ~200-census basin ≈ this order)
+const SITE_CITY_IVL = 25;      // drift/mint cadence (amortization; the spike re-stamp below is per-tick so every field pass holds the core)
+function maybeSiteCities(world) {
+  if (!T.CITY_AT_BIRTH || !T.POP_FIELD || !T.ONE_POP || !world.popField) return;
+  const L = labelSiteLedger(world);
+  const claims = _siteClaims(world);
+  const pf = world.popField;
+  const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
+  const basinBarF = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell, field units
+  const coreBarF = TIER_CORE[2] / bridge;                        // a CITY's core, field units
+  const coreR = urbanCoreR(world);
+  // Eligibility is cached between cadence firings; the spike re-stamp runs
+  // every tick from the cache so the field pass always holds the cores.
+  let elig = world._siteCityElig;
+  if (!elig || elig.length !== L.sites.length || world.step % SITE_CITY_IVL === 0) {
+    if (!elig || elig.length !== L.sites.length) elig = world._siteCityElig = new Uint8Array(L.sites.length);
+    for (let k = 0; k < L.sites.length; k++) {
+      elig[k] = !claims.claimed[k] && claims.mass[k] >= basinBarF ? 1 : 0;
+    }
+  }
+  const spikes = world._urbanSpike || (world._urbanSpike = new Map());
+  for (let k = 0; k < L.sites.length; k++) {
+    if (!elig[k]) continue;
+    const st = L.sites[k];
+    const coreNow = diskSum(pf, world.tw, world.th, st.x, st.y, coreR);
+    if (coreNow > 0 && !spikes.has(st.ti)) spikes.set(st.ti, { k: coreNow });   // hold what has gathered; no growth-regime fields (plain capacity)
+  }
+  if (world.step % SITE_CITY_IVL !== 0) return;
+  // Drift: one O(N) sweep — every tile of every eligible cell pays the same
+  // share, its site receives the sum. Mass-conserving by construction.
+  const rate = Math.min(0.2, URBAN_DRIFT * (world._dt || 1) * SITE_CITY_IVL);
+  const gain = new Float64Array(L.sites.length);
+  const siteId = L.siteId;
+  for (let i = 0; i < siteId.length; i++) {
+    const k = siteId[i];
+    if (k < 0 || !elig[k]) continue;
+    const p = pf[i];
+    if (p <= 1e-9) continue;
+    const mv = p * rate;
+    pf[i] = p - mv;
+    gain[k] += mv;
+  }
+  for (let k = 0; k < L.sites.length; k++) {
+    if (gain[k] > 0) pf[L.sites[k].ti] += gain[k];
+  }
+  // Mint: a site whose core disk holds a city's people becomes a CITY —
+  // stateless at birth (-1): a stateless city self-anchors sovereignty
+  // through the existing countryTerritory channel (city-creates-nation), or
+  // is adopted by the realm whose border has grown over it. The people are
+  // MOVED, never printed: the field is debited at the site and
+  // makeSettlement's ONE_POP credit restores them as the city's census.
+  for (let k = 0; k < L.sites.length; k++) {
+    if (!elig[k]) continue;
+    const st = L.sites[k];
+    const coreF = diskSum(pf, world.tw, world.th, st.x, st.y, coreR);
+    if (coreF < coreBarF) continue;
+    const coreCensus = coreF * bridge;
+    fieldShift(world, { pos: { x: st.x, y: st.y } }, -coreCensus);
+    const inherited = inheritKnowledgeAt(world, st.ti, world.transportDist ? world.transportDist[st.ti] : 0);
+    const born = makeSettlement(world, st.x + 0.5, st.y + 0.5, { people: coreCensus, knowledge: inherited, tier: 2 });
+    labelClaimBasin(world, st.x, st.y);
+    elig[k] = 0;
+    spikes.delete(st.ti);
+    logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1 });
+  }
+}
+
 export function maybeCrystallize(world) {
   maybeDissolveTowns(world);
+  maybeSiteCities(world);
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
   // Refresh transport map if stale or absent.
@@ -1046,9 +1132,16 @@ export function maybeCrystallize(world) {
         }
         h.effY += dtYears * Math.min(1, capMass > 0 ? basin / capMass : 0);
         if (h.effY >= h.needY) {
-          const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
-          logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
-          console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
+          if (T.CITY_AT_BIRTH) {
+            // The invention is the INVENTION — not a town. The basin is
+            // peopled and farming; the site pass concentrates it and the
+            // city is born when a real core exists. The hearth stands down.
+            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
+          } else {
+            const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
+            logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
+            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
+          }
         } else keep.push(h);
       }
       world._armedHearths = keep;
@@ -1145,7 +1238,10 @@ export function maybeCrystallize(world) {
   // cadence), so the rn²× per-tick cost (16× at full size) was unearned and it
   // was reverted per the I82 precedent. The early undershoot remains OPEN — see
   // docs/resolution-invariance-plan.md for the decomposition to run next.
-  const nSweep = labelBirth ? siteCand.length : CANDIDATES_PER_SWEEP;
+  // T.CITY_AT_BIRTH: the spontaneous sweep mints NOTHING — genesis belongs to
+  // the site pass (maybeSiteCities), which births entities only at the city
+  // definition. Zero candidates = the whole channel off under the lever.
+  const nSweep = T.CITY_AT_BIRTH ? 0 : (labelBirth ? siteCand.length : CANDIDATES_PER_SWEEP);
   for (let i = 0; i < nSweep; i++) {
     // OFF path: draw a share of candidates straight from the FLOODPLAIN ribbon so
     // the arid river valley actually fills — the uniform random sweep almost never
