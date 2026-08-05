@@ -1012,6 +1012,17 @@ function maybeDissolveTowns(world) {
 const BRIDGE_REF = 0.002;
 const URBAN_DRIFT = 5e-5;      // per-step share of a market cell's people drifting to its site (Uruk: village → 40,000 over ~900 years at a ~200-census basin ≈ this order)
 const SITE_CITY_IVL = 25;      // drift/mint cadence (amortization; the spike re-stamp below is per-tick so every field pass holds the core)
+// The settlement-less invention IMPROVES WITH PRACTICE: a static seed measured
+// dead (25k genesis arc: eight inventions fired on the real multi-millennial
+// stagger, zero cities ever — a fixed 0.45 source has a fixed few-tile wave
+// reach and can never establish farming across a cell). A settlement's
+// agriculture GROWS and its wave halo with it; the ground's practice does the
+// same during the settlement-less window: toward the PRE-URBAN PLATEAU
+// (agriculture's next advances came with urban specialists — the old dawn's
+// pre-city settlements sat ~0.50-0.55), at the settlement law's own measured
+// early slope (0.45 → 0.50 over ~4000 steps at the old dawn).
+const AGRI_PRACTICE_CAP = 0.55;
+const SEED_AGRI_RATE = 1.5e-5;   // per step
 function maybeSiteCities(world) {
   if (!T.CITY_AT_BIRTH || !T.POP_FIELD || !T.ONE_POP || !world.popField) return;
   const L = labelSiteLedger(world);
@@ -1048,6 +1059,11 @@ function maybeSiteCities(world) {
     if (coreNow > 0 && !spikes.has(st.ti)) spikes.set(st.ti, { k: coreNow });   // hold what has gathered; no growth-regime fields (plain capacity)
   }
   if (world.step % SITE_CITY_IVL !== 0) return;
+  // Practice improves at the settlement-less hearths (see AGRI_PRACTICE_CAP).
+  if (world._hearthSeeds) {
+    const dA = SEED_AGRI_RATE * (world._dt || 1) * SITE_CITY_IVL;
+    for (const h of world._hearthSeeds) if (h.agri < AGRI_PRACTICE_CAP) h.agri = Math.min(AGRI_PRACTICE_CAP, h.agri + dA);
+  }
   // Drift: one O(N) sweep — every tile of every eligible cell pays the same
   // share, its site receives the sum. Mass-conserving by construction.
   const rate = Math.min(0.2, URBAN_DRIFT * (world._dt || 1) * SITE_CITY_IVL);
