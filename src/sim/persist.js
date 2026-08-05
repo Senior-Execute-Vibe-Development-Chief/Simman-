@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;   // v5: the divergence lane defaults ON (see the v<5 regime guard in loadWorld)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -384,6 +384,17 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("LABEL_BIRTH" in tn)) T.LABEL_BIRTH = 0;
     if (!("MULTI_HEARTH" in tn)) T.MULTI_HEARTH = 0;
+    // The divergence lane (GROW_SEASON / CROP_PHOTOPERIOD / CRADLE_PACKAGE /
+    // INVENT_STAGGER) became default-ON in v5 (2026-08, the shape wave). A
+    // pre-v5 world was made under annual-mean agronomy and t=0 hearths, so it
+    // stores no delta for them; the two LIVE levers (season/photoperiod) would
+    // silently re-key its whole food system on load, and the two GENESIS
+    // levers describe an initial condition its settlements already embody.
+    // Keep such saves in their own regime unless they set a lever explicitly.
+    if (!("GROW_SEASON" in tn)) T.GROW_SEASON = 0;
+    if (!("CROP_PHOTOPERIOD" in tn)) T.CROP_PHOTOPERIOD = 0;
+    if (!("CRADLE_PACKAGE" in tn)) T.CRADLE_PACKAGE = 0;
+    if (!("INVENT_STAGGER" in tn)) T.INVENT_STAGGER = 0;
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
