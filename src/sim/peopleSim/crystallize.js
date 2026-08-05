@@ -1092,10 +1092,26 @@ function maybeSiteCities(world) {
     const st = L.sites[k];
     const coreF = diskSum(pf, world.tw, world.th, st.x, st.y, coreR);
     if (coreF < coreBarF) continue;
-    const coreCensus = coreF * bridge;
+    // The city is born a CITY — never a megalopolis: the entity takes the
+    // city's own people (the bar, with growth headroom) and the REST of what
+    // gathered stays on the land as its countryside. Measured without this
+    // cap: the first genesis mint arrived only when the farming gate opened,
+    // by which time the basin had piled organically, and the first-born
+    // entity swallowed a 1,008-census core — a metropolis at birth in a
+    // world whose second entity did not exist yet.
+    const coreCensus = Math.min(coreF * bridge, TIER_CORE[2] * 1.5);
     fieldShift(world, { pos: { x: st.x, y: st.y } }, -coreCensus);
     const inherited = inheritKnowledgeAt(world, st.ti, world.transportDist ? world.transportDist[st.ti] : 0);
-    const born = makeSettlement(world, st.x + 0.5, st.y + 0.5, { people: coreCensus, knowledge: inherited, tier: 2 });
+    // A city born within reach of an existing people carries their culture
+    // (the inherit pass just found the nearest); one born in virgin land is
+    // the BIRTH of a people — Uruk is where the Sumerians become visible.
+    // Without this the genesis cities named as "settlement-1" (measured).
+    const donor = world._lastInheritDonor;
+    const donorCul = donor ? dominantCulture(donor) : -1;
+    const born = makeSettlement(world, st.x + 0.5, st.y + 0.5, {
+      people: coreCensus, knowledge: inherited, tier: 2,
+      ...(donorCul >= 0 ? { cultureId: donorCul } : { cradle: true }),
+    });
     labelClaimBasin(world, st.x, st.y);
     elig[k] = 0;
     spikes.delete(st.ti);
