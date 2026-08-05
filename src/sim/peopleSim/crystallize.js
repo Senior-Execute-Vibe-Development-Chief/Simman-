@@ -168,6 +168,14 @@ function townBasinMass(world, tx, ty, rB) {
   }
   return basin;
 }
+/** Measurement export (probes only): the CROWD_FOUND mass ratio at (tx,ty) —
+ *  the founding basin's field people over a bar-sized basin (1 = exactly
+ *  TOWN_BASIN_MIN×rn², the "enough countryside to carry a town" bar). This is
+ *  the quantity crowdMul is computed from; exporting it changes nothing. */
+export function crowdMassRatio(world, tx, ty) {
+  const rn = rNormPop(world);
+  return townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / (TOWN_BASIN_MIN * rn * rn);
+}
 const KNOWLEDGE_DECAY_SCALE     = 30;
 // Radius for the spatial-grid fast path in inheritKnowledgeAt. Generous enough
 // that any non-isolated spawn finds its nearest neighbour in the grid (so the
