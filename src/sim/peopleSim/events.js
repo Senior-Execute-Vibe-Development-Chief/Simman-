@@ -152,6 +152,7 @@ const NARRATE = {
   "market.boom"(ev) { return `${ev.sName}'s ${ev.good || "wares"} fetch extraordinary prices — a boom year.`; },
   "settlement.withered"(ev) { return `${ev.sName} withered away and was abandoned.`; },
   "settlement.dissolved"(ev) { return `${ev.sName} faded back into the countryside.`; },
+  "farming.invented"(ev) { return `Farming was invented — the land around (${ev.x}, ${ev.y}) turned to the plough.`; },
   "settlement.abandoned"(ev) { return `${ev.sName} was abandoned.`; },
   "settlement.tier"(ev) {
     // ev.people is in CENSUS units (×1,000 people — src/sim/units.js); the

@@ -115,6 +115,15 @@ const MIG_SHARE_MAX = 0.5;
 const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neolithic ~1 km/year)
 const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
 export const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
+/** T.DAWN_LIVE (owner 2026-08-05: "can we not simply open with nothing and
+ *  wait for nations to be born?"): the effective prehistory span. 0 under the
+ *  lever — the map opens at the TRUE dawn, a forager world with no seeded
+ *  hearth settlements and no pre-spread technique wave; every hearth ARMS
+ *  (the stagger law's needY becomes its full domestication lag) and farming,
+ *  nations and cities are all born live, on camera. DEV_INIT_YEARS is an
+ *  initial condition ("how old the world is at map open") — this lever sets
+ *  that age to zero, which is the one value that needs no defending. */
+export function devInitYears() { return T.DAWN_LIVE ? 0 : DEV_INIT_YEARS; }
 const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
 // Climate-ZONE scale for the T.DIFF_CLIM toll (reference tiles; ×rNormPop at
 // other grids — a real distance, ~2 × 167 km ≈ 330 km at the reference). A
@@ -230,6 +239,15 @@ function stampDevSources(world, dev) {
   // _devPreK is undefined and nothing is ever held.
   const preK = world._devPreK;
   const held = (s) => preK !== undefined && s._devHoldK !== undefined && preK < s._devHoldK;
+  // Settlement-less farming sources (T.CITY_AT_BIRTH × T.DAWN_LIVE): a hearth
+  // that matured WITHOUT minting a settlement still invented farming — its
+  // basin practices it, so the wave must radiate from the ground itself.
+  // world._hearthSeeds carries {ti, agri} for each such invention (written at
+  // armed-hearth maturation, persisted); without this stamp the invention
+  // would never spread and a seedless dawn could never leave the forager age.
+  if (world._hearthSeeds) {
+    for (const h of world._hearthSeeds) if (h.agri > dev[h.ti]) dev[h.ti] = h.agri;
+  }
   if (owner && byId) {
     for (let i = 0; i < world.N; i++) {
       const sid = owner[i];
@@ -415,7 +433,7 @@ function ensureDevField(world, land) {
   // spread than the control and confound the whole arm with an initial
   // condition.
   const tileKm = EARTH_KM / world.tw;
-  const iters = Math.max(0, Math.round(DEV_INIT_YEARS * DEV_WAVE_KMPY / tileKm));
+  const iters = Math.max(0, Math.round(devInitYears() * DEV_WAVE_KMPY / tileKm));
   // T.INVENT_STAGGER: hearths matured at different points in prehistory
   // (s._hearthAgeY = years of wave spread owed by map open, set at seeding).
   // Map each to the pre-run iteration its wave STARTS at, then run the same

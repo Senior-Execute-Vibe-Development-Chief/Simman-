@@ -291,6 +291,12 @@ export function saveWorld(world, meta = {}) {
       // Absent unless the lever armed any → default saves byte-identical.
       armedHearths: world._armedHearths && world._armedHearths.length ? world._armedHearths : undefined,
       hearthArmAt: world._hearthArmAt !== undefined ? world._hearthArmAt : undefined,
+      // Settlement-less farming sources (T.CITY_AT_BIRTH): each armed-hearth
+      // maturation that did NOT mint a settlement wrote {ti, agri} here — the
+      // technique wave's ground-truth sources. NOT re-derivable (the armed
+      // record is consumed at maturation); losing them un-invents farming on
+      // load. Absent unless the lever matured any → default saves byte-identical.
+      hearthSeeds: world._hearthSeeds && world._hearthSeeds.length ? world._hearthSeeds : undefined,
       // The loyalty field (T.LOYAL_FIELD, loyaltyField.js): allegiance is a
       // dense continuum (every governed tile carries a value), the owner-diff
       // snapshot is dense ids; both absent unless the lever ran (undefined key
@@ -468,6 +474,7 @@ export function loadWorld(data, opts = {}) {
     // Armed hearth candidates (T.INVENT_STAGGER) — see the save side.
     if (data.maps.armedHearths && data.maps.armedHearths.length) world._armedHearths = data.maps.armedHearths.map(h => ({ ...h }));
     if (data.maps.hearthArmAt !== undefined) world._hearthArmAt = data.maps.hearthArmAt;
+    if (data.maps.hearthSeeds && data.maps.hearthSeeds.length) world._hearthSeeds = data.maps.hearthSeeds.map(h => ({ ...h }));
     const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);

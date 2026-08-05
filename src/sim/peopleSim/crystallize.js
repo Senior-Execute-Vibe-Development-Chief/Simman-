@@ -1135,7 +1135,13 @@ export function maybeCrystallize(world) {
           if (T.CITY_AT_BIRTH) {
             // The invention is the INVENTION — not a town. The basin is
             // peopled and farming; the site pass concentrates it and the
-            // city is born when a real core exists. The hearth stands down.
+            // city is born when a real core exists. The hearth stands down —
+            // but the practice must RADIATE: with no settlement to carry the
+            // technique wave's source, the ground itself does
+            // (world._hearthSeeds → stampDevSources; persisted). Without
+            // this, a seedless dawn could never leave the forager age.
+            (world._hearthSeeds || (world._hearthSeeds = [])).push({ ti: h.ti, agri: NEOLITHIC_AGRI });
+            logEvent(world, "farming.invented", { x: h.tx, y: h.ty });
             console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
           } else {
             const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core

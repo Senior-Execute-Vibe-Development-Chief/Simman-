@@ -6,7 +6,7 @@
 import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
 import { T, rNormPop } from "./tuning.js";
-import { DEV_INIT_YEARS } from "./popField.js";
+import { devInitYears } from "./popField.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { computeRelief } from "../worldgenUtils.js";
@@ -622,13 +622,13 @@ function seatOrArmHearths(world, picked) {
     const Ty = pkg && pkg.suit >= HEARTH_SUIT_MIN
       ? (CROP_BY_ID[pkg.id].domLagY || INVENT_EPOCH_Y) / pkg.suit
       : INVENT_EPOCH_Y / sc;
-    if (Ty <= DEV_INIT_YEARS) {
+    if (Ty <= devInitYears()) {
       const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });
-      born._hearthAgeY = DEV_INIT_YEARS - Ty;   // years the technique wave has spread by map open (read by ensureDevField)
+      born._hearthAgeY = devInitYears() - Ty;   // years the technique wave has spread by map open (read by ensureDevField); this branch is unreachable under DAWN_LIVE (no hearth matures inside a zero-length prehistory)
       console.log(`[peopleSim] hearth ${born.name} at (${p.tx},${p.ty}) score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — matured ${Math.round(Ty)}y into prehistory (wave age ${Math.round(born._hearthAgeY)}y)`);
     } else {
-      armed.push({ ti: p.ti, tx: p.tx, ty: p.ty, score: sc, needY: Ty - DEV_INIT_YEARS, effY: 0 });
-      console.log(`[peopleSim] hearth candidate at (${p.tx},${p.ty}) score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — ARMED: ~${Math.round(Ty - DEV_INIT_YEARS)}y of peopled-basin time from maturity`);
+      armed.push({ ti: p.ti, tx: p.tx, ty: p.ty, score: sc, needY: Ty - devInitYears(), effY: 0 });
+      console.log(`[peopleSim] hearth candidate at (${p.tx},${p.ty}) score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — ARMED: ~${Math.round(Ty - devInitYears())}y of peopled-basin time from maturity`);
     }
   }
   if (armed.length) world._armedHearths = armed;
