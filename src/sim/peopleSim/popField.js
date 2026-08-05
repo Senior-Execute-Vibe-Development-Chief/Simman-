@@ -1582,15 +1582,28 @@ export function deriveOnePop(world) {
       if (f > 0 && s.people > 0) { cs.push(s.people); fs.push(f); }
     }
     cs.sort((a, b) => a - b); fs.sort((a, b) => a - b);
-    world._onePopScale = cs.length ? Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1])) : 1;
-    // T.DAWN: the bridge is a unit conversion calibrated at the MALTHUSIAN
-    // REFERENCE (the field the world matures toward). Under a dawn seed the
-    // field at activation is dawn× that reference, so the raw median ratio
-    // above is 1/dawn too high — correct it, or every mature census would be
-    // inflated by 1/dawn and the dawn's staggering would cancel out of the
-    // state-viability mass (basin × census/field). At dawn 1: ×1, unchanged.
-    if (world._dawnSeed > 0 && world._dawnSeed < 1) world._onePopScale *= world._dawnSeed;
+    // An EMPTY world calibrates on nothing and must leave the bridge UNSET
+    // ("unset ≡ compute at first derive" — the persist contract), retrying
+    // each derive until settlements exist. The old `: 1` fallback froze a
+    // garbage unit at the first derive of a settlement-less dawn (measured
+    // under DAWN_LIVE: 1 × dawnSeed 0.35 = a bridge 175× the reference, an
+    // 11,000-census first city and a 600-step famine crash). At the old
+    // defaults cradles exist by the first derive, so the fallback never
+    // fired and this is byte-identical there.
+    if (cs.length) {
+      world._onePopScale = Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1]));
+      // T.DAWN: the bridge is a unit conversion calibrated at the MALTHUSIAN
+      // REFERENCE (the field the world matures toward). Under a dawn seed the
+      // field at activation is dawn× that reference, so the raw median ratio
+      // above is 1/dawn too high — correct it, or every mature census would be
+      // inflated by 1/dawn and the dawn's staggering would cancel out of the
+      // state-viability mass (basin × census/field). At dawn 1: ×1, unchanged.
+      if (world._dawnSeed > 0 && world._dawnSeed < 1) world._onePopScale *= world._dawnSeed;
+    }
   }
+  // (With nothing settled — the DAWN_LIVE window — the bridge stays unset and
+  // every consumer below sits inside settlement loops that simply don't run;
+  // the spike clear still fires, so no stale site capacity survives.)
   const scale = world._onePopScale;
   // T.URBAN_FOOTPRINT: the urban core's real radius (tiles). 0 (default / reference
   // grid) ⇒ the disk reads/moves collapse to the single core tile, byte-identical.
