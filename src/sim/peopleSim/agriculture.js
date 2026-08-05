@@ -23,6 +23,7 @@
 //      ceiling region never reaches full farming density — it stays a sparse frontier.
 
 import { T } from "./tuning.js";
+import { packagePresent, packageAdaptMul } from "./biogeography.js";
 import { CROP_PACKAGES, CROP_BY_ID } from "../cropPackages.js";
 import { cropSuitabilityPkg } from "../cropGen.js";
 
@@ -83,9 +84,20 @@ export function pkgSuitAt(world, ti, pkg) {
 
 // Best package at a tile by RAW suitability — what a cradle / mature culture
 // would domesticate here. Returns { id, suit } or null if nothing grows.
+// T.CROP_BIOGEO: only packages that have SPREAD to this tile (wild ancestor's
+// homeland + the wave of advance, biogeography.js) compete — so maize is not a
+// candidate in Egypt however irrigable, and the New World keeps its own crops.
+// Off / before the fields exist, every package is present (byte-identical).
 export function bestPackageAt(world, ti) {
   let best = null, bestS = 0;
-  for (const pkg of CROP_PACKAGES) { const s = pkgSuitAt(world, ti, pkg); if (s > bestS) { bestS = s; best = pkg; } }
+  for (const pkg of CROP_PACKAGES) {
+    if (T.CROP_BIOGEO && !packagePresent(world, ti, pkg)) continue;
+    // A package arrives as a lesser version of itself the farther it has come
+    // (packageAdaptMul) — so the LOCAL package wins its own band and a
+    // long-travelled one competes only where it is genuinely better. ×1 off.
+    const s = pkgSuitAt(world, ti, pkg) * (T.CROP_BIOGEO ? packageAdaptMul(world, ti, pkg) : 1);
+    if (s > bestS) { bestS = s; best = pkg; }
+  }
   return best ? { id: best.id, suit: bestS } : null;
 }
 
