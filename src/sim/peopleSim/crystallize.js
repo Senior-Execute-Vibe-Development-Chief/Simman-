@@ -956,11 +956,16 @@ const pioneerTempo = (agri) => {
 const DISSOLVE_CHECK_IVL = 200;   // per-settlement stride (amortization, not a content gate)
 const DISSOLVE_HYST = 0.6;        // dissolve below this fraction of the founding bar
 const DISSOLVE_SUSTAIN = 1500;    // history-steps the basin must stay thin (granularity-corrected below)
+const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured here (core share p50 4.6-5.6%, every probe arm) and historically (~3-8%)
 function maybeDissolveTowns(world) {
   if (!T.DISSOLVE_TOWNS) return;
+  if (!(world._onePopScale > 0)) return;   // pre-bridge the basin census is unreadable (dawn; hearth-driven anyway)
   const rn = rNormPop(world);
   const rB = Math.round(TOWN_BASIN_R * rn);
-  const bar = TOWN_BASIN_MIN * (TIER_CORE[2] / TIER_CORE[1]) * DISSOLVE_HYST;
+  // The same census bar founding pays (a city's ~200-census market basin),
+  // at DISSOLVE_HYST of it — the hysteresis gap plus the sustain timer keeps
+  // a breathing basin from flickering its city in and out of existence.
+  const bar = (TIER_CORE[2] / URBAN_SHARE_REF) * DISSOLVE_HYST / world._onePopScale;   // in field units
   const dt = world._dt || 1;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -1556,18 +1561,22 @@ export function maybeCrystallize(world) {
       if (townScale) {
         // T.DISSOLVE_TOWNS — settlements are ONLY cities (owner 2026-08-05:
         // "settlements should be ONLY cities. No towns"). An entity mints only
-        // where the basin could feed a CITY's core, not a town's: the bar
-        // scales by TIER_CORE[2]/TIER_CORE[1] (=5, the city/town core ratio —
-        // a pure ratio of the ladder's own definitions, no bridge, no new
-        // constant; with the ~5% pre-industrial urban share both cores imply
-        // their catchments in the same proportion). Villages AND towns then
-        // live in the land — popField and each city's belt — exactly as
-        // villages already do under DISSOLVE_FARMS; the map's register drops
-        // to the city-capable handful, growing as history urbanises. The
-        // hearth-cradle bootstrap keeps its own (longer) emergent bar:
-        // domestication lag × basin-fill time — the first cities ARE the
-        // hearth cities.
-        const cityRatio = T.DISSOLVE_TOWNS ? TIER_CORE[2] / TIER_CORE[1] : 1;
+        // where the basin could feed a CITY: catchment census ≥ TIER_CORE[2] /
+        // URBAN_SHARE_REF — a 10k core at the measured ~5% pre-industrial
+        // urban share needs a ~200-census (200,000-person) market basin. Both
+        // terms have independent meaning: the core floor is the ladder's own
+        // city DEFINITION; the share is measured in this sim (core share p50
+        // 4.6-5.6% across every probe arm and step, docs/state-birth-2026-08)
+        // and historically (~3-8% urban before industry). The FIRST build
+        // scaled the TOWN_BASIN_MIN floor ×5 instead and measured INERT —
+        // byte-identical arcs — because that floor is a fossil two orders
+        // below real settled basins (founding sites measured 143-3300× it);
+        // the census form is the live quantity. Villages AND towns then live
+        // in the land — popField and each city's belt — exactly as villages
+        // already do under DISSOLVE_FARMS. The hearth-cradle bootstrap keeps
+        // its own (longer) emergent bar — the first cities ARE the hearth
+        // cities — and pre-bridge (no _onePopScale yet) the census cannot be
+        // read, so the legacy floor stands for those few dawn steps.
         if (labelBirth) {
           // T.LABEL_BIRTH v3 — the ACTIVATION bar: the site's cell (its
           // exclusive countryside, cell ∩ horizon by construction) must hold
@@ -1576,9 +1585,14 @@ export function maybeCrystallize(world) {
           // conservation the fieldShift debit enforces on the founders
           // themselves. (The sweep pre-filtered on this; the act re-reads
           // the same cached answer as its own guard.)
-          if (labelBasinMass(world, tx, ty) < (T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN) * cityRatio) continue;
+          if (labelBasinMass(world, tx, ty) < (T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN)) continue;
+          if (T.DISSOLVE_TOWNS && (world._onePopScale > 0)
+              && labelBasinMass(world, tx, ty) * world._onePopScale < TIER_CORE[2] / URBAN_SHARE_REF) continue;
         } else {
-          if (townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) < TOWN_BASIN_MIN * cityRatio) continue;
+          const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+          if (mass < TOWN_BASIN_MIN) continue;
+          if (T.DISSOLVE_TOWNS && (world._onePopScale > 0)
+              && mass * world._onePopScale < TIER_CORE[2] / URBAN_SHARE_REF) continue;
         }
       }
       // (people drawn here, after the last reject, so the rng stream is unchanged)
