@@ -18,7 +18,12 @@
 // pair AND the 480 reference pair verified unchanged with the code in. The
 // lever-on functional gate is tools/probe_identity2.mjs (ghost identity,
 // countryside stamps, v4 top-2 roundtrip).
-// Current baseline (2500 steps): b19c2674/1994cbe9 (the DIVERGENCE LANE flipped
+// Current baseline (2500 steps): 4a9e8680/85bbdbc4 (the hearth-maturity suit
+// clamp DROPPED — rich land legitimately accelerates domestication below the
+// package's nominal lag; the min(1,·) clamp made every rich rice hearth mature
+// at exactly domLagY, a measured synchrony artifact. Same-commit family as the
+// lane flip below; genesis re-keys, so every stream moves.)
+// Prior baseline (2500 steps): b19c2674/1994cbe9 (the DIVERGENCE LANE flipped
 // on — GROW_SEASON, CROP_PHOTOPERIOD, CRADLE_PACKAGE, INVENT_STAGGER, 2026-08:
 // growing-season agronomy, photoperiod-bound early maize, package-read cradle
 // placement, and package-lag hearth maturation (domLagY). Genesis AND live

@@ -1976,6 +1976,17 @@ const PLANT_CAP_MIN_POP    = 500;   // (legacy absolute; superseded by PLANT_CAP
 // industrial. Never a clock; every term is live census/statecraft.
 const PLANT_CAP_MULT       = 2.5;   // capital ≥ this × the age's typical town (a real centre, not any town)
 const PLANT_SPARE_MULT     = 2.0;   // ...and ≥ this × the settler party it sends (people genuinely to spare)
+// The funnel measurement (probe_plantfunnel) then caught the deeper units bug —
+// the CLAUDE.md's own most-repeated-mistake class: PLANT_PEOPLE = 100 CENSUS is
+// a settler party of 100,000 people, and PLANT_COST = 1200 coin sits above every
+// measured pre-classical treasury (medians 1-170). A large historical colonia
+// party was a few THOUSAND settlers (Greek apoikiai: hundreds of families).
+// Under T.PLANT_EARLY the party is 6 census (≈6,000 settlers) and the endowment
+// is priced PER SETTLER (12 coin/census — outfit, passage, seed grain), so the
+// channel opens when statecraft (the org bar) says so, not when a treasury
+// crosses an industrial-scale constant.
+const PLANT_EARLY_PEOPLE   = 6;     // census — the large-colony settler party (~6,000 people)
+const PLANT_COIN_PER_CENSUS = 12;   // endowment per census of settlers (outfit + passage + seed)
 const PLANT_STRAIN_MAX     = 0.85;  // no planting past the governing budget (COLONY_HEADROOM precedent)
 const PLANT_COOLDOWN       = 2400;  // ticks between plantations per realm
 // A plantation obeys the SAME minimum spacing as any founding (the sweep's
@@ -2001,6 +2012,10 @@ function maybePlantTowns(world) {
   const eligible = new Map();
   // Gate telemetry (write-only, probe-readable — the maxBuildSpan pattern).
   const dbg = world.debug ? (world.debug.plant || (world.debug.plant = { pop: 0, org: 0, strain: 0, coin: 0, cool: 0, elig: 0, cand: 0, iso: 0, planted: 0 })) : null;
+  // Party + endowment at their re-derived scale under T.PLANT_EARLY (see the
+  // constants' units note); the legacy pair off-lever, byte-identical.
+  const plantPeople = T.PLANT_EARLY ? PLANT_EARLY_PEOPLE : PLANT_PEOPLE;
+  const plantCost = T.PLANT_EARLY ? PLANT_EARLY_PEOPLE * PLANT_COIN_PER_CENSUS : PLANT_COST;
   for (const [cid, c] of world.countries) {
     const cap = c.capital;
     if (!cap || cap.mode !== "settled") { if (dbg) dbg.pop++; continue; }
@@ -2010,14 +2025,14 @@ function maybePlantTowns(world) {
     // absolute-metropolis bar (byte-identical).
     if (T.PLANT_EARLY) {
       const typical = world._townBar || PLANT_CAP_MIN_POP;
-      const need = Math.max(PLANT_CAP_MULT * typical, PLANT_SPARE_MULT * PLANT_PEOPLE);
+      const need = Math.max(PLANT_CAP_MULT * typical, PLANT_SPARE_MULT * plantPeople);
       if ((cap.people || 0) < need) { if (dbg) dbg.pop++; continue; }
     } else if ((cap.people || 0) < PLANT_CAP_MIN_POP) { if (dbg) dbg.pop++; continue; }
     if (((cap.knowledge && cap.knowledge.organization) || 0) < PLANT_ORG_MIN) { if (dbg) dbg.org++; continue; }
     const pol = getPolity(world, cid);
     if (!pol || pol.endedStep >= 0) continue;
     if ((pol._strain ?? 0) >= PLANT_STRAIN_MAX) { if (dbg) dbg.strain++; continue; }
-    if ((pol.treasury || 0) < PLANT_COST) { if (dbg) dbg.coin++; continue; }
+    if ((pol.treasury || 0) < plantCost) { if (dbg) dbg.coin++; continue; }
     if (world.step - (pol._lastPlant ?? -Infinity) < PLANT_COOLDOWN) { if (dbg) dbg.cool++; continue; }
     if (dbg) dbg.elig++;
     eligible.set(cid, { cid, c, cap, pol, march: [], inland: [] });
@@ -2130,12 +2145,12 @@ function maybePlantTowns(world) {
     const { cap, pol, cid } = e;
     // Found it: settlers and endowment MOVE (both conserved) — the state
     // relocates people and coin it already has.
-    pol.treasury -= PLANT_COST;
+    pol.treasury -= plantCost;
     pol._lastPlant = world.step;
-    cap.people -= PLANT_PEOPLE;
-    fieldShift(world, cap, -PLANT_PEOPLE);
+    cap.people -= plantPeople;
+    fieldShift(world, cap, -plantPeople);
     const town = makeSettlement(world, best.tx + 0.5, best.ty + 0.5, {
-      people: PLANT_PEOPLE,
+      people: plantPeople,
       knowledge: { ...cap.knowledge },
       countryId: cid,
       parentId: cap.id,               // provisioned from home while young (conquest.js colony supply)
@@ -2143,7 +2158,7 @@ function maybePlantTowns(world) {
       cultureId: dominantCulture(cap),
       tier: 1,
     });
-    town.wealth = (town.wealth || 0) + PLANT_COST;
+    town.wealth = (town.wealth || 0) + plantCost;
     town._integratedAt = world.step;
     gridAdd(world, town);
     // Exempt from the ledger LAW for siting (see above) — but once planted it
