@@ -957,6 +957,18 @@ const DISSOLVE_CHECK_IVL = 200;   // per-settlement stride (amortization, not a 
 const DISSOLVE_HYST = 0.6;        // dissolve below this fraction of the founding bar
 const DISSOLVE_SUSTAIN = 1500;    // history-steps the basin must stay thin (granularity-corrected below)
 const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured here (core share p50 4.6-5.6%, every probe arm) and historically (~3-8%)
+/** T.DISSOLVE_TOWNS: can (tx,ty)'s basin feed a CITY? The lever's one bar —
+ *  basin census ≥ TIER_CORE[2]/URBAN_SHARE_REF (a 10k core at the ~5% urban
+ *  share needs a ~200,000-person market basin) — shared by every mint path
+ *  (crystallize, state plantations, sea colonies) so no channel can mint at
+ *  town scale around it. True when the lever is off or the bridge is not yet
+ *  live (the dawn is hearth-driven anyway). */
+export function cityBasinOkAt(world, tx, ty) {
+  if (!T.DISSOLVE_TOWNS || !(world._onePopScale > 0)) return true;
+  const rn = rNormPop(world);
+  const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+  return mass * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF;
+}
 function maybeDissolveTowns(world) {
   if (!T.DISSOLVE_TOWNS) return;
   if (!(world._onePopScale > 0)) return;   // pre-bridge the basin census is unreadable (dawn; hearth-driven anyway)
@@ -1586,14 +1598,12 @@ export function maybeCrystallize(world) {
           // themselves. (The sweep pre-filtered on this; the act re-reads
           // the same cached answer as its own guard.)
           if (labelBasinMass(world, tx, ty) < (T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN)) continue;
-          if (T.DISSOLVE_TOWNS && (world._onePopScale > 0)
-              && labelBasinMass(world, tx, ty) * world._onePopScale < TIER_CORE[2] / URBAN_SHARE_REF) continue;
         } else {
-          const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
-          if (mass < TOWN_BASIN_MIN) continue;
-          if (T.DISSOLVE_TOWNS && (world._onePopScale > 0)
-              && mass * world._onePopScale < TIER_CORE[2] / URBAN_SHARE_REF) continue;
+          if (townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) < TOWN_BASIN_MIN) continue;
         }
+        // The city-capability bar reads the DISK basin under both arms — the
+        // market reach a city needs does not care about label-cell partitions.
+        if (!cityBasinOkAt(world, tx, ty)) continue;
       }
       // (people drawn here, after the last reject, so the rng stream is unchanged)
       const roll = rng.int(8);
@@ -2044,6 +2054,10 @@ function sendSettlers(world, parent) {
   }
   }
   if (!best) return;
+  // T.DISSOLVE_TOWNS: the crown plants CITIES — a site whose basin cannot
+  // feed one is not planted (checked BEFORE the demographic cost, so no
+  // settler party is debited for a rejected site).
+  if (!cityBasinOkAt(world, best.tx, best.ty)) return;
   // Pay the demographic cost: a chunk of the parent's people leaves with
   // them. They take some of the parent's tech (full inheritance — they're
   // literate citizens of the realm, not isolated frontier inventors).
