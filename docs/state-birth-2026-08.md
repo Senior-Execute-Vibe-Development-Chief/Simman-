@@ -575,6 +575,42 @@ Old saves migrate: sub-city settlements fade back into the countryside over
 the first stretch — the measured dissolution cull; ONE_POP keeps every
 person on the field.
 
+## Wave 5 — decoupling nations from cities (owner, 2026-08-05)
+
+*"each nation still spawns with a settlement though? i think this is where we
+get to decoupling nations from cities. also i still see you spawning villages
+and towns."*
+
+**Stage B — CITY_AT_BIRTH (built, def 0, measured):** no entity ever mints
+below the city definition. The proto-urban stage lives in the land: unclaimed
+ledger sites in city-capable cells concentrate their countryside in the field
+(URBAN_DRIFT trickle + a per-tick capacity spike holding the core — the grown
+cities' own mechanism applied pre-entity), and the entity is born a CITY when
+the core disk holds one ("The city of X arose"). The spontaneous sweep mints
+nothing; the runtime hearth mint becomes the invention alone. MEASURED
+(probe_sitecities, 480/8817/6k): site cores grow 1.7 → 20 census with no
+leak-back; two cities arise from the land by 6k (first ~4500, at the wheat
+hearth). The remaining dawn dots are the BUILD-TIME cradles, which are
+load-bearing: they carry `_hearthAgeY` (the technique wave's source age,
+popField.js:429) and calibrate the census bridge. Their conversion is Stage A.
+
+**Stage A — STATE_OF_LAND (designed, next):** a polity may exist on territory
+and people alone. The hearth's maturation births a NATION, not a settlement:
+a polity-registry record seated on a TILE (`seatTi`), its hearth age carried
+world-side (`world._hearthSeeds`) for the technique wave, its territory
+seeded from the seat through the existing claim machinery, liveness =
+claimed land holds field population (no settled member required). The realm
+derivation (conquest.js ~643, which today rebuilds `world.countries` purely
+from settlements) adds memberless land realms — every `c.capital` consumer
+null-guarded, armies absent by design (the pre-urban world fights at raid
+scale, below the army abstraction). Cities born by the site pass inside a
+land nation's territory JOIN it and take the court (the existing
+capital-genesis relocation); a land nation whose people scatter ends. The
+dawn map then reads: tribal nations over the hearth basins from the first
+century — no dots — and the first city rises inside one as the Uruk moment.
+Blast-radius audit before build: every `c.capital`/`c.members` consumer in
+conquest/countryTerritory/armies/faiths for the memberless case.
+
 **Composed-set arc sanity (CROWD_FOUND=1 + CITY_CORE=1, 480/8817/6k): the
 whole city arc survives composition.** First town step 315, first city step
 2695 — the same emergent moment as CITY_CORE alone (2720), the same settlement
