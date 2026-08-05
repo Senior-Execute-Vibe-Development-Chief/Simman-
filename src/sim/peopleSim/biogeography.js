@@ -144,6 +144,7 @@ function ensureDistFields(world) {
   if (world._pkgDist && world._pkgDist.N === world.N) return world._pkgDist;
   const { N, tw, th, elev, temp, moist } = world;
   const ck = Math.max(1e-3, T.DIFF_CLIM || 0.8);   // the spread physics uses a real toll even if the lever is low
+  const rn = rNormPop(world);   // per-tile terms are divided by this (see the edge cost below)
   const fields = {};
   const origins = {};
   for (const pkg of CROP_PACKAGES) {
@@ -165,7 +166,22 @@ function ensureDistFields(world) {
         if (ni < 0) continue;
         // Water hop: a fixed penalty (crop transfer by sea is dear); land edge:
         // the climate variation crossed (races along bands, crawls across them).
-        const edge = elev[ni] > 0 ? ck * (Math.abs(temp[ni] - ti0temp) + Math.abs(moist[ni] - ti0moist)) + 0.02 : WATER_HOP;
+        // RESOLUTION INVARIANCE (measured, CLAUDE.md's third cardinal rule):
+        // the climate term telescopes across a gradient — the total variation
+        // crossed is a property of the LAND, identical at any grid — but the
+        // per-tile terms (the small distance floor, the water hop) are counted
+        // ONCE PER TILE, so a finer grid takes ~rn× more steps and inflates
+        // them ~rn×. Measured before this fix: wheat's land-median distance
+        // read 11.0 at tw=240 and 20.2 at tw=480 (~1.8×), so a reach calibrated
+        // at the reference under-reached at the app grid — and resgate caught
+        // it as claimed-land 0.38-0.40 vs a 0.44 floor on 2 of 3 seeds (less
+        // land carries a package → less claimable ground), the failure being
+        // strongest exactly where the grid is finest. Dividing the per-tile
+        // terms by rn makes a real crossing cost the same at every grid.
+        const perTile = 1 / rn;
+        const edge = elev[ni] > 0
+          ? ck * (Math.abs(temp[ni] - ti0temp) + Math.abs(moist[ni] - ti0moist)) + 0.02 * perTile
+          : WATER_HOP * perTile;
         const nd = d + edge;
         if (nd < dist[ni]) { dist[ni] = nd; heap.push(ni, nd); }
       }
@@ -218,7 +234,7 @@ export function packagePresent(world, ti, pkg) {
   const d = f[ti];
   if (!isFinite(d)) return false;   // unreachable (a landmass the package never reached)
   const reach = REACH_BASE + REACH_DEV * (world._bioReachDev != null ? world._bioReachDev : leadAgri(world));
-  return d <= reach * rNormPop(world);
+  return d <= reach;   // the field is grid-invariant now (per-tile terms /rn), so the reach is an absolute climate distance
 }
 
 // ── Distance also DISCOUNTS, it does not only gate ───────────────────────────
@@ -241,7 +257,7 @@ export function packageAdaptMul(world, ti, pkg) {
   const f = pd.fields[pkg.id]; if (!f) return 1;
   const d = f[ti];
   if (!isFinite(d)) return 0;
-  return 1 / (1 + d / (ADAPT_SCALE * rNormPop(world)));
+  return 1 / (1 + d / ADAPT_SCALE);   // same: grid-invariant field, absolute scale
 }
 
 // Cache the reach driver once per pass (leadAgri is an O(settlements) scan) so a
