@@ -1496,7 +1496,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // ── Tier filter (Layers panel): drop any component whose ONLY settlements
     // belong to hidden tiers, so only roads connecting the active tiers show.
     const _Lr=layersRef.current;
-    const tierShowR=[_Lr.village,_Lr.city,_Lr.city,_Lr.metropolis];   // tier 1 ("city") follows the city toggle
+    const tierShowR=[_Lr.village,_Lr.town??_Lr.city,_Lr.city,_Lr.metropolis];   // tier 1 is a TOWN — it follows the town toggle (city fallback for old saved layer prefs)
     const allTiers=tierShowR.every(Boolean);
     let compVisible=null;
     if(!allTiers){
@@ -2327,7 +2327,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // major cities/metropolises as landmarks.
     const tierShow=_identity
       ?[false,false,_L.icons&&_L.city,_L.icons&&_L.metropolis]
-      :[_L.icons&&_L.village,_L.icons&&_L.city,_L.icons&&_L.city,_L.icons&&_L.metropolis];
+      :[_L.icons&&_L.village,_L.icons&&(_L.town??_L.city),_L.icons&&_L.city,_L.icons&&_L.metropolis];
     // Glyphs render on the fixed-resolution feature canvas too (crisp, constant size at every map
     // scale). fctx's transform is the map's pan/zoom scaled by _k, so the map-canvas coordinates and
     // *iconScale sizes below are reused verbatim; `ctx` is shadowed to the feature context for the
@@ -3248,7 +3248,10 @@ const renderInspect=()=>{
   // tier 0 is a VILLAGE that promotes in place as its measured core grows, so
   // the panel prices progress on _coreMeasured against the TIER_CORE floors.
   const coreT=!!(SIM_T.CITY_CORE&&SIM_T.DISSOLVE_FARMS);
-  const tierName=(coreT?TIER_NAME_CORE:["farming region","city","city","metropolis"])[s.tier]||"settlement";
+  // Legacy array historically said "city" for tier 1 while the hover card and
+  // the chronicle said "town" — the owner caught the mismatch live. Tier 1 is
+  // a town in every register.
+  const tierName=(coreT?TIER_NAME_CORE:["farming region","town","city","metropolis"])[s.tier]||"settlement";
   // Legacy ladder: a farming region (tier 0) does NOT promote in place — it FOUNDS
   // a town nearby once it fills out (urban genesis). Only urban nodes climb, at the
   // sim's canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
@@ -4293,7 +4296,7 @@ return(
     const ctry=hoverInfo.realmId>=0&&psw&&psw.countries?psw.countries.get(hoverInfo.realmId):null;
     const emblem=ctry?realmEmblemURL(psw,ctry,terRef.current,worldRef.current?worldRef.current.seed:0):null;
     if(!hoverInfo.sett&&!ctry)return null;
-    const tierName=hoverInfo.sett?["farming region","town","city","metropolis"][hoverInfo.sett.tier]||"settlement":null;
+    const tierName=hoverInfo.sett?(SIM_T.CITY_CORE&&SIM_T.DISSOLVE_FARMS?TIER_NAME_CORE:["farming region","town","city","metropolis"])[hoverInfo.sett.tier]||"settlement":null;
     return(<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,paddingBottom:4,borderBottom:"1px solid rgba(216,190,150,0.18)"}}>
       {emblem&&<img src={emblem} alt="" style={{height:26,flexShrink:0,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.3))"}}/>}
       <div style={{minWidth:0}}>
