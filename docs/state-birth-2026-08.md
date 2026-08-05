@@ -650,6 +650,20 @@ DAWN_LIVE world is honestly pre-city and would fail "civilization alive"
 semantically, not wrongly). Playable now via the tuning panel:
 DAWN_LIVE=1, CITY_AT_BIRTH=1.
 
+**STATE_OF_LAND measured — the full vision arc (v7, all three dawn levers,
+480/8817/25k):** from a truly empty world, farming invents at the wheat
+hearth, and the political map fills the pre-urban window exactly as
+designed: **38 polities by 25k of which 20 are NATIONS OF THE LAND** —
+named tribal polities holding their valleys with no city dots — while the
+first cities rise INSIDE the tribal era ("Fátǎkú" crossing the 40k Uruk
+anchor at 15,265; "Kóltù" born at core 10 at 16,597) and adopt their
+nations into statehood through the merged claim (nationless 6%). Nothing,
+then farming, then nations, then Uruk: the owner's phrase, measured.
+Byte-identity at the live defaults across the whole Stage A build
+(b862d3aa/e56aa7ae). Remaining before the dawn set can flip default-on:
+dawn-aware horizons in the gate harnesses; recorded follow-ups: tribal
+nations ending when their basin empties, and the coast/river dilution debt.
+
 **Audit result — the architecture inverts (recorded before building):** the
 capital-dereference sweep found 25+ raw `c.capital.x` reads across the
 conquest pass (raids, diplomacy, colony supply, resource wars), all
