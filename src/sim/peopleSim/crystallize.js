@@ -170,11 +170,36 @@ function townBasinMass(world, tx, ty, rB) {
 }
 /** Measurement export (probes only): the CROWD_FOUND mass ratio at (tx,ty) —
  *  the founding basin's field people over a bar-sized basin (1 = exactly
- *  TOWN_BASIN_MIN×rn², the "enough countryside to carry a town" bar). This is
- *  the quantity crowdMul is computed from; exporting it changes nothing. */
+ *  TOWN_BASIN_MIN×rn², the "enough countryside to carry a town" bar). A
+ *  PHYSICAL yardstick for probes; crowdMul itself normalizes by the live
+ *  crowdRefMass (the age's typical settled basin), not by this bar — the
+ *  first build normalized by the bar and measured degenerate (see the
+ *  crowdMul comment). */
 export function crowdMassRatio(world, tx, ty) {
   const rn = rNormPop(world);
   return townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / (TOWN_BASIN_MIN * rn * rn);
+}
+/** The age's TYPICAL settled basin (median townBasinMass over settled sites),
+ *  cached and refreshed on a coarse cadence — a live self-calibrating
+ *  reference of the tier-bar species, floored at the TOWN_BASIN_MIN bar so
+ *  the dawn (few settlements, all cradles) divides by the viability floor
+ *  rather than by noise. Only T.CROWD_FOUND consumes it; the lever guard at
+ *  the call site keeps the off-path free of this work entirely. */
+const CROWD_REF_IVL = 250;   // refresh cadence in steps — amortization, not a content gate (the median moves slowly)
+export function crowdRefMass(world) {
+  if (world._crowdRefAt !== undefined && world.step - world._crowdRefAt < CROWD_REF_IVL) return world._crowdRef;
+  const rn = rNormPop(world);
+  const rB = Math.round(TOWN_BASIN_R * rn);
+  const floor = TOWN_BASIN_MIN * rn * rn;
+  const masses = [];
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    masses.push(townBasinMass(world, s.pos.x | 0, s.pos.y | 0, rB));
+  }
+  masses.sort((a, b) => a - b);
+  const med = masses.length ? masses[masses.length >> 1] : 0;
+  world._crowdRefAt = world.step;
+  return world._crowdRef = Math.max(floor, med);
 }
 const KNOWLEDGE_DECAY_SCALE     = 30;
 // Radius for the spatial-grid fast path in inheritKnowledgeAt. Generous enough
@@ -1291,12 +1316,21 @@ export function maybeCrystallize(world) {
     // exactly at it. Historically the opposite: towns crystallise out of dense
     // countryside — the Nile, the Yangtze, the Ganges grew thickets of them
     // while equally fertile but thinly-peopled land grew few.
-    //   Under the lever the rate carries the basin's people RELATIVE to the bar
-    // the sim already uses for "enough countryside to carry a town" (no new
-    // constant), damped by a square root so it is a real gradient and not a
-    // runaway: 4× the people founds ~2× as readily, 25× founds ~5×. Above the
+    //   The rate carries the basin's people RELATIVE TO THE AGE'S TYPICAL
+    // SETTLED BASIN (crowdRefMass — the live median over settled sites, the
+    // same self-calibrating species as the tier ladder's percentile bars),
+    // damped by a square root so it is a gradient and not a runaway: 4× the
+    // typical countryside founds ~2× as readily, a quarter of it ~half. Above
     // CROWD_CAP the term saturates (a basin cannot mint towns without limit —
     // the spacing floors and the market-cell exclusivity still bind).
+    //   MEASURED, first build (probe_crowdfound A/B 480/8817/6k): normalizing
+    // by the TOWN_BASIN_MIN bar instead pegged the cap on 100% of foundings —
+    // real settled basins run 150-3300× that bar (p50 249×), so the sqrt's
+    // useful range sat two orders below the distribution and the "gradient"
+    // degenerated to a blunt ×CAP step on all settled land vs the frontier
+    // (foundings 109 → 202, +85%, with the within-settled signal erased). The
+    // bar is the FLOOR of viability; the reference for "denser than usual" is
+    // the TYPICAL basin, and that is a measurement, not a constant.
     //   NB this is NOT T.INVENT_FIELD, which failed: that scaled the INDEPENDENT
     // INVENTION floor by the same mass and measured worse, because every site
     // that can found at all already clears the bar, so it only ever multiplied
@@ -1305,8 +1339,8 @@ export function maybeCrystallize(world) {
     // wave (INDEP_TECH, now default-on) independently keeps the frontier shut.
     let crowdMul = 1;
     if (T.CROWD_FOUND > 0 && world.popField) {
-      const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / (TOWN_BASIN_MIN * rn * rn);
-      crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass), 0.5 * T.CROWD_FOUND));
+      const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+      crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass / crowdRefMass(world)), 0.5 * T.CROWD_FOUND));
     }
     const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
