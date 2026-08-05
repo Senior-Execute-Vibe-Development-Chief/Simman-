@@ -420,11 +420,52 @@ people-counts, not tile-counts.
 
 **The side effect that needs its own verdict: statehood.** Honest tiers close
 the everything-is-a-town sovereignty shortcut (`tierLockedCentre`, city
-auto-anchors), and at 6k/8817 the realm count reads 20 vs 77 under the
-inflated ladder, nationless 59% vs 15%. At metallurgy 0.13 — chalcolithic — a
-world of ~20 city-states with a mostly stateless countryside is closer to the
-record than 77 realms (states bloom WITH cities; that is the Uruk story). The
-open question is whether statehood catches up as organization spreads.
+auto-anchors). At 6k/8817/480, properly attributed (the commit note quoted the
+heuristic-core arm's 77 as if it were the baseline — corrected here):
+
+| arm | realms @6k | nationless |
+|---|---|---|
+| OFF (shipped ladder) | **45** (19 → 45 rising) | 42% |
+| CITY_CORE, heuristic-core bug | 77 | 15% |
+| CITY_CORE, measured core | **20** | 59% |
+
+So the honest ladder halves the realm count against the shipped baseline. At
+metallurgy 0.13 — chalcolithic — ~20 city-states over a mostly stateless
+countryside is closer to the record than 45 (states bloom WITH cities; that is
+the Uruk story). The open question was whether statehood catches up as
+organization spreads — the nationless towns are blocked on the frontier
+census bar (`forestBar ≥ NUCLEATE_SEAT_POP`, the bar CLAUDE.md records as
+measurably unreachable) and on `ORG_STATE_MIN`, both pre-existing conditions
+the inflated ladder was masking by letting every dawn "city" self-anchor.
+
+**Answered on a 16k arc (480/8817, CITY_CORE=1): statehood does not merely
+catch up — it overtakes, with the historical shape.**
+
+    step   realms  nationless   cities   lead org
+     500     10       71%          0       0.14     ← the hearth cradle states
+    3000     10       84%          1       0.18     ← settlement outruns statehood:
+    5000     13       77%          7       0.23        the PRE-STATE farming world
+    8000     33       44%         15       0.30
+   11000     46       25%         31       0.37
+   14000     64       17%         40       0.44
+   16000     71        9%         64       0.49
+
+Ten realms hold through the whole pre-urban dawn while nationless settlement
+peaks at 84% — then, as organization crosses ~0.23, realms climb essentially
+linearly with it and the countryside is progressively absorbed: 71 realms and
+9% nationless by metal 0.30 (iron age). The shipped baseline reached 45 realms
+by step 6000 and its realm count tracks its (inflated) town count; the honest
+ladder ends with MORE states, LATER — few and small at the dawn, multiplying
+with statecraft. That is the owner's "countries too large too early" fixed
+from the state-birth side, and it fell out of the label becoming honest — no
+statehood mechanism was touched.
+
+The tier pyramid's top end thickens late (64 cities > 47 towns at 16k): the
+floors are fixed definitions and the settlement-size distribution slides up
+through them, exactly as the real one did (the iron-age Old World held dozens
+of 10k+ cities where the bronze age held a handful). The metro bar floats at
+0.8× the age's largest core, so metropolises stay rare (3-8) instead of the
+whole city tier crossing a fixed bar into a metro glut.
 
 # The early towns are in the wrong PLACES — and the first fix failed
 
