@@ -501,6 +501,17 @@ site p50 934, 100% on-river) with founding damped a further ~18% through the
 market tier-weights (fewer dawn "towns" → weaker marketPull), cleanly — no
 interaction pathology.
 
+**Composed-set arc sanity (CROWD_FOUND=1 + CITY_CORE=1, 480/8817/6k): the
+whole city arc survives composition.** First town step 315, first city step
+2695 — the same emergent moment as CITY_CORE alone (2720), the same settlement
+(Nawaxexi, the wheat hearth), the same development (metal 0.05). City count 8
+of 76 settled vs 11 of 90 alone — proportional, not starved. Realms 20 → the
+same statehood arc; roads 673 vs 686. CROWD_FOUND's conservatism costs ~3
+cities at 6k on this seed and buys siting (every founding on-river, late
+foundings at 934× the bar); first metropolis arrives later (5206 vs 3945) as
+the denser-but-fewer world takes longer to push one core past 40,000. The
+flip-set decision moves to the Wave 3 acceptance run at the shipped grid.
+
 # The early towns are in the wrong PLACES — and the first fix failed
 
 Owner, watching the sim: *"most of them are in inaccurate locations, is it
