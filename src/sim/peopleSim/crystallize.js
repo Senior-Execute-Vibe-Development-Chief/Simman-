@@ -260,6 +260,7 @@ const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold
                                          // Already a FIELD-MASS read (the B3 bar pattern). Under T.LABEL_BIRTH the bar
                                          // is the lever T.LABEL_BAR (default = this same 360 anchor) and the read
                                          // becomes basin-EXCLUSIVE — see the sweep.
+const CROWD_CAP                 = 6;     // T.CROWD_FOUND saturation: the densest basin founds at most this multiple of a bar-sized one
 const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (×rn at the use site; = URBAN_CATCHMENT, one market catchment).
                                          // Under T.LABEL_BIRTH this same real distance is the market HORIZON of the
                                          // site-ledger law below (the cell's activation-mass radius AND the reach of a
@@ -1273,7 +1274,33 @@ export function maybeCrystallize(world) {
     // the package's own definition of "full farming". 0 = ungated
     // (byte-identical, and the default).
     const packageFrac = T.INDEP_TECH && world.devField ? Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI) : 1;
-    const p = quality * (diffusionMul + independent) * packageFrac * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    // ── T.CROWD_FOUND: towns appear where the PEOPLE are ────────────────────
+    // Owner, 2026-08: "do cities appear where populations are dense?" Measured:
+    // NO, not as a rate. The basin's people are a THRESHOLD (TOWN_BASIN_MIN, a
+    // pass/fail gate above) and marketPull counts SETTLEMENTS (tier-weighted,
+    // distance-decayed) — so founding tracks where other TOWNS are and where the
+    // LAND is good, but a basin at ten times the bar founds no faster than one
+    // exactly at it. Historically the opposite: towns crystallise out of dense
+    // countryside — the Nile, the Yangtze, the Ganges grew thickets of them
+    // while equally fertile but thinly-peopled land grew few.
+    //   Under the lever the rate carries the basin's people RELATIVE to the bar
+    // the sim already uses for "enough countryside to carry a town" (no new
+    // constant), damped by a square root so it is a real gradient and not a
+    // runaway: 4× the people founds ~2× as readily, 25× founds ~5×. Above the
+    // CROWD_CAP the term saturates (a basin cannot mint towns without limit —
+    // the spacing floors and the market-cell exclusivity still bind).
+    //   NB this is NOT T.INVENT_FIELD, which failed: that scaled the INDEPENDENT
+    // INVENTION floor by the same mass and measured worse, because every site
+    // that can found at all already clears the bar, so it only ever multiplied
+    // up on the isolated frontier. This scales the WHOLE rate, where the
+    // ratio's variation across settled land is the signal, and the technique
+    // wave (INDEP_TECH, now default-on) independently keeps the frontier shut.
+    let crowdMul = 1;
+    if (T.CROWD_FOUND > 0 && world.popField) {
+      const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / (TOWN_BASIN_MIN * rn * rn);
+      crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass), 0.5 * T.CROWD_FOUND));
+    }
+    const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
     // full-tempo probability (cheap reject), then against the wave-of-advance
