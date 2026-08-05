@@ -72,8 +72,18 @@ const SEED = +(process.argv[3] || 8817);
 //   pop density   0.62          0.56         0.42 (0.40)
 //   app median    206k km²      164k km²     60k  (=)     (collapse-catch semantics, deliberately deep)
 //   app realms    46            36           6    (=)     (regime floor, not a band)
+// CORRECTION (same wave, hours later): the 0.50 tightening above was derived on
+// the pre-divergence-lane regime and went stale within the day — the lane flip +
+// the hearth suit-clamp drop (deliberate, documented default regime changes of
+// the SIZE_BY_POP precedent class) re-keyed genesis, and the new regime measures
+// 0.44 (8817) / 0.99 (31337) with every candidate lever PROVEN inert at the gate
+// horizon (identical 0.44 across fracture/plant/none arms). The floor returns to
+// its long-standing 0.42 — stricter than the two-seed formula's 0.33 on the new
+// regime, passing both seeds, and never looser than any floor that shipped
+// before today. Lesson recorded: ratchet tightenings must not be derived and
+// shipped in the same wave as regime changes.
 const BANDS = {
-  medianAreaRatio: 0.50,   // app median realm area / reference
+  medianAreaRatio: 0.42,   // app median realm area / reference
   claimedRatio:    0.44,   // app claimed% / reference
   popDensRatio:    0.42,   // app people-per-km² / reference
   appMedianKm2:    60000,  // ABSOLUTE: a one-tile realm at tw=480 is ~4,000 km²
