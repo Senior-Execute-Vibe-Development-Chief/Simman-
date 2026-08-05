@@ -1686,6 +1686,14 @@ export function deriveOnePop(world) {
       // in census units — resolution-invariant. coreR=0 ⇒ diskSum === pf[ti] exactly.
       s._urbanPop = Math.min(s.people, Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR) * scale));
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
+      // The MEASURED core, kept apart from _urbanPop: the census-side
+      // ruralShare heuristic overwrites _urbanPop every tick between derives
+      // (updateSettlement runs before this pass), so a reader inside the
+      // settlement pass sees the RATIO MODEL there, not this measurement. The
+      // tier ladder under T.CITY_CORE prices its rungs on the measured core
+      // only (the heuristic read minted a "city" at step 1 and metropolises at
+      // 3× their field core). Null until the field first derives a catchment.
+      s._coreMeasured = s._urbanPop;
     }
     // else: no catchment tiles this pass (fresh founding / recompute lag) — keep the census value
     // The spike (next pass's capacity + the core's transition/graveyard-bent

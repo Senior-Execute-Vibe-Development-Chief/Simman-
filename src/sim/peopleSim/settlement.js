@@ -55,6 +55,23 @@ const TIER_NAME      = ["farming region", "town", "city", "metropolis"];   // ti
 // not first-principles census minima.
 const TIER_TOWN_FLOOR = 60;    // = TIER_THRESHOLD[1] × 0.4
 const TIER_CITY_FLOOR = 240;   // = TIER_THRESHOLD[2] × 0.4
+// ── T.CITY_CORE: ABSOLUTE urban-core floors — the words defined, not ranked ──
+// The measured failure of re-ranking alone (see the lever): while the bar is a
+// percentile or K×median it mints a fixed SHARE of "cities" in ANY distribution,
+// so the map showed stone-age towns everywhere and hamlet-cored "metropolises".
+// These floors are DEFINITIONS of the words on the urban-core scale (census
+// units, 1 = 1,000 people): a TOWN is a settlement whose core holds ~2,000
+// people (the smallest agglomerations the urban literature calls towns); a CITY
+// ~10,000 (the classic threshold, Uruk-period cities at 10-40k); METROPOLIS
+// keeps its relative form but is floored at 40 (=40,000 — Uruk at its height,
+// the largest city on Earth in its age). Historically anchored, era-free, and
+// resolution-free (a core is a count of people, not of tiles). Under the lever
+// tier 0 EXISTS again as a LABEL — a VILLAGE/rural centre — without resurrecting
+// the farming-region entity: it farms (DISSOLVE opens food to every tier),
+// trades locally, and simply is not called a town on the map, does not plan
+// trunk roads (ROAD_MIN_TIER), and does not self-anchor sovereignty.
+const TIER_CORE = [0, 2, 10, 40];
+const TIER_NAME_CORE = ["village", "town", "city", "metropolis"];   // tier-0 under CITY_CORE is one rural community, not the legacy farmed-region abstraction
 // Rural ceiling: a FARMING REGION (tier 0) is a collection of villages — a rural
 // DISTRICT — not a proto-city. Its population is capped here so it can never pile
 // into a single giant "farming region" node. The surplus food its land grows
@@ -3337,24 +3354,34 @@ function updateTier(world, s) {
   // realm's resources. Cached once per tick.
   // LEGACY ARM (A/B): TIER_SCALE_REF > 0 restores the world-total relative
   // scale byte-identically (TIER_SCALE_MAX caps it; the old default was 29000).
+  // T.CITY_CORE: the ladder ranks what a settlement IS — its URBAN CORE — not
+  // the countryside it farms. Under ONE_POP `people` is the CATCHMENT census
+  // (city + every villager in its district), so the old ranking measured how
+  // peopled a district was and called the result a town: measured, the median
+  // "town" at step 2000 has an urban core of 881 people (a hamlet) against a
+  // 22,000-person catchment, and not one settlement clears the town floor on
+  // its real core through step 6000 (docs/state-birth-2026-08). The economy
+  // already disagrees with the label — the agglomeration pass gives a
+  // non-importer no urban target at all. Reading _urbanPop makes the label mean
+  // the thing it names. Requires the DISSOLVE_FARMS province split: without it
+  // _urbanPop IS the whole catchment (no rural share is ever carved off) and
+  // the small core floors would mint instant metropolises.
+  // Off = the catchment census, byte-identical.
+  const coreLadder = !!(T.CITY_CORE && T.DISSOLVE_FARMS);
   let topU = world._topUrban;
   if (world._tierScaleStep !== world.step) {
     let tot = 0, top = 0;
     const pops = T.TIER_SCALE_REF > 0 ? null : [];
     for (const x of world.settlements) if (x.mode === "settled") {
-      // T.CITY_CORE: the ladder ranks what a settlement IS — its URBAN CORE —
-      // not the countryside it farms. Under ONE_POP `people` is the CATCHMENT
-      // census (city + every villager in its district), so the ranking measured
-      // how peopled a district was and called the result a town: measured, the
-      // median "town" at step 2000 has an urban core of 881 people (a hamlet)
-      // against a 22,000-person catchment, and not one settlement clears the
-      // town floor on its real core through step 6000 (docs/state-birth-2026-08).
-      // The economy already disagrees with the label — the agglomeration pass
-      // gives a non-importer no urban target at all. Reading _urbanPop makes the
-      // label mean the thing it names. Off = the catchment census, byte-identical.
-      const rank = T.CITY_CORE && x._urbanPop != null ? x._urbanPop : (x.people || 0);
+      const rank = coreLadder ? (x._coreMeasured || 0) : (x.people || 0);
       tot += x.people || 0;
-      if (pops) pops.push(rank);
+      // The percentile pool ranks the CATCHMENT census under every regime: the
+      // published world._townBar/_cityBar are the age's "typical town/city"
+      // MEASUREMENT in census units — a public quantity other systems consume
+      // in those units (maybePlantTowns' relative capital bar, probes, panels)
+      // — while the core ladder below prices its rungs on TIER_CORE
+      // definitions and never reads these percentiles at all.
+      if (pops) pops.push(x.people || 0);
       if ((x.tier | 0) >= 1 && rank > top) top = rank;   // largest URBAN centre, for the floating metro bar
     }
     if (T.TIER_SCALE_REF > 0) {
@@ -3422,8 +3449,17 @@ function updateTier(world, s) {
   // biggest cities of the age, so it stays rare as development lifts every
   // city's size, instead of the whole city tier eventually crossing a fixed
   // bar into a metro glut. Unchanged by the rank-bar rework.
-  const metroBar = Math.max(TIER_THRESHOLD[3], topU * METRO_REL_FRAC);
-  const bar = (t) => t === 3 ? metroBar : t === 2 ? world._cityBar : t === 1 ? world._townBar : TIER_THRESHOLD[0];
+  // The core ladder's bars are DEFINITIONS (TIER_CORE, absolute core census):
+  // a town/city/metropolis is a size of urban core, not a rank in this world's
+  // distribution — a percentile bar mints its fixed share of labels in ANY
+  // world (measured: re-ranking alone still called 26 hamlet-cored settlements
+  // "cities" at step 3000), so the words only regain meaning as floors. They
+  // stay LOCAL: world._townBar/_cityBar keep publishing the census-unit
+  // percentile measurement for their existing consumers.
+  const metroBar = Math.max(coreLadder ? TIER_CORE[3] : TIER_THRESHOLD[3], topU * METRO_REL_FRAC);
+  const townBar = coreLadder ? TIER_CORE[1] : world._townBar;
+  const cityBar = coreLadder ? TIER_CORE[2] : world._cityBar;
+  const bar = (t) => t === 3 ? metroBar : t === 2 ? cityBar : t === 1 ? townBar : TIER_THRESHOLD[0];
   // Farming regions (tier 0) NEVER urbanise in place: a region is a collection
   // of villages, not a proto-city. It instead BIRTHS a separate town within its
   // catchment (urban genesis, crystallize.js). So the tier ladder here moves
@@ -3433,12 +3469,18 @@ function updateTier(world, s) {
   // ever exist. Any path that mints one anyway (cradles start small; a colony created
   // without an explicit tier) is floored to a town here, so it can't linger as a
   // "farming region" once the relative town-bar rises above its size mid-game.
-  if (T.DISSOLVE_FARMS) { if ((s.tier | 0) < 1) s.tier = 1; }
+  if (T.DISSOLVE_FARMS) { if ((s.tier | 0) < 1 && !coreLadder) s.tier = 1; }
   else if ((s.tier | 0) === 0) return;   // legacy model: tier-0 regions birth towns, don't relabel
   // The settlement's own value must be measured on the SAME scale as the bars
-  // (T.CITY_CORE ranks urban cores; off, catchment census) — mixing them would
-  // compare a city's core against a catchment-derived bar and label nothing.
-  const mine = T.CITY_CORE && s._urbanPop != null ? s._urbanPop : s.people;
+  // (core ladder: the FIELD-MEASURED urban core; off, catchment census). Not
+  // _urbanPop: inside the settlement pass that holds the census-side ruralShare
+  // HEURISTIC (updatePopulation just overwrote it; deriveOnePop re-measures
+  // later in the tick), and pricing the ladder on the model instead of the
+  // measurement minted a "city" at step 1 and metropolises at 3× their field
+  // core. A core not yet measured (fresh birth, pre-first-derive) must not
+  // fall back to the catchment either — the label just waits for the field.
+  if (coreLadder && s._coreMeasured == null) return;
+  const mine = coreLadder ? s._coreMeasured : s.people;
   // Promote among the urban tiers (town → city → metropolis).
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (mine >= bar(t)) {
@@ -3450,7 +3492,7 @@ function updateTier(world, s) {
       if (t > (s._peakTier | 0)) {
         s._peakTier = t;
         logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
-          tier: t, tierName: TIER_NAME[t], up: 1, people: Math.round(mine) });
+          tier: t, tierName: (coreLadder ? TIER_NAME_CORE : TIER_NAME)[t], up: 1, people: Math.round(mine) });
       }
       return;
     }
@@ -3458,9 +3500,9 @@ function updateTier(world, s) {
   // Demote one rung once population has fallen clearly below the current tier's
   // floor — but never below tier 1. SILENT: a town slipping a rung at the floating
   // bar isn't chronicle-worthy and would only flicker against the re-promotion.
-  if (s.tier > 1 && mine < bar(s.tier) * TIER_DEMOTE_FRAC) {
+  if (s.tier > (coreLadder ? 0 : 1) && mine < bar(s.tier) * TIER_DEMOTE_FRAC) {
     s.tier -= 1;
   }
 }
 
-export { TIER_THRESHOLD, TIER_NAME };
+export { TIER_THRESHOLD, TIER_NAME, TIER_CORE, TIER_NAME_CORE };

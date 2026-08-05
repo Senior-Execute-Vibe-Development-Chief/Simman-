@@ -360,7 +360,71 @@ comment records a previous label-supply change that pinned everything to tier 0/
 and "collapsed the whole tier-keyed stack". This needs a lever and the full gate
 set, not a one-line edit.
 
----
+## BUILT (T.CITY_CORE, 2026-08-05) — and the bug the first measurement caught
+
+Fix #1 above shipped in two halves, both behind `CITY_CORE` (def 0,
+byte-identity 7173d965/b4030359 verified three times as the mechanism grew):
+
+1. **Re-ranking alone, measured insufficient** (recorded in the lever desc):
+   ranking `_urbanPop` under the same percentile bars moved label COUNTS
+   (87/4 towns/cities → 72/23) but still called 26 hamlet-cored settlements
+   "cities" at step 3000 — a percentile bar mints its fixed share of labels in
+   ANY distribution. The bar itself was the second half of the bug.
+2. **Absolute core floors as definitions** (`TIER_CORE = [0, 2, 10, 40]` census
+   units): a town IS a ~2,000-person core, a city ~10,000, a metropolis floored
+   at 40,000 (Uruk at its height) while still floating at 0.8× the age's
+   largest core. Tier 0 exists again as a LABEL — a village — not the legacy
+   farming-region entity: it farms under DISSOLVE, but plans no trunk roads
+   (`ROAD_MIN_TIER` bites again), anchors no wilderness sovereignty, founds no
+   organized faith, and musters the village army fraction.
+
+**The bug the first honest run caught: the ladder was reading the MODEL, not
+the MEASUREMENT.** `_urbanPop` has two writers each tick — the census-side
+`ruralShare` heuristic in `updatePopulation` (a ratio model), then the field's
+`diskSum` over the core footprint in `deriveOnePop` (the measurement, which
+"overrides the heuristic each tick"). `updateTier` runs INSIDE the settlement
+pass, immediately after the heuristic write — so the first CITY_CORE arm minted
+a "city" at step 1 and metropolises at 3× their field core (a 576k-catchment
+settlement whose heuristic split cleared the 40 metro floor while its measured
+core held 13k). The fix is a separate `s._coreMeasured` stamped only by the
+field derive, which the ladder alone consumes — with a null guard so a fresh
+birth or a just-loaded save keeps its tier until the field first measures it,
+instead of falling back to catchment units against core bars.
+
+The same audit caught a second units mix: the CITY_CORE branch had overwritten
+`world._townBar/_cityBar` — public quantities documented as the age's typical
+town/city CATCHMENT census, which `maybePlantTowns`' relative capital bar
+(PLANT_EARLY) consumes — with core-unit floors, collapsing the plantation gate
+to a fifth of a typical town. The percentile pool now ranks the catchment
+census under every regime; the core floors are local to the ladder.
+
+## Measured (arc probes, `tools/probe_cityarc.mjs` + `probe_towns.mjs`)
+
+480/8817/6k, CITY_CORE=1 vs OFF, the owner's symptoms one by one:
+
+| symptom | OFF (shipped) | ON (honest ladder) |
+|---|---|---|
+| stone-age cities | first "city" step 145, metallurgy 0.01 | first city **step 2720**, metal 0.05 (chalcolithic — the Uruk moment), and it is **Nawaxexi, the wheat hearth** |
+| cities born | pinned 4-6 all run (percentile quota) | **0 → 1 → 5 → 7 → 11**, monotone; 16 town→city promotions as real chronicle moments |
+| label honesty | "metropolis" with 924k catchment, 4k core | city class core p50 **11k**, metro **39-41k** — every label names its thing |
+| wilderness cities | 0-3/checkpoint | **0** at every checkpoint (1 at final) |
+| early road web | 255 tiles @ step 500 | 217 (−15%): trunk planning now waits for real towns; the remainder is the kin-path lattice, which serves villages by design |
+| tier pyramid @6k | 0 vill / 87 town / 4 city / 1 metro | **16 / 51 / 11 / 1** |
+
+Seed 4242 replicates (first city 2928 at metal 0.05, zero wilderness cities,
+no metro by 6k — a slower world, honestly told). The app-proxy grid W=960
+(tw=480) holds the arc in KIND: first city 1166 (the finer grid resolves dense
+cores earlier — metal 0.02, still pre-bronze), first metro 3344 at core 41,
+pyramid 8/39/32/4, wilderness ≤4. No cross-grid kind-difference; the floors are
+people-counts, not tile-counts.
+
+**The side effect that needs its own verdict: statehood.** Honest tiers close
+the everything-is-a-town sovereignty shortcut (`tierLockedCentre`, city
+auto-anchors), and at 6k/8817 the realm count reads 20 vs 77 under the
+inflated ladder, nationless 59% vs 15%. At metallurgy 0.13 — chalcolithic — a
+world of ~20 city-states with a mostly stateless countryside is closer to the
+record than 77 realms (states bloom WITH cities; that is the Uruk story). The
+open question is whether statehood catches up as organization spreads.
 
 # The early towns are in the wrong PLACES — and the first fix failed
 

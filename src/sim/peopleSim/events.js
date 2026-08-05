@@ -15,6 +15,8 @@
 // An index (world._evIndex) maps entity keys ("p:7", "s:12", "c:3", "f:2")
 // to event ids so per-entity history is O(own events), not a scan.
 
+import { POP_SCALE } from "../units.js";
+
 export function eventsOf(world) {
   return world.events || (world.events = []);
 }
@@ -150,8 +152,12 @@ const NARRATE = {
   "settlement.withered"(ev) { return `${ev.sName} withered away and was abandoned.`; },
   "settlement.abandoned"(ev) { return `${ev.sName} was abandoned.`; },
   "settlement.tier"(ev) {
+    // ev.people is in CENSUS units (×1,000 people — src/sim/units.js); the
+    // chronicle speaks in souls, so convert. "(10 souls)" for a 10,000-person
+    // city was the units mistake CLAUDE.md warns about, in the user's own feed.
+    const souls = ev.people != null ? ` (${(ev.people * POP_SCALE).toLocaleString("en-US")} souls)` : "";
     return ev.up
-      ? `${ev.sName} grew into a ${ev.tierName} (${ev.people} souls).`
+      ? `${ev.sName} grew into a ${ev.tierName}${souls}.`
       : `${ev.sName} declined to a ${ev.tierName}.`;
   },
   "colony.departed"(ev) {

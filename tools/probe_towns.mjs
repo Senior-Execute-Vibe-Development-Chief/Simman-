@@ -57,8 +57,8 @@ function report() {
   const line = (label, arr) => {
     if (!arr.length) { console.log(`  ${label.padEnd(22)} (none)`); return; }
     const cen = arr.map((s) => s.people || 0);
-    const urb = arr.map((s) => s._urbanPop || 0);
-    const shr = arr.map((s) => (s.people > 0 ? (s._urbanPop || 0) / s.people : 0));
+    const urb = arr.map((s) => s._coreMeasured ?? s._urbanPop ?? 0);
+    const shr = arr.map((s) => (s.people > 0 ? (s._coreMeasured ?? s._urbanPop ?? 0) / s.people : 0));
     console.log(`  ${label.padEnd(22)} n=${String(arr.length).padEnd(4)}` +
       ` catchment p50 ${ppl(q(cen, 0.5)).padStart(6)}` +
       `  URBAN CORE p50 ${ppl(q(urb, 0.5)).padStart(6)} (p90 ${ppl(q(urb, 0.9))})` +
@@ -71,12 +71,12 @@ function report() {
 
   // What would a ladder read off the URBAN CORE say, at the same floors the
   // census ladder uses (60 town / 240 city, or the P50/P85 percentile if higher)?
-  const cores = setts.map((s) => s._urbanPop || 0).sort((a, b) => a - b);
+  const cores = setts.map((s) => s._coreMeasured ?? s._urbanPop ?? 0).sort((a, b) => a - b);
   const pAt = (f) => (cores.length ? cores[Math.min(cores.length - 1, Math.floor(f * cores.length))] : 0);
   const townBar = Math.max(60, pAt(0.5)), cityBar = Math.max(240, pAt(0.85));
   let wouldTown = 0, wouldCity = 0;
   for (const s of setts) {
-    const u = s._urbanPop || 0;
+    const u = s._coreMeasured ?? s._urbanPop ?? 0;
     if (u >= cityBar) wouldCity++; else if (u >= townBar) wouldTown++;
   }
   console.log(`  if the ladder read the CORE instead of the catchment (same floors 60/240):` +

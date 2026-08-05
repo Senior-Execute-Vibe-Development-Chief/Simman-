@@ -17,9 +17,9 @@ import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
-import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning.js";
+import { applyTuning, resetTuning, tuningDefaults, T as SIM_T } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
-import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
+import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD, TIER_CORE, TIER_NAME_CORE } from "./sim/peopleSim/settlement.js";
 import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, techState, nextTechs } from "./sim/peopleSim/tech.js";
@@ -3244,20 +3244,26 @@ const renderInspect=()=>{
   if(!psw)return null;
   const s=psw.settlements.find(x=>x&&x.id===selectedSettlementId&&x.mode==="settled");
   if(!s)return null;
-  const tierName=["farming region","city","city","metropolis"][s.tier]||"settlement";
-  // A farming region (tier 0) does NOT promote in place — it FOUNDS a town nearby
-  // once it fills out (urban genesis). Only urban nodes climb, at the sim's
-  // canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
+  // Core ladder (T.CITY_CORE): the words are DEFINITIONS on the urban core —
+  // tier 0 is a VILLAGE that promotes in place as its measured core grows, so
+  // the panel prices progress on _coreMeasured against the TIER_CORE floors.
+  const coreT=!!(SIM_T.CITY_CORE&&SIM_T.DISSOLVE_FARMS);
+  const tierName=(coreT?TIER_NAME_CORE:["farming region","city","city","metropolis"])[s.tier]||"settlement";
+  // Legacy ladder: a farming region (tier 0) does NOT promote in place — it FOUNDS
+  // a town nearby once it fills out (urban genesis). Only urban nodes climb, at the
+  // sim's canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
   // gate (towns are spawned, not grown from regions), so progress is urban-only.
-  const isRegion=(s.tier|0)===0;
+  const isRegion=!coreT&&(s.tier|0)===0;
   // Live tier bars (Tier-B rank tiers): town→city reads the world's cached
   // cityBar (percentile-anchored, or the legacy relative bar), city→metro the
   // floating metro bar; falls back to the static THRESHOLD before first tick.
-  const nextThr=isRegion?0:
+  const nextThr=coreT?
+    ((s.tier|0)>=3?0:(s.tier|0)===2?Math.max(TIER_CORE[3],(psw._topUrban||0)*0.8):TIER_CORE[(s.tier|0)+1]):
+    isRegion?0:
     s.tier===1?(psw._cityBar||TIER_THRESHOLD[2]):
     s.tier===2?Math.max(TIER_THRESHOLD[3],(psw._topUrban||0)*0.8):
     TIER_THRESHOLD[s.tier+1];
-  const progress=nextThr?Math.min(1,s.people/nextThr):1;
+  const progress=nextThr?Math.min(1,(coreT?(s._coreMeasured??s._urbanPop??0):s.people)/nextThr):1;
   // s.people is the WHOLE PROVINCE (urban core + rural hinterland, summed over the
   // settlement's entire catchment). For an urban node, headline the CITY CORE
   // (_urbanPop) — the number a reader means by "the city" — and show the province
@@ -3339,7 +3345,7 @@ const renderInspect=()=>{
   // breakdown below comes from s._mInRate / s._mOutRate).
   const wealthDelta=s._wealthDelta||0;
   const moneyCol=v=>v>0.02?"#3a7":v<-0.02?"#c44":"#8a8f9c";
-  const nextName=isRegion?null:["larger city","larger city","metropolis"][s.tier];
+  const nextName=isRegion?null:(coreT?["town","city","metropolis"]:["larger city","larger city","metropolis"])[s.tier];
 
   return(
     <div className="au-scroll"
