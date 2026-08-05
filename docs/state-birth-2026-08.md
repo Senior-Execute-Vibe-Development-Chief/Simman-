@@ -501,6 +501,49 @@ site p50 934, 100% on-river) with founding damped a further ~18% through the
 market tier-weights (fewer dawn "towns" → weaker marketPull), cleanly — no
 interaction pathology.
 
+## DISSOLVE_TOWNS — settlements are ONLY cities (owner directive, 2026-08-05)
+
+*"I think settlements should be ONLY cities. No towns."* DISSOLVE_FARMS part
+two, and the historically right register: in 3000 BCE the whole Earth held
+maybe a dozen 10,000-person cities.
+
+**One bar, every mint path** (`cityBasinOkAt`): an entity mints only where
+basin census ≥ `TIER_CORE[2]/URBAN_SHARE_REF` — a 10k core at the measured
+~5% pre-industrial urban share needs a ~200,000-person market basin. Both
+terms mean something alone (the ladder's city definition; the share measured
+at core p50 4.6-5.6% in every probe arm, ~3-8% historically). Crystallize
+founding, state plantations (checked before the settler party is debited),
+and sea colonies (a sub-city shore turns the fleet home) all pay it. An
+entity whose basin drops below 0.6× the bar, sustained, fades back into the
+countryside — chronicled; under ONE_POP its people stay on the land as the
+villages and towns they are. The hearth bootstrap keeps its own longer
+emergent bar: the first cities ARE the hearth cities.
+
+**v1 was INERT and is recorded** (lever desc): scaling the TOWN_BASIN_MIN
+floor ×5 produced a byte-identical arc — that floor is a fossil two orders
+below real settled basins (founding sites measured 143-3300× it). Same
+units lesson as CROWD_FOUND v1, predictable from data already in hand. The
+census form bites at the measured middle of the founding distribution.
+
+**Measured (full candidate set + DISSOLVE_TOWNS, 8817):**
+
+| | ref tw=240 @6k | app-proxy tw=480 @6k |
+|---|---|---|
+| entities | 41 (was 76) | 59 (was ~83) |
+| dawn register | 10 hearth cradles, roads 28 | 10 cradles, roads **0** @500 |
+| first city | step 2691 — Nawaxexi, the wheat hearth | step 1496 |
+| city share @6k | 4 of 41 | **20 of 59 (34%)** |
+| dissolutions | 5 ("faded back into the countryside") | 5 |
+| realms | 9 (→52 by 16k, nationless 84→7%) | 20 |
+
+The 16k arc holds the whole historical statehood shape at the weightier
+register — ten cradle states through the pre-urban dawn, the dissolution
+cull (realms 10→5 as thin-basin cradles fade), then the organization-driven
+bloom to 52 realms at 7% nationless, the late map majority-city (54+1 of
+102). The proxy grid's early 43k-core metropolis (step 1548) is the Uruk
+case, not a bug: a hearth cradle concentrating to ~40k at late-chalcolithic
+development is the record itself.
+
 **Composed-set arc sanity (CROWD_FOUND=1 + CITY_CORE=1, 480/8817/6k): the
 whole city arc survives composition.** First town step 315, first city step
 2695 — the same emergent moment as CITY_CORE alone (2720), the same settlement
