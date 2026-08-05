@@ -1113,6 +1113,15 @@ function maybeSiteCities(world) {
     // entity swallowed a 1,008-census core — a metropolis at birth in a
     // world whose second entity did not exist yet.
     const coreCensus = Math.min(coreF * bridge, TIER_CORE[2] * 1.5);
+    // The mint has priced every bar in BRIDGE_REF units — so the FIRST mint
+    // must SET the live bridge to that same value, not let the next derive
+    // re-calibrate it from the founding party. Measured without this
+    // (probe_firstcity): the derive computed _onePopScale = 15-census party /
+    // a barely-assigned catchment = 0.35 (175× the reference), the first city
+    // read 11,000 census at birth, famine-crashed to ~1,000 over 600 steps,
+    // and only then regrew honestly. A unit must not be re-derived from the
+    // first datum that used it.
+    if (!(world._onePopScale > 0)) world._onePopScale = BRIDGE_REF;
     fieldShift(world, { pos: { x: st.x, y: st.y } }, -coreCensus);
     const inherited = inheritKnowledgeAt(world, st.ti, world.transportDist ? world.transportDist[st.ti] : 0);
     // A city born within reach of an existing people carries their culture
