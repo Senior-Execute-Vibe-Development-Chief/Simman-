@@ -20,7 +20,7 @@
 import { isContinentalLand } from "./state.js";
 import { tel, telPass } from "./telemetry.js";
 import { fieldShift, devWaveIvl } from "./popField.js";
-import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt } from "./settlement.js";
+import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
@@ -177,7 +177,12 @@ function townBasinMass(world, tx, ty, rB) {
  *  crowdMul comment). */
 export function crowdMassRatio(world, tx, ty) {
   const rn = rNormPop(world);
-  return townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / (TOWN_BASIN_MIN * rn * rn);
+  // Raw bar, no rn²: field mass is EXTENSIVE (people), so the sum over a
+  // fixed real region is grid-invariant and the bar is absolute — the same
+  // convention as the founding floor itself. (An earlier ×rn² here was wrong
+  // beyond the reference grid; every recorded measurement ran at rn=1 where
+  // the two coincide.)
+  return townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
 }
 /** The age's TYPICAL settled basin (median townBasinMass over settled sites),
  *  cached and refreshed on a coarse cadence — a live self-calibrating
@@ -190,7 +195,7 @@ export function crowdRefMass(world) {
   if (world._crowdRefAt !== undefined && world.step - world._crowdRefAt < CROWD_REF_IVL) return world._crowdRef;
   const rn = rNormPop(world);
   const rB = Math.round(TOWN_BASIN_R * rn);
-  const floor = TOWN_BASIN_MIN * rn * rn;
+  const floor = TOWN_BASIN_MIN;   // raw: field mass is extensive, the bar absolute (see crowdMassRatio)
   const masses = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -938,7 +943,40 @@ const pioneerTempo = (agri) => {
   const dev = Math.min(1, Math.max(0, ((agri || 0) - NEOLITHIC_AGRI) / span));
   return COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * dev;
 };
+// ── T.DISSOLVE_TOWNS: a settlement whose basin can no longer feed a CITY
+// fades back into the countryside. Under ONE_POP the entity was always a
+// LENS over the field: its people stay on the land as the villages and
+// small towns they are — only the urban institution dissolves (wealth to a
+// ruin hoard, the chronicle notes the fading). Founding requires the city
+// basin (TIER_CORE[2]/TIER_CORE[1] × the town bar); dissolution fires below
+// DISSOLVE_HYST × that, SUSTAINED in history-time — the wide hysteresis gap
+// plus the timer is what keeps a breathing basin from flickering its city
+// in and out of existence. Checked on a per-settlement stride: the disk sum
+// is the whole cost, so a hundred settlements cost ~half a disk per tick.
+const DISSOLVE_CHECK_IVL = 200;   // per-settlement stride (amortization, not a content gate)
+const DISSOLVE_HYST = 0.6;        // dissolve below this fraction of the founding bar
+const DISSOLVE_SUSTAIN = 1500;    // history-steps the basin must stay thin (granularity-corrected below)
+function maybeDissolveTowns(world) {
+  if (!T.DISSOLVE_TOWNS) return;
+  const rn = rNormPop(world);
+  const rB = Math.round(TOWN_BASIN_R * rn);
+  const bar = TOWN_BASIN_MIN * (TIER_CORE[2] / TIER_CORE[1]) * DISSOLVE_HYST;
+  const dt = world._dt || 1;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    if ((world.step + s.id) % DISSOLVE_CHECK_IVL !== 0) continue;
+    if (townBasinMass(world, s.pos.x | 0, s.pos.y | 0, rB) >= bar) { s._thinBasinSince = undefined; continue; }
+    if (s._thinBasinSince === undefined) { s._thinBasinSince = world.step; continue; }
+    if (world.step - s._thinBasinSince > DISSOLVE_SUSTAIN / dt) {
+      s.mode = "dead";
+      bankRuinHoard(world, s);
+      logEvent(world, "settlement.dissolved", { s: s.id, sName: s.name, polity: s.countryId });
+    }
+  }
+}
+
 export function maybeCrystallize(world) {
+  maybeDissolveTowns(world);
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
   // Refresh transport map if stale or absent.
@@ -1516,6 +1554,20 @@ export function maybeCrystallize(world) {
       // the other way round). Camps are exempt (ordu, not towns — see above).
       const townScale = !rodeAway && !!world.popField;
       if (townScale) {
+        // T.DISSOLVE_TOWNS — settlements are ONLY cities (owner 2026-08-05:
+        // "settlements should be ONLY cities. No towns"). An entity mints only
+        // where the basin could feed a CITY's core, not a town's: the bar
+        // scales by TIER_CORE[2]/TIER_CORE[1] (=5, the city/town core ratio —
+        // a pure ratio of the ladder's own definitions, no bridge, no new
+        // constant; with the ~5% pre-industrial urban share both cores imply
+        // their catchments in the same proportion). Villages AND towns then
+        // live in the land — popField and each city's belt — exactly as
+        // villages already do under DISSOLVE_FARMS; the map's register drops
+        // to the city-capable handful, growing as history urbanises. The
+        // hearth-cradle bootstrap keeps its own (longer) emergent bar:
+        // domestication lag × basin-fill time — the first cities ARE the
+        // hearth cities.
+        const cityRatio = T.DISSOLVE_TOWNS ? TIER_CORE[2] / TIER_CORE[1] : 1;
         if (labelBirth) {
           // T.LABEL_BIRTH v3 — the ACTIVATION bar: the site's cell (its
           // exclusive countryside, cell ∩ horizon by construction) must hold
@@ -1524,9 +1576,9 @@ export function maybeCrystallize(world) {
           // conservation the fieldShift debit enforces on the founders
           // themselves. (The sweep pre-filtered on this; the act re-reads
           // the same cached answer as its own guard.)
-          if (labelBasinMass(world, tx, ty) < (T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN)) continue;
+          if (labelBasinMass(world, tx, ty) < (T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN) * cityRatio) continue;
         } else {
-          if (townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) < TOWN_BASIN_MIN) continue;
+          if (townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) < TOWN_BASIN_MIN * cityRatio) continue;
         }
       }
       // (people drawn here, after the last reject, so the rng stream is unchanged)
