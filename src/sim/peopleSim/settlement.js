@@ -3342,9 +3342,20 @@ function updateTier(world, s) {
     let tot = 0, top = 0;
     const pops = T.TIER_SCALE_REF > 0 ? null : [];
     for (const x of world.settlements) if (x.mode === "settled") {
+      // T.CITY_CORE: the ladder ranks what a settlement IS — its URBAN CORE —
+      // not the countryside it farms. Under ONE_POP `people` is the CATCHMENT
+      // census (city + every villager in its district), so the ranking measured
+      // how peopled a district was and called the result a town: measured, the
+      // median "town" at step 2000 has an urban core of 881 people (a hamlet)
+      // against a 22,000-person catchment, and not one settlement clears the
+      // town floor on its real core through step 6000 (docs/state-birth-2026-08).
+      // The economy already disagrees with the label — the agglomeration pass
+      // gives a non-importer no urban target at all. Reading _urbanPop makes the
+      // label mean the thing it names. Off = the catchment census, byte-identical.
+      const rank = T.CITY_CORE && x._urbanPop != null ? x._urbanPop : (x.people || 0);
       tot += x.people || 0;
-      if (pops) pops.push(x.people || 0);
-      if ((x.tier | 0) >= 1 && (x.people || 0) > top) top = x.people;   // largest URBAN centre, for the floating metro bar
+      if (pops) pops.push(rank);
+      if ((x.tier | 0) >= 1 && rank > top) top = rank;   // largest URBAN centre, for the floating metro bar
     }
     if (T.TIER_SCALE_REF > 0) {
       // Legacy relative tiers: the town bar scales with world population ÷ REF;
@@ -3424,9 +3435,13 @@ function updateTier(world, s) {
   // "farming region" once the relative town-bar rises above its size mid-game.
   if (T.DISSOLVE_FARMS) { if ((s.tier | 0) < 1) s.tier = 1; }
   else if ((s.tier | 0) === 0) return;   // legacy model: tier-0 regions birth towns, don't relabel
+  // The settlement's own value must be measured on the SAME scale as the bars
+  // (T.CITY_CORE ranks urban cores; off, catchment census) — mixing them would
+  // compare a city's core against a catchment-derived bar and label nothing.
+  const mine = T.CITY_CORE && s._urbanPop != null ? s._urbanPop : s.people;
   // Promote among the urban tiers (town → city → metropolis).
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
-    if (s.people >= bar(t)) {
+    if (mine >= bar(t)) {
       s.tier = t;
       // Announce "grew into a city/metropolis" only the FIRST time this rung is reached
       // (s._peakTier), not on every flicker. Settlements cluster at the relative city bar
@@ -3435,7 +3450,7 @@ function updateTier(world, s) {
       if (t > (s._peakTier | 0)) {
         s._peakTier = t;
         logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
-          tier: t, tierName: TIER_NAME[t], up: 1, people: Math.round(s.people) });
+          tier: t, tierName: TIER_NAME[t], up: 1, people: Math.round(mine) });
       }
       return;
     }
@@ -3443,7 +3458,7 @@ function updateTier(world, s) {
   // Demote one rung once population has fallen clearly below the current tier's
   // floor — but never below tier 1. SILENT: a town slipping a rung at the floating
   // bar isn't chronicle-worthy and would only flicker against the re-promotion.
-  if (s.tier > 1 && s.people < bar(s.tier) * TIER_DEMOTE_FRAC) {
+  if (s.tier > 1 && mine < bar(s.tier) * TIER_DEMOTE_FRAC) {
     s.tier -= 1;
   }
 }
