@@ -1026,8 +1026,18 @@ function maybeSiteCities(world) {
   let elig = world._siteCityElig;
   if (!elig || elig.length !== L.sites.length || world.step % SITE_CITY_IVL === 0) {
     if (!elig || elig.length !== L.sites.length) elig = world._siteCityElig = new Uint8Array(L.sites.length);
+    // THE FARMING GATE — measured essential, not optional: without it the
+    // dawn's Malthusian FORAGER field cleared the census bar under
+    // BRIDGE_REF's farming-era guess and the site pass minted 183 "cities"
+    // out of forager countryside by step 500 (each self-anchoring a realm —
+    // 185 realms in a world where farming was not yet invented). There are
+    // no forager cities: a site concentrates and mints only where the
+    // technique field carries the FULL invention (NEOLITHIC_AGRI — the same
+    // constant the founding quality machinery gates on, no new number).
+    const devF = world.devField;
     for (let k = 0; k < L.sites.length; k++) {
-      elig[k] = !claims.claimed[k] && claims.mass[k] >= basinBarF ? 1 : 0;
+      elig[k] = !claims.claimed[k] && claims.mass[k] >= basinBarF
+        && devF && devF[L.sites[k].ti] >= NEOLITHIC_AGRI ? 1 : 0;
     }
   }
   const spikes = world._urbanSpike || (world._urbanSpike = new Map());
