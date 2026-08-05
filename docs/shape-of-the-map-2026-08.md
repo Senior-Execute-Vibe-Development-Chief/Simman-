@@ -261,3 +261,47 @@ diagnosis):**
   Whether a re-derived moderate value belongs on top of PEER_POLITY/REFUGE is
   measured in this session's sweep and recorded below, but the default is the
   owner's call, not this wave's.
+
+## Wave 2 — the owner's re-report, shipped (2026-08-05)
+
+Five reports, five mechanisms; gate record for the shipped set:
+
+1. **Big countries lasted Stone→Modern** → `ELITE_FRACTURE=1.5` (the parked
+   hegemon-ossification §6 blueprint, resume trigger fired at the app arm:
+   #1 held 100% of the back-40% unbroken). Shipped: back-40% tenure 0→6
+   changes, three holders share the late era, ambition alive to 0.70,
+   realm-kills doubled where it expresses. Structurally quiet at tw=240
+   (province supply), expresses at tw≥480 — the small-state-tier pattern,
+   now doctrine.
+2. **Collapse only receded to wilderness** → the same channel's success path
+   is `declareIndependence`: a matured plot takes the governor's whole
+   province out as a SUCCESSOR ON THE MAP.
+3. **Continental lockstep, no sea needed** → the divergence lane flipped
+   (GROW_SEASON/CROP_PHOTOPERIOD/CRADLE_PACKAGE/INVENT_STAGGER) with the
+   package-lag re-grounding (domLagY: wheat 900y … maize 4,500y): dawn
+   spread 432y → 922-5,871y; bronze-era continental org ratio 1.4 → 2.0;
+   packageless land (Australia) never matures a hearth; a colonised basin
+   stands down. SAVE_VERSION 5 keeps old saves in their own regime.
+4. **The Middle East** → root-caused under observed climate (rain-read crop
+   moisture vs flood-irrigated reality) and built as `IRRIG_CROP` — which
+   its own measurement then BLOCKED: with water supplied the hot corridors
+   read maize-optimal, because packages have no biogeography. Ships 0 with
+   the dependency named: package native ranges + spread, then re-flip.
+5. **Not enough cities at the right points** → `PLANT_EARLY=1`: the funnel
+   probe named the walls (a 100,000-person settler party and an
+   industrial-scale endowment — the units-class bug); re-scaled (6 census
+   party, per-settler endowment) the channel opens AT THE ORG BAR (~12k)
+   and accelerates (0 plants before 25k → 7 in the last measured window).
+
+Gate record: stylized 3/3 seeds (1 soft warning each, budget 2); resgate
+green on both seeds after ATTRIBUTION — three single-lever arms and two
+plain-default arms all read an identical 0.44 on 8817 (levers proven inert
+at the gate horizon), 0.99 on 31337; the failing band was the intraday floor
+tightening gone stale against the lane's own regime change, returned to its
+long-standing 0.42 with the lesson recorded in the gate header. Defaults
+smoke green; 2500-step hashbase UNCHANGED by the flip (4a9e8680/85bbdbc4) —
+both mechanisms state-gated, silent until the world develops into them.
+
+Recorded next-wave dependencies: package BIOGEOGRAPHY (native ranges +
+spread — unblocks IRRIG_CROP, sharpens hearth placement), the waste
+treaty-partition (the tw=240 whale), and the late personality collapse.
