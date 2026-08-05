@@ -506,6 +506,13 @@ const AMBITION_MIN_FAR = 0.5;   // ...and at least this far out (reach-units); a
 const AMBITION_FAR     = 1.8;   // distance amplifies ambition this much
 const AMBITION_GAIN    = 0.06;  // ambition-stock growth per pass at full margin
 const AMBITION_DURESS  = 1.6;   // a besieged throne emboldens governors (multiplier)
+// T.ELITE_FRACTURE sub-constants (docs/hegemon-ossification-2026-07.md §6). Each
+// has independent meaning; the master lever weight scales the whole family, ×0 off.
+const ELITE_PROJ       = 1.0;   // (1) weight of distance-attenuation on the throne's PROJECTED suppression (÷(1+PROJ·far))
+const ELITE_COURT_FRAC = 0.35;  // a province counts as a rival COURT at ≥ this fraction of the throne (elite overproduction)
+const ELITE_COURT_W    = 0.5;   // (2) each extra strong court adds this to the ambition gain (courts embolden each other)
+const ELITE_MAGNATE_W  = 1.2;   // (3) magnate estates (_estates 0..1) fund the breaker — full estate ~ +1.2× gain
+const ELITE_CRISIS_EMBOLDEN = 1.8;  // (4) a succession crisis multiplies the gain (the Diadochi opening)
 // Naval administration is no longer a special-case discount on _isPort
 // pairs — water embarkation in localEdgeCost (transport.js) gives the
 // capital's Dijkstra a sea-highway over coastal water when it has
@@ -2909,6 +2916,29 @@ export function updatePolities(world) {
       const seatId = m._provinceCity ?? c.capitalId;
       provPower.set(seatId, (provPower.get(seatId) || 0) + settlementPower(m));
     }
+    // ── T.ELITE_FRACTURE (docs/hegemon-ossification-2026-07.md §6 blueprint) ──
+    // The measured cause of the immortal hegemon (probe_hegemon @960/30k: one
+    // realm holds #1 for 100% of the back-40%, unbroken 12k steps — the owner's
+    // "big countries last Stone Age to Modern"): the great power has NO internal
+    // break, only edge recession. The overmighty-governor channel is inert because
+    // it treats the throne as OMNIPRESENT — a province qualifies at ratio ≥ 0.55 of
+    // the throne's FULL power, but the crown's home province is the strongest by
+    // construction, so provinces peak at ~0.30 and never scheme (ambMax=0.00 every
+    // sample). History fractured great empires from within — the Diadochi, the Han
+    // warlords, the Abbasid emirates, the Carolingian partition — via exactly the
+    // forces the blueprint names. Four, all blended by the lever weight so elite=0
+    // is byte-identical:
+    const elite = T.ELITE_FRACTURE || 0;
+    // (2) ELITE OVERPRODUCTION: the COUNT of provincial power bases strong enough
+    // to be a rival court (≥ ELITE_COURT_FRAC of the throne). Rival courts embolden
+    // each other — an empire dense with magnates is one dynastic stumble from
+    // partition. Computed once per realm.
+    let strongCourts = 0;
+    if (elite > 0) {
+      const tp = provPower.get(c.capitalId) || capPower;
+      for (const [sid, pp] of provPower) if (sid !== c.capitalId && pp >= ELITE_COURT_FRAC * tp) strongCourts++;
+    }
+    const eliteCrisis = elite > 0 && inCrisis(world, c.id);   // (4) a succession crisis is the Diadochi trigger
     for (const s of c.members) {
       if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
       // A province seat by FUNCTION: a city, or the regional seat assignProvinces
@@ -2924,7 +2954,7 @@ export function updatePolities(world) {
       // imperial capital city and set every far seat scheming at once. Falls back
       // to the raw capital power if the throne's bucket is missing this pass.
       const thronePower = provPower.get(c.capitalId) || capPower;
-      const ratio = (provPower.get(s.id) || settlementPower(s)) / Math.max(1, thronePower);   // the province's strength vs the throne's province
+      const rawRatio = (provPower.get(s.id) || settlementPower(s)) / Math.max(1, thronePower);   // the province's strength vs the throne's province
       // Same blended distance as the hold load — a governor across a
       // mountain range is "farther" than its straight-line reading,
       // proportionally embolder.
@@ -2934,12 +2964,29 @@ export function updatePolities(world) {
       // A governor across a great river is "farther" too (same full-weight
       // river toll as the hold load) — so a far-bank seat schemes harder.
       const far  = (eucl + Math.max(0, tcEff - eucl) + (tcross.get(s.id) || 0)) / holdRange;
+      // (1) DELIVERED, not owned: suppression must be PROJECTED. The throne's
+      // power reaches a far governor attenuated by distance (÷(1+far)), so a
+      // province competes against what the crown can actually MARCH to it, not
+      // its full home strength. This is the single fix for the inert channel:
+      // a raw-ratio-0.30 province at far 1.0 reads effective 0.60 and clears the
+      // 0.55 bar. Precedent: the colonial-independence line already qualifies on
+      // projected force (projForce = blocPow × reach). Blended by elite so 0 is
+      // the raw ratio exactly.
+      const ratio = rawRatio * (1 + elite * ELITE_PROJ * far);
       if (!seat || pacified || infant || ratio < AMBITION_RATIO || far < AMBITION_MIN_FAR) {
         if (s._ambition) s._ambition = Math.max(0, s._ambition - AMBITION_GAIN);   // fades when unqualified
         continue;
       }
       const margin = (ratio - AMBITION_RATIO) / (1 - AMBITION_RATIO);  // 0 at threshold → 1 near parity
-      const duressMul = besiegedCap ? AMBITION_DURESS : (raidedCap ? 1.2 : 1);
+      let duressMul = besiegedCap ? AMBITION_DURESS : (raidedCap ? 1.2 : 1);
+      // (2) rival courts embolden each other; (3) the conquest→latifundia estates
+      // FUND the breaker (ESTATE_BREAK's slow unwind gains political meaning); (4)
+      // a succession crisis is the Diadochi opening. All blended by elite (×1 off).
+      if (elite > 0) {
+        duressMul *= 1 + elite * (ELITE_COURT_W * Math.max(0, strongCourts - 1)
+                                + ELITE_MAGNATE_W * (s._estates || 0));
+        if (eliteCrisis) duressMul *= 1 + elite * (ELITE_CRISIS_EMBOLDEN - 1);
+      }
       s._ambition = (s._ambition || 0) + AMBITION_GAIN * margin * (1 + AMBITION_FAR * far) * duressMul;
       if (s._ambition >= 1) declareIndependence(world, c, s);
     }
