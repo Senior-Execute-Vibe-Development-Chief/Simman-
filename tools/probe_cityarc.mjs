@@ -63,6 +63,8 @@ for (let i = 0; i < STEPS; i++) {
 }
 
 // The chronicle's own record: first promotion EVENTS (exact steps, not checkpoint-quantised).
+const dissolved = (world.events || []).filter((e) => e.type === "settlement.dissolved").length;
+if (dissolved) console.log(`\nsettlements faded back into the countryside over the run: ${dissolved}`);
 const evs = (world.events || []).filter((e) => e.type === "settlement.tier" && e.up);
 const firstEv = new Map();
 for (const e of evs) if (!firstEv.has(e.tier)) firstEv.set(e.tier, e);
