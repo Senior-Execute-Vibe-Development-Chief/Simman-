@@ -544,6 +544,37 @@ bloom to 52 realms at 7% nationless, the late map majority-city (54+1 of
 case, not a bug: a hearth cradle concentrating to ~40k at late-chalcolithic
 development is the record itself.
 
+## THE FLIP (2026-08-05): the city register went live, fully gated
+
+Owner, watching the unchanged app: *"are these changes being pushed to the
+sim?"* — the wave had been built behind default-off levers by design. The
+three flip together as the coherent fix: `CITY_CORE=1`, `CROWD_FOUND=1`,
+`DISSOLVE_TOWNS=1` (commit 49e2bf9), alongside the hover/click label
+contradiction fix the owner caught live (the inspect panel's legacy array
+said "city" for tier 1 since forever; hover said "town").
+
+**Regime battery, all green at the new defaults:**
+
+- smoke: all checks, 155s — faster than the old register (entities-per-person
+  8.4 vs 15.0: the register cut visible in the suite's own stats)
+- stylized: 3 seeds, all hard gates, 1 soft warning (budget 2); the long
+  horizon fills in as the arcs promised (130 settlements, 70 polities)
+- resgate: **all bands held and every ratio IMPROVED** — claimed-land
+  app/ref 0.67 → 1.29, people-per-km² 0.66 → 0.75, median-area 0.44 → 0.57,
+  median realm ABSOLUTE 332k km² (was 130k). The cross-grid gap the ratchet
+  guards narrowed under the new register. Per the gate's own recorded lesson
+  ("never derive and ship a ratchet tightening in the same wave as a regime
+  change") the floors are NOT re-baselined here — that lands in a later
+  wave once the regime settles, as a deliberate tightening.
+- hash baseline re-recorded for the new register: b862d3aa / e56aa7ae
+  (the old register's 7173d965 / b4030359 was verified nine times before
+  the flip; the OLD register remains reachable byte-identically by setting
+  the three levers to 0).
+
+Old saves migrate: sub-city settlements fade back into the countryside over
+the first stretch — the measured dissolution cull; ONE_POP keeps every
+person on the field.
+
 **Composed-set arc sanity (CROWD_FOUND=1 + CITY_CORE=1, 480/8817/6k): the
 whole city arc survives composition.** First town step 315, first city step
 2695 — the same emergent moment as CITY_CORE alone (2720), the same settlement
