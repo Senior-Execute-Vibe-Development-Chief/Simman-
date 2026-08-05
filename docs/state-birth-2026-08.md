@@ -467,6 +467,40 @@ of 10k+ cities where the bronze age held a handful). The metro bar floats at
 0.8× the age's largest core, so metropolises stay rare (3-8) instead of the
 whole city tier crossing a fixed bar into a metro glut.
 
+## CROWD_FOUND measured — the first build was degenerate, the re-grounding works
+
+The lever answers "do cities appear where populations are dense?" as a RATE
+(founding ∝ basin people), and `probe_crowdfound` scores it directly: every
+founding's basin-mass ratio (in TOWN_BASIN_MIN-bar units) sampled within 50
+steps of birth, 480/8817/6k.
+
+| arm | foundings | settled @6k | site mass p50 / p75 / p90 | 2nd-half site p50 |
+|---|---|---|---|---|
+| OFF | 109 | 92 | 249 / 376 / 785 | 579 |
+| v1: `sqrt(mass/BAR)` | 202 (+85%) | 123 | 268 / 699 / 1290 | — |
+| v2: `sqrt(mass/TYPICAL)` | **96 (−12%)** | 84 | 238 / **492** / **978** | **752** |
+| v2 + CITY_CORE | 79 | 76 | 288 / 561 / 1556 | 934 |
+
+**v1's lesson (recorded in the lever desc): the bar is the floor of viability,
+not the yardstick of "denser than usual".** Real settled basins run 150-3300×
+the TOWN_BASIN_MIN bar, so `min(CAP, sqrt(mass/bar))` pegged the cap on 100%
+of foundings — the within-settled gradient (the entire stated mechanism) was
+erased, and what remained was a blunt ×CAP step on settled land vs the
+frontier: +85% foundings, tail thickened purely by infill acceleration.
+
+**v2 normalizes by `crowdRefMass` — the live median settled basin** (floored
+at the bar; the same self-calibrating species as the tier ladder's percentile
+bars). The signature flips to the historical one: count roughly flat (−12%,
+the sub-typical frontier now founds SLOWER than baseline — the other half of
+the Nile-thicket shape), while foundings reweight toward dense countryside
+(p75 +31%, p90 +25%, late foundings at 752× vs 579× baseline). Same number of
+towns, born where the people are; marginal wilderness sites suppressed —
+which is the owner's "cities in nowhere wilderness" complaint attacked from
+the founding side too. Composed with CITY_CORE the tilt is strongest (late
+site p50 934, 100% on-river) with founding damped a further ~18% through the
+market tier-weights (fewer dawn "towns" → weaker marketPull), cleanly — no
+interaction pathology.
+
 # The early towns are in the wrong PLACES — and the first fix failed
 
 Owner, watching the sim: *"most of them are in inaccurate locations, is it
