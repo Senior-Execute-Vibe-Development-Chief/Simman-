@@ -27,10 +27,26 @@ import { T } from "./peopleSim/tuning.js";
 //   sorghum— hot + DRY; the Sahel/dry-savanna crop that farms tropical Africa
 //   tubers — hot + WET but barely storable; the Congo/Amazon/New-Guinea pattern
 
+// domLagY — the DOMESTICATION LAG: years from first cultivation of the wild
+// ancestor to a productive, farmable staple. An archaeobotany fact per package
+// (the same admissibility class as tTolEarly): wheat/barley fixed non-shattering
+// forms within centuries (PPNA→PPNB, ~9500→8700 BC); Yangtze rice shows a
+// millennia-long proto-domestication tail (~7000→4500 BC); maize is the extreme —
+// teosinte's 5-kernel spike took ~4,000+ years of selection to become a cob worth
+// planting (~7000→2700 BC), the documented reason Mesoamerican VILLAGES lag
+// Mesoamerican CULTIVATION by millennia; sorghum/millet sit between; vegetative
+// tuber domestication is slow to yield a taxable staple. The DIRECTIONS and
+// ORDERS of magnitude are the evidence-backed claims — none of these is derivable
+// to three digits and none is asserted to be. Read by the hearth-maturity law
+// (state.js, T.INVENT_STAGGER): T = domLagY / site-suitability — the package
+// carries the lag, the land only stretches or realizes it. This is what makes
+// continental DIVERGENCE emerge from botany: the Crescent leads because its
+// package was uniquely fast, the Americas trail by millennia because maize is
+// maize, and a packageless land (Australia) never matures a hearth at all.
 export const CROP_PACKAGES = [
-  // id        name              tOpt  tTol   mOpt  mTol  store yield  color (RGB)
-  { id: "wheat",   name: "Wheat & Barley", tOpt: 0.73, tTol: 0.075, mOpt: 0.36, mTol: 0.16, storability: 1.00, yield: 1.00, color: [222, 184, 70] },
-  { id: "rice",    name: "Rice",           tOpt: 0.86, tTol: 0.065, mOpt: 0.72, mTol: 0.17, storability: 1.00, yield: 1.15, color: [70, 160, 95] },
+  // id        name              tOpt  tTol   mOpt  mTol  store yield  domLagY  color (RGB)
+  { id: "wheat",   name: "Wheat & Barley", tOpt: 0.73, tTol: 0.075, mOpt: 0.36, mTol: 0.16, storability: 1.00, yield: 1.00, domLagY: 900,  color: [222, 184, 70] },
+  { id: "rice",    name: "Rice",           tOpt: 0.86, tTol: 0.065, mOpt: 0.72, mTol: 0.17, storability: 1.00, yield: 1.15, domLagY: 2500, color: [70, 160, 95] },
   // tTolEarly (T.CROP_PHOTOPERIOD): PREHISTORIC maize was PHOTOPERIOD-SENSITIVE —
   // it flowered on day-length cues, so every shift in latitude demanded
   // re-adaptation. That is the documented reason maize crawled north from Mexico
@@ -45,9 +61,9 @@ export const CROP_PACKAGES = [
   // wheat because early maize was genuinely harder to move across latitude than
   // wheat was; the DIRECTION is the evidence-backed claim, the exact figure is
   // not derivable to three digits and is not asserted to be.
-  { id: "maize",   name: "Maize",          tOpt: 0.82, tTol: 0.100, tTolEarly: 0.055, mOpt: 0.50, mTol: 0.18, storability: 0.95, yield: 1.05, color: [225, 140, 55] },
-  { id: "sorghum", name: "Sorghum & Millet", tOpt: 0.87, tTol: 0.100, mOpt: 0.30, mTol: 0.17, storability: 0.90, yield: 0.85, color: [196, 170, 110] },
-  { id: "tubers",  name: "Roots & Tubers", tOpt: 0.85, tTol: 0.100, mOpt: 0.78, mTol: 0.20, storability: 0.35, yield: 1.00, color: [150, 95, 175] },
+  { id: "maize",   name: "Maize",          tOpt: 0.82, tTol: 0.100, tTolEarly: 0.055, mOpt: 0.50, mTol: 0.18, storability: 0.95, yield: 1.05, domLagY: 4500, color: [225, 140, 55] },
+  { id: "sorghum", name: "Sorghum & Millet", tOpt: 0.87, tTol: 0.100, mOpt: 0.30, mTol: 0.17, storability: 0.90, yield: 0.85, domLagY: 2000, color: [196, 170, 110] },
+  { id: "tubers",  name: "Roots & Tubers", tOpt: 0.85, tTol: 0.100, mOpt: 0.78, mTol: 0.20, storability: 0.35, yield: 1.00, domLagY: 3000, color: [150, 95, 175] },
 ];
 
 export const CROP_BY_ID = {};
