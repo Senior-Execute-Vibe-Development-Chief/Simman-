@@ -611,6 +611,27 @@ century — no dots — and the first city rises inside one as the Uruk moment.
 Blast-radius audit before build: every `c.capital`/`c.members` consumer in
 conquest/countryTerritory/armies/faiths for the memberless case.
 
+**Audit result — the architecture inverts (recorded before building):** the
+capital-dereference sweep found 25+ raw `c.capital.x` reads across the
+conquest pass (raids, diplomacy, colony supply, resource wars), all
+presupposing a court. Null-guarding them all would thread a special case
+through every organized-state behavior — for polities that historically DON'T
+DO those things. So land nations stay OUT of `world.countries` entirely: a
+pre-state tribal nation wages no organized war, holds no court, runs no
+colonial supply — the conquest pass rightly never sees it. It exists as (1) a
+polity-registry record (name, emblem, chronicle), (2) a PAINTED BASIN CLAIM
+in `world._countryClaim` — which the border renderer and the existing
+adoption path (`grownOwnerAt`) already consume, so its territory draws on the
+map and a city born inside adopts the nation with zero new plumbing, (3) a
+`world._hearthSeeds` entry carrying the technique wave's age (re-pointing
+popField's `_hearthAgeY` reader), (4) a liveness guard in the polity pass
+(a land nation ends only when its basin's people scatter). Its claim is
+STATIC at basin size — tribal nations hold their valley; expansion begins
+with statecraft, i.e. with the first city, at which point the realm
+materializes in `world.countries` with a member and lives fully. Naming
+derives from the ancestry field at the seat tile (the same source settlement
+naming uses).
+
 **Composed-set arc sanity (CROWD_FOUND=1 + CITY_CORE=1, 480/8817/6k): the
 whole city arc survives composition.** First town step 315, first city step
 2695 — the same emergent moment as CITY_CORE alone (2720), the same settlement
