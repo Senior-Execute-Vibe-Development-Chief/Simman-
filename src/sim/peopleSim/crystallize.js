@@ -1056,7 +1056,13 @@ function maybeSiteCities(world) {
     if (!elig[k]) continue;
     const st = L.sites[k];
     const coreNow = diskSum(pf, world.tw, world.th, st.x, st.y, coreR);
-    if (coreNow > 0 && !spikes.has(st.ti)) spikes.set(st.ti, { k: coreNow });   // hold what has gathered; no growth-regime fields (plain capacity)
+    // Hold what has gathered — BOUNDED at the mint bar: the proto-urban stage
+    // ends at city size, so capacity never chases the pile beyond it.
+    // Measured without the bound (genesis v3/v4): drift + spike compounded
+    // ~2,800 steps into a ~500k-field single-tile pile, and the first-born
+    // entity derived a 1,073-census catchment (ONE_POP re-reads the land, so
+    // capping the founding take alone was cosmetic).
+    if (coreNow > 0 && !spikes.has(st.ti)) spikes.set(st.ti, { k: Math.min(coreNow, coreBarF * 1.2) });
   }
   if (world.step % SITE_CITY_IVL !== 0) return;
   // Practice improves at the settlement-less hearths (see AGRI_PRACTICE_CAP).
@@ -1067,11 +1073,18 @@ function maybeSiteCities(world) {
   // Drift: one O(N) sweep — every tile of every eligible cell pays the same
   // share, its site receives the sum. Mass-conserving by construction.
   const rate = Math.min(0.2, URBAN_DRIFT * (world._dt || 1) * SITE_CITY_IVL);
+  // A site whose core has already gathered a city's worth stops drawing —
+  // the mint takes it from here (same bound as the spike above).
+  for (let k = 0; k < L.sites.length; k++) {
+    if (!elig[k]) continue;
+    const st = L.sites[k];
+    if (diskSum(pf, world.tw, world.th, st.x, st.y, coreR) >= coreBarF) elig[k] = 2;   // 2 = mint-ready, no more drift
+  }
   const gain = new Float64Array(L.sites.length);
   const siteId = L.siteId;
   for (let i = 0; i < siteId.length; i++) {
     const k = siteId[i];
-    if (k < 0 || !elig[k]) continue;
+    if (k < 0 || elig[k] !== 1) continue;
     const p = pf[i];
     if (p <= 1e-9) continue;
     const mv = p * rate;
