@@ -627,6 +627,29 @@ century — no dots — and the first city rises inside one as the Uruk moment.
 Blast-radius audit before build: every `c.capital`/`c.members` consumer in
 conquest/countryTerritory/armies/faiths for the memberless case.
 
+**DAWN_LIVE + CITY_AT_BIRTH: the born-from-nothing genesis is WHOLE (v6).**
+Owner: *"do you seed the hearths? can we not simply open with nothing and
+wait for nations to be born?"* Six measured iterations closed five defects —
+forager cities (the farming gate: no site concentrates without the full
+invention under it), dead static seeds (practice improves at the hearth
+toward the pre-urban plateau), basin-swallowing mints (the pile bounded at
+the mint bar), the phantom-bridge runaway (an empty world calibrates on
+nothing — leave the bridge unset), and the unit's missing ground truth (the
+dawn bridge is DECLARED from the forager Earth: ~5M people on the eve of
+agriculture, FORAGER_EARTH_CENSUS/Σfield). The v6 arc, 480/8817/25k, from a
+truly empty world: eight staggered inventions (wheat ~8.6k first; two
+hearths stood down to diffusion — the Australia machinery), then **the
+first city "Ňěňní" born at exactly core 10, growing honestly to cross the
+40k Uruk anchor at step 14,945 as the planet's first metropolis** — no
+spike, no crash — cities and towns following at their definitions, 20
+entities / 18 realms at 25k, 5% nationless, roads from zero. Every constant
+in the chain is a real-world anchor. Ships def 0: flipping DAWN_LIVE
+default-on requires dawn-aware horizons in the gate harnesses (stylized and
+resgate run fixed step counts calibrated to the seeded dawn — at 6k a
+DAWN_LIVE world is honestly pre-city and would fail "civilization alive"
+semantically, not wrongly). Playable now via the tuning panel:
+DAWN_LIVE=1, CITY_AT_BIRTH=1.
+
 **Audit result — the architecture inverts (recorded before building):** the
 capital-dereference sweep found 25+ raw `c.capital.x` reads across the
 conquest pass (raids, diplomacy, colony supply, resource wars), all
