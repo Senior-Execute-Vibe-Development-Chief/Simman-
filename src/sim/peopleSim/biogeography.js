@@ -140,11 +140,41 @@ function originCells(world, pkg) {
 // hard water penalty. Computed once and cached on the world (never mutated after
 // — climate change does not move a wild ancestor's homeland). Distances are in
 // climate-variation units + water hops, the same currency the technique wave uses.
+// Box-blur a field to the reference grid's physical bandwidth. The climate
+// TOLL below must read the REGIONAL climate — the band structure a crop
+// adapts to — not tile-scale noise: |Δ| telescopes only on monotone paths,
+// so a finer grid, resolving more noise, pays every wiggle twice and total
+// variation GROWS with sampling resolution. Measured (probe_biogeodrift,
+// 8817): land-median distances at tw=480 read 1.08-1.31× the tw=240 values
+// (wheat 11.01 → 13.53) — the residual cross-grid drift behind the resgate
+// claimed-land failure — and blurring the toll fields to the reference
+// bandwidth (radius rn/2) converges wheat/rice/sorghum to within 1-4%
+// (13.53 → 10.80). The bandwidth is the REFERENCE GRID'S OWN SAMPLING SCALE
+// (~one ref tile), the same convention as the /rn per-tile terms — a unit
+// choice, not a fitted constant. The sim's live temp/moist are untouched;
+// only this one-time geodesic build reads the smoothed copies.
+function refBandwidth(src, tw, th, r) {
+  if (r <= 0) return src;
+  const out = new Float32Array(src.length);
+  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+    let sum = 0, n = 0;
+    for (let dy = -r; dy <= r; dy++) {
+      const yy = y + dy; if (yy < 0 || yy >= th) continue;
+      for (let dx = -r; dx <= r; dx++) { sum += src[yy * tw + (((x + dx) % tw) + tw) % tw]; n++; }
+    }
+    out[y * tw + x] = sum / n;
+  }
+  return out;
+}
+
 export function ensureDistFields(world) {   // exported for probes (drift measurement); sim callers go through packagePresent/packageAdaptMul
   if (world._pkgDist && world._pkgDist.N === world.N) return world._pkgDist;
-  const { N, tw, th, elev, temp, moist } = world;
+  const { N, tw, th, elev } = world;
   const ck = Math.max(1e-3, T.DIFF_CLIM || 0.8);   // the spread physics uses a real toll even if the lever is low
   const rn = rNormPop(world);   // per-tile terms are divided by this (see the edge cost below)
+  const bw = rn > 1 ? Math.round(rn / 2) : 0;   // blur radius: 0 at the reference grid, ~rn/2 beyond it
+  const temp = refBandwidth(world.temp, tw, th, bw);
+  const moist = refBandwidth(world.moist, tw, th, bw);
   const fields = {};
   const origins = {};
   for (const pkg of CROP_PACKAGES) {
