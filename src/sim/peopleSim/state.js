@@ -615,8 +615,12 @@ function seatOrArmHearths(world, picked) {
     // windows can score ≤ 0; it matures very slowly rather than dividing by
     // zero — and being a pin, it stays a candidate instead of being dropped.)
     const pkg = bestPackageAt(world, p.ti);
+    // suit UNCLAMPED: >1 (the package's yield headroom on extraordinary land)
+    // legitimately accelerates domestication below the nominal lag — the lag is
+    // defined at a reference site. (A min(1,·) clamp here made every rich rice
+    // hearth mature at exactly domLagY — a new synchrony artifact, measured.)
     const Ty = pkg && pkg.suit >= HEARTH_SUIT_MIN
-      ? (CROP_BY_ID[pkg.id].domLagY || INVENT_EPOCH_Y) / Math.min(1, pkg.suit)
+      ? (CROP_BY_ID[pkg.id].domLagY || INVENT_EPOCH_Y) / pkg.suit
       : INVENT_EPOCH_Y / sc;
     if (Ty <= DEV_INIT_YEARS) {
       const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });

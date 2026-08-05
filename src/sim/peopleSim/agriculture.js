@@ -30,11 +30,28 @@ import { cropSuitabilityPkg } from "../cropGen.js";
 // Suitability of ONE package at a tile, read from the world's tile climate
 // arrays (cropSuitabilityPkg applies the shared arid / tropical-soil / elevation
 // / alluvial gates and the package's own climate bell).
+// T.IRRIG_CROP: a FLOOD-FED field reads the river, not the sky. The crop model's
+// moisture bell reads rainfall, but the arid-river cradles were never rain-fed —
+// Mesopotamian and Egyptian wheat grew on basin irrigation from the flood
+// (measured under OBSERVED climate: Mesopotamia rains m=0.02, and the wheat that
+// historically fed it scores ~0 there, so the hearth falls to a sorghum-class
+// site — the crop model contradicting the fertility model, whose alluvium terms
+// already know these valleys are breadbaskets). On tFlood ground (the arid-river
+// floodplain mask — the Nile/Indus/Tigris corridor class, a WORLDGEN property,
+// no place named) the moisture a crop EXPERIENCES is floored at well-watered:
+// MOIST_FLOOD_FED = 0.5, mid-scale — a statement about flood basins (annually
+// re-watered, silt-wetted), not about any crop; rain-fed land is untouched, and
+// a wet-climate floodplain is already above the floor so nothing changes there.
+// Applied to the annual read AND the seasonal read (the shared envGate comment's
+// own words: "a river irrigates year-round").
+const MOIST_FLOOD_FED = 0.5;
 export function pkgSuitAt(world, ti, pkg) {
   const e = world.elev[ti]; if (e <= 0) return 0;
   const coast = world.coast ? world.coast[ti] : 0;
   const rm = world.riverMag ? world.riverMag[ti] : 0;
-  const t = world.temp[ti], m = world.moist[ti];
+  const t = world.temp[ti];
+  let m = world.moist[ti];
+  if (T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && m < MOIST_FLOOD_FED) m = MOIST_FLOOD_FED;
   // T.GROW_SEASON: evaluate the package on the SEASON IT GROWS IN. The crop's
   // own tOpt picks the season — a cool-optimum crop (wheat) grows in the tile's
   // cool half, a warm-optimum crop (maize/rice) in the warm half — and it reads
@@ -54,7 +71,11 @@ export function pkgSuitAt(world, ti, pkg) {
     // Season moisture: gentle bias toward the annual level (even split ⇒ mGrow=m,
     // fully-wet season ⇒ 1.4×m, fully-dry ⇒ 0.6×m) — not the ×2 that overshot.
     const frac = warm ? wf : 1 - wf;
-    const mGrow = Math.max(0, Math.min(1, m * (0.6 + 0.8 * frac)));
+    let mGrow = Math.max(0, Math.min(1, m * (0.6 + 0.8 * frac)));
+    // Flood-fed ground keeps its floor in EVERY season (basin irrigation stores
+    // the flood for the growing season — Egypt's winter wheat on the summer
+    // flood's water); rain-fed seasonality is untouched.
+    if (T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && mGrow < MOIST_FLOOD_FED) mGrow = MOIST_FLOOD_FED;
     return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow);
   }
   return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null);
