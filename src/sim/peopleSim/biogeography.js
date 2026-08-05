@@ -140,7 +140,7 @@ function originCells(world, pkg) {
 // hard water penalty. Computed once and cached on the world (never mutated after
 // — climate change does not move a wild ancestor's homeland). Distances are in
 // climate-variation units + water hops, the same currency the technique wave uses.
-function ensureDistFields(world) {
+export function ensureDistFields(world) {   // exported for probes (drift measurement); sim callers go through packagePresent/packageAdaptMul
   if (world._pkgDist && world._pkgDist.N === world.N) return world._pkgDist;
   const { N, tw, th, elev, temp, moist } = world;
   const ck = Math.max(1e-3, T.DIFF_CLIM || 0.8);   // the spread physics uses a real toll even if the lever is low
