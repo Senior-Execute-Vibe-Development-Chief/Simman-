@@ -1010,6 +1010,14 @@ function maybeDissolveTowns(world) {
 // bridge (0.001-0.003; a unit choice, not a tuning), replaced by the live
 // bridge the moment the first city exists.
 const BRIDGE_REF = 0.002;
+// The DAWN's unit anchor (DAWN_LIVE, no entities to calibrate on): the
+// forager Earth on the eve of agriculture held ~5 million people
+// (Deevey/HYDE band 2-10M) — a real paleodemographic constant of the same
+// species as the Uruk core and the pre-industrial urban share. The bridge
+// is declared ONCE over the pristine forager field: census-per-field-unit =
+// FORAGER_EARTH_CENSUS / Σfield. Every bar, the dissolution pass and the
+// first city's census then cohere in real people from step 0.
+const FORAGER_EARTH_CENSUS = 5000;   // ×1,000 people
 const URBAN_DRIFT = 5e-5;      // per-step share of a market cell's people drifting to its site (Uruk: village → 40,000 over ~900 years at a ~200-census basin ≈ this order)
 const SITE_CITY_IVL = 25;      // drift/mint cadence (amortization; the spike re-stamp below is per-tick so every field pass holds the core)
 // The settlement-less invention IMPROVES WITH PRACTICE: a static seed measured
@@ -1028,6 +1036,14 @@ function maybeSiteCities(world) {
   const L = labelSiteLedger(world);
   const claims = _siteClaims(world);
   const pf = world.popField;
+  // Declare the dawn bridge from the forager world itself, once (see
+  // FORAGER_EARTH_CENSUS): the first call under the lever sees the pristine
+  // pre-farming field. BRIDGE_REF stays as the last-resort fallback only.
+  if (!(world._onePopScale > 0)) {
+    let F0 = 0;
+    for (let i = 0; i < world.N; i++) F0 += pf[i];
+    if (F0 > 0) world._onePopScale = FORAGER_EARTH_CENSUS / F0;
+  }
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
   const basinBarF = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell, field units
   const coreBarF = TIER_CORE[2] / bridge;                        // a CITY's core, field units
@@ -1113,15 +1129,10 @@ function maybeSiteCities(world) {
     // entity swallowed a 1,008-census core — a metropolis at birth in a
     // world whose second entity did not exist yet.
     const coreCensus = Math.min(coreF * bridge, TIER_CORE[2] * 1.5);
-    // The mint has priced every bar in BRIDGE_REF units — so the FIRST mint
-    // must SET the live bridge to that same value, not let the next derive
-    // re-calibrate it from the founding party. Measured without this
-    // (probe_firstcity): the derive computed _onePopScale = 15-census party /
-    // a barely-assigned catchment = 0.35 (175× the reference), the first city
-    // read 11,000 census at birth, famine-crashed to ~1,000 over 600 steps,
-    // and only then regrew honestly. A unit must not be re-derived from the
-    // first datum that used it.
-    if (!(world._onePopScale > 0)) world._onePopScale = BRIDGE_REF;
+    // (The live bridge is guaranteed by the pass-top dawn declaration — the
+    // first mint never lets the next derive re-calibrate the unit from its
+    // own founding party, which measured as a 0.35 bridge, an 11,000-census
+    // first city and a 600-step famine crash before the declaration existed.)
     fieldShift(world, { pos: { x: st.x, y: st.y } }, -coreCensus);
     const inherited = inheritKnowledgeAt(world, st.ti, world.transportDist ? world.transportDist[st.ti] : 0);
     // A city born within reach of an existing people carries their culture
