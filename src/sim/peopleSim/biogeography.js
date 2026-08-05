@@ -192,7 +192,15 @@ function ensureDistFields(world) {
 // a package's home band end to end, while the p90 (30) and the New-World
 // crossings (~90-130, oceans at 1.2/tile over tens of tiles) stay far outside —
 // the hemispheres keep their own agricultures, which is what this file is for.
-const REACH_BASE = 0.6;   // present within this climate-distance of its origin from the first (the domestication core + its early halo)
+// REACH_BASE is the DOMESTICATION CORE — the region whose people held the wild
+// ancestor and could domesticate it independently. It must be wide enough that a
+// package's own homeland always qualifies as present at the dawn: measured under
+// OBSERVED climate, a 0.6 core left the Nile and Mesopotamia pins with NO package
+// at all (score 0.50 fallback, armed for 7,000y instead of seating) — the crop
+// gate silently un-seating the historical cradles, which is worse than the
+// anachronism it was fixing. 2.5 covers the Crescent arc end to end (measured
+// Crescent→Levant 1.46, →Anatolia 2.69) without reaching another band's core.
+const REACH_BASE = 2.5;   // the domestication core: present here from the first
 const REACH_DEV  = 7.0;   // + this × leading agriculture — the mature along-band spread
 
 function leadAgri(world) {
