@@ -297,6 +297,11 @@ export function saveWorld(world, meta = {}) {
       // record is consumed at maturation); losing them un-invents farming on
       // load. Absent unless the lever matured any → default saves byte-identical.
       hearthSeeds: world._hearthSeeds && world._hearthSeeds.length ? world._hearthSeeds : undefined,
+      // Nations of the land (T.STATE_OF_LAND): the seat register and the static
+      // basin territory. Not re-derivable (formation is a one-time event and the
+      // painted cell is the nation's land). Absent unless the lever formed any.
+      landSeats: world._landSeats && world._landSeats.size ? [...world._landSeats].map(([id, r]) => ({ id, ...r })) : undefined,
+      landOwner: sparseFromTyped(world._landOwner, -1) ?? undefined,
       // The loyalty field (T.LOYAL_FIELD, loyaltyField.js): allegiance is a
       // dense continuum (every governed tile carries a value), the owner-diff
       // snapshot is dense ids; both absent unless the lever ran (undefined key
@@ -475,6 +480,9 @@ export function loadWorld(data, opts = {}) {
     if (data.maps.armedHearths && data.maps.armedHearths.length) world._armedHearths = data.maps.armedHearths.map(h => ({ ...h }));
     if (data.maps.hearthArmAt !== undefined) world._hearthArmAt = data.maps.hearthArmAt;
     if (data.maps.hearthSeeds && data.maps.hearthSeeds.length) world._hearthSeeds = data.maps.hearthSeeds.map(h => ({ ...h }));
+    if (data.maps.landSeats && data.maps.landSeats.length) world._landSeats = new Map(data.maps.landSeats.map(r => [r.id, { ti: r.ti }]));
+    const lown = typedFromSparse(data.maps.landOwner, Int32Array, N, -1);
+    if (lown) world._landOwner = lown;   // nations of the land: static basin territory (T.STATE_OF_LAND)
     const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);

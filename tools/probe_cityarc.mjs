@@ -49,7 +49,7 @@ for (let i = 0; i < STEPS; i++) {
     tiers[Math.max(0, Math.min(3, s.tier | 0))]++;
     if (s.countryId < 0) wild++;
   }
-  const realms = world.countries ? world.countries.size : 0;
+  const realms = (world.countries ? world.countries.size : 0) + (world._landSeats ? world._landSeats.size : 0);   // realms + nations of the land
   const wildPct = Math.round((100 * wild) / Math.max(1, setts.length));
   const roads = world._roadTiles ? world._roadTiles.size : 0;
   console.log(

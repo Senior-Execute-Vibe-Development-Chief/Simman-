@@ -107,6 +107,7 @@ const NARRATE = {
     if (ev.how === "secession") return `Broke away from ${ev.fromName || "its parent realm"} in a war of secession.`;
     if (ev.how === "fragment") return `Rose from the ruins of ${ev.fromName || "a fallen empire"}.`;
     if (ev.how === "frontier") return `${ev.seatName || "A frontier town"} declared itself a sovereign realm.`;
+    if (ev.how === "tribal") return `${ev.name || "A people"} took their valley as a nation of the land.`;
     return `${ev.seatName || "A settlement"} became a realm of its own.`;
   },
   "polity.ended"(ev, as) {

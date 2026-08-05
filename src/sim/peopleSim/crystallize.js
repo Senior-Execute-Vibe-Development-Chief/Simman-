@@ -22,7 +22,7 @@ import { tel, telPass } from "./telemetry.js";
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
-import { getPolity, fiscAdoptable } from "./entities.js";
+import { getPolity, fiscAdoptable, ensurePolity } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
 import { dominantFaith } from "./faiths.js";
 import { logEvent } from "./events.js";
@@ -1152,9 +1152,76 @@ function maybeSiteCities(world) {
   }
 }
 
+// ── T.STATE_OF_LAND: nations of the land (Wave 5 Stage A) ────────────────
+// Owner 2026-08-05: "each nation still spawns with a settlement though? i
+// think this is where we get to decoupling nations from cities." A polity
+// may exist on territory and people ALONE: when a farming basin holds a
+// PEOPLE (a complex chiefdom's worth) and no state's border covers it, a
+// NATION forms — a polity-registry record named in the tongue of the
+// ancestry on that ground, seated on a tile, holding its market cell as
+// static territory in world._landOwner. It stays OUT of world.countries by
+// design (the conquest pass presupposes courts in 25+ places; a pre-state
+// polity wages no organized war, holds no court, runs no colonies) — the
+// border renderer and the adoption path consume its territory through the
+// merged crawl target (countryClaim.js), so its borders DRAW and a city
+// born on its ground adopts its id, at which moment the nation
+// MATERIALISES as a realm (world.countries picks it up with a member) and
+// leaves the land-seat register: tribal nation → city-state → kingdom,
+// one polity record, one chronicle, across the whole arc.
+const TRIBAL_CENSUS = 10;      // a complex chiefdom: ~10,000 people under one polity (Johnson & Earle's band) — the smallest thing history calls a nation of the land
+const LAND_NATION_IVL = 100;   // formation/retirement cadence (amortization)
+function maybeLandNations(world) {
+  if (!T.STATE_OF_LAND || !world.popField) return;
+  if (world.step % LAND_NATION_IVL !== 0) return;
+  if (!(world._onePopScale > 0)) return;   // no unit yet (the site pass declares it at the dawn): a census bar cannot be read
+  const L = labelSiteLedger(world);
+  const claims = _siteClaims(world);
+  const co = world._countryOwner;
+  const devF = world.devField;
+  const seats = world._landSeats;
+  // Retirement: a land nation whose id now has a settled member has
+  // MATERIALISED (a city adopted it; the realm machinery owns the ground) —
+  // clear its static territory so the Voronoi takes over cleanly.
+  if (seats && seats.size) {
+    const lo = world._landOwner;
+    const withMember = new Set();
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0 && seats.has(s.countryId)) withMember.add(s.countryId);
+    for (const id of withMember) {
+      if (lo) for (let i = 0; i < lo.length; i++) if (lo[i] === id) lo[i] = -1;
+      seats.delete(id);
+    }
+  }
+  // Formation: at each unclaimed ledger site outside every border — realm or
+  // tribal — where the ground FARMS (the full invention has arrived) and the
+  // basin holds a people.
+  if (!devF) return;
+  const lo0 = world._landOwner;
+  const barF = TRIBAL_CENSUS / world._onePopScale;
+  for (let k = 0; k < L.sites.length; k++) {
+    if (claims.claimed[k]) continue;
+    const st = L.sites[k];
+    if (co && co[st.ti] >= 0) continue;
+    if (lo0 && lo0[st.ti] >= 0) continue;
+    if (devF[st.ti] < NEOLITHIC_AGRI) continue;
+    if (claims.mass[k] < barF) continue;
+    // Form: the people of this ground become a nation.
+    const id = world._nextSettlementId || 1; world._nextSettlementId = id + 1;
+    const ancId = world.ancestry ? world.ancestry[st.ti] : -1;
+    const cul = ancId >= 0 ? ancestryCulture(world, ancId, null) : null;
+    const name = cul ? nameFor(world, cul, "realm") : null;
+    let lo = world._landOwner;
+    if (!lo || lo.length !== world.N) { lo = world._landOwner = new Int32Array(world.N); lo.fill(-1); }
+    const siteId = L.siteId, elev = world.elev;
+    for (let i = 0; i < siteId.length; i++) if (siteId[i] === k && elev[i] > 0) lo[i] = id;   // the market cell IS the nation's land
+    (world._landSeats || (world._landSeats = new Map())).set(id, { ti: st.ti });
+    ensurePolity(world, id, { how: "tribal", name, cultureId: cul ? cul.id : -1 });
+  }
+}
+
 export function maybeCrystallize(world) {
   maybeDissolveTowns(world);
   maybeSiteCities(world);
+  maybeLandNations(world);
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
   // Refresh transport map if stale or absent.

@@ -116,9 +116,11 @@ export function ensurePolity(world, id, opts = {}) {
     return p;
   }
   // Name the realm in its founding people's tongue, derived from the seat
-  // (Velara the city begets Velarath the realm).
-  let name = null, cultureId = -1;
-  if (opts.seat) {
+  // (Velara the city begets Velarath the realm). T.STATE_OF_LAND callers have
+  // no seat settlement — a nation of the land passes its name and culture
+  // directly (derived from the ancestry field at its seat tile).
+  let name = opts.name || null, cultureId = opts.cultureId ?? -1;
+  if (!name && opts.seat) {
     cultureId = dominantCulture(opts.seat);
     const cul = getCulture(world, cultureId);
     if (cul) name = nameFor(world, cul, "realm", opts.seat.name);
@@ -210,6 +212,12 @@ export function reconcilePolities(world, countries) {
   }
   for (const p of reg.values()) {
     if (p.endedStep >= 0 && live.has(p.id)) ensurePolity(world, p.id);   // alive again under its old id — log the restoration
-    else if (p.endedStep < 0 && !live.has(p.id)) endPolity(world, p.id, "dissolved");
+    // T.STATE_OF_LAND: a nation of the land has no settled member BY DESIGN —
+    // it lives on its territory and people until a city rises inside it (then
+    // it materialises as a realm and leaves the land-seat register) or its
+    // basin empties (the register drops it). Never "dissolved" for lacking a
+    // settlement it was never required to have.
+    else if (p.endedStep < 0 && !live.has(p.id)
+      && !(world._landSeats && world._landSeats.has(p.id))) endPolity(world, p.id, "dissolved");
   }
 }
