@@ -1958,7 +1958,24 @@ const PLANT_CHECK_INTERVAL = 480;   // ticks between plantation considerations (
 const PLANT_ORG_MIN        = 0.35;  // written administration: charters + surveying (the colonia/bastide bar)
 const PLANT_COST           = 1200;  // treasury endowment the settlers carry (conserved: treasury → town wealth)
 const PLANT_PEOPLE         = 100;   // settlers moved out of the capital (town-scale — the urban floor's own size)
-const PLANT_CAP_MIN_POP    = 500;   // the capital must have people to spare
+const PLANT_CAP_MIN_POP    = 500;   // (legacy absolute; superseded by PLANT_CAP_MULT under T.PLANT_EARLY)
+// T.PLANT_EARLY: the state-planted-city channel (colonia, bastide, march fort,
+// Alexandria, St Petersburg) was measurably DORMANT until ~step 25k because
+// PLANT_CAP_MIN_POP = 500 census demands a half-million-catchment METROPOLIS
+// capital before a state may found a town (docs/state-birth-2026-08.md: "planted
+// zero by step 8000, every check blocked on capital-too-small"). That is an
+// anachronism — small organized states colonized aggressively (the Greek poleis
+// founded hundreds of colonies at city sizes of tens of thousands; early Rome's
+// coloniae; Assyrian and Neo-Babylonian foundations). Colonization scales with
+// STATECRAFT and SURPLUS, not with owning a metropolis. Re-grounded: the capital
+// must simply be a real regional CENTRE relative to the age's typical town
+// (world._townBar, the self-calibrating median settled census the tier ladder
+// already maintains) AND able to spare the settler party without gutting itself.
+// Self-scaling, so it opens across the WHOLE arc — states found cities in the
+// bronze age as they historically did — instead of only once capitals are
+// industrial. Never a clock; every term is live census/statecraft.
+const PLANT_CAP_MULT       = 2.5;   // capital ≥ this × the age's typical town (a real centre, not any town)
+const PLANT_SPARE_MULT     = 2.0;   // ...and ≥ this × the settler party it sends (people genuinely to spare)
 const PLANT_STRAIN_MAX     = 0.85;  // no planting past the governing budget (COLONY_HEADROOM precedent)
 const PLANT_COOLDOWN       = 2400;  // ticks between plantations per realm
 // A plantation obeys the SAME minimum spacing as any founding (the sweep's
@@ -1986,7 +2003,16 @@ function maybePlantTowns(world) {
   const dbg = world.debug ? (world.debug.plant || (world.debug.plant = { pop: 0, org: 0, strain: 0, coin: 0, cool: 0, elig: 0, cand: 0, iso: 0, planted: 0 })) : null;
   for (const [cid, c] of world.countries) {
     const cap = c.capital;
-    if (!cap || cap.mode !== "settled" || (cap.people || 0) < PLANT_CAP_MIN_POP) { if (dbg) dbg.pop++; continue; }
+    if (!cap || cap.mode !== "settled") { if (dbg) dbg.pop++; continue; }
+    // Can this state found a town? Under T.PLANT_EARLY the bar is RELATIVE — a
+    // real regional centre (≥ PLANT_CAP_MULT × the age's typical town) with
+    // people to spare (≥ PLANT_SPARE_MULT × the settler party). Off: the legacy
+    // absolute-metropolis bar (byte-identical).
+    if (T.PLANT_EARLY) {
+      const typical = world._townBar || PLANT_CAP_MIN_POP;
+      const need = Math.max(PLANT_CAP_MULT * typical, PLANT_SPARE_MULT * PLANT_PEOPLE);
+      if ((cap.people || 0) < need) { if (dbg) dbg.pop++; continue; }
+    } else if ((cap.people || 0) < PLANT_CAP_MIN_POP) { if (dbg) dbg.pop++; continue; }
     if (((cap.knowledge && cap.knowledge.organization) || 0) < PLANT_ORG_MIN) { if (dbg) dbg.org++; continue; }
     const pol = getPolity(world, cid);
     if (!pol || pol.endedStep >= 0) continue;
