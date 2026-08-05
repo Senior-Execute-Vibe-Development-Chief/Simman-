@@ -575,7 +575,23 @@ Old saves migrate: sub-city settlements fade back into the countryside over
 the first stretch — the measured dissolution cull; ONE_POP keeps every
 person on the field.
 
-## Wave 5 — decoupling nations from cities (owner, 2026-08-05)
+## Wave 3 acceptance — the A/B at the SHIPPED grid (tw=960, 12k steps)
+
+The five original complaints, scored at 1920/Half, old register vs the live
+set (CITY_CORE + CROWD_FOUND; DISSOLVE_TOWNS measured separately at 240/480
+— its tw=960 arm rides with the DAWN_LIVE genesis battery):
+
+| tw=960 @12k | old register | live set |
+|---|---|---|
+| stone-age cities | first "city" step 25 — a 114-census CATCHMENT mislabel | first city step 733, honest 10k core; metro 3207 at the 40k anchor |
+| cities born | pinned 7-9 all run (40 promotion events, all bar-flicker) | 0 → 60 monotone (138 promotions: 44 town, 82 city, 12 metro) |
+| pyramid | 94 towns / 8 cities frozen, 0 villages ever | 2/33/60/2 at 12k — the distribution slides through fixed, honest bars |
+| not enough countries | 37 realms, 38% nationless | **60 realms, 21% nationless** |
+| road web | 3682 tiles | 3498, with the dawn suppressed (742 at step 500) |
+
+The cross-grid first-city gradient (733 at tw=960, ~1500 at tw=480, ~2700 at
+tw=240) is the finest grid resolving genuinely dense hearth cores earlier —
+honest measurement, not a time-gate.
 
 *"each nation still spawns with a settlement though? i think this is where we
 get to decoupling nations from cities. also i still see you spawning villages
