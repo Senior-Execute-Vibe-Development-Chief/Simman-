@@ -1269,3 +1269,84 @@ already suffices. Gated on organisation because a canal network is an
 institution — which closes the Wittfogel loop the codebase already opened
 from the demand side. The Nile, Sumer, the Indus and every procedural
 desert-river valley fall out of it; nothing detects a region.
+
+---
+
+# T.IRRIGATION — BUILT, MEASURED, REVERTED; and the finding underneath it
+
+Owner said "go" on the irrigation mechanism sketched above. It was built
+behind a lever, verified byte-identical off, verified bit-identical across the
+serial/kernel/pool paths with the lever ON (probe_popfield_par), measured —
+and **reverted**, because the measurement showed the premise was wrong. The
+finding it uncovered instead is the largest open item in the food economy.
+
+## Why the mechanism was wrong: the sim already irrigates, implicitly
+
+The design was `works payoff x (1 + IRRIGATION x gain)`, `gain = max(0,
+irrigable - rainGate)` — pay for leading water onto fields in proportion to
+how badly the rain fails. Measured on the Nile channel:
+
+    lon/lat      | rMag | tFlood | moist | irrigable | rainGate | gain
+    30.8E/22.5N  |    4 |      1 |  0.45 |      1.00 |     1.00 | 0.00
+    28.5E/27.0N  |    4 |      1 |  0.45 |      1.00 |     1.00 | 0.00
+
+**Every river tile reads moist 0.45 while the desert beside it reads 0.02.**
+The moisture field already carries the river's own water, so cropGen's arid
+gate never fires on a river tile, fertility there is already 0.97, and the
+irrigation term's gain is 0 BY CONSTRUCTION exactly where it was designed to
+pay. The sim does not omit irrigation — it bakes it in, by modelling a river
+valley as wet, alluvial, near-maximum-fertility ground. (An earlier read that
+"the Nile has no river" was MY sampling error: the sim's Nile runs ~2° west of
+the real one, and my transect missed the channel. Corrected here.)
+
+The lever was removed rather than kept default-off: unlike T.INVENT_FIELD
+(kept as evidence because it DID something, just worse), this one is provably
+inert where intended, and it cost a hot-loop multiply plus worker-bus
+plumbing to do nothing.
+
+## The finding underneath: the capacity ruler is right at the MEAN and
+## compressed at the TOP
+
+`tools/probe_capruler.mjs` (new) prints the absolute quantity every other food
+gate measures only as a ratio (fill %, shares, cross-grid bands — all of which
+pass while this is wrong, exactly as the empire ratios passed while realms
+were 10× too small, pre-resgate):
+
+    band                     | tiles | fert | works | fill |  density   | real anchor
+    prime land (fert>0.85)   |  5246 | 0.95 | 1.79x |  79% |  0.50/km²  | 15-50
+    river ribbon (rMag>=3)   |   574 | 0.51 | 2.78x |  73% |  0.96/km²  | 20-50
+    marginal (fert<0.4)      | 26952 | 0.04 | 1.20x |  80% |  0.02/km²  |
+    ALL LAND                 | 38741 | 0.26 | 1.43x |  80% |  0.15/km²  | ~0.17  ✓
+
+The world AVERAGE is essentially exact (0.15 vs ~0.17 at a matched world total
+of 25.7M ≈ real 3500 BC). The TOP is 30-100× low. Fill is 79-80% in every
+band — this is a purely capacity-limited world, so the ceiling IS the story.
+Dynamic range prime/marginal is 28×; history's is in the hundreds (Nile
+floodplain ~20-50/km² against desert at ~0.05).
+
+Cross-check on the Nile specifically, at the ribbon rather than the box: 6
+tiles, 27,000 km² (real floodplain ~34,000 — the GEOMETRY is right), fertility
+0.97 (right), fill 77% (full), carrying 1.8 people/km² where pre-dynastic
+Egypt at this world-date ran ~18. Ten times short, with every input except the
+ruler itself correct.
+
+**So: the sim has the right number of people spread far too evenly.** That one
+sentence subsumes several open items — the Crescent question that started
+this, Zipf-thin cities (a city needs a dense catchment), the urban-takeoff
+item from the tribute wave, and probably the succession-war and war-size
+thinness too (small dense cores are what make big wars worth fighting).
+
+## Next wave (NOT built — needs its own battery)
+
+Raising CAP_PER_FERT globally is wrong: it lifts marginal land too and the
+world total, which is currently CORRECT, would balloon. The fix has to change
+the SHAPE of capacity's response, not its level — the top must rise while the
+mean holds. The physically-grounded candidate is Ricardian/Boserupian:
+**good land repays intensification and marginal land does not**, so capacity's
+response to land quality should be super-linear (and technique's payoff should
+scale with quality), rather than the present `cap ∝ fert` linear. LAND_WORKS
+is the existing term closest to this and its own note already concedes the
+range it does not reach — "2-3x (basin irrigation) to 5-15x (wet rice vs dry
+farming)" against a uniform 3x ceiling, measured saturating at 2.78x on river
+ribbons. That is where to start, with resgate re-baselined afterwards because
+every band moves.
