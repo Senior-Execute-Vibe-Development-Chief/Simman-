@@ -2509,6 +2509,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
   if(snap.countryClaim){psw._countryClaim=snap.countryClaim;psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver drives label-anchor cache)
+  if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
   // layer it was built for, so a stale field from a previous lens is ignored.
@@ -2721,7 +2722,8 @@ let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
    if(psw._countryClaim&&psw.countries){
      const tw2=psw.tw;const stx=Math.min(tw2-1,((wx/RES)|0)/psw.tileRes|0),sty=Math.min(psw.th-1,((wy/RES)|0)/psw.tileRes|0);
      const cc=psw._countryClaim[sty*tw2+stx];
-     if(cc>=0){const c=psw.countries.get(cc);if(c){hovRealm=c.name||(c.capital&&c.capital.name);hovRealmId=cc;}}}
+     if(cc>=0){const c=psw.countries.get(cc);if(c){hovRealm=c.name||(c.capital&&c.capital.name);hovRealmId=cc;}
+       else if(psw._landNames&&psw._landNames.has(cc)){hovRealm=psw._landNames.get(cc).name||"a people of the land";hovRealmId=cc;}}}
    {const psTx=((wx/RES)|0)/psw.tileRes,psTy=((wy/RES)|0)/psw.tileRes;
     let best=null,bestD2=36;
     for(const s of psw.settlements){

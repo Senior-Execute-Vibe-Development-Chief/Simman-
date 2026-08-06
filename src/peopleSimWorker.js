@@ -532,6 +532,16 @@ function buildSnapshot() {
   // settlement is never a bare dot on the map while its nascent capital's projected claim
   // is still ~0. Render-only (a per-tick slice; nothing in the sim reads this).
   let countryClaim = null;
+  // Land-nation names for labels/hover (the polity registry does not ship;
+  // this compact list does): [{id, ti, name}] for LIVE nations of the land.
+  let landNations = null;
+  if (sendStatic && T.STATE_OF_LAND && world._landSeats && world.polities) {
+    landNations = [];
+    for (const [id, r] of world._landSeats) {
+      const pol = world.polities.get(id);
+      if (pol && pol.endedStep < 0) landNations.push({ id, ti: r.ti, name: pol.name || null });
+    }
+  }
   if (sendStatic && T.CONTROL_FIELD && world._ctrlOwner) {
     // PRETTY MODE (control field as the drawn border): the political map is rendered from
     // the control field (world._ctrlOwner) — coherent, terrain-following, continuously-moving
@@ -583,6 +593,15 @@ function buildSnapshot() {
   if (roadQuality) transfer.push(roadQuality.buffer);
   if (roadFlow) transfer.push(roadFlow.buffer);
   if (tileComp) transfer.push(tileComp.buffer);
+  // T.STATE_OF_LAND — nations of the land DRAW: their static basin claim
+  // fills wherever neither the control field nor the realm crawl speaks (both
+  // are seeded from capitals/settlements, which a tribal nation does not have
+  // — at the app defaults tribal territory rendered NOTHING, so the first
+  // visible nation was always a city-state). Applied to EITHER branch's map.
+  if (T.STATE_OF_LAND && world._landOwner && countryClaim) {
+    const lo = world._landOwner;
+    for (let i = 0; i < countryClaim.length; i++) if (countryClaim[i] < 0 && lo[i] >= 0) countryClaim[i] = lo[i];
+  }
   if (countryClaim) transfer.push(countryClaim.buffer);
   if (fieldDom) { transfer.push(fieldDom.buffer); transfer.push(fieldSec.buffer); }
   if (loyal) { transfer.push(loyal.buffer); if (loyalHome) transfer.push(loyalHome.buffer); }
@@ -611,7 +630,7 @@ function buildSnapshot() {
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
     globalP,
-    owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim,
+    owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim, landNations,
     fieldDom, fieldSec, fieldLayer,   // per-tile identity field for the active culture/faith/language lens
     loyal, loyalHome,                 // loyalty lens: attachment heat + the ground's remembered nation
     // popMax → CENSUS people per REFERENCE tile on the densest ground (already
