@@ -1161,3 +1161,111 @@ seed); (3) succession-war ignition share; (4) revolt-churn realism
 (successor-states at fine grids, the standing item); (5) urban takeoff
 (tribute-driven urbanisation, from the subsidy-removal wave); (6) the
 ?-channel founding-story race; (7) coast/river capacity-dilution debt.
+
+---
+
+# Why is the Fertile Crescent weak? (owner question, 2026-08-06) — MEASURED
+
+Answered by measurement, not opinion: `tools/probe_cradleregions.mjs` (new)
+compares the historical cradle boxes on the Earth preset by terrain, the
+technique field, people, and politics; plus a cradle-score decomposition at
+the four Old-World pins and a capacity-vs-population fill read.
+
+## The premise is half wrong: farming LEADS there
+
+Under the app's dawn setting (DAWN_LIVE=1, tw=480, seed 8817, 25k steps) the
+Crescent is the world's **most-developed region**: 253 of 255 land tiles
+farming, devF 0.574 — tied at the top with the Nile, while the Yellow River
+sits at 0.070 and the Yangtze at 0.006. Mesopotamia's hearth ignites SECOND
+of the four Old-World pins (~step 12,000, after the Nile, before the Indus
+and the Yellow River). The ORDER of invention is roughly historical.
+
+What is weak is everything downstream: 1 settlement, ~0.2M people.
+
+## The binding constraint is the CEILING, not the people
+
+Capacity-vs-population fill (mature-regime initial condition — the harness
+pins DAWN_LIVE=0; this is the equilibrium read, not the dawn timeline):
+
+    step 25000 · world 25.7M people / cap 32.2M
+    region   |  people |    cap  | fill% | ppl/km2 | devF
+    Crescent |   0.90M |   1.02M |   88% |    0.79 | 0.69
+    Nile     |   0.12M |   0.14M |   82% |    0.32 | 0.69
+    YellowR  |   1.02M |   1.10M |   93% |    1.08 | 0.69
+    Yangtze  |   0.43M |   0.48M |   88% |    0.47 | 0.68
+
+Fill is 75-98% at every checkpoint in every region: **population is AT
+carrying capacity everywhere**. People are not failing to arrive — the
+ceiling is ~1 person/km² in the world's best ancient farmland. Real Bronze
+Age Egypt carried ~1.5-2M people on ~34,000 km² of floodplain (~50/km²);
+Sumer's irrigated core is the same order. The world TOTAL is fine (25.7M at
+late-Bronze technique against a real ~20-30M) — what is missing is
+CONCENTRATION. The sim spreads its people thinly and evenly; history piled
+them into narrow irrigated ribbons.
+
+## Why the Crescent scores low as a hearth (4.44, lowest of the four pins)
+
+    pin           | fert | moist | river | score | package
+    Nile          | 0.99 | 0.45  |  4.0  | 6.00  | wheat suit 0.93
+    Mesopotamia   | 0.99 | 0.25  |  2.0  | 4.44  | wheat suit 0.69
+    Indus         | 0.99 | 0.45  |  3.0  | 6.09  | sorghum 0.85
+    Yellow River  | 0.83 | 0.65  |  3.0  | 5.88  | maize 1.01
+
+Fertility is fine. The Crescent loses on river magnitude (2.0 → riverBonus
+1.6 vs 2.6 at rm≥3) and on MOISTURE, which cuts its wheat suitability to
+0.69 and scales the whole score by it. Under INVENT_STAGGER (T =
+INVENT_EPOCH_Y / score) a low score is a late maturity.
+
+## The four real-history reasons, and what the sim maps
+
+1. **The wild package** (Diamond) — 8 founder crops + 4 of the 5 big
+   domesticates, the richest assemblage on Earth. **MAPPED**
+   (T.CRADLE_PACKAGE: suit × storability).
+2. **Mediterranean seasonality** — wet winter, hot dry summer: the regime
+   that selects for large-seeded annual selfers that die back and store,
+   which is *why* those grasses were domesticable at all. **NOT MAPPED.**
+   Crop suitability reads ANNUAL-MEAN moisture, so the Crescent's signature
+   climate reads "semi-arid" and is penalised (suit 0.69). A `summerDry`
+   field exists but its Mediterranean branch is disabled, and biomeClass.js
+   documents exactly why: the moisture solver models no seasonal storm
+   track, so 94-97% of the Mediterranean it painted would be misplaced.
+3. **Irrigation on arid alluvium** — farming was invented in the rain-fed
+   NORTHERN arc (Göbekli Tepe, Abu Hureyra, Çatalhöyük); cities and states
+   came from the irrigated SOUTH (Eridu, Uruk, Ur) — desert with two rivers,
+   the highest-yielding farmland of the ancient world once canalised.
+   **NOT MAPPED.** There is a river ACCESS premium (reach = 1 + access ×
+   (ACCESS_DEV0 + ACCESS_DEVK·dev), ≈3× at full magnitude) but it is
+   undifferentiated by aridity — a river through wet Europe earns the same
+   multiplier as one through Iraq — and nothing like the order-of-magnitude
+   irrigation delivers on desert alluvium versus the same ground unwatered
+   (which is zero: aridGate = clamp((m − 0.12)/0.18) kills rain-fed crop).
+4. **Circumscription** (Carneiro) — bounded by desert, mountain and sea, the
+   losers of a quarrel could not disperse, so they submitted. **MAPPED, and
+   carefully**: `_confine` (static terrain), T.CONFINE into birth
+   organisation, and T.ORG_PRESSURE stating Carneiro properly —
+   circumscription × population FILL, not circumscription alone. The
+   codebase already names Wittfogel's hydraulic demand in that lever.
+
+## The gap, in one sentence
+
+**The sim models the DEMAND half of Wittfogel — aridity and confinement
+drive organisation — but not the SUPPLY half: organisation unlocks the
+water, and water on desert alluvium is worth an order of magnitude.** Sumer
+is precisely where those two halves meet, which is why it is the case that
+exposes the gap.
+
+Also noted: at the REFERENCE grid (tw=240) the southern alluvium reads as
+sea/desert outright (Uruk/Ur elev −0.04, Jericho fert 0.00) while at the app
+grid (tw=480) the same pin reads fert 0.99 — the third cardinal rule again,
+and partly real (the Gulf did reach further north in the early Holocene).
+
+## Proposed mechanism (NOT built — owner decision)
+
+An irrigation term with independent physical meaning, no region named and no
+constant fitted to Egypt: effective crop water = max(rainfall, river-supplied
+water × the administering settlement's organisation), so the premium is
+LARGEST exactly where the arid gate bites hardest and ~zero where rain
+already suffices. Gated on organisation because a canal network is an
+institution — which closes the Wittfogel loop the codebase already opened
+from the demand side. The Nile, Sumer, the Indus and every procedural
+desert-river valley fall out of it; nothing detects a region.
