@@ -1110,8 +1110,9 @@ function maybeSiteCities(world) {
   for (let k = 0; k < L.sites.length; k++) {
     if (gain[k] > 0) pf[L.sites[k].ti] += gain[k];
   }
-  // Mint: a site whose core disk holds a city's people becomes a CITY —
-  // stateless at birth (-1): a stateless city self-anchors sovereignty
+  // Mint: a site whose core disk holds a city's people becomes a CITY. Born
+  // ON A NATION'S GROUND it is born INTO that nation (below); on virgin or
+  // realm ground it is stateless at birth (-1) and self-anchors sovereignty
   // through the existing countryTerritory channel (city-creates-nation), or
   // is adopted by the realm whose border has grown over it. The people are
   // MOVED, never printed: the field is debited at the site and
@@ -1141,10 +1142,36 @@ function maybeSiteCities(world) {
     // Without this the genesis cities named as "settlement-1" (measured).
     const donor = world._lastInheritDonor;
     const donorCul = donor ? dominantCulture(donor) : -1;
+    // T.STATE_OF_LAND: a city rising on a NATION'S ground is that nation
+    // MATERIALISING — Uruk is Sumer's countryside crystallising a seat, not
+    // a rival state founded beside it. Born INTO the nation (countryId) and
+    // OF its people (the nation's culture beats a remote donor's — the folk
+    // this city concentrates ARE the nation's): the retirement pass hands
+    // the register over within this same crystallize pass, and the polity
+    // record simply continues (its tribal founding stays its founding).
+    // Ground already under a realm's authored field keeps the gated
+    // adoptAndFound channel — a court must AFFORD a new city; a land nation
+    // has no court to refuse with, its first city IS the court being born.
+    // Measured before this: 40 land nations / 40 realms at 25k app-grid
+    // steps and ZERO materialisations — every genesis city self-founded
+    // beside its own nation (probe_tribute, docs/state-birth-2026-08.md).
+    const coA = world._countryOwner;
+    const loA = world._landOwner;
+    const nid = (T.STATE_OF_LAND && loA && world._landSeats
+      && (!coA || coA[st.ti] < 0) && world._landSeats.has(loA[st.ti]))
+      ? loA[st.ti] : -1;
+    const natCul = nid >= 0 ? ((getPolity(world, nid) || {}).cultureId ?? -1) : -1;
+    const bornCul = natCul >= 0 ? natCul : donorCul;
     const born = makeSettlement(world, st.x + 0.5, st.y + 0.5, {
       people: coreCensus, knowledge: inherited, tier: 2,
-      ...(donorCul >= 0 ? { cultureId: donorCul } : { cradle: true }),
+      ...(nid >= 0 ? { countryId: nid } : {}),
+      ...(bornCul >= 0 ? { cultureId: bornCul } : { cradle: true }),
     });
+    if (nid >= 0) {
+      born._integratedAt = world.step;   // a new sovereign integrates its territory gradually (INTEGRATE_*)
+      const pol = getPolity(world, nid);
+      if (pol) pol.capitalId = born.id;  // the nation's seat is THIS city (the reconciler confirms next pass)
+    }
     // THE COUNTRYSIDE'S GRANARIES RIDE IN WITH THE COUNTRYSIDE. The tick
     // before this city existed, its basin's people fed themselves through
     // the field's own capacity — for thousands of steps. The tick after,

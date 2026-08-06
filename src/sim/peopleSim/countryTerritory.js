@@ -2034,6 +2034,21 @@ export function adoptAndFound(world) {
     if (fieldPolity) { const id = co[ti]; return id >= 0 && alive.has(id) ? id : -1; }
     return grownLiveOwnerAt(world, ti);
   };
+  // T.STATE_OF_LAND: the nation whose GROUND a tile is — the land paint, not
+  // the settlement-seeded field (a land nation has no settlements to seed co,
+  // so under the shipped FIELD_POLITY model ownerAt could never return one:
+  // a genesis city rising on a nation's territory read region = -1 and
+  // SELF-FOUNDED a rival realm beside it — zero materialisations in 25k
+  // app-grid steps, probe_tribute 2026-08). Consulted only by the sovereign-
+  // anchor branch below: a CITY materialises its nation; towns on tribal
+  // ground stay stateless (the village tier IS the nation's own people —
+  // only a city turns a nation of the land into a realm, Wave-5 design).
+  const landAt = (ti) => {
+    if (!T.STATE_OF_LAND) return -1;
+    const lo = world._landOwner, seats = world._landSeats;
+    const id = lo ? lo[ti] : -1;
+    return id >= 0 && seats && seats.has(id) ? id : -1;
+  };
   // Budget-gated adoption (T.ADOPT_BUDGET): taking on a NEW subject is an act of
   // administration, and a court already past its budget (strain = load/capacity
   // from the last polity pass, on the persistent polity record) refuses it — the
@@ -2090,8 +2105,15 @@ export function adoptAndFound(world) {
     if ((s.tier | 0) >= CITY_TIER || s._sovereignSeat) {
       if (s.countryId < 0) {
         // an over-budget region cannot take the anchor in — it founds instead;
-        // nor can one whose fisc cannot carry it (the marginal-revenue test)
-        s.countryId = region >= 0 && !overBudget(region) && fiscOk(region, s) ? region : s.id;
+        // nor can one whose fisc cannot carry it (the marginal-revenue test).
+        // No realm field over the tile → the NATION whose land this is (if
+        // any) materialises through this city; budget/fisc are a court's
+        // refusal machinery and a land nation has no court yet — its first
+        // city is the court coming into being, so no gate applies.
+        const nat = region < 0 ? landAt(ti) : -1;
+        s.countryId = region >= 0 && !overBudget(region) && fiscOk(region, s) ? region
+          : nat >= 0 ? nat
+          : s.id;
         s._integratedAt = world.step;                // new sovereign / adopted land integrates its territory in gradually (anti-bloom; see INTEGRATE_*)
       }
       // a town/city with a country keeps it (sovereign)

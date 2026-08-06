@@ -35,5 +35,15 @@ for (let i = 0; i < STEPS; i++) {
   }
   let starved = 0;
   for (const e of world.events || []) if (e.type === "settlement.starved" || e.type === "famine.struck") starved++;
+  // Living realms by FOUNDING channel: materialised tribal nations keep their
+  // how:"tribal" founding event, so the mix (tribal-born vs city-self-found)
+  // reads straight off the registry.
+  if (world.step % 5000 === 0 && world.polities && world.countries) {
+    const how = new Map();
+    for (const e of world.events || []) if (e.type === "polity.founded") how.set(e.polity, e.how || "emerged");
+    const mix = new Map();
+    for (const id of world.countries.keys()) { const h = how.get(id) || "?"; mix.set(h, (mix.get(h) || 0) + 1); }
+    console.log(`        realms by founding: ${[...mix].map(([h, n]) => h + "=" + n).join("  ")}`);
+  }
   console.log(`${String(world.step).padStart(5)} | ${String(nLand).padStart(11)} ${String(nRealm).padStart(6)} | ${tribLand.toFixed(0).padStart(7)} / ${tribRealm.toFixed(0).padStart(6)} | ${metal.toFixed(1).padStart(5)} | ${prest.toFixed(1).padStart(8)} | ${treas.toFixed(0).padStart(9)} | ${starved}`);
 }

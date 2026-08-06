@@ -787,3 +787,106 @@ the capability living on a **people** (culture/ancestry), invented once against 
 real barrier and inherited by descendants, with diffusion carrying it outward —
 which is a genuine subsystem, not a constant. Recorded rather than attempted, and
 the failed lever is kept default-off as the evidence that density was not it.
+
+---
+
+# The materialisation that never fired (2026-08-06)
+
+Owner, running the live stack: *"why are they minting cities off the bat anyway?
+Didn't we JUST make it so that they don't have to do that?"* Two defects, one
+visible and one structural, and the visible one was hiding the structural one.
+
+## Measured: zero materialisations, ever
+
+`probe_tribute` grew a founding-channel column (living realms keyed by their
+`polity.founded` event's `how`). At the app grid (`tw=960`, seed 8817, dawn
+live, 25k steps):
+
+    land nations 20 · realms 40 · founding mix: cradle=1 frontier=1 ?=38 tribal=0
+
+**Not one land nation had ever materialised into a realm.** Forty realms rose
+BESIDE forty nations — parallel registers that never touched. The user was
+seeing exactly this: tribes form (invisible, see below), then a city rises
+*inside* one and self-founds a rival state on top of it.
+
+## The mechanism: the handover was built for a model we no longer ship
+
+The Wave-5 adoption channel lives in the claim crawl (`countryClaim.js`:
+merged owner, `grownLiveOwnerAt` accepting land ids — "a city born on tribal
+ground adopts the tribe's id through the very same claim the border draws").
+But the shipped defaults are `FIELD_POLITY=1` + `TILE_POLITY=1`, and under
+them `adoptAndFound`'s `ownerAt` reads the AUTHORED territory field
+(`_countryOwner`) — which is seeded **only by settlements**. A nation of the
+land has no settlements BY DESIGN, so it can never appear in that field: a
+genesis city on its ground read `region = -1` and took `s.countryId = s.id`.
+The adoption channel was validated in the regime where it does nothing — the
+same failure class as `SUCCESSOR_STATES` at `tw=240` (b859db7).
+
+## The fix: birth is the materialisation
+
+A city rising on a nation's ground IS that nation materialising — Uruk is
+Sumer's countryside crystallising a seat, not a rival founded beside it. Two
+sites, both mechanism, no constants:
+
+- **The mint** (`crystallize.js`): a site city whose tile lies on live land-
+  nation paint (and under no realm's authored field) is born INTO the nation —
+  `countryId`, the nation's own culture (its basin's people ARE the nation's;
+  a remote donor's culture no longer wins), eager `capitalId`. The retirement
+  pass hands the register over within the same crystallize pass; the polity
+  record continues (its tribal founding stays its founding — the chronicle is
+  continuous from tribe to realm).
+- **`adoptAndFound`** (`countryTerritory.js`): the sovereign-anchor branch
+  falls back to `landAt(ti)` when no realm field covers the tile. City branch
+  ONLY — towns on tribal ground stay stateless (the village tier is the
+  nation's own people; only a city turns a nation of the land into a realm).
+  Budget/fisc gates don't apply: they are a court's refusal machinery, and a
+  land nation has no court yet — its first city is the court coming into being.
+
+Measured after (same seed/grid/horizon):
+
+    tw=960:  first realm in the world is TRIBAL-FOUNDED (~step 10k).
+             25k: realms 26 (was 40) · tribal=6 · nations still on the land 5 (was 20)
+    tw=480:  25k: realms 16 · tribal=8 — half the world's realms are materialised nations
+
+Realm count consolidated because cities now join their nations instead of
+minting rivals; the formation→city→materialisation conveyor runs continuously.
+
+## The visibility half (the app could not draw a land nation)
+
+`CONTROL_FIELD` pretty borders render from capital-seeded `_ctrlOwner`; labels
+and hover resolve via `psw.countries` — all capital/settlement-derived, so a
+land nation drew NO border, NO name, NO hover. The first visible nation was
+always a city-state, which is what made the mechanism gap look total. Now: the
+worker fills land-nation territory into the shipped claim grid (both border
+modes), ships a compact `landNations` pack `[{id, ti, name}]` on the static
+cadence, and the app resolves hover + realm labels through it (same anchor
+machinery, same damping; when a nation materialises the id enters
+`psw.countries` and the land path simply yields).
+
+## Gates and the honest ledger
+
+- smoke 66s ok · resgate all bands (median 0.83 / claimed 0.84 / people 0.75 /
+  absolute 496k km²) · hashbase at defaults UNCHANGED `9fb452b8` (the 1200-step
+  mature-regime horizon never reaches a genesis mint — the change is inert
+  until the mechanism fires) · `STATE_OF_LAND=0` byte-identical pre/post
+  (`70fbdc06`).
+- **stylized: 3 soft warnings EXCEEDS budget 2 — and the breach PRE-EXISTS at
+  HEAD** (measured by stash A/B). This wave *improves* two of the three: Zipf-
+  qualifying cities 4→7, fallen-polity lifespan median 63→150 steps (58 fallen
+  vs 67 — materialised nations are more durable than self-found confetti).
+  Market-integration Δ is noise-level unchanged (−0.38 → −0.40). Attribution
+  by elimination: the granary commit `dd72fbe` is the only physics commit since
+  the 2/2 measurement (validate is seeded). **Open item, next in line: diagnose
+  granary birth-stores → market-integration regression.**
+
+## Recorded defect: the ?-channel (founding stories are being LOST)
+
+38 of 40 realms carried no `polity.founded` event. Silent successor/secession/
+rebellion registrations account for some; the rest is a RACE: hot fiscal paths
+(`govOf` → `getOrCreateRecord`) create a polity's record silently within a tick
+of its id appearing, so the reconciler's `reg.has(id)` check always short-
+circuits and `how:"emerged"` is never logged. A nation can emerge and the
+chronicle says nothing. Fix sketch (own wave — it touches record shape and the
+event ledger): stamp `foundedHow` on the record at creation, let the reconciler
+log the emergence for silently-created live records; measure the mix off
+records, not events.
