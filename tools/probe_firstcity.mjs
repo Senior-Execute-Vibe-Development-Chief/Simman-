@@ -13,7 +13,7 @@ const W = parseInt(process.argv[4] || "480", 10);
 const world = buildSim({ W, H: W / 2, seed: SEED });
 let born = null, bornStep = -1;
 
-console.log(`step | people | _urbanPop | _coreMeasured | tier | bridge | catchTiles`);
+console.log(`step | people | _urbanPop | _coreMeasured | tier | food | bridge | catchTiles`);
 for (let i = 0; i < STEPS; i++) {
   stepPeopleSim(world);
   if (!born) {
@@ -30,7 +30,7 @@ for (let i = 0; i < STEPS; i++) {
     let catchTiles = 0;
     const owner = world._territoryOwner;
     if (owner) for (let t = 0; t < world.N; t++) if (owner[t] === born.id) catchTiles++;
-    console.log(`${String(world.step).padStart(5)} | ${(born.people || 0).toFixed(1).padStart(7)} | ${(born._urbanPop ?? -1).toFixed(1).padStart(9)} | ${(born._coreMeasured ?? -1).toFixed(1).padStart(9)} | ${born.tier} | ${(world._onePopScale || 0).toExponential(2)} | ${catchTiles}`);
+    console.log(`${String(world.step).padStart(5)} | ${(born.people || 0).toFixed(1).padStart(7)} | ${(born._urbanPop ?? -1).toFixed(1).padStart(9)} | ${(born._coreMeasured ?? -1).toFixed(1).padStart(9)} | ${born.tier} | ${(born.food || 0).toFixed(0).padStart(5)} | ${(world._onePopScale || 0).toExponential(2)} | ${catchTiles}`);
   }
   if (w > 600) break;
 }

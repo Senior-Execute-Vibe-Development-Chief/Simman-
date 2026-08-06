@@ -1145,6 +1145,21 @@ function maybeSiteCities(world) {
       people: coreCensus, knowledge: inherited, tier: 2,
       ...(donorCul >= 0 ? { cultureId: donorCul } : { cradle: true }),
     });
+    // THE COUNTRYSIDE'S GRANARIES RIDE IN WITH THE COUNTRYSIDE. The tick
+    // before this city existed, its basin's people fed themselves through
+    // the field's own capacity — for thousands of steps. The tick after,
+    // the derive censuses them through THIS ledger, whose supply machinery
+    // (worked farmland, technique, granary) starts cold and ramps over many
+    // passes — and the shortfall STARVED the field people the land had been
+    // feeding (owner-observed: "a city with a large population that rapidly
+    // drops"; under ONE_POP starvation debits the field — the lens killing
+    // its substrate). Creating a lens must not change the physics of the
+    // people it observes: the city is born holding its basin's standing
+    // subsistence stores — the cell's people × their own per-tick demand ×
+    // the ledger's ramp horizon. An initial condition of the annexed
+    // countryside, not a subsidy; no clock, no gate.
+    const cellCensus = labelBasinMass(world, st.x, st.y) * bridge;
+    born.food = Math.max(born.food || 0, cellCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
     labelClaimBasin(world, st.x, st.y);
     elig[k] = 0;
     spikes.delete(st.ti);
