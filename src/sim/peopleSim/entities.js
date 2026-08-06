@@ -352,11 +352,21 @@ export function updateTribute(world, interval) {
       p.tribute = cap;
       // The court sells the overflow — realms only, at the capital's live
       // scarcity-scaled grain price. A polity without a market keeps kind.
-      const price = c && c.capital ? (c.capital._grainPrice || 0) : 0;
-      if (price > 0) {
-        const coin = overflow * price;
+      // A SALE, not a mint: the money supply is closed (coin enters only via
+      // mining — the quantity-theory price system reads M/T), so the crown's
+      // grain is PAID FOR with coin the capital's market actually holds, and
+      // the market takes delivery of what it bought. The first build credited
+      // treasury from nothing and the stylized market-integration check
+      // caught the distortion (drop-windows widening spread) — measured, and
+      // exactly what unbacked injection does to a closed price system.
+      const capS = c ? c.capital : null;
+      const price = capS ? (capS._grainPrice || 0) : 0;
+      if (price > 0 && capS && (capS.wealth || 0) > 0) {
+        const coin = Math.min(overflow * price, capS.wealth);
+        capS.wealth -= coin;
         p.treasury = (p.treasury || 0) + coin;
         p._revenue = (p._revenue || 0) + coin;
+        capS.food = (capS.food || 0) + coin / price;
       }
     }
   }
