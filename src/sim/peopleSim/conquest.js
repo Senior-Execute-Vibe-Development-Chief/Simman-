@@ -1956,6 +1956,13 @@ export function updateAlliances(world) {
     pow.set(s.countryId, (pow.get(s.countryId) || 0) + settlementPower(s));
   }
   fieldPowerOverlay(world, countries, pow);   // POW_FIELD: governed people, not the member roster
+  // T.CRAFTS_OF_LAND: a realm ARMED WITH BRONZE weighs more — the metal stock
+  // the court traded for (or mined under its own claim) enters national power.
+  // This is why bronze-age trade networks existed: tin IS threat.
+  if (T.CRAFTS_OF_LAND) for (const id of pow.keys()) {
+    const p = getPolity(world, id);
+    if (p && (p.metal || 0) > 0) pow.set(id, pow.get(id) + p.metal * 2);
+  }
   // 2. adjacency (shared-border length) from the granular territory map.
   const adj = new Map();   // id → Map(neighbourId → border tiles)
   const bump = (a, b) => { if (a === b || a < 0 || b < 0) return; let m = adj.get(a); if (!m) adj.set(a, m = new Map()); m.set(b, (m.get(b) || 0) + 1); };
