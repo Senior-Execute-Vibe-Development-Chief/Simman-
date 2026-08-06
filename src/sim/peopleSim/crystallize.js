@@ -748,6 +748,46 @@ export function labelBasinMass(world, tx, ty) {
   const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
   return k >= 0 ? _siteClaims(world).mass[k] : 0;
 }
+/** The PEOPLED BASIN of ledger site k: breadth-first from the seat over the
+ *  seat's OWN LANDMASS within the cell, gathering people until capMass. ONE
+ *  measurement, three consumers — nation formation, city eligibility, and
+ *  the drift's domain: the ground whose people a rising seat can actually
+ *  draw. Walkable (the claim crawl's own connectivity law), within one
+ *  market horizon (the cell), weighed by the people actually on it. Σpf·devF
+ *  rides along so the farming gate can ask whether THE PEOPLE farm — the
+ *  cell partition is a Euclidean water-blind disk and its seat tiles are
+ *  shelter/river-mouth maxima where the technique wave arrives LAST, so a
+ *  seat-tile devF test starved the world's densest basins of both nations
+ *  and cities while their interiors brimmed with farmed people (measured,
+ *  probe_dimfunnel 25k/8817/960: every top cell, up to 95× the nation bar,
+ *  blocked solely by "farming not at the seat", devF 0.28-0.44 vs interior
+ *  full). Deterministic: fixed neighbour order, FIFO ring growth. */
+export function peopledBasinAt(world, k, capMass) {
+  const L = labelSiteLedger(world);
+  const st = L.sites[k], siteId = L.siteId;
+  const pf = world.popField, devF = world.devField, elev = world.elev;
+  const comp = landComp(world);
+  const tw = world.tw, th = world.th;
+  const seatComp = comp[st.ti];
+  const qx = [st.ti];
+  const seen = new Set(qx);
+  const take = [];
+  let mass = 0, devW = 0;
+  for (let qh = 0; qh < qx.length && mass < capMass; qh++) {
+    const t = qx[qh];
+    take.push(t); mass += pf[t]; if (devF) devW += pf[t] * devF[t];
+    const ty = (t / tw) | 0, tx = t - ty * tw;
+    const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
+                ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
+    for (let n = 0; n < 4; n++) {
+      const ni = ns[n];
+      if (ni < 0 || seen.has(ni)) continue;
+      if (siteId[ni] !== k || elev[ni] <= 0 || comp[ni] !== seatComp) continue;
+      seen.add(ni); qx.push(ni);
+    }
+  }
+  return { take, mass, devP: mass > 0 ? devW / mass : 0 };
+}
 /** Mark (tx,ty)'s cell claimed (a label was just minted in it). */
 export function labelClaimBasin(world, tx, ty) {
   const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
@@ -1062,10 +1102,22 @@ function maybeSiteCities(world) {
     // no forager cities: a site concentrates and mints only where the
     // technique field carries the FULL invention (NEOLITHIC_AGRI — the same
     // constant the founding quality machinery gates on, no new number).
-    const devF = world.devField;
+    // Eligibility on the PEOPLED BASIN, not the whole cell and not one tile:
+    // the seat's walkable connected ground must hold a city-capable people
+    // (basinBarF) AND those people must farm (people-weighted devF — the
+    // seat tile is a shelter maximum the wave reaches last; testing it alone
+    // measurably starved the densest basins, probe_dimfunnel). The basin's
+    // take is CACHED for the drift below: the domain people migrate from is
+    // exactly the ground that qualified the site.
+    const basins = world._siteBasin || (world._siteBasin = new Map());
     for (let k = 0; k < L.sites.length; k++) {
-      elig[k] = !claims.claimed[k] && claims.mass[k] >= basinBarF
-        && devF && devF[L.sites[k].ti] >= NEOLITHIC_AGRI ? 1 : 0;
+      if (claims.claimed[k] || claims.mass[k] < basinBarF || !world.devField) {
+        elig[k] = 0; basins.delete(k); continue;
+      }
+      if (elig[k]) continue;   // already qualified — keep its cached basin (mint/drift clear it)
+      const b = peopledBasinAt(world, k, basinBarF);
+      if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI) { elig[k] = 1; basins.set(k, b.take); }
+      else { elig[k] = 0; basins.delete(k); }
     }
   }
   const spikes = world._urbanSpike || (world._urbanSpike = new Map());
@@ -1097,19 +1149,55 @@ function maybeSiteCities(world) {
     const st = L.sites[k];
     if (diskSum(pf, world.tw, world.th, st.x, st.y, coreR) >= coreBarF) elig[k] = 2;   // 2 = mint-ready, no more drift
   }
-  const gain = new Float64Array(L.sites.length);
-  const siteId = L.siteId;
-  for (let i = 0; i < siteId.length; i++) {
-    const k = siteId[i];
-    if (k < 0 || elig[k] !== 1) continue;
-    const p = pf[i];
-    if (p <= 1e-9) continue;
-    const mv = p * rate;
-    pf[i] = p - mv;
-    gain[k] += mv;
-  }
-  for (let k = 0; k < L.sites.length; k++) {
-    if (gain[k] > 0) pf[L.sites[k].ti] += gain[k];
+  // The drift's DOMAIN is the peopled basin that qualified the site (cached
+  // above) — never the whole Euclidean cell, whose water-blind 1,670 km disk
+  // had people walking to market across the Timor Sea. And the inflow is
+  // PACED BY THE CORE'S CAPACITY HEADROOM: people migrate into a market that
+  // can hold them. Unpaced, the drift out-ran the spike (whose capacity only
+  // ever follows what has ALREADY gathered) and the field pass's capacity
+  // enforcement killed the surplus — measured at 25k/8817/960: eligible
+  // cells lost 50-75% of their people over thousands of steps while the
+  // site tile held 0-2%; a death pump, not urbanisation (probe_dimfunnel;
+  // the owner's screenshot — countryside greyed out around a bright dot).
+  // min(demand, headroom) both ways: no fitted constant, zero deaths by
+  // construction, and the Uruk pace becomes what the ground can feed.
+  {
+    const tw2 = world.tw, th2 = world.th, cf = world.capField;
+    const basins = world._siteBasin || (world._siteBasin = new Map());
+    for (let k = 0; k < L.sites.length; k++) {
+      if (elig[k] !== 1) continue;
+      const st = L.sites[k];
+      let take = basins.get(k);
+      if (!take) { take = peopledBasinAt(world, k, basinBarF).take; basins.set(k, take); }   // (save/load: caches are ephemeral)
+      const capD = cf ? diskSum(cf, tw2, th2, st.x, st.y, coreR) : Infinity;
+      const popD = diskSum(pf, tw2, th2, st.x, st.y, coreR);
+      const headroom = capD - popD;
+      if (!(headroom > 0)) continue;
+      let demand = 0;
+      for (let n = 0; n < take.length; n++) {
+        const t = take[n];
+        const ty2 = (t / tw2) | 0, tx2 = t - ty2 * tw2;
+        let dx = Math.abs(tx2 - st.x); if (dx > tw2 / 2) dx = tw2 - dx;
+        const dy = ty2 - st.y;
+        if (dx * dx + dy * dy <= coreR * coreR) continue;   // the core disk is the destination, not a payer
+        demand += pf[t];
+      }
+      demand *= rate;
+      if (!(demand > 0)) continue;
+      const scale = Math.min(1, headroom / demand);
+      let gain = 0;
+      for (let n = 0; n < take.length; n++) {
+        const t = take[n];
+        const ty2 = (t / tw2) | 0, tx2 = t - ty2 * tw2;
+        let dx = Math.abs(tx2 - st.x); if (dx > tw2 / 2) dx = tw2 - dx;
+        const dy = ty2 - st.y;
+        if (dx * dx + dy * dy <= coreR * coreR) continue;
+        const mv = pf[t] * rate * scale;
+        pf[t] -= mv;
+        gain += mv;
+      }
+      pf[st.ti] += gain;
+    }
   }
   // Mint: a site whose core disk holds a city's people becomes a CITY. Born
   // ON A NATION'S GROUND it is born INTO that nation (below); on virgin or
@@ -1186,12 +1274,23 @@ function maybeSiteCities(world) {
     // subsistence stores — the cell's people × their own per-tick demand ×
     // the ledger's ramp horizon. An initial condition of the annexed
     // countryside, not a subsidy; no clock, no gate.
-    const cellCensus = labelBasinMass(world, st.x, st.y) * bridge;
-    born.food = Math.max(born.food || 0, cellCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
+    // The countryside whose granaries ride in is the SUPPORT BASIN — the
+    // ground whose people this city gathered from (cached take) — not the
+    // whole Euclidean cell, whose disk-scale census over-provisioned birth
+    // stores in site-sparse country (the same phantom-domain class the
+    // tribute right-sizing measured; docs/state-birth-2026-08.md).
+    {
+      const bTake = (world._siteBasin && world._siteBasin.get(k)) || peopledBasinAt(world, k, basinBarF).take;
+      let bMass = 0;
+      for (let n = 0; n < bTake.length; n++) bMass += pf[bTake[n]];
+      const basinCensus = bMass * bridge;
+      born.food = Math.max(born.food || 0, basinCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
+    }
     labelClaimBasin(world, st.x, st.y);
     elig[k] = 0;
+    if (world._siteBasin) world._siteBasin.delete(k);
     spikes.delete(st.ti);
-    logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1 });
+    logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1, x: st.x, y: st.y });
   }
 }
 
@@ -1256,51 +1355,37 @@ function maybeLandNations(world) {
   if (!devF) return;
   const lo0 = world._landOwner;
   const barF = TRIBAL_CENSUS / world._onePopScale;
-  const pf = world.popField;
-  if (!pf) return;
-  const siteId = L.siteId, elev = world.elev, tw = world.tw, th = world.th;
+  if (!world.popField) return;
   for (let k = 0; k < L.sites.length; k++) {
     if (claims.claimed[k]) continue;
     const st = L.sites[k];
     if (co && co[st.ti] >= 0) continue;
     if (lo0 && lo0[st.ti] >= 0) continue;
-    if (devF[st.ti] < NEOLITHIC_AGRI) continue;
     if (claims.mass[k] < barF) continue;   // cheap cell-mass pre-filter; the BFS below is the real gate
     // The nation IS the people who formed it, on the ground they stand:
     // breadth-first from the seat, over the seat's OWN LANDMASS within the
-    // cell, gathering people until the founding bar. Gate and territory are
-    // one measurement. Before this, the paint was the whole cell — and the
-    // cell partition is a Euclidean disk (TOWN_BASIN_R = 10 ref-tiles
-    // ≈ 1,670 km radius) and WATER-BLIND, so in site-sparse country one
-    // nation stamped a near-continental imprint including islands across
-    // the sea (owner-observed at tw=960: a northern-Australia nation
-    // holding southern Indonesian islands; tools/probe_landpaint.mjs
-    // measures the imprint/landmass distributions). Now a
-    // dense cradle fills the bar in a tight core — the complex chiefdom's
-    // real 10³-10⁵ km² — thin country takes honestly more ground for the
-    // same people, water is never crossed (the crawl's own connectivity
-    // law), and people the seat cannot walk to no longer count toward
-    // forming a nation at all.
-    const comp = landComp(world);
-    const seatComp = comp[st.ti];
-    const qx = [st.ti];
-    const seen = new Set(qx);
-    const take = [];
-    let mass = 0;
-    for (let qh = 0; qh < qx.length && mass < barF; qh++) {
-      const t = qx[qh];
-      take.push(t); mass += pf[t];
-      const ty = (t / tw) | 0, tx = t - ty * tw;
-      const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
-                  ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
-      for (let n = 0; n < 4; n++) {
-        const ni = ns[n];
-        if (ni < 0 || seen.has(ni)) continue;
-        if (siteId[ni] !== k || elev[ni] <= 0 || comp[ni] !== seatComp) continue;
-        seen.add(ni); qx.push(ni);
-      }
-    }
-    if (mass < barF) continue;   // the seat's walkable ground does not hold a people
+    // cell, gathering people until the founding bar — and the farming gate
+    // asks whether THOSE PEOPLE farm (people-weighted devF over the take),
+    // not whether the seat tile does: the seat is a shelter/river-mouth
+    // maximum the technique wave reaches LAST, and the seat-tile test
+    // starved the world's densest basins of nations while their interiors
+    // brimmed with farmed people (probe_dimfunnel: every top cell, up to
+    // 95× this bar, blocked solely by "farming not at the seat").
+    // Gate and territory are one measurement. Before this, the paint was
+    // the whole cell — a Euclidean WATER-BLIND disk (TOWN_BASIN_R = 10
+    // ref-tiles ≈ 1,670 km radius), so in site-sparse country one nation
+    // stamped a near-continental imprint including islands across the sea
+    // (owner-observed at tw=960: a northern-Australia nation holding
+    // southern Indonesian islands; tools/probe_landpaint.mjs measures the
+    // distributions). Now a dense cradle fills the bar in a tight core —
+    // the complex chiefdom's real 10³-10⁵ km² — thin country takes
+    // honestly more ground for the same people, water is never crossed
+    // (the crawl's own connectivity law), and people the seat cannot walk
+    // to no longer count toward forming a nation at all.
+    const basin = peopledBasinAt(world, k, barF);
+    if (basin.mass < barF) continue;               // the seat's walkable ground does not hold a people
+    if (basin.devP < NEOLITHIC_AGRI) continue;     // its people do not yet farm
+    const take = basin.take;
     // Form: the people of this ground become a nation.
     const id = world._nextSettlementId || 1; world._nextSettlementId = id + 1;
     const ancId = world.ancestry ? world.ancestry[st.ti] : -1;

@@ -1018,3 +1018,78 @@ lack great-war mechanics (coalitions, succession cascades) or the max/median
 bar at n≈46 is knife-edged — measure across seeds before touching either.
 (3) Seed 777 chronic (cradle-distance inversion) unchanged. Multi-seed
 1/3 this commit (4242 in budget at 2; 777 chronic; 8817 the unmasking).
+
+---
+
+# The death pump and the misplaced gate (2026-08-06, owner screenshot)
+
+Population lens, tw=960: *"a nation was founded in northern Australia, and
+the population around it got greyed out? And look at china: they are super
+densely populated, but no nation forming."* Both measured (probe_dimfunnel,
+25k/8817/960); both were single-mechanism defects.
+
+## 1. The grey-out was a DEATH PUMP, not urbanisation
+
+City-eligible cells lost **50-75% of their people** over thousands of steps
+while the site tile held **0-2%** — the drift was not concentrating people,
+it was exterminating them. The spike's capacity only ever FOLLOWS what has
+already gathered (min(coreNow, 1.2×coreBar)), so the drift's inflow (~90
+field units/firing, distance- and water-blind across the whole 1,670 km
+cell) chronically overran it and the field pass's capacity enforcement
+killed the surplus. Sparse-region cells sat in this state 10k+ steps and
+NEVER minted: the bright dot was the small spike-held core, the dark region
+its exterminated countryside. Fix: the drift's domain is the PEOPLED BASIN
+that qualified the site (cached), and inflow is paced by the core's actual
+capacity headroom — min(demand, headroom), no new constant, zero deaths by
+construction. After: eligible cells GROW (−16..+1% "drain"), mints land 75-
+1,650 steps after eligibility, famine events 12→8 on the 960 arc.
+
+## 2. China was blocked by ONE TILE's devF
+
+Every top-mass basin — up to **95× the nation bar** — read "farming not at
+the seat": the formation and eligibility gates tested devF at the SEAT tile,
+a shelter/river-mouth maximum the technique wave reaches LAST, while the
+basin interiors brimmed with farmed people (devF 0.28-0.44 at seats, full
+inland). Fix: `peopledBasinAt` — ONE BFS measurement (seat's own landmass
+within the cell, until the bar mass) feeding all consumers: the nation gate
+and city eligibility now ask whether THE PEOPLE farm (people-weighted devP ≥
+NEOLITHIC_AGRI), the drift drains exactly the ground that qualified the
+site, and birth stores provision from the same basin (the phantom-domain
+class again). Funnel after: honest "its people do not yet farm (devP 0.36)"
+verdicts ripening toward the bar; the full nation → city-inside-it →
+materialisation pipeline observed (k=44: nation @<20000, mint @22675).
+
+## The 960 headline arc after
+
+    realms by founding @25k: tribal=13 of 25 — the MAJORITY of the world's
+    states are materialised land nations (was 6/26; 0/40 at wave start).
+    8 nations still on the land; famine Σ 8 (was 12).
+
+## Gates
+
+smoke ok · resgate all bands (0.70/0.82/0.75, absolute 420k km², count 8) ·
+off-levers (STATE_OF_LAND=0 + CITY_AT_BIRTH=0) byte-identical `70fbdc06` ·
+defaults baseline `fb8bae2b`. Stylized single-seed: the SAME standing 3-
+warning set as the pushed HEAD (Zipf 4 · lifespan 150 · war tail 4.4) — this
+commit moves none of them. Deep 3-seed: 0/3, but the composition is seed-
+slosh under divergence: 8817 identical, 777 IMPROVED (lost its chronic
+cradle inversion), 4242 picked up the two wandering warnings (succession-
+wars 1/108, cradle +0.76).
+
+## THE RE-BASELINING WAVE (top of the queue — owner decision)
+
+The suite's count-sensitive bars (Zipf-n/a city floor, war tail ≥5,
+succession-war share, cradle Pearson) were calibrated on a world that no
+longer exists: farming-region register, pinned dawn, phantom tribute
+domains, and a death pump silently deleting frontier populations. Its own
+header still claims "23-33 cities at 21k" — stale by two registers. Every
+structural fact holds on every seed (resgate bands, realm areas,
+urbanization %, pop~dev monotone, price boundedness, war rates, culture
+scaling, water clustering); the count bars slosh seed-to-seed with each
+honest correction. They need the resgate treatment: re-measure the canon
+seeds' honest state, decide per-gate whether the bar or the world is wrong,
+re-baseline deliberately, and tighten as mechanisms fill in. One candidate
+mechanism question for that wave: the cradle-distance gradient may be
+genuinely flattened by city-grade mints inheriting near-baseline knowledge
+at any distance (inheritKnowledgeAt dilution vs the mint explosion) —
+secondary-state tech lag might need to be earned, not granted.
