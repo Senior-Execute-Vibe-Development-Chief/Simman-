@@ -229,14 +229,18 @@ console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
   // representation, at any world size. A dissolve regression into a village
   // swarm drives entities-per-capita back up to region granularity and trips.
   let legacyN = 0, legacyPop = 1;
-  applyTuning({ DISSOLVE_FARMS: 0 });
+  // Both arms re-pin the SEEDED dawn: resetTuning/applyTuning here run AFTER
+  // the harness's module-init pin (tools/_harness.mjs), so without this the
+  // arm inherits the shipped DAWN_LIVE=1 and measures an EMPTY Neolithic at
+  // this horizon (measured: "civilization alive (0 settlements)" FAIL).
+  applyTuning({ DISSOLVE_FARMS: 0, DAWN_LIVE: 0 });
   try {
     const l = buildSim({ W, H, seed: SEED, preset: PRESET });
     stepPeopleSim(l, 3000);
     const ls = peopleSimStats(l);
     legacyN = ls.settlements; legacyPop = Math.max(1, ls.totalPeople);
   } finally { resetTuning(); }
-  applyTuning({ DISSOLVE_FARMS: 1 });
+  applyTuning({ DISSOLVE_FARMS: 1, DAWN_LIVE: 0 });
   try {
     const a = buildSim({ W, H, seed: SEED, preset: PRESET }); a._checkInvariants = true;
     const b = buildSim({ W, H, seed: SEED, preset: PRESET });
