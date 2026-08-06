@@ -664,6 +664,20 @@ Byte-identity at the live defaults across the whole Stage A build
 dawn-aware horizons in the gate harnesses; recorded follow-ups: tribal
 nations ending when their basin empties, and the coast/river dilution debt.
 
+**TRIBUTE_OF_LAND measured (Wave 6, the storehouse economy, full dawn stack
+480/8817/25k):** the economic ladder runs live end-to-end. Eleven thousand
+steps of correctly ZERO economy (no polities, no tribute, no coin — nothing
+before people). Then: 19 nations of the land accrue ~167 food-units of
+chiefly stores (no coin — pre-monetary by definition); realms materialise
+and their treasuries climb 0 → 6,716 coin as overflow sells at the LIVE
+scarcity-scaled grain price (the Egypt channel — the monetisation of
+taxation emerging on its own timeline, at real prices, no price constant);
+land-nation stores transfer to their successor realms by record continuity
+alone (the dowry). Subsistence (field) → tribute (polities) → markets
+(cities), each layer emerging with its carrier. Remaining measurements:
+the famine A/B (granary vs no granary) and layer-3 court exchange with its
+consumers (v2).
+
 **Audit result — the architecture inverts (recorded before building):** the
 capital-dereference sweep found 25+ raw `c.capital.x` reads across the
 conquest pass (raids, diplomacy, colony supply, resource wars), all
