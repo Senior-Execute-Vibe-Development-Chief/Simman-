@@ -133,6 +133,12 @@ export function ensurePolity(world, id, opts = {}) {
     capitalId: opts.seat ? opts.seat.id : id,
     // fiscal state (the old world.governments record, verbatim fields)
     treasury: 0, _revenue: 0, _spend: 0, fineness: 1.0,
+    // T.TRIBUTE_OF_LAND: the in-kind stock (food units) skimmed from the
+    // polity's LAND — the storehouse economy that predates coin. Persists
+    // with the record, so a land nation's accumulated store simply CONTINUES
+    // when it materialises as a realm: the temple storehouse the first city
+    // inherits is the same field on the same record.
+    tribute: 0,
     // temperament (personality.js fills lazily)
     personality: null,
     // chronicle milestone memory (the old world._chronMeta)
@@ -219,5 +225,73 @@ export function reconcilePolities(world, countries) {
     // settlement it was never required to have.
     else if (p.endedStep < 0 && !live.has(p.id)
       && !(world._landSeats && world._landSeats.has(p.id))) endPolity(world, p.id, "dissolved");
+  }
+}
+
+/** T.TRIBUTE_OF_LAND — the storehouse economy (Wave 6; layers 2-3 of the
+ *  economic ladder: subsistence lives on the FIELD already — this is the
+ *  polity SKIMMING it, in kind, before markets or money exist).
+ *
+ *  Every polity — realm or nation of the land — draws tribute from the FIELD
+ *  PEOPLE UNDER ITS BORDERS, not from its settlement roster: grain into the
+ *  storehouse, labour, kind. take = landPeople × the sim's own subsistence
+ *  flow (TRIB_FOOD_PER_POP, the civilian demand constant in updateFood) ×
+ *  TRIBUTE_RATE (0.10 — the tithe, the historical floor of harvest taxation;
+ *  Egypt ran ~0.20) × extraction (0.3 flat for a chiefdom; 0.3 + 0.7×org for
+ *  a realm — bureaucratisation triples the take, so state capacity is an
+ *  emergent economic quantity, never a label). Storage caps at ~two years of
+ *  the polity's own take (granaries rot; 1-2 year reserves were the norm),
+ *  and a REALM's overflow SELLS into its capital's market at the LIVE
+ *  scarcity-scaled grain price (_grainPrice, foodHierarchy) — the
+ *  Egypt-sells-grain channel and the monetisation of taxation in one
+ *  mechanism, at real prices, no price constant. A land nation sells nothing
+ *  (pre-monetary by definition); its store waits for the city that will
+ *  inherit it — record continuity IS the dowry. Capitals draw the store down
+ *  against famine per-tick in updateFood (Joseph's granary). */
+const TRIB_FOOD_PER_POP = 0.0030;   // the civilian food-demand constant (settlement.js updateFood): one person's subsistence flow per tick
+const TRIBUTE_RATE = 0.10;
+const EXTRACT_CHIEF = 0.3;
+const TRIBUTE_STORE_TICKS = 1000;   // ÷_dt at use — ~two years of take, the wither-window's own time convention
+export function updateTribute(world, interval) {
+  if (!T.TRIBUTE_OF_LAND) return;
+  const pf = world.popField;
+  if (!pf || !(world._onePopScale > 0)) return;
+  const co = world._countryOwner, lo = world._landOwner;
+  if (!co && !lo) return;
+  const bridge = world._onePopScale;
+  // One sweep: field people by effective political owner (realms trump tribes).
+  const take = new Map();
+  for (let i = 0; i < world.N; i++) {
+    const p0 = pf[i];
+    if (p0 <= 0) continue;
+    let id = co ? co[i] : -1;
+    if (id < 0 && lo) id = lo[i];
+    if (id < 0) continue;
+    take.set(id, (take.get(id) || 0) + p0);
+  }
+  const dt = world._dt || 1;
+  const storeTicks = TRIBUTE_STORE_TICKS / dt;
+  for (const [id, fieldPeople] of take) {
+    const p = getPolity(world, id);
+    if (!p || p.endedStep >= 0) continue;
+    const landCensus = fieldPeople * bridge;
+    const c = world.countries ? world.countries.get(id) : null;
+    const org = c && c.capital && c.capital.knowledge ? (c.capital.knowledge.organization || 0) : -1;
+    const extract = org >= 0 ? EXTRACT_CHIEF + (1 - EXTRACT_CHIEF) * org : EXTRACT_CHIEF;
+    const perTick = landCensus * TRIB_FOOD_PER_POP * TRIBUTE_RATE * extract;
+    const cap = perTick * storeTicks;
+    p.tribute = (p.tribute || 0) + perTick * dt * interval;
+    if (p.tribute > cap) {
+      const overflow = p.tribute - cap;
+      p.tribute = cap;
+      // The court sells the overflow — realms only, at the capital's live
+      // scarcity-scaled grain price. A polity without a market keeps kind.
+      const price = c && c.capital ? (c.capital._grainPrice || 0) : 0;
+      if (price > 0) {
+        const coin = overflow * price;
+        p.treasury = (p.treasury || 0) + coin;
+        p._revenue = (p._revenue || 0) + coin;
+      }
+    }
   }
 }

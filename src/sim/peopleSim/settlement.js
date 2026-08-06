@@ -2990,6 +2990,21 @@ function updateFood(world, s) {
   s._landFood = landFood;          // LOCAL farm production only (no hierarchy imports, no fish) — for the food-viability overlay
   s._urbanFactor = urbanFactor;
   s.food += supply - demand;
+  // T.TRIBUTE_OF_LAND — Joseph's granary: the CAPITAL draws the polity's
+  // in-kind store down when its own granary runs below a few ticks of
+  // demand. The state's storehouse is the famine buffer it historically was
+  // (Egypt's grain administration; the Inca storehouse network) — filled
+  // from the whole land's tribute, spent where the court sits. Same food
+  // units on both sides (the store accrues in this pass's own demand
+  // constant — entities.js updateTribute).
+  if (T.TRIBUTE_OF_LAND && s._isCapital && s.countryId >= 0 && s.food < demand * 4) {
+    const pol = getPolity(world, s.countryId);
+    if (pol && pol.tribute > 0) {
+      const draw = Math.min(pol.tribute, demand * 4 - s.food);
+      pol.tribute -= draw;
+      s.food += draw;
+    }
+  }
 
   // Seasonality → storage: a mild-summer/harsh-winter climate MUST bank the
   // harvest to survive winter, so it builds deeper granaries (root cellars,

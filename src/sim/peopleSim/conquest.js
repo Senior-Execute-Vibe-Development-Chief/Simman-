@@ -23,7 +23,7 @@ import { techEff, getWealthReserve, recordCaptives, monetization, realOutputOf }
 import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.RESOURCE_WARS)
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
-import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities, SIZE_REF } from "./entities.js";
+import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities, updateTribute, SIZE_REF } from "./entities.js";
 import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
@@ -2028,6 +2028,10 @@ export function updateAlliances(world) {
 
 export function updatePolities(world) {
   const _pf = world._dbgProfile ? (world.debug.pol = { rebuild: 0, transport: 0, loop: 0, absorb: 0 }) : null;
+  // T.TRIBUTE_OF_LAND: the storehouse economy accrues at the fisc cadence —
+  // every polity (realm or nation of the land) skims the field people under
+  // its borders in kind; realm overflow monetises at the capital's market.
+  updateTribute(world, T.POLITY_INTERVAL | 0);
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
