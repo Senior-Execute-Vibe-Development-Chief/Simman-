@@ -1093,3 +1093,71 @@ mechanism question for that wave: the cradle-distance gradient may be
 genuinely flattened by city-grade mints inheriting near-baseline knowledge
 at any distance (inheritKnowledgeAt dilution vs the mint explosion) —
 secondary-state tech lag might need to be earned, not granted.
+
+---
+
+# The re-baselining wave (2026-08-06, owner: "Go")
+
+Measurement and calibration ONLY — zero sim changes (defaults hash unchanged
+`fb8bae2b`, smoke green). Method: STYLIZED_DUMP=1 prints each contested
+gate's underlying distribution on the three canon seeds; each gate then got
+ONE of three verdicts — bar stale (re-baseline with historical
+justification), operationalization broken (measure the right thing), or
+world wrong (the warn STANDS and the mechanism is queued). Every scoring BAR
+predates this wave; only measurements were repaired.
+
+## Verdicts
+
+- **Zipf — instrument error, fixed.** The gate demanded 15 cities over a
+  50k-core floor: a METROPOLIS count, calibrated before the cities-only
+  register ("23-33 cities at 21k" in its own header — stale by two
+  registers). The dumps: top city 80-122k, 12-14 cities >20k, 17-22 >10k at
+  leadAgri ≈ 0.70 — the real late-Bronze register almost exactly. Cities now
+  rank at the register's OWN bar (TIER_CORE[2] = 10k urban core, the sim's
+  definition of a city). Result: the gate went from n/a-blind to MEASURING —
+  slopes −0.59/−0.67/−0.75, inside the owner-accepted −0.45..−1.35 band that
+  predates this wave. The law was in the world; the floor couldn't see it.
+- **State lifespan — wrong population, fixed.** The fallen-only register is
+  bimodal: p25 = 13 steps (failed secessions/revolts recorded as polities)
+  vs living realms with median age 8,300+ steps. Historical fallen-state
+  datasets exclude failed revolts, so the old median compared unlike
+  registers. Now scored on ALL states, living included as right-censored
+  lifetimes (conservative): medians 1,050-1,575y, within the unchanged
+  [50, 2000]y band; the 2000y ceiling still catches immortal map-painters.
+  The revolt-churn share prints unscored — it is the standing
+  successor-churn mechanism item, not this claim.
+- **Cradle gradient — wrong sources, fixed; and then a REAL finding.** The
+  "oldest 3 roots" were three ARBITRARY members (map-insertion order — all
+  ten init roots carry foundedStep 0) of a ~10-hearth knowledge system;
+  seed 4242's +0.76 "inversion" was distance measured to 3 of its 10
+  sources. Cradles are now the DAWN COHORT (every root born at the first
+  founding step; later ethnogenesis roots stay excluded per the 2026-07
+  noise measurement). Against the honest sources: 777 reads −0.14 (proper
+  decay — its chronic warn dissolves), but 8817 reads +0.42 and 4242 +0.57 —
+  a GENUINE outward knowledge tilt, properly instrumented for the first
+  time. Those warns STAND. Mechanism question queued: do city-grade mints
+  inherit too much / grow too fast far from hearths (secondary-state tech
+  lag may need to be earned)?
+- **War deadliness tail — bar KEPT, warn stands.** Even passing seeds read
+  6.5-10.2 where Richardson's record runs 10-40×; 8817's top-8 wars cluster
+  84..54 over median 19 — no standout great war. Genuinely thin everywhere:
+  a mechanism pointer (no great-war cascades — coalitions, alliance chains),
+  not a stale bar. top3mean/med now rides in the detail so the knife-edge
+  nature of max/median stays visible.
+- **Succession-war ignition — bar KEPT, warn stands.** CLAIMANT_WARS ships
+  ON; the honest world's larger war count diluted crisis-ignited share to
+  0-4%. Real thinness pointer, queued.
+
+## After (canon seeds, all bars pre-existing)
+
+    8817: 2 warnings (cradle +0.42 · war tail 4.4)      — within budget
+    4242: 2 warnings (succession 1/108 · cradle +0.57)  — within budget
+    777:  1 warning  (succession 0/87)                  — within budget
+    multi-seed: 3/3 · every remaining warn is a queued mechanism pointer
+
+**Mechanism queue after this wave:** (1) outward knowledge tilt (cradle
++0.42/+0.57 vs honest hearths); (2) great-war cascades (tail thin on every
+seed); (3) succession-war ignition share; (4) revolt-churn realism
+(successor-states at fine grids, the standing item); (5) urban takeoff
+(tribute-driven urbanisation, from the subsidy-removal wave); (6) the
+?-channel founding-story race; (7) coast/river capacity-dilution debt.
