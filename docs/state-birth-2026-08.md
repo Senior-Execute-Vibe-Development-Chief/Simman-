@@ -890,3 +890,53 @@ chronicle says nothing. Fix sketch (own wave — it touches record shape and the
 event ledger): stamp `foundedHow` on the record at creation, let the reconciler
 log the emergence for silently-created live records; measure the mix off
 records, not events.
+
+---
+
+# The market "regression" that was a measurement artifact (2026-08-06)
+
+The stylized budget breach recorded above attributed to `dd72fbe` (granary
+birth stores) by elimination. The window-level diagnosis (`probe_market.mjs`,
+same harness/seed/windows as the suite) overturned the attribution's MEANING:
+
+    HEAD (with granary):   baseline locks ~17,500 · 6 sampled windows
+                           dispersion 0.162→0.119, falling in 5 of 5 diffs
+                           gate Pearson −0.40 → WARN
+    7becbb9 (pre-granary): baseline locks ~18,900 · 4 sampled windows
+                           dispersion 0.130→0.111, falling — and Pearson −0.55,
+                           WORSE — but post.length 4 < 5 so the gate NEVER RAN
+                           ("passed" = silently n/a)
+
+Two findings:
+
+1. **The granary commit improved the world.** Birth stores keep frontier
+   people alive → more output and trade → the monetary economy EMERGES one
+   window earlier (the baseline's world-state conditions — currency-tech
+   organization + ≥3 coined components — are met at 17.5k instead of 18.9k).
+   The "regression" was the gate ARMING for the first time on a better world.
+2. **The gate misfired on its minimum sample.** A first-difference Pearson
+   over ALL windows judges component-RISE windows too — a frontier city
+   founding a NEW trade node during the healthy narrowing trend reads as
+   anti-integration — and at 4-5 diff points single windows sign-flip it. In
+   BOTH worlds dispersion narrows almost monotonically (the exact shape the
+   gate demands) and the only knit window with positive Δ is +0.0017, noise.
+
+Fix (measurement, not world): the gate now scores its own sentence — over
+knit windows (components drop), mean dispersion Δ must not exceed the series'
+per-window noise scale (median |Δ|, self-normalizing, no fitted constant).
+The Pearson stays printed, unscored. Re-measured: seed 8817 gives −0.0045
+over 2 knit windows vs floor 0.0107 → ok; suite back to 2 soft warnings
+(budget 2) — the standing Zipf-thin + young-lifespan pair, both improved by
+the materialisation wave (cities 4→7; median 63→150).
+
+Three-seed deep run (canon 8817/4242/777): **2/3 within budget** (majority
+passes). The corrected gate SCORES on both seeds where the baseline locks
+(8817: −0.0045/2 knit windows; 4242: −0.0034/5 — its Pearson was +0.36, so
+the old score was seed-luck in both directions) and n/a-skips honestly on
+777 (baseline never locks in 21k there). Seed 777 runs 4 warnings — and the
+worktree A/B shows it has been over budget since BEFORE this session's
+commits (7becbb9: Zipf n/a·5 cities, lifespan 113, succession-wars 1/100,
+cradle-distance +0.74). Its standing defect is the CRADLE-DISTANCE
+INVERSION — knowledge leading outward — which this session's waves improved
+(+0.74 → +0.46 → +0.55) but did not cure. Open item, its own wave: why does
+seed 777's knowledge run ahead of its cradles?
