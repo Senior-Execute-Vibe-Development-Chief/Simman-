@@ -30,7 +30,8 @@ import { grievOf } from "./loyaltyField.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
-import { grownLiveOwnerAt } from "./countryClaim.js";
+import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
+import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 import { settleHostility } from "./habitability.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
@@ -1229,7 +1230,23 @@ function maybeLandNations(world) {
     const withMember = new Set();
     for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0 && seats.has(s.countryId)) withMember.add(s.countryId);
     for (const id of withMember) {
-      if (lo) for (let i = 0; i < lo.length; i++) if (lo[i] === id) lo[i] = -1;
+      if (lo) {
+        // The nation's ground passes to the realm it became — in the DRAWN
+        // layers (claim crawl + control field), never the authoritative
+        // territory: reach physics decide what the young state can HOLD, and
+        // the map shows it losing the rest ring by ring (crawl retreat /
+        // TRK_FADE recession) instead of teleporting to the capital's radius
+        // (owner-observed at tw=960: "then a city got made and it lost all
+        // that land, shrinking to land only around the city").
+        const claim = world._countryClaim, ctrl = world._ctrlOwner, chold = world._ctrlHold;
+        const stampC = !!(claim && claim.length === lo.length);
+        const stampO = !!(ctrl && chold && ctrl.length === lo.length);
+        for (let i = 0; i < lo.length; i++) if (lo[i] === id) {
+          lo[i] = -1;
+          if (stampC && claim[i] < 0) claim[i] = id;
+          if (stampO && ctrl[i] < 0) { ctrl[i] = id; chold[i] = CTRL_SRC_HOLD; }
+        }
+      }
       seats.delete(id);
     }
   }
@@ -1239,13 +1256,51 @@ function maybeLandNations(world) {
   if (!devF) return;
   const lo0 = world._landOwner;
   const barF = TRIBAL_CENSUS / world._onePopScale;
+  const pf = world.popField;
+  if (!pf) return;
+  const siteId = L.siteId, elev = world.elev, tw = world.tw, th = world.th;
   for (let k = 0; k < L.sites.length; k++) {
     if (claims.claimed[k]) continue;
     const st = L.sites[k];
     if (co && co[st.ti] >= 0) continue;
     if (lo0 && lo0[st.ti] >= 0) continue;
     if (devF[st.ti] < NEOLITHIC_AGRI) continue;
-    if (claims.mass[k] < barF) continue;
+    if (claims.mass[k] < barF) continue;   // cheap cell-mass pre-filter; the BFS below is the real gate
+    // The nation IS the people who formed it, on the ground they stand:
+    // breadth-first from the seat, over the seat's OWN LANDMASS within the
+    // cell, gathering people until the founding bar. Gate and territory are
+    // one measurement. Before this, the paint was the whole cell — and the
+    // cell partition is a Euclidean disk (TOWN_BASIN_R = 10 ref-tiles
+    // ≈ 1,670 km radius) and WATER-BLIND, so in site-sparse country one
+    // nation stamped a near-continental imprint including islands across
+    // the sea (owner-observed at tw=960: a northern-Australia nation
+    // holding southern Indonesian islands; tools/probe_landpaint.mjs
+    // measures the imprint/landmass distributions). Now a
+    // dense cradle fills the bar in a tight core — the complex chiefdom's
+    // real 10³-10⁵ km² — thin country takes honestly more ground for the
+    // same people, water is never crossed (the crawl's own connectivity
+    // law), and people the seat cannot walk to no longer count toward
+    // forming a nation at all.
+    const comp = landComp(world);
+    const seatComp = comp[st.ti];
+    const qx = [st.ti];
+    const seen = new Set(qx);
+    const take = [];
+    let mass = 0;
+    for (let qh = 0; qh < qx.length && mass < barF; qh++) {
+      const t = qx[qh];
+      take.push(t); mass += pf[t];
+      const ty = (t / tw) | 0, tx = t - ty * tw;
+      const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
+                  ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
+      for (let n = 0; n < 4; n++) {
+        const ni = ns[n];
+        if (ni < 0 || seen.has(ni)) continue;
+        if (siteId[ni] !== k || elev[ni] <= 0 || comp[ni] !== seatComp) continue;
+        seen.add(ni); qx.push(ni);
+      }
+    }
+    if (mass < barF) continue;   // the seat's walkable ground does not hold a people
     // Form: the people of this ground become a nation.
     const id = world._nextSettlementId || 1; world._nextSettlementId = id + 1;
     const ancId = world.ancestry ? world.ancestry[st.ti] : -1;
@@ -1253,8 +1308,7 @@ function maybeLandNations(world) {
     const name = cul ? nameFor(world, cul, "realm") : null;
     let lo = world._landOwner;
     if (!lo || lo.length !== world.N) { lo = world._landOwner = new Int32Array(world.N); lo.fill(-1); }
-    const siteId = L.siteId, elev = world.elev;
-    for (let i = 0; i < siteId.length; i++) if (siteId[i] === k && elev[i] > 0) lo[i] = id;   // the market cell IS the nation's land
+    for (const t of take) lo[t] = id;   // the founding people's ground IS the nation's land
     (world._landSeats || (world._landSeats = new Map())).set(id, { ti: st.ti });
     ensurePolity(world, id, { how: "tribal", name, cultureId: cul ? cul.id : -1 });
   }

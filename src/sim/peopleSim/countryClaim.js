@@ -115,7 +115,7 @@ export function grownOwnerAt(world, ti) {
 // 4000-tile budget and treated a budget-exhausted search as "different
 // landmass" — on a big continent whose claim sat far away that planted exactly
 // the disconnected dots this function exists to prevent.
-function landComp(world) {
+export function landComp(world) {
   let comp = world._landComp;
   if (comp && comp.length === world.N) return comp;
   const { N, tw, th, elev } = world;

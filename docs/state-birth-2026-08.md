@@ -940,3 +940,81 @@ cradle-distance +0.74). Its standing defect is the CRADLE-DISTANCE
 INVERSION — knowledge leading outward — which this session's waves improved
 (+0.74 → +0.46 → +0.55) but did not cure. Open item, its own wave: why does
 seed 777's knowledge run ahead of its cradles?
+
+---
+
+# The continental chiefdom and the vanishing ground (2026-08-06)
+
+Owner, watching the live app (tw=960): *"it made a very large imprint with no
+city, in northern Australia first, which somehow spread into southern
+Indonesia islands? Then a city got made and it lost all that land, shrinking
+to land only around the city."* Every clause measured true, and the whole
+report traces to ONE modeling shortcut: the formation paint stamped the
+nation's entire site-ledger cell.
+
+## Baseline (probe_landpaint.mjs, 25k / 8817 / 960)
+
+    formations 11 · spanning >1 landmass: 1 (9%)
+    imprint min/med/max: 319k / 642k / 983k km²
+    materialisations keep a median 4% of the nation's ground in the drawn map
+
+The cell partition is a Euclidean nearest-site disk (TOWN_BASIN_R = 10
+ref-tiles ≈ 1,670 km radius) and WATER-BLIND — in site-sparse country one
+nation stamps a near-continental imprint, islands included (the Australia →
+Indonesia case). A ~10,000-person chiefdom held France-plus-Germany; the
+historical register for complex chiefdoms is 10³-10⁵ km². And at
+materialisation the paint was CLEARED — the realm restarted from its one
+city's reach: 96% of the territory teleported to wilderness.
+
+## The fix — gate and ground are one measurement
+
+Formation now breadth-firsts from the seat over the seat's OWN LANDMASS
+within the cell, gathering people until the founding bar (TRIBAL_CENSUS —
+the existing constant; connectivity is the claim crawl's own law). The
+nation IS the people who formed it, on the ground they stand: tight cores in
+dense cradles, honestly more ground for the same people in thin country,
+never across water — and people the seat cannot walk to no longer count
+toward forming a nation at all. At materialisation the ground passes to the
+realm in the DRAWN layers (claim + control field at SRC_HOLD), never the
+authoritative territory: reach physics decide what the young state can hold,
+and the map shows the rest receding ring by ring instead of teleporting.
+
+    formations 20 · spanning >1 landmass: 0
+    imprint min/med/max: 13k / 44k / 137k km²   (the chiefdom register)
+    materialisations keep a median 63% (some >100%: young realms already growing)
+
+## Gates — and what the honest domains UNMASKED
+
+smoke ok · resgate all bands (0.81/0.83/0.76 · absolute 496k km²) ·
+STATE_OF_LAND=0 byte-identical (70fbdc06) · defaults baseline b09ae9c4 (was
+9fb452b8 — nations form within the mature 1200-step horizon, so honest
+extents show).
+
+stylized runs 3 soft warnings (budget 2) at the CI seed, and the 2×2 A/B
+(pre/post × TRIBUTE_OF_LAND on/off, seed 8817) attributes it exactly:
+
+                     tribute ON            tribute OFF
+    pre-fix   Zipf 7 · war tail 5.3 ok   Zipf 2 · war tail 3.8 warn
+    post-fix  Zipf 4 · war tail 4.3 warn Zipf 2 · war tail 3.8 warn
+
+With tribute off, pre ≡ post — the entire stylized delta is the tribute
+DOMAIN right-sizing. Tribute mints stock from governed land area; the
+phantom 642k-km² domains were a ~15× food print into capital granaries, and
+that subsidy was MASKING two pre-existing thin conditions: few big cities at
+the 21k horizon (Zipf warned at 7 cities too — the standing thin-register
+item), and a war tail at ~4 (the ≥5 bar passed only with the inflated
+economy). Keeping phantom territory because it flatters two count stats is
+the fitted-outcome trap; the honest world warns, and the warnings now name
+real missing mechanisms.
+
+**Open items (next waves):** (1) URBAN TAKEOFF — what the 21k world needs to
+grow >50-urban cities without phantom subsidies (the Zipf-thin item, now
+with a measured causal chain: tribute genuinely drives urbanisation, 2→4
+cities at honest domains — the storehouse economy is load-bearing and the
+honest version may need its missing partners: layer-3 exchange consumers,
+famine A/B). (2) WAR SIZES — the deadliness tail reads 3.8-4.3 against
+Richardson's ≥5 in every un-subsidised arm; either early-era wars genuinely
+lack great-war mechanics (coalitions, succession cascades) or the max/median
+bar at n≈46 is knife-edged — measure across seeds before touching either.
+(3) Seed 777 chronic (cradle-distance inversion) unchanged. Multi-seed
+1/3 this commit (4242 in budget at 2; 777 chronic; 8817 the unmasking).
