@@ -31,7 +31,16 @@ if (process.env.SIM_TUNE) {
 // production hosting sends the COOP/COEP headers (docs/popfield-parallel.md
 // §5). Re-apply after ANY loadWorld — persist restores the save's tuning.
 export function applyToolTuning() {
-  applyTuning({ POP_FIELD_WORKERS: -1, ...SIM_TUNE_OVERRIDES });
+  // DAWN_LIVE ships ON for the app (the owner's born-from-nothing world), but
+  // the measurement/gate harness pins the SEEDED dawn as its initial condition:
+  // the stylized facts, resgate bands and smoke checks are MATURE-REGIME
+  // properties, and DEV_INIT_YEARS was always an initial-condition choice —
+  // running gates from the empty dawn would measure the Neolithic at their
+  // fixed horizons (a semantic fail, not a physics one) at 2-3x wall clock.
+  // The live dawn's own battery is the genesis arc suite (probe_cityarc /
+  // probe_tribute under SIM_TUNE DAWN_LIVE=1 — docs/state-birth-2026-08.md).
+  // An explicit SIM_TUNE override (spread last) still wins for those arcs.
+  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, ...SIM_TUNE_OVERRIDES });
 }
 applyToolTuning();
 
