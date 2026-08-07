@@ -1409,3 +1409,59 @@ No capacity-ruler wave. The remaining, much narrower items:
 - The user's original observation stands but is now correctly attributed: the
   Crescent IS dense and developed (rank 50); what it lacks is CITIES. That is
   the urban-takeoff item, not a food-capacity item.
+
+---
+
+# The Tarim anomaly is a SPURIOUS TRANS-GOBI RIVER (2026-08-06) — diagnosed
+
+Follow-up to the retraction's open item: the Tarim/Hexi corridor (92-98E,
+40-45N) tops the world density table at 6.3-7.9 ppl/km², above every real
+cradle, carrying a 151k-core city ("Gyiza", 1.07M catchment). The full causal
+chain, measured (probe_tarim + a terrain-world downstream trace):
+
+    1. riverGen judges the Gobi course OCEAN-BOUND: drainsTerminal = 0 at the
+       channel; the downstream trace runs 122 tiles EAST from 93.8E/41.3N to
+       ~131.6E/43.1N — the Sea of Japan. Altai/Tian-Shan melt (the deliberately
+       generous orographic-snowmelt runoff term) spills the chained Gobi
+       depressions eastward, and each spill beat its brim's evaporative demand,
+       so Step 3b never sealed the chain. This is the EASTWARD TWIN of the
+       corridor the endorheic machinery documents fixing westward ("the
+       Himalaya→Caspian run").
+    2. Ocean-bound ⇒ the ordinary catchment bars apply ⇒ flowAccum 607 — the
+       NILE's is 783 — classifies the course RIVER_GREAT (mag 4).
+    3. The pipeline's moisture/silt stamp is TERMINALITY-BLIND and class-keyed
+       (riverMoistPeak[4] = 0.58): every channel tile is stamped to moist 0.45
+       — identical to the Nile's channel — silt-lifted to fert 0.7-0.9, and
+       marked tFlood ⇒ irrigable 1.0 ⇒ LAND_WORKS builds to 1.00.
+    4. Result: a Nile-class breadbasket ribbon across the Gobi, denser than
+       the Nile itself (7.9 vs 2.7 ppl/km²) because it is BROAD (the stamp
+       paints the whole spurious course) where the real cradles are narrow.
+
+The fix is a RIVERGEN WAVE — the seal's spill-vs-demand judgment at melt-fed
+interior basin CHAINS (each small basin spills quickly; the chain as a whole
+should die). Global hydrology blast radius: fertility carpet, floodplains,
+siting, cradle scores, claims all downstream — full battery + likely re-
+baselines. Not attempted at the tail of this session. (Note for the probe
+reader: drainsTerminal lives on the TERRAIN world's w.rivers — the sim world
+does not carry it, which is why probe_tarim prints "?" in that column.)
+
+# The Yangtze works finding — "young" REFUTED, it is the irrigable term
+
+In the MATURE regime all 205 Yangtze-box tiles are fully taught (devF ≥
+0.45), yet works sit at 0.37 where every other cradle saturates ~1.00. The
+build gate requires irrigable > 0, and irrigable = river-tiles + floodplain +
+wet-climate — with the wet term starting at moist 0.55. The sim's Yangtze
+basin reads moist ~0.39-0.45, so away from the river ribbons irrigable is
+ZERO and works can never build: wet-rice country is locked out of
+intensification by the very term meant to admit it. Whether the defect is
+the 0.55 threshold or the MOISTURE FIELD itself reading monsoon China at
+0.39 needs its own look (the biomeClass notes already flag the solver's
+missing seasonal storm track in the same breath). Own wave; recorded.
+
+# Session-infrastructure note
+
+The container checkout silently reset to a pre-session commit THREE times
+today, twice mid-measurement; stale-tree probe outputs were nearly published
+as findings twice. tools/_harness.mjs now prints `[harness] tree <sha>` from
+every consumer, so any probe output is self-identifying and a reset shows up
+as a wrong hash instead of a wrong conclusion.

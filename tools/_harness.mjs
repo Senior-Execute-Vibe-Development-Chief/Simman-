@@ -10,6 +10,18 @@
 import { buildWorld as pipelineBuild } from "../src/sim/pipeline.js";
 import { initPeopleSim } from "../src/sim/peopleSim/index.js";
 import { applyTuning } from "../src/sim/peopleSim/tuning.js";
+// PROVENANCE STAMP: this session's container has silently reset its checkout
+// to a pre-session commit THREE times (2026-08-06), twice mid-measurement —
+// probe outputs from the stale tree were nearly published as findings both
+// times ("the densest tiles are in Mongolia" came from one). Every harness
+// consumer now prints the tree it actually ran on, so a probe output is
+// self-identifying and a reset shows up as a wrong hash instead of a wrong
+// conclusion. Cheap (once per process), and gates' outputs carry it too.
+try {
+  const { execSync } = await import("node:child_process");
+  const head = execSync("git -C " + JSON.stringify(new URL("..", import.meta.url).pathname) + " rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  console.log(`[harness] tree ${head}`);
+} catch { /* not a git checkout (packaged run) — no stamp */ }
 
 // SIM_TUNE env override for calibration sweeps: SIM_TUNE="FISH_RATE=7,FISH_ERAPROD_POW=0.4".
 // Lets a probe OR a gate (smoke/stylized) run with non-default levers without editing defaults.
