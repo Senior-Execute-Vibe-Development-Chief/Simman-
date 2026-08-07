@@ -321,6 +321,10 @@ const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[genBusy,setGenBusy]=useState(false);   // a world is being forged — show it (regens keep the old map up for ~a minute, which read as a dead control)
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
+// A sim/worker failure the user must SEE: {where:'step'|'snapshot'|'message'|'worker', step, message}.
+// Before this, a worker error was console-only — a thrown step left the game silently frozen at its
+// last frame forever ("the game shuts down at step N"), with the world still alive and saveable.
+const[simError,setSimError]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
 const[priceGood,setPriceGood]=useState(3);const priceGoodRef=useRef(3);
@@ -628,10 +632,12 @@ try{
   // defers to simWorkerRef) and its snapshots clobbered the loaded one.
   if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
   if(_pendRW)throw new Error('real-wind save — loading on the main thread');
+  setSimError(null);   // a fresh worker/world starts with a clean bill
   const sw=new PeopleSimWorker();
+  const sawSnap={current:false};   // has this worker ever delivered a frame? gates the onerror fallback below
   sw.onmessage=(e)=>{
     const d=e.data;
-    if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    if(d.type==='snapshot'){sawSnap.current=true;if(applySnapshotRef.current)applySnapshotRef.current(d);}
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='historyData'){
       const blob=new Blob([d.json],{type:"application/json"});
@@ -639,11 +645,31 @@ try{
       a.download=`simman-history-t${d.step??""}.json`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     }
-    else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);
-      if(d.message&&d.message.indexOf('load failed')===0)alert('Could not load save: '+d.message.slice('load failed: '.length));}
+    else if(d.type==='error'){console.error('[SimWorker]',d.where||'',d.message,d.stack);
+      if(d.message&&d.message.indexOf('load failed')===0){alert('Could not load save: '+d.message.slice('load failed: '.length));return;}
+      // Surface it. A STEP error means the worker paused the sim on a mid-step
+      // throw — mirror that here so the play button tells the truth; the world
+      // is still alive in the worker, so Save/Export can rescue the run.
+      setSimError({where:d.where||'sim',step:d.step,message:d.message||'unknown error'});
+      if(d.where==='step'){playRef.current=false;setPlaying(false);}
+    }
   };
   sw.onerror=(err)=>{
-    console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
+    // An UNCAUGHT worker exception. Two very different situations:
+    //  * the worker never produced a frame — it failed to BOOT (bundle/init
+    //    problem): fall back to the main-thread sim so the app still works.
+    //  * it was mid-run — the old unconditional fallback here DESTROYED the
+    //    run (terminate + re-init a fresh world at step 0, with init blocking
+    //    the main thread for ~a minute at the app grid). The worker's own
+    //    handlers now catch and report everything, so reaching here mid-run is
+    //    exceptional: keep the worker and the world, surface the error, and
+    //    let the user save.
+    if(sawSnap.current){
+      console.error('[SimWorker] uncaught worker error mid-run:',err.message);
+      setSimError({where:'worker',message:err.message||'uncaught worker error'});
+      return;
+    }
+    console.warn('[SimWorker] error before first frame — falling back to main-thread sim:',err.message);
     try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
     peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
@@ -4407,6 +4433,30 @@ return(
 
 {/* ─── Epochal-event toasts (plan §8) ─── */}
 <ToastHost feedRef={peopleRef} verbosity={toastVerbosity} onJump={jumpTo} stepNow={liveStep}/>
+
+{/* ─── Simulation-error banner ─── */}
+{/* A worker/step failure used to be console-only: the game froze at its last
+    frame with no explanation ("shuts down at step N"). The world is still
+    alive in the worker — say so, and point at the rescue (Save). Persistent
+    (not a 7s toast) until dismissed; a snapshot-lane error means the sim is
+    still running, a step error means it paused itself. */}
+{simError&&(
+  <div className="au-parchment" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
+    zIndex:"var(--z-toasts)",display:"flex",gap:10,alignItems:"center",padding:"8px 12px",
+    maxWidth:"min(560px,80%)",border:"1px solid rgba(180,60,40,0.85)",boxShadow:"0 4px 18px rgba(0,0,0,0.45)"}}>
+    <span style={{fontSize:16,flexShrink:0}}>⚠</span>
+    <span style={{fontSize:12.5,lineHeight:1.4}}>
+      {simError.where==='step'
+        ?`The simulation hit an internal error at step ${simError.step??'?'} and paused itself. The world is intact — use Save to keep it, then report seed ${world&&world.seed!=null?world.seed:seed}.`
+        :simError.where==='snapshot'
+        ?`The map view failed to refresh at step ${simError.step??'?'} — the simulation itself is still running. Save works; the view may recover on its own.`
+        :`The simulation worker reported an error${simError.step!=null?` at step ${simError.step}`:''}. The world is intact — use Save to keep it.`}
+      <span style={{opacity:0.75}}> ({simError.message})</span>
+    </span>
+    <button onClick={()=>setSimError(null)} title="Dismiss"
+      style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-ink-faded)",fontSize:16,padding:"0 2px",flexShrink:0}}>×</button>
+  </div>
+)}
 
 </div>{/* end map area */}
 

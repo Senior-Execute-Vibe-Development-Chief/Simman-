@@ -112,6 +112,16 @@ const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, the
 
 self.onmessage = (e) => {
   const m = e.data;
+  try { handleMessage(m); }
+  catch (err) {
+    // A handler outside the per-branch try/catches threw (view switch, tune,
+    // select refresh, …). Report it instead of letting it escape to the page's
+    // worker.onerror — an escaped exception used to read as "the worker is
+    // broken" and cost the whole running world (see WorldSim's onerror).
+    self.postMessage({ type: "error", where: "message", step: world && world.step, message: err && err.message, stack: err && err.stack });
+  }
+};
+function handleMessage(m) {
   if (m.type === 'bandWorkerUrl') { setBandWorkerUrl(m.url); return; }   // popField pool: built-app band-worker chunk URL (page-resolved)
   if (m.type === "init") {
     try {
@@ -191,7 +201,7 @@ self.onmessage = (e) => {
   } else if (m.type === "editor.placeCountry") {
     if (world) { try { editorPlaceCountry(world, m); } catch (err) { self.postMessage({ type: "error", message: "place failed: " + (err && err.message), stack: err && err.stack }); } staticSent = false; buildSnapshot(); }
   }
-};
+}
 
 // While PLAYING the worker self-schedules a step/snapshot loop. While paused
 // it stops entirely (snapshots are posted on demand from onmessage), so it
@@ -242,7 +252,16 @@ function tick() {
   const start = performance.now();
   for (let i = 0; i < steps; i++) {
     try { stepPeopleSim(world, 1); }
-    catch (err) { self.postMessage({ type: "error", message: err && err.message, stack: err && err.stack }); playing = false; break; }
+    catch (err) {
+      // The SIM threw. Pause (the world may be mid-mutation; stepping on would
+      // compound it) and tell the page WHERE and WHEN, so it can show the user
+      // instead of silently freezing at the last frame — the "game shuts down
+      // at step N" report. The world object still exists: save/export stay up,
+      // so the run can be rescued.
+      self.postMessage({ type: "error", where: "step", step: world.step, message: err && err.message, stack: err && err.stack });
+      playing = false;
+      break;
+    }
     if (performance.now() - start > STEP_BUDGET_MS) break;
   }
   const t = performance.now();
@@ -316,7 +335,25 @@ function packSelected(s) {
   };
 }
 
+// A snapshot failure must NEVER escape this function: it is called from the
+// tick loop and every onmessage refresh, and an escaped exception reaches the
+// page's worker.onerror — which used to tear down the worker and re-init a
+// FRESH world, destroying the run (the sim itself was healthy; only the
+// RENDERING of it failed). Report the error (throttled — the same broken read
+// would otherwise spam every frame) and keep the sim alive: the map holds the
+// last good frame, stepping continues, and save/export can rescue the world.
+let _snapErrAt = -Infinity;
 function buildSnapshot() {
+  try { buildSnapshotUnsafe(); }
+  catch (err) {
+    const now = performance.now();
+    if (now - _snapErrAt > 5000) {
+      _snapErrAt = now;
+      self.postMessage({ type: "error", where: "snapshot", step: world && world.step, message: err && err.message, stack: err && err.stack });
+    }
+  }
+}
+function buildSnapshotUnsafe() {
   const setts = [];
   for (const s of world.settlements) if (s.mode === "settled") setts.push(packSettlement(s));
 

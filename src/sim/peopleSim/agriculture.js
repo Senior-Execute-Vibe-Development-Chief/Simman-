@@ -91,10 +91,16 @@ export function pkgSuitAt(world, ti, pkg) {
 export function bestPackageAt(world, ti) {
   let best = null, bestS = 0;
   for (const pkg of CROP_PACKAGES) {
-    if (T.CROP_BIOGEO && !packagePresent(world, ti, pkg)) continue;
-    // A package arrives as a lesser version of itself the farther it has come
-    // (packageAdaptMul) — so the LOCAL package wins its own band and a
-    // long-travelled one competes only where it is genuinely better. ×1 off.
+    // PRESENCE (T.CROP_HOMELAND, or the full T.CROP_BIOGEO): a wild ancestor
+    // can only be domesticated where its range has actually arrived — what
+    // keeps maize out of China, rice out of Australia, wheat out of the
+    // southern hemisphere at the dawn (the from-0 report, 2026-08-07).
+    if ((T.CROP_BIOGEO || T.CROP_HOMELAND) && !packagePresent(world, ti, pkg)) continue;
+    // ADAPTATION (full T.CROP_BIOGEO only): a package arrives as a lesser
+    // version of itself the farther it has come (packageAdaptMul) — so the
+    // LOCAL package wins its own band. Measured to thin domesticated-crop
+    // coverage past the founding bars (see biogeography.js), so it stays with
+    // the blocked full lever; the presence half ships without it. ×1 off.
     const s = pkgSuitAt(world, ti, pkg) * (T.CROP_BIOGEO ? packageAdaptMul(world, ti, pkg) : 1);
     if (s > bestS) { bestS = s; best = pkg; }
   }
