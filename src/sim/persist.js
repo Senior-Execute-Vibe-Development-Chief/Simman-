@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 5;   // v5: the divergence lane defaults ON (see the v<5 regime guard in loadWorld)
+export const SAVE_VERSION = 6;   // v6: package biogeography + crop irrigation default ON (see the v<6 regime guard in loadWorld); v5: the divergence lane defaults ON (the v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -407,6 +407,18 @@ export function loadWorld(data, opts = {}) {
     if (!("CROP_PHOTOPERIOD" in tn)) T.CROP_PHOTOPERIOD = 0;
     if (!("CRADLE_PACKAGE" in tn)) T.CRADLE_PACKAGE = 0;
     if (!("INVENT_STAGGER" in tn)) T.INVENT_STAGGER = 0;
+  }
+  // v5 → v6: package biogeography + crop irrigation (CROP_BIOGEO + IRRIG_CROP,
+  // one flip — docs/dawn-cradles-2026-08-07.md) became default-ON. Both are LIVE
+  // agronomy: they re-key which crops exist where and what flood-fed land
+  // yields, so a pre-flip world silently continued under them would have its
+  // whole food system re-based mid-history. Same guard pattern as v5: a pre-v6
+  // save stores no delta for a lever that defaulted OFF when it was made, so
+  // pin both to their old default unless the save set one explicitly.
+  if (data.v < 6) {
+    const tn = data.tuning || {};
+    if (!("CROP_BIOGEO" in tn)) T.CROP_BIOGEO = 0;
+    if (!("IRRIG_CROP" in tn)) T.IRRIG_CROP = 0;
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });

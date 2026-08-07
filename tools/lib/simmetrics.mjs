@@ -724,6 +724,21 @@ export function collect(world) {
     const items = reg instanceof Map ? [...reg.values()] : Array.isArray(reg) ? reg : null;
     if (items && items.length) entityDists(prefix, items.filter(x => x && typeof x === "object"), m);
   }
+  // The DAWN's two live registries, reachable at gate horizons since the
+  // package-biogeography flip slowed hearth maturation to the real stagger
+  // (2026-08-07): armed hearth candidates still serving peopled-basin time, and
+  // land-nation seats awaiting a city. Both are persisted cross-tick state, so
+  // they are MEASURED, not pass-listed. "Now" naming: point-in-time gauges
+  // (an armed hearth ignites and LEAVES; a land seat materialises and leaves) —
+  // never cumulative-history claims, so the monotone gate has nothing to bite.
+  if (world._armedHearths && world._armedHearths.length) {
+    m["hearth.armedNow"] = world._armedHearths.length;
+    entityDists("hearthArmed", world._armedHearths, m);
+  }
+  if (world._landSeats && world._landSeats.size) {
+    m["nation.landSeatsNow"] = world._landSeats.size;
+    entityDists("landSeat", [...world._landSeats.values()], m);
+  }
 
   // ── EVENT PAYLOAD MAGNITUDES ───────────────────────────────────────────────
   // `event.<kind>` counts how often a thing happened; it cannot say how BIG. A run

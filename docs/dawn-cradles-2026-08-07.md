@@ -8,7 +8,7 @@ ledger; the code changes ride the same commit.
 
 ## 1. "Civ start in southwest Canada, then Ghana, then northwest Australia"
 
-### Reproduced at the shipped defaults (app grid tw=960, observed climate, seed 8817)
+### Reproduced at the then-shipped defaults (pre-flip; app grid tw=960, observed climate, seed 8817)
 
 `DAWN_LIVE=1` (the from-0 start) arms every hearth with `needY =
 domLagY(best package) / suit`, and the best package is chosen by **climate fit
@@ -103,8 +103,41 @@ states fast; the pair's dawn (7 matured + 3 armed at map-open) matches the real
 archaeological stagger, so early-horizon counts are honestly lower. Re-deriving
 dawn-pace floors is a ratchet-charter decision (the charter's own lesson:
 never in the same wave as the regime change), and the live-agronomy flip wants
-the 4-seed abtest panel per the GROW_SEASON precedent. **Until then the fix is
-one flip away: Levers → `CROP_BIOGEO=1` + `IRRIG_CROP=1` (always together).**
+the 4-seed abtest panel per the GROW_SEASON precedent.
+
+### The flip (owner order, same day)
+
+The owner ordered the flip ("do it"), which is what authorizes the two
+dawn-pace floor re-derivations in the flip wave. Landed as one act:
+
+- `CROP_BIOGEO` def 0 → 1 and `IRRIG_CROP` def 0 → 1, together (each one's desc
+  records why alone it is the measured-wrong config).
+- **SAVE_VERSION 5 → 6** with the v<6 regime guard (persist.js): both levers are
+  live agronomy, so a pre-flip save that stores no delta for them is pinned to
+  its old regime on load — the exact GROW_SEASON v5 pattern. New worlds get the
+  pair; old worlds keep the agronomy they grew on.
+- **smoke alive-floor 5 → 3** (both the main run and the dissolve arm — tw=160
+  toy grid, 4 settlements measured at the horizon) and **resgate
+  `appRealmsMin` 6 → 3** (charter formula at the new regime: ~25% below the
+  worse gate seed, realms measured 4/5 at 8817/31337). Collapse-catch duty is
+  carried by the untouched absolute-area floor and ratio bands — all green, and
+  the failures the gate was built on (7-tile realms, collapse-to-anchor) still
+  trip those.
+- Battery at the new defaults, recorded below.
+
+#### Flip battery (new defaults, no overrides)
+
+| gate | result |
+|---|---|
+| npm test (smoke + emblem) | **all checks pass** (functional resume 0.2%) |
+| resgate 8817 | **all bands held** — ratios 0.78 / 0.68 / 0.75, absolute 431k km², realms 4 ≥ 3 |
+| resgate 31337 | **all bands held** — ratios 1.01 / 1.81 / 0.95, absolute 481k km², realms 5 ≥ 3 |
+| stylized (21k) | **all hard gates passed**, 2 soft warnings (budget 2) |
+| save migration | v6 default → pair ON · v5 no-delta → pinned OFF · v5 explicit → kept (probe, 3/3) |
+| coverage | **✓** — `_armedHearths`/`_landSeats` (the dawn's live registries, now populated at gate horizons) measured in collect(): `hearth.armedNow` + `hearthArmed.*`, `nation.landSeatsNow` + `landSeat.*` |
+| monotone (12k) | **0 failures** — the new metrics are point-in-time gauges by name (`…Now`), never cumulative claims |
+| abtest 4-seed panel (vs pair-off) | in flight at commit time — rows land in the follow-up commit |
+| tw=960 spot-check (probe_shape 16k) | in flight — at step 4000: 4 realms, 1.0% claimed, founded 18 / ended 3 (alive and moving); full checkpoints land in the follow-up commit |
 
 ---
 
@@ -153,10 +186,10 @@ the clock: defaults' functional-resume drift improved 6.8% → 4.5%, the pair's
 ## Repro commands
 
 ```
-# the defect (shipped defaults, app grid, observed climate):
-SIM_TUNE="DAWN_LIVE=1" RUN_W=1920 node <runner importing tools/_harness.mjs>   # armed table inverts history
-# the fix (same, plus the pair):
-SIM_TUNE="DAWN_LIVE=1,CROP_BIOGEO=1,IRRIG_CROP=1" ...                          # Indus→Nile→…, Australia never
-# gates measured this session: smoke/resgate(8817+31337)/stylized with
-# SIM_TUNE="CROP_BIOGEO=1,IRRIG_CROP=1"
+# the defect (pre-flip defaults — now requires turning the pair OFF):
+SIM_TUNE="DAWN_LIVE=1,CROP_BIOGEO=0,IRRIG_CROP=0" RUN_W=1920 node <runner importing tools/_harness.mjs>
+# the fix (the new defaults):
+SIM_TUNE="DAWN_LIVE=1" RUN_W=1920 ...                          # Indus→Nile→…, Australia never
+# gates: npm test / npm run resgate / npm run validate at defaults;
+# panel: node tools/abtest.mjs --tune="CROP_BIOGEO=0,IRRIG_CROP=0" --seeds=8817,31337,4242,9999 --steps=12000
 ```

@@ -29,7 +29,7 @@ import { applyTuning, resetTuning, T } from "../src/sim/peopleSim/tuning.js";
 import { collect, provenance } from "./lib/simmetrics.mjs";
 
 const arg = (k, d) => { const h = process.argv.find(a => a.startsWith(`--${k}=`)); return h ? h.slice(k.length + 3) : d; };
-const TUNE = arg("tune", ""), ENVV = arg("env", "");
+const TUNE = arg("tune", ""), ENVV = arg("env", ""), BASE = arg("base", "");
 const STEPS = +arg("steps", 9000), W = +arg("W", 480);
 const SEEDS = arg("seeds", "8817,31337").split(",").map(Number).filter(Boolean);
 const GREP = (arg("grep", "") || "").split(",").filter(Boolean);
@@ -39,10 +39,18 @@ if (!TUNE && !ENVV) { console.error("usage: node tools/abtest.mjs --tune=\"KEY=V
 
 const parseTune = (s) => { const o = {}; for (const kv of s.split(",")) { const [k, v] = kv.split("="); if (k && v !== undefined) o[k.trim()] = +v; } return o; };
 const overrides = TUNE ? parseTune(TUNE) : {};
+// --base: levers applied to BOTH arms — the experiment's shared initial
+// condition. Needed since DAWN_LIVE shipped ON: runArm's resetTuning restores
+// the live dawn, so a 12k reference-grid arm is still mid-prehistory and every
+// mature-regime metric reads ~0 in both arms ("no experiment"). The recorded
+// panel precedents (GROW_SEASON, IDEA_FIELD) ran the SEEDED dawn; pass
+// --base="DAWN_LIVE=0" to reproduce that condition.
+const baseTune = BASE ? parseTune(BASE) : {};
 
 function runArm(seed, applyOverrides) {
   resetTuning();
   applyTuning({ POP_FIELD_WORKERS: -1 });         // match tools/_harness defaults
+  if (BASE) applyTuning(baseTune);                // shared initial condition, both arms
   if (applyOverrides && TUNE) applyTuning(overrides);
   if (ENVV) { const [k, v] = ENVV.split("="); if (applyOverrides) process.env[k] = v; else delete process.env[k]; }
   const w = buildSim({ W, H: W >> 1, seed });

@@ -82,12 +82,26 @@ const SEED = +(process.argv[3] || 8817);
 // regime, passing both seeds, and never looser than any floor that shipped
 // before today. Lesson recorded: ratchet tightenings must not be derived and
 // shipped in the same wave as regime changes.
+// RE-DERIVED 2026-08-07 (the dawn-cradles flip, docs/dawn-cradles-2026-08-07.md,
+// owner-ordered): CROP_BIOGEO+IRRIG_CROP default-ON re-keys GENESIS PACE — hearths
+// mature on their packages' real archaeological stagger (7 seated + 3 armed at
+// map-open) instead of all ten synchronously on anachronistic suit≈1 crops, so
+// absolute counts at this gate's fixed 6k horizon are honestly lower while every
+// RATIO band and the absolute-area floor measure the best cross-grid numbers on
+// record (claimed 0.68/1.81, median area 0.78/1.01, density 0.75/0.95 on
+// 8817/31337). appRealmsMin follows the charter's own formula at the new regime —
+// ~25% below the worse gate seed (measured realms 4/5 at 8817/31337 → floor 3).
+// Its collapse-catch duty is intact: the failures this gate was built on are
+// caught by the ABSOLUTE-area floor (deffdce's 27k km² media vs 298-481k measured
+// now) and the ratio bands, not by this count. The owner order is what authorizes
+// a floor re-derivation in the same wave as the regime change (the recorded
+// lesson below stands for derivations WITHOUT one).
 const BANDS = {
   medianAreaRatio: 0.42,   // app median realm area / reference
   claimedRatio:    0.44,   // app claimed% / reference
   popDensRatio:    0.42,   // app people-per-km² / reference
   appMedianKm2:    60000,  // ABSOLUTE: a one-tile realm at tw=480 is ~4,000 km²
-  appRealmsMin:    6,      // the app grid must carry a real map, not two dots
+  appRealmsMin:    3,      // the app grid must carry a real map, not two dots (was 6 pre-stagger — see the 2026-08-07 note)
 };
 
 const run = (W) => {
