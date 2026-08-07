@@ -137,7 +137,7 @@ dawn-pace floor re-derivations in the flip wave. Landed as one act:
 | coverage | **✓** — `_armedHearths`/`_landSeats` (the dawn's live registries, now populated at gate horizons) measured in collect(): `hearth.armedNow` + `hearthArmed.*`, `nation.landSeatsNow` + `landSeat.*` |
 | monotone (12k) | **0 failures** — the new metrics are point-in-time gauges by name (`…Now`), never cumulative claims |
 | abtest 4-seed panel (vs pair-off) | **pace, not shape** — see the panel note below |
-| tw=960 spot-check (probe_shape 16k) | see the panel note below |
+| tw=960 spot-check (probe_shape 16k) | **healthy, Old-World-led** — realms 4→7, claimed 1.0→3.8%, founded 35 / ended 5, median 569k km², top-1 share falling 51%→35%, no sub-scale confetti; the realm roster at the app grid IS the cradle list (Nile, Mesopotamia, Yellow River seats). The thin small-state tier (lnσ 0.88 vs real ≈2.0-2.6) is the pre-existing gap this probe instruments (shape-of-the-map wave), unchanged by the flip |
 
 #### The 4-seed panel (abtest --base="DAWN_LIVE=0" --tune="CROP_BIOGEO=0,IRRIG_CROP=0", 12k, tw=240, seeds 8817/31337/4242/9999)
 
