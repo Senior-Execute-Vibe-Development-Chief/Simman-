@@ -15,6 +15,8 @@
 // An index (world._evIndex) maps entity keys ("p:7", "s:12", "c:3", "f:2")
 // to event ids so per-entity history is O(own events), not a scan.
 
+import { POP_SCALE } from "../units.js";
+
 export function eventsOf(world) {
   return world.events || (world.events = []);
 }
@@ -105,6 +107,7 @@ const NARRATE = {
     if (ev.how === "secession") return `Broke away from ${ev.fromName || "its parent realm"} in a war of secession.`;
     if (ev.how === "fragment") return `Rose from the ruins of ${ev.fromName || "a fallen empire"}.`;
     if (ev.how === "frontier") return `${ev.seatName || "A frontier town"} declared itself a sovereign realm.`;
+    if (ev.how === "tribal") return `${ev.name || "A people"} took their valley as a nation of the land.`;
     return `${ev.seatName || "A settlement"} became a realm of its own.`;
   },
   "polity.ended"(ev, as) {
@@ -141,6 +144,7 @@ const NARRATE = {
     return `Peacefully absorbed ${ev.sName} from ${ev.fromName || "a neighbour"}.`;
   },
   "settlement.founded"(ev) {
+    if (ev.city) return `The city of ${ev.sName} arose.`;
     if (ev.kind === "cradle") return `${ev.sName} was founded at the dawn of civilisation.`;
     if (ev.kind === "colony") return `The colony of ${ev.sName} was planted on a far shore.`;
     return `${ev.sName} was founded.`;
@@ -148,10 +152,16 @@ const NARRATE = {
   "market.dearth"(ev) { return `Dearth in ${ev.sName} — bread at famine prices in the market.`; },
   "market.boom"(ev) { return `${ev.sName}'s ${ev.good || "wares"} fetch extraordinary prices — a boom year.`; },
   "settlement.withered"(ev) { return `${ev.sName} withered away and was abandoned.`; },
+  "settlement.dissolved"(ev) { return `${ev.sName} faded back into the countryside.`; },
+  "farming.invented"(ev) { return `Farming was invented — the land around (${ev.x}, ${ev.y}) turned to the plough.`; },
   "settlement.abandoned"(ev) { return `${ev.sName} was abandoned.`; },
   "settlement.tier"(ev) {
+    // ev.people is in CENSUS units (×1,000 people — src/sim/units.js); the
+    // chronicle speaks in souls, so convert. "(10 souls)" for a 10,000-person
+    // city was the units mistake CLAUDE.md warns about, in the user's own feed.
+    const souls = ev.people != null ? ` (${(ev.people * POP_SCALE).toLocaleString("en-US")} souls)` : "";
     return ev.up
-      ? `${ev.sName} grew into a ${ev.tierName} (${ev.people} souls).`
+      ? `${ev.sName} grew into a ${ev.tierName}${souls}.`
       : `${ev.sName} declined to a ${ev.tierName}.`;
   },
   "colony.departed"(ev) {

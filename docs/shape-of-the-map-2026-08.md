@@ -1,0 +1,307 @@
+# The shape of the map — count, sizes, spread (2026-08)
+
+Owner report: *"the sim's shape, throughout, is slightly off. The country counts,
+sizes, spread, differences… is just a bit off, unrealistic. Too blunt, not enough
+tiny countries, nuanced stuff."* Owner plays at **Half sim** on the 1920 map —
+sim `tw = 960`, one grid FINER than even the resgate app arm. So the complaint
+lives at a grid nothing measured; everything below is measured at the reference
+(tw=240), the app arm (tw=480) and spot-checked beyond.
+
+## The instrument
+
+`tools/probe_shape.mjs` — the full realm-size distribution, not the top-5:
+log-decade histogram, P10/median/P90, largest/median, top-1 share, Gini, and
+**lnσ** (the std-dev of ln(area)) — plus the smallest realms with their age/org
+context, per checkpoint. Every prior size gate read the TOP of the distribution
+(largest share, tail ratio) or the middle (median); none read the BOTTOM —
+whether small states EXIST at all.
+
+The real-world anchor for lnσ: country areas at any documented era are roughly
+log-normal with **σ ≈ 2.0–2.6** (the modern 195-state map ≈ 2.4 across seven
+orders of magnitude; the 1500 CE map similar across its hundreds of polities).
+The share of states below 100k km²: **~47% of the modern map**; far higher on
+any early-modern European map (the HRE alone carried hundreds of statelets).
+These are DIAGNOSTIC anchors for reading the measurement — never targets to
+tune toward (second cardinal rule); the fix below is mechanism work, and the
+numbers it produces are whatever the mechanisms imply.
+
+## The measured defect (baseline, seed 8817)
+
+| grid | step | realms | lnσ | <100k km² share | one-decade concentration |
+|---|---|---|---|---|---|
+| tw=240 | 4000 | 48 | — | **46%** | — |
+| tw=240 | 8000 | 50 | **0.80** | **2%** | 35/50 in 200k–1M |
+| tw=240 | 16000 | 63 | 0.85 | 3% | 39/63 in 200k–1M |
+| tw=480 | 8000 | 49 | 1.10 | 14% | 29/49 in 200k–1M |
+| tw=480 | 16000 | 56 | 0.89 | 5% | 38/56 in 200k–1M |
+
+Two readings, both exactly the owner's words:
+
+1. **The spread is one-third of history's, on the log scale.** lnσ 0.8–1.1
+   against ≈2.0–2.6. Two-thirds of the world's realms sit in ONE size decade —
+   the "too blunt" uniform band.
+2. **Smallness is a transient of youth, not a niche.** At step 4000 nearly half
+   the map's realms are small — every one of them a low-org newborn still
+   growing. By 8000 they have all grown into the band: **2%**. The tiny-realm
+   list at every checkpoint is just the youngest cohort, aging out. No mechanism
+   lets a state BE small; there are no persistent city-states, no mountain
+   statelets, no packed peers.
+
+## Why — three mechanism findings
+
+**1. The founding channel forbids the packed-peer regime.** `NUCLEATE_CAP_DIST
+= 8` reference-tiles (~1,000 km): no state may be born within that disc of ANY
+existing capital. Real cradles were the OPPOSITE regime — dozens of Sumerian
+city-states 30–50 km apart, the Aegean poleis, the Maya ajawil — peers packed
+into one dense valley, hemming each other small for millennia. The disc was
+honest under the ENTITY model, where a realm's "claim" was a projected
+reach-bubble far beyond its administration (a founding inside the bubble's
+shadow was a founding inside a state); under the field model control is
+explicit (claimed tiles) and the founding test already prices it — the basin
+viability bar counts ONLY unclaimed land. The disc had become a redundant veto
+whose sole remaining effect was one-state-per-valley.
+
+**2. The realm-killer had no terrain.** The capital STORM — the only way tile
+war kills a realm — priced garrison, militia, walls, relief armies, distance…
+and not the ground: a lagoon city, an alpine eyrie and a plains town stormed
+identically. The countryside tile-defence DID price terrain, but by cell-MEAN
+altitude (`elev > 0.5`) — the exact blindness the ridge-relief work measured
+(the Alps average ~0.31 and slip under every altitude threshold) and fixed for
+CLAIM cost, but never for war. And peaceful absorption — the statelet-eater —
+had no terrain term anywhere: a mountain community defected into the lowland
+empire's orbit at plains rate. Between the three, the map could not keep an
+Andorra, a Nepal, a Montenegro, a Venice — the enclave gate's own comment names
+Andorra and San Marino as what it was wrongly vacuuming.
+
+**3. Every size target converges.** `target = govPop/RURAL_BIND_DENS + march`:
+one world-wide density constant, `spanTechMul = 1` (SPAN_TECH def 0, owner
+2026-07-30), `POP_FILL = 12` reaching target in a few passes. All mature realms
+relax toward the same characteristic regional scale — the one-decade band.
+(Recorded context: SPAN_TECH's own retraction doc says the mechanism is right
+and its 0.85 magnitude was stale against the corrected food model — "must be
+re-derived". This wave does not touch it; see "what was measured but not
+changed" below.)
+
+## What was built
+
+**`T.PEER_POLITY` (def 1) — control gates founding, not distance.** The
+capital-distance disc is retired; the only spatial veto left is the ground
+under the seat itself (administered ground cannot seat a NEW state — its
+people already have one). The org bar, basin-mass bar (which already counts
+only unclaimed land — the true control test), leadership, per-pass spacing and
+per-pass cap all stand. States are born in the gaps BETWEEN realms — marches,
+deltas, refuge pockets — which is where history put them. 0 = the disc,
+byte-identical (hashbase 442a119f/e1611e5c with both levers 0 = HEAD).
+
+**`T.REFUGE` (def 1) — defensible ground shields statelets.** One shared
+physics — `transport.js terrainHoldAt`: high-ground × RIDGE (world.relief past
+the movement cost's own 0.07 floor, full at the measured Himalaya-front class
+0.25), each term easing with the defender's construction (engineering roads
+the pass — refuges are strongest when statecraft is young and erode as the
+world matures, never a clock), capped at the war pass's own ×6. Three consumers:
+- war tile-defence gains the ridge term (river/alpine terms unchanged —
+  extracted to shared constants, values identical; the RIVER keeps defending
+  exactly where it always did, the countryside front);
+- the capital storm multiplies the fortress (and siege attrition, and the
+  break check) by the seat tile's hold — a defensible seat holds out, and is
+  starved or overawed into VASSALAGE instead (channels that already exist and
+  are terrain-free);
+- peaceful absorption divides the defection pull by the member's hold, and a
+  city-enclave's seat hold raises the power dominance its engulfer needs.
+
+Design correction, measured mid-build: the seat hold's first cut included the
+river-moat term, and realm-kills fell 4 → 1 per 8k — because ~85% of seats are
+river-sited (probe_siting), a seat moat is not a refuge differentiator but a
+global war re-balance, the immortal-giants regime returning through a new
+door. The seat hold is high-ground/ridge only; rivers defend the countryside
+tile war as before.
+
+## Results — the measured A/B ledger (480/16k, seed 8817 unless noted)
+
+The arms, honestly, including the negatives:
+
+| arm | realms @16k | lnσ | <100k share | shattered | notes |
+|---|---|---|---|---|---|
+| baseline (all off) | 63 | 0.85 | 3% | 10 | the blunt band |
+| PEER only | 60 | 0.94 | 2% | 22 | peers born, then stormed — churn without stock |
+| REFUGE v1 (river at seat) | 65 | 1.01 | 6% | 7 | smalls held, but mortality cratered → NARROWED |
+| PEER+REFUGE (final form) | 58 | 0.84 | 2% | 15 | mortality restored; structure gains only |
+| + SPAN_TECH 0.3/0.5 | 63/70 | 0.85/0.76 | 2%/1% | 16/13 | count up, spread UNMOVED — targets re-converge |
+| + MARGINAL_HOLD | 60 | 0.84 | 2% | 9 | transient gain (16% smalls @8k), then **destroys the top tail** (max/med 13→6) — replicates its 2026-07 warning |
+| + GROW_STATECRAFT 0.85 | **68 (22 vassal)** | 0.92 | 6% | 11 | count best-of-battery, vassal mosaic doubles, no coverage cost |
+| + VASSAL_SHIELD (in all above) | — | — | — | — | vassal stock 13 → 16-22 standing |
+
+Control that corrected an over-claim: seed 4242's LEVER-OFF baseline reads
+lnσ 1.23 (7 smalls) — higher than its lever-on run (1.12, 3) — so the wave-4
+"compounding" reading was seed variance, caught by running the control. What
+survives across seeds is STRUCTURE, not the headline σ: the vassal mosaic
+persists instead of being digested, refuge seats hold (a hold-2.48 mountain
+seat persisting at 10 tiles for 11k steps), turnover +50% with the top-5
+churning, and secessions up (2-8 → 8-25 by 24k).
+
+**Empire mortality at 24k (the immortal-giants instrument): healthy.** 61
+realms at 59.9% claimed (the pre-wave world consolidated to ~19-26 here);
+flows shattered 31 / seceded 25 / annexed 55 (absorption waking exactly as
+org crosses its bar); the top-5 board churns — one long-lived 13M km² leader,
+not the frozen two-giants pathology.
+
+## The finding underneath the battery
+
+Why the σ ceiling: **46 of 58 realms sit exactly AT their target**
+(probe_whysize), so the size distribution IS the target distribution, and
+target ∝ the realm's basin population mass ÷ one world density — the spread
+of basin masses at this planet's geography and grid is lnσ ≈ 0.85-1.2, and
+every political lever that multiplies the quota (span, margin, bind density)
+moves the distribution's MEAN, not its variance. The variance history adds
+comes from aggregation (conquest merging basins — present, the top tail) and
+fragmentation residue (persistent statelets — what this wave's survival
+mechanisms protect). The remaining distance to history's lnσ ≈ 2.0-2.6 lives
+in (a) the settlement-seat supply (REGION_SPACING, the recorded ~55%/tick
+granularity trade) and (b) sub-basin geography, which RESOLVES WITH THE GRID
+— the owner plays tw=960, where relief pockets and small basins exist that
+tw=240 cannot represent. Both are recorded as the next levers, not smuggled
+in as constants.
+
+## The owner's grid (tw=960) — measured at last
+
+Two 8k arms at W=1920 / Half sim (the grid the complaint lives at), ON vs
+all-four-levers OFF:
+
+- **Byte-identical to step 4000.** Every mechanism is state-gated (war,
+  absorption, the org founding bar), and the early world has not developed
+  into any of them — the cardinal rule holding by construction, measured.
+- **The early world is already historically shaped at this resolution**:
+  step 4000 reads 69% of realms under 100k km² (real bands 47-80%), step
+  8000 reads 24-25% — versus 2-8% at the coarse gate grids at the same era.
+  The geography that CARRIES small states (relief pockets, small basins,
+  fine coasts) exists at tw=960 and simply cannot be represented at tw=240.
+- At 8k the arms differ only at the margin (38 vs 36 realms; lnσ ~1.0 both):
+  the mechanisms' measured work — the preserved vassal mosaic, refuge
+  persistence, the +50% turnover with mortality intact — lands mid-to-late
+  game, where the coarse-grid A/B isolates it.
+
+So the complaint decomposes cleanly: PART of "too blunt" was the shipped
+default grid itself (Quarter sim cannot hold a small-state tier the owner's
+Half sim already carries), and part was the missing survival/founding
+mechanisms this wave adds. Both halves are now measured.
+
+## Gate record (the shipped defaults: PEER_POLITY + REFUGE + VASSAL_SHIELD + GROW_STATECRAFT 0.85)
+
+- smoke green (incl. determinism + save/load roundtrip), emblem green.
+- stylized: **3/3 seeds pass all hard gates** — soft warnings 2/1/1 against
+  budget 2 (the pre-existing Zipf-n/a on each; one seed adds the known
+  market-integration regime term).
+- resgate: **all five bands, both gate seeds — and the ratios IMPROVED**
+  (median-area ratio 0.67 on both seeds vs the 0.42 floor; app-grid realm
+  count 36-46 vs the recorded 11-17). Ratchet re-baselined upward
+  accordingly (medianAreaRatio 0.42→0.50, popDensRatio 0.40→0.42).
+- empire mortality at 24k: 61 realms, 59.9% claimed, top-5 churns, flows
+  live (shattered 31 / seceded 25 / annexed 55) — not the frozen regime.
+
+## The overnight 50k battery (owner: "are you sure? observe everything")
+
+Four deep runs + one diagnosis run; the 16k horizon every earlier verdict used
+turns out to have been the story's FIRST ACT.
+
+**The spectrum keeps widening for tens of thousands of steps.** The "blunt
+band" is partly a horizon artifact: consolidation, fragmentation residue,
+vassal accumulation and refuge survival COMPOUND over deep time.
+
+| run | grid/seed | lnσ @16k | lnσ @50k | <100k share | vassals | max realm |
+|---|---|---|---|---|---|---|
+| B | tw=240 / 4242 | 0.84-1.12 | **1.76** | 16% | 30 of 44 | 21.8M km² |
+| C | tw=480 / 8817 | ~0.9 | **2.49 — inside the real-map 2.0-2.6 band** | 32% | 27 of 44 | 17.5M km² |
+
+- Tiny statelets at org 0.92-0.98 persist 8k-15k steps into the industrial
+  era (the REFUGE/VASSAL machinery working at full statecraft).
+- A (diag_full, tw=240/8817): 226 born / 178 died over 50k, dead-lifespan
+  median 4,500, hall of fame mixes 48k-step veterans with 15k risers; 99.9%
+  of land claimed at the modern end. Not the frozen regime.
+- D (probe_neighborhood, the microscope): 21 realms chronicled at 250-step
+  cadence in one ~2,000-km window across the whole run. The texture is
+  honest: witnessed deaths (a statelet's full arc to `polity.ended`), a
+  falling realm partitioned three ways by rival great powers, a 2.4M-km²
+  vassal riding a 17.5M-km² hegemon, an over-load realm (load 297 vs cap
+  108) shedding — and NO border flicker/oscillation at fine cadence.
+
+**Two late-game observations flagged (visible only past ~30k, recorded for
+the next wave — neither introduced by this one, both worth their own
+diagnosis):**
+
+1. **The waste-whale — DIAGNOSED (probe_whysize @50k).** At 50k the world is
+   fully partitioned and **every realm on the planet reads HEMMED — zero
+   open frontier anywhere** — so the mature size distribution is set by
+   CONTACT and war, not by targets (which also retro-explains why the
+   target-side levers measured weak: targets only govern the filling era).
+   The whale is NOT an exemption bug: its target is genuinely enormous
+   (held-load 15,028 vs target 79,597) because late-game TERRAIN_FADE lifts
+   waste carrying capacity, field-people migrate into the opened wastes, and
+   whoever already owned them gets the growth — first-mover contiguity on
+   the "who gets Siberia when it becomes claimable" question, the Russia
+   mechanism overgrown ~3× — and it stays ONE-member because settlements
+   crystallize too slowly on marginal land at tw=240 (the seat-supply bound
+   again). The shipped finer grid resolves it naturally: the tw=480 twin's
+   largest is an ordinary 17.5M-km² 29-member empire, the wastes partitioned
+   among several powers. Next-wave candidate if wanted: midline partition of
+   opened wastes among ALL logistics-mature neighbours (the treaty-line
+   mechanism), not first-mover-takes-all. Also confirmed in the same table:
+   the long-lived smalls carry refuge holds 1.5-2.0 (mountain statelets,
+   structurally), and a 1-tile realm with target 1,212 has sat hemmed for
+   49k steps — smallness at maturity is CONTACT-set, exactly as on the real
+   map.
+2. **Personality collapse.** By 50k every realm reads Trading
+   Empire/Mercantile with uniformly negative aggression — the temperament
+   register flattens as commerce dominates. Pre-existing system, out of this
+   wave's blast radius, recorded.
+
+## What was measured but NOT changed
+
+- `SPAN_TECH` stays 0 (owner decision 2026-07-30 recorded in
+  docs/resolution-collapse-2026-07-29.md, with the re-derivation invitation).
+  Whether a re-derived moderate value belongs on top of PEER_POLITY/REFUGE is
+  measured in this session's sweep and recorded below, but the default is the
+  owner's call, not this wave's.
+
+## Wave 2 — the owner's re-report, shipped (2026-08-05)
+
+Five reports, five mechanisms; gate record for the shipped set:
+
+1. **Big countries lasted Stone→Modern** → `ELITE_FRACTURE=1.5` (the parked
+   hegemon-ossification §6 blueprint, resume trigger fired at the app arm:
+   #1 held 100% of the back-40% unbroken). Shipped: back-40% tenure 0→6
+   changes, three holders share the late era, ambition alive to 0.70,
+   realm-kills doubled where it expresses. Structurally quiet at tw=240
+   (province supply), expresses at tw≥480 — the small-state-tier pattern,
+   now doctrine.
+2. **Collapse only receded to wilderness** → the same channel's success path
+   is `declareIndependence`: a matured plot takes the governor's whole
+   province out as a SUCCESSOR ON THE MAP.
+3. **Continental lockstep, no sea needed** → the divergence lane flipped
+   (GROW_SEASON/CROP_PHOTOPERIOD/CRADLE_PACKAGE/INVENT_STAGGER) with the
+   package-lag re-grounding (domLagY: wheat 900y … maize 4,500y): dawn
+   spread 432y → 922-5,871y; bronze-era continental org ratio 1.4 → 2.0;
+   packageless land (Australia) never matures a hearth; a colonised basin
+   stands down. SAVE_VERSION 5 keeps old saves in their own regime.
+4. **The Middle East** → root-caused under observed climate (rain-read crop
+   moisture vs flood-irrigated reality) and built as `IRRIG_CROP` — which
+   its own measurement then BLOCKED: with water supplied the hot corridors
+   read maize-optimal, because packages have no biogeography. Ships 0 with
+   the dependency named: package native ranges + spread, then re-flip.
+5. **Not enough cities at the right points** → `PLANT_EARLY=1`: the funnel
+   probe named the walls (a 100,000-person settler party and an
+   industrial-scale endowment — the units-class bug); re-scaled (6 census
+   party, per-settler endowment) the channel opens AT THE ORG BAR (~12k)
+   and accelerates (0 plants before 25k → 7 in the last measured window).
+
+Gate record: stylized 3/3 seeds (1 soft warning each, budget 2); resgate
+green on both seeds after ATTRIBUTION — three single-lever arms and two
+plain-default arms all read an identical 0.44 on 8817 (levers proven inert
+at the gate horizon), 0.99 on 31337; the failing band was the intraday floor
+tightening gone stale against the lane's own regime change, returned to its
+long-standing 0.42 with the lesson recorded in the gate header. Defaults
+smoke green; 2500-step hashbase UNCHANGED by the flip (4a9e8680/85bbdbc4) —
+both mechanisms state-gated, silent until the world develops into them.
+
+Recorded next-wave dependencies: package BIOGEOGRAPHY (native ranges +
+spread — unblocks IRRIG_CROP, sharpens hearth placement), the waste
+treaty-partition (the tw=240 whale), and the late personality collapse.

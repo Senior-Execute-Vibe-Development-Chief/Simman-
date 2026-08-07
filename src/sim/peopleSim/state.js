@@ -6,7 +6,7 @@
 import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
 import { T, rNormPop } from "./tuning.js";
-import { DEV_INIT_YEARS } from "./popField.js";
+import { devInitYears } from "./popField.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { computeRelief } from "../worldgenUtils.js";
@@ -586,6 +586,27 @@ export function cradleScoreAt(world, ti) {
 // scales. Rule-2 audit: the anchor is a real-history duration, not a count of
 // hearths to hit — MAX_CRADLES stays the only supply constant, untouched.
 const INVENT_EPOCH_Y = 6500;
+// ── The lag is the PACKAGE's (2026-08 correction, measured) ────────────────
+// T = EPOCH/score compressed the 6,500-year archaeological span to a measured
+// 432-year spread: the picker takes the TOP of the score distribution, so
+// picked scores cluster (4.6–6.6) and the quotient cannot spread — every
+// hearth on every continent opened ancient (986–1,418y into a 6,000-year
+// prehistory) and the dawn was synchronous, the exact continental lockstep
+// the owner reported. The variable that actually carried history's stagger is
+// the DOMESTICATION LAG of the local wild package (cropPackages.js domLagY —
+// wheat ~900y, maize ~4,500y: archaeobotany, the same admissibility class as
+// the photoperiod correction), stretched by how marginal the site is for it:
+//
+//     T_i = domLagY(best package here) / suit_i
+//
+// A perfect wheat valley realizes wheat's own lag; a marginal one takes
+// proportionally longer; a maize land waits millennia BECAUSE MAIZE IS MAIZE
+// (the offset emerges from botany, no continent named anywhere); ground with
+// NO viable package (suit < the scorer's own floor) never matures a hearth at
+// all — the Australia case, which previously farmed at t=0. The old score
+// quotient stays ONLY as the fallback where no package can be read (a pin on
+// packageless ground matures slowly rather than dividing by zero).
+const HEARTH_SUIT_MIN = 0.15;   // below this the best "package" is noise — the scorer would never crown it
 function seatOrArmHearths(world, picked) {
   const armed = [];
   for (const p of picked) {
@@ -593,14 +614,21 @@ function seatOrArmHearths(world, picked) {
     // (floor 0.5: a scenario PIN on a tile failing the scorer's viability
     // windows can score ≤ 0; it matures very slowly rather than dividing by
     // zero — and being a pin, it stays a candidate instead of being dropped.)
-    const Ty = INVENT_EPOCH_Y / sc;
-    if (Ty <= DEV_INIT_YEARS) {
+    const pkg = bestPackageAt(world, p.ti);
+    // suit UNCLAMPED: >1 (the package's yield headroom on extraordinary land)
+    // legitimately accelerates domestication below the nominal lag — the lag is
+    // defined at a reference site. (A min(1,·) clamp here made every rich rice
+    // hearth mature at exactly domLagY — a new synchrony artifact, measured.)
+    const Ty = pkg && pkg.suit >= HEARTH_SUIT_MIN
+      ? (CROP_BY_ID[pkg.id].domLagY || INVENT_EPOCH_Y) / pkg.suit
+      : INVENT_EPOCH_Y / sc;
+    if (Ty <= devInitYears()) {
       const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });
-      born._hearthAgeY = DEV_INIT_YEARS - Ty;   // years the technique wave has spread by map open (read by ensureDevField)
-      console.log(`[peopleSim] hearth ${born.name} at (${p.tx},${p.ty}) score ${sc.toFixed(2)} — matured ${Math.round(Ty)}y into prehistory (wave age ${Math.round(born._hearthAgeY)}y)`);
+      born._hearthAgeY = devInitYears() - Ty;   // years the technique wave has spread by map open (read by ensureDevField); this branch is unreachable under DAWN_LIVE (no hearth matures inside a zero-length prehistory)
+      console.log(`[peopleSim] hearth ${born.name} at (${p.tx},${p.ty}) score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — matured ${Math.round(Ty)}y into prehistory (wave age ${Math.round(born._hearthAgeY)}y)`);
     } else {
-      armed.push({ ti: p.ti, tx: p.tx, ty: p.ty, score: sc, needY: Ty - DEV_INIT_YEARS, effY: 0 });
-      console.log(`[peopleSim] hearth candidate at (${p.tx},${p.ty}) score ${sc.toFixed(2)} — ARMED: ~${Math.round(Ty - DEV_INIT_YEARS)}y of peopled-basin time from maturity`);
+      armed.push({ ti: p.ti, tx: p.tx, ty: p.ty, score: sc, needY: Ty - devInitYears(), effY: 0 });
+      console.log(`[peopleSim] hearth candidate at (${p.tx},${p.ty}) score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — ARMED: ~${Math.round(Ty - devInitYears())}y of peopled-basin time from maturity`);
     }
   }
   if (armed.length) world._armedHearths = armed;

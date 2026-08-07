@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;   // v5: the divergence lane defaults ON (see the v<5 regime guard in loadWorld)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -291,6 +291,17 @@ export function saveWorld(world, meta = {}) {
       // Absent unless the lever armed any → default saves byte-identical.
       armedHearths: world._armedHearths && world._armedHearths.length ? world._armedHearths : undefined,
       hearthArmAt: world._hearthArmAt !== undefined ? world._hearthArmAt : undefined,
+      // Settlement-less farming sources (T.CITY_AT_BIRTH): each armed-hearth
+      // maturation that did NOT mint a settlement wrote {ti, agri} here — the
+      // technique wave's ground-truth sources. NOT re-derivable (the armed
+      // record is consumed at maturation); losing them un-invents farming on
+      // load. Absent unless the lever matured any → default saves byte-identical.
+      hearthSeeds: world._hearthSeeds && world._hearthSeeds.length ? world._hearthSeeds : undefined,
+      // Nations of the land (T.STATE_OF_LAND): the seat register and the static
+      // basin territory. Not re-derivable (formation is a one-time event and the
+      // painted cell is the nation's land). Absent unless the lever formed any.
+      landSeats: world._landSeats && world._landSeats.size ? [...world._landSeats].map(([id, r]) => ({ id, ...r })) : undefined,
+      landOwner: sparseFromTyped(world._landOwner, -1) ?? undefined,
       // The loyalty field (T.LOYAL_FIELD, loyaltyField.js): allegiance is a
       // dense continuum (every governed tile carries a value), the owner-diff
       // snapshot is dense ids; both absent unless the lever ran (undefined key
@@ -384,6 +395,17 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("LABEL_BIRTH" in tn)) T.LABEL_BIRTH = 0;
     if (!("MULTI_HEARTH" in tn)) T.MULTI_HEARTH = 0;
+    // The divergence lane (GROW_SEASON / CROP_PHOTOPERIOD / CRADLE_PACKAGE /
+    // INVENT_STAGGER) became default-ON in v5 (2026-08, the shape wave). A
+    // pre-v5 world was made under annual-mean agronomy and t=0 hearths, so it
+    // stores no delta for them; the two LIVE levers (season/photoperiod) would
+    // silently re-key its whole food system on load, and the two GENESIS
+    // levers describe an initial condition its settlements already embody.
+    // Keep such saves in their own regime unless they set a lever explicitly.
+    if (!("GROW_SEASON" in tn)) T.GROW_SEASON = 0;
+    if (!("CROP_PHOTOPERIOD" in tn)) T.CROP_PHOTOPERIOD = 0;
+    if (!("CRADLE_PACKAGE" in tn)) T.CRADLE_PACKAGE = 0;
+    if (!("INVENT_STAGGER" in tn)) T.INVENT_STAGGER = 0;
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
@@ -457,6 +479,10 @@ export function loadWorld(data, opts = {}) {
     // Armed hearth candidates (T.INVENT_STAGGER) — see the save side.
     if (data.maps.armedHearths && data.maps.armedHearths.length) world._armedHearths = data.maps.armedHearths.map(h => ({ ...h }));
     if (data.maps.hearthArmAt !== undefined) world._hearthArmAt = data.maps.hearthArmAt;
+    if (data.maps.hearthSeeds && data.maps.hearthSeeds.length) world._hearthSeeds = data.maps.hearthSeeds.map(h => ({ ...h }));
+    if (data.maps.landSeats && data.maps.landSeats.length) world._landSeats = new Map(data.maps.landSeats.map(r => [r.id, { ti: r.ti }]));
+    const lown = typedFromSparse(data.maps.landOwner, Int32Array, N, -1);
+    if (lown) world._landOwner = lown;   // nations of the land: static basin territory (T.STATE_OF_LAND)
     const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);

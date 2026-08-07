@@ -35,9 +35,9 @@ and revealed by zoom; settlement names appear as you lean in. Space
 pauses, number keys switch lens, `?` opens the full key map.
 
 - **World** — pick a preset in ⊕ New World, roll a seed, press play.
-  - Presets: **Earth (Sim)** (real Earth heightmap + simulated climate; a
-    checkbox swaps the whole climate for observation — NCEP wind, rainfall and
-    air temperature — for a real-Earth map), **Tectonic** (plate simulation from
+  - Presets: **Earth (Sim)** (real Earth heightmap + OBSERVED climate by
+    default — NCEP wind, rainfall and air temperature; uncheck the box to
+    simulate the climate instead), **Tectonic** (plate simulation from
     scratch), plus continents/archipelago-style noise presets and an **Import**
     mode (Azgaar Full-JSON exports or grayscale heightmap images).
   - The left **lens dock** (icon rail) holds the map lenses — Terrain

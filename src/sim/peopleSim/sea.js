@@ -46,7 +46,7 @@ import { expansionColonyMul } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { getPolity } from "./entities.js";
-import { labelBasinFree, labelClaimBasin, labelSiteOf } from "./crystallize.js";
+import { labelBasinFree, labelClaimBasin, labelSiteOf, cityBasinOkAt } from "./crystallize.js";
 
 // Ship ids count up per world (world._nextShipId) — see the settlement-id
 // note in settlement.js for why module-scope counters are off limits.
@@ -836,7 +836,10 @@ function foundColony(world, sh) {
   // dropping them leaks population and breaks the closed money supply), the
   // fleet TURNS BACK: its people and treasury return to the founder if it still
   // stands. (If the founder is gone, the loss is unavoidable but rare.)
-  if (!siteIsClear(world, sh.landTi)) {
+  // T.DISSOLVE_TOWNS: a shore whose basin cannot feed a CITY takes no colony —
+  // the fleet turns back exactly as it does for an occupied site, and the
+  // coast stays countryside until it can carry an urban core.
+  if (!siteIsClear(world, sh.landTi) || !cityBasinOkAt(world, lx, ly)) {
     const home = world._byId && world._byId.get(sh.owner);
     if (home && home.mode === "settled") {
       home.people = (home.people || 0) + (sh.people || 0);

@@ -77,7 +77,7 @@ const WAR_BONUS  = _envNum("SIM_CTRL_WARPUSH", 5.0);
 // cannot escape it: a thin uniform band into wilderness, and BLOCKED from a neighbour's real land
 // (no overwrite). Reached own-land re-charges to SRC_HOLD (a uniform source, no distance decay),
 // so the band is the SAME width for a hegemon and a city-state — size- and resolution-independent.
-const SRC_HOLD   = _envNum("SIM_CTRL_SRC", 6.0);    // control level on reached own land (source ceiling)
+export const SRC_HOLD = _envNum("SIM_CTRL_SRC", 6.0);    // control level on reached own land (source ceiling; exported: materialisation stamps inherited tribal ground at this hold, crystallize.js)
 const CHARGE     = _envNum("SIM_CTRL_CHARGE", 1.0); // control gained/pass on own land (tops up the source)
 const WILD_COST  = _envNum("SIM_CTRL_WILD", 1.5);   // + this entering WILDERNESS → thin band ≈ SRC_HOLD/(cost+WILD) tiles
 const TRK_WATER  = _envNum("SIM_CTRL_TWATER", 3.0); // cost to bleed onto a water tile (short coastal relay; masked in render)

@@ -17,9 +17,9 @@ import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
-import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning.js";
+import { applyTuning, resetTuning, tuningDefaults, T as SIM_T } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
-import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
+import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD, TIER_CORE, TIER_NAME_CORE } from "./sim/peopleSim/settlement.js";
 import { GOODS } from "./sim/peopleSim/goods.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE, IN_ORE, IN_METAL, IN_CLOTH, IN_WARES } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, techState, nextTechs } from "./sim/peopleSim/tech.js";
@@ -462,7 +462,7 @@ function stripeCells(ctx,cells,TR,alpha){
 // selecting different settlements.
 const[psCardOpen,setPsCardOpen]=useState({food:true,tech:true,knowledge:false,resources:false,trade:true,chronicle:true});
 const togglePsCard=id=>setPsCardOpen(o=>({...o,[id]:!o[id]}));
-const[useRealWind,setUseRealWind]=useState(false);
+const[useRealWind,setUseRealWind]=useState(true);   // Earth (Sim) default: OBSERVED climate (NCEP wind/rain/temp) — owner decision 2026-08; uncheck to simulate the climate instead. Only consulted on the earth_sim preset (see _realWind), degrades to simulated if the data isn't loaded.
 const useMercator=false;
 const[showGlobe,setShowGlobe]=useState(false);
 const[globeBuf,setGlobeBuf]=useState(null);
@@ -483,7 +483,7 @@ const[mapScale,setMapScale]=useState(1920);
 // sim tile spans (1 = sim matches the land, 2 = half [default], 4 = quarter/faster). Map
 // resolution (mapScale) sets terrain/coast crispness; simDiv sets sim granularity — which
 // is speed AND emergent detail (a finer grid seeds more river cradles → a different world).
-const[simDiv,setSimDiv]=useState(4);   // sim granularity default: Quarter — fast everywhere, phone-friendly
+const[simDiv,setSimDiv]=useState(2);   // sim granularity default: HALF (tw=960) — owner decision 2026-08 (docs/shape-of-the-map-2026-08.md: the small-state tier of the political map exists at this grid and cannot be represented at Quarter; measured 69% of realms under 100k km² early vs 2-8% at the coarse grids). ~4× the sim cost of Quarter — the old phone-friendly default is one click away.
 const genW=mapScale,genH=mapScale>>1;   // REQUESTED scale — the size the NEXT world generates at
 // Render/data dimensions track the ACTUAL loaded world, never the requested mapScale. Worldgen is
 // async, so between the scale change and the new world arriving the two differ; keying the canvas /
@@ -535,7 +535,7 @@ const simWorkerRef=useRef(null);
 const genIdRef=useRef(0);
 // Sim tile resolution (simDiv) read by finalizeWorld — a ref so the async worldgen
 // finalize sees the value chosen at request time even though finalizeWorld is memoised.
-const simTileResRef=useRef(4);
+const simTileResRef=useRef(2);   // mirrors simDiv's new Half default (finalizeWorld reads the ref at request time)
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
@@ -549,7 +549,7 @@ const psHistoryRef=useRef([]);
 const [statsCopied,setStatsCopied]=useState(false);
 const oceanLevelRef=useRef(0.78);const pendingSaveRef=useRef(null);const downloadSaveRef=useRef(null);const saveFileRef=useRef(null);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("earth_sim");const fileRef=useRef(null);const importedWorldRef=useRef(null);
-const useRealWindRef=useRef(false);
+const useRealWindRef=useRef(true);   // mirrors useRealWind's new default (the ref is what worldgen actually reads)
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 const atlasCache=useRef(null);
@@ -1496,7 +1496,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // ── Tier filter (Layers panel): drop any component whose ONLY settlements
     // belong to hidden tiers, so only roads connecting the active tiers show.
     const _Lr=layersRef.current;
-    const tierShowR=[_Lr.village,_Lr.city,_Lr.city,_Lr.metropolis];   // tier 1 ("city") follows the city toggle
+    const tierShowR=[_Lr.village,_Lr.town??_Lr.city,_Lr.city,_Lr.metropolis];   // tier 1 is a TOWN — it follows the town toggle (city fallback for old saved layer prefs)
     const allTiers=tierShowR.every(Boolean);
     let compVisible=null;
     if(!allTiers){
@@ -2327,7 +2327,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // major cities/metropolises as landmarks.
     const tierShow=_identity
       ?[false,false,_L.icons&&_L.city,_L.icons&&_L.metropolis]
-      :[_L.icons&&_L.village,_L.icons&&_L.city,_L.icons&&_L.city,_L.icons&&_L.metropolis];
+      :[_L.icons&&_L.village,_L.icons&&(_L.town??_L.city),_L.icons&&_L.city,_L.icons&&_L.metropolis];
     // Glyphs render on the fixed-resolution feature canvas too (crisp, constant size at every map
     // scale). fctx's transform is the map's pan/zoom scaled by _k, so the map-canvas coordinates and
     // *iconScale sizes below are reused verbatim; `ctx` is shadowed to the feature context for the
@@ -2509,6 +2509,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
   if(snap.countryClaim){psw._countryClaim=snap.countryClaim;psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver drives label-anchor cache)
+  if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
   // layer it was built for, so a stale field from a previous lens is ignored.
@@ -2721,7 +2722,8 @@ let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
    if(psw._countryClaim&&psw.countries){
      const tw2=psw.tw;const stx=Math.min(tw2-1,((wx/RES)|0)/psw.tileRes|0),sty=Math.min(psw.th-1,((wy/RES)|0)/psw.tileRes|0);
      const cc=psw._countryClaim[sty*tw2+stx];
-     if(cc>=0){const c=psw.countries.get(cc);if(c){hovRealm=c.name||(c.capital&&c.capital.name);hovRealmId=cc;}}}
+     if(cc>=0){const c=psw.countries.get(cc);if(c){hovRealm=c.name||(c.capital&&c.capital.name);hovRealmId=cc;}
+       else if(psw._landNames&&psw._landNames.has(cc)){hovRealm=psw._landNames.get(cc).name||"a people of the land";hovRealmId=cc;}}}
    {const psTx=((wx/RES)|0)/psw.tileRes,psTy=((wy/RES)|0)/psw.tileRes;
     let best=null,bestD2=36;
     for(const s of psw.settlements){
@@ -3244,20 +3246,29 @@ const renderInspect=()=>{
   if(!psw)return null;
   const s=psw.settlements.find(x=>x&&x.id===selectedSettlementId&&x.mode==="settled");
   if(!s)return null;
-  const tierName=["farming region","city","city","metropolis"][s.tier]||"settlement";
-  // A farming region (tier 0) does NOT promote in place — it FOUNDS a town nearby
-  // once it fills out (urban genesis). Only urban nodes climb, at the sim's
-  // canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
+  // Core ladder (T.CITY_CORE): the words are DEFINITIONS on the urban core —
+  // tier 0 is a VILLAGE that promotes in place as its measured core grows, so
+  // the panel prices progress on _coreMeasured against the TIER_CORE floors.
+  const coreT=!!(SIM_T.CITY_CORE&&SIM_T.DISSOLVE_FARMS);
+  // Legacy array historically said "city" for tier 1 while the hover card and
+  // the chronicle said "town" — the owner caught the mismatch live. Tier 1 is
+  // a town in every register.
+  const tierName=(coreT?TIER_NAME_CORE:["farming region","town","city","metropolis"])[s.tier]||"settlement";
+  // Legacy ladder: a farming region (tier 0) does NOT promote in place — it FOUNDS
+  // a town nearby once it fills out (urban genesis). Only urban nodes climb, at the
+  // sim's canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
   // gate (towns are spawned, not grown from regions), so progress is urban-only.
-  const isRegion=(s.tier|0)===0;
+  const isRegion=!coreT&&(s.tier|0)===0;
   // Live tier bars (Tier-B rank tiers): town→city reads the world's cached
   // cityBar (percentile-anchored, or the legacy relative bar), city→metro the
   // floating metro bar; falls back to the static THRESHOLD before first tick.
-  const nextThr=isRegion?0:
+  const nextThr=coreT?
+    ((s.tier|0)>=3?0:(s.tier|0)===2?Math.max(TIER_CORE[3],(psw._topUrban||0)*0.8):TIER_CORE[(s.tier|0)+1]):
+    isRegion?0:
     s.tier===1?(psw._cityBar||TIER_THRESHOLD[2]):
     s.tier===2?Math.max(TIER_THRESHOLD[3],(psw._topUrban||0)*0.8):
     TIER_THRESHOLD[s.tier+1];
-  const progress=nextThr?Math.min(1,s.people/nextThr):1;
+  const progress=nextThr?Math.min(1,(coreT?(s._coreMeasured??s._urbanPop??0):s.people)/nextThr):1;
   // s.people is the WHOLE PROVINCE (urban core + rural hinterland, summed over the
   // settlement's entire catchment). For an urban node, headline the CITY CORE
   // (_urbanPop) — the number a reader means by "the city" — and show the province
@@ -3339,7 +3350,7 @@ const renderInspect=()=>{
   // breakdown below comes from s._mInRate / s._mOutRate).
   const wealthDelta=s._wealthDelta||0;
   const moneyCol=v=>v>0.02?"#3a7":v<-0.02?"#c44":"#8a8f9c";
-  const nextName=isRegion?null:["larger city","larger city","metropolis"][s.tier];
+  const nextName=isRegion?null:(coreT?["town","city","metropolis"]:["larger city","larger city","metropolis"])[s.tier];
 
   return(
     <div className="au-scroll"
@@ -4287,7 +4298,7 @@ return(
     const ctry=hoverInfo.realmId>=0&&psw&&psw.countries?psw.countries.get(hoverInfo.realmId):null;
     const emblem=ctry?realmEmblemURL(psw,ctry,terRef.current,worldRef.current?worldRef.current.seed:0):null;
     if(!hoverInfo.sett&&!ctry)return null;
-    const tierName=hoverInfo.sett?["farming region","town","city","metropolis"][hoverInfo.sett.tier]||"settlement":null;
+    const tierName=hoverInfo.sett?(SIM_T.CITY_CORE&&SIM_T.DISSOLVE_FARMS?TIER_NAME_CORE:["farming region","town","city","metropolis"])[hoverInfo.sett.tier]||"settlement":null;
     return(<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,paddingBottom:4,borderBottom:"1px solid rgba(216,190,150,0.18)"}}>
       {emblem&&<img src={emblem} alt="" style={{height:26,flexShrink:0,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.3))"}}/>}
       <div style={{minWidth:0}}>
@@ -4571,7 +4582,7 @@ return(
         {[{d:1,l:"Full"},{d:2,l:"Half"},{d:4,l:"Quarter"}].map(o=>(
           <button key={o.d} onClick={()=>{simTileResRef.current=o.d;setSimDiv(o.d);generate(seed);}}
             className={"au-btn au-flat"+(simDiv===o.d?" au-active":"")} style={{flex:1,fontSize:11,padding:"6px 4px"}}
-            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms (default)":"Half the map resolution — slower, more and smaller realms"}>{o.l}</button>
+            title={o.d===1?"Sim tiles match the map — finest regions, but ~4× slower and seeds more (smaller) civilisations":o.d===4?"Coarsest sim — fastest; fewer, larger realms (the phone-friendly choice)":"Half the map resolution — the full political spectrum, small states included (default)"}>{o.l}</button>
         ))}
       </div>
       <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:6}}>

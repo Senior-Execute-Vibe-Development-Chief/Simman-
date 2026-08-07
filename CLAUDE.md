@@ -26,16 +26,22 @@ list usually is not. See `docs/observability.md`.
 
 ## WHAT THE NUMBERS MEAN — read before quoting any of them
 
-**A SETTLEMENT IS A CITY OR LARGE TOWN. NEVER A VILLAGE.** The village and hamlet
-tier is not represented as entities at all — it is **implied in the land**, carried by
-`popField` (people-on-land) and by each settlement's rural belt (`_ruralPop`).
+**A SETTLEMENT IS A CITY — or a community growing into one. NEVER a mere village
+or market town.** (Owner directive 2026-08-05, `DISSOLVE_TOWNS` default-on: an
+entity mints only where the basin can feed a ~10k-person urban core, and one whose
+basin decays fades back into the countryside.) Villages and towns are not entities —
+they are **implied in the land**, carried by `popField` (people-on-land) and by each
+city's belt (`_ruralPop`). A settlement's TIER label (village/town/city/metropolis
+under `CITY_CORE`) is its measured urban-core size on the way up that arc — a
+tier-0/1 entity is a *growing city*, not proof the village register exists.
 
-So ~230 settlements on an Earth-sized world is not "a planet with 230 towns"; it is a
-planet with 230 **cities and large towns**, which is the right order for a
-pre-industrial world. And a realm holding 2M km² with four members is administering
-four **provincial centres** — the register real empires used (~20-30 Achaemenid
+So the entity count is the CITY register: a dawn world holds ~10 (the hearth
+cradles — 3000 BCE Earth held about a dozen cities), an iron-age one ~100, most
+labeled city by then. A realm holding 2M km² with four members is administering
+four **urban provinces** — the register real empires used (~20-30 Achaemenid
 satrapies over 5.5M km²; ~10 Roman provinces rising to ~50 under Diocletian; ~100 Han
-commanderies).
+commanderies). Pre-flip history (the "230 cities and large towns" register) is
+reachable byte-identically with `CITY_CORE=0, CROWD_FOUND=0, DISSOLVE_TOWNS=0`.
 
 **POPULATION IS IN SIM UNITS. 1 sim-person = 1,000 people** (`POP_SCALE`, defined in
 `src/sim/units.js` and imported by both the UI and the metric collector). A settlement
@@ -205,9 +211,15 @@ RIGHT:  settle where fertility×water is high  // the Nile densely settles itsel
 ## THE THIRD CARDINAL RULE — measure at the grid that SHIPS
 
 > **Every gate in this repo runs at `W=480` (sim `tw=240`). The app ships `W=1920`
-> with `simDiv 4` — sim `tw=480`. A mechanism validated only at the reference grid
-> is unvalidated. Run `npm run resgate` before pushing anything that touches
-> territory, population, the food economy, or politics.**
+> with `simDiv 2` (Half, sim `tw=960` — owner default 2026-08; it was `simDiv 4`,
+> `tw=480`, until the shape-of-the-map wave measured that the political map's
+> small-state tier only exists at the finer grid). A mechanism validated only at
+> the reference grid is unvalidated. Run `npm run resgate` before pushing anything
+> that touches territory, population, the food economy, or politics — its app arm
+> runs `tw=480` as the standing cross-grid proxy (a full `tw=960` arm is
+> hours-scale; docs/shape-of-the-map-2026-08.md carries this wave's direct
+> `tw=960` measurements), so anything with large territorial blast radius should
+> ALSO be spot-checked at `tw=960` (`tools/probe_shape.mjs [steps] 1920 [seed]`).**
 
 ### Why this is absolute (learned three times in one week)
 

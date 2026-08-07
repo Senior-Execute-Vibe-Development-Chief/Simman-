@@ -19,10 +19,10 @@
 
 import { isContinentalLand } from "./state.js";
 import { tel, telPass } from "./telemetry.js";
-import { fieldShift, devWaveIvl } from "./popField.js";
-import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt } from "./settlement.js";
+import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
+import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { tileOpenness } from "./transport.js";
-import { getPolity, fiscAdoptable } from "./entities.js";
+import { getPolity, fiscAdoptable, ensurePolity } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
 import { dominantFaith } from "./faiths.js";
 import { logEvent } from "./events.js";
@@ -30,7 +30,8 @@ import { grievOf } from "./loyaltyField.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
-import { grownLiveOwnerAt } from "./countryClaim.js";
+import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
+import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 import { settleHostility } from "./habitability.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
@@ -168,6 +169,44 @@ function townBasinMass(world, tx, ty, rB) {
   }
   return basin;
 }
+/** Measurement export (probes only): the CROWD_FOUND mass ratio at (tx,ty) —
+ *  the founding basin's field people over a bar-sized basin (1 = exactly
+ *  TOWN_BASIN_MIN×rn², the "enough countryside to carry a town" bar). A
+ *  PHYSICAL yardstick for probes; crowdMul itself normalizes by the live
+ *  crowdRefMass (the age's typical settled basin), not by this bar — the
+ *  first build normalized by the bar and measured degenerate (see the
+ *  crowdMul comment). */
+export function crowdMassRatio(world, tx, ty) {
+  const rn = rNormPop(world);
+  // Raw bar, no rn²: field mass is EXTENSIVE (people), so the sum over a
+  // fixed real region is grid-invariant and the bar is absolute — the same
+  // convention as the founding floor itself. (An earlier ×rn² here was wrong
+  // beyond the reference grid; every recorded measurement ran at rn=1 where
+  // the two coincide.)
+  return townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) / TOWN_BASIN_MIN;
+}
+/** The age's TYPICAL settled basin (median townBasinMass over settled sites),
+ *  cached and refreshed on a coarse cadence — a live self-calibrating
+ *  reference of the tier-bar species, floored at the TOWN_BASIN_MIN bar so
+ *  the dawn (few settlements, all cradles) divides by the viability floor
+ *  rather than by noise. Only T.CROWD_FOUND consumes it; the lever guard at
+ *  the call site keeps the off-path free of this work entirely. */
+const CROWD_REF_IVL = 250;   // refresh cadence in steps — amortization, not a content gate (the median moves slowly)
+export function crowdRefMass(world) {
+  if (world._crowdRefAt !== undefined && world.step - world._crowdRefAt < CROWD_REF_IVL) return world._crowdRef;
+  const rn = rNormPop(world);
+  const rB = Math.round(TOWN_BASIN_R * rn);
+  const floor = TOWN_BASIN_MIN;   // raw: field mass is extensive, the bar absolute (see crowdMassRatio)
+  const masses = [];
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    masses.push(townBasinMass(world, s.pos.x | 0, s.pos.y | 0, rB));
+  }
+  masses.sort((a, b) => a - b);
+  const med = masses.length ? masses[masses.length >> 1] : 0;
+  world._crowdRefAt = world.step;
+  return world._crowdRef = Math.max(floor, med);
+}
 const KNOWLEDGE_DECAY_SCALE     = 30;
 // Radius for the spatial-grid fast path in inheritKnowledgeAt. Generous enough
 // that any non-isolated spawn finds its nearest neighbour in the grid (so the
@@ -260,6 +299,7 @@ const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold
                                          // Already a FIELD-MASS read (the B3 bar pattern). Under T.LABEL_BIRTH the bar
                                          // is the lever T.LABEL_BAR (default = this same 360 anchor) and the read
                                          // becomes basin-EXCLUSIVE — see the sweep.
+const CROWD_CAP                 = 6;     // T.CROWD_FOUND saturation: the densest basin founds at most this multiple of a bar-sized one
 const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (×rn at the use site; = URBAN_CATCHMENT, one market catchment).
                                          // Under T.LABEL_BIRTH this same real distance is the market HORIZON of the
                                          // site-ledger law below (the cell's activation-mass radius AND the reach of a
@@ -708,6 +748,46 @@ export function labelBasinMass(world, tx, ty) {
   const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
   return k >= 0 ? _siteClaims(world).mass[k] : 0;
 }
+/** The PEOPLED BASIN of ledger site k: breadth-first from the seat over the
+ *  seat's OWN LANDMASS within the cell, gathering people until capMass. ONE
+ *  measurement, three consumers — nation formation, city eligibility, and
+ *  the drift's domain: the ground whose people a rising seat can actually
+ *  draw. Walkable (the claim crawl's own connectivity law), within one
+ *  market horizon (the cell), weighed by the people actually on it. Σpf·devF
+ *  rides along so the farming gate can ask whether THE PEOPLE farm — the
+ *  cell partition is a Euclidean water-blind disk and its seat tiles are
+ *  shelter/river-mouth maxima where the technique wave arrives LAST, so a
+ *  seat-tile devF test starved the world's densest basins of both nations
+ *  and cities while their interiors brimmed with farmed people (measured,
+ *  probe_dimfunnel 25k/8817/960: every top cell, up to 95× the nation bar,
+ *  blocked solely by "farming not at the seat", devF 0.28-0.44 vs interior
+ *  full). Deterministic: fixed neighbour order, FIFO ring growth. */
+export function peopledBasinAt(world, k, capMass) {
+  const L = labelSiteLedger(world);
+  const st = L.sites[k], siteId = L.siteId;
+  const pf = world.popField, devF = world.devField, elev = world.elev;
+  const comp = landComp(world);
+  const tw = world.tw, th = world.th;
+  const seatComp = comp[st.ti];
+  const qx = [st.ti];
+  const seen = new Set(qx);
+  const take = [];
+  let mass = 0, devW = 0;
+  for (let qh = 0; qh < qx.length && mass < capMass; qh++) {
+    const t = qx[qh];
+    take.push(t); mass += pf[t]; if (devF) devW += pf[t] * devF[t];
+    const ty = (t / tw) | 0, tx = t - ty * tw;
+    const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
+                ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
+    for (let n = 0; n < 4; n++) {
+      const ni = ns[n];
+      if (ni < 0 || seen.has(ni)) continue;
+      if (siteId[ni] !== k || elev[ni] <= 0 || comp[ni] !== seatComp) continue;
+      seen.add(ni); qx.push(ni);
+    }
+  }
+  return { take, mass, devP: mass > 0 ? devW / mass : 0 };
+}
 /** Mark (tx,ty)'s cell claimed (a label was just minted in it). */
 export function labelClaimBasin(world, tx, ty) {
   const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
@@ -904,7 +984,425 @@ const pioneerTempo = (agri) => {
   const dev = Math.min(1, Math.max(0, ((agri || 0) - NEOLITHIC_AGRI) / span));
   return COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * dev;
 };
+// ── T.DISSOLVE_TOWNS: a settlement whose basin can no longer feed a CITY
+// fades back into the countryside. Under ONE_POP the entity was always a
+// LENS over the field: its people stay on the land as the villages and
+// small towns they are — only the urban institution dissolves (wealth to a
+// ruin hoard, the chronicle notes the fading). Founding requires the city
+// basin (TIER_CORE[2]/TIER_CORE[1] × the town bar); dissolution fires below
+// DISSOLVE_HYST × that, SUSTAINED in history-time — the wide hysteresis gap
+// plus the timer is what keeps a breathing basin from flickering its city
+// in and out of existence. Checked on a per-settlement stride: the disk sum
+// is the whole cost, so a hundred settlements cost ~half a disk per tick.
+const DISSOLVE_CHECK_IVL = 200;   // per-settlement stride (amortization, not a content gate)
+const DISSOLVE_HYST = 0.6;        // dissolve below this fraction of the founding bar
+const DISSOLVE_SUSTAIN = 1500;    // history-steps the basin must stay thin (granularity-corrected below)
+const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured here (core share p50 4.6-5.6%, every probe arm) and historically (~3-8%)
+/** T.DISSOLVE_TOWNS: can (tx,ty)'s basin feed a CITY? The lever's one bar —
+ *  basin census ≥ TIER_CORE[2]/URBAN_SHARE_REF (a 10k core at the ~5% urban
+ *  share needs a ~200,000-person market basin) — shared by every mint path
+ *  (crystallize, state plantations, sea colonies) so no channel can mint at
+ *  town scale around it. True when the lever is off or the bridge is not yet
+ *  live (the dawn is hearth-driven anyway). */
+export function cityBasinOkAt(world, tx, ty) {
+  if (!T.DISSOLVE_TOWNS || !(world._onePopScale > 0)) return true;
+  const rn = rNormPop(world);
+  const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+  return mass * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF;
+}
+function maybeDissolveTowns(world) {
+  if (!T.DISSOLVE_TOWNS) return;
+  if (!(world._onePopScale > 0)) return;   // pre-bridge the basin census is unreadable (dawn; hearth-driven anyway)
+  const rn = rNormPop(world);
+  const rB = Math.round(TOWN_BASIN_R * rn);
+  // The same census bar founding pays (a city's ~200-census market basin),
+  // at DISSOLVE_HYST of it — the hysteresis gap plus the sustain timer keeps
+  // a breathing basin from flickering its city in and out of existence.
+  const bar = (TIER_CORE[2] / URBAN_SHARE_REF) * DISSOLVE_HYST / world._onePopScale;   // in field units
+  const dt = world._dt || 1;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    if ((world.step + s.id) % DISSOLVE_CHECK_IVL !== 0) continue;
+    if (townBasinMass(world, s.pos.x | 0, s.pos.y | 0, rB) >= bar) { s._thinBasinSince = undefined; continue; }
+    if (s._thinBasinSince === undefined) { s._thinBasinSince = world.step; continue; }
+    if (world.step - s._thinBasinSince > DISSOLVE_SUSTAIN / dt) {
+      s.mode = "dead";
+      bankRuinHoard(world, s);
+      logEvent(world, "settlement.dissolved", { s: s.id, sName: s.name, polity: s.countryId });
+    }
+  }
+}
+
+// ── T.CITY_AT_BIRTH: cities are BORN as cities — the proto-urban stage lives
+// in the land (Wave 5 Stage B; owner 2026-08-05: "i still see you spawning
+// villages and towns"). No entity ever mints below the city definition.
+// Instead, each unclaimed ledger site whose market cell can feed a city
+// (cell mass ≥ the city-basin bar) CONCENTRATES its countryside in the field
+// itself: URBAN_DRIFT of the cell's people per step trickle toward the site
+// tile (the rural→proto-urban migration), a capacity spike stamped at the
+// site each tick holds what arrived (exactly the mechanism grown cities use,
+// applied pre-entity — deriveOnePop clears the spike map every stride, so
+// the stamp is per-tick), and when the site's core disk holds a real city's
+// people the ENTITY is born: a CITY, tier 2, "the city of X arose" — never
+// a village or town dot. Genesis then runs: hearths ripen basins, basins
+// concentrate, Uruk rises, and the map's first dot IS a city.
+//   The dawn's unit bridge: before any census exists to calibrate
+// _onePopScale, BRIDGE_REF stands in — the measured mid-band of the live
+// bridge (0.001-0.003; a unit choice, not a tuning), replaced by the live
+// bridge the moment the first city exists.
+const BRIDGE_REF = 0.002;
+// The DAWN's unit anchor (DAWN_LIVE, no entities to calibrate on): the
+// forager Earth on the eve of agriculture held ~5 million people
+// (Deevey/HYDE band 2-10M) — a real paleodemographic constant of the same
+// species as the Uruk core and the pre-industrial urban share. The bridge
+// is declared ONCE over the pristine forager field: census-per-field-unit =
+// FORAGER_EARTH_CENSUS / Σfield. Every bar, the dissolution pass and the
+// first city's census then cohere in real people from step 0.
+const FORAGER_EARTH_CENSUS = 5000;   // ×1,000 people
+const URBAN_DRIFT = 5e-5;      // per-step share of a market cell's people drifting to its site (Uruk: village → 40,000 over ~900 years at a ~200-census basin ≈ this order)
+const SITE_CITY_IVL = 25;      // drift/mint cadence (amortization; the spike re-stamp below is per-tick so every field pass holds the core)
+// The settlement-less invention IMPROVES WITH PRACTICE: a static seed measured
+// dead (25k genesis arc: eight inventions fired on the real multi-millennial
+// stagger, zero cities ever — a fixed 0.45 source has a fixed few-tile wave
+// reach and can never establish farming across a cell). A settlement's
+// agriculture GROWS and its wave halo with it; the ground's practice does the
+// same during the settlement-less window: toward the PRE-URBAN PLATEAU
+// (agriculture's next advances came with urban specialists — the old dawn's
+// pre-city settlements sat ~0.50-0.55), at the settlement law's own measured
+// early slope (0.45 → 0.50 over ~4000 steps at the old dawn).
+const AGRI_PRACTICE_CAP = 0.55;
+const SEED_AGRI_RATE = 1.5e-5;   // per step
+function maybeSiteCities(world) {
+  if (!T.CITY_AT_BIRTH || !T.POP_FIELD || !T.ONE_POP || !world.popField) return;
+  const L = labelSiteLedger(world);
+  const claims = _siteClaims(world);
+  const pf = world.popField;
+  // Declare the dawn bridge from the forager world itself, once (see
+  // FORAGER_EARTH_CENSUS): the first call under the lever sees the pristine
+  // pre-farming field. BRIDGE_REF stays as the last-resort fallback only.
+  if (!(world._onePopScale > 0)) {
+    let F0 = 0;
+    for (let i = 0; i < world.N; i++) F0 += pf[i];
+    if (F0 > 0) world._onePopScale = FORAGER_EARTH_CENSUS / F0;
+  }
+  const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
+  const basinBarF = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell, field units
+  const coreBarF = TIER_CORE[2] / bridge;                        // a CITY's core, field units
+  const coreR = urbanCoreR(world);
+  // Eligibility is cached between cadence firings; the spike re-stamp runs
+  // every tick from the cache so the field pass always holds the cores.
+  let elig = world._siteCityElig;
+  if (!elig || elig.length !== L.sites.length || world.step % SITE_CITY_IVL === 0) {
+    if (!elig || elig.length !== L.sites.length) elig = world._siteCityElig = new Uint8Array(L.sites.length);
+    // THE FARMING GATE — measured essential, not optional: without it the
+    // dawn's Malthusian FORAGER field cleared the census bar under
+    // BRIDGE_REF's farming-era guess and the site pass minted 183 "cities"
+    // out of forager countryside by step 500 (each self-anchoring a realm —
+    // 185 realms in a world where farming was not yet invented). There are
+    // no forager cities: a site concentrates and mints only where the
+    // technique field carries the FULL invention (NEOLITHIC_AGRI — the same
+    // constant the founding quality machinery gates on, no new number).
+    // Eligibility on the PEOPLED BASIN, not the whole cell and not one tile:
+    // the seat's walkable connected ground must hold a city-capable people
+    // (basinBarF) AND those people must farm (people-weighted devF — the
+    // seat tile is a shelter maximum the wave reaches last; testing it alone
+    // measurably starved the densest basins, probe_dimfunnel). The basin's
+    // take is CACHED for the drift below: the domain people migrate from is
+    // exactly the ground that qualified the site.
+    const basins = world._siteBasin || (world._siteBasin = new Map());
+    for (let k = 0; k < L.sites.length; k++) {
+      if (claims.claimed[k] || claims.mass[k] < basinBarF || !world.devField) {
+        elig[k] = 0; basins.delete(k); continue;
+      }
+      if (elig[k]) continue;   // already qualified — keep its cached basin (mint/drift clear it)
+      const b = peopledBasinAt(world, k, basinBarF);
+      if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI) { elig[k] = 1; basins.set(k, b.take); }
+      else { elig[k] = 0; basins.delete(k); }
+    }
+  }
+  const spikes = world._urbanSpike || (world._urbanSpike = new Map());
+  for (let k = 0; k < L.sites.length; k++) {
+    if (!elig[k]) continue;
+    const st = L.sites[k];
+    const coreNow = diskSum(pf, world.tw, world.th, st.x, st.y, coreR);
+    // Hold what has gathered — BOUNDED at the mint bar: the proto-urban stage
+    // ends at city size, so capacity never chases the pile beyond it.
+    // Measured without the bound (genesis v3/v4): drift + spike compounded
+    // ~2,800 steps into a ~500k-field single-tile pile, and the first-born
+    // entity derived a 1,073-census catchment (ONE_POP re-reads the land, so
+    // capping the founding take alone was cosmetic).
+    if (coreNow > 0 && !spikes.has(st.ti)) spikes.set(st.ti, { k: Math.min(coreNow, coreBarF * 1.2) });
+  }
+  if (world.step % SITE_CITY_IVL !== 0) return;
+  // Practice improves at the settlement-less hearths (see AGRI_PRACTICE_CAP).
+  if (world._hearthSeeds) {
+    const dA = SEED_AGRI_RATE * (world._dt || 1) * SITE_CITY_IVL;
+    for (const h of world._hearthSeeds) if (h.agri < AGRI_PRACTICE_CAP) h.agri = Math.min(AGRI_PRACTICE_CAP, h.agri + dA);
+  }
+  // Drift: one O(N) sweep — every tile of every eligible cell pays the same
+  // share, its site receives the sum. Mass-conserving by construction.
+  const rate = Math.min(0.2, URBAN_DRIFT * (world._dt || 1) * SITE_CITY_IVL);
+  // A site whose core has already gathered a city's worth stops drawing —
+  // the mint takes it from here (same bound as the spike above).
+  for (let k = 0; k < L.sites.length; k++) {
+    if (!elig[k]) continue;
+    const st = L.sites[k];
+    if (diskSum(pf, world.tw, world.th, st.x, st.y, coreR) >= coreBarF) elig[k] = 2;   // 2 = mint-ready, no more drift
+  }
+  // The drift's DOMAIN is the peopled basin that qualified the site (cached
+  // above) — never the whole Euclidean cell, whose water-blind 1,670 km disk
+  // had people walking to market across the Timor Sea. And the inflow is
+  // PACED BY THE CORE'S CAPACITY HEADROOM: people migrate into a market that
+  // can hold them. Unpaced, the drift out-ran the spike (whose capacity only
+  // ever follows what has ALREADY gathered) and the field pass's capacity
+  // enforcement killed the surplus — measured at 25k/8817/960: eligible
+  // cells lost 50-75% of their people over thousands of steps while the
+  // site tile held 0-2%; a death pump, not urbanisation (probe_dimfunnel;
+  // the owner's screenshot — countryside greyed out around a bright dot).
+  // min(demand, headroom) both ways: no fitted constant, zero deaths by
+  // construction, and the Uruk pace becomes what the ground can feed.
+  {
+    const tw2 = world.tw, th2 = world.th, cf = world.capField;
+    const basins = world._siteBasin || (world._siteBasin = new Map());
+    for (let k = 0; k < L.sites.length; k++) {
+      if (elig[k] !== 1) continue;
+      const st = L.sites[k];
+      let take = basins.get(k);
+      if (!take) { take = peopledBasinAt(world, k, basinBarF).take; basins.set(k, take); }   // (save/load: caches are ephemeral)
+      const capD = cf ? diskSum(cf, tw2, th2, st.x, st.y, coreR) : Infinity;
+      const popD = diskSum(pf, tw2, th2, st.x, st.y, coreR);
+      const headroom = capD - popD;
+      if (!(headroom > 0)) continue;
+      let demand = 0;
+      for (let n = 0; n < take.length; n++) {
+        const t = take[n];
+        const ty2 = (t / tw2) | 0, tx2 = t - ty2 * tw2;
+        let dx = Math.abs(tx2 - st.x); if (dx > tw2 / 2) dx = tw2 - dx;
+        const dy = ty2 - st.y;
+        if (dx * dx + dy * dy <= coreR * coreR) continue;   // the core disk is the destination, not a payer
+        demand += pf[t];
+      }
+      demand *= rate;
+      if (!(demand > 0)) continue;
+      const scale = Math.min(1, headroom / demand);
+      let gain = 0;
+      for (let n = 0; n < take.length; n++) {
+        const t = take[n];
+        const ty2 = (t / tw2) | 0, tx2 = t - ty2 * tw2;
+        let dx = Math.abs(tx2 - st.x); if (dx > tw2 / 2) dx = tw2 - dx;
+        const dy = ty2 - st.y;
+        if (dx * dx + dy * dy <= coreR * coreR) continue;
+        const mv = pf[t] * rate * scale;
+        pf[t] -= mv;
+        gain += mv;
+      }
+      pf[st.ti] += gain;
+    }
+  }
+  // Mint: a site whose core disk holds a city's people becomes a CITY. Born
+  // ON A NATION'S GROUND it is born INTO that nation (below); on virgin or
+  // realm ground it is stateless at birth (-1) and self-anchors sovereignty
+  // through the existing countryTerritory channel (city-creates-nation), or
+  // is adopted by the realm whose border has grown over it. The people are
+  // MOVED, never printed: the field is debited at the site and
+  // makeSettlement's ONE_POP credit restores them as the city's census.
+  for (let k = 0; k < L.sites.length; k++) {
+    if (!elig[k]) continue;
+    const st = L.sites[k];
+    const coreF = diskSum(pf, world.tw, world.th, st.x, st.y, coreR);
+    if (coreF < coreBarF) continue;
+    // The city is born a CITY — never a megalopolis: the entity takes the
+    // city's own people (the bar, with growth headroom) and the REST of what
+    // gathered stays on the land as its countryside. Measured without this
+    // cap: the first genesis mint arrived only when the farming gate opened,
+    // by which time the basin had piled organically, and the first-born
+    // entity swallowed a 1,008-census core — a metropolis at birth in a
+    // world whose second entity did not exist yet.
+    const coreCensus = Math.min(coreF * bridge, TIER_CORE[2] * 1.5);
+    // (The live bridge is guaranteed by the pass-top dawn declaration — the
+    // first mint never lets the next derive re-calibrate the unit from its
+    // own founding party, which measured as a 0.35 bridge, an 11,000-census
+    // first city and a 600-step famine crash before the declaration existed.)
+    fieldShift(world, { pos: { x: st.x, y: st.y } }, -coreCensus);
+    const inherited = inheritKnowledgeAt(world, st.ti, world.transportDist ? world.transportDist[st.ti] : 0);
+    // A city born within reach of an existing people carries their culture
+    // (the inherit pass just found the nearest); one born in virgin land is
+    // the BIRTH of a people — Uruk is where the Sumerians become visible.
+    // Without this the genesis cities named as "settlement-1" (measured).
+    const donor = world._lastInheritDonor;
+    const donorCul = donor ? dominantCulture(donor) : -1;
+    // T.STATE_OF_LAND: a city rising on a NATION'S ground is that nation
+    // MATERIALISING — Uruk is Sumer's countryside crystallising a seat, not
+    // a rival state founded beside it. Born INTO the nation (countryId) and
+    // OF its people (the nation's culture beats a remote donor's — the folk
+    // this city concentrates ARE the nation's): the retirement pass hands
+    // the register over within this same crystallize pass, and the polity
+    // record simply continues (its tribal founding stays its founding).
+    // Ground already under a realm's authored field keeps the gated
+    // adoptAndFound channel — a court must AFFORD a new city; a land nation
+    // has no court to refuse with, its first city IS the court being born.
+    // Measured before this: 40 land nations / 40 realms at 25k app-grid
+    // steps and ZERO materialisations — every genesis city self-founded
+    // beside its own nation (probe_tribute, docs/state-birth-2026-08.md).
+    const coA = world._countryOwner;
+    const loA = world._landOwner;
+    const nid = (T.STATE_OF_LAND && loA && world._landSeats
+      && (!coA || coA[st.ti] < 0) && world._landSeats.has(loA[st.ti]))
+      ? loA[st.ti] : -1;
+    const natCul = nid >= 0 ? ((getPolity(world, nid) || {}).cultureId ?? -1) : -1;
+    const bornCul = natCul >= 0 ? natCul : donorCul;
+    const born = makeSettlement(world, st.x + 0.5, st.y + 0.5, {
+      people: coreCensus, knowledge: inherited, tier: 2,
+      ...(nid >= 0 ? { countryId: nid } : {}),
+      ...(bornCul >= 0 ? { cultureId: bornCul } : { cradle: true }),
+    });
+    if (nid >= 0) {
+      born._integratedAt = world.step;   // a new sovereign integrates its territory gradually (INTEGRATE_*)
+      const pol = getPolity(world, nid);
+      if (pol) pol.capitalId = born.id;  // the nation's seat is THIS city (the reconciler confirms next pass)
+    }
+    // THE COUNTRYSIDE'S GRANARIES RIDE IN WITH THE COUNTRYSIDE. The tick
+    // before this city existed, its basin's people fed themselves through
+    // the field's own capacity — for thousands of steps. The tick after,
+    // the derive censuses them through THIS ledger, whose supply machinery
+    // (worked farmland, technique, granary) starts cold and ramps over many
+    // passes — and the shortfall STARVED the field people the land had been
+    // feeding (owner-observed: "a city with a large population that rapidly
+    // drops"; under ONE_POP starvation debits the field — the lens killing
+    // its substrate). Creating a lens must not change the physics of the
+    // people it observes: the city is born holding its basin's standing
+    // subsistence stores — the cell's people × their own per-tick demand ×
+    // the ledger's ramp horizon. An initial condition of the annexed
+    // countryside, not a subsidy; no clock, no gate.
+    // The countryside whose granaries ride in is the SUPPORT BASIN — the
+    // ground whose people this city gathered from (cached take) — not the
+    // whole Euclidean cell, whose disk-scale census over-provisioned birth
+    // stores in site-sparse country (the same phantom-domain class the
+    // tribute right-sizing measured; docs/state-birth-2026-08.md).
+    {
+      const bTake = (world._siteBasin && world._siteBasin.get(k)) || peopledBasinAt(world, k, basinBarF).take;
+      let bMass = 0;
+      for (let n = 0; n < bTake.length; n++) bMass += pf[bTake[n]];
+      const basinCensus = bMass * bridge;
+      born.food = Math.max(born.food || 0, basinCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
+    }
+    labelClaimBasin(world, st.x, st.y);
+    elig[k] = 0;
+    if (world._siteBasin) world._siteBasin.delete(k);
+    spikes.delete(st.ti);
+    logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1, x: st.x, y: st.y });
+  }
+}
+
+// ── T.STATE_OF_LAND: nations of the land (Wave 5 Stage A) ────────────────
+// Owner 2026-08-05: "each nation still spawns with a settlement though? i
+// think this is where we get to decoupling nations from cities." A polity
+// may exist on territory and people ALONE: when a farming basin holds a
+// PEOPLE (a complex chiefdom's worth) and no state's border covers it, a
+// NATION forms — a polity-registry record named in the tongue of the
+// ancestry on that ground, seated on a tile, holding its market cell as
+// static territory in world._landOwner. It stays OUT of world.countries by
+// design (the conquest pass presupposes courts in 25+ places; a pre-state
+// polity wages no organized war, holds no court, runs no colonies) — the
+// border renderer and the adoption path consume its territory through the
+// merged crawl target (countryClaim.js), so its borders DRAW and a city
+// born on its ground adopts its id, at which moment the nation
+// MATERIALISES as a realm (world.countries picks it up with a member) and
+// leaves the land-seat register: tribal nation → city-state → kingdom,
+// one polity record, one chronicle, across the whole arc.
+const TRIBAL_CENSUS = 10;      // a complex chiefdom: ~10,000 people under one polity (Johnson & Earle's band) — the smallest thing history calls a nation of the land
+const LAND_NATION_IVL = 100;   // formation/retirement cadence (amortization)
+function maybeLandNations(world) {
+  if (!T.STATE_OF_LAND || !world.popField) return;
+  if (world.step % LAND_NATION_IVL !== 0) return;
+  if (!(world._onePopScale > 0)) return;   // no unit yet (the site pass declares it at the dawn): a census bar cannot be read
+  const L = labelSiteLedger(world);
+  const claims = _siteClaims(world);
+  const co = world._countryOwner;
+  const devF = world.devField;
+  const seats = world._landSeats;
+  // Retirement: a land nation whose id now has a settled member has
+  // MATERIALISED (a city adopted it; the realm machinery owns the ground) —
+  // clear its static territory so the Voronoi takes over cleanly.
+  if (seats && seats.size) {
+    const lo = world._landOwner;
+    const withMember = new Set();
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0 && seats.has(s.countryId)) withMember.add(s.countryId);
+    for (const id of withMember) {
+      if (lo) {
+        // The nation's ground passes to the realm it became — in the DRAWN
+        // layers (claim crawl + control field), never the authoritative
+        // territory: reach physics decide what the young state can HOLD, and
+        // the map shows it losing the rest ring by ring (crawl retreat /
+        // TRK_FADE recession) instead of teleporting to the capital's radius
+        // (owner-observed at tw=960: "then a city got made and it lost all
+        // that land, shrinking to land only around the city").
+        const claim = world._countryClaim, ctrl = world._ctrlOwner, chold = world._ctrlHold;
+        const stampC = !!(claim && claim.length === lo.length);
+        const stampO = !!(ctrl && chold && ctrl.length === lo.length);
+        for (let i = 0; i < lo.length; i++) if (lo[i] === id) {
+          lo[i] = -1;
+          if (stampC && claim[i] < 0) claim[i] = id;
+          if (stampO && ctrl[i] < 0) { ctrl[i] = id; chold[i] = CTRL_SRC_HOLD; }
+        }
+      }
+      seats.delete(id);
+    }
+  }
+  // Formation: at each unclaimed ledger site outside every border — realm or
+  // tribal — where the ground FARMS (the full invention has arrived) and the
+  // basin holds a people.
+  if (!devF) return;
+  const lo0 = world._landOwner;
+  const barF = TRIBAL_CENSUS / world._onePopScale;
+  if (!world.popField) return;
+  for (let k = 0; k < L.sites.length; k++) {
+    if (claims.claimed[k]) continue;
+    const st = L.sites[k];
+    if (co && co[st.ti] >= 0) continue;
+    if (lo0 && lo0[st.ti] >= 0) continue;
+    if (claims.mass[k] < barF) continue;   // cheap cell-mass pre-filter; the BFS below is the real gate
+    // The nation IS the people who formed it, on the ground they stand:
+    // breadth-first from the seat, over the seat's OWN LANDMASS within the
+    // cell, gathering people until the founding bar — and the farming gate
+    // asks whether THOSE PEOPLE farm (people-weighted devF over the take),
+    // not whether the seat tile does: the seat is a shelter/river-mouth
+    // maximum the technique wave reaches LAST, and the seat-tile test
+    // starved the world's densest basins of nations while their interiors
+    // brimmed with farmed people (probe_dimfunnel: every top cell, up to
+    // 95× this bar, blocked solely by "farming not at the seat").
+    // Gate and territory are one measurement. Before this, the paint was
+    // the whole cell — a Euclidean WATER-BLIND disk (TOWN_BASIN_R = 10
+    // ref-tiles ≈ 1,670 km radius), so in site-sparse country one nation
+    // stamped a near-continental imprint including islands across the sea
+    // (owner-observed at tw=960: a northern-Australia nation holding
+    // southern Indonesian islands; tools/probe_landpaint.mjs measures the
+    // distributions). Now a dense cradle fills the bar in a tight core —
+    // the complex chiefdom's real 10³-10⁵ km² — thin country takes
+    // honestly more ground for the same people, water is never crossed
+    // (the crawl's own connectivity law), and people the seat cannot walk
+    // to no longer count toward forming a nation at all.
+    const basin = peopledBasinAt(world, k, barF);
+    if (basin.mass < barF) continue;               // the seat's walkable ground does not hold a people
+    if (basin.devP < NEOLITHIC_AGRI) continue;     // its people do not yet farm
+    const take = basin.take;
+    // Form: the people of this ground become a nation.
+    const id = world._nextSettlementId || 1; world._nextSettlementId = id + 1;
+    const ancId = world.ancestry ? world.ancestry[st.ti] : -1;
+    const cul = ancId >= 0 ? ancestryCulture(world, ancId, null) : null;
+    const name = cul ? nameFor(world, cul, "realm") : null;
+    let lo = world._landOwner;
+    if (!lo || lo.length !== world.N) { lo = world._landOwner = new Int32Array(world.N); lo.fill(-1); }
+    for (const t of take) lo[t] = id;   // the founding people's ground IS the nation's land
+    (world._landSeats || (world._landSeats = new Map())).set(id, { ti: st.ti });
+    ensurePolity(world, id, { how: "tribal", name, cultureId: cul ? cul.id : -1 });
+  }
+}
+
 export function maybeCrystallize(world) {
+  maybeDissolveTowns(world);
+  maybeSiteCities(world);
+  maybeLandNations(world);
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
   // Refresh transport map if stale or absent.
@@ -957,9 +1455,22 @@ export function maybeCrystallize(world) {
         }
         h.effY += dtYears * Math.min(1, capMass > 0 ? basin / capMass : 0);
         if (h.effY >= h.needY) {
-          const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
-          logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
-          console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
+          if (T.CITY_AT_BIRTH) {
+            // The invention is the INVENTION — not a town. The basin is
+            // peopled and farming; the site pass concentrates it and the
+            // city is born when a real core exists. The hearth stands down —
+            // but the practice must RADIATE: with no settlement to carry the
+            // technique wave's source, the ground itself does
+            // (world._hearthSeeds → stampDevSources; persisted). Without
+            // this, a seedless dawn could never leave the forager age.
+            (world._hearthSeeds || (world._hearthSeeds = [])).push({ ti: h.ti, agri: NEOLITHIC_AGRI });
+            logEvent(world, "farming.invented", { x: h.tx, y: h.ty });
+            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
+          } else {
+            const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
+            logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
+            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
+          }
         } else keep.push(h);
       }
       world._armedHearths = keep;
@@ -1056,7 +1567,10 @@ export function maybeCrystallize(world) {
   // cadence), so the rn²× per-tick cost (16× at full size) was unearned and it
   // was reverted per the I82 precedent. The early undershoot remains OPEN — see
   // docs/resolution-invariance-plan.md for the decomposition to run next.
-  const nSweep = labelBirth ? siteCand.length : CANDIDATES_PER_SWEEP;
+  // T.CITY_AT_BIRTH: the spontaneous sweep mints NOTHING — genesis belongs to
+  // the site pass (maybeSiteCities), which births entities only at the city
+  // definition. Zero candidates = the whole channel off under the lever.
+  const nSweep = T.CITY_AT_BIRTH ? 0 : (labelBirth ? siteCand.length : CANDIDATES_PER_SWEEP);
   for (let i = 0; i < nSweep; i++) {
     // OFF path: draw a share of candidates straight from the FLOODPLAIN ribbon so
     // the arid river valley actually fills — the uniform random sweep almost never
@@ -1273,7 +1787,42 @@ export function maybeCrystallize(world) {
     // the package's own definition of "full farming". 0 = ungated
     // (byte-identical, and the default).
     const packageFrac = T.INDEP_TECH && world.devField ? Math.min(1, (world.devField[ti] || 0) / NEOLITHIC_AGRI) : 1;
-    const p = quality * (diffusionMul + independent) * packageFrac * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    // ── T.CROWD_FOUND: towns appear where the PEOPLE are ────────────────────
+    // Owner, 2026-08: "do cities appear where populations are dense?" Measured:
+    // NO, not as a rate. The basin's people are a THRESHOLD (TOWN_BASIN_MIN, a
+    // pass/fail gate above) and marketPull counts SETTLEMENTS (tier-weighted,
+    // distance-decayed) — so founding tracks where other TOWNS are and where the
+    // LAND is good, but a basin at ten times the bar founds no faster than one
+    // exactly at it. Historically the opposite: towns crystallise out of dense
+    // countryside — the Nile, the Yangtze, the Ganges grew thickets of them
+    // while equally fertile but thinly-peopled land grew few.
+    //   The rate carries the basin's people RELATIVE TO THE AGE'S TYPICAL
+    // SETTLED BASIN (crowdRefMass — the live median over settled sites, the
+    // same self-calibrating species as the tier ladder's percentile bars),
+    // damped by a square root so it is a gradient and not a runaway: 4× the
+    // typical countryside founds ~2× as readily, a quarter of it ~half. Above
+    // CROWD_CAP the term saturates (a basin cannot mint towns without limit —
+    // the spacing floors and the market-cell exclusivity still bind).
+    //   MEASURED, first build (probe_crowdfound A/B 480/8817/6k): normalizing
+    // by the TOWN_BASIN_MIN bar instead pegged the cap on 100% of foundings —
+    // real settled basins run 150-3300× that bar (p50 249×), so the sqrt's
+    // useful range sat two orders below the distribution and the "gradient"
+    // degenerated to a blunt ×CAP step on all settled land vs the frontier
+    // (foundings 109 → 202, +85%, with the within-settled signal erased). The
+    // bar is the FLOOR of viability; the reference for "denser than usual" is
+    // the TYPICAL basin, and that is a measurement, not a constant.
+    //   NB this is NOT T.INVENT_FIELD, which failed: that scaled the INDEPENDENT
+    // INVENTION floor by the same mass and measured worse, because every site
+    // that can found at all already clears the bar, so it only ever multiplied
+    // up on the isolated frontier. This scales the WHOLE rate, where the
+    // ratio's variation across settled land is the signal, and the technique
+    // wave (INDEP_TECH, now default-on) independently keeps the frontier shut.
+    let crowdMul = 1;
+    if (T.CROWD_FOUND > 0 && world.popField) {
+      const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+      crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass / crowdRefMass(world)), 0.5 * T.CROWD_FOUND));
+    }
+    const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     // One draw per candidate (stream-stable), tested twice: first against the
     // full-tempo probability (cheap reject), then against the wave-of-advance
@@ -1447,6 +1996,24 @@ export function maybeCrystallize(world) {
       // the other way round). Camps are exempt (ordu, not towns — see above).
       const townScale = !rodeAway && !!world.popField;
       if (townScale) {
+        // T.DISSOLVE_TOWNS — settlements are ONLY cities (owner 2026-08-05:
+        // "settlements should be ONLY cities. No towns"). An entity mints only
+        // where the basin could feed a CITY: catchment census ≥ TIER_CORE[2] /
+        // URBAN_SHARE_REF — a 10k core at the measured ~5% pre-industrial
+        // urban share needs a ~200-census (200,000-person) market basin. Both
+        // terms have independent meaning: the core floor is the ladder's own
+        // city DEFINITION; the share is measured in this sim (core share p50
+        // 4.6-5.6% across every probe arm and step, docs/state-birth-2026-08)
+        // and historically (~3-8% urban before industry). The FIRST build
+        // scaled the TOWN_BASIN_MIN floor ×5 instead and measured INERT —
+        // byte-identical arcs — because that floor is a fossil two orders
+        // below real settled basins (founding sites measured 143-3300× it);
+        // the census form is the live quantity. Villages AND towns then live
+        // in the land — popField and each city's belt — exactly as villages
+        // already do under DISSOLVE_FARMS. The hearth-cradle bootstrap keeps
+        // its own (longer) emergent bar — the first cities ARE the hearth
+        // cities — and pre-bridge (no _onePopScale yet) the census cannot be
+        // read, so the legacy floor stands for those few dawn steps.
         if (labelBirth) {
           // T.LABEL_BIRTH v3 — the ACTIVATION bar: the site's cell (its
           // exclusive countryside, cell ∩ horizon by construction) must hold
@@ -1459,6 +2026,9 @@ export function maybeCrystallize(world) {
         } else {
           if (townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn)) < TOWN_BASIN_MIN) continue;
         }
+        // The city-capability bar reads the DISK basin under both arms — the
+        // market reach a city needs does not care about label-cell partitions.
+        if (!cityBasinOkAt(world, tx, ty)) continue;
       }
       // (people drawn here, after the last reject, so the rng stream is unchanged)
       const roll = rng.int(8);
@@ -1909,6 +2479,10 @@ function sendSettlers(world, parent) {
   }
   }
   if (!best) return;
+  // T.DISSOLVE_TOWNS: the crown plants CITIES — a site whose basin cannot
+  // feed one is not planted (checked BEFORE the demographic cost, so no
+  // settler party is debited for a rejected site).
+  if (!cityBasinOkAt(world, best.tx, best.ty)) return;
   // Pay the demographic cost: a chunk of the parent's people leaves with
   // them. They take some of the parent's tech (full inheritance — they're
   // literate citizens of the realm, not isolated frontier inventors).
@@ -1958,7 +2532,35 @@ const PLANT_CHECK_INTERVAL = 480;   // ticks between plantation considerations (
 const PLANT_ORG_MIN        = 0.35;  // written administration: charters + surveying (the colonia/bastide bar)
 const PLANT_COST           = 1200;  // treasury endowment the settlers carry (conserved: treasury → town wealth)
 const PLANT_PEOPLE         = 100;   // settlers moved out of the capital (town-scale — the urban floor's own size)
-const PLANT_CAP_MIN_POP    = 500;   // the capital must have people to spare
+const PLANT_CAP_MIN_POP    = 500;   // (legacy absolute; superseded by PLANT_CAP_MULT under T.PLANT_EARLY)
+// T.PLANT_EARLY: the state-planted-city channel (colonia, bastide, march fort,
+// Alexandria, St Petersburg) was measurably DORMANT until ~step 25k because
+// PLANT_CAP_MIN_POP = 500 census demands a half-million-catchment METROPOLIS
+// capital before a state may found a town (docs/state-birth-2026-08.md: "planted
+// zero by step 8000, every check blocked on capital-too-small"). That is an
+// anachronism — small organized states colonized aggressively (the Greek poleis
+// founded hundreds of colonies at city sizes of tens of thousands; early Rome's
+// coloniae; Assyrian and Neo-Babylonian foundations). Colonization scales with
+// STATECRAFT and SURPLUS, not with owning a metropolis. Re-grounded: the capital
+// must simply be a real regional CENTRE relative to the age's typical town
+// (world._townBar, the self-calibrating median settled census the tier ladder
+// already maintains) AND able to spare the settler party without gutting itself.
+// Self-scaling, so it opens across the WHOLE arc — states found cities in the
+// bronze age as they historically did — instead of only once capitals are
+// industrial. Never a clock; every term is live census/statecraft.
+const PLANT_CAP_MULT       = 2.5;   // capital ≥ this × the age's typical town (a real centre, not any town)
+const PLANT_SPARE_MULT     = 2.0;   // ...and ≥ this × the settler party it sends (people genuinely to spare)
+// The funnel measurement (probe_plantfunnel) then caught the deeper units bug —
+// the CLAUDE.md's own most-repeated-mistake class: PLANT_PEOPLE = 100 CENSUS is
+// a settler party of 100,000 people, and PLANT_COST = 1200 coin sits above every
+// measured pre-classical treasury (medians 1-170). A large historical colonia
+// party was a few THOUSAND settlers (Greek apoikiai: hundreds of families).
+// Under T.PLANT_EARLY the party is 6 census (≈6,000 settlers) and the endowment
+// is priced PER SETTLER (12 coin/census — outfit, passage, seed grain), so the
+// channel opens when statecraft (the org bar) says so, not when a treasury
+// crosses an industrial-scale constant.
+const PLANT_EARLY_PEOPLE   = 6;     // census — the large-colony settler party (~6,000 people)
+const PLANT_COIN_PER_CENSUS = 12;   // endowment per census of settlers (outfit + passage + seed)
 const PLANT_STRAIN_MAX     = 0.85;  // no planting past the governing budget (COLONY_HEADROOM precedent)
 const PLANT_COOLDOWN       = 2400;  // ticks between plantations per realm
 // A plantation obeys the SAME minimum spacing as any founding (the sweep's
@@ -1984,14 +2586,27 @@ function maybePlantTowns(world) {
   const eligible = new Map();
   // Gate telemetry (write-only, probe-readable — the maxBuildSpan pattern).
   const dbg = world.debug ? (world.debug.plant || (world.debug.plant = { pop: 0, org: 0, strain: 0, coin: 0, cool: 0, elig: 0, cand: 0, iso: 0, planted: 0 })) : null;
+  // Party + endowment at their re-derived scale under T.PLANT_EARLY (see the
+  // constants' units note); the legacy pair off-lever, byte-identical.
+  const plantPeople = T.PLANT_EARLY ? PLANT_EARLY_PEOPLE : PLANT_PEOPLE;
+  const plantCost = T.PLANT_EARLY ? PLANT_EARLY_PEOPLE * PLANT_COIN_PER_CENSUS : PLANT_COST;
   for (const [cid, c] of world.countries) {
     const cap = c.capital;
-    if (!cap || cap.mode !== "settled" || (cap.people || 0) < PLANT_CAP_MIN_POP) { if (dbg) dbg.pop++; continue; }
+    if (!cap || cap.mode !== "settled") { if (dbg) dbg.pop++; continue; }
+    // Can this state found a town? Under T.PLANT_EARLY the bar is RELATIVE — a
+    // real regional centre (≥ PLANT_CAP_MULT × the age's typical town) with
+    // people to spare (≥ PLANT_SPARE_MULT × the settler party). Off: the legacy
+    // absolute-metropolis bar (byte-identical).
+    if (T.PLANT_EARLY) {
+      const typical = world._townBar || PLANT_CAP_MIN_POP;
+      const need = Math.max(PLANT_CAP_MULT * typical, PLANT_SPARE_MULT * plantPeople);
+      if ((cap.people || 0) < need) { if (dbg) dbg.pop++; continue; }
+    } else if ((cap.people || 0) < PLANT_CAP_MIN_POP) { if (dbg) dbg.pop++; continue; }
     if (((cap.knowledge && cap.knowledge.organization) || 0) < PLANT_ORG_MIN) { if (dbg) dbg.org++; continue; }
     const pol = getPolity(world, cid);
     if (!pol || pol.endedStep >= 0) continue;
     if ((pol._strain ?? 0) >= PLANT_STRAIN_MAX) { if (dbg) dbg.strain++; continue; }
-    if ((pol.treasury || 0) < PLANT_COST) { if (dbg) dbg.coin++; continue; }
+    if ((pol.treasury || 0) < plantCost) { if (dbg) dbg.coin++; continue; }
     if (world.step - (pol._lastPlant ?? -Infinity) < PLANT_COOLDOWN) { if (dbg) dbg.cool++; continue; }
     if (dbg) dbg.elig++;
     eligible.set(cid, { cid, c, cap, pol, march: [], inland: [] });
@@ -2104,12 +2719,12 @@ function maybePlantTowns(world) {
     const { cap, pol, cid } = e;
     // Found it: settlers and endowment MOVE (both conserved) — the state
     // relocates people and coin it already has.
-    pol.treasury -= PLANT_COST;
+    pol.treasury -= plantCost;
     pol._lastPlant = world.step;
-    cap.people -= PLANT_PEOPLE;
-    fieldShift(world, cap, -PLANT_PEOPLE);
+    cap.people -= plantPeople;
+    fieldShift(world, cap, -plantPeople);
     const town = makeSettlement(world, best.tx + 0.5, best.ty + 0.5, {
-      people: PLANT_PEOPLE,
+      people: plantPeople,
       knowledge: { ...cap.knowledge },
       countryId: cid,
       parentId: cap.id,               // provisioned from home while young (conquest.js colony supply)
@@ -2117,7 +2732,7 @@ function maybePlantTowns(world) {
       cultureId: dominantCulture(cap),
       tier: 1,
     });
-    town.wealth = (town.wealth || 0) + PLANT_COST;
+    town.wealth = (town.wealth || 0) + plantCost;
     town._integratedAt = world.step;
     gridAdd(world, town);
     // Exempt from the ledger LAW for siting (see above) — but once planted it

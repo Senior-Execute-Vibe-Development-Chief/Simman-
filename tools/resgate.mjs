@@ -1,7 +1,13 @@
 // THE APP-GRID ARM — a standing gate on the blind spot that cost two sessions.
 //
-// Every battery in this repo runs at W=480 (sim tw=240). The APP ships W=1920 /
-// simDiv 4 (sim tw=480). Three times in one week a change was validated at the
+// Every battery in this repo runs at W=480 (sim tw=240). The APP shipped W=1920 /
+// simDiv 4 (sim tw=480) when this gate was built; since 2026-08 the app default
+// is simDiv 2 (Half, tw=960 — docs/shape-of-the-map-2026-08.md). This arm stays
+// at tw=480: it is the affordable standing PROXY for the cross-grid trend (a
+// tw=960 run is hours-scale), and every failure class it was built on expressed
+// at tw=480 first. Changes with large territorial blast radius should ALSO be
+// spot-checked at tw=960 (tools/probe_shape.mjs [steps] 1920 [seed]).
+// Three times in one week a change was validated at the
 // reference grid and shipped a regression that only existed at the grid players
 // actually use — and each time the difference was not one of DEGREE but of KIND:
 //
@@ -55,10 +61,31 @@ const SEED = +(process.argv[3] || 8817);
 // was built for — `deffdce` put the app median at 27k km² (the absolute floor fires,
 // 27k < 60k) and `SUCCESSOR_STATES` cut the app median ~1.75x while leaving tw=240
 // untouched, taking the ratio to ~0.33 (below 0.42). Both caught.
+// RE-BASELINED 2026-08 (the shape-of-the-map wave, docs/shape-of-the-map-2026-08.md):
+// the wave IMPROVED the cross-grid ratios, so per the charter above the ratchet
+// tightens toward the new measurement — floors ~25% below the WORSE of the two
+// gate seeds, and never looser than before:
+//
+//              seed 8817     seed 31337     floor (was)
+//   median area   0.67          0.67         0.50 (0.42)
+//   claimed       0.62          0.50         0.44 (=)     (0.50×0.75 < old floor; ratchet never loosens)
+//   pop density   0.62          0.56         0.42 (0.40)
+//   app median    206k km²      164k km²     60k  (=)     (collapse-catch semantics, deliberately deep)
+//   app realms    46            36           6    (=)     (regime floor, not a band)
+// CORRECTION (same wave, hours later): the 0.50 tightening above was derived on
+// the pre-divergence-lane regime and went stale within the day — the lane flip +
+// the hearth suit-clamp drop (deliberate, documented default regime changes of
+// the SIZE_BY_POP precedent class) re-keyed genesis, and the new regime measures
+// 0.44 (8817) / 0.99 (31337) with every candidate lever PROVEN inert at the gate
+// horizon (identical 0.44 across fracture/plant/none arms). The floor returns to
+// its long-standing 0.42 — stricter than the two-seed formula's 0.33 on the new
+// regime, passing both seeds, and never looser than any floor that shipped
+// before today. Lesson recorded: ratchet tightenings must not be derived and
+// shipped in the same wave as regime changes.
 const BANDS = {
   medianAreaRatio: 0.42,   // app median realm area / reference
   claimedRatio:    0.44,   // app claimed% / reference
-  popDensRatio:    0.40,   // app people-per-km² / reference
+  popDensRatio:    0.42,   // app people-per-km² / reference
   appMedianKm2:    60000,  // ABSOLUTE: a one-tile realm at tw=480 is ~4,000 km²
   appRealmsMin:    6,      // the app grid must carry a real map, not two dots
 };

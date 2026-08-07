@@ -115,6 +115,15 @@ const MIG_SHARE_MAX = 0.5;
 const DEV_WAVE_KMPY = 1.0;          // wave-of-advance speed (the measured Neolithic ~1 km/year)
 const DEV_WAVE_LOSS_PLANET = 1.0;   // technique lost per planet-circumference of distance from a source
 export const DEV_INIT_YEARS = 6000;        // pre-map Neolithic spread inherited at genesis (9000→3000 BC)
+/** T.DAWN_LIVE (owner 2026-08-05: "can we not simply open with nothing and
+ *  wait for nations to be born?"): the effective prehistory span. 0 under the
+ *  lever — the map opens at the TRUE dawn, a forager world with no seeded
+ *  hearth settlements and no pre-spread technique wave; every hearth ARMS
+ *  (the stagger law's needY becomes its full domestication lag) and farming,
+ *  nations and cities are all born live, on camera. DEV_INIT_YEARS is an
+ *  initial condition ("how old the world is at map open") — this lever sets
+ *  that age to zero, which is the one value that needs no defending. */
+export function devInitYears() { return T.DAWN_LIVE ? 0 : DEV_INIT_YEARS; }
 const EARTH_KM = 40075;             // planet circumference — the map's x-extent in km
 // Climate-ZONE scale for the T.DIFF_CLIM toll (reference tiles; ×rNormPop at
 // other grids — a real distance, ~2 × 167 km ≈ 330 km at the reference). A
@@ -230,6 +239,15 @@ function stampDevSources(world, dev) {
   // _devPreK is undefined and nothing is ever held.
   const preK = world._devPreK;
   const held = (s) => preK !== undefined && s._devHoldK !== undefined && preK < s._devHoldK;
+  // Settlement-less farming sources (T.CITY_AT_BIRTH × T.DAWN_LIVE): a hearth
+  // that matured WITHOUT minting a settlement still invented farming — its
+  // basin practices it, so the wave must radiate from the ground itself.
+  // world._hearthSeeds carries {ti, agri} for each such invention (written at
+  // armed-hearth maturation, persisted); without this stamp the invention
+  // would never spread and a seedless dawn could never leave the forager age.
+  if (world._hearthSeeds) {
+    for (const h of world._hearthSeeds) if (h.agri > dev[h.ti]) dev[h.ti] = h.agri;
+  }
   if (owner && byId) {
     for (let i = 0; i < world.N; i++) {
       const sid = owner[i];
@@ -415,7 +433,7 @@ function ensureDevField(world, land) {
   // spread than the control and confound the whole arm with an initial
   // condition.
   const tileKm = EARTH_KM / world.tw;
-  const iters = Math.max(0, Math.round(DEV_INIT_YEARS * DEV_WAVE_KMPY / tileKm));
+  const iters = Math.max(0, Math.round(devInitYears() * DEV_WAVE_KMPY / tileKm));
   // T.INVENT_STAGGER: hearths matured at different points in prehistory
   // (s._hearthAgeY = years of wave spread owed by map open, set at seeding).
   // Map each to the pre-run iteration its wave STARTS at, then run the same
@@ -1281,7 +1299,7 @@ export function popFieldTotal(world) {
 // off; grows with rNormPop so the city spans the same real area at finer grids.
 // (Reuses the computeBuildableArea/computeWaterAccess round(rn) real-neighbourhood
 // normalisation, −1 so the reference stays a single tile.)
-function urbanCoreR(world) {
+export function urbanCoreR(world) {   // exported for the CITY_AT_BIRTH site pass (crystallize) — the mint threshold must read the SAME disk the census measures
   return (T.URBAN_FOOTPRINT && T.RES_INVARIANT_POP) ? Math.max(0, Math.round(rNormPop(world)) - 1) : 0;
 }
 
@@ -1291,7 +1309,7 @@ function urbanCoreR(world) {
 // target are byte-identical at the reference. Owner-agnostic (the footprint
 // REFERENCE reads all people on the real disk; the people MOVED by urbanConcentrate
 // stay owner-restricted and strictly conserved — see change note there).
-function diskSum(pf, tw, th, cx, cy, R) {
+export function diskSum(pf, tw, th, cx, cy, R) {
   if (R <= 0) return pf[cy * tw + ((cx % tw) + tw) % tw];
   let sum = 0;
   const y0 = Math.max(0, cy - R), y1 = Math.min(th - 1, cy + R);
@@ -1564,15 +1582,28 @@ export function deriveOnePop(world) {
       if (f > 0 && s.people > 0) { cs.push(s.people); fs.push(f); }
     }
     cs.sort((a, b) => a - b); fs.sort((a, b) => a - b);
-    world._onePopScale = cs.length ? Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1])) : 1;
-    // T.DAWN: the bridge is a unit conversion calibrated at the MALTHUSIAN
-    // REFERENCE (the field the world matures toward). Under a dawn seed the
-    // field at activation is dawn× that reference, so the raw median ratio
-    // above is 1/dawn too high — correct it, or every mature census would be
-    // inflated by 1/dawn and the dawn's staggering would cancel out of the
-    // state-viability mass (basin × census/field). At dawn 1: ×1, unchanged.
-    if (world._dawnSeed > 0 && world._dawnSeed < 1) world._onePopScale *= world._dawnSeed;
+    // An EMPTY world calibrates on nothing and must leave the bridge UNSET
+    // ("unset ≡ compute at first derive" — the persist contract), retrying
+    // each derive until settlements exist. The old `: 1` fallback froze a
+    // garbage unit at the first derive of a settlement-less dawn (measured
+    // under DAWN_LIVE: 1 × dawnSeed 0.35 = a bridge 175× the reference, an
+    // 11,000-census first city and a 600-step famine crash). At the old
+    // defaults cradles exist by the first derive, so the fallback never
+    // fired and this is byte-identical there.
+    if (cs.length) {
+      world._onePopScale = Math.max(1e-6, cs[cs.length >> 1] / Math.max(1e-6, fs[fs.length >> 1]));
+      // T.DAWN: the bridge is a unit conversion calibrated at the MALTHUSIAN
+      // REFERENCE (the field the world matures toward). Under a dawn seed the
+      // field at activation is dawn× that reference, so the raw median ratio
+      // above is 1/dawn too high — correct it, or every mature census would be
+      // inflated by 1/dawn and the dawn's staggering would cancel out of the
+      // state-viability mass (basin × census/field). At dawn 1: ×1, unchanged.
+      if (world._dawnSeed > 0 && world._dawnSeed < 1) world._onePopScale *= world._dawnSeed;
+    }
   }
+  // (With nothing settled — the DAWN_LIVE window — the bridge stays unset and
+  // every consumer below sits inside settlement loops that simply don't run;
+  // the spike clear still fires, so no stale site capacity survives.)
   const scale = world._onePopScale;
   // T.URBAN_FOOTPRINT: the urban core's real radius (tiles). 0 (default / reference
   // grid) ⇒ the disk reads/moves collapse to the single core tile, byte-identical.
@@ -1686,6 +1717,14 @@ export function deriveOnePop(world) {
       // in census units — resolution-invariant. coreR=0 ⇒ diskSum === pf[ti] exactly.
       s._urbanPop = Math.min(s.people, Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR) * scale));
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
+      // The MEASURED core, kept apart from _urbanPop: the census-side
+      // ruralShare heuristic overwrites _urbanPop every tick between derives
+      // (updateSettlement runs before this pass), so a reader inside the
+      // settlement pass sees the RATIO MODEL there, not this measurement. The
+      // tier ladder under T.CITY_CORE prices its rungs on the measured core
+      // only (the heuristic read minted a "city" at step 1 and metropolises at
+      // 3× their field core). Null until the field first derives a catchment.
+      s._coreMeasured = s._urbanPop;
     }
     // else: no catchment tiles this pass (fresh founding / recompute lag) — keep the census value
     // The spike (next pass's capacity + the core's transition/graveyard-bent

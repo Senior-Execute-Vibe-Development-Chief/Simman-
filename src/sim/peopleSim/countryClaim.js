@@ -85,7 +85,9 @@ export function grownLiveOwnerAt(world, ti) {
     for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) alive.add(s.countryId);
     world._aliveCCStep = world.step;
   }
-  return alive.has(id) ? id : -1;
+  // T.STATE_OF_LAND: a nation of the land is alive WITHOUT settlements — a
+  // city adopting its id is exactly the materialisation handover.
+  return alive.has(id) || (T.STATE_OF_LAND && world._landSeats && world._landSeats.has(id)) ? id : -1;
 }
 
 export function grownOwnerAt(world, ti) {
@@ -113,7 +115,7 @@ export function grownOwnerAt(world, ti) {
 // 4000-tile budget and treated a budget-exhausted search as "different
 // landmass" — on a big continent whose claim sat far away that planted exactly
 // the disconnected dots this function exists to prevent.
-function landComp(world) {
+export function landComp(world) {
   let comp = world._landComp;
   if (comp && comp.length === world.N) return comp;
   const { N, tw, th, elev } = world;
@@ -144,8 +146,21 @@ export function relaxClaim(world, pressStep = 1) {
   const { N, tw, th, elev } = world;
   let claim = world._countryClaim;
   if (!claim || claim.length !== N) { claim = world._countryClaim = new Int32Array(N); claim.fill(-1); }
-  const target = world._countryOwner;   // country-primary territory (countryTerritory.js)
+  let target = world._countryOwner;   // country-primary territory (countryTerritory.js)
   if (!target) return claim;
+  // T.STATE_OF_LAND: nations of the land hold static basin territory OUTSIDE
+  // the settlement-seeded Voronoi (they have no settlements to seed it). The
+  // render/adoption target is the MERGED owner — realms trump tribes, so an
+  // advancing realm border absorbs tribal land tile-by-tile on the crawl,
+  // and a city born on tribal ground adopts the tribe's id through the very
+  // same claim the border draws.
+  const _lo = world._landOwner;
+  if (T.STATE_OF_LAND && _lo && world._landSeats && world._landSeats.size) {
+    let m = world._mergedOwner;
+    if (!m || m.length !== N) m = world._mergedOwner = new Int32Array(N);
+    for (let ti = 0; ti < N; ti++) { const c = target[ti]; m[ti] = c >= 0 ? c : _lo[ti]; }
+    target = m;
+  }
 
   // ── Instantaneous secession ────────────────────────────────────────
   // A country flagged by conquest.js (snapClaim — a secession / rebellion /

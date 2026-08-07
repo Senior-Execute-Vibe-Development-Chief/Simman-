@@ -10,6 +10,18 @@
 import { buildWorld as pipelineBuild } from "../src/sim/pipeline.js";
 import { initPeopleSim } from "../src/sim/peopleSim/index.js";
 import { applyTuning } from "../src/sim/peopleSim/tuning.js";
+// PROVENANCE STAMP: this session's container has silently reset its checkout
+// to a pre-session commit THREE times (2026-08-06), twice mid-measurement —
+// probe outputs from the stale tree were nearly published as findings both
+// times ("the densest tiles are in Mongolia" came from one). Every harness
+// consumer now prints the tree it actually ran on, so a probe output is
+// self-identifying and a reset shows up as a wrong hash instead of a wrong
+// conclusion. Cheap (once per process), and gates' outputs carry it too.
+try {
+  const { execSync } = await import("node:child_process");
+  const head = execSync("git -C " + JSON.stringify(new URL("..", import.meta.url).pathname) + " rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  console.log(`[harness] tree ${head}`);
+} catch { /* not a git checkout (packaged run) — no stamp */ }
 
 // SIM_TUNE env override for calibration sweeps: SIM_TUNE="FISH_RATE=7,FISH_ERAPROD_POW=0.4".
 // Lets a probe OR a gate (smoke/stylized) run with non-default levers without editing defaults.
@@ -31,7 +43,16 @@ if (process.env.SIM_TUNE) {
 // production hosting sends the COOP/COEP headers (docs/popfield-parallel.md
 // §5). Re-apply after ANY loadWorld — persist restores the save's tuning.
 export function applyToolTuning() {
-  applyTuning({ POP_FIELD_WORKERS: -1, ...SIM_TUNE_OVERRIDES });
+  // DAWN_LIVE ships ON for the app (the owner's born-from-nothing world), but
+  // the measurement/gate harness pins the SEEDED dawn as its initial condition:
+  // the stylized facts, resgate bands and smoke checks are MATURE-REGIME
+  // properties, and DEV_INIT_YEARS was always an initial-condition choice —
+  // running gates from the empty dawn would measure the Neolithic at their
+  // fixed horizons (a semantic fail, not a physics one) at 2-3x wall clock.
+  // The live dawn's own battery is the genesis arc suite (probe_cityarc /
+  // probe_tribute under SIM_TUNE DAWN_LIVE=1 — docs/state-birth-2026-08.md).
+  // An explicit SIM_TUNE override (spread last) still wins for those arcs.
+  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, ...SIM_TUNE_OVERRIDES });
 }
 applyToolTuning();
 

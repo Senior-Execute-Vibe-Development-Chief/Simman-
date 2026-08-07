@@ -65,18 +65,18 @@ export function realmLabelAnchors(psw, cache) {
   const claim = psw._countryClaim;
   if (!claim || !psw.countries) return cache && cache.list ? cache : { ver: -1, list: [] };
   const ver = psw._claimVer || 0;
-  if (cache && cache.ver === ver && cache.count === psw.countries.size) return cache;
+  const nNamed = psw.countries.size + (psw._landNames ? psw._landNames.size : 0);
+  if (cache && cache.ver === ver && cache.count === nNamed) return cache;
   const tw = psw.tw, th = psw.th;
   const cents = centroidOf(claim, tw, th);
   const prev = new Map();
   if (cache && cache.list) for (const p of cache.list) prev.set(p.id, p);
   const list = [];
-  for (const c of psw.countries.values()) {
-    const cent = cents.get(c.id);
-    if (!cent || cent.area < 4) continue;
-    const a = snapToOwned(cent, c.id, claim, tw, th);
-    const name = c.name || (c.capital && c.capital.name) || ("realm " + c.id);
-    const old = prev.get(c.id);
+  const pushAnchor = (id, name) => {
+    const cent = cents.get(id);
+    if (!cent || cent.area < 4) return;
+    const a = snapToOwned(cent, id, claim, tw, th);
+    const old = prev.get(id);
     let x = a.x, y = a.y;
     if (old) {
       // damp: ~1/4 of the way per refresh; snap only on a big jump (secession
@@ -85,10 +85,21 @@ export function realmLabelAnchors(psw, cache) {
       const dy = y - old.y;
       if (Math.hypot(dx, dy) < tw * 0.06) { x = ((old.x + dx * 0.25) % tw + tw) % tw; y = old.y + dy * 0.25; }
     }
-    list.push({ id: c.id, name, x, y, area: cent.area });
+    list.push({ id, name, x, y, area: cent.area });
+  };
+  for (const c of psw.countries.values())
+    pushAnchor(c.id, c.name || (c.capital && c.capital.name) || ("realm " + c.id));
+  // T.STATE_OF_LAND: nations of the land have no psw.countries entry (no
+  // settlements), but the claim grid carries their territory (worker fill)
+  // and the snapshot ships id → name. Same anchor machinery, so a tribal
+  // nation's name sits on its ground exactly like a realm's; when it
+  // materialises the id enters psw.countries and this loop simply yields.
+  if (psw._landNames) for (const [id, r] of psw._landNames) {
+    if (psw.countries.has(id)) continue;
+    pushAnchor(id, r.name || "a people");
   }
   list.sort((p, q2) => q2.area - p.area);
-  return { ver, count: psw.countries.size, list };
+  return { ver, count: nNamed, list };
 }
 
 // ── screen-space drawing ────────────────────────────────────────────────────

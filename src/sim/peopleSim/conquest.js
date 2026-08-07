@@ -14,7 +14,7 @@
 
 import { recordIn, recordOut, IN_AID, IN_TRIBUTE, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE, OUT_AID } from "./money.js";
 import { shockUnrest } from "./shocks.js";
-import { localEdgeCost, tileOpenness } from "./transport.js";
+import { localEdgeCost, tileOpenness, refugeHoldAt } from "./transport.js";
 import { TECHS } from "./tech.js";
 import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
@@ -23,7 +23,7 @@ import { techEff, getWealthReserve, recordCaptives, monetization, realOutputOf }
 import { TRADABLE } from "./goods.js";   // resource-hunger absorption term (T.RESOURCE_WARS)
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
-import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities, SIZE_REF } from "./entities.js";
+import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities, updateTribute, SIZE_REF } from "./entities.js";
 import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
@@ -506,6 +506,13 @@ const AMBITION_MIN_FAR = 0.5;   // ...and at least this far out (reach-units); a
 const AMBITION_FAR     = 1.8;   // distance amplifies ambition this much
 const AMBITION_GAIN    = 0.06;  // ambition-stock growth per pass at full margin
 const AMBITION_DURESS  = 1.6;   // a besieged throne emboldens governors (multiplier)
+// T.ELITE_FRACTURE sub-constants (docs/hegemon-ossification-2026-07.md §6). Each
+// has independent meaning; the master lever weight scales the whole family, ×0 off.
+const ELITE_PROJ       = 1.0;   // (1) weight of distance-attenuation on the throne's PROJECTED suppression (÷(1+PROJ·far))
+const ELITE_COURT_FRAC = 0.35;  // a province counts as a rival COURT at ≥ this fraction of the throne (elite overproduction)
+const ELITE_COURT_W    = 0.5;   // (2) each extra strong court adds this to the ambition gain (courts embolden each other)
+const ELITE_MAGNATE_W  = 1.2;   // (3) magnate estates (_estates 0..1) fund the breaker — full estate ~ +1.2× gain
+const ELITE_CRISIS_EMBOLDEN = 1.8;  // (4) a succession crisis multiplies the gain (the Diadochi opening)
 // Naval administration is no longer a special-case discount on _isPort
 // pairs — water embarkation in localEdgeCost (transport.js) gives the
 // capital's Dijkstra a sea-highway over coastal water when it has
@@ -1949,6 +1956,13 @@ export function updateAlliances(world) {
     pow.set(s.countryId, (pow.get(s.countryId) || 0) + settlementPower(s));
   }
   fieldPowerOverlay(world, countries, pow);   // POW_FIELD: governed people, not the member roster
+  // T.CRAFTS_OF_LAND: a realm ARMED WITH BRONZE weighs more — the metal stock
+  // the court traded for (or mined under its own claim) enters national power.
+  // This is why bronze-age trade networks existed: tin IS threat.
+  if (T.CRAFTS_OF_LAND) for (const id of pow.keys()) {
+    const p = getPolity(world, id);
+    if (p && (p.metal || 0) > 0) pow.set(id, pow.get(id) + p.metal * 2);
+  }
   // 2. adjacency (shared-border length) from the granular territory map.
   const adj = new Map();   // id → Map(neighbourId → border tiles)
   const bump = (a, b) => { if (a === b || a < 0 || b < 0) return; let m = adj.get(a); if (!m) adj.set(a, m = new Map()); m.set(b, (m.get(b) || 0) + 1); };
@@ -2021,6 +2035,10 @@ export function updateAlliances(world) {
 
 export function updatePolities(world) {
   const _pf = world._dbgProfile ? (world.debug.pol = { rebuild: 0, transport: 0, loop: 0, absorb: 0 }) : null;
+  // T.TRIBUTE_OF_LAND: the storehouse economy accrues at the fisc cadence —
+  // every polity (realm or nation of the land) skims the field people under
+  // its borders in kind; realm overflow monetises at the capital's market.
+  updateTribute(world, T.POLITY_INTERVAL | 0);
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
@@ -2909,6 +2927,29 @@ export function updatePolities(world) {
       const seatId = m._provinceCity ?? c.capitalId;
       provPower.set(seatId, (provPower.get(seatId) || 0) + settlementPower(m));
     }
+    // ── T.ELITE_FRACTURE (docs/hegemon-ossification-2026-07.md §6 blueprint) ──
+    // The measured cause of the immortal hegemon (probe_hegemon @960/30k: one
+    // realm holds #1 for 100% of the back-40%, unbroken 12k steps — the owner's
+    // "big countries last Stone Age to Modern"): the great power has NO internal
+    // break, only edge recession. The overmighty-governor channel is inert because
+    // it treats the throne as OMNIPRESENT — a province qualifies at ratio ≥ 0.55 of
+    // the throne's FULL power, but the crown's home province is the strongest by
+    // construction, so provinces peak at ~0.30 and never scheme (ambMax=0.00 every
+    // sample). History fractured great empires from within — the Diadochi, the Han
+    // warlords, the Abbasid emirates, the Carolingian partition — via exactly the
+    // forces the blueprint names. Four, all blended by the lever weight so elite=0
+    // is byte-identical:
+    const elite = T.ELITE_FRACTURE || 0;
+    // (2) ELITE OVERPRODUCTION: the COUNT of provincial power bases strong enough
+    // to be a rival court (≥ ELITE_COURT_FRAC of the throne). Rival courts embolden
+    // each other — an empire dense with magnates is one dynastic stumble from
+    // partition. Computed once per realm.
+    let strongCourts = 0;
+    if (elite > 0) {
+      const tp = provPower.get(c.capitalId) || capPower;
+      for (const [sid, pp] of provPower) if (sid !== c.capitalId && pp >= ELITE_COURT_FRAC * tp) strongCourts++;
+    }
+    const eliteCrisis = elite > 0 && inCrisis(world, c.id);   // (4) a succession crisis is the Diadochi trigger
     for (const s of c.members) {
       if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
       // A province seat by FUNCTION: a city, or the regional seat assignProvinces
@@ -2924,7 +2965,7 @@ export function updatePolities(world) {
       // imperial capital city and set every far seat scheming at once. Falls back
       // to the raw capital power if the throne's bucket is missing this pass.
       const thronePower = provPower.get(c.capitalId) || capPower;
-      const ratio = (provPower.get(s.id) || settlementPower(s)) / Math.max(1, thronePower);   // the province's strength vs the throne's province
+      const rawRatio = (provPower.get(s.id) || settlementPower(s)) / Math.max(1, thronePower);   // the province's strength vs the throne's province
       // Same blended distance as the hold load — a governor across a
       // mountain range is "farther" than its straight-line reading,
       // proportionally embolder.
@@ -2934,12 +2975,29 @@ export function updatePolities(world) {
       // A governor across a great river is "farther" too (same full-weight
       // river toll as the hold load) — so a far-bank seat schemes harder.
       const far  = (eucl + Math.max(0, tcEff - eucl) + (tcross.get(s.id) || 0)) / holdRange;
+      // (1) DELIVERED, not owned: suppression must be PROJECTED. The throne's
+      // power reaches a far governor attenuated by distance (÷(1+far)), so a
+      // province competes against what the crown can actually MARCH to it, not
+      // its full home strength. This is the single fix for the inert channel:
+      // a raw-ratio-0.30 province at far 1.0 reads effective 0.60 and clears the
+      // 0.55 bar. Precedent: the colonial-independence line already qualifies on
+      // projected force (projForce = blocPow × reach). Blended by elite so 0 is
+      // the raw ratio exactly.
+      const ratio = rawRatio * (1 + elite * ELITE_PROJ * far);
       if (!seat || pacified || infant || ratio < AMBITION_RATIO || far < AMBITION_MIN_FAR) {
         if (s._ambition) s._ambition = Math.max(0, s._ambition - AMBITION_GAIN);   // fades when unqualified
         continue;
       }
       const margin = (ratio - AMBITION_RATIO) / (1 - AMBITION_RATIO);  // 0 at threshold → 1 near parity
-      const duressMul = besiegedCap ? AMBITION_DURESS : (raidedCap ? 1.2 : 1);
+      let duressMul = besiegedCap ? AMBITION_DURESS : (raidedCap ? 1.2 : 1);
+      // (2) rival courts embolden each other; (3) the conquest→latifundia estates
+      // FUND the breaker (ESTATE_BREAK's slow unwind gains political meaning); (4)
+      // a succession crisis is the Diadochi opening. All blended by elite (×1 off).
+      if (elite > 0) {
+        duressMul *= 1 + elite * (ELITE_COURT_W * Math.max(0, strongCourts - 1)
+                                + ELITE_MAGNATE_W * (s._estates || 0));
+        if (eliteCrisis) duressMul *= 1 + elite * (ELITE_CRISIS_EMBOLDEN - 1);
+      }
       s._ambition = (s._ambition || 0) + AMBITION_GAIN * margin * (1 + AMBITION_FAR * far) * duressMul;
       if (s._ambition >= 1) declareIndependence(world, c, s);
     }
@@ -3577,6 +3635,19 @@ function absorbWeakNeighbors(world, countries) {
       if (no >= 0) { const fs = byId.get(no); if (!fs) continue; ncc = fs.countryId; }
       else { ncc = co ? co[ni] : -1; }
       if (ncc < 0 || ncc === myCC) continue;
+      // THE BOND IS THE ARRANGEMENT (T.VASSAL_SHIELD): the suzerain-vassal bond
+      // already stops ARMIES (armies.js bondedCC gates every front) — but not
+      // this channel, so an overlord quietly digested the very statelets whose
+      // submission it accepted, and the vassal mosaic (tributaries, princely
+      // states, the Empire's members — history's largest store of persistent
+      // SMALL polities) could never accumulate. A lord who accepts tribute
+      // neither sacks nor annexes the payer; the pull of every UNBONDED realm
+      // is untouched, and the bond itself still dissolves through the existing
+      // channels (overlord death, rebellion, rebuildOverlords lapses).
+      if (T.VASSAL_SHIELD) {
+        const ov = world._overlordOf;
+        if (ov && (ov.get(myCC) === ncc || ov.get(ncc) === myCC)) continue;
+      }
       const F = countries.get(ncc); if (!F || !F.capital) continue;   // a realm mid-collapse can have no capital this pass
       const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
       if (fOrg < T.ABSORB_ORG_MIN) continue;
@@ -3668,6 +3739,14 @@ function absorbWeakNeighbors(world, countries) {
     // Siberia). Emergent: the brake is the coalition's strength relative to the hegemon,
     // whatever the map makes it — never a size cap or a geography constant.
     if (world._countryPow) prob /= coalitionBrake(world, bestId, world._countryPow.get(bestId) || 1);
+    // DEFENSIBLE GROUND resists the pull (T.REFUGE): peaceful absorption is the
+    // shadow of coercion — "join the orbit or be taken" — and that shadow
+    // attenuates over the same river-moat/high-ground/ridge walls that stall the
+    // war pass (transport.js terrainHoldAt: one definition, engineering-eroded,
+    // capped). A community behind real walls of rock keeps its independence for
+    // as long as the ground holds; the mountain mosaics and moat cities history
+    // actually kept are exactly this. ÷1 at lever 0.
+    if (T.REFUGE > 0) prob /= refugeHoldAt(world, (m.pos.y | 0) * tw + (m.pos.x | 0), (m.knowledge && m.knowledge.construction) || 0);
     // Deterministic per-(seed, settlement, step) roll via the shared avalanche
     // hash. Unlike the old linear-congruential hash it varies with the WORLD SEED
     // (defections used to be identical across every seed) and doesn't correlate
@@ -3786,18 +3865,41 @@ function eliminateEnclaves(world, countries) {
     let intoId = -1, bestBord = 0, totBord = 0;
     for (const [cc, n] of borderCount) { totBord += n; if (n > bestBord) { bestBord = n; intoId = cc; } }
     if (intoId === selfCC) continue;                // region already that country
-    let regionHasCity = false;
-    for (const ti of region) { const o = owner[ti]; if (o >= 0) { const s = byId.get(o); if (s && (s.tier | 0) >= 2) { regionHasCity = true; break; } } }
+    let regionHasCity = false, citySeatHold = 1;
+    for (const ti of region) {
+      const o = owner[ti]; if (o < 0) continue;
+      const s = byId.get(o); if (!s || (s.tier | 0) < 2) continue;
+      regionHasCity = true;
+      // The engulfed city's own ground (T.REFUGE): a mountain-pocket or moat seat
+      // raises the power dominance an engulfing realm needs before the pocket is
+      // peacefully annexed — the enclave gate's own comment names Andorra and San
+      // Marino as exactly what it was wrongly vacuuming. ×1 at lever 0.
+      if (T.REFUGE > 0) {
+        const h = refugeHoldAt(world, (s.pos.y | 0) * tw + (s.pos.x | 0), (s.knowledge && s.knowledge.construction) || 0);
+        if (h > citySeatHold) citySeatHold = h;
+      }
+      if (!(T.REFUGE > 0)) break;   // no hold to compare — first city settles it (pre-lever scan order)
+    }
     let needFrac = ENCLAVE_DOMINANCE;
     if (regionHasCity) {
       // City-state: needs FULL enclosure, UNLESS a much stronger realm deeply
       // engulfs it (then it's peacefully annexed — see CITY_ENCLAVE_* note).
       const domPow = cPow.get(intoId) || 0, selfP = cPow.get(selfCC) ?? Infinity;
-      needFrac = (!_cityEnclaveOff && domPow >= selfP * CITY_ENCLAVE_POWER) ? CITY_ENCLAVE_DOMINANCE : 1.0;
+      needFrac = (!_cityEnclaveOff && domPow >= selfP * CITY_ENCLAVE_POWER * citySeatHold) ? CITY_ENCLAVE_DOMINANCE : 1.0;
     }
     if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
     if (!into) continue;
+    // T.VASSAL_SHIELD: an enclave that is the surrounder's own VASSAL (or its
+    // suzerain — the Empire ringed by a mighty tributary) is not vacuumed: the
+    // bond is the arrangement, exactly as in war and absorption. This is the
+    // Andorra/San Marino configuration BY NAME in the gate's own history —
+    // a statelet fully inside a great power, persisting because the
+    // relationship is settled, not because the geometry is unfinished.
+    if (T.VASSAL_SHIELD && selfCC >= 0) {
+      const ov = world._overlordOf;
+      if (ov && (ov.get(selfCC) === intoId || ov.get(intoId) === selfCC)) continue;
+    }
     // STATECRAFT + CAPACITY gate — the same bars every other peaceful-transfer
     // channel pays (absorbWeakNeighbors): swallowing an engulfed community is an
     // act of ADMINISTRATION, not geometry. Ungated, this was the largest single
