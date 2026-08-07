@@ -1350,3 +1350,62 @@ range it does not reach — "2-3x (basin irrigation) to 5-15x (wet rice vs dry
 farming)" against a uniform 3x ceiling, measured saturating at 2.78x on river
 ribbons. That is where to start, with resgate re-baselined afterwards because
 every band moves.
+
+---
+
+# RETRACTION: the capacity ruler is broadly SOUND (2026-08-06)
+
+The section above concluded that "prime land carries 0.50 ppl/km² against a
+real 15-50" and framed a capacity-ruler wave around a 10-30× shortfall.
+**That conclusion was wrong, and the error was mine in two compounding ways.**
+Re-measured on the current tree (`tools/probe_capruler.mjs`, corrected):
+
+    world 25.66M · mean 0.150 ppl/km² (real ~0.17 at this world total) ✓
+    peak tile 7.9 ppl/km²
+    densest 0.5% of land holds 13.1% of people   (real ~3500 BC ≈ 15-20%)
+    where history's cradles RANK among 38,741 land tiles:
+      Mid-Euphrates  4.16 ppl/km²  rank    50  (top 0.13%)
+      Sumer          3.40          rank   122  (top 0.31%)
+      Nile           2.70          rank   273  (top 0.70%)
+      Yellow River   2.40          rank   400  (top 1.03%)
+      Yangtze        0.34          rank  4049  (top 10.45%)
+
+**History's cradles ARE the sim's densest places.** Mid-Euphrates is the 50th
+densest tile on Earth out of 38,741; Sumer 122nd; the Nile 273rd. The
+concentration curve is close to the real one. The peak is 7.9 against a
+date-matched real Nile tile of ~4.
+
+## The two errors, recorded so they are not repeated
+
+1. **DATE MISMATCH.** I compared a world holding 25.7M people — which is
+   ~3500 BC — against Egypt's OLD KINGDOM population (~1.5M, c. 2500 BC).
+   At 3500 BC Egypt held ~0.4M. Comparing across a millennium of the real
+   record manufactured most of the "10× short".
+2. **MEAN vs PEAK.** I compared the MEAN density of a 23M km² "prime land"
+   band against the PEAK density of the Nile FLOODPLAIN. A 4,427 km² tile on
+   the Nile is ~1,000 km² of floodplain plus ~3,400 km² of desert; a real such
+   tile at 3500 BC reads ~4 ppl/km², not 18-50. Rank-to-rank and peak-to-peak
+   are the only safe comparisons, and the corrected probe now prints them.
+
+A third contributor: two of the measurements in the section above
+(world 42.1M, "the world's densest tiles are in Mongolia") were taken while
+the container's checkout had silently RESET to a pre-session commit — they
+describe code from before this session's waves, not the current tree. The
+restored-tree numbers are the ones above. Determinism itself was verified
+(identical popField sums across repeated runs and across step batching).
+
+## What is actually left
+
+No capacity-ruler wave. The remaining, much narrower items:
+
+- **The Tarim / Hexi corridor tops the density table** (92-98E, 40-44N: 6.3-7.9
+  ppl/km², rMag 4, works 1.00) — above every real cradle. The codebase already
+  names this basin as a known false positive in the cradle scorer ("the Tarim
+  is the ULTIMATE circumscribed fertile pocket and held none of it"); the same
+  geography is now topping the DENSITY table. Worth its own look.
+- **Yangtze works 0.23** where every other cradle saturates at ~1.00 — wet-rice
+  intensification is not building. This is the wet-farming half of the item
+  flagged when irrigation was proposed, and it is real.
+- The user's original observation stands but is now correctly attributed: the
+  Crescent IS dense and developed (rank 50); what it lacks is CITIES. That is
+  the urban-takeoff item, not a food-capacity item.
