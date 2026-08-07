@@ -136,8 +136,25 @@ dawn-pace floor re-derivations in the flip wave. Landed as one act:
 | save migration | v6 default → pair ON · v5 no-delta → pinned OFF · v5 explicit → kept (probe, 3/3) |
 | coverage | **✓** — `_armedHearths`/`_landSeats` (the dawn's live registries, now populated at gate horizons) measured in collect(): `hearth.armedNow` + `hearthArmed.*`, `nation.landSeatsNow` + `landSeat.*` |
 | monotone (12k) | **0 failures** — the new metrics are point-in-time gauges by name (`…Now`), never cumulative claims |
-| abtest 4-seed panel (vs pair-off) | in flight at commit time — rows land in the follow-up commit |
-| tw=960 spot-check (probe_shape 16k) | in flight — at step 4000: 4 realms, 1.0% claimed, founded 18 / ended 3 (alive and moving); full checkpoints land in the follow-up commit |
+| abtest 4-seed panel (vs pair-off) | **pace, not shape** — see the panel note below |
+| tw=960 spot-check (probe_shape 16k) | see the panel note below |
+
+#### The 4-seed panel (abtest --base="DAWN_LIVE=0" --tune="CROP_BIOGEO=0,IRRIG_CROP=0", 12k, tw=240, seeds 8817/31337/4242/9999)
+
+Baseline = the new defaults (pair ON), variant = pair OFF. 2,003 movers
+consistent across all four seeds, and they tell one story — the pair shifts
+**genesis pace, not history shape**:
+
+- Realms at the fixed 12k horizon: ON 8/4/5/5 vs OFF 10/13/12/18 — while
+  **median realm areas are comparable** (e.g. 769k ↔ 754k km² on 8817): the
+  realms that exist are full-sized, there are simply fewer of them this early.
+- ON worlds still carry live armed hearths at 12k (`count._armedHearths` 2 vs
+  0) and one seed fires `farming.invented` live at step 4272 — the stagger is
+  real even in the seeded-dawn condition.
+- OFF worlds are further along the political arc at the same step: wars begun
+  3 → 17, secessions/submissions/vassal blocs present only there. That is the
+  OLD dawn racing ahead, not a shape divergence — stylized already prices the
+  mature shape (all hard gates at 21k) and resgate the cross-grid sizes.
 
 ---
 
