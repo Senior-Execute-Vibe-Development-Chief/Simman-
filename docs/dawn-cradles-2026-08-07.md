@@ -651,8 +651,20 @@ are the mechanism's own refinement (recorded per custom):**
 (from 3-over-budget), smoke green, resgate green both seeds. The census
 character transforms: rare, chronicled succession-moment unions with no
 churn. v10 save-regime guard: a pre-wave save keeps its political physics.
-The 22k tw=960 size-distribution payoff re-runs on the pushed tree; its
-table appends here.
+
+**The tw=960 payoff (22k, pushed tree) — honest and mixed.** The channel
+FIRES at the app grid: multiCityRealms blips to 1-2 at ~12-13k and ~16k,
+and polity DEATHS return (3 by 22k — the first mortality this grid's
+early game has shown). But the unions do not HOLD: each united realm
+loses its second member within ~1-2k steps, and the 22k map is still
+confetti (72 polities, tail ~7×). The reference grid consolidates (two
+held unions, 11 submissions cascading, 44 deaths — every stylized gate
+green); the shipped grid does not yet — the same grid-KIND divergence
+this file's charter exists for. The named next instrument: a per-union
+tracker at tw=960 answering WHERE the second member goes (city
+dissolution via DISSOLVE_TOWNS, admin-load secession at the reach edge,
+or settlement death) — the holding problem is the next lap, not a tuning
+knob.
 
 ## Repro commands
 
