@@ -1361,7 +1361,18 @@ function maybeSiteCities(world) {
     labelClaimBasin(world, st.x, st.y);
     elig[k] = 0;
     if (world._siteBasin) world._siteBasin.delete(k);
-    spikes.delete(st.ti);
+    // T.HOLD_SEAM (2026-08-11 — the handoff's SEAM, docs §6): deleting the
+    // site spike here leaves ≥1 firing with NO capacity over the pile — the
+    // tick order is field pass → derive → THIS mint, so the next field pass
+    // runs before the entity spike can exist, and the amortized territory
+    // pass extends the window further (deriveOnePop reads the core only for
+    // settlements with a catchment; its HOLD_SEAM half closes that). The
+    // mint therefore HANDS the spike over in place — the site law's own
+    // bound, the identical expression the deleted spike carried — and the
+    // next derive's clear-and-restamp takes it from there. Off ⇒ the delete
+    // (byte-identical, the gap regime).
+    if (T.HOLD_SEAM) spikes.set(st.ti, { k: Math.min(coreF, coreBarF * 1.2) });
+    else spikes.delete(st.ti);
     logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1, x: st.x, y: st.y });
   }
 }

@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 7;   // v7: the millet split + real-width water access default ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
+export const SAVE_VERSION = 8;   // v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -432,6 +432,15 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("CROP_MILLET" in tn)) T.CROP_MILLET = 0;
     if (!("ACCESS_BAND" in tn)) T.ACCESS_BAND = 0;
+  }
+  // v7 → v8: the residual birth-crater wave — FOOD_REACH (re-keys owned-land
+  // carrying capacity everywhere a low-org state holds territory) and
+  // HOLD_SEAM (re-keys every city mint's capacity handoff) became default-ON.
+  // Same pattern: a pre-v8 save keeps the capacity semantics it grew on.
+  if (data.v < 8) {
+    const tn = data.tuning || {};
+    if (!("FOOD_REACH" in tn)) T.FOOD_REACH = 0;
+    if (!("HOLD_SEAM" in tn)) T.HOLD_SEAM = 0;
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });

@@ -439,6 +439,77 @@ mechanism is UN-ATTRIBUTED by this instrument. The §4 probe chain
 (probe_capdrain at tw=960, on a post-wave mint) is the named next tool; the
 instrument stands.
 
+## 6. Second follow-up (2026-08-11): "the population still disappears around cities spawning" — the crater's true mechanism, found on the third lap
+
+§5 left the residual crater un-attributed and named the next tool. The owner's
+report re-opened it, and the lap that closed it is a case study in why this
+repo measures before it fixes — the first two hypotheses both died on
+instrument.
+
+**Hypothesis 1, famine (DEAD).** The threshold famine (any tick the pot reads
+empty, 1.5% of the urban core dies, `fieldShift` mirrors the kills into the
+land) fit every row of both §5 tables — cities in permanent small deficit
+should bleed at the full rate forever. Measured (probe_faminedrain, both
+grids, per-tick expected-kill ledgers): **kill/lost = 0.00 on every tracked
+birth; the granaries never even emptied** in the crater window (food 182-285
+at +1000). The deficit-proportional famine law designed for it was discarded
+unbuilt.
+
+**Hypothesis 2, the CORE_HOLD seam (REAL, but not the killer).** Per-tick
+instrumentation of the first mint (probe_holdseam) found CORE_HOLD's floor
+leaking at two seams: the mint tick's order (field pass → derive → mint)
+deletes the site spike after the field pass has run — one guaranteed
+floorless firing — and the floor's `_coreF` computed only under `f > 0`
+(catchment assigned), so a newborn owning no tiles until the amortized
+territory pass ran left the floor **inert for ~65 ticks** (measured: own=0,
+spikeK=0, the 842 stash unused the whole window) — with `min(live core,
+stash)` then holding only whatever survived, a one-way ratchet. Real leaks,
+closed by `HOLD_SEAM` — but at the measured mint the pile sat under terrain
+capacity and survived the window: the seam alone did not make the crater.
+
+**The killer, caught in the act: FOOD_K × a cold ledger.** At +70, the tick
+the territory pass assigned the newborn its 156-tile catchment, tile capacity
+fell **1092 → 599 (−45%) in ONE tick** — `FOOD_K` (def 1) blends every OWNED
+tile's capacity to the owner's food ledger, and a newborn's ledger is COLD
+(its supply machinery has not yet measured the land the border just
+enclosed; s/d 0.36-0.65). The blend painted that cold verdict over a
+countryside that had been feeding itself, and the field's logistic then
+killed the subsistence farmers toward it. **A border is not an economy** —
+annexation does not stop subsistence farmers farming.
+
+**The fix, `FOOD_REACH` (def 1): the ledger's authority is its
+administrative reach, and the authority is ASYMMETRIC.** The blend weight
+becomes fkL × the owner's admin-reach ramp — the identical org ramp the
+grain levy runs on (`settlement.js foodReach`, ONE definition, two
+consumers) — but only **downward**: UPWARD the ledger GIVES (market wealth
+reaches the countryside through mere contact — peasants sell at the town
+market with no levy bureaucracy in sight), so ledger-richer-than-proxy
+blends at full weight regardless of org; DOWNWARD the ledger TAKES
+(extraction and crisis pricing travel only as far as the bureaucracy that
+can assess and collect), so a proto-state's countryside cannot be dragged
+below its own subsistence yield while an organised state's famine/blockade
+bites exactly as FOOD_K delivered. The symmetric form was measured WRONG in
+this same lap — it cut seeded worlds (mature ledger, low org, the decoupled
+case) and the smoke population arc fell 770→561; the asymmetric form passes
+770→**1511** with both aliveness gates restored. Consequence-side
+completion, same lever: the empty-pot famine now fires only when the supply
+FLOW is below the CORE's own need (`_coreNeed`) — an empty store with a
+core-covering flow starves nobody (without this, a basin THRIVING past its
+city pinned the notional whole-catchment ledger at 0 and the die-off fired
+775/1101 ticks into a well-fed core; the FED_FAMINE precedent — scope the
+consequence, never re-key the calibrated drain — decided the form).
+
+**The verdict (probe_faminedrain2, tw=480, all tracked births):** every
+basin now **GROWS through its city's birth** — lost is negative across the
+board, −45k to −76k on 26-73k bases (1.4-2.0× at the probe horizon), zero
+over-cap tiles, cores growing, the capacity crash gone from the per-tick
+trace (cap@ti steady through the ownership tick). Smoke green (population
+arc 770→1511), stylized/resgate on this tree recorded with the commit; the
+tw=960 payoff re-run follows.
+
+v8 save-regime guard: pre-wave saves keep the capacity semantics they grew
+on. Parked, unchanged: capital-as-seat / reversion-not-death (owner's word).
+
 ## Repro commands
 
 ```

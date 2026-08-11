@@ -716,6 +716,22 @@ function techEff(s) {
 }
 export { techEff };
 
+// ── The administrative-reach ramp (ONE definition, two consumers) ──────────
+// Statecraft below LEVY_ORG_MIN cannot run a systematic assessment of the
+// countryside at all (a chiefdom takes tribute, not a grain levy); above it
+// the bureaucracy ramps to full reach. The food hierarchy's in-kind levy
+// (foodHierarchy.js levyShare = LEVY_MAX × this) and the ledger's authority
+// over rural carrying capacity (T.FOOD_REACH → FOOD_K's blend weight,
+// popField.js) are the SAME administrative capacity, so they read the same
+// ramp — a state that cannot collect the harvest cannot re-price the land
+// that grows it. Emergent: gated on the settlement's own statecraft
+// (techEff reachLevel), never a date.
+export const LEVY_ORG_MIN = 0.35;   // the proto-state threshold (moved here from foodHierarchy.js — one definition)
+export function foodReach(s) {
+  const org = techEff(s).reachLevel || 0;
+  return org > LEVY_ORG_MIN ? Math.min(1, (org - LEVY_ORG_MIN) / (1 - LEVY_ORG_MIN)) : 0;
+}
+
 // ── Wealth: money comes from trade, not thin air ──
 //
 // A settlement earns money by SELLING what it produces to other
@@ -2817,6 +2833,16 @@ function updateFood(world, s) {
   // plantation/mine workforce adds real food demand the settlement must cover or import.
   const slaveFood = T.SLAVERY ? (s._unfree || 0) * 0.0030 * T.SLAVE_FEED : 0;
   const demand = civDemand + armyFood + slaveFood;
+  // T.FOOD_REACH consequence-side completion (2026-08-11, docs §6): the CORE's
+  // own need — what the pot must actually cover for the people who depend on
+  // it (urban core at the civic rate, the garrison, the unfree). The ledger's
+  // headline demand deliberately keeps billing the WHOLE census (the
+  // FED_FAMINE precedent: re-keying the granary drain re-keys granary/trade
+  // balances world-wide), but under FOOD_REACH the census counts subsistence
+  // people the market neither feeds nor taxes — so the empty-pot famine gate
+  // below compares the supply FLOW against THIS, not against the notional
+  // whole-catchment drain. Stashed, not returned: the famine block runs later.
+  s._coreNeed = Math.min(s.people, s._urbanPop || 0) * 0.0030 * urbanFactor + armyFood + slaveFood;
 
   // RETAINED land food — what the food HIERARCHY leaves this settlement: its
   // aggregated subtree intake minus what its liege levied/bought away (computed
@@ -3251,6 +3277,16 @@ function updatePopulation(world, s) {
   s._k = K;
   s._foodK = foodK;            // exposed so the info panel can show which limit binds
   s._houseK = houseK;
+  // T.FOOD_REACH — the ledger's writ over its countryside (2026-08-11, the
+  // residual birth-crater root cause; docs/dawn-cradles-2026-08-07.md §6).
+  // Stamped here (techEff's home turf) so the field pass reads a plain field:
+  // FOOD_K's blend weight becomes fkL × THIS — the same administrative ramp
+  // the grain levy runs on (foodReach below), because a border is not an
+  // economy: the market's authority over rural carrying capacity extends
+  // exactly as far as the bureaucracy that can assess, collect and haul the
+  // countryside's harvest. Below the proto-state threshold the countryside
+  // keeps the subsistence formula wholesale.
+  s._foodReach = T.FOOD_REACH ? foodReach(s) : 1;
 
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
   // ── T.FED_FAMINE: an empty CITY granary starves the CITY — the urban core,
@@ -3272,7 +3308,22 @@ function updatePopulation(world, s) {
   // the memory to census scale before the crash, and the craters reproduced
   // ~unchanged (tables in docs/dawn-cradles-2026-08-07.md §4). No memory, no
   // ratchet, no constant: the base IS the urban core.
-  if (s.food <= 0.01 && s.people > 1) {
+  // T.FOOD_REACH famine gate (2026-08-11, docs §6): an empty STORE is not
+  // core starvation while the supply FLOW still covers the core's own need.
+  // Under FOOD_REACH the census (and so the ledger's headline demand) counts
+  // subsistence countryside the market neither feeds nor taxes, so a
+  // proto-state city amid a THRIVING basin runs a permanently negative
+  // notional ledger — pot pinned at 0, the die-off firing every tick at full
+  // rate (measured: famT 775/1101 ticks, Σkill 2990, the dissolve-arm
+  // aliveness gate broken) while its actual flow (s/d 2.58/4.25) covered its
+  // 87-person core several times over. The gate compares flow to _coreNeed
+  // (the pot's real dependents at the civic rate + garrison + unfree — the
+  // same quantities FED_FAMINE scopes the KILL to); genuine starvation
+  // (flow below the core's own need) dies exactly as before. Follows the
+  // FED_FAMINE precedent: scope the famine CONSEQUENCE, never re-key the
+  // calibrated granary/trade drain. Lever off ⇒ gate absent, byte-identical.
+  if (s.food <= 0.01 && s.people > 1
+      && (!T.FOOD_REACH || (s._foodSupply || 0) < (s._coreNeed !== undefined ? s._coreNeed : Infinity))) {
     const before = s.people;
     if (T.FED_FAMINE) {
       const dependents = Math.min(before, s._urbanPop || 0);

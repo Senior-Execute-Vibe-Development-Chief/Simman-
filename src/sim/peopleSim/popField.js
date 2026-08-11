@@ -779,7 +779,33 @@ export function stepPopField(world, sub = 1) {
       const landShare = Math.max(0, Math.min(1, 1 -
         ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
       const ledgerK = (s._k * landShare / bridge) * (cap[i] / W);
-      cap[i] = cap[i] * (1 - fkL) + ledgerK * fkL;
+      // T.FOOD_REACH (2026-08-11, the residual birth-crater root cause —
+      // docs/dawn-cradles-2026-08-07.md §6): the ledger's DOWNWARD authority
+      // over a tile is the owner's ADMINISTRATIVE REACH (s._foodReach, the
+      // same org ramp the grain levy runs on — settlement.js foodReach), not
+      // the border alone. Measured without it: the moment the amortized
+      // territory pass assigned a newborn its catchment, this blend painted
+      // the newborn's COLD ledger (supply machinery yet to converge; s/d
+      // 0.36-0.65) over ~156 tiles of countryside that had been feeding
+      // itself — capacity −45% in one tick (cap@ti 1092→599, probe_holdseam)
+      // — and the field's logistic then killed the subsistence farmers the
+      // ledger had never measured. The famine channel was proven inert first
+      // (probe_faminedrain ×2 grids: kill/lost = 0.00, granaries full).
+      // THE AUTHORITY IS ASYMMETRIC (measured, same lap: a symmetric
+      // reach-blend cut SEEDED worlds — mature ledger, low org, the
+      // decoupled case — and the smoke population arc fell 770→561):
+      // UPWARD the ledger GIVES — market wealth reaches the countryside
+      // through mere contact (peasants sell at the town market with no levy
+      // bureaucracy in sight), so ledgerK ≥ proxy blends at full weight
+      // regardless of org. DOWNWARD the ledger TAKES — extraction and
+      // crisis transmission (famine pricing, blockade) travel only as far
+      // as the bureaucracy that can actually assess and collect, so
+      // ledgerK < proxy is reach-weighted: a proto-state's countryside
+      // cannot be dragged below its own subsistence yield, an organised
+      // state's famine/blockade bites exactly as FOOD_K delivered.
+      // Lever off ⇒ weight fkL both ways, byte-identical.
+      const w = (T.FOOD_REACH && ledgerK < cap[i] && s._foodReach !== undefined) ? fkL * s._foodReach : fkL;
+      if (w > 0) cap[i] = cap[i] * (1 - w) + ledgerK * w;
     }
   }
 
@@ -1810,6 +1836,15 @@ export function deriveOnePop(world) {
       // only (the heuristic read minted a "city" at step 1 and metropolises at
       // 3× their field core). Null until the field first derives a catchment.
       s._coreMeasured = s._urbanPop;
+    } else if (T.HOLD_SEAM && T.CORE_HOLD && s._coreHoldCapF > 0) {
+      // T.HOLD_SEAM (2026-08-11, docs §6): the CORE_HOLD floor's inputs are
+      // field-local — they never needed the catchment. Gating _coreF on
+      // f > 0 made the floor wait for the AMORTIZED territory pass to assign
+      // the newborn its tiles (measured: own=0 for ~65 ticks post-mint,
+      // spikeK=0 the whole window — probe_holdseam), leaving the gathered
+      // pile floorless exactly when it is 10-50× over bare terrain. A
+      // stash-carrying settlement reads its live core unconditionally.
+      _coreF = Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR));
     }
     // else: no catchment tiles this pass (fresh founding / recompute lag) — keep the census value
     // The spike (next pass's capacity + the core's transition/graveyard-bent
