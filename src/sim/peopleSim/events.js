@@ -185,6 +185,11 @@ const NARRATE = {
       ? `With the mantle of ${ev.fromName || "the fallen metropole"} came its charters: ${ev.name || "a colony"} now answers to this crown.`
       : `${ev.fromName || "The mother country"} fell, and the charter over ${ev.name || "the colony"} passed to ${ev.toName || "its successor"}.`;
   },
+  "polity.united"(ev, as) {
+    return as === ev.into
+      ? `The crowns were joined: the court of ${ev.name || "a kindred realm"} entered the realm in union.`
+      : `The court of ${ev.name || "the realm"} joined its crown to ${ev.intoName || "a kindred neighbour"} — one people, one throne.`;
+  },
   "polity.submitted"(ev, as) {
     return as === ev.to
       ? `${ev.name || "A neighbouring statelet"} bent the knee and became a tributary of the realm.`
@@ -347,6 +352,7 @@ export function categoryOf(ev, as = -1) {
     case "colony.independent": return as === ev.from ? "loss" : "secession";
     case "colony.inherited": return as === ev.to ? "annex" : "society";
     case "polity.submitted": return as === ev.to ? "annex" : "loss";
+    case "polity.united": return as === ev.into ? "annex" : "loss";
     case "horde.raid": return as === ev.from ? "wealth" : "loss";
     case "plague.virginSoil": return "plague";
     case "war.indemnity": return as === ev.polity ? "loss" : "wealth";

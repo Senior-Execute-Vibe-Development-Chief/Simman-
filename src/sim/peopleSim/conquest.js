@@ -2357,6 +2357,9 @@ export function updatePolities(world) {
   // Runs every polity pass on the (slow-drifting) alliance data; the new
   // vassal's tribute/bloc wiring takes effect next pass via rebuildOverlords.
   considerSubmissions(world, countries);
+  // The union of crowns: kin courts governing one cheap corridor merge — the
+  // symmetry breaker that seeds the first multi-city realms (below).
+  if (T.VALLEY_UNION) considerUnions(world, countries);
   // The steppe collects: hordes raid the rich settled rim (or honour the
   // treaties of those who submitted above). After submissions so a court that
   // bent the knee this pass is spared this pass's raid season.
@@ -3408,6 +3411,120 @@ function considerSubmissions(world, countries) {
     if (r > prob) { tel(world, "submit", mIdentity <= 1 / brake ? "identityBrake(foreignCourt)" : "coalitionBrake(deterrence)"); continue; }
     if (bendTheKnee(world, sid, hid)) telPass(world, "submit");
     else tel(world, "submit", "bendTheKneeRefused");
+  }
+}
+
+// ── T.VALLEY_UNION: the union of crowns in a cheap corridor (2026-08-11,
+// docs/dawn-cradles-2026-08-07.md §8) ────────────────────────────────────────
+// The owner's 174-AD map: a healthy filled world, every polity in one size
+// band, no hegemon anywhere. Measured (probe_sizeband, tw=960, 22k steps): 67
+// polities and multiCityRealms = 0 the WHOLE run — no realm ever holds two
+// cities. The structure guarantees it: the mint law only creates cities
+// OUTSIDE existing claims (1 city = 1 polity by construction), and every
+// consolidation channel is ASYMMETRY-gated (SUBMIT_RATIO 5×, ABSORB_DOMINANCE)
+// while the healthy synchronized dawn produces a cohort of NEAR-EQUALS — so
+// consolidation needed asymmetry and asymmetry needed consolidation, and the
+// political map froze as confetti. History's symmetry breaker was GEOGRAPHY:
+// near-parity KIN city-states sharing one cheap corridor UNIFIED (the Nile
+// valley cohering into Egypt c. 3100 BC — crowns merging among peers, not
+// capitulation to a 5× hegemon), and the first multi-city kingdoms then
+// generated the very asymmetries the existing overawe/absorb cascade runs on.
+// This pass is that channel, from quantities the sim already owns:
+//   · CORRIDOR — each capital lies within the OTHER court's holdReach: the
+//     two courts already govern one stretch of country in every sense but
+//     the crown (holdReach is the cost-grounded administrative radius, so
+//     cheap river/coast country makes long corridors by itself);
+//   · KINSHIP — the hazard scales by (1 − absorbResistance): full-kin courts
+//     unify readily, wholly foreign neighbours essentially never (the same
+//     era-weighted identity law every other peaceful transfer reads);
+//   · A MILD EDGE — hazard × min(1, powH/powS − 1): exact parity never
+//     merges (no coin-flip churn), a modest leader gathers its kin slowly,
+//     2× gathers at the full submission hazard — smooth, no threshold;
+//   · DETERRENCE — ÷ coalitionBrake, the same balance-of-power law that
+//     throttles overawing, so a runaway uniter alarms its neighbours.
+// The union is FULL (members join the winner at loyalty 1 — a negotiated
+// union of kin courts, not an occupation) but identity REMEMBERS
+// (recordOccupation): the old homeland persists in the cohesion ledger, so
+// unions can break again through the existing secession/restoration
+// machinery when the crown weakens. No new constants: SUBMIT_HAZARD,
+// holdReach, absorbResistance, coalitionBrake, settlementPower recombined.
+function considerUnions(world, countries) {
+  if (!world._countryPow) return;
+  const byId = world._byId;
+  if (!byId) return;
+  // Network power (own + dependencies), same measure the submission gate uses.
+  const own = new Map();
+  for (const c of countries.values()) {
+    let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m);
+    own.set(c.id, p);
+  }
+  fieldPowerOverlay(world, countries, own);
+  const ov = world._overlordOf;
+  const eff = new Map(own);
+  if (ov) for (const [dep, over] of ov) if (eff.has(over)) eff.set(over, (eff.get(over) || 0) + (own.get(dep) || 0));
+  const probBase = _passProb(SUBMIT_HAZARD);
+  const ids = [...countries.keys()].sort((a, b) => a - b);   // deterministic pair order
+  for (const sid of ids) {
+    const S = countries.get(sid);
+    if (!S || !S.capital) continue;
+    if (ov && ov.has(sid)) continue;                        // a dependency's crown is spoken for
+    // A union of crowns is a SUCCESSION event, not a standing offer: courts
+    // merged when the throne itself was in question (Aragon-Castile,
+    // Poland-Lithuania, James VI & I) — a court without a secure succession
+    // joins its kin rather than bleed over the crown. Ungated, the measured
+    // rate ran hot and diluted war causality (unioncensus: wars 7→23 across
+    // 3k steps as unions began; stylized 3 soft warnings over budget). The
+    // crisis window is the dynasty machinery's own emergent signal — rate
+    // now self-calibrates to dynastic fragility, and each union is a
+    // chronicled human moment instead of background drift.
+    if (!inCrisis(world, sid)) continue;
+    // Deterministic per-(seed, court, step) roll BEFORE the pair scan — free rejection.
+    const r = hash32(world.seed || 1, "union", sid, world.step) / 4294967296;
+    if (r > probBase) continue;
+    const powS = eff.get(sid) || 1;
+    // The court unites with its strongest KIN corridor partner, if any qualifies.
+    let best = -1, bestPull = 0;
+    for (const hid of ids) {
+      if (hid === sid) continue;
+      const H = countries.get(hid);
+      if (!H || !H.capital) continue;
+      if (ov && ov.has(hid)) continue;
+      const powH = eff.get(hid) || 1;
+      if (powH <= powS) continue;                           // the LARGER court hosts the union
+      const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
+      // The corridor: EACH court could administer the other's seat today.
+      if (d > Math.max(1, H.holdReach) || d > Math.max(1, S.holdReach)) continue;
+      const kin = 1 - absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+      if (kin <= 0) continue;
+      const edge = Math.min(1, powH / powS - 1);
+      if (edge <= 0) continue;
+      const pull = kin * edge / coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
+      if (pull > bestPull) { bestPull = pull; best = hid; }
+    }
+    if (best < 0) continue;
+    // Second roll against the pair's own pull (kin × edge ÷ brake), so a
+    // half-kin or barely-led union takes proportionally longer.
+    const r2 = hash32(world.seed || 1, "unionPull", sid, world.step) / 4294967296;
+    if (r2 > bestPull) continue;
+    const H = countries.get(best);
+    const members = [...S.members];
+    for (const m of members) {
+      if (m.countryId !== sid) continue;
+      m.countryId = best;
+      m.loyalty = 1;
+      m._conqueredAt = world.step;                          // transfer grace, same as every channel
+      // NO recordOccupation: a joined crown is not an occupied one. Writing
+      // the conquest memory here marked every united city's homeland as
+      // FALLEN, and the restoration machinery pulled it back out — measured
+      // as an unite→secede→re-unite oscillation (unioncensus: the same court
+      // united into the same realm twice within 2.4k steps). Later breakups
+      // ride the ordinary loyalty/identity channels, which read the real
+      // culture the members keep.
+    }
+    logEvent(world, "polity.united", { polity: sid, name: realmName(world, sid),
+      into: best, intoName: realmName(world, best),
+      x: S.capital.pos.x | 0, y: S.capital.pos.y | 0 });
+    telPass(world, "union");
   }
 }
 

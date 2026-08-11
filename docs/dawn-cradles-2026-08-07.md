@@ -595,6 +595,65 @@ across the Central-Asian crossing (DIFF_CLIM tolls over the
 Tibet/Tarim/steppe climate distance — the wave evidently crosses too
 cheaply), not the ignition itself.
 
+## 8. Fourth follow-up (2026-08-11): the 174-AD confetti — "no hegemons, not very large disparity" — and the union of crowns
+
+The owner's map after the §4-§7 waves: a healthy, filled world — and every
+polity in one size band, no hegemon anywhere. Measured (probe_sizeband,
+tw=960, 22k steps): 67 polities and **multiCityRealms = 0 the whole run** —
+no realm ever holds a second city. The structure guarantees it:
+
+- The mint law only creates cities OUTSIDE existing claims (an eligible
+  site must be unclaimed), so every new city births its own nation —
+  **1 city = 1 polity by construction**.
+- Every consolidation channel is ASYMMETRY-gated — `SUBMIT_RATIO = 5.0`
+  ("resistance is demonstrably hopeless"), `ABSORB_DOMINANCE` — while the
+  newly-HEALTHY synchronized dawn produces a cohort of near-equals whose
+  power ratios never approach those bars.
+
+Consolidation needed asymmetry; asymmetry could only come from
+consolidation. The map froze. (The §4-§7 waves made this VISIBLE: before
+them, most polities died at birth and the survivors' age spread supplied
+the asymmetry. A healthy dawn needs the mechanism history actually used.)
+
+**`VALLEY_UNION` (def 1): the union of crowns.** History's symmetry breaker
+was geography — near-parity KIN city-states sharing one cheap corridor
+UNIFIED (the Nile cohering into Egypt: crowns merging among peers, not
+capitulation to a 5× hegemon) — and the first multi-city kingdoms then
+generated the asymmetries the existing overawe/absorb cascade runs on.
+The pass (conquest.js considerUnions): a sovereign court in SUCCESSION
+CRISIS unites with its strongest kin corridor partner — each capital
+within the OTHER's holdReach (the cost-grounded administrative radius, so
+cheap river/coast country makes long corridors by itself) — with hazard
+SUBMIT_HAZARD × (1 − absorbResistance) × min(1, powH/powS − 1) ÷
+coalitionBrake. Full members-join at loyalty 1; the chronicle logs
+`polity.united` ("one people, one throne"). NO new constants — six
+existing quantities recombined.
+
+**The first battery lap measured the v1 form WRONG, and the corrections
+are the mechanism's own refinement (recorded per custom):**
+
+- *Ungated by succession*, unions ran as background drift: wars 7→23
+  across the 3k steps where unions began (stylized: 102 wars vs 37,
+  3 soft warnings — OVER the budget of 2, "the emergent history is
+  off-shape"). Historically unions of crowns were SUCCESSION events
+  (Aragon-Castile, Poland-Lithuania, James VI & I) — the gate is
+  `inCrisis`, the dynasty machinery's own emergent signal, and the rate
+  now self-calibrates to dynastic fragility.
+- *Writing conquest memory* (recordOccupation) marked every united city's
+  homeland as FALLEN, and the restoration machinery pulled it back out —
+  measured as an unite→secede→re-unite oscillation (the same court united
+  into the same realm twice within 2.4k steps). A joined crown is not an
+  occupied one: no conquest memory is written, and later breakups ride
+  the ordinary loyalty/identity channels reading the real culture the
+  members keep.
+
+**Second lap, refined form: stylized all hard gates + ZERO soft warnings**
+(from 3-over-budget), smoke green, resgate green both seeds. The census
+character transforms: rare, chronicled succession-moment unions with no
+churn. v10 save-regime guard: a pre-wave save keeps its political physics.
+The 22k tw=960 size-distribution payoff re-runs on the pushed tree; its
+table appends here.
+
 ## Repro commands
 
 ```
