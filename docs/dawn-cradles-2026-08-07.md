@@ -289,6 +289,125 @@ Nile/Indus because RICE (hot bell, 2,500y lag) stands in for MILLET, which has
 no cool-climate representation; the millet-package split is the named fix,
 owner deferred ("its own thing").
 
+## 5. The deferred pair, delivered: millet for China, a real width for the water
+
+Both §4 codas land in one wave (owner order: "do the next wave and the millet
+thing") — the same story at two scales: the sim under-serving a real geography
+for a representational reason, not a historical one.
+
+### `CROP_MILLET` (def 1): the Yellow River gets its founder crop
+
+The combined "Sorghum & Millet" package wore one Sahel-hot bell (tOpt 0.87 ≈
+27°C) that scores ~0 on the cool Central Plain — its nominal N-China origin
+never functioned, and the Yellow River pin fell to RICE's 2,500y
+proto-domestication lag at mediocre suit: measured needY 3,564-4,545y across
+seeds/grids, 2.3-2.6× the Nile/Indus. China armed last or never — the owner's
+standing "still no china."
+
+The split (cropPackages.js): millet (foxtail/broomcorn) becomes its own
+package — warm-season temperate bell (tOpt 0.84, tTol 0.080), dryland
+summer-rain moisture (mOpt 0.32), storability **1.00** (millet IS the ancient
+Chinese granary/tax staple), yield 0.85, domLagY ~1,500 (Cishan/Xinglonggou:
+cultivation ~8000-7500 BC → domesticated forms by ~6500 BC). Sorghum keeps
+the Sahel and its bell, renamed "Sorghum & Pearl Millet"; the N-China origin
+moves from sorghum's list to millet's (biogeography.js). Archaeobotany-class
+values: direction and order the claim, digits not asserted.
+
+**Measured (tw=960/8817, observed climate, DAWN_LIVE):** the Yellow River pin
+arms on **millet, suit 0.55, needY 2,705y** — was rice 0.55/4,545y — moving
+China from last-or-never into the Old-World pack (Indus 1,332 · Nile 1,833 ·
+N-France 2,002 · Mesopotamia 2,305 · **Yellow River 2,705** · Sahel 2,954).
+At the reference grid the pin still reads rice at these seeds (grid-local
+climate at the pin tile), which is why the reference A/B panel below is
+history-flat; the app grid is the shipping truth. One gate in bestPackageAt —
+a never-owned package's only entry into any world — makes the v7 save-regime
+guard exact.
+
+### `ACCESS_BAND` (def 1): the waterside premium over a REAL width
+
+THE resolution debt, closed at its source. The capacity premium
+`ACCESS_RIVER×(riverMag/RM_FULL) + ACCESS_COAST×coast` was a per-tile read on
+1-D features: a river influences rn× more tiles at a finer grid but each is
+1/rn² the area, so the premium's real integral fell as 1/rn — the ~1.3-2.2×
+dilution docs/resolution-collapse-2026-07-29.md documented, the resgate
+ratchet has carried as its known gap, and §4's closing table measured as the
+binding constraint on newborn-city viability at the shipped grid (app-grid
+ledgers plateau at ~0.6 of demand).
+
+The fix is the flood-ribbon convention applied to ACCESS: the premium extends
+over ONE REFERENCE TILE of real cross-section at any grid — `w(d) = min(1,
+max(0, rn/2 + 0.5 − d))`, Euclidean, full intensity in the band, fractional
+coverage at the edge, MAX over sources (two rivers don't stack). At rn=1 the
+band is exactly the source tile at weight 1 — byte-identical by construction;
+at rn=4 (the shipped grid) ±1 full, ±2 half; below the reference the source
+tile damps toward its sub-tile share (spot-verified: rmRaw 4 → band 3.333 at
+rn=2/3). Static terrain, rebuilt deterministically at load, never persisted.
+The banded arrays SUBSTITUTE for riverMag/coast in the capacity pass only —
+serial loop, band kernel and pooled workers all read whatever arrays are
+handed to them; the bit-guarded kernel is untouched.
+
+**The dilution ruler (Σ capField × km²/tile over land, 1500 steps, 8817):**
+
+| grid | ACCESS_BAND off | on | on/off |
+|---|---|---|---|
+| tw=240 (rn=1) | 74.85G | 74.85G | **1.000** — byte-identity proven end-to-end |
+| tw=480 (rn=2) | 14.69G | 15.12G | 1.029 |
+| tw=960 (rn=4) | 4.91G | 5.72G | **1.166** |
+
+The repair grows with fineness — nothing at the reference, +17% of total land
+capacity at the shipped grid, concentrated on the waterside tiles where the
+dilution bit. The off-column's own fall across grids says honestly that the
+access term was ONE share of a wider per-real-area capacity decline, not all
+of it — the bands stay below parity and the ratchet keeps its debt.
+
+**The shipping forensic (the wave's one determinism break, recorded per
+custom).** The banded fields ride to pooled workers via the arena MESSAGE
+(_pfArenaMsg), which redirected the riverMag/coast slots to the Float32 band
+SABs but did not carry the accessBand flag — ensurePool sees only the
+message, its geom.accessBand read undefined, and workers built Uint8 views
+over Float32 band data: access≡1 garbage (0.8333f's bytes read as 85),
+capField 516.49/312.05 = 2/1.2083 the exact signature, while the
+coordinator's band 0 computed the truth. Wall-clock pool ENGAGEMENT then
+chose between them per world — same-seed worlds diverged by step 2, and a
+3-step serial-vs-pooled "pass" proved nothing because the pool only
+stabilizes once every lazily-created array exists. The flag now travels on
+the message with the slots it describes (one owner). Proven: 600-step
+same-seed identity at two seeds with 4-band pools engaged; serial-vs-pooled
+capField+popField bit-equality at step 600 with engagement ASSERTED; mid-run
+lever toggles deterministic across twins; and the pre-fix dilution table's
+impossible reference-grid ratio (1.666 where byte-identity is structural) was
+the contamination's own signature — re-measured 1.000 exactly.
+
+### The battery (new defaults, no overrides)
+
+- `npm test` — all smoke green (determinism, invariants, save/load functional
+  resume, dissolve arm), pools engaged.
+- `npm run validate` — **all hard gates passed, 0 soft warnings** (Zipf −0.77,
+  empire share 33%, area tail 8.6, water clustering 1.35, urbanization 4.7%).
+- `npm run coverage` / `npm run monotone` — green.
+- `npm run resgate` ×2 seeds — all bands held, and the ratios move toward
+  parity (8817: median 0.83, claimed 0.74, density 0.79 · 31337: 0.92 / 1.79
+  / 1.03 — the app arm out-claiming its reference for the first time).
+  **Ratchet re-baselined per the charter** ("if a change improves them,
+  re-baseline downward and say so"): floors 0.42/0.44/0.42 →
+  **0.58/0.51/0.56**, derived from the two-regime envelope (~25% below the
+  worse measurement across the flip wave and this one) so a same-day regime
+  interaction cannot strand a floor — the staleness lesson honored inside a
+  tightening instead of blocking it. Absolute and count floors keep their
+  collapse-catch semantics.
+- Reference A/B panel (12k, tw=240, 8817+31337; ACCESS_BAND byte-identical
+  there, so the arm isolates millet): **12 of 1134 metrics moved — 11 are the
+  band-field summaries themselves** (definitionally absent lever-off) plus
+  wall-clock noise; every headline metric flat at 0.0. Reference-grid
+  calibrations undisturbed.
+- v7 save-regime guard: a pre-wave save pins CROP_MILLET=0, ACCESS_BAND=0
+  unless the save set them — an old world keeps the agronomy and the capacity
+  field it grew on.
+
+The §4 closing table's re-run under this wave (30k × tw=960 — the payoff
+instrument: do app-grid supply ramps clear ~0.6, do basins flatten?) was in
+flight at commit time; its table appends here when it lands.
+
 ## Repro commands
 
 ```
@@ -298,4 +417,8 @@ SIM_TUNE="DAWN_LIVE=1,CROP_BIOGEO=0,IRRIG_CROP=0" RUN_W=1920 node <runner import
 SIM_TUNE="DAWN_LIVE=1" RUN_W=1920 ...                          # Indus→Nile→…, Australia never
 # gates: npm test / npm run resgate / npm run validate at defaults;
 # panel: node tools/abtest.mjs --tune="CROP_BIOGEO=0,IRRIG_CROP=0" --seeds=8817,31337,4242,9999 --steps=12000
+# §5 wave arms:
+#   node tools/abtest.mjs --tune="CROP_MILLET=0,ACCESS_BAND=0" --seeds=8817,31337 --steps=12000
+#   dilution ruler: scratchpad probe (Σ capField × km²/tile, 3 grids, ON/OFF) — table in §5
+#   payoff: SIM_TUNE="DAWN_LIVE=1,POP_FIELD_WORKERS=2" RUN_W=1920 RUN_STEPS=30000 probe_birthcrater
 ```

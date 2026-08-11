@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 6;   // v6: package biogeography + crop irrigation default ON (see the v<6 regime guard in loadWorld); v5: the divergence lane defaults ON (the v<5 guard)
+export const SAVE_VERSION = 7;   // v7: the millet split + real-width water access default ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -420,6 +420,18 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("CROP_BIOGEO" in tn)) T.CROP_BIOGEO = 0;
     if (!("IRRIG_CROP" in tn)) T.IRRIG_CROP = 0;
+  }
+  // v6 → v7: the millet package split (CROP_MILLET — re-keys which crop the
+  // whole East-Asian dawn domesticates) and real-width water access
+  // (ACCESS_BAND — re-keys the capacity field on every waterside tile at
+  // non-reference grids) became default-ON. Same guard pattern: a pre-v7 save
+  // stores no delta for either, so pin both to their old default unless the
+  // save set one explicitly — an old world keeps the agronomy and the
+  // capacity field it grew on.
+  if (data.v < 7) {
+    const tn = data.tuning || {};
+    if (!("CROP_MILLET" in tn)) T.CROP_MILLET = 0;
+    if (!("ACCESS_BAND" in tn)) T.ACCESS_BAND = 0;
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });

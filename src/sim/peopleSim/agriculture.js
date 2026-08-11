@@ -91,6 +91,11 @@ export function pkgSuitAt(world, ti, pkg) {
 export function bestPackageAt(world, ti) {
   let best = null, bestS = 0;
   for (const pkg of CROP_PACKAGES) {
+    // T.CROP_MILLET (v7 regime guard): the millet split changes which crop the
+    // whole East-Asian dawn domesticates. A never-owned package's ONLY entry
+    // point into a world is this competition (cropCeil/adoption read OWNED
+    // crops), so one gate here keeps a pre-split save's agronomy whole.
+    if (pkg.id === "millet" && !T.CROP_MILLET) continue;
     // PRESENCE (T.CROP_HOMELAND, or the full T.CROP_BIOGEO): a wild ancestor
     // can only be domesticated where its range has actually arrived — what
     // keeps maize out of China, rice out of Australia, wheat out of the

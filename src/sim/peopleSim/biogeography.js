@@ -42,7 +42,8 @@ const PACKAGE_ORIGINS = {
   wheat:   [{ fx: 0.578, fy: 0.330 }, { fx: 0.622, fy: 0.330 }, { fx: 0.694, fy: 0.344 }],  // the Fertile Crescent arc: Levant/Nile · Mesopotamia · toward the Indus
   rice:    [{ fx: 0.790, fy: 0.380 }],                    // Yangtze / monsoon Asia
   maize:   [{ fx: 0.230, fy: 0.400 }],                    // Mesoamerica
-  sorghum: [{ fx: 0.520, fy: 0.430 }, { fx: 0.800, fy: 0.300 }],  // Sahel + N-China millet
+  sorghum: [{ fx: 0.520, fy: 0.430 }],                    // the Sahel (sorghum + pearl millet)
+  millet:  [{ fx: 0.800, fy: 0.300 }],                    // N-China foxtail/broomcorn millet — the centre the combined package could never use (its Sahel bell scored ~0 there; the 2026-08-07 split gives the Yellow River its real founder crop)
   tubers:  [{ fx: 0.560, fy: 0.560 }, { fx: 0.270, fy: 0.550 }],  // tropical W-Africa + Andes/Amazonia
 };
 

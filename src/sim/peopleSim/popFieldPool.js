@@ -83,8 +83,15 @@ export function ensurePool(world, arena, bands) {
   try {
     if (typeof process !== "undefined" && process.getBuiltinModule) WT = process.getBuiltinModule("node:worker_threads");
   } catch { WT = null; }
+  // T.ACCESS_BAND: `arena` here is the _pfArenaMsg MESSAGE — its sabs already
+  // carry the banded Float32 fields under the riverMag/coast slot names, and
+  // its accessBand flag tells the worker core to build Float32 views over
+  // them (they are Float32 where the sim's raw arrays are Uint8 — a
+  // mismatched view is garbage; the flag and the redirected slots must
+  // travel TOGETHER, which is why both live on the message). A lever toggle
+  // bumps arena.gen, which respawns this pool.
   const bufs = { ...arena.sabs, ctrl: ctrlSab, hdr: hdrSab };
-  const geom = { N: arena.N, tw: arena.tw, th: arena.th, nLand: arena.nLand, bands };
+  const geom = { N: arena.N, tw: arena.tw, th: arena.th, nLand: arena.nLand, bands, accessBand: !!arena.accessBand };
   try {
     if (WT) {
       for (let k = 1; k < bands; k++) {
