@@ -1546,7 +1546,32 @@ export function maybeCrystallize(world) {
             // technique wave's source, the ground itself does
             // (world._hearthSeeds → stampDevSources; persisted). Without
             // this, a seedless dawn could never leave the forager age.
-            (world._hearthSeeds || (world._hearthSeeds = [])).push({ ti: h.ti, agri: NEOLITHIC_AGRI });
+            // T.BASIN_IGNITE (2026-08-11, docs §7): the invention belongs to
+            // the BASIN that served its clock. effY accrued as dtYears ×
+            // basin/capMass over THIS very disk — its people collectively
+            // domesticated — yet the practice used to seed ONE tile and the
+            // wave then crawled across the basin's own farmers (measured at
+            // tw=960: the N-China plain's site basins sat at devP 0.34 vs
+            // the 0.45 farming gate ~3,500 steps AFTER the pin invented,
+            // with the cores already gathered past the city bar — ~5k steps
+            // of pure intra-basin diffusion before any nation could exist;
+            // probe_chinamint). Every peopled tile of the clock's own disk
+            // seeds at the invention level; the wave still carries the
+            // technique OUTWARD (inter-regional speed untouched, the
+            // DIFF_CLIM axis physics untouched). Same disk, same level,
+            // no new constant.
+            const seeds = (world._hearthSeeds || (world._hearthSeeds = []));
+            if (T.BASIN_IGNITE && world.popField) {
+              const pfI = world.popField;
+              for (let dy = -rB; dy <= rB; dy++) {
+                const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
+                for (let dx = -rB; dx <= rB; dx++) {
+                  if (dx * dx + dy * dy > rB * rB) continue;
+                  const t2 = yy * tw + (((h.tx + dx) % tw) + tw) % tw;
+                  if (pfI[t2] > 0) seeds.push({ ti: t2, agri: NEOLITHIC_AGRI });
+                }
+              }
+            } else seeds.push({ ti: h.ti, agri: NEOLITHIC_AGRI });
             logEvent(world, "farming.invented", { x: h.tx, y: h.ty });
             console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
           } else {

@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 8;   // v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
+export const SAVE_VERSION = 9;   // v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -441,6 +441,13 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("FOOD_REACH" in tn)) T.FOOD_REACH = 0;
     if (!("HOLD_SEAM" in tn)) T.HOLD_SEAM = 0;
+  }
+  // v8 → v9: basin-wide invention ignition (BASIN_IGNITE — re-keys every
+  // dawn's post-invention timeline: the technique no longer diffuses across
+  // its own inventors). A pre-v9 save keeps the dawn it grew on.
+  if (data.v < 9) {
+    const tn = data.tuning || {};
+    if (!("BASIN_IGNITE" in tn)) T.BASIN_IGNITE = 0;
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });

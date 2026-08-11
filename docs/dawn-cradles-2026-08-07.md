@@ -531,6 +531,46 @@ run on the pushed tree).** The strongest table of the arc:
 v8 save-regime guard: pre-wave saves keep the capacity semantics they grew
 on. Parked, unchanged: capital-as-seat / reversion-not-death (owner's word).
 
+## 7. Third follow-up (2026-08-11): "china still isnt starting, or at least not early enough" — the technique was diffusing across its own inventors
+
+§6's payoff run put China's first city at ~23.9k vs the Indus's 12.9k — a
+~2,750-year state lag, 2-4× history's — and the owner called it. The
+per-predicate instrument (probe_chinamint: every mint-chain gate for every
+ledger site in the Yellow River box, per 1,000 steps) cleared the suspects
+one by one:
+
+- **The site ledger is healthy** — seats at Gansu, the North China Plain,
+  the lower Yangtze (though none in the Luoyang/Zhengzhou heartland where
+  Erlitou actually rose — a siting-density note for a later wave).
+- **The drift worked** — by step 20k the N-China-plain site's core held
+  1,425 field people vs the 700 city bar, headroom positive and growing.
+  The saturated-basin/headroom hypothesis is dead.
+- **The block was the farming gate alone**: `elig=0` purely on people-
+  weighted devP 0.34 vs the 0.45 bar at 20k — the technique wave, ignited
+  at the PIN's single tile at ~16.5k, was still CRAWLING across the basin
+  at 20k. Both nation paths (city mint and STATE_OF_LAND) wait on the same
+  gate, so nothing could form for ~5,000 steps of pure intra-basin
+  diffusion.
+
+**The mechanism error, and the fix (`BASIN_IGNITE`, def 1):** the stagger
+law matures a hearth on PEOPLED-BASIN TIME — effY accrues as dtYears ×
+basin/capMass over the TOWN_BASIN_R disk; the basin's people collectively
+serve the domestication clock — yet at ignition the practice seeded ONE
+tile and the wave then diffused across the very people who invented it. Now
+every peopled tile of the clock's own disk seeds at the invention level
+(the same disk, the same NEOLITHIC_AGRI level the single seed used — two
+existing quantities recombined, no new constant). The wave still carries
+the technique OUTWARD unchanged: inter-regional speed, the DIFF_CLIM axis
+tolls, the Sahara barrier — all untouched. What disappears is only the
+crawl across the inventors themselves, for every cradle (China most: the
+largest, densest basin).
+
+Battery: smoke green (arcs identical — the harness dawn does not exercise
+the ignition lane), stylized all hard gates + ZERO soft warnings, resgate
+green both seeds. v9 save-regime guard: a pre-wave save keeps its dawn.
+The payoff re-run of the China timeline (probe_chinamint on this tree) was
+in flight at commit time; its table appends here.
+
 ## Repro commands
 
 ```
