@@ -568,8 +568,32 @@ largest, densest basin).
 Battery: smoke green (arcs identical — the harness dawn does not exercise
 the ignition lane), stylized all hard gates + ZERO soft warnings, resgate
 green both seeds. v9 save-regime guard: a pre-wave save keeps its dawn.
-The payoff re-run of the China timeline (probe_chinamint on this tree) was
-in flight at commit time; its table appends here.
+
+**The payoff (probe_chinamint on this tree, tw=960/8817).** China's dawn
+transforms: by step 15,000 the Yellow River heartland holds a CITY at
+(775,148) — four tiles from the pin, the Luoyang/Zhengzhou ground where
+Erlitou actually rose, already 816-census and clearly minted ~13-14k — plus
+a North-China-plain city, with the lower Yangtze following by 16k and
+Yunnan by 18k, two land nations (Guangdong, Yunnan) alongside, and ~seven
+Chinese polities with realm borders by 20k. Pre-fix: the FIRST Chinese
+anything arrived at 23.9k. The China-vs-Indus first-city gap falls from
+~11,000 steps to ~1-2,000 (≈250-500y).
+
+**Recorded honestly — the dawn's shape changed with it:** the basin-wide
+ignition radiates every invention's wave from a ~basin-radius head start,
+so diffusion now WINS more races: only three hearths invent independently
+in 20k (Indus, N-France cradle, Sahel) and the Nile, Mesopotamia, the
+Yellow River and E-Africa all STAND DOWN ("the farming package arrived
+before it was invented"). For the Nile/Mesopotamia this is historically
+FINE (the Crescent package genuinely spread to both; the sim's wheat-arc
+pins were always one complex). For CHINA it is a real accuracy trade:
+millet domestication was independent in history, and the sim now has it
+diffusion-fed — the price of the owner's (correct) demand that China not
+sit stateless for millennia after its neighbors. If independent-China
+matters later, the named lever is the WAVE-vs-CLOCK race calibration
+across the Central-Asian crossing (DIFF_CLIM tolls over the
+Tibet/Tarim/steppe climate distance — the wave evidently crosses too
+cheaply), not the ignition itself.
 
 ## Repro commands
 
