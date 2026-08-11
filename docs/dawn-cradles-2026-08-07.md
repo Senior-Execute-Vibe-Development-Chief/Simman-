@@ -507,6 +507,27 @@ trace (cap@ti steady through the ownership tick). Smoke green (population
 arc 770→1511), stylized/resgate on this tree recorded with the commit; the
 tw=960 payoff re-run follows.
 
+**The app-grid payoff (30k × tw=960/8817, the §4/§5 closing-table lineage,
+run on the pushed tree).** The strongest table of the arc:
+
+- **52 city births (was 18), and EVERY basin grows through its city's
+  birth** — +2000 retentions 1.26-3.72×, none below 1.0, famine flags
+  nearly gone. The crater class is extinct at the shipped grid.
+- **Aliveness 84 settlements / 85 polities at 30k** (pre-seam 24/26,
+  pre-wave 27/37) — and polity DEATHS return (9 ended, p50 lifespan 7,937
+  steps ≈ 2,000y, none under 500): the zero-death oddity of the earlier
+  tables resolves into long historical lives, not birth-collapse.
+- **East Asia fills in.** Sichuan mints ~23.9k, the upper Yellow River
+  (Gansu) ~24.1k, the lower Yangtze ~25.1k, the North China Plain ~25.1k,
+  then Guangxi, Guangdong, Manchuria — plus the Ganges, Bengal and SE Asia.
+  The pre-fix run had ZERO Asia-beyond-Indus births in 30k: the crater was
+  the blocker (each mint killed its basin, which killed the next basin's
+  gather too). Owner report "china still is not a hearth" — answered by the
+  same wave, on a fresh start. The residual China question is a LAG
+  (invention ~16.5k → first city ~23.9k: the drift gathers a 10k core at
+  headroom pace through a Malthus-saturated basin — ~7k steps), under
+  instrument (probe_chinamint) as this lands.
+
 v8 save-regime guard: pre-wave saves keep the capacity semantics they grew
 on. Parked, unchanged: capital-as-seat / reversion-not-death (owner's word).
 
