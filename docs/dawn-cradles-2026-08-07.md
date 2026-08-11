@@ -242,6 +242,19 @@ basin now GROWS through its city's birth (1.08× at +2000 vs 0.92), the Indus
 holds 0.86 (vs 0.79), the Zambezi doubles its survival (0.61 vs 0.29-0.31 —
 its residual decline is its genuinely-marginal city shrinking honestly).
 
+**The app-grid residual, measured and attributed (the closing table).** At
+tw=960/30k under the final code the world's aliveness transforms — 21 city
+births (was 10), **37 living polities (was 13), zero polity deaths** — and
+the worst craters soften (Nile 0.27→0.41, E-Africa 0.09→0.24), but basins do
+NOT flatten as they do at tw=480 (Nile 1.08 there). The supply columns say
+why: at the fine grid a newborn's ledger supply never ramps past ~0.6 of
+demand, so the core shrinks, the CORE_HOLD floor follows the live core down
+(as designed), and the slow crater proceeds. That ceiling is the
+**coast/river 1-D capacity-dilution debt** — the resgate ratchet's own
+documented open gap — now measured to be the binding constraint on
+newborn-city viability at the shipped grid. Closing it is its own wave; when
+it closes, this table is the before/after instrument.
+
 **Also shipped: `FED_FAMINE` (def 1), kept on its own merits.** Not the
 crater's killer, but correct physics the hunt hardened twice: an empty CITY
 granary starves the people who depend on the pot — the urban core — while
