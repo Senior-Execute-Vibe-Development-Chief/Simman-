@@ -1343,6 +1343,21 @@ function maybeSiteCities(world) {
       const basinCensus = bMass * bridge;
       born.food = Math.max(born.food || 0, basinCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
     }
+    // T.CORE_HOLD — the spike HANDOFF (2026-08-07, the birth-crater killer):
+    // until this line the gathered core was held by the SITE spike above
+    // (min(coreNow, coreBarF×1.2)); from the next derive it is held by the
+    // ENTITY spike (deriveOnePop kCap) — which is IMPORT-SHARE-driven and
+    // therefore ~ZERO for a newborn that grows its own food. Measured: the
+    // basin's capacity crashed 88k → 49k in the mint window (probe_capdrain),
+    // the drift-gathered pile stood 10-50× over bare terrain, the field's
+    // logistic mass-killed it, and the census collapsed 457 → 20 — the
+    // population-lens crater, with the famine/shock channels measured
+    // inert (three attribution arms). The entity spike therefore keeps the
+    // SITE LAW'S OWN BOUND as a floor: the mint stashes it here, and
+    // deriveOnePop floors kCap at min(live core, this) — "hold what
+    // arrived", now true on BOTH sides of the handoff. Existing constants
+    // only; import-economy capacity takes over the moment it grows past it.
+    born._coreHoldCapF = coreBarF * 1.2;
     labelClaimBasin(world, st.x, st.y);
     elig[k] = 0;
     if (world._siteBasin) world._siteBasin.delete(k);

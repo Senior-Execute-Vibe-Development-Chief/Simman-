@@ -3253,30 +3253,29 @@ function updatePopulation(world, s) {
   s._houseK = houseK;
 
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
-  // ── T.FED_FAMINE: famine bites the people the ledger actually FEEDS ────────
-  // _fedPeak ratchets up to the most people this settlement's food system has
-  // ever carried (foodK = supply/perCapita — the ledger's own headcount). The
-  // 2026-08-07 birth-crater investigation measured the defect this scopes out:
-  // under ONE_POP a newborn city censuses its WHOLE catchment onto a ledger
-  // whose supply machinery starts cold (worked farmland assigns over territory
-  // passes), so demand ran 2-25× supply, the granary window expired, and the
-  // empty-pot die-off below — applied to the FULL census — starved the
-  // subsistence countryside the ledger had never fed (Ganges: half of a
-  // 124k-person basin dead within 500 steps of the granary running out; Indus/
-  // Nile basins to 0.25-0.27× at the app grid). Physically those villagers eat
-  // their own harvest first — an empty CITY granary starves the people who
-  // depend on it: the urban core plus the countryside the ledger has actually
-  // organized. State-gated and self-calibrating: a mature city whose supply
-  // once covered its census (fedPeak ≈ people) famines exactly as before; a
-  // young ledger's shortfall bites only what it has ever carried, and the
-  // un-covered countryside stays governed by the field's own capacity (its
-  // subsistence is untouched by a pot it never ate from). No clock, no new
-  // constant — both quantities are the ledger's own.
-  if (T.FED_FAMINE && Number.isFinite(foodK)) s._fedPeak = Math.max(s._fedPeak || 0, foodK);
+  // ── T.FED_FAMINE: an empty CITY granary starves the CITY — the urban core,
+  // the people who depend on the pot — never the subsistence countryside whose
+  // own harvest fed them the tick before. The 2026-08-07 birth-crater
+  // investigation measured the defect this scopes out: under ONE_POP a newborn
+  // censuses its WHOLE catchment onto a ledger whose supply machinery starts
+  // cold (worked farmland assigns over territory passes), demand ran 2-25×
+  // supply, the granary window expired, and the empty-pot die-off — applied to
+  // the FULL census — starved 50-90% of the basin's field people around the
+  // newborn (Ganges: half of a 124k-person basin; Indus/Nile to 0.25-0.27× at
+  // the app grid). Countryside starvation has its own honest channels — the
+  // field's capacity law (pop > cap) and the harvest-shock module (famine
+  // windows cut landFood, which both the pot AND the field feel) — so the
+  // pot's emptiness is the CORE's emergency alone. v1 of this lever scoped the
+  // base by a fedPeak supply-ratchet ("the most people the ledger ever fed")
+  // and measured DEFEATED: newborn ledgers see transient supply spikes
+  // (hierarchy grain, first harvests — s≈1.5-1.8 at +250 steps) that ratchet
+  // the memory to census scale before the crash, and the craters reproduced
+  // ~unchanged (tables in docs/dawn-cradles-2026-08-07.md §4). No memory, no
+  // ratchet, no constant: the base IS the urban core.
   if (s.food <= 0.01 && s.people > 1) {
     const before = s.people;
     if (T.FED_FAMINE) {
-      const dependents = Math.min(before, Math.max(s._urbanPop || 0, s._fedPeak || 0));
+      const dependents = Math.min(before, s._urbanPop || 0);
       s.people = Math.max(1, before - dependents * (1 - Math.pow(0.985, _dt)));
     } else {
       s.people *= Math.pow(0.985, _dt);               // legacy: famine die-off over the whole census

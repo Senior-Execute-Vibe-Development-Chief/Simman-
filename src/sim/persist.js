@@ -81,7 +81,7 @@ const SETT_FIELDS = [
   "_sackedAt", "_siegeAt", "_warAt", "_ambition",
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
   "_thinBasinSince",   // DISSOLVE_TOWNS sustain clock — dropping it silently reset every pending town dissolution on load (caught by the functional-resume gate the moment leaner hearth worlds put towns near the bar)
-  "_fedPeak",          // FED_FAMINE earned-coverage ratchet (most people the ledger ever fed) — cross-tick state; dropping it would re-arm newborn famine protection on every load
+  "_coreHoldCapF",     // CORE_HOLD spike-handoff floor bound (field units, stashed at the mint) — dropping it would re-open the birth-crater capacity gap on every load
   "_coloniesSent", "_isColony", "_overlordCC", "_fisherFrac",   // fisher labor share (T.FISH_LABOR) — carries the boats-built ramp across ticks (_shoreTiles is static geography, recomputed lazily)
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
   "_diseaseLoad", "_contacted", "_virginUntil",   // endemic immunity load + virgin-soil (Columbian) contact state

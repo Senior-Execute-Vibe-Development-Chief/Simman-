@@ -1712,10 +1712,12 @@ export function deriveOnePop(world) {
     // urbanization share, the demographic transition, the graveyard and the
     // Zipf statistics read; the region's rural remainder is everyone else on
     // its land. (Overrides the census-side ruralShare heuristic each tick.)
+    let _coreF = 0;   // live core-disk field people (reused by the CORE_HOLD floor below)
     if (f > 0) {
       // The urban core is the people on the real FOOTPRINT (disk of radius coreR),
       // in census units — resolution-invariant. coreR=0 ⇒ diskSum === pf[ti] exactly.
-      s._urbanPop = Math.min(s.people, Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR) * scale));
+      _coreF = Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR));
+      s._urbanPop = Math.min(s.people, _coreF * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
       // The MEASURED core, kept apart from _urbanPop: the census-side
       // ruralShare heuristic overwrites _urbanPop every tick between derives
@@ -1734,7 +1736,24 @@ export function deriveOnePop(world) {
     // see pop≈cap and neither crash nor expel the crowd); the flow, not the
     // throughput-limited diffusion, is what actually fills it. Otherwise it is
     // the raw import ceiling (the pre-agglomeration behaviour).
-    const kCap = agglom ? uTarget : kBeyond;
+    let kCap = agglom ? uTarget : kBeyond;
+    // T.CORE_HOLD — the spike HANDOFF floor (the birth-crater killer,
+    // 2026-08-07). kCap is IMPORT-SHARE-driven, so a newborn city that grows
+    // its own food stamps ~ZERO capacity over the very core the site law just
+    // finished gathering (maybeSiteCities held it at min(coreNow,
+    // coreBarF×1.2) until the mint deleted that spike) — measured as a 45%
+    // basin-capacity crash in the mint window and a 457→20 census death
+    // spiral (probe_capdrain; famine and shock channels proven inert by
+    // three attribution arms). The entity spike therefore never falls below
+    // the site law's own bound, stashed at the mint (_coreHoldCapF): capacity
+    // keeps HOLDING WHAT ARRIVED — both sides of the handoff now obey the
+    // one law — and the import economy takes over the moment it grows past
+    // it. Existing constants only; cities minted by other paths (colonies,
+    // plantations) carry no stash and are untouched.
+    if (T.CORE_HOLD && s._coreHoldCapF > 0 && _coreF > 0) {
+      const hold = Math.min(_coreF, s._coreHoldCapF);
+      if (hold > kCap) kCap = hold;
+    }
     // THE URBAN GRAVEYARD, density-graded (T.URBAN_GAMMA): the base excess
     // mortality (settlement.js: disease load × urbanity × unhealed) is scaled by
     // how dense this core is versus the typical importing core, raised to γ —

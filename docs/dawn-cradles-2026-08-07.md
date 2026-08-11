@@ -210,24 +210,46 @@ within 2,000 steps, famine-flagged — worst at the app grid, where even the
 Indus and Nile cities hollowed their valleys to 0.25-0.27× and an E-African
 basin hit 0.09×, with a second city later minting on the husk of the first.
 
-**Root cause (the lethal half).** Under ONE_POP a newborn city censuses its
-whole catchment onto its food ledger the tick it mints, while supply (worked
-farmland via territory passes) ramps cold — measured demand 2-25× supply at
-birth (a Ganges city at 25×). The birth granary covers a ~500-step window;
-when it expires short of the ramp, the empty-pot famine killed 1.5%/tick of
-the FULL census — subsistence villagers whose own harvest had fed them the
-tick before ("hunger empties the LAND", settlement.js). The Ganges city lost
-half of a 124,000-person basin as its granary ran out.
+**The hunt (recorded in full — two plausible suspects measured inert before
+the real killer).** Suspect 1: the empty-pot famine (a newborn censuses its
+whole catchment onto a cold ledger — measured demand 2-25× supply at birth —
+and the die-off hit the FULL census). Scoping the famine base shipped
+gate-green twice (v1 fedPeak ratchet — defeated by transient supply spikes;
+v2 core-only base) and the craters reproduced ~unchanged both times. Suspect
+2: the shock modules — attribution arms with `FAMINE_CHANCE=0` and
+`PLAGUE_CHANCE=0` each still cratered. The killer was then found by
+instrument (probe_capdrain, the Zambezi birth): **the basin's CAPACITY
+crashes 88k → 49k in the exact mint window**, the drift-gathered core stands
+10-50× over bare terrain, the field's own logistic mass-kills it, and the
+city's census collapses 457 → 20 while the basin drains 54k → 12k — soil
+exhaustion at zero, works rising, every famine channel quiet.
 
-**Shipped: `FED_FAMINE` (def 1).** The famine base becomes the ledger's
-dependents — `min(census, max(urban core, _fedPeak))`, `_fedPeak` ratcheting
-to the most people the ledger's supply ever carried (persisted; the
-`_thinBasinSince` lesson applied on arrival). Mature cities famine exactly as
-before; a young ledger's empty pot starves only what it gathered and has
-actually fed; the un-organized countryside stays governed by the field's own
-capacity. Battery: npm test green, stylized ALL hard gates green (2 warnings
-at budget), resgate green on both gate seeds (numerically identical to
-baseline at the 6k horizon — the change is inert where the defect wasn't).
+**The mechanism: the spike HANDOFF.** Pre-mint, the site law holds the
+gathered core's capacity at `min(coreNow, coreBar×1.2)` (maybeSiteCities'
+spike). At the mint that spike is deleted and the entity spike takes over —
+but the entity spike (`deriveOnePop` kCap) is **import-share-driven**, and a
+newborn feeding itself from its own land imports nothing: the handoff stamps
+~zero capacity over the very pile the site law just finished gathering.
+
+**Shipped: `CORE_HOLD` (def 1) — the killer's fix.** The mint stashes the
+site law's own bound on the settlement (`_coreHoldCapF = coreBar×1.2`,
+persisted) and the derive floors the entity spike at `min(live core, bound)`:
+capacity keeps **holding what arrived** — one law on both sides of the
+handoff — and the import economy takes over the moment it grows past the
+floor. A shrinking core lowers its own floor, so a failing city still fails —
+it just isn't executed by its own birth. Measured (tw=480/8817): the Nile
+basin now GROWS through its city's birth (1.08× at +2000 vs 0.92), the Indus
+holds 0.86 (vs 0.79), the Zambezi doubles its survival (0.61 vs 0.29-0.31 —
+its residual decline is its genuinely-marginal city shrinking honestly).
+
+**Also shipped: `FED_FAMINE` (def 1), kept on its own merits.** Not the
+crater's killer, but correct physics the hunt hardened twice: an empty CITY
+granary starves the people who depend on the pot — the urban core — while
+countryside starvation keeps its own honest channels (the field's capacity
+law; the harvest-shock module both ledgers feel). v1's fedPeak supply-ratchet
+is recorded in the lever desc as measured-defeated (newborn ledgers see
+transient import spikes that ratchet the memory to census scale before the
+crash); v2 needs no memory at all.
 
 **Blocked: `CITY_STORE` (def 0, built + fully measured).** The other half —
 "a city may not mint where nothing stores" — was built in three forms and
