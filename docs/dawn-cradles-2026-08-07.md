@@ -652,7 +652,21 @@ are the mechanism's own refinement (recorded per custom):**
 character transforms: rare, chronicled succession-moment unions with no
 churn. v10 save-regime guard: a pre-wave save keeps its political physics.
 
-**The tw=960 payoff (22k, pushed tree) — honest and mixed.** The channel
+**THE BOND-FORM PAYOFF (probe_sizeband2, tw=960/22k, the shipped form —
+the blocs assemble).** The union web grows and HOLDS: bonds 1 → 4 → 6 →
+11 across 15k-21k with zero reversions. Measured as the hegemonic units
+they were, the blocs deliver the disparity the report asked for: by 22k
+the leading bloc spans 1,218k km² — 65% beyond any single realm (740k) —
+with a second at 757k and the bloc tail at 11.4× median vs 7.2 for lone
+realms, on an ACCELERATING curve (647k→788k→1,003k→1,218k over the final
+7k steps) as each union's aggregated power wakes the SUBMIT_RATIO
+cascade. At this Bronze-Age-depth horizon, 1.2M km² is precisely the
+class of history's first great powers; territorial consolidation of the
+blocs into single mega-realms is the existing org-gated machinery's
+mid-game work. (The earlier transfer-form record below is kept as the
+measured history of how this form was found.)
+
+**The tw=960 payoff of the TRANSFER form (superseded) — honest and mixed.** The channel
 FIRES at the app grid: multiCityRealms blips to 1-2 at ~12-13k and ~16k,
 and polity DEATHS return (3 by 22k — the first mortality this grid's
 early game has shown). But the unions do not HOLD: each united realm
