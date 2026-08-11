@@ -200,6 +200,60 @@ the smoke gate's "systematic" verdict was exactly right. Fixed by persisting
 the clock: defaults' functional-resume drift improved 6.8% → 4.5%, the pair's
 22% → 0.2%.
 
+## 4. Follow-up (same day): the birth craters — measured, one cure shipped, one gate blocked
+
+Owner report on the flipped build: "nations/cities destroy the population in an
+area around them when they are born… nations almost always (especially early)
+collapse soon after birth." Instrumented across 39 city births at three grids
+(probe_birthcrater): basins fall to 0.5-0.09× their at-birth field population
+within 2,000 steps, famine-flagged — worst at the app grid, where even the
+Indus and Nile cities hollowed their valleys to 0.25-0.27× and an E-African
+basin hit 0.09×, with a second city later minting on the husk of the first.
+
+**Root cause (the lethal half).** Under ONE_POP a newborn city censuses its
+whole catchment onto its food ledger the tick it mints, while supply (worked
+farmland via territory passes) ramps cold — measured demand 2-25× supply at
+birth (a Ganges city at 25×). The birth granary covers a ~500-step window;
+when it expires short of the ramp, the empty-pot famine killed 1.5%/tick of
+the FULL census — subsistence villagers whose own harvest had fed them the
+tick before ("hunger empties the LAND", settlement.js). The Ganges city lost
+half of a 124,000-person basin as its granary ran out.
+
+**Shipped: `FED_FAMINE` (def 1).** The famine base becomes the ledger's
+dependents — `min(census, max(urban core, _fedPeak))`, `_fedPeak` ratcheting
+to the most people the ledger's supply ever carried (persisted; the
+`_thinBasinSince` lesson applied on arrival). Mature cities famine exactly as
+before; a young ledger's empty pot starves only what it gathered and has
+actually fed; the un-organized countryside stays governed by the field's own
+capacity. Battery: npm test green, stylized ALL hard gates green (2 warnings
+at budget), resgate green on both gate seeds (numerically identical to
+baseline at the 6k horizon — the change is inert where the defect wasn't).
+
+**Blocked: `CITY_STORE` (def 0, built + fully measured).** The other half —
+"a city may not mint where nothing stores" — was built in three forms and
+every one ALSO blocked legitimate cities at the 21k stylized horizon (30→19
+settlements, a hard aliveness FAIL, identical count under all three rulers;
+the FED_FAMINE-only arm passed clean — the attribution). The site instrument
+(probe_storegate) showed the lane is structurally hard: the settled roster
+mixes site-pass mints with colony/plantation foundings whose basins never
+held bar-level field people; mature basins run near the bar so refounds and
+borderline temperate sites (Anatolia, the Danube, Texas at 0.84-0.96×) flip;
+and the domestication-lane crop read blocks ground whose crops arrived by
+contact (the Yangtze plain dom-BLOCKS while clim-PASSING). Under FED_FAMINE
+the crater class it targeted is already non-lethal — a storability-poor mint
+starves only its never-fed core and dissolves quietly, a failed urban
+experiment instead of a regional die-off — so the gate ships 0 until a form
+can tell a doomed mint from a colonial or borderline one. Full record in the
+lever desc and the dead-forms comment (crystallize.js basinStorablePeople).
+
+**Also answered in this round (assessments, not code):** non-city capitals —
+the consistent version is capital-as-SEAT (the land-nation tile-seat and horde
+ordu precedents), with reversion-not-death as the cheap first stage; owner
+deferred. Missing China — the Yellow River matures 2.3-2.6× later than the
+Nile/Indus because RICE (hot bell, 2,500y lag) stands in for MILLET, which has
+no cool-climate representation; the millet-package split is the named fix,
+owner deferred ("its own thing").
+
 ## Repro commands
 
 ```

@@ -34,6 +34,8 @@ import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
 import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 import { settleHostility } from "./habitability.js";
+import { bestPackageAt } from "./agriculture.js";
+import { CROP_BY_ID } from "../cropPackages.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
@@ -1072,6 +1074,55 @@ const SITE_CITY_IVL = 25;      // drift/mint cadence (amortization; the spike re
 // early slope (0.45 → 0.50 over ~4000 steps at the old dawn).
 const AGRI_PRACTICE_CAP = 0.55;
 const SEED_AGRI_RATE = 1.5e-5;   // per step
+// ── T.CITY_STORE: a city needs a STORABLE surplus (2026-08-07, the birth-crater
+// investigation) ─────────────────────────────────────────────────────────────
+// The people-weighted STORABLE-farming ceiling of a peopled basin: for each tile
+// the best domesticable package's suit × storability (exactly cropCeil's formula
+// — the quantity the whole codebase already uses for "can this land fund a
+// granary state": wheat/rice 1.00, tubers 0.35 — "taro does not store"), capped
+// by the landmass-isolation/tropical ceiling where it has been computed, and
+// weighted by the people actually standing on each tile (the same convention as
+// the basin's devP read — a seat-tile-only read starved the densest basins,
+// probe_dimfunnel). Measured cause (39 instrumented births, 3 grids): the mint
+// gate checked people + technique-arrived but NEVER whether the land can
+// sustain an urban core from storable food, so dense tuber basins (Congo,
+// Zambezi) minted cities whose ledgers plateaued far below demand — permanent
+// famine, and 50-90% of the basin's field people starved around the newborn
+// ("hunger empties the LAND"). The bar is NEOLITHIC_AGRI — the SAME constant
+// the eligibility's devP gate uses one line earlier, now read against the
+// land's ceiling instead of the wave's arrival: the practice must have arrived
+// AND the land must be able to carry it. One ruler, two reads, no new number.
+// The people of a basin standing on STORABLE-CAPABLE ground — tiles whose best
+// domesticable package sustains city-grade farming (suit × storability ≥
+// NEOLITHIC_AGRI, the same axis and constant the eligibility's devP gate
+// reads). THREE DEAD FORMS, all measured on this branch and kept for the
+// record: (1) min'ing the tile term with world._agriCeil folded the landmass-
+// ISOLATION penalty into city EXISTENCE — double-counting what package
+// presence/suits already express; (2) the people-weighted MEAN of the basin
+// against the bar — a wheat valley ringed by scrub failed on its fringes'
+// zeros (stylized hard FAIL, identical both times: the 21k world fell 30 → 19
+// settlements, cradle origins unresolvable, while the FED_FAMINE-only arm
+// passed clean — the attribution); (3) the storable-people of the CAPPED take
+// against the census bar — peopledBasinAt stops gathering AT the bar, so that
+// form demands ~every gathered tile be storable. The physical claim is about
+// the CORE within the market's walkable horizon: a city forms where enough
+// people stand on ground that can grow a storable surplus, however much
+// subsistence country surrounds them. So: Σ popField over qualifying tiles of
+// the UNCAPPED walkable cell, compared by the caller against the SAME
+// city-basin census bar the eligibility applies to the whole basin. Two
+// existing bars, zero new constants.
+function basinStorablePeople(world, take, pf) {
+  let sp = 0;
+  for (let n = 0; n < take.length; n++) {
+    const t = take[n];
+    const p = pf[t]; if (!(p > 0)) continue;
+    const best = bestPackageAt(world, t);
+    if (!best) continue;
+    const pkg = CROP_BY_ID[best.id];
+    if (best.suit * (pkg ? pkg.storability : 1) >= NEOLITHIC_AGRI) sp += p;
+  }
+  return sp;
+}
 function maybeSiteCities(world) {
   if (!T.CITY_AT_BIRTH || !T.POP_FIELD || !T.ONE_POP || !world.popField) return;
   const L = labelSiteLedger(world);
@@ -1116,7 +1167,13 @@ function maybeSiteCities(world) {
       }
       if (elig[k]) continue;   // already qualified — keep its cached basin (mint/drift clear it)
       const b = peopledBasinAt(world, k, basinBarF);
-      if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI) { elig[k] = 1; basins.set(k, b.take); }
+      // T.CITY_STORE: …AND, within the cell's whole walkable ground (the
+      // capped take above stops AT the census bar, so testing the storable
+      // share of exactly-bar-mass would demand ~100% storable tiles — the
+      // third dead form; see basinStorablePeople), a city-basin's worth of
+      // people stand on ground that can grow a STORABLE surplus.
+      if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI
+          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)) { elig[k] = 1; basins.set(k, b.take); }
       else { elig[k] = 0; basins.delete(k); }
     }
   }

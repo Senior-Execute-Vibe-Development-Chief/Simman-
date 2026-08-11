@@ -3253,9 +3253,34 @@ function updatePopulation(world, s) {
   s._houseK = houseK;
 
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
+  // ── T.FED_FAMINE: famine bites the people the ledger actually FEEDS ────────
+  // _fedPeak ratchets up to the most people this settlement's food system has
+  // ever carried (foodK = supply/perCapita — the ledger's own headcount). The
+  // 2026-08-07 birth-crater investigation measured the defect this scopes out:
+  // under ONE_POP a newborn city censuses its WHOLE catchment onto a ledger
+  // whose supply machinery starts cold (worked farmland assigns over territory
+  // passes), so demand ran 2-25× supply, the granary window expired, and the
+  // empty-pot die-off below — applied to the FULL census — starved the
+  // subsistence countryside the ledger had never fed (Ganges: half of a
+  // 124k-person basin dead within 500 steps of the granary running out; Indus/
+  // Nile basins to 0.25-0.27× at the app grid). Physically those villagers eat
+  // their own harvest first — an empty CITY granary starves the people who
+  // depend on it: the urban core plus the countryside the ledger has actually
+  // organized. State-gated and self-calibrating: a mature city whose supply
+  // once covered its census (fedPeak ≈ people) famines exactly as before; a
+  // young ledger's shortfall bites only what it has ever carried, and the
+  // un-covered countryside stays governed by the field's own capacity (its
+  // subsistence is untouched by a pot it never ate from). No clock, no new
+  // constant — both quantities are the ledger's own.
+  if (T.FED_FAMINE && Number.isFinite(foodK)) s._fedPeak = Math.max(s._fedPeak || 0, foodK);
   if (s.food <= 0.01 && s.people > 1) {
     const before = s.people;
-    s.people *= Math.pow(0.985, _dt);                 // famine die-off, per-tick → granularity-scaled
+    if (T.FED_FAMINE) {
+      const dependents = Math.min(before, Math.max(s._urbanPop || 0, s._fedPeak || 0));
+      s.people = Math.max(1, before - dependents * (1 - Math.pow(0.985, _dt)));
+    } else {
+      s.people *= Math.pow(0.985, _dt);               // legacy: famine die-off over the whole census
+    }
     fieldShift(world, s, s.people - before);          // one population: hunger empties the LAND too (FIELD_DEMOG)
   } else if (T.ONE_POP) {
     // ONE POPULATION (docs/one-population.md slice B): the census logistic
