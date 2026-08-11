@@ -3506,43 +3506,26 @@ function considerUnions(world, countries) {
     // half-kin or barely-led union takes proportionally longer.
     const r2 = hash32(world.seed || 1, "unionPull", sid, world.step) / 4294967296;
     if (r2 > bestPull) continue;
-    const H = countries.get(best);
-    const unionName = realmName(world, sid);
-    const members = [...S.members];
-    for (const m of members) {
-      if (m.countryId !== sid) continue;
-      m.countryId = best;
-      m.loyalty = 1;
-      m._conqueredAt = world.step;                          // transfer grace, same as every channel
-      // The FULL integration stamp — the same two marks conquest integration
-      // writes (countryTerritory.js ~2186) and the territory derivation
-      // respects. Without them the union transferred the crown but not the
-      // STANDING: the junior (whose settlement id IS its old realm id, the
-      // registry convention) silently re-derived to its own crown 250-400
-      // steps post-union — unrest 0.00, ambition 0.00, loyalty ~1, no event
-      // (probe_unionhold2: the zombie-crown lane countryClaim.js documents).
-      m._sovereignSeat = world.step;
-      m._integratedAt = world.step;
-      // NO recordOccupation: a joined crown is not an occupied one. Writing
-      // the conquest memory here marked every united city's homeland as
-      // FALLEN, and the restoration machinery pulled it back out — measured
-      // as an unite→secede→re-unite oscillation (unioncensus: the same court
-      // united into the same realm twice within 2.4k steps). Later breakups
-      // ride the ordinary loyalty/identity channels, which read the real
-      // culture the members keep.
-    }
-    // Close the books and move the ground: the junior CROWN ends here (the
-    // registry records the union as this polity's ending — how:"united"), and
-    // the union realm's claim snaps over the joined country at once (the same
-    // instant-seizure act secession and restoration perform). Leaving either
-    // undone left the old crown on the books with its paint on the map, and
-    // the territory machinery faithfully re-crowned it.
-    endPolity(world, sid, "united", best, realmName(world, best));
-    snapClaim(world, best);
-    logEvent(world, "polity.united", { polity: sid, name: unionName,
-      into: best, intoName: realmName(world, best),
-      x: S.capital.pos.x | 0, y: S.capital.pos.y | 0 });
-    telPass(world, "union");
+    // THE ACT IS THE BOND, NOT THE TRANSFER (the third measured form, and the
+    // one history wrote). Member-transfer was tried twice and the territory
+    // machinery UNDID it both times — first through the zombie-crown lane
+    // (no integration stamps), then, with every stamp, registry closure and
+    // claim snap in place, through the honest one: a young realm's claim
+    // budget cannot administer the second city's country, the crawl never
+    // turns the junior's ground, and the derivation strips the member
+    // (probe_unionhold3: byte-identical reversion THROUGH the full
+    // paperwork). The sim was right — early unions of crowns were PERSONAL
+    // UNIONS, two administrations under one senior crown (Aragon-Castile
+    // kept separate cortes for centuries) — and the sim's tested vassalage
+    // bond models exactly that: the junior keeps its realm, administration
+    // and land (no budget violation, nothing for the territory law to
+    // undo; VASSAL_SHIELD makes the bond the arrangement), while the
+    // bloc's POWER aggregates (eff-network) — which is the asymmetry seed
+    // the SUBMIT_RATIO cascade needs. Territorial consolidation follows
+    // later through the existing org-gated machinery as statecraft
+    // matures — the same two-act arc as Castile-Aragon → Spain.
+    if (bendTheKnee(world, sid, best, "union")) telPass(world, "union");
+    else tel(world, "union", "kneeRefused");
   }
 }
 

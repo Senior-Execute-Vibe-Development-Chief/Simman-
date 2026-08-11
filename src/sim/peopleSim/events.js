@@ -191,6 +191,11 @@ const NARRATE = {
       : `The court of ${ev.name || "the realm"} joined its crown to ${ev.intoName || "a kindred neighbour"} — one people, one throne.`;
   },
   "polity.submitted"(ev, as) {
+    if (ev.how === "union") {
+      return as === ev.to
+        ? `The crowns were joined: the court of ${ev.name || "a kindred realm"} entered the union beneath this throne.`
+        : `In the troubles of the succession, the court of ${ev.name || "the realm"} joined its crown to ${ev.toName || "a kindred neighbour"} — one senior throne, two realms.`;
+    }
     return as === ev.to
       ? `${ev.name || "A neighbouring statelet"} bent the knee and became a tributary of the realm.`
       : ev.how === "capitulation"
