@@ -404,9 +404,40 @@ the contamination's own signature — re-measured 1.000 exactly.
   unless the save set them — an old world keeps the agronomy and the capacity
   field it grew on.
 
-The §4 closing table's re-run under this wave (30k × tw=960 — the payoff
-instrument: do app-grid supply ramps clear ~0.6, do basins flatten?) was in
-flight at commit time; its table appends here when it lands.
+### The payoff instrument (30k × tw=960/8817, DAWN_LIVE — §4's closing table re-run under the wave)
+
+**China joins the dawn.** The Yellow River invents agriculture at step
+~16-18k on millet (needY 2,705, fill 0.95) — **fifth** of the Old World,
+right after Mesopotamia — where the pre-wave world put it seventh at step
+~24-26k on rice (needY 4,545): ~1,800 years earlier, on its true founder
+crop. And a first: the Sahel hearth **stands down** ("the farming package
+arrived before it was invented") — diffusion outrunning independent
+invention, a mechanism that had never fired before this wave resequenced the
+fronts.
+
+**Aliveness holds; the dawn resequences.** Zero polity deaths in both
+worlds — the §4 collapse fix is undisturbed by the wave. Checkpoint
+alive/polities, pre-wave → post-wave: 22k: 9/11 → 10/16 · 24k: 11/13 →
+13/18 · 26k: 14/20 → 16/19 · 28k: 19/29 → 19/25 · 30k: 27/37 → 24/26. The
+post-wave world runs AHEAD through ~26k; the pre-wave 30k count rides a late
+far-northern tail (Baltic/Ladoga/White-Sea mints at 54-65°N in the final
+2,500 steps) that the resequenced world hasn't reached by the horizon — a
+timing-of-the-cut artifact, not a lost world.
+
+**The craters: the access share is spent; the residual changes owner.** At
+the shared great-river cradles the +2000 basin retentions sit within noise
+of the pre-wave run (Indus 0.25→0.26, Nile 0.41→0.45 and unflagged,
+N-France 0.46→0.39), while newborn ledgers at those cradles now reach
+supply/demand **0.86-0.96 within +1000 steps** (Sogyoepa 0.95, Pigyipa 0.96,
+Zyibayamphibta 0.86) — the ~0.6 plateau §4 attributed to capacity dilution
+is no longer the binding pattern at the big valleys. Basins still decline
+(post-wave +2000 median 0.27 across 16 births, vs 0.44 pre-wave — but the
+mint roster shifted tropical, where supply runs 0.05-0.2 regardless of
+water), so the remaining crater no longer wears the access-dilution
+signature: capacity is repaired, ledgers balance, and the decline's
+mechanism is UN-ATTRIBUTED by this instrument. The §4 probe chain
+(probe_capdrain at tw=960, on a post-wave mint) is the named next tool; the
+instrument stands.
 
 ## Repro commands
 
