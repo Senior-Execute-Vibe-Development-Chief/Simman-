@@ -245,9 +245,25 @@ export function ensureDistFields(world) {   // exported for probes (drift measur
 // OBSERVED climate, a 0.6 core left the Nile and Mesopotamia pins with NO package
 // at all (score 0.50 fallback, armed for 7,000y instead of seating) — the crop
 // gate silently un-seating the historical cradles, which is worse than the
-// anachronism it was fixing. 2.5 covers the Crescent arc end to end (measured
-// Crescent→Levant 1.46, →Anatolia 2.69) without reaching another band's core.
-const REACH_BASE = 2.5;   // the domestication core: present here from the first
+// anachronism it was fixing.
+// RE-ANCHORED 2026-08-11 (the false N-European pristine cradle, docs §9): the
+// 2.5 core was calibrated against STALE anchors ("Crescent→Europe ≈ 4.7") —
+// the field has since cheapened (zone-smoothed climate tolls), and 2.5 came to
+// blanket Europe wholesale: a PRISTINE wheat hearth armed at N-FRANCE
+// (needY ~2,000y, measured in every dawn log of the session) and on some
+// seeds invented BEFORE the Nile — Brittany/Denmark/Iberia stood as Bronze-Age
+// nations while the Crescent still gathered (owner's map + chronicle). Fresh
+// anchors, measured on the live field (480/8817, from-0 dawn, probe_francewheat):
+//   IN the arc:  Anatolia 0.21 · SE-Anatolia 0.39 · Nile 0.65 · Mesopotamia
+//                0.81 · Indus 0.83 · Zagros 0.94
+//   OUT:         Caucasus 1.35 · N-France 1.55 · Iberia 1.94 · Denmark 2.19
+// 1.1 splits the bands cleanly (Greece at 0.89 rides inside — a low-suit
+// Aegean arming never outraces the arc pins; the poison was the northern
+// blanket). Mature presence is untouched in practice: reach grows with
+// REACH_DEV × leading agriculture, so the diffusion arc still covers Europe
+// exactly as the technique matures — only the PRISTINE dawn core shrinks to
+// the ground that actually held the wild ancestors.
+const REACH_BASE = 1.1;   // the domestication core: present here from the first
 const REACH_DEV  = 7.0;   // + this × leading agriculture — the mature along-band spread
 
 function leadAgri(world) {
