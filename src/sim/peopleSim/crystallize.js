@@ -20,7 +20,8 @@
 import { isContinentalLand } from "./state.js";
 import { tel, telPass } from "./telemetry.js";
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
-import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
+import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE, computeConfinement } from "./settlement.js";
+import { hash32 } from "./rng.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable, ensurePolity } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
@@ -1469,6 +1470,42 @@ function maybeLandNations(world) {
     if (basin.mass < barF) continue;               // the seat's walkable ground does not hold a people
     if (basin.devP < NEOLITHIC_AGRI) continue;     // its people do not yet farm
     const take = basin.take;
+    // T.ORG_CONTACT, the land-nation half (2026-08-11, docs §9 — measured as
+    // THE binding channel: 44 of 48 formations in the frontier probe were
+    // land nations, which sat NO statecraft exam at all, so the org-clock
+    // half of the lever left the everywhere-at-once map untouched). A complex
+    // chiefdom crystallises into a BORDERED NATION under the same two
+    // pressures statecraft itself needs — Carneiro's is a theory of exactly
+    // this transition: its valley's own CIRCUMSCRIPTION (computeConfinement
+    // at the seat — the identical measure settlements carry, the pristine
+    // lane that stated the hemmed river valleys) or an existing polity
+    // pressing on the basin (any state ground adjacent to the take — the
+    // secondary lane: threat, tribute, example). The drive scales a
+    // deterministic per-(seed, seat, step) roll through the same K re-base
+    // as the org clock — full pressure forms at the old cadence, open
+    // unpressed country holds its people WITHOUT bordered politics (they
+    // stay implied in the land, the stateless field), and the frontier
+    // advances as contact does. No new constants; no clock; no place.
+    if (T.ORG_CONTACT > 0) {
+      const sy0 = (st.ti / world.tw) | 0, sx0 = st.ti - sy0 * world.tw;
+      let drive = computeConfinement(world, sx0, sy0);
+      if (drive < 1) {
+        const tw3 = world.tw, th3 = world.th;
+        for (const t of take) {
+          const ty3 = (t / tw3) | 0, tx3 = t - ty3 * tw3;
+          const ns3 = [ty3 * tw3 + ((tx3 + 1) % tw3), ty3 * tw3 + ((tx3 - 1 + tw3) % tw3),
+                       ty3 > 0 ? t - tw3 : -1, ty3 < th3 - 1 ? t + tw3 : -1];
+          for (let n3 = 0; n3 < 4; n3++) {
+            const ni3 = ns3[n3]; if (ni3 < 0) continue;
+            if ((co && co[ni3] >= 0) || (lo0 && lo0[ni3] >= 0)) { drive = 1; break; }
+          }
+          if (drive >= 1) break;
+        }
+      }
+      const pForm = drive / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive)));
+      const rU = hash32(world.seed || 1, "landnat", st.ti, world.step) / 4294967296;
+      if (rU > pForm) continue;
+    }
     // Form: the people of this ground become a nation.
     const id = world._nextSettlementId || 1; world._nextSettlementId = id + 1;
     const ancId = world.ancestry ? world.ancestry[st.ti] : -1;

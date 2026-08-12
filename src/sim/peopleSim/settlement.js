@@ -714,7 +714,7 @@ function techEff(s) {
   if (!s._techEff) s._techEff = techEffects(practisedK(s.knowledge, s._metalCap), T.TECH_EFFECTS);
   return s._techEff;
 }
-export { techEff };
+export { techEff, computeConfinement };
 
 // ── The administrative-reach ramp (ONE definition, two consumers) ──────────
 // Statecraft below LEVY_ORG_MIN cannot run a systematic assessment of the
@@ -1719,7 +1719,7 @@ export function birthOrgAt(world, x, y, base) {
   return base + (bar - base) * site;
 }
 
-function computeConfinement(world, x, y) {
+function computeConfinement(world, x, y) {   // exported below: the land-nation frontier gate (crystallize.js) reads the SAME circumscription measure settlements carry
   const { tw, th, elev, temp, moist } = world;
   const R = 6; let bar = 0, tot = 0;
   for (let dy = -R; dy <= R; dy++) {
