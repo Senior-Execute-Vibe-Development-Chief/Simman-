@@ -715,8 +715,22 @@ climb — the frontier itself. Normalized re-base ×(1+K·drive)/(1+K): no new
 reference constants, no clock, no place. Battery: smoke green, stylized
 all hard gates + ZERO soft warnings, resgate green both seeds (the
 cradle-zone states still form on time — the ratio floors hold). v11
-save-regime guard. The frontier probe re-runs on this tree; its
-before/after table appends here.
+save-regime guard.
+
+**The before/after cloud (probe_statefrontier, complete wave, tw=960/8817).**
+ORDER, fixed: the cradle zone states first — the Nile pin itself (distKm=0)
+and its 83-1,400km neighbours all by ~12,500 — and W-Europe/the Baltic
+(4,008/3,890km) follow at 13,200+ AFTER the Near East, with the deep
+periphery (4,280-4,637km) LAST at 18,800-19,100 (was: the Baltic at 12,900
+BEFORE the North China Plain). BATCHES, dissolved: singles and pairs per
+step (was: ~10 in one tick — the owner's live chronicle). SATURATION,
+thinned: 34 formations vs 48 — open unpressed country holds without
+bordered politics. SPEED, halved and honestly short of history: the span
+now runs ~9k steps (~2km/y) vs ~7k (~3km/y) before, against history's
+~0.5-1km/y — the ORG_CONTACT value is the remaining dial, a taste call
+now, not a missing mechanism. The land-nation half is what moved the
+cloud: the org-clock half alone left it unchanged (44/48 formations never
+sat the org exam) — recorded per custom in the lever desc.
 
 ## Repro commands
 
