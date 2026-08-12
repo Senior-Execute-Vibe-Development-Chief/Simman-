@@ -680,6 +680,44 @@ dissolution via DISSOLVE_TOWNS, admin-load secession at the reach edge,
 or settlement death) — the holding problem is the next lap, not a tuning
 knob.
 
+## 9. Fifth follow-up (2026-08-11): "nations in pretty much every place... far too spread out early... stuck in those same places late game" — the state frontier
+
+The owner's report describes the missing SHAPE of political history: the
+state frontier. History stated the habitable world over ~4,000 years —
+three river valleys at 3000 BC, transalpine Europe around 0 AD, the Sahel
+and Scandinavia ~700-900 AD — while the sim stated every habitable band
+within one early window and held there.
+
+**The root cause was already half-documented in the tuning file**: statehood
+is a local exam (ORG_STATE_MIN 0.15) sat by the whole planet with the same
+answer key — uniform birth org (0.1) climbing at a near-uniform rate, "the
+whole planet crosses the statehood bar as ONE COHORT". ORG_BIRTH_VAR (on)
+orders arrivals by site quality inside that window; it cannot stretch the
+window. This week's dawn waves (§4-§7) made it fully visible: synchronized
+farming + surviving newborns = saturation at birth.
+
+**Measured (probe_statefrontier, tw=960/8817, land-nation register + city
+foundings):** 48 formations from 172 km to 4,278 km off the cradle pins
+within ~7k steps — a frontier of ~3 km/y against history's ~0.5-1 — and
+CONTACT-BLIND: the Baltic stated at 12,900, before the North China Plain
+(13,600) and most of the Near East's own secondary zone.
+
+**The mechanism, `ORG_CONTACT` (def 4): states make states.** Statecraft
+compounds only under PRESSURE — the site's own (the existing ORG_PRESSURE
+term: Carneiro's circumscription × fill, the PRISTINE engine that stated
+Egypt, Mexico, Peru — cradles bootstrap unchanged) or an existing state's
+example in trade reach (the rivals set the knowledge loop already collects,
+stamped as s._stateContact — the SECONDARY engine: trade, threat,
+emulation). A pre-state settlement under neither pressure climbs at
+1/(1+K) of today's pace (def 4 = one fifth); a settlement already
+governing is its own pressure, so the lever shapes only the pre-state
+climb — the frontier itself. Normalized re-base ×(1+K·drive)/(1+K): no new
+reference constants, no clock, no place. Battery: smoke green, stylized
+all hard gates + ZERO soft warnings, resgate green both seeds (the
+cradle-zone states still form on time — the ratio floors hold). v11
+save-regime guard. The frontier probe re-runs on this tree; its
+before/after table appends here.
+
 ## Repro commands
 
 ```

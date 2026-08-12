@@ -2066,11 +2066,39 @@ function updateKnowledge(world, s) {
   // byte-identical.
   const _fillK = s._k > 0 ? Math.min(1.5, (s.people || 0) / s._k) : 0;
   const pressMul = T.ORG_PRESSURE > 0 ? 1 + T.ORG_PRESSURE * (s._confine || 0) * _fillK : 1;
+  // T.ORG_CONTACT — STATES MAKE STATES (2026-08-11, the state-frontier wave;
+  // docs/dawn-cradles-2026-08-07.md §9). Statehood was a local exam with a
+  // planetary answer key: uniform birth org climbing at a near-uniform rate
+  // crossed ORG_STATE_MIN as one cohort, so nations stood on every habitable
+  // band within one early window and held there to the end (owner report;
+  // measured: formations from 172km to 4,278km off the cradles inside ~7k
+  // steps — ~3km/y against history's ~0.5-1km/y state frontier, and
+  // contact-blind: the Baltic stated before the North China Plain —
+  // probe_statefrontier). History's periphery waited MILLENNIA, then stated
+  // under CONTACT PRESSURE from existing states (trade, threat, emulation —
+  // Tilly's "states make states"; farmed Neolithic Europe stayed pre-state
+  // ~4,000 years while circumscribed Egypt stated pristine). Statecraft
+  // therefore compounds only under PRESSURE: the site's own (pressMul above
+  // — Carneiro's circumscription×fill, the PRISTINE engine, so the cradles
+  // and the Americas bootstrap exactly as before) or an existing state's
+  // example in trade reach (s._stateContact — stamped one knowledge pass
+  // stale by the reach loop below, the SECONDARY engine). A settlement
+  // already governing (countryId ≥ 0) is its own pressure — running a court
+  // teaches statecraft — so the lever shapes only the PRE-STATE climb: the
+  // frontier. The normalized re-base ×(1+K·drive)/(1+K) leaves a fully
+  // pressed village at today's exact pace and an unpressured open-frontier
+  // one at 1/(1+K) of it. No new reference constants; both drives are live
+  // local state; no clock, no place. 0 = the planetary cohort (byte-identical).
+  let contactMul = 1;
+  if (T.ORG_CONTACT > 0 && s.countryId < 0) {
+    const drive = Math.min(1, Math.max(pressMul - 1, s._stateContact || 0));
+    contactMul = (1 + T.ORG_CONTACT * drive) / (1 + T.ORG_CONTACT);
+  }
   if (process.env.SIM_DBG_PRESS && (world._pDbg = (world._pDbg || 0) + 1) <= 5) {
-    console.error(`  [press] confine=${(s._confine||0).toFixed(3)} people=${Math.round(s.people||0)} _k=${(s._k||0).toFixed(1)} fill=${_fillK.toFixed(3)} pressMul=${pressMul.toFixed(3)} confineMul=${confineMul.toFixed(3)} org=${k.organization.toFixed(4)}`);
+    console.error(`  [press] confine=${(s._confine||0).toFixed(3)} people=${Math.round(s.people||0)} _k=${(s._k||0).toFixed(1)} fill=${_fillK.toFixed(3)} pressMul=${pressMul.toFixed(3)} confineMul=${confineMul.toFixed(3)} contactMul=${contactMul.toFixed(3)} org=${k.organization.toFixed(4)}`);
   }
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul * rulerLearn * pressMul);
+    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul * rulerLearn * pressMul * contactMul);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance
@@ -2226,6 +2254,13 @@ function updateKnowledge(world, s) {
       const costW = Math.exp(-((link && link.cost) || 0) / DIFFUSE_COST_K);
       for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; kmCostW[t] = costW; } }
     }
+    // T.ORG_CONTACT: a state's example in trade reach is the SECONDARY-state
+    // pressure (the org-growth law above reads this one knowledge pass stale).
+    // The rivals set already collects every reach partner flying a foreign
+    // state's flag — for a stateless settlement that is exactly "an existing
+    // state presses on you". Not persisted: rewarms in one KNOW_INTERVAL
+    // after load, the same class as war fronts.
+    s._stateContact = rivals.size ? 1 : 0;
     // ── PEER competition (T.PEER_COMPETE): rivals are independent PEERS ────────
     // The competition-drives-innovation thesis (Hume, the warring states, fractious
     // Europe) is about states that could genuinely BEAT you — not any foreign flag
