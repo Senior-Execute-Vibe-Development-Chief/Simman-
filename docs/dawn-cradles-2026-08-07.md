@@ -732,6 +732,20 @@ now, not a missing mechanism. The land-nation half is what moved the
 cloud: the org-clock half alone left it unchanged (44/48 formations never
 sat the org exam) — recorded per custom in the lever desc.
 
+**The complete arc (probe_statefrontier, re-anchored core + full frontier
+wave, tw=960/8817).** 27 formations in three clean rings: the CRADLE ARC
+first (9,900-12,500 — every formation within 1,367km of the pins, the Nile
+pin itself at distKm=0), the SECONDARY ZONE next (14,900-18,300,
+1,155-2,598km), the FAR PERIPHERY last (19,800-21,400: 4,280-6,252km —
+far-northern Eurasia and the deep New World), ~11,500 steps after the
+first formation. No European entry in the early cohort at all — the
+Brittany/Baltic formations of the stale-core runs are gone from the early
+window entirely. Effective frontier speed ~1.3-1.9km/y (was ~3), at the
+top of history's 0.5-1 band with the order right everywhere; batches
+reduced to singles and pairs. Three instruments, one arc: the dawn
+belongs to the real cradles in the real order, statehood spreads from
+them by pressure, and the far world waits its historical turn.
+
 ## Repro commands
 
 ```
