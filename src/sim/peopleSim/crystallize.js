@@ -807,13 +807,19 @@ export function labelBasinMass(world, tx, ty) {
  *  blocked solely by "farming not at the seat", devF 0.28-0.44 vs interior
  *  full). Deterministic: fixed neighbour order, FIFO ring growth. */
 export function peopledBasinAt(world, k, capMass) {
+  return peopledBasinFrom(world, k, labelSiteLedger(world).sites[k].ti, capMass);
+}
+/** The same walkable-basin gather, from an ARBITRARY seat tile in cell k —
+ *  the peer-seat lanes' exam (T.PEER_LATTICE: a secondary seat sits the
+ *  identical test the cell's site does). */
+export function peopledBasinFrom(world, k, startTi, capMass) {
   const L = labelSiteLedger(world);
-  const st = L.sites[k], siteId = L.siteId;
+  const siteId = L.siteId;
   const pf = world.popField, devF = world.devField, elev = world.elev;
   const comp = landComp(world);
   const tw = world.tw, th = world.th;
-  const seatComp = comp[st.ti];
-  const qx = [st.ti];
+  const seatComp = comp[startTi];
+  const qx = [startTi];
   const seen = new Set(qx);
   const take = [];
   let mass = 0, devW = 0;
@@ -1597,6 +1603,88 @@ function maybeLandNations(world) {
     for (const t of take) lo[t] = id;   // the founding people's ground IS the nation's land
     (world._landSeats || (world._landSeats = new Map())).set(id, { ti: st.ti });
     ensurePolity(world, id, { how: "tribal", name, cultureId: cul ? cul.id : -1 });
+  }
+  // ── T.PEER_LATTICE, the TRIBAL half — the single-root unlock ─────────────
+  // (docs/variance-arc-2026-08-13.md, the wave-3 verdict: three mechanisms,
+  // one wall.) The loop above seats ONE nation per cell — the site's own
+  // tile. History's cradle valleys carried MANY adjacent chiefdoms per
+  // market basin, and everything downstream (fission fuel, adjacency, wars,
+  // momentum, the cascade) starves without them. Per pass, each cell's best
+  // peopled UNOWNED tile ≥ 2×urbanCoreR from the cell site and from every
+  // tribal seat in the cell becomes a SECONDARY candidate, and sits the
+  // IDENTICAL exam the primary lane just applied: walkable basin ≥ the same
+  // founding bar, its people farm, the same pressure drive and per-seat
+  // roll. One per cell per pass — the fabric fills generationally. Cells
+  // holding a settled label are NOT excluded (unlike the primary lane): the
+  // tribal fabric historically surrounded the first cities, and adjacency
+  // to their realms is contact drive — the periphery states densely, under
+  // pressure, exactly as §9 demands.
+  if (T.PEER_LATTICE && world.popField) {
+    const pf2 = world.popField, siteId2 = L.siteId, tw2 = world.tw;
+    const rr2b = (2 * urbanCoreR(world)) ** 2;
+    const cellSeats = new Map();   // k → [seat ti,...] (tribal seats per cell)
+    if (world._landSeats) for (const [, seat] of world._landSeats) {
+      const kk = siteId2[seat.ti]; if (kk < 0) continue;
+      let a = cellSeats.get(kk); if (!a) cellSeats.set(kk, a = []); a.push(seat.ti);
+    }
+    const far2 = (i, ti) => {
+      const iy = (i / tw2) | 0, ix = i - iy * tw2, ty = (ti / tw2) | 0, tx = ti - ty * tw2;
+      let dx = Math.abs(ix - tx); if (dx > tw2 / 2) dx = tw2 - dx;
+      return dx * dx + (iy - ty) * (iy - ty) >= rr2b;
+    };
+    const best2 = new Map();       // k → { ti, p }
+    for (let i = 0; i < world.N; i++) {
+      const kk = siteId2[i]; if (kk < 0) continue;
+      const p = pf2[i]; if (!(p > 0)) continue;
+      const cur = best2.get(kk); if (cur && cur.p >= p) continue;
+      if ((co && co[i] >= 0) || (lo0 && lo0[i] >= 0)) continue;
+      if (!far2(i, L.sites[kk].ti)) continue;
+      const ss = cellSeats.get(kk);
+      let ok = true;
+      if (ss) for (const t of ss) if (!far2(i, t)) { ok = false; break; }
+      if (ok) best2.set(kk, { ti: i, p });
+    }
+    for (const [kk, cand] of best2) {
+      tel(world, "landnat2", "CANDIDATE");
+      const basin2 = peopledBasinFrom(world, kk, cand.ti, barF);
+      if (basin2.mass < barF) { tel(world, "landnat2", "basinBelowBar"); continue; }
+      if (basin2.devP < NEOLITHIC_AGRI) { tel(world, "landnat2", "notFarming"); continue; }
+      // The identical pressure exam as the primary lane above (contact
+      // adjacency, else the caging law's cage × storable share).
+      let drive2 = 0;
+      if (T.ORG_CONTACT > 0) {
+        const th3 = world.th;
+        for (const t of basin2.take) {
+          const ty3 = (t / tw2) | 0, tx3 = t - ty3 * tw2;
+          const ns3 = [ty3 * tw2 + ((tx3 + 1) % tw2), ty3 * tw2 + ((tx3 - 1 + tw2) % tw2),
+                       ty3 > 0 ? t - tw2 : -1, ty3 < th3 - 1 ? t + tw2 : -1];
+          for (let n3 = 0; n3 < 4; n3++) {
+            const ni3 = ns3[n3]; if (ni3 < 0) continue;
+            if ((co && co[ni3] >= 0) || (lo0 && lo0[ni3] >= 0)) { drive2 = 1; break; }
+          }
+          if (drive2 >= 1) break;
+        }
+        if (drive2 < 1 && T.STATE_CAGE) {
+          const cg2 = cageAt(world, cand.ti);
+          if (cg2 > 0) {
+            const sp2 = basinStorablePeople(world, basin2.take, pf2);
+            drive2 = Math.max(drive2, cg2 * (basin2.mass > 0 ? Math.min(1, sp2 / basin2.mass) : 0));
+          }
+        }
+        const pF2 = drive2 / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive2)));
+        const rU2 = hash32(world.seed || 1, "landnat2", cand.ti, world.step) / 4294967296;
+        if (rU2 > pF2) { tel(world, "landnat2", "driveRoll"); continue; }
+      }
+      const id2 = world._nextSettlementId || 1; world._nextSettlementId = id2 + 1;
+      const anc2 = world.ancestry ? world.ancestry[cand.ti] : -1;
+      const cul2 = anc2 >= 0 ? ancestryCulture(world, anc2, null) : null;
+      let loM = world._landOwner;
+      if (!loM || loM.length !== world.N) { loM = world._landOwner = new Int32Array(world.N); loM.fill(-1); }
+      for (const t of basin2.take) if (loM[t] < 0) loM[t] = id2;
+      (world._landSeats || (world._landSeats = new Map())).set(id2, { ti: cand.ti });
+      ensurePolity(world, id2, { how: "tribal", name: cul2 ? nameFor(world, cul2, "realm") : null, cultureId: cul2 ? cul2.id : -1 });
+      telPass(world, "landnat2");
+    }
   }
   // ── T.FISSION — SEGMENTARY FISSION: polities reproduce by SPLITTING ──────
   // (wave 3 of the variance arc, docs/variance-arc-2026-08-13.md; the owner's
