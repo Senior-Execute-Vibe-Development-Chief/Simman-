@@ -561,6 +561,23 @@ const RANGE_BASE = 8 * 1.02, RANGE_ORG = 16 * 1.02, RANGE_MOB = 10 * 1.02, RANGE
 // SPREAD needs rail+telegraph. Diagnosis (probe_landconc) showed admin alone was
 // projecting empires across continents without the transport history required.
 const RANGE_BASE_T = 5, RANGE_LOGI = 24, RANGE_ADMIN = 2, RANGE_MOB_T = 4, RANGE_NAV_T = 3;
+// T.REACH_GROUND — the ZERO-TECH base re-grounded to the pre-logistics fact
+// (the variance arc's density root, docs/variance-arc-2026-08-13.md: "in the
+// whole middle east area, only really 2 nations ever FIT"). RANGE_BASE_T = 5
+// cost-units ≈ an ~800km easy-terrain hold radius for a court with NO
+// logistics at all — the base was doing the empire's work, so every newborn
+// realm was born imperial-sized (measured: median realm 440-565k km² by step
+// 6,000 — Old-Kingdom Egypt's whole footprint at best, ~5× the early-bronze
+// norm) and a region that historically carried Egypt + Hatti + Mitanni +
+// Assyria + Babylon + Elam + a dozen Levantine city-states "fills" at two.
+// History's pre-road, pre-horse court administered ~50-150km directly (days
+// of donkey round-trip); everything farther was logistics — which the law
+// already prices (RANGE_LOGI carries roads→rail; rivers are cheap tiles, so
+// Egypt's court runs far ALONG THE VALLEY on a small budget: the valley
+// kingdom emerges from geography, not from a floor). Under the lever the
+// base falls to ~1 cost-unit (~a day or three of easy country, ~150km) and
+// every longer arm is EARNED. 0 = the imperial floor (byte-identical).
+const RANGE_BASE_G = 1;
 
 // Editor helper: the territorial hold-reach (in map tiles) a realm seated at
 // `seat` would project from its tech + personality — the same formula
@@ -668,7 +685,7 @@ export function rebuildCountries(world) {
     const k = best.knowledge || {};
     const bE = techEff(best), bMob = k.mobility || 0, bNav = k.navigation || 0;
     const rangeOld = RANGE_BASE + bE.reachLevel * RANGE_ORG + bMob * RANGE_MOB + bNav * RANGE_NAV;
-    const rangeNew = RANGE_BASE_T + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
+    const rangeNew = (T.REACH_GROUND ? RANGE_BASE_G : RANGE_BASE_T) + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
     c.range = rangeOld + (rangeNew - rangeOld) * T.TECH_EFFECTS;   // transport-gated hold-distance (TE=0 → old admin-driven)
     // Personality nudges reach: an expansionist realm projects authority a
     // little farther, a cautious one pulls in. Knowledge still sets the bulk
