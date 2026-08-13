@@ -90,3 +90,35 @@ Attribution, not guesswork:
 Each wave gates at tw=240 AND tw=480 (resgate) with tw=960 spot-checks,
 per the Third Rule; the polrec/analyze_polrec pair is the arc's standing
 instrument, run before and after each wave.
+
+## 5. Wave 1 spec — the peer lattice (grounded in the mint law's own objects)
+
+The one-per-cell rule lives in `_siteClaims.claimed[k]` (crystallize.js):
+a cell (the Voronoi basin of a quantized hydrological anchor — confluence,
+mouth, sink, bay — within TOWN_BASIN_R) is claimed by the FIRST settled
+label forever, and `labelBasinFree` — "the one siting law every
+label-minting act reads" (sweep, daughters, sea landings) — refuses the
+cell thereafter. One court per hydro-anchor basin, planet-wide, by
+construction.
+
+The mechanism: **a cell's capacity is what its people can feed, not 1.**
+`claimed[k]` (Uint8 flag) becomes `count[k]`, and the cell is open while
+`count[k] < max(1, floor(mass[k] / basinBarF))` — the SAME city-basin bar
+(`TIER_CORE[2]/URBAN_SHARE_REF/bridge`) the mint's eligibility already
+reads, so a basin holding people for N urban cores seats up to N courts,
+one per bar-multiple. In-cell spacing is the core's own scale: a new label
+must stand ≥ 2 × urbanCoreR from every existing label in the cell (cores
+must not overlap — the walkable-core radius the spike law already uses).
+Zero new constants; the two quantities are the mint's own. Sumer: an
+alluvial cell holding 5-6 bar-multiples seats its peer cluster 50-80 km
+apart; a thin-country cell holds one court or none, exactly as now. All
+other mint gates (farming arrival, CITY_STORE storable ground, coreBar
+spike, CITY_AT_BIRTH anchoring) apply per candidate unchanged.
+
+Blast radius: the siting law is shared by the crystallization sweep,
+daughter foundings and sea landings — the capacity form must be measured
+against each (the birth-crater scars live here; HOLD_SEAM interactions
+re-checked). Lever + v13 save guard; full battery + resgate ×2; the
+polrec before/after pair decides — success = NN capital spacing's p10
+falls toward the core scale in cradle basins while sparse country is
+byte-similar, and submissions/unions rise on the new contact density.
