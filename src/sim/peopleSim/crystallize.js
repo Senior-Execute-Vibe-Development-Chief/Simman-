@@ -22,6 +22,7 @@ import { tel, telPass } from "./telemetry.js";
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { hash32 } from "./rng.js";
+import { cageAt } from "./cageField.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable, ensurePolity } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
@@ -1488,8 +1489,9 @@ function maybeLandNations(world) {
     // advances as contact does. No new constants; no clock; no place.
     if (T.ORG_CONTACT > 0) {
       const sy0 = (st.ti / world.tw) | 0, sx0 = st.ti - sy0 * world.tw;
-      // A NATION OF THE LAND FORMS UNDER AN EXISTING STATE'S PRESSURE —
-      // contact alone. Two pristine-lane forms were built and MEASURED DEAD
+      // A NATION OF THE LAND FORMS UNDER PRESSURE — an existing state's
+      // contact, or (T.STATE_CAGE below) its own people's CAGING.
+      // Two pristine-lane forms were built and MEASURED DEAD
       // here, recorded per custom (2026-08-12, the regional-bunching lap):
       // (1) confinement × take-fill and (2) confinement × basin-disk-fill
       // both left the regional firsts unchanged, and the instrument then
@@ -1519,6 +1521,26 @@ function maybeLandNations(world) {
             if ((co && co[ni3] >= 0) || (lo0 && lo0[ni3] >= 0)) { drive = 1; break; }
           }
           if (drive >= 1) break;
+        }
+      }
+      // T.STATE_CAGE — the PRISTINE lane returns, on the measure the two dead
+      // forms above lacked (2026-08-12, docs §10): drive = cage(seat) × the
+      // share of the basin's people standing on STORABLE-capable ground.
+      // cage (cageField.js: 1 − exit/home over the capacity field) is
+      // Carneiro's circumscription measured on the field the sim actually
+      // maintains — it reads the desert-hemmed strips computeConfinement
+      // missed (Indus 0.01) and ~0 on the open plains whose false pristine
+      // states this lap was called on. The storable factor is Scott's taxable
+      // grain — basinStorablePeople, the CITY_STORE quantity, as a SHARE: a
+      // caged tuber basin still waits for contact. Both factors live state,
+      // both existing measures; the K re-base and per-seat roll unchanged.
+      if (drive < 1 && T.STATE_CAGE) {
+        const cg = cageAt(world, st.ti);
+        if (cg > 0) {
+          const sp = basinStorablePeople(world, take, world.popField);
+          const stor = basin.mass > 0 ? Math.min(1, sp / basin.mass) : 0;
+          const pr = cg * stor;
+          if (pr > drive) drive = pr;
         }
       }
       const pForm = drive / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive)));

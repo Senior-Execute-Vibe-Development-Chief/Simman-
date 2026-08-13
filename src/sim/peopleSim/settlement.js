@@ -10,13 +10,14 @@
 import { seedLocalTerritory } from "./territory.js";
 import { mergeReach } from "./roads.js";
 import { techEffects } from "./tech.js";
-import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
+import { agriGate, bestPackageAt, pkgSuitAt, cropCeil } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { fieldShift } from "./popField.js";
 import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
+import { cageAt } from "./cageField.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
@@ -2089,9 +2090,28 @@ function updateKnowledge(world, s) {
   // pressed village at today's exact pace and an unpressured open-frontier
   // one at 1/(1+K) of it. No new reference constants; both drives are live
   // local state; no clock, no place. 0 = the planetary cohort (byte-identical).
+  // T.STATE_CAGE (2026-08-12, docs §10 — the owner's re-founding question:
+  // "nations spawn where population gets big enough... was that really the
+  // core force?"): CAGING joins the pre-state drives, as Carneiro's full
+  // triad — circumscription × surplus (pressure is the K re-base itself).
+  // cage (cageField.js): the share of country within flight distance, beyond
+  // the own basin, that a defeated household could NOT flee to — people
+  // hemmed by desert/mountain (or by other states' closed borders) cannot
+  // walk away from a quarrel or a tax, so statecraft compounds; people on an
+  // open plain disperse instead (measured on the REAL field: the _confine
+  // proxy mis-scored exactly the desert-hemmed cradles — the Indus seat read
+  // 0.01). × cropCeil, the settlement's own storable ceiling (suit ×
+  // storability, the CITY_STORE axis): a cage with no taxable grain inside
+  // it raises no state (the taiga, the tuber belts — however hemmed, nothing
+  // to seize). The Nile/Sumer strip reads high × high and arms PRISTINE at
+  // full pace; the rain-fed European interior reads cage ≈ 0 and waits for
+  // contact — history's four-millennium gap, from one field. No new
+  // constants: two existing radii, two existing measures, the same re-base.
   let contactMul = 1;
   if (T.ORG_CONTACT > 0 && s.countryId < 0) {
-    const drive = Math.min(1, Math.max(pressMul - 1, s._stateContact || 0));
+    const cageDrv = T.STATE_CAGE
+      ? cageAt(world, (s.pos.y | 0) * world.tw + (s.pos.x | 0)) * cropCeil(world, s) : 0;
+    const drive = Math.min(1, Math.max(pressMul - 1, Math.max(s._stateContact || 0, cageDrv)));
     contactMul = (1 + T.ORG_CONTACT * drive) / (1 + T.ORG_CONTACT);
   }
   if (process.env.SIM_DBG_PRESS && (world._pDbg = (world._pDbg || 0) + 1) <= 5) {

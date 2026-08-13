@@ -746,6 +746,86 @@ reduced to singles and pairs. Three instruments, one arc: the dawn
 belongs to the real cradles in the real order, statehood spreads from
 them by pressure, and the far world waits its historical turn.
 
+## 10. The re-founding (2026-08-12): "was population really the core force creating nations?" — the caging law
+
+The owner's question, verbatim: *"our problem is population is increasing
+everywhere, and nations spawn where population gets big enough, forcing
+nations to spawn in the moderately liveable areas, sahel, europe, china,
+etc, but not middle east. was that really the core force creating
+nations?"*
+
+**The answer is no, and the sim was built on the wrong force.** Every
+formation channel was population-mass-gated (census bars, basin-mass bars,
+org clocks paced by learning at peopled sites), so nations rose wherever
+land is moderately liveable — while history's cradles are the arid river
+strips a mass statistic reads as marginal. Measured on this branch:
+Mesopotamia was this sim's WEAKEST cradle (wheat suit 0.27, the slowest
+arming clock of the §4 arc) and the Mideast's first states trailed
+Europe's and India's — the record inverted. The record's core forces:
+storable surplus (grain you can see, store and seize — the taxable crop),
+CAGING (people who cannot walk away: Egypt and Sumer are arable ribbons
+hemmed by desert where exit means destitution, while the rain-fed European
+plain offered exit in every direction and stayed stateless for millennia
+with MORE total people), and density of the strip, not mass of the region.
+
+**The mechanism, `STATE_CAGE` (def 1): the caging field.** cageField.js
+maintains cage(i) = 1 − exitQuality over the carrying-capacity field the
+sim already runs: exitQuality = (mean FREE capacity over the flight-
+horizon ring's land) / (capacity under the home basin's people —
+Σcap²/Σcap over the home box, the capacity-weighted mean, because people
+stand where capacity is: popField's own logic). State-owned ground prices
+at 0 (you enter a realm's land as its subject, not a free household), so
+one formula carries the ecological cage at the dawn AND Mann's political
+caging as borders close — states cascade outward. Water leaves the
+denominator (neither exit nor cage). Radii: the home box (rNormPop) and
+the TOWN_BASIN_R market catchment — existing basin quantities; no new
+reference constants. Wired as Carneiro's full triad — circumscription ×
+surplus, with pressure the existing K re-base — into BOTH pre-state
+channels: the org clock's drive gains max(…, cage × cropCeil) and the
+land-nation pristine drive returns (it was contact-only after §9's dead
+forms) as cage(seat) × the basin's storable-people share.
+
+**Three dead forms, measured and recorded (probe_cage, tw=480 from-0
+dawn)** — the falsification lap that found the right statistic: (1)
+box-mean capacity ratio — the OCEAN-SHARE artifact: a mean prices
+half-a-horizon-of-Atlantic as half-caged, so N France read 0.618 and the
+Rhineland 0.689 OVER the Nile's 0.557 and Mesopotamia's 0.352 — the
+European false pristine rebuilt by the field meant to retire it; (2)
+viable-land share against the world's median land capacity — broken BY
+CONSTRUCTION: half of land is above the median and the true bottom half
+is tundra/ice/mountain, so the SAHARA cleared "ordinary" and counted as
+exit (Nile 0.074, BELOW the world land mean 0.394); (3) the single home
+TILE as denominator — measures local peakedness, not circumscription: a
+capacity peak always beats its ring's mean, so every settlement-grade
+tile on the planet read 0.5-0.7 caged (steppe 0.530, taiga 0.649 —
+1.2:1 separation where history is 10:1).
+
+**The shipped form's anchors (tw=480/8817 dawn; DRIVE = cage × storable,
+the quantity both channels consume):**
+
+| anchor | cage | storable | DRIVE |
+|---|---|---|---|
+| Nile (Upper) / Delta | 0.604 / 0.600 | 0.41 / 0.53 | 0.245 / 0.316 |
+| Indus (Sindh) | 0.592 | 0.54 | 0.318 |
+| Mesopotamia (lower) | 0.543 | 0.27 | 0.148 |
+| Loess/Wei (China) | 0.485 | 0.40 | 0.194 |
+| Sahel (Niger bend) | 0.530 | 0.39 | 0.205 |
+| Pontic steppe | 0.405 | 0.26 | 0.106 |
+| **N France / Rhineland / Denmark** | 0.40 / 0.40 / 0.31 | **0.00** | **0.000** |
+| **Taiga (W Siberia)** | 0.487 | **0.00** | **0.000** |
+
+The false pristines — the owner's actual complaint, and the §9 lap's
+Siberia artifact — are structurally dead at the dawn: no winter-aptitude
+stack can outrun a zero drive, and rain-fed Europe waits for CONTACT, as
+it historically did. Two warts recorded honestly: the Ganges/Yangtze
+DRIVES read high (0.41/0.31 — rice suit prices the wet belt before the
+jungle is cleared; their farming also ARRIVES millennia late via the
+domestication stagger, so the formation timeline still orders — the 26k
+regional run is the judge), and the taiga's raw cage is mid (0.49 — its
+capacity threads its rivers, and capacity ratios overstate livelihood
+loss at the poor end) but storable-killed. v12 save-regime guard: a
+pre-wave save keeps its mass-era formation physics.
+
 ## Repro commands
 
 ```
@@ -759,4 +839,5 @@ SIM_TUNE="DAWN_LIVE=1" RUN_W=1920 ...                          # Indus→Nile→
 #   node tools/abtest.mjs --tune="CROP_MILLET=0,ACCESS_BAND=0" --seeds=8817,31337 --steps=12000
 #   dilution ruler: scratchpad probe (Σ capField × km²/tile, 3 grids, ON/OFF) — table in §5
 #   payoff: SIM_TUNE="DAWN_LIVE=1,POP_FIELD_WORKERS=2" RUN_W=1920 RUN_STEPS=30000 probe_birthcrater
+# §10 caging law: SIM_TUNE="DAWN_LIVE=1" probe_cage (anchor table); regional judge: probe_cageregional (RUN_W=1920, 26k)
 ```
