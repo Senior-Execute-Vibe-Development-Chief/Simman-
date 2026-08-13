@@ -1488,7 +1488,23 @@ function maybeLandNations(world) {
     // advances as contact does. No new constants; no clock; no place.
     if (T.ORG_CONTACT > 0) {
       const sy0 = (st.ti / world.tw) | 0, sx0 = st.ti - sy0 * world.tw;
-      let drive = computeConfinement(world, sx0, sy0);
+      // CARNEIRO, STATED PROPERLY — the org clock's own documented law
+      // (settlement.js pressMul), now applied to the lane that was missing
+      // it: circumscription ALONE does not build states, circumscription
+      // PLUS population pressure does. Confinement alone let Europe's
+      // moderately-hemmed valleys state the moment farming diffused in
+      // (measured, overnight runs 2026-08-12: Europe's first nation at step
+      // 14,000 — BEFORE China's at 16,000 — and five regions carrying
+      // polities within 2k steps of the second, the owner's "spread across
+      // all easily habitable land, very little bunching"). Where land is
+      // hemmed but HALF-EMPTY the losers of a quarrel walk away — no state:
+      // the pristine drive is confinement × the basin's own fullness
+      // (people against the take's carrying capacity — the Indus at its
+      // state-birth measured 0.87-0.99 full).
+      let takePop = 0, takeCap = 0;
+      { const pf2 = world.popField, cf = world.capField; for (const t of take) { takePop += pf2[t]; if (cf) takeCap += cf[t]; } }
+      const fillT = takeCap > 0 ? Math.min(1, takePop / takeCap) : 0;
+      let drive = computeConfinement(world, sx0, sy0) * fillT;
       if (drive < 1) {
         const tw3 = world.tw, th3 = world.th;
         for (const t of take) {
