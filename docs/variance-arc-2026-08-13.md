@@ -1,0 +1,92 @@
+# The variance arc (2026-08-13): "micro states, 50-year empires, vast empires, ancient nations, ultra dense areas"
+
+The owner's order, on confirming the caging-law dawn (§10 of
+docs/dawn-cradles-2026-08-07.md) looks right: *"now we need to work on
+nation size, density, boom bust etc. currently it is far too stable and
+clean, there needs to be micro state, 50 year empires, vast empires,
+ancient nations, ultra dense areas, etc."*
+
+The complaint is about DISTRIBUTIONS. History's political world is
+heavy-tailed on every axis — size (a Rome and a polis, five orders of
+magnitude apart, at the same moment), lifespan (Alexander's decade, Egypt's
+thirty centuries), spatial density (Sumer packed a dozen sovereign courts
+into 400 km while the marches ran empty for thousands). The sim's is
+narrow on all three.
+
+## 1. The measured state (probe_overnight instrument + analyze_polrec, tw=960/8817, 26k, current physics)
+
+| axis | measured | history wants |
+|---|---|---|
+| size | max realm 535k km²; max/median 4.5:1; Gini 0.44-0.47 flat | 100-1000:1 tails, Gini ≫ 0.7 |
+| top realm | share of claimed land 56% → 4%, FALLING as the world fills | hegemons repeatedly take 30-60% of their world |
+| lifespan | 6 fallen in 26k steps, 83 living; median fallen 8,500 | flash empires (~200 steps) AND kilo-step ancients, together |
+| spacing | nearest-neighbour capitals: median 736-850 km, MINIMUM 416 km | Sumer/Aegean: 30-80 km between sovereign seats |
+| events/26k | 39 submissions, 7 unions, 2 secessions, 12 ended | consolidation cascades, partitions, restorations every era |
+
+Suzerainty blocs DO form (bloc-aggregated: top bloc 5 realms / 1.35M km²
+by 26k; 29 of 83 realms bonded) — but they cap at 4-5 members, the top
+three blocs sit within 20% of each other (1.35/1.17/1.11M — symmetry
+again, one level up), and the map paints each vassal separately, so the
+owner sees 83 mid-sized blobs.
+
+Resolution note (Third Rule): the tw=240 stylized world is CHURNED —
+87 fallen states, median lifespan 150 steps, the "revolt-churn mode"
+soft-warning — while tw=960 is immortal. Political stability is currently
+resolution-DEPENDENT; whatever ships must be measured at the app grid.
+
+## 2. The funnel (probe_nucfunnel, telemetry.js layer, tw=480/8817, 22k)
+
+Attribution, not guesswork:
+
+- **nucleate** (frontier founding): CANDIDATE 7-8 per 4k-step era — the
+  channel is candidate-STARVED, not veto-blocked (`notBasinLeader` never
+  fired; rejections were seatPop/org). There is nothing for the founding
+  law to reject: stateless settled settlements barely exist, because
+  cities mint one-per-site-cell off the ledger and each city self-anchors
+  a realm at birth (CITY_AT_BIRTH). **State spacing IS city spacing, and
+  the urban lattice is uniform at the market-cell scale by construction.**
+  Sumer-packing is impossible at any political setting until the URBAN
+  law can put several cities in one basin.
+- **submit** (the primary consolidation channel): 715 candidate pairs over
+  8k steps → 10 PASSED. `resistanceNotHopeless` rejects 63% (the
+  SUBMIT_RATIO 5× bar in a near-equal world); `alreadyADependency` locks
+  another 16% once early blocs form. The §8 trap ("consolidation needs
+  asymmetry, the dawn produces near-equals"), measured end-to-end — and it
+  re-arises at BLOC level: blocs of 4-5 face blocs of 4-5 and the 5× bar
+  never clears again.
+- **union** (VALLEY_UNION, the §8 peer channel): 2 PASSED in 20k — real
+  but rare (succession-crisis + corridor + kin gated).
+
+## 3. The two structural roots
+
+1. **The urban lattice bounds the political lattice.** One city per
+   market cell, one realm per city: the map can never be politically
+   denser than TOWN_BASIN_R. Every downstream channel starves — no
+   neighbours within reach, no cascades, no packing, no microstates.
+2. **Asymmetry-gated consolidation in a symmetric world self-arrests at
+   every scale.** Singles vs singles, then blocs vs blocs. History's
+   consolidation ran on DECISIVE EVENTS that create asymmetry rather than
+   require it: the battle that transfers a whole network (Cyrus takes
+   Media's empire in one stroke), the marriage/union of near-equal crowns,
+   the partition that feeds neighbours.
+
+## 4. The wave plan
+
+- **Wave 1 — THE PEER LATTICE.** City density priced by what the land's
+  catchments can feed (the CITY_STORE/core-bar physics the mint already
+  runs), not one-per-cell: a basin whose storable economy can fund N urban
+  cores at catchment scale mints N cities on the existing cadence. Dense
+  cradles then carry peer clusters of courts; sparse country still funds
+  one or none. This is the fuel for every consolidation channel.
+- **Wave 2 — DECISIVE CONSOLIDATION.** Victory creates asymmetry instead
+  of requiring it: decisive war outcomes transfer suzerainty networks
+  whole; peer-union frequency scales with contact density; the 5× hazard
+  stays for the overawing lane it correctly models.
+- **Wave 3 — MORTALITY.** With cascades running, conquest and partition
+  (ELITE_FRACTURE already ships) generate the boom-bust tails; internal
+  collapse hazards separate the 50-year overextended blob from the caged
+  ancient core (STATE_CAGE gives the durable-core structure for free).
+
+Each wave gates at tw=240 AND tw=480 (resgate) with tw=960 spot-checks,
+per the Third Rule; the polrec/analyze_polrec pair is the arc's standing
+instrument, run before and after each wave.
