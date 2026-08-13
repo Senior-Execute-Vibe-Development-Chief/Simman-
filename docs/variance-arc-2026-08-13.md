@@ -122,3 +122,21 @@ re-checked). Lever + v13 save guard; full battery + resgate ×2; the
 polrec before/after pair decides — success = NN capital spacing's p10
 falls toward the core scale in cradle basins while sparse country is
 byte-similar, and submissions/unions rise on the new contact density.
+
+**VERDICT (polrec after-run, tw=960/8817/26k): INERT — byte-identical to
+the baseline in every snapshot.** The lever as shipped (287e511) never
+fires in its own target regime; the battery's tw=240 pass proved only
+harmlessness, and the after-instrument caught the b859db7 mode before it
+shipped as a false success. Attribution hypotheses for the next lap, in
+order: (a) CELL EXTENT — capacity = floor(cellMass/basinBar) with cells
+the Voronoi basins of QUANTIZED hydro-anchors; in confluence-dense
+country the cells may be far smaller than the market horizon, so no cell
+ever holds 2× the bar and capacity sticks at 1 — the anchor quantization
+(SITE_MERGE_D), not the claim flag, would then be the real lattice; (b)
+SWEEP RATE — labelBasinFree opening a cell ≠ a founding: the
+crystallization sweep may propose no candidates in settled-era cells at
+all (its own gates or era-rate), so the opened door is never walked
+through. Next lap: tel() the peer branch of labelBasinFree
+(peerOpen/peerCapacityFull/peerSpacingBlocked) and the sweep's candidate
+funnel; fix whichever binds; re-run the after-instrument. The wave is
+not done until the instrument moves.
