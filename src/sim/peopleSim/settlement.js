@@ -1719,7 +1719,7 @@ export function birthOrgAt(world, x, y, base) {
   return base + (bar - base) * site;
 }
 
-function computeConfinement(world, x, y) {   // exported below: the land-nation frontier gate (crystallize.js) reads the SAME circumscription measure settlements carry
+function computeConfinement(world, x, y) {   // exported below for probes (the land-nation gate no longer reads it — measured mis-scoring ecological circumscription, see crystallize.js)
   const { tw, th, elev, temp, moist } = world;
   const R = 6; let bar = 0, tot = 0;
   for (let dy = -R; dy <= R; dy++) {
