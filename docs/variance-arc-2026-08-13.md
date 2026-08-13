@@ -220,6 +220,27 @@ slow-burn lane needs no new mechanism — annexation + adoption + the
 grounded reach growing with logistics IS the Rome archetype; measure
 its long-horizon size curve on the 45k overnight config next.
 
+**THE STORM GATE, ATTRIBUTED (storm funnel in armies.js, tw=480/26k):
+370 fronts reached the heartland, 370/370 failed `assaultTooWeak` —
+advCity NEVER reaches CITY_STORM_RATIO (1.6). The mechanism gap: the
+break test is floored at the CITIZEN MILITIA (homeMight), which is
+population-proportional and UNGRINDABLE — the siege bombard wears the
+garrison, but defNow re-floors at the militia every pass, so a populous
+capital can never fall regardless of siege duration, and among the
+dense map's near-peers the attacker never owns a 1.6× edge over relief
++ an intact militia. History's sieges ended by STARVATION: the supply
+line cut, the granaries draining, the militia withering — a stocked
+city holds for years (Troy), an empty one for weeks. The sim already
+holds every needed quantity: def._siegeAt is stamped at true siege
+(armies.js), per-settlement stores/supply (s.food, _foodSupply) and the
+famine machinery exist. NEXT WAVE (SIEGE_STARVE): while besieged, the
+seat's food flow chokes and stores drain at demand; homeMight's militia
+term scales with nutrition — the fall clock becomes the granary, siege
+duration becomes emergent, and the cascade (shatter → inherit →
+momentum → witness collapse) gets its trigger. Scope the consequence to
+the besieged seat only, while _siegeAt is fresh (the FED_FAMINE /
+FOOD_REACH scars demand it).**
+
 **WAVE 2 VERDICT: ALSO INERT at tw=960 — byte-identical after-run.** The
 attribution goes one level deeper than either wave: momentum needs
 conquest, conquest needs WARS, and no war ever ignites at the app grid

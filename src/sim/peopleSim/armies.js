@@ -1817,8 +1817,11 @@ export function advanceFronts(world) {
       // T.ALLY_FRONT: the coalition's relief army stands with the defender at the
       // walls (already theatre-projected; +0 exactly at lever 0).
       const advCity = (attForce0 * pjCap) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
+      tel(world, "storm", "frontAtHeartland");   // FUNNEL (variance arc): why does no capital fall?
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
+      if (advCity < T.CITY_STORM_RATIO) tel(world, "storm", "assaultTooWeak");
+      else if (world.step - (def._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE) tel(world, "storm", "pacifiedGrace");
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
         // Bombard: grind the garrison; the besiegers bleed against the defence
         // they actually face (the militia floor, not the melted garrison).
@@ -1836,10 +1839,12 @@ export function advanceFronts(world) {
         // the post-pass reconciliation — the siege wears it down pass over pass.)
         // The seat's ground holds through the siege too (T.REFUGE; ×1 at lever 0).
         const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold;
+        if (!(defNow * em <= att._M * pjCap * SIEGE_BREAK)) tel(world, "storm", "wallsHold(grinding)");
         if (defNow * em <= att._M * pjCap * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
           // The SETTLEMENT that changes hands: under TILE_WAR `def` is a country adapter, so
           // the storm falls on its real capital (which fragments the realm); otherwise on the
           // settlement itself. Army mechanics below stay on `def`/`att` (the national pools).
+          telPass(world, "storm");   // the throne-city falls — the cascade's trigger
           const dS = TILE_WAR ? def._capital : def;
           // Was this the capital of its realm? Under TILE_WAR the adapter IS the realm's seat.
           const dc = world.countries && world.countries.get(dcc);
