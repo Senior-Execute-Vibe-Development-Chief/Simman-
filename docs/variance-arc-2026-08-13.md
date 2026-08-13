@@ -269,3 +269,23 @@ hegemon (top share 4-7%) — realms only begin ~10k at this grid, so the
 boom machinery gets ~16k steps; the 45k overnight horizon is the right
 measurement, queued. The chain itself is verified firing at tw=480 (6
 storms, shatters 2 → 4/era) and the bust side at tw=960.
+
+## 7. The 45k horizon (tw=960/8817): the arc's asks, delivered
+
+- **Vast empires**: top realm 580k → 1.17M → 2.08M → 2.98M km² — a
+  genuine classical major — and the #1 IDENTITY CHANGES 12 TIMES across
+  the run: hegemons rise and are replaced, never immortal.
+- **Boom-bust at scale**: 935 polity deaths, 477 secessions, 359
+  RESTORATIONS, 327 submissions across 45k.
+- **Both lifespan tails**: 163 fallen (median 7,500; some at 32,500)
+  beside an oldest-living realm of 34,000 steps and hundreds of
+  restorations — flash states and multi-era ancients coexisting.
+- **Density and tails hold to the end**: NN spacing median 189km / p10
+  60km at 40k; Gini 0.77-0.80; 1k-km² microstates beside the 3M giant.
+
+Every item of the owner's order ("micro state, 50 year empires, vast
+empires, ancient nations, ultra dense areas") is measured present at the
+app grid. Remaining watches: whether late-game polity count (1,598 at
+44k, mostly tribal fabric) reads as richness or clutter in play — the
+owner's eye decides; the Mesopotamia crop wave (#15) and the Kama-Volga
+watch (#16) queue behind.
