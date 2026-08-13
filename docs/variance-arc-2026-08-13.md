@@ -182,6 +182,24 @@ cradle valley fills with adjacent chiefdoms long before its first city,
 exactly as history's cradles did. All three shipped waves stay on as
 the receiving structure.
 
+**THE COMBINED VERDICT (polrec_wave5, tw=960/8817/26k — tribal peer
+lattice + fission + cascade + REACH_GROUND together): THE MAP
+TRANSFORMED.** Polities 73 → 321; nearest-neighbour capitals min 416km →
+25km (median 736 → 244, p10 462 → 82 — the Sumer packing regime); size
+Gini 0.44-flat → 0.71-rising; max/median 4.5:1 → 51:1 with 2k-km²
+microstates persisting beside 560k majors; foundings 9 → 294; breakaways
+2 → 9 (fission fires at the app grid); deaths 6 → 14 fallen + 22 ended;
+top-realm identity changes 3 → 5. The owner's "ultra dense areas",
+"micro state" and regional fit are delivered; "ancient nations" holds
+(oldest living realm spans the whole run). THE REMAINING GAP: the
+hegemon/boom lane — top share still 4-7% (no runaway winner), and
+submissions FELL 46 → 21 because the grounded reach rightly cut
+long-range overawing; consolidation must now run at the local scale on
+the new adjacency (wars between touching statelets → momentum → the
+cascade, all shipped and armed). Next lap: measure WAR IGNITION on the
+dense map (the recorder must add war events); if wars fire, the cascade
+chain gets its first live test; if not, attribute the war gate.
+
 **WAVE 2 VERDICT: ALSO INERT at tw=960 — byte-identical after-run.** The
 attribution goes one level deeper than either wave: momentum needs
 conquest, conquest needs WARS, and no war ever ignites at the app grid
