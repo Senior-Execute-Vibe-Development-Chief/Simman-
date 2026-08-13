@@ -772,16 +772,18 @@ export function labelBasinFree(world, tx, ty) {
   // holds one court or none, exactly as before. 0 = one-per-cell (the old
   // lattice, byte-identical).
   if (!T.PEER_LATTICE) return false;
+  tel(world, "peerlat", "queriedClaimed");   // FUNNEL: does any founding channel even knock on a claimed cell?
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
   const capacity = Math.floor(c.mass[k] / ((TIER_CORE[2] / URBAN_SHARE_REF) / bridge));
-  if ((c.count ? c.count[k] : 1) >= capacity) return false;
+  if ((c.count ? c.count[k] : 1) >= capacity) { tel(world, "peerlat", "cellFull"); return false; }
   const rr = 2 * urbanCoreR(world), rr2 = rr * rr, tw = world.tw, half = tw / 2;
   const ls = c.labels && c.labels.get(k);
   if (ls) for (const p of ls) {
     let dx = Math.abs(p.x - tx); if (dx > half) dx = tw - dx;
     const dy = p.y - ty;
-    if (dx * dx + dy * dy < rr2) return false;
+    if (dx * dx + dy * dy < rr2) { tel(world, "peerlat", "spacingBlocked"); return false; }
   }
+  telPass(world, "peerlat");
   return true;
 }
 /** Field people (tx,ty)'s cell holds (cell ∩ horizon by construction) — the

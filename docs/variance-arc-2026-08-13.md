@@ -140,3 +140,25 @@ through. Next lap: tel() the peer branch of labelBasinFree
 (peerOpen/peerCapacityFull/peerSpacingBlocked) and the sweep's candidate
 funnel; fix whichever binds; re-run the after-instrument. The wave is
 not done until the instrument moves.
+
+**ATTRIBUTED (peerlat funnel, tw=480/22k): hypothesis (b) — NOBODY
+KNOCKS.** Zero `peerlat` counters over the entire run: labelBasinFree is
+never queried on a claimed cell, because every founding channel draws
+its candidates from the ledger's SITE LIST — one site per cell, standing
+exactly where the first city already is. Opening the door changed
+nothing because no channel generates a candidate LOCATION inside a
+claimed cell. The fix moves upstream: the site-city pass must propose a
+SECOND SEAT in cells whose capacity exceeds their count — the best
+popField peak ≥ 2×urbanCoreR from every seated label, through the same
+eligibility gates (farming, storable ground, core bar). That is a real
+siting decision inside the mint law (the birth-crater scars live there)
+— the next lap's work, with the capacity/spacing law already in place to
+receive it.
+
+**Wave 2 shipped meanwhile (CONQUEST_CASCADE, 0b86e70, v14):** the fast
+lane — the submission bar reads the hegemon's banked conquest momentum
+(effective ratio SUBMIT_RATIO/(1+storm-equivalents), floored at parity:
+witness collapse), and a decisive conquest inherits the fallen realm's
+whole vassal network (Cyrus takes Media). Battery green; byte-identical
+at tw=240 (no hegemon ever runs hot there); the tw=960 polrec
+after-measurement is running as its existence proof.
