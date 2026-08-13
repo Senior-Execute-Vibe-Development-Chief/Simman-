@@ -726,14 +726,23 @@ function _siteClaims(world) {
     const K = L.sites.length, tw = world.tw, N = world.N, siteId = L.siteId;
     const claimed = new Uint8Array(K);
     const mass = new Float64Array(K);
+    const count = new Uint16Array(K);       // labels seated per cell (peer-lattice capacity law)
+    const labels = new Map();               // k → [{x,y}] settled label positions (core-spacing law)
     const pf = world.popField;
     if (pf) for (let i = 0; i < N; i++) { const k = siteId[i]; if (k >= 0) mass[k] += pf[i]; }
     for (const s of world.settlements) {
       if (s.mode !== "settled") continue;
       const ti = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
-      if (ti >= 0 && ti < N) { const k = siteId[ti]; if (k >= 0) claimed[k] = 1; }
+      if (ti >= 0 && ti < N) {
+        const k = siteId[ti];
+        if (k >= 0) {
+          claimed[k] = 1; count[k]++;
+          let a = labels.get(k); if (!a) labels.set(k, a = []);
+          a.push({ x: s.pos.x | 0, y: s.pos.y | 0 });
+        }
+      }
     }
-    c = world._siteClaims = { K, step: world.step, claimed, mass };
+    c = world._siteClaims = { K, step: world.step, claimed, mass, count, labels };
   }
   return c;
 }
@@ -744,7 +753,36 @@ const _cellTi = (world, tx, ty) => (ty | 0) * world.tw + ((((tx | 0) % world.tw)
  *  verdict). Callers gate on T.LABEL_BIRTH && world.popField. */
 export function labelBasinFree(world, tx, ty) {
   const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
-  return k >= 0 && !_siteClaims(world).claimed[k];
+  if (k < 0) return false;
+  const c = _siteClaims(world);
+  if (!c.claimed[k]) return true;
+  // T.PEER_LATTICE (docs/variance-arc-2026-08-13.md, wave 1 of the variance
+  // arc): A CELL SEATS WHAT ITS PEOPLE CAN FEED, NOT ONE COURT FOREVER. The
+  // funnel measured the political map's uniformity to THIS flag: one label
+  // per hydro-anchor basin planet-wide meant state spacing = city spacing =
+  // the cell lattice (nearest capitals never under 416km at tw=960), so
+  // every consolidation channel starved — history's cradles seated PEER
+  // CLUSTERS (Sumer: a dozen courts 30-80km apart on one alluvium). A
+  // claimed cell stays open while its people could feed another urban core
+  // — count < floor(mass / basinBar), the SAME city-basin bar the mint's
+  // eligibility reads (TIER_CORE[2]/URBAN_SHARE_REF over the bridge) — and
+  // the newcomer must stand ≥ 2×urbanCoreR from every seated label (cores
+  // must not overlap — the walkable-core radius the spike law already
+  // uses). Zero new constants. Dense cradles seat peers; thin country still
+  // holds one court or none, exactly as before. 0 = one-per-cell (the old
+  // lattice, byte-identical).
+  if (!T.PEER_LATTICE) return false;
+  const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
+  const capacity = Math.floor(c.mass[k] / ((TIER_CORE[2] / URBAN_SHARE_REF) / bridge));
+  if ((c.count ? c.count[k] : 1) >= capacity) return false;
+  const rr = 2 * urbanCoreR(world), rr2 = rr * rr, tw = world.tw, half = tw / 2;
+  const ls = c.labels && c.labels.get(k);
+  if (ls) for (const p of ls) {
+    let dx = Math.abs(p.x - tx); if (dx > half) dx = tw - dx;
+    const dy = p.y - ty;
+    if (dx * dx + dy * dy < rr2) return false;
+  }
+  return true;
 }
 /** Field people (tx,ty)'s cell holds (cell ∩ horizon by construction) — the
  *  C1 activation mass. 0 beyond every horizon (subsistence countryside). */
