@@ -851,6 +851,19 @@ forest, crop-reach expansion arms stor by ~13k, and the winter-aptitude
 learn stack multiplies every org lane including the re-based one. Both
 carried as named work items.
 
+**Second seed (tw=960/31337, same instrument): the shape REPRODUCES.**
+Nothing before 10,100; the dawn neighbourhood is again Indus+India alone
+(presence at 12,000: Indus 2, India 3, Oxus 1); Egypt-proper joins at
+12,400 THIS seed (a Delta/Fayum land nation — the Nile leads when its
+basin fills first; 15,200 on 8817: seed variance, not structure); Europe
+again AFTER the Nile (15,800), no northern dawn states. The two residuals
+resolve differently: MESOPOTAMIA LAST-OF-CRADLES REPRODUCES (15,800,
+after the Aegean at 13,100 — the arid-floodplain suit root is structural
+across seeds, the confirmed next wave), while the Kama-Volga false
+pristine does NOT (Siberia first at 17,500 here — the 8817 artifact is
+seed-contingent; its work item is softened to a watch, behind the crop
+wave).
+
 ## Repro commands
 
 ```
