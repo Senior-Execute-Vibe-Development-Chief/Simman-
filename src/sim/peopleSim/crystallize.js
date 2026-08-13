@@ -1497,13 +1497,28 @@ function maybeLandNations(world) {
       // 14,000 — BEFORE China's at 16,000 — and five regions carrying
       // polities within 2k steps of the second, the owner's "spread across
       // all easily habitable land, very little bunching"). Where land is
-      // hemmed but HALF-EMPTY the losers of a quarrel walk away — no state:
-      // the pristine drive is confinement × the basin's own fullness
-      // (people against the take's carrying capacity — the Indus at its
-      // state-birth measured 0.87-0.99 full).
-      let takePop = 0, takeCap = 0;
-      { const pf2 = world.popField, cf = world.capField; for (const t of take) { takePop += pf2[t]; if (cf) takeCap += cf[t]; } }
-      const fillT = takeCap > 0 ? Math.min(1, takePop / takeCap) : 0;
+      // hemmed but HALF-EMPTY the losers of a quarrel walk away — no state.
+      // The fullness is measured over the ARMING LAW'S OWN DISK
+      // (TOWN_BASIN_R — the same basin/capacity ratio whose fill read
+      // 0.87-0.99 at the cradles at their state-births), NOT over the
+      // founding take: the take is a nearest-first walk over already-
+      // peopled tiles capped at the founding mass, so it reads ~full
+      // wherever density clusters locally (measured: the take-fill form
+      // moved the steppe +5,000 steps but left Europe/Sahel unchanged at
+      // 13-14k — it measured the ground people stand on, not their
+      // opportunity to walk away).
+      const rB2 = Math.max(1, Math.round(TOWN_BASIN_R * rNormFor(world)));
+      let diskPop = 0, diskCap = 0;
+      { const pf2 = world.popField, cf = world.capField, tw4 = world.tw, th4 = world.th;
+        for (let dy = -rB2; dy <= rB2; dy++) {
+          const yy = sy0 + dy; if (yy < 0 || yy >= th4) continue;
+          for (let dx = -rB2; dx <= rB2; dx++) {
+            if (dx * dx + dy * dy > rB2 * rB2) continue;
+            const t4 = yy * tw4 + (((sx0 + dx) % tw4) + tw4) % tw4;
+            diskPop += pf2[t4]; if (cf) diskCap += cf[t4];
+          }
+        } }
+      const fillT = diskCap > 0 ? Math.min(1, diskPop / diskCap) : 0;
       let drive = computeConfinement(world, sx0, sy0) * fillT;
       if (drive < 1) {
         const tw3 = world.tw, th3 = world.th;
