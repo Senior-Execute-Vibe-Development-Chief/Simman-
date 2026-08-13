@@ -1598,6 +1598,82 @@ function maybeLandNations(world) {
     (world._landSeats || (world._landSeats = new Map())).set(id, { ti: st.ti });
     ensurePolity(world, id, { how: "tribal", name, cultureId: cul ? cul.id : -1 });
   }
+  // ── T.FISSION — SEGMENTARY FISSION: polities reproduce by SPLITTING ──────
+  // (wave 3 of the variance arc, docs/variance-arc-2026-08-13.md; the owner's
+  // "no one ever spawns close enough to touch, and no one ever BREAKS OFF").
+  // History's polities were born NEIGHBOURING because most of them were born
+  // by fission: chiefdoms split along lineage rivalries when they outgrew one
+  // seat's grip (segmentary fission), realms were partitioned among heirs,
+  // colonies became sovereign peers — and every fission product is ADJACENT
+  // to its parent by construction. The sim had no early fission at all
+  // (elite fracture needs multi-province empires that never form without the
+  // wars that need the neighbours fission would have made — the measured
+  // circular starvation). Here the tribal fabric gets history's channel: a
+  // land nation whose ground holds TWO nations' worth of people splits —
+  // each half must independently clear the SAME founding bar the formation
+  // above just applied (barF — no new constant), the rival seat is its
+  // ground's strongest peopled tile outside the parent seat's core
+  // (≥ 2×urbanCoreR — the peer-spacing law), the ground partitions by
+  // proximity (each village follows its nearer seat), and the split fires on
+  // a sustained-condition hazard (SUBMIT_HAZARD's scale — a generation or
+  // two of lineage rivalry, the same clock courts capitulate on). The two
+  // successors are kin, dense, and TOUCHING — the border-friction pair every
+  // consolidation channel downstream has been starving for. 0 = off.
+  if (T.FISSION && world._landSeats && world._landSeats.size && lo0 && world.popField) {
+    const pf = world.popField, twF = world.tw, thF = world.th;
+    // One O(N) pass: mass + best-rival-tile per land nation.
+    const acc = new Map();   // id → { mass, seatTi, bestTi, bestPf }
+    for (const [id, seat] of world._landSeats) acc.set(id, { mass: 0, seatTi: seat.ti, bestTi: -1, bestPf: 0 });
+    const rrF = 2 * urbanCoreR(world), rrF2 = rrF * rrF;
+    for (let i = 0; i < world.N; i++) {
+      const id = lo0[i]; if (id < 0) continue;
+      const a = acc.get(id); if (!a) continue;
+      const p = pf[i];
+      a.mass += p;
+      if (p > a.bestPf) {
+        const sy = (a.seatTi / twF) | 0, sx = a.seatTi - sy * twF;
+        const iy = (i / twF) | 0, ix = i - iy * twF;
+        let dx = Math.abs(ix - sx); if (dx > twF / 2) dx = twF - dx;
+        const dy = iy - sy;
+        if (dx * dx + dy * dy >= rrF2) { a.bestPf = p; a.bestTi = i; }
+      }
+    }
+    for (const [id, a] of acc) {
+      if (a.bestTi < 0 || a.mass < 2 * barF) { if (a.mass >= 2 * barF) tel(world, "fission", "noRivalSeat"); continue; }
+      tel(world, "fission", "eligible");
+      // Sustained-condition hazard at the sweep cadence (SUBMIT_HAZARD per
+      // tick × the sweep interval — courts and lineages run the same clock).
+      const pFis = Math.min(1, 0.0017 * CRYSTAL_INTERVAL);
+      const rF = hash32(world.seed || 1, "fission", id, world.step) / 4294967296;
+      if (rF > pFis) continue;
+      // Partition: each tile follows its nearer seat; each half must clear
+      // the founding bar on its own or the split is void (no rump statelets).
+      const ny = (a.bestTi / twF) | 0, nx = a.bestTi - ny * twF;
+      const sy = (a.seatTi / twF) | 0, sx = a.seatTi - sy * twF;
+      let mNew = 0, mOld = 0;
+      const flip = [];
+      for (let i = 0; i < world.N; i++) {
+        if (lo0[i] !== id) continue;
+        const iy = (i / twF) | 0, ix = i - iy * twF;
+        let dxN = Math.abs(ix - nx); if (dxN > twF / 2) dxN = twF - dxN;
+        let dxS = Math.abs(ix - sx); if (dxS > twF / 2) dxS = twF - dxS;
+        const dN = dxN * dxN + (iy - ny) * (iy - ny), dS = dxS * dxS + (iy - sy) * (iy - sy);
+        if (dN < dS) { flip.push(i); mNew += pf[i]; } else mOld += pf[i];
+      }
+      if (mNew < barF || mOld < barF) { tel(world, "fission", "halfBelowBar"); continue; }
+      const newId = world._nextSettlementId || 1; world._nextSettlementId = newId + 1;
+      for (const t of flip) lo0[t] = newId;
+      world._landSeats.set(newId, { ti: a.bestTi });
+      const ancId = world.ancestry ? world.ancestry[a.bestTi] : -1;
+      const cul = ancId >= 0 ? ancestryCulture(world, ancId, null) : null;
+      const newName = cul ? nameFor(world, cul, "realm") : null;
+      ensurePolity(world, newId, { how: "tribal", name: newName, cultureId: cul ? cul.id : -1 });
+      const parentPol = getPolity(world, id);
+      logEvent(world, "polity.seceded", { polity: newId, name: newName || undefined,
+        from: id, fromName: parentPol ? parentPol.name : undefined, how: "fission" });
+      telPass(world, "fission");
+    }
+  }
 }
 
 export function maybeCrystallize(world) {
