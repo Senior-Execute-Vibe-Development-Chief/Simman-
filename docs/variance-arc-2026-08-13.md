@@ -256,3 +256,16 @@ adjacency), (2) build the upstream PEER-SEAT MINT (the second-seat
 candidate generation the peerlat funnel demanded) — restoring adjacency
 in dense basins feeds wars, wars feed momentum, and both shipped waves
 arm on contact. The levers stay ON: they are the receiving structure.
+
+## 6. SIEGE_STARVE verdict (tw=960/8817/26k) and the arc's standing state
+
+Churn rose across every channel with capitals now stormable: polity.ended
+22 → 29, seceded 9 → 14, RESTORED 4 → 7 (fallen nations reborn — the
+ancient-nation lane live), submitted 21 → 29; fallen states die YOUNGER
+(median lifespan 8,500 → 6,500) while the oldest realm still spans the
+run. Density and the heavy tail held (321 → 318 polities, Gini 0.70, 2k
+microstates beside 580k majors). NOT yet observed in 26k: a runaway
+hegemon (top share 4-7%) — realms only begin ~10k at this grid, so the
+boom machinery gets ~16k steps; the 45k overnight horizon is the right
+measurement, queued. The chain itself is verified firing at tw=480 (6
+storms, shatters 2 → 4/era) and the bust side at tw=960.
