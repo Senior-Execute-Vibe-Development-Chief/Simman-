@@ -1303,6 +1303,25 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     const conq = world._byId ? world._byId.get(excludeId) : null;
     const by = conq && conq.countryId != null ? conq.countryId : -1;
     endPolity(world, oldId, how, by, by >= 0 ? realmName(world, by) : undefined);
+    // T.CONQUEST_CASCADE — THE NETWORK IS INHERITED (wave 2, docs/variance-
+    // arc-2026-08-13.md): a decisive conquest transfers the fallen realm's
+    // WHOLE dependency network to the victor, as it historically did — Cyrus
+    // beat Media in one campaign and inherited its empire entire; Alexander
+    // administered Persia through Persia's own satraps. Before this, the
+    // fallen suzerain's vassal bonds simply dangled/dissolved, so even a
+    // decisive war destroyed structure instead of concentrating it — half of
+    // why no bloc ever grew past 4-5 members. Succession shatters (how ≠
+    // "conquest") still scatter: there is no victor to inherit.
+    if (T.CONQUEST_CASCADE && how === "conquest" && by >= 0 && world.polities) {
+      const ov = world._overlordOf;
+      for (const p of world.polities.values()) {
+        if (!p || p._overlord !== oldId || p.endedStep >= 0 || p.id === by) continue;
+        p._overlord = by;
+        if (ov) ov.set(p.id, by);
+        logEvent(world, "polity.submitted", { polity: p.id, name: realmName(world, p.id),
+          to: by, toName: realmName(world, by), how: "inherited" });
+      }
+    }
   }
   let survivors = [];
   for (const s of world.settlements) {
@@ -3373,7 +3392,31 @@ function considerSubmissions(world, countries) {
     const spol = getPolity(world, sid);                     // pure read — the record is only minted on an actual submission
     if (spol && spol._overlord != null) { tel(world, "submit", "alreadyADependency"); continue; }
     const powS = eff.get(sid) || 1, powH = eff.get(hid) || 1;
-    if (powH < powS * SUBMIT_RATIO) { tel(world, "submit", "resistanceNotHopeless"); continue; }
+    // T.CONQUEST_CASCADE — VICTORY COLLAPSES WITNESS RESISTANCE (wave 2 of the
+    // variance arc, docs/variance-arc-2026-08-13.md). The funnel measured the
+    // 5× bar rejecting 63% of all candidate pairs: among born-equals the
+    // asymmetry the bar demands can never arise, so consolidation self-arrests
+    // at every scale (singles vs singles, then blocs of 4-5 vs blocs of 4-5).
+    // History's courts did not weigh STANDING power alone — they weighed the
+    // DEMONSTRATED RECORD. After Thymbra every court to the Aegean submitted
+    // to Cyrus at nothing like 5×; after Issus the Phoenician cities opened
+    // their gates unfought. The sim already BANKS that record: conquest
+    // momentum (govOf._momentum — fed by tiles captured and cities stormed,
+    // fast-decaying, nomad-doubled). Here the witness bar reads it: the
+    // effective ratio falls with the hegemon's momentum in stormed-city
+    // equivalents (÷MOMENTUM_PER_STORM — the bank's own unit), floored at
+    // PARITY (a court never kneels to a bloc weaker than itself, however
+    // storied). A cold conqueror still needs the full 5×; a hot streak
+    // overawes near-equals — and when the streak stalls, the bar snaps back
+    // on momentum's own decay clock. Zero new constants; boom feeds the
+    // existing bust machinery (momentum-crater shedding, capital-storm
+    // shatter, elite fracture) the large fast-won structures it never had.
+    let effRatio = SUBMIT_RATIO;
+    if (T.CONQUEST_CASCADE) {
+      const wins = (govOf(world, hid)._momentum || 0) / MOMENTUM_PER_STORM;
+      effRatio = Math.max(1, SUBMIT_RATIO / (1 + wins));
+    }
+    if (powH < powS * effRatio) { tel(world, "submit", "resistanceNotHopeless"); continue; }
     // The suzerain must be able to PROJECT force to S's seat — overawing needs a
     // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
     const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
