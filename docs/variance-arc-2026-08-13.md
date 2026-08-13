@@ -200,6 +200,26 @@ cascade, all shipped and armed). Next lap: measure WAR IGNITION on the
 dense map (the recorder must add war events); if wars fire, the cascade
 chain gets its first live test; if not, attribute the war gate.
 
+**THE WAR PULSE (probe_warpulse, tw=480/26k, all waves on): the dense
+map is ALIVE — and the boom lane is ONE GATE from complete.** Wars
+ignite and accelerate with density (war.began 1 → 4 → 19 per 4k era;
+ended 6 → 12), the slow-burn absorb lane runs (settlement.annexed 29 per
+era — steady large-nation growth by digestion), submissions pass (8/era
+at the local scale), unions fire, fission churns (5/era), tribal fabric
+414 + 65 realms by 24k. THE BLOCKER, measured exactly: ZERO
+settlement.captured across the entire run — wars end by indemnity and
+annexation but NO CAPITAL EVER FALLS, so fragmentRealm(how="conquest")
+never fires, the cascade's network-inheritance never triggers, and
+momentum (MOMENTUM_PER_STORM) never banks — the witness-collapse
+divisor stays at 1 and the overawe bar never drops. Boom-bust's next
+lap is therefore singular: make SOME wars decisive — attribute the
+storm gate in armies.js (siege mechanics vs early-era capitals, truce
+hazard ending wars first, or WAR_REACH), and consider banking momentum
+on war-won annexations (victory demonstrated is victory banked). The
+slow-burn lane needs no new mechanism — annexation + adoption + the
+grounded reach growing with logistics IS the Rome archetype; measure
+its long-horizon size curve on the 45k overnight config next.
+
 **WAVE 2 VERDICT: ALSO INERT at tw=960 — byte-identical after-run.** The
 attribution goes one level deeper than either wave: momentum needs
 conquest, conquest needs WARS, and no war ever ignites at the app grid
