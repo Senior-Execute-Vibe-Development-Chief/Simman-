@@ -826,6 +826,31 @@ capacity threads its rivers, and capacity ratios overstate livelihood
 loss at the poor end) but storable-killed. v12 save-regime guard: a
 pre-wave save keeps its mass-era formation physics.
 
+**The judge's verdict (probe_cageregional v2 — registry-diff foundings,
+per-region claimed area — 26k steps, tw=960/8817, the app grid).** The
+SHAPE the owner asked for is delivered: NOTHING states before 10,100;
+from 10,100 to ~13,000 the political world is the Indus-India
+neighbourhood ALONE (presence at 12,000: Indus 2, India 3, planet 0
+else); the frontier then rolls for 16,000 steps — Nubia/Kush 13,100 (a
+Kerma on the middle Nile, real archaeology), Wei-loess China 13,900,
+Egypt-proper 15,200, Europe 15,700 (AFTER the Nile, realm-channel by
+contact/development — no Denmark, no Brittany, no Baltic anywhere in the
+early record), steppe 16,300, the Americas 20,600+. Formation batches are
+singles and pairs; the §9 "everywhere within one window" map is gone at
+the grid that ships. TWO RESIDUALS SURVIVE, both now precisely placed and
+measured: (1) MESOPOTAMIA-PROPER STATES LAST of the cradles (16,000) —
+the inversion's remaining root is UPSTREAM of formation law entirely: the
+arid flood cradles' storable suit (Meso 0.27, Nile 0.41 vs Ganges 0.75,
+Yangtze 0.78) throttles basin capacity → census → city mint before
+statecraft runs. History's richest grain economy (silt-renewed basin
+irrigation) is priced weakest — the next mechanism to build, and a crop-
+physics wave, not a cage constant. (2) ONE false pristine survives: a
+Kama-Volga forest-river realm at 13,900 (56.4N 55.3E — nothing state-like
+there until ~900 AD) — the river-thread home weighting reads mid-cage in
+forest, crop-reach expansion arms stor by ~13k, and the winter-aptitude
+learn stack multiplies every org lane including the re-based one. Both
+carried as named work items.
+
 ## Repro commands
 
 ```
