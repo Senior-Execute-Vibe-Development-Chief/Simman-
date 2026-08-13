@@ -163,6 +163,25 @@ whole vassal network (Cyrus takes Media). Battery green; byte-identical
 at tw=240 (no hegemon ever runs hot there); the tw=960 polrec
 after-measurement is running as its existence proof.
 
+**WAVE 3 (FISSION, 8369fb1, v15) — BINDING at tw=240, ZERO firings at
+tw=960.** The stylized world moved for the first time in the arc (31→27
+polities, 1955→2136 events, the standing state-lifespan soft warning
+cleared to 0) — the mechanism is alive. At the app grid: polity.seceded
+2 = baseline exactly; zero fissions in 26k. Attribution: there is
+almost no tribal fabric TO split at tw=960 (4 land nations all run,
+materializing fast), because cities mint quickly in dense basins and
+claim the cells first — and every seat channel, city AND tribal, draws
+from the SAME one-seat-per-cell site lattice. **THE SINGLE ROOT, now
+measured three independent ways: the site lattice caps urban density,
+tribal density, fission fuel, adjacency, wars, and the cascade at
+once.** The unlock is the peer-seat candidate generation the peerlat
+funnel demanded — applied at BOTH bars: city seats against the city
+basin bar (the labelBasinFree capacity law already shipped), and
+TRIBAL seats against the tribal bar (TRIBAL_CENSUS — 20× denser), so a
+cradle valley fills with adjacent chiefdoms long before its first city,
+exactly as history's cradles did. All three shipped waves stay on as
+the receiving structure.
+
 **WAVE 2 VERDICT: ALSO INERT at tw=960 — byte-identical after-run.** The
 attribution goes one level deeper than either wave: momentum needs
 conquest, conquest needs WARS, and no war ever ignites at the app grid
