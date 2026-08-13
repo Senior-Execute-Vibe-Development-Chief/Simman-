@@ -162,3 +162,19 @@ witness collapse), and a decisive conquest inherits the fallen realm's
 whole vassal network (Cyrus takes Media). Battery green; byte-identical
 at tw=240 (no hegemon ever runs hot there); the tw=960 polrec
 after-measurement is running as its existence proof.
+
+**WAVE 2 VERDICT: ALSO INERT at tw=960 — byte-identical after-run.** The
+attribution goes one level deeper than either wave: momentum needs
+conquest, conquest needs WARS, and no war ever ignites at the app grid
+(zero war activity across 26k; the 12 polity.ended are land-nation
+retirements). Both wave-2 transfers are correctly built doors on a
+corridor where armies never march. The full causal chain of the owner's
+"too stable and clean," now measured at every link: SITE LATTICE (one
+seat per cell) → capitals born ≥416km apart → NO FRONTS → no wars → no
+momentum, no storms, no network inheritance → no cascade → uniform,
+immortal, evenly-spaced blobs. Next lap, in order: (1) instrument war
+ignition at tw=960 (why no front ever forms: reach, motive, or
+adjacency), (2) build the upstream PEER-SEAT MINT (the second-seat
+candidate generation the peerlat funnel demanded) — restoring adjacency
+in dense basins feeds wars, wars feed momentum, and both shipped waves
+arm on contact. The levers stay ON: they are the receiving structure.
