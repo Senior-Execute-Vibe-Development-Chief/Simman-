@@ -1261,6 +1261,9 @@ export function advanceFronts(world) {
     pc.def._warAt = world.step;                       // core/countryside under attack
     if (pc.canStorm) {
       pc.def._siegeAt = world.step;                   // front at the heartland (true siege)
+      // T.SIEGE_STARVE: stamp the SETTLEMENT under siege — settlement.js
+      // chokes its supply and drains its granary while this stays fresh.
+      { const sc = pc.def._capital || pc.def; if (sc && sc.pos) sc._besiegedAt = world.step; }
       // Multi-front strain counts only SERIOUS defensive fronts: a distinct
       // enemy actually assaulting one of the realm's towns. Mere border
       // skirmishing (a strong neighbour nibbling a weak frontier tile) is not
@@ -1813,7 +1816,20 @@ export function advanceFronts(world) {
       const seatHold = T.REFUGE > 0 && seatS
         ? refugeHoldAt(world, (seatS.pos.y | 0) * tw + (seatS.pos.x | 0), (seatS.knowledge && seatS.knowledge.construction) || 0)
         : 1;
-      const defHome = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold;
+      // T.SIEGE_STARVE — THE WALLS EAT FROM THE GRANARY (the storm funnel's
+      // verdict, docs/variance-arc-2026-08-13.md: 370/370 sieges failed on
+      // the population-proportional militia floor, which no bombard can
+      // grind — a populous capital could NEVER fall). History's sieges ended
+      // by starvation: the fields are the besieger's, the city eats its
+      // stores, and when they empty the militia withers. The hunger factor
+      // is the famine law's own ratio (supply/core-need, once stores are
+      // empty) — the fall clock is the GRANARY, so siege duration is
+      // emergent: a stocked metropolis holds for years, an empty town for
+      // weeks, and a relieved city (the field army breaking the siege)
+      // re-supplies. Zero new constants.
+      const hungerOf = (s2) => (T.SIEGE_STARVE && s2 && s2._besiegedNow && (s2.food || 0) <= 0.01)
+        ? Math.max(0, Math.min(1, (s2._foodSupply || 0) / Math.max(1e-9, s2._coreNeed || 1))) : 1;
+      const defHome = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold * hungerOf(seatS);
       // T.ALLY_FRONT: the coalition's relief army stands with the defender at the
       // walls (already theatre-projected; +0 exactly at lever 0).
       const advCity = (attForce0 * pjCap) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
@@ -1838,7 +1854,7 @@ export function advanceFronts(world) {
         // fortress is the capital settlement's own garrison, whose grind lands via
         // the post-pass reconciliation — the siege wears it down pass over pass.)
         // The seat's ground holds through the siege too (T.REFUGE; ×1 at lever 0).
-        const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold;
+        const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold * hungerOf(seatS);
         if (!(defNow * em <= att._M * pjCap * SIEGE_BREAK)) tel(world, "storm", "wallsHold(grinding)");
         if (defNow * em <= att._M * pjCap * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
           // The SETTLEMENT that changes hands: under TILE_WAR `def` is a country adapter, so

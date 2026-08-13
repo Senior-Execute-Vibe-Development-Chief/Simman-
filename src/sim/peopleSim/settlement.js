@@ -2899,6 +2899,25 @@ function updateFood(world, s) {
   // whole-catchment drain. Stashed, not returned: the famine block runs later.
   s._coreNeed = Math.min(s.people, s._urbanPop || 0) * 0.0030 * urbanFactor + armyFood + slaveFood;
 
+  // T.SIEGE_STARVE — a BESIEGED seat eats its granary (the variance arc's
+  // storm-gate fix, docs/variance-arc-2026-08-13.md): while an enemy front
+  // stands at the walls (armies.js stamps _besiegedAt each war pass it
+  // holds), the fields and the roads are the besieger's — the supply FLOW is
+  // cut and the core lives on stores, drained at the walls' own demand. When
+  // the granary empties, the famine ratio the storm's break test reads goes
+  // to zero and the militia withers — history's siege clock, run by the
+  // city's own stores (a stocked metropolis holds for years, an empty town
+  // for weeks; a relieved city re-supplies the moment the front breaks).
+  // Scoped hard to the besieged seat while the stamp is fresh — the
+  // FED_FAMINE/FOOD_REACH scars demand the consequence never re-keys the
+  // drain of anyone else. Freshness = the war pass cadence (an existing
+  // clock: the stamp renews while the front holds).
+  if (T.SIEGE_STARVE && s._besiegedAt !== undefined
+      && world.step - s._besiegedAt < (T.POLITY_INTERVAL || 150) * 1.5) {
+    s._besiegedNow = true;   // the supply assignment below zeroes the flow
+    s.food = Math.max(0, (s.food || 0) - (s._coreNeed || 0));
+  } else if (s._besiegedNow) s._besiegedNow = false;
+
   // RETAINED land food — what the food HIERARCHY leaves this settlement: its
   // aggregated subtree intake minus what its liege levied/bought away (computed
   // at the END of last tick, foodHierarchy.js — a 1-tick lag that's invisible,
@@ -3065,7 +3084,7 @@ function updateFood(world, s) {
   const supply = netLand + fish;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
-  s._foodSupply = supply;
+  s._foodSupply = (T.SIEGE_STARVE && s._besiegedNow) ? 0 : supply;   // a besieged seat's flow is the besieger's (T.SIEGE_STARVE, block above)
   s._foodDemand = demand;          // total (civilian + garrison) — drains the granary
   s._civFoodDemand = civDemand;    // civilian only — army sizing reads this
   s._landFood = landFood;          // LOCAL farm production only (no hierarchy imports, no fish) — for the food-viability overlay
