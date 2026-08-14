@@ -46,7 +46,7 @@
 // fresh _storableSupply / _houseK / _foodK), producing _foodNet for the NEXT
 // tick's updateFood — a 1-tick lag that's invisible (production drifts slowly).
 
-import { getWealthReserve, techEff } from "./settlement.js";
+import { getWealthReserve, techEff, LEVY_ORG_MIN, foodReach } from "./settlement.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
 import { T, rNormPop } from "./tuning.js";
 
@@ -64,7 +64,9 @@ import { T, rNormPop } from "./tuning.js";
 // liege's statecraft to LEVY_MAX — capped so a market residual always remains
 // for coin to buy. Emergent: gated on the realm's own organisation, never a
 // date or era.
-const LEVY_ORG_MIN = 0.35;   // statecraft (reachLevel) a liege needs before it can run a redistributive grain levy at all — the proto-state threshold below which there is no city-feeding bureaucracy
+// LEVY_ORG_MIN — the proto-state threshold — moved to settlement.js (ONE
+// definition): the same administrative-reach ramp now also weights FOOD_K's
+// rural-capacity blend (T.FOOD_REACH), so the two consumers share it.
 const LEVY_MAX     = 0.7;    // ceiling on the in-kind share of a child's shippable surplus a fully-organised state requisitions without payment (the rest is left to the coin market)
 
 // ── Grain haul: distance, tech & water gate (replaces the old flat per-hop loss) ──
@@ -213,10 +215,7 @@ export function aggregateFoodHierarchy(world) {
         // reach (see LEVY_* above). A proto-state (org < LEVY_ORG_MIN) has none and
         // must buy everything with coin (so it can't feed a city until money or
         // statecraft arrives); an organised state requisitions up to LEVY_MAX.
-        const org = techEff(node).reachLevel;
-        const levyShare = org > LEVY_ORG_MIN
-          ? LEVY_MAX * Math.min(1, (org - LEVY_ORG_MIN) / (1 - LEVY_ORG_MIN))
-          : 0;
+        const levyShare = LEVY_MAX * foodReach(node);   // the shared administrative-reach ramp (settlement.js) — byte-identical to the inline form it replaces
         const kids = children.get(node.id);
         if (kids) for (const k of kids) {
           const offer = k._foodOffer || 0;                   // grain the child put up for sale

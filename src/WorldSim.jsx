@@ -15,6 +15,7 @@ const REAL_FNS = { isRealWindAvailable, fillRealWind, isRealClimateAvailable, fi
 const realDataAvailable = () => isRealWindAvailable() || isRealClimateAvailable();
 import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
+import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { applyTuning, resetTuning, tuningDefaults, T as SIM_T } from "./sim/peopleSim/tuning.js";
@@ -321,6 +322,10 @@ const featRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[genBusy,setGenBusy]=useState(false);   // a world is being forged — show it (regens keep the old map up for ~a minute, which read as a dead control)
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
+// A sim/worker failure the user must SEE: {where:'step'|'snapshot'|'message'|'worker', step, message}.
+// Before this, a worker error was console-only — a thrown step left the game silently frozen at its
+// last frame forever ("the game shuts down at step N"), with the world still alive and saveable.
+const[simError,setSimError]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
 const[priceGood,setPriceGood]=useState(3);const priceGoodRef=useRef(3);
@@ -541,6 +546,20 @@ const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0}
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
 // bar visibly counts up tick-by-tick; the heavier psStats stays throttled to ~5Hz.
 const [liveStep,setLiveStep]=useState(0);
+// Timeline scrub (owner feature): null = live map; a number = the step the
+// user is scrubbing to. scrubRef gates live-snapshot overwrites of the
+// political layer; scrubShown mirrors the keyframe step actually displayed.
+const [scrubStep,setScrubStep]=useState(null);
+const scrubRef=useRef(false);
+const [scrubShown,setScrubShown]=useState(null);
+// The atlas bar (owner feature): hide nations below this claimed km² on the
+// map — settlement-holding nations always show. Default: principality scale,
+// the cutoff world-zoom historical atlases actually draw.
+const [minKm2,setMinKm2]=useState(20000);
+const fbTimelineRef=useRef(makeTimeline());   // fallback-mode history frames (worker mode keeps its own store)
+const fbKeyRef=useRef(0);
+const pausedDrawRef=useRef(0);
+const drawNowRef=useRef(null);
 const uiPulseRef=useRef(0);   // last React-pulse time — gates snapshot-driven renders to ≤4Hz
 // Time-series of global metrics for the History charts + copyable export. Kept
 // in a ref (no re-render on every sample); the charts read it on the regular
@@ -628,10 +647,18 @@ try{
   // defers to simWorkerRef) and its snapshots clobbered the loaded one.
   if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
   if(_pendRW)throw new Error('real-wind save — loading on the main thread');
+  setSimError(null);   // a fresh worker/world starts with a clean bill
   const sw=new PeopleSimWorker();
+  const sawSnap={current:false};   // has this worker ever delivered a frame? gates the onerror fallback below
   sw.onmessage=(e)=>{
     const d=e.data;
-    if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    if(d.type==='snapshot'){sawSnap.current=true;if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    else if(d.type==='timelineFrame'){
+      // The scrubbed frame rides a RENDER-ONLY override (_scrubClaim) — never
+      // the authoritative layer (in fallback mode that array IS the sim's).
+      const psw=peopleRef.current;
+      if(psw&&scrubRef.current){psw._scrubClaim=d.frame;psw._claimVer=(psw._claimVer||0)+1;setScrubShown(d.step);if(drawNowRef.current)drawNowRef.current();}
+    }
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='historyData'){
       const blob=new Blob([d.json],{type:"application/json"});
@@ -639,11 +666,31 @@ try{
       a.download=`simman-history-t${d.step??""}.json`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     }
-    else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);
-      if(d.message&&d.message.indexOf('load failed')===0)alert('Could not load save: '+d.message.slice('load failed: '.length));}
+    else if(d.type==='error'){console.error('[SimWorker]',d.where||'',d.message,d.stack);
+      if(d.message&&d.message.indexOf('load failed')===0){alert('Could not load save: '+d.message.slice('load failed: '.length));return;}
+      // Surface it. A STEP error means the worker paused the sim on a mid-step
+      // throw — mirror that here so the play button tells the truth; the world
+      // is still alive in the worker, so Save/Export can rescue the run.
+      setSimError({where:d.where||'sim',step:d.step,message:d.message||'unknown error'});
+      if(d.where==='step'){playRef.current=false;setPlaying(false);}
+    }
   };
   sw.onerror=(err)=>{
-    console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
+    // An UNCAUGHT worker exception. Two very different situations:
+    //  * the worker never produced a frame — it failed to BOOT (bundle/init
+    //    problem): fall back to the main-thread sim so the app still works.
+    //  * it was mid-run — the old unconditional fallback here DESTROYED the
+    //    run (terminate + re-init a fresh world at step 0, with init blocking
+    //    the main thread for ~a minute at the app grid). The worker's own
+    //    handlers now catch and report everything, so reaching here mid-run is
+    //    exceptional: keep the worker and the world, surface the error, and
+    //    let the user save.
+    if(sawSnap.current){
+      console.error('[SimWorker] uncaught worker error mid-run:',err.message);
+      setSimError({where:'worker',message:err.message||'uncaught worker error'});
+      return;
+    }
+    console.warn('[SimWorker] error before first frame — falling back to main-thread sim:',err.message);
     try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
     peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:simTileResRef.current,simTileRes:simTileResRef.current,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
@@ -670,6 +717,7 @@ try{
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
+  sw.postMessage({type:'mapFilter',minKm2:minKm2Ref.current});
   // A fresh worker starts at default tuning — re-send the user's current levers.
   sw.postMessage({type:'tune',values:tuneValsRef.current});
   usedWorker=true;
@@ -719,6 +767,7 @@ return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
 finalizeWorld(Object.assign(generateWorld(genW,genH,s,presetRef.current,_ol,true,_realWind,_tecParams,REAL_FNS),{realWindUsed:_realWind}));},[finalizeWorld,genW,genH]);
 useEffect(()=>{generate(seed)},[seed,generate]);
+useEffect(()=>{fbTimelineRef.current=makeTimeline();fbKeyRef.current=0;setScrubStep(null);setScrubShown(null);scrubRef.current=false;const psw=peopleRef.current;if(psw)psw._scrubClaim=null;},[world]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
 useEffect(()=>{if(!showGlobe){terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;}
@@ -1667,7 +1716,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // CLAIM (countryId per tile, peopleSim/countryClaim.js) — country-centric
       // borders that follow terrain and enclose frontier hinterland; fall back
       // to the per-settlement owner map only until the first claim arrives.
-      const owner=psw._territoryOwner, claimArr=psw._countryClaim;
+      const owner=psw._territoryOwner, claimArr=psw._scrubClaim||psw._countryClaim;
       // ── Country view: BOLD opaque political map with thick borders + live,
       // maximally-distinct neighbour colours (assignCountryColors). ──
       // ── Culture / Faith views: who LIVES on each tile (dominant culture
@@ -1865,7 +1914,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         // Dashed realm borders on top, so the heat reads as "inside WHOSE realm"
         // (the same dashed style the terrain view's border layer uses).
-        const bArr=psw._countryClaim;
+        const bArr=psw._scrubClaim||psw._countryClaim;
         if(bArr){
           octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();
           for(let ti=0;ti<Math.min(N2,bArr.length);ti++){
@@ -2508,7 +2557,8 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
-  if(snap.countryClaim){psw._countryClaim=snap.countryClaim;psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver drives label-anchor cache)
+  if(snap.countryClaim){psw._countryClaim=snap.countryClaim;if(!scrubRef.current)psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver bumps only live so the scrubbed layer's caches hold)
+  if(snap.timelineN!==undefined)psw._timelineN=snap.timelineN;
   if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
@@ -2557,6 +2607,7 @@ const applySnapshot=useCallback((snap)=>{
   if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
 },[draw]);
 useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
+useEffect(()=>{drawNowRef.current=()=>{if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message);}}};},[draw]);
 
 // Forward play/pause + speed to the sim worker.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
@@ -2570,6 +2621,8 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"d
 useEffect(()=>{if(selectedSettlementId>=0)setPanelTab("inspect");},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
+const minKm2Ref=useRef(20000);minKm2Ref.current=minKm2;
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'mapFilter',minKm2});},[minKm2]);
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
 useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
@@ -2580,7 +2633,16 @@ useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;dep
 useEffect(()=>{if(viewMode==="ancestry"&&terRef.current&&terRef.current.tArrival)ancRevealRef.current={start:performance.now(),active:true};},[viewMode]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
-const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
+const loop=now=>{fid=requestAnimationFrame(loop);
+if(!terRef.current||!worldRef.current){last=now;return;}
+// PAUSED, main-thread-fallback mode: the world is still — the UI must not be
+// (owner report: every panel/overlay froze without ticks). Repaint + pulse
+// React at 4Hz so info windows, overlays and the scrubber stay live.
+if(!playRef.current){
+  if(!simWorkerRef.current&&now-(pausedDrawRef.current||0)>=250){pausedDrawRef.current=now;
+    if(peopleRef.current){setLiveStep(peopleRef.current.step);try{setPsStats(peopleSimStats(peopleRef.current));}catch{}}
+    try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
+  last=now;return;}
 // Worker mode: the sim runs off-thread and drives drawing via snapshots, so
 // this loop does nothing. Only the main-thread FALLBACK steps + draws here.
 if(simWorkerRef.current){last=now;return;}
@@ -2600,7 +2662,8 @@ for(let s=0;s<sub;s++){
 // runTribeStep call removed at user request ("completely erase the tribe system").
 // The `ter` object is still kept around so UI panels that read tribeCenters
 // etc. don't crash, but it is no longer mutated each tick.
-try{if(peopleRef.current)stepPeopleSim(peopleRef.current,1);}
+try{if(peopleRef.current){stepPeopleSim(peopleRef.current,1);
+if(peopleRef.current.step-fbKeyRef.current>=CAPTURE_IVL){fbKeyRef.current=peopleRef.current.step;captureFrame(fbTimelineRef.current,peopleRef.current);}}}
 catch(e){console.error('[PEOPLESIM CRASH]',e.message,e.stack);playRef.current=false;return;}
 if(performance.now()-_simStart>8)break;
 }
@@ -2628,7 +2691,11 @@ draw(terRef.current);};
 afid=requestAnimationFrame(animLoop);
 return()=>cancelAnimationFrame(afid);},[draw]);
 
-const togglePlay=()=>{playRef.current=!playRef.current;setPlaying(p=>!p);};
+const togglePlay=()=>{const on=!playRef.current;
+  if(on&&scrubRef.current){  // unpausing returns to the present — a scrubbed past never plays forward
+    setScrubStep(null);setScrubShown(null);scrubRef.current=false;
+    const psw=peopleRef.current;if(psw){psw._scrubClaim=null;psw._claimVer=(psw._claimVer||0)+1;}}
+  playRef.current=on;setPlaying(on);};
 const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
 e.target.value="";
 setImportStatus("Loading...");
@@ -2721,7 +2788,7 @@ let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
    if(psw._territoryOwner&&psw._byId){const oid=psw._territoryOwner[terTi];if(oid>=0){const o=psw._byId.get(oid);if(o)hovOwner=o.name;}}
    if(psw._countryClaim&&psw.countries){
      const tw2=psw.tw;const stx=Math.min(tw2-1,((wx/RES)|0)/psw.tileRes|0),sty=Math.min(psw.th-1,((wy/RES)|0)/psw.tileRes|0);
-     const cc=psw._countryClaim[sty*tw2+stx];
+     const cc=(psw._scrubClaim||psw._countryClaim)[sty*tw2+stx];
      if(cc>=0){const c=psw.countries.get(cc);if(c){hovRealm=c.name||(c.capital&&c.capital.name);hovRealmId=cc;}
        else if(psw._landNames&&psw._landNames.has(cc)){hovRealm=psw._landNames.get(cc).name||"a people of the land";hovRealmId=cc;}}}
    {const psTx=((wx/RES)|0)/psw.tileRes,psTy=((wy/RES)|0)/psw.tileRes;
@@ -3316,10 +3383,20 @@ const renderInspect=()=>{
   const surplus=supply-demand;
   const eps=Math.max(0.02,demand*0.02);
   const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
+  // "Starving" reads the SAME ruler the famine physics reads (owner report:
+  // "every single city says starving and still grows"): under ONE_POP the
+  // catchment's countryside eats from the LAND (the field feeds them), and
+  // the granary's real customers are the urban CORE (s._coreNeed — the
+  // famine flow-gate's own bar). A city whose total-catchment demand
+  // outruns the granary but whose core is flow-fed is living off its land
+  // ("land-fed"), not starving — and the one that IS starving now also
+  // contracts (STARVE_SHED melts its capacity floor on the same signal).
+  const coreNeed=s._coreNeed!==undefined?s._coreNeed:demand;
   let status,statusColor;
   if(surplus>eps){status="surplus";statusColor="#3a7";}
   else if(surplus<-eps){
-    if(ticksLeft<50){status="starving";statusColor="#c44";}
+    if((s.food||0)<=0.01&&supply<coreNeed){status="starving";statusColor="#c44";}
+    else if(ticksLeft<50){status="land-fed";statusColor="#a95";}
     else{status="deficit";statusColor="#c84";}
   } else {status="balanced";statusColor="#888";}
 
@@ -4136,6 +4213,38 @@ return(
   <span className="au-era" style={{fontSize:narrow?13:15,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{_era}</span>
   {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"var(--au-ch-gold)",fontWeight:700,letterSpacing:0.3}}>✦</span>}
   <span className="au-year au-num" style={{fontSize:narrow?12:13.5,whiteSpace:"nowrap"}}>{_ys}</span>
+  <span className="au-vrule" style={{height:22}}/>
+  {/* TIMELINE — scrub the political map through the run's keyframes (worker
+      captures one every 500 steps). Drag = ask the worker for the nearest
+      keyframe; LIVE returns to the present. */}
+  {(()=>{const tlN=simWorkerRef.current?((peopleRef.current&&peopleRef.current._timelineN)||0):frameCount(fbTimelineRef.current);
+    return <input type="range" min={0} max={Math.max(1,tlN-1)} step={1} value={scrubStep??Math.max(0,tlN-1)}
+    onChange={(ev)=>{const idx=+ev.target.value;
+      if(playRef.current){playRef.current=false;setPlaying(false);}  // scrubbing pauses history
+      setScrubStep(idx);scrubRef.current=true;
+      if(simWorkerRef.current){simWorkerRef.current.postMessage({type:"scrub",idx});}
+      else{const psw=peopleRef.current;if(psw){const fr=frameAt(fbTimelineRef.current,idx,psw.N);
+        if(fr){psw._scrubClaim=fr.claim;setScrubShown(fr.step);if(drawNowRef.current)drawNowRef.current();}}}}}
+    style={{width:narrow?80:170,accentColor:"var(--au-ch-gold)"}}
+    title="Timeline — one frame per ~year; drag to scrub the political map through history"/>;})()}
+  {scrubStep!=null&&<>
+    <span className="au-num" style={{fontSize:11,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{"t="+(scrubShown??scrubStep)}</span>
+    <button className="au-btn au-flat" style={{padding:"2px 8px",fontSize:11}}
+      title="Return to the live map"
+      onClick={()=>{setScrubStep(null);setScrubShown(null);scrubRef.current=false;
+        const psw=peopleRef.current;
+        if(psw){psw._scrubClaim=null;psw._claimVer=(psw._claimVer||0)+1;}
+        if(drawNowRef.current)drawNowRef.current();
+        playRef.current=true;setPlaying(true);}}>LIVE ▶</button>
+  </>}
+  {!narrow&&<select className="au-btn au-flat au-num" value={minKm2} title="Atlas bar — hide nations smaller than this (nations with settlements always show)"
+    onChange={(ev)=>setMinKm2(+ev.target.value)} style={{padding:"2px 4px",fontSize:11}}>
+    <option value={0}>all nations</option>
+    <option value={5000}>≥5k km²</option>
+    <option value={20000}>≥20k km²</option>
+    <option value={100000}>≥100k km²</option>
+    <option value={500000}>≥500k km²</option>
+  </select>}
   {!narrow&&<>
     <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
     <span className="au-vrule" style={{height:22}}/>
@@ -4407,6 +4516,30 @@ return(
 
 {/* ─── Epochal-event toasts (plan §8) ─── */}
 <ToastHost feedRef={peopleRef} verbosity={toastVerbosity} onJump={jumpTo} stepNow={liveStep}/>
+
+{/* ─── Simulation-error banner ─── */}
+{/* A worker/step failure used to be console-only: the game froze at its last
+    frame with no explanation ("shuts down at step N"). The world is still
+    alive in the worker — say so, and point at the rescue (Save). Persistent
+    (not a 7s toast) until dismissed; a snapshot-lane error means the sim is
+    still running, a step error means it paused itself. */}
+{simError&&(
+  <div className="au-parchment" style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",
+    zIndex:"var(--z-toasts)",display:"flex",gap:10,alignItems:"center",padding:"8px 12px",
+    maxWidth:"min(560px,80%)",border:"1px solid rgba(180,60,40,0.85)",boxShadow:"0 4px 18px rgba(0,0,0,0.45)"}}>
+    <span style={{fontSize:16,flexShrink:0}}>⚠</span>
+    <span style={{fontSize:12.5,lineHeight:1.4}}>
+      {simError.where==='step'
+        ?`The simulation hit an internal error at step ${simError.step??'?'} and paused itself. The world is intact — use Save to keep it, then report seed ${world&&world.seed!=null?world.seed:seed}.`
+        :simError.where==='snapshot'
+        ?`The map view failed to refresh at step ${simError.step??'?'} — the simulation itself is still running. Save works; the view may recover on its own.`
+        :`The simulation worker reported an error${simError.step!=null?` at step ${simError.step}`:''}. The world is intact — use Save to keep it.`}
+      <span style={{opacity:0.75}}> ({simError.message})</span>
+    </span>
+    <button onClick={()=>setSimError(null)} title="Dismiss"
+      style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-ink-faded)",fontSize:16,padding:"0 2px",flexShrink:0}}>×</button>
+  </div>
+)}
 
 </div>{/* end map area */}
 

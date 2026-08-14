@@ -484,11 +484,65 @@ function ensureDevField(world, land) {
 // irrigation already ~doubles a great valley) → +ACCESS_DEVK at full tech.
 // ACCESS_DEV0 / ACCESS_DEVK / RELIEF_PEN — popFieldKernel.js.
 
+// ── T.ACCESS_BAND: the water-access premium over a REAL width (2026-08-07, the
+// coast/river dilution wave — docs/dawn-cradles-2026-08-07.md §5) ─────────────
+// The capacity premium `ACCESS_RIVER×(riverMag/RM_FULL) + ACCESS_COAST×coast`
+// was a PER-TILE read on 1-D features: a river influences rn× more tiles at a
+// finer grid but each is 1/rn² the area, so the premium's real integral falls
+// as 1/rn — the ~1.3-2.2× capacity dilution the resgate ratchet has carried as
+// its documented open gap since docs/resolution-collapse-2026-07-29.md, and
+// (measured, the birth-crater closing table) the binding constraint on
+// newborn-city viability at the shipped grid: app-grid ledgers plateau at ~0.6
+// of demand because the waterside capacity that should feed a river city
+// thins with the grid. The fix is the flood-ribbon convention applied to
+// ACCESS: the premium extends over ONE REFERENCE TILE of real cross-section at
+// any grid — full intensity within the band, fractional coverage at the edge
+// (the v3-erratum discipline), Euclidean distance, MAX over sources (two
+// rivers don't stack). w(d) = min(1, max(0, rn/2 + 0.5 − d)): at the
+// reference grid (rn=1) the band is exactly the source tile at weight 1 —
+// BYTE-IDENTICAL by construction; at rn=2 the neighbours carry ½; at rn=4
+// (±1 full, ±2 half); below the reference (a coarse probe grid) the source
+// tile itself damps toward the band's sub-tile share — the same
+// mass-conserving direction the flood ribbon takes for sub-pixel valleys.
+// Static terrain, built once, rebuilt deterministically at load; the banded
+// arrays SUBSTITUTE for riverMag/coast in the capacity pass only (kernel and
+// bit-guarded worker path untouched — they read whatever arrays are packed).
+export function ensureAccessBand(world) {
+  if (world._rmBand && world._rmBand.length === world.N) return;
+  const { N, tw, th } = world;
+  const rn = rNormPop(world);
+  const rm = world.riverMag, coast = world.coast;
+  const rmB = world._rmBand = new Float32Array(N);
+  const coB = world._coastBand = new Float32Array(N);
+  const H = rn / 2 + 0.5;
+  const R = Math.ceil(H);
+  for (let ti = 0; ti < N; ti++) {
+    const mag = rm ? rm[ti] : 0, isC = coast ? coast[ti] : 0;
+    if (!(mag >= 1) && !isC) continue;
+    const y0 = (ti / tw) | 0, x0 = ti - y0 * tw;
+    for (let dy = -R; dy <= R; dy++) {
+      const y = y0 + dy; if (y < 0 || y >= th) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        const w = Math.min(1, Math.max(0, H - Math.hypot(dx, dy)));
+        if (w <= 0) continue;
+        const i2 = y * tw + (((x0 + dx) % tw) + tw) % tw;
+        if (mag >= 1) { const v = mag * w; if (v > rmB[i2]) rmB[i2] = v; }
+        if (isC && w > coB[i2]) coB[i2] = w;
+      }
+    }
+  }
+}
+
 export function initPopField(world) {
   const N = world.N;
   const pop = world.popField = new Float32Array(N);
   world.capField = new Float32Array(N);
   world._popNext = new Float32Array(N);
+  // ACCESS_BAND fields are built at init so every arena carries them from its
+  // first spawn (stepPopField re-ensures before each prepare — belt and
+  // braces; a loaded world rebuilds them here deterministically, they are
+  // derived terrain and never persisted).
+  if (T.ACCESS_BAND) ensureAccessBand(world);
   const { elev, fert, tArrival } = world;
   const rn = rNormPop(world);
   const seedPop = SEED_POP / (rn * rn);   // per REAL area (÷1 exactly at the reference)
@@ -588,6 +642,10 @@ export function stepPopField(world, sub = 1) {
   // prepare step may convert world arrays to SharedArrayBuffer-backed views,
   // so every local captured above is refreshed to address the SAME memory the
   // workers see.
+  // T.ACCESS_BAND: build the REAL-width banded access fields BEFORE the pool
+  // prepare, so the SAB conversion list picks them up and the arena message
+  // redirects its riverMag/coast slots (workers read slots by name).
+  if (T.ACCESS_BAND) ensureAccessBand(world);
   const _pctx = _pfLever() >= 1 ? _pfPrepare(world, land, nLand, devF) : null;
   if (_pctx) {
     ({ elev, fert, riverMag, relief, coast } = world);
@@ -599,15 +657,21 @@ export function stepPopField(world, sub = 1) {
     if (worksF) worksF = world.worksField;
     if (indOwner) indOwner = world._territoryOwner;
   }
+  // The capacity pass reads the banded fields in place of the per-tile
+  // riverMag/coast when the lever is on (byte-identical at the reference grid
+  // — see ensureAccessBand). Substitute ARRAYS, not code: the serial loop, the
+  // band kernel and the pooled workers all read whatever is handed to them.
+  const rmEff = (T.ACCESS_BAND && world._rmBand) ? world._rmBand : riverMag;
+  const coastEff = (T.ACCESS_BAND && world._coastBand) ? world._coastBand : coast;
   if (_pctx) {
-    _pfCap(_pctx, world, { land, fert, riverMag, coast, relief, cap, pasture, worksF, tfArr,
+    _pfCap(_pctx, world, { land, fert, riverMag: rmEff, coast: coastEff, relief, cap, pasture, worksF, tfArr,
       ownOn: !!(ownOn && indOwner), indOn, tfL, worksOn: !!worksF, worksK,
       capPerFert, accessDev, dev });
   } else
   for (let li = 0; li < nLand; li++) {
     const i = land[li];
-    const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
-    let access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
+    const water = rmEff ? Math.min(1, rmEff[i] / RM_FULL) : 0;
+    let access = ACCESS_RIVER * water + ACCESS_COAST * (coastEff ? coastEff[i] : 0);
     let indMul = 1, fade = 0;
     if (ownOn && indOwner) {
       const sid = indOwner[i];
@@ -715,7 +779,33 @@ export function stepPopField(world, sub = 1) {
       const landShare = Math.max(0, Math.min(1, 1 -
         ((s._foodNet !== undefined ? s._foodNet : 0) - (s._landFood || 0)) / Math.max(1e-9, s._foodSupply || 0)));
       const ledgerK = (s._k * landShare / bridge) * (cap[i] / W);
-      cap[i] = cap[i] * (1 - fkL) + ledgerK * fkL;
+      // T.FOOD_REACH (2026-08-11, the residual birth-crater root cause —
+      // docs/dawn-cradles-2026-08-07.md §6): the ledger's DOWNWARD authority
+      // over a tile is the owner's ADMINISTRATIVE REACH (s._foodReach, the
+      // same org ramp the grain levy runs on — settlement.js foodReach), not
+      // the border alone. Measured without it: the moment the amortized
+      // territory pass assigned a newborn its catchment, this blend painted
+      // the newborn's COLD ledger (supply machinery yet to converge; s/d
+      // 0.36-0.65) over ~156 tiles of countryside that had been feeding
+      // itself — capacity −45% in one tick (cap@ti 1092→599, probe_holdseam)
+      // — and the field's logistic then killed the subsistence farmers the
+      // ledger had never measured. The famine channel was proven inert first
+      // (probe_faminedrain ×2 grids: kill/lost = 0.00, granaries full).
+      // THE AUTHORITY IS ASYMMETRIC (measured, same lap: a symmetric
+      // reach-blend cut SEEDED worlds — mature ledger, low org, the
+      // decoupled case — and the smoke population arc fell 770→561):
+      // UPWARD the ledger GIVES — market wealth reaches the countryside
+      // through mere contact (peasants sell at the town market with no levy
+      // bureaucracy in sight), so ledgerK ≥ proxy blends at full weight
+      // regardless of org. DOWNWARD the ledger TAKES — extraction and
+      // crisis transmission (famine pricing, blockade) travel only as far
+      // as the bureaucracy that can actually assess and collect, so
+      // ledgerK < proxy is reach-weighted: a proto-state's countryside
+      // cannot be dragged below its own subsistence yield, an organised
+      // state's famine/blockade bites exactly as FOOD_K delivered.
+      // Lever off ⇒ weight fkL both ways, byte-identical.
+      const w = (T.FOOD_REACH && ledgerK < cap[i] && s._foodReach !== undefined) ? fkL * s._foodReach : fkL;
+      if (w > 0) cap[i] = cap[i] * (1 - w) + ledgerK * w;
     }
   }
 
@@ -967,7 +1057,8 @@ function _pfConv(world, ar, key) {
 
 const _PF_CONV_KEYS = ["capField", "fert", "riverMag", "coast", "relief",
   "_pastureCap", "worksField", "_tfFade", "_tropicBurden", "_irrigable",
-  "_migMove", "_migSum", "_territoryOwner", "_popLand"];
+  "_migMove", "_migSum", "_territoryOwner", "_popLand",
+  "_rmBand", "_coastBand"];   // ACCESS_BAND fields (absent lever-off — _pfConv null-slots them)
 
 // popField/_popNext are a swap PAIR over two fixed SABs: every firing's
 // publish re-points the KEYS at the other buffer, so identity must be checked
@@ -1006,6 +1097,11 @@ function _pfEnsureArena(world) {
   }
   _pfConvPair(world, ar);
   for (const k of _PF_CONV_KEYS) _pfConv(world, ar, k);
+  // ACCESS_BAND redirect: workers read riverMag/coast slots BY NAME from the
+  // arena message, so the lever's array substitution must happen there too —
+  // and a mid-run lever toggle must respawn the views (gen bump).
+  const _ab = !!(T.ACCESS_BAND && world._rmBand);
+  if (ar.accessBand !== _ab) { ar.accessBand = _ab; ar.gen++; }
   if (!ar.sabs.capT || !ar.capTView || ar.capTView.length < ar.tableCap) {
     const c = new SharedArrayBuffer(ar.tableCap * 8), g = new SharedArrayBuffer(ar.tableCap * 8);
     ar.sabs.capT = c; ar.sabs.gateT = g;
@@ -1018,9 +1114,22 @@ function _pfEnsureArena(world) {
 
 function _pfArenaMsg(ar) {
   const s = ar.sabs;
+  // accessBand MUST ride the message alongside the redirected slots: the
+  // worker core picks its view constructor from geom.accessBand (the band
+  // fields are Float32 where the raw riverMag/coast are Uint8 — a mismatched
+  // view is garbage, measured as access≡1 capacity inflation: 0.8333f's bytes
+  // read as 85 through a Uint8 view). ensurePool only ever sees THIS message,
+  // never the arena — the flag's one path to the workers is right here.
   return { gen: ar.gen, N: ar.N, tw: ar.tw, th: ar.th, nLand: ar.nLand,
+    accessBand: !!ar.accessBand,
     sabs: { land: s._popLand, owner: s._territoryOwner, popA: s.popA, popB: s.popB,
-      cap: s.capField, fert: s.fert, riverMag: s.riverMag, coast: s.coast, relief: s.relief,
+      cap: s.capField, fert: s.fert,
+      // ACCESS_BAND: the banded real-width fields substitute for the per-tile
+      // reads in the capacity kernel (see ensureAccessBand) — same slots, so
+      // the kernel and worker core stay untouched.
+      riverMag: ar.accessBand ? s._rmBand : s.riverMag,
+      coast: ar.accessBand ? s._coastBand : s.coast,
+      relief: s.relief,
       devF: s.devF, pasture: s._pastureCap, worksF: s.worksField, tfArr: s._tfFade,
       tropicB: s._tropicBurden, irr: s._irrigable, mv: s._migMove, ssum: s._migSum,
       capT: s.capT, gateT: s.gateT } };
@@ -1712,10 +1821,12 @@ export function deriveOnePop(world) {
     // urbanization share, the demographic transition, the graveyard and the
     // Zipf statistics read; the region's rural remainder is everyone else on
     // its land. (Overrides the census-side ruralShare heuristic each tick.)
+    let _coreF = 0;   // live core-disk field people (reused by the CORE_HOLD floor below)
     if (f > 0) {
       // The urban core is the people on the real FOOTPRINT (disk of radius coreR),
       // in census units — resolution-invariant. coreR=0 ⇒ diskSum === pf[ti] exactly.
-      s._urbanPop = Math.min(s.people, Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR) * scale));
+      _coreF = Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR));
+      s._urbanPop = Math.min(s.people, _coreF * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
       // The MEASURED core, kept apart from _urbanPop: the census-side
       // ruralShare heuristic overwrites _urbanPop every tick between derives
@@ -1725,6 +1836,15 @@ export function deriveOnePop(world) {
       // only (the heuristic read minted a "city" at step 1 and metropolises at
       // 3× their field core). Null until the field first derives a catchment.
       s._coreMeasured = s._urbanPop;
+    } else if (T.HOLD_SEAM && T.CORE_HOLD && s._coreHoldCapF > 0) {
+      // T.HOLD_SEAM (2026-08-11, docs §6): the CORE_HOLD floor's inputs are
+      // field-local — they never needed the catchment. Gating _coreF on
+      // f > 0 made the floor wait for the AMORTIZED territory pass to assign
+      // the newborn its tiles (measured: own=0 for ~65 ticks post-mint,
+      // spikeK=0 the whole window — probe_holdseam), leaving the gathered
+      // pile floorless exactly when it is 10-50× over bare terrain. A
+      // stash-carrying settlement reads its live core unconditionally.
+      _coreF = Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR));
     }
     // else: no catchment tiles this pass (fresh founding / recompute lag) — keep the census value
     // The spike (next pass's capacity + the core's transition/graveyard-bent
@@ -1734,7 +1854,33 @@ export function deriveOnePop(world) {
     // see pop≈cap and neither crash nor expel the crowd); the flow, not the
     // throughput-limited diffusion, is what actually fills it. Otherwise it is
     // the raw import ceiling (the pre-agglomeration behaviour).
-    const kCap = agglom ? uTarget : kBeyond;
+    let kCap = agglom ? uTarget : kBeyond;
+    // T.CORE_HOLD — the spike HANDOFF floor (the birth-crater killer,
+    // 2026-08-07). kCap is IMPORT-SHARE-driven, so a newborn city that grows
+    // its own food stamps ~ZERO capacity over the very core the site law just
+    // finished gathering (maybeSiteCities held it at min(coreNow,
+    // coreBarF×1.2) until the mint deleted that spike) — measured as a 45%
+    // basin-capacity crash in the mint window and a 457→20 census death
+    // spiral (probe_capdrain; famine and shock channels proven inert by
+    // three attribution arms). The entity spike therefore never falls below
+    // the site law's own bound, stashed at the mint (_coreHoldCapF): capacity
+    // keeps HOLDING WHAT ARRIVED — both sides of the handoff now obey the
+    // one law — and the import economy takes over the moment it grows past
+    // it. Existing constants only; cities minted by other paths (colonies,
+    // plantations) carry no stash and are untouched.
+    if (T.CORE_HOLD && s._coreHoldCapF > 0 && _coreF > 0) {
+      // T.STARVE_SHED: the floor yields to SUSTAINED starvation — "hold what
+      // arrived" was food-blind, so a chronically unfed core kept its full
+      // capacity and the field logistic kept growing it through famine. The
+      // floor now carries the settlement's fed-ness average (s._fedM, a
+      // granary-decade memory stamped by the food pass): a fed core holds
+      // exactly as before (fedM ≈ 1 — birth-crater behaviour unchanged; new
+      // mints start at 1), a starving one melts at generational pace and
+      // hunger finally empties the CITY, not just the land around it.
+      const fedY = T.STARVE_SHED && s._fedM !== undefined ? s._fedM : 1;
+      const hold = Math.min(_coreF, s._coreHoldCapF) * fedY;
+      if (hold > kCap) kCap = hold;
+    }
     // THE URBAN GRAVEYARD, density-graded (T.URBAN_GAMMA): the base excess
     // mortality (settlement.js: disease load × urbanity × unhealed) is scaled by
     // how dense this core is versus the typical importing core, raised to γ —

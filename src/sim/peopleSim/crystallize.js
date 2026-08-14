@@ -21,6 +21,8 @@ import { isContinentalLand } from "./state.js";
 import { tel, telPass } from "./telemetry.js";
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
+import { hash32 } from "./rng.js";
+import { cageAt } from "./cageField.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable, ensurePolity } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
@@ -34,6 +36,8 @@ import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
 import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
 import { settleHostility } from "./habitability.js";
+import { bestPackageAt } from "./agriculture.js";
+import { CROP_BY_ID } from "../cropPackages.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
@@ -722,14 +726,23 @@ function _siteClaims(world) {
     const K = L.sites.length, tw = world.tw, N = world.N, siteId = L.siteId;
     const claimed = new Uint8Array(K);
     const mass = new Float64Array(K);
+    const count = new Uint16Array(K);       // labels seated per cell (peer-lattice capacity law)
+    const labels = new Map();               // k → [{x,y}] settled label positions (core-spacing law)
     const pf = world.popField;
     if (pf) for (let i = 0; i < N; i++) { const k = siteId[i]; if (k >= 0) mass[k] += pf[i]; }
     for (const s of world.settlements) {
       if (s.mode !== "settled") continue;
       const ti = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
-      if (ti >= 0 && ti < N) { const k = siteId[ti]; if (k >= 0) claimed[k] = 1; }
+      if (ti >= 0 && ti < N) {
+        const k = siteId[ti];
+        if (k >= 0) {
+          claimed[k] = 1; count[k]++;
+          let a = labels.get(k); if (!a) labels.set(k, a = []);
+          a.push({ x: s.pos.x | 0, y: s.pos.y | 0 });
+        }
+      }
     }
-    c = world._siteClaims = { K, step: world.step, claimed, mass };
+    c = world._siteClaims = { K, step: world.step, claimed, mass, count, labels };
   }
   return c;
 }
@@ -740,7 +753,38 @@ const _cellTi = (world, tx, ty) => (ty | 0) * world.tw + ((((tx | 0) % world.tw)
  *  verdict). Callers gate on T.LABEL_BIRTH && world.popField. */
 export function labelBasinFree(world, tx, ty) {
   const k = labelSiteLedger(world).siteId[_cellTi(world, tx, ty)];
-  return k >= 0 && !_siteClaims(world).claimed[k];
+  if (k < 0) return false;
+  const c = _siteClaims(world);
+  if (!c.claimed[k]) return true;
+  // T.PEER_LATTICE (docs/variance-arc-2026-08-13.md, wave 1 of the variance
+  // arc): A CELL SEATS WHAT ITS PEOPLE CAN FEED, NOT ONE COURT FOREVER. The
+  // funnel measured the political map's uniformity to THIS flag: one label
+  // per hydro-anchor basin planet-wide meant state spacing = city spacing =
+  // the cell lattice (nearest capitals never under 416km at tw=960), so
+  // every consolidation channel starved — history's cradles seated PEER
+  // CLUSTERS (Sumer: a dozen courts 30-80km apart on one alluvium). A
+  // claimed cell stays open while its people could feed another urban core
+  // — count < floor(mass / basinBar), the SAME city-basin bar the mint's
+  // eligibility reads (TIER_CORE[2]/URBAN_SHARE_REF over the bridge) — and
+  // the newcomer must stand ≥ 2×urbanCoreR from every seated label (cores
+  // must not overlap — the walkable-core radius the spike law already
+  // uses). Zero new constants. Dense cradles seat peers; thin country still
+  // holds one court or none, exactly as before. 0 = one-per-cell (the old
+  // lattice, byte-identical).
+  if (!T.PEER_LATTICE) return false;
+  tel(world, "peerlat", "queriedClaimed");   // FUNNEL: does any founding channel even knock on a claimed cell?
+  const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
+  const capacity = Math.floor(c.mass[k] / ((TIER_CORE[2] / URBAN_SHARE_REF) / bridge));
+  if ((c.count ? c.count[k] : 1) >= capacity) { tel(world, "peerlat", "cellFull"); return false; }
+  const rr = 2 * urbanCoreR(world), rr2 = rr * rr, tw = world.tw, half = tw / 2;
+  const ls = c.labels && c.labels.get(k);
+  if (ls) for (const p of ls) {
+    let dx = Math.abs(p.x - tx); if (dx > half) dx = tw - dx;
+    const dy = p.y - ty;
+    if (dx * dx + dy * dy < rr2) { tel(world, "peerlat", "spacingBlocked"); return false; }
+  }
+  telPass(world, "peerlat");
+  return true;
 }
 /** Field people (tx,ty)'s cell holds (cell ∩ horizon by construction) — the
  *  C1 activation mass. 0 beyond every horizon (subsistence countryside). */
@@ -763,13 +807,84 @@ export function labelBasinMass(world, tx, ty) {
  *  blocked solely by "farming not at the seat", devF 0.28-0.44 vs interior
  *  full). Deterministic: fixed neighbour order, FIFO ring growth. */
 export function peopledBasinAt(world, k, capMass) {
+  return peopledBasinFrom(world, k, labelSiteLedger(world).sites[k].ti, capMass);
+}
+/** The same walkable-basin gather, from an ARBITRARY seat tile in cell k —
+ *  the peer-seat lanes' exam (T.PEER_LATTICE: a secondary seat sits the
+ *  identical test the cell's site does). */
+export function peopledBasinFrom(world, k, startTi, capMass) {
   const L = labelSiteLedger(world);
-  const st = L.sites[k], siteId = L.siteId;
+  const siteId = L.siteId;
   const pf = world.popField, devF = world.devField, elev = world.elev;
   const comp = landComp(world);
   const tw = world.tw, th = world.th;
-  const seatComp = comp[st.ti];
-  const qx = [st.ti];
+  const seatComp = comp[startTi];
+  // T.ORGANIC_TAKE (owner report 2026-08-14: "nations spawning in with
+  // perfectly straight borders" — the screenshot's diamonds): a FIFO
+  // 4-neighbour BFS over smooth density grows an L1 ball, a DIAMOND, because
+  // it gathers TILES nearest-first. A people gathers PEOPLE nearest-first —
+  // the most-peopled frontier tile joins next — so the take follows valley
+  // ribbons, coasts and density ridges and the border is the organic edge of
+  // where its people actually live. Deterministic (ties break to the lower
+  // tile index); same cell/landmass constraints; same bar. 0 = the diamond
+  // walk (byte-identical).
+  if (T.ORGANIC_TAKE) {
+    // PEOPLE-WEIGHTED COST WALK (the compact-shapes refinement, task #26 —
+    // owner: the pure density-priority walk made "odd, x or spindly shapes").
+    // Real polities were roughly compact because control projects radially
+    // and thin salients are indefensible — EXCEPT where the habitable land
+    // itself is a ribbon (Egypt, Chile), where states really were spindly.
+    // That rule is a COST walk: entering a tile costs 1/(1 + its people
+    // relative to the basin's own mean) — dense-as-the-basin ground is cheap,
+    // empty ground costs a full step — and the frontier admits its
+    // lowest-accumulated-cost tile next. Uniform country → equal costs → a
+    // rounded disk; a dense ribbon through waste → cheap along the ribbon →
+    // the take follows it. Compact where people spread, spindly only where
+    // the people are. Deterministic (cost, then tile-index ties); zero new
+    // constants (the reference is the walk's own running mean).
+    const take = [];
+    let mass = 0, devW = 0;
+    const cost = new Map([[startTi, 0]]);
+    const heap = [startTi];
+    const better = (a, b) => { const ca = cost.get(a), cb = cost.get(b); return ca < cb || (ca === cb && a < b); };
+    const hpush = (t) => {
+      heap.push(t);
+      let i = heap.length - 1;
+      while (i > 0) { const p = (i - 1) >> 1; if (better(heap[i], heap[p])) { const x = heap[i]; heap[i] = heap[p]; heap[p] = x; i = p; } else break; }
+    };
+    const hpop = () => {
+      const top = heap[0], last = heap.pop();
+      if (heap.length) {
+        heap[0] = last; let i = 0;
+        for (;;) {
+          const l = 2 * i + 1, r = l + 1; let m = i;
+          if (l < heap.length && better(heap[l], heap[m])) m = l;
+          if (r < heap.length && better(heap[r], heap[m])) m = r;
+          if (m === i) break;
+          const x = heap[i]; heap[i] = heap[m]; heap[m] = x; i = m;
+        }
+      }
+      return top;
+    };
+    while (heap.length && mass < capMass) {
+      const t = hpop();
+      take.push(t); mass += pf[t]; if (devF) devW += pf[t] * devF[t];
+      const pfBar = mass / take.length || 1;
+      const c0 = cost.get(t);
+      const ty = (t / tw) | 0, tx = t - ty * tw;
+      const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
+                  ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
+      for (let n = 0; n < 4; n++) {
+        const ni = ns[n];
+        if (ni < 0 || cost.has(ni)) continue;
+        if (siteId[ni] !== k || elev[ni] <= 0 || comp[ni] !== seatComp) continue;
+        cost.set(ni, c0 + 1 / (1 + pf[ni] / pfBar));
+        hpush(ni);
+      }
+    }
+    return { take, mass, devP: mass > 0 ? devW / mass : 0 };
+  }
+  const qx = [startTi];
   const seen = new Set(qx);
   const take = [];
   let mass = 0, devW = 0;
@@ -1072,6 +1187,55 @@ const SITE_CITY_IVL = 25;      // drift/mint cadence (amortization; the spike re
 // early slope (0.45 → 0.50 over ~4000 steps at the old dawn).
 const AGRI_PRACTICE_CAP = 0.55;
 const SEED_AGRI_RATE = 1.5e-5;   // per step
+// ── T.CITY_STORE: a city needs a STORABLE surplus (2026-08-07, the birth-crater
+// investigation) ─────────────────────────────────────────────────────────────
+// The people-weighted STORABLE-farming ceiling of a peopled basin: for each tile
+// the best domesticable package's suit × storability (exactly cropCeil's formula
+// — the quantity the whole codebase already uses for "can this land fund a
+// granary state": wheat/rice 1.00, tubers 0.35 — "taro does not store"), capped
+// by the landmass-isolation/tropical ceiling where it has been computed, and
+// weighted by the people actually standing on each tile (the same convention as
+// the basin's devP read — a seat-tile-only read starved the densest basins,
+// probe_dimfunnel). Measured cause (39 instrumented births, 3 grids): the mint
+// gate checked people + technique-arrived but NEVER whether the land can
+// sustain an urban core from storable food, so dense tuber basins (Congo,
+// Zambezi) minted cities whose ledgers plateaued far below demand — permanent
+// famine, and 50-90% of the basin's field people starved around the newborn
+// ("hunger empties the LAND"). The bar is NEOLITHIC_AGRI — the SAME constant
+// the eligibility's devP gate uses one line earlier, now read against the
+// land's ceiling instead of the wave's arrival: the practice must have arrived
+// AND the land must be able to carry it. One ruler, two reads, no new number.
+// The people of a basin standing on STORABLE-CAPABLE ground — tiles whose best
+// domesticable package sustains city-grade farming (suit × storability ≥
+// NEOLITHIC_AGRI, the same axis and constant the eligibility's devP gate
+// reads). THREE DEAD FORMS, all measured on this branch and kept for the
+// record: (1) min'ing the tile term with world._agriCeil folded the landmass-
+// ISOLATION penalty into city EXISTENCE — double-counting what package
+// presence/suits already express; (2) the people-weighted MEAN of the basin
+// against the bar — a wheat valley ringed by scrub failed on its fringes'
+// zeros (stylized hard FAIL, identical both times: the 21k world fell 30 → 19
+// settlements, cradle origins unresolvable, while the FED_FAMINE-only arm
+// passed clean — the attribution); (3) the storable-people of the CAPPED take
+// against the census bar — peopledBasinAt stops gathering AT the bar, so that
+// form demands ~every gathered tile be storable. The physical claim is about
+// the CORE within the market's walkable horizon: a city forms where enough
+// people stand on ground that can grow a storable surplus, however much
+// subsistence country surrounds them. So: Σ popField over qualifying tiles of
+// the UNCAPPED walkable cell, compared by the caller against the SAME
+// city-basin census bar the eligibility applies to the whole basin. Two
+// existing bars, zero new constants.
+function basinStorablePeople(world, take, pf) {
+  let sp = 0;
+  for (let n = 0; n < take.length; n++) {
+    const t = take[n];
+    const p = pf[t]; if (!(p > 0)) continue;
+    const best = bestPackageAt(world, t);
+    if (!best) continue;
+    const pkg = CROP_BY_ID[best.id];
+    if (best.suit * (pkg ? pkg.storability : 1) >= NEOLITHIC_AGRI) sp += p;
+  }
+  return sp;
+}
 function maybeSiteCities(world) {
   if (!T.CITY_AT_BIRTH || !T.POP_FIELD || !T.ONE_POP || !world.popField) return;
   const L = labelSiteLedger(world);
@@ -1116,7 +1280,13 @@ function maybeSiteCities(world) {
       }
       if (elig[k]) continue;   // already qualified — keep its cached basin (mint/drift clear it)
       const b = peopledBasinAt(world, k, basinBarF);
-      if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI) { elig[k] = 1; basins.set(k, b.take); }
+      // T.CITY_STORE: …AND, within the cell's whole walkable ground (the
+      // capped take above stops AT the census bar, so testing the storable
+      // share of exactly-bar-mass would demand ~100% storable tiles — the
+      // third dead form; see basinStorablePeople), a city-basin's worth of
+      // people stand on ground that can grow a STORABLE surplus.
+      if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI
+          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)) { elig[k] = 1; basins.set(k, b.take); }
       else { elig[k] = 0; basins.delete(k); }
     }
   }
@@ -1286,10 +1456,36 @@ function maybeSiteCities(world) {
       const basinCensus = bMass * bridge;
       born.food = Math.max(born.food || 0, basinCensus * 0.0030 * (500 / (world._dt || 1)));   // ~the measured ledger ramp (crash window 600 steps, probe_firstcity), history-time invariant; the granary cap clamps the rest
     }
+    // T.CORE_HOLD — the spike HANDOFF (2026-08-07, the birth-crater killer):
+    // until this line the gathered core was held by the SITE spike above
+    // (min(coreNow, coreBarF×1.2)); from the next derive it is held by the
+    // ENTITY spike (deriveOnePop kCap) — which is IMPORT-SHARE-driven and
+    // therefore ~ZERO for a newborn that grows its own food. Measured: the
+    // basin's capacity crashed 88k → 49k in the mint window (probe_capdrain),
+    // the drift-gathered pile stood 10-50× over bare terrain, the field's
+    // logistic mass-killed it, and the census collapsed 457 → 20 — the
+    // population-lens crater, with the famine/shock channels measured
+    // inert (three attribution arms). The entity spike therefore keeps the
+    // SITE LAW'S OWN BOUND as a floor: the mint stashes it here, and
+    // deriveOnePop floors kCap at min(live core, this) — "hold what
+    // arrived", now true on BOTH sides of the handoff. Existing constants
+    // only; import-economy capacity takes over the moment it grows past it.
+    born._coreHoldCapF = coreBarF * 1.2;
     labelClaimBasin(world, st.x, st.y);
     elig[k] = 0;
     if (world._siteBasin) world._siteBasin.delete(k);
-    spikes.delete(st.ti);
+    // T.HOLD_SEAM (2026-08-11 — the handoff's SEAM, docs §6): deleting the
+    // site spike here leaves ≥1 firing with NO capacity over the pile — the
+    // tick order is field pass → derive → THIS mint, so the next field pass
+    // runs before the entity spike can exist, and the amortized territory
+    // pass extends the window further (deriveOnePop reads the core only for
+    // settlements with a catchment; its HOLD_SEAM half closes that). The
+    // mint therefore HANDS the spike over in place — the site law's own
+    // bound, the identical expression the deleted spike carried — and the
+    // next derive's clear-and-restamp takes it from there. Off ⇒ the delete
+    // (byte-identical, the gap regime).
+    if (T.HOLD_SEAM) spikes.set(st.ti, { k: Math.min(coreF, coreBarF * 1.2) });
+    else spikes.delete(st.ti);
     logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1, x: st.x, y: st.y });
   }
 }
@@ -1355,8 +1551,20 @@ function maybeLandNations(world) {
   if (!devF) return;
   const lo0 = world._landOwner;
   const barF = TRIBAL_CENSUS / world._onePopScale;
+  // AMORTIZATION (the stall fix, task #18 — probe_stall: crystallize worst
+  // ticks 850-1,100ms at tw=480 in the fabric bloom, ≈4-15s at tw=960; the
+  // cost is the per-cell basin WALKS, which ran for every mass-passing cell
+  // every firing, before any drive gate could refuse). Both formation loops
+  // process 1/8 of the cells per firing, round-robin by cell index — pure
+  // scheduling — and the formation rolls compensate ×8, so the RATE of
+  // history is cadence-invariant for the small probabilities the drive law
+  // produces (contact's p=1 stays 1; a formation waits at most 8 firings —
+  // 192 steps, nothing on the fabric's generational clock).
+  const PEER_ROUND = 8;
+  const phaseR = ((world.step / 24) | 0) % PEER_ROUND;
   if (!world.popField) return;
   for (let k = 0; k < L.sites.length; k++) {
+    if (k % PEER_ROUND !== phaseR) continue;   // round-robin (see AMORTIZATION above)
     if (claims.claimed[k]) continue;
     const st = L.sites[k];
     if (co && co[st.ti] >= 0) continue;
@@ -1386,6 +1594,82 @@ function maybeLandNations(world) {
     if (basin.mass < barF) continue;               // the seat's walkable ground does not hold a people
     if (basin.devP < NEOLITHIC_AGRI) continue;     // its people do not yet farm
     const take = basin.take;
+    // T.ORG_CONTACT, the land-nation half (2026-08-11, docs §9 — measured as
+    // THE binding channel: 44 of 48 formations in the frontier probe were
+    // land nations, which sat NO statecraft exam at all, so the org-clock
+    // half of the lever left the everywhere-at-once map untouched). A complex
+    // chiefdom crystallises into a BORDERED NATION under the same two
+    // pressures statecraft itself needs — Carneiro's is a theory of exactly
+    // this transition: its valley's own CIRCUMSCRIPTION (computeConfinement
+    // at the seat — the identical measure settlements carry, the pristine
+    // lane that stated the hemmed river valleys) or an existing polity
+    // pressing on the basin (any state ground adjacent to the take — the
+    // secondary lane: threat, tribute, example). The drive scales a
+    // deterministic per-(seed, seat, step) roll through the same K re-base
+    // as the org clock — full pressure forms at the old cadence, open
+    // unpressed country holds its people WITHOUT bordered politics (they
+    // stay implied in the land, the stateless field), and the frontier
+    // advances as contact does. No new constants; no clock; no place.
+    if (T.ORG_CONTACT > 0) {
+      const sy0 = (st.ti / world.tw) | 0, sx0 = st.ti - sy0 * world.tw;
+      // A NATION OF THE LAND FORMS UNDER PRESSURE — an existing state's
+      // contact, or (T.STATE_CAGE below) its own people's CAGING.
+      // Two pristine-lane forms were built and MEASURED DEAD
+      // here, recorded per custom (2026-08-12, the regional-bunching lap):
+      // (1) confinement × take-fill and (2) confinement × basin-disk-fill
+      // both left the regional firsts unchanged, and the instrument then
+      // showed why — the fill term is structurally ~constant (the field
+      // self-equilibrates to capacity: pop/cap ≈ 0.9 wherever people live),
+      // and computeConfinement mis-scores ECOLOGICAL circumscription (the
+      // Indus seat reads 0.01, the Ganges 0.00 — the measure sees mountain
+      // walls, not desert-hemmed farmland), so the product discriminated
+      // nothing. The formation record settles the architecture instead:
+      // every cradle-era state (India 10-12k) arrives through the CITY
+      // channel — the org clock, whose ORG_CONTACT re-base already carries
+      // the pristine-vs-secondary distinction — and land nations only ever
+      // enter later as the periphery's form. So the chiefdom-to-bordered-
+      // nation transition here requires what the periphery historically
+      // required: an existing polity pressing on the basin (threat,
+      // tribute, example — any state ground adjacent to the take). The
+      // deterministic per-seat roll spreads formations across firings.
+      let drive = 0;
+      {
+        const tw3 = world.tw, th3 = world.th;
+        for (const t of take) {
+          const ty3 = (t / tw3) | 0, tx3 = t - ty3 * tw3;
+          const ns3 = [ty3 * tw3 + ((tx3 + 1) % tw3), ty3 * tw3 + ((tx3 - 1 + tw3) % tw3),
+                       ty3 > 0 ? t - tw3 : -1, ty3 < th3 - 1 ? t + tw3 : -1];
+          for (let n3 = 0; n3 < 4; n3++) {
+            const ni3 = ns3[n3]; if (ni3 < 0) continue;
+            if ((co && co[ni3] >= 0) || (lo0 && lo0[ni3] >= 0)) { drive = 1; break; }
+          }
+          if (drive >= 1) break;
+        }
+      }
+      // T.STATE_CAGE — the PRISTINE lane returns, on the measure the two dead
+      // forms above lacked (2026-08-12, docs §10): drive = cage(seat) × the
+      // share of the basin's people standing on STORABLE-capable ground.
+      // cage (cageField.js: 1 − exit/home over the capacity field) is
+      // Carneiro's circumscription measured on the field the sim actually
+      // maintains — it reads the desert-hemmed strips computeConfinement
+      // missed (Indus 0.01) and ~0 on the open plains whose false pristine
+      // states this lap was called on. The storable factor is Scott's taxable
+      // grain — basinStorablePeople, the CITY_STORE quantity, as a SHARE: a
+      // caged tuber basin still waits for contact. Both factors live state,
+      // both existing measures; the K re-base and per-seat roll unchanged.
+      if (drive < 1 && T.STATE_CAGE) {
+        const cg = cageAt(world, st.ti);
+        if (cg > 0) {
+          const sp = basinStorablePeople(world, take, world.popField);
+          const stor = basin.mass > 0 ? Math.min(1, sp / basin.mass) : 0;
+          const pr = cg * stor;
+          if (pr > drive) drive = pr;
+        }
+      }
+      const pForm = Math.min(1, PEER_ROUND * drive / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive))));
+      const rU = hash32(world.seed || 1, "landnat", st.ti, world.step) / 4294967296;
+      if (rU > pForm) continue;
+    }
     // Form: the people of this ground become a nation.
     const id = world._nextSettlementId || 1; world._nextSettlementId = id + 1;
     const ancId = world.ancestry ? world.ancestry[st.ti] : -1;
@@ -1396,6 +1680,195 @@ function maybeLandNations(world) {
     for (const t of take) lo[t] = id;   // the founding people's ground IS the nation's land
     (world._landSeats || (world._landSeats = new Map())).set(id, { ti: st.ti });
     ensurePolity(world, id, { how: "tribal", name, cultureId: cul ? cul.id : -1 });
+  }
+  // ── T.PEER_LATTICE, the TRIBAL half — the single-root unlock ─────────────
+  // (docs/variance-arc-2026-08-13.md, the wave-3 verdict: three mechanisms,
+  // one wall.) The loop above seats ONE nation per cell — the site's own
+  // tile. History's cradle valleys carried MANY adjacent chiefdoms per
+  // market basin, and everything downstream (fission fuel, adjacency, wars,
+  // momentum, the cascade) starves without them. Per pass, each cell's best
+  // peopled UNOWNED tile ≥ 2×urbanCoreR from the cell site and from every
+  // tribal seat in the cell becomes a SECONDARY candidate, and sits the
+  // IDENTICAL exam the primary lane just applied: walkable basin ≥ the same
+  // founding bar, its people farm, the same pressure drive and per-seat
+  // roll. One per cell per pass — the fabric fills generationally. Cells
+  // holding a settled label are NOT excluded (unlike the primary lane): the
+  // tribal fabric historically surrounded the first cities, and adjacency
+  // to their realms is contact drive — the periphery states densely, under
+  // pressure, exactly as §9 demands.
+  if (T.PEER_LATTICE && world.popField) {
+    const pf2 = world.popField, siteId2 = L.siteId, tw2 = world.tw;
+    const rr2b = (2 * urbanCoreR(world)) ** 2;
+    const cellSeats = new Map();   // k → [seat ti,...] (tribal seats per cell)
+    if (world._landSeats) for (const [, seat] of world._landSeats) {
+      const kk = siteId2[seat.ti]; if (kk < 0) continue;
+      let a = cellSeats.get(kk); if (!a) cellSeats.set(kk, a = []); a.push(seat.ti);
+    }
+    const far2 = (i, ti) => {
+      const iy = (i / tw2) | 0, ix = i - iy * tw2, ty = (ti / tw2) | 0, tx = ti - ty * tw2;
+      let dx = Math.abs(ix - tx); if (dx > tw2 / 2) dx = tw2 - dx;
+      return dx * dx + (iy - ty) * (iy - ty) >= rr2b;
+    };
+    // Same round-robin as the primary loop (the shared AMORTIZATION above).
+    const best2 = new Map();       // k → { ti, p }
+    for (let i = 0; i < world.N; i++) {
+      const kk = siteId2[i]; if (kk < 0 || kk % PEER_ROUND !== phaseR) continue;
+      const p = pf2[i]; if (!(p > 0)) continue;
+      const cur = best2.get(kk); if (cur && cur.p >= p) continue;
+      if ((co && co[i] >= 0) || (lo0 && lo0[i] >= 0)) continue;
+      if (!far2(i, L.sites[kk].ti)) continue;
+      const ss = cellSeats.get(kk);
+      let ok = true;
+      if (ss) for (const t of ss) if (!far2(i, t)) { ok = false; break; }
+      if (ok) best2.set(kk, { ti: i, p });
+    }
+    for (const [kk, cand] of best2) {
+      tel(world, "landnat2", "CANDIDATE");
+      const basin2 = peopledBasinFrom(world, kk, cand.ti, barF);
+      if (basin2.mass < barF) { tel(world, "landnat2", "basinBelowBar"); continue; }
+      if (basin2.devP < NEOLITHIC_AGRI) { tel(world, "landnat2", "notFarming"); continue; }
+      // The identical pressure exam as the primary lane above (contact
+      // adjacency, else the caging law's cage × storable share).
+      let drive2 = 0;
+      if (T.ORG_CONTACT > 0) {
+        const th3 = world.th;
+        for (const t of basin2.take) {
+          const ty3 = (t / tw2) | 0, tx3 = t - ty3 * tw2;
+          const ns3 = [ty3 * tw2 + ((tx3 + 1) % tw2), ty3 * tw2 + ((tx3 - 1 + tw2) % tw2),
+                       ty3 > 0 ? t - tw2 : -1, ty3 < th3 - 1 ? t + tw2 : -1];
+          for (let n3 = 0; n3 < 4; n3++) {
+            const ni3 = ns3[n3]; if (ni3 < 0) continue;
+            if ((co && co[ni3] >= 0) || (lo0 && lo0[ni3] >= 0)) { drive2 = 1; break; }
+          }
+          if (drive2 >= 1) break;
+        }
+        if (drive2 < 1 && T.STATE_CAGE) {
+          const cg2 = cageAt(world, cand.ti);
+          if (cg2 > 0) {
+            const sp2 = basinStorablePeople(world, basin2.take, pf2);
+            drive2 = Math.max(drive2, cg2 * (basin2.mass > 0 ? Math.min(1, sp2 / basin2.mass) : 0));
+          }
+        }
+        const pF2 = Math.min(1, PEER_ROUND * drive2 / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive2))));
+        const rU2 = hash32(world.seed || 1, "landnat2", cand.ti, world.step) / 4294967296;
+        if (rU2 > pF2) { tel(world, "landnat2", "driveRoll"); continue; }
+      }
+      const id2 = world._nextSettlementId || 1; world._nextSettlementId = id2 + 1;
+      const anc2 = world.ancestry ? world.ancestry[cand.ti] : -1;
+      const cul2 = anc2 >= 0 ? ancestryCulture(world, anc2, null) : null;
+      let loM = world._landOwner;
+      if (!loM || loM.length !== world.N) { loM = world._landOwner = new Int32Array(world.N); loM.fill(-1); }
+      for (const t of basin2.take) if (loM[t] < 0) loM[t] = id2;
+      (world._landSeats || (world._landSeats = new Map())).set(id2, { ti: cand.ti });
+      ensurePolity(world, id2, { how: "tribal", name: cul2 ? nameFor(world, cul2, "realm") : null, cultureId: cul2 ? cul2.id : -1 });
+      telPass(world, "landnat2");
+    }
+  }
+  // ── T.FISSION — SEGMENTARY FISSION: polities reproduce by SPLITTING ──────
+  // (wave 3 of the variance arc, docs/variance-arc-2026-08-13.md; the owner's
+  // "no one ever spawns close enough to touch, and no one ever BREAKS OFF").
+  // History's polities were born NEIGHBOURING because most of them were born
+  // by fission: chiefdoms split along lineage rivalries when they outgrew one
+  // seat's grip (segmentary fission), realms were partitioned among heirs,
+  // colonies became sovereign peers — and every fission product is ADJACENT
+  // to its parent by construction. The sim had no early fission at all
+  // (elite fracture needs multi-province empires that never form without the
+  // wars that need the neighbours fission would have made — the measured
+  // circular starvation). Here the tribal fabric gets history's channel: a
+  // land nation whose ground holds TWO nations' worth of people splits —
+  // each half must independently clear the SAME founding bar the formation
+  // above just applied (barF — no new constant), the rival seat is its
+  // ground's strongest peopled tile outside the parent seat's core
+  // (≥ 2×urbanCoreR — the peer-spacing law), the ground partitions by
+  // proximity (each village follows its nearer seat), and the split fires on
+  // a sustained-condition hazard (SUBMIT_HAZARD's scale — a generation or
+  // two of lineage rivalry, the same clock courts capitulate on). The two
+  // successors are kin, dense, and TOUCHING — the border-friction pair every
+  // consolidation channel downstream has been starving for. 0 = off.
+  if (T.FISSION && world._landSeats && world._landSeats.size && lo0 && world.popField) {
+    const pf = world.popField, twF = world.tw, thF = world.th;
+    // One O(N) pass: mass + best-rival-tile per land nation.
+    const acc = new Map();   // id → { mass, seatTi, bestTi, bestPf }
+    for (const [id, seat] of world._landSeats) acc.set(id, { mass: 0, seatTi: seat.ti, bestTi: -1, bestPf: 0 });
+    const rrF = 2 * urbanCoreR(world), rrF2 = rrF * rrF;
+    for (let i = 0; i < world.N; i++) {
+      const id = lo0[i]; if (id < 0) continue;
+      const a = acc.get(id); if (!a) continue;
+      const p = pf[i];
+      a.mass += p;
+      if (p > a.bestPf) {
+        const sy = (a.seatTi / twF) | 0, sx = a.seatTi - sy * twF;
+        const iy = (i / twF) | 0, ix = i - iy * twF;
+        let dx = Math.abs(ix - sx); if (dx > twF / 2) dx = twF - dx;
+        const dy = iy - sy;
+        if (dx * dx + dy * dy >= rrF2) { a.bestPf = p; a.bestTi = i; }
+      }
+    }
+    for (const [id, a] of acc) {
+      if (a.bestTi < 0 || a.mass < 2 * barF) { if (a.mass >= 2 * barF) tel(world, "fission", "noRivalSeat"); continue; }
+      tel(world, "fission", "eligible");
+      // Sustained-condition hazard at the sweep cadence (SUBMIT_HAZARD per
+      // tick × the sweep interval — courts and lineages run the same clock).
+      const pFis = Math.min(1, 0.0017 * CRYSTAL_INTERVAL);
+      const rF = hash32(world.seed || 1, "fission", id, world.step) / 4294967296;
+      if (rF > pFis) continue;
+      // Partition: each village follows its nearer seat; each half must clear
+      // the founding bar on its own or the split is void (no rump statelets).
+      // Under T.ORGANIC_TAKE "nearer" is WALK order (two simultaneous
+      // people-first walks from the seats over the nation's own ground — a
+      // tile joins whichever court's influence reaches it first, so the split
+      // line follows valleys and density, not a geometric bisector); the
+      // fallback is the straight-line bisector.
+      const ny = (a.bestTi / twF) | 0, nx = a.bestTi - ny * twF;
+      const sy = (a.seatTi / twF) | 0, sx = a.seatTi - sy * twF;
+      let mNew = 0, mOld = 0;
+      const flip = [];
+      if (T.ORGANIC_TAKE) {
+        const own = new Map();   // ti → 0 (old seat) | 1 (new seat)
+        const heap = [];         // entries [ti, side], pf-max first, ties lower ti then side 0
+        const bet = (A, B) => pf[A[0]] > pf[B[0]] || (pf[A[0]] === pf[B[0]] && (A[0] < B[0] || (A[0] === B[0] && A[1] < B[1])));
+        const hpush = (e) => { heap.push(e); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (bet(heap[i], heap[p])) { const x = heap[i]; heap[i] = heap[p]; heap[p] = x; i = p; } else break; } };
+        const hpop = () => { const t = heap[0], l = heap.pop(); if (heap.length) { heap[0] = l; let i = 0; for (;;) { const a2 = 2 * i + 1, b2 = a2 + 1; let m = i; if (a2 < heap.length && bet(heap[a2], heap[m])) m = a2; if (b2 < heap.length && bet(heap[b2], heap[m])) m = b2; if (m === i) break; const x = heap[i]; heap[i] = heap[m]; heap[m] = x; i = m; } } return t; };
+        own.set(a.seatTi, 0); own.set(a.bestTi, 1);
+        hpush([a.seatTi, 0]); hpush([a.bestTi, 1]);
+        while (heap.length) {
+          const [t, side] = hpop();
+          const ty = (t / twF) | 0, tx = t - ty * twF;
+          const ns = [ty * twF + (tx === 0 ? twF - 1 : tx - 1), ty * twF + (tx === twF - 1 ? 0 : tx + 1),
+                      ty > 0 ? t - twF : -1, ty < thF - 1 ? t + twF : -1];
+          for (let n = 0; n < 4; n++) {
+            const ni = ns[n];
+            if (ni < 0 || lo0[ni] !== id || own.has(ni)) continue;
+            own.set(ni, side); hpush([ni, side]);
+          }
+        }
+        for (let i = 0; i < world.N; i++) {
+          if (lo0[i] !== id) continue;
+          if (own.get(i) === 1) { flip.push(i); mNew += pf[i]; } else mOld += pf[i];
+        }
+      } else {
+      for (let i = 0; i < world.N; i++) {
+        if (lo0[i] !== id) continue;
+        const iy = (i / twF) | 0, ix = i - iy * twF;
+        let dxN = Math.abs(ix - nx); if (dxN > twF / 2) dxN = twF - dxN;
+        let dxS = Math.abs(ix - sx); if (dxS > twF / 2) dxS = twF - dxS;
+        const dN = dxN * dxN + (iy - ny) * (iy - ny), dS = dxS * dxS + (iy - sy) * (iy - sy);
+        if (dN < dS) { flip.push(i); mNew += pf[i]; } else mOld += pf[i];
+      }
+      }
+      if (mNew < barF || mOld < barF) { tel(world, "fission", "halfBelowBar"); continue; }
+      const newId = world._nextSettlementId || 1; world._nextSettlementId = newId + 1;
+      for (const t of flip) lo0[t] = newId;
+      world._landSeats.set(newId, { ti: a.bestTi });
+      const ancId = world.ancestry ? world.ancestry[a.bestTi] : -1;
+      const cul = ancId >= 0 ? ancestryCulture(world, ancId, null) : null;
+      const newName = cul ? nameFor(world, cul, "realm") : null;
+      ensurePolity(world, newId, { how: "tribal", name: newName, cultureId: cul ? cul.id : -1 });
+      const parentPol = getPolity(world, id);
+      logEvent(world, "polity.seceded", { polity: newId, name: newName || undefined,
+        from: id, fromName: parentPol ? parentPol.name : undefined, how: "fission" });
+      telPass(world, "fission");
+    }
   }
 }
 
@@ -1463,7 +1936,32 @@ export function maybeCrystallize(world) {
             // technique wave's source, the ground itself does
             // (world._hearthSeeds → stampDevSources; persisted). Without
             // this, a seedless dawn could never leave the forager age.
-            (world._hearthSeeds || (world._hearthSeeds = [])).push({ ti: h.ti, agri: NEOLITHIC_AGRI });
+            // T.BASIN_IGNITE (2026-08-11, docs §7): the invention belongs to
+            // the BASIN that served its clock. effY accrued as dtYears ×
+            // basin/capMass over THIS very disk — its people collectively
+            // domesticated — yet the practice used to seed ONE tile and the
+            // wave then crawled across the basin's own farmers (measured at
+            // tw=960: the N-China plain's site basins sat at devP 0.34 vs
+            // the 0.45 farming gate ~3,500 steps AFTER the pin invented,
+            // with the cores already gathered past the city bar — ~5k steps
+            // of pure intra-basin diffusion before any nation could exist;
+            // probe_chinamint). Every peopled tile of the clock's own disk
+            // seeds at the invention level; the wave still carries the
+            // technique OUTWARD (inter-regional speed untouched, the
+            // DIFF_CLIM axis physics untouched). Same disk, same level,
+            // no new constant.
+            const seeds = (world._hearthSeeds || (world._hearthSeeds = []));
+            if (T.BASIN_IGNITE && world.popField) {
+              const pfI = world.popField;
+              for (let dy = -rB; dy <= rB; dy++) {
+                const yy = h.ty + dy; if (yy < 0 || yy >= th) continue;
+                for (let dx = -rB; dx <= rB; dx++) {
+                  if (dx * dx + dy * dy > rB * rB) continue;
+                  const t2 = yy * tw + (((h.tx + dx) % tw) + tw) % tw;
+                  if (pfI[t2] > 0) seeds.push({ ti: t2, agri: NEOLITHIC_AGRI });
+                }
+              }
+            } else seeds.push({ ti: h.ti, agri: NEOLITHIC_AGRI });
             logEvent(world, "farming.invented", { x: h.tx, y: h.ty });
             console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
           } else {

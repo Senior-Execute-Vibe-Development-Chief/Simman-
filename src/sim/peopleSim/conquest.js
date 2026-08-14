@@ -561,6 +561,23 @@ const RANGE_BASE = 8 * 1.02, RANGE_ORG = 16 * 1.02, RANGE_MOB = 10 * 1.02, RANGE
 // SPREAD needs rail+telegraph. Diagnosis (probe_landconc) showed admin alone was
 // projecting empires across continents without the transport history required.
 const RANGE_BASE_T = 5, RANGE_LOGI = 24, RANGE_ADMIN = 2, RANGE_MOB_T = 4, RANGE_NAV_T = 3;
+// T.REACH_GROUND — the ZERO-TECH base re-grounded to the pre-logistics fact
+// (the variance arc's density root, docs/variance-arc-2026-08-13.md: "in the
+// whole middle east area, only really 2 nations ever FIT"). RANGE_BASE_T = 5
+// cost-units ≈ an ~800km easy-terrain hold radius for a court with NO
+// logistics at all — the base was doing the empire's work, so every newborn
+// realm was born imperial-sized (measured: median realm 440-565k km² by step
+// 6,000 — Old-Kingdom Egypt's whole footprint at best, ~5× the early-bronze
+// norm) and a region that historically carried Egypt + Hatti + Mitanni +
+// Assyria + Babylon + Elam + a dozen Levantine city-states "fills" at two.
+// History's pre-road, pre-horse court administered ~50-150km directly (days
+// of donkey round-trip); everything farther was logistics — which the law
+// already prices (RANGE_LOGI carries roads→rail; rivers are cheap tiles, so
+// Egypt's court runs far ALONG THE VALLEY on a small budget: the valley
+// kingdom emerges from geography, not from a floor). Under the lever the
+// base falls to ~1 cost-unit (~a day or three of easy country, ~150km) and
+// every longer arm is EARNED. 0 = the imperial floor (byte-identical).
+const RANGE_BASE_G = 1;
 
 // Editor helper: the territorial hold-reach (in map tiles) a realm seated at
 // `seat` would project from its tech + personality — the same formula
@@ -668,7 +685,7 @@ export function rebuildCountries(world) {
     const k = best.knowledge || {};
     const bE = techEff(best), bMob = k.mobility || 0, bNav = k.navigation || 0;
     const rangeOld = RANGE_BASE + bE.reachLevel * RANGE_ORG + bMob * RANGE_MOB + bNav * RANGE_NAV;
-    const rangeNew = RANGE_BASE_T + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
+    const rangeNew = (T.REACH_GROUND ? RANGE_BASE_G : RANGE_BASE_T) + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
     c.range = rangeOld + (rangeNew - rangeOld) * T.TECH_EFFECTS;   // transport-gated hold-distance (TE=0 → old admin-driven)
     // Personality nudges reach: an expansionist realm projects authority a
     // little farther, a cautious one pulls in. Knowledge still sets the bulk
@@ -1303,6 +1320,25 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     const conq = world._byId ? world._byId.get(excludeId) : null;
     const by = conq && conq.countryId != null ? conq.countryId : -1;
     endPolity(world, oldId, how, by, by >= 0 ? realmName(world, by) : undefined);
+    // T.CONQUEST_CASCADE — THE NETWORK IS INHERITED (wave 2, docs/variance-
+    // arc-2026-08-13.md): a decisive conquest transfers the fallen realm's
+    // WHOLE dependency network to the victor, as it historically did — Cyrus
+    // beat Media in one campaign and inherited its empire entire; Alexander
+    // administered Persia through Persia's own satraps. Before this, the
+    // fallen suzerain's vassal bonds simply dangled/dissolved, so even a
+    // decisive war destroyed structure instead of concentrating it — half of
+    // why no bloc ever grew past 4-5 members. Succession shatters (how ≠
+    // "conquest") still scatter: there is no victor to inherit.
+    if (T.CONQUEST_CASCADE && how === "conquest" && by >= 0 && world.polities) {
+      const ov = world._overlordOf;
+      for (const p of world.polities.values()) {
+        if (!p || p._overlord !== oldId || p.endedStep >= 0 || p.id === by) continue;
+        p._overlord = by;
+        if (ov) ov.set(p.id, by);
+        logEvent(world, "polity.submitted", { polity: p.id, name: realmName(world, p.id),
+          to: by, toName: realmName(world, by), how: "inherited" });
+      }
+    }
   }
   let survivors = [];
   for (const s of world.settlements) {
@@ -2357,6 +2393,9 @@ export function updatePolities(world) {
   // Runs every polity pass on the (slow-drifting) alliance data; the new
   // vassal's tribute/bloc wiring takes effect next pass via rebuildOverlords.
   considerSubmissions(world, countries);
+  // The union of crowns: kin courts governing one cheap corridor merge — the
+  // symmetry breaker that seeds the first multi-city realms (below).
+  if (T.VALLEY_UNION) considerUnions(world, countries);
   // The steppe collects: hordes raid the rich settled rim (or honour the
   // treaties of those who submitted above). After submissions so a court that
   // bent the knee this pass is spared this pass's raid season.
@@ -3370,7 +3409,31 @@ function considerSubmissions(world, countries) {
     const spol = getPolity(world, sid);                     // pure read — the record is only minted on an actual submission
     if (spol && spol._overlord != null) { tel(world, "submit", "alreadyADependency"); continue; }
     const powS = eff.get(sid) || 1, powH = eff.get(hid) || 1;
-    if (powH < powS * SUBMIT_RATIO) { tel(world, "submit", "resistanceNotHopeless"); continue; }
+    // T.CONQUEST_CASCADE — VICTORY COLLAPSES WITNESS RESISTANCE (wave 2 of the
+    // variance arc, docs/variance-arc-2026-08-13.md). The funnel measured the
+    // 5× bar rejecting 63% of all candidate pairs: among born-equals the
+    // asymmetry the bar demands can never arise, so consolidation self-arrests
+    // at every scale (singles vs singles, then blocs of 4-5 vs blocs of 4-5).
+    // History's courts did not weigh STANDING power alone — they weighed the
+    // DEMONSTRATED RECORD. After Thymbra every court to the Aegean submitted
+    // to Cyrus at nothing like 5×; after Issus the Phoenician cities opened
+    // their gates unfought. The sim already BANKS that record: conquest
+    // momentum (govOf._momentum — fed by tiles captured and cities stormed,
+    // fast-decaying, nomad-doubled). Here the witness bar reads it: the
+    // effective ratio falls with the hegemon's momentum in stormed-city
+    // equivalents (÷MOMENTUM_PER_STORM — the bank's own unit), floored at
+    // PARITY (a court never kneels to a bloc weaker than itself, however
+    // storied). A cold conqueror still needs the full 5×; a hot streak
+    // overawes near-equals — and when the streak stalls, the bar snaps back
+    // on momentum's own decay clock. Zero new constants; boom feeds the
+    // existing bust machinery (momentum-crater shedding, capital-storm
+    // shatter, elite fracture) the large fast-won structures it never had.
+    let effRatio = SUBMIT_RATIO;
+    if (T.CONQUEST_CASCADE) {
+      const wins = (govOf(world, hid)._momentum || 0) / MOMENTUM_PER_STORM;
+      effRatio = Math.max(1, SUBMIT_RATIO / (1 + wins));
+    }
+    if (powH < powS * effRatio) { tel(world, "submit", "resistanceNotHopeless"); continue; }
     // The suzerain must be able to PROJECT force to S's seat — overawing needs a
     // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
     const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
@@ -3408,6 +3471,121 @@ function considerSubmissions(world, countries) {
     if (r > prob) { tel(world, "submit", mIdentity <= 1 / brake ? "identityBrake(foreignCourt)" : "coalitionBrake(deterrence)"); continue; }
     if (bendTheKnee(world, sid, hid)) telPass(world, "submit");
     else tel(world, "submit", "bendTheKneeRefused");
+  }
+}
+
+// ── T.VALLEY_UNION: the union of crowns in a cheap corridor (2026-08-11,
+// docs/dawn-cradles-2026-08-07.md §8) ────────────────────────────────────────
+// The owner's 174-AD map: a healthy filled world, every polity in one size
+// band, no hegemon anywhere. Measured (probe_sizeband, tw=960, 22k steps): 67
+// polities and multiCityRealms = 0 the WHOLE run — no realm ever holds two
+// cities. The structure guarantees it: the mint law only creates cities
+// OUTSIDE existing claims (1 city = 1 polity by construction), and every
+// consolidation channel is ASYMMETRY-gated (SUBMIT_RATIO 5×, ABSORB_DOMINANCE)
+// while the healthy synchronized dawn produces a cohort of NEAR-EQUALS — so
+// consolidation needed asymmetry and asymmetry needed consolidation, and the
+// political map froze as confetti. History's symmetry breaker was GEOGRAPHY:
+// near-parity KIN city-states sharing one cheap corridor UNIFIED (the Nile
+// valley cohering into Egypt c. 3100 BC — crowns merging among peers, not
+// capitulation to a 5× hegemon), and the first multi-city kingdoms then
+// generated the very asymmetries the existing overawe/absorb cascade runs on.
+// This pass is that channel, from quantities the sim already owns:
+//   · CORRIDOR — each capital lies within the OTHER court's holdReach: the
+//     two courts already govern one stretch of country in every sense but
+//     the crown (holdReach is the cost-grounded administrative radius, so
+//     cheap river/coast country makes long corridors by itself);
+//   · KINSHIP — the hazard scales by (1 − absorbResistance): full-kin courts
+//     unify readily, wholly foreign neighbours essentially never (the same
+//     era-weighted identity law every other peaceful transfer reads);
+//   · A MILD EDGE — hazard × min(1, powH/powS − 1): exact parity never
+//     merges (no coin-flip churn), a modest leader gathers its kin slowly,
+//     2× gathers at the full submission hazard — smooth, no threshold;
+//   · DETERRENCE — ÷ coalitionBrake, the same balance-of-power law that
+//     throttles overawing, so a runaway uniter alarms its neighbours.
+// The union is FULL (members join the winner at loyalty 1 — a negotiated
+// union of kin courts, not an occupation) but identity REMEMBERS
+// (recordOccupation): the old homeland persists in the cohesion ledger, so
+// unions can break again through the existing secession/restoration
+// machinery when the crown weakens. No new constants: SUBMIT_HAZARD,
+// holdReach, absorbResistance, coalitionBrake, settlementPower recombined.
+function considerUnions(world, countries) {
+  if (!world._countryPow) return;
+  const byId = world._byId;
+  if (!byId) return;
+  // Network power (own + dependencies), same measure the submission gate uses.
+  const own = new Map();
+  for (const c of countries.values()) {
+    let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m);
+    own.set(c.id, p);
+  }
+  fieldPowerOverlay(world, countries, own);
+  const ov = world._overlordOf;
+  const eff = new Map(own);
+  if (ov) for (const [dep, over] of ov) if (eff.has(over)) eff.set(over, (eff.get(over) || 0) + (own.get(dep) || 0));
+  const probBase = _passProb(SUBMIT_HAZARD);
+  const ids = [...countries.keys()].sort((a, b) => a - b);   // deterministic pair order
+  for (const sid of ids) {
+    const S = countries.get(sid);
+    if (!S || !S.capital) continue;
+    if (ov && ov.has(sid)) continue;                        // a dependency's crown is spoken for
+    // A union of crowns is a SUCCESSION event, not a standing offer: courts
+    // merged when the throne itself was in question (Aragon-Castile,
+    // Poland-Lithuania, James VI & I) — a court without a secure succession
+    // joins its kin rather than bleed over the crown. Ungated, the measured
+    // rate ran hot and diluted war causality (unioncensus: wars 7→23 across
+    // 3k steps as unions began; stylized 3 soft warnings over budget). The
+    // crisis window is the dynasty machinery's own emergent signal — rate
+    // now self-calibrates to dynastic fragility, and each union is a
+    // chronicled human moment instead of background drift.
+    if (!inCrisis(world, sid)) continue;
+    // Deterministic per-(seed, court, step) roll BEFORE the pair scan — free rejection.
+    const r = hash32(world.seed || 1, "union", sid, world.step) / 4294967296;
+    if (r > probBase) continue;
+    const powS = eff.get(sid) || 1;
+    // The court unites with its strongest KIN corridor partner, if any qualifies.
+    let best = -1, bestPull = 0;
+    for (const hid of ids) {
+      if (hid === sid) continue;
+      const H = countries.get(hid);
+      if (!H || !H.capital) continue;
+      if (ov && ov.has(hid)) continue;
+      const powH = eff.get(hid) || 1;
+      if (powH <= powS) continue;                           // the LARGER court hosts the union
+      const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
+      // The corridor: EACH court could administer the other's seat today.
+      if (d > Math.max(1, H.holdReach) || d > Math.max(1, S.holdReach)) continue;
+      const kin = 1 - absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+      if (kin <= 0) continue;
+      const edge = Math.min(1, powH / powS - 1);
+      if (edge <= 0) continue;
+      const pull = kin * edge / coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
+      if (pull > bestPull) { bestPull = pull; best = hid; }
+    }
+    if (best < 0) continue;
+    // Second roll against the pair's own pull (kin × edge ÷ brake), so a
+    // half-kin or barely-led union takes proportionally longer.
+    const r2 = hash32(world.seed || 1, "unionPull", sid, world.step) / 4294967296;
+    if (r2 > bestPull) continue;
+    // THE ACT IS THE BOND, NOT THE TRANSFER (the third measured form, and the
+    // one history wrote). Member-transfer was tried twice and the territory
+    // machinery UNDID it both times — first through the zombie-crown lane
+    // (no integration stamps), then, with every stamp, registry closure and
+    // claim snap in place, through the honest one: a young realm's claim
+    // budget cannot administer the second city's country, the crawl never
+    // turns the junior's ground, and the derivation strips the member
+    // (probe_unionhold3: byte-identical reversion THROUGH the full
+    // paperwork). The sim was right — early unions of crowns were PERSONAL
+    // UNIONS, two administrations under one senior crown (Aragon-Castile
+    // kept separate cortes for centuries) — and the sim's tested vassalage
+    // bond models exactly that: the junior keeps its realm, administration
+    // and land (no budget violation, nothing for the territory law to
+    // undo; VASSAL_SHIELD makes the bond the arrangement), while the
+    // bloc's POWER aggregates (eff-network) — which is the asymmetry seed
+    // the SUBMIT_RATIO cascade needs. Territorial consolidation follows
+    // later through the existing org-gated machinery as statecraft
+    // matures — the same two-act arc as Castile-Aragon → Spain.
+    if (bendTheKnee(world, sid, best, "union")) telPass(world, "union");
+    else tel(world, "union", "kneeRefused");
   }
 }
 

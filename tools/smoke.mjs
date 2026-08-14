@@ -90,7 +90,12 @@ console.log(`[smoke] invariant run: ${RUN_STEPS} steps with checks on`);
   let hitTotal = 0;
   if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
   check("zero invariant violations", hitTotal === 0, hits ? JSON.stringify(hits) : "");
-  check(`civilization alive (${st.settlements} settlements)`, st.settlements >= 5);
+  // Alive-floor 3 (was 5), re-derived 2026-08-07 with the CROP_BIOGEO+IRRIG_CROP
+  // flip: hearths now mature on their packages' real stagger, so this toy grid
+  // (tw=160, BELOW the reference) holds 4 settlements at step 4000 (measured,
+  // seed 4242) instead of the old synchronous dawn's 5+. The floor keeps its
+  // "alive, not two dots" duty; growth is guarded separately below.
+  check(`civilization alive (${st.settlements} settlements)`, st.settlements >= 3);
   check(`population grew (${p0} → ${st.totalPeople})`, st.totalPeople > p0);
   check("wealth finite & non-negative", Number.isFinite(st.totalWealth) && st.totalWealth >= 0, String(st.totalWealth));
   console.log(`  info step ${st.step} · ${st.settlements} settlements · pop ${st.totalPeople} · wealth ${st.totalWealth} · ${st.countries} countries · claimed ${(st.landPct * 100).toFixed(1)}% of land`);
@@ -252,7 +257,10 @@ console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
     check(`dissolve: no farming regions (t0=${t0})`, t0 === 0, `${t0} tier-0 remain`);
     const hits = a.debug && a.debug.invariantHits; let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
     check("dissolve: zero invariant violations", hitTotal === 0, hits ? JSON.stringify(hits) : "");
-    check(`dissolve: civilization alive (${sa.settlements} settlements)`, sa.settlements >= 5 && sa.totalPeople > 500);
+    // Alive-floor 3 (was 5) — the same 2026-08-07 dawn-pace re-derivation as the
+    // main run's floor above (this arm re-pins the seeded dawn, but the staggered
+    // hearth maturities apply there too: 4 settlements at 3k on this toy grid).
+    check(`dissolve: civilization alive (${sa.settlements} settlements)`, sa.settlements >= 3 && sa.totalPeople > 500);
     const gDiss = sa.settlements / Math.max(1, sa.totalPeople);
     const gLegacy = legacyN / legacyPop;
     check(`dissolve: fewer entities per person than farming-region model (${(1000 * gDiss).toFixed(1)} vs ${(1000 * gLegacy).toFixed(1)} per 1k pop)`,

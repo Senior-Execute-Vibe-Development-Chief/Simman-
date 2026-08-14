@@ -59,9 +59,12 @@ export function runBandLoop(d) {
     owner: b.owner ? new Int32Array(b.owner) : null,
     popA: F32(b.popA), popB: F32(b.popB), cap: F32(b.cap),
     // riverMag/coast are Uint8Array in the sim (riverGen/state.js) — the views
-    // MUST match or every worker read is garbage.
-    fert: F32(b.fert), riverMag: b.riverMag ? new Uint8Array(b.riverMag) : null,
-    coast: b.coast ? new Uint8Array(b.coast) : null, relief: F32(b.relief),
+    // MUST match or every worker read is garbage. Under T.ACCESS_BAND the
+    // coordinator redirects these slots to the Float32 banded-access fields
+    // (popField.js ensureAccessBand) and says so via geom.accessBand: the
+    // constructor MUST follow the redirect for exactly the same reason.
+    fert: F32(b.fert), riverMag: b.riverMag ? (g.accessBand ? new Float32Array(b.riverMag) : new Uint8Array(b.riverMag)) : null,
+    coast: b.coast ? (g.accessBand ? new Float32Array(b.coast) : new Uint8Array(b.coast)) : null, relief: F32(b.relief),
     devF: F32(b.devF), pasture: F32(b.pasture), worksF: F32(b.worksF), tfArr: F32(b.tfArr),
     tropicB: F32(b.tropicB), irr: F32(b.irr),
     mv: new Float64Array(b.mv), ssum: new Float64Array(b.ssum),

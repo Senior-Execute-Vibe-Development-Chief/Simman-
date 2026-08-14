@@ -33,6 +33,7 @@ import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
 import { TRAITS, labelFor } from "./sim/peopleSim/personality.js";
 import { estimateCountryRange } from "./sim/peopleSim/conquest.js";
+import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 
 // Country editor: drop a FULLY-FORMED realm — a capital plus the cities and towns
 // filling the territory its tech allows it to hold (estimateCountryRange), then a
@@ -107,11 +108,25 @@ let lastEvSent = 0;          // event-feed cursor (incremental narration to the 
 let selRealmId = -1;         // realm whose chronicle the panel is reading (-1 = follow selection)
 let chronKey = "";     // signature of the last chronicle shipped (realm|len|perspective) — re-send only on change
 let staticSent = false;      // owner/roadQuality sent at least once?
+// ── The atlas filter + the timeline (owner features 2026-08-14) ──────────────
+let minShowKm2 = 0;          // hide nations whose claim is smaller than this (km²) UNLESS they hold a settlement; 0 = show all
+let timeline = makeTimeline();   // ~every-year political frames (sparse diffs; see sim/timelineStore.js — shared with the main-thread fallback)
+let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
 
 self.onmessage = (e) => {
   const m = e.data;
+  try { handleMessage(m); }
+  catch (err) {
+    // A handler outside the per-branch try/catches threw (view switch, tune,
+    // select refresh, …). Report it instead of letting it escape to the page's
+    // worker.onerror — an escaped exception used to read as "the worker is
+    // broken" and cost the whole running world (see WorldSim's onerror).
+    self.postMessage({ type: "error", where: "message", step: world && world.step, message: err && err.message, stack: err && err.stack });
+  }
+};
+function handleMessage(m) {
   if (m.type === 'bandWorkerUrl') { setBandWorkerUrl(m.url); return; }   // popField pool: built-app band-worker chunk URL (page-resolved)
   if (m.type === "init") {
     try {
@@ -123,7 +138,7 @@ self.onmessage = (e) => {
       // are NOT reset (the main thread re-sends its current values right after
       // init) — but if a previous world was mid-play, keep stepping the new one
       // rather than silently freezing until the next control message.
-      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1;
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
       buildSnapshot();            // immediate first frame
       if (playing) scheduleTick();
     } catch (err) {
@@ -175,7 +190,7 @@ self.onmessage = (e) => {
       if (m.genMeta) genMeta = m.genMeta;
       world = loadWorld(m.json);
       world._wantMoneyFlows = (viewMode === "money");
-      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1;
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
       buildSnapshot();
       if (playing) scheduleTick();
     } catch (err) {
@@ -190,8 +205,21 @@ self.onmessage = (e) => {
     if (!playing && world) buildSnapshot();           // reflect on the paused frame
   } else if (m.type === "editor.placeCountry") {
     if (world) { try { editorPlaceCountry(world, m); } catch (err) { self.postMessage({ type: "error", message: "place failed: " + (err && err.message), stack: err && err.stack }); } staticSent = false; buildSnapshot(); }
+  } else if (m.type === "mapFilter") {
+    // The atlas bar: hide nations below m.minKm2 (settlement-holders always show).
+    minShowKm2 = m.minKm2 || 0;
+    staticSent = false;
+    if (!playing && world) buildSnapshot();
+  } else if (m.type === "scrub") {
+    // Timeline scrub by FRAME INDEX (~one frame per display year): decode via
+    // the shared store and ship the full layer. The UI swaps it in for the
+    // live political map.
+    if (world && frameCount(timeline)) {
+      const fr = frameAt(timeline, m.idx, world.N);
+      if (fr) self.postMessage({ type: "timelineFrame", step: fr.step, idx: Math.max(0, Math.min(frameCount(timeline) - 1, m.idx | 0)), frame: fr.claim, count: frameCount(timeline) }, [fr.claim.buffer]);
+    }
   }
-};
+}
 
 // While PLAYING the worker self-schedules a step/snapshot loop. While paused
 // it stops entirely (snapshots are posted on demand from onmessage), so it
@@ -241,8 +269,20 @@ function tick() {
   lastTickWall = now;
   const start = performance.now();
   for (let i = 0; i < steps; i++) {
-    try { stepPeopleSim(world, 1); }
-    catch (err) { self.postMessage({ type: "error", message: err && err.message, stack: err && err.stack }); playing = false; break; }
+    try {
+      stepPeopleSim(world, 1);
+      if (world.step - lastKeyStep >= CAPTURE_IVL) { lastKeyStep = world.step; captureFrame(timeline, world); }
+    }
+    catch (err) {
+      // The SIM threw. Pause (the world may be mid-mutation; stepping on would
+      // compound it) and tell the page WHERE and WHEN, so it can show the user
+      // instead of silently freezing at the last frame — the "game shuts down
+      // at step N" report. The world object still exists: save/export stay up,
+      // so the run can be rescued.
+      self.postMessage({ type: "error", where: "step", step: world.step, message: err && err.message, stack: err && err.stack });
+      playing = false;
+      break;
+    }
     if (performance.now() - start > STEP_BUDGET_MS) break;
   }
   const t = performance.now();
@@ -316,7 +356,25 @@ function packSelected(s) {
   };
 }
 
+// A snapshot failure must NEVER escape this function: it is called from the
+// tick loop and every onmessage refresh, and an escaped exception reaches the
+// page's worker.onerror — which used to tear down the worker and re-init a
+// FRESH world, destroying the run (the sim itself was healthy; only the
+// RENDERING of it failed). Report the error (throttled — the same broken read
+// would otherwise spam every frame) and keep the sim alive: the map holds the
+// last good frame, stepping continues, and save/export can rescue the world.
+let _snapErrAt = -Infinity;
 function buildSnapshot() {
+  try { buildSnapshotUnsafe(); }
+  catch (err) {
+    const now = performance.now();
+    if (now - _snapErrAt > 5000) {
+      _snapErrAt = now;
+      self.postMessage({ type: "error", where: "snapshot", step: world && world.step, message: err && err.message, stack: err && err.stack });
+    }
+  }
+}
+function buildSnapshotUnsafe() {
   const setts = [];
   for (const s of world.settlements) if (s.mode === "settled") setts.push(packSettlement(s));
 
@@ -602,6 +660,22 @@ function buildSnapshot() {
     const lo = world._landOwner;
     for (let i = 0; i < countryClaim.length; i++) if (countryClaim[i] < 0 && lo[i] >= 0) countryClaim[i] = lo[i];
   }
+  // THE ATLAS BAR (owner feature): nations below minShowKm2 vanish from the
+  // political map — historical atlases at world zoom show polities from
+  // roughly principality scale up — UNLESS they hold a settled community
+  // (the owner's rule: a nation with a real settlement always shows).
+  // Render-only: the sim's authoritative maps are untouched.
+  if (countryClaim && minShowKm2 > 0) {
+    if (!world._km2PerTileW) { let lt = 0; for (let i = 0; i < world.N; i++) if (world.elev[i] > 0) lt++; world._km2PerTileW = (510e6 * 0.29) / Math.max(1, lt); }
+    const counts = new Map();
+    for (let i = 0; i < countryClaim.length; i++) { const id = countryClaim[i]; if (id >= 0) counts.set(id, (counts.get(id) || 0) + 1); }
+    const hasSett = new Set();
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) hasSett.add(s.countryId);
+    const barTiles = minShowKm2 / world._km2PerTileW;
+    const hide = new Set();
+    for (const [id, n] of counts) if (n < barTiles && !hasSett.has(id)) hide.add(id);
+    if (hide.size) for (let i = 0; i < countryClaim.length; i++) if (hide.has(countryClaim[i])) countryClaim[i] = -1;
+  }
   if (countryClaim) transfer.push(countryClaim.buffer);
   if (fieldDom) { transfer.push(fieldDom.buffer); transfer.push(fieldSec.buffer); }
   if (loyal) { transfer.push(loyal.buffer); if (loyalHome) transfer.push(loyalHome.buffer); }
@@ -626,6 +700,7 @@ function buildSnapshot() {
   self.postMessage({
     type: "snapshot",
     step: world.step,
+    timelineN: frameCount(timeline),   // frames available to the history scrubber
     eraAt: world._eraAt,             // display-calendar timeline (era → step it was reached)
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),

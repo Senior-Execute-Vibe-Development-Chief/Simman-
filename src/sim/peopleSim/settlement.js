@@ -10,13 +10,14 @@
 import { seedLocalTerritory } from "./territory.js";
 import { mergeReach } from "./roads.js";
 import { techEffects } from "./tech.js";
-import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
+import { agriGate, bestPackageAt, pkgSuitAt, cropCeil } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { fieldShift } from "./popField.js";
 import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
+import { cageAt } from "./cageField.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
@@ -714,7 +715,23 @@ function techEff(s) {
   if (!s._techEff) s._techEff = techEffects(practisedK(s.knowledge, s._metalCap), T.TECH_EFFECTS);
   return s._techEff;
 }
-export { techEff };
+export { techEff, computeConfinement };
+
+// ── The administrative-reach ramp (ONE definition, two consumers) ──────────
+// Statecraft below LEVY_ORG_MIN cannot run a systematic assessment of the
+// countryside at all (a chiefdom takes tribute, not a grain levy); above it
+// the bureaucracy ramps to full reach. The food hierarchy's in-kind levy
+// (foodHierarchy.js levyShare = LEVY_MAX × this) and the ledger's authority
+// over rural carrying capacity (T.FOOD_REACH → FOOD_K's blend weight,
+// popField.js) are the SAME administrative capacity, so they read the same
+// ramp — a state that cannot collect the harvest cannot re-price the land
+// that grows it. Emergent: gated on the settlement's own statecraft
+// (techEff reachLevel), never a date.
+export const LEVY_ORG_MIN = 0.35;   // the proto-state threshold (moved here from foodHierarchy.js — one definition)
+export function foodReach(s) {
+  const org = techEff(s).reachLevel || 0;
+  return org > LEVY_ORG_MIN ? Math.min(1, (org - LEVY_ORG_MIN) / (1 - LEVY_ORG_MIN)) : 0;
+}
 
 // ── Wealth: money comes from trade, not thin air ──
 //
@@ -1158,7 +1175,7 @@ export function computeExportValue(s, world) {
     ag += (k.navigation || 0) * s.waterAccess * 0.5;     // coastal / river shipping — a SERVICE (booked as goods)
     // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades for
     // coin; most is eaten fresh & locally, so it's minor next to the grain staple.
-    const fish = s.waterAccess * (k.navigation || 0) * 0.3;
+    const fish = T.FISH ? s.waterAccess * (k.navigation || 0) * 0.3 : 0;
     ag += fish; agFood += fish;
   }
   const horses = r.horses || 0;
@@ -1386,7 +1403,7 @@ export function getExportBreakdown(s, world) {
   if ((s.waterAccess || 0) > 0) {
     const v = (k.navigation || 0) * s.waterAccess * 0.5 * mult;
     if (v > 0.01) out.push({ label: "Ship goods", value: v });
-    const fish = s.waterAccess * (k.navigation || 0) * 0.3 * mult;
+    const fish = T.FISH ? s.waterAccess * (k.navigation || 0) * 0.3 * mult : 0;
     if (fish > 0.01) out.push({ label: "Salt fish", value: fish });
   }
   const horses = r.horses || 0;
@@ -1703,7 +1720,7 @@ export function birthOrgAt(world, x, y, base) {
   return base + (bar - base) * site;
 }
 
-function computeConfinement(world, x, y) {
+function computeConfinement(world, x, y) {   // exported below for probes (the land-nation gate no longer reads it — measured mis-scoring ecological circumscription, see crystallize.js)
   const { tw, th, elev, temp, moist } = world;
   const R = 6; let bar = 0, tot = 0;
   for (let dy = -R; dy <= R; dy++) {
@@ -2050,11 +2067,58 @@ function updateKnowledge(world, s) {
   // byte-identical.
   const _fillK = s._k > 0 ? Math.min(1.5, (s.people || 0) / s._k) : 0;
   const pressMul = T.ORG_PRESSURE > 0 ? 1 + T.ORG_PRESSURE * (s._confine || 0) * _fillK : 1;
+  // T.ORG_CONTACT — STATES MAKE STATES (2026-08-11, the state-frontier wave;
+  // docs/dawn-cradles-2026-08-07.md §9). Statehood was a local exam with a
+  // planetary answer key: uniform birth org climbing at a near-uniform rate
+  // crossed ORG_STATE_MIN as one cohort, so nations stood on every habitable
+  // band within one early window and held there to the end (owner report;
+  // measured: formations from 172km to 4,278km off the cradles inside ~7k
+  // steps — ~3km/y against history's ~0.5-1km/y state frontier, and
+  // contact-blind: the Baltic stated before the North China Plain —
+  // probe_statefrontier). History's periphery waited MILLENNIA, then stated
+  // under CONTACT PRESSURE from existing states (trade, threat, emulation —
+  // Tilly's "states make states"; farmed Neolithic Europe stayed pre-state
+  // ~4,000 years while circumscribed Egypt stated pristine). Statecraft
+  // therefore compounds only under PRESSURE: the site's own (pressMul above
+  // — Carneiro's circumscription×fill, the PRISTINE engine, so the cradles
+  // and the Americas bootstrap exactly as before) or an existing state's
+  // example in trade reach (s._stateContact — stamped one knowledge pass
+  // stale by the reach loop below, the SECONDARY engine). A settlement
+  // already governing (countryId ≥ 0) is its own pressure — running a court
+  // teaches statecraft — so the lever shapes only the PRE-STATE climb: the
+  // frontier. The normalized re-base ×(1+K·drive)/(1+K) leaves a fully
+  // pressed village at today's exact pace and an unpressured open-frontier
+  // one at 1/(1+K) of it. No new reference constants; both drives are live
+  // local state; no clock, no place. 0 = the planetary cohort (byte-identical).
+  // T.STATE_CAGE (2026-08-12, docs §10 — the owner's re-founding question:
+  // "nations spawn where population gets big enough... was that really the
+  // core force?"): CAGING joins the pre-state drives, as Carneiro's full
+  // triad — circumscription × surplus (pressure is the K re-base itself).
+  // cage (cageField.js): the share of country within flight distance, beyond
+  // the own basin, that a defeated household could NOT flee to — people
+  // hemmed by desert/mountain (or by other states' closed borders) cannot
+  // walk away from a quarrel or a tax, so statecraft compounds; people on an
+  // open plain disperse instead (measured on the REAL field: the _confine
+  // proxy mis-scored exactly the desert-hemmed cradles — the Indus seat read
+  // 0.01). × cropCeil, the settlement's own storable ceiling (suit ×
+  // storability, the CITY_STORE axis): a cage with no taxable grain inside
+  // it raises no state (the taiga, the tuber belts — however hemmed, nothing
+  // to seize). The Nile/Sumer strip reads high × high and arms PRISTINE at
+  // full pace; the rain-fed European interior reads cage ≈ 0 and waits for
+  // contact — history's four-millennium gap, from one field. No new
+  // constants: two existing radii, two existing measures, the same re-base.
+  let contactMul = 1;
+  if (T.ORG_CONTACT > 0 && s.countryId < 0) {
+    const cageDrv = T.STATE_CAGE
+      ? cageAt(world, (s.pos.y | 0) * world.tw + (s.pos.x | 0)) * cropCeil(world, s) : 0;
+    const drive = Math.min(1, Math.max(pressMul - 1, Math.max(s._stateContact || 0, cageDrv)));
+    contactMul = (1 + T.ORG_CONTACT * drive) / (1 + T.ORG_CONTACT);
+  }
   if (process.env.SIM_DBG_PRESS && (world._pDbg = (world._pDbg || 0) + 1) <= 5) {
-    console.error(`  [press] confine=${(s._confine||0).toFixed(3)} people=${Math.round(s.people||0)} _k=${(s._k||0).toFixed(1)} fill=${_fillK.toFixed(3)} pressMul=${pressMul.toFixed(3)} confineMul=${confineMul.toFixed(3)} org=${k.organization.toFixed(4)}`);
+    console.error(`  [press] confine=${(s._confine||0).toFixed(3)} people=${Math.round(s.people||0)} _k=${(s._k||0).toFixed(1)} fill=${_fillK.toFixed(3)} pressMul=${pressMul.toFixed(3)} confineMul=${confineMul.toFixed(3)} contactMul=${contactMul.toFixed(3)} org=${k.organization.toFixed(4)}`);
   }
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul * rulerLearn * pressMul);
+    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul * rulerLearn * pressMul * contactMul);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance
@@ -2210,6 +2274,13 @@ function updateKnowledge(world, s) {
       const costW = Math.exp(-((link && link.cost) || 0) / DIFFUSE_COST_K);
       for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; kmCostW[t] = costW; } }
     }
+    // T.ORG_CONTACT: a state's example in trade reach is the SECONDARY-state
+    // pressure (the org-growth law above reads this one knowledge pass stale).
+    // The rivals set already collects every reach partner flying a foreign
+    // state's flag — for a stateless settlement that is exactly "an existing
+    // state presses on you". Not persisted: rewarms in one KNOW_INTERVAL
+    // after load, the same class as war fronts.
+    s._stateContact = rivals.size ? 1 : 0;
     // ── PEER competition (T.PEER_COMPETE): rivals are independent PEERS ────────
     // The competition-drives-innovation thesis (Hume, the warring states, fractious
     // Europe) is about states that could genuinely BEAT you — not any foreign flag
@@ -2817,6 +2888,47 @@ function updateFood(world, s) {
   // plantation/mine workforce adds real food demand the settlement must cover or import.
   const slaveFood = T.SLAVERY ? (s._unfree || 0) * 0.0030 * T.SLAVE_FEED : 0;
   const demand = civDemand + armyFood + slaveFood;
+  // T.FOOD_REACH consequence-side completion (2026-08-11, docs §6): the CORE's
+  // own need — what the pot must actually cover for the people who depend on
+  // it (urban core at the civic rate, the garrison, the unfree). The ledger's
+  // headline demand deliberately keeps billing the WHOLE census (the
+  // FED_FAMINE precedent: re-keying the granary drain re-keys granary/trade
+  // balances world-wide), but under FOOD_REACH the census counts subsistence
+  // people the market neither feeds nor taxes — so the empty-pot famine gate
+  // below compares the supply FLOW against THIS, not against the notional
+  // whole-catchment drain. Stashed, not returned: the famine block runs later.
+  s._coreNeed = Math.min(s.people, s._urbanPop || 0) * 0.0030 * urbanFactor + armyFood + slaveFood;
+  // Sustained FED-NESS (T.STARVE_SHED reads this in the field pass): a slow
+  // moving average of flow-vs-core-need — ~100-tick memory, a granary-decade.
+  // One bad harvest barely moves it; a chronically starving core sees its
+  // capacity floor melt at generational pace (the owner's stone-age
+  // "metropolis, actively STARVING, still growing 100k+": the CORE_HOLD
+  // floor held capacity with no food term at all, so the field logistic
+  // kept filling a core whose granary was empty — growth read capacity,
+  // famine read the granary, and they never met).
+  {
+    const fedNow = s._coreNeed > 0 ? Math.min(1, (s._foodSupply || 0) / s._coreNeed) : 1;
+    s._fedM = s._fedM === undefined ? 1 : 0.99 * s._fedM + 0.01 * fedNow;
+  }
+
+  // T.SIEGE_STARVE — a BESIEGED seat eats its granary (the variance arc's
+  // storm-gate fix, docs/variance-arc-2026-08-13.md): while an enemy front
+  // stands at the walls (armies.js stamps _besiegedAt each war pass it
+  // holds), the fields and the roads are the besieger's — the supply FLOW is
+  // cut and the core lives on stores, drained at the walls' own demand. When
+  // the granary empties, the famine ratio the storm's break test reads goes
+  // to zero and the militia withers — history's siege clock, run by the
+  // city's own stores (a stocked metropolis holds for years, an empty town
+  // for weeks; a relieved city re-supplies the moment the front breaks).
+  // Scoped hard to the besieged seat while the stamp is fresh — the
+  // FED_FAMINE/FOOD_REACH scars demand the consequence never re-keys the
+  // drain of anyone else. Freshness = the war pass cadence (an existing
+  // clock: the stamp renews while the front holds).
+  if (T.SIEGE_STARVE && s._besiegedAt !== undefined
+      && world.step - s._besiegedAt < (T.POLITY_INTERVAL || 150) * 1.5) {
+    s._besiegedNow = true;   // the supply assignment below zeroes the flow
+    s.food = Math.max(0, (s.food || 0) - (s._coreNeed || 0));
+  } else if (s._besiegedNow) s._besiegedNow = false;
 
   // RETAINED land food — what the food HIERARCHY leaves this settlement: its
   // aggregated subtree intake minus what its liege levied/bought away (computed
@@ -2834,7 +2946,12 @@ function updateFood(world, s) {
   // anchovy coast that may have underwritten Caral, the oldest American civilisation. So fish here
   // emerges exactly where it mattered and nowhere else: it scales UP where the SEA is rich and the
   // LAND is poor, and falls to ~0 in the fertile river cradles and the nutrient-poor tropics.
-  const sea = Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0));   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
+  // T.FISH master gate (owner directive 2026-08-14: "remove fish as a food
+  // source entirely"). 0 = no sea access for the food law: both fishery arms
+  // (Tier-B labor fishery and the legacy flat cap) read sea=0, the boats
+  // stand down through the existing reallocation decay, and coastal food is
+  // land food alone. Old saves keep their fed coasts (v19 guard pins 1).
+  const sea = T.FISH ? Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0)) : 0;   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
   let fish = 0;
   if (T.FISH_LABOR > 0) {
     // ── Tier-B fish: the catch costs LABOR and draws down a STOCK ────────────
@@ -2984,12 +3101,16 @@ function updateFood(world, s) {
   const supply = netLand + fish;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
-  s._foodSupply = supply;
+  s._foodSupply = (T.SIEGE_STARVE && s._besiegedNow) ? 0 : supply;   // a besieged seat's flow is the besieger's (T.SIEGE_STARVE, block above)
   s._foodDemand = demand;          // total (civilian + garrison) — drains the granary
   s._civFoodDemand = civDemand;    // civilian only — army sizing reads this
   s._landFood = landFood;          // LOCAL farm production only (no hierarchy imports, no fish) — for the food-viability overlay
   s._urbanFactor = urbanFactor;
-  s.food += supply - demand;
+  // A granary cannot hold negative grain (owner report 2026-08-14: "cities
+  // STILL have negative food"): the store floors at 0 — an uncovered
+  // shortfall's consequence is the famine channel and the STARVE_SHED melt,
+  // never a grain debt carried on the books.
+  s.food = Math.max(0, (s.food || 0) + supply - demand);
   // T.TRIBUTE_OF_LAND — Joseph's granary: the CAPITAL draws the polity's
   // in-kind store down when its own granary runs below a few ticks of
   // demand. The state's storehouse is the famine buffer it historically was
@@ -3251,11 +3372,60 @@ function updatePopulation(world, s) {
   s._k = K;
   s._foodK = foodK;            // exposed so the info panel can show which limit binds
   s._houseK = houseK;
+  // T.FOOD_REACH — the ledger's writ over its countryside (2026-08-11, the
+  // residual birth-crater root cause; docs/dawn-cradles-2026-08-07.md §6).
+  // Stamped here (techEff's home turf) so the field pass reads a plain field:
+  // FOOD_K's blend weight becomes fkL × THIS — the same administrative ramp
+  // the grain levy runs on (foodReach below), because a border is not an
+  // economy: the market's authority over rural carrying capacity extends
+  // exactly as far as the bureaucracy that can assess, collect and haul the
+  // countryside's harvest. Below the proto-state threshold the countryside
+  // keeps the subsistence formula wholesale.
+  s._foodReach = T.FOOD_REACH ? foodReach(s) : 1;
 
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
-  if (s.food <= 0.01 && s.people > 1) {
+  // ── T.FED_FAMINE: an empty CITY granary starves the CITY — the urban core,
+  // the people who depend on the pot — never the subsistence countryside whose
+  // own harvest fed them the tick before. The 2026-08-07 birth-crater
+  // investigation measured the defect this scopes out: under ONE_POP a newborn
+  // censuses its WHOLE catchment onto a ledger whose supply machinery starts
+  // cold (worked farmland assigns over territory passes), demand ran 2-25×
+  // supply, the granary window expired, and the empty-pot die-off — applied to
+  // the FULL census — starved 50-90% of the basin's field people around the
+  // newborn (Ganges: half of a 124k-person basin; Indus/Nile to 0.25-0.27× at
+  // the app grid). Countryside starvation has its own honest channels — the
+  // field's capacity law (pop > cap) and the harvest-shock module (famine
+  // windows cut landFood, which both the pot AND the field feel) — so the
+  // pot's emptiness is the CORE's emergency alone. v1 of this lever scoped the
+  // base by a fedPeak supply-ratchet ("the most people the ledger ever fed")
+  // and measured DEFEATED: newborn ledgers see transient supply spikes
+  // (hierarchy grain, first harvests — s≈1.5-1.8 at +250 steps) that ratchet
+  // the memory to census scale before the crash, and the craters reproduced
+  // ~unchanged (tables in docs/dawn-cradles-2026-08-07.md §4). No memory, no
+  // ratchet, no constant: the base IS the urban core.
+  // T.FOOD_REACH famine gate (2026-08-11, docs §6): an empty STORE is not
+  // core starvation while the supply FLOW still covers the core's own need.
+  // Under FOOD_REACH the census (and so the ledger's headline demand) counts
+  // subsistence countryside the market neither feeds nor taxes, so a
+  // proto-state city amid a THRIVING basin runs a permanently negative
+  // notional ledger — pot pinned at 0, the die-off firing every tick at full
+  // rate (measured: famT 775/1101 ticks, Σkill 2990, the dissolve-arm
+  // aliveness gate broken) while its actual flow (s/d 2.58/4.25) covered its
+  // 87-person core several times over. The gate compares flow to _coreNeed
+  // (the pot's real dependents at the civic rate + garrison + unfree — the
+  // same quantities FED_FAMINE scopes the KILL to); genuine starvation
+  // (flow below the core's own need) dies exactly as before. Follows the
+  // FED_FAMINE precedent: scope the famine CONSEQUENCE, never re-key the
+  // calibrated granary/trade drain. Lever off ⇒ gate absent, byte-identical.
+  if (s.food <= 0.01 && s.people > 1
+      && (!T.FOOD_REACH || (s._foodSupply || 0) < (s._coreNeed !== undefined ? s._coreNeed : Infinity))) {
     const before = s.people;
-    s.people *= Math.pow(0.985, _dt);                 // famine die-off, per-tick → granularity-scaled
+    if (T.FED_FAMINE) {
+      const dependents = Math.min(before, s._urbanPop || 0);
+      s.people = Math.max(1, before - dependents * (1 - Math.pow(0.985, _dt)));
+    } else {
+      s.people *= Math.pow(0.985, _dt);               // legacy: famine die-off over the whole census
+    }
     fieldShift(world, s, s.people - before);          // one population: hunger empties the LAND too (FIELD_DEMOG)
   } else if (T.ONE_POP) {
     // ONE POPULATION (docs/one-population.md slice B): the census logistic

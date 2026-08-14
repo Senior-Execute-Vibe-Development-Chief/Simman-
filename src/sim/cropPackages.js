@@ -62,7 +62,26 @@ export const CROP_PACKAGES = [
   // wheat was; the DIRECTION is the evidence-backed claim, the exact figure is
   // not derivable to three digits and is not asserted to be.
   { id: "maize",   name: "Maize",          tOpt: 0.82, tTol: 0.100, tTolEarly: 0.055, mOpt: 0.50, mTol: 0.18, storability: 0.95, yield: 1.05, domLagY: 4500, color: [225, 140, 55] },
-  { id: "sorghum", name: "Sorghum & Millet", tOpt: 0.87, tTol: 0.100, mOpt: 0.30, mTol: 0.17, storability: 0.90, yield: 0.85, domLagY: 2000, color: [196, 170, 110] },
+  { id: "sorghum", name: "Sorghum & Pearl Millet", tOpt: 0.87, tTol: 0.100, mOpt: 0.30, mTol: 0.17, storability: 0.90, yield: 0.85, domLagY: 2000, color: [196, 170, 110] },
+  // MILLET (foxtail/broomcorn — the North-China founder crop), split from the
+  // Sahel package 2026-08-07 (owner order; docs/dawn-cradles-2026-08-07.md §5).
+  // The combined "Sorghum & Millet" wore one Sahel-hot bell (tOpt 0.87 ≈ 27°C)
+  // that scores ~0 on the cool Central Plain, so the Yellow River pin fell to
+  // RICE's 2,500y lag at mediocre suit — measured needY 3,564-3,945y, 2.3-2.6×
+  // the Nile/Indus, making China the LAST Old-World cradle and a seed-coin-flip
+  // against Mesoamerica when the real record has Cishan/Xinglonggou millet
+  // villages nearly contemporary with the Crescent. Values, all archaeobotany-
+  // class (direction and order the claim, digits not asserted): a WARM-SEASON
+  // temperate summer crop (tOpt 0.84 ≈ the N-China 22-26°C growing season, ≥
+  // the 0.80 warm-season classifier line; tTol 0.080 — a temperate band, not
+  // equatorial); dryland summer-rain moisture (mOpt 0.32 between wheat's 0.36
+  // and sorghum's 0.30); storability 1.00 — millet IS the ancient Chinese
+  // granary/tax staple (Qin/Han grain levies); modest yield 0.85; and the
+  // FAST lag that is the whole point: ~1,500y (cultivation ~8000-7500 BC →
+  // domesticated forms by ~6500 BC — slower than wheat's 900, far faster than
+  // rice's proto-domestication tail). Gated by T.CROP_MILLET (v7 save-regime
+  // guard: a pre-split save keeps the agronomy it grew on).
+  { id: "millet",  name: "Millet",          tOpt: 0.84, tTol: 0.080, mOpt: 0.32, mTol: 0.16, storability: 1.00, yield: 0.85, domLagY: 1500, color: [214, 196, 120] },
   { id: "tubers",  name: "Roots & Tubers", tOpt: 0.85, tTol: 0.100, mOpt: 0.78, mTol: 0.20, storability: 0.35, yield: 1.00, domLagY: 3000, color: [150, 95, 175] },
 ];
 

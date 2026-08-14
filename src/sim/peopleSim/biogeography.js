@@ -42,7 +42,8 @@ const PACKAGE_ORIGINS = {
   wheat:   [{ fx: 0.578, fy: 0.330 }, { fx: 0.622, fy: 0.330 }, { fx: 0.694, fy: 0.344 }],  // the Fertile Crescent arc: Levant/Nile · Mesopotamia · toward the Indus
   rice:    [{ fx: 0.790, fy: 0.380 }],                    // Yangtze / monsoon Asia
   maize:   [{ fx: 0.230, fy: 0.400 }],                    // Mesoamerica
-  sorghum: [{ fx: 0.520, fy: 0.430 }, { fx: 0.800, fy: 0.300 }],  // Sahel + N-China millet
+  sorghum: [{ fx: 0.520, fy: 0.430 }],                    // the Sahel (sorghum + pearl millet)
+  millet:  [{ fx: 0.800, fy: 0.300 }],                    // N-China foxtail/broomcorn millet — the centre the combined package could never use (its Sahel bell scored ~0 there; the 2026-08-07 split gives the Yellow River its real founder crop)
   tubers:  [{ fx: 0.560, fy: 0.560 }, { fx: 0.270, fy: 0.550 }],  // tropical W-Africa + Andes/Amazonia
 };
 
@@ -244,9 +245,25 @@ export function ensureDistFields(world) {   // exported for probes (drift measur
 // OBSERVED climate, a 0.6 core left the Nile and Mesopotamia pins with NO package
 // at all (score 0.50 fallback, armed for 7,000y instead of seating) — the crop
 // gate silently un-seating the historical cradles, which is worse than the
-// anachronism it was fixing. 2.5 covers the Crescent arc end to end (measured
-// Crescent→Levant 1.46, →Anatolia 2.69) without reaching another band's core.
-const REACH_BASE = 2.5;   // the domestication core: present here from the first
+// anachronism it was fixing.
+// RE-ANCHORED 2026-08-11 (the false N-European pristine cradle, docs §9): the
+// 2.5 core was calibrated against STALE anchors ("Crescent→Europe ≈ 4.7") —
+// the field has since cheapened (zone-smoothed climate tolls), and 2.5 came to
+// blanket Europe wholesale: a PRISTINE wheat hearth armed at N-FRANCE
+// (needY ~2,000y, measured in every dawn log of the session) and on some
+// seeds invented BEFORE the Nile — Brittany/Denmark/Iberia stood as Bronze-Age
+// nations while the Crescent still gathered (owner's map + chronicle). Fresh
+// anchors, measured on the live field (480/8817, from-0 dawn, probe_francewheat):
+//   IN the arc:  Anatolia 0.21 · SE-Anatolia 0.39 · Nile 0.65 · Mesopotamia
+//                0.81 · Indus 0.83 · Zagros 0.94
+//   OUT:         Caucasus 1.35 · N-France 1.55 · Iberia 1.94 · Denmark 2.19
+// 1.1 splits the bands cleanly (Greece at 0.89 rides inside — a low-suit
+// Aegean arming never outraces the arc pins; the poison was the northern
+// blanket). Mature presence is untouched in practice: reach grows with
+// REACH_DEV × leading agriculture, so the diffusion arc still covers Europe
+// exactly as the technique matures — only the PRISTINE dawn core shrinks to
+// the ground that actually held the wild ancestors.
+const REACH_BASE = 1.1;   // the domestication core: present here from the first
 const REACH_DEV  = 7.0;   // + this × leading agriculture — the mature along-band spread
 
 function leadAgri(world) {
@@ -256,9 +273,17 @@ function leadAgri(world) {
 }
 
 // PUBLIC: is this package available (has it spread) at this tile? True for every
-// package when the lever is off or the fields aren't built yet (byte-identical).
+// package when the levers are off or the fields aren't built yet (byte-identical).
+// TWO LEVERS READ THIS, deliberately split (2026-08-07, the from-0 dawn report):
+// T.CROP_HOMELAND is the PRESENCE half alone — "you can only domesticate a wild
+// ancestor that exists where you are", the anachronism-killer (maize in China,
+// rice in Australia, wheat in the southern hemisphere). T.CROP_BIOGEO is the
+// full bundle, adding the adaptation DISCOUNT below — measured to thin
+// domesticated-crop coverage past the founding bars (6k-step realm supply
+// 46 -> 4 at the resgate arm), which is why the full lever stays blocked while
+// the presence half ships. One mechanism, one distance field, two claims.
 export function packagePresent(world, ti, pkg) {
-  if (!T.CROP_BIOGEO) return true;
+  if (!T.CROP_BIOGEO && !T.CROP_HOMELAND) return true;
   const pd = world._pkgDist || ensureDistFields(world);
   const f = pd.fields[pkg.id]; if (!f) return true;
   const d = f[ti];
@@ -294,5 +319,5 @@ export function packageAdaptMul(world, ti, pkg) {
 // per-tile query in a hot loop doesn't re-scan. Call at the top of any pass that
 // will query packagePresent many times; safe to skip (falls back to a live scan).
 export function refreshBioReach(world) {
-  if (T.CROP_BIOGEO) world._bioReachDev = leadAgri(world);
+  if (T.CROP_BIOGEO || T.CROP_HOMELAND) world._bioReachDev = leadAgri(world);
 }

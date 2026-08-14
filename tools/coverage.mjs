@@ -238,7 +238,11 @@ const leaves = (o) => { let n = 0; if (!o || typeof o !== "object") return 0;
     if ("id" in v && ("pos" in v || "name" in v)) continue;
     if (Array.isArray(v) || ArrayBuffer.isView(v)) { for (const x of v) if (numeric(x)) n++; continue; }
     for (const kk of Object.keys(v)) if (numeric(v[kk])) n++; } return n; };
-const MEASURED_CLASSES = new Set(["settlements", "countries", "polities", "cultures", "languages", "faiths", "dynasties", "persons", "events"]);
+// _armedHearths / _landSeats: the dawn's two live registries, measured in
+// collect() since the package-biogeography flip kept them populated at gate
+// horizons (hearth.armedNow + hearthArmed.* dists; nation.landSeatsNow +
+// landSeat.* dists — simmetrics.mjs).
+const MEASURED_CLASSES = new Set(["settlements", "countries", "polities", "cultures", "languages", "faiths", "dynasties", "persons", "events", "_armedHearths", "_landSeats"]);
 const seen = new Set(); let lit = 0, residue = 0; const unexplained = [];
 for (const k of Object.keys(w)) {
   const v = w[k];

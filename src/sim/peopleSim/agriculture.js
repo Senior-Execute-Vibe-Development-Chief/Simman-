@@ -22,7 +22,34 @@
 //      isolated continents and in the wet tropics. Even given infinite time, a low-
 //      ceiling region never reaches full farming density — it stays a sparse frontier.
 
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
+
+// The LAND's aridity around a tile — the FLOOD_OPT discriminator. A flood
+// ribbon's own moisture is wet BECAUSE of the river (measured: the
+// Euphrates pin's raw m reads 0.45 — the ribbon, not the land), so the
+// question "is the flood the only water here?" is answered by the driest
+// nearby country: min raw moisture over the tile and an rn-scaled 8-point
+// ring (resolution-honest — one reference tile's reach at every grid).
+// Static per tile (moist is worldgen), lazily cached.
+function aridMinAt(world, ti) {
+  let f = world._aridMin;
+  if (!f || f.length !== world.N) f = world._aridMin = new Float32Array(world.N).fill(-1);
+  let v = f[ti];
+  if (v >= 0) return v;
+  const tw = world.tw, th = world.th, moist = world.moist;
+  const y = (ti / tw) | 0, x = ti - y * tw;
+  const r = Math.max(1, Math.round(rNormPop(world)));
+  v = moist[ti];
+  for (let dy = -r; dy <= r; dy += r) for (let dx = -r; dx <= r; dx += r) {
+    if (!dx && !dy) continue;
+    const yy = y + dy; if (yy < 0 || yy >= th) continue;
+    const xx = ((x + dx) % tw + tw) % tw;
+    const mm = moist[yy * tw + xx];
+    if (mm < v) v = mm;
+  }
+  f[ti] = v;
+  return v;
+}
 import { packagePresent, packageAdaptMul } from "./biogeography.js";
 import { CROP_PACKAGES, CROP_BY_ID } from "../cropPackages.js";
 import { cropSuitabilityPkg } from "../cropGen.js";
@@ -51,7 +78,8 @@ export function pkgSuitAt(world, ti, pkg) {
   const coast = world.coast ? world.coast[ti] : 0;
   const rm = world.riverMag ? world.riverMag[ti] : 0;
   const t = world.temp[ti];
-  let m = world.moist[ti];
+  const mRaw = world.moist[ti];   // RAW annual moisture — the FLOOD_OPT aridity discriminator reads this
+  let m = mRaw;
   if (T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && m < MOIST_FLOOD_FED) m = MOIST_FLOOD_FED;
   // T.GROW_SEASON: evaluate the package on the SEASON IT GROWS IN. The crop's
   // own tOpt picks the season — a cool-optimum crop (wheat) grows in the tile's
@@ -77,8 +105,43 @@ export function pkgSuitAt(world, ti, pkg) {
     // the flood for the growing season — Egypt's winter wheat on the summer
     // flood's water); rain-fed seasonality is untouched.
     if (T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && mGrow < MOIST_FLOOD_FED) mGrow = MOIST_FLOOD_FED;
+    // T.FLOOD_OPT — MANAGED WATER HITS THE OPTIMUM (task #15, the Mesopotamia
+    // inversion root, MEASURED at the pin: winter temp 0.72 vs wheat tOpt 0.73
+    // — PERFECT — but the flood floor + cool-season rain bias push mGrow to
+    // ~0.59 against wheat's mOpt 0.36, and the symmetric bell punishes "too
+    // wet" as hard as "too dry": history's richest grain economy priced at
+    // 0.27-0.37 by its own irrigation water). Basin irrigation is CONTROLLED
+    // application — canals deliver and DRAIN; a farmer gives the crop what it
+    // wants, never drowns it — so on flood-fed ground the growing moisture
+    // clamps DOWN to the crop's own optimum when supply exceeds it. Scarcity
+    // below optimum still binds (the floor stays MOIST_FLOOD_FED, no top-up
+    // beyond it), so rice (mOpt 0.72 > the flood floor) is untouched and the
+    // desert off the floodplain stays desert. Zero constants: the clamp
+    // target is the package's own optimum. A pre-v20 save keeps its
+    // overwatered cradles (guard).
+    // ...and the clamp's discriminator is ARIDITY, not flood geography and
+    // not technique (BOTH alternatives measured dead, 2026-08-14, recorded
+    // per custom: geography-blind put Europe 5th in the world's dawn —
+    // Rhine bottomland priced like the Nile; capability-gated (devField ≥
+    // the irrigation tech's bar) collapsed Mesopotamia back to 10th — the
+    // boom waited on a maturity its own pre-boom poverty delays, the
+    // chicken-and-egg). The physical truth: irrigation manages SCARCE
+    // water. Where the land is arid — raw annual moisture BELOW the crop's
+    // optimum — the flood is the water supply, and recession farming (sow
+    // in the withdrawing flood's mud) works from the first season: the
+    // 'Ubaid Euphrates, the pre-dynastic Nile. Where the land is already
+    // rain-wet (the Rhine), the flood adds nothing the rain didn't, and the
+    // bell's too-wet penalty is HONEST — heavy waterlogged soils really did
+    // underperform until drainage, a much later technology. So: clamp to
+    // the optimum only where mRaw < the crop's own optimum. Zero new
+    // constants, zero capability gates — the desert cradles boom from the
+    // dawn, and no rain-fed plain ever qualifies at any technique level.
+    if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && mGrow > pkg.mOpt
+        && aridMinAt(world, ti) < pkg.mOpt) mGrow = pkg.mOpt;
     return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow);
   }
+  if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && m > pkg.mOpt
+      && aridMinAt(world, ti) < pkg.mOpt) m = pkg.mOpt;
   return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null);
 }
 
@@ -91,10 +154,21 @@ export function pkgSuitAt(world, ti, pkg) {
 export function bestPackageAt(world, ti) {
   let best = null, bestS = 0;
   for (const pkg of CROP_PACKAGES) {
-    if (T.CROP_BIOGEO && !packagePresent(world, ti, pkg)) continue;
-    // A package arrives as a lesser version of itself the farther it has come
-    // (packageAdaptMul) — so the LOCAL package wins its own band and a
-    // long-travelled one competes only where it is genuinely better. ×1 off.
+    // T.CROP_MILLET (v7 regime guard): the millet split changes which crop the
+    // whole East-Asian dawn domesticates. A never-owned package's ONLY entry
+    // point into a world is this competition (cropCeil/adoption read OWNED
+    // crops), so one gate here keeps a pre-split save's agronomy whole.
+    if (pkg.id === "millet" && !T.CROP_MILLET) continue;
+    // PRESENCE (T.CROP_HOMELAND, or the full T.CROP_BIOGEO): a wild ancestor
+    // can only be domesticated where its range has actually arrived — what
+    // keeps maize out of China, rice out of Australia, wheat out of the
+    // southern hemisphere at the dawn (the from-0 report, 2026-08-07).
+    if ((T.CROP_BIOGEO || T.CROP_HOMELAND) && !packagePresent(world, ti, pkg)) continue;
+    // ADAPTATION (full T.CROP_BIOGEO only): a package arrives as a lesser
+    // version of itself the farther it has come (packageAdaptMul) — so the
+    // LOCAL package wins its own band. Measured to thin domesticated-crop
+    // coverage past the founding bars (see biogeography.js), so it stays with
+    // the blocked full lever; the presence half ships without it. ×1 off.
     const s = pkgSuitAt(world, ti, pkg) * (T.CROP_BIOGEO ? packageAdaptMul(world, ti, pkg) : 1);
     if (s > bestS) { bestS = s; best = pkg; }
   }

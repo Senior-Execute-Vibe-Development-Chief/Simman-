@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 5;   // v5: the divergence lane defaults ON (see the v<5 regime guard in loadWorld)
+export const SAVE_VERSION = 20;  // v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -80,6 +80,8 @@ const SETT_FIELDS = [
   "_homeland", "_homelandFell", "_sovereignSeat", "_integratedAt", "_conqueredAt",
   "_sackedAt", "_siegeAt", "_warAt", "_ambition",
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
+  "_thinBasinSince",   // DISSOLVE_TOWNS sustain clock — dropping it silently reset every pending town dissolution on load (caught by the functional-resume gate the moment leaner hearth worlds put towns near the bar)
+  "_coreHoldCapF",     // CORE_HOLD spike-handoff floor bound (field units, stashed at the mint) — dropping it would re-open the birth-crater capacity gap on every load
   "_coloniesSent", "_isColony", "_overlordCC", "_fisherFrac",   // fisher labor share (T.FISH_LABOR) — carries the boats-built ramp across ticks (_shoreTiles is static geography, recomputed lazily)
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
   "_diseaseLoad", "_contacted", "_virginUntil",   // endemic immunity load + virgin-soil (Columbian) contact state
@@ -406,6 +408,113 @@ export function loadWorld(data, opts = {}) {
     if (!("CROP_PHOTOPERIOD" in tn)) T.CROP_PHOTOPERIOD = 0;
     if (!("CRADLE_PACKAGE" in tn)) T.CRADLE_PACKAGE = 0;
     if (!("INVENT_STAGGER" in tn)) T.INVENT_STAGGER = 0;
+  }
+  // v5 → v6: package biogeography + crop irrigation (CROP_BIOGEO + IRRIG_CROP,
+  // one flip — docs/dawn-cradles-2026-08-07.md) became default-ON. Both are LIVE
+  // agronomy: they re-key which crops exist where and what flood-fed land
+  // yields, so a pre-flip world silently continued under them would have its
+  // whole food system re-based mid-history. Same guard pattern as v5: a pre-v6
+  // save stores no delta for a lever that defaulted OFF when it was made, so
+  // pin both to their old default unless the save set one explicitly.
+  if (data.v < 6) {
+    const tn = data.tuning || {};
+    if (!("CROP_BIOGEO" in tn)) T.CROP_BIOGEO = 0;
+    if (!("IRRIG_CROP" in tn)) T.IRRIG_CROP = 0;
+  }
+  // v6 → v7: the millet package split (CROP_MILLET — re-keys which crop the
+  // whole East-Asian dawn domesticates) and real-width water access
+  // (ACCESS_BAND — re-keys the capacity field on every waterside tile at
+  // non-reference grids) became default-ON. Same guard pattern: a pre-v7 save
+  // stores no delta for either, so pin both to their old default unless the
+  // save set one explicitly — an old world keeps the agronomy and the
+  // capacity field it grew on.
+  if (data.v < 7) {
+    const tn = data.tuning || {};
+    if (!("CROP_MILLET" in tn)) T.CROP_MILLET = 0;
+    if (!("ACCESS_BAND" in tn)) T.ACCESS_BAND = 0;
+  }
+  // v7 → v8: the residual birth-crater wave — FOOD_REACH (re-keys owned-land
+  // carrying capacity everywhere a low-org state holds territory) and
+  // HOLD_SEAM (re-keys every city mint's capacity handoff) became default-ON.
+  // Same pattern: a pre-v8 save keeps the capacity semantics it grew on.
+  if (data.v < 8) {
+    const tn = data.tuning || {};
+    if (!("FOOD_REACH" in tn)) T.FOOD_REACH = 0;
+    if (!("HOLD_SEAM" in tn)) T.HOLD_SEAM = 0;
+  }
+  // v8 → v9: basin-wide invention ignition (BASIN_IGNITE — re-keys every
+  // dawn's post-invention timeline: the technique no longer diffuses across
+  // its own inventors). A pre-v9 save keeps the dawn it grew on.
+  if (data.v < 9) {
+    const tn = data.tuning || {};
+    if (!("BASIN_IGNITE" in tn)) T.BASIN_IGNITE = 0;
+  }
+  // v9 → v10: the union of crowns (VALLEY_UNION — re-keys early political
+  // consolidation everywhere). A pre-v10 save keeps its political physics.
+  if (data.v < 10) {
+    const tn = data.tuning || {};
+    if (!("VALLEY_UNION" in tn)) T.VALLEY_UNION = 0;
+  }
+  // v10 → v11: the state frontier (ORG_CONTACT — re-keys every pre-state
+  // settlement's statecraft clock). A pre-v11 save keeps its dawn's politics.
+  if (data.v < 11) {
+    const tn = data.tuning || {};
+    if (!("ORG_CONTACT" in tn)) T.ORG_CONTACT = 0;
+  }
+  // v11 → v12: the caging law (STATE_CAGE — re-keys WHERE states form, both
+  // channels). A pre-v12 save keeps its mass-era formation physics.
+  if (data.v < 12) {
+    const tn = data.tuning || {};
+    if (!("STATE_CAGE" in tn)) T.STATE_CAGE = 0;
+  }
+  // v12 → v13: the peer lattice (PEER_LATTICE — re-keys the urban/political
+  // density of every dense basin). A pre-v13 save keeps its one-per-cell map.
+  if (data.v < 13) {
+    const tn = data.tuning || {};
+    if (!("PEER_LATTICE" in tn)) T.PEER_LATTICE = 0;
+  }
+  // v13 → v14: the fast lane (CONQUEST_CASCADE — re-keys how consolidation
+  // scales). A pre-v14 save keeps its single-speed politics.
+  if (data.v < 14) {
+    const tn = data.tuning || {};
+    if (!("CONQUEST_CASCADE" in tn)) T.CONQUEST_CASCADE = 0;
+  }
+  // v14 → v15: segmentary fission (FISSION — land nations split; re-keys the
+  // tribal fabric's density). A pre-v15 save keeps its fission-less politics.
+  if (data.v < 15) {
+    const tn = data.tuning || {};
+    if (!("FISSION" in tn)) T.FISSION = 0;
+  }
+  // v15 → v16: grounded zero-tech reach (REACH_GROUND — re-keys every realm's
+  // default footprint). A pre-v16 save keeps its imperial floor.
+  if (data.v < 16) {
+    const tn = data.tuning || {};
+    if (!("REACH_GROUND" in tn)) T.REACH_GROUND = 0;
+  }
+  // v16 → v17: sieges won by hunger (SIEGE_STARVE — re-keys how wars end).
+  // A pre-v17 save keeps its unstormable capitals.
+  if (data.v < 17) {
+    const tn = data.tuning || {};
+    if (!("SIEGE_STARVE" in tn)) T.SIEGE_STARVE = 0;
+  }
+  // v17 → v18: starving cores shed (STARVE_SHED — the hold floor yields to
+  // sustained hunger). A pre-v18 save keeps its food-blind floor.
+  if (data.v < 18) {
+    const tn = data.tuning || {};
+    if (!("STARVE_SHED" in tn)) T.STARVE_SHED = 0;
+  }
+  // v18 → v19: fish removed as food (FISH def 0) + organic takes
+  // (ORGANIC_TAKE). A pre-v19 save keeps its fed coasts and its walk shapes.
+  if (data.v < 19) {
+    const tn = data.tuning || {};
+    if (!("FISH" in tn)) T.FISH = 1;
+    if (!("ORGANIC_TAKE" in tn)) T.ORGANIC_TAKE = 0;
+  }
+  // v19 → v20: managed water hits the optimum (FLOOD_OPT — re-prices the
+  // arid flood cradles). A pre-v20 save keeps its overwatered cradles.
+  if (data.v < 20) {
+    const tn = data.tuning || {};
+    if (!("FLOOD_OPT" in tn)) T.FLOOD_OPT = 0;
   }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
