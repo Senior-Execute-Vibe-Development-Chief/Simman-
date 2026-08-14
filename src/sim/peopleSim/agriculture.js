@@ -22,7 +22,34 @@
 //      isolated continents and in the wet tropics. Even given infinite time, a low-
 //      ceiling region never reaches full farming density — it stays a sparse frontier.
 
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
+
+// The LAND's aridity around a tile — the FLOOD_OPT discriminator. A flood
+// ribbon's own moisture is wet BECAUSE of the river (measured: the
+// Euphrates pin's raw m reads 0.45 — the ribbon, not the land), so the
+// question "is the flood the only water here?" is answered by the driest
+// nearby country: min raw moisture over the tile and an rn-scaled 8-point
+// ring (resolution-honest — one reference tile's reach at every grid).
+// Static per tile (moist is worldgen), lazily cached.
+function aridMinAt(world, ti) {
+  let f = world._aridMin;
+  if (!f || f.length !== world.N) f = world._aridMin = new Float32Array(world.N).fill(-1);
+  let v = f[ti];
+  if (v >= 0) return v;
+  const tw = world.tw, th = world.th, moist = world.moist;
+  const y = (ti / tw) | 0, x = ti - y * tw;
+  const r = Math.max(1, Math.round(rNormPop(world)));
+  v = moist[ti];
+  for (let dy = -r; dy <= r; dy += r) for (let dx = -r; dx <= r; dx += r) {
+    if (!dx && !dy) continue;
+    const yy = y + dy; if (yy < 0 || yy >= th) continue;
+    const xx = ((x + dx) % tw + tw) % tw;
+    const mm = moist[yy * tw + xx];
+    if (mm < v) v = mm;
+  }
+  f[ti] = v;
+  return v;
+}
 import { packagePresent, packageAdaptMul } from "./biogeography.js";
 import { CROP_PACKAGES, CROP_BY_ID } from "../cropPackages.js";
 import { cropSuitabilityPkg } from "../cropGen.js";
@@ -46,18 +73,13 @@ import { cropSuitabilityPkg } from "../cropGen.js";
 // Applied to the annual read AND the seasonal read (the shared envGate comment's
 // own words: "a river irrigates year-round").
 const MOIST_FLOOD_FED = 0.5;
-// The irrigation tech's own agriculture gate (tech.js: irrigation req
-// k.agriculture ≥ 0.48) — the technique maturity at which a people can
-// MANAGE water rather than merely receive it. The FLOOD_OPT clamp reads the
-// local devField against this bar, so the floodplain becomes the breadbasket
-// only where its people have learned canals.
-const IRRIG_AGRI = 0.48;
 export function pkgSuitAt(world, ti, pkg) {
   const e = world.elev[ti]; if (e <= 0) return 0;
   const coast = world.coast ? world.coast[ti] : 0;
   const rm = world.riverMag ? world.riverMag[ti] : 0;
   const t = world.temp[ti];
-  let m = world.moist[ti];
+  const mRaw = world.moist[ti];   // RAW annual moisture — the FLOOD_OPT aridity discriminator reads this
+  let m = mRaw;
   if (T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && m < MOIST_FLOOD_FED) m = MOIST_FLOOD_FED;
   // T.GROW_SEASON: evaluate the package on the SEASON IT GROWS IN. The crop's
   // own tOpt picks the season — a cool-optimum crop (wheat) grows in the tile's
@@ -97,25 +119,29 @@ export function pkgSuitAt(world, ti, pkg) {
     // desert off the floodplain stays desert. Zero constants: the clamp
     // target is the package's own optimum. A pre-v20 save keeps its
     // overwatered cradles (guard).
-    // ...and the clamp rides IRRIGATION CAPABILITY, not raw flood geography
-    // (owner-ordered refinement, 2026-08-14: the geography-blind clamp put
-    // Europe 5th in the world's dawn — Rhine/Danube bottomland priced like
-    // the Nile before anyone there could dig a canal). Managed water is a
-    // PRACTICE: the local people's farming technique must have matured to
-    // the irrigation tech's own agriculture gate (IRRIG_AGRI — tech.js's
-    // threshold, an existing constant) before the floodplain becomes the
-    // breadbasket. The dawn sequence this restores is the real one: farming
-    // begins rain-fed (the hilly flanks), and moves down into the managed
-    // valley as technique matures — the cradles' own dev matures first
-    // (they are the hearths), so the Nile/Mesopotamia boom arrives with
-    // their arming while Europe's flood plains wait for their people to
-    // learn what a canal is.
+    // ...and the clamp's discriminator is ARIDITY, not flood geography and
+    // not technique (BOTH alternatives measured dead, 2026-08-14, recorded
+    // per custom: geography-blind put Europe 5th in the world's dawn —
+    // Rhine bottomland priced like the Nile; capability-gated (devField ≥
+    // the irrigation tech's bar) collapsed Mesopotamia back to 10th — the
+    // boom waited on a maturity its own pre-boom poverty delays, the
+    // chicken-and-egg). The physical truth: irrigation manages SCARCE
+    // water. Where the land is arid — raw annual moisture BELOW the crop's
+    // optimum — the flood is the water supply, and recession farming (sow
+    // in the withdrawing flood's mud) works from the first season: the
+    // 'Ubaid Euphrates, the pre-dynastic Nile. Where the land is already
+    // rain-wet (the Rhine), the flood adds nothing the rain didn't, and the
+    // bell's too-wet penalty is HONEST — heavy waterlogged soils really did
+    // underperform until drainage, a much later technology. So: clamp to
+    // the optimum only where mRaw < the crop's own optimum. Zero new
+    // constants, zero capability gates — the desert cradles boom from the
+    // dawn, and no rain-fed plain ever qualifies at any technique level.
     if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && mGrow > pkg.mOpt
-        && world.devField && world.devField[ti] >= IRRIG_AGRI) mGrow = pkg.mOpt;
+        && aridMinAt(world, ti) < pkg.mOpt) mGrow = pkg.mOpt;
     return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow);
   }
   if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && m > pkg.mOpt
-      && world.devField && world.devField[ti] >= IRRIG_AGRI) m = pkg.mOpt;
+      && aridMinAt(world, ti) < pkg.mOpt) m = pkg.mOpt;
   return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null);
 }
 
@@ -229,14 +255,9 @@ export function agriGate(world, s) {
     // ceiling, so an isolated continent can't farm at full density just because
     // its settlements happen to own good crops — the Diamond isolation thesis
     // holds on BOTH branches, not only the default one.
-    const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
-    // The ceiling depends on the FLOOD_OPT clamp's CAPABILITY state (home-tile
-    // devField vs IRRIG_AGRI) — carried in the cache key, or a basin maturing
-    // past the bar would keep its pre-boom ceiling until the next crop
-    // acquisition happened to invalidate it.
-    const _fl = (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && world.devField && world.devField[ti] >= IRRIG_AGRI) ? 1 : 0;
-    if (s._cropCeil === undefined || s._cropCeilFl !== _fl) { s._cropCeil = cropCeil(world, s); s._cropCeilFl = _fl; }
+    if (s._cropCeil === undefined) s._cropCeil = cropCeil(world, s);
     if (!world._agriCeil || world._agriCeilKey !== T.AGRI_CEIL_FLOOR * 1000 + T.AGRI_TROPIC_PENALTY) { world._agriCeil = computeAgriCeiling(world); world._agriCeilKey = T.AGRI_CEIL_FLOOR * 1000 + T.AGRI_TROPIC_PENALTY; }   // recompute when either baked-in lever moves (B10 — honour the live-lever contract)
+    const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
     ceil = Math.min(s._cropCeil, world._agriCeil[ti] || 0);
   } else {
     if (!world._agriCeil || world._agriCeilKey !== T.AGRI_CEIL_FLOOR * 1000 + T.AGRI_TROPIC_PENALTY) { world._agriCeil = computeAgriCeiling(world); world._agriCeilKey = T.AGRI_CEIL_FLOOR * 1000 + T.AGRI_TROPIC_PENALTY; }   // recompute when either baked-in lever moves (B10 — honour the live-lever contract)
