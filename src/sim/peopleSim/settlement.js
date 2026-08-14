@@ -3106,7 +3106,11 @@ function updateFood(world, s) {
   s._civFoodDemand = civDemand;    // civilian only — army sizing reads this
   s._landFood = landFood;          // LOCAL farm production only (no hierarchy imports, no fish) — for the food-viability overlay
   s._urbanFactor = urbanFactor;
-  s.food += supply - demand;
+  // A granary cannot hold negative grain (owner report 2026-08-14: "cities
+  // STILL have negative food"): the store floors at 0 — an uncovered
+  // shortfall's consequence is the famine channel and the STARVE_SHED melt,
+  // never a grain debt carried on the books.
+  s.food = Math.max(0, (s.food || 0) + supply - demand);
   // T.TRIBUTE_OF_LAND — Joseph's granary: the CAPITAL draws the polity's
   // in-kind store down when its own granary runs below a few ticks of
   // demand. The state's storehouse is the famine buffer it historically was

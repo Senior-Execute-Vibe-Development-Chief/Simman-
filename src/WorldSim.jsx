@@ -3342,10 +3342,20 @@ const renderInspect=()=>{
   const surplus=supply-demand;
   const eps=Math.max(0.02,demand*0.02);
   const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
+  // "Starving" reads the SAME ruler the famine physics reads (owner report:
+  // "every single city says starving and still grows"): under ONE_POP the
+  // catchment's countryside eats from the LAND (the field feeds them), and
+  // the granary's real customers are the urban CORE (s._coreNeed — the
+  // famine flow-gate's own bar). A city whose total-catchment demand
+  // outruns the granary but whose core is flow-fed is living off its land
+  // ("land-fed"), not starving — and the one that IS starving now also
+  // contracts (STARVE_SHED melts its capacity floor on the same signal).
+  const coreNeed=s._coreNeed!==undefined?s._coreNeed:demand;
   let status,statusColor;
   if(surplus>eps){status="surplus";statusColor="#3a7";}
   else if(surplus<-eps){
-    if(ticksLeft<50){status="starving";statusColor="#c44";}
+    if((s.food||0)<=0.01&&supply<coreNeed){status="starving";statusColor="#c44";}
+    else if(ticksLeft<50){status="land-fed";statusColor="#a95";}
     else{status="deficit";statusColor="#c84";}
   } else {status="balanced";statusColor="#888";}
 
