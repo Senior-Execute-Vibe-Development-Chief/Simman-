@@ -1175,7 +1175,7 @@ export function computeExportValue(s, world) {
     ag += (k.navigation || 0) * s.waterAccess * 0.5;     // coastal / river shipping — a SERVICE (booked as goods)
     // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades for
     // coin; most is eaten fresh & locally, so it's minor next to the grain staple.
-    const fish = s.waterAccess * (k.navigation || 0) * 0.3;
+    const fish = T.FISH ? s.waterAccess * (k.navigation || 0) * 0.3 : 0;
     ag += fish; agFood += fish;
   }
   const horses = r.horses || 0;
@@ -1403,7 +1403,7 @@ export function getExportBreakdown(s, world) {
   if ((s.waterAccess || 0) > 0) {
     const v = (k.navigation || 0) * s.waterAccess * 0.5 * mult;
     if (v > 0.01) out.push({ label: "Ship goods", value: v });
-    const fish = s.waterAccess * (k.navigation || 0) * 0.3 * mult;
+    const fish = T.FISH ? s.waterAccess * (k.navigation || 0) * 0.3 * mult : 0;
     if (fish > 0.01) out.push({ label: "Salt fish", value: fish });
   }
   const horses = r.horses || 0;
@@ -2946,7 +2946,12 @@ function updateFood(world, s) {
   // anchovy coast that may have underwritten Caral, the oldest American civilisation. So fish here
   // emerges exactly where it mattered and nowhere else: it scales UP where the SEA is rich and the
   // LAND is poor, and falls to ~0 in the fertile river cradles and the nutrient-poor tropics.
-  const sea = Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0));   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
+  // T.FISH master gate (owner directive 2026-08-14: "remove fish as a food
+  // source entirely"). 0 = no sea access for the food law: both fishery arms
+  // (Tier-B labor fishery and the legacy flat cap) read sea=0, the boats
+  // stand down through the existing reallocation decay, and coastal food is
+  // land food alone. Old saves keep their fed coasts (v19 guard pins 1).
+  const sea = T.FISH ? Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0)) : 0;   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
   let fish = 0;
   if (T.FISH_LABOR > 0) {
     // ── Tier-B fish: the catch costs LABOR and draws down a STOCK ────────────

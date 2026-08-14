@@ -819,6 +819,55 @@ export function peopledBasinFrom(world, k, startTi, capMass) {
   const comp = landComp(world);
   const tw = world.tw, th = world.th;
   const seatComp = comp[startTi];
+  // T.ORGANIC_TAKE (owner report 2026-08-14: "nations spawning in with
+  // perfectly straight borders" — the screenshot's diamonds): a FIFO
+  // 4-neighbour BFS over smooth density grows an L1 ball, a DIAMOND, because
+  // it gathers TILES nearest-first. A people gathers PEOPLE nearest-first —
+  // the most-peopled frontier tile joins next — so the take follows valley
+  // ribbons, coasts and density ridges and the border is the organic edge of
+  // where its people actually live. Deterministic (ties break to the lower
+  // tile index); same cell/landmass constraints; same bar. 0 = the diamond
+  // walk (byte-identical).
+  if (T.ORGANIC_TAKE) {
+    const take = [];
+    let mass = 0, devW = 0;
+    const heap = [startTi];
+    const better = (a, b) => pf[a] > pf[b] || (pf[a] === pf[b] && a < b);
+    const seen = new Set([startTi]);
+    const hpush = (t) => {
+      heap.push(t);
+      let i = heap.length - 1;
+      while (i > 0) { const p = (i - 1) >> 1; if (better(heap[i], heap[p])) { const x = heap[i]; heap[i] = heap[p]; heap[p] = x; i = p; } else break; }
+    };
+    const hpop = () => {
+      const top = heap[0], last = heap.pop();
+      if (heap.length) {
+        heap[0] = last; let i = 0;
+        for (;;) {
+          const l = 2 * i + 1, r = l + 1; let m = i;
+          if (l < heap.length && better(heap[l], heap[m])) m = l;
+          if (r < heap.length && better(heap[r], heap[m])) m = r;
+          if (m === i) break;
+          const x = heap[i]; heap[i] = heap[m]; heap[m] = x; i = m;
+        }
+      }
+      return top;
+    };
+    while (heap.length && mass < capMass) {
+      const t = hpop();
+      take.push(t); mass += pf[t]; if (devF) devW += pf[t] * devF[t];
+      const ty = (t / tw) | 0, tx = t - ty * tw;
+      const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
+                  ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
+      for (let n = 0; n < 4; n++) {
+        const ni = ns[n];
+        if (ni < 0 || seen.has(ni)) continue;
+        if (siteId[ni] !== k || elev[ni] <= 0 || comp[ni] !== seatComp) continue;
+        seen.add(ni); hpush(ni);
+      }
+    }
+    return { take, mass, devP: mass > 0 ? devW / mass : 0 };
+  }
   const qx = [startTi];
   const seen = new Set(qx);
   const take = [];
@@ -1747,12 +1796,41 @@ function maybeLandNations(world) {
       const pFis = Math.min(1, 0.0017 * CRYSTAL_INTERVAL);
       const rF = hash32(world.seed || 1, "fission", id, world.step) / 4294967296;
       if (rF > pFis) continue;
-      // Partition: each tile follows its nearer seat; each half must clear
+      // Partition: each village follows its nearer seat; each half must clear
       // the founding bar on its own or the split is void (no rump statelets).
+      // Under T.ORGANIC_TAKE "nearer" is WALK order (two simultaneous
+      // people-first walks from the seats over the nation's own ground — a
+      // tile joins whichever court's influence reaches it first, so the split
+      // line follows valleys and density, not a geometric bisector); the
+      // fallback is the straight-line bisector.
       const ny = (a.bestTi / twF) | 0, nx = a.bestTi - ny * twF;
       const sy = (a.seatTi / twF) | 0, sx = a.seatTi - sy * twF;
       let mNew = 0, mOld = 0;
       const flip = [];
+      if (T.ORGANIC_TAKE) {
+        const own = new Map();   // ti → 0 (old seat) | 1 (new seat)
+        const heap = [];         // entries [ti, side], pf-max first, ties lower ti then side 0
+        const bet = (A, B) => pf[A[0]] > pf[B[0]] || (pf[A[0]] === pf[B[0]] && (A[0] < B[0] || (A[0] === B[0] && A[1] < B[1])));
+        const hpush = (e) => { heap.push(e); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (bet(heap[i], heap[p])) { const x = heap[i]; heap[i] = heap[p]; heap[p] = x; i = p; } else break; } };
+        const hpop = () => { const t = heap[0], l = heap.pop(); if (heap.length) { heap[0] = l; let i = 0; for (;;) { const a2 = 2 * i + 1, b2 = a2 + 1; let m = i; if (a2 < heap.length && bet(heap[a2], heap[m])) m = a2; if (b2 < heap.length && bet(heap[b2], heap[m])) m = b2; if (m === i) break; const x = heap[i]; heap[i] = heap[m]; heap[m] = x; i = m; } } return t; };
+        own.set(a.seatTi, 0); own.set(a.bestTi, 1);
+        hpush([a.seatTi, 0]); hpush([a.bestTi, 1]);
+        while (heap.length) {
+          const [t, side] = hpop();
+          const ty = (t / twF) | 0, tx = t - ty * twF;
+          const ns = [ty * twF + (tx === 0 ? twF - 1 : tx - 1), ty * twF + (tx === twF - 1 ? 0 : tx + 1),
+                      ty > 0 ? t - twF : -1, ty < thF - 1 ? t + twF : -1];
+          for (let n = 0; n < 4; n++) {
+            const ni = ns[n];
+            if (ni < 0 || lo0[ni] !== id || own.has(ni)) continue;
+            own.set(ni, side); hpush([ni, side]);
+          }
+        }
+        for (let i = 0; i < world.N; i++) {
+          if (lo0[i] !== id) continue;
+          if (own.get(i) === 1) { flip.push(i); mNew += pf[i]; } else mOld += pf[i];
+        }
+      } else {
       for (let i = 0; i < world.N; i++) {
         if (lo0[i] !== id) continue;
         const iy = (i / twF) | 0, ix = i - iy * twF;
@@ -1760,6 +1838,7 @@ function maybeLandNations(world) {
         let dxS = Math.abs(ix - sx); if (dxS > twF / 2) dxS = twF - dxS;
         const dN = dxN * dxN + (iy - ny) * (iy - ny), dS = dxS * dxS + (iy - sy) * (iy - sy);
         if (dN < dS) { flip.push(i); mNew += pf[i]; } else mOld += pf[i];
+      }
       }
       if (mNew < barF || mOld < barF) { tel(world, "fission", "halfBelowBar"); continue; }
       const newId = world._nextSettlementId || 1; world._nextSettlementId = newId + 1;
