@@ -829,11 +829,24 @@ export function peopledBasinFrom(world, k, startTi, capMass) {
   // tile index); same cell/landmass constraints; same bar. 0 = the diamond
   // walk (byte-identical).
   if (T.ORGANIC_TAKE) {
+    // PEOPLE-WEIGHTED COST WALK (the compact-shapes refinement, task #26 —
+    // owner: the pure density-priority walk made "odd, x or spindly shapes").
+    // Real polities were roughly compact because control projects radially
+    // and thin salients are indefensible — EXCEPT where the habitable land
+    // itself is a ribbon (Egypt, Chile), where states really were spindly.
+    // That rule is a COST walk: entering a tile costs 1/(1 + its people
+    // relative to the basin's own mean) — dense-as-the-basin ground is cheap,
+    // empty ground costs a full step — and the frontier admits its
+    // lowest-accumulated-cost tile next. Uniform country → equal costs → a
+    // rounded disk; a dense ribbon through waste → cheap along the ribbon →
+    // the take follows it. Compact where people spread, spindly only where
+    // the people are. Deterministic (cost, then tile-index ties); zero new
+    // constants (the reference is the walk's own running mean).
     const take = [];
     let mass = 0, devW = 0;
+    const cost = new Map([[startTi, 0]]);
     const heap = [startTi];
-    const better = (a, b) => pf[a] > pf[b] || (pf[a] === pf[b] && a < b);
-    const seen = new Set([startTi]);
+    const better = (a, b) => { const ca = cost.get(a), cb = cost.get(b); return ca < cb || (ca === cb && a < b); };
     const hpush = (t) => {
       heap.push(t);
       let i = heap.length - 1;
@@ -856,14 +869,17 @@ export function peopledBasinFrom(world, k, startTi, capMass) {
     while (heap.length && mass < capMass) {
       const t = hpop();
       take.push(t); mass += pf[t]; if (devF) devW += pf[t] * devF[t];
+      const pfBar = mass / take.length || 1;
+      const c0 = cost.get(t);
       const ty = (t / tw) | 0, tx = t - ty * tw;
       const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
                   ty > 0 ? t - tw : -1, ty < th - 1 ? t + tw : -1];
       for (let n = 0; n < 4; n++) {
         const ni = ns[n];
-        if (ni < 0 || seen.has(ni)) continue;
+        if (ni < 0 || cost.has(ni)) continue;
         if (siteId[ni] !== k || elev[ni] <= 0 || comp[ni] !== seatComp) continue;
-        seen.add(ni); hpush(ni);
+        cost.set(ni, c0 + 1 / (1 + pf[ni] / pfBar));
+        hpush(ni);
       }
     }
     return { take, mass, devP: mass > 0 ? devW / mass : 0 };
