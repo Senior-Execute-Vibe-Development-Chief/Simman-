@@ -1486,8 +1486,20 @@ function maybeLandNations(world) {
   if (!devF) return;
   const lo0 = world._landOwner;
   const barF = TRIBAL_CENSUS / world._onePopScale;
+  // AMORTIZATION (the stall fix, task #18 — probe_stall: crystallize worst
+  // ticks 850-1,100ms at tw=480 in the fabric bloom, ≈4-15s at tw=960; the
+  // cost is the per-cell basin WALKS, which ran for every mass-passing cell
+  // every firing, before any drive gate could refuse). Both formation loops
+  // process 1/8 of the cells per firing, round-robin by cell index — pure
+  // scheduling — and the formation rolls compensate ×8, so the RATE of
+  // history is cadence-invariant for the small probabilities the drive law
+  // produces (contact's p=1 stays 1; a formation waits at most 8 firings —
+  // 192 steps, nothing on the fabric's generational clock).
+  const PEER_ROUND = 8;
+  const phaseR = ((world.step / 24) | 0) % PEER_ROUND;
   if (!world.popField) return;
   for (let k = 0; k < L.sites.length; k++) {
+    if (k % PEER_ROUND !== phaseR) continue;   // round-robin (see AMORTIZATION above)
     if (claims.claimed[k]) continue;
     const st = L.sites[k];
     if (co && co[st.ti] >= 0) continue;
@@ -1589,7 +1601,7 @@ function maybeLandNations(world) {
           if (pr > drive) drive = pr;
         }
       }
-      const pForm = drive / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive)));
+      const pForm = Math.min(1, PEER_ROUND * drive / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive))));
       const rU = hash32(world.seed || 1, "landnat", st.ti, world.step) / 4294967296;
       if (rU > pForm) continue;
     }
@@ -1632,9 +1644,10 @@ function maybeLandNations(world) {
       let dx = Math.abs(ix - tx); if (dx > tw2 / 2) dx = tw2 - dx;
       return dx * dx + (iy - ty) * (iy - ty) >= rr2b;
     };
+    // Same round-robin as the primary loop (the shared AMORTIZATION above).
     const best2 = new Map();       // k → { ti, p }
     for (let i = 0; i < world.N; i++) {
-      const kk = siteId2[i]; if (kk < 0) continue;
+      const kk = siteId2[i]; if (kk < 0 || kk % PEER_ROUND !== phaseR) continue;
       const p = pf2[i]; if (!(p > 0)) continue;
       const cur = best2.get(kk); if (cur && cur.p >= p) continue;
       if ((co && co[i] >= 0) || (lo0 && lo0[i] >= 0)) continue;
@@ -1671,7 +1684,7 @@ function maybeLandNations(world) {
             drive2 = Math.max(drive2, cg2 * (basin2.mass > 0 ? Math.min(1, sp2 / basin2.mass) : 0));
           }
         }
-        const pF2 = drive2 / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive2)));
+        const pF2 = Math.min(1, PEER_ROUND * drive2 / (1 + T.ORG_CONTACT * (1 - Math.min(1, drive2))));
         const rU2 = hash32(world.seed || 1, "landnat2", cand.ti, world.step) / 4294967296;
         if (rU2 > pF2) { tel(world, "landnat2", "driveRoll"); continue; }
       }
