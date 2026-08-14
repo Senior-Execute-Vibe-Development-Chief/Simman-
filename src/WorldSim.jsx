@@ -15,6 +15,7 @@ const REAL_FNS = { isRealWindAvailable, fillRealWind, isRealClimateAvailable, fi
 const realDataAvailable = () => isRealWindAvailable() || isRealClimateAvailable();
 import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
+import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { applyTuning, resetTuning, tuningDefaults, T as SIM_T } from "./sim/peopleSim/tuning.js";
@@ -555,6 +556,10 @@ const [scrubShown,setScrubShown]=useState(null);
 // map — settlement-holding nations always show. Default: principality scale,
 // the cutoff world-zoom historical atlases actually draw.
 const [minKm2,setMinKm2]=useState(20000);
+const fbTimelineRef=useRef(makeTimeline());   // fallback-mode history frames (worker mode keeps its own store)
+const fbKeyRef=useRef(0);
+const pausedDrawRef=useRef(0);
+const drawNowRef=useRef(null);
 const uiPulseRef=useRef(0);   // last React-pulse time — gates snapshot-driven renders to ≤4Hz
 // Time-series of global metrics for the History charts + copyable export. Kept
 // in a ref (no re-render on every sample); the charts read it on the regular
@@ -649,11 +654,10 @@ try{
     const d=e.data;
     if(d.type==='snapshot'){sawSnap.current=true;if(applySnapshotRef.current)applySnapshotRef.current(d);}
     else if(d.type==='timelineFrame'){
-      // Swap the scrubbed keyframe in as the political layer; the paint and
-      // label paths read psw._countryClaim unchanged. Live claims keep
-      // arriving into psw._liveClaim (applySnapshot gates on scrubRef).
+      // The scrubbed frame rides a RENDER-ONLY override (_scrubClaim) — never
+      // the authoritative layer (in fallback mode that array IS the sim's).
       const psw=peopleRef.current;
-      if(psw&&scrubRef.current){psw._countryClaim=d.frame;psw._claimVer=(psw._claimVer||0)+1;setScrubShown(d.step);}
+      if(psw&&scrubRef.current){psw._scrubClaim=d.frame;psw._claimVer=(psw._claimVer||0)+1;setScrubShown(d.step);if(drawNowRef.current)drawNowRef.current();}
     }
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='historyData'){
@@ -763,6 +767,7 @@ return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
 finalizeWorld(Object.assign(generateWorld(genW,genH,s,presetRef.current,_ol,true,_realWind,_tecParams,REAL_FNS),{realWindUsed:_realWind}));},[finalizeWorld,genW,genH]);
 useEffect(()=>{generate(seed)},[seed,generate]);
+useEffect(()=>{fbTimelineRef.current=makeTimeline();fbKeyRef.current=0;setScrubStep(null);setScrubShown(null);scrubRef.current=false;const psw=peopleRef.current;if(psw)psw._scrubClaim=null;},[world]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
 useEffect(()=>{if(!showGlobe){terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;}
@@ -1711,7 +1716,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // CLAIM (countryId per tile, peopleSim/countryClaim.js) — country-centric
       // borders that follow terrain and enclose frontier hinterland; fall back
       // to the per-settlement owner map only until the first claim arrives.
-      const owner=psw._territoryOwner, claimArr=psw._countryClaim;
+      const owner=psw._territoryOwner, claimArr=psw._scrubClaim||psw._countryClaim;
       // ── Country view: BOLD opaque political map with thick borders + live,
       // maximally-distinct neighbour colours (assignCountryColors). ──
       // ── Culture / Faith views: who LIVES on each tile (dominant culture
@@ -1909,7 +1914,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         // Dashed realm borders on top, so the heat reads as "inside WHOSE realm"
         // (the same dashed style the terrain view's border layer uses).
-        const bArr=psw._countryClaim;
+        const bArr=psw._scrubClaim||psw._countryClaim;
         if(bArr){
           octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();
           for(let ti=0;ti<Math.min(N2,bArr.length);ti++){
@@ -2552,10 +2557,8 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
-  if(snap.countryClaim){
-    if(scrubRef.current){psw._liveClaim=snap.countryClaim;}  // scrubbing: hold the live layer aside; the keyframe stays on screen
-    else{psw._countryClaim=snap.countryClaim;psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver drives label-anchor cache)
-  }
+  if(snap.countryClaim){psw._countryClaim=snap.countryClaim;if(!scrubRef.current)psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver bumps only live so the scrubbed layer's caches hold)
+  if(snap.timelineN!==undefined)psw._timelineN=snap.timelineN;
   if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
@@ -2604,6 +2607,7 @@ const applySnapshot=useCallback((snap)=>{
   if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
 },[draw]);
 useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
+useEffect(()=>{drawNowRef.current=()=>{if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message);}}};},[draw]);
 
 // Forward play/pause + speed to the sim worker.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
@@ -2629,7 +2633,16 @@ useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;dep
 useEffect(()=>{if(viewMode==="ancestry"&&terRef.current&&terRef.current.tArrival)ancRevealRef.current={start:performance.now(),active:true};},[viewMode]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
-const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
+const loop=now=>{fid=requestAnimationFrame(loop);
+if(!terRef.current||!worldRef.current){last=now;return;}
+// PAUSED, main-thread-fallback mode: the world is still — the UI must not be
+// (owner report: every panel/overlay froze without ticks). Repaint + pulse
+// React at 4Hz so info windows, overlays and the scrubber stay live.
+if(!playRef.current){
+  if(!simWorkerRef.current&&now-(pausedDrawRef.current||0)>=250){pausedDrawRef.current=now;
+    if(peopleRef.current){setLiveStep(peopleRef.current.step);try{setPsStats(peopleSimStats(peopleRef.current));}catch{}}
+    try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
+  last=now;return;}
 // Worker mode: the sim runs off-thread and drives drawing via snapshots, so
 // this loop does nothing. Only the main-thread FALLBACK steps + draws here.
 if(simWorkerRef.current){last=now;return;}
@@ -2649,7 +2662,8 @@ for(let s=0;s<sub;s++){
 // runTribeStep call removed at user request ("completely erase the tribe system").
 // The `ter` object is still kept around so UI panels that read tribeCenters
 // etc. don't crash, but it is no longer mutated each tick.
-try{if(peopleRef.current)stepPeopleSim(peopleRef.current,1);}
+try{if(peopleRef.current){stepPeopleSim(peopleRef.current,1);
+if(peopleRef.current.step-fbKeyRef.current>=CAPTURE_IVL){fbKeyRef.current=peopleRef.current.step;captureFrame(fbTimelineRef.current,peopleRef.current);}}}
 catch(e){console.error('[PEOPLESIM CRASH]',e.message,e.stack);playRef.current=false;return;}
 if(performance.now()-_simStart>8)break;
 }
@@ -2770,7 +2784,7 @@ let hovOwner=null,hovRealm=null,hovRealmId=-1,hovSett=null;
    if(psw._territoryOwner&&psw._byId){const oid=psw._territoryOwner[terTi];if(oid>=0){const o=psw._byId.get(oid);if(o)hovOwner=o.name;}}
    if(psw._countryClaim&&psw.countries){
      const tw2=psw.tw;const stx=Math.min(tw2-1,((wx/RES)|0)/psw.tileRes|0),sty=Math.min(psw.th-1,((wy/RES)|0)/psw.tileRes|0);
-     const cc=psw._countryClaim[sty*tw2+stx];
+     const cc=(psw._scrubClaim||psw._countryClaim)[sty*tw2+stx];
      if(cc>=0){const c=psw.countries.get(cc);if(c){hovRealm=c.name||(c.capital&&c.capital.name);hovRealmId=cc;}
        else if(psw._landNames&&psw._landNames.has(cc)){hovRealm=psw._landNames.get(cc).name||"a people of the land";hovRealmId=cc;}}}
    {const psTx=((wx/RES)|0)/psw.tileRes,psTy=((wy/RES)|0)/psw.tileRes;
@@ -4199,18 +4213,22 @@ return(
   {/* TIMELINE — scrub the political map through the run's keyframes (worker
       captures one every 500 steps). Drag = ask the worker for the nearest
       keyframe; LIVE returns to the present. */}
-  <input type="range" min={0} max={Math.max(500,liveStep||0)} step={500} value={scrubStep??liveStep??0}
-    onChange={(ev)=>{const v=+ev.target.value;setScrubStep(v);scrubRef.current=true;
-      if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"scrub",step:v});}}
+  {(()=>{const tlN=simWorkerRef.current?((peopleRef.current&&peopleRef.current._timelineN)||0):frameCount(fbTimelineRef.current);
+    return <input type="range" min={0} max={Math.max(1,tlN-1)} step={1} value={scrubStep??Math.max(0,tlN-1)}
+    onChange={(ev)=>{const idx=+ev.target.value;setScrubStep(idx);scrubRef.current=true;
+      if(simWorkerRef.current){simWorkerRef.current.postMessage({type:"scrub",idx});}
+      else{const psw=peopleRef.current;if(psw){const fr=frameAt(fbTimelineRef.current,idx,psw.N);
+        if(fr){psw._scrubClaim=fr.claim;setScrubShown(fr.step);if(drawNowRef.current)drawNowRef.current();}}}}}
     style={{width:narrow?80:170,accentColor:"var(--au-ch-gold)"}}
-    title="Timeline — scrub the political map through history"/>
+    title="Timeline — one frame per ~year; drag to scrub the political map through history"/>;})()}
   {scrubStep!=null&&<>
     <span className="au-num" style={{fontSize:11,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{"t="+(scrubShown??scrubStep)}</span>
     <button className="au-btn au-flat" style={{padding:"2px 8px",fontSize:11}}
       title="Return to the live map"
       onClick={()=>{setScrubStep(null);setScrubShown(null);scrubRef.current=false;
         const psw=peopleRef.current;
-        if(psw&&psw._liveClaim){psw._countryClaim=psw._liveClaim;psw._liveClaim=null;psw._claimVer=(psw._claimVer||0)+1;}}}>LIVE</button>
+        if(psw){psw._scrubClaim=null;psw._claimVer=(psw._claimVer||0)+1;}
+        if(drawNowRef.current)drawNowRef.current();}}>LIVE</button>
   </>}
   {!narrow&&<select className="au-btn au-flat au-num" value={minKm2} title="Atlas bar — hide nations smaller than this (nations with settlements always show)"
     onChange={(ev)=>setMinKm2(+ev.target.value)} style={{padding:"2px 4px",fontSize:11}}>

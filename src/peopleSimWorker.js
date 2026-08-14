@@ -33,6 +33,7 @@ import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
 import { TRAITS, labelFor } from "./sim/peopleSim/personality.js";
 import { estimateCountryRange } from "./sim/peopleSim/conquest.js";
+import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 
 // Country editor: drop a FULLY-FORMED realm — a capital plus the cities and towns
 // filling the territory its tech allows it to hold (estimateCountryRange), then a
@@ -109,31 +110,10 @@ let chronKey = "";     // signature of the last chronicle shipped (realm|len|per
 let staticSent = false;      // owner/roadQuality sent at least once?
 // ── The atlas filter + the timeline (owner features 2026-08-14) ──────────────
 let minShowKm2 = 0;          // hide nations whose claim is smaller than this (km²) UNLESS they hold a settlement; 0 = show all
-let timeline = [];           // political keyframes [{step, rle:Int32Array}] — RLE of the merged owner layer, captured every KEY_IVL steps
-let lastKeyStep = 0;         // last keyframe's step (capture cadence anchor)
-const KEY_IVL = 500;         // steps between keyframes (~few MB per long run at tw=960; RLE is small early, bounded by the cap below)
-const KEY_CAP = 400;         // keep at most this many frames (oldest dropped)
+let timeline = makeTimeline();   // ~every-year political frames (sparse diffs; see sim/timelineStore.js — shared with the main-thread fallback)
+let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
-
-// One political keyframe: the AUTHORITATIVE merged layer (realm owner, land-
-// nation fill on land; water −1), run-length encoded [id,len,id,len,...].
-// The pretty control-field layer is render-time only — history scrubs the
-// sim's own truth.
-function captureKeyframe() {
-  if (!world) return;
-  const N = world.N, co = world._countryOwner, lo = world._landOwner, elev = world.elev;
-  const runs = [];
-  let cur = -2, len = 0;
-  for (let i = 0; i < N; i++) {
-    const v = elev[i] > 0 ? (co && co[i] >= 0 ? co[i] : (lo && lo[i] >= 0 ? lo[i] : -1)) : -1;
-    if (v === cur) len++;
-    else { if (len) runs.push(cur, len); cur = v; len = 1; }
-  }
-  if (len) runs.push(cur, len);
-  timeline.push({ step: world.step, rle: Int32Array.from(runs) });
-  if (timeline.length > KEY_CAP) timeline.splice(0, timeline.length - KEY_CAP);
-}
 
 self.onmessage = (e) => {
   const m = e.data;
@@ -158,7 +138,7 @@ function handleMessage(m) {
       // are NOT reset (the main thread re-sends its current values right after
       // init) — but if a previous world was mid-play, keep stepping the new one
       // rather than silently freezing until the next control message.
-      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = []; lastKeyStep = 0;
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
       buildSnapshot();            // immediate first frame
       if (playing) scheduleTick();
     } catch (err) {
@@ -210,7 +190,7 @@ function handleMessage(m) {
       if (m.genMeta) genMeta = m.genMeta;
       world = loadWorld(m.json);
       world._wantMoneyFlows = (viewMode === "money");
-      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = []; lastKeyStep = 0;
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
       buildSnapshot();
       if (playing) scheduleTick();
     } catch (err) {
@@ -231,17 +211,12 @@ function handleMessage(m) {
     staticSent = false;
     if (!playing && world) buildSnapshot();
   } else if (m.type === "scrub") {
-    // Timeline scrub: decode the nearest keyframe at/below the asked step and
-    // ship it as a full layer. The UI swaps it in for the live political map.
-    if (world && timeline.length) {
-      let lo = 0, hi = timeline.length - 1, best = 0;
-      while (lo <= hi) { const mid = (lo + hi) >> 1; if (timeline[mid].step <= m.step) { best = mid; lo = mid + 1; } else hi = mid - 1; }
-      const kf = timeline[best];
-      const out = new Int32Array(world.N);
-      const r = kf.rle;
-      let p = 0;
-      for (let i = 0; i < r.length; i += 2) { out.fill(r[i], p, p + r[i + 1]); p += r[i + 1]; }
-      self.postMessage({ type: "timelineFrame", step: kf.step, frame: out, first: timeline[0].step, last: timeline[timeline.length - 1].step }, [out.buffer]);
+    // Timeline scrub by FRAME INDEX (~one frame per display year): decode via
+    // the shared store and ship the full layer. The UI swaps it in for the
+    // live political map.
+    if (world && frameCount(timeline)) {
+      const fr = frameAt(timeline, m.idx, world.N);
+      if (fr) self.postMessage({ type: "timelineFrame", step: fr.step, idx: Math.max(0, Math.min(frameCount(timeline) - 1, m.idx | 0)), frame: fr.claim, count: frameCount(timeline) }, [fr.claim.buffer]);
     }
   }
 }
@@ -296,7 +271,7 @@ function tick() {
   for (let i = 0; i < steps; i++) {
     try {
       stepPeopleSim(world, 1);
-      if (world.step - lastKeyStep >= KEY_IVL) { lastKeyStep = world.step; captureKeyframe(); }
+      if (world.step - lastKeyStep >= CAPTURE_IVL) { lastKeyStep = world.step; captureFrame(timeline, world); }
     }
     catch (err) {
       // The SIM threw. Pause (the world may be mid-mutation; stepping on would
@@ -725,6 +700,7 @@ function buildSnapshotUnsafe() {
   self.postMessage({
     type: "snapshot",
     step: world.step,
+    timelineN: frameCount(timeline),   // frames available to the history scrubber
     eraAt: world._eraAt,             // display-calendar timeline (era → step it was reached)
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
