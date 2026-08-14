@@ -77,8 +77,24 @@ export function pkgSuitAt(world, ti, pkg) {
     // the flood for the growing season — Egypt's winter wheat on the summer
     // flood's water); rain-fed seasonality is untouched.
     if (T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && mGrow < MOIST_FLOOD_FED) mGrow = MOIST_FLOOD_FED;
+    // T.FLOOD_OPT — MANAGED WATER HITS THE OPTIMUM (task #15, the Mesopotamia
+    // inversion root, MEASURED at the pin: winter temp 0.72 vs wheat tOpt 0.73
+    // — PERFECT — but the flood floor + cool-season rain bias push mGrow to
+    // ~0.59 against wheat's mOpt 0.36, and the symmetric bell punishes "too
+    // wet" as hard as "too dry": history's richest grain economy priced at
+    // 0.27-0.37 by its own irrigation water). Basin irrigation is CONTROLLED
+    // application — canals deliver and DRAIN; a farmer gives the crop what it
+    // wants, never drowns it — so on flood-fed ground the growing moisture
+    // clamps DOWN to the crop's own optimum when supply exceeds it. Scarcity
+    // below optimum still binds (the floor stays MOIST_FLOOD_FED, no top-up
+    // beyond it), so rice (mOpt 0.72 > the flood floor) is untouched and the
+    // desert off the floodplain stays desert. Zero constants: the clamp
+    // target is the package's own optimum. A pre-v20 save keeps its
+    // overwatered cradles (guard).
+    if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && mGrow > pkg.mOpt) mGrow = pkg.mOpt;
     return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow);
   }
+  if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && m > pkg.mOpt) m = pkg.mOpt;
   return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null);
 }
 
