@@ -2898,6 +2898,18 @@ function updateFood(world, s) {
   // below compares the supply FLOW against THIS, not against the notional
   // whole-catchment drain. Stashed, not returned: the famine block runs later.
   s._coreNeed = Math.min(s.people, s._urbanPop || 0) * 0.0030 * urbanFactor + armyFood + slaveFood;
+  // Sustained FED-NESS (T.STARVE_SHED reads this in the field pass): a slow
+  // moving average of flow-vs-core-need — ~100-tick memory, a granary-decade.
+  // One bad harvest barely moves it; a chronically starving core sees its
+  // capacity floor melt at generational pace (the owner's stone-age
+  // "metropolis, actively STARVING, still growing 100k+": the CORE_HOLD
+  // floor held capacity with no food term at all, so the field logistic
+  // kept filling a core whose granary was empty — growth read capacity,
+  // famine read the granary, and they never met).
+  {
+    const fedNow = s._coreNeed > 0 ? Math.min(1, (s._foodSupply || 0) / s._coreNeed) : 1;
+    s._fedM = s._fedM === undefined ? 1 : 0.99 * s._fedM + 0.01 * fedNow;
+  }
 
   // T.SIEGE_STARVE — a BESIEGED seat eats its granary (the variance arc's
   // storm-gate fix, docs/variance-arc-2026-08-13.md): while an enemy front

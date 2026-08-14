@@ -1869,7 +1869,16 @@ export function deriveOnePop(world) {
     // it. Existing constants only; cities minted by other paths (colonies,
     // plantations) carry no stash and are untouched.
     if (T.CORE_HOLD && s._coreHoldCapF > 0 && _coreF > 0) {
-      const hold = Math.min(_coreF, s._coreHoldCapF);
+      // T.STARVE_SHED: the floor yields to SUSTAINED starvation — "hold what
+      // arrived" was food-blind, so a chronically unfed core kept its full
+      // capacity and the field logistic kept growing it through famine. The
+      // floor now carries the settlement's fed-ness average (s._fedM, a
+      // granary-decade memory stamped by the food pass): a fed core holds
+      // exactly as before (fedM ≈ 1 — birth-crater behaviour unchanged; new
+      // mints start at 1), a starving one melts at generational pace and
+      // hunger finally empties the CITY, not just the land around it.
+      const fedY = T.STARVE_SHED && s._fedM !== undefined ? s._fedM : 1;
+      const hold = Math.min(_coreF, s._coreHoldCapF) * fedY;
       if (hold > kCap) kCap = hold;
     }
     // THE URBAN GRAVEYARD, density-graded (T.URBAN_GAMMA): the base excess
