@@ -2691,7 +2691,11 @@ draw(terRef.current);};
 afid=requestAnimationFrame(animLoop);
 return()=>cancelAnimationFrame(afid);},[draw]);
 
-const togglePlay=()=>{playRef.current=!playRef.current;setPlaying(p=>!p);};
+const togglePlay=()=>{const on=!playRef.current;
+  if(on&&scrubRef.current){  // unpausing returns to the present — a scrubbed past never plays forward
+    setScrubStep(null);setScrubShown(null);scrubRef.current=false;
+    const psw=peopleRef.current;if(psw){psw._scrubClaim=null;psw._claimVer=(psw._claimVer||0)+1;}}
+  playRef.current=on;setPlaying(on);};
 const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
 e.target.value="";
 setImportStatus("Loading...");
@@ -4215,7 +4219,9 @@ return(
       keyframe; LIVE returns to the present. */}
   {(()=>{const tlN=simWorkerRef.current?((peopleRef.current&&peopleRef.current._timelineN)||0):frameCount(fbTimelineRef.current);
     return <input type="range" min={0} max={Math.max(1,tlN-1)} step={1} value={scrubStep??Math.max(0,tlN-1)}
-    onChange={(ev)=>{const idx=+ev.target.value;setScrubStep(idx);scrubRef.current=true;
+    onChange={(ev)=>{const idx=+ev.target.value;
+      if(playRef.current){playRef.current=false;setPlaying(false);}  // scrubbing pauses history
+      setScrubStep(idx);scrubRef.current=true;
       if(simWorkerRef.current){simWorkerRef.current.postMessage({type:"scrub",idx});}
       else{const psw=peopleRef.current;if(psw){const fr=frameAt(fbTimelineRef.current,idx,psw.N);
         if(fr){psw._scrubClaim=fr.claim;setScrubShown(fr.step);if(drawNowRef.current)drawNowRef.current();}}}}}
@@ -4228,7 +4234,8 @@ return(
       onClick={()=>{setScrubStep(null);setScrubShown(null);scrubRef.current=false;
         const psw=peopleRef.current;
         if(psw){psw._scrubClaim=null;psw._claimVer=(psw._claimVer||0)+1;}
-        if(drawNowRef.current)drawNowRef.current();}}>LIVE</button>
+        if(drawNowRef.current)drawNowRef.current();
+        playRef.current=true;setPlaying(true);}}>LIVE ▶</button>
   </>}
   {!narrow&&<select className="au-btn au-flat au-num" value={minKm2} title="Atlas bar — hide nations smaller than this (nations with settlements always show)"
     onChange={(ev)=>setMinKm2(+ev.target.value)} style={{padding:"2px 4px",fontSize:11}}>
