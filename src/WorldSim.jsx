@@ -545,6 +545,16 @@ const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0}
 // Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
 // bar visibly counts up tick-by-tick; the heavier psStats stays throttled to ~5Hz.
 const [liveStep,setLiveStep]=useState(0);
+// Timeline scrub (owner feature): null = live map; a number = the step the
+// user is scrubbing to. scrubRef gates live-snapshot overwrites of the
+// political layer; scrubShown mirrors the keyframe step actually displayed.
+const [scrubStep,setScrubStep]=useState(null);
+const scrubRef=useRef(false);
+const [scrubShown,setScrubShown]=useState(null);
+// The atlas bar (owner feature): hide nations below this claimed km² on the
+// map — settlement-holding nations always show. Default: principality scale,
+// the cutoff world-zoom historical atlases actually draw.
+const [minKm2,setMinKm2]=useState(20000);
 const uiPulseRef=useRef(0);   // last React-pulse time — gates snapshot-driven renders to ≤4Hz
 // Time-series of global metrics for the History charts + copyable export. Kept
 // in a ref (no re-render on every sample); the charts read it on the regular
@@ -638,6 +648,13 @@ try{
   sw.onmessage=(e)=>{
     const d=e.data;
     if(d.type==='snapshot'){sawSnap.current=true;if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    else if(d.type==='timelineFrame'){
+      // Swap the scrubbed keyframe in as the political layer; the paint and
+      // label paths read psw._countryClaim unchanged. Live claims keep
+      // arriving into psw._liveClaim (applySnapshot gates on scrubRef).
+      const psw=peopleRef.current;
+      if(psw&&scrubRef.current){psw._countryClaim=d.frame;psw._claimVer=(psw._claimVer||0)+1;setScrubShown(d.step);}
+    }
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='historyData'){
       const blob=new Blob([d.json],{type:"application/json"});
@@ -696,6 +713,7 @@ try{
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
+  sw.postMessage({type:'mapFilter',minKm2:minKm2Ref.current});
   // A fresh worker starts at default tuning — re-send the user's current levers.
   sw.postMessage({type:'tune',values:tuneValsRef.current});
   usedWorker=true;
@@ -2534,7 +2552,10 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
-  if(snap.countryClaim){psw._countryClaim=snap.countryClaim;psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver drives label-anchor cache)
+  if(snap.countryClaim){
+    if(scrubRef.current){psw._liveClaim=snap.countryClaim;}  // scrubbing: hold the live layer aside; the keyframe stays on screen
+    else{psw._countryClaim=snap.countryClaim;psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver drives label-anchor cache)
+  }
   if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
@@ -2596,6 +2617,8 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"d
 useEffect(()=>{if(selectedSettlementId>=0)setPanelTab("inspect");},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
+const minKm2Ref=useRef(20000);minKm2Ref.current=minKm2;
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'mapFilter',minKm2});},[minKm2]);
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
 useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
@@ -4172,6 +4195,31 @@ return(
   <span className="au-era" style={{fontSize:narrow?13:15,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{_era}</span>
   {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"var(--au-ch-gold)",fontWeight:700,letterSpacing:0.3}}>✦</span>}
   <span className="au-year au-num" style={{fontSize:narrow?12:13.5,whiteSpace:"nowrap"}}>{_ys}</span>
+  <span className="au-vrule" style={{height:22}}/>
+  {/* TIMELINE — scrub the political map through the run's keyframes (worker
+      captures one every 500 steps). Drag = ask the worker for the nearest
+      keyframe; LIVE returns to the present. */}
+  <input type="range" min={0} max={Math.max(500,liveStep||0)} step={500} value={scrubStep??liveStep??0}
+    onChange={(ev)=>{const v=+ev.target.value;setScrubStep(v);scrubRef.current=true;
+      if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"scrub",step:v});}}
+    style={{width:narrow?80:170,accentColor:"var(--au-ch-gold)"}}
+    title="Timeline — scrub the political map through history"/>
+  {scrubStep!=null&&<>
+    <span className="au-num" style={{fontSize:11,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{"t="+(scrubShown??scrubStep)}</span>
+    <button className="au-btn au-flat" style={{padding:"2px 8px",fontSize:11}}
+      title="Return to the live map"
+      onClick={()=>{setScrubStep(null);setScrubShown(null);scrubRef.current=false;
+        const psw=peopleRef.current;
+        if(psw&&psw._liveClaim){psw._countryClaim=psw._liveClaim;psw._liveClaim=null;psw._claimVer=(psw._claimVer||0)+1;}}}>LIVE</button>
+  </>}
+  {!narrow&&<select className="au-btn au-flat au-num" value={minKm2} title="Atlas bar — hide nations smaller than this (nations with settlements always show)"
+    onChange={(ev)=>setMinKm2(+ev.target.value)} style={{padding:"2px 4px",fontSize:11}}>
+    <option value={0}>all nations</option>
+    <option value={5000}>≥5k km²</option>
+    <option value={20000}>≥20k km²</option>
+    <option value={100000}>≥100k km²</option>
+    <option value={500000}>≥500k km²</option>
+  </select>}
   {!narrow&&<>
     <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
     <span className="au-vrule" style={{height:22}}/>
