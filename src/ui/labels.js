@@ -62,7 +62,10 @@ function snapToOwned(anchor, id, claim, tw, th) {
  * planted while borders creep.
  */
 export function realmLabelAnchors(psw, cache) {
-  const claim = psw._countryClaim;
+  // While the timeline is scrubbed the anchors follow the SCRUBBED claim, so
+  // names sit on the historical territory (realms since dead simply have no
+  // registry entry and stay unlabelled). _claimVer bumps per scrub frame.
+  const claim = psw._scrubClaim || psw._countryClaim;
   if (!claim || !psw.countries) return cache && cache.list ? cache : { ver: -1, list: [] };
   const ver = psw._claimVer || 0;
   const nNamed = psw.countries.size + (psw._landNames ? psw._landNames.size : 0);

@@ -140,16 +140,24 @@ return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 // hue WHEEL: each country is pushed away from its neighbours' hues (repulsion that's
 // stronger the closer two neighbours are). Previous hues seed the next solve, so the
 // colours spread out and then drift smoothly rather than flickering each refresh.
-function assignCountryColors(claimArr,tw,th,prev){
+function assignCountryColors(claimArr,tw,th,prev,rootOf){
+  // Hue units are suzerainty BLOCS, not legal atoms: every member of an
+  // empire (vassal or colony) resolves to its root before adjacency, so the
+  // relaxation separates empires from NEIGHBOURING empires instead of pushing
+  // a vassal's hue away from its own suzerain's (the old behaviour — the
+  // exact inverse of how an atlas paints an empire). rootOf defaults to
+  // identity so standalone callers keep the legacy per-realm solve.
+  const R=rootOf||(c=>c);
   const adj=new Map(),present=[],seen=new Set();
   const link=(a,b)=>{let s=adj.get(a);if(!s)adj.set(a,s=new Set());s.add(b);let t=adj.get(b);if(!t)adj.set(b,t=new Set());t.add(a);};
   for(let ti=0;ti<claimArr.length;ti++){
-    const cc=claimArr[ti];if(cc<0)continue;
+    const c0=claimArr[ti];if(c0<0)continue;
+    const cc=R(c0);
     if(!seen.has(cc)){seen.add(cc);present.push(cc);}
     const py=(ti/tw)|0,px=ti-py*tw;
-    const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
-    if(ro>=0&&ro!==cc)link(cc,ro);
-    if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc)link(cc,dno);}
+    const ro0=claimArr[py*tw+(px===tw-1?0:px+1)];
+    if(ro0>=0){const ro=R(ro0);if(ro!==cc)link(cc,ro);}
+    if(py<th-1){const dno0=claimArr[ti+tw];if(dno0>=0){const dno=R(dno0);if(dno!==cc)link(cc,dno);}}
   }
   const hue=new Map();
   let seeded=0;
@@ -1696,8 +1704,14 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
-    if(ancAnimating||meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
-      meta.layerKey=layerKey;
+    // Scrub invalidation: while the timeline is scrubbed the sim is paused, so
+    // stepNow never advances and the lazy cache would keep blitting the LIVE
+    // map under a moving year readout. Each arriving scrub frame bumps
+    // _claimVer; fold it into the gate (live keeps the cheap 30-step cache —
+    // scrubVer pins to -1 there, so live snapshots never thrash the overlay).
+    const scrubVer=scrubRef.current?(psw._claimVer||0):-1;
+    if(ancAnimating||meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey||meta.scrubVer!==scrubVer){
+      meta.layerKey=layerKey;meta.scrubVer=scrubVer;
       const octx=ov.getContext('2d');
       // Draw in MAP-canvas (CW×CH) coordinate units but rasterise onto the fixed FEAT_W×FEAT_H
       // overlay: a single uniform _k scale means every coordinate / width / dash below is reused
@@ -2079,7 +2093,16 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       };
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
-        const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
+        // Suzerainty root: follow _overlord chains (vassal AND colony) with a
+        // hop guard. An empire paints as ONE colour family — the atlas
+        // convention (satrapies paint as Persia) — while claim-id borders
+        // below keep every internal boundary visible.
+        const rootCache=new Map();
+        const rootOf=(id)=>{let r=rootCache.get(id);if(r!==undefined)return r;
+          let cur=id,hops=0;
+          while(hops++<12){const o=psw.countries&&psw.countries.get(cur);const ov=o&&o._overlord>=0&&o._overlord!==cur?o._overlord:-1;if(ov<0)break;cur=ov;}
+          rootCache.set(id,cur);return cur;};
+        const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current,rootOf);
         countryColorsRef.current=hues;
         const fillByCountry=new Map(),colonyByCC=new Map();
         const colonyCells=[];   // sx,sy pairs of colony tiles → striped overlay below
@@ -2091,15 +2114,24 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           let fs=fillByCountry.get(cc);
           if(fs===undefined){
-            // A COLONY is drawn in its metropole's exact colour (striped below to mark it),
-            // so it clearly reads as that empire's dependency, not an unrelated new state.
-            // A submitted VASSAL keeps its own colour — it is a sovereign court paying
-            // tribute, not a plantation (its suzerain shows in the realm inspector).
+            // A COLONY is drawn in its metropole's exact colour + stripes (a
+            // plantation of the empire). A submitted VASSAL wears the empire's
+            // hue at a lighter shade — inside the colour family, visibly not
+            // the metropole; its own border still separates it. A nation of
+            // the land (no court in psw.countries — tribal fabric) is a PALE
+            // wash: atlases colour states, peoples stay quiet. City-states
+            // WITH a court keep full vibrancy.
             const cobj=psw.countries&&psw.countries.get(cc);
-            const over=cobj&&cobj._overlord>=0&&cobj._depKind!=="vassal"?cobj._overlord:-1;
-            colonyByCC.set(cc,over>=0);
-            const h=(over>=0?(hues.get(over)??((over*61)%360+360)%360):(hues.get(cc)??((cc*61)%360+360)%360))|0;
-            fs=`hsl(${h},60%,50%)`;   // every realm drawn vibrant — no city-state muting
+            const root=rootOf(cc);
+            const isColony=!!(cobj&&cobj._overlord>=0&&cobj._depKind!=="vassal");
+            const isVassal=!!(cobj&&cobj._overlord>=0&&cobj._depKind==="vassal");
+            // Mute only ids the snapshot POSITIVELY knows as land nations — a
+            // scrubbed frame carries ids of realms since dead, which have no
+            // registry entry and must not read as tribal fabric.
+            const isLandNation=!cobj&&psw._landNames&&psw._landNames.has(cc);
+            colonyByCC.set(cc,isColony);
+            const h=(hues.get(root)??((root*61)%360+360)%360)|0;
+            fs=isLandNation?`hsl(${h},24%,56%)`:isVassal?`hsl(${h},52%,60%)`:`hsl(${h},60%,50%)`;
             fillByCountry.set(cc,fs);
           }
           if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
@@ -2131,7 +2163,16 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           if(L.tints){
             let fs=tintByCountry.get(cc);
-            if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const over=co&&co._overlord>=0&&co._depKind!=="vassal"?co._overlord:-1;colonyByCC.set(cc,over>=0);const h=(((over>=0?over:cc)*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
+            if(fs===undefined){
+              // Same bloc convention as the Politics lens: tint by suzerainty
+              // ROOT hue (vassals included), stripes still mark colonies.
+              const co=psw.countries&&psw.countries.get(cc);
+              const isColony=!!(co&&co._overlord>=0&&co._depKind!=="vassal");
+              let root=cc,hops=0;
+              while(hops++<12){const o=psw.countries&&psw.countries.get(root);const ov=o&&o._overlord>=0&&o._overlord!==root?o._overlord:-1;if(ov<0)break;root=ov;}
+              colonyByCC.set(cc,isColony);
+              const h=((root*61)%360+360)%360;
+              fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
             if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
             stctx.fillRect(px,py,1,1);
             if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
