@@ -314,6 +314,15 @@ const CAP_DOM_CEIL_BASE = 4;   // primitive (capCoh→0) dominance ceiling — e
 // over years, so the reference eases toward the fresh median like _impCapacity does for
 // capacity — an honest low-pass on a noisy emergent statistic, not a fitted floor.
 const REF_REV_SMOOTH = 0.25;  // per polity pass: reference ≈ the last ~4 passes' median
+// STATE_WORKS rates (the maintained-reach stock; see the block in rebuildCountries).
+// Each has meaning on its own: how much extra writ a unit of √(fiscal scale above
+// the era's median) buys, how fast a state can lay network per pass at full
+// construction, and how fast an unmaintained network dilapidates. BUILD ≪ DECAY is
+// the asymmetry that makes the arc historical: generations to build the roads, a
+// crisis to lose them.
+const WORKS_GAIN  = 0.55;   // works stock per √(fiscal scale over the era's median realm)
+const WORKS_BUILD = 0.030;  // per pass at construction 1.0 — an imperial road system is decades of work
+const WORKS_DECAY = 0.085;  // per pass unmaintained — dilapidation outruns construction ~3×
 // Imperial-hysteresis rates:
 const CAP_IMP_RISE  = 0.04;   // imperial-capacity stock rises toward live capacity (institutions accrete)
 const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (institutions persist → hysteresis)
@@ -709,6 +718,87 @@ export function rebuildCountries(world) {
     c.hue = ((c.id * 61) % 360 + 360) % 360;
     buildHierarchy(world, c);
     assignProvinces(world, c);
+  }
+  // ── T.STATE_WORKS: the road, the relay, the waystation — reach as a
+  // MAINTAINED STOCK (2026-08-14, docs/atlas-gap-2026-08-14.md cause I) ──────
+  // c.range above is a pure function of the CAPITAL'S TECH, so every realm in
+  // an era holds the same radius and the map has no reach outliers — measured
+  // as "administrative reach ramps linearly where history stepped"
+  // (docs/50k-run-2026-08-01.md §7b, recorded as hypothesis, never built).
+  // History's giants were exactly that outlier: the Royal Road, the cursus
+  // publicus, the Grand Canal, the yam relay — a state that out-collected its
+  // contemporaries converted the difference into WORKS and governed 3-5× the
+  // country its neighbours could, then lost the network when the fisc failed
+  // (Rome's roads after the third-century crisis; the canal silting).
+  //
+  // Why this is not the guarded loop: the capacity tail deliberately reads
+  // surplus PER MEMBER because "the tail rewards sheer SIZE and capacity
+  // compounds on itself" (~L2547). That guard is about a revenue MULTIPLIER,
+  // which has no restoring force. A works STOCK does, in three independent
+  // ways: (1) a network over a territory scales with the AREA it must serve,
+  // so the extent a fisc can maintain goes as √(fiscal scale) — territory is
+  // already ∝ reach², so the feedback loop's gain is ~1, not >1, and the
+  // equilibrium is set by the upkeep constant rather than by the feedback;
+  // (2) marginal frontier land is emptier than the core (the existing
+  // hostility/capacity physics), so revenue grows SLOWER than area; (3) the
+  // administrative-returns ceiling below. And the failure mode is the point:
+  // unfunded upkeep decays the stock FASTER than construction rebuilds it, so
+  // an overextended empire's reach collapses and it sheds — the bust the
+  // owner's "50 year empires" asks for, from the same mechanism as the boom.
+  //
+  // The measure is RELATIVE TO THE ERA'S MEDIAN REALM (the codebase's own
+  // smoothed-ruler idiom — _refRevenue, _refCapPowerS, _refRealmPop): a realm
+  // at parity gets nothing, and when every state industrialises together
+  // nobody gains — extraordinary reach is always extraordinary FOR ITS TIME,
+  // never a clock. No coin moves: this models what a fisc can SUSTAIN, not a
+  // new money sink (the closed-supply conservation invariant is untouched).
+  if (T.STATE_WORKS > 0) {
+    const sus = [];
+    const susOf = new Map();
+    for (const c of countries.values()) {
+      const g = govOf(world, c.id);
+      // Total fiscal extraction in era-normalized units ("how many median
+      // members' worth of income does this state collect"): the one reading a
+      // network's upkeep genuinely demands — "can Rome afford the cursus
+      // publicus" has no per-head answer.
+      const s = Math.max(0, (g._lastRevenue || 0) / Math.max(1, world._refRevenue || 1));
+      susOf.set(c.id, s);
+      if (c.members.length > 1) sus.push(s);
+    }
+    if (sus.length) {
+      sus.sort((a, b) => a - b);
+      const med = Math.max(1e-6, sus[sus.length >> 1]);
+      const prev = world._refWorks;
+      world._refWorks = prev > 0 ? prev + (med - prev) * REF_REV_SMOOTH : med;
+    }
+    const ref = Math.max(1e-6, world._refWorks || 0);
+    for (const c of countries.values()) {
+      const g = govOf(world, c.id);
+      const rel = (susOf.get(c.id) || 0) / ref;
+      // √ of the scale ABOVE the era's median — the areal-network law (a
+      // network serving area ∝ R² costs upkeep ∝ R², so the extent a given
+      // income sustains goes as √income), capped by administrative returns:
+      // past some density more roads stop extending the writ, because a
+      // courier still has to rest and an order still takes days.
+      const target = Math.min(T.WORKS_CEIL, WORKS_GAIN * Math.sqrt(Math.max(0, rel - 1)));
+      const have = g._works || 0;
+      // Asymmetric: construction is slow and tech-gated (a bronze-age state
+      // cannot lay a rail network); dilapidation is fast and needs no one.
+      const rate = target > have
+        ? WORKS_BUILD * Math.max(0, (c.capital && c.capital.knowledge && c.capital.knowledge.construction) || 0)
+        : WORKS_DECAY;
+      const next = have + (target - have) * rate;
+      g._works = Number.isFinite(next) ? Math.max(0, Math.min(T.WORKS_CEIL, next)) : 0;
+      // The stock extends the writ, and the grip is re-derived from it: a state
+      // that out-collects its era and spends the difference on roads, relays and
+      // waystations governs further per unit of statecraft — and loses that reach
+      // when the network is no longer maintained. 0 stock ⇒ x1, byte-identical to
+      // the tech-only radius. (Runs after the capital/range pass because the build
+      // rate is gated on the CAPITAL's construction — before it, every capital is
+      // still null and the rate would silently be zero. Hierarchy and provinces
+      // read neither range nor holdReach, so nothing upstream sees the change.)
+      if (g._works > 0) { c.range *= 1 + T.STATE_WORKS * g._works; c.holdReach = c.range * resScale; }
+    }
   }
   world.countries = countries;
   return countries;

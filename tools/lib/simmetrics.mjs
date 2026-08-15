@@ -253,7 +253,13 @@ export function realmRows(world) {
       // trace that recorded only size: strain is the mechanism, area is the symptom,
       // and the two had to be joined by hand from a separate run.
       strain: p?._strain ?? -1, capacity: c._capacity ?? -1,
-      loadTotal: c._loadTotal ?? -1, momentum: c._momentum ?? 0 });
+      loadTotal: c._loadTotal ?? -1, momentum: c._momentum ?? 0,
+      // T.STATE_WORKS: the maintained infrastructure stock and the reach it
+      // buys. Recorded for the same reason strain was — "why did this realm
+      // reach so far, and why did it stop?" is a question about the STOCK,
+      // while area is only its symptom; a realm whose works are decaying is
+      // mid-collapse several passes before its borders show it.
+      works: p?._works ?? 0, range: c.range ?? -1 });
   }
   rows.sort((a, b) => b.tiles - a.tiles);
   return rows;
