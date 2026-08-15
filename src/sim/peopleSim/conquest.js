@@ -2396,6 +2396,9 @@ export function updatePolities(world) {
   // The union of crowns: kin courts governing one cheap corridor merge — the
   // symmetry breaker that seeds the first multi-city realms (below).
   if (T.VALLEY_UNION) considerUnions(world, countries);
+  // The second act: a mature suzerain integrates aged, governable client
+  // courts as provinces (satrapization — territory finally consolidates).
+  if (T.SATRAPIZE) considerIntegrations(world, countries);
   // The steppe collects: hordes raid the rich settled rim (or honour the
   // treaties of those who submitted above). After submissions so a court that
   // bent the knee this pass is spared this pass's raid season.
@@ -3586,6 +3589,104 @@ function considerUnions(world, countries) {
     // matures — the same two-act arc as Castile-Aragon → Spain.
     if (bendTheKnee(world, sid, best, "union")) telPass(world, "union");
     else tel(world, "union", "kneeRefused");
+  }
+}
+
+// ── T.SATRAPIZE: the second act — a mature suzerain integrates its aged
+// vassals as PROVINCES (2026-08-14, docs/atlas-gap-2026-08-14.md cause I) ────
+// The union-of-crowns note above records the arc's shape: "territorial
+// consolidation follows later through the existing org-gated machinery as
+// statecraft matures — the same two-act arc as Castile-Aragon → Spain." But
+// that second act never existed: VASSAL_SHIELD blocks the erosion lane on
+// bonded pairs UNCONDITIONALLY, and no channel converts a whole client court
+// into governed territory — so consolidation's product is forever a 4-5-member
+// bloc the map (rightly) reads as separate states, and the top realm's share
+// of the claimed world FALLS through the very eras history's hegemons owned
+// (measured: 38% → 4-6% across 45k at tw=480; Persia/Rome/Abbasids re-enter
+// 25-50% again and again). History's discriminator was ADMINISTRATIVE
+// CAPACITY: while a crown cannot govern a far country directly, tribute is
+// the only way to hold it (the shield's regime — Assyria's early tribute
+// ring, the Heptarchy, the princely states); when statecraft matures past
+// what the client's seat demands, the client becomes a province (Media under
+// Cyrus, Judea AD 6, Pergamon by bequest). So the gate is the absorb
+// machinery's own capacity law applied along the bond — org tier, admin
+// headroom, direct-rule reach — braked by the same identity and
+// balance-of-power laws every peaceful transfer reads, on the submission
+// hazard's patience clock. No new constants. The transfer wears the annex
+// lane's full paperwork (countryId + recordOccupation + loyalty/grace stamps
+// + _countryOwner repaint), so the territory derivation KEEPS the province —
+// the failure mode that undid union member-transfer twice (probe_unionhold3)
+// was a YOUNG realm's claim budget, and the headroom/org gates are exactly
+// what a young suzerain fails. The record ends how:"integrated" with the
+// occupation memory written, so the restoration machinery can resurrect the
+// old nation in a later crisis — provinces break away, satrapies rebelled.
+// Colonies are untouched (their lane is independence/decolonization), and a
+// young/foreign/over-tier vassal keeps the shield — the mosaic persists;
+// only the aged, governable, kin-eroded bond is finally administered.
+function considerIntegrations(world, countries) {
+  const ov = world._overlordOf;
+  if (!ov || !ov.size) return;
+  const probBase = _passProb(SUBMIT_HAZARD);
+  const bonds = [...ov.entries()].sort((a, b) => a[0] - b[0]);   // deterministic order
+  for (const [sid, hid] of bonds) {
+    tel(world, "integrate", "CANDIDATE");
+    const S = countries.get(sid), H = countries.get(hid);
+    if (!S || !H || !S.capital || !H.capital) { tel(world, "integrate", "noLiveSeat"); continue; }
+    const pol = getPolity(world, sid);
+    if (!pol || pol._depKind !== "vassal") { tel(world, "integrate", "notAVassalBond"); continue; }
+    const fOrg = techEff(H.capital).reachLevel;
+    if (fOrg < T.ABSORB_ORG_MIN) { tel(world, "integrate", "orgBelowMin"); continue; }
+    if (tierCapForOrg(fOrg) < (S.capital.tier | 0)) { tel(world, "integrate", "seatAboveTierCap"); continue; }
+    // Direct rule must REACH the client's seat — tribute ranges SUBMIT_REACH
+    // past holdReach precisely because a vassal administers itself; a
+    // province does not.
+    const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
+    if (d > Math.max(1, H.holdReach)) { tel(world, "integrate", "beyondDirectRule"); continue; }
+    let addLoad = 0;
+    for (const m of S.members) if (m.mode === "settled") addLoad += estAbsorbLoad(world, H, m);
+    if (!hasAbsorbHeadroom(H, addLoad)) { tel(world, "integrate", "noAdminHeadroom"); continue; }
+    const r = hash32(world.seed || 1, "satrapize", sid, world.step) / 4294967296;
+    if (r > probBase) { tel(world, "integrate", "hazardRoll(waiting)"); continue; }
+    // Kin provinces integrate readily, wholly foreign courts resist for
+    // generations (never absolutely — the same saturating brake as submission
+    // and absorption), and a coalition arrayed against the suzerain props up
+    // the client's autonomy (Rome annexed clients when no peer could object).
+    const mIdentity = 1 - T.ABSORB_IDENTITY * absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+    const brake = coalitionBrake(world, hid, (world._countryPow && world._countryPow.get(hid)) || 1);
+    let prob = probBase * mIdentity;
+    prob /= brake;
+    if (r > prob) { tel(world, "integrate", mIdentity <= 1 / brake ? "identityBrake(foreignCourt)" : "coalitionBrake(deterrence)"); continue; }
+    // ── The act: the client court becomes provinces of the empire ──
+    const co = world._countryOwner, owner = world._territoryOwner;
+    const tw = world.tw, N = world.N;
+    const members = S.members.filter(m => m.mode === "settled" && m.countryId === sid);
+    for (const m of members) {
+      m.countryId = hid;
+      recordOccupation(m, sid, hid, world.step);   // the old nation is remembered — restorable
+      m.loyalty = 0.6;
+      m._conqueredAt = world.step;                 // integration grace (anti-flicker)
+      logEvent(world, "settlement.annexed", { s: m.id, sName: m.name || "a settlement",
+        from: sid, fromName: realmName(world, sid), to: hid, toName: realmName(world, hid) });
+      if (owner && co) {
+        for (let ti = 0; ti < N; ti++) if (owner[ti] === m.id) co[ti] = hid;
+        const hti = (m.pos.y | 0) * tw + (((m.pos.x | 0) % tw) + tw) % tw;
+        if (world.elev[hti] > 0) co[hti] = hid;
+      }
+    }
+    // The client's marches ride along — the whole country changes flag; the
+    // claim crawl repaints ring by ring (no snap: absorption, not secession).
+    if (co) for (let ti = 0; ti < N; ti++) if (co[ti] === sid) co[ti] = hid;
+    // The chest joins the imperial fisc (the peaceful mirror of conquest seizure).
+    const gS = govOf(world, sid), gH = govOf(world, hid);
+    if (gS.treasury > 0) { gH.treasury += gS.treasury; gS.treasury = 0; }
+    // The client's own dependencies pass to the empire (tribute pyramids
+    // flatten one level — the cascade's network-inheritance rule, peacetime).
+    if (world.polities) for (const [pid, p] of world.polities) {
+      if (p && p._overlord === sid && p.endedStep < 0 && pid !== hid) { p._overlord = hid; ov.set(pid, hid); }
+    }
+    pol._overlord = undefined; pol._depKind = undefined; ov.delete(sid);
+    endPolity(world, sid, "integrated", hid, realmName(world, hid));
+    telPass(world, "integrate");
   }
 }
 
