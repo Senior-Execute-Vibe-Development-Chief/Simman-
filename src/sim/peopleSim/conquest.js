@@ -769,7 +769,10 @@ export function rebuildCountries(world) {
       sus.sort((a, b) => a - b);
       const med = Math.max(1e-6, sus[sus.length >> 1]);
       const prev = world._refWorks;
-      world._refWorks = prev > 0 ? prev + (med - prev) * REF_REV_SMOOTH : med;
+      // Seed on the first GENUINE median: the 1e-6 clamp above is a "no fisc
+      // yet" sentinel, not a measurement, so smoothing up from it would let
+      // whoever monetises first read rel as enormous for ~10 passes.
+      world._refWorks = prev > 1e-6 ? prev + (med - prev) * REF_REV_SMOOTH : med;
     }
     const ref = Math.max(1e-6, world._refWorks || 0);
     for (const c of countries.values()) {
