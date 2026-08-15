@@ -24,7 +24,7 @@ console.log(`[satrapize] W=${W} (tw=${world.tw}) seed=${SEED} steps=${STEPS} SAT
 function integrations() {
   let n = 0;
   const ev = world.events || [];
-  for (const e of ev) if (e.type === "polity.ended" && e.data && e.data.how === "integrated") n++;
+  for (const e of ev) if (e.type === "polity.ended" && e.how === "integrated") n++;   // events store fields flat
   return n;
 }
 
