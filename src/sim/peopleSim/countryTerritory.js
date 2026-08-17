@@ -29,7 +29,7 @@ import { getCulture } from "./cultures.js";
 import { tel, telPass } from "./telemetry.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { claimHostility, malariaSignal } from "./habitability.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
@@ -993,28 +993,49 @@ function fieldPolityTerritory(world) {
     let cost = world._fpCost; if (!cost || cost.length !== N) cost = world._fpCost = new Float64Array(N);
     cost.fill(Infinity);
     const heap = new MinHeap();
-    // T.CREST_HOLD contact-band map: the nearest existing claim within a
-    // 2-tile Chebyshev band of each land tile (-1 none, -2 mixed). Built
-    // once per pass from the PRE-growth claims — the band a contested
-    // frontier forms against. (Cause IV residual, measured 0.86x ridge
-    // enrichment: growth enters wild only, so the first-arriving realm
-    // crossed ranges at leisure; with the band, entering DEFENSIBLE wild
-    // ground that a rival already faces pays the REFUGE hold, so contested
-    // crests become walls while uncontested ranges stay interior.)
+    // T.CREST_HOLD contact-band map: the nearest existing claim within the
+    // contact horizon of each tile (-1 none, -2 mixed). Built once per pass
+    // from the PRE-growth claims — the band a contested frontier forms
+    // against. (Cause IV residual, measured 0.86x ridge enrichment: growth
+    // enters wild only, so the first-arriving realm crossed ranges at
+    // leisure; with the band, entering DEFENSIBLE wild ground that a rival
+    // already faces pays the REFUGE hold. The hold is symmetric on the
+    // crest itself, so what pins the border to it is the DIFFERENTIAL
+    // along the closing front — flat gaps fill first, defensible tiles
+    // last — and that sorting needs the front to spend several growth
+    // passes in-band: a 1-ref-tile horizon closed in one pass and moved
+    // ridge enrichment only 0.86x→1.03x at 33k. Horizon is a REAL
+    // distance: CB_REF reference tiles ×rNormPop (~330 km — the range at
+    // which pre-modern polities knew of and answered a rival's approach),
+    // per the FORT_R charter; a fixed tile radius shrinks in km on finer
+    // grids, the resolution bug this session hit twice.)
     let cbNear = null;
     if (T.CREST_HOLD) {
+      const CB_REF = 2;
+      const rBand = Math.max(1, Math.round(CB_REF * rNormPop(world)));
       cbNear = world._cbNear && world._cbNear.length === N ? world._cbNear : (world._cbNear = new Int32Array(N));
       cbNear.fill(-1);
-      for (let ti2 = 0; ti2 < N; ti2++) {
-        const o2 = co[ti2]; if (o2 < 0) continue;
+      // multi-source Chebyshev BFS from every claimed tile, depth ≤ rBand:
+      // each tile is stamped once with the first owner to reach it; a second
+      // DIFFERENT owner arriving marks it mixed (-2). Ring-buffer queue.
+      let cbQ = world._cbQ; if (!cbQ || cbQ.length !== N) cbQ = world._cbQ = new Int32Array(N);
+      let cbD = world._cbD; if (!cbD || cbD.length !== N) cbD = world._cbD = new Uint8Array(N);
+      cbD.fill(0);
+      let qn = 0;
+      for (let ti2 = 0; ti2 < N; ti2++) { const o2 = co[ti2]; if (o2 >= 0) { cbNear[ti2] = o2; cbQ[qn++] = ti2; } }
+      for (let qh = 0; qh < qn; qh++) {
+        const ti2 = cbQ[qh]; const d2 = cbD[ti2]; if (d2 >= rBand) continue;
+        const own = cbNear[ti2];
         const y2 = (ti2 / tw) | 0, x2 = ti2 - y2 * tw;
-        for (let dy = -2; dy <= 2; dy++) {
-          const yy = y2 + dy; if (yy < 0 || yy >= th) continue;
-          for (let dx = -2; dx <= 2; dx++) {
-            const j = yy * tw + ((x2 + dx) % tw + tw) % tw;
-            const cur = cbNear[j];
-            if (cur === -1) cbNear[j] = o2; else if (cur !== o2) cbNear[j] = -2;
-          }
+        const xm2 = x2 === 0 ? tw - 1 : x2 - 1, xp2 = x2 === tw - 1 ? 0 : x2 + 1;
+        for (let k2 = 0; k2 < 8; k2++) {
+          const yy = k2 < 3 ? y2 - 1 : k2 < 5 ? y2 : y2 + 1;
+          if (yy < 0 || yy >= th) continue;
+          const xx = (k2 === 0 || k2 === 3 || k2 === 5) ? xm2 : (k2 === 2 || k2 === 4 || k2 === 7) ? xp2 : x2;
+          const j = yy * tw + xx;
+          const cur = cbNear[j];
+          if (cur === -1) { cbNear[j] = own; cbD[j] = d2 + 1; if (qn < N) cbQ[qn++] = j; }
+          else if (cur !== own && cur !== -2 && co[j] < 0) cbNear[j] = -2;
         }
       }
     }
