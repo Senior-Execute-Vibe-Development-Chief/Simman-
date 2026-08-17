@@ -2339,6 +2339,96 @@ export function updatePolities(world) {
         }
       }
     }
+    // (c2) T.PROTECTORATE — the PARTITION: gunboat subjugation of the far
+    //      coasts. The sea funnel measured the ocean era opening (navMax 1.00,
+    //      182 ocean ports) while colonial founding DIED: noClearSite 400-530
+    //      per window — every shore on the planet already settled, and the
+    //      expedition machinery only knows empty-beach planting. History's
+    //      ocean-era colonialism was mostly NOT planting: it was the
+    //      subjugation of existing, weaker far-world polities (protectorates,
+    //      chartered-company rule, treaty ports — the Raj, the Scramble).
+    //      This lane is the land submission law's naval complement, gated to
+    //      exactly the pairs that law REJECTS at its projection-reach line:
+    //      the army cannot march there, the navy reaches. Same hopeless-odds
+    //      ratio (momentum-eased per CONQUEST_CASCADE), same hazard clock,
+    //      same identity and coalition brakes, same bendTheKnee — the bond it
+    //      mints is _depKind "colony", so the WHOLE existing colonial arc
+    //      (investment, tribute, bloc rendering, the naval-reach independence
+    //      line) applies unchanged: subjugation without the planting, and
+    //      decolonization for free when the metropole's grip fades. No
+    //      regions, no clocks: fires only where ocean-class navies and weak
+    //      coastal courts coexist.
+    if (T.PROTECTORATE && _polityWindow(world, INDEPENDENCE_EVERY)) {
+      const navScale = _holdScaleEnv > 0 ? _holdScaleEnv : resScaleFor(world.tw);
+      const probBase = _passProb(SUBMIT_HAZARD);
+      // Metropole roster: realms with a colonial-office court (the same 0.60
+      // organization rung sea.js's CHARTER_ORG_MIN names — delegated rule at
+      // distance) and an OCEAN-capable port (techEff.ocean — caravels+).
+      const metros = [];
+      for (const c of countries.values()) {
+        if (!c.capital) continue;
+        if ((c.capital.knowledge.organization || 0) < 0.60) continue;
+        let bestNav = 0, ocean = false;
+        for (const m of c.members) {
+          if (m.mode !== "settled" || m.countryId !== c.id || !((m.waterAccess || 0) > 0)) continue;
+          const nv = (m.knowledge && m.knowledge.navigation) || 0;
+          if (nv > bestNav) bestNav = nv;
+          if (!ocean && techEff(m).ocean) ocean = true;
+        }
+        if (ocean) metros.push({ id: c.id, cap: c.capital, nav: bestNav, holdReach: Math.max(1, c.holdReach || 0) });
+      }
+      if (metros.length) {
+        const ovLive = world._overlordOf;
+        for (const c of countries.values()) {
+          const sid = c.id;
+          if (!c.capital) continue;
+          const spol = getPolity(world, sid);
+          if (spol && spol._overlord != null) continue;              // already bound — not a candidate
+          if (!((c.capital.waterAccess || 0) > 0)) continue;         // the gunboat anchors off the SEAT: inland courts are the army's business
+          const powS = blocPow(c) || 1;
+          for (const H of metros) {
+            if (H.id === sid) continue;
+            tel(world, "protectorate", "CANDIDATE");
+            const d = dist(world, H.cap.pos.x, H.cap.pos.y, c.capital.pos.x, c.capital.pos.y);
+            // The land law owns every pair its punitive expedition can reach —
+            // this lane exists strictly beyond it (no double jurisdiction).
+            if (d <= SUBMIT_REACH * H.holdReach) { tel(world, "protectorate", "landLawOwnsThisPair"); continue; }
+            const navalReach = (NAVAL_REACH_BASE + H.nav * NAVAL_REACH_NAV) * navScale;
+            const seaProj = navalReach / (navalReach + d);           // the independence line's own projection algebra
+            const powH = (blocPow(countries.get(H.id)) || 1) * seaProj;
+            let effRatio = SUBMIT_RATIO;
+            if (T.CONQUEST_CASCADE) {
+              const wins = (govOf(world, H.id)._momentum || 0) / MOMENTUM_PER_STORM;
+              effRatio = Math.max(1, SUBMIT_RATIO / (1 + wins));
+            }
+            if (powH < powS * effRatio) { tel(world, "protectorate", "projectionNotHopeless"); continue; }
+            const r = hash32(world.seed || 1, "protectorate", sid, world.step) / 4294967296;
+            if (r > probBase) { tel(world, "protectorate", "hazardRoll(waiting)"); continue; }
+            // No cycles: H's own overlord chain must not lead back to S.
+            let up = H.id, cyc = false;
+            if (ovLive) for (let hops = 0; hops < countries.size && ovLive.has(up); hops++) {
+              up = ovLive.get(up);
+              if (up === sid) { cyc = true; break; }
+            }
+            if (cyc) { tel(world, "protectorate", "cycleWouldForm"); continue; }
+            let prob = probBase;
+            const mIdentity = 1 - T.ABSORB_IDENTITY * absorbResistance(H.cap, c.capital, identityWeightsFor(world, H.cap, c.capital));
+            prob *= mIdentity;
+            const brake = coalitionBrake(world, H.id, (world._countryPow && world._countryPow.get(H.id)) || 1);
+            prob /= brake;
+            if (r > prob) { tel(world, "protectorate", mIdentity <= 1 / brake ? "identityBrake(foreignCourt)" : "coalitionBrake(deterrence)"); continue; }
+            if (bendTheKnee(world, sid, H.id, "gunboat")) {
+              const rec = getPolity(world, sid);
+              if (rec) rec._depKind = "colony";   // a PROTECTORATE: colonial administration over an existing court — the planted-colony lane without the planting
+              logEvent(world, "colony.subjugated", { polity: sid, name: realmName(world, sid),
+                from: H.id, fromName: realmName(world, H.id) });
+              telPass(world, "protectorate");
+              break;                              // bound — no second suzerain this pass
+            } else tel(world, "protectorate", "bendTheKneeRefused");
+          }
+        }
+      }
+    }
     // (d) The colonial ECONOMY, both directions. The metropole INVESTS in a young
     //     dependency — coin from its treasury, grain from its capital granary —
     //     so a raw frontier survives (the COLONY_SUPPLY that used to flow inside one country

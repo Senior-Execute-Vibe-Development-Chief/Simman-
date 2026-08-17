@@ -47,12 +47,13 @@ function landmass() {
 const lmAt = (s) => landOf[(s.pos.y | 0) * world.tw + (s.pos.x | 0)];
 
 let lastEv = -1;
-const cum = { founded: 0, independent: 0, vassalFreed: 0, inherited: 0 };
+const cum = { founded: 0, subjugated: 0, independent: 0, vassalFreed: 0, inherited: 0 };
 function tallyEvents() {
   for (const e of world.events || []) {
     if (e.id <= lastEv) continue;
     lastEv = e.id;
     if (e.type === "colony.founded") cum.founded++;
+    else if (e.type === "colony.subjugated") cum.subjugated++;
     else if (e.type === "colony.independent") {
       // kind rides the event (conquest.js): a freed COLONY is the decolonization
       // arc; a freed submitted vassal is ordinary suzerainty churn. Un-annotated
@@ -77,28 +78,36 @@ function report(step) {
   const capOf = new Map();
   if (world.countries) for (const [cid, c] of world.countries) if (c.capital) capOf.set(cid, c.capital);
   let colLive = 0, colOverseas = 0;
-  const bonds = new Map();   // metropole → {deps, overseas}
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s._isColony) continue;
     colLive++;
     const pol = getPolity(world, s.countryId);
     const over = pol && pol._overlord != null ? pol._overlord : -1;
     const homeCap = over >= 0 ? capOf.get(over) : null;
-    const overseas = homeCap ? lmAt(s) !== lmAt(homeCap) : false;
-    if (overseas) colOverseas++;
-    if (over >= 0 && pol._depKind === "colony") {
-      let e = bonds.get(over); if (!e) bonds.set(over, e = { deps: 0, overseas: 0 });
-      e.deps++; if (overseas) e.overseas++;
-    }
+    if (homeCap && lmAt(s) !== lmAt(homeCap)) colOverseas++;
+  }
+  // Colonial BONDS from the polity records (covers planted colonies AND
+  // subjugated protectorates — the latter have no _isColony settlement).
+  const bonds = new Map();   // metropole → {deps, overseas}
+  if (world.countries) for (const [cid, c] of world.countries) {
+    const pol = getPolity(world, cid);
+    if (!pol || pol._overlord == null || pol._depKind !== "colony" || !c.capital) continue;
+    const homeCap = capOf.get(pol._overlord);
+    const overseas = homeCap ? lmAt(c.capital) !== lmAt(homeCap) : false;
+    let e = bonds.get(pol._overlord); if (!e) bonds.set(pol._overlord, e = { deps: 0, overseas: 0 });
+    e.deps++; if (overseas) e.overseas++;
   }
   let topM = -1, topD = 0, topO = 0;
   for (const [m, e] of bonds) if (e.deps > topD) { topD = e.deps; topO = e.overseas; topM = m; }
   console.log(`t=${step} navMax=${navMax.toFixed(2)} ports(galleys/ocean)=${galleys}/${ocean} ` +
     `colonies=${colLive}(overseas ${colOverseas}) metropoles=${bonds.size} top=#${topM}:${topD}dep(${topO}os) ` +
-    `founded=${cum.founded} indep=${cum.independent} vassalFreed=${cum.vassalFreed} inherited=${cum.inherited}`);
-  // The sea funnel over THIS window (reset after print): which gate binds now.
-  const sea = telReport(world).sea || {};
-  console.log(`    seaFunnel: ${Object.entries(sea).map(([k, v]) => `${k}=${v}`).join(" ") || "(silent)"}`);
+    `founded=${cum.founded} subjugated=${cum.subjugated} indep=${cum.independent} vassalFreed=${cum.vassalFreed} inherited=${cum.inherited}`);
+  // The sea + protectorate funnels over THIS window (reset after print).
+  const rep = telReport(world);
+  for (const ch of ["sea", "protectorate"]) {
+    const f = rep[ch] || {};
+    console.log(`    ${ch}Funnel: ${Object.entries(f).map(([k, v]) => `${k}=${v}`).join(" ") || "(silent)"}`);
+  }
   telReset(world);
 }
 
