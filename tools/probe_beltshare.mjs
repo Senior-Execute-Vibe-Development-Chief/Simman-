@@ -7,7 +7,12 @@ import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 const STEPS = +(process.argv[2] || 45000), W = +(process.argv[3] || 960), SEED = +(process.argv[4] || 8817);
 const world = buildSim({ W, H: W >> 1, seed: SEED });
-for (let s = 1; s <= STEPS; s++) stepPeopleSim(world, 1);
+const EVERY = 5000;
+for (let s = 1; s <= STEPS; s++) { stepPeopleSim(world, 1); if (s % EVERY === 0 && s < STEPS) snap(s); }
+function snap(step) { report(step); }
+const co0 = null;   // (kept for clarity; report() reads live world state)
+report(STEPS);
+function report(step) {
 const co = world._countryOwner, elev = world.elev, tw = world.tw, th = world.th, N = world.N;
 let landN = 0; for (let i = 0; i < N; i++) if (elev[i] > 0) landN++;
 const km2 = (510e6 * 0.29) / landN;
@@ -49,11 +54,12 @@ for (let i = 0; i < N; i++) {
   m.set(co[i], (m.get(co[i]) || 0) + 1);
 }
 const belts = [...beltTot.entries()].sort((a, b) => b[1] - a[1]);
-console.log(`[beltshare] step ${STEPS} belts=${belts.length} claimed=${(globTot * 100 / landN).toFixed(1)}% of land`);
+console.log(`[beltshare] step ${step} belts=${belts.length} claimed=${(globTot * 100 / landN).toFixed(1)}% of land`);
 const gTop = Math.max(...globRealm.values());
 console.log(`GLOBAL top-1 share: ${(gTop * 100 / globTot).toFixed(1)}%  (the old metric)`);
 for (const [b, tot] of belts.slice(0, 6)) {
   const m = beltRealm.get(b);
   const top = [...m.entries()].sort((x, y) => y[1] - x[1])[0];
   console.log(`  belt#${b}: ${Math.round(tot * km2 / 1e6 * 10) / 10}M km2 claimed, realms=${m.size}, top realm ${Math.round(top[1] * km2 / 1e6 * 10) / 10}M = ${(top[1] * 100 / tot).toFixed(1)}% OF ITS BELT (${(tot * 100 / globTot).toFixed(0)}% of world's claimed)`);
+}
 }
