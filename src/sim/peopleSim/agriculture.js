@@ -204,15 +204,19 @@ export function ensureTill0(world) {
     if (m < 0.40 || isFlood || (river && tropic < 0.5)) { f[ti] = 1; continue; }
     // arid-margin loess: any genuinely arid cell within the deposition reach
     // (coarse 8-ray scan at rn stride — static, once per world)
+    // Full rn-strided DISK, not rays: 8 rays sample a narrow desert strip
+    // differently per grid (resgate caught it — 31337 median-area 0.94 with
+    // rays at lap 3's classifier vs 0.56 at rays here), while a disk at rn
+    // stride covers the same REAL area at any resolution. Once per world.
     let margin = false;
     if (tropic < 0.5) {
       const y0 = (ti / tw2) | 0, x0 = ti - y0 * tw2;
-      for (let k = 0; k < 8 && !margin; k++) {
-        const dx = [1, -1, 0, 0, 1, 1, -1, -1][k], dy = [0, 0, 1, -1, 1, -1, 1, -1][k];
-        for (let d = rn; d <= REACH; d += rn) {
-          const yy = y0 + dy * d; if (yy < 0 || yy >= th2) break;
-          const xx = ((x0 + dx * d) % tw2 + tw2) % tw2;
-          if (arid(yy * tw2 + xx)) { margin = true; break; }
+      outer: for (let dy = -REACH; dy <= REACH; dy += rn) {
+        const yy = y0 + dy; if (yy < 0 || yy >= th2) continue;
+        for (let dx = -REACH; dx <= REACH; dx += rn) {
+          if (dx * dx + dy * dy > REACH * REACH) continue;
+          const xx = ((x0 + dx) % tw2 + tw2) % tw2;
+          if (arid(yy * tw2 + xx)) { margin = true; break outer; }
         }
       }
     }
