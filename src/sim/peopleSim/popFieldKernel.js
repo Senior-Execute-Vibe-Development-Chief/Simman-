@@ -56,6 +56,12 @@ export function capBand(o, lo, hi) {
   const { land, fert, riverMag, coast, relief, cap, devF, pasture, worksF, tfArr,
           owner, capT, gateT, hasRiver, hasCoast, hasRelief, ownerOn, indOn, tfL,
           worksOn, worksK, devOn, capPerFert, accessDev, dev } = o;
+  // T.TILLAGE (presence-keyed like the ACCESS_BAND slots — till0 null = off):
+  // the CROP capacity yields to the land's workability, ramping to full as the
+  // tile's own technique matures; the pasture/forage floor is untouched, so
+  // unworkable country stays POPULATED (foragers, herders) but cannot feed the
+  // farmed surplus that statehood drinks from. docs/atlas-gap-2026-08-14.md.
+  const till0 = o.till0 || null;
   for (let li = lo; li < hi; li++) {
     const i = land[li];
     const water = hasRiver ? Math.min(1, riverMag[i] / RM_FULL) : 0;
@@ -76,12 +82,14 @@ export function capBand(o, lo, hi) {
     if (devOn) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      const crop = fEff * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul;
+      const tm = till0 ? till0[i] + (1 - till0[i]) * a : 1;
+      const crop = fEff * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul * tm;
       const range = pasture[i];
       cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
-      cap[i] = fEff * capPerFert * dev * reach * reliefMul * indMul * wkMul;
+      const tm = till0 ? till0[i] + (1 - till0[i]) * dev : 1;
+      cap[i] = fEff * capPerFert * dev * reach * reliefMul * indMul * wkMul * tm;
     }
   }
 }

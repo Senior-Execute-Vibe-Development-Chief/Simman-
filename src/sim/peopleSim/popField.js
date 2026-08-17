@@ -24,6 +24,7 @@
 
 import { T, rNormPop } from "./tuning.js";
 import { tileOpenness } from "./transport.js";
+import { ensureTill0 } from "./agriculture.js";
 // Stage B (docs/popfield-parallel.md): the four parallel-safe loop bodies and
 // the physical constants they share live in popFieldKernel.js (single source —
 // a worker thread imports the kernel standalone), the worker pool in
@@ -543,6 +544,13 @@ export function initPopField(world) {
   // braces; a loaded world rebuilds them here deterministically, they are
   // derived terrain and never persisted).
   if (T.ACCESS_BAND) ensureAccessBand(world);
+  // T.TILLAGE: the static workability floor must exist BEFORE _pfPrepare builds
+  // the arena — the SAB conversion runs there, and an array born after it is
+  // invisible to the pooled workers for a firing (serial would read it, pooled
+  // would not: the exact serial/pooled divergence class the ACCESS_BAND
+  // forensic records — and reproduced here before this line moved up:
+  // 75f3fb98 vs 9927b9b1 at 600 steps).
+  if (T.TILLAGE) ensureTill0(world);
   const { elev, fert, tArrival } = world;
   const rn = rNormPop(world);
   const seedPop = SEED_POP / (rn * rn);   // per REAL area (÷1 exactly at the reference)
@@ -646,6 +654,13 @@ export function stepPopField(world, sub = 1) {
   // prepare, so the SAB conversion list picks them up and the arena message
   // redirects its riverMag/coast slots (workers read slots by name).
   if (T.ACCESS_BAND) ensureAccessBand(world);
+  // T.TILLAGE: the static workability floor must exist BEFORE _pfPrepare builds
+  // the arena — the SAB conversion runs there, and an array born after it is
+  // invisible to the pooled workers for a firing (serial would read it, pooled
+  // would not: the exact serial/pooled divergence class the ACCESS_BAND
+  // forensic records — and reproduced here before this line moved up:
+  // 75f3fb98 vs 9927b9b1 at 600 steps).
+  if (T.TILLAGE) ensureTill0(world);
   const _pctx = _pfLever() >= 1 ? _pfPrepare(world, land, nLand, devF) : null;
   if (_pctx) {
     ({ elev, fert, riverMag, relief, coast } = world);
@@ -663,6 +678,7 @@ export function stepPopField(world, sub = 1) {
   // band kernel and the pooled workers all read whatever is handed to them.
   const rmEff = (T.ACCESS_BAND && world._rmBand) ? world._rmBand : riverMag;
   const coastEff = (T.ACCESS_BAND && world._coastBand) ? world._coastBand : coast;
+  const _till0S = T.TILLAGE ? (world._till0 || null) : null;   // kernel-twin tillage floor (used by the serial loop below)
   if (_pctx) {
     _pfCap(_pctx, world, { land, fert, riverMag: rmEff, coast: coastEff, relief, cap, pasture, worksF, tfArr,
       ownOn: !!(ownOn && indOwner), indOn, tfL, worksOn: !!worksF, worksK,
@@ -693,12 +709,19 @@ export function stepPopField(world, sub = 1) {
     if (devF) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      const crop = fEff * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul;   // ×indMul: industrial agronomy break; ×wkMul: built land improvement
+      // T.TILLAGE: same term, same float order as popFieldKernel.capBand — this
+      // loop is the kernel's serial TWIN and the two must stay bit-identical
+      // (the first till0 cut gated only the kernel; workers=0 ran this loop
+      // ungated and serial/pooled diverged 75f3fb98 vs 9927b9b1 — the twin
+      // drift the kernel header warns about, reproduced and fixed).
+      const tm = _till0S ? _till0S[i] + (1 - _till0S[i]) * a : 1;
+      const crop = fEff * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul * tm;   // ×indMul: industrial agronomy break; ×wkMul: built land improvement
       const range = pasture[i];   // the herd or the plough — whichever feeds this ground better (openness already prices relief)
       cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
-      cap[i] = fEff * capPerFert * dev * reach * reliefMul * indMul * wkMul;
+      const tm = _till0S ? _till0S[i] + (1 - _till0S[i]) * dev : 1;
+      cap[i] = fEff * capPerFert * dev * reach * reliefMul * indMul * wkMul * tm;
     }
   }
 
@@ -1055,7 +1078,7 @@ function _pfConv(world, ar, key) {
   ar.gen++;
 }
 
-const _PF_CONV_KEYS = ["capField", "fert", "riverMag", "coast", "relief",
+const _PF_CONV_KEYS = ["capField", "fert", "riverMag", "coast", "relief", "_till0",
   "_pastureCap", "worksField", "_tfFade", "_tropicBurden", "_irrigable",
   "_migMove", "_migSum", "_territoryOwner", "_popLand",
   "_rmBand", "_coastBand"];   // ACCESS_BAND fields (absent lever-off — _pfConv null-slots them)
@@ -1130,6 +1153,7 @@ function _pfArenaMsg(ar) {
       riverMag: ar.accessBand ? s._rmBand : s.riverMag,
       coast: ar.accessBand ? s._coastBand : s.coast,
       relief: s.relief,
+      till0: s._till0,   // T.TILLAGE workability floor — presence IS the switch (null lever-off)
       devF: s.devF, pasture: s._pastureCap, worksF: s.worksField, tfArr: s._tfFade,
       tropicB: s._tropicBurden, irr: s._irrigable, mv: s._migMove, ssum: s._migSum,
       capT: s.capT, gateT: s.gateT } };
@@ -1288,6 +1312,7 @@ const _pfParity = (ctx, popBuf) => (popBuf.buffer === ctx.arena.sabs.popA ? 0 : 
 function _pfCap(ctx, world, o) {
   const ko = { land: o.land, fert: o.fert, riverMag: o.riverMag, coast: o.coast, relief: o.relief,
     cap: o.cap, devF: ctx.devF, pasture: o.pasture, worksF: o.worksF, tfArr: o.tfArr,
+    till0: T.TILLAGE ? (world._till0 || null) : null,
     owner: o.ownOn ? world._territoryOwner : null, capT: ctx.capT, gateT: ctx.gateT,
     hasRiver: !!o.riverMag, hasCoast: !!o.coast, hasRelief: !!o.relief,
     ownerOn: o.ownOn, indOn: o.indOn, tfL: o.tfL, worksOn: o.worksOn, worksK: o.worksK,

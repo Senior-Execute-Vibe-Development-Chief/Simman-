@@ -165,14 +165,29 @@ export function pkgSuitAt(world, ti, pkg) {
 // whose boom must fund the technique); wet heavy ground ramps from its floor
 // to 1 as local technique matures, which arrives by DIFFUSION from the
 // booming cradles — the very gradient this exists to produce. Never a clock.
+// The static workability FLOOR per tile (w0: 1 on light/dry ground and flood
+// silt; TILL_HEAVY..TILL_TROPIC on wet heavy ground) — shared by the suit door
+// (tillageMul below) and the CAPACITY KERNEL (popField ships it to the pooled
+// workers as a SAB, presence-keyed like the ACCESS_BAND arrays). Lazily built,
+// static per world (moist/temp/tFlood are worldgen; a TILL_* lever change
+// mid-run rebuilds on the next world init, same staleness class as _aridMin).
+export function ensureTill0(world) {
+  let f = world._till0;
+  if (f && f.length === world.N) return f;
+  f = world._till0 = new Float32Array(world.N);
+  for (let ti = 0; ti < world.N; ti++) {
+    const m = world.moist[ti];
+    if (m < 0.45 || (world.tFlood && world.tFlood[ti])) { f[ti] = 1; continue; }   // ard-workable / flood silt
+    const t = world.temp[ti];
+    const tropic = Math.min(1, Math.max(0, (t - 0.72) / 0.10));   // the same tropical line habitability.js draws
+    f[ti] = T.TILL_HEAVY + (T.TILL_TROPIC - T.TILL_HEAVY) * tropic;   // cool wet clay → hot wet forest
+  }
+  return f;
+}
 function tillageMul(world, ti) {
   if (!T.TILLAGE) return 1;
-  const m = world.moist[ti];
-  if (m < 0.45) return 1;                                   // light/dry soil: the ard suffices (the bell optimum is the wet/heavy line)
-  if (world.tFlood && world.tFlood[ti]) return 1;           // flood-renewed silt: workable with a stick
-  const t = world.temp[ti];
-  const tropic = Math.min(1, Math.max(0, (t - 0.72) / 0.10));   // the same tropical line habitability.js draws
-  const w0 = T.TILL_HEAVY + (T.TILL_TROPIC - T.TILL_HEAVY) * tropic;   // cool wet clay → hot wet forest
+  const w0 = ensureTill0(world)[ti];
+  if (w0 >= 1) return 1;
   const dev = world.devField ? Math.min(1, Math.max(0, world.devField[ti])) : 0;
   return w0 + (1 - w0) * dev;
 }
