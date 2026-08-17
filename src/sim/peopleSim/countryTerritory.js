@@ -20,7 +20,7 @@
 // The rendered border (countryClaim.js relaxClaim) crawls toward _countryOwner,
 // so land changes animate tile-by-tile.
 
-import { localEdgeCost, terrainHoldAt } from "./transport.js";
+import { localEdgeCost, terrainHoldAt, ridgeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
@@ -1181,6 +1181,107 @@ function fieldPolityTerritory(world) {
         rel[ti] = cid; co[ti] = -1;
         shedRel.set(cid, (shedRel.get(cid) || 0) + loadOfD(d));
       }
+    }
+  }
+
+  // 6c. MARCH LAW (T.MARCH_LAW) — peacetime border relaxation. Nothing else in
+  //     the codebase ever moves a border in peace: growth enters wild only, so
+  //     once the wild between two realms is gone their line FREEZES wherever
+  //     the waves happened to meet, forever — where real borders were settled
+  //     onto rivers and crests by centuries of sub-war adjustment (marches,
+  //     raids, local lords switching allegiance, treaty rationalization).
+  //     The law: a border tile slowly passes to whichever neighbour can
+  //     administer it more cheaply — the challenger's cost is its own admin
+  //     distance at the border plus the edge in, times the COUNTRYSIDE WAR's
+  //     terrain hold (river ford + alpine + REFUGE ridge, defender-engineering
+  //     eased, capped — the exact composition fronts already pay, so the two
+  //     border-movers obey ONE physics), plus a switching friction (an oath is
+  //     not broken for a marginal better offer). Plains borders drift to
+  //     admin-cost equilibria and stop; crests and great rivers are sticky
+  //     walls from BOTH sides, so borders ratchet onto defensible lines and
+  //     REST there — CREST_HOLD's laps 1-2 measured that claim-time holds
+  //     cannot produce this (mature borders are not drawn by the growth walk;
+  //     docs/atlas-gap-2026-08-14.md), which is why the law acts on the
+  //     standing border instead. Pace: the best flip per realm-pair per pass,
+  //     ×rn so real km/pass is grid-comparable (the march-stone quantum —
+  //     approach speed, not equilibrium, which is set by the cost field).
+  //     Settled administration only (nomad borders live in the raid system);
+  //     same-bloc pairs are internal (the suzerain stack has its own acts);
+  //     warring pairs are the fronts' business; home/worked land never flips
+  //     in peace (cities and their fields change hands by war and politics).
+  //     Fiscal loop: the winner's ledger is charged, the loser's refunded, in
+  //     the same admin-load units growth and shed spend — a realm at capacity
+  //     that gains a cheap march sheds its dearest one next pass (step 6),
+  //     which is precisely the efficiency exchange the relaxation exists to
+  //     find. All emergent state, no clocks.
+  if (T.MARCH_LAW && adminOn && dist) {
+    const MARCH_EDGE = 1.15;   // switching friction: a lord needs a clearly better protector, and 1.15² > 1 kills 2-cycles on a static cost field
+    const rmA = world.riverMag;
+    const frMap = world._fronts && world._fronts.byCountry;
+    const atWar = (a, b) => { if (!frMap) return false; const sa = frMap.get(a), sb = frMap.get(b); return !!(sa && sa.has(b) || sb && sb.has(a)); };
+    const ov = world._overlordOf;
+    const rootCache = new Map();
+    const rootOf = (c0) => {
+      let r = rootCache.get(c0); if (r !== undefined) return r;
+      r = c0; if (ov) for (let i = 0; i < 8; i++) { const nx = ov.get(r); if (nx === undefined || nx === r) break; r = nx; }
+      rootCache.set(c0, r); return r;
+    };
+    const nomad = (cid) => { const cc = world.countries && world.countries.get(cid); return !!(cc && cc._nomadic); };
+    const marchHoldAt = (ti, consDef) => {
+      let m = 1;
+      if (rmA && rmA[ti] >= 2) m *= 1 + RIVER_DEF_W * (1 - RIVER_DEF_ENG * consDef);
+      const e = elev[ti];
+      if (e > 0.5) { const alp = Math.min(1, (e - 0.5) / 0.3); m *= 1 + (ALPINE_DEF_BASE + ALPINE_DEF_SLOPE * alp) * (1 - ALPINE_DEF_ENG * consDef); }
+      if (T.REFUGE > 0) { const rh = ridgeHoldAt(world, ti, consDef); if (rh > 0) m *= 1 + T.REFUGE * rh; }
+      return m > TERRAIN_DEF_CAP ? TERRAIN_DEF_CAP : m;
+    };
+    let homeMk = world._fpHomeMk; if (!homeMk || homeMk.length !== N) homeMk = world._fpHomeMk = new Uint8Array(N);
+    homeMk.fill(0);
+    for (const arr of homeTiles.values()) for (const ti of arr) homeMk[ti] = 1;
+    const quantum = Math.max(1, Math.round(rNormPop(world)));
+    const flips = new Map();   // "lo:hi" pair → [{ti, from, to, d, refund, adv}] in ti order
+    for (let ti = 0; ti < N; ti++) {
+      const b = co[ti]; if (b < 0 || elev[ti] <= 0 || homeMk[ti] || worked[ti] || !alive.has(b) || nomad(b)) continue;
+      const db = dist[ti]; if (!Number.isFinite(db)) continue;
+      const ty2 = (ti / tw) | 0, tx2 = ti - ty2 * tw;
+      const xm2 = tx2 === 0 ? tw - 1 : tx2 - 1, xp2 = tx2 === tw - 1 ? 0 : tx2 + 1;
+      const ns2 = [
+        ty2 * tw + xm2, ty2 * tw + xp2, ty2 > 0 ? ti - tw : -1, ty2 < th - 1 ? ti + tw : -1,
+        ty2 > 0 ? (ty2 - 1) * tw + xm2 : -1, ty2 > 0 ? (ty2 - 1) * tw + xp2 : -1,
+        ty2 < th - 1 ? (ty2 + 1) * tw + xm2 : -1, ty2 < th - 1 ? (ty2 + 1) * tw + xp2 : -1,
+      ];
+      let hold = 0;   // computed lazily — only border tiles with a live challenger pay for it
+      let bestC = -1, bestCost = Infinity;
+      for (let k = 0; k < 8; k++) {
+        const ni = ns2[k]; if (ni < 0) continue;
+        const a = co[ni]; if (a < 0 || a === b || elev[ni] <= 0 || !alive.has(a) || nomad(a)) continue;
+        const da = dist[ni]; if (!Number.isFinite(da)) continue;
+        if (rootOf(a) === rootOf(b)) { tel(world, "march", "sameBloc"); continue; }
+        if (atWar(a, b)) { tel(world, "march", "atWar"); continue; }
+        const kn = knOf.get(a);
+        const ec = edgeCostFor(ni, ti, kn, claimCap.get(a) || CLAIM_CAP_CEIL, hostOf.get(a) ?? CLAIM_HOSTILITY);
+        if (ec === Infinity) { tel(world, "march", "unpriceable"); continue; }
+        if (hold === 0) { const knB = knOf.get(b); hold = marchHoldAt(ti, (knB && knB.construction) || 0); }
+        const cost = da + ec * (k < 4 ? 1 : SQRT2) * hold;
+        if (cost < bestCost) { bestCost = cost; bestC = a; }
+      }
+      if (bestC < 0) continue;
+      if (!(bestCost * MARCH_EDGE < db)) { tel(world, "march", "noAdvantage"); continue; }
+      const key = Math.min(bestC, b) + ":" + Math.max(bestC, b);
+      let arr = flips.get(key); if (!arr) flips.set(key, arr = []);
+      arr.push({ ti, from: b, to: bestC, d: bestCost, refund: loadOfD(db), adv: db / bestCost });
+    }
+    for (const [, arr] of flips) {
+      arr.sort((p, q) => (q.adv - p.adv) || (p.ti - q.ti));   // strongest claim first, index tiebreak deterministic
+      const n2 = Math.min(quantum, arr.length);
+      for (let i2 = 0; i2 < n2; i2++) {
+        const f = arr[i2];
+        co[f.ti] = f.to; dist[f.ti] = f.d;
+        spentGrow.set(f.to, (spentGrow.get(f.to) || 0) + loadOfD(f.d));
+        shedRel.set(f.from, (shedRel.get(f.from) || 0) + f.refund);
+        telPass(world, "march");
+      }
+      for (let i2 = n2; i2 < arr.length; i2++) tel(world, "march", "quantumSpent");
     }
   }
 
