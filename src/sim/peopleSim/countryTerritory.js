@@ -20,7 +20,7 @@
 // The rendered border (countryClaim.js relaxClaim) crawls toward _countryOwner,
 // so land changes animate tile-by-tile.
 
-import { localEdgeCost } from "./transport.js";
+import { localEdgeCost, terrainHoldAt } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
@@ -993,6 +993,31 @@ function fieldPolityTerritory(world) {
     let cost = world._fpCost; if (!cost || cost.length !== N) cost = world._fpCost = new Float64Array(N);
     cost.fill(Infinity);
     const heap = new MinHeap();
+    // T.CREST_HOLD contact-band map: the nearest existing claim within a
+    // 2-tile Chebyshev band of each land tile (-1 none, -2 mixed). Built
+    // once per pass from the PRE-growth claims — the band a contested
+    // frontier forms against. (Cause IV residual, measured 0.86x ridge
+    // enrichment: growth enters wild only, so the first-arriving realm
+    // crossed ranges at leisure; with the band, entering DEFENSIBLE wild
+    // ground that a rival already faces pays the REFUGE hold, so contested
+    // crests become walls while uncontested ranges stay interior.)
+    let cbNear = null;
+    if (T.CREST_HOLD) {
+      cbNear = world._cbNear && world._cbNear.length === N ? world._cbNear : (world._cbNear = new Int32Array(N));
+      cbNear.fill(-1);
+      for (let ti2 = 0; ti2 < N; ti2++) {
+        const o2 = co[ti2]; if (o2 < 0) continue;
+        const y2 = (ti2 / tw) | 0, x2 = ti2 - y2 * tw;
+        for (let dy = -2; dy <= 2; dy++) {
+          const yy = y2 + dy; if (yy < 0 || yy >= th) continue;
+          for (let dx = -2; dx <= 2; dx++) {
+            const j = yy * tw + ((x2 + dx) % tw + tw) % tw;
+            const cur = cbNear[j];
+            if (cur === -1) cbNear[j] = o2; else if (cur !== o2) cbNear[j] = -2;
+          }
+        }
+      }
+    }
     for (let ti = 0; ti < N; ti++) {
       const c = co[ti]; if (c < 0 || !grow.has(c)) continue;
       const y = (ti / tw) | 0, x = ti - y * tw;
@@ -1039,8 +1064,13 @@ function fieldPolityTerritory(world) {
           continue;
         }
         if (co[ni] >= 0) continue;                         // grow into WILD land only (never another realm)
-        const ec = edgeCostFor(ti, ni, kn, cap, host);
+        let ec = edgeCostFor(ti, ni, kn, cap, host);
         if (ec === Infinity) continue;
+        // Contested defensible ground resists the claim exactly as it resists
+        // the army (terrainHoldAt — the shared REFUGE physics, eroded by the
+        // claimant's own engineering): a crest with a rival on the far side
+        // is a wall, a crest with no rival is a march like any other.
+        if (cbNear) { const nb = cbNear[ni]; if (nb !== -1 && nb !== c) ec *= terrainHoldAt(world, ni, (kn && kn.construction) || 0); }
         const nd = d + ec * mul[k];
         // Only lower cost[ni] when we actually CLAIM it (budget remains). Lowering it for
         // an exhausted-budget realm would reserve the wild tile — a solvent competitor
