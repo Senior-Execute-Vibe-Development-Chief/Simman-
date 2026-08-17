@@ -63,8 +63,7 @@ export function runBandLoop(d) {
     // coordinator redirects these slots to the Float32 banded-access fields
     // (popField.js ensureAccessBand) and says so via geom.accessBand: the
     // constructor MUST follow the redirect for exactly the same reason.
-    fert: F32(b.fert), till0: b.till0 ? new Float32Array(b.till0) : null,
-    riverMag: b.riverMag ? (g.accessBand ? new Float32Array(b.riverMag) : new Uint8Array(b.riverMag)) : null,
+    fert: F32(b.fert), riverMag: b.riverMag ? (g.accessBand ? new Float32Array(b.riverMag) : new Uint8Array(b.riverMag)) : null,
     coast: b.coast ? (g.accessBand ? new Float32Array(b.coast) : new Uint8Array(b.coast)) : null, relief: F32(b.relief),
     devF: F32(b.devF), pasture: F32(b.pasture), worksF: F32(b.worksF), tfArr: F32(b.tfArr),
     tropicB: F32(b.tropicB), irr: F32(b.irr),
@@ -106,7 +105,7 @@ export function runBandLoop(d) {
     if (op === K.OP_CAP) {
       K.capBand({
         land: V.land, fert: V.fert, riverMag: V.riverMag, coast: V.coast, relief: V.relief,
-        cap: V.cap, devF: V.devF, pasture: V.pasture, worksF: V.worksF, tfArr: V.tfArr, till0: V.till0,
+        cap: V.cap, devF: V.devF, pasture: V.pasture, worksF: V.worksF, tfArr: V.tfArr,
         owner: V.owner, capT: V.capT, gateT: V.gateT,
         hasRiver: hdr[K.H_HASRIVER] > 0, hasCoast: hdr[K.H_HASCOAST] > 0, hasRelief: hdr[K.H_HASRELIEF] > 0,
         ownerOn: hdr[K.H_OWNERON] > 0, indOn: hdr[K.H_INDON] > 0, tfL: hdr[K.H_TFL],

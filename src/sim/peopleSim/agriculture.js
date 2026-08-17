@@ -175,9 +175,17 @@ export function ensureTill0(world) {
   let f = world._till0;
   if (f && f.length === world.N) return f;
   f = world._till0 = new Float32Array(world.N);
+  const rmF = world.riverMag;
   for (let ti = 0; ti < world.N; ti++) {
     const m = world.moist[ti];
-    if (m < 0.45 || (world.tFlood && world.tFlood[ti])) { f[ti] = 1; continue; }   // ard-workable / flood silt
+    // Light ground — workable with the ard from the dawn: dry/loess country
+    // (m < the bell optimum), flood silt, and RIVER-ALLUVIAL corridors (rm>0:
+    // river-laid terrace silt is light soil wherever it lies — the loess-and-
+    // terrace belt the first temperate farmers actually followed; measured
+    // necessity: the moisture-only classifier gated the YELLOW RIVER cradle
+    // itself to 0.64, the exact land whose workability is why China's dawn
+    // happened there — docs/atlas-gap-2026-08-14.md lap 3).
+    if (m < 0.45 || (world.tFlood && world.tFlood[ti]) || (rmF && rmF[ti] > 0)) { f[ti] = 1; continue; }
     const t = world.temp[ti];
     const tropic = Math.min(1, Math.max(0, (t - 0.72) / 0.10));   // the same tropical line habitability.js draws
     f[ti] = T.TILL_HEAVY + (T.TILL_TROPIC - T.TILL_HEAVY) * tropic;   // cool wet clay → hot wet forest
@@ -185,11 +193,13 @@ export function ensureTill0(world) {
   return f;
 }
 function tillageMul(world, ti) {
+  // Siting door: the STATIC floor only — heavy ground is never preferred over
+  // light ground for a new hearth/city, in any era (the ramp lives in the
+  // capacity post-pass, keyed to the administering settlement's metallurgy —
+  // a devField read here was grid-unfair, the wave's front lags per-tile on
+  // finer grids; measured, docs/atlas-gap-2026-08-14.md lap 3).
   if (!T.TILLAGE) return 1;
-  const w0 = ensureTill0(world)[ti];
-  if (w0 >= 1) return 1;
-  const dev = world.devField ? Math.min(1, Math.max(0, world.devField[ti])) : 0;
-  return w0 + (1 - w0) * dev;
+  return ensureTill0(world)[ti];
 }
 
 // Best package at a tile by RAW suitability — what a cradle / mature culture

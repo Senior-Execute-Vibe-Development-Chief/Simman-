@@ -678,7 +678,6 @@ export function stepPopField(world, sub = 1) {
   // band kernel and the pooled workers all read whatever is handed to them.
   const rmEff = (T.ACCESS_BAND && world._rmBand) ? world._rmBand : riverMag;
   const coastEff = (T.ACCESS_BAND && world._coastBand) ? world._coastBand : coast;
-  const _till0S = T.TILLAGE ? (world._till0 || null) : null;   // kernel-twin tillage floor (used by the serial loop below)
   if (_pctx) {
     _pfCap(_pctx, world, { land, fert, riverMag: rmEff, coast: coastEff, relief, cap, pasture, worksF, tfArr,
       ownOn: !!(ownOn && indOwner), indOn, tfL, worksOn: !!worksF, worksK,
@@ -709,19 +708,12 @@ export function stepPopField(world, sub = 1) {
     if (devF) {
       const a = devF[i];
       const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * a);
-      // T.TILLAGE: same term, same float order as popFieldKernel.capBand — this
-      // loop is the kernel's serial TWIN and the two must stay bit-identical
-      // (the first till0 cut gated only the kernel; workers=0 ran this loop
-      // ungated and serial/pooled diverged 75f3fb98 vs 9927b9b1 — the twin
-      // drift the kernel header warns about, reproduced and fixed).
-      const tm = _till0S ? _till0S[i] + (1 - _till0S[i]) * a : 1;
-      const crop = fEff * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul * tm;   // ×indMul: industrial agronomy break; ×wkMul: built land improvement
+      const crop = fEff * capPerFert * (DEV_BASE + DEV_TECH * a) * reach * reliefMul * indMul * wkMul;   // ×indMul: industrial agronomy break; ×wkMul: built land improvement
       const range = pasture[i];   // the herd or the plough — whichever feeds this ground better (openness already prices relief)
       cap[i] = crop > range ? crop : range;
     } else {
       const reach = 1 + access * accessDev;
-      const tm = _till0S ? _till0S[i] + (1 - _till0S[i]) * dev : 1;
-      cap[i] = fEff * capPerFert * dev * reach * reliefMul * indMul * wkMul * tm;
+      cap[i] = fEff * capPerFert * dev * reach * reliefMul * indMul * wkMul;
     }
   }
 
@@ -743,6 +735,39 @@ export function stepPopField(world, sub = 1) {
   // compute, before FOOD_K and the genesis seed) so pool and non-pool stay
   // bit-identical and the DAWN seed itself is forest-priced — Europe is born
   // sparse and OPENS with the iron age. 0 = canopy-blind capacity (legacy).
+  // ── T.TILLAGE (lap 3 form): the workability post-pass, in FOREST_LOCK's
+  // exact grid-honest pattern. Two laps of measurement dictated this shape
+  // (docs/atlas-gap-2026-08-14.md): the suit door was the wrong door (the cage
+  // drive reads capField), and a devField ramp inside the banded compute was
+  // grid-UNFAIR — the technique wave crawls per tile, so its front lags in
+  // real km on finer grids (measured: mean devF 0.090 vs 0.067 at tw=240 vs
+  // 480 at 6k) and resgate went red twice. The administering settlement's
+  // METALLURGY is the grid-honest key (entity knowledge, no field crawl — the
+  // iron ploughshare and the axe are the same toolkit), wild land has no
+  // toolkit and stays at the floor, and the pasture term refloors the result —
+  // unworkable country stays populated, it just cannot feed the farmed
+  // surplus statehood drinks from. Deterministic main-thread post-pass after
+  // the banded/inline compute: pool and non-pool stay bit-identical by
+  // construction (FOREST_LOCK's own recipe).
+  if (T.TILLAGE && world._till0) {
+    const t0 = world._till0;
+    const clearRefT = Math.max(0.1, T.LAND_CLEAR_METAL || 0.55);
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const w0 = t0[i];
+      if (w0 >= 1) continue;
+      let iron = 0;
+      if (ownOn && indOwner) {
+        const sid = indOwner[i];
+        if (sid >= 0) {
+          const s2 = indById.get(sid);
+          if (s2 && s2.knowledge) iron = Math.min(1, (s2.knowledge.metallurgy || 0) / clearRefT);
+        }
+      }
+      const crop = cap[i] * (w0 + (1 - w0) * iron);
+      cap[i] = crop > pasture[i] ? crop : pasture[i];
+    }
+  }
   const flL = T.FOREST_LOCK || 0;
   if (flL > 0) {
     const moistF = world.moist;
@@ -1078,7 +1103,7 @@ function _pfConv(world, ar, key) {
   ar.gen++;
 }
 
-const _PF_CONV_KEYS = ["capField", "fert", "riverMag", "coast", "relief", "_till0",
+const _PF_CONV_KEYS = ["capField", "fert", "riverMag", "coast", "relief",
   "_pastureCap", "worksField", "_tfFade", "_tropicBurden", "_irrigable",
   "_migMove", "_migSum", "_territoryOwner", "_popLand",
   "_rmBand", "_coastBand"];   // ACCESS_BAND fields (absent lever-off — _pfConv null-slots them)
@@ -1153,7 +1178,6 @@ function _pfArenaMsg(ar) {
       riverMag: ar.accessBand ? s._rmBand : s.riverMag,
       coast: ar.accessBand ? s._coastBand : s.coast,
       relief: s.relief,
-      till0: s._till0,   // T.TILLAGE workability floor — presence IS the switch (null lever-off)
       devF: s.devF, pasture: s._pastureCap, worksF: s.worksField, tfArr: s._tfFade,
       tropicB: s._tropicBurden, irr: s._irrigable, mv: s._migMove, ssum: s._migSum,
       capT: s.capT, gateT: s.gateT } };
@@ -1312,7 +1336,6 @@ const _pfParity = (ctx, popBuf) => (popBuf.buffer === ctx.arena.sabs.popA ? 0 : 
 function _pfCap(ctx, world, o) {
   const ko = { land: o.land, fert: o.fert, riverMag: o.riverMag, coast: o.coast, relief: o.relief,
     cap: o.cap, devF: ctx.devF, pasture: o.pasture, worksF: o.worksF, tfArr: o.tfArr,
-    till0: T.TILLAGE ? (world._till0 || null) : null,
     owner: o.ownOn ? world._territoryOwner : null, capT: ctx.capT, gateT: ctx.gateT,
     hasRiver: !!o.riverMag, hasCoast: !!o.coast, hasRelief: !!o.relief,
     ownerOn: o.ownOn, indOn: o.indOn, tfL: o.tfL, worksOn: o.worksOn, worksK: o.worksK,
