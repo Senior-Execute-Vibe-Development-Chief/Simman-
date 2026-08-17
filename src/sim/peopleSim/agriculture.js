@@ -175,20 +175,49 @@ export function ensureTill0(world) {
   let f = world._till0;
   if (f && f.length === world.N) return f;
   f = world._till0 = new Float32Array(world.N);
+  // SOIL FROM FORMATION PHYSICS (lap 4, owner "do it"): the moisture-proxy
+  // classifier failed measurably in both directions (gated the Yellow River
+  // loess, missed Britain, re-admitted Gabon via the blanket river term —
+  // the timing table in docs/atlas-gap-2026-08-14.md). Soil is made by
+  // PROCESSES, and each process is computable from fields the world already
+  // owns: LOESS is dust laid on the SEMI-ARID MARGIN (within one deposition
+  // reach of genuinely arid country — north China off the Ordos, the
+  // Pontic-Danube corridor off the dry steppe: the exact belt the first
+  // temperate farmers followed); ALLUVIUM is river-laid terrace silt — light
+  // everywhere EXCEPT on laterite, where the wet-tropic soil chemistry
+  // dominates the valley too (the varzea exception is real but narrow);
+  // FLOOD silt and truly dry ground are workable as before. The dry bar
+  // tightens to 0.40 — 0.40-0.45 oceanic-margin land (Britain) is damp
+  // clay-with-drizzle, not loess, unless a real deposition source sits
+  // nearby.
   const rmF = world.riverMag;
+  const tw2 = world.tw, th2 = world.th;
+  const rn = Math.max(1, Math.round(rNormPop(world)));
+  const REACH = 6 * rn;   // deposition reach: ~one reference-grid dust fetch (~600-700 km real), rn-scaled per the resolution charter
+  const arid = (ti2) => world.moist[ti2] < 0.30;
   for (let ti = 0; ti < world.N; ti++) {
     const m = world.moist[ti];
-    // Light ground — workable with the ard from the dawn: dry/loess country
-    // (m < the bell optimum), flood silt, and RIVER-ALLUVIAL corridors (rm>0:
-    // river-laid terrace silt is light soil wherever it lies — the loess-and-
-    // terrace belt the first temperate farmers actually followed; measured
-    // necessity: the moisture-only classifier gated the YELLOW RIVER cradle
-    // itself to 0.64, the exact land whose workability is why China's dawn
-    // happened there — docs/atlas-gap-2026-08-14.md lap 3).
-    if (m < 0.45 || (world.tFlood && world.tFlood[ti]) || (rmF && rmF[ti] > 0)) { f[ti] = 1; continue; }
     const t = world.temp[ti];
-    const tropic = Math.min(1, Math.max(0, (t - 0.72) / 0.10));   // the same tropical line habitability.js draws
-    f[ti] = T.TILL_HEAVY + (T.TILL_TROPIC - T.TILL_HEAVY) * tropic;   // cool wet clay → hot wet forest
+    const tropic = Math.min(1, Math.max(0, (t - 0.72) / 0.10));
+    const isFlood = world.tFlood && world.tFlood[ti];
+    const river = rmF && rmF[ti] > 0;
+    if (m < 0.40 || isFlood || (river && tropic < 0.5)) { f[ti] = 1; continue; }
+    // arid-margin loess: any genuinely arid cell within the deposition reach
+    // (coarse 8-ray scan at rn stride — static, once per world)
+    let margin = false;
+    if (tropic < 0.5) {
+      const y0 = (ti / tw2) | 0, x0 = ti - y0 * tw2;
+      for (let k = 0; k < 8 && !margin; k++) {
+        const dx = [1, -1, 0, 0, 1, 1, -1, -1][k], dy = [0, 0, 1, -1, 1, -1, 1, -1][k];
+        for (let d = rn; d <= REACH; d += rn) {
+          const yy = y0 + dy * d; if (yy < 0 || yy >= th2) break;
+          const xx = ((x0 + dx * d) % tw2 + tw2) % tw2;
+          if (arid(yy * tw2 + xx)) { margin = true; break; }
+        }
+      }
+    }
+    if (margin) { f[ti] = 1; continue; }
+    f[ti] = T.TILL_HEAVY + (T.TILL_TROPIC - T.TILL_HEAVY) * tropic;
   }
   return f;
 }
