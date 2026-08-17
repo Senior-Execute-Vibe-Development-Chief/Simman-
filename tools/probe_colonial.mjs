@@ -45,14 +45,18 @@ function landmass() {
 const lmAt = (s) => landOf[(s.pos.y | 0) * world.tw + (s.pos.x | 0)];
 
 let lastEv = -1;
-const cum = { founded: 0, independent: 0, inherited: 0 };
+const cum = { founded: 0, independent: 0, vassalFreed: 0, inherited: 0 };
 function tallyEvents() {
   for (const e of world.events || []) {
     if (e.id <= lastEv) continue;
     lastEv = e.id;
     if (e.type === "colony.founded") cum.founded++;
-    else if (e.type === "colony.independent") cum.independent++;
-    else if (e.type === "colony.inherited") cum.inherited++;
+    else if (e.type === "colony.independent") {
+      // kind rides the event (conquest.js): a freed COLONY is the decolonization
+      // arc; a freed submitted vassal is ordinary suzerainty churn. Un-annotated
+      // events (pre-fix logs) count as vassal churn — the colonial count stays honest.
+      if (e.kind === "colony") cum.independent++; else cum.vassalFreed++;
+    } else if (e.type === "colony.inherited") cum.inherited++;
   }
 }
 
@@ -89,7 +93,7 @@ function report(step) {
   for (const [m, e] of bonds) if (e.deps > topD) { topD = e.deps; topO = e.overseas; topM = m; }
   console.log(`t=${step} navMax=${navMax.toFixed(2)} ports(galleys/ocean)=${galleys}/${ocean} ` +
     `colonies=${colLive}(overseas ${colOverseas}) metropoles=${bonds.size} top=#${topM}:${topD}dep(${topO}os) ` +
-    `founded=${cum.founded} indep=${cum.independent} inherited=${cum.inherited}`);
+    `founded=${cum.founded} indep=${cum.independent} vassalFreed=${cum.vassalFreed} inherited=${cum.inherited}`);
 }
 
 for (let s = 1; s <= STEPS; s++) {

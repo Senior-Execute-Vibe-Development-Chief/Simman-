@@ -2305,9 +2305,13 @@ export function updatePolities(world) {
         logEvent(world, "colony.inherited", { polity: c.id, name: realmName(world, c.id),
           from: over, fromName: orec ? orec.name : undefined, to: heir, toName: realmName(world, heir) });
       } else {
+        // kind rides the event so the chronicle (and every probe) can tell a
+        // freed COLONY from a freed submitted vassal — the two arcs read
+        // completely differently and were indistinguishable in the log.
+        const dk = pol._depKind || "vassal";
         pol._overlord = undefined; pol._depKind = undefined;
         logEvent(world, "colony.independent", { polity: c.id, from: over,
-          fromName: orec ? orec.name : undefined, name: realmName(world, c.id), how: "metropole-fell" });
+          fromName: orec ? orec.name : undefined, name: realmName(world, c.id), how: "metropole-fell", kind: dk });
       }
     }
     // (b/b2) Live overlord map + naval reach — extracted so loadWorld can warm
@@ -2326,10 +2330,12 @@ export function updatePolities(world) {
         if (!dc || !oc) continue;
         const projForce = blocPow(oc) * (reachOf.get(dep) ?? 0);   // what the metropole can actually bring to bear
         if (blocPow(dc) >= INDEP_POWER_RATIO * projForce) {
-          const pol = getPolity(world, dep); if (pol) { pol._overlord = undefined; pol._depKind = undefined; }
+          const pol = getPolity(world, dep);
+          const dk = (pol && pol._depKind) || "vassal";   // annotate BEFORE clearing (see metropole-fell note)
+          if (pol) { pol._overlord = undefined; pol._depKind = undefined; }
           overlordOf.delete(dep);
           logEvent(world, "colony.independent", { polity: dep, from: over,
-            fromName: realmName(world, over), name: realmName(world, dep) });
+            fromName: realmName(world, over), name: realmName(world, dep), kind: dk });
         }
       }
     }
