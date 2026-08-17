@@ -761,7 +761,7 @@ export function rebuildCountries(world) {
   // nobody gains — extraordinary reach is always extraordinary FOR ITS TIME,
   // never a clock. No coin moves: this models what a fisc can SUSTAIN, not a
   // new money sink (the closed-supply conservation invariant is untouched).
-  if (T.STATE_WORKS > 0) {
+  if (T.STATE_WORKS > 0 || T.APPARATUS > 0) {
     const sus = [];
     const susOf = new Map();
     for (const c of countries.values()) {
@@ -2766,7 +2766,25 @@ export function updatePolities(world) {
     const momentum = banked * (c._nomadic ? NOMAD_MOMENTUM : 1);   // ...but a horde RIDES it double
     gov._momentum = banked * MOMENTUM_DECAY;     // decay each pass; conquest re-banks it (armies.js)
     const capacity = peaceCapacity * duress * fiscalDuress + momentum;
-    c._capacity = capacity;        // (already duress-adjusted) for the info panel
+    // T.APPARATUS (2026-08-14, the conscious reopening of the per-member
+    // guard — owner "Go" on docs/atlas-gap-2026-08-14.md cause I item 1):
+    // the works stock (rebuildCountries — total extraction above the era's
+    // median realm, sqrt-law, build slow and tech-gated, decay ~3x faster,
+    // ceiling) now funds CAPACITY, the constraint measurement proved binding
+    // (STATE_WORKS-for-reach refuted: more radius without more apparatus
+    // just overextends). The per-member CAP_FISC tail stays untouched — this
+    // is the SCALE term beside it, with the restoring forces the original
+    // guard rightly demanded: sqrt of scale-above-parity, the WORKS_CEIL
+    // returns ceiling, dilapidation outrunning construction, and the whole
+    // shed/coalition/war machinery downstream. Persia's apparatus was not
+    // per-capita richer than Lydia's - it was TOTAL revenue funding roads,
+    // garrisons and archives no small state's total could.
+    let capFinal = capacity;
+    if (T.APPARATUS > 0) {
+      const wks = govOf(world, c.id)._works || 0;
+      if (wks > 0) capFinal = capacity * (1 + T.APPARATUS * wks);
+    }
+    c._capacity = capFinal;        // (already duress-adjusted) for the info panel
     c._momentum = momentum;        // for the info panel
     c._fronts = fronts;
     c._capitalBesieged = besiegedCap;
