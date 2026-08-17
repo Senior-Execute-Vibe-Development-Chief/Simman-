@@ -703,7 +703,21 @@ export function rebuildCountries(world) {
     }
     const bE = techEff(best), bMob = k.mobility || 0;
     const rangeOld = RANGE_BASE + bE.reachLevel * RANGE_ORG + bMob * RANGE_MOB + bNav * RANGE_NAV;
-    const rangeNew = (T.REACH_GROUND ? RANGE_BASE_G : RANGE_BASE_T) + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
+    // T.PORTER_BOUND (2026-08-14, the catch-up defect; docs/atlas-gap
+    // stagger verdict): administrative/logistic reach is REALIZED through
+    // transport — a state without draft animals moves grain and orders by
+    // human porter and achieves only a fraction of the radius its statecraft
+    // could administer (the Aztec tlameme bound; the Maya, administratively
+    // brilliant, stayed city-state-sized), while a works-heavy state can
+    // partially compensate by relay (the Inca road — the apparatus stock's
+    // lane). Mobility's own additive term already exists; this makes the
+    // TECH-REACH terms ride transport availability: floor 0.3 (porterage ≈
+    // one third of animal-transport logistics radius), full at the tech
+    // tree's own chariot-grade mobility 0.45. Industrial mobility opens
+    // horse-independent (the existing indBand law), so a modern horseless
+    // nation escapes the bound emergently — never a clock, never a region.
+    const mobF = T.PORTER_BOUND ? (0.3 + 0.7 * Math.min(1, bMob / 0.45)) : 1;
+    const rangeNew = (T.REACH_GROUND ? RANGE_BASE_G : RANGE_BASE_T) + (bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN) * mobF + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
     c.range = rangeOld + (rangeNew - rangeOld) * T.TECH_EFFECTS;   // transport-gated hold-distance (TE=0 → old admin-driven)
     // Personality nudges reach: an expansionist realm projects authority a
     // little farther, a cautious one pulls in. Knowledge still sets the bulk
