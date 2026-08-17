@@ -43,6 +43,7 @@ import { fieldShift } from "./popField.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
 import { expansionColonyMul } from "./personality.js";
+import { tel, telPass } from "./telemetry.js";
 import { forEachNear } from "./spatialGrid.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { getPolity } from "./entities.js";
@@ -302,8 +303,12 @@ export function updateSea(world) {
     const colonyMul = (pc && pc.personality) ? expansionColonyMul(pc.personality) : 1;
     const cooldown = COLONY_COOLDOWN / colonyMul;
     p._questGoal = null;
+    // Funnel (tel "sea"): WHY each port did or did not survey shores this
+    // pass — tallied at the decision so the colonial-arc probes can name the
+    // binding gate (the 62k finding: foundings STOP the moment the ocean
+    // era opens; the funnel says which door closed).
     if ((p.knowledge.navigation || 0) < COLONY_MIN_NAV ||
-        world.step - (p._lastColony ?? -Infinity) < cooldown) continue;
+        world.step - (p._lastColony ?? -Infinity) < cooldown) { tel(world, "sea", "portNotReady"); continue; }
     const pop = p.people || 0;
     // A spice quest lets a mid-size port (≥ COLONY_QUEST_MIN_POP, below the full
     // colony bar) found a trading OUTPOST to extend a luxury-route chain — so the
@@ -315,7 +320,7 @@ export function updateSea(world) {
       eligible.add(p.id);
       shoreCand.set(p.id, []);
       shoreSeen.set(p.id, new Set());
-    }
+    } else tel(world, "sea", "portSmallNoQuest");
   }
 
   // ── Charter decisions: which REALMS sponsor an expedition this pass ──
@@ -364,18 +369,18 @@ export function updateSea(world) {
       if (!pol || pol.endedStep >= 0) continue;
       // COMPETENCE — org gates the institution: below the chartered-company /
       // colonial-office rung a court cannot run a venture at ocean distance.
-      if ((c.capital.knowledge.organization || 0) < CHARTER_ORG_MIN) continue;
+      if ((c.capital.knowledge.organization || 0) < CHARTER_ORG_MIN) { tel(world, "sea", "charterOrg"); continue; }
       // ADMIN HEADROOM — the existing capacity ledger: a realm already drawing
       // its full capacity is consumed holding what it has; it does not charter.
-      if (c._capacity != null && c._loadTotal != null && c._loadTotal >= c._capacity) continue;
+      if (c._capacity != null && c._loadTotal != null && c._loadTotal >= c._capacity) { tel(world, "sea", "charterLoad"); continue; }
       // WILLINGNESS — temperament paces the venture cadence (same personality
       // channel as the port path; an insular crown rarely bothers).
       const mul = expansionColonyMul(pol.personality || c.personality);
-      if (world.step - (pol._lastCharter ?? -Infinity) < CHARTER_COOLDOWN / mul) continue;
+      if (world.step - (pol._lastCharter ?? -Infinity) < CHARTER_COOLDOWN / mul) { tel(world, "sea", "charterCooldown"); continue; }
       // SOLVENCY — the crown must AFFORD the endowment out of surplus
       // (charterAffordable: pay it and still run the state through the next
       // outfitting cycle from the chest alone).
-      if (!charterAffordable(pol)) continue;
+      if (!charterAffordable(pol)) { tel(world, "sea", "charterCoin"); continue; }
       // MOTIVE, read from live state: land hunger (crowding), else a luxury
       // its markets crave and cannot reach — the same spice-quest goal the
       // port path computes (reused verbatim; null when demand is met).
@@ -387,7 +392,7 @@ export function updateSea(world) {
           if (!goal || (p._luxDemand || 0) > (goal.port._luxDemand || 0)
             || ((p._luxDemand || 0) === (goal.port._luxDemand || 0) && p.id < goal.port.id)) goal = { port: p, s: p._questGoal };
         }
-        if (!goal) continue;   // contented realms stay home — no motive, no venture
+        if (!goal) { tel(world, "sea", "charterContent"); continue; }   // contented realms stay home — no motive, no venture
       }
       charter.set(cid, { ports: rp, goal: goal ? goal.s : null });
       for (const p of rp) {
@@ -739,14 +744,15 @@ function launchExpedition(world, A, chosen, prev, endow, charter) {
 }
 
 function tryColonize(world, A, cands, prev) {
-  if (!cands || cands.length === 0) return;
+  if (!cands || cands.length === 0) { tel(world, "sea", "noShore"); return; }
   // DIRECTED toward a distant luxury source (the spice quest, cached in the
   // eligibility pass) if the port craves one; otherwise opportunistic — best shore.
   const chosen = pickSite(world, cands, A._questGoal || null);
-  if (!chosen) return;
+  if (!chosen) { tel(world, "sea", "noClearSite"); return; }
   const endow = Math.min((A.wealth || 0) * COLONY_ENDOW_FRAC, COLONY_ENDOW_CAP);
   A.wealth = (A.wealth || 0) - endow;
   recordOut(A, OUT_COLONY, endow);
+  telPass(world, "sea");
   launchExpedition(world, A, chosen, prev, endow, false);
 }
 
@@ -767,15 +773,16 @@ function tryCharter(world, cid, info, shoreCand, prev) {
       if (!ex || cand.d < ex.d) best.set(cand.landTi, { landTi: cand.landTi, waterTi: cand.waterTi, d: cand.d, f: cand.f, port: p });
     }
   }
-  if (!best.size) return;
+  if (!best.size) { tel(world, "sea", "noShore"); return; }
   const chosen = pickSite(world, [...best.values()], info.goal);
-  if (!chosen) return;
+  if (!chosen) { tel(world, "sea", "noClearSite"); return; }
   const A = chosen.port;
-  if ((A.people || 0) < COLONY_PEOPLE + T.SEA_MIN_POP) return;   // re-check: the levy must still leave a working port
+  if ((A.people || 0) < COLONY_PEOPLE + T.SEA_MIN_POP) { tel(world, "sea", "charterLevy"); return; }   // re-check: the levy must still leave a working port
   pol.treasury -= CHARTER_ENDOW;
   pol._lastCharter = world.step;
   const c = world.countries && world.countries.get(cid);
   if (c && c.capital) recordOut(c.capital, OUT_COLONY, CHARTER_ENDOW);   // the flow books against the court, exactly like the colonial-economy pass's treasury flows
+  telPass(world, "sea");
   launchExpedition(world, A, chosen, prev, CHARTER_ENDOW, true);
 }
 

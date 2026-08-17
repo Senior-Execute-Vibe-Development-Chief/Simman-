@@ -15,12 +15,14 @@
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { getPolity } from "../src/sim/peopleSim/entities.js";
+import { telEnable, telReport, telReset } from "../src/sim/peopleSim/telemetry.js";
 
 const STEPS = +(process.argv[2] || 40000);
 const W = +(process.argv[3] || 960), H = W >> 1;
 const SEED = +(process.argv[4] || 8817);
 const IVL = +(process.argv[5] || 5000);
 const world = buildSim({ W, H, seed: SEED });
+telEnable(world);   // arm the sea funnel (tel "sea" — sea.js expedition/charter decisions)
 
 // Connected land components (4-neighbour, x-wrap) — the probe's landmass ids.
 let landOf = null;
@@ -94,6 +96,10 @@ function report(step) {
   console.log(`t=${step} navMax=${navMax.toFixed(2)} ports(galleys/ocean)=${galleys}/${ocean} ` +
     `colonies=${colLive}(overseas ${colOverseas}) metropoles=${bonds.size} top=#${topM}:${topD}dep(${topO}os) ` +
     `founded=${cum.founded} indep=${cum.independent} vassalFreed=${cum.vassalFreed} inherited=${cum.inherited}`);
+  // The sea funnel over THIS window (reset after print): which gate binds now.
+  const sea = telReport(world).sea || {};
+  console.log(`    seaFunnel: ${Object.entries(sea).map(([k, v]) => `${k}=${v}`).join(" ") || "(silent)"}`);
+  telReset(world);
 }
 
 for (let s = 1; s <= STEPS; s++) {
