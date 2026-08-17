@@ -692,7 +692,16 @@ export function rebuildCountries(world) {
     c.capitalId = best.id;
     if (best) best._isCapital = true;
     const k = best.knowledge || {};
-    const bE = techEff(best), bMob = k.mobility || 0, bNav = k.navigation || 0;
+    // T.ADMIRALTY (cause III): naval capability reads the realm's LEADING
+    // PORT, not the landlocked court — Rome's fleets were Greek, Spain's
+    // pilots Genoese; the admiralty is the port's institution. Entity
+    // knowledge: the grid-honest key class (no field crawl). Capital
+    // fallback keeps landless/inland realms exactly as before.
+    let bNav = k.navigation || 0;
+    if (T.ADMIRALTY) for (const m of c.members) {
+      if (m.mode === "settled" && (m.waterAccess || 0) > 0 && m.knowledge && (m.knowledge.navigation || 0) > bNav) bNav = m.knowledge.navigation;
+    }
+    const bE = techEff(best), bMob = k.mobility || 0;
     const rangeOld = RANGE_BASE + bE.reachLevel * RANGE_ORG + bMob * RANGE_MOB + bNav * RANGE_NAV;
     const rangeNew = (T.REACH_GROUND ? RANGE_BASE_G : RANGE_BASE_T) + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
     c.range = rangeOld + (rangeNew - rangeOld) * T.TECH_EFFECTS;   // transport-gated hold-distance (TE=0 → old admin-driven)

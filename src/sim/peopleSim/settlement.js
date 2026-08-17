@@ -2141,8 +2141,22 @@ function updateKnowledge(world, s) {
   // so coasts and great rivers become naval powers in step with the rest of the
   // tree instead of lagging centuries behind.
   if (wa > 0) {
+    // T.SEA_DEMAND (cause III, docs/atlas-gap-2026-08-14.md): navigation was
+    // the ONLY practice with no demand term (metallurgy has needMetal,
+    // mobility saddleLife) — however profitable the sea, practice never
+    // accelerated, and the 50k world sat one point under the galleys gate
+    // forever. The sea's induced innovation, in the needMetal pattern and on
+    // the same lever: DEAR GOODS AT A WATERSIDE TOWN INDUCE SEAMANSHIP —
+    // ships are how a port fetches what its market prices dear. One-sided
+    // (gluts never punish), a lived condition, no clock, no new constant.
+    let needSea = 1;
+    if (T.SEA_DEMAND && T.INDUCED_INNOV > 0 && s._gPrice) {
+      const gp = s._gPrice;
+      const dear = Math.max(gp[G_STAPLE] || 0, gp[G_MATERIALS] || 0, gp[G_METAL] || 0);
+      needSea = 1 + T.INDUCED_INNOV * Math.max(0, dear - 1);
+    }
     k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.9 * sciMul * (1 - k.navigation)
-      * (0.5 + 0.5 * wa) * (1 + k.construction * 0.6 + sciSqrt * 0.04));
+      * (0.5 + 0.5 * wa) * needSea * (1 + k.construction * 0.6 + sciSqrt * 0.04));
   }
 
   // Mobility — gated by horses, paced like metallurgy's thin-ore rule: you
