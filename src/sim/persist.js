@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 22;  // v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
+export const SAVE_VERSION = 23;  // v23: workable land (TILLAGE) ON (v<23 guard); v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -510,6 +510,12 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("FISH" in tn)) T.FISH = 1;
     if (!("ORGANIC_TAKE" in tn)) T.ORGANIC_TAKE = 0;
+  }
+  // v22 → v23: the land must be workable (TILLAGE — heavy/tropical soils wait
+  // for technique). A pre-v23 save keeps its easy soils.
+  if (data.v < 23) {
+    const tn = data.tuning || {};
+    if (!("TILLAGE" in tn)) T.TILLAGE = 0;
   }
   // v21 → v22: reach as a maintained stock (STATE_WORKS — roads/relays bought
   // by out-collecting the era, lost when the fisc fails). A pre-v22 save keeps

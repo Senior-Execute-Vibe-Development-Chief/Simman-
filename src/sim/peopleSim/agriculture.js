@@ -138,11 +138,43 @@ export function pkgSuitAt(world, ti, pkg) {
     // dawn, and no rain-fed plain ever qualifies at any technique level.
     if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && mGrow > pkg.mOpt
         && aridMinAt(world, ti) < pkg.mOpt) mGrow = pkg.mOpt;
-    return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow);
+    return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow) * tillageMul(world, ti);
   }
   if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && m > pkg.mOpt
       && aridMinAt(world, ti) < pkg.mOpt) m = pkg.mOpt;
-  return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null);
+  return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null) * tillageMul(world, ti);
+}
+
+
+// ── T.TILLAGE: the land must be WORKABLE, not merely fertile (2026-08-14,
+// docs/atlas-gap-2026-08-14.md cause II) ────────────────────────────────────
+// The climate bells price what a crop WANTS; they do not price what a farmer
+// can DO. Measured (probe_floodstates, tw=480/15k): the sim seats −1500
+// states on Scotland (tCrop 0.98), the Baltic (0.86), Gabon (0.98) — land
+// whose climate scores high but whose GROUND resisted agriculture for
+// millennia: heavy waterlogged temperate clay under forest broke the scratch
+// ard until the heavy mouldboard plough, and wet-tropical forest on leached
+// laterite resisted until iron clearing. That workability gap is THE textbook
+// reason civilization rose on arid-alluvial soil — flood-renewed silt works
+// from the first season with a stick — and its absence is why statehood
+// diffuses here like heat instead of hugging the cradle belt for millennia.
+// The gate is the TECHNIQUE THE PEOPLE ON THE TILE ACTUALLY KNOW
+// (world.devField — the emergent agricultural-technique wave): light/dry
+// ground and flood ribbons are workable at any technique (the cradle belt is
+// untouched — no Mesopotamia chicken-and-egg: the gate never binds the land
+// whose boom must fund the technique); wet heavy ground ramps from its floor
+// to 1 as local technique matures, which arrives by DIFFUSION from the
+// booming cradles — the very gradient this exists to produce. Never a clock.
+function tillageMul(world, ti) {
+  if (!T.TILLAGE) return 1;
+  const m = world.moist[ti];
+  if (m < 0.45) return 1;                                   // light/dry soil: the ard suffices (the bell optimum is the wet/heavy line)
+  if (world.tFlood && world.tFlood[ti]) return 1;           // flood-renewed silt: workable with a stick
+  const t = world.temp[ti];
+  const tropic = Math.min(1, Math.max(0, (t - 0.72) / 0.10));   // the same tropical line habitability.js draws
+  const w0 = T.TILL_HEAVY + (T.TILL_TROPIC - T.TILL_HEAVY) * tropic;   // cool wet clay → hot wet forest
+  const dev = world.devField ? Math.min(1, Math.max(0, world.devField[ti])) : 0;
+  return w0 + (1 - w0) * dev;
 }
 
 // Best package at a tile by RAW suitability — what a cradle / mature culture
