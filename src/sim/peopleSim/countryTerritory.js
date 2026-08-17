@@ -1250,8 +1250,19 @@ function fieldPolityTerritory(world) {
         ty2 > 0 ? (ty2 - 1) * tw + xm2 : -1, ty2 > 0 ? (ty2 - 1) * tw + xp2 : -1,
         ty2 < th - 1 ? (ty2 + 1) * tw + xm2 : -1, ty2 < th - 1 ? (ty2 + 1) * tw + xp2 : -1,
       ];
-      let hold = 0;   // computed lazily — only border tiles with a live challenger pay for it
-      let bestC = -1, bestCost = Infinity;
+      // FORM 2 (lap-3 first form refuted by measurement — ridge 0.86x→0.49x,
+      // river 2.01x→1.54x): comparing CUMULATIVE admin distances with the
+      // hold on ONE edge makes a ×6 wall a rounding error against tens-of-
+      // units seat asymmetries — the law degenerated to distance-Voronoi
+      // relaxation and BULLDOZED the terrain borders the wars had made. The
+      // war's comparison never fails this way because it is LOCAL: force at
+      // the tile, defender ×terrainDef, so the terrain multiple dominates.
+      // Same shape here: administrative GRIP at the tile (1/loadOfD — reach
+      // decays with admin distance), the incumbent's grip ×hold (defending a
+      // line multiplies effective reach at it) — the hold now scales the
+      // WHOLE comparison. A river needs a ~3.7× grip advantage to cross in
+      // peace; a plains march flips on load ratio alone past the friction.
+      let bestC = -1, bestLoad = Infinity;
       for (let k = 0; k < 8; k++) {
         const ni = ns2[k]; if (ni < 0) continue;
         const a = co[ni]; if (a < 0 || a === b || elev[ni] <= 0 || !alive.has(a) || nomad(a)) continue;
@@ -1261,15 +1272,17 @@ function fieldPolityTerritory(world) {
         const kn = knOf.get(a);
         const ec = edgeCostFor(ni, ti, kn, claimCap.get(a) || CLAIM_CAP_CEIL, hostOf.get(a) ?? CLAIM_HOSTILITY);
         if (ec === Infinity) { tel(world, "march", "unpriceable"); continue; }
-        if (hold === 0) { const knB = knOf.get(b); hold = marchHoldAt(ti, (knB && knB.construction) || 0); }
-        const cost = da + ec * (k < 4 ? 1 : SQRT2) * hold;
-        if (cost < bestCost) { bestCost = cost; bestC = a; }
+        const la = loadOfD(da + ec * (k < 4 ? 1 : SQRT2));   // challenger's admin load on the tile
+        if (la < bestLoad) { bestLoad = la; bestC = a; }
       }
       if (bestC < 0) continue;
-      if (!(bestCost * MARCH_EDGE < db)) { tel(world, "march", "noAdvantage"); continue; }
+      const knB = knOf.get(b);
+      const hold = marchHoldAt(ti, (knB && knB.construction) || 0);
+      const lb = loadOfD(db);
+      if (!(bestLoad * hold * MARCH_EDGE < lb)) { tel(world, "march", "noAdvantage"); continue; }
       const key = Math.min(bestC, b) + ":" + Math.max(bestC, b);
       let arr = flips.get(key); if (!arr) flips.set(key, arr = []);
-      arr.push({ ti, from: b, to: bestC, d: bestCost, refund: loadOfD(db), adv: db / bestCost });
+      arr.push({ ti, from: b, to: bestC, d: (bestLoad - 1) * ADMIN_HALF_EFF, refund: lb, adv: lb / (bestLoad * hold * MARCH_EDGE) });
     }
     for (const [, arr] of flips) {
       arr.sort((p, q) => (q.adv - p.adv) || (p.ti - q.ti));   // strongest claim first, index tiebreak deterministic
