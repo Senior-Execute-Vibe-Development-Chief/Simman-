@@ -786,7 +786,17 @@ export function rebuildCountries(world) {
     const ref = Math.max(1e-6, world._refWorks || 0);
     for (const c of countries.values()) {
       const g = govOf(world, c.id);
-      const rel = (susOf.get(c.id) || 0) / ref;
+      // T.APPARATUS_LOOT (the 45k verdict's confirmed next lap): the stock is
+      // fed by CONQUEST INCOME — the _conqFlow windfall bank (sack plunder,
+      // tribute, seized and integrated chests), which only the realm that
+      // wins wars can hold — measured against the SAME ruler (the era's
+      // ordinary realm income), so "one ordinary realm's income worth of
+      // loot" is the parity bar. General revenue peers accumulate together
+      // (measured thrice: capability levers lift fields); loot is the
+      // asymmetry only conquest creates — Cyrus does not out-tax Media, he
+      // takes its treasury whole, and THAT funds the roads that take Lydia.
+      const lootUnits = T.APPARATUS_LOOT ? ((g._conqFlow || 0) / Math.max(1, world._refRevenue || 1)) : 0;
+      const rel = (T.APPARATUS_LOOT ? lootUnits : (susOf.get(c.id) || 0)) / ref;
       // √ of the scale ABOVE the era's median — the areal-network law (a
       // network serving area ∝ R² costs upkeep ∝ R², so the extent a given
       // income sustains goes as √income), capped by administrative returns:
@@ -1414,6 +1424,9 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
       const conq = world._byId ? world._byId.get(excludeId) : null;
       if (conq && conq.countryId != null && conq.countryId >= 0) {
         govOf(world, conq.countryId).treasury += dead.treasury;
+        // A seized war-chest is extraction income like plunder and tribute —
+        // it was missing from the _conqFlow bank (the windfall ledger).
+        if (T.LATIFUNDIA || T.APPARATUS_LOOT) { const g2 = govOf(world, conq.countryId); g2._conqFlow = (g2._conqFlow || 0) + dead.treasury; }
         dead.treasury = 0;
       }
     }
@@ -3798,7 +3811,11 @@ function considerIntegrations(world, countries) {
     if (co) for (let ti = 0; ti < N; ti++) if (co[ti] === sid) co[ti] = hid;
     // The chest joins the imperial fisc (the peaceful mirror of conquest seizure).
     const gS = govOf(world, sid), gH = govOf(world, hid);
-    if (gS.treasury > 0) { gH.treasury += gS.treasury; gS.treasury = 0; }
+    if (gS.treasury > 0) {
+      gH.treasury += gS.treasury;
+      if (T.LATIFUNDIA || T.APPARATUS_LOOT) gH._conqFlow = (gH._conqFlow || 0) + gS.treasury;   // an integrated client's chest is extraction income
+      gS.treasury = 0;
+    }
     // The client's own dependencies pass to the empire (tribute pyramids
     // flatten one level — the cascade's network-inheritance rule, peacetime).
     if (world.polities) for (const [pid, p] of world.polities) {
