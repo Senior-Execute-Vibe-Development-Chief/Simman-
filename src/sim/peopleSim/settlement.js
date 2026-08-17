@@ -2140,6 +2140,18 @@ function updateKnowledge(world, s) {
   // modest coast grows real seamanship (helped by population — more shipwrights),
   // so coasts and great rivers become naval powers in step with the rest of the
   // tree instead of lagging centuries behind.
+  // T.SEA_PRACTICE: fold this tick's booked carrying trade (roads.js) into the
+  // sea-share EMA — the port's living memory of how much of its trade rides
+  // the sea (~20-fold memory, a fleet/skill generation). Unconditional of wa
+  // so the ledger never accumulates unfolded on any settlement.
+  if (T.SEA_PRACTICE > 0) {
+    const tv = s._tvAll || 0;
+    if (tv > 0) {
+      const prev = s._seaShare ?? (s._tvSea || 0) / tv;   // first fold seeds at the observed share
+      s._seaShare = prev + 0.05 * ((s._tvSea || 0) / tv - prev);
+      s._tvAll = 0; s._tvSea = 0;
+    }
+  }
   if (wa > 0) {
     // T.SEA_DEMAND (cause III, docs/atlas-gap-2026-08-14.md): navigation was
     // the ONLY practice with no demand term (metallurgy has needMetal,
@@ -2155,8 +2167,17 @@ function updateKnowledge(world, s) {
       const dear = Math.max(gp[G_STAPLE] || 0, gp[G_MATERIALS] || 0, gp[G_METAL] || 0);
       needSea = 1 + T.INDUCED_INNOV * Math.max(0, dear - 1);
     }
+    // T.SEA_PRACTICE: the FLEET term — metallurgy's fuel analog (charcoal
+    // fires the forge; a working merchant fleet drills the pilots). The
+    // seaneed attribution (2026-08-17) exonerated demand — ports price dear
+    // (needSea 1.5-1.75) yet nav crawled at HALF metallurgy's pace, because a
+    // pure coastal port's wa is 0.5 by construction (practice factor capped
+    // 0.75) and navigation alone had no availability multiplier. A town whose
+    // carrying trade is fully sea-borne learns at up to x(1+lever); an
+    // inland-facing beach town at x1. Venice and Athens, not every beach.
+    const fleet = 1 + T.SEA_PRACTICE * Math.min(1, s._seaShare || 0);
     k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.9 * sciMul * (1 - k.navigation)
-      * (0.5 + 0.5 * wa) * needSea * (1 + k.construction * 0.6 + sciSqrt * 0.04));
+      * (0.5 + 0.5 * wa) * needSea * fleet * (1 + k.construction * 0.6 + sciSqrt * 0.04));
   }
 
   // Mobility — gated by horses, paced like metallurgy's thin-ore rule: you

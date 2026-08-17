@@ -50,7 +50,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 29;  // v29: peacetime border relaxation (MARCH_LAW) added — SHIPS AT 0, the phenomenon measured already-delivered by war physics once the instrument could see range feet (docs/atlas-gap-2026-08-14.md cause IV final; v<29 guard inert while def 0); v28: contested-crest holds (CREST_HOLD) added — SHIPS AT 0, refuted at claim time, laps 1-2 in docs/atlas-gap-2026-08-14.md (v<28 guard inert while def 0); v27: porter-bound reach (PORTER_BOUND) ON (v<27 guard); v26: the apparatus feeds on conquest (APPARATUS_LOOT) ON (v<26 guard); v25: the imperial apparatus (APPARATUS - works stock funds capacity) ON (v<25 guard); v24: the sea learns by demand + the admiralty (SEA_DEMAND, ADMIRALTY) ON (v<24 guard); v23: workable land (TILLAGE) ON (v<23 guard); v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
+export const SAVE_VERSION = 30;  // v30: the fleet term (SEA_PRACTICE — seamanship is learned by sailing) ON (v<30 guard); v29: peacetime border relaxation (MARCH_LAW) added — SHIPS AT 0, the phenomenon measured already-delivered by war physics once the instrument could see range feet (docs/atlas-gap-2026-08-14.md cause IV final; v<29 guard inert while def 0); v28: contested-crest holds (CREST_HOLD) added — SHIPS AT 0, refuted at claim time, laps 1-2 in docs/atlas-gap-2026-08-14.md (v<28 guard inert while def 0); v27: porter-bound reach (PORTER_BOUND) ON (v<27 guard); v26: the apparatus feeds on conquest (APPARATUS_LOOT) ON (v<26 guard); v25: the imperial apparatus (APPARATUS - works stock funds capacity) ON (v<25 guard); v24: the sea learns by demand + the admiralty (SEA_DEMAND, ADMIRALTY) ON (v<24 guard); v23: workable land (TILLAGE) ON (v<23 guard); v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -101,6 +101,7 @@ const SETT_FIELDS = [
   "_hegF", "_peerPeak",                  // hegemonic stagnation: decline-from-peak peer pressure + the peak ratchet
   "_gPrice", "_gShare",                  // goods vector (T.GOODS_PRICES): local per-good prices + craft labour shares — the market's memory (plain number arrays)
   "_gStock", "_gCapx",                   // merchant warehouse stock (T.GOODS_STOCKS) + invested craft capital (T.GOODS_INVEST) — both carry cross-tick state
+  "_seaShare", "_tvAll", "_tvSea",       // T.SEA_PRACTICE: sea-borne trade share EMA + the tick ledger it folds from (trade books AFTER the settlement pass, so the ledger can be live at a save boundary)
 ];
 
 // Load-bearing per-settlement DYNAMIC state that the hashWorld core loop omitted:
@@ -112,7 +113,7 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac", "_seaShare", "_tvAll", "_tvSea"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
@@ -510,6 +511,12 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("FISH" in tn)) T.FISH = 1;
     if (!("ORGANIC_TAKE" in tn)) T.ORGANIC_TAKE = 0;
+  }
+  // v29 → v30: the fleet term (SEA_PRACTICE). A pre-v30 save keeps its
+  // dock-bound learning rate.
+  if (data.v < 30) {
+    const tn = data.tuning || {};
+    if (!("SEA_PRACTICE" in tn)) T.SEA_PRACTICE = 0;
   }
   // v28 → v29: peacetime borders relax onto holdable lines (MARCH_LAW).
   // A pre-v29 save keeps its frozen first-meeting borders.

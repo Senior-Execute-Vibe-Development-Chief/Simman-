@@ -241,8 +241,10 @@ const leaves = (o) => { let n = 0; if (!o || typeof o !== "object") return 0;
 // _armedHearths / _landSeats: the dawn's two live registries, measured in
 // collect() since the package-biogeography flip kept them populated at gate
 // horizons (hearth.armedNow + hearthArmed.* dists; nation.landSeatsNow +
-// landSeat.* dists — simmetrics.mjs).
-const MEASURED_CLASSES = new Set(["settlements", "countries", "polities", "cultures", "languages", "faiths", "dynasties", "persons", "events", "_armedHearths", "_landSeats"]);
+// landSeat.* dists — simmetrics.mjs). _hearthSeeds: the dev-wave's ground
+// sources (CITY_AT_BIRTH seedless dawns), measured since the SEA_PRACTICE
+// wave's coverage run surfaced them (hearth.devSourcesNow + hearthSeed.*).
+const MEASURED_CLASSES = new Set(["settlements", "countries", "polities", "cultures", "languages", "faiths", "dynasties", "persons", "events", "_armedHearths", "_landSeats", "_hearthSeeds"]);
 const seen = new Set(); let lit = 0, residue = 0; const unexplained = [];
 for (const k of Object.keys(w)) {
   const v = w[k];

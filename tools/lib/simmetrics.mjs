@@ -745,6 +745,16 @@ export function collect(world) {
     m["nation.landSeatsNow"] = world._landSeats.size;
     entityDists("landSeat", [...world._landSeats.values()], m);
   }
+  // Dev-wave GROUND SOURCES (T.CITY_AT_BIRTH seedless dawns): each hearth
+  // invention stamps its basin's peopled tiles as technique-wave sources
+  // ({ti, agri}, persisted; crystallize.js → popField stampDevSources). Their
+  // downstream effect is the devField, but the sources themselves are durable
+  // state — measured, not pass-listed. "Now" naming (sources accumulate but
+  // agri levels move), so the monotone gate reads only the gauge.
+  if (world._hearthSeeds && world._hearthSeeds.length) {
+    m["hearth.devSourcesNow"] = world._hearthSeeds.length;
+    entityDists("hearthSeed", world._hearthSeeds, m);
+  }
 
   // ── EVENT PAYLOAD MAGNITUDES ───────────────────────────────────────────────
   // `event.<kind>` counts how often a thing happened; it cannot say how BIG. A run
