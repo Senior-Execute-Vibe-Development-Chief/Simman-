@@ -30,6 +30,7 @@ import { tel, telPass } from "./telemetry.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { T, rNormPop } from "./tuning.js";
+import { cageAt } from "./cageField.js";
 import { claimHostility, malariaSignal } from "./habitability.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
@@ -2538,6 +2539,26 @@ function restorableHomeland(world, s, f2c, bar) {
 // The state-capacity multiplier on the founding bar: how much MORE population
 // this ground needs before it can carry a state. Low carrying capacity, wet
 // tropics and iron-less temperate forest raise it; broken terrain lowers it.
+// T.STATE_OPEN — Carneiro's circumscription at the FOUNDING BAR itself (the
+// late-belt over-claiming wave, docs/atlas-gap-2026-08-14.md 2026-08-18). The
+// bar below prices fertility, disease, forest-iron and ruggedness — but was
+// CAGE-BLIND: a fertile OPEN plain founded at the same bar as the hemmed Nile,
+// so once any belt's popField densified, states swept it wall-to-wall (measured:
+// the Americas at 16M km2 claimed and Australia 2.6M across 7 states at the
+// caravels moment, where history held ≤3M and ZERO — while claims measured
+// DENSE, 71-84% of cradle-core density: not thin claims, too many foundings).
+// History's door: states crystallise where people CANNOT DISPERSE — on open
+// ground they flee taxation instead of submitting (the Mississippi stayed
+// chiefdoms at real density; Mesoamerica and the Andes, the two CAGED zones,
+// were exactly where American states rose). The multiplier reads the cage
+// field alone — cropCeil's storable-surplus leg is already priced via capNorm,
+// and doubling it would spuriously raise the CRADLES' bar (they are caged;
+// their term must stay ≈1 so the calibrated dawn does not move).
+function stateOpenMulAt(world, seatTi) {
+  if (!(T.STATE_OPEN > 0) || !T.STATE_CAGE) return 1;
+  return 1 + T.STATE_OPEN * (1 - cageAt(world, seatTi));
+}
+
 function stateCapacityMul(world, s, seatTi) {
   const fert = world.fert, moist = world.moist, temp = world.temp;
   const capNorm = fert ? Math.min(1, Math.max(0, fert[seatTi] / NUCLEATE_CAP_FERT_REF)) : 1;
@@ -2549,6 +2570,7 @@ function stateCapacityMul(world, s, seatTi) {
   const forestLocked = forest * (1 - ironReady);
   return (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
        * (1 + T.STATE_FOREST * forestLocked)
+       * stateOpenMulAt(world, seatTi)
        / (1 + T.FRAGMENT * (s._rugged || 0));
 }
 
@@ -2711,7 +2733,13 @@ export function nucleateFrontierStates(world) {
       cp = statelessBasinCensus(world, s, f2c, nucRi);
     }
     if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp, capMul });
-    else tel(world, "nucleate", isLeader ? "basinPop<clusterBar" : "notBasinLeader");
+    else if (!isLeader) tel(world, "nucleate", "notBasinLeader");
+    // Attribute the BINDING bar: if the basin would clear the bar without the
+    // open-land (circumscription) term, the openness is what refused the state —
+    // name it, per the funnel convention, so probe runs can read the Carneiro
+    // door working (or not) instead of a generic bar rejection.
+    else if (T.STATE_OPEN > 0 && cp >= clusterPop * capMul / stateOpenMulAt(world, seatTi)) tel(world, "nucleate", "openLand(uncaged)");
+    else tel(world, "nucleate", "basinPop<clusterBar");
   }
   if (!cand.length) return;
   cand.sort((a, b) => b.cp - a.cp);             // most-developed clusters first
