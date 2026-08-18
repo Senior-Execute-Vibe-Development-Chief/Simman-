@@ -1657,7 +1657,28 @@ function maybeLandNations(world) {
       // grain — basinStorablePeople, the CITY_STORE quantity, as a SHARE: a
       // caged tuber basin still waits for contact. Both factors live state,
       // both existing measures; the K re-base and per-seat roll unchanged.
-      if (drive < 1 && T.STATE_CAGE) {
+      //
+      // T.STATE_OPEN lap 2 (the late-belt over-claiming wave, 2026-08-18):
+      // probe_statebirths measured THIS door minting the swarm — 834 tribal
+      // foundings per 35k against 2 frontier ones — and the contact lane
+      // above overriding the Carneiro exam entirely (any adjacent state
+      // ground → drive=1), so one state per belt sweeps its whole continent
+      // at roll speed. History's periphery: contact TEACHES the form, but
+      // only circumscription makes it hold — Gran Chichimeca bordered
+      // Mesoamerica for two millennia and never stated; Rome pressed
+      // Germania for centuries. Under the lever, contact MULTIPLIES the
+      // Carneiro drive (×(1+STATE_OPEN) — seeing the state accelerates
+      // adopting it) instead of overriding it: a caged storable basin under
+      // pressure forms almost at once (the cradle belts saturate at the old
+      // drive=1, near-byte-similar there), an open or unstorable one stays
+      // tribal however long it is pressed — the Chichimeca, Australia.
+      if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
+        const cg = cageAt(world, st.ti);
+        const sp = cg > 0 ? basinStorablePeople(world, take, world.popField) : 0;
+        const stor = basin.mass > 0 ? Math.min(1, sp / basin.mass) : 0;
+        const pr = cg * stor;
+        drive = drive >= 1 ? Math.min(1, pr * (1 + T.STATE_OPEN)) : pr;
+      } else if (drive < 1 && T.STATE_CAGE) {
         const cg = cageAt(world, st.ti);
         if (cg > 0) {
           const sp = basinStorablePeople(world, take, world.popField);
@@ -1742,7 +1763,14 @@ function maybeLandNations(world) {
           }
           if (drive2 >= 1) break;
         }
-        if (drive2 < 1 && T.STATE_CAGE) {
+        // T.STATE_OPEN lap 2: identical to the primary lane — contact
+        // multiplies the Carneiro drive, never overrides it (header above).
+        if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
+          const cg2 = cageAt(world, cand.ti);
+          const sp2 = cg2 > 0 ? basinStorablePeople(world, basin2.take, pf2) : 0;
+          const pr2 = cg2 * (basin2.mass > 0 ? Math.min(1, sp2 / basin2.mass) : 0);
+          drive2 = drive2 >= 1 ? Math.min(1, pr2 * (1 + T.STATE_OPEN)) : pr2;
+        } else if (drive2 < 1 && T.STATE_CAGE) {
           const cg2 = cageAt(world, cand.ti);
           if (cg2 > 0) {
             const sp2 = basinStorablePeople(world, basin2.take, pf2);
