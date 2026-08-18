@@ -427,6 +427,11 @@ const BIND_DENS_ENV = (typeof process !== "undefined" && process.env && +process
 // to 2. Env-overridable for sweeps (SIM_MARCH_TILES / SIM_MARCH_POW).
 const MARCH_TILES_ENV = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_TILES) || 0;
 const MARCH_POW = (typeof process !== "undefined" && process.env && +process.env.SIM_MARCH_POW) || 2;
+// Headless diagnostics only (tools/probe_claimsize.mjs): stash the size-target
+// decomposition per realm so the claim-size wave can attribute the median claim
+// to its funding term. Env-gated write-only state — never set in the app, never
+// saved, zero behavior.
+const TARGET_DIAG = (typeof process !== "undefined" && process.env && +process.env.SIM_TARGET_DIAG) || 0;
 function fieldPolityTerritory(world) {
   const FIELD_SPAN = T.FIELD_SPAN || FIELD_SPAN_DEF;
   const { N, tw, th, elev, fert, temp, moist } = world;
@@ -921,6 +926,10 @@ function fieldPolityTerritory(world) {
         const marchTiles = MARCH_TILES_ENV > 0 ? MARCH_TILES_ENV : MARCH_LOG_TILES;
         const march = Math.round(marchTiles * Math.pow(logiOf.get(cid) || 0, MARCH_POW) * r2);
         t = popCap + march;
+        if (TARGET_DIAG) (world._targetDiag || (world._targetDiag = new Map())).set(cid, {
+          t, popCap, march, govPop: govPopOf.get(cid) || 0, spanTech: spanTechMul(cid),
+          logi: logiOf.get(cid) || 0, held: held.get(cid) || 0,
+        });
       }
       if (t <= 0) { if (cp <= 0 && (govPopOf.get(cid) || 0) <= 0) continue; }  // capless + peopleless newborn: hold (cold-start)
     } else if (T.TILE_POLITY) {
