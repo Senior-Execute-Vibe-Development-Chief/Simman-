@@ -923,8 +923,23 @@ function fieldPolityTerritory(world) {
         // count and no cross-realm term anywhere.
         const bindDens = (BIND_DENS_ENV > 0 ? BIND_DENS_ENV : (T.RURAL_BIND_DENS ?? RURAL_BIND_DENS_DEF)) / r2;   // people per SIM tile
         const popCap = Math.round((govPopOf.get(cid) || 0) * spanTechMul(cid) * (adminOn ? ADMIN_LOAD_RECAL : 1) / bindDens);
-        const marchTiles = MARCH_TILES_ENV > 0 ? MARCH_TILES_ENV : MARCH_LOG_TILES;
-        const march = Math.round(marchTiles * Math.pow(logiOf.get(cid) || 0, MARCH_POW) * r2);
+        // ── T.MARCH_FUNDED: the march is FUNDED by the base, not granted by
+        // technique. The flat form below is a population-blind allowance — once
+        // road technique diffuses, every backwater collects 150·logi²·r2 load of
+        // frontier regardless of having anyone to administer it (measured as the
+        // late-belt median inflation: probe_claimsize, march 0%→50% of the median
+        // target over 15k-30k while popCap held flat). History's thin marches
+        // (Siberia, Mongolia, the desert edges) were held by LARGE states out of
+        // their own base. Lever value = the march at full logistics as a MULTIPLE
+        // of the people-funded extent — t = popCap·(1 + MARCH_FUNDED·logi²) — so
+        // great powers keep filling their sparse frontier while the swarm loses
+        // its subsidy; res-invariant by construction (popCap is). MARCH_TILES_ENV
+        // force-override keeps the flat form for headless sweeps.
+        const logi = logiOf.get(cid) || 0;
+        const marchFund = MARCH_TILES_ENV > 0 ? 0 : (T.MARCH_FUNDED || 0);
+        const march = marchFund > 0
+          ? Math.round(popCap * marchFund * Math.pow(logi, MARCH_POW))
+          : Math.round((MARCH_TILES_ENV > 0 ? MARCH_TILES_ENV : MARCH_LOG_TILES) * Math.pow(logi, MARCH_POW) * r2);
         t = popCap + march;
         if (TARGET_DIAG) (world._targetDiag || (world._targetDiag = new Map())).set(cid, {
           t, popCap, march, govPop: govPopOf.get(cid) || 0, spanTech: spanTechMul(cid),
