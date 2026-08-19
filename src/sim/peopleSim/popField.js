@@ -794,6 +794,55 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  // ── T.FIELD_CRADLE: the granary reaches the FIELD ─────────────────────────
+  // Capacity-side adoption of the food economy's cradle stack (settlement.js
+  // irrigation + alluvium — one physics, second consumer). The field-
+  // concentration wave's lap-0 verdict (docs/atlas-gap-2026-08-14.md):
+  // worldgen fert measures FLAT (top-10% of land holds 19% of fert-mass,
+  // dec/med 1.7x) and the proxy's only water term is the access premium
+  // (reach ≤ x3), so the census, the claims, the cage and the worked mask
+  // lived in a world where the Nile was a cheap road, not a granary — while
+  // the settlement ledger carried x7.5 on arid-river maturity (its design
+  // doc's "Egypt tail"). FOOD_K hands worked land the real ledger, but 90%+
+  // of land is wild proxy — the pre-state basins where circumscription and
+  // hearth demography are decided. Same levers as the settlement law, tile
+  // resolution: arid from world.moist against IRRIG_ARID0, water from the
+  // (banded) riverMag, coastal lowland at the settlement's ALLUVIUM_COAST
+  // share, farm technique from the LOCAL devF — the wave carries
+  // knowledge.agriculture units, so the settlement's own /0.5 maturity gate
+  // transfers verbatim, and a pre-agricultural basin (devF 0) is UNTOUCHED:
+  // the lift spreads with farming itself, the Neolithic transition. Crop
+  // only — a pasture-won tile (bitwise cap === pasture, the max() branch) is
+  // skipped: canals irrigate fields, not rangeland. Deterministic main-
+  // thread post-pass in FOREST_LOCK's exact recipe (pool and non-pool
+  // bit-identical by construction), BEFORE FOOD_K so worked-catchment
+  // distribution weights read the same cradle geography the ledger already
+  // knows. Lever value scales the stack as a share of its food-economy
+  // strength (1 = parity). 0 = the road-only proxy (byte-identical).
+  const fcL = T.FIELD_CRADLE || 0;
+  if (fcL > 0 && devF && world.moist) {
+    const moistF = world.moist;
+    const irrB = (T.IRRIG_BOOST || 0) * fcL, alluB = (T.ALLUVIUM || 0) * fcL;
+    const arid0 = T.IRRIG_ARID0 ?? 0.52;
+    const ALLU_COAST_F = 0.5;   // = settlement.js ALLUVIUM_COAST — the two consumers share the value; change together
+    const FARM_MATURE_F = 0.5;  // = settlement.js farmTech divisor (mature floodplain/irrigation farming)
+    if (irrB > 0 || alluB > 0) for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const water = rmEff ? Math.min(1, rmEff[i] / RM_FULL) : 0;
+      const coastV = coastEff ? coastEff[i] : 0;
+      if (water <= 0 && coastV <= 0) continue;
+      const a = devF[i];
+      if (!(a > 0)) continue;
+      const farmTech = Math.min(1, a / FARM_MATURE_F);
+      if (pasture && cap[i] === pasture[i] && pasture[i] > 0) continue;   // range won: the herd is not irrigated
+      const arid = Math.max(0, Math.min(1, (arid0 - moistF[i]) / 0.20));
+      const irr = 1 + irrB * arid * water * farmTech;
+      const allu = 1 + alluB * (water + ALLU_COAST_F * coastV) * farmTech;
+      const m = irr * allu;
+      if (m > 1) cap[i] *= m;
+    }
+  }
+
   // ── T.FOOD_K: worked land's capacity IS the food ledger (the unification) ──
   // The formula above is an abstract PROXY (fertility × technique × access);
   // the settlement economy carries the REAL ledger — catchment harvests with
