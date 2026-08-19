@@ -96,5 +96,20 @@ for (const k of ["access", "dev", "relief", "works", "cradle", "pasture"]) {
     }
     console.log(`  [works-structure] irrLand/land=${(100 * nIrr / base.landN).toFixed(2)}% meanIrr(land)=${(irrMass / base.landN).toFixed(4)} meanWk(land)=${(wkMass / base.landN).toFixed(4)}`);
     console.log(`    over irr>0 land: sat(w>=.9)=${(100 * nSat / nIrr).toFixed(1)}%  mid=${(100 * nMid / nIrr).toFixed(1)}%  zero=${(100 * nZero / nIrr).toFixed(1)}%  meanPress=${(pressSum / nIrr).toFixed(3)}  press>thr=${(100 * nPress / nIrr).toFixed(1)}%  meanExcess=${(excSum / nIrr).toFixed(4)}  meanDev=${(devSum / nIrr).toFixed(3)}`);
+    // irr term decomposition (_ensureIrr: irr = min(1, water + flood + wet)) —
+    // which of the three terms carries the cross-grid mass deficit. Uses the
+    // same (banded-when-live) rm the works law sees; at the reference the band
+    // equals the raw line, so both grids read their own honest input.
+    let wm = 0, flN = 0, wetm = 0, clip = 0;
+    const tFl = world.tFlood;
+    for (let i = 0; i < N; i++) {
+      if (!(elev[i] > 0)) continue;
+      const water = rm ? Math.min(1, rm[i] / RM_FULL) : 0;
+      const fl = tFl && tFl[i] ? 0.85 : 0;
+      const wet = Math.max(0, ((moist ? moist[i] : 0) - 0.55) / 0.45) * 0.6;
+      wm += water; if (fl > 0) flN++; wetm += wet;
+      const v = water + fl + wet; clip += v > 1 ? 1 : v;
+    }
+    console.log(`    irr terms (mean over land): water=${(wm / base.landN).toFixed(4)}  floodShare=${(100 * flN / base.landN).toFixed(2)}% (mass ${(0.85 * flN / base.landN).toFixed(4)})  wet=${(wetm / base.landN).toFixed(4)}  clippedSum=${(clip / base.landN).toFixed(4)}`);
   }
 }
