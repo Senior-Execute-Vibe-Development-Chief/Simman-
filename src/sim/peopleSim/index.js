@@ -310,11 +310,12 @@ export function peopleSimStats(world) {
   // and peopleSimStats is posted ~30×/s, so cache it and refresh only every ~32
   // steps (it drifts slowly). Sum of state treasuries folds into the world's
   // total gold alongside settlement coin.
-  let claimedTiles = 0, landTiles = 0, largestEmpire = 0, treasury = 0;
+  let claimedTiles = 0, landTiles = 0, largestEmpire = 0, treasury = 0, beltShareOut = 0, beltCountOut = 0;
   const co = world._countryOwner, elev = world.elev;
   const cache = world._landStatsCache;
   if (cache && cache.landTiles > 0 && world.step - cache.step < 32) {
     claimedTiles = cache.claimedTiles; landTiles = cache.landTiles; largestEmpire = cache.largestEmpire;
+    beltShareOut = cache.beltShare || 0; beltCountOut = cache.beltCount || 0;
   } else if (co && elev) {
     const perCountry = new Map();
     for (let i = 0; i < co.length; i++) {
@@ -327,7 +328,58 @@ export function peopleSimStats(world) {
         if (v > largestEmpire) largestEmpire = v;
       }
     }
-    world._landStatsCache = { step: world.step, claimedTiles, landTiles, largestEmpire };
+    // BELT decomposition — the owner-facing form of the atlas-gap wave's core
+    // measurement (probe_beltclaims / docs/atlas-gap-2026-08-14.md): claimed
+    // land groups into contact-connected BELTS (states within a small real
+    // distance of one another share a belt), and history's telling ratio is
+    // the LEADING belt's share of all claimed land (the real Old World belt
+    // held 75-80% until ~1800). Multi-source BFS from claimed tiles out to a
+    // REAL gap (6 reference tiles ≈ 1000 km — the probe's merge scale, grid-
+    // honest via ×tw/240), then one flood labels the dilated mask. O(N) per
+    // cache refresh (every 32 steps), scratch reused.
+    let beltShare = 0, beltCount = 0;
+    if (claimedTiles > 0) {
+      const N = co.length, tw = world.tw;
+      const GAP = Math.max(1, Math.round(6 * tw / 240));
+      let sc = world._beltScratch;
+      if (!sc || sc.dist.length !== N) sc = world._beltScratch = { dist: new Int16Array(N), belt: new Int32Array(N), q: new Int32Array(N) };
+      const { dist, belt, q } = sc;
+      dist.fill(-1); belt.fill(-1);
+      let qh = 0, qt = 0;
+      for (let i = 0; i < N; i++) if (co[i] >= 0 && elev[i] > 0) { dist[i] = 0; q[qt++] = i; }
+      while (qh < qt) {
+        const i = q[qh++]; const d = dist[i];
+        if (d >= GAP) continue;
+        const y = (i / tw) | 0, x = i - y * tw;
+        const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), i - tw, i + tw];
+        for (let k = 0; k < 4; k++) {
+          const j = ns[k];
+          if (j < 0 || j >= N || dist[j] >= 0 || !(elev[j] > 0)) continue;
+          dist[j] = d + 1; q[qt++] = j;
+        }
+      }
+      let beltTop = 0;
+      for (let s0 = 0; s0 < N; s0++) {
+        if (dist[s0] < 0 || belt[s0] >= 0) continue;
+        let bh = 0, bt = 0, claimedInBelt = 0;
+        q[bt++] = s0; belt[s0] = beltCount;
+        while (bh < bt) {
+          const i = q[bh++];
+          if (co[i] >= 0) claimedInBelt++;
+          const y = (i / tw) | 0, x = i - y * tw;
+          const ns = [y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw), i - tw, i + tw];
+          for (let k = 0; k < 4; k++) {
+            const j = ns[k];
+            if (j < 0 || j >= N || dist[j] < 0 || belt[j] >= 0) continue;
+            belt[j] = beltCount; q[bt++] = j;
+          }
+        }
+        if (claimedInBelt > 0) { beltCount++; if (claimedInBelt > beltTop) beltTop = claimedInBelt; }
+      }
+      beltShare = beltTop / claimedTiles;
+    }
+    beltShareOut = beltShare; beltCountOut = beltCount;
+    world._landStatsCache = { step: world.step, claimedTiles, landTiles, largestEmpire, beltShare, beltCount };
   }
   // Leading era: the most advanced capital's tech era — drives the HUD ribbon
   // (the mirror's settlement records don't carry knowledge, so this must be
@@ -362,6 +414,7 @@ export function peopleSimStats(world) {
     landPct: landTiles > 0 ? claimedTiles / landTiles : 0,
     countries: world.countries ? world.countries.size : 0,
     largestEmpire,
+    beltShare: beltShareOut, beltCount: beltCountOut,
     tickMs: world.debug.tickMs.toFixed(2),
   };
 }

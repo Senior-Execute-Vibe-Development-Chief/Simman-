@@ -4251,9 +4251,14 @@ return(
   </div>
   <span className="au-vrule" style={{height:22}}/>
   {/* era ribbon — the one place time appears; a read-only label, never an input */}
-  <span className="au-era" style={{fontSize:narrow?13:15,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{_era}</span>
+  <span className="au-era" title="The ERA — derived from the most advanced court's actual knowledge. This is the honest anchor for comparing the map against real history." style={{fontSize:narrow?13:15,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{_era}</span>
   {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"var(--au-ch-gold)",fontWeight:700,letterSpacing:0.3}}>✦</span>}
-  <span className="au-year au-num" style={{fontSize:narrow?12:13.5,whiteSpace:"nowrap"}}>{_ys}</span>
+  <span className="au-year au-num" title="The display calendar — a uniform clock, cosmetic only. The world develops at its own pace, so this year drifts from real-history development; trust the era, not the year." style={{fontSize:narrow?12:13.5,whiteSpace:"nowrap"}}>{_ys}</span>
+  {/* Belt share — the atlas-gap wave's core ratio, live: the leading contact-
+      connected belt of states vs all claimed land. History's Old World belt
+      held 75-80% of state land until ~1800 (docs/atlas-gap-2026-08-14.md). */}
+  {psStats.beltShare>0&&!narrow&&<span className="au-num au-fade" title={`The leading BELT of states (within ~1000 km contact of one another) holds ${Math.round(psStats.beltShare*100)}% of all claimed land, across ${psStats.beltCount} belt${psStats.beltCount===1?"":"s"} worldwide. History: the Old World belt held 75-80% of state land until ~1800.`}
+    style={{fontSize:11,whiteSpace:"nowrap"}}>⚑{Math.round(psStats.beltShare*100)}%</span>}
   <span className="au-vrule" style={{height:22}}/>
   {/* TIMELINE — scrub the political map through the run's keyframes (worker
       captures one every 500 steps). Drag = ask the worker for the nearest
