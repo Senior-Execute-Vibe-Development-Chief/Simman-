@@ -13,6 +13,7 @@ import { ensureAccessBand } from "../src/sim/peopleSim/popField.js";
 import { RM_FULL } from "../src/sim/peopleSim/popFieldKernel.js";
 
 const SEED = +(process.argv[2] || 8817);
+const WA = +(process.argv[3] || 480), WB = +(process.argv[4] || 960);
 
 // The sum-capped band form (lap-2 candidate): overlap SUMS under a saturation
 // cap at the largest contributor's full magnitude — a meander's self-overlap
@@ -85,7 +86,7 @@ function measure(W) {
     sumMass: sum.sMass, sumWater: sum.sWater, coastMax: coMax, coastSum: sum.cMass };
 }
 
-const a = measure(480), b = measure(960);
+const a = measure(WA), b = measure(WB);
 console.log(`[rivermass] seed=${SEED}  ref tw=${a.tw} (${a.land} land)  app tw=${b.tw} (${b.land} land)`);
 const row = (k, va, vb) => console.log(`  ${k.padEnd(34)} ref ${va.toFixed(4).padStart(10)}   app ${vb.toFixed(4).padStart(10)}   app/ref ${(vb / (va || 1e-9)).toFixed(3)}`);
 console.log(`  real drainage density by class (tiles/1000land × rn):`);
