@@ -512,11 +512,16 @@ export function loadWorld(data, opts = {}) {
     if (!("FISH" in tn)) T.FISH = 1;
     if (!("ORGANIC_TAKE" in tn)) T.ORGANIC_TAKE = 0;
   }
-  // v33 → v34: the granary reaches the field (FIELD_CRADLE). A pre-v34 save
-  // keeps its road-only capacity proxy.
+  // v33 → v34: the granary reaches the field (FIELD_CRADLE) + the coupled
+  // RURAL_BIND_DENS recalibration (5500 → 9000: the cradle field moved the
+  // demographic scale ×1.66 at matched development, and the constant's own
+  // desc contracts the two to move together). A pre-v34 save keeps its
+  // road-only capacity proxy AND its old floor — the PAIR is what's
+  // calibrated, never one alone.
   if (data.v < 34) {
     const tn = data.tuning || {};
     if (!("FIELD_CRADLE" in tn)) T.FIELD_CRADLE = 0;
+    if (!("RURAL_BIND_DENS" in tn)) T.RURAL_BIND_DENS = 5500;
   }
   // v32 → v33: the funded march (MARCH_FUNDED). A pre-v33 save keeps its
   // flat logistics allowance.
