@@ -401,6 +401,7 @@ export function peopleSimStats(world) {
   return {
     step: world.step,
     leadingEra,
+    saveV: world._loadedSaveV,   // physics regime a LOADED world was born under (undefined = fresh world, current physics) — display-only
     settlements: aliveSettlements,
     villages:    tierCounts[0],
     towns:       tierCounts[1],

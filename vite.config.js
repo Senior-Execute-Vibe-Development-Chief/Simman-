@@ -16,6 +16,12 @@ const coi = {
 
 export default defineConfig(({ mode }) => ({
   base: "/Simman-/",
+  // The running tab's build identity (the stale-tab detector, 2026-08-19):
+  // the deploy workflow exports GITHUB_SHA and also writes dist/version.json
+  // with the same sha AFTER the build; the app polls that file and shows a
+  // "new build" chip when the deployed sha differs from the one baked in
+  // here. Local dev has neither — the chip stays silent.
+  define: { __BUILD_SHA__: JSON.stringify(process.env.GITHUB_SHA || "dev") },
   plugins: [react(), viteSingleFile()],
   worker: { format: 'es' },
   server: { headers: coi },

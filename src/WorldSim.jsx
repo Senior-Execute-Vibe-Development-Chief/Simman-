@@ -1,3 +1,4 @@
+/* global __BUILD_SHA__ */   // vite `define`: the commit sha baked into this bundle (stale-tab detector)
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
 import { isRealClimateAvailable, fillRealClimate } from "./realClimateData.js";
@@ -17,7 +18,7 @@ import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
-import { serializeWorld, loadWorld } from "./sim/persist.js";
+import { serializeWorld, loadWorld, SAVE_VERSION } from "./sim/persist.js";
 import { applyTuning, resetTuning, tuningDefaults, T as SIM_T } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD, TIER_CORE, TIER_NAME_CORE } from "./sim/peopleSim/settlement.js";
@@ -334,6 +335,29 @@ const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// 
 // Before this, a worker error was console-only — a thrown step left the game silently frozen at its
 // last frame forever ("the game shuts down at step N"), with the world still alive and saveable.
 const[simError,setSimError]=useState(null);
+// The stale-tab detector (owner report 2026-08-19: "a certain type of change
+// doesn't reflect in the sim I run"): a long-lived tab keeps running the
+// bundle it loaded with — deploys only arrive on a RELOAD, and reloading
+// loses an unsaved world, so marathon tabs run days-old code without any
+// visible sign. The deploy workflow writes version.json beside the bundle;
+// this polls it and raises a header chip when the deployed sha differs from
+// the one baked into this tab (__BUILD_SHA__, vite define). Local dev has
+// neither — silent.
+const[staleBuild,setStaleBuild]=useState(false);
+useEffect(()=>{
+  const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
+  if(sha==="dev")return;
+  let stop=false;
+  const check=()=>fetch(import.meta.env.BASE_URL+"version.json",{cache:"no-store"})
+    .then(r=>r.ok?r.json():null)
+    .then(v=>{if(!stop&&v&&v.sha&&v.sha!==sha)setStaleBuild(true);})
+    .catch(()=>{});
+  const t0=setTimeout(check,30e3);
+  const iv=setInterval(check,5*60e3);
+  const onVis=()=>{if(document.visibilityState==="visible")check();};
+  document.addEventListener("visibilitychange",onVis);
+  return()=>{stop=true;clearTimeout(t0);clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
+},[]);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
 const[priceGood,setPriceGood]=useState(3);const priceGoodRef=useRef(3);
@@ -4259,6 +4283,16 @@ return(
       held 75-80% of state land until ~1800 (docs/atlas-gap-2026-08-14.md). */}
   {psStats.beltShare>0&&!narrow&&<span className="au-num au-fade" title={`The leading BELT of states (within ~1000 km contact of one another) holds ${Math.round(psStats.beltShare*100)}% of all claimed land, across ${psStats.beltCount} belt${psStats.beltCount===1?"":"s"} worldwide. History: the Old World belt held 75-80% of state land until ~1800.`}
     style={{fontSize:11,whiteSpace:"nowrap"}}>⚑{Math.round(psStats.beltShare*100)}%</span>}
+  {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
+  {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
+    title="A newer build of the app is deployed than the one this tab is running. Click to reload — SAVE YOUR WORLD FIRST (reloading discards an unsaved world). A long-lived tab keeps the code it loaded with; updates only arrive on reload."
+    style={{fontSize:11,color:"var(--au-ch-gold)",cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⟳ update</span>}
+  {/* World-physics chip: a LOADED world keeps the physics regime it was born
+      under (the save guards pin its tuning) — otherwise new defaults look
+      like updates that "didn't take". */}
+  {psStats.saveV!=null&&psStats.saveV<SAVE_VERSION&&<span className="au-num au-fade"
+    title={`This world was loaded from a save born under physics v${psStats.saveV}; the app ships v${SAVE_VERSION}. Loaded worlds KEEP the physics they were born under (swapping physics mid-run would corrupt the run) — generate a NEW world to play the current physics.`}
+    style={{fontSize:11,whiteSpace:"nowrap"}}>physics v{psStats.saveV}</span>}
   <span className="au-vrule" style={{height:22}}/>
   {/* TIMELINE — scrub the political map through the run's keyframes (worker
       captures one every 500 steps). Drag = ask the worker for the nearest

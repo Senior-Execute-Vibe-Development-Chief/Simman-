@@ -30,6 +30,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # The stale-tab detector's beacon: the app polls this file and offers a
+      # reload when the deployed sha differs from the one baked into its bundle.
+      - run: printf '{"sha":"%s"}' "$GITHUB_SHA" > dist/version.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

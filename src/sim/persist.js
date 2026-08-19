@@ -351,6 +351,12 @@ export function loadWorld(data, opts = {}) {
     throw new Error(`Unsupported save version ${data && data.v} (this build reads up to ${SAVE_VERSION})`);
   }
   const m = data.meta;
+  // Remember which physics regime this world was BORN under (the v<N guards
+  // below pin its tuning to that regime). Display-only — the UI shows it so a
+  // loaded world visibly says "physics v34" while the app ships v36+, which is
+  // otherwise invisible and reads as "the update didn't take" (owner report
+  // 2026-08-19). Fresh worlds never set it.
+  const loadedSaveV = data.v;
   // Terrain identity guards: a save is only loadable where its terrain can be
   // rebuilt EXACTLY. Silently regenerating different terrain under a saved
   // civilization is worse than a clear error.
@@ -625,6 +631,7 @@ export function loadWorld(data, opts = {}) {
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
   const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });
+  world._loadedSaveV = loadedSaveV;   // display-only: which physics regime this world was born under
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.
   world.settlements.length = 0;
