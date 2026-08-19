@@ -12,7 +12,7 @@
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { T } from "../src/sim/peopleSim/tuning.js";
-import { RM_FULL, ACCESS_RIVER, ACCESS_COAST, ACCESS_DEV0, ACCESS_DEVK, RELIEF_PEN, DEV_BASE, DEV_TECH } from "../src/sim/peopleSim/popFieldKernel.js";
+import { RM_FULL, ACCESS_RIVER, ACCESS_COAST, ACCESS_DEV0, ACCESS_DEVK, RELIEF_PEN, DEV_BASE, DEV_TECH, WORKS_PRESS } from "../src/sim/peopleSim/popFieldKernel.js";
 
 const STEPS = +(process.argv[2] || 21000), W = +(process.argv[3] || 480), SEED = +(process.argv[4] || 8817);
 const world = buildSim({ W, H: W >> 1, seed: SEED });
@@ -64,4 +64,37 @@ for (const k of ["access", "dev", "relief", "works", "cradle", "pasture"]) {
   const v = { ...FULL, [k]: 0 };
   const r = sumCap(v);
   console.log(`  -${k}: perRefTile=${perArea(r.s).toFixed(1)}  factorMass=${(base.s / r.s).toFixed(3)}x`);
+}
+
+// Works-structure section (the campaign's re-aimed lap 2): WHERE the works
+// stock's mass lives. IRR_BAND fixed the input's real width but the works
+// dilution only moved 0.854 -> 0.871 — the accumulation law itself carries the
+// rest. Over irrigable land (irr>0), all quantities dimensionless (shares and
+// means over land / irr-land), so the two grids compare directly. This
+// discriminates the BREADTH hypothesis (a reference fat tile smears w=1 over
+// its whole real area when its core presses, while the fine grid resolves a
+// saturated core + unbuilt shoulder — threshold effects do not conserve mass)
+// from the SKILL-LAG hypothesis (devF arrives later at the fine grid, and the
+// stock integrates skill over its whole build history).
+{
+  const irrF = world._irrigable, pf = world.popField, capF = world.capField;
+  if (worksF && irrF && pf && capF) {
+    let nIrr = 0, irrMass = 0, wkMass = 0, nSat = 0, nMid = 0, nZero = 0;
+    let pressSum = 0, nPress = 0, excSum = 0, devSum = 0;
+    for (let i = 0; i < N; i++) {
+      if (!(elev[i] > 0)) continue;
+      const a = irrF[i];
+      if (!(a > 0)) continue;
+      nIrr++; irrMass += a;
+      const w = worksF[i];
+      wkMass += w;
+      if (w >= 0.9) nSat++; else if (w > 0) nMid++; else nZero++;
+      const k2 = capF[i], press = k2 > 0 ? pf[i] / k2 : 0;
+      pressSum += press; if (press > WORKS_PRESS) nPress++;
+      excSum += Math.max(0, press - WORKS_PRESS);
+      devSum += devF ? devF[i] : 0;
+    }
+    console.log(`  [works-structure] irrLand/land=${(100 * nIrr / base.landN).toFixed(2)}% meanIrr(land)=${(irrMass / base.landN).toFixed(4)} meanWk(land)=${(wkMass / base.landN).toFixed(4)}`);
+    console.log(`    over irr>0 land: sat(w>=.9)=${(100 * nSat / nIrr).toFixed(1)}%  mid=${(100 * nMid / nIrr).toFixed(1)}%  zero=${(100 * nZero / nIrr).toFixed(1)}%  meanPress=${(pressSum / nIrr).toFixed(3)}  press>thr=${(100 * nPress / nIrr).toFixed(1)}%  meanExcess=${(excSum / nIrr).toFixed(4)}  meanDev=${(devSum / nIrr).toFixed(3)}`);
+  }
 }
