@@ -1114,11 +1114,32 @@ function _ensureTropicB(world, land, nLand) {
 
 // Irrigability — static terrain: water that can be LED onto fields (see the
 // LAND_WORKS block in stepPopField for the physical story).
+// ── T.IRR_BAND: irrigable water over a REAL width (the works-dilution fix,
+// diffusion-pace campaign fix lap 1, docs/atlas-gap-2026-08-14.md). The water
+// term read RAW riverMag — a 1-tile line at any grid — so the irrigable field,
+// the works stock's only spatial input, HALVED in real width per resolution
+// doubling: measured as the largest of the four capacity-dilution leaks
+// (works factor mass ×1.75 at tw=240 vs ×1.49 at tw=480 — probe_capdilution).
+// ACCESS_BAND's charter ("waterside capacity over a REAL width") built the
+// banded field but its substitution never reached this consumer. Lever on +
+// band live: the water term reads the band, exactly capBand's own idiom —
+// substitute ARRAYS, not code. ×1 at the reference (the band is calibrated
+// to the raw line there), wider real irrigable valleys at finer grids. The
+// cache rebuilds if the band arrives after a pre-band build (first call can
+// precede ensureAccessBand on the lever-0 path). 0 = the raw line
+// (byte-identical).
 function _ensureIrr(world, land, nLand) {
+  // Finer-than-reference grids ONLY: the reference IS the calibration anchor
+  // (the raw line and the band coincide in meaning there but not in bytes —
+  // measured: substituting at tw=240 moved the hashbase AND the resgate ref
+  // arm, putting the 8817 median band on a knife edge). The fix's job is to
+  // converge finer grids TOWARD the anchor, never to move the anchor.
+  const rmB = (T.IRR_BAND && T.ACCESS_BAND && rNormPop(world) > 1 && world._rmBand) ? world._rmBand : null;
   let irr = world._irrigable;
-  if (!irr || irr.length !== world.N) {
+  if (!irr || irr.length !== world.N || (world._irrBanded || 0) !== (rmB ? 1 : 0)) {
     irr = world._irrigable = new Float32Array(world.N);
-    const tFl = world.tFlood, mo = world.moist, riverMag = world.riverMag;
+    world._irrBanded = rmB ? 1 : 0;
+    const tFl = world.tFlood, mo = world.moist, riverMag = rmB || world.riverMag;
     for (let li = 0; li < nLand; li++) {
       const i = land[li];
       const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
