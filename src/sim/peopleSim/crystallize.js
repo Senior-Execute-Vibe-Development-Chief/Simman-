@@ -39,6 +39,7 @@ import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
+const _geoStr = (world, x, y) => `(${(x / world.tw * 360 - 180).toFixed(1)}E ${(90 - y / world.th * 180).toFixed(1)}N)`;
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -1941,7 +1942,7 @@ export function maybeCrystallize(world) {
         let settledNear = false;
         forEachNear(world, h.tx, h.ty, rB, () => { settledNear = true; });
         if (settledNear) {
-          console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) stood down — the farming package arrived before it was invented`);
+          console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} stood down — the farming package arrived before it was invented`);
           continue;
         }
         const basin = townBasinMass(world, h.tx, h.ty, rB);
@@ -1991,11 +1992,11 @@ export function maybeCrystallize(world) {
               }
             } else seeds.push({ ti: h.ti, agri: NEOLITHIC_AGRI });
             logEvent(world, "farming.invented", { x: h.tx, y: h.ty });
-            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
+            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
           } else {
             const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
             logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
-            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
+            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
           }
         } else keep.push(h);
       }

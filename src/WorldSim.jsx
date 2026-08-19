@@ -344,6 +344,13 @@ const[simError,setSimError]=useState(null);
 // the one baked into this tab (__BUILD_SHA__, vite define). Local dev has
 // neither — silent.
 const[staleBuild,setStaleBuild]=useState(false);
+// Boot diagnostic (one console line): the build this tab runs + the live
+// physics defaults. When "the update didn't take", F12 → this line IS the
+// ground truth — paste it, compare shas/values, done. Printed once per boot.
+useEffect(()=>{
+  const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
+  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED} STATE_OPEN=${SIM_T.STATE_OPEN}`);
+},[]);
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
   if(sha==="dev")return;

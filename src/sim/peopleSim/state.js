@@ -374,6 +374,11 @@ const CRADLE_MIN_SEP = 24;   // minimum separation between cradles, in REFERENCE
 // LAND, not ocean: an island or coastal outcropping is hemmed by SEA, which is the
 // opposite of a river-valley cradle, so we measure the two separately — reward
 // land-circumscription, penalise being mostly surrounded by sea.
+
+// Console-diagnostic geo tag (owner channel 2026-08-19): every genesis line
+// carries lon/lat so a pasted browser-console log is self-locating on the
+// Earth preset (equirectangular; notional on procedural maps — harmless).
+const _geoStr = (world, x, y) => `(${(x / world.tw * 360 - 180).toFixed(1)}E ${(90 - y / world.th * 180).toFixed(1)}N)`;
 function cradleSurround(world, ti) {
   const { tw, th, elev, fert } = world;
   const ty = (ti / tw) | 0, tx = ti - ty * tw;
@@ -511,7 +516,7 @@ function seedEarthHearths(world, seatNow = true) {
     // separation disc) but not yet seated — seatOrArmHearths decides WHEN it
     // matures on the same ruler as every scorer pick.
     if (!seatNow) {
-      console.log(`[peopleSim] hearth pin ${site.name} picked at tile (${bx},${by}) — maturity deferred to the stagger law`);
+      console.log(`[peopleSim] hearth pin ${site.name} picked at tile (${bx},${by}) ${_geoStr(world, bx, by)} — maturity deferred to the stagger law`);
       continue;
     }
     const born = makeSettlement(world, bx + 0.5, by + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });   // eve-of-states town (240) or natural proto-town (110 — the urban floor: an entity is a town, its valley countryside is the popField)
@@ -644,10 +649,10 @@ function seatOrArmHearths(world, picked) {
     if (Ty <= devInitYears()) {
       const born = makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: T.CRADLE_EVE ? 240 : 110, cradle: true });
       born._hearthAgeY = devInitYears() - Ty;   // years the technique wave has spread by map open (read by ensureDevField); this branch is unreachable under DAWN_LIVE (no hearth matures inside a zero-length prehistory)
-      console.log(`[peopleSim] hearth ${born.name} at (${p.tx},${p.ty}) score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — matured ${Math.round(Ty)}y into prehistory (wave age ${Math.round(born._hearthAgeY)}y)`);
+      console.log(`[peopleSim] hearth ${born.name} at (${p.tx},${p.ty}) ${_geoStr(world, p.tx, p.ty)} score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — matured ${Math.round(Ty)}y into prehistory (wave age ${Math.round(born._hearthAgeY)}y)`);
     } else {
       armed.push({ ti: p.ti, tx: p.tx, ty: p.ty, score: sc, needY: Ty - devInitYears(), effY: 0 });
-      console.log(`[peopleSim] hearth candidate at (${p.tx},${p.ty}) score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — ARMED: ~${Math.round(Ty - devInitYears())}y of peopled-basin time from maturity`);
+      console.log(`[peopleSim] hearth candidate at (${p.tx},${p.ty}) ${_geoStr(world, p.tx, p.ty)} score ${sc.toFixed(2)}${pkg ? ` pkg=${pkg.id}(suit ${pkg.suit.toFixed(2)})` : ""} — ARMED: ~${Math.round(Ty - devInitYears())}y of peopled-basin time from maturity`);
     }
   }
   if (armed.length) world._armedHearths = armed;
