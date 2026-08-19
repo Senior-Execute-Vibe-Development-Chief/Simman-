@@ -4331,7 +4331,9 @@ function eliminateEnclaves(world, countries) {
     const s = byId.get(oid);
     return s ? s.countryId : -1;
   };
-  const visited = new Uint8Array(N);
+  let visited = world._enclaveSeen;   // persistent (the ~24k stall fix): zeroed per pass, was a fresh N-array each firing
+  if (!visited || visited.length !== N) visited = world._enclaveSeen = new Uint8Array(N);
+  else visited.fill(0);
   // Per-country power, for the city-enclave annexation gate (a much stronger realm
   // peacefully absorbs a small city-state it has engulfed).
   const cPow = new Map();

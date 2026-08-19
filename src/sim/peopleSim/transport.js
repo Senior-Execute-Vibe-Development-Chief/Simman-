@@ -421,7 +421,12 @@ export function localEdgeCost(world, fromTi, toTi, kn, ignoreRoads, noPortTax) {
 
 export function computeTransport(world) {
   const { N, tw, th } = world;
-  const dist = new Float32Array(N);
+  // Refresh IN PLACE (the ~24k stall fix): the result is retained as
+  // world.transportDist and rebuilt on a cadence — reusing its buffer swaps a
+  // fresh N-array per rebuild for a full overwrite (every index set to
+  // Infinity below before the Dijkstra writes real values).
+  let dist = world.transportDist;
+  if (!dist || dist.length !== N) dist = new Float32Array(N);
   for (let i = 0; i < N; i++) dist[i] = Infinity;
   const heap = new _MinHeap();
   // Seed: every alive settlement contributes a 0-distance source.

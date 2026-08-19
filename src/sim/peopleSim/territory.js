@@ -255,7 +255,7 @@ export function computeTerritory(world) {
   // neighbour if necessary. Where two cores overlap (close settlements) the
   // FIRST to claim a tile this pass keeps it — and since we iterate in the
   // stable settlement order, the same one always wins, so no flicker.
-  const heap = new MinHeap();
+  const heap = world._terrHeap || (world._terrHeap = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
   const coreClaimed = world._coreClaimed && world._coreClaimed.length === N
     ? world._coreClaimed : (world._coreClaimed = new Int32Array(N));
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);

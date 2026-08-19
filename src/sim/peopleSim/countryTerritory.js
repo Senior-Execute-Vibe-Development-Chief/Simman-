@@ -670,7 +670,7 @@ function fieldPolityTerritory(world) {
   if (adminOn) {
     dist = world._fpDist; if (!dist || dist.length !== N) dist = world._fpDist = new Float64Array(N);
     dist.fill(Infinity);
-    const dheap = new MinHeap();
+    const dheap = world._fpHeap || (world._fpHeap = new MinHeap()); dheap.n = 0;   // persistent (the ~24k stall fix): a fresh heap re-grew its lanes from 4096 every pass
     for (const arr of homeTiles.values()) for (const ti of arr) if (dist[ti] > 0) { dist[ti] = 0; dheap.push(ti, 0, co[ti]); }
     for (let ti = 0; ti < N; ti++) if (worked[ti] && co[ti] >= 0 && dist[ti] > 0) { dist[ti] = 0; dheap.push(ti, 0, co[ti]); }
     while (dheap.n > 0) {
@@ -1017,7 +1017,7 @@ function fieldPolityTerritory(world) {
   if (grow.size) {
     let cost = world._fpCost; if (!cost || cost.length !== N) cost = world._fpCost = new Float64Array(N);
     cost.fill(Infinity);
-    const heap = new MinHeap();
+    const heap = world._fpHeap2 || (world._fpHeap2 = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
     // T.CREST_HOLD contact-band map: the nearest existing claim within the
     // contact horizon of each tile (-1 none, -2 mixed). Built once per pass
     // from the PRE-growth claims — the band a contested frontier forms
@@ -1512,7 +1512,7 @@ export function computeCountryTerritory(world) {
   // Seed: every country-affiliated settlement plants its country at cost 0, with
   // a basin budget capped by how INTEGRATED it is (a just-adopted wild settlement
   // starts at INTEGRATE_MIN and earns the full reach over INTEGRATE_TICKS).
-  const heap = new MinHeap();
+  const heap = world._fpHeap3 || (world._fpHeap3 = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
   const anchor = T.CAPITAL_ANCHOR;
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;
@@ -1810,7 +1810,7 @@ function recolorByCapital(world, co, capPos, knOf, claimCap) {
   if (!capCost || capCost.length !== N) capCost = world._capCostF = new Float64Array(N);
   capColor.fill(-1); capCost.fill(Infinity);
   const noise = claimNoise(world);
-  const heap = new MinHeap();
+  const heap = world._fpHeap4 || (world._fpHeap4 = new MinHeap()); heap.n = 0;   // persistent (the ~24k stall fix)
   for (const [c, pos] of capPos) {
     const ti = (pos.y | 0) * tw + (pos.x | 0);
     if (elev[ti] <= 0) continue;
