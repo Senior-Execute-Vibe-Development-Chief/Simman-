@@ -377,7 +377,14 @@ const CRADLE_MIN_SEP = 24;   // minimum separation between cradles, in REFERENCE
 function cradleSurround(world, ti) {
   const { tw, th, elev, fert } = world;
   const ty = (ti / tw) | 0, tx = ti - ty * tw;
-  const R = 7, r2 = R * R;
+  // UNIT (2026-08-19, the Po-valley finding): the circumscription window is a
+  // REAL distance — a raw 7 tiles was ~1,170 km at the tw=240 reference but
+  // ~290 km at the shipped tw=960, so a tight alpine pocket (the Po: Alps +
+  // major river + rich silt) read as a perfectly hemmed cradle ONLY at fine
+  // grids, while at the reference the same window reached France and the
+  // Adriatic and diluted it away. ×rNormPop keeps the same real window at
+  // every grid; rn=1 → 7 exactly, byte-identical at the reference.
+  const R = Math.max(3, Math.round(7 * rNormPop(world))), r2 = R * R;
   let landBarrier = 0, sea = 0, total = 0;
   for (let dy = -R; dy <= R; dy++) {
     const ny = ty + dy; if (ny < 0 || ny >= th) continue;
@@ -478,7 +485,19 @@ function seedEarthHearths(world, seatNow = true) {
         const rm = riverMag ? riverMag[ti] : 0;
         const distPen = Math.sqrt(dx * dx + dy * dy) / R;
         // Prefer the major river, fertile, near the target site.
-        const score = rm * 2 + f * 1.5 + (1 - distPen) * 2 + (1 - Math.abs(t - 0.76));
+        let score = rm * 2 + f * 1.5 + (1 - distPen) * 2 + (1 - Math.abs(t - 0.76));
+        // Package-aware (2026-08-19): the snap was package-BLIND — it took the
+        // biggest-river tile in the window, and at tw=960 that tile carries
+        // wheat suit 0.25, so "Mesopotamia" matured three millennia late (real
+        // Sumer was FIRST). Scale by the same storable-staple quality the
+        // cradle scorer already uses (CRADLE_PACKAGE: suit × storability) —
+        // one definition, two uses: the pin seats where the Crescent could
+        // actually farm, not merely where the biggest pixel of river is.
+        if (T.CRADLE_PACKAGE) {
+          const best = bestPackageAt(world, ti);
+          const pkg = best && CROP_BY_ID[best.id];
+          score *= best ? Math.max(0, Math.min(1, best.suit * (pkg ? pkg.storability : 1))) : 0;
+        }
         if (score > bestScore) { bestScore = score; bestTi = ti; }
       }
     }
