@@ -508,13 +508,30 @@ function ensureDevField(world, land) {
 // Static terrain, built once, rebuilt deterministically at load; the banded
 // arrays SUBSTITUTE for riverMag/coast in the capacity pass only (kernel and
 // bit-guarded worker path untouched — they read whatever arrays are packed).
+// T.BAND_SUM (2026-08-19, the diffusion campaign's lap 2 — docs/atlas-gap-2026-
+// 08-14.md): the MAX-over-sources rule below deletes real mass exactly where a
+// finer grid resolves more geometry. A meandering channel's own band tiles
+// overlap (2x the along-channel sources at rn=2, each spreading H=1.5), and
+// parallel tributaries one tile apart overlap their bands — max() keeps one
+// contribution and discards the rest, which is why the banded field restored
+// only x1.455 of the ideal x2 width recovery (probe_rivermass: river water mass
+// 0.753, coast 0.898 per real area vs the reference). The sum-capped form keeps
+// the same physics — two rivers still cannot stack past the LARGEST contributor
+// (rivers cap at the peak overlapping magnitude, coast at 1) — while overlap
+// SUMS below the cap, so a meander's self-overlap restores its straight-channel
+// mass. Measured (8817): river water 0.753 -> 1.043, coast 0.898 -> 1.001, and
+// the reference is BYTE-IDENTICAL by construction (at rn=1 the band is the
+// source tile alone — no cross-tile contributions exist to sum).
 export function ensureAccessBand(world) {
-  if (world._rmBand && world._rmBand.length === world.N) return;
+  const sum = T.BAND_SUM ? 1 : 0;
+  if (world._rmBand && world._rmBand.length === world.N && (world._abSum || 0) === sum) return;
   const { N, tw, th } = world;
   const rn = rNormPop(world);
   const rm = world.riverMag, coast = world.coast;
   const rmB = world._rmBand = new Float32Array(N);
   const coB = world._coastBand = new Float32Array(N);
+  const rmPk = sum ? new Float32Array(N) : null;
+  world._abSum = sum;
   const H = rn / 2 + 0.5;
   const R = Math.ceil(H);
   for (let ti = 0; ti < N; ti++) {
@@ -527,9 +544,20 @@ export function ensureAccessBand(world) {
         const w = Math.min(1, Math.max(0, H - Math.hypot(dx, dy)));
         if (w <= 0) continue;
         const i2 = y * tw + (((x0 + dx) % tw) + tw) % tw;
-        if (mag >= 1) { const v = mag * w; if (v > rmB[i2]) rmB[i2] = v; }
-        if (isC && w > coB[i2]) coB[i2] = w;
+        if (sum) {
+          if (mag >= 1) { rmB[i2] += mag * w; if (mag > rmPk[i2]) rmPk[i2] = mag; }
+          if (isC) coB[i2] += w;
+        } else {
+          if (mag >= 1) { const v = mag * w; if (v > rmB[i2]) rmB[i2] = v; }
+          if (isC && w > coB[i2]) coB[i2] = w;
+        }
       }
+    }
+  }
+  if (sum) {
+    for (let i = 0; i < N; i++) {
+      if (rmB[i] > rmPk[i]) rmB[i] = rmPk[i];
+      if (coB[i] > 1) coB[i] = 1;
     }
   }
 }
