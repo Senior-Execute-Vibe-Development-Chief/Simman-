@@ -252,7 +252,57 @@ Three mechanism fixes, all lever-scoped, no constants tuned:
    at its source.
 
 Hashbase anchors verified unchanged after all three (fd90feea/7239c843).
-A/B re-measurement (probe_firstcity + full genesis arc) in flight; results
-land in the next entry. The fifth container reset struck mid-lap (checkout
-silently at 2fc6ae6 — a pre-wave probe run nearly published a void whale
-finding); the harness tree stamp caught it, recovery per the standing drill.
+The fifth container reset struck mid-lap (checkout silently at 2fc6ae6 — a
+pre-wave probe run nearly published a void whale finding); the harness tree
+stamp caught it, recovery per the standing drill.
+
+### The urban read: five forms, measured to the ontology
+
+The A/B probe refuted three geometry forms in a row before the read landed
+where the model's own ontology had said it belonged all along. First city,
+tw=480/8817, urban read at the first derive (raw disk 578k = the owner's
+"357k in the city" at his grid):
+
+| form | read | why it failed |
+|---|---|---|
+| raw footprint disk | 578k | counts everyone standing inside the window |
+| − catchment-mean rural | 358k | a Nile disk is ~2.6× its desert-diluted catchment mean |
+| − local annulus rural | 388k | the cradle is a 1-D STRIP; the ring samples desert |
+| site tile + neighbours' excess | 420k | the best land clusters AT the site — that is why the site is there; gradient ≠ concentration |
+| min(disk, **founding hold + import economy**) | **12k — the gathered pile, tier CITY, stable** | — |
+
+The verdict is a lesson, not just a fix: **field geometry cannot
+distinguish best-land countryside from urban concentration** at tile
+granularity — the discriminator is the ECONOMY, which is what the
+agglomeration machinery already said ("non-importers stay rural"). The
+read now agrees with the flow: urbanites = what the city gathered (the
+site law's own hold, `_coreHoldCapF`) + the off-farm people its import
+economy supports (`kBeyond`, ≥ the concentration flow's own target since
+AGGLOM ≤ 1, so mature importers stay effectively unclipped), capped by the
+raw disk (an economy cannot claim people the ground does not hold);
+entities without a founding stamp (legacy towns, colonies) keep the site
+tile as their base. At coreR=0 — the reference grid — the block is
+skipped entirely: byte-identical by construction. Known accepted
+transient: the newborn's panel still shows the whale PROVINCE starving
+for the few hundred steps until peer cities carve the catchment (a peer
+halved it within 800 steps in every measured run) — the demand lens
+follows the catchment census; re-examining that lens is a follow-up, not
+this lap.
+
+### Lap-2 verdict (tw=480/8817, full battery)
+
+With the final read in: **the first city is born a CITY** — 12k urban (the
+gathered pile exactly), tier 2, stable across its whole first window; a
+peer city carves the whale catchment within ~800 steps (7.1M → 3.4M);
+**the era racing is gone at the root** — Bronze at 12300 (the land's own
+copper, before any entity) and the world is STILL Bronze at 20000 (v2 hit
+Classical 16800 and Medieval 19500); seat orgs at 20k are 0.36-0.42 (was
+0.61-0.72) — Bronze courts running Bronze administration; ten realms, the
+tail historical (median ~0.65M km², city-state small ones down to 11
+tiles). Residuals, named: the Nile keeps a first-mover premium (top realm
+~3.1M km² — an Egypt-shaped early unification rather than the owner's
+"3 Rome-sized nations"; the driver is the political funded-extent reading
+the still-large catchment census — a future lap on that lens, not this
+one), and the newborn's panel shows its whale PROVINCE starving until the
+peers carve it. Gates: hashbase anchors unchanged, smoke green (dissolve
+arm re-pinned), build green.

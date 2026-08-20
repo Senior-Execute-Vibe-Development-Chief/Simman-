@@ -2007,14 +2007,31 @@ export function deriveOnePop(world) {
       // belts, where cores dwarf any baseline; accepted and noted.)
       let coreEff = _coreF;
       if (T.LAND_KNOW && coreR > 0) {
-        const cx = s.pos.x | 0, cy = s.pos.y | 0;
-        const outerSum = diskSum(pf, tw, world.th, cx, cy, 2 * coreR);
-        const dT = diskLandCount(world, cx, cy, coreR);
-        const annN = diskLandCount(world, cx, cy, 2 * coreR) - dT;
-        if (annN > 0) {
-          const ruralDens = Math.max(0, outerSum - _coreF) / annN;
-          coreEff = Math.max(0, _coreF - ruralDens * dT);
-        }
+        // GEOMETRY ALONE CANNOT FINISH THE JOB (three measured forms at the
+        // first tally-city, tw=480/8817: raw disk 578k, minus catchment-mean
+        // baseline 358k, minus annulus baseline 388k, site-tile+excess 420k):
+        // a cradle's best land clusters around the site — that is WHY the
+        // site is there — so the footprint's elevated inner density is
+        // best-land countryside gradient, indistinguishable from urban
+        // concentration by field shape. The binding bound is the ECONOMY,
+        // the agglomeration ontology's own rule ("non-importers stay rural",
+        // uTarget above): a settlement's urbanites are what it GATHERED (the
+        // site law's own hold, stamped at founding — "the city holds what
+        // arrived") plus the off-farm people its import economy supports
+        // (kBeyond — the exact pull the concentration flow targets, and
+        // ≥ its uTarget since AGGLOM ≤ 1, so a mature importer's read stays
+        // effectively unclipped). The raw disk remains the ceiling — an
+        // economy cannot claim urbanites the ground does not hold. At
+        // coreR = 0 (the reference grid) the whole block is skipped and the
+        // read is byte-identical.
+        // (…and not floored at the site tile either: the hydro-anchor tile is
+        // the field's own densest standing cluster — measured 177su at the
+        // first city's confluence, 12× its gathered pile. The city is the
+        // ORGANIZATION, not the standing crowd; entities without a founding
+        // hold stamp — legacy towns, colonies — keep the tile read as their
+        // base so nothing pre-wave demotes.)
+        const holdF = s._coreHoldCapF > 0 ? s._coreHoldCapF : Math.max(0, pf[ti]);
+        coreEff = Math.min(_coreF, holdF + kBeyond);
       }
       s._urbanPop = Math.min(s.people, coreEff * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
