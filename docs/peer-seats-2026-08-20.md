@@ -5,9 +5,19 @@ Owner, after reading the live realm census (window.nations, build d64a7ba):
 large off the bat."** Ordered adversarial: this wave is the measurement that
 found one missing channel under both charges, and the channel built.
 
+## ERRATUM (2026-08-20, same day): probe grid labels
+
+The harness halves `W` (W=480 → tw=240; W=960 → tw=480; the shipped app is
+W=1920 → tw=960). The probe_catchment columns below therefore measured
+tw=240 and tw=480 — one grid coarser than first labeled. The before/after
+comparison is internally consistent (both arms ran the same real grid), and
+the probe_shape results — the first-state birth size, the 387-realm
+register, the size distribution — ran W=1920 and ARE the true shipped grid.
+A true-grid (W=1920) catchment arm is recorded below the tables.
+
 ## The prosecution's numbers (probe_catchment, live arm, seed 8817)
 
-| quantity | tw=480 / 26k | tw=960 / 27k | history at the same moment |
+| quantity | tw=240 / 26k | tw=480 / 27k | history at the same moment |
 |---|---|---|---|
 | market cells (the urban slot lattice) | 207 · median 636k km² | 205 · median 588k km² | — (resolution-invariant ✓) |
 | cities seated | 71 | 66 | hundreds of 10k+ cores |
@@ -71,7 +81,7 @@ funnel demanded, exactly as specified:
 
 ## After (same probes, same seeds, PEER_SEATS=1)
 
-| quantity | tw=480 / 26k | tw=960 / 27k |
+| quantity | tw=240 / 26k | tw=480 / 27k |
 |---|---|---|
 | cities | 71 → **574** | 66 → **879** |
 | realms (register) | 62 → **437** | 50 → **610** |
@@ -89,9 +99,10 @@ And the owner-facing size distribution (probe_shape, tw=960, live arm):
   1500CE-Europe band is ~80%), top-1 share 3%, and the flows finally churn
   like history: **founded 79 · ended 125 · seceded 89 · shattered 7** in the
   final interval — the old register had ZERO state deaths in 4,000 steps.
-* The resolution inversion died with it: tw=960 now carries MORE cities and
-  realms than tw=480 (879/610 vs 574/437) — the small-state tier the finer
-  grid was chosen for finally exists at the finer grid.
+* The resolution inversion died with it: the finer grid now carries MORE
+  cities and realms than the coarser (879/610 at tw=480 vs 574/437 at
+  tw=240), and probe_shape confirms the register at the true shipped grid
+  (387 territorial realms at tw=960/27k).
 
 ## Verdict and follow-ups
 

@@ -15,7 +15,10 @@
 //   D. peer slots: Σ floor(mass/basinBar) over claimed cells vs seats taken —
 //      how many cities the peopled cells could FEED vs how many exist
 //
-//   SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1" node tools/probe_catchment.mjs [steps=26000] [W=480] [seed=8817]
+//   SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1,PEER_SEATS=1" node tools/probe_catchment.mjs [steps=26000] [W=480] [seed=8817]
+// NB: W is the TERRAIN width and the harness halves it — W=480 → tw=240,
+// W=960 → tw=480, and the SHIPPED app is W=1920 → tw=960. Label findings by
+// tw, not W (the 2026-08-20 erratum in docs/peer-seats-2026-08-20.md).
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { labelSiteLedger, siteClaims, URBAN_SHARE_REF } from "../src/sim/peopleSim/crystallize.js";

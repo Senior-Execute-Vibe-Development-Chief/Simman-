@@ -1556,7 +1556,7 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
 // exactly where the first city already is — so labelBasinFree's peer-capacity
 // law (a claimed cell stays open while its people could feed another core)
 // was never once exercised on land. The measured cost at the shipping grid:
-// 66 seats over 1,225 justified slots at tw=960/27k, the top cradle cell
+// 66 seats over 1,225 justified slots at tw=480/27k, the top cradle cell
 // holding 1 court where its people could feed 74, catchments of 4-7M km²
 // (three orders over the historical city-state), fission starved of rival
 // seats (noRivalSeat=2039), 24-realm worlds where history holds hundreds.

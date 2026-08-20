@@ -18,6 +18,12 @@ Two owner reports, one disease, two layers.
 
 ## The diagnosis (measure first — every suspect measured, most acquitted)
 
+*(Erratum, same day: the harness halves `W`, so the headless probe rows below
+ran tw=240/480, one grid coarser than first labeled — the app-crash reports
+themselves are the true tw=960. The verdicts stand: the sim graph is flat and
+entity-proportional at both measured grids, and the browser-layer fix was
+validated in the real browser.)*
+
 The failing allocation was a **16KB heap grow**. An allocation that small
 failing means the tab was at its absolute ceiling — the site in the stack is
 the canary on duty, not the cause. So the question is what FILLS the tab.
@@ -26,9 +32,9 @@ Everything step-proportional was measured under the live regime
 
 | suspect | instrument | verdict at the crash horizon |
 |---|---|---|
-| transport frontier heap | `world._transStat` (new, permanent) | **tiny** — cap 4096 (tw=480/23k), cap 65536 = 0.5MB (tw=960/28k) |
-| sim world graph, tw=480 | `probe_memgrowth` 30k live | **flat** — heapUsed 73MB; top grower `persons` +25MB (realm-count-proportional, designed) |
-| sim world graph, tw=960 | `probe_memgrowth` 28k live | **flat** — heapUsed 63MB, arrayBuffers 120MB (the old "14GB at 45k" record was PRE-fix churn) |
+| transport frontier heap | `world._transStat` (new, permanent) | **tiny** — cap 4096 (tw=240/23k), cap 65536 = 0.5MB (tw=480/28k) |
+| sim world graph, tw=240 | `probe_memgrowth` 30k live | **flat** — heapUsed 73MB; top grower `persons` +25MB (realm-count-proportional, designed) |
+| sim world graph, tw=480 | `probe_memgrowth` 28k live | **flat** — heapUsed 63MB, arrayBuffers 120MB (the old "14GB at 45k" record was PRE-fix churn) |
 | scrubber timeline | `probe_timelinemem` (new) 30k live | **negligible** — 0.3MB retained at 30k, 69 realms |
 | main-thread mirrors/history | code audit | bounded (last-copy slots; charts capped 5000; feed capped 250) |
 | worker→main snapshot stream | code audit | **the killer** — see below |
