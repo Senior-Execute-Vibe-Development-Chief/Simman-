@@ -13,7 +13,22 @@ const W = +(process.argv[2] || 480), STEPS = +(process.argv[3] || 16000), SEED =
 const world = buildSim({ W, H: W >> 1, seed: SEED });
 const { tw, th } = world;
 const geo = (x, y) => `(${(x / tw * 360 - 180).toFixed(1)}E ${(90 - y / th * 180).toFixed(1)}N)`;
-stepPeopleSim(world, STEPS);
+// Checkpointed run: watch the LAND LEDGER arc (T.LAND_KNOW) climb toward the
+// tallies/writing bars alongside the entity milestones, in eighths.
+const CHUNKS = 8;
+console.log(`--- arc (step | ledgers | lkOrg lkMet lkCon | settled realms):`);
+for (let c = 0; c < CHUNKS; c++) {
+  stepPeopleSim(world, Math.round(STEPS / CHUNKS));
+  let recs = 0, mo = 0, mm = 0, mc = 0;
+  if (world._landKnow) for (const r of world._landKnow.values()) {
+    recs++;
+    if (r.k.organization > mo) mo = r.k.organization;
+    if (r.k.metallurgy > mm) mm = r.k.metallurgy;
+    if (r.k.construction > mc) mc = r.k.construction;
+  }
+  const settled = world.settlements.filter((s) => s.mode === "settled").length;
+  console.log(`   ${String(world.step).padStart(6)} | ${String(recs).padStart(4)} | ${mo.toFixed(3)} ${mm.toFixed(3)} ${mc.toFixed(3)} | ${settled} ${world.countries ? world.countries.size : 0}`);
+}
 const evs = world.events || [];
 const byId = world._byId;
 const posOf = (ev) => {
@@ -34,6 +49,18 @@ for (const [label, pred] of [["tribal (chiefdom fabric)", (e) => e.how === "trib
   const list = evs.filter((e) => e.type === "polity.founded" && pred(e)).slice(0, 10);
   console.log(`-- first ${list.length} polity.founded ${label}:`);
   for (const e of list) console.log(`   step ${e.step}  how=${e.how}  ${e.name || e.seatName || ""} ${posOf(e)}`);
+}
+// The land ledger's leaders (T.LAND_KNOW): where the countryside is learning
+// fastest, and whether the material ladder (exchange-sphere ore → orgEraCap)
+// is open at the cradles — the campaign's main stall risk.
+if (world._landKnow && world._landKnow.size) {
+  const rows = [...world._landKnow.values()].sort((a, b) => b.k.organization - a.k.organization).slice(0, 8);
+  console.log(`-- land ledgers: ${world._landKnow.size} (top by organization):`);
+  for (const r of rows) {
+    const y = (r.ti / tw) | 0, x = r.ti - y * tw;
+    const ore = r.ore || {};
+    console.log(`   ${geo(x, y)} org=${r.k.organization.toFixed(3)} agri=${r.k.agriculture.toFixed(2)} con=${r.k.construction.toFixed(2)} met=${r.k.metallurgy.toFixed(2)} ore(cu=${(ore.copper || 0).toFixed(2)} sn=${(ore.tin || 0).toFixed(2)} fe=${(ore.iron || 0).toFixed(2)}) wa=${(r.wa || 0).toFixed(2)} born=${r.born}`);
+  }
 }
 const realms = [...(world.countries ? world.countries.values() : [])].slice(0, 10);
 console.log(`-- realms now: ${world.countries ? world.countries.size : 0}`);

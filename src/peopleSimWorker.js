@@ -266,7 +266,12 @@ function tick() {
   // spiking step from blocking the snapshot cadence — and that spike stays off the
   // main (render) thread, which is the whole point of the worker.
   const now = performance.now();
-  quietAgesNow = !!world && (!world.countries || world.countries.size === 0);
+  // Quiet ages = nothing on the map yet: no realm AND no settled settlement.
+  // Under T.LAND_KNOW prehistory is entity-free until the tallies bar, so the
+  // fast-forward carries the whole empty span and stands down the moment the
+  // FIRST CITY lands (the first visible beat), a little before the first state.
+  quietAgesNow = !!world && (!world.countries || world.countries.size === 0)
+    && !(world.settlements && world.settlements.some((s) => s.mode === "settled"));
   fastEpochNow = autoEpoch && quietAgesNow;
   let steps;
   if (speed >= UNBOUNDED_TPS || fastEpochNow) {

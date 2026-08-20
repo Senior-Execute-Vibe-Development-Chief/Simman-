@@ -26,6 +26,7 @@ import { initPeopleSim } from "./peopleSim/index.js";
 import { reindexEvents } from "./peopleSim/events.js";
 import { computeTerritory } from "./peopleSim/territory.js";
 import { rederiveSiteStatics } from "./peopleSim/settlement.js";
+import { rederiveLandKnow } from "./peopleSim/landKnow.js";
 import { reindexRoads } from "./peopleSim/roads.js";
 import { recomputeClimMod } from "./peopleSim/climate.js";
 import { rebuildCountries, updateAlliances, rebuildOverlords } from "./peopleSim/conquest.js";
@@ -50,7 +51,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 37;  // v37: no records, no nation (STATE_RECORDS — de-novo statehood waits for the Writing bar; states, wars and borders arrive with the tablet, as Uruk's did) ON (v<37 guard); v36: the access band conserves overlap mass (BAND_SUM — max deleted 27% of fine-grid river mass and 10% of coast where dense geometry self-overlaps) ON (v<36 guard); v35: irrigable water over a real width (IRR_BAND — the works-dilution fix) ON (v<35 guard); v34: the granary reaches the field (FIELD_CRADLE — capacity-side irrigation + alluvium on the wild proxy) ON (v<34 guard); v33: the funded march (MARCH_FUNDED — logistics stretches the people-funded extent instead of granting a flat allowance) ON (v<33 guard); v32: Carneiro's bar (STATE_OPEN — open land refuses the state) added, SHIPS AT 0 after three inert laps — the excess lived in claim size, not formation (docs/atlas-gap-2026-08-14.md late-belt verdict; v<32 guard inert while def 0); v31: the partition (PROTECTORATE — gunboat subjugation of far coasts) ON (v<31 guard); v30: the fleet term (SEA_PRACTICE — seamanship is learned by sailing) ON (v<30 guard); v29: peacetime border relaxation (MARCH_LAW) added — SHIPS AT 0, the phenomenon measured already-delivered by war physics once the instrument could see range feet (docs/atlas-gap-2026-08-14.md cause IV final; v<29 guard inert while def 0); v28: contested-crest holds (CREST_HOLD) added — SHIPS AT 0, refuted at claim time, laps 1-2 in docs/atlas-gap-2026-08-14.md (v<28 guard inert while def 0); v27: porter-bound reach (PORTER_BOUND) ON (v<27 guard); v26: the apparatus feeds on conquest (APPARATUS_LOOT) ON (v<26 guard); v25: the imperial apparatus (APPARATUS - works stock funds capacity) ON (v<25 guard); v24: the sea learns by demand + the admiralty (SEA_DEMAND, ADMIRALTY) ON (v<24 guard); v23: workable land (TILLAGE) ON (v<23 guard); v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
+export const SAVE_VERSION = 38;  // v38: the countryside learns (LAND_KNOW — pre-urban knowledge lives on per-basin land ledgers; cities and bordered tribal nations mint only past the Tallies & Seals bar, so prehistory is entity-free) ON (v<38 guard); v37: no records, no nation (STATE_RECORDS — de-novo statehood waits for the Writing bar; states, wars and borders arrive with the tablet, as Uruk's did) ON (v<37 guard); v36: the access band conserves overlap mass (BAND_SUM — max deleted 27% of fine-grid river mass and 10% of coast where dense geometry self-overlaps) ON (v<36 guard); v35: irrigable water over a real width (IRR_BAND — the works-dilution fix) ON (v<35 guard); v34: the granary reaches the field (FIELD_CRADLE — capacity-side irrigation + alluvium on the wild proxy) ON (v<34 guard); v33: the funded march (MARCH_FUNDED — logistics stretches the people-funded extent instead of granting a flat allowance) ON (v<33 guard); v32: Carneiro's bar (STATE_OPEN — open land refuses the state) added, SHIPS AT 0 after three inert laps — the excess lived in claim size, not formation (docs/atlas-gap-2026-08-14.md late-belt verdict; v<32 guard inert while def 0); v31: the partition (PROTECTORATE — gunboat subjugation of far coasts) ON (v<31 guard); v30: the fleet term (SEA_PRACTICE — seamanship is learned by sailing) ON (v<30 guard); v29: peacetime border relaxation (MARCH_LAW) added — SHIPS AT 0, the phenomenon measured already-delivered by war physics once the instrument could see range feet (docs/atlas-gap-2026-08-14.md cause IV final; v<29 guard inert while def 0); v28: contested-crest holds (CREST_HOLD) added — SHIPS AT 0, refuted at claim time, laps 1-2 in docs/atlas-gap-2026-08-14.md (v<28 guard inert while def 0); v27: porter-bound reach (PORTER_BOUND) ON (v<27 guard); v26: the apparatus feeds on conquest (APPARATUS_LOOT) ON (v<26 guard); v25: the imperial apparatus (APPARATUS - works stock funds capacity) ON (v<25 guard); v24: the sea learns by demand + the admiralty (SEA_DEMAND, ADMIRALTY) ON (v<24 guard); v23: workable land (TILLAGE) ON (v<23 guard); v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -301,6 +302,15 @@ export function saveWorld(world, meta = {}) {
       // record is consumed at maturation); losing them un-invents farming on
       // load. Absent unless the lever matured any → default saves byte-identical.
       hearthSeeds: world._hearthSeeds && world._hearthSeeds.length ? world._hearthSeeds : undefined,
+      // The pre-urban land ledgers (T.LAND_KNOW): per-basin knowledge the
+      // countryside taught itself — the ladder to the tally bar. Only the
+      // learned state persists ({ti, k, born}); site geography (ore, wa,
+      // climate, cell) is re-derived exactly on load. NOT re-derivable
+      // itself (it IS accumulated history). Absent unless the lever planted
+      // any → default saves byte-identical.
+      landKnow: world._landKnow && world._landKnow.size
+        ? [...world._landKnow.values()].map((r) => ({ ti: r.ti, born: r.born, k: { ...r.k } }))
+        : undefined,
       // Nations of the land (T.STATE_OF_LAND): the seat register and the static
       // basin territory. Not re-derivable (formation is a one-time event and the
       // painted cell is the nation's land). Absent unless the lever formed any.
@@ -524,6 +534,13 @@ export function loadWorld(data, opts = {}) {
     const tn = data.tuning || {};
     if (!("STATE_RECORDS" in tn)) T.STATE_RECORDS = 0;
   }
+  // v37 → v38: the countryside learns (LAND_KNOW). A pre-v38 save keeps its
+  // old doors — its cities and tribal nations were minted on food/density
+  // alone, and it carries no land ledgers to gate on.
+  if (data.v < 38) {
+    const tn = data.tuning || {};
+    if (!("LAND_KNOW" in tn)) T.LAND_KNOW = 0;
+  }
   // v35 → v36: the access band conserves overlap mass (BAND_SUM). A pre-v36
   // save keeps the max-over-sources band (its fine-grid world was calibrated
   // against the overlap-deleting field).
@@ -709,6 +726,12 @@ export function loadWorld(data, opts = {}) {
     if (data.maps.armedHearths && data.maps.armedHearths.length) world._armedHearths = data.maps.armedHearths.map(h => ({ ...h }));
     if (data.maps.hearthArmAt !== undefined) world._hearthArmAt = data.maps.hearthArmAt;
     if (data.maps.hearthSeeds && data.maps.hearthSeeds.length) world._hearthSeeds = data.maps.hearthSeeds.map(h => ({ ...h }));
+    if (data.maps.landKnow && data.maps.landKnow.length) {
+      // Pre-urban land ledgers (T.LAND_KNOW): learned state from the save,
+      // site geography re-derived exactly (pure terrain/deposit functions).
+      world._landKnow = new Map(data.maps.landKnow.map(r => [r.ti, { ti: r.ti, born: r.born, k: { ...r.k } }]));
+      rederiveLandKnow(world);
+    }
     if (data.maps.landSeats && data.maps.landSeats.length) world._landSeats = new Map(data.maps.landSeats.map(r => [r.id, { ti: r.ti }]));
     const lown = typedFromSparse(data.maps.landOwner, Int32Array, N, -1);
     if (lown) world._landOwner = lown;   // nations of the land: static basin territory (T.STATE_OF_LAND)

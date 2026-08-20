@@ -60,7 +60,10 @@ export function applyToolTuning() {
   // LESSON OF THIS DATE STANDS: any verdict about genesis geography or timing
   // MUST name its dawn regime and run the live arm explicitly — the app ships
   // BOTH levers ON.
-  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, STATE_RECORDS: 0, ...SIM_TUNE_OVERRIDES });
+  // LAND_KNOW (2026-08-20) joins the pinned set for the same reason: it
+  // re-times genesis (cities and tribal nations wait for the tallies bar on
+  // the land ledger). Its live arm: SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1".
+  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, STATE_RECORDS: 0, LAND_KNOW: 0, ...SIM_TUNE_OVERRIDES });
 }
 applyToolTuning();
 

@@ -9,7 +9,7 @@
 
 import { seedLocalTerritory } from "./territory.js";
 import { mergeReach } from "./roads.js";
-import { techEffects, stateOrgBar } from "./tech.js";
+import { techEffects, stateOrgBar, orgEraCapOf } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt, cropCeil } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
@@ -512,7 +512,7 @@ export function rederiveSiteStatics(world, s) {
   s._rugged = computeRuggedness(world, x, y);    // broken terrain → fragmentation (static)
 }
 
-function computeWaterAccess(world, sx, sy) {
+export function computeWaterAccess(world, sx, sy) {   // exported: the land ledger derives a site's wa the same way a settlement does
   const { tw, th, coast, riverMag } = world;
   // The scan is a fixed 3×3 in tiles → a SHRINKING real area at high resolution, where a river
   // channel is also thinner (1-D on 2-D). Under RES_INV_RIVER, cover the SAME REAL neighbourhood
@@ -577,7 +577,7 @@ export { effectiveLocalRes, findSettlementById };
 // for the knowledge cap (over REACHABLE ore, effectiveLocalRes) and for export
 // metalwork (over PHYSICALLY-HELD ore, localRes — you forge from ore in hand).
 const ORE_THR = 0.10;
-function oreTier(res) {
+export function oreTier(res) {   // exported: the land ledger (landKnow.js) caps village metallurgy by the same tiers
   const cu = res.copper || 0, sn = res.tin || 0, fe = res.iron || 0, co = res.coal || 0;
   let cap = 0;
   if (cu > ORE_THR)                 cap = 0.30;
@@ -1668,7 +1668,7 @@ const APT_M_MIN = 0.32, APT_M_SPAN = 0.30;       // ...with a moist growing seas
 const APT_MEDI_T = 0.58, APT_MEDI_T_SPAN = 0.14; // dry-summer lobe: warm enough for a hot rainless season
 const APT_MEDI_M = 0.30, APT_MEDI_M_TOL = 0.15;  // ...peaking at SEMI-ARID (falls off for wet tropics and true desert)
 const APT_CROP_M = 0.12, APT_CROP_SPAN = 0.12;   // ...but a growing season must exist at all (excludes the bone-dry desert)
-function seasonalSelect(temp, moist) {
+export function seasonalSelect(temp, moist) {   // exported: the land ledger reads the local selection target as its winter-aptitude proxy
   const cold = Math.exp(-((temp - APT_T_OPT) ** 2) / (2 * APT_T_TOL * APT_T_TOL))
              * Math.min(1, Math.max(0, (moist - APT_M_MIN) / APT_M_SPAN));
   const warm     = Math.min(1, Math.max(0, (temp - APT_MEDI_T) / APT_MEDI_T_SPAN));
@@ -2046,7 +2046,7 @@ function updateKnowledge(world, s) {
   // ore-poor ground; construction (monumental/record infrastructure) lifts
   // it a little more. Iron-era realms still reach full org (≈continental
   // reach); stone-age realms are held to kingdom scale.
-  const orgEraCap = clamp01(0.15 + metalCap * 0.95 + k.construction * 0.15);
+  const orgEraCap = orgEraCapOf(metalCap, k.construction);   // ONE definition with the land ledger (tech.js)
   const orgHead = Math.max(0, orgEraCap - k.organization);
   const litBranch = k.organization > 0.30
     ? T.ORG_LIT_BRANCH * k.organization * (1 + sciSqrt * 0.06)

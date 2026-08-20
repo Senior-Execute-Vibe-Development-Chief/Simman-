@@ -384,7 +384,10 @@ export function peopleSimStats(world) {
   // Leading era: the most advanced capital's tech era — drives the HUD ribbon
   // (the mirror's settlement records don't carry knowledge, so this must be
   // computed worker-side). Capitals only, so it's a few dozen techState calls.
-  let leadingEra = 0;
+  // T.LAND_KNOW: while no court exists, the land's own era carries the ribbon
+  // (world._lkEra — cached per growth firing in landKnow.js, the max over
+  // single records' tech eras). Unset off-lever → 0, byte-identical.
+  let leadingEra = world._lkEra || 0;
   if (world.countries) for (const c of world.countries.values()) {
     const k = c.capital && c.capital.knowledge;
     if (k) { const e = techState(k).era; if (e > leadingEra) leadingEra = e; }

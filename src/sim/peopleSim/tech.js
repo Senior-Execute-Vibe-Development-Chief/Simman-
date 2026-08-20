@@ -44,6 +44,26 @@ export const RECORDS_ORG = 0.35;   // == TECHS writing gate (asserted below)
 // de-novo founding doors read THIS; adoption/joining keeps the legacy floor.
 export const stateOrgBar = () => Math.max(T.ORG_STATE_MIN || 0, T.STATE_RECORDS ? RECORDS_ORG : 0);
 
+// The URBAN bar (T.LAND_KNOW, 2026-08-20): the organization level at which a
+// people can COUNT — tokens, tallies and seals administering a granary before
+// any script exists (Schmandt-Besserat's tokens; the sealed bullae of Uruk V).
+// One definition, two doors: a basin's people mint a CITY, or declare a
+// BORDERED nation of the land, only past this bar — a border and an urban
+// grain store are both administrative claims, and pre-accounting peoples hold
+// land as culture, not as bordered polities. It is literally the Tallies &
+// Seals tech's own gate (asserted below), sitting between the priesthood
+// (mysticism 0.18 — the temple that gathers a valley) and the tablet (writing
+// 0.35 — the state), exactly where token accounting sat in the Uruk sequence.
+export const URBAN_ORG = 0.28;   // == TECHS tallies gate (asserted below)
+
+// The material ceiling on organization — a stone-tool society runs a
+// chiefdom, not a bureaucracy (see the ERA GATE note in settlement.js
+// updateKnowledge). ONE definition shared by the settlement law and the
+// pre-urban land ledger (landKnow.js), so the two carriers of the same
+// climb can never drift apart.
+export const orgEraCapOf = (metalCap, construction) =>
+  Math.max(0, Math.min(1, 0.15 + metalCap * 0.95 + construction * 0.15));
+
 // Each tech: id, era (column), name (kept short for the node — detail lives in
 // desc), prereq techs, req(k) → are the knowledge thresholds met?, gate
 // (dominant track + threshold) for the "researching" progress hint, and desc
@@ -57,6 +77,7 @@ export const TECHS = [
   { id:"pottery",       era:0, name:"Pottery",         prereq:["fire"],                 req:k=>k.construction>=0.18,                        gate:["construction",0.18], desc:"Fired clay vessels store grain, water and oil." },
   { id:"animal_husb",   era:0, name:"Animal Husbandry",prereq:["farming"],              req:k=>k.agriculture>=0.30,                         gate:["agriculture",0.30],  desc:"Herding and breeding sheep, goats and cattle." },
   { id:"mysticism",     era:0, name:"Mysticism",       prereq:["stone_tools"],          req:k=>k.organization>=0.18,                        gate:["organization",0.18], desc:"Burial rites, totems and the first priesthood." },
+  { id:"tallies",       era:0, name:"Tallies & Seals", prereq:["mysticism"],            req:k=>k.organization>=0.28,                        gate:["organization",0.28], desc:"Clay tokens, tally marks and seals count the granary before writing." },
   { id:"the_wheel",     era:0, name:"The Wheel",       prereq:["pottery"],              req:k=>k.construction>=0.32||k.mobility>=0.22,      gate:["construction",0.32], desc:"The wheel and axle — carts and the potter's wheel." },
   { id:"archery",       era:0, name:"Archery",         prereq:["hunting"],              req:k=>k.construction>=0.24,                        gate:["construction",0.24], desc:"The bow — the first true ranged weapon." },
 
@@ -65,6 +86,12 @@ export const TECHS = [
   { id:"masonry",       era:1, name:"Masonry",         prereq:["pottery"],              req:k=>k.construction>=0.42,                        gate:["construction",0.42], desc:"Dressed stone — city walls, tombs and temples." },
   { id:"copper_working",era:1, name:"Copper Working",  prereq:["mining"],               req:k=>k.metallurgy>=0.18,                          gate:["metallurgy",0.18],   desc:"Smelted copper — knives, ornaments, the first metal." },
   { id:"sailing",       era:1, name:"Sailing",         prereq:["pottery"],              req:k=>k.navigation>=0.30,                          gate:["navigation",0.30],   desc:"Sails and oars carry boats along the coast." },
+  // (Historically writing grew out of token accounting — the impressed bullae
+  //  ARE proto-cuneiform — but tallies stays OFF writing's prereq list: the
+  //  prereq edge would narrow writing's partial-credit window (org 0.18-0.28
+  //  currently lends its reach/sci on-ramp via the "next" state), silently
+  //  shifting the calibrated mature regime. The lineage lives in the descs;
+  //  unlock ORDER is right regardless, since 0.28 < 0.35 on the same track.)
   { id:"writing",       era:1, name:"Writing",         prereq:["mysticism"],            req:k=>k.organization>=0.35,                        gate:["organization",0.35], desc:"Cuneiform and hieroglyphs record law, tax and myth." },
   { id:"irrigation",    era:1, name:"Irrigation",      prereq:["farming","pottery"],    req:k=>k.agriculture>=0.48&&k.construction>=0.30,   gate:["agriculture",0.48],  desc:"Canals turn dry river valleys into breadbaskets." },
   { id:"calendar",      era:1, name:"Calendar",        prereq:["writing","mysticism"],  req:k=>k.organization>=0.40,                        gate:["organization",0.40], desc:"Tracking the seasons and stars across the year." },
@@ -150,6 +177,8 @@ export const TECH_IDX = {}; TECHS.forEach((t, i) => { TECH_IDX[t.id] = i; });
 
 // One-definition invariant: the state-birth records bar IS the writing gate.
 { const w = TECHS.find((t) => t.id === "writing"); if (!w || w.gate[1] !== RECORDS_ORG) throw new Error("RECORDS_ORG drifted from the writing tech's gate — they are one definition"); }
+// …and the city/nation urban bar IS the tallies gate.
+{ const t = TECHS.find((t) => t.id === "tallies"); if (!t || t.gate[1] !== URBAN_ORG) throw new Error("URBAN_ORG drifted from the tallies tech's gate — they are one definition"); }
 
 // Are all of a tech's prerequisites present in the discovered set?
 const prereqsMet = (t, have) => { for (const p of t.prereq) if (!have[TECH_IDX[p]]) return false; return true; };

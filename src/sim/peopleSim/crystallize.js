@@ -18,7 +18,8 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
-import { stateOrgBar } from "./tech.js";
+import { stateOrgBar, URBAN_ORG } from "./tech.js";
+import { ensureLedgerAt, stepLandKnow } from "./landKnow.js";   // T.LAND_KNOW (ESM cycle is fine — functions only, like the goods.js pair)
 import { tel, telPass } from "./telemetry.js";
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
@@ -721,6 +722,7 @@ export function labelSiteLedger(world) {
 // CRYSTAL_INTERVAL staleness (a perf cadence; label deaths lapse the claim at
 // the next rebuild — Jericho refounding); labels minted mid-pass stamp their
 // claim live (labelClaimBasin — the gridAdd discipline, on cells).
+export { _siteClaims as siteClaims };   // landKnow.js: a seated cell freezes its ledger (the court carries knowledge now)
 function _siteClaims(world) {
   const L = labelSiteLedger(world);
   let c = world._siteClaims;
@@ -1114,7 +1116,7 @@ const pioneerTempo = (agri) => {
 const DISSOLVE_CHECK_IVL = 200;   // per-settlement stride (amortization, not a content gate)
 const DISSOLVE_HYST = 0.6;        // dissolve below this fraction of the founding bar
 const DISSOLVE_SUSTAIN = 1500;    // history-steps the basin must stay thin (granularity-corrected below)
-const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured here (core share p50 4.6-5.6%, every probe arm) and historically (~3-8%)
+export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured here (core share p50 4.6-5.6%, every probe arm) and historically (~3-8%); exported for landKnow.js's density term (one bar, two readers)
 /** T.DISSOLVE_TOWNS: can (tx,ty)'s basin feed a CITY? The lever's one bar —
  *  basin census ≥ TIER_CORE[2]/URBAN_SHARE_REF (a 10k core at the ~5% urban
  *  share needs a ~200,000-person market basin) — shared by every mint path
@@ -1288,7 +1290,12 @@ function maybeSiteCities(world) {
       // third dead form; see basinStorablePeople), a city-basin's worth of
       // people stand on ground that can grow a STORABLE surplus.
       if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI
-          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)) { elig[k] = 1; basins.set(k, b.take); }
+          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)) {
+        elig[k] = 1; basins.set(k, b.take);
+        // T.LAND_KNOW: a city-capable farming basin is a LEARNING community —
+        // plant its ledger the moment it first qualifies (landKnow.js).
+        if (T.LAND_KNOW) ensureLedgerAt(world, L.sites[k].ti);
+      }
       else { elig[k] = 0; basins.delete(k); }
     }
   }
@@ -1383,6 +1390,19 @@ function maybeSiteCities(world) {
     const st = L.sites[k];
     const coreF = diskSum(pf, world.tw, world.th, st.x, st.y, coreR);
     if (coreF < coreBarF) continue;
+    // T.LAND_KNOW: THE TALLY GATE — a gathered core is a proto-urban town
+    // (Çatalhöyük held thousands with no city institutions), not yet a CITY:
+    // the entity mints only when the basin's own ledger can COUNT (tallies &
+    // seals, tech.js URBAN_ORG — token accounting is what runs an urban
+    // granary before script). Until then the pile simply waits, bounded by
+    // the site spike's own cap; the ledger (planted at eligibility above)
+    // keeps learning underneath. No entity, no icon, no road, no border —
+    // prehistory stays land, people and practice.
+    let lkRec = null;
+    if (T.LAND_KNOW) {
+      lkRec = ensureLedgerAt(world, st.ti);
+      if (!lkRec || (lkRec.k.organization || 0) < URBAN_ORG) { tel(world, "siteCity", "tallyBar"); continue; }
+    }
     // The city is born a CITY — never a megalopolis: the entity takes the
     // city's own people (the bar, with growth headroom) and the REST of what
     // gathered stays on the land as its countryside. Measured without this
@@ -1397,6 +1417,11 @@ function maybeSiteCities(world) {
     // first city and a 600-step famine crash before the declaration existed.)
     fieldShift(world, { pos: { x: st.x, y: st.y } }, -coreCensus);
     const inherited = inheritKnowledgeAt(world, st.ti, world.transportDist ? world.transportDist[st.ti] : 0);
+    // T.LAND_KNOW: the basin's own learning is the newborn's birthright — the
+    // ledger floors every track (a nearby court can still lift it higher).
+    // This is the whole handoff: the countryside taught itself up to the
+    // tally bar; the city is born knowing what its people know.
+    if (lkRec) for (const t in lkRec.k) if ((lkRec.k[t] || 0) > (inherited[t] || 0)) inherited[t] = lkRec.k[t];
     // A city born within reach of an existing people carries their culture
     // (the inherit pass just found the nearest); one born in virgin land is
     // the BIRTH of a people — Uruk is where the Sumerians become visible.
@@ -1601,6 +1626,18 @@ function maybeLandNations(world) {
     const basin = peopledBasinAt(world, k, barF);
     if (basin.mass < barF) continue;               // the seat's walkable ground does not hold a people
     if (basin.devP < NEOLITHIC_AGRI) continue;     // its people do not yet farm
+    // T.LAND_KNOW: NO BORDERS BEFORE THE TALLY — a bordered nation is an
+    // administrative claim (membership, tribute, a boundary held against
+    // neighbours), and a people that cannot yet count holds its valley as
+    // CULTURE, not as a polity. The basin qualifies as a learning community
+    // here (peopled + farming — plant its ledger), and declares only once
+    // its own organization crosses the tallies bar; until then the ground
+    // stays unpainted. Same bar as the city door: one institution, two
+    // doors (tech.js URBAN_ORG).
+    if (T.LAND_KNOW) {
+      const rec = ensureLedgerAt(world, st.ti);
+      if (!rec || (rec.k.organization || 0) < URBAN_ORG) { tel(world, "landNation", "tallyBar"); continue; }
+    }
     const take = basin.take;
     // T.ORG_CONTACT, the land-nation half (2026-08-11, docs §9 — measured as
     // THE binding channel: 44 of 48 formations in the frontier probe were
@@ -1756,6 +1793,14 @@ function maybeLandNations(world) {
       const basin2 = peopledBasinFrom(world, kk, cand.ti, barF);
       if (basin2.mass < barF) { tel(world, "landnat2", "basinBelowBar"); continue; }
       if (basin2.devP < NEOLITHIC_AGRI) { tel(world, "landnat2", "notFarming"); continue; }
+      // T.LAND_KNOW: the same tally exam as the primary lane — the cell's
+      // learning community must be able to COUNT before any of its seats
+      // declares a bordered nation (this secondary lane leaked the first
+      // stone-age chiefdom paint in the wave's first measurement run).
+      if (T.LAND_KNOW) {
+        const rec2 = ensureLedgerAt(world, L.sites[kk].ti);
+        if (!rec2 || (rec2.k.organization || 0) < URBAN_ORG) { tel(world, "landnat2", "tallyBar"); continue; }
+      }
       // The identical pressure exam as the primary lane above (contact
       // adjacency, else the caging law's cage × storable share).
       let drive2 = 0;
@@ -1910,6 +1955,7 @@ function maybeLandNations(world) {
 
 export function maybeCrystallize(world) {
   maybeDissolveTowns(world);
+  stepLandKnow(world);        // T.LAND_KNOW: the countryside learns (before the doors read the ledger)
   maybeSiteCities(world);
   maybeLandNations(world);
   if (world.step % CRYSTAL_INTERVAL !== 0) return;

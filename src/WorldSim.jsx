@@ -355,7 +355,7 @@ const[staleBuild,setStaleBuild]=useState(false);
 // ground truth — paste it, compare shas/values, done. Printed once per boot.
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
-  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · iso=${typeof crossOriginIsolated!=="undefined"?crossOriginIsolated:"n/a"} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} STATE_RECORDS=${SIM_T.STATE_RECORDS} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED}`);
+  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · iso=${typeof crossOriginIsolated!=="undefined"?crossOriginIsolated:"n/a"} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} STATE_RECORDS=${SIM_T.STATE_RECORDS} LAND_KNOW=${SIM_T.LAND_KNOW} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED}`);
 },[]);
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
