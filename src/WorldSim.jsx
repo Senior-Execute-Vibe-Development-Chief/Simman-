@@ -742,6 +742,12 @@ try{
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
+  // Console instrument (owner 2026-08-20): window.nations() prints the realm
+  // census (km², centre, neighbours, cities, population, wealth, army, org,
+  // era) from the sim worker into this console; it also auto-logs whenever
+  // the realm register changes, and on a slow heartbeat.
+  window.nations=()=>{const w2=simWorkerRef.current;if(!w2)return "sim worker not running (main-thread fallback has no census)";w2.postMessage({type:"nations"});return "realm census → console (from the sim worker)";};
+  console.log("[simman] window.nations() → realm census table (auto-logs when the register changes)");
   // Band-worker URL for the popField pool (absolute — the worker's blob
   // context cannot resolve page-relative paths).
   try{sw.postMessage({type:'bandWorkerUrl',url:new URL(popFieldBandWorkerUrl,location.href).href});}catch{/* pool falls back to single-thread */}

@@ -28,6 +28,8 @@ import { getPolity } from "./sim/peopleSim/entities.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
 import { doctrineLabel } from "./sim/peopleSim/faiths.js";
 import { getPerson, getDynasty, ageOf, getDynastyTree, traitLabel } from "./sim/peopleSim/dynasties.js";
+import { techState, ERAS } from "./sim/peopleSim/tech.js";
+import { POP_SCALE } from "./sim/units.js";
 import { IDENTITY_K, diffuseIdentityField } from "./sim/peopleSim/identityField.js";
 import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
@@ -123,6 +125,73 @@ let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
 
+// ── The realm census in the browser console (owner 2026-08-20) ──────────────
+// "log the size in km² of every nation, their centre point, neighbour count…
+// their general identity." Auto-logs whenever the realm REGISTER changes (a
+// nation rises or falls; debounced) and on a slow heartbeat; the page also
+// exposes window.nations() for an on-demand table. One O(N) pass over the
+// bordered field per print: per-realm claimed area, wrap-aware territorial
+// centroid (circular mean over x — the map is a cylinder), and distinct
+// neighbours along the border; the identity columns ride the realm register.
+let lastNationN = -1, lastNationLogStep = -Infinity, lastNationWorld = null;
+function logNationCensus(world, why) {
+  if (!world) return;
+  if (!world.countries || !world.countries.size) { console.log(`[nations] step ${world.step} · no realms yet`); return; }
+  const { tw, th, N, elev } = world;
+  const co = world._countryOwner;
+  let landN = 0;
+  const acc = new Map();   // id → area/centroid/neighbour accumulators
+  const row = (id) => { let r = acc.get(id); if (!r) acc.set(id, r = { n: 0, sx: 0, cx: 0, ys: 0, nbrs: new Set() }); return r; };
+  for (let i = 0; i < N; i++) {
+    if (elev[i] > 0) landN++;
+    if (!co) continue;
+    const c = co[i];
+    if (c < 0) continue;
+    const y = (i / tw) | 0, x = i - y * tw;
+    const r = row(c);
+    const a = (x / tw) * 2 * Math.PI;
+    r.n++; r.sx += Math.sin(a); r.cx += Math.cos(a); r.ys += y;
+    const cr = co[y * tw + ((x + 1) % tw)];
+    if (cr >= 0 && cr !== c) { r.nbrs.add(cr); row(cr).nbrs.add(c); }
+    if (y < th - 1) { const cd = co[i + tw]; if (cd >= 0 && cd !== c) { r.nbrs.add(cd); row(cd).nbrs.add(c); } }
+  }
+  const km2 = (510e6 * 0.29) / Math.max(1, landN);
+  const rows = [];
+  for (const c of world.countries.values()) {
+    const r = acc.get(c.id);
+    const pol = getPolity(world, c.id);
+    let pop = 0, urb = 0, wealth = 0, army = 0, cities = 0;
+    if (c.members) for (const s of c.members) {
+      if (!s || s.mode !== "settled") continue;
+      cities++; pop += s.people || 0; urb += s._urbanPop || 0; wealth += s.wealth || 0; army += s.army || 0;
+    }
+    if (pol && pol.endedStep < 0) wealth += Math.max(0, pol.treasury || 0);
+    const k = c.capital && c.capital.knowledge;
+    let centre = "—";
+    if (r && r.n > 0) {
+      let xm = Math.atan2(r.sx / r.n, r.cx / r.n) / (2 * Math.PI);
+      if (xm < 0) xm += 1;
+      centre = `${(xm * 360 - 180).toFixed(1)}E ${(90 - (r.ys / r.n) / th * 180).toFixed(1)}N`;
+    }
+    rows.push({
+      name: realmName(world, c.id), id: c.id,
+      km2: r ? Math.round(r.n * km2) : 0,
+      centre,
+      nbrs: r ? r.nbrs.size : 0,
+      cities,
+      popM: +((pop * POP_SCALE) / 1e6).toFixed(2),        // province population, millions (catchment census — city + countryside)
+      urbanK: Math.round((urb * POP_SCALE) / 1e3),        // people in the cities proper, thousands
+      wealth: Math.round(wealth),                          // settlement coin + live treasury
+      army: Math.round(army),
+      org: k ? +(k.organization || 0).toFixed(2) : 0,      // the capital's statecraft (drives span/reach)
+      era: k ? ERAS[techState(k).era] : "—",
+    });
+  }
+  rows.sort((a, b) => b.km2 - a.km2);
+  console.log(`[nations] step ${world.step} · ${rows.length} realm(s)${why ? ` · ${why}` : ""} · window.nations() re-prints`);
+  try { console.table(rows); } catch { for (const r2 of rows) console.log(r2); }
+}
+
 self.onmessage = (e) => {
   const m = e.data;
   try { handleMessage(m); }
@@ -214,6 +283,9 @@ function handleMessage(m) {
     if (!playing && world) buildSnapshot();           // reflect on the paused frame
   } else if (m.type === "editor.placeCountry") {
     if (world) { try { editorPlaceCountry(world, m); } catch (err) { self.postMessage({ type: "error", message: "place failed: " + (err && err.message), stack: err && err.stack }); } staticSent = false; buildSnapshot(); }
+  } else if (m.type === "nations") {
+    // window.nations() — the on-demand realm census (see logNationCensus).
+    logNationCensus(world, "requested");
   } else if (m.type === "mapFilter") {
     // The atlas bar: hide nations below m.minKm2 (settlement-holders always show).
     minShowKm2 = m.minKm2 || 0;
@@ -300,6 +372,21 @@ function tick() {
       break;
     }
     if (performance.now() - start > (fastEpochNow ? 26 : STEP_BUDGET_MS)) break;   // quiet ages: bigger slice (map barely changes; messages still get in every ~26ms)
+  }
+  // The realm census (see logNationCensus): re-arm on a world swap (init/load),
+  // log on register change (debounced) and on a slow heartbeat.
+  if (lastNationWorld !== world) { lastNationWorld = world; lastNationN = -1; lastNationLogStep = -Infinity; }
+  const nN = world.countries ? world.countries.size : 0;
+  if (nN !== lastNationN) {
+    const first = lastNationN < 0;
+    lastNationN = nN;
+    if (nN > 0 && (first || world.step - lastNationLogStep > 200)) {
+      logNationCensus(world, first ? "census" : "the register changed");
+      lastNationLogStep = world.step;
+    }
+  } else if (nN > 0 && world.step - lastNationLogStep >= 4000) {
+    logNationCensus(world, "heartbeat");
+    lastNationLogStep = world.step;
   }
   const t = performance.now();
   if (t - lastSnap >= SNAP_MS) { buildSnapshot(); lastSnap = t; }
