@@ -1581,15 +1581,49 @@ export function urbanise(world) {
 
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
-  updateFood(world, s);
-  updatePopulation(world, s);
-  if (s.mode !== "settled") return;        // died this tick (famine / wither)
-  updateWealth(world, s);
-  updateCoercedLabour(world, s);   // slaves, cash crops, mine intensification (reads fresh wealth)
-  updateGoods(world, s);           // goods-vector Stage 1: prod/demand/price + craft labour (after lux & cash crops so budgets are fresh; no-op unless T.GOODS_PRICES)
-  updateDevelopment(world, s);
-  updateKnowledge(world, s);
-  updateTier(world, s);
+  // Per-section attribution for the pass profiler (the 20x-slowdown probe,
+  // 2026-08-20): the settlements pass is 65% of a dense tick, so WHICH update
+  // scales with the register decides the fix. Accumulates across settlements
+  // and ticks into world.debug.sett; zero cost when _dbgProfile is off.
+  const dp = world._dbgProfile ? (world.debug.sett || (world.debug.sett = {})) : null;
+  let _t = dp ? performance.now() : 0;
+  const m = dp ? (k) => { const n2 = performance.now(); dp[k] = (dp[k] || 0) + (n2 - _t); _t = n2; } : null;
+  // ── T.SETT_STRIDE: the settlement economy on a stride (the 20x-slowdown
+  // fix, 2026-08-20) ─────────────────────────────────────────────────────
+  // The peer-seats register multiplied entities ~15x and the owner's app ran
+  // ~20x slower; the pass profiler attributed 65% of a dense tick to THIS
+  // loop, and its sections to knowledge (23ms), goods (22ms) and food (18ms)
+  // per tick across 535 cities — rate processes recomputed every tick for
+  // every city. The cure is the codebase's own stride convention, already
+  // shipped twice: TRADE_STRIDE (the bilateral sweep every K ticks at Kx
+  // volume) and updateKnowledge's internal KNOW_INTERVAL ("staggered by id
+  // so the cost spreads evenly; rates scaled up to keep the average pace
+  // identical"). Here the whole heavy per-settlement economy — food, wealth,
+  // coerced labour, goods, development, knowledge — runs every K ticks per
+  // settlement, phase-staggered by id, under dt x K so every per-tick rate
+  // integrates to the same average. Population and tier stay per-tick (cheap,
+  // and demography/registers stay smooth). Consumers see fields at most K-1
+  // ticks stale — the _linkMoney convention, documented there. K=1 is
+  // byte-identical; the harness pins 1 (gates keep their trajectories), the
+  // app ships the default.
+  const _K = Math.max(1, T.SETT_STRIDE | 0);
+  const _due = _K === 1 || ((world.step + s.id) % _K) === 0;
+  const _dt0 = world._dt;
+  if (_due && _K > 1) world._dt = _dt0 * _K;
+  if (_due) { updateFood(world, s); if (m) m("food"); }
+  updatePopulation(world, s); if (m) m("population");
+  if (s.mode !== "settled") { world._dt = _dt0; return; }   // died this tick (famine / wither)
+  if (_due) {
+    updateWealth(world, s); if (m) m("wealth");
+    updateCoercedLabour(world, s);   // slaves, cash crops, mine intensification (reads fresh wealth)
+    if (m) m("coercedLabour");
+    updateGoods(world, s);           // goods-vector Stage 1: prod/demand/price + craft labour (after lux & cash crops so budgets are fresh; no-op unless T.GOODS_PRICES)
+    if (m) m("goods");
+    updateDevelopment(world, s); if (m) m("development");
+    updateKnowledge(world, s); if (m) m("knowledge");
+  }
+  world._dt = _dt0;
+  updateTier(world, s); if (m) m("tier");
 }
 
 // ── Knowledge growth ──────────────────────────────────────────────

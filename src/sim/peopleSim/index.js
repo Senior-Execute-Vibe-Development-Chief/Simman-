@@ -187,10 +187,12 @@ export function stepPeopleSim(world, n = 1) {
       const _pfs = Math.max(1, T.POP_FIELD_STRIDE | 0);
       if (T.POP_FIELD && world.step % _pfs === 0) {
         stepPopField(world, _pfs);
+        mark("popField");
         // ONE POPULATION (docs/one-population.md slice B): the census is a
         // DERIVED READ of the field over each settlement's catchment; this
         // also stamps next pass's urban capacity spikes and core rates.
         deriveOnePop(world);
+        mark("derive");
       }
     }
     // Political control field (controlField.js). In PRETTY mode (CONTROL_FIELD, CTRL_LIVE off)
@@ -198,7 +200,7 @@ export function stepPeopleSim(world, n = 1) {
     // it) — so STRIDE it (the border relaxes one hop per firing and moves slowly, and the
     // render ships it only every few snapshots anyway) to keep its cost small. Live mode
     // (CTRL_LIVE) authors _countryOwner, still on the same cheap cadence.
-    if (T.CONTROL_FIELD && world.step % CTRL_FIELD_STRIDE === 0) stepControlField(world);
+    if (T.CONTROL_FIELD && world.step % CTRL_FIELD_STRIDE === 0) { stepControlField(world); mark("ctrlField"); }
     mark("settlements");
     // Exogenous shocks: regional famines (harvest crash) + epidemics that
     // spread along the trade graph (population crash). Both feed the unrest /
