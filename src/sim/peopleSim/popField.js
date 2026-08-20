@@ -1815,14 +1815,10 @@ export function deriveOnePop(world) {
   if (!owner) return;
   const spikes = world._urbanSpike || (world._urbanSpike = new Map());
   const accP = new Map();
-  // T.LAND_KNOW: catchment land-tile counts ride along (peopled or not) for
-  // the rural-baseline urban read below.
-  const accN = T.LAND_KNOW ? new Map() : null;
   for (let i = 0; i < world.N; i++) {
     const sid = owner[i];
     if (sid < 0) continue;
     if (pf[i] > 0) accP.set(sid, (accP.get(sid) || 0) + pf[i]);
-    if (accN) accN.set(sid, (accN.get(sid) || 0) + 1);
   }
   // The bridge scalar: median census per median field-region, frozen at
   // activation (persisted). A pure unit conversion between the economy's
@@ -1994,21 +1990,29 @@ export function deriveOnePop(world) {
       _coreF = Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR));
       // T.LAND_KNOW: the countryside standing within the footprint is
       // VILLAGES, not the city — the urban core is the concentration ABOVE
-      // the catchment's own rural density (a pure measurement: no state, no
-      // constant, resolution-invariant). On thin ground the baseline is ≈ 0
-      // and the read is the pile, as before; on a pre-filled cradle a
-      // newborn stops counting its footprint's standing farmers as citizens.
-      // Measured at the first tally-city (tw=480, 8817): the disk held 550su
-      // of prior countryside around a 15su founding core — the raw read
-      // minted a 578k-person "metropolis", starving at birth (the owner's
-      // screenshot), and its sqrt fed the court's learning rate (the
-      // era-racing amplifier this same commit moves to the measured core).
+      // the LOCAL rural baseline, measured from the disk's own surrounding
+      // annulus (radius R..2R: the same ground, one footprint out). A pure
+      // measurement — no state, no constant; at coreR = 0 (the reference
+      // grid) the annulus is empty and the read is byte-identical. On thin
+      // ground the baseline ≈ 0 and the read is the gathered pile, as
+      // before; on a pre-filled cradle a newborn stops counting its
+      // footprint's standing farmers as citizens. Measured at the first
+      // tally-city (tw=480, 8817): the raw read minted a 578k "metropolis"
+      // at first derive, starving (the owner's screenshot); the CATCHMENT-
+      // MEAN baseline (this fix's first form) still left 358k because a
+      // Nile-valley disk is ~2.6× denser than its desert-diluted catchment
+      // average — the baseline must be the floodplain's own density, which
+      // the annulus is. (Two cores packed within 2R contaminate each other's
+      // baseline upward — an undercount that only appears in late metro
+      // belts, where cores dwarf any baseline; accepted and noted.)
       let coreEff = _coreF;
-      if (accN) {
-        const nT = accN.get(s.id) || 0;
-        const dT = diskLandCount(world, s.pos.x | 0, s.pos.y | 0, coreR);
-        if (nT > dT && f > _coreF) {
-          const ruralDens = (f - _coreF) / (nT - dT);
+      if (T.LAND_KNOW && coreR > 0) {
+        const cx = s.pos.x | 0, cy = s.pos.y | 0;
+        const outerSum = diskSum(pf, tw, world.th, cx, cy, 2 * coreR);
+        const dT = diskLandCount(world, cx, cy, coreR);
+        const annN = diskLandCount(world, cx, cy, 2 * coreR) - dT;
+        if (annN > 0) {
+          const ruralDens = Math.max(0, outerSum - _coreF) / annN;
           coreEff = Math.max(0, _coreF - ruralDens * dT);
         }
       }
