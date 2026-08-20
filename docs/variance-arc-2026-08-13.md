@@ -289,3 +289,14 @@ app grid. Remaining watches: whether late-game polity count (1,598 at
 44k, mostly tribal fabric) reads as richness or clutter in play — the
 owner's eye decides; the Mesopotamia crop wave (#15) and the Kama-Volga
 watch (#16) queue behind.
+
+---
+
+**2026-08-20 addendum: the peer-seat candidate generation SHIPPED for city
+seats** — T.PEER_SEATS, docs/peer-seats-2026-08-20.md. The "NOBODY KNOCKS"
+verdict above is closed at the shipping grid: 66 → 879 cities, 50 → 610
+realms at tw=960/27k under the live arm, first state born 8k km² (was
+310-878k), register flows churning (125 ended / 89 seceded in the final
+interval). The consolidation question this section poses (wars between
+touching statelets → momentum → cascade) is now the standing next lap, with
+far more fuel: attack PASSED 31,660 and storms still `assaultTooWeak`.

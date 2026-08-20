@@ -919,6 +919,11 @@ function assignProvinces(world, c) {
 // ordinary member that's now breaking away. So prefer the seed's id, but if
 // that IS the parent realm's id, borrow another bloc member's id instead.
 function freshCountryId(c, bloc) {
+  // Degenerate: an EMPTY bloc (the seed can hold no tiles yet — a freshly
+  // adopted city's province connects to nothing until the territory pass
+  // paints it; routine once the peer lane seats young courts). The caller
+  // treats -1 as "can't split cleanly" and vents the governor's ambition.
+  if (!bloc.length) return -1;
   if (bloc[0].id !== c.id) return bloc[0].id;        // seed's own id is free
   for (const m of bloc) if (m.id !== c.id) return m.id;
   return -1;                                          // degenerate: nothing distinct to use

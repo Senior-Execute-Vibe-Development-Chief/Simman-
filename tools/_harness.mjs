@@ -63,7 +63,12 @@ export function applyToolTuning() {
   // LAND_KNOW (2026-08-20) joins the pinned set for the same reason: it
   // re-times genesis (cities and tribal nations wait for the tallies bar on
   // the land ledger). Its live arm: SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1".
-  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, STATE_RECORDS: 0, LAND_KNOW: 0, ...SIM_TUNE_OVERRIDES });
+  // PEER_SEATS (2026-08-20, the mega-catchment wave) joins for the same
+  // reason again: it multiplies the genesis register (peer courts inside
+  // claimed cells), so the fixed-horizon gates would measure a different
+  // world. THE FULL LIVE ARM IS NOW:
+  //   SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1,PEER_SEATS=1"
+  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, STATE_RECORDS: 0, LAND_KNOW: 0, PEER_SEATS: 0, ...SIM_TUNE_OVERRIDES });
 }
 applyToolTuning();
 

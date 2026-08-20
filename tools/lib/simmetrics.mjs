@@ -99,6 +99,9 @@ export const WORLD_SCRATCH = new Set([
   // joins the persistent-heap family, plus its high-water diagnostic counters
   // (peak sizes/pushes — observability about the machine, not world history).
   "_transHeap", "_transStat",
+  // PEER_SEATS (2026-08-20): the peer lane's candidate cache — positions and
+  // basin takes mid-gather, rebuilt from claims/popField; never serialized.
+  "_peerCand",
 ]);
 
 /** An ENTITY REFERENCE, not a data bag. Recursing into a settlement's `_foodParent`

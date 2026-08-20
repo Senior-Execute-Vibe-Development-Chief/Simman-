@@ -1312,6 +1312,16 @@ function maybeSiteCities(world) {
     // capping the founding take alone was cosmetic).
     if (coreNow > 0 && !spikes.has(st.ti)) spikes.set(st.ti, { k: Math.min(coreNow, coreBarF * 1.2) });
   }
+  // T.PEER_SEATS: the peer lane's gathering piles are held every tick by the
+  // same spike law, keyed by the peer tile — a pile stamped only on the mint
+  // cadence would be released and mass-killed by the field pass between
+  // firings (the anchor lane's own measured lesson, the birth crater).
+  if (T.PEER_SEATS && T.PEER_LATTICE && world._peerCand) {
+    for (const pc of world._peerCand.m.values()) {
+      const coreNow = diskSum(pf, world.tw, world.th, pc.x, pc.y, coreR);
+      if (coreNow > 0 && !spikes.has(pc.ti)) spikes.set(pc.ti, { k: Math.min(coreNow, coreBarF * 1.2) });
+    }
+  }
   if (world.step % SITE_CITY_IVL !== 0) return;
   // Practice improves at the settlement-less hearths (see AGRI_PRACTICE_CAP).
   if (world._hearthSeeds) {
@@ -1403,20 +1413,37 @@ function maybeSiteCities(world) {
       lkRec = ensureLedgerAt(world, st.ti);
       if (!lkRec || (lkRec.k.organization || 0) < URBAN_ORG) { tel(world, "siteCity", "tallyBar"); continue; }
     }
-    // The city is born a CITY — never a megalopolis: the entity takes the
-    // city's own people (the bar, with growth headroom) and the REST of what
-    // gathered stays on the land as its countryside. Measured without this
-    // cap: the first genesis mint arrived only when the farming gate opened,
-    // by which time the basin had piled organically, and the first-born
-    // entity swallowed a 1,008-census core — a metropolis at birth in a
-    // world whose second entity did not exist yet.
-    const coreCensus = Math.min(coreF * bridge, TIER_CORE[2] * 1.5);
-    // (The live bridge is guaranteed by the pass-top dawn declaration — the
-    // first mint never lets the next derive re-calibrate the unit from its
-    // own founding party, which measured as a 0.35 bridge, an 11,000-census
-    // first city and a 600-step famine crash before the declaration existed.)
-    fieldShift(world, { pos: { x: st.x, y: st.y } }, -coreCensus);
-    const inherited = inheritKnowledgeAt(world, st.ti, world.transportDist ? world.transportDist[st.ti] : 0);
+    mintCityAt(world, k, st.x, st.y, st.ti, coreF, lkRec,
+      { pf, bridge, coreBarF, basinBarF, spikes },
+      () => { elig[k] = 0; if (world._siteBasin) world._siteBasin.delete(k); });
+  }
+  maybePeerSeats(world, { L, claims, pf, bridge, coreBarF, basinBarF, coreR, spikes });
+}
+
+// ── The mint tail, shared by the anchor lane and the peer lane ───────────────
+// Extracted VERBATIM from the anchor mint loop (2026-08-20, the peer-seats
+// wave) so both lanes birth cities through the identical law — census cap,
+// field debit, knowledge birthright, culture, the STATE_OF_LAND adoption
+// door, basin granaries, the spike handoff. `postClaim` runs at the exact
+// point the anchor's own bookkeeping ran (eligibility/basin-cache clear for
+// anchors; claim-register bump for peers). Byte-identity of the extraction
+// is proven by the pinned hashbase anchors.
+function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
+  const { pf, bridge, coreBarF, basinBarF, spikes } = env;
+  // The city is born a CITY — never a megalopolis: the entity takes the
+  // city's own people (the bar, with growth headroom) and the REST of what
+  // gathered stays on the land as its countryside. Measured without this
+  // cap: the first genesis mint arrived only when the farming gate opened,
+  // by which time the basin had piled organically, and the first-born
+  // entity swallowed a 1,008-census core — a metropolis at birth in a
+  // world whose second entity did not exist yet.
+  const coreCensus = Math.min(coreF * bridge, TIER_CORE[2] * 1.5);
+  // (The live bridge is guaranteed by the pass-top dawn declaration — the
+  // first mint never lets the next derive re-calibrate the unit from its
+  // own founding party, which measured as a 0.35 bridge, an 11,000-census
+  // first city and a 600-step famine crash before the declaration existed.)
+  fieldShift(world, { pos: { x, y } }, -coreCensus);
+  const inherited = inheritKnowledgeAt(world, ti, world.transportDist ? world.transportDist[ti] : 0);
     // T.LAND_KNOW: the basin's own learning is the newborn's birthright — the
     // ledger floors every track (a nearby court can still lift it higher).
     // This is the whole handoff: the countryside taught itself up to the
@@ -1444,8 +1471,8 @@ function maybeSiteCities(world) {
     const coA = world._countryOwner;
     const loA = world._landOwner;
     let nid = (T.STATE_OF_LAND && loA && world._landSeats
-      && (!coA || coA[st.ti] < 0) && world._landSeats.has(loA[st.ti]))
-      ? loA[st.ti] : -1;
+      && (!coA || coA[ti] < 0) && world._landSeats.has(loA[ti]))
+      ? loA[ti] : -1;
     // T.STATE_RECORDS: a city born on a nation's ground materialises it into a
     // realm only if the newborn court can administrate (the unified founding
     // bar — tech.js stateOrgBar). Below it the city is born a stateless temple
@@ -1454,7 +1481,7 @@ function maybeSiteCities(world) {
     if (nid >= 0 && T.STATE_RECORDS && (((inherited && inherited.organization) || 0) < stateOrgBar())) nid = -1;
     const natCul = nid >= 0 ? ((getPolity(world, nid) || {}).cultureId ?? -1) : -1;
     const bornCul = natCul >= 0 ? natCul : donorCul;
-    const born = makeSettlement(world, st.x + 0.5, st.y + 0.5, {
+    const born = makeSettlement(world, x + 0.5, y + 0.5, {
       people: coreCensus, knowledge: inherited, tier: 2,
       ...(nid >= 0 ? { countryId: nid } : {}),
       ...(bornCul >= 0 ? { cultureId: bornCul } : { cradle: true }),
@@ -1504,9 +1531,8 @@ function maybeSiteCities(world) {
     // arrived", now true on BOTH sides of the handoff. Existing constants
     // only; import-economy capacity takes over the moment it grows past it.
     born._coreHoldCapF = coreBarF * 1.2;
-    labelClaimBasin(world, st.x, st.y);
-    elig[k] = 0;
-    if (world._siteBasin) world._siteBasin.delete(k);
+    labelClaimBasin(world, x, y);
+    postClaim();
     // T.HOLD_SEAM (2026-08-11 — the handoff's SEAM, docs §6): deleting the
     // site spike here leaves ≥1 firing with NO capacity over the pile — the
     // tick order is field pass → derive → THIS mint, so the next field pass
@@ -1517,9 +1543,164 @@ function maybeSiteCities(world) {
     // bound, the identical expression the deleted spike carried — and the
     // next derive's clear-and-restamp takes it from there. Off ⇒ the delete
     // (byte-identical, the gap regime).
-    if (T.HOLD_SEAM) spikes.set(st.ti, { k: Math.min(coreF, coreBarF * 1.2) });
-    else spikes.delete(st.ti);
-    logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1, x: st.x, y: st.y });
+    if (T.HOLD_SEAM) spikes.set(ti, { k: Math.min(coreF, coreBarF * 1.2) });
+    else spikes.delete(ti);
+    logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1, x, y });
+    return born;
+}
+
+// ── T.PEER_SEATS: the genesis lane seats PEERS (the variance arc's named unlock) ──
+// Measured three ways before this existed (docs/variance-arc-2026-08-13.md
+// "NOBODY KNOCKS"; probe_catchment 2026-08-20): every land founding channel
+// draws its candidates from the site ledger's ONE anchor per cell, standing
+// exactly where the first city already is — so labelBasinFree's peer-capacity
+// law (a claimed cell stays open while its people could feed another core)
+// was never once exercised on land. The measured cost at the shipping grid:
+// 66 seats over 1,225 justified slots at tw=960/27k, the top cradle cell
+// holding 1 court where its people could feed 74, catchments of 4-7M km²
+// (three orders over the historical city-state), fission starved of rival
+// seats (noRivalSeat=2039), 24-realm worlds where history holds hundreds.
+// This is the candidate GENERATION the peerlat funnel demanded: inside every
+// claimed cell with spare capacity, the best standing popField peak that
+// keeps every core whole (≥ 2×urbanCoreR from each seated label — the exact
+// spacing labelBasinFree states) becomes a gathering site of its own, fed by
+// the same drift law from the same cell basin, held by the same spike law,
+// minted through the same tail (mintCityAt) at the same core bar. Sumer:
+// Uruk did not stop Ur, Lagash and Kish from rising on the same alluvium —
+// a basin seats what its people can feed.
+// The tally proof is the CELL's: its ledger earned tallies once (frozen at
+// or above the bar when the first court seated — the mint required it), or
+// a court standing in the cell carries organization past the bar itself
+// (colonies can claim a cell whose ledger froze young; the court is then
+// the basin's living institution). A fresh per-tile ledger would re-run
+// prehistory under an already-literate incumbent.
+// Zero new constants: capacity/spacing are labelBasinFree's own, the drift
+// and bars are the anchor lane's own. Off (T.PEER_SEATS=0) ⇒ byte-identical
+// one-seat-per-cell (the harness pins it off; the live app runs it).
+function maybePeerSeats(world, env) {
+  if (!T.PEER_SEATS || !T.PEER_LATTICE) return;
+  const { L, claims, pf, coreBarF, basinBarF, coreR } = env;
+  const tw = world.tw, th = world.th;
+  const rr = 2 * coreR, rr2 = rr * rr, half = tw / 2;
+  let cand = world._peerCand;
+  if (!cand || cand.K !== L.sites.length) cand = world._peerCand = { K: L.sites.length, step: -1, m: new Map() };
+  const spacingOk = (k, x, y) => {
+    const ls = claims.labels && claims.labels.get(k);
+    if (ls) for (const p of ls) {
+      let dx = Math.abs(p.x - x); if (dx > half) dx = tw - dx;
+      const dy = p.y - y;
+      if (dx * dx + dy * dy < rr2) return false;
+    }
+    return true;
+  };
+  // Which claimed cells still have capacity for another court?
+  const want = new Set();
+  for (let k = 0; k < L.sites.length; k++) {
+    if (!claims.claimed[k]) { cand.m.delete(k); continue; }
+    const capacity = Math.floor(claims.mass[k] / basinBarF);
+    if ((claims.count[k] || 0) >= capacity) { cand.m.delete(k); tel(world, "peerSeat", "cellFull"); continue; }
+    want.add(k);
+    tel(world, "peerSeat", "CANDIDATE");
+  }
+  if (!want.size) return;
+  // Refresh candidate positions with the claims cadence. A held position is
+  // KEPT while it stays legal (its pile is mid-gather — moving the target
+  // strands the pile); only an invalidated or missing one is re-picked as
+  // the cell's best standing popField peak that clears the spacing law.
+  if (cand.step !== claims.step) {
+    cand.step = claims.step;
+    for (const [k, pc] of cand.m) if (!want.has(k) || !spacingOk(k, pc.x, pc.y)) cand.m.delete(k);
+    const need = new Set();
+    for (const k of want) if (!cand.m.has(k)) need.add(k);
+    if (need.size) {
+      const best = new Map();   // k → {v, x, y, ti}
+      const siteId = L.siteId, elev = world.elev;
+      for (let i = 0; i < world.N; i++) {
+        const p = pf[i];
+        if (!(p > 0) || elev[i] <= 0) continue;
+        const k = siteId[i];
+        if (k < 0 || !need.has(k)) continue;
+        const b = best.get(k);
+        if (b && b.v >= p) continue;
+        const y = (i / tw) | 0, x = i - y * tw;
+        if (!spacingOk(k, x, y)) continue;
+        best.set(k, { v: p, x, y, ti: i });
+      }
+      for (const [k, b] of best) cand.m.set(k, { x: b.x, y: b.y, ti: b.ti, take: null });
+    }
+  }
+  // The court test once per firing: the strongest organization standing in
+  // each wanted cell (the ledger's freeze can predate the bar when a colony
+  // claimed the cell — the living court then carries the proof).
+  let courtOrg = null;
+  if (T.LAND_KNOW) {
+    courtOrg = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const sk = L.siteId[(s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw];
+      if (sk < 0 || !want.has(sk)) continue;
+      const o = (s.knowledge && s.knowledge.organization) || 0;
+      if (o > (courtOrg.get(sk) || 0)) courtOrg.set(sk, o);
+    }
+  }
+  const rate = Math.min(0.2, URBAN_DRIFT * (world._dt || 1) * SITE_CITY_IVL);
+  const cf = world.capField;
+  for (const k of want) {
+    const pc = cand.m.get(k);
+    if (!pc) { tel(world, "peerSeat", "noPosition"); continue; }
+    const coreNow = diskSum(pf, tw, th, pc.x, pc.y, coreR);
+    if (coreNow < coreBarF) {
+      // Gather: the same drift law as the anchor lane — the cell basin pays,
+      // the peer core receives, paced by the core's capacity headroom.
+      if (!pc.take) pc.take = peopledBasinAt(world, k, basinBarF).take;
+      const capD = cf ? diskSum(cf, tw, th, pc.x, pc.y, coreR) : Infinity;
+      const headroom = capD - coreNow;
+      if (!(headroom > 0)) { tel(world, "peerSeat", "noHeadroom"); continue; }
+      let demand = 0;
+      for (let n = 0; n < pc.take.length; n++) {
+        const t = pc.take[n];
+        const ty2 = (t / tw) | 0, tx2 = t - ty2 * tw;
+        let dx = Math.abs(tx2 - pc.x); if (dx > half) dx = tw - dx;
+        const dy = ty2 - pc.y;
+        if (dx * dx + dy * dy <= coreR * coreR) continue;
+        demand += pf[t];
+      }
+      demand *= rate;
+      if (demand > 0) {
+        const scale = Math.min(1, headroom / demand);
+        let gain = 0;
+        for (let n = 0; n < pc.take.length; n++) {
+          const t = pc.take[n];
+          const ty2 = (t / tw) | 0, tx2 = t - ty2 * tw;
+          let dx = Math.abs(tx2 - pc.x); if (dx > half) dx = tw - dx;
+          const dy = ty2 - pc.y;
+          if (dx * dx + dy * dy <= coreR * coreR) continue;
+          const mv = pf[t] * rate * scale;
+          pf[t] -= mv;
+          gain += mv;
+        }
+        pf[pc.ti] += gain;
+      }
+      tel(world, "peerSeat", "gathering");
+      continue;
+    }
+    // Mint-time re-checks: the spacing law against the LIVE label register
+    // (a same-window colony may have landed since the scan), then the tally.
+    if (!spacingOk(k, pc.x, pc.y)) { cand.m.delete(k); tel(world, "peerSeat", "spacingLost"); continue; }
+    let cellRec = null;
+    if (T.LAND_KNOW) {
+      cellRec = ensureLedgerAt(world, L.sites[k].ti);
+      const proven = (cellRec && (cellRec.k.organization || 0) >= URBAN_ORG)
+        || ((courtOrg && courtOrg.get(k) || 0) >= URBAN_ORG);
+      if (!proven) { tel(world, "peerSeat", "tallyBar"); continue; }
+    }
+    mintCityAt(world, k, pc.x, pc.y, pc.ti, coreNow, cellRec, env, () => {
+      claims.count[k] = (claims.count[k] || 0) + 1;
+      let a = claims.labels.get(k); if (!a) claims.labels.set(k, a = []);
+      a.push({ x: pc.x, y: pc.y });
+    });
+    cand.m.delete(k);
+    telPass(world, "peerSeat");
   }
 }
 
