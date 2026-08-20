@@ -21,6 +21,7 @@
 // so land changes animate tile-by-tile.
 
 import { localEdgeCost, terrainHoldAt, ridgeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
+import { RECORDS_ORG } from "./tech.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
@@ -2366,6 +2367,13 @@ export function adoptAndFound(world) {
               >= (NUCLEATE_CLUSTER_POP / (T.FRONTIER_FOUNDING || 1)) * stateCapacityMul(world, s, ti)
           : tierLockedCentre && (s.people || 0) >= forestBar;
       }
+      if (founds && T.STATE_RECORDS && (((s.knowledge && s.knowledge.organization) || 0) < RECORDS_ORG)) {
+        // T.STATE_RECORDS: no records, no nation. The court cannot yet keep
+        // rolls or levy tax (tech.js RECORDS_ORG — the Writing gate), so the
+        // town stays a stateless temple town; it self-founds the moment its
+        // organization crosses the bar. Uruk and its tablets arrive together.
+        founds = false; tel(world, "nucleate", "recordsBar");
+      }
       if (founds) {
         // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland): a founding on ground
         // whose people remember ONE fallen nation re-opens that nation instead of
@@ -2773,6 +2781,10 @@ export function nucleateFrontierStates(world) {
     let tooClose = false;                        // don't mint two adjacent states in one pass
     for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (nucR * 2) ** 2) { tooClose = true; break; } }
     if (tooClose) { tel(world, "nucleate", "tooNearAnotherNewStateThisPass"); continue; }
+    // T.STATE_RECORDS: no records, no nation (tech.js RECORDS_ORG — the
+    // Writing gate). A basin whose best court cannot yet administrate keeps
+    // its people stateless until organization reaches the records bar.
+    if (T.STATE_RECORDS && (((s.knowledge && s.knowledge.organization) || 0) < RECORDS_ORG)) { tel(world, "nucleate", "recordsBar"); continue; }
     // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland above): a founding on
     // ground whose people remember ONE fallen nation — uncontested, viable against
     // this candidate's own bar (the same clusterPop×capMul the cluster gate just

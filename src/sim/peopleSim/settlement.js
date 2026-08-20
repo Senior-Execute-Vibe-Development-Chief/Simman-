@@ -9,7 +9,7 @@
 
 import { seedLocalTerritory } from "./territory.js";
 import { mergeReach } from "./roads.js";
-import { techEffects } from "./tech.js";
+import { techEffects, RECORDS_ORG } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt, cropCeil } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
@@ -458,7 +458,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     kind: opts.cradle ? "cradle" : (opts.kind || (opts.parentId != null && opts.parentId >= 0 ? "settled" : "crystallized")),
     parent: opts.parentId ?? -1, polity: opts.countryId ?? -1,
   });
-  if (opts.cradle) ensurePolity(world, s.id, { how: "cradle", seat: s });
+  // T.STATE_RECORDS: a cradle city is born a stateless temple town unless its
+  // court can already administrate (tech.js RECORDS_ORG — the Writing gate);
+  // below the bar it self-founds later through the frontier channel, so the
+  // dawn shows villages and temple towns first, then the tablet, then the state.
+  if (opts.cradle && (!T.STATE_RECORDS || (((s.knowledge && s.knowledge.organization) || 0) >= RECORDS_ORG))) ensurePolity(world, s.id, { how: "cradle", seat: s });
   // _techEff is left UNSET here: at creation _metalCap is undefined, so seeding it now
   // (techEffects(s.knowledge, …)) would bake in an UNCAPPED metallurgy tier that ignores
   // the reachable-ore cap (B51). The lazy techEff() path fills it — via practisedK, so it

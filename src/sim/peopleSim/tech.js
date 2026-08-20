@@ -27,6 +27,17 @@ import { T } from "./tuning.js";
 
 export const ERAS = ["Stone Age", "Bronze Age", "Classical", "Medieval", "Renaissance", "Industrial", "Modern"];
 
+// The records bar (T.STATE_RECORDS, 2026-08-19): the organization level at
+// which a court can ADMINISTRATE — keep rolls, levy tax, bind a territory.
+// One definition, two uses: this is literally the Writing tech's own gate
+// ("record law, tax and myth"), read from the tree so the state's birth bar
+// and the tech that represents it can never drift apart. History's anchor:
+// Uruk's state and its clay tax tablets arrive together — the state IS an
+// administrative machine, so no records, no nation. Below it the world still
+// fills with villages, temple towns and tribal chiefdoms; wars of state,
+// borders and treasuries wait for the tablet.
+export const RECORDS_ORG = 0.35;   // == TECHS writing gate (asserted below)
+
 // Each tech: id, era (column), name (kept short for the node — detail lives in
 // desc), prereq techs, req(k) → are the knowledge thresholds met?, gate
 // (dominant track + threshold) for the "researching" progress hint, and desc
@@ -130,6 +141,9 @@ export const TECHS = [
 ];
 
 export const TECH_IDX = {}; TECHS.forEach((t, i) => { TECH_IDX[t.id] = i; });
+
+// One-definition invariant: the state-birth records bar IS the writing gate.
+{ const w = TECHS.find((t) => t.id === "writing"); if (!w || w.gate[1] !== RECORDS_ORG) throw new Error("RECORDS_ORG drifted from the writing tech's gate — they are one definition"); }
 
 // Are all of a tech's prerequisites present in the discovered set?
 const prereqsMet = (t, have) => { for (const p of t.prereq) if (!have[TECH_IDX[p]]) return false; return true; };

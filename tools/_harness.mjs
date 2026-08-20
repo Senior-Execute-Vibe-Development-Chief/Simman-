@@ -52,7 +52,15 @@ export function applyToolTuning() {
   // The live dawn's own battery is the genesis arc suite (probe_cityarc /
   // probe_tribute under SIM_TUNE DAWN_LIVE=1 — docs/state-birth-2026-08.md).
   // An explicit SIM_TUNE override (spread last) still wins for those arcs.
-  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, ...SIM_TUNE_OVERRIDES });
+  // STATE_RECORDS (2026-08-19) is pinned OFF for the same reason as DAWN_LIVE:
+  // it re-times GENESIS (states wait for the writing bar), and the standing
+  // gates measure mature-regime facts at fixed horizons — unpinned they would
+  // measure the pre-literate Neolithic instead. Its own battery is the
+  // live-dawn genesis suite (SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1"). THE
+  // LESSON OF THIS DATE STANDS: any verdict about genesis geography or timing
+  // MUST name its dawn regime and run the live arm explicitly — the app ships
+  // BOTH levers ON.
+  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, STATE_RECORDS: 0, ...SIM_TUNE_OVERRIDES });
 }
 applyToolTuning();
 
