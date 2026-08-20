@@ -596,6 +596,12 @@ export function initPopField(world) {
 // `sub` = how many ticks this firing represents (POP_FIELD_STRIDE); the step size
 // scales by it so a strided field follows the same trajectory at ~1/sub the cost.
 export function stepPopField(world, sub = 1) {
+  // Phase attribution for the dense-tick probe (2026-08-20): the field pass is
+  // 44% of a dense tick and TRIPLES with entity count at a fixed grid — which
+  // phase carries the per-city scaling decides the fix. Zero cost when off.
+  const _pf = world._dbgProfile ? (world.debug.pf || (world.debug.pf = {})) : null;
+  let _pfT = _pf ? performance.now() : 0;
+  const _pfm = _pf ? (k) => { const n2 = performance.now(); _pf[k] = (_pf[k] || 0) + (n2 - _pfT); _pfT = n2; } : null;
   const N = world.N, tw = world.tw, th = world.th;
   let { elev, fert, riverMag, relief, coast } = world;
   let pop = world.popField, cap = world.capField;
@@ -671,6 +677,7 @@ export function stepPopField(world, sub = 1) {
   // canals irrigate fields, not rangeland). Lever value = max yield multiple.
   const worksOn = T.LAND_WORKS > 0 && world.worksField;
   let worksF = worksOn ? world.worksField : null; const worksK = worksOn ? T.LAND_WORKS : 0;
+  if (_pfm) _pfm("prep");
   // ── Stage B parallel context (docs/popfield-parallel.md §4) ────────────────
   // Lever ≥1 routes the four parallel-safe phases through the shared band
   // kernels (≥2 additionally bands them across the worker pool when it is
@@ -745,6 +752,7 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  if (_pfm) _pfm("kernel");
   // ── T.FOREST_LOCK: the canopy prices the crop — the FIELD-side half of
   // LAND_CLEAR_METAL. The clearance model existed only as a STATE-FORMATION
   // bar (countryTerritory forestBar), so the capacity field read raw
@@ -822,6 +830,7 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  if (_pfm) _pfm("forestTill");
   // ── T.FIELD_CRADLE: the granary reaches the FIELD ─────────────────────────
   // Capacity-side adoption of the food economy's cradle stack (settlement.js
   // irrigation + alluvium — one physics, second consumer). The field-
@@ -871,6 +880,7 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  if (_pfm) _pfm("cradle");
   // ── T.FOOD_K: worked land's capacity IS the food ledger (the unification) ──
   // The formula above is an abstract PROXY (fertility × technique × access);
   // the settlement economy carries the REAL ledger — catchment harvests with
@@ -1076,6 +1086,7 @@ export function stepPopField(world, sub = 1) {
     }
     const t = pop; pop = nxt; nxt = t;           // swap buffers (per substep — next substep reads this one's result)
   }
+  if (_pfm) _pfm("foodK");
   // ── T.LAND_WORKS: build/rot pass (see the header block above the constants).
   // Runs on this tick's final pop & cap; the multiplier is felt next firing —
   // a one-firing lag that keeps the pass order clean and deterministic.
@@ -1109,6 +1120,7 @@ export function stepPopField(world, sub = 1) {
   }
   world.popField = pop;
   world._popNext = nxt;
+  if (_pfm) _pfm("worksTail");
 }
 
 const _spare4 = new Float64Array(4);

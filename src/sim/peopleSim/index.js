@@ -182,6 +182,7 @@ export function stepPeopleSim(world, n = 1) {
     // substrate. It's a SLOW diffusion (logistic growth + capacity-seeking migration),
     // so it runs on a STRIDE (POP_FIELD_STRIDE) at stride× the step size — same
     // trajectory, ~1/stride the cost (the field pass is the whole field-model overhead).
+    mark("settLoop");
     // Runs after the settlement pass so it reads this tick's leading agriculture.
     {
       const _pfs = Math.max(1, T.POP_FIELD_STRIDE | 0);

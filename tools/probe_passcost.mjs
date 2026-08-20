@@ -33,6 +33,12 @@ const rows = [...acc.entries()].map(([k, v]) => [k, v / ticks]).sort((a, b) => b
 let covered = 0;
 for (const [k, ms] of rows) { covered += ms; console.log(`  ${k.padEnd(22)} ${ms.toFixed(3)} ms/tick  (${((ms / (tSum / ticks)) * 100).toFixed(0)}%)`); }
 console.log(`  ${"(sum of marks)".padEnd(22)} ${covered.toFixed(3)} of ${(tSum / ticks).toFixed(3)} ms`);
+// Inside the field pass: per-phase accumulation (popField.js).
+if (world.debug.pf) {
+  console.log(`[popField phases] ms/tick:`);
+  const pr = Object.entries(world.debug.pf).map(([k, v]) => [k, v / ticks]).sort((a, b) => b[1] - a[1]);
+  for (const [k, ms] of pr) console.log(`  ${k.padEnd(22)} ${ms.toFixed(3)}`);
+}
 // Inside the settlements pass: per-section accumulation (settlement.js).
 if (world.debug.sett) {
   console.log(`[settlements sections] ms/tick over the whole register:`);

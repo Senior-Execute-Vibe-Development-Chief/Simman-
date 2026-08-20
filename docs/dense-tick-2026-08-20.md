@@ -40,15 +40,41 @@ run's own history diverges under stride, as any trajectory-touching lever's
 does). Gates: anchors byte-identical at the pinned stride
 (fd90feea/7239c843), smoke/validate/resgate/coverage/lint/build green.
 
+## Corrected attribution (marks fixed: the settlement loop had been lumped
+into the field bucket) — app-true (pool off), dense, SETT_STRIDE=3, tw=480
+
+| line | ms/tick | share |
+|---|---|---|
+| settlement loop | 48.7 | 36% |
+| trade (stride 3) | 33.3 | 21% |
+| stepPopField | 15.8 | 12% |
+| controlField | 8.6 | 6% |
+| deriveOnePop | 8.3 | 6% |
+| roads | 6.5 | 5% |
+
+## Second cut shipped: TRADE_STRIDE def 3 → 5 (harness pins 3)
+
+The sweep is the design's own dial ("every K ticks at K× volume, same AVERAGE
+flows"); at 5 it measures **18.6 ms/tick** (−44%). The harness pins 3 so every
+gate keeps the calibrated reference trajectory; the app ships 5. Dense total:
+~200 (unstrided) → 158 (SETT_STRIDE 3) → **133 ms/step** (+TRADE_STRIDE 5) —
+a 1.5× recovery so far at tw=480; the same fractions apply at tw=960.
+
+Register sanity across the strided arms (same seed/step, trajectories
+legitimately diverge): 535/328 → 573/395 → 589/372 cities/realms — same
+order, same regime; no collapse signature.
+
 ## Open (next laps, in order of measured size)
 
-1. **deriveOnePop + stepPopField** (~43ms of the dense bracket; 4× the tiles
-   at tw=960) — the census derive re-sums every catchment every field tick;
-   candidates: derive on the field stride with per-settlement stagger, or
-   incremental catchment sums.
-2. **The trade sweep** (~92ms every 3rd tick dense) — partner-bounded but
-   per-pair work is heavy; candidates: deepen TRADE_STRIDE (its own live
-   dial), or thin the per-pair goods loop.
-3. A like-for-like A/B of the strided live history against unstrided (the
-   register/era arcs should be statistically indistinguishable) before
-   raising K further.
+1. **The settlement loop's remainder** (~49ms): the strided sections are now
+   27ms of it (K=3 → K=4-5 cuts further; measure history-sanity first),
+   population runs per-tick at 6.6ms, and ~11ms is unattributed loop
+   overhead — attribute before touching.
+2. **stepPopField's foodK bucket** (10.5ms: the FOOD_K blend + urban spikes +
+   the capacity logistic + diffusion) — per-phase marks are in; split the
+   bucket further if it grows at tw=960.
+3. **controlField** (8.6ms, render-only in pretty mode) — tie its stride to
+   the snapshot cadence rather than the sim tick.
+4. **deriveOnePop** (8.3ms) — stagger catchment sums per settlement.
+5. The like-for-like history A/B (strided vs not) before raising either
+   stride further.
