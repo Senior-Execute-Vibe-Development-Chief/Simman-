@@ -350,3 +350,13 @@ magnitude, in the world its rationale was written for. One closure feeds
 the population target, the march subsidy and the growth-front's marginal-
 tile test, so the whole law breathes together. Pinned gates byte-identical
 (anchors re-verified); an explicit SPAN_TECH still overrides for sweeps.
+
+**Lap-3 confirmation at tw=960 (the owner's grid, 22k):** the Nile realm
+2436 coTiles ≈ 2.3M km² (was 5442 ≈ 5.2M at lap 2, and the whole dense
+zone at lap 1) — built over ~5000 steps from a valley start, not granted
+at materialization; the tail 70-392 tiles ≈ 0.07-0.37M km² — kingdoms and
+city-states; 24 settled / 15 realms; Bronze at 11700 and still Bronze at
+22000; every seat org 0.38-0.43. The four-frame pathology (subcontinental
+at first tick, continental blobs by +1k) is closed at its driver: states
+now begin at ~half span, valley-sized, and earn the continent as
+statecraft matures.
