@@ -96,6 +96,14 @@ function clamp01(v, dflt) { v = v == null ? dflt : +v; return v < 0 ? 0 : v > 1 
 let world = null;
 let genMeta = {};      // oceanLevel / tecParams — recorded into saves
 let playing = false;
+// The quiet ages fly (owner 2026-08-19): before any NATION exists the map has
+// nothing political to watch, so while autoEpoch is on the worker escalates
+// the effective pace to the frame budget's maximum (same budgeted path as
+// UNBOUNDED_TPS) and returns to the user's speed dial the moment the first
+// realm rises. Reads world STATE (realm count) — never the calendar.
+let autoEpoch = true;
+let fastEpochNow = false;
+let quietAgesNow = false;   // the pre-nation condition itself (chip shows whenever it holds; gold = accelerating, dim = user opted out)
 let speed = 30;        // TARGET ticks-per-second (see scheduleTick); 30 = ~1 step per snapshot
 let selId = -1;
 let chronPerspective = false; // chronicle rendered as the realm's scribes kept it
@@ -148,6 +156,7 @@ function handleMessage(m) {
     const wasPlaying = playing;
     if (m.playing !== undefined) playing = m.playing;
     if (m.speed !== undefined) speed = m.speed;
+    if (m.autoEpoch !== undefined) autoEpoch = !!m.autoEpoch;
     tickAccum = 0; lastTickWall = performance.now();  // reset the pacer so a speed/play change doesn't dump a burst
     if (playing && !wasPlaying) scheduleTick();      // (re)start stepping
     else if (!playing && world) buildSnapshot();     // refresh the paused frame
@@ -244,7 +253,7 @@ _tickChan.port1.onmessage = () => tick();
 function scheduleTick() {
   if (scheduled || !playing) return;
   scheduled = true;
-  if (speed >= UNBOUNDED_TPS) _tickChan.port2.postMessage(0);   // unbounded: re-enter immediately
+  if (speed >= UNBOUNDED_TPS || fastEpochNow) _tickChan.port2.postMessage(0);   // unbounded / quiet-ages auto: re-enter immediately
   else setTimeout(tick, SNAP_MS);                               // paced: wake roughly once per snapshot
 }
 
@@ -257,8 +266,10 @@ function tick() {
   // spiking step from blocking the snapshot cadence — and that spike stays off the
   // main (render) thread, which is the whole point of the worker.
   const now = performance.now();
+  quietAgesNow = !!world && (!world.countries || world.countries.size === 0);
+  fastEpochNow = autoEpoch && quietAgesNow;
   let steps;
-  if (speed >= UNBOUNDED_TPS) {
+  if (speed >= UNBOUNDED_TPS || fastEpochNow) {
     steps = Infinity;
   } else {
     const dt = Math.min(250, now - lastTickWall);   // clamp long gaps (tab unfocused) so we don't dump a flood
@@ -283,7 +294,7 @@ function tick() {
       playing = false;
       break;
     }
-    if (performance.now() - start > STEP_BUDGET_MS) break;
+    if (performance.now() - start > (fastEpochNow ? 26 : STEP_BUDGET_MS)) break;   // quiet ages: bigger slice (map barely changes; messages still get in every ~26ms)
   }
   const t = performance.now();
   if (t - lastSnap >= SNAP_MS) { buildSnapshot(); lastSnap = t; }
@@ -704,6 +715,8 @@ function buildSnapshotUnsafe() {
     eraAt: world._eraAt,             // display-calendar timeline (era → step it was reached)
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
+    fastEpoch: fastEpochNow,   // the auto-throttle is APPLIED
+    quietAges: quietAgesNow,   // the pre-nation condition holds (chip visible; gold when applied, dim when opted out)
     globalP,
     owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim, landNations,
     fieldDom, fieldSec, fieldLayer,   // per-tile identity field for the active culture/faith/language lens

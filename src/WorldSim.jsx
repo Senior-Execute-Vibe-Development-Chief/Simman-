@@ -335,6 +335,12 @@ const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// 
 // Before this, a worker error was console-only — a thrown step left the game silently frozen at its
 // last frame forever ("the game shuts down at step N"), with the world still alive and saveable.
 const[simError,setSimError]=useState(null);
+// Quiet-ages auto-throttle (worker: autoEpoch): before the first nation the
+// sim fast-forwards at the frame budget's max; the chip shows it and clicking
+// it hands the dial back to the user.
+const[autoEpoch,setAutoEpoch]=useState(true);
+const[fastEpoch,setFastEpoch]=useState(false);
+const[quietAges,setQuietAges]=useState(false);
 // The stale-tab detector (owner report 2026-08-19: "a certain type of change
 // doesn't reflect in the sim I run"): a long-lived tab keeps running the
 // bundle it loaded with — deploys only arrive on a RELOAD, and reloading
@@ -349,7 +355,7 @@ const[staleBuild,setStaleBuild]=useState(false);
 // ground truth — paste it, compare shas/values, done. Printed once per boot.
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
-  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED} STATE_OPEN=${SIM_T.STATE_OPEN}`);
+  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · iso=${typeof crossOriginIsolated!=="undefined"?crossOriginIsolated:"n/a"} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} STATE_RECORDS=${SIM_T.STATE_RECORDS} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED}`);
 },[]);
 useEffect(()=>{
   const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
@@ -2631,6 +2637,8 @@ const applySnapshot=useCallback((snap)=>{
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
   if(snap.countryClaim){psw._countryClaim=snap.countryClaim;if(!scrubRef.current)psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver bumps only live so the scrubbed layer's caches hold)
   if(snap.timelineN!==undefined)psw._timelineN=snap.timelineN;
+  if(snap.fastEpoch!==undefined)setFastEpoch(!!snap.fastEpoch);
+  if(snap.quietAges!==undefined)setQuietAges(!!snap.quietAges);
   if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
@@ -2682,7 +2690,7 @@ useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
 useEffect(()=>{drawNowRef.current=()=>{if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message);}}};},[draw]);
 
 // Forward play/pause + speed to the sim worker.
-useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed,autoEpoch});},[playing,speed,autoEpoch]);
 // Forward selection so the worker includes that settlement's full detail.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
 // Close the per-realm overlays when the selection changes, so they don't
@@ -4290,6 +4298,10 @@ return(
       held 75-80% of state land until ~1800 (docs/atlas-gap-2026-08-14.md). */}
   {psStats.beltShare>0&&!narrow&&<span className="au-num au-fade" title={`The leading BELT of states (within ~1000 km contact of one another) holds ${Math.round(psStats.beltShare*100)}% of all claimed land, across ${psStats.beltCount} belt${psStats.beltCount===1?"":"s"} worldwide. History: the Old World belt held 75-80% of state land until ~1800.`}
     style={{fontSize:11,whiteSpace:"nowrap"}}>⚑{Math.round(psStats.beltShare*100)}%</span>}
+  {/* Quiet-ages chip: the sim is fast-forwarding the pre-nation ages. */}
+  {quietAges&&playing&&<span className="au-num" onClick={()=>setAutoEpoch(a=>!a)}
+    title={fastEpoch?"The ages before nations fly by — the sim runs at the frame budget's maximum until the first realm rises (then your speed dial takes over). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
+    style={{fontSize:11,color:fastEpoch?"var(--au-ch-gold)":"inherit",opacity:fastEpoch?1:0.55,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⏩ prehistory</span>}
   {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
   {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
     title="A newer build of the app is deployed than the one this tab is running. Click to reload — SAVE YOUR WORLD FIRST (reloading discards an unsaved world). A long-lived tab keeps the code it loaded with; updates only arrive on reload."
