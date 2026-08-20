@@ -172,6 +172,32 @@ urban age unfolds at a similar tempo once it opens (control had ~8 realms
 history, it doesn't slow the whole clock. **VILLAGE_LEARN ships at 1.0 — no
 knob was tuned to reach this.**
 
+**tw=960 spot-check (the owner's grid, 8817, 22k) — the Third-Rule arm holds.**
+
+```
+step   ledgers  lkOrg lkMet lkCon   settled realms
+ 8250     8     0.129 0.019 0.194     0  0     farming: Nile 7104, Indus 8136
+13750    24     0.262 0.213 0.406     0  0     (Mesopotamia 12768, Yellow R 13800)
+16500    35     0.281 0.329 0.551     3  1     FIRST CITY: Upper Nile, 14300
+22000    76     0.284 0.428 0.664    32 23     tribal from 15700; frontier state 17280
+eraAt: Bronze 11700 (before any city), Classical 17100, Medieval 20400
+```
+
+Same KIND, same order, same neighborhood as the tw=480 arm — first city
++4.6% in step terms (13675 → 14300), tribal fabric after the first city at
+both grids, the Bronze flip on an empty map at both. No resolution-collapse
+class difference; the run also survived 22k at 1920 within memory (the
+stall-fix allocation discipline holding). Geography at the fine grid: the
+Nile valley births the first two cities (Upper Nile 14300, Lower Nile
+15650); Anatolia (cu+sn, met 0.43) and Mesopotamia (cu 0.82) lead the
+metallurgy ladder exactly where history's smiths were; the chernozem
+steppe-forest belt (agri 0.72-0.73) grows a Trypillia-like early cluster —
+its Dnieper seat takes the first *frontier* state door at 17280 (the Nile
+realms materialize through tribal adoption, which the probe's
+polity.founded list doesn't date). Watch items: that Dnieper first-mover,
+and a Zambezi city (17040) off the southern wheat hearth — both
+mechanism-driven, both worth re-reading after the next long app run.
+
 Carried observations: an SE-Asian bronze polity (102.8E 17.3N, minted 16800)
 rises before the Yellow River's late-farming basin — the technique wave
 reached the Khorat plateau through India first (Ban Chiang is a defensible
