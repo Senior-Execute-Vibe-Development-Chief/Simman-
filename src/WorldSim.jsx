@@ -2187,17 +2187,24 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         // Black diagonal stripes over colonies (same colour as the metropole underneath).
         stripeCells(octx,colonyCells,TR,0.62);
-        // thick dark borders between neighbouring countries
-        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
+        // Borders, atlas-style (owner 2026-08-20: "display a nation and their
+        // tributary as 1 thing — the tributary a STATE/province"): an edge
+        // between two members of the SAME suzerainty bloc is an internal
+        // province line — thin, translucent — while a true national border
+        // (different bloc roots) keeps the thick dark stroke. The register
+        // keeps every polity; the atlas look is a paint convention.
+        const natPath=new Path2D(),provPath=new Path2D();
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
           const py=(ti/tw)|0,px=ti-py*tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
-          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;const p=rootOf(ro)===rootOf(cc)?provPath:natPath;p.moveTo(ex,sy);p.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);const p=rootOf(dno)===rootOf(cc)?provPath:natPath;p.moveTo(sx,by);p.lineTo(sx+TR,by);}}
         }
-        octx.stroke();
+        octx.lineJoin="round";octx.lineCap="round";
+        octx.strokeStyle="rgba(20,20,26,0.45)";octx.lineWidth=0.8*uiF;octx.stroke(provPath);
+        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.stroke(natPath);
         emphasizeRealm(claimArr,tw,th);
       }
       if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&claimArr){
@@ -3189,6 +3196,16 @@ const _era=ERAS[psStats.leadingEra||0]||ERAS[0];
 const _arcComplete=(psStats.leadingEra||0)>=ERAS.length-1;
 const _psw=peopleRef.current;
 const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
+// The atlas headline (owner 2026-08-20): NATIONS = sovereign suzerainty blocs
+// (overlord chains followed to their root — same convention the political
+// paint uses), while the register's full size rides beside it as "states".
+// 1500-CE Earth held ~1,000+ polities but atlases draw ~hundreds of blocs.
+const _nationCount=(()=>{const cs=_psw&&_psw.countries;if(!cs)return 0;
+  const roots=new Set();
+  for(const id of cs.keys()){let cur=id,hops=0;
+    while(hops++<12){const o=cs.get(cur);const ov=o&&o._overlord>=0&&o._overlord!==cur?o._overlord:-1;if(ov<0)break;cur=ov;}
+    roots.add(cur);}
+  return roots.size;})();
 
 
 // ── World Panel panes (relocated leaderboard / charts / settlement card) ──
@@ -4367,7 +4384,7 @@ return(
   {!narrow&&<>
     <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
     <span className="au-vrule" style={{height:22}}/>
-    <span className="au-num" style={{fontSize:13}}>{_countryCount} <span className="au-sc au-cfade" style={{fontSize:11}}>realms</span></span>
+    <span className="au-num" style={{fontSize:13}} title={`${_nationCount} sovereign nations (suzerainty blocs); the full register holds ${_countryCount} states incl. vassals & tributaries`}>{_nationCount} <span className="au-sc au-cfade" style={{fontSize:11}}>nations</span>{_countryCount>_nationCount&&<span className="au-cfade" style={{fontSize:11}}> · {_countryCount} states</span>}</span>
     <span className="au-num" style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-cfade">%</span> <span className="au-sc au-cfade" style={{fontSize:11}}>claimed</span></span>
     {lens==="economy"&&(()=>{
       const psw=peopleRef.current;

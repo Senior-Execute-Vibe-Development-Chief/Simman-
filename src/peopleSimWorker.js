@@ -214,6 +214,10 @@ function logNationCensus(world, why) {
       army: Math.round(army),
       org: k ? +(k.organization || 0).toFixed(2) : 0,      // the capital's statecraft (drives span/reach)
       era: k ? ERAS[techState(k).era] : "—",
+      over: (() => {   // suzerain, if any — the atlas headline counts BLOCS (nations · states)
+        const pol = getPolity(world, c.id);
+        return pol && pol._overlord >= 0 && pol._overlord !== c.id ? realmName(world, pol._overlord) : "";
+      })(),
     });
   }
   rows.sort((a, b) => b.km2 - a.km2);

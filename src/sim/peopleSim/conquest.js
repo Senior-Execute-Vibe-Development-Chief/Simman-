@@ -3884,7 +3884,19 @@ function considerIntegrations(world, countries) {
     if (!pol || pol._depKind !== "vassal") { tel(world, "integrate", "notAVassalBond"); continue; }
     const fOrg = techEff(H.capital).reachLevel;
     if (fOrg < T.ABSORB_ORG_MIN) { tel(world, "integrate", "orgBelowMin"); continue; }
-    if (tierCapForOrg(fOrg) < (S.capital.tier | 0)) { tel(world, "integrate", "seatAboveTierCap"); continue; }
+    // T.WAR_FINISH — SEAT GRADE IS RELATIVE, NOT AN ORG LADDER. tierCapForOrg's
+    // absolute rungs (org 0.72 to govern a tier-2 seat) predate CITY_AT_BIRTH,
+    // under which EVERY entity is born tier 2 — so integration structurally
+    // required near-industrial statecraft to province ANY client (measured at
+    // the shipped grid: integrate PASSED = 0 of 4,290, seatAboveTierCap 1,562).
+    // The honest law is relative: a court can directly govern a client seat
+    // whose grade does not exceed its own capital's — Rome governs Pergamon
+    // because Rome already governs Rome. Self-calibrating across eras and
+    // register regimes; the ABSORB_ORG_MIN institutional floor stays.
+    const seatOver = T.WAR_FINISH
+      ? (S.capital.tier | 0) > (H.capital.tier | 0)
+      : tierCapForOrg(fOrg) < (S.capital.tier | 0);
+    if (seatOver) { tel(world, "integrate", "seatAboveTierCap"); continue; }
     // Direct rule must REACH the client's seat — tribute ranges SUBMIT_REACH
     // past holdReach precisely because a vassal administers itself; a
     // province does not.
@@ -4182,7 +4194,10 @@ function absorbWeakNeighbors(world, countries) {
       const F = countries.get(ncc); if (!F || !F.capital) continue;   // a realm mid-collapse can have no capital this pass
       const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
       if (fOrg < T.ABSORB_ORG_MIN) continue;
-      if (myTier > tierCapForOrg(fOrg)) {
+      // T.WAR_FINISH: the same relative seat-grade law as considerIntegrations
+      // (see the note there) — the absorber governs seats up to its own
+      // capital's grade; the absolute org ladder stays at lever 0.
+      if (T.WAR_FINISH ? myTier > (F.capital.tier | 0) : myTier > tierCapForOrg(fOrg)) {
         // ...UNLESS F overwhelmingly out-powers m's WHOLE country: brute force takes a
         // developed neighbour's land too (a hegemon conquers what it cannot slowly
         // administer), so great powers consolidate even ADVANCED statelets late game

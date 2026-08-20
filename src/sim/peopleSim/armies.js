@@ -249,7 +249,19 @@ const FORT_W            = 2.0;  // peak added defense multiple at the fortress i
 const BASE_OF_REF       = 0.125;   // a post stages as a BASE at an eighth of a manned fortress's complement (the legacy 5-of-40 watch→base share)
 function homeMight(s) {
   const morale = Math.max(MILITIA_MORALE_FLOOR, (s.loyalty ?? 1) - 0.5 * (s.unrest || 0));
-  const militia = (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
+  // T.WAR_FINISH — THE WALLS ARE MANNED BY THE CITY, NOT THE PROVINCE. Under
+  // ONE_POP `s.people` is the CATCHMENT census (city + the countryside it
+  // works — CLAUDE.md's own repeated trap, caught here a fourth time), so the
+  // militia floor priced every storm against the whole province's men: the
+  // variance arc measured 370/370 sieges failing on it and treated the symptom
+  // with starvation; at the shipped statelet grid the storm funnel still reads
+  // 7 falls in 11,597 attempts. History mans the ramparts with the people who
+  // live inside them — the URBAN core (the honest `_urbanPop` the LAND_KNOW
+  // wave measured, ~12k for a typical ancient city) — while the countryside
+  // is what the besieger forages. Lever 0 (and any regime without the urban
+  // read) keeps the catchment militia byte-identically.
+  const base = T.WAR_FINISH && s._urbanPop != null ? s._urbanPop : (s.people || 0);
+  const militia = base * T.HOME_MILITIA_FRAC * morale;
   const walls = 1 + WALL_W * Math.max(0, techEff(s).defenseLevel || 0);
   return Math.max(s.army || 0, militia) * techMul(s) * walls;
 }
@@ -384,6 +396,33 @@ export function musterArmies(world) {
     for (const cc of [...mp.keys()]) if (!seen.has(cc)) mp.delete(cc);   // drop dead realms
   }
 
+  // T.WAR_FINISH — THE GARRISON EATS WHAT THE CITY EATS. The desertion test
+  // below reads the settlement food LEDGER (_foodSupply vs _foodDemand), but
+  // under the field regime the ledger is vestigial for the census: people are
+  // fed by the land's capacity (popField vs capField — the derive's own
+  // truth), and the owner's first LAND_KNOW report already showed its shadow
+  // ("starving but not shrinking": the ledger reads deficit while the
+  // population holds). Measured at the consolidation lap (probe_armyfunnel,
+  // live arm): 90-97% of ALL settlements fail the ledger test with
+  // _foodSupply p50 = 0.00 while their populations grow — so every garrison
+  // on Earth melts 20% per muster forever, world army ~1 sim-unit, and every
+  // decisive war channel starves downstream (storm 7/11,597, capture
+  // 10/2,914). The fix is one OR: a settlement whose ledger reads hungry is
+  // still FED if the field that actually feeds its people covers them —
+  // Σ capField ≥ Σ popField over its own catchment, the same 0.98 margin the
+  // ledger test uses (no new constant). The ledger keeps its meaning where
+  // it is the truth (sieges, import economies); it just stops disbanding
+  // armies the census never starved. Lever 0 = ledger-only, byte-identical.
+  let _ffPf = null, _ffCf = null;
+  if (T.WAR_FINISH && T.ONE_POP && world.popField && world.capField && world._territoryOwner) {
+    _ffPf = new Map(); _ffCf = new Map();
+    const pf = world.popField, cfA = world.capField, ow = world._territoryOwner, Nn = world.N;
+    for (let ti = 0; ti < Nn; ti++) {
+      const sid = ow[ti]; if (sid < 0) continue;
+      _ffPf.set(sid, (_ffPf.get(sid) || 0) + pf[ti]);
+      _ffCf.set(sid, (_ffCf.get(sid) || 0) + cfA[ti]);
+    }
+  }
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     // Can the settlement actually FEED its garrison? The signal is an
@@ -394,7 +433,12 @@ export function musterArmies(world) {
     // grow their garrison to the tier/political cap. This is the soft "can't
     // field more than you can feed" limit.
     const fed = s._foodSupply || 0;   // _foodSupply now includes hierarchy-aggregated grain (foodHierarchy.js)
-    if (fed < (s._foodDemand || 0) * 0.98) {
+    let starved = fed < (s._foodDemand || 0) * 0.98;
+    if (starved && _ffPf) {
+      const p = _ffPf.get(s.id) || 0;
+      if (p > 0 && (_ffCf.get(s.id) || 0) >= p * 0.98) starved = false;   // the land feeds them (see the T.WAR_FINISH note above)
+    }
+    if (starved) {
       s.army = (s.army || 0) * ARMY_DESERT;
     } else {
       // Standing professional army (org-scaled in armyCapFrac). In WAR the realm also raises
@@ -415,7 +459,19 @@ export function musterArmies(world) {
       // must lean on its regulars: the historical drift from feudal levy to standing
       // army as cities grow. (Legacy non-DISSOLVE model: _ruralPop is 0, so the levy
       // falls back to the whole populace and this is algebraically unchanged.)
-      let popCap = s.people * frac;
+      // T.WAR_FINISH — the professional core is an URBAN institution: under
+      // ONE_POP `s.people` is the CATCHMENT (city + countryside), so the
+      // "whole population" read armed every city with 5-9% of a PROVINCE —
+      // and the first battery arm measured the consequence: catchment-fed
+      // armies against urban-manned walls (the homeMight re-grounding) made
+      // every storm succeed, flows ran ended=96/shattered=137 per 4k steps
+      // against founded=36, and the size distribution COMPRESSED (gini 0.39)
+      // — a boiling map that grinds instead of consolidating. The three
+      // population reads now sit on one honest split: the PAID core is
+      // urban (_urbanPop), the wartime levy is rural (_ruralPop, already
+      // split-aware below), the walls are urban (homeMight). Regimes
+      // without the urban read keep the whole-census core byte-identically.
+      let popCap = (T.WAR_FINISH && s._urbanPop != null ? s._urbanPop : s.people) * frac;
       if (atWar) {
         const levyFrac = T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0) * (c._warCommit ?? 1));
         // Normalise the rural levy to the pre-industrial baseline (URBAN_BASE_RURAL):

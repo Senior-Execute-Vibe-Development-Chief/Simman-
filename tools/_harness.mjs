@@ -66,9 +66,12 @@ export function applyToolTuning() {
   // PEER_SEATS (2026-08-20, the mega-catchment wave) joins for the same
   // reason again: it multiplies the genesis register (peer courts inside
   // claimed cells), so the fixed-horizon gates would measure a different
-  // world. THE FULL LIVE ARM IS NOW:
-  //   SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1,PEER_SEATS=1"
-  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, STATE_RECORDS: 0, LAND_KNOW: 0, PEER_SEATS: 0, ...SIM_TUNE_OVERRIDES });
+  // world. WAR_FINISH (2026-08-20, the consolidation wave) joins because it
+  // re-arms the whole world (fed garrisons / city walls / relative seat
+  // grade) and the mature-regime gates were calibrated on the old military
+  // balance. THE FULL LIVE ARM IS NOW:
+  //   SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1,PEER_SEATS=1,WAR_FINISH=1"
+  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, STATE_RECORDS: 0, LAND_KNOW: 0, PEER_SEATS: 0, WAR_FINISH: 0, ...SIM_TUNE_OVERRIDES });
 }
 applyToolTuning();
 
