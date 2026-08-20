@@ -412,7 +412,16 @@ export function makeSettlement(world, x, y, opts = {}) {
     if (s.knowledge[k] === undefined) s.knowledge[k] = 0;
   }
   // Compute water access score from the home tile + 4 neighbours.
-  s.countryId = opts.countryId ?? s.id;             // joins parent's realm if specified, else own city-state
+  // T.STATE_RECORDS: the "else own city-state" default IS a statehood door —
+  // every settlement used to be BORN flying its own flag, which is exactly
+  // how full nations covered the Stone Age map (the flag, not the polity
+  // record, is what the countries view and the political paint aggregate).
+  // Below the unified founding bar (tech.js stateOrgBar) a settlement with no
+  // realm to join is born STATELESS; explicit opts.countryId (daughters,
+  // colonies, materialising nations — each gated at its own source) passes.
+  s.countryId = opts.countryId ?? (
+    !T.STATE_RECORDS || (((s.knowledge && s.knowledge.organization) || 0) >= stateOrgBar())
+      ? s.id : -1);                                 // joins parent's realm if specified, else own city-state — once the court can administrate one
   // ── Who lives here: culture stock + a name in that people's tongue ──
   // A cradle is the birth of a PEOPLE (founds a culture); everything else
   // carries its founder stock's culture. Explicit opts.name wins (imports).
