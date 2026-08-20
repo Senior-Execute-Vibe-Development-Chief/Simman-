@@ -113,8 +113,74 @@ the proof.
 
 ## Measurements
 
-*(filled in as the battery lands — arc tables from probe_genesis at 960/1920,
-probe_quietcost cost check, VILLAGE_LEARN calibration notes, gate results.)*
+**Arc v1 (tw=480, 8817, 20k) — two defects found by the first run.** Ledger
+org reached only 0.220 by 20k (the settlement law's sqrt-minds specialist
+term had been dropped — worth ~2.4× for a basin holding a city-basin census —
+so the climb ran at half the entity pace this ledger replaces), and the first
+stone-age chiefdom paint leaked through the PEER_LATTICE **secondary** tribal
+lane, which sits "the identical exam" to the primary but had not been given
+the tally gate. Both fixed; the era fold was also a per-track chimera across
+basins (one basin's org + another's seamanship rang Bronze via sailing) —
+now the cached max over single records' tech eras (`world._lkEra`).
+
+**Arc v2 (tw=480, 8817, 20k) — the arc is historically shaped:**
+
+```
+step   ledgers  lkOrg lkMet lkCon   settled realms
+ 7500     2     0.136 0.000 0.180     0  0     farming: Nile 7128
+10000    18     0.177 0.049 0.229     0  0     (Indus 8136, Mesopotamia 11232)
+12500    21     0.243 0.127 0.309     0  0
+15000    21     0.281 0.218 0.402     2  0     FIRST CITY: the Nile, 13675
+17500    34     0.281 0.325 0.546     4  3     first states 17280 (frontier)
+20000    50     0.281 0.403 0.636    13  9
+eraAt: Bronze 12300 (the land's copper working), Classical 16800, Medieval 19500
+```
+
+- **First city in the world: the Nile (28.5E 30.8N), step 13675** — then
+  Upper Nile, the Indus, Mesopotamia; Anatolia's ledger carries met 0.40 on
+  cu 0.69 (the real metallurgy heartland), the Tripolye belt (27E 48.8N) and
+  an Altai metal province mint in the second rank. Zero settlements, zero
+  roads, zero borders before 13675.
+- **Tribal fabric now waits for the tally**: first declaration 14400 (was
+  7500 in v1/the old regime) — after the first city, before the first state.
+- **Top ledgers freeze at exactly ~0.280-0.281** — the bar binds, the mint
+  follows, the record freezes as its cell seats the court. Mechanism
+  confirmed end-to-end.
+- **Cost** (probe_quietcost, tw=240, lever on): crystallize holds at 2% both
+  windows; the field pass keeps its 90-92%. The ledger is free.
+- **Gates**: npm test green; hashbase anchors fd90feea/7239c843 unchanged.
+
+**Control arm (LAND_KNOW=0, same grid/seed/steps) — the verdict:**
+
+| | control (old doors) | LAND_KNOW |
+|---|---|---|
+| first city | 7600 — 479 steps after farming, in Nubia/Chad | 13675 — the Nile |
+| tribal paint from | 7500 | 14400 (after the first city, before the first state) |
+| settled / realms at 20k | 87 / 71 — the everywhere-at-once bloom | 13 / 9 — the cradle belt |
+| eraAt | [Stone, 13800, 15300, 18000] | [Stone, **12300**, 16800, 19500] |
+
+Three verdicts fall out. (1) **The Bronze flip now precedes the first city**
+(12300 < 13675, via the land's own copper working) — the map is empty until
+the era turns, then cities arrive *in* the Bronze age, states just behind:
+the owner's arc, verbatim, with no display gating anywhere. (2) **Post-mint
+court racing is pre-existing**: the control's own courts hit seatOrg 0.72 by
+20k and its era ribbon reaches Medieval at 18000 — LAND_KNOW is actually
+*slower* through Classical/Medieval (fewer, later courts). That pace belongs
+to the standing chronology campaign (SCI_COMPOUND), not this wave. (3) The
+urban age unfolds at a similar tempo once it opens (control had ~8 realms
+~1.5k steps after its first states; so does this arm) — the wave *stages*
+history, it doesn't slow the whole clock. **VILLAGE_LEARN ships at 1.0 — no
+knob was tuned to reach this.**
+
+Carried observations: an SE-Asian bronze polity (102.8E 17.3N, minted 16800)
+rises before the Yellow River's late-farming basin — the technique wave
+reached the Khorat plateau through India first (Ban Chiang is a defensible
+echo; the Yellow River pin matured at 16392 on this seed/grid — re-measure
+at tw=960). A West-African frontier state at 19872 rides the wave-arrived
+package similarly. Pre-existing chronicle noise CONFIRMED in the control:
+site mints log `settlement.founded` twice (makeSettlement + the mint
+block's city:1 event) — cosmetic, both regimes, untouched for
+byte-identity; a future cleanup should dedupe under its own measurement.
 
 ## Open follow-ups
 

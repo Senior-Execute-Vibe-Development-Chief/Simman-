@@ -168,11 +168,19 @@ export function ensureLedgerAt(world, ti) {
   return rec;
 }
 
-/** Rebuild statics for loaded records (saves carry only {ti, k, born}). */
+/** Rebuild statics for loaded records (saves carry only {ti, k, born}), and
+ *  re-derive the cached land era so the ribbon doesn't dip to Stone for the
+ *  first growth interval after a load. */
 export function rederiveLandKnow(world) {
   const m = world._landKnow;
   if (!m) return;
-  for (const rec of m.values()) deriveStatics(world, rec);
+  let lkEra = 0;
+  for (const rec of m.values()) {
+    deriveStatics(world, rec);
+    const e = techState(rec.k).era;
+    if (e > lkEra) lkEra = e;
+  }
+  world._lkEra = lkEra;
 }
 
 /** Per-track max over all live records — the land's leading knowledge, for
