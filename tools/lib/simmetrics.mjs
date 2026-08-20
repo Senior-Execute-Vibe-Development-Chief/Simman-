@@ -95,6 +95,10 @@ export const WORLD_SCRATCH = new Set([
   // the memory fix keeps the ALLOCATION alive, never the values.
   "_terrHeap", "_fpHeap", "_fpHeap2",
   "_lkContactStep",   // land-ledger contact-sweep cadence stamp (landKnow.js)
+  // The 26.6k allocation-wall fix (2026-08-20): the transport Dijkstra frontier
+  // joins the persistent-heap family, plus its high-water diagnostic counters
+  // (peak sizes/pushes — observability about the machine, not world history).
+  "_transHeap", "_transStat",
 ]);
 
 /** An ENTITY REFERENCE, not a data bag. Recursing into a settlement's `_foodParent`

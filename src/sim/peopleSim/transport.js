@@ -428,7 +428,17 @@ export function computeTransport(world) {
   let dist = world.transportDist;
   if (!dist || dist.length !== N) dist = new Float32Array(N);
   for (let i = 0; i < N; i++) dist[i] = Infinity;
-  const heap = new _MinHeap();
+  // Persistent frontier heap (reuse-slot, like _terrHeap/_fpHeap): this exact
+  // `new _MinHeap()` grow path is where the owner's app died at ~26.6k steps
+  // (2026-08-20, "Array buffer allocation failed" in _grow — the LAST allocation
+  // standing when the tab's ceiling arrived; see docs/allocation-wall-2026-08-20.md).
+  // The heap itself measured SMALL (cap 65536 = 0.5MB at tw=960/28k), so keeping
+  // it alive both removes this rebuild's re-grow churn and retires the site that
+  // takes the fall under memory pressure. Contents are per-firing scratch (n=0
+  // below); only the backing lanes persist. Never serialized (persist whitelists).
+  let heap = world._transHeap;
+  if (!heap) heap = world._transHeap = new _MinHeap();
+  heap.n = 0;
   // Seed: every alive settlement contributes a 0-distance source.
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -444,7 +454,9 @@ export function computeTransport(world) {
   // preferring stairstep paths over a straight diagonal across
   // open ground.
   const SQRT2 = Math.SQRT2;
+  let peakN = 0, pushes = 0;   // frontier high-water attribution (allocation-wall watch)
   while (heap.n > 0) {
+    if (heap.n > peakN) peakN = heap.n;
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;       // stale
     const ty = (ti / tw) | 0;
@@ -471,8 +483,23 @@ export function computeTransport(world) {
       if (nd < dist[ni]) {
         dist[ni] = nd;
         heap.push(ni, nd);
+        pushes++;
       }
     }
+  }
+  // Frontier watch (the 26.6k allocation-wall diagnosis, 2026-08-20): the heap
+  // measured SMALL at both grids (tw=480 cap 4096 / tw=960 cap 65536 by ~28k),
+  // proving its _grow was the canary, not the cause. Keep the high-water stat —
+  // it prints only when the persistent cap grows past its all-time peak (a
+  // handful of lines per world, then silence), so a future REAL frontier
+  // runaway names itself in the console instead of dying as a mystery OOM.
+  const st = world._transStat || (world._transStat = { peakN: 0, peakCap: 0, maxPushes: 0, calls: 0 });
+  st.calls++;
+  if (peakN > st.peakN) st.peakN = peakN;
+  if (pushes > st.maxPushes) st.maxPushes = pushes;
+  if (heap.cap > st.peakCap) {
+    st.peakCap = heap.cap;
+    console.log(`[transHeap] step=${world.step} cap=${heap.cap} peakN=${peakN} pushes=${pushes} (${((heap.cap * 8) / 1e6).toFixed(1)}MB backing)`);
   }
   return dist;
 }

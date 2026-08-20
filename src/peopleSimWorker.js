@@ -125,6 +125,35 @@ let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
 
+// ── The snapshot buffer pool (the 26.6k allocation wall, 2026-08-20) ─────────
+// The owner's app died at ~26.6k steps on a 16KB heap grow — total exhaustion,
+// not a big ask. The sim's own graph measured FLAT at both grids (probe_memgrowth
+// live: heapUsed 63-73MB at 28-30k), the scrubber timeline negligible
+// (probe_timelinemem: 0.3MB/30k) — what remained was THIS file's snapshot
+// stream: fresh multi-MB transferables ~30×/sec (roadFlow every frame;
+// owner/claim/roadQuality every 6th ≈ 60-90MB/s at tw=960) while the unbounded
+// tick loop re-enters via MessageChannel and never idles, so allocation outruns
+// collection until one allocation — any allocation — fails. Same disease the
+// 2026-08-19 stall fix cured inside the sim, one layer up.
+// The cure is the same reuse-slot idea stretched across the thread boundary:
+// the main thread posts each DISPLACED mirror buffer back ({type:"bufret"}),
+// and every per-snapshot array is built in a recycled buffer. Steady state
+// after warmup: zero new ArrayBuffer allocation per snapshot, both threads.
+// A pooled array is DIRTY — every maker below must overwrite every index
+// (set()/full loop/fill) before it ships. Same full-overwrite rule as the
+// sim's own reuse slots.
+const _bufPool = new Map();   // byteLength → ArrayBuffer[] returned by the main thread
+const POOL_KEEP = 6;          // per size class; ~2-3 are ever in flight per class
+function pooledArr(Ctor, n) {
+  const a = _bufPool.get(n * Ctor.BYTES_PER_ELEMENT);
+  return a && a.length ? new Ctor(a.pop()) : new Ctor(n);
+}
+function pooledCopy(src) {
+  const out = pooledArr(src.constructor, src.length);
+  out.set(src);
+  return out;
+}
+
 // ── The realm census in the browser console (owner 2026-08-20) ──────────────
 // "log the size in km² of every nation, their centre point, neighbour count…
 // their general identity." Auto-logs whenever the realm REGISTER changes (a
@@ -205,6 +234,16 @@ self.onmessage = (e) => {
 };
 function handleMessage(m) {
   if (m.type === 'bandWorkerUrl') { setBandWorkerUrl(m.url); return; }   // popField pool: built-app band-worker chunk URL (page-resolved)
+  if (m.type === "bufret") {
+    // Consumed snapshot buffers coming home for reuse (see the pool note above).
+    if (m.bufs) for (const b of m.bufs) {
+      if (!(b instanceof ArrayBuffer) || !b.byteLength) continue;
+      let a = _bufPool.get(b.byteLength);
+      if (!a) _bufPool.set(b.byteLength, a = []);
+      if (a.length < POOL_KEEP) a.push(b);
+    }
+    return;
+  }
   if (m.type === "init") {
     try {
       genMeta = m.genMeta || {};
@@ -216,6 +255,7 @@ function handleMessage(m) {
       // init) — but if a previous world was mid-play, keep stepping the new one
       // rather than silently freezing until the next control message.
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
+      _bufPool.clear();           // a new world can change N — stale-size buffers would never be hit again
       buildSnapshot();            // immediate first frame
       if (playing) scheduleTick();
     } catch (err) {
@@ -269,6 +309,7 @@ function handleMessage(m) {
       world = loadWorld(m.json);
       world._wantMoneyFlows = (viewMode === "money");
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
+      _bufPool.clear();   // the loaded world can change N — stale-size buffers would never be hit again
       buildSnapshot();
       if (playing) scheduleTick();
     } catch (err) {
@@ -575,7 +616,7 @@ function buildSnapshotUnsafe() {
   snapCount++;
   const sendStatic = !staticSent || (snapCount % 6 === 0);
   staticSent = true;
-  let owner = sendStatic && world._territoryOwner ? world._territoryOwner.slice() : null;
+  let owner = sendStatic && world._territoryOwner ? pooledCopy(world._territoryOwner) : null;
   if (owner) {
     // Drop tiles still owned by a settlement that has DIED but whose territory
     // the sim hasn't recomputed yet (computeTerritory releases them, but only
@@ -586,8 +627,8 @@ function buildSnapshotUnsafe() {
     for (const s of world.settlements) if (s.mode === "settled") settled.add(s.id);
     for (let i = 0; i < owner.length; i++) { const o = owner[i]; if (o >= 0 && !settled.has(o)) owner[i] = -1; }
   }
-  const roadQuality = sendStatic && world.roadQuality ? world.roadQuality.slice() : null;
-  const roadFlow = world.roadFlow ? world.roadFlow.slice() : null;
+  const roadQuality = sendStatic && world.roadQuality ? pooledCopy(world.roadQuality) : null;
+  const roadFlow = world.roadFlow ? pooledCopy(world.roadFlow) : null;
 
   // Per-tile identity field (identityField.js): for the active Peoples / Faiths /
   // Languages lens, ship the dominant id (+ a significant secondary, ≥20%, for
@@ -602,7 +643,7 @@ function buildSnapshotUnsafe() {
       viewMode === "language" ? [world.tileLangId,  world.tileLangShr]  : null;
     if (layerArrs && layerArrs[0]) {
       const [idArr, shrArr] = layerArrs, N = world.N;
-      fieldDom = new Int16Array(N); fieldSec = new Int16Array(N);
+      fieldDom = pooledArr(Int16Array, N); fieldSec = pooledArr(Int16Array, N);   // every index written below
       for (let ti = 0; ti < N; ti++) {
         const b = ti * FK;
         fieldDom[ti] = idArr[b];
@@ -620,9 +661,9 @@ function buildSnapshotUnsafe() {
   let loyal = null, loyalHome = null;
   if (viewMode === "loyalty" && sendStatic && world._allegiance && world._countryOwner) {
     const alg = world._allegiance, co = world._countryOwner, N = world.N;
-    loyal = new Uint8Array(N);
+    loyal = pooledArr(Uint8Array, N);   // every index written below
     for (let ti = 0; ti < N; ti++) loyal[ti] = co[ti] >= 0 ? Math.min(250, Math.round(Math.max(0, alg[ti]) * 250)) : 255;
-    loyalHome = world._tileHomeland ? world._tileHomeland.slice() : null;
+    loyalHome = world._tileHomeland ? pooledCopy(world._tileHomeland) : null;
   }
   // Population view: the people-on-land field (popField — the canonical
   // demographic substrate) packed on an ABSOLUTE log ruler, NOT against the
@@ -646,7 +687,8 @@ function buildSnapshotUnsafe() {
     const rn = rNormPop(world);
     const k = (world._onePopScale || 1) * rn * rn;   // field → census units per reference tile
     const LO = -1, SPAN = 4;                          // log10(0.1) .. log10(1000)
-    popDens = new Uint8Array(N);
+    popDens = pooledArr(Uint8Array, N);
+    popDens.fill(0);   // pooled buffer is dirty and the loop SKIPS below-ruler tiles
     for (let ti = 0; ti < N; ti++) {
       const p = pf[ti] * k;
       if (p <= 0.1) continue;                         // below the ruler: effectively empty, leave the base map
@@ -667,7 +709,8 @@ function buildSnapshotUnsafe() {
   let devDens = null;
   if (viewMode === "technique" && sendStatic && world.devField) {
     const df = world.devField, N = world.N;
-    devDens = new Uint8Array(N);
+    devDens = pooledArr(Uint8Array, N);
+    devDens.fill(0);   // pooled buffer is dirty and the loop SKIPS idea-free land
     for (let ti = 0; ti < N; ti++) {
       const d = df[ti];
       if (d <= 0) continue;
@@ -682,7 +725,7 @@ function buildSnapshotUnsafe() {
   let tileComp = null;
   if (viewMode === "roads" && sendStatic && world._tileComp && world._tileCompSeen) {
     const tc = world._tileComp, seen = world._tileCompSeen, stamp = world._tileCompStampVal, N = world.N;
-    tileComp = new Int32Array(N);
+    tileComp = pooledArr(Int32Array, N);   // every index written below
     for (let i = 0; i < N; i++) tileComp[i] = seen[i] === stamp ? tc[i] : -1;
   }
   // National border claim — computed in the sim each territory pass (world._countryClaim);
@@ -721,13 +764,13 @@ function buildSnapshotUnsafe() {
     // ALWAYS drawn as its realm (the field can never overwrite a tile onto the wrong realm — it is
     // blocked from a neighbour's real land — so this only ever fills the field's own gaps).
     const src = world._ctrlOwner, elev = world.elev, co = world._countryOwner;
-    countryClaim = new Int32Array(src.length);
+    countryClaim = pooledArr(Int32Array, src.length);   // every index written below
     for (let i = 0; i < src.length; i++) {
       if (!(elev && elev[i] > 0)) { countryClaim[i] = -1; continue; }         // water: never territory
       countryClaim[i] = src[i] >= 0 ? src[i] : (co && co[i] >= 0 ? co[i] : -1);
     }
   } else if (sendStatic && world._countryClaim) {
-    countryClaim = world._countryClaim.slice();
+    countryClaim = pooledCopy(world._countryClaim);
     // Catchment overlay: paint every WORKED tile (world._territoryOwner) with its
     // settlement's country, so a realm colours the land its settlements farm even
     // while its capital's projected claim is still ~0. But this paints the RAW

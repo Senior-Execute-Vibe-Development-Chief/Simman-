@@ -702,7 +702,11 @@ try{
       // The scrubbed frame rides a RENDER-ONLY override (_scrubClaim) — never
       // the authoritative layer (in fallback mode that array IS the sim's).
       const psw=peopleRef.current;
-      if(psw&&scrubRef.current){psw._scrubClaim=d.frame;psw._claimVer=(psw._claimVer||0)+1;setScrubShown(d.step);if(drawNowRef.current)drawNowRef.current();}
+      if(psw&&scrubRef.current){
+        const old=psw._scrubClaim;   // displaced per drag-notch — send its buffer home (buffer-return pool)
+        psw._scrubClaim=d.frame;psw._claimVer=(psw._claimVer||0)+1;setScrubShown(d.step);if(drawNowRef.current)drawNowRef.current();
+        if(old&&old.buffer&&old.buffer.byteLength){try{sw.postMessage({type:'bufret',bufs:[old.buffer]},[old.buffer]);}catch(e2){/* fall back to GC */}}
+      }
     }
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='historyData'){
@@ -2636,12 +2640,19 @@ const applySnapshot=useCallback((snap)=>{
    if(!playRef.current||_now-(uiPulseRef.current||0)>=250){uiPulseRef.current=_now;_pulsed=true;setLiveStep(snap.step);}}
   if(snap.eraAt)psw._eraAt=snap.eraAt;   // display-calendar timeline
   psw.globalP=snap.globalP;
-  if(snap.owner)psw._territoryOwner=snap.owner;
-  if(snap.roadQuality)psw.roadQuality=snap.roadQuality;
-  if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
-  if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
+  // Buffer-return pool (the 26.6k allocation wall — see the worker's pool note):
+  // each slot swap below strands the DISPLACED array; nothing on this thread
+  // holds it past the swap (draw() reads live refs; its caches key on versions
+  // and hold canvases, never these arrays), so hand its buffer back to the
+  // worker for the next snapshot instead of leaving multi-MB garbage 30×/sec.
+  const _ret=[];
+  const _drop=(old)=>{if(old&&old.buffer&&old.buffer.byteLength)_ret.push(old.buffer);};
+  if(snap.owner){_drop(psw._territoryOwner);psw._territoryOwner=snap.owner;}
+  if(snap.roadQuality){_drop(psw.roadQuality);psw.roadQuality=snap.roadQuality;}
+  if(snap.roadFlow){_drop(psw.roadFlow);psw.roadFlow=snap.roadFlow;}
+  if(snap.tileComp){_drop(psw._tileComp);psw._tileComp=snap.tileComp;}   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
-  if(snap.countryClaim){psw._countryClaim=snap.countryClaim;if(!scrubRef.current)psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver bumps only live so the scrubbed layer's caches hold)
+  if(snap.countryClaim){_drop(psw._countryClaim);psw._countryClaim=snap.countryClaim;if(!scrubRef.current)psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver bumps only live so the scrubbed layer's caches hold)
   if(snap.timelineN!==undefined)psw._timelineN=snap.timelineN;
   if(snap.fastEpoch!==undefined)setFastEpoch(!!snap.fastEpoch);
   if(snap.quietAges!==undefined)setQuietAges(!!snap.quietAges);
@@ -2649,10 +2660,10 @@ const applySnapshot=useCallback((snap)=>{
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
   // layer it was built for, so a stale field from a previous lens is ignored.
-  if(snap.fieldDom){psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
-  if(snap.loyal){psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
-  if(snap.popDens){psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
-  if(snap.devDens){psw._devDens=snap.devDens;}                                 // technique lens: the idea field (keep last)
+  if(snap.fieldDom){_drop(psw._fieldDom);_drop(psw._fieldSec);psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
+  if(snap.loyal){_drop(psw._loyal);_drop(psw._loyalHome);psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
+  if(snap.popDens){_drop(psw._popDens);psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
+  if(snap.devDens){_drop(psw._devDens);psw._devDens=snap.devDens;}                                 // technique lens: the idea field (keep last)
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
@@ -2690,6 +2701,9 @@ const applySnapshot=useCallback((snap)=>{
       if(H.length>5000)H.splice(0,H.length-5000);
     }
   }
+  // Hand the displaced buffers home (transfer detaches them here — they are
+  // already unreachable above). A failed post just leaves them to the GC.
+  if(_ret.length&&simWorkerRef.current){try{simWorkerRef.current.postMessage({type:'bufret',bufs:_ret},_ret);}catch(e){/* fall back to GC */}}
   if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
 },[draw]);
 useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
