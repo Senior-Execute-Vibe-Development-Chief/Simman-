@@ -306,3 +306,20 @@ the still-large catchment census — a future lap on that lens, not this
 one), and the newborn's panel shows its whale PROVINCE starving until the
 peers carve it. Gates: hashbase anchors unchanged, smoke green (dissolve
 arm re-pinned), build green.
+
+### Lap-2 confirmation at tw=960 (the owner's grid, 22k)
+
+Same shape as the app arm: first cities Upper Nile 14300 / Lower Nile
+15650; **Bronze at 11700 and STILL Bronze at 22000** (lap 1 hit Classical
+17100 and Medieval 20400); 24 settled / 16 realms; every seat org
+0.36-0.43; the realm tail historical (0.9M, ~0.5M ×3, ~0.15M ×2, fresh
+zeros). The first-mover residual is sharpened into a diagnosis here: the
+Nile realm reaches ~5.2M km² with members=4 — the peer cities that mint
+on its claimed ground are ADOPTED into it (the STATE_OF_LAND
+born-on-a-nation's-ground rule), so the first state absorbs its whole
+cradle and never faces the Sumer-style peer rivals that historically
+capped early states at each other's borders. "Adoption vs rivalry at
+birth on a first-mover's ground" is the named question for the next lap —
+with its own measurement, not a rushed rule change. Watch items from the
+mint order (equatorial-Africa and Cape basins minting mid-list off the
+sorghum/tuber hearths' cage-driven sites) stand with the Zambezi note.
