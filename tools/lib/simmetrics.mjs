@@ -90,6 +90,11 @@ export const WORLD_SCRATCH = new Set([
   "_loyalScanAt", "_slaveScarcityStep", "_compRoadVer", "_compSettCount",
   "_planSnap", "_planIdx", "_craftMeanStep", "_craftAccN", "_tierScaleStep",
   "_sittingRulersStep", "_aliveCCStep", "_coreStamp", "_agriCeilKey",
+  // Persistent pass workspace from the stall-fix reuse-slot pattern (2026-08-19):
+  // MinHeaps whose contents are per-firing scratch, fully overwritten each use —
+  // the memory fix keeps the ALLOCATION alive, never the values.
+  "_terrHeap", "_fpHeap", "_fpHeap2",
+  "_lkContactStep",   // land-ledger contact-sweep cadence stamp (landKnow.js)
 ]);
 
 /** An ENTITY REFERENCE, not a data bag. Recursing into a settlement's `_foodParent`
@@ -662,6 +667,26 @@ export function collect(world) {
   m["pop.fieldUnits"] = pf;                                       // a third scale, NOT people
   m["pop.fieldPerKm2Units"] = pf / Math.max(1, land.length * km2);
   m["pop.bridge"] = world._onePopScale || 0;
+
+  // ── the pre-urban land ledger (T.LAND_KNOW, landKnow.js) ───────────────────
+  // The countryside's own knowledge while no court exists — the ladder the
+  // first cities are born from (the tally bar gates both minting doors). All
+  // zero in the pinned mature regime, where the lever is off and no ledger is
+  // ever planted; instantaneous maxima, no cumulative-history claim.
+  {
+    const lk = world._landKnow;
+    m["landKnow.records"] = lk ? lk.size : 0;
+    let mo = 0, mm = 0, mc = 0;
+    if (lk) for (const r of lk.values()) {
+      if (r.k.organization > mo) mo = r.k.organization;
+      if (r.k.metallurgy > mm) mm = r.k.metallurgy;
+      if (r.k.construction > mc) mc = r.k.construction;
+    }
+    m["landKnow.maxOrg"] = mo;
+    m["landKnow.maxMetallurgy"] = mm;
+    m["landKnow.maxConstruction"] = mc;
+    m["landKnow.era"] = world._lkEra || 0;
+  }
 
   // every tile field — and every OTHER typed array too. The old test was
   // `v.length !== N → skip`, which silently dropped `_popLand[9616]`: a real
