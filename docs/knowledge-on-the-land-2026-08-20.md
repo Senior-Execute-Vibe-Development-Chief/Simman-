@@ -323,3 +323,30 @@ birth on a first-mover's ground" is the named question for the next lap —
 with its own measurement, not a rushed rule change. Watch items from the
 mint order (equatorial-Africa and Cape basins minting mid-list off the
 sorghum/tuber hearths' cage-driven sites) stand with the Zambezi note.
+
+## Lap 3 — "still the same thing": the political span (owner's map series)
+
+The owner's four-frame series (first nation tick → +1k → +5k → 45k) showed
+the URBAN fixes hadn't touched the POLITICAL lens: the first nation appears
+subcontinental at its first tick (a Nile blob to the desert edges), a dozen
+continental blobs by +1k. The size law (countryTerritory: target = govPop ×
+spanTechMul / bindDens + march) is working as designed — "the border comes
+to rest where the governable people end" — but in a fully-peopled, rival-
+less first-states world the governable people end at the DESERT, and
+spanTechMul ≡ 1 because SPAN_TECH ships 0. Its 2026-07-30 retirement note
+had already said everything: the MECHANISM is sound (a chiefdom governed by
+runners and kin should not hold a rail empire's tiles-per-capacity), the
+magnitude was fitted against a food model that no longer exists, and it
+must be "re-derived against the current model before flipping it on again."
+
+Re-derived (SPAN 0 / 0.5 / 0.85, live regime, 20k, tw=480/8817): first
+realm 3.1M → 2.3M → 1.8M km², realm count 10 → 10 → 12, era arc unchanged,
+no trace of the 2026-07 crater — because under the tally bar no landed
+court exists at org 0.15: states begin at ~half span (org ~0.4), valley-
+sized, and EARN the continent as statecraft matures (org → 1 recovers the
+legacy ruler exactly). Shipped as the land-genesis regime's law: spanL =
+T.SPAN_TECH || (T.LAND_KNOW ? 0.85 : 0) — the ORIGINAL runner-and-kin
+magnitude, in the world its rationale was written for. One closure feeds
+the population target, the march subsidy and the growth-front's marginal-
+tile test, so the whole law breathes together. Pinned gates byte-identical
+(anchors re-verified); an explicit SPAN_TECH still overrides for sweeps.

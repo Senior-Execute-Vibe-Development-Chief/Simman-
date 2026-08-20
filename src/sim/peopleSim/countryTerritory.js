@@ -493,7 +493,23 @@ function fieldPolityTerritory(world) {
   // — is available to any court. org → 1 recovers today's ruler EXACTLY, so
   // the mature calibration (and the industrial march/coverage arc) is
   // untouched; only the primitive world's paint shrinks to its statecraft.
-  const spanL = T.SPAN_TECH || 0;
+  // T.LAND_KNOW ships the earned-span law at the ORIGINAL magnitude (0.85 —
+  // the runner-and-kin rationale above), per the 2026-07-30 retirement's own
+  // instruction: "re-derive against the current model before flipping it on
+  // again." The land-genesis regime is the world that rationale was written
+  // for: tally-gated Bronze courts (org ~0.36-0.44) standing on a
+  // fully-peopled cradle funded territory at a rail empire's span, so the
+  // FIRST nation appeared subcontinental at its first tick (owner's maps,
+  // 2026-08-20). Measured across SPAN 0 / 0.5 / 0.85 (20k, tw=480/8817):
+  // first realm 3.1M → 2.3M → 1.8M km², realm count 10 → 10 → 12, the era
+  // arc unchanged — and no trace of the 2026-07 crater (median 4k km²),
+  // because under the tally bar no landed court exists at org 0.15 anymore:
+  // states begin at ~half span, valley-sized, and EARN the continent as
+  // statecraft matures (org → 1 recovers the legacy ruler exactly, so the
+  // mature world converges to the validated calibration). An explicit
+  // T.SPAN_TECH still overrides for sweeps; the pinned gate regime
+  // (LAND_KNOW=0, SPAN_TECH=0) is byte-identical.
+  const spanL = T.SPAN_TECH || (T.LAND_KNOW ? 0.85 : 0);
   const spanTechMul = (cid) => {
     if (spanL <= 0) return 1;
     const kn = knOf.get(cid);
