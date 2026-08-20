@@ -117,6 +117,9 @@ const NARRATE = {
     if (ev.how === "succession") return "Shattered over a contested succession — its hordes and provinces going their separate ways under rival heirs.";
     return "Dissolved — its last cities scattered or fell silent.";
   },
+  "polity.tablet"(ev) {
+    return `The court of ${ev.sName || "the first city"} took up the tablet — ${ev.name || "the nation of the land"} became a state of rolls, tax and law.`;
+  },
   "polity.restored"(ev) {
     return `The old nation rose again${ev.fromName ? `, casting off ${ev.fromName}` : ""}.`;
   },
@@ -343,6 +346,7 @@ export function narrate(world, ev, as = -1) {
 export function categoryOf(ev, as = -1) {
   switch (ev.type) {
     case "polity.founded": return "founding";
+    case "polity.tablet": return "founding";
     case "polity.restored": return "founding";
     case "polity.seceded": return as === ev.from ? "secession" : "founding";
     case "polity.receded": return "loss";

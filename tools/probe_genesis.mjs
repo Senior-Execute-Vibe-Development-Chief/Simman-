@@ -37,7 +37,15 @@ for (const [label, pred] of [["tribal (chiefdom fabric)", (e) => e.how === "trib
 }
 const realms = [...(world.countries ? world.countries.values() : [])].slice(0, 10);
 console.log(`-- realms now: ${world.countries ? world.countries.size : 0}`);
+// Per-realm anatomy: the polity record's founding kind, bordered-field tiles
+// (_countryOwner), and land-nation ground (_landOwner) — distinguishes a
+// STATE (bordered co field) from a chiefdom holding ground from a mislabel.
+const coT = new Map(), loT = new Map();
+if (world._countryOwner) for (let i = 0; i < world.N; i++) { const c = world._countryOwner[i]; if (c >= 0) coT.set(c, (coT.get(c) || 0) + 1); }
+if (world._landOwner) for (let i = 0; i < world.N; i++) { const c = world._landOwner[i]; if (c >= 0) loT.set(c, (loT.get(c) || 0) + 1); }
 for (const c of realms) {
   const seat = c.members && c.members[0];
-  if (seat) console.log(`   ${c.name || c.id} seat ${seat.name} ${geo(seat.pos.x | 0, seat.pos.y | 0)} members=${c.members.length}`);
+  const pol = world.polities ? world.polities.get(c.id) : null;
+  const how = pol && pol.foundedHow !== undefined ? pol.foundedHow : (pol && pol.how) || "?";
+  if (seat) console.log(`   ${c.name || c.id} seat ${seat.name} ${geo(seat.pos.x | 0, seat.pos.y | 0)} members=${c.members.length} how=${how} coTiles=${coT.get(c.id) || 0} landTiles=${loT.get(c.id) || 0} seatOrg=${(((seat.knowledge || {}).organization) || 0).toFixed(2)}`);
 }

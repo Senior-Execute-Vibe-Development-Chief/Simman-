@@ -2317,6 +2317,11 @@ export function adoptAndFound(world) {
             : nat >= 0 ? nat
             : s.id;
           s._integratedAt = world.step;                // new sovereign / adopted land integrates its territory in gradually (anti-bloom; see INTEGRATE_*)
+          // The tablet moment: a nation of the land MATERIALISES into a state
+          // through its first city — the chiefdom's record continues as the
+          // realm's, so without this line the chronicle never tells the story
+          // the records bar was built for (the state being born of the court).
+          if (nat >= 0 && s.countryId === nat) logEvent(world, "polity.tablet", { polity: nat, name: (getPolity(world, nat) || {}).name, s: s.id, sName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
         }
       }
       // a town/city with a country keeps it (sovereign)
