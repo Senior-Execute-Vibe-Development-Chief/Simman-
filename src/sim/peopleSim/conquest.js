@@ -1501,6 +1501,39 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
   const restoredIds = restoreNations(world, survivors, oldId, false);
   if (restoredIds.size) survivors = survivors.filter(s => !restoredIds.has(s.id));
   if (survivors.length === 0) return;
+  // T.WAR_FINISH — THE PROVINCES CHANGE MASTER (the levy lap's second half).
+  // Measured with the war engine armed but this lane missing: ~500 capital
+  // falls per 4k steps whose victors gained ONE city each while every other
+  // member fragmented into new statelets — the register churned (ended 443 /
+  // shattered 504 vs founded 80) and the size distribution COMPRESSED (gini
+  // 0.36): decisive war destroyed structure instead of concentrating it, the
+  // same disease CONQUEST_CASCADE cured for vassal networks, now at the
+  // member layer. History: when the throne fell, the provinces within the
+  // victor's administrative reach changed master (Rome annexed Veii's
+  // country; Cyrus rode into Media's satrapies); only the marches beyond the
+  // new master's writ broke away. So: survivors within the victor's
+  // holdReach (the SAME cost-grounded direct-rule radius integration and
+  // union read) are annexed with the standard conquest paperwork — the old
+  // nation REMEMBERED and restorable — and only the rest fragment.
+  if (T.WAR_FINISH && how === "conquest" && world.countries) {
+    const conq = world._byId ? world._byId.get(excludeId) : null;
+    const by = conq && conq.countryId != null && conq.countryId >= 0 ? conq.countryId : -1;
+    const H = by >= 0 ? world.countries.get(by) : null;
+    if (H && H.capital && H.holdReach > 0) {
+      const kept = [];
+      for (const s of survivors) {
+        if (dist(world, H.capital.pos.x, H.capital.pos.y, s.pos.x, s.pos.y) <= Math.max(1, H.holdReach)) {
+          s.countryId = by;
+          recordOccupation(s, oldId, by, world.step);
+          s.loyalty = 0.6; s._conqueredAt = world.step;
+          tel(world, "shatterFate", "annexedWithinReach");
+        } else { kept.push(s); tel(world, "shatterFate", "beyondReachFragments"); }
+      }
+      survivors = kept;
+      if (survivors.length) snapClaim(world, by);
+      if (survivors.length === 0) { snapClaim(world, by); return; }
+    }
+  }
   if (survivors.length === 1) {
     const s = survivors[0];
     ensurePolity(world, s.id, { how: "fragment", seat: s, from: oldId, fromName: deadName });
@@ -1754,8 +1787,22 @@ function disburseTreasury(world, c, gov, warLevel) {
   // a state under sustained or multi-front war.
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
-  let armyBill = totalArmy * wage * (1 + effSurcharge * (warLevel || 0));
-  const debtCap = totalArmy * wage * DEBT_CAP_MULT;
+  // T.WAR_FINISH — THE LEVY IS UNPAID: the crown's wage bill is its
+  // PROFESSIONAL establishment (min(army, _proCap) per city, cached at
+  // muster), never the wartime conscript levy — levies are subject duty, fed
+  // from home districts, and history billed them to nobody's treasury. The
+  // first battery measured the alternative: waging catchment-scale levies
+  // bankrupted 24-47% of realms mid-war, melted their defenders, and turned
+  // the storm engine into a capital-cycling blender. The war surcharge stays
+  // (campaigning REGULARS cost more — trains, provisions); it just multiplies
+  // the paid head-count. Lever 0 bills the whole host, byte-identically.
+  let wagedArmy = totalArmy;
+  if (T.WAR_FINISH) {
+    wagedArmy = 0;
+    for (const s of members) if (s.countryId === c.id) wagedArmy += Math.min(s.army || 0, s._proCap != null ? s._proCap : (s.army || 0));
+  }
+  let armyBill = wagedArmy * wage * (1 + effSurcharge * (warLevel || 0));
+  const debtCap = wagedArmy * wage * DEBT_CAP_MULT;
   // IN-KIND PROVISIONING (T.MONETIZE — the levy→coin arc's expenditure side): the
   // harvest share collected in kind this pass (gov._inKind, the produce levy's
   // unmonetized remainder) feeds the army DIRECTLY — levy hosts served for grain,
