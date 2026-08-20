@@ -90,6 +90,27 @@ funnel demanded, exactly as specified:
 | top cradle cell | 1/48 | 1/74 → **33/63, 53/53, 48/48** |
 | peerSeat funnel | — | knock→seat 1338; then `cellFull`/`noPosition` (capacity and the 2×coreR packing bound both bind — the physics limits, not the lattice) |
 
+### The true-grid arm (W=1920 → tw=960 — the shipped app), landed after the erratum
+
+| step | cities | realms | median catchment | max catchment | note |
+|---|---|---|---|---|---|
+| 16k | 26 | 0 | 90k km² | 1.68M | first cohort; cradle cell 14/31 |
+| 22k | 182 | 113 | 77k km² | 2.67M | |
+| 27k | **609** | **434** | **61k km²** | 1.58M | peerSeat: 630 seated; `noPosition=1792` — the 2×coreR packing bound binds FIRST at this grid (correct physics: cores exhaust legal positions before capacity) |
+
+Median catchment at the shipped grid lands at **61k km²** — the historical
+satrapy/province band — and the top of the catchment table is 0.07–0.94M km²
+holding 1.4–9.6M people (the Nile lineage seat: 71k km², 1.9M). The
+mega-catchment is dead at every grid.
+
+Two true-grid funnel facts that sharpen the follow-ups: **integrate PASSED=0
+of 4,290** (every vassal stays a vassal — orgBelowMin 2,613 + seatAboveTierCap
+1,562), and **storm PASSED=7 of 11,597 / capture 10 of 2,914** while attack
+PASSED=27,549 — the register's death-and-absorption half is essentially
+inert at the shipped grid. The realm count can only ratchet upward until the
+consolidation lap lands; the owner's step-38k app frames (989→1,038 realms,
+Renaissance) are this ratchet observed live.
+
 And the owner-facing size distribution (probe_shape, tw=960, live arm):
 
 * **The first state is born at 8k km²** — was 310–878k. Three orders of
