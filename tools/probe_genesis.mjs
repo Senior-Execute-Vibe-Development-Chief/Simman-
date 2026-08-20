@@ -23,10 +23,17 @@ const posOf = (ev) => {
 };
 console.log(`=== step ${world.step} tw=${tw} seed ${SEED}`);
 console.log(`-- eraAt (era index -> step reached):`, JSON.stringify(world._eraAt || null));
-for (const t of ["farming.invented", "settlement.founded", "polity.founded"]) {
+for (const t of ["farming.invented", "settlement.founded"]) {
   const list = evs.filter((e) => e.type === t).slice(0, 12);
   console.log(`-- first ${list.length} ${t}:`);
   for (const e of list) console.log(`   step ${e.step}  ${e.sName || e.name || ""} ${posOf(e)}`);
+}
+// Polities split by kind: tribal land-nations are the (ungated) chiefdom
+// fabric; COUNTRIES are the bordered, war-waging states the records bar gates.
+for (const [label, pred] of [["tribal (chiefdom fabric)", (e) => e.how === "tribal"], ["STATES (countries)", (e) => e.how !== "tribal"]]) {
+  const list = evs.filter((e) => e.type === "polity.founded" && pred(e)).slice(0, 10);
+  console.log(`-- first ${list.length} polity.founded ${label}:`);
+  for (const e of list) console.log(`   step ${e.step}  how=${e.how}  ${e.name || e.seatName || ""} ${posOf(e)}`);
 }
 const realms = [...(world.countries ? world.countries.values() : [])].slice(0, 10);
 console.log(`-- realms now: ${world.countries ? world.countries.size : 0}`);

@@ -21,7 +21,7 @@
 // so land changes animate tile-by-tile.
 
 import { localEdgeCost, terrainHoldAt, ridgeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
-import { RECORDS_ORG } from "./tech.js";
+import { RECORDS_ORG, stateOrgBar } from "./tech.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
@@ -2295,17 +2295,29 @@ export function adoptAndFound(world) {
     // never reaches city tier in isolation, so it carries sovereignty by flag).
     if ((s.tier | 0) >= CITY_TIER || s._sovereignSeat) {
       if (s.countryId < 0) {
-        // an over-budget region cannot take the anchor in — it founds instead;
-        // nor can one whose fisc cannot carry it (the marginal-revenue test).
-        // No realm field over the tile → the NATION whose land this is (if
-        // any) materialises through this city; budget/fisc are a court's
-        // refusal machinery and a land nation has no court yet — its first
-        // city is the court coming into being, so no gate applies.
-        const nat = region < 0 ? landAt(ti) : -1;
-        s.countryId = region >= 0 && !overBudget(region) && fiscOk(region, s) ? region
-          : nat >= 0 ? nat
-          : s.id;
-        s._integratedAt = world.step;                // new sovereign / adopted land integrates its territory in gradually (anti-bloom; see INTEGRATE_*)
+        // T.STATE_RECORDS: joining an EXISTING realm is always open (the
+        // absorber has the administration), but MATERIALISING a land nation
+        // into a realm — or self-founding one — is the act of statehood
+        // itself, and it waits for the records bar (tech.js RECORDS_ORG, the
+        // Writing gate): below it this city stays a temple town, a chiefdom's
+        // centre rather than a capital. Uruk stood for centuries as exactly
+        // that before the tablet made it a state.
+        if (T.STATE_RECORDS && region < 0 && (((s.knowledge && s.knowledge.organization) || 0) < stateOrgBar())) {
+          tel(world, "nucleate", "recordsBar");
+        } else {
+          // an over-budget region cannot take the anchor in — it founds instead;
+          // nor can one whose fisc cannot carry it (the marginal-revenue test).
+          // No realm field over the tile → the NATION whose land this is (if
+          // any) materialises through this city; budget/fisc are a court's
+          // refusal machinery and a land nation has no court yet — its first
+          // city is the court coming into being, so no administrative gate
+          // beyond the records bar applies.
+          const nat = region < 0 ? landAt(ti) : -1;
+          s.countryId = region >= 0 && !overBudget(region) && fiscOk(region, s) ? region
+            : nat >= 0 ? nat
+            : s.id;
+          s._integratedAt = world.step;                // new sovereign / adopted land integrates its territory in gradually (anti-bloom; see INTEGRATE_*)
+        }
       }
       // a town/city with a country keeps it (sovereign)
     } else {
@@ -2357,7 +2369,7 @@ export function adoptAndFound(world) {
       // a CENSUS bar substitute for the tier, and there is no census bar now).
       let founds = false;
       if (s.countryId < 0 && region < 0 && co[ti] < 0
-          && org >= T.ORG_STATE_MIN) {                    // the statecraft for territorial rule
+          && org >= stateOrgBar()) {                    // the statecraft for territorial rule (records-raised under T.STATE_RECORDS)
         // The exchange rate is 0 when there is no population field to read
         // (POP_FIELD/BIRTH_FIELD off, or before the field exists): the land
         // cannot be asked, so the lever cannot apply and the census bars stand.
@@ -2366,13 +2378,6 @@ export function adoptAndFound(world) {
           ? statelessBasinCensus(world, s, f2cSF, nucRiAF)
               >= (NUCLEATE_CLUSTER_POP / (T.FRONTIER_FOUNDING || 1)) * stateCapacityMul(world, s, ti)
           : tierLockedCentre && (s.people || 0) >= forestBar;
-      }
-      if (founds && T.STATE_RECORDS && (((s.knowledge && s.knowledge.organization) || 0) < RECORDS_ORG)) {
-        // T.STATE_RECORDS: no records, no nation. The court cannot yet keep
-        // rolls or levy tax (tech.js RECORDS_ORG — the Writing gate), so the
-        // town stays a stateless temple town; it self-founds the moment its
-        // organization crosses the bar. Uruk and its tablets arrive together.
-        founds = false; tel(world, "nucleate", "recordsBar");
       }
       if (founds) {
         // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland): a founding on ground
@@ -2688,7 +2693,7 @@ export function nucleateFrontierStates(world) {
     // STATELESS — a chiefdom/tribe that holds no bordered land (most of the pre-modern
     // world). Only once organisation crosses the threshold does a bordered realm
     // crystallise, so undeveloped frontiers no longer carve the map wall-to-wall.
-    if (((s.knowledge && s.knowledge.organization) || 0) < T.ORG_STATE_MIN) { tel(world, "nucleate", "org<ORG_STATE_MIN"); continue; }
+    if (((s.knowledge && s.knowledge.organization) || 0) < stateOrgBar()) { tel(world, "nucleate", "org<stateBar"); continue; }
     // State-capacity multiplier: low-fertility land needs a far bigger cluster
     // to crystallise a state (so it stays a sparse stateless frontier).
     const seatTi = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
@@ -2781,10 +2786,6 @@ export function nucleateFrontierStates(world) {
     let tooClose = false;                        // don't mint two adjacent states in one pass
     for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (nucR * 2) ** 2) { tooClose = true; break; } }
     if (tooClose) { tel(world, "nucleate", "tooNearAnotherNewStateThisPass"); continue; }
-    // T.STATE_RECORDS: no records, no nation (tech.js RECORDS_ORG — the
-    // Writing gate). A basin whose best court cannot yet administrate keeps
-    // its people stateless until organization reaches the records bar.
-    if (T.STATE_RECORDS && (((s.knowledge && s.knowledge.organization) || 0) < RECORDS_ORG)) { tel(world, "nucleate", "recordsBar"); continue; }
     // RESTORATION (T.SUCCESSOR_STATES, restorableHomeland above): a founding on
     // ground whose people remember ONE fallen nation — uncontested, viable against
     // this candidate's own bar (the same clusterPop×capMul the cluster gate just

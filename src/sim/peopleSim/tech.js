@@ -38,6 +38,12 @@ export const ERAS = ["Stone Age", "Bronze Age", "Classical", "Medieval", "Renais
 // borders and treasuries wait for the tablet.
 export const RECORDS_ORG = 0.35;   // == TECHS writing gate (asserted below)
 
+// The EFFECTIVE state-founding bar: the legacy statecraft floor
+// (T.ORG_STATE_MIN, def 0.15 — proto-chiefdom level, why stone-age nations
+// used to fire) raised to the records bar when T.STATE_RECORDS is on. All
+// de-novo founding doors read THIS; adoption/joining keeps the legacy floor.
+export const stateOrgBar = () => Math.max(T.ORG_STATE_MIN || 0, T.STATE_RECORDS ? RECORDS_ORG : 0);
+
 // Each tech: id, era (column), name (kept short for the node — detail lives in
 // desc), prereq techs, req(k) → are the knowledge thresholds met?, gate
 // (dominant track + threshold) for the "researching" progress hint, and desc

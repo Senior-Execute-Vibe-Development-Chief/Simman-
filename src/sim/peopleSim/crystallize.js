@@ -18,6 +18,7 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
+import { stateOrgBar } from "./tech.js";
 import { tel, telPass } from "./telemetry.js";
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
@@ -1417,9 +1418,15 @@ function maybeSiteCities(world) {
     // beside its own nation (probe_tribute, docs/state-birth-2026-08.md).
     const coA = world._countryOwner;
     const loA = world._landOwner;
-    const nid = (T.STATE_OF_LAND && loA && world._landSeats
+    let nid = (T.STATE_OF_LAND && loA && world._landSeats
       && (!coA || coA[st.ti] < 0) && world._landSeats.has(loA[st.ti]))
       ? loA[st.ti] : -1;
+    // T.STATE_RECORDS: a city born on a nation's ground materialises it into a
+    // realm only if the newborn court can administrate (the unified founding
+    // bar — tech.js stateOrgBar). Below it the city is born a stateless temple
+    // town on chiefdom ground; adoptAndFound materialises it later, the moment
+    // its organization crosses the bar.
+    if (nid >= 0 && T.STATE_RECORDS && (((inherited && inherited.organization) || 0) < stateOrgBar())) nid = -1;
     const natCul = nid >= 0 ? ((getPolity(world, nid) || {}).cultureId ?? -1) : -1;
     const bornCul = natCul >= 0 ? natCul : donorCul;
     const born = makeSettlement(world, st.x + 0.5, st.y + 0.5, {
