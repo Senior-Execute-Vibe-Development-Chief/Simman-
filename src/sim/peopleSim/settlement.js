@@ -1829,7 +1829,14 @@ function updateKnowledge(world, s) {
   // instead, so development paces to a CITY of that size, not a province (mirrors
   // the urban-core reach scaling in countryTerritory.js). Agriculture keeps the
   // full population below — peasants are exactly who improve farming.
-  const sciSqrt = T.DISSOLVE_FARMS && s._urbanPop != null ? Math.sqrt(s._urbanPop) : popSqrt;
+  // T.LAND_KNOW: the minds term reads the MEASURED core (the same
+  // measurement-over-model switch the tier ladder made, for the same reason —
+  // between derives _urbanPop holds the census-side ratio HEURISTIC, which on
+  // a first-mover whale catchment handed the newborn court sqrt(578k) minds
+  // and raced it through the eras; the measured core is the pile it actually
+  // gathered). Null until the field first derives — fall through to the model.
+  const sciSqrt = T.LAND_KNOW && s._coreMeasured != null ? Math.sqrt(s._coreMeasured)
+    : (T.DISSOLVE_FARMS && s._urbanPop != null ? Math.sqrt(s._urbanPop) : popSqrt);
   const horsesThr = 0.05;
   const horses = r.horses || 0;
 

@@ -220,3 +220,39 @@ byte-identity; a future cleanup should dedupe under its own measurement.
 - **Mobility's saddle-life** (pastoral-share compounding) needs the food
   model and stays settlement-side; steppe ledgers learn riding at the
   owns-horses rate only.
+
+## Lap 2 — the first-mover whale (owner's post-deploy report)
+
+The owner's first play of the deployed wave (tw=960): *"the very first city
+starts with 350k people in it, starving but not shrinking… then 3 Rome-sized
+nations appear… bronze to classical to medieval by 500 AD."* Measured
+(probe_firstcity, tw=480/8817): the WORLD was fine — 39.5M people at the
+first-city step, right at the ~35M of 3200 BCE — but the LENSES whaled. The
+lone first city's territory pass handed it a 6.5M-census, ~634k-km²
+catchment (no competitor bounds the reach budget); its footprint disk stood
+on 550su of prior countryside that the urban read counted as citizens
+(tier→metropolis at the first derive, demand 27t vs supply 1.6t —
+starving-but-not-shrinking is that lens mismatch); the whale census fed
+sciSqrt, raced the court's organization, and the first realm claimed
+1.82M km² within 600 steps of materializing. One whale, five symptoms.
+
+Three mechanism fixes, all lever-scoped, no constants tuned:
+1. **Cities are contact** (landKnow.js): a settled court within the exchange
+   sphere drives neighbouring ledgers like a state's example — the Uruk
+   expansion. The cradle seats a PEER BELT in centuries; competition
+   partitions the whale catchment.
+2. **The urban core is the excess over the countryside's own density**
+   (deriveOnePop): urban = disk field − (catchment rural density × disk land
+   tiles) — a pure measurement; on thin ground it reduces to the pile, on a
+   pre-filled cradle a newborn stops counting its footprint's standing
+   farmers as citizens.
+3. **The minds term reads the measured core** (updateKnowledge sciSqrt —
+   the same measurement-over-model switch the tier ladder made): courts
+   learn at the scale they actually gathered, damping the era/reach racing
+   at its source.
+
+Hashbase anchors verified unchanged after all three (fd90feea/7239c843).
+A/B re-measurement (probe_firstcity + full genesis arc) in flight; results
+land in the next entry. The fifth container reset struck mid-lap (checkout
+silently at 2fc6ae6 — a pre-wave probe run nearly published a void whale
+finding); the harness tree stamp caught it, recovery per the standing drill.

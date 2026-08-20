@@ -1578,6 +1578,22 @@ export function diskSum(pf, tw, th, cx, cy, R) {
   return sum;
 }
 
+/** Land tiles inside the same footprint window diskSum reads — the area the
+ *  rural-baseline urban read (deriveOnePop, T.LAND_KNOW) normalises over. */
+export function diskLandCount(world, cx, cy, R) {
+  const { tw, th, elev } = world;
+  if (R <= 0) return elev[cy * tw + ((cx % tw) + tw) % tw] > 0 ? 1 : 0;
+  let n = 0;
+  const y0 = Math.max(0, cy - R), y1 = Math.min(th - 1, cy + R);
+  for (let y = y0; y <= y1; y++) {
+    for (let dx = -R; dx <= R; dx++) {
+      const x = ((cx + dx) % tw + tw) % tw;
+      if (elev[y * tw + x] > 0) n++;
+    }
+  }
+  return n;
+}
+
 /** Apply the urban spikes (built by deriveOnePop) into this pass's capField.
  *  Under T.URBAN_FOOTPRINT (R>0) each spike's capacity is spread EVENLY over the
  *  (2R+1)² HABITABLE (elev>0) disk tiles around its core, so capacity co-locates
@@ -1799,10 +1815,14 @@ export function deriveOnePop(world) {
   if (!owner) return;
   const spikes = world._urbanSpike || (world._urbanSpike = new Map());
   const accP = new Map();
+  // T.LAND_KNOW: catchment land-tile counts ride along (peopled or not) for
+  // the rural-baseline urban read below.
+  const accN = T.LAND_KNOW ? new Map() : null;
   for (let i = 0; i < world.N; i++) {
     const sid = owner[i];
     if (sid < 0) continue;
     if (pf[i] > 0) accP.set(sid, (accP.get(sid) || 0) + pf[i]);
+    if (accN) accN.set(sid, (accN.get(sid) || 0) + 1);
   }
   // The bridge scalar: median census per median field-region, frozen at
   // activation (persisted). A pure unit conversion between the economy's
@@ -1972,7 +1992,27 @@ export function deriveOnePop(world) {
       // The urban core is the people on the real FOOTPRINT (disk of radius coreR),
       // in census units — resolution-invariant. coreR=0 ⇒ diskSum === pf[ti] exactly.
       _coreF = Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR));
-      s._urbanPop = Math.min(s.people, _coreF * scale);
+      // T.LAND_KNOW: the countryside standing within the footprint is
+      // VILLAGES, not the city — the urban core is the concentration ABOVE
+      // the catchment's own rural density (a pure measurement: no state, no
+      // constant, resolution-invariant). On thin ground the baseline is ≈ 0
+      // and the read is the pile, as before; on a pre-filled cradle a
+      // newborn stops counting its footprint's standing farmers as citizens.
+      // Measured at the first tally-city (tw=480, 8817): the disk held 550su
+      // of prior countryside around a 15su founding core — the raw read
+      // minted a 578k-person "metropolis", starving at birth (the owner's
+      // screenshot), and its sqrt fed the court's learning rate (the
+      // era-racing amplifier this same commit moves to the measured core).
+      let coreEff = _coreF;
+      if (accN) {
+        const nT = accN.get(s.id) || 0;
+        const dT = diskLandCount(world, s.pos.x | 0, s.pos.y | 0, coreR);
+        if (nT > dT && f > _coreF) {
+          const ruralDens = (f - _coreF) / (nT - dT);
+          coreEff = Math.max(0, _coreF - ruralDens * dT);
+        }
+      }
+      s._urbanPop = Math.min(s.people, coreEff * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
       // The MEASURED core, kept apart from _urbanPop: the census-side
       // ruralShare heuristic overwrites _urbanPop every tick between derives

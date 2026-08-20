@@ -232,6 +232,22 @@ export function stepLandKnow(world) {
   const basinBarF = bridge > 0 ? (TIER_CORE[2] / URBAN_SHARE_REF) / bridge : Infinity;
   const dtI = (world._dt || 1) * LK_IVL;   // per-firing steps × granularity (the settlement law is per-tick)
   const LB = T.LEARN_BASE;
+  // CITIES ARE CONTACT TOO (lap 2 — the Uruk expansion): a settled court
+  // within the exchange sphere radiates the accounting institution — trade,
+  // emulation, colonists — exactly as a state's example does. Without this
+  // the belt waited: the first city's neighbours kept climbing alone at the
+  // pristine pace while its own court raced, so the lone first mover held a
+  // subcontinental catchment for millennia (measured at tw=480: the first
+  // realm reached 1.82M km² within 600 steps of materializing, unopposed).
+  const exchT = Math.max(1, Math.round(EXCH_KM / (EARTH_KM / tw)));
+  const exchT2 = exchT * exchT, halfW = tw / 2;
+  let cities = null;
+  if (T.ORG_CONTACT > 0) {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      (cities || (cities = [])).push({ x: s.pos.x | 0, y: s.pos.y | 0 });
+    }
+  }
   let lkEra = 0;
   for (const rec of m.values()) {
     // A seated cell's knowledge lives on its court now — the ledger freezes
@@ -300,8 +316,15 @@ export function stepLandKnow(world) {
       let contactMul = 1;
       if (T.ORG_CONTACT > 0) {
         const cageDrv = T.STATE_CAGE ? cageAt(world, rec.ti) * rec.ceil : 0;
-        const stateNear = contact && contact.has(rec.cell) ? 1 : 0;
-        const drive = Math.min(1, Math.max(cageDrv, stateNear));
+        let near = contact && contact.has(rec.cell) ? 1 : 0;
+        if (!near && cities) {
+          for (const c of cities) {
+            let dx = Math.abs(c.x - x); if (dx > halfW) dx = tw - dx;
+            const dy = c.y - y;
+            if (dx * dx + dy * dy <= exchT2) { near = 1; break; }
+          }
+        }
+        const drive = Math.min(1, Math.max(cageDrv, near));
         contactMul = (1 + T.ORG_CONTACT * drive) / (1 + T.ORG_CONTACT);
       }
       k.organization = clamp01(k.organization + LB * sciMul * orgClim * orgHead
