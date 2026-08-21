@@ -112,3 +112,30 @@ volume falls to history's pace while decisiveness stays.
 * The ledger↔field food split remains two truths; the deeper unification
   (make `_foodSupply` honest under the field regime) is a separate,
   larger lap if its other consumers (growth, trade, sieges) show artifacts.
+
+## 2026-08-21 addendum — laps 5-10 and the first 1.5M km² empire-bloc
+
+Nine further laps landed this day (siege endurance/lift, committed-force
+storm, works clock, siege levée, satrap succession, hegemony-before-
+annexation, the era-relative absorb bar, and TRIBUTE_UP — the bala), the
+lever shipped ON, and the bala verdict arm (tw=480/28k, full live set)
+produced the first GeaCron-shaped hierarchy this sim has ever had:
+
+* **Biggest bloc: 26 realms / 1.54M km²** — Achaemenid-entry scale, built
+  by the full two-stage chain: sack → tribute bond (130 sackYieldsTribute
+  per window) → in-kind bala remittance → granary/market/works →
+  capacity/reach → more conquest and integration (120 PASSED/window).
+* Top-5 blocs 26/8/8/8/6 realms — one great empire over a tier of
+  kingdoms over a mass of statelets: the real map's shape.
+* Painted nations (bloc roots): 529 at 28k — the 1500-CE polity band.
+* Stateless cities: 6% (from 100% at first cities).
+
+Still open, in priority order: (1) the biggest bloc holds ~6% of claimed
+land vs history's hegemonic 25-50% — integration pace (hazardRoll 710 +
+beyondDirectRule 478 per window are the binding gates) converts bloc to
+territory too slowly; (2) realm deaths ~587/window — churn above the
+stylized band; (3) the statehood GRADIENT (owner screenshot 2026-08-21):
+statehood fires globally near-synchronously — the Americas/Australia tile
+with statelets while history's map at any moment is old dense kingdoms in
+cradles, young edges, tribal beyond. Cradle-first consolidation is the
+next named wave.
