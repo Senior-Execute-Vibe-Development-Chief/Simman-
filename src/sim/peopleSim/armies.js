@@ -2028,11 +2028,24 @@ export function advanceFronts(world) {
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity < T.CITY_STORM_RATIO) tel(world, "storm", "assaultTooWeak");
       else if (world.step - (def._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE) tel(world, "storm", "pacifiedGrace");
+      // T.WAR_FINISH — THE STORM IS FOUGHT BY THE COMMITTED FORCE. The grind
+      // and break tests below compared the walls against the attacker's
+      // entire NATIONAL might (att._M — a relic from before the war-capacity
+      // block existed): at the dense statelet register a 10-city realm's pool
+      // is ~10× any young city's urban militia, so 87% of storm-strength
+      // sieges broke the walls the SAME pass (grinding=60 vs PASSED=409 per
+      // 4k, measured) and the register boiled. The force that fights the
+      // assault is the force the capacity block actually COMMITS to this
+      // front (attForce0 — concentration, exhaustion and multi-front splits
+      // included), exactly what advCity above already prices: storming now
+      // demands CONCENTRATION, so a many-front realm cannot instant-break
+      // everywhere at once. ×att._M unchanged at lever 0.
+      const stormM = T.WAR_FINISH ? attForce0 : att._M;
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
         // Bombard: grind the garrison; the besiegers bleed against the defence
         // they actually face (the militia floor, not the melted garrison).
         {
-          const dDef = Math.min(def.army || 0, att._M * pjCap * proF * SIEGE_DMG);   // the besieger grinds at PROJECTED PROFESSIONAL strength (×1 at lever 0)
+          const dDef = Math.min(def.army || 0, stormM * pjCap * proF * SIEGE_DMG);   // the besieger grinds at PROJECTED PROFESSIONAL strength (×1 at lever 0)
           const dAtt = Math.min(att.army || 0, defHome * T.ATTRITION / techMul(att));
           def.army = (def.army || 0) - dDef;
           att.army = (att.army || 0) - dAtt;
@@ -2045,8 +2058,8 @@ export function advanceFronts(world) {
         // the post-pass reconciliation — the siege wears it down pass over pass.)
         // The seat's ground holds through the siege too (T.REFUGE; ×1 at lever 0).
         const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold * hungerOf(seatS);
-        if (!(defNow * em <= att._M * pjCap * proF * SIEGE_BREAK)) tel(world, "storm", "wallsHold(grinding)");
-        if (defNow * em <= att._M * pjCap * proF * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
+        if (!(defNow * em <= stormM * pjCap * proF * SIEGE_BREAK)) tel(world, "storm", "wallsHold(grinding)");
+        if (defNow * em <= stormM * pjCap * proF * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
           // The SETTLEMENT that changes hands: under TILE_WAR `def` is a country adapter, so
           // the storm falls on its real capital (which fragments the realm); otherwise on the
           // settlement itself. Army mechanics below stay on `def`/`att` (the national pools).
