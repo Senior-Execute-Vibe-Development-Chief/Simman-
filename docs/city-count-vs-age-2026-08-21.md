@@ -87,3 +87,46 @@ Also worth copying from history: the register was never monotone — the Late
 Bronze collapse and the western-Roman fall genuinely SHRANK it.
 `DISSOLVE_TOWNS` makes contraction structurally possible; no collapse era
 has yet been observed to use it at scale.
+
+## The wave, built (same day) — corrected numbers and the caravan lap
+
+Verified-tree control (tw=240, full stack; `cityage240_tallywait.log`):
+register 43 (Bronze) → 194 (Classical mass) → 406 (Medieval mass); honest
+≥10k cores 5 → 43 → 165. Per capita the REGISTER tracks history (1 city
+per ~300k people at classical vs history's ~1 per 400k) — the deficits are
+the PEOPLE (59M at classical mass vs history's ~200M) and CORE RETENTION
+(cores mint at 10k, then most sit below it: 165 of 406 at 24k).
+
+**The mint-funnel attribution** (`cityage240_funnel.log`): `siteCity:
+tallyBar` dominates (1,400–2,500/window — a standing stock of gathered
+10k-core proto-cities waiting at the LAND_KNOW tally gate), `peerSeat:
+cellFull` behind it. **The tally-wait split** (`cityage240_tallywait.log`):
+the waiting stock is frozen, not slow — org p50 0.12 across 14k steps,
+beyond every contact sphere. **Located** (`frozenwhere240.log`): the frozen
+sites are the missing classical cohorts BY NAME — the North China Plain
+(114E,38N), the Yangtze (116E,30N), Sichuan, north India (87E,26N), the
+Gulf flank, the Maghreb — at 600–1,600 km from the nearest city. Not the
+Americas: the pristine gradient was already right.
+
+**Lap 1 (null, kept for the record):** scaling the exchange radius by
+logisticsLevel alone was byte-identical through 20k — that channel is
+empty exactly when the frozen sites need contact (`exchwave240.log`).
+
+**Lap 2 — the caravan radius (`e39080c`, EXCH_WAVE def 3):** the Uruk
+expansion brought cities into the contact term but gave each a VILLAGE's
+500 km obsidian horizon; the first cities' real networks immediately
+spanned ~2.5× that (Uruk's Anatolian enclaves ~1,200 km, Assur's karum
+~1,000 km). Under the lever a city radiates at 2.5× the village scale,
+still growing with logistics as eras advance; villages and pristine
+continents untouched. **A/B verdict (`caravan240.log`):** dawn
+byte-identical through 16k (the stagger survives), then register 104→134
+(+29%) at 18k, 288→342 (+19%) at 22k, 406→451 at 24k, cores 165→186; the
+era mass shifts DOWN at fixed step (more Classical, less Medieval — the
+register now outgrows the era clock, history's direction). Classical-band
+gap ~2.5× → ~1.6×. SHIPS.
+
+Remaining, in order: (A) the population level (~2.5× under history at
+matched era-mass — the carrying-capacity/dilution axis, tasks #17-18),
+(B) core retention post-mint (the urban-share half, task #20-adjacent),
+(C) `peerSeat: cellFull` (the in-nation lattice cap — partly grid
+granularity; re-judge at the shipping proxy). tw=480 stamp pending.
