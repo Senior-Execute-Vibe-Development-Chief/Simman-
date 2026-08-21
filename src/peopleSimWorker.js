@@ -458,6 +458,11 @@ function packSettlement(s) {
     _isPort: s._isPort, _vassalCount: s._vassalCount, liegeId: s.liegeId,
     army: s.army,         // for the leaderboard's "biggest armies" sort
     _shock: s._plagueActive ? 2 : (world.step < (s._famineUntil || 0) ? 1 : 0),
+    // War overlay: under siege now (armies.js stamps _besiegedAt while a front
+    // stands at the walls — same freshness the granary clock uses), and steps
+    // since the last sack (the conquest-flash ring; null = never/long ago).
+    _besieged: s._besiegedAt !== undefined && world.step - s._besiegedAt < (T.POLITY_INTERVAL || 150) * 1.5,
+    _sackedAge: s._sackedAt !== undefined && world.step - s._sackedAt < 500 ? world.step - s._sackedAt : null,
     _homeland: s._homeland ?? -1, _provinceCity: s._provinceCity ?? -1,   // Provinces overlay: captured-nation + admin seat
     // Coerced-labour intensity 0..1 for the Society lens: how bound the labour is
     // (slaves as a share of people, serfdom, cash-crop plantation land).
@@ -796,6 +801,54 @@ function buildSnapshotUnsafe() {
     }
   }
 
+  // ── Active wars + front arrows (Layers → War fronts) ───────────────────────
+  // Directional pairs read from the war pass's own strategic-state stamps
+  // (c._offEnemies = whom this court committed offense against, c._warStamp =
+  // engaged-this-pass freshness), then a sampled set of aggressor→defender
+  // arrows along each warring pair's DRAWN border (the countryClaim being
+  // shipped, so arrows sit exactly on the border the player sees). Static
+  // cadence; an empty array on a static send CLEARS the mirror (peace).
+  let wars = null, warArrows = null;
+  if (sendStatic && world.countries) {
+    const freshW = (T.CONQUEST_INTERVAL || 100) * 2.5;
+    wars = [];
+    for (const c of world.countries.values()) {
+      if (!c._offEnemies || !c._offEnemies.size) continue;
+      if (world.step - (c._warStamp ?? -1e9) > freshW) continue;
+      for (const e of c._offEnemies) { wars.push(c.id, e); }
+    }
+    if (wars.length && countryClaim) {
+      const atk = new Map();   // attacker → Set(defender)
+      for (let i = 0; i < wars.length; i += 2) { let s2 = atk.get(wars[i]); if (!s2) atk.set(wars[i], s2 = new Set()); s2.add(wars[i + 1]); }
+      const tw2 = world.tw, th2 = world.th, cnt = new Map(), out = [];
+      const STRIDE = Math.max(3, Math.round(tw2 / 90));   // ~constant arrows-per-border-length at every grid
+      const push = (ax, ay, bx, by, a, d) => {
+        const k = a + ":" + d, n = cnt.get(k) || 0; cnt.set(k, n + 1);
+        if (n % STRIDE) return;
+        if (out.length < 4 * 800) out.push(ax, ay, bx, by);
+      };
+      for (let ti = 0; ti < countryClaim.length; ti++) {
+        const a = countryClaim[ti]; if (a < 0) continue;
+        const py = (ti / tw2) | 0, px = ti - py * tw2;
+        const b = countryClaim[px === tw2 - 1 ? ti - (tw2 - 1) : ti + 1];
+        if (b >= 0 && b !== a) {
+          const sA = atk.get(a), sB = atk.get(b);
+          if (sA && sA.has(b)) push(px + 0.5, py + 0.5, px + 1.5, py + 0.5, a, b);
+          if (sB && sB.has(a)) push(px + 1.5, py + 0.5, px + 0.5, py + 0.5, b, a);
+        }
+        if (py < th2 - 1) {
+          const c2 = countryClaim[ti + tw2];
+          if (c2 >= 0 && c2 !== a) {
+            const sA = atk.get(a), sC = atk.get(c2);
+            if (sA && sA.has(c2)) push(px + 0.5, py + 0.5, px + 0.5, py + 1.5, a, c2);
+            if (sC && sC.has(a)) push(px + 0.5, py + 1.5, px + 0.5, py + 0.5, c2, a);
+          }
+        }
+      }
+      warArrows = Float32Array.from(out);
+    } else warArrows = new Float32Array(0);
+  }
+
   const transfer = [];
   if (owner) transfer.push(owner.buffer);
   if (roadQuality) transfer.push(roadQuality.buffer);
@@ -858,6 +911,7 @@ function buildSnapshotUnsafe() {
     quietAges: quietAgesNow,   // the pre-nation condition holds (chip visible; gold when applied, dim when opted out)
     globalP,
     owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim, landNations,
+    wars, warArrows,   // active war pairs + sampled aggressor→defender border arrows (static cadence; [] clears)
     fieldDom, fieldSec, fieldLayer,   // per-tile identity field for the active culture/faith/language lens
     loyal, loyalHome,                 // loyalty lens: attachment heat + the ground's remembered nation
     // popMax → CENSUS people per REFERENCE tile on the densest ground (already

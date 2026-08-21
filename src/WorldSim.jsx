@@ -451,7 +451,8 @@ useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedS
 // declaratively; mirrored to a ref so draw() (memoized) reads current
 // values without needing them in its deps.
 const[layers,setLayers]=useState({
-  icons:true, tints:true, borders:true, provinces:false, roads:true, seaLanes:true,
+  icons:true, tints:true, borders:true, provinces:true, roads:true, seaLanes:true,
+  warFronts:true, sieges:true,   // war overlay: aggressor→defender arrows + siege/sack marks
   moneyFlow:true, ships:true, shocks:true,
   village:true, town:true, city:true, metropolis:true,
   labels:true, emblems:true,   // names + heraldry drawn on the map (plan §5.1–5.2)
@@ -2138,17 +2139,18 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();octx.restore();
       };
+      // Suzerainty root: follow _overlord chains (vassal AND colony) with a
+      // hop guard. An empire paints as ONE colour family — the atlas
+      // convention (satrapies paint as Persia) — while internal boundaries
+      // stay visible as province lines. Shared by the Politics lens AND the
+      // terrain-view political wash so blocs paint and border identically.
+      const rootCache=new Map();
+      const rootOf=(id)=>{let r=rootCache.get(id);if(r!==undefined)return r;
+        let cur=id,hops=0;
+        while(hops++<12){const o=psw.countries&&psw.countries.get(cur);const ov=o&&o._overlord>=0&&o._overlord!==cur?o._overlord:-1;if(ov<0)break;cur=ov;}
+        rootCache.set(id,cur);return cur;};
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
-        // Suzerainty root: follow _overlord chains (vassal AND colony) with a
-        // hop guard. An empire paints as ONE colour family — the atlas
-        // convention (satrapies paint as Persia) — while claim-id borders
-        // below keep every internal boundary visible.
-        const rootCache=new Map();
-        const rootOf=(id)=>{let r=rootCache.get(id);if(r!==undefined)return r;
-          let cur=id,hops=0;
-          while(hops++<12){const o=psw.countries&&psw.countries.get(cur);const ov=o&&o._overlord>=0&&o._overlord!==cur?o._overlord:-1;if(ov<0)break;cur=ov;}
-          rootCache.set(id,cur);return cur;};
         const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current,rootOf);
         countryColorsRef.current=hues;
         const fillByCountry=new Map(),colonyByCC=new Map();
@@ -2203,13 +2205,17 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);const p=rootOf(dno)===rootOf(cc)?provPath:natPath;p.moveTo(sx,by);p.lineTo(sx+TR,by);}}
         }
         octx.lineJoin="round";octx.lineCap="round";
-        octx.strokeStyle="rgba(20,20,26,0.45)";octx.lineWidth=0.8*uiF;octx.stroke(provPath);
-        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.stroke(natPath);
+        if(L.provinces){octx.strokeStyle="rgba(20,20,26,0.45)";octx.lineWidth=0.8*uiF;octx.stroke(provPath);}
+        if(L.borders){octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.stroke(natPath);}
         emphasizeRealm(claimArr,tw,th);
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders||L.provinces)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
-        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
+        // Two pens, bloc-aware (same convention as the Politics lens): a seam
+        // between two members of the SAME suzerainty bloc is a faint province
+        // line (Layers → Province borders); a true national border keeps the
+        // heavier dash (Layers → Borders).
+        const natB=(L.borders||L.provinces)?new Path2D():null,provB=natB&&new Path2D();
         let lastFs=null;
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
@@ -2222,8 +2228,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
               // ROOT hue (vassals included), stripes still mark colonies.
               const co=psw.countries&&psw.countries.get(cc);
               const isColony=!!(co&&co._overlord>=0&&co._depKind!=="vassal");
-              let root=cc,hops=0;
-              while(hops++<12){const o=psw.countries&&psw.countries.get(root);const ov=o&&o._overlord>=0&&o._overlord!==root?o._overlord:-1;if(ov<0)break;root=ov;}
+              const root=rootOf(cc);
               colonyByCC.set(cc,isColony);
               const h=((root*61)%360+360)%360;
               fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
@@ -2231,13 +2236,17 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             stctx.fillRect(px,py,1,1);
             if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
           }
-          if(!L.borders)continue;
+          if(!natB)continue;
           const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
-          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;const p=rootOf(ro)===rootOf(cc)?provB:natB;p.moveTo(ex,sy);p.lineTo(ex,sy+TR);}
           if(py<th-1){const dno=claimArr[ti+tw];
-            if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+            if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);const p=rootOf(dno)===rootOf(cc)?provB:natB;p.moveTo(sx,by);p.lineTo(sx+TR,by);}}
         }
-        if(L.borders){octx.stroke();octx.setLineDash([]);}
+        if(natB){
+          if(L.provinces){octx.strokeStyle="rgba(25,25,30,0.55)";octx.lineWidth=0.7*uiF;octx.setLineDash([uiF,1.6*uiF]);octx.stroke(provB);}
+          if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.stroke(natB);}
+          octx.setLineDash([]);
+        }
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
         emphasizeRealm(claimArr,tw,th);
       } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&owner){
@@ -2326,6 +2335,38 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.strokeStyle="rgba(20,20,20,0.45)";octx.lineWidth=uiF;octx.setLineDash([uiF,2*uiF]);octx.beginPath();drawSeams(false);octx.stroke();
         octx.strokeStyle="rgba(15,15,15,0.75)";octx.lineWidth=uiF;octx.setLineDash([3*uiF,2*uiF]);octx.beginPath();drawSeams(true);octx.stroke();
         octx.setLineDash([]);
+      }
+      // ── War fronts (Layers → War fronts): arrows across the border from the
+      // AGGRESSOR into the ATTACKED — one glance says who is invading whom.
+      // Sampled worker-side along each warring pair's drawn border (so they
+      // sit exactly on the lines above); direction = the war pass's own
+      // offensive commitments, so a mutual war shows arrows both ways.
+      // Live-state only: suppressed while scrubbing the timeline (arrows
+      // describe TODAY's wars, not the year under the scrubber).
+      if(L.warFronts&&psw._warArrows&&psw._warArrows.length&&!psw._scrubClaim&&
+         (vmCountry||(!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique))){
+        const wa=psw._warArrows,tw=psw.tw;
+        octx.lineJoin="round";octx.lineCap="round";
+        for(let i=0;i<wa.length;i+=4){
+          const ax=wa[i]*TR,ay=dataYtoScreenY(wa[i+1]*TR,H,CH);
+          const bx=wa[i+2]*TR,by=dataYtoScreenY(wa[i+3]*TR,H,CH);
+          if(Math.abs(bx-ax)>(tw/2)*TR)continue;   // wrap-seam pair — skip the cross-map streak
+          const mx=(ax+bx)/2,my2=(ay+by)/2;
+          const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy)||1;
+          const ux=dx/len,uy=dy/len;
+          const tail=1.15*TR,hw=0.55*TR;
+          const x0=mx-ux*tail,y0=my2-uy*tail,x1=mx+ux*tail,y1=my2+uy*tail;
+          // dark under-stroke, then the red blade — reads on any terrain
+          octx.strokeStyle="rgba(30,8,6,0.85)";octx.lineWidth=2.1*uiF;
+          octx.beginPath();octx.moveTo(x0,y0);octx.lineTo(x1,y1);octx.stroke();
+          octx.strokeStyle="rgba(212,44,32,0.95)";octx.lineWidth=1.1*uiF;
+          octx.beginPath();octx.moveTo(x0,y0);octx.lineTo(x1,y1);octx.stroke();
+          octx.fillStyle="rgba(212,44,32,0.95)";
+          octx.beginPath();octx.moveTo(x1+ux*hw*0.9,y1+uy*hw*0.9);
+          octx.lineTo(x1-ux*hw*1.4-uy*hw,y1-uy*hw*1.4+ux*hw);
+          octx.lineTo(x1-ux*hw*1.4+uy*hw,y1-uy*hw*1.4-ux*hw);
+          octx.closePath();octx.fill();
+        }
       }
       // Roads — thickness + alpha from current flow, weight from SURFACE
       // quality: an engineered road (quality ≤ QUALITY_NEW 0.25) draws as a
@@ -2533,6 +2574,27 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         ctx.strokeStyle=shock===2?"rgba(190,80,210,0.9)":"rgba(245,170,40,0.9)";
         ctx.lineWidth=1.3*iconScale;ctx.stroke();
       }
+      // ── War marks (Layers → Sieges & sacks) ──
+      // UNDER SIEGE: a red X struck across the glyph — an enemy camp stands at
+      // these walls right now (the granary is draining; the storm may come).
+      if(_L.sieges&&s._besieged){
+        const xr=r+1.3*iconScale;
+        ctx.lineCap="round";
+        ctx.strokeStyle="rgba(25,6,4,0.9)";ctx.lineWidth=2.0*iconScale;
+        ctx.beginPath();ctx.moveTo(sx-xr,sy-xr);ctx.lineTo(sx+xr,sy+xr);
+        ctx.moveTo(sx+xr,sy-xr);ctx.lineTo(sx-xr,sy+xr);ctx.stroke();
+        ctx.strokeStyle="rgba(224,42,30,0.95)";ctx.lineWidth=1.0*iconScale;
+        ctx.beginPath();ctx.moveTo(sx-xr,sy-xr);ctx.lineTo(sx+xr,sy+xr);
+        ctx.moveTo(sx+xr,sy-xr);ctx.lineTo(sx-xr,sy+xr);ctx.stroke();
+        ctx.lineCap="butt";
+      }
+      // SACKED: an expanding, fading ember ring — the city just fell to storm.
+      if(_L.sieges&&s._sackedAge!=null){
+        const t=Math.min(1,s._sackedAge/500);
+        ctx.beginPath();ctx.arc(sx,sy,r+(2.5+8*t)*iconScale,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(232,96,24,${(0.8*(1-t)).toFixed(3)})`;
+        ctx.lineWidth=1.5*iconScale*(1-0.5*t);ctx.stroke();
+      }
       // Adjust below rank-marker offset for the new (smaller) icon.
       const _markerR=r;
       // ── Rank marker ── a gold star above national capitals, a small open
@@ -2664,6 +2726,8 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.fastEpoch!==undefined)setFastEpoch(!!snap.fastEpoch);
   if(snap.quietAges!==undefined)setQuietAges(!!snap.quietAges);
   if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
+  if(snap.wars)psw._wars=snap.wars;                 // active war pairs [att,def,...] (static cadence; [] clears at peace)
+  if(snap.warArrows)psw._warArrows=snap.warArrows;  // aggressor→defender border arrows (small — GC'd, not pooled)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
   // layer it was built for, so a stale field from a previous lens is ignored.
@@ -3206,6 +3270,12 @@ const _nationCount=(()=>{const cs=_psw&&_psw.countries;if(!cs)return 0;
     while(hops++<12){const o=cs.get(cur);const ov=o&&o._overlord>=0&&o._overlord!==cur?o._overlord:-1;if(ov<0)break;cur=ov;}
     roots.add(cur);}
   return roots.size;})();
+// Active wars, as UNORDERED pairs (the snapshot's list is directional, so a
+// mutual war arrives twice — count the rivalry once).
+const _warCount=(()=>{const w=_psw&&_psw._wars;if(!w||!w.length)return 0;
+  const seen=new Set();
+  for(let i=0;i<w.length;i+=2){const a=w[i],b=w[i+1];seen.add(a<b?a+":"+b:b+":"+a);}
+  return seen.size;})();
 
 
 // ── World Panel panes (relocated leaderboard / charts / settlement card) ──
@@ -4384,7 +4454,7 @@ return(
   {!narrow&&<>
     <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
     <span className="au-vrule" style={{height:22}}/>
-    <span className="au-num" style={{fontSize:13}} title={`${_nationCount} sovereign nations (suzerainty blocs); the full register holds ${_countryCount} states incl. vassals & tributaries`}>{_nationCount} <span className="au-sc au-cfade" style={{fontSize:11}}>nations</span>{_countryCount>_nationCount&&<span className="au-cfade" style={{fontSize:11}}> · {_countryCount} states</span>}</span>
+    <span className="au-num" style={{fontSize:13}} title={`${_nationCount} sovereign nations (suzerainty blocs); the full register holds ${_countryCount} states incl. vassals & tributaries${_warCount?`; ${_warCount} wars being fought right now`:""}`}>{_nationCount} <span className="au-sc au-cfade" style={{fontSize:11}}>nations</span>{_countryCount>_nationCount&&<span className="au-cfade" style={{fontSize:11}}> · {_countryCount} states</span>}{_warCount>0&&<span style={{fontSize:11,color:"#c8442c"}}> · ⚔ {_warCount}</span>}</span>
     <span className="au-num" style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-cfade">%</span> <span className="au-sc au-cfade" style={{fontSize:11}}>claimed</span></span>
     {lens==="economy"&&(()=>{
       const psw=peopleRef.current;
@@ -4764,14 +4834,17 @@ return(
           style={{cursor:"pointer",fontSize:18,color:"var(--au-ch-text-dim)"}}>×</span>
       </div>
       <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"4px 14px 2px"}}>Politics & trade</div>
-      {row("tints","Country tints")}
-      {row("borders","Borders")}
+      {row("tints","Nation tints")}
+      {row("borders","National borders")}
+      {row("provinces","· Provinces & states",10)}
       {row("labels","Names on the map")}
       {row("emblems","Heraldry")}
-      {row("provinces","Province borders")}
       {row("roads","Roads")}
       {row("seaLanes","Sea lanes")}
       {row("moneyFlow","Money flow")}
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>War</div>
+      {row("warFronts","Invasion arrows")}
+      {row("sieges","Sieges & sacks")}
       <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>Terrain</div>
       {trow(showRivers,setShowRivers,showRiversRef,"Rivers")}
       {showRivers&&trow(showStreams,setShowStreams,showStreamsRef,"· Streams",10)}
