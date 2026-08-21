@@ -198,9 +198,24 @@ Painted count 448→492 only because the register itself grew (1,081
 cities vs 1,027; the confetti replenishes at the edge — the statehood-
 gradient wave's territory, not this one's). VERDICT: stays def-on.
 
-Verdict arms for FEAR_REACH (final checkpoint) and the full stack with
-lap 3 are running; judge against the ladder above. The open necks after
-this wave, by count: submit `hazardRoll(waiting)` 1,812 and
-`resistanceNotHopeless` 1,095 per window (the pace and the power bar),
-integrate `orgBelowMin` 1,118 (the era bar holding, as designed) and
-`beyondDirectRule` 251 (holdReach conversion pace).
+**Lap-3 verdict** (28k, fear stack ± the relief law): the brakes it
+targets fell measurably — coalitionBrake(deterrence) 97→57 on
+integration, 330→265 on submission — and integrations rose 134→141;
+the macro shape (biggest bloc 38 vs 34 realms, 1.22M vs 1.73M km²)
+sits within single-seed trajectory noise, so this ships as a targeted
+unblock, not a macro claim. Enclave digestion is no longer
+deterrence-blocked: the integration funnel's necks are now
+`orgBelowMin` 2,468 + `hazardRoll` 1,015 + `beyondDirectRule` 1,006
+per window against coalition's 57 — the era bar (holding as designed),
+the clock, and reach. Those are the integration-pace axis of this
+wave, not brakes to discount.
+
+The open necks after this wave, by count: submit `hazardRoll(waiting)`
+~4,300 and `resistanceNotHopeless` ~2,400 per window (the pace and the
+power bar), integrate `orgBelowMin` + `beyondDirectRule` + the clock
+(above). The ATTACK lane — the owner's sharpened question, "why didn't
+the large empire ATTACK them?" — is measured separately in the
+predation probe (docs/predation, pending): at tw=240 predation is
+ALIVE globally (505 ≥4× wars per window) while the TOP-POWER giants
+idle at 0-1 offensives below their command capacity; per-giant bar
+attribution + a neighbor census at tw=480 will name the binding brake.
