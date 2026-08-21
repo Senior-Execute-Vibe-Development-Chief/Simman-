@@ -32,6 +32,20 @@ centuries. The pre-industrial ceiling is agrarian — urban share pins at
 
 ## The sim, measured (tw=240, full live stack, seed 8817, 24k)
 
+> **ERRATUM (same day):** the table below was measured against the WRONG
+> TREE — a container reset had silently reverted the checkout to the old
+> baseline before the probe launched, so the run lacked the entire
+> consolidation stack (its unknown SIM_TUNE keys were ignored). A
+> verified-tree rerun shows a materially different curve: slower dawn
+> (first cities ~14k, not 10k), register 194 by classical mass at 20k —
+> but only **43 of 194 clearing the honest ≥10k core bar**, so on the
+> Chandler-comparable count the classical deficit is ~10×, worse than the
+> table claims, and the register is NOT core-honest under the live stack
+> (the wrong-tree world's near-1:1 core ratio was the old regime's).
+> Corrected table + the mint-funnel attribution follow from the rerun
+> (`docs/runs/2026-08-21/cityage240_funnel.log`). The IRL series above
+> and the direction of the finding (knowledge outruns the mint) stand.
+
 "Mass era" = where the bulk of the register's cities sit by their own tech.
 
 | step | mass era | register | cores ≥10k | history's band | verdict |

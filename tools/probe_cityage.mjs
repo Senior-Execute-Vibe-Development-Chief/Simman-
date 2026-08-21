@@ -9,6 +9,7 @@ import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
 import { POP_SCALE } from "../src/sim/units.js";
+import { telEnable, telReport, telReset } from "../src/sim/peopleSim/telemetry.js";
 
 const STEPS = +(process.argv[2] || 28000);
 const W = +(process.argv[3] || 960), H = W >> 1;
@@ -16,6 +17,7 @@ const SEED = +(process.argv[4] || 8817);
 const EVERY = 2000;
 
 const world = buildSim({ W, H, seed: SEED });
+telEnable(world);
 
 while (world.step < STEPS) {
   stepPeopleSim(world, EVERY);
@@ -33,4 +35,13 @@ while (world.step < STEPS) {
   }
   const eras = eraN.map((n, e) => (n ? `${ERAS[e].slice(0, 4)}:${n}` : null)).filter(Boolean).join(" ");
   console.log(`step ${String(world.step).padStart(5)}  register=${cities}  cores>=10k=${urb10k}  leading=${ERAS[lead]}  [${eras}]  pop=${(popSim * POP_SCALE / 1e6).toFixed(0)}M`);
+  // WHY does the register not grow faster? Under the live regime cities mint
+  // through the SITE lane (gather -> core bar -> LAND_KNOW tally gate) and the
+  // PEER-SEAT lane — print every creation-side funnel the sim exposes.
+  const tr = telReport(world);
+  for (const ch of Object.keys(tr).sort()) {
+    if (!/site|seat|found|fission|birthPolity|dissolve|landNation|peerlat/i.test(ch)) continue;
+    console.log(`    ${ch}: ` + Object.entries(tr[ch]).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join("  ").slice(0, 200));
+  }
+  telReset(world);
 }
