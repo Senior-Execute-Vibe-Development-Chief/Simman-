@@ -4214,7 +4214,7 @@ function tierCapForOrg(org) { return org >= 0.85 ? 3 : org >= 0.72 ? 2 : org >= 
 // Same re-grounding class as fortRef / TIER_SCALE_REF. 0 = the absolute
 // floor (byte-identical).
 const ABSORB_ERA_Q = 0.67;   // the upper-third bar: the share of courts at or above which a court counts as its era's absorber class
-function absorbOrgBar(world, countries) {
+export function absorbOrgBar(world, countries) {
   if (!(T.ABSORB_ORG_ERA > 0)) return T.ABSORB_ORG_MIN;
   if (world._eraOrgBarStep === world.step && world._eraOrgBar != null) return world._eraOrgBar;
   const orgs = [];

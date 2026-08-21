@@ -20,7 +20,7 @@ import { tel, telPass } from "./telemetry.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee, absorbOrgBar } from "./conquest.js";
 import { ridgeHoldAt, refugeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
@@ -2100,21 +2100,51 @@ export function advanceFronts(world) {
           const dc = world.countries && world.countries.get(dcc);
           const defWasCapital = TILE_WAR ? true : !!(dc && dc.capitalId === dS.id);
           const oldId = dcc;
-          // Defence broken — the throne-city falls to the attacker.
-          dS.countryId = acc;
-          recordOccupation(dS, oldId, acc, world.step);   // remember the nation it just lost (homeland)
-          // Record the storm as a structured event. Names are captured at
-          // event time so the log reads as contemporaries knew the actors.
-          {
-            const dName = dS.name || "a settlement";
-            const toName = realmName(world, acc);
-            if (defWasCapital && oldId >= 0) {
-              logEvent(world, "polity.shattered", { polity: oldId, to: acc, toName,
-                s: dS.id, sName: dName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
-            } else {
-              logEvent(world, "settlement.captured", { s: dS.id, sName: dName, tier: dS.tier | 0,
-                from: oldId, fromName: oldId >= 0 ? realmName(world, oldId) : undefined,
-                to: acc, toName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
+          // T.WAR_FINISH lap 9 — HEGEMONY BEFORE ANNEXATION: conquest without
+          // statecraft yields TRIBUTE, not territory. The B-arm measured the
+          // register's churn as the CONQUEST RATE itself (~321 capitals per
+          // 4k window, one every 12 steps): the storm path bypassed the
+          // era's absorption bar entirely, so any zero-org statelet that won
+          // a siege swallowed a peer whole — while peaceful absorption
+          // rightly demanded the era's upper-third statecraft. History's
+          // early city-states could sack but not GOVERN each other: Kish,
+          // Uruk and Ur cycled tribute-hegemony for centuries, and only the
+          // era's org leader (Sargon) annexed. So a victor BELOW the era's
+          // absorb bar (the same absorbOrgBar the peaceful lanes read) takes
+          // the SACK — plunder, captives, spoils, the burned archive, all
+          // below — and the beaten court BENDS THE KNEE (the existing
+          // submission machinery: vassal bond, war closed as capitulation,
+          // truce binds the suzerain), but the throne is not taken and the
+          // realm lives on as a tributary. Two-stage empire, as it was:
+          // hegemony first; annexation when statecraft matures — and the
+          // tribute bonds feed considerIntegrations exactly then. Inert at
+          // lever 0 (no bar read, no submission — byte-identical).
+          const _vOrg = attCrec && attCrec.capital ? (techEff(attCrec.capital).reachLevel || 0) : 0;
+          const _tribute = T.WAR_FINISH && defWasCapital && oldId >= 0
+            && _vOrg < absorbOrgBar(world, world.countries)
+            && bendTheKnee(world, oldId, acc, "sackedIntoTribute");
+          if (_tribute) {
+            tel(world, "storm", "sackYieldsTribute");
+            logEvent(world, "polity.submittedBySack", { polity: oldId, name: realmName(world, oldId),
+              to: acc, toName: realmName(world, acc), s: dS.id, sName: dS.name || "a settlement",
+              x: dS.pos.x | 0, y: dS.pos.y | 0 });
+          } else {
+            // Defence broken — the throne-city falls to the attacker.
+            dS.countryId = acc;
+            recordOccupation(dS, oldId, acc, world.step);   // remember the nation it just lost (homeland)
+            // Record the storm as a structured event. Names are captured at
+            // event time so the log reads as contemporaries knew the actors.
+            {
+              const dName = dS.name || "a settlement";
+              const toName = realmName(world, acc);
+              if (defWasCapital && oldId >= 0) {
+                logEvent(world, "polity.shattered", { polity: oldId, to: acc, toName,
+                  s: dS.id, sName: dName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
+              } else {
+                logEvent(world, "settlement.captured", { s: dS.id, sName: dName, tier: dS.tier | 0,
+                  from: oldId, fromName: oldId >= 0 ? realmName(world, oldId) : undefined,
+                  to: acc, toName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
+              }
             }
           }
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(acc, (g.get(acc) || 0) + 1); }
@@ -2172,7 +2202,7 @@ export function advanceFronts(world) {
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);
           // Capital fallen → the leaderless realm shatters into regional successors.
-          if (defWasCapital) fragmentRealm(world, oldId, dS.id);
+          if (!_tribute && defWasCapital) fragmentRealm(world, oldId, dS.id);
         }
       }
       continue;   // front's at the core — no countryside left to nibble here
