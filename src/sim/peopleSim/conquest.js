@@ -1520,18 +1520,31 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
     const by = conq && conq.countryId != null && conq.countryId >= 0 ? conq.countryId : -1;
     const H = by >= 0 ? world.countries.get(by) : null;
     if (H && H.capital && H.holdReach > 0) {
-      const kept = [];
+      // Lap 8 — THE SATRAP SWEARS TO THE NEW KING. The holdReach split above
+      // (annex near, fragment far) still destroyed structure at scale: v3
+      // measured 468 shatters per 4k, most deaths being young fragment
+      // statelets dying downstream of one capital falling — a cascade
+      // history does not show. When a throne fell to CONQUEST, the
+      // provincial administration transferred with it (Cyrus rode into
+      // Media's satrapies; Alexander confirmed Persia's; the Manchu took
+      // the Ming provinces as provinces) — the far marches came along too,
+      // just restlessly. So ALL survivors change master: within the
+      // victor's writ at workable loyalty, beyond it as RESTLESS marches
+      // (low loyalty), and the pruning of genuine overreach is left to the
+      // machinery that already prices it — unrest, secession, restoration,
+      // MARCH_LAW — which births LIVING successor realms when it fires,
+      // not doomed specks. Fragmentation remains the fate of realms that
+      // die WITHOUT a conqueror (dynastic collapse), as in history.
       for (const s of survivors) {
-        if (dist(world, H.capital.pos.x, H.capital.pos.y, s.pos.x, s.pos.y) <= Math.max(1, H.holdReach)) {
-          s.countryId = by;
-          recordOccupation(s, oldId, by, world.step);
-          s.loyalty = 0.6; s._conqueredAt = world.step;
-          tel(world, "shatterFate", "annexedWithinReach");
-        } else { kept.push(s); tel(world, "shatterFate", "beyondReachFragments"); }
+        const near = dist(world, H.capital.pos.x, H.capital.pos.y, s.pos.x, s.pos.y) <= Math.max(1, H.holdReach);
+        s.countryId = by;
+        recordOccupation(s, oldId, by, world.step);
+        s.loyalty = near ? 0.6 : 0.35;   // the march swears grudgingly — secession machinery reads this
+        s._conqueredAt = world.step;
+        tel(world, "shatterFate", near ? "annexedWithinReach" : "annexedRestlessMarch");
       }
-      survivors = kept;
-      if (survivors.length) snapClaim(world, by);
-      if (survivors.length === 0) { snapClaim(world, by); return; }
+      snapClaim(world, by);
+      return;
     }
   }
   if (survivors.length === 1) {
