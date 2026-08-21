@@ -102,6 +102,10 @@ export const WORLD_SCRATCH = new Set([
   // PEER_SEATS (2026-08-20): the peer lane's candidate cache — positions and
   // basin takes mid-gather, rebuilt from claims/popField; never serialized.
   "_peerCand",
+  // WAR_FINISH siege-endurance (2026-08-21): the camp clock — per-pair
+  // continuous-siege start stamps, renewed each war pass, stale-pruned;
+  // rebuilt within one pass after load (the _warBornAt doctrine).
+  "_siegeOpen",
 ]);
 
 /** An ENTITY REFERENCE, not a data bag. Recursing into a settlement's `_foodParent`

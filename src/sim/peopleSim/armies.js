@@ -170,6 +170,26 @@ const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent t
 // undefended one falls quickly.
 const SIEGE_DMG         = 0.06;
 const SIEGE_BREAK       = 0.15;
+// T.WAR_FINISH — SIEGES LIFT (the consolidation battery's verdict,
+// docs/consolidation-2026-08-20.md). The grind above gave the DEFENDER a
+// clock (SIEGE_STARVE: the granary) but the BESIEGER none — a camp sat for
+// free until the walls broke, so over enough passes every siege succeeded
+// (per-roll p→1) and the register boiled (measured: ~2,700 realm deaths per
+// 4k steps at 32k, every capital cycling ~1,000 steps). History's camps had
+// the SHORTER clock: a stationary host eats out its district in weeks, then
+// dysentery, arrears and the harvest break it — most sieges FAILED. So a
+// siege is a RACE between the city's granary and the camp's endurance:
+// base endurance ≈ a campaign season-to-year for an unsupplied host,
+// stretched by the attacker's logistics tech (the same commissariat channel
+// that stretches projection and administrative reach) — a bronze-age levy
+// goes home at harvest, Rome sits out Carthage. When the camp's clock runs
+// out first the siege LIFTS and the campaign ends in the treaty machinery
+// below (signPeace: trade/toll-scaled truce, indemnity, congress) — failed
+// campaigns produce PEACE, not an eternal front. One exception: a city
+// already starving (granary broken) is on the eve of the breach — no camp
+// lifts then; the race has resolved. Rides T.WAR_FINISH; inert at lever 0.
+const SIEGE_ENDURE      = 150;   // ticks an unsupplied host sustains a static camp (~a season-to-year at the TRUCE_TICKS=1500≈generation span)
+const SIEGE_ENDURE_LOGI = 3;     // a mature commissariat sustains ×(1+this·logistics) — multi-year investments at logistics 1
 
 // ── Home defence (citizen militia floor) ─────────────────────────────
 // A city's paid garrison can desert (food shortfall, or an insolvent state
@@ -1380,6 +1400,16 @@ export function advanceFronts(world) {
   const besieged = new Set();
   const fronts = new Map();   // countryId → Set(enemy countryId) it is DEFENDING against
   const addFront = (a, b) => { let s = fronts.get(a); if (!s) fronts.set(a, s = new Set()); s.add(b); };
+  // T.WAR_FINISH — the CAMP CLOCK (header at SIEGE_ENDURE): when each pair's
+  // CONTINUOUS siege began. Renewed every pass the front stands at the
+  // heartland; an entry not renewed within the polity cadence lapsed de
+  // facto (the front broke — a later return is a FRESH siege). Scratch,
+  // never persisted — rebuilt within one pass, the _warBornAt doctrine.
+  let siegeOpen = null;
+  if (T.WAR_FINISH) {
+    siegeOpen = world._siegeOpen; if (!siegeOpen) siegeOpen = world._siegeOpen = new Map();
+    if (siegeOpen.size) { const stale = (T.POLITY_INTERVAL || 150) * 1.5; for (const [k, sg] of siegeOpen) if (world.step - sg.last > stale) siegeOpen.delete(k); }
+  }
   for (const pc of pairs.values()) {
     besieged.add(pc.def);
     pc.def._warAt = world.step;                       // core/countryside under attack
@@ -1388,6 +1418,11 @@ export function advanceFronts(world) {
       // T.SIEGE_STARVE: stamp the SETTLEMENT under siege — settlement.js
       // chokes its supply and drains its granary while this stays fresh.
       { const sc = pc.def._capital || pc.def; if (sc && sc.pos) sc._besiegedAt = world.step; }
+      if (siegeOpen) {   // the camp clock opens (or keeps running) at the walls
+        const k = pc.att.countryId + ":" + pc.def.countryId;
+        const sg = siegeOpen.get(k);
+        if (sg) sg.last = world.step; else siegeOpen.set(k, { since: world.step, last: world.step });
+      }
       // Multi-front strain counts only SERIOUS defensive fronts: a distinct
       // enemy actually assaulting one of the realm's towns. Mere border
       // skirmishing (a strong neighbour nibbling a weak frontier tile) is not
@@ -1506,6 +1541,7 @@ export function advanceFronts(world) {
   // Sign the peaces: any warring pair where EITHER side has been worn past
   // TRUCE_EXHAUST ends in a truce binding BOTH for T.TRUCE_TICKS (header above).
   // Stateless raiders (countryId < 0) sign nothing — the wild marches stay wild.
+  let signPeace = null;   // hoisted: the siege-lift path (T.WAR_FINISH, advance loop below) signs through the SAME treaty machinery
   if (T.TRUCE_TICKS > 0) {
     // Peace terms are emergent state, not a flat cooldown:
     //  * DURATION scales with the pair's mutual trade (world._tradePairs,
@@ -1529,7 +1565,7 @@ export function advanceFronts(world) {
       const vs = [...pairTrade.values()].sort((x, y) => x - y);
       tradeRef = Math.max(1e-6, 2 * vs[vs.length >> 1]);
     }
-    const signPeace = (a, b, how = "truce") => {
+    signPeace = (a, b, how = "truce") => {
       const key = Math.min(a, b) + ":" + Math.max(a, b);
       if ((truces.get(key) || 0) > world.step) return false;   // already at peace
       const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
@@ -1883,6 +1919,7 @@ export function advanceFronts(world) {
 
   // Resolve each front: besiege the city if the front reached its
   // heartland; otherwise grind the countryside forward, tile by tile.
+  const _siegeLifted = siegeOpen ? [] : null;   // pairs whose camp broke this pass — their peace signs after the loop
   for (const pc of pairs.values()) {
     const { att, def } = pc;
     if (att.mode !== "settled" || def.mode !== "settled" || att.countryId === def.countryId) continue;
@@ -1969,6 +2006,24 @@ export function advanceFronts(world) {
       // walls (already theatre-projected; +0 exactly at lever 0).
       const advCity = (attForce0 * pjCap * proF) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
       tel(world, "storm", "frontAtHeartland");   // FUNNEL (variance arc): why does no capital fall?
+      // T.WAR_FINISH — the CAMP'S clock runs out (header at SIEGE_ENDURE):
+      // past its logistics-stretched endurance, a camp before a city that
+      // still EATS breaks before the walls do. The siege lifts, and the
+      // campaign ends in a real treaty (signed after the loop): the truce
+      // bars a re-siege until it lapses, so failed campaigns buy peace.
+      if (siegeOpen) {
+        const sg = siegeOpen.get(acc + ":" + dcc);
+        if (sg) {
+          const logi = attCrec && attCrec.capital ? (techEff(attCrec.capital).logisticsLevel || 0) : 0;
+          const endure = (SIEGE_ENDURE * (1 + SIEGE_ENDURE_LOGI * logi)) / (world._dt || 1);
+          if (world.step - sg.since > endure && hungerOf(seatS) > 0.5) {
+            tel(world, "storm", "siegeLifts");
+            siegeOpen.delete(acc + ":" + dcc);
+            if (_siegeLifted && signPeace) _siegeLifted.push([acc, dcc]);
+            continue;   // the host goes home — no storm, no countryside taken; the peace signs below
+          }
+        }
+      }
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity < T.CITY_STORM_RATIO) tel(world, "storm", "assaultTooWeak");
@@ -2021,6 +2076,7 @@ export function advanceFronts(world) {
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(acc, (g.get(acc) || 0) + 1); }
           dS._conqueredAt = world.step;
           dS._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
+          if (siegeOpen) siegeOpen.delete(acc + ":" + dcc);   // the race resolved — the walls broke first
           // GRIEV_LEDGER: the sack is the deepest wound a nation takes — the
           // dead, the enslaved (the captives below), the scattered. Counted as
           // a fraction of the city's people at the moment it fell.
@@ -2136,6 +2192,11 @@ export function advanceFronts(world) {
       tallyDead(world, att.countryId, def.countryId, dAtt + dDef);
     }
   }
+
+  // T.WAR_FINISH — the lifted sieges sign their peace through the full treaty
+  // machinery (trade/toll-scaled duration, indemnity, congress; header at
+  // SIEGE_ENDURE). Signed after the loop so a pass resolves all fronts first.
+  if (_siegeLifted && _siegeLifted.length && signPeace) for (const [a, b] of _siegeLifted) signPeace(a, b, "siegeLifted");
 
   // Expose each warring realm's strategic state — for the info panel and probes:
   // how many fronts it is attacking on, how hard it's pinned defending, its
