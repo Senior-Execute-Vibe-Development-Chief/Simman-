@@ -103,22 +103,36 @@ export function closeWar(world, key, how) {
 // every war ending (how / duration / exhaustion / age) are tallied too.
 // Null by default: zero cost, and the instrumented bar product is hoisted
 // verbatim (same IEEE multiply chain), so normal runs are byte-identical.
+const mkWarTot = () => ({ cand: 0, opened: 0, truceBlocked: 0, parity: 0, stack: 0,
+                          agg: 0, trade: 0, amphib: 0, war: 0, casus: 0, claim: 0, dom: 0, coal: 0, warsStarted: 0 });
 export function mkWarDebug() {
+  // powOf: optional (cid)=>coercive-weight getter a probe may set; when present the
+  // fold ALSO tallies the PREDATION slice (attacker ≥4× the defender by that weight)
+  // into `pred` — the owner's "why doesn't the giant attack the speck" question,
+  // asked of the same per-pair records the global funnel folds.
   return { step: -1, pairs: new Map(), trucePairs: new Set(), signed: [],
-           tot: { cand: 0, opened: 0, truceBlocked: 0, parity: 0, stack: 0,
-                  agg: 0, trade: 0, amphib: 0, war: 0, casus: 0, claim: 0, dom: 0, coal: 0, warsStarted: 0 } };
+           tot: mkWarTot(), pred: mkWarTot(), powOf: null };
 }
+const _predPair = (W, k) => {
+  const ci = k.indexOf(":");
+  const ap = W.powOf(+k.slice(0, ci)) || 0, dp = W.powOf(+k.slice(ci + 1)) || 0;
+  return ap > 0 && ap >= 4 * dp;
+};
 export function foldWarDebug(W) {
   if (!W || !W.pairs) return;
-  for (const r of W.pairs.values()) {
-    W.tot.cand++;
-    if (r.passed) { W.tot.opened++; continue; }
-    if (r.attM < r.base) { W.tot.parity++; continue; }
-    let piv = null, pivV = 1;
-    for (const k in r.f) { const v = r.f[k]; if (v > 1 && r.minBar / v <= r.attM && v > pivV) { piv = k; pivV = v; } }
-    if (piv) W.tot[piv]++; else W.tot.stack++;
+  for (const [k, r] of W.pairs) {
+    const pred = W.powOf && W.pred && _predPair(W, k);
+    for (const t of pred ? [W.tot, W.pred] : [W.tot]) {
+      t.cand++;
+      if (r.passed) { t.opened++; continue; }
+      if (r.attM < r.base) { t.parity++; continue; }
+      let piv = null, pivV = 1;
+      for (const kk in r.f) { const v = r.f[kk]; if (v > 1 && r.minBar / v <= r.attM && v > pivV) { piv = kk; pivV = v; } }
+      if (piv) t[piv]++; else t.stack++;
+    }
   }
   W.tot.truceBlocked += W.trucePairs.size;
+  if (W.powOf && W.pred) for (const k of W.trucePairs) if (_predPair(W, k)) W.pred.truceBlocked++;
   W.pairs.clear(); W.trucePairs.clear();
 }
 const wdbgPass = (W, step) => { if (W.step !== step) { foldWarDebug(W); W.step = step; } };
