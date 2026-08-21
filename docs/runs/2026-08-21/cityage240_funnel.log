@@ -46,3 +46,26 @@ step 18000  register=104  cores>=10k=30  leading=Classical  [Ston:4 Bron:94 Clas
 [peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
 [peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
 [peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+step 20000  register=194  cores>=10k=43  leading=Classical  [Bron:75 Clas:119]  pop=59M
+    fission: eligible=315  halfBelowBar=14
+    landNation: tallyBar=64
+    peerSeat: cellFull=650  CANDIDATE=92  PASSED=92
+    selfFound: PASSED=1
+    siteCity: tallyBar=1373
+[transHeap] step=21696 cap=2048 peakN=1074 pushes=8305 (0.0MB backing)
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+step 22000  register=288  cores>=10k=87  leading=Medieval  [Bron:81 Clas:139 Medi:68]  pop=92M
+    fission: eligible=495  halfBelowBar=17
+    landNation: tallyBar=80
+    peerSeat: cellFull=1069  CANDIDATE=185  PASSED=185
+    selfFound: PASSED=1
+    siteCity: tallyBar=2056
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+step 24000  register=406  cores>=10k=165  leading=Medieval  [Bron:74 Clas:154 Medi:178]  pop=134M
+    fission: eligible=693  halfBelowBar=28
+    landNation: tallyBar=137
+    peerSeat: cellFull=2537  CANDIDATE=240  PASSED=240
+    selfFound: PASSED=8
+    siteCity: tallyBar=2536

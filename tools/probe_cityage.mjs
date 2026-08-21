@@ -10,6 +10,7 @@ import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
 import { POP_SCALE } from "../src/sim/units.js";
 import { telEnable, telReport, telReset } from "../src/sim/peopleSim/telemetry.js";
+import { URBAN_ORG } from "../src/sim/peopleSim/landKnow.js";
 
 const STEPS = +(process.argv[2] || 28000);
 const W = +(process.argv[3] || 960), H = W >> 1;
@@ -44,4 +45,28 @@ while (world.step < STEPS) {
     console.log(`    ${ch}: ` + Object.entries(tr[ch]).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join("  ").slice(0, 200));
   }
   telReset(world);
+  // The tally-waiting stock, split by state contact, with its org distribution:
+  // in-contact + far-below-bar = the contact RATE is the gap; isolated = the
+  // gradient working as designed; p50 hugging the bar = a last-mile asymptote.
+  {
+    const m = world._landKnow, eligA = world._siteCityElig, contact = world._lkContact;
+    if (m && eligA) {
+      const recByCell = new Map();
+      for (const rec of m.values()) if (rec.cell >= 0) recByCell.set(rec.cell, rec);
+      let waitC = 0, waitNC = 0;
+      const orgs = [];
+      for (let k2 = 0; k2 < eligA.length; k2++) {
+        if (!eligA[k2]) continue;
+        const rec = recByCell.get(k2);
+        if (!rec) continue;
+        const org = rec.k.organization || 0;
+        if (org >= URBAN_ORG) continue;
+        orgs.push(org);
+        if (contact && contact.has(k2)) waitC++; else waitNC++;
+      }
+      orgs.sort((a, b) => a - b);
+      const q = (p) => orgs.length ? orgs[Math.min(orgs.length - 1, Math.floor(p * orgs.length))] : 0;
+      if (orgs.length) console.log(`    tallyWait: sites=${orgs.length} (stateContact ${waitC} / beyond ${waitNC})  org p10=${q(0.1).toFixed(2)} p50=${q(0.5).toFixed(2)} p90=${q(0.9).toFixed(2)}  bar=${URBAN_ORG}`);
+    }
+  }
 }
