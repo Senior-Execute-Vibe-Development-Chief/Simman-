@@ -258,3 +258,38 @@ term — an ally that cannot reach the theater still deters; the
 colonial clause four lines below it already has the correct
 `power × projection` law — generalize it), parity 9,539 (frontier
 projection, honest), truce cycle 7,035, amphib bar 5,602.
+
+**Lap 2 — RELIEF_REACH** (`fc1ef54`, def-on): the generalization
+above, built. updateAlliances records bloc MEMBER lists beside the
+pooled scalar; each member backs a threatened court weighted by
+whether its punitive column can arrive (full weight inside half its
+own SUBMIT_REACH × holdReach relief radius — the submission gate's
+own credible-expedition bound — fading to nothing at the radius; the
+defender backs itself in full). A/B on the SMALL_WAR arm: pred-slice
+coalition brake 10,697 → 9,062 (−15%; most deterrence was already
+LOCAL and stays — the honest share), predatory wars +7%, crushing
++8%. Cumulative over both laps vs the pre-predation control:
+**predatory wars +25% (2,901 → 3,615/window), crushing +30%**, and
+every giant on the final dashboard prosecutes TWO police actions at
+once, their peer borders resting in truce (one at 35 members — the
+largest realm any arm has produced).
+
+**The wave's atlas verdict** (probe_statefunnel, full stack, 28k):
+
+| arm | painted | biggest bloc | top5 |
+|---|---|---|---|
+| bala | 529 | 26 / 1.54M km² / 6% | 26,8,8,8,6 |
+| + ENGULF | 448 | 13 / 1.10M / 4% | 13,11,10,9,8 |
+| + FEAR_REACH | 492 | 34 / 1.73M / 7% | 34,24,12,12,11 |
+| **+ SMALL_WAR + RELIEF_REACH** | **440** | **38 / 2.07M / 8%** | **38,19,12,12,12** |
+
+The first arm to move BOTH owner-facing axes at once: fewest painted
+nations of any rung AND the largest empire-bloc of any rung — the
+sword now feeds the atlas. Remaining gap unchanged in kind: the top
+bloc holds 8% of claimed land vs history's hegemonic 25-50% — the
+bloc→territory conversion (integrate `orgBelowMin` 3,282 +
+`beyondDirectRule` 563 + the clock) is the standing integration-pace
+axis. Predation necks now, in order: parity (honest frontier
+physics), truce cycle (7,035/window pred), the amphib bar (8,100 —
+sea-borne predation, a later lap), and the march of sieges for war
+texture.
