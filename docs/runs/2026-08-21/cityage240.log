@@ -1,0 +1,39 @@
+[harness] tree 2fc6ae6
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"WAR_FINISH":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"SMALL_WAR":8,"RELIEF_REACH":1}
+[peopleSim] hearth pin Nile picked at tile (138,40) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (197,38) score 2.54 pkg=rice(suit 0.39) — ARMED: ~6333y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+step  2000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+step  4000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+step  6000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+[peopleSim] AGRICULTURE INVENTED at (138,40) — the basin farms; a city will rise when its market gathers one (score 6.39)
+[peopleSim] AGRICULTURE INVENTED at (167,41) — the basin farms; a city will rise when its market gathers one (score 6.34)
+step  8000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+[peopleSim] hearth candidate at (149,38) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (197,38) stood down — the farming package arrived before it was invented
+step 10000  register=11  cores>=10k=9  leading=Stone Age  [Ston:11]  pop=5M
+step 12000  register=32  cores>=10k=29  leading=Stone Age  [Ston:32]  pop=20M
+[peopleSim] hearth candidate at (117,23) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (140,73) stood down — the farming package arrived before it was invented
+step 14000  register=45  cores>=10k=43  leading=Bronze Age  [Ston:35 Bron:10]  pop=45M
+[peopleSim] hearth candidate at (111,53) stood down — the farming package arrived before it was invented
+step 16000  register=65  cores>=10k=63  leading=Classical  [Ston:3 Bron:57 Clas:5]  pop=78M
+step 18000  register=76  cores>=10k=75  leading=Classical  [Ston:1 Bron:26 Clas:49]  pop=116M
+step 20000  register=88  cores>=10k=83  leading=Medieval  [Bron:5 Clas:55 Medi:28]  pop=147M
+[peopleSim] hearth candidate at (31,23) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) stood down — the farming package arrived before it was invented
+step 22000  register=110  cores>=10k=97  leading=Renaissance  [Bron:2 Clas:22 Medi:84 Rena:2]  pop=168M
+[peopleSim] hearth candidate at (77,72) stood down — the farming package arrived before it was invented
+step 24000  register=147  cores>=10k=130  leading=Renaissance  [Clas:13 Medi:63 Rena:71]  pop=197M
