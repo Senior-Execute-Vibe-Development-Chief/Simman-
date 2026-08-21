@@ -33,3 +33,16 @@ step 14000  register=6  cores>=10k=3  leading=Bronze Age  [Bron:6]  pop=8M
     landNation: tallyBar=37
     peerSeat: CANDIDATE=5  PASSED=5
     siteCity: tallyBar=1179
+step 16000  register=43  cores>=10k=5  leading=Bronze Age  [Bron:43]  pop=15M
+    fission: eligible=26
+    landNation: tallyBar=44
+    peerSeat: cellFull=90  CANDIDATE=36  PASSED=36
+    siteCity: tallyBar=1414
+step 18000  register=104  cores>=10k=30  leading=Classical  [Ston:4 Bron:94 Clas:6]  pop=57M
+    fission: eligible=129  halfBelowBar=3
+    landNation: tallyBar=53
+    peerSeat: cellFull=263  CANDIDATE=56  PASSED=56
+    siteCity: tallyBar=1425
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
