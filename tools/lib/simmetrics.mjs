@@ -106,6 +106,9 @@ export const WORLD_SCRATCH = new Set([
   // continuous-siege start stamps, renewed each war pass, stale-pruned;
   // rebuilt within one pass after load (the _warBornAt doctrine).
   "_siegeOpen",
+  // ABSORB_ORG_ERA (2026-08-21): the era's absorption bar, cached per pass —
+  // a quantile of live capital orgs, recomputed each polity pass.
+  "_eraOrgBar", "_eraOrgBarStep",
 ]);
 
 /** An ENTITY REFERENCE, not a data bag. Recursing into a settlement's `_foodParent`

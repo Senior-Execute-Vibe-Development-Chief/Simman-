@@ -3930,7 +3930,7 @@ function considerIntegrations(world, countries) {
     const pol = getPolity(world, sid);
     if (!pol || pol._depKind !== "vassal") { tel(world, "integrate", "notAVassalBond"); continue; }
     const fOrg = techEff(H.capital).reachLevel;
-    if (fOrg < T.ABSORB_ORG_MIN) { tel(world, "integrate", "orgBelowMin"); continue; }
+    if (fOrg < absorbOrgBar(world, countries)) { tel(world, "integrate", "orgBelowMin"); continue; }   // the era's bar (T.ABSORB_ORG_ERA; header at absorbOrgBar)
     // T.WAR_FINISH — SEAT GRADE IS RELATIVE, NOT AN ORG LADDER. tierCapForOrg's
     // absolute rungs (org 0.72 to govern a tier-2 seat) predate CITY_AT_BIRTH,
     // under which EVERY entity is born tier 2 — so integration structurally
@@ -4181,6 +4181,36 @@ function estAbsorbLoad(world, c, m) {
 // absorbs at all.)
 function tierCapForOrg(org) { return org >= 0.85 ? 3 : org >= 0.72 ? 2 : org >= 0.60 ? 1 : 0; }
 
+// T.ABSORB_ORG_ERA — THE ABSORPTION BAR IS THE ERA'S, NOT A CONSTANT'S. The
+// absolute floor (T.ABSORB_ORG_MIN = 0.48) measured as a time-gate by proxy
+// (probe_statefunnel, tw=480/28k live): at first statehood the WHOLE org
+// distribution sits at 0.40-0.43 — the floor is above the world maximum, 66
+// of 66 integration candidates reject on it, and multi-city formation is
+// structurally impossible for the entire first era (which is when history
+// built Egypt's unification and Uruk's hegemonies); ~8k steps later the
+// median drifts past it and integration switches on — early-vs-late, never
+// capable-vs-not. Measured consequence: 75-81% of realms are SINGLETONS
+// ("almost every city is a capital"), enclaves accumulate unabsorbed.
+//   The honest bar is relative: absorption is the act of the ERA'S
+// UPPER-THIRD administrators — the hegemon share (Uruk among dozens of
+// peers, Akkad among hundreds; at any moment a minority of courts are
+// institutionally ahead enough to rule others, and it is exactly they who
+// consolidate). The capability constraints with real physical meaning —
+// admin headroom, direct-rule reach, identity resistance, coalition
+// deterrence, dominance — all stay; only the redundant absolute yields.
+// Same re-grounding class as fortRef / TIER_SCALE_REF. 0 = the absolute
+// floor (byte-identical).
+const ABSORB_ERA_Q = 0.67;   // the upper-third bar: the share of courts at or above which a court counts as its era's absorber class
+function absorbOrgBar(world, countries) {
+  if (!(T.ABSORB_ORG_ERA > 0)) return T.ABSORB_ORG_MIN;
+  if (world._eraOrgBarStep === world.step && world._eraOrgBar != null) return world._eraOrgBar;
+  const orgs = [];
+  for (const c of countries.values()) if (c.capital) orgs.push(techEff(c.capital).reachLevel || 0);
+  orgs.sort((a, b) => a - b);
+  const bar = orgs.length ? orgs[Math.min(orgs.length - 1, Math.floor(orgs.length * ABSORB_ERA_Q))] : T.ABSORB_ORG_MIN;
+  world._eraOrgBarStep = world.step; world._eraOrgBar = bar;
+  return bar;
+}
 function absorbWeakNeighbors(world, countries) {
   const owner = world._territoryOwner, byId = world._byId;
   if (!owner || !byId) return;
@@ -4240,7 +4270,7 @@ function absorbWeakNeighbors(world, countries) {
       }
       const F = countries.get(ncc); if (!F || !F.capital) continue;   // a realm mid-collapse can have no capital this pass
       const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
-      if (fOrg < T.ABSORB_ORG_MIN) continue;
+      if (fOrg < absorbOrgBar(world, countries)) continue;   // the era's bar (T.ABSORB_ORG_ERA; header above) — the absolute floor at 0
       // T.WAR_FINISH: the same relative seat-grade law as considerIntegrations
       // (see the note there) — the absorber governs seats up to its own
       // capital's grade; the absolute org ladder stays at lever 0.
@@ -4252,7 +4282,8 @@ function absorbWeakNeighbors(world, countries) {
         if ((countryPower.get(ncc) || 1) < myCountryPow * T.ABSORB_FORCE) continue;
       }
       if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough
-      const orgFactor = Math.min(1, (fOrg - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
+      const _orgBar0 = absorbOrgBar(world, countries);
+      const orgFactor = Math.min(1, (fOrg - _orgBar0) / Math.max(0.05, 1 - _orgBar0));
       // Resource hunger (T.RESOURCE_WARS): the empire leans HARDER on the
       // neighbour holding what it lacks — each shippable good the border
       // settlement has CHEAP while F's capital finds it DEAR (a real
