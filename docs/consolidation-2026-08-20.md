@@ -153,7 +153,7 @@ measured on the same ladder (probe_statefunnel, tw=480, 28k, seed 8817;
 | bala (pre-enclosure) | 529 | 26 realms / 1.54M km² / 6% | 26,8,8,8,6 | 71 |
 | + ENGULF submission | 448 | 13 / 1.10M / 4% | 13,11,10,9,8 | 128 |
 | + ENGULF integration | 448 (identical blocs) | 13 / 1.10M / 4% | 13,11,10,9,8 | 128 |
-| + FEAR_REACH | (running; @24k: candidates +49%, biggest 15 vs 9 realms) | | | |
+| + FEAR_REACH | 492 | **34 / 1.73M / 7%** | **34,24,12,12,11** | 188 |
 
 **ENGULF lap 1 — encirclement compels submission** (`ENGULF=8`, hazard
 ×(1+8·share²) when one realm holds share of a statelet's land border;
@@ -187,10 +187,16 @@ over every court whose capital lies within the punitive-expedition
 radius the submission gate already enforces (SUBMIT_REACH × holdReach),
 and the balance-of-power law extends symmetrically — distant courts
 fearing the same giant join the same coalition. Assyria's reputation
-reached courts it never bordered; so does ours. Interim (24k):
-submission candidates 3,459→5,141, PASSED 60→75, biggest bloc 9→15
-realms, and `resistanceNotHopeless` fell 117→78 — the interior now
-faces the giant's might and more find resistance hopeless.
+reached courts it never bordered; so does ours. Final (28k vs the
+ENGULF arm): biggest bloc **13→34 realms, 1.10→1.73M km²**, top5
+13,11,10,9,8 → **34,24,12,12,11** — two great empires over a tier of
+kingdoms, the strongest hierarchy head any arm has produced.
+Submissions 128→188/window, `alreadyADependency` 2,995→4,451 (far more
+of the register is bound into orbits), and `resistanceNotHopeless`
+rejections per candidate fell — the interior faces the giant's might.
+Painted count 448→492 only because the register itself grew (1,081
+cities vs 1,027; the confetti replenishes at the edge — the statehood-
+gradient wave's territory, not this one's). VERDICT: stays def-on.
 
 Verdict arms for FEAR_REACH (final checkpoint) and the full stack with
 lap 3 are running; judge against the ladder above. The open necks after
