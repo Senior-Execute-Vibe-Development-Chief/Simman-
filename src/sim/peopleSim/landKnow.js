@@ -57,6 +57,9 @@ const LK_SWEEP_IVL = 100;   // state-contact sweep cadence (one O(N) pass)
 // This is what lets an alluvial cradle (Nile, Sumer — ore-poor by nature)
 // climb the material ladder its own floodplain cannot supply.
 const EXCH_KM = 500;
+// The caravan ratio: a CITY's exchange network over the village obsidian web —
+// Uruk's enclaves reached ~1,200 km where obsidian walked ~500 (T.EXCH_WAVE).
+const EXCH_CITY_R = 2.5;
 const EARTH_KM = 40075;
 // A village world's learning efficiency relative to a court of the same era —
 // no specialist class, no market of ideas; the density term below carries the
@@ -258,8 +261,17 @@ export function stepLandKnow(world) {
       // command capacity — so the wave of statehood accelerates as eras
       // advance (millennia → centuries), which is history's measured shape.
       // 0 = the fixed neolithic disk, byte-identical.
+      // A CITY'S sphere is a CARAVAN-TRADE radius, not a village's obsidian
+      // horizon: the first cities' networks immediately spanned ~2.5x the
+      // village exchange scale (Uruk's Anatolian enclaves ~1,200 km, Assur's
+      // karum at Kanesh ~1,000 km, against the ~500 km obsidian web), and the
+      // measured frozen sites sat exactly in that gap — 600-1,600 km from the
+      // nearest city (the North China Plain, the Yangtze, north India, the
+      // Maghreb: the missing classical cohorts by name).
       const _lg = T.EXCH_WAVE > 0 ? (techEff(s).logisticsLevel || 0) : 0;
-      const _r = exchT * (1 + T.EXCH_WAVE * Math.max(0, Math.min(1, _lg)));
+      const _r = T.EXCH_WAVE > 0
+        ? exchT * EXCH_CITY_R * (1 + T.EXCH_WAVE * Math.max(0, Math.min(1, _lg)))
+        : exchT;
       (cities || (cities = [])).push({ x: s.pos.x | 0, y: s.pos.y | 0, r2: _r * _r });
     }
   }
