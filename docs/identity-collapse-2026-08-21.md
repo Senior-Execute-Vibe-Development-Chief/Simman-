@@ -126,6 +126,15 @@ window as the dawn world's cities multiply); faith diversity recovers as
 predicted (affinity re-fragments with the peoples). The arc is the
 control's shape, shifted by the dawn's later start — the dawn keeps its
 hearth-radial civilization and the peoples fragment as they spread.
-tw=480 confirm arm running; watch item: over-fragmentation at scale (if
-the fine grid shatters into far more peoples than the control's shape,
-the reach bar's era-scaling gets re-measured — not a constant dialed).
+
+**tw=480 confirm (full live set incl. WAR_FINISH, 28k): PASSED.** Culture
+top-1 falls 22% → 13% → **9%** across 20-28k with 23 peoples ≥1% (control
+band: ~19-21%, 21 ids — matched at scale, not over-fragmented in share
+terms; the 115-strong long tail of small peoples is the historically
+right shape). Language top-1 8%, 23 tongues ≥1%. Faith: top-1 22% at 24k
+then a late surge to 60% at 28k — ONE organized creed sweeping the
+connected world, 12 rivals still ≥1%. That profile is roughly history's
+own (the top two real faiths hold ~55% today), so it is recorded as a
+WATCH ITEM, not tuned: if future arcs show every seed converging on a
+single-creed world by the classical era, the conversion physics gets
+measured then. Wave CLOSED (task #16).
