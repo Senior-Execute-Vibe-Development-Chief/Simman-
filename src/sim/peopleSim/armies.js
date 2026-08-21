@@ -122,7 +122,16 @@ export function foldWarDebug(W) {
   if (!W || !W.pairs) return;
   for (const [k, r] of W.pairs) {
     const pred = W.powOf && W.pred && _predPair(W, k);
-    for (const t of pred ? [W.tot, W.pred] : [W.tot]) {
+    // watch/byAtt: a probe may name attacker ids to slice per-realm (the
+    // "why does THIS giant not attack" question) — same records, third bucket.
+    let wt = null;
+    if (W.watch && W.byAtt) {
+      const att = +k.slice(0, k.indexOf(":"));
+      if (W.watch.has(att)) { wt = W.byAtt.get(att); if (!wt) W.byAtt.set(att, wt = mkWarTot()); }
+    }
+    const tots = pred ? [W.tot, W.pred] : [W.tot];
+    if (wt) tots.push(wt);
+    for (const t of tots) {
       t.cand++;
       if (r.passed) { t.opened++; continue; }
       if (r.attM < r.base) { t.parity++; continue; }
