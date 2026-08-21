@@ -67,6 +67,32 @@ while (world.step < STEPS) {
       orgs.sort((a, b) => a - b);
       const q = (p) => orgs.length ? orgs[Math.min(orgs.length - 1, Math.floor(p * orgs.length))] : 0;
       if (orgs.length) console.log(`    tallyWait: sites=${orgs.length} (stateContact ${waitC} / beyond ${waitNC})  org p10=${q(0.1).toFixed(2)} p50=${q(0.5).toFixed(2)} p90=${q(0.9).toFixed(2)}  bar=${URBAN_ORG}`);
+      // WHERE are the frozen sites, and how far is the nearest city really?
+      // (Waiting on a pre-contact continent is the gradient working; waiting
+      // 600 km from a classical metropolis is the bug.)
+      if (orgs.length) {
+        const tw2 = world.tw, kmPerTile = 40075 / tw2;
+        const cityXY = [];
+        for (const s of world.settlements) if (s.mode === "settled") cityXY.push([s.pos.x | 0, s.pos.y | 0]);
+        const rows = [];
+        for (let k2 = 0; k2 < eligA.length; k2++) {
+          if (!eligA[k2]) continue;
+          const rec = recByCell.get(k2);
+          if (!rec || (rec.k.organization || 0) >= URBAN_ORG) continue;
+          const y = (rec.ti / tw2) | 0, x = rec.ti - y * tw2;
+          let best = Infinity;
+          for (const [cx, cy] of cityXY) {
+            let dx = Math.abs(cx - x); if (dx > tw2 / 2) dx = tw2 - dx;
+            const dy = cy - y;
+            const dd = dx * dx + dy * dy;
+            if (dd < best) best = dd;
+          }
+          const lon = (x / tw2) * 360 - 180, lat = 90 - (y / (world.th)) * 180;
+          rows.push([Math.sqrt(best) * kmPerTile, lon, lat]);
+        }
+        rows.sort((a, b) => a[0] - b[0]);
+        console.log(`      frozen@ ` + rows.map(([d, lon, lat]) => `${lon.toFixed(0)}E,${lat.toFixed(0)}N:${d < Infinity ? (d / 100 | 0) * 100 : "?"}km`).join(" "));
+      }
     }
   }
 }
