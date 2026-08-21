@@ -65,7 +65,7 @@ const SUBMIT_RATIO = 5.0;  // odds (their whole network vs yours) past which a c
 // rolls would run 5× hotter at interval 30 than at 150). ≈ once per ~600 ticks
 // of sustained hopeless odds: a court holds out a generation or two, not forever.
 const SUBMIT_HAZARD   = 0.0017; // per-tick capitulation hazard under hopeless odds (converted to a per-pass probability by _passProb, which never saturates)
-const SUBMIT_REACH = 1.5;  // a suzerain overawes out to this multiple of its hold reach: a punitive expedition ranges past where a permanent garrison (direct administration) can sit, and a vassal costs no garrison — it administers itself
+export const SUBMIT_REACH = 1.5;  // a suzerain overawes out to this multiple of its hold reach: a punitive expedition ranges past where a permanent garrison (direct administration) can sit, and a vassal costs no garrison — it administers itself (armies.js RELIEF_REACH reuses it as the outer bound of an ally's relief march)
 // ── Nomad confederations (a polity MODE, derived every pass — see classifyNomads) ──
 // Riding is REAL past the chariot gate — the same mobility threshold the tech
 // tree itself uses (throws if the tree ever renames it, instead of silently
@@ -2302,9 +2302,17 @@ export function updateAlliances(world) {
     for (const [dep2, over2] of ov) if (over2 === over && dep2 !== dep) { ally(dep, dep2); }
   }
   // 6. coalition strength arrayed against each hegemon = Σ power of everyone balancing against it.
+  //    The member LISTS ride along (same loop, derived scratch like _blocMight):
+  //    armies.js T.RELIEF_REACH weighs each member by whether its relief could
+  //    actually REACH a threatened theater, which the pooled scalar cannot express.
   const bloc = new Map();
-  for (const [id, t] of threat) if (t >= 0) bloc.set(t, (bloc.get(t) || 0) + (pow.get(id) || 1));
-  world._allianceTarget = threat; world._allies = allies; world._blocMight = bloc; world._countryPow = pow;
+  const blocMembers = new Map();
+  for (const [id, t] of threat) if (t >= 0) {
+    bloc.set(t, (bloc.get(t) || 0) + (pow.get(id) || 1));
+    let l = blocMembers.get(t); if (!l) blocMembers.set(t, l = []);
+    l.push(id);
+  }
+  world._allianceTarget = threat; world._allies = allies; world._blocMight = bloc; world._countryPow = pow; world._blocMembers = blocMembers;
 }
 
 export function updatePolities(world) {

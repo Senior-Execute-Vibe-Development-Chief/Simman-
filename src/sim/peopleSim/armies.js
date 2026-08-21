@@ -20,7 +20,7 @@ import { tel, telPass } from "./telemetry.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee, absorbOrgBar } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee, absorbOrgBar, SUBMIT_REACH } from "./conquest.js";
 import { ridgeHoldAt, refugeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
@@ -777,11 +777,51 @@ export function advanceFronts(world) {
   const areAllies = (a, b) => { if (a === b) return false; const s = alliesMap && alliesMap.get(a); return !!(s && s.has(b)); };
   const ALLY_BAR = 4;   // an ally requires ~4× the usual edge before a bloc member breaks ranks to attack it
   const overlordOf = world._overlordOf, overlordReach = world._overlordReach;
+  // T.RELIEF_REACH — DETERRENCE IS RELIEF, AND RELIEF MUST REACH THE THEATER.
+  // The pooled coalition scalar backed EVERY defender with the bloc's whole
+  // might, however far away its members stood — an ally that could never march
+  // to the theater still deterred (the paper coalition: 10,697 predatory
+  // pair-passes per window braked by it, the largest named brake in the
+  // predation slice once the slot law was fixed). The colonial clause below
+  // already had the honest law — the metropole backs its colony with
+  // power × PROJECTION — and this generalizes it to the coalition: each bloc
+  // member backs a threatened court's defence weighted by whether its punitive
+  // column can actually arrive, full weight inside half its own relief radius
+  // (SUBMIT_REACH × holdReach — the SAME outer bound the submission gate uses
+  // for a credible expedition), fading to nothing at the radius itself. The
+  // defender always backs itself in full. Local balance-of-power stands
+  // (Greek poleis relieved their neighbours); the distant guarantee is worth
+  // what it can deliver (Melos' Spartan kinship, delivered nothing). Cached
+  // per defender per pass — the brake fires only for a defender's OWN regional
+  // threat, so one attacker per defender. 0 = the pooled scalar, byte-identical.
+  const _reliefBloc = T.RELIEF_REACH > 0 && world._blocMembers ? new Map() : null;
+  const reliefBlocOf = (attCC, defCC) => {
+    let v = _reliefBloc.get(defCC);
+    if (v !== undefined) return v;
+    v = 0;
+    const members = world._blocMembers.get(attCC);
+    const Dc = capOf.get(defCC);
+    if (members && Dc) for (const m of members) {
+      const mp = (countryPow && countryPow.get(m)) || 0;
+      if (!(mp > 0)) continue;
+      if (m === defCC) { v += mp; continue; }                   // the defender is definitionally at its own theater
+      const Mc = capOf.get(m);
+      if (!Mc) continue;
+      const mc = world.countries && world.countries.get(m);
+      const R = SUBMIT_REACH * Math.max(1, (mc && mc.holdReach) || 0);
+      let ddx = Math.abs(Mc.pos.x - Dc.pos.x); if (ddx > tw / 2) ddx = tw - ddx;
+      const ddy = Mc.pos.y - Dc.pos.y;
+      const f = 2 * (1 - Math.sqrt(ddx * ddx + ddy * ddy) / R);
+      if (f > 0) v += mp * Math.min(1, f);
+    }
+    _reliefBloc.set(defCC, v);
+    return v;
+  };
   const coalitionBarOf = (attCC, defCC) => {
     let mul = 1;
     if (areAllies(attCC, defCC)) mul *= ALLY_BAR;               // bloc cohesion: hard to fight an ally, not impossible
     if (allianceTarget && allianceTarget.get(defCC) === attCC) {
-      const bloc = (blocMight && blocMight.get(attCC)) || 0;
+      const bloc = _reliefBloc ? reliefBlocOf(attCC, defCC) : ((blocMight && blocMight.get(attCC)) || 0);
       const hp = (countryPow && countryPow.get(attCC)) || 1;
       mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, bloc / hp);  // coalition weight backs the threatened member's defence
     }
