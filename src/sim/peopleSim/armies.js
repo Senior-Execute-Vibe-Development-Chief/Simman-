@@ -190,6 +190,28 @@ const SIEGE_BREAK       = 0.15;
 // lifts then; the race has resolved. Rides T.WAR_FINISH; inert at lever 0.
 const SIEGE_ENDURE      = 150;   // ticks an unsupplied host sustains a static camp (~a season-to-year at the TRUCE_TICKS=1500≈generation span)
 const SIEGE_ENDURE_LOGI = 3;     // a mature commissariat sustains ×(1+this·logistics) — multi-year investments at logistics 1
+// T.WAR_FINISH — THE WORKS TAKE A SEASON. A wall is never carried the
+// afternoon the army arrives: circumvallation, ramps, towers, mining — the
+// engineering that turns an investment into a breach — is months of labour
+// at the fastest (Alesia ~2 months, Masada ~3, Tyre 7; a year-plus is
+// ordinary). The break test below therefore also requires the CONTINUOUS
+// siege (the same camp clock the endurance race reads) to be at least this
+// old, so every successful storm costs the besieger real presence — during
+// which relief, exhaustion, the treasury and the camp's own endurance all
+// get their say. Without it, 76-89% of storms that reached assault strength
+// broke the walls the SAME 50-tick pass (measured, v1-v2 arms) and conquest
+// ran at the war-pass cadence instead of history's.
+const SIEGE_WORKS       = 60;    // ticks of standing siege before a breach is even possible (~a year at the generation span)
+// T.WAR_FINISH — SIEGE MOBILIZATION (the militia's stale-fraction bug, v2
+// arm): HOME_MILITIA_FRAC (0.035) was tuned when the militia base was the
+// CATCHMENT census; the urban-walls re-basing onto _urbanPop (5-20× smaller)
+// silently cut every militia to a twentieth of its calibrated strength — the
+// same-pass storm breaks were armies beating skeleton crews. A besieged city
+// arms its able-bodied — the siege levée history records at ~a fifth of the
+// urban population (Tyre, Jerusalem, Constantinople man the whole circuit) —
+// which also lands the militia back at the absolute scale the catchment
+// fraction was producing. Lever 0 keeps the catchment fraction byte-identically.
+const SIEGE_MOBILIZE    = 0.20;  // able-bodied share of the URBAN core that mans its own walls under siege
 
 // ── Home defence (citizen militia floor) ─────────────────────────────
 // A city's paid garrison can desert (food shortfall, or an insolvent state
@@ -280,8 +302,9 @@ function homeMight(s) {
   // wave measured, ~12k for a typical ancient city) — while the countryside
   // is what the besieger forages. Lever 0 (and any regime without the urban
   // read) keeps the catchment militia byte-identically.
-  const base = T.WAR_FINISH && s._urbanPop != null ? s._urbanPop : (s.people || 0);
-  const militia = base * T.HOME_MILITIA_FRAC * morale;
+  const militia = T.WAR_FINISH && s._urbanPop != null
+    ? s._urbanPop * SIEGE_MOBILIZE * morale        // the siege levée: the core arms its able-bodied (header at SIEGE_MOBILIZE)
+    : (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
   const walls = 1 + WALL_W * Math.max(0, techEff(s).defenseLevel || 0);
   return Math.max(s.army || 0, militia) * techMul(s) * walls;
 }
@@ -2058,8 +2081,16 @@ export function advanceFronts(world) {
         // the post-pass reconciliation — the siege wears it down pass over pass.)
         // The seat's ground holds through the siege too (T.REFUGE; ×1 at lever 0).
         const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold * hungerOf(seatS);
-        if (!(defNow * em <= stormM * pjCap * proF * SIEGE_BREAK)) tel(world, "storm", "wallsHold(grinding)");
-        if (defNow * em <= stormM * pjCap * proF * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
+        // T.WAR_FINISH — the works clock (header at SIEGE_WORKS): a breach
+        // needs the siege to have STOOD long enough to build one. Reads the
+        // same continuous-siege stamp the endurance race uses; always done at
+        // lever 0 (siegeOpen null — byte-identical).
+        const _sgW = siegeOpen ? siegeOpen.get(acc + ":" + dcc) : null;
+        const worksDone = !siegeOpen || (_sgW && world.step - _sgW.since >= SIEGE_WORKS / (world._dt || 1));
+        const breakMet = defNow * em <= stormM * pjCap * proF * SIEGE_BREAK;   // a city encircled on many sides breaks sooner (its defence is split)
+        if (breakMet && !worksDone) tel(world, "storm", "worksInProgress");
+        if (!breakMet) tel(world, "storm", "wallsHold(grinding)");
+        if (breakMet && worksDone) {
           // The SETTLEMENT that changes hands: under TILE_WAR `def` is a country adapter, so
           // the storm falls on its real capital (which fragments the realm); otherwise on the
           // settlement itself. Army mechanics below stay on `def`/`att` (the national pools).
