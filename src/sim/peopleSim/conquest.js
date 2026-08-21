@@ -3869,7 +3869,15 @@ function considerSubmissions(world, countries) {
     prob *= mIdentity;
     // Balance of power: a coalition arrayed against H guarantees the statelets
     // it would overawe — the same deterrence that throttles peaceful absorption.
-    const brake = coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
+    let brake = coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
+    // T.ENGULF: deterrence is a promise of RELIEF, and relief must march across
+    // the frontier the suzerain does not hold — a coalition cannot prop up an
+    // enclave its armies cannot reach (Melos' Spartan kin never came). The
+    // deterrence SURPLUS decays with enclosure; at a fully-surrounded court the
+    // brake is gone entirely. Measured need: the integration-hazard lap moved
+    // +62 encircled vassals through the roll and the brakes ate every one
+    // (coalitionBrake 76→117, identityBrake 70→91, PASSED unchanged).
+    if (_enc && _enc.by === hid) brake = 1 + (brake - 1) * (1 - _enc.share);
     prob /= brake;   // kept as a DIVISION: `p *= 1/b` differs from `p /= b` in the last
                      // ulp, and this feeds a comparison in a determinism-tested sim.
                      // The attribution below reads the same numbers without touching them.
@@ -4075,7 +4083,10 @@ function considerIntegrations(world, countries) {
     // and absorption), and a coalition arrayed against the suzerain props up
     // the client's autonomy (Rome annexed clients when no peer could object).
     const mIdentity = 1 - T.ABSORB_IDENTITY * absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
-    const brake = coalitionBrake(world, hid, (world._countryPow && world._countryPow.get(hid)) || 1);
+    let brake = coalitionBrake(world, hid, (world._countryPow && world._countryPow.get(hid)) || 1);
+    // T.ENGULF: relief cannot reach an enclave (header at the submission-side
+    // twin of this discount) — the deterrence surplus decays with enclosure.
+    if (_encI && _encI.by === hid) brake = 1 + (brake - 1) * (1 - _encI.share);
     let prob = probBase * mIdentity;
     prob /= brake;
     if (r > prob) { tel(world, "integrate", mIdentity <= 1 / brake ? "identityBrake(foreignCourt)" : "coalitionBrake(deterrence)"); continue; }
