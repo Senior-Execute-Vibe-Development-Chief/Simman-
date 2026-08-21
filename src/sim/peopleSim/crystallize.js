@@ -1491,6 +1491,44 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
       const pol = getPolity(world, nid);
       if (pol) pol.capitalId = born.id;  // the nation's seat is THIS city (the reconciler confirms next pass)
     }
+    // T.FOUND_DRIFT — THE MINT LANE HAD NO CULTURE PHYSICS AT ALL: bornCul
+    // above is the donor's people unconditionally — no distance test, no
+    // ancestry test — and THIS lane (genesis anchors + peer seats) is where
+    // the dawn world's cities are actually born, so this is where the
+    // cradle-flood ran (the crystallize lane's culture-by-connection block
+    // never sees these births; docs/identity-collapse-2026-08-21.md). Mirror
+    // that block's physics: a city minted on another STOCK's soil roots in
+    // that stock's own people (the ancestry floor built to stop cradle
+    // peoples flooding the world); one minted beyond its people's cohesion
+    // reach from the people's demographic core is born a DAUGHTER people —
+    // stepwise expansion diverges like the leap it adds up to (the Bantu
+    // proof), the reach bar self-calibrating by era via cohesionRadius. A
+    // nation materialising its seat (natCul) keeps its own people — a
+    // nation IS a people. Inert at 0 (byte-identical).
+    if (T.FOUND_DRIFT > 0 && natCul < 0 && donorCul >= 0 && dominantCulture(born) === donorCul) {
+      const localAnc = world.ancestry ? world.ancestry[ti] : -1;
+      if (localAnc >= 0 && donor && localAnc !== dominantAnc(donor)) {
+        const cul = ancestryCulture(world, localAnc, born);
+        if (cul) { seedCulture(world, born, cul.id); born.name = nameFor(world, cul, "settlement"); }
+      } else {
+        let core = null;
+        for (const s2 of world.settlements) {
+          if (s2 === born || s2.mode !== "settled" || dominantCulture(s2) !== donorCul) continue;
+          if (!core || (s2.people || 0) > (core.people || 0)) core = s2;
+        }
+        if (core) {
+          let dx = Math.abs(x + 0.5 - core.pos.x); if (dx > world.tw / 2) dx = world.tw - dx;
+          const dy = y + 0.5 - core.pos.y;
+          const overReach = Math.hypot(dx, dy) / Math.max(1e-9, cohesionRadius(world, donor || core));
+          if (overReach > 1) {
+            const cul = foundCulture(world, { origin: born, parentCultureId: donorCul,
+              divergence: Math.max(0.15, Math.min(1, (overReach - 1) * 0.5)) });
+            seedCulture(world, born, cul.id);
+            born.name = nameFor(world, cul, "settlement");
+          }
+        }
+      }
+    }
     // THE COUNTRYSIDE'S GRANARIES RIDE IN WITH THE COUNTRYSIDE. The tick
     // before this city existed, its basin's people fed themselves through
     // the field's own capacity — for thousands of steps. The tick after,
