@@ -95,3 +95,37 @@ should instead claim the whole beyond-reach region; (b) the per-stock
 mega-culture (`ancestryCulture`) makes one people per deep stock — right
 as a floor, but check that stock-interior founding divergence (the fix
 above) fragments it on schedule.
+
+## BUILT AND VERIFIED (same day, owner's go) — with a wrong-lane erratum
+
+**Erratum first.** The fix as designed above was applied to the
+culture-by-connection block in the crystallize lane — and the verdict probe
+came back BYTE-IDENTICAL to the broken world, twice. The dawn world's
+cities are not born through that lane: they are minted by `mintCityAt`
+(genesis anchors + peer seats), whose culture logic was one line — the
+donor's people, unconditionally. No distance test, no branch test, and not
+even the ancestry-soil floor. The collapse was not a threshold that never
+tripped; it was a lane with NO identity physics at all. The diagnosis
+above stands (founding-time genesis starved), but the mechanism's true
+address was the mint lane. (`T.FOUND_DRIFT`, def 1, harness pins 0; the
+crystallize-lane generalization kept too — correct for its lane.)
+
+**Verdict (probe_identity, tw=240, live set + FOUND_DRIFT=1, vs broken and
+control):**
+
+| @24k | broken live | FIXED live | control |
+|---|---|---|---|
+| cultures born | 7 | **51** | 50 |
+| culture top-1 share | 100% | **30%, falling** | 19% |
+| peoples ≥1% | 1 | **15** | 21 |
+| faith top-1 | 99% | **46%** | 21% |
+| language top-1 | 91% | **31%** | 10% |
+
+Genesis is alive and scales with the register (44 births in the last
+window as the dawn world's cities multiply); faith diversity recovers as
+predicted (affinity re-fragments with the peoples). The arc is the
+control's shape, shifted by the dawn's later start — the dawn keeps its
+hearth-radial civilization and the peoples fragment as they spread.
+tw=480 confirm arm running; watch item: over-fragmentation at scale (if
+the fine grid shatters into far more peoples than the control's shape,
+the reach bar's era-scaling gets re-measured — not a constant dialed).
