@@ -3693,6 +3693,43 @@ function hordeRaids(world, countries) {
 function considerSubmissions(world, countries) {
   const threat = world._allianceTarget;
   if (!threat || !world._countryPow) return;
+  // T.ENGULF — THE ENGULFED BEND THE KNEE (owner screenshot 2026-08-21:
+  // "a lot of single tile nothing states, and noise" — specks surviving
+  // INSIDE consolidated nations, measured growing 12→43 across the arms).
+  // History digested enclaves within a generation: full enclosure removes
+  // exactly what resistance needs — reachable allies and open supply — and
+  // the survivors (San Marino, Andorra) survived precisely AS CLIENTS. The
+  // submission hazard therefore scales with the share of a court's border
+  // held by ONE power: share² × the lever, so a half-exposed march keeps
+  // near-normal patience while a fully-engulfed speck kneels within a few
+  // passes. COASTLINE COUNTS AS OPEN BORDER (the sea is allies and supply —
+  // Venice, Ragusa), so thalassocratic statelets rightly resist. One O(N)
+  // border sweep per pass; 0 = encirclement invisible (byte-identical).
+  let encMap = null;
+  if (T.ENGULF > 0 && world._countryOwner) {
+    encMap = new Map();   // cid → { tot, nb: Map(cid → shared edges), share, by }
+    const co = world._countryOwner, tw = world.tw, th = world.th;
+    const bump = (a, b) => {
+      let e = encMap.get(a); if (!e) encMap.set(a, e = { tot: 0, nb: new Map() });
+      e.tot++;
+      if (b >= 0) e.nb.set(b, (e.nb.get(b) || 0) + 1);
+    };
+    for (let ti = 0; ti < co.length; ti++) {
+      const a = co[ti];
+      const py = (ti / tw) | 0, px = ti - py * tw;
+      const r0 = co[px === tw - 1 ? ti - (tw - 1) : ti + 1];
+      if (r0 !== a) { if (a >= 0) bump(a, r0); if (r0 >= 0) bump(r0, a); }
+      if (py < th - 1) {
+        const d0 = co[ti + tw];
+        if (d0 !== a) { if (a >= 0) bump(a, d0); if (d0 >= 0) bump(d0, a); }
+      }
+    }
+    for (const e of encMap.values()) {
+      let best = -1, bn = 0;
+      for (const [b, n] of e.nb) if (n > bn) { bn = n; best = b; }
+      e.share = e.tot > 0 ? bn / e.tot : 0; e.by = best;
+    }
+  }
   // Live power, network-inclusive (the same Σ settlementPower measure war uses;
   // recomputed here like absorbWeakNeighbors does, because up to three polity
   // passes roll between alliance rebuilds and courts don't submit to a hegemon
@@ -3751,8 +3788,14 @@ function considerSubmissions(world, countries) {
     if (d > SUBMIT_REACH * Math.max(1, H.holdReach)) { tel(world, "submit", "outOfProjectionReach"); continue; }
     // Deterministic per-(seed, settlement, step) roll — a pure function of its
     // key, so rolling BEFORE the identity/coalition work is free rejection.
+    // T.ENGULF (header above): encirclement BY THIS SUZERAIN multiplies the
+    // hazard — share² so only real enclosure bites; capped well below 1 so
+    // the roll stays a roll.
+    const _enc = encMap ? encMap.get(sid) : null;
+    const _engulf = _enc && _enc.by === hid && _enc.share > 0 ? 1 + T.ENGULF * _enc.share * _enc.share : 1;
+    const pBase2 = Math.min(0.9, probBase * _engulf);
     const r = hash32(world.seed || 1, "submit", sid, world.step) / 4294967296;
-    if (r > probBase) { tel(world, "submit", "hazardRoll(waiting)"); continue; }
+    if (r > pBase2) { tel(world, "submit", "hazardRoll(waiting)"); continue; }
     // No cycles: if H's own overlord chain leads back to S, S can't take H as
     // suzerain (tribute pyramids — a vassal of a vassal — are fine; loops
     // aren't). An acyclic chain can't be longer than the live polity count.
@@ -3762,7 +3805,7 @@ function considerSubmissions(world, countries) {
       if (up === sid) { cyc = true; break; }
     }
     if (cyc) { tel(world, "submit", "cycleWouldForm"); continue; }
-    let prob = probBase;
+    let prob = pBase2;
     // Kin submit, foreigners resist longer. Same era-weighted identity brake as
     // peaceful absorption (T.ABSORB_IDENTITY) — it slows a wholly foreign court
     // by the full lever weight but never to zero (absorbResistance saturates at
