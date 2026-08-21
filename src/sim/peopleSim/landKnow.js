@@ -42,7 +42,7 @@
 // inert and every door reads exactly as before (byte-identical).
 import { T, rNormPop } from "./tuning.js";
 import { URBAN_ORG, orgEraCapOf, techState } from "./tech.js";
-import { oreTier, seasonalSelect, computeWaterAccess, birthOrgAt, TIER_CORE } from "./settlement.js";
+import { oreTier, seasonalSelect, computeWaterAccess, birthOrgAt, TIER_CORE, techEff } from "./settlement.js";
 import { cageAt } from "./cageField.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
@@ -245,7 +245,22 @@ export function stepLandKnow(world) {
   if (T.ORG_CONTACT > 0) {
     for (const s of world.settlements) {
       if (s.mode !== "settled") continue;
-      (cities || (cities = [])).push({ x: s.pos.x | 0, y: s.pos.y | 0 });
+      // T.EXCH_WAVE — THE EXCHANGE SPHERE RIDES THE COURIER'S OWN TRANSPORT
+      // INSTITUTIONS. EXCH_KM is a neolithic obsidian horizon; institutions
+      // radiated by a classical court traveled its roads and sea lanes (the
+      // alphabet crossed the whole Mediterranean, Han statecraft rode a
+      // 2,000 km road grid into every commandery, Yamato formed a state 800 km
+      // offshore of one). Measured need (probe_cityage tallyWait, tw=240):
+      // 31 of 40 gathered proto-cities sat BEYOND every contact sphere with
+      // org frozen at p50 0.12 across 14k steps — permanently pre-urban in a
+      // classical world, history's missing secondary cohorts. The radius rides
+      // logisticsLevel — the SAME channel that stretches reach, projection and
+      // command capacity — so the wave of statehood accelerates as eras
+      // advance (millennia → centuries), which is history's measured shape.
+      // 0 = the fixed neolithic disk, byte-identical.
+      const _lg = T.EXCH_WAVE > 0 ? (techEff(s).logisticsLevel || 0) : 0;
+      const _r = exchT * (1 + T.EXCH_WAVE * Math.max(0, Math.min(1, _lg)));
+      (cities || (cities = [])).push({ x: s.pos.x | 0, y: s.pos.y | 0, r2: _r * _r });
     }
   }
   let lkEra = 0;
@@ -321,7 +336,7 @@ export function stepLandKnow(world) {
           for (const c of cities) {
             let dx = Math.abs(c.x - x); if (dx > halfW) dx = tw - dx;
             const dy = c.y - y;
-            if (dx * dx + dy * dy <= exchT2) { near = 1; break; }
+            if (dx * dx + dy * dy <= (c.r2 || exchT2)) { near = 1; break; }
           }
         }
         const drive = Math.min(1, Math.max(cageDrv, near));
