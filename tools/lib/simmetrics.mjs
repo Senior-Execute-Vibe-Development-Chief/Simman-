@@ -109,6 +109,9 @@ export const WORLD_SCRATCH = new Set([
   // ABSORB_ORG_ERA (2026-08-21): the era's absorption bar, cached per pass —
   // a quantile of live capital orgs, recomputed each polity pass.
   "_eraOrgBar", "_eraOrgBarStep",
+  // ENGULF (2026-08-21): the per-realm enclosure map - border-share by
+  // neighbour, cached per polity pass; read by submissions AND integration.
+  "_enclosure", "_enclosureStep",
 ]);
 
 /** An ENTITY REFERENCE, not a data bag. Recursing into a settlement's `_foodParent`

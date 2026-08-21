@@ -3690,6 +3690,40 @@ function hordeRaids(world, countries) {
 // suzerain's live reach, identity, and the coalition brake. On success the
 // pair's war (if any) ends in capitulation and the dependency wiring is
 // applied LIVE — the war pass must never sack a realm that has already knelt.
+// T.ENGULF's shared instrument: the per-realm ENCLOSURE map — what share of
+// each court's territorial border is held by which single power. One O(N)
+// border sweep, cached per step; read by considerSubmissions (the engulfed
+// kneel faster) AND considerIntegrations (an engulfed VASSAL becomes
+// territory faster — an enclave client does not stay a distinct province
+// for centuries). Coast/wilderness count in the total (open border).
+function enclosureMap(world) {
+  if (!(T.ENGULF > 0) || !world._countryOwner) return null;
+  if (world._enclosureStep === world.step && world._enclosure) return world._enclosure;
+  const encMap = new Map();   // cid → { tot, nb: Map(cid → shared edges), share, by }
+  const co = world._countryOwner, tw = world.tw, th = world.th;
+  const bump = (a, b) => {
+    let e = encMap.get(a); if (!e) encMap.set(a, e = { tot: 0, nb: new Map() });
+    e.tot++;
+    if (b >= 0) e.nb.set(b, (e.nb.get(b) || 0) + 1);
+  };
+  for (let ti = 0; ti < co.length; ti++) {
+    const a = co[ti];
+    const py = (ti / tw) | 0, px = ti - py * tw;
+    const r0 = co[px === tw - 1 ? ti - (tw - 1) : ti + 1];
+    if (r0 !== a) { if (a >= 0) bump(a, r0); if (r0 >= 0) bump(r0, a); }
+    if (py < th - 1) {
+      const d0 = co[ti + tw];
+      if (d0 !== a) { if (a >= 0) bump(a, d0); if (d0 >= 0) bump(d0, a); }
+    }
+  }
+  for (const e of encMap.values()) {
+    let best = -1, bn = 0;
+    for (const [b, n] of e.nb) if (n > bn) { bn = n; best = b; }
+    e.share = e.tot > 0 ? bn / e.tot : 0; e.by = best;
+  }
+  world._enclosure = encMap; world._enclosureStep = world.step;
+  return encMap;
+}
 function considerSubmissions(world, countries) {
   const threat = world._allianceTarget;
   if (!threat || !world._countryPow) return;
@@ -3705,31 +3739,7 @@ function considerSubmissions(world, countries) {
   // passes. COASTLINE COUNTS AS OPEN BORDER (the sea is allies and supply —
   // Venice, Ragusa), so thalassocratic statelets rightly resist. One O(N)
   // border sweep per pass; 0 = encirclement invisible (byte-identical).
-  let encMap = null;
-  if (T.ENGULF > 0 && world._countryOwner) {
-    encMap = new Map();   // cid → { tot, nb: Map(cid → shared edges), share, by }
-    const co = world._countryOwner, tw = world.tw, th = world.th;
-    const bump = (a, b) => {
-      let e = encMap.get(a); if (!e) encMap.set(a, e = { tot: 0, nb: new Map() });
-      e.tot++;
-      if (b >= 0) e.nb.set(b, (e.nb.get(b) || 0) + 1);
-    };
-    for (let ti = 0; ti < co.length; ti++) {
-      const a = co[ti];
-      const py = (ti / tw) | 0, px = ti - py * tw;
-      const r0 = co[px === tw - 1 ? ti - (tw - 1) : ti + 1];
-      if (r0 !== a) { if (a >= 0) bump(a, r0); if (r0 >= 0) bump(r0, a); }
-      if (py < th - 1) {
-        const d0 = co[ti + tw];
-        if (d0 !== a) { if (a >= 0) bump(a, d0); if (d0 >= 0) bump(d0, a); }
-      }
-    }
-    for (const e of encMap.values()) {
-      let best = -1, bn = 0;
-      for (const [b, n] of e.nb) if (n > bn) { bn = n; best = b; }
-      e.share = e.tot > 0 ? bn / e.tot : 0; e.by = best;
-    }
-  }
+  const encMap = enclosureMap(world);
   // Live power, network-inclusive (the same Σ settlementPower measure war uses;
   // recomputed here like absorbWeakNeighbors does, because up to three polity
   // passes roll between alliance rebuilds and courts don't submit to a hegemon
@@ -3979,6 +3989,7 @@ function considerIntegrations(world, countries) {
   if (!ov || !ov.size) return;
   const probBase = _passProb(SUBMIT_HAZARD);
   const bonds = [...ov.entries()].sort((a, b) => a[0] - b[0]);   // deterministic order
+  const _encMapI = enclosureMap(world);   // T.ENGULF: engulfed vassals integrate faster (null at lever 0)
   for (const [sid, hid] of bonds) {
     tel(world, "integrate", "CANDIDATE");
     const S = countries.get(sid), H = countries.get(hid);
@@ -4009,7 +4020,12 @@ function considerIntegrations(world, countries) {
     for (const m of S.members) if (m.mode === "settled") addLoad += estAbsorbLoad(world, H, m);
     if (!hasAbsorbHeadroom(H, addLoad)) { tel(world, "integrate", "noAdminHeadroom"); continue; }
     const r = hash32(world.seed || 1, "satrapize", sid, world.step) / 4294967296;
-    if (r > probBase) { tel(world, "integrate", "hazardRoll(waiting)"); continue; }
+    // T.ENGULF (header at enclosureMap): an engulfed VASSAL integrates on the
+    // same accelerated clock the engulfed court knelt on — enclave clients
+    // become territory within generations, not centuries.
+    const _encI = _encMapI ? _encMapI.get(sid) : null;
+    const _engulfI = _encI && _encI.by === hid && _encI.share > 0 ? 1 + T.ENGULF * _encI.share * _encI.share : 1;
+    if (r > Math.min(0.9, probBase * _engulfI)) { tel(world, "integrate", "hazardRoll(waiting)"); continue; }
     // Kin provinces integrate readily, wholly foreign courts resist for
     // generations (never absolutely — the same saturating brake as submission
     // and absorption), and a coalition arrayed against the suzerain props up
