@@ -213,9 +213,48 @@ wave, not brakes to discount.
 The open necks after this wave, by count: submit `hazardRoll(waiting)`
 ~4,300 and `resistanceNotHopeless` ~2,400 per window (the pace and the
 power bar), integrate `orgBelowMin` + `beyondDirectRule` + the clock
-(above). The ATTACK lane — the owner's sharpened question, "why didn't
-the large empire ATTACK them?" — is measured separately in the
-predation probe (docs/predation, pending): at tw=240 predation is
-ALIVE globally (505 ≥4× wars per window) while the TOP-POWER giants
-idle at 0-1 offensives below their command capacity; per-giant bar
-attribution + a neighbor census at tw=480 will name the binding brake.
+(above).
+
+## 2026-08-21 addendum III — the predation lap (SMALL_WAR)
+
+Owner, sharpening the sweep question: *"my problem wasnt they werent
+submitting, it was: why didnt the large empire attack them?"*
+
+**Diagnosis** (probe_predation + the war-debug predation/watch slices,
+tw=480, full live stack): the war BAR was open — 57,817 predatory
+(≥4×) pair-passes per window CLEARED it at 28k — and **command
+capacity ate them: 119,019 of 181,963 attack-capable moments refused
+(65%)**, coalition deterrence a distant second (19%). The neighbor
+census caught the giants in the act at every checkpoint: Sogyoepa
+(pow 20,239) spending its single command slot on its 2.2× near-peer
+across their 20-tile border while free neighbours 796×, 372× and
+infinitely weaker sat adjacent, bar-cleared, unattacked forever. The
+serial-war law priced a punitive expedition like a great-power war.
+
+**The law** (`83d6b66`, `SMALL_WAR=8` def-on): a foe an order of
+magnitude below you is a POLICE ACTION, not a war in the command
+sense — the sovereign's field army stays home, a detachment
+prosecutes it (the consul fights Carthage while a praetor's column
+sacks the hill forts). Threshold derived, not tuned: a detachment of
+~¼ of forces at ~2× storm superiority handles any foe ≤ ⅛ your
+weight. Police actions neither consume a command slot nor are refused
+for want of one, and symmetrically don't crowd peer wars out of the
+ledger; the one-new-enemy-per-pass declaration cadence still applies,
+so mop-ups stay serial. Self-calibrating: the bigger the realm, the
+more of its neighbourhood is a police action.
+
+**A/B verdict** (tw=480/28k, identical stack ± lever): predatory wars
+2,901 → 3,376/window (+16%), crushing (≥10×) 2,023 → 2,440 (+21%),
+register 771 → 689 realms (−11% — more statelets eaten), total war
++11% with NO shatter cyclone (the register still grows). The endgame
+dashboards show the design working literally: Nitufpok (pow 29,175,
+18 members) prosecuting TWO simultaneous police actions against
+zero-power statelets while its peer border rests in truce; a
+30-member realm sitting in post-sweep digestion truces. SHIPS.
+
+**Predation necks after this lap, by pred-slice count/window:** the
+paper-coalition brake 10,697 (deterrence pooled with NO projection
+term — an ally that cannot reach the theater still deters; the
+colonial clause four lines below it already has the correct
+`power × projection` law — generalize it), parity 9,539 (frontier
+projection, honest), truce cycle 7,035, amphib bar 5,602.
