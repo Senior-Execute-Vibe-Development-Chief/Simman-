@@ -139,3 +139,62 @@ statehood fires globally near-synchronously — the Americas/Australia tile
 with statelets while history's map at any moment is old dense kingdoms in
 cradles, young edges, tribal beyond. Cradle-first consolidation is the
 next named wave.
+
+## 2026-08-21 addendum II — enclosure physics and the shadow of empire
+
+The owner's zoomed screenshot asked the two sharpest questions the map can
+ask: why do single-tile specks survive INSIDE larger nations, and why does
+a vast realm not sweep the statelet cluster on its border? Four laps, each
+measured on the same ladder (probe_statefunnel, tw=480, 28k, seed 8817;
+"painted" = suzerainty-bloc roots, what the atlas shows):
+
+| arm | painted @28k | biggest bloc | top5 | submit PASSED |
+|---|---|---|---|---|
+| bala (pre-enclosure) | 529 | 26 realms / 1.54M km² / 6% | 26,8,8,8,6 | 71 |
+| + ENGULF submission | 448 | 13 / 1.10M / 4% | 13,11,10,9,8 | 128 |
+| + ENGULF integration | 448 (identical blocs) | 13 / 1.10M / 4% | 13,11,10,9,8 | 128 |
+| + FEAR_REACH | (running; @24k: candidates +49%, biggest 15 vs 9 realms) | | | |
+
+**ENGULF lap 1 — encirclement compels submission** (`ENGULF=8`, hazard
+×(1+8·share²) when one realm holds share of a statelet's land border;
+coastline counts as open). Painted nations 529→448, submissions 71→128:
+the free-standing specks inside empires kneel within generations.
+
+**ENGULF lap 2 — the same clock on integration — measured a perfect
+null**, and the null is the finding: the hazard boost moved +62 encircled
+vassals through the roll per window (waiting 832→770) and the downstream
+brakes ate every single one — coalitionBrake 76→117, identityBrake
+70→91, PASSED exactly 100 in both arms. The neck for DIGESTING an
+enclave was never the hazard clock; it was deterrence applied uniformly
+to targets no coalition could actually save.
+
+**Lap 3 — enclosure severs relief** (`24cde36`). Deterrence is a promise
+of relief, and relief must march across the frontier the suzerain does
+not hold — Melos had Spartan kinship, Athens held the sea, nobody came.
+At both brake sites (submit + integrate) the deterrence surplus now
+decays with the enclosure share already computed for the hazard:
+`brake = 1 + (brake−1)·(1−share)` when the dominant encloser is the
+hegemon itself. Fully surrounded → no deterrence; free-standing → the
+whole balance-of-power guarantee, untouched. No new constant.
+
+**FEAR_REACH — the shadow of empire** (`68266fb`). The threat map
+assigned fear across shared borders only, so the INTERIOR of a statelet
+cluster never feared the giant next door — submission candidacy never
+formed, and the giant could only peel the onion one contact-ring per
+patience cycle while the whole cluster coalesced into a counter-
+coalition. Now the era's top-24 powers by coercive weight cast threat
+over every court whose capital lies within the punitive-expedition
+radius the submission gate already enforces (SUBMIT_REACH × holdReach),
+and the balance-of-power law extends symmetrically — distant courts
+fearing the same giant join the same coalition. Assyria's reputation
+reached courts it never bordered; so does ours. Interim (24k):
+submission candidates 3,459→5,141, PASSED 60→75, biggest bloc 9→15
+realms, and `resistanceNotHopeless` fell 117→78 — the interior now
+faces the giant's might and more find resistance hopeless.
+
+Verdict arms for FEAR_REACH (final checkpoint) and the full stack with
+lap 3 are running; judge against the ladder above. The open necks after
+this wave, by count: submit `hazardRoll(waiting)` 1,812 and
+`resistanceNotHopeless` 1,095 per window (the pace and the power bar),
+integrate `orgBelowMin` 1,118 (the era bar holding, as designed) and
+`beyondDirectRule` 251 (holdReach conversion pace).
