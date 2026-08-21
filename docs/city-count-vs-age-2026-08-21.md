@@ -130,3 +130,30 @@ matched era-mass — the carrying-capacity/dilution axis, tasks #17-18),
 (B) core retention post-mint (the urban-share half, task #20-adjacent),
 (C) `peerSeat: cellFull` (the in-nation lattice cap — partly grid
 granularity; re-judge at the shipping proxy). tw=480 stamp pending.
+
+## The shipping-proxy stamp (tw=480, full stack — `cityage480_caravan.log`)
+
+**AT THE GRID THAT SHIPS, THE REGISTER IS ON HISTORY'S BAND, AGE FOR
+AGE, ON ALL THREE MEASURES:**
+
+| mass era | register | ≥10k cores | pop | history |
+|---|---|---|---|---|
+| dawn (14k) | 16 | 7 | 6M | 5–15 ✓ |
+| bronze (16–18k) | 71→155 | 50→95 | 31→52M | 50–200 ✓ |
+| classical (24–26k) | 607→851 | 442→649 | 177→229M | 400–600, ~200M ✓ |
+| medieval opens (28k) | 1,150 | 861 | 297M | 800–1,200, ~300M ✓ |
+
+Population within ~10% of history's at both matched eras; cores inside
+the band through the arc; 75% of entities above the core bar (vs 41% at
+tw=240). VERDICT ON THE REMAINING AXES: the tw=240 population and
+core-retention deficits were substantially COARSE-GRID DILUTION
+artifacts (the known 1.3–2.2× capacity-dilution gap compounding) — the
+reference grid was the false pessimist this time; axes (A) and (B) are
+DOWNGRADED from mechanism gaps to grid-fidelity notes, and (C) recedes
+with cell granularity at tw=960. The frozen-site residue at tw=480 is
+~3% of the register and increasingly state-contacted.
+
+Open beyond this chapter: the LONG arc (does the curve hold to the
+renaissance/1800 bands of ~1,500–3,000?), the late one-creed faith
+surge (identity watch item), and the collapse-era contraction
+(`DISSOLVE_TOWNS` at scale) that history's register showed twice.
