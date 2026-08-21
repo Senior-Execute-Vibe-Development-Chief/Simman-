@@ -27,7 +27,7 @@ import { hash32 } from "./rng.js";
 import { cageAt } from "./cageField.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable, ensurePolity } from "./entities.js";
-import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
+import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture, cohesionRadius } from "./cultures.js";
 import { dominantFaith } from "./faiths.js";
 import { logEvent } from "./events.js";
 import { grievOf } from "./loyaltyField.js";
@@ -2655,7 +2655,35 @@ export function maybeCrystallize(world) {
         climDelta = Math.abs((world.temp[ti] || 0) - (world.temp[dTi] || 0)) * 1.4
                   + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
       }
-      const isBranch = connected && (td > 70 || (td > 38 && climDelta > 0.34));
+      // T.FOUND_DRIFT — DIVERGENCE ACCUMULATES OVER THE WHOLE EXPANSION, not
+      // one hop (docs/identity-collapse-2026-08-21.md). The td tests below are
+      // SINGLE-HOP: the dawn's hearth-radial expansion advances by short
+      // connected hops, so they never trip and one people flows out of each
+      // cradle until it holds 100% of humanity (measured; the control world
+      // held 50 peoples). What history shows instead: stepwise expansion
+      // diverges exactly as much as a leap of the same span — the Bantu
+      // expansion was fully connected and produced hundreds of daughter
+      // languages. So a new community also branches when it is founded BEYOND
+      // ITS PEOPLE'S COHESION REACH from that people's demographic core — the
+      // same cohesionRadius the drift pass already uses (stone-age small,
+      // growing with connectivity tech), so the bar self-calibrates by era
+      // with zero new constants. Divergence rises with how many reaches out
+      // the birth sits (each reach-multiple is a step of intelligibility
+      // lost). 0 = the single-hop tests alone (byte-identical).
+      let overReach = 0;
+      if (T.FOUND_DRIFT > 0 && connected) {
+        let core = null;
+        for (const s2 of world.settlements) {
+          if (s2.mode !== "settled" || dominantCulture(s2) !== dCul) continue;
+          if (!core || (s2.people || 0) > (core.people || 0)) core = s2;
+        }
+        if (core) {
+          let dx = Math.abs(tx + 0.5 - core.pos.x); if (dx > tw / 2) dx = tw - dx;
+          const dy = ty + 0.5 - core.pos.y;
+          overReach = Math.hypot(dx, dy) / Math.max(1e-9, cohesionRadius(world, donor));
+        }
+      }
+      const isBranch = connected && (td > 70 || (td > 38 && climDelta > 0.34) || overReach > 1);
       // Found settlements only INSIDE a nation or as a CONNECTED EXTENSION of a
       // nearby settled community — never in the deep wilderness. A candidate is
       // allowed if the tile already lies in a realm's drawn border (region ≥ 0), OR
@@ -2852,8 +2880,11 @@ export function maybeCrystallize(world) {
         born.name = nameFor(world, cul, "settlement");
       } else if (isBranch) {
         // proximity → derivation: a near offshoot speaks a dialect of its
-        // stock; a far one is generations removed (and earns its own gods)
-        const divergence = Math.max(0.15, Math.min(1, (td - 38) / 90 + climDelta * 0.5));
+        // stock; a far one is generations removed (and earns its own gods).
+        // T.FOUND_DRIFT: reaches-beyond-cohesion count the same way — a birth
+        // two reaches out is a real daughter, three a distant cousin (+0 at 0).
+        const divergence = Math.max(0.15, Math.min(1, (td - 38) / 90 + climDelta * 0.5),
+                                    Math.min(1, (overReach - 1) * 0.5));
         const cul = foundCulture(world, { origin: born, parentCultureId: dCul, divergence });
         seedCulture(world, born, cul.id);
         born.name = nameFor(world, cul, "settlement");
