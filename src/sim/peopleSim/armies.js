@@ -1034,6 +1034,9 @@ export function advanceFronts(world) {
   // measured 517→479 near-no-op). One NEW enemy per attacker per pass, the
   // first in deterministic tile order; wars already open are untouched.
   const _newWarBy = T.WAR_FINISH ? new Map() : null;
+  // T.SMALL_WAR slot audit (per attacker per pass): how many of a court's open
+  // offensives are PEER wars — the only kind that occupies a command slot.
+  const _bigOffN = T.WAR_FINISH && T.SMALL_WAR > 0 ? new Map() : null;
   for (let ti = 0; ti < N; ti++) {
     const d = owner[ti];
     if (d < 0) continue;
@@ -1208,13 +1211,44 @@ export function advanceFronts(world) {
     // choose to be invaded). Capacity = 1 + logistics steps (the same tech
     // channel that stretches reach and projection): one war for an early
     // court, up to three at full logistics. ×none at lever 0.
+    // T.SMALL_WAR — THE POLICE ACTION: a foe an order of magnitude below you is
+    // not a WAR in the command sense. The sovereign's field army stays home; a
+    // DETACHMENT prosecutes it (Rome's praetorian columns, the punitive
+    // expedition) — the threshold is derived, not tuned: a detachment of ~1/4 of
+    // your forces at ~2× storm superiority handles any foe ≤ 1/8 your weight
+    // (SMALL_WAR = 8). Such a campaign neither consumes a command slot nor is
+    // refused for want of one; only the declaration cadence (one NEW enemy per
+    // pass) still applies, so mop-ups proceed serially, not as an avalanche.
+    // Measured need (probe_predation, tw=480/24k): commandCapacity refused 61%
+    // of all attack-capable moments; 11,215 predatory pair-passes CLEARED the
+    // war bar per window and the slot law ate them — the giant spent its single
+    // slot on the near-peer war while free neighbours 100-796× weaker sat
+    // adjacent, bar-cleared and unattacked, forever. History's giants did both
+    // at once: the consul fought Carthage while a praetor sacked the hill forts.
     const _capBlocked = T.WAR_FINISH && (() => {
       const off = aCountry && aCountry._offEnemies;
       if (off && off.has(D.countryId)) return false;              // an open war continues
       const opened = _newWarBy.get(A.countryId);
       if (opened !== undefined && opened !== D.countryId) return true;   // one NEW enemy per pass
+      const _ap = _bigOffN ? ((countryPow && countryPow.get(A.countryId)) || 0) : 0;
+      if (_bigOffN && _ap > 0 && _ap >= T.SMALL_WAR * ((countryPow && countryPow.get(D.countryId)) || 0)) {
+        if (opened === undefined) _newWarBy.set(A.countryId, D.countryId);
+        return false;                                             // a police action needs no slot
+      }
       const lg = aCountry && aCountry.capital ? (techEff(aCountry.capital).logisticsLevel || 0) : 0;
-      if ((off ? off.size : 0) >= 1 + Math.round(2 * Math.max(0, Math.min(1, lg)))) return true;
+      // Used slots = PEER offensives only: police actions must not crowd the
+      // court's real wars out of the ledger any more than they occupy it.
+      let usedSlots = off ? off.size : 0;
+      if (_bigOffN && countryPow && off && off.size) {
+        const cached = _bigOffN.get(A.countryId);
+        if (cached !== undefined) usedSlots = cached;
+        else {
+          usedSlots = 0;
+          for (const eid of off) if (_ap < T.SMALL_WAR * ((countryPow && countryPow.get(eid)) || 0)) usedSlots++;
+          _bigOffN.set(A.countryId, usedSlots);
+        }
+      }
+      if (usedSlots >= 1 + Math.round(2 * Math.max(0, Math.min(1, lg)))) return true;
       if (opened === undefined) _newWarBy.set(A.countryId, D.countryId);
       return false;
     })();
