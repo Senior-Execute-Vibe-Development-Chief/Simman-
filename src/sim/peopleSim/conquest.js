@@ -2239,6 +2239,50 @@ export function updateAlliances(world) {
     for (const n of nb.keys()) { if (bonded(id, n)) continue; const r = (pow.get(n) || 1) / myPow; if (r > bestR) { bestR = r; bestT = n; } }
     threat.set(id, bestT);
   }
+  // T.FEAR_REACH — THE SHADOW OF EMPIRE (owner screenshot 2026-08-21: "why
+  // doesn't this vast blue nation sweep and claim all these smaller
+  // nations?"). The loop above assigns fear across SHARED BORDERS only, so
+  // a statelet cluster's interior — bordered by fellow statelets — fears no
+  // one, is never a submission candidate to the giant next door, and the
+  // giant can only peel the onion one contact-ring per patience cycle. The
+  // submission gate itself already prices projection (outOfProjectionReach,
+  // SUBMIT_REACH × holdReach) — but candidacy never formed without
+  // adjacency, so that check was dead code for non-neighbours. History's
+  // hegemons projected fear PAST contact: Assyria's reputation reached
+  // courts it never bordered; statelets sent tribute preemptively when the
+  // great power's army could plausibly arrive. So the era's GREAT POWERS
+  // (top FEAR_TOP by coercive weight — courts track the handful of
+  // hegemons, not every statelet) cast their threat over every court whose
+  // capital lies within the same punitive-expedition radius the gate
+  // enforces, at the same power bar. The balance-of-power law extends with
+  // it: distant courts fearing the same giant join the SAME coalition, so
+  // deterrence scales alongside the shadow. 0 = border-adjacent fear only
+  // (byte-identical).
+  if (T.FEAR_REACH > 0 && world.countries) {
+    const FEAR_TOP = 24;
+    const ranked = [...pow.entries()].sort((a, b) => b[1] - a[1]).slice(0, FEAR_TOP);
+    const greats = [];
+    for (const [gid, gpow] of ranked) {
+      const G = world.countries.get(gid);
+      if (G && G.capital) greats.push({ gid, gpow, cap: G.capital, reach: SUBMIT_REACH * Math.max(1, G.holdReach || G.range || 0) });
+    }
+    if (greats.length) for (const [id, myPow0] of pow) {
+      const myPow = myPow0 || 1;
+      const C = world.countries.get(id);
+      const cap = C && C.capital;
+      if (!cap) continue;
+      const cur = threat.get(id) ?? -1;
+      let bestT = cur, bestR = cur >= 0 ? (pow.get(cur) || 1) / myPow : THREAT_RATIO;
+      for (const g of greats) {
+        if (g.gid === id || bonded(id, g.gid)) continue;
+        const r = g.gpow / myPow;
+        if (r <= bestR) continue;
+        if (dist(world, g.cap.pos.x, g.cap.pos.y, cap.pos.x, cap.pos.y) > g.reach) continue;
+        bestR = r; bestT = g.gid;
+      }
+      if (bestT !== cur) threat.set(id, bestT);
+    }
+  }
   // 5. allies = realms with a COMMON threat (balance against the same hegemon), PLUS
   //    mutual-benefit partners (heavy trade) — but never your own threat.
   const allies = new Map(); const ally = (a, b) => { if (a === b) return; let s = allies.get(a); if (!s) allies.set(a, s = new Set()); s.add(b); };
