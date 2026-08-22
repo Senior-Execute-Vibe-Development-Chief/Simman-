@@ -716,6 +716,14 @@ try{
       a.download=`simman-history-t${d.step??""}.json`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     }
+    else if(d.type==='runLog'){
+      // The run journal (worker journalTick): the observation file to hand to
+      // Claude — drop into docs/runs/ or paste; reads 1:1 vs the ladder tables.
+      const blob=new Blob([d.text],{type:"text/plain"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=`simman-run-t${d.step??""}.txt`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
     else if(d.type==='error'){console.error('[SimWorker]',d.where||'',d.message,d.stack);
       if(d.message&&d.message.indexOf('load failed')===0){alert('Could not load save: '+d.message.slice('load failed: '.length));return;}
       // Surface it. A STEP error means the worker paused the sim on a mid-step
@@ -4443,6 +4451,9 @@ return(
         if(drawNowRef.current)drawNowRef.current();
         playRef.current=true;setPlaying(true);}}>LIVE ▶</button>
   </>}
+  {!narrow&&<button className="au-btn au-flat" title="Download the run journal — one metric line per 500 steps plus seed/levers provenance. Hand the file to Claude to let it observe this run."
+    style={{padding:"2px 6px",fontSize:11}}
+    onClick={()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'exportRunLog'});}}>⤓ run log</button>}
   {!narrow&&<select className="au-btn au-flat au-num" value={minKm2} title="Atlas bar — hide nations smaller than this (nations with settlements always show)"
     onChange={(ev)=>setMinKm2(+ev.target.value)} style={{padding:"2px 4px",fontSize:11}}>
     <option value={0}>all nations</option>

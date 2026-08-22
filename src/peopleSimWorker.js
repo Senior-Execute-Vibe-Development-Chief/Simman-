@@ -21,7 +21,7 @@ import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
 import { narrate } from "./sim/peopleSim/events.js";
 import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
-import { applyTuning, resetTuning, T, rNormPop } from "./sim/peopleSim/tuning.js";
+import { applyTuning, resetTuning, T, rNormPop, TUNING_SCHEMA } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { setBandWorkerUrl } from "./sim/peopleSim/popFieldPool.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
@@ -120,6 +120,38 @@ let chronKey = "";     // signature of the last chronicle shipped (realm|len|per
 let staticSent = false;      // owner/roadQuality sent at least once?
 // ── The atlas filter + the timeline (owner features 2026-08-14) ──────────────
 let minShowKm2 = 0;          // hide nations whose claim is smaller than this (km²) UNLESS they hold a settlement; 0 = show all
+// ── The run journal (owner 2026-08-22: "you run it, I observe") ─────────────
+// Every JOURNAL_EVERY steps the worker records the same metric line the gate
+// probes print (register, stateless share, states, nations-as-blocs, biggest
+// bloc, population), and "exportRunLog" downloads it with a PROVENANCE header
+// (seed, grid, every off-default lever) — the three facts the 22.6k-screenshot
+// investigation had to reverse-engineer from pixels. The file drops into
+// docs/runs/ or pastes into chat and reads 1:1 against the ladder tables.
+let worldSeed = null;
+const runJournal = [];
+let _journalNext = 0;
+const JOURNAL_EVERY = 500;
+function journalTick() {
+  if (!world || world.step < _journalNext) return;
+  _journalNext = world.step + JOURNAL_EVERY;
+  let cities = 0, stateless = 0, pop = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    cities++; pop += s.people || 0;
+    if (s.countryId < 0) stateless++;
+  }
+  const cs = world.countries;
+  const ov = world._overlordOf || new Map();
+  const rootOf = (id) => { let cur = id, h = 0; while (h++ < 12) { const o = ov.get(cur); if (o == null || o < 0 || o === cur) break; cur = o; } return cur; };
+  const blocTiles = new Map();
+  const co = world._countryOwner;
+  if (co && cs && cs.size) for (let i = 0; i < co.length; i++) { const id = co[i]; if (id >= 0) { const r = rootOf(id); blocTiles.set(r, (blocTiles.get(r) || 0) + 1); } }
+  const roots = new Set(); if (cs) for (const id of cs.keys()) roots.add(rootOf(id));
+  let bigTiles = 0; for (const t of blocTiles.values()) if (t > bigTiles) bigTiles = t;
+  if (!world._km2PerTileW) { let lt = 0; for (let i = 0; i < world.N; i++) if (world.elev[i] > 0) lt++; world._km2PerTileW = (510e6 * 0.29) / Math.max(1, lt); }
+  runJournal.push(`step ${String(world.step).padStart(6)}  cities=${cities} (stateless ${cities ? (100 * stateless / cities).toFixed(0) : 0}%)  states=${cs ? cs.size : 0}  nations=${roots.size}  biggestBloc=${((bigTiles * world._km2PerTileW) / 1e6).toFixed(2)}Mkm2  pop=${(pop / 1000).toFixed(0)}M`);
+  if (runJournal.length > 4000) runJournal.splice(0, 1000);
+}
 let timeline = makeTimeline();   // ~every-year political frames (sparse diffs; see sim/timelineStore.js — shared with the main-thread fallback)
 let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
@@ -252,6 +284,7 @@ function handleMessage(m) {
     try {
       genMeta = m.genMeta || {};
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
+      worldSeed = m.seed; runJournal.length = 0; _journalNext = 0;
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
       world._realWindGen = !!(genMeta && genMeta.realWind);   // terrain identity rides the WORLD (saves read it; caller meta is only a fallback)
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
@@ -311,6 +344,7 @@ function handleMessage(m) {
     try {
       if (m.genMeta) genMeta = m.genMeta;
       world = loadWorld(m.json);
+      worldSeed = world && world.seed != null ? world.seed : worldSeed; runJournal.length = 0; _journalNext = world ? world.step : 0;
       world._wantMoneyFlows = (viewMode === "money");
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
       _bufPool.clear();   // the loaded world can change N — stale-size buffers would never be hit again
@@ -331,6 +365,16 @@ function handleMessage(m) {
   } else if (m.type === "nations") {
     // window.nations() — the on-demand realm census (see logNationCensus).
     logNationCensus(world, "requested");
+  } else if (m.type === "exportRunLog") {
+    const diffs = [];
+    for (const cat of TUNING_SCHEMA) for (const p of (cat.params || [])) if (T[p.key] !== undefined && T[p.key] !== p.def) diffs.push(`${p.key}=${T[p.key]} (def ${p.def})`);
+    const head = [
+      `Simman run journal`,
+      `seed=${worldSeed}  sim=${world ? world.tw + "x" + world.th : "?"}  step=${world ? world.step : 0}  exported=${new Date().toISOString()}`,
+      `levers off-default: ${diffs.length ? diffs.join("  ") : "none"}`,
+      ``,
+    ];
+    self.postMessage({ type: "runLog", text: head.concat(runJournal).join("\n"), step: world ? world.step : 0 });
   } else if (m.type === "mapFilter") {
     // The atlas bar: hide nations below m.minKm2 (settlement-holders always show).
     minShowKm2 = m.minKm2 || 0;
@@ -404,6 +448,7 @@ function tick() {
   for (let i = 0; i < steps; i++) {
     try {
       stepPeopleSim(world, 1);
+      journalTick();
       if (world.step - lastKeyStep >= CAPTURE_IVL) { lastKeyStep = world.step; captureFrame(timeline, world); }
     }
     catch (err) {
