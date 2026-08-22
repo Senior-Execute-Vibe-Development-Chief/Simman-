@@ -2097,11 +2097,17 @@ export function deriveOnePop(world) {
     // sides of a city's life, no new numbers — and the size distribution
     // follows the basins instead of collapsing onto one shelf.
     //   The hinterland conservation bound still binds the total.
-    if (T.URBAN_LOCAL > 0 && f > 0) {
-      kCap += T.URBAN_LOCAL * URBAN_SHARE_REF * f;
-      const maxShare = (useGamma ? URBAN_GMAXSHARE : URBAN_MAXSHARE) * f;
-      if (kCap > maxShare) kCap = maxShare;
-    }
+    //   NOTE on the basis (found by A/B, and the reason this ships at 0): the
+    // share is taken over accP — the settlement's OWN worked territory — while
+    // the MINT law takes it over townBasinMass, an overlapping market DISK.
+    // Those are different areas, and with many cities packed together the
+    // exclusive territory is a fraction of the disk, so this term comes out
+    // systematically smaller than the bar that minted the city. Measured at
+    // tw=240/25k: median core 5.1k (off) vs 4.9k (on) — inert. Whether the
+    // honest reading is the exclusive territory (a city eats the land it
+    // actually works; the disk would let neighbours double-count the same
+    // fields) or the mint's own disk is the open question this lever waits on.
+    if (T.URBAN_LOCAL > 0 && f > 0) kCap += T.URBAN_LOCAL * URBAN_SHARE_REF * f;
     // T.CORE_HOLD — the spike HANDOFF floor (the birth-crater killer,
     // 2026-08-07). kCap is IMPORT-SHARE-driven, so a newborn city that grows
     // its own food stamps ~ZERO capacity over the very core the site law just
