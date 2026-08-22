@@ -27,11 +27,18 @@ while (world.step < STEPS) {
   stepPeopleSim(world, EVERY);
   const countries = world.countries || new Map();
   let cities = 0, stateless = 0;
+  const census = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     cities++;
     if (s.countryId < 0) stateless++;
+    census.push(s.people || 0);
   }
+  // The 12k-pile measurement (owner: "its almost all those 12k people slop
+  // cities"): how much of the register still sits at the birth bar?
+  census.sort((a, b) => a - b);
+  const cq = (p) => census.length ? census[Math.min(census.length - 1, Math.floor(p * census.length))] : 0;
+  const birthBand = census.filter(v => v >= 9 && v <= 15).length;
   const memberN = [];
   let singles = 0;
   for (const c of countries.values()) {
@@ -64,9 +71,15 @@ while (world.step < STEPS) {
   }
   { const evs = world.events || []; if (evs.length) evSeen = evs[evs.length - 1].id; }
   console.log(`\n=== step ${world.step}  cities=${cities} (stateless ${(100 * stateless / Math.max(1, cities)).toFixed(0)}%)  realms=${memberN.length} (singl ${(100 * singles / Math.max(1, memberN.length)).toFixed(0)}%)  bonds=${ov.size}  deaths=${deaths.n} (young ${deaths.young})`);
+  console.log(`    census(sim-units): p10=${cq(0.1).toFixed(0)} p50=${cq(0.5).toFixed(0)} p90=${cq(0.9).toFixed(0)} max=${cq(1).toFixed(0)}  birthBand(9-15)=${(100 * birthBand / Math.max(1, cities)).toFixed(0)}%`);
   console.log(`    BLOCS: ${blocRealms.size} nations-as-painted  biggest: ${bSizes[0] || 0} realms / ${((bAreas[0] || 0) / 1e6).toFixed(2)}Mkm2 (${totArea > 0 ? (100 * (bAreas[0] || 0) / totArea).toFixed(0) : 0}% of claimed)  top5=${bSizes.slice(0, 5).join(",")}`);
   const tr = telReport(world);
   if (tr.submit) console.log(`    submit: ` + Object.entries(tr.submit).map(([k, v]) => `${k}=${v}`).join("  "));
   if (tr.integrate) console.log(`    integrate: ` + Object.entries(tr.integrate).map(([k, v]) => `${k}=${v}`).join("  ").slice(0, 220));
+  // The STATEHOOD side (the 94%-stateless shipping-grid screenshot): why do
+  // cities not acquire nations — birth lane, land-nation exam, peer seats.
+  for (const ch of ["birthPolity", "landNation", "peerSeat", "siteCity", "fission"]) {
+    if (tr[ch]) console.log(`    ${ch}: ` + Object.entries(tr[ch]).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join("  ").slice(0, 220));
+  }
   telReset(world);
 }
