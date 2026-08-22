@@ -1,0 +1,81 @@
+[harness] tree 31a1f6c
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"WAR_FINISH":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1}
+[peopleSim] hearth pin Nile picked at tile (568,173) (33.0E 25.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (595,149) (43.1E 34.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (665,164) (69.4E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (776,146) (111.0E 35.3N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (568,173) (33.0E 25.1N) score 7.61 pkg=wheat(suit 0.99) — ARMED: ~906y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (595,149) (43.1E 34.1N) score 4.33 pkg=wheat(suit 0.68) — ARMED: ~1331y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (665,164) (69.4E 28.5N) score 5.83 pkg=wheat(suit 0.86) — ARMED: ~1048y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (776,146) (111.0E 35.3N) score 4.63 pkg=millet(suit 0.68) — ARMED: ~2199y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (215,142) (-99.4E 36.8N) score 4.84 pkg=maize(suit 0.82) — ARMED: ~5463y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (456,195) (-9.0E 16.9N) score 3.65 pkg=sorghum(suit 0.64) — ARMED: ~3126y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (282,267) (-74.3E -10.1N) score 1.33 pkg=tubers(suit 0.68) — ARMED: ~4424y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (517,294) (13.9E -20.3N) score 1.05 pkg=tubers(suit 0.82) — ARMED: ~3648y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (494,80) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (49,82) (-161.6E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+=== step 5000  cities=0  starving=0 (0%)  noStash=0  SUB-CITY(<10k core)=0
+    urbanCore(real people): p10=0.0k p50=0.0k p90=0.0k max=0k
+    modal buckets: 
+    core/ownBound: p10=0.00 p50=0.00 p90=0.00   AT-BOUND(0.9-1.1)=0 (0%)
+    dissolved since last: basin=0 core=0
+    fedM: p10=0.00 p50=0.00 p90=0.00
+[peopleSim] AGRICULTURE INVENTED at (568,173) (33.0E 25.1N) — the basin farms; a city will rise when its market gathers one (score 7.61)
+[peopleSim] AGRICULTURE INVENTED at (665,164) (69.4E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.83)
+
+=== step 10000  cities=0  starving=0 (0%)  noStash=0  SUB-CITY(<10k core)=0
+    urbanCore(real people): p10=0.0k p50=0.0k p90=0.0k max=0k
+    modal buckets: 
+    core/ownBound: p10=0.00 p50=0.00 p90=0.00   AT-BOUND(0.9-1.1)=0 (0%)
+    dissolved since last: basin=0 core=0
+    fedM: p10=0.00 p50=0.00 p90=0.00
+[peopleSim] AGRICULTURE INVENTED at (595,149) (43.1E 34.1N) — the basin farms; a city will rise when its market gathers one (score 4.33)
+[peopleSim] AGRICULTURE INVENTED at (776,146) (111.0E 35.3N) — the basin farms; a city will rise when its market gathers one (score 4.63)
+[transHeap] step=14640 cap=131072 peakN=121221 pushes=476629 (1.0MB backing)
+
+=== step 15000  cities=16  starving=0 (0%)  noStash=1  SUB-CITY(<10k core)=2
+    urbanCore(real people): p10=6.0k p50=12.0k p90=12.0k max=12k
+    modal buckets: 12k:13  6k:1  10k:1  0k:1
+    core/ownBound: p10=0.81 p50=1.00 p90=1.00   AT-BOUND(0.9-1.1)=13 (81%)
+    dissolved since last: basin=0 core=0
+    fedM: p10=0.79 p50=1.00 p90=1.00
+[peopleSim] hearth candidate at (517,294) (13.9E -20.3N) stood down — the farming package arrived before it was invented
+[transHeap] step=17160 cap=262144 peakN=172959 pushes=605804 (2.1MB backing)
+[transHeap] step=17664 cap=524288 peakN=355488 pushes=1124788 (4.2MB backing)
+
+=== step 20000  cities=173  starving=61 (35%)  noStash=1  SUB-CITY(<10k core)=43
+    urbanCore(real people): p10=1.5k p50=12.0k p90=12.0k max=20k
+    modal buckets: 12k:126  2k:28  20k:3  4k:3  3k:3  1k:3
+    core/ownBound: p10=0.13 p50=1.00 p90=1.00   AT-BOUND(0.9-1.1)=126 (73%)
+    dissolved since last: basin=0 core=9
+    fedM: p10=0.00 p50=0.72 p90=1.00
+[peopleSim] AGRICULTURE INVENTED at (456,195) (-9.0E 16.9N) — the basin farms; a city will rise when its market gathers one (score 3.65)
+[peopleSim] hearth candidate at (494,80) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=22704 cap=67108864 peakN=43010844 pushes=158625805 (536.9MB backing)
+
+=== step 25000  cities=424  starving=226 (53%)  noStash=7  SUB-CITY(<10k core)=53
+    urbanCore(real people): p10=6.3k p50=12.0k p90=12.0k max=85k
+    modal buckets: 12k:350  2k:27  20k:7  6k:5  8k:4  7k:4
+    core/ownBound: p10=0.58 p50=1.00 p90=1.00   AT-BOUND(0.9-1.1)=350 (83%)
+    dissolved since last: basin=42 core=29
+    fedM: p10=0.00 p50=0.32 p90=1.00
+[peopleSim] AGRICULTURE INVENTED at (282,267) (-74.3E -10.1N) — the basin farms; a city will rise when its market gathers one (score 1.33)
+[peopleSim] AGRICULTURE INVENTED at (215,142) (-99.4E 36.8N) — the basin farms; a city will rise when its market gathers one (score 4.84)
+
+=== step 30000  cities=728  starving=398 (55%)  noStash=11  SUB-CITY(<10k core)=104
+    urbanCore(real people): p10=6.6k p50=12.0k p90=12.0k max=317k
+    modal buckets: 12k:560  7k:18  2k:15  5k:14  20k:11  10k:11
+    core/ownBound: p10=0.59 p50=1.00 p90=1.00   AT-BOUND(0.9-1.1)=570 (78%)
+    dissolved since last: basin=0 core=73
+    fedM: p10=0.00 p50=0.29 p90=1.00
+[peopleSim] hearth candidate at (49,82) (-161.6E 59.3N) stood down — the farming package arrived before it was invented
+
+=== step 35000  cities=1047  starving=429 (41%)  noStash=20  SUB-CITY(<10k core)=233
+    urbanCore(real people): p10=1.5k p50=12.0k p90=12.0k max=122k
+    modal buckets: 12k:711  2k:86  1k:37  0k:22  3k:16  5k:15
+    core/ownBound: p10=0.13 p50=1.00 p90=1.00   AT-BOUND(0.9-1.1)=724 (69%)
+    dissolved since last: basin=23 core=159
+    fedM: p10=0.00 p50=0.40 p90=1.00
