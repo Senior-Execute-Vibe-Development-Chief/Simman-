@@ -1138,16 +1138,38 @@ function maybeDissolveTowns(world) {
   // at DISSOLVE_HYST of it — the hysteresis gap plus the sustain timer keeps
   // a breathing basin from flickering its city in and out of existence.
   const bar = (TIER_CORE[2] / URBAN_SHARE_REF) * DISSOLVE_HYST / world._onePopScale;   // in field units
+  // T.DISSOLVE_CORE — THE SECOND BAR, the one the mint always had and the
+  // dissolve never did (owner 2026-08-22: "cities can become smaller than
+  // 12k, then they stop being cities"). Minting a city requires TWO things:
+  // a basin that could feed one (above) AND a core that actually gathered
+  // one (coreBarF). Dissolution tested only the basin — so a city whose
+  // URBAN CORE had withered to a husk lived forever, as long as peasants
+  // still worked the fields around it. That is the shelf under the owner's
+  // pile of identical starving cities: nothing in the register ever asked
+  // whether the city part of the city was still there.
+  //   History's own case is post-Roman Britain: the countryside stayed
+  // peopled while the towns emptied and simply stopped being towns —
+  // Silchester and Wroxeter are fields. The people are not lost here
+  // either (under ONE_POP they were always the land's; only the urban
+  // institution goes, exactly as the basin lane already does it).
+  //   Same constant, same hysteresis, same sustain timer as the basin bar —
+  // no new numbers, and the two halves of one law finally symmetric.
+  const coreBar = TIER_CORE[2] * DISSOLVE_HYST;   // census units — a husk below 60% of the city definition
   const dt = world._dt || 1;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     if ((world.step + s.id) % DISSOLVE_CHECK_IVL !== 0) continue;
-    if (townBasinMass(world, s.pos.x | 0, s.pos.y | 0, rB) >= bar) { s._thinBasinSince = undefined; continue; }
+    const basinThin = townBasinMass(world, s.pos.x | 0, s.pos.y | 0, rB) < bar;
+    // The core read is honest only where the urban split exists; a regime
+    // without _urbanPop keeps the basin-only law byte-identically.
+    const coreThin = T.DISSOLVE_CORE > 0 && s._urbanPop != null && s._urbanPop < coreBar;
+    if (!basinThin && !coreThin) { s._thinBasinSince = undefined; continue; }
     if (s._thinBasinSince === undefined) { s._thinBasinSince = world.step; continue; }
     if (world.step - s._thinBasinSince > DISSOLVE_SUSTAIN / dt) {
       s.mode = "dead";
       bankRuinHoard(world, s);
-      logEvent(world, "settlement.dissolved", { s: s.id, sName: s.name, polity: s.countryId });
+      logEvent(world, "settlement.dissolved", { s: s.id, sName: s.name, polity: s.countryId,
+        why: basinThin ? "basin" : "core" });
     }
   }
 }
