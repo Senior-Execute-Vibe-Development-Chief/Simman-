@@ -157,3 +157,14 @@ Open beyond this chapter: the LONG arc (does the curve hold to the
 renaissance/1800 bands of ~1,500–3,000?), the late one-creed faith
 surge (identity watch item), and the collapse-era contraction
 (`DISSOLVE_TOWNS` at scale) that history's register showed twice.
+
+## Addendum — TECH_USE (knowing ≠ using) measured against this curve
+
+The adoption split (`373595a`, owner: "show actively used techs") on the
+same stack (`techuse240.log`): known-but-unusable techs appear at ZERO
+before the classical era — the early cradles can run everything they
+know — then grow exactly as the world spreads into marginal ecology:
+6 techs @ 5 sites (18k) → 43 @ 38 sites (24k), ~9% of the register.
+Macro curve intact: register 426 vs 451 (−6%), pop +4%, era pacing a
+touch slower — the draft-less and river-less courts grow weaker, which
+is the differentiation working, not a regression. SHIPS.
