@@ -75,6 +75,11 @@ const fate = { claimed: { own: 0, joined: 0, stateless: 0 }, wild: { own: 0, joi
 // member left (paint outliving its realm). Tallied at detection, one window
 // after the birth, on the same tile.
 const why = { fieldGone: 0, ownerDead: 0, ownerLive: 0 };
+// Resolution happens a window after DETECTION, which is itself up to a window
+// after the birth — long enough that "countryId === s.id at resolution" could
+// also be a city that JOINED and then seceded. Recording the flag at detection
+// separates the two: sovereign from the start, or sovereign by secession.
+const path = { selfFound: 0, seceded: 0, foundLate: 0 };
 let pending = [];   // newborns awaiting fate resolution one window later
 const claimedAtBirth = new Map();   // settlement id -> was its tile inside a realm's field when it minted?
 // A newborn is detected at the END of the window it appeared in, by which time a
@@ -149,7 +154,12 @@ for (let done = 0; done < STEPS; done += WIN) {
     const bucket = b.claimed ? fate.claimed : fate.wild;
     if (!s || s.mode !== "settled") continue;                 // died before it was decided
     if (s.countryId < 0) bucket.stateless++;
-    else if (s.countryId === s.id) { bucket.own++; if (b.cause) why[b.cause]++; }
+    else if (s.countryId === s.id) {
+      bucket.own++; if (b.cause) why[b.cause]++;
+      if (b.atDetect === b.id) path.selfFound++;
+      else if (b.atDetect >= 0) path.seceded++;
+      else path.foundLate++;
+    }
     else bucket.joined++;
   }
   pending = [];
@@ -169,7 +179,7 @@ for (let done = 0; done < STEPS; done += WIN) {
     }
     if (claimed) bornClaimed++; else bornWild++;
     claimedAtBirth.set(s.id, claimed);
-    pending.push({ id: s.id, claimed, cause });
+    pending.push({ id: s.id, claimed, cause, atDetect: s.countryId });
   }
 
   // ── new realms: stamp the birth neighbourhood NOW, before anything moves
@@ -263,6 +273,8 @@ const pct = (a, b) => `${a} (${(100 * a / Math.max(1, b)).toFixed(0)}%)`;
   const wT2 = why.fieldGone + why.ownerDead + why.ownerLive;
   console.log(`     of the ${c.own} that self-founded ON claimed ground, the state of that ground one window later:`);
   console.log(`        field had RECEDED off the tile ${pct(why.fieldGone, wT2)}   paint names a realm with NO settled member ${pct(why.ownerDead, wT2)}   owner still live and holding the tile ${pct(why.ownerLive, wT2)}`);
+  const pT = path.selfFound + path.seceded + path.foundLate;
+  console.log(`     every city that ended sovereign, by the path it took: sovereign from the first read ${pct(path.selfFound, pT)}   JOINED then seceded ${pct(path.seceded, pT)}   stateless first, sovereign later ${pct(path.foundLate, pT)}`);
 }
 console.log(`\n  step      entities  stateless   cities(t>=2)  stateless-cities  realms`);
 const every = Math.max(1, Math.round(windows.length / 16));
