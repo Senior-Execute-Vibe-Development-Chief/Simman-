@@ -1,3 +1,4 @@
+/* global __BUILD_SHA__ */   // vite `define`: the commit sha baked into this bundle (run-journal provenance; same declaration WorldSim.jsx makes)
 // ── Web Worker: runs the peopleSim off the main thread ──
 // The sim has several heavy periodic passes (territory / sea-lane / transport
 // floods) that, on a large map at high speed, spike to tens of ms. Running
