@@ -1671,6 +1671,21 @@ const KTRACKS = ["agriculture","construction","organization","metallurgy","navig
 // pace identical. This is the single biggest per-tick cost as the trade
 // network grows (it was O(reach) × every settlement × every tick).
 const KNOW_INTERVAL = 8;
+// ── Stride-aware inner cadence (T.SETT_STRIDE) ──────────────────────────────
+// The per-settlement economy fires every K ticks (phase (step+id)%K), so any
+// inner "(step+id) % IVL === 0" gate only coincides every lcm(K, IVL). With
+// the app's K=3 against KNOW_INTERVAL=8 that was every 24 ticks: dt-scaled
+// RATE terms stayed neutral (dt rides ×K) but EVENT-like work — crop
+// adoption and domestication — ran at a THIRD of the measured pace in the
+// SHIPPING APP ONLY, because the gate harnesses pin K=1 and never see the
+// composition (the resgate blind spot, in time instead of space; found from
+// the owner's 22.6k-step Bronze-Age 94%-stateless screenshot, 2026-08-21).
+// _strideIvl rounds an interval onto the stride's own grid (K=1 → IVL
+// exactly, byte-identical); _strideIvlF is that window measured in FIRINGS —
+// the factor rate terms must use in place of the raw interval, since dt
+// inside the strided pass is already ×K.
+const _strideIvl = (ivl) => { const K = Math.max(1, T.SETT_STRIDE | 0); return Math.max(1, Math.round(ivl / K)) * K; };
+const _strideIvlF = (ivl) => _strideIvl(ivl) / Math.max(1, T.SETT_STRIDE | 0);
 // Crop-package spread thresholds (T.CROP_AXIS): a settlement ADOPTS a trade
 // neighbour's crop if its own tile suits that crop above CROP_ESTABLISH; a
 // MATURE farming culture independently DOMESTICATES a strongly-suitable un-owned
@@ -1871,7 +1886,7 @@ function updateKnowledge(world, s) {
   // a copper-poor settlement connected by road to a copper-rich one
   // can advance to chalcolithic on imported ore. Cached and refreshed
   // only every KNOW_INTERVAL ticks (resource availability drifts slowly).
-  if (!s._effRes || (world.step + s.id) % KNOW_INTERVAL === 0) s._effRes = effectiveLocalRes(world, s);
+  if (!s._effRes || (world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) s._effRes = effectiveLocalRes(world, s);
   const r = s._effRes;
   const wa = s.waterAccess || 0;
   const fc = s._terrTiles || 0;
@@ -2347,7 +2362,7 @@ function updateKnowledge(world, s) {
   // trickles — the channel scales with the same emergent lanes and ship tech
   // that built it. Land partners' costs are small, so the pre-sea calibration
   // is preserved.
-  if (world._byId && (world.step + s.id) % KNOW_INTERVAL === 0) {
+  if (world._byId && (world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) {
     const reach = mergeReach(s);
     if (!reach || reach.size === 0) {
       s._rivalN = 0;   // no contact, no competition signal (used to go stale forever)
@@ -2448,7 +2463,7 @@ function updateKnowledge(world, s) {
       // the literate-state branch of organization, which only kicks in
       // past 0.30).
       const litMul = 1 + Math.max(0, k.organization - 0.30) * 3;
-      const rate = T.DIFFUSE_RATE * KNOW_INTERVAL * litMul * (world._dt || 1);   // granularity-scaled
+      const rate = T.DIFFUSE_RATE * _strideIvlF(KNOW_INTERVAL) * litMul * (world._dt || 1);   // granularity-scaled; window in FIRINGS — dt already rides the stride
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
         if (gap > 0) {
@@ -2494,7 +2509,7 @@ function updateKnowledge(world, s) {
   // cradles along climate bands and stall at the hot/wet tropics (the
   // continental axis, now emergent rather than a tuned multiplier). Throttled
   // and staggered like the rest of the knowledge recompute.
-  if (T.CROP_AXIS > 0 && (world.step + s.id) % KNOW_INTERVAL === 0) {
+  if (T.CROP_AXIS > 0 && (world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) {
     if (!s.crops) s.crops = [];
     const cti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
     let cropsChanged = false;
@@ -2520,7 +2535,7 @@ function updateKnowledge(world, s) {
 
   // Refresh the cached tech-effect bonuses the sim reads (food, density, …),
   // throttled like the rest of the knowledge recompute (knowledge drifts slowly).
-  if ((world.step + s.id) % KNOW_INTERVAL === 0) {
+  if ((world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) {
     s._techEnv = T.TECH_USE > 0 ? techEnvOf(world, s) : null;
     s._techEff = techEffects(practisedK(k, metalCap), T.TECH_EFFECTS, s._techEnv);
   }
@@ -3344,7 +3359,7 @@ function updateDevelopment(world, s) {
   const own = s.localRes || {};
   const localMat = (own.timber || 0) + (own.stone || 0);
   const partnerWeight = p => { const pr = p.localRes || {}; return (pr.timber || 0) + (pr.stone || 0) + 0.05; };
-  if (!s._devMat || (world.step + s.id) % KNOW_INTERVAL === 0) {
+  if (!s._devMat || (world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) {
     let bpm = 0;
     if (s._tradeReach && world._byId) {
       for (const pid of s._tradeReach.keys()) {
