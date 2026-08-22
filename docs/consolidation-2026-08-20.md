@@ -422,3 +422,40 @@ history's hegemonic 25-50%. Blocs are wide in COUNT and thin in LAND.
 That points back at the integration axis (`orgBelowMin` refusing 4,783
 of 8,336 candidates per window) and at median realm size, not at the
 walls. Next measurement, not next build.
+
+## 2026-08-22 lap 2 — the owner's own machine delivers the shipping-grid A/B
+
+The owner exported a second journal an hour after the first, same seed,
+same grid, same "levers off-default: none"
+(`docs/runs/2026-08-22/owner-run-t34537-levy.txt`). The two runs are
+**byte-identical for 95 consecutive checkpoints — every metric line
+through step 23,501 — and first diverge at 23,751.** The first vassal
+bond forms at step 23,001, and T.VASSAL_LEVY is a literal no-op until
+`world._overlordOf` is non-empty. That signature is the lever
+activating: run 1 is pre-levy, run 2 is post-levy, at tw=960.
+
+So the owner's laptop produced the measurement the harness could not
+afford — the levy A/B at THE GRID THAT SHIPS, on the same seed:
+
+| step | pre-levy nations / bloc | with levy nations / bloc | Δ land |
+|---|---|---|---|
+| 33,001 | 337 · 13 realms / 1.60M km² | 320 · 14 / **1.86M** | +16% |
+| 33,501 | 385 · 20 / 1.69M | 352 · 26 / **2.18M** | +29% |
+| 34,001 | 387 · 22 / 1.56M | 343 · 28 / **2.25M** | **+44%** |
+| 34,501 | 401 · 41 / 1.84M | 367 · 35 / **2.32M** | +26% |
+
+The top empire holds **+16 to +44% more LAND**, consistently, from the
+moment the effect matures — and painted nations run ~10% lower
+throughout. That is the axis the 32k harness arm named as the standing
+gap ("blocs are wide in COUNT and thin in LAND"): the levy moves LAND,
+which the realm-count column alone had understated. Confirmed at the
+shipping grid, not extrapolated to it.
+
+Caveats kept honest: storms and integrations are flat-to-slightly-down
+between these two particular runs (16 vs 24 storms in the 34k window —
+counts far too small to read), so the gain arrives through the
+bond→levy→territory path rather than through easier walls, exactly as
+the tw=480 arms showed. And the build identity is INFERRED from the
+divergence signature, not read: both journals predate the build-SHA
+stamp (`e532483`), which exists so the next such comparison needs no
+inference at all.
