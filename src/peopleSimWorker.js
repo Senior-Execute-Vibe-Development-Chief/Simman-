@@ -128,6 +128,10 @@ let minShowKm2 = 0;          // hide nations whose claim is smaller than this (k
 // (seed, grid, every off-default lever) — the three facts the 22.6k-screenshot
 // investigation had to reverse-engineer from pixels. The file drops into
 // docs/runs/ or pastes into chat and reads 1:1 against the ladder tables.
+// The BUILD the run actually ran on — the ambiguity that cost a whole
+// investigation when a screenshot could not be dated against the code
+// (2026-08-21). __BUILD_SHA__ is vite's existing stale-tab define.
+const _buildSha = () => { try { return typeof __BUILD_SHA__ !== "undefined" ? __BUILD_SHA__ : "dev"; } catch { return "dev"; } };
 let worldSeed = null;
 const runJournal = [];
 let _journalNext = 0, _funnelNext = 0, _jDeaths = 0, _jEvSeen = -1;
@@ -396,7 +400,7 @@ function handleMessage(m) {
     for (const cat of TUNING_SCHEMA) for (const p of (cat.params || [])) if (T[p.key] !== undefined && T[p.key] !== p.def) diffs.push(`${p.key}=${T[p.key]} (def ${p.def})`);
     const head = [
       `Simman run journal`,
-      `seed=${worldSeed}  sim=${world ? world.tw + "x" + world.th : "?"}  step=${world ? world.step : 0}  exported=${new Date().toISOString()}`,
+      `seed=${worldSeed}  sim=${world ? world.tw + "x" + world.th : "?"}  step=${world ? world.step : 0}  build=${_buildSha()}  exported=${new Date().toISOString()}`,
       `levers off-default: ${diffs.length ? diffs.join("  ") : "none"}`,
       ``,
     ];
@@ -429,7 +433,7 @@ function handleMessage(m) {
       type: "runReportData",
       step: world ? world.step : 0,
       tw: world ? world.tw : 0, th: world ? world.th : 0,
-      head: `Simman run report\nseed=${worldSeed}  sim=${world ? world.tw + "x" + world.th : "?"}  step=${world ? world.step : 0}  exported=${new Date().toISOString()}\nlevers off-default: ${diffs.length ? diffs.join("  ") : "none"}`,
+      head: `Simman run report\nseed=${worldSeed}  sim=${world ? world.tw + "x" + world.th : "?"}  step=${world ? world.step : 0}  build=${_buildSha()}  exported=${new Date().toISOString()}\nlevers off-default: ${diffs.length ? diffs.join("  ") : "none"}`,
       journal: runJournal.join("\n"),
       land, frames,
     }, transfer);
