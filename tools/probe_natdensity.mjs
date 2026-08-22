@@ -68,6 +68,13 @@ let evCursor = 0;
 // the city-anchor branch handed it sovereignty.
 let bornClaimed = 0, bornWild = 0;
 const fate = { claimed: { own: 0, joined: 0, stateless: 0 }, wild: { own: 0, joined: 0, stateless: 0 } };
+// WHY did a city born on claimed ground still mint its own realm? Both refusal
+// gates (ADOPT_BUDGET, FISC_ADOPT) ship at 0, so the branch reduces to
+// `region >= 0 ? region : s.id` with region = ownerAt(ti) — which returns -1
+// when the field has receded OR when co[ti] still names a realm with no settled
+// member left (paint outliving its realm). Tallied at detection, one window
+// after the birth, on the same tile.
+const why = { fieldGone: 0, ownerDead: 0, ownerLive: 0 };
 let pending = [];   // newborns awaiting fate resolution one window later
 const claimedAtBirth = new Map();   // settlement id -> was its tile inside a realm's field when it minted?
 // A newborn is detected at the END of the window it appeared in, by which time a
@@ -75,6 +82,15 @@ const claimedAtBirth = new Map();   // settlement id -> was its tile inside a re
 // score every self-founder as "born inside a realm". So the claim test reads the
 // field as it stood at the PREVIOUS window boundary, before this city existed.
 let prevCo = null;
+
+let _liveIds = null, _liveStep = -1;
+function liveCountryIds() {
+  if (_liveStep === world.step && _liveIds) return _liveIds;
+  _liveIds = new Set();
+  for (const o of world.settlements) if (o.mode === "settled" && o.countryId >= 0) _liveIds.add(o.countryId);
+  _liveStep = world.step;
+  return _liveIds;
+}
 
 function neighbourhoodAt(sx, sy) {
   const co = world._countryOwner;
@@ -133,7 +149,7 @@ for (let done = 0; done < STEPS; done += WIN) {
     const bucket = b.claimed ? fate.claimed : fate.wild;
     if (!s || s.mode !== "settled") continue;                 // died before it was decided
     if (s.countryId < 0) bucket.stateless++;
-    else if (s.countryId === s.id) bucket.own++;
+    else if (s.countryId === s.id) { bucket.own++; if (b.cause) why[b.cause]++; }
     else bucket.joined++;
   }
   pending = [];
@@ -143,10 +159,17 @@ for (let done = 0; done < STEPS; done += WIN) {
     if (s.mode !== "settled" || seenSett.has(s.id)) continue;
     seenSett.add(s.id);
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    const claimed = !!(prevCo && prevCo[ti] >= 0);
+    const ownerBefore = prevCo ? prevCo[ti] : -1;
+    const claimed = ownerBefore >= 0;
+    let cause = null;
+    if (claimed) {
+      const coNow = world._countryOwner;
+      if (!coNow || coNow[ti] !== ownerBefore) cause = "fieldGone";
+      else cause = liveCountryIds().has(ownerBefore) ? "ownerLive" : "ownerDead";
+    }
     if (claimed) bornClaimed++; else bornWild++;
     claimedAtBirth.set(s.id, claimed);
-    pending.push({ id: s.id, claimed });
+    pending.push({ id: s.id, claimed, cause });
   }
 
   // ── new realms: stamp the birth neighbourhood NOW, before anything moves
@@ -237,6 +260,9 @@ const pct = (a, b) => `${a} (${(100 * a / Math.max(1, b)).toFixed(0)}%)`;
   console.log(`  what adoptAndFound did with each newborn city (every mint is born tier 2 and stateless):`);
   console.log(`     born INSIDE a realm's field  (n=${cT}):  joined it ${pct(c.joined, cT)}   MINTED ITS OWN REALM ${pct(c.own, cT)}   left stateless ${pct(c.stateless, cT)}`);
   console.log(`     born in the WILD             (n=${wT}):  joined a realm ${pct(w.joined, wT)}   MINTED ITS OWN REALM ${pct(w.own, wT)}   left stateless ${pct(w.stateless, wT)}`);
+  const wT2 = why.fieldGone + why.ownerDead + why.ownerLive;
+  console.log(`     of the ${c.own} that self-founded ON claimed ground, the state of that ground one window later:`);
+  console.log(`        field had RECEDED off the tile ${pct(why.fieldGone, wT2)}   paint names a realm with NO settled member ${pct(why.ownerDead, wT2)}   owner still live and holding the tile ${pct(why.ownerLive, wT2)}`);
 }
 console.log(`\n  step      entities  stateless   cities(t>=2)  stateless-cities  realms`);
 const every = Math.max(1, Math.round(windows.length / 16));
