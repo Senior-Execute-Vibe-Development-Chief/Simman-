@@ -382,28 +382,37 @@ then revolt), decayed by reach (holdReach → the SUBMIT_REACH punitive
 radius) and by loyalty. Verified wired: `effPool` → `natMight`, so the
 levy reaches the storm's committed force.
 
-**A/B verdict (tw=480, matched 28k checkpoints, identical stack ± the
-lever): a real but MODEST gain, and an honest miss on its own target.**
+**A/B verdict (tw=480, identical stack ± the lever) — and a same-day
+correction: the effect COMPOUNDS, so the first reading understated it
+threefold.** Read at 28k the lever looked modest; read at 32k, after
+bonds accumulate, it is the largest single consolidation gain any lap
+in this campaign has produced.
 
-| | levy 0 | levy 0.5 |
-|---|---|---|
-| stateless | 17% | **13%** |
-| singleton states | 86% | 83% |
-| painted nations | 441 | **421** |
-| biggest bloc | 18 realms | **23 realms** |
-| top-5 bloc realms | 18,17,14,12,11 | **23,19,17,16,11** (+19%) |
-| capture PASSED | 89 | **104** (+17%) |
-| storm PASSED | 283 | 292 (+3%) |
-| storm assaultTooWeak | 11,976 | 11,848 (−1%) |
+| | levy 0 @28k | levy 0.5 @28k | levy 0 @32k | levy 0.5 @32k |
+|---|---|---|---|---|
+| bonds | 248 | 264 | 358 | **459** (+28%) |
+| biggest bloc | 18 realms | 23 | 42 realms / 1.53M km² | **70 realms / 2.16M km²** (+67% / +41%) |
+| top-5 bloc realms | 18,17,14,12,11 | 23,19,17,16,11 | 42,20,16,15,14 | **70,39,32,31,17** (+77% by sum) |
+| storm PASSED | 283 | 292 | 390 | **491** (+26%) |
+| capture PASSED | 89 | 104 | 239 | **268** (+12%) |
+| cities | 1,049 | 1,087 | 1,288 | **1,467** (+14%) |
+| stateless | 17% | 13% | 2% | 3% |
 
-Consolidation deepens (the empire tier grows a fifth, captures rise a
-sixth, statelessness falls) but the storm channel does NOT unblock: 83%
-of sieges remain too weak. The lever is correct physics with a small
-effect at this bond density (264 bonds among 685 realms — most
-attackers still have no clients at all), so it ships, but it is not the
-answer to the storm bar.
+The mechanism is self-reinforcing exactly as history's was: bonds beget
+levies, levies beget victories, victories beget bonds. At 28k (264
+bonds) it bought +19% on the empire tier; at 32k (459 bonds) it buys
++77%. The intermediate reading is recorded here deliberately — the
+28k-only verdict said "modest gain, honest miss," and it was wrong
+because a compounding lever cannot be judged at the front of its own
+curve.
 
-**What the miss teaches.** The storm rate may not be the honest target:
+**What still does NOT move, at either horizon.** Singleton states hold
+at 82%, and the biggest bloc holds 6% of claimed land against history's
+hegemonic 25-50%. The storm SUCCESS RATE is flat (2.1% → 2.2%) — the
+extra storms come from more war, not easier walls. So the levy answered
+"can an empire mass force?" and not "why is a realm so small?"
+
+**What the storm numbers teach.** The storm RATE may not be the honest target:
 history's sieges mostly ended in starvation, treachery or negotiated
 surrender rather than escalade, and the sim's alternative channels DO
 fire (siegeLifts 326, sackYieldsTribute 117 per window). The measured
