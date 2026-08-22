@@ -78,3 +78,11 @@
     core/ownBound: p10=0.24 p50=1.00 p90=1.00   AT-BOUND(0.9-1.1)=717 (65%)
     dissolved since last: basin=41 core=0
     fedM: p10=0.00 p50=0.27 p90=1.00
+[peopleSim] hearth candidate at (49,82) (-161.6E 59.3N) stood down — the farming package arrived before it was invented
+
+=== step 40000  cities=1447  starving=699 (48%)  noStash=90  SUB-CITY(<10k core)=343
+    urbanCore(real people): p10=2.5k p50=12.0k p90=12.2k max=296k
+    modal buckets: 12k:934  2k:65  1k:43  8k:39  7k:38  0k:35
+    core/ownBound: p10=0.37 p50=1.00 p90=1.00   AT-BOUND(0.9-1.1)=961 (66%)
+    dissolved since last: basin=0 core=0
+    fedM: p10=0.00 p50=0.22 p90=1.00
