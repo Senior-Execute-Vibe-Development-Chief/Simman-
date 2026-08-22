@@ -925,6 +925,55 @@ export function advanceFronts(world) {
       if (membersOf) { let a = membersOf.get(s.countryId); if (!a) membersOf.set(s.countryId, a = []); a.push(s); }
     }
   }
+  // ── T.VASSAL_LEVY — AN EMPIRE FIGHTS WITH ITS EMPIRE ──────────────────────
+  // natMight above sums a country's OWN cities, so a suzerain of two dozen
+  // clients marched with its metropole's garrisons alone. Measured in the
+  // owner's 36k app run at the shipping grid (docs/runs/2026-08-22): the
+  // submission machinery WORKS — 358 bonds, a 24-realm bloc — while the storm
+  // channel starves, 4,018 of 4,318 heartland sieges "assaultTooWeak" per 1k
+  // steps and 81% of states still single-city. Blocs formed and never
+  // converted into force. The code already knew the law: the CAPITULATION test
+  // below pools dependencies ("a suzerain weighs with its clients"); it just
+  // never reached the battlefield.
+  //   History's empires ARE their levies — Achaemenid armies were satrapal
+  // contingents, half a consular army was socii, the Delian fleet was tribute
+  // built. So a dependency MARCHES: a share of its might joins its suzerain's
+  // field army, and is DEBITED from its own, because a contingent on the great
+  // king's campaign is not standing on its own walls. That debit is the
+  // mechanism's honest other half — an over-extended empire hollows its
+  // clients, which is exactly when clients revolted.
+  //   Two decays, both reusing laws already shipped: REACH — full contribution
+  // inside the suzerain's own holdReach, fading to nothing at the
+  // punitive-expedition radius (SUBMIT_REACH, the same bound the submission
+  // gate and the relief brake use), so a distant client sends token forces;
+  // LOYALTY — a restive client sends little. One hop per pass: a sub-client
+  // serves its own lord, whose enlarged army serves the great king next pass.
+  if (T.VASSAL_LEVY > 0 && world.countries && world._overlordOf && world._overlordOf.size) {
+    const _levy = [];
+    const _hw = tw / 2;
+    for (const [dep, over] of world._overlordOf) {
+      if (dep === over) continue;
+      const dc = world.countries.get(dep), oc = world.countries.get(over);
+      if (!dc || !oc || !dc.capital || !oc.capital) continue;
+      const m = natMight.get(dep) || 0;
+      if (!(m > 0)) continue;
+      const R = Math.max(1, oc.holdReach || oc.range || 0);
+      let ddx = Math.abs(oc.capital.pos.x - dc.capital.pos.x); if (ddx > _hw) ddx = tw - ddx;
+      const ddy = oc.capital.pos.y - dc.capital.pos.y;
+      const d = Math.sqrt(ddx * ddx + ddy * ddy);
+      const reachF = d <= R ? 1 : Math.max(0, 1 - (d - R) / Math.max(1e-6, (SUBMIT_REACH - 1) * R));
+      if (!(reachF > 0)) continue;
+      const loy = Math.max(0, Math.min(1, dc.capital.loyalty ?? 1));
+      const take = m * T.VASSAL_LEVY * reachF * loy;
+      if (take > 0) _levy.push([dep, over, take]);
+    }
+    // Applied after the scan so every bond levies off the SAME pre-levy
+    // strengths — order-independent, determinism-safe.
+    for (const [dep, over, take] of _levy) {
+      natMight.set(dep, Math.max(0, (natMight.get(dep) || 0) - take));
+      natMight.set(over, (natMight.get(over) || 0) + take);
+    }
+  }
   // TILE_WAR: one combatant ADAPTER per alive country — a settlement-shaped object the
   // existing (already country-keyed) front/force machinery drives, but whose id IS the
   // country, whose might is the national army, and whose home/court is the capital tile.

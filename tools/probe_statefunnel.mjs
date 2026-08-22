@@ -78,7 +78,7 @@ while (world.step < STEPS) {
   if (tr.integrate) console.log(`    integrate: ` + Object.entries(tr.integrate).map(([k, v]) => `${k}=${v}`).join("  ").slice(0, 220));
   // The STATEHOOD side (the 94%-stateless shipping-grid screenshot): why do
   // cities not acquire nations — birth lane, land-nation exam, peer seats.
-  for (const ch of ["birthPolity", "landNation", "peerSeat", "siteCity", "fission"]) {
+  for (const ch of ["birthPolity", "landNation", "peerSeat", "siteCity", "fission", "attack", "storm", "capture"]) {
     if (tr[ch]) console.log(`    ${ch}: ` + Object.entries(tr[ch]).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join("  ").slice(0, 220));
   }
   telReset(world);

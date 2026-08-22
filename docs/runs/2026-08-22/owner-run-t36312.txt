@@ -1,0 +1,315 @@
+Simman run journal
+seed=8817  sim=960x480  step=36312  exported=2026-08-22T09:01:02.020Z
+levers off-default: none
+
+step      1  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step    251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step    501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step    751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   1001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   1251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   1501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   1751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   2001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   2251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   2501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   2751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   3001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   3251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   3501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   3751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   4001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   4251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   4501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   4751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   5001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   5251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   5501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   5751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   6001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   6251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   6501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   6751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   7001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   7251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   7501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   7751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   8001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=4
+step   8251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   8501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   8751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   9001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=8
+    siteCity: tallyBar=7
+step   9251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   9501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step   9751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  10001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=14
+    siteCity: tallyBar=127
+step  10251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  10501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  10751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  11001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=25
+    siteCity: tallyBar=320
+step  11251  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  11501  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  11751  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  12001  era=Stone Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=18
+    siteCity: tallyBar=487
+step  12251  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  12501  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  12751  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  13001  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=27
+    siteCity: tallyBar=635
+step  13251  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  13501  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  13751  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  14001  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=24
+    siteCity: tallyBar=701
+step  14251  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  14501  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  14751  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  15001  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=28
+    siteCity: tallyBar=760
+step  15251  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  15501  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  15751  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  16001  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=31
+    siteCity: tallyBar=821
+step  16251  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  16501  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  16751  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  17001  era=Bronze Age  cities=0 (stateless 0%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+    landNation: tallyBar=32
+    siteCity: tallyBar=911
+step  17251  era=Bronze Age  cities=4 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=0M
+step  17501  era=Bronze Age  cities=15 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=3M
+step  17751  era=Bronze Age  cities=19 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=3M
+step  18001  era=Bronze Age  cities=20 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=9M
+    fission: noRivalSeat=1
+    landNation: tallyBar=38
+    peerSeat: CANDIDATE=34  cellFull=28  PASSED=18  gathering=16
+    siteCity: tallyBar=953
+step  18251  era=Bronze Age  cities=20 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=10M
+step  18501  era=Bronze Age  cities=25 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=11M
+step  18751  era=Bronze Age  cities=40 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=12M
+step  19001  era=Bronze Age  cities=54 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=12M
+    fission: noRivalSeat=11
+    landNation: tallyBar=35
+    peerSeat: CANDIDATE=70  cellFull=45  gathering=38  PASSED=32
+    siteCity: tallyBar=1024
+step  19251  era=Bronze Age  cities=72 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=27M
+step  19501  era=Bronze Age  cities=80 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=28M
+step  19751  era=Bronze Age  cities=93 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=54M
+step  20001  era=Bronze Age  cities=101 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=56M
+    fission: noRivalSeat=28
+    landNation: tallyBar=38
+    peerSeat: CANDIDATE=118  cellFull=100  gathering=70  PASSED=46  noPosition=2
+    siteCity: tallyBar=996
+step  20251  era=Bronze Age  cities=103 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=60M
+step  20501  era=Bronze Age  cities=106 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=62M
+step  20751  era=Bronze Age  cities=126 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=68M
+step  21001  era=Bronze Age  cities=143 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=71M
+    fission: noRivalSeat=69
+    landNation: tallyBar=36
+    peerSeat: CANDIDATE=160  cellFull=118  gathering=70  noPosition=48  PASSED=42
+    siteCity: tallyBar=1051
+step  21251  era=Bronze Age  cities=151 (stateless 100%)  states=0 (singl 0%)  nations=0  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=73M
+step  21501  era=Bronze Age  cities=168 (stateless 99%)  states=2 (singl 100%)  nations=2  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=77M
+step  21751  era=Bronze Age  cities=198 (stateless 99%)  states=2 (singl 100%)  nations=2  biggestBloc=0 realms/0.00Mkm2  bonds=0  deathsEver=0  pop=79M
+step  22001  era=Bronze Age  cities=222 (stateless 95%)  states=9 (singl 78%)  nations=9  biggestBloc=1 realms/0.13Mkm2  bonds=0  deathsEver=0  pop=83M
+    fission: noRivalSeat=92
+    landNation: tallyBar=41
+    peerSeat: CANDIDATE=293  cellFull=143  noPosition=112  gathering=102  PASSED=79
+    siteCity: tallyBar=944
+step  22251  era=Bronze Age  cities=241 (stateless 95%)  states=9 (singl 78%)  nations=9  biggestBloc=1 realms/0.13Mkm2  bonds=0  deathsEver=0  pop=85M
+step  22501  era=Bronze Age  cities=254 (stateless 94%)  states=9 (singl 78%)  nations=9  biggestBloc=1 realms/0.37Mkm2  bonds=0  deathsEver=0  pop=88M
+step  22751  era=Bronze Age  cities=262 (stateless 95%)  states=11 (singl 73%)  nations=11  biggestBloc=1 realms/0.38Mkm2  bonds=0  deathsEver=0  pop=90M
+step  23001  era=Bronze Age  cities=267 (stateless 95%)  states=11 (singl 73%)  nations=10  biggestBloc=1 realms/0.38Mkm2  bonds=1  deathsEver=0  pop=93M
+    attack: CANDIDATE=999  commandCapacity=464  coalitionDeterrence=340  PASSED=125  noCasusBelli=31  warWeariness=16  aggressionTemperament=12  tradePeace=11
+    capture: ~tilesTaken=6  CANDIDATE=5  PASSED=4  attackerNotWinning(adv<=1)=1
+    fission: noRivalSeat=209
+    integrate: CANDIDATE=1  orgBelowMin=1
+    landNation: tallyBar=28
+    peerSeat: CANDIDATE=377  cellFull=214  noPosition=201  gathering=125  PASSED=51
+    siteCity: tallyBar=821
+    storm: frontAtHeartland=27  assaultTooWeak=23  worksInProgress=2  siegeLifts=2
+    submit: CANDIDATE=42  resistanceNotHopeless=29  hazardRoll(waiting)=8  identityBrake(foreignCourt)=2  outOfProjectionReach=1  coalitionBrake(deterrence)=1  PASSED=1
+step  23251  era=Bronze Age  cities=284 (stateless 88%)  states=26 (singl 77%)  nations=24  biggestBloc=2 realms/0.62Mkm2  bonds=2  deathsEver=0  pop=95M
+step  23501  era=Bronze Age  cities=301 (stateless 87%)  states=27 (singl 81%)  nations=26  biggestBloc=2 realms/0.69Mkm2  bonds=1  deathsEver=1  pop=97M
+step  23751  era=Bronze Age  cities=310 (stateless 85%)  states=34 (singl 85%)  nations=29  biggestBloc=3 realms/0.68Mkm2  bonds=5  deathsEver=6  pop=100M
+step  24001  era=Bronze Age  cities=317 (stateless 85%)  states=32 (singl 84%)  nations=27  biggestBloc=3 realms/0.68Mkm2  bonds=5  deathsEver=6  pop=102M
+    attack: CANDIDATE=1792  coalitionDeterrence=734  commandCapacity=358  PASSED=256  warWeariness=239  tradePeace=87  aggressionTemperament=68  noCasusBelli=50
+    capture: ~tilesTaken=14  CANDIDATE=12  PASSED=4  noContestedTiles=4  attackerNotWinning(adv<=1)=4
+    fission: noRivalSeat=255
+    integrate: CANDIDATE=16  orgBelowMin=7  hazardRoll(waiting)=5  identityBrake(foreignCourt)=3  PASSED=1
+    landNation: tallyBar=40
+    peerSeat: CANDIDATE=388  cellFull=277  noPosition=265  gathering=67  PASSED=56
+    siteCity: tallyBar=805
+    storm: frontAtHeartland=67  assaultTooWeak=55  pacifiedGrace=4  worksInProgress=3  siegeLifts=3  PASSED=2
+    submit: CANDIDATE=99  hazardRoll(waiting)=43  resistanceNotHopeless=29  identityBrake(foreignCourt)=10  PASSED=6  coalitionBrake(deterrence)=5  alreadyADependency=4  outOfProjectionReach=1
+step  24251  era=Bronze Age  cities=320 (stateless 82%)  states=32 (singl 84%)  nations=22  biggestBloc=4 realms/0.71Mkm2  bonds=10  deathsEver=6  pop=109M
+step  24501  era=Bronze Age  cities=332 (stateless 82%)  states=51 (singl 94%)  nations=36  biggestBloc=4 realms/0.79Mkm2  bonds=15  deathsEver=6  pop=112M
+step  24751  era=Classical  cities=340 (stateless 82%)  states=52 (singl 92%)  nations=36  biggestBloc=4 realms/0.79Mkm2  bonds=16  deathsEver=6  pop=115M
+step  25001  era=Classical  cities=351 (stateless 77%)  states=66 (singl 92%)  nations=44  biggestBloc=4 realms/0.85Mkm2  bonds=22  deathsEver=12  pop=122M
+    attack: CANDIDATE=1685  coalitionDeterrence=751  commandCapacity=463  PASSED=218  warWeariness=124  aggressionTemperament=59  noCasusBelli=48  tradePeace=22
+    capture: CANDIDATE=24  ~tilesTaken=15  PASSED=12  noContestedTiles=8  attackerNotWinning(adv<=1)=4
+    fission: noRivalSeat=336
+    integrate: CANDIDATE=100  orgBelowMin=69  identityBrake(foreignCourt)=13  hazardRoll(waiting)=11  beyondDirectRule=4  notAVassalBond=3
+    landNation: tallyBar=27
+    peerSeat: CANDIDATE=414  cellFull=336  noPosition=277  gathering=95  PASSED=41  noHeadroom=1
+    siteCity: tallyBar=873
+    storm: frontAtHeartland=120  assaultTooWeak=104  worksInProgress=4  wallsHold(grinding)=4  pacifiedGrace=3  PASSED=3  siegeLifts=2  sackYieldsTribute=1
+    submit: CANDIDATE=236  hazardRoll(waiting)=102  alreadyADependency=57  resistanceNotHopeless=44  identityBrake(foreignCourt)=16  PASSED=11  coalitionBrake(deterrence)=3  noLiveSeat=3
+step  25251  era=Classical  cities=369 (stateless 78%)  states=66 (singl 86%)  nations=45  biggestBloc=4 realms/0.85Mkm2  bonds=21  deathsEver=12  pop=125M
+step  25501  era=Classical  cities=383 (stateless 76%)  states=75 (singl 91%)  nations=50  biggestBloc=5 realms/0.91Mkm2  bonds=25  deathsEver=14  pop=136M
+step  25751  era=Classical  cities=404 (stateless 76%)  states=83 (singl 90%)  nations=57  biggestBloc=4 realms/0.91Mkm2  bonds=26  deathsEver=17  pop=139M
+step  26001  era=Classical  cities=416 (stateless 73%)  states=97 (singl 93%)  nations=65  biggestBloc=6 realms/0.80Mkm2  bonds=32  deathsEver=23  pop=145M
+    attack: CANDIDATE=3032  coalitionDeterrence=1193  commandCapacity=857  noCasusBelli=257  aggressionTemperament=242  PASSED=239  warWeariness=197  tradePeace=47
+    capture: ~tilesTaken=38  CANDIDATE=34  attackerNotWinning(adv<=1)=16  PASSED=10  noContestedTiles=6  allTilesTakenByAnotherAttacker=2
+    fission: noRivalSeat=360
+    integrate: CANDIDATE=176  orgBelowMin=86  hazardRoll(waiting)=31  identityBrake(foreignCourt)=20  beyondDirectRule=19  notAVassalBond=15  PASSED=3  seatAboveTierCap=2
+    landNation: tallyBar=46
+    peerSeat: CANDIDATE=572  noPosition=396  cellFull=386  gathering=102  PASSED=74
+    siteCity: tallyBar=777
+    storm: frontAtHeartland=172  assaultTooWeak=150  siegeLifts=9  wallsHold(grinding)=8  worksInProgress=3  PASSED=2
+    submit: CANDIDATE=410  hazardRoll(waiting)=147  alreadyADependency=122  resistanceNotHopeless=64  identityBrake(foreignCourt)=28  coalitionBrake(deterrence)=17  noLiveSeat=14  outOfProjectionReach=11
+step  26251  era=Classical  cities=428 (stateless 74%)  states=99 (singl 92%)  nations=64  biggestBloc=7 realms/0.81Mkm2  bonds=35  deathsEver=24  pop=148M
+step  26501  era=Classical  cities=433 (stateless 69%)  states=96 (singl 91%)  nations=62  biggestBloc=5 realms/0.82Mkm2  bonds=34  deathsEver=34  pop=152M
+step  26751  era=Classical  cities=450 (stateless 69%)  states=123 (singl 89%)  nations=76  biggestBloc=11 realms/0.99Mkm2  bonds=47  deathsEver=38  pop=155M
+step  27001  era=Classical  cities=465 (stateless 69%)  states=125 (singl 88%)  nations=78  biggestBloc=10 realms/0.99Mkm2  bonds=47  deathsEver=39  pop=158M
+    attack: CANDIDATE=4123  coalitionDeterrence=1475  commandCapacity=1385  PASSED=599  warWeariness=305  tradePeace=156  noCasusBelli=94  aggressionTemperament=91
+    capture: ~tilesTaken=105  CANDIDATE=34  PASSED=18  noContestedTiles=12  attackerNotWinning(adv<=1)=3  allTilesTakenByAnotherAttacker=1
+    fission: noRivalSeat=355
+    integrate: CANDIDATE=247  orgBelowMin=98  beyondDirectRule=49  hazardRoll(waiting)=41  identityBrake(foreignCourt)=25  notAVassalBond=23  PASSED=7  coalitionBrake(deterrence)=4
+    landNation: tallyBar=40
+    peerSeat: CANDIDATE=631  cellFull=464  noPosition=380  gathering=180  PASSED=70  noHeadroom=1
+    siteCity: tallyBar=855
+    storm: frontAtHeartland=282  assaultTooWeak=254  siegeLifts=14  wallsHold(grinding)=5  PASSED=5  worksInProgress=4  sackYieldsTribute=2
+    submit: CANDIDATE=451  alreadyADependency=154  hazardRoll(waiting)=139  resistanceNotHopeless=75  identityBrake(foreignCourt)=28  PASSED=18  noLiveSeat=18  outOfProjectionReach=11
+step  27251  era=Classical  cities=475 (stateless 63%)  states=161 (singl 93%)  nations=107  biggestBloc=11 realms/0.95Mkm2  bonds=54  deathsEver=44  pop=161M
+step  27501  era=Classical  cities=482 (stateless 63%)  states=155 (singl 90%)  nations=99  biggestBloc=15 realms/1.04Mkm2  bonds=56  deathsEver=54  pop=163M
+step  27751  era=Medieval  cities=483 (stateless 58%)  states=155 (singl 90%)  nations=97  biggestBloc=17 realms/0.96Mkm2  bonds=58  deathsEver=55  pop=168M
+step  28001  era=Medieval  cities=500 (stateless 58%)  states=182 (singl 91%)  nations=120  biggestBloc=17 realms/0.98Mkm2  bonds=62  deathsEver=68  pop=171M
+    attack: CANDIDATE=6651  coalitionDeterrence=2463  commandCapacity=2196  PASSED=789  warWeariness=456  tradePeace=303  noCasusBelli=254  aggressionTemperament=190
+    capture: ~tilesTaken=63  CANDIDATE=53  attackerNotWinning(adv<=1)=25  PASSED=21  noContestedTiles=7
+    fission: noRivalSeat=366
+    integrate: CANDIDATE=401  orgBelowMin=151  beyondDirectRule=88  hazardRoll(waiting)=61  identityBrake(foreignCourt)=50  notAVassalBond=34  PASSED=11  seatAboveTierCap=5
+    landNation: tallyBar=45
+    peerSeat: cellFull=665  CANDIDATE=575  noPosition=387  gathering=141  PASSED=47
+    siteCity: tallyBar=922
+    storm: frontAtHeartland=642  assaultTooWeak=556  worksInProgress=30  siegeLifts=24  wallsHold(grinding)=18  PASSED=7  pacifiedGrace=7  sackYieldsTribute=1
+    submit: CANDIDATE=812  hazardRoll(waiting)=290  alreadyADependency=290  resistanceNotHopeless=83  identityBrake(foreignCourt)=79  outOfProjectionReach=20  noLiveSeat=19  PASSED=18
+step  28251  era=Medieval  cities=516 (stateless 49%)  states=232 (singl 93%)  nations=163  biggestBloc=19 realms/0.94Mkm2  bonds=69  deathsEver=74  pop=176M
+step  28501  era=Medieval  cities=534 (stateless 49%)  states=239 (singl 92%)  nations=163  biggestBloc=21 realms/0.97Mkm2  bonds=76  deathsEver=79  pop=179M
+step  28751  era=Medieval  cities=545 (stateless 49%)  states=244 (singl 91%)  nations=165  biggestBloc=18 realms/0.98Mkm2  bonds=79  deathsEver=85  pop=182M
+step  29001  era=Medieval  cities=575 (stateless 43%)  states=278 (singl 88%)  nations=179  biggestBloc=2 realms/1.08Mkm2  bonds=99  deathsEver=114  pop=189M
+    attack: CANDIDATE=11888  commandCapacity=5093  coalitionDeterrence=4819  PASSED=904  tradePeace=303  noCasusBelli=289  aggressionTemperament=246  warWeariness=216
+    capture: CANDIDATE=95  attackerNotWinning(adv<=1)=71  ~tilesTaken=31  PASSED=15  noContestedTiles=9
+    fission: noRivalSeat=355
+    integrate: CANDIDATE=550  orgBelowMin=200  hazardRoll(waiting)=119  beyondDirectRule=102  identityBrake(foreignCourt)=56  notAVassalBond=37  coalitionBrake(deterrence)=20  PASSED=9
+    landNation: tallyBar=56
+    peerSeat: cellFull=775  CANDIDATE=614  noPosition=388  gathering=131  PASSED=95
+    siteCity: tallyBar=1001
+    storm: frontAtHeartland=984  assaultTooWeak=898  worksInProgress=27  wallsHold(grinding)=18  pacifiedGrace=16  siegeLifts=14  PASSED=11  sackYieldsTribute=2
+    submit: CANDIDATE=1468  hazardRoll(waiting)=597  alreadyADependency=439  resistanceNotHopeless=201  identityBrake(foreignCourt)=95  noLiveSeat=50  coalitionBrake(deterrence)=44  PASSED=23
+step  29251  era=Medieval  cities=607 (stateless 46%)  states=278 (singl 87%)  nations=193  biggestBloc=2 realms/1.08Mkm2  bonds=85  deathsEver=131  pop=191M
+step  29501  era=Medieval  cities=630 (stateless 40%)  states=318 (singl 92%)  nations=222  biggestBloc=3 realms/0.97Mkm2  bonds=96  deathsEver=156  pop=198M
+step  29751  era=Medieval  cities=658 (stateless 42%)  states=313 (singl 88%)  nations=205  biggestBloc=6 realms/1.08Mkm2  bonds=108  deathsEver=174  pop=201M
+step  30001  era=Medieval  cities=670 (stateless 36%)  states=316 (singl 88%)  nations=205  biggestBloc=5 realms/1.32Mkm2  bonds=111  deathsEver=185  pop=213M
+    attack: CANDIDATE=24400  commandCapacity=12322  coalitionDeterrence=7284  PASSED=1765  noCasusBelli=1137  warWeariness=879  tradePeace=532  aggressionTemperament=461
+    capture: ~tilesTaken=324  CANDIDATE=208  attackerNotWinning(adv<=1)=112  PASSED=75  noContestedTiles=11  allTilesTakenByAnotherAttacker=10
+    fission: noRivalSeat=318
+    integrate: CANDIDATE=589  orgBelowMin=311  hazardRoll(waiting)=94  beyondDirectRule=82  notAVassalBond=33  coalitionBrake(deterrence)=28  identityBrake(foreignCourt)=19  PASSED=16
+    landNation: tallyBar=44
+    peerSeat: cellFull=996  CANDIDATE=679  noPosition=434  gathering=128  PASSED=117
+    siteCity: tallyBar=1124
+    storm: frontAtHeartland=1238  assaultTooWeak=1103  worksInProgress=41  siegeLifts=33  wallsHold(grinding)=27  PASSED=19  pacifiedGrace=15  sackYieldsTribute=3
+    submit: CANDIDATE=1603  hazardRoll(waiting)=549  alreadyADependency=392  resistanceNotHopeless=279  noLiveSeat=215  identityBrake(foreignCourt)=84  coalitionBrake(deterrence)=33  outOfProjectionReach=26
+step  30251  era=Medieval  cities=684 (stateless 35%)  states=351 (singl 86%)  nations=223  biggestBloc=6 realms/1.38Mkm2  bonds=128  deathsEver=207  pop=215M
+step  30501  era=Medieval  cities=700 (stateless 35%)  states=369 (singl 85%)  nations=235  biggestBloc=6 realms/1.38Mkm2  bonds=134  deathsEver=221  pop=218M
+step  30751  era=Medieval  cities=724 (stateless 32%)  states=409 (singl 89%)  nations=263  biggestBloc=6 realms/1.54Mkm2  bonds=146  deathsEver=238  pop=226M
+step  31001  era=Medieval  cities=757 (stateless 32%)  states=420 (singl 87%)  nations=266  biggestBloc=7 realms/1.54Mkm2  bonds=154  deathsEver=256  pop=230M
+    attack: CANDIDATE=41464  commandCapacity=23132  coalitionDeterrence=9434  PASSED=2605  noCasusBelli=2528  warWeariness=1967  aggressionTemperament=1043  tradePeace=750
+    capture: ~tilesTaken=421  CANDIDATE=264  PASSED=135  attackerNotWinning(adv<=1)=83  allTilesTakenByAnotherAttacker=29  noContestedTiles=16  marginTooThinToTakeOneTile=1
+    fission: noRivalSeat=301
+    integrate: CANDIDATE=958  orgBelowMin=624  hazardRoll(waiting)=139  beyondDirectRule=100  notAVassalBond=28  identityBrake(foreignCourt)=24  coalitionBrake(deterrence)=20  PASSED=18
+    landNation: tallyBar=71
+    peerSeat: cellFull=1088  CANDIDATE=751  noPosition=442  gathering=195  PASSED=114
+    siteCity: tallyBar=1378
+    storm: frontAtHeartland=2114  assaultTooWeak=1920  worksInProgress=73  siegeLifts=36  wallsHold(grinding)=34  pacifiedGrace=34  PASSED=17  sackYieldsTribute=7
+    submit: CANDIDATE=2358  hazardRoll(waiting)=752  alreadyADependency=750  resistanceNotHopeless=436  identityBrake(foreignCourt)=149  noLiveSeat=149  PASSED=47  coalitionBrake(deterrence)=47
+step  31251  era=Medieval  cities=788 (stateless 28%)  states=467 (singl 87%)  nations=299  biggestBloc=10 realms/1.61Mkm2  bonds=168  deathsEver=291  pop=236M
+step  31501  era=Medieval  cities=823 (stateless 30%)  states=459 (singl 85%)  nations=290  biggestBloc=10 realms/1.61Mkm2  bonds=169  deathsEver=310  pop=238M
+step  31751  era=Medieval  cities=839 (stateless 25%)  states=494 (singl 87%)  nations=303  biggestBloc=10 realms/1.63Mkm2  bonds=191  deathsEver=355  pop=242M
+step  32001  era=Medieval  cities=850 (stateless 25%)  states=487 (singl 84%)  nations=291  biggestBloc=14 realms/1.75Mkm2  bonds=196  deathsEver=382  pop=243M
+    attack: CANDIDATE=51826  commandCapacity=29348  coalitionDeterrence=12011  noCasusBelli=3210  PASSED=3051  warWeariness=1689  tradePeace=1531  aggressionTemperament=960
+    capture: ~tilesTaken=418  CANDIDATE=356  PASSED=148  attackerNotWinning(adv<=1)=142  noContestedTiles=47  allTilesTakenByAnotherAttacker=19
+    fission: noRivalSeat=280
+    integrate: CANDIDATE=1241  orgBelowMin=754  hazardRoll(waiting)=182  beyondDirectRule=168  identityBrake(foreignCourt)=44  notAVassalBond=31  PASSED=27  seatAboveTierCap=20
+    landNation: tallyBar=57
+    peerSeat: cellFull=1325  CANDIDATE=769  noPosition=516  gathering=128  PASSED=121  noHeadroom=4
+    siteCity: tallyBar=1414
+    storm: frontAtHeartland=2590  assaultTooWeak=2339  worksInProgress=73  pacifiedGrace=50  wallsHold(grinding)=48  siegeLifts=46  PASSED=34  sackYieldsTribute=13
+    submit: CANDIDATE=2845  alreadyADependency=950  hazardRoll(waiting)=888  resistanceNotHopeless=439  identityBrake(foreignCourt)=237  noLiveSeat=180  coalitionBrake(deterrence)=62  PASSED=54
+step  32251  era=Medieval  cities=871 (stateless 25%)  states=482 (singl 82%)  nations=281  biggestBloc=15 realms/1.82Mkm2  bonds=201  deathsEver=398  pop=244M
+step  32501  era=Medieval  cities=884 (stateless 22%)  states=525 (singl 82%)  nations=310  biggestBloc=13 realms/1.74Mkm2  bonds=215  deathsEver=452  pop=251M
+step  32751  era=Medieval  cities=896 (stateless 22%)  states=524 (singl 80%)  nations=297  biggestBloc=13 realms/1.73Mkm2  bonds=227  deathsEver=477  pop=252M
+step  33001  era=Medieval  cities=920 (stateless 20%)  states=580 (singl 83%)  nations=337  biggestBloc=13 realms/1.60Mkm2  bonds=243  deathsEver=513  pop=255M
+    attack: CANDIDATE=59292  commandCapacity=33456  coalitionDeterrence=13771  noCasusBelli=3866  PASSED=3467  warWeariness=2338  tradePeace=1360  aggressionTemperament=1022
+    capture: CANDIDATE=573  ~tilesTaken=524  attackerNotWinning(adv<=1)=338  PASSED=159  noContestedTiles=54  allTilesTakenByAnotherAttacker=19  marginTooThinToTakeOneTile=3
+    fission: noRivalSeat=257
+    integrate: CANDIDATE=1321  orgBelowMin=744  beyondDirectRule=289  hazardRoll(waiting)=159  identityBrake(foreignCourt)=43  PASSED=30  notAVassalBond=25  seatAboveTierCap=18
+    landNation: tallyBar=37
+    peerSeat: cellFull=1583  CANDIDATE=758  noPosition=576  PASSED=113  gathering=69
+    siteCity: tallyBar=1288
+    storm: frontAtHeartland=2735  assaultTooWeak=2534  worksInProgress=58  wallsHold(grinding)=47  pacifiedGrace=42  siegeLifts=31  PASSED=23  sackYieldsTribute=5
+    submit: CANDIDATE=2658  alreadyADependency=1046  hazardRoll(waiting)=810  resistanceNotHopeless=407  identityBrake(foreignCourt)=173  noLiveSeat=122  coalitionBrake(deterrence)=45  PASSED=38
+step  33251  era=Medieval  cities=942 (stateless 20%)  states=569 (singl 81%)  nations=325  biggestBloc=16 realms/1.64Mkm2  bonds=244  deathsEver=545  pop=253M
+step  33501  era=Medieval  cities=957 (stateless 16%)  states=645 (singl 84%)  nations=385  biggestBloc=20 realms/1.69Mkm2  bonds=260  deathsEver=605  pop=251M
+step  33751  era=Medieval  cities=991 (stateless 16%)  states=637 (singl 83%)  nations=375  biggestBloc=21 realms/1.68Mkm2  bonds=262  deathsEver=626  pop=248M
+step  34001  era=Medieval  cities=1010 (stateless 13%)  states=660 (singl 81%)  nations=387  biggestBloc=22 realms/1.56Mkm2  bonds=273  deathsEver=661  pop=259M
+    attack: CANDIDATE=64461  commandCapacity=37572  coalitionDeterrence=15239  noCasusBelli=4604  PASSED=3291  warWeariness=2198  aggressionTemperament=804  tradePeace=731
+    capture: ~tilesTaken=788  CANDIDATE=561  attackerNotWinning(adv<=1)=239  PASSED=214  noContestedTiles=58  allTilesTakenByAnotherAttacker=49  marginTooThinToTakeOneTile=1
+    fission: noRivalSeat=218
+    integrate: CANDIDATE=1802  orgBelowMin=966  beyondDirectRule=392  hazardRoll(waiting)=250  identityBrake(foreignCourt)=68  PASSED=51  notAVassalBond=34  seatAboveTierCap=23
+    landNation: tallyBar=63
+    peerSeat: cellFull=1816  CANDIDATE=761  noPosition=539  PASSED=137  gathering=82  noHeadroom=3
+    siteCity: tallyBar=1176
+    storm: frontAtHeartland=3491  assaultTooWeak=3226  worksInProgress=96  wallsHold(grinding)=53  siegeLifts=47  pacifiedGrace=45  PASSED=24  sackYieldsTribute=10
+    submit: CANDIDATE=3671  alreadyADependency=1485  hazardRoll(waiting)=1124  resistanceNotHopeless=462  identityBrake(foreignCourt)=255  noLiveSeat=113  coalitionBrake(deterrence)=82  outOfProjectionReach=82
+step  34251  era=Medieval  cities=1040 (stateless 13%)  states=692 (singl 81%)  nations=422  biggestBloc=39 realms/1.77Mkm2  bonds=270  deathsEver=727  pop=256M
+step  34501  era=Medieval  cities=1062 (stateless 14%)  states=690 (singl 80%)  nations=401  biggestBloc=41 realms/1.84Mkm2  bonds=289  deathsEver=748  pop=255M
+step  34751  era=Medieval  cities=1093 (stateless 13%)  states=752 (singl 84%)  nations=438  biggestBloc=56 realms/2.24Mkm2  bonds=314  deathsEver=817  pop=252M
+step  35001  era=Medieval  cities=1113 (stateless 14%)  states=732 (singl 81%)  nations=427  biggestBloc=56 realms/2.47Mkm2  bonds=305  deathsEver=859  pop=252M
+    attack: CANDIDATE=88103  commandCapacity=52789  coalitionDeterrence=21177  noCasusBelli=5405  PASSED=4897  warWeariness=2242  tradePeace=799  aggressionTemperament=709
+    capture: ~tilesTaken=1094  CANDIDATE=646  attackerNotWinning(adv<=1)=305  PASSED=285  noContestedTiles=35  allTilesTakenByAnotherAttacker=19  marginTooThinToTakeOneTile=2
+    fission: noRivalSeat=244
+    integrate: CANDIDATE=2071  orgBelowMin=1068  beyondDirectRule=455  hazardRoll(waiting)=302  identityBrake(foreignCourt)=71  seatAboveTierCap=53  PASSED=43  coalitionBrake(deterrence)=41
+    landNation: tallyBar=46
+    peerSeat: cellFull=2029  CANDIDATE=842  noPosition=598  PASSED=139  gathering=102  noHeadroom=3
+    siteCity: tallyBar=994
+    storm: frontAtHeartland=4011  assaultTooWeak=3676  wallsHold(grinding)=93  worksInProgress=86  pacifiedGrace=70  siegeLifts=55  PASSED=31  sackYieldsTribute=9
+    submit: CANDIDATE=4325  alreadyADependency=1654  hazardRoll(waiting)=1366  resistanceNotHopeless=513  identityBrake(foreignCourt)=327  noLiveSeat=272  PASSED=81  coalitionBrake(deterrence)=80
+step  35251  era=Medieval  cities=1137 (stateless 12%)  states=787 (singl 85%)  nations=443  biggestBloc=66 realms/3.19Mkm2  bonds=344  deathsEver=923  pop=264M
+step  35501  era=Medieval  cities=1160 (stateless 12%)  states=761 (singl 81%)  nations=450  biggestBloc=22 realms/2.23Mkm2  bonds=311  deathsEver=982  pop=261M
+step  35751  era=Medieval  cities=1174 (stateless 11%)  states=823 (singl 84%)  nations=482  biggestBloc=23 realms/2.24Mkm2  bonds=341  deathsEver=1075  pop=265M
+step  36001  era=Medieval  cities=1186 (stateless 10%)  states=798 (singl 81%)  nations=463  biggestBloc=24 realms/2.35Mkm2  bonds=335  deathsEver=1104  pop=261M
+    attack: CANDIDATE=96238  commandCapacity=56656  coalitionDeterrence=23898  PASSED=6226  noCasusBelli=5609  warWeariness=2258  tradePeace=872  aggressionTemperament=575
+    capture: ~tilesTaken=1540  CANDIDATE=795  attackerNotWinning(adv<=1)=355  PASSED=335  noContestedTiles=66  allTilesTakenByAnotherAttacker=37  marginTooThinToTakeOneTile=2
+    fission: noRivalSeat=248
+    integrate: CANDIDATE=1986  orgBelowMin=977  beyondDirectRule=411  hazardRoll(waiting)=320  identityBrake(foreignCourt)=100  PASSED=55  seatAboveTierCap=49  coalitionBrake(deterrence)=45
+    landNation: tallyBar=62
+    peerSeat: cellFull=2223  CANDIDATE=909  noPosition=636  PASSED=154  gathering=118  noHeadroom=1
+    siteCity: tallyBar=857
+    storm: frontAtHeartland=4318  assaultTooWeak=4018  worksInProgress=90  pacifiedGrace=70  wallsHold(grinding)=60  siegeLifts=59  PASSED=21  sackYieldsTribute=4
+    submit: CANDIDATE=3973  alreadyADependency=1533  hazardRoll(waiting)=1284  resistanceNotHopeless=430  noLiveSeat=273  identityBrake(foreignCourt)=262  PASSED=80  coalitionBrake(deterrence)=73
+step  36251  era=Medieval  cities=1223 (stateless 10%)  states=823 (singl 81%)  nations=465  biggestBloc=24 realms/2.38Mkm2  bonds=358  deathsEver=1138  pop=260M
