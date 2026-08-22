@@ -24,6 +24,7 @@
 
 import { T, rNormPop } from "./tuning.js";
 import { tileOpenness } from "./transport.js";
+import { ensureTill0 } from "./agriculture.js";
 // Stage B (docs/popfield-parallel.md): the four parallel-safe loop bodies and
 // the physical constants they share live in popFieldKernel.js (single source —
 // a worker thread imports the kernel standalone), the worker pool in
@@ -507,13 +508,30 @@ function ensureDevField(world, land) {
 // Static terrain, built once, rebuilt deterministically at load; the banded
 // arrays SUBSTITUTE for riverMag/coast in the capacity pass only (kernel and
 // bit-guarded worker path untouched — they read whatever arrays are packed).
+// T.BAND_SUM (2026-08-19, the diffusion campaign's lap 2 — docs/atlas-gap-2026-
+// 08-14.md): the MAX-over-sources rule below deletes real mass exactly where a
+// finer grid resolves more geometry. A meandering channel's own band tiles
+// overlap (2x the along-channel sources at rn=2, each spreading H=1.5), and
+// parallel tributaries one tile apart overlap their bands — max() keeps one
+// contribution and discards the rest, which is why the banded field restored
+// only x1.455 of the ideal x2 width recovery (probe_rivermass: river water mass
+// 0.753, coast 0.898 per real area vs the reference). The sum-capped form keeps
+// the same physics — two rivers still cannot stack past the LARGEST contributor
+// (rivers cap at the peak overlapping magnitude, coast at 1) — while overlap
+// SUMS below the cap, so a meander's self-overlap restores its straight-channel
+// mass. Measured (8817): river water 0.753 -> 1.043, coast 0.898 -> 1.001, and
+// the reference is BYTE-IDENTICAL by construction (at rn=1 the band is the
+// source tile alone — no cross-tile contributions exist to sum).
 export function ensureAccessBand(world) {
-  if (world._rmBand && world._rmBand.length === world.N) return;
+  const sum = T.BAND_SUM ? 1 : 0;
+  if (world._rmBand && world._rmBand.length === world.N && (world._abSum || 0) === sum) return;
   const { N, tw, th } = world;
   const rn = rNormPop(world);
   const rm = world.riverMag, coast = world.coast;
   const rmB = world._rmBand = new Float32Array(N);
   const coB = world._coastBand = new Float32Array(N);
+  const rmPk = sum ? new Float32Array(N) : null;
+  world._abSum = sum;
   const H = rn / 2 + 0.5;
   const R = Math.ceil(H);
   for (let ti = 0; ti < N; ti++) {
@@ -526,9 +544,20 @@ export function ensureAccessBand(world) {
         const w = Math.min(1, Math.max(0, H - Math.hypot(dx, dy)));
         if (w <= 0) continue;
         const i2 = y * tw + (((x0 + dx) % tw) + tw) % tw;
-        if (mag >= 1) { const v = mag * w; if (v > rmB[i2]) rmB[i2] = v; }
-        if (isC && w > coB[i2]) coB[i2] = w;
+        if (sum) {
+          if (mag >= 1) { rmB[i2] += mag * w; if (mag > rmPk[i2]) rmPk[i2] = mag; }
+          if (isC) coB[i2] += w;
+        } else {
+          if (mag >= 1) { const v = mag * w; if (v > rmB[i2]) rmB[i2] = v; }
+          if (isC && w > coB[i2]) coB[i2] = w;
+        }
       }
+    }
+  }
+  if (sum) {
+    for (let i = 0; i < N; i++) {
+      if (rmB[i] > rmPk[i]) rmB[i] = rmPk[i];
+      if (coB[i] > 1) coB[i] = 1;
     }
   }
 }
@@ -543,6 +572,13 @@ export function initPopField(world) {
   // braces; a loaded world rebuilds them here deterministically, they are
   // derived terrain and never persisted).
   if (T.ACCESS_BAND) ensureAccessBand(world);
+  // T.TILLAGE: the static workability floor must exist BEFORE _pfPrepare builds
+  // the arena — the SAB conversion runs there, and an array born after it is
+  // invisible to the pooled workers for a firing (serial would read it, pooled
+  // would not: the exact serial/pooled divergence class the ACCESS_BAND
+  // forensic records — and reproduced here before this line moved up:
+  // 75f3fb98 vs 9927b9b1 at 600 steps).
+  if (T.TILLAGE) ensureTill0(world);
   const { elev, fert, tArrival } = world;
   const rn = rNormPop(world);
   const seedPop = SEED_POP / (rn * rn);   // per REAL area (÷1 exactly at the reference)
@@ -560,6 +596,12 @@ export function initPopField(world) {
 // `sub` = how many ticks this firing represents (POP_FIELD_STRIDE); the step size
 // scales by it so a strided field follows the same trajectory at ~1/sub the cost.
 export function stepPopField(world, sub = 1) {
+  // Phase attribution for the dense-tick probe (2026-08-20): the field pass is
+  // 44% of a dense tick and TRIPLES with entity count at a fixed grid — which
+  // phase carries the per-city scaling decides the fix. Zero cost when off.
+  const _pf = world._dbgProfile ? (world.debug.pf || (world.debug.pf = {})) : null;
+  let _pfT = _pf ? performance.now() : 0;
+  const _pfm = _pf ? (k) => { const n2 = performance.now(); _pf[k] = (_pf[k] || 0) + (n2 - _pfT); _pfT = n2; } : null;
   const N = world.N, tw = world.tw, th = world.th;
   let { elev, fert, riverMag, relief, coast } = world;
   let pop = world.popField, cap = world.capField;
@@ -635,6 +677,7 @@ export function stepPopField(world, sub = 1) {
   // canals irrigate fields, not rangeland). Lever value = max yield multiple.
   const worksOn = T.LAND_WORKS > 0 && world.worksField;
   let worksF = worksOn ? world.worksField : null; const worksK = worksOn ? T.LAND_WORKS : 0;
+  if (_pfm) _pfm("prep");
   // ── Stage B parallel context (docs/popfield-parallel.md §4) ────────────────
   // Lever ≥1 routes the four parallel-safe phases through the shared band
   // kernels (≥2 additionally bands them across the worker pool when it is
@@ -646,6 +689,13 @@ export function stepPopField(world, sub = 1) {
   // prepare, so the SAB conversion list picks them up and the arena message
   // redirects its riverMag/coast slots (workers read slots by name).
   if (T.ACCESS_BAND) ensureAccessBand(world);
+  // T.TILLAGE: the static workability floor must exist BEFORE _pfPrepare builds
+  // the arena — the SAB conversion runs there, and an array born after it is
+  // invisible to the pooled workers for a firing (serial would read it, pooled
+  // would not: the exact serial/pooled divergence class the ACCESS_BAND
+  // forensic records — and reproduced here before this line moved up:
+  // 75f3fb98 vs 9927b9b1 at 600 steps).
+  if (T.TILLAGE) ensureTill0(world);
   const _pctx = _pfLever() >= 1 ? _pfPrepare(world, land, nLand, devF) : null;
   if (_pctx) {
     ({ elev, fert, riverMag, relief, coast } = world);
@@ -702,6 +752,7 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  if (_pfm) _pfm("kernel");
   // ── T.FOREST_LOCK: the canopy prices the crop — the FIELD-side half of
   // LAND_CLEAR_METAL. The clearance model existed only as a STATE-FORMATION
   // bar (countryTerritory forestBar), so the capacity field read raw
@@ -720,6 +771,39 @@ export function stepPopField(world, sub = 1) {
   // compute, before FOOD_K and the genesis seed) so pool and non-pool stay
   // bit-identical and the DAWN seed itself is forest-priced — Europe is born
   // sparse and OPENS with the iron age. 0 = canopy-blind capacity (legacy).
+  // ── T.TILLAGE (lap 3 form): the workability post-pass, in FOREST_LOCK's
+  // exact grid-honest pattern. Two laps of measurement dictated this shape
+  // (docs/atlas-gap-2026-08-14.md): the suit door was the wrong door (the cage
+  // drive reads capField), and a devField ramp inside the banded compute was
+  // grid-UNFAIR — the technique wave crawls per tile, so its front lags in
+  // real km on finer grids (measured: mean devF 0.090 vs 0.067 at tw=240 vs
+  // 480 at 6k) and resgate went red twice. The administering settlement's
+  // METALLURGY is the grid-honest key (entity knowledge, no field crawl — the
+  // iron ploughshare and the axe are the same toolkit), wild land has no
+  // toolkit and stays at the floor, and the pasture term refloors the result —
+  // unworkable country stays populated, it just cannot feed the farmed
+  // surplus statehood drinks from. Deterministic main-thread post-pass after
+  // the banded/inline compute: pool and non-pool stay bit-identical by
+  // construction (FOREST_LOCK's own recipe).
+  if (T.TILLAGE && world._till0) {
+    const t0 = world._till0;
+    const clearRefT = Math.max(0.1, T.LAND_CLEAR_METAL || 0.55);
+    for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const w0 = t0[i];
+      if (w0 >= 1) continue;
+      let iron = 0;
+      if (ownOn && indOwner) {
+        const sid = indOwner[i];
+        if (sid >= 0) {
+          const s2 = indById.get(sid);
+          if (s2 && s2.knowledge) iron = Math.min(1, (s2.knowledge.metallurgy || 0) / clearRefT);
+        }
+      }
+      const crop = cap[i] * (w0 + (1 - w0) * iron);
+      cap[i] = crop > pasture[i] ? crop : pasture[i];
+    }
+  }
   const flL = T.FOREST_LOCK || 0;
   if (flL > 0) {
     const moistF = world.moist;
@@ -746,6 +830,57 @@ export function stepPopField(world, sub = 1) {
     }
   }
 
+  if (_pfm) _pfm("forestTill");
+  // ── T.FIELD_CRADLE: the granary reaches the FIELD ─────────────────────────
+  // Capacity-side adoption of the food economy's cradle stack (settlement.js
+  // irrigation + alluvium — one physics, second consumer). The field-
+  // concentration wave's lap-0 verdict (docs/atlas-gap-2026-08-14.md):
+  // worldgen fert measures FLAT (top-10% of land holds 19% of fert-mass,
+  // dec/med 1.7x) and the proxy's only water term is the access premium
+  // (reach ≤ x3), so the census, the claims, the cage and the worked mask
+  // lived in a world where the Nile was a cheap road, not a granary — while
+  // the settlement ledger carried x7.5 on arid-river maturity (its design
+  // doc's "Egypt tail"). FOOD_K hands worked land the real ledger, but 90%+
+  // of land is wild proxy — the pre-state basins where circumscription and
+  // hearth demography are decided. Same levers as the settlement law, tile
+  // resolution: arid from world.moist against IRRIG_ARID0, water from the
+  // (banded) riverMag, coastal lowland at the settlement's ALLUVIUM_COAST
+  // share, farm technique from the LOCAL devF — the wave carries
+  // knowledge.agriculture units, so the settlement's own /0.5 maturity gate
+  // transfers verbatim, and a pre-agricultural basin (devF 0) is UNTOUCHED:
+  // the lift spreads with farming itself, the Neolithic transition. Crop
+  // only — a pasture-won tile (bitwise cap === pasture, the max() branch) is
+  // skipped: canals irrigate fields, not rangeland. Deterministic main-
+  // thread post-pass in FOREST_LOCK's exact recipe (pool and non-pool
+  // bit-identical by construction), BEFORE FOOD_K so worked-catchment
+  // distribution weights read the same cradle geography the ledger already
+  // knows. Lever value scales the stack as a share of its food-economy
+  // strength (1 = parity). 0 = the road-only proxy (byte-identical).
+  const fcL = T.FIELD_CRADLE || 0;
+  if (fcL > 0 && devF && world.moist) {
+    const moistF = world.moist;
+    const irrB = (T.IRRIG_BOOST || 0) * fcL, alluB = (T.ALLUVIUM || 0) * fcL;
+    const arid0 = T.IRRIG_ARID0 ?? 0.52;
+    const ALLU_COAST_F = 0.5;   // = settlement.js ALLUVIUM_COAST — the two consumers share the value; change together
+    const FARM_MATURE_F = 0.5;  // = settlement.js farmTech divisor (mature floodplain/irrigation farming)
+    if (irrB > 0 || alluB > 0) for (let li = 0; li < nLand; li++) {
+      const i = land[li];
+      const water = rmEff ? Math.min(1, rmEff[i] / RM_FULL) : 0;
+      const coastV = coastEff ? coastEff[i] : 0;
+      if (water <= 0 && coastV <= 0) continue;
+      const a = devF[i];
+      if (!(a > 0)) continue;
+      const farmTech = Math.min(1, a / FARM_MATURE_F);
+      if (pasture && cap[i] === pasture[i] && pasture[i] > 0) continue;   // range won: the herd is not irrigated
+      const arid = Math.max(0, Math.min(1, (arid0 - moistF[i]) / 0.20));
+      const irr = 1 + irrB * arid * water * farmTech;
+      const allu = 1 + alluB * (water + ALLU_COAST_F * coastV) * farmTech;
+      const m = irr * allu;
+      if (m > 1) cap[i] *= m;
+    }
+  }
+
+  if (_pfm) _pfm("cradle");
   // ── T.FOOD_K: worked land's capacity IS the food ledger (the unification) ──
   // The formula above is an abstract PROXY (fertility × technique × access);
   // the settlement economy carries the REAL ledger — catchment harvests with
@@ -951,6 +1086,7 @@ export function stepPopField(world, sub = 1) {
     }
     const t = pop; pop = nxt; nxt = t;           // swap buffers (per substep — next substep reads this one's result)
   }
+  if (_pfm) _pfm("foodK");
   // ── T.LAND_WORKS: build/rot pass (see the header block above the constants).
   // Runs on this tick's final pop & cap; the multiplier is felt next firing —
   // a one-firing lag that keeps the pass order clean and deterministic.
@@ -984,6 +1120,7 @@ export function stepPopField(world, sub = 1) {
   }
   world.popField = pop;
   world._popNext = nxt;
+  if (_pfm) _pfm("worksTail");
 }
 
 const _spare4 = new Float64Array(4);
@@ -1017,11 +1154,32 @@ function _ensureTropicB(world, land, nLand) {
 
 // Irrigability — static terrain: water that can be LED onto fields (see the
 // LAND_WORKS block in stepPopField for the physical story).
+// ── T.IRR_BAND: irrigable water over a REAL width (the works-dilution fix,
+// diffusion-pace campaign fix lap 1, docs/atlas-gap-2026-08-14.md). The water
+// term read RAW riverMag — a 1-tile line at any grid — so the irrigable field,
+// the works stock's only spatial input, HALVED in real width per resolution
+// doubling: measured as the largest of the four capacity-dilution leaks
+// (works factor mass ×1.75 at tw=240 vs ×1.49 at tw=480 — probe_capdilution).
+// ACCESS_BAND's charter ("waterside capacity over a REAL width") built the
+// banded field but its substitution never reached this consumer. Lever on +
+// band live: the water term reads the band, exactly capBand's own idiom —
+// substitute ARRAYS, not code. ×1 at the reference (the band is calibrated
+// to the raw line there), wider real irrigable valleys at finer grids. The
+// cache rebuilds if the band arrives after a pre-band build (first call can
+// precede ensureAccessBand on the lever-0 path). 0 = the raw line
+// (byte-identical).
 function _ensureIrr(world, land, nLand) {
+  // Finer-than-reference grids ONLY: the reference IS the calibration anchor
+  // (the raw line and the band coincide in meaning there but not in bytes —
+  // measured: substituting at tw=240 moved the hashbase AND the resgate ref
+  // arm, putting the 8817 median band on a knife edge). The fix's job is to
+  // converge finer grids TOWARD the anchor, never to move the anchor.
+  const rmB = (T.IRR_BAND && T.ACCESS_BAND && rNormPop(world) > 1 && world._rmBand) ? world._rmBand : null;
   let irr = world._irrigable;
-  if (!irr || irr.length !== world.N) {
+  if (!irr || irr.length !== world.N || (world._irrBanded || 0) !== (rmB ? 1 : 0)) {
     irr = world._irrigable = new Float32Array(world.N);
-    const tFl = world.tFlood, mo = world.moist, riverMag = world.riverMag;
+    world._irrBanded = rmB ? 1 : 0;
+    const tFl = world.tFlood, mo = world.moist, riverMag = rmB || world.riverMag;
     for (let li = 0; li < nLand; li++) {
       const i = land[li];
       const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
@@ -1432,6 +1590,22 @@ export function diskSum(pf, tw, th, cx, cy, R) {
   return sum;
 }
 
+/** Land tiles inside the same footprint window diskSum reads — the area the
+ *  rural-baseline urban read (deriveOnePop, T.LAND_KNOW) normalises over. */
+export function diskLandCount(world, cx, cy, R) {
+  const { tw, th, elev } = world;
+  if (R <= 0) return elev[cy * tw + ((cx % tw) + tw) % tw] > 0 ? 1 : 0;
+  let n = 0;
+  const y0 = Math.max(0, cy - R), y1 = Math.min(th - 1, cy + R);
+  for (let y = y0; y <= y1; y++) {
+    for (let dx = -R; dx <= R; dx++) {
+      const x = ((cx + dx) % tw + tw) % tw;
+      if (elev[y * tw + x] > 0) n++;
+    }
+  }
+  return n;
+}
+
 /** Apply the urban spikes (built by deriveOnePop) into this pass's capField.
  *  Under T.URBAN_FOOTPRINT (R>0) each spike's capacity is spread EVENLY over the
  *  (2R+1)² HABITABLE (elev>0) disk tiles around its core, so capacity co-locates
@@ -1826,7 +2000,52 @@ export function deriveOnePop(world) {
       // The urban core is the people on the real FOOTPRINT (disk of radius coreR),
       // in census units — resolution-invariant. coreR=0 ⇒ diskSum === pf[ti] exactly.
       _coreF = Math.max(0, diskSum(pf, tw, world.th, s.pos.x | 0, s.pos.y | 0, coreR));
-      s._urbanPop = Math.min(s.people, _coreF * scale);
+      // T.LAND_KNOW: the countryside standing within the footprint is
+      // VILLAGES, not the city — the urban core is the concentration ABOVE
+      // the LOCAL rural baseline, measured from the disk's own surrounding
+      // annulus (radius R..2R: the same ground, one footprint out). A pure
+      // measurement — no state, no constant; at coreR = 0 (the reference
+      // grid) the annulus is empty and the read is byte-identical. On thin
+      // ground the baseline ≈ 0 and the read is the gathered pile, as
+      // before; on a pre-filled cradle a newborn stops counting its
+      // footprint's standing farmers as citizens. Measured at the first
+      // tally-city (tw=480, 8817): the raw read minted a 578k "metropolis"
+      // at first derive, starving (the owner's screenshot); the CATCHMENT-
+      // MEAN baseline (this fix's first form) still left 358k because a
+      // Nile-valley disk is ~2.6× denser than its desert-diluted catchment
+      // average — the baseline must be the floodplain's own density, which
+      // the annulus is. (Two cores packed within 2R contaminate each other's
+      // baseline upward — an undercount that only appears in late metro
+      // belts, where cores dwarf any baseline; accepted and noted.)
+      let coreEff = _coreF;
+      if (T.LAND_KNOW && coreR > 0) {
+        // GEOMETRY ALONE CANNOT FINISH THE JOB (three measured forms at the
+        // first tally-city, tw=480/8817: raw disk 578k, minus catchment-mean
+        // baseline 358k, minus annulus baseline 388k, site-tile+excess 420k):
+        // a cradle's best land clusters around the site — that is WHY the
+        // site is there — so the footprint's elevated inner density is
+        // best-land countryside gradient, indistinguishable from urban
+        // concentration by field shape. The binding bound is the ECONOMY,
+        // the agglomeration ontology's own rule ("non-importers stay rural",
+        // uTarget above): a settlement's urbanites are what it GATHERED (the
+        // site law's own hold, stamped at founding — "the city holds what
+        // arrived") plus the off-farm people its import economy supports
+        // (kBeyond — the exact pull the concentration flow targets, and
+        // ≥ its uTarget since AGGLOM ≤ 1, so a mature importer's read stays
+        // effectively unclipped). The raw disk remains the ceiling — an
+        // economy cannot claim urbanites the ground does not hold. At
+        // coreR = 0 (the reference grid) the whole block is skipped and the
+        // read is byte-identical.
+        // (…and not floored at the site tile either: the hydro-anchor tile is
+        // the field's own densest standing cluster — measured 177su at the
+        // first city's confluence, 12× its gathered pile. The city is the
+        // ORGANIZATION, not the standing crowd; entities without a founding
+        // hold stamp — legacy towns, colonies — keep the tile read as their
+        // base so nothing pre-wave demotes.)
+        const holdF = s._coreHoldCapF > 0 ? s._coreHoldCapF : Math.max(0, pf[ti]);
+        coreEff = Math.min(_coreF, holdF + kBeyond);
+      }
+      s._urbanPop = Math.min(s.people, coreEff * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
       // The MEASURED core, kept apart from _urbanPop: the census-side
       // ruralShare heuristic overwrites _urbanPop every tick between derives

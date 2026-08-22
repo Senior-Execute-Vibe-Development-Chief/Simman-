@@ -358,7 +358,7 @@ const LANG_DRIFT_EVERY = 2600;     // ≈ ticks between sound changes per tongue
 // How far a people can hold together as ONE, in tiles — small for a stone-age
 // people (foot travel, no writing), large once tech carries a standard across
 // distance. Resolution-invariant (a fraction of map width).
-function cohesionRadius(world, s) {
+export function cohesionRadius(world, s) {
   const k = s.knowledge || {};
   const conn = (k.organization || 0) + (k.mobility || 0) + (k.construction || 0) * 0.7;
   return Math.max(COHESION_MIN, (COHESION_BASE_FRAC + COHESION_TECH * Math.min(COHESION_CAP, conn)) * world.tw);

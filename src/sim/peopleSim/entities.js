@@ -332,7 +332,34 @@ export function updateTribute(world, interval) {
     const perTick = landCensus * TRIB_FOOD_PER_POP * TRIBUTE_RATE * extract;
     const cap = perTick * storeTicks;
     p._tribCap = cap;   // the exchange pass reads surplus/deficit against this
-    p.tribute = (p.tribute || 0) + perTick * dt * interval;
+    let inflow = perTick * dt * interval;
+    // T.TRIBUTE_UP — THE PYRAMID PAYS IN KIND (the bala). The suzerainty
+    // bond moved COIN only (conquest.js TRIBUTE_FRAC of a mature
+    // dependency's treasury) — and early-world statelet treasuries hold ~15
+    // coins, so hegemony was fiscally EMPTY in exactly the era that needs it
+    // to compound: the storm's tribute path (lap 9) built bond pyramids
+    // whose center received nothing, and the loot→works→capacity engine
+    // (APPARATUS) starved. History's early tribute was IN KIND and it was
+    // the point: Ur III's bala rotation, the Achaemenid grain levies — a
+    // share of the provincial TAKE went to the center, and THAT fed the
+    // capital, its granary, its market sale, its works. So a dependency
+    // remits this share of its field-tribute inflow to its overlord at
+    // accrual — before any local sale (the bala outranks the local market)
+    // — one level up per pass (a vassal-of-a-vassal's remittance reaches
+    // the top in two passes, as slowly as real pyramids moved grain).
+    // 0 = no remittance (byte-identical).
+    if (T.TRIBUTE_UP > 0) {
+      const hid = world._overlordOf ? world._overlordOf.get(id) : undefined;
+      if (hid != null && hid >= 0) {
+        const hp = getPolity(world, hid);
+        if (hp && hp.endedStep < 0) {
+          const up = inflow * T.TRIBUTE_UP;
+          hp.tribute = (hp.tribute || 0) + up;
+          inflow -= up;
+        }
+      }
+    }
+    p.tribute = (p.tribute || 0) + inflow;
     if (crafts) {
       const mFlow = (takeM.get(id) || 0) * bridge * CRAFT_FLOW * extract;
       const lFlow = (takeL.get(id) || 0) * bridge * CRAFT_FLOW * extract;

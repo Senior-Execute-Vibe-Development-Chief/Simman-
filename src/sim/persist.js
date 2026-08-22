@@ -26,6 +26,7 @@ import { initPeopleSim } from "./peopleSim/index.js";
 import { reindexEvents } from "./peopleSim/events.js";
 import { computeTerritory } from "./peopleSim/territory.js";
 import { rederiveSiteStatics } from "./peopleSim/settlement.js";
+import { rederiveLandKnow } from "./peopleSim/landKnow.js";
 import { reindexRoads } from "./peopleSim/roads.js";
 import { recomputeClimMod } from "./peopleSim/climate.js";
 import { rebuildCountries, updateAlliances, rebuildOverlords } from "./peopleSim/conquest.js";
@@ -50,7 +51,7 @@ function top2Shrs(world) {
   return out;
 }
 
-export const SAVE_VERSION = 20;  // v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
+export const SAVE_VERSION = 39;  // v39: conquest learns to finish (WAR_FINISH — fed garrisons via the field the census eats by, walls manned by the urban core, relative seat-grade integration) ON (v<39 guard; PEER_SEATS same-day ships UNGUARDED by decision — the owner's live peer worlds must survive their own saves, and older saves gaining peer courts is the forward shift the regime intends); v38: the countryside learns (LAND_KNOW — pre-urban knowledge lives on per-basin land ledgers; cities and bordered tribal nations mint only past the Tallies & Seals bar, so prehistory is entity-free) ON (v<38 guard); v37: no records, no nation (STATE_RECORDS — de-novo statehood waits for the Writing bar; states, wars and borders arrive with the tablet, as Uruk's did) ON (v<37 guard); v36: the access band conserves overlap mass (BAND_SUM — max deleted 27% of fine-grid river mass and 10% of coast where dense geometry self-overlaps) ON (v<36 guard); v35: irrigable water over a real width (IRR_BAND — the works-dilution fix) ON (v<35 guard); v34: the granary reaches the field (FIELD_CRADLE — capacity-side irrigation + alluvium on the wild proxy) ON (v<34 guard); v33: the funded march (MARCH_FUNDED — logistics stretches the people-funded extent instead of granting a flat allowance) ON (v<33 guard); v32: Carneiro's bar (STATE_OPEN — open land refuses the state) added, SHIPS AT 0 after three inert laps — the excess lived in claim size, not formation (docs/atlas-gap-2026-08-14.md late-belt verdict; v<32 guard inert while def 0); v31: the partition (PROTECTORATE — gunboat subjugation of far coasts) ON (v<31 guard); v30: the fleet term (SEA_PRACTICE — seamanship is learned by sailing) ON (v<30 guard); v29: peacetime border relaxation (MARCH_LAW) added — SHIPS AT 0, the phenomenon measured already-delivered by war physics once the instrument could see range feet (docs/atlas-gap-2026-08-14.md cause IV final; v<29 guard inert while def 0); v28: contested-crest holds (CREST_HOLD) added — SHIPS AT 0, refuted at claim time, laps 1-2 in docs/atlas-gap-2026-08-14.md (v<28 guard inert while def 0); v27: porter-bound reach (PORTER_BOUND) ON (v<27 guard); v26: the apparatus feeds on conquest (APPARATUS_LOOT) ON (v<26 guard); v25: the imperial apparatus (APPARATUS - works stock funds capacity) ON (v<25 guard); v24: the sea learns by demand + the admiralty (SEA_DEMAND, ADMIRALTY) ON (v<24 guard); v23: workable land (TILLAGE) ON (v<23 guard); v22: reach as a maintained works stock (STATE_WORKS) added — SHIPS AT 0, refuted as a size lever (docs/atlas-gap-2026-08-14.md); guard inert while def 0; v21: vassal integration (SATRAPIZE) ON (v<21 guard); v20: managed water hits the optimum (FLOOD_OPT) ON (v<20 guard); v19: fish OFF (FISH def 0, pre-v19 pins 1) + organic takes (ORGANIC_TAKE) ON (v<19 guard); v18: starving cores shed (STARVE_SHED) ON (v<18 guard); v17: sieges won by hunger (SIEGE_STARVE) ON (v<17 guard); v16: grounded zero-tech reach (REACH_GROUND) ON (v<16 guard); v15: segmentary fission (FISSION) ON (v<15 guard); v14: the conquest cascade (CONQUEST_CASCADE) ON (v<14 guard); v13: the peer lattice (PEER_LATTICE) ON (v<13 guard); v12: the caging law (STATE_CAGE) ON (v<12 guard); v11: the state frontier (ORG_CONTACT) ON (v<11 guard); v10: the union of crowns ON (v<10 guard); v9: basin-wide invention ignition ON (v<9 guard); v8: ledger-reach capacity + the seamless core-hold handoff ON (v<8 guard); v7: millet + water-access band ON (v<7 guard); v6: biogeography + irrigation ON (v<6 guard); v5: the divergence lane ON (v<5 guard)
 // v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
 // _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
 // inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
@@ -101,6 +102,7 @@ const SETT_FIELDS = [
   "_hegF", "_peerPeak",                  // hegemonic stagnation: decline-from-peak peer pressure + the peak ratchet
   "_gPrice", "_gShare",                  // goods vector (T.GOODS_PRICES): local per-good prices + craft labour shares — the market's memory (plain number arrays)
   "_gStock", "_gCapx",                   // merchant warehouse stock (T.GOODS_STOCKS) + invested craft capital (T.GOODS_INVEST) — both carry cross-tick state
+  "_seaShare", "_tvAll", "_tvSea",       // T.SEA_PRACTICE: sea-borne trade share EMA + the tick ledger it folds from (trade books AFTER the settlement pass, so the ledger can be live at a save boundary)
 ];
 
 // Load-bearing per-settlement DYNAMIC state that the hashWorld core loop omitted:
@@ -112,7 +114,7 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac", "_seaShare", "_tvAll", "_tvSea"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
@@ -244,6 +246,7 @@ export function saveWorld(world, meta = {}) {
     eraAt: world._eraAt,              // display-calendar timeline (step each era was reached)
     eraProd: world._eraProd,          // demographic anchor: global productivity index
     climIndex: world._climIndex, climShock: world._climShock,   // dynamic-climate state (climate.js)
+    refWorks: world._refWorks,        // STATE_WORKS smoothed era-median fiscal scale (the works ruler); absent/0 reseeds at the next pass's median
     refRevenue: world._refRevenue,    // CAP_MODEL smoothed fiscal peer baseline — carried state since REF_REV_SMOOTH (conquest.js); absent/0 reseeds at the next pass's median
     refCapPowerS: world._refCapPowerS,   // CAP_RELATIVE smoothed median capital power (the capacity ruler's era base); absent/0 reseeds at the next polity pass
     refRealmPop: world._refRealmPop,  // GRIEV_LEDGER smoothed median realm population (what a "people" weighs); absent/0 reseeds at the next polity pass
@@ -299,6 +302,15 @@ export function saveWorld(world, meta = {}) {
       // record is consumed at maturation); losing them un-invents farming on
       // load. Absent unless the lever matured any → default saves byte-identical.
       hearthSeeds: world._hearthSeeds && world._hearthSeeds.length ? world._hearthSeeds : undefined,
+      // The pre-urban land ledgers (T.LAND_KNOW): per-basin knowledge the
+      // countryside taught itself — the ladder to the tally bar. Only the
+      // learned state persists ({ti, k, born}); site geography (ore, wa,
+      // climate, cell) is re-derived exactly on load. NOT re-derivable
+      // itself (it IS accumulated history). Absent unless the lever planted
+      // any → default saves byte-identical.
+      landKnow: world._landKnow && world._landKnow.size
+        ? [...world._landKnow.values()].map((r) => ({ ti: r.ti, born: r.born, k: { ...r.k } }))
+        : undefined,
       // Nations of the land (T.STATE_OF_LAND): the seat register and the static
       // basin territory. Not re-derivable (formation is a one-time event and the
       // painted cell is the nation's land). Absent unless the lever formed any.
@@ -349,6 +361,12 @@ export function loadWorld(data, opts = {}) {
     throw new Error(`Unsupported save version ${data && data.v} (this build reads up to ${SAVE_VERSION})`);
   }
   const m = data.meta;
+  // Remember which physics regime this world was BORN under (the v<N guards
+  // below pin its tuning to that regime). Display-only — the UI shows it so a
+  // loaded world visibly says "physics v34" while the app ships v36+, which is
+  // otherwise invisible and reads as "the update didn't take" (owner report
+  // 2026-08-19). Fresh worlds never set it.
+  const loadedSaveV = data.v;
   // Terrain identity guards: a save is only loadable where its terrain can be
   // rebuilt EXACTLY. Silently regenerating different terrain under a saved
   // civilization is worse than a clear error.
@@ -510,6 +528,131 @@ export function loadWorld(data, opts = {}) {
     if (!("FISH" in tn)) T.FISH = 1;
     if (!("ORGANIC_TAKE" in tn)) T.ORGANIC_TAKE = 0;
   }
+  // v36 → v37: no records, no nation (STATE_RECORDS). A pre-v37 save keeps
+  // its old statehood rule — its nations were born under it.
+  if (data.v < 37) {
+    const tn = data.tuning || {};
+    if (!("STATE_RECORDS" in tn)) T.STATE_RECORDS = 0;
+  }
+  // v37 → v38: the countryside learns (LAND_KNOW). A pre-v38 save keeps its
+  // old doors — its cities and tribal nations were minted on food/density
+  // alone, and it carries no land ledgers to gate on.
+  if (data.v < 38) {
+    const tn = data.tuning || {};
+    if (!("LAND_KNOW" in tn)) T.LAND_KNOW = 0;
+  }
+  // v38 → v39: conquest learns to finish (WAR_FINISH). A pre-v39 save keeps
+  // its demilitarized balance — its wars, walls and vassal bonds were made
+  // under the ledger-fed muster and the absolute seat ladder. (PEER_SEATS,
+  // shipped the same day, is deliberately unguarded: see SAVE_VERSION note.)
+  if (data.v < 39) {
+    const tn = data.tuning || {};
+    if (!("WAR_FINISH" in tn)) T.WAR_FINISH = 0;
+  }
+  // v35 → v36: the access band conserves overlap mass (BAND_SUM). A pre-v36
+  // save keeps the max-over-sources band (its fine-grid world was calibrated
+  // against the overlap-deleting field).
+  if (data.v < 36) {
+    const tn = data.tuning || {};
+    if (!("BAND_SUM" in tn)) T.BAND_SUM = 0;
+  }
+  // v34 → v35: irrigable water over a real width (IRR_BAND). A pre-v35 save
+  // keeps its 1-tile irrigable lines.
+  if (data.v < 35) {
+    const tn = data.tuning || {};
+    if (!("IRR_BAND" in tn)) T.IRR_BAND = 0;
+  }
+  // v33 → v34: the granary reaches the field (FIELD_CRADLE) + the coupled
+  // RURAL_BIND_DENS recalibration (5500 → 9000: the cradle field moved the
+  // demographic scale ×1.66 at matched development, and the constant's own
+  // desc contracts the two to move together). A pre-v34 save keeps its
+  // road-only capacity proxy AND its old floor — the PAIR is what's
+  // calibrated, never one alone.
+  if (data.v < 34) {
+    const tn = data.tuning || {};
+    if (!("FIELD_CRADLE" in tn)) T.FIELD_CRADLE = 0;
+    if (!("RURAL_BIND_DENS" in tn)) T.RURAL_BIND_DENS = 5500;
+  }
+  // v32 → v33: the funded march (MARCH_FUNDED). A pre-v33 save keeps its
+  // flat logistics allowance.
+  if (data.v < 33) {
+    const tn = data.tuning || {};
+    if (!("MARCH_FUNDED" in tn)) T.MARCH_FUNDED = 0;
+  }
+  // v31 → v32: Carneiro's bar (STATE_OPEN). A pre-v32 save keeps its
+  // cage-blind foundings.
+  if (data.v < 32) {
+    const tn = data.tuning || {};
+    if (!("STATE_OPEN" in tn)) T.STATE_OPEN = 0;
+  }
+  // v30 → v31: the partition (PROTECTORATE). A pre-v31 save keeps its
+  // unsubjugated far coasts.
+  if (data.v < 31) {
+    const tn = data.tuning || {};
+    if (!("PROTECTORATE" in tn)) T.PROTECTORATE = 0;
+  }
+  // v29 → v30: the fleet term (SEA_PRACTICE). A pre-v30 save keeps its
+  // dock-bound learning rate.
+  if (data.v < 30) {
+    const tn = data.tuning || {};
+    if (!("SEA_PRACTICE" in tn)) T.SEA_PRACTICE = 0;
+  }
+  // v28 → v29: peacetime borders relax onto holdable lines (MARCH_LAW).
+  // A pre-v29 save keeps its frozen first-meeting borders.
+  if (data.v < 29) {
+    const tn = data.tuning || {};
+    if (!("MARCH_LAW" in tn)) T.MARCH_LAW = 0;
+  }
+  // v27 → v28: contested defensible ground resists the claim (CREST_HOLD).
+  // A pre-v28 save keeps its first-arrival crossings.
+  if (data.v < 28) {
+    const tn = data.tuning || {};
+    if (!("CREST_HOLD" in tn)) T.CREST_HOLD = 0;
+  }
+  // v26 → v27: reach realized through transport (PORTER_BOUND). A pre-v27
+  // save keeps its transport-blind radius.
+  if (data.v < 27) {
+    const tn = data.tuning || {};
+    if (!("PORTER_BOUND" in tn)) T.PORTER_BOUND = 0;
+  }
+  // v25 → v26: the apparatus feeds on conquest income (APPARATUS_LOOT).
+  // A pre-v26 save keeps its tax-fed apparatus.
+  if (data.v < 26) {
+    const tn = data.tuning || {};
+    if (!("APPARATUS_LOOT" in tn)) T.APPARATUS_LOOT = 0;
+  }
+  // v24 → v25: the imperial apparatus (APPARATUS — the works stock funds
+  // CAPACITY). A pre-v25 save keeps its per-member-only capacity regime.
+  if (data.v < 25) {
+    const tn = data.tuning || {};
+    if (!("APPARATUS" in tn)) T.APPARATUS = 0;
+  }
+  // v23 → v24: the sea learns by demand and the admiralty sails (SEA_DEMAND,
+  // ADMIRALTY). A pre-v24 save keeps its court-read, demand-blind navigation.
+  if (data.v < 24) {
+    const tn = data.tuning || {};
+    if (!("SEA_DEMAND" in tn)) T.SEA_DEMAND = 0;
+    if (!("ADMIRALTY" in tn)) T.ADMIRALTY = 0;
+  }
+  // v22 → v23: the land must be workable (TILLAGE — heavy/tropical soils wait
+  // for technique). A pre-v23 save keeps its easy soils.
+  if (data.v < 23) {
+    const tn = data.tuning || {};
+    if (!("TILLAGE" in tn)) T.TILLAGE = 0;
+  }
+  // v21 → v22: reach as a maintained stock (STATE_WORKS — roads/relays bought
+  // by out-collecting the era, lost when the fisc fails). A pre-v22 save keeps
+  // its tech-only administrative radius.
+  if (data.v < 22) {
+    const tn = data.tuning || {};
+    if (!("STATE_WORKS" in tn)) T.STATE_WORKS = 0;
+  }
+  // v20 → v21: satrapization (SATRAPIZE — a mature suzerain integrates aged
+  // vassals as provinces). A pre-v21 save keeps its tribute-network politics.
+  if (data.v < 21) {
+    const tn = data.tuning || {};
+    if (!("SATRAPIZE" in tn)) T.SATRAPIZE = 0;
+  }
   // v19 → v20: managed water hits the optimum (FLOOD_OPT — re-prices the
   // arid flood cradles). A pre-v20 save keeps its overwatered cradles.
   if (data.v < 20) {
@@ -519,6 +662,7 @@ export function loadWorld(data, opts = {}) {
   // Rebuild terrain + pipeline deterministically from the recorded identity.
   const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
   const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });
+  world._loadedSaveV = loadedSaveV;   // display-only: which physics regime this world was born under
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.
   world.settlements.length = 0;
@@ -532,6 +676,7 @@ export function loadWorld(data, opts = {}) {
   world._eraProd = data.eraProd ?? 1;        // demographic anchor (index.js): restore so post-load ticks match
   world._climIndex = data.climIndex ?? 0; world._climShock = data.climShock ?? 0;   // dynamic-climate state
   world._refRevenue = data.refRevenue ?? 0;   // smoothed fiscal peer baseline (0 / pre-field saves: reseeds at the next polity pass's median)
+  world._refWorks = data.refWorks ?? 0;       // STATE_WORKS smoothed era-median fiscal scale (0 / pre-v22 saves: reseeds at the next polity pass's median)
   world._refCapPowerS = data.refCapPowerS ?? 0;   // smoothed median capital power (CAP_RELATIVE ruler base; 0 reseeds next pass)
   world._refRealmPop = data.refRealmPop ?? 0;     // smoothed median realm population (GRIEV_LEDGER read normalizer; 0 reseeds next pass)
   world._musterRatio = data.musterRatio ?? 0;     // MUSTER_FIELD census↔governed anchor (0 reseeds at the next muster)
@@ -589,6 +734,12 @@ export function loadWorld(data, opts = {}) {
     if (data.maps.armedHearths && data.maps.armedHearths.length) world._armedHearths = data.maps.armedHearths.map(h => ({ ...h }));
     if (data.maps.hearthArmAt !== undefined) world._hearthArmAt = data.maps.hearthArmAt;
     if (data.maps.hearthSeeds && data.maps.hearthSeeds.length) world._hearthSeeds = data.maps.hearthSeeds.map(h => ({ ...h }));
+    if (data.maps.landKnow && data.maps.landKnow.length) {
+      // Pre-urban land ledgers (T.LAND_KNOW): learned state from the save,
+      // site geography re-derived exactly (pure terrain/deposit functions).
+      world._landKnow = new Map(data.maps.landKnow.map(r => [r.ti, { ti: r.ti, born: r.born, k: { ...r.k } }]));
+      rederiveLandKnow(world);
+    }
     if (data.maps.landSeats && data.maps.landSeats.length) world._landSeats = new Map(data.maps.landSeats.map(r => [r.id, { ti: r.ti }]));
     const lown = typedFromSparse(data.maps.landOwner, Int32Array, N, -1);
     if (lown) world._landOwner = lown;   // nations of the land: static basin territory (T.STATE_OF_LAND)

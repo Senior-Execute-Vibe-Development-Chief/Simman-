@@ -16,14 +16,25 @@ const BASE_EVERY = 100;
 const BYTE_BUDGET = 160e6;   // ~160MB of frames before the oldest half thins
 
 export function makeTimeline() {
-  return { frames: [], bytes: 0, _last: null, _sinceBase: 0 };
+  return { frames: [], bytes: 0, _last: null, _sinceBase: 0, _buf: null };
 }
 
 // The merged AUTHORITATIVE political layer (realm owner, land-nation fill on
 // land; −1 elsewhere) — the sim's own truth, not the render-pretty field.
-function mergedLayer(world) {
+// DOUBLE-BUFFERED (the ~24k stall fix, 2026-08-19): a fresh Int32Array(N)
+// every capture was 1.8MB of allocation churn every 5 steps at the shipped
+// grid (~9GB of traffic per 24k steps) — near the tab's memory ceiling that
+// very allocation is a prime "Array buffer allocation failed" candidate. Two
+// persistent buffers alternate: the capture writes EVERY index of the spare
+// while _last holds the other, so no stale value can survive and the frames
+// (rle/diff copies) never alias either buffer.
+function mergedLayer(tl, world) {
   const N = world.N, co = world._countryOwner, lo = world._landOwner, elev = world.elev;
-  const out = new Int32Array(N);
+  let out = tl._buf;
+  if (!out || out.length !== N || out === tl._last) {
+    out = new Int32Array(N);
+  }
+  tl._buf = tl._last;   // the buffer being displaced becomes next capture's spare
   for (let i = 0; i < N; i++) {
     out[i] = elev[i] > 0 ? (co && co[i] >= 0 ? co[i] : (lo && lo[i] >= 0 ? lo[i] : -1)) : -1;
   }
@@ -44,7 +55,7 @@ function rleEncode(arr) {
 
 /** Capture the current political map as a frame (call every CAPTURE_IVL steps). */
 export function captureFrame(tl, world) {
-  const layer = mergedLayer(world);
+  const layer = mergedLayer(tl, world);
   let frame;
   if (!tl._last || tl._sinceBase >= BASE_EVERY) {
     frame = { step: world.step, base: rleEncode(layer) };

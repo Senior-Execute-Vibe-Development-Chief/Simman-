@@ -138,11 +138,101 @@ export function pkgSuitAt(world, ti, pkg) {
     // dawn, and no rain-fed plain ever qualifies at any technique level.
     if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && mGrow > pkg.mOpt
         && aridMinAt(world, ti) < pkg.mOpt) mGrow = pkg.mOpt;
-    return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow);
+    return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null, tGrow, mGrow) * tillageMul(world, ti);
   }
   if (T.FLOOD_OPT && T.IRRIG_CROP && world.tFlood && world.tFlood[ti] && m > pkg.mOpt
       && aridMinAt(world, ti) < pkg.mOpt) m = pkg.mOpt;
-  return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null);
+  return cropSuitabilityPkg(pkg, t, m, e, coast, rm, null) * tillageMul(world, ti);
+}
+
+
+// ── T.TILLAGE: the land must be WORKABLE, not merely fertile (2026-08-14,
+// docs/atlas-gap-2026-08-14.md cause II) ────────────────────────────────────
+// The climate bells price what a crop WANTS; they do not price what a farmer
+// can DO. Measured (probe_floodstates, tw=480/15k): the sim seats −1500
+// states on Scotland (tCrop 0.98), the Baltic (0.86), Gabon (0.98) — land
+// whose climate scores high but whose GROUND resisted agriculture for
+// millennia: heavy waterlogged temperate clay under forest broke the scratch
+// ard until the heavy mouldboard plough, and wet-tropical forest on leached
+// laterite resisted until iron clearing. That workability gap is THE textbook
+// reason civilization rose on arid-alluvial soil — flood-renewed silt works
+// from the first season with a stick — and its absence is why statehood
+// diffuses here like heat instead of hugging the cradle belt for millennia.
+// The gate is the TECHNIQUE THE PEOPLE ON THE TILE ACTUALLY KNOW
+// (world.devField — the emergent agricultural-technique wave): light/dry
+// ground and flood ribbons are workable at any technique (the cradle belt is
+// untouched — no Mesopotamia chicken-and-egg: the gate never binds the land
+// whose boom must fund the technique); wet heavy ground ramps from its floor
+// to 1 as local technique matures, which arrives by DIFFUSION from the
+// booming cradles — the very gradient this exists to produce. Never a clock.
+// The static workability FLOOR per tile (w0: 1 on light/dry ground and flood
+// silt; TILL_HEAVY..TILL_TROPIC on wet heavy ground) — shared by the suit door
+// (tillageMul below) and the CAPACITY KERNEL (popField ships it to the pooled
+// workers as a SAB, presence-keyed like the ACCESS_BAND arrays). Lazily built,
+// static per world (moist/temp/tFlood are worldgen; a TILL_* lever change
+// mid-run rebuilds on the next world init, same staleness class as _aridMin).
+export function ensureTill0(world) {
+  let f = world._till0;
+  if (f && f.length === world.N) return f;
+  f = world._till0 = new Float32Array(world.N);
+  // SOIL FROM FORMATION PHYSICS (lap 4, owner "do it"): the moisture-proxy
+  // classifier failed measurably in both directions (gated the Yellow River
+  // loess, missed Britain, re-admitted Gabon via the blanket river term —
+  // the timing table in docs/atlas-gap-2026-08-14.md). Soil is made by
+  // PROCESSES, and each process is computable from fields the world already
+  // owns: LOESS is dust laid on the SEMI-ARID MARGIN (within one deposition
+  // reach of genuinely arid country — north China off the Ordos, the
+  // Pontic-Danube corridor off the dry steppe: the exact belt the first
+  // temperate farmers followed); ALLUVIUM is river-laid terrace silt — light
+  // everywhere EXCEPT on laterite, where the wet-tropic soil chemistry
+  // dominates the valley too (the varzea exception is real but narrow);
+  // FLOOD silt and truly dry ground are workable as before. The dry bar
+  // tightens to 0.40 — 0.40-0.45 oceanic-margin land (Britain) is damp
+  // clay-with-drizzle, not loess, unless a real deposition source sits
+  // nearby.
+  const rmF = world.riverMag;
+  const tw2 = world.tw, th2 = world.th;
+  const rn = Math.max(1, Math.round(rNormPop(world)));
+  const REACH = 6 * rn;   // deposition reach: ~one reference-grid dust fetch (~600-700 km real), rn-scaled per the resolution charter
+  const arid = (ti2) => world.moist[ti2] < 0.30;
+  for (let ti = 0; ti < world.N; ti++) {
+    const m = world.moist[ti];
+    const t = world.temp[ti];
+    const tropic = Math.min(1, Math.max(0, (t - 0.72) / 0.10));
+    const isFlood = world.tFlood && world.tFlood[ti];
+    const river = rmF && rmF[ti] > 0;
+    if (m < 0.40 || isFlood || (river && tropic < 0.5)) { f[ti] = 1; continue; }
+    // arid-margin loess: any genuinely arid cell within the deposition reach
+    // (coarse 8-ray scan at rn stride — static, once per world)
+    // Full rn-strided DISK, not rays: 8 rays sample a narrow desert strip
+    // differently per grid (resgate caught it — 31337 median-area 0.94 with
+    // rays at lap 3's classifier vs 0.56 at rays here), while a disk at rn
+    // stride covers the same REAL area at any resolution. Once per world.
+    let margin = false;
+    if (tropic < 0.5) {
+      const y0 = (ti / tw2) | 0, x0 = ti - y0 * tw2;
+      outer: for (let dy = -REACH; dy <= REACH; dy += rn) {
+        const yy = y0 + dy; if (yy < 0 || yy >= th2) continue;
+        for (let dx = -REACH; dx <= REACH; dx += rn) {
+          if (dx * dx + dy * dy > REACH * REACH) continue;
+          const xx = ((x0 + dx) % tw2 + tw2) % tw2;
+          if (arid(yy * tw2 + xx)) { margin = true; break outer; }
+        }
+      }
+    }
+    if (margin) { f[ti] = 1; continue; }
+    f[ti] = T.TILL_HEAVY + (T.TILL_TROPIC - T.TILL_HEAVY) * tropic;
+  }
+  return f;
+}
+function tillageMul(world, ti) {
+  // Siting door: the STATIC floor only — heavy ground is never preferred over
+  // light ground for a new hearth/city, in any era (the ramp lives in the
+  // capacity post-pass, keyed to the administering settlement's metallurgy —
+  // a devField read here was grid-unfair, the wave's front lags per-tile on
+  // finer grids; measured, docs/atlas-gap-2026-08-14.md lap 3).
+  if (!T.TILLAGE) return 1;
+  return ensureTill0(world)[ti];
 }
 
 // Best package at a tile by RAW suitability — what a cradle / mature culture

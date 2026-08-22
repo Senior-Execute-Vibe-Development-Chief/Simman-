@@ -114,10 +114,47 @@ const SEED = +(process.argv[3] || 8817);
 // moves a ratio a few points cannot strand the floor. Never looser than
 // before; the absolute floor keeps its collapse-catch depth (60k catches
 // deffdce's 27k regardless of regime) and the realm-count regime floor stands.
+// RE-DERIVED 2026-08-19 (the diffusion campaign's instrument lap, owner-ordered —
+// docs/atlas-gap-2026-08-14.md "fix lap 1"): the 2026-08-07 two-seed envelope
+// floors outlived their regime. Two deliberate default waves shipped since
+// (MARCH_FUNDED v33 — median claim size CUT on purpose; FIELD_CRADLE v34 —
+// belt concentration), the floors were never re-derived, and the margin decayed
+// below the instrument's own granularity: an app-grid median over n=4-8 realms
+// moves a whole realm-rank (~5-15%) at a time, and the band knife-edged THREE
+// times in two weeks (TILLAGE at 31337, 0.58 vs 0.58, owner-accepted exception;
+// the bindDens-9000 refusal at 8817; IRR_BAND at 8817, 0.575 vs 0.58 — a lever
+// that RAISED mass, claims and density, failed on one realm-rank flip). Then the
+// re-derivation's own control run settled it: virgin seed 999 at untouched HEAD
+// FAILS the old median floor (0.45 vs 0.58) on a healthy world — claimed ratio
+// 1.32, density 1.08 — because its 4-realm REFERENCE world drew a huge median.
+// A floor that fires on a fresh seed at baseline is a false-positive machine.
+//
+// Derivation, blind to any pending lever (all runs at HEAD defaults, IRR_BAND=0,
+// step 6000, before the parked lever was re-fired): six declared seeds — the two
+// standing gate seeds, the third stylized seed, and three never used anywhere in
+// this repo (fresh by grep). Floor = 0.75 × the worst seed, per the charter:
+//
+//            8817  31337   777   101   555   999    worst   floor (was)
+//   median   0.60  0.89   0.94  0.71  0.71  0.45    0.45    0.34  (0.58)
+//   mean     0.61  0.97   0.88  0.93  1.46  0.88    0.61    0.46  (new band)
+//   claimed  0.71  1.55   1.24  0.93  1.82  1.32    0.71    0.53  (0.51 — TIGHTENS)
+//   density  0.67  1.03   1.02  0.83  1.17  1.08    0.67    0.50  (0.56)
+//
+// The MEAN-area band (claimed area ÷ realm count) is added because the median
+// statistic cannot do its founding job at this n: 0.75×0.45 = 0.34 would miss
+// SUCCESSOR_STATES (~0.33) by one decimal, and the healthy spread [0.45..0.94]
+// overlaps the failure class. The mean has no rank cliffs — healthy spread
+// [0.61..1.46] — and the SUCCESSOR_STATES signature (claims flat, realm count
+// exploding) craters it to ~0.25: caught with margin at 0.46. Collapse-catch
+// audit: deffdce (app median 27k) still dies on the ABSOLUTE floor; a uniform
+// 10x cut still dies on median 0.34 + mean + claimed; the bindDens-9000
+// refusal (claimed 0.50) still stands under the tightened 0.53. Absolute
+// floors unchanged (min measured: app median 378k, realms 5 — far above).
 const BANDS = {
-  medianAreaRatio: 0.58,   // app median realm area / reference (was 0.42; envelope 0.78×0.75)
-  claimedRatio:    0.51,   // app claimed% / reference (was 0.44; envelope 0.68×0.75)
-  popDensRatio:    0.56,   // app people-per-km² / reference (was 0.42; envelope 0.75×0.75)
+  medianAreaRatio: 0.34,   // deep uniform-collapse floor (was 0.58 — see 2026-08-19: noisier than one realm-rank at n=4-8)
+  meanAreaRatio:   0.46,   // claimed÷count — the SUCCESSOR_STATES catcher, no rank cliffs (new 2026-08-19)
+  claimedRatio:    0.53,   // app claimed% / reference (was 0.51 — TIGHTENED 2026-08-19, worst seed 0.71×0.75)
+  popDensRatio:    0.50,   // app people-per-km² / reference (was 0.56; worst seed 0.67×0.75)
   appMedianKm2:    60000,  // ABSOLUTE: a one-tile realm at tw=480 is ~4,000 km²
   appRealmsMin:    3,      // the app grid must carry a real map, not two dots (was 6 pre-stagger — see the 2026-08-07 note)
 };
@@ -142,6 +179,7 @@ const run = (W) => {
     realms: sizes.length,
     claimedPc: 100 * claimed / land,
     medianKm2: (sizes.length ? sizes[sizes.length >> 1] : 0) * km2PerTile,
+    meanKm2: (sizes.length ? claimed / sizes.length : 0) * km2PerTile,
     largestKm2: (sizes[sizes.length - 1] || 0) * km2PerTile,
     popPerKm2: pop / (land * km2PerTile),
   };
@@ -159,6 +197,7 @@ console.log(`  grids: tw=${ref.tw} (${ref.land} land tiles) vs tw=${app.tw} (${a
 row("realms", ref.realms, app.realms, n);
 row("claimed land", ref.claimedPc, app.claimedPc, pc);
 row("MEDIAN realm area", ref.medianKm2, app.medianKm2, km);
+row("MEAN realm area", ref.meanKm2, app.meanKm2, km);
 row("largest realm area", ref.largestKm2, app.largestKm2, km);
 row("people per km²", ref.popPerKm2, app.popPerKm2, (x) => x.toFixed(4));
 
@@ -170,6 +209,7 @@ const check = (name, got, floor, fmt) => {
 };
 console.log("");
 check("app/ref median realm area", app.medianKm2 / (ref.medianKm2 || 1e-9), BANDS.medianAreaRatio, (x) => x.toFixed(2));
+check("app/ref MEAN realm area", app.meanKm2 / (ref.meanKm2 || 1e-9), BANDS.meanAreaRatio, (x) => x.toFixed(2));
 check("app/ref claimed land", app.claimedPc / (ref.claimedPc || 1e-9), BANDS.claimedRatio, (x) => x.toFixed(2));
 check("app/ref people per km²", app.popPerKm2 / (ref.popPerKm2 || 1e-9), BANDS.popDensRatio, (x) => x.toFixed(2));
 check("app median realm ABSOLUTE", app.medianKm2, BANDS.appMedianKm2, km);

@@ -48,9 +48,15 @@ export function realmName(world, countryId) {
 // treasury crossing a power-of-two band. Milestone memory lives on the
 // persistent polity record (polity.chron).
 export function chronicleTick(world) {
-  if (!world.countries) return;
-  let leadEra = 0, leadEraCid = -1;
-  for (const c of world.countries.values()) {
+  // T.LAND_KNOW: while no court exists, the land's own era carries the
+  // timeline (world._lkEra — cached per growth firing in landKnow.js, the
+  // max over single records' tech eras) — the display calendar keeps
+  // marching over an entity-free prehistory. Unset off-lever → 0, and this
+  // function is byte-identical to before.
+  const landEra = world._lkEra || 0;
+  if (!world.countries && !landEra) return;
+  let leadEra = landEra, leadEraCid = -1;
+  if (world.countries) for (const c of world.countries.values()) {
     if (!c || !c.capital) continue;
     const p = getOrCreateRecord(world, c.id, { seat: c.capital });
     if (!p) continue;

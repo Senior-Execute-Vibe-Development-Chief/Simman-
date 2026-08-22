@@ -9,7 +9,7 @@
 
 import { seedLocalTerritory } from "./territory.js";
 import { mergeReach } from "./roads.js";
-import { techEffects } from "./tech.js";
+import { techEffects, stateOrgBar, orgEraCapOf } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt, cropCeil } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
@@ -412,7 +412,16 @@ export function makeSettlement(world, x, y, opts = {}) {
     if (s.knowledge[k] === undefined) s.knowledge[k] = 0;
   }
   // Compute water access score from the home tile + 4 neighbours.
-  s.countryId = opts.countryId ?? s.id;             // joins parent's realm if specified, else own city-state
+  // T.STATE_RECORDS: the "else own city-state" default IS a statehood door —
+  // every settlement used to be BORN flying its own flag, which is exactly
+  // how full nations covered the Stone Age map (the flag, not the polity
+  // record, is what the countries view and the political paint aggregate).
+  // Below the unified founding bar (tech.js stateOrgBar) a settlement with no
+  // realm to join is born STATELESS; explicit opts.countryId (daughters,
+  // colonies, materialising nations — each gated at its own source) passes.
+  s.countryId = opts.countryId ?? (
+    !T.STATE_RECORDS || (((s.knowledge && s.knowledge.organization) || 0) >= stateOrgBar())
+      ? s.id : -1);                                 // joins parent's realm if specified, else own city-state — once the court can administrate one
   // ── Who lives here: culture stock + a name in that people's tongue ──
   // A cradle is the birth of a PEOPLE (founds a culture); everything else
   // carries its founder stock's culture. Explicit opts.name wins (imports).
@@ -458,7 +467,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     kind: opts.cradle ? "cradle" : (opts.kind || (opts.parentId != null && opts.parentId >= 0 ? "settled" : "crystallized")),
     parent: opts.parentId ?? -1, polity: opts.countryId ?? -1,
   });
-  if (opts.cradle) ensurePolity(world, s.id, { how: "cradle", seat: s });
+  // T.STATE_RECORDS: a cradle city is born a stateless temple town unless its
+  // court can already administrate (tech.js RECORDS_ORG — the Writing gate);
+  // below the bar it self-founds later through the frontier channel, so the
+  // dawn shows villages and temple towns first, then the tablet, then the state.
+  if (opts.cradle && (!T.STATE_RECORDS || (((s.knowledge && s.knowledge.organization) || 0) >= stateOrgBar()))) ensurePolity(world, s.id, { how: "cradle", seat: s });
   // _techEff is left UNSET here: at creation _metalCap is undefined, so seeding it now
   // (techEffects(s.knowledge, …)) would bake in an UNCAPPED metallurgy tier that ignores
   // the reachable-ore cap (B51). The lazy techEff() path fills it — via practisedK, so it
@@ -499,7 +512,7 @@ export function rederiveSiteStatics(world, s) {
   s._rugged = computeRuggedness(world, x, y);    // broken terrain → fragmentation (static)
 }
 
-function computeWaterAccess(world, sx, sy) {
+export function computeWaterAccess(world, sx, sy) {   // exported: the land ledger derives a site's wa the same way a settlement does
   const { tw, th, coast, riverMag } = world;
   // The scan is a fixed 3×3 in tiles → a SHRINKING real area at high resolution, where a river
   // channel is also thinner (1-D on 2-D). Under RES_INV_RIVER, cover the SAME REAL neighbourhood
@@ -564,7 +577,7 @@ export { effectiveLocalRes, findSettlementById };
 // for the knowledge cap (over REACHABLE ore, effectiveLocalRes) and for export
 // metalwork (over PHYSICALLY-HELD ore, localRes — you forge from ore in hand).
 const ORE_THR = 0.10;
-function oreTier(res) {
+export function oreTier(res) {   // exported: the land ledger (landKnow.js) caps village metallurgy by the same tiers
   const cu = res.copper || 0, sn = res.tin || 0, fe = res.iron || 0, co = res.coal || 0;
   let cap = 0;
   if (cu > ORE_THR)                 cap = 0.30;
@@ -712,8 +725,33 @@ function practisedK(k, metalCap) {
   return { ...k, metallurgy: metalCap };
 }
 function techEff(s) {
-  if (!s._techEff) s._techEff = techEffects(practisedK(s.knowledge, s._metalCap), T.TECH_EFFECTS);
+  if (!s._techEff) s._techEff = techEffects(practisedK(s.knowledge, s._metalCap), T.TECH_EFFECTS, s._techEnv || null);
   return s._techEff;
+}
+// T.TECH_USE — the site's ecological ENABLER record, the generalisation of
+// practisedK's one-channel law ("knowing iron ≠ holding it") to whole techs:
+//   draft — a working ox/horse team can LIVE here: the same livestock composite
+//           the food model feeds herders by (livestockClimate × the regional
+//           domesticate ceiling — the tsetse belt and the pre-contact New World
+//           both fall out of fields the sim already owns; the Columbian
+//           exchange arrives when the ceiling does). Bar 0.15: below it a
+//           draft team cannot be maintained year-round.
+//   water — navigable water at the site (the ship techs' ground truth).
+//   river — a floodplain or real river to canal (irrigation's ground truth).
+// Refreshed on the KNOW_INTERVAL cadence beside _techEff — the parts are
+// terrain-static except the domesticate ceiling, which diffuses.
+function techEnvOf(world, s) {
+  const tw = world.tw;
+  const ti = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
+  climateOf(world, s);
+  const ceilReg = world._agriCeil ? (world._agriCeil[ti] || 0) : 1;
+  const herd = livestockClimate(s._climTemp, s._climMoist) * ceilReg;
+  let st = s._techEnvSite;
+  if (!st) st = s._techEnvSite = {
+    water: computeWaterAccess(world, s.pos.x | 0, s.pos.y | 0).wa > 0.05,
+    river: !!(world.tFlood && world.tFlood[ti]) || !!(world.riverMag && world.riverMag[ti] >= 1),
+  };
+  return { draft: herd > 0.15, water: st.water, river: st.river };
 }
 export { techEff, computeConfinement };
 
@@ -1568,15 +1606,49 @@ export function urbanise(world) {
 
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
-  updateFood(world, s);
-  updatePopulation(world, s);
-  if (s.mode !== "settled") return;        // died this tick (famine / wither)
-  updateWealth(world, s);
-  updateCoercedLabour(world, s);   // slaves, cash crops, mine intensification (reads fresh wealth)
-  updateGoods(world, s);           // goods-vector Stage 1: prod/demand/price + craft labour (after lux & cash crops so budgets are fresh; no-op unless T.GOODS_PRICES)
-  updateDevelopment(world, s);
-  updateKnowledge(world, s);
-  updateTier(world, s);
+  // Per-section attribution for the pass profiler (the 20x-slowdown probe,
+  // 2026-08-20): the settlements pass is 65% of a dense tick, so WHICH update
+  // scales with the register decides the fix. Accumulates across settlements
+  // and ticks into world.debug.sett; zero cost when _dbgProfile is off.
+  const dp = world._dbgProfile ? (world.debug.sett || (world.debug.sett = {})) : null;
+  let _t = dp ? performance.now() : 0;
+  const m = dp ? (k) => { const n2 = performance.now(); dp[k] = (dp[k] || 0) + (n2 - _t); _t = n2; } : null;
+  // ── T.SETT_STRIDE: the settlement economy on a stride (the 20x-slowdown
+  // fix, 2026-08-20) ─────────────────────────────────────────────────────
+  // The peer-seats register multiplied entities ~15x and the owner's app ran
+  // ~20x slower; the pass profiler attributed 65% of a dense tick to THIS
+  // loop, and its sections to knowledge (23ms), goods (22ms) and food (18ms)
+  // per tick across 535 cities — rate processes recomputed every tick for
+  // every city. The cure is the codebase's own stride convention, already
+  // shipped twice: TRADE_STRIDE (the bilateral sweep every K ticks at Kx
+  // volume) and updateKnowledge's internal KNOW_INTERVAL ("staggered by id
+  // so the cost spreads evenly; rates scaled up to keep the average pace
+  // identical"). Here the whole heavy per-settlement economy — food, wealth,
+  // coerced labour, goods, development, knowledge — runs every K ticks per
+  // settlement, phase-staggered by id, under dt x K so every per-tick rate
+  // integrates to the same average. Population and tier stay per-tick (cheap,
+  // and demography/registers stay smooth). Consumers see fields at most K-1
+  // ticks stale — the _linkMoney convention, documented there. K=1 is
+  // byte-identical; the harness pins 1 (gates keep their trajectories), the
+  // app ships the default.
+  const _K = Math.max(1, T.SETT_STRIDE | 0);
+  const _due = _K === 1 || ((world.step + s.id) % _K) === 0;
+  const _dt0 = world._dt;
+  if (_due && _K > 1) world._dt = _dt0 * _K;
+  if (_due) { updateFood(world, s); if (m) m("food"); }
+  updatePopulation(world, s); if (m) m("population");
+  if (s.mode !== "settled") { world._dt = _dt0; return; }   // died this tick (famine / wither)
+  if (_due) {
+    updateWealth(world, s); if (m) m("wealth");
+    updateCoercedLabour(world, s);   // slaves, cash crops, mine intensification (reads fresh wealth)
+    if (m) m("coercedLabour");
+    updateGoods(world, s);           // goods-vector Stage 1: prod/demand/price + craft labour (after lux & cash crops so budgets are fresh; no-op unless T.GOODS_PRICES)
+    if (m) m("goods");
+    updateDevelopment(world, s); if (m) m("development");
+    updateKnowledge(world, s); if (m) m("knowledge");
+  }
+  world._dt = _dt0;
+  updateTier(world, s); if (m) m("tier");
 }
 
 // ── Knowledge growth ──────────────────────────────────────────────
@@ -1599,6 +1671,21 @@ const KTRACKS = ["agriculture","construction","organization","metallurgy","navig
 // pace identical. This is the single biggest per-tick cost as the trade
 // network grows (it was O(reach) × every settlement × every tick).
 const KNOW_INTERVAL = 8;
+// ── Stride-aware inner cadence (T.SETT_STRIDE) ──────────────────────────────
+// The per-settlement economy fires every K ticks (phase (step+id)%K), so any
+// inner "(step+id) % IVL === 0" gate only coincides every lcm(K, IVL). With
+// the app's K=3 against KNOW_INTERVAL=8 that was every 24 ticks: dt-scaled
+// RATE terms stayed neutral (dt rides ×K) but EVENT-like work — crop
+// adoption and domestication — ran at a THIRD of the measured pace in the
+// SHIPPING APP ONLY, because the gate harnesses pin K=1 and never see the
+// composition (the resgate blind spot, in time instead of space; found from
+// the owner's 22.6k-step Bronze-Age 94%-stateless screenshot, 2026-08-21).
+// _strideIvl rounds an interval onto the stride's own grid (K=1 → IVL
+// exactly, byte-identical); _strideIvlF is that window measured in FIRINGS —
+// the factor rate terms must use in place of the raw interval, since dt
+// inside the strided pass is already ×K.
+const _strideIvl = (ivl) => { const K = Math.max(1, T.SETT_STRIDE | 0); return Math.max(1, Math.round(ivl / K)) * K; };
+const _strideIvlF = (ivl) => _strideIvl(ivl) / Math.max(1, T.SETT_STRIDE | 0);
 // Crop-package spread thresholds (T.CROP_AXIS): a settlement ADOPTS a trade
 // neighbour's crop if its own tile suits that crop above CROP_ESTABLISH; a
 // MATURE farming culture independently DOMESTICATES a strongly-suitable un-owned
@@ -1655,7 +1742,7 @@ const APT_M_MIN = 0.32, APT_M_SPAN = 0.30;       // ...with a moist growing seas
 const APT_MEDI_T = 0.58, APT_MEDI_T_SPAN = 0.14; // dry-summer lobe: warm enough for a hot rainless season
 const APT_MEDI_M = 0.30, APT_MEDI_M_TOL = 0.15;  // ...peaking at SEMI-ARID (falls off for wet tropics and true desert)
 const APT_CROP_M = 0.12, APT_CROP_SPAN = 0.12;   // ...but a growing season must exist at all (excludes the bone-dry desert)
-function seasonalSelect(temp, moist) {
+export function seasonalSelect(temp, moist) {   // exported: the land ledger reads the local selection target as its winter-aptitude proxy
   const cold = Math.exp(-((temp - APT_T_OPT) ** 2) / (2 * APT_T_TOL * APT_T_TOL))
              * Math.min(1, Math.max(0, (moist - APT_M_MIN) / APT_M_SPAN));
   const warm     = Math.min(1, Math.max(0, (temp - APT_MEDI_T) / APT_MEDI_T_SPAN));
@@ -1799,7 +1886,7 @@ function updateKnowledge(world, s) {
   // a copper-poor settlement connected by road to a copper-rich one
   // can advance to chalcolithic on imported ore. Cached and refreshed
   // only every KNOW_INTERVAL ticks (resource availability drifts slowly).
-  if (!s._effRes || (world.step + s.id) % KNOW_INTERVAL === 0) s._effRes = effectiveLocalRes(world, s);
+  if (!s._effRes || (world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) s._effRes = effectiveLocalRes(world, s);
   const r = s._effRes;
   const wa = s.waterAccess || 0;
   const fc = s._terrTiles || 0;
@@ -1816,7 +1903,14 @@ function updateKnowledge(world, s) {
   // instead, so development paces to a CITY of that size, not a province (mirrors
   // the urban-core reach scaling in countryTerritory.js). Agriculture keeps the
   // full population below — peasants are exactly who improve farming.
-  const sciSqrt = T.DISSOLVE_FARMS && s._urbanPop != null ? Math.sqrt(s._urbanPop) : popSqrt;
+  // T.LAND_KNOW: the minds term reads the MEASURED core (the same
+  // measurement-over-model switch the tier ladder made, for the same reason —
+  // between derives _urbanPop holds the census-side ratio HEURISTIC, which on
+  // a first-mover whale catchment handed the newborn court sqrt(578k) minds
+  // and raced it through the eras; the measured core is the pile it actually
+  // gathered). Null until the field first derives — fall through to the model.
+  const sciSqrt = T.LAND_KNOW && s._coreMeasured != null ? Math.sqrt(s._coreMeasured)
+    : (T.DISSOLVE_FARMS && s._urbanPop != null ? Math.sqrt(s._urbanPop) : popSqrt);
   const horsesThr = 0.05;
   const horses = r.horses || 0;
 
@@ -2033,7 +2127,7 @@ function updateKnowledge(world, s) {
   // ore-poor ground; construction (monumental/record infrastructure) lifts
   // it a little more. Iron-era realms still reach full org (≈continental
   // reach); stone-age realms are held to kingdom scale.
-  const orgEraCap = clamp01(0.15 + metalCap * 0.95 + k.construction * 0.15);
+  const orgEraCap = orgEraCapOf(metalCap, k.construction);   // ONE definition with the land ledger (tech.js)
   const orgHead = Math.max(0, orgEraCap - k.organization);
   const litBranch = k.organization > 0.30
     ? T.ORG_LIT_BRANCH * k.organization * (1 + sciSqrt * 0.06)
@@ -2140,9 +2234,44 @@ function updateKnowledge(world, s) {
   // modest coast grows real seamanship (helped by population — more shipwrights),
   // so coasts and great rivers become naval powers in step with the rest of the
   // tree instead of lagging centuries behind.
+  // T.SEA_PRACTICE: fold this tick's booked carrying trade (roads.js) into the
+  // sea-share EMA — the port's living memory of how much of its trade rides
+  // the sea (~20-fold memory, a fleet/skill generation). Unconditional of wa
+  // so the ledger never accumulates unfolded on any settlement.
+  if (T.SEA_PRACTICE > 0) {
+    const tv = s._tvAll || 0;
+    if (tv > 0) {
+      const prev = s._seaShare ?? (s._tvSea || 0) / tv;   // first fold seeds at the observed share
+      s._seaShare = prev + 0.05 * ((s._tvSea || 0) / tv - prev);
+      s._tvAll = 0; s._tvSea = 0;
+    }
+  }
   if (wa > 0) {
+    // T.SEA_DEMAND (cause III, docs/atlas-gap-2026-08-14.md): navigation was
+    // the ONLY practice with no demand term (metallurgy has needMetal,
+    // mobility saddleLife) — however profitable the sea, practice never
+    // accelerated, and the 50k world sat one point under the galleys gate
+    // forever. The sea's induced innovation, in the needMetal pattern and on
+    // the same lever: DEAR GOODS AT A WATERSIDE TOWN INDUCE SEAMANSHIP —
+    // ships are how a port fetches what its market prices dear. One-sided
+    // (gluts never punish), a lived condition, no clock, no new constant.
+    let needSea = 1;
+    if (T.SEA_DEMAND && T.INDUCED_INNOV > 0 && s._gPrice) {
+      const gp = s._gPrice;
+      const dear = Math.max(gp[G_STAPLE] || 0, gp[G_MATERIALS] || 0, gp[G_METAL] || 0);
+      needSea = 1 + T.INDUCED_INNOV * Math.max(0, dear - 1);
+    }
+    // T.SEA_PRACTICE: the FLEET term — metallurgy's fuel analog (charcoal
+    // fires the forge; a working merchant fleet drills the pilots). The
+    // seaneed attribution (2026-08-17) exonerated demand — ports price dear
+    // (needSea 1.5-1.75) yet nav crawled at HALF metallurgy's pace, because a
+    // pure coastal port's wa is 0.5 by construction (practice factor capped
+    // 0.75) and navigation alone had no availability multiplier. A town whose
+    // carrying trade is fully sea-borne learns at up to x(1+lever); an
+    // inland-facing beach town at x1. Venice and Athens, not every beach.
+    const fleet = 1 + T.SEA_PRACTICE * Math.min(1, s._seaShare || 0);
     k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.9 * sciMul * (1 - k.navigation)
-      * (0.5 + 0.5 * wa) * (1 + k.construction * 0.6 + sciSqrt * 0.04));
+      * (0.5 + 0.5 * wa) * needSea * fleet * (1 + k.construction * 0.6 + sciSqrt * 0.04));
   }
 
   // Mobility — gated by horses, paced like metallurgy's thin-ore rule: you
@@ -2233,7 +2362,7 @@ function updateKnowledge(world, s) {
   // trickles — the channel scales with the same emergent lanes and ship tech
   // that built it. Land partners' costs are small, so the pre-sea calibration
   // is preserved.
-  if (world._byId && (world.step + s.id) % KNOW_INTERVAL === 0) {
+  if (world._byId && (world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) {
     const reach = mergeReach(s);
     if (!reach || reach.size === 0) {
       s._rivalN = 0;   // no contact, no competition signal (used to go stale forever)
@@ -2334,7 +2463,7 @@ function updateKnowledge(world, s) {
       // the literate-state branch of organization, which only kicks in
       // past 0.30).
       const litMul = 1 + Math.max(0, k.organization - 0.30) * 3;
-      const rate = T.DIFFUSE_RATE * KNOW_INTERVAL * litMul * (world._dt || 1);   // granularity-scaled
+      const rate = T.DIFFUSE_RATE * _strideIvlF(KNOW_INTERVAL) * litMul * (world._dt || 1);   // granularity-scaled; window in FIRINGS — dt already rides the stride
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
         if (gap > 0) {
@@ -2380,7 +2509,7 @@ function updateKnowledge(world, s) {
   // cradles along climate bands and stall at the hot/wet tropics (the
   // continental axis, now emergent rather than a tuned multiplier). Throttled
   // and staggered like the rest of the knowledge recompute.
-  if (T.CROP_AXIS > 0 && (world.step + s.id) % KNOW_INTERVAL === 0) {
+  if (T.CROP_AXIS > 0 && (world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) {
     if (!s.crops) s.crops = [];
     const cti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
     let cropsChanged = false;
@@ -2406,7 +2535,10 @@ function updateKnowledge(world, s) {
 
   // Refresh the cached tech-effect bonuses the sim reads (food, density, …),
   // throttled like the rest of the knowledge recompute (knowledge drifts slowly).
-  if ((world.step + s.id) % KNOW_INTERVAL === 0) s._techEff = techEffects(practisedK(k, metalCap), T.TECH_EFFECTS);
+  if ((world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) {
+    s._techEnv = T.TECH_USE > 0 ? techEnvOf(world, s) : null;
+    s._techEff = techEffects(practisedK(k, metalCap), T.TECH_EFFECTS, s._techEnv);
+  }
 }
 
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
@@ -3227,7 +3359,7 @@ function updateDevelopment(world, s) {
   const own = s.localRes || {};
   const localMat = (own.timber || 0) + (own.stone || 0);
   const partnerWeight = p => { const pr = p.localRes || {}; return (pr.timber || 0) + (pr.stone || 0) + 0.05; };
-  if (!s._devMat || (world.step + s.id) % KNOW_INTERVAL === 0) {
+  if (!s._devMat || (world.step + s.id) % _strideIvl(KNOW_INTERVAL) === 0) {
     let bpm = 0;
     if (s._tradeReach && world._byId) {
       for (const pid of s._tradeReach.keys()) {

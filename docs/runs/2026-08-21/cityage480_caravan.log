@@ -1,0 +1,110 @@
+[harness] tree 0152833
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"WAR_FINISH":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3}
+[peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,82) (69.8E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (387,72) (110.3E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (276,83) (27.0E 27.8N) score 7.28 pkg=wheat(suit 1.00) — ARMED: ~903y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (298,76) (43.5E 33.0N) score 5.01 pkg=wheat(suit 0.77) — ARMED: ~1173y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (333,82) (69.8E 28.5N) score 6.69 pkg=wheat(suit 0.86) — ARMED: ~1041y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) score 3.60 pkg=millet(suit 0.55) — ARMED: ~2710y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (230,99) (-7.5E 15.8N) score 3.29 pkg=sorghum(suit 0.70) — ARMED: ~2870y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) score 1.62 pkg=maize(suit 0.71) — ARMED: ~6381y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,140) (-75.0E -15.0N) score 1.24 pkg=tubers(suit 0.89) — ARMED: ~3390y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) score 0.89 pkg=tubers(suit 0.43) — ARMED: ~6987y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+step  2000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+step  4000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+step  6000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+[peopleSim] AGRICULTURE INVENTED at (276,83) (27.0E 27.8N) — the basin farms; a city will rise when its market gathers one (score 7.28)
+step  8000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+    landNation: tallyBar=3
+    siteCity: tallyBar=17
+    tallyWait: sites=1 (stateContact 0 / beyond 1)  org p10=0.12 p50=0.12 p90=0.12  bar=0.28
+      frozen@ 30E,22N:?km
+[peopleSim] AGRICULTURE INVENTED at (333,82) (69.8E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.69)
+step 10000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+    landNation: tallyBar=18
+    siteCity: tallyBar=344
+    tallyWait: sites=6 (stateContact 0 / beyond 6)  org p10=0.10 p50=0.15 p90=0.18  bar=0.28
+      frozen@ 29E,31N:?km 30E,22N:?km 69E,27N:?km 19E,17N:?km 35E,41N:?km 19E,30N:?km
+[peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 5.01)
+step 12000  register=0  cores>=10k=0  leading=Stone Age  []  pop=0M
+    landNation: tallyBar=34
+    siteCity: tallyBar=770
+    tallyWait: sites=13 (stateContact 0 / beyond 13)  org p10=0.11 p50=0.13 p90=0.21  bar=0.28
+      frozen@ 29E,31N:?km 30E,22N:?km 32E,10N:?km 89E,26N:?km 69E,27N:?km 44E,33N:?km 19E,17N:?km 55E,39N:?km 80E,15N:?km 35E,41N:?km 38E,18N:?km 19E,30N:?km 73E,20N:?km
+step 14000  register=16  cores>=10k=7  leading=Bronze Age  [Bron:16]  pop=6M
+    landNation: tallyBar=35
+    peerSeat: CANDIDATE=14  PASSED=14  cellFull=4
+    siteCity: tallyBar=1176
+    tallyWait: sites=15 (stateContact 0 / beyond 15)  org p10=0.11 p50=0.13 p90=0.24  bar=0.28
+      frozen@ 30E,22N:500km 19E,30N:500km 35E,41N:700km 21E,44N:800km 44E,33N:900km 38E,18N:1300km 47E,41N:1400km 40E,47N:1500km 19E,17N:1500km 32E,10N:1700km 55E,39N:2100km 69E,27N:3700km 73E,20N:4300km 80E,15N:5200km 89E,26N:5900km
+[transHeap] step=14640 cap=2048 peakN=2029 pushes=28496 (0.0MB backing)
+[transHeap] step=15144 cap=4096 peakN=2196 pushes=28804 (0.0MB backing)
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) stood down — the farming package arrived before it was invented
+step 16000  register=71  cores>=10k=50  leading=Bronze Age  [Bron:71]  pop=31M
+    fission: noRivalSeat=71
+    landNation: tallyBar=50
+    peerSeat: cellFull=219  CANDIDATE=114  PASSED=64  gathering=50
+    siteCity: tallyBar=1315
+    tallyWait: sites=18 (stateContact 0 / beyond 18)  org p10=0.11 p50=0.17 p90=0.22  bar=0.28
+      frozen@ 38E,18N:400km 19E,30N:500km 25E,-2N:500km 73E,20N:600km 32E,10N:600km 19E,17N:700km 35E,41N:700km 47E,41N:800km 29E,46N:800km 21E,44N:800km 44E,33N:900km 51E,52N:900km 14E,10N:1000km 89E,26N:1200km 86E,39N:1400km 55E,39N:1500km 80E,15N:1500km 34E,1N:1500km
+[transHeap] step=16152 cap=16384 peakN=12085 pushes=51057 (0.1MB backing)
+[transHeap] step=17160 cap=65536 peakN=39289 pushes=150787 (0.5MB backing)
+step 18000  register=155  cores>=10k=95  leading=Bronze Age  [Bron:155]  pop=52M
+    fission: noRivalSeat=181
+    landNation: tallyBar=57
+    peerSeat: cellFull=454  CANDIDATE=178  PASSED=107  gathering=67  noPosition=4
+    siteCity: tallyBar=1651
+    tallyWait: sites=23 (stateContact 3 / beyond 20)  org p10=0.11 p50=0.14 p90=0.23  bar=0.28
+      frozen@ 38E,18N:400km 21E,44N:500km 73E,20N:500km 47E,41N:500km 25E,-2N:500km 116E,30N:600km 32E,10N:600km 19E,17N:700km 51E,25N:700km 55E,39N:800km 8E,5N:900km 14E,-9N:900km 51E,52N:900km 14E,10N:1000km 102E,42N:1000km 111E,46N:1000km 123E,42N:1200km 89E,26N:1200km 80E,15N:1300km 86E,39N:1400km 34E,1N:1500km 49E,16N:1600km 38E,-7N:2100km
+step 20000  register=289  cores>=10k=210  leading=Classical  [Ston:2 Bron:284 Clas:3]  pop=90M
+    fission: noRivalSeat=284
+    landNation: tallyBar=63
+    peerSeat: cellFull=856  CANDIDATE=352  PASSED=210  gathering=139  tallyBar=3
+    selfFound: PASSED=1
+    siteCity: tallyBar=1975
+    tallyWait: sites=26 (stateContact 3 / beyond 23)  org p10=0.11 p50=0.15 p90=0.19  bar=0.28
+      frozen@ 14E,10N:400km 73E,20N:500km 95E,43N:500km 8E,5N:500km 111E,46N:500km 25E,-2N:500km 32E,10N:600km 116E,30N:600km 14E,-9N:600km 10E,35N:600km 51E,25N:700km 119E,51N:700km 51E,52N:800km 49E,16N:800km 80E,15N:800km 19E,54N:900km 102E,42N:900km 95E,57N:900km 28E,59N:1000km 3E,13N:1000km 11E,53N:1100km 34E,1N:1200km 109E,23N:1500km 41E,65N:1500km 38E,-7N:1900km 35E,-17N:2500km
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.29)
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.24)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+step 22000  register=399  cores>=10k=288  leading=Classical  [Ston:1 Bron:327 Clas:71]  pop=132M
+    fission: noRivalSeat=404  eligible=3
+    landNation: tallyBar=92
+    peerSeat: cellFull=1367  CANDIDATE=318  PASSED=234  gathering=66  noPosition=18
+    selfFound: PASSED=1
+    siteCity: tallyBar=2361
+    tallyWait: sites=35 (stateContact 8 / beyond 27)  org p10=0.10 p50=0.13 p90=0.24  bar=0.28
+      frozen@ 14E,10N:400km 73E,20N:500km 95E,43N:500km 8E,5N:500km 111E,46N:500km 25E,-2N:500km 32E,10N:600km 116E,30N:600km 14E,-9N:600km 131E,43N:600km 128E,51N:600km 119E,51N:600km 10E,35N:600km 95E,19N:600km 51E,25N:700km 98E,35N:700km 19E,54N:700km 102E,42N:700km 11E,46N:700km 28E,59N:800km 51E,52N:800km 49E,16N:800km 48E,6N:800km 95E,57N:900km 11E,53N:1000km 41E,2N:1000km -5E,6N:1100km -14E,16N:1200km 34E,1N:1200km 109E,23N:1300km 83E,59N:1400km 41E,65N:1500km 38E,-7N:1900km 35E,-17N:2400km -74E,-5N:8300km
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+step 24000  register=607  cores>=10k=442  leading=Classical  [Bron:387 Clas:220]  pop=177M
+    fission: noRivalSeat=538  eligible=11
+    landNation: tallyBar=97
+    peerSeat: cellFull=1734  CANDIDATE=501  PASSED=371  gathering=69  noPosition=61
+    selfFound: PASSED=1
+    siteCity: tallyBar=2620
+    tallyWait: sites=32 (stateContact 8 / beyond 24)  org p10=0.11 p50=0.13 p90=0.24  bar=0.28
+      frozen@ 128E,51N:0km 8E,5N:400km 14E,10N:400km 11E,53N:500km 14E,-9N:500km 95E,19N:500km 11E,46N:500km 111E,46N:500km 34E,1N:500km 116E,30N:600km 131E,43N:600km 119E,51N:600km 98E,35N:600km 48E,6N:700km 0E,41N:700km 51E,25N:700km 41E,2N:700km 95E,57N:700km 49E,16N:800km -14E,16N:1000km -5E,6N:1000km 38E,-7N:1100km 41E,65N:1200km 139E,48N:1200km 109E,23N:1300km 66E,59N:1300km 83E,59N:1400km 35E,-17N:1400km 89E,63N:1700km -58E,-11N:6700km -62E,-4N:6800km -74E,-5N:8100km
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) stood down — the farming package arrived before it was invented
+step 26000  register=851  cores>=10k=649  leading=Medieval  [Ston:3 Bron:419 Clas:425 Medi:4]  pop=229M
+    fission: noRivalSeat=839  eligible=20
+    landNation: tallyBar=97
+    peerSeat: cellFull=2907  CANDIDATE=658  PASSED=439  gathering=111  noPosition=108
+    selfFound: PASSED=6
+    siteCity: tallyBar=2341
+    tallyWait: sites=32 (stateContact 11 / beyond 21)  org p10=0.11 p50=0.13 p90=0.22  bar=0.28
+      frozen@ 48E,6N:400km 8E,5N:400km 14E,10N:400km 131E,43N:500km 116E,30N:500km 14E,-9N:500km 98E,35N:500km 95E,19N:500km 38E,-7N:500km 111E,46N:500km -68E,3N:600km 0E,41N:600km -65E,-41N:600km -52E,-29N:600km 51E,25N:700km -58E,-11N:700km -14E,16N:700km 49E,16N:700km 95E,57N:700km 103E,14N:800km 139E,48N:800km -71E,-18N:900km -9E,43N:1000km -74E,-5N:1000km 35E,-17N:1100km 56E,68N:1100km 66E,59N:1300km 140E,-19N:1300km 83E,59N:1400km -62E,-4N:1500km 89E,63N:1600km -77E,-12N:1800km
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) stood down — the farming package arrived before it was invented
+step 28000  register=1150  cores>=10k=861  leading=Medieval  [Bron:441 Clas:639 Medi:70]  pop=297M
+    fission: noRivalSeat=1223  eligible=12  PASSED=1
+    landNation: tallyBar=119
+    peerSeat: cellFull=4403  CANDIDATE=713  PASSED=429  noPosition=225  gathering=58  noHeadroom=1
+    selfFound: PASSED=7
+    siteCity: tallyBar=2476
+    tallyWait: sites=33 (stateContact 11 / beyond 22)  org p10=0.10 p50=0.12 p90=0.21  bar=0.28
+      frozen@ 8E,5N:400km 48E,6N:400km 131E,43N:400km 111E,46N:400km 38E,-7N:400km 116E,30N:500km 98E,35N:500km -9E,43N:500km -50E,-2N:600km -68E,3N:600km 26E,-33N:600km 95E,57N:600km -52E,-29N:600km 139E,48N:600km 51E,25N:700km -58E,-11N:700km -44E,-13N:700km -92E,33N:700km 136E,56N:700km -71E,-18N:900km -51E,-11N:1000km 140E,-19N:1000km 140E,-35N:1000km -74E,-5N:1000km 66E,59N:1100km -125E,48N:1100km 56E,68N:1100km -83E,43N:1300km -98E,29N:1300km -62E,-4N:1300km 83E,59N:1400km 89E,63N:1600km -77E,-12N:1800km

@@ -29,6 +29,7 @@ const TYPE_META = {
   "settlement.annexed": { cat: "politics", icon: "⚑" },
   "colony.independent": { cat: "politics", icon: "⚐", toast: true },
   "colony.inherited": { cat: "politics", icon: "⚐" },
+  "colony.subjugated": { cat: "politics", icon: "⚓", toast: true },
   "succession.crisis": { cat: "politics", icon: "♔" },
   "gov.changed": { cat: "politics", icon: "♔" },
   "ruler.crowned": { cat: "politics", icon: "♔" }, "ruler.elected": { cat: "politics", icon: "♔" },

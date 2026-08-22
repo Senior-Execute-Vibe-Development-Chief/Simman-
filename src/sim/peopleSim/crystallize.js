@@ -18,6 +18,8 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
+import { stateOrgBar, URBAN_ORG } from "./tech.js";
+import { ensureLedgerAt, stepLandKnow } from "./landKnow.js";   // T.LAND_KNOW (ESM cycle is fine — functions only, like the goods.js pair)
 import { tel, telPass } from "./telemetry.js";
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
@@ -25,7 +27,7 @@ import { hash32 } from "./rng.js";
 import { cageAt } from "./cageField.js";
 import { tileOpenness } from "./transport.js";
 import { getPolity, fiscAdoptable, ensurePolity } from "./entities.js";
-import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
+import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture, cohesionRadius } from "./cultures.js";
 import { dominantFaith } from "./faiths.js";
 import { logEvent } from "./events.js";
 import { grievOf } from "./loyaltyField.js";
@@ -39,6 +41,7 @@ import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { CATCH_TRIB, D8_DX, D8_DY } from "../riverGen.js";
+const _geoStr = (world, x, y) => `(${(x / world.tw * 360 - 180).toFixed(1)}E ${(90 - y / world.th * 180).toFixed(1)}N)`;
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -719,6 +722,7 @@ export function labelSiteLedger(world) {
 // CRYSTAL_INTERVAL staleness (a perf cadence; label deaths lapse the claim at
 // the next rebuild — Jericho refounding); labels minted mid-pass stamp their
 // claim live (labelClaimBasin — the gridAdd discipline, on cells).
+export { _siteClaims as siteClaims };   // landKnow.js: a seated cell freezes its ledger (the court carries knowledge now)
 function _siteClaims(world) {
   const L = labelSiteLedger(world);
   let c = world._siteClaims;
@@ -1112,7 +1116,7 @@ const pioneerTempo = (agri) => {
 const DISSOLVE_CHECK_IVL = 200;   // per-settlement stride (amortization, not a content gate)
 const DISSOLVE_HYST = 0.6;        // dissolve below this fraction of the founding bar
 const DISSOLVE_SUSTAIN = 1500;    // history-steps the basin must stay thin (granularity-corrected below)
-const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured here (core share p50 4.6-5.6%, every probe arm) and historically (~3-8%)
+export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured here (core share p50 4.6-5.6%, every probe arm) and historically (~3-8%); exported for landKnow.js's density term (one bar, two readers)
 /** T.DISSOLVE_TOWNS: can (tx,ty)'s basin feed a CITY? The lever's one bar —
  *  basin census ≥ TIER_CORE[2]/URBAN_SHARE_REF (a 10k core at the ~5% urban
  *  share needs a ~200,000-person market basin) — shared by every mint path
@@ -1134,16 +1138,47 @@ function maybeDissolveTowns(world) {
   // at DISSOLVE_HYST of it — the hysteresis gap plus the sustain timer keeps
   // a breathing basin from flickering its city in and out of existence.
   const bar = (TIER_CORE[2] / URBAN_SHARE_REF) * DISSOLVE_HYST / world._onePopScale;   // in field units
+  // T.DISSOLVE_CORE — THE SECOND BAR, the one the mint always had and the
+  // dissolve never did (owner 2026-08-22: "cities can become smaller than
+  // 12k, then they stop being cities" → "towns should not exist, anything
+  // smaller than a city should not be anything"). Minting a city requires
+  // TWO things: a basin that could feed one (above) AND a core that actually
+  // gathered one (coreBarF). Dissolution tested only the basin — so a city
+  // whose URBAN CORE had withered to a husk lived forever as long as
+  // peasants still worked the fields around it, and the register kept a
+  // permanent class of sub-city entities the charter says must not exist
+  // ("A SETTLEMENT IS A CITY — or a community growing into one. NEVER a mere
+  // village or market town", CLAUDE.md).
+  //   The bar is therefore the CITY BAR ITSELF (T.DISSOLVE_CORE = 1.0 of
+  // TIER_CORE[2]), not a fraction of it: below the definition of a city an
+  // entity is not a smaller entity, it is COUNTRYSIDE. Anti-flicker is the
+  // SUSTAIN TIMER, not a lowered bar — a core must stay under the bar for
+  // DISSOLVE_SUSTAIN before it fades, so a city dipping through a bad
+  // generation survives while one that never recovers does not. (Under
+  // CITY_AT_BIRTH no entity is ever born below the bar, so anything under it
+  // is a city in DECLINE, never one on the way up.)
+  //   History's own case is post-Roman Britain: the countryside stayed
+  // peopled while the towns emptied and simply stopped being towns —
+  // Silchester and Wroxeter are fields. The people are not lost here either
+  // (under ONE_POP they were always the land's; only the urban institution
+  // goes, exactly as the basin lane already does it). No new constants: the
+  // mint's own bar, the dissolve's own timer.
+  const coreBar = TIER_CORE[2] * T.DISSOLVE_CORE;   // census units — the city definition itself at 1.0
   const dt = world._dt || 1;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     if ((world.step + s.id) % DISSOLVE_CHECK_IVL !== 0) continue;
-    if (townBasinMass(world, s.pos.x | 0, s.pos.y | 0, rB) >= bar) { s._thinBasinSince = undefined; continue; }
+    const basinThin = townBasinMass(world, s.pos.x | 0, s.pos.y | 0, rB) < bar;
+    // The core read is honest only where the urban split exists; a regime
+    // without _urbanPop keeps the basin-only law byte-identically.
+    const coreThin = T.DISSOLVE_CORE > 0 && s._urbanPop != null && s._urbanPop < coreBar;
+    if (!basinThin && !coreThin) { s._thinBasinSince = undefined; continue; }
     if (s._thinBasinSince === undefined) { s._thinBasinSince = world.step; continue; }
     if (world.step - s._thinBasinSince > DISSOLVE_SUSTAIN / dt) {
       s.mode = "dead";
       bankRuinHoard(world, s);
-      logEvent(world, "settlement.dissolved", { s: s.id, sName: s.name, polity: s.countryId });
+      logEvent(world, "settlement.dissolved", { s: s.id, sName: s.name, polity: s.countryId,
+        why: basinThin ? "basin" : "core" });
     }
   }
 }
@@ -1286,7 +1321,12 @@ function maybeSiteCities(world) {
       // third dead form; see basinStorablePeople), a city-basin's worth of
       // people stand on ground that can grow a STORABLE surplus.
       if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI
-          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)) { elig[k] = 1; basins.set(k, b.take); }
+          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)) {
+        elig[k] = 1; basins.set(k, b.take);
+        // T.LAND_KNOW: a city-capable farming basin is a LEARNING community —
+        // plant its ledger the moment it first qualifies (landKnow.js).
+        if (T.LAND_KNOW) ensureLedgerAt(world, L.sites[k].ti);
+      }
       else { elig[k] = 0; basins.delete(k); }
     }
   }
@@ -1302,6 +1342,16 @@ function maybeSiteCities(world) {
     // entity derived a 1,073-census catchment (ONE_POP re-reads the land, so
     // capping the founding take alone was cosmetic).
     if (coreNow > 0 && !spikes.has(st.ti)) spikes.set(st.ti, { k: Math.min(coreNow, coreBarF * 1.2) });
+  }
+  // T.PEER_SEATS: the peer lane's gathering piles are held every tick by the
+  // same spike law, keyed by the peer tile — a pile stamped only on the mint
+  // cadence would be released and mass-killed by the field pass between
+  // firings (the anchor lane's own measured lesson, the birth crater).
+  if (T.PEER_SEATS && T.PEER_LATTICE && world._peerCand) {
+    for (const pc of world._peerCand.m.values()) {
+      const coreNow = diskSum(pf, world.tw, world.th, pc.x, pc.y, coreR);
+      if (coreNow > 0 && !spikes.has(pc.ti)) spikes.set(pc.ti, { k: Math.min(coreNow, coreBarF * 1.2) });
+    }
   }
   if (world.step % SITE_CITY_IVL !== 0) return;
   // Practice improves at the settlement-less hearths (see AGRI_PRACTICE_CAP).
@@ -1381,20 +1431,55 @@ function maybeSiteCities(world) {
     const st = L.sites[k];
     const coreF = diskSum(pf, world.tw, world.th, st.x, st.y, coreR);
     if (coreF < coreBarF) continue;
-    // The city is born a CITY — never a megalopolis: the entity takes the
-    // city's own people (the bar, with growth headroom) and the REST of what
-    // gathered stays on the land as its countryside. Measured without this
-    // cap: the first genesis mint arrived only when the farming gate opened,
-    // by which time the basin had piled organically, and the first-born
-    // entity swallowed a 1,008-census core — a metropolis at birth in a
-    // world whose second entity did not exist yet.
-    const coreCensus = Math.min(coreF * bridge, TIER_CORE[2] * 1.5);
-    // (The live bridge is guaranteed by the pass-top dawn declaration — the
-    // first mint never lets the next derive re-calibrate the unit from its
-    // own founding party, which measured as a 0.35 bridge, an 11,000-census
-    // first city and a 600-step famine crash before the declaration existed.)
-    fieldShift(world, { pos: { x: st.x, y: st.y } }, -coreCensus);
-    const inherited = inheritKnowledgeAt(world, st.ti, world.transportDist ? world.transportDist[st.ti] : 0);
+    // T.LAND_KNOW: THE TALLY GATE — a gathered core is a proto-urban town
+    // (Çatalhöyük held thousands with no city institutions), not yet a CITY:
+    // the entity mints only when the basin's own ledger can COUNT (tallies &
+    // seals, tech.js URBAN_ORG — token accounting is what runs an urban
+    // granary before script). Until then the pile simply waits, bounded by
+    // the site spike's own cap; the ledger (planted at eligibility above)
+    // keeps learning underneath. No entity, no icon, no road, no border —
+    // prehistory stays land, people and practice.
+    let lkRec = null;
+    if (T.LAND_KNOW) {
+      lkRec = ensureLedgerAt(world, st.ti);
+      if (!lkRec || (lkRec.k.organization || 0) < URBAN_ORG) { tel(world, "siteCity", "tallyBar"); continue; }
+    }
+    mintCityAt(world, k, st.x, st.y, st.ti, coreF, lkRec,
+      { pf, bridge, coreBarF, basinBarF, spikes },
+      () => { elig[k] = 0; if (world._siteBasin) world._siteBasin.delete(k); });
+  }
+  maybePeerSeats(world, { L, claims, pf, bridge, coreBarF, basinBarF, coreR, spikes });
+}
+
+// ── The mint tail, shared by the anchor lane and the peer lane ───────────────
+// Extracted VERBATIM from the anchor mint loop (2026-08-20, the peer-seats
+// wave) so both lanes birth cities through the identical law — census cap,
+// field debit, knowledge birthright, culture, the STATE_OF_LAND adoption
+// door, basin granaries, the spike handoff. `postClaim` runs at the exact
+// point the anchor's own bookkeeping ran (eligibility/basin-cache clear for
+// anchors; claim-register bump for peers). Byte-identity of the extraction
+// is proven by the pinned hashbase anchors.
+function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
+  const { pf, bridge, coreBarF, basinBarF, spikes } = env;
+  // The city is born a CITY — never a megalopolis: the entity takes the
+  // city's own people (the bar, with growth headroom) and the REST of what
+  // gathered stays on the land as its countryside. Measured without this
+  // cap: the first genesis mint arrived only when the farming gate opened,
+  // by which time the basin had piled organically, and the first-born
+  // entity swallowed a 1,008-census core — a metropolis at birth in a
+  // world whose second entity did not exist yet.
+  const coreCensus = Math.min(coreF * bridge, TIER_CORE[2] * 1.5);
+  // (The live bridge is guaranteed by the pass-top dawn declaration — the
+  // first mint never lets the next derive re-calibrate the unit from its
+  // own founding party, which measured as a 0.35 bridge, an 11,000-census
+  // first city and a 600-step famine crash before the declaration existed.)
+  fieldShift(world, { pos: { x, y } }, -coreCensus);
+  const inherited = inheritKnowledgeAt(world, ti, world.transportDist ? world.transportDist[ti] : 0);
+    // T.LAND_KNOW: the basin's own learning is the newborn's birthright — the
+    // ledger floors every track (a nearby court can still lift it higher).
+    // This is the whole handoff: the countryside taught itself up to the
+    // tally bar; the city is born knowing what its people know.
+    if (lkRec) for (const t in lkRec.k) if ((lkRec.k[t] || 0) > (inherited[t] || 0)) inherited[t] = lkRec.k[t];
     // A city born within reach of an existing people carries their culture
     // (the inherit pass just found the nearest); one born in virgin land is
     // the BIRTH of a people — Uruk is where the Sumerians become visible.
@@ -1416,12 +1501,18 @@ function maybeSiteCities(world) {
     // beside its own nation (probe_tribute, docs/state-birth-2026-08.md).
     const coA = world._countryOwner;
     const loA = world._landOwner;
-    const nid = (T.STATE_OF_LAND && loA && world._landSeats
-      && (!coA || coA[st.ti] < 0) && world._landSeats.has(loA[st.ti]))
-      ? loA[st.ti] : -1;
+    let nid = (T.STATE_OF_LAND && loA && world._landSeats
+      && (!coA || coA[ti] < 0) && world._landSeats.has(loA[ti]))
+      ? loA[ti] : -1;
+    // T.STATE_RECORDS: a city born on a nation's ground materialises it into a
+    // realm only if the newborn court can administrate (the unified founding
+    // bar — tech.js stateOrgBar). Below it the city is born a stateless temple
+    // town on chiefdom ground; adoptAndFound materialises it later, the moment
+    // its organization crosses the bar.
+    if (nid >= 0 && T.STATE_RECORDS && (((inherited && inherited.organization) || 0) < stateOrgBar())) nid = -1;
     const natCul = nid >= 0 ? ((getPolity(world, nid) || {}).cultureId ?? -1) : -1;
     const bornCul = natCul >= 0 ? natCul : donorCul;
-    const born = makeSettlement(world, st.x + 0.5, st.y + 0.5, {
+    const born = makeSettlement(world, x + 0.5, y + 0.5, {
       people: coreCensus, knowledge: inherited, tier: 2,
       ...(nid >= 0 ? { countryId: nid } : {}),
       ...(bornCul >= 0 ? { cultureId: bornCul } : { cradle: true }),
@@ -1430,6 +1521,44 @@ function maybeSiteCities(world) {
       born._integratedAt = world.step;   // a new sovereign integrates its territory gradually (INTEGRATE_*)
       const pol = getPolity(world, nid);
       if (pol) pol.capitalId = born.id;  // the nation's seat is THIS city (the reconciler confirms next pass)
+    }
+    // T.FOUND_DRIFT — THE MINT LANE HAD NO CULTURE PHYSICS AT ALL: bornCul
+    // above is the donor's people unconditionally — no distance test, no
+    // ancestry test — and THIS lane (genesis anchors + peer seats) is where
+    // the dawn world's cities are actually born, so this is where the
+    // cradle-flood ran (the crystallize lane's culture-by-connection block
+    // never sees these births; docs/identity-collapse-2026-08-21.md). Mirror
+    // that block's physics: a city minted on another STOCK's soil roots in
+    // that stock's own people (the ancestry floor built to stop cradle
+    // peoples flooding the world); one minted beyond its people's cohesion
+    // reach from the people's demographic core is born a DAUGHTER people —
+    // stepwise expansion diverges like the leap it adds up to (the Bantu
+    // proof), the reach bar self-calibrating by era via cohesionRadius. A
+    // nation materialising its seat (natCul) keeps its own people — a
+    // nation IS a people. Inert at 0 (byte-identical).
+    if (T.FOUND_DRIFT > 0 && natCul < 0 && donorCul >= 0 && dominantCulture(born) === donorCul) {
+      const localAnc = world.ancestry ? world.ancestry[ti] : -1;
+      if (localAnc >= 0 && donor && localAnc !== dominantAnc(donor)) {
+        const cul = ancestryCulture(world, localAnc, born);
+        if (cul) { seedCulture(world, born, cul.id); born.name = nameFor(world, cul, "settlement"); }
+      } else {
+        let core = null;
+        for (const s2 of world.settlements) {
+          if (s2 === born || s2.mode !== "settled" || dominantCulture(s2) !== donorCul) continue;
+          if (!core || (s2.people || 0) > (core.people || 0)) core = s2;
+        }
+        if (core) {
+          let dx = Math.abs(x + 0.5 - core.pos.x); if (dx > world.tw / 2) dx = world.tw - dx;
+          const dy = y + 0.5 - core.pos.y;
+          const overReach = Math.hypot(dx, dy) / Math.max(1e-9, cohesionRadius(world, donor || core));
+          if (overReach > 1) {
+            const cul = foundCulture(world, { origin: born, parentCultureId: donorCul,
+              divergence: Math.max(0.15, Math.min(1, (overReach - 1) * 0.5)) });
+            seedCulture(world, born, cul.id);
+            born.name = nameFor(world, cul, "settlement");
+          }
+        }
+      }
     }
     // THE COUNTRYSIDE'S GRANARIES RIDE IN WITH THE COUNTRYSIDE. The tick
     // before this city existed, its basin's people fed themselves through
@@ -1471,9 +1600,8 @@ function maybeSiteCities(world) {
     // arrived", now true on BOTH sides of the handoff. Existing constants
     // only; import-economy capacity takes over the moment it grows past it.
     born._coreHoldCapF = coreBarF * 1.2;
-    labelClaimBasin(world, st.x, st.y);
-    elig[k] = 0;
-    if (world._siteBasin) world._siteBasin.delete(k);
+    labelClaimBasin(world, x, y);
+    postClaim();
     // T.HOLD_SEAM (2026-08-11 — the handoff's SEAM, docs §6): deleting the
     // site spike here leaves ≥1 firing with NO capacity over the pile — the
     // tick order is field pass → derive → THIS mint, so the next field pass
@@ -1484,9 +1612,164 @@ function maybeSiteCities(world) {
     // bound, the identical expression the deleted spike carried — and the
     // next derive's clear-and-restamp takes it from there. Off ⇒ the delete
     // (byte-identical, the gap regime).
-    if (T.HOLD_SEAM) spikes.set(st.ti, { k: Math.min(coreF, coreBarF * 1.2) });
-    else spikes.delete(st.ti);
-    logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1, x: st.x, y: st.y });
+    if (T.HOLD_SEAM) spikes.set(ti, { k: Math.min(coreF, coreBarF * 1.2) });
+    else spikes.delete(ti);
+    logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: born.countryId ?? -1, city: 1, x, y });
+    return born;
+}
+
+// ── T.PEER_SEATS: the genesis lane seats PEERS (the variance arc's named unlock) ──
+// Measured three ways before this existed (docs/variance-arc-2026-08-13.md
+// "NOBODY KNOCKS"; probe_catchment 2026-08-20): every land founding channel
+// draws its candidates from the site ledger's ONE anchor per cell, standing
+// exactly where the first city already is — so labelBasinFree's peer-capacity
+// law (a claimed cell stays open while its people could feed another core)
+// was never once exercised on land. The measured cost at the shipping grid:
+// 66 seats over 1,225 justified slots at tw=480/27k, the top cradle cell
+// holding 1 court where its people could feed 74, catchments of 4-7M km²
+// (three orders over the historical city-state), fission starved of rival
+// seats (noRivalSeat=2039), 24-realm worlds where history holds hundreds.
+// This is the candidate GENERATION the peerlat funnel demanded: inside every
+// claimed cell with spare capacity, the best standing popField peak that
+// keeps every core whole (≥ 2×urbanCoreR from each seated label — the exact
+// spacing labelBasinFree states) becomes a gathering site of its own, fed by
+// the same drift law from the same cell basin, held by the same spike law,
+// minted through the same tail (mintCityAt) at the same core bar. Sumer:
+// Uruk did not stop Ur, Lagash and Kish from rising on the same alluvium —
+// a basin seats what its people can feed.
+// The tally proof is the CELL's: its ledger earned tallies once (frozen at
+// or above the bar when the first court seated — the mint required it), or
+// a court standing in the cell carries organization past the bar itself
+// (colonies can claim a cell whose ledger froze young; the court is then
+// the basin's living institution). A fresh per-tile ledger would re-run
+// prehistory under an already-literate incumbent.
+// Zero new constants: capacity/spacing are labelBasinFree's own, the drift
+// and bars are the anchor lane's own. Off (T.PEER_SEATS=0) ⇒ byte-identical
+// one-seat-per-cell (the harness pins it off; the live app runs it).
+function maybePeerSeats(world, env) {
+  if (!T.PEER_SEATS || !T.PEER_LATTICE) return;
+  const { L, claims, pf, coreBarF, basinBarF, coreR } = env;
+  const tw = world.tw, th = world.th;
+  const rr = 2 * coreR, rr2 = rr * rr, half = tw / 2;
+  let cand = world._peerCand;
+  if (!cand || cand.K !== L.sites.length) cand = world._peerCand = { K: L.sites.length, step: -1, m: new Map() };
+  const spacingOk = (k, x, y) => {
+    const ls = claims.labels && claims.labels.get(k);
+    if (ls) for (const p of ls) {
+      let dx = Math.abs(p.x - x); if (dx > half) dx = tw - dx;
+      const dy = p.y - y;
+      if (dx * dx + dy * dy < rr2) return false;
+    }
+    return true;
+  };
+  // Which claimed cells still have capacity for another court?
+  const want = new Set();
+  for (let k = 0; k < L.sites.length; k++) {
+    if (!claims.claimed[k]) { cand.m.delete(k); continue; }
+    const capacity = Math.floor(claims.mass[k] / basinBarF);
+    if ((claims.count[k] || 0) >= capacity) { cand.m.delete(k); tel(world, "peerSeat", "cellFull"); continue; }
+    want.add(k);
+    tel(world, "peerSeat", "CANDIDATE");
+  }
+  if (!want.size) return;
+  // Refresh candidate positions with the claims cadence. A held position is
+  // KEPT while it stays legal (its pile is mid-gather — moving the target
+  // strands the pile); only an invalidated or missing one is re-picked as
+  // the cell's best standing popField peak that clears the spacing law.
+  if (cand.step !== claims.step) {
+    cand.step = claims.step;
+    for (const [k, pc] of cand.m) if (!want.has(k) || !spacingOk(k, pc.x, pc.y)) cand.m.delete(k);
+    const need = new Set();
+    for (const k of want) if (!cand.m.has(k)) need.add(k);
+    if (need.size) {
+      const best = new Map();   // k → {v, x, y, ti}
+      const siteId = L.siteId, elev = world.elev;
+      for (let i = 0; i < world.N; i++) {
+        const p = pf[i];
+        if (!(p > 0) || elev[i] <= 0) continue;
+        const k = siteId[i];
+        if (k < 0 || !need.has(k)) continue;
+        const b = best.get(k);
+        if (b && b.v >= p) continue;
+        const y = (i / tw) | 0, x = i - y * tw;
+        if (!spacingOk(k, x, y)) continue;
+        best.set(k, { v: p, x, y, ti: i });
+      }
+      for (const [k, b] of best) cand.m.set(k, { x: b.x, y: b.y, ti: b.ti, take: null });
+    }
+  }
+  // The court test once per firing: the strongest organization standing in
+  // each wanted cell (the ledger's freeze can predate the bar when a colony
+  // claimed the cell — the living court then carries the proof).
+  let courtOrg = null;
+  if (T.LAND_KNOW) {
+    courtOrg = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const sk = L.siteId[(s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw];
+      if (sk < 0 || !want.has(sk)) continue;
+      const o = (s.knowledge && s.knowledge.organization) || 0;
+      if (o > (courtOrg.get(sk) || 0)) courtOrg.set(sk, o);
+    }
+  }
+  const rate = Math.min(0.2, URBAN_DRIFT * (world._dt || 1) * SITE_CITY_IVL);
+  const cf = world.capField;
+  for (const k of want) {
+    const pc = cand.m.get(k);
+    if (!pc) { tel(world, "peerSeat", "noPosition"); continue; }
+    const coreNow = diskSum(pf, tw, th, pc.x, pc.y, coreR);
+    if (coreNow < coreBarF) {
+      // Gather: the same drift law as the anchor lane — the cell basin pays,
+      // the peer core receives, paced by the core's capacity headroom.
+      if (!pc.take) pc.take = peopledBasinAt(world, k, basinBarF).take;
+      const capD = cf ? diskSum(cf, tw, th, pc.x, pc.y, coreR) : Infinity;
+      const headroom = capD - coreNow;
+      if (!(headroom > 0)) { tel(world, "peerSeat", "noHeadroom"); continue; }
+      let demand = 0;
+      for (let n = 0; n < pc.take.length; n++) {
+        const t = pc.take[n];
+        const ty2 = (t / tw) | 0, tx2 = t - ty2 * tw;
+        let dx = Math.abs(tx2 - pc.x); if (dx > half) dx = tw - dx;
+        const dy = ty2 - pc.y;
+        if (dx * dx + dy * dy <= coreR * coreR) continue;
+        demand += pf[t];
+      }
+      demand *= rate;
+      if (demand > 0) {
+        const scale = Math.min(1, headroom / demand);
+        let gain = 0;
+        for (let n = 0; n < pc.take.length; n++) {
+          const t = pc.take[n];
+          const ty2 = (t / tw) | 0, tx2 = t - ty2 * tw;
+          let dx = Math.abs(tx2 - pc.x); if (dx > half) dx = tw - dx;
+          const dy = ty2 - pc.y;
+          if (dx * dx + dy * dy <= coreR * coreR) continue;
+          const mv = pf[t] * rate * scale;
+          pf[t] -= mv;
+          gain += mv;
+        }
+        pf[pc.ti] += gain;
+      }
+      tel(world, "peerSeat", "gathering");
+      continue;
+    }
+    // Mint-time re-checks: the spacing law against the LIVE label register
+    // (a same-window colony may have landed since the scan), then the tally.
+    if (!spacingOk(k, pc.x, pc.y)) { cand.m.delete(k); tel(world, "peerSeat", "spacingLost"); continue; }
+    let cellRec = null;
+    if (T.LAND_KNOW) {
+      cellRec = ensureLedgerAt(world, L.sites[k].ti);
+      const proven = (cellRec && (cellRec.k.organization || 0) >= URBAN_ORG)
+        || ((courtOrg && courtOrg.get(k) || 0) >= URBAN_ORG);
+      if (!proven) { tel(world, "peerSeat", "tallyBar"); continue; }
+    }
+    mintCityAt(world, k, pc.x, pc.y, pc.ti, coreNow, cellRec, env, () => {
+      claims.count[k] = (claims.count[k] || 0) + 1;
+      let a = claims.labels.get(k); if (!a) claims.labels.set(k, a = []);
+      a.push({ x: pc.x, y: pc.y });
+    });
+    cand.m.delete(k);
+    telPass(world, "peerSeat");
   }
 }
 
@@ -1593,6 +1876,18 @@ function maybeLandNations(world) {
     const basin = peopledBasinAt(world, k, barF);
     if (basin.mass < barF) continue;               // the seat's walkable ground does not hold a people
     if (basin.devP < NEOLITHIC_AGRI) continue;     // its people do not yet farm
+    // T.LAND_KNOW: NO BORDERS BEFORE THE TALLY — a bordered nation is an
+    // administrative claim (membership, tribute, a boundary held against
+    // neighbours), and a people that cannot yet count holds its valley as
+    // CULTURE, not as a polity. The basin qualifies as a learning community
+    // here (peopled + farming — plant its ledger), and declares only once
+    // its own organization crosses the tallies bar; until then the ground
+    // stays unpainted. Same bar as the city door: one institution, two
+    // doors (tech.js URBAN_ORG).
+    if (T.LAND_KNOW) {
+      const rec = ensureLedgerAt(world, st.ti);
+      if (!rec || (rec.k.organization || 0) < URBAN_ORG) { tel(world, "landNation", "tallyBar"); continue; }
+    }
     const take = basin.take;
     // T.ORG_CONTACT, the land-nation half (2026-08-11, docs §9 — measured as
     // THE binding channel: 44 of 48 formations in the frontier probe were
@@ -1657,7 +1952,28 @@ function maybeLandNations(world) {
       // grain — basinStorablePeople, the CITY_STORE quantity, as a SHARE: a
       // caged tuber basin still waits for contact. Both factors live state,
       // both existing measures; the K re-base and per-seat roll unchanged.
-      if (drive < 1 && T.STATE_CAGE) {
+      //
+      // T.STATE_OPEN lap 2 (the late-belt over-claiming wave, 2026-08-18):
+      // probe_statebirths measured THIS door minting the swarm — 834 tribal
+      // foundings per 35k against 2 frontier ones — and the contact lane
+      // above overriding the Carneiro exam entirely (any adjacent state
+      // ground → drive=1), so one state per belt sweeps its whole continent
+      // at roll speed. History's periphery: contact TEACHES the form, but
+      // only circumscription makes it hold — Gran Chichimeca bordered
+      // Mesoamerica for two millennia and never stated; Rome pressed
+      // Germania for centuries. Under the lever, contact MULTIPLIES the
+      // Carneiro drive (×(1+STATE_OPEN) — seeing the state accelerates
+      // adopting it) instead of overriding it: a caged storable basin under
+      // pressure forms almost at once (the cradle belts saturate at the old
+      // drive=1, near-byte-similar there), an open or unstorable one stays
+      // tribal however long it is pressed — the Chichimeca, Australia.
+      if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
+        const cg = cageAt(world, st.ti);
+        const sp = cg > 0 ? basinStorablePeople(world, take, world.popField) : 0;
+        const stor = basin.mass > 0 ? Math.min(1, sp / basin.mass) : 0;
+        const pr = cg * stor;
+        drive = drive >= 1 ? Math.min(1, pr * (1 + T.STATE_OPEN)) : pr;
+      } else if (drive < 1 && T.STATE_CAGE) {
         const cg = cageAt(world, st.ti);
         if (cg > 0) {
           const sp = basinStorablePeople(world, take, world.popField);
@@ -1727,6 +2043,14 @@ function maybeLandNations(world) {
       const basin2 = peopledBasinFrom(world, kk, cand.ti, barF);
       if (basin2.mass < barF) { tel(world, "landnat2", "basinBelowBar"); continue; }
       if (basin2.devP < NEOLITHIC_AGRI) { tel(world, "landnat2", "notFarming"); continue; }
+      // T.LAND_KNOW: the same tally exam as the primary lane — the cell's
+      // learning community must be able to COUNT before any of its seats
+      // declares a bordered nation (this secondary lane leaked the first
+      // stone-age chiefdom paint in the wave's first measurement run).
+      if (T.LAND_KNOW) {
+        const rec2 = ensureLedgerAt(world, L.sites[kk].ti);
+        if (!rec2 || (rec2.k.organization || 0) < URBAN_ORG) { tel(world, "landnat2", "tallyBar"); continue; }
+      }
       // The identical pressure exam as the primary lane above (contact
       // adjacency, else the caging law's cage × storable share).
       let drive2 = 0;
@@ -1742,7 +2066,14 @@ function maybeLandNations(world) {
           }
           if (drive2 >= 1) break;
         }
-        if (drive2 < 1 && T.STATE_CAGE) {
+        // T.STATE_OPEN lap 2: identical to the primary lane — contact
+        // multiplies the Carneiro drive, never overrides it (header above).
+        if (T.STATE_OPEN > 0 && T.STATE_CAGE) {
+          const cg2 = cageAt(world, cand.ti);
+          const sp2 = cg2 > 0 ? basinStorablePeople(world, basin2.take, pf2) : 0;
+          const pr2 = cg2 * (basin2.mass > 0 ? Math.min(1, sp2 / basin2.mass) : 0);
+          drive2 = drive2 >= 1 ? Math.min(1, pr2 * (1 + T.STATE_OPEN)) : pr2;
+        } else if (drive2 < 1 && T.STATE_CAGE) {
           const cg2 = cageAt(world, cand.ti);
           if (cg2 > 0) {
             const sp2 = basinStorablePeople(world, basin2.take, pf2);
@@ -1874,6 +2205,7 @@ function maybeLandNations(world) {
 
 export function maybeCrystallize(world) {
   maybeDissolveTowns(world);
+  stepLandKnow(world);        // T.LAND_KNOW: the countryside learns (before the doors read the ledger)
   maybeSiteCities(world);
   maybeLandNations(world);
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
@@ -1913,7 +2245,7 @@ export function maybeCrystallize(world) {
         let settledNear = false;
         forEachNear(world, h.tx, h.ty, rB, () => { settledNear = true; });
         if (settledNear) {
-          console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) stood down — the farming package arrived before it was invented`);
+          console.log(`[peopleSim] hearth candidate at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} stood down — the farming package arrived before it was invented`);
           continue;
         }
         const basin = townBasinMass(world, h.tx, h.ty, rB);
@@ -1963,11 +2295,11 @@ export function maybeCrystallize(world) {
               }
             } else seeds.push({ ti: h.ti, agri: NEOLITHIC_AGRI });
             logEvent(world, "farming.invented", { x: h.tx, y: h.ty });
-            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
+            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} — the basin farms; a city will rise when its market gathers one (score ${h.score.toFixed(2)})`);
           } else {
             const born = makeSettlement(world, h.tx + 0.5, h.ty + 0.5, { people: 110, cradle: true });   // a fresh invention is a natural proto-town, never an eve-of-states core
             logEvent(world, "settlement.founded", { s: born.id, sName: born.name, polity: -1, hearth: 1 });
-            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
+            console.log(`[peopleSim] AGRICULTURE INVENTED at (${h.tx},${h.ty}) ${_geoStr(world, h.tx, h.ty)} — ${born.name}, ${Math.round(h.needY)}y of peopled-basin time served (score ${h.score.toFixed(2)})`);
           }
         } else keep.push(h);
       }
@@ -2392,7 +2724,35 @@ export function maybeCrystallize(world) {
         climDelta = Math.abs((world.temp[ti] || 0) - (world.temp[dTi] || 0)) * 1.4
                   + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
       }
-      const isBranch = connected && (td > 70 || (td > 38 && climDelta > 0.34));
+      // T.FOUND_DRIFT — DIVERGENCE ACCUMULATES OVER THE WHOLE EXPANSION, not
+      // one hop (docs/identity-collapse-2026-08-21.md). The td tests below are
+      // SINGLE-HOP: the dawn's hearth-radial expansion advances by short
+      // connected hops, so they never trip and one people flows out of each
+      // cradle until it holds 100% of humanity (measured; the control world
+      // held 50 peoples). What history shows instead: stepwise expansion
+      // diverges exactly as much as a leap of the same span — the Bantu
+      // expansion was fully connected and produced hundreds of daughter
+      // languages. So a new community also branches when it is founded BEYOND
+      // ITS PEOPLE'S COHESION REACH from that people's demographic core — the
+      // same cohesionRadius the drift pass already uses (stone-age small,
+      // growing with connectivity tech), so the bar self-calibrates by era
+      // with zero new constants. Divergence rises with how many reaches out
+      // the birth sits (each reach-multiple is a step of intelligibility
+      // lost). 0 = the single-hop tests alone (byte-identical).
+      let overReach = 0;
+      if (T.FOUND_DRIFT > 0 && connected) {
+        let core = null;
+        for (const s2 of world.settlements) {
+          if (s2.mode !== "settled" || dominantCulture(s2) !== dCul) continue;
+          if (!core || (s2.people || 0) > (core.people || 0)) core = s2;
+        }
+        if (core) {
+          let dx = Math.abs(tx + 0.5 - core.pos.x); if (dx > tw / 2) dx = tw - dx;
+          const dy = ty + 0.5 - core.pos.y;
+          overReach = Math.hypot(dx, dy) / Math.max(1e-9, cohesionRadius(world, donor));
+        }
+      }
+      const isBranch = connected && (td > 70 || (td > 38 && climDelta > 0.34) || overReach > 1);
       // Found settlements only INSIDE a nation or as a CONNECTED EXTENSION of a
       // nearby settled community — never in the deep wilderness. A candidate is
       // allowed if the tile already lies in a realm's drawn border (region ≥ 0), OR
@@ -2589,8 +2949,11 @@ export function maybeCrystallize(world) {
         born.name = nameFor(world, cul, "settlement");
       } else if (isBranch) {
         // proximity → derivation: a near offshoot speaks a dialect of its
-        // stock; a far one is generations removed (and earns its own gods)
-        const divergence = Math.max(0.15, Math.min(1, (td - 38) / 90 + climDelta * 0.5));
+        // stock; a far one is generations removed (and earns its own gods).
+        // T.FOUND_DRIFT: reaches-beyond-cohesion count the same way — a birth
+        // two reaches out is a real daughter, three a distant cousin (+0 at 0).
+        const divergence = Math.max(0.15, Math.min(1, (td - 38) / 90 + climDelta * 0.5),
+                                    Math.min(1, (overReach - 1) * 0.5));
         const cul = foundCulture(world, { origin: born, parentCultureId: dCul, divergence });
         seedCulture(world, born, cul.id);
         born.name = nameFor(world, cul, "settlement");

@@ -1,3 +1,4 @@
+/* global __BUILD_SHA__ */   // vite `define`: the commit sha baked into this bundle (stale-tab detector)
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
 import { isRealClimateAvailable, fillRealClimate } from "./realClimateData.js";
@@ -17,7 +18,7 @@ import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { makeTimeline, captureFrame, frameAt, frameCount, CAPTURE_IVL } from "./sim/timelineStore.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
-import { serializeWorld, loadWorld } from "./sim/persist.js";
+import { serializeWorld, loadWorld, SAVE_VERSION } from "./sim/persist.js";
 import { applyTuning, resetTuning, tuningDefaults, T as SIM_T } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD, TIER_CORE, TIER_NAME_CORE } from "./sim/peopleSim/settlement.js";
@@ -140,16 +141,24 @@ return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 // hue WHEEL: each country is pushed away from its neighbours' hues (repulsion that's
 // stronger the closer two neighbours are). Previous hues seed the next solve, so the
 // colours spread out and then drift smoothly rather than flickering each refresh.
-function assignCountryColors(claimArr,tw,th,prev){
+function assignCountryColors(claimArr,tw,th,prev,rootOf){
+  // Hue units are suzerainty BLOCS, not legal atoms: every member of an
+  // empire (vassal or colony) resolves to its root before adjacency, so the
+  // relaxation separates empires from NEIGHBOURING empires instead of pushing
+  // a vassal's hue away from its own suzerain's (the old behaviour — the
+  // exact inverse of how an atlas paints an empire). rootOf defaults to
+  // identity so standalone callers keep the legacy per-realm solve.
+  const R=rootOf||(c=>c);
   const adj=new Map(),present=[],seen=new Set();
   const link=(a,b)=>{let s=adj.get(a);if(!s)adj.set(a,s=new Set());s.add(b);let t=adj.get(b);if(!t)adj.set(b,t=new Set());t.add(a);};
   for(let ti=0;ti<claimArr.length;ti++){
-    const cc=claimArr[ti];if(cc<0)continue;
+    const c0=claimArr[ti];if(c0<0)continue;
+    const cc=R(c0);
     if(!seen.has(cc)){seen.add(cc);present.push(cc);}
     const py=(ti/tw)|0,px=ti-py*tw;
-    const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
-    if(ro>=0&&ro!==cc)link(cc,ro);
-    if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc)link(cc,dno);}
+    const ro0=claimArr[py*tw+(px===tw-1?0:px+1)];
+    if(ro0>=0){const ro=R(ro0);if(ro!==cc)link(cc,ro);}
+    if(py<th-1){const dno0=claimArr[ti+tw];if(dno0>=0){const dno=R(dno0);if(dno!==cc)link(cc,dno);}}
   }
   const hue=new Map();
   let seeded=0;
@@ -326,6 +335,42 @@ const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// 
 // Before this, a worker error was console-only — a thrown step left the game silently frozen at its
 // last frame forever ("the game shuts down at step N"), with the world still alive and saveable.
 const[simError,setSimError]=useState(null);
+// Quiet-ages auto-throttle (worker: autoEpoch): before the first nation the
+// sim fast-forwards at the frame budget's max; the chip shows it and clicking
+// it hands the dial back to the user.
+const[autoEpoch,setAutoEpoch]=useState(true);
+const[fastEpoch,setFastEpoch]=useState(false);
+const[quietAges,setQuietAges]=useState(false);
+// The stale-tab detector (owner report 2026-08-19: "a certain type of change
+// doesn't reflect in the sim I run"): a long-lived tab keeps running the
+// bundle it loaded with — deploys only arrive on a RELOAD, and reloading
+// loses an unsaved world, so marathon tabs run days-old code without any
+// visible sign. The deploy workflow writes version.json beside the bundle;
+// this polls it and raises a header chip when the deployed sha differs from
+// the one baked into this tab (__BUILD_SHA__, vite define). Local dev has
+// neither — silent.
+const[staleBuild,setStaleBuild]=useState(false);
+// Boot diagnostic (one console line): the build this tab runs + the live
+// physics defaults. When "the update didn't take", F12 → this line IS the
+// ground truth — paste it, compare shas/values, done. Printed once per boot.
+useEffect(()=>{
+  const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
+  console.log(`[simman] build ${sha} · physics v${SAVE_VERSION} · iso=${typeof crossOriginIsolated!=="undefined"?crossOriginIsolated:"n/a"} · defaults DAWN_LIVE=${SIM_T.DAWN_LIVE} STATE_RECORDS=${SIM_T.STATE_RECORDS} LAND_KNOW=${SIM_T.LAND_KNOW} BAND_SUM=${SIM_T.BAND_SUM} IRR_BAND=${SIM_T.IRR_BAND} FIELD_CRADLE=${SIM_T.FIELD_CRADLE} MARCH_FUNDED=${SIM_T.MARCH_FUNDED}`);
+},[]);
+useEffect(()=>{
+  const sha=typeof __BUILD_SHA__!=="undefined"?__BUILD_SHA__:"dev";
+  if(sha==="dev")return;
+  let stop=false;
+  const check=()=>fetch(import.meta.env.BASE_URL+"version.json",{cache:"no-store"})
+    .then(r=>r.ok?r.json():null)
+    .then(v=>{if(!stop&&v&&v.sha&&v.sha!==sha)setStaleBuild(true);})
+    .catch(()=>{});
+  const t0=setTimeout(check,30e3);
+  const iv=setInterval(check,5*60e3);
+  const onVis=()=>{if(document.visibilityState==="visible")check();};
+  document.addEventListener("visibilitychange",onVis);
+  return()=>{stop=true;clearTimeout(t0);clearInterval(iv);document.removeEventListener("visibilitychange",onVis);};
+},[]);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("earth_sim");
 // Prices lens: which good's local price paints the map (index into GOODS).
 const[priceGood,setPriceGood]=useState(3);const priceGoodRef=useRef(3);
@@ -406,7 +451,8 @@ useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedS
 // declaratively; mirrored to a ref so draw() (memoized) reads current
 // values without needing them in its deps.
 const[layers,setLayers]=useState({
-  icons:true, tints:true, borders:true, provinces:false, roads:true, seaLanes:true,
+  icons:true, tints:true, borders:true, provinces:true, roads:true, seaLanes:true,
+  warFronts:true, sieges:true,   // war overlay: aggressor→defender arrows + siege/sack marks
   moneyFlow:true, ships:true, shocks:true,
   village:true, town:true, city:true, metropolis:true,
   labels:true, emblems:true,   // names + heraldry drawn on the map (plan §5.1–5.2)
@@ -657,13 +703,57 @@ try{
       // The scrubbed frame rides a RENDER-ONLY override (_scrubClaim) — never
       // the authoritative layer (in fallback mode that array IS the sim's).
       const psw=peopleRef.current;
-      if(psw&&scrubRef.current){psw._scrubClaim=d.frame;psw._claimVer=(psw._claimVer||0)+1;setScrubShown(d.step);if(drawNowRef.current)drawNowRef.current();}
+      if(psw&&scrubRef.current){
+        const old=psw._scrubClaim;   // displaced per drag-notch — send its buffer home (buffer-return pool)
+        psw._scrubClaim=d.frame;psw._claimVer=(psw._claimVer||0)+1;setScrubShown(d.step);if(drawNowRef.current)drawNowRef.current();
+        if(old&&old.buffer&&old.buffer.byteLength){try{sw.postMessage({type:'bufret',bufs:[old.buffer]},[old.buffer]);}catch(e2){/* fall back to GC */}}
+      }
     }
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='historyData'){
       const blob=new Blob([d.json],{type:"application/json"});
       const a=document.createElement("a");a.href=URL.createObjectURL(blob);
       a.download=`simman-history-t${d.step??""}.json`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
+    else if(d.type==='runLog'){
+      // The run journal (worker journalTick): the observation file to hand to
+      // Claude — drop into docs/runs/ or paste; reads 1:1 vs the ladder tables.
+      const blob=new Blob([d.text],{type:"text/plain"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=`simman-run-t${d.step??""}.txt`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
+    else if(d.type==='runReportData'){
+      // The full observation artifact: one self-contained HTML — provenance,
+      // a political-map image per ~1000 steps (temporally-stable hues via the
+      // scrubber's own relaxation; identity roots for historical frames), and
+      // the journal with its telemetry-funnel windows.
+      const {tw,th,land,frames}=d;
+      let hues=new Map();
+      const cnv=document.createElement("canvas");cnv.width=tw;cnv.height=th;
+      const cx2=cnv.getContext("2d");
+      const out=document.createElement("canvas");out.width=tw*2;out.height=th*2;
+      const ox=out.getContext("2d");ox.imageSmoothingEnabled=false;
+      const h2rgb=(h)=>{const f=(n)=>{const k=(n+h/30)%12;return Math.round(255*(0.5-0.42*Math.max(-1,Math.min(1,Math.min(k-3,9-k)))));};return [f(0),f(8),f(4)];};
+      const imgs=frames.map(fr=>{
+        hues=assignCountryColors(fr.claim,tw,th,hues,null);
+        const img=cx2.createImageData(tw,th);const p=img.data;
+        for(let i=0;i<fr.claim.length;i++){
+          const o=i*4;const id=fr.claim[i];
+          if(!land[i]){p[o]=12;p[o+1]=16;p[o+2]=24;}
+          else if(id<0){p[o]=42;p[o+1]=45;p[o+2]=51;}
+          else{const hu=hues.get(id);const rgb=h2rgb(hu!=null?hu:((id*2654435761)>>>0)%360);p[o]=rgb[0];p[o+1]=rgb[1];p[o+2]=rgb[2];}
+          p[o+3]=255;
+        }
+        cx2.putImageData(img,0,0);ox.drawImage(cnv,0,0,out.width,out.height);
+        return `<figure style="margin:12px 0"><img src="${out.toDataURL("image/png")}" style="width:100%;image-rendering:pixelated"/><figcaption style="font:11px monospace;color:#888">step ${fr.step}</figcaption></figure>`;
+      }).join("");
+      const esc=(s)=>s.replace(/</g,"&lt;");
+      const html=`<!doctype html><meta charset="utf-8"><title>Simman run t${d.step}</title><body style="background:#14110d;color:#d8cdb8;max-width:1100px;margin:20px auto;font:13px/1.5 monospace"><pre>${esc(d.head)}</pre><h3>Political map every ~1000 steps</h3>${imgs}<h3>Journal (metrics every 250 steps · funnel windows every 1000)</h3><pre style="white-space:pre-wrap">${esc(d.journal)}</pre></body>`;
+      const blob=new Blob([html],{type:"text/html"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=`simman-report-t${d.step}.html`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     }
     else if(d.type==='error'){console.error('[SimWorker]',d.where||'',d.message,d.stack);
@@ -697,6 +787,12 @@ try{
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
+  // Console instrument (owner 2026-08-20): window.nations() prints the realm
+  // census (km², centre, neighbours, cities, population, wealth, army, org,
+  // era) from the sim worker into this console; it also auto-logs whenever
+  // the realm register changes, and on a slow heartbeat.
+  window.nations=()=>{const w2=simWorkerRef.current;if(!w2)return "sim worker not running (main-thread fallback has no census)";w2.postMessage({type:"nations"});return "realm census → console (from the sim worker)";};
+  console.log("[simman] window.nations() → realm census table (auto-logs when the register changes)");
   // Band-worker URL for the popField pool (absolute — the worker's blob
   // context cannot resolve page-relative paths).
   try{sw.postMessage({type:'bandWorkerUrl',url:new URL(popFieldBandWorkerUrl,location.href).href});}catch{/* pool falls back to single-thread */}
@@ -1696,8 +1792,14 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
-    if(ancAnimating||meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
-      meta.layerKey=layerKey;
+    // Scrub invalidation: while the timeline is scrubbed the sim is paused, so
+    // stepNow never advances and the lazy cache would keep blitting the LIVE
+    // map under a moving year readout. Each arriving scrub frame bumps
+    // _claimVer; fold it into the gate (live keeps the cheap 30-step cache —
+    // scrubVer pins to -1 there, so live snapshots never thrash the overlay).
+    const scrubVer=scrubRef.current?(psw._claimVer||0):-1;
+    if(ancAnimating||meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey||meta.scrubVer!==scrubVer){
+      meta.layerKey=layerKey;meta.scrubVer=scrubVer;
       const octx=ov.getContext('2d');
       // Draw in MAP-canvas (CW×CH) coordinate units but rasterise onto the fixed FEAT_W×FEAT_H
       // overlay: a single uniform _k scale means every coordinate / width / dash below is reused
@@ -2077,9 +2179,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();octx.restore();
       };
+      // Suzerainty root: follow _overlord chains (vassal AND colony) with a
+      // hop guard. An empire paints as ONE colour family — the atlas
+      // convention (satrapies paint as Persia) — while internal boundaries
+      // stay visible as province lines. Shared by the Politics lens AND the
+      // terrain-view political wash so blocs paint and border identically.
+      const rootCache=new Map();
+      const rootOf=(id)=>{let r=rootCache.get(id);if(r!==undefined)return r;
+        let cur=id,hops=0;
+        while(hops++<12){const o=psw.countries&&psw.countries.get(cur);const ov=o&&o._overlord>=0&&o._overlord!==cur?o._overlord:-1;if(ov<0)break;cur=ov;}
+        rootCache.set(id,cur);return cur;};
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
-        const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
+        const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current,rootOf);
         countryColorsRef.current=hues;
         const fillByCountry=new Map(),colonyByCC=new Map();
         const colonyCells=[];   // sx,sy pairs of colony tiles → striped overlay below
@@ -2091,15 +2203,24 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           let fs=fillByCountry.get(cc);
           if(fs===undefined){
-            // A COLONY is drawn in its metropole's exact colour (striped below to mark it),
-            // so it clearly reads as that empire's dependency, not an unrelated new state.
-            // A submitted VASSAL keeps its own colour — it is a sovereign court paying
-            // tribute, not a plantation (its suzerain shows in the realm inspector).
+            // A COLONY is drawn in its metropole's exact colour + stripes (a
+            // plantation of the empire). A submitted VASSAL wears the empire's
+            // hue at a lighter shade — inside the colour family, visibly not
+            // the metropole; its own border still separates it. A nation of
+            // the land (no court in psw.countries — tribal fabric) is a PALE
+            // wash: atlases colour states, peoples stay quiet. City-states
+            // WITH a court keep full vibrancy.
             const cobj=psw.countries&&psw.countries.get(cc);
-            const over=cobj&&cobj._overlord>=0&&cobj._depKind!=="vassal"?cobj._overlord:-1;
-            colonyByCC.set(cc,over>=0);
-            const h=(over>=0?(hues.get(over)??((over*61)%360+360)%360):(hues.get(cc)??((cc*61)%360+360)%360))|0;
-            fs=`hsl(${h},60%,50%)`;   // every realm drawn vibrant — no city-state muting
+            const root=rootOf(cc);
+            const isColony=!!(cobj&&cobj._overlord>=0&&cobj._depKind!=="vassal");
+            const isVassal=!!(cobj&&cobj._overlord>=0&&cobj._depKind==="vassal");
+            // Mute only ids the snapshot POSITIVELY knows as land nations — a
+            // scrubbed frame carries ids of realms since dead, which have no
+            // registry entry and must not read as tribal fabric.
+            const isLandNation=!cobj&&psw._landNames&&psw._landNames.has(cc);
+            colonyByCC.set(cc,isColony);
+            const h=(hues.get(root)??((root*61)%360+360)%360)|0;
+            fs=isLandNation?`hsl(${h},24%,56%)`:isVassal?`hsl(${h},52%,60%)`:`hsl(${h},60%,50%)`;
             fillByCountry.set(cc,fs);
           }
           if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
@@ -2108,22 +2229,33 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         // Black diagonal stripes over colonies (same colour as the metropole underneath).
         stripeCells(octx,colonyCells,TR,0.62);
-        // thick dark borders between neighbouring countries
-        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
+        // Borders, atlas-style (owner 2026-08-20: "display a nation and their
+        // tributary as 1 thing — the tributary a STATE/province"): an edge
+        // between two members of the SAME suzerainty bloc is an internal
+        // province line — thin, translucent — while a true national border
+        // (different bloc roots) keeps the thick dark stroke. The register
+        // keeps every polity; the atlas look is a paint convention.
+        const natPath=new Path2D(),provPath=new Path2D();
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
           const py=(ti/tw)|0,px=ti-py*tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
-          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;const p=rootOf(ro)===rootOf(cc)?provPath:natPath;p.moveTo(ex,sy);p.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);const p=rootOf(dno)===rootOf(cc)?provPath:natPath;p.moveTo(sx,by);p.lineTo(sx+TR,by);}}
         }
-        octx.stroke();
+        octx.lineJoin="round";octx.lineCap="round";
+        if(L.provinces){octx.strokeStyle="rgba(20,20,26,0.45)";octx.lineWidth=0.8*uiF;octx.stroke(provPath);}
+        if(L.borders){octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=2.2*uiF;octx.stroke(natPath);}
         emphasizeRealm(claimArr,tw,th);
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders||L.provinces)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
-        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.beginPath();}
+        // Two pens, bloc-aware (same convention as the Politics lens): a seam
+        // between two members of the SAME suzerainty bloc is a faint province
+        // line (Layers → Province borders); a true national border keeps the
+        // heavier dash (Layers → Borders).
+        const natB=(L.borders||L.provinces)?new Path2D():null,provB=natB&&new Path2D();
         let lastFs=null;
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
@@ -2131,18 +2263,30 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           if(L.tints){
             let fs=tintByCountry.get(cc);
-            if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const over=co&&co._overlord>=0&&co._depKind!=="vassal"?co._overlord:-1;colonyByCC.set(cc,over>=0);const h=(((over>=0?over:cc)*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
+            if(fs===undefined){
+              // Same bloc convention as the Politics lens: tint by suzerainty
+              // ROOT hue (vassals included), stripes still mark colonies.
+              const co=psw.countries&&psw.countries.get(cc);
+              const isColony=!!(co&&co._overlord>=0&&co._depKind!=="vassal");
+              const root=rootOf(cc);
+              colonyByCC.set(cc,isColony);
+              const h=((root*61)%360+360)%360;
+              fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
             if(fs!==lastFs){stctx.fillStyle=fs;lastFs=fs;}
             stctx.fillRect(px,py,1,1);
             if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
           }
-          if(!L.borders)continue;
+          if(!natB)continue;
           const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
-          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;const p=rootOf(ro)===rootOf(cc)?provB:natB;p.moveTo(ex,sy);p.lineTo(ex,sy+TR);}
           if(py<th-1){const dno=claimArr[ti+tw];
-            if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+            if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);const p=rootOf(dno)===rootOf(cc)?provB:natB;p.moveTo(sx,by);p.lineTo(sx+TR,by);}}
         }
-        if(L.borders){octx.stroke();octx.setLineDash([]);}
+        if(natB){
+          if(L.provinces){octx.strokeStyle="rgba(25,25,30,0.55)";octx.lineWidth=0.7*uiF;octx.setLineDash([uiF,1.6*uiF]);octx.stroke(provB);}
+          if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=uiF;octx.setLineDash([2*uiF,2*uiF]);octx.stroke(natB);}
+          octx.setLineDash([]);
+        }
         if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
         emphasizeRealm(claimArr,tw,th);
       } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique&&(L.tints||L.borders)&&owner){
@@ -2231,6 +2375,38 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.strokeStyle="rgba(20,20,20,0.45)";octx.lineWidth=uiF;octx.setLineDash([uiF,2*uiF]);octx.beginPath();drawSeams(false);octx.stroke();
         octx.strokeStyle="rgba(15,15,15,0.75)";octx.lineWidth=uiF;octx.setLineDash([3*uiF,2*uiF]);octx.beginPath();drawSeams(true);octx.stroke();
         octx.setLineDash([]);
+      }
+      // ── War fronts (Layers → War fronts): arrows across the border from the
+      // AGGRESSOR into the ATTACKED — one glance says who is invading whom.
+      // Sampled worker-side along each warring pair's drawn border (so they
+      // sit exactly on the lines above); direction = the war pass's own
+      // offensive commitments, so a mutual war shows arrows both ways.
+      // Live-state only: suppressed while scrubbing the timeline (arrows
+      // describe TODAY's wars, not the year under the scrubber).
+      if(L.warFronts&&psw._warArrows&&psw._warArrows.length&&!psw._scrubClaim&&
+         (vmCountry||(!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&!vmPrices&&!vmLoyalty&&!vmPopulation&&!vmTechnique))){
+        const wa=psw._warArrows,tw=psw.tw;
+        octx.lineJoin="round";octx.lineCap="round";
+        for(let i=0;i<wa.length;i+=4){
+          const ax=wa[i]*TR,ay=dataYtoScreenY(wa[i+1]*TR,H,CH);
+          const bx=wa[i+2]*TR,by=dataYtoScreenY(wa[i+3]*TR,H,CH);
+          if(Math.abs(bx-ax)>(tw/2)*TR)continue;   // wrap-seam pair — skip the cross-map streak
+          const mx=(ax+bx)/2,my2=(ay+by)/2;
+          const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy)||1;
+          const ux=dx/len,uy=dy/len;
+          const tail=1.15*TR,hw=0.55*TR;
+          const x0=mx-ux*tail,y0=my2-uy*tail,x1=mx+ux*tail,y1=my2+uy*tail;
+          // dark under-stroke, then the red blade — reads on any terrain
+          octx.strokeStyle="rgba(30,8,6,0.85)";octx.lineWidth=2.1*uiF;
+          octx.beginPath();octx.moveTo(x0,y0);octx.lineTo(x1,y1);octx.stroke();
+          octx.strokeStyle="rgba(212,44,32,0.95)";octx.lineWidth=1.1*uiF;
+          octx.beginPath();octx.moveTo(x0,y0);octx.lineTo(x1,y1);octx.stroke();
+          octx.fillStyle="rgba(212,44,32,0.95)";
+          octx.beginPath();octx.moveTo(x1+ux*hw*0.9,y1+uy*hw*0.9);
+          octx.lineTo(x1-ux*hw*1.4-uy*hw,y1-uy*hw*1.4+ux*hw);
+          octx.lineTo(x1-ux*hw*1.4+uy*hw,y1-uy*hw*1.4-ux*hw);
+          octx.closePath();octx.fill();
+        }
       }
       // Roads — thickness + alpha from current flow, weight from SURFACE
       // quality: an engineered road (quality ≤ QUALITY_NEW 0.25) draws as a
@@ -2438,6 +2614,27 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         ctx.strokeStyle=shock===2?"rgba(190,80,210,0.9)":"rgba(245,170,40,0.9)";
         ctx.lineWidth=1.3*iconScale;ctx.stroke();
       }
+      // ── War marks (Layers → Sieges & sacks) ──
+      // UNDER SIEGE: a red X struck across the glyph — an enemy camp stands at
+      // these walls right now (the granary is draining; the storm may come).
+      if(_L.sieges&&s._besieged){
+        const xr=r+1.3*iconScale;
+        ctx.lineCap="round";
+        ctx.strokeStyle="rgba(25,6,4,0.9)";ctx.lineWidth=2.0*iconScale;
+        ctx.beginPath();ctx.moveTo(sx-xr,sy-xr);ctx.lineTo(sx+xr,sy+xr);
+        ctx.moveTo(sx+xr,sy-xr);ctx.lineTo(sx-xr,sy+xr);ctx.stroke();
+        ctx.strokeStyle="rgba(224,42,30,0.95)";ctx.lineWidth=1.0*iconScale;
+        ctx.beginPath();ctx.moveTo(sx-xr,sy-xr);ctx.lineTo(sx+xr,sy+xr);
+        ctx.moveTo(sx+xr,sy-xr);ctx.lineTo(sx-xr,sy+xr);ctx.stroke();
+        ctx.lineCap="butt";
+      }
+      // SACKED: an expanding, fading ember ring — the city just fell to storm.
+      if(_L.sieges&&s._sackedAge!=null){
+        const t=Math.min(1,s._sackedAge/500);
+        ctx.beginPath();ctx.arc(sx,sy,r+(2.5+8*t)*iconScale,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(232,96,24,${(0.8*(1-t)).toFixed(3)})`;
+        ctx.lineWidth=1.5*iconScale*(1-0.5*t);ctx.stroke();
+      }
       // Adjust below rank-marker offset for the new (smaller) icon.
       const _markerR=r;
       // ── Rank marker ── a gold star above national capitals, a small open
@@ -2552,21 +2749,32 @@ const applySnapshot=useCallback((snap)=>{
    if(!playRef.current||_now-(uiPulseRef.current||0)>=250){uiPulseRef.current=_now;_pulsed=true;setLiveStep(snap.step);}}
   if(snap.eraAt)psw._eraAt=snap.eraAt;   // display-calendar timeline
   psw.globalP=snap.globalP;
-  if(snap.owner)psw._territoryOwner=snap.owner;
-  if(snap.roadQuality)psw.roadQuality=snap.roadQuality;
-  if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
-  if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
+  // Buffer-return pool (the 26.6k allocation wall — see the worker's pool note):
+  // each slot swap below strands the DISPLACED array; nothing on this thread
+  // holds it past the swap (draw() reads live refs; its caches key on versions
+  // and hold canvases, never these arrays), so hand its buffer back to the
+  // worker for the next snapshot instead of leaving multi-MB garbage 30×/sec.
+  const _ret=[];
+  const _drop=(old)=>{if(old&&old.buffer&&old.buffer.byteLength)_ret.push(old.buffer);};
+  if(snap.owner){_drop(psw._territoryOwner);psw._territoryOwner=snap.owner;}
+  if(snap.roadQuality){_drop(psw.roadQuality);psw.roadQuality=snap.roadQuality;}
+  if(snap.roadFlow){_drop(psw.roadFlow);psw.roadFlow=snap.roadFlow;}
+  if(snap.tileComp){_drop(psw._tileComp);psw._tileComp=snap.tileComp;}   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
-  if(snap.countryClaim){psw._countryClaim=snap.countryClaim;if(!scrubRef.current)psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver bumps only live so the scrubbed layer's caches hold)
+  if(snap.countryClaim){_drop(psw._countryClaim);psw._countryClaim=snap.countryClaim;if(!scrubRef.current)psw._claimVer=(psw._claimVer||0)+1;}  // national claim per tile; keep last (ver bumps only live so the scrubbed layer's caches hold)
   if(snap.timelineN!==undefined)psw._timelineN=snap.timelineN;
+  if(snap.fastEpoch!==undefined)setFastEpoch(!!snap.fastEpoch);
+  if(snap.quietAges!==undefined)setQuietAges(!!snap.quietAges);
   if(snap.landNations)psw._landNames=new Map(snap.landNations.map(r=>[r.id,r]));  // nations of the land: id → {ti,name} (static cadence; [] clears when the last one materialises)
+  if(snap.wars)psw._wars=snap.wars;                 // active war pairs [att,def,...] (static cadence; [] clears at peace)
+  if(snap.warArrows)psw._warArrows=snap.warArrows;  // aggressor→defender border arrows (small — GC'd, not pooled)
   // Per-tile identity field for the active people/faith/language lens. Sent only
   // on the static cadence and only while an identity lens is up; keyed by the
   // layer it was built for, so a stale field from a previous lens is ignored.
-  if(snap.fieldDom){psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
-  if(snap.loyal){psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
-  if(snap.popDens){psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
-  if(snap.devDens){psw._devDens=snap.devDens;}                                 // technique lens: the idea field (keep last)
+  if(snap.fieldDom){_drop(psw._fieldDom);_drop(psw._fieldSec);psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
+  if(snap.loyal){_drop(psw._loyal);_drop(psw._loyalHome);psw._loyal=snap.loyal;psw._loyalHome=snap.loyalHome||null;}   // loyalty lens: attachment heat + remembered nation (keep last)
+  if(snap.popDens){_drop(psw._popDens);psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
+  if(snap.devDens){_drop(psw._devDens);psw._devDens=snap.devDens;}                                 // technique lens: the idea field (keep last)
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
@@ -2604,13 +2812,16 @@ const applySnapshot=useCallback((snap)=>{
       if(H.length>5000)H.splice(0,H.length-5000);
     }
   }
+  // Hand the displaced buffers home (transfer detaches them here — they are
+  // already unreachable above). A failed post just leaves them to the GC.
+  if(_ret.length&&simWorkerRef.current){try{simWorkerRef.current.postMessage({type:'bufret',bufs:_ret},_ret);}catch(e){/* fall back to GC */}}
   if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
 },[draw]);
 useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
 useEffect(()=>{drawNowRef.current=()=>{if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message);}}};},[draw]);
 
 // Forward play/pause + speed to the sim worker.
-useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed,autoEpoch});},[playing,speed,autoEpoch]);
 // Forward selection so the worker includes that settlement's full detail.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
 // Close the per-realm overlays when the selection changes, so they don't
@@ -3089,6 +3300,22 @@ const _era=ERAS[psStats.leadingEra||0]||ERAS[0];
 const _arcComplete=(psStats.leadingEra||0)>=ERAS.length-1;
 const _psw=peopleRef.current;
 const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
+// The atlas headline (owner 2026-08-20): NATIONS = sovereign suzerainty blocs
+// (overlord chains followed to their root — same convention the political
+// paint uses), while the register's full size rides beside it as "states".
+// 1500-CE Earth held ~1,000+ polities but atlases draw ~hundreds of blocs.
+const _nationCount=(()=>{const cs=_psw&&_psw.countries;if(!cs)return 0;
+  const roots=new Set();
+  for(const id of cs.keys()){let cur=id,hops=0;
+    while(hops++<12){const o=cs.get(cur);const ov=o&&o._overlord>=0&&o._overlord!==cur?o._overlord:-1;if(ov<0)break;cur=ov;}
+    roots.add(cur);}
+  return roots.size;})();
+// Active wars, as UNORDERED pairs (the snapshot's list is directional, so a
+// mutual war arrives twice — count the rivalry once).
+const _warCount=(()=>{const w=_psw&&_psw._wars;if(!w||!w.length)return 0;
+  const seen=new Set();
+  for(let i=0;i<w.length;i+=2){const a=w[i],b=w[i+1];seen.add(a<b?a+":"+b:b+":"+a);}
+  return seen.size;})();
 
 
 // ── World Panel panes (relocated leaderboard / charts / settlement card) ──
@@ -3435,7 +3662,7 @@ const renderInspect=()=>{
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
-      {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} z={_zOf("techtree")} onClose={()=>setTechTreeOpen(false)}/>}
+      {techTreeOpen&&<TechTreeOverlay k={k} env={s._techEnv||null} title={s.name} z={_zOf("techtree")} onClose={()=>setTechTreeOpen(false)}/>}
 
       {/* ── Header ── (the chronicle opener lives here so it's always visible
           without scrolling the card — a long card can push a bottom section
@@ -4210,9 +4437,28 @@ return(
   </div>
   <span className="au-vrule" style={{height:22}}/>
   {/* era ribbon — the one place time appears; a read-only label, never an input */}
-  <span className="au-era" style={{fontSize:narrow?13:15,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{_era}</span>
+  <span className="au-era" title="The ERA — derived from the most advanced court's actual knowledge. This is the honest anchor for comparing the map against real history." style={{fontSize:narrow?13:15,color:"var(--au-ch-gold)",whiteSpace:"nowrap"}}>{_era}</span>
   {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"var(--au-ch-gold)",fontWeight:700,letterSpacing:0.3}}>✦</span>}
-  <span className="au-year au-num" style={{fontSize:narrow?12:13.5,whiteSpace:"nowrap"}}>{_ys}</span>
+  <span className="au-year au-num" title="The display calendar — a uniform clock, cosmetic only. The world develops at its own pace, so this year drifts from real-history development; trust the era, not the year." style={{fontSize:narrow?12:13.5,whiteSpace:"nowrap"}}>{_ys}</span>
+  {/* Belt share — the atlas-gap wave's core ratio, live: the leading contact-
+      connected belt of states vs all claimed land. History's Old World belt
+      held 75-80% of state land until ~1800 (docs/atlas-gap-2026-08-14.md). */}
+  {psStats.beltShare>0&&!narrow&&<span className="au-num au-fade" title={`The leading BELT of states (within ~1000 km contact of one another) holds ${Math.round(psStats.beltShare*100)}% of all claimed land, across ${psStats.beltCount} belt${psStats.beltCount===1?"":"s"} worldwide. History: the Old World belt held 75-80% of state land until ~1800.`}
+    style={{fontSize:11,whiteSpace:"nowrap"}}>⚑{Math.round(psStats.beltShare*100)}%</span>}
+  {/* Quiet-ages chip: the sim is fast-forwarding the pre-nation ages. */}
+  {quietAges&&playing&&<span className="au-num" onClick={()=>setAutoEpoch(a=>!a)}
+    title={fastEpoch?"The ages before nations fly by — the sim runs at the frame budget's maximum until the first realm rises (then your speed dial takes over). Click to turn auto-speed off.":"Auto-speed for the pre-nation ages is OFF — the sim follows your speed dial. Click to re-enable fast-forward."}
+    style={{fontSize:11,color:fastEpoch?"var(--au-ch-gold)":"inherit",opacity:fastEpoch?1:0.55,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⏩ prehistory</span>}
+  {/* Stale-tab chip: this tab runs an older bundle than the one deployed. */}
+  {staleBuild&&<span className="au-num" onClick={()=>{if(window.confirm("A newer build is deployed. Reload now?\n\nSAVE YOUR WORLD FIRST — reloading discards an unsaved world."))window.location.reload();}}
+    title="A newer build of the app is deployed than the one this tab is running. Click to reload — SAVE YOUR WORLD FIRST (reloading discards an unsaved world). A long-lived tab keeps the code it loaded with; updates only arrive on reload."
+    style={{fontSize:11,color:"var(--au-ch-gold)",cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>⟳ update</span>}
+  {/* World-physics chip: a LOADED world keeps the physics regime it was born
+      under (the save guards pin its tuning) — otherwise new defaults look
+      like updates that "didn't take". */}
+  {psStats.saveV!=null&&psStats.saveV<SAVE_VERSION&&<span className="au-num au-fade"
+    title={`This world was loaded from a save born under physics v${psStats.saveV}; the app ships v${SAVE_VERSION}. Loaded worlds KEEP the physics they were born under (swapping physics mid-run would corrupt the run) — generate a NEW world to play the current physics.`}
+    style={{fontSize:11,whiteSpace:"nowrap"}}>physics v{psStats.saveV}</span>}
   <span className="au-vrule" style={{height:22}}/>
   {/* TIMELINE — scrub the political map through the run's keyframes (worker
       captures one every 500 steps). Drag = ask the worker for the nearest
@@ -4237,6 +4483,12 @@ return(
         if(drawNowRef.current)drawNowRef.current();
         playRef.current=true;setPlaying(true);}}>LIVE ▶</button>
   </>}
+  {!narrow&&<button className="au-btn au-flat" title="Download the run journal (text) — metrics every 250 steps + telemetry-funnel windows + seed/levers provenance. Paste it to Claude to let it observe this run."
+    style={{padding:"2px 6px",fontSize:11}}
+    onClick={()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'exportRunLog'});}}>⤓ log</button>}
+  {!narrow&&<button className="au-btn au-flat" title="Download the full run report (HTML) — everything in the log PLUS a political-map image every ~1000 steps. One self-contained file for you and for Claude."
+    style={{padding:"2px 6px",fontSize:11}}
+    onClick={()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'exportRunReport'});}}>⤓ report</button>}
   {!narrow&&<select className="au-btn au-flat au-num" value={minKm2} title="Atlas bar — hide nations smaller than this (nations with settlements always show)"
     onChange={(ev)=>setMinKm2(+ev.target.value)} style={{padding:"2px 4px",fontSize:11}}>
     <option value={0}>all nations</option>
@@ -4248,7 +4500,7 @@ return(
   {!narrow&&<>
     <span className="au-cfade au-num" style={{fontSize:11}}>step {_step.toLocaleString()}</span>
     <span className="au-vrule" style={{height:22}}/>
-    <span className="au-num" style={{fontSize:13}}>{_countryCount} <span className="au-sc au-cfade" style={{fontSize:11}}>realms</span></span>
+    <span className="au-num" style={{fontSize:13}} title={`${_nationCount} sovereign nations (suzerainty blocs); the full register holds ${_countryCount} states incl. vassals & tributaries${_warCount?`; ${_warCount} wars being fought right now`:""}`}>{_nationCount} <span className="au-sc au-cfade" style={{fontSize:11}}>nations</span>{_countryCount>_nationCount&&<span className="au-cfade" style={{fontSize:11}}> · {_countryCount} states</span>}{_warCount>0&&<span style={{fontSize:11,color:"#c8442c"}}> · ⚔ {_warCount}</span>}</span>
     <span className="au-num" style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-cfade">%</span> <span className="au-sc au-cfade" style={{fontSize:11}}>claimed</span></span>
     {lens==="economy"&&(()=>{
       const psw=peopleRef.current;
@@ -4628,14 +4880,17 @@ return(
           style={{cursor:"pointer",fontSize:18,color:"var(--au-ch-text-dim)"}}>×</span>
       </div>
       <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"4px 14px 2px"}}>Politics & trade</div>
-      {row("tints","Country tints")}
-      {row("borders","Borders")}
+      {row("tints","Nation tints")}
+      {row("borders","National borders")}
+      {row("provinces","· Provinces & states",10)}
       {row("labels","Names on the map")}
       {row("emblems","Heraldry")}
-      {row("provinces","Province borders")}
       {row("roads","Roads")}
       {row("seaLanes","Sea lanes")}
       {row("moneyFlow","Money flow")}
+      <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>War</div>
+      {row("warFronts","Invasion arrows")}
+      {row("sieges","Sieges & sacks")}
       <div className="au-heading au-sc au-cfade" style={{fontSize:10,padding:"8px 14px 2px"}}>Terrain</div>
       {trow(showRivers,setShowRivers,showRiversRef,"Rivers")}
       {showRivers&&trow(showStreams,setShowStreams,showStreamsRef,"· Streams",10)}

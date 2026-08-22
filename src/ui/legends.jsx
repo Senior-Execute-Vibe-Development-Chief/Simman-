@@ -28,7 +28,9 @@ export const LEGENDS = {
     title: "The political map",
     rows: [
       [ramp(["hsl(8,60%,50%)", "hsl(110,60%,50%)", "hsl(220,60%,50%)"]), "each colour, one sovereign realm"],
+      [ramp(["hsl(220,60%,50%)", "hsl(220,52%,60%)"]), "lighter shade of a colour: a vassal court of that empire"],
       [<span key="p" style={{ width: 32, height: 11, flexShrink: 0, background: "hsl(200,60%,50%)", backgroundImage: "repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)" }} />, "striped: a colony of the empire whose colour it wears"],
+      [<span key="t" style={{ width: 32, height: 11, flexShrink: 0, background: "hsl(90,24%,56%)" }} />, "pale wash: a nation of the land — a people, not yet a state"],
       [<span key="s" style={{ color: "#c9a227", fontSize: 13, width: 16, textAlign: "center", flexShrink: 0 }}>★</span>, "capital seat"],
     ],
     tip: "Realm names and arms sit at each realm's heart. Click any territory to select the realm; click a town to inspect it.",

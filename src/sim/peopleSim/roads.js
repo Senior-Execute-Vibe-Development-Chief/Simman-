@@ -1459,6 +1459,15 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
     ? Math.max((a._techEff && a._techEff.seaSpeed) || 0, (b._techEff && b._techEff.seaSpeed) || 0) : 0;
   const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (world._dt || 1)   // granularity: finer trade per tick
     * (link.sea ? T.SEA_TRADE_MULT * (1 + SEA_TECH_VOL * shipTech) : link.river ? T.RIVER_TRADE_MULT : 1);
+  // T.SEA_PRACTICE bookkeeping: each endpoint's own ledger of how much of its
+  // carrying trade rides the SEA. The settlement pass folds it into the
+  // s._seaShare EMA next tick and zeroes it; the navigation law's FLEET term
+  // reads the share — seamanship is learned BY SAILING, not by owning a
+  // beach. Lever-gated so 0 books nothing (byte-identical).
+  if (T.SEA_PRACTICE > 0) {
+    a._tvAll = (a._tvAll || 0) + vol; b._tvAll = (b._tvAll || 0) + vol;
+    if (link.sea) { a._tvSea = (a._tvSea || 0) + vol; b._tvSea = (b._tvSea || 0) + vol; }
+  }
   // Freight is paid per REAL distance, not per tile: link.cost is a cumulative
   // per-tile path cost, so the same real route reads ×rNormPop on a finer grid —
   // uncorrected, fine-grid trade paid double freight (tw=480) and city wealth

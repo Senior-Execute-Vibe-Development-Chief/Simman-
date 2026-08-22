@@ -90,6 +90,28 @@ export const WORLD_SCRATCH = new Set([
   "_loyalScanAt", "_slaveScarcityStep", "_compRoadVer", "_compSettCount",
   "_planSnap", "_planIdx", "_craftMeanStep", "_craftAccN", "_tierScaleStep",
   "_sittingRulersStep", "_aliveCCStep", "_coreStamp", "_agriCeilKey",
+  // Persistent pass workspace from the stall-fix reuse-slot pattern (2026-08-19):
+  // MinHeaps whose contents are per-firing scratch, fully overwritten each use —
+  // the memory fix keeps the ALLOCATION alive, never the values.
+  "_terrHeap", "_fpHeap", "_fpHeap2",
+  "_lkContactStep",   // land-ledger contact-sweep cadence stamp (landKnow.js)
+  // The 26.6k allocation-wall fix (2026-08-20): the transport Dijkstra frontier
+  // joins the persistent-heap family, plus its high-water diagnostic counters
+  // (peak sizes/pushes — observability about the machine, not world history).
+  "_transHeap", "_transStat",
+  // PEER_SEATS (2026-08-20): the peer lane's candidate cache — positions and
+  // basin takes mid-gather, rebuilt from claims/popField; never serialized.
+  "_peerCand",
+  // WAR_FINISH siege-endurance (2026-08-21): the camp clock — per-pair
+  // continuous-siege start stamps, renewed each war pass, stale-pruned;
+  // rebuilt within one pass after load (the _warBornAt doctrine).
+  "_siegeOpen",
+  // ABSORB_ORG_ERA (2026-08-21): the era's absorption bar, cached per pass —
+  // a quantile of live capital orgs, recomputed each polity pass.
+  "_eraOrgBar", "_eraOrgBarStep",
+  // ENGULF (2026-08-21): the per-realm enclosure map - border-share by
+  // neighbour, cached per polity pass; read by submissions AND integration.
+  "_enclosure", "_enclosureStep",
 ]);
 
 /** An ENTITY REFERENCE, not a data bag. Recursing into a settlement's `_foodParent`
@@ -253,7 +275,13 @@ export function realmRows(world) {
       // trace that recorded only size: strain is the mechanism, area is the symptom,
       // and the two had to be joined by hand from a separate run.
       strain: p?._strain ?? -1, capacity: c._capacity ?? -1,
-      loadTotal: c._loadTotal ?? -1, momentum: c._momentum ?? 0 });
+      loadTotal: c._loadTotal ?? -1, momentum: c._momentum ?? 0,
+      // T.STATE_WORKS: the maintained infrastructure stock and the reach it
+      // buys. Recorded for the same reason strain was — "why did this realm
+      // reach so far, and why did it stop?" is a question about the STOCK,
+      // while area is only its symptom; a realm whose works are decaying is
+      // mid-collapse several passes before its borders show it.
+      works: p?._works ?? 0, range: c.range ?? -1 });
   }
   rows.sort((a, b) => b.tiles - a.tiles);
   return rows;
@@ -657,6 +685,26 @@ export function collect(world) {
   m["pop.fieldPerKm2Units"] = pf / Math.max(1, land.length * km2);
   m["pop.bridge"] = world._onePopScale || 0;
 
+  // ── the pre-urban land ledger (T.LAND_KNOW, landKnow.js) ───────────────────
+  // The countryside's own knowledge while no court exists — the ladder the
+  // first cities are born from (the tally bar gates both minting doors). All
+  // zero in the pinned mature regime, where the lever is off and no ledger is
+  // ever planted; instantaneous maxima, no cumulative-history claim.
+  {
+    const lk = world._landKnow;
+    m["landKnow.records"] = lk ? lk.size : 0;
+    let mo = 0, mm = 0, mc = 0;
+    if (lk) for (const r of lk.values()) {
+      if (r.k.organization > mo) mo = r.k.organization;
+      if (r.k.metallurgy > mm) mm = r.k.metallurgy;
+      if (r.k.construction > mc) mc = r.k.construction;
+    }
+    m["landKnow.maxOrg"] = mo;
+    m["landKnow.maxMetallurgy"] = mm;
+    m["landKnow.maxConstruction"] = mc;
+    m["landKnow.era"] = world._lkEra || 0;
+  }
+
   // every tile field — and every OTHER typed array too. The old test was
   // `v.length !== N → skip`, which silently dropped `_popLand[9616]`: a real
   // per-LAND-tile population field whose length is the land count, not N. A
@@ -738,6 +786,16 @@ export function collect(world) {
   if (world._landSeats && world._landSeats.size) {
     m["nation.landSeatsNow"] = world._landSeats.size;
     entityDists("landSeat", [...world._landSeats.values()], m);
+  }
+  // Dev-wave GROUND SOURCES (T.CITY_AT_BIRTH seedless dawns): each hearth
+  // invention stamps its basin's peopled tiles as technique-wave sources
+  // ({ti, agri}, persisted; crystallize.js → popField stampDevSources). Their
+  // downstream effect is the devField, but the sources themselves are durable
+  // state — measured, not pass-listed. "Now" naming (sources accumulate but
+  // agri levels move), so the monotone gate reads only the gauge.
+  if (world._hearthSeeds && world._hearthSeeds.length) {
+    m["hearth.devSourcesNow"] = world._hearthSeeds.length;
+    entityDists("hearthSeed", world._hearthSeeds, m);
   }
 
   // ── EVENT PAYLOAD MAGNITUDES ───────────────────────────────────────────────

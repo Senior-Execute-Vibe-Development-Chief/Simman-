@@ -87,9 +87,13 @@ const CAGE_HORIZON_REF = 10;       // = TOWN_BASIN_R: one market catchment, in r
 // (longitude), y clamps (poles). Returns Float32Array of window MEANS
 // (normalized by the FULL 2r+1 width and the CLAMPED row count — pole
 // windows are approximate; everything within rExit of a pole is ice/ocean).
-function boxMean(src, tw, th, r) {
-  const N = tw * th;
-  const rowS = new Float64Array(N);
+// rowS and out are caller-provided scratch (the ~24k stall fix, 2026-08-19: a
+// rebuild ran six box means, each allocating a fresh Float64+Float32 pair —
+// ~39MB of churn per rebuild at the shipped grid, prime "Array buffer
+// allocation failed" material near the tab ceiling). Both are FULLY
+// overwritten below (every rowS index in the row pass, every out index in the
+// column pass), so reuse cannot carry a stale value.
+function boxMean(src, tw, th, r, rowS, out) {
   for (let y = 0; y < th; y++) {
     const base = y * tw;
     let s = 0;
@@ -100,7 +104,6 @@ function boxMean(src, tw, th, r) {
       rowS[base + x] = s;
     }
   }
-  const out = new Float32Array(N);
   const w = 2 * r + 1;
   for (let x = 0; x < tw; x++) {
     let s = 0, n = 0;
@@ -141,16 +144,24 @@ export function ensureCageField(world) {
   // LAND indicator, FREE capacity (state-owned ground prices at 0), and the
   // home-weighting squares (raw cap: home is the strip's quality, owned or not).
   const co = world._countryOwner, lo = world._landOwner;
-  const landI = new Float32Array(N), fcap = new Float32Array(N), capSq = new Float32Array(N);
+  // Persistent rebuild arena (the ~24k stall fix): the three inputs rely on
+  // zero-init, so a reused slot is explicitly zeroed; rowS and the six box
+  // outputs are fully overwritten by boxMean.
+  let scr = world._cageScr;
+  if (!scr || scr.landI.length !== N) {
+    scr = world._cageScr = { rowS: new Float64Array(N), landI: new Float32Array(N), fcap: new Float32Array(N), capSq: new Float32Array(N),
+      o: [new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N)] };
+  } else { scr.landI.fill(0); scr.fcap.fill(0); scr.capSq.fill(0); }
+  const { rowS, landI, fcap, capSq } = scr;
   for (let i = 0; i < N; i++) {
     if (elev[i] <= 0) continue;
     landI[i] = 1;
     capSq[i] = cap[i] * cap[i];
     if (!((co && co[i] >= 0) || (lo && lo[i] >= 0))) fcap[i] = cap[i];
   }
-  const landW = boxMean(landI, tw, th, rExit), landH = boxMean(landI, tw, th, rHome);
-  const fcW = boxMean(fcap, tw, th, rExit), fcH = boxMean(fcap, tw, th, rHome);
-  const capH = boxMean(cap, tw, th, rHome), capSqH = boxMean(capSq, tw, th, rHome);
+  const landW = boxMean(landI, tw, th, rExit, rowS, scr.o[0]), landH = boxMean(landI, tw, th, rHome, rowS, scr.o[1]);
+  const fcW = boxMean(fcap, tw, th, rExit, rowS, scr.o[2]), fcH = boxMean(fcap, tw, th, rHome, rowS, scr.o[3]);
+  const capH = boxMean(cap, tw, th, rHome, rowS, scr.o[4]), capSqH = boxMean(capSq, tw, th, rHome, rowS, scr.o[5]);
   const cage = world._cageField && world._cageField.length === N ? world._cageField : (world._cageField = new Float32Array(N));
   // Ring sums from the two box means (areas are the means' weights).
   const aH = (2 * rHome + 1) ** 2, aW = (2 * rExit + 1) ** 2;

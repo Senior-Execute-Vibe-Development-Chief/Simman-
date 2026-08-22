@@ -52,7 +52,26 @@ export function applyToolTuning() {
   // The live dawn's own battery is the genesis arc suite (probe_cityarc /
   // probe_tribute under SIM_TUNE DAWN_LIVE=1 — docs/state-birth-2026-08.md).
   // An explicit SIM_TUNE override (spread last) still wins for those arcs.
-  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, ...SIM_TUNE_OVERRIDES });
+  // STATE_RECORDS (2026-08-19) is pinned OFF for the same reason as DAWN_LIVE:
+  // it re-times GENESIS (states wait for the writing bar), and the standing
+  // gates measure mature-regime facts at fixed horizons — unpinned they would
+  // measure the pre-literate Neolithic instead. Its own battery is the
+  // live-dawn genesis suite (SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1"). THE
+  // LESSON OF THIS DATE STANDS: any verdict about genesis geography or timing
+  // MUST name its dawn regime and run the live arm explicitly — the app ships
+  // BOTH levers ON.
+  // LAND_KNOW (2026-08-20) joins the pinned set for the same reason: it
+  // re-times genesis (cities and tribal nations wait for the tallies bar on
+  // the land ledger). Its live arm: SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1".
+  // PEER_SEATS (2026-08-20, the mega-catchment wave) joins for the same
+  // reason again: it multiplies the genesis register (peer courts inside
+  // claimed cells), so the fixed-horizon gates would measure a different
+  // world. WAR_FINISH (2026-08-20, the consolidation wave) joins because it
+  // re-arms the whole world (fed garrisons / city walls / relative seat
+  // grade) and the mature-regime gates were calibrated on the old military
+  // balance. THE FULL LIVE ARM IS NOW:
+  //   SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1,LAND_KNOW=1,PEER_SEATS=1,WAR_FINISH=1"
+  applyTuning({ POP_FIELD_WORKERS: -1, DAWN_LIVE: 0, STATE_RECORDS: 0, LAND_KNOW: 0, PEER_SEATS: 0, FOUND_DRIFT: 0, ABSORB_ORG_ERA: 0, TRIBUTE_UP: 0, ENGULF: 0, FEAR_REACH: 0, WAR_FINISH: 0, SMALL_WAR: 0, RELIEF_REACH: 0, EXCH_WAVE: 0, TECH_USE: 0, VASSAL_LEVY: 0, DISSOLVE_CORE: 0, SETT_STRIDE: 1, TRADE_STRIDE: 3, ...SIM_TUNE_OVERRIDES });
 }
 applyToolTuning();
 

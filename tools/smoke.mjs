@@ -238,14 +238,18 @@ console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
   // the harness's module-init pin (tools/_harness.mjs), so without this the
   // arm inherits the shipped DAWN_LIVE=1 and measures an EMPTY Neolithic at
   // this horizon (measured: "civilization alive (0 settlements)" FAIL).
-  applyTuning({ DISSOLVE_FARMS: 0, DAWN_LIVE: 0 });
+  // LAND_KNOW re-pins for the same reason (the lesson repeated 2026-08-20:
+  // resetTuning restored the shipped default mid-arm and one tier-0 community
+  // honestly measured below the town bar under the annulus core read —
+  // scenario arms must restore EVERY harness pin they rely on after a reset).
+  applyTuning({ DISSOLVE_FARMS: 0, DAWN_LIVE: 0, LAND_KNOW: 0, PEER_SEATS: 0, FOUND_DRIFT: 0, ABSORB_ORG_ERA: 0, TRIBUTE_UP: 0, ENGULF: 0, FEAR_REACH: 0, WAR_FINISH: 0, SMALL_WAR: 0, RELIEF_REACH: 0, EXCH_WAVE: 0, TECH_USE: 0, VASSAL_LEVY: 0, DISSOLVE_CORE: 0, SETT_STRIDE: 1, TRADE_STRIDE: 3 });
   try {
     const l = buildSim({ W, H, seed: SEED, preset: PRESET });
     stepPeopleSim(l, 3000);
     const ls = peopleSimStats(l);
     legacyN = ls.settlements; legacyPop = Math.max(1, ls.totalPeople);
   } finally { resetTuning(); }
-  applyTuning({ DISSOLVE_FARMS: 1, DAWN_LIVE: 0 });
+  applyTuning({ DISSOLVE_FARMS: 1, DAWN_LIVE: 0, LAND_KNOW: 0, PEER_SEATS: 0, FOUND_DRIFT: 0, ABSORB_ORG_ERA: 0, TRIBUTE_UP: 0, ENGULF: 0, FEAR_REACH: 0, WAR_FINISH: 0, SMALL_WAR: 0, RELIEF_REACH: 0, EXCH_WAVE: 0, TECH_USE: 0, VASSAL_LEVY: 0, DISSOLVE_CORE: 0, SETT_STRIDE: 1, TRADE_STRIDE: 3 });
   try {
     const a = buildSim({ W, H, seed: SEED, preset: PRESET }); a._checkInvariants = true;
     const b = buildSim({ W, H, seed: SEED, preset: PRESET });

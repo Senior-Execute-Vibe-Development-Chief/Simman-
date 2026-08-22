@@ -1,3 +1,4 @@
+/* global __BUILD_SHA__ */   // vite `define`: the commit sha baked into this bundle (run-journal provenance; same declaration WorldSim.jsx makes)
 // ── Web Worker: runs the peopleSim off the main thread ──
 // The sim has several heavy periodic passes (territory / sea-lane / transport
 // floods) that, on a large map at high speed, spike to tens of ms. Running
@@ -21,13 +22,16 @@ import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
 import { narrate } from "./sim/peopleSim/events.js";
 import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
-import { applyTuning, resetTuning, T, rNormPop } from "./sim/peopleSim/tuning.js";
+import { applyTuning, resetTuning, T, rNormPop, TUNING_SCHEMA } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { setBandWorkerUrl } from "./sim/peopleSim/popFieldPool.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
+import { telEnable, telReport, telReset } from "./sim/peopleSim/telemetry.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
 import { doctrineLabel } from "./sim/peopleSim/faiths.js";
 import { getPerson, getDynasty, ageOf, getDynastyTree, traitLabel } from "./sim/peopleSim/dynasties.js";
+import { techState, ERAS } from "./sim/peopleSim/tech.js";
+import { POP_SCALE } from "./sim/units.js";
 import { IDENTITY_K, diffuseIdentityField } from "./sim/peopleSim/identityField.js";
 import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
@@ -96,6 +100,14 @@ function clamp01(v, dflt) { v = v == null ? dflt : +v; return v < 0 ? 0 : v > 1 
 let world = null;
 let genMeta = {};      // oceanLevel / tecParams — recorded into saves
 let playing = false;
+// The quiet ages fly (owner 2026-08-19): before any NATION exists the map has
+// nothing political to watch, so while autoEpoch is on the worker escalates
+// the effective pace to the frame budget's maximum (same budgeted path as
+// UNBOUNDED_TPS) and returns to the user's speed dial the moment the first
+// realm rises. Reads world STATE (realm count) — never the calendar.
+let autoEpoch = true;
+let fastEpochNow = false;
+let quietAgesNow = false;   // the pre-nation condition itself (chip shows whenever it holds; gold = accelerating, dim = user opted out)
 let speed = 30;        // TARGET ticks-per-second (see scheduleTick); 30 = ~1 step per snapshot
 let selId = -1;
 let chronPerspective = false; // chronicle rendered as the realm's scribes kept it
@@ -110,10 +122,172 @@ let chronKey = "";     // signature of the last chronicle shipped (realm|len|per
 let staticSent = false;      // owner/roadQuality sent at least once?
 // ── The atlas filter + the timeline (owner features 2026-08-14) ──────────────
 let minShowKm2 = 0;          // hide nations whose claim is smaller than this (km²) UNLESS they hold a settlement; 0 = show all
+// ── The run journal (owner 2026-08-22: "you run it, I observe") ─────────────
+// Every JOURNAL_EVERY steps the worker records the same metric line the gate
+// probes print (register, stateless share, states, nations-as-blocs, biggest
+// bloc, population), and "exportRunLog" downloads it with a PROVENANCE header
+// (seed, grid, every off-default lever) — the three facts the 22.6k-screenshot
+// investigation had to reverse-engineer from pixels. The file drops into
+// docs/runs/ or pastes into chat and reads 1:1 against the ladder tables.
+// The BUILD the run actually ran on — the ambiguity that cost a whole
+// investigation when a screenshot could not be dated against the code
+// (2026-08-21). __BUILD_SHA__ is vite's existing stale-tab define.
+const _buildSha = () => { try { return typeof __BUILD_SHA__ !== "undefined" ? __BUILD_SHA__ : "dev"; } catch { return "dev"; } };
+let worldSeed = null;
+const runJournal = [];
+let _journalNext = 0, _funnelNext = 0, _jDeaths = 0, _jEvSeen = -1;
+const JOURNAL_EVERY = 250;         // one metric line
+const JOURNAL_FUNNEL_EVERY = 1000; // one telemetry-funnel window (probes' own channels)
+const JOURNAL_CHANNELS = /^(found|siteCity|peerSeat|landNation|birthPolity|submit|integrate|attack|storm|capture|fission)$/;
+function journalTick() {
+  if (!world || world.step < _journalNext) return;
+  _journalNext = world.step + JOURNAL_EVERY;
+  let cities = 0, stateless = 0, pop = 0, subCity = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    cities++; pop += s.people || 0;
+    if (s.countryId < 0) stateless++;
+    // TOWNS WATCH (owner directive: nothing below a city may persist as an
+    // entity) — settled entities whose urban core is under the city bar.
+    if (s._urbanPop != null && s._urbanPop * POP_SCALE < 10000) subCity++;
+  }
+  const cs = world.countries;
+  const ov = world._overlordOf || new Map();
+  const rootOf = (id) => { let cur = id, h = 0; while (h++ < 12) { const o = ov.get(cur); if (o == null || o < 0 || o === cur) break; cur = o; } return cur; };
+  const blocTiles = new Map(), blocRealms = new Map();
+  const co = world._countryOwner;
+  if (co && cs && cs.size) for (let i = 0; i < co.length; i++) { const id = co[i]; if (id >= 0) { const r = rootOf(id); blocTiles.set(r, (blocTiles.get(r) || 0) + 1); } }
+  let singles = 0;
+  if (cs) for (const c of cs.values()) {
+    const r = rootOf(c.id);
+    blocRealms.set(r, (blocRealms.get(r) || 0) + 1);
+    if (!c.members || c.members.filter(m => m.mode === "settled").length === 1) singles++;
+  }
+  let bigTiles = 0, bigRoot = -1; for (const [r, t] of blocTiles) if (t > bigTiles) { bigTiles = t; bigRoot = r; }
+  if (!world._km2PerTileW) { let lt = 0; for (let i = 0; i < world.N; i++) if (world.elev[i] > 0) lt++; world._km2PerTileW = (510e6 * 0.29) / Math.max(1, lt); }
+  // deaths since the journal began (cumulative — a count of things that have happened)
+  const evs = world.events || [];
+  for (let i = evs.length - 1; i >= 0; i--) { const ev = evs[i]; if (ev.id <= _jEvSeen) break; if (ev.type === "polity.ended" || ev.type === "polity.shattered") _jDeaths++; }
+  if (evs.length) _jEvSeen = evs[evs.length - 1].id;
+  const st = peopleSimStats(world);
+  const era = ERAS[st.leadingEra || 0] || ERAS[0];
+  runJournal.push(`step ${String(world.step).padStart(6)}  era=${era}  cities=${cities} (stateless ${cities ? (100 * stateless / cities).toFixed(0) : 0}%)  states=${cs ? cs.size : 0} (singl ${cs && cs.size ? (100 * singles / cs.size).toFixed(0) : 0}%)  nations=${blocRealms.size}  biggestBloc=${blocRealms.get(bigRoot) || 0} realms/${((bigTiles * world._km2PerTileW) / 1e6).toFixed(2)}Mkm2  bonds=${ov.size}  deathsEver=${_jDeaths}  subCity=${subCity}  pop=${(pop / 1000).toFixed(0)}M`);
+  if (world.step >= _funnelNext) {
+    _funnelNext = world.step + JOURNAL_FUNNEL_EVERY;
+    const tr = telReport(world);
+    for (const ch of Object.keys(tr).sort()) {
+      if (!JOURNAL_CHANNELS.test(ch)) continue;
+      const line = Object.entries(tr[ch]).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}=${v}`).join("  ");
+      if (line) runJournal.push(`    ${ch}: ${line}`);
+    }
+    telReset(world);
+  }
+  if (runJournal.length > 12000) runJournal.splice(0, 2000);
+}
 let timeline = makeTimeline();   // ~every-year political frames (sparse diffs; see sim/timelineStore.js — shared with the main-thread fallback)
 let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
+
+// ── The snapshot buffer pool (the 26.6k allocation wall, 2026-08-20) ─────────
+// The owner's app died at ~26.6k steps on a 16KB heap grow — total exhaustion,
+// not a big ask. The sim's own graph measured FLAT at both grids (probe_memgrowth
+// live: heapUsed 63-73MB at 28-30k), the scrubber timeline negligible
+// (probe_timelinemem: 0.3MB/30k) — what remained was THIS file's snapshot
+// stream: fresh multi-MB transferables ~30×/sec (roadFlow every frame;
+// owner/claim/roadQuality every 6th ≈ 60-90MB/s at tw=960) while the unbounded
+// tick loop re-enters via MessageChannel and never idles, so allocation outruns
+// collection until one allocation — any allocation — fails. Same disease the
+// 2026-08-19 stall fix cured inside the sim, one layer up.
+// The cure is the same reuse-slot idea stretched across the thread boundary:
+// the main thread posts each DISPLACED mirror buffer back ({type:"bufret"}),
+// and every per-snapshot array is built in a recycled buffer. Steady state
+// after warmup: zero new ArrayBuffer allocation per snapshot, both threads.
+// A pooled array is DIRTY — every maker below must overwrite every index
+// (set()/full loop/fill) before it ships. Same full-overwrite rule as the
+// sim's own reuse slots.
+const _bufPool = new Map();   // byteLength → ArrayBuffer[] returned by the main thread
+const POOL_KEEP = 6;          // per size class; ~2-3 are ever in flight per class
+function pooledArr(Ctor, n) {
+  const a = _bufPool.get(n * Ctor.BYTES_PER_ELEMENT);
+  return a && a.length ? new Ctor(a.pop()) : new Ctor(n);
+}
+function pooledCopy(src) {
+  const out = pooledArr(src.constructor, src.length);
+  out.set(src);
+  return out;
+}
+
+// ── The realm census in the browser console (owner 2026-08-20) ──────────────
+// "log the size in km² of every nation, their centre point, neighbour count…
+// their general identity." Auto-logs whenever the realm REGISTER changes (a
+// nation rises or falls; debounced) and on a slow heartbeat; the page also
+// exposes window.nations() for an on-demand table. One O(N) pass over the
+// bordered field per print: per-realm claimed area, wrap-aware territorial
+// centroid (circular mean over x — the map is a cylinder), and distinct
+// neighbours along the border; the identity columns ride the realm register.
+let lastNationN = -1, lastNationLogStep = -Infinity, lastNationWorld = null;
+function logNationCensus(world, why) {
+  if (!world) return;
+  if (!world.countries || !world.countries.size) { console.log(`[nations] step ${world.step} · no realms yet`); return; }
+  const { tw, th, N, elev } = world;
+  const co = world._countryOwner;
+  let landN = 0;
+  const acc = new Map();   // id → area/centroid/neighbour accumulators
+  const row = (id) => { let r = acc.get(id); if (!r) acc.set(id, r = { n: 0, sx: 0, cx: 0, ys: 0, nbrs: new Set() }); return r; };
+  for (let i = 0; i < N; i++) {
+    if (elev[i] > 0) landN++;
+    if (!co) continue;
+    const c = co[i];
+    if (c < 0) continue;
+    const y = (i / tw) | 0, x = i - y * tw;
+    const r = row(c);
+    const a = (x / tw) * 2 * Math.PI;
+    r.n++; r.sx += Math.sin(a); r.cx += Math.cos(a); r.ys += y;
+    const cr = co[y * tw + ((x + 1) % tw)];
+    if (cr >= 0 && cr !== c) { r.nbrs.add(cr); row(cr).nbrs.add(c); }
+    if (y < th - 1) { const cd = co[i + tw]; if (cd >= 0 && cd !== c) { r.nbrs.add(cd); row(cd).nbrs.add(c); } }
+  }
+  const km2 = (510e6 * 0.29) / Math.max(1, landN);
+  const rows = [];
+  for (const c of world.countries.values()) {
+    const r = acc.get(c.id);
+    const pol = getPolity(world, c.id);
+    let pop = 0, urb = 0, wealth = 0, army = 0, cities = 0;
+    if (c.members) for (const s of c.members) {
+      if (!s || s.mode !== "settled") continue;
+      cities++; pop += s.people || 0; urb += s._urbanPop || 0; wealth += s.wealth || 0; army += s.army || 0;
+    }
+    if (pol && pol.endedStep < 0) wealth += Math.max(0, pol.treasury || 0);
+    const k = c.capital && c.capital.knowledge;
+    let centre = "—";
+    if (r && r.n > 0) {
+      let xm = Math.atan2(r.sx / r.n, r.cx / r.n) / (2 * Math.PI);
+      if (xm < 0) xm += 1;
+      centre = `${(xm * 360 - 180).toFixed(1)}E ${(90 - (r.ys / r.n) / th * 180).toFixed(1)}N`;
+    }
+    rows.push({
+      name: realmName(world, c.id), id: c.id,
+      km2: r ? Math.round(r.n * km2) : 0,
+      centre,
+      nbrs: r ? r.nbrs.size : 0,
+      cities,
+      popM: +((pop * POP_SCALE) / 1e6).toFixed(2),        // province population, millions (catchment census — city + countryside)
+      urbanK: Math.round((urb * POP_SCALE) / 1e3),        // people in the cities proper, thousands
+      wealth: Math.round(wealth),                          // settlement coin + live treasury
+      army: Math.round(army),
+      org: k ? +(k.organization || 0).toFixed(2) : 0,      // the capital's statecraft (drives span/reach)
+      era: k ? ERAS[techState(k).era] : "—",
+      over: (() => {   // suzerain, if any — the atlas headline counts BLOCS (nations · states)
+        const pol = getPolity(world, c.id);
+        return pol && pol._overlord >= 0 && pol._overlord !== c.id ? realmName(world, pol._overlord) : "";
+      })(),
+    });
+  }
+  rows.sort((a, b) => b.km2 - a.km2);
+  console.log(`[nations] step ${world.step} · ${rows.length} realm(s)${why ? ` · ${why}` : ""} · window.nations() re-prints`);
+  try { console.table(rows); } catch { for (const r2 of rows) console.log(r2); }
+}
 
 self.onmessage = (e) => {
   const m = e.data;
@@ -128,10 +302,22 @@ self.onmessage = (e) => {
 };
 function handleMessage(m) {
   if (m.type === 'bandWorkerUrl') { setBandWorkerUrl(m.url); return; }   // popField pool: built-app band-worker chunk URL (page-resolved)
+  if (m.type === "bufret") {
+    // Consumed snapshot buffers coming home for reuse (see the pool note above).
+    if (m.bufs) for (const b of m.bufs) {
+      if (!(b instanceof ArrayBuffer) || !b.byteLength) continue;
+      let a = _bufPool.get(b.byteLength);
+      if (!a) _bufPool.set(b.byteLength, a = []);
+      if (a.length < POOL_KEEP) a.push(b);
+    }
+    return;
+  }
   if (m.type === "init") {
     try {
       genMeta = m.genMeta || {};
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
+      worldSeed = m.seed; runJournal.length = 0; _journalNext = 0; _funnelNext = 0; _jDeaths = 0; _jEvSeen = -1;
+      telEnable(world);   // the journal's funnel windows — the probes' own channels, live in the app
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
       world._realWindGen = !!(genMeta && genMeta.realWind);   // terrain identity rides the WORLD (saves read it; caller meta is only a fallback)
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
@@ -139,6 +325,7 @@ function handleMessage(m) {
       // init) — but if a previous world was mid-play, keep stepping the new one
       // rather than silently freezing until the next control message.
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
+      _bufPool.clear();           // a new world can change N — stale-size buffers would never be hit again
       buildSnapshot();            // immediate first frame
       if (playing) scheduleTick();
     } catch (err) {
@@ -148,6 +335,7 @@ function handleMessage(m) {
     const wasPlaying = playing;
     if (m.playing !== undefined) playing = m.playing;
     if (m.speed !== undefined) speed = m.speed;
+    if (m.autoEpoch !== undefined) autoEpoch = !!m.autoEpoch;
     tickAccum = 0; lastTickWall = performance.now();  // reset the pacer so a speed/play change doesn't dump a burst
     if (playing && !wasPlaying) scheduleTick();      // (re)start stepping
     else if (!playing && world) buildSnapshot();     // refresh the paused frame
@@ -189,8 +377,11 @@ function handleMessage(m) {
     try {
       if (m.genMeta) genMeta = m.genMeta;
       world = loadWorld(m.json);
+      worldSeed = world && world.seed != null ? world.seed : worldSeed; runJournal.length = 0; _journalNext = world ? world.step : 0; _funnelNext = _journalNext; _jDeaths = 0; _jEvSeen = -1;
+      if (world) telEnable(world);
       world._wantMoneyFlows = (viewMode === "money");
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
+      _bufPool.clear();   // the loaded world can change N — stale-size buffers would never be hit again
       buildSnapshot();
       if (playing) scheduleTick();
     } catch (err) {
@@ -205,6 +396,51 @@ function handleMessage(m) {
     if (!playing && world) buildSnapshot();           // reflect on the paused frame
   } else if (m.type === "editor.placeCountry") {
     if (world) { try { editorPlaceCountry(world, m); } catch (err) { self.postMessage({ type: "error", message: "place failed: " + (err && err.message), stack: err && err.stack }); } staticSent = false; buildSnapshot(); }
+  } else if (m.type === "nations") {
+    // window.nations() — the on-demand realm census (see logNationCensus).
+    logNationCensus(world, "requested");
+  } else if (m.type === "exportRunLog") {
+    const diffs = [];
+    for (const cat of TUNING_SCHEMA) for (const p of (cat.params || [])) if (T[p.key] !== undefined && T[p.key] !== p.def) diffs.push(`${p.key}=${T[p.key]} (def ${p.def})`);
+    const head = [
+      `Simman run journal`,
+      `seed=${worldSeed}  sim=${world ? world.tw + "x" + world.th : "?"}  step=${world ? world.step : 0}  build=${_buildSha()}  exported=${new Date().toISOString()}`,
+      `levers off-default: ${diffs.length ? diffs.join("  ") : "none"}`,
+      ``,
+    ];
+    self.postMessage({ type: "runLog", text: head.concat(runJournal).join("\n"), step: world ? world.step : 0 });
+  } else if (m.type === "exportRunReport") {
+    // The full observation artifact: journal + provenance + a political-map
+    // frame every ~REPORT_MAP_EVERY steps sampled from the scrubber's own
+    // timeline (CAPTURE_IVL-dense, full history). The UI renders the frames
+    // and composes one self-contained HTML file.
+    const REPORT_MAP_EVERY = 1000, MAX_FRAMES = 48;
+    const frames = [], transfer = [];
+    if (world && frameCount(timeline)) {
+      const n = frameCount(timeline);
+      const stride = Math.max(1, Math.ceil((world.step / REPORT_MAP_EVERY) / MAX_FRAMES)) * REPORT_MAP_EVERY;
+      let nextStep = stride;
+      for (let idx = 0; idx < n && frames.length < MAX_FRAMES; idx++) {
+        const fr = frameAt(timeline, idx, world.N);
+        if (!fr || fr.step < nextStep) continue;
+        nextStep = fr.step + stride;
+        frames.push({ step: fr.step, claim: fr.claim });
+        transfer.push(fr.claim.buffer);
+      }
+    }
+    const land = world ? new Uint8Array(world.N) : new Uint8Array(0);
+    if (world) for (let i = 0; i < world.N; i++) land[i] = world.elev[i] > 0 ? 1 : 0;
+    transfer.push(land.buffer);
+    const diffs = [];
+    for (const cat of TUNING_SCHEMA) for (const p of (cat.params || [])) if (T[p.key] !== undefined && T[p.key] !== p.def) diffs.push(`${p.key}=${T[p.key]} (def ${p.def})`);
+    self.postMessage({
+      type: "runReportData",
+      step: world ? world.step : 0,
+      tw: world ? world.tw : 0, th: world ? world.th : 0,
+      head: `Simman run report\nseed=${worldSeed}  sim=${world ? world.tw + "x" + world.th : "?"}  step=${world ? world.step : 0}  build=${_buildSha()}  exported=${new Date().toISOString()}\nlevers off-default: ${diffs.length ? diffs.join("  ") : "none"}`,
+      journal: runJournal.join("\n"),
+      land, frames,
+    }, transfer);
   } else if (m.type === "mapFilter") {
     // The atlas bar: hide nations below m.minKm2 (settlement-holders always show).
     minShowKm2 = m.minKm2 || 0;
@@ -244,7 +480,7 @@ _tickChan.port1.onmessage = () => tick();
 function scheduleTick() {
   if (scheduled || !playing) return;
   scheduled = true;
-  if (speed >= UNBOUNDED_TPS) _tickChan.port2.postMessage(0);   // unbounded: re-enter immediately
+  if (speed >= UNBOUNDED_TPS || fastEpochNow) _tickChan.port2.postMessage(0);   // unbounded / quiet-ages auto: re-enter immediately
   else setTimeout(tick, SNAP_MS);                               // paced: wake roughly once per snapshot
 }
 
@@ -257,8 +493,15 @@ function tick() {
   // spiking step from blocking the snapshot cadence — and that spike stays off the
   // main (render) thread, which is the whole point of the worker.
   const now = performance.now();
+  // Quiet ages = nothing on the map yet: no realm AND no settled settlement.
+  // Under T.LAND_KNOW prehistory is entity-free until the tallies bar, so the
+  // fast-forward carries the whole empty span and stands down the moment the
+  // FIRST CITY lands (the first visible beat), a little before the first state.
+  quietAgesNow = !!world && (!world.countries || world.countries.size === 0)
+    && !(world.settlements && world.settlements.some((s) => s.mode === "settled"));
+  fastEpochNow = autoEpoch && quietAgesNow;
   let steps;
-  if (speed >= UNBOUNDED_TPS) {
+  if (speed >= UNBOUNDED_TPS || fastEpochNow) {
     steps = Infinity;
   } else {
     const dt = Math.min(250, now - lastTickWall);   // clamp long gaps (tab unfocused) so we don't dump a flood
@@ -271,6 +514,7 @@ function tick() {
   for (let i = 0; i < steps; i++) {
     try {
       stepPeopleSim(world, 1);
+      journalTick();
       if (world.step - lastKeyStep >= CAPTURE_IVL) { lastKeyStep = world.step; captureFrame(timeline, world); }
     }
     catch (err) {
@@ -283,7 +527,22 @@ function tick() {
       playing = false;
       break;
     }
-    if (performance.now() - start > STEP_BUDGET_MS) break;
+    if (performance.now() - start > (fastEpochNow ? 26 : STEP_BUDGET_MS)) break;   // quiet ages: bigger slice (map barely changes; messages still get in every ~26ms)
+  }
+  // The realm census (see logNationCensus): re-arm on a world swap (init/load),
+  // log on register change (debounced) and on a slow heartbeat.
+  if (lastNationWorld !== world) { lastNationWorld = world; lastNationN = -1; lastNationLogStep = -Infinity; }
+  const nN = world.countries ? world.countries.size : 0;
+  if (nN !== lastNationN) {
+    const first = lastNationN < 0;
+    lastNationN = nN;
+    if (nN > 0 && (first || world.step - lastNationLogStep > 200)) {
+      logNationCensus(world, first ? "census" : "the register changed");
+      lastNationLogStep = world.step;
+    }
+  } else if (nN > 0 && world.step - lastNationLogStep >= 4000) {
+    logNationCensus(world, "heartbeat");
+    lastNationLogStep = world.step;
   }
   const t = performance.now();
   if (t - lastSnap >= SNAP_MS) { buildSnapshot(); lastSnap = t; }
@@ -310,6 +569,11 @@ function packSettlement(s) {
     _isPort: s._isPort, _vassalCount: s._vassalCount, liegeId: s.liegeId,
     army: s.army,         // for the leaderboard's "biggest armies" sort
     _shock: s._plagueActive ? 2 : (world.step < (s._famineUntil || 0) ? 1 : 0),
+    // War overlay: under siege now (armies.js stamps _besiegedAt while a front
+    // stands at the walls — same freshness the granary clock uses), and steps
+    // since the last sack (the conquest-flash ring; null = never/long ago).
+    _besieged: s._besiegedAt !== undefined && world.step - s._besiegedAt < (T.POLITY_INTERVAL || 150) * 1.5,
+    _sackedAge: s._sackedAt !== undefined && world.step - s._sackedAt < 500 ? world.step - s._sackedAt : null,
     _homeland: s._homeland ?? -1, _provinceCity: s._provinceCity ?? -1,   // Provinces overlay: captured-nation + admin seat
     // Coerced-labour intensity 0..1 for the Society lens: how bound the labour is
     // (slaves as a share of people, serfdom, cash-crop plantation land).
@@ -333,6 +597,7 @@ function packSelected(s) {
     // sum over the settlement's entire catchment). _urbanPop is the people in the
     // urban core itself — the number the card should headline as "the city".
     _urbanPop: s._urbanPop, _ruralPop: s._ruralPop,
+    _techEnv: s._techEnv || null,   // T.TECH_USE — the tree shows known-vs-used per site
     food: s.food, _foodImportRate: s._foodImportRate, _civFoodDemand: s._civFoodDemand,
     _luxSupply: s._luxSupply, _luxDemand: s._luxDemand,
     army: s.army, loyalty: s.loyalty, _adminLoad: s._adminLoad, _ambition: s._ambition,
@@ -472,7 +737,7 @@ function buildSnapshotUnsafe() {
   snapCount++;
   const sendStatic = !staticSent || (snapCount % 6 === 0);
   staticSent = true;
-  let owner = sendStatic && world._territoryOwner ? world._territoryOwner.slice() : null;
+  let owner = sendStatic && world._territoryOwner ? pooledCopy(world._territoryOwner) : null;
   if (owner) {
     // Drop tiles still owned by a settlement that has DIED but whose territory
     // the sim hasn't recomputed yet (computeTerritory releases them, but only
@@ -483,8 +748,8 @@ function buildSnapshotUnsafe() {
     for (const s of world.settlements) if (s.mode === "settled") settled.add(s.id);
     for (let i = 0; i < owner.length; i++) { const o = owner[i]; if (o >= 0 && !settled.has(o)) owner[i] = -1; }
   }
-  const roadQuality = sendStatic && world.roadQuality ? world.roadQuality.slice() : null;
-  const roadFlow = world.roadFlow ? world.roadFlow.slice() : null;
+  const roadQuality = sendStatic && world.roadQuality ? pooledCopy(world.roadQuality) : null;
+  const roadFlow = world.roadFlow ? pooledCopy(world.roadFlow) : null;
 
   // Per-tile identity field (identityField.js): for the active Peoples / Faiths /
   // Languages lens, ship the dominant id (+ a significant secondary, ≥20%, for
@@ -499,7 +764,7 @@ function buildSnapshotUnsafe() {
       viewMode === "language" ? [world.tileLangId,  world.tileLangShr]  : null;
     if (layerArrs && layerArrs[0]) {
       const [idArr, shrArr] = layerArrs, N = world.N;
-      fieldDom = new Int16Array(N); fieldSec = new Int16Array(N);
+      fieldDom = pooledArr(Int16Array, N); fieldSec = pooledArr(Int16Array, N);   // every index written below
       for (let ti = 0; ti < N; ti++) {
         const b = ti * FK;
         fieldDom[ti] = idArr[b];
@@ -517,9 +782,9 @@ function buildSnapshotUnsafe() {
   let loyal = null, loyalHome = null;
   if (viewMode === "loyalty" && sendStatic && world._allegiance && world._countryOwner) {
     const alg = world._allegiance, co = world._countryOwner, N = world.N;
-    loyal = new Uint8Array(N);
+    loyal = pooledArr(Uint8Array, N);   // every index written below
     for (let ti = 0; ti < N; ti++) loyal[ti] = co[ti] >= 0 ? Math.min(250, Math.round(Math.max(0, alg[ti]) * 250)) : 255;
-    loyalHome = world._tileHomeland ? world._tileHomeland.slice() : null;
+    loyalHome = world._tileHomeland ? pooledCopy(world._tileHomeland) : null;
   }
   // Population view: the people-on-land field (popField — the canonical
   // demographic substrate) packed on an ABSOLUTE log ruler, NOT against the
@@ -543,7 +808,8 @@ function buildSnapshotUnsafe() {
     const rn = rNormPop(world);
     const k = (world._onePopScale || 1) * rn * rn;   // field → census units per reference tile
     const LO = -1, SPAN = 4;                          // log10(0.1) .. log10(1000)
-    popDens = new Uint8Array(N);
+    popDens = pooledArr(Uint8Array, N);
+    popDens.fill(0);   // pooled buffer is dirty and the loop SKIPS below-ruler tiles
     for (let ti = 0; ti < N; ti++) {
       const p = pf[ti] * k;
       if (p <= 0.1) continue;                         // below the ruler: effectively empty, leave the base map
@@ -564,7 +830,8 @@ function buildSnapshotUnsafe() {
   let devDens = null;
   if (viewMode === "technique" && sendStatic && world.devField) {
     const df = world.devField, N = world.N;
-    devDens = new Uint8Array(N);
+    devDens = pooledArr(Uint8Array, N);
+    devDens.fill(0);   // pooled buffer is dirty and the loop SKIPS idea-free land
     for (let ti = 0; ti < N; ti++) {
       const d = df[ti];
       if (d <= 0) continue;
@@ -579,7 +846,7 @@ function buildSnapshotUnsafe() {
   let tileComp = null;
   if (viewMode === "roads" && sendStatic && world._tileComp && world._tileCompSeen) {
     const tc = world._tileComp, seen = world._tileCompSeen, stamp = world._tileCompStampVal, N = world.N;
-    tileComp = new Int32Array(N);
+    tileComp = pooledArr(Int32Array, N);   // every index written below
     for (let i = 0; i < N; i++) tileComp[i] = seen[i] === stamp ? tc[i] : -1;
   }
   // National border claim — computed in the sim each territory pass (world._countryClaim);
@@ -618,13 +885,13 @@ function buildSnapshotUnsafe() {
     // ALWAYS drawn as its realm (the field can never overwrite a tile onto the wrong realm — it is
     // blocked from a neighbour's real land — so this only ever fills the field's own gaps).
     const src = world._ctrlOwner, elev = world.elev, co = world._countryOwner;
-    countryClaim = new Int32Array(src.length);
+    countryClaim = pooledArr(Int32Array, src.length);   // every index written below
     for (let i = 0; i < src.length; i++) {
       if (!(elev && elev[i] > 0)) { countryClaim[i] = -1; continue; }         // water: never territory
       countryClaim[i] = src[i] >= 0 ? src[i] : (co && co[i] >= 0 ? co[i] : -1);
     }
   } else if (sendStatic && world._countryClaim) {
-    countryClaim = world._countryClaim.slice();
+    countryClaim = pooledCopy(world._countryClaim);
     // Catchment overlay: paint every WORKED tile (world._territoryOwner) with its
     // settlement's country, so a realm colours the land its settlements farm even
     // while its capital's projected claim is still ~0. But this paints the RAW
@@ -644,6 +911,54 @@ function buildSnapshotUnsafe() {
         if (s && s.mode === "settled" && s.countryId >= 0) countryClaim[i] = s.countryId;
       }
     }
+  }
+
+  // ── Active wars + front arrows (Layers → War fronts) ───────────────────────
+  // Directional pairs read from the war pass's own strategic-state stamps
+  // (c._offEnemies = whom this court committed offense against, c._warStamp =
+  // engaged-this-pass freshness), then a sampled set of aggressor→defender
+  // arrows along each warring pair's DRAWN border (the countryClaim being
+  // shipped, so arrows sit exactly on the border the player sees). Static
+  // cadence; an empty array on a static send CLEARS the mirror (peace).
+  let wars = null, warArrows = null;
+  if (sendStatic && world.countries) {
+    const freshW = (T.CONQUEST_INTERVAL || 100) * 2.5;
+    wars = [];
+    for (const c of world.countries.values()) {
+      if (!c._offEnemies || !c._offEnemies.size) continue;
+      if (world.step - (c._warStamp ?? -1e9) > freshW) continue;
+      for (const e of c._offEnemies) { wars.push(c.id, e); }
+    }
+    if (wars.length && countryClaim) {
+      const atk = new Map();   // attacker → Set(defender)
+      for (let i = 0; i < wars.length; i += 2) { let s2 = atk.get(wars[i]); if (!s2) atk.set(wars[i], s2 = new Set()); s2.add(wars[i + 1]); }
+      const tw2 = world.tw, th2 = world.th, cnt = new Map(), out = [];
+      const STRIDE = Math.max(3, Math.round(tw2 / 90));   // ~constant arrows-per-border-length at every grid
+      const push = (ax, ay, bx, by, a, d) => {
+        const k = a + ":" + d, n = cnt.get(k) || 0; cnt.set(k, n + 1);
+        if (n % STRIDE) return;
+        if (out.length < 4 * 800) out.push(ax, ay, bx, by);
+      };
+      for (let ti = 0; ti < countryClaim.length; ti++) {
+        const a = countryClaim[ti]; if (a < 0) continue;
+        const py = (ti / tw2) | 0, px = ti - py * tw2;
+        const b = countryClaim[px === tw2 - 1 ? ti - (tw2 - 1) : ti + 1];
+        if (b >= 0 && b !== a) {
+          const sA = atk.get(a), sB = atk.get(b);
+          if (sA && sA.has(b)) push(px + 0.5, py + 0.5, px + 1.5, py + 0.5, a, b);
+          if (sB && sB.has(a)) push(px + 1.5, py + 0.5, px + 0.5, py + 0.5, b, a);
+        }
+        if (py < th2 - 1) {
+          const c2 = countryClaim[ti + tw2];
+          if (c2 >= 0 && c2 !== a) {
+            const sA = atk.get(a), sC = atk.get(c2);
+            if (sA && sA.has(c2)) push(px + 0.5, py + 0.5, px + 0.5, py + 1.5, a, c2);
+            if (sC && sC.has(a)) push(px + 0.5, py + 1.5, px + 0.5, py + 0.5, c2, a);
+          }
+        }
+      }
+      warArrows = Float32Array.from(out);
+    } else warArrows = new Float32Array(0);
   }
 
   const transfer = [];
@@ -704,8 +1019,11 @@ function buildSnapshotUnsafe() {
     eraAt: world._eraAt,             // display-calendar timeline (era → step it was reached)
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
+    fastEpoch: fastEpochNow,   // the auto-throttle is APPLIED
+    quietAges: quietAgesNow,   // the pre-nation condition holds (chip visible; gold when applied, dim when opted out)
     globalP,
     owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim, landNations,
+    wars, warArrows,   // active war pairs + sampled aggressor→defender border arrows (static cadence; [] clears)
     fieldDom, fieldSec, fieldLayer,   // per-tile identity field for the active culture/faith/language lens
     loyal, loyalHome,                 // loyalty lens: attachment heat + the ground's remembered nation
     // popMax → CENSUS people per REFERENCE tile on the densest ground (already

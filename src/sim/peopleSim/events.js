@@ -117,6 +117,9 @@ const NARRATE = {
     if (ev.how === "succession") return "Shattered over a contested succession — its hordes and provinces going their separate ways under rival heirs.";
     return "Dissolved — its last cities scattered or fell silent.";
   },
+  "polity.tablet"(ev) {
+    return `The court of ${ev.sName || "the first city"} took up the tablet — ${ev.name || "the nation of the land"} became a state of rolls, tax and law.`;
+  },
   "polity.restored"(ev) {
     return `The old nation rose again${ev.fromName ? `, casting off ${ev.fromName}` : ""}.`;
   },
@@ -184,6 +187,11 @@ const NARRATE = {
     return as === ev.to
       ? `With the mantle of ${ev.fromName || "the fallen metropole"} came its charters: ${ev.name || "a colony"} now answers to this crown.`
       : `${ev.fromName || "The mother country"} fell, and the charter over ${ev.name || "the colony"} passed to ${ev.toName || "its successor"}.`;
+  },
+  "colony.subjugated"(ev, as) {
+    return as === ev.from
+      ? `The fleet anchored off ${ev.name || "a far court"}, and its crown accepted the protectorate.`
+      : `Gunboats of ${ev.fromName || "an ocean power"} anchored off the seat of ${ev.name || "the realm"}; the court bowed to a colonial charter.`;
   },
   "polity.united"(ev, as) {
     return as === ev.into
@@ -338,6 +346,7 @@ export function narrate(world, ev, as = -1) {
 export function categoryOf(ev, as = -1) {
   switch (ev.type) {
     case "polity.founded": return "founding";
+    case "polity.tablet": return "founding";
     case "polity.restored": return "founding";
     case "polity.seceded": return as === ev.from ? "secession" : "founding";
     case "polity.receded": return "loss";
@@ -356,6 +365,7 @@ export function categoryOf(ev, as = -1) {
     case "colony.founded": return "founding";
     case "colony.independent": return as === ev.from ? "loss" : "secession";
     case "colony.inherited": return as === ev.to ? "annex" : "society";
+    case "colony.subjugated": return as === ev.from ? "annex" : "loss";
     case "polity.submitted": return as === ev.to ? "annex" : "loss";
     case "polity.united": return as === ev.into ? "annex" : "loss";
     case "horde.raid": return as === ev.from ? "wealth" : "loss";

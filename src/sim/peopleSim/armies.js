@@ -20,7 +20,7 @@ import { tel, telPass } from "./telemetry.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee, absorbOrgBar, SUBMIT_REACH } from "./conquest.js";
 import { ridgeHoldAt, refugeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
@@ -103,22 +103,45 @@ export function closeWar(world, key, how) {
 // every war ending (how / duration / exhaustion / age) are tallied too.
 // Null by default: zero cost, and the instrumented bar product is hoisted
 // verbatim (same IEEE multiply chain), so normal runs are byte-identical.
+const mkWarTot = () => ({ cand: 0, opened: 0, truceBlocked: 0, parity: 0, stack: 0,
+                          agg: 0, trade: 0, amphib: 0, war: 0, casus: 0, claim: 0, dom: 0, coal: 0, warsStarted: 0 });
 export function mkWarDebug() {
+  // powOf: optional (cid)=>coercive-weight getter a probe may set; when present the
+  // fold ALSO tallies the PREDATION slice (attacker ≥4× the defender by that weight)
+  // into `pred` — the owner's "why doesn't the giant attack the speck" question,
+  // asked of the same per-pair records the global funnel folds.
   return { step: -1, pairs: new Map(), trucePairs: new Set(), signed: [],
-           tot: { cand: 0, opened: 0, truceBlocked: 0, parity: 0, stack: 0,
-                  agg: 0, trade: 0, amphib: 0, war: 0, casus: 0, claim: 0, dom: 0, coal: 0, warsStarted: 0 } };
+           tot: mkWarTot(), pred: mkWarTot(), powOf: null };
 }
+const _predPair = (W, k) => {
+  const ci = k.indexOf(":");
+  const ap = W.powOf(+k.slice(0, ci)) || 0, dp = W.powOf(+k.slice(ci + 1)) || 0;
+  return ap > 0 && ap >= 4 * dp;
+};
 export function foldWarDebug(W) {
   if (!W || !W.pairs) return;
-  for (const r of W.pairs.values()) {
-    W.tot.cand++;
-    if (r.passed) { W.tot.opened++; continue; }
-    if (r.attM < r.base) { W.tot.parity++; continue; }
-    let piv = null, pivV = 1;
-    for (const k in r.f) { const v = r.f[k]; if (v > 1 && r.minBar / v <= r.attM && v > pivV) { piv = k; pivV = v; } }
-    if (piv) W.tot[piv]++; else W.tot.stack++;
+  for (const [k, r] of W.pairs) {
+    const pred = W.powOf && W.pred && _predPair(W, k);
+    // watch/byAtt: a probe may name attacker ids to slice per-realm (the
+    // "why does THIS giant not attack" question) — same records, third bucket.
+    let wt = null;
+    if (W.watch && W.byAtt) {
+      const att = +k.slice(0, k.indexOf(":"));
+      if (W.watch.has(att)) { wt = W.byAtt.get(att); if (!wt) W.byAtt.set(att, wt = mkWarTot()); }
+    }
+    const tots = pred ? [W.tot, W.pred] : [W.tot];
+    if (wt) tots.push(wt);
+    for (const t of tots) {
+      t.cand++;
+      if (r.passed) { t.opened++; continue; }
+      if (r.attM < r.base) { t.parity++; continue; }
+      let piv = null, pivV = 1;
+      for (const kk in r.f) { const v = r.f[kk]; if (v > 1 && r.minBar / v <= r.attM && v > pivV) { piv = kk; pivV = v; } }
+      if (piv) t[piv]++; else t.stack++;
+    }
   }
   W.tot.truceBlocked += W.trucePairs.size;
+  if (W.powOf && W.pred) for (const k of W.trucePairs) if (_predPair(W, k)) W.pred.truceBlocked++;
   W.pairs.clear(); W.trucePairs.clear();
 }
 const wdbgPass = (W, step) => { if (W.step !== step) { foldWarDebug(W); W.step = step; } };
@@ -170,6 +193,48 @@ const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent t
 // undefended one falls quickly.
 const SIEGE_DMG         = 0.06;
 const SIEGE_BREAK       = 0.15;
+// T.WAR_FINISH — SIEGES LIFT (the consolidation battery's verdict,
+// docs/consolidation-2026-08-20.md). The grind above gave the DEFENDER a
+// clock (SIEGE_STARVE: the granary) but the BESIEGER none — a camp sat for
+// free until the walls broke, so over enough passes every siege succeeded
+// (per-roll p→1) and the register boiled (measured: ~2,700 realm deaths per
+// 4k steps at 32k, every capital cycling ~1,000 steps). History's camps had
+// the SHORTER clock: a stationary host eats out its district in weeks, then
+// dysentery, arrears and the harvest break it — most sieges FAILED. So a
+// siege is a RACE between the city's granary and the camp's endurance:
+// base endurance ≈ a campaign season-to-year for an unsupplied host,
+// stretched by the attacker's logistics tech (the same commissariat channel
+// that stretches projection and administrative reach) — a bronze-age levy
+// goes home at harvest, Rome sits out Carthage. When the camp's clock runs
+// out first the siege LIFTS and the campaign ends in the treaty machinery
+// below (signPeace: trade/toll-scaled truce, indemnity, congress) — failed
+// campaigns produce PEACE, not an eternal front. One exception: a city
+// already starving (granary broken) is on the eve of the breach — no camp
+// lifts then; the race has resolved. Rides T.WAR_FINISH; inert at lever 0.
+const SIEGE_ENDURE      = 150;   // ticks an unsupplied host sustains a static camp (~a season-to-year at the TRUCE_TICKS=1500≈generation span)
+const SIEGE_ENDURE_LOGI = 3;     // a mature commissariat sustains ×(1+this·logistics) — multi-year investments at logistics 1
+// T.WAR_FINISH — THE WORKS TAKE A SEASON. A wall is never carried the
+// afternoon the army arrives: circumvallation, ramps, towers, mining — the
+// engineering that turns an investment into a breach — is months of labour
+// at the fastest (Alesia ~2 months, Masada ~3, Tyre 7; a year-plus is
+// ordinary). The break test below therefore also requires the CONTINUOUS
+// siege (the same camp clock the endurance race reads) to be at least this
+// old, so every successful storm costs the besieger real presence — during
+// which relief, exhaustion, the treasury and the camp's own endurance all
+// get their say. Without it, 76-89% of storms that reached assault strength
+// broke the walls the SAME 50-tick pass (measured, v1-v2 arms) and conquest
+// ran at the war-pass cadence instead of history's.
+const SIEGE_WORKS       = 60;    // ticks of standing siege before a breach is even possible (~a year at the generation span)
+// T.WAR_FINISH — SIEGE MOBILIZATION (the militia's stale-fraction bug, v2
+// arm): HOME_MILITIA_FRAC (0.035) was tuned when the militia base was the
+// CATCHMENT census; the urban-walls re-basing onto _urbanPop (5-20× smaller)
+// silently cut every militia to a twentieth of its calibrated strength — the
+// same-pass storm breaks were armies beating skeleton crews. A besieged city
+// arms its able-bodied — the siege levée history records at ~a fifth of the
+// urban population (Tyre, Jerusalem, Constantinople man the whole circuit) —
+// which also lands the militia back at the absolute scale the catchment
+// fraction was producing. Lever 0 keeps the catchment fraction byte-identically.
+const SIEGE_MOBILIZE    = 0.20;  // able-bodied share of the URBAN core that mans its own walls under siege
 
 // ── Home defence (citizen militia floor) ─────────────────────────────
 // A city's paid garrison can desert (food shortfall, or an insolvent state
@@ -249,7 +314,20 @@ const FORT_W            = 2.0;  // peak added defense multiple at the fortress i
 const BASE_OF_REF       = 0.125;   // a post stages as a BASE at an eighth of a manned fortress's complement (the legacy 5-of-40 watch→base share)
 function homeMight(s) {
   const morale = Math.max(MILITIA_MORALE_FLOOR, (s.loyalty ?? 1) - 0.5 * (s.unrest || 0));
-  const militia = (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
+  // T.WAR_FINISH — THE WALLS ARE MANNED BY THE CITY, NOT THE PROVINCE. Under
+  // ONE_POP `s.people` is the CATCHMENT census (city + the countryside it
+  // works — CLAUDE.md's own repeated trap, caught here a fourth time), so the
+  // militia floor priced every storm against the whole province's men: the
+  // variance arc measured 370/370 sieges failing on it and treated the symptom
+  // with starvation; at the shipped statelet grid the storm funnel still reads
+  // 7 falls in 11,597 attempts. History mans the ramparts with the people who
+  // live inside them — the URBAN core (the honest `_urbanPop` the LAND_KNOW
+  // wave measured, ~12k for a typical ancient city) — while the countryside
+  // is what the besieger forages. Lever 0 (and any regime without the urban
+  // read) keeps the catchment militia byte-identically.
+  const militia = T.WAR_FINISH && s._urbanPop != null
+    ? s._urbanPop * SIEGE_MOBILIZE * morale        // the siege levée: the core arms its able-bodied (header at SIEGE_MOBILIZE)
+    : (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
   const walls = 1 + WALL_W * Math.max(0, techEff(s).defenseLevel || 0);
   return Math.max(s.army || 0, militia) * techMul(s) * walls;
 }
@@ -384,6 +462,33 @@ export function musterArmies(world) {
     for (const cc of [...mp.keys()]) if (!seen.has(cc)) mp.delete(cc);   // drop dead realms
   }
 
+  // T.WAR_FINISH — THE GARRISON EATS WHAT THE CITY EATS. The desertion test
+  // below reads the settlement food LEDGER (_foodSupply vs _foodDemand), but
+  // under the field regime the ledger is vestigial for the census: people are
+  // fed by the land's capacity (popField vs capField — the derive's own
+  // truth), and the owner's first LAND_KNOW report already showed its shadow
+  // ("starving but not shrinking": the ledger reads deficit while the
+  // population holds). Measured at the consolidation lap (probe_armyfunnel,
+  // live arm): 90-97% of ALL settlements fail the ledger test with
+  // _foodSupply p50 = 0.00 while their populations grow — so every garrison
+  // on Earth melts 20% per muster forever, world army ~1 sim-unit, and every
+  // decisive war channel starves downstream (storm 7/11,597, capture
+  // 10/2,914). The fix is one OR: a settlement whose ledger reads hungry is
+  // still FED if the field that actually feeds its people covers them —
+  // Σ capField ≥ Σ popField over its own catchment, the same 0.98 margin the
+  // ledger test uses (no new constant). The ledger keeps its meaning where
+  // it is the truth (sieges, import economies); it just stops disbanding
+  // armies the census never starved. Lever 0 = ledger-only, byte-identical.
+  let _ffPf = null, _ffCf = null;
+  if (T.WAR_FINISH && T.ONE_POP && world.popField && world.capField && world._territoryOwner) {
+    _ffPf = new Map(); _ffCf = new Map();
+    const pf = world.popField, cfA = world.capField, ow = world._territoryOwner, Nn = world.N;
+    for (let ti = 0; ti < Nn; ti++) {
+      const sid = ow[ti]; if (sid < 0) continue;
+      _ffPf.set(sid, (_ffPf.get(sid) || 0) + pf[ti]);
+      _ffCf.set(sid, (_ffCf.get(sid) || 0) + cfA[ti]);
+    }
+  }
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     // Can the settlement actually FEED its garrison? The signal is an
@@ -394,7 +499,12 @@ export function musterArmies(world) {
     // grow their garrison to the tier/political cap. This is the soft "can't
     // field more than you can feed" limit.
     const fed = s._foodSupply || 0;   // _foodSupply now includes hierarchy-aggregated grain (foodHierarchy.js)
-    if (fed < (s._foodDemand || 0) * 0.98) {
+    let starved = fed < (s._foodDemand || 0) * 0.98;
+    if (starved && _ffPf) {
+      const p = _ffPf.get(s.id) || 0;
+      if (p > 0 && (_ffCf.get(s.id) || 0) >= p * 0.98) starved = false;   // the land feeds them (see the T.WAR_FINISH note above)
+    }
+    if (starved) {
       s.army = (s.army || 0) * ARMY_DESERT;
     } else {
       // Standing professional army (org-scaled in armyCapFrac). In WAR the realm also raises
@@ -415,7 +525,27 @@ export function musterArmies(world) {
       // must lean on its regulars: the historical drift from feudal levy to standing
       // army as cities grow. (Legacy non-DISSOLVE model: _ruralPop is 0, so the levy
       // falls back to the whole populace and this is algebraically unchanged.)
-      let popCap = s.people * frac;
+      // T.WAR_FINISH — the professional core is an URBAN institution: under
+      // ONE_POP `s.people` is the CATCHMENT (city + countryside), so the
+      // "whole population" read armed every city with 5-9% of a PROVINCE —
+      // and the first battery arm measured the consequence: catchment-fed
+      // armies against urban-manned walls (the homeMight re-grounding) made
+      // every storm succeed, flows ran ended=96/shattered=137 per 4k steps
+      // against founded=36, and the size distribution COMPRESSED (gini 0.39)
+      // — a boiling map that grinds instead of consolidating. The three
+      // population reads now sit on one honest split: the PAID core is
+      // urban (_urbanPop), the wartime levy is rural (_ruralPop, already
+      // split-aware below), the walls are urban (homeMight). Regimes
+      // without the urban read keep the whole-census core byte-identically.
+      let popCap = (T.WAR_FINISH && s._urbanPop != null ? s._urbanPop : s.people) * frac;
+      // T.WAR_FINISH — THE LEVY IS UNPAID (the first battery's verdict): the
+      // waged establishment is the PROFESSIONAL core alone. Cache it before
+      // the levy stacks on top: the fiscal block bills min(army, _proCap),
+      // the solvency melt spares the levy (men never promised coin do not
+      // desert over arrears — they are subject duty), and the storm reads
+      // the pro share as its assault force (levies blockade; they do not
+      // escalade walls). One cached scalar, three consumers.
+      if (T.WAR_FINISH) s._proCap = popCap;
       if (atWar) {
         const levyFrac = T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0) * (c._warCommit ?? 1));
         // Normalise the rural levy to the pre-industrial baseline (URBAN_BASE_RURAL):
@@ -436,8 +566,37 @@ export function musterArmies(world) {
     // have no treasury and field food-fed militias, so they never go bankrupt.)
     const gov = getPolity(world, s.countryId);
     const solvency = gov && gov._solvency != null ? gov._solvency : 1;
-    if (solvency < 0.999) s.army *= BANKRUPT_DESERT + (1 - BANKRUPT_DESERT) * solvency;
+    if (solvency < 0.999) {
+      if (T.WAR_FINISH && s._proCap != null) {
+        // Arrears melt the PAID men only — the unpaid levy never had wages
+        // to be owed (see the T.WAR_FINISH note above). This is what breaks
+        // the measured bankruptcy spiral: a statelet at war no longer loses
+        // its whole host to a thin treasury, just its professionals.
+        const pro = Math.min(s.army || 0, s._proCap);
+        const levy = (s.army || 0) - pro;
+        s.army = levy + pro * (BANKRUPT_DESERT + (1 - BANKRUPT_DESERT) * solvency);
+      } else {
+        s.army *= BANKRUPT_DESERT + (1 - BANKRUPT_DESERT) * solvency;
+      }
+    }
     if (s.army < 0) s.army = 0;
+  }
+  // T.WAR_FINISH — the realm's PROFESSIONAL SHARE, for the storm's assault
+  // force (levies blockade and fight relief battles in the field; walls are
+  // taken by regulars). Fraction, not head-count, so the between-muster
+  // casualty drift cancels.
+  if (T.WAR_FINISH && world.countries) {
+    const proS = new Map(), armS = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0 || !(s.army > 0)) continue;
+      const pro = Math.min(s.army, s._proCap != null ? s._proCap : s.army);
+      proS.set(s.countryId, (proS.get(s.countryId) || 0) + pro);
+      armS.set(s.countryId, (armS.get(s.countryId) || 0) + s.army);
+    }
+    for (const c of world.countries.values()) {
+      const a = armS.get(c.id) || 0;
+      c._proFrac = a > 0 ? (proS.get(c.id) || 0) / a : 1;
+    }
   }
 
   // Cap the standing army at the manpower pool: if a realm's garrisons sum to more men
@@ -618,11 +777,51 @@ export function advanceFronts(world) {
   const areAllies = (a, b) => { if (a === b) return false; const s = alliesMap && alliesMap.get(a); return !!(s && s.has(b)); };
   const ALLY_BAR = 4;   // an ally requires ~4× the usual edge before a bloc member breaks ranks to attack it
   const overlordOf = world._overlordOf, overlordReach = world._overlordReach;
+  // T.RELIEF_REACH — DETERRENCE IS RELIEF, AND RELIEF MUST REACH THE THEATER.
+  // The pooled coalition scalar backed EVERY defender with the bloc's whole
+  // might, however far away its members stood — an ally that could never march
+  // to the theater still deterred (the paper coalition: 10,697 predatory
+  // pair-passes per window braked by it, the largest named brake in the
+  // predation slice once the slot law was fixed). The colonial clause below
+  // already had the honest law — the metropole backs its colony with
+  // power × PROJECTION — and this generalizes it to the coalition: each bloc
+  // member backs a threatened court's defence weighted by whether its punitive
+  // column can actually arrive, full weight inside half its own relief radius
+  // (SUBMIT_REACH × holdReach — the SAME outer bound the submission gate uses
+  // for a credible expedition), fading to nothing at the radius itself. The
+  // defender always backs itself in full. Local balance-of-power stands
+  // (Greek poleis relieved their neighbours); the distant guarantee is worth
+  // what it can deliver (Melos' Spartan kinship, delivered nothing). Cached
+  // per defender per pass — the brake fires only for a defender's OWN regional
+  // threat, so one attacker per defender. 0 = the pooled scalar, byte-identical.
+  const _reliefBloc = T.RELIEF_REACH > 0 && world._blocMembers ? new Map() : null;
+  const reliefBlocOf = (attCC, defCC) => {
+    let v = _reliefBloc.get(defCC);
+    if (v !== undefined) return v;
+    v = 0;
+    const members = world._blocMembers.get(attCC);
+    const Dc = capOf.get(defCC);
+    if (members && Dc) for (const m of members) {
+      const mp = (countryPow && countryPow.get(m)) || 0;
+      if (!(mp > 0)) continue;
+      if (m === defCC) { v += mp; continue; }                   // the defender is definitionally at its own theater
+      const Mc = capOf.get(m);
+      if (!Mc) continue;
+      const mc = world.countries && world.countries.get(m);
+      const R = SUBMIT_REACH * Math.max(1, (mc && mc.holdReach) || 0);
+      let ddx = Math.abs(Mc.pos.x - Dc.pos.x); if (ddx > tw / 2) ddx = tw - ddx;
+      const ddy = Mc.pos.y - Dc.pos.y;
+      const f = 2 * (1 - Math.sqrt(ddx * ddx + ddy * ddy) / R);
+      if (f > 0) v += mp * Math.min(1, f);
+    }
+    _reliefBloc.set(defCC, v);
+    return v;
+  };
   const coalitionBarOf = (attCC, defCC) => {
     let mul = 1;
     if (areAllies(attCC, defCC)) mul *= ALLY_BAR;               // bloc cohesion: hard to fight an ally, not impossible
     if (allianceTarget && allianceTarget.get(defCC) === attCC) {
-      const bloc = (blocMight && blocMight.get(attCC)) || 0;
+      const bloc = _reliefBloc ? reliefBlocOf(attCC, defCC) : ((blocMight && blocMight.get(attCC)) || 0);
       const hp = (countryPow && countryPow.get(attCC)) || 1;
       mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, bloc / hp);  // coalition weight backs the threatened member's defence
     }
@@ -724,6 +923,55 @@ export function advanceFronts(world) {
       natArmy.set(s.countryId, (natArmy.get(s.countryId) || 0) + (s.army || 0));
       natNomadW.set(s.countryId, (natNomadW.get(s.countryId) || 0) + (s.army || 0) * (s._nomad || 0));
       if (membersOf) { let a = membersOf.get(s.countryId); if (!a) membersOf.set(s.countryId, a = []); a.push(s); }
+    }
+  }
+  // ── T.VASSAL_LEVY — AN EMPIRE FIGHTS WITH ITS EMPIRE ──────────────────────
+  // natMight above sums a country's OWN cities, so a suzerain of two dozen
+  // clients marched with its metropole's garrisons alone. Measured in the
+  // owner's 36k app run at the shipping grid (docs/runs/2026-08-22): the
+  // submission machinery WORKS — 358 bonds, a 24-realm bloc — while the storm
+  // channel starves, 4,018 of 4,318 heartland sieges "assaultTooWeak" per 1k
+  // steps and 81% of states still single-city. Blocs formed and never
+  // converted into force. The code already knew the law: the CAPITULATION test
+  // below pools dependencies ("a suzerain weighs with its clients"); it just
+  // never reached the battlefield.
+  //   History's empires ARE their levies — Achaemenid armies were satrapal
+  // contingents, half a consular army was socii, the Delian fleet was tribute
+  // built. So a dependency MARCHES: a share of its might joins its suzerain's
+  // field army, and is DEBITED from its own, because a contingent on the great
+  // king's campaign is not standing on its own walls. That debit is the
+  // mechanism's honest other half — an over-extended empire hollows its
+  // clients, which is exactly when clients revolted.
+  //   Two decays, both reusing laws already shipped: REACH — full contribution
+  // inside the suzerain's own holdReach, fading to nothing at the
+  // punitive-expedition radius (SUBMIT_REACH, the same bound the submission
+  // gate and the relief brake use), so a distant client sends token forces;
+  // LOYALTY — a restive client sends little. One hop per pass: a sub-client
+  // serves its own lord, whose enlarged army serves the great king next pass.
+  if (T.VASSAL_LEVY > 0 && world.countries && world._overlordOf && world._overlordOf.size) {
+    const _levy = [];
+    const _hw = tw / 2;
+    for (const [dep, over] of world._overlordOf) {
+      if (dep === over) continue;
+      const dc = world.countries.get(dep), oc = world.countries.get(over);
+      if (!dc || !oc || !dc.capital || !oc.capital) continue;
+      const m = natMight.get(dep) || 0;
+      if (!(m > 0)) continue;
+      const R = Math.max(1, oc.holdReach || oc.range || 0);
+      let ddx = Math.abs(oc.capital.pos.x - dc.capital.pos.x); if (ddx > _hw) ddx = tw - ddx;
+      const ddy = oc.capital.pos.y - dc.capital.pos.y;
+      const d = Math.sqrt(ddx * ddx + ddy * ddy);
+      const reachF = d <= R ? 1 : Math.max(0, 1 - (d - R) / Math.max(1e-6, (SUBMIT_REACH - 1) * R));
+      if (!(reachF > 0)) continue;
+      const loy = Math.max(0, Math.min(1, dc.capital.loyalty ?? 1));
+      const take = m * T.VASSAL_LEVY * reachF * loy;
+      if (take > 0) _levy.push([dep, over, take]);
+    }
+    // Applied after the scan so every bond levies off the SAME pre-levy
+    // strengths — order-independent, determinism-safe.
+    for (const [dep, over, take] of _levy) {
+      natMight.set(dep, Math.max(0, (natMight.get(dep) || 0) - take));
+      natMight.set(over, (natMight.get(over) || 0) + take);
     }
   }
   // TILE_WAR: one combatant ADAPTER per alive country — a settlement-shaped object the
@@ -869,6 +1117,15 @@ export function advanceFronts(world) {
   // attacker→defender front; flag fronts that have reached the city core.
   const _fortRn = rNormPop(world);   // fortress shadow is a REAL distance (see FORT_R)
   const pairs = new Map();   // "att:def" -> { att, def, tiles:[{ti,distHome}], canStorm }
+  // T.WAR_FINISH command capacity, the WITHIN-PASS half: _offEnemies is last
+  // pass's state, so without this a peaceful realm could open a war against
+  // every neighbour in ONE pass and the serial constraint never bound (the
+  // measured 517→479 near-no-op). One NEW enemy per attacker per pass, the
+  // first in deterministic tile order; wars already open are untouched.
+  const _newWarBy = T.WAR_FINISH ? new Map() : null;
+  // T.SMALL_WAR slot audit (per attacker per pass): how many of a court's open
+  // offensives are PEER wars — the only kind that occupies a command slot.
+  const _bigOffN = T.WAR_FINISH && T.SMALL_WAR > 0 ? new Map() : null;
   for (let ti = 0; ti < N; ti++) {
     const d = owner[ti];
     if (d < 0) continue;
@@ -1029,9 +1286,65 @@ export function advanceFronts(world) {
     //
     // Guarded whole so a disabled run does no attribution work at all: this is the
     // hottest loop in the sim, per attacker per contested tile per tick.
+    // T.WAR_FINISH — COMMAND CAPACITY: a court prosecutes its wars SERIALLY.
+    // Measured without this (the levy lap's third arm): on the dense peer map
+    // every realm pressed every neighbour simultaneously — war volume scaled
+    // with register size × adjacency, and the shatter cyclone ACCELERATED as
+    // the register grew (ended 1,289 / shattered 1,749 vs founded 112 per 4k
+    // at 28k). History's constraint is command: the king leads one campaign
+    // (pre-modern states fought serially; the multi-front war is a
+    // late-logistics luxury — Rome's two-theatre wars rode roads and fleets).
+    // A realm already prosecuting offensives against its capacity in DISTINCT
+    // enemies refuses to open a war against a NEW one; existing wars press on
+    // (never freeze a war mid-fight), defence is never capped (you don't
+    // choose to be invaded). Capacity = 1 + logistics steps (the same tech
+    // channel that stretches reach and projection): one war for an early
+    // court, up to three at full logistics. ×none at lever 0.
+    // T.SMALL_WAR — THE POLICE ACTION: a foe an order of magnitude below you is
+    // not a WAR in the command sense. The sovereign's field army stays home; a
+    // DETACHMENT prosecutes it (Rome's praetorian columns, the punitive
+    // expedition) — the threshold is derived, not tuned: a detachment of ~1/4 of
+    // your forces at ~2× storm superiority handles any foe ≤ 1/8 your weight
+    // (SMALL_WAR = 8). Such a campaign neither consumes a command slot nor is
+    // refused for want of one; only the declaration cadence (one NEW enemy per
+    // pass) still applies, so mop-ups proceed serially, not as an avalanche.
+    // Measured need (probe_predation, tw=480/24k): commandCapacity refused 61%
+    // of all attack-capable moments; 11,215 predatory pair-passes CLEARED the
+    // war bar per window and the slot law ate them — the giant spent its single
+    // slot on the near-peer war while free neighbours 100-796× weaker sat
+    // adjacent, bar-cleared and unattacked, forever. History's giants did both
+    // at once: the consul fought Carthage while a praetor sacked the hill forts.
+    const _capBlocked = T.WAR_FINISH && (() => {
+      const off = aCountry && aCountry._offEnemies;
+      if (off && off.has(D.countryId)) return false;              // an open war continues
+      const opened = _newWarBy.get(A.countryId);
+      if (opened !== undefined && opened !== D.countryId) return true;   // one NEW enemy per pass
+      const _ap = _bigOffN ? ((countryPow && countryPow.get(A.countryId)) || 0) : 0;
+      if (_bigOffN && _ap > 0 && _ap >= T.SMALL_WAR * ((countryPow && countryPow.get(D.countryId)) || 0)) {
+        if (opened === undefined) _newWarBy.set(A.countryId, D.countryId);
+        return false;                                             // a police action needs no slot
+      }
+      const lg = aCountry && aCountry.capital ? (techEff(aCountry.capital).logisticsLevel || 0) : 0;
+      // Used slots = PEER offensives only: police actions must not crowd the
+      // court's real wars out of the ledger any more than they occupy it.
+      let usedSlots = off ? off.size : 0;
+      if (_bigOffN && countryPow && off && off.size) {
+        const cached = _bigOffN.get(A.countryId);
+        if (cached !== undefined) usedSlots = cached;
+        else {
+          usedSlots = 0;
+          for (const eid of off) if (_ap < T.SMALL_WAR * ((countryPow && countryPow.get(eid)) || 0)) usedSlots++;
+          _bigOffN.set(A.countryId, usedSlots);
+        }
+      }
+      if (usedSlots >= 1 + Math.round(2 * Math.max(0, Math.min(1, lg)))) return true;
+      if (opened === undefined) _newWarBy.set(A.countryId, D.countryId);
+      return false;
+    })();
     if (world._tel) {
       tel(world, "attack", "CANDIDATE");
-      if (bestM >= bar) telPass(world, "attack");
+      if (_capBlocked) tel(world, "attack", "commandCapacity");
+      else if (bestM >= bar) telPass(world, "attack");
       else {
         let worstName = null, worstVal = 1 + 1e-9;
         const brake = (n, v) => { if (v > worstVal) { worstVal = v; worstName = n; } };
@@ -1045,7 +1358,7 @@ export function advanceFronts(world) {
         tel(world, "attack", worstName || "outmatched(noBrakeBinding)");
       }
     }
-    if (bestM < bar) continue;   // projected attacker vs projected defender (raw vs raw at lever 0)
+    if (_capBlocked || bestM < bar) continue;   // command capacity (T.WAR_FINISH), then projected attacker vs projected defender (raw vs raw at lever 0)
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -1256,6 +1569,16 @@ export function advanceFronts(world) {
   const besieged = new Set();
   const fronts = new Map();   // countryId → Set(enemy countryId) it is DEFENDING against
   const addFront = (a, b) => { let s = fronts.get(a); if (!s) fronts.set(a, s = new Set()); s.add(b); };
+  // T.WAR_FINISH — the CAMP CLOCK (header at SIEGE_ENDURE): when each pair's
+  // CONTINUOUS siege began. Renewed every pass the front stands at the
+  // heartland; an entry not renewed within the polity cadence lapsed de
+  // facto (the front broke — a later return is a FRESH siege). Scratch,
+  // never persisted — rebuilt within one pass, the _warBornAt doctrine.
+  let siegeOpen = null;
+  if (T.WAR_FINISH) {
+    siegeOpen = world._siegeOpen; if (!siegeOpen) siegeOpen = world._siegeOpen = new Map();
+    if (siegeOpen.size) { const stale = (T.POLITY_INTERVAL || 150) * 1.5; for (const [k, sg] of siegeOpen) if (world.step - sg.last > stale) siegeOpen.delete(k); }
+  }
   for (const pc of pairs.values()) {
     besieged.add(pc.def);
     pc.def._warAt = world.step;                       // core/countryside under attack
@@ -1264,6 +1587,11 @@ export function advanceFronts(world) {
       // T.SIEGE_STARVE: stamp the SETTLEMENT under siege — settlement.js
       // chokes its supply and drains its granary while this stays fresh.
       { const sc = pc.def._capital || pc.def; if (sc && sc.pos) sc._besiegedAt = world.step; }
+      if (siegeOpen) {   // the camp clock opens (or keeps running) at the walls
+        const k = pc.att.countryId + ":" + pc.def.countryId;
+        const sg = siegeOpen.get(k);
+        if (sg) sg.last = world.step; else siegeOpen.set(k, { since: world.step, last: world.step });
+      }
       // Multi-front strain counts only SERIOUS defensive fronts: a distinct
       // enemy actually assaulting one of the realm's towns. Mere border
       // skirmishing (a strong neighbour nibbling a weak frontier tile) is not
@@ -1382,6 +1710,7 @@ export function advanceFronts(world) {
   // Sign the peaces: any warring pair where EITHER side has been worn past
   // TRUCE_EXHAUST ends in a truce binding BOTH for T.TRUCE_TICKS (header above).
   // Stateless raiders (countryId < 0) sign nothing — the wild marches stay wild.
+  let signPeace = null;   // hoisted: the siege-lift path (T.WAR_FINISH, advance loop below) signs through the SAME treaty machinery
   if (T.TRUCE_TICKS > 0) {
     // Peace terms are emergent state, not a flat cooldown:
     //  * DURATION scales with the pair's mutual trade (world._tradePairs,
@@ -1405,7 +1734,7 @@ export function advanceFronts(world) {
       const vs = [...pairTrade.values()].sort((x, y) => x - y);
       tradeRef = Math.max(1e-6, 2 * vs[vs.length >> 1]);
     }
-    const signPeace = (a, b, how = "truce") => {
+    signPeace = (a, b, how = "truce") => {
       const key = Math.min(a, b) + ":" + Math.max(a, b);
       if ((truces.get(key) || 0) > world.step) return false;   // already at peace
       const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
@@ -1759,6 +2088,7 @@ export function advanceFronts(world) {
 
   // Resolve each front: besiege the city if the front reached its
   // heartland; otherwise grind the countryside forward, tile by tile.
+  const _siegeLifted = siegeOpen ? [] : null;   // pairs whose camp broke this pass — their peace signs after the loop
   for (const pc of pairs.values()) {
     const { att, def } = pc;
     if (att.mode !== "settled" || def.mode !== "settled" || att.countryId === def.countryId) continue;
@@ -1830,19 +2160,61 @@ export function advanceFronts(world) {
       const hungerOf = (s2) => (T.SIEGE_STARVE && s2 && s2._besiegedNow && (s2.food || 0) <= 0.01)
         ? Math.max(0, Math.min(1, (s2._foodSupply || 0) / Math.max(1e-9, s2._coreNeed || 1))) : 1;
       const defHome = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold * hungerOf(seatS);
+      // T.WAR_FINISH — LEVIES DO NOT STORM WALLS. The assault force is the
+      // attacker's PROFESSIONAL share (c._proFrac, cached at muster): a
+      // peasant levy blockades, forages and fights relief battles in the
+      // field — escalade is regulars' work (Sumer to the middle ages, the
+      // levy's uselessness at walls is a constant of siegecraft). The
+      // defender's relief army (defForce0) keeps its levy — levies LIFT
+      // sieges. This is what turns the measured storm firehose (557 falls
+      // per 4k steps, capitals cycling) back into rare decisive events an
+      // empire's professional core can still force. ×1 exactly at lever 0.
+      const attCrec = world.countries && world.countries.get(acc);
+      const proF = T.WAR_FINISH && attCrec && attCrec._proFrac != null ? attCrec._proFrac : 1;
       // T.ALLY_FRONT: the coalition's relief army stands with the defender at the
       // walls (already theatre-projected; +0 exactly at lever 0).
-      const advCity = (attForce0 * pjCap) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
+      const advCity = (attForce0 * pjCap * proF) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
       tel(world, "storm", "frontAtHeartland");   // FUNNEL (variance arc): why does no capital fall?
+      // T.WAR_FINISH — the CAMP'S clock runs out (header at SIEGE_ENDURE):
+      // past its logistics-stretched endurance, a camp before a city that
+      // still EATS breaks before the walls do. The siege lifts, and the
+      // campaign ends in a real treaty (signed after the loop): the truce
+      // bars a re-siege until it lapses, so failed campaigns buy peace.
+      if (siegeOpen) {
+        const sg = siegeOpen.get(acc + ":" + dcc);
+        if (sg) {
+          const logi = attCrec && attCrec.capital ? (techEff(attCrec.capital).logisticsLevel || 0) : 0;
+          const endure = (SIEGE_ENDURE * (1 + SIEGE_ENDURE_LOGI * logi)) / (world._dt || 1);
+          if (world.step - sg.since > endure && hungerOf(seatS) > 0.5) {
+            tel(world, "storm", "siegeLifts");
+            siegeOpen.delete(acc + ":" + dcc);
+            if (_siegeLifted && signPeace) _siegeLifted.push([acc, dcc]);
+            continue;   // the host goes home — no storm, no countryside taken; the peace signs below
+          }
+        }
+      }
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity < T.CITY_STORM_RATIO) tel(world, "storm", "assaultTooWeak");
       else if (world.step - (def._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE) tel(world, "storm", "pacifiedGrace");
+      // T.WAR_FINISH — THE STORM IS FOUGHT BY THE COMMITTED FORCE. The grind
+      // and break tests below compared the walls against the attacker's
+      // entire NATIONAL might (att._M — a relic from before the war-capacity
+      // block existed): at the dense statelet register a 10-city realm's pool
+      // is ~10× any young city's urban militia, so 87% of storm-strength
+      // sieges broke the walls the SAME pass (grinding=60 vs PASSED=409 per
+      // 4k, measured) and the register boiled. The force that fights the
+      // assault is the force the capacity block actually COMMITS to this
+      // front (attForce0 — concentration, exhaustion and multi-front splits
+      // included), exactly what advCity above already prices: storming now
+      // demands CONCENTRATION, so a many-front realm cannot instant-break
+      // everywhere at once. ×att._M unchanged at lever 0.
+      const stormM = T.WAR_FINISH ? attForce0 : att._M;
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
         // Bombard: grind the garrison; the besiegers bleed against the defence
         // they actually face (the militia floor, not the melted garrison).
         {
-          const dDef = Math.min(def.army || 0, att._M * pjCap * SIEGE_DMG);   // the besieger grinds at PROJECTED strength (×1 at lever 0)
+          const dDef = Math.min(def.army || 0, stormM * pjCap * proF * SIEGE_DMG);   // the besieger grinds at PROJECTED PROFESSIONAL strength (×1 at lever 0)
           const dAtt = Math.min(att.army || 0, defHome * T.ATTRITION / techMul(att));
           def.army = (def.army || 0) - dDef;
           att.army = (att.army || 0) - dAtt;
@@ -1855,8 +2227,16 @@ export function advanceFronts(world) {
         // the post-pass reconciliation — the siege wears it down pass over pass.)
         // The seat's ground holds through the siege too (T.REFUGE; ×1 at lever 0).
         const defNow = homeMight(WAR_REACH > 0 && TILE_WAR ? def._capital : def) * seatHold * hungerOf(seatS);
-        if (!(defNow * em <= att._M * pjCap * SIEGE_BREAK)) tel(world, "storm", "wallsHold(grinding)");
-        if (defNow * em <= att._M * pjCap * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
+        // T.WAR_FINISH — the works clock (header at SIEGE_WORKS): a breach
+        // needs the siege to have STOOD long enough to build one. Reads the
+        // same continuous-siege stamp the endurance race uses; always done at
+        // lever 0 (siegeOpen null — byte-identical).
+        const _sgW = siegeOpen ? siegeOpen.get(acc + ":" + dcc) : null;
+        const worksDone = !siegeOpen || (_sgW && world.step - _sgW.since >= SIEGE_WORKS / (world._dt || 1));
+        const breakMet = defNow * em <= stormM * pjCap * proF * SIEGE_BREAK;   // a city encircled on many sides breaks sooner (its defence is split)
+        if (breakMet && !worksDone) tel(world, "storm", "worksInProgress");
+        if (!breakMet) tel(world, "storm", "wallsHold(grinding)");
+        if (breakMet && worksDone) {
           // The SETTLEMENT that changes hands: under TILE_WAR `def` is a country adapter, so
           // the storm falls on its real capital (which fragments the realm); otherwise on the
           // settlement itself. Army mechanics below stay on `def`/`att` (the national pools).
@@ -1866,26 +2246,57 @@ export function advanceFronts(world) {
           const dc = world.countries && world.countries.get(dcc);
           const defWasCapital = TILE_WAR ? true : !!(dc && dc.capitalId === dS.id);
           const oldId = dcc;
-          // Defence broken — the throne-city falls to the attacker.
-          dS.countryId = acc;
-          recordOccupation(dS, oldId, acc, world.step);   // remember the nation it just lost (homeland)
-          // Record the storm as a structured event. Names are captured at
-          // event time so the log reads as contemporaries knew the actors.
-          {
-            const dName = dS.name || "a settlement";
-            const toName = realmName(world, acc);
-            if (defWasCapital && oldId >= 0) {
-              logEvent(world, "polity.shattered", { polity: oldId, to: acc, toName,
-                s: dS.id, sName: dName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
-            } else {
-              logEvent(world, "settlement.captured", { s: dS.id, sName: dName, tier: dS.tier | 0,
-                from: oldId, fromName: oldId >= 0 ? realmName(world, oldId) : undefined,
-                to: acc, toName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
+          // T.WAR_FINISH lap 9 — HEGEMONY BEFORE ANNEXATION: conquest without
+          // statecraft yields TRIBUTE, not territory. The B-arm measured the
+          // register's churn as the CONQUEST RATE itself (~321 capitals per
+          // 4k window, one every 12 steps): the storm path bypassed the
+          // era's absorption bar entirely, so any zero-org statelet that won
+          // a siege swallowed a peer whole — while peaceful absorption
+          // rightly demanded the era's upper-third statecraft. History's
+          // early city-states could sack but not GOVERN each other: Kish,
+          // Uruk and Ur cycled tribute-hegemony for centuries, and only the
+          // era's org leader (Sargon) annexed. So a victor BELOW the era's
+          // absorb bar (the same absorbOrgBar the peaceful lanes read) takes
+          // the SACK — plunder, captives, spoils, the burned archive, all
+          // below — and the beaten court BENDS THE KNEE (the existing
+          // submission machinery: vassal bond, war closed as capitulation,
+          // truce binds the suzerain), but the throne is not taken and the
+          // realm lives on as a tributary. Two-stage empire, as it was:
+          // hegemony first; annexation when statecraft matures — and the
+          // tribute bonds feed considerIntegrations exactly then. Inert at
+          // lever 0 (no bar read, no submission — byte-identical).
+          const _vOrg = attCrec && attCrec.capital ? (techEff(attCrec.capital).reachLevel || 0) : 0;
+          const _tribute = T.WAR_FINISH && defWasCapital && oldId >= 0
+            && _vOrg < absorbOrgBar(world, world.countries)
+            && bendTheKnee(world, oldId, acc, "sackedIntoTribute");
+          if (_tribute) {
+            tel(world, "storm", "sackYieldsTribute");
+            logEvent(world, "polity.submittedBySack", { polity: oldId, name: realmName(world, oldId),
+              to: acc, toName: realmName(world, acc), s: dS.id, sName: dS.name || "a settlement",
+              x: dS.pos.x | 0, y: dS.pos.y | 0 });
+          } else {
+            // Defence broken — the throne-city falls to the attacker.
+            dS.countryId = acc;
+            recordOccupation(dS, oldId, acc, world.step);   // remember the nation it just lost (homeland)
+            // Record the storm as a structured event. Names are captured at
+            // event time so the log reads as contemporaries knew the actors.
+            {
+              const dName = dS.name || "a settlement";
+              const toName = realmName(world, acc);
+              if (defWasCapital && oldId >= 0) {
+                logEvent(world, "polity.shattered", { polity: oldId, to: acc, toName,
+                  s: dS.id, sName: dName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
+              } else {
+                logEvent(world, "settlement.captured", { s: dS.id, sName: dName, tier: dS.tier | 0,
+                  from: oldId, fromName: oldId >= 0 ? realmName(world, oldId) : undefined,
+                  to: acc, toName, x: dS.pos.x | 0, y: dS.pos.y | 0 });
+              }
             }
           }
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(acc, (g.get(acc) || 0) + 1); }
           dS._conqueredAt = world.step;
           dS._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
+          if (siegeOpen) siegeOpen.delete(acc + ":" + dcc);   // the race resolved — the walls broke first
           // GRIEV_LEDGER: the sack is the deepest wound a nation takes — the
           // dead, the enslaved (the captives below), the scattered. Counted as
           // a fraction of the city's people at the moment it fell.
@@ -1937,7 +2348,7 @@ export function advanceFronts(world) {
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);
           // Capital fallen → the leaderless realm shatters into regional successors.
-          if (defWasCapital) fragmentRealm(world, oldId, dS.id);
+          if (!_tribute && defWasCapital) fragmentRealm(world, oldId, dS.id);
         }
       }
       continue;   // front's at the core — no countryside left to nibble here
@@ -2002,6 +2413,11 @@ export function advanceFronts(world) {
     }
   }
 
+  // T.WAR_FINISH — the lifted sieges sign their peace through the full treaty
+  // machinery (trade/toll-scaled duration, indemnity, congress; header at
+  // SIEGE_ENDURE). Signed after the loop so a pass resolves all fronts first.
+  if (_siegeLifted && _siegeLifted.length && signPeace) for (const [a, b] of _siegeLifted) signPeace(a, b, "siegeLifted");
+
   // Expose each warring realm's strategic state — for the info panel and probes:
   // how many fronts it is attacking on, how hard it's pinned defending, its
   // war-exhaustion, and the resulting offensive-capacity multiplier.
@@ -2012,6 +2428,7 @@ export function advanceFronts(world) {
       let mainMul = 0, eff = 0;
       if (m) for (const dcc of m.keys()) { const mul = concRestTied(cc, dcc); if (mul > mainMul) mainMul = mul; if (mul > 0.3) eff++; }
       c._offFronts = m ? m.size : 0;            // distinct enemy NATIONS it is attacking
+      c._offEnemies = m ? new Set(m.keys()) : null;   // T.WAR_FINISH command-capacity gate reads WHO (an open war continues; only NEW enemies are refused)
       c._effFronts = eff;                       // of those, how many it can actually PUSH (offMul > 0.3)
       c._mainOffMul = mainMul;                  // its main-effort capacity
       c._defLoad = defLoad.get(cc) || 0;
