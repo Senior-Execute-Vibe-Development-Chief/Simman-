@@ -350,3 +350,66 @@ table (reference, buggy strides, fixed strides, pre-caravan) is the
 shipping grid's validation set. A fresh world on the current build is
 the user-facing confirmation; a current-build world still 90%+
 stateless at 24k would be a live repro worth attaching to directly.
+
+## 2026-08-22 — the levy lap, from the owner's own run
+
+The owner's first full app run at the shipping grid (36,312 steps, all
+levers default — `docs/runs/2026-08-22/owner-run-t36312.txt`) is the
+first observation artifact the run-journal tooling produced, and it
+settled one question and opened another.
+
+**Settled — the 22.6k screenshot.** The journal reads *step 22,001: 9
+states, 95% stateless, Bronze Age* against the screenshot's step 22,592
+/ 11 states / 94%. An exact match, and the run then swept normally
+(95% → 58% at 28k → 25% at 32k → **10% stateless at 36k**, 1,223 cities,
+465 painted nations, 260M people at Medieval — city count and
+population both on history's band). The sweep-onset diagnosis is
+confirmed from the owner's side; no stall exists.
+
+**Opened — blocs that never became force.** The same journal:
+`storm: assaultTooWeak 4,018 of 4,318` per 1k steps (93%), 21 storms
+passing, `capture` healthy (1,540 tiles), and **81% of states still
+single-city** under 358 vassal bonds. Empires existed on the map and
+not on the battlefield. Cause: `natMight` summed a country's OWN
+cities, so a suzerain of two dozen clients marched with its metropole's
+garrisons alone — while the capitulation test five hundred lines below
+already pooled dependencies ("a suzerain weighs with its clients").
+
+**T.VASSAL_LEVY** (`bbf91d7`, def 0.5): a dependency marches — a share
+of its might joins the suzerain's field army and is DEBITED from its
+own (mass-conserving; an over-extended empire hollows the clients that
+then revolt), decayed by reach (holdReach → the SUBMIT_REACH punitive
+radius) and by loyalty. Verified wired: `effPool` → `natMight`, so the
+levy reaches the storm's committed force.
+
+**A/B verdict (tw=480, matched 28k checkpoints, identical stack ± the
+lever): a real but MODEST gain, and an honest miss on its own target.**
+
+| | levy 0 | levy 0.5 |
+|---|---|---|
+| stateless | 17% | **13%** |
+| singleton states | 86% | 83% |
+| painted nations | 441 | **421** |
+| biggest bloc | 18 realms | **23 realms** |
+| top-5 bloc realms | 18,17,14,12,11 | **23,19,17,16,11** (+19%) |
+| capture PASSED | 89 | **104** (+17%) |
+| storm PASSED | 283 | 292 (+3%) |
+| storm assaultTooWeak | 11,976 | 11,848 (−1%) |
+
+Consolidation deepens (the empire tier grows a fifth, captures rise a
+sixth, statelessness falls) but the storm channel does NOT unblock: 83%
+of sieges remain too weak. The lever is correct physics with a small
+effect at this bond density (264 bonds among 685 realms — most
+attackers still have no clients at all), so it ships, but it is not the
+answer to the storm bar.
+
+**What the miss teaches.** The storm rate may not be the honest target:
+history's sieges mostly ended in starvation, treachery or negotiated
+surrender rather than escalade, and the sim's alternative channels DO
+fire (siegeLifts 326, sackYieldsTribute 117 per window). The measured
+gap that matters is territorial, not tactical — at 32k the biggest bloc
+holds **42 realms but only 1.53M km², 5% of claimed land**, against
+history's hegemonic 25-50%. Blocs are wide in COUNT and thin in LAND.
+That points back at the integration axis (`orgBelowMin` refusing 4,783
+of 8,336 candidates per window) and at median realm size, not at the
+walls. Next measurement, not next build.
