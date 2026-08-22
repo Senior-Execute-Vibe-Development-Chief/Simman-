@@ -14,8 +14,15 @@ export const FX_COLOR={farm:"#5f7d33",fish:"#2f7d8a",build:"#9a6f38",military:"#
 // Full-screen modal showing the whole tech DAG for the selected settlement:
 // era columns, prerequisite links, and per-node state (discovered / researching
 // with progress / locked). Pure view over tech.js + the settlement's knowledge.
-export function TechTreeOverlay({k,title,onClose,z=60}){
+export function TechTreeOverlay({k,env,title,onClose,z=60}){
   const ts=techState(k||{});
+  // T.TECH_USE — knowing vs USING: a discovered tech whose ecological enabler
+  // fails at this site is "known, not in use" (no bonus). The used mask drives
+  // the stacked-bonus chips and the header count so the card describes what the
+  // city actually RUNS, not what its scribes have heard of.
+  const ENABLER_WHY={draft:"no draft animal can be kept here",water:"no navigable water",river:"no river or floodplain to canal"};
+  const useHave=env?ts.have.map((h,i)=>h&&!(TECHS[i].enabler&&!env[TECHS[i].enabler])?1:0):ts.have;
+  let usedN=0;for(let i=0;i<useHave.length;i++)if(useHave[i])usedN++;
   const L=techLayout();
   const {pos,NW,NH,TOP,W,H}=L;
   const [hov,setHov]=useState(null);   // {id,x,y} — hovered tech for the effect card
@@ -25,10 +32,10 @@ export function TechTreeOverlay({k,title,onClose,z=60}){
       <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"10px 14px",maxWidth:"96vw",maxHeight:"94vh",overflow:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
           <div className="au-pico-title" style={{fontSize:15}}>Tech Tree{title?` — ${title}`:""}{" "}
-            <span className="au-fade" style={{fontSize:11}}>· {ERAS[ts.era]} · {ts.count}/{TECHS.length} discovered</span></div>
+            <span className="au-fade" style={{fontSize:11}}>· {ERAS[ts.era]} · {usedN<ts.count?`${usedN} in use · ${ts.count} known`:`${ts.count}/${TECHS.length} discovered`}</span></div>
           <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
         </div>
-        {(()=>{const tot=techTotalList(ts.have);if(!tot.length)return null;
+        {(()=>{const tot=techTotalList(useHave);if(!tot.length)return null;
           return <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center",marginBottom:7,paddingBottom:6,borderBottom:"1px solid rgba(216,190,150,0.2)"}}>
             <span className="au-fade" style={{fontSize:10,marginRight:3,fontWeight:600,letterSpacing:0.3}}>STACKED TECH BONUSES</span>
             {tot.map((e,i)=><span key={i} style={{padding:"1.5px 6px",borderRadius:3,fontSize:10,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
@@ -56,35 +63,37 @@ export function TechTreeOverlay({k,title,onClose,z=60}){
               stroke={open?"#a8895c":"rgba(216,190,150,0.22)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
           }))}
           {/* tech nodes (opaque fills occlude the links routed behind them) */}
-          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
-            let fill,stroke,txt,sw,dash="";
+          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t,env||undefined);const era=ERA_BG[t.era]||"#b9b2a4";
+            let fill,stroke,txt,sw,dash="",gOp=1;
             if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
+            else if(ns.state==="unused"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;dash="3 2";gOp=0.45;}
             else if(ns.state==="next"){fill="#fffaf0";stroke=era;txt="#2c2114";sw=2;}
             else{fill="rgba(255,255,255,0.07)";stroke="rgba(216,190,150,0.30)";txt="rgba(228,214,184,0.55)";sw=1;dash="4 3";}
-            return(<g key={t.id} style={{cursor:"help"}}
+            return(<g key={t.id} opacity={gOp} style={{cursor:"help"}}
               onMouseMove={e=>setHov({id:t.id,x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)}>
               <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
-              <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
+              <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{ns.state==="unused"?t.name+" ⊘":t.name}</text>
               {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}
             </g>);
           })}
         </svg>
         <div className="au-fade" style={{fontSize:10,marginTop:6,display:"flex",gap:16,flexWrap:"wrap"}}>
           <span>{chip("#dab347","none")}discovered</span>
+          {usedN<ts.count&&<span style={{opacity:0.6}}>{chip("#dab347","1px dashed #3a2c18")}known, not in use — the land can't run it (⊘)</span>}
           <span>{chip("rgba(255,251,243,0.95)","2px solid #d8b24a")}researching (prerequisites met)</span>
           <span>{chip("rgba(255,255,255,0.07)","1px dashed rgba(216,190,150,0.4)")}locked — needs an earlier tech</span>
         </div>
       </div>
       {hov&&(()=>{
         const t=TECHS[TECH_IDX[hov.id]]; if(!t) return null;
-        const ns=techNodeState(k||{},ts.have,t); const fx=techEffectList(hov.id);
+        const ns=techNodeState(k||{},ts.have,t,env||undefined); const fx=techEffectList(hov.id);
         const vw=typeof window!=="undefined"?window.innerWidth:1280, vh=typeof window!=="undefined"?window.innerHeight:800;
         const left=Math.min(hov.x+16, vw-258), top=Math.min(hov.y+16, vh-200);
         return(<div style={{position:"fixed",left,top,width:242,zIndex:320,pointerEvents:"none",
           background:"#262019",border:`2px solid ${ERA_BG[t.era]||"#b9b2a4"}`,borderRadius:7,padding:"8px 10px",boxShadow:"0 6px 18px rgba(0,0,0,0.55)"}}>
           <div style={{fontWeight:"bold",fontSize:13,color:"var(--au-ink)"}}>{t.name}</div>
           <div style={{fontSize:9,letterSpacing:0.5,textTransform:"uppercase",color:"var(--au-ink-faded)",marginBottom:4}}>
-            {ERAS[t.era]} · {ns.state==="have"?"discovered":ns.state==="next"?`researching ${(ns.prog*100)|0}%`:"locked"}</div>
+            {ERAS[t.era]} · {ns.state==="have"?"discovered":ns.state==="unused"?`known — not in use (${ENABLER_WHY[t.enabler]||"the land can't run it"})`:ns.state==="next"?`researching ${(ns.prog*100)|0}%`:"locked"}</div>
           <div style={{fontSize:10.5,color:"var(--au-ink)",opacity:0.85,lineHeight:1.35,marginBottom:6}}>{t.desc}</div>
           {fx.length>0
             ? <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:t.prereq.length?6:0}}>

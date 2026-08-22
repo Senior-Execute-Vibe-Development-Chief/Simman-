@@ -7,7 +7,7 @@
 //   SIM_TUNE="<live stack>" node probe_cityage.mjs [steps] [W] [seed]
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
-import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
+import { techState, ERAS, TECHS } from "../src/sim/peopleSim/tech.js";
 import { POP_SCALE } from "../src/sim/units.js";
 import { telEnable, telReport, telReset } from "../src/sim/peopleSim/telemetry.js";
 import { URBAN_ORG } from "../src/sim/peopleSim/landKnow.js";
@@ -35,7 +35,17 @@ while (world.step < STEPS) {
     if (e > lead) lead = e;
   }
   const eras = eraN.map((n, e) => (n ? `${ERAS[e].slice(0, 4)}:${n}` : null)).filter(Boolean).join(" ");
-  console.log(`step ${String(world.step).padStart(5)}  register=${cities}  cores>=10k=${urb10k}  leading=${ERAS[lead]}  [${eras}]  pop=${(popSim * POP_SCALE / 1e6).toFixed(0)}M`);
+  // T.TECH_USE: how much of the world's discovered tech is KNOWN-BUT-UNUSED
+  // (ecological enabler fails at the site) — the adoption split, measured.
+  let unusedTechs = 0, sitesWithUnused = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || !s._techEnv) continue;
+    const ts = techState(s.knowledge || {});
+    let u = 0;
+    for (let i = 0; i < TECHS.length; i++) if (ts.have[i] && TECHS[i].enabler && !s._techEnv[TECHS[i].enabler]) u++;
+    if (u > 0) { sitesWithUnused++; unusedTechs += u; }
+  }
+  console.log(`step ${String(world.step).padStart(5)}  register=${cities}  cores>=10k=${urb10k}  leading=${ERAS[lead]}  [${eras}]  pop=${(popSim * POP_SCALE / 1e6).toFixed(0)}M${sitesWithUnused ? `  unused: ${unusedTechs} techs @ ${sitesWithUnused} sites` : ""}`);
   // WHY does the register not grow faster? Under the live regime cities mint
   // through the SITE lane (gather -> core bar -> LAND_KNOW tally gate) and the
   // PEER-SEAT lane — print every creation-side funnel the sim exposes.

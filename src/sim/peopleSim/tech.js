@@ -85,7 +85,7 @@ export const TECHS = [
   { id:"mining",        era:1, name:"Mining",          prereq:["stone_tools"],          req:k=>k.construction>=0.36,                        gate:["construction",0.36], desc:"Shafts and galleries win ore and stone from the earth." },
   { id:"masonry",       era:1, name:"Masonry",         prereq:["pottery"],              req:k=>k.construction>=0.42,                        gate:["construction",0.42], desc:"Dressed stone — city walls, tombs and temples." },
   { id:"copper_working",era:1, name:"Copper Working",  prereq:["mining"],               req:k=>k.metallurgy>=0.18,                          gate:["metallurgy",0.18],   desc:"Smelted copper — knives, ornaments, the first metal." },
-  { id:"sailing",       era:1, name:"Sailing",         prereq:["pottery"],              req:k=>k.navigation>=0.30,                          gate:["navigation",0.30],   desc:"Sails and oars carry boats along the coast." },
+  { id:"sailing", enabler:"water",       era:1, name:"Sailing",         prereq:["pottery"],              req:k=>k.navigation>=0.30,                          gate:["navigation",0.30],   desc:"Sails and oars carry boats along the coast." },
   // (Historically writing grew out of token accounting — the impressed bullae
   //  ARE proto-cuneiform — but tallies stays OFF writing's prereq list: the
   //  prereq edge would narrow writing's partial-credit window (org 0.18-0.28
@@ -93,13 +93,13 @@ export const TECHS = [
   //  shifting the calibrated mature regime. The lineage lives in the descs;
   //  unlock ORDER is right regardless, since 0.28 < 0.35 on the same track.)
   { id:"writing",       era:1, name:"Writing",         prereq:["mysticism"],            req:k=>k.organization>=0.35,                        gate:["organization",0.35], desc:"Cuneiform and hieroglyphs record law, tax and myth." },
-  { id:"irrigation",    era:1, name:"Irrigation",      prereq:["farming","pottery"],    req:k=>k.agriculture>=0.48&&k.construction>=0.30,   gate:["agriculture",0.48],  desc:"Canals turn dry river valleys into breadbaskets." },
+  { id:"irrigation", enabler:"river",    era:1, name:"Irrigation",      prereq:["farming","pottery"],    req:k=>k.agriculture>=0.48&&k.construction>=0.30,   gate:["agriculture",0.48],  desc:"Canals turn dry river valleys into breadbaskets." },
   { id:"calendar",      era:1, name:"Calendar",        prereq:["writing","mysticism"],  req:k=>k.organization>=0.40,                        gate:["organization",0.40], desc:"Tracking the seasons and stars across the year." },
   { id:"bronze_working",era:1, name:"Bronze Working",  prereq:["copper_working"],       req:k=>k.metallurgy>=0.40,                          gate:["metallurgy",0.40],   desc:"Copper alloyed with tin — proper weapons and ploughs." },
-  { id:"the_plough",    era:1, name:"The Plough",      prereq:["animal_husb","copper_working"], req:k=>k.agriculture>=0.55,                 gate:["agriculture",0.55],  desc:"Ox-drawn ploughs break the heavy soils." },
+  { id:"the_plough", enabler:"draft",    era:1, name:"The Plough",      prereq:["animal_husb","copper_working"], req:k=>k.agriculture>=0.55,                 gate:["agriculture",0.55],  desc:"Ox-drawn ploughs break the heavy soils." },
   { id:"monuments",     era:1, name:"Monuments",       prereq:["masonry"],              req:k=>k.construction>=0.60,                        gate:["construction",0.60], desc:"Pyramids, ziggurats and the great god-houses." },
-  { id:"chariots",      era:1, name:"Chariots",        prereq:["bronze_working","the_wheel"], req:k=>k.mobility>=0.45,                      gate:["mobility",0.45],     desc:"Horse-drawn war chariots rule the bronze battlefield." },
-  { id:"galleys",       era:1, name:"Galleys",         prereq:["sailing","masonry"],    req:k=>k.navigation>=0.58&&k.construction>=0.40,    gate:["navigation",0.58],   desc:"Planked, oared ships carry cargo and marines." },
+  { id:"chariots", enabler:"draft",      era:1, name:"Chariots",        prereq:["bronze_working","the_wheel"], req:k=>k.mobility>=0.45,                      gate:["mobility",0.45],     desc:"Horse-drawn war chariots rule the bronze battlefield." },
+  { id:"galleys", enabler:"water",       era:1, name:"Galleys",         prereq:["sailing","masonry"],    req:k=>k.navigation>=0.58&&k.construction>=0.40,    gate:["navigation",0.58],   desc:"Planked, oared ships carry cargo and marines." },
   { id:"bronze_arms",   era:1, name:"Bronze Arms",     prereq:["bronze_working","archery"], req:k=>k.metallurgy>=0.50,                       gate:["metallurgy",0.50],   desc:"Bronze spears, swords, helms and the phalanx." },
 
   // ── Classical (Iron-Age antiquity) ──────────────────────────────────
@@ -113,8 +113,8 @@ export const TECHS = [
   { id:"philosophy",    era:2, name:"Philosophy",      prereq:["mathematics","mysticism"], req:k=>k.organization>=0.60,                     gate:["organization",0.60], desc:"Reasoned enquiry into nature, ethics and the state." },
   { id:"aqueducts",     era:2, name:"Aqueducts",       prereq:["the_arch"],             req:k=>k.construction>=0.65,                        gate:["construction",0.65], desc:"Aqueducts and sewers water the great cities." },
   { id:"iron_legions",  era:2, name:"Iron Legions",    prereq:["iron_working","code_of_laws"], req:k=>k.metallurgy>=0.78&&k.organization>=0.55, gate:["metallurgy",0.78], desc:"Drilled, iron-armed professional infantry." },
-  { id:"cavalry",       era:2, name:"Cavalry",         prereq:["iron_working","chariots"], req:k=>k.mobility>=0.70,                          gate:["mobility",0.70],     desc:"Mounted lancers and horse-archers." },
-  { id:"cartography",   era:2, name:"Cartography",     prereq:["galleys","mathematics"],req:k=>k.navigation>=0.68,                          gate:["navigation",0.68],   desc:"Charts and portolans map coast and current." },
+  { id:"cavalry", enabler:"draft",       era:2, name:"Cavalry",         prereq:["iron_working","chariots"], req:k=>k.mobility>=0.70,                          gate:["mobility",0.70],     desc:"Mounted lancers and horse-archers." },
+  { id:"cartography", enabler:"water",   era:2, name:"Cartography",     prereq:["galleys","mathematics"],req:k=>k.navigation>=0.68,                          gate:["navigation",0.68],   desc:"Charts and portolans map coast and current." },
   { id:"crop_rotation", era:2, name:"Crop Rotation",   prereq:["irrigation","the_plough"], req:k=>k.agriculture>=0.72,                       gate:["agriculture",0.72],  desc:"Fallow fields and legumes restore the soil." },
 
   // ── Medieval ────────────────────────────────────────────────────────
@@ -126,12 +126,12 @@ export const TECHS = [
   { id:"machinery",     era:3, name:"Machinery",       prereq:["the_wheel","the_arch"], req:k=>k.construction>=0.70,                        gate:["construction",0.70], desc:"Watermills, windmills and geared machines harness power." },
   { id:"banking",       era:3, name:"Banking",         prereq:["currency","mathematics","guilds"], req:k=>k.organization>=0.70,            gate:["organization",0.70], desc:"Bills of exchange, credit and the first banks." },
   { id:"blast_furnace", era:3, name:"Blast Furnace",   prereq:["iron_working","machinery"], req:k=>k.metallurgy>=0.80,                       gate:["metallurgy",0.80],   desc:"Bellows-fed furnaces pour molten cast iron." },
-  { id:"heavy_plough",  era:3, name:"Heavy Plough",    prereq:["crop_rotation"],        req:k=>k.agriculture>=0.80,                         gate:["agriculture",0.80],  desc:"Horse collar and mouldboard feed the booming towns." },
+  { id:"heavy_plough", enabler:"draft",  era:3, name:"Heavy Plough",    prereq:["crop_rotation"],        req:k=>k.agriculture>=0.80,                         gate:["agriculture",0.80],  desc:"Horse collar and mouldboard feed the booming towns." },
   { id:"the_compass",   era:3, name:"Compass",         prereq:["cartography","astronomy"], req:k=>k.navigation>=0.74,                        gate:["navigation",0.74],   desc:"The lodestone needle frees ships from the shore." },
-  { id:"chivalry",      era:3, name:"Chivalry",        prereq:["cavalry","iron_legions"], req:k=>k.mobility>=0.80&&k.metallurgy>=0.74,      gate:["mobility",0.80],     desc:"Stirrup, lance and plate — the armoured knight." },
+  { id:"chivalry", enabler:"draft",      era:3, name:"Chivalry",        prereq:["cavalry","iron_legions"], req:k=>k.mobility>=0.80&&k.metallurgy>=0.74,      gate:["mobility",0.80],     desc:"Stirrup, lance and plate — the armoured knight." },
   { id:"cathedrals",    era:3, name:"Cathedrals",      prereq:["aqueducts","guilds"],   req:k=>k.construction>=0.78,                        gate:["construction",0.78], desc:"Flying buttresses raise the soaring cathedrals." },
   { id:"gunpowder",     era:3, name:"Gunpowder",       prereq:["blast_furnace","alchemy"], req:k=>k.metallurgy>=0.82&&k.organization>=0.58, gate:["metallurgy",0.82],   desc:"Black powder ends the age of the castle wall." },
-  { id:"caravels",      era:3, name:"Caravels",        prereq:["the_compass"],          req:k=>k.navigation>=0.80,                          gate:["navigation",0.80],   desc:"Lateen-rigged caravels brave the open ocean." },
+  { id:"caravels", enabler:"water",      era:3, name:"Caravels",        prereq:["the_compass"],          req:k=>k.navigation>=0.80,                          gate:["navigation",0.80],   desc:"Lateen-rigged caravels brave the open ocean." },
 
   // ── Renaissance ─────────────────────────────────────────────────────
   { id:"printing",      era:4, name:"Printing Press",  prereq:["paper","university"],   req:k=>k.organization>=0.74,                        gate:["organization",0.74], desc:"Movable type floods the world with cheap books." },
@@ -141,7 +141,7 @@ export const TECHS = [
   { id:"architecture",  era:4, name:"Architecture",    prereq:["cathedrals","mathematics"], req:k=>k.construction>=0.84,                     gate:["construction",0.84], desc:"Domes, perspective and the grand Renaissance plan." },
   { id:"economics",     era:4, name:"Economics",       prereq:["banking","printing"],   req:k=>k.organization>=0.80,                        gate:["organization",0.80], desc:"Mercantile empires and the wealth of nations." },
   { id:"heliocentrism", era:4, name:"Heliocentrism",   prereq:["printing","astronomy","optics"], req:k=>k.organization>=0.81,              gate:["organization",0.81], desc:"The Earth and planets circle the Sun." },
-  { id:"ocean_nav",     era:4, name:"Ocean Sailing",   prereq:["caravels"],             req:k=>k.navigation>=0.88,                          gate:["navigation",0.88],   desc:"Carracks and galleons link the continents." },
+  { id:"ocean_nav", enabler:"water",     era:4, name:"Ocean Sailing",   prereq:["caravels"],             req:k=>k.navigation>=0.88,                          gate:["navigation",0.88],   desc:"Carracks and galleons link the continents." },
   { id:"foundry",       era:4, name:"Foundry",         prereq:["blast_furnace","firearms"], req:k=>k.metallurgy>=0.88,                       gate:["metallurgy",0.88],   desc:"Bored, cast and standardised cannon and tools." },
   { id:"musketry",      era:4, name:"Musketry",        prereq:["firearms","code_of_laws"], req:k=>k.metallurgy>=0.86&&k.organization>=0.72, gate:["metallurgy",0.86],   desc:"Volley drill and the standing professional army." },
   { id:"sci_method",    era:4, name:"Scientific Method",prereq:["heliocentrism","clockwork"], req:k=>k.organization>=0.85,                   gate:["organization",0.85], desc:"Hypothesis, experiment and reproducible proof." },
@@ -154,13 +154,13 @@ export const TECHS = [
   { id:"industrialism", era:5, name:"Industrialism",   prereq:["economics","steam_power"], req:k=>k.organization>=0.88,                     gate:["organization",0.88], desc:"Capital, coal and wage labour remake society." },
   { id:"germ_theory",   era:5, name:"Germ Theory",     prereq:["chemistry","university"], req:k=>k.organization>=0.86&&k.construction>=0.80, gate:["organization",0.86], desc:"Germs, vaccines and clean water beat the plagues." },
   { id:"railroad",      era:5, name:"Railroad",        prereq:["steam_power","steel"],  req:k=>k.metallurgy>=0.92&&k.construction>=0.88,    gate:["metallurgy",0.92],   desc:"Iron rails bind the nation and its markets." },
-  { id:"steamship",     era:5, name:"Steamship",       prereq:["steam_power","ocean_nav"], req:k=>k.navigation>=0.92,                       gate:["navigation",0.92],   desc:"Iron-hulled steamers free the sea from the wind." },
+  { id:"steamship", enabler:"water",     era:5, name:"Steamship",       prereq:["steam_power","ocean_nav"], req:k=>k.navigation>=0.92,                       gate:["navigation",0.92],   desc:"Iron-hulled steamers free the sea from the wind." },
   { id:"rifling",       era:5, name:"Rifled Guns",     prereq:["steel","musketry"],     req:k=>k.metallurgy>=0.94,                          gate:["metallurgy",0.94],   desc:"Rifled steel artillery and breech-loading arms." },
   { id:"fertilizers",   era:5, name:"Fertilizers",     prereq:["crop_rotation","chemistry","the_factory"], req:k=>k.agriculture>=0.88,      gate:["agriculture",0.88],  desc:"Synthetic fertiliser and machines — the farm revolution." },
   { id:"democracy",     era:5, name:"Democracy",       prereq:["sci_method","printing","economics"], req:k=>k.organization>=0.90,            gate:["organization",0.90], desc:"Rights, constitutions, parties and the ballot." },
   { id:"telegraph",     era:5, name:"Telegraph",       prereq:["the_factory","sci_method"], req:k=>k.organization>=0.92&&k.metallurgy>=0.90, gate:["organization",0.92], desc:"Messages race the continent down copper wires." },
   { id:"selective_breed",era:5,name:"Selective Breeding",prereq:["crop_rotation","sci_method"], req:k=>k.organization>=0.84,                 gate:["organization",0.84], desc:"Bakewell's stockbreeding and scientific husbandry lift yields." },
-  { id:"trawling",      era:5, name:"Industrial Fishing",prereq:["steamship","the_factory"], req:k=>k.navigation>=0.93,                       gate:["navigation",0.93],   desc:"Steam trawlers and canneries strip the open fisheries." },
+  { id:"trawling", enabler:"water",      era:5, name:"Industrial Fishing",prereq:["steamship","the_factory"], req:k=>k.navigation>=0.93,                       gate:["navigation",0.93],   desc:"Steam trawlers and canneries strip the open fisheries." },
 
   // ── Modern (the aspirational frontier — only the very best reach it) ──
   { id:"electricity",   era:6, name:"Electricity",     prereq:["telegraph","industrialism"], req:k=>k.metallurgy>=0.96&&k.organization>=0.92, gate:["metallurgy",0.96],  desc:"Dynamos, motors and the electric light." },
@@ -208,11 +208,17 @@ export function techState(k) {
   return { have, era, count };
 }
 
-// Per-tech display state for the tree: "have" (discovered), "next" (all prereqs
+// Per-tech display state for the tree: "have" (discovered), "unused" (discovered
+// but its ecological ENABLER fails at this site — T.TECH_USE: the court knows of
+// the plough; no draft animal survives here to pull one), "next" (all prereqs
 // met, only the knowledge threshold holding it back — with progress 0..1), or
-// "locked" (a prerequisite tech is still missing).
-export function techNodeState(k, have, t) {
-  if (have[TECH_IDX[t.id]]) return { state: "have", prog: 1 };
+// "locked" (a prerequisite tech is still missing). `env` is the site's enabler
+// record ({draft, water, river}); omitted → the legacy known-is-used view.
+export function techNodeState(k, have, t, env) {
+  if (have[TECH_IDX[t.id]]) {
+    if (env && t.enabler && !env[t.enabler]) return { state: "unused", prog: 1 };
+    return { state: "have", prog: 1 };
+  }
   if (!prereqsMet(t, have)) return { state: "locked", prog: 0 };
   const prog = t.gate ? Math.min(1, (k[t.gate[0]] || 0) / t.gate[1]) : 0;
   return { state: "next", prog };
@@ -489,7 +495,7 @@ const lvl = (sum, ch) => FX_TOTAL[ch] > 0 ? sum / FX_TOTAL[ch] : 0;   // raw cha
 // every consumer reads it, none mutate it.
 const _fxCache = new Map();
 const _FX_CACHE_MAX = 4096;
-export function techEffects(k, blend = 1) {
+export function techEffects(k, blend = 1, env = null) {
   const _k = k || {};
   // Quantized key (1e-3 buckets): the tracks drift every tick, so exact float
   // keys never repeated and the memo hit ~0% in steady state — every call paid
@@ -508,8 +514,14 @@ export function techEffects(k, blend = 1) {
   // T.MIL_REVOLUTIONS is part of the memo key: the lever switches which
   // military formula a cached entry embodies, so dragging it must miss.
   const STEEP = T.MIL_REVOLUTIONS > 0;
+  // T.TECH_USE — the site's enabler bits join the memo key: the same knowledge
+  // vector yields different PRACTISED effects on different ground (a court that
+  // knows the plough but can keep no ox draws no plough bonus). Null env (lever
+  // off, or a caller without a site) reproduces the legacy key byte-identically.
+  const _envBits = env ? (env.draft ? 1 : 0) | (env.water ? 2 : 0) | (env.river ? 4 : 0) : -1;
   const _key = q(_k.agriculture) + "," + q(_k.construction) + "," + q(_k.organization) + ","
-             + q(_k.metallurgy) + "," + q(_k.navigation) + "," + q(_k.mobility) + "|" + blend + (STEEP ? "|R" : "");
+             + q(_k.metallurgy) + "," + q(_k.navigation) + "," + q(_k.mobility) + "|" + blend + (STEEP ? "|R" : "")
+             + (_envBits >= 0 ? "|u" + _envBits : "");
   const _hit = _fxCache.get(_key);
   if (_hit) return _hit;
   const have = techState(qk).have;
@@ -527,6 +539,12 @@ export function techEffects(k, blend = 1) {
   // multiple — the same on-ramp as the additive channel).
   let milAdd = 0, milMul = 1;
   for (let i = 0; i < TECHS.length; i++) {
+    // T.TECH_USE — knowing ≠ using: a discovered tech whose ecological enabler
+    // fails at this site grants NOTHING — no channel bonus, no ability, and no
+    // imminent-tech on-ramp (you cannot be "almost using" a plough with no ox).
+    // The knowledge itself stays (the tree shows "known, unused"; diffusion and
+    // prereq chains are untouched — the belt reached iron without using bronze).
+    if (env && TECHS[i].enabler && !env[TECHS[i].enabler]) continue;
     const fx = TECH_FX[TECHS[i].id]; if (!fx) continue;
     let credit;
     if (have[i]) credit = 1;

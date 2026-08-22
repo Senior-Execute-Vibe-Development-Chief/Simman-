@@ -69,6 +69,7 @@ const ENTITY_ACCEPTED = new Map([
   ["_royalCourt", "a roster of person references; persons are measured"],
   ["_byId", "alias of settlements"], ["_stMap", "alias of settlements"],
   ["_planQueue", "alias of settlement plans"],
+  ["_blocMembers", "member-id lists beside _blocMight (same alliance-pass rebuild); the members are countries, which are measured"],
 ]);
 
 const w = buildSim({ W, H: W >> 1, seed: SEED });

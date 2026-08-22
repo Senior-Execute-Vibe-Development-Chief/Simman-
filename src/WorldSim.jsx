@@ -3622,7 +3622,7 @@ const renderInspect=()=>{
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
-      {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} z={_zOf("techtree")} onClose={()=>setTechTreeOpen(false)}/>}
+      {techTreeOpen&&<TechTreeOverlay k={k} env={s._techEnv||null} title={s.name} z={_zOf("techtree")} onClose={()=>setTechTreeOpen(false)}/>}
 
       {/* ── Header ── (the chronicle opener lives here so it's always visible
           without scrolling the card — a long card can push a bottom section

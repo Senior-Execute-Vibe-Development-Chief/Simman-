@@ -725,8 +725,33 @@ function practisedK(k, metalCap) {
   return { ...k, metallurgy: metalCap };
 }
 function techEff(s) {
-  if (!s._techEff) s._techEff = techEffects(practisedK(s.knowledge, s._metalCap), T.TECH_EFFECTS);
+  if (!s._techEff) s._techEff = techEffects(practisedK(s.knowledge, s._metalCap), T.TECH_EFFECTS, s._techEnv || null);
   return s._techEff;
+}
+// T.TECH_USE — the site's ecological ENABLER record, the generalisation of
+// practisedK's one-channel law ("knowing iron ≠ holding it") to whole techs:
+//   draft — a working ox/horse team can LIVE here: the same livestock composite
+//           the food model feeds herders by (livestockClimate × the regional
+//           domesticate ceiling — the tsetse belt and the pre-contact New World
+//           both fall out of fields the sim already owns; the Columbian
+//           exchange arrives when the ceiling does). Bar 0.15: below it a
+//           draft team cannot be maintained year-round.
+//   water — navigable water at the site (the ship techs' ground truth).
+//   river — a floodplain or real river to canal (irrigation's ground truth).
+// Refreshed on the KNOW_INTERVAL cadence beside _techEff — the parts are
+// terrain-static except the domesticate ceiling, which diffuses.
+function techEnvOf(world, s) {
+  const tw = world.tw;
+  const ti = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
+  climateOf(world, s);
+  const ceilReg = world._agriCeil ? (world._agriCeil[ti] || 0) : 1;
+  const herd = livestockClimate(s._climTemp, s._climMoist) * ceilReg;
+  let st = s._techEnvSite;
+  if (!st) st = s._techEnvSite = {
+    water: computeWaterAccess(world, s.pos.x | 0, s.pos.y | 0).wa > 0.05,
+    river: !!(world.tFlood && world.tFlood[ti]) || !!(world.riverMag && world.riverMag[ti] >= 1),
+  };
+  return { draft: herd > 0.15, water: st.water, river: st.river };
 }
 export { techEff, computeConfinement };
 
@@ -2495,7 +2520,10 @@ function updateKnowledge(world, s) {
 
   // Refresh the cached tech-effect bonuses the sim reads (food, density, …),
   // throttled like the rest of the knowledge recompute (knowledge drifts slowly).
-  if ((world.step + s.id) % KNOW_INTERVAL === 0) s._techEff = techEffects(practisedK(k, metalCap), T.TECH_EFFECTS);
+  if ((world.step + s.id) % KNOW_INTERVAL === 0) {
+    s._techEnv = T.TECH_USE > 0 ? techEnvOf(world, s) : null;
+    s._techEff = techEffects(practisedK(k, metalCap), T.TECH_EFFECTS, s._techEnv);
+  }
 }
 
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
