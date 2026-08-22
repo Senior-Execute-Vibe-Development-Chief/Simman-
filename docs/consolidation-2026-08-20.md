@@ -317,5 +317,20 @@ shipping-grid rung and its strongest world:
 | **tw=960 (full stack)** | **295** | **33 / 1.64M km² / 9%** | **33,28,27,24,13** | **12%** |
 
 FOUR empires above 24 realms — the deepest empire tier of any arm.
-App-stride before/after arms are running to convict and acquit the
-stride bug at the app's exact configuration.
+
+**Stride verdict (same day): ACQUITTED as the screenshot's cause.** The
+app-stride BEFORE arm (buggy binary, SETT_STRIDE=3/TRADE_STRIDE=5,
+tw=960/24k — `shipfunnel960_appstride.log`) measured 424 cities / 33%
+stateless / 239 realms — statistically identical to the fixed
+reference. The cadence composition was objectively wrong and the fix
+stands (exact at every stride, byte-identical at the pins), but at this
+grid the technique WAVE carries farming's spread, not the per-settlement
+crop events that ran slow — the bug's world-level effect is negligible.
+The screenshot's leading explanation moves to the BUILD VINTAGE: the
+probes that sweep to statehood all carry the same-day caravan-exchange
+lap (EXCH_WAVE, `e39080c`), which thaws the tally-frozen basins that
+bind hardest at tw=960 — a world whose dawn ran on a build from hours
+earlier lacks it. A discriminating arm (app strides, EXCH_WAVE=0,
+TECH_USE=0 — the pre-screenshot lever state) is running; if it
+reproduces the ~11-state stall, fresh worlds on the current build are
+already healed.
