@@ -334,3 +334,19 @@ earlier lacks it. A discriminating arm (app strides, EXCH_WAVE=0,
 TECH_USE=0 — the pre-screenshot lever state) is running; if it
 reproduces the ~11-state stall, fresh worlds on the current build are
 already healed.
+
+**Case closed (the 22.6k screenshot):** the pre-caravan vintage arm
+(`shipfunnel960_precaravan.log` — app strides, EXCH_WAVE=0, TECH_USE=0)
+does not stall permanently either (220 realms by 24k) but comes
+closest: at 20k it holds 19 realms / 13 painted with 30% of the
+register at the birth bar — half the realms and triple the slop-pile of
+the full stack at the same step. The statehood sweep is STEEP (100% →
+64% → 36% stateless in successive 4k windows), so a snapshot on the
+sweep's early edge reads as ~10 nations / 90%+ stateless / a
+birth-sized carpet — the screenshot is that phase, arriving later on
+the older build and that world's seed timing. No standing stall exists
+in current code at any measured configuration; the four-arm tw=960
+table (reference, buggy strides, fixed strides, pre-caravan) is the
+shipping grid's validation set. A fresh world on the current build is
+the user-facing confirmation; a current-build world still 90%+
+stateless at 24k would be a live repro worth attaching to directly.
