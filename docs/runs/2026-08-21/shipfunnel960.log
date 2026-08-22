@@ -1,0 +1,84 @@
+[harness] tree 715df3a
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"WAR_FINISH":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1}
+[peopleSim] hearth pin Nile picked at tile (568,173) (33.0E 25.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (595,149) (43.1E 34.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (665,164) (69.4E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (776,146) (111.0E 35.3N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (568,173) (33.0E 25.1N) score 7.61 pkg=wheat(suit 0.99) — ARMED: ~906y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (595,149) (43.1E 34.1N) score 4.33 pkg=wheat(suit 0.68) — ARMED: ~1331y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (665,164) (69.4E 28.5N) score 5.83 pkg=wheat(suit 0.86) — ARMED: ~1048y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (776,146) (111.0E 35.3N) score 4.63 pkg=millet(suit 0.68) — ARMED: ~2199y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (215,142) (-99.4E 36.8N) score 4.84 pkg=maize(suit 0.82) — ARMED: ~5463y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (456,195) (-9.0E 16.9N) score 3.65 pkg=sorghum(suit 0.64) — ARMED: ~3126y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (282,267) (-74.3E -10.1N) score 1.33 pkg=tubers(suit 0.68) — ARMED: ~4424y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (517,294) (13.9E -20.3N) score 1.05 pkg=tubers(suit 0.82) — ARMED: ~3648y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (494,80) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (49,82) (-161.6E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+=== step 4000  cities=0 (stateless 0%)  realms=0 (singl 0%)  bonds=0  deaths=0 (young 0)
+    census(sim-units): p10=0 p50=0 p90=0 max=0  birthBand(9-15)=0%
+    BLOCS: 0 nations-as-painted  biggest: 0 realms / 0.00Mkm2 (0% of claimed)  top5=
+[peopleSim] AGRICULTURE INVENTED at (568,173) (33.0E 25.1N) — the basin farms; a city will rise when its market gathers one (score 7.61)
+
+=== step 8000  cities=0 (stateless 0%)  realms=0 (singl 0%)  bonds=0  deaths=0 (young 0)
+    census(sim-units): p10=0 p50=0 p90=0 max=0  birthBand(9-15)=0%
+    BLOCS: 0 nations-as-painted  biggest: 0 realms / 0.00Mkm2 (0% of claimed)  top5=
+    landNation: tallyBar=2
+    siteCity: tallyBar=21
+[peopleSim] AGRICULTURE INVENTED at (665,164) (69.4E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.83)
+
+=== step 12000  cities=0 (stateless 0%)  realms=0 (singl 0%)  bonds=0  deaths=0 (young 0)
+    census(sim-units): p10=0 p50=0 p90=0 max=0  birthBand(9-15)=0%
+    BLOCS: 0 nations-as-painted  biggest: 0 realms / 0.00Mkm2 (0% of claimed)  top5=
+    landNation: tallyBar=68
+    siteCity: tallyBar=1437
+[peopleSim] AGRICULTURE INVENTED at (595,149) (43.1E 34.1N) — the basin farms; a city will rise when its market gathers one (score 4.33)
+[peopleSim] AGRICULTURE INVENTED at (776,146) (111.0E 35.3N) — the basin farms; a city will rise when its market gathers one (score 4.63)
+[transHeap] step=14640 cap=131072 peakN=121221 pushes=476629 (1.0MB backing)
+
+=== step 16000  cities=26 (stateless 100%)  realms=0 (singl 0%)  bonds=0  deaths=0 (young 0)
+    census(sim-units): p10=18 p50=240 p90=2332 max=5001  birthBand(9-15)=4%
+    BLOCS: 0 nations-as-painted  biggest: 0 realms / 0.00Mkm2 (0% of claimed)  top5=
+    landNation: tallyBar=113
+    peerSeat: CANDIDATE=98  gathering=75  cellFull=62  PASSED=23
+    siteCity: tallyBar=3088
+    fission: noRivalSeat=5
+[peopleSim] hearth candidate at (517,294) (13.9E -20.3N) stood down — the farming package arrived before it was invented
+[transHeap] step=17160 cap=262144 peakN=172969 pushes=639624 (2.1MB backing)
+[transHeap] step=17664 cap=524288 peakN=355518 pushes=1121393 (4.2MB backing)
+
+=== step 20000  cities=175 (stateless 73%)  realms=40 (singl 88%)  bonds=11  deaths=8 (young 1)
+    census(sim-units): p10=15 p50=158 p90=680 max=5839  birthBand(9-15)=15%
+    BLOCS: 29 nations-as-painted  biggest: 4 realms / 0.28Mkm2 (41% of claimed)  top5=4,3,3,3,2
+    submit: CANDIDATE=191  hazardRoll(waiting)=83  resistanceNotHopeless=59  identityBrake(foreignCourt)=20  alreadyADependency=19  PASSED=7  noLiveSeat=2  outOfProjectionReach=1
+    integrate: CANDIDATE=37  orgBelowMin=20  hazardRoll(waiting)=11  identityBrake(foreignCourt)=2  beyondDirectRule=2  PASSED=1  coalitionBrake(deterrence)=1
+    landNation: tallyBar=142
+    peerSeat: cellFull=722  CANDIDATE=642  gathering=285  noPosition=212  PASSED=145
+    siteCity: tallyBar=4423
+    fission: noRivalSeat=301
+[peopleSim] AGRICULTURE INVENTED at (456,195) (-9.0E 16.9N) — the basin farms; a city will rise when its market gathers one (score 3.65)
+[peopleSim] hearth candidate at (494,80) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=22704 cap=67108864 peakN=43011618 pushes=158626168 (536.9MB backing)
+
+=== step 24000  cities=417 (stateless 33%)  realms=226 (singl 90%)  bonds=80  deaths=120 (young 5)
+    census(sim-units): p10=15 p50=187 p90=672 max=3312  birthBand(9-15)=8%
+    BLOCS: 146 nations-as-painted  biggest: 23 realms / 0.76Mkm2 (11% of claimed)  top5=23,14,8,6,5
+    submit: CANDIDATE=2558  hazardRoll(waiting)=944  alreadyADependency=835  resistanceNotHopeless=374  identityBrake(foreignCourt)=174  noLiveSeat=102  coalitionBrake(deterrence)=64  PASSED=50  outOfProjectionReach=15
+    integrate: CANDIDATE=1038  orgBelowMin=616  hazardRoll(waiting)=185  beyondDirectRule=119  identityBrake(foreignCourt)=36  coalitionBrake(deterrence)=32  PASSED=30  seatAboveTierCap=14  notAVassalBond=6
+    landNation: tallyBar=161
+    peerSeat: cellFull=2440  CANDIDATE=1070  noPosition=562  gathering=255  PASSED=253
+    siteCity: tallyBar=4452
+    fission: noRivalSeat=484  eligible=9
+[peopleSim] AGRICULTURE INVENTED at (282,267) (-74.3E -10.1N) — the basin farms; a city will rise when its market gathers one (score 1.33)
+
+=== step 28000  cities=730 (stateless 12%)  realms=532 (singl 87%)  bonds=237  deaths=406 (young 30)
+    census(sim-units): p10=15 p50=119 p90=571 max=11753  birthBand(9-15)=8%
+    BLOCS: 295 nations-as-painted  biggest: 33 realms / 1.64Mkm2 (9% of claimed)  top5=33,28,27,24,13
+    submit: CANDIDATE=9104  alreadyADependency=3601  hazardRoll(waiting)=3335  identityBrake(foreignCourt)=642  resistanceNotHopeless=578  noLiveSeat=428  coalitionBrake(deterrence)=260  PASSED=160  outOfProjectionReach=100
+    integrate: CANDIDATE=4288  orgBelowMin=2242  hazardRoll(waiting)=842  beyondDirectRule=646  identityBrake(foreignCourt)=237  coalitionBrake(deterrence)=122  PASSED=121  seatAboveTierCap=41  notAVassalBond=37
+    landNation: tallyBar=141
+    peerSeat: cellFull=4404  CANDIDATE=2433  noPosition=1463  gathering=594  PASSED=374  noHeadroom=2
+    siteCity: tallyBar=3587
+    fission: noRivalSeat=900  eligible=70  halfBelowBar=2  PASSED=1

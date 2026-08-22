@@ -293,3 +293,29 @@ axis. Predation necks now, in order: parity (honest frontier
 physics), truce cycle (7,035/window pred), the amphib bar (8,100 —
 sea-borne predation, a later lap), and the march of sieges for war
 texture.
+
+## 2026-08-21 addendum IV — the first tw=960 rung, and the app-stride bug
+
+The owner's app screenshot (tw=960, step 22.6k: BRONZE AGE, 11 states,
+94% stateless, a carpet of birth-sized cities) contradicted every arm in
+this doc — and the seam was neither the sim nor a stale save but the
+STRIDES: five inner cadence gates in the strided settlement pass
+coincide with the app's SETT_STRIDE=3 only every lcm(3,8)=24 ticks, so
+crop adoption/domestication (event-like, not dt-compensated) ran at a
+THIRD of the measured pace in the shipping app only. The harnesses pin
+stride 1 — every gate ran in the exact regime where the bug does
+nothing (the resgate blind spot in TIME). Fixed (`faac4e2`): inner
+cadences snap onto the stride's grid; K=1 byte-identical.
+
+The harness-stride tw=960 arm (28k, full stack —
+`docs/runs/2026-08-21/shipfunnel960.log`) is the ladder's first
+shipping-grid rung and its strongest world:
+
+| grid | painted | biggest bloc | top5 | stateless |
+|---|---|---|---|---|
+| tw=480 (predation stack) | 440 | 38 / 2.07M km² / 8% | 38,19,12,12,12 | 8% |
+| **tw=960 (full stack)** | **295** | **33 / 1.64M km² / 9%** | **33,28,27,24,13** | **12%** |
+
+FOUR empires above 24 realms — the deepest empire tier of any arm.
+App-stride before/after arms are running to convict and acquit the
+stride bug at the app's exact configuration.
