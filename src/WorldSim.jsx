@@ -724,6 +724,38 @@ try{
       a.download=`simman-run-t${d.step??""}.txt`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     }
+    else if(d.type==='runReportData'){
+      // The full observation artifact: one self-contained HTML — provenance,
+      // a political-map image per ~1000 steps (temporally-stable hues via the
+      // scrubber's own relaxation; identity roots for historical frames), and
+      // the journal with its telemetry-funnel windows.
+      const {tw,th,land,frames}=d;
+      let hues=new Map();
+      const cnv=document.createElement("canvas");cnv.width=tw;cnv.height=th;
+      const cx2=cnv.getContext("2d");
+      const out=document.createElement("canvas");out.width=tw*2;out.height=th*2;
+      const ox=out.getContext("2d");ox.imageSmoothingEnabled=false;
+      const h2rgb=(h)=>{const f=(n)=>{const k=(n+h/30)%12;return Math.round(255*(0.5-0.42*Math.max(-1,Math.min(1,Math.min(k-3,9-k)))));};return [f(0),f(8),f(4)];};
+      const imgs=frames.map(fr=>{
+        hues=assignCountryColors(fr.claim,tw,th,hues,null);
+        const img=cx2.createImageData(tw,th);const p=img.data;
+        for(let i=0;i<fr.claim.length;i++){
+          const o=i*4;const id=fr.claim[i];
+          if(!land[i]){p[o]=12;p[o+1]=16;p[o+2]=24;}
+          else if(id<0){p[o]=42;p[o+1]=45;p[o+2]=51;}
+          else{const hu=hues.get(id);const rgb=h2rgb(hu!=null?hu:((id*2654435761)>>>0)%360);p[o]=rgb[0];p[o+1]=rgb[1];p[o+2]=rgb[2];}
+          p[o+3]=255;
+        }
+        cx2.putImageData(img,0,0);ox.drawImage(cnv,0,0,out.width,out.height);
+        return `<figure style="margin:12px 0"><img src="${out.toDataURL("image/png")}" style="width:100%;image-rendering:pixelated"/><figcaption style="font:11px monospace;color:#888">step ${fr.step}</figcaption></figure>`;
+      }).join("");
+      const esc=(s)=>s.replace(/</g,"&lt;");
+      const html=`<!doctype html><meta charset="utf-8"><title>Simman run t${d.step}</title><body style="background:#14110d;color:#d8cdb8;max-width:1100px;margin:20px auto;font:13px/1.5 monospace"><pre>${esc(d.head)}</pre><h3>Political map every ~1000 steps</h3>${imgs}<h3>Journal (metrics every 250 steps · funnel windows every 1000)</h3><pre style="white-space:pre-wrap">${esc(d.journal)}</pre></body>`;
+      const blob=new Blob([html],{type:"text/html"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=`simman-report-t${d.step}.html`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
     else if(d.type==='error'){console.error('[SimWorker]',d.where||'',d.message,d.stack);
       if(d.message&&d.message.indexOf('load failed')===0){alert('Could not load save: '+d.message.slice('load failed: '.length));return;}
       // Surface it. A STEP error means the worker paused the sim on a mid-step
@@ -4451,9 +4483,12 @@ return(
         if(drawNowRef.current)drawNowRef.current();
         playRef.current=true;setPlaying(true);}}>LIVE ▶</button>
   </>}
-  {!narrow&&<button className="au-btn au-flat" title="Download the run journal — one metric line per 500 steps plus seed/levers provenance. Hand the file to Claude to let it observe this run."
+  {!narrow&&<button className="au-btn au-flat" title="Download the run journal (text) — metrics every 250 steps + telemetry-funnel windows + seed/levers provenance. Paste it to Claude to let it observe this run."
     style={{padding:"2px 6px",fontSize:11}}
-    onClick={()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'exportRunLog'});}}>⤓ run log</button>}
+    onClick={()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'exportRunLog'});}}>⤓ log</button>}
+  {!narrow&&<button className="au-btn au-flat" title="Download the full run report (HTML) — everything in the log PLUS a political-map image every ~1000 steps. One self-contained file for you and for Claude."
+    style={{padding:"2px 6px",fontSize:11}}
+    onClick={()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'exportRunReport'});}}>⤓ report</button>}
   {!narrow&&<select className="au-btn au-flat au-num" value={minKm2} title="Atlas bar — hide nations smaller than this (nations with settlements always show)"
     onChange={(ev)=>setMinKm2(+ev.target.value)} style={{padding:"2px 4px",fontSize:11}}>
     <option value={0}>all nations</option>

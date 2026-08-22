@@ -25,6 +25,7 @@ import { applyTuning, resetTuning, T, rNormPop, TUNING_SCHEMA } from "./sim/peop
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { setBandWorkerUrl } from "./sim/peopleSim/popFieldPool.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
+import { telEnable, telReport, telReset } from "./sim/peopleSim/telemetry.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
 import { doctrineLabel } from "./sim/peopleSim/faiths.js";
 import { getPerson, getDynasty, ageOf, getDynastyTree, traitLabel } from "./sim/peopleSim/dynasties.js";
@@ -129,8 +130,10 @@ let minShowKm2 = 0;          // hide nations whose claim is smaller than this (k
 // docs/runs/ or pastes into chat and reads 1:1 against the ladder tables.
 let worldSeed = null;
 const runJournal = [];
-let _journalNext = 0;
-const JOURNAL_EVERY = 500;
+let _journalNext = 0, _funnelNext = 0, _jDeaths = 0, _jEvSeen = -1;
+const JOURNAL_EVERY = 250;         // one metric line
+const JOURNAL_FUNNEL_EVERY = 1000; // one telemetry-funnel window (probes' own channels)
+const JOURNAL_CHANNELS = /^(found|siteCity|peerSeat|landNation|birthPolity|submit|integrate|attack|storm|capture|fission)$/;
 function journalTick() {
   if (!world || world.step < _journalNext) return;
   _journalNext = world.step + JOURNAL_EVERY;
@@ -143,14 +146,35 @@ function journalTick() {
   const cs = world.countries;
   const ov = world._overlordOf || new Map();
   const rootOf = (id) => { let cur = id, h = 0; while (h++ < 12) { const o = ov.get(cur); if (o == null || o < 0 || o === cur) break; cur = o; } return cur; };
-  const blocTiles = new Map();
+  const blocTiles = new Map(), blocRealms = new Map();
   const co = world._countryOwner;
   if (co && cs && cs.size) for (let i = 0; i < co.length; i++) { const id = co[i]; if (id >= 0) { const r = rootOf(id); blocTiles.set(r, (blocTiles.get(r) || 0) + 1); } }
-  const roots = new Set(); if (cs) for (const id of cs.keys()) roots.add(rootOf(id));
-  let bigTiles = 0; for (const t of blocTiles.values()) if (t > bigTiles) bigTiles = t;
+  let singles = 0;
+  if (cs) for (const c of cs.values()) {
+    const r = rootOf(c.id);
+    blocRealms.set(r, (blocRealms.get(r) || 0) + 1);
+    if (!c.members || c.members.filter(m => m.mode === "settled").length === 1) singles++;
+  }
+  let bigTiles = 0, bigRoot = -1; for (const [r, t] of blocTiles) if (t > bigTiles) { bigTiles = t; bigRoot = r; }
   if (!world._km2PerTileW) { let lt = 0; for (let i = 0; i < world.N; i++) if (world.elev[i] > 0) lt++; world._km2PerTileW = (510e6 * 0.29) / Math.max(1, lt); }
-  runJournal.push(`step ${String(world.step).padStart(6)}  cities=${cities} (stateless ${cities ? (100 * stateless / cities).toFixed(0) : 0}%)  states=${cs ? cs.size : 0}  nations=${roots.size}  biggestBloc=${((bigTiles * world._km2PerTileW) / 1e6).toFixed(2)}Mkm2  pop=${(pop / 1000).toFixed(0)}M`);
-  if (runJournal.length > 4000) runJournal.splice(0, 1000);
+  // deaths since the journal began (cumulative — a count of things that have happened)
+  const evs = world.events || [];
+  for (let i = evs.length - 1; i >= 0; i--) { const ev = evs[i]; if (ev.id <= _jEvSeen) break; if (ev.type === "polity.ended" || ev.type === "polity.shattered") _jDeaths++; }
+  if (evs.length) _jEvSeen = evs[evs.length - 1].id;
+  const st = peopleSimStats(world);
+  const era = ERAS[st.leadingEra || 0] || ERAS[0];
+  runJournal.push(`step ${String(world.step).padStart(6)}  era=${era}  cities=${cities} (stateless ${cities ? (100 * stateless / cities).toFixed(0) : 0}%)  states=${cs ? cs.size : 0} (singl ${cs && cs.size ? (100 * singles / cs.size).toFixed(0) : 0}%)  nations=${blocRealms.size}  biggestBloc=${blocRealms.get(bigRoot) || 0} realms/${((bigTiles * world._km2PerTileW) / 1e6).toFixed(2)}Mkm2  bonds=${ov.size}  deathsEver=${_jDeaths}  pop=${(pop / 1000).toFixed(0)}M`);
+  if (world.step >= _funnelNext) {
+    _funnelNext = world.step + JOURNAL_FUNNEL_EVERY;
+    const tr = telReport(world);
+    for (const ch of Object.keys(tr).sort()) {
+      if (!JOURNAL_CHANNELS.test(ch)) continue;
+      const line = Object.entries(tr[ch]).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}=${v}`).join("  ");
+      if (line) runJournal.push(`    ${ch}: ${line}`);
+    }
+    telReset(world);
+  }
+  if (runJournal.length > 12000) runJournal.splice(0, 2000);
 }
 let timeline = makeTimeline();   // ~every-year political frames (sparse diffs; see sim/timelineStore.js — shared with the main-thread fallback)
 let lastKeyStep = 0;         // last frame's step (capture cadence anchor)
@@ -284,7 +308,8 @@ function handleMessage(m) {
     try {
       genMeta = m.genMeta || {};
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, simTileRes: m.simTileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
-      worldSeed = m.seed; runJournal.length = 0; _journalNext = 0;
+      worldSeed = m.seed; runJournal.length = 0; _journalNext = 0; _funnelNext = 0; _jDeaths = 0; _jEvSeen = -1;
+      telEnable(world);   // the journal's funnel windows — the probes' own channels, live in the app
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
       world._realWindGen = !!(genMeta && genMeta.realWind);   // terrain identity rides the WORLD (saves read it; caller meta is only a fallback)
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
@@ -344,7 +369,8 @@ function handleMessage(m) {
     try {
       if (m.genMeta) genMeta = m.genMeta;
       world = loadWorld(m.json);
-      worldSeed = world && world.seed != null ? world.seed : worldSeed; runJournal.length = 0; _journalNext = world ? world.step : 0;
+      worldSeed = world && world.seed != null ? world.seed : worldSeed; runJournal.length = 0; _journalNext = world ? world.step : 0; _funnelNext = _journalNext; _jDeaths = 0; _jEvSeen = -1;
+      if (world) telEnable(world);
       world._wantMoneyFlows = (viewMode === "money");
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
       _bufPool.clear();   // the loaded world can change N — stale-size buffers would never be hit again
@@ -375,6 +401,38 @@ function handleMessage(m) {
       ``,
     ];
     self.postMessage({ type: "runLog", text: head.concat(runJournal).join("\n"), step: world ? world.step : 0 });
+  } else if (m.type === "exportRunReport") {
+    // The full observation artifact: journal + provenance + a political-map
+    // frame every ~REPORT_MAP_EVERY steps sampled from the scrubber's own
+    // timeline (CAPTURE_IVL-dense, full history). The UI renders the frames
+    // and composes one self-contained HTML file.
+    const REPORT_MAP_EVERY = 1000, MAX_FRAMES = 48;
+    const frames = [], transfer = [];
+    if (world && frameCount(timeline)) {
+      const n = frameCount(timeline);
+      const stride = Math.max(1, Math.ceil((world.step / REPORT_MAP_EVERY) / MAX_FRAMES)) * REPORT_MAP_EVERY;
+      let nextStep = stride;
+      for (let idx = 0; idx < n && frames.length < MAX_FRAMES; idx++) {
+        const fr = frameAt(timeline, idx, world.N);
+        if (!fr || fr.step < nextStep) continue;
+        nextStep = fr.step + stride;
+        frames.push({ step: fr.step, claim: fr.claim });
+        transfer.push(fr.claim.buffer);
+      }
+    }
+    const land = world ? new Uint8Array(world.N) : new Uint8Array(0);
+    if (world) for (let i = 0; i < world.N; i++) land[i] = world.elev[i] > 0 ? 1 : 0;
+    transfer.push(land.buffer);
+    const diffs = [];
+    for (const cat of TUNING_SCHEMA) for (const p of (cat.params || [])) if (T[p.key] !== undefined && T[p.key] !== p.def) diffs.push(`${p.key}=${T[p.key]} (def ${p.def})`);
+    self.postMessage({
+      type: "runReportData",
+      step: world ? world.step : 0,
+      tw: world ? world.tw : 0, th: world ? world.th : 0,
+      head: `Simman run report\nseed=${worldSeed}  sim=${world ? world.tw + "x" + world.th : "?"}  step=${world ? world.step : 0}  exported=${new Date().toISOString()}\nlevers off-default: ${diffs.length ? diffs.join("  ") : "none"}`,
+      journal: runJournal.join("\n"),
+      land, frames,
+    }, transfer);
   } else if (m.type === "mapFilter") {
     // The atlas bar: hide nations below m.minKm2 (settlement-holders always show).
     minShowKm2 = m.minKm2 || 0;
