@@ -34,7 +34,7 @@ while (world.step < STEPS) {
   stepPeopleSim(world, EVERY);
   const bridge = world._onePopScale > 0 ? world._onePopScale : 0;
   const cores = [], feds = [], atBound = [], hist = new Map();
-  let n = 0, starving = 0, boundHeld = 0, noStash = 0;
+  let n = 0, starving = 0, boundHeld = 0, noStash = 0, subCity = 0;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     n++;
@@ -46,6 +46,7 @@ while (world.step < STEPS) {
     if (s._fedM !== undefined) feds.push(s._fedM);
     const sup = s._foodSupply || 0, need = s._coreNeed || 0;
     if ((s.food || 0) <= 0.01 && need > 0 && sup < need) starving++;
+    if (core > 0 && core < 10000) subCity++;   // TOWNS: entities below the city definition, which must not persist
     // is this core sitting AT its own stashed bound? (_coreHoldCapF is in
     // FIELD units; the live core in field units is core/POP_SCALE/bridge)
     if (!(s._coreHoldCapF > 0)) { noStash++; continue; }
@@ -63,7 +64,7 @@ while (world.step < STEPS) {
   { const evs = world.events || []; if (evs.length) evSeen = evs[evs.length - 1].id; }
   const top = [...hist.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
     .map(([k, v]) => `${k}k:${v}`).join("  ");
-  console.log(`\n=== step ${world.step}  cities=${n}  starving=${starving} (${(100 * starving / Math.max(1, n)).toFixed(0)}%)  noStash=${noStash}`);
+  console.log(`\n=== step ${world.step}  cities=${n}  starving=${starving} (${(100 * starving / Math.max(1, n)).toFixed(0)}%)  noStash=${noStash}  SUB-CITY(<10k core)=${subCity}`);
   console.log(`    urbanCore(real people): p10=${(q(cores, 0.1) / 1000).toFixed(1)}k p50=${(q(cores, 0.5) / 1000).toFixed(1)}k p90=${(q(cores, 0.9) / 1000).toFixed(1)}k max=${(q(cores, 1) / 1000).toFixed(0)}k`);
   console.log(`    modal buckets: ${top}`);
   console.log(`    core/ownBound: p10=${q(atBound, 0.1).toFixed(2)} p50=${q(atBound, 0.5).toFixed(2)} p90=${q(atBound, 0.9).toFixed(2)}   AT-BOUND(0.9-1.1)=${boundHeld} (${(100 * boundHeld / Math.max(1, n)).toFixed(0)}%)`);

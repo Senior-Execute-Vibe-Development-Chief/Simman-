@@ -1140,21 +1140,30 @@ function maybeDissolveTowns(world) {
   const bar = (TIER_CORE[2] / URBAN_SHARE_REF) * DISSOLVE_HYST / world._onePopScale;   // in field units
   // T.DISSOLVE_CORE — THE SECOND BAR, the one the mint always had and the
   // dissolve never did (owner 2026-08-22: "cities can become smaller than
-  // 12k, then they stop being cities"). Minting a city requires TWO things:
-  // a basin that could feed one (above) AND a core that actually gathered
-  // one (coreBarF). Dissolution tested only the basin — so a city whose
-  // URBAN CORE had withered to a husk lived forever, as long as peasants
-  // still worked the fields around it. That is the shelf under the owner's
-  // pile of identical starving cities: nothing in the register ever asked
-  // whether the city part of the city was still there.
+  // 12k, then they stop being cities" → "towns should not exist, anything
+  // smaller than a city should not be anything"). Minting a city requires
+  // TWO things: a basin that could feed one (above) AND a core that actually
+  // gathered one (coreBarF). Dissolution tested only the basin — so a city
+  // whose URBAN CORE had withered to a husk lived forever as long as
+  // peasants still worked the fields around it, and the register kept a
+  // permanent class of sub-city entities the charter says must not exist
+  // ("A SETTLEMENT IS A CITY — or a community growing into one. NEVER a mere
+  // village or market town", CLAUDE.md).
+  //   The bar is therefore the CITY BAR ITSELF (T.DISSOLVE_CORE = 1.0 of
+  // TIER_CORE[2]), not a fraction of it: below the definition of a city an
+  // entity is not a smaller entity, it is COUNTRYSIDE. Anti-flicker is the
+  // SUSTAIN TIMER, not a lowered bar — a core must stay under the bar for
+  // DISSOLVE_SUSTAIN before it fades, so a city dipping through a bad
+  // generation survives while one that never recovers does not. (Under
+  // CITY_AT_BIRTH no entity is ever born below the bar, so anything under it
+  // is a city in DECLINE, never one on the way up.)
   //   History's own case is post-Roman Britain: the countryside stayed
   // peopled while the towns emptied and simply stopped being towns —
-  // Silchester and Wroxeter are fields. The people are not lost here
-  // either (under ONE_POP they were always the land's; only the urban
-  // institution goes, exactly as the basin lane already does it).
-  //   Same constant, same hysteresis, same sustain timer as the basin bar —
-  // no new numbers, and the two halves of one law finally symmetric.
-  const coreBar = TIER_CORE[2] * DISSOLVE_HYST;   // census units — a husk below 60% of the city definition
+  // Silchester and Wroxeter are fields. The people are not lost here either
+  // (under ONE_POP they were always the land's; only the urban institution
+  // goes, exactly as the basin lane already does it). No new constants: the
+  // mint's own bar, the dissolve's own timer.
+  const coreBar = TIER_CORE[2] * T.DISSOLVE_CORE;   // census units — the city definition itself at 1.0
   const dt = world._dt || 1;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;

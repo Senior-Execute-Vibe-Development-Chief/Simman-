@@ -141,11 +141,14 @@ const JOURNAL_CHANNELS = /^(found|siteCity|peerSeat|landNation|birthPolity|submi
 function journalTick() {
   if (!world || world.step < _journalNext) return;
   _journalNext = world.step + JOURNAL_EVERY;
-  let cities = 0, stateless = 0, pop = 0;
+  let cities = 0, stateless = 0, pop = 0, subCity = 0;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     cities++; pop += s.people || 0;
     if (s.countryId < 0) stateless++;
+    // TOWNS WATCH (owner directive: nothing below a city may persist as an
+    // entity) — settled entities whose urban core is under the city bar.
+    if (s._urbanPop != null && s._urbanPop * POP_SCALE < 10000) subCity++;
   }
   const cs = world.countries;
   const ov = world._overlordOf || new Map();
@@ -167,7 +170,7 @@ function journalTick() {
   if (evs.length) _jEvSeen = evs[evs.length - 1].id;
   const st = peopleSimStats(world);
   const era = ERAS[st.leadingEra || 0] || ERAS[0];
-  runJournal.push(`step ${String(world.step).padStart(6)}  era=${era}  cities=${cities} (stateless ${cities ? (100 * stateless / cities).toFixed(0) : 0}%)  states=${cs ? cs.size : 0} (singl ${cs && cs.size ? (100 * singles / cs.size).toFixed(0) : 0}%)  nations=${blocRealms.size}  biggestBloc=${blocRealms.get(bigRoot) || 0} realms/${((bigTiles * world._km2PerTileW) / 1e6).toFixed(2)}Mkm2  bonds=${ov.size}  deathsEver=${_jDeaths}  pop=${(pop / 1000).toFixed(0)}M`);
+  runJournal.push(`step ${String(world.step).padStart(6)}  era=${era}  cities=${cities} (stateless ${cities ? (100 * stateless / cities).toFixed(0) : 0}%)  states=${cs ? cs.size : 0} (singl ${cs && cs.size ? (100 * singles / cs.size).toFixed(0) : 0}%)  nations=${blocRealms.size}  biggestBloc=${blocRealms.get(bigRoot) || 0} realms/${((bigTiles * world._km2PerTileW) / 1e6).toFixed(2)}Mkm2  bonds=${ov.size}  deathsEver=${_jDeaths}  subCity=${subCity}  pop=${(pop / 1000).toFixed(0)}M`);
   if (world.step >= _funnelNext) {
     _funnelNext = world.step + JOURNAL_FUNNEL_EVERY;
     const tr = telReport(world);
