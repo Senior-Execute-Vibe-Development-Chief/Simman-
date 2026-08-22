@@ -23,3 +23,96 @@
 [transHeap] step=15648 cap=4096 peakN=2812 pushes=29575 (0.0MB backing)
 [peopleSim] hearth candidate at (387,72) (110.3E 36.0N) stood down — the farming package arrived before it was invented
 [peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=18168 cap=65536 peakN=38508 pushes=135599 (0.5MB backing)
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.29)
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.24)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) stood down — the farming package arrived before it was invented
+
+=== NATIONLESS CITIES / DENSITY-vs-SIZE  960x480 (tw=480)  seed 8817  30000 steps  r=600km ===
+
+-- A. the mint --------------------------------------------------------
+  polity.founded by channel (cumulative, whole run):
+     tribal            132
+     frontier           24
+  city births: on CLAIMED ground 1260   in the WILD 1400   (wild share 53%)
+  what adoptAndFound did with each newborn city (every mint is born tier 2 and stateless):
+     born INSIDE a realm's field  (n=1252):  joined it 4 (0%)   MINTED ITS OWN REALM 1109 (89%)   left stateless 139 (11%)
+     born in the WILD             (n=1396):  joined a realm 69 (5%)   MINTED ITS OWN REALM 390 (28%)   left stateless 937 (67%)
+     of the 1109 that self-founded ON claimed ground, the state of that ground one window later:
+        field had RECEDED off the tile 135 (12%)   paint names a realm with NO settled member 124 (11%)   owner still live and holding the tile 850 (77%)
+     every city that ended sovereign, by the path it took: sovereign from the first read 1499 (100%)   JOINED then seceded 0 (0%)   stateless first, sovereign later 0 (0%)
+
+  step      entities  stateless   cities(t>=2)  stateless-cities  realms
+      25          0       0 (  0%)         0             0 (  0%)       0
+    1900          0       0 (  0%)         0             0 (  0%)       0
+    3775          0       0 (  0%)         0             0 (  0%)       0
+    5650          0       0 (  0%)         0             0 (  0%)       0
+    7525          0       0 (  0%)         0             0 (  0%)       0
+    9400          0       0 (  0%)         0             0 (  0%)       0
+   11275          0       0 (  0%)         0             0 (  0%)       0
+   13150          0       0 (  0%)         0             0 (  0%)       0
+   15025         53      53 (100%)        50            50 (100%)       0
+   16900        100      81 ( 81%)        92            73 ( 79%)      11
+   18775        185      79 ( 43%)       175            73 ( 42%)      74
+   20650        362     147 ( 41%)       340           139 ( 41%)     175
+   22525        512     131 ( 26%)       486           120 ( 25%)     316
+   24400        731     152 ( 21%)       690           141 ( 20%)     478
+   26275        930      87 (  9%)       888            74 (  8%)     671
+   28150       1166      58 (  5%)      1132            50 (  4%)     945
+   30000       1394      36 (  3%)      1352            27 (  2%)    1186
+
+-- B. the size law ----------------------------------------------------
+  realms ever founded: 2111   alive with territory at 30000: 1129
+  Spearman(birth-neighbourhood CITY COUNT , final area)  = -0.110
+  Spearman(birth-neighbourhood FREE-LAND share, final area) = -0.027
+  Spearman(birth CITY COUNT , final BLOC area)          = -0.012
+  Spearman(birth step        , final area)              = 0.184
+
+  by birth-neighbourhood city count (quartiles):
+    bin  n     cities@birth   free-land@birth   final km2 p50 / p90      bloc km2 p50 / p90   members p50
+    Q1    283       6            77%            0.031M /   0.069M     0.050M /   0.176M      1
+    Q2    283      14            45%            0.027M /   0.053M     0.042M /   0.248M      1
+    Q3    283      20            30%            0.027M /   0.042M     0.042M /   0.569M      1
+    Q4    280      29            12%            0.027M /   0.038M     0.038M /   0.779M      1
+
+  by free-land share at birth (quartiles):
+    bin  n     free-land@birth  cities@birth   final km2 p50 / p90      members p50
+    Q1    283        6%             26          0.031M /   0.042M      1
+    Q2    283       28%             20          0.027M /   0.046M      1
+    Q3    283       51%             15          0.027M /   0.046M      1
+    Q4    280       81%              6          0.027M /   0.065M      1
+
+  the 15 LARGEST realms — what their birth neighbourhood looked like
+  (world median at founding: 17 cities, 39% free land)
+    born    km2       bloc km2   mem   cities@birth  stateless@birth  free-land@birth  name
+     23887    0.374M    0.779M     2       17             4             50%        Foudthahheiftea
+     27037    0.256M    0.256M     2        5             0             83%        Tiunkat'a
+     25387    0.252M    0.569M     1        1             0             96%        Ufo̰
+     23437    0.241M    0.893M     1       14             2             56%        Lo̰hpo̰po̰
+     24487    0.187M    0.187M     1        3             1             90%        Kobvemewoa
+     29137    0.176M    0.176M     1        4             0             82%        Bizyaamiuzyzyuva
+     29437    0.176M    0.176M     3        6             1             75%        Ziizizeze
+     27787    0.168M    0.168M     2        1             0            100%        Iusrazye
+     27487    0.153M    0.168M     2       22             0             27%        Kyhuthte
+     28237    0.122M    0.134M     2       14             7             66%        Nartajanv
+     29737    0.122M    0.122M     2        9             0             39%        Desavua
+     29437    0.107M    0.107M     1        6             0             80%        Tìntāpōāā
+     25537    0.103M    0.103M     2       15             0              9%        Fečeef
+     26887    0.103M    0.893M     1       11             0             62%        Lulso̤dyi̤z
+     22987    0.099M    0.099M     1        4             0             74%        Ropfufet
+
+  stratified — within each founding cohort, does a crowded birth still mean a small realm?
+    cohort (by birth step)      n    sparse half: cities@birth p50 -> km2 p50    crowded half: cities@birth p50 -> km2 p50
+    steps 16837-25387           377        10 ->   0.027M                            21 ->   0.019M
+    steps 25387-27787           377        13 ->   0.027M                            26 ->   0.027M
+    steps 27787-29887           375        10 ->   0.031M                            26 ->   0.034M
+
+  realms alive at 30000 whose SEAT CITY minted inside another realm's field: 549 of 1129 (49%)
+    their area p50 0.031M km2   members p50 1   born p50 step 27337
+
+  the confetti (< 100k km2): 1115 of 1129 realms (99%)
+    born p50 26784   cities@birth p50 17   free-land@birth p50 39%   members p50 1
+
+  per-realm rows -> docs/runs/2026-08-22/natdensity_960_8817_30000.csv
+
