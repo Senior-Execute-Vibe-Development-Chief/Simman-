@@ -37,6 +37,7 @@ import { forEachNear, gridAdd } from "./spatialGrid.js";
 import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
 import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
+import { URBAN_SHARE_REF } from "../units.js";
 import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
@@ -1116,7 +1117,7 @@ const pioneerTempo = (agri) => {
 const DISSOLVE_CHECK_IVL = 200;   // per-settlement stride (amortization, not a content gate)
 const DISSOLVE_HYST = 0.6;        // dissolve below this fraction of the founding bar
 const DISSOLVE_SUSTAIN = 1500;    // history-steps the basin must stay thin (granularity-corrected below)
-export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured here (core share p50 4.6-5.6%, every probe arm) and historically (~3-8%); exported for landKnow.js's density term (one bar, two readers)
+export { URBAN_SHARE_REF };   // one definition in ../units.js (the mint law and the growth law must read the SAME share); re-exported for landKnow.js
 /** T.DISSOLVE_TOWNS: can (tx,ty)'s basin feed a CITY? The lever's one bar —
  *  basin census ≥ TIER_CORE[2]/URBAN_SHARE_REF (a 10k core at the ~5% urban
  *  share needs a ~200,000-person market basin) — shared by every mint path

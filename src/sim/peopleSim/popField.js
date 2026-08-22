@@ -23,6 +23,7 @@
 // (both fields are re-derivable, but popField carries state so it IS saved — see persist).
 
 import { T, rNormPop } from "./tuning.js";
+import { URBAN_SHARE_REF } from "../units.js";
 import { tileOpenness } from "./transport.js";
 import { ensureTill0 } from "./agriculture.js";
 // Stage B (docs/popfield-parallel.md): the four parallel-safe loop bodies and
@@ -2074,6 +2075,33 @@ export function deriveOnePop(world) {
     // throughput-limited diffusion, is what actually fills it. Otherwise it is
     // the raw import ceiling (the pre-agglomeration behaviour).
     let kCap = agglom ? uTarget : kBeyond;
+    // ── T.URBAN_LOCAL — A CITY GROWS ON ITS OWN HINTERLAND ──────────────────
+    // Above, urban capacity is ENTIRELY import-fed: uTarget is set only when
+    // kBeyond > 0, and the note says it plainly — "non-importers have no
+    // target, they stay rural". So a city feeding its core from its own land
+    // had ZERO urban capacity and sat on the CORE_HOLD birth floor forever.
+    // Measured at the shipping grid (probe_corepile, tw=960/35k): the median
+    // city, the 90th-percentile city and 704 of 1,104 cities were ALL exactly
+    // 12,000 people — 65% resting on that floor to the digit, 44% starving on
+    // it (docs/the-12k-shelf-2026-08-22.md).
+    //   History runs the other way round: a city grows on the surplus of the
+    // countryside it stands in, and TRADE is what lets it EXCEED that
+    // hinterland — Rome needed Egyptian grain only at a million people, while
+    // a 50,000-person city on the North China Plain ate what grew around it.
+    //   The sim already owns this law on the OTHER side of a city's life: the
+    // MINT bar is TIER_CORE[2] / URBAN_SHARE_REF — a 10k core needs a ~200k
+    // basin, i.e. a core is the pre-industrial urban SHARE of its hinterland.
+    // The growth law simply never read the same bar. It does now: a basin of
+    // f people supports a core of URBAN_SHARE_REF × f from its own fields, and
+    // the import economy stacks on top exactly as before. One constant, both
+    // sides of a city's life, no new numbers — and the size distribution
+    // follows the basins instead of collapsing onto one shelf.
+    //   The hinterland conservation bound still binds the total.
+    if (T.URBAN_LOCAL > 0 && f > 0) {
+      kCap += T.URBAN_LOCAL * URBAN_SHARE_REF * f;
+      const maxShare = (useGamma ? URBAN_GMAXSHARE : URBAN_MAXSHARE) * f;
+      if (kCap > maxShare) kCap = maxShare;
+    }
     // T.CORE_HOLD — the spike HANDOFF floor (the birth-crater killer,
     // 2026-08-07). kCap is IMPORT-SHARE-driven, so a newborn city that grows
     // its own food stamps ~ZERO capacity over the very core the site law just

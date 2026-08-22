@@ -20,6 +20,18 @@ export const POP_SCALE        = 1000;   // sim pop → people: metropolis ~3.4M,
 export const FOOD_KG_PER_UNIT = 1000;   // one sim food unit → kg of grain (1 unit = 1 tonne)
 export const GOLD_G_PER_COIN  = 8;      // one sim coin → grams of gold (a gold ducat ≈ 3.5g; 8g keeps treasuries legible)
 
+// The PRE-INDUSTRIAL URBAN SHARE: the fraction of a countryside's people its
+// city can be. Measured here (core share p50 4.6-5.6% across every probe arm)
+// and historically (~3-8% before industry). It lives in this leaf module
+// because it is the bar on BOTH sides of a city's life and the two sides sit
+// in modules that import each other: the MINT law (crystallize.js — a 10k core
+// needs a ~200k basin, TIER_CORE[2]/URBAN_SHARE_REF) and the GROWTH law
+// (popField.js T.URBAN_LOCAL — a hinterland of N people supports a core of
+// this share of N). Those two disagreeing is what produced the 12k shelf:
+// cities were minted by the share and then grown only by imports, so a
+// self-fed city froze at its birth floor forever (docs/the-12k-shelf).
+export const URBAN_SHARE_REF  = 0.05;
+
 // ── WHAT A SETTLEMENT IS ─────────────────────────────────────────────────────
 // A settlement in this model is a CITY OR LARGE TOWN — never a village. The
 // village and hamlet tier is not represented as entities at all: it is IMPLIED IN
