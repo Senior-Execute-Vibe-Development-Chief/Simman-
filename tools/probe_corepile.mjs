@@ -27,6 +27,7 @@ const SEED = +(process.argv[4] || 8817);
 const EVERY = 5000;
 
 const world = buildSim({ W, H, seed: SEED });
+let evSeen = -1;
 const q = (xs, p) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 
 while (world.step < STEPS) {
@@ -53,11 +54,19 @@ while (world.step < STEPS) {
     atBound.push(ratio);
     if (ratio > 0.9 && ratio < 1.1) boundHeld++;
   }
+  // dissolutions since the last checkpoint, split by which bar failed
+  let dBasin = 0, dCore = 0;
+  for (const ev of world.events || []) {
+    if (ev.id <= evSeen || ev.type !== "settlement.dissolved") continue;
+    if (ev.why === "core") dCore++; else dBasin++;
+  }
+  { const evs = world.events || []; if (evs.length) evSeen = evs[evs.length - 1].id; }
   const top = [...hist.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
     .map(([k, v]) => `${k}k:${v}`).join("  ");
   console.log(`\n=== step ${world.step}  cities=${n}  starving=${starving} (${(100 * starving / Math.max(1, n)).toFixed(0)}%)  noStash=${noStash}`);
   console.log(`    urbanCore(real people): p10=${(q(cores, 0.1) / 1000).toFixed(1)}k p50=${(q(cores, 0.5) / 1000).toFixed(1)}k p90=${(q(cores, 0.9) / 1000).toFixed(1)}k max=${(q(cores, 1) / 1000).toFixed(0)}k`);
   console.log(`    modal buckets: ${top}`);
   console.log(`    core/ownBound: p10=${q(atBound, 0.1).toFixed(2)} p50=${q(atBound, 0.5).toFixed(2)} p90=${q(atBound, 0.9).toFixed(2)}   AT-BOUND(0.9-1.1)=${boundHeld} (${(100 * boundHeld / Math.max(1, n)).toFixed(0)}%)`);
+  console.log(`    dissolved since last: basin=${dBasin} core=${dCore}`);
   console.log(`    fedM: p10=${q(feds, 0.1).toFixed(2)} p50=${q(feds, 0.5).toFixed(2)} p90=${q(feds, 0.9).toFixed(2)}`);
 }
