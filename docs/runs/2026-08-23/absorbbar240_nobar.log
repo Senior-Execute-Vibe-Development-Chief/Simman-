@@ -1,5 +1,5 @@
-[harness] tree 8c44ba2
-[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"ABSORB_ORG_ERA":1}
+[harness] tree 7df3d8f
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"ABSORB_ORG_ERA":0,"ABSORB_ORG_MIN":0.1}
 [peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
@@ -16,7 +16,7 @@
 [peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
 
 === THE ABSORPTION BAR  480x240 (tw=240)  seed 8817  24000 steps ===
-    ABSORB_ORG_ERA=1  ABSORB_ORG_MIN=0.48   (bar = the era's 0.67 quantile)
+    ABSORB_ORG_ERA=0  ABSORB_ORG_MIN=0.1   (bar = the absolute floor)
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
 [peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
@@ -25,43 +25,44 @@
 [peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
 [peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
 [peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[transHeap] step=19680 cap=2048 peakN=1042 pushes=5785 (0.0MB backing)
 [peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
 [peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
-[transHeap] step=20688 cap=2048 peakN=1060 pushes=8158 (0.0MB backing)
 [peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
 [peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
 
 -- the court org distribution, and the bar it is ranked against ----------
    step  courts | org p33   p50   p67   p90   max |  BAR  | bonds  suzerain under bar
-   16000      4 |     0.40  0.40  0.40  0.40  0.40 | 0.40  |     0      0 (0%)
-   17000     11 |     0.41  0.41  0.42  0.42  0.42 | 0.42  |     0      0 (0%)
-   18000     17 |     0.43  0.46  0.46  0.49  0.49 | 0.46  |     3      0 (0%)
-   19000     29 |     0.41  0.46  0.46  0.56  0.56 | 0.46  |     7      1 (14%)
-   20000     52 |     0.43  0.49  0.49  0.58  0.61 | 0.49  |    10      4 (40%)
-   21000     84 |     0.49  0.56  0.56  0.61  0.68 | 0.56  |    27     17 (63%)
-   22000    119 |     0.51  0.57  0.61  0.65  0.69 | 0.61  |    36     20 (56%)
-   23000    159 |     0.57  0.61  0.64  0.69  0.69 | 0.64  |    35     16 (46%)
-   24000    198 |     0.61  0.65  0.69  0.69  0.74 | 0.69  |    51     22 (43%)
+   16000      4 |     0.39  0.40  0.40  0.40  0.40 | 0.10  |     0      0 (0%)
+   17000     13 |     0.40  0.40  0.41  0.41  0.41 | 0.10  |     1      0 (0%)
+   18000     26 |     0.42  0.42  0.46  0.46  0.46 | 0.10  |     2      0 (0%)
+   19000     33 |     0.42  0.46  0.46  0.49  0.56 | 0.10  |     6      0 (0%)
+   20000     45 |     0.42  0.46  0.46  0.49  0.49 | 0.10  |     8      0 (0%)
+   21000     68 |     0.43  0.49  0.49  0.56  0.59 | 0.10  |    10      0 (0%)
+   22000     86 |     0.47  0.56  0.57  0.59  0.64 | 0.10  |    16      0 (0%)
+   23000    126 |     0.50  0.57  0.60  0.65  0.69 | 0.10  |    35      0 (0%)
+   24000    154 |     0.59  0.62  0.65  0.69  0.69 | 0.10  |    26      0 (0%)
 
 -- the integrate funnel, per window (the sim's own tally) ----------------
    step   CAND  PASSED  pass% | orgBelow  beyondRule  noHeadroom  hazard  identity  seatTier
-   18000      7       0    0.0% |       4       2       0       0       0       0
-   19000     44       3    6.8% |      21       7       0      10       1       0
-   20000     47       2    4.3% |      13      12       0      17       1       1
-   21000    131       3    2.3% |      77      23       0      13       3       1
-   22000    212       2    0.9% |     121      13       0      48       3       1
-   23000    229       8    3.5% |     108      36       0      41       6       0
-   24000    263       7    2.7% |     102      56       0      58       1       2
+   17000      7       0    0.0% |       0       0       0       6       1       0
+   18000      9       0    0.0% |       0       0       0       7       0       1
+   19000     49       3    6.1% |       0      11       0      27       0       0
+   20000     53       0    0.0% |       0      18       0      27       0       5
+   21000     68       8   11.8% |       0      16       0      32       0       5
+   22000     88       2    2.3% |       0      23       0      34       4       2
+   23000    179       6    3.4% |       0      36       0      85      10       3
+   24000    203      16    7.9% |       0      68       0      62       8       1
 
 -- bloc vs TERRITORY: is the biggest "nation" a state or a suzerainty? ---
    step  states  singl%  biggest bloc: realms   bloc km2   the ROOT's OWN km2   converted
-   16000      5     20%                     1      0.31M              0.31M        100%
-   17000     11     55%                     1      0.38M              0.38M        100%
-   18000     19     74%                     2      0.43M              0.26M         61%
-   19000     29     41%                     5      0.55M              0.06M         11%
-   20000     51     49%                     3      0.55M              0.32M         58%
-   21000     81     57%                     8      1.26M              0.00M          0%
-   22000    120     63%                     8      0.98M              0.34M         34%
-   23000    158     65%                     2      1.18M              1.15M         97%
-   24000    194     60%                     7      0.97M              0.28M         29%
+   16000      5      0%                     1      0.29M              0.29M        100%
+   17000     14     43%                     1      0.28M              0.28M        100%
+   18000     28     61%                     1      0.28M              0.28M        100%
+   19000     32     47%                     1      0.74M              0.74M        100%
+   20000     48     46%                     3      0.72M              0.46M         64%
+   21000     64     48%                     1      0.35M              0.35M        100%
+   22000     88     50%                     2      0.49M              0.43M         88%
+   23000    124     58%                     1      0.52M              0.52M        100%
+   24000    147     44%                     2      0.69M              0.60M         87%
 
