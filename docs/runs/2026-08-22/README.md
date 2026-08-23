@@ -20,6 +20,7 @@ Findings and the mechanism built from them: `docs/nationless-cities-2026-08-22.m
 | `bornofland_flip.log` | the flip itself: hash guards, their recovery pair, smoke at the new defaults |
 | `owner-run-t37123-bornofland.txt` | the owner's own tw=960 run with the lever ON — see the build caveat below |
 | `natdensity480_bornofland.log` | the CLEAN same-tree lever-ON arm at the shipping proxy (pairs with `natdensity480_tight.log`) |
+| `owner-run-t35572-defaulton.txt` | the owner's run at build `f25f339` with the lever as DEFAULT — byte-identical to `t37123` at all 143 common checkpoints, so the flip commit changed only the default |
 
 **Build caveat on the owner pair.** `owner-run-t36312.txt` (lever off) carries no
 `build=` stamp and no `subCity` column, so it predates `31a1f6c` — the whole
