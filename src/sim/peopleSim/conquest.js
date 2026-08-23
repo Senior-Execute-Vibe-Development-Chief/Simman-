@@ -3853,6 +3853,32 @@ function considerSubmissions(world, countries) {
       const wins = (govOf(world, hid)._momentum || 0) / MOMENTUM_PER_STORM;
       effRatio = Math.max(1, SUBMIT_RATIO / (1 + wins));
     }
+    // T.ENGULF_BAR — ENCIRCLEMENT MUST REACH THE BAR, NOT ONLY THE CLOCK.
+    // Measured (probe_specks, tw=240/24k live): of 20 blocs sitting inside a
+    // bigger bloc on the political map, ELEVEN are held free by this very line
+    // at power ratios of 1.4x-4.9x. The encirclement term built for exactly
+    // this case (_engulf, below) is computed AFTER the gate and never reached —
+    // the `continue` throws the candidate out first — so a court wholly ringed
+    // by one power pays the identical 5x a court on an open frontier pays.
+    //   Encirclement is circumscription applied to politics: full enclosure
+    // removes what resistance actually needs — reachable allies, open supply,
+    // anywhere to retreat — so a surrounded court's resistance IS more hopeless
+    // at the same raw ratio. History set this bar far below 5x: Rome absorbed
+    // Italian cities nowhere near five times weaker, because they were adjacent,
+    // allyless and had nowhere to go.
+    //   Same share² shape and same floor as the hazard half (a court never
+    // kneels to a bloc weaker than itself, however hemmed), and coastline still
+    // counts as open border, so thalassocratic statelets keep their full bar —
+    // Venice and Ragusa resist precisely because the sea is allies and supply.
+    // Its OWN lever rather than reusing T.ENGULF, because the two halves must
+    // measure apart (the SEAT_FIELD precedent): the clock half is already
+    // shipped and its effect must not be re-attributed to this one.
+    // 0 = the bar ignores encirclement (byte-identical).
+    if (T.ENGULF_BAR > 0 && encMap) {
+      const encR = encMap.get(sid);
+      if (encR && encR.by === hid && encR.share > 0)
+        effRatio = Math.max(1, effRatio / (1 + T.ENGULF_BAR * encR.share * encR.share));
+    }
     if (powH < powS * effRatio) { tel(world, "submit", "resistanceNotHopeless"); continue; }
     // The suzerain must be able to PROJECT force to S's seat — overawing needs a
     // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
