@@ -18,3 +18,14 @@
 [transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
 [peopleSim] AGRICULTURE INVENTED at (276,83) (27.0E 27.8N) — the basin farms; a city will rise when its market gathers one (score 7.28)
 [peopleSim] AGRICULTURE INVENTED at (333,82) (69.8E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.69)
+[peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 5.01)
+[transHeap] step=14640 cap=2048 peakN=2032 pushes=28550 (0.0MB backing)
+[transHeap] step=15648 cap=4096 peakN=2802 pushes=29525 (0.0MB backing)
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=16152 cap=16384 peakN=12083 pushes=51138 (0.1MB backing)
+[transHeap] step=17664 cap=65536 peakN=58939 pushes=151240 (0.5MB backing)
+[transHeap] step=19176 cap=131072 peakN=72437 pushes=238613 (1.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.29)
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.24)
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented

@@ -109,3 +109,74 @@ and it is the owner's own standing directive from `state-birth-2026-08.md`.
 `specks240`, `wherecities*`. Instruments: `tools/probe_absorbbar.mjs`,
 `probe_seatcap.mjs`, `probe_specks.mjs`, `probe_wherecities.mjs`. The birth-side
 work that preceded them is `docs/nationless-cities-2026-08-22.md`.
+
+
+---
+
+# ARM VERDICTS (same day) — both levers FAIL, and the failure re-ranks the list
+
+Built, byte-identical off, A/B'd at tw=240 against the pre-committed criteria in
+`docs/runs/2026-08-23/README.md`. **Neither ships.** Both stay at 0.
+
+## ENGULF_BAR: the lever fires, the population does not move
+
+|  | control | ENGULF_BAR=8 |
+|---|---|---|
+| specks inside a bigger bloc | 20 | 19 |
+| speck power ratio p50 | 4.9x | 2.5x |
+| of specks, under the 5x bar | 11/20 | 16/19 |
+
+The distribution shifted exactly as designed — the specks nearest the bar were
+taken — and the standing count did not move. **The speck population is a STOCK
+whose size is set by the INFLOW, not by the absorption outflow**, which is the
+identical finding `state-birth-2026-08.md` recorded for stateless cities:
+doubling and retiring the founding channel both left the standing count where it
+was. Widening an outflow refills at the same level.
+
+That is not a reason to discard the lever's diagnosis — encirclement genuinely
+does not reach the bar, and 11 of 20 specks genuinely are held by it. It is a
+reason to stop treating absorption as the lever for a supply problem.
+
+## COURT_SPHERE: a redistribution that amplifies a different error
+
+Cities per region at step 24,000:
+
+| region | control | COURT_SPHERE | reading |
+|---|---|---|---|
+| Mesopotamia | 13 | **23** | toward history's 20-30 — pass |
+| Steppe | 33 | **1** | history 0 — pass |
+| China | 20 | **5** | the feared re-freeze — REGRESSION |
+| Levant | 13 | **2** | history ~10 — regression |
+| Europe temp | 44 | **65** | wrong direction |
+| Americas | 44 | **63** | wrong direction |
+| total | ~463 | ~444 | essentially flat |
+
+Not a rate cut — a redistribution, so the mechanism does what it claims. But its
+direction is set by **where states already are**, and this sim forms them in the
+wrong places: China's hearth matures 1,300-1,700 years late, and the
+Pontic-Caspian river basins out-compete Mesopotamia on rain-fed suitability
+(`owner-review-2026-08-21.md` item 2). Mesopotamia and the steppe come right
+because states are near or absent; Europe and the Americas get worse because
+states arrived there early.
+
+## The re-rank
+
+**Item 1 cannot be fixed independently of where states form.** A court-gated
+sphere inherits the statehood-geography error and multiplies it. The upstream
+mechanism is already named in the owner review and is not built: **IRRIGATION** —
+where river magnitude × aridity × flat land coincide, worked land's effective
+fertility multiplies with organisation and construction. Without it the climate
+model scores southern Mesopotamia as mediocre rain-fed farmland and the sim can
+never see why Sumer is Sumer.
+
+Revised order:
+
+0. **Irrigation** (owner-review item 2) — upstream of everything above. Until the
+   cradles score like cradles, every supply and consolidation fix inherits a map
+   whose states are in the wrong places.
+1. The capacity ledger (was item 2) — independent of state placement; the dead
+   headroom gate and the 0.013-per-province seat term stand on their own.
+2. COURT_SPHERE — re-measure AFTER irrigation, not before.
+3. ENGULF_BAR — keep as a correct sub-mechanism, but it is not a lever on the
+   standing count. Revisit once the inflow is right.
+4. The state-first route — unchanged, still a wave.
