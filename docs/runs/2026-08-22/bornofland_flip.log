@@ -1,0 +1,21 @@
+=== hashbase at NEW default ===
+seed=8817 steps=2500  hash=fd90feea
+seed=31337 steps=2500  hash=7239c843
+=== hash480 at NEW default ===
+seed=8817 steps=2500 W=480  hash=201db8af
+seed=31337 steps=2500 W=480  hash=9e4ca0c5
+=== recovery: SIM_TUNE=BORN_OF_LAND=0 must reproduce the pre-flip pairs ===
+seed=8817 steps=2500  hash=fd90feea
+seed=31337 steps=2500  hash=7239c843
+seed=8817 steps=2500 W=480  hash=201db8af
+seed=31337 steps=2500 W=480  hash=9e4ca0c5
+=== pre-flip pairs were: 320 fd90feea/7239c843   480 201db8af/9e4ca0c5 ===
+=== npm test at the NEW defaults ===
+  ok   dissolve: deterministic
+  ok   dissolve: no farming regions (t0=0)
+  ok   dissolve: zero invariant violations
+  ok   dissolve: civilization alive (6 settlements)
+  ok   dissolve: fewer entities per person than farming-region model (4.7 vs 9.7 per 1k pop)
+[smoke] all checks passed in 68.5s
+[emblem] 7965 tincture checks over 8000 genomes, min measured dE 0.186; 10/10 tinctures seen as fields; determinism, art coverage, marshalling checked
+[emblem] all checks passed

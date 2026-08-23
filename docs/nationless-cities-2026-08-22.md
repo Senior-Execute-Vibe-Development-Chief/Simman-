@@ -174,6 +174,62 @@ realms 20→14 *and* stateless cities 43→49).
    ~20-realm world — the atom-starved regime the third cardinal rule warns about.
    The register is now 15× denser; that verdict is stale.
 
+## BUILT AND FLIPPED — `T.BORN_OF_LAND` (def 1, 2026-08-22, owner order)
+
+`settlement.js bornPolityAt`, called from `makeSettlement`'s `countryId` default.
+One question asked at one moment: **whose ground is this?** Land held by a living
+court (a countries-view entry with a capital) births its city into that court.
+Everything else is deliberately untouched — unowned ground keeps the legacy
+value, so sovereignty stays the RESIDUAL where it belongs; the land-nation door
+stays `mintCityAt`'s (records bar included); every explicit `countryId` passes;
+and a court that cannot afford the newborn births it stateless and hands the
+consequence to `adoptAndFound`, where refusal semantics live. No new constants —
+the gates are `adoptAndFound`'s own, applied where it cannot see.
+
+### The battery
+
+| | lever OFF (control, same tree) | lever ON |
+|---|---|---|
+| `npm test` | green | green |
+| stylized, 3 seeds | all hard gates · 0/0/0 soft | all hard gates · **0/1/0** soft (budget 2) |
+| resgate app/ref median realm area | 0.56 | **0.77** (floor 0.34) |
+| resgate app/ref mean realm area | 0.80 | **0.96** (floor 0.46) |
+| resgate app/ref claimed land | 0.70 | **0.75** (floor 0.53) |
+| resgate app/ref people per km² | 0.82 | **0.85** (floor 0.50) |
+| resgate app median absolute | 496k km² | 500k km² (floor 60k) |
+
+Every resgate band improves. The stylized arms barely exercise the lever at all —
+the gate harness pins `PEER_SEATS` off, so its world holds ~40 realms and few
+cities are ever minted inside one — which is why the live arm is the real reading:
+
+    tw=240 / 18k, live arm:  born INSIDE a realm's field (n=90): JOINED IT 86 (96%)
+                             116 cities carry 19 realms   (before: 131 cities, 67 realms)
+
+**What the byte-identity guards could NOT tell us, recorded so nobody cites them
+wrongly:** both pairs are UNCHANGED across the flip (320 `fd90feea/7239c843`,
+480 ref `201db8af/9e4ca0c5`) — not because the flip is inert, but because they
+run 2,500 steps and the regime this lever touches does not exist yet at 2,500.
+The guards are silent here, not supportive. The A/B is the evidence.
+
+### The one added warning, named rather than absorbed
+
+Seed 4242, `tech ~ cradle-distance correlation: +0.22` against a control of
+−0.03 (8817 and 777 unmoved at 0.02 and 0.04) — knowledge leading slightly
+OUTWARD, which is the wrong direction.
+
+The suspected channel is specific and testable: a frontier city that now JOINS a
+large realm inherits that court's knowledge instead of its own basin ledger's, so
+statecraft rides the border outward faster than the technique wave carries it.
+That is a real coupling this lever opens, not noise to be waved through. One seed,
+one soft term, inside budget — and per the ratchet's own rule what it needs is an
+explanation of the term, never a wider band. **Open watch item.**
+
+`SAVE_VERSION 40`: a pre-v40 save pins the lever off, so an existing world
+continues under the politics it grew on rather than grafting two regimes onto one
+map. Note the same fact for a live world: flipping this mid-run cannot undo
+confetti already minted — every existing speck is already sovereign, and only
+conquest and integration can take that back.
+
 ## The finding that outlives the fix
 
 **The register IS the political map.** 1,352 cities → 1,186 realms, one member
