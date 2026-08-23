@@ -19,3 +19,69 @@
 [peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
 [peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
 [peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=20688 cap=2048 peakN=1060 pushes=8158 (0.0MB backing)
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+
+=== THE SPECKS  480x240 (tw=240)  seed 8817  step 24000 ===
+
+  living realms with territory: 138
+    SINGLETONS (one city):            70  (51%)   median 92k km2
+    ENCLAVES (>=90% ringed by one realm, no coast, no wilderness):  0  (0%)
+       of which vassal OF its encloser  0  <- already one bloc; the atlas paints these as the same nation
+       of which vassal of someone ELSE  0  <- a distant power's client inside a rival's body
+       of which INDEPENDENT             0  <- the foreign specks on the screen
+    singleton AND independent enclave:  0
+
+  AT BLOC LEVEL — what the atlas paints (106 painted nations):
+    blocs >=90% ringed by ONE other bloc:        31  (29% of painted nations)
+       of those, STRICT holes (no coast, no wild): 0
+       of those, inside a BIGGER bloc:             19   <- "a micro nation inside a larger nation"
+       their size p50 108k km2 · realms-per-speck p50 1
+
+       AGAINST THE GATE THAT KEEPS THEM FREE — submit's SUBMIT_RATIO = 5.0x
+       (conquest.js: the encloser's BLOC power must be >= 5x the speck's before
+        resistance counts as hopeless; CONQUEST_CASCADE lowers it with a live
+        conquest streak, floored at parity, but a peaceful hegemon pays the full 5x)
+       encloser/speck POWER ratio   p10 0.8x   p50 2.5x   p90 8.1x
+       ALREADY past 5x (the bar is not what holds these): 3 of 19
+       under 5x (the bar IS what holds these):            16 of 19
+
+       the 12 most lopsided:
+         speck km2   realms   bloc around it    AREAx   POWERx  vs 5x   speck
+                15k       1             0.14M       9x      0.8x  under   Madonfyegag  in  Ziiz
+               108k       1             0.89M       8x      5.4x   PAST   Lǐufǔkúlǐā  in  Ǎịmràkòlǐā
+               123k       1             0.89M       7x     17.7x   PAST   Fụ́ịnlàlǐā  in  Ǎịmràkòlǐā
+               123k       1             0.54M       4x      2.6x  under   Zyibayamphibtayaa  in  Tìttíu
+                92k       1             0.35M       4x      2.5x  under   Zafayo  in  Dayayatay
+                46k       1             0.15M       3x      2.0x  under   Dekagzehanfaxa  in  Vefavvyatop
+               123k       1             0.37M       3x      3.4x  under   T'oyu  in  Thambghattay
+               231k       2             0.69M       3x      2.7x  under   Bopyum  in  Zomfafud
+               200k       2             0.57M       3x      2.7x  under   Jubidua  in  Dyabozboxfax
+               138k       1             0.38M       3x      1.5x  under   Fōumpíülǐ  in  Kūrīkò
+                77k       1             0.18M       2x      2.6x  under   Srap'uphghattaya  in  Yadattay
+                92k       1             0.22M       2x      8.1x   PAST   Nijugu  in  Nubkajshudua
+
+  submit funnel (whole run, the sim's own tally) — 2962 candidates, 73 passed (2.5%)
+     hazardRoll(waiting)                933  (31%)
+     resistanceNotHopeless              815  (28%)
+     alreadyADependency                 629  (21%)
+     noLiveSeat                         214  (7%)
+     coalitionBrake(deterrence)         141  (5%)
+     identityBrake(foreignCourt)         83  (3%)
+     outOfProjectionReach                74  (2%)
+
+  integrate funnel (whole run, the sim's own tally) — 980 candidates, 20 passed (2.0%)
+     orgBelowMin                        519  (53%)
+     hazardRoll(waiting)                191  (19%)
+     beyondDirectRule                   133  (14%)
+     notAVassalBond                      81  (8%)
+     coalitionBrake(deterrence)          18  (2%)
+     identityBrake(foreignCourt)         14  (1%)
+     seatAboveTierCap                     4  (0%)
+
