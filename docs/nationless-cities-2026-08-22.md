@@ -211,6 +211,35 @@ wrongly:** both pairs are UNCHANGED across the flip (320 `fd90feea/7239c843`,
 run 2,500 steps and the regime this lever touches does not exist yet at 2,500.
 The guards are silent here, not supportive. The A/B is the evidence.
 
+### The clean attribution (tw=480 / 30k, same tree, same window)
+
+`natdensity480_tight.log` (off) vs `natdensity480_bornofland.log` (on) — the only
+pair in this wave that isolates the lever. The owner's own tw=960 pair does NOT
+(see `docs/runs/2026-08-22/README.md`: the lever-off run predates `31a1f6c`).
+
+| | OFF | ON |
+|---|---|---|
+| born INSIDE a realm's field → **joined it** | 4 of 1,252 (**0%**) | 1,291 of 1,334 (**97%**) |
+| born INSIDE → minted its own realm | 1,109 (89%) | 32 (2%) |
+| born in the WILD → minted its own realm | 28% | **28%** (untouched, by design) |
+| realms ever founded | 2,079 | **1,368** (−34%) |
+| living realms at 30k | 1,186 | **896** (−24%) |
+| largest realm | 0.374M km² | **1.203M km²** (3.2×) |
+| realms ≥ 500k km² | 0 | 3 |
+| **median realm** | 0.027M km², **1 member** | 0.034M km², **1 member** |
+| **realms under 100k km²** | **99%** | **97%** |
+
+Read the last two rows against the rest. **The top of the distribution
+transformed and the bottom did not move at all.** A third of all realm foundings
+are gone, the largest realm tripled, and realms of Achaemenid scale exist where
+none did — but the median realm is still a one-city 33,000 km² speck, because the
+wild-birth channel is untouched and 28% of wild births still mint a state.
+
+The residual 32 self-foundings on claimed ground are not a leak: 56% are ground
+whose paint names a realm with **no settled member** (the liveness check correctly
+refusing to hand a city to a corpse), 34% the field having genuinely receded, and
+**3 cities in the whole run** where a live owner held the tile. The hole is shut.
+
 ### The one added warning, named rather than absorbed
 
 Seed 4242, `tech ~ cradle-distance correlation: +0.22` against a control of
