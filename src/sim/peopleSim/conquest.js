@@ -3025,6 +3025,16 @@ export function updatePolities(world) {
       if (wks > 0) capFinal = capacity * (1 + T.APPARATUS * wks);
     }
     c._capacity = capFinal;        // (already duress-adjusted) for the info panel
+    // Diagnostic stamps for the SEAT_BONUS_CAP question (owner 2026-08-23: "i
+    // think that 10 cap might be the problem"). The delegated-seat term is the
+    // only place a member PAYS capacity back, and it is hard-capped — so the
+    // question is whether any realm actually reaches the ceiling, or whether the
+    // cap is a limit nothing gets near because a prior gate keeps realms small.
+    // Pure debug side-effects (the _adminLoad / _momentum class): nothing reads
+    // them, so the world is byte-identical.
+    c._seatRaw  = seatBonus;                                   // uncapped delegated-seat contribution
+    c._seatUsed = Math.min(SEAT_BONUS_CAP * instMul, seatBonus);
+    c._seatCap  = SEAT_BONUS_CAP * instMul;                    // the ceiling as this realm sees it (institutions scale it)
     c._momentum = momentum;        // for the info panel
     c._fronts = fronts;
     c._capitalBesieged = besiegedCap;
