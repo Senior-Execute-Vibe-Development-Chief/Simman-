@@ -1,0 +1,109 @@
+[harness] tree f7c8da1
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=20688 cap=2048 peakN=1060 pushes=8158 (0.0MB backing)
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+
+=== THE CRADLE LAG, DECOMPOSED  480x240 (tw=240)  seed 8817 ===
+
+  Does the lag live in CAPACITY (irrigation's link) or in ORGANISATION (not)?
+
+  Nile
+     (51 land tiles in this box)
+     step   capacity      people   fill%   cap/TILE   pop/TILE   best org
+     4000      18155       10828     60%      356.0      212.3     0.000
+     8000      18155       14582     80%      356.0      285.9     0.000
+    12000     422575      197000     47%     8285.8     3862.7     0.216
+    16000     760114      573387     75%    14904.2    11242.9     0.280
+    20000    1050819      723513     69%    20604.3    14186.5     0.280
+    24000     858666      675542     79%    16836.6    13245.9     0.280
+     first city: step 16000   first flag: step 16000
+
+  Mesopotamia
+     (37 land tiles in this box)
+     step   capacity      people   fill%   cap/TILE   pop/TILE   best org
+     4000       8721        4844     56%      235.7      130.9     0.000
+     8000       8721        6641     76%      235.7      179.5     0.000
+    12000      92267       45168     49%     2493.7     1220.8     0.159
+    16000     171431      129382     75%     4633.3     3496.8     0.222
+    20000     246938      208924     85%     6674.0     5646.6     0.281
+    24000     198013      184027     93%     5351.7     4973.7     0.281
+     first city: step 20000   first flag: step 20000
+
+  Indus
+     (62 land tiles in this box)
+     step   capacity      people   fill%   cap/TILE   pop/TILE   best org
+     4000      11283        5910     52%      182.0       95.3     0.000
+     8000      11283        8327     74%      182.0      134.3     0.000
+    12000     140315       64868     46%     2263.1     1046.3     0.176
+    16000     247872      185095     75%     3997.9     2985.4     0.255
+    20000     359702      281360     78%     5801.7     4538.1     0.281
+    24000     251118      225056     90%     4050.3     3629.9     0.281
+     first city: step 20000   first flag: step 20000
+
+  YellowRiver
+     (90 land tiles in this box)
+     step   capacity      people   fill%   cap/TILE   pop/TILE   best org
+     4000      24653       12450     51%      273.9      138.3     0.000
+     8000      24653       17988     73%      273.9      199.9     0.000
+    12000      24653       21313     86%      273.9      236.8     0.000
+    16000      24653       21721     88%      273.9      241.3     0.000
+    20000     321217       48023     15%     3569.1      533.6     0.112
+    24000     430129      262958     61%     4779.2     2921.8     0.184
+     first city: step 24000   first flag: step 24000
+
+  ~Sahel  (control: history says ~0 cities here)
+     (246 land tiles in this box)
+     step   capacity      people   fill%   cap/TILE   pop/TILE   best org
+     4000      44117       23194     53%      179.3       94.3     0.000
+     8000      44117       32298     73%      179.3      131.3     0.000
+    12000     217369       85208     39%      883.6      346.4     0.125
+    16000     375184      232793     62%     1525.1      946.3     0.239
+    20000     729093      467015     64%     2963.8     1898.4     0.281
+    24000     868166      675835     78%     3529.1     2747.3     0.281
+     first city: step 20000   first flag: step 20000
+
+  ~AfrSouth  (control: history says ~0 cities here)
+     (424 land tiles in this box)
+     step   capacity      people   fill%   cap/TILE   pop/TILE   best org
+     4000      67065       34469     51%      158.2       81.3     0.000
+     8000      67065       48130     72%      158.2      113.5     0.000
+    12000      67065       53170     79%      158.2      125.4     0.000
+    16000      99428       61332     62%      234.5      144.7     0.100
+    20000     952294      223332     23%     2246.0      526.7     0.136
+    24000    1131076      783796     69%     2667.6     1848.6     0.188
+     first city: step 20000   first flag: step 20000
+
+  READ IT THIS WAY:
+   · fill% near 100 means the basin is SATURATED — its people are capped by what
+     the ground can feed, and raising capacity (irrigation) would raise them.
+   · fill% well under 100 means the basin is still FILLING — capacity is not the
+     binding constraint, and irrigation would hand it headroom it is not using.
+   · a cradle whose org lags while its fill is low is held by the ORGANISATION
+     machinery, not by its farmland, and irrigation would be a third correct-and-
+     irrelevant lever.
+

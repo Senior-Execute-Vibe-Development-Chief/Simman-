@@ -85,7 +85,14 @@ for (let done = 0; done < STEPS; done += WIN) {
       if (lo >= R[i].lon[0] && lo <= R[i].lon[1] && la >= R[i].lat[0] && la <= R[i].lat[1])
         bestOrg = Math.max(bestOrg, rec.k.organization || 0);
     }
-    snap.push({ cap, pop, fill: cap > 0 ? pop / cap : 0, org: bestOrg });
+    // PER-TILE, not per-box. The boxes are wildly different sizes — the Sahel's
+    // spans 58 degrees of longitude against Mesopotamia's 10 — so a TOTAL
+    // capacity comparison measures the box, not the ground. Density is the
+    // quantity that says whether the model thinks one region's land out-feeds
+    // another's.
+    const n = tiles[i].length;
+    snap.push({ cap, pop, fill: cap > 0 ? pop / cap : 0, org: bestOrg, n,
+      capPer: n ? cap / n : 0, popPer: n ? pop / n : 0 });
   }
   // first city / first state per region
   for (const s of world.settlements) {
@@ -106,11 +113,12 @@ console.log(`\n=== THE CRADLE LAG, DECOMPOSED  ${W}x${H} (tw=${tw})  seed ${SEED
 console.log(`\n  Does the lag live in CAPACITY (irrigation's link) or in ORGANISATION (not)?\n`);
 for (let i = 0; i < R.length; i++) {
   console.log(`  ${R[i].k}${R[i].k.startsWith("~") ? "  (control: history says ~0 cities here)" : ""}`);
-  console.log(`     step   capacity      people   fill%    best ledger org`);
+  console.log(`     (${rows.length && rows[0].snap[i].n} land tiles in this box)`);
+  console.log(`     step   capacity      people   fill%   cap/TILE   pop/TILE   best org`);
   for (const r of rows) {
     const s = r.snap[i];
     if (s.cap <= 0 && s.pop <= 0) continue;
-    console.log(`   ${String(r.step).padStart(6)}  ${s.cap.toFixed(0).padStart(9)}  ${s.pop.toFixed(0).padStart(10)}  ${(100 * s.fill).toFixed(0).padStart(5)}%  ${s.org.toFixed(3).padStart(15)}`);
+    console.log(`   ${String(r.step).padStart(6)}  ${s.cap.toFixed(0).padStart(9)}  ${s.pop.toFixed(0).padStart(10)}  ${(100 * s.fill).toFixed(0).padStart(5)}%  ${s.capPer.toFixed(1).padStart(9)}  ${s.popPer.toFixed(1).padStart(9)}  ${s.org.toFixed(3).padStart(8)}`);
   }
   console.log(`     first city: ${firstCity[i] < 0 ? "never" : "step " + firstCity[i]}   first flag: ${firstState[i] < 0 ? "never" : "step " + firstState[i]}`);
   console.log("");
