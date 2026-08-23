@@ -75,3 +75,33 @@ above is a ceiling on TERRITORY, not on the vassal roster.
 Next measurement, before any constant is touched: per-realm load against seat
 contribution across the arc — how many realms are at the SEAT_BONUS_CAP, and what
 share of their capacity the cap is withholding.
+
+
+## The lever arms (built 2026-08-23, both def 0)
+
+`docs/confetti-leverage-2026-08-23.md` ranks the problem; these are items 1 and 3
+built and under A/B. Items 2 (the capacity ledger) and 4 (the state-first route)
+are waves and deliberately not started.
+
+| log | arm |
+|---|---|
+| `levers_identity.log` | byte-identity of both levers OFF at both guards, plus smoke at the shipped defaults |
+| `specks240_engulfbar.log` | `ENGULF_BAR=8` against `specks240.log` — do the 11 specks held by the 5x bar resolve? |
+| `wherecities240_court.log` | `COURT_SPHERE=1` against `wherecities240.log` |
+| `wherecities480_court.log` | `COURT_SPHERE=1` at the shipping proxy against `wherecities480.log` — **the gate** |
+
+**How to read the COURT_SPHERE arms, written before they land.** The test is the
+REGIONAL table, never the global count and never the map's look — a count on
+history's band is exactly what hid this inversion in the first place.
+
+* PASS: Afr. south (218), the Sahel (138), the Americas (178) and temperate
+  Europe (103) thin, **while Mesopotamia (16) and China (84) hold or grow**. That
+  is the contagion being the mechanism: a sphere that ignores polity has no reason
+  to favour cradles, so restricting it should bite hardest where there were no
+  states to justify the cities.
+* FAIL, and it means the wrong mechanism was found: everything thins in
+  proportion. That is a rate cut, not a cause.
+* FAIL, and it is a regression: China or the Yangtze re-freeze. `EXCH_WAVE` exists
+  precisely to un-freeze those cohorts, and China is already the fragile case in
+  the control (nothing until step 18k, and 45 of its 51 cities still stateless at
+  26k).
