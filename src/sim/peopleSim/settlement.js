@@ -14,7 +14,7 @@ import { agriGate, bestPackageAt, pkgSuitAt, cropCeil } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { fieldShift } from "./popField.js";
-import { ensurePolity, getPolity } from "./entities.js";
+import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
 import { cageAt } from "./cageField.js";
@@ -297,6 +297,45 @@ export function arriveCaptives(world, dest, count, culPairs, ancPairs) {
   }
 }
 
+// ── T.BORN_OF_LAND: whose flag is a NEWBORN settlement's? ────────────────────
+// The legacy answer is `its own` — sovereignty as the default value of the
+// field, with T.STATE_RECORDS postponing it to the writing bar. Measured at
+// both grids on the live arm (docs/nationless-cities-2026-08-22.md): of the
+// cities minted inside a LIVE realm's own field, 4 of 1,252 joined it at
+// tw=480 and 3 of 728 at tw=240. Not a refusal — ADOPT_BUDGET and FISC_ADOPT
+// both ship at 0, so nothing ever declines a city — but because
+// adoptAndFound's adoption branch reads `if (s.countryId < 0)` and a city
+// born flying its own flag never enters it. The pass that owns this decision
+// cannot reach the one moment that decides it.
+//
+// Under the lever the birth asks the question adoptAndFound asks: WHOSE GROUND
+// IS THIS? Land held by a living court births its city into that court. The
+// residual — unowned ground — is untouched, so a founding in the wild is still
+// a founding, minted by the founding channel under its own records bar (and,
+// under SEAT_FIELD, its own land test). Nothing here is a new rule: it is
+// adoptAndFound's own rule, applied where adoptAndFound cannot see.
+function bornPolityAt(world, s, legacy) {
+  const co = world._countryOwner, elev = world.elev, tw = world.tw;
+  if (!co || !elev || !tw) return legacy;                     // no political field yet (genesis) — the residual stands
+  const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+  if (!(ti >= 0 && ti < co.length) || !(elev[ti] > 0)) return legacy;
+  const owner = co[ti];
+  if (owner < 0) return legacy;                               // NO ONE HOLDS THIS GROUND — sovereignty is the residual, and this is where it belongs
+  // The paint can outlive the realm (measured 2-11% of self-foundings across
+  // arms). A court is a countries-view entry with a capital — the same
+  // liveness the adoption pass demands before it hands a settlement over.
+  const c = world.countries && world.countries.get(owner);
+  if (!c || !c.capital) return legacy;
+  // Can the court AFFORD this subject? Both gates are inert at their shipped 0,
+  // and when they are not, a refusal births the city STATELESS and leaves the
+  // consequence to adoptAndFound — refusal semantics are that pass's business,
+  // not this default's, so this lever moves exactly one thing.
+  const pol = getPolity(world, owner);
+  if (T.ADOPT_BUDGET > 0 && pol && pol._strain != null && pol._strain >= T.ADOPT_BUDGET) return -1;
+  if (!fiscAdoptable(world, c, s.pos.x, s.pos.y, s.people || 0)) return -1;
+  return owner;
+}
+
 export function makeSettlement(world, x, y, opts = {}) {
   const id = world._nextSettlementId || 1;
   world._nextSettlementId = id + 1;
@@ -419,9 +458,14 @@ export function makeSettlement(world, x, y, opts = {}) {
   // Below the unified founding bar (tech.js stateOrgBar) a settlement with no
   // realm to join is born STATELESS; explicit opts.countryId (daughters,
   // colonies, materialising nations — each gated at its own source) passes.
-  s.countryId = opts.countryId ?? (
-    !T.STATE_RECORDS || (((s.knowledge && s.knowledge.organization) || 0) >= stateOrgBar())
-      ? s.id : -1);                                 // joins parent's realm if specified, else own city-state — once the court can administrate one
+  // T.BORN_OF_LAND (bornPolityAt above): a birth with no explicit flag takes the
+  // politics of the GROUND, and sovereignty is what is left when no court holds
+  // it. Off, the legacy value stands untouched (byte-identical).
+  s.countryId = opts.countryId ?? (() => {
+    const legacy = !T.STATE_RECORDS || (((s.knowledge && s.knowledge.organization) || 0) >= stateOrgBar())
+      ? s.id : -1;                                  // joins parent's realm if specified, else own city-state — once the court can administrate one
+    return T.BORN_OF_LAND ? bornPolityAt(world, s, legacy) : legacy;
+  })();
   // ── Who lives here: culture stock + a name in that people's tongue ──
   // A cradle is the birth of a PEOPLE (founds a culture); everything else
   // carries its founder stock's culture. Explicit opts.name wins (imports).
