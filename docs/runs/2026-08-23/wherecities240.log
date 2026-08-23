@@ -1,0 +1,63 @@
+[harness] tree 1d69eeb
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=20688 cap=2048 peakN=1060 pushes=8158 (0.0MB backing)
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+
+=== WHERE ARE THE CITIES  480x240 (tw=240)  seed 8817 ===
+
+-- A. the register by REGION (cities = tier>=2; "free" = stateless) -------
+   region        history(bronze) |     14     16     18     20     22     24
+                                 | Bronze Bronze Classi Mediev Mediev Renais
+   Mesopotamia             20-30 |      -      -      -   9/ 0  12/ 0  13/ 0
+   Egypt/Nile               5-10 |   6/ 6  33/ 0  74/ 0  75/ 0  70/ 0  71/ 0
+   Indus+India   ~5 (Indus only) |      -      -  32/32  45/ 4  48/ 7  57/ 0
+   China               a handful |      -      -      -      -      -  20/ 0
+   Levant/Anat               ~10 |      -      -      -  14/ 0  15/ 0  13/ 0
+   Mediterran.       ~5 (Aegean) |      -   1/ 0   1/ 0   1/ 0  21/ 0  37/ 0
+   EUROPE temp             **0** |      -      -      -   1/ 0  18/ 0  44/ 0
+   SAHEL                   **0** |      -      -   8/ 0  14/ 0  28/ 0  39/ 0
+   Steppe                  **0** |      -      -   1/ 1      -   7/ 0  33/ 0
+   SE Asia                 **0** |      -      -      -      -      -   3/ 0
+   Americas                **0** |      -      -      -      -   3/ 0  44/ 0
+   Afr. south              **0** |      -      -      -   2/ 0  18/ 1  36/ 0
+   elsewhere                     |      -      -      -   2/ 0  23/ 4  53/ 0
+   (each cell: cities / of which stateless)
+
+-- B. is a new city born INTO a nation, or outside every one? -------------
+   step    era          new cities   born INTO a nation   born OUTSIDE   outside share
+   14000  Bronze                6                    0              6           100%
+   16000  Bronze               32                   32              0             0%
+   18000  Classical           111                   78             33            30%
+   20000  Medieval            143                  138              5             3%
+   22000  Medieval            232                  218             14             6%
+   24000  Renaissance         379                  376              3             1%
+   (history inverts this: the FIRST city of a cradle precedes its state — Uruk,
+    Harappa — but after that generation cities are planted BY states inside their
+    own ground: Alexandria, Antioch, Chang'an, every colonia and commandery seat.
+    So the spontaneous share should FALL across the eras, not hold.)
+
