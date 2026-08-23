@@ -43,18 +43,28 @@ stepPeopleSim(world, STEPS);
 const tw = world.tw, th = world.th, N = world.N, elev = world.elev;
 const lonOf = (x) => (x / tw) * 360 - 180;
 const latOf = (y) => 90 - (y / th) * 180;
+// TIGHTENED to the alluvium itself. The first cut used broad boxes and they lied
+// three separate ways this session — a 4:1 capacity "inversion" that was box AREA,
+// a speck power ratio that was box AREA, and here a Mesopotamian relief p50 of
+// 0.140 against the Nile's 0.028, which is geographically impossible for the
+// flattest alluvium on Earth and means the box had the ZAGROS in it. A broad box
+// measures its own corners, not the valley.
 const R = [
-  { k: "Nile",        lon: [26, 34], lat: [16, 32] },
-  { k: "Mesopotamia", lon: [40, 50], lat: [29, 38] },
-  { k: "Indus",       lon: [66, 78], lat: [22, 34] },
-  { k: "YellowRiver", lon: [104, 122], lat: [30, 42] },
-  { k: "~Sahel",      lon: [-18, 40], lat: [8, 18] },
+  { k: "Nile valley",  lon: [30, 33], lat: [22, 31] },
+  { k: "Sumer/Akkad",  lon: [44, 48], lat: [30, 34] },
+  { k: "Indus valley", lon: [67, 72], lat: [24, 30] },
+  { k: "YellowRiver",  lon: [108, 118], lat: [33, 38] },
+  { k: "~Sahel",       lon: [-18, 40], lat: [8, 18] },
 ];
 
 // the same fields the capacity pass reads
 const rmEff = (T.ACCESS_BAND && world._rmBand) ? world._rmBand : world.riverMag;
 const coastEff = (T.ACCESS_BAND && world._coastBand) ? world._coastBand : world.coast;
 const moistF = world.moist, devF = world.devField, cap = world.capField;
+// The BASE terms, which is where the 3.1x gap was measured to live:
+//   crop = fert x capPerFert x (DEV_BASE + DEV_TECH*devF) x reach x reliefMul ...
+// so the gap has four possible homes and they call for four different fixes.
+const fertF = world.fert, reliefF = world.relief;
 // RM_FULL is popField-local; recover the same normalisation empirically from the
 // field's own top of range so the `water` term below is on the pass's own scale.
 let rmMax = 0; for (let i = 0; i < N; i++) if (elev[i] > 0 && rmEff && rmEff[i] > rmMax) rmMax = rmEff[i];
@@ -67,8 +77,9 @@ console.log(`\n=== THE IRRIGATION TERMS, PER REGION  ${W}x${H} (tw=${tw})  seed 
 console.log(`    FIELD_CRADLE=${T.FIELD_CRADLE}  IRRIG_BOOST=${T.IRRIG_BOOST}  ALLUVIUM=${T.ALLUVIUM}  IRRIG_ARID0=${arid0}`);
 console.log(`    (irrigation SHIPS ON — this asks which of its three inputs is starved, not whether it exists)\n`);
 console.log(`  region        tiles   moist p50   ARID p50/p90   water p50/p90   farmTech p50   irr p50/max   allu p50/max   cap/tile`);
+const baseRows = [];
 for (const r of R) {
-  const mo = [], ar = [], wa = [], ft = [], ir = [], al = [];
+  const mo = [], ar = [], wa = [], ft = [], ir = [], al = [], fe = [], re = [], dv = [];
   let capSum = 0, n = 0;
   for (let ti = 0; ti < N; ti++) {
     if (!(elev[ti] > 0)) continue;
@@ -81,13 +92,28 @@ for (const r of R) {
     const farmTech = Math.min(1, a / FARM_MATURE_F);
     const arid = Math.max(0, Math.min(1, (arid0 - m) / 0.20));
     const coastV = coastEff ? coastEff[ti] : 0;
+    fe.push(fertF ? fertF[ti] : 0);
+    re.push(reliefF ? reliefF[ti] : 0);
+    dv.push(a);
     mo.push(m); ar.push(arid); wa.push(water); ft.push(farmTech);
     ir.push(1 + irrB * arid * water * farmTech);
     al.push(1 + alluB * (water + ALLU_COAST_F * coastV) * farmTech);
   }
   if (!n) continue;
+  baseRows.push({ k: r.k, fert: q(fe, .5), fertP90: q(fe, .9), relief: q(re, .5), dev: q(dv, .5), cap: capSum / n });
   console.log(`  ${r.k.padEnd(13)} ${String(n).padStart(5)}   ${q(mo, .5).toFixed(3).padStart(9)}   ${q(ar, .5).toFixed(2)}/${q(ar, .9).toFixed(2).padStart(4)}   ${q(wa, .5).toFixed(3)}/${q(wa, .9).toFixed(3)}   ${q(ft, .5).toFixed(2).padStart(12)}   ${q(ir, .5).toFixed(2)}/${Math.max(...ir).toFixed(2)}   ${q(al, .5).toFixed(2)}/${Math.max(...al).toFixed(2)}   ${(capSum / n).toFixed(0).padStart(8)}`);
 }
+console.log(`\n-- THE BASE, where the 3.1x gap was measured to live -----------------------`);
+console.log(`   crop = FERT x capPerFert x (DEV_BASE + DEV_TECH*dev) x reach x reliefMul`);
+console.log(`\n  region         fert p50   fert p90   relief p50   devField p50   cap/tile   cap ÷ fert`);
+for (const b of baseRows) {
+  console.log(`  ${b.k.padEnd(13)} ${b.fert.toFixed(3).padStart(9)}  ${b.fertP90.toFixed(3).padStart(9)}   ${b.relief.toFixed(3).padStart(10)}   ${b.dev.toFixed(3).padStart(12)}   ${b.cap.toFixed(0).padStart(8)}   ${b.fert > 0 ? (b.cap / b.fert).toFixed(0).padStart(9) : "        -"}`);
+}
+console.log(`\n   If FERT alone carries the gap, the fix is the rain-fed suitability score —`);
+console.log(`   substituting irrigation for rainfall in the BASE, not multiplying it after.`);
+console.log(`   If cap÷fert differs too, something downstream (access, relief, dev) is also`);
+console.log(`   favouring one region, and the substitution alone would not close it.`);
+
 console.log(`\n  WHICH TERM IS STARVED decides the fix:`);
 console.log(`   · low ARID  -> the climate model does not think it is dry. A climate problem;`);
 console.log(`                  building irrigation harder cannot help, the premium never applies.`);
