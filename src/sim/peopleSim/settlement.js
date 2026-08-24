@@ -3049,11 +3049,35 @@ function updateFood(world, s) {
   //   pop 1000  → 1.30
   //   pop 10000 → 1.40
   const urbanFactor = 1 + Math.log10(Math.max(10, s.people)) / 10;
+  // T.ONE_BOOK — ONE food book: the market ledger bills the MARKET-FED
+  // (docs/egypt-autopsy-2026-08-24.md, the funnel verdict). Under ONE_POP the
+  // catchment census is mostly SUBSISTENCE countryside that feeds itself off
+  // the field (capField — the demographic book); billing the ledger for all of
+  // it read the whole planet at 1/6-1/8 production:demand forever, which ran
+  // every downstream pathology: pseudo-famine at anchors (fed≈0.1), granaries
+  // pinned empty (siege clocks, famine buffers, TRIBUTE_OF_LAND all dead),
+  // scarcity prices at the max clamp planet-wide (no signal), vulnerability
+  // draws onto the "fragile" cradles, ZERO storable surplus → importShare
+  // 0.00 → the agglomeration engine fuel-less → clone cities at 1× the bar →
+  // the churn. T.FOOD_REACH already moved the famine GATE to the core need
+  // ("the census counts subsistence people the market neither feeds nor
+  // taxes") and expressly deferred the rest; this is that re-key: the civic
+  // mouths become the MARKET-FED people — the urban core (the countryside's
+  // own subsistence never touched the granary anyway) — so demand, the
+  // granary drain, the scarcity price, the fish gate, army sizing and the
+  // trade surplus all read one coherent book. Supply-side quantities (foodK,
+  // s._k, the FOOD_K countryside blend) are untouched by construction —
+  // imports raise them through dynamics, and FOOD_K's landShare already
+  // keeps import-fed capacity at the core. Guarded to the shipped regime
+  // (ONE_POP + DISSOLVE_FARMS): in the legacy census-logistic world the
+  // whole census genuinely eats from this ledger and the old billing stands.
+  const oneBook = T.ONE_BOOK > 0 && T.ONE_POP > 0 && T.DISSOLVE_FARMS > 0;
+  const mouths = oneBook ? Math.min(s.people, s._urbanPop != null ? s._urbanPop : s.people) : s.people;
   // Under SLAVE_PEOPLE the unfree are inside the headcount but are fed at the owner's
   // subsistence ration (the slaveFood line below), not the civic rate — split them out
   // so they aren't fed twice.
-  const unfreeIn = (T.SLAVERY && T.SLAVE_PEOPLE) ? Math.min(s._unfree || 0, s.people) : 0;
-  const civDemand = (s.people - unfreeIn) * 0.0030 * urbanFactor;
+  const unfreeIn = (T.SLAVERY && T.SLAVE_PEOPLE) ? Math.min(s._unfree || 0, mouths) : 0;
+  const civDemand = (mouths - unfreeIn) * 0.0030 * urbanFactor;
   // The garrison eats too — extra rations/fodder above the civilian rate
   // (provisioning). This is the food cost of a standing army: a big garrison
   // burns the food surplus that would otherwise fill granaries / grow the
