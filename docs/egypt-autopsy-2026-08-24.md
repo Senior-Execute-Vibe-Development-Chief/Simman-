@@ -482,3 +482,30 @@ complex gets its real trial. Scope: granary/trade/army/price balances
 re-key world-wide; the full gate ladder (smoke, stylized 3 seeds, resgate,
 tw=960 spot) is mandatory, and the FED_FAMINE scar says expect calibration
 fallout. This is the day's terminus: one deferred debt under everything.
+
+## ONE_BOOK referees — HALF-GREEN: the book balances, the pipe is still too thin
+
+The re-key arms (live tune + ONE_BOOK=1) vs control:
+
+- **Surplus exists now**: world gross surplus 85 units across 116 settlements
+  (control: 30 across 31); box surplus ~2–3× control.
+- **The market works**: liege spare coin crashed from hundreds to ~0 — lieges
+  actually SPEND buying grain; imports peaked ~2× control mid-run.
+- **Margins appeared where it matters**: box mean/bar 1.33–2.49 vs control's
+  0.75–1.08 — the first real slack above the city bar all day.
+- **But the top cores still import ≈ nothing** (importShare p50/p90 0.00;
+  one 0.01 sighting), primacy stays 1.0–1.3, no hierarchy. What moves is
+  spread thin among small capitals; anchors stay land-capped.
+
+The remaining joint is THROUGHPUT: a member's offer = its pool × SHIP_FRAC
+(0.2 at city tier) × haul — with member pools of ~0.1–0.2 units/tick that
+is ~0.02–0.04/tick offered against anchor core needs of 1–3: two orders
+short even with the book fixed. Candidates for the next lap, in scar order:
+the tier ship-fractions (calibrated for the village world — the register is
+all cities now, shipping 0.2 where villages shipped 0.8), TRADE_STRIDE=5 in
+the live tune (does the stride divide flow?), and the surplus-vs-pool offer
+basis (a settlement offers a fraction of its whole POOL, not of its
+SURPLUS — under ONE_BOOK the surplus is now well-defined and offering it
+whole is the honest form). Persistence arms (egyptfate/anchormelt) wait
+until imports actually reach anchors — no point refereeing persistence on a
+still-starved engine. ONE_BOOK ships 0 pending that lap + the full ladder.

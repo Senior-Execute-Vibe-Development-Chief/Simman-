@@ -25,3 +25,41 @@
       pools Σ 2.0 · gross SURPLUS Σ 0.1 (1 settlements) · offers Σ 0.00 · arriving imports Σ/tick 0.00 · core deficit Σ 3.0
   step  15000  world    : n   42 · parented 0 (0%) · roots: stateless 41 capital 1 stale 0
       pools Σ 2.7 · gross SURPLUS Σ 0.1 (1 settlements) · offers Σ 0.00 · arriving imports Σ/tick 0.00 · core deficit Σ 3.6
+  step  17500  EGYPT box: n   51 · parented 37 (73%) · roots: stateless 0 capital 7 stale 7
+      pools Σ 5.7 · gross SURPLUS Σ 4.5 (4 settlements) · offers Σ 0.61 · arriving imports Σ/tick 0.70 · core deficit Σ 8.8
+      haul-survival p10/50/90 0.98/0.99/1.00 · liege foodReach p50 0.16 · liege spare coin p50 0.0
+  step  17500  world    : n  136 · parented 70 (51%) · roots: stateless 38 capital 20 stale 8
+      pools Σ 15.0 · gross SURPLUS Σ 7.6 (10 settlements) · offers Σ 0.61 · arriving imports Σ/tick 0.70 · core deficit Σ 30.7
+      haul-survival p10/50/90 0.99/0.99/1.00 · liege foodReach p50 0.16 · liege spare coin p50 0.0
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+  step  20000  EGYPT box: n   55 · parented 35 (64%) · roots: stateless 0 capital 17 stale 3
+      pools Σ 6.6 · gross SURPLUS Σ 4.4 (5 settlements) · offers Σ 0.60 · arriving imports Σ/tick 2.29 · core deficit Σ 15.4
+      haul-survival p10/50/90 0.99/0.99/1.00 · liege foodReach p50 0.33 · liege spare coin p50 1.1
+  step  20000  world    : n  230 · parented 145 (63%) · roots: stateless 0 capital 80 stale 5
+      pools Σ 28.9 · gross SURPLUS Σ 19.5 (27 settlements) · offers Σ 2.72 · arriving imports Σ/tick 12.10 · core deficit Σ 44.4
+      haul-survival p10/50/90 0.99/0.99/1.00 · liege foodReach p50 0.22 · liege spare coin p50 1.8
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=20688 cap=2048 peakN=1078 pushes=8565 (0.0MB backing)
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+  step  22500  EGYPT box: n   50 · parented 25 (50%) · roots: stateless 0 capital 15 stale 10
+      pools Σ 5.5 · gross SURPLUS Σ 1.5 (2 settlements) · offers Σ 0.23 · arriving imports Σ/tick 0.71 · core deficit Σ 19.5
+      haul-survival p10/50/90 0.96/0.98/1.00 · liege foodReach p50 0.45 · liege spare coin p50 161.9
+  step  22500  world    : n  416 · parented 169 (41%) · roots: stateless 2 capital 169 stale 76
+      pools Σ 97.7 · gross SURPLUS Σ 64.4 (73 settlements) · offers Σ 0.38 · arriving imports Σ/tick 2.43 · core deficit Σ 78.7
+      haul-survival p10/50/90 0.97/0.99/1.00 · liege foodReach p50 0.40 · liege spare coin p50 159.1
+[transHeap] step=23712 cap=4096 peakN=2080 pushes=9927 (0.0MB backing)
+  step  25000  EGYPT box: n   56 · parented 39 (70%) · roots: stateless 0 capital 13 stale 4
+      pools Σ 8.7 · gross SURPLUS Σ 5.6 (5 settlements) · offers Σ 0.18 · arriving imports Σ/tick 0.53 · core deficit Σ 7.4
+      haul-survival p10/50/90 0.99/0.99/1.00 · liege foodReach p50 0.53 · liege spare coin p50 0.1
+  step  25000  world    : n  722 · parented 413 (57%) · roots: stateless 4 capital 259 stale 46
+      pools Σ 133.7 · gross SURPLUS Σ 85.4 (116 settlements) · offers Σ 1.19 · arriving imports Σ/tick 4.52 · core deficit Σ 108.5
+      haul-survival p10/50/90 0.99/0.99/1.00 · liege foodReach p50 0.53 · liege spare coin p50 7.6
+
+  READ THE FUNNEL LEFT TO RIGHT: parented% is TOPOLOGY; surplus Σ is POOLS;
+  offers vs surplus is the SHIP fraction × HAUL; imports vs offers is LEVY/COIN;
+  imports vs core deficit is the gap the lane leaves unfed. The first stage
+  that collapses to ~0 is where the movement dies — fix THAT joint only.
