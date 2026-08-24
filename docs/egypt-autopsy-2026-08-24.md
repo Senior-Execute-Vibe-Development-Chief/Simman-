@@ -281,3 +281,48 @@ with it. CITY_HOLD/CATCH_GRACE stay built and documented for re-measure
 AFTER the overmint is fixed — the siege-warfare channel they enable is the
 right physics, and their red verdict here may be the overmint's fault, not
 theirs.
+
+## MINT_RESIDUAL, measured — near-inert as built, and the instrument that explains it
+
+The residual arm (live regime, 480/8817): register turnover 385→342 (−11%),
+abandonments 186→185, big-anchor deaths 19→21, realms 49→70. Effectively
+inert — the session's own trap (mechanism-exists ≠ mechanism-binds), caught
+by its arms.
+
+`probe_residualbite` then measured the term itself and found the opposite of
+the obvious guess: the exclusion is HUGE (claimed-share already 75% at step
+16k, residual/gross p50 0.10) and it STILL doesn't matter — all 34 candidate
+sites pass the city bar on one-tenth of their basin, because:
+
+- **The mint disk is a subcontinent.** `TOWN_BASIN_R = 10` reference-tiles ≈
+  a 1,670-km radius (~314 tiles) at any grid. The "market catchment" bar
+  tests whether a small country's worth of people stand within 1,700 km —
+  every cradle answers yes everywhere, so `cityBasinOkAt` constrains nothing
+  until claimed-share reaches ~0.95+ (post-pulse, register already built).
+- **The exclusive cells activate at a fossil floor.** The label cells (the
+  machinery's true one-owner-per-villager partition) gate on TOWN_BASIN_MIN
+  = 360 field units, which the code's own CROWD_FOUND note records as
+  150–3,300× below real settled basins (p50 249×).
+
+So the register's density is set by neither bar — only by the spacing
+quantum — and it saturates at ~50–60 entries in the Egypt box where bronze
+Egypt held 5–10 cities: **~6–10× history's city density on the same ground,
+at zero margin**, which is the churn's fuel regardless of which mechanism
+executes the victims.
+
+### The next instruments (before the next mechanism)
+
+1. **The cell-mass distribution**: what does a label cell actually hold, in
+   field units and census, across the box and the world? (The mint's honest
+   exclusive quantity — `labelBasinMass` — has never been characterized.)
+2. **The LABEL_BAR ladder**: the activation bar already accepts an override
+   (`T.LABEL_BAR > 0 ? T.LABEL_BAR : TOWN_BASIN_MIN`). Run the fate/melt
+   arms at cell bars stepped from the fossil floor toward the CITY bar's
+   field-unit scale and measure register count, anchor deaths, realm churn.
+   The ship-shaped fix, if the ladder confirms, is dynamic: the cell
+   activation bar IS the city bar via the census bridge (the same
+   TIER_CORE[2]/URBAN_SHARE_REF/_onePopScale read cityBasinOkAt makes) —
+   no new constant; the fossil floor retires.
+
+MINT_RESIDUAL ships 0 (near-inert; harmless late-game bite), verdict in its
+desc. CITY_HOLD/CATCH_GRACE re-measure AFTER the register is historical.
