@@ -435,3 +435,50 @@ actually move each tick, and where the flow dies (foodHierarchy.js, the
 trade lane under TRADE_STRIDE=5, the storable/levy split). Measure the
 funnel; fix where it dies; then re-read this probe — hierarchy, margins and
 persistence should follow together.
+
+## The food funnel — the lane dies at the POOL, and the root is TWO FOOD BOOKS
+
+`probe_foodfunnel` (live regime) read the grain lane stage by stage:
+topology is healthy (44–75% parented; stateless roots ≈ 0 — BORN_OF_LAND
+working; the roots are legitimately capitals), haul survival is 0.98–0.99,
+the levy ramps with org and coin is often plentiful. The collapse is the
+POOL: **the Egypt valley — 13M people — produces a storable pool of ~5–9
+food units/tick against a core need of ~13, with gross surplus ~2 spread
+over 1–3 settlements.** The lane faithfully moves what exists; almost
+nothing exists to move.
+
+And the "almost nothing" is not real famine. It is **two disagreeing food
+books**:
+
+- The FIELD book (capField/popField — ONE_POP's demographic truth) carries
+  the valley's 500k+ field people at 50–75% of capacity. The people are
+  fine; they feed themselves.
+- The SETTLEMENT book bills each city `demand = 0.003 × its WHOLE catchment
+  census` while crediting only its worked-tile `landFood` — and reads
+  production at 1/6–1/8 of demand, valley-wide, permanently.
+
+Every pathology chain measured today runs off the second book: chronic
+fed ≈ 0.1 at anchors (pseudo-famine), permanently empty granaries (the
+`s.food += supply − demand` drain bills the full census → siege clocks,
+famine buffers and TRIBUTE_OF_LAND all dead), scarcity prices pinned at the
+max clamp everywhere (no price signal), famine-vulnerability draws
+concentrating on the "fragile" valley, STARVE_SHED pressure, ZERO storable
+surplus for the hierarchy to move, and therefore importShare = 0.00 and no
+urban hierarchy. The codebase already knows the principle: T.FOOD_REACH
+moved the famine GATE to `_coreNeed` ("the census counts subsistence people
+the market neither feeds nor taxes") and expressly deferred the rest — "the
+ledger's headline demand deliberately keeps billing the WHOLE census … 
+re-keying the granary drain re-keys granary/trade balances world-wide."
+
+**The fix, named (not built — a world-rekeying decision):** extend the
+FOOD_REACH principle from the famine gate to the whole settlement book —
+demand bills the MARKET-FED people (urban core + garrison + unfree), supply
+credits the catchment's real yield, surplus = landFood − coreNeed becomes
+the tradeable pool. Then granaries fill, prices differentiate, famine
+becomes an event instead of a climate, the hierarchy has grain to move, the
+agglomeration engine gets its fuel, cities grow past their local land,
+margins appear, the register concentrates — and the persistence/confetti
+complex gets its real trial. Scope: granary/trade/army/price balances
+re-key world-wide; the full gate ladder (smoke, stylized 3 seeds, resgate,
+tw=960 spot) is mandatory, and the FED_FAMINE scar says expect calibration
+fallout. This is the day's terminus: one deferred debt under everything.
