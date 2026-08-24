@@ -82,7 +82,11 @@ for (let done = 0; done < STEPS; done += SAMPLE) {
       if (ev.type === "settlement.abandoned" || ev.type === "settlement.withered" || ev.type === "settlement.dissolved")
         deathEv = `${ev.type.replace("settlement.", "")}${ev.why ? "(" + ev.why + ")" : ""} @ ${ev.step}`;
     dead.push({ sid, name: hh.name, atStep: world.step, deathEv });
-    console.log(`\n  ✝ ANCHOR DIED: ${hh.name} (id ${sid}) — ${deathEv || "no death event (moved/captured out?)"} — final trajectory:`);
+    // The BIRTH state (first sample after crossing the anchor bar) — the mint
+    // pre-test question: was this anchor ever given a catchment, or born
+    // landless into the packing? (The final-window rows below cannot say.)
+    const b0 = hh.rows[0];
+    console.log(`\n  ✝ ANCHOR DIED: ${hh.name} (id ${sid}) — ${deathEv || "no death event (moved/captured out?)"} — born@${b0.step}: people ${Math.round(b0.people)} terr ${b0.terr} fedM ${b0.fedM < 0 ? "-" : b0.fedM.toFixed(2)} — final trajectory:`);
     console.log(`     step   people  urban   fedM  supply/coreNeed   terr work   dis  fam hvst siege  cid  army`);
     const win = hh.rows.filter((r) => r.step >= world.step - DECOMP_WIN);
     for (const r of win)

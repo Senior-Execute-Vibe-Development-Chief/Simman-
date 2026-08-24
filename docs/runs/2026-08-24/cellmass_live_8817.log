@@ -41,3 +41,23 @@
     EGYPT box: cells    3 · mass p10/50/90 31277/56792/142781 field (= 587/1066/2679 census) · cells≥1bar   3 · Σcapacity   20 · ACTUAL settled 0
     world    : cells  207 · mass p10/50/90 1428/3540/9458 field (= 27/66/177 census) · cells≥1bar  19 · Σcapacity   58 · ACTUAL settled 0
 [peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+  step 14000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 52295/108434/263918 field (= 981/2034/4952 census) · cells≥1bar   3 · Σcapacity   38 · ACTUAL settled 22
+    world    : cells  207 · mass p10/50/90 1528/3764/12491 field (= 29/71/234 census) · cells≥1bar  26 · Σcapacity  117 · ACTUAL settled 22
+  step 16000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 73069/159694/402464 field (= 1371/2996/7551 census) · cells≥1bar   3 · Σcapacity   57 · ACTUAL settled 48
+    world    : cells  207 · mass p10/50/90 1605/3952/27227 field (= 30/74/511 census) · cells≥1bar  30 · Σcapacity  183 · ACTUAL settled 78
+  step 18000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 104802/149082/433327 field (= 1966/2797/8130 census) · cells≥1bar   3 · Σcapacity   62 · ACTUAL settled 53
+    world    : cells  207 · mass p10/50/90 1671/4256/44625 field (= 31/80/837 census) · cells≥1bar  38 · Σcapacity  256 · ACTUAL settled 158
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+  step 20000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 119421/150200/465771 field (= 2241/2818/8739 census) · cells≥1bar   3 · Σcapacity   68 · ACTUAL settled 51
+    world    : cells  207 · mass p10/50/90 1687/4404/67306 field (= 32/83/1263 census) · cells≥1bar  48 · Σcapacity  334 · ACTUAL settled 222
+
+  READ: Σcapacity vs ACTUAL settled is the first-seat law's predicted register.
+  cells≥1bar ≈ n  ⇒ the law is inert; Σcapacity ≪ actual ⇒ it cuts the register
+  toward history; Σcapacity ≈ 0 with people plainly present ⇒ the BRIDGE/bar
+  units are wrong for cells and the law must be re-grounded before building.

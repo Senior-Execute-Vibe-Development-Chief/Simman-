@@ -326,3 +326,37 @@ executes the victims.
 
 MINT_RESIDUAL ships 0 (near-inert; harmless late-game bite), verdict in its
 desc. CITY_HOLD/CATCH_GRACE re-measure AFTER the register is historical.
+
+## The cell-mass verdict — the packing thesis (end of day 2026-08-24)
+
+`probe_cellmass` (live regime) closed the mint ladder's last question and
+killed the first-seat law before it was built:
+
+- **The Egypt box holds THREE market cells** — cells are subcontinental
+  horizons like the disk — each holding 3–44 city-bars of people. Every
+  cradle cell passes any first-seat bar trivially: inert.
+- **The register already sits BELOW the lattice's capacity law**: Σcapacity
+  ≈ 68 vs 51 actual settled in the box at 20k (world: 334 vs 222). The
+  system is self-consistent at its own definition: a 13k-census pie over the
+  200-census city bar supports ~65 minimum-viable cities, and that is what
+  it builds.
+
+So the day's final diagnosis is not a broken bar but a missing preference:
+**the sim packs a cradle to Malthusian-minimum city packing** (~65 at-bar
+cities where bronze Egypt held 5–10 big ones plus towns-in-the-land),
+because nothing prefers agglomerating growth INTO an existing center over
+minting a new minimum-center beside it — peers mint at core-spacing (tiny)
+while real market ranges are the economy's own catchments (~250–500 km,
+8–27 tiles measured). Zero-margin packing is the churn's fuel; every
+executioner measured today (border sweep, famine, siege, competition) is
+downstream of it. A standing class of LANDLESS anchors (census > 200 with
+terr 0 for thousands of steps — five in the control arm alone) is the
+packing's visible surplus.
+
+**Next lap, one joint**: the mint pre-test at the LOCAL competitive scale —
+a new city only where its own would-be catchment (the economy's real market
+range, not the 1,670-km disk and not the cell) holds the city bar
+unmarketed. Instrument first: probe_anchormelt now prints each dead
+anchor's BIRTH state (born landless vs born landed — the pre-test's
+discriminating measurement, unreadable from the final-window prints that
+existed today).
