@@ -22,3 +22,14 @@
 [peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
 [peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
   step   8000  sites   34  residual/gross p10/p50/p90: 1.00/1.00/1.00  claimed-share p50/p90: 0.00/0.00  CITY BAR pass: gross 26 vs residual 26
+  step  12000  sites   34  residual/gross p10/p50/p90: 1.00/1.00/1.00  claimed-share p50/p90: 0.00/0.00  CITY BAR pass: gross 34 vs residual 34
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+  step  16000  sites   34  residual/gross p10/p50/p90: 0.00/0.00/0.03  claimed-share p50/p90: 1.00/1.00  CITY BAR pass: gross 34 vs residual 3
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+  step  20000  sites   34  residual/gross p10/p50/p90: 0.00/0.00/0.00  claimed-share p50/p90: 1.00/1.00  CITY BAR pass: gross 34 vs residual 0
+
+  If residual/gross ≈ 1 and claimed-share is small, the catchment partition
+  covers too little of the peopled valley for the exclusion to reach the bar —
+  the claim ledger is the wrong exclusivity register for the mint.
