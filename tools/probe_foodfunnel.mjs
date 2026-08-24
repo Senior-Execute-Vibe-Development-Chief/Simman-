@@ -54,7 +54,7 @@ for (let done = 0; done < STEPS; done += CKPT) {
       r.n++;
       r.supply += s._storableSupply || 0;
       r.offers += s._foodOffer || 0;
-      r.importRate += (s._foodImportRate || 0) * 10;   // 0.9/0.1 fold → ×10 ≈ per-tick inflow
+      r.importRate += s._foodImportRate || 0;   // the 0.9/0.1 fold CONVERGES TO THE MEAN — ×10 (first three 2026-08-24 logs) overstated arrivals 10×; comparisons stood, absolutes did not
       const need = s._coreNeed || 0;
       r.need += need;
       const own = s._foodSupply || 0;

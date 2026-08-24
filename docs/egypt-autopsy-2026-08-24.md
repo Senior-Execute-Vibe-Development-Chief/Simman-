@@ -509,3 +509,47 @@ SURPLUS — under ONE_BOOK the surplus is now well-defined and offering it
 whole is the honest form). Persistence arms (egyptfate/anchormelt) wait
 until imports actually reach anchors — no point refereeing persistence on a
 still-starved engine. ONE_BOOK ships 0 pending that lap + the full ladder.
+
+## SHIP_SURPLUS referees — the pipe opens 6×; Egypt's packing starves it locally
+
+Correction first: the funnel probe's "arriving imports" column multiplied
+the smoothed `_foodImportRate` by 10, but the 0.9/0.1 fold converges to the
+MEAN — all three funnel logs overstate arrivals 10× (comparisons between
+arms valid, absolutes not; probe fixed). Real per-tick world imports:
+control ~0.6 → ONE_BOOK ~1.2 → **SHIP_SURPLUS ~3.6** — a 6× opening, now
+covering ~9% of the world's core deficit, concentrated on a few dozen
+capitals.
+
+The remaining limiter is UPTAKE, and it is legible and emergent: offers
+reach ~12/tick but the levy is org-capped (foodReach p50 0.17→0.53 over the
+run — the temple economy matures with statecraft) and buyers' spare coin
+runs to zero (the market spends everything it has). No fix proposed — this
+half looks like the system working: a bronze-age world SHOULD move a
+fraction of its surplus, rising as organisation and money deepen.
+
+Egypt is the other story: **imports 0.00 at every checkpoint under every
+arm, because the valley produces no surplus under any book** — ~50 packed
+cities on ~140 tiles hold 2–3-tile catchments each (pools 3–6 units vs core
+deficit 11–17). The packing thesis confirmed from the supply side: a valley
+of minimum-cities cannot feed itself into hierarchy no matter how well the
+lane works. The cure remains fewer, bigger cities — and the now-working
+book+lane stack is the environment in which the agglomeration dynamics
+(URBAN_AGGLOM's import-driven cores) finally have physics to run on, once
+anything in the valley can accumulate surplus.
+
+## Where the day ends
+
+Nine instruments, six levers (two measured red and shipped off with
+verdicts, one inert-with-a-finding, ONE_BOOK half-green, SHIP_SURPLUS
+opening the world's grain lane 6×), one autopsy document, and a causal
+chain that now runs unbroken from "Egypt at 87% then zero" down to a
+double-billed food ledger and a register packed to Malthusian minimum.
+The stack that exists (ONE_BOOK + SHIP_SURPLUS, both def 0) makes the
+world's food economy WORK for the first time; Egypt's remaining disease is
+density, which is demographic-geographic, not a lane. Next candidates, for
+the owner: (a) run the persistence referendum on the current stack anyway
+(cheap, calibrates expectations), (b) the tw=960 play referendum with
+ONE_BOOK+SHIP_SURPLUS in SIM_TUNE, (c) the flip ladder for both levers
+(full gates), (d) the valley-density lap with the working economy
+underneath (longer horizons — does agglomeration differentiate the packed
+register given time?).
