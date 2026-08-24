@@ -21,6 +21,7 @@ const STEPS = +(process.argv[2] || 20000);
 const W = +(process.argv[3] || 480), H = W >> 1;
 const SEED = +(process.argv[4] || 8817);
 const CKPT = +(process.argv[5] || 4000);
+const RBARG = +(process.argv[6] || 0);
 
 const world = buildSim({ W, H, seed: SEED });
 const TW = world.tw, TH = world.th;
@@ -32,7 +33,7 @@ const inBox = (x, y) => { const lo = lonOf(x), la = latOf(y); return la >= 20 &&
 // the "market catchment" bar asks whether a small country's worth of people
 // stand within 1,700 km, which any cradle answers yes everywhere — a finding
 // in its own right, measured below alongside the claimed-share question.
-const RB = 10;
+const RB = RBARG > 0 ? RBARG : 10;
 const grossMass = (tx, ty) => {
   const pf = world.popField; let m = 0;
   for (let dy = -RB; dy <= RB; dy++) {

@@ -37,6 +37,7 @@ import { forEachNear, gridAdd } from "./spatialGrid.js";
 import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
 import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
+import { reachBudget } from "./territory.js";   // T.MINT_REACH: the newborn's day-one reach (functions only — same ESM-cycle pattern as landKnow.js)
 import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
@@ -186,6 +187,32 @@ function townBasinMass(world, tx, ty, rB) {
 // partition (one owner per tile; dead owners released by the next territory
 // pass, so a fallen city's countryside genuinely reopens). No partition yet
 // (dawn, or the pass hasn't run) ⇒ gross mass, the bar's old read.
+// T.MINT_REACH — the agglomeration preference as a rule (the packing thesis,
+// docs/egypt-autopsy-2026-08-24.md end-of-day section). The lattice prices the
+// register at the SUBCONTINENTAL scale (cells/disks ~1,700 km) where every
+// cradle passes every bar, so cradles pack to Malthusian-minimum city packing
+// (~65 at-bar cities where bronze Egypt held 5-10 big ones) and the churn is
+// fuelled at the mint. Under the lever every mint additionally passes the
+// LOCAL test: a city is born only where a NEWBORN'S OWN day-one reach — the
+// economy's own quantity, reachBudget at zero organization = TERRITORY_BASE,
+// "a village farms what it can walk to" — gathers a full city-bar of
+// UNMARKETED people (residualBasinMass: claimed countryside's growth accrues
+// to its existing city, never to a new neighbour carved out beside it). Two
+// consequences fall out with no further rules: (1) mid-life carve-ups stop —
+// a newborn may not be born off a standing city's fields (one of the three
+// measured anchor-killers); (2) the death-refill cycle damps — a fallen
+// city's freed countryside is re-absorbed by surviving neighbours' claims
+// before the next mint can see it, so ONE successor mints only beyond their
+// reach: growth concentrates into fewer, bigger, resilient cities. Pre-bridge
+// or pre-partition (the dawn) the test stands aside — the hearth bootstrap is
+// untouched.
+export function mintReachOk(world, tx, ty) {
+  if (!(T.MINT_REACH > 0)) return true;
+  if (!(world._onePopScale > 0) || !world._territoryOwner) return true;
+  const rB = Math.max(1, Math.round(reachBudget(_NEWBORN) * rNormPop(world)));
+  return residualBasinMass(world, tx, ty, rB) * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF;
+}
+const _NEWBORN = { _techEff: null, knowledge: {} };   // day-one court: reachBudget = TERRITORY_BASE
 export function residualBasinMass(world, tx, ty, rB) {
   const to = world._territoryOwner;
   if (!to || to.length !== world.N) return townBasinMass(world, tx, ty, rB);
@@ -1157,7 +1184,11 @@ export function cityBasinOkAt(world, tx, ty) {
   // never a dissolve bar (maybeDissolveTowns reads the gross basin directly;
   // a standing city's basin rightly includes its own catchment).
   const mass = T.MINT_RESIDUAL > 0 ? residualBasinMass(world, tx, ty, rB) : townBasinMass(world, tx, ty, rB);
-  return mass * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF;
+  if (!(mass * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF)) return false;
+  // T.MINT_REACH: …and the bar must ALSO hold at the newborn's own day-one
+  // reach in unmarketed people (the subcontinental disk above passes every
+  // cradle everywhere — measured, probe_residualbite — so it prices nothing).
+  return mintReachOk(world, tx, ty);
 }
 function maybeDissolveTowns(world) {
   if (!T.DISSOLVE_TOWNS) return;
@@ -1357,7 +1388,10 @@ function maybeSiteCities(world) {
           // existing city's marketed countryside still qualified. The residual
           // disk closes that: a city-basin's worth of UNMARKETED people too.
           && (!(T.MINT_RESIDUAL > 0)
-              || residualBasinMass(world, L.sites[k].x, L.sites[k].y, Math.round(TOWN_BASIN_R * rNormPop(world))) >= basinBarF)) {
+              || residualBasinMass(world, L.sites[k].x, L.sites[k].y, Math.round(TOWN_BASIN_R * rNormPop(world))) >= basinBarF)
+          // T.MINT_REACH: the site lane pays the local law too — a city only
+          // where a day-one court's own reach gathers the bar unmarketed.
+          && mintReachOk(world, L.sites[k].x, L.sites[k].y)) {
         elig[k] = 1; basins.set(k, b.take);
         // T.LAND_KNOW: a city-capable farming basin is a LEARNING community —
         // plant its ledger the moment it first qualifies (landKnow.js).
