@@ -165,3 +165,35 @@ export function classifyBiome(e, m, t, dry, sumDry) {
   if (arid !== undefined && em > arid) return B_SHRUBLAND;
   return B_DESERT;
 }
+
+// ── The mechanics' canopy field (T.CANOPY_CLASS) ─────────────────────────────
+// The sim has always had TWO answers to "is this tile forest": this classifier
+// (Koppen-calibrated, 79.4% agreement, consumed by resources and the render)
+// and a raw moisture ramp clamp((m-0.38)/0.20) consumed by every MECHANIC (the
+// forest state bar, stateCapacityMul, FOREST_LOCK). The ramp mis-reads the
+// temperate oceanic belt because the moisture INDEX does: Britain reads 0.46
+// and semi-arid Mesopotamia 0.45 on the same scale, so closed-forest Europe
+// gets a ~40% signal. This helper gives the mechanics the classifier's answer
+// instead: a cached per-tile CLOSED-CANOPY mask over the axe-locked classes —
+// temperate forest, temperate rainforest, taiga, boreal. Deliberately NOT
+// included: tropical rainforest and humid subtropical (band 4) — the warm-wet
+// belt is the DISEASE bar's ground (the same double-count temperateBand exists
+// to prevent), and locking monsoon China's capacity is exactly the regression
+// the COURT_SPHERE arm warned about. dry/sumDry pass 0 ("unknown", the
+// classifier's own documented fallback, identical to resourceGen's) because
+// the people-sim world does not retain those fields. Rebuilt on a slow cadence
+// so climate drift, if any, re-derives the cover.
+const CANOPY_REBUILD = 2000;
+export function ensureCanopy(world) {
+  let cn = world._canopy;
+  if (cn && cn.length === world.N && (world.step - (world._canopyStep || 0)) < CANOPY_REBUILD) return cn;
+  const { N, elev, moist, temp } = world;
+  if (!cn || cn.length !== N) cn = world._canopy = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    if (!(elev[i] > 0)) { cn[i] = 0; continue; }
+    const b = classifyBiome(elev[i], moist[i], temp[i], 0, 0);
+    cn[i] = (b === B_TEMP_FOREST || b === B_TEMP_RAIN || b === B_TAIGA || b === B_BOREAL) ? 1 : 0;
+  }
+  world._canopyStep = world.step | 0;
+  return cn;
+}

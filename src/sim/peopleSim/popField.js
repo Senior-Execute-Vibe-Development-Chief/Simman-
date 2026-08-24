@@ -23,6 +23,7 @@
 // (both fields are re-derivable, but popField carries state so it IS saved — see persist).
 
 import { T, rNormPop } from "./tuning.js";
+import { ensureCanopy } from "../biomeClass.js";
 import { tileOpenness } from "./transport.js";
 import { ensureTill0 } from "./agriculture.js";
 // Stage B (docs/popfield-parallel.md): the four parallel-safe loop bodies and
@@ -808,12 +809,18 @@ export function stepPopField(world, sub = 1) {
   if (flL > 0) {
     const moistF = world.moist;
     const clearRef = Math.max(0.1, T.LAND_CLEAR_METAL || 0.55);
+    // T.CANOPY_CLASS: the lock reads the Koppen classifier's closed-canopy mask
+    // instead of the moisture ramp (biomeClass.js ensureCanopy; the ramp gave
+    // closed-forest Europe ~40% signal because the moisture index ranks Britain
+    // beside semi-arid Mesopotamia). Same recipe otherwise — rivers still open
+    // the canopy, the pasture floor still stands, iron still clears.
+    const cnF = T.CANOPY_CLASS > 0 ? ensureCanopy(world) : null;
     for (let li = 0; li < nLand; li++) {
       const i = land[li];
       const m = moistF[i];
-      if (m <= 0.38) continue;                                       // no closed canopy on dry land
+      if (cnF ? !cnF[i] : m <= 0.38) continue;                       // no closed canopy here
       const rOpen = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
-      const forest = Math.min(1, (m - 0.38) / 0.20) * (1 - rOpen);
+      const forest = (cnF ? 1 : Math.min(1, (m - 0.38) / 0.20)) * (1 - rOpen);
       if (forest <= 0) continue;
       let iron = 0;
       if (ownOn && indOwner) {

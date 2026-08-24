@@ -22,6 +22,7 @@
 
 import { localEdgeCost, terrainHoldAt, ridgeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { RECORDS_ORG, stateOrgBar } from "./tech.js";
+import { ensureCanopy } from "../biomeClass.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
@@ -2364,7 +2365,14 @@ export function adoptAndFound(world) {
       const tempAt    = s._climTemp ?? (temp ? temp[ti] : 0.5);
       const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
       const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
-      const forestLk  = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen) * (1 - ironReady);
+      // T.CANOPY_CLASS: the forest signal is the Koppen classifier's closed-canopy
+      // mask, not the moisture ramp (biomeClass.js ensureCanopy — the ramp reads
+      // closed-forest Europe at ~40% because the moisture index ranks Britain
+      // beside semi-arid Mesopotamia). temperateBand stays as the disease-bar
+      // separation guarantee; near-1 over the canopy classes anyway.
+      const canopyLk  = T.CANOPY_CLASS > 0 ? (ensureCanopy(world)[ti] ? 1 : 0)
+        : Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20));
+      const forestLk  = canopyLk * temperateBand(tempAt) * (1 - riverOpen) * (1 - ironReady);
       const forestBar = NUCLEATE_SEAT_POP * (1 + T.STATE_FOREST * forestLk);
       // Tier-C C1 deflation audit — kept ABSOLUTE here, recorded: this census
       // read deflates ~×0.6-0.75 under LABEL_BIRTH's supply step, but its only
@@ -2623,7 +2631,9 @@ function stateCapacityMul(world, s, seatTi) {
   const moistAt   = s._climMoist ?? (moist ? moist[seatTi] : 0.5);
   const tempAt    = s._climTemp ?? (temp ? temp[seatTi] : 0.5);
   const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
-  const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen);
+  const canopyAt  = T.CANOPY_CLASS > 0 ? (ensureCanopy(world)[seatTi] ? 1 : 0)
+    : Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20));   // T.CANOPY_CLASS: classifier canopy, not the ramp (see adoptAndFound's twin)
+  const forest    = canopyAt * temperateBand(tempAt) * (1 - riverOpen);
   const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
   const forestLocked = forest * (1 - ironReady);
   return (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
