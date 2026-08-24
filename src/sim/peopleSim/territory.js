@@ -244,11 +244,31 @@ export function computeTerritory(world) {
   // release any WATER tiles that lingered from an older code path —
   // borders shouldn't bleed into the ocean.
   // Farming Regions to reclaim.
+  // T.CATCH_GRACE — disputed fields keep their farmers (the Egypt-autopsy
+  // safety rail, docs/egypt-autopsy-2026-08-24.md). The instant release below
+  // was the execution half of the measured seat-death chain: one border sweep
+  // over a city's district zeroed its whole catchment in a single pass, supply
+  // → 0.0, census → the abandonment bar. Under the lever a tile the settlement
+  // ALREADY WORKS survives a political mismatch for a grace window (history-
+  // time steps) before releasing — peasants do not stop farming the day a
+  // distant border shifts; the fields are lost only if the new order STANDS
+  // (capture, annexation, relief all resolve within the window). Asymmetric on
+  // purpose: grace never lets a catchment GROW into foreign ground (the claim
+  // guards below still test the raw clip) — it only lets held fields wait out
+  // the dispute. 0 ⇒ byte-identical instant release.
+  const graceT = (T.CATCH_GRACE || 0) / (world._dt || 1);
+  let clipAt = world._catchClipAt;
+  if (graceT > 0 && (!clipAt || clipAt.length !== N)) clipAt = world._catchClipAt = new Int32Array(N);
   for (let ti = 0; ti < N; ti++) {
     const o = owner[ti];
     if (o < 0) continue;
     if (!byId.has(o) || world.elev[ti] <= 0) { owner[ti] = -1; continue; }
-    if (clip && clipped(o, ti)) owner[ti] = -1;   // catchment tile no longer within its owner's country → release (borders shifted)
+    if (clip && clipped(o, ti)) {   // catchment tile no longer within its owner's country (borders shifted)
+      if (graceT > 0) {
+        if (clipAt[ti] === 0) clipAt[ti] = world.step + 1;              // dispute begins — keep working
+        else if (world.step + 1 - clipAt[ti] > graceT) { owner[ti] = -1; clipAt[ti] = 0; }   // the new order stood — release
+      } else owner[ti] = -1;
+    } else if (graceT > 0 && clipAt[ti] !== 0) clipAt[ti] = 0;          // back inside the border — dispute over
   }
 
   // Guarantee each settlement its (tier-sized) core block, carving it from a

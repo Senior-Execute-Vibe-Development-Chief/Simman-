@@ -610,6 +610,35 @@ function fieldPolityTerritory(world) {
       homeTiles.set(cid, [ti]);
       anchored.add(cid);
     }
+    // T.CITY_HOLD — a STANDING city holds its district (the Egypt-autopsy fix,
+    // docs/egypt-autopsy-2026-08-24.md). Measured execution chain this closes:
+    // under capital-only anchoring a provincial metropolis pins NOTHING — not
+    // even its home tile — so the realm's own over-capacity shed (step 6) or
+    // sever (step 3) strips the ground around a living member, a neighbour
+    // grows into the released wild, CATCHMENT_CLIP (territory.js) zeroes the
+    // member's worked catchment in one pass, and ONE_POP drains its census to
+    // the abandonment bar (Xụ̀ftà: terr 25→0, census 3,954→39 in 100 steps,
+    // healthy, no war, no famine — 19 such deaths in one 10k-step window, and
+    // every realm death downstream of one). Under the lever every settled
+    // member anchors EXACTLY like a capital: home tile + the same CORE_R
+    // pinned core (step 1b), the same connectivity/admin seed (step 3), the
+    // same worked-pin against the shed (step 6) — one law, no special case.
+    // Territorial change past a standing city thereby regains its historical
+    // unit: TAKE THE CITY (armies.js storm/capture flips s.countryId, and the
+    // stamp follows the new flag next pass — conquest transfers the district
+    // with the city instead of evaporating it). Growth-side is already safe:
+    // peaceful growth enters WILD land only, and a held core is never wild.
+    if (T.CITY_HOLD > 0) {
+      for (const s of world.settlements) {
+        if (s.mode !== "settled" || s.countryId < 0 || !alive.has(s.countryId)) continue;
+        const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+        if (elev[ti] <= 0) continue;
+        let a = homeTiles.get(s.countryId);
+        if (a && a[0] === ti) continue;   // the capital — already anchored above
+        co[ti] = s.countryId;
+        if (a) a.push(ti); else { homeTiles.set(s.countryId, a = [ti]); anchored.add(s.countryId); }
+      }
+    }
     // Fallback: any alive country not yet capital-anchored (the territory pass runs before
     // world.countries is built on step 1, and the post-load warm-up skips the polity pass)
     // anchors its settlements, so its loaded/newborn land is never released for want of a seed.
