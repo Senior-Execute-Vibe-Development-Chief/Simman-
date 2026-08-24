@@ -136,11 +136,85 @@ The open mechanism question — now sharp enough to instrument: **what melts a
    wave slices the anchors' worked territory (`_terrTiles`) thinner.
 4. **Urban graveyard** at disease 0.5–0.75 with no health tech.
 
-Next instrument (one run): sample the 19 dead anchors' final 2,000 steps —
-`_fedM`, `_coreNeed`, `_foodSupply`, `_terrTiles`/`_terrWorkTiles`,
-`_famineUntil` windows, `_diseaseLoad`, catchment census — and decompose the
-melt into those four terms. The fix is whichever term the decomposition
-convicts; per the second cardinal rule, none of them gets a patch until then.
+That decomposition ran the same day (`probe_anchormelt`,
+`docs/runs/2026-08-24/anchormelt_live_8817.log`) and convicted none of the
+four as the executioner — it found a fifth. See the next section.
+
+## The melt, decomposed — the executioner found
+
+`probe_anchormelt` tracked every anchor-class settlement (people ≥ 200) in
+the box and, at each death, its final-2,000-step trajectory — with the five
+surviving anchors as control. The four suspects against the contrast:
+
+| term | dead (19) | survivors (5) | verdict |
+|---|---|---|---|
+| chronic core solvency `_fedM` | mean ~0.10 | mean ~0.17 | background — the whole valley starves chronically; several dead beat several survivors |
+| famine windows (share of final 2k) | mean ~34%; 13/19 ≥ 25% | **0% on all five** | real accelerant — but six big anchors died with 0% |
+| endemic disease | ~0.28 | ~0.36 | **inverted** — survivors carry more; fuel, not trigger |
+| siege | ~17% of steps | up to **75%** (fine) | **inverted** — siege demonstrably does not kill |
+| worked territory `_terrTiles` | **→ 0 in every single death** | stable or growing | the executioner |
+
+And the trajectories give the mechanism, with ordering:
+
+- **Xụ̀ftà** (seat of realm 416): healthy and *improving* — fedM 0.29→0.58,
+  ~4,000 census, 25-tile catchment, supply 1.6-1.9 — then in ONE 100-step
+  window: **terr 25 → 5, supply → 0.0, census 3,954 → 39**. cid stayed 416
+  the whole way down. No famine, no siege, no capture.
+- **Īmpíü**: fedM 0.73, supply 2.3 — then **terr 12 → 0 while census was
+  still 4,733**; the census drained over the following 300 steps. Tiles died
+  FIRST; the people followed. (Under ONE_POP a 100× census drop in 100 steps
+  is only possible by catchment-stripping — the field's people move smoothly
+  — so the causality census←catchment is proven at this sampling.)
+
+### The chain, each link read from code
+
+1. **The political field is a capital-only flood** (controlField.js,
+   CTRL_LIVE): `sources = cid → capital tile`; control = P − cheapest path
+   from the CAPITAL. Member settlements contribute nothing — a provincial
+   metropolis is invisible to the political map (`TILE_POLITY`'s own label:
+   "settlements as pure dressing").
+2. **Borders therefore sweep across provincial districts without war** as
+   capital powers and distances shift.
+3. **CATCHMENT_CLIP executes** (territory.js:239-251, 272, 305, 388): a
+   settlement may work only its own country's ground — wilderness is exempt
+   (CATCH_WILD=1, which cut the wild-confiscation loop territory.js:230
+   documents) but FOREIGN ground is not. One border shift over a city's
+   district releases its entire catchment in one pass: `terr 0, work 0`,
+   supply exactly 0.0.
+4. **ONE_POP finishes it**: census = worked-catchment share → drains to the
+   abandonment bar in a few hundred steps → `settlement.abandoned`.
+5. **The realm follows its members**: capacity ∝ members, so each execution
+   weakens the flood, which recedes further, executing more members — the
+   runaway territory.js:230 describes, with the political half still open.
+   The certificates then read "conquest"/"integrated"/"dissolved".
+6. Famine is a second entrance into the same funnel (weakens P → border
+   recedes → clip), which is why 13/19 dead had famine windows and no
+   survivor did.
+
+Note the double inversion against history this produces: **sieges — the
+actual historical instrument of taking cities — kill nothing** (survivors
+sit at 75% besieged), while **bloodless border arithmetic kills a
+metropolis in 100 steps**. Real history is the exact opposite: fields
+changed hands when the city fell, and not before.
+
+### The mechanism direction (not built — owner's call)
+
+The physics the sim is missing: **a standing city IS political control of
+its district; conquest transfers fields with their people rather than
+evaporating them.** Two system-level candidates, per the second cardinal
+rule (build the cause, no patches):
+
+- **A — cities as control sources.** Member settlements pin/re-charge the
+  control field over their district (capital-style, scaled by their own
+  weight). Borders then cannot cross a standing city without taking it
+  first — and the war machinery for that already exists (`_warFront`
+  bulges, WAR_BONUS pushing toward the capital). Territorial change
+  re-acquires its historical unit: the city.
+- **B — no single-pass cliffs.** Symmetric to `_integratedAt`'s grow-in, a
+  clipped catchment decays over generations instead of evaporating in one
+  pass, giving the political layer time to resolve (capture, annexation,
+  relief) before the economy is executed. Complementary to A, not a
+  substitute — B alone leaves the field blind to cities.
 
 ## Relation to the confetti thread
 
