@@ -121,6 +121,20 @@ const GRAIN_PRICE_BY_TIER = [2, 8, 14, 22];
 export function aggregateFoodHierarchy(world) {
   const byId = world._byId;
   if (!byId) return;
+  // T.SHIP_SURPLUS — the farm gate sells the SURPLUS, not a tier slice
+  // (docs/egypt-autopsy-2026-08-24.md, the ONE_BOOK half-green verdict). The
+  // SHIP_FRAC_BY_TIER fractions were the village world's proxy for need —
+  // villages need little (ship 0.8), cities need most (ship 0.05-0.2). Under
+  // the city-only register every member ships the CITY fraction of an
+  // already-small pool: offers measured ~0.02-0.04/tick against anchor core
+  // needs of 1-3 — two orders short, so no import ever reaches an anchor and
+  // the agglomeration engine idles even with the book fixed. Under ONE_BOOK
+  // the need is EXPLICIT (demand = the market-fed core), so the proxy
+  // retires: a settlement offers what its own ledger does not eat,
+  // max(0, pool − demand) — the honest farm-gate form. Requires the ONE-book
+  // regime (without it demand bills the whole catchment, pool − demand ≤ 0
+  // everywhere, and offers would VANISH rather than open).
+  const surplusBasis = T.SHIP_SURPLUS > 0 && T.ONE_BOOK > 0 && T.ONE_POP > 0 && T.DISSOLVE_FARMS > 0;
 
   // Decay every settlement's smoothed import inflow up front (the hierarchy walk
   // below only ever ADDS arrivals) so a settlement that drops out of the food
@@ -250,7 +264,9 @@ export function aggregateFoodHierarchy(world) {
         node._foodNet = pool;                                // keeps it all unless its OWN parent buys (when parent is processed)
         const sf = node._hasFoodParent ? SHIP_FRAC_BY_TIER[Math.min(3, Math.max(0, node.tier | 0))] : 0;
         const arrive = node._hasFoodParent ? foodHaulArrive(world, node, node._foodParent) : 0;
-        node._foodOffer = pool * sf * arrive;                // only grain that survives the haul to its market is offered up
+        node._foodOffer = node._hasFoodParent && surplusBasis
+          ? Math.max(0, pool - (node._foodDemand || 0)) * arrive   // T.SHIP_SURPLUS: the farm gate sells what its own ledger does not eat
+          : pool * sf * arrive;                // only grain that survives the haul to its market is offered up
         node._foodHaul = arrive;                             // (info panel: this hop's haul-survival fraction)
         node._foodUp = node._foodOffer;                      // (info panel / compatibility)
       }
