@@ -1,1 +1,18 @@
 ##### seed 4242 FOREST_LOCK=0.8 #####
+-- A. the register by REGION (cities = tier>=2; "free" = stateless) -------
+   region        history(bronze) |     16     18     20     22     24
+                                 | Bronze Bronze Classi Mediev Mediev
+   Mesopotamia             20-30 |      -  23/23  28/ 0  31/ 0  28/ 0
+   Egypt/Nile               5-10 |  31/31  48/ 0  48/ 0  72/ 0  66/ 0
+   Indus+India   ~5 (Indus only) |      -  12/12  22/ 0  59/11  61/ 0
+   China               a handful |      -      -      -      -   1/ 0
+   Levant/Anat               ~10 |      -   1/ 0   2/ 0   2/ 0   2/ 0
+   Mediterran.       ~5 (Aegean) |   1/ 1   7/ 6  10/ 0  13/ 0  14/ 0
+   EUROPE temp             **0** |      -      -  12/ 0  41/ 4  71/ 0
+   SAHEL                   **0** |      -      -  15/ 0  14/ 0  44/ 0
+   Steppe                  **0** |      -      -      -   1/ 0  34/ 0
+   SE Asia                 **0** |      -      -      -      -      -
+   Americas                **0** |      -      -      -   7/ 0  23/ 0
+   Afr. south              **0** |      -      -   3/ 3   8/ 0  15/ 0
+   elsewhere                     |      -      -   6/ 0  42/ 0  61/ 0
+   (each cell: cities / of which stateless)
