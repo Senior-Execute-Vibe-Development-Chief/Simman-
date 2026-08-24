@@ -9,3 +9,5 @@
   ok   app realm count                    7 (floor 3)
 [resgate] all app-grid bands held
 ---- smoke ----
+[smoke] all checks passed in 61.4s
+[emblem] all checks passed
