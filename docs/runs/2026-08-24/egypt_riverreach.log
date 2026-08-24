@@ -24,3 +24,21 @@ step    org   cradle      catchment(tiles)   COUNTRY(tiles)  COUNTRY(km²)  vs m
    500  (no Egypt settlement yet)
   2500  (no Egypt settlement yet)
   5000  (no Egypt settlement yet)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+  7500  (no Egypt settlement yet)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+ 10000  (no Egypt settlement yet)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+ 12500  (no Egypt settlement yet)
+ 15000  0.33  Ňěňní         57                 0               0         0%
+ 17500  0.44  Fị̀ptàị      42                33          866799        87%
+[transHeap] step=17664 cap=2048 peakN=1064 pushes=5784 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+ 20000  0.60  Tụ̀ị           0                 0               0         0%
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+ 22500  0.68  Tāptáịkò       8                 2           52061         5%

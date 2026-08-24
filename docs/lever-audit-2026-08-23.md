@@ -65,6 +65,14 @@ dissolved; each needs its own battery, never a blind flip.
    weakness recorded: the moisture proxy reads Europe as only ~40% canopy, so
    the lock bites a third of capacity at most; atlas-gap names its flip as a
    standing dependency of the statehood gradient.
+> **RE-MEASURE LADDER VERDICTS (2026-08-24):** rung 1 `SEAT_FIELD` PASSED and
+> SHIPPED (SAVE_VERSION 42 — the 777 blocker reads 0 warnings on the current
+> tree). Rung 2 `FISC_ADOPT`/`ADOPT_BUDGET` FAILED (refusal mints confetti:
+> singletons 50%→55%, nations 98→112). Rung 3 `FOREST_LOCK` FAILED on the clean
+> pair (Europe −16% but the STEPPE MORE THAN DOUBLES, 19→42 — displacement, the
+> COURT_SPHERE conservation law; waits on a real vegetation field). Rungs 4-5:
+> see below — the levers are GHOSTS.
+
 4. **`RIVER_REACH`** — "the river as an administrative spine... the mechanism
    that let a single state govern the 1000 km Nile." Removed 2026-07 as
    "over-concentrates" — measured when over-concentration was the disease. The
@@ -74,6 +82,17 @@ dissolved; each needs its own battery, never a blind flip.
    uniform-attractor era; it is also precisely the cradle-first consolidation
    term the statehood-gradient item asks for.
 6. `TRUCE_TOLL`, `PASTORAL_IND` — small, unmeasured, plausible; low priority.
+
+> **RUNGS 4-5 VERDICT (2026-08-24): `RIVER_REACH` and `CAP_GEO` are GHOST
+> LEVERS.** The Egypt trio came back byte-identical across all three arms —
+> and the grep confirms why: **zero consumers in src/**. The 2026-07 flip
+> campaign "removed with code paths" (its own words) — the schema entries
+> survived the code they governed. They are not off; they are DISCONNECTED.
+> Re-shipping either means re-BUILDING the mechanism (RIVER_REACH's valley-
+> spine claim cost, CAP_GEO's heartland capacity term), a design lap, not a
+> flip. The audit's A5 shortlist is hereby corrected: its live members were
+> SEAT_FIELD (shipped), the refusal family (failed), FOREST_LOCK (failed);
+> the ladder is COMPLETE.
 
 ## B. ON but measured NOT ACTING
 
