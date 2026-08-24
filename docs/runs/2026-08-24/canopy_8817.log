@@ -1,1 +1,18 @@
 ##### 8817 CANOPY_CLASS=1 #####
+-- A. the register by REGION (cities = tier>=2; "free" = stateless) -------
+   region        history(bronze) |     14     16     18     20     22     24
+                                 | Bronze Bronze Classi Mediev Mediev Renais
+   Mesopotamia             20-30 |      -      -   8/ 0  10/ 0  17/ 0  18/ 0
+   Egypt/Nile               5-10 |  22/22  73/ 0  83/ 0  80/ 0  89/ 0 102/ 0
+   Indus+India   ~5 (Indus only) |      -      -  39/39  54/ 0  70/ 0  69/ 0
+   China               a handful |      -      -      -      -   1/ 0   9/ 0
+   Levant/Anat               ~10 |      -      -      -  12/ 0   9/ 0   8/ 0
+   Mediterran.       ~5 (Aegean) |      -   1/ 0   1/ 0   4/ 0  12/ 0  30/ 0
+   EUROPE temp             **0** |      -      -      -  10/ 0  22/ 0  36/ 0
+   SAHEL                   **0** |      -   4/ 0  23/ 0  27/ 0  38/ 0  41/ 0
+   Steppe                  **0** |      -      -      -      -  13/ 0  40/ 0
+   SE Asia                 **0** |      -      -      -      -      -      -
+   Americas                **0** |      -      -      -      -  10/ 0  71/ 0
+   Afr. south              **0** |      -      -   1/ 0  11/ 0  33/ 0  54/ 0
+   elsewhere                     |      -      -      -  11/ 0  29/ 0  70/ 0
+   (each cell: cities / of which stateless)
