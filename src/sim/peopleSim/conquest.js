@@ -3032,6 +3032,12 @@ export function updatePolities(world) {
     // cap is a limit nothing gets near because a prior gate keeps realms small.
     // Pure debug side-effects (the _adminLoad / _momentum class): nothing reads
     // them, so the world is byte-identical.
+    // Capacity-side decomposition for the ledger wave (same debug class):
+    // peace (post-hysteresis), the war/fiscal throttle product; momentum is
+    // already stamped (c._momentum) and the apparatus factor is derivable
+    // from govOf(id)._works. Nothing reads these; byte-identical.
+    c._capPeace  = peaceCapacity;
+    c._capThrottle = duress * fiscalDuress;
     c._seatRaw  = seatBonus;                                   // uncapped delegated-seat contribution
     c._seatUsed = Math.min(SEAT_BONUS_CAP * instMul, seatBonus);
     c._seatCap  = SEAT_BONUS_CAP * instMul;                    // the ceiling as this realm sees it (institutions scale it)
@@ -3231,6 +3237,12 @@ export function updatePolities(world) {
       const load = (d / holdRange) * sizeMul * recMul * langMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
       s._langFriction = langMul - 1;   // info panel: administrative friction from tongue mismatch
       s._adminLoad = load;            // for the info panel
+      // Ledger-wave decomposition stamps (debug class, nothing reads them): the
+      // grip-scaled transport-distance term and the coercion divisor, so a probe
+      // can split load into dist x (size*rec) x lang / coerce without
+      // re-implementing the Dijkstra.
+      s._loadDist = d / holdRange;
+      s._loadCoerce = coerce;
       loads.push({ s, load });
     }
 
