@@ -397,3 +397,41 @@ region and era, on the existing logs plus one instrumented run. If it is
 flat where history is steep, the mechanism lap is a strength/form pass on
 URBAN_AGGLOM/URBAN_GAMMA — existing levers, no new machinery — with the
 autopsy arms as the persistence referendum.
+
+## The Zipf probe — the engine's tank is EMPTY (the day's last verdict)
+
+`probe_zipf` (live regime, box + world, every 2,500 steps): **importShare =
+0.00 at p50 AND p90, for every city, at every checkpoint** — no city on the
+planet eats shipped food, ever. The pre-registered logic convicts the FUEL:
+the agglomeration engine (URBAN_AGGLOM — "a grain-importing hub concentrates
+what it ships in") cannot produce hierarchy because the import economy it
+distributes by does not exist in the live regime.
+
+The size structure carries the exact signature of a fuel-less engine:
+
+- **The box is a CLIFF, not a hierarchy**: 2–3 real cores then dust (top
+  urban 524/502/210, then 19/16/10/9/5) — slope −1.4→−3.1, far past Zipf's
+  −1, because rank 4+ is specks.
+- **Primacy 1.0–1.4 everywhere** — the top cities are clones (real systems:
+  2–10×). Without imports a core is capped by its LOCAL land economy, which
+  is roughly equal at every good site.
+- **The world dilutes toward flat** (−1.72 → −0.33 as n runs 42 → 663):
+  the global register floods with at-bar specks. mean/bar ≈ 0.8–1.5 — the
+  zero-margin packing, confirmed at scale.
+
+And the discriminating fact from the melt tables: settlements with 3–4×
+food SURPLUS (sup/need up to 2.6/0.7) coexist with anchors starving at
+0.1 — **the surplus exists; the movement of it does not.** The food
+hierarchy/trade lane is structurally failing to move storable surplus to
+deficit cores.
+
+**This is the convergence point of the entire day.** One dead lane — food
+movement — sits under: chronic anchor famine (fed ≈ 0.0–0.3), the urban
+graveyard's bite, the vulnerability-weighted famine draws concentrating on
+the valley, the clone-city cliff, the zero-margin register, the churn, the
+confetti, and Egypt's non-persistence. The next lap is the FOOD-FLOW
+FUNNEL: who has surplus, who has deficit, what the hierarchy/trade passes
+actually move each tick, and where the flow dies (foodHierarchy.js, the
+trade lane under TRADE_STRIDE=5, the storable/levy split). Measure the
+funnel; fix where it dies; then re-read this probe — hierarchy, margins and
+persistence should follow together.
