@@ -1,0 +1,10 @@
+##### CONTROL (current defaults) #####
+[480x240 tw240] Egypt tile ≈ 24843 km²
+Real Egypt: Old Kingdom core (Nile valley+delta administered) ~50k km² cultivated;
+            state extent incl. claimed desert ~0.5-1.0M km²; modern Egypt 1.00M km².
+
+step    org   cradle      catchment(tiles)   COUNTRY(tiles)  COUNTRY(km²)  vs modern-Egypt
+   500  (no Egypt settlement yet)
+  2500  (no Egypt settlement yet)
+  5000  (no Egypt settlement yet)
+  7500  (no Egypt settlement yet)
