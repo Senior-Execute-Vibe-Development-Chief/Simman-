@@ -176,6 +176,32 @@ function townBasinMass(world, tx, ty, rB) {
   }
   return basin;
 }
+// T.MINT_RESIDUAL — the basin a NEW city may count is the countryside no
+// standing settlement already markets (the Egypt-autopsy fix-arm verdict,
+// docs/egypt-autopsy-2026-08-24.md: mint disks double-count — in a peopled
+// valley EVERY disk holds the bar, so sites mint onto ground existing cities
+// already work, carving their catchments and refilling the register to exact
+// saturation after every death). Same disk, same units, one exclusion: tiles
+// claimed in world._territoryOwner — the economy's own exclusive catchment
+// partition (one owner per tile; dead owners released by the next territory
+// pass, so a fallen city's countryside genuinely reopens). No partition yet
+// (dawn, or the pass hasn't run) ⇒ gross mass, the bar's old read.
+export function residualBasinMass(world, tx, ty, rB) {
+  const to = world._territoryOwner;
+  if (!to || to.length !== world.N) return townBasinMass(world, tx, ty, rB);
+  const pf = world.popField, tw = world.tw, th = world.th;
+  let basin = 0;
+  for (let dy = -rB; dy <= rB; dy++) {
+    const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+    for (let dx = -rB; dx <= rB; dx++) {
+      if (dx * dx + dy * dy > rB * rB) continue;
+      const ti = yy * tw + (((tx + dx) % tw) + tw) % tw;
+      if (to[ti] >= 0) continue;   // already some standing settlement's marketed countryside
+      basin += pf[ti];
+    }
+  }
+  return basin;
+}
 /** Measurement export (probes only): the CROWD_FOUND mass ratio at (tx,ty) —
  *  the founding basin's field people over a bar-sized basin (1 = exactly
  *  TOWN_BASIN_MIN×rn², the "enough countryside to carry a town" bar). A
@@ -1126,7 +1152,11 @@ export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured
 export function cityBasinOkAt(world, tx, ty) {
   if (!T.DISSOLVE_TOWNS || !(world._onePopScale > 0)) return true;
   const rn = rNormPop(world);
-  const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+  const rB = Math.round(TOWN_BASIN_R * rn);
+  // T.MINT_RESIDUAL: the disk counts only UNMARKETED countryside — a mint bar,
+  // never a dissolve bar (maybeDissolveTowns reads the gross basin directly;
+  // a standing city's basin rightly includes its own catchment).
+  const mass = T.MINT_RESIDUAL > 0 ? residualBasinMass(world, tx, ty, rB) : townBasinMass(world, tx, ty, rB);
   return mass * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF;
 }
 function maybeDissolveTowns(world) {
@@ -1321,7 +1351,13 @@ function maybeSiteCities(world) {
       // third dead form; see basinStorablePeople), a city-basin's worth of
       // people stand on ground that can grow a STORABLE surplus.
       if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI
-          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)) {
+          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)
+          // T.MINT_RESIDUAL: the site lane's cells are exclusive across CELLS but
+          // blind to standing settlements' catchments — a cell wholly inside an
+          // existing city's marketed countryside still qualified. The residual
+          // disk closes that: a city-basin's worth of UNMARKETED people too.
+          && (!(T.MINT_RESIDUAL > 0)
+              || residualBasinMass(world, L.sites[k].x, L.sites[k].y, Math.round(TOWN_BASIN_R * rNormPop(world))) >= basinBarF)) {
         elig[k] = 1; basins.set(k, b.take);
         // T.LAND_KNOW: a city-capable farming basin is a LEARNING community —
         // plant its ledger the moment it first qualifies (landKnow.js).
@@ -2649,7 +2685,14 @@ export function maybeCrystallize(world) {
     // wave (INDEP_TECH, now default-on) independently keeps the frontier shut.
     let crowdMul = 1;
     if (T.CROWD_FOUND > 0 && world.popField) {
-      const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+      // T.MINT_RESIDUAL: the founding-rate gradient reads UNMARKETED people —
+      // dense-but-claimed countryside already has its market and does not call
+      // for a new one (the reference median stays the gross settled basin, so
+      // the ratio reads "unmarketed people here vs a typical city's whole
+      // countryside" — saturated valleys damp toward 0 instead of CROWD_CAP).
+      const mass = T.MINT_RESIDUAL > 0
+        ? residualBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn))
+        : townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
       crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass / crowdRefMass(world)), 0.5 * T.CROWD_FOUND));
     }
     const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
