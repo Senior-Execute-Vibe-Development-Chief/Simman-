@@ -145,7 +145,14 @@ for (let done = 0; done < STEPS; done += SAMPLE) {
 
   let bigStr = "  (none)";
   if (big) {
-    const fed = Math.min(9.99, (big._foodSupply || 0) / Math.max(1, big._foodDemand || 1));
+    // CORE solvency, not the notional whole-census ratio: _foodDemand
+    // deliberately bills the entire catchment census (settlement.js FOOD_REACH
+    // note — the countryside feeds itself), so supply/demand reads ~0 for every
+    // big ONE_POP settlement BY DESIGN. The sim's own famine gate compares the
+    // flow against _coreNeed; _fedM is its ~100-tick moving average. The first
+    // run of this probe read the notional ratio — a wrong-column artifact.
+    const fed = big._fedM !== undefined ? big._fedM
+      : Math.min(9.99, (big._foodSupply || 0) / Math.max(1e-9, big._coreNeed || 1));
     const org = (big.knowledge && big.knowledge.organization) || 0;
     bigStr = `${(big.name || "?").slice(0, 12).padEnd(12)} ${String(Math.round(big.people)).padStart(5)}/${String(Math.round(big._urbanPop || 0)).padStart(5)} ${fed.toFixed(2)} ${(big._diseaseLoad || 0).toFixed(2)} ${org.toFixed(2)} c${big.countryId}`;
   }
@@ -157,18 +164,30 @@ console.log(`\n=== THE EVENT LOG, EGYPT BOX, steps 9000+ (the sim's own record �
 const evs = world.events || [];
 const inBoxSid = (sid) => { const r = reg.get(sid); return r && inBox(r.x, r.y); };
 const boxRealms = new Set(realmSeen.keys());
-let printed = 0, skipped = 0;
+// First pass: the COMPLETE type histogram and per-2k-window counts — the
+// line-capped dump below truncates (first run: everything past ~step 18k was
+// silently missing from the per-type tallies), so the totals print first.
+const sel = [];
 for (const ev of evs) {
   if (ev.step < 9000 || !MORTAL.has(ev.type)) continue;
   const sHit = ev.s != null && ev.s >= 0 && inBoxSid(ev.s);
   const xyHit = ev.x != null && ev.y != null && inBox(ev.x, ev.y);
   const pHit = (ev.polity != null && boxRealms.has(ev.polity)) || (ev.from != null && boxRealms.has(ev.from)) || (ev.to != null && boxRealms.has(ev.to));
-  if (!sHit && !xyHit && !pHit) continue;
-  if (printed >= 500) { skipped++; continue; }
+  if (sHit || xyHit || pHit) sel.push(ev);
+}
+{
+  const byType = new Map();
+  for (const ev of sel) byType.set(ev.type, (byType.get(ev.type) || 0) + 1);
+  console.log(`  -- complete type histogram (${sel.length} events; the listing below may truncate) --`);
+  for (const [t, n] of [...byType].sort((a, b) => b[1] - a[1])) console.log(`     ${String(n).padStart(5)}  ${t}`);
+}
+let printed = 0, skipped = 0;
+for (const ev of sel) {
+  if (printed >= 2000) { skipped++; continue; }
   printed++;
   const extras = [];
-  for (const k of ["how", "why", "n", "sName", "fromName", "toName", "byName", "name", "kind", "city"]) if (ev[k] !== undefined) extras.push(`${k}=${ev[k]}`);
-  console.log(`  ${String(ev.step).padStart(6)}  ${ev.type.padEnd(22)} ${extras.join(" ").slice(0, 110)}`);
+  for (const k of ["s", "how", "why", "n", "sName", "from", "fromName", "to", "toName", "byName", "name", "kind", "city", "mortality"]) if (ev[k] !== undefined) extras.push(`${k}=${ev[k]}`);
+  console.log(`  ${String(ev.step).padStart(6)}  ${ev.type.padEnd(22)} ${extras.join(" ").slice(0, 130)}`);
   console.log(`          └ ${narrate(world, ev)}`);
 }
 if (skipped) console.log(`  … ${skipped} more events elided`);
