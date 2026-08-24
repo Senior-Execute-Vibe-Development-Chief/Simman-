@@ -1,0 +1,20 @@
+[harness] tree 932a695
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"CITY_HOLD":1}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== ANCHOR MELT DECOMPOSITION  480x240 (tw=240)  seed 8817  bar 200  box lon 24..36 lat 20..33 ===
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)

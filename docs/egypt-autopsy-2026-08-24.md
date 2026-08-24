@@ -168,13 +168,20 @@ And the trajectories give the mechanism, with ordering:
 
 ### The chain, each link read from code
 
-1. **The political field is a capital-only flood** (controlField.js,
-   CTRL_LIVE): `sources = cid → capital tile`; control = P − cheapest path
-   from the CAPITAL. Member settlements contribute nothing — a provincial
-   metropolis is invisible to the political map (`TILE_POLITY`'s own label:
-   "settlements as pure dressing").
-2. **Borders therefore sweep across provincial districts without war** as
-   capital powers and distances shift.
+1. **The political map anchors on capitals alone** (CORRECTED 2026-08-24,
+   same day: the first draft cited controlField.js's CTRL_LIVE flood, which
+   is DEAD CODE — pretty-mode short-circuits it whenever `_countryOwner`
+   exists, and the authoring path was removed 2026-07. The real authority is
+   countryTerritory.js `fieldPolityTerritory` under `T.TILE_POLITY`, and it
+   is capital-only in the same way: under TILE_POLITY a non-capital city
+   pins NOTHING — not its district, not even its home tile; only the
+   capital anchors, seeds connectivity, and carries the worked-pin. The
+   lever's own label: "settlements as pure dressing.")
+2. **The ground around a member city is therefore strippable without war**:
+   the realm's own over-capacity shed (step 6) or connectivity sever
+   (step 3) releases the member's district to wilderness (the anti-cycle
+   mask even forbids taking it straight back), a neighbour's growth infills
+   the released ground, and it turns politically foreign.
 3. **CATCHMENT_CLIP executes** (territory.js:239-251, 272, 305, 388): a
    settlement may work only its own country's ground — wilderness is exempt
    (CATCH_WILD=1, which cut the wild-confiscation loop territory.js:230
