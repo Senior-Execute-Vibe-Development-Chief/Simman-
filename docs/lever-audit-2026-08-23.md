@@ -69,8 +69,16 @@ dissolved; each needs its own battery, never a blind flip.
 > SHIPPED (SAVE_VERSION 42 — the 777 blocker reads 0 warnings on the current
 > tree). Rung 2 `FISC_ADOPT`/`ADOPT_BUDGET` FAILED (refusal mints confetti:
 > singletons 50%→55%, nations 98→112). Rung 3 `FOREST_LOCK` FAILED on the clean
-> pair (Europe −16% but the STEPPE MORE THAN DOUBLES, 19→42 — displacement, the
-> COURT_SPHERE conservation law; waits on a real vegetation field). Rungs 4-5:
+> pair (Europe −16%, weak on its named target). **CORRECTION (owner challenge,
+> same day): the "displacement/conservation" reading I first recorded is WRONG —
+> the lock arm's total register is HIGHER (≈490 vs ≈432, +13%), so nothing was
+> conserved-and-moved.** The steppe 19→42 swing has two candidate causes, not
+> yet discriminated: (a) single-seed TRAJECTORY DIVERGENCE — a changed capacity
+> field re-keys the whole chaotic run, and regional swings of this size can be
+> noise; (b) a real edge effect — the wave of advance fills along capacity, and
+> locked forest at the forest/steppe margin makes the unlocked open side
+> relatively more attractive. A 2-seed replication of the pair decides; the
+> FAIL verdict itself stands on the weak Europe effect alone. Rungs 4-5:
 > see below — the levers are GHOSTS.
 
 4. **`RIVER_REACH`** — "the river as an administrative spine... the mechanism
