@@ -180,3 +180,70 @@ Revised order:
 3. ENGULF_BAR — keep as a correct sub-mechanism, but it is not a lever on the
    standing count. Revisit once the inflow is right.
 4. The state-first route — unchanged, still a wave.
+
+
+---
+
+# THE IRRIGATION LAP (same day, evening) — item 0's premise is DEAD
+
+The re-rank above promoted irrigation to item 0 on the strength of
+`owner-review-2026-08-21.md` item 2. Measured the same evening, the premise fails
+twice, and two of the failures were this session's own instruments lying:
+
+1. **Irrigation is not missing — it SHIPS.** `FIELD_CRADLE`, `IRR_BAND`,
+   `IRRIG_CROP`, `FLOOD_OPT` all default 1; `popField.js` carries the full cradle
+   stack on the capacity field. The owner-review line "a mechanism the sim does
+   not have" was stale when written.
+2. **And it already runs at FULL strength in Mesopotamia** (`probe_irrfield`,
+   tw=240 then tw=480 tight boxes): arid 1.00, water ~1.00, farmTech 1.00 — its
+   irr/allu multipliers EQUAL OR EXCEED the Nile's (irr 1.70 vs 1.00, allu 3.00
+   vs 1.59).
+3. **The farmland premise dies in honest boxes at the shipping grid.** Tight
+   valley boxes, tw=480: fert p50 IDENTICAL (0.150 in both valleys, p90 ~0.99 in
+   both). The broad-box relief p50 of 0.140 was the ZAGROS inside the box (the
+   valley reads 0.029 vs the Nile's 0.033), and the earlier "Sahel out-feeds
+   Mesopotamia 4:1" was box AREA (per tile Mesopotamia out-feeds it 1.5x).
+
+**What survives, measured:**
+
+* **The Yellow River hearth stagger** — capacity FLAT at ~274/tile from step
+  2,000 to 18,000, then a 13x jump. Sixteen thousand steps of an agriculturally
+  dead basin; the rice hearth matures 3,106y into prehistory vs the Nile's 974.
+  This is why China holds nothing until the Renaissance band, it is a GENESIS
+  fault, and irrigation would never have touched it. (Item 2's CHINA half is
+  confirmed and quantified; its Mesopotamia half is falsified.)
+* **A ~2x Nile-vs-Sumer cap/tile residual with NO attribution** (2,893 vs 1,458
+  at tw=480, identical fert/relief, better premium on the Sumer side). The
+  `cap÷fert` column that tried to attribute it divided a MEAN by a MEDIAN and is
+  void. Next instrument: a PAIRED PER-TILE decomposition — top-N fert tiles per
+  valley, every factor of the crop formula dumped per tile.
+
+Also recorded here so the arm table above is complete: **COURT_SPHERE is a NULL
+at tw=480** (`wherecities480_court.log`) — Sahel 138→138, Europe 103→97, Egypt
+48→64 (worse), total −8%. At shipping density nearly every ledger sits inside
+SOME settlement's sphere and enough radiators fly flags; ownership of the sphere
+cannot thin a field where the spheres already overlap. Dead at the grid that
+ships regardless of state placement.
+
+## FINAL order (second re-rank, and the one that stands)
+
+0. **The capacity ledger** — promoted. Independent of state placement, upstream
+   of reach/integration/territory, two measured defects (the dead headroom gate,
+   the 0.013-per-province payback), and the only place every thread of both days
+   converged. Must move as ONE wave: ordering fix + real seat payback + load
+   units re-grounded together — each alone makes the world worse.
+1. **The state-first route** (unchanged) — the only item that produces an Egypt.
+2. The paired per-tile capacity decomposition — small instrument, explains the
+   2x residual before anyone builds on it.
+3. COURT_SPHERE / ENGULF_BAR — dead as levers; keep as diagnosis.
+
+## The session's measurement traps, named so they are not re-walked
+
+Four artifacts, one family — an aggregate that looked like a comparison:
+box AREA (twice: "Sahel 4:1", specks "8x" where the gate tests POWER), box
+COMPOSITION (the Zagros in Mesopotamia's relief), MEAN over MEDIAN (cap÷fert).
+And the method error behind the failed levers: **mechanism-EXISTS is not
+mechanism-BINDS** — the contagion was real and saturated, the submission bar real
+and inflow-limited, irrigation real and already at full strength. Measure
+bindingness at the shipping grid FIRST; the repo had already recorded this lesson
+once (`b859db7`: "validated in exactly the regime where it does nothing").
