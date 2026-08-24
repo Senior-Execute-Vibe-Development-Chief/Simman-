@@ -184,14 +184,39 @@ export function classifyBiome(e, m, t, dry, sumDry) {
 // the people-sim world does not retain those fields. Rebuilt on a slow cadence
 // so climate drift, if any, re-derives the cover.
 const CANOPY_REBUILD = 2000;
+// THE shared per-tile biome field (owner 2026-08-24: "so now there is 1 unified
+// biome map?" — "do it"). One Int8Array at sim resolution, classified by this
+// module with the SAME inputs the atlas lens and resourceGen pass — including
+// the dry-season fields, which state.js now carries onto the sim world
+// (world._dryFrac/_summerDry) instead of the dry=0 "unknown" fallback the first
+// canopy build used. Any mechanic that wants a biome reads THIS field; the
+// atlas keeps its per-pixel render of the same classifier (a higher-resolution
+// view of the same law, not a different law). Rebuilt on a slow cadence so
+// climate drift re-derives the cover; on a loaded save the dry fields are
+// absent until the next fresh world (they fall back to 0, which cannot move
+// the canopy classes — the dry-season correction is warmth-gated to the hot
+// bands the canopy set excludes).
+export function ensureBiome(world) {
+  let bm = world._biome;
+  if (bm && bm.length === world.N && (world.step - (world._biomeStep || 0)) < CANOPY_REBUILD) return bm;
+  const { N, elev, moist, temp } = world;
+  const dryF = world._dryFrac, sumF = world._summerDry;
+  if (!bm || bm.length !== N) bm = world._biome = new Int8Array(N);
+  for (let i = 0; i < N; i++) {
+    bm[i] = elev[i] > 0
+      ? classifyBiome(elev[i], moist[i], temp[i], dryF ? dryF[i] : 0, sumF ? sumF[i] : 0)
+      : -1;
+  }
+  world._biomeStep = world.step | 0;
+  return bm;
+}
 export function ensureCanopy(world) {
   let cn = world._canopy;
   if (cn && cn.length === world.N && (world.step - (world._canopyStep || 0)) < CANOPY_REBUILD) return cn;
-  const { N, elev, moist, temp } = world;
-  if (!cn || cn.length !== N) cn = world._canopy = new Uint8Array(N);
-  for (let i = 0; i < N; i++) {
-    if (!(elev[i] > 0)) { cn[i] = 0; continue; }
-    const b = classifyBiome(elev[i], moist[i], temp[i], 0, 0);
+  const bm = ensureBiome(world);
+  if (!cn || cn.length !== world.N) cn = world._canopy = new Uint8Array(world.N);
+  for (let i = 0; i < world.N; i++) {
+    const b = bm[i];
     cn[i] = (b === B_TEMP_FOREST || b === B_TEMP_RAIN || b === B_TAIGA || b === B_BOREAL) ? 1 : 0;
   }
   world._canopyStep = world.step | 0;
