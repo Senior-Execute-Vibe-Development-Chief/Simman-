@@ -233,3 +233,51 @@ basin can feed, the surplus dies, and every polity built on that sand churns
 with it — realms included, Egypt included. The two owner-visible complaints
 ("micro-nations flicker" and "the big realm never lasts") are the same
 conveyor observed at two altitudes.
+
+## The fix arms, measured (same day) — both RED, and what they taught
+
+`T.CITY_HOLD` (members anchor like capitals) and `T.CATCH_GRACE` (600-step
+release grace) were built at the measured joints and run in the identical
+live regime (480/8817, both probes):
+
+| lens | control | CITY_HOLD only | CITY_HOLD + GRACE=600 |
+|---|---|---|---|
+| anchor deaths (peak ≥ 200) | 19 | **34** | **30** |
+| realms through the box | 49 | **99** | **94** |
+
+The owner ordered the flip; it was **held** on these numbers (SAVE_VERSION
+stays 44; both levers ship 0). What the red arms established:
+
+1. **The intended channel came alive**: under CITY_HOLD the late anchor
+   deaths run 69–100% besieged — war genuinely storms and starves cities
+   now, which is the historically correct instrument the control regime
+   lacked entirely.
+2. **But pinned cores cannot be shed**, so an over-capacity realm loses its
+   ability to breathe at the margins: strain contracts the marches into
+   core-confetti and dissolution roughly doubles. District-holding needs a
+   partner mechanism — contraction at PROVINCE granularity (a city secedes
+   or transfers WITH its district) rather than tile-ring strangulation —
+   or it converts border breathing into realm death.
+3. **The executioner rotates; the sentence stands.** Blunt the political
+   sweep and famine + same-realm catchment competition + siege kill instead
+   (the bloodless terr→0 class even survived the grace rail: Lāffí,
+   7,194→2 census, 0% siege). The three arms triangulate the real base:
+   **the valley overmints ~8× what its census pie can feed** (385 register
+   entries for a ~50-seat valley, mint accelerating all run), so ~300
+   settlements must die per 10k steps no matter which mechanism does it.
+   The political layer only chose the victims.
+
+## The re-ranked frontier
+
+The persistence fix is upstream of everything measured here: **the mint.**
+`cityBasinOkAt` (and the crystallize bars) measure each candidate's basin
+GROSS — overlapping basins double-count the same countryside, so in a dense
+valley every site passes while the shares starve. The system-shaped fix is
+a RESIDUAL basin bar: a site mints only where the basin mass NOT already
+claimed by standing cities' catchments still feeds a city. That cuts the
+register at the source; every death channel downstream (famine draws on
+fragile shares, dissolve-culls, political churn on dying members) shrinks
+with it. CITY_HOLD/CATCH_GRACE stay built and documented for re-measure
+AFTER the overmint is fixed — the siege-warfare channel they enable is the
+right physics, and their red verdict here may be the overmint's fault, not
+theirs.
