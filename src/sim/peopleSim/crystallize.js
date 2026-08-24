@@ -1531,6 +1531,17 @@ function maybeSiteCities(world) {
 // is proven by the pinned hashbase anchors.
 function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
   const { pf, bridge, coreBarF, basinBarF, spikes } = env;
+  // T.MINT_REACH at the BIRTH itself, both lanes (anchor + peer): the site
+  // lane's eligibility is CACHED (a site that qualified before the valley
+  // closed stays eligible forever), so a qualification-time gate leaks —
+  // measured: the reach arm minted 275 late site-cities at full rate past a
+  // 0/34-closed bar. Gated here the gathered pile simply WAITS (the tally
+  // gate's own semantics) until local ground frees. NB the lever's arm ALSO
+  // measured the deeper truth: this bar is a SATURATION DETECTOR (closure is
+  // defined by catchments covering the valley), so it prevents only above-
+  // saturation minting — the register equilibrates AT saturation with or
+  // without it. See docs/egypt-autopsy-2026-08-24.md, MINT_REACH verdict.
+  if (!mintReachOk(world, x, y)) { tel(world, "siteCity", "mintReach"); return; }
   // The city is born a CITY — never a megalopolis: the entity takes the
   // city's own people (the bar, with growth headroom) and the REST of what
   // gathered stays on the land as its countryside. Measured without this

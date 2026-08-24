@@ -360,3 +360,40 @@ unmarketed. Instrument first: probe_anchormelt now prints each dead
 anchor's BIRTH state (born landless vs born landed — the pre-test's
 discriminating measurement, unreadable from the final-window prints that
 existed today).
+
+## MINT_REACH, measured — a saturation detector, and the day's true bottom
+
+The reach arm: turnover 385→332, anchors 19→19. Two findings, one of them
+the investigation's floor:
+
+1. **The wiring leak** (fixed): site/peer eligibility is cached, so a
+   qualification-time gate leaks — 275 late site-cities minted past a
+   0/34-closed bar. The gate now sits in `mintCityAt` (the birth itself;
+   the gathered pile waits, the tally gate's own semantics).
+2. **The structural truth**: the local-residual bar is a SATURATION
+   DETECTOR. Its closure is *defined* by the catchment partition covering
+   the valley — 34/34 open before settlement, 0/34 at saturation — so it
+   can only prevent above-saturation minting (which the peer capacity law
+   already prevented) and can never cut below saturation, where unmarketed
+   ground exists by definition. The register equilibrates at pie/bar ≈ 65
+   with or without every mint lever built today.
+
+**The day's bottom, stated once**: the register count is pie ÷ mean-city-
+size. History's bronze Egypt: the same pie over 5–10 cities means the mean
+city held 2–4× the minimum — urban growth CONCENTRATED into existing
+centers (the Zipf/primacy structure every urban system on Earth shows).
+This sim's cities equilibrate at exactly 1× the minimum, because the
+proto-urban drift caps its piles AT the city bar ("the proto-urban stage
+ends at city size") and the catchment partition splits shares near-equally
+— there is no engine pulling growth preferentially into the bigger center.
+The engine exists as shipped levers — URBAN_AGGLOM 0.13 / URBAN_GAMMA 0.5,
+size-dependent agglomeration in the field migration — and the register's
+flat size distribution says they are too weak to produce hierarchy at the
+shipping strength.
+
+**Next lap (measure first, as ever)**: the city-size distribution itself —
+the sim's Zipf slope vs history's (~1 for integrated urban systems), per
+region and era, on the existing logs plus one instrumented run. If it is
+flat where history is steep, the mechanism lap is a strength/form pass on
+URBAN_AGGLOM/URBAN_GAMMA — existing levers, no new machinery — with the
+autopsy arms as the persistence referendum.
