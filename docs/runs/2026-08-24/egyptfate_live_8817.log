@@ -1,0 +1,257 @@
+[harness] tree fc670fd
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== EGYPT AUTOPSY  480x240 (tw=240)  seed 8817  box lon 24..36 lat 20..33 (66 land tiles) ===
+  step | box: sett  Σpeople | largest (people/urban  fed  dis  org) cid | realm@box: id  boxT  worldT   km²  mem  cap/load  fronts | field: Σpop  Σcap
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+   100 |   0       0 |   (none) |         (no realm owns the box) | 6017 19605
+   200 |   0       0 |   (none) |         (no realm owns the box) | 6149 19605
+   300 |   0       0 |   (none) |         (no realm owns the box) | 6282 19605
+   400 |   0       0 |   (none) |         (no realm owns the box) | 6414 19605
+   500 |   0       0 |   (none) |         (no realm owns the box) | 6547 19605
+   600 |   0       0 |   (none) |         (no realm owns the box) | 6681 19605
+   700 |   0       0 |   (none) |         (no realm owns the box) | 6814 19605
+   800 |   0       0 |   (none) |         (no realm owns the box) | 6949 19605
+   900 |   0       0 |   (none) |         (no realm owns the box) | 7084 19605
+  1000 |   0       0 |   (none) |         (no realm owns the box) | 7219 19605
+  1100 |   0       0 |   (none) |         (no realm owns the box) | 7355 19605
+  1200 |   0       0 |   (none) |         (no realm owns the box) | 7491 19605
+  1300 |   0       0 |   (none) |         (no realm owns the box) | 7628 19605
+  1400 |   0       0 |   (none) |         (no realm owns the box) | 7765 19605
+  1500 |   0       0 |   (none) |         (no realm owns the box) | 7902 19605
+  1600 |   0       0 |   (none) |         (no realm owns the box) | 8039 19605
+  1700 |   0       0 |   (none) |         (no realm owns the box) | 8177 19605
+  1800 |   0       0 |   (none) |         (no realm owns the box) | 8315 19605
+  1900 |   0       0 |   (none) |         (no realm owns the box) | 8452 19605
+  2000 |   0       0 |   (none) |         (no realm owns the box) | 8590 19605
+  2100 |   0       0 |   (none) |         (no realm owns the box) | 8729 19605
+  2200 |   0       0 |   (none) |         (no realm owns the box) | 8867 19605
+  2300 |   0       0 |   (none) |         (no realm owns the box) | 9005 19605
+  2400 |   0       0 |   (none) |         (no realm owns the box) | 9143 19605
+  2500 |   0       0 |   (none) |         (no realm owns the box) | 9280 19605
+  2600 |   0       0 |   (none) |         (no realm owns the box) | 9418 19605
+  2700 |   0       0 |   (none) |         (no realm owns the box) | 9555 19605
+  2800 |   0       0 |   (none) |         (no realm owns the box) | 9692 19605
+  2900 |   0       0 |   (none) |         (no realm owns the box) | 9829 19605
+  3000 |   0       0 |   (none) |         (no realm owns the box) | 9965 19605
+  3100 |   0       0 |   (none) |         (no realm owns the box) | 10101 19605
+  3200 |   0       0 |   (none) |         (no realm owns the box) | 10237 19605
+  3300 |   0       0 |   (none) |         (no realm owns the box) | 10372 19605
+  3400 |   0       0 |   (none) |         (no realm owns the box) | 10506 19605
+  3500 |   0       0 |   (none) |         (no realm owns the box) | 10640 19605
+  3600 |   0       0 |   (none) |         (no realm owns the box) | 10773 19605
+  3700 |   0       0 |   (none) |         (no realm owns the box) | 10905 19605
+  3800 |   0       0 |   (none) |         (no realm owns the box) | 11037 19605
+  3900 |   0       0 |   (none) |         (no realm owns the box) | 11168 19605
+  4000 |   0       0 |   (none) |         (no realm owns the box) | 11298 19605
+  4100 |   0       0 |   (none) |         (no realm owns the box) | 11427 19605
+  4200 |   0       0 |   (none) |         (no realm owns the box) | 11555 19605
+  4300 |   0       0 |   (none) |         (no realm owns the box) | 11682 19605
+  4400 |   0       0 |   (none) |         (no realm owns the box) | 11808 19605
+  4500 |   0       0 |   (none) |         (no realm owns the box) | 11934 19605
+  4600 |   0       0 |   (none) |         (no realm owns the box) | 12058 19605
+  4700 |   0       0 |   (none) |         (no realm owns the box) | 12181 19605
+  4800 |   0       0 |   (none) |         (no realm owns the box) | 12303 19605
+  4900 |   0       0 |   (none) |         (no realm owns the box) | 12424 19605
+  5000 |   0       0 |   (none) |         (no realm owns the box) | 12544 19605
+  5100 |   0       0 |   (none) |         (no realm owns the box) | 12662 19605
+  5200 |   0       0 |   (none) |         (no realm owns the box) | 12780 19605
+  5300 |   0       0 |   (none) |         (no realm owns the box) | 12896 19605
+  5400 |   0       0 |   (none) |         (no realm owns the box) | 13010 19605
+  5500 |   0       0 |   (none) |         (no realm owns the box) | 13124 19605
+  5600 |   0       0 |   (none) |         (no realm owns the box) | 13236 19605
+  5700 |   0       0 |   (none) |         (no realm owns the box) | 13347 19605
+  5800 |   0       0 |   (none) |         (no realm owns the box) | 13457 19605
+  5900 |   0       0 |   (none) |         (no realm owns the box) | 13565 19605
+  6000 |   0       0 |   (none) |         (no realm owns the box) | 13672 19605
+  6100 |   0       0 |   (none) |         (no realm owns the box) | 13778 19605
+  6200 |   0       0 |   (none) |         (no realm owns the box) | 13882 19605
+  6300 |   0       0 |   (none) |         (no realm owns the box) | 13985 19605
+  6400 |   0       0 |   (none) |         (no realm owns the box) | 14086 19605
+  6500 |   0       0 |   (none) |         (no realm owns the box) | 14187 19605
+  6600 |   0       0 |   (none) |         (no realm owns the box) | 14285 19605
+  6700 |   0       0 |   (none) |         (no realm owns the box) | 14383 19605
+  6800 |   0       0 |   (none) |         (no realm owns the box) | 14478 19605
+  6900 |   0       0 |   (none) |         (no realm owns the box) | 14573 19605
+  7000 |   0       0 |   (none) |         (no realm owns the box) | 14666 19605
+  7100 |   0       0 |   (none) |         (no realm owns the box) | 14758 19605
+  7200 |   0       0 |   (none) |         (no realm owns the box) | 14848 19605
+  7300 |   0       0 |   (none) |         (no realm owns the box) | 14937 19605
+  7400 |   0       0 |   (none) |         (no realm owns the box) | 15025 19605
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+  7500 |   0       0 |   (none) |         (no realm owns the box) | 15111 19605
+  7600 |   0       0 |   (none) |         (no realm owns the box) | 15195 19605
+  7700 |   0       0 |   (none) |         (no realm owns the box) | 15279 19605
+  7800 |   0       0 |   (none) |         (no realm owns the box) | 15361 19605
+  7900 |   0       0 |   (none) |         (no realm owns the box) | 15442 19605
+  8000 |   0       0 |   (none) |         (no realm owns the box) | 15521 19605
+  8100 |   0       0 |   (none) |         (no realm owns the box) | 16230 323940
+  8200 |   0       0 |   (none) |         (no realm owns the box) | 17199 323940
+  8300 |   0       0 |   (none) |         (no realm owns the box) | 18288 323940
+  8400 |   0       0 |   (none) |         (no realm owns the box) | 19498 323940
+  8500 |   0       0 |   (none) |         (no realm owns the box) | 20835 323940
+  8600 |   0       0 |   (none) |         (no realm owns the box) | 22302 323940
+  8700 |   0       0 |   (none) |         (no realm owns the box) | 23905 336894
+  8800 |   0       0 |   (none) |         (no realm owns the box) | 25653 336894
+  8900 |   0       0 |   (none) |         (no realm owns the box) | 27527 336894
+  9000 |   0       0 |   (none) |         (no realm owns the box) | 29537 336894
+  9100 |   0       0 |   (none) |         (no realm owns the box) | 31679 336894
+  9200 |   0       0 |   (none) |         (no realm owns the box) | 33955 336894
+  9300 |   0       0 |   (none) |         (no realm owns the box) | 36372 336894
+  9400 |   0       0 |   (none) |         (no realm owns the box) | 38945 350201
+  9500 |   0       0 |   (none) |         (no realm owns the box) | 41691 350201
+  9600 |   0       0 |   (none) |         (no realm owns the box) | 44600 350201
+  9700 |   0       0 |   (none) |         (no realm owns the box) | 47672 350201
+  9800 |   0       0 |   (none) |         (no realm owns the box) | 50910 350201
+  9900 |   0       0 |   (none) |         (no realm owns the box) | 54315 350201
+ 10000 |   0       0 |   (none) |         (no realm owns the box) | 57888 350201
+ 10100 |   0       0 |   (none) |         (no realm owns the box) | 61670 363354
+ 10200 |   0       0 |   (none) |         (no realm owns the box) | 65654 363354
+ 10300 |   0       0 |   (none) |         (no realm owns the box) | 69829 363354
+ 10400 |   0       0 |   (none) |         (no realm owns the box) | 74192 363354
+ 10500 |   0       0 |   (none) |         (no realm owns the box) | 78739 363354
+ 10600 |   0       0 |   (none) |         (no realm owns the box) | 83469 363354
+ 10700 |   0       0 |   (none) |         (no realm owns the box) | 88385 377370
+ 10800 |   0       0 |   (none) |         (no realm owns the box) | 93558 377370
+ 10900 |   0       0 |   (none) |         (no realm owns the box) | 98932 377370
+ 11000 |   0       0 |   (none) |         (no realm owns the box) | 104494 377370
+ 11100 |   0       0 |   (none) |         (no realm owns the box) | 110233 377370
+ 11200 |   0       0 |   (none) |         (no realm owns the box) | 116140 377370
+ 11300 |   0       0 |   (none) |         (no realm owns the box) | 122204 377370
+ 11400 |   0       0 |   (none) |         (no realm owns the box) | 128469 386108
+ 11500 |   0       0 |   (none) |         (no realm owns the box) | 134954 386110
+ 11600 |   0       0 |   (none) |         (no realm owns the box) | 141572 386115
+ 11700 |   0       0 |   (none) |         (no realm owns the box) | 148300 386124
+ 11800 |   0       0 |   (none) |         (no realm owns the box) | 155119 386159
+ 11900 |   0       0 |   (none) |         (no realm owns the box) | 162020 386337
+ 12000 |   0       0 |   (none) |         (no realm owns the box) | 168998 386675
+ 12100 |   0       0 |   (none) |         (no realm owns the box) | 176176 394582
+ 12200 |   0       0 |   (none) |         (no realm owns the box) | 183450 395232
+ 12300 |   0       0 |   (none) |         (no realm owns the box) | 190759 396125
+ 12400 |   0       0 |   (none) |         (no realm owns the box) | 198087 397315
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+ 12500 |   0       0 |   (none) |         (no realm owns the box) | 205429 398975
+ 12600 |   0       0 |   (none) |         (no realm owns the box) | 212790 401249
+ 12700 |   0       0 |   (none) |         (no realm owns the box) | 220203 412062
+ 12800 |   0       0 |   (none) |         (no realm owns the box) | 227880 415168
+ 12900 |   0       0 |   (none) |         (no realm owns the box) | 235596 418845
+ 13000 |   0       0 |   (none) |         (no realm owns the box) | 243361 423057
+ 13100 |   0       0 |   (none) |         (no realm owns the box) | 251179 427769
+ 13200 |   0       0 |   (none) |         (no realm owns the box) | 259055 432944
+ 13300 |   0       0 |   (none) |         (no realm owns the box) | 266998 438551
+ 13400 |   0       0 |   (none) |         (no realm owns the box) | 275146 453084
+ 13500 |   2      30 | Ňěňní         15/    0 0.00 0.00 0.28 c-1 |         (no realm owns the box) | 283548 459241
+ 13600 |   6    8962 | Ňěňní       5679/  330 0.07 0.00 0.28 c-1 |         (no realm owns the box) | 291485 467497
+ 13700 |  10   10201 | Ňěňní       8019/  338 0.06 0.00 0.28 c-1 |         (no realm owns the box) | 298529 474260
+ 13800 |  14   10579 | Ňěňní       8233/  346 0.06 0.04 0.29 c-1 |         (no realm owns the box) | 305776 481302
+ 13900 |  18   10928 | Ňěňní       8441/  355 0.08 0.04 0.29 c-1 |         (no realm owns the box) | 313300 488573
+ 14000 |  22   11270 | Ňěňní       8650/  363 0.07 0.04 0.30 c-1 |         (no realm owns the box) | 321025 496098
+ 14100 |  25   11594 | Ňěňní       8851/  364 0.02 0.08 0.30 c-1 |         (no realm owns the box) | 328328 513145
+ 14200 |  25   11879 | Ňěňní       9051/  370 0.03 0.08 0.31 c-1 |         (no realm owns the box) | 335728 520600
+ 14300 |  26   12182 | Ňěňní       9251/  377 0.02 0.08 0.31 c-1 |         (no realm owns the box) | 343286 528488
+ 14400 |  26   12462 | Ňěňní       9454/  385 0.02 0.11 0.32 c-1 |         (no realm owns the box) | 350898 536342
+ 14500 |  27   12752 | Ňěňní       9644/  392 0.02 0.11 0.32 c-1 |         (no realm owns the box) | 358143 544793
+ 14600 |  31   12510 | Ňěňní       9244/  400 0.03 0.11 0.33 c-1 |         (no realm owns the box) | 365553 553661
+ 14700 |  36   12871 | Ňěňní       9438/  408 0.02 0.15 0.34 c-1 |         (no realm owns the box) | 373428 572859
+ 14800 |  40   13213 | Ňěňní       9658/  416 0.02 0.15 0.34 c-1 |         (no realm owns the box) | 381921 581091
+ 14900 |  40   13518 | Ňěňní       9891/  434 0.07 0.15 0.35 c-1 |         (no realm owns the box) | 391421 589771
+ 15000 |  41   13815 | Ňěňní      10066/  448 0.07 0.19 0.35 c1 |         (no realm owns the box) | 399612 562279
+ 15100 |  43   14115 | Ňěňní      10230/  458 0.07 0.19 0.36 c1 |         (no realm owns the box) | 406704 571769
+ 15200 |  40   14360 | Ňěňní      10428/  468 0.07 0.19 0.36 c1 |    1   29     29   726k   31  26/46   0 | 414924 581081
+ 15300 |  44   14668 | Ňěňní      10663/  478 0.06 0.22 0.37 c1 |    1   25     25   623k   31  26/46   0 | 423681 590112
+ 15400 |  36   14818 | Ňěňní      10880/  488 0.06 0.22 0.38 c1 |    1   25     25   623k   28  23/52   0 | 432160 612367
+ 15500 |  40   13890 | Ňěňní       9150/  490 0.02 0.22 0.38 c1 |    1   25     25   621k   20  25/37   0 | 440013 620796
+ 15600 |  36    9880 | Ňěňní       6444/  495 0.00 0.25 0.39 c1 |    1   23     23   572k   20  25/37   0 | 447565 630396
+ 15700 |  41   10923 | Ňěňní       4967/  502 0.00 0.25 0.39 c1 |    1   22     22   547k   12  12/21   0 | 455134 640362
+ 15800 |  41   11112 | Ňěňní       5062/  512 0.02 0.25 0.40 c1 |    1   22     22   547k    8  494/15   0 | 477951 649687
+ 15900 |  45    9090 | Ňěňní       5103/  517 0.00 0.29 0.40 c1 |    1   23     23   573k    8  494/15   0 | 474758 668580
+ 16000 |  48   10552 | Ňěňní       5198/  521 0.00 0.29 0.41 c1 |    1   23     23   572k    9  14/20   1 | 487275 669469
+ 16100 |  50   10349 | Ňěňní       5257/  522 0.00 0.29 0.42 c1 |    1   23     23   572k    8  31/17   0 | 481591 686446
+ 16200 |  50   10931 | Ňěňní       5142/  533 0.00 0.33 0.42 c1 |    1   24     24   597k    8  31/17   0 | 486187 694894
+ 16300 |  51   12732 | Ňěňní       5350/  530 0.00 0.33 0.43 c1 |    1   22     22   546k    7  69/20   0 | 475692 696365
+ 16400 |  46   12406 | Ňěňní       5340/  533 0.05 0.33 0.43 c1 |    1   22     22   546k    6  88/17   0 | 498766 705845
+ 16500 |  51   10621 | Ňěňní       5464/  557 0.06 0.37 0.44 c1 |    1   20     20   499k    6  88/17   0 | 498200 713568
+ 16600 |  52   11418 | Ňěňní       4352/  569 0.07 0.37 0.44 c1 |    1   19     19   474k    6  61/18   0 | 506527 727962
+ 16700 |  52   11206 | Ňěňní       4303/  563 0.07 0.37 0.45 c1 |    1   19     19   474k    4  67/11   0 | 502843 720074
+ 16800 |  51   10322 | Ňěňní       4027/  548 0.07 0.40 0.46 c1 |    1   20     20   499k    4  67/11   0 | 504061 740413
+ 16900 |  53   14883 | Èňlà        5532/  669 0.03 0.13 0.44 c110 |    1   21     21   523k    5  33/16   0 | 492365 722928
+ 17000 |  52   14159 | Èňlà        5581/  454 0.00 0.13 0.45 c110 |    1   19     19   475k    3  53/10   1 | 484519 737803
+ 17100 |  53   14076 | Èňlà        5565/  749 0.00 0.18 0.45 c110 |    1   19     19   475k    3  53/10   1 | 496271 732902
+ 17200 |  52   14742 | Èňlà        5622/  763 0.00 0.18 0.46 c110 |    1   21     21   526k    3  58/9   0 | 499707 729968
+ 17300 |  53    9363 | Ňěňní       4300/  572 0.03 0.43 0.48 c1 |   54   17     34   890k    8  52/15   0 | 503834 750600
+ 17400 |  49    9209 | Ňěňní       4263/  551 0.00 0.45 0.49 c1 |   54   17     34   890k    8  52/15   0 | 503622 763824
+ 17500 |  53    8413 | Ňěňní       2751/  565 0.00 0.45 0.49 c1 |    1   21     21   524k    3  37/7   1 | 506117 769237
+ 17600 |  49   12103 | Ňěňní       3791/  592 0.00 0.45 0.50 c1 |    1   19     19   475k    3  65/7   0 | 511936 771007
+ 17700 |  49   12362 | Ňěňní       4066/  668 0.00 0.48 0.51 c1 |    1   19     19   475k    3  65/7   0 | 531370 767080
+ 17800 |  53   15431 | Láị         5831/  116 0.00 0.20 0.47 c109 |    1   20     20   500k    3  51/7   0 | 511706 759164
+ 17900 |  53   15501 | Láị         5974/  165 0.11 0.20 0.48 c109 |    1   20     20   500k    3  57/7   0 | 507804 771199
+ 18000 |  53   14880 | Láị         6054/  115 0.11 0.25 0.48 c109 |    1   18     18   451k    3  57/7   0 | 504777 771887
+ 18100 |  50   14721 | Láị         6122/  114 0.00 0.25 0.49 c109 |    1   18     18   451k    3  44/6   1 | 505687 759183
+ 18200 |  54   12049 | Ňěňní       3472/  607 0.00 0.50 0.54 c1 |    1   20     20   500k    3  55/5   1 | 518912 765780
+ 18300 |  54   12293 | Ňěňní       4002/  648 0.00 0.52 0.55 c1 |    1   20     20   500k    3  55/5   1 | 527864 788874
+ 18400 |  56   12410 | Ňěňní       3918/  665 0.00 0.52 0.55 c1 |    1   20     20   500k    1  55/5   0 | 534212 757090
+ 18500 |  56   13037 | Ňěňní       3511/  630 0.00 0.52 0.56 c1 |    1   19     19   475k    1  55/5   0 | 537898 762459
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+ 18600 |  56   13002 | Ňěňní       3389/  595 0.00 0.53 0.56 c1 |    1   20     20   500k    1  55/5   0 | 533096 754705
+ 18700 |  58   13166 | Ňěňní       3570/  647 0.00 0.53 0.57 c1 |    1   20     20   500k    1  55/5   0 | 556479 750597
+ 18800 |  55   12803 | Ňěňní       3571/  638 0.06 0.53 0.58 c1 |    1   22     46  1152k    1  55/5   0 | 555915 756910
+ 18900 |  24    9184 | Ňěňní       3458/  617 0.07 0.55 0.58 c1 |  173   14     14   344k    5  23/8   0 | 540558 837009
+ 19000 |  31    9251 | Ňěňní       3495/  639 0.03 0.55 0.58 c1 |  173   14     14   344k    6  28/16   0 | 535157 825343
+ 19100 |  35   11025 | Ňěňní       3450/  625 0.03 0.55 0.59 c1 |   30   13     14   338k    1  18/2   0 | 533459 776383
+ 19200 |  39   13855 | Hìuthị̌     3280/  803 0.00 0.25 0.52 c178 |   30   17     17   413k    1  18/2   0 | 533061 770175
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) stood down — the farming package arrived before it was invented
+ 19300 |  43   16160 | Īmpíü       5154/  841 0.00 0.04 0.52 c417 |  416   25     26   668k    4  47/3   1 | 529351 771136
+ 19400 |  47   15945 | Īmpíü       5155/   91 0.12 0.04 0.53 c417 |  416   25     26   668k   10  34/13   2 | 509952 784913
+ 19500 |  50   15538 | Īmpíü       5117/  582 0.11 0.10 0.54 c417 |  416   21     21   541k   10  34/13   2 | 511453 811632
+ 19600 |  54   16565 | Īmpíü       4733/  473 0.00 0.10 0.55 c417 |  416   22     23   593k   13  54/13   0 | 521657 766414
+ 19700 |  55   15448 | Xụ̀ftà      4705/  687 0.03 0.05 0.52 c416 |  416   22     23   593k   13  44/10   0 | 523545 771639
+ 19800 |  55   14364 | Xụ̀ftà      5015/  746 0.00 0.08 0.52 c416 |  416   23     25   645k   13  44/10   0 | 527040 775432
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+ 19900 |  55   11490 | Xụ̀ftà      5238/  755 0.00 0.08 0.52 c416 |  416   24     26   671k   13  32/8   1 | 531972 799341
+ 20000 |  51   10976 | Xụ̀ftà      5380/  210 0.00 0.08 0.53 c416 |  416   23     25   645k   15  54/11   1 | 535844 786779
+ 20100 |  25   11086 | Xụ̀ftà      4891/  735 0.00 0.13 0.54 c416 |  416   18     19   489k   15  54/11   1 | 532957 765694
+ 20200 |  29   10008 | Xụ̀ftà      4001/  557 0.00 0.13 0.56 c416 |  416   19     21   541k    9  49/7   0 | 530758 733299
+ 20300 |  32   10088 | Xụ̀ftà      4009/  218 0.15 0.13 0.57 c416 |  416   19     21   541k   15  45/15   0 | 528085 831159
+ 20400 |  37    9046 | Xụ̀ftà      4515/  785 0.08 0.18 0.58 c416 |  416   20     23   593k   15  45/15   0 | 553786 884361
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+ 20500 |  40   10552 | Xụ̀ftà      4586/  704 0.00 0.18 0.59 c416 |  416   20     23   593k   21  29/22   0 | 558761 734878
+ 20600 |  44   10543 | Xụ̀ftà      4452/  482 0.00 0.18 0.60 c416 |  416   20     23   593k   27  30/26   0 | 560927 801777
+[transHeap] step=20688 cap=2048 peakN=1286 pushes=9798 (0.0MB backing)
+ 20700 |  28   10583 | Xụ̀ftà      4359/  770 0.06 0.22 0.62 c416 |  416   20     23   593k   27  30/26   0 | 558207 806545
+ 20800 |  34   10419 | Xụ̀ftà      4243/  770 0.08 0.22 0.63 c416 |  416   20     22   567k   14  43/12   0 | 557559 811563
+ 20900 |  38   13271 | Xụ̀ftà      4176/  770 0.08 0.22 0.63 c416 |  416   20     22   567k   14  54/8   0 | 554604 717694
+ 21000 |  44   12593 | Xụ̀ftà      4084/  748 0.08 0.26 0.64 c416 |  416   20     22   567k   14  54/8   0 | 544794 688777
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+ 21100 |  48   11070 | Xụ̀ftà      4164/  766 0.08 0.26 0.65 c416 |  416   20     22   567k   16  45/14   0 | 556927 726232
+ 21200 |  53   10938 | Xụ̀ftà      4016/  727 0.09 0.26 0.66 c416 |  416   21     23   592k   17  44/29   0 | 554371 835993
+ 21300 |  50   10465 | Xụ̀ftà      3868/  698 0.10 0.30 0.66 c416 |  416   21     23   592k   17  44/29   0 | 551152 817613
+ 21400 |  53   11077 | Upa           3969/   94 0.00 0.20 0.53 c510 |  416   23     27   696k   10  61/15   0 | 550401 812297
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+ 21500 |  52   11778 | Xụ̀ftà      4568/  679 0.10 0.30 0.67 c416 |  416   23     26   670k   10  52/15   0 | 549500 775040
+ 21600 |  56   11435 | Xụ̀ftà      4375/  638 0.11 0.34 0.68 c416 |  416   23     25   644k   10  52/15   0 | 534763 773363
+ 21700 |  56   11057 | Xụ̀ftà      4126/  595 0.11 0.34 0.68 c416 |  416   23     25   644k    6  57/14   0 | 517505 741361
+ 21800 |  54   10631 | Xụ̀ftà      3954/  572 0.10 0.34 0.69 c416 |  416   38     40  1007k    2  57/4   0 | 504230 716264
+ 21900 |  54   10187 | Ňěňní       5246/  525 0.03 0.63 0.70 c416 |  416   27     28   710k    2  57/4   0 | 503494 693160
+ 22000 |  54    9857 | Ňěňní       5100/   62 0.04 0.63 0.71 c416 |  416   27     28   710k    5  43/14   0 | 492869 693065
+ 22100 |  54    9329 | Ňěňní       4798/  390 0.04 0.63 0.71 c416 |  416   28     28   708k    6  47/20   0 | 493717 684965
+ 22200 |  54    9060 | Ňěňní       4674/  505 0.10 0.64 0.71 c416 |  416   26     26   657k    6  47/20   0 | 499383 714466
+ 22300 |  54    8489 | Ňěňní       4392/  511 0.10 0.64 0.71 c416 |  416   26     26   657k    9  46/153   0 | 505538 758459
+ 22400 |  51    8130 | Ňěňní       3599/  491 0.12 0.64 0.72 c1 |  973   11     23   602k    3  57/2   0 | 491192 771346
+ 22500 |  40    5971 | Dylobfu       3184/  665 0.00 0.18 0.45 c836 | 1083   14     14   339k    1  -/-   0 | 507682 1006655
