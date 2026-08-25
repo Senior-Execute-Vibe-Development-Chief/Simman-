@@ -3336,10 +3336,17 @@ function updateFood(world, s) {
   // smokehouses) — a larger buffer against famine/siege than a tropics where
   // food is gathered year-round. (A storage-economy proxy, not a full annual
   // cycle.) Reuses the cool-temperate selection target.
-  const seasonStore = T.SEASON_STORE > 0 ? 1 + T.SEASON_STORE * seasonalSelect(s._climTemp || 0.5, s._climMoist || 0.5) : 1;
-  const storageCap = (80 + s.tier * 200) * seasonStore;
+  const storageCap = granaryCap(s);
   if (s.food > storageCap) s.food = storageCap;
   if (s.food < 0) s.food = 0;
+}
+
+// The granary's capacity — ONE definition, two consumers: the updateFood clamp
+// above, and the grain market's seed-corn rule (foodHierarchy.js: a settlement
+// sells only the surplus its own granary cannot absorb).
+export function granaryCap(s) {
+  const seasonStore = T.SEASON_STORE > 0 ? 1 + T.SEASON_STORE * seasonalSelect(s._climTemp || 0.5, s._climMoist || 0.5) : 1;
+  return (80 + s.tier * 200) * seasonStore;
 }
 
 // ── Population ─────────────────────────────────────────────────────

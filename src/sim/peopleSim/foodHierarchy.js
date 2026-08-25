@@ -46,7 +46,7 @@
 // fresh _storableSupply / _houseK / _foodK), producing _foodNet for the NEXT
 // tick's updateFood — a 1-tick lag that's invisible (production drifts slowly).
 
-import { getWealthReserve, techEff, LEVY_ORG_MIN, foodReach } from "./settlement.js";
+import { getWealthReserve, techEff, LEVY_ORG_MIN, foodReach, granaryCap } from "./settlement.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
 import { mergeReach } from "./roads.js";
 import { T, rNormPop } from "./tuning.js";
@@ -342,7 +342,17 @@ function grainMarketPass(world) {
       if (!p || p.mode !== "settled") continue;
       // _foodNet is the seller's LIVE inventory — each sale below decrements
       // it, so the residual self-draws-down (a bushel can only sell once).
-      const residual = Math.max(0, (p._foodNet || 0) - (p._foodDemand || 0));
+      // THE SEED-CORN RULE: a settlement sells only the surplus its own
+      // granary cannot absorb — while stores sit below cap the harvest
+      // refills them FIRST (granaryCap is the same clamp updateFood applies),
+      // so a famine-drained community rebuilds its buffer before exporting
+      // again; a full granary sells its whole surplus flow. Without this the
+      // market drained exactly the flow that fills granaries and, under
+      // HARVEST_YEARS, the marginal-geography gate seed bled 40→15
+      // settlements (gm_stylized_777 vs hy_stylized_777): communities sold
+      // their famine reserve and died at the next lean year.
+      const surplus = Math.max(0, (p._foodNet || 0) - (p._foodDemand || 0));
+      const residual = Math.max(0, surplus - Math.max(0, granaryCap(p) - (p.food || 0)));
       if (residual <= 1e-9) continue;
       // Haul survival: buyer is the DESTINATION market (its tier sets the
       // catchment range — a metropolis pulls a wider grain shed), seller the
