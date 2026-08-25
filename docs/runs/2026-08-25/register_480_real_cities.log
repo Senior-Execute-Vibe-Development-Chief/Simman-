@@ -82,3 +82,7 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
           CITIES n 134 · at-bar 10% · fed p10/50/90 0.00/0.27/0.81 · granary p10/50/90 0/314/640 · UI-STARVING 11% · importShare p50 0.00
   step  25000  n 297 · core p10/50/90 0/9/312 · at-bar(≤1.25×) 53% · fed p10/50/90 0.00/0.18/0.98 · hungry(<0.85) 85% · granary p50 490 · importShare p50/p90 0.00/0.00 · primacy 1.2 · cv(hungry) 0.20 vs cv(fed) 0.26
           CITIES n 153 · at-bar 8% · fed p10/50/90 0.00/0.28/0.93 · granary p10/50/90 2/309/636 · UI-STARVING 7% · importShare p50 0.00
+  step  26000  n 344 · core p10/50/90 0/9/262 · at-bar(≤1.25×) 52% · fed p10/50/90 0.00/0.22/0.95 · hungry(<0.85) 88% · granary p50 523 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.25
+          CITIES n 176 · at-bar 6% · fed p10/50/90 0.00/0.32/0.96 · granary p10/50/90 2/307/666 · UI-STARVING 6% · importShare p50 0.00
+  step  27000  n 397 · core p10/50/90 1/14/301 · at-bar(≤1.25×) 49% · fed p10/50/90 0.00/0.30/0.87 · hungry(<0.85) 88% · granary p50 519 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.24
+          CITIES n 213 · at-bar 5% · fed p10/50/90 0.00/0.25/0.93 · granary p10/50/90 0/321/680 · UI-STARVING 11% · importShare p50 0.00

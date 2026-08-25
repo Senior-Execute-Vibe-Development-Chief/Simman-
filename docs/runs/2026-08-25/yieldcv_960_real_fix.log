@@ -1,0 +1,46 @@
+[harness] tree a4c27e2
+Earth (Sim): using real NCEP/NCAR precipitation + air temperature
+[peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (299,76) (44.3E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,81) (69.8E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (392,71) (114.0E 36.8N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (276,83) (27.0E 27.8N) score 7.27 pkg=wheat(suit 0.95) — matured 952y into prehistory (wave age 5048y)
+[peopleSim] hearth Pephamdo at (299,76) (44.3E 33.0N) score 6.52 pkg=wheat(suit 0.98) — matured 920y into prehistory (wave age 5080y)
+[peopleSim] hearth Pomponsom at (333,81) (69.8E 29.2N) score 7.04 pkg=wheat(suit 0.95) — matured 943y into prehistory (wave age 5057y)
+[peopleSim] hearth Fevvon at (392,71) (114.0E 36.8N) score 6.21 pkg=rice(suit 0.91) — matured 2749y into prehistory (wave age 3251y)
+[peopleSim] hearth Nawaxexi at (101,84) (-104.3E 27.0N) score 5.42 pkg=maize(suit 1.02) — matured 4416y into prehistory (wave age 1584y)
+[peopleSim] hearth Sasfesu at (227,102) (-9.8E 13.5N) score 3.64 pkg=sorghum(suit 0.65) — matured 3057y into prehistory (wave age 2943y)
+[peopleSim] hearth Wityim at (278,149) (28.5E -21.8N) score 1.37 pkg=tubers(suit 0.70) — matured 4282y into prehistory (wave age 1718y)
+[peopleSim] hearth Ninuvy at (146,144) (-70.5E -18.0N) score 1.01 pkg=tubers(suit 0.62) — matured 4862y into prehistory (wave age 1138y)
+[peopleSim] hearth Bofvu at (234,42) (-4.5E 58.5N) score 0.50 pkg=wheat(suit 0.32) — matured 2807y into prehistory (wave age 3193y)
+[peopleSim] hearth candidate at (63,49) (-132.8E 53.3N) score 0.50 pkg=maize(suit 0.14) — ARMED: ~7000y of peopled-basin time from maturity
+
+=== THE YIELD-VARIANCE MAP  960x480 (tw=480)  seed 8817  (OBSERVED-climate regime) ===
+  cv = (0.1 + 0.35·margin(em 0.55/0.5) + 0.12·seasonal·damp)·(1−water) + 0.2·water + 0.17·winter
+
+  region          sim CV p10/P50w/p90    real band     verdict   (P50w = fert-weighted median, the verdict statistic)
+  England/N.Fr   0.10/0.12/0.14          0.08-0.16     ok    [margin 0.00 season 0.00 winter 0.00 water 0.00]
+  Med. Spain     0.15/0.20/0.35          0.18-0.30     ok    [margin 0.19 season 0.35 winter 0.00 water 0.00]
+  Greece/Aegean  0.15/0.21/0.31          0.18-0.30     ok    [margin 0.22 season 0.75 winter 0.00 water 0.00]
+  Sahel          0.23/0.27/0.47          0.30-0.48     LOW   [margin 0.52 season 0.51 winter 0.00 water 0.00]
+  Nile valley    0.20/0.28/0.45          0.14-0.26     HIGH  [margin 1.00 season 0.00 winter 0.00 water 1.00]
+  Mesopotamia    0.25/0.38/0.40          0.15-0.30     HIGH  [margin 0.69 season 0.84 winter 0.00 water 0.50]
+  Ganges         0.20/0.21/0.24          0.14-0.26     ok    [margin 0.00 season 0.87 winter 0.00 water 0.00]
+  N.China plain  0.18/0.23/0.30          0.18-0.32     ok    [margin 0.00 season 0.64 winter 0.21 water 0.33]
+  Pontic steppe  0.20/0.25/0.35          0.25-0.42     ok    [margin 0.02 season 0.41 winter 0.41 water 0.00]
+  Kazakh steppe  0.28/0.30/0.34          0.25-0.42     ok    [margin 0.00 season 0.07 winter 1.00 water 0.00]
+  Java/wet trop  0.10/0.10/0.10          0.06-0.15     ok    [margin 0.00 season 0.00 winter 0.00 water 0.00]
+  S.India int.   0.21/0.23/0.26          0.20-0.35     ok    [margin 0.00 season 0.94 winter 0.00 water 0.00]
+
+  agreement: 9/12 region medians inside their literature band
+  world land CV p10/p50/p90: 0.15/0.32/0.55
+
+  LEAN_YEAR bridge preview (margin = 1/p10-year ≈ 1/(1−1.28·cv), the deep year 1/(1−2.33·cv)):
+    cv 0.12 (England): lean-year margin 1.18×, deep-year 1.39×  (flat law shipped 2.86× everywhere)
+    cv 0.20 (Nile): lean-year margin 1.34×, deep-year 1.87×  (flat law shipped 2.86× everywhere)
+    cv 0.24 (Mesopotamia): lean-year margin 1.44×, deep-year 2.27×  (flat law shipped 2.86× everywhere)
+    cv 0.40 (Sahel): lean-year margin 2.05×, deep-year 5.00×  (flat law shipped 2.86× everywhere)
+
+  READ: the --real arm is the calibration referee (near-true inputs — a miss
+  is the formula's). The solver arm is the gate-regime read — every miss must
+  decompose into a named, measured solver-input debt (harvest.js REGIME NOTE).

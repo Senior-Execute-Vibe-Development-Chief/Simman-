@@ -201,3 +201,9 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
    NILE  k  24@29,31   18.38/1.87   m1.87   0        0.28/0.28   84.62     12      1.00    1
    MESO  k 111@44,33   7.38/1.87   m1.87   0        0.28/0.28   38.30     3      0.95    1
    settled: NILE 7 · MESO 3 · INDIA 17 · world 528
+
+-- step 29000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   17.41/1.87   m1.87   0        0.28/0.28   59.87     12      1.00    1
+   MESO  k 111@44,33   6.58/1.87   m1.87   0        0.28/0.28   33.29     4      0.95    1
+   settled: NILE 7 · MESO 3 · INDIA 17 · world 580

@@ -175,12 +175,18 @@ export function yieldCvAt(world, i, chan, flood) {
  *                       worst year — which is why Sumer could exist. For pure
  *                       rain land (water 0) it reduces exactly to 1 − 2.33·cv.
  *
- * Both maps are then read FERT-WEIGHTED over the 3×3 (the same "farms sit
+ * The DEEP map is read FERT-WEIGHTED over the 3×3 (the same "farms sit
  * beside the seat" convention as the channel term): the fert mask is
- * max-pooled, so a tile beside a valley carries the valley's fert — its
- * harvest rides the land that fert describes, not its own point-sampled
- * desert climate (the ghost-tile trap probe_nilebox measured; the probe
- * verdicts were already fert-weighted for the same reason).
+ * max-pooled, so a tile beside a valley carries the valley's fert — a
+ * founding seat there rides the land that fert describes, not its own
+ * point-sampled desert climate (the ghost-tile trap probe_nilebox measured;
+ * a mis-priced seat is a PERMANENT 5× founding bar, so robustness matters
+ * most here). The CV map stays the honest per-tile formula — it is the
+ * validated quantity (11/12 literature regions; smoothing it shaved the
+ * boundary-sitting Sahel/Pontic 0.02-0.03 below their bands, a
+ * double-smoothing artifact against the probe's own fert-weighted verdicts)
+ * and the annual amplitude, where a ghost seat's wrong swing is mean-1
+ * noise, not a standing wall.
  */
 export function ensureYieldCv(world) {
   if (world._yieldCv) return world._yieldCv;
@@ -210,14 +216,15 @@ export function ensureYieldCv(world) {
       + (1 - parts.water) * Math.max(0, 1 - 2.33 * parts.cvRain)
       - 2.33 * CV_WINTER * parts.winterRisk));
   }
-  // fert-weighted 3×3 (see the header): each map re-read over the land its
-  // fert describes. Tiles with no fert anywhere near keep their own value.
+  // fert-weighted 3×3 on the DEEP map only (see the header): the founding
+  // read rides the land its fert describes. Tiles with no fert anywhere near
+  // keep their own value.
   const fert = world.fert;
-  const cv = new Float32Array(N), deep = new Float32Array(N);
+  const deep = new Float32Array(N);
   for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
     const i = ty * tw + tx;
     if (world.elev[i] <= 0) continue;
-    let sw = 0, sc = 0, sd = 0;
+    let sw = 0, sd = 0;
     if (fert) for (let dy = -1; dy <= 1; dy++) {
       const yy = ty + dy; if (yy < 0 || yy >= th) continue;
       for (let dx = -1; dx <= 1; dx++) {
@@ -225,15 +232,14 @@ export function ensureYieldCv(world) {
         if (world.elev[j] <= 0) continue;
         const f = fert[j];
         if (!(f > 0)) continue;
-        sw += f; sc += f * cv0[j]; sd += f * deep0[j];
+        sw += f; sd += f * deep0[j];
       }
     }
-    if (sw > 0) { cv[i] = sc / sw; deep[i] = sd / sw; }
-    else { cv[i] = cv0[i]; deep[i] = deep0[i]; }
+    deep[i] = sw > 0 ? sd / sw : deep0[i];
   }
-  world._yieldCv = cv;
+  world._yieldCv = cv0;
   world._yieldDeep = deep;
-  return cv;
+  return cv0;
 }
 
 // ═════════════════════ THE HARVEST YEARS (T.HARVEST_YEARS) ═════════════════════
