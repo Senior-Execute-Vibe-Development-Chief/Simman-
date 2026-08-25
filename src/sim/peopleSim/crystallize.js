@@ -21,6 +21,7 @@ import { isContinentalLand } from "./state.js";
 import { stateOrgBar, URBAN_ORG } from "./tech.js";
 import { ensureLedgerAt, stepLandKnow } from "./landKnow.js";   // T.LAND_KNOW (ESM cycle is fine — functions only, like the goods.js pair)
 import { tel, telPass } from "./telemetry.js";
+import { FAMINE_SEVERITY } from "./shocks.js";   // T.LEAN_YEAR: the founding margin is grounded in the famine year itself
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { hash32 } from "./rng.js";
@@ -831,7 +832,7 @@ export function labelBasinFree(world, tx, ty) {
   if (!T.PEER_LATTICE) return false;
   tel(world, "peerlat", "queriedClaimed");   // FUNNEL: does any founding channel even knock on a claimed cell?
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
-  const capacity = Math.floor(c.mass[k] / ((TIER_CORE[2] / URBAN_SHARE_REF) / bridge));
+  const capacity = Math.floor(c.mass[k] / (((TIER_CORE[2] / URBAN_SHARE_REF) * leanMul()) / bridge));   // T.LEAN_YEAR: a seat costs a lean-year-proof basin
   if ((c.count ? c.count[k] : 1) >= capacity) { tel(world, "peerlat", "cellFull"); return false; }
   const rr = 2 * urbanCoreR(world), rr2 = rr * rr, tw = world.tw, half = tw / 2;
   const ls = c.labels && c.labels.get(k);
@@ -1176,6 +1177,26 @@ export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured
  *  (crystallize, state plantations, sea colonies) so no channel can mint at
  *  town scale around it. True when the lever is off or the bridge is not yet
  *  live (the dawn is hearth-driven anyway). */
+// T.LEAN_YEAR — a city is founded to survive the LEAN YEAR (the density
+// campaign's law; docs/egypt-autopsy-2026-08-24.md packing thesis, owner
+// ratified 2026-08-24: "no breathing room for realistic cities. It is the
+// exact source of all my issues"). The peer-lattice capacity law and every
+// basin mint bar price a seat at the BARE survival minimum, so every fertile
+// region legally fills to pie/bar Malthusian-minimum packing — ~50 clone
+// cities in bronze Egypt at zero margin, every one one shock from the
+// dissolve bar: the churn's fuel. Historically a city stood where its basin
+// fed it through the BAD year (the granary law — Joseph's seven lean years);
+// real cities held 2-4x their subsistence minimum and real Egypt held 5-10 of
+// them. The sim already knows the bad year: FAMINE_SEVERITY = 0.35 (a famine
+// harvest delivers 35%). Under the lever every city-founding basin bar — the
+// shared disk bar, the site lane's cell bar, the peer capacity law — scales
+// by 1/FAMINE_SEVERITY (~2.9x): the basin must feed the city through the
+// famine. Dissolution stays at 1x, so a STABILITY BAND opens between fade
+// (1x) and found (2.9x) — the flicker cycle loses its zero-margin fuel.
+// Self-calibrating (the margin follows the famine physics), no new constant.
+// The city DEFINITION (the 10k core) is untouched — only how much countryside
+// must stand behind it.
+const leanMul = () => (T.LEAN_YEAR > 0 ? 1 / FAMINE_SEVERITY : 1);
 export function cityBasinOkAt(world, tx, ty) {
   if (!T.DISSOLVE_TOWNS || !(world._onePopScale > 0)) return true;
   const rn = rNormPop(world);
@@ -1184,7 +1205,7 @@ export function cityBasinOkAt(world, tx, ty) {
   // never a dissolve bar (maybeDissolveTowns reads the gross basin directly;
   // a standing city's basin rightly includes its own catchment).
   const mass = T.MINT_RESIDUAL > 0 ? residualBasinMass(world, tx, ty, rB) : townBasinMass(world, tx, ty, rB);
-  if (!(mass * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF)) return false;
+  if (!(mass * world._onePopScale >= (TIER_CORE[2] / URBAN_SHARE_REF) * leanMul())) return false;   // T.LEAN_YEAR: through the famine year
   // T.MINT_REACH: …and the bar must ALSO hold at the newborn's own day-one
   // reach in unmarketed people (the subcontinental disk above passes every
   // cradle everywhere — measured, probe_residualbite — so it prices nothing).
@@ -1346,7 +1367,7 @@ function maybeSiteCities(world) {
     if (F0 > 0) world._onePopScale = FORAGER_EARTH_CENSUS / F0;
   }
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
-  const basinBarF = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell, field units
+  const basinBarF = ((TIER_CORE[2] / URBAN_SHARE_REF) * leanMul()) / bridge;   // city-capable cell, field units (T.LEAN_YEAR: the basin feeds the city through the famine year)
   const coreBarF = TIER_CORE[2] / bridge;                        // a CITY's core, field units
   const coreR = urbanCoreR(world);
   // Eligibility is cached between cadence firings; the spike re-stamp runs
