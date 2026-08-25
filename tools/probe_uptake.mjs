@@ -122,6 +122,11 @@ for (let done = 0; done < STEPS; done += CKPT) {
   // causes, not an exact ledger.
   const mkt = { "MKT-COVERED": 0, "MKT-NOREACH": 0, "MKT-NOSELLER": 0, "MKT-HAULDEAD": 0, "MKT-NOCOIN": 0, "MKT-SHORT-bought": 0, "MKT-SHORT-idle": 0 };
   const fedLeaf = [], fedPar = [], fedNow = [], impShares = [], spares = [];
+  // Channel discriminators (the 777 depression isolation): concentration →
+  // graveyard (urban share, cores), fish suppression at import-fed coasts
+  // (fish = supply − net, the un-stashed local perishable), coin drain.
+  const cores = [], wealths = [];
+  let sumPeople = 0, sumUrban = 0, sumFish = 0, sumSupplyF = 0;
   let hungry = 0, coinCapPar = 0, buyingPar = 0;
   const boxStat = {}; for (const k in BOXES) boxStat[k] = { n: 0, fed: [], imp: 0, leaf: 0 };
   for (const s of world.settlements) {
@@ -132,6 +137,10 @@ for (let done = 0; done < STEPS; done += CKPT) {
     const fed = s._fedM ?? 1;
     (isPar ? fedPar : fedLeaf).push(fed);
     fedNow.push((s._coreNeed || 0) > 0 ? Math.min(1, (s._foodSupply || 0) / s._coreNeed) : 1);   // INSTANTANEOUS fed — separates the ~230-tick _fedM lag from a real shortfall
+    cores.push(s._urbanPop ?? 0); wealths.push(s.wealth || 0);
+    sumPeople += s.people || 0; sumUrban += s._urbanPop || 0;
+    sumFish += Math.max(0, (s._foodSupply || 0) - (s._foodNet !== undefined ? s._foodNet : (s._landFood || 0)));
+    sumSupplyF += s._foodSupply || 0;
     const supply = s._foodSupply || 0;
     coreNeedSum += s._coreNeed || 0; supplySum += supply; landSum += s._landFood || 0;
     offerSum += s._foodOffer || 0;
@@ -188,6 +197,7 @@ for (let done = 0; done < STEPS; done += CKPT) {
   console.log(`step ${String(world.step).padStart(6)}  n ${n} · polities ${polities.size} (${(n / Math.max(1, polities.size)).toFixed(1)}/realm) · parents ${parents} · leaves ${leaves} (${Math.round(100 * leaves / Math.max(1, n))}%) · importers(isr>.02) ${importersLive}`);
   console.log(`   flow/tick  offers ${perTick((ts.levied + ts.bought + ts.unbought) * 1)}  levied ${perTick(ts.levied)}  bought ${perTick(ts.bought)}  unbought ${perTick(ts.unbought)}  PEER-bought ${perTick(ts.peerBought || 0)} · coin-capped parents ${coinCapPar}/${buyingPar} · ΣcoreNeed ${coreNeedSum.toFixed(1)} Σsupply ${supplySum.toFixed(1)} Σland ${landSum.toFixed(1)}`);
   console.log(`   fed  leaf p10/50/90 ${q(fedLeaf, .1).toFixed(2)}/${q(fedLeaf, .5).toFixed(2)}/${q(fedLeaf, .9).toFixed(2)}  parent ${q(fedPar, .1).toFixed(2)}/${q(fedPar, .5).toFixed(2)}/${q(fedPar, .9).toFixed(2)} · fedNOW p10/50/90 ${q(fedNow, .1).toFixed(2)}/${q(fedNow, .5).toFixed(2)}/${q(fedNow, .9).toFixed(2)} · importShare p50/p90 ${q(impShares, .5).toFixed(2)}/${q(impShares, .9).toFixed(2)} · spare-coin p50 ${q(spares, .5).toFixed(1)}`);
+  console.log(`   channels  Σpeople ${sumPeople.toFixed(0)} · urbanShare ${(sumPeople > 0 ? sumUrban / sumPeople : 0).toFixed(3)} · core p50/p90 ${q(cores, .5).toFixed(1)}/${q(cores, .9).toFixed(1)} · fishShare ${(sumSupplyF > 0 ? sumFish / sumSupplyF : 0).toFixed(3)} · wealth p50 ${q(wealths, .5).toFixed(0)}`);
   const at = Object.entries(cls).map(([k, v]) => `${k} ${v}`).join(" · ");
   console.log(`   hungry(<0.85) ${hungry}/${n}:  ${at}`);
   if (cls.LEAF > 0) console.log(`     leaf market stage:  ${Object.entries(mkt).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join(" · ") || "(none classified)"}`);
