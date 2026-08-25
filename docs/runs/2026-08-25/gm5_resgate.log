@@ -37,3 +37,19 @@
 [peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 pkg=maize(suit 0.15) — ARMED: ~7000y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=65536 peakN=39034 pushes=147329 (0.5MB backing)
+  grids: tw=240 (9616 land tiles) vs tw=480 (38741 land tiles)
+  realms                 ref            5   app            6   app/ref 1.20
+  claimed land           ref        2.34%   app        3.36%   app/ref 1.44
+  MEDIAN realm area      ref     523k km²   app     485k km²   app/ref 0.93
+  MEAN realm area        ref     692k km²   app     828k km²   app/ref 1.20
+  largest realm area     ref    1553k km²   app    2020k km²   app/ref 1.30
+  people per km²         ref       0.0249   app       0.0274   app/ref 1.10
+
+  ok   app/ref median realm area          0.93 (floor 0.34)
+  ok   app/ref MEAN realm area            1.20 (floor 0.46)
+  ok   app/ref claimed land               1.44 (floor 0.53)
+  ok   app/ref people per km²             1.10 (floor 0.50)
+  ok   app median realm ABSOLUTE          485k km² (floor 60k km²)
+  ok   app realm count                    6 (floor 3)
+
+[resgate] all app-grid bands held
