@@ -15,3 +15,5 @@
 [peopleSim] hearth Ninuvy at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — matured 5283y into prehistory (wave age 717y)
 [peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 pkg=maize(suit 0.51) — ARMED: ~2842y of peopled-basin time from maturity
 [peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~7000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=2048 peakN=1495 pushes=9318 (0.0MB backing)
