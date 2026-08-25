@@ -213,6 +213,71 @@ bar / ≥1 fallen polity / ≥1 root culture) and keeps warning at zero —
 the collapse-catch semantics stand, aliveness stays the hard gates'
 business. **777 post-rebase: all hard gates, 0 soft warnings.**
 
+## The play report (2026-08-25, post-flip) — diagnosis and the second lap
+
+Owner, from the tw=960 observed-climate live world: carpeting considerably
+down; India/Caspian/Black Sea "look GREAT"; but (1) "the vast majority of
+cities are STILL stuck at the absolute population minimum, 12k, and starving
+at all times", and (2) "not even a single CITY spawns in the egypt middle
+east area" — even though the Nile shows the densest population on the globe.
+
+### Measured (probe_foundbar / probe_mintfunnel / probe_register, obs regime)
+
+- **The founding-margin surface at the app grid** (foundbar 1920): England
+  1.3×, India ~2.0×, Caspian ~2.2×, Pontic ~2.6× — the exact list the owner
+  calls great — while **Mesopotamia read p50 5.0× (59% of cropland at the
+  clamp) and the Levant ~4×: priced out of civilization.** Root cause chain:
+  the in-grid Tigris-Euphrates is honest-small (runoff-weighted discharge —
+  its real basin is mostly arid), so the land reads rain-desert; the
+  composite-cv deep year (1 − 2.33·cv) then treats half-irrigated land as a
+  Gaussian catastrophe and the margin explodes through the clamp.
+- **Egypt founds fine at reference grids** — the live funnel (tw=480-obs)
+  has the Nile LEADING the world at 19k (12 settled) with its anchor seat on
+  a flood tile at 1.87× — then **bleeding (12→7 by 28k) inside a pinned
+  peer-capacity ceiling (~12 = floor(cellMass/1.87·bar)) while the world
+  register explodes 157→528**. A colossal population pile stands at the seat
+  (core/bar 84-127×) that nothing converts into city growth. The owner's
+  empty-Egypt at tw=960 is this bleed further along, plus the fine-grid mass
+  dilution (the resgate ratchet's open gap) cutting the capacity — a tw=960
+  stepped arm (hours) or the owner's save would pin it exactly.
+- **"Starving at all times", quantified** (register, cities-only, 24-27k):
+  cities run **fed p50 ≈ 0.27 chronically**, a tenth with empty granaries,
+  **6-11% wearing the literal UI-starving label at any instant** — a
+  rotating cast, so play reads as constant starvation — while importShare is
+  0.00 at every checkpoint through 30k. Cities nonetheless grow (core p90
+  ~250-312; at-bar only 5-10% of true cities): the FIELD book feeds the
+  people while the settlement LEDGER under-supplies the core — the residual
+  two-books gap at the core-billed level, waiting on the import/uptake wave
+  (the autopsy's throughput chapter). cv(hungry) = cv(fed): the hunger is
+  structural, NOT harvest-swing-driven.
+
+### Shipped this lap (the mixture fix)
+
+`world._yieldDeep`: the founding deep year computed PER WATER COMPONENT —
+the rain share fails to zero, the irrigated share bottoms at the flood
+regime's own deep year (which is why Sumer could exist) — and read
+fert-weighted over the 3×3 (a ghost seat rides the land its max-pooled fert
+describes; a mis-priced seat is a permanent wall). The cv map stays the
+honest per-tile formula (11/12 validation; smoothing it shaved boundary
+regions — deep-only smoothing keeps both). Mesopotamia p50 5.0→3.5×
+(clamp 63→38%), seat-class 2.45×, Levant ~3.0×; pure desert honestly stays
+5×. leanAt reads the deep map.
+
+### The next wave (measured, named, not this lap)
+
+1. **Import uptake → core growth** — the 12k ceiling and the fed-0.27
+   ledger are the same structural fact: cores can only eat local land, and
+   the agglomeration size target rides import capacity, which is ~0. The
+   autopsy's step-5 lap, now measured in the app's own regime.
+2. **The Egypt bleed** — famine-correlated churn inside a pinned capacity;
+   decompose the death causes at the obs grid (egyptfate's instrument, obs
+   arm) after (1) gives the valley margins.
+3. **The observed-regime register explosion** (world 157→528 over 10k steps
+   at tw=480-obs) — carpeting pressure in the regime the owner plays,
+   distinct from the solver-gate worlds the batteries watch.
+4. The in-grid Tigris-Euphrates (riverGen/heightmap) remains the recorded
+   hard debt under Mesopotamia's residual 3.5×.
+
 ## THE FLIP (2026-08-25, SAVE_VERSION 46)
 
 `HARVEST_YEARS` and `LEAN_YEAR` default ON as one act; pre-v46 saves keep
