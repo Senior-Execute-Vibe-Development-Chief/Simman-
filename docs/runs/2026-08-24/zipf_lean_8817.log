@@ -44,3 +44,10 @@
          top urban: Xīrtụ̌ u567/p1217/i0.00  T'imnumu u530/p2632/i0.00  Ňěňní u517/p3336/i0.00  Botholay u7/p34/i0.00  Daphut'e u2/p16/i0.00  Fūtíü u1/p11/i0.00  Zyibayam u1/p7/i0.00  Fùlpū u0/p2/i0.00
   step  22500  world    : n  159 · Zipf slope urban -0.34 (n30) / catchment -0.42 · primacy 1.0 · mean/bar 4.18 · importShare p50/p90 0.00/0.00
 [peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+  step  25000  EGYPT box: n   14 · Zipf slope urban -3.80 (n14) / catchment -3.26 · primacy 1.1 · mean/bar 2.56 · importShare p50/p90 0.00/0.00
+         top urban: Xīrtụ̌ u610/p1194/i0.00  Tayanfap u544/p1751/i0.00  T'imnumu u524/p1443/i0.00  Ňěňní u465/p2685/i0.00  Tụ̄ịsi u2/p15/i0.00  Òupfí u2/p15/i0.00  Tǎ u2/p15/i0.00  Úrfí u2/p15/i0.00
+  step  25000  world    : n  246 · Zipf slope urban -0.37 (n30) / catchment -0.25 · primacy 1.1 · mean/bar 3.67 · importShare p50/p90 0.00/0.00
+
+  READ: slope ≈ 0 with importShare ≈ 0 convicts the ENGINE'S FUEL (the food-
+  trade lane) before its strength levers; slope ≈ 0 with real imports convicts
+  the distribution law itself (URBAN_AGGLOM/URBAN_GAMMA form or strength).
