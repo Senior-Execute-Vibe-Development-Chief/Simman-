@@ -207,3 +207,14 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
    NILE  k  24@29,31   17.41/1.87   m1.87   0        0.28/0.28   59.87     12      1.00    1
    MESO  k 111@44,33   6.58/1.87   m1.87   0        0.28/0.28   33.29     4      0.95    1
    settled: NILE 7 · MESO 3 · INDIA 17 · world 580
+
+-- step 30000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   21.08/1.87   m1.87   0        0.28/0.28   73.85     12      1.00    1
+   MESO  k 111@44,33   7.01/1.87   m1.87   0        0.28/0.28   28.76     4      0.95    1
+   settled: NILE 8 · MESO 3 · INDIA 17 · world 637
+
+  READ: mass/bar1 is the cell census in 1×-bar units — eligibility needs it ≥ margin.
+  If mass/bar1 ≥ margin and elig stays 0, the gate is downstream (devP, storable,
+  spacing); if org < tally the ledger never learned (it is only planted when
+  eligibility first passes — a too-high margin starves the LEARNING too).
