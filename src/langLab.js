@@ -130,10 +130,20 @@ async function loadClip(sym) {
     if (!file) continue;
     if (CLIPS.has(file)) { const b = CLIPS.get(file); if (b) return b; continue; }
     try {
+      // inlined bank (standalone file / hosted Artifact): decode the data URI
+      // ourselves — fetch() of data: URLs is blocked under a strict CSP
       const inline = typeof window !== "undefined" && window.__IPA_AUDIO__ && window.__IPA_AUDIO__[file];
-      const res = await fetch(inline || IPA_AUDIO_BASE + file);
-      if (!res.ok) throw new Error(String(res.status));
-      const buf = await ac().decodeAudioData(await res.arrayBuffer());
+      let bytes;
+      if (inline) {
+        const bin = atob(inline.slice(inline.indexOf(",") + 1));
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      } else {
+        const res = await fetch(IPA_AUDIO_BASE + file);
+        if (!res.ok) throw new Error(String(res.status));
+        bytes = new Uint8Array(await res.arrayBuffer());
+      }
+      const buf = await ac().decodeAudioData(bytes.buffer);
       CLIPS.set(file, buf);
       return buf;
     } catch { CLIPS.set(file, null); }
