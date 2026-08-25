@@ -1,0 +1,19 @@
+[harness] tree 6e3d534
+[stylized] seed 4242 · 480x240 · 21000 steps
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (148,37) (42.0E 34.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) (115.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Viizubuụda at (138,40) (27.0E 30.0N) score 6.78 pkg=wheat(suit 0.98) — matured 915y into prehistory (wave age 5085y)
+[peopleSim] hearth Pịgatfaa at (148,37) (42.0E 34.5N) score 6.05 pkg=wheat(suit 0.99) — matured 908y into prehistory (wave age 5092y)
+[peopleSim] hearth Qòbég at (167,41) (70.5E 28.5N) score 6.32 pkg=wheat(suit 0.98) — matured 923y into prehistory (wave age 5077y)
+[peopleSim] hearth Kalsaffo at (197,38) (115.5E 33.0N) score 6.24 pkg=rice(suit 0.97) — matured 2579y into prehistory (wave age 3421y)
+[peopleSim] hearth Chlurthiryi at (114,52) (-9.0E 12.0N) score 3.63 pkg=sorghum(suit 0.66) — matured 3031y into prehistory (wave age 2969y)
+[peopleSim] hearth candidate at (54,39) (-99.0E 31.5N) score 3.13 pkg=maize(suit 0.64) — ARMED: ~1009y of peopled-basin time from maturity
+[peopleSim] hearth Ọththet at (81,74) (-58.5E -21.0N) score 1.39 pkg=tubers(suit 0.59) — matured 5042y into prehistory (wave age 958y)
+[peopleSim] hearth Kyoekhin at (137,73) (25.5E -19.5N) score 1.29 pkg=tubers(suit 0.62) — matured 4832y into prehistory (wave age 1168y)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 pkg=wheat(suit 0.09) — ARMED: ~7000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (33,24) (-130.5E 54.0N) score 0.50 pkg=maize(suit 0.27) — ARMED: ~10877y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=2048 peakN=1197 pushes=6938 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (54,39) (-99.0E 31.5N) — the basin farms; a city will rise when its market gathers one (score 3.13)
