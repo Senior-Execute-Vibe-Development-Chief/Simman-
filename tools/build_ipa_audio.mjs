@@ -30,7 +30,7 @@
 // licences, which SOURCES.tsv preserves.
 
 import { execFileSync } from "node:child_process";
-import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { ipaC, ipaV } from "../src/sim/languagePhonetics.js";
@@ -45,7 +45,7 @@ const UA = "Simman-worldsim-asset-fetch/1.0 (open-source hobby worldsim; one-off
 // an on-disk resolution cache so an interrupted run resumes instead of
 // re-asking. This tool is a one-off asset build — slow is fine.
 const PACE_API_MS = 12000;           // between API batches
-const PACE_DL_MS = 1500;             // between file downloads
+const PACE_DL_MS = 4000;             // between file downloads (the file host throttles too)
 const API = "https://commons.wikimedia.org/w/api.php";
 const CACHE = join(dirname(fileURLToPath(import.meta.url)), ".ipa-resolve-cache.json");
 
@@ -55,10 +55,21 @@ const cpSlug = (sym) => [...sym].map(c => c.codePointAt(0).toString(16).padStart
 // curl, because it honors the proxy setup Node's fetch ignores (and is just as
 // available on a dev machine). Sequential + throttled by design — do not
 // parallelize this against Commons.
+// -f is load-bearing: without it curl exits 0 on a 429/403 and the throttle
+// page gets SAVED AS THE AUDIO FILE (109 of the first run's 119 files were
+// HTML). With it, an HTTP error becomes a curl failure → the retry/backoff path.
 function curl(url, extra = []) {
-  return execFileSync("curl", ["-sS", "--max-time", "60", "-A", UA, ...extra, url],
+  return execFileSync("curl", ["-sSf", "--max-time", "60", "-A", UA, ...extra, url],
     { maxBuffer: 64 * 1024 * 1024 });
 }
+// belt to that brace: a media file must actually BE one (Ogg or RIFF magic)
+const validMedia = (path) => {
+  try {
+    const b = readFileSync(path);
+    const m = b.subarray(0, 4).toString("latin1");
+    return b.length > 1024 && (m === "OggS" || m === "RIFF" || m === "fLaC");
+  } catch { return false; }
+};
 async function curlRetry(url, extra = [], label = url) {
   for (let i = 0, wait = 60000; ; i++, wait *= 2) {
     try {
@@ -277,13 +288,19 @@ mkdirSync(OUT_DIR, { recursive: true });
 let fetched = 0, skipped = 0;
 for (const p of picks) {
   const out = join(OUT_DIR, p.slug);
-  if (existsSync(out) && statSync(out).size > 0) { skipped++; continue; }
-  await curlRetry(p.url, ["-o", out], p.title);
+  if (existsSync(out) && validMedia(out)) { skipped++; continue; }
+  for (let att = 0; ; att++) {
+    await curlRetry(p.url, ["-o", out], p.title);
+    if (validMedia(out)) break;
+    rmSync(out, { force: true });
+    if (att >= 2) throw new Error(`${p.title}: downloads keep coming back as non-media`);
+    await sleep(30000);
+  }
   fetched++;
   if (fetched % 20 === 0) console.log(`  …${fetched} downloaded`);
   await sleep(PACE_DL_MS);
 }
-console.log(`downloaded ${fetched}, kept ${skipped} already on disk`);
+console.log(`downloaded ${fetched}, kept ${skipped} already valid on disk`);
 
 // SOURCES.tsv — the per-file provenance CREDITS-ipa-audio.md points at
 const tsv = ["symbol\tfile\tcommons title\tlicence\tauthor\tsource"]
