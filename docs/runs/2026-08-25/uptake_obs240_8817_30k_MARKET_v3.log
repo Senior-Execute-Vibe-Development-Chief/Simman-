@@ -68,3 +68,12 @@ step  16000  n 8 · polities 3 (2.7/realm) · parents 2 · leaves 6 (75%) · imp
 
 [peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
 [peopleSim] hearth candidate at (137,74) (25.5E -21.0N) stood down — the farming package arrived before it was invented
+step  18000  n 22 · polities 15 (1.5/realm) · parents 2 · leaves 20 (91%) · importers(isr>.02) 7
+   flow/tick  offers 0.14  levied 0.02  bought 0.12  unbought 0.00  PEER-bought 1.11 · coin-capped parents 0/1 · ΣcoreNeed 9.0 Σsupply 12.4 Σland 16.8
+   fed  leaf p10/50/90 0.09/0.53/1.00  parent 0.26/0.70/0.70 · fedNOW p10/50/90 0.00/0.61/1.00 · importShare p50/p90 0.00/1.00 · spare-coin p50 61.0
+   hungry(<0.85) 17/22:  LEAF 15 · DRY-SURPLUS 1 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 1
+     leaf market stage:  MKT-COVERED 11 · MKT-HAULDEAD 1 · MKT-NOCOIN 1 · MKT-SHORT-bought 2
+     Egypt/Mideast  n  10 · fed p50 0.44 · importers 4 · leaf 100%
+     W-Europe       n   3 · fed p50 1.00 · importers 0 · leaf 100%
+
+[peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
