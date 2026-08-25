@@ -211,4 +211,14 @@ origin settlements died — history, not a recording bug). Each n/a now
 scores ok exactly when its record is demonstrably live (≥8 cities over the
 bar / ≥1 fallen polity / ≥1 root culture) and keeps warning at zero —
 the collapse-catch semantics stand, aliveness stays the hard gates'
-business. 777 re-run post-rebase: verdict below.
+business. **777 post-rebase: all hard gates, 0 soft warnings.**
+
+## THE FLIP (2026-08-25, SAVE_VERSION 46)
+
+`HARVEST_YEARS` and `LEAN_YEAR` default ON as one act; pre-v46 saves keep
+scripted famine and good-year founding via the v<46 guard. Post-flip battery
+at the new defaults: `flip46_*.log` (smoke, hashbase, coverage, stylized
+8817). The chain of 2026-08-24 is executed end to end; what remains is the
+autopsy's step 5 (urban hierarchy/primacy — the agglomeration engine now has
+margins, surplus, imports and annual scarcity to work with), recorded in
+docs/handoff-2026-08-25.md.
