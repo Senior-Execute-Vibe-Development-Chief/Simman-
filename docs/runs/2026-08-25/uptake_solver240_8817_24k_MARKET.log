@@ -72,3 +72,8 @@ step  20000  n 26 · polities 17 (1.5/realm) · parents 5 · leaves 21 (81%) · 
    hungry(<0.85) 10/26:  LEAF 8 · DRY-SURPLUS 2 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
 
 [peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+step  22000  n 34 · polities 19 (1.8/realm) · parents 7 · leaves 27 (79%) · importers(isr>.02) 7
+   flow/tick  offers 25.60  levied 4.59  bought 12.85  unbought 8.17  PEER-bought 0.10 · coin-capped parents 0/6 · ΣcoreNeed 7.0 Σsupply 61.0 Σland 87.0
+   fed  leaf p10/50/90 0.00/0.90/1.00  parent 0.76/1.00/1.00 · importShare p50/p90 0.00/0.77 · spare-coin p50 4089.3
+   hungry(<0.85) 14/34:  LEAF 13 · DRY-SURPLUS 1 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
