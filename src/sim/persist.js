@@ -595,6 +595,17 @@ export function loadWorld(data, opts = {}) {
     if (!("ONE_BOOK" in tn)) T.ONE_BOOK = 0;
     if (!("SHIP_SURPLUS" in tn)) T.SHIP_SURPLUS = 0;
   }
+  // v45 → v46: the harvest years + the per-basin lean-year law (the
+  // harvest-years wave, docs/harvest-years-2026-08-25.md). A pre-v46 save
+  // keeps scripted famine and good-year founding: its register grew at 1×
+  // margins and its granary/price levels never breathed with annual swings —
+  // continuing it under the pair would re-price every founding bar and
+  // re-key the food economy's year rhythm mid-history.
+  if (data.v < 46) {
+    const tn = data.tuning || {};
+    if (!("HARVEST_YEARS" in tn)) T.HARVEST_YEARS = 0;
+    if (!("LEAN_YEAR" in tn)) T.LEAN_YEAR = 0;
+  }
   // v35 → v36: the access band conserves overlap mass (BAND_SUM). A pre-v36
   // save keeps the max-over-sources band (its fine-grid world was calibrated
   // against the overlap-deleting field).

@@ -170,11 +170,45 @@ labelBasinFree's peer capacity, the site lane's eligibility/storable/drift
 bars via `barOf(k)`, maybePeerSeats' capacity + takes, the mint-time take).
 Dissolve stays 1× — the stability band is now per-basin.
 
-## Lap 4 — the flip ladder (in flight)
+## Lap 4 — the flip ladder (measured)
 
-Pre-flip ladder under `LEAN_YEAR=1,HARVEST_YEARS=1`: stylized 8817/4242/777
-(777 is THE gate — it must release by physics), default smoke, resgate,
-monotone, and the Egypt live-regime referendum (probe_egyptfate, the
-2026-08-24 arm + the pair — the owner's win must survive the per-basin
-re-pricing at the Nile's ~1.9×). Verdicts land below; flip =
-SAVE_VERSION 46, both levers ON, v<46 guard.
+Pre-flip ladder under `LEAN_YEAR=1,HARVEST_YEARS=1` (logs: `pair_*.log`):
+
+| gate | verdict |
+|---|---|
+| stylized 8817 | all hard · **0 warnings** |
+| stylized 4242 | all hard · 2 warnings (budget 2) — was 3-over under the flat law |
+| stylized 777 | **0 HARD** — the flat law's civilization-death gate RELEASED by physics · 3 soft n/a-abstentions (see the re-baseline below) |
+| smoke (defaults) | all checks passed |
+| resgate | all app-grid bands held |
+| monotone | no cumulative metric decreased |
+| coverage (lever on) | every measurable property reached |
+
+**The Egypt live-regime referendum** (probe_egyptfate 25k, the 2026-08-24 arm
++ the pair), against both recorded arms:
+
+| metric (box) | v45 control | flat LEAN (2.86×) | pair (per-basin) |
+|---|---|---|---|
+| register turnover | 375 | 93 | 132 |
+| big-anchor deaths (peak ≥ 2M) | 15 | 7 | **7** |
+| realms through the box | 86 | 20 | 52* |
+| standing register at end | 52 | 14 | 24 |
+
+The per-basin law KEEPS the flat law's anchor persistence entirely (7 = 7
+big-anchor deaths, half the control) — the extra turnover is small
+proto-towns at the register's edge, not the cities that matter. Standing
+register 24 at the Nile's honest ~1.9× margin (the flat 2.9× gave 14 but
+kills marginal worlds — not shippable). *Realms-through-box carries the
+recorded huge single-seed variance (70-99 across arms); 52 vs 20 is at the
+edge of readability.
+
+**The churn-era soft-band re-baseline** (the chain's authorized revisit):
+777's three warnings were all n/a ABSTENTIONS punishing the very stability
+the law creates — "only 10 cities > 10k" (slope unfittable), "4 fallen
+polities" (too FEW deaths to study — the churn era's 'near-deathless map is
+suspicious' assumption), "no cradle origins resolvable" (the dawn cohort's
+origin settlements died — history, not a recording bug). Each n/a now
+scores ok exactly when its record is demonstrably live (≥8 cities over the
+bar / ≥1 fallen polity / ≥1 root culture) and keeps warning at zero —
+the collapse-catch semantics stand, aliveness stays the hard gates'
+business. 777 re-run post-rebase: verdict below.
