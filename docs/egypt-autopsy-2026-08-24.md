@@ -553,3 +553,46 @@ ONE_BOOK+SHIP_SURPLUS in SIM_TUNE, (c) the flip ladder for both levers
 (full gates), (d) the valley-density lap with the working economy
 underneath (longer horizons — does agglomeration differentiate the packed
 register given time?).
+
+## LEAN_YEAR — the referendum and the gates (end of 2026-08-24, part 2)
+
+The law: every city-founding basin bar × 1/FAMINE_SEVERITY (≈2.9) — found
+only where the basin feeds the city through the famine year; dissolve stays
+at 1×. Grounded, zero new constants.
+
+**The live-regime referendum (the owner's arm, 480/8817, v45 physics +
+LEAN_YEAR=1) was the day's decisive win** — with the v45 no-LEAN control
+proving the economy flip alone did none of it:
+
+| metric | v45 control | + LEAN_YEAR |
+|---|---|---|
+| register turnover (box) | 375 | **93** |
+| big-anchor deaths | 16 | **7** |
+| realms through the box | 86 | **20** |
+| standing register | 52 | **14** (bronze-Egypt band) |
+| valley rule at end | flipping | **one realm, 21.5k→25k unbroken** |
+| Egypt mean size / bar | ~1.2 | **2.4–2.6** |
+| world mean size / bar | ~1.3 | **3.7–4.2** |
+
+The churn is gone in the regime the owner plays. Hierarchy (primacy ~1.1)
+is deliberately deferred — the concentration engines now have margins and
+surplus to work with.
+
+**The gate ladder split**: smoke green; resgate ALL bands held (realms
+BIGGER: largest 2.3M km² app); stylized 8817 all-hard + 1 warning in
+budget; 4242 zero hard but 3 warnings (budget 2) — all three being
+STABILITY read as anomaly by churn-era bands (616 living vs 24 fallen
+states, few wars, flat deadliness); **777 ONE HARD FAILURE — civilization
+alive: 10 settlements, pop 6,342.** On a marginal-geography seed in the
+seeded-mature gate regime, the flat 2.9× bar strangles the world register
+toward extinction. That is a real red: the law's grounding is right for
+cradles and too blunt as a planetary constant.
+
+**Disposition**: LEAN_YEAR ships def 0. The owner's play regime measured
+spectacularly green — `LEAN_YEAR=1` in SIM_TUNE is safe and recommended for
+live worlds now. Before any default flip, the named refinement: the margin
+should breathe with LOCAL famine exposure instead of a flat planetary 2.9×
+(a basin that famine rarely visits needs less granary margin — the same
+vulnerability physics the famine seeder already computes), which should
+keep the cradle result while releasing marginal seeds. Then re-run this
+exact ladder.

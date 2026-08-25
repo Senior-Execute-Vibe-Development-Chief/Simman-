@@ -17,3 +17,31 @@
 [peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 pkg=wheat(suit 0.05) — ARMED: ~7000y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=967 pushes=8162 (0.0MB backing)
+[transHeap] step=20688 cap=2048 peakN=1089 pushes=5882 (0.0MB backing)
+[stylized] simulated in 108s
+
+  warn  Zipf rank-size slope: n/a   (only 6 cities > 10k urban core)
+  ok    largest empire's share of claimed land: 43%   (8 polities on 761 tiles)
+  ok    empire area tail (largest/median): 7.5
+        (realm AREA, unscored: largest 5076k km² · median 677k km² · reference: Bronze hegemon ~0.5-1M, Rome ~5M, Han ~6.5M)
+        (empire mortality, unscored: back-half top-3 union 4 realms · 54 secessions — deep check: node tools/probe_empires.mjs)
+  warn  polity lifespans: n/a   (4 fallen polities)
+  warn  wars per 1000 steps per polity: 0.05   (0.4/1k across 8 realms)
+  ok    wars amid succession crises: 1/8   (human causes visible)
+        (0 across state-faith lines)
+  warn  tech diffusion gradient: n/a   (no cradle origins resolvable)
+  ok    urbanization vs development: 6.3%   (agrarian era: a minority in cities (2-25%))
+  ok    population ~ development (monotone): 0.98   (log-pop vs leading agriculture)
+  ok    growth accelerates with development: n/a   (pre-industrial run: modern agriculture never discovered — the accelerating chapter is absent)
+  ok    price gates: n/a   (baseline not locked long enough)
+  ok    trade intensity vs transport: 0.2   (flow×1000/wealth; median nav+mob 0.41 → band 0.05-150)
+  ok    war deadliness: n/a   (6 reckoned wars (need 8))
+  ok    culture count ~ area^k, k<1: 0.24   (diversity grows with territory, sublinearly (k<1))
+  ok    clustering: n/a   (too few settlements)
+  ok    fish share of food supply: 0.0%   (0% of population lives majority-fish [soft bar ≤40% Tier-B])
+  FAIL  civilization alive: 10 settlements, pop 6342
+  ok    wealth finite: 168581
+  ok    polities exist: 8
+        (registries: 28 cultures · 7 faiths · 30 dynasties · 1313 persons · 626 events)
+
+[stylized] 1 hard failure(s) · 4 soft warnings EXCEEDS budget 2 — the emergent history is off-shape
