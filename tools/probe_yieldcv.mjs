@@ -56,7 +56,7 @@ const lonOf = (x) => (x / TW) * 360 - 180, latOf = (y) => 90 - (y / TH) * 180;
 // ── the candidate map's constants (calibration targets, real-data-anchored) ──
 const CV_BASE   = 0.10;   // reliably-wet temperate floor (England-class)
 const CV_MARGIN = 0.35;   // added at the full semi-arid margin (Sahel-class ceiling ≈ 0.45)
-const CV_SEASON = 0.10;   // added at full one-season concentration (mediterranean/monsoon sharpening)
+const CV_SEASON = 0.20;   // added at full one-season concentration (calibration pass 2026-08-24: 0.10 left the whole mediterranean/monsoon family LOW once the water term stopped accidentally lifting them)
 const CV_FLOOD  = 0.20;   // the flood-regime CV a fully river-fed valley converges to (pre-dam Nile-class)
 const ARID0 = T.IRRIG_ARID0 ?? 0.52, ARAMP = 0.20;   // the irrigation stack's own aridity language
 
@@ -72,10 +72,28 @@ function cvAt(i) {
   // seasonality is the HALF-dry year (mediterranean/monsoon: one wet season).
   const df = dryF ? dryF[i] : 0;
   const seasonal = Math.max(4 * df * (1 - df) - 0.5, 0) * 2;   // 0 at df 0 or 1, 1 at df 0.5, engages past 0.15
-  // FLOODPLAIN-GRADE water only (iteration 2): the trade-premium band read
-  // pegged 1.00 planet-wide (England read flood-fed). Regime-switching needs a
-  // Nile/Indus-class channel: the top of the river-magnitude range, no coast.
-  const water = rmEff && rmMax > 0 ? Math.max(0, Math.min(1, (rmEff[i] / rmMax - 0.15) / 0.35)) : 0;
+  // FLOODPLAIN-GRADE water, ABSOLUTE bar (iteration 3): normalizing by the
+  // GLOBAL max river is scale-fragile — at tw=480 the biggest river
+  // concentrates harder and the Nile read 0.00 (tw=240: 0.29). The codebase's
+  // own channel convention is absolute: riverMag >= 2 navigable (foodHaulArrive
+  // water corridor), >= 3 major (landCost river tariff). Flood agriculture
+  // ramps over that same language: mag 2 -> 0, mag 5+ -> full flood regime.
+  // ...and the channel feeds the fields BESIDE it (iteration 3b: the Nile's
+  // median cropland tile is mag 1 next to a mag-4 channel; the banded field
+  // (IRR_BAND) does this properly in-sim but only exists after stepping) —
+  // the map reads the 3x3 neighbourhood's best channel.
+  let chan = 0;
+  if (riverMag) {
+    const ty0 = (i / TW) | 0, tx0 = i - ty0 * TW;
+    for (let dy = -1; dy <= 1; dy++) {
+      const yy = ty0 + dy; if (yy < 0 || yy >= TH) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        const v = riverMag[yy * TW + (((tx0 + dx) % TW) + TW) % TW];
+        if (v > chan) chan = v;
+      }
+    }
+  }
+  const water = Math.max(0, Math.min(1, (chan - 2) / 3));
   const cvRain = CV_BASE + CV_MARGIN * rainMargin + CV_SEASON * seasonal * (1 - rainMargin * 0.5);
   return cvRain * (1 - water) + CV_FLOOD * water;
 }
@@ -117,7 +135,10 @@ for (const r of R) {
     diag.rm.push(Math.max(0, Math.min(1, (ARID0 + 0.10 - m) / (ARAMP + 0.10))));
     const _df = dryF ? dryF[i] : 0;
     diag.se.push(Math.max(4 * _df * (1 - _df) - 0.5, 0) * 2);
-    diag.wa.push(rmEff && rmMax > 0 ? Math.max(0, Math.min(1, (rmEff[i] / rmMax - 0.15) / 0.35)) : 0);
+    { let ch = 0; const ty0 = (i / TW) | 0, tx0 = i - ty0 * TW;
+      for (let dy = -1; dy <= 1; dy++) { const yy = ty0 + dy; if (yy < 0 || yy >= TH) continue;
+        for (let dx = -1; dx <= 1; dx++) { const v = riverMag ? riverMag[yy * TW + (((tx0 + dx) % TW) + TW) % TW] : 0; if (v > ch) ch = v; } }
+      diag.wa.push(Math.max(0, Math.min(1, (ch - 2) / 3))); }
   }
   if (!vals.length) { console.log(`  ${r.k.padEnd(14)} (no land tiles)`); continue; }
   n++;

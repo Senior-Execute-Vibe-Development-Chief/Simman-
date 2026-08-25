@@ -631,3 +631,29 @@ fix the cradles?); (2) the moisture-calibration lap (blocks two systems);
 year-persistent, composing with climate.js's century layer) multiplying
 landFood, famine derived from its tail, granaries doing real work,
 LEAN_YEAR per-basin — then the full ladder including LEAN_YEAR's re-run.
+
+### probe_yieldcv, final calibration state (four iterations, all recorded)
+
+4/12 region medians in band with HONEST terms (iterations killed: the
+global-max water normalization — scale-fragile, the Nile read 0.00 at
+tw=480; the trade-band read — England "flood-fed"; the dry-month count —
+deserts "seasonal"; the on-tile channel read — flood farms sit BESIDE the
+channel, the map now reads the 3×3 best channel, the mechanism will use the
+IRR_BAND field that only exists after stepping). Where inputs are sound the
+formula reads true (Mediterranean, Greece, Pontic, Java). The 8 misses
+decompose completely into THREE input debts:
+
+1. **The moisture index** (England margin 0.57 — Britain ≈ Mesopotamia;
+   solver-Sahel cropland margin 0.09; monsoon Ganges 0.64; Kazakh/Pontic
+   asymmetry). The recorded forest-wave debt, now mis-feeding a second
+   system. **This lap is the wave's gate.**
+2. **Great-river resolution/banding** (Tigris–Euphrates channel < mag 3 at
+   tw=240 → Mesopotamia water 0.00; the Nile's un-banded neighbours carry
+   half the box). The IRR_BAND field is the mechanism's answer; the
+   resolution half is third-cardinal-rule territory.
+3. **dryFrac's monsoon semantics** (N. China and S. India read season 0.00
+   — the single-season concentration of the East-Asian monsoon isn't in the
+   dry-fraction shape the classifier needed).
+
+The wave resumes at the moisture-calibration lap; the variance formula
+itself is ready and waiting on its inputs.
