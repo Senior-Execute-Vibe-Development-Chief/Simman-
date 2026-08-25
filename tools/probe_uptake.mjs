@@ -41,15 +41,27 @@
 //     need and cities starve at fed p50 0.08. Once a tree exists the
 //     levy/coin stages CLEAR (unbought ≈ 0, coin-capped 0-2 of 4-10) — the
 //     topology, not org or coin, is the binding constraint.
-//   · T.GRAIN_MARKET=1 A/B (obs-240 30k): importers 3 → 202, peer grain
-//     16.5/tick vs the tree's 1.3, fed(leaf) p50 0.08 → 0.61, every box up
-//     (Egypt 0.19→0.54, W-Europe 0.23→0.58), importShare p90 0.00 → 1.00
-//     (fully import-fed settlements exist — URBAN_AGGLOM has fuel at
-//     non-capitals), Σsupply > ΣcoreNeed. Solver-240: every hungry-labeled
-//     leaf reads MKT-COVERED — need closed the same tick; the residual
-//     'hungry' label is the ~230-tick _fedM average catching up on a
-//     churning register (fresh mints start at fed 0), which is why fedNOW
-//     was added as the instantaneous read.
+//   · T.GRAIN_MARKET=1 A/B (obs-240 30k, final v47 build): importers 3→175,
+//     peer grain 12.3/tick vs the tree's ~1.4, fed(leaf) p50 0.08→0.58
+//     (fedNOW p50 0.75), W-Europe 0.85 / Pontic 0.82 / India 0.70 vs
+//     baseline 0.04-0.50, importShare p90 0.00→1.00 — URBAN_AGGLOM has fuel
+//     at non-capitals. Egypt residual 0.24 (atomized bronze singletons: no
+//     coin, no levy tree — the register-atomization wave's item). Most
+//     hungry-labeled leaves read MKT-COVERED (need closed same tick; the
+//     label is the ~230-tick _fedM average lagging on a churning register —
+//     fedNOW is the instantaneous read); MKT-SHORT-idle under the v47 build
+//     is mostly the institution gate (pre-coinage cities the classifier's
+//     coin check cannot see).
+//   · THE THREE RULES the 777 elimination forced into the shipped form, and
+//     the chaos-ensemble lesson (777's no-mechanism alive-count spans 20-22
+//     vs the recorded 40 — a lucky draw; the market cluster sat at a REAL
+//     14-15 until all three landed): seed-corn (granary refills before
+//     exports), the market institution gate (techEff.market — dawn trades
+//     flattened the early urban distribution and cost the marginal world
+//     its first founding cascade, +1 vs +7), and the export capacity
+//     ADD-BACK (not a max()-vs-production floor, which was a cross-tick
+//     ratchet muting harvest-year capacity signals from tick 1). Full
+//     record: tuning.js GRAIN_MARKET desc + docs/harvest-years-2026-08-25.md.
 import { readFileSync } from "node:fs";
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";

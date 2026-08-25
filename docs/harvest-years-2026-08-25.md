@@ -313,3 +313,119 @@ at the new defaults: `flip46_*.log` (smoke, hashbase, coverage, stylized
 autopsy's step 5 (urban hierarchy/primacy — the agglomeration engine now has
 margins, surplus, imports and annual scarcity to work with), recorded in
 docs/handoff-2026-08-25.md.
+
+---
+
+# THE IMPORT/UPTAKE WAVE (same day, the "go" lap) — THE OPEN GRAIN MARKET
+
+The play-report's other half ("cities 12k-stuck and starving") executed:
+measured, built, eliminated to shape, flipped. **SAVE_VERSION 47,
+`T.GRAIN_MARKET` default ON.** Instrument: `tools/probe_uptake.mjs`
+(stage-by-stage funnel: topology / surplus / haul / levy / coin / fuel, with
+per-node levy-buy recording behind `world._tradeStats` and a hungry-leaf
+market-stage classifier). Run logs: `docs/runs/2026-08-25/uptake_*`,
+`gm*_stylized_*`, `chaos_*`, `gm5_resgate.log`.
+
+## 1. The funnel (why no one was buying)
+
+Worlds are pre-urban far longer than the old probe horizons assumed (first
+cities ~15-20k steps); measured at 24k/30k/32k, three regimes:
+
+- **The hungry register is LEAF-dominated everywhere.** The tree market
+  moves grain child→liege only, inside one country. A leaf — 82-84% of every
+  register — can neither buy (no children) **nor sell** (no parent → never
+  offers). obs-240 30k baseline: hungry 449/535; of them LEAF 377,
+  DRY-SURPLUS 71, CAPPED ≈ 0. The levy/coin stages the prior session
+  suspected measured CLEAR once a tree exists (unbought ≈ 0).
+- **The food exists.** Σland 441 vs ΣcoreNeed 207 (obs-240 30k) — the world
+  grows 2.1× its cities' needs while 84% starve. A pure distribution
+  failure: the surplus is structurally invisible to the market.
+- fed(parent) p50 1.00 vs the starving leaf tail; importShare p90 0.00 —
+  URBAN_AGGLOM (fuel = import-fed capacity) never fires at non-capitals:
+  the 12k pin.
+
+## 2. The mechanism (grainMarketPass, foodHierarchy.js)
+
+After the tree sweep, a settlement whose ledger still runs short BUYS from
+its trade peers — `mergeReach`, the same road+sea network goods use,
+cross-border like goods trade, no war gate (SIEGE_STARVE and trade-peace own
+those axes) — from each peer's live residual surplus, at the seller's
+scarcity price, through `foodHaulArrive`'s spoilage physics, capped by spare
+coin over the subsistence reserve. No cross-border levy: requisition is the
+tree's sovereignty act; across borders grain moves only paid for. Zero new
+constants.
+
+## 3. The elimination (what the gate seed forced into the shape)
+
+`gm1`: raw market. 8817 all-hard/0-warn; **777 hard-fails 15 alive** (its
+recorded baseline: 40). Three rules, each measured in:
+
+1. **The seed-corn rule** (`gm2`) — a seller offers only the surplus its own
+   granary cannot absorb (`granaryCap` extracted to ONE definition, shared
+   with the updateFood clamp). Without it the market drains exactly the flow
+   that fills granaries, and under HARVEST_YEARS the sellers die at the next
+   lean year. Necessary, not sufficient: 777 still 14.
+2. **The chaos ensemble** (`chaos_eps*_777`) — before more building, the
+   control experiment: float-epsilon perturbations (MINING_RATE +1e-7…)
+   with ZERO mechanism land 777 at **20/21/22 alive** — the recorded 40 was
+   a lucky draw, and the hard floor (20) has ~no margin for ANY
+   economy-touching change on this seed. But the market cluster (15/14/14/14
+   across three builds and an epsilon) sat tightly BELOW the band: a real
+   depression, not noise. The 777 funnel pair isolated onset: divergence
+   from step ~2000, medians cores 15.9 vs 42.2 by 14k, the first founding
+   cascade missed (+1 vs +7 at 16-18k).
+3. **The market institution gate** (`gm4`) — commercial buying needs
+   `techEff.market` (coined money; the monetization() precedent). Dawn
+   cradles were trading from birth (granaries start at cap; cold ledgers
+   read need) — ahistorical (temple economies moved grain by administration;
+   commercial grain trade at scale is classical) and measurably the
+   flattener. Emergent, never a date: the market opens where a society
+   mints coin.
+4. **The export capacity add-back** (`gm5`, replacing gm3's floor) — last
+   aggregation's peer sales add back into foodK's basis: the FOOD_REACH
+   asymmetric-authority law extended to the market (selling cannot drag a
+   catchment's carrying capacity below what its own land grows; imports
+   still lift). NOT a max()-vs-production floor: the first implementation
+   compared last-tick net against this-tick production and became a
+   cross-tick ratchet muting every settlement's harvest-year capacity
+   signal from tick 1 — trades or none (the gm3/gm4 15-alive residue, and a
+   lag-discipline lesson for the file: same-lag quantities only).
+
+`gm5`: **777 lands 20 alive, all-hard, 0 warnings — inside the
+no-mechanism epsilon band.** With no trades the lever world is now
+byte-identical to baseline by construction.
+
+## 4. The flip battery (SAVE_VERSION 47)
+
+- smoke green post-flip; stylized **777/8817/4242 all hard gates at
+  0/0/0 warnings** (the v46 flip battery itself carried 0/2/0);
+- resgate all bands (median realm app/ref 0.93);
+- hashbase pair **unchanged** (ebfb8021/7fb32527): the institution gate
+  makes the flip byte-transparent until coinage exists — late-game-only
+  physics by construction; v<47 guard pins pre-flip saves;
+- no new persisted state, no new metrics (coverage/monotone not triggered);
+- the obs-240 referendum (final build): **importers 3→175, peer grain
+  12.3/tick vs the tree's ~1.4, fed(leaf) p50 0.08→0.58, fedNOW p50 0.75,
+  W-Europe 0.85 / Pontic 0.82 / India 0.70** (baseline 0.04-0.50),
+  importShare p90 0.00→1.00. The obs-480 (tw=480) A/B on the pre-gate build
+  read the same shape larger (importers 20→271, Egypt 0.84) — the app-grid
+  landslide; a `probe_shape` tw=960 spot-check is the standing
+  third-cardinal-rule arm (gm5_shape_1920.log).
+
+## 5. Named residuals (measured, not this lap)
+
+- **Egypt/Mideast fed p50 0.24** in the final referendum draw (3 importers
+  of 19): its atomized bronze singletons hold neither coin (the institution
+  gate) nor a levy tree (singleton polities). The un-gated market fed Egypt
+  0.54 — through the same ahistorical dawn trade that broke 777. Egypt's
+  cure is realm consolidation (the levy is BUILT for it) or its own
+  monetization — the register-atomization wave.
+- The stylized 777 alive-gate reads a chaotic quantity whose typical value
+  (20-22) hugs its own floor (20) — any economy change on this seed is a
+  near-coin-flip. Recorded here and in the lever desc for the next
+  gate-grounding conversation; not re-based unilaterally this wave.
+- Buyer-side granary provisioning (buying AHEAD to fill stores — the annona
+  stockpile) is deliberately absent: buyers cover flow-need only. If
+  import-fed cities measure siege/famine-fragile, that is its own lap.
+- MKT-SHORT-idle in the classifier now mostly means "pre-coinage" — the
+  classifier checks coin but not the institution; refine when next used.
