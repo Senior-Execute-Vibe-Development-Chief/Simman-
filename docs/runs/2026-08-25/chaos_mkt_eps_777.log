@@ -1,5 +1,5 @@
-[harness] tree 15f7025
-[SIM_TUNE] {"FOOD_HAUL_RANGE":14.0000001}
+[harness] tree d7a4d26
+[SIM_TUNE] {"GRAIN_MARKET":1,"MINING_RATE":5.0000001}
 [stylized] seed 777 · 480x240 · 21000 steps
 [peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
