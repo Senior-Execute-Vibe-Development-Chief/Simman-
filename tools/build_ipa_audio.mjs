@@ -5,6 +5,9 @@
 //
 //   node tools/build_ipa_audio.mjs          # resolve + download + emit
 //   node tools/build_ipa_audio.mjs --dry    # resolve + coverage report only
+//   node tools/build_ipa_audio.mjs --emit   # no network: rewrite SOURCES.tsv +
+//                                           #   manifest from what is verified
+//                                           #   on disk (uses the resolve cache)
 //
 // What it does, start to finish:
 //   1. Enumerates the generator's own base phone space by running ipaC/ipaV
@@ -39,6 +42,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(ROOT, "assets", "ipa-audio");
 const MANIFEST = join(ROOT, "src", "sim", "ipaAudioManifest.js");
 const DRY = process.argv.includes("--dry");
+const EMIT_ONLY = process.argv.includes("--emit");
 const UA = "Simman-worldsim-asset-fetch/1.0 (open-source hobby worldsim; one-off asset build)";
 // Commons rate-limits anonymous datacenter traffic HARD (429 storms even at
 // sub-second pacing). Patience is the only fix: long gaps, long backoffs, and
@@ -289,11 +293,16 @@ mkdirSync(OUT_DIR, { recursive: true });
 // what it can (the throttle penalty on this address can outlast any sane
 // backoff), the manifest below reflects only what is really on disk, and a
 // re-run fills the gaps — the skip list is the re-run's to-do list.
-let fetched = 0, skipped = 0;
+let fetched = 0, skipped = 0, streak = 0;
 const failed = [];
 for (const p of picks) {
   const out = join(OUT_DIR, p.slug);
   if (existsSync(out) && validMedia(out)) { skipped++; p.ok = true; continue; }
+  if (EMIT_ONLY) { failed.push(p.sym); continue; }
+  // circuit breaker: several consecutive exhausted ladders means the address
+  // is in a throttle penalty box — burning a 5-minute ladder per remaining
+  // file helps nobody. End the pass, bank what exists, exit "gaps remain".
+  if (streak >= 3) { failed.push(p.sym); continue; }
   try {
     for (let att = 0; ; att++) {
       await curlRetry(p.url, ["-o", out], p.title, { tries: 4, wait0: 20000 });
@@ -304,11 +313,13 @@ for (const p of picks) {
     }
     p.ok = true;
     fetched++;
+    streak = 0;
     console.log(`  ✓ ${p.sym}  (${fetched} fetched, ${failed.length} skipped)`);
   } catch (e) {
     rmSync(out, { force: true });
     failed.push(p.sym);
-    console.log(`  ✗ ${p.sym} skipped: ${e.message}`);
+    streak++;
+    console.log(`  ✗ ${p.sym} skipped: ${e.message}${streak >= 3 ? " — breaker tripped, ending pass" : ""}`);
   }
   await sleep(PACE_DL_MS);
 }
