@@ -31,3 +31,22 @@
 [peopleSim] hearth Wityim at (278,142) (28.5E -16.5N) score 0.89 pkg=wheat(suit 0.53) — matured 1701y into prehistory (wave age 4299y)
 [peopleSim] hearth candidate at (247,40) (5.2E 60.0N) score 0.50 pkg=sorghum(suit 0.25) — ARMED: ~1927y of peopled-basin time from maturity
 [peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 pkg=maize(suit 0.36) — ARMED: ~6510y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=65536 peakN=38904 pushes=137705 (0.5MB backing)
+[peopleSim] AGRICULTURE INVENTED at (115,99) (-93.8E 15.8N) — the basin farms; a city will rise when its market gathers one (score 1.62)
+  grids: tw=240 (9616 land tiles) vs tw=480 (38741 land tiles)
+  realms                 ref            5   app            5   app/ref 1.00
+  claimed land           ref        3.40%   app        3.31%   app/ref 0.97
+  MEDIAN realm area      ref     723k km²   app     515k km²   app/ref 0.71
+  MEAN realm area        ref    1006k km²   app     978k km²   app/ref 0.97
+  largest realm area     ref    1723k km²   app    2333k km²   app/ref 1.35
+  people per km²         ref       0.0350   app       0.0278   app/ref 0.79
+
+  ok   app/ref median realm area          0.71 (floor 0.34)
+  ok   app/ref MEAN realm area            0.97 (floor 0.46)
+  ok   app/ref claimed land               0.97 (floor 0.53)
+  ok   app/ref people per km²             0.79 (floor 0.50)
+  ok   app median realm ABSOLUTE          515k km² (floor 60k km²)
+  ok   app realm count                    5 (floor 3)
+
+[resgate] all app-grid bands held
