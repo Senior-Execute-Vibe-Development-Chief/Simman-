@@ -183,18 +183,21 @@ export function yieldCvAt(world, i, chan, flood) {
  *                       worst year — which is why Sumer could exist. For pure
  *                       rain land (water 0) it reduces exactly to 1 − 2.33·cv.
  *
- * The DEEP map is read FERT-WEIGHTED over the 3×3 (the same "farms sit
- * beside the seat" convention as the channel term): the fert mask is
- * max-pooled, so a tile beside a valley carries the valley's fert — a
- * founding seat there rides the land that fert describes, not its own
- * point-sampled desert climate (the ghost-tile trap probe_nilebox measured;
- * a mis-priced seat is a PERMANENT 5× founding bar, so robustness matters
- * most here). The CV map stays the honest per-tile formula — it is the
- * validated quantity (11/12 literature regions; smoothing it shaved the
- * boundary-sitting Sahel/Pontic 0.02-0.03 below their bands, a
- * double-smoothing artifact against the probe's own fert-weighted verdicts)
- * and the annual amplitude, where a ghost seat's wrong swing is mean-1
- * noise, not a standing wall.
+ * The DEEP map's neighbourhood read is the seat's own tile OR the 3×3's
+ * RICHEST-fert tile, whichever is more secure — the same "farms sit beside
+ * the seat" convention as the channel term. The fert mask is max-pooled, so
+ * a tile beside a valley carries the valley's fert: a founding seat there
+ * rides the land that fert points to, not its own point-sampled desert
+ * climate (the ghost-tile trap probe_nilebox measured; a mis-priced seat is
+ * a PERMANENT 5× founding bar). The read is deliberately NOT the
+ * fert-weighted MEAN: on patchy marginal geography the mean drags a good
+ * pocket's bar down toward its poor surroundings, and pocket-cities are
+ * exactly how a marginal world civilizes — measured: the mean-smoothed map
+ * hard-failed seed 777 (17 settlements) with numbers identical across two
+ * water-term variants, isolating the smoothing itself. The CV map stays the
+ * honest per-tile formula — it is the validated quantity (11/12 literature
+ * regions) and the annual amplitude, where a ghost seat's wrong swing is
+ * mean-1 noise, not a standing wall.
  */
 export function ensureYieldCv(world) {
   if (world._yieldCv) return world._yieldCv;
@@ -224,26 +227,27 @@ export function ensureYieldCv(world) {
       + (1 - parts.water) * Math.max(0, 1 - 2.33 * parts.cvRain)
       - 2.33 * CV_WINTER * parts.winterRisk));
   }
-  // fert-weighted 3×3 on the DEEP map only (see the header): the founding
-  // read rides the land its fert describes. Tiles with no fert anywhere near
-  // keep their own value.
+  // DEEP map neighbourhood read (see the header): the seat's own tile, or
+  // the 3×3's richest-fert tile if that land is more secure — never a mean.
   const fert = world.fert;
   const deep = new Float32Array(N);
   for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
     const i = ty * tw + tx;
     if (world.elev[i] <= 0) continue;
-    let sw = 0, sd = 0;
-    if (fert) for (let dy = -1; dy <= 1; dy++) {
-      const yy = ty + dy; if (yy < 0 || yy >= th) continue;
-      for (let dx = -1; dx <= 1; dx++) {
-        const j = yy * tw + (((tx + dx) % tw) + tw) % tw;
-        if (world.elev[j] <= 0) continue;
-        const f = fert[j];
-        if (!(f > 0)) continue;
-        sw += f; sd += f * deep0[j];
+    let best = deep0[i];
+    if (fert) {
+      let bf = -1, bj = -1;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const j = yy * tw + (((tx + dx) % tw) + tw) % tw;
+          if (world.elev[j] <= 0) continue;
+          if (fert[j] > bf) { bf = fert[j]; bj = j; }
+        }
       }
+      if (bj >= 0 && deep0[bj] > best) best = deep0[bj];
     }
-    deep[i] = sw > 0 ? sd / sw : deep0[i];
+    deep[i] = best;
   }
   world._yieldCv = cv0;
   world._yieldDeep = deep;
