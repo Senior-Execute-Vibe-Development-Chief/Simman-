@@ -12,3 +12,6 @@ scratch-*.png
 # transient Claude Code agent worktrees (isolated subagent runs)
 .claude/worktrees/
 bench/
+
+# resumable Commons-API resolution cache (tools/build_ipa_audio.mjs)
+tools/.ipa-resolve-cache.json

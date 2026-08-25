@@ -16,6 +16,7 @@ import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhon
 import { scorePlan as tractScorePlan, scoreClause as tractScoreClause, renderScore as tractRender } from "./sim/vocalTract.js";
 import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME, registerOf, highRegister, registerWords } from "./sim/languageScript.js";
 import { foundHistory, stepHistory, ancestryOf } from "./sim/languageHistory.js";
+import { IPA_CLIPS, IPA_CLIP_CREDIT } from "./sim/ipaAudioManifest.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
@@ -95,6 +96,60 @@ function ac() {
   }
   if (AC.state === "suspended") AC.resume();
   return AC;
+}
+
+// ── the recorded-phone bank (the third voice) ─────────────────────────────
+// Human citation recordings of the base phones, one file per IPA symbol
+// (assets/ipa-audio/, openly licensed — see CREDITS-ipa-audio.md). These are
+// PHONEME clips only: isolated citation phones do not concatenate into words,
+// so word playback always stays with the synthesizers. A phone without its
+// own recording plays its nearest recorded base phone (strip length/phonation/
+// nasality, then click accompaniments, then secondary articulation, then
+// voicelessness/dentality) — and if nothing matches, the synth speaks instead.
+const HAS_CLIPS = Object.keys(IPA_CLIPS).length > 0;
+// the standalone single-file build inlines the audio as data URIs on
+// window.__IPA_AUDIO__; the dev server just fetches the assets directory
+const IPA_AUDIO_BASE = (typeof window !== "undefined" && window.__IPA_AUDIO_BASE__) || "assets/ipa-audio/";
+const CLIPS = new Map();                            // file → AudioBuffer | null (a miss stays a miss)
+function clipCandidates(sym) {
+  const out = [];
+  const push = (s) => { if (s && !out.includes(s)) out.push(s); };
+  push(sym);
+  // nasal ̃ · length ː · breathy ̤ · creaky ̰ · −ATR ̙ · mid-centralized ̽
+  let s = sym.replace(/[̃ː̤̰̙̽]/g, "");
+  push(s);
+  push(s = s.replace(/^[ɡŋ]͡/, ""));           // click accompaniment ɡ͡ / ŋ͡
+  push(s = s.replace(/[ʲʷᵐⁿᵑ]|ʰ$|ʼ$/g, ""));        // ʲ ʷ ᵐ ⁿ ᵑ, final ʰ ʼ
+  push(s = s.replace(/[̥̊̈]/g, "")); // voiceless rings ̥ ̊, centralized ̈
+  push(s.replace(/̪/g, ""));                   // dental bridge ̪ → alveolar
+  return out;
+}
+async function loadClip(sym) {
+  for (const cand of clipCandidates(sym)) {
+    const file = IPA_CLIPS[cand];
+    if (!file) continue;
+    if (CLIPS.has(file)) { const b = CLIPS.get(file); if (b) return b; continue; }
+    try {
+      const inline = typeof window !== "undefined" && window.__IPA_AUDIO__ && window.__IPA_AUDIO__[file];
+      const res = await fetch(inline || IPA_AUDIO_BASE + file);
+      if (!res.ok) throw new Error(String(res.status));
+      const buf = await ac().decodeAudioData(await res.arrayBuffer());
+      CLIPS.set(file, buf);
+      return buf;
+    } catch { CLIPS.set(file, null); }
+  }
+  return null;
+}
+function playClipOr(sym, fallbackPlan) {
+  loadClip(sym).then(buf => {
+    if (!buf) { if (fallbackPlan) speakPlanTract(fallbackPlan); return; }
+    const ctx = ac();
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start();
+    window.__lastClipPlayed = sym;             // headless-check breadcrumb
+  });
 }
 // the glottal source: a Rosenberg glottal-flow pulse's DERIVATIVE (the actual
 // acoustic source at the folds) as a PeriodicWave, replacing the buzzy
@@ -437,7 +492,7 @@ function soundHTML(l) {
     if (seenC.has(sym)) return "";
     seenC.add(sym);
     const idx = regPlan(phoneticPlan(l, { syls: [{ on: [{ ...b }], nu: [{ ...demoV }], co: [] }], tseed: 0 }));
-    return `<button class="cell spk" data-p="${idx}" title="hear it"><span class="w">${esc(romanizeC(b, prof.romTaste, prof.rom, prof.orthoStyle))}</span> <span class="gloss">${esc(sym)}</span></button>`;
+    return `<button class="cell spk" data-p="${idx}" data-ipa="${esc(sym)}" title="hear it"><span class="w">${esc(romanizeC(b, prof.romTaste, prof.rom, prof.orthoStyle))}</span> <span class="gloss">${esc(sym)}</span></button>`;
   }).filter(Boolean).join(" ");
   const seenV = new Set();
   const vChips = inv.vows.map(v => {
@@ -445,7 +500,7 @@ function soundHTML(l) {
     if (seenV.has(sym)) return "";
     seenV.add(sym);
     const idx = regPlan(phoneticPlan(l, { syls: [{ on: [], nu: [{ ...v }], co: [] }], tseed: 0 }));
-    return `<button class="cell spk" data-p="${idx}" title="hear it"><span class="w">${esc(romanizeV(v, prof.rom))}</span> <span class="gloss">${esc(sym)}</span></button>`;
+    return `<button class="cell spk" data-p="${idx}" data-ipa="${esc(sym)}" title="hear it"><span class="w">${esc(romanizeV(v, prof.rom))}</span> <span class="gloss">${esc(sym)}</span></button>`;
   }).filter(Boolean).join(" ");
   const loanSet = new Set((l.loans || []).map(x => x.c));
   const rows = [];
@@ -459,8 +514,10 @@ function soundHTML(l) {
   return `<section class="card"><h2>Sound <span class="count">— IPA &amp; a voice</span></h2>
     <p class="note">The same feature bundles the phonology stores, rendered two more ways: IPA for the linguist, and a synthesizer for the ear. Two voices are on offer: an <b>articulatory vocal tract</b> — a Kelly–Lochbaum waveguide where you set a tongue and a constriction and the formants fall out of the tube's shape, so clicks, ejectives, nasals and breathy/creaky voice all emerge from the mechanism — and the older <b>formant sketch</b> (a buzz through three resonators). Either way the clusters, codas, vowel qualities and ${prof.tone ? "tone melodies (matching the written marks exactly)" : "stress placement"} are the real ones. Click a phoneme to hear it; ▶ speaks a word. Spelling and speech may honestly disagree — the romanization drops what convention drops (initial glottal stops, collapsed digraphs); the IPA keeps it.</p>
     <p class="cells"><span class="lbl">voice</span>
-      <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice !== "formant" ? " checked" : ""}/> articulatory tract</label>
-      <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice === "formant" ? " checked" : ""}/> formant sketch</label></p>
+      <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice !== "formant" && S.voice !== "human" ? " checked" : ""}/> articulatory tract</label>
+      <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice === "formant" ? " checked" : ""}/> formant sketch</label>${HAS_CLIPS ? `
+      <label class="vopt"><input type="radio" name="voiceEngine" value="human"${S.voice === "human" ? " checked" : ""}/> recorded phones</label>` : ""}</p>${HAS_CLIPS ? `
+    <p class="note">The third voice plays a <b>human recording</b> per phoneme — real citation phones, openly licensed (${esc(IPA_CLIP_CREDIT)}). Recordings are isolated citation sounds, so they cannot be stitched into words: word and sentence playback always uses the synthesizers, and a phone without its own recording plays its nearest recorded base phone or falls back to the tract.</p>` : ""}
     <h3>Phonemes</h3>
     <p class="cells">${cChips}</p>
     <p class="cells">${vChips}</p>
@@ -1644,7 +1701,16 @@ export function mount() {
     const cp = e.target.closest("[data-cp]");
     if (cp) { const c = CLAUSES[+cp.dataset.cp]; if (c) speakClause(c.groups, c.contour); return; }
     const el = e.target.closest("[data-p]");
-    if (el) { const p = PLANS[+el.dataset.p]; if (p) speakPlan(p); return; }
+    if (el) {
+      const p = PLANS[+el.dataset.p];
+      if (!p) return;
+      // recorded-phones voice: phoneme chips (they carry their IPA) play the
+      // human clip, with the chip's own CV plan as the synth fallback; words
+      // have no recording to play and stay with the tract
+      if (S.voice === "human" && el.dataset.ipa) playClipOr(el.dataset.ipa, p);
+      else speakPlan(p);
+      return;
+    }
     // inspect a tongue from the History card: it becomes the Lab's
     // specimen, with its ancestor chain as the family (cognates light up)
     const ins = e.target.closest("[data-inspect]");
