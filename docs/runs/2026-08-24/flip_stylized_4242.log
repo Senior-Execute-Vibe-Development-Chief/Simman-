@@ -17,3 +17,4 @@
 [peopleSim] hearth candidate at (33,24) (-130.5E 54.0N) score 0.50 pkg=maize(suit 0.51) — ARMED: ~2836y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=2048 peakN=1454 pushes=9371 (0.0MB backing)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
