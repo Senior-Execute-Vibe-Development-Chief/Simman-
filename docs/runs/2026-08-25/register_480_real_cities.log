@@ -89,3 +89,11 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [transHeap] step=27240 cap=4096 peakN=2071 pushes=9846 (0.0MB backing)
   step  28000  n 465 · core p10/50/90 1/14/278 · at-bar(≤1.25×) 49% · fed p10/50/90 0.00/0.24/0.82 · hungry(<0.85) 91% · granary p50 499 · importShare p50/p90 0.00/0.00 · primacy 1.1 · cv(hungry) 0.20 vs cv(fed) 0.24
           CITIES n 243 · at-bar 3% · fed p10/50/90 0.00/0.31/0.95 · granary p10/50/90 2/355/673 · UI-STARVING 9% · importShare p50 0.00
+  step  29000  n 493 · core p10/50/90 1/15/249 · at-bar(≤1.25×) 43% · fed p10/50/90 0.00/0.28/0.99 · hungry(<0.85) 77% · granary p50 500 · importShare p50/p90 0.00/0.00 · primacy 1.1 · cv(hungry) 0.20 vs cv(fed) 0.24
+          CITIES n 287 · at-bar 3% · fed p10/50/90 0.00/0.33/1.00 · granary p10/50/90 3/379/732 · UI-STARVING 7% · importShare p50 0.00
+  step  30000  n 535 · core p10/50/90 1/16/268 · at-bar(≤1.25×) 47% · fed p10/50/90 0.00/0.10/0.95 · hungry(<0.85) 84% · granary p50 504 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.22
+          CITIES n 300 · at-bar 6% · fed p10/50/90 0.00/0.35/0.99 · granary p10/50/90 2/398/698 · UI-STARVING 7% · importShare p50 0.00
+
+  READ: at-bar% high + fed ≈ 1 → the growth ceiling (agglomeration lap).
+  fed << 1 → a food shortfall: cv(hungry) >> cv(fed) convicts the harvest
+  swings / ghost-cv seats; similar cv means the base ledger underfeeds.

@@ -142,7 +142,15 @@ export function yieldCvParts(world, i, chan, flood) {
   const winterRisk = ampC > 0 ? Math.max(0, Math.min(1, (CV_COOL0 - coolT) / CV_COOL_RAMP)) : 0;
   const chanBand = Math.max(0, Math.min(1, (chan - 2) / 3));
   const waterAccess = Math.max(Math.max(0, Math.min(1, (chan - 1) / 2)), (world.coast && world.coast[i] ? 0.5 : 0));
-  const water = flood ? 1 : Math.max(chanBand, rainMargin * waterAccess);
+  // "Arid cropland is water-fed by construction" holds only where rain farming
+  // is IMPOSSIBLE — the saturated margin (Mesopotamia/Nile-class, rainMargin
+  // ≳ 0.7). Crediting it linearly below saturation granted semi-arid coasts
+  // (rainMargin 0.3-0.7) water-security their farms don't have; through the
+  // mixture deep year that cheapened marginal coastal founding bars and
+  // hard-failed seed 777 (17 settlements, 2026-08-25 mixfix battery). The
+  // ramp keeps the true-desert cradles and withdraws the false credit.
+  const constructShare = Math.max(0, Math.min(1, (rainMargin - 0.7) / 0.3));
+  const water = flood ? 1 : Math.max(chanBand, constructShare * waterAccess);
   const cvRain = CV_BASE + CV_MARGIN * rainMargin + CV_SEASON * seasonal * (1 - rainMargin * 0.5);
   return { cv: cvRain * (1 - water) + CV_FLOOD * water + CV_WINTER * winterRisk, cvRain, water, winterRisk };
 }
