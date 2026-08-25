@@ -1,4 +1,4 @@
-[harness] tree fd0e03d
+[harness] tree 7f2e451
 [SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
 Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth pin Nile picked at tile (138,41) (27.0E 28.5N) — maturity deferred to the stagger law
@@ -16,7 +16,7 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (124,21) (6.0E 58.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
 
-=== CITY REGISTER  480x240 (tw=240)  seed 8817  OBSERVED + live arm  15000 steps ===
+=== CITY REGISTER  480x240 (tw=240)  seed 8817  OBSERVED + live arm  40000 steps ===
   city bar TIER_CORE[2] = 10 census units (~10k people)
 
 [popField] worker pool engaged: 4 bands
@@ -39,7 +39,22 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
   step  13000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
   step  14000  n   5 · core p10/50/90 2/15/372 · at-bar(≤1.25×) 40% · fed p10/50/90 0.89/0.94/1.00 · hungry(<0.85) 0% · granary p50 655 · importShare p50/p90 0.00/0.00 · primacy 1.9 · cv(hungry) 0.00 vs cv(fed) 0.20
   step  15000  n   8 · core p10/50/90 2/2/454 · at-bar(≤1.25×) 75% · fed p10/50/90 0.03/0.05/0.53 · hungry(<0.85) 100% · granary p50 653 · importShare p50/p90 0.00/0.00 · primacy 1.9 · cv(hungry) 0.20 vs cv(fed) 0.00
-
-  READ: at-bar% high + fed ≈ 1 → the growth ceiling (agglomeration lap).
-  fed << 1 → a food shortfall: cv(hungry) >> cv(fed) convicts the harvest
-  swings / ghost-cv seats; similar cv means the base ledger underfeeds.
+[peopleSim] AGRICULTURE INVENTED at (197,38) (115.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.45)
+  step  16000  n   9 · core p10/50/90 1/2/410 · at-bar(≤1.25×) 67% · fed p10/50/90 0.01/0.36/0.95 · hungry(<0.85) 89% · granary p50 653 · importShare p50/p90 0.00/0.00 · primacy 2.1 · cv(hungry) 0.20 vs cv(fed) 0.20
+  step  17000  n  30 · core p10/50/90 1/2/533 · at-bar(≤1.25×) 70% · fed p10/50/90 0.03/0.09/0.47 · hungry(<0.85) 100% · granary p50 653 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.00
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
+  step  18000  n  31 · core p10/50/90 2/5/621 · at-bar(≤1.25×) 55% · fed p10/50/90 0.03/0.38/0.99 · hungry(<0.85) 87% · granary p50 654 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.20
+[peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
+  step  19000  n  67 · core p10/50/90 1/2/503 · at-bar(≤1.25×) 64% · fed p10/50/90 0.01/0.09/0.91 · hungry(<0.85) 90% · granary p50 652 · importShare p50/p90 0.00/0.00 · primacy 1.1 · cv(hungry) 0.20 vs cv(fed) 0.20
+[peopleSim] AGRICULTURE INVENTED at (137,74) (25.5E -21.0N) — the basin farms; a city will rise when its market gathers one (score 1.69)
+  step  20000  n  84 · core p10/50/90 1/2/372 · at-bar(≤1.25×) 64% · fed p10/50/90 0.01/0.16/0.92 · hungry(<0.85) 87% · granary p50 652 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.20
+  step  21000  n 102 · core p10/50/90 1/2/518 · at-bar(≤1.25×) 60% · fed p10/50/90 0.01/0.10/0.70 · hungry(<0.85) 92% · granary p50 650 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.19
+[transHeap] step=21192 cap=2048 peakN=1100 pushes=7100 (0.0MB backing)
+  step  22000  n 137 · core p10/50/90 1/5/358 · at-bar(≤1.25×) 56% · fed p10/50/90 0.00/0.16/0.75 · hungry(<0.85) 91% · granary p50 577 · importShare p50/p90 0.00/0.00 · primacy 1.1 · cv(hungry) 0.20 vs cv(fed) 0.24
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+  step  23000  n 183 · core p10/50/90 2/10/347 · at-bar(≤1.25×) 52% · fed p10/50/90 0.00/0.27/0.99 · hungry(<0.85) 85% · granary p50 546 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.20
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
+  step  24000  n 254 · core p10/50/90 1/10/279 · at-bar(≤1.25×) 52% · fed p10/50/90 0.01/0.28/0.99 · hungry(<0.85) 87% · granary p50 508 · importShare p50/p90 0.00/0.00 · primacy 1.2 · cv(hungry) 0.20 vs cv(fed) 0.26
+  step  25000  n 297 · core p10/50/90 0/9/312 · at-bar(≤1.25×) 53% · fed p10/50/90 0.00/0.18/0.98 · hungry(<0.85) 85% · granary p50 490 · importShare p50/p90 0.00/0.00 · primacy 1.2 · cv(hungry) 0.20 vs cv(fed) 0.26
+  step  26000  n 344 · core p10/50/90 0/9/262 · at-bar(≤1.25×) 52% · fed p10/50/90 0.00/0.22/0.95 · hungry(<0.85) 88% · granary p50 523 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.25

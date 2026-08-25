@@ -55,6 +55,25 @@ for (let s = 0; s < STEPS; s += 1000) {
   cores.sort((a, b) => b - a);
   const prim = cores.length > 1 ? cores[0] / cores[1] : 1;
   console.log(`  step ${String(world.step).padStart(6)}  n ${String(n).padStart(3)} · core p10/50/90 ${q(cores, .1).toFixed(0)}/${q(cores, .5).toFixed(0)}/${q(cores, .9).toFixed(0)} · at-bar(≤1.25×) ${Math.round(100 * atBar / Math.max(1, n))}% · fed p10/50/90 ${q(feds, .1).toFixed(2)}/${q(feds, .5).toFixed(2)}/${q(feds, .9).toFixed(2)} · hungry(<0.85) ${Math.round(100 * feds.filter(f => f < 0.85).length / Math.max(1, n))}% · granary p50 ${q(gran, .5).toFixed(0)} · importShare p50/p90 ${q(imp, .5).toFixed(2)}/${q(imp, .9).toFixed(2)} · primacy ${prim.toFixed(1)} · cv(hungry) ${q(hungryCv, .5).toFixed(2)} vs cv(fed) ${q(fedCv, .5).toFixed(2)}`);
+  // CITIES ONLY (core ≥ 0.8×bar): the owner's register — and the UI's literal
+  // "starving" condition (granary ≤ 0.01 AND supply < core need).
+  {
+    const cf = [], cg = [], ci = [];
+    let cn = 0, cAtBar = 0, uiStarve = 0;
+    for (const st of world.settlements) {
+      if (st.mode !== "settled") continue;
+      const core = st._urbanPop ?? st.people;
+      if (core < TIER_CORE[2] * 0.8) continue;
+      cn++;
+      if (core <= TIER_CORE[2] * 1.25) cAtBar++;
+      cf.push(st._fedM ?? 1); cg.push(st.food || 0);
+      const supply = st._foodSupply || 0;
+      ci.push(supply > 0 ? Math.max(0, ((st._foodNet ?? 0) - (st._landFood || 0)) / supply) : 0);
+      const coreNeed = core * 0.003;
+      if ((st.food || 0) <= 0.01 && supply < coreNeed) uiStarve++;
+    }
+    console.log(`          CITIES n ${String(cn).padStart(3)} · at-bar ${Math.round(100 * cAtBar / Math.max(1, cn))}% · fed p10/50/90 ${q(cf, .1).toFixed(2)}/${q(cf, .5).toFixed(2)}/${q(cf, .9).toFixed(2)} · granary p10/50/90 ${q(cg, .1).toFixed(0)}/${q(cg, .5).toFixed(0)}/${q(cg, .9).toFixed(0)} · UI-STARVING ${cn ? Math.round(100 * uiStarve / cn) : 0}% · importShare p50 ${q(ci, .5).toFixed(2)}`);
+  }
 }
 console.log(`\n  READ: at-bar% high + fed ≈ 1 → the growth ceiling (agglomeration lap).`);
 console.log(`  fed << 1 → a food shortfall: cv(hungry) >> cv(fed) convicts the harvest`);
