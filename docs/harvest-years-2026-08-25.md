@@ -429,3 +429,18 @@ byte-identical to baseline by construction.
   import-fed cities measure siege/famine-fragile, that is its own lap.
 - MKT-SHORT-idle in the classifier now mostly means "pre-coinage" — the
   classifier checks coin but not the institution; refine when next used.
+
+### The tw=960 spot-check verdict (gm5_shape_1920.log, post-flip defaults)
+
+probe_shape 24k at W=1920 (the grid that ships): realms 17, claimed 16.8%,
+median realm 909k km² (healthy absolute scale — resgate's tw=480 floor is
+60k), MAX 8.9M km² at top1share 36%, max/med 9.8, **lnσ 3.21**, small-state
+(<100k km²) share **29%** — versus the shape-wave's recorded defect era
+(lnσ 0.8-1.1, small share 2-14%) and history's bands (lnσ 2.0-2.6, small
+share 47-80%). The post-v47 fine-grid world has a REAL size hierarchy and a
+small-state tier; no kind-difference collapse from the grain market at the
+app grid. (A sanity check against recorded baselines, not a same-build
+lever-off A/B — that twin costs hours; this is the standing
+third-cardinal-rule arm.) lnσ now sits slightly ABOVE the historical band —
+driven by mem=0 relic micro-states (1-6k km²) coexisting with the hegemon —
+a note for the consolidation wave, not this one.
