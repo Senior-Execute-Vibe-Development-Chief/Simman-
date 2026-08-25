@@ -142,17 +142,19 @@ export function yieldCvParts(world, i, chan, flood) {
   const winterRisk = ampC > 0 ? Math.max(0, Math.min(1, (CV_COOL0 - coolT) / CV_COOL_RAMP)) : 0;
   const chanBand = Math.max(0, Math.min(1, (chan - 2) / 3));
   const waterAccess = Math.max(Math.max(0, Math.min(1, (chan - 1) / 2)), (world.coast && world.coast[i] ? 0.5 : 0));
-  // "Arid cropland is water-fed by construction" holds only where rain farming
-  // is IMPOSSIBLE — the saturated margin (Mesopotamia/Nile-class, rainMargin
-  // ≳ 0.7). Crediting it linearly below saturation granted semi-arid coasts
-  // (rainMargin 0.3-0.7) water-security their farms don't have; through the
-  // mixture deep year that cheapened marginal coastal founding bars and
-  // hard-failed seed 777 (17 settlements, 2026-08-25 mixfix battery). The
-  // ramp keeps the true-desert cradles and withdraws the false credit.
+  // The cv/annual water blend is THE FLIP-VALIDATED FORM — do not touch it
+  // (2026-08-25 lesson, paid three battery rounds: every attempt to "tighten"
+  // this term while fixing the founding bars moved seed 777's world and broke
+  // its gate; the identical-failure-number pairs in the mixfix run logs are
+  // the proof the founding problem never lived here). constructShare — the
+  // "water-fed by construction" credit, valid only where rain farming is
+  // impossible (rainMargin ≳ 0.7) — is computed for the DEEP-YEAR lift in
+  // ensureYieldCv and plays no part in the cv itself.
   const constructShare = Math.max(0, Math.min(1, (rainMargin - 0.7) / 0.3));
-  const water = flood ? 1 : Math.max(chanBand, constructShare * waterAccess);
+  const water = flood ? 1 : Math.max(chanBand, rainMargin * waterAccess);
   const cvRain = CV_BASE + CV_MARGIN * rainMargin + CV_SEASON * seasonal * (1 - rainMargin * 0.5);
-  return { cv: cvRain * (1 - water) + CV_FLOOD * water + CV_WINTER * winterRisk, cvRain, water, winterRisk };
+  return { cv: cvRain * (1 - water) + CV_FLOOD * water + CV_WINTER * winterRisk,
+    cvRain, water, winterRisk, flood, chanBand, waterAccess, constructShare };
 }
 
 export function yieldCvAt(world, i, chan, flood) {
@@ -183,21 +185,16 @@ export function yieldCvAt(world, i, chan, flood) {
  *                       worst year — which is why Sumer could exist. For pure
  *                       rain land (water 0) it reduces exactly to 1 − 2.33·cv.
  *
- * The DEEP map's neighbourhood read is the seat's own tile OR the 3×3's
- * RICHEST-fert tile, whichever is more secure — the same "farms sit beside
- * the seat" convention as the channel term. The fert mask is max-pooled, so
- * a tile beside a valley carries the valley's fert: a founding seat there
- * rides the land that fert points to, not its own point-sampled desert
- * climate (the ghost-tile trap probe_nilebox measured; a mis-priced seat is
- * a PERMANENT 5× founding bar). The read is deliberately NOT the
- * fert-weighted MEAN: on patchy marginal geography the mean drags a good
- * pocket's bar down toward its poor surroundings, and pocket-cities are
- * exactly how a marginal world civilizes — measured: the mean-smoothed map
- * hard-failed seed 777 (17 settlements) with numbers identical across two
- * water-term variants, isolating the smoothing itself. The CV map stays the
- * honest per-tile formula — it is the validated quantity (11/12 literature
- * regions) and the annual amplitude, where a ghost seat's wrong swing is
- * mean-1 noise, not a standing wall.
+ * NO neighbourhood pass on either map (two were measured and killed, run
+ * logs 2026-08-25: the fert-weighted MEAN dragged marginal pockets toward
+ * their poor surroundings, the richest-fert MAX cheapened bars beside every
+ * good tile — each hard-failed seed 777's register). The ghost-tile trap the
+ * passes chased (a desert tile beside the Nile wearing max-pooled valley
+ * fert) is already priced by the formula's own 3×3 CHANNEL read plus the
+ * saturation gate: such a tile sits at rainMargin 1 with the channel in
+ * reach, so its construct credit is full and its deep year is the flood
+ * regime's. The CV map stays the honest per-tile formula — the validated
+ * quantity (11/12 literature regions) and the annual amplitude.
  */
 export function ensureYieldCv(world) {
   if (world._yieldCv) return world._yieldCv;
@@ -205,6 +202,10 @@ export function ensureYieldCv(world) {
   const rm = world.riverMag;
   const cv0 = new Float32Array(N);
   const deep0 = new Float32Array(N);
+  // T.ARID_SECURE component maps (construct-water share + rain-side cv) — the
+  // annual draw reads them so the year physics agrees with the founding lift.
+  const wd0 = T.ARID_SECURE > 0 ? (world._yieldWaterDeep = new Float32Array(N)) : null;
+  const cvR0 = T.ARID_SECURE > 0 ? (world._yieldCvRain = new Float32Array(N)) : null;
   for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
     const i = ty * tw + tx;
     if (world.elev[i] <= 0) continue;
@@ -220,37 +221,38 @@ export function ensureYieldCv(world) {
     }
     const parts = yieldCvParts(world, i, chan, world.tFlood ? world.tFlood[i] : 0);
     cv0[i] = parts.cv;
-    // deep year, per component: watered share at the flood regime's own deep
-    // year; rain share floored at total loss; winter risk bites both.
-    deep0[i] = Math.max(0, Math.min(1,
-      parts.water * (1 - 2.33 * CV_FLOOD)
-      + (1 - parts.water) * Math.max(0, 1 - 2.33 * parts.cvRain)
-      - 2.33 * CV_WINTER * parts.winterRisk));
-  }
-  // DEEP map neighbourhood read (see the header): the seat's own tile, or
-  // the 3×3's richest-fert tile if that land is more secure — never a mean.
-  const fert = world.fert;
-  const deep = new Float32Array(N);
-  for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
-    const i = ty * tw + tx;
-    if (world.elev[i] <= 0) continue;
-    let best = deep0[i];
-    if (fert) {
-      let bf = -1, bj = -1;
-      for (let dy = -1; dy <= 1; dy++) {
-        const yy = ty + dy; if (yy < 0 || yy >= th) continue;
-        for (let dx = -1; dx <= 1; dx++) {
-          const j = yy * tw + (((tx + dx) % tw) + tw) % tw;
-          if (world.elev[j] <= 0) continue;
-          if (fert[j] > bf) { bf = fert[j]; bj = j; }
-        }
-      }
-      if (bj >= 0 && deep0[bj] > best) best = deep0[bj];
+    // The deep year. DEFAULT: the composite 1 − 2.33·cv — the exact physics
+    // the 2026-08-25 flip ladder validated, seed 777 included.
+    //
+    // T.ARID_SECURE lifts it by the per-component mixture where the water IS
+    // the farm — the flood mask, or channel/coast access on SATURATED-arid
+    // land (constructShare: rain farming impossible, the cropland water-fed
+    // by construction). There the rain share fails to zero while the watered
+    // share keeps the flood regime's own deep year, which the composite's
+    // Gaussian tail cannot see — it reads half-irrigated Mesopotamia as
+    // near-total loss and prices it at the 5× clamp, out of civilization at
+    // the app grid (probe_foundbar 1920, the owner's empty Middle East).
+    // GATED, NOT DEFAULT, after a four-round elimination (mixfix1-6 run
+    // logs): the lift alone tells the FOUNDING law "secure" while the ANNUAL
+    // draw still swings the same tiles at composite famine amplitude — the
+    // maps disagree, desert-coast mints become doom-cities, and seed 777's
+    // register bled to 15-17 settlements in every unpaired variant. The lift
+    // is only coherent PAIRED with the component-wise annual draw below
+    // (updateHarvestYears), so both ride one lever with their own ladder.
+    let deep = 1 - 2.33 * parts.cv;
+    if (T.ARID_SECURE > 0) {
+      const waterDeep = parts.flood ? 1 : parts.constructShare * Math.max(parts.chanBand, parts.waterAccess);
+      wd0[i] = waterDeep;
+      const mixDeep = waterDeep * (1 - 2.33 * CV_FLOOD)
+        + (1 - waterDeep) * Math.max(0, 1 - 2.33 * parts.cvRain)
+        - 2.33 * CV_WINTER * parts.winterRisk;
+      if (mixDeep > deep) deep = mixDeep;
+      cvR0[i] = parts.cvRain;
     }
-    deep[i] = best;
+    deep0[i] = Math.max(0, Math.min(1, deep));
   }
   world._yieldCv = cv0;
-  world._yieldDeep = deep;
+  world._yieldDeep = deep0;
   return cv0;
 }
 
@@ -340,7 +342,17 @@ export function updateHarvestYears(world) {
     const ti = ty * tw + tx;
     const z = zAt(world, tx, ty, zs);
     const c = cv[ti] || 0;
-    const mul = Math.max(MUL_FLOOR, Math.min(MUL_CEIL, 1 + z * c));
+    let mul = 1 + z * c;
+    // T.ARID_SECURE: on construct-water land the year is the same mixture the
+    // founding lift prices — the watered share swings at the flood regime's
+    // amplitude while the rain share can fail outright. Without this half the
+    // lift mints cities whose annual draw still famines at composite
+    // amplitude (the mixfix doom-city elimination — see ensureYieldCv).
+    if (T.ARID_SECURE > 0 && world._yieldWaterDeep) {
+      const wd = world._yieldWaterDeep[ti];
+      if (wd > 0) mul = wd * (1 + z * CV_FLOOD) + (1 - wd) * Math.max(0, 1 + z * (world._yieldCvRain[ti] || 0));
+    }
+    mul = Math.max(MUL_FLOOR, Math.min(MUL_CEIL, mul));
     s._harvestYearMul = mul;
     if (z < LEAN_Z && mul < FAMINE_LOSS) {
       const onset = world.step >= (s._famineUntil || 0);   // read BEFORE extending
