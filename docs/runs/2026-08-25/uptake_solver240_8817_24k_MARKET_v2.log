@@ -56,3 +56,10 @@ step  14000  n 11 · polities 7 (1.6/realm) · parents 1 · leaves 10 (91%) · i
    hungry(<0.85) 2/11:  LEAF 1 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 1
      leaf market stage:  MKT-SHORT 1
 
+[transHeap] step=15144 cap=2048 peakN=1037 pushes=5904 (0.0MB backing)
+step  16000  n 16 · polities 11 (1.5/realm) · parents 3 · leaves 13 (81%) · importers(isr>.02) 2
+   flow/tick  offers 1.57  levied 0.36  bought 0.90  unbought 0.32  PEER-bought 0.10 · coin-capped parents 0/2 · ΣcoreNeed 2.1 Σsupply 28.9 Σland 29.1
+   fed  leaf p10/50/90 0.93/1.00/1.00  parent 0.00/1.00/1.00 · importShare p50/p90 0.00/0.10 · spare-coin p50 3579.3
+   hungry(<0.85) 2/16:  LEAF 1 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 1
+     leaf market stage:  MKT-SHORT 1
+
