@@ -1,4 +1,4 @@
-// ── Central-place grain market ────────────────────────────────────────
+// ── Central-place grain market (+ the open peer market, v47) ──────────
 //
 // Grain flows UP the settlement hierarchy (village → market town → city →
 // capital) and COIN flows DOWN to pay for it. A market centre aggregates the
