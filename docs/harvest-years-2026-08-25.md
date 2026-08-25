@@ -272,8 +272,18 @@ alone tells the founding law "secure" while the annual draw still famines
 the same tiles at composite amplitude: desert-coast mints become
 doom-cities. Two of the variants failed with byte-identical numbers, which
 is what isolated each cause in turn. The default path returned to the
-exact SAVE_VERSION 46 flip physics (verified: 777 at defaults, all hard
-gates, 0 warnings) and ARID_SECURE's own ladder gates its flip.
+exact SAVE_VERSION 46 flip physics (verified across the full board: 777
+all-hard/0-warn, 8817 0-warn, 4242 in-budget, smoke, resgate all bands).
+
+**The lever's own ladder verdict: still RED on the gate seed.** Paired,
+777 reads 19 settlements vs the alive floor (unpaired variants: 15-17) —
+the pairing damps the damage but the construct credit still net-harms
+marginal geography. The remaining wrongness is capacity-shaped: the deep
+margin says "secure" while the desert tile's actual watered CAPACITY still
+cannot carry a city through real years — the credit likely must require
+the basin's watered capacity, not channel presence. ARID_SECURE ships 0
+with that named refinement; safe to hand-set for a Mideast-peopled Earth
+in live play (the app-grid seats measure right).
 
 Standing sub-lesson, now twice-paid in one wave: **the flip-validated cv
 formula is one organism** — a change to any term while chasing a
