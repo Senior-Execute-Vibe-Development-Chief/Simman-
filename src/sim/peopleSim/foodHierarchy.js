@@ -142,7 +142,10 @@ export function aggregateFoodHierarchy(world) {
   // below only ever ADDS arrivals) so a settlement that drops out of the food
   // hierarchy — or out of "settled" mode — reads a fading, then zero, "Imported
   // /tick" row instead of freezing at its last value.
-  for (const s of world.settlements) if (s._foodImportRate) s._foodImportRate *= 0.9;
+  for (const s of world.settlements) {
+    if (s._foodImportRate) s._foodImportRate *= 0.9;
+    if (s._foodExported) s._foodExported = 0;   // T.GRAIN_MARKET capacity add-back: rolls each aggregation; updateSettlement (earlier in the tick) read the previous pass's value
+  }
 
   // ── 1. price per settlement ─────────────────────────────────────────
   for (const s of world.settlements) {
@@ -341,6 +344,7 @@ function grainMarketPass(world) {
     // no-mechanism band. Emergent, never a date: the market opens where and
     // when a society mints coin.
     if (!techEff(s).market) continue;
+    if (T.SIEGE_STARVE && s._besiegedNow) continue;   // no marketing through a siege line
     let need = (s._foodDemand || 0) - (s._foodNet || 0);
     if (need <= 1e-9) continue;
     const reach = mergeReach(s);
@@ -353,6 +357,7 @@ function grainMarketPass(world) {
       if (peerId === s.id) continue;
       const p = world._byId ? world._byId.get(peerId) : null;
       if (!p || p.mode !== "settled") continue;
+      if (T.SIEGE_STARVE && p._besiegedNow) continue;   // a besieged seat sells nothing across the lines (and its capacity add-back stays 0)
       // _foodNet is the seller's LIVE inventory — each sale below decrements
       // it, so the residual self-draws-down (a bushel can only sell once).
       // THE SEED-CORN RULE: a settlement sells only the surplus its own
@@ -384,6 +389,7 @@ function grainMarketPass(world) {
       // Seller parts with what ARRIVES (the tree sweep's convention — the
       // un-hauled remainder never left the farm gate).
       p._foodNet = (p._foodNet || 0) - landed;
+      p._foodExported = (p._foodExported || 0) + landed;   // capacity add-back (updatePopulation): exports cannot drag the catchment's K below what its land grows
       s._foodNet = (s._foodNet || 0) + landed;
       need -= landed; boughtIn += landed;
       if (ts) { ts.peerBought = (ts.peerBought || 0) + landed; p._dbgPeerOut = (p._dbgPeerOut || 0) + landed; }
