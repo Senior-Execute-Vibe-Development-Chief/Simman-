@@ -94,3 +94,4 @@ step  22000  n 145 · polities 85 (1.7/realm) · parents 26 · leaves 119 (82%) 
      W-Europe       n  12 · fed p50 0.70 · importers 3 · leaf 75%
 
 [transHeap] step=22704 cap=2048 peakN=1150 pushes=9380 (0.0MB backing)
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
