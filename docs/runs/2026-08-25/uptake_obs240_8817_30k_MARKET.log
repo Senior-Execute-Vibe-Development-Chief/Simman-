@@ -115,3 +115,4 @@ step  26000  n 313 · polities 202 (1.5/realm) · parents 61 · leaves 252 (81%)
      Pontic         n   9 · fed p50 0.83 · importers 2 · leaf 100%
      W-Europe       n  27 · fed p50 0.86 · importers 14 · leaf 81%
 
+[transHeap] step=27744 cap=4096 peakN=2183 pushes=9455 (0.0MB backing)
