@@ -17,3 +17,4 @@
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=1021 pushes=8177 (0.0MB backing)
 [peopleSim] AGRICULTURE INVENTED at (77,72) (-64.5E -18.0N) — the basin farms; a city will rise when its market gathers one (score 0.68)
+[transHeap] step=12624 cap=2048 peakN=1042 pushes=5844 (0.0MB backing)
