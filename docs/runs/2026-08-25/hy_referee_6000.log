@@ -1,0 +1,64 @@
+[harness] tree 5b6c2c3
+
+=== HARVEST-YEARS REFEREE  480x240 seed 8817 6000 steps (3000 harvest years) ===
+[arm 1/2] legacy scripted famine ...
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,36) (114.0E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (138,40) (27.0E 30.0N) score 5.41 pkg=wheat(suit 0.78) — matured 1151y into prehistory (wave age 4849y)
+[peopleSim] hearth Pephamdo at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — matured 900y into prehistory (wave age 5100y)
+[peopleSim] hearth Pomponsom at (167,41) (70.5E 28.5N) score 6.30 pkg=wheat(suit 0.97) — matured 929y into prehistory (wave age 5071y)
+[peopleSim] hearth Fevvon at (196,36) (114.0E 36.0N) score 4.55 pkg=rice(suit 0.79) — matured 3173y into prehistory (wave age 2827y)
+[peopleSim] hearth Nawaxexi at (56,49) (-96.0E 16.5N) score 1.89 pkg=maize(suit 0.84) — matured 5373y into prehistory (wave age 627y)
+[peopleSim] hearth Sasfesu at (111,53) (-13.5E 10.5N) score 1.69 pkg=sorghum(suit 0.62) — matured 3251y into prehistory (wave age 2749y)
+[peopleSim] hearth Wityim at (136,72) (24.0E -18.0N) score 1.13 pkg=sorghum(suit 0.56) — matured 3544y into prehistory (wave age 2456y)
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.68 pkg=tubers(suit 0.44) — ARMED: ~790y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 pkg=maize(suit 0.18) — ARMED: ~18458y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 pkg=wheat(suit 0.12) — ARMED: ~7000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=1021 pushes=8177 (0.0MB backing)
+[arm 2/2] HARVEST_YEARS ...
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,36) (114.0E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (138,40) (27.0E 30.0N) score 5.41 pkg=wheat(suit 0.78) — matured 1151y into prehistory (wave age 4849y)
+[peopleSim] hearth Pephamdo at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — matured 900y into prehistory (wave age 5100y)
+[peopleSim] hearth Pomponsom at (167,41) (70.5E 28.5N) score 6.30 pkg=wheat(suit 0.97) — matured 929y into prehistory (wave age 5071y)
+[peopleSim] hearth Fevvon at (196,36) (114.0E 36.0N) score 4.55 pkg=rice(suit 0.79) — matured 3173y into prehistory (wave age 2827y)
+[peopleSim] hearth Nawaxexi at (56,49) (-96.0E 16.5N) score 1.89 pkg=maize(suit 0.84) — matured 5373y into prehistory (wave age 627y)
+[peopleSim] hearth Sasfesu at (111,53) (-13.5E 10.5N) score 1.69 pkg=sorghum(suit 0.62) — matured 3251y into prehistory (wave age 2749y)
+[peopleSim] hearth Wityim at (136,72) (24.0E -18.0N) score 1.13 pkg=sorghum(suit 0.56) — matured 3544y into prehistory (wave age 2456y)
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.68 pkg=tubers(suit 0.44) — ARMED: ~790y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 pkg=maize(suit 0.18) — ARMED: ~18458y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 pkg=wheat(suit 0.12) — ARMED: ~7000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=1021 pushes=8177 (0.0MB backing)
+
+  ANNUAL MULTIPLIER by tile-CV class (HARVEST arm; p10/p50/p90 over all settlement-years):
+    cv low  n=  3897  0.84/1.00/1.16  mean 1.001
+    cv mid  n= 15359  0.81/1.00/1.20  mean 1.001
+    cv high n=     0  0.00/0.00/0.00  mean 0.000
+
+  FAMINE EVENTS (famine.struck): legacy 4 (1.3/1000y)  vs  harvest 175 (58.3/1000y)
+
+  GRANARY (mean settlement food, sampled):
+    step      legacy    harvest
+         2      81.0      81.0   (n 7/7)
+       502     207.9     217.3   (n 7/7)
+      1002     310.3     319.2   (n 7/7)
+      1502     332.8     332.8   (n 7/7)
+      2002     421.3     421.3   (n 5/5)
+      2502     409.8     409.5   (n 6/6)
+      3002     405.0     403.9   (n 6/6)
+      3502     429.4     430.6   (n 6/6)
+      4002     438.5     436.6   (n 6/6)
+      4502     449.4     491.7   (n 7/6)
+      5002     458.2     498.1   (n 7/7)
+      5502     508.7     488.0   (n 7/7)
+
+  settlements at end: legacy 7  harvest 7
+  READ: mean multiplier ~1.00 per class (no hidden tax/subsidy); amplitude ordered
+  low<mid<high; famine cadence regionally honest (chronic only where cv is high);
+  granary/aliveness within a sane band of legacy.
