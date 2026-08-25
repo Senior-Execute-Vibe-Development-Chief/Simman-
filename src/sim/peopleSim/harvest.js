@@ -107,6 +107,17 @@ export const CV_COOL_RAMP = 13; // °C span to the full winter margin (≈ −7�
  * because a great river can be grid-thin: the Tigris-Euphrates never exceeds
  * mag 2 at tw≤480 (probe_floodmask 2026-08-25), so every mag bar reads
  * Mesopotamia as rain-fed desert while the floodplain mask sees the valley.
+ * THIRD water signal — arid-land agriculture is water-fed BY CONSTRUCTION.
+ * Where the rain margin saturates, rain farming cannot exist; whatever
+ * cropland the capacity stack built there, it built from water access (the
+ * irrigation stack's channel, the floodplain, the ALLUVIUM_COAST delta — its
+ * own terms). Charging such land the full rain-fed desert CV (~0.45) describes
+ * farms that could not be there: the Nile's ribbon-adjacent bank tiles read
+ * fert 0.93 / moist 0.02 / chan 3 (probe_nilebox 2026-08-25), and lower
+ * Mesopotamia's cropland is Gulf-delta alluvium on a mag-2 thread. So the
+ * flood weight also rises with rainMargin × waterAccess, where waterAccess =
+ * max(channel-in-reach (chan−1)/2, coast × 0.5) — the 0.5 is ALLUVIUM_COAST's
+ * own weighting, one language with the capacity stack.
  * @param {object} world  sim world (moist/temp/_dryFrac/_warmRainFrac/_tAmp)
  * @param {number} i      tile index
  * @param {number} chan   river channel magnitude feeding the tile (0 if none)
@@ -126,7 +137,9 @@ export function yieldCvAt(world, i, chan, flood) {
   // winter risk: cool-half mean temperature (°C)
   const coolT = (t - 0.6) * 100 - ampC;
   const winterRisk = ampC > 0 ? Math.max(0, Math.min(1, (CV_COOL0 - coolT) / CV_COOL_RAMP)) : 0;
-  const water = flood ? 1 : Math.max(0, Math.min(1, (chan - 2) / 3));
+  const chanBand = Math.max(0, Math.min(1, (chan - 2) / 3));
+  const waterAccess = Math.max(Math.max(0, Math.min(1, (chan - 1) / 2)), (world.coast && world.coast[i] ? 0.5 : 0));
+  const water = flood ? 1 : Math.max(chanBand, rainMargin * waterAccess);
   const cvRain = CV_BASE + CV_MARGIN * rainMargin + CV_SEASON * seasonal * (1 - rainMargin * 0.5);
   return cvRain * (1 - water) + CV_FLOOD * water + CV_WINTER * winterRisk;
 }

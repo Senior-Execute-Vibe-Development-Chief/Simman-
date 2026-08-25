@@ -1,4 +1,4 @@
-[harness] tree 311c683
+[harness] tree 97f51dd
 Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (299,76) (44.3E 33.0N) — maturity deferred to the stagger law
@@ -21,18 +21,18 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
   region          sim CV p10/P50w/p90    real band     verdict   (P50w = fert-weighted median, the verdict statistic)
   England/N.Fr   0.10/0.11/0.15          0.08-0.16     ok    [margin 0.00 season 0.00 winter 0.00 water 0.00]
   Med. Spain     0.15/0.22/0.38          0.18-0.30     ok    [margin 0.19 season 0.35 winter 0.00 water 0.00]
-  Greece/Aegean  0.15/0.24/0.34          0.18-0.30     ok    [margin 0.22 season 0.75 winter 0.00 water 0.00]
-  Sahel          0.20/0.33/0.45          0.30-0.48     ok    [margin 0.52 season 0.51 winter 0.00 water 0.00]
-  Nile valley    0.20/0.37/0.46          0.14-0.26     HIGH  [margin 1.00 season 0.00 winter 0.00 water 0.33]
-  Mesopotamia    0.37/0.42/0.50          0.15-0.30     HIGH  [margin 0.69 season 0.84 winter 0.00 water 0.00]
-  Ganges         0.19/0.21/0.27          0.14-0.26     ok    [margin 0.00 season 0.87 winter 0.00 water 0.00]
+  Greece/Aegean  0.15/0.24/0.31          0.18-0.30     ok    [margin 0.22 season 0.75 winter 0.00 water 0.00]
+  Sahel          0.20/0.30/0.45          0.30-0.48     ok    [margin 0.52 season 0.51 winter 0.00 water 0.00]
+  Nile valley    0.20/0.20/0.45          0.14-0.26     ok    [margin 1.00 season 0.00 winter 0.00 water 1.00]
+  Mesopotamia    0.35/0.35/0.42          0.15-0.30     HIGH  [margin 0.69 season 0.84 winter 0.00 water 0.50]
+  Ganges         0.19/0.21/0.26          0.14-0.26     ok    [margin 0.00 season 0.87 winter 0.00 water 0.00]
   N.China plain  0.18/0.23/0.31          0.18-0.32     ok    [margin 0.00 season 0.64 winter 0.21 water 0.33]
-  Pontic steppe  0.20/0.26/0.41          0.25-0.42     ok    [margin 0.02 season 0.41 winter 0.41 water 0.00]
+  Pontic steppe  0.20/0.25/0.37          0.25-0.42     ok    [margin 0.02 season 0.41 winter 0.41 water 0.00]
   Kazakh steppe  0.27/0.28/0.37          0.25-0.42     ok    [margin 0.00 season 0.07 winter 1.00 water 0.00]
   Java/wet trop  0.10/0.10/0.11          0.06-0.15     ok    [margin 0.00 season 0.00 winter 0.00 water 0.00]
-  S.India int.   0.20/0.22/0.29          0.20-0.35     ok    [margin 0.00 season 0.94 winter 0.00 water 0.00]
+  S.India int.   0.20/0.22/0.28          0.20-0.35     ok    [margin 0.00 season 0.94 winter 0.00 water 0.00]
 
-  agreement: 10/12 region medians inside their literature band
+  agreement: 11/12 region medians inside their literature band
   world land CV p10/p50/p90: 0.14/0.32/0.55
 
   LEAN_YEAR bridge preview (margin = 1/p10-year ≈ 1/(1−1.28·cv), the deep year 1/(1−2.33·cv)):

@@ -145,7 +145,9 @@ for (const r of R) {
       for (let dy = -1; dy <= 1; dy++) { const yy = ty0 + dy; if (yy < 0 || yy >= TH) continue;
         for (let dx = -1; dx <= 1; dx++) { const v = riverMag ? riverMag[yy * TW + (((tx0 + dx) % TW) + TW) % TW] : 0; if (v > ch) ch = v; } }
       const flood = world.tFlood ? world.tFlood[i] : 0;
-      diag.wa.push([flood ? 1 : Math.max(0, Math.min(1, (ch - 2) / 3)), world.fert[i]]); }
+      const rm2 = Math.max(0, Math.min(1, (CV_EM0 - em) / CV_EM_RAMP));
+      const acc = Math.max(Math.max(0, Math.min(1, (ch - 1) / 2)), (world.coast && world.coast[i] ? 0.5 : 0));
+      diag.wa.push([flood ? 1 : Math.max(Math.max(0, Math.min(1, (ch - 2) / 3)), rm2 * acc), world.fert[i]]); }
   }
   if (!vals.length) { console.log(`  ${r.k.padEnd(14)} (no land tiles)`); continue; }
   n++;

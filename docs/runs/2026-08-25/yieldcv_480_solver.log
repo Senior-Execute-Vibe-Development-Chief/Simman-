@@ -1,4 +1,4 @@
-[harness] tree 311c683
+[harness] tree 97f51dd
 [peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
@@ -21,15 +21,15 @@
   England/N.Fr   0.10/0.10/0.21          0.08-0.16     ok    [margin 0.00 season 0.00 winter 0.00 water 0.00]
   Med. Spain     0.10/0.16/0.21          0.18-0.30     LOW   [margin 0.00 season 0.50 winter 0.00 water 0.00]
   Greece/Aegean  0.10/0.16/0.22          0.18-0.30     LOW   [margin 0.00 season 0.50 winter 0.00 water 0.00]
-  Sahel          0.10/0.17/0.43          0.30-0.48     LOW   [margin 0.00 season 0.50 winter 0.00 water 0.00]
+  Sahel          0.10/0.17/0.32          0.30-0.48     LOW   [margin 0.00 season 0.50 winter 0.00 water 0.00]
   Nile valley    0.20/0.20/0.45          0.14-0.26     ok    [margin 0.00 season 0.00 winter 0.00 water 1.00]
-  Mesopotamia    0.26/0.42/0.47          0.15-0.30     HIGH  [margin 0.80 season 0.16 winter 0.00 water 0.00]
-  Ganges         0.10/0.16/0.29          0.14-0.26     ok    [margin 0.00 season 0.00 winter 0.00 water 0.00]
+  Mesopotamia    0.25/0.33/0.42          0.15-0.30     HIGH  [margin 0.80 season 0.16 winter 0.00 water 0.23]
+  Ganges         0.10/0.16/0.27          0.14-0.26     ok    [margin 0.00 season 0.00 winter 0.00 water 0.05]
   N.China plain  0.12/0.13/0.19          0.18-0.32     LOW   [margin 0.00 season 0.00 winter 0.00 water 0.33]
   Pontic steppe  0.10/0.21/0.31          0.25-0.42     LOW   [margin 0.00 season 0.00 winter 0.08 water 0.00]
   Kazakh steppe  0.18/0.24/0.37          0.25-0.42     LOW   [margin 0.00 season 0.00 winter 0.66 water 0.00]
   Java/wet trop  0.10/0.10/0.10          0.06-0.15     ok    [margin 0.00 season 0.00 winter 0.00 water 0.00]
-  S.India int.   0.10/0.16/0.30          0.20-0.35     LOW   [margin 0.00 season 0.00 winter 0.00 water 0.00]
+  S.India int.   0.10/0.16/0.28          0.20-0.35     LOW   [margin 0.00 season 0.00 winter 0.00 water 0.00]
 
   agreement: 4/12 region medians inside their literature band
   world land CV p10/p50/p90: 0.13/0.28/0.55
