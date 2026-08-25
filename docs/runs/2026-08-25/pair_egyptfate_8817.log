@@ -1,0 +1,131 @@
+[harness] tree 05b644c
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"LEAN_YEAR":1,"HARVEST_YEARS":1}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,36) (114.0E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 5.41 pkg=wheat(suit 0.78) — ARMED: ~1151y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 6.29 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.30 pkg=wheat(suit 0.97) — ARMED: ~929y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,36) (114.0E 36.0N) score 4.55 pkg=rice(suit 0.79) — ARMED: ~3173y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (56,49) (-96.0E 16.5N) score 1.89 pkg=maize(suit 0.84) — ARMED: ~5373y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.69 pkg=sorghum(suit 0.62) — ARMED: ~3251y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (136,72) (24.0E -18.0N) score 1.13 pkg=tubers(suit 0.54) — ARMED: ~5599y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.68 pkg=tubers(suit 0.44) — ARMED: ~6790y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== EGYPT AUTOPSY  480x240 (tw=240)  seed 8817  box lon 24..36 lat 20..33 (66 land tiles) ===
+  step | box: sett  Σpeople | largest (people/urban  fed  dis  org) cid | realm@box: id  boxT  worldT   km²  mem  cap/load  fronts | field: Σpop  Σcap
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+   100 |   0       0 |   (none) |         (no realm owns the box) | 6017 19605
+   200 |   0       0 |   (none) |         (no realm owns the box) | 6149 19605
+   300 |   0       0 |   (none) |         (no realm owns the box) | 6282 19605
+   400 |   0       0 |   (none) |         (no realm owns the box) | 6414 19605
+   500 |   0       0 |   (none) |         (no realm owns the box) | 6547 19605
+   600 |   0       0 |   (none) |         (no realm owns the box) | 6681 19605
+   700 |   0       0 |   (none) |         (no realm owns the box) | 6814 19605
+   800 |   0       0 |   (none) |         (no realm owns the box) | 6949 19605
+   900 |   0       0 |   (none) |         (no realm owns the box) | 7084 19605
+  1000 |   0       0 |   (none) |         (no realm owns the box) | 7219 19605
+  1100 |   0       0 |   (none) |         (no realm owns the box) | 7355 19605
+  1200 |   0       0 |   (none) |         (no realm owns the box) | 7491 19605
+  1300 |   0       0 |   (none) |         (no realm owns the box) | 7628 19605
+  1400 |   0       0 |   (none) |         (no realm owns the box) | 7765 19605
+  1500 |   0       0 |   (none) |         (no realm owns the box) | 7902 19605
+  1600 |   0       0 |   (none) |         (no realm owns the box) | 8039 19605
+  1700 |   0       0 |   (none) |         (no realm owns the box) | 8177 19605
+  1800 |   0       0 |   (none) |         (no realm owns the box) | 8315 19605
+  1900 |   0       0 |   (none) |         (no realm owns the box) | 8452 19605
+  2000 |   0       0 |   (none) |         (no realm owns the box) | 8590 19605
+  2100 |   0       0 |   (none) |         (no realm owns the box) | 8729 19605
+  2200 |   0       0 |   (none) |         (no realm owns the box) | 8867 19605
+  2300 |   0       0 |   (none) |         (no realm owns the box) | 9005 19605
+  2400 |   0       0 |   (none) |         (no realm owns the box) | 9143 19605
+  2500 |   0       0 |   (none) |         (no realm owns the box) | 9280 19605
+  2600 |   0       0 |   (none) |         (no realm owns the box) | 9418 19605
+  2700 |   0       0 |   (none) |         (no realm owns the box) | 9555 19605
+  2800 |   0       0 |   (none) |         (no realm owns the box) | 9692 19605
+  2900 |   0       0 |   (none) |         (no realm owns the box) | 9829 19605
+  3000 |   0       0 |   (none) |         (no realm owns the box) | 9965 19605
+  3100 |   0       0 |   (none) |         (no realm owns the box) | 10101 19605
+  3200 |   0       0 |   (none) |         (no realm owns the box) | 10237 19605
+  3300 |   0       0 |   (none) |         (no realm owns the box) | 10372 19605
+  3400 |   0       0 |   (none) |         (no realm owns the box) | 10506 19605
+  3500 |   0       0 |   (none) |         (no realm owns the box) | 10640 19605
+  3600 |   0       0 |   (none) |         (no realm owns the box) | 10773 19605
+  3700 |   0       0 |   (none) |         (no realm owns the box) | 10905 19605
+  3800 |   0       0 |   (none) |         (no realm owns the box) | 11037 19605
+  3900 |   0       0 |   (none) |         (no realm owns the box) | 11168 19605
+  4000 |   0       0 |   (none) |         (no realm owns the box) | 11298 19605
+  4100 |   0       0 |   (none) |         (no realm owns the box) | 11427 19605
+  4200 |   0       0 |   (none) |         (no realm owns the box) | 11555 19605
+  4300 |   0       0 |   (none) |         (no realm owns the box) | 11682 19605
+  4400 |   0       0 |   (none) |         (no realm owns the box) | 11808 19605
+  4500 |   0       0 |   (none) |         (no realm owns the box) | 11934 19605
+  4600 |   0       0 |   (none) |         (no realm owns the box) | 12058 19605
+  4700 |   0       0 |   (none) |         (no realm owns the box) | 12181 19605
+  4800 |   0       0 |   (none) |         (no realm owns the box) | 12303 19605
+  4900 |   0       0 |   (none) |         (no realm owns the box) | 12424 19605
+  5000 |   0       0 |   (none) |         (no realm owns the box) | 12544 19605
+  5100 |   0       0 |   (none) |         (no realm owns the box) | 12662 19605
+  5200 |   0       0 |   (none) |         (no realm owns the box) | 12780 19605
+  5300 |   0       0 |   (none) |         (no realm owns the box) | 12896 19605
+  5400 |   0       0 |   (none) |         (no realm owns the box) | 13010 19605
+  5500 |   0       0 |   (none) |         (no realm owns the box) | 13124 19605
+  5600 |   0       0 |   (none) |         (no realm owns the box) | 13236 19605
+  5700 |   0       0 |   (none) |         (no realm owns the box) | 13347 19605
+  5800 |   0       0 |   (none) |         (no realm owns the box) | 13457 19605
+  5900 |   0       0 |   (none) |         (no realm owns the box) | 13565 19605
+  6000 |   0       0 |   (none) |         (no realm owns the box) | 13672 19605
+  6100 |   0       0 |   (none) |         (no realm owns the box) | 13778 19605
+  6200 |   0       0 |   (none) |         (no realm owns the box) | 13882 19605
+  6300 |   0       0 |   (none) |         (no realm owns the box) | 13985 19605
+  6400 |   0       0 |   (none) |         (no realm owns the box) | 14086 19605
+  6500 |   0       0 |   (none) |         (no realm owns the box) | 14187 19605
+  6600 |   0       0 |   (none) |         (no realm owns the box) | 14285 19605
+  6700 |   0       0 |   (none) |         (no realm owns the box) | 14383 19605
+  6800 |   0       0 |   (none) |         (no realm owns the box) | 14478 19605
+  6900 |   0       0 |   (none) |         (no realm owns the box) | 14573 19605
+  7000 |   0       0 |   (none) |         (no realm owns the box) | 14666 19605
+  7100 |   0       0 |   (none) |         (no realm owns the box) | 14758 19605
+  7200 |   0       0 |   (none) |         (no realm owns the box) | 14848 19605
+  7300 |   0       0 |   (none) |         (no realm owns the box) | 14937 19605
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.29)
+  7400 |   0       0 |   (none) |         (no realm owns the box) | 15025 19605
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+  7500 |   0       0 |   (none) |         (no realm owns the box) | 15111 19605
+  7600 |   0       0 |   (none) |         (no realm owns the box) | 15195 19605
+  7700 |   0       0 |   (none) |         (no realm owns the box) | 15279 19605
+  7800 |   0       0 |   (none) |         (no realm owns the box) | 15361 19605
+  7900 |   0       0 |   (none) |         (no realm owns the box) | 15442 19605
+  8000 |   0       0 |   (none) |         (no realm owns the box) | 15521 19605
+  8100 |   0       0 |   (none) |         (no realm owns the box) | 16447 118486
+  8200 |   0       0 |   (none) |         (no realm owns the box) | 17717 118486
+  8300 |   0       0 |   (none) |         (no realm owns the box) | 19062 118486
+  8400 |   0       0 |   (none) |         (no realm owns the box) | 20456 118486
+  8500 |   0       0 |   (none) |         (no realm owns the box) | 21894 118486
+  8600 |   0       0 |   (none) |         (no realm owns the box) | 23373 118486
+  8700 |   0       0 |   (none) |         (no realm owns the box) | 24801 207304
+  8800 |   0       0 |   (none) |         (no realm owns the box) | 26136 207304
+  8900 |   0       0 |   (none) |         (no realm owns the box) | 27801 207304
+  9000 |   0       0 |   (none) |         (no realm owns the box) | 29642 207304
+  9100 |   0       0 |   (none) |         (no realm owns the box) | 31613 207304
+  9200 |   0       0 |   (none) |         (no realm owns the box) | 33696 207304
+  9300 |   0       0 |   (none) |         (no realm owns the box) | 35883 207304
+  9400 |   0       0 |   (none) |         (no realm owns the box) | 37963 249161
+  9500 |   0       0 |   (none) |         (no realm owns the box) | 40074 249161
+  9600 |   0       0 |   (none) |         (no realm owns the box) | 42405 249161
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 5.41)
+  9700 |   0       0 |   (none) |         (no realm owns the box) | 44906 249161
+  9800 |   0       0 |   (none) |         (no realm owns the box) | 47553 249161
+  9900 |   0       0 |   (none) |         (no realm owns the box) | 50332 249161
+ 10000 |   0       0 |   (none) |         (no realm owns the box) | 53234 249161
+ 10100 |   0       0 |   (none) |         (no realm owns the box) | 55049 330039
+ 10200 |   0       0 |   (none) |         (no realm owns the box) | 56850 330039
+ 10300 |   0       0 |   (none) |         (no realm owns the box) | 58913 330039
+ 10400 |   0       0 |   (none) |         (no realm owns the box) | 61211 330039
+ 10500 |   0       0 |   (none) |         (no realm owns the box) | 63730 330039
+ 10600 |   0       0 |   (none) |         (no realm owns the box) | 66459 330039
+ 10700 |   0       0 |   (none) |         (no realm owns the box) | 69393 343130

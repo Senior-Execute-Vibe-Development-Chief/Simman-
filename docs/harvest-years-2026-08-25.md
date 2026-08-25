@@ -122,12 +122,59 @@ strangled seed 777. The per-basin law now has a validated map to read.
 `probe_nilebox.mjs` (per-tile cropland dumps, Nile/Mesopotamia) ·
 `probe_yieldcv.mjs` v2 (--real arm, fert-weighted verdicts, axis diagnostics).
 
-## Lap 2 — the harvest-years mechanism (next)
+## Lap 2 — the harvest-years mechanism (T.HARVEST_YEARS, built)
 
-Design (owner-ratified): an annual regional harvest index — spatially
-correlated, year-persistent, composing with climate.js's century layer —
-multiplying landFood; famine DERIVED from the tail (log famine.struck when a
-region goes below its p10); FAMINE_CHANCE/SEVERITY/RADIUS and famineVuln
-aiming retire; granaries do real work automatically. New persisted state ⇒
-SAVE bump + coverage/monotone. Then LEAN_YEAR per-basin margin from this map
-(step 3) and the flip ladder (step 4).
+The annual layer under climate.js's century walk (harvest.js, second half).
+Each harvest year (2 ticks = 1 yr, the `_ivl` convention): every ~12°
+weather cell advances an AR(1) z (ρ=0.30 — drought runs), one 3×3 spatial
+smooth (analytically re-normalized to unit variance); each settled
+settlement's landFood multiplies by `1 + z·cv(seat)` clamped [0.15, 1.6],
+with cv from the validated map. Pastoral stays the famine hedge (added after
+the cut, the recorded design). Granaries/prices/relief/siege all respond
+through the systems that already read landFood.
+
+**Famine derives from the tail**: a year below the region's p10 (z < −1.28)
+that also destroys >35% of the harvest (mul < 0.65 — the retired
+FAMINE_SEVERITY's own loss bar, now met emergently) sets the SAME
+`s._famineUntil` every consumer already reads (distress +0.5, faith crisis
++0.3) and logs `famine.struck` once per afflicted realm at onset. The
+scripted spawner (the aimed die, flat severity, radius stamp) retires under
+the lever; plague untouched.
+
+Determinism/persistence: `world._harvestZ` persists (~450 floats); the
+smoothed field, lean state and multipliers all re-derive from it;
+`_harvestYearMul` joins BOTH the settlement whitelist and the determinism
+hash (the `_thinBasinSince` lesson). probe_harvestresume: harvest state
+round-trips EXACTLY (z, multipliers, famine events identical), pop drift
+0.35% vs the 0.27% lever-off baseline — the codebase's known warm-up drift,
+no new class.
+
+**Referee (probe_harvest, 480/8817/6000 steps = 3000y)**: mean multiplier
+1.001 over 19k settlement-years (no hidden tax or subsidy); amplitudes by CV
+class p10/p90 = 0.84/1.16 (low) and 0.81/1.20 (mid); famine 58/1000y
+world-wide across ~15 settlements (≈ once per generation-to-century per
+region, emergently by class) vs the legacy dice's 1.3/1000y planet-wide.
+Coverage GREEN with the lever on (the new state is reachable); stylized
+8817 and 777 under the lever: all hard gates, 0 warnings each.
+
+## Lap 3 — LEAN_YEAR per-basin (built)
+
+`crystallize.js leanAt(world, ti)`: the founding margin becomes the basin's
+own DEEP year — `1/(1 − 2.33·cv)` clamped ≤5×, the once-a-century harvest
+from the same map — replacing the flat planetary `1/FAMINE_SEVERITY ≈ 2.86×`
+whose referendum was decisively green in the owner's live regime but
+hard-failed seed 777 (a flat 2.9× strangles marginal-geography worlds).
+England-class ~1.4×, the Nile's flood regime ~1.9×, Mesopotamia ~2.3×, the
+Sahel ~5×. All seven bar sites re-wired per-site (cityBasinOkAt,
+labelBasinFree's peer capacity, the site lane's eligibility/storable/drift
+bars via `barOf(k)`, maybePeerSeats' capacity + takes, the mint-time take).
+Dissolve stays 1× — the stability band is now per-basin.
+
+## Lap 4 — the flip ladder (in flight)
+
+Pre-flip ladder under `LEAN_YEAR=1,HARVEST_YEARS=1`: stylized 8817/4242/777
+(777 is THE gate — it must release by physics), default smoke, resgate,
+monotone, and the Egypt live-regime referendum (probe_egyptfate, the
+2026-08-24 arm + the pair — the owner's win must survive the per-basin
+re-pricing at the Nile's ~1.9×). Verdicts land below; flip =
+SAVE_VERSION 46, both levers ON, v<46 guard.
