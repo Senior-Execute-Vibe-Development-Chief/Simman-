@@ -251,17 +251,33 @@ east area" — even though the Nile shows the densest population on the globe.
   (the autopsy's throughput chapter). cv(hungry) = cv(fed): the hunger is
   structural, NOT harvest-swing-driven.
 
-### Shipped this lap (the mixture fix)
+### Shipped this lap: T.ARID_SECURE (def 0) — and a four-round lesson
 
-`world._yieldDeep`: the founding deep year computed PER WATER COMPONENT —
-the rain share fails to zero, the irrigated share bottoms at the flood
-regime's own deep year (which is why Sumer could exist) — and read
-fert-weighted over the 3×3 (a ghost seat rides the land its max-pooled fert
-describes; a mis-priced seat is a permanent wall). The cv map stays the
-honest per-tile formula (11/12 validation; smoothing it shaved boundary
-regions — deep-only smoothing keeps both). Mesopotamia p50 5.0→3.5×
-(clamp 63→38%), seat-class 2.45×, Levant ~3.0×; pure desert honestly stays
-5×. leanAt reads the deep map.
+The Mideast fix is the PER-COMPONENT MIXTURE on construct-water land (the
+flood mask, or channel/coast access where rainMargin ≳ 0.7 — rain farming
+impossible, the cropland water-fed by construction): the rain share fails
+to zero in the worst year while the watered share keeps the flood regime's
+own deep year — which is why Sumer could exist, and what the composite
+cv's Gaussian tail cannot see. Measured at the app grid with the pair:
+Mesopotamia seats ~1.9×, Levant ~1.6-1.7×, Nile unchanged 1.87×, desert
+bulk honestly ≥4×.
+
+**It ships as a GATED PAIR, not a default** — the founding deep year AND
+the annual draw must carry the same mixture, or the maps disagree. The
+elimination that proved it (mixfix1-6 run logs, four battery rounds):
+every unpaired variant — the deep lift alone, fert-MEAN smoothing,
+richest-fert-MAX smoothing, water-term "tightening" inside the validated
+cv — bled seed 777's register to 15-17 settlements (hard fail). The lift
+alone tells the founding law "secure" while the annual draw still famines
+the same tiles at composite amplitude: desert-coast mints become
+doom-cities. Two of the variants failed with byte-identical numbers, which
+is what isolated each cause in turn. The default path returned to the
+exact SAVE_VERSION 46 flip physics (verified: 777 at defaults, all hard
+gates, 0 warnings) and ARID_SECURE's own ladder gates its flip.
+
+Standing sub-lesson, now twice-paid in one wave: **the flip-validated cv
+formula is one organism** — a change to any term while chasing a
+different consumer moves every gate world.
 
 ### The next wave (measured, named, not this lap)
 
