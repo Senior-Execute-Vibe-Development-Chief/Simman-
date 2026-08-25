@@ -106,3 +106,12 @@ step  24000  n 234 · polities 164 (1.4/realm) · parents 37 · leaves 197 (84%)
      Pontic         n  11 · fed p50 0.93 · importers 6 · leaf 91%
      W-Europe       n  26 · fed p50 0.95 · importers 13 · leaf 88%
 
+step  26000  n 313 · polities 202 (1.5/realm) · parents 61 · leaves 252 (81%) · importers(isr>.02) 121
+   flow/tick  offers 5.40  levied 2.11  bought 0.99  unbought 2.29  PEER-bought 9.62 · coin-capped parents 7/12 · ΣcoreNeed 94.2 Σsupply 201.1 Σland 218.6
+   fed  leaf p10/50/90 0.13/0.61/1.00  parent 0.21/0.67/0.96 · importShare p50/p90 0.00/1.00 · spare-coin p50 48.3
+   hungry(<0.85) 221/313:  LEAF 176 · DRY-SURPLUS 37 · DRY-HAUL 0 · CAPPED 5 · FED-SHORT 3
+     Egypt/Mideast  n  14 · fed p50 0.21 · importers 1 · leaf 86%
+     India          n  33 · fed p50 0.46 · importers 13 · leaf 85%
+     Pontic         n   9 · fed p50 0.83 · importers 2 · leaf 100%
+     W-Europe       n  27 · fed p50 0.86 · importers 14 · leaf 81%
+

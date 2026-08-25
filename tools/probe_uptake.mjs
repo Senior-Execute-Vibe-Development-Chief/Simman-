@@ -70,6 +70,7 @@ console.log(`\n=== IMPORT-UPTAKE FUNNEL  ${W}x${H} (tw=${tw})  seed ${SEED}  ${S
 for (let done = 0; done < STEPS; done += CKPT) {
   stepPeopleSim(world, CKPT - WIN);
   // stats window: accumulate the levy/buy split on the real sweep
+  for (const s of world.settlements) { s._dbgPeerIn = 0; s._dbgPeerOut = 0; }   // window-scoped accumulators
   world._tradeStats = { levied: 0, bought: 0, unbought: 0, peerBought: 0 };
   stepPeopleSim(world, WIN);
   const ts = world._tradeStats;
@@ -99,7 +100,7 @@ for (let done = 0; done < STEPS; done += CKPT) {
   // after the peer pass; with it off: what the market WOULD need). Post-pass
   // reads, so residuals are what's LEFT after this tick's sales — a ranking of
   // causes, not an exact ledger.
-  const mkt = { "MKT-NOREACH": 0, "MKT-NOSELLER": 0, "MKT-HAULDEAD": 0, "MKT-NOCOIN": 0, "MKT-SHORT": 0 };
+  const mkt = { "MKT-COVERED": 0, "MKT-NOREACH": 0, "MKT-NOSELLER": 0, "MKT-HAULDEAD": 0, "MKT-NOCOIN": 0, "MKT-SHORT-bought": 0, "MKT-SHORT-idle": 0 };
   const fedLeaf = [], fedPar = [], impShares = [], spares = [];
   let hungry = 0, coinCapPar = 0, buyingPar = 0;
   const boxStat = {}; for (const k in BOXES) boxStat[k] = { n: 0, fed: [], imp: 0, leaf: 0 };
@@ -142,10 +143,11 @@ for (let done = 0; done < STEPS; done += CKPT) {
             landable += r * foodHaulArrive(world, p, s);
           }
           const needNow = Math.max(0, (s._foodDemand || 0) - (s._foodNet || 0));
-          if (resid <= 1e-6) mkt["MKT-NOSELLER"]++;
-          else if (landable < Math.max(1e-6, needNow) * 0.05) mkt["MKT-HAULDEAD"]++;
+          if (needNow <= 1e-6) mkt["MKT-COVERED"]++;   // bought to full need this tick — _fedM (a ~230-tick average) still catching up
+          else if (resid <= 1e-6) mkt["MKT-NOSELLER"]++;
+          else if (landable < needNow * 0.05) mkt["MKT-HAULDEAD"]++;
           else if ((s.wealth || 0) - getWealthReserve(s) <= 1e-6) mkt["MKT-NOCOIN"]++;
-          else mkt["MKT-SHORT"]++;
+          else mkt[(s._dbgPeerIn || 0) > 0 ? "MKT-SHORT-bought" : "MKT-SHORT-idle"]++;   // idle with sellers+haul+coin = a mechanism bug
         }
       } else {
         let kidSurp = 0, kidOffer = 0;
