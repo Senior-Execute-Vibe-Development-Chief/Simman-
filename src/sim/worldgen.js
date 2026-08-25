@@ -21,6 +21,7 @@ import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthD
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture, terrainShelter } from "./moistureSolver.js";
+import { demand } from "./biomeClass.js";
 
 const RES = 1;
 
@@ -829,13 +830,40 @@ const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
 // ── Growing-season fallback for every non-real-climate map ───────────────────
 // The Earth-Sim path fills tAmp/warmRainFrac from measured monthly data; every
-// other preset gets a PHYSICAL default, not measured but mechanism-true: the
-// annual temperature SWING grows with latitude (small at the equator, large
-// toward the poles — the dominant driver), and the warm-half rain share follows
-// the seasonal-moisture PHASE the solstice solves already produced (summerDry:
-// +1 = summer-dry Mediterranean → little warm-half rain; −1 = summer-wet monsoon
-// → most of it). Continentality is a documented refinement, not in this first arm.
-if(!realClimateUsed){for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;const lat=Math.abs((y+0.5)/H-0.5)*2;
-tAmp[i]=0.02+0.20*Math.pow(lat,1.2);
+// other preset gets a PHYSICAL model of the annual temperature swing. The first
+// arm was latitude-only ("continentality is a documented refinement, not in this
+// first arm") — measured against NCEP amplitude it read every 51°N place at
+// ~12°C swing: London (real 5°C) = Astana (real 12°C), which broke the
+// yield-variance map's winter-risk axis (probe_moistcal 2026-08-25). This arm is
+// the documented refinement, three real drivers, calibrated per-region against
+// the NCEP seasonal amplitude (engineering fit, ±20% where lat-only was ±150%):
+//   • latitude — the insolation swing, the continental-limit ceiling
+//     (26°C·lat^1.35: Astana-class ~12°C at 51°N, tropics near zero);
+//   • ocean buffering along the WESTERLY fetch — the mechanism that separates
+//     London from Astana lives in the westerly belt (~20-35°+), so the maritime
+//     damping (×0.30 at zero fetch) fades in with it. Same dirDist scan as
+//     westFetch above, run here for every preset (that one is earth_sim-local).
+//     A pangaea interior is fully continental on its own — emergent, no gates;
+//   • aridity — dry soil and clear skies swing harder (Mesopotamia's 9.6°C at
+//     33°N is heat-summer amplitude, not cold winters). Read as 1−em on the
+//     classifier's own Holdridge language (em = moisture/demand), faded out at
+//     the equator where the year has no seasons to swing between.
+// warmRainFrac still follows the seasonal-moisture PHASE the solstice solves
+// produced (summerDry: +1 = summer-dry Mediterranean → little warm-half rain;
+// −1 = summer-wet monsoon → most of it). The solver's phase field is weak (the
+// recorded MED-classifier limitation), so monsoon concentration under-reads in
+// this regime — a named input debt, not recalibrable here.
+if(!realClimateUsed){
+const aCap=Math.max(1,Math.round(W*75/360));   // ~75° westerly-fetch cap, like wfScan
+const aOcean=new Uint8Array(W*H);for(let i=0;i<W*H;i++)aOcean[i]=elevation[i]<=0?1:0;
+const aFetch=dirDist(aOcean,W,H,1,aCap);        // px west to the upwind ocean
+const aDegPx=360/W;
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;const lat=Math.abs((y+0.5)/H-0.5)*2;
+const latSwing=26*Math.pow(lat,1.35);                       // °C, continental-limit swing
+const westerly=Math.max(0,Math.min(1,(lat*90-20)/15));      // the ocean-buffer belt, 20°→35°
+const conti=Math.min(1,(aFetch[i]*aDegPx)/45);              // 0 maritime … 1 deep interior (45°+)
+const em=elevation[i]>0?moisture[i]/demand(temperature[i]):1;
+const aridBoost=3.9*Math.max(0,Math.min(1,1-em))*Math.min(1,lat/0.22);   // °C
+tAmp[i]=Math.max(0.005,(latSwing*(0.30+0.70*conti*westerly)+aridBoost)/100);
 warmRainFrac[i]=Math.max(0,Math.min(1,0.5*(1-summerDry[i])));}}
 return{elevation,moisture,temperature,dryFrac,summerDry,tAmp,warmRainFrac,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}

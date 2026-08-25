@@ -108,11 +108,15 @@ export function createWorld(w, opts = {}) {
 
 function initTerrain(world, w, tCrop, tFloodSrc) {
   const { tw, th, tileRes, elev, temp, moist, fert, coast } = world;
-  // T.GROW_SEASON: carry the growing-season fields onto the sim world so the crop
-  // bell can read each package on the season it grows in. Gated so off-lever the
-  // world has no new state (byte-identical, and coverage stays honest). Point-
-  // sampled like temp/moist above, from the same worldgen pixel.
-  const gsOn = T.GROW_SEASON && w.tAmp && w.warmRainFrac;
+  // Carry the seasonal-climate fields onto the sim world whenever worldgen
+  // provides them: the crop bell reads them under T.GROW_SEASON, and the
+  // yield-variance map (the harvest-years wave, 2026-08-25) reads tAmp as its
+  // continental winter-risk axis in BOTH regimes. Carrying is behaviour-free —
+  // every consumer keeps its own lever gate; underscore fields never persist.
+  // (Was gated on T.GROW_SEASON; the gate moved to the consumer when the
+  // variance map became a second reader.) Point-sampled like temp/moist above,
+  // from the same worldgen pixel.
+  const gsOn = w.tAmp && w.warmRainFrac;
   const tAmpF = gsOn ? (world._tAmp = new Float32Array(world.N)) : null;
   const wRainF = gsOn ? (world._warmRainFrac = new Float32Array(world.N)) : null;
   // T.CANOPY_CLASS: carry the dry-season fields onto the sim world so the shared
