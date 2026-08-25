@@ -68,7 +68,7 @@ console.log(`\n=== IMPORT-UPTAKE FUNNEL  ${W}x${H} (tw=${tw})  seed ${SEED}  ${S
 for (let done = 0; done < STEPS; done += CKPT) {
   stepPeopleSim(world, CKPT - WIN);
   // stats window: accumulate the levy/buy split on the real sweep
-  world._tradeStats = { levied: 0, bought: 0, unbought: 0 };
+  world._tradeStats = { levied: 0, bought: 0, unbought: 0, peerBought: 0 };
   stepPeopleSim(world, WIN);
   const ts = world._tradeStats;
   world._tradeStats = null;
@@ -136,7 +136,7 @@ for (let done = 0; done < STEPS; done += CKPT) {
   }
   const perTick = v => (v / WIN).toFixed(2);
   console.log(`step ${String(world.step).padStart(6)}  n ${n} · polities ${polities.size} (${(n / Math.max(1, polities.size)).toFixed(1)}/realm) · parents ${parents} · leaves ${leaves} (${Math.round(100 * leaves / Math.max(1, n))}%) · importers(isr>.02) ${importersLive}`);
-  console.log(`   flow/tick  offers ${perTick((ts.levied + ts.bought + ts.unbought) * 1)}  levied ${perTick(ts.levied)}  bought ${perTick(ts.bought)}  unbought ${perTick(ts.unbought)} · coin-capped parents ${coinCapPar}/${buyingPar} · ΣcoreNeed ${coreNeedSum.toFixed(1)} Σsupply ${supplySum.toFixed(1)} Σland ${landSum.toFixed(1)}`);
+  console.log(`   flow/tick  offers ${perTick((ts.levied + ts.bought + ts.unbought) * 1)}  levied ${perTick(ts.levied)}  bought ${perTick(ts.bought)}  unbought ${perTick(ts.unbought)}  PEER-bought ${perTick(ts.peerBought || 0)} · coin-capped parents ${coinCapPar}/${buyingPar} · ΣcoreNeed ${coreNeedSum.toFixed(1)} Σsupply ${supplySum.toFixed(1)} Σland ${landSum.toFixed(1)}`);
   console.log(`   fed  leaf p10/50/90 ${q(fedLeaf, .1).toFixed(2)}/${q(fedLeaf, .5).toFixed(2)}/${q(fedLeaf, .9).toFixed(2)}  parent ${q(fedPar, .1).toFixed(2)}/${q(fedPar, .5).toFixed(2)}/${q(fedPar, .9).toFixed(2)} · importShare p50/p90 ${q(impShares, .5).toFixed(2)}/${q(impShares, .9).toFixed(2)} · spare-coin p50 ${q(spares, .5).toFixed(1)}`);
   const at = Object.entries(cls).map(([k, v]) => `${k} ${v}`).join(" · ");
   console.log(`   hungry(<0.85) ${hungry}/${n}:  ${at}`);
