@@ -1,0 +1,19 @@
+[harness] tree 652d923
+[SIM_TUNE] {"ONE_BOOK":1,"SHIP_SURPLUS":1}
+[resgate] seed=8817 steps=6000 — reference grid vs the SHIPPED app grid
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — matured 974y into prehistory (wave age 5026y)
+[peopleSim] hearth Pephamdo at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — matured 1311y into prehistory (wave age 4689y)
+[peopleSim] hearth Pomponsom at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — matured 922y into prehistory (wave age 5078y)
+[peopleSim] hearth Fevvon at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — matured 3106y into prehistory (wave age 2894y)
+[peopleSim] hearth Nawaxexi at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — matured 5148y into prehistory (wave age 852y)
+[peopleSim] hearth Sasfesu at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — matured 3133y into prehistory (wave age 2867y)
+[peopleSim] hearth Wityim at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — matured 3243y into prehistory (wave age 2757y)
+[peopleSim] hearth Ninuvy at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — matured 5283y into prehistory (wave age 717y)
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 pkg=maize(suit 0.51) — ARMED: ~2842y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~7000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=2048 peakN=1495 pushes=9318 (0.0MB backing)

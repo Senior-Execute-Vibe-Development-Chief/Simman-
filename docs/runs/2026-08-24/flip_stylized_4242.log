@@ -1,0 +1,19 @@
+[harness] tree 652d923
+[SIM_TUNE] {"ONE_BOOK":1,"SHIP_SURPLUS":1}
+[stylized] seed 4242 · 480x240 · 21000 steps
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (150,38) (45.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) (115.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Viizubuụda at (138,40) (27.0E 30.0N) score 5.49 pkg=wheat(suit 0.80) — matured 1129y into prehistory (wave age 4871y)
+[peopleSim] hearth Pịgatfaa at (150,38) (45.0E 33.0N) score 4.45 pkg=wheat(suit 0.72) — matured 1253y into prehistory (wave age 4747y)
+[peopleSim] hearth Qòbég at (167,41) (70.5E 28.5N) score 5.16 pkg=wheat(suit 0.80) — matured 1130y into prehistory (wave age 4870y)
+[peopleSim] hearth Kalsaffo at (197,38) (115.5E 33.0N) score 6.43 pkg=rice(suit 1.03) — matured 2434y into prehistory (wave age 3566y)
+[peopleSim] hearth Chlurthiryi at (52,39) (-102.0E 31.5N) score 5.34 pkg=maize(suit 1.02) — matured 4408y into prehistory (wave age 1592y)
+[peopleSim] hearth Ọththet at (114,52) (-9.0E 12.0N) score 3.57 pkg=sorghum(suit 0.65) — matured 3085y into prehistory (wave age 2915y)
+[peopleSim] hearth Kyoekhin at (81,74) (-58.5E -21.0N) score 1.36 pkg=tubers(suit 0.58) — matured 5148y into prehistory (wave age 852y)
+[peopleSim] hearth Taomemase at (135,71) (22.5E -16.5N) score 1.34 pkg=tubers(suit 0.63) — matured 4788y into prehistory (wave age 1212y)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~7000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (33,24) (-130.5E 54.0N) score 0.50 pkg=maize(suit 0.51) — ARMED: ~2836y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=2048 peakN=1454 pushes=9371 (0.0MB backing)
