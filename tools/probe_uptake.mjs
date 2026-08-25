@@ -33,7 +33,9 @@
 import { readFileSync } from "node:fs";
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
-import { TIER_CORE } from "../src/sim/peopleSim/settlement.js";
+import { TIER_CORE, getWealthReserve } from "../src/sim/peopleSim/settlement.js";
+import { foodHaulArrive } from "../src/sim/peopleSim/foodHierarchy.js";
+import { mergeReach } from "../src/sim/peopleSim/roads.js";
 
 const args = process.argv.slice(2).filter(a => a !== "--solver");
 const SOLVER = process.argv.includes("--solver");
@@ -92,6 +94,12 @@ for (let done = 0; done < STEPS; done += CKPT) {
   let leaves = 0, parents = 0, importersLive = 0;
   let coreNeedSum = 0, supplySum = 0, landSum = 0, offerSum = 0;
   const cls = { LEAF: 0, "DRY-SURPLUS": 0, "DRY-HAUL": 0, CAPPED: 0, "FED-SHORT": 0 };
+  // Market-stage attribution for hungry LEAVES — what stands between each one
+  // and the OPEN market (meaningful with T.GRAIN_MARKET on: the residual funnel
+  // after the peer pass; with it off: what the market WOULD need). Post-pass
+  // reads, so residuals are what's LEFT after this tick's sales — a ranking of
+  // causes, not an exact ledger.
+  const mkt = { "MKT-NOREACH": 0, "MKT-NOSELLER": 0, "MKT-HAULDEAD": 0, "MKT-NOCOIN": 0, "MKT-SHORT": 0 };
   const fedLeaf = [], fedPar = [], impShares = [], spares = [];
   let hungry = 0, coinCapPar = 0, buyingPar = 0;
   const boxStat = {}; for (const k in BOXES) boxStat[k] = { n: 0, fed: [], imp: 0, leaf: 0 };
@@ -119,8 +127,27 @@ for (let done = 0; done < STEPS; done += CKPT) {
     // attribution for the hungry
     if (fed < 0.85) {
       hungry++;
-      if (!isPar) cls.LEAF++;
-      else {
+      if (!isPar) {
+        cls.LEAF++;
+        const reach = mergeReach(s);
+        if (!reach || reach.size === 0) mkt["MKT-NOREACH"]++;
+        else {
+          let resid = 0, landable = 0;
+          for (const [pid] of reach) {
+            const p = byId.get(pid);
+            if (!p || p.mode !== "settled" || p.id === s.id) continue;
+            const r = Math.max(0, (p._foodNet || 0) - (p._foodDemand || 0));
+            if (r <= 0) continue;
+            resid += r;
+            landable += r * foodHaulArrive(world, p, s);
+          }
+          const needNow = Math.max(0, (s._foodDemand || 0) - (s._foodNet || 0));
+          if (resid <= 1e-6) mkt["MKT-NOSELLER"]++;
+          else if (landable < Math.max(1e-6, needNow) * 0.05) mkt["MKT-HAULDEAD"]++;
+          else if ((s.wealth || 0) - getWealthReserve(s) <= 1e-6) mkt["MKT-NOCOIN"]++;
+          else mkt["MKT-SHORT"]++;
+        }
+      } else {
         let kidSurp = 0, kidOffer = 0;
         for (const k of kids) {
           kidSurp += Math.max(0, (k._foodPool || 0) - (k._foodDemand || 0));
@@ -140,6 +167,7 @@ for (let done = 0; done < STEPS; done += CKPT) {
   console.log(`   fed  leaf p10/50/90 ${q(fedLeaf, .1).toFixed(2)}/${q(fedLeaf, .5).toFixed(2)}/${q(fedLeaf, .9).toFixed(2)}  parent ${q(fedPar, .1).toFixed(2)}/${q(fedPar, .5).toFixed(2)}/${q(fedPar, .9).toFixed(2)} · importShare p50/p90 ${q(impShares, .5).toFixed(2)}/${q(impShares, .9).toFixed(2)} · spare-coin p50 ${q(spares, .5).toFixed(1)}`);
   const at = Object.entries(cls).map(([k, v]) => `${k} ${v}`).join(" · ");
   console.log(`   hungry(<0.85) ${hungry}/${n}:  ${at}`);
+  if (cls.LEAF > 0) console.log(`     leaf market stage:  ${Object.entries(mkt).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join(" · ") || "(none classified)"}`);
   for (const k in BOXES) {
     const b = boxStat[k];
     if (b.n) console.log(`     ${k.padEnd(14)} n ${String(b.n).padStart(3)} · fed p50 ${q(b.fed, .5).toFixed(2)} · importers ${b.imp} · leaf ${Math.round(100 * b.leaf / b.n)}%`);

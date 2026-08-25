@@ -120,3 +120,12 @@ step  26000  n 408 · polities 290 (1.4/realm) · parents 79 · leaves 329 (81%)
      W-Europe       n  21 · fed p50 0.25 · importers 2 · leaf 81%
 
 [peopleSim] hearth candidate at (146,144) (-70.5E -18.0N) stood down — the farming package arrived before it was invented
+step  28000  n 528 · polities 389 (1.4/realm) · parents 90 · leaves 438 (83%) · importers(isr>.02) 13
+   flow/tick  offers 5.11  levied 1.57  bought 2.40  unbought 1.15 · coin-capped parents 7/16 · ΣcoreNeed 50.9 Σsupply 129.2 Σland 162.9
+   fed  leaf p10/50/90 0.02/0.36/0.99  parent 0.11/0.61/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 50.2
+   hungry(<0.85) 395/528:  LEAF 334 · DRY-SURPLUS 52 · DRY-HAUL 0 · CAPPED 5 · FED-SHORT 4
+     Egypt/Mideast  n  27 · fed p50 0.30 · importers 0 · leaf 85%
+     India          n  51 · fed p50 0.36 · importers 0 · leaf 78%
+     Pontic         n  18 · fed p50 0.46 · importers 0 · leaf 89%
+     W-Europe       n  30 · fed p50 0.82 · importers 2 · leaf 80%
+

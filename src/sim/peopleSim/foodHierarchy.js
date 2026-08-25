@@ -85,7 +85,8 @@ const LEVY_MAX     = 0.7;    // ceiling on the in-kind share of a child's shippa
 const FOOD_RANGE_BY_TIER = [1.0, 1.0, 2.2, 3.6];   // destination-tier catchment multiplier (FR/town · town · city · metropolis)
 
 // Fraction of grain shipped from `child` that survives the haul to its market `parent`.
-function foodHaulArrive(world, child, parent) {
+// (Exported for probe_uptake's market-stage attribution — sim consumers stay in-module.)
+export function foodHaulArrive(world, child, parent) {
   const tw = world.tw;
   let dx = Math.abs(child.pos.x - parent.pos.x); if (dx > tw / 2) dx = tw - dx;
   const dy = child.pos.y - parent.pos.y;

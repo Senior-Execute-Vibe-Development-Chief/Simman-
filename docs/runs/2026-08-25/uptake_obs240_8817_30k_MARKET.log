@@ -65,3 +65,32 @@ step  16000  n 8 · polities 3 (2.7/realm) · parents 2 · leaves 6 (75%) · imp
    hungry(<0.85) 6/8:  LEAF 4 · DRY-SURPLUS 2 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
      Egypt/Mideast  n   3 · fed p50 0.87 · importers 0 · leaf 67%
 
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (137,74) (25.5E -21.0N) stood down — the farming package arrived before it was invented
+step  18000  n 22 · polities 15 (1.5/realm) · parents 2 · leaves 20 (91%) · importers(isr>.02) 7
+   flow/tick  offers 0.14  levied 0.02  bought 0.12  unbought 0.00  PEER-bought 1.11 · coin-capped parents 0/1 · ΣcoreNeed 9.0 Σsupply 12.4 Σland 16.8
+   fed  leaf p10/50/90 0.09/0.53/1.00  parent 0.26/0.70/0.70 · importShare p50/p90 0.00/1.00 · spare-coin p50 61.0
+   hungry(<0.85) 17/22:  LEAF 15 · DRY-SURPLUS 1 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 1
+     Egypt/Mideast  n  10 · fed p50 0.44 · importers 4 · leaf 100%
+     W-Europe       n   3 · fed p50 1.00 · importers 0 · leaf 100%
+
+[peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
+step  20000  n 94 · polities 48 (2.0/realm) · parents 11 · leaves 83 (88%) · importers(isr>.02) 36
+   flow/tick  offers 0.38  levied 0.09  bought 0.29  unbought 0.00  PEER-bought 2.25 · coin-capped parents 0/1 · ΣcoreNeed 23.0 Σsupply 36.0 Σland 49.4
+   fed  leaf p10/50/90 0.24/0.68/1.00  parent 0.42/0.64/0.97 · importShare p50/p90 0.00/1.00 · spare-coin p50 1.5
+   hungry(<0.85) 62/94:  LEAF 54 · DRY-SURPLUS 7 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 1
+     Egypt/Mideast  n  14 · fed p50 0.79 · importers 9 · leaf 64%
+     India          n  16 · fed p50 0.37 · importers 2 · leaf 100%
+     Pontic         n  10 · fed p50 0.97 · importers 5 · leaf 90%
+     W-Europe       n  11 · fed p50 0.85 · importers 5 · leaf 82%
+
+step  22000  n 145 · polities 85 (1.7/realm) · parents 26 · leaves 119 (82%) · importers(isr>.02) 51
+   flow/tick  offers 2.81  levied 0.75  bought 0.42  unbought 1.64  PEER-bought 5.65 · coin-capped parents 2/4 · ΣcoreNeed 43.5 Σsupply 64.5 Σland 85.1
+   fed  leaf p10/50/90 0.19/0.70/1.00  parent 0.12/0.52/0.92 · importShare p50/p90 0.00/1.00 · spare-coin p50 11.7
+   hungry(<0.85) 97/145:  LEAF 75 · DRY-SURPLUS 20 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 2
+     Egypt/Mideast  n  13 · fed p50 0.38 · importers 2 · leaf 77%
+     India          n  30 · fed p50 0.89 · importers 18 · leaf 83%
+     Pontic         n  11 · fed p50 0.92 · importers 5 · leaf 82%
+     W-Europe       n  12 · fed p50 0.70 · importers 3 · leaf 75%
+
+[transHeap] step=22704 cap=2048 peakN=1150 pushes=9380 (0.0MB backing)
