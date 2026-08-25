@@ -3306,6 +3306,11 @@ function updateFood(world, s) {
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
   s._foodSupply = (T.SIEGE_STARVE && s._besiegedNow) ? 0 : supply;   // a besieged seat's flow is the besieger's (T.SIEGE_STARVE, block above)
+  // The land's OWN yield this tick (production + local fish, pre-trade) — the
+  // capacity floor under T.GRAIN_MARKET (updatePopulation): exports cannot drag
+  // a catchment's carrying capacity below what its own land grows. Zeroed under
+  // siege with the supply line above — a besieged seat's floor is the besieger's.
+  s._prodSupply = (T.SIEGE_STARVE && s._besiegedNow) ? 0 : landFood + fish;
   s._foodDemand = demand;          // total (civilian + garrison) — drains the granary
   s._civFoodDemand = civDemand;    // civilian only — army sizing reads this
   s._landFood = landFood;          // LOCAL farm production only (no hierarchy imports, no fish) — for the food-viability overlay
@@ -3520,7 +3525,19 @@ function updatePopulation(world, s) {
   //   foodK   = (local production + imports) / (0.003 × urbanFactor)
   //   houseK  = housingCapacity(s)  — economy + site, food-independent
   const perCapita = 0.003 * (s._urbanFactor || 1);
-  let foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
+  // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish.
+  // T.GRAIN_MARKET: capacity FLOORS at the land's own yield (_prodSupply — production
+  // + fish, pre-trade; zero under siege). The FOOD_REACH asymmetric-authority law
+  // extended to the market: selling grain is a downward-take, and the market cannot
+  // drag a catchment's carrying capacity below what its own land grows — measured
+  // without this, ANY persistent export (even the post-seed-corn trickle, PEER-bought
+  // rounding to 0.00/tick) lowered marginal sellers' supply-based K below the fade
+  // bar and seed 777 bled 40→14 settlements (gm/gm2_stylized_777 vs hy_stylized_777;
+  // the 777 funnel pair isolates it: no macro flow, register still 27→18). Imports
+  // still LIFT capacity above the floor — the buyer side is untouched.
+  let foodK = (T.GRAIN_MARKET > 0
+    ? Math.max(s._foodSupply || 0, s._prodSupply || 0)
+    : (s._foodSupply || 0)) / perCapita;
   // ×_eraProd: the housing/site ceiling rises with the same composite
   // productivity index as food, representing denser settlement (intensive rural
   // occupation, vertical urban growth) as land capital and industry mature.
