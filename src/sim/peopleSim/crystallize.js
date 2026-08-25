@@ -1209,11 +1209,18 @@ export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured
 // variance prices the Nile ~2×) while temperate/marginal ground founds at
 // its honest ~1.4× — the fix the referendum's disposition named. Falls back
 // to the flat famine year only where no tile is known.
+// The margin reads the DEEP-YEAR map (world._yieldDeep), computed per water
+// component in harvest.js — a half-irrigated valley keeps its watered share in
+// the worst year, so its margin is ~2-3.7×, not the composite-cv 5× that
+// priced Mesopotamia/the Levant out of civilization at the app grid
+// (probe_foundbar 1920, the 2026-08-25 play report). Pure rain land reads
+// exactly as before (the mixture reduces to 1 − 2.33·cv there).
 const leanAt = (world, ti) => {
   if (!(T.LEAN_YEAR > 0)) return 1;
   if (ti >= 0) {
-    const cv = ensureYieldCv(world)[ti] || 0;
-    return 1 / Math.max(0.2, 1 - 2.33 * cv);
+    ensureYieldCv(world);
+    const deep = world._yieldDeep ? world._yieldDeep[ti] : 1 - 2.33 * (world._yieldCv[ti] || 0);
+    return 1 / Math.max(0.2, deep);
   }
   return 1 / FAMINE_SEVERITY;
 };

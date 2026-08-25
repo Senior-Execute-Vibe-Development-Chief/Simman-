@@ -58,3 +58,7 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
   step  24000  n 254 · core p10/50/90 1/10/279 · at-bar(≤1.25×) 52% · fed p10/50/90 0.01/0.28/0.99 · hungry(<0.85) 87% · granary p50 508 · importShare p50/p90 0.00/0.00 · primacy 1.2 · cv(hungry) 0.20 vs cv(fed) 0.26
   step  25000  n 297 · core p10/50/90 0/9/312 · at-bar(≤1.25×) 53% · fed p10/50/90 0.00/0.18/0.98 · hungry(<0.85) 85% · granary p50 490 · importShare p50/p90 0.00/0.00 · primacy 1.2 · cv(hungry) 0.20 vs cv(fed) 0.26
   step  26000  n 344 · core p10/50/90 0/9/262 · at-bar(≤1.25×) 52% · fed p10/50/90 0.00/0.22/0.95 · hungry(<0.85) 88% · granary p50 523 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.25
+  step  27000  n 397 · core p10/50/90 1/14/301 · at-bar(≤1.25×) 49% · fed p10/50/90 0.00/0.30/0.87 · hungry(<0.85) 88% · granary p50 519 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.24
+[transHeap] step=27240 cap=4096 peakN=2071 pushes=9846 (0.0MB backing)
+  step  28000  n 465 · core p10/50/90 1/14/278 · at-bar(≤1.25×) 49% · fed p10/50/90 0.00/0.24/0.82 · hungry(<0.85) 91% · granary p50 499 · importShare p50/p90 0.00/0.00 · primacy 1.1 · cv(hungry) 0.20 vs cv(fed) 0.24
+  step  29000  n 493 · core p10/50/90 1/15/249 · at-bar(≤1.25×) 43% · fed p10/50/90 0.00/0.28/0.99 · hungry(<0.85) 77% · granary p50 500 · importShare p50/p90 0.00/0.00 · primacy 1.1 · cv(hungry) 0.20 vs cv(fed) 0.24

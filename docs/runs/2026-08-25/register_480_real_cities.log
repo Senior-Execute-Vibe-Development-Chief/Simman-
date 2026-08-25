@@ -29,3 +29,56 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
           CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
   step   4000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
           CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+  step   5000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+  step   6000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+  step   7000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+[peopleSim] AGRICULTURE INVENTED at (138,41) (27.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 7.22)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+  step   8000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+[peopleSim] AGRICULTURE INVENTED at (166,41) (69.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.81)
+  step   9000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+  step  10000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+  step  11000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+  step  12000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+  step  13000  n   0 · core p10/50/90 0/0/0 · at-bar(≤1.25×) 0% · fed p10/50/90 0.00/0.00/0.00 · hungry(<0.85) 0% · granary p50 0 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.00 vs cv(fed) 0.00
+          CITIES n   0 · at-bar 0% · fed p10/50/90 0.00/0.00/0.00 · granary p10/50/90 0/0/0 · UI-STARVING 0% · importShare p50 0.00
+  step  14000  n   5 · core p10/50/90 2/15/372 · at-bar(≤1.25×) 40% · fed p10/50/90 0.89/0.94/1.00 · hungry(<0.85) 0% · granary p50 655 · importShare p50/p90 0.00/0.00 · primacy 1.9 · cv(hungry) 0.00 vs cv(fed) 0.20
+          CITIES n   3 · at-bar 0% · fed p10/50/90 0.89/0.94/1.00 · granary p10/50/90 639/650/858 · UI-STARVING 0% · importShare p50 0.00
+  step  15000  n   8 · core p10/50/90 2/2/454 · at-bar(≤1.25×) 75% · fed p10/50/90 0.03/0.05/0.53 · hungry(<0.85) 100% · granary p50 653 · importShare p50/p90 0.00/0.00 · primacy 1.9 · cv(hungry) 0.20 vs cv(fed) 0.00
+          CITIES n   2 · at-bar 0% · fed p10/50/90 0.03/0.53/0.53 · granary p10/50/90 80/512/512 · UI-STARVING 0% · importShare p50 0.00
+[peopleSim] AGRICULTURE INVENTED at (197,38) (115.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.45)
+  step  16000  n   9 · core p10/50/90 1/2/410 · at-bar(≤1.25×) 67% · fed p10/50/90 0.01/0.36/0.95 · hungry(<0.85) 89% · granary p50 653 · importShare p50/p90 0.00/0.00 · primacy 2.1 · cv(hungry) 0.20 vs cv(fed) 0.20
+          CITIES n   3 · at-bar 0% · fed p10/50/90 0.02/0.06/0.36 · granary p10/50/90 0/155/290 · UI-STARVING 33% · importShare p50 0.00
+  step  17000  n  30 · core p10/50/90 1/2/533 · at-bar(≤1.25×) 70% · fed p10/50/90 0.03/0.09/0.47 · hungry(<0.85) 100% · granary p50 653 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.00
+          CITIES n   9 · at-bar 0% · fed p10/50/90 0.06/0.33/0.76 · granary p10/50/90 8/182/652 · UI-STARVING 0% · importShare p50 0.00
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
+  step  18000  n  31 · core p10/50/90 2/5/621 · at-bar(≤1.25×) 55% · fed p10/50/90 0.03/0.38/0.99 · hungry(<0.85) 87% · granary p50 654 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.20
+          CITIES n  15 · at-bar 7% · fed p10/50/90 0.03/0.24/1.00 · granary p10/50/90 0/232/749 · UI-STARVING 13% · importShare p50 0.00
+[peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
+  step  19000  n  67 · core p10/50/90 1/2/503 · at-bar(≤1.25×) 64% · fed p10/50/90 0.01/0.09/0.91 · hungry(<0.85) 90% · granary p50 652 · importShare p50/p90 0.00/0.00 · primacy 1.1 · cv(hungry) 0.20 vs cv(fed) 0.20
+          CITIES n  26 · at-bar 8% · fed p10/50/90 0.00/0.23/0.99 · granary p10/50/90 0/263/674 · UI-STARVING 15% · importShare p50 0.00
+[peopleSim] AGRICULTURE INVENTED at (137,74) (25.5E -21.0N) — the basin farms; a city will rise when its market gathers one (score 1.69)
+  step  20000  n  84 · core p10/50/90 1/2/372 · at-bar(≤1.25×) 64% · fed p10/50/90 0.01/0.16/0.92 · hungry(<0.85) 87% · granary p50 652 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.20
+          CITIES n  33 · at-bar 9% · fed p10/50/90 0.00/0.20/0.86 · granary p10/50/90 0/228/673 · UI-STARVING 24% · importShare p50 0.00
+  step  21000  n 102 · core p10/50/90 1/2/518 · at-bar(≤1.25×) 60% · fed p10/50/90 0.01/0.10/0.70 · hungry(<0.85) 92% · granary p50 650 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.19
+          CITIES n  47 · at-bar 13% · fed p10/50/90 0.00/0.10/0.74 · granary p10/50/90 0/88/639 · UI-STARVING 30% · importShare p50 0.00
+[transHeap] step=21192 cap=2048 peakN=1100 pushes=7100 (0.0MB backing)
+  step  22000  n 137 · core p10/50/90 1/5/358 · at-bar(≤1.25×) 56% · fed p10/50/90 0.00/0.16/0.75 · hungry(<0.85) 91% · granary p50 577 · importShare p50/p90 0.00/0.00 · primacy 1.1 · cv(hungry) 0.20 vs cv(fed) 0.24
+          CITIES n  65 · at-bar 8% · fed p10/50/90 0.00/0.18/0.69 · granary p10/50/90 0/161/636 · UI-STARVING 20% · importShare p50 0.00
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+  step  23000  n 183 · core p10/50/90 2/10/347 · at-bar(≤1.25×) 52% · fed p10/50/90 0.00/0.27/0.99 · hungry(<0.85) 85% · granary p50 546 · importShare p50/p90 0.00/0.00 · primacy 1.0 · cv(hungry) 0.20 vs cv(fed) 0.20
+          CITIES n  97 · at-bar 10% · fed p10/50/90 0.00/0.27/0.95 · granary p10/50/90 0/134/636 · UI-STARVING 10% · importShare p50 0.00
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
+  step  24000  n 254 · core p10/50/90 1/10/279 · at-bar(≤1.25×) 52% · fed p10/50/90 0.01/0.28/0.99 · hungry(<0.85) 87% · granary p50 508 · importShare p50/p90 0.00/0.00 · primacy 1.2 · cv(hungry) 0.20 vs cv(fed) 0.26
+          CITIES n 134 · at-bar 10% · fed p10/50/90 0.00/0.27/0.81 · granary p10/50/90 0/314/640 · UI-STARVING 11% · importShare p50 0.00
+  step  25000  n 297 · core p10/50/90 0/9/312 · at-bar(≤1.25×) 53% · fed p10/50/90 0.00/0.18/0.98 · hungry(<0.85) 85% · granary p50 490 · importShare p50/p90 0.00/0.00 · primacy 1.2 · cv(hungry) 0.20 vs cv(fed) 0.26
+          CITIES n 153 · at-bar 8% · fed p10/50/90 0.00/0.28/0.93 · granary p10/50/90 2/309/636 · UI-STARVING 7% · importShare p50 0.00

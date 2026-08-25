@@ -126,7 +126,7 @@ export const CV_COOL_RAMP = 13; // °C span to the full winter margin (≈ −7�
  * @param {number} chan   river channel magnitude feeding the tile (0 if none)
  * @param {number} flood  1 if the tile is arid-river floodplain (world.tFlood)
  */
-export function yieldCvAt(world, i, chan, flood) {
+export function yieldCvParts(world, i, chan, flood) {
   const m = world.moist[i], t = world.temp[i];
   const em = m / demand(t);
   const rainMargin = Math.max(0, Math.min(1, (CV_EM0 - em) / CV_EM_RAMP));
@@ -144,19 +144,50 @@ export function yieldCvAt(world, i, chan, flood) {
   const waterAccess = Math.max(Math.max(0, Math.min(1, (chan - 1) / 2)), (world.coast && world.coast[i] ? 0.5 : 0));
   const water = flood ? 1 : Math.max(chanBand, rainMargin * waterAccess);
   const cvRain = CV_BASE + CV_MARGIN * rainMargin + CV_SEASON * seasonal * (1 - rainMargin * 0.5);
-  return cvRain * (1 - water) + CV_FLOOD * water + CV_WINTER * winterRisk;
+  return { cv: cvRain * (1 - water) + CV_FLOOD * water + CV_WINTER * winterRisk, cvRain, water, winterRisk };
+}
+
+export function yieldCvAt(world, i, chan, flood) {
+  return yieldCvParts(world, i, chan, flood).cv;
 }
 
 /**
  * The whole map, computed once per world from static climate fields and cached.
  * Channel read: 3×3 neighbourhood max of riverMag (flood farms sit BESIDE the
  * channel — the Nile's median cropland tile is mag 1 next to a mag-4 channel).
+ *
+ * TWO maps come out of the same pass (2026-08-25, the play-report lap):
+ *   world._yieldCv    — the annual swing amplitude (the harvest years' cv)
+ *   world._yieldDeep  — the DEEP-YEAR multiplier (the once-a-century harvest,
+ *                       LEAN_YEAR's founding statistic), computed PER WATER
+ *                       COMPONENT: the rain-fed share can fail to zero while
+ *                       the water-fed share bottoms at the flood regime's own
+ *                       deep year. Deriving the deep year from the COMPOSITE
+ *                       cv (1 − 2.33·cv) treats a half-irrigated valley as a
+ *                       Gaussian with a huge cv — its tail then reads as
+ *                       near-total loss and the founding margin explodes
+ *                       through the clamp: measured at the app grid, that
+ *                       priced Mesopotamia (water ~0.5 delta/channel land)
+ *                       and the Levant at 4-5× and OUT OF CIVILIZATION
+ *                       (probe_foundbar 1920; the owner's "not a single city
+ *                       in the middle east"). The mixture is the honest tail:
+ *                       irrigated Mesopotamia keeps its watered half in the
+ *                       worst year — which is why Sumer could exist. For pure
+ *                       rain land (water 0) it reduces exactly to 1 − 2.33·cv.
+ *
+ * Both maps are then read FERT-WEIGHTED over the 3×3 (the same "farms sit
+ * beside the seat" convention as the channel term): the fert mask is
+ * max-pooled, so a tile beside a valley carries the valley's fert — its
+ * harvest rides the land that fert describes, not its own point-sampled
+ * desert climate (the ghost-tile trap probe_nilebox measured; the probe
+ * verdicts were already fert-weighted for the same reason).
  */
 export function ensureYieldCv(world) {
   if (world._yieldCv) return world._yieldCv;
   const { tw, th, N } = world;
   const rm = world.riverMag;
-  const cv = new Float32Array(N);
+  const cv0 = new Float32Array(N);
+  const deep0 = new Float32Array(N);
   for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
     const i = ty * tw + tx;
     if (world.elev[i] <= 0) continue;
@@ -170,9 +201,38 @@ export function ensureYieldCv(world) {
         }
       }
     }
-    cv[i] = yieldCvAt(world, i, chan, world.tFlood ? world.tFlood[i] : 0);
+    const parts = yieldCvParts(world, i, chan, world.tFlood ? world.tFlood[i] : 0);
+    cv0[i] = parts.cv;
+    // deep year, per component: watered share at the flood regime's own deep
+    // year; rain share floored at total loss; winter risk bites both.
+    deep0[i] = Math.max(0, Math.min(1,
+      parts.water * (1 - 2.33 * CV_FLOOD)
+      + (1 - parts.water) * Math.max(0, 1 - 2.33 * parts.cvRain)
+      - 2.33 * CV_WINTER * parts.winterRisk));
+  }
+  // fert-weighted 3×3 (see the header): each map re-read over the land its
+  // fert describes. Tiles with no fert anywhere near keep their own value.
+  const fert = world.fert;
+  const cv = new Float32Array(N), deep = new Float32Array(N);
+  for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
+    const i = ty * tw + tx;
+    if (world.elev[i] <= 0) continue;
+    let sw = 0, sc = 0, sd = 0;
+    if (fert) for (let dy = -1; dy <= 1; dy++) {
+      const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        const j = yy * tw + (((tx + dx) % tw) + tw) % tw;
+        if (world.elev[j] <= 0) continue;
+        const f = fert[j];
+        if (!(f > 0)) continue;
+        sw += f; sc += f * cv0[j]; sd += f * deep0[j];
+      }
+    }
+    if (sw > 0) { cv[i] = sc / sw; deep[i] = sd / sw; }
+    else { cv[i] = cv0[i]; deep[i] = deep0[i]; }
   }
   world._yieldCv = cv;
+  world._yieldDeep = deep;
   return cv;
 }
 
