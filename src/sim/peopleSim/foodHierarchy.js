@@ -224,6 +224,14 @@ export function aggregateFoodHierarchy(world) {
         let pool = node._storableSupply || 0;                // own production (MODEL B: every tier farms its territory)
         let imported = 0;                                    // grain arriving from the subtree THIS tick (levy + purchase)
         let spare = budget.get(node.id) || 0;
+        // Probe-only flow decomposition (tools/probe_uptake.mjs installs
+        // world._tradeStats; the sim never does). The levy/buy split cannot be
+        // reconstructed post-hoc — coin is spent sequentially across children —
+        // so record it here. Underscore debug fields, never persisted, written
+        // only under the probe: zero effect on a normal run.
+        const ts = world._tradeStats;
+        let dbgLevied = 0, dbgBought = 0, dbgUnbought = 0;
+        const dbgSpare0 = spare;
         // The liege's in-kind requisition share — how much of a child's shippable
         // surplus this centre can gather WITHOUT paying, from its administrative
         // reach (see LEVY_* above). A proto-state (org < LEVY_ORG_MIN) has none and
@@ -247,6 +255,7 @@ export function aggregateFoodHierarchy(world) {
             recordIn(k, IN_FOOD, pay);        //                   grain sold
             spare -= pay;
           }
+          if (ts) { dbgLevied += levied; dbgBought += bought; dbgUnbought += Math.max(0, rest - bought); }
           const took = levied + bought;                      // grain that moved UP (levy + purchase); bought ≥ 0 always (rest > 0 since offer > 0 & levyShare ≤ 0.7; spare ≥ 0)
           if (took <= 0) continue;
           pool += took;
@@ -259,6 +268,11 @@ export function aggregateFoodHierarchy(world) {
         // arrival is folded in. NOTE: this is a DECOMPOSITION of the supply the settlement
         // already receives through _foodNet (imports are inside _foodSupply), not an extra
         // flow on top of it.
+        if (ts) {
+          ts.levied += dbgLevied; ts.bought += dbgBought; ts.unbought += dbgUnbought; ts.ticksSeen = world.step;
+          node._dbgLevied = dbgLevied; node._dbgBought = dbgBought; node._dbgUnbought = dbgUnbought;
+          node._dbgSpare0 = dbgSpare0; node._dbgLevyShare = levyShare;
+        }
         node._foodImportRate = (node._foodImportRate || 0) + imported * 0.1;
         node._foodPool = pool;
         node._foodNet = pool;                                // keeps it all unless its OWN parent buys (when parent is processed)
