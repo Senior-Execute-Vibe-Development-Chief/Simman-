@@ -1,0 +1,184 @@
+[harness] tree 8130e4d
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"LEAN_YEAR":1}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== ANCHOR MELT DECOMPOSITION  480x240 (tw=240)  seed 8817  bar 200  box lon 24..36 lat 20..33 ===
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) stood down — the farming package arrived before it was invented
+
+  ✝ ANCHOR DIED: Fọ́ịlpì (id 28) — abandoned @ 18001 — born@17600: people 2133 terr 11 fedM 0.00 — final trajectory:
+     step   people  urban   fedM  supply/coreNeed   terr work   dis  fam hvst siege  cid  army
+    17600    2133   1014   0.00      0.0/4.0        11    0  0.19  0  0.35  0      2     0
+    17700    2246    977   0.00      0.0/3.9        11    0  0.23  0  0.35  0      2     4
+    17800    2555    963   0.00      0.0/3.9        24    0  0.23  0  0.35  0      1     5
+    17900     254    254   0.00      0.0/1.0        10    0  0.23  0  0.35  0      1    16
+    18000       1      1   0.00      0.0/0.9         1    0  0.25  0  0.35  0      1    12
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[transHeap] step=19176 cap=2048 peakN=1061 pushes=5824 (0.0MB backing)
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+
+  ✝ ANCHOR DIED: Lụ̄rǎkú (id 138) — abandoned @ 19873 — born@19500: people 4012 terr 8 fedM 0.16 — final trajectory:
+     step   people  urban   fedM  supply/coreNeed   terr work   dis  fam hvst siege  cid  army
+    19500    4012    842   0.16      0.8/3.4         8    8  0.11  1  0.35  0     44     0
+    19600      14     14   0.17      0.0/0.3         3    0  0.11  1  0.35  0     44    86
+    19700      16     16   0.12      0.0/0.3         3    0  0.11  1  0.35  1     44    68
+    19800    2666    794   0.09      0.0/3.4         6    6  0.15  1  0.35  1     44    55
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+
+  ✝ ANCHOR DIED: Yamfaputa (id 48) — abandoned @ 21537 — born@17000: people 2810 terr 12 fedM 0.15 — final trajectory:
+     step   people  urban   fedM  supply/coreNeed   terr work   dis  fam hvst siege  cid  army
+    19600     199    199   0.00      0.0/1.0         5    0  0.44  1  0.35  0     67    55
+    19700     196    196   0.00      0.0/0.9         5    0  0.44  1  0.35  0     67    45
+    19800     196    196   0.00      0.0/0.9         5    0  0.46  1  0.35  0     67    36
+    19900     201    201   0.00      0.0/0.9         5    0  0.46  1  0.35  0     67    28
+    20000     201    201   0.00      0.0/0.9         5    0  0.46  1  0.35  0     67    21
+    20100      72     72   0.00      0.0/0.4         1    0  0.47  0  0.35  0     67    17
+    20200      70     70   0.00      0.0/0.3         1    0  0.47  0  0.35  0     48     5
+    20300      66     66   0.00      0.0/0.3         1    0  0.47  0  0.35  0     67     5
+    20400      64     64   0.00      0.0/0.3         1    0  0.48  0  0.35  1     67     5
+    20500      53      5   0.00      0.0/0.1         0    0  0.48  0  0.35  1     67     4
+    20600      40      4   0.00      0.0/0.0         0    0  0.48  0  0.35  0     67     2
+    20700      30      3   0.00      0.0/0.0         0    0  0.49  0  0.35  0     67     2
+    20800      23      2   0.00      0.0/0.0         0    0  0.49  0  0.35  0     67     1
+    20900      15      1   0.00      0.0/0.0         0    0  0.49  0  0.35  0     67     0
+    21000      11      1   0.00      0.0/0.0         0    0  0.50  0  0.35  0     67     0
+    21100       8      1   0.00      0.0/0.0         0    0  0.50  0  0.35  0     67     0
+    21200       6      1   0.00      0.0/0.0         0    0  0.50  0  0.35  0     67     0
+    21300       4      0   0.00      0.0/0.0         0    0  0.51  0  0.35  0     67     0
+    21400       3      0   0.00      0.0/0.0         0    0  0.51  0  0.35  0     67     0
+    21500       2      0   0.00      0.0/0.0         0    0  0.51  0  0.35  0     67     0
+
+  ✝ ANCHOR DIED: Fùlpū (id 2) — abandoned @ 22625 — born@13700: people 3280 terr 56 fedM 0.94 — final trajectory:
+     step   people  urban   fedM  supply/coreNeed   terr work   dis  fam hvst siege  cid  army
+    20700     318    318   0.00      0.0/1.2         1    0  0.53  0  0.35  0     85     5
+    20800      19     19   0.00      0.0/0.1         2    0  0.53  0  0.35  0     85     4
+    20900      15      1   0.00      0.0/0.0         0    0  0.53  0  0.35  0     85     1
+    21000      11      1   0.00      0.0/0.0         0    0  0.53  0  0.35  0     85     1
+    21100     516    516   0.00      0.0/2.0         5    0  0.53  0  0.35  1     85     0
+    21200     928    682   0.00      0.0/2.7        11    0  0.53  0  0.35  1     85     9
+    21300     920    674   0.00      0.0/2.7        11    0  0.54  0  0.35  1     85    11
+    21400      44     44   0.00      0.0/0.2         1    0  0.54  0  0.35  0     85     7
+    21500      38      4   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     6
+    21600      29      3   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     4
+    21700      22      2   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     2
+    21800      17      2   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     2
+    21900      13      1   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     1
+    22000      10      1   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     1
+    22100       7      1   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     0
+    22200       6      1   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     0
+    22300       4      0   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     0
+    22400       3      0   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     0
+    22500       2      0   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     0
+    22600       2      0   0.00      0.0/0.0         0    0  0.54  0  0.35  0     85     0
+
+  ✝ ANCHOR DIED: Zyibayamphibta (id 12) — abandoned @ 23082 — born@15700: people 1877 terr 14 fedM 0.03 — final trajectory:
+     step   people  urban   fedM  supply/coreNeed   terr work   dis  fam hvst siege  cid  army
+    21100      41      4   0.00      0.0/0.0         0    0  0.58  0  0.35  1     67     0
+    21200     456    405   0.00      0.0/1.5         7    6  0.58  0  0.35  1     67     0
+    21300     416    371   0.00      0.0/1.4         7    6  0.59  0  0.35  1     67     2
+    21400     298     30   0.00      0.0/0.1         0    0  0.59  0  0.35  0     67     1
+    21500     172     17   0.00      0.0/0.1         0    0  0.59  0  0.35  0     67     1
+    21600      67      7   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     1
+    21700      49      5   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    21800      38      4   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    21900      30      3   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22000      23      2   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22100      18      2   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22200      14      1   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22300      11      1   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22400       8      1   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22500       7      1   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22600       5      1   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22700       4      0   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22800       3      0   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    22900       2      0   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+    23000       2      0   0.00      0.0/0.0         0    0  0.59  0  0.35  0     67     0
+
+  ✝ ANCHOR DIED: Fūtíü (id 187) — abandoned @ 23133 — born@20200: people 2871 terr 20 fedM 0.94 — final trajectory:
+     step   people  urban   fedM  supply/coreNeed   terr work   dis  fam hvst siege  cid  army
+    21200    2782    541   0.05      0.0/2.3        19   18  0.16  0  1.00  1     93    42
+    21300    2829    551   0.07      0.0/2.4        19   18  0.21  0  1.00  1     93    37
+    21400     517    517   0.05      0.0/2.1         7    0  0.21  0  1.00  1     93    30
+    21500     480     48   0.04      0.0/0.2         0    0  0.21  0  1.00  1      1     7
+    21600     460     46   0.03      0.0/0.2         0    0  0.23  0  1.00  1      1     5
+    21700     366     37   0.02      0.0/0.2         0    0  0.23  0  1.00  1      1     3
+    21800     227     23   0.01      0.0/0.1         0    0  0.23  0  1.00  1      1     2
+    21900      83      8   0.01      0.0/0.0         0    0  0.26  0  1.00  0      1     1
+    22000      49      5   0.01      0.0/0.0         0    0  0.26  0  1.00  0      1     1
+    22100      33      3   0.00      0.0/0.0         0    0  0.26  0  1.00  0      1     0
+    22200      25      3   0.00      0.0/0.0         0    0  0.28  0  1.00  0      1     0
+    22300      19      2   0.00      0.0/0.0         0    0  0.28  0  1.00  0      1     0
+    22400      15      1   0.00      0.0/0.0         0    0  0.28  0  1.00  0      1     0
+    22500      11      1   0.00      0.0/0.0         0    0  0.30  0  1.00  0      1     0
+    22600       9      1   0.00      0.0/0.0         0    0  0.30  0  1.00  0      1     0
+    22700       5      1   0.00      0.0/0.0         0    0  0.30  0  1.00  0      1     0
+    22800       4      0   0.00      0.0/0.0         0    0  0.32  0  1.00  0      1     0
+    22900       3      0   0.00      0.0/0.0         0    0  0.32  0  1.00  0      1     0
+    23000       2      0   0.00      0.0/0.0         0    0  0.32  0  1.00  0      1     0
+    23100       2      0   0.00      0.0/0.0         0    0  0.35  0  1.00  0      1     0
+
+  ✝ ANCHOR DIED: Daphut'eb (id 43) — abandoned @ 23329 — born@17000: people 1345 terr 7 fedM 0.09 — final trajectory:
+     step   people  urban   fedM  supply/coreNeed   terr work   dis  fam hvst siege  cid  army
+    21400      15     15   0.16      0.0/0.1         3    0  0.57  0  0.35  0     43    20
+    21500      14     14   0.11      0.0/0.1         2    0  0.57  0  0.35  0     43    16
+    21600      17     17   0.08      0.0/0.1         3    0  0.57  0  0.35  0     43    13
+    21700      16     16   0.06      0.0/0.1         3    0  0.57  0  0.35  0     43    11
+    21800      14     14   0.04      0.0/0.1         2    0  0.57  0  0.35  0     43     9
+    21900      15     15   0.03      0.0/0.1         2    0  0.57  0  0.35  0     43     7
+    22000      15     15   0.02      0.0/0.1         2    0  0.57  0  0.35  0     43     6
+    22100      15     15   0.02      0.0/0.1         2    0  0.57  0  0.35  0     43     5
+    22200      14     14   0.01      0.0/0.1         2    0  0.58  0  0.35  0     43     4
+    22300      14     14   0.01      0.0/0.1         2    0  0.58  0  0.35  0     43     3
+    22400      18     18   0.01      0.0/0.1         3    0  0.58  0  0.35  0     43     3
+    22500      16      2   0.00      0.0/0.0         0    0  0.58  0  0.35  0     43     2
+    22600      10      1   0.00      0.0/0.0         0    0  0.58  0  0.35  0     43     1
+    22700       8      1   0.00      0.0/0.0         0    0  0.58  0  0.35  0     43     0
+    22800      15     15   0.00      0.0/0.1         2    0  0.58  0  0.35  0     43     0
+    22900      15     15   0.00      0.0/0.1         2    0  0.58  0  0.35  0     43     0
+    23000      15     15   0.00      0.0/0.1         2    0  0.58  0  0.35  0     43     0
+    23100      13      1   0.00      0.0/0.0         0    0  0.58  0  0.35  0     43     1
+    23200      13     13   0.00      0.0/0.0         2    0  0.58  0  0.35  0     43     0
+    23300      15     15   0.00      0.0/0.1         2    0  0.58  0  0.35  0    375     0
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+
+=== DECOMPOSITION — each DEAD anchor's final 2000 steps ===
+       name              id   people        terr       fedM   sup/need  fam%   hvst   dis  siege
+  ✝  Fọ́ịlpì       28    2133→1        11→1      0.00   0.00     0%   0.35  0.22     0%  abandoned @ 18001
+  ✝  Lụ̄rǎkú      138    4012→2666      8→6      0.13   0.06   100%   0.35  0.12    50%  abandoned @ 19873
+  ✝  Yamfaputa        48     199→2         5→0      0.00   0.00    25%   0.35  0.48    10%  abandoned @ 21537
+  ✝  Fùlpū           2     318→2         1→0      0.00   0.00     0%   0.35  0.54    15%  abandoned @ 22625
+  ✝  Zyibayamphibt    12      41→2         0→0      0.00   0.00     0%   0.35  0.59    15%  abandoned @ 23082
+  ✝  Fūtíü         187    2782→2        19→0      0.01   0.00     0%   1.00  0.27    35%  abandoned @ 23133
+  ✝  Daphut'eb        43      15→15        3→2      0.03   0.00     0%   0.35  0.58     0%  abandoned @ 23329
+
+=== CONTROL — every SURVIVING anchor's final 2000 steps (the contrast is the conviction) ===
+       name              id   people        terr       fedM   sup/need  fam%   hvst   dis  siege
+     Ňěňní           1    3576→2685     33→28     0.26   0.31     0%   0.35  0.65    62%  
+     T'imnumu         41    2676→1443     20→13     0.47   0.45     0%   0.35  0.66    33%  
+     Xīrtụ̌ị      123    1211→1194     12→11     0.00   0.00     0%   0.35  0.47    67%  
+     Tayanfap        375    2194→1751     10→10     0.08   0.14     0%   1.00  0.24    38%  
+
+  READ IT THIS WAY: a term convicts only where it separates the dead from the
+  survivors. fedM low on both = background; terr collapsing only on the dead =
+  competition; fam%/hvst worse on the dead = the shock channel; dis equal = fuel,
+  not trigger. sup/need is the INSTANT core solvency (capped at 2).
+

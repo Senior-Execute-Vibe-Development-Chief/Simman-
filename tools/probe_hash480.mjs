@@ -3,7 +3,10 @@
 // re-keys under any resolution-invariance factor). Every res-invariance fix is
 // constructed to be ×1.0 EXACTLY at tw=240, so this pair moves ONLY on a
 // deliberate default BEHAVIOUR change (not a res factor):
-//   Current pair (2500 steps): 8817=6c46c2d1  31337=9262bb95
+//   Current pair (2500 steps, v43 FOREST_LOCK=0.8 regime): 8817=370172a6  31337=8481465f
+//   (SIM_TUNE="FOREST_LOCK=0" recovers the prior pair 8817=201db8af 31337=9e4ca0c5,
+//   which itself carried BORN_OF_LAND/SEAT_ADMIN/SEAT_FIELD — the 2026-08-22..24 wave.)
+//   Prior pair (2500 steps): 8817=6c46c2d1  31337=9262bb95
 //   (SIZE_BY_POP flipped DEFAULT 0→1 — realm size = governed-people core +
 //   logistics march, replacing the COVER_BASE/COVER_ORG floor so realms
 //   smaller than Egypt exist and coverage rises with development; the popCapK

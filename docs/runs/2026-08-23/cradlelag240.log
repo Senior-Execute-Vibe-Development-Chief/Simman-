@@ -1,0 +1,139 @@
+[harness] tree 2a22e0a
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=20688 cap=2048 peakN=1060 pushes=8158 (0.0MB backing)
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+
+=== THE CRADLE LAG, DECOMPOSED  480x240 (tw=240)  seed 8817 ===
+
+  Does the lag live in CAPACITY (irrigation's link) or in ORGANISATION (not)?
+
+  Nile
+     step   capacity      people   fill%    best ledger org
+     2000      18155        8353     46%            0.000
+     4000      18155       10828     60%            0.000
+     6000      18155       12947     71%            0.000
+     8000      18155       14582     80%            0.000
+    10000     380858       71096     19%            0.163
+    12000     422575      197000     47%            0.216
+    14000     564893      375285     66%            0.280
+    16000     760114      573387     75%            0.280
+    18000     969000      710169     73%            0.280
+    20000    1050819      723513     69%            0.280
+    22000     899099      742659     83%            0.280
+    24000     858666      675542     79%            0.280
+     first city: step 14000   first flag: step 16000
+
+  Mesopotamia
+     step   capacity      people   fill%    best ledger org
+     2000       8721        3775     43%            0.000
+     4000       8721        4844     56%            0.000
+     6000       8721        5819     67%            0.000
+     8000       8721        6641     76%            0.000
+    10000      73728       19844     27%            0.135
+    12000      92267       45168     49%            0.159
+    14000     128778       82582     64%            0.187
+    16000     171431      129382     75%            0.222
+    18000     226118      187006     83%            0.269
+    20000     246938      208924     85%            0.281
+    22000     203330      175854     86%            0.281
+    24000     198013      184027     93%            0.281
+     first city: step 20000   first flag: step 20000
+
+  Indus
+     step   capacity      people   fill%    best ledger org
+     2000      11283        4517     40%            0.000
+     4000      11283        5910     52%            0.000
+     6000      11283        7210     64%            0.000
+     8000      11283        8327     74%            0.000
+    10000     126923       24862     20%            0.147
+    12000     140315       64868     46%            0.176
+    14000     179129      118403     66%            0.211
+    16000     247872      185095     75%            0.255
+    18000     329036      254604     77%            0.281
+    20000     359702      281360     78%            0.281
+    22000     326510      262003     80%            0.281
+    24000     251118      225056     90%            0.281
+     first city: step 18000   first flag: step 20000
+
+  YellowRiver
+     step   capacity      people   fill%    best ledger org
+     2000      24653        9444     38%            0.000
+     4000      24653       12450     51%            0.000
+     6000      24653       15381     62%            0.000
+     8000      24653       17988     73%            0.000
+    10000      24653       20045     81%            0.000
+    12000      24653       21313     86%            0.000
+    14000      24653       21871     89%            0.000
+    16000      24653       21721     88%            0.000
+    18000      24863       20666     83%            0.000
+    20000     321217       48023     15%            0.112
+    22000     381310      141529     37%            0.136
+    24000     430129      262958     61%            0.184
+     first city: step 24000   first flag: step 24000
+
+  ~Sahel  (control: history says ~0 cities here)
+     step   capacity      people   fill%    best ledger org
+     2000      44117       18211     41%            0.000
+     4000      44117       23194     53%            0.000
+     6000      44117       28008     63%            0.000
+     8000      44117       32298     73%            0.000
+    10000     161007       46627     29%            0.112
+    12000     217369       85208     39%            0.125
+    14000     265493      138219     52%            0.146
+    16000     375184      232793     62%            0.239
+    18000     500575      335682     67%            0.281
+    20000     729093      467015     64%            0.281
+    22000     804988      573300     71%            0.281
+    24000     868166      675835     78%            0.281
+     first city: step 18000   first flag: step 18000
+
+  ~AfrSouth  (control: history says ~0 cities here)
+     step   capacity      people   fill%    best ledger org
+     2000      67065       27201     41%            0.000
+     4000      67065       34469     51%            0.000
+     6000      67065       41646     62%            0.000
+     8000      67065       48130     72%            0.000
+    10000      67065       52178     78%            0.000
+    12000      67065       53170     79%            0.000
+    14000      78018       55195     71%            0.000
+    16000      99428       61332     62%            0.100
+    18000     179551       89839     50%            0.111
+    20000     952294      223332     23%            0.136
+    22000     988116      480823     49%            0.148
+    24000    1131076      783796     69%            0.188
+     first city: step 20000   first flag: step 20000
+
+  READ IT THIS WAY:
+   · fill% near 100 means the basin is SATURATED — its people are capped by what
+     the ground can feed, and raising capacity (irrigation) would raise them.
+   · fill% well under 100 means the basin is still FILLING — capacity is not the
+     binding constraint, and irrigation would hand it headroom it is not using.
+   · a cradle whose org lags while its fill is low is held by the ORGANISATION
+     machinery, not by its farmland, and irrigation would be a third correct-and-
+     irrelevant lever.
+

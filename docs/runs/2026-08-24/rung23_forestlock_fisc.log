@@ -1,0 +1,94 @@
+########## RUNG 3: FOREST_LOCK=0.8 — the Europe carpet, regional table ##########
+=== WHERE ARE THE CITIES  480x240 (tw=240)  seed 8817 ===
+
+-- A. the register by REGION (cities = tier>=2; "free" = stateless) -------
+   region        history(bronze) |     14     16     18     20     22     24
+                                 | Bronze Bronze Classi Mediev Mediev Renais
+   Mesopotamia             20-30 |      -      -      -  16/ 0  19/ 0  19/ 0
+   Egypt/Nile               5-10 |  17/17  46/ 0  82/ 0  90/ 0  85/ 0  79/ 1
+   Indus+India   ~5 (Indus only) |      -      -  36/36  39/ 0  64/ 0  56/ 0
+   China               a handful |      -      -   1/ 1   1/ 1   8/ 0  34/ 0
+   Levant/Anat               ~10 |      -      -      -   4/ 0   4/ 0   5/ 0
+   Mediterran.       ~5 (Aegean) |      -   1/ 0   1/ 0   4/ 0  24/ 0  28/ 0
+   EUROPE temp             **0** |      -      -      -      -  18/ 0  26/ 0
+   SAHEL                   **0** |      -      -   5/ 0  19/ 0  30/ 0  44/ 0
+   Steppe                  **0** |      -      -      -  12/12  44/ 0  54/ 0
+   SE Asia                 **0** |      -      -      -      -      -      -
+   Americas                **0** |      -      -      -      -   4/ 0  44/ 0
+   Afr. south              **0** |      -      -   2/ 0   9/ 0  33/ 0  60/ 0
+   elsewhere                     |      -      -  13/11  24/ 0  56/ 0  82/ 0
+   (each cell: cities / of which stateless)
+
+-- B. is a new city born INTO a nation, or outside every one? -------------
+   step    era          new cities   born INTO a nation   born OUTSIDE   outside share
+   14000  Bronze               18                    0             18           100%
+   16000  Bronze               45                   45              0             0%
+   18000  Classical           135                   87             48            36%
+   20000  Medieval            196                  183             13             7%
+   22000  Medieval            347                  340              7             2%
+   24000  Renaissance         441                  436              5             1%
+   (history inverts this: the FIRST city of a cradle precedes its state — Uruk,
+    Harappa — but after that generation cities are planted BY states inside their
+    own ground: Alexandria, Antioch, Chang'an, every colonia and commandery seat.
+    So the spontaneous share should FALL across the eras, not hold.)
+
+
+########## RUNG 2: FISC_ADOPT=1, ADOPT_BUDGET=1 — refusal under the sane ledger ##########
+=== THE SPECKS  480x240 (tw=240)  seed 8817  step 24000 ===
+
+  living realms with territory: 133
+    SINGLETONS (one city):            73  (55%)   median 92k km2
+    ENCLAVES (>=90% ringed by one realm, no coast, no wilderness):  0  (0%)
+       of which vassal OF its encloser  0  <- already one bloc; the atlas paints these as the same nation
+       of which vassal of someone ELSE  0  <- a distant power's client inside a rival's body
+       of which INDEPENDENT             0  <- the foreign specks on the screen
+    singleton AND independent enclave:  0
+
+  AT BLOC LEVEL — what the atlas paints (112 painted nations):
+    blocs >=90% ringed by ONE other bloc:        36  (32% of painted nations)
+       of those, STRICT holes (no coast, no wild): 0
+       of those, inside a BIGGER bloc:             23   <- "a micro nation inside a larger nation"
+       their size p50 92k km2 · realms-per-speck p50 1
+
+       AGAINST THE GATE THAT KEEPS THEM FREE — submit's SUBMIT_RATIO = 5.0x
+       (conquest.js: the encloser's BLOC power must be >= 5x the speck's before
+        resistance counts as hopeless; CONQUEST_CASCADE lowers it with a live
+        conquest streak, floored at parity, but a peaceful hegemon pays the full 5x)
+       encloser/speck POWER ratio   p10 0.4x   p50 1.9x   p90 6.1x
+       ALREADY past 5x (the bar is not what holds these): 3 of 23
+       under 5x (the bar IS what holds these):            20 of 23
+
+       the 12 most lopsided:
+         speck km2   realms   bloc around it    AREAx   POWERx  vs 5x   speck
+                62k       1             0.32M       5x      3.0x  under   Hasittauda̰va  in  Sìumkū
+                31k       1             0.14M       5x      1.9x  under   Yīudígò  in  Fǒňdụ̌ị
+               200k       2             0.82M       4x      4.4x  under   Naịkyabbafa  in  Lákú
+               154k       1             0.54M       4x      3.6x  under   Pisaa  in  Zyafoxy
+                77k       2             0.23M       3x      3.0x  under   Tị̄lākúlǐā  in  Ífpùlǐ
+                62k       1             0.18M       3x      6.1x   PAST   Thambyumtay  in  Zyibayamphibtayaa
+                62k       1             0.15M       3x      0.9x  under   Tamphut'eb  in  Yafayoktay
+                62k       1             0.12M       2x      1.3x  under   Bibavahnin  in  Nizvḭzzḭv
+               138k       1             0.26M       2x     59.3x   PAST   Nyifaxfyezat  in  Dyakyoxy
+               108k       1             0.20M       2x      4.0x  under   Fokyi  in  Pụ̄lhụ̀
+                92k       1             0.17M       2x      0.0x  under   Hōunglìlǐ  in  Ùrụ́lǐā
+                62k       1             0.11M       2x      1.5x  under   Dinbabaztay  in  Dinfulp'abtaya
+
+  submit funnel (whole run, the sim's own tally) — 3667 candidates, 81 passed (2.2%)
+     hazardRoll(waiting)               1178  (32%)
+     resistanceNotHopeless              957  (26%)
+     alreadyADependency                 660  (18%)
+     noLiveSeat                         441  (12%)
+     identityBrake(foreignCourt)        161  (4%)
+     coalitionBrake(deterrence)         134  (4%)
+     outOfProjectionReach                55  (1%)
+
+  integrate funnel (whole run, the sim's own tally) — 1093 candidates, 8 passed (0.7%)
+     orgBelowMin                        595  (54%)
+     noAdminHeadroom                    184  (17%)
+     hazardRoll(waiting)                106  (10%)
+     beyondDirectRule                   105  (10%)
+     notAVassalBond                      57  (5%)
+     seatAboveTierCap                    16  (1%)
+     identityBrake(foreignCourt)         13  (1%)
+     coalitionBrake(deterrence)           9  (1%)
+

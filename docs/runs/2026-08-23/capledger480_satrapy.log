@@ -1,0 +1,70 @@
+[harness] tree 867baed
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"SEAT_ADMIN":1}
+[peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,82) (69.8E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (387,72) (110.3E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (276,83) (27.0E 27.8N) score 7.28 pkg=wheat(suit 1.00) — ARMED: ~903y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (298,76) (43.5E 33.0N) score 5.01 pkg=wheat(suit 0.77) — ARMED: ~1173y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (333,82) (69.8E 28.5N) score 6.69 pkg=wheat(suit 0.86) — ARMED: ~1041y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) score 3.60 pkg=millet(suit 0.55) — ARMED: ~2710y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (230,99) (-7.5E 15.8N) score 3.29 pkg=sorghum(suit 0.70) — ARMED: ~2870y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) score 1.62 pkg=maize(suit 0.71) — ARMED: ~6381y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,140) (-75.0E -15.0N) score 1.24 pkg=tubers(suit 0.89) — ARMED: ~3390y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) score 0.89 pkg=tubers(suit 0.43) — ARMED: ~6987y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (276,83) (27.0E 27.8N) — the basin farms; a city will rise when its market gathers one (score 7.28)
+[peopleSim] AGRICULTURE INVENTED at (333,82) (69.8E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.69)
+[peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 5.01)
+[transHeap] step=14640 cap=2048 peakN=2029 pushes=28506 (0.0MB backing)
+[transHeap] step=15648 cap=4096 peakN=2812 pushes=29575 (0.0MB backing)
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=18168 cap=65536 peakN=38494 pushes=135595 (0.5MB backing)
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.29)
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.24)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) stood down — the farming package arrived before it was invented
+
+=== THE CAPACITY LEDGER  960x480 (tw=480)  seed 8817  step 30000 ===
+  237 realms with a stamped ledger · 506 provinced members
+
+-- the ratio, by realm size ------------------------------------------------
+  class      n     load p50     cap p50    load/cap p50/p90    covered-share p50   would pass headroom
+  1 member    18        0.5       14.2        0.2/4.6             100%         14 of 18
+  2-4        208        0.5       13.1        0.0/0.8             100%        191 of 208
+  5-9         10        6.4       20.5        0.4/2.5             100%          9 of 10
+  10+          1      108.1       66.0        1.6/1.6              90%          0 of 1
+
+-- WHERE the load lives: the per-member factor split -----------------------
+   load = DIST x SIZExREC x LANG / COERCE      (design: a province at reach costs ~1; DIST ceilings at 25)
+   factor      p10      p50      p90      max
+   DIST        0.06     0.49     1.50    24.98
+   SIZExREC    1.01     1.30     2.08     2.73
+   LANG        1.00     1.15     1.35     1.39
+   COERCE      0.35     1.12     2.50     2.50
+   = load      0.05     0.60     8.57    67.48
+   members with DIST pinned at the ceiling (~25): 2 of 506 (0%)
+
+-- WHERE the capacity comes from -------------------------------------------
+   term                    p50      p90
+   peace (post-hyst.)     14.2     31.7
+   war/fiscal throttle    0.93     1.00
+   momentum                0.0      0.0
+   delegated seats        0.01     0.08
+   final capacity         13.4     34.9
+
+-- the 8 most over-loaded multi-member realms ------------------------------
+   mem   load     cap   ratio   covered   holdReach   name
+     5    18.4     7.4    2.5x     1/5        17.3   Èvǔsò
+    10   108.1    66.0    1.6x     9/10       21.4   Rimmopuikysyua
+     5    12.4    14.4    0.9x     5/5         8.9   Bumingingurua
+     5    22.3    27.2    0.8x     5/5        12.8   Fiuppuikyatha
+     5    18.5    28.4    0.7x     5/5        18.5   Wṳzṵtfukhyìzā
+     5     6.4    15.4    0.4x     4/5         9.3   Sūzǐffùkhdyízā
+     5     1.0    12.9    0.1x     4/5        19.3   Qupmpikkovo
+     6     1.3    20.5    0.1x     5/6        12.7   Fuvu
+

@@ -1,0 +1,119 @@
+[harness] tree b67042f
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":0,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=20688 cap=2048 peakN=1111 pushes=8194 (0.0MB backing)
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+
+=== NATIONLESS CITIES / DENSITY-vs-SIZE  480x240 (tw=240)  seed 8817  24000 steps  r=600km ===
+
+-- A. the mint --------------------------------------------------------
+  polity.founded by channel (cumulative, whole run):
+     tribal             49
+     frontier           11
+     cradle              1
+  city births: on CLAIMED ground 760   in the WILD 217   (wild share 22%)
+  what adoptAndFound did with each newborn city (every mint is born tier 2 and stateless):
+     born INSIDE a realm's field  (n=758):  joined it 1 (0%)   MINTED ITS OWN REALM 757 (100%)   left stateless 0 (0%)
+     born in the WILD             (n=210):  joined a realm 41 (20%)   MINTED ITS OWN REALM 169 (80%)   left stateless 0 (0%)
+     of the 757 that self-founded ON claimed ground, the state of that ground one window later:
+        field had RECEDED off the tile 129 (17%)   paint names a realm with NO settled member 18 (2%)   owner still live and holding the tile 610 (81%)
+     every city that ended sovereign, by the path it took: sovereign from the first read 926 (100%)   JOINED then seceded 0 (0%)   stateless first, sovereign later 0 (0%)
+
+  step      entities  stateless   cities(t>=2)  stateless-cities  realms
+      25          0       0 (  0%)         0             0 (  0%)       0
+    1525          0       0 (  0%)         0             0 (  0%)       0
+    3025          0       0 (  0%)         0             0 (  0%)       0
+    4525          0       0 (  0%)         0             0 (  0%)       0
+    6025          0       0 (  0%)         0             0 (  0%)       0
+    7525          0       0 (  0%)         0             0 (  0%)       0
+    9025          0       0 (  0%)         0             0 (  0%)       0
+   10525          0       0 (  0%)         0             0 (  0%)       0
+   12025          0       0 (  0%)         0             0 (  0%)       0
+   13525          0       0 (  0%)         0             0 (  0%)       0
+   15025         37       0 (  0%)        37             0 (  0%)      35
+   16525         40       0 (  0%)        39             0 (  0%)      31
+   18025        131       0 (  0%)       129             0 (  0%)     119
+   19525        167       1 (  1%)       165             0 (  0%)     158
+   21025        226       1 (  0%)       216             0 (  0%)     189
+   22525        330       4 (  1%)       324             1 (  0%)     290
+   24000        417       3 (  1%)       395             0 (  0%)     346
+
+-- B. the size law ----------------------------------------------------
+  realms ever founded: 982   alive with territory at 24000: 99
+  Spearman(birth-neighbourhood CITY COUNT , final area)  = 0.041
+  Spearman(birth-neighbourhood FREE-LAND share, final area) = 0.002
+  Spearman(birth CITY COUNT , final BLOC area)          = 0.018
+  Spearman(birth step        , final area)              = -0.029
+
+  by birth-neighbourhood city count (quartiles):
+    bin  n     cities@birth   free-land@birth   final km2 p50 / p90      bloc km2 p50 / p90   members p50
+    Q1     25       0            91%            0.108M /   0.215M     0.108M /   0.554M      1
+    Q2     25       1            69%            0.092M /   0.185M     0.123M /   0.231M      1
+    Q3     25       4            54%            0.108M /   0.246M     0.138M /   0.492M      1
+    Q4     24      19            27%            0.169M /   0.261M     0.185M /   0.338M      1
+
+  by free-land share at birth (quartiles):
+    bin  n     free-land@birth  cities@birth   final km2 p50 / p90      members p50
+    Q1     25       23%             18          0.123M /   0.246M      1
+    Q2     25       49%              4          0.108M /   0.200M      1
+    Q3     25       74%              2          0.092M /   0.200M      1
+    Q4     24       98%              1          0.108M /   0.246M      1
+
+  the 15 LARGEST realms — what their birth neighbourhood looked like
+  (world median at founding: 2 cities, 57% free land)
+    born    km2       bloc km2   mem   cities@birth  stateless@birth  free-land@birth  name
+     21187    0.646M    1.031M     3        4             0             74%        Fụ̄ịmpíülǐ
+     21187    0.446M    0.554M     2        0             0             98%        Tapitdamp'altaya
+     21787    0.354M    0.354M     1        0             0             77%        Mapatdattaya
+     19387    0.292M    0.492M     5       37             0             33%        Hóulpìlǐā
+     22687    0.292M    0.292M     2        7             0             40%        Lǎkòlǐ
+     21937    0.261M    0.338M     1        9             0             91%        Ikhkagigi
+     22537    0.261M    0.261M     4       18             0             20%        Čàrárụ́lǐā
+     23437    0.246M    0.246M     2        8             0             98%        Thalphibdattaya
+     23737    0.246M    0.246M     1        1             0             34%        Fixfaxa
+     23887    0.246M    0.246M     1       23             0              0%        Pupyumtaya
+     23887    0.246M    0.246M     4       19             0              6%        Sǎfǎ
+     22464    0.215M    0.215M     2        0             0             44%        Sūyụ̄ị
+     17587    0.200M    0.200M     1       13             0             88%        Lóupírụ́lǐ
+     21937    0.200M    0.492M     3        4             0             62%        Hīffílǐ
+     22987    0.200M    0.200M     1        9             0             52%        Lǐukùrụ́lǐ
+
+  stratified — within each founding cohort, does a crowded birth still mean a small realm?
+    cohort (by birth step)      n    sparse half: cities@birth p50 -> km2 p50    crowded half: cities@birth p50 -> km2 p50
+    steps 15037-22387            33         1 ->   0.092M                             6 ->   0.108M
+    steps 22387-23287            33         1 ->   0.123M                             7 ->   0.108M
+    steps 23287-23887            33         1 ->   0.108M                            14 ->   0.108M
+
+  realms alive at 24000 whose SEAT CITY minted inside another realm's field: 55 of 99 (56%)
+    their area p50 0.108M km2   members p50 1   born p50 step 23137
+
+  the confetti (< 100k km2): 46 of 99 realms (46%)
+    born p50 22687   cities@birth p50 2   free-land@birth p50 57%   members p50 1
+    (>= 500k km2): 1 realms — born p50 21187  cities@birth p50 4  free-land@birth p50 74%
+
+  per-realm rows -> docs/runs/2026-08-22/natdensity_480_8817_24000.csv
+

@@ -1,0 +1,57 @@
+
+> world-sim@1.0.0 resgate
+> node tools/resgate.mjs
+
+[harness] tree e4c8685
+[SIM_TUNE] {"SEAT_ADMIN":1}
+[resgate] seed=8817 steps=6000 — reference grid vs the SHIPPED app grid
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — matured 974y into prehistory (wave age 5026y)
+[peopleSim] hearth Pephamdo at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — matured 1311y into prehistory (wave age 4689y)
+[peopleSim] hearth Pomponsom at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — matured 922y into prehistory (wave age 5078y)
+[peopleSim] hearth Fevvon at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — matured 3106y into prehistory (wave age 2894y)
+[peopleSim] hearth Nawaxexi at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — matured 5148y into prehistory (wave age 852y)
+[peopleSim] hearth Sasfesu at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — matured 3133y into prehistory (wave age 2867y)
+[peopleSim] hearth Wityim at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — matured 3243y into prehistory (wave age 2757y)
+[peopleSim] hearth Ninuvy at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — matured 5283y into prehistory (wave age 717y)
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 pkg=maize(suit 0.51) — ARMED: ~2842y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~7000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=2048 peakN=1495 pushes=9318 (0.0MB backing)
+[peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,82) (69.8E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (387,72) (110.3E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (276,83) (27.0E 27.8N) score 7.28 pkg=wheat(suit 1.00) — matured 903y into prehistory (wave age 5097y)
+[peopleSim] hearth Pephamdo at (298,76) (43.5E 33.0N) score 5.01 pkg=wheat(suit 0.77) — matured 1173y into prehistory (wave age 4827y)
+[peopleSim] hearth Pomponsom at (333,82) (69.8E 28.5N) score 6.69 pkg=wheat(suit 0.86) — matured 1041y into prehistory (wave age 4959y)
+[peopleSim] hearth Fevvon at (387,72) (110.3E 36.0N) score 3.60 pkg=millet(suit 0.55) — matured 2710y into prehistory (wave age 3290y)
+[peopleSim] hearth Nawaxexi at (230,99) (-7.5E 15.8N) score 3.29 pkg=sorghum(suit 0.70) — matured 2870y into prehistory (wave age 3130y)
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) score 1.62 pkg=maize(suit 0.71) — ARMED: ~381y of peopled-basin time from maturity
+[peopleSim] hearth Sasfesu at (140,140) (-75.0E -15.0N) score 1.24 pkg=tubers(suit 0.89) — matured 3390y into prehistory (wave age 2610y)
+[peopleSim] hearth Wityim at (278,142) (28.5E -16.5N) score 0.89 pkg=wheat(suit 0.53) — matured 1701y into prehistory (wave age 4299y)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) score 0.50 pkg=sorghum(suit 0.25) — ARMED: ~1927y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 pkg=maize(suit 0.36) — ARMED: ~6510y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=65536 peakN=38904 pushes=137705 (0.5MB backing)
+[transHeap] step=4560 cap=131072 peakN=87904 pushes=316622 (1.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (115,99) (-93.8E 15.8N) — the basin farms; a city will rise when its market gathers one (score 1.62)
+  grids: tw=240 (9616 land tiles) vs tw=480 (38741 land tiles)
+  realms                 ref            9   app            7   app/ref 0.78
+  claimed land           ref        5.12%   app        3.83%   app/ref 0.75
+  MEDIAN realm area      ref     646k km²   app     500k km²   app/ref 0.77
+  MEAN realm area        ref     841k km²   app     809k km²   app/ref 0.96
+  largest realm area     ref    1646k km²   app    3264k km²   app/ref 1.98
+  people per km²         ref       0.0449   app       0.0380   app/ref 0.85
+
+  ok   app/ref median realm area          0.77 (floor 0.34)
+  ok   app/ref MEAN realm area            0.96 (floor 0.46)
+  ok   app/ref claimed land               0.75 (floor 0.53)
+  ok   app/ref people per km²             0.85 (floor 0.50)
+  ok   app median realm ABSOLUTE          500k km² (floor 60k km²)
+  ok   app realm count                    7 (floor 3)
+
+[resgate] all app-grid bands held

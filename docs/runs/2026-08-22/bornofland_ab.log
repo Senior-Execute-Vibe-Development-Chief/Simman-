@@ -1,0 +1,153 @@
+########## A/B: stylized 3 seeds, lever OFF (baseline) ##########
+────────── seed 8817 ──────────
+  ok    Zipf rank-size slope (urban cores, G-I): -0.68   (42 cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07))
+  ok    largest empire's share of claimed land: 18%   (43 polities on 3608 tiles)
+  ok    empire area tail (largest/median): 13.5
+  ok    state lifespan median (incl. living, censored): 6600 steps (~1650y)   (119 fallen + 894 living)
+  ok    lifespan heavy tail incl. living (max/median): 40.9   (oldest living 21000 steps)
+  ok    wars per 1000 steps per polity: 0.25   (10.8/1k across 44 realms)
+  ok    wars amid succession crises: 14/227   (human causes visible)
+  ok    tech ~ cradle-distance correlation: -0.09   (knowledge should not lead OUTWARD (earned-span re-baseline 2026-07))
+  ok    urbanization vs development: 6.8%   (agrarian era: a minority in cities (2-25%))
+  ok    population ~ development (monotone): 0.97   (log-pop vs leading agriculture)
+  ok    growth accelerates with development: n/a   (pre-industrial run: modern agriculture never discovered — the accelerating chapter is absent)
+  ok    price level bounded: 1.25   (people-weighted raw M/T÷baseline (sim-clamped mean 0.93, 0 components pegged at cap))
+  ok    market integration narrows prices (Δ): -0.0023 over 4 knit window(s)   (mean dispersion Δ where components drop, vs noise floor 0.0032 = median |Δ| (Pearson 0.29, unscored — probe_market.mjs))
+  ok    trade intensity vs transport: 1.0   (flow×1000/wealth; median nav+mob 0.47 → band 0.05-150)
+  ok    war deadliness tail (largest/median): 15.5   (81 wars reckoned; top3mean/med 12.9)
+  ok    culture count ~ area^k, k<1: 0.28   (diversity grows with territory, sublinearly (k<1))
+  ok    settlements cluster on water (same-footprint enrichment): 1.35   (100% on water vs same-footprint null 74% (raw per-tile null gave 1.68; NN-CV 0.23))
+  ok    fish share of food supply: 0.0%   (0% of population lives majority-fish [soft bar ≤40% Tier-B])
+  ok    civilization alive: 60 settlements, pop 25595
+  ok    wealth finite: 561010
+  ok    polities exist: 44
+[stylized] all hard gates passed · 0 soft warning(s) (budget 2)
+────────── seed 4242 ──────────
+  ok    Zipf rank-size slope (urban cores, G-I): -0.65   (42 cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07))
+  ok    largest empire's share of claimed land: 19%   (42 polities on 4249 tiles)
+  ok    empire area tail (largest/median): 19.3
+  ok    state lifespan median (incl. living, censored): 5700 steps (~1425y)   (177 fallen + 939 living)
+  ok    lifespan heavy tail incl. living (max/median): 140.0   (oldest living 21000 steps)
+  ok    wars per 1000 steps per polity: 0.44   (18.0/1k across 41 realms)
+  ok    wars amid succession crises: 27/378   (human causes visible)
+  ok    tech ~ cradle-distance correlation: -0.03   (knowledge should not lead OUTWARD (earned-span re-baseline 2026-07))
+  ok    urbanization vs development: 4.5%   (agrarian era: a minority in cities (2-25%))
+  ok    population ~ development (monotone): 0.99   (log-pop vs leading agriculture)
+  ok    growth accelerates with development: n/a   (pre-industrial run: modern agriculture never discovered — the accelerating chapter is absent)
+  ok    price level bounded: 0.86   (people-weighted raw M/T÷baseline (sim-clamped mean 0.93, 0 components pegged at cap))
+  ok    market integration narrows prices (Δ): +0.0129 over 6 knit window(s)   (mean dispersion Δ where components drop, vs noise floor 0.0246 = median |Δ| (Pearson -0.27, unscored — probe_market.mjs))
+  ok    trade intensity vs transport: 1.3   (flow×1000/wealth; median nav+mob 0.52 → band 0.05-150)
+  ok    war deadliness tail (largest/median): 11.5   (108 wars reckoned; top3mean/med 8.4)
+  ok    culture count ~ area^k, k<1: 0.26   (diversity grows with territory, sublinearly (k<1))
+  ok    settlements cluster on water (same-footprint enrichment): 1.36   (100% on water vs same-footprint null 74% (raw per-tile null gave 1.69; NN-CV 0.29))
+  ok    fish share of food supply: 0.0%   (0% of population lives majority-fish [soft bar ≤40% Tier-B])
+  ok    civilization alive: 69 settlements, pop 35205
+  ok    wealth finite: 541273
+  ok    polities exist: 41
+[stylized] all hard gates passed · 0 soft warning(s) (budget 2)
+────────── seed 777 ──────────
+  ok    Zipf rank-size slope (urban cores, G-I): -0.72   (23 cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07))
+  ok    largest empire's share of claimed land: 19%   (30 polities on 2277 tiles)
+  ok    empire area tail (largest/median): 7.4
+  ok    state lifespan median (incl. living, censored): 6200 steps (~1550y)   (51 fallen + 497 living)
+  ok    lifespan heavy tail incl. living (max/median): 29.3   (oldest living 20900 steps)
+  ok    wars per 1000 steps per polity: 0.22   (6.6/1k across 30 realms)
+  ok    wars amid succession crises: 7/139   (human causes visible)
+  ok    tech ~ cradle-distance correlation: 0.05   (knowledge should not lead OUTWARD (earned-span re-baseline 2026-07))
+  ok    urbanization vs development: 6.9%   (agrarian era: a minority in cities (2-25%))
+  ok    population ~ development (monotone): 1.00   (log-pop vs leading agriculture)
+  ok    growth accelerates with development: n/a   (pre-industrial run: modern agriculture never discovered — the accelerating chapter is absent)
+  ok    price gates: n/a   (baseline not locked long enough)
+  ok    trade intensity vs transport: 0.6   (flow×1000/wealth; median nav+mob 0.55 → band 0.05-150)
+  ok    war deadliness tail (largest/median): 20.7   (45 wars reckoned; top3mean/med 11.6)
+  ok    culture count ~ area^k, k<1: 0.22   (diversity grows with territory, sublinearly (k<1))
+  ok    settlements cluster on water (same-footprint enrichment): 1.36   (100% on water vs same-footprint null 73% (raw per-tile null gave 1.69; NN-CV 0.29))
+  ok    fish share of food supply: 0.0%   (0% of population lives majority-fish [soft bar ≤40% Tier-B])
+  ok    civilization alive: 34 settlements, pop 15552
+  ok    wealth finite: 373593
+  ok    polities exist: 30
+[stylized] all hard gates passed · 0 soft warning(s) (budget 2)
+
+########## A/B: stylized 3 seeds, BORN_OF_LAND=1 ##########
+────────── seed 8817 ──────────
+  ok    Zipf rank-size slope (urban cores, G-I): -0.72   (42 cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07))
+  ok    largest empire's share of claimed land: 15%   (45 polities on 3985 tiles)
+  ok    empire area tail (largest/median): 13.9
+  ok    state lifespan median (incl. living, censored): 6400 steps (~1600y)   (73 fallen + 915 living)
+  ok    lifespan heavy tail incl. living (max/median): 28.0   (oldest living 21000 steps)
+  ok    wars per 1000 steps per polity: 0.28   (12.5/1k across 45 realms)
+  ok    wars amid succession crises: 24/262   (human causes visible)
+  ok    tech ~ cradle-distance correlation: 0.02   (knowledge should not lead OUTWARD (earned-span re-baseline 2026-07))
+  ok    urbanization vs development: 7.0%   (agrarian era: a minority in cities (2-25%))
+  ok    population ~ development (monotone): 0.98   (log-pop vs leading agriculture)
+  ok    growth accelerates with development: n/a   (pre-industrial run: modern agriculture never discovered — the accelerating chapter is absent)
+  ok    price level bounded: 0.95   (people-weighted raw M/T÷baseline (sim-clamped mean 0.77, 0 components pegged at cap))
+  ok    market integration narrows prices (Δ): -0.0286 over 4 knit window(s)   (mean dispersion Δ where components drop, vs noise floor 0.0150 = median |Δ| (Pearson 0.48, unscored — probe_market.mjs))
+  ok    trade intensity vs transport: 1.7   (flow×1000/wealth; median nav+mob 0.53 → band 0.05-150)
+  ok    war deadliness tail (largest/median): 12.0   (106 wars reckoned; top3mean/med 11.4)
+  ok    culture count ~ area^k, k<1: 0.27   (diversity grows with territory, sublinearly (k<1))
+  ok    settlements cluster on water (same-footprint enrichment): 1.35   (100% on water vs same-footprint null 74% (raw per-tile null gave 1.68; NN-CV 0.36))
+  ok    fish share of food supply: 0.0%   (0% of population lives majority-fish [soft bar ≤40% Tier-B])
+  ok    civilization alive: 70 settlements, pop 28732
+  ok    wealth finite: 570574
+  ok    polities exist: 45
+[stylized] all hard gates passed · 0 soft warning(s) (budget 2)
+────────── seed 4242 ──────────
+  ok    Zipf rank-size slope (urban cores, G-I): -0.58   (49 cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07))
+  ok    largest empire's share of claimed land: 15%   (41 polities on 3911 tiles)
+  ok    empire area tail (largest/median): 10.8
+  ok    state lifespan median (incl. living, censored): 6800 steps (~1700y)   (91 fallen + 921 living)
+  ok    lifespan heavy tail incl. living (max/median): 35.0   (oldest living 21000 steps)
+  ok    wars per 1000 steps per polity: 0.24   (10.9/1k across 46 realms)
+  ok    wars amid succession crises: 22/228   (human causes visible)
+  ok    urbanization vs development: 5.5%   (agrarian era: a minority in cities (2-25%))
+  ok    population ~ development (monotone): 0.99   (log-pop vs leading agriculture)
+  ok    growth accelerates with development: n/a   (pre-industrial run: modern agriculture never discovered — the accelerating chapter is absent)
+  ok    price level bounded: 0.96   (people-weighted raw M/T÷baseline (sim-clamped mean 1.12, 0 components pegged at cap))
+  ok    market integration narrows prices (Δ): +0.0073 over 1 knit window(s)   (mean dispersion Δ where components drop, vs noise floor 0.0073 = median |Δ| (Pearson -0.20, unscored — probe_market.mjs))
+  ok    trade intensity vs transport: 1.1   (flow×1000/wealth; median nav+mob 0.50 → band 0.05-150)
+  ok    war deadliness tail (largest/median): 12.7   (88 wars reckoned; top3mean/med 8.7)
+  ok    culture count ~ area^k, k<1: 0.26   (diversity grows with territory, sublinearly (k<1))
+  ok    settlements cluster on water (same-footprint enrichment): 1.36   (100% on water vs same-footprint null 74% (raw per-tile null gave 1.69; NN-CV 0.29))
+  ok    fish share of food supply: 0.0%   (0% of population lives majority-fish [soft bar ≤40% Tier-B])
+  ok    civilization alive: 72 settlements, pop 29443
+  ok    wealth finite: 620618
+  ok    polities exist: 46
+[stylized] all hard gates passed · 1 soft warning(s) (budget 2)
+────────── seed 777 ──────────
+  ok    Zipf rank-size slope (urban cores, G-I): -0.78   (23 cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07))
+  ok    largest empire's share of claimed land: 15%   (22 polities on 2217 tiles)
+  ok    empire area tail (largest/median): 3.9
+  ok    state lifespan median (incl. living, censored): 6800 steps (~1700y)   (32 fallen + 510 living)
+  ok    lifespan heavy tail incl. living (max/median): 14.9   (oldest living 21000 steps)
+  ok    wars per 1000 steps per polity: 0.18   (4.2/1k across 24 realms)
+  ok    wars amid succession crises: 3/89   (human causes visible)
+  ok    tech ~ cradle-distance correlation: 0.04   (knowledge should not lead OUTWARD (earned-span re-baseline 2026-07))
+  ok    urbanization vs development: 5.8%   (agrarian era: a minority in cities (2-25%))
+  ok    population ~ development (monotone): 1.00   (log-pop vs leading agriculture)
+  ok    growth accelerates with development: n/a   (pre-industrial run: modern agriculture never discovered — the accelerating chapter is absent)
+  ok    price level bounded: 0.87   (people-weighted raw M/T÷baseline (sim-clamped mean 0.95, 0 components pegged at cap))
+  ok    market integration narrows prices (Δ): -0.0118 over 1 knit window(s)   (mean dispersion Δ where components drop, vs noise floor 0.0157 = median |Δ| (Pearson -0.29, unscored — probe_market.mjs))
+  ok    trade intensity vs transport: 1.1   (flow×1000/wealth; median nav+mob 0.52 → band 0.05-150)
+  ok    war deadliness tail (largest/median): 5.5   (27 wars reckoned; top3mean/med 4.0)
+  ok    culture count ~ area^k, k<1: 0.19   (diversity grows with territory, sublinearly (k<1))
+  ok    settlements cluster on water (same-footprint enrichment): 1.36   (100% on water vs same-footprint null 73% (raw per-tile null gave 1.69; NN-CV 0.22))
+  ok    fish share of food supply: 0.0%   (0% of population lives majority-fish [soft bar ≤40% Tier-B])
+  ok    civilization alive: 40 settlements, pop 15666
+  ok    wealth finite: 346530
+  ok    polities exist: 24
+[stylized] all hard gates passed · 0 soft warning(s) (budget 2)
+
+########## resgate, lever OFF (baseline) ##########
+  MEAN realm area        ref     957k km²   app     770k km²   app/ref 0.80
+  largest realm area     ref    1984k km²   app    3077k km²   app/ref 1.55
+  people per km²         ref       0.0452   app       0.0371   app/ref 0.82
+
+  ok   app/ref median realm area          0.56 (floor 0.34)
+  ok   app/ref MEAN realm area            0.80 (floor 0.46)
+  ok   app/ref claimed land               0.70 (floor 0.53)
+  ok   app/ref people per km²             0.82 (floor 0.50)
+  ok   app median realm ABSOLUTE          496k km² (floor 60k km²)
+  ok   app realm count                    7 (floor 3)
+
+[resgate] all app-grid bands held

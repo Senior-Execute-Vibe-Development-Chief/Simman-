@@ -1,0 +1,2972 @@
+[harness] tree 8130e4d
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"LEAN_YEAR":1}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== EGYPT AUTOPSY  480x240 (tw=240)  seed 8817  box lon 24..36 lat 20..33 (66 land tiles) ===
+  step | box: sett  Σpeople | largest (people/urban  fed  dis  org) cid | realm@box: id  boxT  worldT   km²  mem  cap/load  fronts | field: Σpop  Σcap
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+   100 |   0       0 |   (none) |         (no realm owns the box) | 6017 19605
+   200 |   0       0 |   (none) |         (no realm owns the box) | 6149 19605
+   300 |   0       0 |   (none) |         (no realm owns the box) | 6282 19605
+   400 |   0       0 |   (none) |         (no realm owns the box) | 6414 19605
+   500 |   0       0 |   (none) |         (no realm owns the box) | 6547 19605
+   600 |   0       0 |   (none) |         (no realm owns the box) | 6681 19605
+   700 |   0       0 |   (none) |         (no realm owns the box) | 6814 19605
+   800 |   0       0 |   (none) |         (no realm owns the box) | 6949 19605
+   900 |   0       0 |   (none) |         (no realm owns the box) | 7084 19605
+  1000 |   0       0 |   (none) |         (no realm owns the box) | 7219 19605
+  1100 |   0       0 |   (none) |         (no realm owns the box) | 7355 19605
+  1200 |   0       0 |   (none) |         (no realm owns the box) | 7491 19605
+  1300 |   0       0 |   (none) |         (no realm owns the box) | 7628 19605
+  1400 |   0       0 |   (none) |         (no realm owns the box) | 7765 19605
+  1500 |   0       0 |   (none) |         (no realm owns the box) | 7902 19605
+  1600 |   0       0 |   (none) |         (no realm owns the box) | 8039 19605
+  1700 |   0       0 |   (none) |         (no realm owns the box) | 8177 19605
+  1800 |   0       0 |   (none) |         (no realm owns the box) | 8315 19605
+  1900 |   0       0 |   (none) |         (no realm owns the box) | 8452 19605
+  2000 |   0       0 |   (none) |         (no realm owns the box) | 8590 19605
+  2100 |   0       0 |   (none) |         (no realm owns the box) | 8729 19605
+  2200 |   0       0 |   (none) |         (no realm owns the box) | 8867 19605
+  2300 |   0       0 |   (none) |         (no realm owns the box) | 9005 19605
+  2400 |   0       0 |   (none) |         (no realm owns the box) | 9143 19605
+  2500 |   0       0 |   (none) |         (no realm owns the box) | 9280 19605
+  2600 |   0       0 |   (none) |         (no realm owns the box) | 9418 19605
+  2700 |   0       0 |   (none) |         (no realm owns the box) | 9555 19605
+  2800 |   0       0 |   (none) |         (no realm owns the box) | 9692 19605
+  2900 |   0       0 |   (none) |         (no realm owns the box) | 9829 19605
+  3000 |   0       0 |   (none) |         (no realm owns the box) | 9965 19605
+  3100 |   0       0 |   (none) |         (no realm owns the box) | 10101 19605
+  3200 |   0       0 |   (none) |         (no realm owns the box) | 10237 19605
+  3300 |   0       0 |   (none) |         (no realm owns the box) | 10372 19605
+  3400 |   0       0 |   (none) |         (no realm owns the box) | 10506 19605
+  3500 |   0       0 |   (none) |         (no realm owns the box) | 10640 19605
+  3600 |   0       0 |   (none) |         (no realm owns the box) | 10773 19605
+  3700 |   0       0 |   (none) |         (no realm owns the box) | 10905 19605
+  3800 |   0       0 |   (none) |         (no realm owns the box) | 11037 19605
+  3900 |   0       0 |   (none) |         (no realm owns the box) | 11168 19605
+  4000 |   0       0 |   (none) |         (no realm owns the box) | 11298 19605
+  4100 |   0       0 |   (none) |         (no realm owns the box) | 11427 19605
+  4200 |   0       0 |   (none) |         (no realm owns the box) | 11555 19605
+  4300 |   0       0 |   (none) |         (no realm owns the box) | 11682 19605
+  4400 |   0       0 |   (none) |         (no realm owns the box) | 11808 19605
+  4500 |   0       0 |   (none) |         (no realm owns the box) | 11934 19605
+  4600 |   0       0 |   (none) |         (no realm owns the box) | 12058 19605
+  4700 |   0       0 |   (none) |         (no realm owns the box) | 12181 19605
+  4800 |   0       0 |   (none) |         (no realm owns the box) | 12303 19605
+  4900 |   0       0 |   (none) |         (no realm owns the box) | 12424 19605
+  5000 |   0       0 |   (none) |         (no realm owns the box) | 12544 19605
+  5100 |   0       0 |   (none) |         (no realm owns the box) | 12662 19605
+  5200 |   0       0 |   (none) |         (no realm owns the box) | 12780 19605
+  5300 |   0       0 |   (none) |         (no realm owns the box) | 12896 19605
+  5400 |   0       0 |   (none) |         (no realm owns the box) | 13010 19605
+  5500 |   0       0 |   (none) |         (no realm owns the box) | 13124 19605
+  5600 |   0       0 |   (none) |         (no realm owns the box) | 13236 19605
+  5700 |   0       0 |   (none) |         (no realm owns the box) | 13347 19605
+  5800 |   0       0 |   (none) |         (no realm owns the box) | 13457 19605
+  5900 |   0       0 |   (none) |         (no realm owns the box) | 13565 19605
+  6000 |   0       0 |   (none) |         (no realm owns the box) | 13672 19605
+  6100 |   0       0 |   (none) |         (no realm owns the box) | 13778 19605
+  6200 |   0       0 |   (none) |         (no realm owns the box) | 13882 19605
+  6300 |   0       0 |   (none) |         (no realm owns the box) | 13985 19605
+  6400 |   0       0 |   (none) |         (no realm owns the box) | 14086 19605
+  6500 |   0       0 |   (none) |         (no realm owns the box) | 14187 19605
+  6600 |   0       0 |   (none) |         (no realm owns the box) | 14285 19605
+  6700 |   0       0 |   (none) |         (no realm owns the box) | 14383 19605
+  6800 |   0       0 |   (none) |         (no realm owns the box) | 14478 19605
+  6900 |   0       0 |   (none) |         (no realm owns the box) | 14573 19605
+  7000 |   0       0 |   (none) |         (no realm owns the box) | 14666 19605
+  7100 |   0       0 |   (none) |         (no realm owns the box) | 14758 19605
+  7200 |   0       0 |   (none) |         (no realm owns the box) | 14848 19605
+  7300 |   0       0 |   (none) |         (no realm owns the box) | 14937 19605
+  7400 |   0       0 |   (none) |         (no realm owns the box) | 15025 19605
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+  7500 |   0       0 |   (none) |         (no realm owns the box) | 15111 19605
+  7600 |   0       0 |   (none) |         (no realm owns the box) | 15195 19605
+  7700 |   0       0 |   (none) |         (no realm owns the box) | 15279 19605
+  7800 |   0       0 |   (none) |         (no realm owns the box) | 15361 19605
+  7900 |   0       0 |   (none) |         (no realm owns the box) | 15442 19605
+  8000 |   0       0 |   (none) |         (no realm owns the box) | 15521 19605
+  8100 |   0       0 |   (none) |         (no realm owns the box) | 16230 323300
+  8200 |   0       0 |   (none) |         (no realm owns the box) | 17198 323300
+  8300 |   0       0 |   (none) |         (no realm owns the box) | 18287 323300
+  8400 |   0       0 |   (none) |         (no realm owns the box) | 19496 323300
+  8500 |   0       0 |   (none) |         (no realm owns the box) | 20831 323300
+  8600 |   0       0 |   (none) |         (no realm owns the box) | 22297 323300
+  8700 |   0       0 |   (none) |         (no realm owns the box) | 23898 336254
+  8800 |   0       0 |   (none) |         (no realm owns the box) | 25647 336254
+  8900 |   0       0 |   (none) |         (no realm owns the box) | 27531 336254
+  9000 |   0       0 |   (none) |         (no realm owns the box) | 29546 336254
+  9100 |   0       0 |   (none) |         (no realm owns the box) | 31692 336254
+  9200 |   0       0 |   (none) |         (no realm owns the box) | 33972 336254
+  9300 |   0       0 |   (none) |         (no realm owns the box) | 36392 336894
+  9400 |   0       0 |   (none) |         (no realm owns the box) | 38969 350201
+  9500 |   0       0 |   (none) |         (no realm owns the box) | 41719 350201
+  9600 |   0       0 |   (none) |         (no realm owns the box) | 44633 350201
+  9700 |   0       0 |   (none) |         (no realm owns the box) | 47711 350201
+  9800 |   0       0 |   (none) |         (no realm owns the box) | 50952 350201
+  9900 |   0       0 |   (none) |         (no realm owns the box) | 54360 350201
+ 10000 |   0       0 |   (none) |         (no realm owns the box) | 57937 350201
+ 10100 |   0       0 |   (none) |         (no realm owns the box) | 61721 363354
+ 10200 |   0       0 |   (none) |         (no realm owns the box) | 65707 363354
+ 10300 |   0       0 |   (none) |         (no realm owns the box) | 69884 363354
+ 10400 |   0       0 |   (none) |         (no realm owns the box) | 74248 363354
+ 10500 |   0       0 |   (none) |         (no realm owns the box) | 78797 363354
+ 10600 |   0       0 |   (none) |         (no realm owns the box) | 83528 363354
+ 10700 |   0       0 |   (none) |         (no realm owns the box) | 88446 377370
+ 10800 |   0       0 |   (none) |         (no realm owns the box) | 93593 377370
+ 10900 |   0       0 |   (none) |         (no realm owns the box) | 98954 377370
+ 11000 |   0       0 |   (none) |         (no realm owns the box) | 104508 377370
+ 11100 |   0       0 |   (none) |         (no realm owns the box) | 110242 377370
+ 11200 |   0       0 |   (none) |         (no realm owns the box) | 116144 377370
+ 11300 |   0       0 |   (none) |         (no realm owns the box) | 122204 377370
+ 11400 |   0       0 |   (none) |         (no realm owns the box) | 128465 386108
+ 11500 |   0       0 |   (none) |         (no realm owns the box) | 134947 386110
+ 11600 |   0       0 |   (none) |         (no realm owns the box) | 141562 386115
+ 11700 |   0       0 |   (none) |         (no realm owns the box) | 148287 386124
+ 11800 |   0       0 |   (none) |         (no realm owns the box) | 155103 386159
+ 11900 |   0       0 |   (none) |         (no realm owns the box) | 162002 386337
+ 12000 |   0       0 |   (none) |         (no realm owns the box) | 168978 386676
+ 12100 |   0       0 |   (none) |         (no realm owns the box) | 176155 394584
+ 12200 |   0       0 |   (none) |         (no realm owns the box) | 183425 395234
+ 12300 |   0       0 |   (none) |         (no realm owns the box) | 190730 396127
+ 12400 |   0       0 |   (none) |         (no realm owns the box) | 198057 397315
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+ 12500 |   0       0 |   (none) |         (no realm owns the box) | 205397 398971
+ 12600 |   0       0 |   (none) |         (no realm owns the box) | 212758 401243
+ 12700 |   0       0 |   (none) |         (no realm owns the box) | 220169 412052
+ 12800 |   0       0 |   (none) |         (no realm owns the box) | 227845 415155
+ 12900 |   0       0 |   (none) |         (no realm owns the box) | 235561 418829
+ 13000 |   0       0 |   (none) |         (no realm owns the box) | 243325 423039
+ 13100 |   0       0 |   (none) |         (no realm owns the box) | 251142 427748
+ 13200 |   0       0 |   (none) |         (no realm owns the box) | 259018 432921
+ 13300 |   0       0 |   (none) |         (no realm owns the box) | 266960 438526
+ 13400 |   0       0 |   (none) |         (no realm owns the box) | 275107 453056
+ 13500 |   0       0 |   (none) |         (no realm owns the box) | 283509 459211
+ 13600 |   0       0 |   (none) |         (no realm owns the box) | 291991 465795
+ 13700 |   5    9278 | Ňěňní       5953/  340 0.99 0.00 0.28 c-1 |         (no realm owns the box) | 300527 474444
+ 13800 |   8    9604 | Ňěňní       6098/  349 0.99 0.04 0.28 c-1 |         (no realm owns the box) | 307941 481682
+ 13900 |   8   10535 | Ňěňní       6167/  357 0.99 0.04 0.29 c-1 |         (no realm owns the box) | 315644 489004
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) stood down — the farming package arrived before it was invented
+ 14000 |   8   10833 | Ňěňní       6322/  366 0.98 0.04 0.29 c-1 |         (no realm owns the box) | 323613 496574
+ 14100 |   8   11143 | Ňěňní       6488/  375 0.83 0.08 0.30 c-1 |         (no realm owns the box) | 332157 513794
+ 14200 |   9   11477 | Ňěňní       6660/  384 0.71 0.08 0.30 c-1 |         (no realm owns the box) | 341048 522122
+ 14300 |   9   11796 | Ňěňní       6833/  394 0.61 0.08 0.31 c-1 |         (no realm owns the box) | 349925 530319
+ 14400 |   9   12100 | Ňěňní       7006/  404 0.53 0.11 0.32 c-1 |         (no realm owns the box) | 358818 538725
+ 14500 |   9   12390 | Ňěňní       7159/  413 0.48 0.11 0.32 c-1 |         (no realm owns the box) | 366688 547412
+ 14600 |  13   12741 | Ňěňní       7320/  423 0.45 0.11 0.33 c-1 |         (no realm owns the box) | 374968 557360
+ 14700 |  13   11921 | Ňěňní       6506/  432 0.45 0.15 0.33 c-1 |         (no realm owns the box) | 383610 568493
+ 14800 |  13   12195 | Ňěňní       6644/  441 0.43 0.15 0.34 c-1 |         (no realm owns the box) | 391626 577359
+ 14900 |  13   12472 | Ňěňní       6790/  452 0.57 0.15 0.35 c-1 |         (no realm owns the box) | 400062 586581
+ 15000 |  13   12722 | Ňěňní       6866/  462 0.68 0.19 0.35 c1 |         (no realm owns the box) | 405406 563543
+ 15100 |  13   12965 | Ňěňní       6940/  468 0.77 0.19 0.36 c1 |         (no realm owns the box) | 410544 572845
+ 15200 |  14   13256 | Ňěňní       7068/  474 0.80 0.19 0.37 c1 |    1   20     20   501k    1  -/-   0 | 417590 578892
+ 15300 |  14   13503 | Ňěňní       7279/  484 0.82 0.22 0.37 c1 |    1   23     23   577k    1  -/-   0 | 428948 587971
+ 15400 |   8   13663 | Ňěňní       7436/  496 0.87 0.22 0.38 c1 |    1   23     23   577k    1  -/-   0 | 437708 605551
+ 15500 |  12   13982 | Ňěňní       7086/  506 0.68 0.22 0.39 c1 |    1   22     22   550k    1  -/-   0 | 419353 612582
+ 15600 |  14   14737 | Fùlpū       8577/  437 0.07 0.25 0.37 c2 |    1   21     21   525k    1  -/-   0 | 426307 621808
+ 15700 |  15   16106 | Fùlpū       9738/  624 0.05 0.25 0.38 c2 |    1   19     19   475k    3  19/0   0 | 437539 631543
+ 15800 |  15   16407 | Fùlpū       9841/  654 0.04 0.25 0.38 c2 |    1   19     19   475k    3  23/0   0 | 449833 638795
+ 15900 |  16   17430 | Fùlpū       9987/  683 0.15 0.29 0.38 c2 |    1   20     20   501k    3  23/0   0 | 462700 649005
+ 16000 |  16   15495 | Fùlpū       7633/  255 0.38 0.29 0.39 c2 |    1   17     17   426k    3  9/0   0 | 449695 656808
+ 16100 |  16   15419 | Fùlpū       7456/  615 0.52 0.29 0.39 c2 |    1   17     17   426k    3  13/0   0 | 470172 681957
+ 16200 |  14   16317 | Fùlpū       8353/  591 0.64 0.33 0.40 c2 |    1   17     17   427k    3  13/0   0 | 472758 688841
+ 16300 |  16   13546 | Fùlpū       5563/  643 0.71 0.33 0.41 c2 |    1   18     18   452k    3  13/0   0 | 467182 693621
+ 16400 |  16   13631 | Fùlpū       5535/  836 0.59 0.33 0.41 c2 |    1   18     18   452k    3  11/0   0 | 482411 699261
+ 16500 |  16   12409 | Fùlpū       4259/  702 0.42 0.36 0.42 c2 |    1   17     17   426k    3  11/0   0 | 480781 692455
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) stood down — the farming package arrived before it was invented
+ 16600 |  16    8915 | Fùlpū       3791/  720 0.30 0.36 0.43 c2 |    1   18     18   452k    3  9/0   0 | 490499 699217
+ 16700 |  16    8998 | Fùlpū       3860/  749 0.27 0.36 0.43 c2 |    1   18     18   452k    3  9/0   0 | 501252 691056
+ 16800 |  15    8183 | Ňěňní       3848/  538 0.49 0.39 0.46 c1 |    1   19     19   476k    3  9/0   0 | 510781 709963
+ 16900 |  17   10980 | Zyibayamphib  4075/  658 0.26 0.32 0.49 c41 |    1   14     14   352k    3  12/0   0 | 521322 716827
+ 17000 |  17   10928 | Yamfaputa     2810/  674 0.15 0.09 0.47 c48 |    1   16     16   402k    2  16/0   0 | 528469 719371
+ 17100 |  17   11044 | Yamfaputa     2843/  684 0.11 0.15 0.48 c48 |    1   16     16   402k    2  16/0   0 | 532602 723118
+ 17200 |  14   11139 | Ňěňní       3481/  585 0.24 0.42 0.49 c1 |    1   14     14   352k    2  17/0   0 | 541358 732438
+ 17300 |  17   11221 | Ňěňní       3523/  599 0.21 0.42 0.49 c1 |    1   17     17   426k    2  20/0   0 | 548769 733019
+ 17400 |  18   11338 | Ňěňní       3611/  615 0.22 0.44 0.50 c1 |    1   17     17   426k    2  20/0   0 | 555020 751712
+ 17500 |  18   11268 | Ňěňní       2935/  617 0.24 0.44 0.51 c1 |    1   15     15   375k    2  12/0   0 | 560201 750718
+ 17600 |  18   11832 | Ňěňní       2955/  617 0.26 0.44 0.51 c1 |    1   20     20   498k    3  14/11   0 | 579778 765859
+ 17700 |  19   12074 | Ňěňní       2965/  608 0.23 0.47 0.52 c1 |    1   20     20   498k    3  14/11   0 | 585889 773284
+ 17800 |  19   11184 | Ňěňní       3003/  608 0.16 0.47 0.53 c1 |    1   15     15   376k    2  18/8   1 | 587951 754478
+ 17900 |  19    9315 | Ňěňní       2882/  596 0.12 0.47 0.53 c93 |    1   21     21   531k    3  26/24   0 | 581368 788465
+ 18000 |  19   11925 | Fùlpū       5588/  876 0.01 0.46 0.52 c1 |    1   28     28   708k    3  26/24   0 | 583598 745701
+ 18100 |  18   11738 | Fùlpū       5517/  927 0.03 0.46 0.52 c1 |    1   28     28   708k    1  26/24   0 | 577946 763331
+ 18200 |  18    9135 | Fùlpū       6019/  938 0.03 0.46 0.53 c1 |   48   10     15   365k    4  9/19   0 | 583128 773403
+ 18300 |  18    9524 | Ňěňní       3464/  674 0.03 0.50 0.55 c93 |   93   15     15   373k    2  8/24   1 | 587487 748057
+ 18400 |  18    9449 | Ňěňní       3307/  635 0.02 0.50 0.56 c93 |   93   15     15   373k    2  15/11   2 | 588824 757234
+ 18500 |  18   11857 | Fùlpū       3238/ 1037 0.01 0.48 0.56 c1 |    1   14     37   962k    1  26/24   0 | 585577 748613
+ 18600 |  18   12485 | Fùlpū       3605/ 1006 0.01 0.50 0.56 c1 |   93   16     16   399k    2  31/10   0 | 589305 741601
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+ 18700 |  19   13959 | Fùlpū       4619/  229 0.00 0.50 0.57 c1 |   93   16     16   399k    2  19/8   0 | 618514 742263
+ 18800 |  18   14199 | Fùlpū       4285/  299 0.11 0.50 0.58 c1 |   93   17     17   424k    2  23/8   0 | 618533 761042
+ 18900 |  14   12756 | Fùlpū       3879/  581 0.31 0.52 0.58 c1 |   93   17     17   424k    2  23/8   0 | 619442 755929
+ 19000 |  18   13417 | Fùlpū       4246/  162 0.39 0.52 0.59 c1 |   93   17     17   424k    2  26/4   0 | 597591 747864
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+ 19100 |  19   13495 | Fùlpū       4326/  221 0.36 0.52 0.60 c1 |   93   17     17   424k    2  17/4   0 | 581850 750902
+[transHeap] step=19176 cap=2048 peakN=1061 pushes=5824 (0.0MB backing)
+ 19200 |  18   12781 | Fùlpū       3742/  645 0.44 0.53 0.60 c1 |   93   14     14   351k    2  17/4   0 | 579604 730982
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+ 19300 |  18   12367 | Fùlpū       3780/  835 0.34 0.53 0.61 c1 |   78   14     20   492k    1  22/0   0 | 565403 737104
+ 19400 |  18   12316 | Fùlpū       3793/  964 0.28 0.53 0.62 c1 |   78   14     20   492k    2  26/0   0 | 579671 732699
+ 19500 |  18   11546 | Lụ̄rǎkú    4012/  842 0.16 0.11 0.62 c44 |   93   17     17   424k    2  15/4   0 | 571281 730043
+ 19600 |  18   15371 | Xīrtụ̌ị    5148/  843 0.06 0.11 0.62 c85 |   43   16     17   416k    1  -/-   0 | 557538 717570
+ 19700 |  18   15374 | Xīrtụ̌ị    5142/  830 0.12 0.11 0.63 c85 |   43   16     17   416k    1  -/-   0 | 556698 711531
+ 19800 |  18   15327 | Xīrtụ̌ị    5000/  809 0.09 0.16 0.64 c85 |   43   17     18   440k    1  -/-   0 | 556173 716333
+ 19900 |  17   11583 | Daphut'eb     3592/  641 0.05 0.48 0.68 c43 |   43   18     19   466k    1  -/-   0 | 547014 675123
+ 20000 |  15   11484 | Daphut'eb     3461/  610 0.04 0.48 0.69 c43 |   43   18     19   466k    1  -/-   0 | 539903 668179
+ 20100 |  11    8818 | Daphut'eb     3292/  601 0.07 0.50 0.69 c43 |   93   20     20   501k    1  15/4   0 | 535831 699550
+ 20200 |  15    9951 | Daphut'eb     3306/  610 0.21 0.50 0.70 c43 |   93   16     16   402k    6  19/5   0 | 536835 721022
+ 20300 |  17    9816 | Daphut'eb     3325/  608 0.31 0.50 0.70 c43 |   93   16     16   402k    5  25/3   1 | 544345 702351
+ 20400 |  17    8130 | Ňěňní       2777/  596 0.02 0.59 0.69 c85 |   93   18     18   452k    5  25/3   1 | 530469 810611
+ 20500 |  17   13207 | Xīrtụ̌ị    4698/  787 0.11 0.23 0.68 c123 |   93   20     20   504k    5  19/2   0 | 523069 662107
+ 20600 |  17    8989 | Fūtíü       3072/  663 0.29 0.07 0.70 c93 |   93   23     23   580k    5  25/3   1 | 502267 702931
+ 20700 |  17    8004 | Fūtíü       2764/  610 0.21 0.12 0.71 c93 |   93   23     23   580k    5  25/3   1 | 469273 702593
+ 20800 |  17    7223 | Fūtíü       3316/  594 0.15 0.12 0.71 c93 |   93   20     20   505k    5  26/2   0 | 461280 649464
+ 20900 |  17    6934 | Fūtíü       2753/  601 0.14 0.12 0.72 c93 |   93   22     22   554k    5  29/3   1 | 449734 645084
+ 21000 |  17    6816 | Fūtíü       2756/  605 0.10 0.16 0.72 c93 |   93   22     22   554k    5  29/3   1 | 449253 641603
+ 21100 |  17    6605 | Fūtíü       3139/  567 0.07 0.16 0.73 c93 |   93   19     19   479k    5  27/2   1 | 444012 737198
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+ 21200 |  18    6860 | Fūtíü       2782/  541 0.05 0.16 0.73 c93 |   43   12     15   362k    2  21/0   0 | 440416 664986
+ 21300 |  15    6954 | Fūtíü       2829/  551 0.07 0.21 0.73 c93 |   43   12     15   362k    2  21/0   0 | 442593 662269
+ 21400 |  15    6875 | Ňěňní       2587/  497 0.00 0.58 0.72 c1 |   93   20     20   502k    3  23/2   1 | 442310 669819
+ 21500 |  15    4064 | T'imnumu      1889/  336 0.61 0.51 0.66 c43 |    1   18     18   451k    4  25/3   0 | 443957 912064
+ 21600 |  15    7583 | Ňěňní       4074/  665 0.00 0.59 0.73 c1 |    1   22     22   552k    4  25/3   0 | 458260 657257
+ 21700 |  15    7642 | Ňěňní       3727/  609 0.12 0.59 0.73 c1 |    1   22     22   552k    5  28/23   1 | 468346 621361
+ 21800 |  13    7661 | Ňěňní       3647/  165 0.14 0.59 0.73 c1 |    1   26     27   675k    5  22/15   2 | 480502 624281
+ 21900 |  15    7626 | Ňěňní       3388/  176 0.10 0.60 0.74 c1 |    1   22     22   551k    5  22/15   2 | 475533 624062
+ 22000 |  16    7531 | Ňěňní       3351/  498 0.07 0.60 0.74 c1 |    1   22     22   551k    8  22/17   0 | 462862 585826
+ 22100 |  16    7584 | Ňěňní       3354/  521 0.16 0.60 0.74 c1 |    1   24     25   627k    8  24/14   0 | 466979 600893
+ 22200 |  16    7555 | Ňěňní       3254/  516 0.18 0.61 0.75 c1 |    1   22     22   551k    8  24/14   0 | 466040 590974
+ 22300 |  16    7302 | Ňěňní       3242/  520 0.13 0.61 0.75 c1 |    1   22     22   551k    8  19/11   1 | 460101 591127
+ 22400 |  15    7185 | Ňěňní       3147/  504 0.09 0.61 0.75 c1 |    1   25     25   626k    8  22/11   0 | 468290 588525
+ 22500 |  15    7267 | Ňěňní       3336/  517 0.17 0.62 0.76 c1 |    1   24     24   600k    8  22/11   0 | 459042 566254
+ 22600 |  15    7233 | Ňěňní       3319/  520 0.27 0.62 0.76 c1 |    1   24     24   600k    8  25/11   0 | 452629 567833
+ 22700 |  12    7180 | Ňěňní       3283/  141 0.35 0.62 0.76 c1 |    1   24     24   600k    9  26/15   0 | 453754 578414
+ 22800 |  14    7020 | Ňěňní       3173/  365 0.50 0.63 0.76 c1 |    1   24     24   600k    9  26/15   0 | 452684 584468
+ 22900 |  14    7443 | Ňěňní       3413/  100 0.59 0.63 0.77 c1 |    1   24     24   600k    9  22/21   0 | 459036 581737
+ 23000 |  14    7602 | Ňěňní       3576/  451 0.63 0.63 0.77 c1 |    1   24     24   600k    6  21/9   0 | 464106 580743
+ 23100 |  14    7405 | Ňěňní       3493/  486 0.46 0.64 0.77 c1 |    1   28     28   698k    6  21/9   0 | 449341 570435
+ 23200 |  15    7405 | Ňěňní       3600/  498 0.33 0.64 0.77 c1 |    1   25     25   625k    5  21/4   0 | 450265 569099
+ 23300 |  15    7480 | Ňěňní       3666/  519 0.35 0.64 0.78 c1 |    1   25     25   625k    5  29/4   0 | 451056 572185
+ 23400 |  14    7620 | Ňěňní       3757/  544 0.40 0.65 0.78 c1 |    1   20     20   501k    5  29/4   0 | 456827 564872
+ 23500 |  14    7225 | Ňěňní       2892/  553 0.43 0.65 0.78 c1 |    1   23     23   574k    5  21/6   0 | 458162 568792
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+ 23600 |  14    7157 | Ňěňní       2850/  546 0.43 0.65 0.79 c1 |    1   23     23   574k    5  26/11   0 | 453850 578028
+ 23700 |  14    7311 | Ňěňní       2814/  547 0.37 0.65 0.79 c1 |    1   22     22   550k    5  26/11   0 | 459684 579737
+ 23800 |  14    7336 | T'imnumu      3019/  477 0.31 0.65 0.79 c43 |    1   20     20   501k    5  20/10   1 | 461232 552809
+ 23900 |  14    7322 | T'imnumu      3002/  489 0.22 0.65 0.79 c43 |    1   20     20   501k    5  20/9   1 | 460889 552430
+ 24000 |  14    7610 | T'imnumu      2976/  469 0.16 0.66 0.80 c43 |    1   23     23   575k    5  20/9   1 | 449867 563243
+ 24100 |  15    7845 | T'imnumu      2925/  466 0.11 0.66 0.80 c43 |    1   23     23   575k    5  22/8   1 | 454031 546067
+ 24200 |  15    7732 | T'imnumu      2897/  460 0.08 0.66 0.80 c43 |    1   21     21   526k    5  21/8   0 | 452585 533596
+ 24300 |  15    7634 | T'imnumu      2955/  456 0.27 0.67 0.81 c43 |    1   21     21   526k    5  21/8   0 | 442805 551530
+ 24400 |  15    7507 | T'imnumu      2988/  469 0.46 0.67 0.81 c43 |    1   21     21   526k    5  18/8   1 | 439447 545370
+ 24500 |  14    7602 | T'imnumu      3077/  494 0.58 0.67 0.81 c43 |    1   21     21   526k    1  18/8   0 | 441193 543701
+ 24600 |  12    7590 | T'imnumu      3084/  502 0.64 0.68 0.82 c43 |    1   21     21   526k    1  18/8   0 | 443024 543583
+ 24700 |  15    7403 | Ňěňní       2826/  541 0.02 0.67 0.81 c1 |    1   23     23   574k    1  18/8   0 | 468737 527547
+ 24800 |  15    7437 | Ňěňní       2852/  163 0.13 0.67 0.82 c1 |    1   22     22   550k    2  47/0   0 | 461992 544662
+ 24900 |  15    7297 | Ňěňní       2587/  148 0.37 0.67 0.82 c1 |    1   22     22   550k    2  47/0   0 | 451180 567628
+ 25000 |  14    7164 | Ňěňní       2685/  465 0.47 0.67 0.82 c1 |    1   22     22   548k    3  19/0   0 | 445635 550546
+
+=== THE EVENT LOG, EGYPT BOX, steps 9000+ (the sim's own record — not inferred) ===
+  -- complete type histogram (1272 events; the listing below may truncate) --
+       285  war.began
+       274  settlement.founded
+       199  war.ended
+        64  settlement.abandoned
+        62  war.indemnity
+        53  market.dearth
+        52  settlement.dissolved
+        33  settlement.annexed
+        31  plague.outbreak
+        30  settlement.withered
+        29  polity.submitted
+        26  polity.seceded
+        22  polity.receded
+        22  polity.ended
+        19  settlement.lapsed
+        18  settlement.tier
+        18  famine.struck
+        13  succession.crisis
+        10  town.planted
+         5  polity.shattered
+         3  polity.founded
+         2  plague.virginSoil
+         2  polity.restored
+   13625  settlement.founded     s=1 sName=Ňěňní kind=cradle
+          └ Ňěňní was founded at the dawn of civilisation.
+   13625  settlement.founded     s=1 sName=Ňěňní city=1
+          └ The city of Ňěňní arose.
+   13625  settlement.founded     s=2 sName=Fùlpū kind=crystallized
+          └ Fùlpū was founded.
+   13625  settlement.founded     s=2 sName=Fùlpū city=1
+          └ The city of Fùlpū arose.
+   13650  settlement.founded     s=3 sName=Kèňtọ̄ị kind=crystallized
+          └ Kèňtọ̄ị was founded.
+   13650  settlement.founded     s=3 sName=Kèňtọ̄ị city=1
+          └ The city of Kèňtọ̄ị arose.
+   13675  settlement.founded     s=4 sName=Fōnfǐu kind=crystallized
+          └ Fōnfǐu was founded.
+   13675  settlement.founded     s=4 sName=Fōnfǐu city=1
+          └ The city of Fōnfǐu arose.
+   13681  settlement.tier        s=2 sName=Fùlpū
+          └ Fùlpū grew into a metropolis (429,000 souls).
+   13700  settlement.founded     s=5 sName=Nāthị̌ kind=crystallized
+          └ Nāthị̌ was founded.
+   13700  settlement.founded     s=5 sName=Nāthị̌ city=1
+          └ The city of Nāthị̌ arose.
+   13720  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   13725  settlement.founded     s=6 sName=Lǎxkòu kind=crystallized
+          └ Lǎxkòu was founded.
+   13725  settlement.founded     s=6 sName=Lǎxkòu city=1
+          └ The city of Lǎxkòu arose.
+   13750  settlement.founded     s=7 sName=Sǔsfá kind=crystallized
+          └ Sǔsfá was founded.
+   13750  settlement.founded     s=7 sName=Sǔsfá city=1
+          └ The city of Sǔsfá arose.
+   13775  settlement.founded     s=8 sName=Fǒptàị kind=crystallized
+          └ Fǒptàị was founded.
+   13775  settlement.founded     s=8 sName=Fǒptàị city=1
+          └ The city of Fǒptàị arose.
+   14125  settlement.founded     s=10 sName=Ňǐlňà kind=crystallized
+          └ Ňǐlňà was founded.
+   14125  settlement.founded     s=10 sName=Ňǐlňà city=1
+          └ The city of Ňǐlňà arose.
+   14550  settlement.founded     s=12 sName=Lǎlpù kind=crystallized
+          └ Lǎlpù was founded.
+   14550  settlement.founded     s=12 sName=Zyibayamphibta city=1
+          └ The city of Zyibayamphibta arose.
+   14554  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   14575  settlement.founded     s=13 sName=Damp'aludat kind=crystallized
+          └ Damp'aludat was founded.
+   14575  settlement.founded     s=13 sName=Damp'aludat city=1
+          └ The city of Damp'aludat arose.
+   14575  settlement.founded     s=14 sName=Tàstù kind=crystallized
+          └ Tàstù was founded.
+   14575  settlement.founded     s=14 sName=Tàstù city=1
+          └ The city of Tàstù arose.
+   14600  settlement.founded     s=15 sName=Tathik'a kind=crystallized
+          └ Tathik'a was founded.
+   14600  settlement.founded     s=15 sName=Tathik'a city=1
+          └ The city of Tathik'a arose.
+   15125  settlement.founded     s=17 sName=Lá kind=crystallized
+          └ Lá was founded.
+   15125  settlement.founded     s=17 sName=Lá city=1
+          └ The city of Lá arose.
+   15388  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   15392  settlement.dissolved   s=8 why=core sName=Fǒptàị
+          └ Fǒptàị faded back into the countryside.
+   15393  settlement.dissolved   s=7 why=core sName=Sǔsfá
+          └ Sǔsfá faded back into the countryside.
+   15394  settlement.dissolved   s=6 why=core sName=Lǎxkòu
+          └ Lǎxkòu faded back into the countryside.
+   15395  settlement.dissolved   s=5 why=core sName=Nāthị̌
+          └ Nāthị̌ faded back into the countryside.
+   15396  settlement.dissolved   s=4 why=core sName=Fōnfǐu
+          └ Fōnfǐu faded back into the countryside.
+   15397  settlement.dissolved   s=3 why=core sName=Kèňtọ̄ị
+          └ Kèňtọ̄ị faded back into the countryside.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15425  settlement.founded     s=19 sName=Pùtǔ kind=crystallized
+          └ Pùtǔ was founded.
+   15425  settlement.founded     s=19 sName=Pùtǔ city=1
+          └ The city of Pùtǔ arose.
+   15450  settlement.founded     s=20 sName=Mápị̄rọ̀ kind=crystallized
+          └ Mápị̄rọ̀ was founded.
+   15450  settlement.founded     s=20 sName=Mápị̄rọ̀ city=1
+          └ The city of Mápị̄rọ̀ arose.
+   15450  war.began              from=1 to=11 name=Ňěňní
+          └ Marched to war against Pephamdoya.
+   15450  war.began              from=2 to=1 name=Fùlpūlěā
+          └ Marched to war against Ňěňní.
+   15475  settlement.founded     s=21 sName=Nǐfpù kind=crystallized
+          └ Nǐfpù was founded.
+   15475  settlement.founded     s=21 sName=Nǐfpù city=1
+          └ The city of Nǐfpù arose.
+   15479  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   15487  polity.seceded         from=11 fromName=Pephamdoya
+          └ Broke away from Pephamdoya in a war of secession.
+   15489  settlement.tier        s=1 sName=Ňěňní
+          └ Ňěňní grew into a metropolis (505,000 souls).
+   15500  settlement.founded     s=22 sName=Tị̄lā kind=crystallized
+          └ Tị̄lā was founded.
+   15500  settlement.founded     s=22 sName=Tị̄lā city=1
+          └ The city of Tị̄lā arose.
+   15525  settlement.founded     s=24 sName=Ňú kind=crystallized
+          └ Ňú was founded.
+   15525  settlement.founded     s=24 sName=Ňú city=1
+          └ The city of Ňú arose.
+   15550  war.began              from=1 to=2 name=Ňěňní
+          └ Marched to war against Fùlpūlěā.
+   15600  settlement.founded     s=25 sName=Kólpì kind=crystallized
+          └ Kólpì was founded.
+   15600  settlement.founded     s=25 sName=Kólpì city=1
+          └ The city of Kólpì arose.
+   15650  settlement.founded     s=26 sName=Pitumpa kind=crystallized
+          └ Pitumpa was founded.
+   15650  settlement.founded     s=26 sName=Pitumpa city=1
+          └ The city of Pitumpa arose.
+   15650  war.began              from=1 to=12 name=Ňěňní
+          └ Marched to war against Zyibayamphibtaya.
+   15650  war.ended              how=siegeLifted to=2 toName=Fùlpūlěā name=Ňěňní
+          └ The war with Ňěňní ended.
+   15697  settlement.tier        s=12 sName=Zyibayamphibta
+          └ Zyibayamphibta grew into a metropolis (651,000 souls).
+   15699  market.dearth          s=12 sName=Zyibayamphibta
+          └ Dearth in Zyibayamphibta — bread at famine prices in the market.
+   15790  settlement.dissolved   s=10 why=core sName=Ňǐlňà
+          └ Ňǐlňà faded back into the countryside.
+   15800  settlement.founded     s=28 sName=Fọ́ịlpì kind=crystallized
+          └ Fọ́ịlpì was founded.
+   15800  settlement.founded     s=28 sName=Fọ́ịlpì city=1
+          └ The city of Fọ́ịlpì arose.
+   15840  settlement.founded     s=29 sName=Láhā kind=planted
+          └ Láhā was founded.
+   15840  town.planted           s=29 sName=Láhā
+          └ The crown chartered Láhā to govern the countryside.
+   15850  settlement.founded     s=30 sName=Pēüffìrọ̀ city=1
+          └ The city of Pēüffìrọ̀ arose.
+   15850  war.ended              how=siegeLifted to=12 toName=Zyibayamphibtaya name=Ňěňní
+          └ The war with Ňěňní ended.
+   15875  settlement.founded     s=31 sName=Ňúpīkò kind=crystallized
+          └ Ňúpīkò was founded.
+   15875  settlement.founded     s=31 sName=Ňúpīkò city=1
+          └ The city of Ňúpīkò arose.
+   15875  settlement.founded     s=32 sName=Fùlpūkò city=1
+          └ The city of Fùlpūkò arose.
+   15900  settlement.founded     s=33 sName=Énfǐu city=1
+          └ The city of Énfǐu arose.
+   15925  settlement.founded     s=34 sName=Lélā city=1
+          └ The city of Lélā arose.
+   15950  settlement.founded     s=35 sName=Tị̄lākò city=1
+          └ The city of Tị̄lākò arose.
+   15975  settlement.founded     s=36 sName=Fǒu'tà city=1
+          └ The city of Fǒu'tà arose.
+   15985  settlement.tier        s=29 sName=Láhā
+          └ Láhā grew into a city (186,000 souls).
+   15985  settlement.tier        s=30 sName=Pēüffìrọ̀
+          └ Pēüffìrọ̀ grew into a metropolis (619,000 souls).
+   16000  settlement.founded     s=37 sName=Hǐlhụ̌ city=1
+          └ The city of Hǐlhụ̌ arose.
+   16025  settlement.founded     s=38 sName=Nị̀ppè city=1
+          └ The city of Nị̀ppè arose.
+   16050  settlement.founded     s=39 sName=Nǔfīukú city=1
+          └ The city of Nǔfīukú arose.
+   16087  polity.seceded         from=2 fromName=Fùlpūlěā
+          └ Broke away from Fùlpūlěā in a war of secession.
+   16128  settlement.lapsed      s=29 sName=Láhā from=2 fromName=Fùlpūlěā
+          └ Láhā slipped free of Fùlpūlěā.
+   16128  polity.receded         s=29 n=1 sName=Láhā name=Fùlpūlěā
+          └ The grip of Fùlpūlěā failed, and the marches beyond Láhā were left to their own devices.
+   16186  settlement.dissolved   s=14 why=core sName=Tàstù
+          └ Tàstù faded back into the countryside.
+   16187  settlement.dissolved   s=13 why=core sName=Damp'aludat
+          └ Damp'aludat faded back into the countryside.
+   16200  plague.outbreak        s=1 sName=Ňěňní
+          └ Plague broke out in Ňěňní and swept through the realm.
+   16221  settlement.withered    s=24 sName=Ňú
+          └ Ňú withered away and was abandoned.
+   16225  settlement.founded     s=41 sName=T'imnumu kind=crystallized
+          └ T'imnumu was founded.
+   16225  settlement.founded     s=41 sName=T'imnumu city=1
+          └ The city of T'imnumu arose.
+   16225  settlement.founded     s=42 sName=Nǔfīurọ̀ kind=crystallized
+          └ Nǔfīurọ̀ was founded.
+   16225  settlement.founded     s=42 sName=Nǔfīurọ̀ city=1
+          └ The city of Nǔfīurọ̀ arose.
+   16250  settlement.founded     s=43 sName=Daphut'eb kind=crystallized
+          └ Daphut'eb was founded.
+   16250  settlement.founded     s=43 sName=Daphut'eb city=1
+          └ The city of Daphut'eb arose.
+   16250  war.began              from=2 to=30 name=Fùlpūlěā
+          └ Marched to war against Pēüffìrọ̀lě.
+   16300  war.began              from=29 to=30 name=Láhā
+          └ Marched to war against Pēüffìrọ̀lě.
+   16320  settlement.founded     s=44 sName=Yomkhata kind=planted
+          └ Yomkhata was founded.
+   16320  town.planted           s=44 sName=Yomkhata
+          └ The crown chartered Yomkhata to govern the countryside.
+   16320  settlement.founded     s=45 sName=Hìuhsī kind=planted
+          └ Hìuhsī was founded.
+   16320  town.planted           s=45 sName=Hìuhsī
+          └ The crown chartered Hìuhsī to govern the countryside.
+   16350  war.began              from=30 to=2 name=Pēüffìrọ̀lě
+          └ Marched to war against Fùlpūlěā.
+   16381  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   16384  succession.crisis      name=Ňěňní
+          └ The royal line failed — an interregnum of rival claimants.
+   16385  settlement.dissolved   s=15 why=core sName=Tathik'a
+          └ Tathik'a faded back into the countryside.
+   16387  polity.submitted       how=union to=12 toName=Zyibayamphibtaya name=Pephamdoya
+          └ In the troubles of the succession, the court of Pephamdoya joined its crown to Zyibayamphibtaya — one senior throne, two realms.
+   16400  settlement.founded     s=48 sName=Yamfaputa kind=crystallized
+          └ Yamfaputa was founded.
+   16400  settlement.founded     s=48 sName=Yamfaputa city=1
+          └ The city of Yamfaputa arose.
+   16416  settlement.lapsed      s=44 sName=Yomkhata from=12 fromName=Zyibayamphibtaya
+          └ Yomkhata slipped free of Zyibayamphibtaya.
+   16416  polity.receded         s=44 n=1 sName=Yomkhata name=Zyibayamphibtaya
+          └ The grip of Zyibayamphibtaya failed, and the marches beyond Yomkhata were left to their own devices.
+   16416  polity.founded         how=frontier from=-1 name=Yomkhata
+          └ Yomkhata declared itself a sovereign realm.
+   16417  settlement.tier        s=44 sName=Yomkhata
+          └ Yomkhata grew into a city (37,000 souls).
+   16450  war.ended              how=siegeLifted to=30 toName=Pēüffìrọ̀lě name=Fùlpūlěā
+          └ The war with Fùlpūlěā ended.
+   16469  plague.outbreak        s=48 sName=Yamfaputa
+          └ Plague broke out in Yamfaputa and swept through the realm.
+   16484  succession.crisis      name=Pēüffìrọ̀lě
+          └ The royal line failed — an interregnum of rival claimants.
+   16500  war.began              from=30 to=29 name=Pēüffìrọ̀lě
+          └ Marched to war against Láhā as the succession failed.
+   16537  settlement.annexed     s=11 sName=Pephamdo from=11 fromName=Pephamdoya to=12 toName=Zyibayamphibtaya
+          └ Peacefully absorbed Pephamdo from Pephamdoya.
+   16537  polity.ended           how=integrated byName=Zyibayamphibtaya name=Pephamdoya
+          └ Dissolved — its last cities scattered or fell silent.
+   16593  market.dearth          s=12 sName=Zyibayamphibta
+          └ Dearth in Zyibayamphibta — bread at famine prices in the market.
+   16600  war.began              from=2 to=44 name=Fùlpūlěā
+          └ Marched to war against Yomkhata.
+   16600  war.began              from=30 to=44 name=Pēüffìrọ̀lě
+          └ Marched to war against Yomkhata.
+   16687  polity.seceded         from=12 fromName=Zyibayamphibtaya
+          └ Broke away from Zyibayamphibtaya in a war of secession.
+   16725  settlement.founded     s=60 sName=Nǔfīukú city=1
+          └ The city of Nǔfīukú arose.
+   16750  war.ended              how=siegeLifted to=30 toName=Pēüffìrọ̀lě name=Láhā
+          └ The war with Láhā ended.
+   16783  settlement.dissolved   s=17 why=core sName=Lá
+          └ Lá faded back into the countryside.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  settlement.founded     s=62 sName=Phamfibuthdat kind=planted
+          └ Phamfibuthdat was founded.
+   16800  town.planted           s=62 sName=Phamfibuthdat
+          └ The crown chartered Phamfibuthdat to govern the countryside.
+   16800  war.ended              how=siegeLifted to=44 toName=Yomkhata name=Fùlpūlěā
+          └ The war with Fùlpūlěā ended.
+   16825  settlement.founded     s=64 sName=Sírụ́ kind=crystallized
+          └ Sírụ́ was founded.
+   16825  settlement.founded     s=64 sName=Sírụ́ city=1
+          └ The city of Sírụ́ arose.
+   16837  polity.seceded         from=12 fromName=Zyibayamphibtaya
+          └ Broke away from Zyibayamphibtaya in a war of secession.
+   16837  polity.seceded         from=12 fromName=Zyibayamphibtaya
+          └ Broke away from Zyibayamphibtaya in a war of secession.
+   16850  settlement.founded     s=66 sName=Mùpíü kind=crystallized
+          └ Mùpíü was founded.
+   16850  settlement.founded     s=66 sName=Mùpíü city=1
+          └ The city of Mùpíü arose.
+   16850  war.began              from=44 to=65 name=Yomkhata
+          └ Marched to war against Yuzylugoya.
+   16850  war.ended              how=siegeLifted to=44 toName=Yomkhata name=Pēüffìrọ̀lě
+          └ The war with Pēüffìrọ̀lě ended.
+   16941  settlement.withered    s=42 sName=Nǔfīurọ̀
+          └ Nǔfīurọ̀ withered away and was abandoned.
+   16950  settlement.founded     s=69 sName=Kótlà kind=crystallized
+          └ Kótlà was founded.
+   16950  settlement.founded     s=69 sName=Kótlà city=1
+          └ The city of Kótlà arose.
+   16987  polity.seceded         from=65 fromName=Yuzylugoya
+          └ Broke away from Yuzylugoya in a war of secession.
+   16994  market.dearth          s=43 sName=Daphut'eb
+          └ Dearth in Daphut'eb — bread at famine prices in the market.
+   16995  market.dearth          s=48 sName=Yamfaputa
+          └ Dearth in Yamfaputa — bread at famine prices in the market.
+   17000  war.began              from=41 to=48 name=Zyibayamphibtaya
+          └ Marched to war against Yamfaputayaa.
+   17000  war.began              from=1 to=48 name=Ňěňní
+          └ Marched to war against Yamfaputayaa.
+   17050  war.began              from=48 to=41 name=Yamfaputayaa
+          └ Marched to war against Zyibayamphibtaya.
+   17050  war.began              from=41 to=12 name=Zyibayamphibtaya
+          └ Marched to war against Zyibayamphibtaya as the succession failed.
+   17050  war.began              from=1 to=43 name=Ňěňní
+          └ Marched to war against Daphut'ebyaa.
+   17150  war.began              from=44 to=67 name=Yomkhata
+          └ Marched to war against Yuzylugoya.
+   17150  war.began              from=65 to=67 name=Yuzylugoya
+          └ Marched to war against Yuzylugoya.
+   17150  war.began              from=30 to=63 name=Pēüffìrọ̀lě
+          └ Marched to war against Hìuxkòulǐā.
+   17178  settlement.dissolved   s=22 why=core sName=Tị̄lā
+          └ Tị̄lā faded back into the countryside.
+   17179  settlement.dissolved   s=21 why=core sName=Nǐfpù
+          └ Nǐfpù faded back into the countryside.
+   17180  settlement.dissolved   s=20 why=core sName=Mápị̄rọ̀
+          └ Mápị̄rọ̀ faded back into the countryside.
+   17181  settlement.dissolved   s=19 why=core sName=Pùtǔ
+          └ Pùtǔ faded back into the countryside.
+   17200  settlement.founded     s=72 sName=Ǔltǔkò kind=crystallized
+          └ Ǔltǔkò was founded.
+   17200  settlement.founded     s=72 sName=Ǔltǔkò city=1
+          └ The city of Ǔltǔkò arose.
+   17200  war.began              from=2 to=61 name=Fùlpūlěā
+          └ Marched to war against Fị̀lpìlǐ.
+   17215  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   17225  settlement.founded     s=73 sName=Lụ̄ňākú kind=crystallized
+          └ Lụ̄ňākú was founded.
+   17225  settlement.founded     s=73 sName=Lụ̄ňākú city=1
+          └ The city of Lụ̄ňākú arose.
+   17250  settlement.founded     s=74 sName=Fùlpūrụ́ kind=crystallized
+          └ Fùlpūrụ́ was founded.
+   17250  settlement.founded     s=74 sName=Fùlpūrụ́ city=1
+          └ The city of Fùlpūrụ́ arose.
+   17250  war.began              from=2 to=43 name=Fùlpūlěā
+          └ Marched to war against Daphut'ebyaa.
+   17250  war.began              from=67 to=44 name=Yuzylugoya
+          └ Marched to war against Yomkhata.
+   17275  settlement.founded     s=75 sName=Ňúpīkò kind=crystallized
+          └ Ňúpīkò was founded.
+   17275  settlement.founded     s=75 sName=Ňúpīkò city=1
+          └ The city of Ňúpīkò arose.
+   17287  settlement.annexed     s=12 sName=Zyibayamphibta from=41 fromName=Zyibayamphibtaya to=12 toName=Zyibayamphibtaya
+          └ Peacefully absorbed Zyibayamphibta from Zyibayamphibtaya.
+   17300  war.began              from=12 to=41 name=Zyibayamphibtaya
+          └ Marched to war against Zyibayamphibtaya.
+   17309  succession.crisis      name=Yuzylugoya
+          └ The royal line failed — an interregnum of rival claimants.
+   17350  settlement.founded     s=77 sName=Lụ̄nlākò kind=crystallized
+          └ Lụ̄nlākò was founded.
+   17350  settlement.founded     s=77 sName=Lụ̄nlākò city=1
+          └ The city of Lụ̄nlākò arose.
+   17350  war.ended              how=siegeLifted to=67 toName=Yuzylugoya name=Yomkhata
+          └ The war with Yomkhata ended.
+   17374  settlement.dissolved   s=26 why=core sName=Pitumpa
+          └ Pitumpa faded back into the countryside.
+   17400  settlement.founded     s=78 sName=Zomfibuth kind=crystallized
+          └ Zomfibuth was founded.
+   17400  settlement.founded     s=78 sName=Zomfibuth city=1
+          └ The city of Zomfibuth arose.
+   17400  war.ended              how=siegeLifted to=63 toName=Hìuxkòulǐā name=Pēüffìrọ̀lě
+          └ The war with Pēüffìrọ̀lě ended.
+   17427  market.dearth          s=12 sName=Zyibayamphibta
+          └ Dearth in Zyibayamphibta — bread at famine prices in the market.
+   17437  polity.seceded         from=12 fromName=Zyibayamphibtaya
+          └ Broke away from Zyibayamphibtaya in a war of secession.
+   17437  settlement.annexed     s=2 sName=Fùlpū from=2 fromName=Fùlpūlěā to=1 toName=Ňěňní
+          └ Peacefully absorbed Fùlpū from Fùlpūlěā.
+   17450  war.began              from=67 to=65 name=Yuzylugoya
+          └ Marched to war against Yuzylugoya.
+   17450  war.began              from=1 to=61 name=Ňěňní
+          └ Marched to war against Fị̀lpìlǐ.
+   17450  war.ended              how=siegeLifted to=48 toName=Yamfaputayaa name=Zyibayamphibtaya
+          └ The war with Zyibayamphibtaya ended.
+   17479  market.dearth          s=41 sName=T'imnumu
+          └ Dearth in T'imnumu — bread at famine prices in the market.
+   17550  war.ended              how=siegeLifted to=41 toName=Zyibayamphibtaya name=Zyibayamphibtaya
+          └ The war with Zyibayamphibtaya ended.
+   17550  war.indemnity          to=12 toName=Zyibayamphibtaya name=Zyibayamphibtaya
+          └ Zyibayamphibtaya paid a heavy indemnity to Zyibayamphibtaya at the peace.
+   17565  settlement.dissolved   s=35 why=core sName=Tị̄lākò
+          └ Tị̄lākò faded back into the countryside.
+   17566  settlement.dissolved   s=34 why=core sName=Lélā
+          └ Lélā faded back into the countryside.
+   17567  settlement.dissolved   s=33 why=core sName=Énfǐu
+          └ Énfǐu faded back into the countryside.
+   17568  settlement.dissolved   s=32 why=core sName=Fùlpūkò
+          └ Fùlpūkò faded back into the countryside.
+   17569  settlement.dissolved   s=31 why=core sName=Ňúpīkò
+          └ Ňúpīkò faded back into the countryside.
+   17575  settlement.founded     s=83 sName=Ňǐňtụ̌ị kind=crystallized
+          └ Ňǐňtụ̌ị was founded.
+   17575  settlement.founded     s=83 sName=Ňǐňtụ̌ị city=1
+          └ The city of Ňǐňtụ̌ị arose.
+   17575  settlement.founded     s=84 sName=Ǎịmrà city=1
+          └ The city of Ǎịmrà arose.
+   17587  polity.submitted       how=submission to=30 toName=Pēüffìrọ̀lě name=Yomkhata
+          └ Facing hopeless odds, the court of Yomkhata bowed to Pēüffìrọ̀lě — keeping its throne at the price of tribute.
+   17587  settlement.annexed     s=12 sName=Zyibayamphibta from=12 fromName=Zyibayamphibtaya to=11 toName=Pephamdoya
+          └ Peacefully absorbed Zyibayamphibta from Zyibayamphibtaya.
+   17587  polity.ended           how=dissolved name=Zyibayamphibtaya
+          └ Dissolved — its last cities scattered or fell silent.
+   17589  settlement.tier        s=28 sName=Fọ́ịlpì
+          └ Fọ́ịlpì grew into a metropolis (899,000 souls).
+   17600  market.dearth          s=28 sName=Fọ́ịlpì
+          └ Dearth in Fọ́ịlpì — bread at famine prices in the market.
+   17600  settlement.founded     s=85 sName=Fàkò city=1
+          └ The city of Fàkò arose.
+   17600  war.began              from=48 to=11 name=Yamfaputayaa
+          └ Marched to war against Pephamdoya.
+   17625  settlement.founded     s=87 sName=Kìtlà kind=crystallized
+          └ Kìtlà was founded.
+   17625  settlement.founded     s=87 sName=Kìtlà city=1
+          └ The city of Kìtlà arose.
+   17625  settlement.founded     s=88 sName=Fùppī city=1
+          └ The city of Fùppī arose.
+   17650  war.began              from=48 to=1 name=Yamfaputayaa
+          └ Marched to war against Ňěňní.
+   17650  war.ended              how=siegeLifted to=67 toName=Yuzylugoya name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   17678  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   17700  settlement.founded     s=89 sName=Srathap city=1
+          └ The city of Srathap arose.
+   17713  settlement.abandoned   s=25 sName=Kólpì
+          └ Kólpì was abandoned.
+   17725  settlement.founded     s=90 sName=Tú'ùkò kind=crystallized
+          └ Tú'ùkò was founded.
+   17725  settlement.founded     s=90 sName=Tú'ùkò city=1
+          └ The city of Tú'ùkò arose.
+   17737  settlement.annexed     s=28 sName=Fọ́ịlpì from=2 fromName=Fùlpūlěā to=1 toName=Ňěňní
+          └ Peacefully absorbed Fọ́ịlpì from Fùlpūlěā.
+   17750  settlement.founded     s=91 sName=Xóuňtụ̌ị city=1
+          └ The city of Xóuňtụ̌ị arose.
+   17750  war.began              from=11 to=41 name=Pephamdoya
+          └ Marched to war against Zyibayamphibtaya.
+   17760  settlement.founded     s=93 sName=Mùpíükú kind=planted
+          └ Mùpíükú was founded.
+   17760  town.planted           s=93 sName=Mùpíükú
+          └ The crown chartered Mùpíükú to govern the countryside.
+   17761  settlement.dissolved   s=39 why=core sName=Nǔfīukú
+          └ Nǔfīukú faded back into the countryside.
+   17762  settlement.dissolved   s=38 why=core sName=Nị̀ppè
+          └ Nị̀ppè faded back into the countryside.
+   17763  settlement.dissolved   s=37 why=core sName=Hǐlhụ̌
+          └ Hǐlhụ̌ faded back into the countryside.
+   17764  settlement.dissolved   s=36 why=core sName=Fǒu'tà
+          └ Fǒu'tà faded back into the countryside.
+   17775  settlement.founded     s=97 sName=Sùňtụ̌ị city=1
+          └ The city of Sùňtụ̌ị arose.
+   17800  settlement.founded     s=98 sName=Ákò city=1
+          └ The city of Ákò arose.
+   17800  war.began              from=48 to=43 name=Yamfaputayaa
+          └ Marched to war against Daphut'ebyaa as the succession failed.
+   17825  settlement.founded     s=100 sName=Tìttíu city=1
+          └ The city of Tìttíu arose.
+   17828  market.dearth          s=43 sName=Daphut'eb
+          └ Dearth in Daphut'eb — bread at famine prices in the market.
+   17829  market.dearth          s=48 sName=Yamfaputa
+          └ Dearth in Yamfaputa — bread at famine prices in the market.
+   17834  succession.crisis      name=Pephamdoya
+          └ The royal line failed — an interregnum of rival claimants.
+   17850  settlement.founded     s=101 sName=Lākú city=1
+          └ The city of Lākú arose.
+   17856  settlement.lapsed      s=93 sName=Mùpíükú from=1 fromName=Ňěňní
+          └ Mùpíükú slipped free of Ňěňní.
+   17856  polity.receded         s=93 n=1 sName=Mùpíükú name=Ňěňní
+          └ The grip of Ňěňní failed, and the marches beyond Mùpíükú were left to their own devices.
+   17856  polity.founded         how=frontier from=-1 name=Mùpíükúlǐā
+          └ Mùpíükú declared itself a sovereign realm.
+   17857  settlement.tier        s=43 sName=Daphut'eb
+          └ Daphut'eb grew into a metropolis (609,000 souls).
+   17857  settlement.tier        s=48 sName=Yamfaputa
+          └ Yamfaputa grew into a metropolis (659,000 souls).
+   17887  polity.seceded         from=30 fromName=Pēüffìrọ̀lě
+          └ Broke away from Pēüffìrọ̀lě in a war of secession.
+   17887  settlement.annexed     s=1 sName=Ňěňní from=1 fromName=Ňěňní to=93 toName=Mùpíükúlǐā
+          └ Peacefully absorbed Ňěňní from Ňěňní.
+   17887  polity.ended           how=dissolved name=Fùlpūlěā
+          └ Dissolved — its last cities scattered or fell silent.
+   17900  war.began              from=30 to=1 name=Pēüffìrọ̀lě
+          └ Marched to war against Ňěňní.
+   18000  war.began              from=93 to=1 name=Mùpíükúlǐā
+          └ Marched to war against Ňěňní.
+   18001  settlement.abandoned   s=28 sName=Fọ́ịlpì
+          └ Fọ́ịlpì was abandoned.
+   18037  polity.submitted       how=union to=48 toName=Yamfaputayaa name=Pephamdoya
+          └ In the troubles of the succession, the court of Pephamdoya joined its crown to Yamfaputayaa — one senior throne, two realms.
+   18037  settlement.annexed     s=11 sName=Pephamdo from=11 fromName=Pephamdoya to=48 toName=Yamfaputayaa
+          └ Peacefully absorbed Pephamdo from Pephamdoya.
+   18037  settlement.annexed     s=12 sName=Zyibayamphibta from=11 fromName=Pephamdoya to=48 toName=Yamfaputayaa
+          └ Peacefully absorbed Zyibayamphibta from Pephamdoya.
+   18037  polity.ended           how=integrated byName=Yamfaputayaa name=Pephamdoya
+          └ Dissolved — its last cities scattered or fell silent.
+   18050  war.began              from=29 to=85 name=Láhā
+          └ Marched to war against Fàkò.
+   18050  war.began              from=1 to=93 name=Ňěňní
+          └ Marched to war against Mùpíükúlǐā.
+   18050  war.ended              how=siegeLifted to=48 toName=Yamfaputayaa name=Ňěňní
+          └ The war with Ňěňní ended.
+   18050  war.ended              how=siegeLifted to=61 toName=Fị̀lpìlǐ name=Ňěňní
+          └ The war with Ňěňní ended.
+   18073  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   18075  settlement.founded     s=105 sName=Fị̀tlà city=1
+          └ The city of Fị̀tlà arose.
+   18144  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   18144  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   18145  settlement.tier        s=85 sName=Fàkò
+          └ Fàkò grew into a metropolis (1,200,000 souls).
+   18150  war.began              from=1 to=43 name=Ňěňní
+          └ Renewed the old war against Daphut'ebyaa.
+   18150  war.began              from=61 to=85 name=Fị̀lpìlǐ
+          └ Marched to war against Fàkò.
+   18187  polity.seceded         from=48 fromName=Yamfaputayaa
+          └ Broke away from Yamfaputayaa in a war of secession.
+   18200  war.began              from=43 to=48 name=Daphut'ebyaa
+          └ Marched to war against Yamfaputayaa.
+   18209  succession.crisis      name=Fàkò
+          └ The royal line failed — an interregnum of rival claimants.
+   18250  war.began              from=85 to=1 name=Fàkò
+          └ Marched to war against Ňěňní.
+   18261  market.dearth          s=12 sName=Zyibayamphibta
+          └ Dearth in Zyibayamphibta — bread at famine prices in the market.
+   18288  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   18288  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   18300  war.began              from=43 to=93 name=Daphut'ebyaa
+          └ Marched to war against Mùpíükúlǐā.
+   18300  war.began              from=85 to=61 name=Fàkò
+          └ Marched to war against Fị̀lpìlǐ.
+   18334  succession.crisis      name=Fàkò
+          └ The royal line failed — an interregnum of rival claimants.
+   18340  settlement.dissolved   s=60 why=core sName=Nǔfīukú
+          └ Nǔfīukú faded back into the countryside.
+   18350  war.began              from=78 to=41 name=Yamfaputa
+          └ Marched to war against Zyibayamphibtaya.
+   18350  war.began              from=43 to=78 name=Daphut'ebyaa
+          └ Marched to war against Yamfaputa.
+   18350  war.began              from=48 to=78 name=Yamfaputayaa
+          └ Marched to war against Yamfaputa.
+   18350  war.ended              how=siegeLifted to=30 toName=Pēüffìrọ̀lě name=Ňěňní
+          └ The war with Ňěňní ended.
+   18375  settlement.founded     s=114 sName=Ňǐllà city=1
+          └ The city of Ňǐllà arose.
+   18376  market.dearth          s=41 sName=T'imnumu
+          └ Dearth in T'imnumu — bread at famine prices in the market.
+   18432  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   18432  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   18487  polity.submitted       how=submission to=1 toName=Ňěňní name=Pēüffìrọ̀lě
+          └ Facing hopeless odds, the court of Pēüffìrọ̀lě bowed to Ňěňní — keeping its throne at the price of tribute.
+   18487  settlement.annexed     s=44 sName=Yomkhata from=44 fromName=Yomkhata to=1 toName=Ňěňní
+          └ Peacefully absorbed Yomkhata from Yomkhata.
+   18487  polity.ended           how=dissolved name=Yomkhata
+          └ Dissolved — its last cities scattered or fell silent.
+   18500  settlement.founded     s=120 sName=Lụ̄nlākò city=1
+          └ The city of Lụ̄nlākò arose.
+   18500  war.began              from=93 to=61 name=Mùpíükúlǐā
+          └ Marched to war against Fị̀lpìlǐ.
+   18500  war.ended              how=siegeLifted to=85 toName=Fàkò name=Ňěňní
+          └ The war with Ňěňní ended; some 14 soldiers never came home.
+   18500  war.indemnity          to=85 toName=Fàkò name=Ňěňní
+          └ Ňěňní paid a heavy indemnity to Fàkò at the peace.
+   18512  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   18533  settlement.dissolved   s=67 why=core sName=T'imyamza
+          └ T'imyamza faded back into the countryside.
+   18534  settlement.dissolved   s=66 why=core sName=Mùpíü
+          └ Mùpíü faded back into the countryside.
+   18536  settlement.dissolved   s=64 why=core sName=Sírụ́
+          └ Sírụ́ faded back into the countryside.
+   18575  settlement.founded     s=121 sName=Hūfpù kind=crystallized
+          └ Hūfpù was founded.
+   18575  settlement.founded     s=121 sName=Hūfpù city=1
+          └ The city of Hūfpù arose.
+   18575  settlement.founded     s=122 sName=Damp'inum city=1
+          └ The city of Damp'inum arose.
+   18576  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   18576  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   18584  succession.crisis      name=Yamfaputa
+          └ The royal line failed — an interregnum of rival claimants.
+   18600  plague.outbreak        s=72 sName=Ǔltǔkò
+          └ Plague broke out in Ǔltǔkò and swept through the realm.
+   18600  plague.outbreak        s=89 sName=Srathap
+          └ Plague broke out in Srathap and swept through the realm.
+   18600  plague.outbreak        s=93 sName=Mùpíükú
+          └ Plague broke out in Mùpíükú and swept through the realm.
+   18600  plague.outbreak        s=101 sName=Lākú
+          └ Plague broke out in Lākú and swept through the realm.
+   18600  plague.virginSoil      s=93 sName=Mùpíükú mortality=0.69
+          └ A pestilence unknown to Mùpíükú came ashore with the strangers, and they had no defence against it.
+   18600  settlement.founded     s=123 sName=Xīrtụ̌ị kind=crystallized
+          └ Xīrtụ̌ị was founded.
+   18600  settlement.founded     s=123 sName=Xīrtụ̌ị city=1
+          └ The city of Xīrtụ̌ị arose.
+   18600  war.began              from=1 to=78 name=Ňěňní
+          └ Marched to war against Yamfaputa as the succession failed.
+   18600  war.ended              how=siegeLifted to=78 toName=Yamfaputa name=Zyibayamphibtaya
+          └ The war with Zyibayamphibtaya ended.
+   18603  plague.outbreak        s=43 sName=Daphut'eb
+          └ Plague broke out in Daphut'eb and swept through the realm.
+   18622  plague.outbreak        s=41 sName=T'imnumu
+          └ Plague broke out in T'imnumu and swept through the realm.
+   18637  polity.seceded         from=48 fromName=Yamfaputayaa
+          └ Broke away from Yamfaputayaa in a war of secession.
+   18638  plague.outbreak        s=11 sName=Pephamdo
+          └ Plague broke out in Pephamdo and swept through the realm.
+   18650  settlement.founded     s=124 sName=Fōnkū kind=crystallized
+          └ Fōnkū was founded.
+   18650  settlement.founded     s=124 sName=Fōnkū city=1
+          └ The city of Fōnkū arose.
+   18662  market.dearth          s=43 sName=Daphut'eb
+          └ Dearth in Daphut'eb — bread at famine prices in the market.
+   18663  market.dearth          s=48 sName=Yamfaputa
+          └ Dearth in Yamfaputa — bread at famine prices in the market.
+   18720  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   18720  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   18720  settlement.founded     s=127 sName=Tambapaz kind=planted
+          └ Tambapaz was founded.
+   18720  town.planted           s=127 sName=Tambapaz
+          └ The crown chartered Tambapaz to govern the countryside.
+   18720  settlement.founded     s=129 sName=Xóuthị̌ kind=planted
+          └ Xóuthị̌ was founded.
+   18720  town.planted           s=129 sName=Xóuthị̌
+          └ The crown chartered Xóuthị̌ to govern the countryside.
+   18731  settlement.dissolved   s=69 why=core sName=Kótlà
+          └ Kótlà faded back into the countryside.
+   18735  plague.outbreak        s=44 sName=Yomkhata
+          └ Plague broke out in Yomkhata and swept through the realm.
+   18750  settlement.founded     s=133 sName=Mìnkū kind=crystallized
+          └ Mìnkū was founded.
+   18750  settlement.founded     s=133 sName=Mìnkū city=1
+          └ The city of Mìnkū arose.
+   18750  war.began              from=93 to=43 name=Mùpíükúlǐā
+          └ Marched to war against Daphut'ebyaa as the succession failed.
+   18787  polity.submitted       how=submission to=85 toName=Fàkò name=Hìuxkòulǐā
+          └ Facing hopeless odds, the court of Hìuxkòulǐā bowed to Fàkò — keeping its throne at the price of tribute.
+   18787  settlement.annexed     s=12 sName=Zyibayamphibta from=48 fromName=Yamfaputayaa to=11 toName=Pephamdoya
+          └ Peacefully absorbed Zyibayamphibta from Yamfaputayaa.
+   18787  settlement.annexed     s=12 sName=Zyibayamphibta from=11 fromName=Pephamdoya to=67 toName=Yuzylugoya
+          └ Peacefully absorbed Zyibayamphibta from Pephamdoya.
+   18787  polity.ended           how=dissolved name=Yamfaputayaa
+          └ Dissolved — its last cities scattered or fell silent.
+   18788  settlement.abandoned   s=100 sName=Tìttíu
+          └ Tìttíu was abandoned.
+   18798  settlement.abandoned   s=75 sName=Ňúpīkò
+          └ Ňúpīkò was abandoned.
+   18798  settlement.abandoned   s=98 sName=Ákò
+          └ Ákò was abandoned.
+   18800  war.began              from=78 to=11 name=Yamfaputa
+          └ Marched to war against Pephamdoya.
+   18807  settlement.abandoned   s=83 sName=Ňǐňtụ̌ị
+          └ Ňǐňtụ̌ị was abandoned.
+   18819  settlement.abandoned   s=72 sName=Ǔltǔkò
+          └ Ǔltǔkò was abandoned.
+   18819  settlement.abandoned   s=73 sName=Lụ̄ňākú
+          └ Lụ̄ňākú was abandoned.
+   18819  settlement.abandoned   s=74 sName=Fùlpūrụ́
+          └ Fùlpūrụ́ was abandoned.
+   18819  settlement.abandoned   s=77 sName=Lụ̄nlākò
+          └ Lụ̄nlākò was abandoned.
+   18819  settlement.abandoned   s=87 sName=Kìtlà
+          └ Kìtlà was abandoned.
+   18819  settlement.abandoned   s=89 sName=Srathap
+          └ Srathap was abandoned.
+   18819  settlement.abandoned   s=91 sName=Xóuňtụ̌ị
+          └ Xóuňtụ̌ị was abandoned.
+   18819  settlement.abandoned   s=97 sName=Sùňtụ̌ị
+          └ Sùňtụ̌ị was abandoned.
+   18820  settlement.abandoned   s=90 sName=Tú'ùkò
+          └ Tú'ùkò was abandoned.
+   18825  settlement.founded     s=136 sName=Hǔlrá kind=crystallized
+          └ Hǔlrá was founded.
+   18825  settlement.founded     s=136 sName=Hǔlrá city=1
+          └ The city of Hǔlrá arose.
+   18834  succession.crisis      name=Daphut'ebyaa
+          └ The royal line failed — an interregnum of rival claimants.
+   18839  settlement.abandoned   s=101 sName=Lākú
+          └ Lākú was abandoned.
+   18839  settlement.abandoned   s=105 sName=Fị̀tlà
+          └ Fị̀tlà was abandoned.
+   18839  settlement.abandoned   s=121 sName=Hūfpù
+          └ Hūfpù was abandoned.
+   18839  settlement.abandoned   s=122 sName=Damp'inum
+          └ Damp'inum was abandoned.
+   18842  settlement.abandoned   s=114 sName=Ňǐllà
+          └ Ňǐllà was abandoned.
+   18843  settlement.abandoned   s=120 sName=Lụ̄nlākò
+          └ Lụ̄nlākò was abandoned.
+   18850  settlement.founded     s=138 sName=Lụ̄rǎkú kind=crystallized
+          └ Lụ̄rǎkú was founded.
+   18850  settlement.founded     s=138 sName=Lụ̄rǎkú city=1
+          └ The city of Lụ̄rǎkú arose.
+   18850  settlement.founded     s=139 sName=Lāfpù city=1
+          └ The city of Lāfpù arose.
+   18850  settlement.founded     s=140 sName=T'imp'atzyug city=1
+          └ The city of T'imp'atzyug arose.
+   18864  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   18864  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   18864  settlement.lapsed      s=127 sName=Tambapaz from=78 fromName=Yamfaputa
+          └ Tambapaz slipped free of Yamfaputa.
+   18864  polity.receded         s=127 n=1 sName=Tambapaz name=Yamfaputa
+          └ The grip of Yamfaputa failed, and the marches beyond Tambapaz were left to their own devices.
+   18864  settlement.lapsed      s=129 sName=Xóuthị̌ from=85 fromName=Fàkò
+          └ Xóuthị̌ slipped free of Fàkò.
+   18864  polity.receded         s=129 n=1 sName=Xóuthị̌ name=Fàkò
+          └ The grip of Fàkò failed, and the marches beyond Xóuthị̌ were left to their own devices.
+   18875  settlement.founded     s=141 sName=Tíụ'ụ̄kò kind=crystallized
+          └ Tíụ'ụ̄kò was founded.
+   18875  settlement.founded     s=141 sName=Tíụ'ụ̄kò city=1
+          └ The city of Tíụ'ụ̄kò arose.
+   18875  settlement.founded     s=142 sName=Fị́là city=1
+          └ The city of Fị́là arose.
+   18875  settlement.founded     s=143 sName=Pefayok city=1
+          └ The city of Pefayok arose.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  famine.struck          
+          └ A famine gripped the land.
+   18900  settlement.founded     s=144 sName=Mìnsī kind=crystallized
+          └ Mìnsī was founded.
+   18900  settlement.founded     s=144 sName=Mìnsī city=1
+          └ The city of Mìnsī arose.
+   18900  settlement.founded     s=145 sName=Lǎňní city=1
+          └ The city of Lǎňní arose.
+   18925  settlement.founded     s=146 sName=Pótǎ kind=crystallized
+          └ Pótǎ was founded.
+   18925  settlement.founded     s=146 sName=Pótǎ city=1
+          └ The city of Pótǎ arose.
+   18925  settlement.founded     s=147 sName=Fùppī city=1
+          └ The city of Fùppī arose.
+   18950  settlement.founded     s=148 sName=Fị̀tlà kind=crystallized
+          └ Fị̀tlà was founded.
+   18950  settlement.founded     s=148 sName=Fị̀tlà city=1
+          └ The city of Fị̀tlà arose.
+   18950  settlement.founded     s=149 sName=Ūxkòu city=1
+          └ The city of Ūxkòu arose.
+   18950  war.began              from=93 to=78 name=Mùpíükúlǐā
+          └ Marched to war against Yamfaputa.
+   18975  settlement.founded     s=150 sName=Ǔptǔrụ́ kind=crystallized
+          └ Ǔptǔrụ́ was founded.
+   18975  settlement.founded     s=150 sName=Ǔptǔrụ́ city=1
+          └ The city of Ǔptǔrụ́ arose.
+   18975  settlement.founded     s=151 sName=Xụ́xkòu city=1
+          └ The city of Xụ́xkòu arose.
+   19000  settlement.founded     s=153 sName=Pụ̀pàrụ́ kind=crystallized
+          └ Pụ̀pàrụ́ was founded.
+   19000  settlement.founded     s=153 sName=Pụ̀pàrụ́ city=1
+          └ The city of Pụ̀pàrụ́ arose.
+   19008  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   19008  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   19025  settlement.founded     s=154 sName=Sǎfǎ kind=crystallized
+          └ Sǎfǎ was founded.
+   19025  settlement.founded     s=154 sName=Sǎfǎ city=1
+          └ The city of Sǎfǎ arose.
+   19087  polity.submitted       how=submission to=85 toName=Fàkò name=Ňúpīkúlǐ
+          └ Facing hopeless odds, the court of Ňúpīkúlǐ bowed to Fàkò — keeping its throne at the price of tribute.
+   19087  polity.submitted       how=union to=78 toName=Yamfaputa name=Zyibayamphibtaya
+          └ In the troubles of the succession, the court of Zyibayamphibtaya joined its crown to Yamfaputa — one senior throne, two realms.
+   19095  market.dearth          s=12 sName=Zyibayamphibta
+          └ Dearth in Zyibayamphibta — bread at famine prices in the market.
+   19122  settlement.dissolved   s=78 why=core sName=Zomfibuth
+          └ Zomfibuth faded back into the countryside.
+   19150  war.began              from=11 to=78 name=Pephamdoya
+          └ Marched to war against Yamfaputa.
+   19150  war.ended              how=faded to=41 toName=Zyibayamphibtaya name=Pephamdoya
+          └ The war with Pephamdoya ended; some 7 soldiers never came home.
+   19152  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   19152  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   19237  settlement.annexed     s=41 sName=T'imnumu from=41 fromName=Zyibayamphibtaya to=78 toName=Yamfaputa
+          └ Peacefully absorbed T'imnumu from Zyibayamphibtaya.
+   19237  polity.ended           how=integrated byName=Yamfaputa name=Zyibayamphibtaya
+          └ Dissolved — its last cities scattered or fell silent.
+   19237  polity.seceded         from=1 fromName=Ňěňní
+          └ Broke away from Ňěňní in a war of secession.
+   19237  polity.seceded         from=67 fromName=Yuzylugoya
+          └ Broke away from Yuzylugoya in a war of secession.
+   19250  war.began              from=11 to=127 name=Pephamdoya
+          └ Marched to war against Tambapaztaya as the succession failed.
+   19250  war.began              from=67 to=127 name=Yuzylugoya
+          └ Marched to war against Tambapaztaya as the succession failed.
+   19250  war.began              from=43 to=127 name=Daphut'ebyaa
+          └ Marched to war against Tambapaztaya as the succession failed.
+   19250  war.began              from=78 to=127 name=Yamfaputa
+          └ Marched to war against Tambapaztaya as the succession failed.
+   19250  war.began              from=85 to=30 name=Fàkò
+          └ Marched to war against Pēüffìrọ̀lě.
+   19250  war.began              from=93 to=129 name=Mùpíükúlǐā
+          └ Marched to war against Xóuthị̌lǐ.
+   19250  war.began              from=1 to=129 name=Ňěňní
+          └ Marched to war against Xóuthị̌lǐ.
+   19250  war.began              from=11 to=125 name=Pephamdoya
+          └ Marched to war against Tughattaya.
+   19250  war.began              from=67 to=125 name=Yuzylugoya
+          └ Marched to war against Tughattaya.
+   19250  war.began              from=43 to=125 name=Daphut'ebyaa
+          └ Marched to war against Tughattaya.
+   19250  war.began              from=78 to=125 name=Yamfaputa
+          └ Marched to war against Tughattaya.
+   19296  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   19296  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   19300  war.began              from=78 to=67 name=Yamfaputa
+          └ Marched to war against Yuzylugoya.
+   19312  settlement.dissolved   s=88 why=core sName=Fùppī
+          └ Fùppī faded back into the countryside.
+   19316  settlement.dissolved   s=84 why=core sName=Ǎịmrà
+          └ Ǎịmrà faded back into the countryside.
+   19325  settlement.founded     s=163 sName=Xụ̀nwā city=1
+          └ The city of Xụ̀nwā arose.
+   19350  settlement.founded     s=164 sName=Nīňlì city=1
+          └ The city of Nīňlì arose.
+   19375  settlement.founded     s=165 sName=Máịnwǎxǔ city=1
+          └ The city of Máịnwǎxǔ arose.
+   19387  polity.seceded         from=67 fromName=Yuzylugoya
+          └ Broke away from Yuzylugoya in a war of secession.
+   19400  war.began              from=65 to=44 name=Yuzylugoya
+          └ Marched to war against Yomkhata.
+   19400  war.ended              how=siegeLifted to=78 toName=Yamfaputa name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended; some 12 soldiers never came home.
+   19429  market.dearth          s=41 sName=T'imnumu
+          └ Dearth in T'imnumu — bread at famine prices in the market.
+   19440  settlement.lapsed      s=93 sName=Mùpíükú from=93 fromName=Mùpíükúlǐā
+          └ Mùpíükú slipped free of Mùpíükúlǐā.
+   19440  polity.receded         s=93 n=1 sName=Mùpíükú name=Mùpíükúlǐā
+          └ The grip of Mùpíükúlǐā failed, and the marches beyond Mùpíükú were left to their own devices.
+   19441  settlement.tier        s=138 sName=Lụ̄rǎkú
+          └ Lụ̄rǎkú grew into a metropolis (832,000 souls).
+   19450  war.began              from=85 to=93 name=Fàkò
+          └ Marched to war against Mùpíükúlǐā under the banner of the faith.
+   19450  war.began              from=43 to=44 name=Daphut'ebyaa
+          └ Marched to war against Yomkhata.
+   19459  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   19460  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   19496  market.dearth          s=43 sName=Daphut'eb
+          └ Dearth in Daphut'eb — bread at famine prices in the market.
+   19500  war.began              from=43 to=93 name=Daphut'ebyaa
+          └ Renewed the old war against Mùpíükúlǐā.
+   19500  war.began              from=78 to=44 name=Yamfaputa
+          └ Marched to war against Yomkhata.
+   19500  war.began              from=85 to=129 name=Fàkò
+          └ Marched to war against Xóuthị̌lǐ.
+   19500  war.ended              how=truce to=125 toName=Tughattaya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   19500  war.ended              how=truce to=125 toName=Tughattaya name=Pephamdoya
+          └ The war with Pephamdoya ended.
+   19500  war.ended              how=truce to=125 toName=Tughattaya name=Yamfaputa
+          └ The war with Yamfaputa ended.
+   19500  polity.submitted       how=capitulation to=11 toName=Pephamdoya name=Tughattaya
+          └ Beaten in the field, the court of Tughattaya bent the knee to Pephamdoya — a client crown under the conqueror's peace.
+   19500  war.ended              how=siegeLifted to=127 toName=Tambapaztaya name=Yamfaputa
+          └ The war with Yamfaputa ended.
+   19500  war.indemnity          to=127 toName=Tambapaztaya name=Yamfaputa
+          └ Yamfaputa paid a heavy indemnity to Tambapaztaya at the peace.
+   19507  settlement.dissolved   s=93 why=core sName=Mùpíükú
+          └ Mùpíükú faded back into the countryside.
+   19537  polity.seceded         from=78 fromName=Yamfaputa
+          └ Broke away from Yamfaputa in a war of secession.
+   19537  settlement.annexed     s=48 sName=Yamfaputa from=48 fromName=Yamfaputayaa to=67 toName=Yuzylugoya
+          └ Peacefully absorbed Yamfaputa from Yamfaputayaa.
+   19537  settlement.annexed     s=85 sName=Fàkò from=85 fromName=Fàkò to=129 toName=Xóuthị̌lǐ
+          └ Peacefully absorbed Fàkò from Fàkò.
+   19537  polity.ended           how=dissolved name=Yamfaputayaa
+          └ Dissolved — its last cities scattered or fell silent.
+   19550  war.began              from=44 to=78 name=Yomkhata
+          └ Marched to war against Yamfaputa.
+   19550  war.began              from=30 to=85 name=Pēüffìrọ̀lě
+          └ Marched to war against Fàkò.
+   19550  war.began              from=29 to=85 name=Láhā
+          └ Renewed the old war against Fàkò.
+   19550  war.began              from=129 to=85 name=Xóuthị̌lǐ
+          └ Marched to war against Fàkò.
+   19550  war.ended              how=truce to=125 toName=Tughattaya name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   19585  settlement.tier        s=123 sName=Xīrtụ̌ị
+          └ Xīrtụ̌ị grew into a metropolis (825,000 souls).
+   19600  war.began              from=132 to=126 name=Ghiusin
+          └ Marched to war against Piuphivyputghugh.
+   19650  war.began              from=44 to=93 name=Yomkhata
+          └ Marched to war against Mùpíükúlǐā as the succession failed.
+   19687  polity.seceded         from=85 fromName=Fàkò
+          └ Broke away from Fàkò in a war of secession.
+   19700  war.ended              how=siegeLifted to=93 toName=Mùpíükúlǐā name=Fàkò
+          └ The war with Fàkò ended.
+   19700  war.indemnity          to=93 toName=Mùpíükúlǐā name=Fàkò
+          └ Fàkò paid a heavy indemnity to Mùpíükúlǐā at the peace.
+   19725  market.dearth          s=123 sName=Xīrtụ̌ị
+          └ Dearth in Xīrtụ̌ị — bread at famine prices in the market.
+   19731  market.dearth          s=138 sName=Lụ̄rǎkú
+          └ Dearth in Lụ̄rǎkú — bread at famine prices in the market.
+   19750  war.began              from=93 to=43 name=Mùpíükúlǐā
+          └ Renewed the old war against Daphut'ebyaa.
+   19750  war.began              from=85 to=44 name=Fàkò
+          └ Marched to war against Yomkhata.
+   19800  plague.outbreak        s=123 sName=Xīrtụ̌ị
+          └ Plague broke out in Xīrtụ̌ị and swept through the realm.
+   19800  plague.outbreak        s=124 sName=Fōnkū
+          └ Plague broke out in Fōnkū and swept through the realm.
+   19800  plague.outbreak        s=135 sName=Nyyiupyzuv
+          └ Plague broke out in Nyyiupyzuv and swept through the realm.
+   19800  plague.outbreak        s=138 sName=Lụ̄rǎkú
+          └ Plague broke out in Lụ̄rǎkú and swept through the realm.
+   19800  plague.outbreak        s=139 sName=Lāfpù
+          └ Plague broke out in Lāfpù and swept through the realm.
+   19800  war.began              from=85 to=29 name=Fàkò
+          └ Marched to war against Láhā.
+   19837  polity.submitted       how=submission to=43 toName=Daphut'ebyaa name=Tambapaztaya
+          └ Facing hopeless odds, the court of Tambapaztaya bowed to Daphut'ebyaa — keeping its throne at the price of tribute.
+   19850  war.began              from=44 to=43 name=Yomkhata
+          └ Marched to war against Daphut'ebyaa.
+   19850  war.began              from=29 to=139 name=Láhā
+          └ Marched to war against Lāfpù.
+   19850  war.began              from=11 to=162 name=Pephamdoya
+          └ Marched to war against Phuthyafayoktaya.
+   19850  war.began              from=67 to=162 name=Yuzylugoya
+          └ Marched to war against Phuthyafayoktaya.
+   19850  war.began              from=43 to=162 name=Daphut'ebyaa
+          └ Marched to war against Phuthyafayoktaya.
+   19850  war.began              from=11 to=160 name=Pephamdoya
+          └ Marched to war against Zu.
+   19850  war.began              from=67 to=160 name=Yuzylugoya
+          └ Marched to war against Zu.
+   19850  war.began              from=43 to=160 name=Daphut'ebyaa
+          └ Marched to war against Zu.
+   19850  war.began              from=43 to=58 name=Daphut'ebyaa
+          └ Marched to war against Dyakyoxyfaxa.
+   19850  war.began              from=43 to=57 name=Daphut'ebyaa
+          └ Marched to war against Dyakyoxy as the succession failed.
+   19850  war.began              from=43 to=11 name=Daphut'ebyaa
+          └ Marched to war against Pephamdoya.
+   19850  war.ended              how=truce to=93 toName=Mùpíükúlǐā name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended; some 4 soldiers never came home.
+   19850  war.ended              how=truce to=44 toName=Yomkhata name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   19850  war.ended              how=truce to=162 toName=Phuthyafayoktaya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   19850  war.ended              how=truce to=160 toName=Zu name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   19850  war.ended              how=truce to=58 toName=Dyakyoxyfaxa name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   19850  war.ended              how=truce to=57 toName=Dyakyoxy name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   19850  war.ended              how=truce to=43 toName=Daphut'ebyaa name=Pephamdoya
+          └ The war with Pephamdoya ended.
+   19873  settlement.abandoned   s=138 sName=Lụ̄rǎkú
+          └ Lụ̄rǎkú was abandoned.
+   19873  settlement.tier        s=139 sName=Lāfpù
+          └ Lāfpù grew into a metropolis (1,085,000 souls).
+   19900  war.began              from=78 to=11 name=Yamfaputa
+          └ Renewed the old war against Pephamdoya.
+   19900  war.began              from=85 to=139 name=Fàkò
+          └ Marched to war against Lāfpù.
+   19900  war.began              from=63 to=139 name=Hìuxkòulǐā
+          └ Marched to war against Lāfpù.
+   19929  market.dearth          s=12 sName=Zyibayamphibta
+          └ Dearth in Zyibayamphibta — bread at famine prices in the market.
+   19950  settlement.founded     s=184 sName=Tifyung city=1
+          └ The city of Tifyung arose.
+   19975  settlement.founded     s=185 sName=Tifyung city=1
+          └ The city of Tifyung arose.
+   19987  polity.submitted       how=union to=43 toName=Daphut'ebyaa name=Yomkhata
+          └ In the troubles of the succession, the court of Yomkhata joined its crown to Daphut'ebyaa — one senior throne, two realms.
+   19987  settlement.annexed     s=85 sName=Fàkò from=129 fromName=Xóuthị̌lǐ to=93 toName=Mùpíükúlǐā
+          └ Peacefully absorbed Fàkò from Xóuthị̌lǐ.
+   19998  settlement.abandoned   s=153 sName=Pụ̀pàrụ́
+          └ Pụ̀pàrụ́ was abandoned.
+   20000  settlement.abandoned   s=150 sName=Ǔptǔrụ́
+          └ Ǔptǔrụ́ was abandoned.
+   20000  settlement.founded     s=186 sName=Thit city=1
+          └ The city of Thit arose.
+   20000  war.began              from=93 to=44 name=Mùpíükúlǐā
+          └ Marched to war against Yomkhata as the succession failed.
+   20000  war.began              from=139 to=85 name=Lāfpù
+          └ Marched to war against Fàkò as the succession failed.
+   20005  settlement.abandoned   s=146 sName=Pótǎ
+          └ Pótǎ was abandoned.
+   20007  settlement.abandoned   s=124 sName=Fōnkū
+          └ Fōnkū was abandoned.
+   20007  settlement.abandoned   s=151 sName=Xụ́xkòu
+          └ Xụ́xkòu was abandoned.
+   20008  plague.outbreak        s=12 sName=Zyibayamphibta
+          └ Plague broke out in Zyibayamphibta and swept through the realm.
+   20017  settlement.abandoned   s=85 sName=Fàkò
+          └ Fàkò was abandoned.
+   20019  settlement.abandoned   s=133 sName=Mìnkū
+          └ Mìnkū was abandoned.
+   20019  settlement.abandoned   s=136 sName=Hǔlrá
+          └ Hǔlrá was abandoned.
+   20019  settlement.abandoned   s=141 sName=Tíụ'ụ̄kò
+          └ Tíụ'ụ̄kò was abandoned.
+   20019  settlement.abandoned   s=144 sName=Mìnsī
+          └ Mìnsī was abandoned.
+   20019  settlement.abandoned   s=145 sName=Lǎňní
+          └ Lǎňní was abandoned.
+   20019  settlement.abandoned   s=147 sName=Fùppī
+          └ Fùppī was abandoned.
+   20019  settlement.abandoned   s=148 sName=Fị̀tlà
+          └ Fị̀tlà was abandoned.
+   20019  settlement.abandoned   s=149 sName=Ūxkòu
+          └ Ūxkòu was abandoned.
+   20020  settlement.abandoned   s=154 sName=Sǎfǎ
+          └ Sǎfǎ was abandoned.
+   20021  settlement.abandoned   s=165 sName=Máịnwǎxǔ
+          └ Máịnwǎxǔ was abandoned.
+   20025  settlement.founded     s=187 sName=Fūtíü kind=crystallized
+          └ Fūtíü was founded.
+   20025  settlement.founded     s=187 sName=Fūtíü city=1
+          └ The city of Fūtíü arose.
+   20025  settlement.founded     s=188 sName=Pụ̀pàxǔ city=1
+          └ The city of Pụ̀pàxǔ arose.
+   20025  settlement.founded     s=189 sName=Tyifughfut city=1
+          └ The city of Tyifughfut arose.
+   20039  settlement.abandoned   s=135 sName=Nyyiupyzuv
+          └ Nyyiupyzuv was abandoned.
+   20039  settlement.abandoned   s=157 sName=Thufapsiv
+          └ Thufapsiv was abandoned.
+   20039  settlement.abandoned   s=163 sName=Xụ̀nwā
+          └ Xụ̀nwā was abandoned.
+   20039  settlement.abandoned   s=164 sName=Nīňlì
+          └ Nīňlì was abandoned.
+   20050  settlement.founded     s=191 sName=Xǐt'ị̀ kind=crystallized
+          └ Xǐt'ị̀ was founded.
+   20050  settlement.founded     s=191 sName=Xǐt'ị̀ city=1
+          └ The city of Xǐt'ị̀ arose.
+   20050  settlement.founded     s=192 sName=Sóppì city=1
+          └ The city of Sóppì arose.
+   20050  settlement.founded     s=194 sName=Ziusiv city=1
+          └ The city of Ziusiv arose.
+   20050  war.began              from=132 to=180 name=Ghiusin
+          └ Marched to war against Ghiuthanyyzuvghugha.
+   20050  war.began              from=139 to=63 name=Lāfpù
+          └ Marched to war against Hìuxkòulǐā.
+   20075  settlement.founded     s=195 sName=Pụ̀pàrụ́ kind=crystallized
+          └ Pụ̀pàrụ́ was founded.
+   20075  settlement.founded     s=195 sName=Pụ̀pàrụ́ city=1
+          └ The city of Pụ̀pàrụ́ arose.
+   20075  settlement.founded     s=196 sName=Nīňlìrụ́ city=1
+          └ The city of Nīňlìrụ́ arose.
+   20075  settlement.founded     s=197 sName=Tyimunyy city=1
+          └ The city of Tyimunyy arose.
+   20100  settlement.founded     s=198 sName=Táịrngí kind=crystallized
+          └ Táịrngí was founded.
+   20100  settlement.founded     s=198 sName=Táịrngí city=1
+          └ The city of Táịrngí arose.
+   20100  settlement.founded     s=199 sName=Fǐxrì city=1
+          └ The city of Fǐxrì arose.
+   20109  succession.crisis      name=Yuzylugoya
+          └ The royal line failed — an interregnum of rival claimants.
+   20125  settlement.founded     s=202 sName=Pụ̄ngpíü kind=crystallized
+          └ Pụ̄ngpíü was founded.
+   20125  settlement.founded     s=202 sName=Pụ̄ngpíü city=1
+          └ The city of Pụ̄ngpíü arose.
+   20125  settlement.founded     s=203 sName=Láxǔ city=1
+          └ The city of Láxǔ arose.
+   20137  polity.submitted       how=submission to=43 toName=Daphut'ebyaa name=Pephamdoya
+          └ Facing hopeless odds, the court of Pephamdoya bowed to Daphut'ebyaa — keeping its throne at the price of tribute.
+   20137  settlement.annexed     s=127 sName=Tambapaz from=127 fromName=Tambapaztaya to=43 toName=Daphut'ebyaa
+          └ Peacefully absorbed Tambapaz from Tambapaztaya.
+   20137  polity.seceded         from=67 fromName=Yuzylugoya
+          └ Broke away from Yuzylugoya in a war of secession.
+   20137  settlement.annexed     s=65 sName=Yuzylugo from=140 fromName=T'imp'atzyug to=43 toName=Daphut'ebyaa
+          └ Peacefully absorbed Yuzylugo from T'imp'atzyug.
+   20137  settlement.annexed     s=1 sName=Ňěňní from=93 fromName=Mùpíükúlǐā to=85 toName=Fàkò
+          └ Peacefully absorbed Ňěňní from Mùpíükúlǐā.
+   20137  settlement.annexed     s=44 sName=Yomkhata from=44 fromName=Yomkhata to=85 toName=Fàkò
+          └ Peacefully absorbed Yomkhata from Yomkhata.
+   20137  polity.ended           how=dissolved name=Yomkhata
+          └ Dissolved — its last cities scattered or fell silent.
+   20150  settlement.founded     s=204 sName=Rītlà kind=crystallized
+          └ Rītlà was founded.
+   20150  settlement.founded     s=204 sName=Rītlà city=1
+          └ The city of Rītlà arose.
+   20150  settlement.founded     s=205 sName=Mīngfǐu city=1
+          └ The city of Mīngfǐu arose.
+   20150  war.began              from=180 to=132 name=Ghiuthanyyzuvghugha
+          └ Marched to war against Ghiusin.
+   20150  war.began              from=43 to=65 name=Daphut'ebyaa
+          └ Marched to war against Yuzylugoya.
+   20160  settlement.lapsed      s=44 sName=Yomkhata from=85 fromName=Fàkò
+          └ Yomkhata slipped free of Fàkò.
+   20160  polity.receded         s=44 n=1 sName=Yomkhata name=Fàkò
+          └ The grip of Fàkò failed, and the marches beyond Yomkhata were left to their own devices.
+   20160  polity.seceded         how=receded from=43 fromName=Daphut'ebyaa
+          └ Broke away from Daphut'ebyaa in a war of secession.
+   20160  polity.receded         s=127 n=1 sName=Tambapaz name=Daphut'ebyaa
+          └ The grip of Daphut'ebyaa failed, and the marches beyond Tambapaz were left to their own devices.
+   20160  settlement.founded     s=210 sName=Tifyungfut kind=planted
+          └ Tifyungfut was founded.
+   20160  town.planted           s=210 sName=Tifyungfut
+          └ The crown chartered Tifyungfut to govern the countryside.
+   20161  settlement.tier        s=187 sName=Fūtíü
+          └ Fūtíü grew into a metropolis (715,000 souls).
+   20175  settlement.founded     s=212 sName=Sǒutlà kind=crystallized
+          └ Sǒutlà was founded.
+   20175  settlement.founded     s=212 sName=Sǒutlà city=1
+          └ The city of Sǒutlà arose.
+   20175  settlement.founded     s=213 sName=Xụ́ppà city=1
+          └ The city of Xụ́ppà arose.
+   20200  settlement.founded     s=215 sName=Kótlà kind=crystallized
+          └ Kótlà was founded.
+   20200  settlement.founded     s=215 sName=Kótlà city=1
+          └ The city of Kótlà arose.
+   20200  settlement.founded     s=216 sName=Tìurụ́ city=1
+          └ The city of Tìurụ́ arose.
+   20200  war.began              from=139 to=93 name=Lāfpù
+          └ Marched to war against Mùpíükúlǐā.
+   20225  settlement.founded     s=218 sName=Rǐnwā kind=crystallized
+          └ Rǐnwā was founded.
+   20225  settlement.founded     s=218 sName=Rǐnwā city=1
+          └ The city of Rǐnwā arose.
+   20250  settlement.founded     s=220 sName=Fụ̀ịpxù kind=crystallized
+          └ Fụ̀ịpxù was founded.
+   20250  settlement.founded     s=220 sName=Fụ̀ịpxù city=1
+          └ The city of Fụ̀ịpxù arose.
+   20287  polity.seceded         from=85 fromName=Fàkò
+          └ Broke away from Fàkò in a war of secession.
+   20287  polity.seceded         from=132 fromName=Ghiusin
+          └ Broke away from Ghiusin in a war of secession.
+   20287  settlement.annexed     s=2 sName=Fùlpū from=1 fromName=Ňěňní to=85 toName=Fàkò
+          └ Peacefully absorbed Fùlpū from Ňěňní.
+   20287  settlement.annexed     s=48 sName=Yamfaputa from=48 fromName=Yamfaputayaa to=67 toName=Yuzylugoya
+          └ Peacefully absorbed Yamfaputa from Yamfaputayaa.
+   20287  polity.restored        from=-1 name=Yomkhata
+          └ The old nation rose again.
+   20287  polity.ended           how=dissolved name=Ňěňní
+          └ Dissolved — its last cities scattered or fell silent.
+   20287  polity.ended           how=dissolved name=Yamfaputayaa
+          └ Dissolved — its last cities scattered or fell silent.
+   20288  settlement.abandoned   s=142 sName=Fị́là
+          └ Fị́là was abandoned.
+   20294  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   20300  war.began              from=78 to=48 name=Yamfaputa
+          └ Marched to war against Yamfaputayaa.
+   20300  war.began              from=43 to=48 name=Daphut'ebyaa
+          └ Renewed the old war against Yamfaputayaa.
+   20300  war.ended              how=siegeLifted to=180 toName=Ghiuthanyyzuvghugha name=Ghiusin
+          └ The war with Ghiusin ended.
+   20304  settlement.lapsed      s=210 sName=Tifyungfut from=132 fromName=Ghiusin
+          └ Tifyungfut slipped free of Ghiusin.
+   20304  polity.receded         s=210 n=1 sName=Tifyungfut name=Ghiusin
+          └ The grip of Ghiusin failed, and the marches beyond Tifyungfut were left to their own devices.
+   20330  market.dearth          s=187 sName=Fūtíü
+          └ Dearth in Fūtíü — bread at famine prices in the market.
+   20339  market.dearth          s=43 sName=Daphut'eb
+          └ Dearth in Daphut'eb — bread at famine prices in the market.
+   20350  settlement.founded     s=224 sName=Sǐunxù city=1
+          └ The city of Sǐunxù arose.
+   20350  war.began              from=11 to=127 name=Pephamdoya
+          └ Renewed the old war against Tambapaztaya.
+   20350  war.began              from=44 to=140 name=Yomkhata
+          └ Marched to war against T'imp'atzyug.
+   20350  war.ended              how=siegeLifted to=139 toName=Lāfpù name=Hìuxkòulǐā
+          └ The war with Hìuxkòulǐā ended.
+   20400  war.began              from=139 to=44 name=Lāfpù
+          └ Marched to war against Yomkhata as the succession failed.
+   20437  polity.submitted       how=submission to=123 toName=Xīrtụ̌ị name=Sǐunxù
+          └ Facing hopeless odds, the court of Sǐunxù bowed to Xīrtụ̌ị — keeping its throne at the price of tribute.
+   20449  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   20450  war.began              from=140 to=44 name=T'imp'atzyug
+          └ Marched to war against Yomkhata as the succession failed.
+   20450  war.began              from=85 to=224 name=Fàkò
+          └ Marched to war against Sǐunxù.
+   20450  war.began              from=129 to=224 name=Xóuthị̌lǐ
+          └ Marched to war against Sǐunxù.
+   20450  war.began              from=11 to=175 name=Pephamdoya
+          └ Marched to war against Pofayoktay.
+   20450  war.began              from=67 to=175 name=Yuzylugoya
+          └ Marched to war against Pofayoktay.
+   20450  war.began              from=43 to=175 name=Daphut'ebyaa
+          └ Marched to war against Pofayoktay.
+   20450  war.ended              how=faded to=67 toName=Yuzylugoya name=Ňěňní
+          └ The war with Ňěňní ended; some 45 soldiers never came home.
+   20450  war.ended              how=siegeLifted to=139 toName=Lāfpù name=Mùpíükúlǐā
+          └ The war with Mùpíükúlǐā ended.
+   20500  war.began              from=132 to=194 name=Ghiusin
+          └ Marched to war against Ziusiv.
+   20500  war.began              from=139 to=224 name=Lāfpù
+          └ Marched to war against Sǐunxù.
+   20500  war.ended              how=truce to=175 toName=Pofayoktay name=Pephamdoya
+          └ The war with Pephamdoya ended.
+   20500  war.indemnity          to=11 toName=Pephamdoya name=Pofayoktay
+          └ Pofayoktay paid a heavy indemnity to Pephamdoya at the peace.
+   20500  war.ended              how=truce to=175 toName=Pofayoktay name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   20500  war.indemnity          to=67 toName=Yuzylugoya name=Pofayoktay
+          └ Pofayoktay paid a heavy indemnity to Yuzylugoya at the peace.
+   20500  war.ended              how=truce to=175 toName=Pofayoktay name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   20500  war.indemnity          to=43 toName=Daphut'ebyaa name=Pofayoktay
+          └ Pofayoktay paid a heavy indemnity to Daphut'ebyaa at the peace.
+   20550  war.began              from=123 to=93 name=Xīrtụ̌ị
+          └ Marched to war against Mùpíükúlǐā.
+   20550  war.began              from=139 to=123 name=Lāfpù
+          └ Marched to war against Xīrtụ̌ị.
+   20550  polity.shattered       s=224 sName=Sǐunxù to=85 toName=Fàkò
+          └ Its capital Sǐunxù fell to Fàkò — the realm collapsed.
+   20550  polity.ended           how=conquest byName=Fàkò name=Sǐunxù
+          └ Fell to Fàkò and was erased from the map.
+   20550  polity.shattered       s=224 sName=Sǐunxù to=129 toName=Xóuthị̌lǐ
+          └ Its capital Sǐunxù fell to Xóuthị̌lǐ — the realm collapsed.
+   20583  market.dearth          s=123 sName=Xīrtụ̌ị
+          └ Dearth in Xīrtụ̌ị — bread at famine prices in the market.
+   20700  war.ended              how=siegeLifted to=93 toName=Mùpíükúlǐā name=Yomkhata
+          └ The war with Yomkhata ended.
+   20737  polity.submitted       how=submission to=43 toName=Daphut'ebyaa name=Bamsrazath
+          └ Facing hopeless odds, the court of Bamsrazath bowed to Daphut'ebyaa — keeping its throne at the price of tribute.
+   20737  settlement.annexed     s=132 sName=Ghiusin from=132 fromName=Ghiusin to=194 toName=Ziusiv
+          └ Peacefully absorbed Ghiusin from Ghiusin.
+   20750  settlement.founded     s=253 sName=Sōngsī city=1
+          └ The city of Sōngsī arose.
+   20800  war.began              from=194 to=132 name=Ziusiv
+          └ Marched to war against Ghiusin.
+   20828  settlement.withered    s=184 sName=Tifyung
+          └ Tifyung withered away and was abandoned.
+   20828  settlement.withered    s=205 sName=Mīngfǐu
+          └ Mīngfǐu withered away and was abandoned.
+   20881  settlement.tier        s=185 sName=Tifyung
+          └ Tifyung grew into a city (272,000 souls).
+   20900  war.began              from=43 to=78 name=Daphut'ebyaa
+          └ Renewed the old war against Yamfaputa.
+   20900  war.ended              how=siegeLifted to=139 toName=Lāfpù name=Xīrtụ̌ị
+          └ The war with Xīrtụ̌ị ended.
+   20932  market.dearth          s=41 sName=T'imnumu
+          └ Dearth in T'imnumu — bread at famine prices in the market.
+   20950  war.ended              how=siegeLifted to=139 toName=Lāfpù name=Yomkhata
+          └ The war with Yomkhata ended; some 7 soldiers never came home.
+   20973  settlement.withered    s=213 sName=Xụ́ppà
+          └ Xụ́ppà withered away and was abandoned.
+   21000  plague.outbreak        s=185 sName=Tifyung
+          └ Plague broke out in Tifyung and swept through the realm.
+   21000  plague.outbreak        s=187 sName=Fūtíü
+          └ Plague broke out in Fūtíü and swept through the realm.
+   21000  plague.outbreak        s=188 sName=Pụ̀pàxǔ
+          └ Plague broke out in Pụ̀pàxǔ and swept through the realm.
+   21000  settlement.founded     s=263 sName=Pāxáxǔ city=1
+          └ The city of Pāxáxǔ arose.
+   21000  war.began              from=139 to=85 name=Lāfpù
+          └ Renewed the old war against Fàkò.
+   21000  polity.shattered       s=41 sName=T'imnumu to=43 toName=Daphut'ebyaa
+          └ Its capital T'imnumu fell to Daphut'ebyaa — the realm collapsed.
+   21000  polity.ended           how=conquest byName=Daphut'ebyaa name=Yamfaputa
+          └ Fell to Daphut'ebyaa and was erased from the map.
+   21037  polity.submitted       how=submission to=139 toName=Lāfpù name=T'imp'atzyug
+          └ Facing hopeless odds, the court of T'imp'atzyug bowed to Lāfpù — keeping its throne at the price of tribute.
+   21037  polity.submitted       how=union to=180 toName=Ghiuthanyyzuvghugha name=Ghiusin
+          └ In the troubles of the succession, the court of Ghiusin joined its crown to Ghiuthanyyzuvghugha — one senior throne, two realms.
+   21037  polity.seceded         from=85 fromName=Fàkò
+          └ Broke away from Fàkò in a war of secession.
+   21037  settlement.annexed     s=11 sName=Pephamdo from=11 fromName=Pephamdoya to=127 toName=Tambapaztaya
+          └ Peacefully absorbed Pephamdo from Pephamdoya.
+   21037  polity.ended           how=dissolved name=Pephamdoya
+          └ Dissolved — its last cities scattered or fell silent.
+   21050  war.began              from=127 to=67 name=Tambapaztaya
+          └ Marched to war against Yuzylugoya.
+   21050  war.began              from=43 to=67 name=Daphut'ebyaa
+          └ Marched to war against Yuzylugoya.
+   21050  war.began              from=103 to=67 name=Manifaxa
+          └ Marched to war against Yuzylugoya under the banner of the faith.
+   21050  war.began              from=57 to=67 name=Dyakyoxy
+          └ Marched to war against Yuzylugoya.
+   21050  war.began              from=58 to=67 name=Dyakyoxyfaxa
+          └ Marched to war against Yuzylugoya.
+   21050  war.began              from=96 to=67 name=Yomtammolz
+          └ Marched to war against Yuzylugoya.
+   21050  war.began              from=128 to=67 name=Dyakyoxyfaxa
+          └ Marched to war against Yuzylugoya.
+   21050  war.began              from=131 to=67 name=Bumimu
+          └ Marched to war against Yuzylugoya under the banner of the faith.
+   21050  war.began              from=160 to=67 name=Zu
+          └ Marched to war against Yuzylugoya to press a claim to its throne.
+   21050  war.began              from=180 to=67 name=Ghiuthanyyzuvghugha
+          └ Marched to war against Yuzylugoya.
+   21050  war.began              from=227 to=67 name=Bamsrazath
+          └ Marched to war against Yuzylugoya.
+   21050  war.began              from=29 to=85 name=Láhā
+          └ Renewed the old war against Fàkò.
+   21050  war.began              from=129 to=85 name=Xóuthị̌lǐ
+          └ Renewed the old war against Fàkò.
+   21050  war.began              from=43 to=228 name=Daphut'ebyaa
+          └ Marched to war against Fuyotyum.
+   21050  war.began              from=43 to=250 name=Daphut'ebyaa
+          └ Marched to war against Upmiibmi.
+   21050  war.began              from=67 to=247 name=Yuzylugoya
+          └ Marched to war against Yuytaya as the succession failed.
+   21050  war.began              from=43 to=247 name=Daphut'ebyaa
+          └ Marched to war against Yuytaya as the succession failed.
+   21063  settlement.abandoned   s=186 sName=Thit
+          └ Thit was abandoned.
+   21066  settlement.abandoned   s=189 sName=Tyifughfut
+          └ Tyifughfut was abandoned.
+   21092  plague.outbreak        s=1 sName=Ňěňní
+          └ Plague broke out in Ňěňní and swept through the realm.
+   21100  war.began              from=111 to=67 name=Pụ́lrálǐā
+          └ Marched to war against Yuzylugoya.
+   21100  war.began              from=228 to=67 name=Fuyotyum
+          └ Marched to war against Yuzylugoya.
+   21100  war.began              from=243 to=67 name=Kusmibu
+          └ Marched to war against Yuzylugoya.
+   21100  war.began              from=247 to=67 name=Yuytaya
+          └ Marched to war against Yuzylugoya.
+   21100  war.began              from=93 to=127 name=Mùpíükúlǐā
+          └ Marched to war against Tambapaztaya.
+   21100  war.ended              how=truce to=127 toName=Tambapaztaya name=Yuzylugoya
+          └ The war with Yuzylugoya ended; some 1 soldiers never came home.
+   21100  war.indemnity          to=127 toName=Tambapaztaya name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Tambapaztaya at the peace.
+   21100  war.ended              how=truce to=228 toName=Fuyotyum name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21100  war.indemnity          to=43 toName=Daphut'ebyaa name=Fuyotyum
+          └ Fuyotyum paid a heavy indemnity to Daphut'ebyaa at the peace.
+   21100  war.ended              how=truce to=228 toName=Fuyotyum name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=67 toName=Yuzylugoya name=Fuyotyum
+          └ Fuyotyum paid a heavy indemnity to Yuzylugoya at the peace.
+   21100  polity.submitted       how=capitulation to=103 toName=Manifaxa name=Yuzylugoya
+          └ Beaten in the field, the court of Yuzylugoya bent the knee to Manifaxa — a client crown under the conqueror's peace.
+   21100  war.ended              how=truce to=96 toName=Yomtammolz name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=96 toName=Yomtammolz name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Yomtammolz at the peace.
+   21100  war.ended              how=truce to=67 toName=Yuzylugoya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21100  war.indemnity          to=43 toName=Daphut'ebyaa name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Daphut'ebyaa at the peace.
+   21100  war.ended              how=truce to=67 toName=Yuzylugoya name=Dyakyoxy
+          └ The war with Dyakyoxy ended.
+   21100  war.indemnity          to=57 toName=Dyakyoxy name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Dyakyoxy at the peace.
+   21100  war.ended              how=truce to=67 toName=Yuzylugoya name=Dyakyoxyfaxa
+          └ The war with Dyakyoxyfaxa ended.
+   21100  war.indemnity          to=58 toName=Dyakyoxyfaxa name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Dyakyoxyfaxa at the peace.
+   21100  war.ended              how=truce to=111 toName=Pụ́lrálǐā name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=111 toName=Pụ́lrálǐā name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Pụ́lrálǐā at the peace.
+   21100  war.ended              how=truce to=128 toName=Dyakyoxyfaxa name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=128 toName=Dyakyoxyfaxa name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Dyakyoxyfaxa at the peace.
+   21100  war.ended              how=truce to=131 toName=Bumimu name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=131 toName=Bumimu name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Bumimu at the peace.
+   21100  war.ended              how=truce to=160 toName=Zu name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=160 toName=Zu name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Zu at the peace.
+   21100  war.ended              how=truce to=180 toName=Ghiuthanyyzuvghugha name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=180 toName=Ghiuthanyyzuvghugha name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Ghiuthanyyzuvghugha at the peace.
+   21100  war.ended              how=truce to=227 toName=Bamsrazath name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=227 toName=Bamsrazath name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Bamsrazath at the peace.
+   21100  war.ended              how=truce to=243 toName=Kusmibu name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  war.indemnity          to=243 toName=Kusmibu name=Yuzylugoya
+          └ Yuzylugoya paid a heavy indemnity to Kusmibu at the peace.
+   21100  war.ended              how=truce to=247 toName=Yuytaya name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   21100  polity.submitted       how=capitulation to=43 toName=Daphut'ebyaa name=Upmiibmi
+          └ Beaten in the field, the court of Upmiibmi bent the knee to Daphut'ebyaa — a client crown under the conqueror's peace.
+   21100  war.ended              how=truce to=247 toName=Yuytaya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21101  settlement.abandoned   s=224 sName=Sǐunxù
+          └ Sǐunxù was abandoned.
+   21117  settlement.abandoned   s=216 sName=Tìurụ́
+          └ Tìurụ́ was abandoned.
+   21120  settlement.founded     s=270 sName=Botholay kind=planted
+          └ Botholay was founded.
+   21120  town.planted           s=270 sName=Botholay
+          └ The crown planted Botholay to hold the march.
+   21125  settlement.founded     s=275 sName=Làfụ́ịkò city=1
+          └ The city of Làfụ́ịkò arose.
+   21150  settlement.founded     s=279 sName=Kòffí city=1
+          └ The city of Kòffí arose.
+   21164  market.dearth          s=187 sName=Fūtíü
+          └ Dearth in Fūtíü — bread at famine prices in the market.
+   21168  settlement.lapsed      s=270 sName=Botholay from=43 fromName=Daphut'ebyaa
+          └ Botholay slipped free of Daphut'ebyaa.
+   21168  polity.receded         s=270 n=1 sName=Botholay name=Daphut'ebyaa
+          └ The grip of Daphut'ebyaa failed, and the marches beyond Botholay were left to their own devices.
+   21198  market.dearth          s=12 sName=Zyibayamphibta
+          └ Dearth in Zyibayamphibta — bread at famine prices in the market.
+   21200  war.began              from=43 to=1 name=Daphut'ebyaa
+          └ Marched to war against Ňěňní.
+   21200  war.began              from=93 to=1 name=Mùpíükúlǐā
+          └ Renewed the old war against Ňěňní.
+   21200  war.began              from=123 to=1 name=Xīrtụ̌ị
+          └ Marched to war against Ňěňní.
+   21200  war.began              from=139 to=29 name=Lāfpù
+          └ Marched to war against Láhā as the succession failed.
+   21200  war.ended              how=faded to=78 toName=Yamfaputa name=Pephamdoya
+          └ The war with Pephamdoya ended; some 3 soldiers never came home.
+   21214  settlement.abandoned   s=202 sName=Pụ̄ngpíü
+          └ Pụ̄ngpíü was abandoned.
+   21229  settlement.abandoned   s=198 sName=Táịrngí
+          └ Táịrngí was abandoned.
+   21234  succession.crisis      name=Mùpíükúlǐā
+          └ The royal line failed — an interregnum of rival claimants.
+   21238  settlement.abandoned   s=204 sName=Rītlà
+          └ Rītlà was abandoned.
+   21240  settlement.abandoned   s=220 sName=Fụ̀ịpxù
+          └ Fụ̀ịpxù was abandoned.
+   21250  settlement.founded     s=282 sName=Pǎ'ị̀ kind=crystallized
+          └ Pǎ'ị̀ was founded.
+   21250  settlement.founded     s=282 sName=Pǎ'ị̀ city=1
+          └ The city of Pǎ'ị̀ arose.
+   21250  war.began              from=29 to=1 name=Láhā
+          └ Marched to war against Ňěňní as the succession failed.
+   21283  market.dearth          s=2 sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   21312  polity.founded         how=frontier from=-1 name=Botholay
+          └ Botholay declared itself a sovereign realm.
+   21332  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   21334  succession.crisis      name=Ňěňní
+          └ The royal line failed — an interregnum of rival claimants.
+   21337  polity.submitted       how=submission to=139 toName=Lāfpù name=Xóuthị̌lǐ
+          └ Facing hopeless odds, the court of Xóuthị̌lǐ bowed to Lāfpù — keeping its throne at the price of tribute.
+   21338  settlement.abandoned   s=199 sName=Fǐxrì
+          └ Fǐxrì was abandoned.
+   21350  war.began              from=1 to=93 name=Ňěňní
+          └ Renewed the old war against Mùpíükúlǐā as the succession failed.
+   21350  war.began              from=1 to=129 name=Ňěňní
+          └ Renewed the old war against Xóuthị̌lǐ.
+   21414  settlement.abandoned   s=30 sName=Pēüffìrọ̀
+          └ Pēüffìrọ̀ was abandoned.
+   21417  market.dearth          s=123 sName=Xīrtụ̌ị
+          └ Dearth in Xīrtụ̌ị — bread at famine prices in the market.
+   21450  settlement.founded     s=289 sName=Óurngī city=1
+          └ The city of Óurngī arose.
+   21450  polity.shattered       s=187 sName=Fūtíü to=1 toName=Ňěňní
+          └ Its capital Fūtíü fell to Ňěňní — the realm collapsed.
+   21450  polity.ended           how=conquest byName=Ňěňní name=Mùpíükúlǐā
+          └ Fell to Ňěňní and was erased from the map.
+   21487  polity.ended           how=dissolved name=Pēüffìrọ̀lě
+          └ Dissolved — its last cities scattered or fell silent.
+   21500  war.began              from=180 to=270 name=Ghiuthanyyzuvghugha
+          └ Marched to war against Botholay.
+   21500  war.began              from=123 to=270 name=Xīrtụ̌ị
+          └ Marched to war against Botholay.
+   21500  war.began              from=1 to=43 name=Ňěňní
+          └ Renewed the old war against Daphut'ebyaa.
+   21500  war.began              from=139 to=1 name=Lāfpù
+          └ Marched to war against Ňěňní as the succession failed.
+   21500  war.ended              how=siegeLifted to=43 toName=Daphut'ebyaa name=Ňěňní
+          └ The war with Ňěňní ended.
+   21500  war.indemnity          to=43 toName=Daphut'ebyaa name=Ňěňní
+          └ Ňěňní paid a heavy indemnity to Daphut'ebyaa at the peace.
+   21537  settlement.abandoned   s=48 sName=Yamfaputa
+          └ Yamfaputa was abandoned.
+   21550  settlement.founded     s=292 sName=Ngìptà kind=crystallized
+          └ Ngìptà was founded.
+   21550  settlement.founded     s=292 sName=Ngìptà city=1
+          └ The city of Ngìptà arose.
+   21550  war.began              from=197 to=270 name=Ziusivghugh
+          └ Marched to war against Botholay.
+   21550  war.began              from=43 to=180 name=Daphut'ebyaa
+          └ Marched to war against Ghiuthanyyzuvghugha as the succession failed.
+   21600  war.began              from=1 to=270 name=Ňěňní
+          └ Marched to war against Botholay.
+   21637  polity.submitted       how=submission to=139 toName=Lāfpù name=Xīrtụ̌ị
+          └ Facing hopeless odds, the court of Xīrtụ̌ị bowed to Lāfpù — keeping its throne at the price of tribute.
+   21637  polity.submitted       how=submission to=139 toName=Lāfpù name=Hìuxkòulǐā
+          └ Facing hopeless odds, the court of Hìuxkòulǐā bowed to Lāfpù — keeping its throne at the price of tribute.
+   21650  war.began              from=43 to=281 name=Daphut'ebyaa
+          └ Marched to war against P'oetephamdtaya.
+   21650  war.began              from=127 to=270 name=Tambapaztaya
+          └ Marched to war against Botholay.
+   21650  war.began              from=43 to=270 name=Daphut'ebyaa
+          └ Marched to war against Botholay.
+   21650  war.began              from=103 to=270 name=Manifaxa
+          └ Marched to war against Botholay.
+   21650  war.began              from=57 to=270 name=Dyakyoxy
+          └ Marched to war against Botholay.
+   21650  war.began              from=58 to=270 name=Dyakyoxyfaxa
+          └ Marched to war against Botholay.
+   21650  war.began              from=96 to=270 name=Yomtammolz
+          └ Marched to war against Botholay.
+   21650  war.began              from=125 to=270 name=Tughattaya
+          └ Marched to war against Botholay.
+   21650  war.began              from=128 to=270 name=Dyakyoxyfaxa
+          └ Marched to war against Botholay.
+   21650  war.began              from=131 to=270 name=Bumimu
+          └ Marched to war against Botholay.
+   21650  war.began              from=160 to=270 name=Zu
+          └ Marched to war against Botholay.
+   21650  war.began              from=243 to=270 name=Kusmibu
+          └ Marched to war against Botholay.
+   21650  war.began              from=271 to=270 name=Pụ̌čfí
+          └ Marched to war against Botholay.
+   21650  war.began              from=281 to=270 name=P'oetephamdtaya
+          └ Marched to war against Botholay.
+   21650  war.began              from=284 to=270 name=Tap'inumtaya
+          └ Marched to war against Botholay.
+   21650  war.began              from=29 to=139 name=Láhā
+          └ Renewed the old war against Lāfpù.
+   21650  war.began              from=43 to=269 name=Daphut'ebyaa
+          └ Marched to war against Yatammolz as the succession failed.
+   21650  war.began              from=43 to=266 name=Daphut'ebyaa
+          └ Marched to war against Làlǐā.
+   21650  war.began              from=43 to=265 name=Daphut'ebyaa
+          └ Marched to war against Tìülākòpǐā.
+   21650  war.began              from=270 to=265 name=Botholay
+          └ Marched to war against Tìülākòpǐā.
+   21650  war.began              from=43 to=287 name=Daphut'ebyaa
+          └ Marched to war against Thamb.
+   21650  war.ended              how=faded to=132 toName=Ghiusin name=Piuphivyputghugh
+          └ The war with Piuphivyputghugh ended.
+   21650  war.ended              how=truce to=281 toName=P'oetephamdtaya name=Botholay
+          └ The war with Botholay ended.
+   21650  war.ended              how=truce to=287 toName=Thamb name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21650  polity.submitted       how=capitulation to=180 toName=Ghiuthanyyzuvghugha name=Botholay
+          └ Beaten in the field, the court of Botholay bent the knee to Ghiuthanyyzuvghugha — a client crown under the conqueror's peace.
+   21650  war.ended              how=truce to=265 toName=Tìülākòpǐā name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21650  war.indemnity          to=43 toName=Daphut'ebyaa name=Tìülākòpǐā
+          └ Tìülākòpǐā paid a heavy indemnity to Daphut'ebyaa at the peace.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Tìülākòpǐā
+          └ The war with Tìülākòpǐā ended.
+   21650  war.ended              how=truce to=271 toName=Pụ̌čfí name=Botholay
+          └ The war with Botholay ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Ňěňní
+          └ The war with Ňěňní ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Tambapaztaya
+          └ The war with Tambapaztaya ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Manifaxa
+          └ The war with Manifaxa ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Dyakyoxy
+          └ The war with Dyakyoxy ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Dyakyoxyfaxa
+          └ The war with Dyakyoxyfaxa ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Yomtammolz
+          └ The war with Yomtammolz ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Tughattaya
+          └ The war with Tughattaya ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Dyakyoxyfaxa
+          └ The war with Dyakyoxyfaxa ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Bumimu
+          └ The war with Bumimu ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Zu
+          └ The war with Zu ended.
+   21650  war.ended              how=truce to=270 toName=Botholay name=Kusmibu
+          └ The war with Kusmibu ended.
+   21650  war.ended              how=truce to=284 toName=Tap'inumtaya name=Botholay
+          └ The war with Botholay ended.
+   21650  war.ended              how=stalemate to=140 toName=T'imp'atzyug name=Yomkhata
+          └ The war with Yomkhata ended.
+   21700  war.began              from=1 to=123 name=Ňěňní
+          └ Marched to war against Xīrtụ̌ị.
+   21700  war.began              from=111 to=270 name=Pụ́lrálǐā
+          └ Marched to war against Botholay.
+   21700  war.began              from=207 to=270 name=Mexvahvah
+          └ Marched to war against Botholay.
+   21700  war.began              from=227 to=270 name=Bamsrazath
+          └ Marched to war against Botholay.
+   21700  war.ended              how=faded to=175 toName=Pofayoktay name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21700  war.ended              how=truce to=270 toName=Botholay name=Pụ́lrálǐā
+          └ The war with Pụ́lrálǐā ended.
+   21700  war.ended              how=truce to=270 toName=Botholay name=Mexvahvah
+          └ The war with Mexvahvah ended.
+   21700  war.ended              how=truce to=270 toName=Botholay name=Bamsrazath
+          └ The war with Bamsrazath ended.
+   21700  war.ended              how=truce to=269 toName=Yatammolz name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21700  war.indemnity          to=43 toName=Daphut'ebyaa name=Yatammolz
+          └ Yatammolz paid a heavy indemnity to Daphut'ebyaa at the peace.
+   21700  war.ended              how=truce to=266 toName=Làlǐā name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   21743  settlement.withered    s=196 sName=Nīňlìrụ́
+          └ Nīňlìrụ́ withered away and was abandoned.
+   21743  settlement.withered    s=253 sName=Sōngsī
+          └ Sōngsī withered away and was abandoned.
+   21744  settlement.withered    s=192 sName=Sóppì
+          └ Sóppì withered away and was abandoned.
+   21744  settlement.withered    s=195 sName=Pụ̀pàrụ́
+          └ Pụ̀pàrụ́ withered away and was abandoned.
+   21745  settlement.withered    s=188 sName=Pụ̀pàxǔ
+          └ Pụ̀pàxǔ withered away and was abandoned.
+   21745  settlement.withered    s=191 sName=Xǐt'ị̀
+          └ Xǐt'ị̀ withered away and was abandoned.
+   21745  settlement.withered    s=203 sName=Láxǔ
+          └ Láxǔ withered away and was abandoned.
+   21745  settlement.withered    s=212 sName=Sǒutlà
+          └ Sǒutlà withered away and was abandoned.
+   21745  settlement.withered    s=215 sName=Kótlà
+          └ Kótlà withered away and was abandoned.
+   21745  settlement.withered    s=218 sName=Rǐnwā
+          └ Rǐnwā withered away and was abandoned.
+   21750  settlement.founded     s=316 sName=Xǐpfá kind=crystallized
+          └ Xǐpfá was founded.
+   21750  settlement.founded     s=316 sName=Xǐpfá city=1
+          └ The city of Xǐpfá arose.
+   21750  settlement.founded     s=317 sName=Čùsī city=1
+          └ The city of Čùsī arose.
+   21750  war.began              from=1 to=44 name=Ňěňní
+          └ Marched to war against Yomkhata.
+   21750  war.ended              how=faded to=224 toName=Sǐunxù name=Fàkò
+          └ The war with Fàkò ended; some 20 soldiers never came home.
+   21750  war.ended              how=faded to=224 toName=Sǐunxù name=Xóuthị̌lǐ
+          └ The war with Xóuthị̌lǐ ended; some 13 soldiers never came home.
+   21750  war.ended              how=faded to=224 toName=Sǐunxù name=Lāfpù
+          └ The war with Lāfpù ended.
+   21750  war.ended              how=truce to=270 toName=Botholay name=Xīrtụ̌ị
+          └ The war with Xīrtụ̌ị ended.
+   21750  war.ended              how=truce to=123 toName=Xīrtụ̌ị name=Ňěňní
+          └ The war with Ňěňní ended.
+   21750  war.indemnity          to=123 toName=Xīrtụ̌ị name=Ňěňní
+          └ Ňěňní paid a heavy indemnity to Xīrtụ̌ị at the peace.
+   21758  plague.outbreak        s=270 sName=Botholay
+          └ Plague broke out in Botholay and swept through the realm.
+   21775  settlement.founded     s=321 sName=Óurfí kind=crystallized
+          └ Óurfí was founded.
+   21775  settlement.founded     s=321 sName=Óurfí city=1
+          └ The city of Óurfí arose.
+   21775  settlement.founded     s=322 sName=Táịrngí city=1
+          └ The city of Táịrngí arose.
+   21787  polity.submitted       how=submission to=139 toName=Lāfpù name=Fūpù
+          └ Facing hopeless odds, the court of Fūpù bowed to Lāfpù — keeping its throne at the price of tribute.
+   21800  settlement.founded     s=324 sName=Tàssū kind=crystallized
+          └ Tàssū was founded.
+   21800  settlement.founded     s=324 sName=Tàssū city=1
+          └ The city of Tàssū arose.
+   21800  settlement.founded     s=325 sName=Ngùfīurụ́ city=1
+          └ The city of Ngùfīurụ́ arose.
+   21800  war.ended              how=siegeLifted to=139 toName=Lāfpù name=Ňěňní
+          └ The war with Ňěňní ended.
+   21825  settlement.founded     s=327 sName=Ngàxlà kind=crystallized
+          └ Ngàxlà was founded.
+   21825  settlement.founded     s=327 sName=Ngàxlà city=1
+          └ The city of Ngàxlà arose.
+   21825  settlement.founded     s=328 sName=Xū city=1
+          └ The city of Xū arose.
+   21842  settlement.abandoned   s=292 sName=Ngìptà
+          └ Ngìptà was abandoned.
+   21850  settlement.founded     s=331 sName=Lǎlyǎ kind=crystallized
+          └ Lǎlyǎ was founded.
+   21850  settlement.founded     s=331 sName=Lǎlyǎ city=1
+          └ The city of Lǎlyǎ arose.
+   21859  succession.crisis      name=Botholay
+          └ The royal line failed — an interregnum of rival claimants.
+   21875  settlement.founded     s=337 sName=Xūrụ́ kind=crystallized
+          └ Xūrụ́ was founded.
+   21875  settlement.founded     s=337 sName=Xūrụ́ city=1
+          └ The city of Xūrụ́ arose.
+   21900  war.began              from=132 to=197 name=Ghiusin
+          └ Marched to war against Ziusivghugh.
+   21900  war.began              from=43 to=127 name=Daphut'ebyaa
+          └ Renewed the old war against Tambapaztaya.
+   21925  settlement.founded     s=341 sName=Yafazibyum kind=crystallized
+          └ Yafazibyum was founded.
+   21925  settlement.founded     s=341 sName=Tayam city=1
+          └ The city of Tayam arose.
+   21927  settlement.tier        s=41 sName=T'imnumu
+          └ T'imnumu grew into a metropolis (450,000 souls).
+   21938  settlement.abandoned   s=279 sName=Kòffí
+          └ Kòffí was abandoned.
+   21950  settlement.founded     s=343 sName=Ǒuslà city=1
+          └ The city of Ǒuslà arose.
+   21950  war.began              from=295 to=270 name=Gadat
+          └ Marched to war against Botholay as the succession failed.
+   21950  war.ended              how=truce to=295 toName=Gadat name=Botholay
+          └ The war with Botholay ended.
+   21959  succession.crisis      name=Botholay
+          └ The royal line failed — an interregnum of rival claimants.
+   21975  settlement.founded     s=345 sName=Lụ̄yá city=1
+          └ The city of Lụ̄yá arose.
+   22000  war.began              from=132 to=270 name=Ghiusin
+          └ Marched to war against Botholay as the succession failed.
+   22000  war.began              from=250 to=270 name=Upmiibmi
+          └ Marched to war against Botholay as the succession failed.
+   22000  war.began              from=296 to=270 name=Babobyum
+          └ Marched to war against Botholay as the succession failed.
+   22000  war.ended              how=truce to=296 toName=Babobyum name=Botholay
+          └ The war with Botholay ended.
+   22000  war.ended              how=stalemate to=194 toName=Ziusiv name=Ghiusin
+          └ The war with Ghiusin ended.
+   22000  war.ended              how=stalemate to=270 toName=Botholay name=Ghiusin
+          └ The war with Ghiusin ended.
+   22000  war.indemnity          to=132 toName=Ghiusin name=Botholay
+          └ Botholay paid a heavy indemnity to Ghiusin at the peace.
+   22000  war.ended              how=truce to=270 toName=Botholay name=Upmiibmi
+          └ The war with Upmiibmi ended.
+   22000  war.indemnity          to=250 toName=Upmiibmi name=Botholay
+          └ Botholay paid a heavy indemnity to Upmiibmi at the peace.
+   22050  war.began              from=197 to=132 name=Ziusivghugh
+          └ Marched to war against Ghiusin.
+   22050  war.ended              how=siegeLifted to=44 toName=Yomkhata name=Ňěňní
+          └ The war with Ňěňní ended.
+   22050  war.ended              how=siegeLifted to=139 toName=Lāfpù name=Láhā
+          └ The war with Láhā ended.
+   22150  war.began              from=43 to=58 name=Daphut'ebyaa
+          └ Renewed the old war against Dyakyoxyfaxa.
+   22181  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   22200  plague.outbreak        s=316 sName=Xǐpfá
+          └ Plague broke out in Xǐpfá and swept through the realm.
+   22200  plague.outbreak        s=317 sName=Čùsī
+          └ Plague broke out in Čùsī and swept through the realm.
+   22200  plague.outbreak        s=341 sName=Tayam
+          └ Plague broke out in Tayam and swept through the realm.
+   22200  plague.virginSoil      s=270 sName=Botholay mortality=0.7
+          └ A pestilence unknown to Botholay came ashore with the strangers, and they had no defence against it.
+   22200  war.ended              how=faded to=78 toName=Yamfaputa name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended; some 40 soldiers never came home.
+   22200  war.ended              how=siegeLifted to=197 toName=Ziusivghugh name=Ghiusin
+          └ The war with Ghiusin ended.
+   22200  war.ended              how=siegeLifted to=127 toName=Tambapaztaya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22200  war.indemnity          to=127 toName=Tambapaztaya name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Tambapaztaya at the peace.
+   22250  war.began              from=43 to=300 name=Daphut'ebyaa
+          └ Marched to war against Zodamp'altaya.
+   22250  war.began              from=43 to=280 name=Daphut'ebyaa
+          └ Marched to war against Mibibu.
+   22250  war.began              from=43 to=57 name=Daphut'ebyaa
+          └ Renewed the old war against Dyakyoxy.
+   22250  war.began              from=43 to=294 name=Daphut'ebyaa
+          └ Marched to war against Fyarongvah.
+   22250  war.ended              how=truce to=294 toName=Fyarongvah name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22251  market.dearth          s=123 sName=Xīrtụ̌ị
+          └ Dearth in Xīrtụ̌ị — bread at famine prices in the market.
+   22300  war.ended              how=faded to=129 toName=Xóuthị̌lǐ name=Fàkò
+          └ The war with Fàkò ended.
+   22300  war.ended              how=faded to=127 toName=Tambapaztaya name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   22300  war.ended              how=faded to=67 toName=Yuzylugoya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22300  war.ended              how=truce to=280 toName=Mibibu name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22300  war.ended              how=truce to=300 toName=Zodamp'altaya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22300  war.indemnity          to=300 toName=Zodamp'altaya name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Zodamp'altaya at the peace.
+   22300  war.ended              how=truce to=180 toName=Ghiuthanyyzuvghugha name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22300  war.indemnity          to=180 toName=Ghiuthanyyzuvghugha name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Ghiuthanyyzuvghugha at the peace.
+   22300  war.ended              how=truce to=57 toName=Dyakyoxy name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22300  war.indemnity          to=57 toName=Dyakyoxy name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Dyakyoxy at the peace.
+   22343  settlement.withered    s=289 sName=Óurngī
+          └ Óurngī withered away and was abandoned.
+   22345  settlement.withered    s=263 sName=Pāxáxǔ
+          └ Pāxáxǔ withered away and was abandoned.
+   22345  settlement.withered    s=275 sName=Làfụ́ịkò
+          └ Làfụ́ịkò withered away and was abandoned.
+   22347  settlement.withered    s=282 sName=Pǎ'ị̀
+          └ Pǎ'ị̀ withered away and was abandoned.
+   22350  settlement.founded     s=357 sName=Pụ̄nglà city=1
+          └ The city of Pụ̄nglà arose.
+   22350  war.began              from=294 to=270 name=Fyarongvah
+          └ Marched to war against Botholay.
+   22350  war.began              from=139 to=159 name=Lāfpù
+          └ Marched to war against Yapfapudtay.
+   22350  war.began              from=43 to=349 name=Daphut'ebyaa
+          └ Marched to war against Nītlàlǐā as the succession failed.
+   22350  war.began              from=43 to=295 name=Daphut'ebyaa
+          └ Marched to war against Gadat as the succession failed.
+   22350  war.ended              how=faded to=127 toName=Tambapaztaya name=Mùpíükúlǐā
+          └ The war with Mùpíükúlǐā ended; some 3 soldiers never came home.
+   22350  war.ended              how=truce to=294 toName=Fyarongvah name=Botholay
+          └ The war with Botholay ended.
+   22350  war.ended              how=truce to=349 toName=Nītlàlǐā name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22350  war.ended              how=truce to=58 toName=Dyakyoxyfaxa name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22350  war.indemnity          to=58 toName=Dyakyoxyfaxa name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Dyakyoxyfaxa at the peace.
+   22350  war.ended              how=truce to=295 toName=Gadat name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22350  war.indemnity          to=295 toName=Gadat name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Gadat at the peace.
+   22375  settlement.founded     s=359 sName=Rìnglà city=1
+          └ The city of Rìnglà arose.
+   22387  settlement.annexed     s=44 sName=Yomkhata from=44 fromName=Yomkhata to=43 toName=Daphut'ebyaa
+          └ Peacefully absorbed Yomkhata from Yomkhata.
+   22387  polity.ended           how=integrated byName=Daphut'ebyaa name=Yomkhata
+          └ Dissolved — its last cities scattered or fell silent.
+   22400  settlement.founded     s=361 sName=Lụ̀nglā city=1
+          └ The city of Lụ̀nglā arose.
+   22400  war.began              from=43 to=139 name=Daphut'ebyaa
+          └ Marched to war against Lāfpù.
+   22400  war.ended              how=truce to=139 toName=Lāfpù name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22400  war.indemnity          to=139 toName=Lāfpù name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Lāfpù at the peace.
+   22419  settlement.tier        s=328 sName=Xū
+          └ Xū grew into a city (10,000 souls).
+   22450  war.began              from=43 to=140 name=Daphut'ebyaa
+          └ Marched to war against T'imp'atzyug.
+   22450  war.began              from=43 to=296 name=Daphut'ebyaa
+          └ Marched to war against Babobyum.
+   22450  war.ended              how=truce to=140 toName=T'imp'atzyug name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22450  war.indemnity          to=140 toName=T'imp'atzyug name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to T'imp'atzyug at the peace.
+   22450  war.ended              how=truce to=296 toName=Babobyum name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22450  war.indemnity          to=296 toName=Babobyum name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Babobyum at the peace.
+   22500  war.began              from=175 to=270 name=Pofayoktay
+          └ Marched to war against Botholay.
+   22500  war.began              from=228 to=270 name=Fuyotyum
+          └ Marched to war against Botholay.
+   22500  war.began              from=247 to=270 name=Yuytaya
+          └ Marched to war against Botholay.
+   22500  war.began              from=301 to=270 name=Xyabotnevasyvah
+          └ Marched to war against Botholay.
+   22500  war.ended              how=truce to=270 toName=Botholay name=Ziusivghugh
+          └ The war with Ziusivghugh ended; some 2 soldiers never came home.
+   22500  war.indemnity          to=197 toName=Ziusivghugh name=Botholay
+          └ Botholay paid a heavy indemnity to Ziusivghugh at the peace.
+   22500  war.ended              how=truce to=270 toName=Botholay name=Pofayoktay
+          └ The war with Pofayoktay ended.
+   22500  war.indemnity          to=175 toName=Pofayoktay name=Botholay
+          └ Botholay paid a heavy indemnity to Pofayoktay at the peace.
+   22500  war.ended              how=truce to=270 toName=Botholay name=Fuyotyum
+          └ The war with Fuyotyum ended.
+   22500  war.indemnity          to=228 toName=Fuyotyum name=Botholay
+          └ Botholay paid a heavy indemnity to Fuyotyum at the peace.
+   22500  war.ended              how=truce to=270 toName=Botholay name=Yuytaya
+          └ The war with Yuytaya ended.
+   22500  war.indemnity          to=247 toName=Yuytaya name=Botholay
+          └ Botholay paid a heavy indemnity to Yuytaya at the peace.
+   22500  war.ended              how=truce to=301 toName=Xyabotnevasyvah name=Botholay
+          └ The war with Botholay ended.
+   22500  war.indemnity          to=301 toName=Xyabotnevasyvah name=Botholay
+          └ Botholay paid a heavy indemnity to Xyabotnevasyvah at the peace.
+   22500  polity.shattered       s=270 sName=Botholay to=197 toName=Ziusivghugh
+          └ Its capital Botholay fell to Ziusivghugh — the realm collapsed.
+   22500  polity.ended           how=conquest byName=Ziusivghugh name=Botholay
+          └ Fell to Ziusivghugh and was erased from the map.
+   22537  polity.submitted       how=submission to=43 toName=Daphut'ebyaa name=Pyiuthityuth
+          └ Facing hopeless odds, the court of Pyiuthityuth bowed to Daphut'ebyaa — keeping its throne at the price of tribute.
+   22538  settlement.abandoned   s=341 sName=Tayam
+          └ Tayam was abandoned.
+   22550  war.began              from=180 to=132 name=Ghiuthanyyzuvghugha
+          └ Renewed the old war against Ghiusin.
+   22575  settlement.founded     s=375 sName=Ghaghat kind=crystallized
+          └ Ghaghat was founded.
+   22575  settlement.founded     s=375 sName=Tayanfap city=1
+          └ The city of Tayanfap arose.
+   22600  war.began              from=43 to=228 name=Daphut'ebyaa
+          └ Renewed the old war against Fuyotyum.
+   22608  settlement.lapsed      s=270 sName=Botholay from=197 fromName=Ziusivghugh
+          └ Botholay slipped free of Ziusivghugh.
+   22608  polity.receded         s=270 n=1 sName=Botholay name=Ziusivghugh
+          └ The grip of Ziusivghugh failed, and the marches beyond Botholay were left to their own devices.
+   22625  settlement.abandoned   s=2 sName=Fùlpū
+          └ Fùlpū was abandoned.
+   22650  settlement.founded     s=381 sName=Píürụ́ kind=crystallized
+          └ Píürụ́ was founded.
+   22650  settlement.founded     s=381 sName=Píürụ́ city=1
+          └ The city of Píürụ́ arose.
+   22650  war.ended              how=faded to=93 toName=Mùpíükúlǐā name=Ňěňní
+          └ The war with Ňěňní ended; some 41 soldiers never came home.
+   22687  settlement.annexed     s=129 sName=Xóuthị̌ from=129 fromName=Xóuthị̌lǐ to=139 toName=Lāfpù
+          └ Peacefully absorbed Xóuthị̌ from Xóuthị̌lǐ.
+   22687  polity.restored        from=-1 name=Botholay
+          └ The old nation rose again.
+   22687  polity.ended           how=dissolved name=Fàkò
+          └ Dissolved — its last cities scattered or fell silent.
+   22688  settlement.abandoned   s=327 sName=Ngàxlà
+          └ Ngàxlà was abandoned.
+   22688  settlement.abandoned   s=331 sName=Lǎlyǎ
+          └ Lǎlyǎ was abandoned.
+   22688  settlement.abandoned   s=337 sName=Xūrụ́
+          └ Xūrụ́ was abandoned.
+   22700  war.began              from=139 to=111 name=Lāfpù
+          └ Marched to war against Pụ́lrálǐā.
+   22725  settlement.founded     s=383 sName=Botholay kind=crystallized
+          └ Botholay was founded.
+   22725  settlement.founded     s=383 sName=Umkyoi city=1
+          └ The city of Umkyoi arose.
+   22730  settlement.dissolved   s=270 why=core sName=Botholay
+          └ Botholay faded back into the countryside.
+   22750  settlement.founded     s=384 sName=Zyibayanphibdat kind=crystallized
+          └ Zyibayanphibdat was founded.
+   22750  settlement.founded     s=384 sName=Rimmopuiky city=1
+          └ The city of Rimmopuiky arose.
+   22752  polity.seceded         how=receded from=43 fromName=Daphut'ebyaa
+          └ Broke away from Daphut'ebyaa in a war of secession.
+   22752  polity.receded         s=44 n=1 sName=Yomkhata name=Daphut'ebyaa
+          └ The grip of Daphut'ebyaa failed, and the marches beyond Yomkhata were left to their own devices.
+   22775  settlement.founded     s=386 sName=Foyghat kind=crystallized
+          └ Foyghat was founded.
+   22775  settlement.founded     s=386 sName=Mumommoe city=1
+          └ The city of Mumommoe arose.
+   22837  polity.ended           how=dissolved name=Botholay
+          └ Dissolved — its last cities scattered or fell silent.
+   22844  settlement.withered    s=325 sName=Ngùfīurụ́
+          └ Ngùfīurụ́ withered away and was abandoned.
+   22850  settlement.founded     s=393 sName=Ngàxsī city=1
+          └ The city of Ngàxsī arose.
+   22850  war.began              from=43 to=356 name=Daphut'ebyaa
+          └ Marched to war against Xyabotvaha.
+   22850  war.ended              how=truce to=356 toName=Xyabotvaha name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   22850  war.indemnity          to=43 toName=Daphut'ebyaa name=Xyabotvaha
+          └ Xyabotvaha paid a heavy indemnity to Daphut'ebyaa at the peace.
+   22900  war.began              from=43 to=44 name=Daphut'ebyaa
+          └ Renewed the old war against Yomkhata.
+   22900  war.began              from=67 to=287 name=Yuzylugoya
+          └ Marched to war against Thamb.
+   22900  war.began              from=67 to=356 name=Yuzylugoya
+          └ Marched to war against Xyabotvaha.
+   22900  war.ended              how=truce to=287 toName=Thamb name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   22900  war.indemnity          to=67 toName=Yuzylugoya name=Thamb
+          └ Thamb paid a heavy indemnity to Yuzylugoya at the peace.
+   22900  war.ended              how=truce to=356 toName=Xyabotvaha name=Yuzylugoya
+          └ The war with Yuzylugoya ended.
+   22900  war.indemnity          to=67 toName=Yuzylugoya name=Xyabotvaha
+          └ Xyabotvaha paid a heavy indemnity to Yuzylugoya at the peace.
+   22943  settlement.withered    s=316 sName=Xǐpfá
+          └ Xǐpfá withered away and was abandoned.
+   22944  settlement.withered    s=321 sName=Óurfí
+          └ Óurfí withered away and was abandoned.
+   22944  settlement.withered    s=324 sName=Tàssū
+          └ Tàssū withered away and was abandoned.
+   22946  settlement.withered    s=322 sName=Táịrngí
+          └ Táịrngí withered away and was abandoned.
+   22946  settlement.withered    s=343 sName=Ǒuslà
+          └ Ǒuslà withered away and was abandoned.
+   22948  settlement.withered    s=317 sName=Čùsī
+          └ Čùsī withered away and was abandoned.
+   22950  settlement.founded     s=403 sName=Pụ̀fáxō kind=crystallized
+          └ Pụ̀fáxō was founded.
+   22950  settlement.founded     s=403 sName=Pụ̀fáxō city=1
+          └ The city of Pụ̀fáxō arose.
+   22950  war.ended              how=faded to=270 toName=Botholay name=Xīrtụ̌ị
+          └ The war with Xīrtụ̌ị ended; some 1 soldiers never came home.
+   22950  war.ended              how=faded to=123 toName=Xīrtụ̌ị name=Ňěňní
+          └ The war with Ňěňní ended; some 2 soldiers never came home.
+   22975  settlement.founded     s=412 sName=Tụ̄ịnǔxǔ kind=crystallized
+          └ Tụ̄ịnǔxǔ was founded.
+   22975  settlement.founded     s=412 sName=Tụ̄ịnǔxǔ city=1
+          └ The city of Tụ̄ịnǔxǔ arose.
+   22975  settlement.founded     s=413 sName=Lụ̀rụ́ city=1
+          └ The city of Lụ̀rụ́ arose.
+   22987  settlement.annexed     s=129 sName=Xóuthị̌ from=139 fromName=Lāfpù to=111 toName=Pụ́lrálǐā
+          └ Peacefully absorbed Xóuthị̌ from Lāfpù.
+   23000  settlement.founded     s=421 sName=Ňị̀ kind=crystallized
+          └ Ňị̀ was founded.
+   23000  settlement.founded     s=421 sName=Ňị̀ city=1
+          └ The city of Ňị̀ arose.
+   23000  settlement.founded     s=422 sName=Làs'ị̀ city=1
+          └ The city of Làs'ị̀ arose.
+   23000  war.began              from=43 to=1 name=Daphut'ebyaa
+          └ Renewed the old war against Ňěňní under the banner of the faith.
+   23025  settlement.founded     s=426 sName=Sīupfá city=1
+          └ The city of Sīupfá arose.
+   23036  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   23082  settlement.abandoned   s=12 sName=Zyibayamphibta
+          └ Zyibayamphibta was abandoned.
+   23085  market.dearth          s=123 sName=Xīrtụ̌ị
+          └ Dearth in Xīrtụ̌ị — bread at famine prices in the market.
+   23100  settlement.founded     s=431 sName=Dapbobabomp kind=crystallized
+          └ Dapbobabomp was founded.
+   23100  settlement.founded     s=431 sName=Dapbobabomp city=1
+          └ The city of Dapbobabomp arose.
+   23100  settlement.founded     s=432 sName=Sǎfǎrụ́ city=1
+          └ The city of Sǎfǎrụ́ arose.
+   23133  settlement.abandoned   s=187 sName=Fūtíü
+          └ Fūtíü was abandoned.
+   23137  polity.ended           how=dissolved name=Yuzylugoya
+          └ Dissolved — its last cities scattered or fell silent.
+   23150  settlement.founded     s=439 sName=Sírụ́ kind=crystallized
+          └ Sírụ́ was founded.
+   23150  settlement.founded     s=439 sName=Sírụ́ city=1
+          └ The city of Sírụ́ arose.
+   23150  war.began              from=43 to=281 name=Daphut'ebyaa
+          └ Renewed the old war against P'oetephamdtaya as the succession failed.
+   23150  war.ended              how=faded to=295 toName=Gadat name=Botholay
+          └ The war with Botholay ended.
+   23175  settlement.founded     s=440 sName=Táịrngí kind=crystallized
+          └ Táịrngí was founded.
+   23175  settlement.founded     s=440 sName=Táịrngí city=1
+          └ The city of Táịrngí arose.
+   23200  war.began              from=1 to=129 name=Ňěňní
+          └ Renewed the old war against Xóuthị̌lǐ.
+   23200  war.began              from=43 to=266 name=Daphut'ebyaa
+          └ Renewed the old war against Làlǐā.
+   23250  war.began              from=159 to=139 name=Yapfapudtay
+          └ Marched to war against Lāfpù.
+   23250  war.began              from=139 to=129 name=Lāfpù
+          └ Marched to war against Xóuthị̌lǐ.
+   23276  settlement.withered    s=328 sName=Xū
+          └ Xū withered away and was abandoned.
+   23287  polity.submitted       how=submission to=139 toName=Lāfpù name=Pụ́lrálǐā
+          └ Facing hopeless odds, the court of Pụ́lrálǐā bowed to Lāfpù — keeping its throne at the price of tribute.
+   23287  polity.seceded         from=43 fromName=Daphut'ebyaa
+          └ Broke away from Daphut'ebyaa in a war of secession.
+   23287  polity.seceded         from=139 fromName=Lāfpù
+          └ Broke away from Lāfpù in a war of secession.
+   23300  settlement.founded     s=445 sName=Tíxǔ city=1
+          └ The city of Tíxǔ arose.
+   23300  war.began              from=1 to=43 name=Ňěňní
+          └ Renewed the old war against Daphut'ebyaa under the banner of the faith.
+   23329  settlement.abandoned   s=43 sName=Daphut'eb
+          └ Daphut'eb was abandoned.
+   23335  market.dearth          s=41 sName=T'imnumu
+          └ Dearth in T'imnumu — bread at famine prices in the market.
+   23350  war.began              from=1 to=123 name=Ňěňní
+          └ Renewed the old war against Xīrtụ̌ị.
+   23350  war.ended              how=siegeLifted to=180 toName=Ghiuthanyyzuvghugha name=Ghiusin
+          └ The war with Ghiusin ended.
+   23350  war.indemnity          to=132 toName=Ghiusin name=Ghiuthanyyzuvghugha
+          └ Ghiuthanyyzuvghugha paid a heavy indemnity to Ghiusin at the peace.
+   23400  plague.outbreak        s=375 sName=Tayanfap
+          └ Plague broke out in Tayanfap and swept through the realm.
+   23400  plague.outbreak        s=431 sName=Dapbobabomp
+          └ Plague broke out in Dapbobabomp and swept through the realm.
+   23450  war.began              from=43 to=375 name=Daphut'ebyaa
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=1 to=375 name=Ňěňní
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=127 to=375 name=Tambapaztaya
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=103 to=375 name=Manifaxa
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=57 to=375 name=Dyakyoxy
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=58 to=375 name=Dyakyoxyfaxa
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=96 to=375 name=Yomtammolz
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=111 to=375 name=Pụ́lrálǐā
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=125 to=375 name=Tughattaya
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=128 to=375 name=Dyakyoxyfaxa
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=131 to=375 name=Bumimu
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=160 to=375 name=Zu
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=372 to=375 name=Yafayokdattaya
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=180 to=375 name=Ghiuthanyyzuvghugha
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=248 to=375 name=Čepyafy
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=227 to=375 name=Bamsrazath
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=228 to=375 name=Fuyotyum
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=243 to=375 name=Kusmibu
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=247 to=375 name=Yuytaya
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=250 to=375 name=Upmiibmi
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=266 to=375 name=Làlǐā
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=269 to=375 name=Yatammolz
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=271 to=375 name=Pụ̌čfí
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=281 to=375 name=P'oetephamdtaya
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=284 to=375 name=Tap'inumtaya
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=294 to=375 name=Fyarongvah
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=295 to=375 name=Gadat
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=300 to=375 name=Zodamp'altaya
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=301 to=375 name=Xyabotnevasyvah
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=349 to=375 name=Nītlàlǐā
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=356 to=375 name=Xyabotvaha
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=370 to=375 name=Čepyafy
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=376 to=375 name=Laghat
+          └ Marched to war against Tayanfaptay.
+   23450  war.began              from=139 to=361 name=Lāfpù
+          └ Marched to war against Lụ̀nglā.
+   23450  war.began              from=29 to=361 name=Láhā
+          └ Marched to war against Lụ̀nglā.
+   23450  war.began              from=43 to=250 name=Daphut'ebyaa
+          └ Renewed the old war against Upmiibmi under the banner of the faith.
+   23450  war.began              from=43 to=227 name=Daphut'ebyaa
+          └ Marched to war against Bamsrazath.
+   23450  war.began              from=43 to=315 name=Daphut'ebyaa
+          └ Marched to war against Phengakčibahvah.
+   23450  polity.submitted       how=capitulation to=43 toName=Daphut'ebyaa name=Tayanfaptay
+          └ Beaten in the field, the court of Tayanfaptay bent the knee to Daphut'ebyaa — a client crown under the conqueror's peace.
+   23450  war.ended              how=truce to=376 toName=Laghat name=Tayanfaptay
+          └ The war with Tayanfaptay ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Ňěňní
+          └ The war with Ňěňní ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Tambapaztaya
+          └ The war with Tambapaztaya ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Manifaxa
+          └ The war with Manifaxa ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Dyakyoxy
+          └ The war with Dyakyoxy ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Dyakyoxyfaxa
+          └ The war with Dyakyoxyfaxa ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Yomtammolz
+          └ The war with Yomtammolz ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Pụ́lrálǐā
+          └ The war with Pụ́lrálǐā ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Tughattaya
+          └ The war with Tughattaya ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Dyakyoxyfaxa
+          └ The war with Dyakyoxyfaxa ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Bumimu
+          └ The war with Bumimu ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Zu
+          └ The war with Zu ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Yafayokdattaya
+          └ The war with Yafayokdattaya ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Ghiuthanyyzuvghugha
+          └ The war with Ghiuthanyyzuvghugha ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Čepyafy
+          └ The war with Čepyafy ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Bamsrazath
+          └ The war with Bamsrazath ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Fuyotyum
+          └ The war with Fuyotyum ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Kusmibu
+          └ The war with Kusmibu ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Yuytaya
+          └ The war with Yuytaya ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Upmiibmi
+          └ The war with Upmiibmi ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Làlǐā
+          └ The war with Làlǐā ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Yatammolz
+          └ The war with Yatammolz ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Pụ̌čfí
+          └ The war with Pụ̌čfí ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=P'oetephamdtaya
+          └ The war with P'oetephamdtaya ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Tap'inumtaya
+          └ The war with Tap'inumtaya ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Fyarongvah
+          └ The war with Fyarongvah ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Gadat
+          └ The war with Gadat ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Zodamp'altaya
+          └ The war with Zodamp'altaya ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Xyabotnevasyvah
+          └ The war with Xyabotnevasyvah ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Nītlàlǐā
+          └ The war with Nītlàlǐā ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Xyabotvaha
+          └ The war with Xyabotvaha ended.
+   23450  war.ended              how=truce to=375 toName=Tayanfaptay name=Čepyafy
+          └ The war with Čepyafy ended.
+   23473  settlement.tier        s=345 sName=Lụ̄yá
+          └ Lụ̄yá grew into a metropolis (810,000 souls).
+   23500  war.began              from=129 to=361 name=Xóuthị̌lǐ
+          └ Marched to war against Lụ̀nglā.
+   23505  market.dearth          s=375 sName=Tayanfap
+          └ Dearth in Tayanfap — bread at famine prices in the market.
+   23550  war.began              from=361 to=123 name=Lụ̀nglā
+          └ Marched to war against Xīrtụ̌ị.
+   23587  settlement.annexed     s=65 sName=Yuzylugo from=140 fromName=T'imp'atzyug to=139 toName=Lāfpù
+          └ Peacefully absorbed Yuzylugo from T'imp'atzyug.
+   23587  settlement.annexed     s=358 sName=Zayavil from=140 fromName=T'imp'atzyug to=139 toName=Lāfpù
+          └ Peacefully absorbed Zayavil from T'imp'atzyug.
+   23587  settlement.annexed     s=360 sName=Tagha from=140 fromName=T'imp'atzyug to=139 toName=Lāfpù
+          └ Peacefully absorbed Tagha from T'imp'atzyug.
+   23587  settlement.annexed     s=362 sName=Bubabumpyum from=140 fromName=T'imp'atzyug to=139 toName=Lāfpù
+          └ Peacefully absorbed Bubabumpyum from T'imp'atzyug.
+   23587  settlement.annexed     s=414 sName=Yamt'faput from=140 fromName=T'imp'atzyug to=139 toName=Lāfpù
+          └ Peacefully absorbed Yamt'faput from T'imp'atzyug.
+   23587  settlement.annexed     s=441 sName=Phuthyum from=140 fromName=T'imp'atzyug to=139 toName=Lāfpù
+          └ Peacefully absorbed Phuthyum from T'imp'atzyug.
+   23600  war.ended              how=faded to=139 toName=Lāfpù name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended; some 6 soldiers never came home.
+   23616  polity.seceded         how=receded from=139 fromName=Lāfpù
+          └ Broke away from Lāfpù in a war of secession.
+   23616  polity.receded         s=362 n=1 sName=Bubabumpyum name=Lāfpù
+          └ The grip of Lāfpù failed, and the marches beyond Bubabumpyum were left to their own devices.
+   23650  war.began              from=123 to=1 name=Xīrtụ̌ị
+          └ Renewed the old war against Ňěňní.
+   23700  war.ended              how=faded to=270 toName=Botholay name=Ziusivghugh
+          └ The war with Ziusivghugh ended; some 21 soldiers never came home.
+   23737  settlement.annexed     s=375 sName=Tayanfap from=375 fromName=Tayanfaptay to=43 toName=Daphut'ebyaa
+          └ Peacefully absorbed Tayanfap from Tayanfaptay.
+   23737  polity.ended           how=integrated byName=Daphut'ebyaa name=Tayanfaptay
+          └ Dissolved — its last cities scattered or fell silent.
+   23750  war.began              from=43 to=373 name=Daphut'ebyaa
+          └ Marched to war against Boyumfyumtaya.
+   23750  war.ended              how=truce to=373 toName=Boyumfyumtaya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   23800  war.began              from=139 to=362 name=Lāfpù
+          └ Marched to war against Bubabumpyumtaya.
+   23850  war.began              from=362 to=44 name=Bubabumpyumtaya
+          └ Marched to war against Yomkhata.
+   23850  war.ended              how=siegeLifted to=361 toName=Lụ̀nglā name=Xīrtụ̌ị
+          └ The war with Xīrtụ̌ị ended.
+   23870  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   23919  market.dearth          s=123 sName=Xīrtụ̌ị
+          └ Dearth in Xīrtụ̌ị — bread at famine prices in the market.
+   23996  settlement.withered    s=361 sName=Lụ̀nglā
+          └ Lụ̀nglā withered away and was abandoned.
+   24000  war.ended              how=truce to=43 toName=Daphut'ebyaa name=Ňěňní
+          └ The war with Ňěňní ended.
+   24000  war.ended              how=truce to=44 toName=Yomkhata name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24000  war.indemnity          to=44 toName=Yomkhata name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Yomkhata at the peace.
+   24000  war.ended              how=truce to=227 toName=Bamsrazath name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24000  war.indemnity          to=227 toName=Bamsrazath name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Bamsrazath at the peace.
+   24025  settlement.founded     s=478 sName=Ráịstà city=1
+          └ The city of Ráịstà arose.
+   24040  settlement.dissolved   s=360 why=core sName=Tagha
+          └ Tagha faded back into the countryside.
+   24041  settlement.dissolved   s=359 why=core sName=Rìnglà
+          └ Rìnglà faded back into the countryside.
+   24042  settlement.dissolved   s=358 why=core sName=Zayavil
+          └ Zayavil faded back into the countryside.
+   24043  settlement.dissolved   s=357 why=core sName=Pụ̄nglà
+          └ Pụ̄nglà faded back into the countryside.
+   24050  settlement.founded     s=480 sName=Pụ́ị kind=crystallized
+          └ Pụ́ị was founded.
+   24050  settlement.founded     s=480 sName=Pụ́ị city=1
+          └ The city of Pụ́ị arose.
+   24050  settlement.founded     s=481 sName=Sùlyǎ city=1
+          └ The city of Sùlyǎ arose.
+   24050  war.began              from=139 to=123 name=Lāfpù
+          └ Renewed the old war against Xīrtụ̌ị.
+   24050  war.began              from=43 to=463 name=Daphut'ebyaa
+          └ Marched to war against Miubudu under the banner of the faith.
+   24050  war.began              from=43 to=458 name=Daphut'ebyaa
+          └ Marched to war against Ňyivahvaha as the succession failed.
+   24050  war.began              from=43 to=454 name=Daphut'ebyaa
+          └ Marched to war against Boybavgha.
+   24050  war.began              from=43 to=295 name=Daphut'ebyaa
+          └ Renewed the old war against Gadat.
+   24050  war.began              from=43 to=450 name=Daphut'ebyaa
+          └ Marched to war against Kexaghvah.
+   24050  war.began              from=43 to=58 name=Daphut'ebyaa
+          └ Renewed the old war against Dyakyoxyfaxa.
+   24050  war.began              from=43 to=452 name=Daphut'ebyaa
+          └ Marched to war against Gatanmolz.
+   24050  war.began              from=43 to=57 name=Daphut'ebyaa
+          └ Renewed the old war against Dyakyoxy.
+   24050  war.ended              how=truce to=450 toName=Kexaghvah name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.ended              how=truce to=458 toName=Ňyivahvaha name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.ended              how=truce to=281 toName=P'oetephamdtaya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.indemnity          to=281 toName=P'oetephamdtaya name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to P'oetephamdtaya at the peace.
+   24050  war.ended              how=truce to=454 toName=Boybavgha name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.ended              how=truce to=463 toName=Miubudu name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.ended              how=truce to=452 toName=Gatanmolz name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.indemnity          to=452 toName=Gatanmolz name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Gatanmolz at the peace.
+   24050  war.ended              how=truce to=295 toName=Gadat name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.indemnity          to=295 toName=Gadat name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Gadat at the peace.
+   24050  war.ended              how=truce to=58 toName=Dyakyoxyfaxa name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.indemnity          to=58 toName=Dyakyoxyfaxa name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Dyakyoxyfaxa at the peace.
+   24050  war.ended              how=truce to=57 toName=Dyakyoxy name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24050  war.indemnity          to=57 toName=Dyakyoxy name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Dyakyoxy at the peace.
+   24050  war.ended              how=truce to=228 toName=Fuyotyum name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended; some 3 soldiers never came home.
+   24050  war.indemnity          to=228 toName=Fuyotyum name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Fuyotyum at the peace.
+   24075  settlement.founded     s=484 sName=Fụ̀ịpfá city=1
+          └ The city of Fụ̀ịpfá arose.
+   24154  settlement.withered    s=431 sName=Dapbobabomp
+          └ Dapbobabomp withered away and was abandoned.
+   24169  market.dearth          s=41 sName=T'imnumu
+          └ Dearth in T'imnumu — bread at famine prices in the market.
+   24187  polity.submitted       how=union to=43 toName=Daphut'ebyaa name=Tambapaztaya
+          └ In the troubles of the succession, the court of Tambapaztaya joined its crown to Daphut'ebyaa — one senior throne, two realms.
+   24187  polity.seceded         from=139 fromName=Lāfpù
+          └ Broke away from Lāfpù in a war of secession.
+   24200  settlement.founded     s=500 sName=Phutyum kind=crystallized
+          └ Phutyum was founded.
+   24200  settlement.founded     s=500 sName=Phutyum city=1
+          └ The city of Phutyum arose.
+   24200  settlement.founded     s=504 sName=Vyiutyigh city=1
+          └ The city of Vyiutyigh arose.
+   24200  war.began              from=43 to=475 name=Daphut'ebyaa
+          └ Marched to war against Dapzyugtay.
+   24200  war.ended              how=truce to=475 toName=Dapzyugtay name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24200  war.ended              how=truce to=315 toName=Phengakčibahvah name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24200  war.indemnity          to=315 toName=Phengakčibahvah name=Daphut'ebyaa
+          └ Daphut'ebyaa paid a heavy indemnity to Phengakčibahvah at the peace.
+   24250  war.ended              how=siegeLifted to=362 toName=Bubabumpyumtaya name=Yomkhata
+          └ The war with Yomkhata ended.
+   24337  polity.seceded         from=43 fromName=Daphut'ebyaa
+          └ Broke away from Daphut'ebyaa in a war of secession.
+   24350  war.ended              how=siegeLifted to=139 toName=Lāfpù name=Xīrtụ̌ị
+          └ The war with Xīrtụ̌ị ended.
+   24414  settlement.dissolved   s=386 why=core sName=Mumommoe
+          └ Mumommoe faded back into the countryside.
+   24416  settlement.dissolved   s=384 why=core sName=Rimmopuiky
+          └ Rimmopuiky faded back into the countryside.
+   24417  settlement.dissolved   s=383 why=core sName=Umkyoi
+          └ Umkyoi faded back into the countryside.
+   24419  settlement.dissolved   s=381 why=core sName=Píürụ́
+          └ Píürụ́ faded back into the countryside.
+   24450  settlement.founded     s=516 sName=Ňị̀là kind=crystallized
+          └ Ňị̀là was founded.
+   24450  settlement.founded     s=516 sName=Ňị̀là city=1
+          └ The city of Ňị̀là arose.
+   24475  settlement.founded     s=517 sName=Sǐufsāị kind=crystallized
+          └ Sǐufsāị was founded.
+   24475  settlement.founded     s=517 sName=Sǐufsāị city=1
+          └ The city of Sǐufsāị arose.
+   24500  settlement.founded     s=524 sName=Tà kind=crystallized
+          └ Tà was founded.
+   24500  settlement.founded     s=524 sName=Tà city=1
+          └ The city of Tà arose.
+   24500  war.began              from=405 to=375 name=Zodamp'altay
+          └ Marched to war against Tayanfaptay.
+   24500  war.began              from=315 to=375 name=Phengakčibahvah
+          └ Marched to war against Tayanfaptay.
+   24500  war.began              from=457 to=375 name=Tamp'inum
+          └ Marched to war against Tayanfaptay.
+   24500  war.began              from=475 to=375 name=Dapzyugtay
+          └ Marched to war against Tayanfaptay.
+   24500  war.ended              how=truce to=475 toName=Dapzyugtay name=Tayanfaptay
+          └ The war with Tayanfaptay ended.
+   24500  war.indemnity          to=375 toName=Tayanfaptay name=Dapzyugtay
+          └ Dapzyugtay paid a heavy indemnity to Tayanfaptay at the peace.
+   24550  war.began              from=373 to=375 name=Boyumfyumtaya
+          └ Marched to war against Tayanfaptay.
+   24587  settlement.dissolved   s=413 why=core sName=Lụ̀rụ́
+          └ Lụ̀rụ́ faded back into the countryside.
+   24588  settlement.dissolved   s=412 why=core sName=Tụ̄ịnǔxǔ
+          └ Tụ̄ịnǔxǔ faded back into the countryside.
+   24597  settlement.dissolved   s=403 why=core sName=Pụ̀fáxō
+          └ Pụ̀fáxō faded back into the countryside.
+   24600  plague.outbreak        s=393 sName=Ngàxsī
+          └ Plague broke out in Ngàxsī and swept through the realm.
+   24600  plague.outbreak        s=422 sName=Làs'ị̀
+          └ Plague broke out in Làs'ị̀ and swept through the realm.
+   24600  plague.outbreak        s=500 sName=Phutyum
+          └ Plague broke out in Phutyum and swept through the realm.
+   24600  plague.outbreak        s=504 sName=Vyiutyigh
+          └ Plague broke out in Vyiutyigh and swept through the realm.
+   24600  war.began              from=123 to=129 name=Xīrtụ̌ị
+          └ Marched to war against Xóuthị̌lǐ.
+   24607  settlement.dissolved   s=393 why=core sName=Ngàxsī
+          └ Ngàxsī faded back into the countryside.
+   24625  settlement.founded     s=535 sName=Òupfí kind=crystallized
+          └ Òupfí was founded.
+   24625  settlement.founded     s=535 sName=Òupfí city=1
+          └ The city of Òupfí arose.
+   24625  settlement.founded     s=536 sName=Ǔxōuxō city=1
+          └ The city of Ǔxōuxō arose.
+   24625  settlement.founded     s=541 sName=Piuphivy city=1
+          └ The city of Piuphivy arose.
+   24634  plague.outbreak        s=44 sName=Yomkhata
+          └ Plague broke out in Yomkhata and swept through the realm.
+   24637  polity.submitted       how=submission to=132 toName=Ghiusin name=Niunivyghugha
+          └ Facing hopeless odds, the court of Niunivyghugha bowed to Ghiusin — keeping its throne at the price of tribute.
+   24650  settlement.founded     s=546 sName=Tụ̄ịsíü kind=crystallized
+          └ Tụ̄ịsíü was founded.
+   24650  settlement.founded     s=546 sName=Tụ̄ịsíü city=1
+          └ The city of Tụ̄ịsíü arose.
+   24650  settlement.founded     s=547 sName=Ǒusrụ̄ị city=1
+          └ The city of Ǒusrụ̄ị arose.
+   24650  war.began              from=43 to=300 name=Daphut'ebyaa
+          └ Renewed the old war against Zodamp'altaya.
+   24650  war.began              from=43 to=531 name=Daphut'ebyaa
+          └ Marched to war against Ty'imathiktay.
+   24650  war.began              from=375 to=531 name=Tayanfaptay
+          └ Marched to war against Ty'imathiktay.
+   24650  war.began              from=43 to=528 name=Daphut'ebyaa
+          └ Marched to war against Tavyotthičavvah.
+   24650  war.began              from=375 to=528 name=Tayanfaptay
+          └ Marched to war against Tavyotthičavvah.
+   24650  war.began              from=378 to=375 name=Četah
+          └ Marched to war against Tayanfaptay.
+   24650  war.ended              how=truce to=405 toName=Zodamp'altay name=Tayanfaptay
+          └ The war with Tayanfaptay ended.
+   24650  war.ended              how=truce to=531 toName=Ty'imathiktay name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24650  war.indemnity          to=43 toName=Daphut'ebyaa name=Ty'imathiktay
+          └ Ty'imathiktay paid a heavy indemnity to Daphut'ebyaa at the peace.
+   24650  war.ended              how=truce to=531 toName=Ty'imathiktay name=Tayanfaptay
+          └ The war with Tayanfaptay ended.
+   24650  war.indemnity          to=375 toName=Tayanfaptay name=Ty'imathiktay
+          └ Ty'imathiktay paid a heavy indemnity to Tayanfaptay at the peace.
+   24650  war.ended              how=truce to=528 toName=Tavyotthičavvah name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24650  war.indemnity          to=43 toName=Daphut'ebyaa name=Tavyotthičavvah
+          └ Tavyotthičavvah paid a heavy indemnity to Daphut'ebyaa at the peace.
+   24650  war.ended              how=truce to=528 toName=Tavyotthičavvah name=Tayanfaptay
+          └ The war with Tayanfaptay ended.
+   24650  war.indemnity          to=375 toName=Tayanfaptay name=Tavyotthičavvah
+          └ Tavyotthičavvah paid a heavy indemnity to Tayanfaptay at the peace.
+   24650  war.ended              how=stalemate to=361 toName=Lụ̀nglā name=Láhā
+          └ The war with Láhā ended.
+   24650  war.ended              how=truce to=375 toName=Tayanfaptay name=Boyumfyumtaya
+          └ The war with Boyumfyumtaya ended.
+   24650  war.indemnity          to=373 toName=Boyumfyumtaya name=Tayanfaptay
+          └ Tayanfaptay paid a heavy indemnity to Boyumfyumtaya at the peace.
+   24650  war.ended              how=truce to=378 toName=Četah name=Tayanfaptay
+          └ The war with Tayanfaptay ended.
+   24650  war.indemnity          to=378 toName=Četah name=Tayanfaptay
+          └ Tayanfaptay paid a heavy indemnity to Četah at the peace.
+   24650  war.ended              how=truce to=457 toName=Tamp'inum name=Tayanfaptay
+          └ The war with Tayanfaptay ended.
+   24650  war.indemnity          to=457 toName=Tamp'inum name=Tayanfaptay
+          └ Tayanfaptay paid a heavy indemnity to Tamp'inum at the peace.
+   24650  polity.submitted       how=capitulation to=378 toName=Četah name=Tayanfaptay
+          └ Beaten in the field, the court of Tayanfaptay bent the knee to Četah — a client crown under the conqueror's peace.
+   24654  market.dearth          s=375 sName=Tayanfap
+          └ Dearth in Tayanfap — bread at famine prices in the market.
+   24700  settlement.founded     s=549 sName=Tǎ kind=crystallized
+          └ Tǎ was founded.
+   24700  settlement.founded     s=549 sName=Tǎ city=1
+          └ The city of Tǎ arose.
+   24700  war.ended              how=faded to=125 toName=Tughattaya name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended; some 9 soldiers never came home.
+   24700  war.ended              how=stalemate to=361 toName=Lụ̀nglā name=Xóuthị̌lǐ
+          └ The war with Xóuthị̌lǐ ended.
+   24704  market.dearth          s=1 sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   24706  settlement.withered    s=422 sName=Làs'ị̀
+          └ Làs'ị̀ withered away and was abandoned.
+   24750  settlement.founded     s=552 sName=Uvytzuv city=1
+          └ The city of Uvytzuv arose.
+   24753  market.dearth          s=123 sName=Xīrtụ̌ị
+          └ Dearth in Xīrtụ̌ị — bread at famine prices in the market.
+   24761  settlement.dissolved   s=439 why=core sName=Sírụ́
+          └ Sírụ́ faded back into the countryside.
+   24774  settlement.dissolved   s=426 why=core sName=Sīupfá
+          └ Sīupfá faded back into the countryside.
+   24775  settlement.founded     s=553 sName=Úrfí kind=crystallized
+          └ Úrfí was founded.
+   24775  settlement.founded     s=553 sName=Úrfí city=1
+          └ The city of Úrfí arose.
+   24779  settlement.dissolved   s=421 why=core sName=Ňị̀
+          └ Ňị̀ faded back into the countryside.
+   24800  settlement.founded     s=556 sName=Srofulp'abghat kind=crystallized
+          └ Srofulp'abghat was founded.
+   24800  settlement.founded     s=556 sName=Srofulp'abghat city=1
+          └ The city of Srofulp'abghat arose.
+   24800  settlement.founded     s=557 sName=Tụ́xǔ city=1
+          └ The city of Tụ́xǔ arose.
+   24800  war.began              from=43 to=525 name=Daphut'ebyaa
+          └ Marched to war against Kyabozsyipasvaha.
+   24800  war.began              from=375 to=525 name=Tayanfaptay
+          └ Marched to war against Kyabozsyipasvaha.
+   24800  war.began              from=1 to=123 name=Ňěňní
+          └ Renewed the old war against Xīrtụ̌ị.
+   24800  war.ended              how=truce to=525 toName=Kyabozsyipasvaha name=Daphut'ebyaa
+          └ The war with Daphut'ebyaa ended.
+   24800  war.ended              how=truce to=525 toName=Kyabozsyipasvaha name=Tayanfaptay
+          └ The war with Tayanfaptay ended.
+   24800  war.ended              how=stalemate to=129 toName=Xóuthị̌lǐ name=Ňěňní
+          └ The war with Ňěňní ended.
+   24825  settlement.founded     s=559 sName=Lụ̄yá city=1
+          └ The city of Lụ̄yá arose.
+   24900  war.ended              how=faded to=159 toName=Yapfapudtay name=Lāfpù
+          └ The war with Lāfpù ended; some 5 soldiers never came home.
+   24937  polity.submitted       how=union to=139 toName=Lāfpù name=Ňúpīkúlǐā
+          └ In the troubles of the succession, the court of Ňúpīkúlǐā joined its crown to Lāfpù — one senior throne, two realms.
+   24950  war.began              from=362 to=139 name=Bubabumpyumtaya
+          └ Marched to war against Lāfpù.
+   24950  war.began              from=103 to=375 name=Manifaxa
+          └ Renewed the old war against Tayanfaptay.
+   24955  settlement.dissolved   s=445 why=core sName=Tíxǔ
+          └ Tíxǔ faded back into the countryside.
+   24960  settlement.dissolved   s=440 why=core sName=Táịrngí
+          └ Táịrngí faded back into the countryside.
+   24960  settlement.founded     s=575 sName=Sùpfí kind=planted
+          └ Sùpfí was founded.
+   24960  town.planted           s=575 sName=Sùpfí
+          └ The crown planted Sùpfí to hold the march.
+   24975  settlement.founded     s=582 sName=Sīfūxō city=1
+          └ The city of Sīfūxō arose.
+
+=== SETTLEMENT LIFE TABLE (everything ever settled in the box) ===
+  id     name           first   last    peak   tier  death (type @ step)
+      1  Ňěňní        13700   25000    7436    3   (alive at end)
+      2  Fùlpū        13700   22600    9987    3   abandoned @ 22625
+      3  Kèňtọ̄ị     13700   15300      15    2   dissolved(core) @ 15397
+      4  Fōnfǐu       13700   15300      15    2   dissolved(core) @ 15396
+      5  Nāthị̌       13700   15300      15    2   dissolved(core) @ 15395
+      6  Lǎxkòu       13800   15300      15    2   dissolved(core) @ 15394
+      7  Sǔsfá        13800   15300      15    2   dissolved(core) @ 15393
+      8  Fǒptàị      13800   15300      15    2   dissolved(core) @ 15392
+     10  Ňǐlňà        14200   15700      15    2   dissolved(core) @ 15790
+     12  Zyibayamphibt  14600   23000    4269    3   abandoned @ 23082
+     13  Damp'aludat    14600   16100      15    2   dissolved(core) @ 16187
+     14  Tàstù        14600   16100      15    2   dissolved(core) @ 16186
+     15  Tathik'a       14600   16300      15    2   dissolved(core) @ 16385
+     17  Lá            15200   16700      15    2   dissolved(core) @ 16783
+     19  Pùtǔ         15500   17100      15    2   dissolved(core) @ 17181
+     20  Mápị̄rọ̀    15500   17100      15    2   dissolved(core) @ 17180
+     21  Nǐfpù        15500   17100      15    2   dissolved(core) @ 17179
+     22  Tị̄lā        15500   17100      26    2   dissolved(core) @ 17178
+     24  Ňú            15600   16200       6    1   withered @ 16221
+     25  Kólpì        15600   17700      48    2   abandoned @ 17713
+     26  Pitumpa        15700   17300      15    2   dissolved(core) @ 17374
+     28  Fọ́ịlpì     15800   18000    2555    3   abandoned @ 18001
+     31  Ňúpīkò      15900   17500      15    2   dissolved(core) @ 17569
+     41  T'imnumu       16300   25000    3084    3   (alive at end)
+     42  Nǔfīurọ̀    16300   16900       5    1   withered @ 16941
+     43  Daphut'eb      16300   23300    3661    3   abandoned @ 23329
+     48  Yamfaputa      16400   21500    3628    3   abandoned @ 21537
+     64  Sírụ́        16900   18500      15    2   dissolved(core) @ 18536
+     66  Mùpíü        16900   18500      16    2   dissolved(core) @ 18534
+     69  Kótlà        17000   18700      15    2   dissolved(core) @ 18731
+     72  Ǔltǔkò      17200   18800      15    2   abandoned @ 18819
+     73  Lụ̄ňākú     17300   18800      16    2   abandoned @ 18819
+     74  Fùlpūrụ́    17300   18800      15    2   abandoned @ 18819
+     75  Ňúpīkò      17300   18700      15    2   abandoned @ 18798
+     77  Lụ̄nlākò    17400   18800      15    2   abandoned @ 18819
+     78  Zomfibuth      17400   19100      15    2   dissolved(core) @ 19122
+     83  Ňǐňtụ̌ị     17600   18800      14    2   abandoned @ 18807
+     87  Kìtlà        17700   18800      15    2   abandoned @ 18819
+     90  Tú'ùkò      17800   18800      16    2   abandoned @ 18820
+    121  Hūfpù        18600   18800      15    2   abandoned @ 18839
+    123  Xīrtụ̌ị     18600   25000    5148    3   (alive at end)
+    124  Fōnkū        18700   20000      16    2   abandoned @ 20007
+    133  Mìnkū        18800   20000      15    2   abandoned @ 20019
+    136  Hǔlrá        18900   20000      16    2   abandoned @ 20019
+    138  Lụ̄rǎkú     18900   19800    4012    3   abandoned @ 19873
+    141  Tíụ'ụ̄kò   18900   20000      15    2   abandoned @ 20019
+    144  Mìnsī        18900   20000      15    2   abandoned @ 20019
+    146  Pótǎ         19000   20000      13    2   abandoned @ 20005
+    148  Fị̀tlà       19000   20000      15    2   abandoned @ 20019
+    150  Ǔptǔrụ́     19000   19900      16    2   abandoned @ 20000
+    153  Pụ̀pàrụ́    19000   19900      15    2   abandoned @ 19998
+    154  Sǎfǎ         19100   20000      16    2   abandoned @ 20020
+    187  Fūtíü        20100   23100    3316    3   abandoned @ 23133
+    191  Xǐt'ị̀       20100   21700      15    2   withered @ 21745
+    195  Pụ̀pàrụ́    20100   21700      15    2   withered @ 21744
+    198  Táịrngí     20100   21200      15    2   abandoned @ 21229
+    202  Pụ̄ngpíü     20200   21200      13    2   abandoned @ 21214
+    204  Rītlà        20200   21200      15    2   abandoned @ 21238
+    212  Sǒutlà       20200   21700      15    2   withered @ 21745
+    215  Kótlà        20200   21700      15    2   withered @ 21745
+    218  Rǐnwā        20300   21700      16    2   withered @ 21745
+    220  Fụ̀ịpxù     20300   21200      16    2   abandoned @ 21240
+    270  Botholay       21200   22700      57    1   dissolved(core) @ 22730
+    282  Pǎ'ị̀        21300   22300      16    2   withered @ 22347
+    292  Ngìptà       21600   21800       3    2   abandoned @ 21842
+    316  Xǐpfá        21800   22900      15    2   withered @ 22943
+    321  Óurfí        21800   22900      15    2   withered @ 22944
+    324  Tàssū        21800   22900      15    2   withered @ 22944
+    327  Ngàxlà       21900   22600      15    2   abandoned @ 22688
+    331  Lǎlyǎ        21900   22600      15    2   abandoned @ 22688
+    337  Xūrụ́        21900   22600      15    2   abandoned @ 22688
+    341  Tayam          22000   22500      15    2   abandoned @ 22538
+    375  Tayanfap       22600   25000    2293    2   (alive at end)
+    381  Píürụ́       22700   24400      15    2   dissolved(core) @ 24419
+    383  Umkyoi         22800   24400      15    2   dissolved(core) @ 24417
+    384  Rimmopuiky     22800   24400      15    2   dissolved(core) @ 24416
+    386  Mumommoe       22800   24400      15    2   dissolved(core) @ 24414
+    403  Pụ̀fáxō     23000   24500      15    2   dissolved(core) @ 24597
+    412  Tụ̄ịnǔxǔ   23000   24500      15    2   dissolved(core) @ 24588
+    421  Ňị̀           23000   24700      16    2   dissolved(core) @ 24779
+    431  Dapbobabomp    23100   24100      15    2   withered @ 24154
+    439  Sírụ́        23200   24700      15    2   dissolved(core) @ 24761
+    440  Táịrngí     23200   24900      15    2   dissolved(core) @ 24960
+    480  Pụ́ị         24100   25000      15    2   (alive at end)
+    500  Phutyum        24200   25000      42    2   (alive at end)
+    516  Ňị̀là        24500   25000      16    2   (alive at end)
+    517  Sǐufsāị     24500   25000      15    2   (alive at end)
+    524  Tà            24500   25000      16    2   (alive at end)
+    535  Òupfí        24700   25000      15    2   (alive at end)
+    546  Tụ̄ịsíü     24700   25000      16    2   (alive at end)
+    549  Tǎ            24700   25000      15    2   (alive at end)
+    553  Úrfí         24800   25000      15    2   (alive at end)
+    556  Srofulp'abgha  24800   25000      15    2   (alive at end)
+
+=== REALM LIFE TABLE (everything that ever owned a box tile) ===
+  id     name             firstSeen  peakBoxT  peakWorldT  peakMem  born(how)          end(how @ step)
+      1  Ňěňní             15200        28          37        9                     dissolved @ 20287
+     11  ?                   15500         4           0        0                     dissolved @ 21037
+      2  ?                   15500        15           0        0                     dissolved @ 17887
+     12  ?                   15600        16           0        0                     dissolved @ 17587
+     30  ?                   16200         7           0        0                     dissolved @ 21487
+     44  ?                   16600        14           0        0  frontier           integrated by Daphut'ebyaa @ 22387
+     41  ?                   16800        10           0        0                     integrated by Yamfaputa @ 19237
+     48  Yamfaputayaa        16900        15          15        4                     dissolved @ 20287
+     43  Daphut'ebyaa        16900        18          19        2                     (alive at end)
+     93  Mùpíükúlǐā     18000        23          23        6  frontier           conquest by Ňěňní @ 21450
+     85  ?                   18000        11           0        0                     dissolved @ 22687
+     78  Yamfaputa           18300        14          20        2                     conquest by Daphut'ebyaa @ 21000
+    139  ?                   19800         9           0        0                     (alive at end)
+    123  ?                   20400        11           0        0                     (alive at end)
+    224  ?                   20500         6           0        0                     shattered by Xóuthị̌lǐ @ 20550
+     67  ?                   21100         4           0        0                     dissolved @ 23137
+    270  ?                   21500         9           0        0  frontier           dissolved @ 22837
+    375  ?                   23400        12           0        0                     integrated by Daphut'ebyaa @ 23737
+    361  ?                   23400         3           0        0                     (alive at end)
+    132  ?                   24400         1           0        0                     (alive at end)
+

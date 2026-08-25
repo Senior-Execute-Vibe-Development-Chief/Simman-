@@ -1,0 +1,66 @@
+[harness] tree 14b7d07
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,82) (69.8E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (387,72) (110.3E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (276,83) (27.0E 27.8N) score 7.28 pkg=wheat(suit 1.00) — ARMED: ~903y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (298,76) (43.5E 33.0N) score 5.01 pkg=wheat(suit 0.77) — ARMED: ~1173y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (333,82) (69.8E 28.5N) score 6.69 pkg=wheat(suit 0.86) — ARMED: ~1041y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) score 3.60 pkg=millet(suit 0.55) — ARMED: ~2710y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (230,99) (-7.5E 15.8N) score 3.29 pkg=sorghum(suit 0.70) — ARMED: ~2870y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) score 1.62 pkg=maize(suit 0.71) — ARMED: ~6381y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,140) (-75.0E -15.0N) score 1.24 pkg=tubers(suit 0.89) — ARMED: ~3390y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) score 0.89 pkg=tubers(suit 0.43) — ARMED: ~6987y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (276,83) (27.0E 27.8N) — the basin farms; a city will rise when its market gathers one (score 7.28)
+[peopleSim] AGRICULTURE INVENTED at (333,82) (69.8E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.69)
+[peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 5.01)
+[transHeap] step=14640 cap=2048 peakN=2029 pushes=28506 (0.0MB backing)
+[transHeap] step=15648 cap=4096 peakN=2812 pushes=29575 (0.0MB backing)
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=18168 cap=65536 peakN=38494 pushes=135597 (0.5MB backing)
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.29)
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.24)
+[transHeap] step=21696 cap=131072 peakN=72011 pushes=220149 (1.0MB backing)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+
+=== THE IRRIGATION TERMS, PER REGION  960x480 (tw=480)  seed 8817  step 26000 ===
+    FIELD_CRADLE=1  IRRIG_BOOST=1.5  ALLUVIUM=2  IRRIG_ARID0=0.52
+    (irrigation SHIPS ON — this asks which of its three inputs is starved, not whether it exists)
+
+  region        tiles   moist p50   ARID p50/p90   water p50/p90   farmTech p50   irr p50/max   allu p50/max   cap/tile
+  Nile valley      57       0.020   1.00/1.00   0.000/1.000           1.00   1.00/2.50   1.59/3.00       2893
+  Sumer/Akkad      23       0.101   1.00/1.00   0.586/1.000           1.00   1.70/2.50   3.00/4.00       1458
+  Indus valley     52       0.094   1.00/1.00   1.000/1.000           1.00   1.53/2.50   3.00/4.00       2921
+  YellowRiver      92       0.711   0.00/0.60   1.000/1.000           1.00   1.00/2.50   3.00/4.00       3515
+  ~Sahel         1022       0.644   0.00/1.00   1.000/1.000           1.00   1.00/2.50   3.00/4.00       2133
+
+-- THE BASE, where the 3.1x gap was measured to live -----------------------
+   crop = FERT x capPerFert x (DEV_BASE + DEV_TECH*dev) x reach x reliefMul
+
+  region         fert p50   fert p90   relief p50   devField p50   cap/tile   cap ÷ fert
+  Nile valley       0.150      0.997        0.033          0.628       2893       19290
+  Sumer/Akkad       0.150      0.990        0.029          0.621       1458        9723
+  Indus valley      0.182      0.991        0.017          0.614       2921       16034
+  YellowRiver       0.757      0.947        0.060          0.650       3515        4644
+  ~Sahel            0.739      0.993        0.015          0.641       2133        2886
+
+   If FERT alone carries the gap, the fix is the rain-fed suitability score —
+   substituting irrigation for rainfall in the BASE, not multiplying it after.
+   If cap÷fert differs too, something downstream (access, relief, dev) is also
+   favouring one region, and the substitution alone would not close it.
+
+  WHICH TERM IS STARVED decides the fix:
+   · low ARID  -> the climate model does not think it is dry. A climate problem;
+                  building irrigation harder cannot help, the premium never applies.
+   · low WATER -> the rivers do not resolve into channel magnitude here. A GRID
+                  problem before it is a physics one — re-measure at tw=480 before
+                  touching anything (third cardinal rule).
+   · low TECH  -> the development wave has not arrived; the whole stack is gated
+                  off regardless of climate or water. A timing problem.
+

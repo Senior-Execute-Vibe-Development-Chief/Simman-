@@ -22,6 +22,7 @@
 
 import { localEdgeCost, terrainHoldAt, ridgeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { RECORDS_ORG, stateOrgBar } from "./tech.js";
+import { ensureCanopy } from "../biomeClass.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
@@ -608,6 +609,35 @@ function fieldPolityTerritory(world) {
       co[ti] = cid;
       homeTiles.set(cid, [ti]);
       anchored.add(cid);
+    }
+    // T.CITY_HOLD — a STANDING city holds its district (the Egypt-autopsy fix,
+    // docs/egypt-autopsy-2026-08-24.md). Measured execution chain this closes:
+    // under capital-only anchoring a provincial metropolis pins NOTHING — not
+    // even its home tile — so the realm's own over-capacity shed (step 6) or
+    // sever (step 3) strips the ground around a living member, a neighbour
+    // grows into the released wild, CATCHMENT_CLIP (territory.js) zeroes the
+    // member's worked catchment in one pass, and ONE_POP drains its census to
+    // the abandonment bar (Xụ̀ftà: terr 25→0, census 3,954→39 in 100 steps,
+    // healthy, no war, no famine — 19 such deaths in one 10k-step window, and
+    // every realm death downstream of one). Under the lever every settled
+    // member anchors EXACTLY like a capital: home tile + the same CORE_R
+    // pinned core (step 1b), the same connectivity/admin seed (step 3), the
+    // same worked-pin against the shed (step 6) — one law, no special case.
+    // Territorial change past a standing city thereby regains its historical
+    // unit: TAKE THE CITY (armies.js storm/capture flips s.countryId, and the
+    // stamp follows the new flag next pass — conquest transfers the district
+    // with the city instead of evaporating it). Growth-side is already safe:
+    // peaceful growth enters WILD land only, and a held core is never wild.
+    if (T.CITY_HOLD > 0) {
+      for (const s of world.settlements) {
+        if (s.mode !== "settled" || s.countryId < 0 || !alive.has(s.countryId)) continue;
+        const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+        if (elev[ti] <= 0) continue;
+        let a = homeTiles.get(s.countryId);
+        if (a && a[0] === ti) continue;   // the capital — already anchored above
+        co[ti] = s.countryId;
+        if (a) a.push(ti); else { homeTiles.set(s.countryId, a = [ti]); anchored.add(s.countryId); }
+      }
     }
     // Fallback: any alive country not yet capital-anchored (the territory pass runs before
     // world.countries is built on step 1, and the post-load warm-up skips the polity pass)
@@ -2364,7 +2394,14 @@ export function adoptAndFound(world) {
       const tempAt    = s._climTemp ?? (temp ? temp[ti] : 0.5);
       const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
       const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
-      const forestLk  = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen) * (1 - ironReady);
+      // T.CANOPY_CLASS: the forest signal is the Koppen classifier's closed-canopy
+      // mask, not the moisture ramp (biomeClass.js ensureCanopy — the ramp reads
+      // closed-forest Europe at ~40% because the moisture index ranks Britain
+      // beside semi-arid Mesopotamia). temperateBand stays as the disease-bar
+      // separation guarantee; near-1 over the canopy classes anyway.
+      const canopyLk  = T.CANOPY_CLASS > 0 ? (ensureCanopy(world)[ti] ? 1 : 0)
+        : Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20));
+      const forestLk  = canopyLk * temperateBand(tempAt) * (1 - riverOpen) * (1 - ironReady);
       const forestBar = NUCLEATE_SEAT_POP * (1 + T.STATE_FOREST * forestLk);
       // Tier-C C1 deflation audit — kept ABSOLUTE here, recorded: this census
       // read deflates ~×0.6-0.75 under LABEL_BIRTH's supply step, but its only
@@ -2623,7 +2660,9 @@ function stateCapacityMul(world, s, seatTi) {
   const moistAt   = s._climMoist ?? (moist ? moist[seatTi] : 0.5);
   const tempAt    = s._climTemp ?? (temp ? temp[seatTi] : 0.5);
   const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
-  const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * temperateBand(tempAt) * (1 - riverOpen);
+  const canopyAt  = T.CANOPY_CLASS > 0 ? (ensureCanopy(world)[seatTi] ? 1 : 0)
+    : Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20));   // T.CANOPY_CLASS: classifier canopy, not the ramp (see adoptAndFound's twin)
+  const forest    = canopyAt * temperateBand(tempAt) * (1 - riverOpen);
   const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
   const forestLocked = forest * (1 - ironReady);
   return (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))

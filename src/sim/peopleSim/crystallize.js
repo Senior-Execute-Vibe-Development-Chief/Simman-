@@ -21,6 +21,7 @@ import { isContinentalLand } from "./state.js";
 import { stateOrgBar, URBAN_ORG } from "./tech.js";
 import { ensureLedgerAt, stepLandKnow } from "./landKnow.js";   // T.LAND_KNOW (ESM cycle is fine — functions only, like the goods.js pair)
 import { tel, telPass } from "./telemetry.js";
+import { FAMINE_SEVERITY } from "./shocks.js";   // T.LEAN_YEAR: the founding margin is grounded in the famine year itself
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { hash32 } from "./rng.js";
@@ -37,6 +38,7 @@ import { forEachNear, gridAdd } from "./spatialGrid.js";
 import { grownLiveOwnerAt, landComp } from "./countryClaim.js";
 import { SRC_HOLD as CTRL_SRC_HOLD } from "./controlField.js";
 import { T, rNormPop } from "./tuning.js";
+import { reachBudget } from "./territory.js";   // T.MINT_REACH: the newborn's day-one reach (functions only — same ESM-cycle pattern as landKnow.js)
 import { settleHostility } from "./habitability.js";
 import { bestPackageAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
@@ -172,6 +174,58 @@ function townBasinMass(world, tx, ty, rB) {
     for (let dx = -rB; dx <= rB; dx++) {
       if (dx * dx + dy * dy > rB * rB) continue;
       basin += pf[yy * tw + (((tx + dx) % tw) + tw) % tw];
+    }
+  }
+  return basin;
+}
+// T.MINT_RESIDUAL — the basin a NEW city may count is the countryside no
+// standing settlement already markets (the Egypt-autopsy fix-arm verdict,
+// docs/egypt-autopsy-2026-08-24.md: mint disks double-count — in a peopled
+// valley EVERY disk holds the bar, so sites mint onto ground existing cities
+// already work, carving their catchments and refilling the register to exact
+// saturation after every death). Same disk, same units, one exclusion: tiles
+// claimed in world._territoryOwner — the economy's own exclusive catchment
+// partition (one owner per tile; dead owners released by the next territory
+// pass, so a fallen city's countryside genuinely reopens). No partition yet
+// (dawn, or the pass hasn't run) ⇒ gross mass, the bar's old read.
+// T.MINT_REACH — the agglomeration preference as a rule (the packing thesis,
+// docs/egypt-autopsy-2026-08-24.md end-of-day section). The lattice prices the
+// register at the SUBCONTINENTAL scale (cells/disks ~1,700 km) where every
+// cradle passes every bar, so cradles pack to Malthusian-minimum city packing
+// (~65 at-bar cities where bronze Egypt held 5-10 big ones) and the churn is
+// fuelled at the mint. Under the lever every mint additionally passes the
+// LOCAL test: a city is born only where a NEWBORN'S OWN day-one reach — the
+// economy's own quantity, reachBudget at zero organization = TERRITORY_BASE,
+// "a village farms what it can walk to" — gathers a full city-bar of
+// UNMARKETED people (residualBasinMass: claimed countryside's growth accrues
+// to its existing city, never to a new neighbour carved out beside it). Two
+// consequences fall out with no further rules: (1) mid-life carve-ups stop —
+// a newborn may not be born off a standing city's fields (one of the three
+// measured anchor-killers); (2) the death-refill cycle damps — a fallen
+// city's freed countryside is re-absorbed by surviving neighbours' claims
+// before the next mint can see it, so ONE successor mints only beyond their
+// reach: growth concentrates into fewer, bigger, resilient cities. Pre-bridge
+// or pre-partition (the dawn) the test stands aside — the hearth bootstrap is
+// untouched.
+export function mintReachOk(world, tx, ty) {
+  if (!(T.MINT_REACH > 0)) return true;
+  if (!(world._onePopScale > 0) || !world._territoryOwner) return true;
+  const rB = Math.max(1, Math.round(reachBudget(_NEWBORN) * rNormPop(world)));
+  return residualBasinMass(world, tx, ty, rB) * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF;
+}
+const _NEWBORN = { _techEff: null, knowledge: {} };   // day-one court: reachBudget = TERRITORY_BASE
+export function residualBasinMass(world, tx, ty, rB) {
+  const to = world._territoryOwner;
+  if (!to || to.length !== world.N) return townBasinMass(world, tx, ty, rB);
+  const pf = world.popField, tw = world.tw, th = world.th;
+  let basin = 0;
+  for (let dy = -rB; dy <= rB; dy++) {
+    const yy = ty + dy; if (yy < 0 || yy >= th) continue;
+    for (let dx = -rB; dx <= rB; dx++) {
+      if (dx * dx + dy * dy > rB * rB) continue;
+      const ti = yy * tw + (((tx + dx) % tw) + tw) % tw;
+      if (to[ti] >= 0) continue;   // already some standing settlement's marketed countryside
+      basin += pf[ti];
     }
   }
   return basin;
@@ -778,7 +832,7 @@ export function labelBasinFree(world, tx, ty) {
   if (!T.PEER_LATTICE) return false;
   tel(world, "peerlat", "queriedClaimed");   // FUNNEL: does any founding channel even knock on a claimed cell?
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
-  const capacity = Math.floor(c.mass[k] / ((TIER_CORE[2] / URBAN_SHARE_REF) / bridge));
+  const capacity = Math.floor(c.mass[k] / (((TIER_CORE[2] / URBAN_SHARE_REF) * leanMul()) / bridge));   // T.LEAN_YEAR: a seat costs a lean-year-proof basin
   if ((c.count ? c.count[k] : 1) >= capacity) { tel(world, "peerlat", "cellFull"); return false; }
   const rr = 2 * urbanCoreR(world), rr2 = rr * rr, tw = world.tw, half = tw / 2;
   const ls = c.labels && c.labels.get(k);
@@ -1123,11 +1177,39 @@ export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured
  *  (crystallize, state plantations, sea colonies) so no channel can mint at
  *  town scale around it. True when the lever is off or the bridge is not yet
  *  live (the dawn is hearth-driven anyway). */
+// T.LEAN_YEAR — a city is founded to survive the LEAN YEAR (the density
+// campaign's law; docs/egypt-autopsy-2026-08-24.md packing thesis, owner
+// ratified 2026-08-24: "no breathing room for realistic cities. It is the
+// exact source of all my issues"). The peer-lattice capacity law and every
+// basin mint bar price a seat at the BARE survival minimum, so every fertile
+// region legally fills to pie/bar Malthusian-minimum packing — ~50 clone
+// cities in bronze Egypt at zero margin, every one one shock from the
+// dissolve bar: the churn's fuel. Historically a city stood where its basin
+// fed it through the BAD year (the granary law — Joseph's seven lean years);
+// real cities held 2-4x their subsistence minimum and real Egypt held 5-10 of
+// them. The sim already knows the bad year: FAMINE_SEVERITY = 0.35 (a famine
+// harvest delivers 35%). Under the lever every city-founding basin bar — the
+// shared disk bar, the site lane's cell bar, the peer capacity law — scales
+// by 1/FAMINE_SEVERITY (~2.9x): the basin must feed the city through the
+// famine. Dissolution stays at 1x, so a STABILITY BAND opens between fade
+// (1x) and found (2.9x) — the flicker cycle loses its zero-margin fuel.
+// Self-calibrating (the margin follows the famine physics), no new constant.
+// The city DEFINITION (the 10k core) is untouched — only how much countryside
+// must stand behind it.
+const leanMul = () => (T.LEAN_YEAR > 0 ? 1 / FAMINE_SEVERITY : 1);
 export function cityBasinOkAt(world, tx, ty) {
   if (!T.DISSOLVE_TOWNS || !(world._onePopScale > 0)) return true;
   const rn = rNormPop(world);
-  const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
-  return mass * world._onePopScale >= TIER_CORE[2] / URBAN_SHARE_REF;
+  const rB = Math.round(TOWN_BASIN_R * rn);
+  // T.MINT_RESIDUAL: the disk counts only UNMARKETED countryside — a mint bar,
+  // never a dissolve bar (maybeDissolveTowns reads the gross basin directly;
+  // a standing city's basin rightly includes its own catchment).
+  const mass = T.MINT_RESIDUAL > 0 ? residualBasinMass(world, tx, ty, rB) : townBasinMass(world, tx, ty, rB);
+  if (!(mass * world._onePopScale >= (TIER_CORE[2] / URBAN_SHARE_REF) * leanMul())) return false;   // T.LEAN_YEAR: through the famine year
+  // T.MINT_REACH: …and the bar must ALSO hold at the newborn's own day-one
+  // reach in unmarketed people (the subcontinental disk above passes every
+  // cradle everywhere — measured, probe_residualbite — so it prices nothing).
+  return mintReachOk(world, tx, ty);
 }
 function maybeDissolveTowns(world) {
   if (!T.DISSOLVE_TOWNS) return;
@@ -1285,7 +1367,7 @@ function maybeSiteCities(world) {
     if (F0 > 0) world._onePopScale = FORAGER_EARTH_CENSUS / F0;
   }
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
-  const basinBarF = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell, field units
+  const basinBarF = ((TIER_CORE[2] / URBAN_SHARE_REF) * leanMul()) / bridge;   // city-capable cell, field units (T.LEAN_YEAR: the basin feeds the city through the famine year)
   const coreBarF = TIER_CORE[2] / bridge;                        // a CITY's core, field units
   const coreR = urbanCoreR(world);
   // Eligibility is cached between cadence firings; the spike re-stamp runs
@@ -1321,7 +1403,16 @@ function maybeSiteCities(world) {
       // third dead form; see basinStorablePeople), a city-basin's worth of
       // people stand on ground that can grow a STORABLE surplus.
       if (b.mass >= basinBarF && b.devP >= NEOLITHIC_AGRI
-          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)) {
+          && (!T.CITY_STORE || basinStorablePeople(world, peopledBasinAt(world, k, Infinity).take, pf) >= basinBarF)
+          // T.MINT_RESIDUAL: the site lane's cells are exclusive across CELLS but
+          // blind to standing settlements' catchments — a cell wholly inside an
+          // existing city's marketed countryside still qualified. The residual
+          // disk closes that: a city-basin's worth of UNMARKETED people too.
+          && (!(T.MINT_RESIDUAL > 0)
+              || residualBasinMass(world, L.sites[k].x, L.sites[k].y, Math.round(TOWN_BASIN_R * rNormPop(world))) >= basinBarF)
+          // T.MINT_REACH: the site lane pays the local law too — a city only
+          // where a day-one court's own reach gathers the bar unmarketed.
+          && mintReachOk(world, L.sites[k].x, L.sites[k].y)) {
         elig[k] = 1; basins.set(k, b.take);
         // T.LAND_KNOW: a city-capable farming basin is a LEARNING community —
         // plant its ledger the moment it first qualifies (landKnow.js).
@@ -1461,6 +1552,17 @@ function maybeSiteCities(world) {
 // is proven by the pinned hashbase anchors.
 function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
   const { pf, bridge, coreBarF, basinBarF, spikes } = env;
+  // T.MINT_REACH at the BIRTH itself, both lanes (anchor + peer): the site
+  // lane's eligibility is CACHED (a site that qualified before the valley
+  // closed stays eligible forever), so a qualification-time gate leaks —
+  // measured: the reach arm minted 275 late site-cities at full rate past a
+  // 0/34-closed bar. Gated here the gathered pile simply WAITS (the tally
+  // gate's own semantics) until local ground frees. NB the lever's arm ALSO
+  // measured the deeper truth: this bar is a SATURATION DETECTOR (closure is
+  // defined by catchments covering the valley), so it prevents only above-
+  // saturation minting — the register equilibrates AT saturation with or
+  // without it. See docs/egypt-autopsy-2026-08-24.md, MINT_REACH verdict.
+  if (!mintReachOk(world, x, y)) { tel(world, "siteCity", "mintReach"); return; }
   // The city is born a CITY — never a megalopolis: the entity takes the
   // city's own people (the bar, with growth headroom) and the REST of what
   // gathered stays on the land as its countryside. Measured without this
@@ -2649,7 +2751,14 @@ export function maybeCrystallize(world) {
     // wave (INDEP_TECH, now default-on) independently keeps the frontier shut.
     let crowdMul = 1;
     if (T.CROWD_FOUND > 0 && world.popField) {
-      const mass = townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
+      // T.MINT_RESIDUAL: the founding-rate gradient reads UNMARKETED people —
+      // dense-but-claimed countryside already has its market and does not call
+      // for a new one (the reference median stays the gross settled basin, so
+      // the ratio reads "unmarketed people here vs a typical city's whole
+      // countryside" — saturated valleys damp toward 0 instead of CROWD_CAP).
+      const mass = T.MINT_RESIDUAL > 0
+        ? residualBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn))
+        : townBasinMass(world, tx, ty, Math.round(TOWN_BASIN_R * rn));
       crowdMul = Math.min(CROWD_CAP, Math.pow(Math.max(0, mass / crowdRefMass(world)), 0.5 * T.CROWD_FOUND));
     }
     const p = quality * (diffusionMul + independent) * packageFrac * crowdMul * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step

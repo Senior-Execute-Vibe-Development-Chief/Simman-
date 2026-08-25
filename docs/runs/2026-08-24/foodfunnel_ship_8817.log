@@ -1,0 +1,64 @@
+[harness] tree a73fa28
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"ONE_BOOK":1,"SHIP_SURPLUS":1}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== THE FOOD-FLOW FUNNEL  480x240 (tw=240)  seed 8817 ===
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+  step  15000  EGYPT box: n   41 · parented 0 (0%) · roots: stateless 40 capital 1 stale 0
+      pools Σ 2.0 · gross SURPLUS Σ 0.1 (1 settlements) · offers Σ 0.00 · arriving imports Σ/tick 0.00 · core deficit Σ 3.0
+  step  15000  world    : n   42 · parented 0 (0%) · roots: stateless 41 capital 1 stale 0
+      pools Σ 2.7 · gross SURPLUS Σ 0.1 (1 settlements) · offers Σ 0.00 · arriving imports Σ/tick 0.00 · core deficit Σ 3.6
+  step  17500  EGYPT box: n   52 · parented 44 (85%) · roots: stateless 0 capital 5 stale 3
+      pools Σ 5.5 · gross SURPLUS Σ 2.0 (3 settlements) · offers Σ 0.65 · arriving imports Σ/tick 0.00 · core deficit Σ 11.0
+      haul-survival p10/50/90 0.99/0.99/1.00 · liege foodReach p50 0.17 · liege spare coin p50 0.0
+  step  17500  world    : n  139 · parented 59 (42%) · roots: stateless 38 capital 33 stale 9
+      pools Σ 13.7 · gross SURPLUS Σ 7.2 (13 settlements) · offers Σ 0.65 · arriving imports Σ/tick 0.33 · core deficit Σ 24.5
+      haul-survival p10/50/90 0.99/0.99/1.00 · liege foodReach p50 0.17 · liege spare coin p50 0.0
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] AGRICULTURE INVENTED at (111,53) (-13.5E 10.5N) — the basin farms; a city will rise when its market gathers one (score 1.76)
+[peopleSim] AGRICULTURE INVENTED at (140,73) (30.0E -19.5N) — the basin farms; a city will rise when its market gathers one (score 1.32)
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+  step  20000  EGYPT box: n   56 · parented 37 (66%) · roots: stateless 0 capital 16 stale 3
+      pools Σ 3.0 · gross SURPLUS Σ 0.0 (0 settlements) · offers Σ 0.00 · arriving imports Σ/tick 0.00 · core deficit Σ 17.2
+      haul-survival p10/50/90 0.96/0.99/1.00 · liege foodReach p50 0.22 · liege spare coin p50 137.8
+  step  20000  world    : n  226 · parented 146 (65%) · roots: stateless 2 capital 67 stale 11
+      pools Σ 28.1 · gross SURPLUS Σ 18.8 (17 settlements) · offers Σ 11.90 · arriving imports Σ/tick 35.64 · core deficit Σ 40.8
+      haul-survival p10/50/90 0.98/0.99/1.00 · liege foodReach p50 0.21 · liege spare coin p50 19.8
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=22200 cap=2048 peakN=1104 pushes=8755 (0.0MB backing)
+  step  22500  EGYPT box: n   53 · parented 23 (43%) · roots: stateless 0 capital 16 stale 14
+      pools Σ 4.8 · gross SURPLUS Σ 1.4 (2 settlements) · offers Σ 0.00 · arriving imports Σ/tick 0.00 · core deficit Σ 8.5
+      haul-survival p10/50/90 0.96/0.99/0.99 · liege foodReach p50 0.51 · liege spare coin p50 0.4
+  step  22500  world    : n  341 · parented 160 (47%) · roots: stateless 2 capital 128 stale 51
+      pools Σ 62.3 · gross SURPLUS Σ 36.8 (42 settlements) · offers Σ 2.73 · arriving imports Σ/tick 1.43 · core deficit Σ 68.7
+      haul-survival p10/50/90 0.97/0.99/1.00 · liege foodReach p50 0.40 · liege spare coin p50 6.6
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+  step  25000  EGYPT box: n   52 · parented 36 (69%) · roots: stateless 0 capital 15 stale 1
+      pools Σ 6.1 · gross SURPLUS Σ 0.7 (1 settlements) · offers Σ 0.00 · arriving imports Σ/tick 0.00 · core deficit Σ 13.3
+      haul-survival p10/50/90 0.97/0.99/1.00 · liege foodReach p50 0.53 · liege spare coin p50 0.0
+  step  25000  world    : n  604 · parented 340 (56%) · roots: stateless 5 capital 237 stale 22
+      pools Σ 144.6 · gross SURPLUS Σ 90.4 (105 settlements) · offers Σ 4.09 · arriving imports Σ/tick 28.50 · core deficit Σ 90.8
+      haul-survival p10/50/90 0.99/1.00/1.00 · liege foodReach p50 0.53 · liege spare coin p50 16.4
+
+  READ THE FUNNEL LEFT TO RIGHT: parented% is TOPOLOGY; surplus Σ is POOLS;
+  offers vs surplus is the SHIP fraction × HAUL; imports vs offers is LEVY/COIN;
+  imports vs core deficit is the gap the lane leaves unfed. The first stage
+  that collapses to ~0 is where the movement dies — fix THAT joint only.

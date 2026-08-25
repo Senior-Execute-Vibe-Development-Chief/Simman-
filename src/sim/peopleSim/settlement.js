@@ -14,7 +14,7 @@ import { agriGate, bestPackageAt, pkgSuitAt, cropCeil } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { fieldShift } from "./popField.js";
-import { ensurePolity, getPolity } from "./entities.js";
+import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
 import { cageAt } from "./cageField.js";
@@ -297,6 +297,45 @@ export function arriveCaptives(world, dest, count, culPairs, ancPairs) {
   }
 }
 
+// ── T.BORN_OF_LAND: whose flag is a NEWBORN settlement's? ────────────────────
+// The legacy answer is `its own` — sovereignty as the default value of the
+// field, with T.STATE_RECORDS postponing it to the writing bar. Measured at
+// both grids on the live arm (docs/nationless-cities-2026-08-22.md): of the
+// cities minted inside a LIVE realm's own field, 4 of 1,252 joined it at
+// tw=480 and 3 of 728 at tw=240. Not a refusal — ADOPT_BUDGET and FISC_ADOPT
+// both ship at 0, so nothing ever declines a city — but because
+// adoptAndFound's adoption branch reads `if (s.countryId < 0)` and a city
+// born flying its own flag never enters it. The pass that owns this decision
+// cannot reach the one moment that decides it.
+//
+// Under the lever the birth asks the question adoptAndFound asks: WHOSE GROUND
+// IS THIS? Land held by a living court births its city into that court. The
+// residual — unowned ground — is untouched, so a founding in the wild is still
+// a founding, minted by the founding channel under its own records bar (and,
+// under SEAT_FIELD, its own land test). Nothing here is a new rule: it is
+// adoptAndFound's own rule, applied where adoptAndFound cannot see.
+function bornPolityAt(world, s, legacy) {
+  const co = world._countryOwner, elev = world.elev, tw = world.tw;
+  if (!co || !elev || !tw) return legacy;                     // no political field yet (genesis) — the residual stands
+  const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+  if (!(ti >= 0 && ti < co.length) || !(elev[ti] > 0)) return legacy;
+  const owner = co[ti];
+  if (owner < 0) return legacy;                               // NO ONE HOLDS THIS GROUND — sovereignty is the residual, and this is where it belongs
+  // The paint can outlive the realm (measured 2-11% of self-foundings across
+  // arms). A court is a countries-view entry with a capital — the same
+  // liveness the adoption pass demands before it hands a settlement over.
+  const c = world.countries && world.countries.get(owner);
+  if (!c || !c.capital) return legacy;
+  // Can the court AFFORD this subject? Both gates are inert at their shipped 0,
+  // and when they are not, a refusal births the city STATELESS and leaves the
+  // consequence to adoptAndFound — refusal semantics are that pass's business,
+  // not this default's, so this lever moves exactly one thing.
+  const pol = getPolity(world, owner);
+  if (T.ADOPT_BUDGET > 0 && pol && pol._strain != null && pol._strain >= T.ADOPT_BUDGET) return -1;
+  if (!fiscAdoptable(world, c, s.pos.x, s.pos.y, s.people || 0)) return -1;
+  return owner;
+}
+
 export function makeSettlement(world, x, y, opts = {}) {
   const id = world._nextSettlementId || 1;
   world._nextSettlementId = id + 1;
@@ -419,9 +458,14 @@ export function makeSettlement(world, x, y, opts = {}) {
   // Below the unified founding bar (tech.js stateOrgBar) a settlement with no
   // realm to join is born STATELESS; explicit opts.countryId (daughters,
   // colonies, materialising nations — each gated at its own source) passes.
-  s.countryId = opts.countryId ?? (
-    !T.STATE_RECORDS || (((s.knowledge && s.knowledge.organization) || 0) >= stateOrgBar())
-      ? s.id : -1);                                 // joins parent's realm if specified, else own city-state — once the court can administrate one
+  // T.BORN_OF_LAND (bornPolityAt above): a birth with no explicit flag takes the
+  // politics of the GROUND, and sovereignty is what is left when no court holds
+  // it. Off, the legacy value stands untouched (byte-identical).
+  s.countryId = opts.countryId ?? (() => {
+    const legacy = !T.STATE_RECORDS || (((s.knowledge && s.knowledge.organization) || 0) >= stateOrgBar())
+      ? s.id : -1;                                  // joins parent's realm if specified, else own city-state — once the court can administrate one
+    return T.BORN_OF_LAND ? bornPolityAt(world, s, legacy) : legacy;
+  })();
   // ── Who lives here: culture stock + a name in that people's tongue ──
   // A cradle is the birth of a PEOPLE (founds a culture); everything else
   // carries its founder stock's culture. Explicit opts.name wins (imports).
@@ -3005,11 +3049,35 @@ function updateFood(world, s) {
   //   pop 1000  → 1.30
   //   pop 10000 → 1.40
   const urbanFactor = 1 + Math.log10(Math.max(10, s.people)) / 10;
+  // T.ONE_BOOK — ONE food book: the market ledger bills the MARKET-FED
+  // (docs/egypt-autopsy-2026-08-24.md, the funnel verdict). Under ONE_POP the
+  // catchment census is mostly SUBSISTENCE countryside that feeds itself off
+  // the field (capField — the demographic book); billing the ledger for all of
+  // it read the whole planet at 1/6-1/8 production:demand forever, which ran
+  // every downstream pathology: pseudo-famine at anchors (fed≈0.1), granaries
+  // pinned empty (siege clocks, famine buffers, TRIBUTE_OF_LAND all dead),
+  // scarcity prices at the max clamp planet-wide (no signal), vulnerability
+  // draws onto the "fragile" cradles, ZERO storable surplus → importShare
+  // 0.00 → the agglomeration engine fuel-less → clone cities at 1× the bar →
+  // the churn. T.FOOD_REACH already moved the famine GATE to the core need
+  // ("the census counts subsistence people the market neither feeds nor
+  // taxes") and expressly deferred the rest; this is that re-key: the civic
+  // mouths become the MARKET-FED people — the urban core (the countryside's
+  // own subsistence never touched the granary anyway) — so demand, the
+  // granary drain, the scarcity price, the fish gate, army sizing and the
+  // trade surplus all read one coherent book. Supply-side quantities (foodK,
+  // s._k, the FOOD_K countryside blend) are untouched by construction —
+  // imports raise them through dynamics, and FOOD_K's landShare already
+  // keeps import-fed capacity at the core. Guarded to the shipped regime
+  // (ONE_POP + DISSOLVE_FARMS): in the legacy census-logistic world the
+  // whole census genuinely eats from this ledger and the old billing stands.
+  const oneBook = T.ONE_BOOK > 0 && T.ONE_POP > 0 && T.DISSOLVE_FARMS > 0;
+  const mouths = oneBook ? Math.min(s.people, s._urbanPop != null ? s._urbanPop : s.people) : s.people;
   // Under SLAVE_PEOPLE the unfree are inside the headcount but are fed at the owner's
   // subsistence ration (the slaveFood line below), not the civic rate — split them out
   // so they aren't fed twice.
-  const unfreeIn = (T.SLAVERY && T.SLAVE_PEOPLE) ? Math.min(s._unfree || 0, s.people) : 0;
-  const civDemand = (s.people - unfreeIn) * 0.0030 * urbanFactor;
+  const unfreeIn = (T.SLAVERY && T.SLAVE_PEOPLE) ? Math.min(s._unfree || 0, mouths) : 0;
+  const civDemand = (mouths - unfreeIn) * 0.0030 * urbanFactor;
   // The garrison eats too — extra rations/fodder above the civilian rate
   // (provisioning). This is the food cost of a standing army: a big garrison
   // burns the food surplus that would otherwise fill granaries / grow the

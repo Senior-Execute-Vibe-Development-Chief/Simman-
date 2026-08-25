@@ -25,7 +25,7 @@ const FAMINE_CHECK    = 700;    // ticks between famine-spawn rolls
 const FAMINE_RADIUS   = 12;     // tiles — settlements within this of the seed are struck (regional, not continental)
 const FAMINE_MIN_DUR  = 400;
 const FAMINE_MAX_DUR  = 1200;
-const FAMINE_SEVERITY = 0.35;   // harvest multiplier during famine (0.35 = ~65% crop loss)
+export const FAMINE_SEVERITY = 0.35;   // harvest multiplier during famine (0.35 = ~65% crop loss); exported: T.LEAN_YEAR grounds the founding margin in it — a city's basin must feed it through THIS year (crystallize.js leanMul)
 const FAMINE_MIN_POP  = 30;     // only seed on a real settlement
 // Famine as VULNERABILITY, not a blind die-roll. A bad harvest becomes a FAMINE
 // where the society has no cushion — packed against its food ceiling, on

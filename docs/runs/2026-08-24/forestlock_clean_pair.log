@@ -1,0 +1,37 @@
+##### CONTROL (current defaults: BORN_OF_LAND, SEAT_ADMIN, SEAT_FIELD all on) #####
+-- A. the register by REGION (cities = tier>=2; "free" = stateless) -------
+   region        history(bronze) |     14     16     18     20     22     24
+                                 | Bronze Bronze Classi Mediev Mediev Renais
+   Mesopotamia             20-30 |      -      -   4/ 4  12/ 0  26/ 0  22/ 0
+   Egypt/Nile               5-10 |   6/ 6  33/ 0  75/ 0  80/ 0  74/ 0  71/ 0
+   Indus+India   ~5 (Indus only) |      -      -  32/32  46/ 0  51/ 0  55/ 0
+   China               a handful |      -      -      -      -      -  12/ 0
+   Levant/Anat               ~10 |      -      -      -  15/ 0   3/ 0   4/ 0
+   Mediterran.       ~5 (Aegean) |      -   1/ 0   1/ 0   3/ 0  28/ 0  25/ 0
+   EUROPE temp             **0** |      -      -   5/ 5  19/10  28/ 0  51/ 0
+   SAHEL                   **0** |      -      -   9/ 0  24/ 0  28/ 0  40/ 0
+   Steppe                  **0** |      -      -   2/ 2   1/ 0   7/ 0  19/ 0
+   SE Asia                 **0** |      -      -      -      -      -      -
+   Americas                **0** |      -      -      -      -   5/ 0  36/ 0
+   Afr. south              **0** |      -      -      -      -   8/ 0  41/ 0
+   elsewhere                     |      -      -      -   1/ 0  30/ 0  56/ 0
+   (each cell: cities / of which stateless)
+
+##### FOREST_LOCK=0.8, same tree #####
+-- A. the register by REGION (cities = tier>=2; "free" = stateless) -------
+   region        history(bronze) |     14     16     18     20     22     24
+                                 | Bronze Bronze Classi Mediev Mediev Renais
+   Mesopotamia             20-30 |      -      -      -  23/ 0  25/ 0  19/ 0
+   Egypt/Nile               5-10 |  17/17  46/ 0  83/ 0  88/ 0  70/ 0  81/ 0
+   Indus+India   ~5 (Indus only) |      -      -  36/36  50/ 0  56/ 0  58/ 0
+   China               a handful |      -      -   1/ 1   2/ 2   7/ 0  33/ 0
+   Levant/Anat               ~10 |      -      -      -   1/ 0   1/ 0   6/ 0
+   Mediterran.       ~5 (Aegean) |      -   1/ 0   1/ 0   2/ 0  14/ 0  20/ 0
+   EUROPE temp             **0** |      -      -      -      -  25/ 0  43/ 0
+   SAHEL                   **0** |      -      -  12/ 0  19/ 0  21/ 0  39/ 0
+   Steppe                  **0** |      -      -      -  14/12  38/ 0  42/ 0
+   SE Asia                 **0** |      -      -      -      -      -   1/ 0
+   Americas                **0** |      -      -      -      -   2/ 0  31/ 0
+   Afr. south              **0** |      -      -      -   9/ 0  28/ 0  45/ 0
+   elsewhere                     |      -      -  13/11  24/ 0  62/ 0  72/ 0
+   (each cell: cities / of which stateless)

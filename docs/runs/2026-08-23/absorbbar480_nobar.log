@@ -1,0 +1,84 @@
+[harness] tree e71ed91
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"ABSORB_ORG_ERA":0,"ABSORB_ORG_MIN":0.1}
+[peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,82) (69.8E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (387,72) (110.3E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (276,83) (27.0E 27.8N) score 7.28 pkg=wheat(suit 1.00) — ARMED: ~903y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (298,76) (43.5E 33.0N) score 5.01 pkg=wheat(suit 0.77) — ARMED: ~1173y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (333,82) (69.8E 28.5N) score 6.69 pkg=wheat(suit 0.86) — ARMED: ~1041y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) score 3.60 pkg=millet(suit 0.55) — ARMED: ~2710y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (230,99) (-7.5E 15.8N) score 3.29 pkg=sorghum(suit 0.70) — ARMED: ~2870y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) score 1.62 pkg=maize(suit 0.71) — ARMED: ~6381y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,140) (-75.0E -15.0N) score 1.24 pkg=tubers(suit 0.89) — ARMED: ~3390y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) score 0.89 pkg=tubers(suit 0.43) — ARMED: ~6987y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== THE ABSORPTION BAR  960x480 (tw=480)  seed 8817  30000 steps ===
+    ABSORB_ORG_ERA=0  ABSORB_ORG_MIN=0.1   (bar = the absolute floor)
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (276,83) (27.0E 27.8N) — the basin farms; a city will rise when its market gathers one (score 7.28)
+[peopleSim] AGRICULTURE INVENTED at (333,82) (69.8E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.69)
+[peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 5.01)
+[transHeap] step=14640 cap=2048 peakN=2029 pushes=28506 (0.0MB backing)
+[transHeap] step=15648 cap=4096 peakN=2812 pushes=29575 (0.0MB backing)
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=18168 cap=65536 peakN=38508 pushes=135668 (0.5MB backing)
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.29)
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.24)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) stood down — the farming package arrived before it was invented
+
+-- the court org distribution, and the bar it is ranked against ----------
+   step  courts | org p33   p50   p67   p90   max |  BAR  | bonds  suzerain under bar
+   17000      8 |     0.39  0.40  0.41  0.41  0.41 | 0.10  |     0      0 (0%)
+   18000     13 |     0.40  0.41  0.41  0.42  0.42 | 0.10  |     3      0 (0%)
+   19000     48 |     0.41  0.41  0.42  0.42  0.42 | 0.10  |     9      0 (0%)
+   20000     99 |     0.41  0.42  0.42  0.46  0.46 | 0.10  |    21      0 (0%)
+   21000    126 |     0.42  0.42  0.43  0.46  0.46 | 0.10  |    25      0 (0%)
+   22000    160 |     0.42  0.46  0.46  0.49  0.49 | 0.10  |    30      0 (0%)
+   23000    192 |     0.43  0.46  0.49  0.49  0.51 | 0.10  |    58      0 (0%)
+   24000    250 |     0.43  0.47  0.49  0.56  0.58 | 0.10  |    61      0 (0%)
+   25000    346 |     0.46  0.49  0.51  0.57  0.60 | 0.10  |    88      0 (0%)
+   26000    437 |     0.46  0.50  0.57  0.58  0.62 | 0.10  |   122      0 (0%)
+   27000    489 |     0.49  0.57  0.58  0.60  0.65 | 0.10  |   133      0 (0%)
+   28000    569 |     0.51  0.58  0.60  0.62  0.65 | 0.10  |   154      0 (0%)
+   29000    639 |     0.57  0.60  0.62  0.65  0.69 | 0.10  |   179      0 (0%)
+   30000    712 |     0.58  0.62  0.65  0.69  0.69 | 0.10  |   216      0 (0%)
+
+-- the integrate funnel, per window (the sim's own tally) ----------------
+   step   CAND  PASSED  pass% | orgBelow  beyondRule  noHeadroom  hazard  identity  seatTier
+   18000     12       1    8.3% |       0       2       0       3       3       0
+   19000     43       3    7.0% |       0      17       0      15       6       0
+   20000    142      10    7.0% |       0      58       0      51      13       2
+   21000    157      10    6.4% |       0      56       0      67       9       6
+   22000    168      14    8.3% |       0      62       0      75      11       1
+   23000    303      22    7.3% |       0      87       0     150      17       0
+   24000    384      22    5.7% |       0     123       0     178      33       0
+   25000    542      28    5.2% |       0     222       0     206      33      16
+   26000    735      26    3.5% |       0     363       0     227      20      53
+   27000    732      36    4.9% |       0     365       0     226      23      59
+   28000    980      50    5.1% |       0     433       0     405      41       9
+   29000   1197      78    6.5% |       0     466       0     523      85       4
+   30000   1224      51    4.2% |       0     542       0     492      80      11
+
+-- bloc vs TERRITORY: is the biggest "nation" a state or a suzerainty? ---
+   step  states  singl%  biggest bloc: realms   bloc km2   the ROOT's OWN km2   converted
+   17000     10     60%                     1      0.21M              0.21M        100%
+   18000     13     46%                     3      0.67M              0.63M         94%
+   19000     50     60%                     7      0.86M              0.55M         64%
+   20000     98     65%                    12      0.90M              0.34M         37%
+   21000    131     70%                    14      0.95M              0.13M         14%
+   22000    152     68%                     5      0.39M              0.23M         59%
+   23000    191     64%                    14      1.08M              0.45M         42%
+   24000    273     69%                     3      0.51M              0.47M         91%
+   25000    349     65%                     3      0.59M              0.53M         90%
+   26000    430     69%                    17      1.02M              0.32M         31%
+   27000    494     69%                    18      1.19M              0.41M         34%
+   28000    566     70%                    26      1.46M              0.64M         44%
+   29000    631     70%                    46      2.22M              0.49M         22%
+   30000    728     69%                    47      2.01M              0.23M         12%
+

@@ -1,0 +1,1729 @@
+[harness] tree fc670fd
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== EGYPT AUTOPSY  480x240 (tw=240)  seed 8817  box lon 24..36 lat 20..33 (66 land tiles) ===
+  step | box: sett  Σpeople | largest (people/urban  fed  dis  org) cid | realm@box: id  boxT  worldT   km²  mem  cap/load  fronts | field: Σpop  Σcap
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+   100 |   0       0 |   (none) |         (no realm owns the box) | 6017 19605
+   200 |   0       0 |   (none) |         (no realm owns the box) | 6149 19605
+   300 |   0       0 |   (none) |         (no realm owns the box) | 6282 19605
+   400 |   0       0 |   (none) |         (no realm owns the box) | 6414 19605
+   500 |   0       0 |   (none) |         (no realm owns the box) | 6547 19605
+   600 |   0       0 |   (none) |         (no realm owns the box) | 6681 19605
+   700 |   0       0 |   (none) |         (no realm owns the box) | 6814 19605
+   800 |   0       0 |   (none) |         (no realm owns the box) | 6949 19605
+   900 |   0       0 |   (none) |         (no realm owns the box) | 7084 19605
+  1000 |   0       0 |   (none) |         (no realm owns the box) | 7219 19605
+  1100 |   0       0 |   (none) |         (no realm owns the box) | 7355 19605
+  1200 |   0       0 |   (none) |         (no realm owns the box) | 7491 19605
+  1300 |   0       0 |   (none) |         (no realm owns the box) | 7628 19605
+  1400 |   0       0 |   (none) |         (no realm owns the box) | 7765 19605
+  1500 |   0       0 |   (none) |         (no realm owns the box) | 7902 19605
+  1600 |   0       0 |   (none) |         (no realm owns the box) | 8039 19605
+  1700 |   0       0 |   (none) |         (no realm owns the box) | 8177 19605
+  1800 |   0       0 |   (none) |         (no realm owns the box) | 8315 19605
+  1900 |   0       0 |   (none) |         (no realm owns the box) | 8452 19605
+  2000 |   0       0 |   (none) |         (no realm owns the box) | 8590 19605
+  2100 |   0       0 |   (none) |         (no realm owns the box) | 8729 19605
+  2200 |   0       0 |   (none) |         (no realm owns the box) | 8867 19605
+  2300 |   0       0 |   (none) |         (no realm owns the box) | 9005 19605
+  2400 |   0       0 |   (none) |         (no realm owns the box) | 9143 19605
+  2500 |   0       0 |   (none) |         (no realm owns the box) | 9280 19605
+  2600 |   0       0 |   (none) |         (no realm owns the box) | 9418 19605
+  2700 |   0       0 |   (none) |         (no realm owns the box) | 9555 19605
+  2800 |   0       0 |   (none) |         (no realm owns the box) | 9692 19605
+  2900 |   0       0 |   (none) |         (no realm owns the box) | 9829 19605
+  3000 |   0       0 |   (none) |         (no realm owns the box) | 9965 19605
+  3100 |   0       0 |   (none) |         (no realm owns the box) | 10101 19605
+  3200 |   0       0 |   (none) |         (no realm owns the box) | 10237 19605
+  3300 |   0       0 |   (none) |         (no realm owns the box) | 10372 19605
+  3400 |   0       0 |   (none) |         (no realm owns the box) | 10506 19605
+  3500 |   0       0 |   (none) |         (no realm owns the box) | 10640 19605
+  3600 |   0       0 |   (none) |         (no realm owns the box) | 10773 19605
+  3700 |   0       0 |   (none) |         (no realm owns the box) | 10905 19605
+  3800 |   0       0 |   (none) |         (no realm owns the box) | 11037 19605
+  3900 |   0       0 |   (none) |         (no realm owns the box) | 11168 19605
+  4000 |   0       0 |   (none) |         (no realm owns the box) | 11298 19605
+  4100 |   0       0 |   (none) |         (no realm owns the box) | 11427 19605
+  4200 |   0       0 |   (none) |         (no realm owns the box) | 11555 19605
+  4300 |   0       0 |   (none) |         (no realm owns the box) | 11682 19605
+  4400 |   0       0 |   (none) |         (no realm owns the box) | 11808 19605
+  4500 |   0       0 |   (none) |         (no realm owns the box) | 11934 19605
+  4600 |   0       0 |   (none) |         (no realm owns the box) | 12058 19605
+  4700 |   0       0 |   (none) |         (no realm owns the box) | 12181 19605
+  4800 |   0       0 |   (none) |         (no realm owns the box) | 12303 19605
+  4900 |   0       0 |   (none) |         (no realm owns the box) | 12424 19605
+  5000 |   0       0 |   (none) |         (no realm owns the box) | 12544 19605
+  5100 |   0       0 |   (none) |         (no realm owns the box) | 12662 19605
+  5200 |   0       0 |   (none) |         (no realm owns the box) | 12780 19605
+  5300 |   0       0 |   (none) |         (no realm owns the box) | 12896 19605
+  5400 |   0       0 |   (none) |         (no realm owns the box) | 13010 19605
+  5500 |   0       0 |   (none) |         (no realm owns the box) | 13124 19605
+  5600 |   0       0 |   (none) |         (no realm owns the box) | 13236 19605
+  5700 |   0       0 |   (none) |         (no realm owns the box) | 13347 19605
+  5800 |   0       0 |   (none) |         (no realm owns the box) | 13457 19605
+  5900 |   0       0 |   (none) |         (no realm owns the box) | 13565 19605
+  6000 |   0       0 |   (none) |         (no realm owns the box) | 13672 19605
+  6100 |   0       0 |   (none) |         (no realm owns the box) | 13778 19605
+  6200 |   0       0 |   (none) |         (no realm owns the box) | 13882 19605
+  6300 |   0       0 |   (none) |         (no realm owns the box) | 13985 19605
+  6400 |   0       0 |   (none) |         (no realm owns the box) | 14086 19605
+  6500 |   0       0 |   (none) |         (no realm owns the box) | 14187 19605
+  6600 |   0       0 |   (none) |         (no realm owns the box) | 14285 19605
+  6700 |   0       0 |   (none) |         (no realm owns the box) | 14383 19605
+  6800 |   0       0 |   (none) |         (no realm owns the box) | 14478 19605
+  6900 |   0       0 |   (none) |         (no realm owns the box) | 14573 19605
+  7000 |   0       0 |   (none) |         (no realm owns the box) | 14666 19605
+  7100 |   0       0 |   (none) |         (no realm owns the box) | 14758 19605
+  7200 |   0       0 |   (none) |         (no realm owns the box) | 14848 19605
+  7300 |   0       0 |   (none) |         (no realm owns the box) | 14937 19605
+  7400 |   0       0 |   (none) |         (no realm owns the box) | 15025 19605
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+  7500 |   0       0 |   (none) |         (no realm owns the box) | 15111 19605
+  7600 |   0       0 |   (none) |         (no realm owns the box) | 15195 19605
+  7700 |   0       0 |   (none) |         (no realm owns the box) | 15279 19605
+  7800 |   0       0 |   (none) |         (no realm owns the box) | 15361 19605
+  7900 |   0       0 |   (none) |         (no realm owns the box) | 15442 19605
+  8000 |   0       0 |   (none) |         (no realm owns the box) | 15521 19605
+  8100 |   0       0 |   (none) |         (no realm owns the box) | 16230 323940
+  8200 |   0       0 |   (none) |         (no realm owns the box) | 17199 323940
+  8300 |   0       0 |   (none) |         (no realm owns the box) | 18288 323940
+  8400 |   0       0 |   (none) |         (no realm owns the box) | 19498 323940
+  8500 |   0       0 |   (none) |         (no realm owns the box) | 20835 323940
+  8600 |   0       0 |   (none) |         (no realm owns the box) | 22302 323940
+  8700 |   0       0 |   (none) |         (no realm owns the box) | 23905 336894
+  8800 |   0       0 |   (none) |         (no realm owns the box) | 25653 336894
+  8900 |   0       0 |   (none) |         (no realm owns the box) | 27527 336894
+  9000 |   0       0 |   (none) |         (no realm owns the box) | 29537 336894
+  9100 |   0       0 |   (none) |         (no realm owns the box) | 31679 336894
+  9200 |   0       0 |   (none) |         (no realm owns the box) | 33955 336894
+  9300 |   0       0 |   (none) |         (no realm owns the box) | 36372 336894
+  9400 |   0       0 |   (none) |         (no realm owns the box) | 38945 350201
+  9500 |   0       0 |   (none) |         (no realm owns the box) | 41691 350201
+  9600 |   0       0 |   (none) |         (no realm owns the box) | 44600 350201
+  9700 |   0       0 |   (none) |         (no realm owns the box) | 47672 350201
+  9800 |   0       0 |   (none) |         (no realm owns the box) | 50910 350201
+  9900 |   0       0 |   (none) |         (no realm owns the box) | 54315 350201
+ 10000 |   0       0 |   (none) |         (no realm owns the box) | 57888 350201
+ 10100 |   0       0 |   (none) |         (no realm owns the box) | 61670 363354
+ 10200 |   0       0 |   (none) |         (no realm owns the box) | 65654 363354
+ 10300 |   0       0 |   (none) |         (no realm owns the box) | 69829 363354
+ 10400 |   0       0 |   (none) |         (no realm owns the box) | 74192 363354
+ 10500 |   0       0 |   (none) |         (no realm owns the box) | 78739 363354
+ 10600 |   0       0 |   (none) |         (no realm owns the box) | 83469 363354
+ 10700 |   0       0 |   (none) |         (no realm owns the box) | 88385 377370
+ 10800 |   0       0 |   (none) |         (no realm owns the box) | 93558 377370
+ 10900 |   0       0 |   (none) |         (no realm owns the box) | 98932 377370
+ 11000 |   0       0 |   (none) |         (no realm owns the box) | 104494 377370
+ 11100 |   0       0 |   (none) |         (no realm owns the box) | 110233 377370
+ 11200 |   0       0 |   (none) |         (no realm owns the box) | 116140 377370
+ 11300 |   0       0 |   (none) |         (no realm owns the box) | 122204 377370
+ 11400 |   0       0 |   (none) |         (no realm owns the box) | 128469 386108
+ 11500 |   0       0 |   (none) |         (no realm owns the box) | 134954 386110
+ 11600 |   0       0 |   (none) |         (no realm owns the box) | 141572 386115
+ 11700 |   0       0 |   (none) |         (no realm owns the box) | 148300 386124
+ 11800 |   0       0 |   (none) |         (no realm owns the box) | 155119 386159
+ 11900 |   0       0 |   (none) |         (no realm owns the box) | 162020 386337
+ 12000 |   0       0 |   (none) |         (no realm owns the box) | 168998 386675
+ 12100 |   0       0 |   (none) |         (no realm owns the box) | 176176 394582
+ 12200 |   0       0 |   (none) |         (no realm owns the box) | 183450 395232
+ 12300 |   0       0 |   (none) |         (no realm owns the box) | 190759 396125
+ 12400 |   0       0 |   (none) |         (no realm owns the box) | 198087 397315
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+ 12500 |   0       0 |   (none) |         (no realm owns the box) | 205429 398975
+ 12600 |   0       0 |   (none) |         (no realm owns the box) | 212790 401249
+ 12700 |   0       0 |   (none) |         (no realm owns the box) | 220203 412062
+ 12800 |   0       0 |   (none) |         (no realm owns the box) | 227880 415168
+ 12900 |   0       0 |   (none) |         (no realm owns the box) | 235596 418845
+ 13000 |   0       0 |   (none) |         (no realm owns the box) | 243361 423057
+ 13100 |   0       0 |   (none) |         (no realm owns the box) | 251179 427769
+ 13200 |   0       0 |   (none) |         (no realm owns the box) | 259055 432944
+ 13300 |   0       0 |   (none) |         (no realm owns the box) | 266998 438551
+ 13400 |   0       0 |   (none) |         (no realm owns the box) | 275146 453084
+ 13500 |   2      30 | Ňěňní         15/    0 0.00 0.00 0.28 c-1 |         (no realm owns the box) | 283548 459241
+ 13600 |   6    8962 | Ňěňní       5679/  330 0.07 0.00 0.28 c-1 |         (no realm owns the box) | 291485 467497
+ 13700 |  10   10201 | Ňěňní       8019/  338 0.06 0.00 0.28 c-1 |         (no realm owns the box) | 298529 474260
+ 13800 |  14   10579 | Ňěňní       8233/  346 0.06 0.04 0.29 c-1 |         (no realm owns the box) | 305776 481302
+ 13900 |  18   10928 | Ňěňní       8441/  355 0.08 0.04 0.29 c-1 |         (no realm owns the box) | 313300 488573
+ 14000 |  22   11270 | Ňěňní       8650/  363 0.07 0.04 0.30 c-1 |         (no realm owns the box) | 321025 496098
+ 14100 |  25   11594 | Ňěňní       8851/  364 0.02 0.08 0.30 c-1 |         (no realm owns the box) | 328328 513145
+ 14200 |  25   11879 | Ňěňní       9051/  370 0.03 0.08 0.31 c-1 |         (no realm owns the box) | 335728 520600
+ 14300 |  26   12182 | Ňěňní       9251/  377 0.02 0.08 0.31 c-1 |         (no realm owns the box) | 343286 528488
+ 14400 |  26   12462 | Ňěňní       9454/  385 0.02 0.11 0.32 c-1 |         (no realm owns the box) | 350898 536342
+ 14500 |  27   12752 | Ňěňní       9644/  392 0.02 0.11 0.32 c-1 |         (no realm owns the box) | 358143 544793
+ 14600 |  31   12510 | Ňěňní       9244/  400 0.03 0.11 0.33 c-1 |         (no realm owns the box) | 365553 553661
+ 14700 |  36   12871 | Ňěňní       9438/  408 0.02 0.15 0.34 c-1 |         (no realm owns the box) | 373428 572859
+ 14800 |  40   13213 | Ňěňní       9658/  416 0.02 0.15 0.34 c-1 |         (no realm owns the box) | 381921 581091
+ 14900 |  40   13518 | Ňěňní       9891/  434 0.07 0.15 0.35 c-1 |         (no realm owns the box) | 391421 589771
+ 15000 |  41   13815 | Ňěňní      10066/  448 0.07 0.19 0.35 c1 |         (no realm owns the box) | 399612 562279
+ 15100 |  43   14115 | Ňěňní      10230/  458 0.07 0.19 0.36 c1 |         (no realm owns the box) | 406704 571769
+ 15200 |  40   14360 | Ňěňní      10428/  468 0.07 0.19 0.36 c1 |    1   29     29   726k   31  26/46   0 | 414924 581081
+ 15300 |  44   14668 | Ňěňní      10663/  478 0.06 0.22 0.37 c1 |    1   25     25   623k   31  26/46   0 | 423681 590112
+ 15400 |  36   14818 | Ňěňní      10880/  488 0.06 0.22 0.38 c1 |    1   25     25   623k   28  23/52   0 | 432160 612367
+ 15500 |  40   13890 | Ňěňní       9150/  490 0.02 0.22 0.38 c1 |    1   25     25   621k   20  25/37   0 | 440013 620796
+ 15600 |  36    9880 | Ňěňní       6444/  495 0.00 0.25 0.39 c1 |    1   23     23   572k   20  25/37   0 | 447565 630396
+ 15700 |  41   10923 | Ňěňní       4967/  502 0.00 0.25 0.39 c1 |    1   22     22   547k   12  12/21   0 | 455134 640362
+ 15800 |  41   11112 | Ňěňní       5062/  512 0.02 0.25 0.40 c1 |    1   22     22   547k    8  494/15   0 | 477951 649687
+ 15900 |  45    9090 | Ňěňní       5103/  517 0.00 0.29 0.40 c1 |    1   23     23   573k    8  494/15   0 | 474758 668580
+ 16000 |  48   10552 | Ňěňní       5198/  521 0.00 0.29 0.41 c1 |    1   23     23   572k    9  14/20   1 | 487275 669469
+ 16100 |  50   10349 | Ňěňní       5257/  522 0.00 0.29 0.42 c1 |    1   23     23   572k    8  31/17   0 | 481591 686446
+ 16200 |  50   10931 | Ňěňní       5142/  533 0.00 0.33 0.42 c1 |    1   24     24   597k    8  31/17   0 | 486187 694894
+ 16300 |  51   12732 | Ňěňní       5350/  530 0.00 0.33 0.43 c1 |    1   22     22   546k    7  69/20   0 | 475692 696365
+ 16400 |  46   12406 | Ňěňní       5340/  533 0.05 0.33 0.43 c1 |    1   22     22   546k    6  88/17   0 | 498766 705845
+ 16500 |  51   10621 | Ňěňní       5464/  557 0.06 0.37 0.44 c1 |    1   20     20   499k    6  88/17   0 | 498200 713568
+ 16600 |  52   11418 | Ňěňní       4352/  569 0.07 0.37 0.44 c1 |    1   19     19   474k    6  61/18   0 | 506527 727962
+ 16700 |  52   11206 | Ňěňní       4303/  563 0.07 0.37 0.45 c1 |    1   19     19   474k    4  67/11   0 | 502843 720074
+ 16800 |  51   10322 | Ňěňní       4027/  548 0.07 0.40 0.46 c1 |    1   20     20   499k    4  67/11   0 | 504061 740413
+ 16900 |  53   14883 | Èňlà        5532/  669 0.03 0.13 0.44 c110 |    1   21     21   523k    5  33/16   0 | 492365 722928
+ 17000 |  52   14159 | Èňlà        5581/  454 0.00 0.13 0.45 c110 |    1   19     19   475k    3  53/10   1 | 484519 737803
+ 17100 |  53   14076 | Èňlà        5565/  749 0.00 0.18 0.45 c110 |    1   19     19   475k    3  53/10   1 | 496271 732902
+ 17200 |  52   14742 | Èňlà        5622/  763 0.00 0.18 0.46 c110 |    1   21     21   526k    3  58/9   0 | 499707 729968
+ 17300 |  53    9363 | Ňěňní       4300/  572 0.03 0.43 0.48 c1 |   54   17     34   890k    8  52/15   0 | 503834 750600
+ 17400 |  49    9209 | Ňěňní       4263/  551 0.00 0.45 0.49 c1 |   54   17     34   890k    8  52/15   0 | 503622 763824
+ 17500 |  53    8413 | Ňěňní       2751/  565 0.00 0.45 0.49 c1 |    1   21     21   524k    3  37/7   1 | 506117 769237
+ 17600 |  49   12103 | Ňěňní       3791/  592 0.00 0.45 0.50 c1 |    1   19     19   475k    3  65/7   0 | 511936 771007
+ 17700 |  49   12362 | Ňěňní       4066/  668 0.00 0.48 0.51 c1 |    1   19     19   475k    3  65/7   0 | 531370 767080
+ 17800 |  53   15431 | Láị         5831/  116 0.00 0.20 0.47 c109 |    1   20     20   500k    3  51/7   0 | 511706 759164
+ 17900 |  53   15501 | Láị         5974/  165 0.11 0.20 0.48 c109 |    1   20     20   500k    3  57/7   0 | 507804 771199
+ 18000 |  53   14880 | Láị         6054/  115 0.11 0.25 0.48 c109 |    1   18     18   451k    3  57/7   0 | 504777 771887
+ 18100 |  50   14721 | Láị         6122/  114 0.00 0.25 0.49 c109 |    1   18     18   451k    3  44/6   1 | 505687 759183
+ 18200 |  54   12049 | Ňěňní       3472/  607 0.00 0.50 0.54 c1 |    1   20     20   500k    3  55/5   1 | 518912 765780
+ 18300 |  54   12293 | Ňěňní       4002/  648 0.00 0.52 0.55 c1 |    1   20     20   500k    3  55/5   1 | 527864 788874
+ 18400 |  56   12410 | Ňěňní       3918/  665 0.00 0.52 0.55 c1 |    1   20     20   500k    1  55/5   0 | 534212 757090
+ 18500 |  56   13037 | Ňěňní       3511/  630 0.00 0.52 0.56 c1 |    1   19     19   475k    1  55/5   0 | 537898 762459
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+ 18600 |  56   13002 | Ňěňní       3389/  595 0.00 0.53 0.56 c1 |    1   20     20   500k    1  55/5   0 | 533096 754705
+ 18700 |  58   13166 | Ňěňní       3570/  647 0.00 0.53 0.57 c1 |    1   20     20   500k    1  55/5   0 | 556479 750597
+ 18800 |  55   12803 | Ňěňní       3571/  638 0.06 0.53 0.58 c1 |    1   22     46  1152k    1  55/5   0 | 555915 756910
+ 18900 |  24    9184 | Ňěňní       3458/  617 0.07 0.55 0.58 c1 |  173   14     14   344k    5  23/8   0 | 540558 837009
+ 19000 |  31    9251 | Ňěňní       3495/  639 0.03 0.55 0.58 c1 |  173   14     14   344k    6  28/16   0 | 535157 825343
+ 19100 |  35   11025 | Ňěňní       3450/  625 0.03 0.55 0.59 c1 |   30   13     14   338k    1  18/2   0 | 533459 776383
+ 19200 |  39   13855 | Hìuthị̌     3280/  803 0.00 0.25 0.52 c178 |   30   17     17   413k    1  18/2   0 | 533061 770175
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) stood down — the farming package arrived before it was invented
+ 19300 |  43   16160 | Īmpíü       5154/  841 0.00 0.04 0.52 c417 |  416   25     26   668k    4  47/3   1 | 529351 771136
+ 19400 |  47   15945 | Īmpíü       5155/   91 0.12 0.04 0.53 c417 |  416   25     26   668k   10  34/13   2 | 509952 784913
+ 19500 |  50   15538 | Īmpíü       5117/  582 0.11 0.10 0.54 c417 |  416   21     21   541k   10  34/13   2 | 511453 811632
+ 19600 |  54   16565 | Īmpíü       4733/  473 0.00 0.10 0.55 c417 |  416   22     23   593k   13  54/13   0 | 521657 766414
+ 19700 |  55   15448 | Xụ̀ftà      4705/  687 0.03 0.05 0.52 c416 |  416   22     23   593k   13  44/10   0 | 523545 771639
+ 19800 |  55   14364 | Xụ̀ftà      5015/  746 0.00 0.08 0.52 c416 |  416   23     25   645k   13  44/10   0 | 527040 775432
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+ 19900 |  55   11490 | Xụ̀ftà      5238/  755 0.00 0.08 0.52 c416 |  416   24     26   671k   13  32/8   1 | 531972 799341
+ 20000 |  51   10976 | Xụ̀ftà      5380/  210 0.00 0.08 0.53 c416 |  416   23     25   645k   15  54/11   1 | 535844 786779
+ 20100 |  25   11086 | Xụ̀ftà      4891/  735 0.00 0.13 0.54 c416 |  416   18     19   489k   15  54/11   1 | 532957 765694
+ 20200 |  29   10008 | Xụ̀ftà      4001/  557 0.00 0.13 0.56 c416 |  416   19     21   541k    9  49/7   0 | 530758 733299
+ 20300 |  32   10088 | Xụ̀ftà      4009/  218 0.15 0.13 0.57 c416 |  416   19     21   541k   15  45/15   0 | 528085 831159
+ 20400 |  37    9046 | Xụ̀ftà      4515/  785 0.08 0.18 0.58 c416 |  416   20     23   593k   15  45/15   0 | 553786 884361
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) stood down — the farming package arrived before it was invented
+ 20500 |  40   10552 | Xụ̀ftà      4586/  704 0.00 0.18 0.59 c416 |  416   20     23   593k   21  29/22   0 | 558761 734878
+ 20600 |  44   10543 | Xụ̀ftà      4452/  482 0.00 0.18 0.60 c416 |  416   20     23   593k   27  30/26   0 | 560927 801777
+[transHeap] step=20688 cap=2048 peakN=1286 pushes=9798 (0.0MB backing)
+ 20700 |  28   10583 | Xụ̀ftà      4359/  770 0.06 0.22 0.62 c416 |  416   20     23   593k   27  30/26   0 | 558207 806545
+ 20800 |  34   10419 | Xụ̀ftà      4243/  770 0.08 0.22 0.63 c416 |  416   20     22   567k   14  43/12   0 | 557559 811563
+ 20900 |  38   13271 | Xụ̀ftà      4176/  770 0.08 0.22 0.63 c416 |  416   20     22   567k   14  54/8   0 | 554604 717694
+ 21000 |  44   12593 | Xụ̀ftà      4084/  748 0.08 0.26 0.64 c416 |  416   20     22   567k   14  54/8   0 | 544794 688777
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) stood down — the farming package arrived before it was invented
+ 21100 |  48   11070 | Xụ̀ftà      4164/  766 0.08 0.26 0.65 c416 |  416   20     22   567k   16  45/14   0 | 556927 726232
+ 21200 |  53   10938 | Xụ̀ftà      4016/  727 0.09 0.26 0.66 c416 |  416   21     23   592k   17  44/29   0 | 554371 835993
+ 21300 |  50   10465 | Xụ̀ftà      3868/  698 0.10 0.30 0.66 c416 |  416   21     23   592k   17  44/29   0 | 551152 817613
+ 21400 |  53   11077 | Upa           3969/   94 0.00 0.20 0.53 c510 |  416   23     27   696k   10  61/15   0 | 550401 812297
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) stood down — the farming package arrived before it was invented
+ 21500 |  52   11778 | Xụ̀ftà      4568/  679 0.10 0.30 0.67 c416 |  416   23     26   670k   10  52/15   0 | 549500 775040
+ 21600 |  56   11435 | Xụ̀ftà      4375/  638 0.11 0.34 0.68 c416 |  416   23     25   644k   10  52/15   0 | 534763 773363
+ 21700 |  56   11057 | Xụ̀ftà      4126/  595 0.11 0.34 0.68 c416 |  416   23     25   644k    6  57/14   0 | 517505 741361
+ 21800 |  54   10631 | Xụ̀ftà      3954/  572 0.10 0.34 0.69 c416 |  416   38     40  1007k    2  57/4   0 | 504230 716264
+ 21900 |  54   10187 | Ňěňní       5246/  525 0.03 0.63 0.70 c416 |  416   27     28   710k    2  57/4   0 | 503494 693160
+ 22000 |  54    9857 | Ňěňní       5100/   62 0.04 0.63 0.71 c416 |  416   27     28   710k    5  43/14   0 | 492869 693065
+ 22100 |  54    9329 | Ňěňní       4798/  390 0.04 0.63 0.71 c416 |  416   28     28   708k    6  47/20   0 | 493717 684965
+ 22200 |  54    9060 | Ňěňní       4674/  505 0.10 0.64 0.71 c416 |  416   26     26   657k    6  47/20   0 | 499383 714466
+ 22300 |  54    8489 | Ňěňní       4392/  511 0.10 0.64 0.71 c416 |  416   26     26   657k    9  46/153   0 | 505538 758459
+ 22400 |  51    8130 | Ňěňní       3599/  491 0.12 0.64 0.72 c1 |  973   11     23   602k    3  57/2   0 | 491192 771346
+ 22500 |  40    5971 | Dylobfu       3184/  665 0.00 0.18 0.45 c836 | 1083   14     14   339k    1  -/-   0 | 507682 1006655
+ 22600 |  45    6486 | Dylobfu       3544/  678 0.00 0.18 0.47 c836 | 1083   14     14   339k    4  31/2   0 | 580492 971206
+ 22700 |  43    7557 | Ňěňní       3376/  614 0.00 0.64 0.72 c1 | 1074   14     14   338k    5  32/2   1 | 570770 757081
+ 22800 |  50    6213 | Tumogyuma     1947/  458 0.00 0.27 0.69 c1074 |    1   13     14   352k    2  36/1   0 | 567317 841335
+ 22900 |  49   10323 | Peyamfap      2031/  548 0.00 0.02 0.41 c805 |  543   20     23   586k   13  31/33   2 | 557544 874024
+ 23000 |  48    9796 | Peyamfap      2417/  713 0.00 0.02 0.41 c805 |  543   20     23   586k    2  31/0   3 | 551775 870940
+ 23100 |  49    7274 | Tusmobimgyi   2106/  628 0.13 0.20 0.72 c836 |  805   12     12   299k    7  1/8   0 | 531956 703568
+ 23200 |  53   16624 | Fùlpū       4698/  730 0.00 0.52 0.72 c543 |  805   16     18   452k    7  19/16   2 | 513155 798582
+ 23300 |  54   14754 | Fùlpū       3964/  575 0.00 0.52 0.73 c543 |  805   16     18   452k    9  26/10   1 | 512126 771800
+ 23400 |  57   11711 | Peyamfap      4211/  585 0.00 0.12 0.48 c805 |  805   22     23   573k    9  26/10   1 | 547968 932658
+ 23500 |  60   10733 | Peyamfap      4846/  296 0.00 0.12 0.50 c805 |  543   14     14   349k   10  15/91   0 | 559363 1033762
+ 23600 |  57    9791 | Peyamfap      4723/  154 0.11 0.12 0.52 c805 |  543   14     14   349k    9  91/30   1 | 551057 1023038
+ 23700 |  55   12275 | Peyamfap      3800/  380 0.00 0.17 0.53 c805 | 1390   14     16   413k    1  -/-   0 | 540516 798772
+ 23800 |  53   14141 | Líụňākò   4795/  814 0.14 0.10 0.63 c1390 |    1   14     14   350k    1  22/19   0 | 556544 840797
+ 23900 |  57   14095 | Líụňākò   4874/  234 0.00 0.10 0.65 c1390 |    1   14     14   350k    1  22/19   0 | 568893 803759
+ 24000 |  61   12042 | Líụňākò   3132/  737 0.00 0.15 0.66 c1390 |    1   17     17   423k    1  22/19   0 | 583461 881447
+ 24100 |  61   12148 | Líụňākò   3693/  668 0.05 0.15 0.68 c1390 |  805   16     21   529k   18  32/32   1 | 587837 830909
+ 24200 |  45   13272 | Líụňākò   3317/  675 0.06 0.15 0.69 c1390 |  805   16     19   478k   17  52/26   0 | 576745 691608
+ 24300 |  48   12601 | Peyamfap      3213/  767 0.08 0.25 0.65 c805 |  805   16     19   478k   17  52/26   0 | 563894 693776
+ 24400 |  52   11413 | Peyamfap      3040/  740 0.09 0.25 0.67 c805 |    1   17     17   423k    1  22/19   0 | 544327 706926
+ 24500 |  55   10903 | Peyamfap      2814/  684 0.09 0.25 0.68 c805 |  805   16     19   477k   29  33/55   0 | 531355 681877
+ 24600 |  55   10439 | Líụňākò   2734/  719 0.10 0.23 0.73 c1390 |  805   16     19   477k   29  33/55   0 | 519402 671426
+ 24700 |  58    9576 | Líụňākò   2662/  712 0.00 0.23 0.73 c1390 |  805   16     19   477k   29  30/52   1 | 497381 643820
+[transHeap] step=24720 cap=4096 peakN=2101 pushes=9725 (0.0MB backing)
+ 24800 |  59    9212 | Líụňākò   2653/  730 0.00 0.23 0.74 c1390 |  805   15     16   401k   29  25/60   0 | 476116 637723
+ 24900 |  48    8794 | Líụňākò   2457/  727 0.00 0.27 0.75 c1390 |  805   15     16   401k   29  25/60   0 | 461215 636551
+ 25000 |  50    8501 | Líụňākò   2224/  735 0.00 0.27 0.75 c1390 |  805   15     17   426k   17  30/37   1 | 470510 601330
+
+=== THE EVENT LOG, EGYPT BOX, steps 9000+ (the sim's own record — not inferred) ===
+   13500  settlement.founded     sName=Ňěňní kind=cradle
+          └ Ňěňní was founded at the dawn of civilisation.
+   13500  settlement.founded     sName=Ňěňní city=1
+          └ The city of Ňěňní arose.
+   13500  settlement.founded     sName=Fùlpū kind=crystallized
+          └ Fùlpū was founded.
+   13500  settlement.founded     sName=Fùlpū city=1
+          └ The city of Fùlpū arose.
+   13525  settlement.founded     sName=Kèňtọ̄ị kind=crystallized
+          └ Kèňtọ̄ị was founded.
+   13525  settlement.founded     sName=Kèňtọ̄ị city=1
+          └ The city of Kèňtọ̄ị arose.
+   13537  settlement.tier        sName=Fùlpū
+          └ Fùlpū grew into a metropolis (408,000 souls).
+   13550  settlement.founded     sName=Fōnfǐu kind=crystallized
+          └ Fōnfǐu was founded.
+   13550  settlement.founded     sName=Fōnfǐu city=1
+          └ The city of Fōnfǐu arose.
+   13573  market.dearth          sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   13575  settlement.founded     sName=Nāthị̌ kind=crystallized
+          └ Nāthị̌ was founded.
+   13575  settlement.founded     sName=Nāthị̌ city=1
+          └ The city of Nāthị̌ arose.
+   13592  market.dearth          sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   13600  settlement.founded     sName=Lǎxkòu kind=crystallized
+          └ Lǎxkòu was founded.
+   13600  settlement.founded     sName=Lǎxkòu city=1
+          └ The city of Lǎxkòu arose.
+   13625  settlement.founded     sName=Sǔsfá kind=crystallized
+          └ Sǔsfá was founded.
+   13625  settlement.founded     sName=Sǔsfá city=1
+          └ The city of Sǔsfá arose.
+   13650  settlement.founded     sName=Fǒptàị kind=crystallized
+          └ Fǒptàị was founded.
+   13650  settlement.founded     sName=Fǒptàị city=1
+          └ The city of Fǒptàị arose.
+   13667  settlement.tier        sName=Ňěňní
+          └ Ňěňní grew into a metropolis (335,000 souls).
+   13675  settlement.founded     sName=Ňúpīkò kind=crystallized
+          └ Ňúpīkò was founded.
+   13675  settlement.founded     sName=Ňúpīkò city=1
+          └ The city of Ňúpīkò arose.
+   13700  settlement.founded     sName=Ňǐlňà kind=crystallized
+          └ Ňǐlňà was founded.
+   13700  settlement.founded     sName=Ňǐlňà city=1
+          └ The city of Ňǐlňà arose.
+   13725  settlement.founded     sName=Xòufpù kind=crystallized
+          └ Xòufpù was founded.
+   13725  settlement.founded     sName=Xòufpù city=1
+          └ The city of Xòufpù arose.
+   13750  settlement.founded     sName=Lǎlpù kind=crystallized
+          └ Lǎlpù was founded.
+   13750  settlement.founded     sName=Lǎlpù city=1
+          └ The city of Lǎlpù arose.
+   13775  settlement.founded     sName=Tàstù kind=crystallized
+          └ Tàstù was founded.
+   13775  settlement.founded     sName=Tàstù city=1
+          └ The city of Tàstù arose.
+   13800  settlement.founded     sName=Ňěxkòu kind=crystallized
+          └ Ňěxkòu was founded.
+   13800  settlement.founded     sName=Ňěxkòu city=1
+          └ The city of Ňěxkòu arose.
+   13825  settlement.founded     sName=Nīpsē kind=crystallized
+          └ Nīpsē was founded.
+   13825  settlement.founded     sName=Nīpsē city=1
+          └ The city of Nīpsē arose.
+   13850  settlement.founded     sName=Lẹ́fị̌kú kind=crystallized
+          └ Lẹ́fị̌kú was founded.
+   13850  settlement.founded     sName=Lẹ́fị̌kú city=1
+          └ The city of Lẹ́fị̌kú arose.
+   13875  settlement.founded     sName=Fōnfǐu kind=crystallized
+          └ Fōnfǐu was founded.
+   13875  settlement.founded     sName=Fōnfǐu city=1
+          └ The city of Fōnfǐu arose.
+   13900  settlement.founded     sName=Hǐlhụ̌ kind=crystallized
+          └ Hǐlhụ̌ was founded.
+   13900  settlement.founded     sName=Hǐlhụ̌ city=1
+          └ The city of Hǐlhụ̌ arose.
+   13925  settlement.founded     sName=Xóuňpì kind=crystallized
+          └ Xóuňpì was founded.
+   13925  settlement.founded     sName=Xóuňpì city=1
+          └ The city of Xóuňpì arose.
+   13950  settlement.founded     sName=Lá kind=crystallized
+          └ Lá was founded.
+   13950  settlement.founded     sName=Lá city=1
+          └ The city of Lá arose.
+   13975  settlement.founded     sName=Lụ́ňpì kind=crystallized
+          └ Lụ́ňpì was founded.
+   13975  settlement.founded     sName=Lụ́ňpì city=1
+          └ The city of Lụ́ňpì arose.
+   14000  settlement.founded     sName=Mīnglì kind=crystallized
+          └ Mīnglì was founded.
+   14000  settlement.founded     sName=Mīnglì city=1
+          └ The city of Mīnglì arose.
+   14025  settlement.founded     sName=Ňúpī kind=crystallized
+          └ Ňúpī was founded.
+   14025  settlement.founded     sName=Ňúpī city=1
+          └ The city of Ňúpī arose.
+   14050  settlement.founded     sName=Lǎtlà kind=crystallized
+          └ Lǎtlà was founded.
+   14050  settlement.founded     sName=Lǎtlà city=1
+          └ The city of Lǎtlà arose.
+   14075  settlement.founded     sName=Xòutà kind=crystallized
+          └ Xòutà was founded.
+   14075  settlement.founded     sName=Xòutà city=1
+          └ The city of Xòutà arose.
+   14250  settlement.founded     sName=Fòutrọ̌ị kind=crystallized
+          └ Fòutrọ̌ị was founded.
+   14250  settlement.founded     sName=Fòutrọ̌ị city=1
+          └ The city of Fòutrọ̌ị arose.
+   14407  market.dearth          sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   14425  settlement.founded     sName=Pọ̄ịtrọ́ịkò kind=crystallized
+          └ Pọ̄ịtrọ́ịkò was founded.
+   14425  settlement.founded     sName=Pọ̄ịtrọ́ịkò city=1
+          └ The city of Pọ̄ịtrọ́ịkò arose.
+   14426  market.dearth          sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   14525  settlement.founded     sName=Họ̄ịkú kind=crystallized
+          └ Họ̄ịkú was founded.
+   14525  settlement.founded     sName=Sogyoepa city=1
+          └ The city of Sogyoepa arose.
+   14550  settlement.founded     sName=Omomessi kind=crystallized
+          └ Omomessi was founded.
+   14550  settlement.founded     sName=Omomessi city=1
+          └ The city of Omomessi arose.
+   14575  settlement.founded     sName=Dumomoi kind=crystallized
+          └ Dumomoi was founded.
+   14575  settlement.founded     sName=Dumomoi city=1
+          └ The city of Dumomoi arose.
+   14600  settlement.founded     sName=Dosudu kind=crystallized
+          └ Dosudu was founded.
+   14600  settlement.founded     sName=Dosudu city=1
+          └ The city of Dosudu arose.
+   14625  settlement.founded     sName=Umkyoi kind=crystallized
+          └ Umkyoi was founded.
+   14625  settlement.founded     sName=Umkyoi city=1
+          └ The city of Umkyoi arose.
+   14625  settlement.founded     sName=Sùlhụ̌ kind=crystallized
+          └ Sùlhụ̌ was founded.
+   14625  settlement.founded     sName=Sùlhụ̌ city=1
+          └ The city of Sùlhụ̌ arose.
+   14650  settlement.founded     sName=Rimmopuiky kind=crystallized
+          └ Rimmopuiky was founded.
+   14650  settlement.founded     sName=Rimmopuiky city=1
+          └ The city of Rimmopuiky arose.
+   14675  settlement.founded     sName=Mumommoe kind=crystallized
+          └ Mumommoe was founded.
+   14675  settlement.founded     sName=Mumommoe city=1
+          └ The city of Mumommoe arose.
+   14700  settlement.founded     sName=Nokyopa kind=crystallized
+          └ Nokyopa was founded.
+   14700  settlement.founded     sName=Nokyopa city=1
+          └ The city of Nokyopa arose.
+   14725  settlement.founded     sName=Bommodu kind=crystallized
+          └ Bommodu was founded.
+   14725  settlement.founded     sName=Bommodu city=1
+          └ The city of Bommodu arose.
+   14750  settlement.founded     sName=Pomponsomdu kind=crystallized
+          └ Pomponsomdu was founded.
+   14750  settlement.founded     sName=Pomponsomdu city=1
+          └ The city of Pomponsomdu arose.
+   14775  settlement.founded     sName=Togyomuky kind=crystallized
+          └ Togyomuky was founded.
+   14775  settlement.founded     sName=Togyomuky city=1
+          └ The city of Togyomuky arose.
+   14800  settlement.founded     sName=Tàịňnī kind=crystallized
+          └ Tàịňnī was founded.
+   14800  settlement.founded     sName=Tàịňnī city=1
+          └ The city of Tàịňnī arose.
+   14950  settlement.founded     sName=Hóuptàị kind=crystallized
+          └ Hóuptàị was founded.
+   14950  settlement.founded     sName=Hóuptàị city=1
+          └ The city of Hóuptàị arose.
+   15075  settlement.founded     sName=Pismoe kind=crystallized
+          └ Pismoe was founded.
+   15075  settlement.founded     sName=Pismoe city=1
+          └ The city of Pismoe arose.
+   15100  settlement.founded     sName=Sùňní kind=crystallized
+          └ Sùňní was founded.
+   15100  settlement.founded     sName=Sùňní city=1
+          └ The city of Sùňní arose.
+   15187  polity.seceded         fromName=Ňěňní
+          └ Broke away from Ňěňní in a war of secession.
+   15195  settlement.dissolved   why=core sName=Nāthị̌
+          └ Nāthị̌ faded back into the countryside.
+   15196  settlement.dissolved   why=core sName=Fōnfǐu
+          └ Fōnfǐu faded back into the countryside.
+   15197  settlement.dissolved   why=core sName=Kèňtọ̄ị
+          └ Kèňtọ̄ị faded back into the countryside.
+   15225  settlement.founded     sName=Sǐlāị kind=crystallized
+          └ Sǐlāị was founded.
+   15225  settlement.founded     sName=Sǐlāị city=1
+          └ The city of Sǐlāị arose.
+   15241  market.dearth          sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   15250  settlement.founded     sName=Fòuňpì kind=crystallized
+          └ Fòuňpì was founded.
+   15250  settlement.founded     sName=Fòuňpì city=1
+          └ The city of Fòuňpì arose.
+   15260  market.dearth          sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   15275  settlement.founded     sName=Nātlà kind=crystallized
+          └ Nātlà was founded.
+   15275  settlement.founded     sName=Nātlà city=1
+          └ The city of Nātlà arose.
+   15300  settlement.founded     sName=Fọ̄ịkfé kind=crystallized
+          └ Fọ̄ịkfé was founded.
+   15300  settlement.founded     sName=Fọ̄ịkfé city=1
+          └ The city of Fọ̄ịkfé arose.
+   15360  settlement.founded     sName=Tị̄lākú kind=planted
+          └ Tị̄lākú was founded.
+   15360  town.planted           sName=Tị̄lākú
+          └ The crown chartered Tị̄lākú to govern the countryside.
+   15386  settlement.dissolved   why=core sName=Tàstù
+          └ Tàstù faded back into the countryside.
+   15387  settlement.dissolved   why=core sName=Lǎlpù
+          └ Lǎlpù faded back into the countryside.
+   15388  settlement.dissolved   why=core sName=Xòufpù
+          └ Xòufpù faded back into the countryside.
+   15389  settlement.dissolved   why=core sName=Ňǐlňà
+          └ Ňǐlňà faded back into the countryside.
+   15390  settlement.dissolved   why=core sName=Ňúpīkò
+          └ Ňúpīkò faded back into the countryside.
+   15391  settlement.dissolved   why=core sName=Fǒptàị
+          └ Fǒptàị faded back into the countryside.
+   15392  settlement.dissolved   why=core sName=Sǔsfá
+          └ Sǔsfá faded back into the countryside.
+   15394  settlement.dissolved   why=core sName=Lǎxkòu
+          └ Lǎxkòu faded back into the countryside.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15400  famine.struck          
+          └ A famine gripped the land.
+   15400  settlement.founded     sName=Fị̀lpì city=1
+          └ The city of Fị̀lpì arose.
+   15408  settlement.lapsed      sName=Tị̄lākú fromName=Fùlpū
+          └ Tị̄lākú slipped free of Fùlpū.
+   15408  polity.receded         n=1 sName=Tị̄lākú name=Fùlpū
+          └ The grip of Fùlpū failed, and the marches beyond Tị̄lākú were left to their own devices.
+   15425  settlement.founded     sName=Lụ́ltù kind=crystallized
+          └ Lụ́ltù was founded.
+   15425  settlement.founded     sName=Lụ́ltù city=1
+          └ The city of Lụ́ltù arose.
+   15450  settlement.founded     sName=Nǐnfǐu kind=crystallized
+          └ Nǐnfǐu was founded.
+   15450  settlement.founded     sName=Nǐnfǐu city=1
+          └ The city of Nǐnfǐu arose.
+   15450  war.began              name=Ňěňní
+          └ Marched to war against Pomponsomsyus.
+   15475  settlement.founded     sName=Fōntà kind=crystallized
+          └ Fōntà was founded.
+   15475  settlement.founded     sName=Fōntà city=1
+          └ The city of Fōntà arose.
+   15475  settlement.founded     sName=Nāxkòu city=1
+          └ The city of Nāxkòu arose.
+   15487  polity.seceded         fromName=Pomponsomsyus
+          └ Broke away from Pomponsomsyus in a war of secession.
+   15500  settlement.founded     sName=Fị̀lhụ̌ kind=crystallized
+          └ Fị̀lhụ̌ was founded.
+   15500  settlement.founded     sName=Fị̀lhụ̌ city=1
+          └ The city of Fị̀lhụ̌ arose.
+   15500  settlement.founded     sName=Pọ́fpù city=1
+          └ The city of Pọ́fpù arose.
+   15500  war.began              name=Pomponsomsyus
+          └ Marched to war against Ňěňní.
+   15525  settlement.founded     sName=Túrọ̀ kind=crystallized
+          └ Túrọ̀ was founded.
+   15525  settlement.founded     sName=Túrọ̀ city=1
+          └ The city of Túrọ̀ arose.
+   15525  settlement.founded     sName=Ňělhụ̌ city=1
+          └ The city of Ňělhụ̌ arose.
+   15550  settlement.founded     sName=Lènūrọ̀ kind=crystallized
+          └ Lènūrọ̀ was founded.
+   15550  settlement.founded     sName=Lènūrọ̀ city=1
+          └ The city of Lènūrọ̀ arose.
+   15550  settlement.founded     sName=Lóupíkò city=1
+          └ The city of Lóupíkò arose.
+   15550  war.began              name=Ňěňní
+          └ Marched to war against Fọ̄ịkfélěā.
+   15550  war.began              name=Fị̀lpìlě
+          └ Marched to war against Fọ̄ịkfélěā.
+   15553  settlement.tier        sName=Fị̀lpì
+          └ Fị̀lpì grew into a metropolis (946,000 souls).
+   15571  market.dearth          sName=Fọ̄ịkfé
+          └ Dearth in Fọ̄ịkfé — bread at famine prices in the market.
+   15575  settlement.founded     sName=Nèlērọ̀ kind=crystallized
+          └ Nèlērọ̀ was founded.
+   15575  settlement.founded     sName=Nèlērọ̀ city=1
+          └ The city of Nèlērọ̀ arose.
+   15575  settlement.founded     sName=Xóultù city=1
+          └ The city of Xóultù arose.
+   15578  settlement.dissolved   why=core sName=Lụ́ňpì
+          └ Lụ́ňpì faded back into the countryside.
+   15579  settlement.dissolved   why=core sName=Lá
+          └ Lá faded back into the countryside.
+   15580  settlement.dissolved   why=core sName=Xóuňpì
+          └ Xóuňpì faded back into the countryside.
+   15581  settlement.dissolved   why=core sName=Hǐlhụ̌
+          └ Hǐlhụ̌ faded back into the countryside.
+   15582  settlement.dissolved   why=core sName=Fōnfǐu
+          └ Fōnfǐu faded back into the countryside.
+   15583  settlement.dissolved   why=core sName=Lẹ́fị̌kú
+          └ Lẹ́fị̌kú faded back into the countryside.
+   15584  settlement.dissolved   why=core sName=Nīpsē
+          └ Nīpsē faded back into the countryside.
+   15585  settlement.dissolved   why=core sName=Ňěxkòu
+          └ Ňěxkòu faded back into the countryside.
+   15600  settlement.founded     sName=Nị̀ppè kind=crystallized
+          └ Nị̀ppè was founded.
+   15600  settlement.founded     sName=Nị̀ppè city=1
+          └ The city of Nị̀ppè arose.
+   15600  settlement.founded     sName=Ngǎịstù city=1
+          └ The city of Ngǎịstù arose.
+   15600  war.began              name=Ňěňní
+          └ Marched to war against Nāxkòulě.
+   15600  war.began              name=Tị̄lākú
+          └ Marched to war against Nāxkòulě.
+   15625  settlement.founded     sName=Ommosommosoe kind=crystallized
+          └ Ommosommosoe was founded.
+   15625  settlement.founded     sName=Ommosommosoe city=1
+          └ The city of Ommosommosoe arose.
+   15625  settlement.founded     sName=Kèhsē kind=crystallized
+          └ Kèhsē was founded.
+   15625  settlement.founded     sName=Kèhsē city=1
+          └ The city of Kèhsē arose.
+   15625  settlement.founded     sName=Fọ̌ịmpéü city=1
+          └ The city of Fọ̌ịmpéü arose.
+   15637  polity.submitted       how=submission toName=Fị̀lpìlě name=Xụ́ppèlěā
+          └ Facing hopeless odds, the court of Xụ́ppèlěā bowed to Fị̀lpìlě — keeping its throne at the price of tribute.
+   15650  settlement.founded     sName=Pụ̌mpéü kind=crystallized
+          └ Pụ̌mpéü was founded.
+   15650  settlement.founded     sName=Pụ̌mpéü city=1
+          └ The city of Pụ̌mpéü arose.
+   15650  settlement.founded     sName=Lǎppè city=1
+          └ The city of Lǎppè arose.
+   15650  war.began              name=Ňěňní
+          └ Marched to war against Sogyoepasyus.
+   15675  settlement.founded     sName=Pōukú kind=crystallized
+          └ Pōukú was founded.
+   15675  settlement.founded     sName=Pōukú city=1
+          └ The city of Pōukú arose.
+   15675  settlement.founded     sName=Kẹ́ city=1
+          └ The city of Kẹ́ arose.
+   15697  settlement.tier        sName=Nāxkòu
+          └ Nāxkòu grew into a metropolis (977,000 souls).
+   15699  market.dearth          sName=Sogyoepa
+          └ Dearth in Sogyoepa — bread at famine prices in the market.
+   15700  settlement.founded     sName=Fúkú kind=crystallized
+          └ Fúkú was founded.
+   15700  settlement.founded     sName=Fúkú city=1
+          └ The city of Fúkú arose.
+   15700  settlement.founded     sName=Pụ́tlà city=1
+          └ The city of Pụ́tlà arose.
+   15700  war.began              name=Ňěňní
+          └ Marched to war against Ommosommosoesyusa.
+   15715  market.dearth          sName=Fōntà
+          └ Dearth in Fōntà — bread at famine prices in the market.
+   15725  settlement.founded     sName=Kètlà kind=crystallized
+          └ Kètlà was founded.
+   15725  settlement.founded     sName=Kètlà city=1
+          └ The city of Kètlà arose.
+   15725  settlement.founded     sName=Fǒlpù city=1
+          └ The city of Fǒlpù arose.
+   15750  settlement.founded     sName=Yókò kind=crystallized
+          └ Yókò was founded.
+   15750  settlement.founded     sName=Yókò city=1
+          └ The city of Yókò arose.
+   15750  settlement.founded     sName=Tǎkú city=1
+          └ The city of Tǎkú arose.
+   15774  settlement.dissolved   why=core sName=Xòutà
+          └ Xòutà faded back into the countryside.
+   15775  settlement.dissolved   why=core sName=Lǎtlà
+          └ Lǎtlà faded back into the countryside.
+   15775  settlement.founded     sName=Ètlà kind=crystallized
+          └ Ètlà was founded.
+   15775  settlement.founded     sName=Ètlà city=1
+          └ The city of Ètlà arose.
+   15775  settlement.founded     sName=Xụ̀nfǐu city=1
+          └ The city of Xụ̀nfǐu arose.
+   15776  settlement.dissolved   why=core sName=Ňúpī
+          └ Ňúpī faded back into the countryside.
+   15777  settlement.dissolved   why=core sName=Mīnglì
+          └ Mīnglì faded back into the countryside.
+   15795  settlement.tier        sName=Fōntà
+          └ Fōntà grew into a metropolis (783,000 souls).
+   15800  settlement.founded     sName=Ňụ̄kò kind=crystallized
+          └ Ňụ̄kò was founded.
+   15800  settlement.founded     sName=Ňụ̄kò city=1
+          └ The city of Ňụ̄kò arose.
+   15800  settlement.founded     sName=Kètrọ̌ị city=1
+          └ The city of Kètrọ̌ị arose.
+   15800  polity.shattered       sName=Ommosommosoe toName=Ňěňní
+          └ Its capital Ommosommosoe fell to Ňěňní — the realm collapsed.
+   15800  polity.ended           how=conquest byName=Ňěňní name=Ommosommosoesyusa
+          └ Fell to Ňěňní and was erased from the map.
+   15825  settlement.founded     sName=Pīuyórọ̀ kind=crystallized
+          └ Pīuyórọ̀ was founded.
+   15825  settlement.founded     sName=Pīuyórọ̀ city=1
+          └ The city of Pīuyórọ̀ arose.
+   15825  settlement.founded     sName=Èňtọ̄ị city=1
+          └ The city of Èňtọ̄ị arose.
+   15840  settlement.founded     sName=Nāxsē kind=planted
+          └ Nāxsē was founded.
+   15840  town.planted           sName=Nāxsē
+          └ The crown planted Nāxsē to hold the march.
+   15841  settlement.tier        sName=Fọ̄ịkfé
+          └ Fọ̄ịkfé grew into a metropolis (682,000 souls).
+   15850  settlement.founded     sName=Ètlà kind=crystallized
+          └ Ètlà was founded.
+   15850  settlement.founded     sName=Ètlà city=1
+          └ The city of Ètlà arose.
+   15850  settlement.founded     sName=Pēüffìkú city=1
+          └ The city of Pēüffìkú arose.
+   15850  war.began              name=Pomponsomsyus
+          └ Marched to war against Sogyoepasyus as the succession failed.
+   15850  war.began              name=Sogyoepasyus
+          └ Marched to war against Ňěňní.
+   15875  settlement.founded     sName=Lǎptàị kind=crystallized
+          └ Lǎptàị was founded.
+   15875  settlement.founded     sName=Lǎptàị city=1
+          └ The city of Lǎptàị arose.
+   15875  settlement.founded     sName=Kètrọ̌ị city=1
+          └ The city of Kètrọ̌ị arose.
+   15900  settlement.founded     sName=Ǎịmràkò kind=crystallized
+          └ Ǎịmràkò was founded.
+   15900  settlement.founded     sName=Ǎịmràkò city=1
+          └ The city of Ǎịmràkò arose.
+   15900  settlement.founded     sName=Kóttà city=1
+          └ The city of Kóttà arose.
+   15925  settlement.founded     sName=Nèrọ̀ kind=crystallized
+          └ Nèrọ̀ was founded.
+   15925  settlement.founded     sName=Nèrọ̀ city=1
+          └ The city of Nèrọ̀ arose.
+   15925  settlement.founded     sName=Sǎrọ́ị city=1
+          └ The city of Sǎrọ́ị arose.
+   15937  polity.seceded         fromName=Nāxkòulě
+          └ Broke away from Nāxkòulě in a war of secession.
+   15950  settlement.founded     sName=Hǐňsē kind=crystallized
+          └ Hǐňsē was founded.
+   15950  settlement.founded     sName=Hǐňsē city=1
+          └ The city of Hǐňsē arose.
+   15950  settlement.founded     sName=Nǔfīu city=1
+          └ The city of Nǔfīu arose.
+   15950  war.ended              how=siegeLifted toName=Sogyoepasyus name=Ňěňní
+          └ The war with Ňěňní ended.
+   15973  settlement.dissolved   why=core sName=Fòutrọ̌ị
+          └ Fòutrọ̌ị faded back into the countryside.
+   15975  settlement.founded     sName=Lụ̄kfé kind=crystallized
+          └ Lụ̄kfé was founded.
+   15975  settlement.founded     sName=Lụ̄kfé city=1
+          └ The city of Lụ̄kfé arose.
+   15985  settlement.tier        sName=Sogyoepa
+          └ Sogyoepa grew into a metropolis (664,000 souls).
+   16000  settlement.founded     sName=Ǎịmràrọ̀ kind=crystallized
+          └ Ǎịmràrọ̀ was founded.
+   16000  settlement.founded     sName=Ǎịmràrọ̀ city=1
+          └ The city of Ǎịmràrọ̀ arose.
+   16025  settlement.founded     sName=Láị kind=crystallized
+          └ Láị was founded.
+   16025  settlement.founded     sName=Láị city=1
+          └ The city of Láị arose.
+   16050  settlement.founded     sName=Èňlà kind=crystallized
+          └ Èňlà was founded.
+   16050  settlement.founded     sName=Èňlà city=1
+          └ The city of Èňlà arose.
+   16050  settlement.founded     sName=Tǐurọ̀ city=1
+          └ The city of Tǐurọ̀ arose.
+   16075  market.dearth          sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   16087  polity.submitted       how=union toName=Fōntàlě name=Fọ̄ịkfélěā
+          └ In the troubles of the succession, the court of Fọ̄ịkfélěā joined its crown to Fōntàlě — one senior throne, two realms.
+   16094  market.dearth          sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   16100  war.began              name=Nāxkòulě
+          └ Marched to war against Ňěňní.
+   16100  war.began              name=Ňěňní
+          └ Marched to war against Fōntàlě.
+   16125  settlement.founded     sName=Ňèstù city=1
+          └ The city of Ňèstù arose.
+   16129  settlement.tier        sName=Kètrọ̌ị
+          └ Kètrọ̌ị grew into a metropolis (865,000 souls).
+   16150  war.began              name=Sogyoepasyus
+          └ Marched to war against Pomponsomsyus.
+   16150  war.began              name=Ňěňní
+          └ Marched to war against Èňlàlěā.
+   16150  war.began              name=Tǐurọ̀lěā
+          └ Marched to war against Èňlàlěā.
+   16150  war.began              name=Nāxkòulě
+          └ Marched to war against Tị̄lākú.
+   16169  settlement.dissolved   why=core sName=Omomessi
+          └ Omomessi faded back into the countryside.
+   16172  settlement.dissolved   why=core sName=Pọ̄ịtrọ́ịkò
+          └ Pọ̄ịtrọ́ịkò faded back into the countryside.
+   16200  plague.outbreak        sName=Ňěňní
+          └ Plague broke out in Ňěňní and swept through the realm.
+   16200  settlement.founded     sName=Tommodumomoi kind=crystallized
+          └ Tommodumomoi was founded.
+   16200  settlement.founded     sName=Tommodumomoi city=1
+          └ The city of Tommodumomoi arose.
+   16200  settlement.founded     sName=Ǔltǔrọ̀ kind=crystallized
+          └ Ǔltǔrọ̀ was founded.
+   16200  settlement.founded     sName=Ǔltǔrọ̀ city=1
+          └ The city of Ǔltǔrọ̀ arose.
+   16200  war.began              name=Nāxkòulě
+          └ Marched to war against Èňlàlěā.
+   16225  settlement.founded     sName=Pemowumkyoi kind=crystallized
+          └ Pemowumkyoi was founded.
+   16225  settlement.founded     sName=Pemowumkyoi city=1
+          └ The city of Pemowumkyoi arose.
+   16237  war.ended              how=submission toName=Sogyoepasyus name=Pomponsomsyus
+          └ The war with Pomponsomsyus ended; some 2 soldiers never came home.
+   16237  polity.submitted       how=submission toName=Sogyoepasyus name=Pomponsomsyus
+          └ Facing hopeless odds, the court of Pomponsomsyus bowed to Sogyoepasyus — keeping its throne at the price of tribute.
+   16273  settlement.tier        sName=Èňlà
+          └ Èňlà grew into a metropolis (720,000 souls).
+   16273  settlement.tier        sName=Tǐurọ̀
+          └ Tǐurọ̀ grew into a metropolis (781,000 souls).
+   16291  market.dearth          sName=Èňlà
+          └ Dearth in Èňlà — bread at famine prices in the market.
+   16300  war.began              name=Tị̄lākú
+          └ Marched to war against Èňlàlěā.
+   16334  succession.crisis      name=Èňlàlěā
+          └ The royal line failed — an interregnum of rival claimants.
+   16350  war.ended              how=siegeLifted toName=Èňlàlěā name=Ňěňní
+          └ The war with Ňěňní ended.
+   16360  settlement.dissolved   why=core sName=Pomponsomdu
+          └ Pomponsomdu faded back into the countryside.
+   16361  settlement.dissolved   why=core sName=Bommodu
+          └ Bommodu faded back into the countryside.
+   16362  settlement.dissolved   why=core sName=Nokyopa
+          └ Nokyopa faded back into the countryside.
+   16363  settlement.dissolved   why=core sName=Mumommoe
+          └ Mumommoe faded back into the countryside.
+   16364  settlement.dissolved   why=core sName=Rimmopuiky
+          └ Rimmopuiky faded back into the countryside.
+   16365  settlement.dissolved   why=core sName=Sùlhụ̌
+          └ Sùlhụ̌ faded back into the countryside.
+   16366  settlement.dissolved   why=core sName=Umkyoi
+          └ Umkyoi faded back into the countryside.
+   16367  settlement.dissolved   why=core sName=Dosudu
+          └ Dosudu faded back into the countryside.
+   16368  settlement.dissolved   why=core sName=Dumomoi
+          └ Dumomoi faded back into the countryside.
+   16375  settlement.founded     sName=Epem kind=crystallized
+          └ Epem was founded.
+   16375  settlement.founded     sName=Epem city=1
+          └ The city of Epem arose.
+   16375  settlement.founded     sName=Ngàịtsī kind=crystallized
+          └ Ngàịtsī was founded.
+   16375  settlement.founded     sName=Ngàịtsī city=1
+          └ The city of Ngàịtsī arose.
+   16387  settlement.annexed     sName=Pomponsom fromName=Pomponsomsyus toName=Sogyoepasyus
+          └ Peacefully absorbed Pomponsom from Pomponsomsyus.
+   16387  settlement.annexed     sName=Togyomuky fromName=Pomponsomsyus toName=Sogyoepasyus
+          └ Peacefully absorbed Togyomuky from Pomponsomsyus.
+   16387  polity.ended           how=integrated byName=Sogyoepasyus name=Pomponsomsyus
+          └ Dissolved — its last cities scattered or fell silent.
+   16387  polity.seceded         fromName=Sogyoepasyus
+          └ Broke away from Sogyoepasyus in a war of secession.
+   16400  settlement.founded     sName=Ommosommosoe kind=crystallized
+          └ Ommosommosoe was founded.
+   16400  settlement.founded     sName=Ommosommosoe city=1
+          └ The city of Ommosommosoe arose.
+   16400  settlement.founded     sName=Nị̀trụ̄ị kind=crystallized
+          └ Nị̀trụ̄ị was founded.
+   16400  settlement.founded     sName=Nị̀trụ̄ị city=1
+          └ The city of Nị̀trụ̄ị arose.
+   16400  war.began              name=Èňlàlěā
+          └ Marched to war against Tǐurọ̀lěā.
+   16400  war.ended              how=siegeLifted toName=Tǐurọ̀lěā name=Èňlàlěā
+          └ The war with Èňlàlěā ended.
+   16400  war.ended              how=siegeLifted toName=Èňlàlěā name=Nāxkòulě
+          └ The war with Nāxkòulě ended.
+   16405  market.dearth          sName=Fọ̄ịkfé
+          └ Dearth in Fọ̄ịkfé — bread at famine prices in the market.
+   16425  settlement.founded     sName=Buitoidu kind=crystallized
+          └ Buitoidu was founded.
+   16425  settlement.founded     sName=Buitoidu city=1
+          └ The city of Buitoidu arose.
+   16425  settlement.founded     sName=Īmpíü kind=crystallized
+          └ Īmpíü was founded.
+   16425  settlement.founded     sName=Īmpíü city=1
+          └ The city of Īmpíü arose.
+   16434  succession.crisis      name=Ňěňní
+          └ The royal line failed — an interregnum of rival claimants.
+   16450  settlement.founded     sName=Syomogyoma kind=crystallized
+          └ Syomogyoma was founded.
+   16450  settlement.founded     sName=Syomogyoma city=1
+          └ The city of Syomogyoma arose.
+   16450  war.began              name=Tǐurọ̀lěā
+          └ Marched to war against Nāxkòulě.
+   16450  war.began              name=Nāxkòulě
+          └ Marched to war against Fọ́ịppè.
+   16475  settlement.founded     sName=Momopado kind=crystallized
+          └ Momopado was founded.
+   16475  settlement.founded     sName=Momopado city=1
+          └ The city of Momopado arose.
+   16500  settlement.founded     sName=Sommosoe kind=crystallized
+          └ Sommosoe was founded.
+   16500  settlement.founded     sName=Sommosoe city=1
+          └ The city of Sommosoe arose.
+   16500  war.began              name=Èňlàlěā
+          └ Marched to war against Tị̄lākú.
+   16525  settlement.founded     sName=Puikydu kind=crystallized
+          └ Puikydu was founded.
+   16525  settlement.founded     sName=Puikydu city=1
+          └ The city of Puikydu arose.
+   16533  market.dearth          sName=Sogyoepa
+          └ Dearth in Sogyoepa — bread at famine prices in the market.
+   16537  polity.seceded         fromName=Sogyoepasyus
+          └ Broke away from Sogyoepasyus in a war of secession.
+   16549  market.dearth          sName=Fōntà
+          └ Dearth in Fōntà — bread at famine prices in the market.
+   16550  war.began              name=Tommodumomoisyus
+          └ Marched to war against Sogyoepasyus.
+   16550  war.began              name=Sogyoepasyus
+          └ Marched to war against Tommodumomoisyus.
+   16550  war.began              name=Ňěňní
+          └ Marched to war against Tommodumomoisyus.
+   16550  polity.shattered       sName=Nāxkòu toName=Tǐurọ̀lěā
+          └ Its capital Nāxkòu fell to Tǐurọ̀lěā — the realm collapsed.
+   16550  polity.ended           how=conquest byName=Tǐurọ̀lěā name=Nāxkòulě
+          └ Fell to Tǐurọ̀lěā and was erased from the map.
+   16550  war.ended              how=siegeLifted toName=Èňlàlěā name=Tị̄lākú
+          └ The war with Tị̄lākú ended.
+   16557  settlement.dissolved   why=core sName=Hóuptàị
+          └ Hóuptàị faded back into the countryside.
+   16558  settlement.dissolved   why=core sName=Tàịňnī
+          └ Tàịňnī faded back into the countryside.
+   16559  settlement.dissolved   why=core sName=Togyomuky
+          └ Togyomuky faded back into the countryside.
+   16563  market.dearth          sName=Tommodumomoi
+          └ Dearth in Tommodumomoi — bread at famine prices in the market.
+   16575  settlement.founded     sName=Sismogyoma kind=crystallized
+          └ Sismogyoma was founded.
+   16575  settlement.founded     sName=Sismogyoma city=1
+          └ The city of Sismogyoma arose.
+   16575  settlement.founded     sName=Tìttíukò kind=crystallized
+          └ Tìttíukò was founded.
+   16575  settlement.founded     sName=Tìttíukò city=1
+          └ The city of Tìttíukò arose.
+   16600  settlement.founded     sName=Nāňpì kind=crystallized
+          └ Nāňpì was founded.
+   16600  settlement.founded     sName=Nāňpì city=1
+          └ The city of Nāňpì arose.
+   16600  war.began              name=Ňěňní
+          └ Marched to war against Puikydu.
+   16600  war.began              name=Tǐurọ̀lěā
+          └ Marched to war against Xụ́ppèlěā.
+   16650  war.began              name=Tǐurọ̀lěā
+          └ Marched to war against Fọ́ịppè.
+   16675  settlement.founded     sName=Līütlàkú city=1
+          └ The city of Līütlàkú arose.
+   16687  polity.submitted       how=submission toName=Ňěňní name=Kètrọ̌ịlěā
+          └ Facing hopeless odds, the court of Kètrọ̌ịlěā bowed to Ňěňní — keeping its throne at the price of tribute.
+   16700  war.began              name=Sogyoepasyus
+          └ Marched to war against Puikydu.
+   16700  polity.shattered       sName=Puikydu toName=Ňěňní
+          └ Its capital Puikydu fell to Ňěňní — the realm collapsed.
+   16700  polity.ended           how=conquest byName=Ňěňní name=Puikydu
+          └ Fell to Ňěňní and was erased from the map.
+   16700  polity.shattered       sName=Xụ́ppè toName=Tǐurọ̀lěā
+          └ Its capital Xụ́ppè fell to Tǐurọ̀lěā — the realm collapsed.
+   16705  settlement.tier        sName=Xụ́ppè
+          └ Xụ́ppè grew into a metropolis (1,071,000 souls).
+   16750  war.began              name=Sogyoepasyus
+          └ Marched to war against Sismogyomasyus.
+   16750  war.began              name=Ňěňní
+          └ Marched to war against Sismogyomasyus.
+   16750  war.began              name=Èňlàlěā
+          └ Marched to war against Kètrọ̌ịlěā.
+   16750  war.began              name=Tǐurọ̀lěā
+          └ Marched to war against Tị̄lākú.
+   16750  war.ended              how=faded toName=Fọ̄ịkfélěā name=Ňěňní
+          └ The war with Ňěňní ended.
+   16755  settlement.dissolved   why=core sName=Sùňní
+          └ Sùňní faded back into the countryside.
+   16756  settlement.dissolved   why=core sName=Pismoe
+          └ Pismoe faded back into the countryside.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  famine.struck          
+          └ A famine gripped the land.
+   16800  settlement.founded     sName=Sopopa kind=crystallized
+          └ Sopopa was founded.
+   16800  settlement.founded     sName=Sopopa city=1
+          └ The city of Sopopa arose.
+   16800  settlement.founded     sName=Nị̀lpù city=1
+          └ The city of Nị̀lpù arose.
+   16800  war.began              name=Sogyoepasyus
+          └ Marched to war against Sogyoepasyus as the succession failed.
+   16800  war.began              name=Sogyoepasyus
+          └ Marched to war against Sogyoepasyus.
+   16800  war.began              name=Ňěňní
+          └ Marched to war against Sogyoepasyus.
+   16800  polity.shattered       sName=Nāxsē toName=Tǐurọ̀lěā
+          └ Its capital Nāxsē fell to Tǐurọ̀lěā — the realm collapsed.
+   16825  settlement.founded     sName=Tosmositoiky kind=crystallized
+          └ Tosmositoiky was founded.
+   16825  settlement.founded     sName=Tosmositoiky city=1
+          └ The city of Tosmositoiky arose.
+   16848  settlement.lapsed      sName=Hìutlà fromName=Tǐurọ̀lěā
+          └ Hìutlà slipped free of Tǐurọ̀lěā.
+   16848  polity.receded         n=1 sName=Hìutlà name=Tǐurọ̀lěā
+          └ The grip of Tǐurọ̀lěā failed, and the marches beyond Hìutlà were left to their own devices.
+   16850  war.began              name=Sogyoepasyus
+          └ Marched to war against Sommosoe.
+   16850  war.began              name=Èňlàlěā
+          └ Marched to war against Sogyoepasyus.
+   16869  market.dearth          sName=Sismogyoma
+          └ Dearth in Sismogyoma — bread at famine prices in the market.
+   16875  settlement.founded     sName=Hìuthị̌ kind=crystallized
+          └ Hìuthị̌ was founded.
+   16875  settlement.founded     sName=Hìuthị̌ city=1
+          └ The city of Hìuthị̌ arose.
+   16885  market.dearth          sName=Sopopa
+          └ Dearth in Sopopa — bread at famine prices in the market.
+   16928  market.dearth          sName=Ňěňní
+          └ Dearth in Ňěňní — bread at famine prices in the market.
+   16934  succession.crisis      name=Sommosoe
+          └ The royal line failed — an interregnum of rival claimants.
+   16950  war.began              name=Sismogyomasyus
+          └ Marched to war against Ňěňní.
+   16950  war.began              name=Kètrọ̌ịlěā
+          └ Marched to war against Èňlàlěā.
+   16950  polity.shattered       sName=Sommosoe toName=Sogyoepasyus
+          └ Its capital Sommosoe fell to Sogyoepasyus — the realm collapsed.
+   16950  polity.ended           how=conquest byName=Sogyoepasyus name=Sommosoe
+          └ Fell to Sogyoepasyus and was erased from the map.
+   16950  war.ended              how=siegeLifted toName=Sismogyomasyus name=Ňěňní
+          └ The war with Ňěňní ended.
+   16951  settlement.dissolved   why=core sName=Nātlà
+          └ Nātlà faded back into the countryside.
+   16952  settlement.dissolved   why=core sName=Fòuňpì
+          └ Fòuňpì faded back into the countryside.
+   16953  settlement.dissolved   why=core sName=Sǐlāị
+          └ Sǐlāị faded back into the countryside.
+   16975  settlement.founded     sName=Ìtlà kind=crystallized
+          └ Ìtlà was founded.
+   16975  settlement.founded     sName=Ìtlà city=1
+          └ The city of Ìtlà arose.
+   16987  polity.seceded         fromName=Sismogyomasyus
+          └ Broke away from Sismogyomasyus in a war of secession.
+   16993  market.dearth          sName=Fùlpū
+          └ Dearth in Fùlpū — bread at famine prices in the market.
+   17000  settlement.founded     sName=Fụ̀ịlhụ̌ kind=crystallized
+          └ Fụ̀ịlhụ̌ was founded.
+   17000  settlement.founded     sName=Fụ̀ịlhụ̌ city=1
+          └ The city of Fụ̀ịlhụ̌ arose.
+   17000  settlement.founded     sName=Sǎfǎkú city=1
+          └ The city of Sǎfǎkú arose.
+   17000  war.began              name=Sismogyomasyus
+          └ Marched to war against Sogyoepasyus.
+   17000  war.ended              how=faded toName=Ommosommosoesyusa name=Ňěňní
+          └ The war with Ňěňní ended; some 11 soldiers never came home.
+   17000  war.ended              how=siegeLifted toName=Sismogyomasyus name=Sogyoepasyus
+          └ The war with Sogyoepasyus ended.
+   17050  settlement.founded     sName=Hīnfǐu kind=crystallized
+          └ Hīnfǐu was founded.
+   17050  settlement.founded     sName=Hīnfǐu city=1
+          └ The city of Hīnfǐu arose.
+   17050  war.began              name=Èňlàlěā
+          └ Marched to war against Tàthị̀kú.
+   17125  market.dearth          sName=Èňlà
+          └ Dearth in Èňlà — bread at famine prices in the market.
+   17135  settlement.dissolved   why=core sName=Ňělhụ̌
+          └ Ňělhụ̌ faded back into the countryside.
+   17136  settlement.dissolved   why=core sName=Túrọ̀
+          └ Túrọ̀ faded back into the countryside.
+   17137  polity.submitted       how=union toName=Fùlpū name=Nǐnfǐulěā
+          └ In the troubles of the succession, the court of Nǐnfǐulěā joined its crown to Fùlpū — one senior throne, two realms.
+   17138  settlement.dissolved   why=core sName=Pọ́fpù
+          └ Pọ́fpù faded back into the countryside.
+   17139  settlement.dissolved   why=core sName=Fị̀lhụ̌
+          └ Fị̀lhụ̌ faded back into the countryside.
+   17143  settlement.dissolved   why=core sName=Nǐnfǐu
+          └ Nǐnfǐu faded back into the countryside.
+   17145  settlement.dissolved   why=core sName=Lụ́ltù
+          └ Lụ́ltù faded back into the countryside.
+   17150  settlement.founded     sName=Tǎmīürụ́ kind=crystallized
+          └ Tǎmīürụ́ was founded.
+   17150  settlement.founded     sName=Tǎmīürụ́ city=1
+          └ The city of Tǎmīürụ́ arose.
+   17150  war.began              name=Sismogyomasyus
+          └ Marched to war against Sopopa.
+   17150  war.began              name=Ňěňní
+          └ Marched to war against Sopopa.
+   17175  settlement.founded     sName=Fǒňtụ̌ị kind=crystallized
+          └ Fǒňtụ̌ị was founded.
+   17175  settlement.founded     sName=Fǒňtụ̌ị city=1
+          └ The city of Fǒňtụ̌ị arose.
+   17175  settlement.founded     sName=Sùlňà city=1
+          └ The city of Sùlňà arose.
+   17200  settlement.founded     sName=Hǐükǔ kind=crystallized
+          └ Hǐükǔ was founded.
+   17200  settlement.founded     sName=Hǐükǔ city=1
+          └ The city of Hǐükǔ arose.
+   17225  settlement.founded     sName=Tàthị̀ kind=crystallized
+          └ Tàthị̀ was founded.
+   17225  settlement.founded     sName=Tàthị̀ city=1
+          └ The city of Tàthị̀ arose.
+   17250  war.began              name=Sopopa
+          └ Marched to war against Sismogyomasyus.
+   17287  settlement.annexed     sName=Fọ̄ịkfé fromName=Fọ̄ịkfélěā toName=Fōntàlě
+          └ Peacefully absorbed Fọ̄ịkfé from Fọ̄ịkfélěā.
+   17287  polity.ended           how=integrated byName=Fōntàlě name=Fọ̄ịkfélěā
+          └ Dissolved — its last cities scattered or fell silent.
+   17300  war.began              name=Fōntàlě
+          └ Marched to war against Fị̀lpìlě.
+   17300  war.began              name=Kètrọ̌ịlěā
+          └ Marched to war against Fị̀lpìlě.
+   17300  war.began              name=Tị̄lākú
+          └ Marched to war against Fị̀lpìlě.
+   17300  war.ended              how=faded toName=Nāxkòulě name=Ňěňní
+          └ The war with Ňěňní ended.
+   17320  settlement.dissolved   why=core sName=Pụ́tlà
+          └ Pụ́tlà faded back into the countryside.
+   17321  settlement.dissolved   why=core sName=Fúkú
+          └ Fúkú faded back into the countryside.
+   17322  settlement.dissolved   why=core sName=Kẹ́
+          └ Kẹ́ faded back into the countryside.
+   17323  settlement.dissolved   why=core sName=Pōukú
+          └ Pōukú faded back into the countryside.
+   17324  settlement.dissolved   why=core sName=Lǎppè
+          └ Lǎppè faded back into the countryside.
+   17325  settlement.dissolved   why=core sName=Pụ̌mpéü
+          └ Pụ̌mpéü faded back into the countryside.
+   17326  settlement.dissolved   why=core sName=Fọ̌ịmpéü
+          └ Fọ̌ịmpéü faded back into the countryside.
+   17327  settlement.dissolved   why=core sName=Kèhsē
+          └ Kèhsē faded back into the countryside.
+   17329  settlement.dissolved   why=core sName=Ngǎịstù
+          └ Ngǎịstù faded back into the countryside.
+   17330  settlement.dissolved   why=core sName=Nị̀ppè
+          └ Nị̀ppè faded back into the countryside.
+   17331  settlement.dissolved   why=core sName=Xóultù
+          └ Xóultù faded back into the countryside.
+   17332  settlement.dissolved   why=core sName=Nèlērọ̀
+          └ Nèlērọ̀ faded back into the countryside.
+   17333  settlement.dissolved   why=core sName=Lóupíkò
+          └ Lóupíkò faded back into the countryside.
+   17334  settlement.dissolved   why=core sName=Lènūrọ̀
+          └ Lènūrọ̀ faded back into the countryside.
+   17350  settlement.founded     sName=Lǎtrụ̄ị kind=crystallized
+          └ Lǎtrụ̄ị was founded.
+   17350  settlement.founded     sName=Lǎtrụ̄ị city=1
+          └ The city of Lǎtrụ̄ị arose.
+   17350  settlement.founded     sName=Tàtǐkú city=1
+          └ The city of Tàtǐkú arose.
+   17350  war.began              name=Fị̀lpìlě
+          └ Marched to war against Ňěňní.
+   17367  market.dearth          sName=Sogyoepa
+          └ Dearth in Sogyoepa — bread at famine prices in the market.
+   17375  settlement.founded     sName=Sīuňpì kind=crystallized
+          └ Sīuňpì was founded.
+   17375  settlement.founded     sName=Sīuňpì city=1
+          └ The city of Sīuňpì arose.
+   17375  settlement.founded     sName=Pāịpákú city=1
+          └ The city of Pāịpákú arose.
+   17400  settlement.founded     sName=Ǎịmràkú kind=crystallized
+          └ Ǎịmràkú was founded.
+   17400  settlement.founded     sName=Ǎịmràkú city=1
+          └ The city of Ǎịmràkú arose.
+   17400  settlement.founded     sName=Sǔtūrụ́ city=1
+          └ The city of Sǔtūrụ́ arose.
+   17400  war.ended              how=faded toName=Nāxkòulě name=Tị̄lākú
+          └ The war with Tị̄lākú ended; some 1 soldiers never came home.
+   17425  settlement.founded     sName=Há kind=crystallized
+          └ Há was founded.
+   17425  settlement.founded     sName=Há city=1
+          └ The city of Há arose.
+   17425  settlement.founded     sName=Ìxkòu city=1
+          └ The city of Ìxkòu arose.
+   17429  settlement.tier        sName=Fọ́ịppè
+          └ Fọ́ịppè grew into a city (11,000 souls).
+   17437  polity.seceded         fromName=Tǐurọ̀lěā
+          └ Broke away from Tǐurọ̀lěā in a war of secession.
+   17450  settlement.founded     sName=Xóuthị̌ kind=crystallized
+          └ Xóuthị̌ was founded.
+   17450  settlement.founded     sName=Xóuthị̌ city=1
+          └ The city of Xóuthị̌ arose.
+   17450  settlement.founded     sName=Pụ́ttīu city=1
+          └ The city of Pụ́ttīu arose.
+   17450  war.began              name=Èňlàlěā
+          └ Marched to war against Láịlěā.
+   17450  war.ended              how=siegeLifted toName=Sopopa name=Sismogyomasyus
+          └ The war with Sismogyomasyus ended.
+   17475  settlement.founded     sName=Fị́sī kind=crystallized
+          └ Fị́sī was founded.
+   17475  settlement.founded     sName=Fị́sī city=1
+          └ The city of Fị́sī arose.
+   17475  settlement.founded     sName=Pụ̄lhụ̀kò city=1
+          └ The city of Pụ̄lhụ̀kò arose.
+   17500  settlement.founded     sName=Tīrụ́ kind=crystallized
+          └ Tīrụ́ was founded.
+   17500  settlement.founded     sName=Tīrụ́ city=1
+          └ The city of Tīrụ́ arose.
+   17500  settlement.founded     sName=Fụ̀ịlpù city=1
+          └ The city of Fụ̀ịlpù arose.
+   17500  war.began              name=Sopopa
+          └ Marched to war against Sogyoepasyus.
+   17501  settlement.dissolved   why=core sName=Ǎịmràkò
+          └ Ǎịmràkò faded back into the countryside.
+   17503  settlement.dissolved   why=core sName=Kètrọ̌ị
+          └ Kètrọ̌ị faded back into the countryside.
+   17504  settlement.dissolved   why=core sName=Lǎptàị
+          └ Lǎptàị faded back into the countryside.
+   17506  settlement.dissolved   why=core sName=Pēüffìkú
+          └ Pēüffìkú faded back into the countryside.
+   17507  settlement.dissolved   why=core sName=Ètlà
+          └ Ètlà faded back into the countryside.
+   17509  settlement.dissolved   why=core sName=Èňtọ̄ị
+          └ Èňtọ̄ị faded back into the countryside.
+   17510  settlement.dissolved   why=core sName=Pīuyórọ̀
+          └ Pīuyórọ̀ faded back into the countryside.
+   17512  settlement.dissolved   why=core sName=Ňụ̄kò
+          └ Ňụ̄kò faded back into the countryside.
+   17513  settlement.dissolved   why=core sName=Xụ̀nfǐu
+          └ Xụ̀nfǐu faded back into the countryside.
+   17514  settlement.dissolved   why=core sName=Ètlà
+          └ Ètlà faded back into the countryside.
+   17515  settlement.dissolved   why=core sName=Tǎkú
+          └ Tǎkú faded back into the countryside.
+   17516  settlement.dissolved   why=core sName=Yókò
+          └ Yókò faded back into the countryside.
+   17517  settlement.dissolved   why=core sName=Fǒlpù
+          └ Fǒlpù faded back into the countryside.
+   17518  settlement.dissolved   why=core sName=Kètlà
+          └ Kètlà faded back into the countryside.
+   17525  settlement.founded     sName=Ňīffí kind=crystallized
+          └ Ňīffí was founded.
+   17525  settlement.founded     sName=Ňīffí city=1
+          └ The city of Ňīffí arose.
+   17525  settlement.founded     sName=Xụ́xkòu city=1
+          └ The city of Xụ́xkòu arose.
+   17550  settlement.founded     sName=Xụ́lňà kind=crystallized
+          └ Xụ́lňà was founded.
+   17550  settlement.founded     sName=Xụ́lňà city=1
+          └ The city of Xụ́lňà arose.
+   17550  settlement.founded     sName=Fàlī city=1
+          └ The city of Fàlī arose.
+   17550  polity.shattered       sName=Nị̀lpù toName=Kètrọ̌ịlěā
+          └ Its capital Nị̀lpù fell to Kètrọ̌ịlěā — the realm collapsed.
+   17550  polity.ended           how=conquest byName=Kètrọ̌ịlěā name=Èňlàlěā
+          └ Fell to Kètrọ̌ịlěā and was erased from the map.
+   17569  settlement.tier        sName=Láị
+          └ Láị grew into a metropolis (821,000 souls).
+   17575  market.dearth          sName=Fọ̄ịkfé
+          └ Dearth in Fọ̄ịkfé — bread at famine prices in the market.
+   17575  settlement.founded     sName=Sǎfǎkú kind=crystallized
+          └ Sǎfǎkú was founded.
+   17575  settlement.founded     sName=Sǎfǎkú city=1
+          └ The city of Sǎfǎkú arose.
+   17575  settlement.founded     sName=Tāptáịkò city=1
+          └ The city of Tāptáịkò arose.
+   17587  polity.submitted       how=submission toName=Ňěňní name=Sogyoepasyus
+          └ Facing hopeless odds, the court of Sogyoepasyus bowed to Ňěňní — keeping its throne at the price of tribute.
+   17587  polity.submitted       how=union toName=Láịlěā name=Tị̄lākú
+          └ In the troubles of the succession, the court of Tị̄lākú joined its crown to Láịlěā — one senior throne, two realms.
+   17587  settlement.annexed     sName=Sogyoepa fromName=Sogyoepasyus toName=Sogyoepasyus
+          └ Peacefully absorbed Sogyoepa from Sogyoepasyus.
+   17588  market.dearth          sName=Láị
+          └ Dearth in Láị — bread at famine prices in the market.
+   17600  settlement.founded     sName=Fùlpū kind=crystallized
+          └ Fùlpū was founded.
+  … 2424 more events elided
+
+=== SETTLEMENT LIFE TABLE (everything ever settled in the box) ===
+  id     name           first   last    peak   tier  death (type @ step)
+      1  Ňěňní        13500   25000   10880    3   (alive at end)
+      2  Fùlpū        13500   25000    4698    3   (alive at end)
+      3  Kèňtọ̄ị     13600   15100      15    2   dissolved(core) @ 15197
+      4  Fōnfǐu       13600   15100      15    2   dissolved(core) @ 15196
+      5  Nāthị̌       13600   15100      15    2   dissolved(core) @ 15195
+      6  Lǎxkòu       13600   15300      15    2   dissolved(core) @ 15394
+      8  Sǔsfá        13700   15300      15    2   dissolved(core) @ 15392
+      9  Fǒptàị      13700   15300      15    2   dissolved(core) @ 15391
+     10  Ňúpīkò      13700   15300      15    2   dissolved(core) @ 15390
+     11  Ňǐlňà        13700   15300      15    2   dissolved(core) @ 15389
+     12  Xòufpù       13800   15300      15    2   dissolved(core) @ 15388
+     13  Lǎlpù        13800   15300      15    2   dissolved(core) @ 15387
+     14  Tàstù        13800   15300      15    2   dissolved(core) @ 15386
+     15  Ňěxkòu       13800   15500      15    2   dissolved(core) @ 15585
+     16  Nīpsē        13900   15500      15    2   dissolved(core) @ 15584
+     17  Lẹ́fị̌kú    13900   15500      15    2   dissolved(core) @ 15583
+     18  Fōnfǐu       13900   15500      15    2   dissolved(core) @ 15582
+     19  Hǐlhụ̌       13900   15500      15    2   dissolved(core) @ 15581
+     20  Xóuňpì       14000   15500      15    2   dissolved(core) @ 15580
+     21  Lá            14000   15500      15    2   dissolved(core) @ 15579
+     22  Lụ́ňpì       14000   15500      15    2   dissolved(core) @ 15578
+     23  Mīnglì       14000   15700      15    2   dissolved(core) @ 15777
+     24  Ňúpī         14100   15700      15    2   dissolved(core) @ 15776
+     25  Lǎtlà        14100   15700      15    2   dissolved(core) @ 15775
+     26  Xòutà        14100   15700      15    2   dissolved(core) @ 15774
+     27  Fòutrọ̌ị    14300   15900      15    2   dissolved(core) @ 15973
+     28  Pọ̄ịtrọ́ị  14500   16100      15    2   dissolved(core) @ 16172
+     30  Sogyoepa       14600   22500    3879    3   abandoned @ 22517
+     31  Omomessi       14600   16100      15    2   dissolved(core) @ 16169
+     32  Dumomoi        14600   16300      15    2   dissolved(core) @ 16368
+     33  Dosudu         14600   16300      15    2   dissolved(core) @ 16367
+     34  Umkyoi         14700   16300      15    2   dissolved(core) @ 16366
+     35  Sùlhụ̌       14700   16300      15    2   dissolved(core) @ 16365
+     36  Rimmopuiky     14700   16300      15    2   dissolved(core) @ 16364
+     37  Mumommoe       14700   16300      15    2   dissolved(core) @ 16363
+     38  Nokyopa        14700   16300      15    2   dissolved(core) @ 16362
+     39  Bommodu        14800   16300      15    2   dissolved(core) @ 16361
+     40  Pomponsomdu    14800   16300      15    2   dissolved(core) @ 16360
+     41  Togyomuky      14800   16500      15    2   dissolved(core) @ 16559
+     42  Tàịňnī      14800   16500      15    2   dissolved(core) @ 16558
+     43  Hóuptàị     15000   16500      15    2   dissolved(core) @ 16557
+     44  Pismoe         15100   16700      15    2   dissolved(core) @ 16756
+     45  Sùňní        15100   16700      15    2   dissolved(core) @ 16755
+     47  Sǐlāị       15300   16900      15    2   dissolved(core) @ 16953
+     48  Fòuňpì       15300   16900      15    2   dissolved(core) @ 16952
+     49  Nātlà        15300   16900      15    2   dissolved(core) @ 16951
+     50  Fọ̄ịkfé     15300   19900    1243    3   abandoned @ 19942
+     55  Lụ́ltù       15500   17100      15    2   dissolved(core) @ 17145
+     57  Nǐnfǐu       15500   17100      15    2   dissolved(core) @ 17143
+     59  Fōntà        15500   17800    1312    3   withered @ 17836
+     61  Fị̀lhụ̌      15500   17100      15    2   dissolved(core) @ 17139
+     64  Túrọ̀        15600   17100      15    2   dissolved(core) @ 17136
+     66  Lènūrọ̀     15600   17300      15    2   dissolved(core) @ 17334
+     68  Nèlērọ̀     15600   17300      15    2   dissolved(core) @ 17332
+     70  Nị̀ppè       15600   17300      15    2   dissolved(core) @ 17330
+     72  Ommosommosoe   15700   18300      31    2   dissolved(core) @ 18328
+     73  Kèhsē        15700   17300      13    2   dissolved(core) @ 17327
+     75  Pụ̌mpéü      15700   17300      15    2   dissolved(core) @ 17325
+     77  Pōukú        15700   17300      15    2   dissolved(core) @ 17323
+     79  Fúkú         15700   17300      15    2   dissolved(core) @ 17321
+     82  Kètlà        15800   17500      16    2   dissolved(core) @ 17518
+     84  Yókò         15800   17500      15    2   dissolved(core) @ 17516
+     86  Ètlà         15800   17500      15    2   dissolved(core) @ 17514
+     88  Ňụ̄kò        15800   17500      15    2   dissolved(core) @ 17512
+     90  Pīuyórọ̀    15900   17500      15    2   dissolved(core) @ 17510
+     93  Ètlà         15900   17500      15    2   dissolved(core) @ 17507
+     96  Lǎptàị      15900   17500      15    2   dissolved(core) @ 17504
+     99  Ǎịmràkò    15900   17500      15    2   dissolved(core) @ 17501
+    103  Nèrọ̀        16000   17600      15    2   dissolved(core) @ 17697
+    105  Hǐňsē        16000   17600      15    2   dissolved(core) @ 17695
+    107  Lụ̄kfé       16000   17600      15    2   dissolved(core) @ 17693
+    108  Ǎịmràrọ̀   16000   17600      15    2   dissolved(core) @ 17692
+    109  Láị          16100   21400    6122    3   abandoned @ 21422
+    110  Èňlà         16100   18000    5622    3   abandoned @ 18010
+    114  Tommodumomoi   16200   20100    2765    2   abandoned @ 20161
+    115  Ǔltǔrọ̀     16200   17800      15    2   dissolved(core) @ 17885
+    116  Pemowumkyoi    16300   17800      15    2   dissolved(core) @ 17884
+    120  Epem           16400   18000      15    2   dissolved(core) @ 18080
+    121  Ngàịtsī     16400   18000      15    2   dissolved(core) @ 18079
+    124  Ommosommosoe   16400   18000      15    2   dissolved(core) @ 18076
+    125  Nị̀trụ̄ị    16400   18000      16    2   dissolved(core) @ 18075
+    128  Buitoidu       16500   18000      15    2   dissolved(core) @ 18072
+    129  Īmpíü        16500   18000      16    2   dissolved(core) @ 18071
+    132  Syomogyoma     16500   18000      15    2   dissolved(core) @ 18068
+    135  Momopado       16500   18200      15    2   dissolved(core) @ 18265
+    139  Sommosoe       16500   20500    2428    2   abandoned @ 20593
+    142  Puikydu        16600   18200      15    2   dissolved(core) @ 18258
+    147  Sismogyoma     16600   20200    2277    2   abandoned @ 20288
+    148  Tìttíukò    16600   18200      15    2   dissolved(core) @ 18252
+    151  Nāňpì        16600   18200      17    2   dissolved(core) @ 18249
+    173  Sopopa         16800   20500    2773    3   abandoned @ 20575
+    177  Tosmositoiky   16900   18600      15    2   dissolved(core) @ 18623
+    178  Hìuthị̌      16900   20400    3280    3   abandoned @ 20471
+    180  Ìtlà         17000   18600      15    2   dissolved(core) @ 18620
+    182  Fụ̀ịlhụ̌    17000   18600      15    2   dissolved(core) @ 18618
+    184  Hīnfǐu       17100   18800      16    2   dissolved(core) @ 18816
+    186  Tǎmīürụ́    17200   18700      15    2   abandoned @ 18792
+    187  Fǒňtụ̌ị     17200   18800      15    2   dissolved(core) @ 18813
+    189  Hǐükǔ        17200   18700      15    2   abandoned @ 18798
+    190  Tàthị̀       17300   18700      16    2   abandoned @ 18788
+    196  Lǎtrụ̄ị     17400   18800      15    2   abandoned @ 18819
+    199  Sīuňpì       17400   18800      15    2   abandoned @ 18819
+    201  Ǎịmràkú    17400   18700      15    2   abandoned @ 18798
+    205  Há            17500   18800      13    2   abandoned @ 18805
+    208  Xóuthị̌      17500   20100      25    2   dissolved(core) @ 20192
+    210  Fị́sī        17500   18800      15    2   abandoned @ 18805
+    212  Tīrụ́        17500   18800      15    2   abandoned @ 18819
+    214  Ňīffí        17600   18800      13    2   abandoned @ 18805
+    216  Xụ́lňà       17600   18800      15    2   abandoned @ 18819
+    218  Sǎfǎkú      17600   18800      15    2   abandoned @ 18819
+    220  Fùlpū        17600   18800      15    2   abandoned @ 18819
+    224  Lụ́ňpì       17700   18800      15    2   abandoned @ 18819
+    226  Pụ́ňpì       17700   18800      15    2   abandoned @ 18819
+    228  Lǐfpúkò     17700   18800      16    2   abandoned @ 18820
+    230  Fǒu'kū       17700   18800      15    2   abandoned @ 18819
+    231  Lǎ            17800   18800      15    2   abandoned @ 18839
+    233  Ǔltǔrụ́     17800   18800      15    2   abandoned @ 18839
+    238  Lāịlíkú    17800   18800      15    2   abandoned @ 18839
+    242  Xūkóukò     17800   18800      16    2   abandoned @ 18821
+    245  Lǐlīu        17900   18800      16    2   abandoned @ 18840
+    248  Pụ̌ịtrụ̀ị  17900   18800      13    2   abandoned @ 18826
+    252  Xūnùkò      17900   18800      16    2   abandoned @ 18820
+    261  Fị̌nglì      18100   18800      16    2   abandoned @ 18841
+    263  Situikypa      18100   18800      15    2   abandoned @ 18826
+    264  Lụ̀nlà       18100   18800      15    2   abandoned @ 18819
+    267  Usdu           18100   18800      15    2   abandoned @ 18819
+    268  Hìuptàị     18100   18800      15    2   abandoned @ 18819
+    271  Puikypa        18200   18800      15    2   abandoned @ 18826
+    272  Xàlị̀rụ́    18200   18800      15    2   abandoned @ 18819
+    274  Gyadui         18200   18800      15    2   abandoned @ 18839
+    277  Hìulpù       18200   18800      13    2   abandoned @ 18805
+    280  Lákú         18300   18800      15    2   abandoned @ 18819
+    282  Simomuim       18300   18800      15    2   abandoned @ 18839
+    283  Tǐ            18300   18800      15    2   abandoned @ 18819
+    287  Tàstù        18300   18800      15    2   abandoned @ 18819
+    290  Ǎịmràkú    18400   18800      16    2   abandoned @ 18842
+    298  Dyuimodu       18400   18800      15    2   abandoned @ 18819
+    299  Xụ́tlà       18400   18800      16    2   abandoned @ 18822
+    321  Kyumu          18700   19900    2795    3   abandoned @ 19961
+    322  Tàịňnīkú   18700   20000      15    2   abandoned @ 20019
+    324  Rimobuimmiu    18700   20300    3104    2   abandoned @ 20305
+    325  Píkfìrụ́    18700   20000      15    2   abandoned @ 20019
+    326  Hóulňà       18700   20000      15    2   abandoned @ 20019
+    343  Fị́là        18800   20000      15    2   abandoned @ 20019
+    347  Rūňù         18900   20000      15    2   abandoned @ 20019
+    351  Summusuipa     18900   19900      15    2   abandoned @ 19998
+    352  Fǐtí         18900   19900      15    2   abandoned @ 19998
+    362  Pumpunsum      18900   19900      15    2   abandoned @ 19988
+    363  Pụ̄lhụ̀rụ́  18900   20000      15    2   abandoned @ 20019
+    372  Sismomissi     18900   20000      15    2   abandoned @ 20019
+    373  Mùpíükò     18900   20000      15    2   abandoned @ 20019
+    380  Umkyui         19000   20000      15    2   abandoned @ 20028
+    381  Nị̀tlà       19000   20000      15    2   abandoned @ 20039
+    388  Simomuim       19000   19900      15    2   abandoned @ 19998
+    389  Nītrụ̄ị     19000   20000      15    2   abandoned @ 20019
+    396  Mumomuim       19000   19900      15    2   abandoned @ 19998
+    397  Ìxkòu        19000   20000      15    2   abandoned @ 20019
+    405  Tàthị̀       19000   19900      15    2   abandoned @ 19988
+    409  Īmpíü        19100   21300    5155    3   abandoned @ 21368
+    412  Yùfpù        19100   20000      15    2   abandoned @ 20040
+    416  Xụ̀ftà       19100   22900    5380    3   abandoned @ 22915
+    419  Hìuňpì       19100   20000      15    2   abandoned @ 20039
+    421  Xụ̄nglì      19200   20000      16    2   abandoned @ 20027
+    423  Sǔ'là        19200   20000      15    2   abandoned @ 20026
+    427  Lǎtlà        19200   19400      15    2   abandoned @ 19441
+    430  Xụ́lhụ̌      19200   20000      15    2   abandoned @ 20026
+    437  Ǔltǔ         19300   20000      13    2   abandoned @ 20005
+    443  Nị̀thị̌      19300   20000      15    2   abandoned @ 20039
+    448  Hóuttīu      19300   20000      15    2   abandoned @ 20039
+    452  Kìhlà        19300   20000      15    2   abandoned @ 20039
+    456  Fị̀ňpì       19400   20000      16    2   abandoned @ 20041
+    459  Kǎňtụ̀ịkú  19400   20000      15    2   abandoned @ 20039
+    462  Pụ́ltù       19400   20000      15    2   abandoned @ 20039
+    466  Mǐupíürụ́   19400   20000      15    2   abandoned @ 20039
+    471  Fị̀ttīu      19500   20000      15    2   abandoned @ 20019
+    474  Xụ̀fkū       19500   20000      15    2   abandoned @ 20039
+    478  Nị̀tlà       19500   20000      15    2   abandoned @ 20026
+    479  Līụfíükú   19500   20000      15    2   abandoned @ 20039
+    481  Xóulhụ̌      19600   20000      13    2   abandoned @ 20026
+    483  Tārụ́        19600   20000      15    2   abandoned @ 20039
+    484  Nị́ffí       19600   20000      15    2   abandoned @ 20039
+    487  Hǐfụ̄ị      19600   20000      15    2   abandoned @ 20039
+    491  Fị̀ňtụ̌ị    19700   20000      15    2   abandoned @ 20039
+    503  Nītlà        20000   20600      15    2   abandoned @ 20626
+    506  Pụ́ňpì       20000   20600      15    2   abandoned @ 20639
+    508  Imokyumu       20000   20400      15    2   abandoned @ 20449
+    509  Fǐulpūrụ́   20000   20600      15    2   abandoned @ 20639
+    510  Upa            20100   25000    3974    3   (alive at end)
+    511  Hǐulī        20100   20600      15    2   abandoned @ 20639
+    517  Amomuisiu      20100   20600      15    2   abandoned @ 20639
+    518  Xòusī        20100   20600      15    2   abandoned @ 20639
+    526  Umiu           20100   20600      15    2   abandoned @ 20639
+    527  Sùňtụ̌ị     20100   20600      15    2   abandoned @ 20639
+    534  Umosii         20100   20600      15    2   abandoned @ 20629
+    535  Xóultù       20100   20600      16    2   abandoned @ 20641
+    541  Syumopuikyu    20200   20600      13    2   abandoned @ 20626
+    542  Tàrụ́        20200   20600      13    2   abandoned @ 20626
+    551  Tǎ            20200   20600      15    2   abandoned @ 20639
+    565  Bummopadu      20200   20600      15    2   abandoned @ 20613
+    566  Xūkóukò     20200   20600      15    2   abandoned @ 20639
+    578  Pụ́tlà       20200   20600      15    2   abandoned @ 20639
+    588  Hǐlhụ̌       20300   20600      15    2   abandoned @ 20639
+    595  Fùppīkò     20300   20600      15    2   abandoned @ 20639
+    602  Nị́kū        20300   20600      15    2   abandoned @ 20639
+    609  Kùrụ́        20300   20600      15    2   abandoned @ 20639
+    614  Mumu           20400   23300    2656    2   abandoned @ 23398
+    615  Hīffí        20400   20600      15    2   abandoned @ 20639
+    623  Tàthị̀       20400   20600      15    2   abandoned @ 20639
+    627  Tugyumu        20400   20600      15    2   abandoned @ 20626
+    628  Sīurụ́       20400   20600      15    2   abandoned @ 20639
+    630  Sīkò         20400   21200      15    2   abandoned @ 21226
+    633  Fị̀tlà       20500   21200      15    2   abandoned @ 21239
+    639  Buimmiu        20500   22100      16    2   dissolved(core) @ 22161
+    640  Sǎfǎkú      20500   21200      15    2   abandoned @ 21244
+    644  Lǐfpúkò     20500   21200      15    2   abandoned @ 21239
+    649  Lǎtlà        20500   21400      15    2   abandoned @ 21488
+    656  Fị̀lpì       20600   21400      15    2   abandoned @ 21488
+    659  Bummopuikyu    20600   22000    2986    3   abandoned @ 22081
+    660  Xóulhụ̌      20600   21400      15    2   abandoned @ 21488
+    664  Ǎịmrà       20600   21200      15    2   abandoned @ 21239
+    668  Muibudu        20600   22300      15    2   dissolved(core) @ 22332
+    669  Hìutlà       20600   21600      15    2   abandoned @ 21638
+    672  Mamogyuma      20700   22300      15    2   dissolved(core) @ 22328
+    673  Ňǐlňà        20700   21600      15    2   abandoned @ 21638
+    682  Nukyudu        20700   22300      15    2   dissolved(core) @ 22318
+    683  Ňǐxkòu       20700   21700      15    2   withered @ 21742
+    691  Sumiu          20700   22300      15    2   dissolved(core) @ 22309
+    692  Hǔlìkò      20700   21700      15    2   withered @ 21742
+    700  Muimosumsusa   20700   22400      15    2   dissolved(core) @ 22500
+    701  Nǒxù         20700   21400      15    2   abandoned @ 21488
+    710  Muimonukyu     20800   24000    2055    3   withered @ 24043
+    711  Sumsusadu      20800   25000      16    2   (alive at end)
+    718  Tumoti         20800   22400      17    2   dissolved(core) @ 22482
+    719  Amomuibu       20800   22400      15    2   dissolved(core) @ 22481
+    726  Rimmomuibu     20800   22400      17    2   dissolved(core) @ 22474
+    731  Pumpunsu       20800   22400      16    2   dissolved(core) @ 22469
+    737  Imotugyumu     20900   22400      15    2   dissolved(core) @ 22463
+    742  Kyiridu        20900   22400      16    2   dissolved(core) @ 22458
+    749  Mamosumsusa    20900   22600      15    2   dissolved(core) @ 22651
+    754  Situipa        20900   22600      15    2   dissolved(core) @ 22646
+    759  Summusuimiu    21000   22600      18    2   dissolved(core) @ 22641
+    760  Kyumudu        21000   22600      19    2   dissolved(core) @ 22640
+    763  Pụ̄lhụ̀      21000   21200      15    2   abandoned @ 21239
+    766  Hǐukfí       21000   21200      15    2   abandoned @ 21239
+    769  Kyimmotisui    21000   22600      18    2   dissolved(core) @ 22631
+    770  Sǔkfí        21000   22600      15    2   dissolved(core) @ 22630
+    779  Fùppī        21100   22800      15    2   dissolved(core) @ 22821
+    785  Yùtà         21100   22800      15    2   dissolved(core) @ 22815
+    790  Fùppīkú     21100   22800      16    2   dissolved(core) @ 22810
+    793  Sārǐükò     21100   22800      15    2   dissolved(core) @ 22807
+    799  Líụňākò    21200   22800      58    1   dissolved(core) @ 22801
+    803  Pụ́ltà       21200   22700      15    2   dissolved(core) @ 22797
+    805  Tumogyuma      21200   25000    2778    3   (alive at end)
+    809  Umopa          21200   25000    3321    3   (alive at end)
+    810  Ipa            21200   22900      15    2   dissolved(core) @ 22990
+    812  Sismoyipimsi   21300   22900      15    2   dissolved(core) @ 22988
+    815  Mummumiu       21300   22900      15    2   withered @ 22921
+    827  Simomuibu      21300   22900      15    2   dissolved(core) @ 22973
+    836  Dylobfu        21300   25000    3544    3   (alive at end)
+    845  Phaphut'eb     21400   22400      15    2   abandoned @ 22419
+    854  Mumoyipimsi    21400   22600      15    2   abandoned @ 22688
+    865  Amosummusui    21400   22600      15    2   abandoned @ 22688
+    875  Yuphut'eb      21400   22400      15    2   abandoned @ 22419
+    886  Yaghat         21500   22400      15    2   abandoned @ 22419
+    895  Yuphut'eb      21500   22400      15    2   abandoned @ 22419
+    902  Datholay       21500   22400      15    2   abandoned @ 22419
+    908  Dapboyumf      21500   22400      15    2   abandoned @ 22419
+    914  P'amyum        21600   22300      15    2   abandoned @ 22398
+    921  Botholayghat   21600   22300      15    2   abandoned @ 22398
+    924  Pefibuth       21600   22300      15    2   abandoned @ 22398
+    928  Yamfapdat      21600   22400      15    2   abandoned @ 22405
+    949  Yayiyayaphgha  21700   22400      15    2   abandoned @ 22419
+    956  Zyoypakhat     21700   22400      15    2   abandoned @ 22419
+   1040  Tusmobimgyi    22100   24300    2106    3   abandoned @ 24312
+   1058  Ukymobimgyi    22200   25000      87    2   (alive at end)
+   1066  Tugyumupa      22400   24600    1616    2   abandoned @ 24625
+   1074  Summusuidu     22400   23000      15    2   abandoned @ 23028
+   1083  Mui            22400   23000      15    2   abandoned @ 23034
+   1086  Suimoyipimsi   22400   23500      15    2   withered @ 23544
+   1092  Pụ̀fpù       22500   23600      16    2   abandoned @ 23648
+   1099  Kìtlà        22500   24100      15    2   dissolved(core) @ 24101
+   1114  Ínlà         22500   24000      15    2   dissolved(core) @ 24086
+   1128  Simomissi      22500   23000      15    2   abandoned @ 23033
+   1129  Lǎptàị      22500   24100      15    2   withered @ 24143
+   1143  Pamiu          22600   23000      15    2   abandoned @ 23035
+   1144  Tāptáị      22600   24100      16    2   withered @ 24146
+   1150  Bibimiu        22600   23000      15    2   abandoned @ 23045
+   1151  Yípá         22600   23600      15    2   abandoned @ 23630
+   1168  Ngàịltù     22600   23600      16    2   abandoned @ 23632
+   1181  Srap'uph       22600   23200      16    2   abandoned @ 23288
+   1190  Ňǐupīkò     22700   24100      15    2   withered @ 24145
+   1195  Dupa           22700   23500      15    2   withered @ 23543
+   1196  Tụ̄ịfǔkú   22700   24100      16    2   withered @ 24148
+   1202  Mu             22700   23500      15    2   withered @ 23545
+   1203  Peyamfap       22700   25000    4846    3   (alive at end)
+   1210  Yappakhat      22700   23500      15    2   withered @ 23543
+   1213  Muimomuisiu    22800   23500      15    2   withered @ 23543
+   1214  Yup'inum       22800   23500      15    2   withered @ 23545
+   1222  Sumsusamiu     22800   23000      15    2   abandoned @ 23039
+   1223  Pụ́ppì       22800   23600      15    2   abandoned @ 23638
+   1229  Bummowu        22800   23500      15    2   withered @ 23545
+   1230  Fǒu'là       22800   24200      82    2   withered @ 24282
+   1235  Imopuikyu      22800   24100      17    2   withered @ 24160
+   1236  Zomtammolz     22800   23600      15    2   abandoned @ 23647
+   1242  Srap'uph       22900   23700      13    2   abandoned @ 23738
+   1249  Zomyamphib     22900   24100      15    2   withered @ 24143
+   1255  P'ayabghat     22900   23700      15    2   abandoned @ 23738
+   1262  Yapbobabomp    22900   24100      26    2   withered @ 24199
+   1266  Dayayaph       23000   23700      13    2   abandoned @ 23738
+   1274  Fíutá        23000   24100      15    2   withered @ 24145
+   1286  Īkò          23000   24100      15    2   withered @ 24145
+   1298  Ìlpù         23000   24100      15    2   withered @ 24145
+   1310  Tụ̌ịrụ́     23100   24100      15    2   withered @ 24130
+   1327  Summusuidu     23100   24100      15    2   withered @ 24146
+   1328  Níufīukú    23100   23700      15    2   abandoned @ 23738
+   1347  Tusmodu        23100   24100      15    2   withered @ 24144
+   1348  Ngụ̀ịkò     23100   24100      15    2   withered @ 24143
+   1359  Summusui       23100   24000      15    2   abandoned @ 24038
+   1360  Fị̀ňtụ̌ị    23100   24100      15    2   withered @ 24143
+   1369  Xìīrụ́      23200   23700      13    2   abandoned @ 23738
+   1375  Ǐnlà         23200   24100      15    2   withered @ 24143
+   1381  Ňímrá        23200   24100      15    2   withered @ 24143
+   1390  Líụňākò    23200   25000    4874    3   (alive at end)
+   1398  Nugyu          23300   24100      15    2   withered @ 24144
+   1402  Missi          23300   24100      15    2   withered @ 24143
+   1416  Pimomuisiu     23400   24100      15    2   withered @ 24144
+   1421  Ibimsidu       23400   24100      15    2   withered @ 24145
+   1429  Zyodamfapud    23400   23600      15    2   abandoned @ 23639
+   1432  Peyump'aph     23400   24800      15    2   abandoned @ 24833
+   1435  Srofulp'abdat  23500   24800      13    2   abandoned @ 24817
+   1439  Pofibuth       23500   24800      15    2   abandoned @ 24833
+   1448  Dapyump'aph    23500   24800      15    2   abandoned @ 24833
+   1474  Muimbiupa      23600   25000     113    2   (alive at end)
+   1475  Phuk           23600   24800      15    2   abandoned @ 24833
+   1488  Sugyadu        23600   25000      15    2   (alive at end)
+   1489  Yaghat         23600   24800      15    2   abandoned @ 24833
+   1513  Siipa          23700   25000      15    2   (alive at end)
+   1523  Mīnglìkú    23700   25000      15    2   (alive at end)
+   1538  Sí            23700   25000      15    2   (alive at end)
+   1550  Nị́là        23700   24800      15    2   abandoned @ 24844
+   1563  Líụňā       23800   24800      13    2   abandoned @ 24850
+   1577  Lụ̄nlārụ́   23800   24900      15    2   abandoned @ 24938
+   1590  Xóulpù       23800   25000      15    2   (alive at end)
+   1594  Lǐükú        23900   24900      15    2   abandoned @ 24938
+   1597  Damp'al        23900   25000      15    2   (alive at end)
+   1600  Dapbobabomp    23900   24800      15    2   abandoned @ 24819
+   1606  Dapfaphut'eb   23900   24800      15    2   abandoned @ 24819
+   1611  Gatammolzghat  24000   24800      15    2   abandoned @ 24819
+   1617  Sratholay      24000   24800      15    2   abandoned @ 24822
+   1620  Yomkhdat       24000   24800      15    2   abandoned @ 24827
+   1625  Phamfibuthyum  24000   24800      15    2   abandoned @ 24819
+   1645  U              24100   24700      15    2   abandoned @ 24725
+   1646  Sismuibadu     24100   25000      15    2   (alive at end)
+   1666  Pubu           24100   25000      15    2   (alive at end)
+   1687  Syumosumsusa   24200   25000      15    2   (alive at end)
+   1688  Faphiut'ebyum  24200   25000      15    2   (alive at end)
+   1704  Ukymosidui     24200   25000      50    2   (alive at end)
+   1705  P'oetephamd    24200   25000      15    2   (alive at end)
+   1721  Gyinpmomuib    24200   25000      15    2   (alive at end)
+   1722  Zyep'atzyugda  24200   25000      15    2   (alive at end)
+   1734  Yayabilghat    24300   25000      15    2   (alive at end)
+   1746  Dapghat        24300   25000      15    2   (alive at end)
+   1759  Daptayyamfap   24300   25000      15    2   (alive at end)
+   1771  Mibghat        24300   25000      15    2   (alive at end)
+   1780  Muirumiu       24400   25000      13    2   (alive at end)
+   1781  Tayamdat       24400   25000      15    2   (alive at end)
+   1788  Srofulp'ab     24400   25000      15    2   (alive at end)
+   1796  Pomfathghat    24400   25000      15    2   (alive at end)
+   1808  Pip'inum       24400   25000      15    2   (alive at end)
+   1816  Damp'aldat     24500   25000      15    2   (alive at end)
+   1824  Damp'al        24500   25000      15    2   (alive at end)
+   1832  Zaphiut'eb     24500   25000      15    2   (alive at end)
+   1867  Rimomuissyu    24700   25000      13    2   (alive at end)
+   1875  Sigyinsyui     24700   25000      15    2   (alive at end)
+   1884  Rimopumpunsu   24700   25000      15    2   (alive at end)
+   1889  Tusmomavi      24700   25000      15    2   (alive at end)
+   1903  Udu            24800   25000      15    2   (alive at end)
+   1916  Idi            24800   25000      15    2   (alive at end)
+   1944  Sīuňtụ̌ị    24900   25000      15    2   (alive at end)
+   1956  Fòuxkòu      24900   25000      15    2   (alive at end)
+   1968  Mārụ́        24900   25000      15    2   (alive at end)
+   1976  Tàịňnīkò   25000   25000      15    2   (alive at end)
+   1980  Pǎịnákú    25000   25000      15    2   (alive at end)
+   1996  Kùrụ́        25000   25000      15    2   (alive at end)
+   2004  Pụ́lňà       25000   25000      15    2   (alive at end)
+
+=== REALM LIFE TABLE (everything that ever owned a box tile) ===
+  id     name             firstSeen  peakBoxT  peakWorldT  peakMem  born(how)          end(how @ step)
+      1  Ňěňní             15200        29          46       31                     conquest by Ǎịmràkòlǐā @ 23300
+      2  ?                   15300         6           0        0                     integrated by Ňěňní @ 19987
+     29  ?                   15500         4           0        0                     integrated by Sogyoepasyus @ 16387
+     50  ?                   15500         5           0        0                     integrated by Fōntàlě @ 17287
+     54  Fị̀lpìlě         15500        17          34        8                     conquest by Tị̄lākú @ 21300
+     30  Sogyoepasyus        15600        20          17        1                     dissolved @ 23437
+     60  ?                   15600         5           0        0                     conquest by Tǐurọ̀lěā @ 16550
+     59  ?                   15600         6           0        0                     dissolved @ 19987
+     72  ?                   15700         6           0        0                     conquest by Ňěňní @ 15800
+     89  ?                   16000         3           0        0                     dissolved @ 19237
+    110  ?                   16200        17           0        0                     conquest by Kètrọ̌ịlěā @ 17550
+    111  ?                   16200         5           0        0                     dissolved @ 21187
+    114  ?                   16500        10           0        0                     integrated by Sogyoepasyus @ 20137
+     44  ?                   16600        14           0        0                     shattered by Xụ̀ftàlǐā @ 21100
+    142  ?                   16600         4           0        0                     conquest by Ňěňní @ 16700
+    147  ?                   16800         9           0        0                     conquest by Pomponsomsyus @ 18400
+    139  ?                   16900         3           0        0                     conquest by Sogyoepasyus @ 16950
+    173  Sopopa              17000        14          14        6                     conquest by Sogyoepasyus @ 20250
+    109  ?                   17500        20           0        0                     integrated by Fǒlpìlǐā @ 20287
+    219  ?                   18000         8           0        0                     conquest by Tị̄lākú @ 22650
+    321  ?                   18800         9           0        0                     conquest by Sopopa @ 18850
+    178  ?                   19100         8           0        0                     dissolved @ 20587
+    344  ?                   19100         4           0        0                     dissolved @ 20437
+    416  Xụ̀ftàlǐā       19200        38          40       27                     integrated by Ǎịmràkòlǐā @ 23137
+    417  ?                   19200         3           0        0                     dissolved @ 21487
+    434  ?                   19600         2           0        0  frontier           dissolved @ 21037
+    323  ?                   20100         4           0        0                     conquest by Tị̄lākú @ 22450
+    543  Ǎịmràkòlǐa     20200        20          23       13                     integrated by Nāxsē @ 24937
+    510  ?                   21100        18           0        0                     (alive at end)
+    977  ?                   21900         5           0        0                     conquest by Xụ̀ftàlǐā @ 22200
+    805  Tumogyuma           22100        22          23       29                     (alive at end)
+    908  ?                   22200        13           0        0                     dissolved @ 22687
+    710  ?                   22400         9           0        0                     (alive at end)
+    836  ?                   22400        10           0        0                     (alive at end)
+    973  Tǐlùkòlǐā      22400        12          23        3                     (alive at end)
+   1083  Muisyu              22500        14          14        4                     conquest by Pomponsomsyus @ 22750
+    799  ?                   22500         5           0        0  frontier           dissolved @ 22837
+    379  ?                   22600         5           0        0                     conquest by Ňǐtàlǐ @ 23500
+   1074  Summusuidu          22700        14          14        5                     (alive at end)
+   1066  ?                   22800        12           0        0                     (alive at end)
+    410  ?                   22800         5           0        0                     conquest by Yùtàlǐ @ 19700
+   1058  ?                   22900        12           0        0                     conquest by Upasyua @ 23900
+   1311  ?                   23200         5           0        0                     (alive at end)
+   1390  Líụňākò         23400        16          16        1                     (alive at end)
+   1406  ?                   23400         5           0        0                     shattered by Nị̀ňnílěā @ 23450
+   1399  ?                   23400         2           0        0                     conquest by Tị̄lākú @ 23450
+   1391  ?                   23500         2           0        0                     conquest by Tị̄lākú @ 23600
+    981  ?                   23500         3           0        0                     (alive at end)
+   1403  ?                   23700         3           0        0                     (alive at end)
+    335  ?                   24200         1           0        0                     integrated by Xūkóulǐā @ 20737
+    241  ?                   24400         2           0        0                     (alive at end)
+

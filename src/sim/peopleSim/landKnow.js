@@ -268,8 +268,37 @@ export function stepLandKnow(world) {
       // measured frozen sites sat exactly in that gap — 600-1,600 km from the
       // nearest city (the North China Plain, the Yangtze, north India, the
       // Maghreb: the missing classical cohorts by name).
-      const _lg = T.EXCH_WAVE > 0 ? (techEff(s).logisticsLevel || 0) : 0;
-      const _r = T.EXCH_WAVE > 0
+      // T.COURT_SPHERE — INSTITUTIONS RADIATE FROM A STATE, NOT FROM ANY DOT.
+      // The caravan radius above is defended entirely by COURTS: "institutions
+      // radiated by a classical court traveled its roads and sea lanes", Han
+      // statecraft on its commandery road grid, Yamato forming a state offshore.
+      // Every example is a polity. The loop applies it to world.settlements —
+      // every settlement, stateless or not — so a nationless town in the Sahel
+      // spreads statecraft exactly as far as Han does, and the result is a
+      // self-propagating urban contagion with no polity anywhere in it: a ledger
+      // crosses URBAN_ORG, mints a city, that city radiates, its neighbours
+      // climb five times faster and mint, and the frontier runs away from
+      // statehood forever (a city needs 0.28 in a LEDGER, which every farmed
+      // basin has; a state needs 0.35 in a CITY that must first exist and then
+      // climb). Owner 2026-08-23: "all of europe, india, sahel are very quickly
+      // carpeted with nationless cities, hundreds of them ... entirely unrealistic."
+      //   History spread urbanism through POLITIES and COLONIES — Rome founded
+      // the cities of Gaul, Ghana and Mali the Sahel's — never as ambient
+      // knowledge between unaffiliated towns. Under the lever a settlement
+      // flying a flag radiates the caravan sphere; a stateless one keeps the
+      // village obsidian horizon it always had. Any city OF a state qualifies,
+      // not only the capital: Roman provincial cities really did radiate Roman
+      // institutions. No new constant — the discriminator is s.countryId.
+      //   KNOWN RISK, recorded because it is the reason this ships at 0:
+      // EXCH_WAVE exists to un-freeze the missing classical cohorts (31 of 40
+      // proto-cities beyond every sphere, org frozen at p50 0.12 — the North
+      // China Plain, the Yangtze, north India). Narrowing the sphere can
+      // re-freeze exactly those, and the register-vs-history table
+      // (docs/city-count-vs-age-2026-08-21.md) is the gate, not the map's look.
+      // 0 = every settlement radiates (byte-identical).
+      const _court = !(T.COURT_SPHERE > 0) || s.countryId >= 0;
+      const _lg = (T.EXCH_WAVE > 0 && _court) ? (techEff(s).logisticsLevel || 0) : 0;
+      const _r = (T.EXCH_WAVE > 0 && _court)
         ? exchT * EXCH_CITY_R * (1 + T.EXCH_WAVE * Math.max(0, Math.min(1, _lg)))
         : exchT;
       (cities || (cities = [])).push({ x: s.pos.x | 0, y: s.pos.y | 0, r2: _r * _r });

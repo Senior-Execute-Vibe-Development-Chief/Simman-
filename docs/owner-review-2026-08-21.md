@@ -80,6 +80,18 @@ code.
 **Measure first:** per-hearth-basin population and statehood timeline at
 tw=960; the fertility map's view of southern Mesopotamia vs the Kuban.
 
+> **ERRATUM (2026-08-23, measured — docs/confetti-leverage-2026-08-23.md, the
+> irrigation lap):** two claims above did not survive measurement. (1) Irrigation
+> is NOT missing: FIELD_CRADLE / IRR_BAND / IRRIG_CROP / FLOOD_OPT all ship at 1,
+> and probe_irrfield shows the canal premium running at FULL strength in
+> Mesopotamia (arid 1.00, water 1.00, farmTech 1.00 — multipliers ≥ the Nile's).
+> (2) In honest tight-valley boxes at tw=480 the fertility map scores Sumer and
+> the Nile valley IDENTICALLY (fert p50 0.150 both). The China half of this item
+> IS confirmed and quantified: the Yellow River's capacity is flat at ~274/tile
+> for 16,000 steps (the hearth stagger), then jumps 13x. Do not build an
+> irrigation wave off this item; the open question is a ~2x Nile-vs-Sumer
+> cap/tile residual with no attribution yet.
+
 ## 3 + 7 + 8 + 12. The statehood/integration funnel: "majority of cities have
 no nation" + "almost every city is a capital" + "speck nations survive inside
 larger nations" + "tax 0-3%, army 0-10, control 0/0, treasury 0"

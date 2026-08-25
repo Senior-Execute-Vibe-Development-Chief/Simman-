@@ -1,0 +1,63 @@
+[harness] tree 4160018
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+[peopleSim] hearth pin Nile picked at tile (138,40) (27.0E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (167,41) (70.5E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (196,38) (114.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,40) (27.0E 30.0N) score 6.39 pkg=wheat(suit 0.92) — ARMED: ~974y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (149,38) (43.5E 33.0N) score 4.32 pkg=wheat(suit 0.69) — ARMED: ~1311y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (167,41) (70.5E 28.5N) score 6.34 pkg=wheat(suit 0.98) — ARMED: ~922y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (196,38) (114.0E 33.0N) score 4.11 pkg=rice(suit 0.81) — ARMED: ~3106y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) score 5.34 pkg=maize(suit 0.87) — ARMED: ~5148y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (111,53) (-13.5E 10.5N) score 1.76 pkg=sorghum(suit 0.64) — ARMED: ~3133y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) score 1.32 pkg=tubers(suit 0.93) — ARMED: ~3243y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (77,72) (-64.5E -18.0N) score 0.87 pkg=tubers(suit 0.57) — ARMED: ~5283y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (31,23) (-133.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== THE CELL-MASS DISTRIBUTION  480x240 (tw=240)  seed 8817 ===
+  bar = TIER_CORE[2]/URBAN_SHARE_REF = 200 census over the live bridge; capacity = floor(cellMass/bar)
+
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+  step 2000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 1904/3863/7721 field (= 36/72/145 census) · cells≥1bar   0 · Σcapacity    0 · ACTUAL settled 0
+    world    : cells  207 · mass p10/50/90 636/1524/3077 field (= 12/29/58 census) · cells≥1bar   0 · Σcapacity    0 · ACTUAL settled 0
+  step 4000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 2445/5075/10126 field (= 46/95/190 census) · cells≥1bar   0 · Σcapacity    0 · ACTUAL settled 0
+    world    : cells  207 · mass p10/50/90 829/2005/3942 field (= 16/38/74 census) · cells≥1bar   0 · Σcapacity    0 · ACTUAL settled 0
+  step 6000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 2963/6349/12214 field (= 56/119/229 census) · cells≥1bar   1 · Σcapacity    1 · ACTUAL settled 0
+    world    : cells  207 · mass p10/50/90 1033/2493/4775 field (= 19/47/90 census) · cells≥1bar   1 · Σcapacity    1 · ACTUAL settled 0
+[peopleSim] AGRICULTURE INVENTED at (167,41) (70.5E 28.5N) — the basin farms; a city will rise when its market gathers one (score 6.34)
+[peopleSim] AGRICULTURE INVENTED at (138,40) (27.0E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.39)
+  step 8000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 3427/7466/13862 field (= 64/140/260 census) · cells≥1bar   1 · Σcapacity    1 · ACTUAL settled 0
+    world    : cells  207 · mass p10/50/90 1202/2948/5554 field (= 23/55/104 census) · cells≥1bar   3 · Σcapacity    3 · ACTUAL settled 0
+  step 10000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 12677/21332/51063 field (= 238/400/958 census) · cells≥1bar   3 · Σcapacity    7 · ACTUAL settled 0
+    world    : cells  207 · mass p10/50/90 1326/3260/7876 field (= 25/61/148 census) · cells≥1bar  12 · Σcapacity   19 · ACTUAL settled 0
+  step 12000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 31277/56792/142781 field (= 587/1066/2679 census) · cells≥1bar   3 · Σcapacity   20 · ACTUAL settled 0
+    world    : cells  207 · mass p10/50/90 1428/3540/9458 field (= 27/66/177 census) · cells≥1bar  19 · Σcapacity   58 · ACTUAL settled 0
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.32)
+  step 14000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 52295/108434/263918 field (= 981/2034/4952 census) · cells≥1bar   3 · Σcapacity   38 · ACTUAL settled 22
+    world    : cells  207 · mass p10/50/90 1528/3764/12491 field (= 29/71/234 census) · cells≥1bar  26 · Σcapacity  117 · ACTUAL settled 22
+  step 16000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 73069/159694/402464 field (= 1371/2996/7551 census) · cells≥1bar   3 · Σcapacity   57 · ACTUAL settled 48
+    world    : cells  207 · mass p10/50/90 1605/3952/27227 field (= 30/74/511 census) · cells≥1bar  30 · Σcapacity  183 · ACTUAL settled 78
+  step 18000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 104802/149082/433327 field (= 1966/2797/8130 census) · cells≥1bar   3 · Σcapacity   62 · ACTUAL settled 53
+    world    : cells  207 · mass p10/50/90 1671/4256/44625 field (= 31/80/837 census) · cells≥1bar  38 · Σcapacity  256 · ACTUAL settled 158
+[peopleSim] AGRICULTURE INVENTED at (196,38) (114.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 4.11)
+[peopleSim] hearth candidate at (140,73) (30.0E -19.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (58,38) (-93.0E 33.0N) stood down — the farming package arrived before it was invented
+  step 20000  bridge 0.01876  bar 10660 field (200 census)
+    EGYPT box: cells    3 · mass p10/50/90 119421/150200/465771 field (= 2241/2818/8739 census) · cells≥1bar   3 · Σcapacity   68 · ACTUAL settled 51
+    world    : cells  207 · mass p10/50/90 1687/4404/67306 field (= 32/83/1263 census) · cells≥1bar  48 · Σcapacity  334 · ACTUAL settled 222
+
+  READ: Σcapacity vs ACTUAL settled is the first-seat law's predicted register.
+  cells≥1bar ≈ n  ⇒ the law is inert; Σcapacity ≪ actual ⇒ it cuts the register
+  toward history; Σcapacity ≈ 0 with people plainly present ⇒ the BRIDGE/bar
+  units are wrong for cells and the law must be re-grounded before building.

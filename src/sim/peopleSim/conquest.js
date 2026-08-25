@@ -3025,6 +3025,22 @@ export function updatePolities(world) {
       if (wks > 0) capFinal = capacity * (1 + T.APPARATUS * wks);
     }
     c._capacity = capFinal;        // (already duress-adjusted) for the info panel
+    // Diagnostic stamps for the SEAT_BONUS_CAP question (owner 2026-08-23: "i
+    // think that 10 cap might be the problem"). The delegated-seat term is the
+    // only place a member PAYS capacity back, and it is hard-capped — so the
+    // question is whether any realm actually reaches the ceiling, or whether the
+    // cap is a limit nothing gets near because a prior gate keeps realms small.
+    // Pure debug side-effects (the _adminLoad / _momentum class): nothing reads
+    // them, so the world is byte-identical.
+    // Capacity-side decomposition for the ledger wave (same debug class):
+    // peace (post-hysteresis), the war/fiscal throttle product; momentum is
+    // already stamped (c._momentum) and the apparatus factor is derivable
+    // from govOf(id)._works. Nothing reads these; byte-identical.
+    c._capPeace  = peaceCapacity;
+    c._capThrottle = duress * fiscalDuress;
+    c._seatRaw  = seatBonus;                                   // uncapped delegated-seat contribution
+    c._seatUsed = Math.min(SEAT_BONUS_CAP * instMul, seatBonus);
+    c._seatCap  = SEAT_BONUS_CAP * instMul;                    // the ceiling as this realm sees it (institutions scale it)
     c._momentum = momentum;        // for the info panel
     c._fronts = fronts;
     c._capitalBesieged = besiegedCap;
@@ -3218,9 +3234,40 @@ export function updatePolities(world) {
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + provPeople / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
       const langMul = 1 + adminFriction(cap, s, idW);   // a foreign-tongue province is costlier to govern → polyglot empires overreach sooner (cohesion.js)
-      const load = (d / holdRange) * sizeMul * recMul * langMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
+      // T.SEAT_ADMIN — THE SATRAPY LAW: a GOVERNED CITY administers itself, and
+      // the centre pays OVERSIGHT, not projection. Measured need (probe_capledger,
+      // both grids): the distance term is BIMODAL — a member near the seat costs
+      // ~0.6, one past the grip pins at the 25x unreachable ceiling, and every
+      // realm that reached 5+ members sat 11-80x over budget with its provinces
+      // uncovered and bleeding loyalty. The design's own unit ("a province at the
+      // capital's reach costs ~1") never got a mechanism for WHY historical
+      // empires paid ~1 for provinces far past any daily reach: they DELEGATED —
+      // the satrap, the commandery, the governor. The province's own city runs
+      // its own administration; the throne pays for oversight and the governor's
+      // loyalty, which does not scale like a supply column. So: a member that is
+      // a CITY with the statecraft to govern itself (its own org past the same
+      // ORG_STATE_MIN every founding pays) prices its distance term at no more
+      // than SUBMIT_REACH — the punitive-expedition radius that already defines
+      // "close enough to hold to obligations" for vassals; if the crown can
+      // overawe there, it can oversee a governor there. Villages, camps and
+      // org-less members still pay full distance (you cannot delegate to a
+      // village), and sizeMul/recMul/langMul/coerce all still apply — a big,
+      // foreign, recently-conquered province is still costlier, so the polyglot-
+      // overreach and digestion physics survive intact. Zero new constants.
+      // 0 = distance is projection all the way down (byte-identical).
+      let distT = d / holdRange;
+      if (T.SEAT_ADMIN > 0 && (s.tier | 0) >= 2
+          && ((s.knowledge && s.knowledge.organization) || 0) >= T.ORG_STATE_MIN)
+        distT = Math.min(distT, SUBMIT_REACH);
+      const load = distT * sizeMul * recMul * langMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
       s._langFriction = langMul - 1;   // info panel: administrative friction from tongue mismatch
       s._adminLoad = load;            // for the info panel
+      // Ledger-wave decomposition stamps (debug class, nothing reads them): the
+      // grip-scaled transport-distance term and the coercion divisor, so a probe
+      // can split load into dist x (size*rec) x lang / coerce without
+      // re-implementing the Dijkstra.
+      s._loadDist = distT;
+      s._loadCoerce = coerce;
       loads.push({ s, load });
     }
 
@@ -3304,6 +3351,12 @@ export function updatePolities(world) {
     // this?" up front instead of only paying for the answer afterwards.
     // Stamped on the persistent polity record so save/load replays identically.
     gov._strain = capacity > 1e-6 ? cum / capacity : (cum > 0 ? 8 : 0);
+    // T.SEAT_ADMIN wave: the ABSOLUTE ledger persisted beside the strain, so the
+    // headroom gate (considerIntegrations, which runs BEFORE these stamps exist
+    // on the fresh per-pass view — the ordering bug measured at 0 evaluations in
+    // ~10,000 candidates) can read LAST pass's real numbers instead of nulls.
+    // Lever-gated so a lever-off save's record stays byte-identical.
+    if (T.SEAT_ADMIN > 0) { gov._capAbs = c._capacity != null ? c._capacity : capacity; gov._loadAbs = cum; }
     // The frontier sheds along the control field: how far over budget the realm
     // sits (war + insolvency are already folded into the throttled capacity) sets
     // the STRESS that shrinks its grip, so a mild overstretch peels the rim while a
@@ -3843,6 +3896,32 @@ function considerSubmissions(world, countries) {
       const wins = (govOf(world, hid)._momentum || 0) / MOMENTUM_PER_STORM;
       effRatio = Math.max(1, SUBMIT_RATIO / (1 + wins));
     }
+    // T.ENGULF_BAR — ENCIRCLEMENT MUST REACH THE BAR, NOT ONLY THE CLOCK.
+    // Measured (probe_specks, tw=240/24k live): of 20 blocs sitting inside a
+    // bigger bloc on the political map, ELEVEN are held free by this very line
+    // at power ratios of 1.4x-4.9x. The encirclement term built for exactly
+    // this case (_engulf, below) is computed AFTER the gate and never reached —
+    // the `continue` throws the candidate out first — so a court wholly ringed
+    // by one power pays the identical 5x a court on an open frontier pays.
+    //   Encirclement is circumscription applied to politics: full enclosure
+    // removes what resistance actually needs — reachable allies, open supply,
+    // anywhere to retreat — so a surrounded court's resistance IS more hopeless
+    // at the same raw ratio. History set this bar far below 5x: Rome absorbed
+    // Italian cities nowhere near five times weaker, because they were adjacent,
+    // allyless and had nowhere to go.
+    //   Same share² shape and same floor as the hazard half (a court never
+    // kneels to a bloc weaker than itself, however hemmed), and coastline still
+    // counts as open border, so thalassocratic statelets keep their full bar —
+    // Venice and Ragusa resist precisely because the sea is allies and supply.
+    // Its OWN lever rather than reusing T.ENGULF, because the two halves must
+    // measure apart (the SEAT_FIELD precedent): the clock half is already
+    // shipped and its effect must not be re-attributed to this one.
+    // 0 = the bar ignores encirclement (byte-identical).
+    if (T.ENGULF_BAR > 0 && encMap) {
+      const encR = encMap.get(sid);
+      if (encR && encR.by === hid && encR.share > 0)
+        effRatio = Math.max(1, effRatio / (1 + T.ENGULF_BAR * encR.share * encR.share));
+    }
     if (powH < powS * effRatio) { tel(world, "submit", "resistanceNotHopeless"); continue; }
     // The suzerain must be able to PROJECT force to S's seat — overawing needs a
     // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
@@ -4078,6 +4157,17 @@ function considerIntegrations(world, countries) {
     if (d > Math.max(1, H.holdReach)) { tel(world, "integrate", "beyondDirectRule"); continue; }
     let addLoad = 0;
     for (const m of S.members) if (m.mode === "settled") addLoad += estAbsorbLoad(world, H, m);
+    // T.SEAT_ADMIN wave, the ORDERING FIX: this pass runs on a view rebuilt at
+    // the top of updatePolities, ~300 lines before _capacity/_loadTotal are
+    // stamped — so the gate below always took its cap==null escape (measured: 0
+    // evaluations in ~10,000 candidates across four arms). Seed the fresh view
+    // from the PERSISTED last-pass ledger so the gate finally evaluates. Only
+    // under the lever: reviving it against the un-fixed ledger would reject
+    // nearly every integration (load was 11-80x capacity past 5 members).
+    if (T.SEAT_ADMIN > 0 && H._capacity == null) {
+      const hg = getPolity(world, hid);
+      if (hg && hg._capAbs != null) { H._capacity = hg._capAbs; H._loadTotal = hg._loadAbs; }
+    }
     if (!hasAbsorbHeadroom(H, addLoad)) { tel(world, "integrate", "noAdminHeadroom"); continue; }
     const r = hash32(world.seed || 1, "satrapize", sid, world.step) / 4294967296;
     // T.ENGULF (header at enclosureMap): an engulfed VASSAL integrates on the
