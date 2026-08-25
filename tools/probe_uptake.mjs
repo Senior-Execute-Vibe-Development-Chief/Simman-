@@ -28,8 +28,28 @@
 //
 //   SIM_TUNE="<live arm>" node tools/probe_uptake.mjs [steps=10000] [W=480] [seed=8817] [--solver]
 //
-// (Findings land in this header AFTER the runs — never before. A predicted
-// funnel is a hypothesis; the header carries only measurements.)
+// FINDINGS 2026-08-25 (measured; run logs in docs/runs/2026-08-25/uptake_*):
+//   · Worlds are PRE-URBAN far longer than the old 10k probe horizons: first
+//     cities ~15-18k (solver-240, obs-240) and ~19-20k (obs-480). Measure at
+//     24k/30k/32k.
+//   · BASELINE, all three regimes: the hungry register is LEAF-dominated —
+//     obs-240 30k: hungry 449/535, of them LEAF 377 + DRY-SURPLUS 71,
+//     CAPPED ~0; obs-480 26k: 248/297 LEAF; solver-240 24k: 12/13. A leaf
+//     (82-84% of every register) can neither buy (no children) nor SELL (no
+//     parent → never offers), so the market cannot see the world's surplus:
+//     Σland 441 vs ΣcoreNeed 207 (obs-240 30k) — the food EXISTS at 2.1×
+//     need and cities starve at fed p50 0.08. Once a tree exists the
+//     levy/coin stages CLEAR (unbought ≈ 0, coin-capped 0-2 of 4-10) — the
+//     topology, not org or coin, is the binding constraint.
+//   · T.GRAIN_MARKET=1 A/B (obs-240 30k): importers 3 → 202, peer grain
+//     16.5/tick vs the tree's 1.3, fed(leaf) p50 0.08 → 0.61, every box up
+//     (Egypt 0.19→0.54, W-Europe 0.23→0.58), importShare p90 0.00 → 1.00
+//     (fully import-fed settlements exist — URBAN_AGGLOM has fuel at
+//     non-capitals), Σsupply > ΣcoreNeed. Solver-240: every hungry-labeled
+//     leaf reads MKT-COVERED — need closed the same tick; the residual
+//     'hungry' label is the ~230-tick _fedM average catching up on a
+//     churning register (fresh mints start at fed 0), which is why fedNOW
+//     was added as the instantaneous read.
 import { readFileSync } from "node:fs";
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
