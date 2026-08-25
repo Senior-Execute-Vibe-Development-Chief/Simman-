@@ -328,6 +328,19 @@ function grainMarketPass(world) {
   const ts = world._tradeStats;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
+    // THE MARKET INSTITUTION GATE: commercial grain buying needs coined money
+    // (techEff.market — the currency tech's own ability, the monetization()
+    // precedent). Before it, exchange is the levy/tree (the temple economy,
+    // above) and local barter — the historical order: Uruk's grain moved by
+    // administration, the commercial grain trade at scale is classical.
+    // Measured without it (the 777 pair, uptake_solver240_777_24k*_v2): dawn
+    // cradles trade from birth (granaries start at cap, cold ledgers read
+    // need), the early urban distribution flattens (median core 15.9 vs 42.2
+    // at 14k), the marginal world's first founding cascade never fires
+    // (+1 vs +7 at 16-18k), and seed 777 lands 14-15 vs its 20-22
+    // no-mechanism band. Emergent, never a date: the market opens where and
+    // when a society mints coin.
+    if (!techEff(s).market) continue;
     let need = (s._foodDemand || 0) - (s._foodNet || 0);
     if (need <= 1e-9) continue;
     const reach = mergeReach(s);
