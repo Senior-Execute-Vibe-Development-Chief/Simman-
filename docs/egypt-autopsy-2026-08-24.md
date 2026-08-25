@@ -596,3 +596,38 @@ should breathe with LOCAL famine exposure instead of a flat planetary 2.9×
 vulnerability physics the famine seeder already computes), which should
 keep the cradle result while releasing marginal seeds. Then re-run this
 exact ladder.
+
+## The harvest-years wave — bootstrap (probe_yieldcv, end of session)
+
+The owner's design ratified: real year-to-year production swings, wrapped
+into real output — famine proclivity = the local variance of actual yield,
+famine events DERIVED from the tail, FAMINE_CHANCE/SEVERITY/RADIUS retired,
+and LEAN_YEAR's margin re-grounded per-basin (which dissolves the 777
+hard-fail by physics). Today's famine is scripted dice aimed by circumstance;
+the existing climate.js layer is the CENTURY scale (global walk + volcanoes,
+"cradles barely move") — the annual-regional floor is the missing system.
+
+`probe_yieldcv` builds the candidate variance map from existing fields (the
+irrigation stack's aridity ramp, dryFrac's single-season shape, floodplain-
+grade river magnitude) and validates against literature yield-CV bands, the
+Köppen-calibration discipline. Two iterations recorded in the probe: the
+trade-premium water band pegged 1.00 planet-wide (England read "flood-fed");
+the dry-month count read deserts as "seasonal". After both fixes: 6/12
+region medians in band, with EVERY remaining miss attributable to a named
+INPUT debt, not the formula:
+
+- **Great-river resolution (tw=240)**: the Nile reads floodplain-grade 0.29
+  and the Tigris-Euphrates 0.00, so both cradles read desert-margin rain
+  farming (CV 0.45) instead of flood regime (~0.20). probe_irrfield's design
+  note predicted exactly this; the tw=480 read is the next measurement.
+- **The moisture-index calibration debt** (recorded since the forest wave):
+  England margin 0.57 (Britain ≈ Mesopotamia on this index) and the
+  solver-Sahel's cropland too wet (margin 0.09). One debt now mis-feeds two
+  systems (forests then, variance now) — it has earned its own lap.
+
+Wave order from here: (1) tw=480 variance-map read (does river resolution
+fix the cradles?); (2) the moisture-calibration lap (blocks two systems);
+(3) the mechanism — an annual regional index (spatially correlated,
+year-persistent, composing with climate.js's century layer) multiplying
+landFood, famine derived from its tail, granaries doing real work,
+LEAN_YEAR per-basin — then the full ladder including LEAN_YEAR's re-run.
