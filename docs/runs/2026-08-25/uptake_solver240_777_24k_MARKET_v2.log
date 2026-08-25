@@ -25,3 +25,82 @@ step   2000  n 3 · polities 3 (1.0/realm) · parents 0 · leaves 3 (100%) · im
    channels  Σpeople 355 · urbanShare 0.053 · core p50/p90 4.1/14.1 · fishShare 0.006 · wealth p50 71
    hungry(<0.85) 0/3:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
 
+step   4000  n 3 · polities 3 (1.0/realm) · parents 0 · leaves 3 (100%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.2 Σsupply 2.6 Σland 2.7
+   fed  leaf p10/50/90 1.00/1.00/1.00  parent 0.00/0.00/0.00 · fedNOW p10/50/90 1.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 0.0
+   channels  Σpeople 597 · urbanShare 0.052 · core p50/p90 6.4/23.5 · fishShare 0.046 · wealth p50 0
+   hungry(<0.85) 0/3:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+step   6000  n 3 · polities 3 (1.0/realm) · parents 0 · leaves 3 (100%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.3 Σsupply 1.8 Σland 1.5
+   fed  leaf p10/50/90 1.00/1.00/1.00  parent 0.00/0.00/0.00 · fedNOW p10/50/90 1.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 0.0
+   channels  Σpeople 862 · urbanShare 0.054 · core p50/p90 9.6/36.1 · fishShare 0.133 · wealth p50 0
+   hungry(<0.85) 0/3:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+[peopleSim] AGRICULTURE INVENTED at (69,66) (-76.5E -9.0N) — the basin farms; a city will rise when its market gathers one (score 0.64)
+step   8000  n 4 · polities 4 (1.0/realm) · parents 0 · leaves 4 (100%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.5 Σsupply 3.0 Σland 4.8
+   fed  leaf p10/50/90 0.04/1.00/1.00  parent 0.00/0.00/0.00 · fedNOW p10/50/90 0.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 1335.3
+   channels  Σpeople 1322 · urbanShare 0.074 · core p50/p90 33.5/50.7 · fishShare 0.001 · wealth p50 1428
+   hungry(<0.85) 1/4:  LEAF 1 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 1
+
+step  10000  n 5 · polities 5 (1.0/realm) · parents 0 · leaves 5 (100%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.7 Σsupply 6.7 Σland 5.8
+   fed  leaf p10/50/90 1.00/1.00/1.00  parent 0.00/0.00/0.00 · fedNOW p10/50/90 1.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 3924.3
+   channels  Σpeople 1993 · urbanShare 0.071 · core p50/p90 14.6/62.3 · fishShare 0.160 · wealth p50 4042
+   hungry(<0.85) 0/5:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+step  12000  n 5 · polities 5 (1.0/realm) · parents 0 · leaves 5 (100%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.9 Σsupply 4.5 Σland 7.1
+   fed  leaf p10/50/90 0.00/1.00/1.00  parent 0.00/0.00/0.00 · fedNOW p10/50/90 0.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 7912.2
+   channels  Σpeople 2316 · urbanShare 0.068 · core p50/p90 15.2/70.2 · fishShare 0.152 · wealth p50 8027
+   hungry(<0.85) 2/5:  LEAF 2 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 2
+
+step  14000  n 6 · polities 5 (1.2/realm) · parents 0 · leaves 6 (100%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 1.0 Σsupply 8.4 Σland 8.8
+   fed  leaf p10/50/90 1.00/1.00/1.00  parent 0.00/0.00/0.00 · fedNOW p10/50/90 1.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 9782.1
+   channels  Σpeople 2776 · urbanShare 0.063 · core p50/p90 15.9/74.9 · fishShare 0.023 · wealth p50 9938
+   hungry(<0.85) 0/6:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+[peopleSim] AGRICULTURE INVENTED at (53,40) (-100.5E 30.0N) — the basin farms; a city will rise when its market gathers one (score 2.26)
+step  16000  n 7 · polities 5 (1.4/realm) · parents 0 · leaves 7 (100%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 1.3 Σsupply 8.1 Σland 9.2
+   fed  leaf p10/50/90 0.00/1.00/1.00  parent 0.00/0.00/0.00 · fedNOW p10/50/90 0.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 3617.2
+   channels  Σpeople 3217 · urbanShare 0.058 · core p50/p90 5.0/79.4 · fishShare 0.036 · wealth p50 3935
+   hungry(<0.85) 1/7:  LEAF 1 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 1
+
+step  18000  n 8 · polities 7 (1.1/realm) · parents 0 · leaves 8 (100%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 1.4 Σsupply 10.8 Σland 12.8
+   fed  leaf p10/50/90 0.00/1.00/1.00  parent 0.00/0.00/0.00 · fedNOW p10/50/90 0.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 4292.4
+   channels  Σpeople 4012 · urbanShare 0.049 · core p50/p90 5.4/81.6 · fishShare 0.142 · wealth p50 4388
+   hungry(<0.85) 1/8:  LEAF 1 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 1
+
+step  20000  n 14 · polities 12 (1.2/realm) · parents 1 · leaves 13 (93%) · importers(isr>.02) 1
+   flow/tick  offers 0.32  levied 0.00  bought 0.32  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/1 · ΣcoreNeed 1.7 Σsupply 15.0 Σland 24.1
+   fed  leaf p10/50/90 0.02/1.00/1.00  parent 1.00/1.00/1.00 · fedNOW p10/50/90 0.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 5869.8
+   channels  Σpeople 6206 · urbanShare 0.034 · core p50/p90 5.6/53.6 · fishShare 0.032 · wealth p50 6196
+   hungry(<0.85) 4/14:  LEAF 4 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 4
+
+step  22000  n 15 · polities 13 (1.2/realm) · parents 1 · leaves 14 (93%) · importers(isr>.02) 1
+   flow/tick  offers 0.44  levied 0.00  bought 0.44  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/1 · ΣcoreNeed 2.0 Σsupply 23.7 Σland 26.5
+   fed  leaf p10/50/90 0.00/1.00/1.00  parent 1.00/1.00/1.00 · fedNOW p10/50/90 0.00/1.00/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 4064.7
+   channels  Σpeople 8576 · urbanShare 0.030 · core p50/p90 12.2/44.7 · fishShare 0.084 · wealth p50 4126
+   hungry(<0.85) 5/15:  LEAF 5 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 5
+
+[transHeap] step=23208 cap=2048 peakN=1121 pushes=8294 (0.0MB backing)
+step  24000  n 20 · polities 15 (1.3/realm) · parents 5 · leaves 15 (75%) · importers(isr>.02) 5
+   flow/tick  offers 4.59  levied 0.24  bought 4.35  unbought 0.00  PEER-bought 0.00 · coin-capped parents 0/5 · ΣcoreNeed 3.0 Σsupply 33.4 Σland 36.3
+   fed  leaf p10/50/90 0.00/1.00/1.00  parent 1.00/1.00/1.00 · fedNOW p10/50/90 1.00/1.00/1.00 · importShare p50/p90 0.00/0.24 · spare-coin p50 3877.1
+   channels  Σpeople 12107 · urbanShare 0.034 · core p50/p90 8.9/80.1 · fishShare 0.147 · wealth p50 4356
+   hungry(<0.85) 2/20:  LEAF 2 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 2
+
+READ: LEAF-dominated hungry = the topology starves non-capitals (peer/market
+trade is the missing system). CAPPED-dominated = levy org / buyer coin is the
+throttle. DRY-SURPLUS at capitals = the land gap is upstream of the market.
