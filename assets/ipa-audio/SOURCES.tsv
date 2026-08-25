@@ -50,6 +50,7 @@ q	0071.ogg	File:Voiceless uvular plosive.ogg	CC BY-SA 3.0	unknown	https://common
 ɢ	0262.oga	File:Voiced uvular stop.oga	CC BY-SA 3.0	unknown	https://commons.wikimedia.org/wiki/File:Voiced_uvular_stop.oga
 ɴ	0274.ogg	File:Uvular nasal.ogg	CC BY-SA 3.0	unknown	https://commons.wikimedia.org/wiki/File:Uvular_nasal.ogg
 χ	03c7.ogg	File:Voiceless uvular fricative.ogg	CC BY-SA 3.0	unknown	https://commons.wikimedia.org/wiki/File:Voiceless_uvular_fricative.ogg
+ʁ	0281.ogg	File:Voiced uvular fricative.ogg	CC BY-SA 3.0	unknown	https://commons.wikimedia.org/wiki/File:Voiced_uvular_fricative.ogg
 q͡χ	0071-0361-03c7.ogg	File:Voiceless uvular affricate.ogg	CC BY-SA 3.0	Adamsa123	https://commons.wikimedia.org/wiki/File:Voiceless_uvular_affricate.ogg
 ɢ͡ʁ	0262-0361-0281.ogg	File:Voiced uvular affricate.ogg	CC BY-SA 3.0	Adamsa123	https://commons.wikimedia.org/wiki/File:Voiced_uvular_affricate.ogg
 ʀ	0280.ogg	File:Uvular trill.ogg	CC BY-SA 3.0	unknown	https://commons.wikimedia.org/wiki/File:Uvular_trill.ogg
@@ -67,8 +68,10 @@ t͡θ	0074-0361-03b8.oga	File:Voiceless dental sibilant affricate.oga	CC BY-SA 3
 d͡ð	0064-0361-00f0.oga	File:Voiced dental sibilant affricate.oga	CC BY-SA 3.0	Adamsa123	https://commons.wikimedia.org/wiki/File:Voiced_dental_sibilant_affricate.oga
 l̪	006c-032a.ogg	File:Voiced dental lateral approximant.ogg	CC BY-SA 4.0	YodaMaster445	https://commons.wikimedia.org/wiki/File:Voiced_dental_lateral_approximant.ogg
 pʼ	0070-02bc.ogg	File:Bilabial ejective plosive.ogg	CC BY-SA 3.0	unknown	https://commons.wikimedia.org/wiki/File:Bilabial_ejective_plosive.ogg
+fʼ	0066-02bc.ogg	File:Labiodental ejective fricative.ogg	CC BY-SA 3.0	User:Pmx	https://commons.wikimedia.org/wiki/File:Labiodental_ejective_fricative.ogg
 tʼ	0074-02bc.ogg	File:Alveolar ejective plosive.ogg	CC BY-SA 3.0	unknown	https://commons.wikimedia.org/wiki/File:Alveolar_ejective_plosive.ogg
 sʼ	0073-02bc.ogg	File:Alveolar ejective fricative.ogg	CC BY-SA 3.0	unknown	https://commons.wikimedia.org/wiki/File:Alveolar_ejective_fricative.ogg
+t͡sʼ	0074-0361-0073-02bc.ogg	File:Alveolar ejective affricate.ogg	CC BY-SA 3.0	Adamsa123	https://commons.wikimedia.org/wiki/File:Alveolar_ejective_affricate.ogg
 ʈʼ	0288-02bc.ogg	File:Retroflex ejective.ogg	CC BY-SA 4.0	Peter Isotalo	https://commons.wikimedia.org/wiki/File:Retroflex_ejective.ogg
 ʂʼ	0282-02bc.ogg	File:Retroflex ejective fricative.ogg	CC BY-SA 3.0	Adamsa123	https://commons.wikimedia.org/wiki/File:Retroflex_ejective_fricative.ogg
 ʈ͡ʂʼ	0288-0361-0282-02bc.ogg	File:Retroflex ejective affricate.ogg	CC BY-SA 4.0	Adamsa123	https://commons.wikimedia.org/wiki/File:Retroflex_ejective_affricate.ogg
@@ -95,6 +98,7 @@ y	0079.ogg	File:Close front rounded vowel.ogg	CC BY-SA 3.0	No machine-readable a
 ɪ̈	026a-0308.ogg	File:Near-close central unrounded vowel.ogg	CC BY-SA 3.0	Fête	https://commons.wikimedia.org/wiki/File:Near-close_central_unrounded_vowel.ogg
 ʉ	0289.ogg	File:Close central rounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Close_central_rounded_vowel.ogg
 ɯ	026f.ogg	File:Close back unrounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Close_back_unrounded_vowel.ogg
+ɯ̽	026f-033d.ogg	File:Near-close near-back unrounded vowel.ogg	CC BY-SA 4.0	Sigmath Bits	https://commons.wikimedia.org/wiki/File:Near-close_near-back_unrounded_vowel.ogg
 u	0075.ogg	File:Close back rounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Close_back_rounded_vowel.ogg
 ʊ	028a.ogg	File:Near-close near-back rounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Near-close_near-back_rounded_vowel.ogg
 e	0065.ogg	File:Close-mid front unrounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Close-mid_front_unrounded_vowel.ogg
@@ -105,8 +109,10 @@ e	0065.ogg	File:Close-mid front unrounded vowel.ogg	CC BY-SA 3.0	No machine-read
 ɜ	025c.ogg	File:Open-mid central unrounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Open-mid_central_unrounded_vowel.ogg
 ɵ	0275.ogg	File:Close-mid central rounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Close-mid_central_rounded_vowel.ogg
 ɞ	025e.ogg	File:Open-mid central rounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Open-mid_central_rounded_vowel.ogg
+ɤ	0264.ogg	File:Close-mid back unrounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Close-mid_back_unrounded_vowel.ogg
 ʌ	028c.ogg	File:Open-mid back unrounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Open-mid_back_unrounded_vowel.ogg
 o	006f.ogg	File:Close-mid back rounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Close-mid_back_rounded_vowel.ogg
+ɔ	0254.ogg	File:Open-mid back rounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Open-mid_back_rounded_vowel.ogg
 æ	00e6.ogg	File:Near-open front unrounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Near-open_front_unrounded_vowel.ogg
 ɶ	0276.ogg	File:Open front rounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Open_front_rounded_vowel.ogg
 a	0061.ogg	File:Open front unrounded vowel.ogg	CC BY-SA 3.0	No machine-readable author provided. Denelson83 assumed (based on copyright claims).	https://commons.wikimedia.org/wiki/File:Open_front_unrounded_vowel.ogg
