@@ -138,3 +138,15 @@ step  30000  n 637 · polities 463 (1.4/realm) · parents 105 · leaves 532 (84%
      Pontic         n  19 · fed p50 0.61 · importers 0 · leaf 89%
      W-Europe       n  36 · fed p50 0.75 · importers 1 · leaf 83%
 
+step  32000  n 744 · polities 502 (1.5/realm) · parents 139 · leaves 605 (81%) · importers(isr>.02) 21
+   flow/tick  offers 56.96  levied 20.80  bought 14.64  unbought 21.51 · coin-capped parents 11/28 · ΣcoreNeed 97.2 Σsupply 227.3 Σland 288.3
+   fed  leaf p10/50/90 0.01/0.35/0.99  parent 0.12/0.68/1.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 119.3
+   hungry(<0.85) 541/744:  LEAF 454 · DRY-SURPLUS 71 · DRY-HAUL 0 · CAPPED 7 · FED-SHORT 9
+     Egypt/Mideast  n  27 · fed p50 0.17 · importers 0 · leaf 85%
+     India          n  45 · fed p50 0.32 · importers 2 · leaf 82%
+     Pontic         n  19 · fed p50 0.50 · importers 0 · leaf 89%
+     W-Europe       n  43 · fed p50 0.33 · importers 1 · leaf 79%
+
+READ: LEAF-dominated hungry = the topology starves non-capitals (peer/market
+trade is the missing system). CAPPED-dominated = levy org / buyer coin is the
+throttle. DRY-SURPLUS at capitals = the land gap is upstream of the market.

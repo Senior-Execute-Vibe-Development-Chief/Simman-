@@ -101,7 +101,7 @@ for (let done = 0; done < STEPS; done += CKPT) {
   // reads, so residuals are what's LEFT after this tick's sales — a ranking of
   // causes, not an exact ledger.
   const mkt = { "MKT-COVERED": 0, "MKT-NOREACH": 0, "MKT-NOSELLER": 0, "MKT-HAULDEAD": 0, "MKT-NOCOIN": 0, "MKT-SHORT-bought": 0, "MKT-SHORT-idle": 0 };
-  const fedLeaf = [], fedPar = [], impShares = [], spares = [];
+  const fedLeaf = [], fedPar = [], fedNow = [], impShares = [], spares = [];
   let hungry = 0, coinCapPar = 0, buyingPar = 0;
   const boxStat = {}; for (const k in BOXES) boxStat[k] = { n: 0, fed: [], imp: 0, leaf: 0 };
   for (const s of world.settlements) {
@@ -111,6 +111,7 @@ for (let done = 0; done < STEPS; done += CKPT) {
     if (isPar) parents++; else leaves++;
     const fed = s._fedM ?? 1;
     (isPar ? fedPar : fedLeaf).push(fed);
+    fedNow.push((s._coreNeed || 0) > 0 ? Math.min(1, (s._foodSupply || 0) / s._coreNeed) : 1);   // INSTANTANEOUS fed — separates the ~230-tick _fedM lag from a real shortfall
     const supply = s._foodSupply || 0;
     coreNeedSum += s._coreNeed || 0; supplySum += supply; landSum += s._landFood || 0;
     offerSum += s._foodOffer || 0;
@@ -166,7 +167,7 @@ for (let done = 0; done < STEPS; done += CKPT) {
   const perTick = v => (v / WIN).toFixed(2);
   console.log(`step ${String(world.step).padStart(6)}  n ${n} · polities ${polities.size} (${(n / Math.max(1, polities.size)).toFixed(1)}/realm) · parents ${parents} · leaves ${leaves} (${Math.round(100 * leaves / Math.max(1, n))}%) · importers(isr>.02) ${importersLive}`);
   console.log(`   flow/tick  offers ${perTick((ts.levied + ts.bought + ts.unbought) * 1)}  levied ${perTick(ts.levied)}  bought ${perTick(ts.bought)}  unbought ${perTick(ts.unbought)}  PEER-bought ${perTick(ts.peerBought || 0)} · coin-capped parents ${coinCapPar}/${buyingPar} · ΣcoreNeed ${coreNeedSum.toFixed(1)} Σsupply ${supplySum.toFixed(1)} Σland ${landSum.toFixed(1)}`);
-  console.log(`   fed  leaf p10/50/90 ${q(fedLeaf, .1).toFixed(2)}/${q(fedLeaf, .5).toFixed(2)}/${q(fedLeaf, .9).toFixed(2)}  parent ${q(fedPar, .1).toFixed(2)}/${q(fedPar, .5).toFixed(2)}/${q(fedPar, .9).toFixed(2)} · importShare p50/p90 ${q(impShares, .5).toFixed(2)}/${q(impShares, .9).toFixed(2)} · spare-coin p50 ${q(spares, .5).toFixed(1)}`);
+  console.log(`   fed  leaf p10/50/90 ${q(fedLeaf, .1).toFixed(2)}/${q(fedLeaf, .5).toFixed(2)}/${q(fedLeaf, .9).toFixed(2)}  parent ${q(fedPar, .1).toFixed(2)}/${q(fedPar, .5).toFixed(2)}/${q(fedPar, .9).toFixed(2)} · fedNOW p10/50/90 ${q(fedNow, .1).toFixed(2)}/${q(fedNow, .5).toFixed(2)}/${q(fedNow, .9).toFixed(2)} · importShare p50/p90 ${q(impShares, .5).toFixed(2)}/${q(impShares, .9).toFixed(2)} · spare-coin p50 ${q(spares, .5).toFixed(1)}`);
   const at = Object.entries(cls).map(([k, v]) => `${k} ${v}`).join(" · ");
   console.log(`   hungry(<0.85) ${hungry}/${n}:  ${at}`);
   if (cls.LEAF > 0) console.log(`     leaf market stage:  ${Object.entries(mkt).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join(" · ") || "(none classified)"}`);
