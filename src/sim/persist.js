@@ -85,6 +85,7 @@ const SETT_FIELDS = [
   "_coreHoldCapF",     // CORE_HOLD spike-handoff floor bound (field units, stashed at the mint) — dropping it would re-open the birth-crater capacity gap on every load
   "_coloniesSent", "_isColony", "_overlordCC", "_fisherFrac",   // fisher labor share (T.FISH_LABOR) — carries the boats-built ramp across ticks (_shoreTiles is static geography, recomputed lazily)
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
+  "_harvestYearMul",   // HARVEST_YEARS: the standing year's annual multiplier — dropping it would feed every settlement a neutral harvest between load and the next year tick (the _thinBasinSince lesson)
   "_diseaseLoad", "_contacted", "_virginUntil",   // endemic immunity load + virgin-soil (Columbian) contact state
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
@@ -114,7 +115,7 @@ const SETT_FIELDS = [
 // people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
 // silently drift from what's persisted (the same omission class R1 fixed for world maps).
 // _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
-const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac", "_seaShare", "_tvAll", "_tvSea"];
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_estates", "_orgApt", "_rivalN", "_hegF", "_peerPeak", "_ambition", "_diseaseLoad", "_specStr", "_overlordCC", "_fisherFrac", "_seaShare", "_tvAll", "_tvSea", "_harvestYearMul"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix", "_captiveCul", "_captiveAnc"];
 
 // Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
@@ -246,6 +247,7 @@ export function saveWorld(world, meta = {}) {
     eraAt: world._eraAt,              // display-calendar timeline (step each era was reached)
     eraProd: world._eraProd,          // demographic anchor: global productivity index
     climIndex: world._climIndex, climShock: world._climShock,   // dynamic-climate state (climate.js)
+    harvestZ: world._harvestZ ? Array.from(world._harvestZ) : undefined,   // HARVEST_YEARS: the ~450-cell annual z grid (harvest.js) — smoothed field, lean state and multipliers all re-derive from it
     refWorks: world._refWorks,        // STATE_WORKS smoothed era-median fiscal scale (the works ruler); absent/0 reseeds at the next pass's median
     refRevenue: world._refRevenue,    // CAP_MODEL smoothed fiscal peer baseline — carried state since REF_REV_SMOOTH (conquest.js); absent/0 reseeds at the next pass's median
     refCapPowerS: world._refCapPowerS,   // CAP_RELATIVE smoothed median capital power (the capacity ruler's era base); absent/0 reseeds at the next polity pass
@@ -719,6 +721,7 @@ export function loadWorld(data, opts = {}) {
   world.step = data.step | 0;
   world._eraProd = data.eraProd ?? 1;        // demographic anchor (index.js): restore so post-load ticks match
   world._climIndex = data.climIndex ?? 0; world._climShock = data.climShock ?? 0;   // dynamic-climate state
+  world._harvestZ = data.harvestZ ? Float32Array.from(data.harvestZ) : null;   // HARVEST_YEARS year grid (absent on lever-off and pre-lever saves — the next year tick starts from neutral)
   world._refRevenue = data.refRevenue ?? 0;   // smoothed fiscal peer baseline (0 / pre-field saves: reseeds at the next polity pass's median)
   world._refWorks = data.refWorks ?? 0;       // STATE_WORKS smoothed era-median fiscal scale (0 / pre-v22 saves: reseeds at the next polity pass's median)
   world._refCapPowerS = data.refCapPowerS ?? 0;   // smoothed median capital power (CAP_RELATIVE ruler base; 0 reseeds next pass)

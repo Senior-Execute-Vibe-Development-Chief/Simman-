@@ -37,6 +37,7 @@ import { musterArmies, advanceFronts, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
 import { updateClimate, CLIMATE_INTERVAL } from "./climate.js";
+import { updateHarvestYears, HARVEST_INTERVAL } from "./harvest.js";
 import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
 import { checkPeopleSimInvariants } from "./invariants.js";
@@ -142,6 +143,12 @@ export function stepPeopleSim(world, n = 1) {
     // BEFORE the territory pass tallies food (territory.js multiplies fert by climMod),
     // so a harsh century is felt across every realm's catchment at once.
     if (world.step === 1 || world.step % _ivl(CLIMATE_INTERVAL) === 0) updateClimate(world);   // rate pass: walk/eruptions per unit of HISTORY
+    // The harvest years (T.HARVEST_YEARS, harvest.js): the ANNUAL regional layer
+    // under the century walk — each year every region draws its harvest index
+    // (amplitude = its own yield CV), settlements' landFood multiplies by it,
+    // and famine DERIVES from the tail. Before the food passes for the same
+    // reason as the climate line above.
+    if (world.step % _ivl(HARVEST_INTERVAL) === 0) updateHarvestYears(world);
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
     // PERF CADENCE at large maps (RES_INVARIANT_POP): the territory flood's work grows

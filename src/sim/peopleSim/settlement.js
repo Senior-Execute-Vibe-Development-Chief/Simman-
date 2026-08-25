@@ -2992,9 +2992,13 @@ function updateFood(world, s) {
   // × the industrial agronomy break (s._indCap). Under the ERA_PROD_SCALE legacy
   // arm it is the retired fitted overlay instead.
   const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * alluvium * (1 - cashLand);
-  // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
-  const landFarm = world.step < (s._famineUntil || 0)
-    ? landFood0 * (s._harvestMul || 1) : landFood0;
+  // The year's harvest. Under T.HARVEST_YEARS (harvest.js) EVERY year carries a
+  // real regional index — lean years thin the granary, fat years fill it, and
+  // "famine" is the derived tail of the same physics (the scripted window
+  // below retires). Legacy arm: the shocks.js famine window slashes the yield.
+  const landFarm = T.HARVEST_YEARS
+    ? landFood0 * (s._harvestYearMul ?? 1)
+    : (world.step < (s._famineUntil || 0) ? landFood0 * (s._harvestMul || 1) : landFood0);
   // ── Pastoral calories: the herd itself as FOOD (dairy, meat, blood) ──────
   // Distinct from livestockBonus (oxen/manure LIFTING a farmed field): on open
   // pasture too dry, too marginal or too disease-bound for dense cereal farming —

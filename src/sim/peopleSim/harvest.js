@@ -81,6 +81,9 @@
 // tracked by probe_climate_truth, not formula constants to bend.
 
 import { demand } from "../biomeClass.js";
+import { passRng } from "./rng.js";
+import { T } from "./tuning.js";
+import { logEvent } from "./events.js";
 
 // Calibration constants (real-data-anchored; see the header and the probe).
 export const CV_BASE = 0.10;    // reliably-watered temperate floor (England/Java-class)
@@ -171,4 +174,108 @@ export function ensureYieldCv(world) {
   }
   world._yieldCv = cv;
   return cv;
+}
+
+// ═════════════════════ THE HARVEST YEARS (T.HARVEST_YEARS) ═════════════════════
+// The ANNUAL layer the climate stack was missing. climate.js is the CENTURY
+// scale (a global walk + volcanic winters — "cradles barely move"); this is the
+// year: every region draws an annual harvest index whose amplitude is its OWN
+// yield CV from the map above, spatially correlated at weather-system scale and
+// mildly year-persistent (drought runs — the seven lean years). The index
+// multiplies each settlement's landFood, so granaries drain, prices move,
+// relief flows and unrest rises through the systems that already exist.
+//
+// FAMINE DERIVES FROM THE TAIL. A famine is no longer a scripted die aimed by
+// a vulnerability score (T.FAMINE_CHANCE / FAMINE_SEVERITY / FAMINE_RADIUS —
+// retired under this lever): it is the label for a year the physics actually
+// produced — the region below its p10 AND losing more than a third of the
+// harvest (the old FAMINE_SEVERITY's own loss bar, now met emergently, so
+// England famines ~twice a millennium while the Sahel famines chronically —
+// each region's real cadence, not a global rate constant).
+//
+// Determinism: the z-grid advances once per harvest year from
+// passRng(world, "harvest") (keyed on step); only _harvestZ is cross-tick
+// state (persisted — the settlement whitelist carries _harvestYearMul and the
+// standing _famineUntil). Everything else derives.
+
+export const HARVEST_INTERVAL = 2;   // 0.5 yr/tick → a new harvest YEAR every 2 ticks (×G via the caller's _ivl, like CLIMATE_INTERVAL)
+const CELL_DEG = 12;                 // weather-system correlation scale (~1300 km): one drought = one region, not one tile, not a continent
+const RHO = 0.30;                    // AR(1) year persistence: real interannual yield autocorrelation is low but positive — bad years RUN
+const SMOOTH_NORM = Math.sqrt(0.5 * 0.5 + 4 * 0.125 * 0.125);   // unit variance after the 3×3 spatial smooth of iid cells
+export const LEAN_Z = -1.28;         // the p10 year by construction (LEAN_YEAR's own statistic)
+const FAMINE_LOSS = 0.65;            // famine bar: the year must also destroy >35% of the harvest (1−FAMINE_SEVERITY, the retired lever's own severity, now emergent)
+const MUL_FLOOR = 0.15, MUL_CEIL = 1.6;   // sanity clamp on the annual multiplier (a Sahel deep year bottoms at −85%; the pastoral floor and the field carry life)
+const HARVEST_CW = Math.ceil(360 / CELL_DEG), HARVEST_CH = Math.ceil(180 / CELL_DEG);
+
+// One standard normal from two uniform draws (Box-Muller), tail-clamped so a
+// 1-in-a-billion draw cannot zero a harvest outright.
+function gauss(rng) {
+  const u1 = Math.max(1e-12, rng()), u2 = rng();
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return z < -3.5 ? -3.5 : z > 3.5 ? 3.5 : z;
+}
+
+// The smoothed, unit-variance z read at a tile (bilinear over the coarse grid;
+// X wraps, Y clamps). Between cell nodes the interpolation shrinks variance a
+// little (~10-20%) — accepted and conservative (less variance, never more).
+function zAt(world, tx, ty, zs) {
+  const fx = (tx / world.tw) * HARVEST_CW - 0.5, fy = (ty / world.th) * HARVEST_CH - 0.5;
+  const cx = Math.floor(fx), cy = Math.max(0, Math.min(HARVEST_CH - 2, Math.floor(fy)));
+  const dx = fx - cx, dy = Math.max(0, Math.min(1, fy - cy));
+  const x0 = ((cx % HARVEST_CW) + HARVEST_CW) % HARVEST_CW, x1 = (x0 + 1) % HARVEST_CW;
+  return (zs[cy * HARVEST_CW + x0] * (1 - dx) + zs[cy * HARVEST_CW + x1] * dx) * (1 - dy)
+       + (zs[(cy + 1) * HARVEST_CW + x0] * (1 - dx) + zs[(cy + 1) * HARVEST_CW + x1] * dx) * dy;
+}
+
+function smoothZ(raw, zs) {
+  for (let cy = 0; cy < HARVEST_CH; cy++) for (let cx = 0; cx < HARVEST_CW; cx++) {
+    const xL = (cx + HARVEST_CW - 1) % HARVEST_CW, xR = (cx + 1) % HARVEST_CW;
+    const yU = Math.max(0, cy - 1), yD = Math.min(HARVEST_CH - 1, cy + 1);
+    zs[cy * HARVEST_CW + cx] = (raw[cy * HARVEST_CW + cx] * 0.5
+      + (raw[cy * HARVEST_CW + xL] + raw[cy * HARVEST_CW + xR]
+        + raw[yU * HARVEST_CW + cx] + raw[yD * HARVEST_CW + cx]) * 0.125) / SMOOTH_NORM;
+  }
+}
+
+/** Advance one harvest year and stamp every settled settlement's annual
+ *  multiplier + derived famine state. Called from index.js on the
+ *  HARVEST_INTERVAL cadence, before the territory/food passes. */
+export function updateHarvestYears(world) {
+  if (!T.HARVEST_YEARS) return;
+  const CN = HARVEST_CW * HARVEST_CH;
+  let raw = world._harvestZ;
+  if (!raw || raw.length !== CN) raw = world._harvestZ = new Float32Array(CN);
+  const rng = passRng(world, "harvest");
+  const keep = RHO, fresh = Math.sqrt(1 - RHO * RHO);
+  for (let c = 0; c < CN; c++) raw[c] = keep * raw[c] + fresh * gauss(rng);
+  let zs = world._harvestZs;
+  if (!zs || zs.length !== CN) zs = world._harvestZs = new Float32Array(CN);
+  smoothZ(raw, zs);
+  // Per-settlement: the year's multiplier, and famine derived from the tail.
+  const cv = ensureYieldCv(world);
+  const tw = world.tw;
+  const yearTicks = Math.max(1, Math.round(HARVEST_INTERVAL / (world._dt || 1)));
+  const hitPolities = new Set();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const tx = s.pos.x | 0, ty = s.pos.y | 0;
+    const ti = ty * tw + tx;
+    const z = zAt(world, tx, ty, zs);
+    const c = cv[ti] || 0;
+    const mul = Math.max(MUL_FLOOR, Math.min(MUL_CEIL, 1 + z * c));
+    s._harvestYearMul = mul;
+    if (z < LEAN_Z && mul < FAMINE_LOSS) {
+      const onset = world.step >= (s._famineUntil || 0);   // read BEFORE extending
+      // +1 so the window still covers THIS tick at the next year boundary: a
+      // famine that persists into year 2 extends seamlessly (no re-logged
+      // onset); a recovery year leaves at most one tick of trailing distress.
+      s._famineUntil = world.step + yearTicks + 1;         // this famine YEAR (distress/faith/relief consumers unchanged)
+      // One event per afflicted realm per onset (the outbreak is the story,
+      // not each village's bad harvest) — the retired spawner's own grain.
+      if (onset && s.countryId >= 0 && !hitPolities.has(s.countryId)) {
+        hitPolities.add(s.countryId);
+        logEvent(world, "famine.struck", { polity: s.countryId, x: tx, y: ty });
+      }
+    }
+  }
 }
