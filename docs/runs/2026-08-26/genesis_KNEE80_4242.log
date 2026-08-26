@@ -1,0 +1,17 @@
+[harness] tree e167a17
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"CAGE_FILL":1}
+Earth (Sim): using real NCEP/NCAR precipitation + air temperature
+[peopleSim] hearth pin Nile picked at tile (138,41) (27.0E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (150,38) (45.0E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (166,41) (69.0E 28.5N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (197,38) (115.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (138,41) (27.0E 28.5N) score 7.42 pkg=wheat(suit 0.98) — ARMED: ~920y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (150,38) (45.0E 33.0N) score 6.42 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (166,41) (69.0E 28.5N) score 5.74 pkg=wheat(suit 0.82) — ARMED: ~1102y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (197,38) (115.5E 33.0N) score 6.42 pkg=rice(suit 1.03) — ARMED: ~2422y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) score 4.48 pkg=maize(suit 0.87) — ARMED: ~5171y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (113,49) (-10.5E 16.5N) score 3.40 pkg=sorghum(suit 0.61) — ARMED: ~3272y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (139,74) (28.5E -21.0N) score 1.62 pkg=tubers(suit 0.85) — ARMED: ~3515y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) score 1.34 pkg=tubers(suit 0.70) — ARMED: ~4270y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (210,62) (135.0E -3.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
