@@ -217,62 +217,10 @@ function playClipOr(sym, fallbackPlan) {
     window.__lastClipPlayed = sym;             // headless-check breadcrumb
   });
 }
-// ── stitched words & sentences from citation phones ───────────────────────
-// Concatenative, deliberately drill-like: each phone contributes a short
-// slice of its recording's first take — stops/affricates/clicks keep only
-// their burst (the take is "Ca", so the trailing vowel is clipped away),
-// continuants and vowels a capped steady span — crossfaded in sequence.
-// Tone/pitch is NOT reproduced (the recordings are monotone); stress shows
-// as length. Unrecorded phones are skipped; an all-miss word falls back to
-// the tract.
-const BURST_M = new Set([0, 7]);
-function sliceSpec(rec, seg, isVowel, stressed) {
-  const sr = rec.buf.sampleRate, s0 = rec.segs[0];
-  const len = (s0.b - s0.a) / sr;
-  // stops/clicks keep only the release (the take's own vowel would smear the
-  // next one — "p"+"i" must read pi, not pa-i); affricates keep their
-  // frication tail; continuants and vowels a capped steady span
-  const cap = isVowel ? (seg.lg ? 0.3 : 0.18) * (stressed ? 1.3 : 1)
-    : BURST_M.has(seg.m) ? 0.075 : seg.m === 3 ? 0.12 : 0.15;
-  return { seg: s0, dur: Math.min(cap, len) };
-}
-async function humanWordSchedule(plan, when) {
-  const parts = [];
-  plan.syls.forEach((syl, i) => {
-    const stressed = i === plan.stress;
-    for (const c of syl.on) parts.push({ seg: c, v: false, stressed });
-    for (const v of syl.nu) parts.push({ seg: v, v: true, stressed });
-    for (const c of syl.co) parts.push({ seg: c, v: false, stressed });
-  });
-  const recs = await Promise.all(parts.map(p => loadClip(p.seg.ipa)));
-  const ctx = ac();
-  let t = Math.max(when || 0, ctx.currentTime + 0.05), played = 0;
-  parts.forEach((p, k) => {
-    const rec = recs[k];
-    if (!rec) return;
-    const sp = sliceSpec(rec, p.seg, p.v, p.stressed);
-    playSlice(rec, sp.seg, sp.dur, t);
-    t += Math.max(0.03, sp.dur - 0.012);              // slight crossfade overlap
-    played++;
-  });
-  if (played) window.__lastHumanUtterance = { phones: played };   // headless-check breadcrumb
-  return { end: t, played };
-}
-function speakPlanHuman(plan) {
-  humanWordSchedule(plan).then(r => { if (!r.played) speakPlanTract(plan); });
-}
-async function speakClauseHuman(groups, contour) {
-  let when = 0, total = 0;
-  for (const g of groups) {
-    for (const plan of g) {
-      const r = await humanWordSchedule(plan, when);
-      when = r.end + 0.08;                            // word gap
-      total += r.played;
-    }
-    when += 0.14;                                     // phrase gap
-  }
-  if (!total) speakClauseTract(groups, contour);
-}
+// (Stitching words from citation phones was tried and retired: isolated
+// citation recordings carry no coarticulation, so concatenation reads as a
+// spelling drill at best. The recordings serve as per-phoneme reference —
+// and as the calibration ground truth the tract is fitted against.)
 // the glottal source: a Rosenberg glottal-flow pulse's DERIVATIVE (the actual
 // acoustic source at the folds) as a PeriodicWave, replacing the buzzy
 // sawtooth. Same harmonic richness (it still excites every formant) but the
@@ -493,14 +441,14 @@ function speakClauseTract(groups, contour) {
 }
 // engine dispatch: the Sound card's toggle picks the articulatory tract (the
 // vocal-tract model) or the formant sketch; both read the SAME phonetic plans
-function speakPlan(plan) { S.voice === "formant" ? speakPlanFormant(plan) : S.voice === "human" && HAS_CLIPS ? speakPlanHuman(plan) : speakPlanTract(plan); }
+function speakPlan(plan) { S.voice === "formant" ? speakPlanFormant(plan) : speakPlanTract(plan); }
 // a whole sentence: word plans in sequence, grouped into intonation
 // phrases (one per clause) — pitch declines across the whole utterance,
 // each NON-final clause ends on a continuation rise with a comma pause
 // (the near-universal spoken comma), and only the final clause carries
 // the sentence's boundary tone (fall for statements/commands, rise for
 // questions)
-function speakClause(groups, contour = "fall") { S.voice === "formant" ? speakClauseFormant(groups, contour) : S.voice === "human" && HAS_CLIPS ? speakClauseHuman(groups, contour) : speakClauseTract(groups, contour); }
+function speakClause(groups, contour = "fall") { S.voice === "formant" ? speakClauseFormant(groups, contour) : speakClauseTract(groups, contour); }
 function speakClauseFormant(groups, contour = "fall") {
   const ctx = ac();
   const master = mkMaster(ctx);
@@ -639,7 +587,7 @@ function soundHTML(l) {
       <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice !== "formant" && S.voice !== "human" ? " checked" : ""}/> articulatory tract</label>
       <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice === "formant" ? " checked" : ""}/> formant sketch</label>${HAS_CLIPS ? `
       <label class="vopt"><input type="radio" name="voiceEngine" value="human"${S.voice === "human" ? " checked" : ""}/> recorded phones</label>` : ""}</p>${HAS_CLIPS ? `
-    <p class="note">The third voice speaks with <b>human recordings</b> — real citation phones, openly licensed (${esc(IPA_CLIP_CREDIT)}). A phoneme chip plays its recording's first take; words and sentences are <b>stitched</b> from short phone slices (bursts kept, the citation vowels clipped away), so they read like a careful spelling drill, not fluent speech — tone is not reproduced and stress shows as length. A phone without its own recording uses its nearest recorded base phone, or the tract fills in.</p>` : ""}
+    <p class="note">With <b>recorded phones</b> selected, each phoneme chip plays a <b>human recording</b> of that exact phone — real citation audio, openly licensed (${esc(IPA_CLIP_CREDIT)}), loudness-matched across recorders. A phone without its own recording plays its nearest recorded base phone. Words and sentences still speak through the articulatory tract — isolated citation phones cannot be stitched into connected speech, but they serve as the <b>ground truth the tract's vowels are calibrated against</b>.</p>` : ""}
     <h3>Phonemes</h3>
     <p class="cells">${cChips}</p>
     <p class="cells">${vChips}</p>

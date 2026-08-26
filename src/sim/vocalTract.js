@@ -25,6 +25,7 @@
 // physics and author only the feature→gesture mapping that drives it.
 
 import { TONE_SHAPES } from "./languagePhonetics.js";
+import { VOWEL_CAL } from "./vocalTractCal.js";
 
 const F0_BASE = 105;               // speaker's base pitch (a deeper male voice reads less "high")
 const N = 44;                      // tract sections (glottis at 0, lips at N-1)
@@ -282,6 +283,15 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   const BLOCK = 128;
   const lipOut = { lip: 0, nose: 0 };
   let turbLP = 0;                                // one-pole low-pass state for turbulence noise
+  // Vocal naturalness: a real larynx never repeats itself — cycle-to-cycle
+  // pitch wobble (jitter), loudness wobble (shimmer) and a slower pitch
+  // wander (drift) ride every voiced sound. Each is heavily low-passed
+  // seeded noise (deterministic; a second stream so the timbre noise is
+  // untouched), gain-compensated so the depths below are true std-devs.
+  const nz2 = makeNoise((seed ^ 0x5bf03635) >>> 0);
+  const lp = (fc) => { const a = Math.exp(-2 * Math.PI * fc / IR); return { a, g: Math.sqrt((1 + a) / (1 - a)) / Math.sqrt(1 / 3), s: 0 }; };
+  const jit = lp(5), shim = lp(3.5), drift = lp(0.7);
+  const JIT_D = 0.008, SHIM_D = 0.06, DRIFT_D = 0.012;
   for (let i = 0; i < len; i += BLOCK) {
     const blk = Math.min(BLOCK, len - i);
     // posture at the block's END drives the new reflections; glottis ramps
@@ -294,12 +304,15 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
     const pmid = sampleAt((t0 + t1) / 2);       // turbulence/aspiration for the block
     for (let s = 0; s < blk; s++) {
       const lambda = s / blk;
-      glo.freq = p0f + (p1f - p0f) * lambda;
+      jit.s = jit.a * jit.s + (1 - jit.a) * nz2();
+      shim.s = shim.a * shim.s + (1 - shim.a) * nz2();
+      drift.s = drift.a * drift.s + (1 - drift.a) * nz2();
+      glo.freq = (p0f + (p1f - p0f) * lambda) * (1 + JIT_D * jit.g * jit.s + DRIFT_D * drift.g * drift.s);
       glo.tenseness = p0t + (p1t - p0t) * lambda;
       glo.intensity = p0i + (p1i - p0i) * lambda;
       glo.setLoudness();
       const nz = noise();
-      const glottal = glo.step(nz);
+      const glottal = glo.step(nz) * (1 + SHIM_D * shim.g * shim.s);
       // band-limit the turbulence: real frication/burst noise rolls off, not the
       // harsh full-band white that made stop bursts a ~11 kHz click
       turbLP = 0.4 * turbLP + 0.6 * noise();
@@ -352,21 +365,34 @@ const PLACE_INDEX = { 0: 41, 8: 36, 1: 33, 2: 31, 3: 29, 4: 20, 5: 16, 6: 11, 7:
 // toward the palate), height → how close the tongue rides to the roof.
 function vowelPosture(v) {
   const back = v.b || 0, height = v.h || 0;
-  // tongue hump position: front vowels forward (palatal), close back vowels at
-  // the velum, and LOW vowels retracted into the pharynx (that wide back cavity
-  // is what opens F1). So the high point moves with BOTH height and backness.
-  let tongueIndex = height === 2
-    ? (back === 0 ? 16 : back === 2 ? 11 : 13)                 // low: pharyngeal-ish
-    : (back === 0 ? 27 : back === 2 ? 19 : 20);                // close/mid: palatal / velar / central
-  let tongueDiameter = height === 0 ? 2.1 : height === 1 ? 2.6 : 3.0;
-  if (v.atr) { tongueDiameter += 0.25; tongueIndex += 0.6; }   // −ATR: laxer, a touch fronter
-  const lip = v.r ? 0.95 : 0;
+  let tongueIndex, tongueDiameter, lip, constrIndex = -1, constrDiameter = 3;
+  // CALIBRATED posture, when this quality was fitted against the recorded
+  // phone bank (vocalTractCal.js): tongue place/height, lip rounding, and the
+  // optional helper constriction all come from the fit. A lax (−ATR) quality
+  // without its own fit borrows the tense posture plus the analytic laxing
+  // delta; a quality with no entry at all falls back to the analytic formula.
+  const cal = VOWEL_CAL[`${height},${back},${v.r ? 1 : 0},${v.atr ? 1 : 0}`]
+    || (v.atr ? VOWEL_CAL[`${height},${back},${v.r ? 1 : 0},0`] : null);
+  if (cal) {
+    tongueIndex = cal.ti; tongueDiameter = cal.td; lip = cal.lip;
+    if (cal.cd < 3) { constrIndex = cal.ti; constrDiameter = cal.cd; }
+    if (v.atr && !VOWEL_CAL[`${height},${back},${v.r ? 1 : 0},1`]) { tongueDiameter += 0.25; tongueIndex += 0.6; }
+  } else {
+    // tongue hump position: front vowels forward (palatal), close back vowels at
+    // the velum, and LOW vowels retracted into the pharynx (that wide back cavity
+    // is what opens F1). So the high point moves with BOTH height and backness.
+    tongueIndex = height === 2
+      ? (back === 0 ? 16 : back === 2 ? 11 : 13)               // low: pharyngeal-ish
+      : (back === 0 ? 27 : back === 2 ? 19 : 20);              // close/mid: palatal / velar / central
+    tongueDiameter = height === 0 ? 2.1 : height === 1 ? 2.6 : 3.0;
+    if (v.atr) { tongueDiameter += 0.25; tongueIndex += 0.6; } // −ATR: laxer, a touch fronter
+    lip = v.r ? 0.95 : 0;
+    // a smooth hump alone can't pull F2 down for close back/round vowels — add a
+    // constriction co-located with the tongue (that's how /u/ gets its low F2:
+    // a long front cavity behind rounded lips). Front /i/ needs no help.
+    if ((height === 0 && (back >= 1 || v.r)) || (height === 1 && v.r)) { constrIndex = tongueIndex; constrDiameter = height === 0 ? 0.65 : 0.78; }
+  }
   const velum = v.n ? 0.4 : 0.01;
-  // a smooth hump alone can't pull F2 down for close back/round vowels — add a
-  // constriction co-located with the tongue (that's how /u/ gets its low F2:
-  // a long front cavity behind rounded lips). Front /i/ needs no help.
-  let constrIndex = -1, constrDiameter = 3;
-  if ((height === 0 && (back >= 1 || v.r)) || (height === 1 && v.r)) { constrIndex = tongueIndex; constrDiameter = height === 0 ? 0.65 : 0.78; }
   let tenseness = 0.72, fscale = 1;                            // modal voice (less breathy = less "wet")
   if (v.ph === 1) tenseness = 0.4;                             // breathy
   else if (v.ph === 2) { tenseness = 0.9; fscale = 0.72; }     // creaky (drops pitch)
