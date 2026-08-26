@@ -114,20 +114,29 @@ const boxLandMkm2 = (r) => {
 // capField is what the land can carry, popField who actually stands on it —
 // both in field units, so the ratio to urban people is what matters, not the
 // absolute. Reported per Mkm² of the box's own land, alongside the urban read.
+// A BOX MEAN CANNOT MEASURE A RIBBON. Egypt's and Mesopotamia's boxes are
+// mostly Sahara and Syrian desert, so averaging capacity over the box buries
+// the Nile in the sand beside it — the very geometry that MAKES a cradle
+// (rich, thin, hemmed) reads as poverty. cageField.js solved this exact
+// problem with the capacity-WEIGHTED mean (Σcap²/Σcap): people distribute in
+// proportion to capacity, so weighting by it reads the land the region's
+// people ACTUALLY stand on — the strip for the Nile, the plain for Ukraine.
+// The unweighted mean is kept beside it: the two together say rich-and-thin
+// (weighted ≫ mean) versus uniformly poor (both low).
 const fieldSums = (r) => {
-  let cap = 0, pop = 0;
+  let cap = 0, pop = 0, capSq = 0;
   const cf = world.capField, pf = world.popField;
   for (let y = yOf(r[2]); y <= yOf(r[1]); y++)
     for (let x = xOf(r[3]); x <= xOf(r[4]); x++) {
       const ti = y * twm + x;
       if (!(world.elev && world.elev[ti] > 0)) continue;
-      if (cf) cap += cf[ti];
+      if (cf) { cap += cf[ti]; capSq += cf[ti] * cf[ti]; }
       if (pf) pop += pf[ti];
     }
-  return [cap, pop];
+  return [cap, pop, cap > 0 ? capSq / cap : 0];   // third = the capacity-weighted mean, per TILE
 };
 console.log(`  ── 1. THE ATLAS (urban people by region, and per Mkm² of its land) ──`);
-console.log(`  ${"region".padEnd(18)} ${"cities".padStart(6)} ${"urban ppl".padStart(11)} ${"per Mkm²".padStart(10)} ${"largest".padStart(9)} ${"realms".padStart(6)} ${"cap/Mkm²".padStart(9)} ${"pop/Mkm²".padStart(9)} ${"fill".padStart(5)}`);
+console.log(`  ${"region".padEnd(18)} ${"cities".padStart(6)} ${"urban ppl".padStart(11)} ${"per Mkm²".padStart(10)} ${"largest".padStart(9)} ${"realms".padStart(6)} ${"cap/tile*".padStart(9)} ${"pop/Mkm²".padStart(9)} ${"fill".padStart(5)}`);
 const rows = [];
 for (const r of REGIONS) {
   const inR = settled.filter(s => inBox(s, r));
@@ -136,14 +145,15 @@ for (const r of REGIONS) {
   const area = Math.max(0.05, boxLandMkm2(r));
   let realms = 0;
   if (world.countries) for (const c of world.countries.values()) if (c.capital && inBox(c.capital, r)) realms++;
-  const [cap, pop] = fieldSums(r);
-  rows.push([r[0], inR.length, urb, urb / area, big, realms, cap / area, pop / area, cap > 0 ? pop / cap : 0]);
+  const [cap, pop, capW] = fieldSums(r);
+  rows.push([r[0], inR.length, urb, urb / area, big, realms, capW, pop / area, cap > 0 ? pop / cap : 0]);
 }
 rows.sort((a, b) => b[3] - a[3]);   // by DENSITY — the honest comparison
 for (const [lab, n, urb, dens, big, realms, capD, popD, fill] of rows)
   console.log(`  ${lab.padEnd(18)} ${String(n).padStart(6)} ${(Math.round(urb / 1000) + "k").padStart(11)} ${(Math.round(dens / 1000) + "k").padStart(10)} ${(Math.round(big / 1000) + "k").padStart(9)} ${String(realms).padStart(6)} ${Math.round(capD).toString().padStart(9)} ${Math.round(popD).toString().padStart(9)} ${fill.toFixed(2).padStart(5)}`);
-console.log(`  (cap/pop are FIELD units per Mkm² — compare regions to each other, not to the urban column.`);
-console.log(`   High cap+pop with no cities ⇒ a FORMATION defect; low cap ⇒ the land itself is under-fed.)`);
+console.log(`  (*cap/tile = the capacity-WEIGHTED mean per tile — the land the region's people actually`);
+console.log(`   stand on, so a rich thin ribbon is not buried in the desert beside it. High cap+pop with no`);
+console.log(`   cities ⇒ a FORMATION defect; low weighted cap ⇒ the land itself is under-fed.)`);
 
 console.log(`\n  ── 2. THE URBAN LADDER (city cores, real people) ──`);
 const BR = [[0, 15e3, "≤15k (the minting floor)"], [15e3, 30e3, "15-30k"], [30e3, 60e3, "30-60k"], [60e3, 120e3, "60-120k"], [120e3, 300e3, "120-300k"], [300e3, Infinity, ">300k"]];
