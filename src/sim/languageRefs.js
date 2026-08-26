@@ -29,6 +29,13 @@ export function refProfile(kind, seed) {
     orthoStyle: 0, sig: "none", compound: "hl", compErode: "trim", wordLen: 1.5, erodeNames: false, nameStyle: "plain",
     romTaste: 0, palatalFront: true,              // j/q/x only before front vowels; g/k/h never before i
     toneMarks: true, medialSonorant: true,
+    // spoken character (scenario data, like the inventory): syllable-timed
+    // and tone-carried both DERIVE from the dials above; pinned here are the
+    // free rolls — a brisk clip, a slightly high frame — and the habits:
+    // plain stops released BARE (the phonemic aspirates own the puff),
+    // denti-alveolar t/d, clear l everywhere
+    pros: { rate: 1.05, f0k: 1.02, finalLen: 1.2 },
+    acc: { vot: 0.1, finalDevoice: false, soften: 0, darkL: false, dental: 1 },
     script: { type: "logo", dir: "ltr" },         // pinned writing system (scenario data, like the gram literal)
     // lexical typology (phase 2, scenario data): equipollent motion (跑进 —
     // the serializing third type), every uncle distinct (sudanese-like, as
@@ -76,6 +83,12 @@ export function refProfile(kind, seed) {
     orthoStyle: 0, sig: "none", compound: "hl", compErode: "trim", wordLen: 2.1, erodeNames: false, nameStyle: "plain",
     clicks: false, phonation: 0, pitchAccent: false,
     romTaste: 0, script: { type: "alphabet", dir: "ltr" },
+    // spoken character: hard stress-timing with deep akanie-style reduction,
+    // a low frame, forceful stress; bare short-lag stops, word-FINAL
+    // DEVOICING, dental t/d, dark coda ɫ. Softness itself is PHONEMIC here
+    // (palatalized: true above), so the allophonic soften habit stays off.
+    pros: { reduce: 0.65, f0k: 0.9, rate: 0.98, range: 0.95, stressGain: 1.35, finalLen: 1.25 },
+    acc: { vot: 0.08, finalDevoice: true, soften: 0, darkL: true, dental: 1 },
     // lexical typology (phase 2): satellite-framed (the Slavic prefix machine),
     // one 'uncle' (дядя — lineal/eskimo), the full color set
     lex: { motion: "sat", kin: "eskimo", bk: "full" },
@@ -118,6 +131,12 @@ export function refProfile(kind, seed) {
     orthoStyle: 0, sig: "none", compound: "hl", compErode: "trim", wordLen: 1.9, erodeNames: true, nameStyle: "di",
     romTaste: 0, c2LiqOnly: true,                 // pr/tr/fl/sl — never fn-/hn-/thn-
     script: { type: "alphabet", dir: "ltr" },
+    // spoken character: stress-timed with heavy reduction and a wide,
+    // swooping melody; LONG-LAG aspirated p/t/k (the English puff), dark
+    // coda ɫ, ALVEOLAR t/d (the dental:true above pins θ/ð as phonemes —
+    // without this acc pin the coronal-place habit would wrongly go dental)
+    pros: { reduce: 0.6, f0k: 1.0, rate: 1.0, range: 1.25, stressGain: 1.3, finalLen: 1.3 },
+    acc: { vot: 0.85, finalDevoice: false, soften: 0, darkL: true, dental: 0 },
     // lexical typology (phase 2): satellite-framed ('go in'), lineal kin
     // (one uncle), the full 11-term color set
     lex: { motion: "sat", kin: "eskimo", bk: "full" },

@@ -116,9 +116,40 @@ export function prosodyOf(lang) {
     stressGain: rhythm === "stress" ? 1.25 + roll("sg") * 0.2 : rhythm === "even" ? 1.1 : 1.04,
     toneDepth: prof.tone === 2 ? 1.4 : prof.tone === 1 ? 1.15 : 1,   // contour tones dig deeper
     finalLen: 1.1 + roll("fin") * 0.35,                 // phrase-final drawl
+    ...(prof.pros || {}),                               // reference pins (scenario data, like the inventory)
   };
 }
 export const DEFAULT_PROS = { rhythm: "even", reduce: 0, f0k: 1, rate: 1, range: 1, stressGain: 1.13, toneDepth: 1, finalLen: 1.12 };
+
+// ── the articulatory setting: the language's segmental HABITS ─────────────
+// Beyond which phonemes exist, real languages differ in how they say the
+// same ones — the accent. Each habit is gated by the real constraint that
+// governs it cross-linguistically, then rolled per family:
+//   · vot — voice onset time on voiceless stops: bare short-lag (Romance)
+//     to a strong aspirated puff (English, German). A language whose
+//     phonology CONTRASTS aspiration keeps plain stops bare, or the puff
+//     would erase the phonemic distinction (Mandarin, Hindi).
+//   · finalDevoice — word-final voiced obstruents harden (Russian, German,
+//     Turkish); only meaningful where voiced obstruents exist.
+//   · soften — plain coronals/velars take a ʲ colour before front vowels
+//     (the Russian setting); suppressed where palatalization is phonemic,
+//     for the same contrast-preserving reason as VOT.
+//   · darkL — coda /l/ velarizes to ɫ (English, Russian) or stays clear
+//     everywhere (Spanish, French).
+//   · dental — coronals articulate dental (Spanish t̪) vs alveolar (English).
+export function accentOf(lang) {
+  const prof = lang.prof;
+  const roll = (tag) => hash32(lang.famSeed >>> 0, "acc", tag) / 4294967296;
+  return {
+    vot: prof.aspirated ? 0.12 : roll("vot"),
+    finalDevoice: prof.voiced ? roll("fdv") < 0.35 : false,
+    soften: prof.palatalized ? 0 : roll("soft") < 0.22 ? 0.5 + roll("soft2") * 0.5 : 0,
+    darkL: roll("dkl") < 0.45,
+    dental: prof.dental ? 1 : roll("den") < 0.3 ? 1 : 0,
+    ...(prof.acc || {}),                                // reference pins
+  };
+}
+export const DEFAULT_ACCENT = { vot: 0.3, finalDevoice: false, soften: 0, darkL: false, dental: 0 };
 
 // contour letters for the four melody slots renderWord writes as ā á ǎ à
 export const TONE_LETTERS = ["˥", "˧˥", "˨˩˦", "˥˩"];   // high level · rising · dipping · falling
@@ -158,7 +189,7 @@ export function phoneticPlan(lang, form) {
     : prof.stress === "final" ? n - 1
     : prof.stress === "penult" ? Math.max(0, n - 2)
     : hash32(form.tseed || 0, "stress", n) % n;
-  return { syls, stress, tone: prof.tone || 0, pitchAccent: pacc >= 0, pros: prosodyOf(lang) };
+  return { syls, stress, tone: prof.tone || 0, pitchAccent: pacc >= 0, pros: prosodyOf(lang), acc: accentOf(lang) };
 }
 
 /** IPA transcription of an internal form: ˈstress, syllable dots, tone

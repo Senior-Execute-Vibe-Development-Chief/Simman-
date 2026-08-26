@@ -24,7 +24,7 @@
 // public-domain Pink Trombone — a calibrated physical model. We reuse the
 // physics and author only the feature→gesture mapping that drives it.
 
-import { TONE_SHAPES, DEFAULT_PROS } from "./languagePhonetics.js";
+import { TONE_SHAPES, DEFAULT_PROS, DEFAULT_ACCENT } from "./languagePhonetics.js";
 import { VOWEL_CAL } from "./vocalTractCal.js";
 
 const F0_BASE = 105;               // speaker's base pitch (a deeper male voice reads less "high")
@@ -436,9 +436,9 @@ function layF0(B, t, dur, kpts) {
 }
 
 // one consonant gesture; returns the time it consumes
-function scoreCons(B, c, t, kpts, final) {
+function scoreCons(B, c, t, kpts, final, acc = DEFAULT_ACCENT) {
   const p = Math.min(c.p, 8);
-  const place = PLACE_INDEX[p] ?? 33;
+  const place = (PLACE_INDEX[p] ?? 33) + (acc.dental && p === 1 ? 2.5 : 0);   // dental habit: coronals forward
   const sib = p >= 1 && p <= 3;
   const voicedBar = c.l === 1;
   const kMid = kpts[Math.floor(kpts.length / 2)] || 1;
@@ -472,6 +472,8 @@ function scoreCons(B, c, t, kpts, final) {
   if (c.m === 4) {                                            // LATERAL: a mid constriction, voiced
     const dur = 0.075;
     B.to("constrIndex", t, place, 0); B.to("constrDiameter", t, 0.38, trans);
+    // dark coda ɫ: the tongue body backs toward the velum while the tip holds
+    if (final && acc.darkL) { B.to("tongueIndex", t, 17.5, 0.025); B.to("tongueDiameter", t, 2.8, 0.025); }
     B.to("intensity", t, 1, 0.012); B.to("tenseness", t, 0.6, 0.02);
     B.set("fricative", t, 0); B.set("aspiration", t, 0);
     layF0(B, t, dur, kpts);
@@ -544,6 +546,11 @@ function scoreCons(B, c, t, kpts, final) {
   if (aspirated) {                                           // voiceless breath after the burst
     B.set("intensity", t + dt, 0); B.to("aspiration", t + dt, 0.5, 0.01);
     B.to("aspiration", t + dt + 0.05, 0, 0.02); dt += 0.055;
+  } else if (c.m === 0 && c.l === 0 && !glottalStop && acc.vot > 0.25 && !final) {
+    // VOT habit: a long-lag language puffs even its PLAIN voiceless stops
+    const ad = 0.012 + 0.04 * acc.vot;
+    B.set("intensity", t + dt, 0); B.to("aspiration", t + dt, 0.2 + 0.28 * acc.vot, 0.008);
+    B.to("aspiration", t + dt + ad, 0, 0.015); dt += ad + 0.01;
   }
   void kMid;
   return dt;
@@ -579,6 +586,7 @@ function scoreVowel(B, nu, t, kpts, dur, red = 0) {
 // one word plan → gestures appended to the builder, starting at time t
 function scoreWord(B, plan, t, mod = {}) {
   const pros = plan.pros || DEFAULT_PROS;             // the language's own music
+  const acc = plan.acc || DEFAULT_ACCENT;             // ...and its segmental habits
   const scale = mod.scale || 1;
   const nSyl = plan.syls.length;
   plan.syls.forEach((syl, i) => {
@@ -593,13 +601,17 @@ function scoreWord(B, plan, t, mod = {}) {
     }
     kpts = kpts.map(k => k * pros.f0k);               // the language's pitch frame
     for (const c of syl.on) {
-      t += scoreCons(B, c, t, kpts, false) + 0.004;
-      if (c.s) {                                             // ʲ/ʷ on-glide
-        const gv = c.s === 1 ? { h: 0, b: 0, r: 0 } : { h: 0, b: 2, r: 1 };
+      t += scoreCons(B, c, t, kpts, false, acc) + 0.004;
+      // ʲ/ʷ on-glide — phonemic (c.s), or the soft-consonant HABIT before a
+      // front vowel (plain coronal/velar, scaled by the language's lean)
+      const soft = !c.s && acc.soften > 0 && syl.nu.length && syl.nu[0].b === 0 && ((c.p >= 1 && c.p <= 4) || c.p === 8);
+      if (c.s || soft) {
+        const gv = c.s === 2 ? { h: 0, b: 2, r: 1 } : { h: 0, b: 0, r: 0 };
         const gp = vowelPosture(gv);
+        const gd = c.s ? 0.03 : 0.02 * acc.soften;
         B.to("tongueIndex", t, gp.tongueIndex, 0.02); B.to("lip", t, gp.lip, 0.02);
-        B.to("intensity", t, 1, 0.01); layF0(B, t, 0.03, kpts);
-        t += 0.034;
+        B.to("intensity", t, 1, 0.01); layF0(B, t, gd, kpts);
+        t += gd + 0.004;
       }
     }
     if (syl.nu.length) {
@@ -613,7 +625,12 @@ function scoreWord(B, plan, t, mod = {}) {
       dur *= i === nSyl - 1 ? (mod.final ? pros.finalLen : 1.06) : 1;
       t += scoreVowel(B, syl.nu, t, kpts, dur, red) + 0.004;
     }
-    for (const c of syl.co) t += scoreCons(B, c, t, kpts, true) + 0.004;
+    for (const c0 of syl.co) {
+      // final devoicing habit: a word-final voiced obstruent hardens in speech
+      const c = acc.finalDevoice && i === nSyl - 1 && c0.l === 1 && (c0.m === 0 || c0.m === 2 || c0.m === 3)
+        ? { ...c0, l: 0 } : c0;
+      t += scoreCons(B, c, t, kpts, true, acc) + 0.004;
+    }
     // Voicing stays CONTINUOUS across syllable boundaries — fading to silence at
     // every seam chopped a word into disconnected syllables (the "chops"). Only
     // the word's final edge fades out; voiceless consonants make their own gaps.
