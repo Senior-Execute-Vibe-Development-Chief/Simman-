@@ -17,7 +17,7 @@ import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE 
 import { MATERIALS } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
-import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI } from "./sim/musicCompose.js";
+import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
 import { makeAudio, setDistance, playNote, playVoice } from "./sim/musicSynth.js";
 import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
 
@@ -315,6 +315,12 @@ function instrumentsHTML(m) {
 
 function tuningHTML(m) {
   const d = m.scale.degrees;
+  const fin = finalFor(m, S.occ);
+  const inMode = new Set(m.mode.idx);
+  const homeIdx = m.mode.idx[fin];
+  const F = m.scale.frame.cents, L = m.mode.size;
+  const fromHome = Array.from({ length: L }, (_, k) =>
+    ((m.mode.cents[(fin + k) % L] - m.mode.cents[fin]) % F + F) % F).sort((a, b) => a - b);
   return `<div class="card">
     <h2>The scale they found <span class="count">— derived, not chosen</span></h2>
     <p class="note">Two tones sound rough when their partials beat against each other. This curve is
@@ -325,12 +331,25 @@ function tuningHTML(m) {
     <canvas id="curve"></canvas>
     <div class="degrees">${d.map((x, i) => {
       const nj = nearJust(x.ratio);
-      return `<button class="deg${x.found ? "" : " measured"}" data-deg="${i}"
+      return `<button class="deg${x.found ? "" : " measured"}${inMode.has(i) ? " inmode" : ""}${i === homeIdx ? " home" : ""}" data-deg="${i}"
           title="${x.found ? "heard — a roughness minimum of their own instruments" : "measured — an even division of their frame, where the timbre gave no dip to find"}">
         <span class="dc">${x.cents.toFixed(0)}<i>¢</i></span>
         <span class="dr">${x.ratio.toFixed(3)}</span>
         <span class="dj">${nj ? esc(nj) : x.found ? "heard" : "measured"}</span></button>`;
     }).join("")}</div>
+    <h3>What they actually sing out of it</h3>
+    <p class="note tight">A scale is every interval that sits well against one note. A <strong>mode</strong>
+      is the subset whose notes sit well against <em>each other</em> — a melody free to use all nine of
+      these would crawl through seventy-cent steps and sound like nobody's music. And which member the
+      music treats as <em>home</em> is its own choice: the same pitches read open or shaded depending on
+      how much of the mode already lives inside that note's own harmonic series, which is why
+      ${esc(OCCASIONS[S.occ].label)} takes the final it does.</p>
+    <div class="moderow">
+      ${fromHome.map((c, i) => `<span class="mstep${i === 0 ? " mhome" : ""}">${Math.round(c)}<i>¢</i></span>`).join('<span class="marrow">·</span>')}
+      <span class="mframe">${Math.round(F)}<i>¢</i></span>
+    </div>
+    <p class="note tight">${m.mode.size} notes, measured from home &mdash; steps of
+      ${fromHome.slice(1).map((c, i) => Math.round(c - fromHome[i])).concat([Math.round(F - fromHome[fromHome.length - 1])]).join(", ")}¢.</p>
     <div class="factrow">
       <div><span class="k">repeats at</span><b>${m.scale.frame.cents.toFixed(0)}¢</b>
         <span class="note tight">${Math.abs(m.scale.frame.cents - 1200) < 25 ? "an octave" : "not an octave"}</span></div>
@@ -536,7 +555,9 @@ function wire() {
       const A = audio(); setDistance(A, 0.95);
       const t = A.ctx.currentTime + 0.05;
       // a short figure over their own scale, so you hear the body AND the tuning
-      [0, 2, 1, 3].forEach((d, i) => playNote(A, inst, degreeHz(P, tonicOf(P), d, 0), t + i * 0.34, 0.42, 0.4));
+      const fin = finalFor(P, S.occ);
+      [0, 1, 2, 4, 2, 0].forEach((mi, i) =>
+        playNote(A, inst, degreeHz(P, tonicOf(P), modeDegree(P, mi + fin), 0), t + i * 0.28, 0.36, 0.4));
     };
   });
   document.querySelectorAll("button[data-deg]").forEach(b => {
@@ -545,7 +566,8 @@ function wire() {
       const i = +b.dataset.deg;
       const lead = P.insts.find(x => x.cap >= 3) || P.insts[0];
       const t = A.ctx.currentTime + 0.04;
-      playNote(A, lead, degreeHz(P, tonicOf(P), 0, 0), t, 0.7, 0.3);
+      const home = modeDegree(P, finalFor(P, S.occ));
+      playNote(A, lead, degreeHz(P, tonicOf(P), home, 0), t, 0.7, 0.3);
       playNote(A, lead, degreeHz(P, tonicOf(P), i, 0), t + 0.02, 0.7, 0.38);
     };
   });
@@ -600,6 +622,17 @@ canvas{width:100%;display:block}
   border:1px solid var(--line);border-radius:4px;padding:.3rem .55rem;cursor:pointer;color:var(--ink);font:inherit}
 .deg:hover{border-color:var(--accent)}
 .deg.measured{border-style:dashed;opacity:.82}
+.deg{opacity:.45}
+.deg.inmode{opacity:1;background:var(--card);border-color:var(--accent)}
+.deg.home{box-shadow:inset 0 0 0 2px var(--accent)}
+.moderow{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;margin:.3rem 0 .1rem}
+.mstep{font-family:ui-monospace,Menlo,monospace;font-size:.95rem;background:var(--chipbg);
+  border:1px solid var(--line);border-radius:4px;padding:.15rem .5rem;font-variant-numeric:tabular-nums}
+.mstep i{font-style:normal;font-size:.72em;opacity:.65}
+.mstep.mhome{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.mframe{font-family:ui-monospace,Menlo,monospace;font-size:.95rem;color:var(--muted);
+  border:1px dashed var(--line);border-radius:4px;padding:.15rem .5rem}
+.marrow{color:var(--muted);font-size:.7rem}
 .deg.measured .dc{color:var(--gloss)}
 .factrow b.small{font-size:.95rem;line-height:1.5}
 .dc{font-family:ui-monospace,Menlo,monospace;font-size:.95rem;color:var(--accent);font-variant-numeric:tabular-nums}

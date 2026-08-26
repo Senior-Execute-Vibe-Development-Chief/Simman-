@@ -73,6 +73,67 @@ Three mechanisms complete it:
    Equidistant tunings are what turn up where timbre stops constraining; the
    Lab labels each degree *heard* or *measured*.
 
+### Scale is not mode, and mode is not home
+
+Two links were missing from the first cut, and their absence was audible: the
+music came out eerie and directionless. Both are the same class of error —
+using a set of pitches as if it were a melody's world.
+
+**A scale is every interval that sits well against the tonic. A mode is the
+subset whose notes sit well against *each other*.** A melody free to roam a
+nine-degree just scale will use both 6:5 and 5:4 in one phrase and put a
+**71-cent step** in the middle of it — a crawl no one would sing. The mode is
+derived with the same roughness model, taken pairwise over the chosen set
+instead of against the tonic alone, searched exhaustively (there are only a
+handful of degrees, so there is no reason to approximate — and greedy fails in
+a specific way, taking a degree that sits beautifully against the tonic and
+only afterwards discovering it lands 85¢ from one it already holds). Two more
+constraints shape it: a mode must be **singable**, so steps under ~120¢ pay a
+graded cost — below about a hundred cents two pitches read as one degree
+inflected, which is why steps that small are vanishingly rare in the world's
+tunings; and mode size is bounded by the **frame**, since a narrow frame has no
+room for many distinct steps.
+
+**Which member is home is a second choice, and it carries the affect.** Treat a
+different mode degree as the final and the same five pitches turn from dark to
+bright without one of them changing — the minor-pentatonic set *is* the
+major-pentatonic set, rotated. Brightness is scored acoustically: how much of
+the mode already lives inside that final's own low harmonic series. A degree
+with a 3:2 and a 5:4 above it is a note the others point at — 5:4 is literally
+that final's fifth partial, while 6:5 appears nowhere low in its series, which
+is why one reads open and the other shaded. So a working day takes the
+brightest final the mode offers and a rite takes a darker one, out of one set
+of pitches. Measured over 140 peoples, everyday finals score 0.35 brightness
+against mourning's 0.05.
+
+Melody then walks the mode, and **arches**: rising away from where it started
+and coming back down to land, because that is what a breath does — pressure
+building and then falling. Declination tilts the arch downward by as much as
+the occasion wants.
+
+Measured effect of these three (140 peoples, three cycles each): melodic
+intervals under 120¢ fell from roughly a third of all steps to **4.3%**.
+
+### Tempo, damping, and room
+
+Three more things were making everything sound solemn regardless of occasion:
+
+- **Pulse had no anchor.** It now sits near spontaneous motor tempo — the rate
+  people tap, walk and rock at unprompted, which clusters around 100–120 bpm
+  across populations — scaled by how fast the tongue is spoken and by occasion.
+  Everyday lands at a median of 111 bpm, mourning at 67.
+- **Nobody was damping.** A bronze bar left alone rings for nine seconds; a
+  player carrying a melody on one stops it with the other hand before the next
+  note. Struck bodies in a melodic part now ring about as long as their note;
+  bodies struck for colour are left to ring out. Without this every metal
+  tradition is a wash rather than a tune.
+- **Too much room and too dark a filter.** Distance now opens much further at
+  close range, and the reflected share is roughly halved throughout.
+
+Each occasion also carries an **articulation** — how much of its slot a note
+actually sounds for. Short and detached lifts a piece; long and overlapping
+weighs it down.
+
 ### Rhythm comes out of the language
 
 A culture's music inherits the durational unevenness of its speech. This is a

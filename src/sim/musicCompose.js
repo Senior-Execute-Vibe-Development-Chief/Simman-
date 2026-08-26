@@ -20,13 +20,17 @@
 import { hash32 } from "./peopleSim/rng.js";
 import { nPVI } from "./musicGenome.js";
 
+// `artic` is how much of its slot a note actually sounds for: short and
+// detached lifts a piece, long and overlapping weighs it down. `descent` is
+// how strongly the breath declination shows — a lament droops, a dance does
+// not. Neither replaces the mechanism; they scale it by what is happening.
 export const OCCASIONS = {
-  peace:    { label: "everyday",  tempo: 1,    density: 1,    reg: 0,    perc: 0.5,  orn: 1,    drone: 0.6, descent: 1,    lead: null },
-  rite:     { label: "rite",      tempo: 0.72, density: 0.68, reg: 0,    perc: 0.22, orn: 1.35, drone: 1,   descent: 1.05, lead: "sustain" },
-  war:      { label: "war",       tempo: 1.32, density: 1.18, reg: -1,   perc: 1,    orn: 0.5,  drone: 0.5, descent: 0.85, lead: "loud" },
-  mourning: { label: "mourning",  tempo: 0.62, density: 0.55, reg: -0.4, perc: 0.14, orn: 1.15, drone: 0.9, descent: 1.35, lead: "sustain" },
-  festival: { label: "festival",  tempo: 1.22, density: 1.35, reg: 0.3,  perc: 1,    orn: 0.95, drone: 0.4, descent: 0.95, lead: null },
-  work:     { label: "work",      tempo: 0.96, density: 1.05, reg: 0,    perc: 0.85, orn: 0.7,  drone: 0.35, descent: 1,   lead: null },
+  peace:    { label: "everyday", bright: 1,  tempo: 1.06, density: 1.05, reg: 0.35, perc: 0.6,  orn: 0.9,  drone: 0.4,  descent: 0.8,  artic: 0.62, lead: null },
+  rite:     { label: "rite", bright: -1,      tempo: 0.74, density: 0.68, reg: 0,    perc: 0.22, orn: 1.35, drone: 1,    descent: 1.05, artic: 0.95, lead: "sustain" },
+  war:      { label: "war", bright: 0,       tempo: 1.34, density: 1.18, reg: -0.6, perc: 1,    orn: 0.5,  drone: 0.5,  descent: 0.85, artic: 0.55, lead: "loud" },
+  mourning: { label: "mourning", bright: -1,  tempo: 0.64, density: 0.55, reg: -0.4, perc: 0.14, orn: 1.15, drone: 0.9,  descent: 1.35, artic: 1,    lead: "sustain" },
+  festival: { label: "festival", bright: 1,  tempo: 1.26, density: 1.35, reg: 0.5,  perc: 1,    orn: 0.95, drone: 0.35, descent: 0.85, artic: 0.55, lead: null },
+  work:     { label: "work", bright: 1,      tempo: 1,    density: 1.05, reg: 0.2,  perc: 0.85, orn: 0.7,  drone: 0.35, descent: 0.95, artic: 0.6,  lead: null },
 };
 
 /** Assign instruments to roles. Which body leads is an occasion question —
@@ -53,6 +57,18 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   return { lead, drone: droneI < 0 ? null : droneI, pulse, second, voices, occ };
 }
 
+/** Which member of the mode this occasion treats as home. A working day
+ *  takes the brightest final the mode offers; a rite or a lament takes a
+ *  shaded one. Same pitches either way. */
+export function finalFor(music, occKey) {
+  const want = (OCCASIONS[occKey] || OCCASIONS.peace).bright ?? 0;
+  const fs = music.mode.finals;
+  if (!fs || !fs.length) return 0;
+  if (want > 0) return fs.reduce((a, b) => (b.bright > a.bright ? b : a)).f;
+  if (want < 0) return fs.reduce((a, b) => (b.bright < a.bright ? b : a)).f;
+  return 0;
+}
+
 /** Frequency of a scale degree. `oct` counts FRAME repetitions — which is
  *  not always an octave, and that is the point. */
 export function degreeHz(music, tonicHz, deg, oct = 0) {
@@ -69,28 +85,48 @@ export function degreeHz(music, tonicHz, deg, oct = 0) {
 // falls, and (c) lands on a structural degree — the ones the roughness curve
 // itself ranked most consonant.
 function phrase(music, seedBase, nNotes, startDeg, descent) {
-  const M = music.melody, S = music.scale.degrees.length;
+  const M = music.melody, S = music.mode.size;
   const roll = (i, t) => hash32(seedBase >>> 0, i, t) / 4294967296;
   const out = [];
+  // A melody moves through the MODE, not through every interval the scale
+  // holds. Walking the raw scale is what makes a line crawl semitone by
+  // semitone and sound like nobody's music: a scale that offers both a 6:5
+  // and a 5:4 puts a seventy-cent step in the middle of any phrase that uses
+  // both. One step here is one step of the mode.
   let deg = startDeg;
   for (let i = 0; i < nNotes; i++) {
-    const frac = i / Math.max(1, nNotes - 1);
-    const stepwise = roll(i, "s") < M.step;
-    let mv = stepwise ? 1 + (roll(i, "s2") < 0.22 ? 1 : 0) : 2 + Math.floor(roll(i, "l") * 3);
-    // declination: the further into the phrase, the more likely down
-    const down = roll(i, "d") < 0.5 + descent * 0.45 * frac;
-    deg += down ? -mv : mv;
-    // keep inside the compass, folding back rather than clipping flat
-    if (deg > M.range) deg -= S;
-    if (deg < -Math.round(M.range * 0.55)) deg += S;
+    if (i > 0) {
+      const frac = i / Math.max(1, nNotes - 1);
+      const stepwise = roll(i, "s") < M.step;
+      const mv = stepwise ? 1 : 2 + (roll(i, "l") < 0.3 ? 1 : 0);
+      // A phrase ARCHES: it rises away from where it started and comes back
+      // down to land. That shape is not a stylistic choice — it is what a
+      // breath does, pressure building and then falling, and it is why
+      // melodies the world over rise early and descend late. Declination
+      // (the same fall the speech engine applies to f0) tilts the whole arch
+      // downward; how far depends on what the music is for.
+      const pUp = 0.5 + M.arch * (0.55 - frac) * 1.7 - descent * 0.3 * frac;
+      const down = roll(i, "d") >= Math.max(0.12, Math.min(0.9, pUp));
+      deg += down ? -mv : mv;
+      // keep inside the compass, folding back rather than clipping flat
+      if (deg > M.reach) deg -= S;
+      if (deg < -Math.round(M.reach * 0.38)) deg += S;
+    }
     out.push(deg);
   }
-  // cadence: the last note falls to the nearest structural degree
+  // cadence: the last note falls to the nearest structural degree of the mode
   const last = out.length - 1;
   const octOf = Math.floor(out[last] / S);
   const cand = M.structural.map(d => d + octOf * S);
   out[last] = cand.reduce((a, b) => (Math.abs(b - out[last]) < Math.abs(a - out[last]) ? b : a), cand[0]);
   return out;
+}
+
+/** Mode index → scale degree, so pitch lookup stays in one place. */
+export function modeDegree(music, mi) {
+  const mode = music.mode.idx, L = mode.length, S = music.scale.degrees.length;
+  const w = Math.floor(mi / L);
+  return mode[((mi % L) + L) % L] + w * S;
 }
 
 /** Note durations for one cycle: the rhythm class decides how uneven they are. */
@@ -119,7 +155,7 @@ function cycleDurs(rhythm, seedBase, beats, density) {
  */
 export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed = 0 } = {}) {
   const E = ensembleFor(music, occ, intimacy);
-  const O = E.occ, R = music.rhythm;
+  const O = E.occ, R = music.rhythm, fin = finalFor(music, occ);
   const beats = R.beats;
   const base = hash32(music.people.seed, seed >>> 0, bar);
   const roll = (t) => hash32(base, "a", t) / 4294967296;
@@ -128,7 +164,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
   // the bed: a held pedal on a structural degree. Present whenever the
   // texture supports more than one line at all.
   if (E.drone != null && music.texture.kind !== "monophony" && roll("dr") < O.drone) {
-    ev.push({ b: 0, dur: beats, inst: E.drone, deg: 0, oct: -1, vel: 0.3 * (0.55 + 0.45 * intimacy), role: "drone" });
+    ev.push({ b: 0, dur: beats, inst: E.drone, deg: modeDegree(music, fin), oct: -1, vel: 0.3 * (0.55 + 0.45 * intimacy), role: "drone" });
   }
   // the pulse: only ever as loud as the occasion wants, and thinned by distance
   if (E.pulse != null && roll("pc") < O.perc * (0.4 + 0.6 * intimacy)) {
@@ -149,7 +185,8 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
     let t = 0;
     durs.forEach((d, i) => {
       ev.push({
-        b: t, dur: d * 0.92, inst: E.lead, deg: degs[i], oct: Math.round(O.reg * 0.5), role: "lead",
+        b: t, dur: d * O.artic, inst: E.lead, deg: modeDegree(music, degs[i] + fin), mi: degs[i],
+        oct: Math.round(O.reg), role: "lead",
         vel: (0.34 + (i === 0 ? 0.12 : 0)) * (0.6 + 0.4 * intimacy),
         orn: music.texture.ornament * O.orn > 0.55 && i % 2 === 1,
       });
@@ -160,7 +197,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
     if (music.texture.kind !== "monophony" && E.second != null && E.voices >= 3 && roll("het") < 0.6) {
       let t2 = 0;
       durs.forEach((d, i) => {
-        if (i % 2 === 0) ev.push({ b: t2 + 0.06, dur: d * 0.8, inst: E.second, deg: degs[i], oct: Math.round(O.reg * 0.5), vel: 0.2 * intimacy, role: "het" });
+        if (i % 2 === 0) ev.push({ b: t2 + 0.05, dur: d * O.artic * 0.85, inst: E.second, deg: modeDegree(music, degs[i] + fin), mi: degs[i], oct: Math.round(O.reg), vel: 0.2 * intimacy, role: "het" });
         t2 += d;
       });
     }
@@ -177,7 +214,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
  */
 export function composePiece(music, occKey = "peace", syls = null) {
   const F = music.form, R = music.rhythm, E = ensembleFor(music, occKey, 1);
-  const O = E.occ;
+  const O = E.occ, fin = finalFor(music, occKey);
   const seed0 = hash32(music.people.seed, "piece", occKey);
   const sections = [];
   let beat = 0;
@@ -200,7 +237,8 @@ export function composePiece(music, occKey = "peace", syls = null) {
       let t = beat;
       durs.forEach((d, i) => {
         ev.push({
-          b: t, dur: d * 0.94, inst: E.lead, deg: degs[i], oct: Math.round(O.reg * 0.5), role: "lead",
+          b: t, dur: d * O.artic, inst: E.lead, deg: modeDegree(music, degs[i] + fin), mi: degs[i],
+          oct: Math.round(O.reg), role: "lead",
           vel: 0.38 * (p === 0 ? 1.1 : 1),
           orn: music.texture.ornament * O.orn > 0.55 && i % 3 === 2,
         });
@@ -210,13 +248,14 @@ export function composePiece(music, occKey = "peace", syls = null) {
       if (syls && syls.length) {
         let ts = beat;
         durs.forEach((d, i) => {
-          ev.push({ b: ts, dur: d * 0.9, inst: -1, deg: degs[i], oct: Math.round(O.reg * 0.5) - (music.melody.breathBound ? 0 : 1),
+          ev.push({ b: ts, dur: d * Math.max(0.75, O.artic), inst: -1, deg: modeDegree(music, degs[i] + fin), mi: degs[i],
+            oct: Math.round(O.reg) - (music.melody.breathBound ? 0 : 1),
             vel: 0.4, role: "voice", syl: syls[(p * durs.length + i) % syls.length] });
           ts += d;
         });
       }
       if (E.drone != null && O.drone > 0.4) {
-        ev.push({ b: beat, dur: R.beats, inst: E.drone, deg: 0, oct: -1, vel: 0.26, role: "drone" });
+        ev.push({ b: beat, dur: R.beats, inst: E.drone, deg: modeDegree(music, fin), oct: -1, vel: 0.26, role: "drone" });
       }
       if (E.pulse != null && O.perc > 0.2) {
         for (let k = 0; k < R.beats; k += R.meterKind === "compound" ? 3 : 2) {

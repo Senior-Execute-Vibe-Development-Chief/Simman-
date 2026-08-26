@@ -158,6 +158,115 @@ export function ensembleSpectrum(insts, weights) {
   return spec.map(p => ({ f: p.f, a: p.a / tot }));
 }
 
+/**
+ * A MODE is not the scale. The scale is every interval that sits well against
+ * the tonic; a melody moving freely through all of them crawls semitone by
+ * semitone and sounds like nothing anyone would sing — using a 6:5 and a 5:4
+ * in the same phrase means a 71-cent step between them. What people actually
+ * sing is a subset whose notes are consonant WITH EACH OTHER, and that is a
+ * property the same roughness model already measures: just take it pairwise
+ * over the chosen set instead of against the tonic alone.
+ *
+ * So the mode is built greedily — start on the tonic, and repeatedly add the
+ * degree that leaves the whole set least rough. Small steps are penalised
+ * automatically and heavily, because roughness peaks around a quarter of a
+ * critical band, which is exactly the interval a crawl uses. Nothing here
+ * prefers a major third to a minor one by name: 5:4 simply beats 6:5 against
+ * a harmonic spectrum, so harmonic-instrument peoples tend to land on the
+ * brighter set on their own, and metal-tuned ones do not.
+ */
+const STEP_FLOOR = 120;     // cents: below this, a step reads as an inflection
+const CRAWL_COST = 0.09;    // in the same units as mean pairwise roughness
+export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
+  const n = degrees.length;
+  if (n <= size) return degrees.map((_, i) => i);
+  // roughness between two degrees of the set, taken the short way round; the
+  // frame-wrap counts too, so the step from the top note back up to the tonic
+  // is judged like any other
+  const ratioOf = (i) => (i === n ? frameRatio : degrees[i].ratio);
+  const cache = new Map();
+  const pair = (a, b) => {
+    const key = a * 64 + b;
+    if (cache.has(key)) return cache.get(key);
+    let r = ratioOf(b) / ratioOf(a);
+    if (r < 1) r = 1 / r;
+    const v = dissonance(spec, r);
+    cache.set(key, v);
+    return v;
+  };
+  // Exhaustive over subsets that contain the tonic — there are only a handful
+  // of degrees, so there is no reason to approximate. Greedy fails here in a
+  // specific and audible way: it will take a degree that sits beautifully
+  // against the tonic and only afterwards discover that it lands a few dozen
+  // cents from another one it already holds.
+  const pool = [];
+  for (let i = 1; i < n; i++) pool.push(i);
+  const pick = size - 1;
+  let best = null, bestCost = Infinity;
+  const combo = [];
+  const walk = (start) => {
+    if (combo.length === pick) {
+      const set = [0, ...combo, n];       // tonic … frame
+      let cost = 0, pairs = 0;
+      for (let a = 0; a < set.length; a++) {
+        for (let b = a + 1; b < set.length; b++) { cost += pair(set[a], set[b]); pairs++; }
+      }
+      cost /= pairs || 1;
+      // A mode has to be SINGABLE as well as consonant. Two pitches closer
+      // than about a hundred cents are not heard as two scale degrees but as
+      // one degree inflected, which is why steps that small are vanishingly
+      // rare in the world's tunings. So a set that leaves a crawl in it pays,
+      // and pays more the tighter the crawl — a graded cost, not a filter,
+      // so a tradition whose frame leaves it no choice can still have one.
+      for (let a = 0; a + 1 < set.length; a++) {
+        const step = 1200 * Math.log2(ratioOf(set[a + 1]) / ratioOf(set[a]));
+        if (step < STEP_FLOOR) { const d = (STEP_FLOOR - step) / STEP_FLOOR; cost += CRAWL_COST * d * d; }
+      }
+      if (cost < bestCost) { bestCost = cost; best = combo.slice(); }
+      return;
+    }
+    for (let i = start; i < pool.length; i++) {
+      if (pool.length - i < pick - combo.length) break;
+      combo.push(pool[i]); walk(i + 1); combo.pop();
+    }
+  };
+  walk(0);
+  return [0, ...(best || pool.slice(0, pick))].sort((a, b) => a - b);
+}
+
+/**
+ * WHICH NOTE IS HOME. A mode is a set of pitches; it is not yet a melody's
+ * world. Treat a different member as the final and the same five notes turn
+ * from dark to bright — the minor-pentatonic set becomes the major-pentatonic
+ * one, without a single pitch changing. Rotating the final is the lever real
+ * traditions actually use for affect, so this derives it rather than fixing it.
+ *
+ * A final's BRIGHTNESS here is acoustic, not stylistic: how much of the mode
+ * already lives inside that note's own low harmonic series. A degree with a
+ * 3:2 and a 5:4 above it is a note the others point at — 5:4 IS the fifth
+ * partial of that final, while 6:5 appears nowhere low in its series, which
+ * is exactly why one reads as open and the other as shaded. Score each
+ * candidate that way and the tradition can pick a bright final for a working
+ * day and a darker one for a rite, out of one set of pitches.
+ */
+const SERIES = [[702, 1], [386, 0.9], [204, 0.55], [1088, 0.5], [884, 0.45], [498, 0.4]];
+export function finalsOf(modeCents, frameCents) {
+  const L = modeCents.length;
+  const out = [];
+  for (let f = 0; f < L; f++) {
+    let bright = 0;
+    for (let k = 1; k < L; k++) {
+      const iv = ((modeCents[(f + k) % L] - modeCents[f]) % frameCents + frameCents) % frameCents;
+      for (const [target, w] of SERIES) {
+        const d = Math.abs(iv - target);
+        if (d < 45) bright += w * (1 - d / 45);
+      }
+    }
+    out.push({ f, bright: bright / (L - 1 || 1) });
+  }
+  return out;
+}
+
 export const cents = (r) => 1200 * Math.log2(r);
 /** Nearest just ratio within a tolerance, for labelling only (never for tuning). */
 const JUST = [[1, 1, "unison"], [16, 15, "16:15"], [9, 8, "9:8"], [6, 5, "6:5"], [5, 4, "5:4"], [4, 3, "4:3"],

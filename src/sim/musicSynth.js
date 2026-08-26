@@ -49,9 +49,9 @@ function roomIR(ctx, secs, decay) {
 /** Distance: far away, a settlement's music is dark and mostly reflection. */
 export function setDistance(A, intimacy) {
   const k = clamp(intimacy, 0, 1);
-  A.tone.frequency.setTargetAtTime(700 + 9000 * k * k, A.ctx.currentTime, 0.12);
-  A.wet.gain.setTargetAtTime(0.5 - 0.28 * k, A.ctx.currentTime, 0.12);
-  A.dry.gain.setTargetAtTime(0.42 + 0.4 * k, A.ctx.currentTime, 0.12);
+  A.tone.frequency.setTargetAtTime(1200 + 13000 * Math.pow(k, 1.35), A.ctx.currentTime, 0.12);
+  A.wet.gain.setTargetAtTime(0.34 - 0.21 * k, A.ctx.currentTime, 0.12);
+  A.dry.gain.setTargetAtTime(0.62 + 0.32 * k, A.ctx.currentTime, 0.12);
 }
 
 // PeriodicWave cache — building one per note would be wasteful
@@ -98,6 +98,13 @@ function transient(A, when, inst, freq, vel) {
  */
 export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   const { ctx } = A;
+  // PLAYERS DAMP. A bronze bar left alone rings for nine seconds; a player
+  // laying down a melody on one stops it with the other hand before the next
+  // note, or the line turns to porridge. So a struck body carrying a MELODIC
+  // part rings for about as long as its note, while one struck for colour or
+  // punctuation is left to ring out. Without this every metal tradition
+  // sounds like a wash rather than a tune.
+  const damp = opts.damp !== false && inst.kind !== "sustain" ? dur * 1.5 + 0.3 : Infinity;
   const f = freq * (1 + inst.detune + (opts.jitter ?? 0.0015) * (Math.random() - 0.5));
   if (!(f > 20 && f < 12000)) return;
   transient(A, when, inst, f, vel);
@@ -110,7 +117,7 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
     const g = ctx.createGain();
     const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.4;
     const sustained = inst.kind === "sustain";
-    const ring = sustained ? dur : Math.min(dur + inst.partials[0].d, inst.partials[0].d * 1.6);
+    const ring = sustained ? dur : Math.min(dur + inst.partials[0].d, inst.partials[0].d * 1.6, damp);
     const atk = sustained ? (inst.drive === "bow" ? 0.07 : 0.045) : 0.004;
     g.gain.setValueAtTime(0.0001, when);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vel), when + atk);
@@ -144,7 +151,7 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
     if (pf > 13000 || p.a < 0.012) continue;
     const osc = ctx.createOscillator(); osc.type = "sine"; osc.frequency.value = pf;
     const g = ctx.createGain();
-    const ring = held ? dur + 0.1 : Math.max(0.08, p.d);
+    const ring = held ? dur + 0.1 : Math.max(0.08, Math.min(p.d, damp));
     g.gain.setValueAtTime(0.0001, when);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vel * p.a), when + 0.003);
     g.gain.exponentialRampToValueAtTime(0.0001, when + ring);

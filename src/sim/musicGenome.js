@@ -24,7 +24,7 @@
 // standalone derivation the Music Lab drives; the sim stays silent.
 import { hash32 } from "./peopleSim/rng.js";
 import { MATERIALS, FAMILIES, makeInstrument } from "./musicInstruments.js";
-import { ensembleSpectrum, deriveScale } from "./musicTuning.js";
+import { ensembleSpectrum, deriveScale, deriveMode, finalsOf } from "./musicTuning.js";
 import { prosodyOf } from "./languagePhonetics.js";
 
 // ── biomes: what grows and what can be dug ───────────────────────────────
@@ -209,7 +209,11 @@ export function rhythmOf(people, insts) {
     // against the beat at all
     syncopation: (cls === "stress" ? 0.4 : cls === "syllable" ? 0.22 : 0.1) * (hasTimekeeper ? 1 : 0.35),
     accent: pros.stressGain,
-    tempo: Math.round(72 * pros.rate * (cls === "syllable" ? 1.08 : 1)),
+    // Pulse sits near the body's own preferred rate. Spontaneous motor tempo
+    // — the rate people tap, walk and rock at unprompted — clusters around
+    // 100–120 beats a minute across populations, and music entrains to it;
+    // that is the anchor, scaled by how fast this tongue is spoken.
+    tempo: Math.round(100 * pros.rate * (cls === "syllable" ? 1.06 : 1)),
     density: cls === "syllable" ? 0.8 : cls === "stress" ? 0.55 : 0.65,
   };
 }
@@ -281,21 +285,36 @@ export function musicOf(people) {
   const fixedSets = insts.some(i => i.fam === "barSet" || i.fam === "bell");
   const pull = Math.max(0, Math.min(0.85, people.soc.literacy * 0.5 + (fixedSets ? 0.25 : 0) + people.know.organization * 0.2 - 0.25));
   const scale = deriveScale(spec, { cap: Math.min(cap, 9), pull });
+  // The mode: what they actually sing out of the scale they found. Its size
+  // is bounded twice over — by how much scale material exists and how much
+  // theory the tradition can carry (a written tradition sustains a larger
+  // mode than an oral one), and by the FRAME itself, since a mode needs steps
+  // wide enough to hear as separate degrees and a narrow frame simply has no
+  // room for many of them.
+  const roomInFrame = Math.max(3, Math.floor(scale.frame.cents / 150));
+  const modeSize = Math.max(4, Math.min(7, roomInFrame,
+    Math.round(3.6 + scale.degrees.length * 0.17 + people.soc.literacy * 1.4)));
+  const modeIdx = deriveMode(spec, scale.degrees, modeSize, scale.frame.ratio);
   const rhythm = rhythmOf(people, insts);
   const texture = textureOf(people, insts);
   const form = formOf(people);
 
-  // melody: the structural degrees are the ones the roughness curve found
-  // most consonant — the scale ranks itself
-  const ranked = scale.degrees.map((d, i) => ({ i, prom: d.prom === Infinity ? 1e9 : d.prom }))
-    .sort((a, b) => b.prom - a.prom).map(r => r.i);
+  // The structural degrees — where phrases start and land — are the members
+  // of the MODE the roughness curve ranked most consonant. The scale ranks
+  // itself; the mode inherits that ranking.
+  const ranked = modeIdx.map((si, mi) => ({ mi, prom: scale.degrees[si].prom === Infinity ? 1e9 : scale.degrees[si].prom }))
+    .sort((a, b) => b.prom - a.prom).map(r => r.mi);
   const tone = people.lang ? (people.lang.prof.tone | 0) : 0;
   const roll = (tag) => hash32(people.seed, "mus", tag) / 4294967296;
   const leadWind = insts.some(i => i.drive === "breath" || i.drive === "reed") && roll("lead") < 0.6;
+  const modeCents = modeIdx.map(i => scale.degrees[i].cents);
+  const modeSteps = modeCents.slice(1).map((c, i) => c - modeCents[i]).concat([scale.frame.cents - modeCents[modeCents.length - 1]]);
   return {
     people, insts, spec, scale, rhythm, texture, form,
+    mode: { idx: modeIdx, cents: modeCents, steps: modeSteps, size: modeIdx.length,
+      finals: finalsOf(modeCents, scale.frame.cents) },
     melody: {
-      structural: ranked.slice(0, Math.max(2, Math.round(scale.degrees.length * 0.45))),
+      structural: ranked.slice(0, Math.max(2, Math.round(modeIdx.length * 0.5))),
       // phrases descend because subglottal pressure falls across a breath —
       // the same declination the speech engine already applies to f0
       descent: 0.55 + roll("desc") * 0.3,
@@ -304,8 +323,11 @@ export function musicOf(people) {
       phraseBeats: (leadWind ? 4 : 6) + (form.literate ? 2 : 0),
       // a tone language cannot set a syllable against its own lexical tone
       toneBound: tone > 0, toneDepth: tone === 2 ? 1.4 : tone === 1 ? 1.15 : 1,
-      step: 0.55 + roll("step") * 0.3,        // stepwise vs leaping motion
-      range: Math.round(7 + roll("rng") * 8),  // compass, in degrees
+      step: 0.62 + roll("step") * 0.26,       // stepwise vs leaping motion
+      // a breath-led line arches harder than a string-led one, because the
+      // arch IS the breath
+      arch: (leadWind || texture.kind === "monophony" ? 0.5 : 0.34) + roll("arch") * 0.22,
+      reach: Math.round(modeIdx.length * (0.85 + roll("rng") * 0.5)),  // compass, in MODE steps
     },
     cap, pull,
   };
