@@ -17,7 +17,7 @@ import { fieldShift } from "./popField.js";
 import { ensurePolity, getPolity, fiscAdoptable } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor, admixArrivals } from "./cultures.js";
 import { T, rNormPop } from "./tuning.js";
-import { cageAt } from "./cageField.js";
+import { cageAt, cageFillAt } from "./cageField.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, IN_LUXURY, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
@@ -2253,7 +2253,8 @@ function updateKnowledge(world, s) {
   let contactMul = 1;
   if (T.ORG_CONTACT > 0 && s.countryId < 0) {
     const cageDrv = T.STATE_CAGE
-      ? cageAt(world, (s.pos.y | 0) * world.tw + (s.pos.x | 0)) * cropCeil(world, s) : 0;
+      ? cageAt(world, (s.pos.y | 0) * world.tw + (s.pos.x | 0)) * cropCeil(world, s)
+        * cageFillAt(world, (s.pos.y | 0) * world.tw + (s.pos.x | 0)) : 0;   // T.CAGE_FILL: ×basin fill (×1 at lever 0)
     const drive = Math.min(1, Math.max(pressMul - 1, Math.max(s._stateContact || 0, cageDrv)));
     contactMul = (1 + T.ORG_CONTACT * drive) / (1 + T.ORG_CONTACT);
   }

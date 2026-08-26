@@ -148,9 +148,9 @@ export function ensureCageField(world) {
   // zero-init, so a reused slot is explicitly zeroed; rowS and the six box
   // outputs are fully overwritten by boxMean.
   let scr = world._cageScr;
-  if (!scr || scr.landI.length !== N) {
+  if (!scr || scr.landI.length !== N || scr.o.length < 7) {
     scr = world._cageScr = { rowS: new Float64Array(N), landI: new Float32Array(N), fcap: new Float32Array(N), capSq: new Float32Array(N),
-      o: [new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N)] };
+      o: [new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N)] };
   } else { scr.landI.fill(0); scr.fcap.fill(0); scr.capSq.fill(0); }
   const { rowS, landI, fcap, capSq } = scr;
   for (let i = 0; i < N; i++) {
@@ -162,6 +162,23 @@ export function ensureCageField(world) {
   const landW = boxMean(landI, tw, th, rExit, rowS, scr.o[0]), landH = boxMean(landI, tw, th, rHome, rowS, scr.o[1]);
   const fcW = boxMean(fcap, tw, th, rExit, rowS, scr.o[2]), fcH = boxMean(fcap, tw, th, rHome, rowS, scr.o[3]);
   const capH = boxMean(cap, tw, th, rHome, rowS, scr.o[4]), capSqH = boxMean(capSq, tw, th, rHome, rowS, scr.o[5]);
+  // T.CAGE_FILL — Carneiro's THIRD leg, the one the header names and the drive
+  // lacked: POPULATION PRESSURE. The cage is geometry (exit priced), storable
+  // is surplus; pressure is the basin actually FILLING — circumscription only
+  // binds when the land runs out, and that demographic fill time IS the
+  // Neolithic's clock (measured: without it the org drive fires full-strength
+  // at the first caged village and farming→writing compresses to 1,688y vs
+  // history's 5,800 — probe_genesis, the genesis lap 2026-08-26; the ablation
+  // proved the cage drive is the ENTIRE pre-urban org engine, so its timing
+  // is genesis timing). fill = home-box people / home-box capacity — both
+  // fields the pass already reads; zero new constants.
+  const popF = world.popField;
+  let fillArr = null;
+  if (T.CAGE_FILL > 0 && popF && popF.length === N) {
+    const popH = boxMean(popF, tw, th, rHome, rowS, scr.o[6]);   // dedicated slot — o[0..5] hold the six box means the cage loop below still reads
+    fillArr = world._cageFill && world._cageFill.length === N ? world._cageFill : (world._cageFill = new Float32Array(N));
+    for (let i = 0; i < N; i++) fillArr[i] = capH[i] > 0 ? Math.min(1, popH[i] / capH[i]) : 0;
+  }
   const cage = world._cageField && world._cageField.length === N ? world._cageField : (world._cageField = new Float32Array(N));
   // Ring sums from the two box means (areas are the means' weights).
   const aH = (2 * rHome + 1) ** 2, aW = (2 * rExit + 1) ** 2;
@@ -182,4 +199,14 @@ export function ensureCageField(world) {
 export function cageAt(world, ti) {
   const f = ensureCageField(world);
   return f ? f[ti] : 0;
+}
+
+/** The basin's demographic FILL at a tile (0 = empty, 1 = at capacity) — the
+ *  pressure leg of the caging drive (T.CAGE_FILL; built with the cage field).
+ *  1 when the lever is off so drives multiply unchanged. */
+export function cageFillAt(world, ti) {
+  if (!(T.CAGE_FILL > 0)) return 1;
+  ensureCageField(world);
+  const f = world._cageFill;
+  return f && f.length === world.N ? f[ti] : 1;
 }
