@@ -2174,6 +2174,11 @@ export function advanceFronts(world) {
       // T.ALLY_FRONT: the coalition's relief army stands with the defender at the
       // walls (already theatre-projected; +0 exactly at lever 0).
       const advCity = (attForce0 * pjCap * proF) / Math.max(1, (defForce0 + (pc._assistDef || 0) + defHome) * em);
+      // Probe-only storm decomposition (tools/probe_consol.mjs installs
+      // world._warDbg; the sim never does): the advantage and its components
+      // at every heartland front, so "assaultTooWeak" can be attributed —
+      // attacker concentration vs relief vs home garrison vs the walls (em).
+      if (world._warDbg) world._warDbg.push({ adv: advCity, att: attForce0 * pjCap * proF, defF: defForce0, assist: pc._assistDef || 0, defH: defHome, em });
       tel(world, "storm", "frontAtHeartland");   // FUNNEL (variance arc): why does no capital fall?
       // T.WAR_FINISH — the CAMP'S clock runs out (header at SIEGE_ENDURE):
       // past its logistics-stretched endurance, a camp before a city that
