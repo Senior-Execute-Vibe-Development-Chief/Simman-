@@ -84,6 +84,31 @@ const LEVY_MAX     = 0.7;    // ceiling on the in-kind share of a child's shippa
 // (FOOD_HAUL_RANGE / FOOD_HAUL_TECH / FOOD_HAUL_WATER tune it.)
 const FOOD_RANGE_BY_TIER = [1.0, 1.0, 2.2, 3.6];   // destination-tier catchment multiplier (FR/town · town · city · metropolis)
 
+// T.HAUL_PHYS — THE HAUL CURVE IN REAL KILOMETRES (the third cardinal rule
+// applied to the grain shed). T.FOOD_HAUL_RANGE is expressed IN TILES, and its
+// own description reads as if a tile were a village-to-market walk ("a farm ~14
+// tiles from its market delivers ~37%"). At the reference grid ONE TILE IS
+// ~167 km, so the default 14 is a 2,338 km e-folding distance BEFORE the tier
+// (×3.6), tech (×2) and water (×3) multipliers — past Earth's circumference at
+// the top. Measured consequence (probe_where, obs-240 30k): arrive ≈ 1 between
+// any two points on the planet, median market haul 965 km, p90 1,867, max
+// 4,126, and pricing the road (GRAIN_FREIGHT) moved the distances by 4 km
+// because there was no decay left to price.
+// THE PHYSICAL GROUNDING (Diocletian's Price Edict, 301 CE, as read by
+// Duncan-Jones): ox-wagon carriage raised wheat's price ~55% per 100 Roman
+// miles (~148 km) — an e-folding of 148/ln(1.55) ≈ 340 km — while sea freight
+// crossed the whole Mediterranean for a few percent, the land:sea cost ratio
+// running ~40:1 with river carriage between them. Both constants below mean
+// something on their own; neither is fitted to an outcome. The tier and tech
+// multipliers still compound on top, so a great port city with mature
+// technology DOES draw grain from far away (Amsterdam's Baltic rye, London's
+// global grain) while a dawn village ships ~340 km by land and its coastal
+// market ~4,000 km by water — which is exactly the shed history recorded, the
+// annona included.
+const HAUL_LAND_KM = 340;      // e-folding distance of a LAND haul (the edict's ~55% per 148 km)
+const HAUL_WATER_RATIO = 12;   // water-corridor multiplier (the edict's land:water freight ratio, blended by seamanship)
+const EARTH_KM = 40075;
+
 // Fraction of grain shipped from `child` that survives the haul to its market `parent`.
 // (Exported for probe_uptake's market-stage attribution — sim consumers stay in-module.)
 export function foodHaulArrive(world, child, parent) {
@@ -91,7 +116,11 @@ export function foodHaulArrive(world, child, parent) {
   let dx = Math.abs(child.pos.x - parent.pos.x); if (dx > tw / 2) dx = tw - dx;
   const dy = child.pos.y - parent.pos.y;
   const d = Math.sqrt(dx * dx + dy * dy);
-  let range = T.FOOD_HAUL_RANGE * FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))] * rNormPop(world);   // grain hauls a REAL distance, not a tile count (RES_INVARIANT_POP)
+  // Base e-folding, in TILES of this grid. Under HAUL_PHYS it is a real
+  // distance converted at the world's own km-per-tile (grid-honest by
+  // construction — no rNormPop needed); otherwise the legacy tile constant.
+  const baseTiles = T.HAUL_PHYS > 0 ? HAUL_LAND_KM / (EARTH_KM / tw) : T.FOOD_HAUL_RANGE * rNormPop(world);
+  let range = baseTiles * FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))];   // grain hauls a REAL distance, not a tile count (RES_INVARIANT_POP)
   // Transport tech of the shipping region: roads (construction) + wagons (mobility),
   // plus an industrial leap (rail / refrigeration / canning) as construction passes ~0.85.
   const k = child.knowledge || {};
@@ -102,7 +131,8 @@ export function foodHaulArrive(world, child, parent) {
   const ci = (child.pos.y | 0) * tw + (child.pos.x | 0);
   const pi = (parent.pos.y | 0) * tw + (parent.pos.x | 0);
   const onWater = (ti) => (world.coast && world.coast[ti]) || (world.riverMag && world.riverMag[ti] >= 2);
-  if (onWater(ci) && onWater(pi)) range *= 1 + (T.FOOD_HAUL_WATER - 1) * (0.5 + 0.5 * nav);
+  const waterMul = T.HAUL_PHYS > 0 ? HAUL_WATER_RATIO : T.FOOD_HAUL_WATER;
+  if (onWater(ci) && onWater(pi)) range *= 1 + (waterMul - 1) * (0.5 + 0.5 * nav);
   return Math.exp(-d / Math.max(1e-3, range));
 }
 // Fraction of its grain POOL a settlement ships up to its market centre, by tier

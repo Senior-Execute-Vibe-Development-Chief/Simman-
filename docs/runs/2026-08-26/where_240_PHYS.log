@@ -1,5 +1,5 @@
-[harness] tree 2bd07b8
-[SIM_TUNE] {"GRAIN_FREIGHT":1}
+[harness] tree 1ab5be8
+[SIM_TUNE] {"HAUL_PHYS":1,"GRAIN_FREIGHT":1}
 Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth pin Nile picked at tile (138,41) (27.0E 28.5N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
@@ -17,37 +17,3 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 pkg=rice(suit 0.16) — ARMED: ~9481y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=2048 peakN=1299 pushes=9434 (0.0MB backing)
-
-=== WHERE IS CIVILIZATION  480x240 (tw=240)  seed 8817  30000 steps ===
-  67 settled · 27 realms
-
-  ── 1. THE ATLAS (urban people by region) ──
-  region             cities   urban ppl   largest realms
-  N China                 2        292k      287k      1
-  Egypt/Nile              2         52k       29k      2
-  Ethiopia/E Africa       4         34k       24k      2
-  W Sahel                 3         32k       26k      1
-  E Europe/Russia         2         21k       20k      0
-  Indus/NW India          2         20k       18k      1
-  Greece/Italy            2         19k       16k      0
-  Mesopotamia             1         18k       18k      0
-  Anatolia/Levant         1         18k       18k      0
-  W Europe                2          8k        5k      0
-  Andes                   1          4k        4k      1
-  Mesoamerica             1          1k        1k      1
-  SE Asia                 0          0k        0k      0
-
-  ── 2. THE URBAN LADDER (city cores, real people) ──
-  ≤15k (the minting floor)     38  ██████████████████████████████████████
-  15-30k                       17  █████████████████
-  30-60k                        6  ██████
-  60-120k                       1  █
-  120-300k                      2  ██
-  >300k                         3  ███
-  urban core p50/p90/max: 9k / 54k / 943k
-
-  ── 3. THE GRAIN SHED (market hauls, great-circle km) ──
-  hauls 210 · km p50 969 · p90 1870 · max 4504
-  (history: overland grain ~20-100 km; riverine/coastal to ~1,500 km — Egypt→Rome)
-  importers 40 · top-3 take 31% of all landed grain · top-10 68%
-  (a handful of importers taking most of the grain = the owner's "shipped globally to few points")
