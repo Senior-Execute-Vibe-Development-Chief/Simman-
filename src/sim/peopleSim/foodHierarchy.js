@@ -415,18 +415,37 @@ function grainMarketPass(world) {
       const arrive = foodHaulArrive(world, p, s);
       if (arrive <= 1e-6) continue;
       const price = p._grainPrice || 0;
+      // T.GRAIN_FREIGHT — THE ROAD IS PAID IN GRAIN (the buyer buys at the
+      // FARM GATE). Without it distance limited only THROUGHPUT: a buyer paid
+      // the seller's price for what ARRIVED and the haul's loss was borne by
+      // nobody, so a far city bought at the same unit price as the seller's
+      // neighbour. Measured consequence (probe_where, obs-240 30k): median
+      // market haul 965 km, p90 1,867, max 4,126 — against history's 20-100 km
+      // overland shed — and the top 3 importers took 42% of all landed grain
+      // (top 10: 73%), because a metropolis (granary space, hence provisioning
+      // demand, scales with tier) reaches across a continent and drains every
+      // seller's residual before its own neighbours are served. The physics:
+      // to LAND one unit you must SHIP 1/arrive, and what the road eats is
+      // grain the buyer PAID for (Diocletian's edict prices a wagon of wheat
+      // doubling every ~50-100 miles for exactly this reason). Distance
+      // becomes a COST, so the local market clears first and long hauls
+      // survive only where arrive stays high — on water, which is precisely
+      // where history's long grain trades ran (Egypt→Rome, the Baltic rye).
+      // Zero new constants: the same foodHaulArrive, moved into the price.
+      const fob = T.GRAIN_FREIGHT > 0 ? arrive : 1;
       let landed = Math.min(need, residual * arrive);
-      if (price > 0) landed = Math.min(landed, spare / price);
+      if (price > 0) landed = Math.min(landed, spare * fob / price);
       if (landed <= 1e-9) continue;
-      const pay = landed * price;
+      const shipped = landed / fob;          // what LEAVES the farm gate (= landed when the lever is off)
+      const pay = shipped * price;
       s.wealth -= pay; p.wealth = (p.wealth || 0) + pay;
       recordOut(s, OUT_FOOD, pay);
       recordIn(p, IN_FOOD, pay);
       spare -= pay;
       // Seller parts with what ARRIVES (the tree sweep's convention — the
       // un-hauled remainder never left the farm gate).
-      p._foodNet = (p._foodNet || 0) - landed;
-      p._foodExported = (p._foodExported || 0) + landed;   // capacity add-back (updatePopulation): exports cannot drag the catchment's K below what its land grows
+      p._foodNet = (p._foodNet || 0) - shipped;            // the whole consignment leaves the farm; the road eats the difference (= landed when GRAIN_FREIGHT is off)
+      p._foodExported = (p._foodExported || 0) + shipped;   // capacity add-back (updatePopulation): exports cannot drag the catchment's K below what its land grows
       s._foodNet = (s._foodNet || 0) + landed;
       need -= landed; boughtIn += landed;
       if (gf && landed > 1e-6) {
