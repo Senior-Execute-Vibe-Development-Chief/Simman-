@@ -27,3 +27,5 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [transHeap] step=20688 cap=2048 peakN=1026 pushes=9442 (0.0MB backing)
 [peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
 [peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=26232 cap=4096 peakN=2161 pushes=9973 (0.0MB backing)
