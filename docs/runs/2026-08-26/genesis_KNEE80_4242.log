@@ -29,3 +29,19 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] AGRICULTURE INVENTED at (52,35) (-102.0E 37.5N) — the basin farms; a city will rise when its market gathers one (score 4.48)
 [peopleSim] hearth candidate at (210,62) (135.0E -3.0N) stood down — the farming package arrived before it was invented
 [transHeap] step=31272 cap=4096 peakN=2067 pushes=9739 (0.0MB backing)
+
+=== GENESIS CHRONOLOGY  480x240 (tw=240)  seed 4242  OBSERVED + arm  36000 steps ===
+  milestone                    step  disp(−5250)   YD(−9700)      real
+  farming (agr .15)            8250      3187 BC     7637 BC   9000 BC
+  pottery (con .18)            8250      3187 BC     7637 BC   6900 BC
+  tallies/towns (org .28)     22750       438 AD     4012 BC   3700 BC
+  writing/states (org .35)    23500       625 AD     3825 BC   3200 BC
+  bronze (met .35)            20750        62 BC     4512 BC   3200 BC
+  sailing (nav .30)           19500       375 BC     4825 BC   5500 BC
+  galleys (nav .58)           29250      2063 AD     2387 BC   1500 BC
+  iron (met .70)                  —            —           —   1200 BC
+  first CITY                  22750       438 AD     4012 BC   3200 BC
+  first STATE                 23750       688 AD     3762 BC   3100 BC
+
+  SPANS  t0→farming 8250 ticks (2063y)  farming→writing 15250 ticks (3813y)  — real: ~700-2000y and ~5800y (ratio ~3-8)
+  sim ratio 1.85 — the Neolithic-stretch target is the farming→writing span reaching ~4-6x t0→farming
