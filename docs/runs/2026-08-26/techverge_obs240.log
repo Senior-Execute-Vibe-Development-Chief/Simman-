@@ -17,3 +17,15 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+step 6000 n 0
+  metallurgy p50/p90/MAX 0.000/0.000/0.000  (iron_working gate 0.70) · metalCap census {"0":0,"1":0,"0.3":0,"0.65":0,"0.9":0} · iron-in-reach 0/0
+  navigation p50/p90/MAX 0.000/0.000/0.000  (galleys gate 0.58)
+  agriculture p50/p90/MAX 0.000/0.000/0.000  (crop_rotation gate 0.72)
+[peopleSim] AGRICULTURE INVENTED at (138,41) (27.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 7.22)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+[peopleSim] AGRICULTURE INVENTED at (166,41) (69.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.81)
+step 12000 n 0
+  metallurgy p50/p90/MAX 0.000/0.000/0.000  (iron_working gate 0.70) · metalCap census {"0":0,"1":0,"0.3":0,"0.65":0,"0.9":0} · iron-in-reach 0/0
+  navigation p50/p90/MAX 0.000/0.000/0.000  (galleys gate 0.58)
+  agriculture p50/p90/MAX 0.000/0.000/0.000  (crop_rotation gate 0.72)
+[peopleSim] AGRICULTURE INVENTED at (197,38) (115.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.45)
