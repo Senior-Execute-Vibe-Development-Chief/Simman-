@@ -124,11 +124,40 @@ function clipCandidates(sym) {
   push(s.replace(/̪/g, ""));                   // dental bridge ̪ → alveolar
   return out;
 }
+// A citation recording is spoken as "[C], a-[C]-a" (the chart convention) —
+// several utterances separated by silence. Segment each decoded clip by
+// energy once, so a chip click plays only the FIRST take and the word
+// stitcher can carve short phone slices instead of replaying whole files.
+function segmentClip(buf) {
+  const d = buf.getChannelData(0), sr = buf.sampleRate;
+  const win = Math.max(1, (sr * 0.01) | 0);           // 10 ms windows
+  const n = Math.floor(d.length / win);
+  let peak = 0;
+  const rms = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let j = i * win, e = j + win; j < e; j++) s += d[j] * d[j];
+    rms[i] = Math.sqrt(s / win);
+    if (rms[i] > peak) peak = rms[i];
+  }
+  const floor = Math.max(peak * 0.06, 0.004);
+  const segs = [];
+  let a = -1, lastOn = -1;
+  for (let i = 0; i < n; i++) {
+    if (rms[i] > floor) { if (a < 0) a = i; lastOn = i; }
+    else if (a >= 0 && i - lastOn > 9) {              // ≥90 ms of quiet ends a take
+      if (lastOn - a >= 3) segs.push({ a: a * win, b: (lastOn + 1) * win });
+      a = -1;
+    }
+  }
+  if (a >= 0 && lastOn - a >= 3) segs.push({ a: a * win, b: (lastOn + 1) * win });
+  return segs.length ? segs : [{ a: 0, b: d.length }];
+}
 async function loadClip(sym) {
   for (const cand of clipCandidates(sym)) {
     const file = IPA_CLIPS[cand];
     if (!file) continue;
-    if (CLIPS.has(file)) { const b = CLIPS.get(file); if (b) return b; continue; }
+    if (CLIPS.has(file)) { const r = CLIPS.get(file); if (r) return r; continue; }
     try {
       // inlined bank (standalone file / hosted Artifact): decode the data URI
       // ourselves — fetch() of data: URLs is blocked under a strict CSP
@@ -144,22 +173,90 @@ async function loadClip(sym) {
         bytes = new Uint8Array(await res.arrayBuffer());
       }
       const buf = await ac().decodeAudioData(bytes.buffer);
-      CLIPS.set(file, buf);
-      return buf;
+      const rec = { buf, segs: segmentClip(buf) };
+      CLIPS.set(file, rec);
+      return rec;
     } catch { CLIPS.set(file, null); }
   }
   return null;
 }
+// play [off, off+dur) of a clip with click-free edges (fast attack so stop
+// bursts keep their pop); returns the scheduled end time
+function playSlice(rec, off, dur, when, vol = 1) {
+  const ctx = ac();
+  const t = when != null ? when : ctx.currentTime + 0.03;
+  const src = ctx.createBufferSource();
+  src.buffer = rec.buf;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.004);
+  g.gain.setValueAtTime(vol, t + Math.max(0.005, dur - 0.014));
+  g.gain.linearRampToValueAtTime(0.0001, t + dur);
+  src.connect(g);
+  g.connect(ctx.destination);
+  src.start(t, Math.max(0, off), dur + 0.02);
+  return t + dur;
+}
 function playClipOr(sym, fallbackPlan) {
-  loadClip(sym).then(buf => {
-    if (!buf) { if (fallbackPlan) speakPlanTract(fallbackPlan); return; }
-    const ctx = ac();
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start();
+  loadClip(sym).then(rec => {
+    if (!rec) { if (fallbackPlan) speakPlanTract(fallbackPlan); return; }
+    const sr = rec.buf.sampleRate, s0 = rec.segs[0];
+    playSlice(rec, s0.a / sr - 0.02, Math.min(1.4, (s0.b - s0.a) / sr + 0.03));
     window.__lastClipPlayed = sym;             // headless-check breadcrumb
   });
+}
+// ── stitched words & sentences from citation phones ───────────────────────
+// Concatenative, deliberately drill-like: each phone contributes a short
+// slice of its recording's first take — stops/affricates/clicks keep only
+// their burst (the take is "Ca", so the trailing vowel is clipped away),
+// continuants and vowels a capped steady span — crossfaded in sequence.
+// Tone/pitch is NOT reproduced (the recordings are monotone); stress shows
+// as length. Unrecorded phones are skipped; an all-miss word falls back to
+// the tract.
+const BURST_M = new Set([0, 3, 7]);
+function sliceSpec(rec, seg, isVowel, stressed) {
+  const sr = rec.buf.sampleRate, s0 = rec.segs[0];
+  const len = (s0.b - s0.a) / sr;
+  const cap = isVowel ? (seg.lg ? 0.3 : 0.18) * (stressed ? 1.3 : 1)
+    : BURST_M.has(seg.m) ? 0.13 : 0.17;
+  return { off: s0.a / sr, dur: Math.min(cap, len) };
+}
+async function humanWordSchedule(plan, when) {
+  const parts = [];
+  plan.syls.forEach((syl, i) => {
+    const stressed = i === plan.stress;
+    for (const c of syl.on) parts.push({ seg: c, v: false, stressed });
+    for (const v of syl.nu) parts.push({ seg: v, v: true, stressed });
+    for (const c of syl.co) parts.push({ seg: c, v: false, stressed });
+  });
+  const recs = await Promise.all(parts.map(p => loadClip(p.seg.ipa)));
+  const ctx = ac();
+  let t = Math.max(when || 0, ctx.currentTime + 0.05), played = 0;
+  parts.forEach((p, k) => {
+    const rec = recs[k];
+    if (!rec) return;
+    const sp = sliceSpec(rec, p.seg, p.v, p.stressed);
+    playSlice(rec, sp.off, sp.dur, t, p.v ? 1 : 0.9);
+    t += Math.max(0.03, sp.dur - 0.012);              // slight crossfade overlap
+    played++;
+  });
+  if (played) window.__lastHumanUtterance = { phones: played };   // headless-check breadcrumb
+  return { end: t, played };
+}
+function speakPlanHuman(plan) {
+  humanWordSchedule(plan).then(r => { if (!r.played) speakPlanTract(plan); });
+}
+async function speakClauseHuman(groups, contour) {
+  let when = 0, total = 0;
+  for (const g of groups) {
+    for (const plan of g) {
+      const r = await humanWordSchedule(plan, when);
+      when = r.end + 0.08;                            // word gap
+      total += r.played;
+    }
+    when += 0.14;                                     // phrase gap
+  }
+  if (!total) speakClauseTract(groups, contour);
 }
 // the glottal source: a Rosenberg glottal-flow pulse's DERIVATIVE (the actual
 // acoustic source at the folds) as a PeriodicWave, replacing the buzzy
@@ -381,14 +478,14 @@ function speakClauseTract(groups, contour) {
 }
 // engine dispatch: the Sound card's toggle picks the articulatory tract (the
 // vocal-tract model) or the formant sketch; both read the SAME phonetic plans
-function speakPlan(plan) { S.voice === "formant" ? speakPlanFormant(plan) : speakPlanTract(plan); }
+function speakPlan(plan) { S.voice === "formant" ? speakPlanFormant(plan) : S.voice === "human" && HAS_CLIPS ? speakPlanHuman(plan) : speakPlanTract(plan); }
 // a whole sentence: word plans in sequence, grouped into intonation
 // phrases (one per clause) — pitch declines across the whole utterance,
 // each NON-final clause ends on a continuation rise with a comma pause
 // (the near-universal spoken comma), and only the final clause carries
 // the sentence's boundary tone (fall for statements/commands, rise for
 // questions)
-function speakClause(groups, contour = "fall") { S.voice === "formant" ? speakClauseFormant(groups, contour) : speakClauseTract(groups, contour); }
+function speakClause(groups, contour = "fall") { S.voice === "formant" ? speakClauseFormant(groups, contour) : S.voice === "human" && HAS_CLIPS ? speakClauseHuman(groups, contour) : speakClauseTract(groups, contour); }
 function speakClauseFormant(groups, contour = "fall") {
   const ctx = ac();
   const master = mkMaster(ctx);
@@ -527,7 +624,7 @@ function soundHTML(l) {
       <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice !== "formant" && S.voice !== "human" ? " checked" : ""}/> articulatory tract</label>
       <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice === "formant" ? " checked" : ""}/> formant sketch</label>${HAS_CLIPS ? `
       <label class="vopt"><input type="radio" name="voiceEngine" value="human"${S.voice === "human" ? " checked" : ""}/> recorded phones</label>` : ""}</p>${HAS_CLIPS ? `
-    <p class="note">The third voice plays a <b>human recording</b> per phoneme — real citation phones, openly licensed (${esc(IPA_CLIP_CREDIT)}). Recordings are isolated citation sounds, so they cannot be stitched into words: word and sentence playback always uses the synthesizers, and a phone without its own recording plays its nearest recorded base phone or falls back to the tract.</p>` : ""}
+    <p class="note">The third voice speaks with <b>human recordings</b> — real citation phones, openly licensed (${esc(IPA_CLIP_CREDIT)}). A phoneme chip plays its recording's first take; words and sentences are <b>stitched</b> from short phone slices (bursts kept, the citation vowels clipped away), so they read like a careful spelling drill, not fluent speech — tone is not reproduced and stress shows as length. A phone without its own recording uses its nearest recorded base phone, or the tract fills in.</p>` : ""}
     <h3>Phonemes</h3>
     <p class="cells">${cChips}</p>
     <p class="cells">${vChips}</p>
