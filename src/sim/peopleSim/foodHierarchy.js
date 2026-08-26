@@ -359,6 +359,28 @@ function grainMarketPass(world) {
     if (!techEff(s).market) continue;
     if (T.SIEGE_STARVE && s._besiegedNow) continue;   // no marketing through a siege line
     let need = (s._foodDemand || 0) - (s._foodNet || 0);
+    // T.GRAIN_PROVISION — the annona pattern: a city buys DEFICIT + GRANARY
+    // REFILL, at the pace of its own mouths (refill flow ≤ demand — a market
+    // provisions at consumption pace, so a store fills over ~cap/demand ticks
+    // of STANDING imports, never a one-tick coin-powered spike that would
+    // strip the world's residuals to the first buyer in array order). This is
+    // the deliberately-deferred half of the v47 market: deficit-only buying
+    // reproduces the self-sufficiency trap — the v46 founding law births every
+    // city locally fed, a locally-fed city has no deficit, buys nothing,
+    // gains no import fuel, and pins at the founding minimum; only cores that
+    // somehow outgrew their land (the metropolises) ever enter the
+    // import→grow→import loop. Historically the standing purchase came first:
+    // the annona bought to FILL WAREHOUSES, and that demand-ahead-of-need is
+    // what pulled surplus off the farms and let towns grow past their fields.
+    // The purchased refill lands in the granary through the existing books
+    // (next tick's supply − demand surplus integrates into s.food, clamped at
+    // granaryCap) and, while it flows, lifts foodK — capacity rises, migrants
+    // arrive, demand grows into the new supply: the bootstrap, stepwise and
+    // bounded by coin, seller residuals, haul physics and storage.
+    if (T.GRAIN_PROVISION > 0) {
+      const space = granaryCap(s) - (s.food || 0);
+      if (space > 0) need += Math.min(space, s._foodDemand || 0);
+    }
     if (need <= 1e-9) continue;
     const reach = mergeReach(s);
     if (!reach || reach.size === 0) continue;
