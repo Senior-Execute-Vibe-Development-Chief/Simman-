@@ -29,3 +29,23 @@ step 12000 n 0
   navigation p50/p90/MAX 0.000/0.000/0.000  (galleys gate 0.58)
   agriculture p50/p90/MAX 0.000/0.000/0.000  (crop_rotation gate 0.72)
 [peopleSim] AGRICULTURE INVENTED at (197,38) (115.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.45)
+step 18000 n 28
+  metallurgy p50/p90/MAX 0.215/0.250/0.258  (iron_working gate 0.70) · metalCap census {"0":2,"1":25,"0.3":0,"0.65":0,"0.9":1} · iron-in-reach 26/28
+  navigation p50/p90/MAX 0.194/0.246/0.251  (galleys gate 0.58)
+  agriculture p50/p90/MAX 0.589/0.600/0.611  (crop_rotation gate 0.72)
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
+[peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
+[peopleSim] AGRICULTURE INVENTED at (137,74) (25.5E -21.0N) — the basin farms; a city will rise when its market gathers one (score 1.69)
+[transHeap] step=22704 cap=2048 peakN=1111 pushes=7231 (0.0MB backing)
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+step 24000 n 237
+  metallurgy p50/p90/MAX 0.350/0.402/0.436  (iron_working gate 0.70) · metalCap census {"0":17,"1":106,"0.3":0,"0.65":0,"0.9":114} · iron-in-reach 220/237
+  navigation p50/p90/MAX 0.328/0.428/0.460  (galleys gate 0.58)
+  agriculture p50/p90/MAX 0.661/0.673/0.708  (crop_rotation gate 0.72)
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=27240 cap=4096 peakN=2096 pushes=9930 (0.0MB backing)
+step 30000 n 482
+  metallurgy p50/p90/MAX 0.557/0.629/0.655  (iron_working gate 0.70) · metalCap census {"0":91,"1":180,"0.3":6,"0.65":43,"0.9":162} · iron-in-reach 342/482
+  navigation p50/p90/MAX 0.589/0.688/0.714  (galleys gate 0.58)
+  agriculture p50/p90/MAX 0.728/0.755/0.782  (crop_rotation gate 0.72)
