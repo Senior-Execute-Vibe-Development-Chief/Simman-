@@ -21,7 +21,8 @@ import { isContinentalLand } from "./state.js";
 import { stateOrgBar, URBAN_ORG } from "./tech.js";
 import { ensureLedgerAt, stepLandKnow } from "./landKnow.js";   // T.LAND_KNOW (ESM cycle is fine — functions only, like the goods.js pair)
 import { tel, telPass } from "./telemetry.js";
-import { FAMINE_SEVERITY } from "./shocks.js";   // T.LEAN_YEAR: the founding margin is grounded in the famine year itself
+import { FAMINE_SEVERITY } from "./shocks.js";   // T.LEAN_YEAR: the flat-margin fallback (the per-basin form reads the variance map)
+import { ensureYieldCv } from "./harvest.js";    // T.LEAN_YEAR per-basin: each basin's own bad-year statistic
 import { fieldShift, devWaveIvl, urbanCoreR, diskSum } from "./popField.js";
 import { makeSettlement, dominantAnc, livestockClimate, birthOrgAt, bankRuinHoard, TIER_CORE } from "./settlement.js";
 import { hash32 } from "./rng.js";
@@ -832,7 +833,7 @@ export function labelBasinFree(world, tx, ty) {
   if (!T.PEER_LATTICE) return false;
   tel(world, "peerlat", "queriedClaimed");   // FUNNEL: does any founding channel even knock on a claimed cell?
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
-  const capacity = Math.floor(c.mass[k] / (((TIER_CORE[2] / URBAN_SHARE_REF) * leanMul()) / bridge));   // T.LEAN_YEAR: a seat costs a lean-year-proof basin
+  const capacity = Math.floor(c.mass[k] / (((TIER_CORE[2] / URBAN_SHARE_REF) * leanAt(world, ty * world.tw + tx)) / bridge));   // T.LEAN_YEAR: a seat costs a bad-year-proof basin (the candidate site's own margin)
   if ((c.count ? c.count[k] : 1) >= capacity) { tel(world, "peerlat", "cellFull"); return false; }
   const rr = 2 * urbanCoreR(world), rr2 = rr * rr, tw = world.tw, half = tw / 2;
   const ls = c.labels && c.labels.get(k);
@@ -1177,7 +1178,7 @@ export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured
  *  (crystallize, state plantations, sea colonies) so no channel can mint at
  *  town scale around it. True when the lever is off or the bridge is not yet
  *  live (the dawn is hearth-driven anyway). */
-// T.LEAN_YEAR — a city is founded to survive the LEAN YEAR (the density
+// T.LEAN_YEAR — a city is founded to survive the BAD year (the density
 // campaign's law; docs/egypt-autopsy-2026-08-24.md packing thesis, owner
 // ratified 2026-08-24: "no breathing room for realistic cities. It is the
 // exact source of all my issues"). The peer-lattice capacity law and every
@@ -1187,16 +1188,42 @@ export const URBAN_SHARE_REF = 0.05;     // pre-industrial urban share: measured
 // dissolve bar: the churn's fuel. Historically a city stood where its basin
 // fed it through the BAD year (the granary law — Joseph's seven lean years);
 // real cities held 2-4x their subsistence minimum and real Egypt held 5-10 of
-// them. The sim already knows the bad year: FAMINE_SEVERITY = 0.35 (a famine
-// harvest delivers 35%). Under the lever every city-founding basin bar — the
-// shared disk bar, the site lane's cell bar, the peer capacity law — scales
-// by 1/FAMINE_SEVERITY (~2.9x): the basin must feed the city through the
-// famine. Dissolution stays at 1x, so a STABILITY BAND opens between fade
-// (1x) and found (2.9x) — the flicker cycle loses its zero-margin fuel.
-// Self-calibrating (the margin follows the famine physics), no new constant.
+// them. Under the lever every city-founding basin bar — the shared disk bar,
+// the site lane's cell bar, the peer capacity law — scales by the bad-year
+// margin. Dissolution stays at 1x, so a STABILITY BAND opens between fade
+// (1x) and found (margin×) — the flicker cycle loses its zero-margin fuel.
 // The city DEFINITION (the 10k core) is untouched — only how much countryside
 // must stand behind it.
-const leanMul = () => (T.LEAN_YEAR > 0 ? 1 / FAMINE_SEVERITY : 1);
+//
+// THE MARGIN IS PER-BASIN (the harvest-years re-grounding, 2026-08-25,
+// docs/harvest-years-2026-08-25.md): each basin's own DEEP year — the
+// once-a-century harvest, 1/(1 − 2.33·cv) with cv from the validated
+// yield-variance map (harvest.js; 11/12 literature regions in-band at both
+// grids). England-class ground carries ~1.4×, the Nile's flood regime ~1.9×,
+// Mesopotamia ~2.3×, the Sahel ~5× — where the first form charged a FLAT
+// planetary famine year (1/FAMINE_SEVERITY ≈ 2.86×, the 2026-08-24
+// referendum's arm): decisively green in the owner's live regime (register
+// 52→14, one realm holding Egypt unbroken) but BLOCKED from default by seed
+// 777's hard fail — the flat 2.9× strangled a marginal-geography world
+// toward extinction. The per-basin statistic keeps the cradle margins (flood
+// variance prices the Nile ~2×) while temperate/marginal ground founds at
+// its honest ~1.4× — the fix the referendum's disposition named. Falls back
+// to the flat famine year only where no tile is known.
+// The margin reads the DEEP-YEAR map (world._yieldDeep), computed per water
+// component in harvest.js — a half-irrigated valley keeps its watered share in
+// the worst year, so its margin is ~2-3.7×, not the composite-cv 5× that
+// priced Mesopotamia/the Levant out of civilization at the app grid
+// (probe_foundbar 1920, the 2026-08-25 play report). Pure rain land reads
+// exactly as before (the mixture reduces to 1 − 2.33·cv there).
+const leanAt = (world, ti) => {
+  if (!(T.LEAN_YEAR > 0)) return 1;
+  if (ti >= 0) {
+    ensureYieldCv(world);
+    const deep = world._yieldDeep ? world._yieldDeep[ti] : 1 - 2.33 * (world._yieldCv[ti] || 0);
+    return 1 / Math.max(0.2, deep);
+  }
+  return 1 / FAMINE_SEVERITY;
+};
 export function cityBasinOkAt(world, tx, ty) {
   if (!T.DISSOLVE_TOWNS || !(world._onePopScale > 0)) return true;
   const rn = rNormPop(world);
@@ -1205,7 +1232,7 @@ export function cityBasinOkAt(world, tx, ty) {
   // never a dissolve bar (maybeDissolveTowns reads the gross basin directly;
   // a standing city's basin rightly includes its own catchment).
   const mass = T.MINT_RESIDUAL > 0 ? residualBasinMass(world, tx, ty, rB) : townBasinMass(world, tx, ty, rB);
-  if (!(mass * world._onePopScale >= (TIER_CORE[2] / URBAN_SHARE_REF) * leanMul())) return false;   // T.LEAN_YEAR: through the famine year
+  if (!(mass * world._onePopScale >= (TIER_CORE[2] / URBAN_SHARE_REF) * leanAt(world, ty * world.tw + tx))) return false;   // T.LEAN_YEAR: through the basin's own bad year
   // T.MINT_REACH: …and the bar must ALSO hold at the newborn's own day-one
   // reach in unmarketed people (the subcontinental disk above passes every
   // cradle everywhere — measured, probe_residualbite — so it prices nothing).
@@ -1367,7 +1394,8 @@ function maybeSiteCities(world) {
     if (F0 > 0) world._onePopScale = FORAGER_EARTH_CENSUS / F0;
   }
   const bridge = world._onePopScale > 0 ? world._onePopScale : BRIDGE_REF;
-  const basinBarF = ((TIER_CORE[2] / URBAN_SHARE_REF) * leanMul()) / bridge;   // city-capable cell, field units (T.LEAN_YEAR: the basin feeds the city through the famine year)
+  const basinBar1 = (TIER_CORE[2] / URBAN_SHARE_REF) / bridge;   // city-capable cell at 1× margin, field units
+  const barOf = (k) => basinBar1 * leanAt(world, L.sites[k].ti); // T.LEAN_YEAR: × the SITE's own bad-year margin (per-basin)
   const coreBarF = TIER_CORE[2] / bridge;                        // a CITY's core, field units
   const coreR = urbanCoreR(world);
   // Eligibility is cached between cadence firings; the spike re-stamp runs
@@ -1392,6 +1420,7 @@ function maybeSiteCities(world) {
     // exactly the ground that qualified the site.
     const basins = world._siteBasin || (world._siteBasin = new Map());
     for (let k = 0; k < L.sites.length; k++) {
+      const basinBarF = barOf(k);   // this site's own bad-year bar (per-basin margin)
       if (claims.claimed[k] || claims.mass[k] < basinBarF || !world.devField) {
         elig[k] = 0; basins.delete(k); continue;
       }
@@ -1479,7 +1508,7 @@ function maybeSiteCities(world) {
       if (elig[k] !== 1) continue;
       const st = L.sites[k];
       let take = basins.get(k);
-      if (!take) { take = peopledBasinAt(world, k, basinBarF).take; basins.set(k, take); }   // (save/load: caches are ephemeral)
+      if (!take) { take = peopledBasinAt(world, k, barOf(k)).take; basins.set(k, take); }   // (save/load: caches are ephemeral)
       const capD = cf ? diskSum(cf, tw2, th2, st.x, st.y, coreR) : Infinity;
       const popD = diskSum(pf, tw2, th2, st.x, st.y, coreR);
       const headroom = capD - popD;
@@ -1536,10 +1565,10 @@ function maybeSiteCities(world) {
       if (!lkRec || (lkRec.k.organization || 0) < URBAN_ORG) { tel(world, "siteCity", "tallyBar"); continue; }
     }
     mintCityAt(world, k, st.x, st.y, st.ti, coreF, lkRec,
-      { pf, bridge, coreBarF, basinBarF, spikes },
+      { pf, bridge, coreBarF, barOf, spikes },
       () => { elig[k] = 0; if (world._siteBasin) world._siteBasin.delete(k); });
   }
-  maybePeerSeats(world, { L, claims, pf, bridge, coreBarF, basinBarF, coreR, spikes });
+  maybePeerSeats(world, { L, claims, pf, bridge, coreBarF, barOf, coreR, spikes });
 }
 
 // ── The mint tail, shared by the anchor lane and the peer lane ───────────────
@@ -1551,7 +1580,7 @@ function maybeSiteCities(world) {
 // anchors; claim-register bump for peers). Byte-identity of the extraction
 // is proven by the pinned hashbase anchors.
 function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
-  const { pf, bridge, coreBarF, basinBarF, spikes } = env;
+  const { pf, bridge, coreBarF, barOf, spikes } = env;
   // T.MINT_REACH at the BIRTH itself, both lanes (anchor + peer): the site
   // lane's eligibility is CACHED (a site that qualified before the valley
   // closed stays eligible forever), so a qualification-time gate leaks —
@@ -1681,7 +1710,7 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
     // stores in site-sparse country (the same phantom-domain class the
     // tribute right-sizing measured; docs/state-birth-2026-08.md).
     {
-      const bTake = (world._siteBasin && world._siteBasin.get(k)) || peopledBasinAt(world, k, basinBarF).take;
+      const bTake = (world._siteBasin && world._siteBasin.get(k)) || peopledBasinAt(world, k, barOf(k)).take;
       let bMass = 0;
       for (let n = 0; n < bTake.length; n++) bMass += pf[bTake[n]];
       const basinCensus = bMass * bridge;
@@ -1750,7 +1779,7 @@ function mintCityAt(world, k, x, y, ti, coreF, lkRec, env, postClaim) {
 // one-seat-per-cell (the harness pins it off; the live app runs it).
 function maybePeerSeats(world, env) {
   if (!T.PEER_SEATS || !T.PEER_LATTICE) return;
-  const { L, claims, pf, coreBarF, basinBarF, coreR } = env;
+  const { L, claims, pf, coreBarF, barOf, coreR } = env;
   const tw = world.tw, th = world.th;
   const rr = 2 * coreR, rr2 = rr * rr, half = tw / 2;
   let cand = world._peerCand;
@@ -1768,7 +1797,7 @@ function maybePeerSeats(world, env) {
   const want = new Set();
   for (let k = 0; k < L.sites.length; k++) {
     if (!claims.claimed[k]) { cand.m.delete(k); continue; }
-    const capacity = Math.floor(claims.mass[k] / basinBarF);
+    const capacity = Math.floor(claims.mass[k] / barOf(k));   // T.LEAN_YEAR: each seat costs the CELL SITE's own bad-year-proof basin
     if ((claims.count[k] || 0) >= capacity) { cand.m.delete(k); tel(world, "peerSeat", "cellFull"); continue; }
     want.add(k);
     tel(world, "peerSeat", "CANDIDATE");
@@ -1823,7 +1852,7 @@ function maybePeerSeats(world, env) {
     if (coreNow < coreBarF) {
       // Gather: the same drift law as the anchor lane — the cell basin pays,
       // the peer core receives, paced by the core's capacity headroom.
-      if (!pc.take) pc.take = peopledBasinAt(world, k, basinBarF).take;
+      if (!pc.take) pc.take = peopledBasinAt(world, k, barOf(k)).take;
       const capD = cf ? diskSum(cf, tw, th, pc.x, pc.y, coreR) : Infinity;
       const headroom = capD - coreNow;
       if (!(headroom > 0)) { tel(world, "peerSeat", "noHeadroom"); continue; }

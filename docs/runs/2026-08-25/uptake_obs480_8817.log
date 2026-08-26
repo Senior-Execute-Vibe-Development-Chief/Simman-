@@ -1,0 +1,53 @@
+[harness] tree f8d49e1
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+Earth (Sim): using real NCEP/NCAR precipitation + air temperature
+[peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (299,76) (44.3E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,81) (69.8E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (392,71) (114.0E 36.8N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (276,83) (27.0E 27.8N) score 7.27 pkg=wheat(suit 0.95) — ARMED: ~952y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (299,76) (44.3E 33.0N) score 6.52 pkg=wheat(suit 0.98) — ARMED: ~920y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (333,81) (69.8E 29.2N) score 7.04 pkg=wheat(suit 0.95) — ARMED: ~943y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (392,71) (114.0E 36.8N) score 6.21 pkg=rice(suit 0.91) — ARMED: ~2749y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (101,84) (-104.3E 27.0N) score 5.42 pkg=maize(suit 1.02) — ARMED: ~4416y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (227,102) (-9.8E 13.5N) score 3.64 pkg=sorghum(suit 0.65) — ARMED: ~3057y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (278,149) (28.5E -21.8N) score 1.37 pkg=tubers(suit 0.70) — ARMED: ~4282y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (146,144) (-70.5E -18.0N) score 1.01 pkg=tubers(suit 0.62) — ARMED: ~4862y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (234,42) (-4.5E 58.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (63,49) (-132.8E 53.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== IMPORT-UPTAKE FUNNEL  960x480 (tw=480)  seed 8817  OBSERVED + arm  10000 steps ===
+
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+step   2000  n 0 · polities 0 (0.0/realm) · parents 0 · leaves 0 (0%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.0 Σsupply 0.0 Σland 0.0
+   fed  leaf p10/50/90 0.00/0.00/0.00  parent 0.00/0.00/0.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 0.0
+   hungry(<0.85) 0/0:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+step   4000  n 0 · polities 0 (0.0/realm) · parents 0 · leaves 0 (0%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.0 Σsupply 0.0 Σland 0.0
+   fed  leaf p10/50/90 0.00/0.00/0.00  parent 0.00/0.00/0.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 0.0
+   hungry(<0.85) 0/0:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+step   6000  n 0 · polities 0 (0.0/realm) · parents 0 · leaves 0 (0%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.0 Σsupply 0.0 Σland 0.0
+   fed  leaf p10/50/90 0.00/0.00/0.00  parent 0.00/0.00/0.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 0.0
+   hungry(<0.85) 0/0:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+[peopleSim] AGRICULTURE INVENTED at (276,83) (27.0E 27.8N) — the basin farms; a city will rise when its market gathers one (score 7.27)
+[peopleSim] AGRICULTURE INVENTED at (299,76) (44.3E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.52)
+[peopleSim] AGRICULTURE INVENTED at (333,81) (69.8E 29.2N) — the basin farms; a city will rise when its market gathers one (score 7.04)
+step   8000  n 0 · polities 0 (0.0/realm) · parents 0 · leaves 0 (0%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.0 Σsupply 0.0 Σland 0.0
+   fed  leaf p10/50/90 0.00/0.00/0.00  parent 0.00/0.00/0.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 0.0
+   hungry(<0.85) 0/0:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+step  10000  n 0 · polities 0 (0.0/realm) · parents 0 · leaves 0 (0%) · importers(isr>.02) 0
+   flow/tick  offers 0.00  levied 0.00  bought 0.00  unbought 0.00 · coin-capped parents 0/0 · ΣcoreNeed 0.0 Σsupply 0.0 Σland 0.0
+   fed  leaf p10/50/90 0.00/0.00/0.00  parent 0.00/0.00/0.00 · importShare p50/p90 0.00/0.00 · spare-coin p50 0.0
+   hungry(<0.85) 0/0:  LEAF 0 · DRY-SURPLUS 0 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+
+READ: LEAF-dominated hungry = the topology starves non-capitals (peer/market
+trade is the missing system). CAPPED-dominated = levy org / buyer coin is the
+throttle. DRY-SURPLUS at capitals = the land gap is upstream of the market.

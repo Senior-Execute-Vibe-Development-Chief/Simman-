@@ -167,8 +167,13 @@ export function updateShocks(world) {
   const rng = passRng(world, "shocks");
 
   // ── Famine spawn ──
+  // RETIRED under T.HARVEST_YEARS (harvest.js): famine there DERIVES from the
+  // tail of the annual harvest index — the aimed die, the flat severity and the
+  // radius stamp all go; _famineUntil is set by the derivation, so the distress/
+  // faith/relief consumers read the same field either way. This block is the
+  // legacy arm only.
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
-  if (famineCheck && rng() < T.FAMINE_CHANCE * _dt) {
+  if (!T.HARVEST_YEARS && famineCheck && rng() < T.FAMINE_CHANCE * _dt) {
     // NOTE (reviewed): the pool deliberately does NOT exclude settlements already under an
     // active famine, even though their _harvestMul-cratered supply inflates famineVuln (so a
     // famined region can be re-drawn, extending the famine). This is intentional — consecutive

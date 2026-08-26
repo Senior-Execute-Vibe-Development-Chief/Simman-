@@ -1,0 +1,220 @@
+[harness] tree fd0e03d
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5}
+Earth (Sim): using real NCEP/NCAR precipitation + air temperature
+[peopleSim] hearth pin Nile picked at tile (276,83) (27.0E 27.8N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (299,76) (44.3E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,81) (69.8E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (392,71) (114.0E 36.8N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (276,83) (27.0E 27.8N) score 7.27 pkg=wheat(suit 0.95) — ARMED: ~952y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (299,76) (44.3E 33.0N) score 6.52 pkg=wheat(suit 0.98) — ARMED: ~920y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (333,81) (69.8E 29.2N) score 7.04 pkg=wheat(suit 0.95) — ARMED: ~943y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (392,71) (114.0E 36.8N) score 6.21 pkg=rice(suit 0.91) — ARMED: ~2749y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (101,84) (-104.3E 27.0N) score 5.42 pkg=maize(suit 1.02) — ARMED: ~4416y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (227,102) (-9.8E 13.5N) score 3.64 pkg=sorghum(suit 0.65) — ARMED: ~3057y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (278,149) (28.5E -21.8N) score 1.37 pkg=tubers(suit 0.70) — ARMED: ~4282y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (146,144) (-70.5E -18.0N) score 1.01 pkg=tubers(suit 0.62) — ARMED: ~4862y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (234,42) (-4.5E 58.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (63,49) (-132.8E 53.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+
+=== MINT FUNNEL  960x480 (tw=480)  seed 8817  OBSERVED + live arm  30000 steps ===
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+-- step 1000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   0.31/1.87   m1.87   0         -- /0.28   0.66     0      1.00    1
+   MESO  k 111@44,33   0.19/1.87   m1.87   0         -- /0.28   0.50     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 2000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   0.37/1.87   m1.87   0         -- /0.28   0.79     0      1.00    1
+   MESO  k 111@44,33   0.22/1.87   m1.87   0         -- /0.28   0.58     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 3000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   0.42/1.87   m1.87   0         -- /0.28   0.90     0      1.00    1
+   MESO  k 111@44,33   0.25/1.87   m1.87   0         -- /0.28   0.64     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 4000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   0.48/1.87   m1.87   0         -- /0.28   1.01     0      1.00    1
+   MESO  k 111@44,33   0.28/1.87   m1.87   0         -- /0.28   0.70     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 5000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   0.54/1.87   m1.87   0         -- /0.28   1.10     0      1.00    1
+   MESO  k 111@44,33   0.31/1.87   m1.87   0         -- /0.28   0.75     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 6000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   0.58/1.87   m1.87   0         -- /0.28   1.18     0      1.00    1
+   MESO  k 111@44,33   0.34/1.87   m1.87   0         -- /0.28   0.80     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 7000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   0.63/1.87   m1.87   0         -- /0.28   1.25     0      1.00    1
+   MESO  k 111@44,33   0.36/1.87   m1.87   0         -- /0.28   0.84     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+[peopleSim] AGRICULTURE INVENTED at (276,83) (27.0E 27.8N) — the basin farms; a city will rise when its market gathers one (score 7.27)
+[peopleSim] AGRICULTURE INVENTED at (299,76) (44.3E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.52)
+[peopleSim] AGRICULTURE INVENTED at (333,81) (69.8E 29.2N) — the basin farms; a city will rise when its market gathers one (score 7.04)
+
+-- step 8000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   0.81/1.87   m1.87   0        0.14/0.28   2.23     0      1.00    1
+   MESO  k 111@44,33   0.49/1.87   m1.87   0         -- /0.28   2.33     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 9000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   1.56/1.87   m1.87   0        0.16/0.28   5.23     0      1.00    1
+   MESO  k 111@44,33   0.89/1.87   m1.87   0        0.13/0.28   5.04     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 10000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   2.88/1.87   m1.87   2        0.18/0.28   10.68     0      1.00    1
+   MESO  k 111@44,33   1.47/1.87   m1.87   0        0.15/0.28   8.48     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 11000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   4.90/1.87   m1.87   2        0.20/0.28   18.73     0      1.00    1
+   MESO  k 111@44,33   2.19/1.87   m1.87   2        0.17/0.28   13.47     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 12000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   7.42/1.87   m1.87   2        0.22/0.28   28.82     0      1.00    1
+   MESO  k 111@44,33   3.02/1.87   m1.87   2        0.19/0.28   18.74     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 13000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   10.24/1.87   m1.87   2        0.25/0.28   40.47     0      1.00    1
+   MESO  k 111@44,33   3.98/1.87   m1.87   2        0.21/0.28   24.74     0      0.95    1
+   settled: NILE 0 · MESO 0 · INDIA 0 · world 0
+
+-- step 14000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   13.31/1.87   m1.87   0        0.28/0.28   53.61     1      1.00    1
+   MESO  k 111@44,33   5.09/1.87   m1.87   2        0.23/0.28   31.66     0      0.95    1
+   settled: NILE 2 · MESO 0 · INDIA 0 · world 2
+
+-- step 15000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   16.67/1.87   m1.87   0        0.28/0.28   66.82     8      1.00    1
+   MESO  k 111@44,33   6.29/1.87   m1.87   2        0.26/0.28   39.36     0      0.95    1
+   settled: NILE 4 · MESO 0 · INDIA 0 · world 9
+[transHeap] step=15648 cap=2048 peakN=1500 pushes=24702 (0.0MB backing)
+
+-- step 16000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   20.25/1.87   m1.87   0        0.28/0.28   81.72     10      1.00    1
+   MESO  k 111@44,33   7.36/1.87   m1.87   0        0.28/0.28   42.97     3      0.95    1
+   settled: NILE 8 · MESO 3 · INDIA 2 · world 39
+[transHeap] step=16656 cap=4096 peakN=2151 pushes=25188 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (392,71) (114.0E 36.8N) — the basin farms; a city will rise when its market gathers one (score 6.21)
+
+-- step 17000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   19.60/1.87   m1.87   0        0.28/0.28   6.80     11      1.00    1
+   MESO  k 111@44,33   8.24/1.87   m1.87   0        0.28/0.28   44.79     4      0.95    1
+   settled: NILE 9 · MESO 4 · INDIA 2 · world 45
+
+-- step 18000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   21.32/1.87   m1.87   0        0.28/0.28   31.12     12      1.00    1
+   MESO  k 111@44,33   7.39/1.87   m1.87   0        0.28/0.28   36.99     4      0.95    1
+   settled: NILE 10 · MESO 4 · INDIA 4 · world 58
+[peopleSim] AGRICULTURE INVENTED at (227,102) (-9.8E 13.5N) — the basin farms; a city will rise when its market gathers one (score 3.64)
+[transHeap] step=18168 cap=8192 peakN=4933 pushes=40755 (0.1MB backing)
+
+-- step 19000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   28.20/1.87   m1.87   0        0.28/0.28   75.56     15      1.00    1
+   MESO  k 111@44,33   8.40/1.87   m1.87   0        0.28/0.28   42.82     4      0.95    1
+   settled: NILE 12 · MESO 4 · INDIA 6 · world 86
+[transHeap] step=19176 cap=131072 peakN=115778 pushes=354906 (1.0MB backing)
+[peopleSim] hearth candidate at (278,149) (28.5E -21.8N) stood down — the farming package arrived before it was invented
+
+-- step 20000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   28.41/1.87   m1.87   0        0.28/0.28   81.97     15      1.00    1
+   MESO  k 111@44,33   8.64/1.87   m1.87   0        0.28/0.28   44.39     4      0.95    1
+   settled: NILE 11 · MESO 4 · INDIA 15 · world 132
+
+-- step 21000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   24.45/1.87   m1.87   0        0.28/0.28   82.49     15      1.00    1
+   MESO  k 111@44,33   5.63/1.87   m1.87   0        0.28/0.28   41.61     4      0.95    1
+   settled: NILE 12 · MESO 4 · INDIA 15 · world 157
+
+-- step 22000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   21.54/1.87   m1.87   0        0.28/0.28   61.52     13      1.00    1
+   MESO  k 111@44,33   4.05/1.87   m1.87   0        0.28/0.28   16.73     3      0.95    1
+   settled: NILE 10 · MESO 3 · INDIA 17 · world 183
+[peopleSim] hearth candidate at (234,42) (-4.5E 58.5N) stood down — the farming package arrived before it was invented
+
+-- step 23000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   23.91/1.87   m1.87   0        0.28/0.28   87.31     12      1.00    1
+   MESO  k 111@44,33   6.35/1.87   m1.87   0        0.28/0.28   29.00     3      0.95    1
+   settled: NILE 9 · MESO 3 · INDIA 17 · world 236
+[peopleSim] AGRICULTURE INVENTED at (101,84) (-104.3E 27.0N) — the basin farms; a city will rise when its market gathers one (score 5.42)
+
+-- step 24000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   23.33/1.87   m1.87   0        0.28/0.28   84.60     13      1.00    1
+   MESO  k 111@44,33   7.06/1.87   m1.87   0        0.28/0.28   35.01     3      0.95    1
+   settled: NILE 9 · MESO 3 · INDIA 17 · world 289
+
+-- step 25000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   23.54/1.87   m1.87   0        0.28/0.28   84.61     13      1.00    1
+   MESO  k 111@44,33   6.84/1.87   m1.87   0        0.28/0.28   33.70     4      0.95    1
+   settled: NILE 9 · MESO 3 · INDIA 18 · world 345
+[peopleSim] hearth candidate at (63,49) (-132.8E 53.3N) stood down — the farming package arrived before it was invented
+
+-- step 26000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   22.09/1.87   m1.87   0        0.28/0.28   82.50     12      1.00    1
+   MESO  k 111@44,33   6.96/1.87   m1.87   0        0.28/0.28   32.74     4      0.95    1
+   settled: NILE 7 · MESO 3 · INDIA 15 · world 408
+
+-- step 27000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   23.77/1.87   m1.87   0        0.28/0.28   127.84     12      1.00    1
+   MESO  k 111@44,33   7.29/1.87   m1.87   0        0.28/0.28   33.92     3      0.95    1
+   settled: NILE 8 · MESO 3 · INDIA 16 · world 468
+[peopleSim] hearth candidate at (146,144) (-70.5E -18.0N) stood down — the farming package arrived before it was invented
+
+-- step 28000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   18.38/1.87   m1.87   0        0.28/0.28   84.62     12      1.00    1
+   MESO  k 111@44,33   7.38/1.87   m1.87   0        0.28/0.28   38.30     3      0.95    1
+   settled: NILE 7 · MESO 3 · INDIA 17 · world 528
+
+-- step 29000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   17.41/1.87   m1.87   0        0.28/0.28   59.87     12      1.00    1
+   MESO  k 111@44,33   6.58/1.87   m1.87   0        0.28/0.28   33.29     4      0.95    1
+   settled: NILE 7 · MESO 3 · INDIA 17 · world 580
+
+-- step 30000  (bridge 2.04e-2, coreR 1)
+   box  site@lon,lat      mass/bar1   margin  eligible  org/tally  core/bar  seated  seatFert flood
+   NILE  k  24@29,31   21.08/1.87   m1.87   0        0.28/0.28   73.85     12      1.00    1
+   MESO  k 111@44,33   7.01/1.87   m1.87   0        0.28/0.28   28.76     4      0.95    1
+   settled: NILE 8 · MESO 3 · INDIA 17 · world 637
+
+  READ: mass/bar1 is the cell census in 1×-bar units — eligibility needs it ≥ margin.
+  If mass/bar1 ≥ margin and elig stays 0, the gate is downstream (devP, storable,
+  spacing); if org < tally the ledger never learned (it is only planted when
+  eligibility first passes — a too-high margin starves the LEARNING too).

@@ -2992,9 +2992,13 @@ function updateFood(world, s) {
   // × the industrial agronomy break (s._indCap). Under the ERA_PROD_SCALE legacy
   // arm it is the retired fitted overlay instead.
   const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * alluvium * (1 - cashLand);
-  // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
-  const landFarm = world.step < (s._famineUntil || 0)
-    ? landFood0 * (s._harvestMul || 1) : landFood0;
+  // The year's harvest. Under T.HARVEST_YEARS (harvest.js) EVERY year carries a
+  // real regional index — lean years thin the granary, fat years fill it, and
+  // "famine" is the derived tail of the same physics (the scripted window
+  // below retires). Legacy arm: the shocks.js famine window slashes the yield.
+  const landFarm = T.HARVEST_YEARS
+    ? landFood0 * (s._harvestYearMul ?? 1)
+    : (world.step < (s._famineUntil || 0) ? landFood0 * (s._harvestMul || 1) : landFood0);
   // ── Pastoral calories: the herd itself as FOOD (dairy, meat, blood) ──────
   // Distinct from livestockBonus (oxen/manure LIFTING a farmed field): on open
   // pasture too dry, too marginal or too disease-bound for dense cereal farming —
@@ -3332,10 +3336,17 @@ function updateFood(world, s) {
   // smokehouses) — a larger buffer against famine/siege than a tropics where
   // food is gathered year-round. (A storage-economy proxy, not a full annual
   // cycle.) Reuses the cool-temperate selection target.
-  const seasonStore = T.SEASON_STORE > 0 ? 1 + T.SEASON_STORE * seasonalSelect(s._climTemp || 0.5, s._climMoist || 0.5) : 1;
-  const storageCap = (80 + s.tier * 200) * seasonStore;
+  const storageCap = granaryCap(s);
   if (s.food > storageCap) s.food = storageCap;
   if (s.food < 0) s.food = 0;
+}
+
+// The granary's capacity — ONE definition, two consumers: the updateFood clamp
+// above, and the grain market's seed-corn rule (foodHierarchy.js: a settlement
+// sells only the surplus its own granary cannot absorb).
+export function granaryCap(s) {
+  const seasonStore = T.SEASON_STORE > 0 ? 1 + T.SEASON_STORE * seasonalSelect(s._climTemp || 0.5, s._climMoist || 0.5) : 1;
+  return (80 + s.tier * 200) * seasonStore;
 }
 
 // ── Population ─────────────────────────────────────────────────────
@@ -3509,7 +3520,24 @@ function updatePopulation(world, s) {
   //   foodK   = (local production + imports) / (0.003 × urbanFactor)
   //   houseK  = housingCapacity(s)  — economy + site, food-independent
   const perCapita = 0.003 * (s._urbanFactor || 1);
-  let foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
+  // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish.
+  // T.GRAIN_MARKET: MARKET EXPORTS ADD BACK into the capacity basis
+  // (s._foodExported — last aggregation's peer-market sales, the same 1-tick
+  // lag as _foodNet itself). The FOOD_REACH asymmetric-authority law extended
+  // to the market: selling grain is a downward-take, and the market cannot
+  // drag a catchment's carrying capacity below what its own land grows —
+  // measured without it, even the post-seed-corn export trickle (PEER-bought
+  // rounding to 0.00/tick) lowered marginal sellers' supply-based K below the
+  // fade bar (777: 40→14, gm/gm2_stylized_777). The add-back form (not a
+  // max() against production) because the first floor implementation compared
+  // last-tick net against THIS-tick production and became a cross-tick
+  // ratchet under HARVEST_YEARS — muting the annual capacity signal for every
+  // settlement from tick 1, trades or none (the gm3/gm4 15-alive residue).
+  // Add-back is exact: zero when nothing sold (a no-trade lever world is
+  // byte-identical to baseline), sellers-only, harvest-transparent, and a
+  // besieged seat sells nothing (the market pass skips besieged parties) so
+  // SIEGE_STARVE still bites in full.
+  let foodK = ((s._foodSupply || 0) + (T.GRAIN_MARKET > 0 ? (s._foodExported || 0) : 0)) / perCapita;
   // ×_eraProd: the housing/site ceiling rises with the same composite
   // productivity index as food, representing denser settlement (intensive rural
   // occupation, vertical urban growth) as land capital and industry mature.

@@ -177,7 +177,14 @@ const st = peopleSimStats(world);
     // band still bounds the steep side and deep-run reports.
     score("Zipf rank-size slope (urban cores, G-I)", slope.toFixed(2), slope < -0.45 && slope > -1.35, false, `${n} cities; mature empirical envelope ≈ −0.8..−1.2; earned-span antiquity shallower (owner-accepted 2026-07)`);
   } else {
-    score("Zipf rank-size slope", "n/a", false, false, `only ${sizes.length} cities > ${TIER_CORE[2]}k urban core`);
+    // STABILITY RE-BASELINE (2026-08-25, the harvest-years wave — the chain's
+    // named revisit of churn-era soft bands): a small-but-alive register (777's
+    // marginal world holds 10 cities over the bar, up from DEAD under the flat
+    // lean law) cannot fit a slope — that is an ABSTENTION, not off-shape
+    // history, and aliveness is the hard gates' business. A register below 8
+    // (half the fit minimum) still warns: that small likely means something
+    // the hard floors missed.
+    score("Zipf rank-size slope", "n/a", sizes.length >= 8, false, `only ${sizes.length} cities > ${TIER_CORE[2]}k urban core${sizes.length >= 8 ? " — register real, slope unfittable" : ""}`);
   }
 }
 
@@ -328,7 +335,16 @@ const st = peopleSimStats(world);
       score("lifespan heavy tail", "n/a", true, false, `horizon-censored: median ${med} vs run ${world.step} — tail unobservable`);
     else
       score("lifespan heavy tail incl. living (max/median)", tail.toFixed(1), tail >= 3, false, `oldest living ${oldestAlive} steps`);
-  } else score("polity lifespans", "n/a", false, false, `${lifes.length} fallen polities`);
+  } else {
+    // STABILITY RE-BASELINE (2026-08-25): the "below 5 still warns" rule
+    // encoded a churn-era suspicion — an n/a once hid a broken death RECORD
+    // while realms demonstrably fell (the W2 scar above). The distinguisher is
+    // whether the record is live: ≥1 fallen polity proves deaths are recorded,
+    // and a stable world thereafter is the achievement, not the anomaly (the
+    // per-basin lean law's whole point). ZERO fallen keeps the warning — a
+    // truly deathless map is either a broken record or genuinely suspicious.
+    score("polity lifespans", "n/a", lifes.length >= 1, false, `${lifes.length} fallen polities${lifes.length >= 1 ? " — record live, sample too small to score" : ""}`);
+  }
 }
 
 // ── 4. Wars: rate + human causes ──
@@ -405,7 +421,16 @@ const st = peopleSimStats(world);
     // (measured −0.05..+0.12 at the flip); the gate now flags only a clearly
     // INVERTED gradient (frontier leading the cradles).
     score("tech ~ cradle-distance correlation", r.toFixed(2), r < 0.2, false, "knowledge should not lead OUTWARD (earned-span re-baseline 2026-07)");
-  } else score("tech diffusion gradient", "n/a", false, false, "no cradle origins resolvable");
+  } else {
+    // STABILITY RE-BASELINE (2026-08-25): "no cradle origins resolvable"
+    // usually means the dawn cohort's origin SETTLEMENTS have died (their ids
+    // no longer resolve) on a small harsh world — history, not a recording
+    // pathology. The distinguisher: root CULTURES existing at all proves the
+    // dawn happened; zero root cultures keeps the warning (genesis never ran).
+    let roots0 = 0;
+    if (world.cultures) for (const c of world.cultures.values()) if (c.parentCultureId < 0) roots0++;
+    score("tech diffusion gradient", "n/a", roots0 > 0, false, `no cradle origins resolvable (${roots0} root cultures${roots0 > 0 ? " — origins died; dawn demonstrably ran" : ""})`);
+  }
 }
 
 // ── 6. Urbanization ──

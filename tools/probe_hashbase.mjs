@@ -12,6 +12,13 @@
 // MUST be recaptured on the merged build; the two blocks below are each line's
 // pre-merge anchor, kept for provenance (reset either line via the SIM_TUNE in its
 // entry).
+// Current baseline (2500 steps): ebfb8021/7fb32527 — UNCHANGED through the
+// v47 GRAIN_MARKET flip (2026-08-25): the open grain market is gated on the
+// market institution (techEff.market — coined money), which no 320-grid
+// society holds by step 2500, so zero trades, zero capacity add-back, and the
+// default trajectory is byte-identical at this horizon. The flip's physics is
+// late-game-only by construction; its functional gates are the stylized
+// battery + probe_uptake A/Bs (docs/harvest-years-2026-08-25.md addendum).
 // ── empire-consolidation line (pre-merge anchor) ──
 // Identity Stage 2 (T.TILE_IDENTITY, default 0 — the sticky per-tile culture
 // layer + irredentist/rural-cohesion consumers) is byte-TRANSPARENT off: this

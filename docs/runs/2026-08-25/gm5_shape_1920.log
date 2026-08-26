@@ -1,0 +1,95 @@
+[harness] tree 7e16355
+[peopleSim] hearth pin Nile picked at tile (568,173) (33.0E 25.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (595,149) (43.1E 34.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (667,162) (70.1E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (784,145) (114.0E 35.6N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (568,173) (33.0E 25.1N) score 7.61 pkg=wheat(suit 0.99) — matured 906y into prehistory (wave age 5094y)
+[peopleSim] hearth Pephamdo at (595,149) (43.1E 34.1N) score 4.81 pkg=wheat(suit 0.75) — matured 1200y into prehistory (wave age 4800y)
+[peopleSim] hearth Pomponsom at (667,162) (70.1E 29.2N) score 6.71 pkg=wheat(suit 0.98) — matured 921y into prehistory (wave age 5079y)
+[peopleSim] hearth Fevvon at (784,145) (114.0E 35.6N) score 5.43 pkg=rice(suit 0.91) — matured 2749y into prehistory (wave age 3251y)
+[peopleSim] hearth Nawaxexi at (203,162) (-103.9E 29.2N) score 4.10 pkg=maize(suit 0.80) — matured 5604y into prehistory (wave age 396y)
+[peopleSim] hearth Sasfesu at (456,195) (-9.0E 16.9N) score 3.75 pkg=sorghum(suit 0.66) — matured 3042y into prehistory (wave age 2958y)
+[peopleSim] hearth Wityim at (282,265) (-74.3E -9.4N) score 1.62 pkg=tubers(suit 0.80) — matured 3745y into prehistory (wave age 2255y)
+[peopleSim] hearth Ninuvy at (537,315) (21.4E -28.1N) score 0.85 pkg=wheat(suit 0.55) — matured 1632y into prehistory (wave age 4368y)
+[peopleSim] hearth candidate at (378,264) (-38.3E -9.0N) score 0.50 pkg=tubers(suit 0.28) — ARMED: ~4814y of peopled-basin time from maturity
+[peopleSim] hearth Bofvu at (494,80) (5.2E 60.0N) score 0.50 pkg=wheat(suit 0.21) — matured 4319y into prehistory (wave age 1681y)
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=262144 peakN=218206 pushes=1354653 (2.1MB backing)
+
+=== step 4000  realms=4 (0 vassal)  claimed=1.4%  flows: founded=81 ended=5 seceded=0 shattered=0
+    size km2: P10=280k  MED=432k  P90=1097k  MAX=1097k  | top1share=51%  max/med=2.5  gini=0.30  lnσ=0.53 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:3  1-5M:1  >5M:0
+    SMALL (<100k km2): 0 of 4 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #7 "Wityim" 280k km2 mem=1 age=4000 org=0.12
+      tiny #2 "Pephamdo" 336k km2 mem=1 age=4000 org=0.19
+      tiny #4 "Fevvonfax" 432k km2 mem=1 age=4000 org=0.10
+      tiny #1 "Ňěňnílěā" 1097k km2 mem=1 age=4000 org=0.23
+    [96s]
+
+=== step 8000  realms=5 (0 vassal)  claimed=2.8%  flows: founded=136 ended=6 seceded=3 shattered=1
+    size km2: P10=1k  MED=635k  P90=2085k  MAX=2085k  | top1share=51%  max/med=3.3  gini=0.43  lnσ=2.77 (real maps ≈2.0-2.6)
+    histogram  <50k:1  50-200k:0  200k-1M:3  1-5M:1  >5M:0
+    SMALL (<100k km2): 1 of 5 (20%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #99 "Pụ̌ịtrụ̀ịlǐ" 1k km2 mem=0 age=1513 org=0.00
+      tiny #7 "Wityim" 563k km2 mem=1 age=8000 org=0.15
+      tiny #2 "Pephamdo" 635k km2 mem=1 age=8000 org=0.32
+      tiny #4 "Fevvonfax" 814k km2 mem=1 age=8000 org=0.10
+      tiny #1 "Ňěňnílěā" 2085k km2 mem=3 age=8000 org=0.36
+    [193s]
+
+=== step 12000  realms=7 (0 vassal)  claimed=5.6%  flows: founded=207 ended=9 seceded=24 shattered=4
+    size km2: P10=372k  MED=905k  P90=2961k  MAX=2961k  | top1share=36%  max/med=3.3  gini=0.32  lnσ=0.58 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:4  1-5M:3  >5M:0
+    SMALL (<100k km2): 0 of 7 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #140 "Duittisaa" 372k km2 mem=1 age=3900 org=0.47
+      tiny #168 "Lǐfpúrụ́" 758k km2 mem=2 age=1056 org=0.44
+      tiny #2 "Pephamdo" 824k km2 mem=1 age=12000 org=0.47
+      tiny #7 "Wityim" 905k km2 mem=2 age=12000 org=0.18
+      tiny #118 "Nomümama" 1156k km2 mem=2 age=5400 org=0.46
+      tiny #4 "Fevvonfax" 1338k km2 mem=1 age=12000 org=0.10
+      tiny #1 "Ňěňnílěā" 2961k km2 mem=2 age=12000 org=0.49
+    [298s]
+[transHeap] step=13128 cap=524288 peakN=356038 pushes=1231929 (4.2MB backing)
+
+=== step 16000  realms=10 (0 vassal)  claimed=9.8%  flows: founded=277 ended=16 seceded=32 shattered=6
+    size km2: P10=611k  MED=1264k  P90=3903k  MAX=3903k  | top1share=27%  max/med=3.1  gini=0.33  lnσ=0.58 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:4  1-5M:6  >5M:0
+    SMALL (<100k km2): 0 of 10 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #215 "Áwẹqo" 534k km2 mem=1 age=3213 org=0.10
+      tiny #154 "Sofiua" 611k km2 mem=1 age=6700 org=0.53
+      tiny #199 "Xǐlrálǐ" 730k km2 mem=1 age=2752 org=0.54
+      tiny #250 "Xụ̀fsūlǐ" 876k km2 mem=1 age=1024 org=0.54
+      tiny #2 "Pephamdo" 1231k km2 mem=1 age=16000 org=0.55
+      tiny #4 "Fevvonfax" 1264k km2 mem=1 age=16000 org=0.10
+      tiny #7 "Wityim" 1371k km2 mem=2 age=16000 org=0.21
+      tiny #118 "Nomümama" 1810k km2 mem=4 age=9400 org=0.54
+    [426s]
+
+=== step 20000  realms=13 (1 vassal)  claimed=14.9%  flows: founded=399 ended=34 seceded=67 shattered=8
+    size km2: P10=114k  MED=1371k  P90=2915k  MAX=6847k  | top1share=31%  max/med=5.0  gini=0.48  lnσ=2.13 (real maps ≈2.0-2.6)
+    histogram  <50k:1  50-200k:1  200k-1M:3  1-5M:7  >5M:1
+    SMALL (<100k km2): 1 of 13 (8%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #263 "Pụ́pfílǐ" 1k km2 mem=0 age=763 org=0.00
+      tiny #341 "Tị̄lākúlǐ" 114k km2 mem=1 age=2113 org=0.46
+      tiny #315 "Bepu" 468k km2 mem=1 age=3100 org=0.60
+      tiny #215 "Áwẹqo" 604k km2 mem=1 age=7213 org=0.11
+      tiny #359 "Pauqiqqoo" 803k km2 mem=1 age=913 org=0.11
+      tiny #289 "Lárụ́" 1321k km2 mem=1 age=3296 org=0.56
+      tiny #294 "Esizmi" 1371k km2 mem=2 age=3913 org=0.23
+      tiny #2 "Pephamdo" 1502k km2 mem=1 age=20000 org=0.60
+    [584s]
+[peopleSim] hearth candidate at (378,264) (-38.3E -9.0N) stood down — the farming package arrived before it was invented
+
+=== step 24000  realms=17 (2 vassal)  claimed=16.8%  flows: founded=531 ended=67 seceded=105 shattered=18
+    size km2: P10=1k  MED=909k  P90=2476k  MAX=8914k  | top1share=36%  max/med=9.8  gini=0.61  lnσ=3.21 (real maps ≈2.0-2.6)
+    histogram  <50k:5  50-200k:1  200k-1M:3  1-5M:7  >5M:1
+    SMALL (<100k km2): 5 of 17 (29%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #168 "Lǐfpúrụ́" 1k km2 mem=0 age=13056 org=0.00
+      tiny #256 "Kùxō" 1k km2 mem=0 age=5513 org=0.00
+      tiny #324 "Ǐshị̌lǐ" 1k km2 mem=0 age=2513 org=0.64
+      tiny #137 "Fòkfí" 2k km2 mem=2 age=6713 org=0.60
+      tiny #530 "Mìnlàlǐ" 6k km2 mem=0 age=863 org=0.00
+      tiny #217 "Lírụ́lǐā" 112k km2 mem=0 age=10613 org=0.53
+      tiny #341 "Tị̄lākúlǐ" 693k km2 mem=1 age=6113 org=0.65
+      tiny #215 "Áwẹqo" 716k km2 mem=1 age=11213 org=0.17
+    [751s]

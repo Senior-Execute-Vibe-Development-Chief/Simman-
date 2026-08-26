@@ -1,4 +1,4 @@
-// ── Central-place grain market ────────────────────────────────────────
+// ── Central-place grain market (+ the open peer market, v47) ──────────
 //
 // Grain flows UP the settlement hierarchy (village → market town → city →
 // capital) and COIN flows DOWN to pay for it. A market centre aggregates the
@@ -46,8 +46,9 @@
 // fresh _storableSupply / _houseK / _foodK), producing _foodNet for the NEXT
 // tick's updateFood — a 1-tick lag that's invisible (production drifts slowly).
 
-import { getWealthReserve, techEff, LEVY_ORG_MIN, foodReach } from "./settlement.js";
+import { getWealthReserve, techEff, LEVY_ORG_MIN, foodReach, granaryCap } from "./settlement.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
+import { mergeReach } from "./roads.js";
 import { T, rNormPop } from "./tuning.js";
 
 // ── In-kind levy (the temple/palace redistributive economy) ───────────
@@ -84,7 +85,8 @@ const LEVY_MAX     = 0.7;    // ceiling on the in-kind share of a child's shippa
 const FOOD_RANGE_BY_TIER = [1.0, 1.0, 2.2, 3.6];   // destination-tier catchment multiplier (FR/town · town · city · metropolis)
 
 // Fraction of grain shipped from `child` that survives the haul to its market `parent`.
-function foodHaulArrive(world, child, parent) {
+// (Exported for probe_uptake's market-stage attribution — sim consumers stay in-module.)
+export function foodHaulArrive(world, child, parent) {
   const tw = world.tw;
   let dx = Math.abs(child.pos.x - parent.pos.x); if (dx > tw / 2) dx = tw - dx;
   const dy = child.pos.y - parent.pos.y;
@@ -140,7 +142,10 @@ export function aggregateFoodHierarchy(world) {
   // below only ever ADDS arrivals) so a settlement that drops out of the food
   // hierarchy — or out of "settled" mode — reads a fading, then zero, "Imported
   // /tick" row instead of freezing at its last value.
-  for (const s of world.settlements) if (s._foodImportRate) s._foodImportRate *= 0.9;
+  for (const s of world.settlements) {
+    if (s._foodImportRate) s._foodImportRate *= 0.9;
+    if (s._foodExported) s._foodExported = 0;   // T.GRAIN_MARKET capacity add-back: rolls each aggregation; updateSettlement (earlier in the tick) read the previous pass's value
+  }
 
   // ── 1. price per settlement ─────────────────────────────────────────
   for (const s of world.settlements) {
@@ -224,6 +229,14 @@ export function aggregateFoodHierarchy(world) {
         let pool = node._storableSupply || 0;                // own production (MODEL B: every tier farms its territory)
         let imported = 0;                                    // grain arriving from the subtree THIS tick (levy + purchase)
         let spare = budget.get(node.id) || 0;
+        // Probe-only flow decomposition (tools/probe_uptake.mjs installs
+        // world._tradeStats; the sim never does). The levy/buy split cannot be
+        // reconstructed post-hoc — coin is spent sequentially across children —
+        // so record it here. Underscore debug fields, never persisted, written
+        // only under the probe: zero effect on a normal run.
+        const ts = world._tradeStats;
+        let dbgLevied = 0, dbgBought = 0, dbgUnbought = 0;
+        const dbgSpare0 = spare;
         // The liege's in-kind requisition share — how much of a child's shippable
         // surplus this centre can gather WITHOUT paying, from its administrative
         // reach (see LEVY_* above). A proto-state (org < LEVY_ORG_MIN) has none and
@@ -247,6 +260,7 @@ export function aggregateFoodHierarchy(world) {
             recordIn(k, IN_FOOD, pay);        //                   grain sold
             spare -= pay;
           }
+          if (ts) { dbgLevied += levied; dbgBought += bought; dbgUnbought += Math.max(0, rest - bought); }
           const took = levied + bought;                      // grain that moved UP (levy + purchase); bought ≥ 0 always (rest > 0 since offer > 0 & levyShare ≤ 0.7; spare ≥ 0)
           if (took <= 0) continue;
           pool += took;
@@ -259,6 +273,11 @@ export function aggregateFoodHierarchy(world) {
         // arrival is folded in. NOTE: this is a DECOMPOSITION of the supply the settlement
         // already receives through _foodNet (imports are inside _foodSupply), not an extra
         // flow on top of it.
+        if (ts) {
+          ts.levied += dbgLevied; ts.bought += dbgBought; ts.unbought += dbgUnbought; ts.ticksSeen = world.step;
+          node._dbgLevied = dbgLevied; node._dbgBought = dbgBought; node._dbgUnbought = dbgUnbought;
+          node._dbgSpare0 = dbgSpare0; node._dbgLevyShare = levyShare;
+        }
         node._foodImportRate = (node._foodImportRate || 0) + imported * 0.1;
         node._foodPool = pool;
         node._foodNet = pool;                                // keeps it all unless its OWN parent buys (when parent is processed)
@@ -270,6 +289,116 @@ export function aggregateFoodHierarchy(world) {
         node._foodHaul = arrive;                             // (info panel: this hop's haul-survival fraction)
         node._foodUp = node._foodOffer;                      // (info panel / compatibility)
       }
+    }
+  }
+  if (T.GRAIN_MARKET > 0) grainMarketPass(world);
+}
+
+// ── T.GRAIN_MARKET: the OPEN grain market (2026-08-25, the uptake wave) ──────
+// The tree sweep above is the TEMPLE/PALACE economy: grain moves child→liege
+// only, inside one country. probe_uptake measured its consequence at every
+// mature grid: the hungry register is LEAF-dominated — a settlement with no
+// same-country children CANNOT import, ever, so only realm capitals are fed by
+// the market (fed(parent) p50 1.00 vs the starving leaf tail), importShare
+// reads 0.00 almost everywhere, and URBAN_AGGLOM — whose growth fuel is
+// import-fed capacity — never tells a core to grow: the owner's "every city
+// 12k and starving". The levy/coin stages were measured CLEAR (unbought ≈ 0
+// once offers exist); the topology is the constraint.
+//
+// What history has instead: the open market. Athens lived on Black-Sea grain,
+// Rome on Egyptian and African shipments, the Hanse moved Baltic rye to
+// Flanders — grain flowed BETWEEN polities, wherever price gradients and
+// carriage made it worth moving, on exactly the network every other good used.
+// So this pass lets a settlement whose ledger still runs short after the tree
+// sweep BUY grain from its TRADE PEERS (mergeReach — the same road+sea reach
+// goods trade uses, cross-border like goods trade, no war gate — trade-peace
+// coupling and SIEGE_STARVE already own those axes), from each peer's residual
+// surplus (what its own ledger does not eat and its liege did not take), at
+// the SELLER's local grain price, capped by the buyer's spare coin. No levy
+// here — requisition is a sovereignty act, the tree's job; across borders
+// grain moves only when PAID FOR. A cash-poor town simply cannot buy (the
+// pre-coinage world stays levy-fed — the historical order of appearance).
+//
+// Every term is an existing mechanism — foodHaulArrive (distance/tech/water
+// spoilage physics, destination-tier catchment), _grainPrice (tier base ×
+// real scarcity), getWealthReserve (the subsistence hoard floor), the reach
+// networks (roads/sea, themselves emergent). NO new constants: the flow is
+// bounded by deficit × surplus × haul survival × coin, all emergent — grain
+// uptake then deepens with roads, ships, mining and statecraft on its own.
+// Deterministic: settlements in array order, peers in reach (nearest-first)
+// order, no RNG. Nothing here persists — per-tick flow only.
+function grainMarketPass(world) {
+  const ts = world._tradeStats;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    // THE MARKET INSTITUTION GATE: commercial grain buying needs coined money
+    // (techEff.market — the currency tech's own ability, the monetization()
+    // precedent). Before it, exchange is the levy/tree (the temple economy,
+    // above) and local barter — the historical order: Uruk's grain moved by
+    // administration, the commercial grain trade at scale is classical.
+    // Measured without it (the 777 pair, uptake_solver240_777_24k*_v2): dawn
+    // cradles trade from birth (granaries start at cap, cold ledgers read
+    // need), the early urban distribution flattens (median core 15.9 vs 42.2
+    // at 14k), the marginal world's first founding cascade never fires
+    // (+1 vs +7 at 16-18k), and seed 777 lands 14-15 vs its 20-22
+    // no-mechanism band. Emergent, never a date: the market opens where and
+    // when a society mints coin.
+    if (!techEff(s).market) continue;
+    if (T.SIEGE_STARVE && s._besiegedNow) continue;   // no marketing through a siege line
+    let need = (s._foodDemand || 0) - (s._foodNet || 0);
+    if (need <= 1e-9) continue;
+    const reach = mergeReach(s);
+    if (!reach || reach.size === 0) continue;
+    let spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));   // post-tree purse: the tree sweep's buys already spent from it
+    if (spare <= 1e-9) continue;
+    let boughtIn = 0;
+    for (const [peerId] of reach) {
+      if (need <= 1e-9 || spare <= 1e-9) break;
+      if (peerId === s.id) continue;
+      const p = world._byId ? world._byId.get(peerId) : null;
+      if (!p || p.mode !== "settled") continue;
+      if (T.SIEGE_STARVE && p._besiegedNow) continue;   // a besieged seat sells nothing across the lines (and its capacity add-back stays 0)
+      // _foodNet is the seller's LIVE inventory — each sale below decrements
+      // it, so the residual self-draws-down (a bushel can only sell once).
+      // THE SEED-CORN RULE: a settlement sells only the surplus its own
+      // granary cannot absorb — while stores sit below cap the harvest
+      // refills them FIRST (granaryCap is the same clamp updateFood applies),
+      // so a famine-drained community rebuilds its buffer before exporting
+      // again; a full granary sells its whole surplus flow. Without this the
+      // market drained exactly the flow that fills granaries and, under
+      // HARVEST_YEARS, the marginal-geography gate seed bled 40→15
+      // settlements (gm_stylized_777 vs hy_stylized_777): communities sold
+      // their famine reserve and died at the next lean year.
+      const surplus = Math.max(0, (p._foodNet || 0) - (p._foodDemand || 0));
+      const residual = Math.max(0, surplus - Math.max(0, granaryCap(p) - (p.food || 0)));
+      if (residual <= 1e-9) continue;
+      // Haul survival: buyer is the DESTINATION market (its tier sets the
+      // catchment range — a metropolis pulls a wider grain shed), seller the
+      // shipper (its transport tech + the water corridor do the rest).
+      const arrive = foodHaulArrive(world, p, s);
+      if (arrive <= 1e-6) continue;
+      const price = p._grainPrice || 0;
+      let landed = Math.min(need, residual * arrive);
+      if (price > 0) landed = Math.min(landed, spare / price);
+      if (landed <= 1e-9) continue;
+      const pay = landed * price;
+      s.wealth -= pay; p.wealth = (p.wealth || 0) + pay;
+      recordOut(s, OUT_FOOD, pay);
+      recordIn(p, IN_FOOD, pay);
+      spare -= pay;
+      // Seller parts with what ARRIVES (the tree sweep's convention — the
+      // un-hauled remainder never left the farm gate).
+      p._foodNet = (p._foodNet || 0) - landed;
+      p._foodExported = (p._foodExported || 0) + landed;   // capacity add-back (updatePopulation): exports cannot drag the catchment's K below what its land grows
+      s._foodNet = (s._foodNet || 0) + landed;
+      need -= landed; boughtIn += landed;
+      if (ts) { ts.peerBought = (ts.peerBought || 0) + landed; p._dbgPeerOut = (p._dbgPeerOut || 0) + landed; }
+    }
+    if (boughtIn > 0) {
+      // Same 0.9/0.1 smoothed-inflow fold as the tree sweep (the ×0.9 decay
+      // already ran at the top of aggregateFoodHierarchy this tick).
+      s._foodImportRate = (s._foodImportRate || 0) + boughtIn * 0.1;
+      if (ts) s._dbgPeerIn = (s._dbgPeerIn || 0) + boughtIn;
     }
   }
 }
