@@ -92,20 +92,35 @@ const urbanOf = s => (s._urbanPop || 0) * POP_SCALE;
 console.log(`\n=== WHERE IS CIVILIZATION  ${W}x${H} (tw=${world.tw})  seed ${SEED}  ${STEPS} steps ===`);
 console.log(`  ${settled.length} settled · ${world.countries ? world.countries.size : 0} realms\n`);
 
-console.log(`  ── 1. THE ATLAS (urban people by region) ──`);
-console.log(`  ${"region".padEnd(18)} ${"cities".padStart(6)} ${"urban ppl".padStart(11)} ${"largest".padStart(9)} ${"realms".padStart(6)}`);
+// Land area per box, so the atlas compares DENSITIES and not box sizes (the
+// E Europe box is ~3x Egypt's — an un-normalized total flatters big boxes).
+const kmPerTile = EARTH_KM / twm;
+const boxLandMkm2 = (r) => {
+  let n = 0;
+  for (let y = yOf(r[1]); y <= yOf(r[2]); y++)
+    for (let x = xOf(r[3]); x <= xOf(r[4]); x++) {
+      const ti = y * twm + x;
+      if (world.elev && world.elev[ti] > 0) n++;
+    }
+  // cos(lat) shrinks a tile's real area away from the equator
+  const midLat = (r[1] + r[2]) / 2;
+  return n * kmPerTile * kmPerTile * Math.cos(midLat * Math.PI / 180) / 1e6;
+};
+console.log(`  ── 1. THE ATLAS (urban people by region, and per Mkm² of its land) ──`);
+console.log(`  ${"region".padEnd(18)} ${"cities".padStart(6)} ${"urban ppl".padStart(11)} ${"per Mkm²".padStart(10)} ${"largest".padStart(9)} ${"realms".padStart(6)}`);
 const rows = [];
 for (const r of REGIONS) {
   const inR = settled.filter(s => inBox(s, r));
   const urb = inR.reduce((a, s) => a + urbanOf(s), 0);
   const big = inR.length ? Math.max(...inR.map(urbanOf)) : 0;
+  const area = Math.max(0.05, boxLandMkm2(r));
   let realms = 0;
   if (world.countries) for (const c of world.countries.values()) if (c.capital && inBox(c.capital, r)) realms++;
-  rows.push([r[0], inR.length, urb, big, realms]);
+  rows.push([r[0], inR.length, urb, urb / area, big, realms]);
 }
-rows.sort((a, b) => b[2] - a[2]);
-for (const [lab, n, urb, big, realms] of rows)
-  console.log(`  ${lab.padEnd(18)} ${String(n).padStart(6)} ${(Math.round(urb / 1000) + "k").padStart(11)} ${(Math.round(big / 1000) + "k").padStart(9)} ${String(realms).padStart(6)}`);
+rows.sort((a, b) => b[3] - a[3]);   // by DENSITY — the honest comparison
+for (const [lab, n, urb, dens, big, realms] of rows)
+  console.log(`  ${lab.padEnd(18)} ${String(n).padStart(6)} ${(Math.round(urb / 1000) + "k").padStart(11)} ${(Math.round(dens / 1000) + "k").padStart(10)} ${(Math.round(big / 1000) + "k").padStart(9)} ${String(realms).padStart(6)}`);
 
 console.log(`\n  ── 2. THE URBAN LADDER (city cores, real people) ──`);
 const BR = [[0, 15e3, "≤15k (the minting floor)"], [15e3, 30e3, "15-30k"], [30e3, 60e3, "30-60k"], [60e3, 120e3, "60-120k"], [120e3, 300e3, "120-300k"], [300e3, Infinity, ">300k"]];

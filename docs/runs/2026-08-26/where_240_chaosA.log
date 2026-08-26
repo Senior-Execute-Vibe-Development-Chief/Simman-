@@ -17,3 +17,38 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 pkg=rice(suit 0.16) — ARMED: ~9481y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=2048 peakN=1299 pushes=9434 (0.0MB backing)
+[transHeap] step=28752 cap=4096 peakN=2090 pushes=10363 (0.0MB backing)
+
+=== WHERE IS CIVILIZATION  480x240 (tw=240)  seed 8817  30000 steps ===
+  75 settled · 32 realms
+
+  ── 1. THE ATLAS (urban people by region) ──
+  region             cities   urban ppl   largest realms
+  E Europe/Russia         4        552k      489k      2
+  Indus/NW India          4         93k       54k      1
+  Egypt/Nile              2         52k       28k      2
+  Ethiopia/E Africa       4         35k       24k      1
+  N China                 2         32k       24k      1
+  Andes                   3         24k       19k      0
+  Mesoamerica             2         17k       15k      1
+  W Europe                1          5k        5k      0
+  Mesopotamia             1          5k        5k      0
+  W Sahel                 1          2k        2k      0
+  Anatolia/Levant         1          1k        1k      1
+  Greece/Italy            0          0k        0k      0
+  SE Asia                 0          0k        0k      0
+
+  ── 2. THE URBAN LADDER (city cores, real people) ──
+  ≤15k (the minting floor)     42  ██████████████████████████████████████████
+  15-30k                       15  ███████████████
+  30-60k                       11  ███████████
+  60-120k                       2  ██
+  120-300k                      2  ██
+  >300k                         3  ███
+  urban core p50/p90/max: 12k / 56k / 898k
+
+  ── 3. THE GRAIN SHED (market hauls, great-circle km) ──
+  hauls 262 · km p50 738 · p90 1782 · max 3793
+  (history: overland grain ~20-100 km; riverine/coastal to ~1,500 km — Egypt→Rome)
+  importers 40 · top-3 take 56% of all landed grain · top-10 84%
+  (a handful of importers taking most of the grain = the owner's "shipped globally to few points")
