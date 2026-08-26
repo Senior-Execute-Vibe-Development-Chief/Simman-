@@ -35,7 +35,12 @@ const LIP_REFLECTION = -0.85;
 // Loss knobs set the formant bandwidths: a near-closed glottis (high
 // reflection) and light per-section damping keep the resonances sharp enough
 // to read as distinct vowels. Exposed for the calibration harness.
-const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.8, wallLoss: 1.3, wallThresh: 0.03, hf: 0.92 };
+// hfOpen/hfTight/hfThresh: the per-section HF loss is LOCAL, like the wall
+// loss — strong only beside a near-closure (whose tiny cavity is what rings
+// up) and nearly transparent in the open tube. The old uniform hf=0.92
+// cascaded over ~44 sections into a ~2 kHz treble ceiling that mushed every
+// sibilant and collapsed place distinctions ("everything sounds the same").
+const DSP = { glottalRefl: 0.9, damp: 0.997, radiation: 0.8, wallLoss: 1.3, wallThresh: 0.03, hfOpen: 0.995, hfTight: 0.85, hfThresh: 0.06 };
 // A hard ceiling on the travelling waves. Normal speech never exceeds ~5 here,
 // so this is invisible in practice — but a driven closed cavity (a long voiced
 // velar closure, where the constriction sits right against the velum) can ring
@@ -118,6 +123,7 @@ function makeTract() {
   const noseDiameter = new Float64Array(NOSE_LENGTH);
   const noseAold = new Float64Array(NOSE_LENGTH), noseAnew = new Float64Array(NOSE_LENGTH);
   const wall = new Float64Array(N);                                 // per-section damping (heavier at a closure)
+  const hfA = new Float64Array(N).fill(DSP.hfOpen);                 // per-section HF loss (tight beside a closure)
   const RlpS = new Float64Array(N), LlpS = new Float64Array(N);     // per-section HF-loss filter state
 
   for (let i = 0; i < N; i++) diameter[i] = rest[i] = i < 7 * N / 44 - 0.5 ? 0.6 : i < 12 * N / 44 ? 1.1 : 1.5;
@@ -168,6 +174,7 @@ function makeTract() {
       let minA = Anew[i];
       for (let j = Math.max(0, i - 2); j <= Math.min(N - 1, i + 2); j++) if (Anew[j] < minA) minA = Anew[j];
       wall[i] = DSP.damp - DSP.wallLoss * clamp((DSP.wallThresh - minA) / DSP.wallThresh, 0, 1);
+      hfA[i] = DSP.hfOpen - (DSP.hfOpen - DSP.hfTight) * clamp((DSP.hfThresh - minA) / DSP.hfThresh, 0, 1);
     }
     noseDiameter[0] = Math.max(0.01, p.velum);
     noseAnew[0] = noseDiameter[0] * noseDiameter[0];
@@ -178,20 +185,24 @@ function makeTract() {
   // port (area→0) then contributes nothing, which is exactly what keeps the
   // velar branch from pumping energy. lambda ramps areas old→new across a
   // block so posture changes don't zipper.
-  function step(glottal, turb, lambda, noise, p, lipOut) {
+  function step(glottal, turbL, turbH, lambda, p, lipOut) {
     // turbulence injected at the tight constriction (fricatives, bursts) and a
-    // breath source near the glottis (/h/, aspirated release)
-    const inject = (index, gain, dia) => {
+    // breath source near the glottis (/h/, aspirated release). The noise
+    // COLOUR follows the source: a sibilant jet against the teeth is
+    // high-frequency-weighted, a breathy glottis is not — p.sibilance mixes
+    // the low-passed and residual-high-passed streams per gesture.
+    const inject = (index, gain, dia, nzv) => {
       if (gain <= 0 || index < 1 || index > N - 2) return;
       const thin = clamp(5 * (0.85 - dia), 0, 1);
       const open = clamp(15 * (dia - 0.02), 0, 1);
-      const nz = turb * gain * thin * open;
+      const nz = nzv * gain * thin * open;
       const i = Math.floor(index), f = index - i;
       R[i] += nz * (1 - f) * 0.5; L[i] += nz * (1 - f) * 0.5;
       R[i + 1] += nz * f * 0.5; L[i + 1] += nz * f * 0.5;
     };
-    if (p.fricative > 0 && p.constrIndex >= 0) inject(p.constrIndex, p.fricative, diameter[clamp(Math.round(p.constrIndex), 1, N - 2)]);
-    if (p.aspiration > 0) inject(2, p.aspiration, diameter[2]);
+    const fricNz = turbL * (1 - p.sibilance) + turbH * 1.8 * p.sibilance;
+    if (p.fricative > 0 && p.constrIndex >= 0) inject(p.constrIndex, p.fricative, diameter[clamp(Math.round(p.constrIndex), 1, N - 2)], fricNz);
+    if (p.aspiration > 0) inject(2, p.aspiration, diameter[2], turbL);
 
     const mu = 1 - lambda;
     jR[0] = L[0] * DSP.glottalRefl + glottal;
@@ -212,11 +223,10 @@ function makeTract() {
     // timbre and, crucially, kills the ~8 kHz resonances of the tiny cavities
     // that back closures form against the velum — the runaway that fired the
     // clamp and glitched voiced velar/uvular sounds.
-    const HF = DSP.hf;
     for (let k = 0; k < N; k++) {
       let r = jR[k] * wall[k], l = jL[k + 1] * wall[k];
-      RlpS[k] += HF * (r - RlpS[k]); r = RlpS[k];
-      LlpS[k] += HF * (l - LlpS[k]); l = LlpS[k];
+      RlpS[k] += hfA[k] * (r - RlpS[k]); r = RlpS[k];
+      LlpS[k] += hfA[k] * (l - LlpS[k]); l = LlpS[k];
       // soft (tanh) saturation, not a hard clip: a cavity that still rings up
       // rounds off smoothly instead of clicking. Linear for normal speech.
       R[k] = Math.abs(r) < 6 ? r : MAXW * Math.tanh(r / MAXW);
@@ -236,7 +246,6 @@ function makeTract() {
       noseL[k] = Math.abs(l) < 6 ? l : MAXW * Math.tanh(l / MAXW);
     }
     lipOut.nose = noseR[NOSE_LENGTH - 1];
-    void noise;
   }
   shape({ tongueIndex: 20, tongueDiameter: 2.6, constrIndex: -1, constrDiameter: 3, lip: 0, velum: 0.01, fricative: 0, aspiration: 0 });
   commit();
@@ -259,6 +268,7 @@ function sampleTrack(track, t, dflt) {
 const DEFAULTS = {
   frequency: F0_BASE, tenseness: 0.6, intensity: 0, tongueIndex: 20, tongueDiameter: 2.6,
   constrIndex: -1, constrDiameter: 3, fricative: 0, aspiration: 0, velum: 0.01, lip: 0,
+  sibilance: 0,
 };
 
 /** Render a score {dur, tracks} to mono Float32 PCM at `sampleRate`.
@@ -313,12 +323,15 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
       glo.setLoudness();
       const nz = noise();
       const glottal = glo.step(nz) * (1 + SHIM_D * shim.g * shim.s);
-      // band-limit the turbulence: real frication/burst noise rolls off, not the
-      // harsh full-band white that made stop bursts a ~11 kHz click
-      turbLP = 0.4 * turbLP + 0.6 * noise();
-      tr.step(glottal, turbLP, lambda, nz, pmid, lipOut);
+      // split the turbulence into a band-limited body and its high residual —
+      // the injection site mixes them by sibilance (a /s/ jet is bright, a
+      // breath is not); full-band white alone made bursts an ~11 kHz click
+      const wT = noise();
+      turbLP = 0.4 * turbLP + 0.6 * wT;
+      const turbHP = wT - turbLP;
+      tr.step(glottal, turbLP, turbHP, lambda, pmid, lipOut);
       let v = lipOut.lip + lipOut.nose;
-      tr.step(glottal, turbLP, lambda, nz, pmid, lipOut);
+      tr.step(glottal, turbLP, turbHP, lambda, pmid, lipOut);
       v += lipOut.lip + lipOut.nose;
       out[i + s] = v * 0.125;
     }
@@ -335,7 +348,10 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   // a smooth downward expander (not a hard gate — that clicked) hushes the
   // silences between segments. Output stays LINEAR in the normal range so there
   // is no pervasive tanh distortion (the buzzy edge); only true peaks soft-limit.
-  const TARGET = 0.22, FLOOR = 0.085;                            // gentler leveling keeps some dynamics (less "flat")
+  // FLOOR raised from 0.085: over-boosting quiet spans flattened the
+  // amplitude contour that carries articulation rhythm — consonants read
+  // as loud as vowels and the word smeared into one level mush
+  const TARGET = 0.22, FLOOR = 0.12;
   const ATT = Math.exp(-1 / (0.004 * IR)), REL = Math.exp(-1 / (0.09 * IR));
   let env = 0;
   for (let i = 0; i < len; i++) {
@@ -445,9 +461,11 @@ function scoreCons(B, c, t, kpts, final) {
     B.to("intensity", t, voicedBar ? 0.7 : 0, 0.015);
     B.to("tenseness", t, voicedBar ? 0.5 : 0.6, 0.02);
     if (glottalH) B.to("aspiration", t, 0.7, 0.015); else B.set("aspiration", t, 0);
-    B.to("fricative", t, glottalH ? 0 : (sib ? 0.7 : 0.5) * (voicedBar ? 0.7 : 1), 0.015);
+    B.to("fricative", t, glottalH ? 0 : (sib ? 0.7 : 0.5) * (voicedBar ? 0.85 : 1), 0.015);
+    B.set("sibilance", t, glottalH ? 0 : sib ? 1 : 0.4);
     if (voicedBar) layF0(B, t, dur, kpts);
     B.to("fricative", t + dur, 0, 0.02); B.to("aspiration", t + dur, 0, 0.02);
+    B.set("sibilance", t + dur, 0);
     B.to("constrDiameter", t + dur, 1.6, trans);
     return dur;
   }
@@ -512,13 +530,17 @@ function scoreCons(B, c, t, kpts, final) {
   // release burst: a short crack of turbulence as the constriction springs
   // open — RAMPED (an abrupt on/off step read as a click/chirp) and kept modest
   if (!glottalStop) {
+    // burst colour follows place: a coronal release cracks bright, a labial
+    // is duller, a dorsal duller still
+    B.set("sibilance", t + dt, (p >= 1 && p <= 3) || p === 8 ? 0.8 : p === 0 ? 0.25 : 0.15);
     B.to("constrDiameter", t + dt, 0.3, 0.006);
     B.to("fricative", t + dt, ejective ? 0.36 : final ? 0.15 : 0.24, 0.003);
     if (!affric) B.to("fricative", t + dt + 0.009, 0, 0.012);
     B.to("constrDiameter", t + dt + 0.02, 1.6, 0.02);
   } else { B.to("constrDiameter", t + dt, 1.6, 0.02); }
   dt += 0.02;
-  if (affric) { B.to("constrDiameter", t + dt, sib ? 0.09 : 0.14, 0.008); B.set("fricative", t + dt, sib ? 0.7 : 0.5); B.to("fricative", t + dt + 0.07, 0, 0.02); B.to("constrDiameter", t + dt + 0.07, 1.6, 0.02); dt += 0.07; }
+  if (affric) { B.set("sibilance", t + dt, sib ? 1 : 0.4); B.to("constrDiameter", t + dt, sib ? 0.09 : 0.14, 0.008); B.set("fricative", t + dt, sib ? 0.7 : 0.5); B.to("fricative", t + dt + 0.07, 0, 0.02); B.to("constrDiameter", t + dt + 0.07, 1.6, 0.02); dt += 0.07; }
+  B.set("sibilance", t + dt, 0);
   if (aspirated) {                                           // voiceless breath after the burst
     B.set("intensity", t + dt, 0); B.to("aspiration", t + dt, 0.5, 0.01);
     B.to("aspiration", t + dt + 0.05, 0, 0.02); dt += 0.055;
