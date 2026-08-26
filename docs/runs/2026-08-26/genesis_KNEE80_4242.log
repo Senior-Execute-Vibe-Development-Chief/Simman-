@@ -28,3 +28,4 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [transHeap] step=25224 cap=2048 peakN=1063 pushes=6910 (0.0MB backing)
 [peopleSim] AGRICULTURE INVENTED at (52,35) (-102.0E 37.5N) — the basin farms; a city will rise when its market gathers one (score 4.48)
 [peopleSim] hearth candidate at (210,62) (135.0E -3.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=31272 cap=4096 peakN=2067 pushes=9739 (0.0MB backing)
