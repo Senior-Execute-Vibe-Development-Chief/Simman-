@@ -83,20 +83,51 @@ function clusterPeaks(windows) {
   return kept.map(c => c.center);
 }
 
-/** Vowel formants, robustly, in two regimes. Full-band LPC (order 16) over
- *  five windows, clustered, is the default — reliable for open vowels and
- *  front F2. Its one blind spot: a round back vowel's tightly-spaced F1+F2
- *  merge into one peak (the signature: low "F1", next peak implausibly
- *  >1500). There a LOW band (≤2.4 kHz, order 10 — more poles just model
- *  glottal harmonics) resolves the pair; it is consulted ONLY on that
- *  signature and adopted only when its two peaks sit <1200 Hz with the
- *  first corroborating full-band F1 — outside that regime its first peak
- *  is harmonic junk. Returns up to [F1, F2, F3]. */
-export function measureVowelFormants(x, sr, ats = [0.3, 0.4, 0.5, 0.6, 0.7]) {
-  const full = clusterPeaks(ats.map(at => estimateFormants(x, sr, at).filter(f => f >= 180)));
+// linear resample to a fixed analysis rate — LPC peak resolution is rate-
+// sensitive at the margins, so all vowel measurement runs at ONE rate
+const ANALYSIS_SR = 11025;
+function toAnalysisRate(x, sr) {
+  if (sr === ANALYSIS_SR) return x;
+  // anti-alias FIRST (moving average over the decimation width — without it
+  // an exact-ratio "resample" is raw subsampling, and folded-down HF buries
+  // the mid formants), then linear-interpolate to the analysis rate
+  const dec = Math.max(1, Math.round(sr / ANALYSIS_SR));
+  const pre = new Float32Array(x.length);
+  let acc = 0;
+  for (let i = 0; i < x.length; i++) { acc += x[i]; if (i >= dec) acc -= x[i - dec]; pre[i] = acc / Math.min(i + 1, dec); }
+  const ratio = ANALYSIS_SR / sr, n = Math.max(1, Math.floor(x.length * ratio));
+  const y = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const s = i / ratio, j = Math.floor(s), f = s - j;
+    y[i] = (pre[j] || 0) * (1 - f) + (pre[j + 1] || 0) * f;
+  }
+  return y;
+}
+
+/** Vowel formants, robustly, in two regimes — rate-independent (analyzed at
+ *  a fixed 11 kHz) and VOICED-GATED (a window in the fade-out tail hands LPC
+ *  garbage, so windows quieter than 0.3× the loudest are dropped). Full-band
+ *  LPC (order 16) over the surviving windows, clustered, is the default —
+ *  reliable for open vowels and front F2. Its one blind spot: a round back
+ *  vowel's tightly-spaced F1+F2 merge into one peak (the signature: low
+ *  "F1", next peak implausibly >1500). There a LOW band (≤2.4 kHz, order 10
+ *  — more poles just model glottal harmonics) resolves the pair; it is
+ *  consulted ONLY on that signature and adopted only when its two peaks sit
+ *  <1200 Hz, plausibly separated, with the first corroborating full-band F1.
+ *  Returns up to [F1, F2, F3]. */
+export function measureVowelFormants(x, sr, ats = [0.25, 0.35, 0.45, 0.55, 0.65]) {
+  const y = toAnalysisRate(x, sr);
+  const rms = ats.map(at => {
+    const a = Math.floor(y.length * at), b = Math.min(y.length, a + Math.floor(0.04 * ANALYSIS_SR));
+    let s = 0; for (let i = a; i < b; i++) s += y[i] * y[i];
+    return Math.sqrt(s / Math.max(1, b - a));
+  });
+  const rmax = Math.max(...rms);
+  const use = ats.filter((_, i) => rms[i] > 0.3 * rmax);
+  const full = clusterPeaks(use.map(at => estimateFormants(y, ANALYSIS_SR, at, 1, 16, 4500).filter(f => f >= 180)));
   const merged = full.length >= 2 && full[0] < 550 && full[1] > 1500;
   if (merged) {
-    const low = clusterPeaks(ats.map(at => estimateFormants(x, sr, at, 8, 10, 2400).filter(f => f >= 180)));
+    const low = clusterPeaks(use.map(at => estimateFormants(y, ANALYSIS_SR, at, 2, 10, 2400).filter(f => f >= 180)));
     if (low.length >= 2 && low[0] < 1200 && low[1] < 1200 && low[1] > low[0] * 1.5
       && Math.abs(low[0] - full[0]) / full[0] < 0.25) {
       const F3 = full.find(f => f > low[1] + 300);
