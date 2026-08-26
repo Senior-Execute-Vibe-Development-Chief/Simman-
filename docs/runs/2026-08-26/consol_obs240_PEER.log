@@ -64,3 +64,15 @@ step  24000  states 132 (singl 66%) · bonds 27 · org pack p50/p67(bar)/p90 0.6
 
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
 [peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
+step  27000  states 211 (singl 66%) · bonds 53 · org pack p50/p67(bar)/p90 0.76/0.76/0.76 (spread p90−p50 0.000)
+   flows/3k  submit 44/2985 · integrate 27/842 (orgBelowMin 192 beyondDirectRule 248) · capture 19 · storm PASSED 29 lifts 108 grinding 61
+   storms n 3215 · adv p50/p90/max 0.13/1.25/209.73 vs bar 1.6 · tooWeak 92% · med att 5.7 vs def: relief 1.6 + assist 0.0 + garrison 30.4 ×walls 1.00
+
+[transHeap] step=27744 cap=4096 peakN=2144 pushes=9866 (0.0MB backing)
+step  30000  states 305 (singl 66%) · bonds 72 · org pack p50/p67(bar)/p90 0.83/0.83/0.84 (spread p90−p50 0.001)
+   flows/3k  submit 35/4197 · integrate 37/1158 (orgBelowMin 272 beyondDirectRule 282) · capture 55 · storm PASSED 34 lifts 133 grinding 64
+   storms n 4894 · adv p50/p90/max 0.08/0.82/117.88 vs bar 1.6 · tooWeak 94% · med att 5.2 vs def: relief 1.4 + assist 0.0 + garrison 54.8 ×walls 1.00
+
+READ: adv p90 far under the bar with walls (em) dominating ⇒ the walls price
+is the lock; relief/assist dominating ⇒ coalitions; att tiny ⇒ concentration/
+command caps. Tight org pack (spread ≈ 0) ⇒ the relative integrate bar is noise.

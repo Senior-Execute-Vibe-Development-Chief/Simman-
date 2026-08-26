@@ -1,0 +1,7 @@
+
+> world-sim@1.0.0 resgate
+> node tools/resgate.mjs
+
+[harness] tree c48bfcf
+[SIM_TUNE] {"ABSORB_PEER":1}
+[resgate] seed=8817 steps=6000 — reference grid vs the SHIPPED app grid
