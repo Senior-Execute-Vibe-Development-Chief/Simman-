@@ -97,7 +97,10 @@ console.log(`  ${settled.length} settled · ${world.countries ? world.countries.
 const kmPerTile = EARTH_KM / twm;
 const boxLandMkm2 = (r) => {
   let n = 0;
-  for (let y = yOf(r[1]); y <= yOf(r[2]); y++)
+  // yOf INVERTS latitude (north = low y), so the north edge r[2] is the LOW
+  // bound — the same order inBox uses. Getting this backwards runs an empty
+  // loop and silently floors every area to the 0.05 guard.
+  for (let y = yOf(r[2]); y <= yOf(r[1]); y++)
     for (let x = xOf(r[3]); x <= xOf(r[4]); x++) {
       const ti = y * twm + x;
       if (world.elev && world.elev[ti] > 0) n++;
