@@ -17,3 +17,4 @@
 [peopleSim] hearth candidate at (33,24) (-130.5E 54.0N) score 0.50 pkg=maize(suit 0.27) — ARMED: ~10877y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=2048 peakN=1197 pushes=6938 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (54,39) (-99.0E 31.5N) — the basin farms; a city will rise when its market gathers one (score 3.13)
