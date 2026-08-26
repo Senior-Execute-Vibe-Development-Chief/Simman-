@@ -21,3 +21,57 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+step   3000  n 0 · ports(wa>0) 0 · with-sea-lanes 0 · carrying(seaShare>.01) 0
+   tracks p50|p90|max  org 0.00|0.00|0.00  con 0.00|0.00|0.00  met 0.00|0.00|0.00  nav 0.00|0.00|0.00  agr 0.00|0.00|0.00  mob 0.00|0.00|0.00
+   dearness p50/p90  staple 0.00/0.00 · metal 0.00/0.00 · materials 0.00/0.00   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 0.00/0.00 · needAgri 0.00/0.00 · needMetal 0.00/0.00 · PORTS: needSea 0.00/0.00 · fleet 0.00/0.00 · hegF 0.00/0.00
+
+step   6000  n 0 · ports(wa>0) 0 · with-sea-lanes 0 · carrying(seaShare>.01) 0
+   tracks p50|p90|max  org 0.00|0.00|0.00  con 0.00|0.00|0.00  met 0.00|0.00|0.00  nav 0.00|0.00|0.00  agr 0.00|0.00|0.00  mob 0.00|0.00|0.00
+   dearness p50/p90  staple 0.00/0.00 · metal 0.00/0.00 · materials 0.00/0.00   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 0.00/0.00 · needAgri 0.00/0.00 · needMetal 0.00/0.00 · PORTS: needSea 0.00/0.00 · fleet 0.00/0.00 · hegF 0.00/0.00
+
+[peopleSim] AGRICULTURE INVENTED at (138,41) (27.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 7.22)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+[peopleSim] AGRICULTURE INVENTED at (166,41) (69.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.81)
+step   9000  n 0 · ports(wa>0) 0 · with-sea-lanes 0 · carrying(seaShare>.01) 0
+   tracks p50|p90|max  org 0.00|0.00|0.00  con 0.00|0.00|0.00  met 0.00|0.00|0.00  nav 0.00|0.00|0.00  agr 0.00|0.00|0.00  mob 0.00|0.00|0.00
+   dearness p50/p90  staple 0.00/0.00 · metal 0.00/0.00 · materials 0.00/0.00   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 0.00/0.00 · needAgri 0.00/0.00 · needMetal 0.00/0.00 · PORTS: needSea 0.00/0.00 · fleet 0.00/0.00 · hegF 0.00/0.00
+
+step  12000  n 0 · ports(wa>0) 0 · with-sea-lanes 0 · carrying(seaShare>.01) 0
+   tracks p50|p90|max  org 0.00|0.00|0.00  con 0.00|0.00|0.00  met 0.00|0.00|0.00  nav 0.00|0.00|0.00  agr 0.00|0.00|0.00  mob 0.00|0.00|0.00
+   dearness p50/p90  staple 0.00/0.00 · metal 0.00/0.00 · materials 0.00/0.00   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 0.00/0.00 · needAgri 0.00/0.00 · needMetal 0.00/0.00 · PORTS: needSea 0.00/0.00 · fleet 0.00/0.00 · hegF 0.00/0.00
+
+step  15000  n 8 · ports(wa>0) 8 · with-sea-lanes 0 · carrying(seaShare>.01) 0
+   tracks p50|p90|max  org 0.32|0.36|0.36  con 0.32|0.34|0.34  met 0.13|0.15|0.15  nav 0.15|0.16|0.16  agr 0.55|0.56|0.56  mob 0.14|0.16|0.16
+   dearness p50/p90  staple 1.23/4.00 · metal 1.48/3.56 · materials 1.57/2.90   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 2.60/2.93 · needAgri 1.06/1.75 · needMetal 1.12/1.64 · PORTS: needSea 1.14/1.75 · fleet 1.00/1.00 · hegF 0.00/0.00
+   met frontier: Fùlpū m0.15 cap0.90 need1.64 sci2.85 · Ňěňní m0.14 cap0.90 need1.52 sci2.93 · Kèňtọ̄ị m0.13 cap0.90 need1.12 sci2.60
+
+[peopleSim] AGRICULTURE INVENTED at (197,38) (115.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.45)
+step  18000  n 28 · ports(wa>0) 26 · with-sea-lanes 5 · carrying(seaShare>.01) 5
+   tracks p50|p90|max  org 0.53|0.57|0.58  con 0.50|0.54|0.54  met 0.21|0.25|0.26  nav 0.19|0.25|0.25  agr 0.59|0.60|0.61  mob 0.21|0.26|0.27
+   dearness p50/p90  staple 1.25/4.00 · metal 1.17/4.00 · materials 1.67/4.00   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 3.26/3.51 · needAgri 1.06/1.75 · needMetal 1.04/1.75 · PORTS: needSea 1.22/1.75 · fleet 1.00/1.39 · hegF 0.00/0.00
+   met frontier: Tufngoze m0.26 cap1.00 need1.41 sci3.57 · Nawaxexi m0.26 cap1.00 need1.57 sci3.47 · Pomponsom m0.25 cap1.00 need1.00 sci3.24
+
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
+[peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
+[peopleSim] AGRICULTURE INVENTED at (137,74) (25.5E -21.0N) — the basin farms; a city will rise when its market gathers one (score 1.69)
+step  21000  n 100 · ports(wa>0) 97 · with-sea-lanes 24 · carrying(seaShare>.01) 22
+   tracks p50|p90|max  org 0.59|0.67|0.69  con 0.59|0.63|0.65  met 0.29|0.33|0.35  nav 0.26|0.32|0.34  agr 0.63|0.64|0.65  mob 0.29|0.34|0.34
+   dearness p50/p90  staple 1.22/4.00 · metal 1.47/4.00 · materials 1.74/3.10   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 3.26/3.68 · needAgri 1.06/1.75 · needMetal 1.12/1.75 · PORTS: needSea 1.19/1.75 · fleet 1.00/1.70 · hegF 0.00/0.00
+   met frontier: Foosutul m0.35 cap0.90 need1.75 sci3.45 · Futussee m0.34 cap0.90 need1.43 sci3.13 · Tuukutei m0.33 cap0.90 need1.75 sci3.21
+
+[transHeap] step=22704 cap=2048 peakN=1111 pushes=7231 (0.0MB backing)
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+step  24000  n 237 · ports(wa>0) 235 · with-sea-lanes 54 · carrying(seaShare>.01) 54
+   tracks p50|p90|max  org 0.71|0.76|0.79  con 0.68|0.70|0.72  met 0.35|0.40|0.44  nav 0.33|0.43|0.46  agr 0.66|0.67|0.71  mob 0.31|0.38|0.40
+   dearness p50/p90  staple 1.18/4.00 · metal 1.37/3.59 · materials 1.77/3.26   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 3.25/3.68 · needAgri 1.05/1.75 · needMetal 1.09/1.65 · PORTS: needSea 1.24/1.75 · fleet 1.00/1.96 · hegF 0.00/0.01
+   met frontier: Foosutul m0.44 cap1.00 need1.62 sci3.59 · Tuukutei m0.43 cap1.00 need1.30 sci3.40 · Futussee m0.43 cap0.90 need1.41 sci3.29
+
