@@ -1,4 +1,4 @@
-[harness] tree c2db1b4
+[harness] tree 79885a7
 Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth pin Nile picked at tile (138,41) (27.0E 28.5N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
@@ -16,22 +16,3 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 pkg=rice(suit 0.16) — ARMED: ~9481y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=2048 peakN=1299 pushes=9434 (0.0MB backing)
-[transHeap] step=27240 cap=4096 peakN=2099 pushes=9977 (0.0MB backing)
-
-=== CAPACITY TERMS AT EACH REGION'S RICHEST TILE  480x240 (tw=240) seed 8817 30000 steps ===
-  FIELD_CRADLE=1 IRRIG_BOOST=1.5 ALLUVIUM=2 IRRIG_ARID0=0.52
-
-  region            moist  fert  devF rivr  cst  arid watr  irr  allu     x reach       cap
-  Egypt/Nile         0.45  1.00  0.84  3.0  0.0  0.35 0.75 1.39  2.50  3.48  2.38    108285
-  Mesopotamia        0.45  1.00  0.83  2.0  0.0  0.35 0.50 1.26  2.00  2.53  1.92     56191
-  Indus/NW India     0.50  0.99  0.77  2.0  0.0  0.11 0.50 1.08  2.00  2.16  1.89     25367
-  N China            0.34  0.99  0.82  2.0  0.0  0.92 0.50 1.69  2.00  3.37  1.91     79782
-  Greece/Italy       0.45  1.00  0.85  2.0  1.0  0.35 0.50 1.26  3.00  3.79  2.57    462329
-  E Europe/Russia    0.44  0.84  0.85  2.0  0.0  0.39 0.50 1.29  2.00  2.58  1.93    594256
-  W Europe           0.24  0.84  0.85  1.0  1.0  1.00 0.25 1.38  2.50  3.44  2.11     77078
-
-READ: cradle x ~7.5 with fert far below the plains' ⇒ irrigation is MULTIPLYING a
-desert fertility instead of SUBSTITUTING for the missing rain (the canal's whole point,
-and TERRAIN_FADE's own documented distinction). x near 1 at a cradle ⇒ the stack is not
-firing there at all, which is a different bug (arid/water/farmTech gate, or the river
-tile missed at this grid).

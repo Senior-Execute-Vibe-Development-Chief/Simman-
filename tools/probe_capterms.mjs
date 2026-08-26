@@ -47,7 +47,7 @@ for (let done = 0; done < STEPS; done += 1000) stepPeopleSim(world, 1000);
 
 console.log(`\n=== CAPACITY TERMS AT EACH REGION'S RICHEST TILE  ${W}x${H} (tw=${tw}) seed ${SEED} ${STEPS} steps ===`);
 console.log(`  FIELD_CRADLE=${T.FIELD_CRADLE} IRRIG_BOOST=${T.IRRIG_BOOST} ALLUVIUM=${T.ALLUVIUM} IRRIG_ARID0=${T.IRRIG_ARID0}\n`);
-console.log(`  ${"region".padEnd(17)} ${"moist".padStart(5)} ${"fert".padStart(5)} ${"devF".padStart(5)} ${"rivr".padStart(4)} ${"cst".padStart(4)} ${"arid".padStart(5)} ${"watr".padStart(4)} ${"irr".padStart(4)} ${"allu".padStart(5)} ${"x".padStart(5)} ${"reach".padStart(5)} ${"cap".padStart(9)}`);
+console.log(`  ${"region".padEnd(17)} ${"fert".padStart(5)} ${"devT".padStart(5)} ${"reach".padStart(5)} ${"relf".padStart(5)} ${"indMul".padStart(7)} ${"wkMul".padStart(6)} ${"cradle".padStart(6)} ${"pastr".padStart(8)} ${"PREDICT".padStart(9)} ${"cap".padStart(9)} ${"ratio".padStart(5)}`);
 
 for (const r of REGIONS) {
   let best = -1, bi = -1;
@@ -69,10 +69,24 @@ for (const r of REGIONS) {
   const allu = 1 + (T.ALLUVIUM || 0) * (T.FIELD_CRADLE || 0) * (water + 0.5 * cst) * farmTech;
   const access = ACCESS_RIVER * water + ACCESS_COAST * cst;
   const reach = 1 + access * (ACCESS_DEV0 + ACCESS_DEVK * devF);
-  console.log(`  ${r[0].padEnd(17)} ${moist.toFixed(2).padStart(5)} ${(fert < 0 ? "  — " : fert.toFixed(2)).padStart(5)} ${devF.toFixed(2).padStart(5)} ${rm.toFixed(1).padStart(4)} ${cst.toFixed(1).padStart(4)} ${arid.toFixed(2).padStart(5)} ${water.toFixed(2).padStart(4)} ${irr.toFixed(2).padStart(4)} ${allu.toFixed(2).padStart(5)} ${(irr * allu).toFixed(2).padStart(5)} ${reach.toFixed(2).padStart(5)} ${Math.round(best).toString().padStart(9)}`);
+  // the remaining terms of capBand, so the product can be RECONSTRUCTED and
+  // any residual names the term actually responsible.
+  const relief = world.relief ? world.relief[bi] : 0;
+  const reliefMul = 1 / (1 + RELIEF_PEN * relief);
+  const devT = DEV_BASE + DEV_TECH * devF;
+  const pastureV = world._pastureCap ? world._pastureCap[bi] : -1;
+  const worksV = world.worksField ? world.worksField[bi] : -1;
+  const wkMul = (T.LAND_WORKS > 0 && worksV >= 0) ? 1 + T.LAND_WORKS * worksV : 1;
+  let indMul = 1;
+  const own = world._indOwner || world._landOwner || world._countryOwner;
+  if (own && world._byId) { const sid = own[bi]; const so = sid >= 0 ? world._byId.get(sid) : null; if (so && so._indCap > 1) indMul = so._indCap; }
+  const CAP_PER_FERT = 1200;                       // popField.js module constant
+  const rnF = Math.max(1e-9, tw / 240);            // rNormPop at the reference width
+  const capPerFert = CAP_PER_FERT / (rnF * rnF);   // per REAL area
+  const predict = fert * capPerFert * devT * reach * reliefMul * indMul * wkMul * (irr * allu);
+  console.log(`  ${r[0].padEnd(17)} ${fert.toFixed(2).padStart(5)} ${devT.toFixed(2).padStart(5)} ${reach.toFixed(2).padStart(5)} ${reliefMul.toFixed(2).padStart(5)} ${indMul.toFixed(2).padStart(7)} ${wkMul.toFixed(2).padStart(6)} ${(irr * allu).toFixed(2).padStart(6)} ${(pastureV < 0 ? "   — " : Math.round(pastureV).toString()).padStart(8)} ${Math.round(predict).toString().padStart(9)} ${Math.round(best).toString().padStart(9)} ${(best > 0 ? (best / Math.max(1e-9, predict)) : 0).toFixed(2).padStart(5)}`);
 }
-console.log(`\nREAD: cradle x ~7.5 with fert far below the plains' ⇒ irrigation is MULTIPLYING a`);
-console.log(`desert fertility instead of SUBSTITUTING for the missing rain (the canal's whole point,`);
-console.log(`and TERRAIN_FADE's own documented distinction). x near 1 at a cradle ⇒ the stack is not`);
-console.log(`firing there at all, which is a different bug (arid/water/farmTech gate, or the river`);
-console.log(`tile missed at this grid).`);
+console.log(`\nREAD: ratio ~1 ⇒ the printed terms EXPLAIN the capacity and the biggest column is the`);
+console.log(`defect. ratio far from 1 ⇒ a term here is wrong or missing (a field read under the wrong`);
+console.log(`name reads -, and CAP_PER_FERT/works/industry are the usual suspects); fix the`);
+console.log(`reconstruction before drawing any conclusion from the columns.`);
