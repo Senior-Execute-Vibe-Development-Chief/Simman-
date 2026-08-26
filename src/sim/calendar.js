@@ -39,7 +39,14 @@ export function yearToStep(year){ return (year - START_YEAR()) / YEARS_PER_STEP;
 // (~100 across a realm's life, not ~200 crammed in) and its years sit in the same
 // range as the display calendar. Kept separate from stepToYear so retuning ruler
 // turnover never disturbs the demographic anchor (which reads stepToYear).
-const DYN_START = () => (T.CRADLE_EVE ? -3000 : -5250), DYN_RATE = 0.25;
+// T.EPOCH_YD (v49, the genesis lap): the owner-ratified anchor — t=0 is the
+// end of the Younger Dryas (~9700 BCE), the Holocene's opening, under the
+// CAGE_FILL pace whose milestones then land on history's dates (farming
+// ~7637 BCE, writing/cities ~3900 BCE, iron ~1012 BCE — tuning.js EPOCH_YD).
+// DYN and DISP are one fused clock (same epoch, same rate) and move together;
+// v<49 saves pin EPOCH_YD=0 so their stamped dynasty years (rulers' reignFrom/
+// reignTo are absolute years) stay self-consistent under −5250.
+const DYN_START = () => (T.CRADLE_EVE ? -3000 : (T.EPOCH_YD ? -9700 : -5250)), DYN_RATE = 0.25;
 export function dynYear(step){ return DYN_START() + step * DYN_RATE; }
 export function dynStep(year){ return (year - DYN_START()) / DYN_RATE; }
 
@@ -65,7 +72,9 @@ export function dynStep(year){ return (year - DYN_START()) / DYN_RATE; }
 // chalcolithic copper — settlement.js makeSettlement), which is what 3000 BC
 // was, so the first kingdoms crystallize within the opening centuries and the
 // display epoch and the dynasty clock (DYN_START below) are ONE clock.
-const DISP_START = () => (T.CRADLE_EVE ? -3000 : -5250), DISP_RATE = 0.25;
+// (EPOCH_YD: see the DYN_START note — the fused display/dynasty clock
+// re-anchors to the Younger-Dryas epoch −9700 under the CAGE_FILL pace.)
+const DISP_START = () => (T.CRADLE_EVE ? -3000 : (T.EPOCH_YD ? -9700 : -5250)), DISP_RATE = 0.25;
 export function displayYear(step){ return DISP_START() + Math.max(0, step) * DISP_RATE; }
 export function displayStep(year){ return (year - DISP_START()) / DISP_RATE; }
 

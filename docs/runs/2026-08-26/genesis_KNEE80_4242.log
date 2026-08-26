@@ -20,3 +20,10 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] AGRICULTURE INVENTED at (138,41) (27.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 7.42)
 [peopleSim] AGRICULTURE INVENTED at (150,38) (45.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.42)
 [peopleSim] AGRICULTURE INVENTED at (166,41) (69.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.74)
+[peopleSim] AGRICULTURE INVENTED at (197,38) (115.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.42)
+[peopleSim] AGRICULTURE INVENTED at (113,49) (-10.5E 16.5N) — the basin farms; a city will rise when its market gathers one (score 3.40)
+[peopleSim] AGRICULTURE INVENTED at (139,74) (28.5E -21.0N) — the basin farms; a city will rise when its market gathers one (score 1.62)
+[peopleSim] AGRICULTURE INVENTED at (72,71) (-72.0E -16.5N) — the basin farms; a city will rise when its market gathers one (score 1.34)
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=25224 cap=2048 peakN=1063 pushes=6910 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (52,35) (-102.0E 37.5N) — the basin farms; a city will rise when its market gathers one (score 4.48)
