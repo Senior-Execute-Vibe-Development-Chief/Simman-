@@ -17,6 +17,7 @@ import { scorePlan as tractScorePlan, scoreClause as tractScoreClause, renderSco
 import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME, registerOf, highRegister, registerWords } from "./sim/languageScript.js";
 import { foundHistory, stepHistory, ancestryOf } from "./sim/languageHistory.js";
 import { IPA_CLIPS, IPA_CLIP_CREDIT } from "./sim/ipaAudioManifest.js";
+import { FORMANT_VOWELS } from "./sim/formantVowelCal.js";
 import { applyReference, REF_KINDS } from "./sim/languageRefs.js";
 import { CONCEPTS } from "./sim/languageLexicon.js";
 import { gramOf, closedOf, numeral, numeralConceptWord, inflectNoun, inflectVerb, paradigmShape, affixEtymologies, renderClause, resolveTam, intensive,
@@ -31,7 +32,7 @@ import { STONE, KING, RIVER, HOUSE, WOLF, MOTHER, HAND, MOUNTAIN, SHIP, FOOT, VE
 // ── state ────────────────────────────────────────────────────────────────
 let world, lineage, donor;
 const S = {
-  seed: 8817, preset: "random", divergence: 0.5, search: "", voice: "tract", noun: STONE, verb: VERBS[2],
+  seed: 8817, preset: "random", divergence: 0.5, search: "", voice: "formant", noun: STONE, verb: VERBS[2],
   sent: { type: "plain", s: "p:1sg", v: SEE, tam: "pst", o: "n:" + RIVER, neg: false, q: false, loc: "none", mood: "decl", pred: "adj" },
   hist: { seed: 9917, eras: 14, english: true, russian: true, mandarin: true, random: 3 },
 };
@@ -211,7 +212,7 @@ function playSlice(rec, seg, dur, when, base = 1, pad = 0) {
 }
 function playClipOr(sym, fallbackPlan) {
   loadClip(sym).then(rec => {
-    if (!rec) { if (fallbackPlan) speakPlanTract(fallbackPlan); return; }
+    if (!rec) { if (fallbackPlan) speakPlanFormant(fallbackPlan); return; }
     const sr = rec.buf.sampleRate, s0 = rec.segs[0];
     playSlice(rec, s0, Math.min(1.4, (s0.b - s0.a) / sr + 0.02), undefined, 1, 0.02);
     window.__lastClipPlayed = sym;             // headless-check breadcrumb
@@ -252,6 +253,13 @@ function glottalWave(ctx, breathy) {
   return wave;
 }
 const VOWEL_F = (v) => {
+  // measured HUMAN formants from the recorded bank (formantVowelCal.js),
+  // VTL-normalized to one speaker — a formant synth takes formants as
+  // input, so the calibration is used directly. Unmeasured qualities keep
+  // the analytic formula.
+  const cal = FORMANT_VOWELS[`${v.h},${v.b},${v.r ? 1 : 0},${v.atr ? 1 : 0}`]
+    || FORMANT_VOWELS[`${v.h},${v.b},${v.r ? 1 : 0},0`];
+  if (cal) return cal;
   const F1 = [300, 480, 720][v.h] || 480;
   let F2 = v.b === 0 ? 2150 - v.h * 150 : v.b === 1 ? 1400 : 950 + v.h * 100;
   if (v.r) F2 -= v.b === 0 ? 300 : 100; else if (v.b === 2) F2 += 350;
@@ -441,14 +449,14 @@ function speakClauseTract(groups, contour) {
 }
 // engine dispatch: the Sound card's toggle picks the articulatory tract (the
 // vocal-tract model) or the formant sketch; both read the SAME phonetic plans
-function speakPlan(plan) { S.voice === "formant" ? speakPlanFormant(plan) : speakPlanTract(plan); }
+function speakPlan(plan) { S.voice === "tract" ? speakPlanTract(plan) : speakPlanFormant(plan); }
 // a whole sentence: word plans in sequence, grouped into intonation
 // phrases (one per clause) — pitch declines across the whole utterance,
 // each NON-final clause ends on a continuation rise with a comma pause
 // (the near-universal spoken comma), and only the final clause carries
 // the sentence's boundary tone (fall for statements/commands, rise for
 // questions)
-function speakClause(groups, contour = "fall") { S.voice === "formant" ? speakClauseFormant(groups, contour) : speakClauseTract(groups, contour); }
+function speakClause(groups, contour = "fall") { S.voice === "tract" ? speakClauseTract(groups, contour) : speakClauseFormant(groups, contour); }
 function speakClauseFormant(groups, contour = "fall") {
   const ctx = ac();
   const master = mkMaster(ctx);
@@ -582,12 +590,12 @@ function soundHTML(l) {
     addRow(glossOf(cid), renderWord(form, prof), form);
   }
   return `<section class="card"><h2>Sound <span class="count">— IPA &amp; a voice</span></h2>
-    <p class="note">The same feature bundles the phonology stores, rendered two more ways: IPA for the linguist, and a synthesizer for the ear. Two voices are on offer: an <b>articulatory vocal tract</b> — a Kelly–Lochbaum waveguide where you set a tongue and a constriction and the formants fall out of the tube's shape, so clicks, ejectives, nasals and breathy/creaky voice all emerge from the mechanism — and the older <b>formant sketch</b> (a buzz through three resonators). Either way the clusters, codas, vowel qualities and ${prof.tone ? "tone melodies (matching the written marks exactly)" : "stress placement"} are the real ones. Click a phoneme to hear it; ▶ speaks a word. Spelling and speech may honestly disagree — the romanization drops what convention drops (initial glottal stops, collapsed digraphs); the IPA keeps it.</p>
+    <p class="note">The same feature bundles the phonology stores, rendered two more ways: IPA for the linguist, and a synthesizer for the ear. The primary voice is the <b>formant voice</b> — resonators driven directly at the vowel formants <b>measured from real human recordings</b> (the same openly licensed bank the third option plays), with per-place burst and frication colour. The <b>articulatory tract</b> — a Kelly–Lochbaum waveguide where the formants fall out of the tube's shape — stays available as the physical-model experiment. Either way the clusters, codas, vowel qualities and ${prof.tone ? "tone melodies (matching the written marks exactly)" : "stress placement"} are the real ones. Click a phoneme to hear it; ▶ speaks a word. Spelling and speech may honestly disagree — the romanization drops what convention drops (initial glottal stops, collapsed digraphs); the IPA keeps it.</p>
     <p class="cells"><span class="lbl">voice</span>
-      <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice !== "formant" && S.voice !== "human" ? " checked" : ""}/> articulatory tract</label>
-      <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice === "formant" ? " checked" : ""}/> formant sketch</label>${HAS_CLIPS ? `
+      <label class="vopt"><input type="radio" name="voiceEngine" value="formant"${S.voice !== "tract" && S.voice !== "human" ? " checked" : ""}/> formant voice</label>
+      <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice === "tract" ? " checked" : ""}/> articulatory tract (experimental)</label>${HAS_CLIPS ? `
       <label class="vopt"><input type="radio" name="voiceEngine" value="human"${S.voice === "human" ? " checked" : ""}/> recorded phones</label>` : ""}</p>${HAS_CLIPS ? `
-    <p class="note">With <b>recorded phones</b> selected, each phoneme chip plays a <b>human recording</b> of that exact phone — real citation audio, openly licensed (${esc(IPA_CLIP_CREDIT)}), loudness-matched across recorders. A phone without its own recording plays its nearest recorded base phone. Words and sentences still speak through the articulatory tract — isolated citation phones cannot be stitched into connected speech, but they serve as the <b>ground truth the tract's vowels are calibrated against</b>.</p>` : ""}
+    <p class="note">With <b>recorded phones</b> selected, each phoneme chip plays a <b>human recording</b> of that exact phone — real citation audio, openly licensed (${esc(IPA_CLIP_CREDIT)}), loudness-matched across recorders. A phone without its own recording plays its nearest recorded base phone. Words and sentences still speak through the formant voice — isolated citation phones cannot be stitched into connected speech, but they are the <b>measured ground truth both synthesizers' vowels are calibrated against</b>.</p>` : ""}
     <h3>Phonemes</h3>
     <p class="cells">${cChips}</p>
     <p class="cells">${vChips}</p>
