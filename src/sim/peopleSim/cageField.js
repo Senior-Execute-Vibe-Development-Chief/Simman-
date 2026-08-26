@@ -201,12 +201,28 @@ export function cageAt(world, ti) {
   return f ? f[ti] : 0;
 }
 
-/** The basin's demographic FILL at a tile (0 = empty, 1 = at capacity) — the
- *  pressure leg of the caging drive (T.CAGE_FILL; built with the cage field).
- *  1 when the lever is off so drives multiply unchanged. */
+// Carneiro's threshold, not a slope: while free land remains, a DEFEATED
+// village flees and re-sows — no subjugation, no supra-village organization.
+// Only when the basin nears exhaustion does defeat mean submission. Measured
+// (probe_fillclock + the 40k A/B, 2026-08-26): with pressure LINEAR in fill,
+// the basins' honest ~8-11k-tick refill after farming's capacity jump only
+// stretched farming→writing 1.43× (mean fill ≈ 0.45 → half-rate org the whole
+// way up) — writing 15000 → 17250 of the ~26000 the YD anchor needs. The knee
+// zeroes the drive while flight still beats submission. CAGE_FLIGHT_FREE is
+// the free-capacity share at which flight stops working — the land-stress
+// point of the village-fissioning/shifting-cultivation literature (~a third
+// of plots free), a physical constant, not a fitted date.
+const CAGE_FLIGHT_FREE = 0.4;      // flight viable while > this share of basin capacity is free
+
+/** Carneiro's PRESSURE at a tile — the third leg of the caging drive
+ *  (T.CAGE_FILL; raw fill = home-box people / capacity, built with the cage
+ *  field, then kneed: 0 until fill reaches 1−CAGE_FLIGHT_FREE, rising to 1 at
+ *  saturation). 1 when the lever is off so drives multiply unchanged. */
 export function cageFillAt(world, ti) {
   if (!(T.CAGE_FILL > 0)) return 1;
   ensureCageField(world);
   const f = world._cageFill;
-  return f && f.length === world.N ? f[ti] : 1;
+  if (!f || f.length !== world.N) return 1;
+  const knee = 1 - CAGE_FLIGHT_FREE;
+  return Math.max(0, (f[ti] - knee) / CAGE_FLIGHT_FREE);
 }
