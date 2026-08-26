@@ -174,6 +174,61 @@ its intervals blur.
 After: **beat autocorrelation 0.71**, inter-onset intervals landing on a clean
 grid, 1.06 notes per beat, and a melodic compass with a median of one frame.
 
+### What the field already knew
+
+Three cuts in, the music still did not work, and the honest reason was that
+this was being derived from first principles when there is a large literature
+and decades of shipped systems to read. What that reading changed:
+
+**Euclidean rhythms** (Toussaint, *The Euclidean Algorithm Generates
+Traditional Musical Rhythms*, 2005). Distributing k onsets over n slots as
+evenly as possible — Bjorklund's algorithm, which is the Euclidean algorithm's
+structure — generates the timelines of world music. E(3,8) is the tresillo,
+E(5,8) a West African bell pattern, E(4,7) the Bulgarian răčenica, E(5,12)
+South African, E(7,16) a Brazilian necklace, E(11,24) Central African. One
+evenness principle produces the lot. This is precisely the kind of mechanism
+this project wants: k and n come from the culture's own metre and density, and
+a real timeline falls out with none of them named. The implementation is
+verified against the paper's own table — all eight patterns match exactly.
+
+**A note on every downbeat.** Stated outright in Computoser's rule set, and
+its absence was most of why the earlier cuts had no pulse: the downbeat is
+where a listener taps, and a part that keeps missing it is heard as beatless
+however regular its other onsets are. Syncopation is the exception a tradition
+takes deliberately, never the default.
+
+**Melodic expectation** (Narmour's implication–realization model, in the form
+the generative-melody literature operationalizes it). Two findings: pitch
+proximity dominates — melodies are mostly steps — and while a small interval
+implies continuation in the same direction, a leap implies *reversal* and a
+stepwise filling-in of the gap it opened. A random walk has neither property,
+which is why it sounds arbitrary however consonant its pitches are. Melody is
+now chosen by weighting candidate steps on exactly those rules.
+
+**Motif transformation.** Transposition, inversion, retrograde, varying only
+the ending, varying everything but the downbeat notes. A tradition holds one
+idea and turns it over; it does not hold three unrelated tunes. Which
+operations a people has is not free: transposition and varying the ending are
+what a singer does from memory, while inversion and retrograde are operations
+on a written line — you have to *see* the notes to turn them over — so they
+follow literacy, like long non-repeating form.
+
+**Parts, not one line.** Every rule-based composer that sounds like music has
+separate melody, **bass**, ostinato/accompaniment, pad and percussion parts.
+A melody over a static drone reads as thin and unanchored: the drone says
+where home is but never moves, so nothing confirms or contradicts it. Added a
+bass on stable degrees moving group by group, and an **ostinato** — the
+organising layer of cyclic traditions (the Shona kushaura under its
+kutsinhira, the timeline under the drums), and the thing that makes repetition
+legible, since a listener who has heard the figure twice knows where they are
+in the cycle.
+
+**Sound quality dominates perception.** Computoser's own listener study found
+instrument sound the top driver of dislike, ahead of any compositional
+property. Harmonic bodies are now two oscillators a few cents apart rather
+than one: a real string or pipe is never a single perfectly periodic source,
+and one rigid oscillator sounds like a test tone.
+
 ### Rhythm comes out of the language
 
 A culture's music inherits the durational unevenness of its speech. This is a

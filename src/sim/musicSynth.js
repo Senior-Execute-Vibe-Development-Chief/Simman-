@@ -110,10 +110,19 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   transient(A, when, inst, f, vel);
 
   if (inst.harmonic) {
-    // one oscillator with the real spectrum; high modes damped by a falling filter
+    // Two oscillators a few cents apart, not one. A real string or pipe is
+    // never a single perfectly periodic source — the body radiates slightly
+    // detuned partials, two strings of a course are never exactly together,
+    // and a player's tone wavers. One rigid oscillator sounds like a test
+    // tone; a pair a few cents apart beats slowly against itself and reads as
+    // an instrument. This is the cheapest large gain in the whole synth.
     const osc = ctx.createOscillator();
-    osc.setPeriodicWave(waveFor(ctx, inst));
+    const osc2 = ctx.createOscillator();
+    const wv = waveFor(ctx, inst);
+    osc.setPeriodicWave(wv); osc2.setPeriodicWave(wv);
     osc.frequency.value = f;
+    osc2.frequency.value = f * (1 + (inst.kind === "sustain" ? 0.0035 : 0.0022));
+    const g2 = ctx.createGain(); g2.gain.value = 0.45;
     const g = ctx.createGain();
     const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.4;
     const sustained = inst.kind === "sustain";
@@ -134,13 +143,14 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
       const lfo = ctx.createOscillator(), lg = ctx.createGain();
       lfo.frequency.value = 4.6 + Math.random() * 1.2;
       lg.gain.value = f * (inst.drive === "bow" ? 0.006 : 0.004);
-      lfo.connect(lg); lg.connect(osc.frequency);
+      lfo.connect(lg); lg.connect(osc.frequency); lg.connect(osc2.frequency);
       lfo.start(when + 0.12); lfo.stop(when + dur + 0.12);
       // breath noise rides with the tone
       if (inst.drive === "breath") breath(A, when, dur, f, vel * 0.5);
     }
-    osc.connect(lp); lp.connect(g); g.connect(A.master);
+    osc.connect(lp); osc2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(A.master);
     osc.start(when); osc.stop(when + (sustained ? dur + 0.15 : ring) + 0.02);
+    osc2.start(when); osc2.stop(when + (sustained ? dur + 0.15 : ring) + 0.02);
     return;
   }
 
