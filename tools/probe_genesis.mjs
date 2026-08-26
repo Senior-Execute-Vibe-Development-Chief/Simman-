@@ -1,78 +1,79 @@
-// The genesis-arc probe: where and WHEN does civilization start, under any
-// dawn regime. The standing gates pin DAWN_LIVE=0 and STATE_RECORDS=0 (mature-
-// regime measurement); this probe is the LIVE arm's instrument — run it with
-// the app's shipped regime to verify what the player actually sees:
-//   SIM_TUNE="DAWN_LIVE=1,STATE_RECORDS=1" node tools/probe_genesis.mjs [W] [steps] [seed]
-// Prints farming inventions, the first settlements, the first polities and the
-// era arrival steps, all with lon/lat, so "does the first state rise on the
-// Nile, with the tablet, as the era turns Bronze?" is read straight off.
+// THE GENESIS CHRONOLOGY SCORECARD — when does each milestone fire, and where
+// would it land on a Younger-Dryas-anchored calendar? (2026-08-26, the genesis
+// lap. Owner: "farming is INVENTED at about 3000bc and civilization appears
+// shortly after — the OPPOSITE of real life." The real chain: Holocene onset
+// (end of the Younger Dryas, ~9700 BCE) → farming within centuries-to-two-
+// millennia → SIX THOUSAND YEARS of villages → cities/writing ~3300-3200 BCE.
+// The sim's display epoch (−5250, calendar.js) was fitted to the OLD 3-seed
+// solver table; in the live-dawn obs regime farming lands ~3250 BC on screen
+// and cities follow ~1.3× the farming span later, vs history's 8×.)
+//
+// Milestones = the tech tree's own gates crossed by the world's LEADING
+// knowledge (max over land-ledger records and settled courts), plus first
+// city / first state. Fine cadence (250 ticks). Each is reported in steps and
+// in display years under BOTH epochs: the current linear clock (−5250,
+// 0.25y/tick) and the proposed YD anchor (−9700, 0.25y/tick), against the
+// real date. A linear clock cannot land all milestones while the Neolithic
+// is compressed — the SPAN table at the end is the physics target.
+//
+//   SIM_TUNE="<live arm [+ablation]>" node tools/probe_genesis.mjs [steps=22000] [W=480] [seed=8817]
+import { readFileSync } from "node:fs";
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { landKnowLeadK } from "../src/sim/peopleSim/landKnow.js";
 
-const W = +(process.argv[2] || 480), STEPS = +(process.argv[3] || 16000), SEED = +(process.argv[4] || 8817);
-const world = buildSim({ W, H: W >> 1, seed: SEED });
-const { tw, th } = world;
-const geo = (x, y) => `(${(x / tw * 360 - 180).toFixed(1)}E ${(90 - y / th * 180).toFixed(1)}N)`;
-// Checkpointed run: watch the LAND LEDGER arc (T.LAND_KNOW) climb toward the
-// tallies/writing bars alongside the entity milestones, in eighths.
-const CHUNKS = 8;
-console.log(`--- arc (step | ledgers | lkOrg lkMet lkCon | settled realms):`);
-for (let c = 0; c < CHUNKS; c++) {
-  stepPeopleSim(world, Math.round(STEPS / CHUNKS));
-  let recs = 0, mo = 0, mm = 0, mc = 0;
-  if (world._landKnow) for (const r of world._landKnow.values()) {
-    recs++;
-    if (r.k.organization > mo) mo = r.k.organization;
-    if (r.k.metallurgy > mm) mm = r.k.metallurgy;
-    if (r.k.construction > mc) mc = r.k.construction;
+const STEPS = +(process.argv[2] || 22000);
+const W = +(process.argv[3] || 480), H = W >> 1, SEED = +(process.argv[4] || 8817);
+const rc = await import("../src/realClimateData.js");
+const load = n => JSON.parse(readFileSync(new URL(`../data/${n}`, import.meta.url)));
+rc.provideRealClimateData(load("global_precip.json"), load("global_airtemp.json"));
+const world = buildSim({ W, H, seed: SEED, realWind: true, realWindFns: { isRealWindAvailable: () => false, isRealClimateAvailable: rc.isRealClimateAvailable, fillRealClimate: rc.fillRealClimate } });
+
+// milestone: [label, track, gate, real BCE date (negative year)]
+const MILESTONES = [
+  ["farming (agr .15)",        "agriculture",  0.15, -9000],
+  ["pottery (con .18)",        "construction", 0.18, -6900],
+  ["tallies/towns (org .28)",  "organization", 0.28, -3700],
+  ["writing/states (org .35)", "organization", 0.35, -3200],
+  ["bronze (met .35)",         "metallurgy",   0.35, -3200],
+  ["sailing (nav .30)",        "navigation",   0.30, -5500],
+  ["galleys (nav .58)",        "navigation",   0.58, -1500],
+  ["iron (met .70)",           "metallurgy",   0.70, -1200],
+];
+const crossed = new Map();   // label → step
+let firstCity = -1, firstState = -1;
+
+const leadOf = (track) => {
+  let v = 0;
+  const lk = landKnowLeadK(world);
+  if (lk && lk[track] > v) v = lk[track];
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || !s.knowledge) continue;
+    if ((s.knowledge[track] || 0) > v) v = s.knowledge[track] || 0;
   }
-  const settled = world.settlements.filter((s) => s.mode === "settled").length;
-  console.log(`   ${String(world.step).padStart(6)} | ${String(recs).padStart(4)} | ${mo.toFixed(3)} ${mm.toFixed(3)} ${mc.toFixed(3)} | ${settled} ${world.countries ? world.countries.size : 0}`);
-}
-const evs = world.events || [];
-const byId = world._byId;
-const posOf = (ev) => {
-  if (ev.x != null) return geo(ev.x, ev.y);
-  const s = ev.s != null && byId ? byId.get(ev.s) : null;
-  return s ? geo(s.pos.x | 0, s.pos.y | 0) : "(?)";
+  return v;
 };
-console.log(`=== step ${world.step} tw=${tw} seed ${SEED}`);
-console.log(`-- eraAt (era index -> step reached):`, JSON.stringify(world._eraAt || null));
-for (const t of ["farming.invented", "settlement.founded"]) {
-  const list = evs.filter((e) => e.type === t).slice(0, 12);
-  console.log(`-- first ${list.length} ${t}:`);
-  for (const e of list) console.log(`   step ${e.step}  ${e.sName || e.name || ""} ${posOf(e)}`);
-}
-// Polities split by kind: tribal land-nations are the (ungated) chiefdom
-// fabric; COUNTRIES are the bordered, war-waging states the records bar gates.
-for (const [label, pred] of [["tribal (chiefdom fabric)", (e) => e.how === "tribal"], ["STATES (countries)", (e) => e.how !== "tribal"]]) {
-  const list = evs.filter((e) => e.type === "polity.founded" && pred(e)).slice(0, 10);
-  console.log(`-- first ${list.length} polity.founded ${label}:`);
-  for (const e of list) console.log(`   step ${e.step}  how=${e.how}  ${e.name || e.seatName || ""} ${posOf(e)}`);
-}
-// The land ledger's leaders (T.LAND_KNOW): where the countryside is learning
-// fastest, and whether the material ladder (exchange-sphere ore → orgEraCap)
-// is open at the cradles — the campaign's main stall risk.
-if (world._landKnow && world._landKnow.size) {
-  const rows = [...world._landKnow.values()].sort((a, b) => b.k.organization - a.k.organization).slice(0, 8);
-  console.log(`-- land ledgers: ${world._landKnow.size} (top by organization):`);
-  for (const r of rows) {
-    const y = (r.ti / tw) | 0, x = r.ti - y * tw;
-    const ore = r.ore || {};
-    console.log(`   ${geo(x, y)} org=${r.k.organization.toFixed(3)} agri=${r.k.agriculture.toFixed(2)} con=${r.k.construction.toFixed(2)} met=${r.k.metallurgy.toFixed(2)} ore(cu=${(ore.copper || 0).toFixed(2)} sn=${(ore.tin || 0).toFixed(2)} fe=${(ore.iron || 0).toFixed(2)}) wa=${(r.wa || 0).toFixed(2)} born=${r.born}`);
+
+for (let done = 0; done < STEPS; done += 250) {
+  stepPeopleSim(world, 250);
+  for (const [label, track, gate] of MILESTONES) {
+    if (!crossed.has(label) && leadOf(track) >= gate) crossed.set(label, world.step);
   }
+  if (firstCity < 0) { for (const s of world.settlements) if (s.mode === "settled") { firstCity = world.step; break; } }
+  if (firstState < 0 && world.countries && world.countries.size > 0) firstState = world.step;
 }
-const realms = [...(world.countries ? world.countries.values() : [])].slice(0, 10);
-console.log(`-- realms now: ${world.countries ? world.countries.size : 0}`);
-// Per-realm anatomy: the polity record's founding kind, bordered-field tiles
-// (_countryOwner), and land-nation ground (_landOwner) — distinguishes a
-// STATE (bordered co field) from a chiefdom holding ground from a mislabel.
-const coT = new Map(), loT = new Map();
-if (world._countryOwner) for (let i = 0; i < world.N; i++) { const c = world._countryOwner[i]; if (c >= 0) coT.set(c, (coT.get(c) || 0) + 1); }
-if (world._landOwner) for (let i = 0; i < world.N; i++) { const c = world._landOwner[i]; if (c >= 0) loT.set(c, (loT.get(c) || 0) + 1); }
-for (const c of realms) {
-  const seat = c.members && c.members[0];
-  const pol = world.polities ? world.polities.get(c.id) : null;
-  const how = pol && pol.foundedHow !== undefined ? pol.foundedHow : (pol && pol.how) || "?";
-  if (seat) console.log(`   ${c.name || c.id} seat ${seat.name} ${geo(seat.pos.x | 0, seat.pos.y | 0)} members=${c.members.length} how=${how} coTiles=${coT.get(c.id) || 0} landTiles=${loT.get(c.id) || 0} seatOrg=${(((seat.knowledge || {}).organization) || 0).toFixed(2)}`);
+
+const yr = (step, start) => { const y = Math.round(start + step * 0.25); return y < 0 ? `${-y} BC` : `${y} AD`; };
+console.log(`\n=== GENESIS CHRONOLOGY  ${W}x${H} (tw=${world.tw})  seed ${SEED}  OBSERVED + arm  ${STEPS} steps ===`);
+console.log(`  ${"milestone".padEnd(26)} ${"step".padStart(6)}  ${"disp(−5250)".padStart(11)}  ${"YD(−9700)".padStart(10)}  ${"real".padStart(8)}`);
+for (const [label, , , real] of MILESTONES) {
+  const st = crossed.get(label);
+  console.log(`  ${label.padEnd(26)} ${st !== undefined ? String(st).padStart(6) : "     —"}  ${st !== undefined ? yr(st, -5250).padStart(11) : "          —"}  ${st !== undefined ? yr(st, -9700).padStart(10) : "         —"}  ${(-real + " BC").padStart(8)}`);
+}
+console.log(`  ${"first CITY".padEnd(26)} ${firstCity >= 0 ? String(firstCity).padStart(6) : "     —"}  ${firstCity >= 0 ? yr(firstCity, -5250).padStart(11) : "          —"}  ${firstCity >= 0 ? yr(firstCity, -9700).padStart(10) : "         —"}  ${"3200 BC".padStart(8)}`);
+console.log(`  ${"first STATE".padEnd(26)} ${firstState >= 0 ? String(firstState).padStart(6) : "     —"}  ${firstState >= 0 ? yr(firstState, -5250).padStart(11) : "          —"}  ${firstState >= 0 ? yr(firstState, -9700).padStart(10) : "         —"}  ${"3100 BC".padStart(8)}`);
+const f = crossed.get("farming (agr .15)"), w = crossed.get("writing/states (org .35)");
+if (f !== undefined && w !== undefined) {
+  console.log(`\n  SPANS  t0→farming ${f} ticks (${(f * 0.25).toFixed(0)}y)  farming→writing ${w - f} ticks (${((w - f) * 0.25).toFixed(0)}y)  — real: ~700-2000y and ~5800y (ratio ~3-8)`);
+  console.log(`  sim ratio ${( (w - f) / Math.max(1, f)).toFixed(2)} — the Neolithic-stretch target is the farming→writing span reaching ~4-6x t0→farming`);
 }
