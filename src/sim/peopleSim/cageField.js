@@ -217,10 +217,12 @@ export function cageAt(world, ti) {
 // earlier (~a third of plots free — knee ~0.6); the box-mean fill smooths
 // sub-basin pockets (a 0.75 mean holds saturated cores), arguing below the
 // pointwise reading. Within that [0.6, 0.8] bracket the value is set by the
-// measured Neolithic span itself (knee 0.6 → writing 20500 = YD 4575 BC,
-// still ~5.5k ticks short of history's 26000 = 3200 BC): 0.7. One constant,
-// bracketed by theory, placed by measurement.
-const CAGE_FLIGHT_FREE = 0.3;      // flight viable while > this share of basin capacity is free
+// measured Neolithic span itself (knee 0.6 → writing 20500 = YD 4575 BC;
+// knee 0.7 → 21750 — diminishing returns because the basins PLATEAU at fill
+// ~0.75-0.85 where all knees converge as fill creeps): 0.8, the bracket's
+// top and Carneiro's own reading. One constant, bracketed by theory, placed
+// by measurement.
+const CAGE_FLIGHT_FREE = 0.2;      // flight viable while > this share of basin capacity is free
 
 /** Carneiro's PRESSURE at a tile — the third leg of the caging drive
  *  (T.CAGE_FILL; raw fill = home-box people / capacity, built with the cage
