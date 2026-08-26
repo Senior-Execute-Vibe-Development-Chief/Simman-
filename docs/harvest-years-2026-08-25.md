@@ -526,3 +526,60 @@ atomized singletons) while org KNOWLEDGE is fast — slowing pre-urban org
 without re-basing the statehood bars (RECORDS_ORG, URBAN_ORG, tallies)
 would worsen exactly what the consolidation wave must fix. The two must
 move as ONE measured lap.
+
+## THE CONSOLIDATION LAP (2026-08-26): the peer integration bar — T.ABSORB_PEER
+
+The combined lap's political half, measured end to end (probe_consol — the
+pipeline instrument: org pack vs the bar, submit/integrate/storm flows via
+telemetry, and the armies.js world._warDbg storm decomposition).
+
+**The conviction:** under ABSORB_ORG_ERA the integrate/absorb bar is the
+capitals' 67th percentile — but knowledge diffusion CONVERGES the pack
+(obs-240 30k: p50/p67/p90 = 0.83/0.84/0.84, spread 0.001), so the
+percentile is a float-dust lottery: 838 of 1823 integration candidates
+vetoed per window, integrate PASSED 12/3k world-wide, the absorption-pace
+orgFactor zeroed even on passes, singletons pinned 67-88% while bonds
+accumulate unconverted. The bar's own premise ("a minority of courts are
+institutionally ahead") is false in a converged world.
+
+**The storm finding (recorded for the next lap):** assaults fail on
+ATTACKER CONCENTRATION, not walls — med committed attack 3-10 vs home
+garrison 27-55, walls multiplier literally 1.00, relief ~0. In an atomized
+world of equals the 1.6× storm bar is unreachable by construction; and
+siegeLifts >> breaches (the camp clock breaks before a city that now EATS —
+the v45-48 granaries made fed cities out-eat every camp, historically
+right). Force-consolidation is a separate, deeper lap.
+
+**The mechanism (T.ABSORB_PEER, def 0):** the seat-grade philosophy applied
+to statecraft — a court can province a seat whose court does not
+OUT-ORGANIZE its own, over the writing floor every state holds by
+construction (stateOrgBar; never a time-gate for states). One helper
+(absorbOrgBarFor), three call sites: considerIntegrations,
+absorbWeakNeighbors (+ its orgFactor pace re-based on the floor), and the
+sack-into-tribute fork (at equal statecraft a sacked capital is annexed —
+Akkad, not just hegemony). Equals can province equals — early unification
+WAS peer absorption. Zero new constants.
+
+**The referendum (obs-240 30k A/B):** integration throughput **3.1×**
+(12→37/3k), orgBelowMin 838→272 (the residue = genuine peer-law
+rejections), bonds CONVERT instead of accumulating (103→72 stock at higher
+flow), singletons 71→66% at this horizon (integration compounds beyond
+it), and the funnel surfaces the next honest bottleneck by name:
+**beyondDirectRule** (administrative reach — the satrapy law's territory).
+
+**The battery:** smoke defaults green (byte-identical off); 8817 all-hard
+0-warn; 4242 all-hard 1-warn (in budget); resgate all bands; **777 =
+19/19/20 across the lever-on chaos draws** vs the no-mechanism band
+20/21/22 — a ~1-settlement band-edge depression straddling the floor of
+20, on the gate the chaos ensemble (this doc, the grain-market lap) showed
+cannot resolve ±1 on this seed.
+
+**Disposition: ships def 0** (the ARID_SECURE precedent — a hard fail is a
+hard fail under the standing discipline, even a coin-flip one). Playable
+NOW in the live arm by adding `ABSORB_PEER=1` to SIM_TUNE. The flip
+decision is the owner's, with three named paths: (a) accept the documented
+777 straddle and flip; (b) first re-ground the 777 alive-gate on ensemble
+scoring (a gates lap — the chaos evidence is on record); (c) revisit after
+the direct-rule-reach lap, which may move 777's dynamics anyway. The
+institutional-pace half of the combined lap remains parked as documented
+in the era-skew section (the org/statehood interlock).
