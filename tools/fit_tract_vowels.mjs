@@ -37,6 +37,7 @@ for (const [sym, t] of Object.entries(truth)) {
       console.log(`(truth repair: [${sym}] F2 ${t.F[1]} is a merged-peak artifact → ${f2} from round-back peers)`);
       t.F = [t.F[0], f2];
       t.repaired = true;
+      delete t.suspect;                        // repaired into its physical window — calibrate on it
     }
   }
 }
@@ -85,7 +86,10 @@ function measureMapping(v) {
   return measureVowelFormants(x, SR);
 }
 
-const vowels = Object.entries(truth).map(([sym, t]) => ({ sym, ...t }));
+const allVowels = Object.entries(truth).map(([sym, t]) => ({ sym, ...t }));
+const suspects = allVowels.filter(v => v.suspect);
+if (suspects.length) console.log(`skipping ${suspects.length} suspect truth entries (analytic fallback): ${suspects.map(v => `[${v.sym}]`).join(" ")}`);
+const vowels = allVowels.filter(v => !v.suspect);
 if (VERIFY) {
   let sum = 0, n = 0, worst = null;
   for (const v of vowels) {

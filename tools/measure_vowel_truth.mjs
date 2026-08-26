@@ -69,14 +69,31 @@ async function decodeTake(file) {
   }, { b64, SR });
 }
 
+// Plausibility screen — textbook bounds per LABELED quality (classification
+// in the biomeClass sense, not a fitted target): a measurement outside its
+// vowel's physical window is instrument error (harmonic capture, a noisy
+// take), and a corrupt truth value would steer the calibration wrong. A
+// suspect entry is flagged; the fitter skips it and that quality keeps the
+// analytic posture formula.
+const F1_BOUNDS = [[150, 550], [280, 780], [520, 1150]];              // by height
+const f2Bounds = (b, r) => b === 0 ? (r ? [1100, 2700] : [1300, 3200])
+  : b === 1 ? (r ? [700, 2200] : [800, 2500])
+  : (r ? [450, 1300] : [500, 1700]);
+function plausible(t, F) {
+  if (F.length < 2) return false;
+  const [f1lo, f1hi] = F1_BOUNDS[t.h], [f2lo, f2hi] = f2Bounds(t.b, t.r);
+  return F[0] >= f1lo && F[0] <= f1hi && F[1] >= f2lo && F[1] <= f2hi;
+}
+
 const truth = {};
 for (const t of targets) {
   const { pcm } = await decodeTake(t.file);
   const x = Float32Array.from(pcm);
   const F = measureVowelFormants(x, SR);
   const f0 = estimateF0(x, SR);
-  truth[t.sym] = { h: t.h, b: t.b, r: t.r, atr: t.atr, file: t.file, f0: Math.round(f0), F: F.map(Math.round), takeSec: +(x.length / SR).toFixed(2) };
-  console.log(`  [${t.sym}]  F0=${Math.round(f0)}  F=[${truth[t.sym].F.join(" ")}]  take=${truth[t.sym].takeSec}s`);
+  const suspect = !plausible(t, F);
+  truth[t.sym] = { h: t.h, b: t.b, r: t.r, atr: t.atr, file: t.file, f0: Math.round(f0), F: F.map(Math.round), takeSec: +(x.length / SR).toFixed(2), ...(suspect && { suspect: true }) };
+  console.log(`  [${t.sym}]  F0=${Math.round(f0)}  F=[${truth[t.sym].F.join(" ")}]  take=${truth[t.sym].takeSec}s${suspect ? "  ⚠ SUSPECT (outside its quality's physical window — excluded from calibration)" : ""}`);
 }
 await browser.close();
 

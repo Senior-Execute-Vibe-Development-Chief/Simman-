@@ -67,7 +67,8 @@
    580,
    1880
   ],
-  "takeSec": 0.48
+  "takeSec": 0.48,
+  "suspect": true
  },
  "ɪ̈": {
   "h": 0,
@@ -319,7 +320,8 @@
    2460,
    2980
   ],
-  "takeSec": 0.5
+  "takeSec": 0.5,
+  "suspect": true
  },
  "æ": {
   "h": 2,
@@ -361,7 +363,8 @@
    2650,
    4060
   ],
-  "takeSec": 0.54
+  "takeSec": 0.54,
+  "suspect": true
  },
  "ɑ": {
   "h": 2,
@@ -389,6 +392,7 @@
    2410,
    2960
   ],
-  "takeSec": 0.65
+  "takeSec": 0.65,
+  "suspect": true
  }
 }
