@@ -207,3 +207,9 @@
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=614 pushes=2995 (0.0MB backing)
 [popField] worker pool engaged: 4 bands
+  ok   dissolve: deterministic
+  ok   dissolve: no farming regions (t0=0)
+  ok   dissolve: zero invariant violations
+  ok   dissolve: civilization alive (5 settlements)
+  ok   dissolve: fewer entities per person than farming-region model (4.6 vs 10.1 per 1k pop)
+[smoke] all checks passed in 114.8s
