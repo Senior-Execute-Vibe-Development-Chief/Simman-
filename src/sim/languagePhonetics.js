@@ -87,6 +87,39 @@ export function ipaV(v) {
   return s;
 }
 
+// ── the prosodic character: what makes a language FEEL like itself ────────
+// Segments are half a language's identity at most; the other half is the
+// MUSIC — rhythm class, vowel reduction, tempo, pitch frame, melodic range,
+// stress force. You tell Mandarin from Spanish from Russian in two seconds
+// of muffled speech through a wall, on prosody alone. Derived from the
+// typology the profile already rolled (the real correlations: tone/isolating
+// → syllable-timed; heavy clusters + fusional → stress-timed with reduction;
+// agglutinative → even light-syllable trains) plus family-seeded rolls for
+// the free dimensions (a language's own tempo and voice frame). Pure and
+// deterministic; sisters inherit the family's music.
+export function prosodyOf(lang) {
+  const prof = lang.prof;
+  const roll = (tag) => hash32(lang.famSeed >>> 0, "pros", tag) / 4294967296;
+  const rhythm = prof.tone > 0 || prof.morph === "iso" ? "syllable"
+    : prof.morph === "agg" && prof.sylC <= 1 ? "even"
+    : prof.sylC >= 2 || prof.stress === "mobile" ? "stress"
+    : roll("rhy") < 0.5 ? "stress" : "even";
+  // vowel reduction is the stress-timed signature: unstressed vowels
+  // centralize toward schwa and shorten (English, Russian); syllable-timed
+  // tongues keep every vowel full (Spanish, Italian)
+  const reduce = rhythm === "stress" ? 0.45 + roll("red") * 0.35 : rhythm === "even" ? 0.12 : 0;
+  return {
+    rhythm, reduce,
+    f0k: 0.85 + roll("f0") * 0.3,                       // the language's own pitch frame
+    rate: (rhythm === "syllable" ? 1.06 : 1) * (0.9 + roll("rate") * 0.25),   // tempo
+    range: prof.tone > 0 ? 1 : 0.75 + roll("rng") * 0.55,   // melodic sweep (tone carries its own)
+    stressGain: rhythm === "stress" ? 1.25 + roll("sg") * 0.2 : rhythm === "even" ? 1.1 : 1.04,
+    toneDepth: prof.tone === 2 ? 1.4 : prof.tone === 1 ? 1.15 : 1,   // contour tones dig deeper
+    finalLen: 1.1 + roll("fin") * 0.35,                 // phrase-final drawl
+  };
+}
+export const DEFAULT_PROS = { rhythm: "even", reduce: 0, f0k: 1, rate: 1, range: 1, stressGain: 1.13, toneDepth: 1, finalLen: 1.12 };
+
 // contour letters for the four melody slots renderWord writes as ā á ǎ à
 export const TONE_LETTERS = ["˥", "˧˥", "˨˩˦", "˥˩"];   // high level · rising · dipping · falling
 // f0 targets for the same four melodies (relative to the speaker's base) —
@@ -125,7 +158,7 @@ export function phoneticPlan(lang, form) {
     : prof.stress === "final" ? n - 1
     : prof.stress === "penult" ? Math.max(0, n - 2)
     : hash32(form.tseed || 0, "stress", n) % n;
-  return { syls, stress, tone: prof.tone || 0, pitchAccent: pacc >= 0 };
+  return { syls, stress, tone: prof.tone || 0, pitchAccent: pacc >= 0, pros: prosodyOf(lang) };
 }
 
 /** IPA transcription of an internal form: ˈstress, syllable dots, tone

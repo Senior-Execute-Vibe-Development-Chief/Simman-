@@ -12,7 +12,7 @@
 
 import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, langWord, langWordForm, langPlaceNameEx, langPersonName, langDynastyName, langRealmName, wordOf, glossOf, etymologyOf, colexPartner, nativeStemOf, loanOf, colorTermsOf, kinshipOf, dialectsOf, cultureOf } from "./sim/language.js";
 import { buildInventory, romanizeC, romanizeV, renderWord } from "./sim/languagePhonology.js";
-import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES } from "./sim/languagePhonetics.js";
+import { phoneticPlan, ipaOf, ipaC, ipaV, TONE_SHAPES, prosodyOf, DEFAULT_PROS } from "./sim/languagePhonetics.js";
 import { scorePlan as tractScorePlan, scoreClause as tractScoreClause, renderScore as tractRender } from "./sim/vocalTract.js";
 import { scriptOf, glyphInventory, writeWord, writeForm, writeName, silentLetterSample, numeralGlyphs, adoptScriptFrom, SCRIPT_NAME, HAND_NAME, registerOf, highRegister, registerWords } from "./sim/languageScript.js";
 import { foundHistory, stepHistory, ancestryOf } from "./sim/languageHistory.js";
@@ -375,34 +375,49 @@ function consSeg(ctx, out, t, c, f0pts, final) {
 // a declination scale and, on the clause's last word, a boundary tone
 // (statements FALL, questions RISE — the near-universal pair)
 function scheduleWord(ctx, master, plan, t, mod = {}) {
+  const pros = plan.pros || DEFAULT_PROS;             // the language's own music
   const scale = mod.scale || 1;
   const nSyl = plan.syls.length;
   plan.syls.forEach((syl, i) => {
-    // pitch: the syllable's own tone melody, or stress + declination
-    let f0pts = plan.tone > 0 && syl.tone != null ? TONE_SHAPES[syl.tone].map(k => k * scale)
-      : (() => { const k = (1 + (i === plan.stress ? 0.13 : 0) - 0.1 * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
+    // pitch: the syllable's own tone melody (dug to the language's contour
+    // depth), or stress + declination swept by the language's melodic range
+    let f0pts = plan.tone > 0 && syl.tone != null
+      ? TONE_SHAPES[syl.tone].map(k => (1 + (k - 1) * pros.toneDepth) * scale)
+      : (() => { const k = (1 + (i === plan.stress ? pros.stressGain - 1 : 0) - 0.1 * pros.range * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
     if (mod.boundary && i === nSyl - 1) {
-      f0pts = mod.boundary === "rise" ? [...f0pts, f0pts[f0pts.length - 1] * 1.35] : [...f0pts, f0pts[f0pts.length - 1] * 0.72];
+      const b = mod.boundary === "rise" ? 1 + 0.35 * pros.range : 1 - 0.28 * pros.range;
+      f0pts = [...f0pts, f0pts[f0pts.length - 1] * b];
     }
+    // PITCH ACCENT (phase 4): the accent is pitch, not loudness — a high
+    // target on the accented syllable and a fall off it (the Japanese shape)
+    if (plan.pitchAccent && i === plan.stress) f0pts = f0pts.map(k => k * (1 + 0.22 * pros.range));
+    f0pts = f0pts.map(k => k * pros.f0k);             // the language's pitch frame
     const secondary = (c, after) => {                 // ʲ/ʷ: a short on-glide after the consonant
       if (!c.s) return 0;
       const gv = c.s === 1 ? GLIDE_V[3] : GLIDE_V[0];
       vVoiced(ctx, master, after, 0.035, VOWEL_F(gv), [0.7, 0.4, 0.12], f0pts, { peak: 0.6 });
       return 0.035;
     };
-    // PITCH ACCENT (phase 4): the accent is pitch, not loudness — a high
-    // target on the accented syllable and a fall off it (the Japanese shape)
-    if (plan.pitchAccent && i === plan.stress) f0pts = f0pts.map(k => k * 1.22);
     for (const c of syl.on) { const d = consSeg(ctx, master, t, c, f0pts, false); t += d + secondary(c, t + d) + 0.004; }
     if (syl.nu.length) {                              // nucleus (diphthongs glide)
       const v0 = syl.nu[0];
-      let dur = (i === plan.stress ? 0.19 : 0.15) * (v0.lg ? 1.5 : 1) * (i === nSyl - 1 ? 1.12 : 1);
-      const A = VOWEL_F(v0), B = syl.nu.length > 1 ? VOWEL_F(syl.nu[1]) : null;
-      const frs = B ? A.map((f, k) => [f, B[k]]) : A;
+      // RHYTHM: syllable-timed beats are equal (Spanish machine-gun; tone
+      // languages count syllables too); stress-timed beats crush the weak
+      // ones and REDUCE their vowels toward schwa (the English/Russian
+      // signature); "even" trains sit between
+      const stressed = plan.tone > 0 || i === plan.stress || nSyl === 1;
+      const base = pros.rhythm === "syllable" ? 0.165 : stressed ? 0.2 : pros.rhythm === "stress" ? 0.12 : 0.15;
+      const red = !stressed && syl.nu.length === 1 && !v0.lg ? pros.reduce : 0;
+      let dur = base * (v0.lg ? 1.5 : 1) * (1 - red * 0.35) / pros.rate;
+      dur *= i === nSyl - 1 ? (mod.final ? pros.finalLen : 1.06) : 1;
+      let A = VOWEL_F(v0);
+      if (red) { const SC = VOWEL_F({ h: 1, b: 1, r: 0 }); A = A.map((f, k2) => f + (SC[k2] - f) * red); }
+      const B = syl.nu.length > 1 ? VOWEL_F(syl.nu[1]) : null;
+      const frs = B ? A.map((f, k2) => [f, B[k2]]) : A;
       // PHONATION (phase 4): creaky voice drops the pitch and pulses it;
       // breathy voice mixes an aspiration wash over the vowel
       const vf0 = v0.ph === 2 ? f0pts.map(k => k * 0.72) : f0pts;
-      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], vf0, { nasal: !!v0.n, trill: v0.ph === 2 ? 42 : 0, breathy: v0.ph === 1 });
+      vVoiced(ctx, master, t, dur, frs, [0.9, 0.55, 0.2], vf0, { nasal: !!v0.n, trill: v0.ph === 2 ? 42 : 0, breathy: v0.ph === 1, ...(red ? { peak: 0.72 } : {}) });
       if (v0.ph === 1) vNoise(ctx, master, t, dur, 1500, 0.35, 0.12);
       t += dur + 0.004;
     }
@@ -413,7 +428,7 @@ function scheduleWord(ctx, master, plan, t, mod = {}) {
       const gem = nx && nx.on.length && ["p", "m", "l", "s"].every(k => nx.on[0][k] === c[k]);
       const d = consSeg(ctx, master, t, c, f0pts, true); t += d + (gem ? 0.055 : 0) + 0.004;
     }
-    t += 0.015;                                       // syllable seam
+    t += 0.015 / pros.rate;                           // syllable seam, at the language's tempo
   });
   return t;
 }
@@ -466,10 +481,13 @@ function speakClauseFormant(groups, contour = "fall") {
   groups.forEach((g, gi) => {
     const lastG = gi === groups.length - 1;
     g.forEach((p, i) => {
+      const pros = p.pros || DEFAULT_PROS;
+      const declSpan = 0.12 * pros.range;             // the utterance falls as far as the language sweeps
       t = scheduleWord(ctx, master, p, t, {
-        scale: 1.05 - 0.12 * (k / Math.max(1, total - 1)),
+        scale: 1.05 - declSpan * (k / Math.max(1, total - 1)),
         boundary: i === g.length - 1 ? (lastG ? contour : "rise") : null,
-      }) + 0.08;                                      // inter-word gap
+        final: lastG && i === g.length - 1,           // phrase-final drawl on the last word
+      }) + 0.08 / pros.rate;                          // inter-word gap, at tempo
       k++;
     });
     if (!lastG) t += 0.16;                            // the comma pause
@@ -596,6 +614,15 @@ function soundHTML(l) {
       <label class="vopt"><input type="radio" name="voiceEngine" value="tract"${S.voice === "tract" ? " checked" : ""}/> articulatory tract (experimental)</label>${HAS_CLIPS ? `
       <label class="vopt"><input type="radio" name="voiceEngine" value="human"${S.voice === "human" ? " checked" : ""}/> recorded phones</label>` : ""}</p>${HAS_CLIPS ? `
     <p class="note">With <b>recorded phones</b> selected, each phoneme chip plays a <b>human recording</b> of that exact phone — real citation audio, openly licensed (${esc(IPA_CLIP_CREDIT)}), loudness-matched across recorders. A phone without its own recording plays its nearest recorded base phone. Words and sentences still speak through the formant voice — isolated citation phones cannot be stitched into connected speech, but they are the <b>measured ground truth both synthesizers' vowels are calibrated against</b>.</p>` : ""}
+    ${(() => {
+    const pr = prosodyOf(l);
+    const rhythmDesc = pr.rhythm === "syllable"
+      ? (prof.tone ? "<b>syllable-timed</b>, every beat equal, melody carried by the tones" : "<b>syllable-timed</b> — even machine-gun beats, every vowel full")
+      : pr.rhythm === "stress"
+        ? `<b>stress-timed</b> — strong beats, weak syllables crushed and their vowels reduced toward ə (${Math.round(pr.reduce * 100)}%)`
+        : "<b>evenly timed</b> — light syllables in steady trains";
+    return `<p class="note">The music of this tongue: ${rhythmDesc} · tempo ×${pr.rate.toFixed(2)} · pitch frame ×${pr.f0k.toFixed(2)} with ${pr.range > 1.1 ? "a wide, expressive" : pr.range < 0.9 ? "a flat, level" : "a moderate"} melody · phrase-final drawl ×${pr.finalLen.toFixed(2)}. Sisters inherit the family's music — it is half of what makes a language recognizable before a single word is understood.</p>`;
+  })()}
     <h3>Phonemes</h3>
     <p class="cells">${cChips}</p>
     <p class="cells">${vChips}</p>

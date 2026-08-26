@@ -24,7 +24,7 @@
 // public-domain Pink Trombone — a calibrated physical model. We reuse the
 // physics and author only the feature→gesture mapping that drives it.
 
-import { TONE_SHAPES } from "./languagePhonetics.js";
+import { TONE_SHAPES, DEFAULT_PROS } from "./languagePhonetics.js";
 import { VOWEL_CAL } from "./vocalTractCal.js";
 
 const F0_BASE = 105;               // speaker's base pitch (a deeper male voice reads less "high")
@@ -549,9 +549,15 @@ function scoreCons(B, c, t, kpts, final) {
   return dt;
 }
 
-// one vowel nucleus (a diphthong glides between the two qualities)
-function scoreVowel(B, nu, t, kpts, dur) {
+// one vowel nucleus (a diphthong glides between the two qualities);
+// `red` centralizes an unstressed vowel toward schwa (stress-timed reduction)
+function scoreVowel(B, nu, t, kpts, dur, red = 0) {
   const a = vowelPosture(nu[0]);
+  if (red) {
+    a.tongueIndex += (20 - a.tongueIndex) * red * 0.6;
+    a.tongueDiameter += (2.6 - a.tongueDiameter) * red * 0.6;
+    a.lip *= 1 - red * 0.6;
+  }
   const b = nu.length > 1 ? vowelPosture(nu[1]) : null;
   const trans = Math.min(0.05, dur * 0.45);
   B.to("tongueIndex", t, a.tongueIndex, trans); B.to("tongueDiameter", t, a.tongueDiameter, trans);
@@ -572,17 +578,20 @@ function scoreVowel(B, nu, t, kpts, dur) {
 
 // one word plan → gestures appended to the builder, starting at time t
 function scoreWord(B, plan, t, mod = {}) {
+  const pros = plan.pros || DEFAULT_PROS;             // the language's own music
   const scale = mod.scale || 1;
   const nSyl = plan.syls.length;
   plan.syls.forEach((syl, i) => {
     // pitch: tone melody, else stress + declination (mirrors the formant engine)
-    let kpts = plan.tone > 0 && syl.tone != null ? TONE_SHAPES[syl.tone].map(k => k * scale)
-      : (() => { const k = (1 + (i === plan.stress ? 0.13 : 0) - 0.1 * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
-    if (plan.pitchAccent && i === plan.stress) kpts = kpts.map(k => k * 1.22);
+    let kpts = plan.tone > 0 && syl.tone != null
+      ? TONE_SHAPES[syl.tone].map(k => (1 + (k - 1) * pros.toneDepth) * scale)
+      : (() => { const k = (1 + (i === plan.stress ? pros.stressGain - 1 : 0) - 0.1 * pros.range * (i / Math.max(1, nSyl))) * scale; return [k, k * 0.96]; })();
+    if (plan.pitchAccent && i === plan.stress) kpts = kpts.map(k => k * (1 + 0.22 * pros.range));
     if (mod.boundary && i === nSyl - 1) {
       const tailK = kpts[kpts.length - 1];
-      kpts = mod.boundary === "rise" ? [...kpts, tailK * 1.35] : [...kpts, tailK * 0.72];
+      kpts = mod.boundary === "rise" ? [...kpts, tailK * (1 + 0.35 * pros.range)] : [...kpts, tailK * (1 - 0.28 * pros.range)];
     }
+    kpts = kpts.map(k => k * pros.f0k);               // the language's pitch frame
     for (const c of syl.on) {
       t += scoreCons(B, c, t, kpts, false) + 0.004;
       if (c.s) {                                             // ʲ/ʷ on-glide
@@ -594,16 +603,22 @@ function scoreWord(B, plan, t, mod = {}) {
       }
     }
     if (syl.nu.length) {
-      const long = syl.nu[0].lg;
-      const dur = (i === plan.stress ? 0.19 : 0.15) * (long ? 1.5 : 1) * (i === nSyl - 1 ? 1.12 : 1);
-      t += scoreVowel(B, syl.nu, t, kpts, dur) + 0.004;
+      const v0 = syl.nu[0];
+      // rhythm class: equal syllable beats, or stress beats crushing (and
+      // reducing) the weak — the same rules the formant engine performs
+      const stressed = plan.tone > 0 || i === plan.stress || nSyl === 1;
+      const base = pros.rhythm === "syllable" ? 0.165 : stressed ? 0.2 : pros.rhythm === "stress" ? 0.12 : 0.15;
+      const red = !stressed && syl.nu.length === 1 && !v0.lg ? pros.reduce : 0;
+      let dur = base * (v0.lg ? 1.5 : 1) * (1 - red * 0.35) / pros.rate;
+      dur *= i === nSyl - 1 ? (mod.final ? pros.finalLen : 1.06) : 1;
+      t += scoreVowel(B, syl.nu, t, kpts, dur, red) + 0.004;
     }
     for (const c of syl.co) t += scoreCons(B, c, t, kpts, true) + 0.004;
     // Voicing stays CONTINUOUS across syllable boundaries — fading to silence at
     // every seam chopped a word into disconnected syllables (the "chops"). Only
     // the word's final edge fades out; voiceless consonants make their own gaps.
     if (i === nSyl - 1) { B.to("intensity", t, 0, 0.03); t += 0.03; }
-    else t += 0.012;
+    else t += 0.012 / pros.rate;
   });
   return t;
 }
@@ -625,10 +640,12 @@ export function scoreClause(groups, contour = "fall") {
   groups.forEach((g, gi) => {
     const lastG = gi === groups.length - 1;
     g.forEach((p, i) => {
+      const pros = p.pros || DEFAULT_PROS;
       t = scoreWord(B, p, t, {
-        scale: 1.05 - 0.12 * (k / Math.max(1, total - 1)),
+        scale: 1.05 - 0.12 * pros.range * (k / Math.max(1, total - 1)),
         boundary: i === g.length - 1 ? (lastG ? contour : "rise") : null,
-      }) + 0.08;
+        final: lastG && i === g.length - 1,
+      }) + 0.08 / pros.rate;
       k++;
     });
     if (!lastG) t += 0.16;
