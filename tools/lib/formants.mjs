@@ -31,7 +31,7 @@ export function estimateF0(x, sr, a = Math.floor(x.length * 0.35), b = Math.floo
  *  Order 16: at order 12 the tightly-spaced F1+F2 of round back vowels
  *  ([u] [o] [ɔ]) merge into one envelope peak and the picker reports F3 as
  *  "F2" — measured directly against the recorded bank. */
-export function estimateFormants(x, sr, at = 0.4, DEC = 4, p = 16) {
+export function estimateFormants(x, sr, at = 0.4, DEC = 4, p = 16, fmax = 4500) {
   const dsr = sr / DEC;
   const a = Math.floor(x.length * at), b = Math.min(x.length, a + Math.floor(0.04 * sr));
   // anti-alias (box average) + decimate
@@ -52,7 +52,7 @@ export function estimateFormants(x, sr, at = 0.4, DEC = 4, p = 16) {
     if (err <= 0) break;
   }
   const peaks = [], mags = [];
-  for (let f = 150; f <= 4500; f += 10) {
+  for (let f = 150; f <= fmax; f += 10) {
     const w = 2 * Math.PI * f / dsr; let re = 1, im = 0;
     for (let k = 1; k <= p; k++) { re += aC[k] * Math.cos(-w * k); im += aC[k] * Math.sin(-w * k); }
     mags.push({ f, m: 1 / Math.sqrt(re * re + im * im) });
@@ -60,6 +60,50 @@ export function estimateFormants(x, sr, at = 0.4, DEC = 4, p = 16) {
   for (let i = 2; i < mags.length - 2; i++)
     if (mags[i].m > mags[i - 1].m && mags[i].m >= mags[i + 1].m && mags[i].m > mags[i - 2].m) peaks.push(mags[i].f);
   return peaks;
+}
+
+// cluster per-window peak lists (within 15%), keep clusters ≥2 windows agree
+// on, then enforce physical separation: two formants are never < max(150 Hz,
+// 20%) apart — a violator is an LPC harmonic bump riding beside the real
+// resonance, and the better-supported cluster wins.
+function clusterPeaks(windows) {
+  const clusters = [];
+  for (const w of windows) for (const f of w) {
+    const c = clusters.find(c => Math.abs(f - c.center) / c.center < 0.15);
+    if (c) { c.fs.push(f); c.fs.sort((a, b) => a - b); c.center = c.fs[Math.floor(c.fs.length / 2)]; }
+    else clusters.push({ center: f, fs: [f] });
+  }
+  const kept = [];
+  for (const c of clusters.filter(c => c.fs.length >= 2).sort((a, b) => a.center - b.center)) {
+    const last = kept[kept.length - 1];
+    if (last && c.center - last.center < Math.max(150, last.center * 0.2)) {
+      if (c.fs.length > last.fs.length) kept[kept.length - 1] = c;
+    } else kept.push(c);
+  }
+  return kept.map(c => c.center);
+}
+
+/** Vowel formants, robustly, in two regimes. Full-band LPC (order 16) over
+ *  five windows, clustered, is the default — reliable for open vowels and
+ *  front F2. Its one blind spot: a round back vowel's tightly-spaced F1+F2
+ *  merge into one peak (the signature: low "F1", next peak implausibly
+ *  >1500). There a LOW band (≤2.4 kHz, order 10 — more poles just model
+ *  glottal harmonics) resolves the pair; it is consulted ONLY on that
+ *  signature and adopted only when its two peaks sit <1200 Hz with the
+ *  first corroborating full-band F1 — outside that regime its first peak
+ *  is harmonic junk. Returns up to [F1, F2, F3]. */
+export function measureVowelFormants(x, sr, ats = [0.3, 0.4, 0.5, 0.6, 0.7]) {
+  const full = clusterPeaks(ats.map(at => estimateFormants(x, sr, at).filter(f => f >= 180)));
+  const merged = full.length >= 2 && full[0] < 550 && full[1] > 1500;
+  if (merged) {
+    const low = clusterPeaks(ats.map(at => estimateFormants(x, sr, at, 8, 10, 2400).filter(f => f >= 180)));
+    if (low.length >= 2 && low[0] < 1200 && low[1] < 1200 && low[1] > low[0] * 1.5
+      && Math.abs(low[0] - full[0]) / full[0] < 0.25) {
+      const F3 = full.find(f => f > low[1] + 300);
+      return F3 ? [low[0], low[1], F3] : [low[0], low[1]];
+    }
+  }
+  return full.slice(0, 3);
 }
 
 /** 16-bit mono PCM WAV */

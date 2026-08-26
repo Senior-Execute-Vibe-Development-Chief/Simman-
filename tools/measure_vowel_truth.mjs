@@ -15,11 +15,11 @@ import { dirname, join } from "node:path";
 import { chromium } from "playwright-core";
 import { ipaV } from "../src/sim/languagePhonetics.js";
 import { IPA_CLIPS } from "../src/sim/ipaAudioManifest.js";
-import { estimateF0, estimateFormants } from "./lib/formants.mjs";
+import { estimateF0, measureVowelFormants } from "./lib/formants.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const AUDIO = join(ROOT, "assets", "ipa-audio");
-const SR = 44100, DSR = SR / 4;
+const SR = 44100;
 
 // every (height, backness, round, ATR) quality with a recording
 const targets = [];
@@ -65,13 +65,7 @@ async function decodeTake(file) {
     if (a >= 0 && lastOn - a >= 3) segs.push([a * win, (lastOn + 1) * win]);
     if (!segs.length) segs.push([0, d.length]);
     const [s0, s1] = segs.reduce((best, s) => (s[1] - s[0] > best[1] - best[0] ? s : best));
-    const m = Math.floor((s1 - s0) / 4), out = new Array(m);
-    for (let i = 0; i < m; i++) {
-      let s = 0;
-      for (let j = 0; j < 4; j++) s += d[s0 + i * 4 + j];
-      out[i] = s / 4;
-    }
-    return { pcm: out, srIn: buf.sampleRate };
+    return { pcm: Array.from(d.subarray(s0, s1)), srIn: buf.sampleRate };
   }, { b64, SR });
 }
 
@@ -79,16 +73,10 @@ const truth = {};
 for (const t of targets) {
   const { pcm } = await decodeTake(t.file);
   const x = Float32Array.from(pcm);
-  // three windows across the steady middle; per-formant median defends
-  // against one window's spurious LPC peak
-  const wins = [0.3, 0.45, 0.6].map(at => estimateFormants(x, DSR, at, 1).filter(f => f >= 180));
-  const F = [0, 1, 2].map(k => {
-    const vals = wins.map(w => w[k]).filter(Boolean).sort((a, b) => a - b);
-    return vals.length ? vals[Math.floor(vals.length / 2)] : null;
-  }).filter(Boolean);
-  const f0 = estimateF0(x, DSR);
-  truth[t.sym] = { h: t.h, b: t.b, r: t.r, atr: t.atr, file: t.file, f0: Math.round(f0), F: F.map(Math.round), takeSec: +(x.length / DSR).toFixed(2) };
-  console.log(`  [${t.sym}]  F0=${Math.round(f0)}  F=[${F.map(Math.round).join(" ")}]  take=${truth[t.sym].takeSec}s`);
+  const F = measureVowelFormants(x, SR);
+  const f0 = estimateF0(x, SR);
+  truth[t.sym] = { h: t.h, b: t.b, r: t.r, atr: t.atr, file: t.file, f0: Math.round(f0), F: F.map(Math.round), takeSec: +(x.length / SR).toFixed(2) };
+  console.log(`  [${t.sym}]  F0=${Math.round(f0)}  F=[${truth[t.sym].F.join(" ")}]  take=${truth[t.sym].takeSec}s`);
 }
 await browser.close();
 

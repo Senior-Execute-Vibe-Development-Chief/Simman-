@@ -9,7 +9,7 @@
 // The DSP core is pure, so this exercises the EXACT code the Lab plays.
 import { mkdirSync } from "node:fs";
 import { renderScore, scorePlan, scoreClause } from "../src/sim/vocalTract.js";
-import { stats, estimateF0, estimateFormants, writeWav as writeWavAt } from "./lib/formants.mjs";
+import { stats, estimateF0, measureVowelFormants, writeWav as writeWavAt } from "./lib/formants.mjs";
 
 const SR = 48000;
 const args = process.argv.slice(2);
@@ -27,7 +27,7 @@ const wordPlan = (syls) => ({ syls: syls.map(s => ({ tone: null, ...s })), stres
 // ── measurement (shared with the calibration tools: tools/lib/formants.mjs) ─
 function measure(plan, seed = 12345) {
   const x = renderScore(scorePlan(plan), SR, seed);
-  return { x, st: stats(x), f0: estimateF0(x, SR), F: estimateFormants(x, SR) };
+  return { x, st: stats(x), f0: estimateF0(x, SR), F: measureVowelFormants(x, SR) };
 }
 const writeWav = (path, x) => writeWavAt(path, x, SR);
 

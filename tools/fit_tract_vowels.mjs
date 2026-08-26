@@ -18,7 +18,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { renderScore, scorePlan } from "../src/sim/vocalTract.js";
-import { estimateFormants, stats } from "./lib/formants.mjs";
+import { measureVowelFormants, stats } from "./lib/formants.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SR = 44100;
@@ -55,7 +55,7 @@ function postureScore(c, dur = 0.3) {
 function measureCand(c) {
   const x = renderScore(postureScore(c), SR, 12345);
   if (stats(x).rms < 1e-3) return null;
-  const F = estimateFormants(x, SR, 0.45).filter(f => f >= 180);
+  const F = measureVowelFormants(x, SR);
   return F.length >= 2 ? F : null;
 }
 // log-formant error with a per-vowel VTL scale k — but ANCHORED to the
@@ -82,7 +82,7 @@ function fitErr(Ft, Fh, f0) {
 function measureMapping(v) {
   const plan = { syls: [{ on: [], nu: [{ ...v, lg: 1 }], co: [], tone: null }], stress: 0, tone: 0, pitchAccent: false };
   const x = renderScore(scorePlan(plan), SR, 12345);
-  return estimateFormants(x, SR, 0.45).filter(f => f >= 180);
+  return measureVowelFormants(x, SR);
 }
 
 const vowels = Object.entries(truth).map(([sym, t]) => ({ sym, ...t }));
