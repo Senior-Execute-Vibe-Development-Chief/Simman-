@@ -17,3 +17,6 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (210,62) (135.0E -3.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (138,41) (27.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 7.42)
+[peopleSim] AGRICULTURE INVENTED at (150,38) (45.0E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.42)
+[peopleSim] AGRICULTURE INVENTED at (166,41) (69.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.74)
