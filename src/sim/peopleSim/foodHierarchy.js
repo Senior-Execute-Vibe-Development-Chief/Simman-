@@ -131,8 +131,27 @@ export function foodHaulArrive(world, child, parent) {
   const ci = (child.pos.y | 0) * tw + (child.pos.x | 0);
   const pi = (parent.pos.y | 0) * tw + (parent.pos.x | 0);
   const onWater = (ti) => (world.coast && world.coast[ti]) || (world.riverMag && world.riverMag[ti] >= 2);
+  // WHICH HAULS ACTUALLY GO BY WATER. The legacy test asks only whether each
+  // END touches water — so a Caspian city and an Atlantic city, with no barge
+  // able to make the trip, both read "on water" and the corridor multiplier
+  // applies to a route that is entirely overland. Since settlements cluster on
+  // water almost universally (the stylized gate measures ~100% of them
+  // waterside), that test fires for nearly EVERY pair, which is why grounding
+  // the land curve in real km barely moved the shed (probe_where PHYS arm:
+  // median 847 km against 965 legacy — the ×12 was still universal).
+  // Under HAUL_PHYS the bonus requires an actual water ROUTE: the sea-lane
+  // link the reach system already computes (roads.js mergeReach merges
+  // _tradeReach with _seaReach, so provenance is known). RECORDED LIMITATION:
+  // RIVER barge traffic — Thebes→Memphis down the Nile — is not a sea lane, so
+  // it takes the land curve here; transport.js already prices river-mode land
+  // far cheaper for the ROUTE, but not for the spoilage clock. If the cradles
+  // measurably starve on that, the river-corridor test is the next lap, not a
+  // widened constant.
   const waterMul = T.HAUL_PHYS > 0 ? HAUL_WATER_RATIO : T.FOOD_HAUL_WATER;
-  if (onWater(ci) && onWater(pi)) range *= 1 + (waterMul - 1) * (0.5 + 0.5 * nav);
+  const byWater = T.HAUL_PHYS > 0
+    ? !!((child._seaReach && child._seaReach.has(parent.id)) || (parent._seaReach && parent._seaReach.has(child.id)))
+    : (onWater(ci) && onWater(pi));
+  if (byWater) range *= 1 + (waterMul - 1) * (0.5 + 0.5 * nav);
   return Math.exp(-d / Math.max(1e-3, range));
 }
 // Fraction of its grain POOL a settlement ships up to its market centre, by tier
