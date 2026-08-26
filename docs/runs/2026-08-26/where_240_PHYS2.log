@@ -17,3 +17,39 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 pkg=rice(suit 0.16) — ARMED: ~9481y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=2048 peakN=1299 pushes=9434 (0.0MB backing)
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=29256 cap=4096 peakN=2232 pushes=10449 (0.0MB backing)
+
+=== WHERE IS CIVILIZATION  480x240 (tw=240)  seed 8817  30000 steps ===
+  71 settled · 30 realms
+
+  ── 1. THE ATLAS (urban people by region) ──
+  region             cities   urban ppl   largest realms
+  E Europe/Russia         3        945k      920k      1
+  N China                 3        102k       79k      2
+  Egypt/Nile              2         93k       63k      2
+  Ethiopia/E Africa       4         83k       63k      3
+  Anatolia/Levant         1         24k       24k      0
+  Indus/NW India          1         22k       22k      1
+  Andes                   3         17k       10k      1
+  W Europe                2         13k       10k      1
+  Mesoamerica             1          7k        7k      0
+  SE Asia                 1          4k        4k      0
+  W Sahel                 1          2k        2k      1
+  Mesopotamia             1          1k        1k      0
+  Greece/Italy            0          0k        0k      0
+
+  ── 2. THE URBAN LADDER (city cores, real people) ──
+  ≤15k (the minting floor)     37  █████████████████████████████████████
+  15-30k                       18  ██████████████████
+  30-60k                        5  █████
+  60-120k                       7  ███████
+  120-300k                      3  ███
+  >300k                         1  █
+  urban core p50/p90/max: 12k / 72k / 920k
+
+  ── 3. THE GRAIN SHED (market hauls, great-circle km) ──
+  hauls 185 · km p50 1008 · p90 1977 · max 4347
+  (history: overland grain ~20-100 km; riverine/coastal to ~1,500 km — Egypt→Rome)
+  importers 39 · top-3 take 42% of all landed grain · top-10 81%
+  (a handful of importers taking most of the grain = the owner's "shipped globally to few points")

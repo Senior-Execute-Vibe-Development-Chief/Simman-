@@ -391,7 +391,28 @@ export function aggregateFoodHierarchy(world) {
 // order, no RNG. Nothing here persists — per-tick flow only.
 function grainMarketPass(world) {
   const ts = world._tradeStats;
-  for (const s of world.settlements) {
+  // T.GRAIN_BID — SCARCE GRAIN GOES TO WHOEVER WILL PAY MOST, not to whoever
+  // was founded first. This sweep walks world.settlements in ARRAY order —
+  // i.e. founding order — and each buyer draws down the sellers' live
+  // residuals as it goes, so the world's oldest city is served in full before
+  // a younger one is offered a bushel. Nothing about price, hunger or distance
+  // enters the allocation. Measured (probe_where, obs-240 30k): a single 920k
+  // metropolis while 37 of 71 cities sit at the minting floor, and the top 3
+  // importers take 42% of all landed grain (top 10: 81%) — the owner's "3
+  // metropolises importing LOTS, most cities at 12k" is this queue.
+  // A market allocates scarcity by PRICE: the hungriest bid it away, which is
+  // why famine cities drew grain from across the Mediterranean while
+  // comfortable ones did not. Each settlement already carries _grainPrice, its
+  // own emergent scarcity price, so willingness to pay needs no new state and
+  // no new constant — a city with a real deficit outbids one merely topping up
+  // its granary, which subordinates provisioning demand to hunger for free.
+  // Ties break on id, so the order stays fully deterministic.
+  let buyers = world.settlements;
+  if (T.GRAIN_BID > 0) {
+    buyers = [...world.settlements].sort((a, b) =>
+      ((b._grainPrice || 0) - (a._grainPrice || 0)) || (a.id - b.id));
+  }
+  for (const s of buyers) {
     if (s.mode !== "settled") continue;
     // THE MARKET INSTITUTION GATE: commercial grain buying needs coined money
     // (techEff.market — the currency tech's own ability, the monetization()
