@@ -319,6 +319,7 @@ function handleMessage(m) {
       worldSeed = m.seed; runJournal.length = 0; _journalNext = 0; _funnelNext = 0; _jDeaths = 0; _jEvSeen = -1;
       telEnable(world);   // the journal's funnel windows — the probes' own channels, live in the app
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
+      world._wantGoodsFlows = (viewMode === "goodsflow");   // build the goods-flow overlay only when its view is up
       world._realWindGen = !!(genMeta && genMeta.realWind);   // terrain identity rides the WORLD (saves read it; caller meta is only a fallback)
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
       // are NOT reset (the main thread re-sends its current values right after
@@ -349,6 +350,7 @@ function handleMessage(m) {
     viewMode = m.view;
     if (world) {
       world._wantMoneyFlows = (viewMode === "money");   // gate the per-tick money-flow overlay build
+      world._wantGoodsFlows = (viewMode === "goodsflow");
       // tell the sim which identity layer (if any) to diffuse for the lens in view
       world._identityLens = (viewMode === "culture" || viewMode === "faith" || viewMode === "language") ? viewMode : null;
       // refresh the field NOW so switching lens (or viewing while paused) shows
@@ -380,6 +382,7 @@ function handleMessage(m) {
       worldSeed = world && world.seed != null ? world.seed : worldSeed; runJournal.length = 0; _journalNext = world ? world.step : 0; _funnelNext = _journalNext; _jDeaths = 0; _jEvSeen = -1;
       if (world) telEnable(world);
       world._wantMoneyFlows = (viewMode === "money");
+      world._wantGoodsFlows = (viewMode === "goodsflow");
       lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1; timeline = makeTimeline(); lastKeyStep = 0;
       _bufPool.clear();   // the loaded world can change N — stale-size buffers would never be hit again
       buildSnapshot();
@@ -843,6 +846,10 @@ function buildSnapshotUnsafe() {
   // while the view is open). Roads view: a clean per-tile component-root array
   // (changes slowly → gate with the static group).
   const moneyFlows = (viewMode === "money" && world._moneyFlows) ? world._moneyFlows : null;
+  // Goods view: grain entries rebuild per tick (foodHierarchy), goods-vector
+  // entries per trade sweep (roads) — concatenate for the renderer.
+  const goodsFlows = (viewMode === "goodsflow" && (world._goodsFlowsGrain || world._goodsFlowsTrade))
+    ? [...(world._goodsFlowsGrain || []), ...(world._goodsFlowsTrade || [])] : null;
   let tileComp = null;
   if (viewMode === "roads" && sendStatic && world._tileComp && world._tileCompSeen) {
     const tc = world._tileComp, seen = world._tileCompSeen, stamp = world._tileCompStampVal, N = world.N;
@@ -1022,7 +1029,7 @@ function buildSnapshotUnsafe() {
     fastEpoch: fastEpochNow,   // the auto-throttle is APPLIED
     quietAges: quietAgesNow,   // the pre-nation condition holds (chip visible; gold when applied, dim when opted out)
     globalP,
-    owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim, landNations,
+    owner, roadQuality, roadFlow, tileComp, moneyFlows, goodsFlows, countryClaim, landNations,
     wars, warArrows,   // active war pairs + sampled aggressor→defender border arrows (static cadence; [] clears)
     fieldDom, fieldSec, fieldLayer,   // per-tile identity field for the active culture/faith/language lens
     loyal, loyalHome,                 // loyalty lens: attachment heat + the ground's remembered nation

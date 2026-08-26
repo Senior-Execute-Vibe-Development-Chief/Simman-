@@ -146,6 +146,18 @@ export function aggregateFoodHierarchy(world) {
     if (s._foodImportRate) s._foodImportRate *= 0.9;
     if (s._foodExported) s._foodExported = 0;   // T.GRAIN_MARKET capacity add-back: rolls each aggregation; updateSettlement (earlier in the tick) read the previous pass's value
   }
+  // Goods-flow overlay recorder (render-only; the worker sets _wantGoodsFlows
+  // while the "Goods flow" view is open — zero cost and zero allocations
+  // otherwise). Grain entries rebuild every tick here; the goods-vector
+  // entries rebuild each trade sweep in roads.js (_goodsFlowsTrade). An entry
+  // is {pts, mag, toEnd, kind}: pts is a tile-index path — a road/sea link's
+  // tiles where one exists, else a 2-point straight line (the renderer lerps
+  // over segments, so 2 points draw a direct stream — the liege tree is not
+  // road-constrained and never had a path).
+  const gf = world._wantGoodsFlows ? [] : null;
+  world._goodsFlowsGrain = gf;
+  const tw = world.tw;
+  const tiOf = (s) => (s.pos.y | 0) * tw + (s.pos.x | 0);
 
   // ── 1. price per settlement ─────────────────────────────────────────
   for (const s of world.settlements) {
@@ -263,6 +275,7 @@ export function aggregateFoodHierarchy(world) {
           if (ts) { dbgLevied += levied; dbgBought += bought; dbgUnbought += Math.max(0, rest - bought); }
           const took = levied + bought;                      // grain that moved UP (levy + purchase); bought ≥ 0 always (rest > 0 since offer > 0 & levyShare ≤ 0.7; spare ≥ 0)
           if (took <= 0) continue;
+          if (gf && took > 1e-6) gf.push({ pts: [tiOf(k), tiOf(node)], mag: took, toEnd: true, kind: "grainL" });   // levy/tree grain, child → liege
           pool += took;
           imported += took;
           k._foodNet = (k._foodNet || 0) - took;             // child keeps less — it gave up `took`
@@ -352,7 +365,9 @@ function grainMarketPass(world) {
     let spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));   // post-tree purse: the tree sweep's buys already spent from it
     if (spare <= 1e-9) continue;
     let boughtIn = 0;
-    for (const [peerId] of reach) {
+    const gf = world._goodsFlowsGrain;
+    const twm = world.tw;
+    for (const [peerId, link] of reach) {
       if (need <= 1e-9 || spare <= 1e-9) break;
       if (peerId === s.id) continue;
       const p = world._byId ? world._byId.get(peerId) : null;
@@ -392,6 +407,13 @@ function grainMarketPass(world) {
       p._foodExported = (p._foodExported || 0) + landed;   // capacity add-back (updatePopulation): exports cannot drag the catchment's K below what its land grows
       s._foodNet = (s._foodNet || 0) + landed;
       need -= landed; boughtIn += landed;
+      if (gf && landed > 1e-6) {
+        // Prefer the real route (link.tiles is oriented buyer→seller, so grain
+        // toward the buyer flows toward the START: toEnd=false); sea/short
+        // links without tiles get a 2-point straight stream seller→buyer.
+        if (link && link.tiles && link.tiles.length > 1) gf.push({ pts: link.tiles, mag: landed, toEnd: false, kind: "grainM" });
+        else gf.push({ pts: [(p.pos.y | 0) * twm + (p.pos.x | 0), (s.pos.y | 0) * twm + (s.pos.x | 0)], mag: landed, toEnd: true, kind: "grainM" });
+      }
       if (ts) { ts.peerBought = (ts.peerBought || 0) + landed; p._dbgPeerOut = (p._dbgPeerOut || 0) + landed; }
     }
     if (boughtIn > 0) {

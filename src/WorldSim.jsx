@@ -67,7 +67,11 @@ const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","re
 // step bucket: rebuild every STEP_CACHE_REGEN sim-steps, blit between (the same
 // trick the political overlay uses). When paused the step is constant, so they
 // blit every frame and cost nothing.
-const STEP_CACHE_VIEWS = new Set(["money","roads"]);
+const STEP_CACHE_VIEWS = new Set(["money","goodsflow","roads"]);
+// Goods-flow overlay: per-kind cargo colors + legend labels (grain split by
+// channel: the levy/tree vs the open market — the two food systems).
+const GOODS_FLOW_KINDS={grainL:[110,205,90],grainM:[190,255,80],materials:[176,148,109],ore:[151,151,166],metal:[121,166,209],cloth:[186,121,222],wares:[235,164,84],luxury:[240,95,190]};
+const GOODS_FLOW_LABELS=[["grainL","Grain \u2014 levy"],["grainM","Grain \u2014 market"],["materials","Materials"],["ore","Ore"],["metal","Metal"],["cloth","Cloth"],["wares","Wares"],["luxury","Luxury"]];
 const STEP_CACHE_REGEN = 8;
 let _mercator = false; // module-level flag for projection functions
 
@@ -195,7 +199,7 @@ const LENSES=[
   {id:"peoples", label:"Peoples", icon:"👥", subs:[["culture","Peoples"],["population","Population"],["ancestry","Ancestry"]]},
   {id:"languages",label:"Tongues",icon:"💬", subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  icon:"🕯", subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
+  {id:"economy", label:"Economy", icon:"⚖", subs:[["roads","Trade"],["money","Money"],["goodsflow","Goods"],["prices","Prices"],["society","Labour"],["resources","Resources"],["crop","Cropland"],["technique","Technique"]]},
   ...(DEV?[{id:"dev",label:"Dev",icon:"🔬",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 // Emergent availability (plan §6.5): a sub-lens lights up when its phenomenon
@@ -205,6 +209,8 @@ function subLockReason(sub,psw,stats){
   if(!psw)return null;
   if(sub==="money"&&!((stats&&stats.totalWealth)>0))
     return "No coin has been struck yet — the world still barters.";
+  if(sub==="goodsflow"&&!((stats&&stats.totalWealth)>0))
+    return "No trade yet — goods move once towns meet in trade.";
   if(sub==="prices"&&!(psw.settlements&&psw.settlements.some(s=>s&&s._gPrice)))
     return "No market prices yet — towns must first meet in trade.";
   if(sub==="society"&&!(psw.settlements&&psw.settlements.some(s=>s&&(s._coerce||0)>0.02)))
@@ -547,6 +553,7 @@ const CH=useMercator?Math.round(2*MERC_MAX*H/Math.PI):H;
 const FEAT_W=1920, FEAT_H=Math.round(FEAT_W*CH/CW);
 _mercator=useMercator;
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
+const[activeGoods,setActiveGoods]=useState(()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(()=>!(typeof matchMedia!=="undefined"&&matchMedia("(max-width: 760px)").matches));   // phone: legend starts collapsed
 useEffect(()=>{
   // On mouse-up, clear any in-flight pan that ended outside the canvas —
@@ -557,6 +564,7 @@ useEffect(()=>{
   return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
+const activeGoodsRef=useRef(null);activeGoodsRef.current=activeGoods;
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(30),viewRef=useRef("terrain");
 // ── Pan / zoom view transform ────────────────────────────────────────
 // All map drawing applies `ctx.translate(panX,panY); ctx.scale(zoom,zoom)`
@@ -1362,8 +1370,8 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 // communities each network connects.
 for(let ti=0;ti<N;ti++){const pi4=ti<<2;
 d[pi4]=240;d[pi4+1]=230;d[pi4+2]=205;d[pi4+3]=255;}
-}else if(vm==="money"){
-// Money-flow overlay — dark slate backdrop so gold sources and the
+}else if(vm==="money"||vm==="goodsflow"){
+// Money/goods-flow overlay — dark slate backdrop so gold sources and the
 // flowing-coin particles glow. Land tiles a touch lighter than sea so
 // coastlines stay legible. Roads + sources + flow drawn in the
 // peopleSim overlay pass below.
@@ -1686,6 +1694,60 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.lineWidth=0.6;
       ctx.strokeStyle="rgba(0,0,0,0.5)";
       ctx.stroke();
+    }
+  }
+  if(psw&&ctx&&viewRef.current==="goodsflow"){
+    // ── Goods-flow overlay ── animated cargo streams colored by KIND (grain
+    // levy vs market, ore, metal, cloth, wares, materials, luxury), normalized
+    // PER KIND (grain units and goods units are different scales — one global
+    // max would blank the smaller book). Same particle scheme as the money
+    // view; 2-point entries (tree levies, sea hops without a path) draw a
+    // straight stream whose dot count follows real distance.
+    const TR=psw.tileRes;
+    const gsx=ti=>((ti%psw.tw)+0.5)*TR;
+    const gsy=ti=>dataYtoScreenY(((ti/psw.tw|0)+0.5)*TR,H,CH);
+    if(psw.roadQuality){
+      const rq=psw.roadQuality;
+      ctx.fillStyle="rgba(150,160,180,0.15)";
+      for(let ti=0;ti<rq.length;ti++){
+        if(rq[ti]>=1.0)continue;
+        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        ctx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR,TR);
+      }
+    }
+    const gflows=psw._goodsFlows;
+    if(gflows&&gflows.length){
+      const ag=activeGoodsRef.current||{};
+      const logMax={};
+      for(const f of gflows){const m=logMax[f.kind];if(m===undefined||f.mag>m)logMax[f.kind]=f.mag;}
+      for(const k in logMax)logMax[k]=Math.log1p(logMax[k]);
+      const now=performance.now();
+      const period=2600;
+      let drawn=0;const CAPD=9000;
+      for(const f of gflows){
+        if(ag[f.kind]===false)continue;
+        const col=GOODS_FLOW_KINDS[f.kind];if(!col)continue;
+        const pts=f.pts;const np=pts?pts.length:0;if(np<2)continue;
+        const lm=logMax[f.kind]||0;
+        const busy=lm>0?Math.log1p(f.mag)/lm:0;
+        const spacing=14-9*busy;
+        let span=np;
+        if(np===2){const ax=pts[0]%psw.tw,ay=(pts[0]/psw.tw)|0,bx=pts[1]%psw.tw,by=(pts[1]/psw.tw)|0;let ddx=Math.abs(ax-bx);if(ddx>psw.tw/2)ddx=psw.tw-ddx;span=Math.max(2,Math.hypot(ddx,ay-by));}
+        let dots=Math.round(span/spacing);if(dots<1)dots=1;else if(dots>20)dots=20;
+        const ph=(pts[0]*0.6180339887)%1;
+        ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${(0.45+0.5*busy).toFixed(2)})`;
+        for(let j=0;j<dots;j++){
+          let u=((now/period)+(j/dots)+ph)%1;
+          if(!f.toEnd)u=1-u;
+          const fi=u*(np-1);const i0=fi|0;const i1=Math.min(np-1,i0+1);const fr=fi-i0;
+          const x0=gsx(pts[i0]),x1=gsx(pts[i1]);
+          const y0=gsy(pts[i0]),y1=gsy(pts[i1]);
+          if(Math.abs(x1-x0)>CW*0.5)continue;
+          ctx.fillRect(x0+(x1-x0)*fr-1.2,y0+(y1-y0)*fr-1.2,2.4,2.4);
+          if(++drawn>=CAPD)break;
+        }
+        if(drawn>=CAPD)break;
+      }
     }
   }
   if(psw&&ctx&&vmMoney&&layersRef.current.moneyFlow){
@@ -2776,6 +2838,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.popDens){_drop(psw._popDens);psw._popDens=snap.popDens;psw._popMax=snap.popMax||0;}      // population lens: log-packed people-on-land (keep last)
   if(snap.devDens){_drop(psw._devDens);psw._devDens=snap.devDens;}                                 // technique lens: the idea field (keep last)
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
+  psw._goodsFlows=snap.goodsFlows||null;           // animated cargo flows (goods-flow view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
   if(snap.faiths){const fm=new Map();for(const f of snap.faiths)fm.set(f.id,f);psw.faiths=fm;}
@@ -2837,7 +2900,7 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'m
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
 useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,layers,priceGood]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,activeGoods,layers,priceGood]);
 
 // Opening the Ancestry lens replays the peopling of the world: the wavefront
 // spreads from the East-African cradle outward over ~10s (animLoop drives it).
@@ -2897,7 +2960,7 @@ useEffect(()=>{let afid;
 const animLoop=()=>{afid=requestAnimationFrame(animLoop);
 const v=viewRef.current;if(!worldRef.current||!terRef.current)return;
 const ancA=v==="ancestry"&&ancRevealRef.current.active;   // peopling spread still painting on
-if(v!=="wind"&&v!=="money"&&!ancA)return;
+if(v!=="wind"&&v!=="money"&&v!=="goodsflow"&&!ancA)return;
 draw(terRef.current);};
 afid=requestAnimationFrame(animLoop);
 return()=>cancelAnimationFrame(afid);},[draw]);
@@ -4726,6 +4789,21 @@ return(
         onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=true;setActiveRes(s);}}>All</span>
       <span style={{cursor:"pointer"}} className="au-fade"
         onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}>None</span>
+    </div>
+  </div>}
+  {viewMode==="goodsflow"&&<div>
+    {GOODS_FLOW_LABELS.map(([id,label])=>{const on=activeGoods[id]!==false;return(
+      <div key={id} className="au-key-row" style={{cursor:"pointer",opacity:on?1:0.4}}
+        onClick={()=>setActiveGoods(prev=>({...prev,[id]:prev[id]===false}))}>
+        <span className="au-key-swatch" style={{background:on?`rgb(${GOODS_FLOW_KINDS[id].join(",")})`:"#888"}} />
+        <span>{label}</span>
+      </div>);})}
+    <div className="au-rule" style={{margin:"4px 0"}} />
+    <div style={{display:"flex",gap:8,fontSize:10}}>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=true;setActiveGoods(s);}}>All</span>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const[id]of GOODS_FLOW_LABELS)s[id]=false;setActiveGoods(s);}}>None</span>
     </div>
   </div>}
 </div>}
