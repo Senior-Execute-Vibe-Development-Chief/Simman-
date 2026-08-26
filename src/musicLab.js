@@ -81,7 +81,8 @@ function fireEvent(m, ev, when, secPerBeat, gain, syls) {
   const inst = m.insts[ev.inst] || m.insts[0];
   if (!inst) return;
   const f = noteFreq(m, ev);
-  playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain);
+  // a marker stroke is meant to ring on; everything else a player damps
+  playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, ev.ring ? { damp: false } : undefined);
   // the ornament's pitch comes from the composer, already a MODE step and
   // already placed a subdivision ahead — the Lab never invents an interval
   if (ev.ornDeg != null) {

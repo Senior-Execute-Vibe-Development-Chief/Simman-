@@ -366,30 +366,40 @@ function pulsePattern(music, occKey) {
 
 /** Assign instruments to roles. Which body leads is an occasion question — a
  *  war band does not lead with the softest thing it owns. */
+// A gong or a big bell is not a part. Its modes are inharmonic AND long —
+// a bell's tierce and quint ring for seconds, which is what a bell is for —
+// so a line played on one turns into a standing cloud that fights every note
+// after it. What such an instrument does in every tradition that has one is
+// MARK: a single stroke at the head of the cycle, giving the form its
+// punctuation and letting the ring be the point instead of an accident.
+const MARKERS = new Set(["gong", "bell"]);
+
 export function ensembleFor(music, occKey, intimacy = 1) {
   const occ = OCCASIONS[occKey] || OCCASIONS.peace;
   const insts = music.insts;
   const idx = (pred) => { const i = insts.findIndex(pred); return i < 0 ? null : i; };
-  const loud = idx(i => i.fam === "horn" || i.fam === "reedPipe" || i.fam === "gong");
-  const sustain = idx(i => i.kind === "sustain");
+  const partable = (i) => !MARKERS.has(i.fam);
+  const loud = idx(i => i.fam === "horn" || i.fam === "reedPipe");
+  const sustain = idx(i => i.kind === "sustain" && partable(i));
+  const marker = idx(i => MARKERS.has(i.fam));
   // who can actually carry a tune: a natural horn is loud and prestigious but
   // has six notes, so it leads fanfares, not melodies
-  const melodic = insts.map((i, k) => ({ i, k })).filter(o => o.i.cap >= 3)
+  const melodic = insts.map((i, k) => ({ i, k })).filter(o => o.i.cap >= 5 && partable(o.i))
     .sort((a, b) => (b.i.cap * (0.5 + b.i.weight)) - (a.i.cap * (0.5 + a.i.weight)));
   const lead = occ.lead === "loud" && loud != null ? loud
     : occ.lead === "sustain" && sustain != null ? sustain
     : melodic.length ? melodic[0].k : 0;
-  const droneI = insts.findIndex((i, k) => k !== lead && (i.kind === "sustain" || i.partials[0].d > 3));
+  const droneI = insts.findIndex((i, k) => k !== lead && partable(i) && (i.kind === "sustain" || i.partials[0].d > 3));
   const pulse = idx(i => i.fam === "drum" || i.fam === "frameDrum");
   const second = melodic.find(o => o.k !== lead)?.k ?? null;
   const voices = Math.max(1, Math.round(music.texture.size * (0.35 + 0.65 * intimacy)));
   // the bass wants a body that speaks low and holds; the ostinato wants one
   // that can repeat a figure cleanly — a plucked or struck body, not a
   // sustaining one that would smear it
-  const bass = insts.findIndex((i, k) => k !== lead && (i.kind === "sustain" || i.partials[0].d > 1.5));
-  const ost = insts.findIndex((i, k) => k !== lead && k !== bass && i.cap >= 3 && i.kind !== "sustain");
+  const bass = insts.findIndex((i, k) => k !== lead && partable(i) && (i.kind === "sustain" || i.partials[0].d > 1.5));
+  const ost = insts.findIndex((i, k) => k !== lead && k !== bass && i.cap >= 3 && i.kind !== "sustain" && partable(i));
   return { lead, drone: droneI < 0 ? null : droneI, pulse, second, voices, occ,
-    bass: bass < 0 ? null : bass, ost: ost < 0 ? (second ?? null) : ost };
+    marker, bass: bass < 0 ? null : bass, ost: ost < 0 ? (second ?? null) : ost };
 }
 
 /** Frequency of a scale degree. `oct` counts FRAME repetitions — which is not
@@ -459,6 +469,11 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
       ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.4, inst: E.pulse, deg: 0, oct: -1,
         vel: h.vel * audible, role: "pulse" });
     }
+  }
+  // the marker: one stroke at the head of the cycle, left to ring
+  if (E.marker != null && bar % 2 === 0) {
+    ev.push({ b: 0, dur: 1.2, inst: E.marker, deg: modeDegree(music, fin), oct: -1,
+      vel: 0.3 * (0.5 + 0.5 * intimacy), role: "mark", ring: true });
   }
   // the bass: one note per group head, on stable degrees, under everything
   if (E.bass != null && music.texture.size >= 2 && O.drone > 0.3) {

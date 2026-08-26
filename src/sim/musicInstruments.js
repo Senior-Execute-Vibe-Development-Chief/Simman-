@@ -92,7 +92,7 @@ export const FAMILIES = {
   },
   // ── struck: where the spectra stop being harmonic ──
   barSet: {                     // tuned bars over resonators: free–free bar modes
-    label: "tuned bars", kind: "struck", drive: "strike", cap: 7, poly: 2,
+    label: "tuned bars", kind: "struck", drive: "strike", cap: 7, poly: 2, reso: true,
     ratios: (n) => BAR_FREE.slice(0, n),
     body: ["wood", "bamboo", "stone", "bronze", "iron"], needs: { construction: 0.25 },
   },
@@ -107,7 +107,7 @@ export const FAMILIES = {
     body: ["bronze", "iron", "clay"], needs: { metallurgy: 0.55 },
   },
   lamella: {                    // plucked clamped tongue: violently inharmonic upper modes
-    label: "plucked tongues", kind: "pluck", drive: "pluck", cap: 8, poly: 2,
+    label: "plucked tongues", kind: "pluck", drive: "pluck", cap: 8, poly: 2, reso: true,
     ratios: (n) => LAMELLA.slice(0, n),
     body: ["iron", "bronze", "bamboo"], frame: ["wood", "gourd"], needs: { metallurgy: 0.3 },
   },
@@ -143,20 +143,50 @@ function harmonicStiff(n, B = 0) {
 }
 
 // ── amplitude of each mode ───────────────────────────────────────────────
-// The spectral envelope of a struck, plucked or blown body falls off roughly
-// GEOMETRICALLY in partial index — a_n = g^(n−1) — which is the standard
-// idealization and the one the roughness literature uses. `g` is set by how
-// the body is driven (a bow keeps the upper modes fed; a mallet does not)
-// and by the material's own brightness. This is one law for every body: no
-// instrument gets its spectrum hand-shaped.
-function modeAmps(ratios, drive, bright) {
-  const g0 = drive === "strike" ? 0.72 : drive === "pluck" ? 0.86 : drive === "reed" ? 0.90 : drive === "lip" ? 0.88 : 0.84;
-  const g = Math.min(0.94, g0 * (0.72 + 0.42 * bright));
-  return ratios.map((_, i) => Math.pow(g, i));
+// The envelope falls off with FREQUENCY, not with mode number. That
+// distinction does nothing for a harmonic body — its modes sit at 1, 2, 3 …
+// so the ordinal and the frequency ratio are the same thing — but it is
+// everything for an inharmonic one, whose modes are few and far out. Index by
+// ordinal and a plucked tongue's second mode, at more than six times the
+// fundamental, comes out at ninety per cent of its amplitude: a shriek, not
+// an instrument. Index by frequency and it lands where it belongs.
+//
+// The law is a power rolloff, a_r = r^−p: about −6 dB per octave for a
+// plucked or blown body and steeper for a struck one, which is the standard
+// idealization for these excitations. `p` also picks up the material's
+// brightness, since a duller body loses its highs faster.
+function modeAmps(ratios, drive, bright, reso) {
+  // Calibrated against real instruments: a bodied plucked string's partials
+  // two through six sit within about 10-12 dB of its fundamental, which is a
+  // gentler rolloff than a bare string's, because what reaches the ear is the
+  // mode spectrum filtered by a soundboard that radiates the low partials far
+  // better than the string alone would.
+  const p0 = drive === "strike" ? 1.0 : drive === "pluck" ? 0.7 : drive === "reed" ? 0.55 : drive === "lip" ? 0.6 : 0.65;
+  const p = p0 * (1.45 - 0.5 * bright);
+  // a partial BELOW the fundamental (a bell's hum tone) is not made louder by
+  // being low — clamp, or the power law inverts and the hum swamps the bell
+  const a = ratios.map(r => Math.pow(Math.max(1, r), -p));
+  // A RESONATOR is what makes a tuned idiophone an instrument. A bronze bar
+  // on its own radiates a clang: its modes are inharmonic, and inharmonic
+  // partials do not fuse into one pitch the way a harmonic series does — the
+  // ear hears them as separate ringing tones. So makers tune a tube or a box
+  // under the bar to the FUNDAMENTAL, which then radiates far more strongly
+  // than anything above it, and the thing speaks a note. Bodies built to
+  // carry a tune have one; a gong or a bell, which is its own resonator and
+  // is struck for weight rather than melody, does not.
+  if (reso) for (let i = 0; i < a.length; i++) a[i] *= i === 0 ? 2.1 : 0.55;
+  return a;
 }
-// higher modes always die faster — the standard radiation/viscous law
-function modeDecays(ratios, base) {
-  return ratios.map(r => base / Math.pow(r, 0.75));
+// Higher modes die faster, and for a struck body they die MUCH faster: the
+// damping mechanisms in a bar or plate (thermoelastic loss, radiation) climb
+// steeply with frequency. This is why a tuned metal bar reads as a pitch at
+// all — the fundamental rings for seconds while the inharmonic modes above it
+// are gone in a fraction of one. Damping them as gently as a string's
+// harmonics leaves every note trailing a four-second cloud that fights the
+// next one.
+function modeDecays(ratios, base, drive) {
+  const q = drive === "strike" ? 1.9 : drive === "pluck" ? 1.2 : 0.75;
+  return ratios.map(r => base / Math.pow(Math.max(1, r), q));
 }
 
 /**
@@ -172,15 +202,17 @@ export function makeInstrument(famId, matId, frameId, seed, register = 0) {
   // landscape is so much sparser.
   const nModes = MODE_COUNT[famId] ?? (fam.kind === "sustain" ? 12 : 10);
   const ratios = fam.ratios(nModes, mat);
-  const amps = modeAmps(ratios, fam.drive, mat.bright);
+  const amps = modeAmps(ratios, fam.drive, mat.bright, !!fam.reso);
   // a struck body rings for its material's time; a driven one is held, so its
   // "decay" is a release, not a ring-down
   const ringBase = fam.kind === "sustain" ? 0.18 : mat.decay * (fam.kind === "pluck" ? 0.55 : 1);
   const h = hash32(seed >>> 0, famId, matId) / 4294967296;
+  const peak = Math.max(...amps) || 1;
+  for (let i = 0; i < amps.length; i++) amps[i] /= peak;
   return {
     id: `${famId}:${matId}`, fam: famId, mat: matId, frame: frameId || null,
     label: fam.label, kind: fam.kind, drive: fam.drive, cap: fam.cap, poly: fam.poly,
-    partials: ratios.map((r, i) => ({ r, a: amps[i], d: modeDecays(ratios, ringBase)[i] })),
+    partials: ratios.map((r, i) => ({ r, a: amps[i], d: modeDecays(ratios, ringBase, fam.drive)[i] })),
     // where it sits: struck metal and drums low, pipes and small strings high
     reg: register || (famId === "gong" || famId === "drum" ? -1 : famId === "fluteOpen" || famId === "lamella" ? 1 : 0),
     // a touch of maker-to-maker variance, seeded — two peoples' pipes differ

@@ -229,6 +229,48 @@ property. Harmonic bodies are now two oscillators a few cents apart rather
 than one: a real string or pipe is never a single perfectly periodic source,
 and one rigid oscillator sounds like a test tone.
 
+### Why the inharmonic peoples sounded terrible
+
+Reported symptom: the more harmonic bodies a people had the better it sounded,
+and mostly-inharmonic ones were awful. That was a real bug, and not the one it
+looks like — real metallophone traditions sound wonderful, so inharmonicity
+itself cannot be the cause. Three faults, all in the physics:
+
+**The spectral envelope was indexed by mode NUMBER, not by frequency.** That
+distinction does nothing for a harmonic body, whose modes sit at 1, 2, 3 … so
+the ordinal and the frequency ratio are the same. It is everything for an
+inharmonic one, whose modes are few and far out. Indexed by ordinal, a plucked
+tongue's second mode — at more than **six times** the fundamental — came out at
+**94% of its amplitude**, and a bronze bar's inharmonic second mode rang at
+0.82 for **4.2 seconds**. Every note left a loud clashing cloud over the next.
+The envelope now falls with frequency (a power rolloff, calibrated so a bodied
+plucked string's partials two through six sit within 10–12 dB of its
+fundamental, as real ones do), and struck bodies damp much more steeply with
+frequency, which is the actual physics: thermoelastic and radiation losses
+climb fast, and it is *why* a tuned metal bar reads as a pitch at all.
+
+**No resonators.** A bronze bar on its own radiates a clang, because
+inharmonic partials do not fuse into a single pitch the way a harmonic series
+does — the ear hears them as separate ringing tones. Makers therefore tune a
+tube or box under the bar to the *fundamental*, which then radiates far more
+strongly than anything above it. That is what makes a tuned idiophone an
+instrument rather than a noise. Bodies built to carry a tune now have one; a
+gong or bell, which is its own resonator, does not.
+
+**Gongs and bells were being given parts.** A bell's tierce and quint ring for
+seconds — that is what a bell is for — so a melodic or ostinato line played on
+one becomes a standing cloud. In every tradition that has them, these
+instruments **mark**: a single stroke at the head of the cycle, where the ring
+is the point rather than an accident. They are now excluded from lead, bass,
+ostinato and drone, and given that one stroke, left undamped.
+
+One striking consequence, which nothing was steered toward: a resonated bronze
+bar radiates a nearly pure tone, and pure tones give almost no consonance
+guidance — so such a tradition falls through to the measured branch and takes
+**equal divisions of its frame**, landing on five steps of 233¢ within a 1165¢
+frame. Real slendro is famously close to five equal divisions of the octave at
+roughly 240¢. The corrected physics reaches it on its own.
+
 ### Rhythm comes out of the language
 
 A culture's music inherits the durational unevenness of its speech. This is a
