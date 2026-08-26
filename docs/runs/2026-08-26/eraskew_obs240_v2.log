@@ -75,3 +75,20 @@ step  24000  n 237 · ports(wa>0) 235 · with-sea-lanes 54 · carrying(seaShare>
    throttles p50/p90  sciMul 3.25/3.68 · needAgri 1.05/1.75 · needMetal 1.09/1.65 · PORTS: needSea 1.24/1.75 · fleet 1.00/1.96 · hegF 0.00/0.01
    met frontier: Foosutul m0.44 cap1.00 need1.62 sci3.59 · Tuukutei m0.43 cap1.00 need1.30 sci3.40 · Futussee m0.43 cap0.90 need1.41 sci3.29
 
+step  27000  n 380 · ports(wa>0) 374 · with-sea-lanes 93 · carrying(seaShare>.01) 91
+   tracks p50|p90|max  org 0.81|0.84|0.86  con 0.78|0.81|0.84  met 0.42|0.50|0.53  nav 0.41|0.55|0.59  agr 0.69|0.72|0.74  mob 0.32|0.44|0.46
+   dearness p50/p90  staple 1.07/3.99 · metal 1.48/3.96 · materials 1.82/3.94   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 3.33/3.76 · needAgri 1.02/1.75 · needMetal 1.12/1.74 · PORTS: needSea 1.23/1.75 · fleet 1.00/1.99 · hegF 0.00/0.00
+   met frontier: Tamyaya m0.53 cap1.00 need1.75 sci6.46 · Yat'a m0.53 cap1.00 need1.36 sci4.22 · Ífpù m0.52 cap1.00 need1.75 sci3.49
+
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=27240 cap=4096 peakN=2096 pushes=9930 (0.0MB backing)
+step  30000  n 482 · ports(wa>0) 479 · with-sea-lanes 131 · carrying(seaShare>.01) 129
+   tracks p50|p90|max  org 0.87|0.89|0.90  con 0.89|0.92|0.93  met 0.56|0.63|0.65  nav 0.59|0.69|0.71  agr 0.73|0.75|0.78  mob 0.38|0.50|0.52
+   dearness p50/p90  staple 1.00/3.93 · metal 1.44/3.95 · materials 1.84/3.96   (need = 1 + II·max(0, p − 1): p ≤ 1 ⇒ the engine idles)
+   throttles p50/p90  sciMul 3.28/3.78 · needAgri 1.00/1.73 · needMetal 1.11/1.74 · PORTS: needSea 1.22/1.75 · fleet 1.00/1.99 · hegF 0.00/0.03
+   met frontier: Tamyaya m0.65 cap1.00 need1.75 sci7.09 · Ífpù m0.65 cap1.00 need1.75 sci3.78 · Bobabomp m0.65 cap1.00 need1.73 sci4.00
+
+READ: dearness ≤ 1 everywhere ⇒ the induced-innovation engine idles (the
+economy waves relieved the scarcity the learning law fed on). sciMul low +
+hegF high ⇒ stagnation; fleet ≈ 1 at ports ⇒ sea practice never engaged.

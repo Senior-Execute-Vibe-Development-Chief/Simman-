@@ -479,3 +479,50 @@ Same lap, the observability half: **the Goods-flow overlay** (Economy →
 materials/ore/metal/cloth/wares/luxury), per-kind normalization,
 resource-style toggle chips; recorders render-only behind
 world._wantGoodsFlows.
+
+## THE ERA-SKEW LAP (2026-08-26, measurement complete — the fix is parked for ratification)
+
+Owner's report: iron working / crop rotation / galleys "sit on the verge of
+full discovery but never get it (or far too late)" while the HUD reads
+Renaissance. Instruments: techverge census + probe_eraskew (throttle
+decomposition, obs regime; the _kDbg hooks in settlement.js are the pattern).
+
+**Measured, in order of elimination:**
+1. Nothing is permanently stuck — the frontier crosses every stuck gate
+   (iron ~step 32-33k; galleys/crop-rotation ~30k at p50).
+2. The ore-cap catch-22 (metallurgy growth stops at oreTier — 0.65 without
+   reachable iron vs the 0.70 gate) is real physics but NOT binding here:
+   71% of settlements hold iron in reach; the frontier is uncapped.
+3. No throttle is dead: sciMul 3.3-3.8 (the compound curve roaring), hegF 0
+   (atomized worlds have no hegemons), needSea 1.2, needMetal 1.1, and the
+   SEA_PRACTICE fleet term works where geography allows (131/479
+   water-access settlements carry sea trade; carrying ports read fleet up to
+   1.99). needAgri decays to exactly 1.00 as the v45-48 economy feeds the
+   world — honest physics (a fed world does not push agronomy).
+4. **THE REAL SKEW — the institutions sprint, the materials are ~on pace.**
+   Re-anchored on the journal's own era stamps at 0.25y/tick: from first
+   farming villages, metallurgy reaches iron in ~5.4 kyr (history ~7.8 —
+   1.4× fast), while organization/construction reach writing/masonry in
+   ~0.7-0.9 kyr (history ~5.8 — **6-8× fast**). The era label = max era of
+   ANY discovered tech, so it rides the fast pair: Bronze announced at step
+   13k with ZERO cities (one village masonry gate), Medieval/Renaissance
+   labels over pre-iron worlds. The birth vector is the visible half
+   (landKnow births villages at agriculture=devField wave / construction
+   0.18 / org 0.1-with-pressure-compounding vs metallurgy/navigation/
+   mobility at literal 0); the pre-urban org/con RATES are the other half.
+5. **ERA_ATTAIN refuted at sanity and reverted unshipped**: a half-quorum
+   era label is near-inert against this tree's composition (an org-only
+   sprint profile still reads Renaissance — 45 techs unlock without metal;
+   the later era rows are institution-heavy). The label self-corrects if
+   pace is fixed; a tree-prereq interlock (universities need the material
+   base) is the deeper content-design alternative.
+
+**THE PARKED FIX (needs owner ratification — it re-times genesis):** a
+pre-urban pace audit of org/construction in landKnow (birth seeds, the
+ORG_CONTACT/cage pressure compounding, the village construction ramp)
+against the farming→writing historical span. INTERLOCK WARNING: the
+consolidation wave experiences statehood as politically LATE (Egypt's
+atomized singletons) while org KNOWLEDGE is fast — slowing pre-urban org
+without re-basing the statehood bars (RECORDS_ORG, URBAN_ORG, tallies)
+would worsen exactly what the consolidation wave must fix. The two must
+move as ONE measured lap.
