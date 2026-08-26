@@ -129,7 +129,36 @@ function makePattern(music, seed, density, syncopation) {
   if (syncopation < 0.25) for (const s of [...on]) if (G.w[s] < 0.5 && roll("d" + s) > syncopation * 3) on.delete(s);
   acc = 0;
   for (const g of G.groups) { on.add(acc * G.div); acc += g; }   // …and again, so nothing dropped a downbeat
-  return { grid: G, onsets: [...on].sort((a, b) => a - b) };
+  const onsets = [...on].sort((a, b) => a - b);
+  // A NOTE VALUE IS NOT THE GAP TO THE NEXT ONSET. Euclidean patterns are
+  // maximally even by construction, so deriving duration from the gap gives
+  // every note the same length and a melody with no agogic accent — no long
+  // notes, no short ones, no phrase shape, ever. Values are drawn separately,
+  // weighted by metrical position (a strong beat can carry a long note; a weak
+  // offbeat rarely does), and a long value SWALLOWS the onsets it covers
+  // rather than being truncated by them.
+  const VAL = {
+    strong: [[1, 0.25], [2, 0.3], [4, 0.3], [8, 0.15]],
+    beat: [[1, 0.55], [2, 0.35], [3, 0.1]],
+    weak: [[1, 0.85], [2, 0.15]],
+  };
+  const pickVal = (tier, r) => {
+    let acc = 0;
+    for (const [v, p] of VAL[tier]) { acc += p; if (r < acc) return v; }
+    return 1;
+  };
+  const notes = [];
+  for (let i = 0; i < onsets.length; i++) {
+    const sl = onsets[i];
+    if (notes.length && sl < notes[notes.length - 1].s + notes[notes.length - 1].v) continue;  // swallowed
+    const tier = G.w[sl] >= 1 ? "strong" : G.w[sl] >= 0.5 ? "beat" : "weak";
+    let v = pickVal(tier, roll("v" + sl));
+    v = Math.min(v, G.slots - sl);
+    notes.push({ s: sl, v });
+  }
+  // rests: a line that never stops speaking has no phrases in it
+  const rested = notes.filter((n, i) => i === 0 || G.w[n.s] >= 0.5 || roll("r" + n.s) > 0.28);
+  return { grid: G, onsets: rested.map(n => n.s), notes: rested };
 }
 
 // ── the melodic line ─────────────────────────────────────────────────────
@@ -339,29 +368,67 @@ function ostinato(music, occKey) {
   return out;
 }
 
-/** The timekeeper's pattern: the SAME every cycle, because that is what a
- *  beat is. It states the metrical hierarchy — group heads hard, beats
- *  lighter — plus whatever fixed offbeat this tradition habitually pushes. */
-function pulsePattern(music, occKey) {
-  const key = "_pulse:" + occKey;
+// A DRUM IS NOT ONE SOUND. A hand drum speaks at least three ways depending
+// on where and how it is struck: a low open BASS tone from the centre, a
+// mid OPEN tone from the edge, and a bright SLAP. Real percussion writing is
+// built out of the contrast between them — a pattern of identical hits is a
+// metronome, not a drum part. Each stroke here is a real change to the strike:
+// centre strikes excite the low modes and damp the high, edge strikes the
+// reverse, and a slap is a hard, brief contact.
+export const STROKES = {
+  bass: { pitch: 0.62, bright: 0.35, damp: 1.6, vel: 1 },
+  open: { pitch: 1, bright: 0.75, damp: 1, vel: 0.82 },
+  slap: { pitch: 1.5, bright: 1.5, damp: 0.45, vel: 0.9 },
+  ghost: { pitch: 1.1, bright: 0.9, damp: 0.4, vel: 0.34 },
+};
+
+/**
+ * The percussion ENSEMBLE. Where a people can field more than one player,
+ * percussion is not one part played louder — it is several parts INTERLOCKING:
+ * each drum keeps its own maximally-even pattern at its own density, offset
+ * from the others, and the composite is a groove no single player is playing.
+ * That is the organising principle of West and Central African drumming, and
+ * it falls out of the Euclidean machinery already here — one pattern per
+ * player, different k, different rotation.
+ *
+ * The parts are ranked so the ensemble grows in the order a real one does:
+ * the timeline first (it is the reference everyone else hears), then the
+ * supporting drum, then the answering drum, then the lead drum that varies.
+ */
+function drumEnsemble(music, occKey) {
+  const key = "_drums:" + occKey;
   if (music[key]) return music[key];
-  const G = gridOf(music.rhythm), R = music.rhythm;
-  const out = [];
-  // downbeats always, hard — the tap
-  let acc = 0;
-  for (const g of G.groups) { out.push({ s: acc * G.div, vel: 0.42 }); acc += g; }
-  // the TIMELINE proper: a maximally-even Euclidean pattern over the cycle,
-  // which is the form the world's bell patterns and claves actually take
-  const k = Math.max(2, Math.round(G.beats * (0.45 + R.syncopation * 0.7)));
-  const e = euclid(k, G.slots);
-  const rot = hash32(music.people.seed, "tl") % G.slots;
-  for (let s = 0; s < G.slots; s++) {
-    if (!e[(s + rot) % G.slots]) continue;
-    if (out.some(h => h.s === s)) continue;
-    out.push({ s, vel: G.w[s] >= 0.5 ? 0.22 : 0.16 });
+  const G = gridOf(music.rhythm), R = music.rhythm, O = OCCASIONS[occKey] || OCCASIONS.peace;
+  const seed = hash32(music.people.seed, "drums", occKey);
+  // how many hands there are to spare: percussion players are specialists too
+  const hands = Math.max(1, Math.min(4, Math.round(1 + music.texture.size * 0.55 * O.perc)));
+  const parts = [];
+  for (let p = 0; p < hands; p++) {
+    // each player takes a different density, and they are deliberately
+    // co-prime-ish so the composite does not collapse onto one pattern
+    const k = Math.max(2, Math.round(G.beats * (0.4 + 0.28 * p + R.syncopation * 0.5)) + (p % 2));
+    const e = euclid(Math.min(k, G.slots - 1), G.slots);
+    // the anchor drum is not rotated — it must land on the downbeats, because
+    // it is what everyone else hears the beat through
+    const rot = p === 0 ? 0 : (hash32(seed, "rot", p) % G.slots);
+    const slots = new Set();
+    for (let s = 0; s < G.slots; s++) if (e[(s + rot) % G.slots]) slots.add(s);
+    if (p === 0) { let a = 0; for (const g of G.groups) { slots.add(a * G.div); a += g; } }
+    const hits = [];
+    for (const s of [...slots].sort((a, b) => a - b)) {
+      const strong = G.w[s] >= 1;
+      // the lowest-pitched drum anchors the strong beats, the higher ones
+      // answer off them
+      const h3 = hash32(seed, s, p) % 6;
+      const st = p === 0 ? (strong ? "bass" : G.w[s] >= 0.5 ? "open" : "ghost")
+        : p === 1 ? (strong ? "open" : h3 < 2 ? "slap" : h3 < 4 ? "open" : "ghost")
+        : (h3 < 2 ? "slap" : h3 < 3 ? "open" : "ghost");
+      hits.push({ s, stroke: st, vel: (strong ? 0.62 : 0.4) * STROKES[st].vel });
+    }
+    parts.push({ hits, voice: p });
   }
-  music[key] = out.sort((a, b) => a.s - b.s);
-  return music[key];
+  music[key] = parts;
+  return parts;
 }
 
 /** Assign instruments to roles. Which body leads is an occasion question — a
@@ -391,15 +458,25 @@ export function ensembleFor(music, occKey, intimacy = 1) {
     : melodic.length ? melodic[0].k : 0;
   const droneI = insts.findIndex((i, k) => k !== lead && partable(i) && (i.kind === "sustain" || i.partials[0].d > 3));
   const pulse = idx(i => i.fam === "drum" || i.fam === "frameDrum");
-  const second = melodic.find(o => o.k !== lead)?.k ?? null;
   const voices = Math.max(1, Math.round(music.texture.size * (0.35 + 0.65 * intimacy)));
   // the bass wants a body that speaks low and holds; the ostinato wants one
   // that can repeat a figure cleanly — a plucked or struck body, not a
   // sustaining one that would smear it
-  const bass = insts.findIndex((i, k) => k !== lead && partable(i) && (i.kind === "sustain" || i.partials[0].d > 1.5));
-  const ost = insts.findIndex((i, k) => k !== lead && k !== bass && i.cap >= 3 && i.kind !== "sustain" && partable(i));
-  return { lead, drone: droneI < 0 ? null : droneI, pulse, second, voices, occ,
-    marker, bass: bass < 0 ? null : bass, ost: ost < 0 ? (second ?? null) : ost };
+  // CLAIM AND REMOVE. Three independent findIndex scans from position zero
+  // gave the pad and the bass the same instrument in the large majority of
+  // ensembles — at the same register, on the same downbeat, so they fused into
+  // one thick immovable block instead of two parts.
+  const taken = new Set([lead, pulse, marker].filter(k => k != null));
+  const claim = (pred) => {
+    const k = insts.findIndex((i, j) => !taken.has(j) && partable(i) && pred(i));
+    if (k >= 0) taken.add(k);
+    return k < 0 ? null : k;
+  };
+  const drone = droneI >= 0 && !taken.has(droneI) ? (taken.add(droneI), droneI) : claim(i => i.kind === "sustain" || i.partials[0].d > 2.5);
+  const bass = claim(i => i.partials[0].d > 1.2 || i.kind === "sustain") ?? claim(() => true);
+  const ost = claim(i => i.cap >= 3 && i.kind !== "sustain") ?? claim(i => i.cap >= 3);
+  const second2 = melodic.find(o => o.k !== lead && !taken.has(o.k))?.k ?? null;
+  return { lead, drone, pulse, second: second2, voices, occ, marker, bass, ost };
 }
 
 /** Frequency of a scale degree. `oct` counts FRAME repetitions — which is not
@@ -418,22 +495,34 @@ function layPhrase(music, ph, O, opts) {
   const G = pat.grid, R = music.rhythm;
   const { at = 0, inst, vel = 0.36, intimacy = 1, role = "lead", oct = 0, syls = null, sylFrom = 0 } = opts;
   const ev = [];
-  pat.onsets.forEach((s, i) => {
+  const notes = pat.notes || pat.onsets.map(s => ({ s, v: 1 }));
+  const n = notes.length;
+  notes.forEach((nt, i) => {
+    const s = nt.s;
     const b = slotBeat(G, s, R.swing);
-    const nextB = i + 1 < pat.onsets.length ? slotBeat(G, pat.onsets[i + 1], R.swing) : G.beats;
-    const span = Math.max(0.12, nextB - b);
+    const span = Math.max(0.12, nt.v / G.div);
     const strong = G.w[s] >= 1;
-    const mi = degs[i];
-    const last = i === pat.onsets.length - 1;
-    // A phrase LANDS. Its final note is held — that is what makes it sound
-    // finished rather than merely stopped — and everything else runs close to
-    // the next onset so the line is legato rather than a row of blips.
-    const len = last ? span * 1.9 : span * O.artic;
+    const mi = degs[i % degs.length];
+    const last = i === n - 1;
+    // a phrase LANDS: its final note is held past the end of the cycle, and
+    // the next cycle's downbeat is suppressed so it survives instead of being
+    // stolen by the note that follows
+    const len = last ? span * 1.55 : span * O.artic;
+    // DYNAMICS. A line with three decibels of range in it is a machine. Real
+    // range comes from three sources at once: the metrical hierarchy, the
+    // language's OWN stress (rhythm.accent, derived from prosody and until now
+    // computed and never read), and the arc of the phrase — which rises to a
+    // peak and falls away, tilted downward by the same breath declination the
+    // pitch already uses.
+    const metre = strong ? 1 : G.w[s] >= 0.5 ? 0.62 : 0.4;
+    const stress = strong ? R.accent : 1 / Math.sqrt(R.accent);
+    const arc = (0.72 + 0.34 * Math.sin(Math.PI * (i + 0.5) / n)) * (1 - 0.12 * O.descent * (i / Math.max(1, n - 1)));
     const e = {
       b: at + b, dur: len, inst, mi, deg: modeDegree(music, mi + fin), oct, role,
       // the melody is the thing being listened to, so it sits on top of the
       // texture the other layers make
-      vel: vel * 1.25 * (strong ? 1.15 : G.w[s] >= 0.5 ? 1 : 0.82) * (0.65 + 0.35 * intimacy),
+      vel: vel * 1.5 * metre * stress * arc * (0.65 + 0.35 * intimacy),
+      last,
     };
     // An ornament is a quick neighbour just ahead of the note — a MODE step,
     // so it decorates the line instead of smearing a microtone across it, and
@@ -461,13 +550,19 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
   const fin = finalFor(music, occ);
   const ev = [];
 
-  // the pulse: the same pattern every cycle, thinned by distance
+  // the percussion ensemble: interlocking parts, the same every cycle,
+  // thinned by distance
   if (E.pulse != null && O.perc > 0.15) {
     const audible = O.perc * (0.5 + 0.5 * intimacy);
-    for (const h of pulsePattern(music, occ)) {
-      ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.4, inst: E.pulse, deg: 0, oct: -1,
-        vel: h.vel * audible, role: "pulse" });
-    }
+    const parts = drumEnsemble(music, occ);
+    parts.forEach((part, pi) => {
+      if (pi > 0 && intimacy < 0.3 + pi * 0.18) return;   // far off, you hear the timeline only
+      for (const h of part.hits) {
+        ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.4, inst: E.pulse, deg: 0,
+          oct: -1 - (pi === 0 ? 1 : 0), vel: h.vel * audible * (pi === 0 ? 1 : 0.8),
+          role: "pulse", stroke: h.stroke, voice: pi });
+      }
+    });
   }
   // the marker: one stroke at the head of the cycle, left to ring
   if (E.marker != null && bar % 2 === 0) {
@@ -501,11 +596,18 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
         vel: 0.19 * (0.5 + 0.5 * intimacy), role: "ost" });
     }
   }
-  // the line
-  ev.push(...layPhrase(music, ph, O, {
+  // the line. At the end of a form group the phrase is allowed to ring over
+  // the seam: without suppressing the next cycle's downbeat the cadence note
+  // is always stolen one onset later, which made the held-cadence rule a
+  // measured no-op.
+  const cadence = (bar % FORM_ORDER.length) === FORM_ORDER.length - 1;
+  const lead = layPhrase(music, ph, O, {
     inst: E.lead, intimacy, oct: Math.round(O.reg),
     orn: music.texture.ornament * O.orn > 0.5,
-  }));
+  });
+  if (cadence) { const l = lead[lead.length - 1]; if (l) l.dur *= 2.4; }
+  if ((bar % FORM_ORDER.length) === 0 && bar > 0) lead.shift();      // let the previous cadence ring
+  ev.push(...lead);
   // heterophony: a second player on the SAME line, sparser — the same melody
   // taken plainly, which is what heterophony is. On the grid, never a flam.
   if (music.texture.kind !== "monophony" && E.second != null && E.voices >= 5 && E.second !== E.ost) {
@@ -563,9 +665,13 @@ export function composePiece(music, occKey = "peace", syls = null) {
         }
       }
       if (E.pulse != null && O.perc > 0.15) {
-        for (const h of pulsePattern(music, occKey)) {
-          ev.push({ b: beat + slotBeat(G, h.s, R.swing), dur: 0.4, inst: E.pulse, deg: 0, oct: -1, vel: h.vel * O.perc, role: "pulse" });
-        }
+        drumEnsemble(music, occKey).forEach((part, pi) => {
+          for (const h of part.hits) {
+            ev.push({ b: beat + slotBeat(G, h.s, R.swing), dur: 0.4, inst: E.pulse, deg: 0,
+              oct: -1 - (pi === 0 ? 1 : 0), vel: h.vel * O.perc * (pi === 0 ? 1 : 0.8),
+              role: "pulse", stroke: h.stroke, voice: pi });
+          }
+        });
       }
       beat += G.beats;
     }

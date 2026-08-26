@@ -86,7 +86,10 @@ function fireEvent(m, ev, when, secPerBeat, gain, syls) {
   // belongs to no channel — its ring is the point.
   playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, {
     role: ev.role === "het" ? "het" : ev.role || "lead",
-    channel: ev.ring || ev.role === "pad" ? null : `${m.people.seed}:${ev.role}:${ev.inst}`,
+    stroke: ev.stroke,
+    damped: !!inst.damped,
+    channel: ev.ring || ev.role === "pad" || ev.role === "pulse" ? null
+      : `${m.people.seed}:${ev.role}:${ev.inst}${ev.voice != null ? ":" + ev.voice : ""}`,
   });
   // the ornament's pitch comes from the composer, already a MODE step and
   // already placed a subdivision ahead — the Lab never invents an interval

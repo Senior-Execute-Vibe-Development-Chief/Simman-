@@ -55,12 +55,17 @@ export function makeAudio(ctx) {
   // factor to under 10 dB makes a dense passage sound flat and tiring.
   comp.threshold.value = -8; comp.knee.value = 10; comp.ratio.value = 3.5;
   comp.attack.value = 0.005; comp.release.value = 0.15;
+  // tanh(2.5x)/tanh(2.5) has a SMALL-SIGNAL GAIN of 2.5/tanh(2.5) = 2.53,
+  // i.e. +8 dB, and it sat after the compressor and after the reverb sum —
+  // several per cent of harmonic distortion plus intermodulation across
+  // seventy simultaneous partials, on everything, all the time. A fuzz box
+  // across the mix. Unity small-signal gain, ceiling below 1, oversampled.
   const shaper = ctx.createWaveShaper();
   const n = 2048, curve = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(2.5 * x) / Math.tanh(2.5); }
-  shaper.curve = curve; shaper.oversample = "2x";
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(1.2 * x) / 1.2; }
+  shaper.curve = curve; shaper.oversample = "4x";
 
-  const master = ctx.createGain(); master.gain.value = 0.20;
+  const master = ctx.createGain(); master.gain.value = 0.42;
   const tone = ctx.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 16000; tone.Q.value = 0.5;
   const dry = ctx.createGain(); dry.gain.value = 0.78;
   const wet = ctx.createGain(); wet.gain.value = 0.26;
@@ -160,10 +165,21 @@ function transient(A, dest, when, inst, freq, vel) {
  * Returns a handle so the caller can damp this note later, when a player's
  * hand would actually land on it.
  */
+const STROKE_DSP = {
+  bass: { pitch: 0.62, bright: 0.35, damp: 1.6 },
+  open: { pitch: 1, bright: 0.75, damp: 1 },
+  slap: { pitch: 1.5, bright: 1.5, damp: 0.45 },
+  ghost: { pitch: 1.1, bright: 0.9, damp: 0.4 },
+};
+
 export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   const { ctx } = A;
   const role = opts.role || "lead";
-  const f = freq * (1 + inst.detune + 0.004 * (Math.random() - 0.5));
+  // a stroke is a real change to how and where the body is struck, not a
+  // preset: it moves the pitch the head speaks at, how much high-mode energy
+  // the contact puts in, and how fast the hand takes it away again
+  const K = STROKE_DSP[opts.stroke] || null;
+  const f = freq * (K ? K.pitch : 1) * (1 + inst.detune + 0.004 * (Math.random() - 0.5));
   if (!(f > 20 && f < 12000)) return null;
   const body = bodyFor(A, inst, role);
   const dest = body.input;
@@ -173,8 +189,22 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   // A louder excitation is a BRIGHTER one, not merely a bigger one — striking
   // or plucking harder puts proportionally more energy into the high modes.
   // Velocity that only moves a gain is the flattest thing a synth can do.
-  const tilt = 0.62 + 0.5 * vel;
+  const tilt = (0.62 + 0.5 * vel) * (K ? K.bright : 1);
   const gate = ctx.createGain(); gate.gain.value = 1;
+  // A tuned idiophone's resonator is a TUBE, tuned to that bar's own
+  // fundamental — so model it as one, in the signal path. Scaling the mode
+  // amplitudes by a pair of constants instead turned bar sets and plucked
+  // tongues into literal sine waves, which is both why they sounded like test
+  // tones and why their roughness curves had no minima left for the tuning to
+  // find. A slight mistuning is inevitable in a hand-made tube, and the better
+  // the craft the smaller it is.
+  if (inst.reso) {
+    const rz = ctx.createBiquadFilter(); rz.type = "bandpass";
+    rz.frequency.value = clamp(f * (1 + inst.mistune), 20, 12000);
+    rz.Q.value = 26;
+    const rg = ctx.createGain(); rg.gain.value = 3.0;
+    gate.connect(rz); rz.connect(rg); rg.connect(dest);
+  }
   gate.connect(dest);
   const stops = [];
 
@@ -219,15 +249,21 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
     // PeriodicWave is an exact harmonic series by definition.
     const modes = inst.partials.filter(p => p.r * f < 12000 && p.a > 0.008).slice(0, 12);
     // uncorrelated sources sum as √N, so hold perceived level constant
-    const norm = 1 / Math.sqrt(Math.max(1, modes.length));
+    // normalise by POWER, not by mode count: counting modes makes a near-sine
+    // body several dB louder than a harmonically rich one at the same velocity
+    const pw = modes.reduce((a, p) => a + p.a * p.a, 0) || 1;
+    const norm = 1 / Math.sqrt(pw);
     modes.forEach((p, i) => {
       const pf = f * p.r;
       const osc = ctx.createOscillator(); osc.type = "sine"; osc.frequency.value = pf;
       const g = ctx.createGain();
-      const a = vel * p.a * Math.pow(tilt, i * 0.6) * norm * 3.2;
+      // by FREQUENCY, not by array position — indexing the tilt by ordinal is
+      // exactly the bug musicInstruments.modeAmps exists to avoid, and it was
+      // reintroduced here. Clamped at 1 so velocity can only ever darken.
+      const a = vel * p.a * Math.pow(Math.min(1, tilt), Math.log2(Math.max(1, p.r)) * 1.2) * norm * 3.2;
       // T60 → time constant. The note then rings for as long as its physics
       // says, instead of having 78 dB crammed into a scheduled window.
-      const t60 = Math.max(0.06, p.d);
+      const t60 = Math.max(0.05, p.d * (K ? K.damp : 1));
       g.gain.setValueAtTime(0.0001, when);
       // the fundamental BLOOMS: a resonator takes a moment to fill, while the
       // upper modes are there from the strike
@@ -248,12 +284,21 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
       const d = buf.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 5);
       const src = ctx.createBufferSource(); src.buffer = buf;
-      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = clamp(f * 6, 200, 2600);
+      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = clamp(f * 6 * (K ? K.bright : 1), 180, 6000);
       const g = ctx.createGain(); g.gain.setValueAtTime(vel * 0.55, when);
-      g.gain.exponentialRampToValueAtTime(0.0001, when + 0.3);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + 0.3 * (K ? K.damp : 1));
       src.connect(lp); lp.connect(g); g.connect(gate);
       src.start(when); src.stop(when + 0.36);
     }
+  }
+
+  // `dur` is when the player's hand lands. Physics stays the CEILING — a note
+  // can never ring longer than its T60 — but the written length can cut it
+  // short. In the struck branch `dur` was simply never read, so more than half
+  // of all notes silently discarded the length the composer gave them, and
+  // articulation had no effect at all on those parts.
+  if (!sustained && opts.damped) {
+    gate.gain.setTargetAtTime(0.0001, when + dur, 0.13);
   }
 
   // The damping handle. A player's free hand stops the note being replaced
@@ -263,7 +308,7 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
     damp(at) {
       const t = Math.max(at, when + 0.02);
       gate.gain.cancelScheduledValues(t);
-      gate.gain.setTargetAtTime(0.0001, t, 0.035);
+      gate.gain.setTargetAtTime(0.0001, t, 0.15);
       for (const s of stops) { try { s.stop(t + 0.2); } catch { /* already stopped */ } }
     },
   };
@@ -288,9 +333,14 @@ function waveFor(ctx, inst, tilt) {
   const real = new Float32Array(N), imag = new Float32Array(N);
   inst.partials.forEach((p, i) => {
     const n = Math.round(p.r);
-    if (n >= 1 && n < N) imag[n] += p.a * Math.pow(bucket / 6, i * 0.5);
+    if (n >= 1 && n < N) imag[n] += p.a * Math.pow(Math.min(1, bucket / 6), Math.log2(Math.max(1, p.r)) * 1.0);
   });
-  const w = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  // RMS-normalise: peak normalisation (the default) makes a duller wave come
+  // out louder, which partly cancels the velocity→brightness coupling
+  let rms = 0; for (let i = 1; i < N; i++) rms += imag[i] * imag[i];
+  rms = Math.sqrt(rms / 2) || 1;
+  for (let i = 1; i < N; i++) imag[i] /= rms;
+  const w = ctx.createPeriodicWave(real, imag, { disableNormalization: true });
   byCtx.set(key, w);
   return w;
 }

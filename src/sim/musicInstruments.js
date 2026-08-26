@@ -155,7 +155,7 @@ function harmonicStiff(n, B = 0) {
 // plucked or blown body and steeper for a struck one, which is the standard
 // idealization for these excitations. `p` also picks up the material's
 // brightness, since a duller body loses its highs faster.
-function modeAmps(ratios, drive, bright, reso) {
+function modeAmps(ratios, drive, bright) {
   // Calibrated against real instruments: a bodied plucked string's partials
   // two through six sit within about 10-12 dB of its fundamental, which is a
   // gentler rolloff than a bare string's, because what reaches the ear is the
@@ -166,15 +166,11 @@ function modeAmps(ratios, drive, bright, reso) {
   // a partial BELOW the fundamental (a bell's hum tone) is not made louder by
   // being low — clamp, or the power law inverts and the hum swamps the bell
   const a = ratios.map(r => Math.pow(Math.max(1, r), -p));
-  // A RESONATOR is what makes a tuned idiophone an instrument. A bronze bar
-  // on its own radiates a clang: its modes are inharmonic, and inharmonic
-  // partials do not fuse into one pitch the way a harmonic series does — the
-  // ear hears them as separate ringing tones. So makers tune a tube or a box
-  // under the bar to the FUNDAMENTAL, which then radiates far more strongly
-  // than anything above it, and the thing speaks a note. Bodies built to
-  // carry a tune have one; a gong or a bell, which is its own resonator and
-  // is struck for weight rather than melody, does not.
-  if (reso) for (let i = 0; i < a.length; i++) a[i] *= i === 0 ? 2.1 : 0.55;
+  // NOTE: the resonator is NOT applied here. A tuned idiophone's resonator is
+  // a tube in the signal path (see musicSynth), not a pair of constants on the
+  // mode amplitudes. Faking it here flattened the body to a sine — which also
+  // stripped its roughness curve of every minimum, so those peoples fell
+  // through to equal-step tuning. One fudge, two failures.
   return a;
 }
 // Higher modes die faster, and for a struck body they die MUCH faster: the
@@ -202,10 +198,13 @@ export function makeInstrument(famId, matId, frameId, seed, register = 0) {
   // landscape is so much sparser.
   const nModes = MODE_COUNT[famId] ?? (fam.kind === "sustain" ? 12 : 10);
   const ratios = fam.ratios(nModes, mat);
-  const amps = modeAmps(ratios, fam.drive, mat.bright, !!fam.reso);
+  const amps = modeAmps(ratios, fam.drive, mat.bright);
   // a struck body rings for its material's time; a driven one is held, so its
   // "decay" is a release, not a ring-down
-  const ringBase = fam.kind === "sustain" ? 0.18 : mat.decay * (fam.kind === "pluck" ? 0.55 : 1);
+  // MATERIALS.decay is the body's T60 at a reference pitch. The old ×0.55 on
+  // plucked bodies was a fudge in the wrong direction — a plucked string rings
+  // longer than a struck wooden bar, not half as long.
+  const ringBase = fam.kind === "sustain" ? 0.18 : mat.decay;
   const h = hash32(seed >>> 0, famId, matId) / 4294967296;
   const peak = Math.max(...amps) || 1;
   for (let i = 0; i < amps.length; i++) amps[i] /= peak;
@@ -215,6 +214,12 @@ export function makeInstrument(famId, matId, frameId, seed, register = 0) {
     partials: ratios.map((r, i) => ({ r, a: amps[i], d: modeDecays(ratios, ringBase, fam.drive)[i] })),
     // where it sits: struck metal and drums low, pipes and small strings high
     reg: register || (famId === "gong" || famId === "drum" ? -1 : famId === "fluteOpen" || famId === "lamella" ? 1 : 0),
+    reso: !!fam.reso,
+    // a hand-made resonating tube is never exactly on pitch; better craft,
+    // smaller error
+    mistune: ((h - 0.5) * 0.02),
+    damped: famId === "barSet",       // gamelan-style keys really are hand-stopped
+
     // a touch of maker-to-maker variance, seeded — two peoples' pipes differ
     detune: (h - 0.5) * 0.012,
     harmonic: isHarmonic(ratios),

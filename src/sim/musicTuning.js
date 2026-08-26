@@ -114,13 +114,38 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02 } = {}) {
   // floor bolted on to keep scales from looking thin.
   const want = Math.max(4, Math.min(cap, 7));
   if (degrees.length < want) {
-    const step = frame.cents / want;
-    for (let i = 1; i < want && degrees.length < want; i++) {
-      const c = i * step;
-      if (degrees.some(d => Math.abs(d.cents - c) < step * 0.45)) continue;
-      degrees.push({ ratio: Math.pow(2, c / 1200), cents: c, prom: 0, found: false });
+    // Dividing the frame into equal parts is the ANSWER written down, not the
+    // mechanism — and it was supplying nearly half of every pitch in the
+    // system, so most scales were an equal division in disguise and sounded
+    // like each other. What a maker without timbral guidance actually does is
+    // cut and listen: try a step, hear whether it fights what is already
+    // there, keep it if it does not. So search for the pitch that leaves the
+    // set LEAST rough overall, and let the answer be whatever it is. Where the
+    // timbre really is featureless the search does converge on near-equal
+    // steps — but it arrives there rather than starting there, and where the
+    // timbre has any structure at all it finds that instead.
+    const lo = 1.02, hi = frame.ratio - 0.012;
+    while (degrees.length < want) {
+      let best = null, bestCost = Infinity;
+      for (let c = 60; c < frame.cents - 60; c += 4) {
+        const r = Math.pow(2, c / 1200);
+        if (r < lo || r > hi) continue;
+        if (degrees.some(d => Math.abs(d.cents - c) < STEP_FLOOR)) continue;
+        const set = [...degrees.map(d => d.ratio), r, frame.ratio];
+        let cost = 0, n = 0;
+        for (let a = 0; a < set.length; a++) {
+          for (let b = a + 1; b < set.length; b++) {
+            let q = set[b] / set[a]; if (q < 1) q = 1 / q;
+            cost += dissonance(spec, q); n++;
+          }
+        }
+        cost /= n || 1;
+        if (cost < bestCost) { bestCost = cost; best = { c, r }; }
+      }
+      if (!best) break;
+      degrees.push({ ratio: best.r, cents: best.c, prom: 0, found: false });
+      degrees.sort((a, b) => a.cents - b.cents);
     }
-    degrees.sort((a, b) => a.cents - b.cents);
   }
   // regularization: a tradition that writes its music down, or builds fixed-
   // pitch instruments in sets, drifts its steps toward equal division of the
