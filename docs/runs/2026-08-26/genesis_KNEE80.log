@@ -17,3 +17,14 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (138,41) (27.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 7.22)
+[peopleSim] AGRICULTURE INVENTED at (149,38) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.30)
+[peopleSim] AGRICULTURE INVENTED at (166,41) (69.0E 28.5N) — the basin farms; a city will rise when its market gathers one (score 5.81)
+[peopleSim] AGRICULTURE INVENTED at (197,38) (115.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.45)
+[peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
+[peopleSim] AGRICULTURE INVENTED at (137,74) (25.5E -21.0N) — the basin farms; a city will rise when its market gathers one (score 1.69)
+[peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=24720 cap=2048 peakN=1085 pushes=9361 (0.0MB backing)
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
