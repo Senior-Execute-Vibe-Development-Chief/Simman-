@@ -58,3 +58,9 @@ step  21000  states 45 (singl 62%) · bonds 6 · org pack p50/p67(bar)/p90 0.61/
 
 [transHeap] step=21192 cap=2048 peakN=1062 pushes=7092 (0.0MB backing)
 [peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
+step  24000  states 132 (singl 66%) · bonds 27 · org pack p50/p67(bar)/p90 0.69/0.74/0.74 (spread p90−p50 0.045)
+   flows/3k  submit 9/1313 · integrate 13/319 (orgBelowMin 128 beyondDirectRule 50) · capture 15 · storm PASSED 25 lifts 59 grinding 24
+   storms n 1745 · adv p50/p90/max 0.10/1.50/229.50 vs bar 1.6 · tooWeak 90% · med att 4.5 vs def: relief 1.2 + assist 0.0 + garrison 36.8 ×walls 1.00
+
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
