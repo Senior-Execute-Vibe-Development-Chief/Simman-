@@ -52,3 +52,9 @@ step  18000  states 11 (singl 36%) · bonds 1 · org pack p50/p67(bar)/p90 0.49/
 [peopleSim] hearth candidate at (124,21) (6.0E 58.5N) stood down — the farming package arrived before it was invented
 [peopleSim] AGRICULTURE INVENTED at (112,50) (-12.0E 15.0N) — the basin farms; a city will rise when its market gathers one (score 3.39)
 [peopleSim] AGRICULTURE INVENTED at (137,74) (25.5E -21.0N) — the basin farms; a city will rise when its market gathers one (score 1.69)
+step  21000  states 45 (singl 62%) · bonds 6 · org pack p50/p67(bar)/p90 0.61/0.65/0.68 (spread p90−p50 0.072)
+   flows/3k  submit 6/425 · integrate 5/46 (orgBelowMin 7 beyondDirectRule 1) · capture 0 · storm PASSED 9 lifts 34 grinding 12
+   storms n 402 · adv p50/p90/max 0.23/1.98/120.74 vs bar 1.6 · tooWeak 87% · med att 13.1 vs def: relief 9.3 + assist 0.0 + garrison 66.6 ×walls 1.00
+
+[transHeap] step=21192 cap=2048 peakN=1062 pushes=7092 (0.0MB backing)
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
