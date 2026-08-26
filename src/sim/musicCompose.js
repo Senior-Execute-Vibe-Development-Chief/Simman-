@@ -34,12 +34,12 @@ import { nPVI } from "./musicGenome.js";
 // `descent` is how strongly breath declination shows. `bright` is which final
 // the mode is heard from. None of these replace a mechanism; they scale it.
 export const OCCASIONS = {
-  peace:    { label: "everyday",  bright: 1,  tempo: 1.06, density: 1.15, reg: 0.35, perc: 0.7,  orn: 0.7,  drone: 0.4,  descent: 0.8,  artic: 0.7,  lead: null },
-  rite:     { label: "rite",      bright: -1, tempo: 0.74, density: 0.8,  reg: 0,    perc: 0.3,  orn: 1.2,  drone: 1,    descent: 1.05, artic: 0.97, lead: "sustain" },
-  war:      { label: "war",       bright: 0,  tempo: 1.3,  density: 1.15, reg: -0.6, perc: 1,    orn: 0.3,  drone: 0.5,  descent: 0.85, artic: 0.6,  lead: "loud" },
-  mourning: { label: "mourning",  bright: -1, tempo: 0.64, density: 0.62,  reg: -0.4, perc: 0.16, orn: 1,    drone: 0.9,  descent: 1.35, artic: 1,    lead: "sustain" },
-  festival: { label: "festival",  bright: 1,  tempo: 1.22, density: 1.3,  reg: 0.5,  perc: 1,    orn: 0.7,  drone: 0.35, descent: 0.85, artic: 0.62, lead: null },
-  work:     { label: "work",      bright: 1,  tempo: 1,    density: 1.2, reg: 0.2,  perc: 0.9,  orn: 0.4,  drone: 0.35, descent: 0.95, artic: 0.66, lead: null },
+  peace:    { label: "everyday",  bright: 1,  tempo: 1.06, density: 1.15, reg: 0.35, perc: 0.7,  orn: 0.7,  drone: 0.4,  descent: 0.8,  artic: 0.98,  lead: null },
+  rite:     { label: "rite",      bright: -1, tempo: 0.74, density: 0.8,  reg: 0,    perc: 0.3,  orn: 1.2,  drone: 1,    descent: 1.05, artic: 1.05, lead: "sustain" },
+  war:      { label: "war",       bright: 0,  tempo: 1.3,  density: 1.15, reg: -0.6, perc: 1,    orn: 0.3,  drone: 0.5,  descent: 0.85, artic: 0.8,  lead: "loud" },
+  mourning: { label: "mourning",  bright: -1, tempo: 0.64, density: 0.62,  reg: -0.4, perc: 0.16, orn: 1,    drone: 0.9,  descent: 1.35, artic: 1.1,    lead: "sustain" },
+  festival: { label: "festival",  bright: 1,  tempo: 1.22, density: 1.3,  reg: 0.5,  perc: 1,    orn: 0.7,  drone: 0.35, descent: 0.85, artic: 0.86, lead: null },
+  work:     { label: "work",      bright: 1,  tempo: 1,    density: 1.2, reg: 0.2,  perc: 0.9,  orn: 0.4,  drone: 0.35, descent: 0.95, artic: 0.9, lead: null },
 };
 
 // ── the grid ─────────────────────────────────────────────────────────────
@@ -424,8 +424,13 @@ function layPhrase(music, ph, O, opts) {
     const span = Math.max(0.12, nextB - b);
     const strong = G.w[s] >= 1;
     const mi = degs[i];
+    const last = i === pat.onsets.length - 1;
+    // A phrase LANDS. Its final note is held — that is what makes it sound
+    // finished rather than merely stopped — and everything else runs close to
+    // the next onset so the line is legato rather than a row of blips.
+    const len = last ? span * 1.9 : span * O.artic;
     const e = {
-      b: at + b, dur: span * O.artic, inst, mi, deg: modeDegree(music, mi + fin), oct, role,
+      b: at + b, dur: len, inst, mi, deg: modeDegree(music, mi + fin), oct, role,
       // the melody is the thing being listened to, so it sits on top of the
       // texture the other layers make
       vel: vel * 1.25 * (strong ? 1.15 : G.w[s] >= 0.5 ? 1 : 0.82) * (0.65 + 0.35 * intimacy),
@@ -454,14 +459,8 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
   const bank = phraseBank(music, occ);
   const ph = bank[FORM_ORDER[bar % FORM_ORDER.length]];
   const fin = finalFor(music, occ);
-  const roll = (t) => hash32(music.people.seed, seed >>> 0, bar, t) / 4294967296;
   const ev = [];
 
-  // the bed: a held pedal on the final
-  if (E.drone != null && music.texture.kind !== "monophony" && roll("dr") < O.drone) {
-    ev.push({ b: 0, dur: G.beats, inst: E.drone, deg: modeDegree(music, fin), oct: -1,
-      vel: 0.26 * (0.55 + 0.45 * intimacy), role: "drone" });
-  }
   // the pulse: the same pattern every cycle, thinned by distance
   if (E.pulse != null && O.perc > 0.15) {
     const audible = O.perc * (0.5 + 0.5 * intimacy);
@@ -475,11 +474,23 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed =
     ev.push({ b: 0, dur: 1.2, inst: E.marker, deg: modeDegree(music, fin), oct: -1,
       vel: 0.3 * (0.5 + 0.5 * intimacy), role: "mark", ring: true });
   }
+  // THE PAD. Not a probabilistic drone that is absent two cycles in three:
+  // a continuously sounding bed is the defining move of ambient texture, and
+  // without one a piece is a row of separate events with silence behind them.
+  // Two voices on stable degrees, held past the end of the cycle so the bed
+  // never gaps at the seam.
+  if (E.drone != null && music.texture.kind !== "monophony") {
+    const pads = [0, music.melody.structural[1] ?? 2];
+    pads.forEach((d, i) => {
+      ev.push({ b: 0, dur: G.beats * 1.18, inst: E.drone, deg: modeDegree(music, d + fin), oct: -1 - (i === 0 ? 1 : 0),
+        vel: (0.3 - i * 0.08) * (0.6 + 0.4 * intimacy) * (0.55 + 0.45 * O.drone), role: "pad" });
+    });
+  }
   // the bass: one note per group head, on stable degrees, under everything
   if (E.bass != null && music.texture.size >= 2 && O.drone > 0.3) {
     for (const b of bassLine(music, occ)) {
-      ev.push({ b: slotBeat(G, b.s, R.swing), dur: b.beats * 0.9, inst: E.bass, deg: b.deg, oct: -1,
-        vel: 0.28 * (0.6 + 0.4 * intimacy), role: "bass" });
+      ev.push({ b: slotBeat(G, b.s, R.swing), dur: b.beats * 1.05, inst: E.bass, deg: b.deg, oct: -2,
+        vel: 0.32 * (0.6 + 0.4 * intimacy), role: "bass" });
     }
   }
   // the ostinato: the same short figure every cycle, the layer everything
@@ -538,12 +549,12 @@ export function composePiece(music, occKey = "peace", syls = null) {
         }));
         sylAt += ph.pat.onsets.length;
       }
-      if (E.drone != null && O.drone > 0.4) {
-        ev.push({ b: beat, dur: G.beats, inst: E.drone, deg: modeDegree(music, fin), oct: -1, vel: 0.24, role: "drone" });
+      if (E.drone != null) {
+        ev.push({ b: beat, dur: G.beats * 1.18, inst: E.drone, deg: modeDegree(music, fin), oct: -2, vel: 0.26, role: "pad" });
       }
       if (E.bass != null && music.texture.size >= 2) {
         for (const bl of bassLine(music, occKey)) {
-          ev.push({ b: beat + slotBeat(G, bl.s, R.swing), dur: bl.beats * 0.9, inst: E.bass, deg: bl.deg, oct: -1, vel: 0.28, role: "bass" });
+          ev.push({ b: beat + slotBeat(G, bl.s, R.swing), dur: bl.beats * 1.05, inst: E.bass, deg: bl.deg, oct: -2, vel: 0.32, role: "bass" });
         }
       }
       if (E.ost != null && music.texture.size >= 3) {

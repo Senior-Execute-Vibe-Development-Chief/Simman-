@@ -81,8 +81,13 @@ function fireEvent(m, ev, when, secPerBeat, gain, syls) {
   const inst = m.insts[ev.inst] || m.insts[0];
   if (!inst) return;
   const f = noteFreq(m, ev);
-  // a marker stroke is meant to ring on; everything else a player damps
-  playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, ev.ring ? { damp: false } : undefined);
+  // Each melodic part is a VOICE CHANNEL: a player's free hand stops the note
+  // they are replacing and leaves everything else ringing. A marker stroke
+  // belongs to no channel — its ring is the point.
+  playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, {
+    role: ev.role === "het" ? "het" : ev.role || "lead",
+    channel: ev.ring || ev.role === "pad" ? null : `${m.people.seed}:${ev.role}:${ev.inst}`,
+  });
   // the ornament's pitch comes from the composer, already a MODE step and
   // already placed a subdivision ahead — the Lab never invents an interval
   if (ev.ornDeg != null) {
