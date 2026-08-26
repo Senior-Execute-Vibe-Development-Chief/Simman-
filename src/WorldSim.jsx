@@ -4756,7 +4756,7 @@ return(
 
 
 {/* ─── Bottom-left collapsible legend ─── */}
-{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources")&&
+{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources"||viewMode==="goodsflow")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
   padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
 <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
