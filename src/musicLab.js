@@ -62,9 +62,13 @@ function audio() {
 }
 /** The tonic a people sings at: low for big struck metal, higher for pipes. */
 function tonicOf(m) {
+  // A melody wants to sit where a voice sits. Down at 150-200 Hz a line reads
+  // as a bass part and its intervals blur; the singer's own range is where
+  // pitch is heard most sharply, so the final lands there and the drone sits
+  // a frame below it.
   const lead = m.insts[0];
-  const base = lead && (lead.fam === "gong" || lead.fam === "bell" || lead.fam === "barSet") ? 147 : 196;
-  return base * (m.melody.breathBound ? 1.16 : 1);
+  const base = lead && (lead.fam === "gong" || lead.fam === "bell" || lead.fam === "barSet") ? 262 : 294;
+  return base * (m.melody.breathBound ? 1.12 : 1);
 }
 function noteFreq(m, ev) { return degreeHz(m, tonicOf(m), ev.deg, ev.oct); }
 
@@ -78,20 +82,25 @@ function fireEvent(m, ev, when, secPerBeat, gain, syls) {
   if (!inst) return;
   const f = noteFreq(m, ev);
   playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain);
-  // an ornament is a quick neighbour before the note — the mark of a
-  // tradition with time and sustaining instruments
-  if (ev.orn) {
-    const nb = degreeHz(m, tonicOf(m), ev.deg + 1, ev.oct);
-    playNote(A, inst, nb, Math.max(0, when - 0.075), 0.07, ev.vel * gain * 0.55);
+  // the ornament's pitch comes from the composer, already a MODE step and
+  // already placed a subdivision ahead — the Lab never invents an interval
+  if (ev.ornDeg != null) {
+    const nb = degreeHz(m, tonicOf(m), ev.ornDeg, ev.oct);
+    playNote(A, inst, nb, Math.max(0, when - ev.ornLead * secPerBeat), 0.08, ev.vel * gain * 0.5);
   }
 }
 
 // ── the ambient layer: a lookahead scheduler that never loops ─────────────
-const SCHED = { bar: 0, next: 0, timer: null };
+// One clock PER TRADITION. The first cut advanced a single clock by the
+// longer of the two cycles, which inserted a ragged gap of silence after the
+// shorter one every time round — enough on its own to destroy the pulse.
+const SCHED = { lanes: [], timer: null };
 function startAmbient() {
   const A = audio();
   setDistance(A, S.intimacy);
-  SCHED.bar = 0; SCHED.next = A.ctx.currentTime + 0.12;
+  const t0 = A.ctx.currentTime + 0.12;
+  SCHED.lanes = [{ m: () => P, bar: 0, next: t0, w: () => 1 - S.blend },
+                 { m: () => PB, bar: 0, next: t0, w: () => S.blend }];
   SCHED.timer = setInterval(pump, 110);
   S.playing = true; pump();
 }
@@ -102,21 +111,19 @@ function stopAmbient() {
 function pump() {
   if (!A) return;
   const now = A.ctx.currentTime;
-  while (SCHED.next < now + 0.8) {
-    const wA = 1 - S.blend, wB = S.blend;
-    let dur = 2;
-    // A border settlement's ambience IS an admixture: both peoples' music,
-    // at the population proportions. Nothing crossfades a recording here —
-    // two traditions are generated and sounded together.
-    for (const [m, w] of [[P, wA], [PB, wB]]) {
-      if (w < 0.02) continue;
-      const barPlan = ambientBar(m, { occ: S.occ, intimacy: S.intimacy, bar: SCHED.bar, seed: m.people.seed });
-      const spb = 60 / barPlan.tempo;
-      dur = Math.max(dur, barPlan.beats * spb);
-      for (const ev of barPlan.events) fireEvent(m, ev, SCHED.next + ev.b * spb, spb, ev.vel ? w : w);
+  // A border settlement's ambience IS an admixture: both peoples' music at
+  // the population proportions, each keeping its own tempo and metre.
+  for (const lane of SCHED.lanes) {
+    const m = lane.m();
+    if (!m) continue;
+    while (lane.next < now + 0.8) {
+      const plan = ambientBar(m, { occ: S.occ, intimacy: S.intimacy, bar: lane.bar, seed: m.people.seed });
+      const spb = 60 / plan.tempo;
+      const w = lane.w();
+      if (w >= 0.02) for (const ev of plan.events) fireEvent(m, ev, lane.next + ev.b * spb, spb, w);
+      lane.next += plan.beats * spb;      // exactly one cycle. No gap, ever.
+      lane.bar++;
     }
-    SCHED.next += dur;
-    SCHED.bar++;
   }
 }
 
@@ -687,12 +694,21 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 `;
 
+// Test hook: the headless audio harness renders the very same graph the page
+// plays, so measurements are of the real output and not of a parallel model.
+function exposeForTests() {
+  if (typeof window === "undefined") return;
+  window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
+    makeAudio, setDistance, playNote, playVoice, ambientBar, composePiece, noteFreq, tonicOf, S };
+}
+
 export function mount() {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
   regen();
   render();
+  exposeForTests();
   window.addEventListener("resize", () => redraw());
 }
 if (typeof document !== "undefined") {

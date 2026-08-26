@@ -327,7 +327,11 @@ export function musicOf(people) {
       // a breath-led line arches harder than a string-led one, because the
       // arch IS the breath
       arch: (leadWind || texture.kind === "monophony" ? 0.5 : 0.34) + roll("arch") * 0.22,
-      reach: Math.round(modeIdx.length * (0.85 + roll("rng") * 0.5)),  // compass, in MODE steps
+      // Compass, in MODE steps. Melodies live inside roughly an octave and a
+      // bit — the range a voice covers comfortably and an instrument is built
+      // around. A line free to roam two and a half frames reads as erratic
+      // rather than as a tune.
+      reach: Math.max(3, Math.round(modeIdx.length * (0.7 + roll("rng") * 0.35))),
     },
     cap, pull,
   };

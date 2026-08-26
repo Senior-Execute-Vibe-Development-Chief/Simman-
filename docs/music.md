@@ -134,6 +134,46 @@ Each occasion also carries an **articulation** — how much of its slot a note
 actually sounds for. Short and detached lifts a piece; long and overlapping
 weighs it down.
 
+### The metrical grid, and why music repeats
+
+The first two cuts got pitch right and rhythm wrong, and the result was
+reported — correctly — as having no beat and no melody. Rendering the Lab's
+own audio graph offline and measuring it showed exactly that: **sixty
+scheduled notes produced a hundred and fifty-two audible attacks**, with
+inter-onset intervals scattered from 30 ms to 1.4 s, and a beat
+autocorrelation of **0.24**.
+
+Three causes, all structural:
+
+- **No grid.** Durations were free-floating values that merely summed to the
+  right total, with a swing factor multiplying them afterwards, so onsets
+  landed at arbitrary times. A pulse is something a listener *entrains* to,
+  and entrainment needs a periodic reference to lock onto. Everything now sits
+  on a grid of beats and subdivisions with a **metrical weight** per slot —
+  group heads hardest, beats next, offbeats least — and swing displaces the
+  weak half of a duple beat by a fixed ratio *within* the grid rather than
+  stretching it.
+- **Nothing repeated.** A line freshly improvised every cycle is not a melody,
+  however well-formed each phrase is: there is nothing to recognise the second
+  time. Each people now gets a **phrase bank** built once, stated in a fixed
+  order with returns (statement, repeat, answer, return). The timekeeper's
+  pattern is likewise the same every cycle — that is what a beat *is*.
+- **The scheduler inserted silence.** It advanced one clock by the longer of
+  two traditions' cycles, so the shorter one got a ragged gap every time
+  round. Each tradition now keeps its own clock, which is also what a border
+  actually sounds like.
+
+Smaller faults in the same layer: ornaments were placed 75 ms ahead of a note
+using a raw *scale* step (a microtonal smear, not a decoration) and fired on
+every long weak note; the second heterophonic voice was offset by a fraction
+of a beat, producing a flam on every doubled note; and the melodic compass ran
+to two and a half frames, which reads as erratic rather than as a tune.
+Melodies also sat down at 150–200 Hz, where a line reads as a bass part and
+its intervals blur.
+
+After: **beat autocorrelation 0.71**, inter-onset intervals landing on a clean
+grid, 1.06 notes per beat, and a melodic compass with a median of one frame.
+
 ### Rhythm comes out of the language
 
 A culture's music inherits the durational unevenness of its speech. This is a
