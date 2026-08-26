@@ -97,3 +97,28 @@ step  20000  n 79 · polities 34 (2.3/realm) · parents 12 · leaves 67 (85%) ·
      Pontic         n  10 · fed p50 0.98 · importers 6 · leaf 80%
      W-Europe       n  10 · fed p50 0.63 · importers 2 · leaf 90%
 
+step  22000  n 143 · polities 62 (2.3/realm) · parents 24 · leaves 119 (83%) · importers(isr>.02) 21
+   flow/tick  offers 1.53  levied 0.56  bought 0.12  unbought 0.85  PEER-bought 1.92 · coin-capped parents 1/1 · ΣcoreNeed 59.7 Σsupply 49.6 Σland 72.3
+   fed  leaf p10/50/90 0.01/0.43/0.99  parent 0.06/0.30/0.91 · fedNOW p10/50/90 0.00/0.00/1.00 · importShare p50/p90 0.00/1.00 · spare-coin p50 6.2
+   channels  Σpeople 95173 · urbanShare 0.133 · core p50/p90 6.2/288.8 · fishShare 0.064 · wealth p50 199 · peer-buyers 30 top3share 0.51
+   hungry(<0.85) 112/143:  LEAF 94 · DRY-SURPLUS 18 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 18 · MKT-NOREACH 5 · MKT-NOSELLER 44 · MKT-NOCOIN 14 · MKT-SHORT-bought 4 · MKT-SHORT-idle 9
+     Egypt/Mideast  n  12 · fed p50 0.77 · importers 4 · leaf 83%
+     India          n  37 · fed p50 0.10 · importers 0 · leaf 84%
+     Pontic         n   8 · fed p50 0.44 · importers 2 · leaf 75%
+     W-Europe       n  21 · fed p50 0.92 · importers 10 · leaf 86%
+
+[transHeap] step=22704 cap=2048 peakN=1111 pushes=7231 (0.0MB backing)
+[peopleSim] hearth candidate at (72,71) (-72.0E -16.5N) stood down — the farming package arrived before it was invented
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+step  24000  n 237 · polities 126 (1.9/realm) · parents 38 · leaves 199 (84%) · importers(isr>.02) 56
+   flow/tick  offers 0.35  levied 0.15  bought 0.17  unbought 0.03  PEER-bought 9.25 · coin-capped parents 1/1 · ΣcoreNeed 78.4 Σsupply 89.7 Σland 128.0
+   fed  leaf p10/50/90 0.06/0.46/0.99  parent 0.03/0.60/0.95 · fedNOW p10/50/90 0.00/0.00/1.00 · importShare p50/p90 0.00/1.00 · spare-coin p50 46.7
+   channels  Σpeople 134674 · urbanShare 0.114 · core p50/p90 12.8/215.5 · fishShare 0.108 · wealth p50 303 · peer-buyers 88 top3share 0.47
+   hungry(<0.85) 174/237:  LEAF 148 · DRY-SURPLUS 26 · DRY-HAUL 0 · CAPPED 0 · FED-SHORT 0
+     leaf market stage:  MKT-COVERED 54 · MKT-NOSELLER 27 · MKT-NOCOIN 12 · MKT-SHORT-bought 19 · MKT-SHORT-idle 36
+     Egypt/Mideast  n  17 · fed p50 0.42 · importers 3 · leaf 88%
+     India          n  43 · fed p50 0.31 · importers 11 · leaf 88%
+     Pontic         n   8 · fed p50 0.69 · importers 2 · leaf 75%
+     W-Europe       n  25 · fed p50 0.88 · importers 15 · leaf 80%
+
