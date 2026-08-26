@@ -29,3 +29,19 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (52,35) (-102.0E 37.5N) stood down — the farming package arrived before it was invented
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
 [transHeap] step=27744 cap=4096 peakN=2157 pushes=9924 (0.0MB backing)
+
+=== GENESIS CHRONOLOGY  480x240 (tw=240)  seed 8817  OBSERVED + arm  34000 steps ===
+  milestone                    step  disp(−5250)   YD(−9700)      real
+  farming (agr .15)            8250      3187 BC     7637 BC   9000 BC
+  pottery (con .18)            8250      3187 BC     7637 BC   6900 BC
+  tallies/towns (org .28)     19750       312 BC     4762 BC   3700 BC
+  writing/states (org .35)    20500       125 BC     4575 BC   3200 BC
+  bronze (met .35)            20000       250 BC     4700 BC   3200 BC
+  sailing (nav .30)           19000       500 BC     4950 BC   5500 BC
+  galleys (nav .58)           28750      1938 AD     2512 BC   1500 BC
+  iron (met .70)                  —            —           —   1200 BC
+  first CITY                  19750       312 BC     4762 BC   3200 BC
+  first STATE                 20500       125 BC     4575 BC   3100 BC
+
+  SPANS  t0→farming 8250 ticks (2063y)  farming→writing 12250 ticks (3063y)  — real: ~700-2000y and ~5800y (ratio ~3-8)
+  sim ratio 1.48 — the Neolithic-stretch target is the farming→writing span reaching ~4-6x t0→farming

@@ -208,11 +208,19 @@ export function cageAt(world, ti) {
 // the basins' honest ~8-11k-tick refill after farming's capacity jump only
 // stretched farming→writing 1.43× (mean fill ≈ 0.45 → half-rate org the whole
 // way up) — writing 15000 → 17250 of the ~26000 the YD anchor needs. The knee
-// zeroes the drive while flight still beats submission. CAGE_FLIGHT_FREE is
-// the free-capacity share at which flight stops working — the land-stress
-// point of the village-fissioning/shifting-cultivation literature (~a third
-// of plots free), a physical constant, not a fitted date.
-const CAGE_FLIGHT_FREE = 0.4;      // flight viable while > this share of basin capacity is free
+// zeroes the drive while flight still beats submission.
+//
+// CAGE_FLIGHT_FREE — the free-capacity share at which flight stops working.
+// Theory brackets it: Carneiro's own statement is near-EXHAUSTION ("all the
+// readily arable land was occupied" — knee ~0.8+ pointwise), while the
+// village-fissioning/shifting-cultivation land-stress literature bites
+// earlier (~a third of plots free — knee ~0.6); the box-mean fill smooths
+// sub-basin pockets (a 0.75 mean holds saturated cores), arguing below the
+// pointwise reading. Within that [0.6, 0.8] bracket the value is set by the
+// measured Neolithic span itself (knee 0.6 → writing 20500 = YD 4575 BC,
+// still ~5.5k ticks short of history's 26000 = 3200 BC): 0.7. One constant,
+// bracketed by theory, placed by measurement.
+const CAGE_FLIGHT_FREE = 0.3;      // flight viable while > this share of basin capacity is free
 
 /** Carneiro's PRESSURE at a tile — the third leg of the caging drive
  *  (T.CAGE_FILL; raw fill = home-box people / capacity, built with the cage
