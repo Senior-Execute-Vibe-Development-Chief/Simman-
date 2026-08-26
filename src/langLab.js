@@ -151,7 +151,16 @@ function segmentClip(buf) {
     }
   }
   if (a >= 0 && lastOn - a >= 3) segs.push({ a: a * win, b: (lastOn + 1) * win });
-  return segs.length ? segs : [{ a: 0, b: d.length }];
+  if (!segs.length) segs.push({ a: 0, b: d.length });
+  // per-take loudness: the bank mixes recorders ~18× apart in level, so every
+  // take carries its own RMS + peak and playback normalizes to one target
+  for (const s of segs) {
+    let e = 0, pk = 0;
+    for (let j = s.a; j < s.b; j++) { const v = d[j]; e += v * v; const av = v < 0 ? -v : v; if (av > pk) pk = av; }
+    s.rms = Math.sqrt(e / Math.max(1, s.b - s.a));
+    s.peak = pk;
+  }
+  return segs;
 }
 async function loadClip(sym) {
   for (const cand of clipCandidates(sym)) {
@@ -180,11 +189,14 @@ async function loadClip(sym) {
   }
   return null;
 }
-// play [off, off+dur) of a clip with click-free edges (fast attack so stop
-// bursts keep their pop); returns the scheduled end time
-function playSlice(rec, off, dur, when, vol = 1) {
+// play a take's [start, start+dur) with click-free edges (fast attack so stop
+// bursts keep their pop) and per-take loudness normalization; returns end time
+const TAKE_RMS = 0.09;                        // target level every take plays at
+function playSlice(rec, seg, dur, when, base = 1, pad = 0) {
   const ctx = ac();
   const t = when != null ? when : ctx.currentTime + 0.03;
+  let vol = base * Math.min(8, Math.max(0.35, TAKE_RMS / (seg.rms || TAKE_RMS)));
+  if (seg.peak * vol > 0.92) vol = 0.92 / seg.peak;
   const src = ctx.createBufferSource();
   src.buffer = rec.buf;
   const g = ctx.createGain();
@@ -194,14 +206,14 @@ function playSlice(rec, off, dur, when, vol = 1) {
   g.gain.linearRampToValueAtTime(0.0001, t + dur);
   src.connect(g);
   g.connect(ctx.destination);
-  src.start(t, Math.max(0, off), dur + 0.02);
+  src.start(t, Math.max(0, seg.a / rec.buf.sampleRate - pad), dur + pad + 0.02);
   return t + dur;
 }
 function playClipOr(sym, fallbackPlan) {
   loadClip(sym).then(rec => {
     if (!rec) { if (fallbackPlan) speakPlanTract(fallbackPlan); return; }
     const sr = rec.buf.sampleRate, s0 = rec.segs[0];
-    playSlice(rec, s0.a / sr - 0.02, Math.min(1.4, (s0.b - s0.a) / sr + 0.03));
+    playSlice(rec, s0, Math.min(1.4, (s0.b - s0.a) / sr + 0.02), undefined, 1, 0.02);
     window.__lastClipPlayed = sym;             // headless-check breadcrumb
   });
 }
@@ -213,13 +225,16 @@ function playClipOr(sym, fallbackPlan) {
 // Tone/pitch is NOT reproduced (the recordings are monotone); stress shows
 // as length. Unrecorded phones are skipped; an all-miss word falls back to
 // the tract.
-const BURST_M = new Set([0, 3, 7]);
+const BURST_M = new Set([0, 7]);
 function sliceSpec(rec, seg, isVowel, stressed) {
   const sr = rec.buf.sampleRate, s0 = rec.segs[0];
   const len = (s0.b - s0.a) / sr;
+  // stops/clicks keep only the release (the take's own vowel would smear the
+  // next one — "p"+"i" must read pi, not pa-i); affricates keep their
+  // frication tail; continuants and vowels a capped steady span
   const cap = isVowel ? (seg.lg ? 0.3 : 0.18) * (stressed ? 1.3 : 1)
-    : BURST_M.has(seg.m) ? 0.13 : 0.17;
-  return { off: s0.a / sr, dur: Math.min(cap, len) };
+    : BURST_M.has(seg.m) ? 0.075 : seg.m === 3 ? 0.12 : 0.15;
+  return { seg: s0, dur: Math.min(cap, len) };
 }
 async function humanWordSchedule(plan, when) {
   const parts = [];
@@ -236,7 +251,7 @@ async function humanWordSchedule(plan, when) {
     const rec = recs[k];
     if (!rec) return;
     const sp = sliceSpec(rec, p.seg, p.v, p.stressed);
-    playSlice(rec, sp.off, sp.dur, t, p.v ? 1 : 0.9);
+    playSlice(rec, sp.seg, sp.dur, t);
     t += Math.max(0.03, sp.dur - 0.012);              // slight crossfade overlap
     played++;
   });
