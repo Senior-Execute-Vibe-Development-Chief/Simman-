@@ -58,14 +58,21 @@ function measureCand(c) {
   const F = estimateFormants(x, SR, 0.45).filter(f => f >= 180);
   return F.length >= 2 ? F : null;
 }
-// log-formant error with free per-vowel scale (VTL normalization)
+// log-formant error with a per-vowel VTL scale k — but ANCHORED to the
+// recording's own pitch. A free k∈[0.8,1.3] spans a 1.6× ratio, wider than
+// many vowel distinctions: five mid/open qualities collapsed onto one
+// posture with k absorbing the difference. The recorder's F0 says roughly
+// how their tract compares to our 105 Hz male tube, so k gets a narrow
+// window: male-pitched ≈ our scale, high-pitched shrinks toward it.
 const W = [1, 1, 0.35];
-function fitErr(Ft, Fh) {
+const kRange = (f0) => (f0 >= 180 ? [0.78, 0.98] : f0 >= 140 ? [0.85, 1.05] : [0.95, 1.1]);
+function fitErr(Ft, Fh, f0) {
   const n = Math.min(Ft.length, Fh.length, 3);
   if (n < 2) return { err: 1e9, k: 1 };
+  const [kLo, kHi] = kRange(f0 || 120);
   let num = 0, den = 0;
   for (let i = 0; i < n; i++) { num += W[i] * Math.log(Ft[i] / Fh[i]); den += W[i]; }
-  const k = Math.min(1.3, Math.max(0.8, Math.exp(num / den)));
+  const k = Math.min(kHi, Math.max(kLo, Math.exp(num / den)));
   let err = 0;
   for (let i = 0; i < n; i++) { const d = Math.log(Ft[i]) - Math.log(k * Fh[i]); err += W[i] * d * d; }
   return { err, k };
@@ -83,7 +90,7 @@ if (VERIFY) {
   let sum = 0, n = 0, worst = null;
   for (const v of vowels) {
     const Ft = measureMapping({ h: v.h, b: v.b, r: v.r, atr: v.atr, n: 0, lg: 0, ph: 0 });
-    const { err, k } = fitErr(Ft, v.F);
+    const { err, k } = fitErr(Ft, v.F, v.f0);
     sum += err; n++;
     if (!worst || err > worst.err) worst = { sym: v.sym, err };
     console.log(`  [${v.sym}]  human=[${v.F.join(" ")}]  tract=[${Ft.slice(0, 3).map(Math.round).join(" ")}]  k=${k.toFixed(2)}  err=${err.toFixed(3)}`);
@@ -103,7 +110,7 @@ function fitVowel(v) {
   const consider = (c) => {
     const Ft = measureCand(c);
     if (!Ft) return;
-    const { err, k } = fitErr(Ft, Fh);
+    const { err, k } = fitErr(Ft, Fh, v.f0);
     if (!best || err < best.err) best = { ...c, err, k, Ft: Ft.slice(0, 3).map(Math.round) };
   };
   const lips = v.r ? [0.45, 0.7, 0.95] : [0, 0.2];
@@ -124,7 +131,7 @@ function fitVowel(v) {
 const cal = {};
 let sumB = 0, sumA = 0, n = 0;
 for (const v of vowels) {
-  const before = fitErr(measureMapping({ h: v.h, b: v.b, r: v.r, atr: v.atr, n: 0, lg: 0, ph: 0 }), v.F).err;
+  const before = fitErr(measureMapping({ h: v.h, b: v.b, r: v.r, atr: v.atr, n: 0, lg: 0, ph: 0 }), v.F, v.f0).err;
   const best = fitVowel(v);
   cal[`${v.h},${v.b},${v.r},${v.atr}`] = {
     ti: +best.ti.toFixed(1), td: +best.td.toFixed(2), lip: +best.lip.toFixed(2), cd: best.cd,
