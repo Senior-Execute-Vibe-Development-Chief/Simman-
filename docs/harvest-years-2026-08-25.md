@@ -444,3 +444,38 @@ lever-off A/B — that twin costs hours; this is the standing
 third-cardinal-rule arm.) lnσ now sits slightly ABOVE the historical band —
 driven by mem=0 relic micro-states (1-6k km²) coexisting with the hegemon —
 a note for the consolidation wave, not this one.
+
+## THE PROVISIONING LAP (2026-08-26, SAVE_VERSION 48) — the annona
+
+The owner's Renaissance report closed the loop: "all cities have currency,
+income, bank credit, kilos of gold — most still sit at 12k buying almost no
+food, but the only 3 metropolises ARE importing LOTS." THE SELF-SUFFICIENCY
+TRAP: the v46 founding law births every city locally fed → deficit ≈ 0 → the
+v47 deficit-only market buys nothing → no import fuel → pinned at the
+founding minimum with a full treasury; only cores that outgrew their land
+(the metropolises) ever enter the import→grow loop. A world where every
+region exactly feeds itself has zero food trade — history broke the symmetry
+with DEMAND AHEAD OF NEED (the annona bought to fill warehouses).
+
+**T.GRAIN_PROVISION (def 1, v<48 guard)**: a coined city's market need =
+deficit + min(granary space, demand) — refill at the pace of its own mouths
+(standing flow over ~cap/demand ticks, never a coin-powered one-tick spike).
+The refill integrates into s.food through the existing granary line and
+lifts foodK while it flows: capacity rises, the field migrates people in,
+demand grows into the new supply — the bootstrap, bounded by coin, seed-corn
+residuals, haul physics and storageCap. Zero new constants.
+
+Battery: smoke; stylized 777/8817/4242 at 0/0/1 warnings (777 at 20 alive —
+its no-mechanism epsilon band); resgate all bands (identical numbers to
+v47's run); hashbase pair unchanged (coinage-gate transparency). REFERENDUM
+(obs-240 30k A/B vs v47): **peer-buyers 272 of 482** (over half the register
+vs the whale pattern), **top3 share 0.16 — crowding-out refuted**, peer
+grain 12.3→20.8/tick, fedNOW p50 0.99, Egypt box fed 0.24→0.58 with half
+its cities importing. Core sizes unchanged at that horizon — the capacity
+bootstrap is generational; the owner's deep world is its referee.
+
+Same lap, the observability half: **the Goods-flow overlay** (Economy →
+"Goods") — animated per-kind cargo streams (grain split levy vs market,
+materials/ore/metal/cloth/wares/luxury), per-kind normalization,
+resource-style toggle chips; recorders render-only behind
+world._wantGoodsFlows.
