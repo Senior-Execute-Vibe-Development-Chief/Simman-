@@ -20,7 +20,7 @@ import { tel, telPass } from "./telemetry.js";
 import { resScaleFor } from "./countryTerritory.js";
 import { techEff, URBAN_BASE_RURAL, recordCaptives } from "./settlement.js";
 import { slavePull } from "./slavery.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee, absorbOrgBar, SUBMIT_REACH } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP, bendTheKnee, absorbOrgBarFor, SUBMIT_REACH } from "./conquest.js";
 import { ridgeHoldAt, refugeHoldAt, RIVER_DEF_W, RIVER_DEF_ENG, ALPINE_DEF_BASE, ALPINE_DEF_SLOPE, ALPINE_DEF_ENG, TERRAIN_DEF_CAP } from "./transport.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
@@ -2272,7 +2272,7 @@ export function advanceFronts(world) {
           // lever 0 (no bar read, no submission — byte-identical).
           const _vOrg = attCrec && attCrec.capital ? (techEff(attCrec.capital).reachLevel || 0) : 0;
           const _tribute = T.WAR_FINISH && defWasCapital && oldId >= 0
-            && _vOrg < absorbOrgBar(world, world.countries)
+            && _vOrg < absorbOrgBarFor(world, world.countries, dS)
             && bendTheKnee(world, oldId, acc, "sackedIntoTribute");
           if (_tribute) {
             tel(world, "storm", "sackYieldsTribute");
