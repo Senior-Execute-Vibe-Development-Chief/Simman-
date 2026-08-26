@@ -2096,6 +2096,11 @@ function updateKnowledge(world, s) {
     needMat   = 1 + T.INDUCED_INNOV * Math.max(0, gp[G_MATERIALS] - 1);
     needMetal = 1 + T.INDUCED_INNOV * Math.max(0, gp[G_METAL] - 1);
   }
+  // Probe-only learning-rate decomposition (tools/probe_eraskew.mjs installs
+  // world._kDbg; the sim never does — zero cost otherwise). sciMul here is the
+  // final composite (compound/stagnation applied above); the need terms are
+  // re-derivable from s._gPrice but stashed for one-stop reading.
+  if (world._kDbg) { s._dbgSciMul = sciMul; s._dbgNeedAgri = needAgri; s._dbgNeedMetal = needMetal; }
 
   // ── Heritable aptitude: selection ratchet ────────────────────────────
   // Under a mild-summer/harsh-winter/reliable-growing-season climate the
@@ -2314,6 +2319,7 @@ function updateKnowledge(world, s) {
     // carrying trade is fully sea-borne learns at up to x(1+lever); an
     // inland-facing beach town at x1. Venice and Athens, not every beach.
     const fleet = 1 + T.SEA_PRACTICE * Math.min(1, s._seaShare || 0);
+    if (world._kDbg) { s._dbgNeedSea = needSea; s._dbgFleet = fleet; }
     k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.9 * sciMul * (1 - k.navigation)
       * (0.5 + 0.5 * wa) * needSea * fleet * (1 + k.construction * 0.6 + sciSqrt * 0.04));
   }
