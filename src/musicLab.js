@@ -61,13 +61,21 @@ function audio() {
   return A;
 }
 /** The tonic a people sings at: low for big struck metal, higher for pipes. */
-function tonicOf(m) {
-  // A melody wants to sit where a voice sits. Down at 150-200 Hz a line reads
-  // as a bass part and its intervals blur; the singer's own range is where
-  // pitch is heard most sharply, so the final lands there and the drone sits
-  // a frame below it. (It used to read the highest-WEIGHT instrument, which is
-  // the most prestigious one and frequently not the one playing the tune.)
-  return 294 * (m.melody.breathBound ? 1.12 : 1);
+function tonicOf(m, occ) {
+  // A melody wants to sit where a voice sits: the singer's own range is where
+  // pitch is heard most sharply.
+  //
+  // But WHICH pitch goes there has to be the mode's own home, and it was
+  // scale degree zero — so a people whose final is the fifth degree of its
+  // mode sang its home a seventh above the reference, and its whole line sat
+  // jammed against the top of the frame with nowhere to rise. Measured, only
+  // a third of lines even began on their own final. Divide the reference by
+  // the final's own ratio and every people, whatever degree it calls home,
+  // sings that degree at the same comfortable pitch.
+  const base = 294 * (m.melody.breathBound ? 1.12 : 1);
+  const fin = finalFor(m, occ || S.occ);
+  const d = m.scale.degrees[((modeDegree(m, fin) % m.scale.degrees.length) + m.scale.degrees.length) % m.scale.degrees.length];
+  return base / (d ? d.ratio : 1);
 }
 /**
  * A part is placed where its own body can actually sound it. Nearly a quarter

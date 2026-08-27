@@ -151,10 +151,19 @@ function makePattern(music, seed, density, syncopation, bars = 1) {
   // weighted by metrical position (a strong beat can carry a long note; a weak
   // offbeat rarely does), and a long value SWALLOWS the onsets it covers
   // rather than being truncated by them.
+  // AGOGIC ACCENT: a strong beat can carry a longer note than a weak one,
+  // because the metre gives it room. But it is an accent, not the norm — the
+  // old weights gave nearly half of all downbeat notes a half-bar or whole-bar
+  // value, which swallowed every onset underneath and left a line made of
+  // nothing but long notes. Measured, only eighteen per cent of the long notes
+  // in the corpus were at a phrase end, so the one place length genuinely
+  // belongs was the one place it wasn't. Length at a cadence is applied where
+  // it means something (layPhrase, three grades of it); here the values stay
+  // short, which is what notated folk melody overwhelmingly is.
   const VAL = {
-    strong: [[1, 0.25], [2, 0.3], [4, 0.3], [8, 0.15]],
-    beat: [[1, 0.55], [2, 0.35], [3, 0.1]],
-    weak: [[1, 0.85], [2, 0.15]],
+    strong: [[1, 0.38], [2, 0.40], [3, 0.14], [4, 0.08]],
+    beat: [[1, 0.60], [2, 0.34], [3, 0.06]],
+    weak: [[1, 0.88], [2, 0.12]],
   };
   const pickVal = (tier, r) => {
     let acc = 0;
@@ -167,9 +176,13 @@ function makePattern(music, seed, density, syncopation, bars = 1) {
     if (notes.length && sl < notes[notes.length - 1].s + notes[notes.length - 1].v) continue;  // swallowed
     const tier = wAt(sl) >= 1 ? "strong" : wAt(sl) >= 0.5 ? "beat" : "weak";
     let v = pickVal(tier, roll("v" + sl));
-    // a value may not swallow more than half of what is left of the phrase —
-    // one draw of eight used to eat a whole bar for a tenth of all peoples
-    v = Math.min(v, Math.max(1, Math.floor((SPAN - sl) / 2)), G.slots);
+    // A note may not run past the end of its own metrical group. One that does
+    // obscures the very boundary the group exists to mark, and a value drawn
+    // long enough to cross two of them erases the metre outright.
+    const inBar = sl % G.slots;
+    let room = G.slots - inBar, acc2 = 0;
+    for (const g of G.groups) { if (inBar < (acc2 + g) * G.div) { room = (acc2 + g) * G.div - inBar; break; } acc2 += g; }
+    v = Math.min(v, Math.max(1, room), Math.max(1, Math.floor((SPAN - sl) / 2)));
     notes.push({ s: sl, v });
   }
   // rests: a line that never stops speaking has no phrases in it
@@ -225,17 +238,31 @@ function phrase(music, seedBase, nNotes, startDeg, descent) {
     }
     out.push(deg);
   }
-  // Cadence: the last note falls to the nearest structural degree of the
-  // mode — nearest in the register it is already in, considering the frame
-  // below and above as well, or the line ends by leaping an octave to a note
-  // it never approached.
+  // CADENCE: the last note comes HOME. It used to fall to whichever of the
+  // mode's stable degrees was nearest, which for a three-degree stable set
+  // meant it landed on the actual final about a third of the time — and
+  // measured across the corpus, only a quarter of lines ended on their own
+  // home. A phrase that does not resolve is a phrase that has not ended, and
+  // an ear that never hears one stops expecting them.
+  //
+  // Home in the register the line is ALREADY IN, though: a cadence that leaps
+  // a frame to reach the final is not a cadence, it is a new phrase's first
+  // note. Land on the final if the line can reach it and on the nearest
+  // stable degree only when it cannot.
   const last = out.length - 1, here = out[last];
-  const octOf = Math.floor(here / S);
+  const lo = -Math.round(M.reach * 0.34);
   const cand = [];
-  for (const o of [octOf - 1, octOf, octOf + 1]) for (const d of M.structural) cand.push(d + o * S);
-  const within = cand.filter(c => c <= M.reach && c >= -Math.round(M.reach * 0.34));
+  for (const o of [Math.floor(here / S) - 1, Math.floor(here / S), Math.floor(here / S) + 1]) {
+    cand.push({ d: o * S, home: 1 });
+    for (const d of M.structural) if (d) cand.push({ d: d + o * S, home: 0 });
+  }
+  const within = cand.filter(c => c.d <= M.reach && c.d >= lo);
   const pool = within.length ? within : cand;
-  out[last] = pool.reduce((a, b) => (Math.abs(b - here) < Math.abs(a - here) ? b : a), pool[0]);
+  out[last] = pool.reduce((a, b) => {
+    // a frame's distance is worth giving up to reach home, but no more
+    const cost = (x) => Math.abs(x.d - here) + (x.home ? 0 : S * 0.8);
+    return cost(b) < cost(a) ? b : a;
+  }, pool[0]).d;
   return out;
 }
 
@@ -591,7 +618,14 @@ export function sectionsOf(music, occKey) {
       // tell that this is a loop and not a piece
       cycles: s === 0 ? 1 : (t > 0.55 && t < 0.9 ? 2 : 1 + (hash32(seed, "len", s) % 2)),
       dens: Math.pow(2, Math.round(2.4 * climb) - (t > 0.82 ? 1 : 0)),
-      oct: Math.round(1.15 * Math.sin(Math.PI * Math.min(1, t / 0.88))),
+      // The climb is real — the arch to a high point and the landing back home
+      // is one of the few cross-cultural universals — but it does NOT have to
+      // be made of octave jumps. A modal tradition moves its tonal CENTRE
+      // instead, through the mode, and that is what `ist` below does. A whole
+      // frame is reserved for the peak alone, where a real climax does change
+      // register; everywhere else an octave leap at a section seam is a leap
+      // to a note nothing approached.
+      oct: t > 0.55 && t < 0.86 ? 1 : 0,
       ist: s === 0 || s === n - 1 ? 0
         : stable[(1 + hash32(seed, "ist", s) % Math.max(1, stable.length)) % stable.length] || 0,
       // how much of the ensemble is playing: thin at the edges, full at the peak

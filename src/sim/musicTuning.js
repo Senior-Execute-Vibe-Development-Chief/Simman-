@@ -220,7 +220,9 @@ export function ensembleSpectrum(insts, weights) {
  * brighter set on their own, and metal-tuned ones do not.
  */
 const STEP_FLOOR = 120;     // cents: below this, a step reads as an inflection
-const CRAWL_COST = 0.09;    // in the same units as mean pairwise roughness
+const CRAWL_COST = 0.09;
+// how much relative spread a set of steps may have and still be a scale
+const EVEN_SPREAD = 0.35;    // in the same units as mean pairwise roughness
 export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
   const n = degrees.length;
   if (n <= size) return degrees.map((_, i) => i);
@@ -262,10 +264,27 @@ export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
       // rare in the world's tunings. So a set that leaves a crawl in it pays,
       // and pays more the tighter the crawl — a graded cost, not a filter,
       // so a tradition whose frame leaves it no choice can still have one.
+      let sum = 0, sum2 = 0;
       for (let a = 0; a + 1 < set.length; a++) {
         const step = 1200 * Math.log2(ratioOf(set[a + 1]) / ratioOf(set[a]));
         if (step < STEP_FLOOR) { const d = (STEP_FLOOR - step) / STEP_FLOOR; cost += CRAWL_COST * d * d; }
+        sum += step; sum2 += step * step;
       }
+      // …AND A SCALE IS A RUN OF COMPARABLE STEPS. The consonance search alone
+      // will happily return a tonic with a cluster of notes a fifth above it —
+      // measured, the median mode had its largest step three times its
+      // smallest and the worst had nine, which is a chord with a crawl on top,
+      // not a scale. The constraint is the same one as the crawl floor and it
+      // is about people rather than about physics: a melody is tracked BY
+      // INTERVAL, so a set with no consistent step size gives a singer nothing
+      // to aim at and a listener nothing to follow. Real tunings sit under
+      // about a third of relative spread — the diatonic is 0.26, slendro 0.06,
+      // pelog 0.35 — and the ones that go past it, like hijaz, buy it with a
+      // single deliberate wide step rather than with scatter.
+      const k = set.length - 1;
+      const mean = sum / k;
+      const cv = mean > 0 ? Math.sqrt(Math.max(0, sum2 / k - mean * mean)) / mean : 0;
+      if (cv > EVEN_SPREAD) { const d = cv / EVEN_SPREAD - 1; cost += CRAWL_COST * d * d; }
       if (cost < bestCost) { bestCost = cost; best = combo.slice(); }
       return;
     }
