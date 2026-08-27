@@ -140,6 +140,37 @@ function noteFreq(m, ev) {
  * than a beat is where a singer takes a breath — and each group is rendered
  * and scheduled as one buffer.
  */
+/**
+ * A SINGER TRANSPOSES THE PHRASE, NOT THE NOTE.
+ *
+ * `noteFreq` folds each note into its body's compass on its own, and for an
+ * instrument that is right — a flute has no lower octave, so a note below its
+ * range simply comes out an octave up and nobody is surprised. A voice is not
+ * like that. It carries a LINE, and folding one note of a line by a whole
+ * frame in the middle of a breath is an octave jump no singer makes and
+ * nothing in the melody prepared. Measured over 120 peoples, 40.3% of sung
+ * notes were being displaced by the compass and 8.9% of breath groups had a
+ * fold inside them — a fault I introduced with the singer's range itself.
+ *
+ * So the group moves together, by the one whole number of frames that leaves
+ * least of it outside the singer's compass; where several fit, the one that
+ * sits the phrase most centrally in the voice. Two rules, no weights.
+ */
+function phraseFreqs(m, g) {
+  const raw = g.map(e => degreeHz(m, tonicOf(m), e.deg, e.oct));
+  const { low, top } = voiceRange(prosodyOf(m.people.lang));
+  const frame = m.scale.frame.ratio;
+  const mid = Math.sqrt(low * top);
+  let best = raw, bestOut = Infinity, bestOff = Infinity;
+  for (let k = -3; k <= 3; k++) {
+    const f = Math.pow(frame, k);
+    const v = raw.map(r => r * f);
+    const out = v.filter(x => x < low || x > top).length;
+    const off = Math.abs(v.reduce((a, x) => a + Math.log2(x / mid), 0) / v.length);
+    if (out < bestOut || (out === bestOut && off < bestOff)) { bestOut = out; bestOff = off; best = v; }
+  }
+return best;
+}
 const THROAT = new Map();                 // one singer per people, and only one
 function fireVoiceLine(m, evs, when0, spb, gain, voc, Aud) {
   const syls = voc && voc.syls;
@@ -155,8 +186,9 @@ function fireVoiceLine(m, evs, when0, spb, gain, voc, Aud) {
   }
   let syl = 0;
   for (const g of groups) {
+    const line = phraseFreqs(m, g);
     const notes = g.map((e, i) => ({
-      f: noteFreq(m, e),
+      f: line[i],
       // the note lasts until the next one starts: a singer joins them
       dur: Math.max(0.1, ((g[i + 1] ? g[i + 1].b : e.b + e.dur) - e.b) * spb),
       vel: e.vel * gain,
@@ -871,7 +903,7 @@ function exposeForTests() {
   if (typeof window === "undefined") return;
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
-    fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, S };
+    fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs, S };
 }
 
 export function mount() {

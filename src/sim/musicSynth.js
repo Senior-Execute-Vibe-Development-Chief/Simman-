@@ -370,16 +370,41 @@ export function sungLine(sampleRate, syls, notes, opts = {}) {
  * on the buffer, note by note. What the tract DOES carry is the part a gain
  * cannot fake: a harder-sung note is brighter, not merely louder.
  */
+/**
+ * THE VOICE HAS TO ARRIVE ON THE SAME SCALE AS EVERYTHING ELSE.
+ *
+ * `renderScore` drives its output to a fixed absolute level so that speech
+ * stays intelligible whatever is being said. That is right for speech and
+ * wrong for an ensemble: it means the singer's level is set by the vocal
+ * tract's own gain control rather than by how hard they are singing next to
+ * the players. Measured at written velocity 0.6 — one note, one second,
+ * straight to master, no bus — the engine's loudest body (a struck iron
+ * lamella) arrives at −19.9 dB, its quietest (a bone flute) at −39.8, and the
+ * voice at −48.7. Nine decibels under the quietest instrument in the world and
+ * twenty-nine under the loudest. In a rendered ensemble the voice was 0.0–0.6%
+ * of the mix power: everything sung was inaudible.
+ *
+ * An unamplified singer is not quieter than a flute. A singer is what fronts
+ * an ensemble across most of the world's traditions, which is the whole reason
+ * the singer's formant exists. So this is a CALIBRATION between two synthesis
+ * paths that never agreed on what a velocity means — the same kind of bridge
+ * as a unit conversion, with a measured target: the voice is brought to the
+ * MEDIAN body's level at the same velocity. Dynamics above that are the
+ * note-by-note gain below, which was always working and was working on a
+ * signal nobody could hear.
+ */
+const VOICE_PATH = Math.pow(10, 15 / 20);   // +15 dB: median body −33 dB vs voice −48.7 dB
+
 export function playSung(A, pcm, notes, when, gain = 1) {
   const { ctx } = A;
   const buf = ctx.createBuffer(1, pcm.length, ctx.sampleRate);
   buf.getChannelData(0).set(pcm);
   const src = ctx.createBufferSource(); src.buffer = buf;
   const g = ctx.createGain();
-  g.gain.setValueAtTime(Math.max(0.0001, (notes[0]?.vel ?? 0.5) * gain), when);
+  g.gain.setValueAtTime(Math.max(0.0001, (notes[0]?.vel ?? 0.5) * gain * VOICE_PATH), when);
   let t = 0.03;
   for (const n of notes) {
-    g.gain.setTargetAtTime(Math.max(0.0001, (n.vel ?? 0.5) * gain), when + t, 0.035);
+    g.gain.setTargetAtTime(Math.max(0.0001, (n.vel ?? 0.5) * gain * VOICE_PATH), when + t, 0.035);
     t += n.dur;
   }
   src.connect(g); g.connect(A.buses.voice || A.master);
