@@ -37,3 +37,17 @@
     histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
     SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
     [261s]
+
+=== step 16000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [347s]
+[peopleSim] AGRICULTURE INVENTED at (784,145) (114.0E 35.6N) — the basin farms; a city will rise when its market gathers one (score 5.43)
+[peopleSim] AGRICULTURE INVENTED at (456,195) (-9.0E 16.9N) — the basin farms; a city will rise when its market gathers one (score 3.75)
+
+=== step 20000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [439s]
