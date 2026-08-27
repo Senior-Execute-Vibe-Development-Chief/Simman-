@@ -190,11 +190,26 @@ function makePattern(music, seed, density, syncopation, bars = 1) {
   return { grid: G, span: SPAN, bars, onsets: rested.map(n => n.s), notes: rested };
 }
 
+/** Where a mode index sits in pitch, frames and all. */
+function modeCentsAt(music, mi) {
+  const L = music.mode.size, frame = music.scale.frame.cents;
+  const w = Math.floor(mi / L);
+  return music.mode.cents[((mi % L) + L) % L] + w * frame;
+}
+/** The mode's own typical step — the unit a singer of it aims in. */
+function medianStep(music) {
+  if (music._medStep) return music._medStep;
+  const st = music.mode.steps.filter(x => x > 0).sort((a, b) => a - b);
+  music._medStep = st.length ? st[st.length >> 1] : 200;
+  return music._medStep;
+}
+
 // ── the melodic line ─────────────────────────────────────────────────────
 // A phrase is a walk over the MODE that arches away from where it started and
 // comes back to land on a structural degree.
-function phrase(music, seedBase, nNotes, startDeg, descent) {
+function walkLine(music, seedBase, nNotes, startDeg, descent, land = true) {
   const M = music.melody, S = music.mode.size;
+  const med = medianStep(music);
   const roll = (i, t) => hash32(seedBase >>> 0, i, t) / 4294967296;
   const out = [];
   let deg = startDeg, prevIv = 0;
@@ -218,10 +233,18 @@ function phrase(music, seedBase, nNotes, startDeg, descent) {
       //     opened (Meyer's gap-fill).
       // A random walk has neither property, which is why it sounds arbitrary
       // however consonant its pitches are.
+      // PROXIMITY IS IN PITCH, NOT IN DEGREES. A singer aims by ear, and one
+      // degree of a mode is 90 cents in one place and 350 in another — so
+      // measuring nearness by how many degrees a step crosses makes every mode
+      // move the same way, and it did: two seven-note traditions on the same
+      // metre came back with the identical contour. Measured against the
+      // mode's own median step, a mode with a gap in it moves round the gap.
       const w = [];
       let tot = 0;
+      const c0 = modeCentsAt(music, deg);
       for (const d of CAND) {
-        let v = Math.exp(-Math.abs(d) / 1.55) * (d > 0 ? pUp : 1 - pUp) * (Math.abs(d) === 1 ? M.step * 1.6 : 1);
+        const dc = Math.abs(modeCentsAt(music, deg + d) - c0);
+        let v = Math.exp(-dc / (1.4 * med)) * (d > 0 ? pUp : 1 - pUp) * (Math.abs(d) === 1 ? M.step * 1.6 : 1);
         if (Math.abs(prevIv) >= 3) {
           v *= Math.sign(d) !== Math.sign(prevIv) ? 3 : 0.2;   // reversal after a leap
           v *= Math.abs(d) <= 2 ? 1.8 : 0.3;                   // …filling the gap stepwise
@@ -249,6 +272,7 @@ function phrase(music, seedBase, nNotes, startDeg, descent) {
   // a frame to reach the final is not a cadence, it is a new phrase's first
   // note. Land on the final if the line can reach it and on the nearest
   // stable degree only when it cannot.
+  if (!land) return out;
   const last = out.length - 1, here = out[last];
   const lo = -Math.round(M.reach * 0.34);
   const cand = [];
@@ -264,6 +288,442 @@ function phrase(music, seedBase, nNotes, startDeg, descent) {
     return cost(b) < cost(a) ? b : a;
   }, pool[0]).d;
   return out;
+}
+
+// ── the characteristic figure, and building a line out of it ──────────────
+/**
+ * A MELODY IS NOT A GOOD WALK. Everything above this line makes each STEP
+ * plausible — Narmour's implication–realization gets the local statistics of
+ * real melody right, and the arch bends the whole thing like a breath. Measured
+ * over the corpus, it works: three-quarters of interval transitions satisfy
+ * the model. And the result is still wallpaper, for a reason the step-by-step
+ * view cannot see.
+ *
+ * The measurement that showed it: count how many of a phrase's three-note
+ * figures are DISTINCT from each other. Across five real traditions and sixty
+ * derived peoples the answer was 86–100%. Every figure in the tune was new.
+ * A listener has nothing to hold on to and nothing to hum back, however
+ * idiomatic each individual step is, because a tune is not a sequence of good
+ * steps — it is a small number of figures, turned over.
+ *
+ * Selection alone cannot fix that. A walk over eight candidate steps will
+ * essentially never repeat a figure by accident, so searching for economy in
+ * walked lines searches an empty space. The figures have to be there BY
+ * CONSTRUCTION: draw one cell, then state it, sequence it, invert it, break
+ * it up, and answer it. That is what a sentence and a period are, it is what
+ * every rule-based composer since the 1980s does, and it is why the
+ * transformation machinery already in this file (which only ever operated on
+ * whole phrases) belongs one level down, INSIDE the phrase.
+ */
+
+/** Onsets grouped at the metre's own boundaries. A cell fills a group, so a
+ *  restated cell lands on the same metrical positions — which is the whole
+ *  reason a restatement is heard as one rather than as new material. */
+function cellsOf(pat, want = 2) {
+  const G = pat.grid, bounds = [];
+  for (let b = 0; b < pat.bars; b++) {
+    let acc = 0;
+    for (const g of G.groups) { bounds.push(b * G.slots + acc * G.div); acc += g; }
+  }
+  bounds.push(pat.span);
+  const raw = [];
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    const ix = [];
+    for (let j = 0; j < pat.onsets.length; j++) {
+      if (pat.onsets[j] >= bounds[i] && pat.onsets[j] < bounds[i + 1]) ix.push(j);
+    }
+    if (ix.length) raw.push(ix);
+  }
+  // A FIGURE NEEDS ROOM. At the metre's own division a group may hold one
+  // onset, and a one-note cell has no shape in it to restate — so groups pack
+  // together until a cell can carry the figure. That floor is not a tuning
+  // choice: it is what a figure IS, and without it the germ was being cut down
+  // to a single interval and the line came out as unrelated as before.
+  const n = pat.onsets.length;
+  const target = Math.max(2, Math.min(want, Math.floor(n / 2)));
+  const out = [];
+  for (const ix of raw) {
+    if (out.length && out[out.length - 1].length < target) {
+      out[out.length - 1] = out[out.length - 1].concat(ix);
+    } else out.push(ix.slice());
+  }
+  while (out.length > 2 && out[out.length - 1].length < target) {
+    const t = out.pop();
+    out[out.length - 1] = out[out.length - 1].concat(t);
+  }
+  // …AND A CELL IS NOT A BAR EITHER. Where the metre's groups are long — a
+  // sixteen-beat cycle in two halves — a cell held twice the figure or more,
+  // and the only way to fill it was to run the figure round and round: the
+  // four-note descent came back as a twelve-note descending scale. A figure
+  // spun out past about twice its own length stops being heard as that figure,
+  // so a long group carries several cells rather than one long one.
+  const split = [];
+  for (const ix of out) {
+    if (ix.length <= target * 2) { split.push(ix); continue; }
+    const parts = Math.round(ix.length / target);
+    for (let i = 0; i < parts; i++) {
+      const a = Math.round(i * ix.length / parts), b = Math.round((i + 1) * ix.length / parts);
+      if (b > a) split.push(ix.slice(a, b));
+    }
+  }
+  out.length = 0;
+  for (const ix of split) out.push(ix);
+  // a phrase in one group has nothing to answer; halve it so it can answer
+  // itself, which is what a metre with no internal division leaves you
+  if (out.length < 2 && n >= 4) {
+    const all = pat.onsets.map((_, j) => j), h = Math.ceil(all.length / 2);
+    return [all.slice(0, h), all.slice(h)];
+  }
+  return out.length ? out : [pat.onsets.map((_, j) => j)];
+}
+
+/** A figure's shape is its intervals, so it can be laid over any number of
+ *  notes: cut short, or spun out by coming round again. */
+const fitIv = (iv, want) => (iv.length
+  ? Array.from({ length: want }, (_, i) => iv[i % iv.length])
+  : new Array(want).fill(0));
+
+/** What can be done to a figure. Transposition, sequence and varying the tail
+ *  are what a singer does from memory; inversion and retrograde are operations
+ *  on a line you can SEE, so they follow literacy — the same split the
+ *  phrase-level transforms already make. */
+const CELL_OPS = {
+  restate: (c) => c,
+  sequence: (c) => c,
+  varyTail: (c, alt) => c.map((d, i) => (i < Math.ceil(c.length / 2) ? d : alt[i % alt.length])),
+  fragment: (c) => c.slice(0, Math.max(1, Math.ceil(c.length / 2))),
+  invert: (c) => c.map(d => -d),
+  retrograde: (c) => [...c].reverse(),
+  free: (c, alt) => alt,
+};
+function cellOpsFor(F) {
+  const oral = ["restate", "restate", "sequence", "varyTail", "fragment"];
+  const dev = F.development > 0.25 ? ["invert", "retrograde"] : [];
+  // how far a tradition departs from its formula IS its development; how often
+  // it comes back is its repetition. Both are already derived from literacy.
+  const wander = Math.round(F.development * 3);
+  return oral.concat(dev, new Array(wander).fill("free"));
+}
+
+/**
+ * WHAT MAKES ONE CANDIDATE BETTER THAN ANOTHER. Every term is a constraint
+ * with a cause outside this file, and every one of them is a property of the
+ * WHOLE line — which is exactly why biasing the walk could not produce them.
+ *
+ *   economy   a tradition that is remembered rather than read cannot afford
+ *             many figures, so reuse is worth more the more oral it is
+ *   arch      one high point, and where it falls follows the line's own
+ *             declination — a steeply falling line peaks early by definition
+ *   narmour   the line realises the expectations it raises
+ *   strong    the metre's strong positions carry the mode's structural degrees
+ *   compass   it uses its range without leaving it, and it moves
+ *
+ * None of them names a tune. They are pressures; the search finds what
+ * satisfies them, on any mode, any metre, any people.
+ */
+function scoreLine(music, degs, pat, descent, cells, prior) {
+  const M = music.melody, S = music.mode.size, n = degs.length;
+  if (n < 2) return 0;
+  const iv = [];
+  for (let i = 1; i < n; i++) iv.push(degs[i] - degs[i - 1]);
+
+  // REUSE IS MEASURED AT WHATEVER LENGTH THE LINE CAN CARRY. A three-note
+  // figure needs a cell with three notes in it, and a sparse metre does not
+  // always give one — measured on a five-note phrase, reuse of three-note
+  // figures is unreachable however economical the line actually is. So the
+  // bare repeated interval counts too, and counts alone when that is all there
+  // is room for. (Keys are packed into integers: this runs some hundreds of
+  // times per phrase and string keys dominated the cost.)
+  const reuseAt = (k) => {
+    if (iv.length < k + 1) return null;
+    const seen = new Map();
+    for (let i = 0; i + k <= iv.length; i++) {
+      let key = 0;
+      for (let j = 0; j < k; j++) key = key * 64 + (iv[i + j] + 31);
+      seen.set(key, (seen.get(key) || 0) + 1);
+    }
+    let rep = 0, tot = 0;
+    for (const v of seen.values()) { rep += v - 1; tot += v; }
+    return tot ? rep / tot : 0;
+  };
+  const r1 = reuseAt(1), r2 = reuseAt(2);
+  const reuse = r2 != null ? 0.65 * r2 + 0.35 * r1 : (r1 || 0);
+
+  // THE ARCH IS A PHRASE-LEVEL PROPERTY, so it is measured at the phrase's own
+  // level: the top note of each cell, not every note. Counting note-by-note
+  // peaks punishes a line for having figures in it — a restated cell is a
+  // second peak by construction — and the two pressures then cancel.
+  const env = (cells && cells.length >= 3)
+    ? cells.map(ix => ix.reduce((a, j) => Math.max(a, degs[j]), -Infinity))
+    : degs;
+  const m = env.length;
+  let peaks = 0, hi = env[0], at = 0;
+  for (let i = 0; i < m; i++) if (env[i] > hi) { hi = env[i]; at = i; }
+  for (let i = 1; i < m - 1; i++) if (env[i] > env[i - 1] && env[i] >= env[i + 1]) peaks++;
+  const wantAt = Math.max(0.15, 0.66 - descent * 0.45);
+  const arch = (1 / (1 + Math.pow(Math.max(0, peaks - 1), 1.4) * 0.8))
+    * (1 - Math.min(1, Math.abs(at / Math.max(1, m - 1) - wantAt) / 0.5));
+
+  let ok = 0, tests = 0;
+  for (let i = 1; i < iv.length; i++) {
+    const p = iv[i - 1], q = iv[i];
+    if (p === 0) continue;
+    tests++;
+    if (Math.abs(p) >= 3) { if (Math.sign(q) !== Math.sign(p) && Math.abs(q) <= 2) ok++; }
+    else if (q === 0 || Math.sign(q) === Math.sign(p)) ok++;
+  }
+  const nar = tests ? ok / tests : 0.5;
+
+  const G = pat.grid;
+  let st = 0, stN = 0;
+  for (let i = 0; i < n; i++) {
+    if (G.w[pat.onsets[i] % G.slots] < 1) continue;
+    stN++;
+    const d = ((degs[i] % S) + S) % S;
+    if (d === 0 || M.structural.indexOf(d) >= 0) st++;
+  }
+  const strong = stN ? st / stN : 0.5;
+
+  let lo = degs[0], top = degs[0];
+  for (const d of degs) { if (d < lo) lo = d; if (d > top) top = d; }
+  const range = top - lo;
+  const span = Math.min(1, range / Math.max(2, M.reach * 0.6)) * (range > M.reach ? 0.4 : 1);
+  // A MELODY IS MOSTLY STEPS. Pitch proximity is the most robust thing anyone
+  // has measured about melody anywhere, and counting leaps against the BAR
+  // rather than against the notes let it be bought cheaply: a twenty-six-note
+  // line over two bars paid the same for nine leaps as for two. Count them
+  // against the line, and against the tradition's own stepwise preference,
+  // which is already derived.
+  // …and it must not SATURATE. Expressed as "enough steps and you are done"
+  // the term had no gradient past its own threshold, so once a line was
+  // stepwise enough it could buy compass with as many leaps as it liked for
+  // free — measured, selection took a Hindustani line from one leap to seven
+  // while the term reported full marks throughout. Monotone in the step
+  // fraction, and steeper the more stepwise the tradition is.
+  const steps = iv.reduce((a, d) => a + (Math.abs(d) <= 2 ? 1 : 0), 0) / iv.length;
+  const leap = Math.pow(steps, 1 + M.step);
+  const moves = 1 - Math.min(1, (iv.reduce((a, d) => a + (d === 0 ? 1 : 0), 0) / iv.length) * 1.6);
+
+  // ECONOMY IS TWO-SIDED, and the first cut here was not. Rewarding reuse and
+  // nothing else has one global optimum — state the figure and state it again
+  // until the bar runs out — and that is exactly what the search returned: a
+  // twenty-six-note Hindustani line that was one four-note figure, four times,
+  // with no variation anywhere in it. A line has to be learnable AND worth
+  // attending to; both are constraints on the same thing, which is how much a
+  // listener has to hold to follow it. Where a tradition sits between them is
+  // its own balance of formula and development, already derived from literacy.
+  const F = music.form;
+  const wantReuse = Math.max(0.05, Math.min(0.7, 0.28 + 0.34 * F.repetition - 0.3 * F.development));
+  const econ = 1 - Math.min(1, Math.abs(reuse - wantReuse) / 0.45);
+
+  // A PERIOD: the answer opens like the statement and does not end like it.
+  // Without this the search hands back the statement verbatim — same rhythm,
+  // same figure, same optimum — and an answer that is its own question is not
+  // an answer.
+  let period = 0, twin = 1;
+  if (prior && prior.length === n) {
+    // AN ANSWER THAT IS THE QUESTION IS NOT AN ANSWER. Rewarding contrast in
+    // the tail was not enough on a short phrase, where the tail is one cell
+    // and every alternative to it costs more than the reward: the search
+    // handed back the statement, note for note, as its own answer. Identity
+    // is not a weak candidate, it is a non-candidate.
+    let same = true;
+    for (let i = 0; i < n; i++) if (degs[i] !== prior[i]) { same = false; break; }
+    if (same) twin = 0.25;
+    const h = Math.ceil(n / 2);
+    let head = 0, tail = 0;
+    for (let i = 0; i < h; i++) if (degs[i] === prior[i]) head++;
+    for (let i = h; i < n; i++) if (degs[i] !== prior[i]) tail++;
+    period = 0.5 * (head / h) + 0.5 * (tail / Math.max(1, n - h));
+  }
+
+  // THE SEAMS ARE NOT ORDINARY INTERVALS. Where one figure ends and the next
+  // begins is a join a player has to make, and there are only a handful of
+  // them in a phrase — so counting them in with every other interval buries
+  // them: a line could open a sixth between every pair of cells and pay
+  // almost nothing, which is what placing cells absolutely made it do.
+  let join = 1;
+  if (cells && cells.length > 1) {
+    let sum = 0;
+    for (let c = 1; c < cells.length; c++) {
+      const a = degs[cells[c - 1][cells[c - 1].length - 1]], b = degs[cells[c][0]];
+      sum += 1 - Math.min(1, Math.abs(b - a) / 4);
+    }
+    join = sum / (cells.length - 1);
+  }
+
+  return twin * (1.4 * econ + 1.0 * arch + 0.8 * nar + 0.6 * strong
+    + 0.5 * span + 0.9 * leap + 0.8 * join + 0.6 * moves + (prior ? 1.3 * period : 0));
+}
+
+/** Land the last note home, in the register the line is already in. */
+function cadence(music, out) {
+  const M = music.melody, S = music.mode.size;
+  const last = out.length - 1, here = out[last];
+  const lo = -Math.round(M.reach * 0.34), cand = [];
+  for (const o of [Math.floor(here / S) - 1, Math.floor(here / S), Math.floor(here / S) + 1]) {
+    cand.push({ d: o * S, home: 1 });
+    for (const d of M.structural) if (d) cand.push({ d: d + o * S, home: 0 });
+  }
+  const within = cand.filter(c => c.d <= M.reach && c.d >= lo);
+  const pool = within.length ? within : cand;
+  out[last] = pool.reduce((a, b) => {
+    const cost = (x) => Math.abs(x.d - here) + (x.home ? 0 : S * 0.8);
+    return cost(b) < cost(a) ? b : a;
+  }, pool[0]).d;
+  return out;
+}
+
+/**
+ * WHAT MAKES A FIGURE. Not the same question as what makes a phrase, and
+ * scoring it with the phrase fitness was measurably wrong: a phrase wants an
+ * arch and a compass, and a three-note figure has neither to give, so the
+ * terms that should have decided it were swamped by two it could not satisfy.
+ *
+ *   narmour  it realises the expectation it raises
+ *   outline  its notes are the mode's structural degrees — a figure is how a
+ *            tradition says which notes of its mode matter
+ *   compact  it stays inside a hand's span of the mode; a figure that crosses
+ *            the whole compass is a phrase
+ *   shape    it goes somewhere. A figure that changes direction at every step
+ *            is an oscillation, and an oscillation is an ornament, not a motif
+ */
+function scoreFigure(music, degs) {
+  const S = music.mode.size, M = music.melody, n = degs.length;
+  if (n < 2) return 0;
+  const iv = [];
+  for (let i = 1; i < n; i++) iv.push(degs[i] - degs[i - 1]);
+  let ok = 0, tests = 0;
+  for (let i = 1; i < iv.length; i++) {
+    const p = iv[i - 1], q = iv[i];
+    if (p === 0) continue;
+    tests++;
+    if (Math.abs(p) >= 3) { if (Math.sign(q) !== Math.sign(p) && Math.abs(q) <= 2) ok++; }
+    else if (q === 0 || Math.sign(q) === Math.sign(p)) ok++;
+  }
+  const nar = tests ? ok / tests : 0.5;
+  let st = 0;
+  for (const d of degs) {
+    const k = ((d % S) + S) % S;
+    if (k === 0 || M.structural.indexOf(k) >= 0) st++;
+  }
+  let lo = degs[0], hi = degs[0], zero = 0, turns = 0;
+  for (const d of degs) { if (d < lo) lo = d; if (d > hi) hi = d; }
+  for (let i = 0; i < iv.length; i++) {
+    if (iv[i] === 0) zero++;
+    if (i && iv[i] && iv[i - 1] && Math.sign(iv[i]) !== Math.sign(iv[i - 1])) turns++;
+  }
+  const range = hi - lo;
+  const compact = range === 0 ? 0
+    : Math.max(0, 1 - Math.max(0, range - Math.ceil(S / 2)) / 2);
+  const moves = 1 - zero / iv.length;
+  // AND A FIGURE IS MOSTLY STEPS TOO — more so than a phrase is, because the
+  // figure is restated across the whole line, so its intervals ARE the line's
+  // intervals. A germ with a fifth in it made every cell leap a fifth, and the
+  // line-level proximity term could not undo what the figure had decided.
+  const prox = Math.pow(iv.reduce((a, d) => a + (Math.abs(d) <= 2 ? 1 : 0), 0) / iv.length,
+    1 + M.step);
+  // A FIGURE THAT NEVER TURNS IS THE SCALE. It carries nothing the mode does
+  // not already say, so it cannot identify anything — which is exactly what
+  // the search returned when turning was simply penalised: a five-note run
+  // straight down the mode. One turn is a figure; a turn at every step is a
+  // tremolo.
+  const shape = turns === 0 ? 0.35 : 1 - Math.min(1, (turns - 1) / Math.max(1, iv.length - 1));
+  return 1.0 * nar + 0.9 * (st / n) + 0.9 * prox + 0.8 * compact + 0.7 * moves + 0.6 * shape;
+}
+
+/**
+ * THE PEOPLE'S FIGURE. One short shape, drawn once and kept, that every
+ * occasion's material is built out of. This is the *pakad* of a rāg and the
+ * head-motif of a maqām, and cross-culturally it does more to identify a
+ * tradition than its scale does — you recognise a tune by its figure long
+ * before you could name its mode.
+ *
+ * It is also the answer to the drift problem. The features a listener
+ * identifies a culture BY (timbre, texture) are measurably the ones that
+ * change fastest through history, so identity cannot ride on them or a people
+ * stops being recognisable across its own eras. Anchoring it here means the
+ * instruments and the texture are free to be the century's costume while the
+ * figure stays the face.
+ */
+export function signatureOf(music) {
+  if (music._sig) return music._sig;
+  const G = gridOf(music.rhythm);
+  const len = Math.max(3, Math.min(5, G.groups[0] + 1));
+  const seed = hash32(music.people.seed, "sig", music.mode.steps.map(c => Math.round(c)).join(","));
+  let best = null, bestS = -Infinity;
+  for (let k = 0; k < 240; k++) {
+    // NOT LANDED. A figure is not a phrase: the cadential formula is what ends
+    // a phrase, and forcing it onto a three-note figure turned every rising
+    // germ into a turn back to the tonic — which is how the search came to
+    // prefer a bare shuttle between two pitches over anything that went
+    // anywhere.
+    const degs = walkLine(music, hash32(seed, k), len, 0, music.melody.descent, false);
+    const sc = scoreFigure(music, degs);
+    if (sc > bestS) { bestS = sc; best = degs; }
+  }
+  const iv = [];
+  for (let i = 1; i < best.length; i++) iv.push(best[i] - best[i - 1]);
+  music._sig = iv;
+  return iv;
+}
+
+/**
+ * A LINE, BUILT FROM THE FIGURE AND THEN CHOSEN. Assemble a candidate by
+ * laying the people's figure into the first cell and answering it in the
+ * rest; score the whole thing; keep the best of several hundred. The
+ * acceptance rate is the point — one line in some hundreds satisfies all of
+ * the pressures at once, and generating one line and taking it is why the old
+ * output had none of them.
+ */
+function buildLine(music, seedBase, pat, descent, prior) {
+  const n = pat.onsets.length;
+  if (!n) return [];
+  const germ = signatureOf(music);
+  const cells = cellsOf(pat, germ.length + 1);
+  const M = music.melody, F = music.form;
+  const ops = cellOpsFor(F);
+  const lo = -Math.round(M.reach * 0.34), hi = M.reach;
+  const tries = Math.min(420, 90 + 70 * cells.length);
+  let best = null, bestS = -Infinity;
+  for (let k = 0; k < tries; k++) {
+    const roll = (t) => hash32(seedBase >>> 0, k, t) / 4294967296;
+    const alt = [];
+    {
+      const w = walkLine(music, hash32(seedBase, k, "alt"), Math.max(2, germ.length + 1), 0, descent);
+      for (let i = 1; i < w.length; i++) alt.push(w[i] - w[i - 1]);
+    }
+    const degs = new Array(n).fill(0);
+    for (let ci = 0; ci < cells.length; ci++) {
+      const ix = cells[ci], want = ix.length - 1;
+      let c, base;
+      if (ci === 0) { c = fitIv(germ, want); base = 0; }
+      else {
+        const op = ops[Math.floor(roll("o" + ci) * ops.length)];
+        c = fitIv(CELL_OPS[op](germ, alt.length ? alt : germ), want);
+        // A CELL IS PLACED, NOT WALKED TO. Starting each cell from where the
+        // last one ended made the line MARCH: a figure that descends four
+        // degrees, started one degree above the last note, walks the phrase
+        // into the floor and out the bottom of the compass, and the clamp
+        // that catches it turns the shape into sawteeth. Bases are absolute
+        // and the search places them — which is what makes the envelope of
+        // cell tops an arch rather than a slope.
+        base = op === "restate" ? 0
+          : op === "sequence" ? (roll("s" + ci) < 0.5 ? 1 : -1) * (1 + Math.floor(roll("t" + ci) * 2))
+            : Math.round((roll("b" + ci) * 1.5 - 0.45) * Math.max(2, Math.min(4, M.reach * 0.5)));
+      }
+      const seg = [base];
+      for (const d of c) seg.push(seg[seg.length - 1] + d);
+      let top = seg[0], bot = seg[0];
+      for (const d of seg) { if (d > top) top = d; if (d < bot) bot = d; }
+      const sh = top > hi ? hi - top : bot < lo ? lo - bot : 0;
+      for (let j = 0; j < ix.length; j++) degs[ix[j]] = seg[j] + sh;
+    }
+    cadence(music, degs);
+    const s = scoreLine(music, degs, pat, descent, cells, prior);
+    if (s > bestS) { bestS = s; best = degs; }
+  }
+  return best;
 }
 
 /** Mode index → scale degree, so pitch lookup stays in one place. */
@@ -286,38 +746,22 @@ export function finalFor(music, occKey) {
 }
 
 /**
- * MOTIF TRANSFORMATION. A tradition does not hold three unrelated tunes; it
- * holds one idea and turns it over. Transposition, inversion, retrograde,
- * varying only the ending, varying everything except the downbeat notes —
- * these are the standard operations, in classical practice and in every
- * rule-based composer that has been built. What they buy is the thing the
- * first cut here lacked entirely: everything you hear is audibly related to
- * everything else, so the music has an argument rather than a sequence.
+ * THE PHRASE BANK: a statement, its answer, and a departure — built ONCE per
+ * people and occasion, then returned to. Nothing regenerates per cycle, so
+ * the line is recognisable the second time it comes round.
  *
- * Which operations a people has is not free. Transposition and varying the
- * ending are what a singer can do from memory, so every tradition has them;
- * inversion and retrograde are operations on a written line — you have to
- * SEE the notes to turn them over — so they follow literacy, the same way
- * long non-repeating form does.
- */
-const TRANSFORMS = {
-  transpose: (m, a) => m.map(d => d + a),
-  sequence: (m) => m.map(d => d + 1),
-  varyEnd: (m, a, alt) => m.map((d, i) => (i < Math.ceil(m.length * 0.6) ? d : alt[i])),
-  varyBase: (m, a, alt, strong) => m.map((d, i) => (strong[i] ? d : alt[i])),
-  invert: (m) => m.map(d => 2 * m[0] - d),
-  retrograde: (m) => [...m].reverse(),
-};
-function transformsFor(literacy) {
-  const oral = ["transpose", "sequence", "varyEnd", "varyBase"];
-  return literacy > 0.5 ? oral.concat(["invert", "retrograde"]) : oral;
-}
-
-/**
- * The phrase bank: a handful of complete cycles, built ONCE per people and
- * occasion and then returned to. This is what makes a melody a melody — the
- * ambient layer states A, repeats it, answers with B, returns to A. Nothing
- * is regenerated per cycle, so the line is recognisable the second time.
+ * A A′ B, and the shape is not arbitrary. The ANSWER keeps the statement's
+ * RHYTHM and re-answers the same figure, because a motif is recognised by its
+ * rhythm more reliably than by its intervals — an earlier cut here gave every
+ * entry its own rhythm, on the reasoning that rhythm is where the audible
+ * difference between two phrases lives, and it is: it is also therefore where
+ * the audible SAMENESS lives, and a restatement that changes both rhythm and
+ * pitch is not heard as a restatement of anything. The DEPARTURE gets its own
+ * rhythm as well as its own answer, and how far it departs is the tradition's
+ * own development.
+ *
+ * All three are built out of the people's one figure (`signatureOf`), so a
+ * departure is still audibly the same people's music.
  */
 export function phraseBank(music, occKey) {
   const key = "_bank:" + occKey;
@@ -328,51 +772,24 @@ export function phraseBank(music, occKey) {
   // A PHRASE IS NOT A BAR. It used to be exactly one metrical cycle, and after
   // the offbeat cull and the long values that swallow their neighbours, the
   // median melody came out TWO NOTES LONG. Nothing else could work on top of
-  // that: a two-note line has one interval, so it cannot arch; the dynamic arc
-  // is provably flat (sin(π/4) = sin(3π/4)); and the rule that lands a phrase
-  // on a structural degree rewrites half the melody. Twenty-nine per cent of
-  // pieces came out as a single pitch repeated.
+  // that: a two-note line has one interval, so it cannot arch, and the rule
+  // that lands a phrase on a structural degree rewrites half of it.
   //
   // How long a phrase is was already derived — `melody.phraseBeats`, from how
-  // long a singer's breath is and how the language groups its words — and was
-  // read nowhere in the repo. Read it.
+  // long a singer's breath is and how the language groups its words.
   const bars = Math.max(2, Math.min(4, Math.round((music.melody.phraseBeats || 6) / G.beats) || 2));
   const seed = hash32(music.people.seed, "ph", occKey);
   const dens = Math.min(0.95, R.density * O.density);
+  const desc = music.melody.descent * O.descent;
   const pat = makePattern(music, seed, dens, R.syncopation, bars);
-  const motif = phrase(music, seed + 1, pat.onsets.length, 0, music.melody.descent * O.descent);
-  const strong = pat.onsets.map(s => pat.grid.w[s % pat.grid.slots] >= 1);
-  const alt = phrase(music, seed + 2, pat.onsets.length, 0, music.melody.descent * O.descent);
-  const ops = transformsFor(music.people.soc.literacy);
-  const bank = [{ pat, degs: motif, fin, label: "motif" }];
-  for (let k = 1; k < 3; k++) {
-    const op = ops[hash32(seed, "op", k) % ops.length];
-    const M = music.melody, lo = -Math.round(M.reach * 0.34);
-    // EACH ENTRY GETS ITS OWN RHYTHM. All three used to share one pattern
-    // object, so a "variation" changed pitches over an identical set of
-    // onsets, durations, rests and accents — and since half the pitch
-    // transforms came out as literal copies too, the answering phrase was
-    // frequently the statement. Rhythm is where most of the audible difference
-    // between two phrases lives.
-    const p2 = makePattern(music, seed + 90 * k, dens * (0.85 + 0.3 * (k - 1)), R.syncopation, bars);
-    const head = M.reach - Math.max(...motif), foot = Math.min(...motif) - lo;
-    const amt = head >= 1 ? Math.min(head, 1 + (hash32(seed, "amt", k) % 2))
-      : foot >= 1 ? -Math.min(foot, 1 + (hash32(seed, "amt", k) % 2)) : 0;
-    let degs = TRANSFORMS[op](motif, amt, alt, strong);
-    const hi = Math.max(...degs), low = Math.min(...degs);
-    const shift = hi > M.reach ? M.reach - hi : low < lo ? lo - low : 0;
-    if (shift) degs = degs.map(d => d + shift);
-    // However far it wanders it comes home — but only if there is enough
-    // phrase left for an ending to exist. Forcing the last note back onto the
-    // motif's last note is what turned varying the ending into a guaranteed
-    // no-op (it varies only the final notes) and inversion into the identity.
-    if (degs.length >= 4) degs[degs.length - 1] = motif[motif.length - 1];
-    // fit the pitches to whatever rhythm this entry drew
-    const n2 = p2.onsets.length;
-    const fitted = Array.from({ length: n2 }, (_, i) => degs[Math.floor(i * degs.length / n2)]);
-    if (fitted.length >= 4) fitted[fitted.length - 1] = motif[motif.length - 1];
-    bank.push({ pat: p2, degs: fitted, fin, label: op });
-  }
+  const p2 = makePattern(music, seed + 90,
+    Math.min(0.95, dens * (1 + music.form.development * 0.3)), R.syncopation, bars);
+  const say = buildLine(music, seed + 1, pat, desc);
+  const bank = [
+    { pat, degs: say, fin, label: "statement" },
+    { pat: { ...pat }, degs: buildLine(music, seed + 2, pat, desc, say), fin, label: "answer" },
+    { pat: p2, degs: buildLine(music, seed + 3, p2, desc * 0.8), fin, label: "departure" },
+  ];
   music[key] = bank;
   return bank;
 }
