@@ -44,8 +44,12 @@ of the live arm at the shipped grid, through 592 realms and 22% of land claimed
 
 **Open**
 
-- `URBAN_LABOR`'s twin and `ULAB+FARM` are still on their final windows; §17's
-  single-draw claims (median core off the stamp at 14.1su) are held pending them.
+- **Wave 4 is complete.** `URBAN_LABOR` passes a measurement wave, not a gate
+  ladder: pin −4.1 to −6.5 points at matched maturity, ceiling below all three
+  control draws on raw values, population up. Its median-core headline was
+  **retracted** (§20) when a third control draw also cleared the stamp. Effect-size
+  magnitude is unresolvable at 61-94% because the controls spread 7.6 points among
+  themselves at matched development.
 - The **resolution anchor** is an owner decision and blocks the last Phase-2 site
   (`MIN_SETT_DIST`), which blocks `FARM_RES` regardless of §12 (§5b).
 - The `STARVE_SHED` fix is designed, predicted and deliberately unbuilt (§16.5).
@@ -1289,3 +1293,75 @@ still owed, and `validate` is a known no-op for this code path (`tuning.js:114`)
 a green battery would prove nothing here either. And §11's seam means every
 urbanisation figure above is still read through a partly broken instrument; the
 honest order is to fix the instrument, then re-measure, then decide.
+
+---
+
+## 20. §19.1 RETRACTED — an untreated draw also leaves the stamp
+
+The third untreated arm finished last and refutes the wave's headline.
+
+| 36k-40k | claimed% | urban% | pin | **p50 core** |
+|---|---|---|---|---|
+| untreated, clean | 44.42 | 28.21 | — | — |
+| untreated, chaos1 | 50.83 | 20.61 | 37.0% | 12.5 |
+| **untreated, ref3** | **44.88** | **20.60** | 34.8% | **14.6** |
+| `+URBAN_LABOR` | 55.95 | 15.76 | 34.6% | 14.1 |
+| `+URBAN_LABOR` (chaos) | 42.45 | 15.84 | 30.8% | 16.7 |
+
+§19.1 said: *"Both treated draws clear it; neither untreated draw does… for the first
+time in this simulation's recorded history, the typical city is not its own birth
+certificate."* **An untreated draw reads 14.6 — clear of the stamp, and higher than
+the first treated draw's 14.1.**
+
+```
+untreated   12.5   14.6
+treated     14.1   16.7
+                ^^ overlap ^^
+```
+
+Only `ULABx` (16.7) sits above every untreated draw. The bands overlap, n=2 a side,
+and the correct statement is: **the median city leaves the founding stamp in a mature
+world with or without this mechanism, and `URBAN_LABOR` appears to push it further —
+on evidence too thin to quantify.**
+
+That was the finding I called *"more than the ceiling result"* and *"the owner's
+standing complaint moving."* It was two draws against two, published before the
+third arrived, having explicitly registered one falsifier (the twin reading 12.0)
+while not registering the one that actually fired (an untreated draw reading high).
+**The falsifier I wrote down was for the treatment. The variance was in the control,
+where it has been all day.**
+
+### 20.1 What survives, and it is not nothing
+
+- **Pin, matched on maturity, two anchors, both negative:** −6.5 points against
+  chaos1 and −4.1 against ref3. The improvement is real and the range is narrow.
+- **Ceiling, raw:** treated 15.76 and 15.84 against untreated 28.21, 20.61 and
+  20.60 — below all three, one of them at greater development than any.
+- **Population:** up in every arm, every window, with a larger countryside.
+- **Median core:** directionally higher, magnitude unresolved (§20 above).
+
+### 20.2 The control is the noisy thing, and that is now measured
+
+Two untreated draws at effectively the same development:
+
+```
+clean   urban 28.21  at claimed 44.42
+ref3    urban 20.60  at claimed 44.88
+                     7.6 points apart
+```
+
+Matching the treated twin against each of the three untreated anchors gives 61%,
+83% and 94% of untreated. **The spread among controls is comparable to the effect
+being measured.** No amount of care with the treated arms fixes that; only more
+control draws do.
+
+This is the lap's most reusable lesson and it cost four retractions to learn:
+**this world's run-to-run variance at high development is large enough that two
+control draws cannot support a quantitative claim, and every retraction today came
+from a third draw, not from a mistake in the treated arm.** Three of the four
+retractions (§14.1, §15.2, §20) are the same error in different clothes.
+
+The instrument change that follows: `cmp_arms` should refuse to report an effect
+size when fewer than three usable control anchors bracket the treated arm, and
+should print the control spread beside every ratio it does report. A number that
+cannot be qualified should not be printable.
