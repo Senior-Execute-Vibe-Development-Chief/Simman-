@@ -126,9 +126,23 @@ const CORE_BY_TIER = [1, 2, 3, 4];
 // tile counts — so the belt's real area runs 953,598 km² against 211,880 km², a
 // factor of 4.5 for the same city in the same world. Off ⇒ ×1, byte-identical.
 const _resR = (world) => (T.FARM_RES && world) ? rNormPop(world) : 1;
+// THE CORE BLOCK IS DELIBERATELY *NOT* SCALED, and the header three lines up says
+// why: it is "kept smaller than half the minimum settlement spacing … so two cores
+// can never overlap." That invariant COUPLES this constant to crystallize.js's
+// MIN_SETT_DIST, so scaling one without the other breaks it. Caught by re-reading my
+// own diff: with the core scaled, tw=480 gives radius 4→8 against an unscaled spacing
+// floor of 8 — core radius equal to the whole spacing, cores overlapping wholesale.
+// Only the HINTERLAND belt scales here. That belt is claimed nearest-wins and is
+// MEANT to be contended, so widening it cannot violate anything; the guaranteed home
+// block is an exclusivity promise and moves only when spacing moves with it.
+// (Recorded while here, pre-existing and not mine: the header says MIN_SETT_DIST=12
+// and the constant is 8, and CORE_BY_TIER's top rung is 4 — which is exactly half of
+// 8, not "smaller than half". The invariant is already marginal at the metropolis
+// rung in shipped code, at every grid. Named, not touched: it belongs to the spacing
+// lap with the rest of the fifth site.)
 export function coreRadiusFor(s, world) {
   const t = s.tier | 0;
-  return Math.max(1, Math.round(CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t] * _resR(world)));
+  return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
 }
 
 // Beyond the guaranteed core, every settlement is also GUARANTEED a farmland
