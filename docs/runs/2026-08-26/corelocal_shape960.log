@@ -37,3 +37,44 @@
       tiny #4 "Fevvonfax" 866k km2 mem=1 age=8000 org=0.10
       tiny #1 "Ňěňnílěā" 2080k km2 mem=3 age=8000 org=0.36
     [188s]
+
+=== step 12000  realms=6 (0 vassal)  claimed=5.6%  flows: founded=213 ended=7 seceded=25 shattered=2
+    size km2: P10=883k  MED=1064k  P90=2922k  MAX=2922k  | top1share=35%  max/med=2.7  gini=0.23  lnσ=0.40 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:1  1-5M:5  >5M:0
+    SMALL (<100k km2): 0 of 6 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #7 "Wityim" 883k km2 mem=1 age=12000 org=0.18
+      tiny #151 "Kóltàlǐā" 1007k km2 mem=1 age=2208 org=0.39
+      tiny #2 "Pephamdo" 1046k km2 mem=1 age=12000 org=0.46
+      tiny #118 "Nomümama" 1064k km2 mem=1 age=5400 org=0.46
+      tiny #4 "Fevvonfax" 1374k km2 mem=1 age=12000 org=0.10
+      tiny #1 "Ňěňnílěā" 2922k km2 mem=3 age=12000 org=0.50
+    [285s]
+[transHeap] step=14136 cap=524288 peakN=343143 pushes=1206040 (4.2MB backing)
+
+=== step 16000  realms=8 (0 vassal)  claimed=8.3%  flows: founded=290 ended=20 seceded=40 shattered=6
+    size km2: P10=428k  MED=1335k  P90=4683k  MAX=4683k  | top1share=38%  max/med=3.5  gini=0.36  lnσ=0.65 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:3  1-5M:5  >5M:0
+    SMALL (<100k km2): 0 of 8 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #268 "Pezybogfax" 428k km2 mem=1 age=1563 org=0.10
+      tiny #199 "Üvsa" 658k km2 mem=1 age=4600 org=0.51
+      tiny #246 "Fị̀ňlìpǐ" 966k km2 mem=4 age=1563 org=0.54
+      tiny #2 "Pephamdo" 1273k km2 mem=1 age=16000 org=0.59
+      tiny #4 "Fevvonfax" 1335k km2 mem=1 age=16000 org=0.10
+      tiny #7 "Wityim" 1389k km2 mem=2 age=16000 org=0.21
+      tiny #136 "Fòkfílǐ" 1528k km2 mem=5 age=2013 org=0.55
+      tiny #1 "Ňěňnílěā" 4683k km2 mem=5 age=16000 org=0.60
+    [407s]
+
+=== step 20000  realms=14 (1 vassal)  claimed=12.0%  flows: founded=411 ended=48 seceded=68 shattered=11
+    size km2: P10=4k  MED=1037k  P90=2437k  MAX=5843k  | top1share=33%  max/med=5.6  gini=0.56  lnσ=2.68 (real maps ≈2.0-2.6)
+    histogram  <50k:3  50-200k:2  200k-1M:1  1-5M:7  >5M:1
+    SMALL (<100k km2): 5 of 14 (36%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #400 "Séukyàe" 1k km2 mem=1 age=1300 org=0.64
+      tiny #2 "Pephamdo" 4k km2 mem=1 age=20000 org=0.63
+      tiny #280 "Nīňlìkú" 5k km2 mem=0 age=1963 org=0.00
+      tiny #157 "Bagyyažy" 79k km2 mem=0 age=10700 org=0.00
+      tiny #381 "Pụ̀nwā" 90k km2 mem=0 age=913 org=0.00
+      tiny #268 "Pezybogfax" 599k km2 mem=1 age=5563 org=0.12
+      tiny #380 "Vamabo" 1002k km2 mem=1 age=913 org=0.12
+      tiny #302 "Apabsaa" 1037k km2 mem=1 age=4400 org=0.66
+    [553s]
