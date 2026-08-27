@@ -17,3 +17,42 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 pkg=rice(suit 0.16) — ARMED: ~9481y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=2048 peakN=1299 pushes=9434 (0.0MB backing)
+[peopleSim] hearth candidate at (185,59) (97.5E 1.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=28752 cap=4096 peakN=2081 pushes=10268 (0.0MB backing)
+
+=== WHERE IS CIVILIZATION  480x240 (tw=240)  seed 8817  30000 steps ===
+  63 settled · 31 realms
+
+  ── 1. THE ATLAS (urban people by region, and per Mkm² of its land) ──
+  region             cities   urban ppl   per Mkm²   largest realms cap/tile*  pop/Mkm²  fill
+  E Europe/Russia         3        326k        79k      166k      2    109816    918886  0.54
+  Indus/NW India          3         91k        41k       46k      3     17153    367759  1.08
+  N China                 3         85k        34k       38k      0     54789    776384  0.70
+  Anatolia/Levant         2         57k        27k       35k      0     48175    293124  0.54
+  Mesopotamia             1         35k        26k       35k      0     35576    148130  0.80
+  Egypt/Nile              2         63k        25k       54k      1     64552    280651  0.51
+  Ethiopia/E Africa       2         69k        17k       54k      1     23019    218802  0.85
+  W Europe                2         19k        12k       12k      1     60892    452719  0.63
+  Greece/Italy            1         12k        10k       12k      0     60979    467042  0.53
+  W Sahel                 1         20k         5k       20k      1     22478    252549  0.84
+  Mesoamerica             1          7k         5k        7k      1     18084    165275  0.51
+  Andes                   1         10k         3k       10k      1      6782    152856  0.95
+  SE Asia                 2          9k         3k        7k      1     11733    166013  0.92
+  (*cap/tile = the capacity-WEIGHTED mean per tile — the land the region's people actually
+   stand on, so a rich thin ribbon is not buried in the desert beside it. High cap+pop with no
+   cities ⇒ a FORMATION defect; low weighted cap ⇒ the land itself is under-fed.)
+
+  ── 2. THE URBAN LADDER (city cores, real people) ──
+  ≤15k (the minting floor)     28  ████████████████████████████
+  15-30k                       15  ███████████████
+  30-60k                        9  █████████
+  60-120k                       4  ████
+  120-300k                      6  ██████
+  >300k                         1  █
+  urban core p50/p90/max: 20k / 146k / 800k
+
+  ── 3. THE GRAIN SHED (market hauls, great-circle km) ──
+  hauls 150 · km p50 1461 · p90 2879 · max 5137
+  (history: overland grain ~20-100 km; riverine/coastal to ~1,500 km — Egypt→Rome)
+  importers 38 · top-3 take 40% of all landed grain · top-10 72%
+  (a handful of importers taking most of the grain = the owner's "shipped globally to few points")

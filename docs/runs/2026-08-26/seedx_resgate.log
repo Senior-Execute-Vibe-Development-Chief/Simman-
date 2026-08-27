@@ -17,3 +17,19 @@
 [peopleSim] hearth candidate at (117,23) (-4.5E 55.5N) score 0.50 pkg=wheat(suit 0.12) — ARMED: ~7000y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=1021 pushes=8177 (0.0MB backing)
+[peopleSim] hearth pin Nile picked at tile (277,80) (27.7E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,81) (69.8E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (387,72) (110.3E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (277,80) (27.7E 30.0N) score 6.74 pkg=wheat(suit 0.94) — matured 962y into prehistory (wave age 5038y)
+[peopleSim] hearth Pephamdo at (298,76) (43.5E 33.0N) score 6.51 pkg=wheat(suit 1.00) — matured 903y into prehistory (wave age 5097y)
+[peopleSim] hearth Pomponsom at (333,81) (69.8E 29.2N) score 7.79 pkg=wheat(suit 1.00) — matured 900y into prehistory (wave age 5100y)
+[peopleSim] hearth Fevvon at (387,72) (110.3E 36.0N) score 3.54 pkg=millet(suit 0.54) — matured 2754y into prehistory (wave age 3246y)
+[peopleSim] hearth Nawaxexi at (230,99) (-7.5E 15.8N) score 3.07 pkg=sorghum(suit 0.65) — matured 3077y into prehistory (wave age 2923y)
+[peopleSim] hearth Sasfesu at (115,99) (-93.8E 15.8N) score 1.97 pkg=maize(suit 0.86) — matured 5245y into prehistory (wave age 755y)
+[peopleSim] hearth Wityim at (140,140) (-75.0E -15.0N) score 1.05 pkg=tubers(suit 0.75) — matured 3996y into prehistory (wave age 2004y)
+[peopleSim] hearth Ninuvy at (278,142) (28.5E -16.5N) score 0.81 pkg=sorghum(suit 0.52) — matured 3855y into prehistory (wave age 2145y)
+[peopleSim] hearth Bofvu at (247,40) (5.2E 60.0N) score 0.50 pkg=wheat(suit 0.25) — matured 3616y into prehistory (wave age 2384y)
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 pkg=maize(suit 0.15) — ARMED: ~7000y of peopled-basin time from maturity
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=65536 peakN=39034 pushes=147329 (0.5MB backing)
