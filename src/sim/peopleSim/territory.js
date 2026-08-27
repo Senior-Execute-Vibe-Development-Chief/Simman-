@@ -577,12 +577,36 @@ export function seedLocalTerritory(world, s) {
   // same normalisation as tallyTerritory above; off ⇒ rb=3, invA=1, identical).
   const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
   const rb = Math.max(1, Math.round(3 * _rn));
+  // T.SEED_EXCLUSIVE — A NEWBORN MAY NOT HARVEST ITS NEIGHBOUR'S FIELDS.
+  // The steady-state catchment is strictly exclusive: world._territoryOwner is
+  // one Int32 per tile, every claim path writes that single slot, and the
+  // census and the harvest both reduce over it — so no villager and no field
+  // is ever counted twice (measured: 0 of 3,473 tiles multiply-owned, 0.000%
+  // double-counted people). This seed box is the ONE hole in that rule. It
+  // runs at mintCityAt (settlement.js:492) to give a newborn food/resource
+  // stats before the first full territory pass, and it walks a raw box with no
+  // ownership test at all — so a city founded beside an established one books
+  // that neighbour's fields as its own until the AMORTIZED pass reassigns
+  // them. Measured (probe_overlap, 24k/8817): 44 episodes, median 103 ticks
+  // each, a median 49% (max 100%) of the box simultaneously owned and
+  // harvested by another settlement, inflating world harvested area 9.8% —
+  // and it gets WORSE on finer grids because the territory pass amortizes over
+  // more tiles (median 287 ticks at tw=480, ~576 at the shipped tw=960).
+  // Under the lever the seed box obeys the same exclusivity the partition
+  // enforces everywhere else: tiles another settlement already owns are
+  // skipped. Its own tiles still count, and before the first territory pass
+  // (no owner array yet — the dawn) nothing is owned, so the bootstrap is
+  // byte-identical. Zero new constants; this is the existing rule applied at
+  // birth instead of a tick later.
+  const ownSeed = T.SEED_EXCLUSIVE > 0 ? world._territoryOwner : null;
+  const ownSeedOk = ownSeed && ownSeed.length === world.N;
   for (let dy = -rb; dy <= rb; dy++) {
     const ny = sy + dy; if (ny < 0 || ny >= th) continue;
     for (let dx = -rb; dx <= rb; dx++) {
       const nx = ((sx + dx) % tw + tw) % tw;
       const ti = ny * tw + nx;
       if ((world.elev[ti] || 0) <= 0) continue;
+      if (ownSeedOk) { const o = ownSeed[ti]; if (o >= 0 && o !== s.id) continue; }   // another settlement's field — not this newborn's to harvest
       tiles += _invA;
       const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);
       const cost = Math.sqrt(dx * dx + dy * dy) / _rn;
