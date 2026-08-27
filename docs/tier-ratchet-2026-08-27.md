@@ -918,3 +918,84 @@ Unchanged in direction, better evidenced, honestly wider in magnitude:
 
 36k-40k remains the last word — the untreated world's steepest window, where two of
 the three draws went +12.6 and +5.9.
+
+---
+
+## 16. §11 refined — why the melt at site A cannot reach the report, and why the fix is not one term
+
+Before building §11's fix I went looking for the reason it is *needed* — if site A
+already melts a starving core's capacity, the people should already have left, and
+the size read's own `min(_coreF, ·)` should already report a smaller core. It does
+not, and the reason is worth writing down.
+
+### 16.1 The spike ADDS to terrain capacity
+
+`applyUrbanSpikes` (popField.js:1626): `cap[ti] += e.k`.
+
+The urban spike is added **on top of** the tile's own terrain-derived capacity, not
+substituted for it. So when `STARVE_SHED` melts the spike toward zero, what remains
+is whatever the land itself supports — and a city sits on good land by construction
+(that is what `cityBasinOkAt` tested at the mint). The disk keeps holding twelve or
+more sim units of people, so `_coreF ≥ 12` and the `min` never binds.
+
+### 16.2 The two sites control different things
+
+That makes them complementary rather than redundant, which is exactly why one
+being fed-ness-aware and the other not is a seam and not a duplication:
+
+- **Site A (capacity spike)** — how many people the core tile *can hold*, over and
+  above what the land gives for free. Fed-ness reaches this.
+- **Site B (size read)** — how many of the people standing there *count as urban*.
+  `coreEff = min(_coreF, max(holdF, kLocal) + kBeyond)`: the field supplies the cap,
+  the economy supplies the estimate, and the smaller wins. Fed-ness does not reach
+  this.
+
+For the 43% at exactly 12.00su, the estimate is the binding side and the estimate is
+the stamp: `kLocal ≤ holdF` and `kBeyond ≈ 0`, so the whole expression is 12. The
+people are genuinely there — the report simply refuses to credit more than the
+founding endowment as urban, and refuses to credit less no matter how hungry they
+are.
+
+### 16.3 The fix is not safe-by-construction, and I said it was
+
+§11.4 called it *"one term … adds no constant, invents no mechanism."* The first
+half is true and the second half is misleading.
+
+`CORE_LOCAL` was safe by construction and its design note says why: `max` not `plus`
+makes it **strictly monotone**, so no core falls, no tier demotes, and it *cannot
+cause a single `DISSOLVE_CORE` dissolution*. Multiplying `holdF` by `fedY < 1` is the
+exact opposite — it lowers reported cores, and a core sustained below `TIER_CORE[2]`
+is precisely what `DISSOLVE_CORE` dissolves. **Cities will die.**
+
+That is the intended behaviour — `tuning.js:92` is the owner's own *"cities can
+become smaller than 12k, then they stop being cities"*, and `STARVE_SHED`'s text
+promises *"hunger finally empties the CITY"*. But intended is not the same as small,
+and a change that can retire a large share of the register is not honestly described
+as one term. The `DISSOLVE_SUSTAIN` timer is the anti-flicker guard and it will
+matter here.
+
+### 16.4 An open modelling question, stated rather than assumed
+
+At site A, `fedY` multiplies a **capacity floor** — "hold what arrived, scaled by
+how well you've been eating" is a natural reading. At site B it would multiply a
+**size estimate**, and a city at `fedM = 0.24` is not obviously a city 24% the size.
+It is a city that has been receiving a quarter of its food.
+
+Consistency with the site the repo already shipped is a real argument, and it is the
+argument I would make. But it is a modelling choice, not an identity, and the
+alternative — that the stamp should decay on a sustain timer rather than scale
+linearly with fed-ness — is not obviously worse. Worth deciding deliberately.
+
+### 16.5 Revised prediction list
+
+Replacing §11.4's, with the entity count added and the population claim weakened:
+
+- `bind%` **unchanged** — the seam is `holdF`'s value, not whether `kLocal` beats it.
+- The **exactly-12.00su share falls sharply**. Still the direct measure.
+- Urban share **falls**, concentrated in the starving tail; fed cores untouched.
+- **Entity count falls** — possibly a lot. This is `DISSOLVE_CORE` doing its stated
+  job, but it is the number most likely to reveal the change as too blunt, and it
+  needs a band agreed before the arm runs, not after.
+- Total population **roughly unchanged**: under `ONE_POP` the people were always the
+  land's, so retiring the urban institution should move the urban/rural split and
+  not the census. If the census moves materially, the premise is wrong.
