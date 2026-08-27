@@ -2810,7 +2810,38 @@ function updateFood(world, s) {
   // The FARM_FERT_FLOOR subtraction is per-tile and rides the same conversion, so the
   // floor keeps meaning the same thing per unit of real land. Off ⇒ ×1, byte-identical.
   const _fertA = T.FARM_RES ? 1 / (rNormPop(world) * rNormPop(world)) : 1;
-  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrFarmedWt ?? s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR) * _fertA;
+  // T.URBAN_LABOR — A CITY-DWELLER IS NOT IN THE FIELDS. Owner, 2026-08-27: "when a
+  // farmer goes to a city, they stop making food, so we always really need more
+  // farmers than city people, by a pretty exact margin."
+  // THE OMISSION, verified across the whole of updateFood: this harvest already charges
+  // labour for SOLDIERS ("Soldiers are MEN OFF THE LAND", armyFrac above) and for
+  // FISHERS (fisherFrac, added expressly so "conscription/famine no longer raise fish
+  // for free"), and it charges a per-TILE subsistence for the farmhands a worked tile
+  // needs (FARM_FERT_FLOOR). It charges NOTHING for urbanisation. _urbanPop enters this
+  // function on the DEMAND side only — as mouths and as _coreNeed. City people eat, and
+  // they also still farm. Someone took the trouble to make fishing cost labour and
+  // never made a city cost any.
+  // WHY THAT IS THE WHOLE CEILING PROBLEM. History's agrarian urban ceiling is not a
+  // policy, it is arithmetic: a pre-modern farmer fed himself plus a fraction, so the
+  // urban share could not pass roughly that fraction. Here it can pass anything,
+  // because the fields keep yielding after the hands leave them — which is why the
+  // world runs to 28% urban with the countryside losing 37% of its mass, and why the
+  // only thing opposing it had to be an arbitrary disease cap (min(1, urbShare/0.3),
+  // settlement.js) standing in for a constraint that belongs HERE.
+  // THE FORM HAS NO CONSTANT, because there is nothing to choose: output scales with
+  // the share of the catchment that is actually rural. Applied to netFert rather than
+  // to landFood so the per-tile labour floor scales WITH the worked area and is not
+  // double-charged — (fertSum − tiles·floor)·rural expands to both terms scaling, which
+  // is exactly "fewer hands work fewer tiles".
+  // Reads _coreMeasured, NOT _urbanPop: the comment at popField.js's core read records
+  // that the census-side ruralShare HEURISTIC overwrites _urbanPop every tick between
+  // derives, so a reader inside the settlement pass sees the ratio model rather than the
+  // measurement. Null before the first derive ⇒ treated as fully rural, which is both
+  // the safe direction and the true one: a settlement with no measured core is a farm
+  // village. Same one-tick lag the fisher term uses, for the same no-circularity reason.
+  const _uCore = s._coreMeasured != null ? s._coreMeasured : 0;
+  const _ruralLabor = T.URBAN_LABOR ? Math.max(0, 1 - Math.min(1, _uCore / Math.max(1, s.people))) : 1;
+  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrFarmedWt ?? s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR) * _fertA * _ruralLabor;
   // MODEL B: EVERY settlement's territory (its rural hinterland) is farmed by the country
   // folk who live on it — a city does not grow food in its packed urban core, but the land
   // it controls IS worked and feeds it. So land food is produced from a settlement's territory
