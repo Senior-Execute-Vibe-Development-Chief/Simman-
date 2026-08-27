@@ -218,8 +218,32 @@ values into the shipped world:
 
 | | test grid | play grid | reality |
 |---|---|---|---|
-| farm belt | 953,598 km² | 211,880 km² | tens of thousands of km² |
+| farm belt **ceiling** | 953,598 km² | 211,880 km² | see the correction below |
 | settlement spacing **floor** | 992 km | 496 km | 30–100 km between cities |
+
+> **CORRECTION, and it retracts a finding of mine from earlier today.** I wrote that
+> the belt is "absurdly large at both grids — 953,598 km² is not a hinterland, it is
+> an empire." That measurement came from a **5-settlement world at 3,000 steps**, and
+> I read it as though it described the mature one. It does not. In the mature world
+> the belt constant is a ceiling that contention almost never lets a settlement
+> reach:
+>
+> | arm at 40k | claimed land | settlements | **per settlement** |
+> |---|---|---|---|
+> | base | 65.1 Mkm² | 1,385 | **46,986 km²** |
+> | chaos | 58.7 Mkm² | 1,289 | **45,552 km²** |
+> | CORE_LOCAL | 65.7 Mkm² | 1,221 | **53,782 km²** |
+>
+> ~47–54,000 km² per settlement — Denmark-to-Estonia scale, entirely reasonable for a
+> city *and its province*, which is what the entity is (CLAUDE.md: a realm with four
+> members administers four urban provinces; Achaemenid satrapies averaged ~200,000
+> km²). The belt is **not** absurdly sized in effect.
+>
+> What survives, and it is narrower but still real: the constant **does** bind in the
+> **empty early world** — which is exactly when cities are founded and when the 12,000
+> founding stamp is set. So it matters for genesis, not for the mature map. And the
+> resolution defect is untouched by this correction: 953,598 against 211,880 is a
+> 4.5× difference in the same constant's meaning, whether or not the constant binds.
 
 *(The spacing row is the FLOOR the constant sets — `MIN_SETT_DIST = 8` tiles at the
 measured tile width — not a measured mean; `SPARSE_SPREAD` pushes barren land
