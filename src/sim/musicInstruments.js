@@ -95,33 +95,33 @@ export const FAMILIES = {
     body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.15 },
   },
   luteNeck: {                   // stopped strings — the neck is the pitch machine
-    label: "stopped-string", kind: "pluck", drive: "pluck", pitchBy: "stop", cap: 14, low: 110, beta: 0.12, wid: 2, vib: "string", poly: 1,
+    label: "stopped-string", kind: "pluck", drive: "pluck", pitchBy: "stop", span: 2.2, cap: 14, low: 110, beta: 0.12, wid: 2, vib: "string", poly: 1,
     ratios: (n, m) => harmonicStiff(n, m.B),
     body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.42 },
   },
   bowed: {                      // sustained string — a bow keeps the mode driven
-    label: "bowed-string", kind: "sustain", drive: "bow", pitchBy: "stop", cap: 14, low: 196, beta: 0.09, wid: 8, vib: "string", poly: 1,
+    label: "bowed-string", kind: "sustain", drive: "bow", pitchBy: "stop", span: 2.5, cap: 14, low: 196, beta: 0.09, wid: 8, vib: "string", poly: 1,
     ratios: (n, m) => harmonicStiff(n, m.B),
     body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.5, mobility: 0.3 },
   },
   // ── winds ──
   fluteOpen: {                  // open tube, edge-blown: full harmonic series
-    label: "open flute", kind: "sustain", drive: "breath", pitchBy: "hole", cap: 6, low: 262, vib: "air", poly: 1,
+    label: "open flute", kind: "sustain", drive: "breath", pitchBy: "hole", span: 2.2, cap: 6, low: 262, vib: "air", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
     body: ["bamboo", "reed", "wood", "clay", "bone"], needs: {},
   },
   pipeStopped: {                // stopped tube: ODD harmonics only — a hollow, clarinet-ish spectrum
-    label: "stopped pipe", kind: "sustain", drive: "breath", pitchBy: "hole", cap: 5, low: 220, vib: "air", poly: 1,
+    label: "stopped pipe", kind: "sustain", drive: "breath", pitchBy: "hole", span: 1.5, cap: 5, low: 220, vib: "air", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => 2 * i + 1),
     body: ["bamboo", "reed", "clay", "gourd", "bone"], needs: {},
   },
   reedPipe: {                   // conical reed: full series, loud and buzzing
-    label: "reed pipe", kind: "sustain", drive: "reed", pitchBy: "hole", cap: 8, low: 175, vib: "air", poly: 1,
+    label: "reed pipe", kind: "sustain", drive: "reed", pitchBy: "hole", span: 1.4, cap: 8, low: 175, vib: "air", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
     body: ["reed", "bamboo", "wood"], needs: { construction: 0.3 },
   },
   horn: {                       // lip-driven natural horn — plays the harmonic series ITSELF
-    label: "natural horn", kind: "sustain", drive: "lip", pitchBy: "stop", cap: 6, low: 116, vib: "air", tune: "series", poly: 1,
+    label: "natural horn", kind: "sustain", drive: "lip", pitchBy: "stop", span: 3.0, cap: 6, low: 116, vib: "air", tune: "series", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
     body: ["horn", "bronze", "iron", "clay", "bone"], needs: {},
   },
@@ -619,6 +619,47 @@ export function slidesTo(inst, fromHz, toHz, gapSecs) {
 export function slideSecs(fromHz, toHz) {
   const cents = Math.abs(1200 * Math.log2((toHz || 1) / (fromHz || 1)));
   return Math.min(0.12, 0.016 + (cents / 1200) * 0.11);
+}
+
+/**
+ * WHAT RANGE A BODY HAS — high note and low — which is set by what the player
+ * can do to the vibrating element, and not by how many pitches they can place.
+ *
+ * What stood in the Lab was `low * frame^(cap >= 12 ? 3 : cap >= 6 ? 2.4 : 1.8)`:
+ * three hand-picked numbers with no physical meaning, keyed off `cap`, which
+ * counts PITCHES rather than octaves. For a bowed body it worked out to
+ * 196 x 8 = 1568 Hz, and measured, a sarangi was being asked for exactly that —
+ * 33 notes in 446 above anything a sarangi has, and a full octave of
+ * pitch-shift on the recording to reach them, which is what a stretched sample
+ * sounds like.
+ *
+ * The honest version is three cases, because there are three ways to get a
+ * different pitch out of a thing:
+ *
+ *   FIXED bodies have one resonator per pitch, so their range simply IS their
+ *   resonator count: `cap` pitches laid out in `cap` steps of the mode. A
+ *   seven-bar balafon covers an octave and a thirteen-string koto two and a
+ *   half, for no other reason than that.
+ *
+ *   STOPPED bodies have a length the player shortens. Halving it is an octave
+ *   and a hand reaches usefully over about two of them, so the span is a
+ *   property of the family rather than of this instance — measured and written
+ *   down as `span`.
+ *
+ *   HOLED tubes get one octave from the fingering and then however much the
+ *   bore lets them overblow: an open tube jumps at the octave, a stopped one
+ *   at the twelfth, and a reed under a bag does not overblow at all, which is
+ *   why a Highland chanter has nine notes and an oboe has three octaves. Also
+ *   `span`, also measured.
+ */
+export function rangeOf(inst, modeSize = 7) {
+  const fam = FAMILIES[inst.fam] || {};
+  const low = fam.low || 200;
+  const oct = fam.span != null
+    ? fam.span
+    // one resonator per pitch: however many there are, in scale steps
+    : Math.max(0.7, (inst.cap || 1) / Math.max(3, modeSize));
+  return { low, top: low * Math.pow(2, oct) };
 }
 
 export function radiatedLevel(inst) {

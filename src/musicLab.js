@@ -14,7 +14,7 @@ import { foundLanguage } from "./sim/language.js";
 import { langWord, langWordForm, langRealmName } from "./sim/language.js";
 import { phoneticPlan, prosodyOf, vocablesOf } from "./sim/languagePhonetics.js";
 import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE } from "./sim/languageLexicon.js";
-import { MATERIALS, FAMILIES } from "./sim/musicInstruments.js";
+import { MATERIALS, FAMILIES, rangeOf } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
@@ -155,9 +155,10 @@ function noteFreq(m, ev) {
   const inst = m.insts[ev.inst];
   let low = 0, top = 0;
   if (inst && FAMILIES[inst.fam] && FAMILIES[inst.fam].low) {
-    low = FAMILIES[inst.fam].low;
-    // and not so high that the body has run out of instrument either
-    top = low * Math.pow(frame, inst.cap >= 12 ? 3 : inst.cap >= 6 ? 2.4 : 1.8);
+    // how much instrument there actually IS above the bottom note — see
+    // `rangeOf`, which asks what the player can do to the vibrating element
+    // rather than counting the pitches they can place
+    ({ low, top } = rangeOf(inst, m.mode ? m.mode.size : 7));
   } else if (ev.role === "voice") {
     // A VOICE HAS A BODY TOO — and it was the one part with no range at all.
     // A sung event carries `inst: -1`, so `m.insts[ev.inst]` is undefined and
@@ -173,9 +174,17 @@ function noteFreq(m, ev) {
     ({ low, top } = voiceRange(prosodyOf(m.people.lang)));
   }
   if (!low) return f;
+  // FOLD INTO THE BODY, and if the body is narrower than a frame, sit AT it.
+  // A drum has about two thirds of an octave and a tanpura has four strings;
+  // folding a note into a window narrower than the fold step just ping-ponged
+  // it — up over the top, down under the bottom, forever — and the guard
+  // counter then left it wherever it happened to stop. Measured, every one of
+  // a darbuka's 130 strokes came out at 74 Hz against a family floor of 80.
   let guard = 0;
   while (f < low * 0.94 && guard++ < 5) f *= frame;
   while (f > top && guard++ < 9) f /= frame;
+  if (f < low * 0.94) f = low;
+  else if (f > top) f = top;
   return f;
 }
 
@@ -993,7 +1002,7 @@ function exposeForTests() {
   if (typeof window === "undefined") return;
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
-    loadSamples, sampleSource, sampledFor, SAMPLE_BANK, slidesTo,
+    loadSamples, sampleSource, sampledFor, SAMPLE_BANK, slidesTo, FAMILIES, FAMILIES,
     fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs,
     buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S };
 }
