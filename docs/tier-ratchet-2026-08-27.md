@@ -842,3 +842,79 @@ that removes about a fifth of urbanisation, leaves the pin alone, and leaves the
 world with more people in it.** What does not stand is that it does so by cutting
 down the largest city. Where the fifth comes from is now an open question, not an
 answered one.
+
+---
+
+## 15. Third untreated draw — the bands separate, and §14's tightness was partly mine
+
+`w4_cl_ref3` reached the decisive window: claimed 34.35, urban **14.46**, bind 41.3,
+total 418,181su. The untreated reference at 32k-36k is now three draws.
+
+### 15.1 The bands do not overlap
+
+```
+untreated   14.46   14.72   15.57        (spread 1.11)
+treated     10.29   11.59                (spread 1.30)
+                    ^^^^^ gap 2.87 ^^^^^
+```
+
+On raw values, with no maturity correction at all, every treated draw is below every
+untreated draw. That is the cleanest form this comparison can take and it is the
+first time this lap that any mechanism has produced it.
+
+`bind%` separates the same way, and in the direction the disqualifier wanted:
+treated 39.1 and 39.2 against untreated 39.5, 39.9 and **41.3** — below all three.
+So the marginal-improvement reading on the pin, which §14.2 softened to "neutral" on
+the modal measure, does hold on `bind`.
+
+Population separates too, and against the maturity gradient: both treated draws hold
+more people than any untreated draw **despite being less far along**.
+
+```
+untreated   412,324 (claimed 32.34)   418,181 (34.35)   430,981 (37.51)
+treated     439,134 (claimed 32.72)   448,280 (36.04)
+```
+
+### 15.2 §14's "81% and 82%" shared a denominator
+
+§14 called two draws landing at 81% and 82% "a far stronger result." The treated
+numerators are genuinely independent. **The untreated denominator was the same draw
+in both** — chaos1 was the only reference whose claimed-land range bracketed both
+treated arms, so the agreement measured the stability of the treatment and not, as
+the phrasing implied, of the whole ratio.
+
+With `ref3` available as a second anchor, one more pair becomes computable, and it
+does not agree as neatly:
+
+| pair | untreated at matched maturity | treated | ratio |
+|---|---|---|---|
+| ULAB (36.04) vs chaos1 | 14.09 | 11.59 | 82% |
+| ULABx (32.72) vs chaos1 | 12.66 | 10.29 | 81% |
+| ULABx (32.72) vs **ref3** | 14.06 | 10.29 | **73%** |
+
+The other three pairs would require extrapolating a reference past its own range and
+are dropped rather than stretched.
+
+**The honest effect size is 73-82% of untreated — "removes a fifth to a quarter" —
+not the 81-82% §14 reported.** The spread comes from the untreated world's own
+trajectory being less repeatable than the treated one: ref3 sat at 11.45% urban at
+28k-32k where chaos1 sat at 8.60%, so the two references disagree about how much
+urbanisation the untreated world had already accumulated before this window.
+
+That is worth noting on its own: **the untreated world's path is noisier than the
+braked world's.** Three draws that spread 2.85 points at 28k-32k converge to 1.11 by
+32k-36k, while the treated pair holds 1.30 throughout. A brake that reduces
+run-to-run variance is behaving like a stabiliser, which is what a real constraint
+does and what a fitted constant does not.
+
+### 15.3 Where this leaves the verdict
+
+Unchanged in direction, better evidenced, honestly wider in magnitude:
+
+- **Ceiling:** treated 73-82% of untreated, bands non-overlapping on raw values.
+- **Pin:** `bind%` below all three untreated draws; modal share neutral.
+- **Population:** above all three untreated draws at lower maturity.
+- **Tail:** no signal (§14.1, retracted).
+
+36k-40k remains the last word — the untreated world's steepest window, where two of
+the three draws went +12.6 and +5.9.
