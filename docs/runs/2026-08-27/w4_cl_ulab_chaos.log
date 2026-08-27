@@ -104,3 +104,4 @@
     MACHINE 20000 24000 12 2.080 12 1 0 1 10 0 7291 97978 77.08 29.86 5.56
     [388s]
 [peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+[transHeap] step=26736 cap=131072 peakN=77222 pushes=207584 (1.0MB backing)
