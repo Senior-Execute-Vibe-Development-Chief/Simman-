@@ -780,3 +780,65 @@ untreated world went +12.6 and +5.9 — the steepest part of the runaway and the
 test of whether a 40% brake survives at the top. And §11's seam is untouched: while
 the founding stamp reports full size for starving cities, every ceiling number in
 this table — including this one — is measured through a partly broken instrument.
+
+---
+
+## 14. The chaos twin lands — one §13 claim retracted, the main one replicates
+
+`URBAN_LABOR`'s float-epsilon twin reached the decisive window an hour after the
+first draw. It refutes one of §13's three claims and strengthens the other two.
+
+| 32k-36k | claimed% | urban% | bind% | pin | total su | max core |
+|---|---|---|---|---|---|---|
+| untreated, clean | 32.34 | 15.57 | 39.9 | — | 412,324 | — |
+| untreated, chaos1 | 37.51 | 14.72 | 39.5 | 37.4% | 430,981 | 1234.3 |
+| `+URBAN_LABOR` | 36.04 | 11.59 | 39.1 | 36.0% | 448,280 | 613.5 |
+| `+URBAN_LABOR` (chaos) | 32.72 | 10.29 | 39.2 | 39.4% | 439,134 | **1366.5** |
+
+### 14.1 RETRACTED: "the runaway tail is halved"
+
+§13.3 reported the largest core at 613.5su against 1234.3su untreated and read it as
+the brake biting the runaway metropolis. **The twin reads 1366.5su — above the
+untreated draw.** The treated pair straddles the untreated value. There is no tail
+signal; there was one draw's noise in a quantity that is, by construction, the
+maximum of a heavy-tailed distribution and therefore the single worst statistic in
+the printout to read off one arm.
+
+I flagged that exact failure mode in §10.3 — *"a mechanism inferred from a
+direction"* — and then did it again in the same document three sections later, on a
+claim I had explicitly labelled as unasked-for. The lesson is not about tails. It is
+that the sentence "and here is a bonus finding" is where the discipline lapses.
+
+### 14.2 SOFTENED: the pin is neutral, not better
+
+§13.3 called the modal-share reading "marginally better" (36.0% vs 37.4%). The twin
+reads 39.4%, straddling untreated. The correct word is **neutral** — which is what
+the disqualifier required and all it required. `bind%` does hold up as marginally
+better: 39.1 and 39.2 against 39.5 and 39.9, below both untreated draws.
+
+### 14.3 REPLICATED, and tightly: the ceiling effect and the population gain
+
+Interpolated to matched maturity against the one untreated draw that brackets both:
+
+```
+ULAB    claimed 36.04   urban 11.59  vs 14.09   →  82% of untreated
+ULABx   claimed 32.72   urban 10.29  vs 12.66   →  81% of untreated
+```
+
+**Two independent draws landing at 81% and 82% is a far stronger result than the
+single −2.5 points §13 reported.** The effect size is stable under a float-epsilon
+perturbation of an unrelated lever, which is this repo's standard for "not noise."
+
+The population gain replicates too, and at almost exactly matched maturity — the
+twin's claimed-land figure (32.72) sits within half a point of the untreated clean
+draw's (32.34):
+
+```
+ULABx  439,134su    untreated clean  412,324su    →  +6.5%
+```
+
+So the headline stands and is better evidenced than when it was written: **a brake
+that removes about a fifth of urbanisation, leaves the pin alone, and leaves the
+world with more people in it.** What does not stand is that it does so by cutting
+down the largest city. Where the fifth comes from is now an open question, not an
+answered one.
