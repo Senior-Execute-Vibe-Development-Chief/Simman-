@@ -1,2 +1,39 @@
 [harness] tree 37e1c3a
 [SIM_TUNE] {"CORE_LOCAL":1}
+[peopleSim] hearth pin Nile picked at tile (568,173) (33.0E 25.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (595,149) (43.1E 34.1N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (667,162) (70.1E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (784,145) (114.0E 35.6N) — maturity deferred to the stagger law
+[peopleSim] hearth Ňěňní at (568,173) (33.0E 25.1N) score 7.61 pkg=wheat(suit 0.99) — matured 906y into prehistory (wave age 5094y)
+[peopleSim] hearth Pephamdo at (595,149) (43.1E 34.1N) score 4.81 pkg=wheat(suit 0.75) — matured 1200y into prehistory (wave age 4800y)
+[peopleSim] hearth Pomponsom at (667,162) (70.1E 29.2N) score 6.71 pkg=wheat(suit 0.98) — matured 921y into prehistory (wave age 5079y)
+[peopleSim] hearth Fevvon at (784,145) (114.0E 35.6N) score 5.43 pkg=rice(suit 0.91) — matured 2749y into prehistory (wave age 3251y)
+[peopleSim] hearth Nawaxexi at (203,162) (-103.9E 29.2N) score 4.10 pkg=maize(suit 0.80) — matured 5604y into prehistory (wave age 396y)
+[peopleSim] hearth Sasfesu at (456,195) (-9.0E 16.9N) score 3.75 pkg=sorghum(suit 0.66) — matured 3042y into prehistory (wave age 2958y)
+[peopleSim] hearth Wityim at (282,265) (-74.3E -9.4N) score 1.62 pkg=tubers(suit 0.80) — matured 3745y into prehistory (wave age 2255y)
+[peopleSim] hearth Ninuvy at (537,315) (21.4E -28.1N) score 0.85 pkg=wheat(suit 0.55) — matured 1632y into prehistory (wave age 4368y)
+[peopleSim] hearth candidate at (378,264) (-38.3E -9.0N) score 0.50 pkg=tubers(suit 0.28) — ARMED: ~4814y of peopled-basin time from maturity
+[peopleSim] hearth Bofvu at (494,80) (5.2E 60.0N) score 0.50 pkg=wheat(suit 0.21) — matured 4319y into prehistory (wave age 1681y)
+[popField] worker pool engaged: 4 bands
+[transHeap] step=24 cap=262144 peakN=218206 pushes=1354653 (2.1MB backing)
+
+=== step 4000  realms=4 (0 vassal)  claimed=1.4%  flows: founded=81 ended=5 seceded=0 shattered=0
+    size km2: P10=280k  MED=432k  P90=1097k  MAX=1097k  | top1share=51%  max/med=2.5  gini=0.30  lnσ=0.53 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:3  1-5M:1  >5M:0
+    SMALL (<100k km2): 0 of 4 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #7 "Wityim" 280k km2 mem=1 age=4000 org=0.12
+      tiny #2 "Pephamdo" 336k km2 mem=1 age=4000 org=0.19
+      tiny #4 "Fevvonfax" 432k km2 mem=1 age=4000 org=0.10
+      tiny #1 "Ňěňnílěā" 1097k km2 mem=1 age=4000 org=0.23
+    [94s]
+
+=== step 8000  realms=5 (0 vassal)  claimed=2.8%  flows: founded=137 ended=6 seceded=3 shattered=1
+    size km2: P10=1k  MED=584k  P90=2080k  MAX=2080k  | top1share=51%  max/med=3.6  gini=0.44  lnσ=2.77 (real maps ≈2.0-2.6)
+    histogram  <50k:1  50-200k:0  200k-1M:3  1-5M:1  >5M:0
+    SMALL (<100k km2): 1 of 5 (20%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #99 "Pụ̌ịtrụ̀ịlǐ" 1k km2 mem=0 age=1513 org=0.00
+      tiny #7 "Wityim" 566k km2 mem=1 age=8000 org=0.15
+      tiny #2 "Pephamdo" 584k km2 mem=1 age=8000 org=0.32
+      tiny #4 "Fevvonfax" 866k km2 mem=1 age=8000 org=0.10
+      tiny #1 "Ňěňnílěā" 2080k km2 mem=3 age=8000 org=0.36
+    [188s]
