@@ -362,11 +362,29 @@ const TOWN_BASIN_MIN            = 360;   // field people the catchment must hold
                                          // is the lever T.LABEL_BAR (default = this same 360 anchor) and the read
                                          // becomes basin-EXCLUSIVE — see the sweep.
 const CROWD_CAP                 = 6;     // T.CROWD_FOUND saturation: the densest basin founds at most this multiple of a bar-sized one
-const TOWN_BASIN_R              = 10;    // catchment radius, REFERENCE-tiles (×rn at the use site; = URBAN_CATCHMENT, one market catchment).
-                                         // Under T.LABEL_BIRTH this same real distance is the market HORIZON of the
-                                         // site-ledger law below (the cell's activation-mass radius AND the reach of a
-                                         // site's cell) — one constant, one physical meaning: the day's walk that binds
-                                         // a countryside to one market.
+const TOWN_BASIN_R              = 10;    // REFERENCE-tiles (×rn at the use site). NOT a market catchment and NOT a
+                                         // day's walk: at 167 km per reference tile this is a 1,670 km RADIUS disk of
+                                         // ~8.8M km² — roughly Australia, ~25-55× too large in radius and ~700-3,100×
+                                         // in area for a city's provisioning shed (history's is 20-50 km, hard ceiling
+                                         // ~100-150 km overland). The old comment here claimed "one constant, one
+                                         // physical meaning: the day's walk that binds a countryside to one market",
+                                         // which was wrong by ~50× and, worse, wrong in KIND — the catchment audit
+                                         // (2026-08-27, docs/catchment-audit-2026-08-27.md) found this ONE constant
+                                         // serving SIX unrelated physical questions: the mint bar, the dissolve bar,
+                                         // CROWD_FOUND's reference, the hearth stand-down/ignition basin, the harbour
+                                         // shelter test, and (via cageField.js CAGE_HORIZON_REF) a fleeing household's
+                                         // exit horizon. No single number can be all six. What it honestly IS today is
+                                         // a bar-SAMPLING WINDOW — and because it is huge it is PERMISSIVE, which is
+                                         // why every attempt to make it bind measured inert (TOWN_BASIN_MIN ×5
+                                         // byte-identical; MINT_RESIDUAL near-inert; MINT_REACH structurally inert).
+                                         // MEASURED overlap of the disk it defines (probe_overlap, 24k/8817): 65.3% of
+                                         // covered tiles sit under >1 disk, up to 8 cities share one tile, and Σ basin
+                                         // mass is 3.58× the people actually standing there. The economy is NOT
+                                         // affected — census and harvest both reduce over the exclusive
+                                         // _territoryOwner partition — but city FOUNDING and DISSOLUTION are priced on
+                                         // this triple-counted read. Splitting it per question, each grounded in a real
+                                         // distance converted at the world's own km-per-tile (the HAUL_LAND_KM pattern
+                                         // in foodHierarchy.js), is the named next lap.
 // ── T.LABEL_BIRTH v3: the MARKET-SITE LEDGER (Tier C phase 1, third cut) ──
 // docs/design-c-siting-ledger.md — the measured foundation and the law. The
 // two dead geometries before it, both refuted ON THIS BRANCH (kept for the

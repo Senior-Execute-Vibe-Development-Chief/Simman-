@@ -1856,8 +1856,13 @@ export function deriveOnePop(world) {
   // (A/B: Σcap 7.51M/3.38M with FOOD_K on, 5.89M/4.44M off — the ledger RAISES capacity
   // at the reference and LOWERS it at the app grid, the signature of a per-entity
   // quantity spread over a resolution-dependent tile count).
-  // Default OFF: this changes the calibrated bridge magnitude at every grid, so it needs
-  // the full multi-seed gate before it can be the default.
+  // DEFAULT ON since 2026-08-03 (tuning.js BRIDGE_GLOBAL def: 1) — this comment still
+  // read "Default OFF" long after that flip, and the catchment audit (2026-08-27) caught
+  // it while proving the bridge is immune to catchment geometry: BOTH sides of the global
+  // form are whole-world people-totals (Sigma census over settled, Sigma field over all
+  // land), frozen once and persisted, so no catchment radius, overlap or partition change
+  // can move it. The per-catchment MEDIAN form below is the fallback and is the one that
+  // would have carried geometry into the scalar.
   if (!(world._onePopScale > 0) && T.BRIDGE_GLOBAL) {
     let csTot = 0, fsTot = 0;
     for (const s of world.settlements) if (s.mode === "settled" && s.people > 0) csTot += s.people;
