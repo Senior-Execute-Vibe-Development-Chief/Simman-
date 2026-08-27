@@ -142,3 +142,15 @@
     MACHINE 32000 36000 840 36.042 74 273 328 27 10079 0 51959 396321 83.69 39.06 4.12
     [3642s]
 [peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) stood down — the farming package arrived before it was invented
+
+=== window 36000->40000  realms=887  claimed=55.9%  settled=1252
+    FLOWS in-window   founded=43 ended=367 seceded=361 shattered=16
+    FLOWS per realm   founded=0.0498 ended=0.4250 seceded=0.4181 shattered=0.0185   (meanRealms=864)
+    WAR in-window     began=10217 ended=9848 captured=0 sacked=8
+    WAR per realm     began=11.8321 captured=0.0000
+    CORES p10=7.0 p50=14.1 p90=164.6 max=725.4su  |  MODE 12.00su held by 432/1250 (34.6%)  <- the pin
+    URBSHARE/sett p50=0.100 p90=0.415 max=1.000  |  >=0.30 (graveyard saturated): 220/1252 (17.6%)
+    MASS  urban=72422su rural=386984su urbanShare=15.76%
+    ARMING  blockRan=84.3%  bind=41.3%  diskBound=5.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 36000 40000 887 55.948 43 367 361 16 10217 0 72422 386984 84.35 41.29 4.95
+    [6808s]
