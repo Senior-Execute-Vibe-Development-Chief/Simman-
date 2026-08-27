@@ -1104,3 +1104,69 @@ each claim, before seeing it:
   noise and §17.1 goes.
 - **Population and pin:** both have already replicated at 32k-36k, so a reversal
   here would be the surprising outcome.
+
+---
+
+## 18. `ULAB+FARM` completes — `FARM_RES` convicted on the pin, and a §17 claim tempered
+
+| 36k-40k | claimed% | urban% | bind% | pin | p50 core | rural su | total su |
+|---|---|---|---|---|---|---|---|
+| untreated, clean | 44.42 | 28.21 | 44.5 | — | — | 302,921 | 421,981 |
+| untreated, chaos1 | 50.83 | 20.61 | 40.2 | 37.0% | 12.5 | 325,049 | 409,448 |
+| `+URBAN_LABOR` | 55.95 | 15.76 | 41.3 | 34.6% | **14.1** | 386,984 | 459,406 |
+| `+ULAB+FARM_RES` | 39.16 | **6.28** | **26.1** | **50.1%** | **12.0** | 463,660 | 494,729 |
+
+### 18.1 The prettiest number, bought with the pin
+
+`ULAB+FARM` posts the lowest urbanisation of the wave — 6.28%, squarely inside
+history's 5-15% agrarian band, better on that axis than anything else measured.
+
+It is also the worst world by the measure the owner actually raised. **Half the
+register — 675 of 1,348 settlements — sits at exactly 12.00 sim units**, and the
+median city is *still exactly its birth certificate* where `URBAN_LABOR` alone
+reached 14.1.
+
+That gap is not a maturity artefact, and the check matters because the pin **falls**
+as a world develops (untreated: 44.6% → 37.4% → 37.0%), so a less-developed arm is
+naturally more pinned. Interpolating the untreated draw to `ULAB+FARM`'s own
+claimed-land figure:
+
+```
+ULAB+FARM   claimed 39.16   pin 50.1%
+untreated interpolated to 39.16          37.4%
+                                        +12.7 points worse
+```
+
+`bind%` says the same and louder: 26.1 against untreated 40.2 and 44.5. Cities are
+being pushed back below the founding stamp wholesale.
+
+**Verdict: `FARM_RES` lowers urbanisation by freezing the city register, not by
+constraining it.** Two measures, matched on maturity, both decisive, consistent
+across every window of two waves. It stays off, independently of the resolution-anchor
+question that already blocked it.
+
+### 18.2 Tempering §17: `URBAN_LABOR`'s pin reading is *not* clearly better
+
+§17 called 34.6% "the best reading of the wave." That overstates it, and the same
+maturity gradient is why.
+
+`URBAN_LABOR` reaches claimed land 55.95 — **past the end of both untreated draws**,
+so its pin cannot be matched against an interpolated reference at all; both would be
+extrapolations and are dropped. Untreated pin was falling steadily (37.4 → 37.0) and
+would plausibly reach ~36% at that development. Against 34.6%, that is a 1-2 point
+edge inside an untreated spread that runs 35.2% to 45.0%.
+
+**The honest statement: `URBAN_LABOR`'s pin is at the low end of the untreated range
+and not distinguishable from it.** Which is exactly what the disqualifier asked for —
+*do not make the pin worse* — and no more. `bind%` (41.3, inside the untreated band
+40.2-44.5) says the same. The claim that survives is "neutral," not "best."
+
+§13.3 already had to walk this back once from "marginally better" to "neutral."
+Walking it there a second time from the other direction suggests the disciplined
+default on this metric is to read it as neutral unless a matched comparison exists.
+
+### 18.3 What is still open
+
+Only the twin. `w4_cl_ulab_chaos` is the last arm running, and §17.1's median-core
+finding — the first time the typical city has been anything but 12.0su — rests on
+the single draw it is there to check.
