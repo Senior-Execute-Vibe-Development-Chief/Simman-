@@ -86,3 +86,17 @@
       tiny #684 "Dyogyo" 4k km2 mem=1 age=813 org=0.50
     [406s]
 [peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) stood down — the farming package arrived before it was invented
+
+=== step 32000  realms=568 (256 vassal)  claimed=23.4%  flows: founded=117 ended=246 seceded=360 shattered=32
+    size km2: P10=15k  MED=38k  P90=103k  MAX=1630k  | top1share=5%  max/med=42.7  gini=0.48  lnσ=0.80 (real maps ≈2.0-2.6)
+    histogram  <50k:379  50-200k:176  200k-1M:10  1-5M:3  >5M:0
+    SMALL (<100k km2): 510 of 568 (90%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #1031 "Ši" 4k km2 mem=1 age=2113 org=0.72
+      tiny #1249 "Punysorhothk'uo" 4k km2 mem=1 age=608 org=0.55
+      tiny #924 "Ityidepdeptyopa" 4k km2 mem=1 age=2863 org=0.67
+      tiny #494 "Eewebidy" 4k km2 mem=1 age=5713 org=0.66
+      tiny #124 "Fị̀ptàịlěā" 4k km2 mem=1 age=9013 org=0.67
+      tiny #528 "Tuzadaya" 4k km2 mem=1 age=4663 org=0.66
+      tiny #283 "Ǔltǔkò" 4k km2 mem=1 age=7363 org=0.60
+      tiny #452 "Bofgofyi̤z" 4k km2 mem=1 age=4813 org=0.66
+    [885s]
