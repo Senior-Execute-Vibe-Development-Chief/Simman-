@@ -171,6 +171,74 @@ is work-plan item 3 proper, and the design constraints are already established i
 the catchment census (circular by identity); the partition stays exclusive; a
 switching margin stops flicker and has real warrant in market-franchise law.
 
+## 5b. The resolution half — measured after the owner named it
+
+> Owner, on being shown that a city's own farmland books a tenth of its core's
+> need: *"We need tile irrespective farming."*
+
+Measured with `tools/probe_farmres.mjs` — the same world at two grids, seed 8817,
+3000 steps:
+
+| | tw=240 | tw=480 | |
+|---|---|---|---|
+| core radius | 2 tiles | 2 tiles | identical |
+| belt radius | 4 tiles | 4 tiles | identical |
+| belt **real area** | 953,598 km² | 211,880 km² | **4.5× apart** |
+| farm output per real Mkm² | 0.873 | 3.107 | **3.56× apart** |
+
+**The bug had already been found once.** `territory.js:195-201` diagnoses it in its
+own words for the Dijkstra reach budget — *"a fixed budget is a fixed TILE radius, a
+smaller REAL catchment on a finer grid (the second half of the Phase-2 resolution
+bug: the same settlement farmed ¼ the real land at 2× resolution)"* — and scales it
+by `rNormPop`. `countryTerritory.js` does the same for political reach. The two
+guaranteed radii were left raw, and being **floors** they override the corrected
+budget wherever they bind.
+
+`T.FARM_RES` (built, def 0) applies the pair `settlement.js:3370-3` spells out for
+the population scan and applies to itself. **One half landed, one did not:**
+
+- farm output per real Mkm² → **0.873 vs 0.904, invariant** ✓
+- belt real area → 953,598 vs 242,421, **still 3.9× apart** ✗
+
+The radii do scale (verified: core 2→4, belt 4→8 at tw=480). The belt is
+**contention-limited, not radius-limited**: `crystallize.js:113 MIN_SETT_DIST = 8`
+is another raw tile count, so the settlements competing for that ground sit at half
+the real distance on the finer grid. Widening a belt cannot help while its
+competitors are twice as close.
+
+**So the Phase-2 bug has at least five sites, three repaired**: reach budget ✓,
+political reach ✓, the two guaranteed radii ✓, the harvest area unit ✓, and
+**settlement spacing — open**.
+
+### Why the fifth site is not simply finished: the anchor is an owner decision
+
+Every repair so far anchors at the REFERENCE grid, because that is where the
+constants were calibrated. Measured, that choice propagates the worse absolute
+values into the shipped world:
+
+| | test grid | play grid | reality |
+|---|---|---|---|
+| farm belt | 953,598 km² | 211,880 km² | tens of thousands of km² |
+| settlement spacing **floor** | 992 km | 496 km | 30–100 km between cities |
+
+*(The spacing row is the FLOOR the constant sets — `MIN_SETT_DIST = 8` tiles at the
+measured tile width — not a measured mean; `SPARSE_SPREAD` pushes barren land
+further apart still. It is arithmetic on the constant, and the real mean is ≥ it.)*
+
+**The play grid is closer to right on both counts.** So scaling `MIN_SETT_DIST` the
+obvious way moves cities from 496 km apart to 992 km: consistent, and further from
+reality than before.
+
+Three ways to make the world resolution-invariant, not equivalent:
+
+1. **Anchor at the reference grid** — what has been done; propagates the error.
+2. **Anchor at the shipped grid** — breaks every calibrated constant.
+3. **Anchor at real distances**, the way `T.HAUL_PHYS` did off Diocletian's edict —
+   right by the SECOND CARDINAL RULE, since the constants would then mean something
+   on their own. A recalibration wave, not a patch.
+
+Recommended: (3). Not chosen unilaterally.
+
 ## 6. Method notes worth keeping
 
 - **The arming check** (`urban.coreBlockRanPct` / `urban.coreLocalBindPct`)
