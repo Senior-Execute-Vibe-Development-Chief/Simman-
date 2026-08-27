@@ -50,7 +50,12 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // the dullest ones. And a part with no entry here bypassed the balance
 // altogether and arrived at full level.
 const ROLE_DB = {
-  lead: 0, voice: 1, elab: -7, core: -8, het: -8,
+  // The heterophonic voices are CO-EQUAL PLAYERS on the same line, not an
+  // accompaniment layer under it — in a takht the qanun is not eight decibels
+  // beneath the oud. They sit just under the lead so the line stays followable
+  // and no further, because the point of the texture is hearing several
+  // versions of it at once.
+  lead: 0, voice: 1, elab: -7, core: -8, het: -4,
   bass: -6, pad: -14, ost: -11,
   // percussion is the drive, not the background — a drum ensemble is what
   // makes this music powerful rather than moody, and it was mixed as an
@@ -141,12 +146,29 @@ export function setDistance(A, intimacy) {
 }
 
 /** The instrument's body, built once and shared by every note it plays. */
+// PLAYERS SIT IN DIFFERENT PLACES. Every other part has one body on it, so a
+// role bus and a role pan are the same thing — but the heterophonic voices are
+// several people playing one line at once, and stacking them at a single point
+// in the stereo field is what turns an ensemble back into a chorus effect on
+// one instrument. Spread them across the side the role sits on, deterministically
+// by body, so the same tradition always seats its players the same way.
+function spreadFor(A, inst, role) {
+  if (role !== "het" || !A.ctx.createStereoPanner) return null;
+  let h = 0;
+  for (let i = 0; i < inst.id.length; i++) h = (h * 31 + inst.id.charCodeAt(i)) >>> 0;
+  const pan = A.ctx.createStereoPanner();
+  pan.pan.value = Math.max(-1, Math.min(1, (ROLE_PAN.het || 0) + ((h % 1000) / 1000 - 0.5) * 1.1));
+  return pan;
+}
+
 function bodyFor(A, inst, role) {
   const key = inst.id + ":" + role;
   let b = A.bodies.get(key);
   if (!b) {
     b = buildBody(A.ctx, inst);
-    b.output.connect(A.buses[role] || A.master);
+    const seat = spreadFor(A, inst, role);
+    if (seat) { b.output.connect(seat); seat.connect(A.buses[role] || A.master); }
+    else b.output.connect(A.buses[role] || A.master);
     A.bodies.set(key, b);
   }
   return b;

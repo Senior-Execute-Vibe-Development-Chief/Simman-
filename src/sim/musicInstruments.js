@@ -549,11 +549,12 @@ export function dampTime(inst) {
  * player, and they have to be pitches the player can PUT somewhere: a body
  * whose notes are its own harmonic series has no say in where they land, which
  * is why natural horns make signals and fanfares rather than tunes. Then
- * whether the note can be shaped AFTER it starts, which is why every
- * ornament-heavy tradition on earth sits on the voice, the bow and the reed.
- * And last, whether one note can clear before the next one arrives.
+ * whether the body can still be sounding for as long as THIS MUSIC'S notes
+ * last, which is a match between the two and not a property of either — pass
+ * `noteSecs` from the tradition's own grid. And last, whether one note can
+ * clear before the next one arrives.
  */
-export function melodicCapacity(inst) {
+export function melodicCapacity(inst, noteSecs = 0.5) {
   const fam = FAMILIES[inst.fam] || {};
   const def = definiteness(inst.partials);
   // pitches the player can place where the music wants them
@@ -563,15 +564,30 @@ export function melodicCapacity(inst) {
   // and the sitar, the archetypal melody instruments of three continents,
   // below any pipe at all.
   const reach = Math.min(1, (inst.cap * (fam.tune === "series" ? 0.5 : 1)) / 9);
-  // post-onset control is a fact about the excitation, not a preference: a
-  // driven body is under the player's hand for the whole note, a struck one
-  // only at its start
-  // Post-onset control SCALES, it does not gate: a plucked note can still be
-  // bent and damped and its attack shaped, so weighting it as harshly as a
-  // struck one wipes out the plucked-string traditions in the other direction.
-  const control = inst.drive === "bow" || inst.drive === "breath" || inst.drive === "reed" ? 1
-    : inst.drive === "lip" ? 0.9 : inst.drive === "pluck" ? 0.82 : 0.5;
-  return def * def * reach * control * Math.min(1, articRate(inst) / 2.5);
+  // CAN IT STILL BE SOUNDING WHEN THE NOTE IS MEANT TO BE SOUNDING? That is
+  // the whole of it, and it is a MATCH between the body and the music rather
+  // than a property of the body alone.
+  //
+  // What stood here was a flat preference for driven bodies — 1 for a bow, a
+  // breath or a reed, 0.82 for a pluck — on the reasoning that a driven body
+  // is under the player's hand for the whole note. The reasoning is true and
+  // the conclusion does not follow. Measured, every string in the bench scored
+  // `def² · reach` = 1.000 with its articulation rate saturated, so that one
+  // constant WAS the entire lead decision: the kamanja outranked the oud, the
+  // sarangi the sitar and the erhu the guqin, all three by 0.82 against 1.00.
+  // A rule that quietly deletes the oud, the pipa, the sitar, the koto and the
+  // guqin from the world's melody instruments is not modelling anything.
+  //
+  // Sustain past the end of the note buys NOTHING. A bowed string that could
+  // hold a note for a minute is no better at a half-second tune than a plucked
+  // one that rings for two seconds — both are still sounding when the next
+  // note arrives, and that is all the music asked for. So the question is how
+  // much of ITS OWN note this body can fill, which is why the same rule gives
+  // fast dance music to plucked and struck bodies and long-breathed music to
+  // bowed and blown ones, instead of giving everything to the bow.
+  const holds = inst.kind === "sustain" ? 1
+    : Math.min(1, (inst.partials[0] ? inst.partials[0].d : 0.2) / Math.max(0.05, noteSecs));
+  return def * def * reach * holds * Math.min(1, articRate(inst) / 2.5);
 }
 
 /**

@@ -831,18 +831,48 @@ function drumEnsemble(music, G, cycleSlots, seed, hands, dens) {
 }
 
 /** Assign instruments to parts. */
+// What a body has to score to be trusted with the line at all: definite
+// enough to make a pitch, reaching enough to make a phrase out of pitches, and
+// able to keep sounding for as long as the notes last. Everything that plays
+// the melody — the lead, the elaboration, the heterophonic voices — is held to
+// this same bar, because they are all doing the same job.
+const CARRIES = 0.45;
+
 export function ensembleFor(music, occKey, intimacy = 1) {
   const occ = OCCASIONS[occKey] || OCCASIONS.peace;
   const insts = music.insts;
-  // WHAT CAN CARRY A TUNE is a property of the body, derived in
-  // musicInstruments.js from how definite its pitch is, how many pitches the
-  // player can place, whether the note can be shaped after it starts, and
-  // whether one note clears before the next arrives. Ranking on that instead
-  // of on pitch count and prestige is what stops a culture playing melodies on
-  // a gong — and it does so because a gong physically cannot, not because
-  // anything here knows what a gong is.
-  const rank = insts.map((i, k) => ({ i, k, m: melodicCapacity(i), r: articRate(i) }))
-    .sort((a, b) => b.m - a.m);
+  // WHAT CAN CARRY A TUNE is derived in musicInstruments.js from how definite
+  // the pitch is, how many pitches the player can place, whether the body can
+  // still be sounding for as long as this music's notes last, and whether one
+  // note clears before the next arrives. Ranking on that instead of on pitch
+  // count and prestige is what stops a culture playing melodies on a gong —
+  // and it does so because a gong physically cannot, not because anything here
+  // knows what a gong is.
+  //
+  // HOW LONG THIS MUSIC'S NOTES ARE is the tradition's own grid step: one beat
+  // divided by its subdivision. It has to be passed in because "can this body
+  // hold the note" is meaningless without knowing how long the note is, and it
+  // is what lets the same rule hand a fast dance to a plucked string and a
+  // long-breathed piece to a bow.
+  const noteSecs = (60 / Math.max(1, music.rhythm.tempo * occ.tempo))
+    / Math.max(1, music.rhythm.div || 2);
+  // CAPABILITY IS A THRESHOLD; CENTRALITY IS THE RANKING. Every claim below
+  // already GATES on melodic capacity — `x.m > 0.45` for the lead, `> 0.08`
+  // for the inner parts — and that gate is what stops a culture playing tunes
+  // on a gong. Sorting by the same number on top of gating with it was the
+  // mistake: once two bodies both clear the bar, being 0.00005 better at
+  // clearing it means nothing, and that is the margin the oud lost the takht
+  // by. Measured: oud 0.99984, qanun 0.99979 — five parts in a hundred
+  // thousand, deciding who leads.
+  //
+  // So rank on WEIGHT, which is centrality — pitch reach, what the material
+  // cost, what the craft cost, what a court would keep — and let the
+  // predicates decide capability. Among bodies able to hold the line, the one
+  // the culture built up is the one it leads with, and among drums the central
+  // drum keeps time. That is a claim about traditions rather than about float
+  // arithmetic, and it is the same rule for every role.
+  const rank = insts.map((i, k) => ({ i, k, m: melodicCapacity(i, noteSecs), r: articRate(i) }))
+    .sort((a, b) => b.i.weight - a.i.weight);
   const taken = new Set();
   const claim = (pred) => {
     const o = rank.find(x => !taken.has(x.k) && pred(x));
@@ -865,19 +895,53 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   // in the room. When nothing clears the bar, nobody plays the tune and
   // somebody sings it, which is the commonest ensemble on earth.
   const lead = loud
-    ? (claim(x => x.i.drive === "reed" || x.i.drive === "lip") ?? claim(x => x.m > 0.2))
-    : claim(x => x.m > 0.45);
+    ? (claim(x => x.i.drive === "reed" || x.i.drive === "lip") ?? claim(x => x.m > CARRIES * 0.44))
+    : claim(x => x.m > CARRIES);
   // the elaborating part is the FASTEST pitched body, not the second-best one
   // the elaborating part is the FASTEST pitched body — but not one whose
   // pitches are its own harmonic series rather than the player's choice: a
   // natural horn cannot paraphrase a melody, it can only sound its tube
-  const elab0 = rank.filter(x => !taken.has(x.k) && x.m > 0.08 && FAM(x.i).tune !== "series")
+  // AND IT NEEDS WHAT THE TUNE NEEDS. The elaborating part plays the same line
+  // with more notes in it, so a body that could not carry the line cannot
+  // paraphrase it either — and gating this at 0.08 while the lead was gated at
+  // 0.45 handed rag Yaman's elaboration to the TANPURA, a four-string drone
+  // that has no pitches to paraphrase with. Same bar for both.
+  const elab0 = rank.filter(x => !taken.has(x.k) && x.m > CARRIES && FAM(x.i).tune !== "series")
     .sort((a, b) => b.r - a.r)[0];
   // the timekeeper is claimed first among the accompaniment: a body with no
   // pitch to speak of has exactly one job, and letting a pitched part take it
   // first leaves the ensemble with no beat
   const pulse = claim(x => FAM(x.i).vib === "membrane");
   const elab = elab0 && !taken.has(elab0.k) ? (taken.add(elab0.k), elab0) : null;
+  // ── HETEROPHONY IS EVERY CAPABLE BODY ON THE SAME LINE ──
+  //
+  // The word means different voices, and what differs is the VERSION of the
+  // tune, not the tune. A sizhu ensemble is dizi, erhu, pipa and yangqin all
+  // playing one melody in four idioms at once; a takht is oud, qanun, nay and
+  // kamanja doing the same; a sankyoku is koto and shamisen and shakuhachi on
+  // one line. That is the texture this engine claimed to have and did not
+  // build: it gave the tune to ONE body, an ornamented copy to a SECOND, and
+  // sent everybody else off to hold a pedal or walk a bass — so a five-body
+  // heterophonic tradition came out as a duo with accompaniment, which is
+  // exactly what it sounded like.
+  //
+  // Anything that can carry the line and has not been given another job joins
+  // it. Polyphony gets the same treatment here because independent lines are
+  // beyond what this composer writes; playing the tune together is nearer the
+  // truth than sitting out.
+  //
+  // AND IT CLAIMS BEFORE THE ACCOMPANIMENT DOES. In a texture defined by
+  // everybody being on the line, a body that can carry the line joins it
+  // rather than walking a bass underneath it — claiming this last left the
+  // shakuhachi playing a bass part two octaves below its own bottom note while
+  // the koto played alone. The timekeeper is claimed first because a drum
+  // cannot carry a line anyway and the ensemble needs its beat; everything
+  // after this point is what is genuinely left over, and a small ensemble
+  // having no bass part and no ostinato is the right answer, not a gap.
+  const het = (music.texture.kind === "heterophony" || music.texture.kind === "polyphony")
+    ? rank.filter(x => !taken.has(x.k) && x.m > CARRIES && FAM(x.i).tune !== "series")
+      .map(x => (taken.add(x.k), x.k))
+    : [];
   const core = claim(x => x.m > 0.08 && x.r < 6);
   // A body that cannot be re-articulated is not a part. What it does in every
   // tradition that has one is MARK — one stroke where the cycle turns, left to
@@ -890,12 +954,21 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   const marks = [];
   for (let i = 0; i < 3; i++) { const k = claim(x => x.r < 1.6); if (k == null) break; marks.push(k); }
   const mark = marks.length ? marks[0] : null;
-  const drone = claim(x => x.i.kind === "sustain" || x.i.partials[0].d > 2.5);
+  // A DRONE ONLY EXISTS IN A DRONE TEXTURE. `textureOf` decides that from the
+  // ensemble's size and whether anything sustains, and it is definitional: a
+  // heterophony is many versions of one line and a polyphony is many lines,
+  // and neither of them is a line over a held pitch. Claiming a drone anyway
+  // meant the one sustaining body in the room was taken off the melody to hold
+  // a pedal — the shakuhachi in a sankyoku, the nay in a takht, the sheng in a
+  // sizhu, all three of which play the TUNE. Freeing them here is what lets
+  // them join the heterophony below.
+  const drone = music.texture.kind === "drone"
+    ? claim(x => x.i.kind === "sustain" || x.i.partials[0].d > 2.5) : null;
   const bass = claim(x => x.i.partials[0].d > 1.2 || x.i.kind === "sustain");
   const ost = claim(x => x.i.cap >= 3);
   const voices = Math.max(1, Math.round(music.texture.size * (0.35 + 0.65 * intimacy)));
   return {
-    lead, elab: elab ? elab.k : null, core, drone, bass, ost, pulse, mark, marks,
+    lead, elab: elab ? elab.k : null, core, drone, bass, ost, pulse, mark, marks, het,
     voices, occ,
     // It sings unless the occasion is a loud outdoor one, where nothing
     // unamplified carries over the reeds and the drums.
@@ -996,9 +1069,29 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // 0.7, 0.35) none of which meant anything on its own, and it is what makes
   // the density arc REAL: the piece gets busier because more people are
   // playing, not because one player speeds past what hands can do.
-  const roster = STRATA.filter(r => ST[r] && ST[r].inst)
-    .sort((a, b) => ST[b].inst.weight - ST[a].inst.weight);
-  const seats = Math.max(1, Math.ceil(roster.length * Math.min(1, S.sec.thin * intimacy)));
+  const wOf = (r) => r.startsWith("het")
+    ? (music.insts[+r.slice(3)] || { weight: 0 }).weight : ST[r].inst.weight;
+  const roster = [...STRATA.filter(r => ST[r] && ST[r].inst),
+    ...(E.het || []).map(k => "het" + k)].sort((a, b) => wOf(b) - wOf(a));
+  // A THIN SECTION IS QUIETER, NOT NECESSARILY EMPTIER. An ensemble has two
+  // ways to play a thinner section — players rest, or the players left play
+  // softer — and which it uses is not a preference, it is whether there is
+  // anybody spare. A gamelan thinning to 40% genuinely sends half the room to
+  // sit down. A quartet cannot: there is nobody to lose, so the same four play
+  // softer. Spending the whole reduction on empty seats is what made a small
+  // ensemble sound ABANDONED rather than intimate, and it is why the arc was a
+  // two-state switch instead of an arc — measured, three of the five bench
+  // traditions had exactly TWO distinct stage sets across sixteen bars,
+  // because `ceil` over five or six roles has only two values to give.
+  //
+  // So: rest whoever can be spared above what the music cannot be played
+  // without — one line for a monophony, a line and something to hear it
+  // against for anything else, which is what the texture's own name asserts —
+  // and take the rest of the reduction out of the players' hands instead.
+  const keep = music.texture.kind === "monophony" ? 1 : 2;
+  const want = roster.length * Math.min(1, S.sec.thin * intimacy);
+  const seats = Math.max(1, Math.min(roster.length, Math.max(keep, Math.round(want))));
+  const hush = Math.min(1, want / Math.max(1e-6, seats));
   const onStage = new Set(["lead",
     ...roster.filter(r => r !== "lead").slice(0, Math.max(0, seats - 1))]);
   const audible = (role) => onStage.has(role);
@@ -1053,6 +1146,64 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     ist: S.sec.ist, orn: music.texture.ornament * S.sec.orn > 0.5,
     vel: 0.42 * (0.85 + 0.3 * Math.min(1, S.sec.dens / 3)),
   });
+  // ── THE OTHER VOICES: everyone else who can carry the line is carrying it ──
+  //
+  // This is what heterophony IS, and the engine did not have it. What differs
+  // between the players is not the tune — they are all on the same one, and
+  // they meet on every note of it — but what their body does to it, and every
+  // difference below is a fact about the body rather than a style setting:
+  //
+  //  - A SLOWER BODY PLAYS FEWER OF THE NOTES. The sheng and the erhu hold the
+  //    skeleton while the pipa plays every note; the nay outlines what the oud
+  //    fills in. Which one a player is doing is not a choice, it is their
+  //    articulation rate against this phrase's note rate, so the same
+  //    `articRate` that bounds the elaboration decides here who plays the
+  //    strong notes only. That is the single most recognisable thing about a
+  //    heterophonic ensemble: the same melody at several different densities
+  //    at once.
+  //  - A DRIVEN BODY SPEAKS LATE. A bowed string needs a few periods to settle
+  //    into Helmholtz motion and a reed needs to start beating, where a
+  //    plucked or struck one is there at the attack. So the driven players sit
+  //    a few tens of milliseconds behind and the struck ones sit on the note,
+  //    and no two players sit in quite the same place. That spread is most of
+  //    why several people playing one line sound like several people instead
+  //    of like one instrument with a chorus on it.
+  //  - AND A BODY HOLDS THE NOTE FOR AS LONG AS IT HOLDS IT. A sustaining
+  //    player carries through the gaps; a plucked one lets it ring and stops
+  //    when the string stops.
+  for (const k of (E.het || [])) {
+    if (!audible("het" + k)) continue;
+    const inst = music.insts[k];
+    if (!inst) continue;
+    const rate = articRate(inst);
+    // notes per second this phrase actually asks for
+    const asks = lead.length / Math.max(0.05, (SLOTS / G.div) * spb);
+    // a body that cannot keep up plays the metrically strong notes instead —
+    // not a simplification imposed on it, just what it has time for
+    const share = Math.min(1, rate / Math.max(0.001, asks));
+    const drag = ((inst.kind === "sustain" ? 0.028 : 0.004)
+      * (0.5 + (hash32(seed, "drag", k) % 997) / 997)) / spb;
+    let kept = 0;
+    for (const e of lead) {
+      if (share < 1) {
+        // keep the strong notes first, and the phrase's own ends always
+        const w = e.strong ? 1 : 0.5;
+        if (!e.last && !e.strong && hash32(seed, "het" + k, Math.round(e.b * 96)) % 1000 >= share * w * 1000) continue;
+      }
+      kept++;
+      ev.push({ ...e, inst: k, b: e.b + drag, role: "het",
+        // a held body fills the gap to the next note; a plucked one does not
+        dur: e.dur * (inst.kind === "sustain" ? 1.25 : 1),
+        // the line is what is being listened to, so its doublings sit just
+        // under it — a little, not a lot: these are players, not a layer
+        vel: e.vel * 0.82 * (0.7 + 0.3 * inst.weight),
+        // and whoever has the hands to decorate, decorates
+        ornDeg: rate > 6 && e.ornDeg != null ? e.ornDeg : undefined,
+        ornLead: rate > 6 && e.ornDeg != null ? e.ornLead : undefined,
+        damped: inst.kind !== "sustain" });
+    }
+    if (!kept && lead.length) ev.push({ ...lead[0], inst: k, role: "het", vel: lead[0].vel * 0.62 });
+  }
   // A phrase LANDS, in three grades: the end of a phrase, the end of a section,
   // the end of the piece. Only the last note of the last cycle of a section
   // gets the long one, and a section ending also gets real silence after it —
@@ -1187,8 +1338,13 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
         dur: e.dur * (ST.lead ? 1.35 : 1), oct: e.oct + (music.melody.breathBound ? 0 : -1) });
     }
   }
+  // and whatever thinness the seats could not absorb comes out of the hands of
+  // the players who stayed — see `hush` above. This is what turns the section
+  // arc from a switch into a ramp, and it is the only reason a small ensemble
+  // can have a quiet section at all without losing half its music.
+  if (hush < 1) for (const e of ev) e.vel *= hush;
   return { events: ev, beats, tempo, grid: G, phrase: order[bar % order.length],
-    section: S.sec.label, dens: S.sec.dens };
+    section: S.sec.label, dens: S.sec.dens, seats, roster: roster.length, hush };
 }
 
 /**
