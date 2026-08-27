@@ -18,7 +18,8 @@
     "abtest": "node tools/abtest.mjs",
     "bisect": "node tools/bisect.mjs",
     "trace": "node tools/trace.mjs",
-    "why": "node tools/why.mjs"
+    "why": "node tools/why.mjs",
+    "livegate": "node tools/livegate.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",
