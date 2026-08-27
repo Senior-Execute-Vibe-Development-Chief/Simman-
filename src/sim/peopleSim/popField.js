@@ -1963,6 +1963,12 @@ export function deriveOnePop(world) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (ti < 0 || ti >= world.N) continue;
+    // THE ARMING FLAGS (urban-claim-memo-2026-08-27.md §5.4) — cleared here so
+    // they can never go stale across ticks. See their write site under
+    // T.CORE_LOCAL below for why an instrument that cannot tell "no effect"
+    // from "no execution" is not an instrument.
+    s._coreBlockRan = 0;
+    s._coreLocalBind = 0;
     const f = accP.get(s.id) || 0;
     // The IMPORT-FED share of the settlement's carrying capacity, in field
     // units — what its market feeds from BEYOND its own land (hierarchy grain:
@@ -2096,6 +2102,28 @@ export function deriveOnePop(world) {
         const kLocal = T.CORE_LOCAL ? ((s._k || 0) * (1 - importShare)) / scale : 0;
         const holdF = s._coreHoldCapF > 0 ? s._coreHoldCapF : Math.max(0, pf[ti]);
         coreEff = Math.min(_coreF, Math.max(holdF, kLocal) + kBeyond);
+        // THE ARMING CHECK — the instrument this repo keeps needing and keeps
+        // not having. TWO mechanisms were "validated" in regimes where their
+        // edited line never ran (SUCCESSOR_STATES at tw=240, where an orphan
+        // patch holds one settlement; deffdce, whose 10% at the reference grid
+        // was a 10x cut at the shipped one), and CORE_LOCAL's OWN kill-shot was
+        // first run with LAND_KNOW pinned 0 by the harness — so this whole
+        // block was skipped, the edited line never executed, and both arms came
+        // back byte-identical. That was caught by ACCIDENT (the hashes matched),
+        // which is not a method. So the two facts a reader needs travel out
+        // through collect() with every arm, and a null result now has to say
+        // WHICH null it is:
+        //   _coreBlockRan   — the block executed at all, i.e. the REGIME is
+        //                     right (LAND_KNOW on, coreR > 0). 0 here and the
+        //                     arm measured nothing, whatever else it printed.
+        //   _coreLocalBind  — kLocal actually beat holdF, i.e. the MECHANISM
+        //                     bit. With the lever off this is 0 by
+        //                     construction; with it on and the regime right,
+        //                     the memo measured 101 of 273 (37%) at the shipped
+        //                     arm against 6 of 39 (15%) at the gate arm.
+        // Cost when the lever is off: two integer stores per settled entity.
+        s._coreBlockRan = 1;
+        s._coreLocalBind = kLocal > holdF ? 1 : 0;
       }
       s._urbanPop = Math.min(s.people, coreEff * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
