@@ -288,6 +288,14 @@ export function musicOf(people) {
   const refJ = refI >= 0 ? refI : insts.findIndex(i => i.cap >= 3);
   const tuneW = insts.map((i, k) => i.weight * (k === refJ ? 5 : 1));
   const spec = ensembleSpectrum(insts, tuneW);
+  // …but the reference's authority is over WHERE THE DEGREES SIT, not over
+  // whether the octave exists. What interval a people's music repeats at is a
+  // question about everything they actually play, at the shares they play it
+  // in — so the frame is read off the plain radiating ensemble. (See the note
+  // in deriveScale: with the reference amplified into this decision too, one
+  // minority bar set could put a string-and-pipe culture's octave at a minor
+  // sixth, in 12 peoples out of 100.)
+  const radiated = ensembleSpectrum(insts, insts.map(i => i.weight));
   // how many pitches the ensemble can actually sound: the best-endowed
   // melodic body sets the ceiling. A six-hole pipe tradition stays pentatonic
   // because of the pipe, not because anyone chose pentatonicism.
@@ -297,7 +305,7 @@ export function musicOf(people) {
   // steps; an oral one keeps the ratios it found
   const fixedSets = insts.some(i => i.fam === "barSet" || i.fam === "bell");
   const pull = Math.max(0, Math.min(0.85, people.soc.literacy * 0.5 + (fixedSets ? 0.25 : 0) + people.know.organization * 0.2 - 0.25));
-  const scale = deriveScale(spec, { cap: Math.min(cap, 9), pull });
+  const scale = deriveScale(spec, { cap: Math.min(cap, 9), pull, frameSpec: radiated });
   // The mode: what they actually sing out of the scale they found. Its size
   // is bounded twice over — by how much scale material exists and how much
   // theory the tradition can carry (a written tradition sustains a larger
