@@ -219,7 +219,24 @@ values into the shipped world:
 | | test grid | play grid | reality |
 |---|---|---|---|
 | farm belt **ceiling** | 953,598 km² | 211,880 km² | see the correction below |
-| settlement spacing **floor** | 992 km | 496 km | 30–100 km between cities |
+| settlement spacing **floor** | 992 km | 496 km | ~200–470 km between PROVINCE seats |
+
+> **CORRECTION to the row above.** I first wrote reality as "30–100 km between
+> cities" and compared the floor against it. That is the spacing of **cities**, and
+> this simulation's entity is not a city — CLAUDE.md is explicit that it is a city
+> **and its province**, and that a realm with four members administers four urban
+> provinces. The right comparison is province seats: ~25 Achaemenid satrapies over
+> 5.5 Mkm² → ~220,000 km² each → **~469 km apart**; ~50 Roman provinces under
+> Diocletian → ~100,000 km² → **~316 km**; ~100 Han commanderies → **~200 km**.
+>
+> Against that, the play grid's 496 km floor is **in range** and the test grid's
+> 992 km is ~2× too sparse — the opposite of a floor ten times too large.
+>
+> And the same "early world vs mature world" correction applies here as to the belt:
+> measured at 40k the mature register holds ~47–54,000 km² per settlement, i.e.
+> centres ~224 km apart — Han-commandery scale, and **well inside** the 496 km floor,
+> which therefore does not bind once the world fills. Both constants are **early-world
+> floors**. They shape genesis, not the mature map.
 
 > **CORRECTION, and it retracts a finding of mine from earlier today.** I wrote that
 > the belt is "absurdly large at both grids — 953,598 km² is not a hinterland, it is
