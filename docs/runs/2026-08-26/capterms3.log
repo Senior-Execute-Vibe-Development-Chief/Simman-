@@ -1,4 +1,4 @@
-[harness] tree 79885a7
+[harness] tree 25429d5
 Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth pin Nile picked at tile (138,41) (27.0E 28.5N) — maturity deferred to the stagger law
 [peopleSim] hearth pin Mesopotamia picked at tile (149,38) (43.5E 33.0N) — maturity deferred to the stagger law
@@ -16,21 +16,3 @@ Earth (Sim): using real NCEP/NCAR precipitation + air temperature
 [peopleSim] hearth candidate at (185,59) (97.5E 1.5N) score 0.50 pkg=rice(suit 0.16) — ARMED: ~9481y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=2048 peakN=1299 pushes=9434 (0.0MB backing)
-[transHeap] step=27240 cap=4096 peakN=2099 pushes=9977 (0.0MB backing)
-
-=== CAPACITY TERMS AT EACH REGION'S RICHEST TILE  480x240 (tw=240) seed 8817 30000 steps ===
-  FIELD_CRADLE=1 IRRIG_BOOST=1.5 ALLUVIUM=2 IRRIG_ARID0=0.52
-
-  region             fert  devT reach  relf  indMul  wkMul cradle    pastr   PREDICT       cap ratio
-  Egypt/Nile         1.00  2.81  2.38  0.93    1.00   2.98   3.48      120     77358    108285  1.40
-  Mesopotamia        1.00  2.80  1.92  0.58    1.00   3.00   2.53      120     28338     56191  1.98
-  Indus/NW India     0.99  2.62  1.89  0.80    1.00   3.00   2.16       91     30540     25367  0.83
-  N China            0.99  2.75  1.91  0.95    1.00   3.00   3.37      120     60265     79782  1.32
-  Greece/Italy       1.00  2.84  2.57  0.90    1.00   2.56   3.79      120     76359    462329  6.05
-  E Europe/Russia    0.84  2.85  1.93  0.97    1.00   3.00   2.58      120     41820    594256 14.21
-  W Europe           0.84  2.85  2.11  0.93    1.00   1.09   3.44      120     21314     77078  3.62
-
-READ: ratio ~1 ⇒ the printed terms EXPLAIN the capacity and the biggest column is the
-defect. ratio far from 1 ⇒ a term here is wrong or missing (a field read under the wrong
-name reads -, and CAP_PER_FERT/works/industry are the usual suspects); fix the
-reconstruction before drawing any conclusion from the columns.

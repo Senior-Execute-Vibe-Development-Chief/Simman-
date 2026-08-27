@@ -47,15 +47,33 @@ for (let done = 0; done < STEPS; done += 1000) stepPeopleSim(world, 1000);
 
 console.log(`\n=== CAPACITY TERMS AT EACH REGION'S RICHEST TILE  ${W}x${H} (tw=${tw}) seed ${SEED} ${STEPS} steps ===`);
 console.log(`  FIELD_CRADLE=${T.FIELD_CRADLE} IRRIG_BOOST=${T.IRRIG_BOOST} ALLUVIUM=${T.ALLUVIUM} IRRIG_ARID0=${T.IRRIG_ARID0}\n`);
-console.log(`  ${"region".padEnd(17)} ${"fert".padStart(5)} ${"devT".padStart(5)} ${"reach".padStart(5)} ${"relf".padStart(5)} ${"indMul".padStart(7)} ${"wkMul".padStart(6)} ${"cradle".padStart(6)} ${"pastr".padStart(8)} ${"PREDICT".padStart(9)} ${"cap".padStart(9)} ${"ratio".padStart(5)}`);
+console.log(`  ${"region".padEnd(17)} ${"fert".padStart(5)} ${"devT".padStart(5)} ${"reach".padStart(5)} ${"relf".padStart(5)} ${"indMul".padStart(7)} ${"wkMul".padStart(6)} ${"cradle".padStart(6)} ${"pastr".padStart(8)} ${"PREDICT".padStart(9)} ${"cap".padStart(9)} ${"ratio".padStart(5)} ${"WILDcap".padStart(9)}`);
 
+// THE CITY OVERLAY vs THE LAND. capField at a settled tile is not the ground:
+// ONE_POP stamps an URBAN CAPACITY SPIKE on a settlement's home tile (what its
+// ECONOMY supports beyond what its land feeds — imports, granary, housing) and
+// FOOD_K replaces worked-catchment capacity with the settlement's real food
+// ledger. Both are OUTPUTS of a city's economy, so reading "richest tile" in a
+// region reads whichever metropolis stands there and calls it soil. Excluding
+// settlement tiles and their immediate neighbours leaves the wild proxy — the
+// land's own capacity, which is what the atlas question actually asks about.
+const cityMask = new Set();
+for (const s of world.settlements) {
+  if (s.mode !== "settled") continue;
+  const sx = s.pos.x | 0, sy = s.pos.y | 0;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const yy = sy + dy; if (yy < 0 || yy >= th) continue;
+    cityMask.add(yy * tw + ((sx + dx + tw) % tw));
+  }
+}
 for (const r of REGIONS) {
-  let best = -1, bi = -1;
+  let best = -1, bi = -1, wildBest = -1;
   for (let y = yOf(r[2]); y <= yOf(r[1]); y++)
     for (let x = xOf(r[3]); x <= xOf(r[4]); x++) {
       const ti = y * tw + x;
       if (!(world.elev[ti] > 0)) continue;
       if (world.capField[ti] > best) { best = world.capField[ti]; bi = ti; }
+      if (!cityMask.has(ti) && world.capField[ti] > wildBest) wildBest = world.capField[ti];
     }
   if (bi < 0) { console.log(`  ${r[0].padEnd(17)}  (no land)`); continue; }
   const moist = world.moist[bi], fert = world.fert ? world.fert[bi] : -1;
@@ -84,7 +102,7 @@ for (const r of REGIONS) {
   const rnF = Math.max(1e-9, tw / 240);            // rNormPop at the reference width
   const capPerFert = CAP_PER_FERT / (rnF * rnF);   // per REAL area
   const predict = fert * capPerFert * devT * reach * reliefMul * indMul * wkMul * (irr * allu);
-  console.log(`  ${r[0].padEnd(17)} ${fert.toFixed(2).padStart(5)} ${devT.toFixed(2).padStart(5)} ${reach.toFixed(2).padStart(5)} ${reliefMul.toFixed(2).padStart(5)} ${indMul.toFixed(2).padStart(7)} ${wkMul.toFixed(2).padStart(6)} ${(irr * allu).toFixed(2).padStart(6)} ${(pastureV < 0 ? "   — " : Math.round(pastureV).toString()).padStart(8)} ${Math.round(predict).toString().padStart(9)} ${Math.round(best).toString().padStart(9)} ${(best > 0 ? (best / Math.max(1e-9, predict)) : 0).toFixed(2).padStart(5)}`);
+  console.log(`  ${r[0].padEnd(17)} ${fert.toFixed(2).padStart(5)} ${devT.toFixed(2).padStart(5)} ${reach.toFixed(2).padStart(5)} ${reliefMul.toFixed(2).padStart(5)} ${indMul.toFixed(2).padStart(7)} ${wkMul.toFixed(2).padStart(6)} ${(irr * allu).toFixed(2).padStart(6)} ${(pastureV < 0 ? "   — " : Math.round(pastureV).toString()).padStart(8)} ${Math.round(predict).toString().padStart(9)} ${Math.round(best).toString().padStart(9)} ${(best > 0 ? (best / Math.max(1e-9, predict)) : 0).toFixed(2).padStart(5)} ${Math.round(Math.max(0, wildBest)).toString().padStart(9)}`);
 }
 console.log(`\nREAD: ratio ~1 ⇒ the printed terms EXPLAIN the capacity and the biggest column is the`);
 console.log(`defect. ratio far from 1 ⇒ a term here is wrong or missing (a field read under the wrong`);
