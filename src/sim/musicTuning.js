@@ -221,8 +221,10 @@ export function ensembleSpectrum(insts, weights) {
  */
 const STEP_FLOOR = 120;     // cents: below this, a step reads as an inflection
 const CRAWL_COST = 0.09;
-// how much relative spread a set of steps may have and still be a scale
-const EVEN_SPREAD = 0.35;    // in the same units as mean pairwise roughness
+// how much relative spread a set of steps may have and still be a scale — the
+// diatonic is 0.26, slendro 0.06, pelog 0.35
+const EVEN_SPREAD = 0.35;
+const EVEN_W = 0.55;
 export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
   const n = degrees.length;
   if (n <= size) return degrees.map((_, i) => i);
@@ -253,7 +255,7 @@ export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
   const walk = (start) => {
     if (combo.length === pick) {
       const set = [0, ...combo, n];       // tonic … frame
-      let cost = 0, pairs = 0;
+      let cost = 0, pairs = 0, crawl = 0;
       for (let a = 0; a < set.length; a++) {
         for (let b = a + 1; b < set.length; b++) { cost += pair(set[a], set[b]); pairs++; }
       }
@@ -267,7 +269,7 @@ export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
       let sum = 0, sum2 = 0;
       for (let a = 0; a + 1 < set.length; a++) {
         const step = 1200 * Math.log2(ratioOf(set[a + 1]) / ratioOf(set[a]));
-        if (step < STEP_FLOOR) { const d = (STEP_FLOOR - step) / STEP_FLOOR; cost += CRAWL_COST * d * d; }
+        if (step < STEP_FLOOR) crawl += Math.pow((STEP_FLOOR - step) / STEP_FLOOR, 2);
         sum += step; sum2 += step * step;
       }
       // …AND A SCALE IS A RUN OF COMPARABLE STEPS. The consonance search alone
@@ -284,7 +286,15 @@ export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
       const k = set.length - 1;
       const mean = sum / k;
       const cv = mean > 0 ? Math.sqrt(Math.max(0, sum2 / k - mean * mean)) / mean : 0;
-      if (cv > EVEN_SPREAD) { const d = cv / EVEN_SPREAD - 1; cost += CRAWL_COST * d * d; }
+      const spread = cv > EVEN_SPREAD ? Math.pow(cv / EVEN_SPREAD - 1, 2) : 0;
+      // BOTH SINGABILITY PENALTIES SCALE THE COST, they do not add to it.
+      // Added, they were absolute numbers against a roughness figure whose
+      // size depends entirely on the spectrum that produced it — so on a rough
+      // ensemble they were noise and the search ignored them, which is how a
+      // mode with a fourth-wide hole in it survived. As multipliers they mean
+      // the same thing on every spectrum: a set half again past the bound pays
+      // a tenth more, one twice past pays half again.
+      cost *= 1 + CRAWL_COST * 8 * crawl + EVEN_W * spread;
       if (cost < bestCost) { bestCost = cost; best = combo.slice(); }
       return;
     }
