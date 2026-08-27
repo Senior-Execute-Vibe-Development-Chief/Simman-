@@ -79,10 +79,13 @@ argument rather than deleting it].**
 > *This paragraph originally read: "its distance limit is administrative, not economic —
 > the* annona *crossed the Mediterranean at a cost no merchant would have borne, because
 > the state was not trying to make a margin." **The premise is false**, and it
-> contradicted §4.1 and §4.5 of this same document (sea freight ran roughly 1/28 of land
-> carriage and was cheaper than carting ~75 miles; "Rome's grain went by sea, not by
-> cart"). It was also the **sole** justification for the model's founding claim, so the
-> claim had to be re-derived rather than merely re-worded.*
+> contradicted §4.1 and §4.5 of this same document (sea carriage far cheaper than land —
+> conventionally ~1:28, **though §4.1 E1 records that ratio as contested** — and cheaper
+> than carting ~75 miles; "Rome's grain went by sea, not by cart"). It was also the
+> **sole** justification for the model's founding claim, so the claim had to be
+> re-derived rather than merely re-worded. **Note that the repaired argument below does
+> not depend on the size of the ratio at all — only on the fact that the sea route was
+> commercially used, which is not in dispute.***
 
 The *annona* moved grain the length of the Mediterranean **not because the haul was
 uneconomic**. Sea freight was cheap on exactly that water, a large **private**
@@ -867,9 +870,9 @@ known to exist and this document cannot say what they were about.
 
 | claim as made | verdict | corrected |
 |---|---|---|
-| ~50,000 is the practical ceiling for a premodern city without water transport or state grain administration | **OVERSTATED** | mechanism yes, number no — see below |
-| typical medieval towns held 2-10k | **OVERSTATED** | the modal chartered market town is **500-2,000** |
-| Ghent, Bruges, Cologne 40-60k | **CONFIRMED** | top edge contested |
+| ~50,000 is the practical ceiling for a premodern city without water transport or state grain administration | **OVERSTATED** (E1) | mechanism yes, number no — and the transport ratio behind it is itself **[CONTESTED]** |
+| typical medieval towns held 2-10k | **OVERSTATED** (E2) | the modal chartered market town is **500-2,000 people** — one unit, stated |
+| Ghent, Bruges, Cologne 40-60k | **CONFIRMED** (E3) | top edge contested |
 | Florence, Venice ~100k | **CONTESTED** (E4) | *the draft tagged this CONFIRMED-but-low and replaced it with a band it cannot cite* |
 | Paris 200-250k by 1300, biggest in Latin Europe | **OVERSTATED / CONTESTED** (E5) | "biggest" stands; the figure is contested and misdated |
 | Constantinople, Baghdad, Kaifeng, Hangzhou, Edo near or at a million | **WRONG**, and it splits three ways | E6 wrong · E7 contested · E8 contested |
@@ -993,25 +996,29 @@ figure and say it is contested.**
   The defensible statement is that Baghdad is one of several candidates (with Rome and
   Chang'an) for the first city to reach a million, not that it did.
 - **E8 — Kaifeng, Hangzhou and Edo: defensible, but NOT settled. [CONTESTED —
-  retagged.]**
+  retagged]** — treated below, because the draft gave them no contestation at all.
+
+**E8 in full.**
 
 > *The draft wrote "Kaifeng, Hangzhou and Edo are fine — each conventionally at or
-> around a million, Edo best documented", with no contestation at all — in a paragraph
-> that contests Constantinople and Baghdad carefully. **Two standards in one list.***
+> around a million, Edo best documented", with no contestation whatsoever — in a
+> paragraph that contests Constantinople and Baghdad carefully. **Two evidentiary
+> standards inside one list.***
 
-  The ~1M figures for **Kaifeng and Hangzhou** are **prefecture (*fu*) household-register
-  counts, not walled-city populations**; city-proper estimates run to several hundred
-  thousand. **Edo's** million is a **townsman census (*machikata*, ~500,000) plus an
-  *estimate* of the never-censused samurai population** — better documented than the
-  Song figures, but half of it is still an estimate, not a count. **Defensible but not
-  settled**, and every figure here needs the register it was counted on attached.
+The ~1M figures for **Kaifeng and Hangzhou** are **prefecture (*fu*) household-register
+counts, not walled-city populations**; city-proper estimates run to several hundred
+thousand. **Edo's** million is a **townsman census (*machikata*, ~500,000) plus an
+*estimate* of the never-censused samurai population** — better documented than the Song
+figures, but half of it is still an estimate, not a count. **Defensible but not
+settled**, and every figure here needs the register it was counted on attached.
 
 *Do not let Constantinople ride into a document on the coat-tails of Edo — and do not
 let Edo become a clean anchor either.*
 
 ### 4.2 The urban graveyard **[CONTESTED — retagged]**
 
-**E9.** Most large pre-modern cities recorded **more burials than baptisms** and
+**E9 — the urban graveyard.** Most large pre-modern cities recorded **more burials
+than baptisms** and
 depended on **rural in-migration** to grow (de Vries). That much is the standard
 picture, and the design point rests on it.
 
@@ -1219,17 +1226,20 @@ of all landed grain.
 > **[CORRECTED — a retraction from the source document survived into this draft and is
 > restored here.]** The draft opened this section by setting the 965 km median "against
 > history's 20-100 km overland shed" **as the lap's defect**. Its own source document
-> retracts that framing on the same page. `docs/grain-shed-2026-08-26.md:168-176`,
-> verbatim:
+> retracts that framing on the same page. `docs/grain-shed-2026-08-26.md:169-176`,
+> verbatim (the source's own emphasis, nothing added):
 >
 > > **"Haul distance is largely GRID-BOUND, not a pure defect.** The median haul sits at
 > > ~1,000 km in EVERY arm because at tw=240 a tile is 167 km and neighbouring
 > > settlements are ~6 tiles apart: inter-city grain trade cannot be shorter than
 > > settlement spacing. History's 20-100 km overland shed lives INSIDE the catchment,
 > > which `s.people` already accounts for. `HAUL_PHYS` is still right on its own terms
-> > (a tile constant meaning 2,338 km is a bug whatever the grid), **but it must not be
-> > sold as a fix for the distance number.** Re-measure at tw=480/960, where spacing
+> > (a tile constant meaning 2,338 km is a bug whatever the grid), but it must not be
+> > sold as a fix for the distance number. Re-measure at tw=480/960, where spacing
 > > halves."
+>
+> **The load-bearing clause is "it must not be sold as a fix for the distance number" —
+> which is exactly what the draft did with it.**
 >
 > **So the 965 km is not the defect and the lap did not set out to fix it.** The defect
 > is the tile-constant range; the distance number is mostly the grid, and comparing it to
@@ -1238,10 +1248,10 @@ of all landed grain.
 
 | lever | defect | measured effect |
 |---|---|---|
-| **`GRAIN_FREIGHT`** | **the road was free** — the buyer paid the seller's farm-gate price for what *arrived*, so the haul's loss was borne by nobody and a far city bought at the same unit price as the seller's neighbour | concentration **42% → 31%** *(single-lever arm; **under the full v50 stack top-3 reads 40-52% against the 42% baseline — no net de-concentration**, `grain-shed:177-179`)*; distances **unchanged** — which exposed (b) |
+| **`GRAIN_FREIGHT`** | **the road was free** — the buyer paid the seller's farm-gate price for what *arrived*, so the haul's loss was borne by nobody and a far city bought at the same unit price as the seller's neighbour | concentration **42% → 31%** *(single-lever arm; **under the full v50 stack top-3 reads 40-52% against the 42% baseline — no net de-concentration**, `grain-shed:177-180`)*; distances **unchanged** — which exposed (b) |
 | **`HAUL_PHYS`** | **the range was a tile constant** — `FOOD_HAUL_RANGE = 14` tiles × ~167 km = a **2,338 km** e-folding *before* tier (×3.6), tech (×2) and water (×3) multipliers pushed it past Earth's circumference; `arrive ≈ 1` between any two points on the planet | median **965 → 847 km**, barely moved — which exposed (c) |
 | *(within `HAUL_PHYS`)* | **the water test was an endpoint test** — the corridor bonus asked only whether each *end* touched water, and ~100% of settlements are waterside, so a ×12 barge multiplier applied to entirely overland routes | now requires an actual water **route** (the sea-lane `mergeReach` link) |
-| **`GRAIN_BID`** | **`grainMarketPass` walked `world.settlements` in array order — founding order** — each buyer drawing down live residuals as it went, so the world's oldest city was served in full before a younger one was offered a bushel; price, hunger and distance played no part in allocating scarcity | buyers now approach in descending order of their own emergent `_grainPrice` (ties on id for determinism) — the hungriest bid it away, and a real deficit outbids a granary top-up so `GRAIN_PROVISION`'s standing demand subordinates to hunger for free. **Measured effect on concentration: none — it "does not de-concentrate — a chronically short metropolis holds the highest scarcity price, so it stays first in the queue" (`grain-shed:177-179`).** The draft's table left this cell blank, which read as "unmeasured" when it is in fact measured-and-null. |
+| **`GRAIN_BID`** | **`grainMarketPass` walked `world.settlements` in array order — founding order** — each buyer drawing down live residuals as it went, so the world's oldest city was served in full before a younger one was offered a bushel; price, hunger and distance played no part in allocating scarcity | buyers now approach in descending order of their own emergent `_grainPrice` (ties on id for determinism) — the hungriest bid it away, and a real deficit outbids a granary top-up so `GRAIN_PROVISION`'s standing demand subordinates to hunger for free. **Measured effect on concentration: none.** Its recorded verdict, verbatim: *"`GRAIN_BID` does not de-concentrate (a chronically short metropolis holds the highest scarcity price, so it stays first in the queue)"* (`grain-shed:177-180`). The draft's table left this cell empty, which reads as "unmeasured" when it is in fact **measured-and-null**. |
 
 **Recorded limitations, not fixed — all three, because the draft listed only the
 first:**
@@ -1457,6 +1467,14 @@ the document rather than of the sim:** a citation to the wrong **lever** (§3.1,
 inherited verbatim from a memo written hours earlier) and a headline count that could not
 be reconciled against its own document (§4). **Three instruments and two citations, one
 class: the label was checked and the expression was not.**
+
+**One more, and it closes the loop.** The audit that produced these corrections listed
+`probe_consol.mjs:74` as itself a mis-citation, saying the "org pack" line is at `:75`.
+**Re-opening the file at `68b5676` shows the print at `:74`; `:75` is the next
+`console.log`.** So that one row of the audit is not applied, and the document's original
+citation stands. **The rule that produced every other correction here produced this one
+too: open the file. An audit is an instrument, and instruments are checked the same way
+findings are.**
 
 ### 6.6 Chaos-bound before attributing anything to a mechanism
 
