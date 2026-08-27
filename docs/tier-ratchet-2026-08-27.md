@@ -549,3 +549,103 @@ contact with the next thing measured. The pattern is consistent enough to name:
 **every one of them was a mechanism inferred from a direction, and every one was
 refuted by reading the actual arithmetic or waiting one more window.** The
 arithmetic here took ten minutes and could have been done before §8 was written.
+
+---
+
+## 11. THE SEAM — `STARVE_SHED` reaches the capacity spike and not the size read
+
+§10.2 named the founding stamp as a floor that a food brake cannot reach. Reading
+why turned up something better than a diagnosis: **the law that is supposed to make
+that floor yield already exists, is already flipped on, and is wired to only one of
+the two places the stamp is read.**
+
+### 11.1 Two sites, two different laws
+
+The stamp `_coreHoldCapF` (= `coreBarF × 1.2` = 12 sim units = 12,000 people,
+`crystallize.js:1751`) is consumed twice in the same function, ~90 lines apart.
+
+**Site A — the CAPACITY SPIKE** (`popField.js:2182-2193`), what the field's logistic
+and migration see:
+
+```js
+if (T.CORE_HOLD && s._coreHoldCapF > 0 && _coreF > 0) {
+  const fedY = T.STARVE_SHED && s._fedM !== undefined ? s._fedM : 1;
+  const hold = Math.min(_coreF, s._coreHoldCapF) * fedY;      // ← melts when unfed
+  if (hold > kCap) kCap = hold;
+}
+```
+
+**Site B — the SIZE READ** (`popField.js:2104-2105`), what `_urbanPop`,
+`_coreMeasured`, the tier ladder and every ratchet leg keyed on tier see:
+
+```js
+const holdF = s._coreHoldCapF > 0 ? s._coreHoldCapF : Math.max(0, pf[ti]);
+coreEff = Math.min(_coreF, Math.max(holdF, kLocal) + kBeyond);   // ← raw stamp
+```
+
+Site B has no `fedY`. `git log -L` confirms this predates `CORE_LOCAL` — the line
+was `Math.min(_coreF, holdF + kBeyond)` before `df837c7` and the raw stamp was
+already the floor. This is baseline behaviour, not something a lever introduced.
+
+### 11.2 Why that is a defect and not a choice
+
+`T.STARVE_SHED` exists for exactly this. Its own description says so:
+
+> *"'hold what arrived' was food-blind, so a chronically unfed core kept its full
+> capacity and the field logistic kept growing it through famine. The floor now
+> carries the settlement's fed-ness average … a starving one melts at generational
+> pace and hunger finally empties the CITY, not just the land around it."*
+
+It empties the city's *capacity*. It does not empty the city's *reported size*. So a
+core that has been starving for generations still reads 12,000 urbanites, still
+quantises to tier 2, still holds `FOOD_RANGE_BY_TIER`, `GRAIN_PRICE_BY_TIER`,
+`granaryCap` and `hinterlandRadiusFor` at the tier-2 rungs, and still contributes a
+full 12 sim units to every urbanisation figure this lap has quoted. The melt was
+built and shipped and then read by only half the code that needed it.
+
+`_fedM` is not near 1 in this world — the shipped record has Egypt/Mideast at
+fed p50 0.24 and leaf settlements at p50 0.08 before the grain market, 0.58 after.
+A `× fedY` at site B is not a cosmetic change.
+
+### 11.3 Why this matters for everything measured today
+
+It is the confounder in §10.2 with a name. A brake on farm output shrinks the
+countryside and starves marginal cores; the starved cores' capacity melts, so their
+people leave — but their *measured urban core* does not move, because site B never
+learned about fed-ness. The urban-share numerator is held up by cities that are, by
+the simulation's own fed-ness memory, dying. That is the mechanism by which a food
+brake reads as urbanisation.
+
+It also means the standing 12k complaint has two distinct halves that this lap had
+been treating as one:
+
+- **cities that never grow past the stamp** — `CORE_LOCAL`'s target, the closed
+  loop (no imports → no core → no tier → no imports). Addressed.
+- **cities that should have fallen back below it and cannot** — this seam. The
+  `DISSOLVE_CORE` law (`tuning.js:92`, the owner's *"they CANNOT become smaller
+  than 12k"*) was written against exactly this shape and tests the basin and the
+  core against the city bar — but the core it tests is the one site B reports.
+
+### 11.4 Registered, not built
+
+The fix is one term: carry `fedY` into site B the way site A already does. It adds
+no constant, invents no mechanism, and applies a law the repo already flipped to the
+second place it plainly belongs.
+
+**It is not being built today.** Four arms are on the machine and this lap's
+recorded lesson is that a mechanism proposed off a fresh reading gets measured
+before it gets written. Pre-registering the prediction now, so the measurement can
+falsify it later:
+
+- `bind%` should be **unchanged** — the seam is about `holdF`'s value, not about
+  whether `kLocal` beats it. (If bind moves much, the reasoning here is wrong.)
+- Urban share should **fall**, concentrated in the marginal/starving tail, with the
+  fed cores untouched.
+- `MODE …su held by n/N` — the share sitting at exactly 12.0 — should **fall
+  sharply**. That is the direct measure and the one to watch.
+- Total population should be **roughly unchanged**: capacity already melted at site
+  A, so the people have already left; this corrects the *report*, not the census.
+
+That last one is the disqualifier's mirror image and worth stating plainly: if
+population drops materially, the two sites were not measuring the same thing and
+the premise fails.
