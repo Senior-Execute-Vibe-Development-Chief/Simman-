@@ -130,6 +130,13 @@ export function driverOf(inst) {
   } else if (d === "bow") {
     D.top = 9000;
   } else {
+    // WHY A PLAYER SOUNDS BREATHY, derived rather than set. Ascending a scale,
+    // an experienced flautist raises the jet velocity by about ten per cent an
+    // octave and a novice by sixty — and a steep curve has to be paid for with
+    // a LONGER jet, which gives turbulence more room to develop before it
+    // reaches the edge. So breathiness is not a parameter; it is what a
+    // clumsy velocity curve costs. Same reason the intonation wanders.
+    D.jet = 1 + 1.7 * (0.6 - 0.5 * (inst.skill ?? 0.5));
     // An edge-blown flute has NO fixed formant — measured spectral envelopes
     // for flutes and clarinets vary with pitch, unlike oboes, bassoons and
     // horns, so giving one a fixed formant would be a realism bug in itself.
@@ -236,8 +243,12 @@ export function playDriven(A, inst, freq, when, dur, vel, dest, opts = {}) {
     // NOISE. Absolute turbulence rises with pressure, but the tone rises
     // faster — so a soft note is breathy and a loud one focused, and getting
     // that ratio backwards is the commonest way to make a wind instrument
-    // sound synthetic.
-    const base = D.kind === "breath" ? 0.16 : D.kind === "reed" ? 0.05 : D.kind === "lip" ? 0.035 : 0.09;
+    // sound synthetic. The levels differ by family because the pressures do:
+    // a flute runs at three to six HUNDRED pascals and a reed at two to five
+    // thousand, an order of magnitude apart, which is most of why a flute is
+    // breathy and a shawm is not.
+    const base = D.kind === "breath" ? 0.16 * D.jet : D.kind === "reed" ? 0.05
+      : D.kind === "lip" ? 0.035 : 0.09;
     const onset = t < atk ? 1 + 2.6 * (1 - t / atk) : 1;
     nz[i] = base * Math.pow(Math.max(0.02, amp[i]), 0.55) * onset * (1 + 0.5 * wander);
   }

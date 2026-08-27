@@ -149,6 +149,11 @@ export function instrumentariumOf(people) {
     // its music (pitch reach), what cost something to make (prized material,
     // hard craft), and what a court can pay to keep. Scores are relative —
     // normalized below — so every people has a real core and a real fringe.
+    // HOW WELL IT IS PLAYED is not how well it was made. A player good enough
+    // to have a flat, economical technique is a specialist, and a specialist
+    // is somebody the surplus has to feed — the same constraint that decides
+    // how many kinds of instrument a tradition can keep at all.
+    inst.skill = Math.max(0, Math.min(1, 0.3 + 0.45 * people.soc.surplus + 0.35 * people.soc.urban));
     const costly = MATERIALS[pick].needs.some(n => ["copper", "tin", "iron", "precious"].includes(n));
     inst.raw = 0.5 * Math.min(1, fam.cap / 12)
       + (costly ? 0.6 : 0)
