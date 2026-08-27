@@ -219,13 +219,33 @@ export function sampledFor(A, inst) {
  * whole OCTAVES first, because an octave-shifted body is at least a plausible
  * bigger or smaller instrument of the same kind.
  */
+/**
+ * …AND THE OCTAVES ARE TAKEN FIRST, which the comment above has always said
+ * and the code never did: `pick` returned the nearest recording and left the
+ * caller to resample by whatever was left over. Where a bank is narrower than
+ * the range the engine writes for a body — which is most of them, because the
+ * range comes from the family's own physics and the bank from whatever
+ * somebody happened to record — that meant dragging one sample across the
+ * whole compass. Measured over the bench: a bānsurī resampled by an average of
+ * 1569 cents, a bell by 1196, one note by 1904. A sixteenth of stretch is not
+ * the instrument transposed, it is a different instrument.
+ *
+ * A note the recording covers is left exactly where the music put it. Only a
+ * note outside what was ever recorded is moved, and it is moved by whole
+ * octaves — which is what a player does when the instrument they have does not
+ * reach: they play it in the octave they have.
+ */
 function pick(entries, f) {
+  const lo = entries[0].hz, hi = entries[entries.length - 1].hz;
+  let hz = f;
+  while (hz > hi && hz / 2 >= lo) hz /= 2;
+  while (hz < lo && hz * 2 <= hi) hz *= 2;
   let best = entries[0], bestD = Infinity;
   for (const e of entries) {
-    const d = Math.abs(Math.log2(f / e.hz));
+    const d = Math.abs(Math.log2(hz / e.hz));
     if (d < bestD) { bestD = d; best = e; }
   }
-  return best;
+  return { e: best, hz };
 }
 
 /**
@@ -237,16 +257,17 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, f
   if (!b) return null;
   const mat = MATERIALS[inst.mat] || MATERIALS.wood;
   const ctx = A.ctx;
-  const one = b.unpitched
-    ? b.entries[Math.abs(Math.round(freq)) % b.entries.length]
+  const got = b.unpitched
+    ? { e: b.entries[Math.abs(Math.round(freq)) % b.entries.length], hz: freq }
     : pick(b.entries, freq);
+  const one = got && got.e;
   if (!one || !one.buf) return null;
 
   const src = ctx.createBufferSource();
   src.buffer = one.buf;
   // an unpitched body is not transposed to the note — it is struck, and where
   // the stroke lands changes it a little, which is what the stroke does below
-  const rate = b.unpitched ? 1 : freq / one.hz;
+  const rate = b.unpitched ? 1 : got.hz / one.hz;
   const target = Math.max(0.06, Math.min(16, rate * (stroke ? stroke.pitch : 1))) * (1 + inst.detune);
   src.playbackRate.value = target;
   // TRAVELLING TO THE NOTE. `from` is where this player's hand already was —
