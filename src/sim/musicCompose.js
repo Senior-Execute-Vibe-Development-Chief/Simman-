@@ -473,27 +473,53 @@ export function timelineOf(music, G, seed) {
   const k = Math.max(3, Math.min(n - 2, Math.round(n * (0.42 + 0.22 * music.rhythm.syncopation))));
   const beats = new Set();
   { let a = 0; for (const g of G.groups) { beats.add(a * G.div); a += g; } }
-  // candidates: every rotation of every near-even necklace, scored
+  // CANDIDATES ARE NEAR-EVEN NECKLACES, which is what the line above has always
+  // claimed and what the code did not do: it enumerated every k-subset of n and
+  // threw away the ones whose evenness was worse than 2.2. That is C(n, k)
+  // candidates for a test that only ever accepts a vanishing fraction of them,
+  // and it is fine at eight slots (C(8,4) = 70) and impossible at thirty-two
+  // (C(32,15) = 565,722,720 — hours per cycle). It survived only because no
+  // rolled metre has ever exceeded seven beats. Any real sixteen-beat cycle —
+  // tīntāl, and it is not exotic — hangs the composer outright.
+  //
+  // A near-even set is one whose GAPS are near-even, so enumerate the gaps
+  // instead of the onsets. A maximally even set has gaps of only q and q+1
+  // where q = floor(n/k); "near" allows exactly one gap to stray by one more.
+  // That is the same acceptance region the evenness test describes, reached
+  // directly, and it turns hours into microseconds without changing what
+  // qualifies.
   let best = null, bestScore = -Infinity;
   const pick = new Set();
-  const build = (start, chosen) => {
-    if (chosen.length === k) {
-      const set = new Set(chosen);
-      if (!set.has(0)) return;                       // a timeline starts the cycle
-      const ev = evenness(set, n);
-      if (ev > 2.2) return;                          // only the top evenness classes
-      let onBeat = 0;
-      for (const b of beats) if (set.has(b)) onBeat++;
-      // it has to state the downbeat and then disagree with the beat
-      const agree = onBeat / beats.size;
-      const h = hash32(seed, "tl", chosen.join(",")) / 4294967296;
-      const score = -ev * 1.4 - Math.abs(agree - 0.45) * 6 + rhythmOddity(set, n) * 1.1 + h * 0.5;
-      if (score > bestScore) { bestScore = score; best = [...chosen]; }
-      return;
-    }
-    for (let i = start; i < n; i++) { chosen.push(i); build(i + 1, chosen); chosen.pop(); }
+  const q = Math.floor(n / k);
+  const GAPS = [q - 1, q, q + 1, q + 2].filter(g => g >= 1);
+  const score = (chosen) => {
+    const set = new Set(chosen);
+    const ev = evenness(set, n);
+    if (ev > 2.2) return;
+    let onBeat = 0;
+    for (const b of beats) if (set.has(b)) onBeat++;
+    // it has to state the downbeat and then disagree with the beat
+    const agree = onBeat / beats.size;
+    const h = hash32(seed, "tl", chosen.join(",")) / 4294967296;
+    const sc = -ev * 1.4 - Math.abs(agree - 0.45) * 6 + rhythmOddity(set, n) * 1.1 + h * 0.5;
+    if (sc > bestScore) { bestScore = sc; best = [...chosen]; }
   };
-  build(0, []);
+  // walk gap sequences from slot 0 (a timeline states the downbeat), allowing
+  // at most one gap outside {q, q+1}
+  const walk = (at, chosen, strays) => {
+    if (chosen.length === k) { if (at === n) score(chosen); return; }
+    const left = k - chosen.length;
+    for (const g of GAPS) {
+      const nxt = at + g;
+      if (nxt > n - (left - 1)) continue;            // no room for the gaps still owed
+      const stray = (g === q || g === q + 1) ? 0 : 1;
+      if (strays + stray > 1) continue;
+      chosen.push(nxt % n);
+      walk(nxt, chosen, strays + stray);
+      chosen.pop();
+    }
+  };
+  walk(0, [0], 0);
   if (!best) { const e = euclid(k, n); best = []; for (let i = 0; i < n; i++) if (e[i]) best.push(i); }
   for (const b of best) pick.add(b);
   return pick;

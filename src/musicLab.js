@@ -21,6 +21,9 @@ import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI,
 import { makeAudio, setDistance, playNote, sungLine, playSung } from "./sim/musicSynth.js";
 import { voiceRange } from "./sim/vocalTract.js";
 import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
+import { TRADITIONS, applyTradition } from "./sim/musicTraditions.js";
+import { makeInstrument } from "./sim/musicInstruments.js";
+import { finalsOf } from "./sim/musicTuning.js";
 
 // ── state ────────────────────────────────────────────────────────────────
 const S = {
@@ -29,7 +32,14 @@ const S = {
   // people whose every scale degree is HEARD in its own timbre, and 2015 —
   // the blend partner — is an all-metal tradition whose frame is not an
   // octave at all, so sliding the border control is an audible argument.
-  seed: 1035, ref: "random", occ: "peace", intimacy: 0.72, blend: 0,
+  seed: 1035, ref: "random", trad: "", occ: "peace", intimacy: 0.72, blend: 0,
+  // How much voice is in the mix. The synthesis path is calibrated so a
+  // singer and a player agree on what a velocity means (musicSynth), but how
+  // much SINGING you want over an ensemble is a listener's call and not a
+  // physical fact — and an articulatory tract at a sung pitch is the least
+  // convincing thing this engine makes. So it is a control, and it starts
+  // where the voice is present without fronting the band.
+  voice: 0.18,
   seedB: 2015, refB: "random", playing: false, piece: null, tonic: 196,
 };
 let world, A = null, P = null, PB = null;   // audio, primary music, blend partner
@@ -45,9 +55,14 @@ function build(seed, ref) {
   m.refKey = ref === "random" ? null : ref;
   return m;
 }
+/** The primary people, as a pinned real tradition if one is selected. */
+function buildWithTradition(seed, ref, trad) {
+  const m = build(seed, ref);
+  return trad && TRADITIONS[trad] ? applyTradition(m, trad, { makeInstrument, finalsOf }) : m;
+}
 function regen() {
   world = newWorld();
-  P = build(S.seed, S.ref);
+  P = buildWithTradition(S.seed, S.ref, S.trad);
   PB = build(S.seedB, S.refB);
   S.piece = null;
 }
@@ -220,7 +235,7 @@ function fireVoiceLine(m, evs, when0, spb, gain, voc, Aud) {
     const at = when0 + g[0].b * spb;
     const prev = THROAT.get(m.people.seed);
     if (prev) prev.damp(at);
-    THROAT.set(m.people.seed, playSung(A, pcm, notes, at, 1));
+    THROAT.set(m.people.seed, playSung(A, pcm, notes, at, S.voice));
     syl += g.length;
   }
 }
@@ -682,10 +697,29 @@ function controlsHTML() {
           ${refs.map(([k, v]) => `<option value="${k}"${S.ref === k ? " selected" : ""}>${esc(v.label)}</option>`).join("")}
         </select></label>
       <button id="roll">New people</button>
+      <label>Bench
+        <select id="trad">
+          <option value=""${S.trad ? "" : " selected"}>— derived, not pinned —</option>
+          ${Object.entries(TRADITIONS).map(([k, v]) =>
+            `<option value="${k}"${S.trad === k ? " selected" : ""}>${esc(v.label)}</option>`).join("")}
+        </select></label>
     </div>
     <p class="note tight">The pinned endowments are calibration targets: they fix the <em>inputs</em> a
       real tradition had — its metals, its crafts, its society — and let the mechanism derive the music.
       Nothing pins a scale or a rhythm.</p>
+    ${S.trad && TRADITIONS[S.trad] ? `<div class="bench">
+      <h3>Bench: ${esc(TRADITIONS[S.trad].label)}</h3>
+      <p class="note tight">${esc(TRADITIONS[S.trad].gloss)}. This is the other kind of check, and the
+      opposite of the one above: the tuning, the ensemble and the metre are <b>written down from
+      measurement</b>, and everything after them — the composer, the strata, the synthesis, the voice —
+      runs untouched. Nothing here can reach a derived people. What it buys is the ability to tell two
+      bugs apart: if a maqām on an oud sounds wrong <em>here</em>, the fault is the sound engine; if it
+      sounds right here and a rolled people still sounds wrong, the fault is in the scale that people
+      derived.</p>
+      <div class="row"><span class="k">tuning</span><span class="v">${TRADITIONS[S.trad].scale.map(c => c.toFixed(0)).join(" · ")} ¢ over ${TRADITIONS[S.trad].frame}¢</span></div>
+      <div class="row"><span class="k">ensemble</span><span class="v">${TRADITIONS[S.trad].insts.map(i => esc(i.label)).join(" · ")}</span></div>
+      <p class="note tight">${esc(TRADITIONS[S.trad].note)}</p>
+    </div>` : ""}
   </div>`;
 }
 
@@ -698,6 +732,9 @@ function transportHTML() {
     <label class="tl sl">Distance
       <input type="range" id="intim" min="0" max="1" step="0.01" value="${S.intimacy}" />
       <span class="slv">${S.intimacy > 0.66 ? "in the city" : S.intimacy > 0.33 ? "nearby" : "far off"}</span></label>
+    <label class="tl sl" title="How much singing sits over the players. The two synthesis paths are calibrated to agree on what a velocity means; how much voice you want above that is yours.">Voice
+      <input type="range" id="voice" min="0" max="1" step="0.01" value="${S.voice}" />
+      <span class="slv">${S.voice < 0.02 ? "silent" : S.voice < 0.25 ? "behind" : S.voice < 0.6 ? "in the band" : "out front"}</span></label>
     <label class="tl sl" title="A border settlement's ambience is an admixture: both traditions generated and sounded together, at the population proportions">Border
       <input type="range" id="blend" min="0" max="1" step="0.01" value="${S.blend}" />
       <span class="slv">${S.blend < 0.05 ? esc(P.people.name) : S.blend > 0.95 ? esc(PB.people.name) : Math.round((1 - S.blend) * 100) + "/" + Math.round(S.blend * 100)}</span></label>
@@ -743,6 +780,12 @@ function wire() {
   $("roll").onclick = () => { S.seed = (S.seed + 1) >>> 0; $("seed").value = S.seed; regen(); render(); };
   $("seed").onchange = (e) => { S.seed = (+e.target.value | 0) >>> 0; regen(); render(); };
   $("ref").onchange = (e) => { S.ref = e.target.value; regen(); render(); };
+  $("trad").onchange = (e) => { S.trad = e.target.value; if (S.playing) stopAmbient(); regen(); render(); };
+  $("voice").oninput = (e) => {
+    S.voice = +e.target.value;
+    const sp = e.target.parentElement.querySelector(".slv");
+    if (sp) sp.textContent = S.voice < 0.02 ? "silent" : S.voice < 0.25 ? "behind" : S.voice < 0.6 ? "in the band" : "out front";
+  };
   $("play").onclick = () => { S.playing ? stopAmbient() : startAmbient(); render(); };
   $("occ").onchange = (e) => { S.occ = e.target.value; render(); };
   $("intim").oninput = (e) => {
@@ -886,6 +929,9 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 .formline{display:flex;gap:.25rem;margin:.5rem 0 .3rem}
 .sec{background:var(--chipbg);border:1px solid var(--line);border-radius:4px;padding:.35rem .5rem;
   font-size:.75rem;color:var(--muted);text-align:center;overflow:hidden;white-space:nowrap}
+.bench{margin-top:.9rem;padding:.75rem .85rem;border:1px solid var(--accent);border-radius:6px;background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.bench h3{margin:0 0 .35rem}
+.bench .v{font-family:ui-monospace,monospace;font-size:.8rem}
 .sung{font-size:1.15rem;letter-spacing:.02em;margin:.2rem 0}
 .sung span{margin-right:.5rem}
 .chain{display:flex;flex-wrap:wrap;gap:.4rem .2rem;align-items:center;margin:.3rem 0 .6rem}
@@ -903,7 +949,8 @@ function exposeForTests() {
   if (typeof window === "undefined") return;
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
-    fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs, S };
+    fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, phraseFreqs,
+    buildTrad: (k) => buildWithTradition(S.seed, S.ref, k), S };
 }
 
 export function mount() {
