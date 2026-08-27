@@ -11,7 +11,7 @@ is CC0 and needs nothing; the named bench bank is mostly CC BY, and that credit
 is a genuine obligation rather than a courtesy — except for the two named
 bodies that come from CC0 recordings, listed under their own heading below.
 
-## The family bank — CC0
+## The family bank — CC0, with one stated exception
 
 Both are by **Versilian Studios LLC** and both are released **CC0 1.0
 Universal** (public domain dedication) — no attribution is required, and
@@ -54,6 +54,24 @@ calls.
 | `drum` | Darbuka | a single-headed struck membrane |
 | `frameDrum` | Frame Drum | a hand-struck frame membrane |
 | `claps` | Claps | hands |
+| `struckString` | Grand Piano | a struck box zither — the santur's own machine at the end of its history |
+| `freeReed` | Harmonica | a tongue swinging *through* a slot at its own frequency |
+| `slitDrum` | Slit Drum | cantilever tongues cut into a hollowed log |
+| `clappers` | Claves | two solid bodies struck together |
+| `rattle` | Shaker | a vessel struck from inside, many times a second |
+| `scraper` | Guiro | a train of impacts as the scraper crosses the notches |
+| `panpipe` | pan flute | a raft of stopped pipes, one per pitch — **CC BY 3.0**, see below |
+| `musicalBow` | *(none)* | modelled: no openly-licensed recording exists |
+
+**The one exception to CC0 in this bank is `panpipe`.** Nobody has published an
+openly-licensed multisampled panpipe; General MIDI's pan flute is a real
+recording of one, and it comes from FluidR3_GM under **CC BY 3.0** like the
+named bank below. The credit at the foot of the Lab covers it.
+
+`musicalBow` has no recording anywhere and plays MODELLED. That is not a gap
+to apologise for — it is what the modelled path is for, and a people that
+invents a body nobody has ever recorded is the normal case in this engine
+rather than the odd one.
 
 ## The named bench bank — CC BY 3.0, attribution REQUIRED
 

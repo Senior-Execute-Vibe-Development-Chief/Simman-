@@ -91,6 +91,25 @@ const MAP = {
                  kind: "struck",  src: "Darbuka", why: "a single-headed struck membrane", unpitched: true },
   frameDrum:   { repo: "vcsl", dir: "Membranophones/Struck Membranophones/Frame Drum",
                  kind: "struck",  src: "Frame Drum", why: "a hand-struck frame membrane", unpitched: true },
+  // ── the eight families the engine did not have until now ──
+  struckString:{ repo: "vcsl", dir: "Chordophones/Zithers/Grand Piano, Steinway B/Sus", every: 2,
+                 kind: "struck",  src: "Grand Piano", why: "a struck box zither — the santur's own machine, at the end of its history" },
+  freeReed:    { repo: "vcsl", dir: "Aerophones/Free Aerophones/Harmonica-Hohner-Special20-C/Sustains/Normal",
+                 kind: "sustain", src: "Harmonica", why: "a tongue swinging THROUGH a slot at its own frequency" },
+  clappers:    { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Claves",
+                 kind: "struck",  src: "Claves", why: "two solid bodies struck together", unpitched: true },
+  rattle:      { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Shaker, Large",
+                 kind: "struck",  src: "Shaker", why: "a vessel struck from inside, many times a second", unpitched: true },
+  scraper:     { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Guiro",
+                 kind: "struck",  src: "Guiro", why: "a train of impacts as the scraper crosses the notches", unpitched: true },
+  slitDrum:    { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Slit Drum",
+                 kind: "struck",  src: "Slit Drum", why: "cantilever tongues cut into a hollowed log", unpitched: true },
+  panpipe:     { gm: "pan_flute", lo: "C4", hi: "C7", every: 3,
+                 kind: "sustain", src: "pan_flute", why: "a raft of stopped pipes, one per pitch" },
+  // `musicalBow` has no openly-licensed recording anywhere I could find, so it
+  // plays MODELLED. That is not a gap to apologise for — it is what the
+  // modelled path is for, and a people that invents a body nobody has ever
+  // recorded is the normal case here rather than the odd one.
   claps:       { repo: "vcsl", dir: "Idiophones/Struck Idiophones/Claps",
                  kind: "struck",  src: "Claps", why: "hands", unpitched: true },
 };
@@ -286,6 +305,8 @@ const RECORDED_MAT = {
   Ocarina: "clay", Oboe: "reed", "F Horn": "bronze", Balafon: "wood",
   "Mbira dzaVadzimu": "iron", "Tubular Bells": "bronze", Gong: "bronze",
   Darbuka: "hide", "Frame Drum": "hide", Claves: "wood", Claps: "none",
+  "Grand Piano": "iron", Harmonica: "bronze", Shaker: "wood", Guiro: "gourd",
+  "Slit Drum": "wood",
   // and the named bank's bodies, which a derived people may also reach —
   // the RECORDING is a measurement of a material, whatever the instrument on
   // it is called
@@ -311,13 +332,13 @@ function matOf(src) {
 // carries its own kind rather than being assumed plucked — which is what the
 // bank did, and it would have played the erhu as a note that simply stops.
 const GM_KIND = { bowed: "sustain", fluteOpen: "sustain", pipeStopped: "sustain",
-  reedPipe: "sustain", horn: "sustain" };
+  reedPipe: "sustain", horn: "sustain", freeReed: "sustain", panpipe: "sustain" };
 const NAMED_FAM = {
   sitar: "luteNeck", acoustic_guitar_nylon: "luteNeck", shamisen: "luteNeck",
   koto: "lyre", dulcimer: "lyre",
   fiddle: "bowed",
   flute: "fluteOpen", pan_flute: "fluteOpen", shakuhachi: "fluteOpen",
-  bagpipe: "reedPipe", reed_organ: "reedPipe",
+  bagpipe: "reedPipe", reed_organ: "freeReed", pan_flute: "panpipe",
   taiko_drum: "drum",
 };
 
@@ -344,6 +365,14 @@ const NAMED_WAV = {
     match: /^erhu_([a-g][b]?)(\d)_sus_rr1\.wav$/i,
     pitch: (m) => 440 * Math.pow(2, (PC[m[1][0].toUpperCase() + (m[1][1] || "")] - 9) / 12
       + (parseInt(m[2], 10) - 1 - 4)),
+  },
+  "sheng": {
+    repo: "vcsl", dir: "Aerophones/Free Aerophones/Harmonica-Hohner-Special20-C/Sustains/Normal",
+    kind: "sustain", fam: "freeReed", mat: "bronze", src: "Harmonica", every: 1,
+    like: "a MOUTH-blown free reed, which is exactly what a sheng is — the reed "
+      + "organ it used to borrow is blown by a bellows",
+    match: /^Hohner-Special20_Normal_([A-G][#b]?)(\d)\.wav$/,
+    pitch: (m) => 440 * Math.pow(2, (PC[m[1]] - 9) / 12 + (parseInt(m[2], 10) - 4)),
   },
   "qānūn": {
     repo: "vcsl", dir: "Chordophones/Zithers/Dan Tranh/Normal", kind: "pluck",
@@ -380,7 +409,6 @@ const NAMED = {
   "kamānja":    { gm: "fiddle",      lo: "G3", hi: "C6", like: "a bowed folk fiddle" },
   "sārangī":    { gm: "fiddle",      lo: "E3", hi: "C6", like: "a bowed folk fiddle" },
   "dizi":       { gm: "flute",       lo: "D4", hi: "D7", like: "a transverse flute, without the membrane buzz" },
-  "sheng":      { gm: "reed_organ",  lo: "C3", hi: "C6", like: "a free reed, which is exactly what a sheng is" },
   "pipa":       { gm: "sitar",       lo: "A2", hi: "A5", like: "a plucked, fretted lute with a bright metallic attack" },
   "guqin":      { gm: "koto",        lo: "C2", hi: "C5", like: "a silk-strung board zither" },
 };
@@ -393,6 +421,33 @@ function midiOf(n) {
 }
 const SHARP = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const nameOf = (mi) => SHARP[((mi % 12) + 12) % 12] + (Math.floor(mi / 12) - 1);
+
+const GM_CACHE = new Map();
+function gmNotes(gm) {
+  if (GM_CACHE.has(gm)) return GM_CACHE.get(gm);
+  const js = sh("curl", ["-sSf", "--max-time", "180", "-A", UA, GM_URL + gm + "-mp3.js"]);
+  const map = new Map();
+  const re = /"([A-G][#b]?-?\d)":\s*"data:audio\/mp3;base64,([^"]+)"/g;
+  let m;
+  while ((m = re.exec(js))) map.set(m[1], m[2]);
+  GM_CACHE.set(gm, map);
+  console.log(`    fetched ${gm}: ${map.size} notes`);
+  return map;
+}
+async function fromGM(spec, fam) {
+  const map = gmNotes(spec.gm);
+  const out = [];
+  const lo = midiOf(spec.lo), hi = midiOf(spec.hi), step = (spec.every || 1) * 2;
+  for (let mi = lo; mi <= hi; mi += step) {
+    const b64 = map.get(nameOf(mi)) || map.get(SHARP[((mi % 12) + 12) % 12].replace("b", "#") + (Math.floor(mi / 12) - 1));
+    if (!b64) continue;
+    const hz = +(440 * Math.pow(2, (mi - 69) / 12)).toFixed(2);
+    const file = `${fam}_${Math.round(hz)}.mp3`;
+    if (!DRY) writeFileSync(join(OUT_DIR, file), Buffer.from(b64, "base64"));
+    out.push({ hz, file, secs: 0 });
+  }
+  return out;
+}
 
 async function buildNamed() {
   const dir = join(OUT_DIR, "named");
@@ -462,17 +517,7 @@ async function buildNamed() {
       }
       continue;
     }
-    if (!cache.has(spec.gm)) {
-      const url = GM_URL + spec.gm + "-mp3.js";
-      const js = sh("curl", ["-sSf", "--max-time", "180", "-A", UA, url]);
-      const map = new Map();
-      const re = /"([A-G][#b]?-?\d)":\s*"data:audio\/mp3;base64,([^"]+)"/g;
-      let m;
-      while ((m = re.exec(js))) map.set(m[1], m[2]);
-      cache.set(spec.gm, map);
-      console.log(`    fetched ${spec.gm}: ${map.size} notes`);
-    }
-    const map = cache.get(spec.gm);
+    const map = gmNotes(spec.gm);
     if (!map || !map.size) continue;
     // one sample every four semitones across the instrument's own range: close
     // enough that nothing shifts more than a tone, which is where a stretched
@@ -519,6 +564,20 @@ async function main() {
   let files = 0, bytes = 0;
   for (const fam of fams) {
     const m = MAP[fam];
+    if (m.gm) {
+      // ONE FAMILY COMES FROM THE SOUNDFONT, not from a CC0 library: nobody
+      // has published an openly-licensed multisampled panpipe, and General
+      // MIDI's pan flute is a real recording of one. It is CC BY 3.0 rather
+      // than CC0 like the rest of this bank, and the credits say so per item.
+      const entries = await fromGM(m, fam);
+      if (entries.length) {
+        bank[fam] = { src: m.src, why: m.why, kind: m.kind, unpitched: false,
+          mat: matOf(m.src), samples: entries };
+        files += entries.length;
+        console.log(`  ${fam.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${m.src} (soundfont)`);
+      }
+      continue;
+    }
     const dir = join(REPOS[m.repo].dir, m.dir);
     if (!existsSync(dir)) { console.log(`  ${fam.padEnd(12)} MISSING ${m.dir}`); continue; }
     const all = readdirSync(dir).filter(f => /\.(wav|ogg|mp3)$/i.test(f));
@@ -533,7 +592,8 @@ async function main() {
       if (!prev || dynOf(f) < dynOf(prev.f)) best.set(key, { f, hz: hz || 0 });
     }
     const picks = [...best.values()].sort((a, b) => a.hz - b.hz)
-      .filter((_, i, arr) => !m.unpitched || i < 6);          // percussion: a handful of strokes
+      .filter((_, i) => !m.unpitched || i < 6)                // percussion: a handful of strokes
+      .filter((_, i) => m.unpitched || !m.every || i % m.every === 0);
     const entries = [];
     for (const p of picks) {
       const raw = decodeWav(readFileSync(join(dir, p.f)));
@@ -582,8 +642,8 @@ ${gen}
 export const SAMPLE_CREDIT =
   "Recorded instruments: Versilian Community Sample Library and VSCO 2 " +
   "Community Edition, by Versilian Studios LLC (CC0); the erhu from " +
-  "sfzinstruments/aliexpress-erhu (CC0). Named bench instruments " +
-  "from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
+  "sfzinstruments/aliexpress-erhu (CC0). Panpipes and the named bench " +
+  "instruments from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
 
 // THE NAMED BANK IS THE BENCH'S, and nothing a derived people can reach ever
 // looks it up: an instrument only gets a name in \`musicTraditions.js\`, which

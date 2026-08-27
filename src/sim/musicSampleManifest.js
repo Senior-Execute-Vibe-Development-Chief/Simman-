@@ -183,6 +183,80 @@ export const SAMPLE_BANK = {
     { hz: 0, secs: 1.853, file: "frameDrum_4.mp3" },
     { hz: 0, secs: 3.2, file: "frameDrum_5.mp3" },
   ] },
+  struckString: { src: "Grand Piano", kind: "struck", unpitched: false, mat: "iron", samples: [
+    { hz: 29.14, secs: 3.2, file: "struckString_29.mp3" },
+    { hz: 36.71, secs: 3.2, file: "struckString_37.mp3" },
+    { hz: 46.25, secs: 3.2, file: "struckString_46.mp3" },
+    { hz: 58.27, secs: 3.2, file: "struckString_58.mp3" },
+    { hz: 73.42, secs: 3.2, file: "struckString_73.mp3" },
+    { hz: 92.5, secs: 3.2, file: "struckString_92.mp3" },
+    { hz: 116.54, secs: 3.2, file: "struckString_117.mp3" },
+    { hz: 146.83, secs: 3.2, file: "struckString_147.mp3" },
+    { hz: 185, secs: 3.2, file: "struckString_185.mp3" },
+    { hz: 233.08, secs: 3.2, file: "struckString_233.mp3" },
+    { hz: 293.66, secs: 3.2, file: "struckString_294.mp3" },
+    { hz: 369.99, secs: 3.2, file: "struckString_370.mp3" },
+    { hz: 466.16, secs: 3.2, file: "struckString_466.mp3" },
+    { hz: 587.33, secs: 3.2, file: "struckString_587.mp3" },
+    { hz: 739.99, secs: 3.2, file: "struckString_740.mp3" },
+    { hz: 932.33, secs: 3.2, file: "struckString_932.mp3" },
+    { hz: 1174.66, secs: 3.2, file: "struckString_1175.mp3" },
+    { hz: 1479.98, secs: 3.2, file: "struckString_1480.mp3" },
+    { hz: 1864.66, secs: 3.2, file: "struckString_1865.mp3" },
+    { hz: 2349.32, secs: 3.2, file: "struckString_2349.mp3" },
+    { hz: 2959.96, secs: 3.2, file: "struckString_2960.mp3" },
+  ] },
+  freeReed: { src: "Harmonica", kind: "sustain", unpitched: false, mat: "bronze", samples: [
+    { hz: 130.81, secs: 2.6, file: "freeReed_131.mp3" },
+    { hz: 164.81, secs: 2.6, file: "freeReed_165.mp3" },
+    { hz: 261.63, secs: 2.6, file: "freeReed_262.mp3" },
+    { hz: 329.63, secs: 2.6, file: "freeReed_330.mp3" },
+    { hz: 392, secs: 2.6, file: "freeReed_392.mp3" },
+    { hz: 523.25, secs: 2.6, file: "freeReed_523.mp3" },
+    { hz: 659.26, secs: 2.6, file: "freeReed_659.mp3" },
+    { hz: 783.99, secs: 2.6, file: "freeReed_784.mp3" },
+    { hz: 1046.5, secs: 2.6, file: "freeReed_1047.mp3" },
+  ] },
+  clappers: { src: "Claves", kind: "struck", unpitched: true, mat: "wood", samples: [
+    { hz: 0, secs: 1.132, file: "clappers_0.mp3" },
+    { hz: 0, secs: 1.087, file: "clappers_1.mp3" },
+    { hz: 0, secs: 1.292, file: "clappers_2.mp3" },
+    { hz: 0, secs: 0.718, file: "clappers_3.mp3" },
+    { hz: 0, secs: 1.028, file: "clappers_4.mp3" },
+    { hz: 0, secs: 1.28, file: "clappers_5.mp3" },
+  ] },
+  rattle: { src: "Shaker", kind: "struck", unpitched: true, mat: "wood", samples: [
+    { hz: 0, secs: 1.307, file: "rattle_0.mp3" },
+    { hz: 0, secs: 1.307, file: "rattle_1.mp3" },
+    { hz: 0, secs: 1.431, file: "rattle_2.mp3" },
+    { hz: 0, secs: 1.281, file: "rattle_3.mp3" },
+    { hz: 0, secs: 1.534, file: "rattle_4.mp3" },
+    { hz: 0, secs: 1.263, file: "rattle_5.mp3" },
+  ] },
+  scraper: { src: "Guiro", kind: "struck", unpitched: true, mat: "gourd", samples: [
+    { hz: 0, secs: 1.514, file: "scraper_0.mp3" },
+    { hz: 0, secs: 1.283, file: "scraper_1.mp3" },
+    { hz: 0, secs: 1.36, file: "scraper_2.mp3" },
+    { hz: 0, secs: 1.881, file: "scraper_3.mp3" },
+    { hz: 0, secs: 2.439, file: "scraper_4.mp3" },
+  ] },
+  slitDrum: { src: "Slit Drum", kind: "struck", unpitched: true, mat: "wood", samples: [
+    { hz: 0, secs: 1.488, file: "slitDrum_0.mp3" },
+    { hz: 0, secs: 1.545, file: "slitDrum_1.mp3" },
+    { hz: 0, secs: 1.519, file: "slitDrum_2.mp3" },
+    { hz: 0, secs: 1.126, file: "slitDrum_3.mp3" },
+    { hz: 0, secs: 1.412, file: "slitDrum_4.mp3" },
+    { hz: 0, secs: 1.251, file: "slitDrum_5.mp3" },
+  ] },
+  panpipe: { src: "pan_flute", kind: "sustain", unpitched: false, mat: "bamboo", samples: [
+    { hz: 261.63, secs: 0, file: "panpipe_262.mp3" },
+    { hz: 369.99, secs: 0, file: "panpipe_370.mp3" },
+    { hz: 523.25, secs: 0, file: "panpipe_523.mp3" },
+    { hz: 739.99, secs: 0, file: "panpipe_740.mp3" },
+    { hz: 1046.5, secs: 0, file: "panpipe_1047.mp3" },
+    { hz: 1479.98, secs: 0, file: "panpipe_1480.mp3" },
+    { hz: 2093, secs: 0, file: "panpipe_2093.mp3" },
+  ] },
   claps: { src: "Claps", kind: "struck", unpitched: true, mat: "none", samples: [
     { hz: 0, secs: 0.739, file: "claps_0.mp3" },
     { hz: 0, secs: 0.713, file: "claps_1.mp3" },
@@ -195,8 +269,8 @@ export const SAMPLE_BANK = {
 export const SAMPLE_CREDIT =
   "Recorded instruments: Versilian Community Sample Library and VSCO 2 " +
   "Community Edition, by Versilian Studios LLC (CC0); the erhu from " +
-  "sfzinstruments/aliexpress-erhu (CC0). Named bench instruments " +
-  "from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
+  "sfzinstruments/aliexpress-erhu (CC0). Panpipes and the named bench " +
+  "instruments from FluidR3_GM by Frank Wen, via midi-js-soundfonts (CC BY 3.0).";
 
 // THE NAMED BANK IS THE BENCH'S, and nothing a derived people can reach ever
 // looks it up: an instrument only gets a name in `musicTraditions.js`, which
@@ -223,6 +297,17 @@ export const NAMED_BANK = {
     { hz: 783.99, file: "named/erhu_784.mp3" },
     { hz: 830.61, file: "named/erhu_831.mp3" },
     { hz: 880, file: "named/erhu_880.mp3" },
+  ] },
+  "sheng": { src: "Harmonica", kind: "sustain", like: "a MOUTH-blown free reed, which is exactly what a sheng is — the reed organ it used to borrow is blown by a bellows", fam: "freeReed", mat: "bronze", samples: [
+    { hz: 130.81, file: "named/sheng_131.mp3" },
+    { hz: 164.81, file: "named/sheng_165.mp3" },
+    { hz: 261.63, file: "named/sheng_262.mp3" },
+    { hz: 329.63, file: "named/sheng_330.mp3" },
+    { hz: 392, file: "named/sheng_392.mp3" },
+    { hz: 523.25, file: "named/sheng_523.mp3" },
+    { hz: 659.26, file: "named/sheng_659.mp3" },
+    { hz: 783.99, file: "named/sheng_784.mp3" },
+    { hz: 1046.5, file: "named/sheng_1047.mp3" },
   ] },
   "qānūn": { src: "Dan Tranh", kind: "pluck", like: "a plucked box zither with movable bridges under metal strings, which is what a qānūn is — the dulcimer it used to borrow is STRUCK", fam: "lyre", mat: "iron", samples: [
     { hz: 61.74, file: "named/qnn_62.mp3" },
@@ -400,18 +485,6 @@ export const NAMED_BANK = {
     { hz: 1479.98, file: "named/flute_1480.mp3" },
     { hz: 1864.66, file: "named/flute_1865.mp3" },
     { hz: 2349.32, file: "named/flute_2349.mp3" },
-  ] },
-  "sheng": { src: "reed_organ", kind: "sustain", like: "a free reed, which is exactly what a sheng is", fam: "reedPipe", mat: "reed", samples: [
-    { hz: 130.81, file: "named/reed_organ_131.mp3" },
-    { hz: 164.81, file: "named/reed_organ_165.mp3" },
-    { hz: 207.65, file: "named/reed_organ_208.mp3" },
-    { hz: 261.63, file: "named/reed_organ_262.mp3" },
-    { hz: 329.63, file: "named/reed_organ_330.mp3" },
-    { hz: 415.3, file: "named/reed_organ_415.mp3" },
-    { hz: 523.25, file: "named/reed_organ_523.mp3" },
-    { hz: 659.26, file: "named/reed_organ_659.mp3" },
-    { hz: 830.61, file: "named/reed_organ_831.mp3" },
-    { hz: 1046.5, file: "named/reed_organ_1047.mp3" },
   ] },
   "pipa": { src: "sitar", kind: "pluck", like: "a plucked, fretted lute with a bright metallic attack", fam: "luteNeck", mat: "iron", samples: [
     { hz: 110, file: "named/sitar_110.mp3" },

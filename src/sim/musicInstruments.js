@@ -161,7 +161,12 @@ export const FAMILIES = {
     // themselves and hang on. Measured on a timpano: the (0,1) is gone in
     // three tenths of a second while the (2,1) rings for nearly four.
     decays: (i, r, base, K) => base * (i === 0 ? (K.shell ? 0.16 : 0.5) : 1.5 / Math.pow(r, 0.7)),
-    body: ["hide"], frame: ["wood", "clay", "gourd", "bone"], needs: {},
+    // A DRUMHEAD IS MADE. Hollowing or coopering a shell, then wetting,
+    // stretching, lacing and tuning a hide over it is a craft somebody had to
+    // learn — a low gate, which nearly every people clears, but not an absent
+    // one. It was absent, and that left a drum indistinguishable from a pair
+    // of sticks in every rule that asks whether a body needed a maker.
+    body: ["hide"], frame: ["wood", "clay", "gourd", "bone"], needs: { construction: 0.18 },
   },
   frameDrum: {
     label: "frame drum", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 1, low: 110, beta: 0.62, wid: 38, vib: "membrane", poly: 1,
@@ -170,13 +175,142 @@ export const FAMILIES = {
     // longer than the same mode over a shell — which is most of the difference
     // between a bendir and a conga
     decays: (i, r, base) => base * (i === 0 ? 1.1 : 2.0 / Math.pow(r, 0.6)),
-    body: ["hide"], frame: ["wood", "bone"], needs: {},
+    body: ["hide"], frame: ["wood", "bone"], needs: { construction: 0.12 },
   },
   claps: {                      // hands, and the body they are attached to
     label: "hands", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 1, low: 200, beta: 0.5, wid: 60,
     vib: "membrane", poly: 1,
     ratios: (n) => MEMBRANE_OPEN.slice(0, n).map(r => r * 2.4),
     body: ["none"], needs: {},
+  },
+
+  // ── the eight this table did not have ───────────────────────────────────
+  //
+  // Every one of these is a hole in the MODEL, not a missing instrument. Two
+  // of them were category errors: there was no struck chordophone at all, so
+  // a santur, a yangqin and a cimbalom could not exist, and a free reed was
+  // folded in with beating reeds although it is a different machine. Two more
+  // are the most universal idiophone classes there are and simply were not
+  // here, which is why a people with no timber and no ore ended at "somebody
+  // claps". And a quarter of all peoples had NO chordophone whatever, because
+  // every string family gated on `construction` — while the oldest string
+  // instrument in the world is a hunting bow with a gourd tied to it.
+
+  struckString: {               // struck box zither: santur, yangqin, cimbalom
+    // A HAMMER IS NOT A PLECTRUM. It is heavier and softer and wider, so it
+    // dumps its energy lower in the series and over more of the string, and
+    // the note that comes off a santur is round where a qānūn's is bright —
+    // same strings, same box, different excitation. Struck near an eighth of
+    // the length, which is where a hammer naturally falls and which is why
+    // the eighth partial is missing from all of them.
+    label: "struck zither", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 12, low: 130,
+    beta: 0.125, wid: 11, vib: "string", poly: 3,
+    ratios: (n, m) => harmonicStiff(n, m.B),
+    // Metal wire is what makes the difference: a struck string has to take a
+    // hammer blow without going slack, which is far more tension than a gut
+    // one will hold. Gut ones exist and they are quiet.
+    body: ["iron", "bronze", "silver", "gut", "silk"], frame: ["wood", "gourd", "clay"],
+    // and DRAWN WIRE is the gate. A bar can be cast; a string that will take a
+    // hammer has to be pulled through a plate, over and over, without breaking
+    // — which is why every struck zither in the world is iron-age or later and
+    // why the gut-strung ones are marginal and quiet. Without this gate the
+    // engine made it the third most common body on the map, ahead of the lute.
+    needs: { construction: 0.45, metallurgy: 0.4 },
+  },
+  freeReed: {                   // sheng, khaen, harmonica, bawu, accordion
+    // A FREE REED IS ITS OWN PITCH MACHINE. The tongue swings THROUGH a slot
+    // at its own natural frequency and the pipe only colours it — which is
+    // the exact opposite of a beating reed, where the pipe sets the pitch and
+    // the reed follows. Two consequences the engine had wrong while this was
+    // folded into `reedPipe`: the pitch is FIXED, one reed per note, so
+    // nothing can be bent or fingered; and a player with a mouthful of pipes
+    // can sound several at once, which is where the sheng's chords come from
+    // and why free reeds are the only wind bodies in the world that harmonise.
+    //
+    // Its radiated spectrum is harmonic even though the tongue's own bending
+    // modes are not, because what reaches the air is the CHOPPED AIRFLOW —
+    // the tongue is a valve, not a sounding bar.
+    label: "free reed", kind: "sustain", drive: "reed", pitchBy: "fixed", cap: 10, low: 175,
+    vib: "tongue", poly: 3,
+    ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
+    body: ["bamboo", "iron", "bronze", "silver", "reed"], frame: ["bamboo", "wood", "gourd"],
+    // slot and tongue have to fit closely enough to speak, which is craft
+    // rather than metallurgy — a khaen's tongues are split bamboo
+    needs: { construction: 0.45 },
+  },
+  musicalBow: {                 // one string, a stave, and a gourd or a mouth
+    // THE OLDEST CHORDOPHONE, and the ancestor of every other one in this
+    // table. A hunter already owns it. There is no soundbox to build and no
+    // neck to fret: the resonator is a gourd tied on, or the player's own
+    // mouth, and what it selects is WHICH HARMONIC of the one string you
+    // hear — so like a natural horn it plays a series rather than a scale,
+    // and `tune: "series"` says so.
+    label: "musical bow", kind: "pluck", drive: "pluck", pitchBy: "fixed", cap: 4, low: 98,
+    beta: 0.08, wid: 3, vib: "string", tune: "series", poly: 1, reso: true,
+    ratios: (n, m) => harmonicStiff(n, m.B),
+    body: ["gut", "silk"], frame: ["gourd", "wood", "bone", "none"],
+    needs: {},                  // this is the point: a bow needs nothing
+  },
+  panpipe: {                    // a raft of stopped pipes, one per pitch
+    // Stopped, so odd harmonics only — the same hollow spectrum as a stopped
+    // pipe — but there are no finger holes: the next note is a DIFFERENT
+    // PIPE. That is what makes the interlocking two-player hocket of the
+    // Andes and of Oceania necessary rather than decorative, since one raft
+    // often holds only every other degree.
+    label: "panpipes", kind: "sustain", drive: "breath", pitchBy: "fixed", cap: 8, low: 220,
+    vib: "air", poly: 1,
+    ratios: (n) => Array.from({ length: n }, (_, i) => 2 * i + 1),
+    body: ["bamboo", "reed", "bone", "clay"], frame: ["bamboo", "wood"],
+    needs: { construction: 0.2 },   // tuning and binding a raft of them
+  },
+  slitDrum: {                   // a hollowed log with tongues cut into it
+    // NOT A DRUM. There is no membrane: the tongues cut into the wall of a
+    // hollowed log are cantilevers, and the cavity behind them is a Helmholtz
+    // resonator. Two or three definite pitches out of one body, which is what
+    // makes it the signalling instrument of west Africa, Melanesia and
+    // Mesoamerica — you can say words on it.
+    label: "slit drum", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 3, low: 98,
+    beta: 0.42, wid: 20, vib: "bar", poly: 2, reso: true,
+    ratios: (n) => LAMELLA.slice(0, n),
+    body: ["wood", "bamboo"], frame: ["wood", "bamboo"],
+    needs: { construction: 0.3 },   // hollowing a log through a slit
+  },
+  clappers: {                   // two solid bodies struck together
+    // Hornbostel–Sachs 111.1, and among the oldest classes of instrument
+    // there is: claves, castanets, paiban, bones, spoons, krotala. A
+    // free–free bar struck at its middle, so it speaks the odd modes and
+    // stops almost at once. It needs no craft and no ore, which is exactly
+    // why everybody has a pair.
+    label: "clappers", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 1, low: 260,
+    beta: 0.5, wid: 26, vib: "bar", poly: 1,
+    ratios: (n) => BAR_FREE.slice(0, n),
+    body: ["wood", "bamboo", "bone", "stone", "iron", "bronze", "horn"],
+    needs: {},
+  },
+  rattle: {                     // a vessel with something loose inside it
+    // Arguably more universal than the drum and older than the stretched
+    // membrane in a good deal of the world: maraca, shekere, sistrum, ankle
+    // rattles, ganzá. What sounds is the VESSEL, struck from within many
+    // times a second by whatever is loose in it — so its modes are a
+    // vessel's and its excitation is a dense train of small impacts, which
+    // is why it reads as noise with a colour rather than as a pitch.
+    label: "rattle", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 1, low: 300,
+    beta: 0.5, wid: 55, vib: "shell", poly: 1,
+    ratios: (n) => PLATE.slice(0, n).map(r => r * 1.6),
+    body: ["gourd", "hide", "clay", "bone", "wood"], frame: ["gourd", "clay", "wood", "hide"],
+    needs: {},
+  },
+  scraper: {                    // a notched stick or bone, dragged
+    // A güiro, a reco-reco, a quijada, a notched bone rasp — and notched
+    // bone rasps are among the oldest surviving instruments anywhere. The
+    // body is a bar; the excitation is a rapid train of impacts as the
+    // scraper crosses the notches, so it is broadband by construction and
+    // the player controls its RATE rather than its pitch.
+    label: "scraper", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 1, low: 340,
+    beta: 0.34, wid: 48, vib: "bar", poly: 1,
+    ratios: (n) => BAR_FREE.slice(0, n),
+    body: ["wood", "bone", "gourd", "bamboo", "horn"],
+    needs: {},
   },
 };
 
@@ -542,7 +676,10 @@ export function definiteness(partials) {
 // fraction of the length — that is what its 1 : 6.27 series IS, a very stiff
 // short cantilever — so it is a fraction of the mass, and a thumb stops it
 // where it would not stop a marimba key.
-export const ELEMENT = { string: 0.02, air: 0.01, membrane: 0.06, tongue: 0.15, bar: 1, plate: 9 };
+// `shell` is a rattle's vessel: a thin gourd or clay wall, lighter than a
+// stretched head and nothing like a bar — which is why a rattle is quiet and
+// has to be shaken continuously to be heard at all.
+export const ELEMENT = { string: 0.02, air: 0.01, membrane: 0.06, shell: 0.045, tongue: 0.15, bar: 1, plate: 9 };
 
 /**
  * HOW LOUD THIS BODY IS, relative to the others in the room.

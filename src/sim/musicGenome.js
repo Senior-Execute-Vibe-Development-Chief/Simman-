@@ -185,16 +185,37 @@ export function instrumentariumOf(people) {
   // people keeps the bodies it is best at — which is what gives a tradition a
   // recognisable handful of instruments instead of a museum of everything.
   const breadth = Math.max(2, Math.min(7, Math.round(2.2 + people.soc.surplus * 2.4 + people.soc.urban * 2.2)));
-  const kept = out.slice(0, breadth);
+  // BREADTH IS A COUNT OF SPECIALISTS, so a body that needs no specialist must
+  // not be counted against it. Nobody apprentices to make a pair of sticks, a
+  // notched bone or a gourd with seeds in it, and nobody has to be fed to
+  // play one — which is exactly why every culture on earth has one however
+  // thin its surplus. Counting them in took the drum from half of all peoples
+  // to an eighth, because a body available to everybody kept winning slots
+  // from bodies that are actually central.
+  const madeByHand = (i) => {
+    const f = FAMILIES[i.fam] || {};
+    return !(f.needs && Object.keys(f.needs).length) && i.cap <= 1;
+  };
+  const kept = out.filter(i => !madeByHand(i)).slice(0, breadth);
   // coverage: whatever else it drops, a tradition keeps something that can
   // carry a tune and something that can keep time, if it can make them at all
   const ensure = (pred) => {
     if (kept.some(pred)) return;
-    const found = out.find(pred);
-    if (found) kept[kept.length - 1] = found;
+    const found = out.find(i => !madeByHand(i) && pred(i));
+    if (found && kept.length) kept[kept.length - 1] = found;
   };
   ensure(i => i.cap >= 5);
-  ensure(i => i.fam === "drum" || i.fam === "frameDrum");
+  // AND A STRETCHED MEMBRANE, if they can make one. This asked for a drum BY
+  // NAME, which is a list where a physical class belongs — but the class is
+  // worth guaranteeing, because a membrane is the loudest low sound available
+  // to anybody without metallurgy, and that is why every people on earth that
+  // can stretch a hide does.
+  ensure(i => (FAMILIES[i.fam] || {}).vib === "membrane");
+  // …and one thing nobody had to be trained to make. Hands qualify and need
+  // no material, so this never comes back empty — which is what guarantees
+  // every people something that can keep time.
+  const plain = out.filter(madeByHand);
+  if (plain.length) kept.push(plain[0]);
   return kept.sort((a, b) => b.weight - a.weight);
 }
 
