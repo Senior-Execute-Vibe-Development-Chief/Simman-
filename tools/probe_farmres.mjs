@@ -20,7 +20,8 @@
 //   node tools/probe_farmres.mjs [steps] [W] [seed]
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
-import { rNormPop } from "../src/sim/peopleSim/tuning.js";
+import { T, rNormPop } from "../src/sim/peopleSim/tuning.js";
+import { coreRadiusFor, hinterlandRadiusFor } from "../src/sim/peopleSim/territory.js";
 
 const STEPS = +(process.argv[2] || 3000);
 const W = +(process.argv[3] || 480), H = W >> 1;
@@ -40,7 +41,22 @@ const pick = (f) => med(settled.map(f).filter(Number.isFinite));
 const rn = rNormPop(world);
 console.log(`\n[farmres] W=${W} tw=${world.tw} rn=${rn.toFixed(2)} seed=${SEED} steps=${STEPS} settled=${settled.length}`);
 console.log(`[farmres] one tile = ${Math.round(km2PerTile)} km2 (${Math.round(Math.sqrt(km2PerTile))} km across)`);
+// WHICH TILE-DENOMINATED TERM ACTUALLY BINDS. Three of them set how much ground a
+// settlement works, and all three are counted in TILES, so all three shrink in real
+// area as the grid refines: the guaranteed core block (CORE_BY_TIER), the guaranteed
+// farm belt (HINTERLAND_BY_TIER), and the Dijkstra reach budget
+// (TERRITORY_BASE + reach*ORG_REACH, in transport-cost units where "a plain tile =
+// 1.0"). Fixing the wrong one is worse than fixing none, so print all three beside
+// the tile count they are competing to set. A radius r covers ~pi*r^2 tiles; if the
+// actual count tracks the belt's area the belt binds, if it far exceeds it the
+// budget does.
+const TERRITORY_BASE_ECHO = 5;   // territory.js:48, echoed (not exported)
+const budgetOf = (s) => TERRITORY_BASE_ECHO + ((s._reachLevel || s.reachLevel || 0) * T.ORG_REACH);
 const rows = [
+  ["core radius   (tiles)", pick(s => coreRadiusFor(s, world))],
+  ["belt radius   (tiles)", pick(s => hinterlandRadiusFor(s, world))],
+  ["belt area implied by radius (tiles)", pick(s => Math.PI * hinterlandRadiusFor(s, world) ** 2)],
+  ["Dijkstra budget (tile-costs)", pick(s => budgetOf(s))],
   ["belt tiles        _terrTiles", pick(s => s._terrTiles)],
   ["worked tiles      _terrWorkTiles", pick(s => s._terrWorkTiles)],
   ["fertility SUM     _terrFertSum", pick(s => s._terrFertSum)],

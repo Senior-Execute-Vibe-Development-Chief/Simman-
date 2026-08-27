@@ -114,9 +114,21 @@ const SQRT2 = Math.SQRT2;
 // — that size gap is what reads as a hierarchy on the map, and small village
 // cores let settlements pack in densely without fighting over the same land.
 const CORE_BY_TIER = [1, 2, 3, 4];
-export function coreRadiusFor(s) {
+// T.FARM_RES — THE THIRD SITE OF THE PHASE-2 RESOLUTION BUG, missed when the other
+// two were repaired. The comment at the reach budget below (:195-201) diagnoses this
+// exact failure in its own words — "a fixed budget is a fixed TILE radius — a smaller
+// REAL catchment on a finer grid … the same settlement farmed ¼ the real land at 2×
+// resolution" — and scales that budget by rNormPop; countryTerritory.js does the same
+// for political reach via resScaleFor. These two GUARANTEED radii were left in raw
+// tiles, and being guaranteed FLOORS they override the corrected budget wherever they
+// bind. MEASURED (tools/probe_farmres.mjs, seed 8817, 3000 steps, same world at two
+// grids): core radius 2.0 and belt radius 4.0 at BOTH tw=240 and tw=480 — identical
+// tile counts — so the belt's real area runs 953,598 km² against 211,880 km², a
+// factor of 4.5 for the same city in the same world. Off ⇒ ×1, byte-identical.
+const _resR = (world) => (T.FARM_RES && world) ? rNormPop(world) : 1;
+export function coreRadiusFor(s, world) {
   const t = s.tier | 0;
-  return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
+  return Math.max(1, Math.round(CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t] * _resR(world)));
 }
 
 // Beyond the guaranteed core, every settlement is also GUARANTEED a farmland
@@ -126,10 +138,10 @@ export function coreRadiusFor(s) {
 // region genuinely owns — and therefore carries with it when it secedes.
 // Scaled by T.HINTERLAND_MULT (tuning.js); never smaller than the core.
 const HINTERLAND_BY_TIER = [3, 4, 6, 8];
-export function hinterlandRadiusFor(s) {
+export function hinterlandRadiusFor(s, world) {
   const t = s.tier | 0;
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
-  return Math.max(coreRadiusFor(s), Math.round(base * T.HINTERLAND_MULT));
+  return Math.max(coreRadiusFor(s, world), Math.round(base * T.HINTERLAND_MULT * _resR(world)));
 }
 
 class MinHeap {
@@ -281,7 +293,7 @@ export function computeTerritory(world) {
   const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    const r = coreRadiusFor(s);
+    const r = coreRadiusFor(s, world);
     for (let dy = -r; dy <= r; dy++) {
       const ny = sy + dy; if (ny < 0 || ny >= th) continue;
       for (let dx = -r; dx <= r; dx++) {
@@ -312,7 +324,7 @@ export function computeTerritory(world) {
   const capAt = world._tileCapturedAt;
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    const hr = hinterlandRadiusFor(s), hr2 = hr * hr;
+    const hr = hinterlandRadiusFor(s, world), hr2 = hr * hr;
     for (let dy = -hr; dy <= hr; dy++) {
       const ny = sy + dy; if (ny < 0 || ny >= th) continue;
       for (let dx = -hr; dx <= hr; dx++) {

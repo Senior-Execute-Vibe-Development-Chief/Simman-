@@ -2799,7 +2799,18 @@ function updateFood(world, s) {
   // costs no farmhands, and barren desert/mountain claims cost nothing
   // either (they used to bill a phantom workforce, so claiming worthless
   // land actively DESTROYED food).
-  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrFarmedWt ?? s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR);
+  // T.FARM_RES, second half — THE HARVEST IN REFERENCE-TILE UNITS. _terrFertSum is a
+  // raw sum over catchment TILES, so once the radii above cover the same REAL area at
+  // any grid, a finer grid contributes rn² times as many tiles for the same ground and
+  // the harvest inflates by rn². This is the exact pair settlement.js:3370-3 spells out
+  // for the population scan and applies to itself — "both the scan radius and the area
+  // unit must be resolution-invariant" — with the radius half fixed in territory.js and
+  // the area half here. MEASURED before the fix (probe_farmres, seed 8817): the same
+  // real ground yielded 0.873 per Mkm² at tw=240 and 3.107 at tw=480, a factor of 3.56.
+  // The FARM_FERT_FLOOR subtraction is per-tile and rides the same conversion, so the
+  // floor keeps meaning the same thing per unit of real land. Off ⇒ ×1, byte-identical.
+  const _fertA = T.FARM_RES ? 1 / (rNormPop(world) * rNormPop(world)) : 1;
+  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrFarmedWt ?? s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR) * _fertA;
   // MODEL B: EVERY settlement's territory (its rural hinterland) is farmed by the country
   // folk who live on it — a city does not grow food in its packed urban core, but the land
   // it controls IS worked and feeds it. So land food is produced from a settlement's territory
