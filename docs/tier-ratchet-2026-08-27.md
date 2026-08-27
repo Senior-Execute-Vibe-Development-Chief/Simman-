@@ -51,13 +51,44 @@ grown it — the closed trap its own lever description names.
 Run on the live arm (tw=480, seed 8817, 40k, one treated arm against three
 float-epsilon no-mechanism draws; `docs/runs/2026-08-27/mil_*.log`):
 
-- **The military-balance kill-shot passed.** Per realm at 32k-36k: deaths 0.3988
+- **At 32k-36k the military-balance kill-shot passed.** Per realm: deaths 0.3988
   vs 0.3344 ± 0.1317, wars 11.97 vs 13.59 ± 2.44, shatterings and foundings inside.
-- **The political map converged.** 766 realms vs 782 ± 42; claimed land 32.34% vs
-  31.96% ± 1.85. The +43% realms visible at 28k was a timing shift.
-- **The urban ceiling broke.** Urban share 8.79% → **15.57%** in one window, past
-  `urban-claim-memo` §5.3's refutation line and still climbing, against 4.68% on
-  the null arms.
+- **At 32k-36k the political map converged.** 766 realms vs 782 ± 42; claimed land
+  32.34% vs 31.96% ± 1.85. The +43% realms visible at 28k was a timing shift.
+- **The urban ceiling broke.** Urban share 8.79% → **15.57%** at 36k, past
+  `urban-claim-memo` §5.3's refutation line, against 4.68% on the null arms.
+
+### …and then 36k-40k overturned the first two
+
+> **A verdict read at one horizon is not a verdict.** This is the second time in
+> this lap that the next window reversed a conclusion I had already written down
+> (the first: "the ceiling is bending down, not up", at 8.79%, one window before it
+> reached 15.57%). The mechanisms in this world have a long fuse. Record the
+> horizon with the verdict, always.
+
+At 36k-40k, against the same three-draw band:
+
+| metric | treated | no-mech | band | verdict |
+|---|---|---|---|---|
+| urban share | **28.21%** | 6.06% | — | ~5×, and double the ceiling |
+| urban mass | 119,060su | 31,015su | ±2,716 | **32× band** |
+| rural mass | 302,921su | 481,453su | ±33,121 | **−37%**, 5.4× band |
+| realms | 818 | 889 | ±13 | −71, 5.5× band |
+| **ended / realm** | **0.4684** | **0.3140** | **±0.0250** | **+49%, 6.2× band** |
+| seceded / realm | 0.4369 | 0.3190 | ±0.0761 | +37%, 1.6× band |
+| wars / realm | 16.61 | 12.06 | ±4.62 | inside |
+| founded / realm | 0.0631 | 0.0707 | ±0.0143 | inside |
+
+**So the military balance does NOT hold at 40k.** Realm deaths per realm are up
+49% at six times the band — the "or explode" half of the memo's own refutation
+criterion. The countryside has lost **37% of its mass** to the cities feeding on
+it, and the realms are dying on top of that.
+
+The proximate cause is almost certainly economic rather than military: wars per
+realm stay inside the band, so this is not walls-versus-armies going wrong. It is
+a world whose countryside is being consumed. But "the kill-shot passed" is no
+longer a true sentence about this lever, and the earlier verdict is superseded
+rather than merely qualified.
 
 So the trap `CORE_LOCAL` opens **was also the brake**. Take it away and there is
 nothing between a city and the ratchet.
