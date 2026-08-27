@@ -4,6 +4,7 @@ tools/emblem-genome-lab.html
 realworld.svg
 tools/flag-rating.html
 tools/melographs.html
+tools/langlab.html
 
 # local visual diagnostics (playwright-core, env-specific)
 tools/visual-diag*.mjs
