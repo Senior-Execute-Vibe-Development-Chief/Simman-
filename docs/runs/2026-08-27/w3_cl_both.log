@@ -89,3 +89,5 @@
     [235s]
 [transHeap] step=21192 cap=2048 peakN=1635 pushes=25690 (0.0MB backing)
 [transHeap] step=21696 cap=131072 peakN=89100 pushes=307094 (1.0MB backing)
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.05)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
