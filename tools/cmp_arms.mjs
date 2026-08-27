@@ -73,6 +73,33 @@ if (!armed) { console.log(`[cmp] ABORT: the treated arm never executed the mecha
 const nWin = Math.min(treated.length, ...arms.map(a => a.rows.length));
 console.log(`[cmp] comparing the first ${nWin} window(s) present in every arm\n`);
 
+// THE MATURITY CONFOUND, and why a same-step comparison is not enough.
+// A mechanism that makes states form EARLIER puts the treated arm further along
+// the same arc at any given step: more realms, more claimed land, and — for free
+// — more wars and more deaths, because there is simply more world to fight over.
+// Read at matched STEP, that arrives as "CORE_LOCAL multiplies war", which would
+// be the SECOND CARDINAL RULE's own failure mode wearing a measurement's clothes:
+// naming an outcome the mechanism did not cause.
+// So every rate is also read at MATCHED MATURITY — each no-mechanism arm's rate
+// linearly interpolated to the treated window's own claimed-land fraction, which
+// is monotone in every arm and is the closest thing this world has to an
+// odometer. If an effect survives BOTH views it is about the mechanism; if it
+// only survives the same-step view it is about the calendar.
+function interpAt(rows, key, claimed) {
+  const pts = rows.filter(r => Number.isFinite(r[key]) && r.claimed > 0).sort((a, b) => a.claimed - b.claimed);
+  if (!pts.length) return null;
+  if (claimed <= pts[0].claimed) return pts[0][key];
+  if (claimed >= pts[pts.length - 1].claimed) return null;   // outside the span: refuse to extrapolate
+  for (let i = 1; i < pts.length; i++) {
+    if (claimed <= pts[i].claimed) {
+      const a = pts[i - 1], b = pts[i];
+      const f = (claimed - a.claimed) / Math.max(1e-12, b.claimed - a.claimed);
+      return a[key] + f * (b[key] - a[key]);
+    }
+  }
+  return null;
+}
+
 const METRICS = [...LEVELS, ...RATES.map(r => r + "PerRealm")];
 for (let w = 0; w < nWin; w++) {
   const t = treated[w];
@@ -90,6 +117,30 @@ for (let w = 0; w < nWin; w++) {
     const f = (x) => (Math.abs(x) >= 100 ? x.toFixed(0) : Math.abs(x) >= 1 ? x.toFixed(2) : x.toFixed(4));
     const ratio = band > 0 ? (Math.abs(eff) / band).toFixed(2) + "x band" : "band=0";
     console.log(`    ${k.padEnd(18)}${f(t[k]).padStart(11)}${f(mean).padStart(14)}${("+/-" + f(band)).padStart(13)}${(eff >= 0 ? "+" : "") + f(eff)}`.padEnd(67) + `   ${outside ? "OUTSIDE (" + ratio + ")" : "inside — no finding"}`);
+  }
+  console.log("");
+}
+
+// ── MATCHED-MATURITY VIEW ─────────────────────────────────────────────────────
+console.log(`=== AT MATCHED MATURITY (no-mechanism arms interpolated to the treated window's own claimed-land %)`);
+console.log(`    A row is dropped where the no-mechanism arms never reach that much claimed land — extrapolating`);
+console.log(`    past the end of a run is how a confound becomes a finding.\n`);
+for (let w = 0; w < treated.length; w++) {
+  const t = treated[w];
+  if (!(t.claimed > 0)) continue;
+  console.log(`    window ${t.lo}->${t.hi}  treated claimed=${t.claimed.toFixed(2)}%  realms=${t.realms}`);
+  console.log(`      ${"metric".padEnd(18)}${"treated".padStart(11)}${"no-mech @same".padStart(15)}${"chaos band".padStart(13)}${"effect".padStart(11)}   verdict`);
+  for (const k of RATES.map(r => r + "PerRealm")) {
+    const vals = arms.map(a => interpAt(a.rows, k, t.claimed)).filter(v => v !== null);
+    if (vals.length < 2) { console.log(`      ${k.padEnd(18)}${"—".padStart(11)}   (no-mechanism arms never reach ${t.claimed.toFixed(2)}% claimed — not comparable)`); continue; }
+    const mean = vals.reduce((x, y) => x + y, 0) / vals.length;
+    let band = 0;
+    for (let i = 0; i < vals.length; i++) for (let j = i + 1; j < vals.length; j++) band = Math.max(band, Math.abs(vals[i] - vals[j]));
+    const eff = t[k] - mean;
+    const outside = Math.abs(eff) > band;
+    const f = (x) => (Math.abs(x) >= 100 ? x.toFixed(0) : Math.abs(x) >= 1 ? x.toFixed(2) : x.toFixed(4));
+    const ratio = band > 0 ? (Math.abs(eff) / band).toFixed(2) + "x band" : "band=0";
+    console.log(`      ${k.padEnd(18)}${f(t[k]).padStart(11)}${f(mean).padStart(15)}${("+/-" + f(band)).padStart(13)}${(eff >= 0 ? "+" : "") + f(eff)}`.padEnd(69) + `   ${outside ? "OUTSIDE (" + ratio + ")" : "inside — no finding"}`);
   }
   console.log("");
 }

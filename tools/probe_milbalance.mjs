@@ -84,12 +84,13 @@ function report(lo, hi, t0) {
   const realms = tiles.size;
 
   const settled = world.settlements.filter(s => s.mode === "settled");
-  let urban = 0, rural = 0, ran = 0, bind = 0;
+  let urban = 0, rural = 0, ran = 0, bind = 0, disk = 0;
   for (const s of settled) {
     urban += s._urbanPop || 0;
     rural += s._ruralPop || 0;
     if (s._coreBlockRan) ran++;
     if (s._coreLocalBind) bind++;
+    if (s._coreDiskBound) disk++;
   }
   const nS = Math.max(1, settled.length);
 
@@ -106,16 +107,20 @@ function report(lo, hi, t0) {
   console.log(`    WAR in-window     began=${c["war.began"]} ended=${c["war.ended"]} captured=${c["settlement.captured"]} sacked=${c["polity.submittedBySack"]}`);
   console.log(`    WAR per realm     began=${per("war.began")} captured=${per("settlement.captured")}`);
   console.log(`    MASS  urban=${Math.round(urban)}su rural=${Math.round(rural)}su urbanShare=${(100 * urban / Math.max(1e-9, urban + rural)).toFixed(2)}%`);
-  console.log(`    ARMING  blockRan=${(100 * ran / nS).toFixed(1)}%  bind=${(100 * bind / nS).toFixed(1)}%  [CORE_LOCAL=${T.CORE_LOCAL} LAND_KNOW=${T.LAND_KNOW}]`);
+  // diskBound is the memo §5.3 metric and it belongs beside the arming pair: it
+  // is the brake (min(_coreF, ·)) that keeps urbanisation under history's
+  // agrarian ceiling, and its radius grows with the grid — so its share is the
+  // number that says whether the ceiling still holds at the grid that ships.
+  console.log(`    ARMING  blockRan=${(100 * ran / nS).toFixed(1)}%  bind=${(100 * bind / nS).toFixed(1)}%  diskBound=${(100 * disk / nS).toFixed(1)}%  [CORE_LOCAL=${T.CORE_LOCAL} LAND_KNOW=${T.LAND_KNOW}]`);
   if (!ran) console.log(`    !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.`);
   else if (T.CORE_LOCAL && !bind) console.log(`    !! LEVER INERT: the block ran but the local claim never beat the founding hold. Not evidence of "no effect".`);
-  console.log(`    MACHINE ${lo} ${hi} ${realms} ${(100 * claimed / landN).toFixed(3)} ${c["polity.founded"]} ${c["polity.ended"]} ${c["polity.seceded"]} ${c["polity.shattered"]} ${c["war.began"]} ${c["settlement.captured"]} ${Math.round(urban)} ${Math.round(rural)} ${(100 * ran / nS).toFixed(2)} ${(100 * bind / nS).toFixed(2)}`);
+  console.log(`    MACHINE ${lo} ${hi} ${realms} ${(100 * claimed / landN).toFixed(3)} ${c["polity.founded"]} ${c["polity.ended"]} ${c["polity.seceded"]} ${c["polity.shattered"]} ${c["war.began"]} ${c["settlement.captured"]} ${Math.round(urban)} ${Math.round(rural)} ${(100 * ran / nS).toFixed(2)} ${(100 * bind / nS).toFixed(2)} ${(100 * disk / nS).toFixed(2)}`);
   console.log(`    [${((Date.now() - t0) / 1000).toFixed(0)}s]`);
   report._prevRealms = realms;
 }
 
 console.log(`[milbalance] W=${W} seed=${SEED} steps=${STEPS} every=${EVERY}`);
-console.log(`[milbalance] MACHINE columns: lo hi realms claimed% founded ended seceded shattered warBegan captured urbanSU ruralSU blockRan% bind%`);
+console.log(`[milbalance] MACHINE columns: lo hi realms claimed% founded ended seceded shattered warBegan captured urbanSU ruralSU blockRan% bind% diskBound%`);
 const t0 = Date.now();
 let lo = 0;
 while (world.step < STEPS) {
