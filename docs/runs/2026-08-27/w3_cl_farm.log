@@ -72,3 +72,4 @@
     !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
     MACHINE 12000 16000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
     [188s]
+[peopleSim] AGRICULTURE INVENTED at (387,72) (110.3E 36.0N) — the basin farms; a city will rise when its market gathers one (score 3.54)
