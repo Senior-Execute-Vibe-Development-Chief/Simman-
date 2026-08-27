@@ -18,7 +18,7 @@ import { MATERIALS } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
-import { makeAudio, setDistance, playNote, playVoice } from "./sim/musicSynth.js";
+import { makeAudio, setDistance, playNote, sungLine, playSung } from "./sim/musicSynth.js";
 import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
 
 // ── state ────────────────────────────────────────────────────────────────
@@ -72,12 +72,45 @@ function tonicOf(m) {
 }
 function noteFreq(m, ev) { return degreeHz(m, tonicOf(m), ev.deg, ev.oct); }
 
-function fireEvent(m, ev, when, secPerBeat, gain, syls) {
+/**
+ * The sung part is not scheduled note by note: the vocal tract renders a whole
+ * PHRASE offline, because a line of singing is one continuous gesture of one
+ * air column and the joins between its notes are half of what makes it sound
+ * sung. So voice events are gathered into breath-groups first — a gap wider
+ * than a beat is where a singer takes a breath — and each group is rendered
+ * and scheduled as one buffer.
+ */
+function fireVoiceLine(m, evs, when0, spb, gain, syls, acc) {
+  if (!evs.length || !syls || !syls.length) return;
   const A = audio();
-  if (ev.role === "voice") {
-    playVoice(A, ev.syl || (syls && syls[0]), noteFreq(m, ev), when, ev.dur * secPerBeat, ev.vel * gain);
-    return;
+  const sorted = [...evs].sort((a, b) => a.b - b.b);
+  const groups = [];
+  let cur = [];
+  for (let i = 0; i < sorted.length; i++) {
+    cur.push(sorted[i]);
+    const nx = sorted[i + 1];
+    if (!nx || nx.b - (sorted[i].b + sorted[i].dur) > 0.9) { groups.push(cur); cur = []; }
   }
+  let syl = 0;
+  for (const g of groups) {
+    const notes = g.map((e, i) => ({
+      f: noteFreq(m, e),
+      // the note lasts until the next one starts: a singer joins them
+      dur: Math.max(0.1, ((g[i + 1] ? g[i + 1].b : e.b + e.dur) - e.b) * spb),
+      vel: e.vel * gain,
+    }));
+    const rot = syls.slice(syl % syls.length).concat(syls.slice(0, syl % syls.length));
+    const pcm = sungLine(A.ctx.sampleRate, rot, notes, {
+      acc, seed: m.people.seed, vibrato: 12 + 34 * m.texture.ornament,
+      key: `${m.people.seed}:${syl}`,
+    });
+    playSung(A, pcm, notes, when0 + g[0].b * spb, 1);
+    syl += g.length;
+  }
+}
+
+function fireEvent(m, ev, when, secPerBeat, gain) {
+  const A = audio();
   const inst = m.insts[ev.inst] || m.insts[0];
   if (!inst) return;
   const f = noteFreq(m, ev);
@@ -93,9 +126,18 @@ function fireEvent(m, ev, when, secPerBeat, gain, syls) {
   });
   // the ornament's pitch comes from the composer, already a MODE step and
   // already placed a subdivision ahead — the Lab never invents an interval
+  // An ornament belongs to the part it decorates: same player, same hand, so
+  // the same role and the same voice channel. Played with no options at all it
+  // went out on the lead bus whatever it was decorating, was never damped, and
+  // on a body that rings for nine seconds an eighty-millisecond grace note rang
+  // for nine of them.
   if (ev.ornDeg != null) {
     const nb = degreeHz(m, tonicOf(m), ev.ornDeg, ev.oct);
-    playNote(A, inst, nb, Math.max(0, when - ev.ornLead * secPerBeat), 0.08, ev.vel * gain * 0.5);
+    playNote(A, inst, nb, Math.max(0, when - ev.ornLead * secPerBeat), 0.08, ev.vel * gain * 0.5, {
+      role: ev.role === "het" ? "het" : ev.role || "lead",
+      damped: true,
+      channel: `${m.people.seed}:${ev.role}:${ev.inst}:orn`,
+    });
   }
 }
 
@@ -129,7 +171,11 @@ function pump() {
       const plan = ambientBar(m, { occ: S.occ, intimacy: S.intimacy, bar: lane.bar, seed: m.people.seed });
       const spb = 60 / plan.tempo;
       const w = lane.w();
-      if (w >= 0.02) for (const ev of plan.events) fireEvent(m, ev, lane.next + ev.b * spb, spb, w);
+      if (w >= 0.02) {
+        for (const ev of plan.events) if (ev.role !== "voice") fireEvent(m, ev, lane.next + ev.b * spb, spb, w);
+        const sung = plan.events.filter(e => e.role === "voice");
+        if (sung.length) fireVoiceLine(m, sung, lane.next, spb, w, lane.syls, lane.acc);
+      }
       lane.next += plan.beats * spb;      // exactly one cycle. No gap, ever.
       lane.bar++;
     }
@@ -141,16 +187,18 @@ function hymnSyllables(m, n = 8) {
   const lang = m.people.lang;
   const concepts = [GOD, SUN, RIVER, MOUNTAIN, WATER, EARTH, SEA, MOON, GRAIN, KING, HOUSE].filter(Boolean);
   const out = [], words = [];
+  let acc = null;
   for (let i = 0; out.length < n && i < concepts.length; i++) {
     const c = concepts[i];
     try {
       const form = langWordForm(lang, c);
       const plan = phoneticPlan(lang, form);
       out.push(...plan.syls);
+      acc = acc || plan.acc;
       words.push(langWord(lang, c));
     } catch { /* a concept the lexicon can't reach is simply skipped */ }
   }
-  return { syls: out.slice(0, Math.max(4, n)), words };
+  return { syls: out.slice(0, Math.max(4, n)), words, acc };
 }
 function playPiece() {
   const A = audio();
@@ -160,12 +208,11 @@ function playPiece() {
   S.piece = { ...piece, words: hymn.words };
   const spb = 60 / piece.tempo;
   const t0 = A.ctx.currentTime + 0.15;
-  let i = 0;
   for (const ev of piece.events) {
-    // syllables are handed out in order along the vocal line
-    if (ev.role === "voice" && !ev.syl) ev.syl = hymn.syls[i++ % hymn.syls.length];
-    fireEvent(P, ev, t0 + ev.b * spb, spb, 1, hymn.syls);
+    if (ev.role === "voice") continue;
+    fireEvent(P, ev, t0 + ev.b * spb, spb, 1);
   }
+  fireVoiceLine(P, piece.events.filter(e => e.role === "voice"), t0, spb, 1, hymn.syls, hymn.acc);
   return piece;
 }
 
@@ -708,7 +755,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 function exposeForTests() {
   if (typeof window === "undefined") return;
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
-    makeAudio, setDistance, playNote, playVoice, ambientBar, composePiece, noteFreq, tonicOf, S };
+    makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf, S };
 }
 
 export function mount() {

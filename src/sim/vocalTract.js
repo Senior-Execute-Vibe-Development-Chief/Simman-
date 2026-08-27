@@ -26,6 +26,7 @@
 
 import { TONE_SHAPES, DEFAULT_PROS, DEFAULT_ACCENT } from "./languagePhonetics.js";
 import { VOWEL_CAL } from "./vocalTractCal.js";
+import { FORMANT_VOWELS } from "./formantVowelCal.js";
 
 const F0_BASE = 105;               // speaker's base pitch (a deeper male voice reads less "high")
 const N = 44;                      // tract sections (glottis at 0, lips at N-1)
@@ -558,8 +559,22 @@ function scoreCons(B, c, t, kpts, final, acc = DEFAULT_ACCENT) {
 
 // one vowel nucleus (a diphthong glides between the two qualities);
 // `red` centralizes an unstressed vowel toward schwa (stress-timed reduction)
-function scoreVowel(B, nu, t, kpts, dur, red = 0) {
+function scoreVowel(B, nu, t, kpts, dur, red = 0, open = 0) {
   const a = vowelPosture(nu[0]);
+  // A vowel cannot be sung above its own first formant: F1 has to stay above
+  // f0 or the tract has nothing to resonate the fundamental with, and the note
+  // simply will not speak. Every singing tradition solves it the same way —
+  // the jaw drops and the vowel migrates toward the open vowel of its own
+  // backness. So this is not a style setting; it is the tract's own limit,
+  // and it is why high notes sound more open than low ones everywhere.
+  if (open > 0) {
+    const o = vowelPosture({ ...nu[0], h: 2 });
+    const k = Math.min(1, open);
+    a.tongueIndex += (o.tongueIndex - a.tongueIndex) * k;
+    a.tongueDiameter += (o.tongueDiameter - a.tongueDiameter) * k;
+    a.lip += (o.lip - a.lip) * k;
+    if (a.constrIndex >= 0) a.constrDiameter += (3 - a.constrDiameter) * k * 0.7;
+  }
   if (red) {
     a.tongueIndex += (20 - a.tongueIndex) * red * 0.6;
     a.tongueDiameter += (2.6 - a.tongueDiameter) * red * 0.6;
@@ -668,4 +683,114 @@ export function scoreClause(groups, contour = "fall") {
     if (!lastG) t += 0.16;
   });
   return { dur: t + 0.04, tracks: B.tracks };
+}
+
+// ── singing ──────────────────────────────────────────────────────────────
+// The voice is the one instrument every people has. It needs no ore, no
+// timber and no craft; it is why the overwhelming majority of the world's
+// music is sung, and why a tradition can exist with no built instrument at
+// all. So a music engine that models bodies of bronze and gut but has no
+// throat is missing the commonest instrument on earth.
+//
+// Singing is not a different machine from speech — it is this machine with
+// two things changed, and they are the two that separate song from speech
+// wherever it is done:
+//
+//   · THE VOWEL CARRIES THE NOTE. A consonant costs about what it costs
+//     spoken: it is a gesture of tongue and lips, and those move at the speed
+//     they move. Everything left of the note's length is vowel. A four-second
+//     note is four seconds of vowel — which is exactly why sung words are so
+//     much harder to make out than spoken ones.
+//   · THE LARYNX FOLLOWS THE MELODY, not the sentence. Speech f0 is the
+//     language's own prosody; here it is the pitch the composer asked for,
+//     and the intrinsic pitch differences between vowels (real, and modelled,
+//     in speech) are overridden — as a singer overrides them.
+//
+// Everything else falls out of physiology, not style: a larynx cannot step
+// instantly, so notes are joined by a short glide; a held note acquires
+// vibrato once it has spoken, at the rate the laryngeal muscles oscillate;
+// and a vowel is opened until its first formant clears the note (scoreVowel).
+
+/** F1 of a vowel quality, from the measured phone bank — the ceiling a sung
+ *  note has to stay under before the jaw has to open. */
+function vowelF1(v) {
+  const k = `${v.h || 0},${v.b || 0},${v.r ? 1 : 0},${v.atr ? 1 : 0}`;
+  const f = FORMANT_VOWELS[k] || FORMANT_VOWELS[`${v.h || 0},${v.b || 0},${v.r ? 1 : 0},0`];
+  return f ? f[0] : [300, 500, 750][v.h || 0];
+}
+
+/**
+ * Score a sung line. `syls` are this language's own syllables (the same
+ * objects `phoneticPlan` produces); `notes` are `[{f, dur}]` in Hz and
+ * seconds, one per syllable, from the composer.
+ *
+ * `vibrato` is a depth in cents. Rate is not a parameter: 5.5-6.5 Hz is what
+ * the human larynx does, everywhere, and it is a fact about muscle, not about
+ * a musical culture.
+ */
+export function scoreSong(syls, notes, opts = {}) {
+  const B = makeBuilder();
+  const acc = opts.acc || DEFAULT_ACCENT;
+  const vibCents = opts.vibrato ?? 25;
+  const port = Math.max(0.012, Math.min(0.09, opts.portamento ?? 0.035));
+  const seed = (opts.seed >>> 0) || 12345;
+  let x = seed;
+  const rnd = () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
+  const spans = [];                                   // [{t0, t1, f}] for the f0 track
+  let t = 0.03;
+  notes.forEach((nt, i) => {
+    const syl = syls.length ? syls[i % syls.length] : { on: [], nu: [{ h: 2, b: 1, r: 0 }], co: [] };
+    const start = t;
+    // consonants keep their spoken cost — the tongue does not slow down
+    // because the note is long
+    for (const c of syl.on || []) t += scoreCons(B, c, t, [1], false, acc) + 0.004;
+    const coda = (syl.co || []).length;
+    const vDur = Math.max(0.07, nt.dur - (t - start) - coda * 0.075);
+    const v0 = (syl.nu && syl.nu[0]) || { h: 2, b: 1, r: 0 };
+    // open the vowel until its first formant clears the note being sung
+    const open = Math.max(0, nt.f / (0.9 * vowelF1(v0)) - 1);
+    const vStart = t;
+    t += scoreVowel(B, syl.nu && syl.nu.length ? syl.nu : [v0], t, [1], vDur, 0, open) + 0.004;
+    // A loud sung note is not a quiet one turned up: the folds close harder,
+    // so the glottal pulse gets sharper and the tone gets brighter. That is
+    // the same nonlinearity every driven instrument has, and it is the part
+    // of dynamics an output gain cannot fake.
+    if (nt.vel != null) B.to("tenseness", vStart + 0.03, B.cur.tenseness * (0.84 + 0.3 * Math.min(1.4, nt.vel)), 0.06);
+    spans.push({ t0: vStart, t1: t, f: nt.f, first: i === 0 });
+    for (const c of syl.co || []) t += scoreCons(B, c, t, [1], true, acc) + 0.004;
+    // LEGATO. Speech drops the voice to silence at every word edge; a sung
+    // line does not — the phrase is one breath, and the voicing runs right
+    // through it. Only the last note is released.
+    if (i === notes.length - 1) { B.to("intensity", t, 0, 0.05); t += 0.05; }
+  });
+
+  // Now overwrite f0 outright: in song the melody IS the pitch track, so the
+  // prosodic contour the gesture builders laid down is discarded rather than
+  // blended — a singer does not also perform the sentence's intonation.
+  const F = [];
+  const push = (tt, v) => { if (F.length && F[F.length - 1].t >= tt) F[F.length - 1] = { t: tt, v }; else F.push({ t: tt, v }); };
+  spans.forEach((sp, i) => {
+    const prev = i > 0 ? spans[i - 1].f : sp.f;
+    // the larynx glides into the note rather than stepping onto it; a bigger
+    // leap takes proportionally longer, because it is more muscle to move
+    const leap = Math.abs(Math.log2(sp.f / prev));
+    const gl = sp.first ? 0 : Math.min(port * (0.6 + 1.6 * leap), (sp.t1 - sp.t0) * 0.4);
+    if (gl > 0) push(sp.t0, prev);
+    push(sp.t0 + gl, sp.f);
+    // VIBRATO, once the note has spoken. It is late and it grows: a singer
+    // does not begin a note with it, and a short note never acquires it.
+    const hold = sp.t1 - sp.t0 - gl;
+    if (vibCents > 1 && hold > 0.34) {
+      const rate = 5.6 + rnd() * 0.9;
+      const onset = sp.t0 + gl + 0.16;
+      for (let tt = onset; tt < sp.t1; tt += 1 / (rate * 8)) {
+        const grow = Math.min(1, (tt - onset) / 0.35);
+        const cents = vibCents * grow * Math.sin(2 * Math.PI * rate * (tt - onset));
+        push(tt, sp.f * Math.pow(2, cents / 1200));
+      }
+      push(sp.t1, sp.f);
+    }
+  });
+  B.tracks.frequency = F.length ? F : [{ t: 0, v: notes[0] ? notes[0].f : F0_BASE }];
+  return { dur: t + 0.05, tracks: B.tracks };
 }

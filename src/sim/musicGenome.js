@@ -144,7 +144,7 @@ export function instrumentariumOf(people) {
     // than casting everything they own.
     const struck = fam.kind === "struck" || famId === "lamella";
     const pick = body.sort((a, b) => matScore(struck, b, roll(famId + b), people.soc.strat) - matScore(struck, a, roll(famId + a), people.soc.strat))[0];
-    const inst = makeInstrument(famId, pick, (fam.frame || []).find(m => mats.has(m)), people.seed);
+    const inst = makeInstrument(famId, pick, (fam.frame || []).find(m => mats.has(m)), people.seed, 0, people.know);
     // Centrality: what sits at the middle of a tradition is what can carry
     // its music (pitch reach), what cost something to make (prized material,
     // hard craft), and what a court can pay to keep. Scores are relative —
