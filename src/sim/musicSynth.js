@@ -384,5 +384,16 @@ export function playSung(A, pcm, notes, when, gain = 1) {
   }
   src.connect(g); g.connect(A.buses.voice || A.master);
   src.start(when);
-  return { damp(at) { try { src.stop(Math.max(at, when + 0.02)); } catch { /* not started */ } } };
+  // Damping a voice is a RELEASE, not a cut: the folds come apart over a few
+  // tens of milliseconds. A hard stop mid-vowel is a click, and this is called
+  // exactly where one line hands over to the next.
+  return { damp(at) {
+    const t = Math.max(at, when + 0.02);
+    try {
+      if (g.gain.cancelAndHoldAtTime) g.gain.cancelAndHoldAtTime(t);
+      else { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); }
+      g.gain.setTargetAtTime(0.0001, t, 0.02);
+      src.stop(t + 0.14);
+    } catch { /* already stopped, or the context has moved past it */ }
+  } };
 }

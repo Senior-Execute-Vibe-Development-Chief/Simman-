@@ -25,6 +25,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { musicOf, foundPeople } from "../src/sim/musicGenome.js";
 import { foundLanguage, langRealmName } from "../src/sim/language.js";
+import { vocablesOf } from "../src/sim/languagePhonetics.js";
 import { composePiece, gridOf, degreeHz, sectionsOf, finalFor, modeDegree } from "../src/sim/musicCompose.js";
 
 // A frame's worth of mode degrees, laid out so the frame lands on an ABC
@@ -102,6 +103,7 @@ export function notate(seed, occ = "peace") {
   // the melody is whatever carries it: the instrumental lead if there is one,
   // otherwise the sung line
   const hasLead = piece.events.some(e => e.role === "lead");
+  const voc = vocablesOf(people.lang);
   const line = piece.events.filter(e => e.role === (hasLead ? "lead" : "voice"))
     .sort((a, b) => a.b - b.b);
 
@@ -116,6 +118,7 @@ export function notate(seed, occ = "peace") {
   A.push(`C:${people.biomeLabel}, ${m.insts.map(i => i.label).join(" + ")}`);
   A.push(`%%tuning ${rot.map(c => c.toFixed(1)).join(" ")} / frame ${m.scale.frame.cents.toFixed(1)}c   (from the final)`);
   A.push(`%%tonic ${tonic.toFixed(1)} Hz${hasLead ? "" : "  (sung: this people has no instrument that can carry a line)"}`);
+  A.push(`%%vocable ${voc.rom}   (the syllables this tongue sings on when the tune is the point)`);
   A.push(`%%form ${secs.map(s => `${s.label}:${s.cycles}c d${s.dens} oct${s.oct >= 0 ? "+" : ""}${s.oct}`).join(" | ")}`);
   A.push(`M:${meter}`);
   A.push(`L:1/${unit}`);
@@ -123,23 +126,43 @@ export function notate(seed, occ = "peace") {
   A.push("K:C");
 
   const barBeats = G.beats;
-  let body = "", cursor = 0, bar = 0, inBar = 0;
+  // Lines of music, and — when the notated part IS the sung one — a `w:` line
+  // of the vocable under each, which is how ABC carries a text. Nonsense
+  // syllables are still a text: they are what the singer is doing with the
+  // note, and a score that leaves them out cannot be sung from.
+  const staves = [[]], lyric = [[]];
+  let cursor = 0, bar = 0, inBar = 0, sylAt = 0;
   const push = (tok, len) => {
     const u = Math.max(1, Math.round(len * G.div));
-    body += tok + abcLen(u) + " ";
+    staves[staves.length - 1].push(tok + abcLen(u));
+    if (tok !== "z") lyric[lyric.length - 1].push(voc.rom.split("·")[sylAt++ % voc.syls.length]);
     inBar += u / G.div;
-    while (inBar >= barBeats - 1e-6) { inBar -= barBeats; bar++; body += (bar % 4 === 0 ? "|\n" : "| "); }
+    while (inBar >= barBeats - 1e-6) {
+      inBar -= barBeats; bar++;
+      staves[staves.length - 1].push("|");
+      if (bar % 4 === 0) { staves.push([]); lyric.push([]); }
+    }
   };
   for (const e of line) {
     const gap = e.b - cursor;
+    // A REFRAIN RESTARTS AFTER A BREATH — the same rule the player uses: a
+    // rest wider than a beat is where the singer breathes, and the vocable
+    // begins again on its strongest attack. So the score says what is sung.
+    if (gap > 0.9) sylAt = 0;
     if (gap * G.div > 0.5) push("z", gap);
     const p = stepOf(e.deg);
     const tok = p == null ? "z" : abcPitch(p + e.oct * L, L, letters);
     push(tok, Math.max(1 / G.div, e.dur));
     cursor = e.b + Math.max(1 / G.div, e.dur);
   }
-  if (!body.trimEnd().endsWith("|")) body += "|";
-  A.push(body.trimEnd().replace(/\|\s*$/, "|]"));
+  if (!staves[staves.length - 1].length) { staves.pop(); lyric.pop(); }
+  const last = staves[staves.length - 1];
+  if (last && last[last.length - 1] !== "|") last.push("|");
+  if (last) last[last.length - 1] = "|]";
+  staves.forEach((st, i) => {
+    A.push(st.join(" "));
+    if (!hasLead && lyric[i].length) A.push("w: " + lyric[i].join(" "));
+  });
 
   // ── Scala ──
   const scl = [

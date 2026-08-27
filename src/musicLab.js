@@ -12,13 +12,14 @@
 /* global __BUILD__ */
 import { foundLanguage } from "./sim/language.js";
 import { langWord, langWordForm, langRealmName } from "./sim/language.js";
-import { phoneticPlan, prosodyOf } from "./sim/languagePhonetics.js";
+import { phoneticPlan, prosodyOf, vocablesOf } from "./sim/languagePhonetics.js";
 import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE } from "./sim/languageLexicon.js";
 import { MATERIALS, FAMILIES } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
 import { makeAudio, setDistance, playNote, sungLine, playSung } from "./sim/musicSynth.js";
+import { voiceRange } from "./sim/vocalTract.js";
 import { REFERENCE_PEOPLES } from "./sim/musicRefs.js";
 
 // ── state ────────────────────────────────────────────────────────────────
@@ -103,14 +104,30 @@ function sympPitches(m) {
 }
 function noteFreq(m, ev) {
   let f = degreeHz(m, tonicOf(m), ev.deg, ev.oct);
-  const inst = m.insts[ev.inst];
-  const low = inst && FAMILIES[inst.fam] ? FAMILIES[inst.fam].low : 0;
-  if (!low) return f;
   const frame = m.scale.frame.ratio;
+  const inst = m.insts[ev.inst];
+  let low = 0, top = 0;
+  if (inst && FAMILIES[inst.fam] && FAMILIES[inst.fam].low) {
+    low = FAMILIES[inst.fam].low;
+    // and not so high that the body has run out of instrument either
+    top = low * Math.pow(frame, inst.cap >= 12 ? 3 : inst.cap >= 6 ? 2.4 : 1.8);
+  } else if (ev.role === "voice") {
+    // A VOICE HAS A BODY TOO — and it was the one part with no range at all.
+    // A sung event carries `inst: -1`, so `m.insts[ev.inst]` is undefined and
+    // this clamp, the thing that keeps every instrument inside what it can
+    // actually play, was skipped for the singer alone. The voice was simply
+    // handed whatever octave the lead's body happened to sit in: a horn-led
+    // people's singer was sent up where a horn sits, a bell-led one's up where
+    // a bell sits, and the tract obligingly tried. Measured over sixty
+    // peoples, THIRTY-SIX were being asked for notes outside 70-500 Hz, the
+    // highest for 1318 Hz — E6, a coloratura's top note, out of a tract
+    // modelled on a 105 Hz speaking voice. Clamped, the same sixty sing
+    // between 109 and 353 Hz.
+    ({ low, top } = voiceRange(prosodyOf(m.people.lang)));
+  }
+  if (!low) return f;
   let guard = 0;
   while (f < low * 0.94 && guard++ < 5) f *= frame;
-  // and not so high that the body has run out of instrument either
-  const top = low * Math.pow(frame, inst.cap >= 12 ? 3 : inst.cap >= 6 ? 2.4 : 1.8);
   while (f > top && guard++ < 9) f /= frame;
   return f;
 }
@@ -123,7 +140,9 @@ function noteFreq(m, ev) {
  * than a beat is where a singer takes a breath — and each group is rendered
  * and scheduled as one buffer.
  */
-function fireVoiceLine(m, evs, when0, spb, gain, syls, acc, Aud) {
+const THROAT = new Map();                 // one singer per people, and only one
+function fireVoiceLine(m, evs, when0, spb, gain, voc, Aud) {
+  const syls = voc && voc.syls;
   if (!evs.length || !syls || !syls.length) return;
   const A = Aud || audio();
   const sorted = [...evs].sort((a, b) => a.b - b.b);
@@ -142,12 +161,34 @@ function fireVoiceLine(m, evs, when0, spb, gain, syls, acc, Aud) {
       dur: Math.max(0.1, ((g[i + 1] ? g[i + 1].b : e.b + e.dur) - e.b) * spb),
       vel: e.vel * gain,
     }));
-    const rot = syls.slice(syl % syls.length).concat(syls.slice(0, syl % syls.length));
+    // A TEXT runs on: the second breath-group takes the syllables the first
+    // left off at. A VOCABLE REFRAIN restarts — it has no next word to reach,
+    // and its strongest attack belongs on the first note of every phrase,
+    // which is what makes it a refrain rather than a wandering.
+    const from = voc.rotate ? syl % syls.length : 0;
+    const rot = syls.slice(from).concat(syls.slice(0, from));
     const pcm = sungLine(A.ctx.sampleRate, rot, notes, {
-      acc, seed: m.people.seed, vibrato: 12 + 34 * m.texture.ornament,
-      key: `${m.people.seed}:${syl}`,
+      acc: voc.acc, seed: m.people.seed,
+      // VIBRATO is the only pitch motion a sung line has left now that the
+      // speech model's drift and jitter are held back for singing, and it is
+      // the motion a held note actually has. Depth is the tradition's, but the
+      // floor is the larynx's own: no singer holds a note dead flat.
+      vibrato: 22 + 48 * m.texture.ornament,
+      carry: 0.35 + 0.5 * Math.min(1, m.texture.size / 6),
+      key: `${m.people.seed}:${voc.rotate ? syl : "v"}:${from}`,
     });
-    playSung(A, pcm, notes, when0 + g[0].b * spb, 1);
+    // ONE THROAT. A rendered line runs to the end of its last note, and
+    // nothing stops the next breath-group being scheduled before that — a long
+    // final note, or a bar whose voice part reaches past its own end, and the
+    // people are being sung by two of themselves at once. A singer releases
+    // the note they are leaving in order to start the next one, exactly as a
+    // player's free hand stops the string they are replacing; this is that
+    // hand, and it is the same voice-channel rule `fireEvent` already applies
+    // to every other part.
+    const at = when0 + g[0].b * spb;
+    const prev = THROAT.get(m.people.seed);
+    if (prev) prev.damp(at);
+    THROAT.set(m.people.seed, playSung(A, pcm, notes, at, 1));
     syl += g.length;
   }
 }
@@ -183,6 +224,19 @@ function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
       channel: `${m.people.seed}:${ev.role}:${ev.inst}:orn`,
     });
   }
+}
+
+// WHAT THE AMBIENT LAYER SINGS. The piece is a hymn and names its god, so it
+// sings words. The ambient layer is the sound of a people going about their
+// day, and a day's singing runs on VOCABLES — the syllables the tongue can
+// hold a pitch through, derived from its own inventory. (Until now this layer
+// had no syllables at all: the lanes were built without them, so the voice —
+// the one instrument every people has — was silent in the ambience.)
+const VOC = new WeakMap();
+function vocOf(m) {
+  let v = VOC.get(m);
+  if (!v) { v = vocablesOf(m.people.lang); VOC.set(m, v); }
+  return v;
 }
 
 // ── the ambient layer: a lookahead scheduler that never loops ─────────────
@@ -224,7 +278,7 @@ function pump() {
       if (w >= 0.02) {
         for (const ev of plan.events) if (ev.role !== "voice") fireEvent(m, ev, lane.next + ev.b * spb, spb, w);
         const sung = plan.events.filter(e => e.role === "voice");
-        if (sung.length) fireVoiceLine(m, sung, lane.next, spb, w, lane.syls, lane.acc);
+        if (sung.length) fireVoiceLine(m, sung, lane.next, spb, w, vocOf(m));
       }
       lane.next += plan.beats * spb;      // exactly one cycle. No gap, ever.
       lane.bar++;
@@ -265,7 +319,8 @@ function playPiece() {
     if (ev.role === "voice") continue;
     fireEvent(P, ev, t0 + ev.b * spb, spb, 1);
   }
-  fireVoiceLine(P, piece.events.filter(e => e.role === "voice"), t0, spb, 1, hymn.syls, hymn.acc);
+  fireVoiceLine(P, piece.events.filter(e => e.role === "voice"), t0, spb, 1,
+    { syls: hymn.syls, acc: hymn.acc, rotate: true });
   return piece;
 }
 
@@ -532,6 +587,13 @@ function textureHTML(m) {
     <p class="note tight">${esc(lead ? lead.label + " of " + MATERIALS[lead.mat].label : "the voice")} — ${
       m.melody.breathBound ? "a breath bounds the phrase" : "a string does not need to breathe, so phrases run longer"}${
       m.melody.toneBound ? "; the tongue has lexical tone, so a sung line cannot fight the word's own melody" : ""}.</p>
+    <h3>What they sing on</h3>
+    <p class="sung">${esc(vocOf(m).rom)}</p>
+    <p class="note tight">Not words — <b>vocables</b>, the nonsense every singing tradition carries its
+      tune on. A word is a run of obstructions and each one is a hole in the note, so a people converges
+      on the few syllables its own inventory can hold a pitch through: the loudest sonorant it has, on
+      the most open vowel it has. There is no vocable list in this codebase — <i>la</i> wins wherever it
+      wins because <i>l</i> lets nearly the whole voice out while it is being made.</p>
   </div>`;
 }
 
@@ -809,7 +871,7 @@ function exposeForTests() {
   if (typeof window === "undefined") return;
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
     makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
-    fireEvent, fireVoiceLine, hymnSyllables, S };
+    fireEvent, fireVoiceLine, hymnSyllables, vocOf, build, degreeHz, S };
 }
 
 export function mount() {

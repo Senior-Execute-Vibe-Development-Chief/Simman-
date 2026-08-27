@@ -14,6 +14,7 @@
 
 import { hash32 } from "./peopleSim/rng.js";
 import { romanizeC, romanizeV } from "./languagePhonology.js";
+import { compiledInv } from "./language.js";
 
 // ── consonants: place (rows of romanizeC's own grid) × manner, vl/vd ──────
 // places: 0 labial · 1 alveolar · 2 retroflex · 3 palatal · 4 velar ·
@@ -201,4 +202,136 @@ export function ipaOf(lang, form) {
     [...s.on, ...s.nu, ...s.co].map(x => x.ipa).join("") +
     (s.tone != null ? TONE_LETTERS[s.tone] : "")
   ).join(".");
+}
+
+// ── VOCABLES: the syllables a people SINGS on ─────────────────────────────
+//
+// The carrying line of folk song, nearly everywhere, does not run on words.
+// It runs on nonsense — la la la, hey ya ya, fa la la, tra la, the Gaelic
+// puirt-à-beul, Plains vocable song, scat — and it does so for a reason that
+// is physical rather than poetic. A word is a sequence of OBSTRUCTIONS, and
+// every obstruction is a hole in the note: a stop closes the tract, a
+// voiceless segment stops the folds, a high vowel shuts the mouth to a slit.
+// A sung note is only as loud and as long as the tract stays open and the
+// folds keep beating, so a singing tradition converges on the few syllables
+// its own inventory can hold a pitch THROUGH.
+//
+// So this picks nothing from a list. It scores this language's own segments
+// by how much sound gets out while each is being made, and keeps the winners.
+// A tongue with l and a arrives at la; one whose only sonorants are nasals
+// arrives at ma or na; one with a dominant w sings on wa. The mechanism that
+// makes "la" the commonest vocable on Earth is the one running here, and it
+// is given no help — there is no vocable table in this file.
+//
+// A word-line is still sung when there are words to sing (a hymn names its
+// god). This is the other half of the repertoire: the syllables for when the
+// TUNE is the point.
+
+/** Voiced? — the same test ipaC uses to choose the voiced symbol. */
+function voicedC(c) { return c.l === 1 || c.l === 4 || c.m === 1 || c.m >= 4; }
+
+// How much sound radiates while a consonant is held, as a fraction of the
+// following vowel's. Manner is the aperture — a stop passes nothing, a nasal
+// passes the whole voice out through the nose, an approximant barely narrows
+// the tract at all — and voicing is whether there is anything to pass.
+const RADIATE = { 0: 0.06, 1: 0.8, 2: 0.3, 3: 0.1, 4: 0.85, 5: 0.6, 6: 0.92, 7: 0.02 };
+
+function carriesC(c) {
+  let r = RADIATE[c.m] ?? 0.1;
+  // a voiceless segment is a hole in the note, whatever its aperture. /h/ is
+  // the exception that proves the mechanism: the tract stays wide open and
+  // only the folds part, so the note resumes without the tongue moving — which
+  // is why hey, ho and ha are vocables in traditions that share nothing else.
+  if (!voicedC(c)) r *= (c.m === 2 && c.p === 7) ? 0.5 : 0.12;
+  if (c.l === 2) r *= 0.6;                       // aspirated: a longer devoiced gap after release
+  if (c.l === 3) r *= 0.3;                       // ejective: the glottis is shut, so the note is too
+  if (c.p === 5 || c.p === 6) r *= 0.55;         // uvular/pharyngeal — the constriction sits in the very cavity a singer opens
+  if (c.s === 1) r *= 0.95;                      // palatalized/labialized: a second constriction, a small further loss
+  else if (c.s === 2) r *= 0.95;
+  return r;
+}
+
+// A vowel's carrying power at a sung pitch is its mouth opening: the aperture
+// is what radiates, and the first formant it sets rides above the note instead
+// of being swallowed by it. Height IS that opening — which is why /a/ is the
+// loudest vowel in every language that has one, and the vowel of nearly every
+// vocable anywhere.
+function carriesV(v) {
+  let s = 0.45 + 0.3 * (v.h || 0);               // high 0.45 · mid 0.75 · low 1.05
+  if (v.r) s *= 0.86;                            // rounding narrows the aperture and drops every formant
+  // a mid-central vowel is the tongue at rest — an even tube, whose formants
+  // come out evenly spaced and reinforce nothing. Carrying is formant
+  // CLUSTERING, so the vowel with no constriction anywhere is the one that
+  // carries least; it is also, not coincidentally, the vowel every reducing
+  // language reduces TO. Singers hold notes on anything but their schwa.
+  if ((v.b || 0) === 1 && (v.h || 0) !== 2) s *= 0.8;
+  if (v.atr) s *= 0.9;                           // lax: less open, less stable
+  if (v.n) s *= 0.85;                            // nasal coupling costs the mouth its output
+  if (v.ph) s *= 0.7;                            // breathy or creaky — neither holds a pitch
+  if (v.lg) s *= 1.08;                           // a length the language already holds
+  return s;
+}
+
+/**
+ * The vocable cycle: a short repeating figure of this language's most
+ * singable syllables, in the shape `phoneticPlan` produces, so the vocalizer
+ * takes it without knowing the difference.
+ *
+ * Length is not chosen — it is however many segments the inventory has that
+ * clear the bar, plus the bare vowel every tradition drawls on. A sonorant-
+ * rich tongue gets a longer, more varied refrain; a sonorant-poor one gets
+ * a-ma-a. What is NOT allowed is a cycle of one: a line on a single syllable
+ * has no attacks in it, and an unarticulated sung line is a drone.
+ */
+export function vocablesOf(lang, opts = {}) {
+  const inv = opts.inv || compiledInv(lang);
+  const prof = lang.prof;
+  const singles = (inv.syllab && inv.syllab.onsets || []).filter(o => o.length === 1).map(o => o[0]);
+  const pool = (singles.length ? singles : inv.cons.filter(c => !c.noOn));
+  const scored = pool.map(c => ({ c, w: carriesC(c) })).sort((a, b) => b.w - a.w);
+  // half the vowel's output has to survive the consonant for a singer to
+  // articulate on it; a tongue whose best is worse still sings on its best.
+  let keep = scored.filter(x => x.w >= 0.5).slice(0, 3);
+  if (!keep.length && scored.length) keep = scored.slice(0, 1);
+  // an honest tie-break, and the only seeded choice here: when two segments
+  // carry equally well, which one a people leads with is arbitrary — so it is
+  // rolled, not ranked. (Every Romance tongue says "la"; that is not an
+  // accident of taste, it is that l wins on the physics.)
+  if (keep.length > 1 && keep[1].w > keep[0].w * 0.9
+      && hash32(lang.famSeed >>> 0, "vocable") % 2) keep = [keep[1], keep[0], ...keep.slice(2)];
+
+  const vows = inv.vows.map(v => ({ v, w: carriesV(v) })).sort((a, b) => b.w - a.w);
+  const V1 = vows[0] ? vows[0].v : { h: 2, b: 1, r: 0 };
+  // A second vowel, at a different JAW POSITION — the loudest vowel of any
+  // other height the inventory holds. No loudness bar: any vowel a language
+  // has is singable, and the ranking has already put the loudest first. If
+  // every vowel it has sits at one height, there is no contrast and the line
+  // stays on one — which is what a three-vowel tongue sounds like singing.
+  const V2 = (vows.find(x => (x.v.h || 0) !== (V1.h || 0)) || { v: V1 }).v;
+
+  const vseg = (v) => ({ ipa: ipaV(v), h: v.h, b: v.b, r: v.r, n: v.n || 0, lg: v.lg || 0, ph: v.ph || 0, atr: v.atr || 0 });
+  const seg = (c) => ({ ipa: ipaC(c), p: c.p, m: c.m, l: c.l, s: c.s });
+  // ONSETS in score order, then the open syllable last: a phrase attacks on
+  // the clearest consonant it has and settles onto the bare vowel. Codas are
+  // absent by construction — an open syllable IS the note, and a coda is the
+  // end of one.
+  const slots = [...keep.map(x => [x.c]), []];
+  // The vowel changes ONCE per cycle, on the open slot. A line on one vowel is
+  // as much a drone as a line on one pitch, and the open slot is the one with
+  // no consonant to mark it — so there the change of vowel IS the attack, and
+  // it falls where the cycle turns.
+  const nucOf = (i) => (i === slots.length - 1 ? V2 : V1);
+  const syls = slots.map((on, i) => ({
+    on: on.map(seg),
+    nu: [vseg(nucOf(i))],
+    co: [],
+    // a vocable is not a word, so it carries no lexical tone — which is
+    // exactly the freedom a tone language's singers use to let the melody
+    // outrank the tones.
+    tone: null,
+  }));
+  const rom = slots.map((on, i) =>
+    on.map(c => romanizeC(c, prof.romTaste, prof.rom, prof.orthoStyle)).join("")
+    + romanizeV(nucOf(i), prof.rom)).join("·");
+  return { syls, acc: accentOf(lang), pros: prosodyOf(lang), rom };
 }

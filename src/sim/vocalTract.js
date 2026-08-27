@@ -29,6 +29,23 @@ import { VOWEL_CAL } from "./vocalTractCal.js";
 import { FORMANT_VOWELS } from "./formantVowelCal.js";
 
 const F0_BASE = 105;               // speaker's base pitch (a deeper male voice reads less "high")
+
+/**
+ * The range a voice can actually sing, in hertz.
+ *
+ * A larynx is a body like any other, and it has a compass for the same reason
+ * a flute does: the folds can be lengthened and thinned only so far. That span
+ * is about two octaves, and a speaker sits near the BOTTOM of it rather than in
+ * the middle — talking is done with slack folds. What differs between peoples
+ * is not the span, which is muscle, but where it sits — and the language
+ * already carries that, because every tongue has its own pitch frame and a
+ * people sings from the voice it speaks with.
+ */
+export function voiceRange(pros) {
+  const speak = F0_BASE * ((pros && pros.f0k) || 1);
+  const low = speak * 0.8;                        // a speaker stands a little above their floor
+  return { low, top: low * 4 };                   // two octaves of usable fold length
+}
 const N = 44;                      // tract sections (glottis at 0, lips at N-1)
 const BLADE_START = 10, TIP_START = 32, LIP_START = 39;
 const NOSE_LENGTH = 28, NOSE_START = N - NOSE_LENGTH + 1;   // 17
@@ -139,6 +156,20 @@ function makeTract() {
 
   // build the area function from a posture (writes the NEXT block's areas)
   function shape(p) {
+    // NO LARYNX HEIGHT CONTROL, and it is worth saying why rather than leaving
+    // the gap. A trained singer drops the larynx, which decouples the short
+    // tube above the folds and lets it ring near three kilohertz — the
+    // singer's formant, and the reason one voice carries over an orchestra. I
+    // built the gesture and measured it: widening the pharynx costs five to
+    // ten decibels in that band rather than gaining, because the effect
+    // depends on the piriform sinuses and the epilaryngeal tube, and a uniform
+    // forty-four-section tube with a smooth tongue hump has neither. A control
+    // that does the opposite of its name is worse than no control.
+    //
+    // What does work here, and is the other half of how a singer is heard, is
+    // the glottis: singing closes the folds more abruptly than speech, which
+    // measured on this model puts nearly nine decibels more energy at three
+    // kilohertz. That lives in scoreSong.
     for (let i = 0; i < N; i++) rest[i] = i < 7 * N / 44 - 0.5 ? 0.6 : i < 12 * N / 44 ? 1.1 : 1.5;
     // tongue: a smooth hump between blade and lips (Pink Trombone's curve)
     for (let i = BLADE_START; i < LIP_START; i++) {
@@ -302,7 +333,22 @@ export function renderScore(score, sampleRate = 44100, seed = 0x9e3779b9) {
   const nz2 = makeNoise((seed ^ 0x5bf03635) >>> 0);
   const lp = (fc) => { const a = Math.exp(-2 * Math.PI * fc / IR); return { a, g: Math.sqrt((1 + a) / (1 - a)) / Math.sqrt(1 / 3), s: 0 }; };
   const jit = lp(5), shim = lp(3.5), drift = lp(0.7);
-  const JIT_D = 0.008, SHIM_D = 0.06, DRIFT_D = 0.012;
+  // A SINGER HOLDS PITCH; A SPEAKER WANDERS. The slow drift and the
+  // cycle-to-cycle jitter are what make speech sound like a person rather than
+  // a machine, and on a sung line they are the tuning error. Measured on a
+  // nine-note phrase with the vibrato switched off, so nothing else is moving
+  // the pitch: the speech settings land each note 13.7 cents from where it was
+  // asked for (worst 23) and let it wander 40.7 cents WITHIN the note (worst
+  // 70) — which is a third of a semitone of drift inside one held note, and
+  // audibly sour against instruments that are not drifting with it. The sung
+  // settings give 2.4 cents and 9.1. Singing keeps the shimmer, cuts the
+  // jitter, and nearly removes the drift, because holding a note steady enough
+  // to be in tune with other people is the thing a singer has practised and a
+  // talker has not.
+  const sung = !!score.sung;
+  const JIT_D = sung ? 0.0022 : 0.008;
+  const SHIM_D = sung ? 0.045 : 0.06;
+  const DRIFT_D = sung ? 0.0018 : 0.012;
   for (let i = 0; i < len; i += BLOCK) {
     const blk = Math.min(BLOCK, len - i);
     // posture at the block's END drives the new reflections; glottis ramps
@@ -737,15 +783,23 @@ export function scoreSong(syls, notes, opts = {}) {
   let x = seed;
   const rnd = () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
   const spans = [];                                   // [{t0, t1, f}] for the f0 track
-  let t = 0.03;
+  let t = 0.03, beat = 0.03;                          // where the voice IS · where the beat says it should be
   notes.forEach((nt, i) => {
     const syl = syls.length ? syls[i % syls.length] : { on: [], nu: [{ h: 2, b: 1, r: 0 }], co: [] };
-    const start = t;
     // consonants keep their spoken cost — the tongue does not slow down
     // because the note is long
     for (const c of syl.on || []) t += scoreCons(B, c, t, [1], false, acc) + 0.004;
     const coda = (syl.co || []).length;
-    const vDur = Math.max(0.07, nt.dur - (t - start) - coda * 0.075);
+    // A SINGER KEEPS TIME WITH THE ENSEMBLE. Budget the vowel against where
+    // the BEAT says this note ends, not against the note's nominal length:
+    // consonants and gesture seams that ran long then come out of this vowel
+    // instead of pushing every note after it later. Measured before this, the
+    // line ran four milliseconds late per note and NEVER caught up — 32 ms by
+    // the end of an eight-note phrase, 128 ms over thirty-two, which is a
+    // sixth of a beat of drag against an accompaniment that is not drifting.
+    // After, the whole line lands within four milliseconds however long it is.
+    // A real singer shortens the vowel; they do not arrive late and stay late.
+    const vDur = Math.max(0.07, beat + nt.dur - t - coda * 0.075 - 0.008);
     const v0 = (syl.nu && syl.nu[0]) || { h: 2, b: 1, r: 0 };
     // open the vowel until its first formant clears the note being sung
     const open = Math.max(0, nt.f / (0.9 * vowelF1(v0)) - 1);
@@ -755,9 +809,20 @@ export function scoreSong(syls, notes, opts = {}) {
     // so the glottal pulse gets sharper and the tone gets brighter. That is
     // the same nonlinearity every driven instrument has, and it is the part
     // of dynamics an output gain cannot fake.
-    if (nt.vel != null) B.to("tenseness", vStart + 0.03, B.cur.tenseness * (0.84 + 0.3 * Math.min(1.4, nt.vel)), 0.06);
+    // A SUNG NOTE IS NOT A SPOKEN ONE TURNED UP. Singing closes the folds
+    // harder and more abruptly than speech, and the sharper the closure the
+    // more of the spectrum it excites — measured on this tract, firming the
+    // glottis lifts the three-kilohertz band by nearly nine decibels, which is
+    // most of what makes a voice carry and most of what makes it read as sung
+    // rather than said. `carry` is how much the singer has to be heard over.
+    const firm = 1.12 + 0.22 * Math.max(0, Math.min(1, opts.carry ?? 0.4));
+    if (nt.vel != null) {
+      B.to("tenseness", vStart + 0.03,
+        Math.min(0.96, B.cur.tenseness * firm * (0.88 + 0.24 * Math.min(1.4, nt.vel))), 0.06);
+    }
     spans.push({ t0: vStart, t1: t, f: nt.f, first: i === 0 });
     for (const c of syl.co || []) t += scoreCons(B, c, t, [1], true, acc) + 0.004;
+    beat += nt.dur;
     // LEGATO. Speech drops the voice to silence at every word edge; a sung
     // line does not — the phrase is one breath, and the voicing runs right
     // through it. Only the last note is released.
@@ -792,5 +857,5 @@ export function scoreSong(syls, notes, opts = {}) {
     }
   });
   B.tracks.frequency = F.length ? F : [{ t: 0, v: notes[0] ? notes[0].f : F0_BASE }];
-  return { dur: t + 0.05, tracks: B.tracks };
+  return { dur: t + 0.05, tracks: B.tracks, sung: true };
 }
