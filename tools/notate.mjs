@@ -24,6 +24,7 @@
 //   node tools/notate.mjs --out DIR ...            write files instead
 import { mkdirSync, writeFileSync } from "node:fs";
 import { musicOf, foundPeople } from "../src/sim/musicGenome.js";
+import { foundLanguage, langRealmName } from "../src/sim/language.js";
 import { composePiece, gridOf, degreeHz, sectionsOf, finalFor, modeDegree } from "../src/sim/musicCompose.js";
 
 // A frame's worth of mode degrees, laid out so the frame lands on an ABC
@@ -61,7 +62,13 @@ function abcLen(n) {
 }
 
 export function notate(seed, occ = "peace") {
-  const people = foundPeople(seed >>> 0, null);
+  // A people with a language, exactly as the Lab founds one — the rhythm is
+  // derived from how the language is spoken, so a nameless people is also a
+  // people whose music is missing half its input.
+  const world = { languages: new Map(), nextLangId: 0 };
+  const lang = foundLanguage(world, { seed: seed >>> 0 });
+  const people = foundPeople(seed >>> 0, lang);
+  people.name = langRealmName(lang, 1);
   const m = musicOf(people);
   const G = gridOf(m.rhythm);
   const piece = composePiece(m, occ);
