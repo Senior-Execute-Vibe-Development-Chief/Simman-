@@ -78,3 +78,17 @@
     MACHINE 16000 20000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00
     [254s]
 [transHeap] step=21192 cap=2048 peakN=1635 pushes=25690 (0.0MB backing)
+[transHeap] step=21696 cap=65536 peakN=56914 pushes=193089 (0.5MB backing)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.05)
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+
+=== window 20000->24000  realms=15  claimed=2.3%  settled=142
+    FLOWS in-window   founded=12 ended=3 seceded=0 shattered=2
+    FLOWS per realm   founded=1.6000 ended=0.4000 seceded=0.0000 shattered=0.2667   (meanRealms=8)
+    WAR in-window     began=19 ended=6 captured=0 sacked=3
+    WAR per realm     began=2.5333 captured=0.0000
+    MASS  urban=5418su rural=99649su urbanShare=5.16%
+    ARMING  blockRan=76.8%  bind=31.7%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 20000 24000 15 2.341 12 3 0 2 19 0 5418 99649 76.76 31.69
+    [377s]

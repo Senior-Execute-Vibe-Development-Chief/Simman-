@@ -699,6 +699,12 @@ export function collect(world) {
   // is a monotone candidate (docs/observability.md).
   m["urban.coreBlockRanPct"] = 100 * settled.filter(s => s._coreBlockRan).length / Math.max(1, settled.length);
   m["urban.coreLocalBindPct"] = 100 * settled.filter(s => s._coreLocalBind).length / Math.max(1, settled.length);
+  // coreDiskBoundPct — how often the raw-disk ceiling min(_coreF, ·) is the
+  // binding constraint on a city's urban core. It is the brake holding
+  // urbanisation under history's agrarian ceiling, and its radius grows with the
+  // grid (coreR: 0 at tw=240, 1 at tw=480, 3 at tw=960), so "does the brake
+  // still hold at the grid that ships" is a real question with a real answer.
+  m["urban.coreDiskBoundPct"] = 100 * settled.filter(s => s._coreDiskBound).length / Math.max(1, settled.length);
   m["pop.censusSimUnits"] = censusSim;                            // raw, NOT people
   m["pop.fieldUnits"] = pf;                                       // a third scale, NOT people
   m["pop.fieldPerKm2Units"] = pf / Math.max(1, land.length * km2);

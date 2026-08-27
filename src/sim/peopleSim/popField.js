@@ -1969,6 +1969,7 @@ export function deriveOnePop(world) {
     // from "no execution" is not an instrument.
     s._coreBlockRan = 0;
     s._coreLocalBind = 0;
+    s._coreDiskBound = 0;
     const f = accP.get(s.id) || 0;
     // The IMPORT-FED share of the settlement's carrying capacity, in field
     // units — what its market feeds from BEYOND its own land (hierarchy grain:
@@ -2124,6 +2125,17 @@ export function deriveOnePop(world) {
         // Cost when the lever is off: two integer stores per settled entity.
         s._coreBlockRan = 1;
         s._coreLocalBind = kLocal > holdF ? 1 : 0;
+        // THE DISK CEILING, measured rather than assumed (memo §5.3). The
+        // min(_coreF, ·) above is the brake that keeps urbanisation under
+        // history's agrarian ceiling: an economy cannot claim urbanites the
+        // ground does not hold. But _coreF is a disk of radius coreR, and coreR
+        // GROWS WITH THE GRID — 0 at tw=240 (the block is skipped entirely), 1
+        // at tw=480 (a 3x3), 3 at tw=960 (a 7x7, ~292 km across). So the same
+        // code brakes hard at one shipping grid and barely at another, and
+        // whether it still holds at tw=960 is a question no metric could answer.
+        // Now it can: this is the share of the register the ceiling actually
+        // binds for.
+        s._coreDiskBound = _coreF < (Math.max(holdF, kLocal) + kBeyond) ? 1 : 0;
       }
       s._urbanPop = Math.min(s.people, coreEff * scale);
       s._ruralPop = Math.max(0, s.people - s._urbanPop);
