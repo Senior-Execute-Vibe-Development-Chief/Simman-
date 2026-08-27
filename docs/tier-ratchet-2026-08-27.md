@@ -999,3 +999,60 @@ Replacing §11.4's, with the entity count added and the population claim weakene
 - Total population **roughly unchanged**: under `ONE_POP` the people were always the
   land's, so retiring the urban institution should move the urban/rural split and
   not the census. If the census moves materially, the premise is wrong.
+
+---
+
+## 17. `URBAN_LABOR` runs to 40k — the brake holds at the top, on one draw
+
+The first `URBAN_LABOR` arm completed. Its final window needs no interpolation,
+because the maturity gradient runs **against** it:
+
+| 36k-40k | claimed% | urban% | bind% | pin | rural su | total su | p50 core |
+|---|---|---|---|---|---|---|---|
+| untreated, clean | 44.42 | 28.21 | 44.5 | — | 302,921 | 421,981 | — |
+| untreated, chaos1 | 50.83 | 20.61 | 40.2 | 37.0% | 325,049 | 409,448 | 12.5 |
+| **`+URBAN_LABOR`** | **55.95** | **15.76** | 41.3 | **34.6%** | **386,984** | **459,406** | **14.1** |
+
+`URBAN_LABOR` reaches the **highest claimed land of any arm in the wave** — it is the
+most developed world at this checkpoint — and is the **least urbanised**. Urbanisation
+rises with development, so this is a dominance reading: no matching, no interpolation,
+no anchor choice to argue about. A more advanced world with less of its population in
+cities and more people in it overall.
+
+- **Ceiling.** 15.76% against 20.61% and 28.21% at *lower* development. The
+  window's increment is +4.17 against untreated's +5.89 and +12.64.
+- **Against history.** The agrarian band this repo works to is 5-15%. The treated
+  world lands just at its top edge; the untreated world runs at 1.4-1.9× it.
+- **Population.** 459,406su against 421,981 and 409,448 — more people, at greater
+  development, with a countryside 19-28% larger.
+- **Pin.** Modal share 34.6% against 37.0%, the best reading of the wave. `bind%`
+  41.3 sits inside the untreated band (40.2, 44.5).
+
+### 17.1 The median city moved off the stamp
+
+`p50 core = 14.1su`. Every arm, every window, all lap, that number has been **12.0** —
+the founding stamp, the owner's twelve thousand. Untreated reaches 12.5 in the same
+window; `URBAN_LABOR` reaches 14.1.
+
+If it replicates, this is the first time the *typical* city in this simulation has
+been something other than its own birth certificate. That would matter more than the
+ceiling result, because the ceiling was this lap's stated target and the pin is the
+owner's actual complaint.
+
+### 17.2 Held, deliberately
+
+**This is one draw, and every number in §17 is exactly the kind that has been
+retracted twice today** — §13.3's halved tail died on the twin, §14's tightness died
+on a shared denominator. The twin (`w4_cl_ulab_chaos`) and `ULAB+FARM` are still on
+their final windows.
+
+Nothing here becomes a verdict until the twin lands. Registering what would falsify
+each claim, before seeing it:
+
+- **Ceiling:** the twin must also read below both untreated draws. It sat at 10.29
+  where this arm sat 11.59, so it should come in near or below 15.76.
+- **`p50 core > 12.0`:** the claim most likely to be a single-draw artefact, because
+  a median crossing a mode is a threshold event. If the twin reads 12.0, this is
+  noise and §17.1 goes.
+- **Population and pin:** both have already replicated at 32k-36k, so a reversal
+  here would be the surprising outcome.
