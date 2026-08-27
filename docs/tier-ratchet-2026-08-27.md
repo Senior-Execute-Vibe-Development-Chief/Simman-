@@ -384,3 +384,68 @@ less than under a pure labour withdrawal.
 calling a verdict at the first window that showed something. But the direction is
 wrong on both pre-registered axes *and* there is a mechanism that predicts it, which
 is a different situation from noise. The arm runs to 40k before any verdict.
+
+---
+
+## 9. Wave 4 — `URBAN_LABOR` measured to 32k, and a transparency proof I did not plan
+
+### 9.1 The `ref3` arm is not a third draw — it is the chaos2 draw carried to 40k
+
+I launched `w4_cl_ref3` as `CORE_LOCAL=1,MINING_RATE=4.9999999` believing it was a
+new epsilon. It is not: `mil_corelocal_chaos2` already used that exact lever set on
+the same seed. The two arms' `MACHINE` lines are **identical over every window both
+have reached** (windows 0-32k; the diff is one line, the window chaos2 has and ref3
+has not yet produced).
+
+Two consequences, one bad and one good:
+
+- **The untreated band at 32k-40k is still two independent draws, not three.** The
+  intended tightening did not happen.
+- **It is an unplanned byte-transparency proof, and a far stronger one than the gate
+  I have been running.** `probe_hashbase` checks a few thousand steps. This is
+  32,000 steps of the live arm at the shipped grid, through 592 realms and 22% of
+  the land claimed, reproducing bit-for-bit across a tree that has since gained
+  `URBAN_LABOR`, `FARM_RES` and `HAUL_PAID`. All three are genuinely inert at
+  `def: 0`.
+
+The arm is still worth its core: chaos2 stopped at 32k, so ref3 supplies that draw's
+32k-40k tail, which nothing else has.
+
+### 9.2 The numbers, 20k-32k
+
+Urban share of population mass, by window. Untreated = `CORE_LOCAL` alone across
+three epsilon draws.
+
+| window | untreated (3 draws) | `+URBAN_LABOR` | `+ULAB` (chaos) | `+ULAB+FARM_RES` |
+|---|---|---|---|---|
+| 20k-24k | 5.08 / 5.16 / 5.32 | 6.85 | 6.93 | 3.15 |
+| 24k-28k | 7.04 / 7.35 / 7.68 | 6.72 | 6.49 | 4.13 |
+| 28k-32k | 8.60 / 8.79 / 11.45 | **7.59** | **7.82** | — |
+
+And `bind%` — the pin measure, the axis the owner actually complained about:
+
+| window | untreated | `+URBAN_LABOR` | `+ULAB` (chaos) | `+ULAB+FARM_RES` |
+|---|---|---|---|---|
+| 24k-28k | 32.6 / 33.3 / 37.9 | 33.0 | 34.8 | 23.4 |
+| 28k-32k | 32.9 / 34.0 / 36.1 | 34.1 | 36.6 | — |
+
+### 9.3 What that supersedes
+
+§8 called `URBAN_LABOR` wrong on both pre-registered axes off the 20k-24k window
+alone. **That read does not survive the next two windows.** At 20k-24k the treated
+arms sit above the untreated band; by 24k-28k they are inside it; by 28k-32k both
+sit **below the entire untreated spread** (7.59 / 7.82 against a 8.60 minimum), and
+`bind` sits **inside** the untreated band at every window — neutral, not worse.
+
+The §8 mechanism (urban capacity keyed on import *share*, so starving a hinterland
+reads as import-dependence and is rewarded) is still a real defect in the
+denominator, and still worth fixing on its own terms. What is now clear is that its
+transient — a capacity bump while the world is young and imports are a large
+fraction of a small supply — is not the arm's steady state. This is the third time
+this lap that a single window has produced a story the next window undercut.
+
+**No verdict yet.** 32k-36k is where the untreated world jumps (+6.1 and +6.8 in the
+two draws that reached it, 8.6→14.7 and 8.8→15.6). `URBAN_LABOR`'s last two
+increments are −0.13 and +0.87. If it tracks the untreated jump it fails; if it
+stays near 8-9 it holds. The criterion was written in §7 before any of this data
+existed and does not move now.
