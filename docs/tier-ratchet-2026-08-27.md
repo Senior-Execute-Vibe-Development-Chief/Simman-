@@ -8,6 +8,54 @@ measured on the live arm, passed the kill-shot it was built to face, and then
 failed on something else entirely — and the something else turned out not to be
 its fault.
 
+## 0. WHERE THIS STANDS
+
+*This document is written forward, in the order things were measured, and several
+of its findings were later retracted by their own follow-up measurements. Read this
+section for what currently holds; read the rest for how it was arrived at and what
+went wrong on the way.*
+
+**Built, all behind levers defaulting to 0, all proven byte-transparent** — not by
+the usual few-thousand-step hash check but by an unplanned 32,000-step reproduction
+of the live arm at the shipped grid, through 592 realms and 22% of land claimed
+(§9.1): `T.HAUL_PAID`, `T.FARM_RES`, `T.URBAN_LABOR`, plus the pre-existing
+`T.CORE_LOCAL`. Nothing shipped. No default changed.
+
+**Established**
+
+| | verdict | evidence |
+|---|---|---|
+| `HAUL_PAID` (ratchet leg 1) | **inert** — the haul-range table is not load-bearing | §3, wave 3 |
+| `FARM_RES` | **do not ship as a ceiling brake** — lowers urbanisation by pinning >half the register at 12k (53.9% vs ~43%) | §12 |
+| `URBAN_LABOR` | **brakes the ceiling to 73-82% of untreated**, bands non-overlapping on raw values; population *up*; `bind%` below all three untreated draws | §13-15 |
+| the `STARVE_SHED` seam | **real, verified by code read, not yet measured** — the fed-ness melt reaches the capacity spike and not the size read | §11, §16 |
+| `GRAIN_PRICE_BY_TIER` (leg 2) | **load-bearing — do not simply delete** | §4 |
+
+**Retracted, by later measurement in this same document**
+
+- §8's "urban capacity rewards import-dependence" — the share cancels out of the
+  algebra exactly (§10).
+- §13.3's "the runaway tail is halved" — the twin read *higher* than untreated
+  (§14.1).
+- §14's "81% and 82%" tightness — both ratios shared one reference draw; the honest
+  range is 73-82% (§15.2).
+- §11.4's "the fix is one term and safe" — it lowers cores and will cause
+  dissolutions (§16.3).
+
+**Open**
+
+- `URBAN_LABOR`'s twin and `ULAB+FARM` are still on their final windows; §17's
+  single-draw claims (median core off the stamp at 14.1su) are held pending them.
+- The **resolution anchor** is an owner decision and blocks the last Phase-2 site
+  (`MIN_SETT_DIST`), which blocks `FARM_RES` regardless of §12 (§5b).
+- The `STARVE_SHED` fix is designed, predicted and deliberately unbuilt (§16.5).
+
+**The standing caveat on every urbanisation number here:** while the founding stamp
+reports full size for starving cities, all of them are read through a partly broken
+instrument (§11).
+
+---
+
 ## 1. What the ratchet is
 
 A settlement's **tier** is a label derived from its size: village / town / city /
