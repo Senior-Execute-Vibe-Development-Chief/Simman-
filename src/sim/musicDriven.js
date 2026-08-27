@@ -36,7 +36,7 @@
 // exist at all, which is the real reason a cylindrical stopped pipe sounds
 // hollow: an odd-symmetric valve characteristic cannot make them.
 import { hash32 } from "./peopleSim/rng.js";
-import { FAMILIES, MATERIALS } from "./musicInstruments.js";
+import { FAMILIES, MATERIALS, slideSecs } from "./musicInstruments.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -172,6 +172,9 @@ function noiseBuf(ctx) {
  * signal makes one instrument.
  */
 export function playDriven(A, inst, freq, when, dur, vel, dest, opts = {}) {
+  // where this player's finger already was, and how long it takes to get here
+  const from = opts.from > 0 ? opts.from : 0;
+  const slide = from > 0 ? Math.min(slideSecs(from, freq), Math.max(0.02, dur * 0.5)) : 0;
   const { ctx } = A;
   const D = driverOf(inst);
   const f0 = freq;
@@ -227,9 +230,18 @@ export function playDriven(A, inst, freq, when, dur, vel, dest, opts = {}) {
     // handful of parts can sum without the limiter having to work
     amp[i] = clamp(0.34 * vel * a * press * (1 + 0.055 * vib), 0.0001, 0.55);
 
-    // pitch: the onset scoop, the vibrato, and a slow drift that never repeats
+    // pitch: the slide in, the onset scoop, the vibrato, and a slow drift that
+    // never repeats
     const sc = t < atk * 1.6 ? scoop * Math.pow(1 - t / (atk * 1.6), 2) : 0;
-    pit[i] = f0 * Math.pow(2, (sc * 0.06) + vibDepth * vib * 10 + wander * 0.004);
+    // TRAVELLING FROM WHERE THE HAND WAS. `from` is the pitch this player was
+    // already stopping — musicSynth decides whether the contact was ever
+    // broken (`slidesTo`), and this only carries it out. The travel is in
+    // LOG pitch because a finger moving at a steady speed along a string
+    // covers cents, not hertz, and it eases out rather than stopping dead
+    // because an arm decelerates.
+    const glideC = slide > 0 && t < slide
+      ? Math.log2(from / f0) * (1 - Math.pow(t / slide, 0.62)) : 0;
+    pit[i] = f0 * Math.pow(2, glideC + (sc * 0.06) + vibDepth * vib * 10 + wander * 0.004);
 
     // DRIVE: how hard the valve is pushed. This is where the whole
     // amplitude-brightness law lives — a louder note is a more distorted one,

@@ -72,72 +72,87 @@ export const MATERIALS = {
 // fundamental. `cap` is how many distinct pitches one such instrument can
 // physically sound — the constraint that decides how big a scale a people
 // can even play (a six-hole pipe cannot play twelve notes).
+// HOW THE PITCH IS CHOSEN, which is what decides whether a player can move a
+// note after it has started. It is a fact about the body in the same way `vib`
+// and `drive` are, and it is the whole of the difference between a fiddle and
+// a xylophone as far as sliding goes:
+//
+//   "stop"   one vibrating length, shortened by a finger, a slide or a lip.
+//            The pitch comes out of a CONTINUUM, so the player can travel
+//            along it — a fretless neck, a bowed string, a trombone, a bent
+//            sitar string, the lips inside one partial of a horn.
+//   "hole"   fixed apertures along a tube. The pitches are discrete, but the
+//            embouchure bends any of them by a semitone or so, which is how
+//            a flute or a nay leans into a note.
+//   "fixed"  one resonator per pitch — a bar, a bell, a key, a lyre's open
+//            string. The next pitch is a DIFFERENT OBJECT, so there is
+//            nothing to travel along and nothing can be bent.
 export const FAMILIES = {
   // ── strings ──
   lyre: {                       // open strings, one per pitch, plucked
-    label: "lyre-class", kind: "pluck", drive: "pluck", cap: 7, low: 175, beta: 0.34, wid: 16, vib: "string", poly: 1,
+    label: "lyre-class", kind: "pluck", drive: "pluck", pitchBy: "fixed", cap: 7, low: 175, beta: 0.34, wid: 16, vib: "string", poly: 1,
     ratios: (n, m) => harmonicStiff(n, m.B),
     body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.15 },
   },
   luteNeck: {                   // stopped strings — the neck is the pitch machine
-    label: "stopped-string", kind: "pluck", drive: "pluck", cap: 14, low: 110, beta: 0.12, wid: 2, vib: "string", poly: 1,
+    label: "stopped-string", kind: "pluck", drive: "pluck", pitchBy: "stop", cap: 14, low: 110, beta: 0.12, wid: 2, vib: "string", poly: 1,
     ratios: (n, m) => harmonicStiff(n, m.B),
     body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.42 },
   },
   bowed: {                      // sustained string — a bow keeps the mode driven
-    label: "bowed-string", kind: "sustain", drive: "bow", cap: 14, low: 196, beta: 0.09, wid: 8, vib: "string", poly: 1,
+    label: "bowed-string", kind: "sustain", drive: "bow", pitchBy: "stop", cap: 14, low: 196, beta: 0.09, wid: 8, vib: "string", poly: 1,
     ratios: (n, m) => harmonicStiff(n, m.B),
     body: ["gut", "silk"], frame: ["wood", "bone", "horn", "gourd", "hide"], needs: { construction: 0.5, mobility: 0.3 },
   },
   // ── winds ──
   fluteOpen: {                  // open tube, edge-blown: full harmonic series
-    label: "open flute", kind: "sustain", drive: "breath", cap: 6, low: 262, vib: "air", poly: 1,
+    label: "open flute", kind: "sustain", drive: "breath", pitchBy: "hole", cap: 6, low: 262, vib: "air", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
     body: ["bamboo", "reed", "wood", "clay", "bone"], needs: {},
   },
   pipeStopped: {                // stopped tube: ODD harmonics only — a hollow, clarinet-ish spectrum
-    label: "stopped pipe", kind: "sustain", drive: "breath", cap: 5, low: 220, vib: "air", poly: 1,
+    label: "stopped pipe", kind: "sustain", drive: "breath", pitchBy: "hole", cap: 5, low: 220, vib: "air", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => 2 * i + 1),
     body: ["bamboo", "reed", "clay", "gourd", "bone"], needs: {},
   },
   reedPipe: {                   // conical reed: full series, loud and buzzing
-    label: "reed pipe", kind: "sustain", drive: "reed", cap: 8, low: 175, vib: "air", poly: 1,
+    label: "reed pipe", kind: "sustain", drive: "reed", pitchBy: "hole", cap: 8, low: 175, vib: "air", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
     body: ["reed", "bamboo", "wood"], needs: { construction: 0.3 },
   },
   horn: {                       // lip-driven natural horn — plays the harmonic series ITSELF
-    label: "natural horn", kind: "sustain", drive: "lip", cap: 6, low: 116, vib: "air", tune: "series", poly: 1,
+    label: "natural horn", kind: "sustain", drive: "lip", pitchBy: "stop", cap: 6, low: 116, vib: "air", tune: "series", poly: 1,
     ratios: (n) => Array.from({ length: n }, (_, i) => i + 1),
     body: ["horn", "bronze", "iron", "clay", "bone"], needs: {},
   },
   // ── struck: where the spectra stop being harmonic ──
   barSet: {                     // tuned bars over resonators: free–free bar modes,
                                 // pulled onto whole numbers by undercutting
-    label: "tuned bars", kind: "struck", drive: "strike", cap: 7, low: 130, beta: 0.5, wid: 14, vib: "bar", poly: 2, reso: true,
+    label: "tuned bars", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 7, low: 130, beta: 0.5, wid: 14, vib: "bar", poly: 2, reso: true,
     ratios: (n, m, K) => barRatios(n, ((K.construction ?? 0) - 0.25) / 0.6),
     body: ["wood", "bamboo", "stone", "bronze", "iron"], frame: ["bamboo", "wood", "gourd", "clay", "bone", "stone", "horn"],
     needs: { construction: 0.25 },
   },
   gong: {                       // flat cast plate — dense inharmonic plate modes
-    label: "gong", kind: "struck", drive: "strike", cap: 3, low: 65, beta: 0.5, wid: 40, vib: "plate", poly: 1,
+    label: "gong", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 3, low: 65, beta: 0.5, wid: 40, vib: "plate", poly: 1,
     ratios: (n) => PLATE.slice(0, n),
     body: ["bronze", "iron"], needs: { metallurgy: 0.45 },
   },
   bell: {                       // cast profile — the partials a founder can actually tune
-    label: "bell", kind: "struck", drive: "strike", cap: 5, low: 98, beta: 0.78, wid: 26, vib: "plate", poly: 1,
+    label: "bell", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 5, low: 98, beta: 0.78, wid: 26, vib: "plate", poly: 1,
     // tuning a bell means hearing ONE partial at a time and shaving for it —
     // a founder's craft on top of the metallurgy that let them cast at all
     ratios: (n, m, K) => bellRatios(n, ((K.metallurgy ?? 0) * 0.5 + (K.construction ?? 0) * 0.5 - 0.55) / 0.4, K.seed),
     body: ["bronze", "iron", "clay"], needs: { metallurgy: 0.55 },
   },
   lamella: {                    // plucked clamped tongue: violently inharmonic upper modes
-    label: "plucked tongues", kind: "pluck", drive: "pluck", cap: 8, low: 147, beta: 0.9, wid: 3, vib: "tongue", poly: 2, reso: true,
+    label: "plucked tongues", kind: "pluck", drive: "pluck", pitchBy: "fixed", cap: 8, low: 147, beta: 0.9, wid: 3, vib: "tongue", poly: 2, reso: true,
     ratios: (n) => LAMELLA.slice(0, n),
     body: ["iron", "bronze", "bamboo"], frame: ["wood", "gourd", "bone"], needs: { metallurgy: 0.3 },
   },
   // ── membranes: pitch-vague, the time-keepers ──
   drum: {
-    label: "drum", kind: "struck", drive: "strike", cap: 2, low: 80, beta: 0.5, wid: 45, vib: "membrane", poly: 1,
+    label: "drum", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 2, low: 80, beta: 0.5, wid: 45, vib: "membrane", poly: 1,
     ratios: (n, m, K) => (K.shell ? MEMBRANE_SHELL : MEMBRANE_OPEN).slice(0, n),
     // Radiation order decides which modes die first, and it is the reverse of
     // what a rolloff by frequency gives. The concentric (0,n) modes push air
@@ -149,7 +164,7 @@ export const FAMILIES = {
     body: ["hide"], frame: ["wood", "clay", "gourd", "bone"], needs: {},
   },
   frameDrum: {
-    label: "frame drum", kind: "struck", drive: "strike", cap: 1, low: 110, beta: 0.62, wid: 38, vib: "membrane", poly: 1,
+    label: "frame drum", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 1, low: 110, beta: 0.62, wid: 38, vib: "membrane", poly: 1,
     ratios: (n) => MEMBRANE_OPEN.slice(0, n),
     // open on both sides, so every mode demotes one radiation order and rings
     // longer than the same mode over a shell — which is most of the difference
@@ -158,7 +173,7 @@ export const FAMILIES = {
     body: ["hide"], frame: ["wood", "bone"], needs: {},
   },
   claps: {                      // hands, and the body they are attached to
-    label: "hands", kind: "struck", drive: "strike", cap: 1, low: 200, beta: 0.5, wid: 60,
+    label: "hands", kind: "struck", drive: "strike", pitchBy: "fixed", cap: 1, low: 200, beta: 0.5, wid: 60,
     vib: "membrane", poly: 1,
     ratios: (n) => MEMBRANE_OPEN.slice(0, n).map(r => r * 2.4),
     body: ["none"], needs: {},
@@ -549,6 +564,63 @@ export const ELEMENT = { string: 0.02, air: 0.01, membrane: 0.06, tongue: 0.15, 
  * of that mass buys coupling rather than amplitude, and a real ensemble spans
  * something like twenty decibels from its quietest body to its loudest.
  */
+/**
+ * TRAVELLING TO THE NOTE, OR JUMPING TO IT.
+ *
+ * A slide is not an ornament laid over a line — it is what happens when the
+ * hand that is already on the string moves to the next note without letting
+ * go. So it is not a style setting, it is three physical conditions, and where
+ * all three hold, the note is reached by travelling:
+ *
+ *   1. THE BODY HAS A CONTINUUM TO TRAVEL ALONG. `pitchBy` decides that: a
+ *      stopped string, a slide or a lip picks its pitch out of a continuous
+ *      length, where a bar or a lyre's open string has one resonator per pitch
+ *      and there is simply nothing in between to move through.
+ *   2. THE HAND IS STILL THERE. Lift the finger and the next note is a fresh
+ *      placement, which is a jump however near it is. So the gap between the
+ *      notes has to be short enough that the contact never broke.
+ *   3. IT IS WITHIN REACH. A hand spans about a fourth on a neck without
+ *      shifting; past that the player moves their whole arm, and a shift is a
+ *      jump. A wind player is not moving a hand at all — the holes are fixed —
+ *      so what bends the note is embouchure, worth about a semitone.
+ *
+ * Nothing here asks what tradition this is. Where the music happens to be
+ * legato and stepwise on a fretless body, it slides constantly, which is what
+ * meend on a sarangi IS; where it is detached or leaps, it does not.
+ */
+export function slidesTo(inst, fromHz, toHz, gapSecs) {
+  const how = (FAMILIES[inst.fam] || {}).pitchBy || "fixed";
+  if (how === "fixed") return 0;
+  if (!(fromHz > 0) || !(toHz > 0)) return 0;
+  // 2. HOW LONG THE CONTACT LASTS is not one number, because what keeps a
+  //    slide audible differs by body. On a driven body the BOW OR BREATH has
+  //    to still be going — stop it and the travel is silent, so the window is
+  //    about a fifth of a second, the length of a phrase's worth of not
+  //    stopping. On a plucked one the string is still RINGING, and the bend is
+  //    heard for as long as it rings — which is exactly why meend lives on the
+  //    sitar and the oud, whose notes last seconds, and not on a body whose
+  //    note is gone before the hand has moved.
+  const hold = inst.kind === "sustain"
+    ? 0.22
+    : Math.min(0.6, (inst.partials && inst.partials[0] ? inst.partials[0].d : 0.2) * 0.35);
+  if (!(gapSecs <= hold)) return 0;                    // the contact broke
+  const cents = Math.abs(1200 * Math.log2(toHz / fromHz));
+  if (cents < 8) return 0;                             // the same note
+  const reach = how === "hole" ? 130 : 520;            // embouchure, or a hand span
+  return cents <= reach ? 1 : 0;
+}
+
+/**
+ * How long the travel takes. A finger crosses a few centimetres of neck well
+ * inside a tenth of a second, and further is slower — so the interval sets the
+ * time rather than a fixed portamento rate, and a short step arrives almost at
+ * once while a fourth is audibly swept.
+ */
+export function slideSecs(fromHz, toHz) {
+  const cents = Math.abs(1200 * Math.log2((toHz || 1) / (fromHz || 1)));
+  return Math.min(0.12, 0.016 + (cents / 1200) * 0.11);
+}
+
 export function radiatedLevel(inst) {
   const fam = FAMILIES[inst.fam] || {};
   // A DRIVEN BODY IS NOT LIMITED BY ITS ELEMENT. A struck body radiates the

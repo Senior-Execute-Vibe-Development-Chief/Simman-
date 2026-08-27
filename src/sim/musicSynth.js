@@ -37,7 +37,7 @@ import { scoreSong, renderScore } from "./vocalTract.js";
 import { playDriven } from "./musicDriven.js";
 import { playImpulse } from "./musicImpulse.js";
 import { pluckString, flexible } from "./musicString.js";
-import { MATERIALS, FAMILIES } from "./musicInstruments.js";
+import { MATERIALS, FAMILIES, slidesTo, slideSecs } from "./musicInstruments.js";
 import { playSampled } from "./musicSamples.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -319,14 +319,28 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   const K = STROKE_DSP[opts.stroke] || null;
   const f = freq * (K ? K.pitch : 1) * (1 + inst.detune + 0.004 * (Math.random() - 0.5));
   if (!(f > 20 && f < 12000)) return null;
+  // WHERE THE HAND WAS. A voice channel is one player, so the note it played
+  // last is where that player's finger still is — and whether the next note is
+  // travelled to or jumped to falls out of that plus the body, with nothing to
+  // decide and no style dial to set. See `slidesTo`.
+  const prev = opts.channel ? A.voices.get(opts.channel) : null;
+  const from = prev && prev.hz && slidesTo(inst, prev.hz, f, when - prev.end) ? prev.hz : 0;
   // ── the recorded body, if there is one and the Lab asked for it ──
   // It bypasses the modelled body deliberately: the recording already contains
   // the instrument's own box, and convolving a second one over it would be
   // putting the sound in two rooms. Everything downstream — the role bus, the
   // stage seat, the room — is shared, so this is the same player either way.
   if (A.sampled) {
-    const rec = playSampled(A, inst, f, when, dur, vel, opts, busFor(A, inst, role), K);
-    if (rec) return rec;
+    const rec = playSampled(A, inst, f, when, dur, vel, opts, busFor(A, inst, role), K, from);
+    if (rec) {
+      // the same bookkeeping the modelled path does at the bottom: stop the
+      // note this player is replacing, and leave the hand where it ended up
+      if (opts.channel) {
+        if (prev && prev.h && prev.h.damp) prev.h.damp(when);
+        A.voices.set(opts.channel, { h: rec, hz: f, end: when + dur });
+      }
+      return rec;
+    }
   }
   const body = bodyFor(A, inst, role);
   const dest = body.input;
@@ -357,7 +371,7 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
     // built in musicDriven.js: a sine through the mechanism's own nonlinear
     // valve, so the harmonics are MADE by the drive rather than read from a
     // table, plus turbulence shaped by the same bore as the tone.
-    ? playDriven(A, inst, f, when, dur, vel, dest, { seed: opts.seedFor || 1, expressive: opts.expressive })
+    ? playDriven(A, inst, f, when, dur, vel, dest, { seed: opts.seedFor || 1, expressive: opts.expressive, from })
     // Everything excited by one blow is built in musicImpulse.js: the modes
     // are driven by the blow itself, so how hard, with what, and where all
     // shape the spectrum instead of being painted on with exponents.
@@ -370,9 +384,10 @@ export function playNote(A, inst, freq, when, dur, vel = 0.4, opts = {}) {
   // and lets everything else ring; that selective damping is why ringing
   // instruments sound full instead of muddy.
   if (opts.channel) {
-    const prev = A.voices.get(opts.channel);
-    if (prev && prev.damp) prev.damp(when);
-    A.voices.set(opts.channel, handle);
+    if (prev && prev.h && prev.h.damp) prev.h.damp(when);
+    // and the channel remembers WHERE the hand ended up and WHEN it got free,
+    // which is all the next note needs to know whether it can travel
+    A.voices.set(opts.channel, { h: handle, hz: f, end: when + dur });
   }
   return handle;
 }

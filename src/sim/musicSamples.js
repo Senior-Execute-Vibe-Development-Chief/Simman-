@@ -24,7 +24,7 @@
 // them.
 
 import { SAMPLE_BANK, NAMED_BANK } from "./musicSampleManifest.js";
-import { MATERIALS, dampTime, radiatedLevel } from "./musicInstruments.js";
+import { MATERIALS, dampTime, radiatedLevel, slideSecs } from "./musicInstruments.js";
 
 /**
  * ONE LEVEL CONVENTION FOR EVERY RECORDING, measured here rather than assumed.
@@ -43,14 +43,31 @@ import { MATERIALS, dampTime, radiatedLevel } from "./musicInstruments.js";
  * instrument.
  */
 function levelOf(buf) {
-  let peak = 0;
-  for (let c = 0; c < buf.numberOfChannels; c++) {
-    const d = buf.getChannelData(c);
-    // every 7th frame: a peak estimate does not need every sample, and a bank
-    // of three hundred buffers is decoded while somebody is waiting
-    for (let i = 0; i < d.length; i += 7) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+  const d = buf.getChannelData(0);
+  let peak = 0, sum = 0, n = 0;
+  // every 7th frame: an estimate does not need every sample, and three hundred
+  // buffers are decoded while somebody is waiting
+  for (let i = 0; i < d.length; i += 7) {
+    const v = d[i], a = v < 0 ? -v : v;
+    if (a > peak) peak = a;
+    sum += v * v; n++;
   }
-  return peak > 1e-5 ? 0.97 / peak : 1;
+  const rms = n ? Math.sqrt(sum / n) : 0;
+  if (rms < 1e-5) return 1;
+  // ENERGY, NOT PEAK. Normalising to peak is the wrong comparison between a
+  // sustained body and a decaying one, and it is what made the recorded path
+  // loud and squashed: a plucked note's peak is its attack and its energy sits
+  // some twenty decibels under that, while a bagpipe drone sits three decibels
+  // under its peak for the whole note. Levelled by peak, every sustained body
+  // therefore arrived far louder than every struck one — measured, the Celtic
+  // bench lost eight decibels of crest factor against the modelled path (12.8
+  // against 20.6) and ran fourteen decibels hotter, which is the limiter
+  // working rather than the music being loud.
+  //
+  // A listener hears energy, so energy is what is matched. The peak guard is
+  // only to stop a very transient body — a clave, a clap — from being pushed
+  // into the ceiling by an RMS that its own decay makes meaningless.
+  return Math.min(0.15 / rms, 0.99 / Math.max(peak, 1e-4));
 }
 
 /**
@@ -149,7 +166,7 @@ function pick(entries, f) {
  * Play one note off a recording. Same signature and same handle as `playNote`,
  * so the caller does not know or care which path it got.
  */
-export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke) {
+export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke, from = 0) {
   const b = sampledFor(A, inst);
   if (!b) return null;
   const mat = MATERIALS[inst.mat] || MATERIALS.wood;
@@ -164,8 +181,19 @@ export function playSampled(A, inst, freq, when, dur, vel, opts, dest, stroke) {
   // an unpitched body is not transposed to the note — it is struck, and where
   // the stroke lands changes it a little, which is what the stroke does below
   const rate = b.unpitched ? 1 : freq / one.hz;
-  src.playbackRate.value = Math.max(0.06, Math.min(16, rate * (stroke ? stroke.pitch : 1)))
-    * (1 + inst.detune);
+  const target = Math.max(0.06, Math.min(16, rate * (stroke ? stroke.pitch : 1))) * (1 + inst.detune);
+  src.playbackRate.value = target;
+  // TRAVELLING TO THE NOTE. `from` is where this player's hand already was —
+  // see `slidesTo`, which decides whether the contact was ever broken. Sliding
+  // a recording means sliding the whole body with it, which is exactly what a
+  // real slide does: the resonances move too, because the string is being
+  // shortened rather than a different string being sounded.
+  if (from > 0 && !b.unpitched) {
+    const startRate = Math.max(0.06, Math.min(16, target * (from / freq)));
+    const secs = Math.min(slideSecs(from, freq), Math.max(0.02, dur * 0.5));
+    src.playbackRate.setValueAtTime(startRate, when);
+    src.playbackRate.exponentialRampToValueAtTime(target, when + secs);
+  }
 
   // A DRIVEN BODY HOLDS THE NOTE. The bank ships a couple of seconds and the
   // music asks for ten, so a sustain loops inside its own steady state — after
