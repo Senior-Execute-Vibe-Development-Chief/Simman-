@@ -957,12 +957,30 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   const ST = strataOf(music, E, G, SLOTS, spb);
   const seed = hash32(music.people.seed, "amb", occ);
   const ev = [];
-  const audible = (need) => S.sec.thin * intimacy >= need;
+  // WHO IS PLAYING IS A QUESTION OF WHO HAS TURNED UP, and it is two facts,
+  // not seven numbers. HOW MANY: `thin` is already the fraction of the ensemble
+  // a section calls for, so the seats are that fraction of the parts — a
+  // statement is a couple of players and the peak is everybody. WHICH ONES:
+  // centrality. The body at the middle of a tradition plays throughout; the
+  // fringe body comes in for the climax and drops out again, which is what an
+  // ensemble audibly does. The melody keeps its seat whatever happens, because
+  // a piece without its tune is not thinner, it is missing.
+  //
+  // This replaces seven hand-picked thresholds (0.3, 0.55, 0.5, 0.25, 0.45,
+  // 0.7, 0.35) none of which meant anything on its own, and it is what makes
+  // the density arc REAL: the piece gets busier because more people are
+  // playing, not because one player speeds past what hands can do.
+  const roster = STRATA.filter(r => ST[r] && ST[r].inst)
+    .sort((a, b) => ST[b].inst.weight - ST[a].inst.weight);
+  const seats = Math.max(1, Math.ceil(roster.length * Math.min(1, S.sec.thin * intimacy)));
+  const onStage = new Set(["lead",
+    ...roster.filter(r => r !== "lead").slice(0, Math.max(0, seats - 1))]);
+  const audible = (role) => onStage.has(role);
 
   // THE MARK. One stroke where the cycle turns, left to ring, and the LOUDEST
   // event in the cycle — a punctuating body is loud precisely because it is
   // rare. It used to be the quietest thing in the bar.
-  if (E.marks && E.marks.length && audible(0.3)) {
+  if (E.marks && E.marks.length && audible("mark")) {
     const levels = Math.min(E.marks.length, S.sec.dens > 2 ? 3 : 2);
     for (const c of colotomy(SLOTS, G.div, levels)) {
       const k = E.marks[Math.min(c.level, E.marks.length - 1)];
@@ -979,7 +997,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // one sounds, so a slow core is short events at long intervals, and
   // rendering it as long ones is the single most audible way to make this
   // music sound moody instead of driven.
-  if (ST.core && audible(0.55)) {
+  if (ST.core && audible("core")) {
     // AND THE CORE SLOWS. This is the part of irama that surprises: as the
     // elaboration multiplies, the skeleton it hangs on STRETCHES rather than
     // keeping pace, so the piece gets denser and more spacious at once. Both
@@ -1051,7 +1069,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // continuously. This is where the music lives in every tuned-metal tradition
   // and the engine simply did not have it — implement the gong and the core
   // and leave this out and you have left out most of the onsets.
-  if (ST.elab && audible(0.5) && ST.elab.k !== (ST.lead && ST.lead.k)) {
+  if (ST.elab && audible("elab") && ST.elab.k !== (ST.lead && ST.lead.k)) {
     // AND IT SUBDIVIDES. One note per grid slot is a ceiling the elaborating
     // instruments of these traditions go straight through: a Javanese peking
     // plays two, four, eight or sixteen notes to a beat of the core melody,
@@ -1060,7 +1078,22 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     // wooden one ten — so the subdivision asks and the physics answers.
     const sub = S.sec.dens >= 8 ? 4 : S.sec.dens >= 4 ? 2 : 1;
     const N = SLOTS * sub;
-    const n = Math.max(2, Math.min(Math.round(ST.elab.n * sub * Math.min(1, 0.3 * S.sec.dens)), N - 1));
+    // THE SUBDIVISION ASKS AND THE PHYSICS ANSWERS — which is what the note
+    // above has always claimed and what the code did not do. `ST.elab.n` is
+    // already min(what the body allows, what the part wants); multiplying it by
+    // `sub` threw the first half of that away, and the ceiling left standing was
+    // the GRID, not the player. Measured over sixteen hundred people-bars, 30%
+    // asked the elaborating instrument to play faster than its own body can
+    // articulate — a stone bar set that clears 1.8 notes a second asked for 7.3,
+    // and a stopped pipe that clears ten asked for 23.6, which is past any human
+    // tongue on any instrument.
+    // And speeding the elaborator up is not how irama works. The elaborating
+    // player keeps their own pace; it is the CORE that stretches underneath them,
+    // which is what multiplies the density RATIO while everyone goes on playing
+    // at a human speed. The core already stretches, sixty lines above.
+    const n = Math.max(2, Math.min(
+      Math.round(ST.elab.n * sub * Math.min(1, 0.3 * S.sec.dens)),
+      ST.elab.n, N - 1));
     const e = euclid(n, N);
     let j = 0;
     for (let s = 0; s < N; s++) {
@@ -1083,7 +1116,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // against it. A held pitch under a line that is barely ornamented is not a
   // drone tradition, it is a held pitch — so the drone appears where the melody
   // is active enough to need one.
-  if (ST.drone && music.texture.kind !== "monophony" && audible(0.25)
+  if (ST.drone && music.texture.kind !== "monophony" && audible("drone")
       && music.texture.ornament * S.sec.orn > 0.3) {
     const every = Math.max(1, Math.round(SLOTS / ST.drone.n));
     const fifth = music.melody.structural[1] ?? 2;
@@ -1093,20 +1126,20 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
         vel: ST.drone.vel * (0.55 + 0.45 * O.drone) * (j % 2 ? 0.7 : 1), role: "pad" });
     }
   }
-  if (ST.bass && music.texture.size >= 2 && audible(0.45)) {
+  if (ST.bass && music.texture.size >= 2 && audible("bass")) {
     for (const b of bassLine(music, G, SLOTS, fin, S.sec.ist, seed)) {
       ev.push({ b: slotBeat(G, b.s, R.swing), dur: b.beats * 0.72, inst: ST.bass.k, deg: b.deg,
         oct: -2, vel: ST.bass.vel, role: "bass", damped: true });
     }
   }
-  if (ST.ost && music.texture.size >= 3 && audible(0.7)) {
+  if (ST.ost && music.texture.size >= 3 && audible("ost")) {
     const n = Math.round(ST.ost.n * Math.min(1, S.sec.dens / 2));
     for (const o of ostinato(music, G, SLOTS, fin, n, seed)) {
       ev.push({ b: slotBeat(G, o.s, R.swing), dur: 0.5, inst: ST.ost.k, deg: o.deg, oct: -1,
         vel: ST.ost.vel * 0.7, role: "ost", damped: true });
     }
   }
-  if (ST.pulse && O.perc > 0.15 && audible(0.35)) {
+  if (ST.pulse && O.perc > 0.15 && audible("pulse")) {
     const hands = Math.max(1, Math.min(4, Math.round(1 + music.texture.size * 0.55 * O.perc * S.sec.thin)));
     drumEnsemble(music, G, SLOTS, seed, hands, R.density * S.sec.dens * 0.5).forEach((part, pi) => {
       for (const h of part.hits) {
