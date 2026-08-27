@@ -121,10 +121,10 @@ function makePattern(music, seed, density, syncopation, bars = 1) {
   const SPAN = G.slots * bars;
   const wAt = (s) => G.w[s % G.slots];
   const roll = (t) => hash32(seed >>> 0, t) / 4294967296;
-  const on = new Set();
+  const on = new Set(), downbeats = new Set();
   for (let b = 0; b < bars; b++) {
     let acc = 0;
-    for (const g of G.groups) { on.add(b * G.slots + acc * G.div); acc += g; }   // every downbeat
+    for (const g of G.groups) { on.add(b * G.slots + acc * G.div); downbeats.add(b * G.slots + acc * G.div); acc += g; }
   }
   // the rest, spread as evenly as possible ACROSS THE WHOLE PHRASE — which is
   // what lets one bar of it differ from the next instead of every bar being
@@ -188,6 +188,38 @@ function makePattern(music, seed, density, syncopation, bars = 1) {
   }
   // rests: a line that never stops speaking has no phrases in it
   const rested = notes.filter((n, i) => i === 0 || wAt(n.s) >= 0.5 || roll("r" + n.s) > 0.24);
+
+  // DENSITY DECIDES HOW MANY NOTES; THE METRICAL RULES DECIDE WHICH ONES.
+  //
+  // Four stages sit between the tradition's stated density and the line that
+  // comes out, and every one of them SUBTRACTS: the offbeat cull drops weak
+  // slots, a long value swallows the onsets beneath it, and the rest rule
+  // takes a quarter of what is left. Each is justified on its own and each
+  // was tuned on its own, so compounded they took the density down to about a
+  // third of what was asked — measured, a people asking for 0.9 got 3.4 notes
+  // to the bar and one asking for 0.28 got a note every three seconds, which
+  // is slower than any music anyone plays. The stated density never survived
+  // to the output, so it did not mean anything.
+  //
+  // Closing the loop is what makes it mean something. The culls still choose
+  // WHICH onsets go — that is where the metre and the tradition's feel live —
+  // but if they have taken the line below what the density asked for, the
+  // strongest of the dropped slots come back, strongest first.
+  const target = Math.min(SPAN, Math.round(SPAN * Math.min(0.85, density * 0.55)) + downbeats.size);
+  if (rested.length < target) {
+    const have = new Set(rested.map(n => n.s));
+    const back = [];
+    for (let sl = 0; sl < SPAN; sl++) {
+      if (have.has(sl)) continue;
+      if (rested.some(n => sl > n.s && sl < n.s + n.v)) continue;   // still inside a long note
+      back.push(sl);
+    }
+    // strongest first, and ties broken by the same roll the culls used, so the
+    // line a people gets back is still its own line
+    back.sort((a, b) => (wAt(b) - wAt(a)) || (roll("b" + a) - roll("b" + b)));
+    for (const sl of back.slice(0, target - rested.length)) rested.push({ s: sl, v: 1 });
+    rested.sort((a, b) => a.s - b.s);
+  }
   return { grid: G, span: SPAN, bars, onsets: rested.map(n => n.s), notes: rested };
 }
 
@@ -1352,6 +1384,19 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   // pitch to speak of has exactly one job, and letting a pitched part take it
   // first leaves the ensemble with no beat
   const pulse = claim(x => FAM(x.i).vib === "membrane");
+  // AND EVERY OTHER BODY THAT CAN KEEP TIME. A percussion section is several
+  // DIFFERENT bodies — darbūka and riqq, the two drums of a tablā pair, a drum
+  // with clappers and a rattle over it — and the parts written for it are
+  // interlocking, which is the whole point of writing more than one.
+  //
+  // The engine wrote those parts and then gave every one of them to the single
+  // body it had claimed as `pulse`: one drummer with four hands. Everything
+  // else that could keep time fell through every claim in this function and
+  // never played a note — measured, the Arabic riqq, a second frame drum, and
+  // the rattle and scraper this table gained last week were all silent in
+  // every piece, in ensembles of four and five bodies.
+  const perc = rank.filter(x => !taken.has(x.k) && x.i.kind === "struck" && x.i.cap <= 2)
+    .map(x => (taken.add(x.k), x.k));
   const elab = elab0 && !taken.has(elab0.k) ? (taken.add(elab0.k), elab0) : null;
   // ── HETEROPHONY IS EVERY CAPABLE BODY ON THE SAME LINE ──
   //
@@ -1408,7 +1453,7 @@ export function ensembleFor(music, occKey, intimacy = 1) {
   const ost = claim(x => x.i.cap >= 3);
   const voices = Math.max(1, Math.round(music.texture.size * (0.35 + 0.65 * intimacy)));
   return {
-    lead, elab: elab ? elab.k : null, core, drone, bass, ost, pulse, mark, marks, het,
+    lead, elab: elab ? elab.k : null, core, drone, bass, ost, pulse, perc, mark, marks, het,
     voices, occ,
     // It sings unless the occasion is a loud outdoor one, where nothing
     // unamplified carries over the reeds and the drums.
@@ -1581,9 +1626,23 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // without — one line for a monophony, a line and something to hear it
   // against for anything else, which is what the texture's own name asserts —
   // and take the rest of the reduction out of the players' hands instead.
+  // A TRIO CANNOT DROP A THIRD OF ITSELF AND STILL BE A TRIO. Thinning took a
+  // fraction of the WHOLE roster, so a four-body ensemble played two in its
+  // opening and closing sections — proportionally the same cut a seven-body
+  // one takes, and audibly a different thing: the large ensemble thins, the
+  // small one empties. What a small group actually does is play together and
+  // vary its density instead.
+  //
+  // So the players a section can drop are the ones it has to SPARE — over the
+  // minimum the texture needs, which is a line (two of them if the texture is
+  // built on several versions of one) and something keeping time.
   const keep = music.texture.kind === "monophony" ? 1 : 2;
-  const want = roster.length * Math.min(1, S.sec.thin * intimacy);
-  const seats = Math.max(1, Math.min(roster.length, Math.max(keep, Math.round(want))));
+  const floor = Math.min(roster.length, keep + (E.pulse != null ? 1 : 0));
+  const thin = Math.min(1, S.sec.thin * intimacy);
+  const spare = Math.max(0, roster.length - floor);
+  const seats = Math.max(1, Math.min(roster.length, floor + Math.round(spare * thin)));
+  // whatever thinness the seats could not absorb comes out of the dynamics
+  const want = floor + spare * thin;
   const hush = Math.min(1, want / Math.max(1e-6, seats));
   const onStage = new Set(["lead",
     ...roster.filter(r => r !== "lead").slice(0, Math.max(0, seats - 1))]);
@@ -1675,7 +1734,14 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     // a body that cannot keep up plays the metrically strong notes instead —
     // not a simplification imposed on it, just what it has time for
     const share = Math.min(1, rate / Math.max(0.001, asks));
-    const drag = ((inst.kind === "sustain" ? 0.028 : 0.004)
+    // A LAG IS BOUNDED BY THE NOTE IT IS LAGGING BEHIND. Heterophony offsets
+    // the voices; it does not put one of them on the previous note while the
+    // rest have moved on. Twenty-eight milliseconds is a flam at a slow tempo
+    // and a collision at a fast one, and it stayed twenty-eight milliseconds —
+    // so as the lines got denser the same lag started straddling note
+    // boundaries instead of decorating them. A player who is a quarter of the
+    // way to the next note is not lagging, they are wrong.
+    const lag = ((inst.kind === "sustain" ? 0.028 : 0.004)
       * (0.5 + (hash32(seed, "drag", k) % 997) / 997)) / spb;
     let kept = 0;
     for (const e of lead) {
@@ -1685,7 +1751,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
         if (!e.last && !e.strong && hash32(seed, "het" + k, Math.round(e.b * 96)) % 1000 >= share * w * 1000) continue;
       }
       kept++;
-      ev.push({ ...e, inst: k, b: e.b + drag, role: "het",
+      ev.push({ ...e, inst: k, b: e.b + Math.min(lag, e.dur * 0.25), role: "het",
         // A HELD BODY FILLS THE GAP TO THE NEXT NOTE — but only if it is
         // playing the next note. A body too slow for the line drops notes
         // (`share` above); stretching what it kept over the ones it dropped
@@ -1834,11 +1900,28 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     }
   }
   if (ST.pulse && O.perc > 0.15 && audible("pulse")) {
+    // Lowest body takes the first part, which is the one that carries the
+    // downbeat — that ordering is the body's own register, not a rule about
+    // which drum is the "main" one.
+    const section = [ST.pulse.k, ...(E.perc || [])]
+      .map(k => ({ k, i: music.insts[k] }))
+      .filter(x => x.i)
+      .sort((a, b) => (FAM(a.i).low || 200) - (FAM(b.i).low || 200));
+    // HOW MANY PARTS is what the tradition writes; HOW MANY BODIES is what it
+    // has to play them. Those are different numbers, and throttling the parts
+    // to the bodies was wrong in the one case that matters most: a people
+    // whose only percussion is its own hands then played the bell pattern
+    // alone and nothing else, losing the continuous fill that is `drumEnsemble`
+    // part 1 — measured, four fifths of its percussion. A solo player covers
+    // more of the pattern than any one member of a section does, which is
+    // exactly what cycling the parts over the bodies gives.
     const hands = Math.max(1, Math.min(4, Math.round(1 + music.texture.size * 0.55 * O.perc * S.sec.thin)));
+    const play = section;
     drumEnsemble(music, G, SLOTS, seed, hands, R.density * S.sec.dens * 0.5).forEach((part, pi) => {
+      const body = play[pi % play.length];
       for (const h of part.hits) {
-        ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.35, inst: ST.pulse.k, deg: 0,
-          oct: -1 - (pi === 0 ? 1 : 0), vel: h.vel * O.perc * ST.pulse.vel * 2.2,
+        ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.35, inst: body.k, deg: 0,
+          oct: -1, vel: h.vel * O.perc * ST.pulse.vel * 2.2,
           role: "pulse", stroke: h.stroke, voice: pi });
       }
     });
