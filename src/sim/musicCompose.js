@@ -1528,6 +1528,25 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   const spb = 60 / tempo;
   const fin = finalFor(music, occ);
   const ST = strataOf(music, E, G, SLOTS, spb);
+  // A GROUND FIXES THE CENTRE. `S.sec.ist` moves the section's tonal centre
+  // through the mode — the modal alternative to leaping an octave at a seam —
+  // and that is only available to a texture with nothing anchored to the old
+  // centre. A drone IS the centre: a tānpūrā is not retuned mid-piece, and a
+  // line that walks away from its own drone is a line playing against a held
+  // second. A colotomic marker is the same argument from the other end, and a
+  // harder one: a gong or a bell has one pitch and cannot follow anywhere.
+  //
+  // So the two textures that have a ground keep their centre, and the ones
+  // that do not are free to move it. This is why the drone traditions were the
+  // worst of the bench the moment the melody started actually taking `ist`:
+  // the tune moved and the thing it was supposed to be moving against did not.
+  // …and a marker grounds it only if it CANNOT FOLLOW. A gong has one pitch,
+  // so a tradition that punctuates on one cannot move its centre away from it.
+  // A tuned bell set spans octaves and follows anywhere, so it does not ground
+  // anything — treating every punctuating body as an anchor took the centre
+  // change away from the bell-and-chime traditions that can most afford it.
+  const anchored = (E.marks || []).some(k => (music.insts[k] || {}).cap <= 1);
+  const ist = (ST.drone || anchored) ? 0 : S.sec.ist;
   const seed = hash32(music.people.seed, "amb", occ);
   const ev = [];
   // WHO IS PLAYING IS A QUESTION OF WHO HAS TURNED UP, and it is two facts,
@@ -1577,7 +1596,8 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     const levels = Math.min(E.marks.length, S.sec.dens > 2 ? 3 : 2);
     for (const c of colotomy(SLOTS, G.div, levels)) {
       const k = E.marks[Math.min(c.level, E.marks.length - 1)];
-      ev.push({ b: slotBeat(G, c.s, 0), dur: 3.5, inst: k, deg: modeDegree(music, fin),
+      ev.push({ b: slotBeat(G, c.s, 0), dur: 3.5, inst: k,
+        deg: modeDegree(music, fin + ((music.insts[k] || {}).cap > 1 ? ist : 0)),
         oct: -1 - (c.level === 0 ? 1 : 0),
         // each level down is a smaller body and a smaller stroke, sharing the
         // effort the level above spends in one
@@ -1599,7 +1619,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     for (let s = 0; s < SLOTS; s += step) {
       const d = ph.degs[degAt(ph, s)] ?? 0;
       ev.push({ b: slotBeat(G, s, R.swing), dur: Math.min(1.1, step / G.div * 0.6), inst: ST.core.k,
-        deg: modeDegree(music, d + fin + S.sec.ist), oct: -1, vel: ST.core.vel, role: "core", damped: true });
+        deg: modeDegree(music, d + fin + ist), oct: -1, vel: ST.core.vel, role: "core", damped: true });
     }
   }
   // THE LINE — stated plainly first, and filled in later. A statement is the
@@ -1617,7 +1637,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   }
   const lead = layPhrase(music, plain, O, {
     inst: ST.lead ? ST.lead.k : -1, intimacy, oct: Math.round(O.reg) + S.sec.oct,
-    ist: S.sec.ist, orn: music.texture.ornament * S.sec.orn > 0.5,
+    ist, orn: music.texture.ornament * S.sec.orn > 0.5,
     vel: 0.42 * (0.85 + 0.3 * Math.min(1, S.sec.dens / 3)),
   });
   // ── THE OTHER VOICES: everyone else who can carry the line is carrying it ──
@@ -1701,6 +1721,11 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
   // is decided by where the music is going, and its length by how far.
   if (S.last) {
     const nxt = sectionAt(secs, bar + 1);
+    // AND IT ARRIVES WHERE IT IS GOING. The run is a lead-in to the NEXT
+    // section, so it walks into that section's tonal centre, not this one's —
+    // it used to drop the centre entirely and land the line at home while the
+    // section it was leading into was somewhere else.
+    const nist = (ST.drone || anchored) ? 0 : nxt.sec.ist;
     const climb = nxt.sec.oct - S.sec.oct;
     if (climb !== 0 && lead.length >= 3) {
       const steps = Math.max(3, Math.min(lead.length - 1, music.mode.size));
@@ -1710,7 +1735,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
         const e = lead[lead.length - steps + i];
         const mi = Math.round(from + ((to - from) * (i + 1)) / steps);
         e.mi = mi;
-        e.deg = modeDegree(music, mi + fin);
+        e.deg = modeDegree(music, mi + fin + nist);
         // the run is a lead-in, not a cadence: it does not linger
         e.dur = Math.min(e.dur, 1 / G.div * 1.5);
         e.vel *= 0.82 + 0.18 * (i / steps);
@@ -1773,7 +1798,7 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
       const d = lastBefore && Math.abs(next - here) >= 2 ? here + Math.sign(next - here) : here;
       const near = on.some(o => Math.abs(o * sub - s) < sub);
       ev.push({ b: slotBeat(G, s / sub, R.swing), dur: 0.34 / sub, inst: ST.elab.k,
-        deg: modeDegree(music, d + fin + S.sec.ist), oct: Math.round(O.reg) + S.sec.oct,
+        deg: modeDegree(music, d + fin + ist), oct: Math.round(O.reg) + S.sec.oct,
         vel: ST.elab.vel * (near ? 0.6 : 1), role: "elab", damped: true });
     }
   }
@@ -1796,14 +1821,14 @@ export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {})
     }
   }
   if (ST.bass && music.texture.size >= 2 && audible("bass")) {
-    for (const b of bassLine(music, G, SLOTS, fin, S.sec.ist, seed, ph)) {
+    for (const b of bassLine(music, G, SLOTS, fin, ist, seed, ph)) {
       ev.push({ b: slotBeat(G, b.s, R.swing), dur: b.beats * 0.72, inst: ST.bass.k, deg: b.deg,
         oct: -2, vel: ST.bass.vel, role: "bass", damped: true });
     }
   }
   if (ST.ost && music.texture.size >= 3 && audible("ost")) {
     const n = Math.round(ST.ost.n * Math.min(1, S.sec.dens / 2));
-    for (const o of ostinato(music, G, SLOTS, fin, n, seed)) {
+    for (const o of ostinato(music, G, SLOTS, fin + ist, n, seed)) {
       ev.push({ b: slotBeat(G, o.s, R.swing), dur: 0.5, inst: ST.ost.k, deg: o.deg, oct: -1,
         vel: ST.ost.vel * 0.7, role: "ost", damped: true });
     }

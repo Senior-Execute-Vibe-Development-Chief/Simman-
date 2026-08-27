@@ -170,6 +170,33 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02, frameSpe
           }
         }
         cost /= n || 1;
+        // …AND THE MAKER IS ALSO CUTTING. Roughness alone cannot answer this
+        // question, which is the whole reason the search exists: where the
+        // spectrum is sparse the dissonance curve is nearly flat, and worse
+        // than flat, Plomp–Levelt puts its roughness PEAK at a couple of
+        // hundred cents in this register — so for a bar set or a plucked
+        // tongue the least-rough new pitch is one crammed up against a pitch
+        // already there. Measured, that is what came out: scales with degrees
+        // at 130, 260, and a mode with two crawls in it that no one could sing
+        // and the mode search could not avoid, because the scale it chose from
+        // had nothing else to offer.
+        //
+        // What a maker actually does is DIVIDE something — a length of bar, a
+        // bore, a string — into parts they can tell apart. So the same
+        // evenness the mode search already applies to a set of degrees applies
+        // here, where the degrees are made. It is not a floor bolted on: it is
+        // the other half of "cut and listen", and it is why the comment above
+        // can say the search converges on near-equal steps where the timbre is
+        // featureless. Without it, it converged on a cluster.
+        const cs = [...degrees.map(d => d.cents), c].sort((a, b) => a - b);
+        let sum = 0, sum2 = 0;
+        for (let a = 0; a < cs.length; a++) {
+          const step = (a + 1 < cs.length ? cs[a + 1] : frame.cents) - cs[a];
+          sum += step; sum2 += step * step;
+        }
+        const kk = cs.length, mean = sum / kk;
+        const cv = mean > 0 ? Math.sqrt(Math.max(0, sum2 / kk - mean * mean)) / mean : 0;
+        cost *= 1 + EVEN_W * (cv > EVEN_SPREAD ? Math.pow(cv / EVEN_SPREAD - 1, 2) : 0);
         if (cost < bestCost) { bestCost = cost; best = { c, r }; }
       }
       if (!best) break;
@@ -255,7 +282,7 @@ const CRAWL_COST = 0.09;
 // diatonic is 0.26, slendro 0.06, pelog 0.35
 const EVEN_SPREAD = 0.35;
 const EVEN_W = 0.55;
-export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
+export function deriveMode(spec, degrees, size = 5, frameRatio = 2, stepShare = 0.65) {
   const n = degrees.length;
   if (n <= size) return degrees.map((_, i) => i);
   // roughness between two degrees of the set, taken the short way round; the
@@ -325,6 +352,27 @@ export function deriveMode(spec, degrees, size = 5, frameRatio = 2) {
       // the same thing on every spectrum: a set half again past the bound pays
       // a tenth more, one twice past pays half again.
       cost *= 1 + CRAWL_COST * 8 * crawl + EVEN_W * spread;
+      // A SCALE IS SUNG, SO ITS STEPS ARE THE INTERVALS THAT DECIDE IT.
+      // Everything above this line scores the set as a CHORD: the mean
+      // roughness over all fifteen or twenty-one pairs, which is the right
+      // question for a tuning and the wrong one for a mode. A melody almost
+      // never sounds two of its degrees together, and it uses every STEP
+      // constantly — so a step nobody can place is not one of fifteen numbers
+      // to be averaged away, it is a hole the singer falls into in every
+      // phrase. Measured, that is exactly what got through: a mode with two
+      // adjacent 130-cent crawls and a 386-cent gap paid a 1.6% penalty for
+      // it, because the crawl floor is a hard cutoff at 120 and the evenness
+      // term is quadratic from 0.35, and neither of them could see a step that
+      // is simply ROUGH.
+      //
+      // The roughness model already knows. Ask it about the steps, and weight
+      // that against the chord question by how stepwise this tradition's own
+      // melodic motion is — which is already derived, from the same people.
+      let stepCost = 0;
+      for (let a = 0; a + 1 < set.length; a++) stepCost += pair(set[a], set[a + 1]);
+      stepCost /= Math.max(1, set.length - 1);
+      cost = cost * (1 - stepShare) + stepCost * stepShare
+        * (1 + CRAWL_COST * 8 * crawl + EVEN_W * spread);
       if (cost < bestCost) { bestCost = cost; best = combo.slice(); }
       return;
     }

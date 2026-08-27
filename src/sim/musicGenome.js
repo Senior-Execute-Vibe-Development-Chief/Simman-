@@ -315,7 +315,11 @@ export function musicOf(people) {
   const roomInFrame = Math.max(3, Math.floor(scale.frame.cents / 150));
   const modeSize = Math.max(4, Math.min(7, roomInFrame,
     Math.round(3.6 + scale.degrees.length * 0.17 + people.soc.literacy * 1.4)));
-  const modeIdx = deriveMode(spec, scale.degrees, modeSize, scale.frame.ratio);
+  // how stepwise this people's melody is — the same value `melody.step` below
+  // takes, computed here because the MODE is chosen partly by how much its
+  // steps matter, and that is what stepwise motion means
+  const stepShare = 0.62 + (hash32(people.seed, "mus", "step") / 4294967296) * 0.26;
+  const modeIdx = deriveMode(spec, scale.degrees, modeSize, scale.frame.ratio, stepShare);
   const rhythm = rhythmOf(people, insts);
   const texture = textureOf(people, insts);
   const form = formOf(people);
@@ -344,7 +348,7 @@ export function musicOf(people) {
       phraseBeats: (leadWind ? 4 : 6) + (form.literate ? 2 : 0),
       // a tone language cannot set a syllable against its own lexical tone
       toneBound: tone > 0, toneDepth: tone === 2 ? 1.4 : tone === 1 ? 1.15 : 1,
-      step: 0.62 + roll("step") * 0.26,       // stepwise vs leaping motion
+      step: stepShare,                        // stepwise vs leaping motion
       // a breath-led line arches harder than a string-led one, because the
       // arch IS the breath
       arch: (leadWind || texture.kind === "monophony" ? 0.5 : 0.34) + roll("arch") * 0.22,
