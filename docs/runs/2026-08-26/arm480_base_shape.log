@@ -16,3 +16,55 @@
 [peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+=== step 4000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [29s]
+[peopleSim] AGRICULTURE INVENTED at (333,81) (69.8E 29.2N) — the basin farms; a city will rise when its market gathers one (score 7.79)
+[peopleSim] AGRICULTURE INVENTED at (277,80) (27.7E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.74)
+[peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.51)
+
+=== step 8000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [55s]
+
+=== step 12000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [82s]
+
+=== step 16000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [108s]
+[peopleSim] AGRICULTURE INVENTED at (387,72) (110.3E 36.0N) — the basin farms; a city will rise when its market gathers one (score 3.54)
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.07)
+
+=== step 20000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [135s]
+[transHeap] step=21192 cap=2048 peakN=1635 pushes=25690 (0.0MB backing)
+[transHeap] step=21696 cap=65536 peakN=62312 pushes=174257 (0.5MB backing)
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.05)
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+
+=== step 24000  realms=5 (1 vassal)  claimed=0.5%  flows: founded=11 ended=0 seceded=0 shattered=0
+    size km2: P10=53k  MED=76k  P90=263k  MAX=263k  | top1share=38%  max/med=3.5  gini=0.33  lnσ=0.66 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:3  200k-1M:2  1-5M:0  >5M:0
+    SMALL (<100k km2): 3 of 5 (60%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #15 "Dylobfuyaa" 53k km2 mem=3 age=263 org=0.37
+      tiny #144 "Tayok'oyaa" 73k km2 mem=2 age=413 org=0.36
+      tiny #5 "Zyibayamphibtaya" 76k km2 mem=3 age=563 org=0.37
+      tiny #149 "Amosidoikydu" 237k km2 mem=12 age=413 org=0.37
+      tiny #3 "Pephamdoya" 263k km2 mem=6 age=563 org=0.38
+    [191s]
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[transHeap] step=25728 cap=131072 peakN=69549 pushes=200921 (1.0MB backing)

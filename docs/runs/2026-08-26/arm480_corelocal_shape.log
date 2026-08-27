@@ -16,3 +16,57 @@
 [peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
 [popField] worker pool engaged: 4 bands
 [transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+=== step 4000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [28s]
+[peopleSim] AGRICULTURE INVENTED at (333,81) (69.8E 29.2N) — the basin farms; a city will rise when its market gathers one (score 7.79)
+[peopleSim] AGRICULTURE INVENTED at (277,80) (27.7E 30.0N) — the basin farms; a city will rise when its market gathers one (score 6.74)
+[peopleSim] AGRICULTURE INVENTED at (298,76) (43.5E 33.0N) — the basin farms; a city will rise when its market gathers one (score 6.51)
+
+=== step 8000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [54s]
+
+=== step 12000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [80s]
+
+=== step 16000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [106s]
+[peopleSim] AGRICULTURE INVENTED at (387,72) (110.3E 36.0N) — the basin farms; a city will rise when its market gathers one (score 3.54)
+[peopleSim] AGRICULTURE INVENTED at (230,99) (-7.5E 15.8N) — the basin farms; a city will rise when its market gathers one (score 3.07)
+
+=== step 20000  realms=0 (0 vassal)  claimed=0.0%  flows: founded=0 ended=0 seceded=0 shattered=0
+    size km2: P10=0k  MED=0k  P90=0k  MAX=0k  | top1share=0%  max/med=0.0  gini=0.00  lnσ=0.00 (real maps ≈2.0-2.6)
+    histogram  <50k:0  50-200k:0  200k-1M:0  1-5M:0  >5M:0
+    SMALL (<100k km2): 0 of 0 (0%) — real maps: modern 47%, 1500CE-Europe ~80%
+    [133s]
+[transHeap] step=21192 cap=2048 peakN=1635 pushes=25690 (0.0MB backing)
+[transHeap] step=21696 cap=65536 peakN=56914 pushes=193089 (0.5MB backing)
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) stood down — the farming package arrived before it was invented
+[peopleSim] AGRICULTURE INVENTED at (140,140) (-75.0E -15.0N) — the basin farms; a city will rise when its market gathers one (score 1.05)
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) stood down — the farming package arrived before it was invented
+
+=== step 24000  realms=15 (4 vassal)  claimed=2.3%  flows: founded=12 ended=3 seceded=0 shattered=2
+    size km2: P10=11k  MED=92k  P90=733k  MAX=1000k  | top1share=29%  max/med=10.9  gini=0.60  lnσ=1.54 (real maps ≈2.0-2.6)
+    histogram  <50k:6  50-200k:3  200k-1M:5  1-5M:1  >5M:0
+    SMALL (<100k km2): 8 of 15 (53%) — real maps: modern 47%, 1500CE-Europe ~80%
+      tiny #52 "Jediinmemtyopa" 4k km2 mem=1 age=263 org=0.37
+      tiny #197 "Ngàịtlàlǐ" 11k km2 mem=1 age=113 org=0.35
+      tiny #21 "Pizibayaa" 23k km2 mem=1 age=263 org=0.37
+      tiny #62 "Pọ̄ịtrọ́ịkòlěā" 27k km2 mem=1 age=563 org=0.31
+      tiny #11 "Zyoyaghata" 42k km2 mem=2 age=263 org=0.37
+      tiny #155 "Damfapuyaa" 42k km2 mem=2 age=413 org=0.36
+      tiny #13 "Fevvon" 76k km2 mem=1 age=263 org=0.37
+      tiny #128 "Pismosumom" 92k km2 mem=1 age=1013 org=0.40
+    [191s]
