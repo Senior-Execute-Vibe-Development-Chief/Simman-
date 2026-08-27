@@ -47,6 +47,8 @@ export const MATERIALS = {
   gut:    { label: "gut",     decay: 2.4, bright: 0.66, B: 2.0e-5, dens: 0.50, needs: ["hide"] },
   silk:   { label: "silk",    decay: 2.8, bright: 0.60, B: 1.0e-5, dens: 0.45, needs: ["silk"] },
   horn:   { label: "horn",    decay: 0.8, bright: 0.70, B: 0,      dens: 0.60, needs: ["horn"] },
+  // the hand: no ore, no timber, no craft, and everybody has two
+  none:   { label: "hands",   decay: 0.09, bright: 0.55, B: 0,      dens: 0.40, needs: [] },
 };
 
 // ── body families: the physical model → its mode ratios ──────────────────
@@ -113,7 +115,7 @@ export const FAMILIES = {
     body: ["bronze", "iron", "clay"], needs: { metallurgy: 0.55 },
   },
   lamella: {                    // plucked clamped tongue: violently inharmonic upper modes
-    label: "plucked tongues", kind: "pluck", drive: "pluck", cap: 8, low: 147, beta: 0.9, wid: 3, vib: "bar", poly: 2, reso: true,
+    label: "plucked tongues", kind: "pluck", drive: "pluck", cap: 8, low: 147, beta: 0.9, wid: 3, vib: "tongue", poly: 2, reso: true,
     ratios: (n) => LAMELLA.slice(0, n),
     body: ["iron", "bronze", "bamboo"], frame: ["wood", "gourd"], needs: { metallurgy: 0.3 },
   },
@@ -127,6 +129,12 @@ export const FAMILIES = {
     label: "frame drum", kind: "struck", drive: "strike", cap: 1, low: 110, beta: 0.62, wid: 38, vib: "membrane", poly: 1,
     ratios: (n) => MEMBRANE.slice(0, n),
     body: ["hide"], frame: ["wood"], needs: {},
+  },
+  claps: {                      // hands, and the body they are attached to
+    label: "hands", kind: "struck", drive: "strike", cap: 1, low: 200, beta: 0.5, wid: 60,
+    vib: "membrane", poly: 1,
+    ratios: (n) => MEMBRANE.slice(0, n).map(r => r * 2.4),
+    body: ["none"], needs: {},
   },
 };
 
@@ -319,11 +327,43 @@ export function makeInstrument(famId, matId, frameId, seed, register = 0, know =
     // a hand-made resonating tube is never exactly on pitch; better craft,
     // smaller error
     mistune: ((h - 0.5) * 0.02),
-    damped: famId === "barSet",       // gamelan-style keys really are hand-stopped
+    // WHETHER A NOTE CAN BE STOPPED is a fact about the element's mass, not a
+    // family name. A player's free hand lands on the key they are replacing and
+    // lets everything else ring, which is why keyboards of small bars sound
+    // full instead of muddy — and why nobody has ever done it to a hung gong.
+    // A body is played damped when a hand can take it out of the way inside a
+    // note; how fast that actually happens is dampTime(), so a wooden bar
+    // stops dead and a bronze one takes a few tenths.
+    damped: fam.kind !== "sustain" && mat.decay > 0.35 && dampTime({ fam: famId, mat: matId }) < 2,
 
     // a touch of maker-to-maker variance, seeded — two peoples' pipes differ
     detune: (h - 0.5) * 0.012,
     harmonic: isHarmonic(ratios),
+  };
+}
+
+/**
+ * THE VOICE. The one instrument every people has: it costs no ore, no timber
+ * and no craft, which is why the overwhelming majority of the world's music is
+ * sung and why a tradition can exist with no built instrument at all. A people
+ * with nothing else is not an empty ensemble and it is not a drum made out of
+ * timber they do not have — it is somebody singing, and somebody clapping.
+ *
+ * Acoustically it is a driven harmonic source, which is also why it belongs in
+ * the tuning model: a culture's ear is calibrated on the spectrum it hears
+ * most, and the spectrum it hears most is a human throat.
+ */
+export function makeVoice(seed = 0) {
+  const n = 20;
+  const ratios = Array.from({ length: n }, (_, i) => i + 1);
+  // a glottal pulse falls off at roughly twelve decibels per octave
+  const amps = ratios.map(r => Math.pow(r, -1.35));
+  return {
+    id: "voice", fam: "voice", mat: "voice", frame: null, label: "the voice",
+    kind: "sustain", drive: "breath", cap: 24, poly: 1, low: 130,
+    partials: ratios.map((r, i) => ({ r, a: amps[i], d: 0.22 })),
+    reg: 0, reso: false, mistune: 0, damped: false, detune: 0, craft: 1,
+    harmonic: true, weight: 1, raw: 1,
   };
 }
 
@@ -410,13 +450,22 @@ export function definiteness(partials) {
  * their pitches alone would explain — and it is the whole reason a player can
  * stop one and not the other.
  */
-const ELEMENT = { string: 0.02, air: 0, membrane: 0.06, bar: 1, plate: 9 };
+// A clamped-free tongue is not a free-free bar. At the same pitch it is a
+// fraction of the length — that is what its 1 : 6.27 series IS, a very stiff
+// short cantilever — so it is a fraction of the mass, and a thumb stops it
+// where it would not stop a marimba key.
+const ELEMENT = { string: 0.02, air: 0.01, membrane: 0.06, tongue: 0.15, bar: 1, plate: 9 };
 export function dampTime(inst) {
   const m = MATERIALS[inst.mat] || MATERIALS.wood;
   const fam = FAMILIES[inst.fam] || {};
   const f = fam.low || 200;
-  const REF = 0.55 / (400 * 400);                 // a small wooden bar, stopped in ~0.1 s
-  return 0.1 * (ELEMENT[fam.vib] ?? 1) * (m.dens / (f * f)) / REF;
+  // calibration: a hand on a small wooden key silences it in about a fifth of
+  // a second, which is what hand-damping on a xylophone actually sounds like.
+  // A tenth of a SECOND time-constant, the first guess, is a two-thirds-of-a-
+  // second fade — far too slow to be damping at all, and it made every bronze
+  // body come out un-stoppable.
+  const REF = 0.55 / (400 * 400);
+  return 0.03 * (ELEMENT[fam.vib] ?? 1) * (m.dens / (f * f)) / REF;
 }
 
 /**
@@ -435,12 +484,20 @@ export function melodicCapacity(inst) {
   const fam = FAMILIES[inst.fam] || {};
   const def = definiteness(inst.partials);
   // pitches the player can place where the music wants them
-  const reach = Math.min(1, (inst.cap * (fam.tune === "series" ? 0.5 : 1)) / 6);
+  // Pitch REACH is not a threshold to clear. A five-hole pipe and a
+  // fourteen-stop neck are not equally able to carry a line, and capping both
+  // at one puts the pipe over the lute — which would rank the oud, the pipa
+  // and the sitar, the archetypal melody instruments of three continents,
+  // below any pipe at all.
+  const reach = Math.min(1, (inst.cap * (fam.tune === "series" ? 0.5 : 1)) / 9);
   // post-onset control is a fact about the excitation, not a preference: a
   // driven body is under the player's hand for the whole note, a struck one
   // only at its start
+  // Post-onset control SCALES, it does not gate: a plucked note can still be
+  // bent and damped and its attack shaped, so weighting it as harshly as a
+  // struck one wipes out the plucked-string traditions in the other direction.
   const control = inst.drive === "bow" || inst.drive === "breath" || inst.drive === "reed" ? 1
-    : inst.drive === "lip" ? 0.9 : inst.drive === "pluck" ? 0.62 : 0.45;
+    : inst.drive === "lip" ? 0.9 : inst.drive === "pluck" ? 0.82 : 0.5;
   return def * def * reach * control * Math.min(1, articRate(inst) / 2.5);
 }
 
@@ -451,6 +508,14 @@ export function melodicCapacity(inst) {
  * either by dying or by being stopped, whichever comes first.
  */
 export function articRate(inst) {
+  // A DRIVEN body stops when the driver stops, so what limits it is not decay
+  // at all — it is how fast a tongue, a bow arm or a pair of fingers can move,
+  // and that is a fact about people rather than about the instrument. Ten
+  // notes a second is about the ceiling of any human passagework.
+  if (inst.kind === "sustain") return 10;
   const t60 = Math.min(inst.partials[0] ? inst.partials[0].d : 1, dampTime(inst) * 6.907755);
-  return 2 / Math.max(0.05, t60 / 3);
+  // twenty decibels down is when a note stops getting in the way of the next —
+  // and above about a dozen notes a second the limit stops being the
+  // instrument and starts being the hands, for everybody
+  return Math.min(12, 2 / Math.max(0.02, t60 / 3));
 }

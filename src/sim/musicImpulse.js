@@ -37,7 +37,7 @@
 //     its centre silences every even mode. This is the comb that gives a lute
 //     plucked by the bridge its nasal edge and a harp plucked in the middle
 //     its hollow one.
-import { FAMILIES, contactSpectrum, contactTime } from "./musicInstruments.js";
+import { FAMILIES, contactSpectrum, contactTime, dampTime } from "./musicInstruments.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -89,7 +89,10 @@ export function playImpulse(A, inst, f0, when, dur, vel, dest, opts = {}) {
   // uncorrelated partials sum as the square root of their power, so normalise
   // by power and a near-sine body comes out level with a rich one
   const pw = modes.reduce((s, m) => s + m.a * m.a, 0) || 1;
-  const norm = 0.85 / Math.sqrt(pw);
+  // Matched by measurement against the driven voices, which were arriving
+  // nine decibels quieter for the same written velocity — so every struck or
+  // plucked part sat on top of every blown or bowed one.
+  const norm = 0.3 / Math.sqrt(pw);
   const TAU60 = 6.907755;
 
   modes.forEach((m, i) => {
@@ -158,13 +161,18 @@ export function playImpulse(A, inst, f0, when, dur, vel, dest, opts = {}) {
   // `dur` is when the player's hand lands. Physics stays the ceiling — a note
   // can never ring longer than its own decay — but the written length can cut
   // it short, and on a body light enough to stop, it does.
-  if (opts.damped) gate.gain.setTargetAtTime(0.0001, when + dur, 0.11);
+  // How fast a hand takes the sound away is the same physical quantity that
+  // decided whether it could be damped at all: a small wooden key stops in a
+  // tenth of a second, a bronze one takes a few tenths, and a hung bell barely
+  // responds. A single constant here made every body stop identically.
+  const dt = Math.min(0.5, Math.max(0.02, dampTime(inst)));
+  if (opts.damped) gate.gain.setTargetAtTime(0.0001, when + dur, dt);
 
   return {
     damp(at) {
       const t = Math.max(at, when + 0.02);
       gate.gain.cancelScheduledValues(t);
-      gate.gain.setTargetAtTime(0.0001, t, opts.dampTau || 0.13);
+      gate.gain.setTargetAtTime(0.0001, t, Math.min(0.4, Math.max(0.02, dampTime(inst))));
       for (const s of stops) { try { s.stop(t + 0.3); } catch { /* already stopped */ } }
     },
   };

@@ -160,7 +160,12 @@ export function instrumentariumOf(people) {
 
   // a people with nothing else always has its own body: clapping, stamping,
   // and the voice — never an empty ensemble
-  if (!out.length) { const f = makeInstrument("frameDrum", "hide", "wood", people.seed); f.raw = 1; out.push(f); }
+  // A people with nothing to build with is not an empty ensemble — and it is
+  // not a hide drum on a wooden frame either, which is what this used to
+  // fabricate for four cultures in three hundred, every one of which had no
+  // timber. What needs no material at all is the body: somebody sings and
+  // somebody claps.
+  if (!out.length) { const c = makeInstrument("claps", "none", null, people.seed, 0, people.know); c.raw = 1; out.push(c); }
   const maxRaw = Math.max(...out.map(i => i.raw)) || 1;
   for (const i of out) i.weight = Math.max(0.12, i.raw / maxRaw);
   out.sort((a, b) => b.weight - a.weight);

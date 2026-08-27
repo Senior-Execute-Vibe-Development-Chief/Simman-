@@ -41,8 +41,26 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // Role balance, in dB relative to the melody. Without a bus per part every
 // voice lands at the same level and the drum buries the tune.
-const ROLE_DB = { lead: 0, voice: -1, het: -7, bass: -4, pad: -11, ost: -10, pulse: -7, mark: -6 };
-const ROLE_PAN = { lead: 0, voice: 0, het: 0.4, bass: 0, pad: -0.15, ost: -0.35, pulse: 0.25, mark: -0.2 };
+// Balance in dB against the melody. Velocity is HOW HARD A PART IS PLAYED —
+// it drives timbre as well as level, because on every real instrument those
+// are the same gesture — and the bus alone carries mix balance. Doing both
+// with velocity, as this used to, meant the quiet parts were also permanently
+// the dullest ones. And a part with no entry here bypassed the balance
+// altogether and arrived at full level.
+const ROLE_DB = {
+  lead: 0, voice: 1, elab: -7, core: -5, het: -8,
+  bass: -6, pad: -14, ost: -11,
+  // percussion is the drive, not the background — a drum ensemble is what
+  // makes this music powerful rather than moody, and it was mixed as an
+  // afterthought
+  pulse: -2,
+  // loud and rare: a punctuating stroke is the biggest single sound in the
+  // bar precisely because it is the least frequent one — but it rings for
+  // seconds, so what it costs in average level is far more than one note
+  mark: -7,
+};
+const ROLE_PAN = { lead: 0, voice: 0, elab: 0.32, core: -0.22, het: 0.4, bass: 0,
+  pad: -0.15, ost: -0.35, pulse: 0.2, mark: -0.28 };
 const dB = (d) => Math.pow(10, d / 20);
 
 /** Master chain: role buses → limiter → soft clip, with a real room. */

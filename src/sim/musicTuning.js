@@ -1,3 +1,4 @@
+import { FAMILIES, definiteness } from "./musicInstruments.js";
 // ── Tuning, derived from the instruments a people can build ──────────────
 //
 // THE SPINE of the music system, and the reason it obeys the second cardinal
@@ -171,11 +172,29 @@ export function deriveScale(spec, { cap = 7, pull = 0, minDepth = 0.02 } = {}) {
 export function ensembleSpectrum(insts, weights) {
   const spec = [];
   insts.forEach((inst, i) => {
-    const w = weights ? weights[i] : 1;
+    let w = weights ? weights[i] : 1;
     if (!(w > 0)) return;
+    // A BODY TOO VAGUE TO CARRY A LINE IS TOO VAGUE TO TUNE TO, and for the
+    // same reason. Roughness only means something between partials that
+    // actually specify a pitch, so a drumhead's Bessel series and a gong's
+    // plate modes have no business shaping a melodic scale — and they were
+    // shaping it, by as much as a third of a semitone, and in one culture in
+    // twelve a gong or a bell was the ×5 tuning REFERENCE for a scale it was
+    // then banned from playing. Weighting by definiteness removes them for a
+    // stated physical reason instead of by a list of family names.
+    w *= Math.pow(definiteness(inst.partials), 2);
+    if (!(w > 0.004)) return;
+    // AND EACH BODY SOUNDS WHERE IT ACTUALLY SITS. Every instrument used to be
+    // sounded at one fictional 220 Hz unison, which quietly broke the whole
+    // model: roughness is critical-band dependent, so WHERE a body sits
+    // decides which of its intervals are rough, and the engine's own registers
+    // put these bodies two octaves apart. Measured, the pretence moved the
+    // derived scale by a median of 36 cents and moved the frame itself by more
+    // than a quarter-tone in a third of all cultures.
+    const f0 = (FAMILIES[inst.fam] && FAMILIES[inst.fam].low ? FAMILIES[inst.fam].low : 200) * 1.5;
     for (const p of inst.partials) {
-      if (p.a * w < 0.008) continue;
-      spec.push({ f: p.r * 220, a: p.a * w });
+      if (p.a * w < 0.006) continue;
+      spec.push({ f: p.r * f0, a: p.a * w });
     }
   });
   // normalize so curve heights are comparable between peoples

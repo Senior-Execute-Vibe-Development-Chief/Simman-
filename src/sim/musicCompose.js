@@ -29,6 +29,8 @@
 // food balance, offerings at a holy see, a coronation.
 import { hash32 } from "./peopleSim/rng.js";
 import { nPVI } from "./musicGenome.js";
+import { articRate, melodicCapacity, FAMILIES } from "./musicInstruments.js";
+const FAM = (i) => FAMILIES[i.fam] || {};
 
 // `artic` is how much of the gap to the next note a note actually sounds for.
 // `descent` is how strongly breath declination shows. `bright` is which final
@@ -113,22 +115,34 @@ export function euclid(k, n) {
  * independently rolled — which is what makes it a groove rather than a
  * scatter.
  */
-function makePattern(music, seed, density, syncopation) {
+function makePattern(music, seed, density, syncopation, bars = 1) {
   const G = gridOf(music.rhythm);
+  const SPAN = G.slots * bars;
+  const wAt = (s) => G.w[s % G.slots];
   const roll = (t) => hash32(seed >>> 0, t) / 4294967296;
   const on = new Set();
-  let acc = 0;
-  for (const g of G.groups) { on.add(acc * G.div); acc += g; }   // every downbeat
-  // the rest, spread as evenly as possible
-  const want = Math.max(1, Math.round(G.slots * Math.min(0.85, density * 0.55)));
-  const e = euclid(want, G.slots);
-  const rot = Math.floor(roll("rot") * G.slots);
-  for (let s = 0; s < G.slots; s++) if (e[(s + rot) % G.slots]) on.add(s);
-  // a tradition that pushes against the beat keeps one fixed offbeat; one that
-  // does not, drops the weakest slots it happened to land on
-  if (syncopation < 0.25) for (const s of [...on]) if (G.w[s] < 0.5 && roll("d" + s) > syncopation * 3) on.delete(s);
-  acc = 0;
-  for (const g of G.groups) { on.add(acc * G.div); acc += g; }   // …and again, so nothing dropped a downbeat
+  for (let b = 0; b < bars; b++) {
+    let acc = 0;
+    for (const g of G.groups) { on.add(b * G.slots + acc * G.div); acc += g; }   // every downbeat
+  }
+  // the rest, spread as evenly as possible ACROSS THE WHOLE PHRASE — which is
+  // what lets one bar of it differ from the next instead of every bar being
+  // the same bar
+  const want = Math.max(1, Math.round(SPAN * Math.min(0.85, density * 0.55)));
+  const e = euclid(want, SPAN);
+  const rot = Math.floor(roll("rot") * SPAN);
+  for (let s = 0; s < SPAN; s++) if (e[(s + rot) % SPAN]) on.add(s);
+  // A tradition that pushes against the beat keeps its offbeats; one that does
+  // not drops some of them. It used to drop them with probability
+  // 1 − 3·syncopation, which for a people with no timekeeper is eighty-nine
+  // per cent — most of why the median phrase came out two notes long.
+  if (syncopation < 0.25) {
+    for (const s of [...on]) if (wAt(s) < 0.5 && roll("d" + s) > 0.45 + syncopation * 2) on.delete(s);
+  }
+  for (let b = 0; b < bars; b++) {
+    let acc = 0;
+    for (const g of G.groups) { on.add(b * G.slots + acc * G.div); acc += g; }   // …nothing drops a downbeat
+  }
   const onsets = [...on].sort((a, b) => a - b);
   // A NOTE VALUE IS NOT THE GAP TO THE NEXT ONSET. Euclidean patterns are
   // maximally even by construction, so deriving duration from the gap gives
@@ -151,14 +165,16 @@ function makePattern(music, seed, density, syncopation) {
   for (let i = 0; i < onsets.length; i++) {
     const sl = onsets[i];
     if (notes.length && sl < notes[notes.length - 1].s + notes[notes.length - 1].v) continue;  // swallowed
-    const tier = G.w[sl] >= 1 ? "strong" : G.w[sl] >= 0.5 ? "beat" : "weak";
+    const tier = wAt(sl) >= 1 ? "strong" : wAt(sl) >= 0.5 ? "beat" : "weak";
     let v = pickVal(tier, roll("v" + sl));
-    v = Math.min(v, G.slots - sl);
+    // a value may not swallow more than half of what is left of the phrase —
+    // one draw of eight used to eat a whole bar for a tenth of all peoples
+    v = Math.min(v, Math.max(1, Math.floor((SPAN - sl) / 2)), G.slots);
     notes.push({ s: sl, v });
   }
   // rests: a line that never stops speaking has no phrases in it
-  const rested = notes.filter((n, i) => i === 0 || G.w[n.s] >= 0.5 || roll("r" + n.s) > 0.28);
-  return { grid: G, onsets: rested.map(n => n.s), notes: rested };
+  const rested = notes.filter((n, i) => i === 0 || wAt(n.s) >= 0.5 || roll("r" + n.s) > 0.24);
+  return { grid: G, span: SPAN, bars, onsets: rested.map(n => n.s), notes: rested };
 }
 
 // ── the melodic line ─────────────────────────────────────────────────────
@@ -281,23 +297,37 @@ export function phraseBank(music, occKey) {
   if (music[key]) return music[key];
   const O = OCCASIONS[occKey] || OCCASIONS.peace;
   const fin = finalFor(music, occKey);
-  const R = music.rhythm;
-  // ONE motif, on one rhythm. Everything else in the bank is that motif
-  // turned over — so the second phrase answers the first instead of merely
-  // following it.
+  const R = music.rhythm, G = gridOf(R);
+  // A PHRASE IS NOT A BAR. It used to be exactly one metrical cycle, and after
+  // the offbeat cull and the long values that swallow their neighbours, the
+  // median melody came out TWO NOTES LONG. Nothing else could work on top of
+  // that: a two-note line has one interval, so it cannot arch; the dynamic arc
+  // is provably flat (sin(π/4) = sin(3π/4)); and the rule that lands a phrase
+  // on a structural degree rewrites half the melody. Twenty-nine per cent of
+  // pieces came out as a single pitch repeated.
+  //
+  // How long a phrase is was already derived — `melody.phraseBeats`, from how
+  // long a singer's breath is and how the language groups its words — and was
+  // read nowhere in the repo. Read it.
+  const bars = Math.max(2, Math.min(4, Math.round((music.melody.phraseBeats || 6) / G.beats) || 2));
   const seed = hash32(music.people.seed, "ph", occKey);
-  const pat = makePattern(music, seed, Math.min(0.95, R.density * O.density), R.syncopation);
+  const dens = Math.min(0.95, R.density * O.density);
+  const pat = makePattern(music, seed, dens, R.syncopation, bars);
   const motif = phrase(music, seed + 1, pat.onsets.length, 0, music.melody.descent * O.descent);
-  const strong = pat.onsets.map(s => pat.grid.w[s] >= 1);
+  const strong = pat.onsets.map(s => pat.grid.w[s % pat.grid.slots] >= 1);
   const alt = phrase(music, seed + 2, pat.onsets.length, 0, music.melody.descent * O.descent);
   const ops = transformsFor(music.people.soc.literacy);
   const bank = [{ pat, degs: motif, fin, label: "motif" }];
   for (let k = 1; k < 3; k++) {
     const op = ops[hash32(seed, "op", k) % ops.length];
     const M = music.melody, lo = -Math.round(M.reach * 0.34);
-    // Transpose by what the compass actually has room for, in whichever
-    // direction has room — picking an amount first and clamping afterwards
-    // just undoes the transposition on any motif that already reaches the top.
+    // EACH ENTRY GETS ITS OWN RHYTHM. All three used to share one pattern
+    // object, so a "variation" changed pitches over an identical set of
+    // onsets, durations, rests and accents — and since half the pitch
+    // transforms came out as literal copies too, the answering phrase was
+    // frequently the statement. Rhythm is where most of the audible difference
+    // between two phrases lives.
+    const p2 = makePattern(music, seed + 90 * k, dens * (0.85 + 0.3 * (k - 1)), R.syncopation, bars);
     const head = M.reach - Math.max(...motif), foot = Math.min(...motif) - lo;
     const amt = head >= 1 ? Math.min(head, 1 + (hash32(seed, "amt", k) % 2))
       : foot >= 1 ? -Math.min(foot, 1 + (hash32(seed, "amt", k) % 2)) : 0;
@@ -305,16 +335,57 @@ export function phraseBank(music, occKey) {
     const hi = Math.max(...degs), low = Math.min(...degs);
     const shift = hi > M.reach ? M.reach - hi : low < lo ? lo - low : 0;
     if (shift) degs = degs.map(d => d + shift);
-    // however far it wanders, it comes home: the last note is still a
-    // structural degree, so the phrase still sounds finished
-    degs[degs.length - 1] = motif[motif.length - 1];
-    bank.push({ pat, degs, fin, label: op });
+    // However far it wanders it comes home — but only if there is enough
+    // phrase left for an ending to exist. Forcing the last note back onto the
+    // motif's last note is what turned varying the ending into a guaranteed
+    // no-op (it varies only the final notes) and inversion into the identity.
+    if (degs.length >= 4) degs[degs.length - 1] = motif[motif.length - 1];
+    // fit the pitches to whatever rhythm this entry drew
+    const n2 = p2.onsets.length;
+    const fitted = Array.from({ length: n2 }, (_, i) => degs[Math.floor(i * degs.length / n2)]);
+    if (fitted.length >= 4) fitted[fitted.length - 1] = motif[motif.length - 1];
+    bank.push({ pat: p2, degs: fitted, fin, label: op });
   }
   music[key] = bank;
   return bank;
 }
-/** Statement, repeat, answer, return — fixed, so the ear can follow it. */
-const FORM_ORDER = [0, 0, 1, 0, 0, 2, 1, 0];
+
+/**
+ * THE FORM: which phrase, in what order, for how long.
+ *
+ * This was a literal — `[0,0,1,0,0,2,1,0]`, the same eight slots for every
+ * people on every map at every literacy, and the ambient layer read nothing
+ * from `music.form` at all. Two cardinal rules broken at once: the shape of
+ * the music was written down as the answer instead of falling out of the
+ * mechanism that already existed to produce it, and which phrase played was
+ * gated on `bar % 8` — on WHEN it is, not on what the tradition is.
+ *
+ * The mechanism was already there. An oral tradition states a formula and
+ * returns to it, because return is how a thing survives being remembered; a
+ * literate one can depart and not come back the same way, because the line
+ * does not have to be held in anyone's head. So `repetition` decides how often
+ * the statement comes back and `development` decides how far the departures
+ * go, and the LENGTH of the form varies with them too.
+ */
+export function formOrderOf(music) {
+  const F = music.form;
+  const seed = hash32(music.people.seed, "order");
+  const n = Math.max(4, Math.min(16, Math.round(F.sections * F.phrasePerSection * (1 + F.development))));
+  const out = [0];
+  let last = 0;
+  for (let i = 1; i < n; i++) {
+    const r = hash32(seed, "o", i) / 4294967296;
+    // the last slot always comes home
+    if (i === n - 1) { out.push(0); continue; }
+    // a return is due whenever memory says so, and departure is bounded by how
+    // far this tradition develops
+    const home = r < F.repetition * 0.55 + 0.2;
+    if (home) { out.push(0); last = 0; }
+    else out.push(last === 0 ? (r < 0.5 + F.development * 0.4 ? 1 : 2) : (last = last === 1 ? 2 : 1));
+    last = out[i];
+  }
+  return out;
+}
 
 /**
  * The BASS: one note per group head, on the mode's stable degrees, an octave
@@ -323,164 +394,450 @@ const FORM_ORDER = [0, 0, 1, 0, 0, 2, 1, 0];
  * and unanchored — the drone says where home is but never moves, so nothing
  * ever confirms or contradicts it. A bass that steps between stable tones
  * gives the cycle somewhere to go and somewhere to arrive.
+ */// ── the timeline ─────────────────────────────────────────────────────────
+//
+// The pattern the whole ensemble orients to. It was generated as a maximally
+// even (Euclidean) rhythm, which is most of the way there and demonstrably not
+// all of it: of the ten twelve-pulse seven-stroke timelines that traditional
+// music actually uses, a Euclidean generator produces six — they are six of
+// its seven rotations — while its SEVENTH rotation is used nowhere on earth,
+// and four more real patterns are not maximally even at all and it cannot
+// reach them. The son and rumba claves, the two most widespread timelines in
+// the Atlantic world, are among the ones it cannot produce.
+//
+// So do not generate the answer: SEARCH for it, by the properties a timeline
+// has to have. There are only a few hundred candidates and three real
+// constraints, every one of them a measurable property of the pattern rather
+// than a name:
+//
+//   · ODDITY (Arom): no two onsets sit exactly half a cycle apart, so the
+//     pattern cannot be split evenly and the cycle has a direction.
+//   · NEAR-EVENNESS: the onsets are spread about as widely as they can be.
+//     Real timelines occupy the top few evenness classes and nothing below.
+//   · IT MUST NOT AGREE WITH THE BEAT. This is the one the Euclidean
+//     generator has no way to express, because it is a property of the
+//     ROTATION rather than of the pattern, and rotation is exactly what an
+//     algorithm cannot supply. The standard West African bell lands on two of
+//     the four main beats out of seven strokes; that mismatch is the
+//     mechanism, and a timeline that agrees with the beat is just the beat.
+function rhythmOddity(set, n) {
+  const half = n / 2;
+  if (n % 2) return 1;
+  for (const a of set) if (set.has((a + half) % n)) return 0;
+  return 1;
+}
+function evenness(set, n) {
+  const on = [...set].sort((a, b) => a - b), k = on.length;
+  const ideal = n / k;
+  let e = 0;
+  for (let i = 0; i < k; i++) {
+    const gap = ((on[(i + 1) % k] - on[i] + n) % n) || n;
+    e += (gap - ideal) * (gap - ideal);
+  }
+  return e / k;
+}
+/**
+ * The timeline for this people, searched rather than generated. Deterministic:
+ * every people with the same metre and the same density gets the same one, and
+ * a people with a different feel for the beat gets a different one.
  */
-function bassLine(music, occKey) {
-  const key = "_bass:" + occKey;
-  if (music[key]) return music[key];
-  const G = gridOf(music.rhythm), fin = finalFor(music, occKey);
+export function timelineOf(music, G, seed) {
+  const n = G.slots;
+  const k = Math.max(3, Math.min(n - 2, Math.round(n * (0.42 + 0.22 * music.rhythm.syncopation))));
+  const beats = new Set();
+  { let a = 0; for (const g of G.groups) { beats.add(a * G.div); a += g; } }
+  // candidates: every rotation of every near-even necklace, scored
+  let best = null, bestScore = -Infinity;
+  const pick = new Set();
+  const build = (start, chosen) => {
+    if (chosen.length === k) {
+      const set = new Set(chosen);
+      if (!set.has(0)) return;                       // a timeline starts the cycle
+      const ev = evenness(set, n);
+      if (ev > 2.2) return;                          // only the top evenness classes
+      let onBeat = 0;
+      for (const b of beats) if (set.has(b)) onBeat++;
+      // it has to state the downbeat and then disagree with the beat
+      const agree = onBeat / beats.size;
+      const h = hash32(seed, "tl", chosen.join(",")) / 4294967296;
+      const score = -ev * 1.4 - Math.abs(agree - 0.45) * 6 + rhythmOddity(set, n) * 1.1 + h * 0.5;
+      if (score > bestScore) { bestScore = score; best = [...chosen]; }
+      return;
+    }
+    for (let i = start; i < n; i++) { chosen.push(i); build(i + 1, chosen); chosen.pop(); }
+  };
+  build(0, []);
+  if (!best) { const e = euclid(k, n); best = []; for (let i = 0; i < n; i++) if (e[i]) best.push(i); }
+  for (const b of best) pick.add(b);
+  return pick;
+}
+
+
+// ── WHO PLAYS HOW FAST ───────────────────────────────────────────────────
+//
+// The single change that turns this texture into music, and the one the engine
+// had backwards. It organised on SUSTAIN: a body that rang for a long time got
+// a slow, sustained part, so a culture whose best instruments were bronze
+// ended up with a slow moody drift. Every real tradition built on ringing
+// metal does the opposite. In a gamelan the great gong — lowest, loudest,
+// twenty seconds of decay — sounds ONCE per cycle, and over the top of it the
+// small bronze keys run at ten notes a second. The players state the rule
+// flatly: the lowest instruments play most sparsely and the highest play
+// fastest, and the spread inside one ensemble is thirty-two to one.
+//
+// So density is not a style setting, it is a physical limit: a part can play
+// as fast as its own body can get out of the way and no faster. That number
+// already exists — a body's articulation rate, from its ring-down and whether
+// a hand can stop it — and reading density off it produces the stratified
+// texture for free, in both the families the engine got wrong. A hung gong
+// clears a fifth of a note per second, so in an eight-second cycle it gets one
+// stroke; a wooden bar clears ten, so it gets as many as the grid has. Nobody
+// decided that. And because the parts land at different densities, the
+// COMPOSITE fills the cycle even though no single player is playing fast —
+// which is the organising principle of West African drumming and of Balinese
+// interlocking alike.
+//
+// Loudness follows, in the direction that is surprising until it isn't: a
+// player spends about the same effort per cycle whatever their part, so one
+// stroke gets all of it and thirty-two share it. The sparse low things are the
+// loud ones — which is why the biggest gong in the room is also the rarest
+// sound in it, and why intensity in these traditions is built by adding
+// onsets and changing strokes rather than by turning anything up.
+const STRATA = ["mark", "core", "lead", "elab", "bass", "ost", "pulse", "drone"];
+
+export function strataOf(music, E, G, cycleSlots, secPerBeat) {
+  const cycleSecs = (cycleSlots / G.div) * secPerBeat;
+  const out = {};
+  for (const role of STRATA) {
+    const k = E[role];
+    if (k == null) continue;
+    const inst = music.insts[k];
+    if (!inst) continue;
+    const canDo = articRate(inst) * cycleSecs;          // what the body allows
+    // A punctuating body's ring IS its part: it sounds once and fills the
+    // cycle, so what bounds it is not how fast it could be hit but how long it
+    // goes on for.
+    const want = role === "mark" ? Math.max(1, Math.round(cycleSecs / Math.max(1, inst.partials[0].d)))
+      : role === "core" ? cycleSlots / (2 * G.div)
+      : role === "bass" ? G.groups.length * Math.max(1, cycleSlots / G.slots)
+      : role === "drone" ? Math.max(2, cycleSecs / 1.7)
+      : role === "elab" ? cycleSlots
+      : role === "ost" ? cycleSlots / 2
+      : cycleSlots * 0.7;
+    const n = Math.max(1, Math.round(Math.min(canDo, want)));
+    // the same effort, spread over however many strokes it buys — but a
+    // gesture, not a formula: one stroke of a great gong is a whole-body swing
+    // and thirty-two notes on a small key are wrist flicks, and neither is
+    // four times the other
+    out[role] = { k, inst, n, vel: Math.max(0.16, Math.min(0.88, 0.46 / Math.pow(Math.max(1, n) / 6, 0.34))) };
+  }
+  return out;
+}
+
+// ── the cycle ────────────────────────────────────────────────────────────
+/**
+ * How long a cycle a tradition can hold. It has to be trackable with nothing
+ * written down, and what makes it trackable is having a reference to count
+ * against and enough players to share the counting.
+ */
+export function cycleBars(music) {
+  const soc = music.people.soc;
+  const held = 0.5 * soc.literacy + 0.3 * Math.min(1, music.texture.size / 6) + 0.2 * soc.urban;
+  return held > 0.62 ? 4 : held > 0.34 ? 3 : 2;
+}
+
+// ── the shape of a piece ─────────────────────────────────────────────────
+/**
+ * A piece as a run of sections, each with its own density, register and
+ * landing pitch. Nothing used to vary: the same tempo, register, ensemble and
+ * dynamics throughout, and every part except the melody regenerated
+ * byte-identically because it was memoised on the occasion and took no
+ * argument that could change it. Ninety-four per cent of pieces were one
+ * metrical cycle repeated end to end. That is the drone.
+ *
+ * What varies in real music, in the order the evidence puts them:
+ *
+ *   · DENSITY, four- to sixteen-fold, in doublings, while the pulse stays put.
+ *     This is the near-universal: Javanese irama runs 1:2:4:8:16 and SLOWS the
+ *     pulse as it densifies, and measured dhrupad holds its metric tempo in a
+ *     narrow band across a whole concert while the surface rate multiplies by
+ *     the same integers. Tempo is the least universal of the three, so it is
+ *     left alone.
+ *   · THE ENSEMBLE, at every boundary. Timbre is the strongest cue a listener
+ *     has that something changed — stronger than loudness, whose measured
+ *     effect on whether a section reads as new is not distinguishable from
+ *     zero. So parts enter and leave.
+ *   · REGISTER, as an ARCH: up about an octave by two-thirds through and back
+ *     down to close. The melodic arch is one of the few documented
+ *     cross-cultural universals and it holds over a whole piece as well as
+ *     over a phrase — the Persian radif names both ends of it, the climb to
+ *     the oj and the forud that lands home again.
+ *   · WHERE PHRASES END. A modal tradition has no chord changes, so what moves
+ *     instead is the landing tone, while the drone holds the final — and the
+ *     drone holding still is exactly what makes the movement audible.
+ */
+export function sectionsOf(music, occKey) {
+  const F = music.form, O = OCCASIONS[occKey] || OCCASIONS.peace;
+  const seed = hash32(music.people.seed, "form", occKey);
+  const n = Math.max(3, Math.min(7, F.sections + 2));
+  const stable = music.melody.structural;
+  const out = [];
+  for (let s = 0; s < n; s++) {
+    const t = n > 1 ? s / (n - 1) : 0;
+    const climb = Math.min(1, t / 0.72);
+    out.push({
+      label: s === 0 ? "statement" : s === n - 1 ? "close" : `variation ${s}`,
+      // sections are not the same length — equal ones are the loudest single
+      // tell that this is a loop and not a piece
+      cycles: s === 0 ? 1 : (t > 0.55 && t < 0.9 ? 2 : 1 + (hash32(seed, "len", s) % 2)),
+      dens: Math.pow(2, Math.round(2.4 * climb) - (t > 0.82 ? 1 : 0)),
+      oct: Math.round(1.15 * Math.sin(Math.PI * Math.min(1, t / 0.88))),
+      ist: s === 0 || s === n - 1 ? 0
+        : stable[(1 + hash32(seed, "ist", s) % Math.max(1, stable.length)) % stable.length] || 0,
+      // how much of the ensemble is playing: thin at the edges, full at the peak
+      thin: 0.42 + 0.58 * Math.sin(Math.PI * Math.min(1, (t + 0.08) / 1.02)),
+      grade: s === n - 1 ? 2 : 1,
+      orn: O.orn * (0.7 + 0.6 * climb),
+    });
+  }
+  return out;
+}
+/** Which section a given cycle falls in, and how far through it. */
+export function sectionAt(secs, cycle) {
+  const total = secs.reduce((a, s) => a + s.cycles, 0) || 1;
+  let p = ((cycle % total) + total) % total;
+  for (let i = 0; i < secs.length; i++) {
+    if (p < secs[i].cycles) return { sec: secs[i], i, into: p, last: p === secs[i].cycles - 1 };
+    p -= secs[i].cycles;
+  }
+  return { sec: secs[secs.length - 1], i: secs.length - 1, into: 0, last: true };
+}
+
+// ── colotomy ─────────────────────────────────────────────────────────────
+/**
+ * The punctuation. A single ringing body cannot play a line, but it can say
+ * where you are — and that is a NESTED job rather than one stroke. The great
+ * gong closes the whole cycle, the next instrument down quarters it, the next
+ * halves those, and nothing sounds where the level above it sounds. That
+ * nesting is the listener's map of a long cycle, and it costs one event per
+ * level.
+ */
+function colotomy(cycleSlots, div, levels) {
+  const out = [];
+  const taken = new Set();
+  for (let L = 0; L < levels; L++) {
+    // each level down divides the one above it in four, as the nesting in a
+    // real colotomic ensemble does
+    const every = cycleSlots / Math.pow(4, L);
+    if (every < div * 2) break;
+    for (let s = 0; s < cycleSlots; s += every) {
+      const at = Math.round(s);
+      if (taken.has(at)) continue;
+      taken.add(at);
+      out.push({ s: at, level: L });
+    }
+  }
+  return out;
+}
+
+/**
+ * The BASS. It used to tile every bar at a hundred and five per cent with one
+ * note per metrical group, on the same degrees every bar forever — a second
+ * drone, not a bass. It now moves per PHRASE and lands on the section's own
+ * ending tone, so what it does across a piece is the thing a modal tradition
+ * does instead of chord changes.
+ */
+function bassLine(music, G, cycleSlots, fin, ist, seed) {
   const stable = music.melody.structural;
   const out = [];
   let acc = 0, k = 0;
-  for (const g of G.groups) {
-    // home on the first group, a stable neighbour after — the simplest true
-    // harmonic motion there is
-    const deg = k === 0 ? 0 : stable[(k + hash32(music.people.seed, "b", k)) % stable.length] || 0;
-    out.push({ s: acc * G.div, beats: g, deg: modeDegree(music, deg + fin) });
-    acc += g; k++;
+  while (acc * G.div < cycleSlots) {
+    for (const g of G.groups) {
+      const s = acc * G.div;
+      if (s >= cycleSlots) break;
+      // home at the head of the cycle, the section's landing tone at its end,
+      // a stable neighbour between
+      const atEnd = s >= cycleSlots * 0.75;
+      const deg = k === 0 ? 0 : atEnd ? ist
+        : stable[(k + hash32(seed, "b", k)) % stable.length] || 0;
+      out.push({ s, beats: g, deg: modeDegree(music, deg + fin) });
+      acc += g; k++;
+      if (acc * G.div >= cycleSlots) break;
+    }
   }
-  music[key] = out;
   return out;
 }
 
 /**
- * The OSTINATO: a short pitched figure that repeats every cycle. In cyclic
- * traditions this is the organising layer — the part everything else is heard
- * against (the Shona kushaura under its kutsinhira, the timeline under the
- * drums). It is also what makes repetition legible: a listener who has heard
- * the figure twice knows where they are in the cycle.
+ * The OSTINATO: a short figure that repeats, the layer everything else is
+ * heard against. Now takes the section's density, so the part that organises
+ * the cycle also intensifies with it.
  */
-function ostinato(music, occKey) {
-  const key = "_ost:" + occKey;
-  if (music[key]) return music[key];
-  const G = gridOf(music.rhythm), fin = finalFor(music, occKey);
+function ostinato(music, G, cycleSlots, fin, n, seed) {
   const stable = music.melody.structural;
-  const n = Math.min(4, Math.max(2, Math.round(G.beats / 2)));
-  const e = euclid(n, G.slots);
+  const e = euclid(Math.max(2, Math.min(n, cycleSlots - 1)), cycleSlots);
   const out = [];
   let j = 0;
-  for (let s = 0; s < G.slots; s++) {
+  for (let s = 0; s < cycleSlots; s++) {
     if (!e[s]) continue;
-    const deg = stable[(j + hash32(music.people.seed, "os", j)) % stable.length] || 0;
+    const deg = stable[(j + hash32(seed, "os", j)) % stable.length] || 0;
     out.push({ s, deg: modeDegree(music, deg + fin) });
     j++;
   }
-  music[key] = out;
   return out;
 }
 
-// A DRUM IS NOT ONE SOUND. A hand drum speaks at least three ways depending
-// on where and how it is struck: a low open BASS tone from the centre, a
-// mid OPEN tone from the edge, and a bright SLAP. Real percussion writing is
-// built out of the contrast between them — a pattern of identical hits is a
-// metronome, not a drum part. Each stroke here is a real change to the strike:
-// centre strikes excite the low modes and damp the high, edge strikes the
-// reverse, and a slap is a hard, brief contact.
+// A DRUM IS NOT ONE SOUND. A hand drum speaks at least three ways depending on
+// where and how it is struck, and real percussion writing is built out of the
+// contrast between them — a pattern of identical hits is a metronome, not a
+// drum part. Each stroke is a real change to the strike: where the hand lands
+// on the head, how long it stays, and how much of the ring it takes away.
 export const STROKES = {
-  bass: { pitch: 0.62, bright: 0.35, damp: 1.6, vel: 1 },
-  open: { pitch: 1, bright: 0.75, damp: 1, vel: 0.82 },
-  slap: { pitch: 1.5, bright: 1.5, damp: 0.45, vel: 0.9 },
-  ghost: { pitch: 1.1, bright: 0.9, damp: 0.4, vel: 0.34 },
+  bass: { vel: 1 },
+  open: { vel: 0.82 },
+  slap: { vel: 0.9 },
+  ghost: { vel: 0.34 },
 };
 
 /**
- * The percussion ENSEMBLE. Where a people can field more than one player,
- * percussion is not one part played louder — it is several parts INTERLOCKING:
- * each drum keeps its own maximally-even pattern at its own density, offset
- * from the others, and the composite is a groove no single player is playing.
- * That is the organising principle of West and Central African drumming, and
- * it falls out of the Euclidean machinery already here — one pattern per
- * player, different k, different rotation.
+ * The percussion ENSEMBLE.
  *
- * The parts are ranked so the ensemble grows in the order a real one does:
- * the timeline first (it is the reference everyone else hears), then the
- * supporting drum, then the answering drum, then the lead drum that varies.
+ * Percussion is not one part played louder. It is several parts INTERLOCKING,
+ * and the composite is a groove no single player is playing. Three rules,
+ * every one of them from how these ensembles actually work:
+ *
+ *   · THE TIMELINE IS FIXED AND NEVER STOPS. It is the reference everyone else
+ *     hears the cycle through, and in Ewe practice it is the one part that may
+ *     not vary at all while every other part may.
+ *   · THE RATTLE IS DERIVED FROM IT, not generated beside it. Every downstroke
+ *     falls with a bell stroke and every upstroke falls between them, which
+ *     turns a seven-stroke timeline into an eleven-stroke surface with the
+ *     accent marking which is which. That is why rattles energise.
+ *   · THE SUPPORTING DRUMS ARE GENERATED TOGETHER, under a coverage
+ *     constraint, and pitch-stratified — high, middle, low — so their
+ *     composite is heard as a melody nobody is playing. Generating them
+ *     independently gives four parts that collide; generating them jointly
+ *     gives one instrument with four hands.
  */
-function drumEnsemble(music, occKey) {
-  const key = "_drums:" + occKey;
-  if (music[key]) return music[key];
-  const G = gridOf(music.rhythm), R = music.rhythm, O = OCCASIONS[occKey] || OCCASIONS.peace;
-  const seed = hash32(music.people.seed, "drums", occKey);
-  // how many hands there are to spare: percussion players are specialists too
-  const hands = Math.max(1, Math.min(4, Math.round(1 + music.texture.size * 0.55 * O.perc)));
+function drumEnsemble(music, G, cycleSlots, seed, hands, dens) {
+  const line = timelineOf(music, G, seed);
   const parts = [];
-  for (let p = 0; p < hands; p++) {
-    // each player takes a different density, and they are deliberately
-    // co-prime-ish so the composite does not collapse onto one pattern
-    const k = Math.max(2, Math.round(G.beats * (0.4 + 0.28 * p + R.syncopation * 0.5)) + (p % 2));
-    const e = euclid(Math.min(k, G.slots - 1), G.slots);
-    // the anchor drum is not rotated — it must land on the downbeats, because
-    // it is what everyone else hears the beat through
-    const rot = p === 0 ? 0 : (hash32(seed, "rot", p) % G.slots);
-    const slots = new Set();
-    for (let s = 0; s < G.slots; s++) if (e[(s + rot) % G.slots]) slots.add(s);
-    if (p === 0) { let a = 0; for (const g of G.groups) { slots.add(a * G.div); a += g; } }
-    const hits = [];
-    for (const s of [...slots].sort((a, b) => a - b)) {
-      const strong = G.w[s] >= 1;
-      // the lowest-pitched drum anchors the strong beats, the higher ones
-      // answer off them
-      const h3 = hash32(seed, s, p) % 6;
-      const st = p === 0 ? (strong ? "bass" : G.w[s] >= 0.5 ? "open" : "ghost")
-        : p === 1 ? (strong ? "open" : h3 < 2 ? "slap" : h3 < 4 ? "open" : "ghost")
-        : (h3 < 2 ? "slap" : h3 < 3 ? "open" : "ghost");
-      hits.push({ s, stroke: st, vel: (strong ? 0.62 : 0.4) * STROKES[st].vel });
-    }
-    parts.push({ hits, voice: p });
+  const timeline = [];
+  for (let s = 0; s < cycleSlots; s++) {
+    if (!line.has(s % G.slots)) continue;
+    timeline.push({ s, stroke: G.w[s % G.slots] >= 1 ? "bass" : "open", vel: G.w[s % G.slots] >= 1 ? 0.72 : 0.5 });
   }
-  music[key] = parts;
+  parts.push({ hits: timeline, voice: 0, fixed: true });
+
+  if (hands >= 2) {
+    // the rattle: with the bell, then between it
+    const hits = [];
+    for (const t of timeline) hits.push({ s: t.s, stroke: "open", vel: 0.44 });
+    for (let s = 0; s < cycleSlots; s++) {
+      if (line.has(s % G.slots)) continue;
+      if (hash32(seed, "rat", s) % 5 === 0) continue;      // not quite every gap
+      hits.push({ s, stroke: "ghost", vel: 0.24 });
+    }
+    parts.push({ hits: hits.sort((a, b) => a.s - b.s), voice: 1, fixed: true });
+  }
+
+  // the supporting drums, filled JOINTLY: each takes slots the others left, so
+  // the composite covers the cycle and no two players collide
+  const covered = new Set(timeline.map(t => t.s));
+  for (let p = 2; p < hands + 1; p++) {
+    const hits = [];
+    const target = Math.max(2, Math.round(cycleSlots * dens * (0.34 + 0.12 * p) / 2));
+    const e = euclid(Math.min(target, cycleSlots - 1), cycleSlots);
+    const rot = hash32(seed, "rot", p) % cycleSlots;
+    for (let s = 0; s < cycleSlots; s++) {
+      if (!e[(s + rot) % cycleSlots]) continue;
+      if (covered.has(s) && hash32(seed, "dup", s * 7 + p) % 4 !== 0) continue;   // interlock, don't double
+      covered.add(s);
+      const w = G.w[s % G.slots];
+      const h = hash32(seed, s, p) % 6;
+      hits.push({
+        s,
+        stroke: w >= 1 ? "bass" : h < 2 ? "slap" : h < 4 ? "open" : "ghost",
+        vel: (w >= 1 ? 0.6 : 0.38),
+      });
+    }
+    if (hits.length) parts.push({ hits, voice: p - 1, fixed: false });
+  }
   return parts;
 }
 
-/** Assign instruments to roles. Which body leads is an occasion question — a
- *  war band does not lead with the softest thing it owns. */
-// A gong or a big bell is not a part. Its modes are inharmonic AND long —
-// a bell's tierce and quint ring for seconds, which is what a bell is for —
-// so a line played on one turns into a standing cloud that fights every note
-// after it. What such an instrument does in every tradition that has one is
-// MARK: a single stroke at the head of the cycle, giving the form its
-// punctuation and letting the ring be the point instead of an accident.
-const MARKERS = new Set(["gong", "bell"]);
-
+/** Assign instruments to parts. */
 export function ensembleFor(music, occKey, intimacy = 1) {
   const occ = OCCASIONS[occKey] || OCCASIONS.peace;
   const insts = music.insts;
-  const idx = (pred) => { const i = insts.findIndex(pred); return i < 0 ? null : i; };
-  const partable = (i) => !MARKERS.has(i.fam);
-  const loud = idx(i => i.fam === "horn" || i.fam === "reedPipe");
-  const sustain = idx(i => i.kind === "sustain" && partable(i));
-  const marker = idx(i => MARKERS.has(i.fam));
-  // who can actually carry a tune: a natural horn is loud and prestigious but
-  // has six notes, so it leads fanfares, not melodies
-  const melodic = insts.map((i, k) => ({ i, k })).filter(o => o.i.cap >= 5 && partable(o.i))
-    .sort((a, b) => (b.i.cap * (0.5 + b.i.weight)) - (a.i.cap * (0.5 + a.i.weight)));
-  const lead = occ.lead === "loud" && loud != null ? loud
-    : occ.lead === "sustain" && sustain != null ? sustain
-    : melodic.length ? melodic[0].k : 0;
-  const droneI = insts.findIndex((i, k) => k !== lead && partable(i) && (i.kind === "sustain" || i.partials[0].d > 3));
-  const pulse = idx(i => i.fam === "drum" || i.fam === "frameDrum");
-  const voices = Math.max(1, Math.round(music.texture.size * (0.35 + 0.65 * intimacy)));
-  // the bass wants a body that speaks low and holds; the ostinato wants one
-  // that can repeat a figure cleanly — a plucked or struck body, not a
-  // sustaining one that would smear it
-  // CLAIM AND REMOVE. Three independent findIndex scans from position zero
-  // gave the pad and the bass the same instrument in the large majority of
-  // ensembles — at the same register, on the same downbeat, so they fused into
-  // one thick immovable block instead of two parts.
-  const taken = new Set([lead, pulse, marker].filter(k => k != null));
+  // WHAT CAN CARRY A TUNE is a property of the body, derived in
+  // musicInstruments.js from how definite its pitch is, how many pitches the
+  // player can place, whether the note can be shaped after it starts, and
+  // whether one note clears before the next arrives. Ranking on that instead
+  // of on pitch count and prestige is what stops a culture playing melodies on
+  // a gong — and it does so because a gong physically cannot, not because
+  // anything here knows what a gong is.
+  const rank = insts.map((i, k) => ({ i, k, m: melodicCapacity(i), r: articRate(i) }))
+    .sort((a, b) => b.m - a.m);
+  const taken = new Set();
   const claim = (pred) => {
-    const k = insts.findIndex((i, j) => !taken.has(j) && partable(i) && pred(i));
-    if (k >= 0) taken.add(k);
-    return k < 0 ? null : k;
+    const o = rank.find(x => !taken.has(x.k) && pred(x));
+    if (o) taken.add(o.k);
+    return o ? o.k : null;
   };
-  const drone = droneI >= 0 && !taken.has(droneI) ? (taken.add(droneI), droneI) : claim(i => i.kind === "sustain" || i.partials[0].d > 2.5);
-  const bass = claim(i => i.partials[0].d > 1.2 || i.kind === "sustain") ?? claim(() => true);
-  const ost = claim(i => i.cap >= 3 && i.kind !== "sustain") ?? claim(i => i.cap >= 3);
-  const second2 = melodic.find(o => o.k !== lead && !taken.has(o.k))?.k ?? null;
-  return { lead, drone, pulse, second: second2, voices, occ, marker, bass, ost };
+  // An occasion does not just turn the volume up: it picks WHO PLAYS. A
+  // gamelan's loud repertoire and its soft repertoine use different subsets of
+  // the same instruments and are led by different ones — the soft style by the
+  // quietest, most flexible thing in the room and by the singer, the loud
+  // style by bronze and drums with the voice left out. And the loud melodic
+  // lead the world over is a double reed over a drum, never an idiophone.
+  const loud = occ.lead === "loud";
+  // THE VOICE LEADS UNLESS SOMETHING CAN BE HEARD OVER IT. That is not a
+  // preference, it is what the record says: societies with a rich vocal
+  // tradition and no melodic instrument at all are common, and societies with
+  // melodic instruments and no singing are unattested. So the instrument taken
+  // here is the one that plays WITH the singer — and a body that cannot hold a
+  // line does not get promoted to holding one just because nothing better is
+  // in the room. When nothing clears the bar, nobody plays the tune and
+  // somebody sings it, which is the commonest ensemble on earth.
+  const lead = loud
+    ? (claim(x => x.i.drive === "reed" || x.i.drive === "lip") ?? claim(x => x.m > 0.2))
+    : claim(x => x.m > 0.45);
+  // the elaborating part is the FASTEST pitched body, not the second-best one
+  // the elaborating part is the FASTEST pitched body — but not one whose
+  // pitches are its own harmonic series rather than the player's choice: a
+  // natural horn cannot paraphrase a melody, it can only sound its tube
+  const elab0 = rank.filter(x => !taken.has(x.k) && x.m > 0.08 && FAM(x.i).tune !== "series")
+    .sort((a, b) => b.r - a.r)[0];
+  // the timekeeper is claimed first among the accompaniment: a body with no
+  // pitch to speak of has exactly one job, and letting a pitched part take it
+  // first leaves the ensemble with no beat
+  const pulse = claim(x => FAM(x.i).vib === "membrane");
+  const elab = elab0 && !taken.has(elab0.k) ? (taken.add(elab0.k), elab0) : null;
+  const core = claim(x => x.m > 0.08 && x.r < 6);
+  // A body that cannot be re-articulated is not a part. What it does in every
+  // tradition that has one is MARK — one stroke where the cycle turns, left to
+  // ring, and the loudest thing in the bar precisely because it is the rarest.
+  // A NESTED PUNCTUATION NEEDS NESTED BODIES. A colotomic ensemble marks the
+  // cycle, then its quarters, then their quarters — on gongs of different
+  // sizes, never on one gong struck sixteen times. So collect however many
+  // un-articulable bodies there are, largest first, and mark exactly as many
+  // levels as there are bodies to mark them with.
+  const marks = [];
+  for (let i = 0; i < 3; i++) { const k = claim(x => x.r < 1.6); if (k == null) break; marks.push(k); }
+  const mark = marks.length ? marks[0] : null;
+  const drone = claim(x => x.i.kind === "sustain" || x.i.partials[0].d > 2.5);
+  const bass = claim(x => x.i.partials[0].d > 1.2 || x.i.kind === "sustain");
+  const ost = claim(x => x.i.cap >= 3);
+  const voices = Math.max(1, Math.round(music.texture.size * (0.35 + 0.65 * intimacy)));
+  return {
+    lead, elab: elab ? elab.k : null, core, drone, bass, ost, pulse, mark, marks,
+    voices, occ,
+    // It sings unless the occasion is a loud outdoor one, where nothing
+    // unamplified carries over the reeds and the drums.
+    sing: !loud && intimacy > 0.25,
+  };
 }
-
-/** Frequency of a scale degree. `oct` counts FRAME repetitions — which is not
- *  always an octave, and that is the point. */
 export function degreeHz(music, tonicHz, deg, oct = 0) {
   const d = music.scale.degrees;
   const n = d.length;
@@ -493,7 +850,7 @@ export function degreeHz(music, tonicHz, deg, oct = 0) {
 function layPhrase(music, ph, O, opts) {
   const { pat, degs, fin } = ph;
   const G = pat.grid, R = music.rhythm;
-  const { at = 0, inst, vel = 0.36, intimacy = 1, role = "lead", oct = 0, syls = null, sylFrom = 0 } = opts;
+  const { at = 0, inst, vel = 0.36, intimacy = 1, role = "lead", oct = 0, syls = null, sylFrom = 0, ist = 0 } = opts;
   const ev = [];
   const notes = pat.notes || pat.onsets.map(s => ({ s, v: 1 }));
   const n = notes.length;
@@ -501,7 +858,7 @@ function layPhrase(music, ph, O, opts) {
     const s = nt.s;
     const b = slotBeat(G, s, R.swing);
     const span = Math.max(0.12, nt.v / G.div);
-    const strong = G.w[s] >= 1;
+    const strong = G.w[s % G.slots] >= 1;
     const mi = degs[i % degs.length];
     const last = i === n - 1;
     // a phrase LANDS: its final note is held past the end of the cycle, and
@@ -514,15 +871,15 @@ function layPhrase(music, ph, O, opts) {
     // computed and never read), and the arc of the phrase — which rises to a
     // peak and falls away, tilted downward by the same breath declination the
     // pitch already uses.
-    const metre = strong ? 1 : G.w[s] >= 0.5 ? 0.62 : 0.4;
+    const metre = strong ? 1 : G.w[s % G.slots] >= 0.5 ? 0.62 : 0.4;
     const stress = strong ? R.accent : 1 / Math.sqrt(R.accent);
     const arc = (0.72 + 0.34 * Math.sin(Math.PI * (i + 0.5) / n)) * (1 - 0.12 * O.descent * (i / Math.max(1, n - 1)));
     const e = {
-      b: at + b, dur: len, inst, mi, deg: modeDegree(music, mi + fin), oct, role,
+      b: at + b, dur: len, inst, mi, deg: modeDegree(music, mi + fin + (last ? ist : 0)), oct, role,
       // the melody is the thing being listened to, so it sits on top of the
       // texture the other layers make
       vel: vel * 1.5 * metre * stress * arc * (0.65 + 0.35 * intimacy),
-      last,
+      last, strong,
     };
     // An ornament is a quick neighbour just ahead of the note — a MODE step,
     // so it decorates the line instead of smearing a microtone across it, and
@@ -541,153 +898,183 @@ function layPhrase(music, ph, O, opts) {
  * One cycle of ambience, in BEATS from the cycle start, so a scheduler can
  * keep asking for the next one forever.
  */
-export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0, seed = 0 } = {}) {
+/**
+ * ONE CYCLE of ambience, in beats from the cycle start, so a scheduler can
+ * keep asking for the next one forever. A cycle is a whole PHRASE, not a bar:
+ * looping one bar is literally what "an infinitely repeating block" is.
+ */
+export function ambientBar(music, { occ = "peace", intimacy = 1, bar = 0 } = {}) {
   const E = ensembleFor(music, occ, intimacy);
-  const O = E.occ, R = music.rhythm;
-  const G = gridOf(R);
+  const O = E.occ, R = music.rhythm, G = gridOf(R);
   const bank = phraseBank(music, occ);
-  const ph = bank[FORM_ORDER[bar % FORM_ORDER.length]];
+  const order = formOrderOf(music);
+  const secs = sectionsOf(music, occ);
+  const S = sectionAt(secs, bar);
+  const ph = bank[order[bar % order.length] % bank.length];
+  const SLOTS = ph.pat.span;
+  const beats = SLOTS / G.div;
+  const tempo = Math.round(R.tempo * O.tempo);
+  const spb = 60 / tempo;
   const fin = finalFor(music, occ);
+  const ST = strataOf(music, E, G, SLOTS, spb);
+  const seed = hash32(music.people.seed, "amb", occ);
   const ev = [];
+  const audible = (need) => S.sec.thin * intimacy >= need;
 
-  // the percussion ensemble: interlocking parts, the same every cycle,
-  // thinned by distance
-  if (E.pulse != null && O.perc > 0.15) {
-    const audible = O.perc * (0.5 + 0.5 * intimacy);
-    const parts = drumEnsemble(music, occ);
-    parts.forEach((part, pi) => {
-      if (pi > 0 && intimacy < 0.3 + pi * 0.18) return;   // far off, you hear the timeline only
+  // THE MARK. One stroke where the cycle turns, left to ring, and the LOUDEST
+  // event in the cycle — a punctuating body is loud precisely because it is
+  // rare. It used to be the quietest thing in the bar.
+  if (E.marks && E.marks.length && audible(0.3)) {
+    const levels = Math.min(E.marks.length, S.sec.dens > 2 ? 3 : 2);
+    for (const c of colotomy(SLOTS, G.div, levels)) {
+      const k = E.marks[Math.min(c.level, E.marks.length - 1)];
+      ev.push({ b: slotBeat(G, c.s, 0), dur: 3.5, inst: k, deg: modeDegree(music, fin),
+        oct: -1 - (c.level === 0 ? 1 : 0),
+        // each level down is a smaller body and a smaller stroke, sharing the
+        // effort the level above spends in one
+        vel: (ST.mark ? ST.mark.vel : 0.7) * Math.pow(0.45, c.level),
+        role: "mark", ring: c.level === 0 });
+    }
+  }
+  // THE CORE: the slow skeletal melody the elaboration hangs on. Slow but
+  // STOPPED, never sustained — a metallophone key is hand-damped as the next
+  // one sounds, so a slow core is short events at long intervals, and
+  // rendering it as long ones is the single most audible way to make this
+  // music sound moody instead of driven.
+  if (ST.core && audible(0.55)) {
+    const step = Math.max(G.div, Math.round(SLOTS / ST.core.n));
+    for (let s = 0, j = 0; s < SLOTS; s += step, j++) {
+      const d = ph.degs[Math.floor(j * ph.degs.length / Math.max(1, SLOTS / step))] ?? 0;
+      ev.push({ b: slotBeat(G, s, R.swing), dur: Math.min(1.1, step / G.div * 0.6), inst: ST.core.k,
+        deg: modeDegree(music, d + fin + S.sec.ist), oct: -1, vel: ST.core.vel, role: "core", damped: true });
+    }
+  }
+  // THE LINE.
+  const lead = layPhrase(music, ph, O, {
+    inst: ST.lead ? ST.lead.k : -1, intimacy, oct: Math.round(O.reg) + S.sec.oct,
+    ist: S.sec.ist, orn: music.texture.ornament * S.sec.orn > 0.5,
+    vel: 0.42 * (0.85 + 0.3 * Math.min(1, S.sec.dens / 3)),
+  });
+  // A phrase LANDS, in three grades: the end of a phrase, the end of a section,
+  // the end of the piece. Only the last note of the last cycle of a section
+  // gets the long one, and a section ending also gets real silence after it —
+  // a rest is the strongest boundary signal there is.
+  const last = lead[lead.length - 1];
+  if (last && S.last) last.dur *= S.sec.grade === 2 ? 2.6 : 1.8;
+  if (ST.lead) ev.push(...lead);
+  // THE ELABORATION: two to sixteen times the core's density, running
+  // continuously. This is where the music lives in every tuned-metal tradition
+  // and the engine simply did not have it — implement the gong and the core
+  // and leave this out and you have left out most of the onsets.
+  if (ST.elab && audible(0.5) && ST.elab.k !== (ST.lead && ST.lead.k)) {
+    const n = Math.max(2, Math.round(ST.elab.n * Math.min(1, 0.22 * S.sec.dens)));
+    const e = euclid(Math.min(n, SLOTS - 1), SLOTS);
+    let j = 0;
+    for (let s = 0; s < SLOTS; s++) {
+      if (!e[s]) continue;
+      // it PARAPHRASES the line rather than doubling it: same pitches, more of
+      // them, and it fills where the line is not
+      const d = ph.degs[j % ph.degs.length];
+      const near = ph.pat.onsets.some(o => Math.abs(o - s) < 1);
+      ev.push({ b: slotBeat(G, s, R.swing), dur: 0.4, inst: ST.elab.k,
+        deg: modeDegree(music, d + fin + S.sec.ist), oct: Math.round(O.reg) + S.sec.oct,
+        vel: ST.elab.vel * (near ? 0.6 : 1), role: "elab", damped: true });
+      j++;
+    }
+  }
+  // THE DRONE. Not a held note: a real drone is RE-ARTICULATED, on its own
+  // cycle, which does not have to line up with the piece's — a tanpura is
+  // plucked string after string at its own rate. And it is two pitches, the
+  // final and its strongest consonance, not a chord.
+  // A DRONE IS A GROUND, and a ground only means something if something moves
+  // against it. A held pitch under a line that is barely ornamented is not a
+  // drone tradition, it is a held pitch — so the drone appears where the melody
+  // is active enough to need one.
+  if (ST.drone && music.texture.kind !== "monophony" && audible(0.25)
+      && music.texture.ornament * S.sec.orn > 0.3) {
+    const every = Math.max(1, Math.round(SLOTS / ST.drone.n));
+    const fifth = music.melody.structural[1] ?? 2;
+    for (let s = 0, j = 0; s < SLOTS; s += every, j++) {
+      ev.push({ b: slotBeat(G, s + (j % 3 === 2 ? 1 : 0), 0), dur: (every / G.div) * 1.3,
+        inst: ST.drone.k, deg: modeDegree(music, (j % 2 ? fifth : 0) + fin), oct: -2 + (j % 2),
+        vel: ST.drone.vel * (0.55 + 0.45 * O.drone) * (j % 2 ? 0.7 : 1), role: "pad" });
+    }
+  }
+  if (ST.bass && music.texture.size >= 2 && audible(0.45)) {
+    for (const b of bassLine(music, G, SLOTS, fin, S.sec.ist, seed)) {
+      ev.push({ b: slotBeat(G, b.s, R.swing), dur: b.beats * 0.72, inst: ST.bass.k, deg: b.deg,
+        oct: -2, vel: ST.bass.vel, role: "bass", damped: true });
+    }
+  }
+  if (ST.ost && music.texture.size >= 3 && audible(0.7)) {
+    const n = Math.round(ST.ost.n * Math.min(1, S.sec.dens / 2));
+    for (const o of ostinato(music, G, SLOTS, fin, n, seed)) {
+      ev.push({ b: slotBeat(G, o.s, R.swing), dur: 0.5, inst: ST.ost.k, deg: o.deg, oct: -1,
+        vel: ST.ost.vel * 0.7, role: "ost", damped: true });
+    }
+  }
+  if (ST.pulse && O.perc > 0.15 && audible(0.35)) {
+    const hands = Math.max(1, Math.min(4, Math.round(1 + music.texture.size * 0.55 * O.perc * S.sec.thin)));
+    drumEnsemble(music, G, SLOTS, seed, hands, R.density * S.sec.dens * 0.5).forEach((part, pi) => {
       for (const h of part.hits) {
-        ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.4, inst: E.pulse, deg: 0,
-          oct: -1 - (pi === 0 ? 1 : 0), vel: h.vel * audible * (pi === 0 ? 1 : 0.8),
+        ev.push({ b: slotBeat(G, h.s, R.swing), dur: 0.35, inst: ST.pulse.k, deg: 0,
+          oct: -1 - (pi === 0 ? 1 : 0), vel: h.vel * O.perc * ST.pulse.vel * 2.2,
           role: "pulse", stroke: h.stroke, voice: pi });
       }
     });
   }
-  // the marker: one stroke at the head of the cycle, left to ring
-  if (E.marker != null && bar % 2 === 0) {
-    ev.push({ b: 0, dur: 1.2, inst: E.marker, deg: modeDegree(music, fin), oct: -1,
-      vel: 0.3 * (0.5 + 0.5 * intimacy), role: "mark", ring: true });
-  }
-  // THE PAD. Not a probabilistic drone that is absent two cycles in three:
-  // a continuously sounding bed is the defining move of ambient texture, and
-  // without one a piece is a row of separate events with silence behind them.
-  // Two voices on stable degrees, held past the end of the cycle so the bed
-  // never gaps at the seam.
-  if (E.drone != null && music.texture.kind !== "monophony") {
-    const pads = [0, music.melody.structural[1] ?? 2];
-    pads.forEach((d, i) => {
-      ev.push({ b: 0, dur: G.beats * 1.18, inst: E.drone, deg: modeDegree(music, d + fin), oct: -1 - (i === 0 ? 1 : 0),
-        vel: (0.3 - i * 0.08) * (0.6 + 0.4 * intimacy) * (0.55 + 0.45 * O.drone), role: "pad" });
-    });
-  }
-  // the bass: one note per group head, on stable degrees, under everything
-  if (E.bass != null && music.texture.size >= 2 && O.drone > 0.3) {
-    for (const b of bassLine(music, occ)) {
-      ev.push({ b: slotBeat(G, b.s, R.swing), dur: b.beats * 1.05, inst: E.bass, deg: b.deg, oct: -2,
-        vel: 0.32 * (0.6 + 0.4 * intimacy), role: "bass" });
+  // THE VOICE, on the line the instrument is playing — but not in unison with
+  // it. Two players on one melody, each ornamenting it their own way, is
+  // heterophony, and it is the commonest way a sung tradition and its
+  // instruments sound together anywhere in the world. The instrument takes the
+  // plain version; the singer holds the structural notes and lets the runs go.
+  if (E.sing) {
+    const sung = ST.lead ? lead.filter((e, i) => e.strong || i === 0 || i === lead.length - 1) : lead;
+    for (const e of sung) {
+      ev.push({ ...e, role: "voice", inst: -1, vel: e.vel * (ST.lead ? 1.05 : 1),
+        dur: e.dur * (ST.lead ? 1.35 : 1), oct: e.oct + (music.melody.breathBound ? 0 : -1) });
     }
   }
-  // the ostinato: the same short figure every cycle, the layer everything
-  // else is heard against
-  if (E.ost != null && music.texture.size >= 3) {
-    for (const o of ostinato(music, occ)) {
-      ev.push({ b: slotBeat(G, o.s, R.swing), dur: 0.55, inst: E.ost, deg: o.deg, oct: -1,
-        vel: 0.19 * (0.5 + 0.5 * intimacy), role: "ost" });
-    }
-  }
-  // the line. At the end of a form group the phrase is allowed to ring over
-  // the seam: without suppressing the next cycle's downbeat the cadence note
-  // is always stolen one onset later, which made the held-cadence rule a
-  // measured no-op.
-  const cadence = (bar % FORM_ORDER.length) === FORM_ORDER.length - 1;
-  const lead = layPhrase(music, ph, O, {
-    inst: E.lead, intimacy, oct: Math.round(O.reg),
-    orn: music.texture.ornament * O.orn > 0.5,
-  });
-  if (cadence) { const l = lead[lead.length - 1]; if (l) l.dur *= 2.4; }
-  if ((bar % FORM_ORDER.length) === 0 && bar > 0) lead.shift();      // let the previous cadence ring
-  ev.push(...lead);
-  // heterophony: a second player on the SAME line, sparser — the same melody
-  // taken plainly, which is what heterophony is. On the grid, never a flam.
-  if (music.texture.kind !== "monophony" && E.second != null && E.voices >= 5 && E.second !== E.ost) {
-    const thin = { ...ph, pat: { grid: ph.pat.grid, onsets: ph.pat.onsets.filter(s => ph.pat.grid.w[s] >= 0.5) } };
-    thin.degs = thin.pat.onsets.map(s => ph.degs[ph.pat.onsets.indexOf(s)]);
-    ev.push(...layPhrase(music, thin, O, { inst: E.second, vel: 0.2, intimacy, oct: Math.round(O.reg), role: "het" }));
-  }
-  return { events: ev, beats: G.beats, tempo: Math.round(R.tempo * O.tempo), grid: G, phrase: FORM_ORDER[bar % FORM_ORDER.length] };
+  return { events: ev, beats, tempo, grid: G, phrase: order[bar % order.length],
+    section: S.sec.label, dens: S.sec.dens };
 }
 
-// ── whole pieces ─────────────────────────────────────────────────────────
 /**
- * A piece for an occasion. An oral tradition states a formula and returns to
- * it; a literate one states it and goes somewhere. `syls` (optional) is a line
- * of the people's OWN language, sung one syllable per note.
+ * A whole piece: the same generator, run over the section plan instead of
+ * looping. `syls` (optional) is a line of the people's own language, sung one
+ * syllable per note.
  */
 export function composePiece(music, occKey = "peace", syls = null) {
-  const F = music.form, R = music.rhythm, E = ensembleFor(music, occKey, 1);
-  const O = E.occ, G = gridOf(R), fin = finalFor(music, occKey);
-  const bank = phraseBank(music, occKey);
+  const secs = sectionsOf(music, occKey);
   const sections = [];
-  let beat = 0, sylAt = 0;
-  for (let s = 0; s < F.sections; s++) {
-    const label = s === 0 ? "statement" : s === F.sections - 1 ? (F.repetition > 0.5 ? "return" : "close") : `variation ${s}`;
-    const ev = [];
+  let beat = 0, cycle = 0, sylAt = 0;
+  for (const sec of secs) {
     const start = beat;
-    for (let p = 0; p < F.phrasePerSection; p++) {
-      // how far this phrase departs from the statement: literacy buys
-      // development, memory buys return
-      const dev = s === 0 ? 0 : Math.min(1, F.development * (s / Math.max(1, F.sections - 1)) + (label === "return" ? -F.repetition : 0));
-      const pick = dev < 0.25 ? 0 : dev < 0.6 ? 1 : 2;
-      const ph = bank[pick];
-      ev.push(...layPhrase(music, ph, O, {
-        at: beat, inst: E.lead, vel: 0.38 * (p === 0 ? 1.1 : 1), oct: Math.round(O.reg),
-        orn: music.texture.ornament * O.orn > 0.5,
-      }));
-      if (syls && syls.length) {
-        ev.push(...layPhrase(music, ph, O, {
-          at: beat, inst: -1, vel: 0.4, role: "voice", syls, sylFrom: sylAt,
-          oct: Math.round(O.reg) - (music.melody.breathBound ? 0 : 1),
-        }));
-        sylAt += ph.pat.onsets.length;
+    const ev = [];
+    for (let c = 0; c < sec.cycles; c++) {
+      const plan = ambientBar(music, { occ: occKey, intimacy: 1, bar: cycle });
+      for (const e of plan.events) {
+        const o = { ...e, b: beat + e.b };
+        if (o.role === "voice" && syls && syls.length) o.syl = syls[sylAt++ % syls.length];
+        ev.push(o);
       }
-      if (E.drone != null) {
-        ev.push({ b: beat, dur: G.beats * 1.18, inst: E.drone, deg: modeDegree(music, fin), oct: -2, vel: 0.26, role: "pad" });
-      }
-      if (E.bass != null && music.texture.size >= 2) {
-        for (const bl of bassLine(music, occKey)) {
-          ev.push({ b: beat + slotBeat(G, bl.s, R.swing), dur: bl.beats * 1.05, inst: E.bass, deg: bl.deg, oct: -2, vel: 0.32, role: "bass" });
-        }
-      }
-      if (E.ost != null && music.texture.size >= 3) {
-        for (const o of ostinato(music, occKey)) {
-          ev.push({ b: beat + slotBeat(G, o.s, R.swing), dur: 0.55, inst: E.ost, deg: o.deg, oct: -1, vel: 0.19, role: "ost" });
-        }
-      }
-      if (E.pulse != null && O.perc > 0.15) {
-        drumEnsemble(music, occKey).forEach((part, pi) => {
-          for (const h of part.hits) {
-            ev.push({ b: beat + slotBeat(G, h.s, R.swing), dur: 0.4, inst: E.pulse, deg: 0,
-              oct: -1 - (pi === 0 ? 1 : 0), vel: h.vel * O.perc * (pi === 0 ? 1 : 0.8),
-              role: "pulse", stroke: h.stroke, voice: pi });
-          }
-        });
-      }
-      beat += G.beats;
+      beat += plan.beats;
+      cycle++;
     }
-    sections.push({ label, events: ev, startBeat: start, beats: beat - start });
+    // A SECTION ENDS WITH SILENCE. A rest is the strongest boundary cue there
+    // is, and this texture never had one — measured, total silence in a bar was
+    // zero for nine peoples in ten.
+    beat += sec.grade === 2 ? 0 : 1;
+    sections.push({ label: sec.label, events: ev, startBeat: start, beats: beat - start });
   }
   const all = sections.flatMap(s => s.events);
   const leadDurs = all.filter(e => e.role === "lead").map(e => e.dur);
+  const R = music.rhythm, O = OCCASIONS[occKey] || OCCASIONS.peace;
   return {
     sections, events: all, totalBeats: beat, tempo: Math.round(R.tempo * O.tempo),
-    occ: occKey, nPVI: nPVI(leadDurs), grid: G,
+    occ: occKey, nPVI: nPVI(leadDurs), grid: gridOf(R),
   };
 }
-
-/** The nPVI a SPEAKER of this language produces — the number the music's own
- *  nPVI should track. Both are measured the same way, so the Lab can show the
- *  correspondence instead of asserting it. */
 export function speechNPVI(music) {
   const R = music.rhythm;
   // exactly the durations the speech engine schedules (langLab scheduleWord /

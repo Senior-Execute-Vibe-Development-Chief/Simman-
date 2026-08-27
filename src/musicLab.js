@@ -14,7 +14,7 @@ import { foundLanguage } from "./sim/language.js";
 import { langWord, langWordForm, langRealmName } from "./sim/language.js";
 import { phoneticPlan, prosodyOf } from "./sim/languagePhonetics.js";
 import { GOD, SUN, RIVER, MOUNTAIN, KING, WATER, EARTH, SEA, MOON, GRAIN, HOUSE } from "./sim/languageLexicon.js";
-import { MATERIALS } from "./sim/musicInstruments.js";
+import { MATERIALS, FAMILIES } from "./sim/musicInstruments.js";
 import { nearJust, cents as toCents } from "./sim/musicTuning.js";
 import { foundPeople, musicOf, materialsOf } from "./sim/musicGenome.js";
 import { OCCASIONS, ambientBar, composePiece, ensembleFor, degreeHz, speechNPVI, finalFor, modeDegree } from "./sim/musicCompose.js";
@@ -65,12 +65,32 @@ function tonicOf(m) {
   // A melody wants to sit where a voice sits. Down at 150-200 Hz a line reads
   // as a bass part and its intervals blur; the singer's own range is where
   // pitch is heard most sharply, so the final lands there and the drone sits
-  // a frame below it.
-  const lead = m.insts[0];
-  const base = lead && (lead.fam === "gong" || lead.fam === "bell" || lead.fam === "barSet") ? 262 : 294;
-  return base * (m.melody.breathBound ? 1.12 : 1);
+  // a frame below it. (It used to read the highest-WEIGHT instrument, which is
+  // the most prestigious one and frequently not the one playing the tune.)
+  return 294 * (m.melody.breathBound ? 1.12 : 1);
 }
-function noteFreq(m, ev) { return degreeHz(m, tonicOf(m), ev.deg, ev.oct); }
+/**
+ * A part is placed where its own body can actually sound it. Nearly a quarter
+ * of all notes used to be written below the lowest note their instrument has —
+ * a bass part was out of range four times in five, and a flute asked to play
+ * the bass line sat a median of fifteen semitones under its own bottom note,
+ * because the octave came from a literal in the composer rather than from the
+ * body. Move it by whole frames until it fits: a player who cannot reach a
+ * note plays it in the octave they can.
+ */
+function noteFreq(m, ev) {
+  let f = degreeHz(m, tonicOf(m), ev.deg, ev.oct);
+  const inst = m.insts[ev.inst];
+  const low = inst && FAMILIES[inst.fam] ? FAMILIES[inst.fam].low : 0;
+  if (!low) return f;
+  const frame = m.scale.frame.ratio;
+  let guard = 0;
+  while (f < low * 0.94 && guard++ < 5) f *= frame;
+  // and not so high that the body has run out of instrument either
+  const top = low * Math.pow(frame, inst.cap >= 12 ? 3 : inst.cap >= 6 ? 2.4 : 1.8);
+  while (f > top && guard++ < 9) f /= frame;
+  return f;
+}
 
 /**
  * The sung part is not scheduled note by note: the vocal tract renders a whole
@@ -80,9 +100,9 @@ function noteFreq(m, ev) { return degreeHz(m, tonicOf(m), ev.deg, ev.oct); }
  * than a beat is where a singer takes a breath — and each group is rendered
  * and scheduled as one buffer.
  */
-function fireVoiceLine(m, evs, when0, spb, gain, syls, acc) {
+function fireVoiceLine(m, evs, when0, spb, gain, syls, acc, Aud) {
   if (!evs.length || !syls || !syls.length) return;
-  const A = audio();
+  const A = Aud || audio();
   const sorted = [...evs].sort((a, b) => a.b - b.b);
   const groups = [];
   let cur = [];
@@ -109,8 +129,8 @@ function fireVoiceLine(m, evs, when0, spb, gain, syls, acc) {
   }
 }
 
-function fireEvent(m, ev, when, secPerBeat, gain) {
-  const A = audio();
+function fireEvent(m, ev, when, secPerBeat, gain, Aud) {
+  const A = Aud || audio();
   const inst = m.insts[ev.inst] || m.insts[0];
   if (!inst) return;
   const f = noteFreq(m, ev);
@@ -120,7 +140,7 @@ function fireEvent(m, ev, when, secPerBeat, gain) {
   playNote(A, inst, f, when, ev.dur * secPerBeat, ev.vel * gain, {
     role: ev.role === "het" ? "het" : ev.role || "lead",
     stroke: ev.stroke,
-    damped: !!inst.damped,
+    damped: ev.damped != null ? ev.damped : !!inst.damped,
     channel: ev.ring || ev.role === "pad" || ev.role === "pulse" ? null
       : `${m.people.seed}:${ev.role}:${ev.inst}${ev.voice != null ? ":" + ev.voice : ""}`,
   });
@@ -755,7 +775,8 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 function exposeForTests() {
   if (typeof window === "undefined") return;
   window.__LAB__ = { get music() { return P; }, get partner() { return PB; },
-    makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf, S };
+    makeAudio, setDistance, playNote, sungLine, playSung, ambientBar, composePiece, noteFreq, tonicOf,
+    fireEvent, fireVoiceLine, hymnSyllables, S };
 }
 
 export function mount() {
