@@ -263,6 +263,55 @@ function ensureRepo(key) {
 // short-necked lutes. Those are honest neighbours. A substitute that is only
 // vaguely similar is left out and the family bank plays instead, because a
 // wrong instrument is worse than a generic one.
+// WHAT EACH RECORDING IS ACTUALLY MADE OF ─────────────────────────────────
+//
+// A fact about the instrument in front of the microphone, in the same category
+// as the pitch it was playing: a balafon has wooden bars over gourds, a
+// strumstick has steel strings on wood, a nylon-strung guitar is the nearest
+// thing anyone still records to a gut-strung lute, an mbira has iron tongues.
+//
+// This is what lets a DERIVED people reach the right recording. The engine
+// already goes region -> what grows and can be mined there -> what can be built
+// -> family and material; matching a recording on that material is the last
+// step of the same chain, and it is rendering rather than fitting. "This people
+// built a gut-strung lute on a wooden box, and here is a recording of one" is a
+// measurement. "A people in a desert plays an oud" would be a script, and is
+// not what happens here — nothing below knows where anything is.
+const RECORDED_MAT = {
+  Strumstick: "iron", "Dan Tranh": "iron", "Solo Violin": "gut", Flute: "iron",
+  Ocarina: "clay", Oboe: "reed", "F Horn": "bronze", Balafon: "wood",
+  "Mbira dzaVadzimu": "iron", "Tubular Bells": "bronze", Gong: "bronze",
+  Darbuka: "hide", "Frame Drum": "hide", Claves: "wood", Claps: "none",
+  // and the named bank's bodies, which a derived people may also reach —
+  // the RECORDING is a measurement of a material, whatever the instrument on
+  // it is called
+  sitar: "iron", koto: "silk", shamisen: "silk", shakuhachi: "bamboo", flute: "iron",
+  taiko_drum: "hide", bagpipe: "reed", fiddle: "gut",
+  acoustic_guitar_nylon: "gut", dulcimer: "iron", pan_flute: "bamboo",
+  reed_organ: "reed",
+};
+// which engine family each named recording belongs to, so a derived body can
+// find it: the bench reaches these BY NAME, a generated people BY PHYSICS
+// A RECORDING WITH NO MATERIAL IS A BUILD ERROR, not a default. It used to
+// fall back to "wood", and that is exactly how the General MIDI flute — a metal
+// instrument — ended up tagged as wooden and became the nearest match for every
+// clay and wooden pipe a people could build, over an actual bamboo shakuhachi
+// sitting in the same pool. A default that is silently plausible is worse than
+// no default.
+function matOf(src) {
+  const m = RECORDED_MAT[src];
+  if (!m) throw new Error(`no material recorded for sample source "${src}" — add it to RECORDED_MAT`);
+  return m;
+}
+const NAMED_FAM = {
+  sitar: "luteNeck", acoustic_guitar_nylon: "luteNeck", shamisen: "luteNeck",
+  koto: "lyre", dulcimer: "lyre",
+  fiddle: "bowed",
+  flute: "fluteOpen", pan_flute: "fluteOpen", shakuhachi: "fluteOpen",
+  bagpipe: "reedPipe", reed_organ: "reedPipe",
+  taiko_drum: "drum",
+};
+
 const GM_URL = "https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/";
 const NAMED = {
   // exact — the instrument itself
@@ -305,8 +354,23 @@ async function buildNamed() {
   const bank = {};
   let files = 0, bytes = 0;
   for (const [label, spec] of Object.entries(NAMED)) {
+    if (EMIT_ONLY) {
+      // rebuild the entry from what is already on disk, so the manifest can be
+      // regenerated without re-fetching three megabytes of soundfont
+      const lo = midiOf(spec.lo), hi = midiOf(spec.hi), entries = [];
+      for (let mi = lo; mi <= hi; mi += 4) {
+        const hz = +(440 * Math.pow(2, (mi - 69) / 12)).toFixed(2);
+        const file = `${spec.gm}_${Math.round(hz)}.mp3`;
+        if (existsSync(join(dir, file))) entries.push({ hz, file });
+      }
+      if (entries.length) {
+        bank[label] = { gm: spec.gm, like: spec.like || null,
+          fam: NAMED_FAM[spec.gm] || null, mat: matOf(spec.gm), entries };
+        console.log(`  ${label.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${spec.gm} (from disk)`);
+      }
+      continue;
+    }
     if (!cache.has(spec.gm)) {
-      if (EMIT_ONLY) { console.log(`  ${label.padEnd(12)} skipped (--emit)`); continue; }
       const url = GM_URL + spec.gm + "-mp3.js";
       const js = sh("curl", ["-sSf", "--max-time", "180", "-A", UA, url]);
       const map = new Map();
@@ -332,7 +396,8 @@ async function buildNamed() {
       if (!existsSync(join(dir, file))) { writeFileSync(join(dir, file), raw); bytes += raw.length; files++; }
       entries.push({ hz, file });
     }
-    bank[label] = { gm: spec.gm, like: spec.like || null, entries };
+    bank[label] = { gm: spec.gm, like: spec.like || null,
+      fam: NAMED_FAM[spec.gm] || null, mat: matOf(spec.gm), entries };
     console.log(`  ${label.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${spec.gm}${spec.like ? "  (as " + spec.like + ")" : ""}`);
   }
   return { bank, files, bytes };
@@ -389,7 +454,8 @@ async function main() {
       files++;
       entries.push({ hz: +p.hz.toFixed(2), file: name, secs: +(sh2.pcm.length / sh2.rate).toFixed(3) });
     }
-    bank[fam] = { src: m.src, why: m.why, kind: m.kind, unpitched: !!m.unpitched, samples: entries };
+    bank[fam] = { src: m.src, why: m.why, kind: m.kind, unpitched: !!m.unpitched,
+      mat: matOf(m.src), samples: entries };
     console.log(`  ${fam.padEnd(12)} ${String(entries.length).padStart(3)} samples  ${m.src}`);
   }
 
@@ -400,7 +466,7 @@ async function main() {
 
   const gen = Object.entries(bank).map(([fam, b]) =>
     `  ${fam}: { src: ${JSON.stringify(b.src)}, kind: ${JSON.stringify(b.kind)}, ` +
-    `unpitched: ${b.unpitched}, samples: [\n` +
+    `unpitched: ${b.unpitched}, mat: ${JSON.stringify(b.mat)}, samples: [\n` +
     b.samples.map(s => `    { hz: ${s.hz}, secs: ${s.secs}, file: ${JSON.stringify(s.file)} },`).join("\n") +
     `\n  ] },`).join("\n");
   writeFileSync(MANIFEST, `// GENERATED by tools/build_samples.mjs — do not edit by hand.
@@ -428,7 +494,8 @@ export const SAMPLE_CREDIT =
 // is walled off from the generator by construction. Keyed by that label.
 export const NAMED_BANK = {
 ${Object.entries(named.bank).map(([k, v]) =>
-  `  ${JSON.stringify(k)}: { gm: ${JSON.stringify(v.gm)}, like: ${JSON.stringify(v.like)}, samples: [\n` +
+  `  ${JSON.stringify(k)}: { gm: ${JSON.stringify(v.gm)}, like: ${JSON.stringify(v.like)}, ` +
+  `fam: ${JSON.stringify(v.fam)}, mat: ${JSON.stringify(v.mat)}, samples: [\n` +
   v.entries.map(e => `    { hz: ${e.hz}, file: ${JSON.stringify("named/" + e.file)} },`).join("\n") +
   `\n  ] },`).join("\n")}
 };

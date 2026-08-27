@@ -117,6 +117,25 @@ export async function loadSamples(A, resolve) {
   await Promise.all(jobs);
   for (const b of Object.values(bank)) b.entries.sort((x, y) => x.hz - y.hz);
   for (const b of Object.values(named)) b.entries.sort((x, y) => x.hz - y.hz);
+  // EVERY RECORDING THERE IS, BY FAMILY. The named bodies join this pool as
+  // materials rather than as instruments — a derived people can reach the
+  // sound of silk on hide without ever reaching the word "shamisen".
+  const pool = {};
+  for (const [f, b] of Object.entries(bank)) {
+    if (b.entries.length) (pool[f] ||= []).push({ ...b, mat: SAMPLE_BANK[f].mat || "wood" });
+  }
+  for (const [label, b] of Object.entries(named)) {
+    const spec = NAMED_BANK[label];
+    if (!spec || !spec.fam || !b.entries.length) continue;
+    const p = (pool[spec.fam] ||= []);
+    // one entry per RECORDING, not per name: several traditions point at the
+    // same body and it should sit in the pool once
+    if (!p.some(x => x.src === b.src)) {
+      p.push({ kind: (bank[spec.fam] || {}).kind || "pluck", unpitched: false,
+        src: b.src, mat: spec.mat || "wood", entries: b.entries });
+    }
+  }
+  A.pool = pool;
   A.samples = bank;
   A.named = named;
   A.sampleCount = Object.values(bank).reduce((n, b) => n + b.entries.length, 0)
@@ -125,20 +144,60 @@ export async function loadSamples(A, resolve) {
 }
 
 /**
- * Is there a recording for this body?
+ * How far apart two materials sound, in the only two things a RECORDING can
+ * carry about them: how bright it is and how long it rings. Density and
+ * stiffness matter, but they act THROUGH those two — a dense stiff bar is
+ * bright and long-ringing BECAUSE it is dense and stiff — so scoring them
+ * separately would count the same fact twice.
+ */
+function matDist(a, b) {
+  const X = MATERIALS[a], Y = MATERIALS[b];
+  if (!X || !Y) return 9;
+  const db = X.bright - Y.bright;
+  const dd = Math.log((X.decay + 0.2) / (Y.decay + 0.2)) / 3;
+  return Math.sqrt(db * db + dd * dd);
+}
+
+/**
+ * Which recording plays this body — and this is where the two banks stop being
+ * separate things.
  *
- * A NAME BEATS A FAMILY, when there is one. Only the traditions bench gives an
- * instrument a name, so this is the whole of the wall: a derived people falls
- * straight through to its family's recording, because its bodies have no names
- * to look up. A named body keeps its family's KIND — whether it sustains,
- * whether it is plucked — because that is a fact about the thing, not about
- * the recording of it.
+ * A NAMED BODY IS THE BENCH'S. Only `musicTraditions.js` gives an instrument a
+ * name, so a pinned tradition gets the instrument it actually uses and a
+ * derived people never can: its bodies have no names to look up.
+ *
+ * A DERIVED BODY GETS THE NEAREST REAL MATERIAL IN ITS FAMILY, out of every
+ * recording there is, from either bank. That is the owner's question answered
+ * the only way that is not a script: the engine already goes region -> what
+ * grows and can be mined there -> what can be built -> family and material, and
+ * this is the last step of that same chain. A people that built a gut-strung
+ * lute on a wooden box gets a recording of a gut-strung lute; one that built a
+ * silk-strung one gets a shamisen; one that strung it with iron gets the steel
+ * strumstick — and none of that asks where anybody is.
+ *
+ * The difference from "a people in a desert plays an oud" is the whole of the
+ * second cardinal rule: that would name the answer, this measures the body.
+ * Which is also why the pool is keyed by material and not by instrument — the
+ * recording is a MEASUREMENT of what nylon on a wooden box sounds like, and
+ * what it happens to be called is not part of it.
+ *
+ * A named body still keeps its family's KIND — whether it sustains, whether it
+ * is plucked — because that is a fact about the thing, not about the recording.
  */
 export function sampledFor(A, inst) {
   const fam = A.samples && A.samples[inst.fam];
   const nm = inst.sampleName && A.named && A.named[inst.sampleName];
   if (nm && nm.entries.length) {
     return { kind: fam ? fam.kind : "pluck", unpitched: false, src: nm.src, entries: nm.entries };
+  }
+  const pool = A.pool && A.pool[inst.fam];
+  if (pool && pool.length > 1) {
+    let best = pool[0], bestD = Infinity;
+    for (const c of pool) {
+      const d = matDist(inst.mat, c.mat);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return best;
   }
   return fam && fam.entries.length ? fam : null;
 }
