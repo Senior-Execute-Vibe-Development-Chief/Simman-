@@ -5,6 +5,12 @@ realworld.svg
 tools/flag-rating.html
 tools/melographs.html
 tools/langlab.html
+# ...and its sibling, for the same reason: both are build OUTPUTS, reproducible
+# with `node tools/build_musiclab.mjs`, and the footer stamps the commit they
+# were built from — so committing one always leaves it one commit stale and
+# invites an endless restamp. The recorded sample bank under assets/ IS source
+# (it cannot be regenerated without the network) and stays tracked.
+tools/musiclab.html
 
 # local visual diagnostics (playwright-core, env-specific)
 tools/visual-diag*.mjs
