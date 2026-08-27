@@ -122,3 +122,67 @@ Two distinct defects, in one atlas:
   in the world (213k), fill 0.28, and **zero cities**. The land can feed them,
   the people are not there, nothing forms. A different defect from Egypt's,
   and it should not be conflated with it.
+
+---
+
+## 4. THE UNIFIED VERDICT (2026-08-27) — the atlas and the shed are ONE defect
+
+§3's "cradle inversion is a LAND finding" is **RETRACTED**, by its own
+decomposition (`probe_capterms`, `docs/runs/2026-08-26/capterms*.log`):
+
+- Egypt's richest tile carries **fert 1.00 (maxed)** against E Europe's 0.84,
+  and the FIELD_CRADLE stack fires there at the LARGEST value of any region
+  (×3.48 vs 2.58). The Nile is neither poor land nor un-irrigated.
+- Reconstructing `capBand` exactly, the geographic terms EXPLAIN cradle
+  capacity (ratio 0.83-1.98) but leave E Europe **14.2×** unexplained,
+  Greece/Italy 6.1×, W Europe 3.6×.
+- By the land's own geography alone, **Egypt is the richest tile on the map**
+  (77,358), level with Greece/Italy (76,359), then N China (60,265), E Europe
+  (41,820), W Europe last (21,314) — history's own ordering.
+
+The overlay is the settlement economy: `ONE_POP`'s URBAN CAPACITY SPIKE (what
+a city's ECONOMY supports beyond what its land feeds — imports, granary,
+housing) and `FOOD_K`'s worked-catchment ledger override. Both are OUTPUTS of
+a city. **Reading "richest tile" read whichever metropolis stood there and
+called it soil** — the third measurement artifact of this lap, after the
+inverted-latitude area loop and the box-mean-over-a-ribbon.
+
+**So the hypothesis became: if capacity at cities is import-fed, repairing the
+grain shed repairs the atlas by itself.** Tested behaviourally — the full
+stack (`HAUL_PHYS + GRAIN_FREIGHT + GRAIN_BID`) and its own chaos draw against
+the two banked no-mechanism draws:
+
+| measure | no-mechanism ×2 | full stack ×2 | verdict |
+|---|---|---|---|
+| E Europe largest city | 369k, 489k | **35k, 52k** | 7-10× collapse, far outside the band |
+| E Europe urban rank | 1st, 1st | 9th, 4th | the runaway is gone |
+| N China urban | 15k, 32k | **132k, 272k** | the cradle rises |
+| urban core p50 | 8k, ~8k | **15k, 24k** | the 12k pin lifts |
+| ≤15k floor mode | 44/75 | 36/70 | the middle fills in |
+
+**CONFIRMED: the E Europe runaway is manufactured by the grain economy, not by
+the land.** The owner's four complaints were three symptoms of one broken
+market plus one dead UI gate.
+
+### Two of my own framings corrected by the same runs
+
+- **Haul distance is largely GRID-BOUND, not a pure defect.** The median haul
+  sits at ~1,000 km in EVERY arm because at tw=240 a tile is 167 km and
+  neighbouring settlements are ~6 tiles apart: inter-city grain trade cannot
+  be shorter than settlement spacing. History's 20-100 km overland shed lives
+  INSIDE the catchment, which `s.people` already accounts for. `HAUL_PHYS` is
+  still right on its own terms (a tile constant meaning 2,338 km is a bug
+  whatever the grid), but it must not be sold as a fix for the distance
+  number. Re-measure at tw=480/960, where spacing halves.
+- **Import concentration is probably NOT a defect.** Top-3 share reads 40-52%
+  under the stack against 42% baseline — no improvement, and `GRAIN_BID` does
+  not de-concentrate (a chronically short metropolis holds the highest
+  scarcity price, so it stays first in the queue). But Rome, Constantinople
+  and Alexandria DID dominate the ancient grain trade: a few huge cities
+  taking most of the traded grain is history's own shape. The owner's real
+  complaint was that most cities buy NOTHING, and that is the ladder metric,
+  which improved.
+- **A runaway metropolis still exists — it RELOCATES** (703k in the stack's
+  main arm, 308k in W Europe in its chaos draw). The stack removes E Europe's
+  specific advantage without removing whatever lets one city run away. Named
+  for the next lap.
