@@ -1,0 +1,18 @@
+[harness] tree 5b442fe
+[SIM_TUNE] {"LAND_KNOW":1,"POP_FIELD_WORKERS":0}
+
+[farmres] W=960 tw=480 rn=2.00 seed=8817 steps=3000 settled=6
+[farmres] one tile = 3818 km2 (62 km across)
+    belt tiles        _terrTiles       55.5000
+    worked tiles      _terrWorkTiles   31.7500
+    fertility SUM     _terrFertSum     11.3288
+    farm output       _landFood        0.6582
+    core need         _coreNeed        0.0258
+    catchment census  s.people         163.8019
+    urban core        s._urbanPop      3.4269
+    food supply       _foodSupply      0.6369
+    food demand       _foodDemand      0.0258
+    RATIO _landFood / _coreNeed        29.9857   <- the 81x statistic
+    belt REAL AREA km2                 211880
+    fert per REAL Mkm2                 53.47
+    farm output per REAL Mkm2          3.1065
