@@ -110,3 +110,14 @@
     MACHINE 24000 28000 269 10.351 55 78 129 10 2941 0 17244 214386 83.13 32.92 5.97
     [663s]
 [peopleSim] AGRICULTURE INVENTED at (115,99) (-93.8E 15.8N) — the basin farms; a city will rise when its market gathers one (score 1.97)
+
+=== window 28000->32000  realms=573  claimed=24.1%  settled=846
+    FLOWS in-window   founded=82 ended=225 seceded=242 shattered=16
+    FLOWS per realm   founded=0.1948 ended=0.5344 seceded=0.5748 shattered=0.0380   (meanRealms=421)
+    WAR in-window     began=7961 ended=7918 captured=0 sacked=24
+    WAR per realm     began=18.9097 captured=0.0000
+    CORES p10=1.8 p50=12.0 p90=102.9 max=516.9su  |  MODE 12.00su held by 344/843 (40.8%)  <- the pin
+    MASS  urban=32327su rural=330620su urbanShare=8.91%
+    ARMING  blockRan=83.5%  bind=34.6%  diskBound=6.4%  [CORE_LOCAL=1 LAND_KNOW=1]
+    MACHINE 28000 32000 573 24.052 82 225 242 16 7961 0 32327 330620 83.45 34.63 6.38
+    [1482s]
