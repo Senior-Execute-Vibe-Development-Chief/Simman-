@@ -1,0 +1,32 @@
+[harness] tree 694c7f1
+[SIM_TUNE] {"DAWN_LIVE":1,"STATE_RECORDS":1,"LAND_KNOW":1,"PEER_SEATS":1,"FOUND_DRIFT":1,"ABSORB_ORG_ERA":1,"TRIBUTE_UP":0.33,"ENGULF":8,"FEAR_REACH":1,"WAR_FINISH":1,"SMALL_WAR":8,"RELIEF_REACH":1,"EXCH_WAVE":3,"TECH_USE":1,"VASSAL_LEVY":0.5,"DISSOLVE_CORE":1,"SETT_STRIDE":3,"TRADE_STRIDE":5,"POP_FIELD_WORKERS":0,"CORE_LOCAL":1,"AGGLOM_LOCAL":1,"MINING_RATE":5.0000001}
+[peopleSim] hearth pin Nile picked at tile (277,80) (27.7E 30.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Mesopotamia picked at tile (298,76) (43.5E 33.0N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Indus picked at tile (333,81) (69.8E 29.2N) — maturity deferred to the stagger law
+[peopleSim] hearth pin Yellow River picked at tile (387,72) (110.3E 36.0N) — maturity deferred to the stagger law
+[peopleSim] hearth candidate at (277,80) (27.7E 30.0N) score 6.74 pkg=wheat(suit 0.94) — ARMED: ~962y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (298,76) (43.5E 33.0N) score 6.51 pkg=wheat(suit 1.00) — ARMED: ~903y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (333,81) (69.8E 29.2N) score 7.79 pkg=wheat(suit 1.00) — ARMED: ~900y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (387,72) (110.3E 36.0N) score 3.54 pkg=millet(suit 0.54) — ARMED: ~2754y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (230,99) (-7.5E 15.8N) score 3.07 pkg=sorghum(suit 0.65) — ARMED: ~3077y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (115,99) (-93.8E 15.8N) score 1.97 pkg=maize(suit 0.86) — ARMED: ~5245y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (140,140) (-75.0E -15.0N) score 1.05 pkg=tubers(suit 0.75) — ARMED: ~3996y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (278,142) (28.5E -16.5N) score 0.81 pkg=tubers(suit 0.39) — ARMED: ~7649y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (247,40) (5.2E 60.0N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[peopleSim] hearth candidate at (25,41) (-161.3E 59.3N) score 0.50 — ARMED: ~13000y of peopled-basin time from maturity
+[milbalance] W=960 seed=8817 steps=40000 every=4000
+[milbalance] MACHINE columns: lo hi realms claimed% founded ended seceded shattered warBegan captured urbanSU ruralSU blockRan% bind% diskBound%
+[transHeap] step=24 cap=1024 peakN=0 pushes=0 (0.0MB backing)
+
+=== window 0->4000  realms=0  claimed=0.0%  settled=0
+    FLOWS in-window   founded=0 ended=0 seceded=0 shattered=0
+    FLOWS per realm   founded=0.0000 ended=0.0000 seceded=0.0000 shattered=0.0000   (meanRealms=1)
+    WAR in-window     began=0 ended=0 captured=0 sacked=0
+    WAR per realm     began=0.0000 captured=0.0000
+    CORES p10=0.0 p50=0.0 p90=0.0 max=0.0su  |  MODE 0su held by 0/0 (0.0%)  <- the pin
+    URBSHARE/sett p50=0.000 p90=0.000 max=0.000  |  >=0.30 (graveyard saturated): 0/0 (0.0%)
+    MASS  urban=0su rural=0su urbanShare=0.00%
+    ARMING  blockRan=0.0%  bind=0.0%  diskBound=0.0%  [CORE_LOCAL=1 LAND_KNOW=1]
+    !! ARMING FAILED: the urban-core block executed for NO settlement. This arm measured nothing about CORE_LOCAL, whatever else it printed.
+    MACHINE 0 4000 0 0.000 0 0 0 0 0 0 0 0 0.00 0.00 0.00
+    [30s]

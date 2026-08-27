@@ -1461,3 +1461,79 @@ That third point is worth flagging: **the owner's fix may make my §11 fix
 unnecessary.** A core sized from current harvest already shrinks when the harvest
 fails. The melt was a patch for a floor that should not have been permanent — which
 is the second cardinal rule pointing at my own morning's work.
+
+---
+
+## 22. `T.AGGLOM_LOCAL` built — wave 5 pre-registered before the data
+
+Owner: *"do it, it HAS to be this way to be realistic, no alternatives."* Built,
+`def: 0`, byte-identical when off (`hashbase` 7fb32527 / ebfb8021 unchanged, smoke
+green). Four edits, all in `popField.js`, no new state and no new metric.
+
+### 22.1 The one thing that made this cleaner than expected
+
+I flagged in §21.3 that `URBAN_AGGLOM`'s referent changes and would need
+re-grounding. **It does change, and it needs no re-grounding — it becomes
+meaningful for the first time.**
+
+`URBAN_GAMMA = 0.5 > 0`, so `betaEff = 1`, and at β=1 the global sums cancel
+exactly:
+
+```
+share   = pull / sumK
+uTarget = URBAN_AGGLOM × (1 + URBAN_IND·indGate) × sumK × share
+        = URBAN_AGGLOM × (1 + URBAN_IND·indGate) × pull
+```
+
+So `URBAN_AGGLOM = 0.13` means:
+
+- **under the import basis** — "13% of a city's *import-fed* capacity stands in its
+  core." That has no independent physical meaning; it is a number that could be
+  anything.
+- **under the whole-economy basis** — "13% of a region's capacity stands in its
+  city." That is an **urbanisation rate**, and 0.13 sits inside history's 5-15%
+  agrarian band.
+
+The value is deliberately left alone. A parameter that acquires a real referent and
+turns out to already hold a historically sound value is the second cardinal rule's
+own test passing, not a coincidence to tune away.
+
+### 22.2 Wave 5, registered before it lands
+
+Four arms, `tw=480` (W=960), seed 8817, 40k, live arm, all on `CORE_LOCAL`, each
+lever set verified from `/proc/<pid>/environ` **and** from the arm's own echoed
+header:
+
+```
+w5_agg              +AGGLOM_LOCAL
+w5_agg_chaos        +AGGLOM_LOCAL, MINING_RATE=5.0000001
+w5_agg_ulab         +AGGLOM_LOCAL, URBAN_LABOR
+w5_agg_ulab_chaos   +AGGLOM_LOCAL, URBAN_LABOR, MINING_RATE=5.0000001
+```
+
+Two draws per treatment, against **three** control draws already banked to 40k
+(`mil_corelocal`, `w3_cl_chaos`, `w4_cl_ref3`) — the count §20 said was the minimum.
+
+**The prediction: a DISTRIBUTION, not a uniform rise.** The mechanism gives pinned
+self-fed cities a target for the first time (floor up) while pulling the runaway
+tail toward 13% of its own region's capacity (ceiling down). Specifically:
+
+| measure | untreated | predicted |
+|---|---|---|
+| exactly-12.00su share, final window | 37.0 / 34.8% | **materially below** |
+| urban share, final window | 20.61 / 20.60 / 28.21% | **at or under ~16%** |
+| median core, final window | 12.5 / 14.6su | **above both** |
+| total population | 409k / 418k / 422k | **not lower** (disqualifier) |
+
+**The falsifier, stated plainly: if urbanisation rises uniformly — floor up AND
+ceiling up — the distribution argument is wrong and this is just a bigger knob.**
+That is the outcome that would make the mechanism wrong rather than merely
+mis-tuned, and it is the one I will be looking for first.
+
+Two disciplines carried from wave 4, both bought with retractions:
+
+- **No effect size quoted without three control anchors bracketing the treated
+  arm** (§20). If the treated arms outrun every control's claimed land, the honest
+  output is "unmatchable", not a ratio against the one control that reaches.
+- **No claim from a single draw**, including — especially — an unasked-for bonus
+  finding. §13.3 and §17.1 both died that way.
